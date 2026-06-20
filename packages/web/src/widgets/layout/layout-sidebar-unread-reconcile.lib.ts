@@ -13,6 +13,7 @@ import {
   logSidebarUnreadFlow,
   summarizeRegisterUnreadSnapshot,
 } from "~/shared/lib/sidebar-unread-debug.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import {
   isRegisterUnreadSnapshotUsable,
   shouldPreserveLocalUnreadOnCachedReconcile,
@@ -48,7 +49,7 @@ export type SidebarUnreadReconcileSnapshotSource = "fresh-register" | "cached-re
 export interface ReconcileSidebarUnreadAfterBootstrapOptions {
   cancelled: () => boolean;
   instanceId?: string | null;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   registerSnapshot?: MessengerUnreadMessagesSnapshot | null;
   logScope?: string;
   /**

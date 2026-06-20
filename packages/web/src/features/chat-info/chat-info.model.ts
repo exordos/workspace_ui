@@ -9,6 +9,7 @@
 import { create } from "zustand";
 import { useUsersStore } from "~/entities/user/user.model";
 import { logStoreAction } from "~/shared/lib/logger";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import {
   invalidateInstance,
   invalidateStream as invalidateStreamCache,
@@ -53,7 +54,7 @@ const NONE_CONTEXT: ChatInfoContext = {
   instanceId: null,
 };
 
-function resolveUsersById(userIds: number[]) {
+function resolveUsersById(userIds: UserId[]) {
   const usersState = useUsersStore.getState();
   return userIds
     .map((id) => usersState.getUser(id))

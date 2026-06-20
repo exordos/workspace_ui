@@ -17,13 +17,14 @@ import {
 import { useUsersStore } from "~/entities/user/user.model";
 import { createLogger } from "~/shared/lib/logger";
 import { runInFlightDeduped } from "~/shared/lib/request-lifecycle.lib";
+import { numericUserIdOrNull, userIdStorageKey, type UserId } from "~/shared/lib/user-id.lib";
 import { STARRED_SUMMARY_PAGE_SIZE } from "./activity-starred-loader.lib";
 
 const log = createLogger("activity:reactions-loader");
 
 export interface EnsureReactionsLoadedOptions {
   currentInstanceId: string | null;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   forceRefresh?: boolean;
   pageSize?: number;
   signal?: AbortSignal;
@@ -55,13 +56,14 @@ export async function ensureReactionsLoaded(options: EnsureReactionsLoadedOption
   } = options;
 
   const store = useActivityStore.getState();
-  if (currentUserId == null) {
+  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
+  if (numericCurrentUserId == null) {
     store.startFilterRequest("reactions", false);
     return;
   }
 
   const instanceKey = currentInstanceId ?? "none";
-  const requestKey = `${instanceKey}:activity:reactions:${currentUserId}:newest:${pageSize}`;
+  const requestKey = `${instanceKey}:activity:reactions:${userIdStorageKey(numericCurrentUserId)}:newest:${pageSize}`;
   const orgContext = captureActiveOrgRequestContext();
   await runInFlightDeduped(requestKey, async () => {
     throwIfAbortedOrStale(signal, orgContext);
@@ -78,7 +80,7 @@ export async function ensureReactionsLoaded(options: EnsureReactionsLoadedOption
       const cached = await hydrateActivityMessagesFromCache(
         currentInstanceId,
         "reactions",
-        currentUserId,
+        numericCurrentUserId,
         pageSize,
       );
       throwIfAbortedOrStale(signal, orgContext);
@@ -99,7 +101,7 @@ export async function ensureReactionsLoaded(options: EnsureReactionsLoadedOption
     try {
       const page = await fetchActivityMessagesPageWithPersist(
         "reactions",
-        currentUserId,
+        numericCurrentUserId,
         "newest",
         pageSize,
         { signal },

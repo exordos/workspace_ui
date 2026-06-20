@@ -22,8 +22,10 @@ import {
   summarizeMessageIdsForFlowDebug,
   summarizeSidebarUnreadTotals,
 } from "~/shared/lib/sidebar-unread-debug.lib";
+import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { resolveTopicMoveTargetMessageIds } from "~/shared/lib/update-message-topic-move.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
+import { isNumericUserId } from "~/shared/lib/user-id.lib";
 import type {
   SidebarChat,
   StreamWithLast,
@@ -239,6 +241,8 @@ function dmsMapToSortedDms(
       lastMessage: x.lastMessage,
       time: x.time,
       userIds: x.userIds,
+      streamUuid: x.streamUuid,
+      userUuid: x.userUuid,
       badge: x.unreadCount > 0 ? x.unreadCount : undefined,
       hasMention: shouldShowMentionBadgeOnDmRow(x, dmKey, currentUserId, mentionFlags)
         ? true
@@ -281,7 +285,15 @@ let _cachedDmsMentionIdsRef: ReadonlySet<number> | null = null;
 let _cachedDmsLocationsRef: ReadonlyMap<number, MessageLocation> | null = null;
 
 function getAvatarMap() {
-  return useUsersStore.getState().getAvatarMap();
+  const source = useUsersStore.getState().getAvatarMap();
+  const numeric = new Map<number, string>();
+  for (const [key, value] of source) {
+    const userId = Number(key);
+    if (Number.isInteger(userId) && userId > 0) {
+      numeric.set(userId, value);
+    }
+  }
+  return numeric;
 }
 
 function persistRecentDmPartnersFromMap(map: Map<string, DmEntryInternal>): void {
@@ -399,7 +411,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
     unreadLocationMap: Map<number, MessageLocation>,
     latestUnreadStreams: Map<string, WorkspaceRawMessage>,
     latestUnreadDms: Map<string, WorkspaceRawMessage>,
-    effectiveUserId: number | null,
+    effectiveUserId: UserId | null,
   ) => {
     const totalsBefore = summarizeSidebarUnreadTotals(get());
     logSidebarUnreadFlow("store:reconcileUnreadMaps:start", {
@@ -1359,7 +1371,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
     },
 
     patchPersonalDmRowLabelsForUser(userId) {
-      if (!Number.isFinite(userId) || userId <= 0) return;
+      if (!isNumericUserId(userId) || !Number.isFinite(userId) || userId <= 0) return;
       const users = useUsersStore.getState();
       const storeDisplayName = users.getDisplayName(userId);
       if (storeDisplayName === "Unknown") return;

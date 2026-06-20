@@ -57,11 +57,6 @@ export interface UseCreateChatDialogResult {
   filteredUsers: UserPickerOption[];
   userPickerEmptyLabelKey: string;
 
-  groupSelectedUserIds: Set<UserId>;
-  toggleGroupUser: (userId: UserId) => void;
-  groupUsers: UseCreateChatDialogResult["filteredUsers"];
-  createGroup: () => void;
-
   channelSelectedUserIds: Set<UserId>;
   toggleChannelUser: (userId: UserId) => void;
   channelUsers: UseCreateChatDialogResult["filteredUsers"];
@@ -116,13 +111,12 @@ export function useCreateChatDialog(options: {
   onNavigateStream: (streamId: number, streamName: string) => void;
   onChannelCreated: () => void;
 }): UseCreateChatDialogResult {
-  const { open, onNavigateDm, onChannelCreated } = options;
+  const { open, onChannelCreated } = options;
 
   const [tab, setTab] = useState<CreateChatTab>("dm");
   const tabBaseId = useId();
   const tabRefs = useRef<Record<CreateChatTab, HTMLButtonElement | null>>({
     dm: null,
-    group: null,
     channels: null,
     channel: null,
     archived: null,
@@ -131,7 +125,6 @@ export function useCreateChatDialog(options: {
   const tabIds: Record<CreateChatTab, string> = useMemo(
     () => ({
       dm: `${tabBaseId}-tab-dm`,
-      group: `${tabBaseId}-tab-group`,
       channels: `${tabBaseId}-tab-channels`,
       channel: `${tabBaseId}-tab-channel`,
       archived: `${tabBaseId}-tab-archived`,
@@ -141,7 +134,6 @@ export function useCreateChatDialog(options: {
   const panelIds: Record<CreateChatTab, string> = useMemo(
     () => ({
       dm: `${tabBaseId}-panel-dm`,
-      group: `${tabBaseId}-panel-group`,
       channels: `${tabBaseId}-panel-channels`,
       channel: `${tabBaseId}-panel-channel`,
       archived: `${tabBaseId}-panel-archived`,
@@ -151,7 +143,6 @@ export function useCreateChatDialog(options: {
 
   const [userSearch, setUserSearch] = useState("");
   const [archivedSearch, setArchivedSearch] = useState("");
-  const [groupSelectedUserIds, setGroupSelectedUserIds] = useState<Set<UserId>>(new Set());
   const [channelSelectedUserIds, setChannelSelectedUserIds] = useState<Set<UserId>>(new Set());
   const [channelName, setChannelName] = useState("");
   const [channelDesc, setChannelDesc] = useState("");
@@ -234,17 +225,6 @@ export function useCreateChatDialog(options: {
         excludesCurrentUser: excludedUserIds.length > 0,
       }),
     [pickerCandidates.length, filteredUsers.length, userSearch, excludedUserIds.length],
-  );
-
-  const groupUsers = useMemo(
-    () =>
-      buildUserPickerOptions({
-        candidates: pickerCandidates,
-        selectedUserIds: Array.from(groupSelectedUserIds),
-        excludedUserIds,
-        query: userSearch,
-      }),
-    [pickerCandidates, groupSelectedUserIds, excludedUserIds, userSearch],
   );
 
   const channelUsers = useMemo(
@@ -384,7 +364,6 @@ export function useCreateChatDialog(options: {
       setTab("dm");
       setUserSearch("");
       setArchivedSearch("");
-      setGroupSelectedUserIds(new Set());
       setChannelSelectedUserIds(new Set());
       setChannelName("");
       setChannelDesc("");
@@ -406,15 +385,6 @@ export function useCreateChatDialog(options: {
     });
   }, [open]);
 
-  const toggleGroupUser = useCallback((userId: UserId) => {
-    setGroupSelectedUserIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(userId)) next.delete(userId);
-      else next.add(userId);
-      return next;
-    });
-  }, []);
-
   const toggleChannelUser = useCallback((userId: UserId) => {
     setChannelSelectedUserIds((prev) => {
       const next = new Set(prev);
@@ -423,13 +393,6 @@ export function useCreateChatDialog(options: {
       return next;
     });
   }, []);
-
-  const createGroup = useCallback(() => {
-    if (groupSelectedUserIds.size === 0 || currentUserId == null) return;
-    const ids = [...groupSelectedUserIds, currentUserId].sort(compareUserIds);
-    onNavigateDm(ids.join(","));
-    setGroupSelectedUserIds(new Set());
-  }, [groupSelectedUserIds, currentUserId, onNavigateDm]);
 
   const focusTab = useCallback((nextTab: CreateChatTab) => {
     tabRefs.current[nextTab]?.focus();
@@ -532,7 +495,7 @@ export function useCreateChatDialog(options: {
 
   const onSubscribeToChannel = useCallback(
     async (streamId: number, streamName: string) => {
-      if (!isUserIdentityReady(currentUserId)) {
+      if (currentUserId == null || !isUserIdentityReady(currentUserId)) {
         return;
       }
       setSubscribeInlineError(null);
@@ -607,10 +570,6 @@ export function useCreateChatDialog(options: {
     setUserSearch,
     filteredUsers,
     userPickerEmptyLabelKey,
-    groupSelectedUserIds,
-    toggleGroupUser,
-    groupUsers,
-    createGroup,
     channelSelectedUserIds,
     toggleChannelUser,
     channelUsers,

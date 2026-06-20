@@ -9,10 +9,11 @@ import { markMessagesAsRead } from "~/shared/api/messenger-read-state";
 import { dmRouteKey } from "~/shared/lib/dm-key";
 import { buildMessageIdMap } from "~/shared/lib/message-id-index.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 
 interface ResolveMarkAllAsReadTargetOptions {
   isDmView: boolean;
-  activeDmUserIds: number[] | null;
+  activeDmUserIds: UserId[] | null;
   activeStreamId: number | null;
   activeTopic: string | undefined;
 }
@@ -20,7 +21,7 @@ interface ResolveMarkAllAsReadTargetOptions {
 export type MarkAllAsReadTarget =
   | {
       type: "dm";
-      userIds: number[];
+      userIds: UserId[];
     }
   | {
       type: "topic";
@@ -62,7 +63,7 @@ export function collectUnreadMessageIds(
 function messageLocationMatchesMarkAllTarget(
   location: MessageLocation,
   target: MarkAllAsReadTarget,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): boolean {
   if (target.type === "dm") {
     if (location.type !== "dm") return false;
@@ -78,7 +79,7 @@ export function collectMarkAllAsReadMessageIds(
   loadedMessages: readonly { id: number; flags?: string[] }[],
   messageIdToLocation: ReadonlyMap<number, MessageLocation>,
   target: MarkAllAsReadTarget,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): number[] {
   const ids = new Set(collectUnreadMessageIds(loadedMessages));
   for (const [messageId, location] of messageIdToLocation) {
@@ -92,7 +93,7 @@ export function collectMarkAllAsReadMessageIds(
 // Used when some unread messages are not present in the local id index.
 export function markAllAsReadFallbackContext(
   target: MarkAllAsReadTarget,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): ChatListReadFallbackContext {
   if (target.type === "dm") {
     return { type: "dm", dmKey: dmRouteKey(target.userIds, currentUserId) };
@@ -107,7 +108,7 @@ export function markAllAsReadFallbackContext(
 export interface ApplyOpenChatMarkAllAsReadOptions {
   target: MarkAllAsReadTarget;
   loadedMessages: readonly { id: number; flags?: string[] }[];
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   applyOptimistic: (messageIds: number[], fallbackContext: ChatListReadFallbackContext) => void;
   // Wraps every local unread change so the org badge is updated in the same step.
   applyUnreadDelta: (

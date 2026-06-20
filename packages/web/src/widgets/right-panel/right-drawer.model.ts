@@ -1,12 +1,13 @@
 import { create } from "zustand";
 import { logStoreAction } from "~/shared/lib/logger";
+import type { UserId } from "~/shared/lib/user-id.lib";
 
 export type RightDrawerMode = "info" | "settings" | "user-menu" | "about" | "builds";
 
 interface RightDrawerState {
   open: boolean;
   mode: RightDrawerMode;
-  userIdOverride: number | null;
+  userIdOverride: UserId | null;
 
   setOpen: (open: boolean) => void;
   close: () => void;
@@ -15,7 +16,7 @@ interface RightDrawerState {
   openUserMenu: () => void;
   openAbout: () => void;
   openBuilds: () => void;
-  openUserProfile: (userId: number) => void;
+  openUserProfile: (userId: UserId) => void;
   /** Clears nested user profile (from members list / message author) while keeping the drawer open on chat info. */
   clearUserProfileOverride: () => void;
 }

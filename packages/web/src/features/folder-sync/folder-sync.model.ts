@@ -16,6 +16,7 @@ import {
 } from "~/shared/lib/folders-snapshot-db";
 import { createLogger, logStoreAction } from "~/shared/lib/logger";
 import { logFolderFlow } from "~/shared/lib/message-flow-debug.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type { SidebarChat, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import {
   sliceAfterFolderAssignmentRollback,
@@ -273,8 +274,8 @@ interface FolderSyncState {
   syncSidebarProjection: (input: {
     chatsSortedByLastMessage: SidebarChat[];
     streamsMap: Map<number, StreamEntryInternal>;
-    usersMapForChatInfo: Map<number, { full_name?: string; email?: string }>;
-    currentUserId: number | null;
+    usersMapForChatInfo: Map<string, { full_name?: string; email?: string }>;
+    currentUserId: UserId | null;
     hideUnknownArchivedStreams: boolean;
     isStreamMuted?: (streamId: number) => boolean;
   }) => void;

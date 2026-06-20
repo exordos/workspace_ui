@@ -1,9 +1,10 @@
 import type { UserRecord } from "~/entities/user/user.model";
 import type { MockMessage } from "~/shared/api/messenger.types";
+import { userIdStorageKey } from "~/shared/lib/user-id.lib";
 
 export function filterSearchMessages(
   results: MockMessage[],
-  users: Map<number, UserRecord>,
+  users: Map<string, UserRecord>,
   streamFilter: string,
   senderFilter: string,
   dateFilter: string,
@@ -14,7 +15,9 @@ export function filterSearchMessages(
   return results.filter((msg) => {
     const channelName = (msg.channel ?? "").toLowerCase();
     const messageSender = (msg.sender_full_name ?? "").toLowerCase();
-    const senderFromStore = (users.get(msg.sender_id)?.full_name ?? "").toLowerCase();
+    const senderFromStore = (
+      users.get(userIdStorageKey(msg.sender_id))?.full_name ?? ""
+    ).toLowerCase();
     const matchesStream =
       normalizedStreamFilter.length === 0 || channelName.includes(normalizedStreamFilter);
     const matchesSender =

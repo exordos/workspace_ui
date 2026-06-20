@@ -5,6 +5,7 @@
 import type { Draft } from "~/entities/draft/draft.types";
 import type { Reaction } from "~/shared/api/messenger.types";
 import { formatStreamTopicLabel } from "~/shared/lib/topic-display.lib";
+import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 import {
   groupReactions,
   type GroupedReaction,
@@ -39,26 +40,22 @@ export function formatActivityMessageContext(options: {
 /** Resolves DM title for a draft from recipient user IDs (excludes current user when known). */
 export function resolveDraftDmDisplayName(options: {
   recipientIds: number[];
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   getUserDisplayName: (userId: number) => string;
   groupChatLabel: string;
 }): string | null {
-  const { recipientIds, currentUserId, getUserDisplayName, groupChatLabel } = options;
+  const { recipientIds, currentUserId, getUserDisplayName } = options;
   if (recipientIds.length === 0) return null;
 
+  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
   const others =
-    currentUserId != null ? recipientIds.filter((id) => id !== currentUserId) : recipientIds;
+    numericCurrentUserId != null
+      ? recipientIds.filter((id) => id !== numericCurrentUserId)
+      : recipientIds;
   if (others.length === 0) return null;
 
-  const isGroup = others.length > 1;
-  if (isGroup) {
-    const names = others
-      .map((id) => {
-        const name = getUserDisplayName(id).trim();
-        return name !== "Unknown" ? name : "";
-      })
-      .filter((name) => name.length > 0);
-    return names.length > 0 ? names.join(", ") : groupChatLabel;
+  if (others.length > 1) {
+    return null;
   }
 
   const name = getUserDisplayName(others[0]!).trim();
@@ -68,7 +65,7 @@ export function resolveDraftDmDisplayName(options: {
 export function formatDraftMessageContext(options: {
   draft: Pick<Draft, "type" | "to" | "topic">;
   streamsMap: ReadonlyMap<number, { name: string }>;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   getUserDisplayName: (userId: number) => string;
   generalChatLabel: string;
   privateLabel: string;
@@ -120,15 +117,16 @@ export function formatDraftMessageContext(options: {
 /** Reactions from others on the current user's message (excludes self). */
 export function filterPeerReactions(
   reactions: readonly Reaction[],
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): Reaction[] {
-  if (currentUserId == null) return [];
-  return reactions.filter((reaction) => reaction.user_id !== currentUserId);
+  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
+  if (numericCurrentUserId == null) return [];
+  return reactions.filter((reaction) => reaction.user_id !== numericCurrentUserId);
 }
 
 export function getActivityPeerReactionGroups(
   reactions: readonly Reaction[],
-  currentUserId: number | null,
+  currentUserId: UserId | null,
   resolveCustomEmojiImageUrl?: (reaction: Reaction) => string | undefined,
 ): GroupedReaction[] {
   const peerReactions = filterPeerReactions(reactions, currentUserId);

@@ -16,10 +16,11 @@ import { chatKeyFromRawMessage } from "~/shared/lib/message-cache-keys.lib";
 import { messengerMessageCacheWindowNForChatKey } from "~/shared/lib/messenger-message-window.lib";
 import { extractStreamMoveFromUpdateEvent } from "~/shared/lib/update-message-stream-move.lib";
 import { extractTopicMoveFromUpdateEvent } from "~/shared/lib/update-message-topic-move.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 
 export async function mirrorMessengerMessageEventToIndexedDb(options: {
   instanceId: string;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   raw: WorkspaceRawMessage;
 }): Promise<void> {
   const chatKey = chatKeyFromRawMessage(options.raw, options.currentUserId);

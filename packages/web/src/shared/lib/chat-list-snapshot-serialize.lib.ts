@@ -1,6 +1,7 @@
 /**
  * JSON-serializable representation of chat-list store maps for IndexedDB persistence.
  */
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 
 /** Same shape as `MessageLocation` in chat-list entity (kept here to avoid shared→entities import). */
@@ -10,7 +11,7 @@ export type ChatListSnapshotMessageLocation =
 
 export interface ChatListSnapshotSerialized {
   version: 1;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   /** Max messenger message id seen in the last full/delta bootstrap (for incremental fetch). */
   lastMessageId: number | null;
   /** Min message id from last bootstrap window (optional, for debugging). */

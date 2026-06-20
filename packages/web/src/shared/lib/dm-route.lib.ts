@@ -1,69 +1,42 @@
 /**
- * DM route parsing helpers: normalize user ids from the URL vs current user, and infer whether
- * the active route is a Workspace huddle (3+ people) vs 1:1. Used by chat page and layout drawer.
+ * DM route parsing helpers. Workspace DMs are 1:1 only: current user + one peer.
  */
+import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 
 export function normalizeDmRouteUserIds(
   userIds: readonly number[],
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): number[] {
   const uniqueValidIds = Array.from(new Set(userIds)).filter(
     (userId) => Number.isSafeInteger(userId) && userId > 0,
   );
-  if (currentUserId == null) {
+  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
+  if (numericCurrentUserId == null) {
     return uniqueValidIds;
   }
-  const withoutCurrentUser = uniqueValidIds.filter((userId) => userId !== currentUserId);
+  const withoutCurrentUser = uniqueValidIds.filter((userId) => userId !== numericCurrentUserId);
   return withoutCurrentUser.length > 0 ? withoutCurrentUser : uniqueValidIds;
 }
 
-/**
- * Workspace huddle: 3+ people. After `normalizeDmRouteUserIds`, 1:1 has exactly one "other" id when
- * `currentUserId` is known. Without `currentUserId`, a slug lists all participants — 1:1 has 2 ids,
- * huddle has 3+.
- */
 export function routeImpliesGroupDm(
-  dmRecipientIds: readonly number[],
-  currentUserId: number | null,
+  _dmRecipientIds: readonly number[],
+  _currentUserId: UserId | null,
 ): boolean {
-  if (dmRecipientIds.length === 0) return false;
-  if (currentUserId != null) {
-    return dmRecipientIds.length > 1;
-  }
-  return dmRecipientIds.length > 2;
+  return false;
 }
 
-/**
- * Sidebar `isGroup` can disagree with the URL (stale row, folder fallback, or id mismatch). Trust
- * explicit `isGroup === false`; when `isGroup === true`, require the route to also imply a huddle.
- */
 export function computeIsGroupDmView(
-  dmChat: { isGroup?: boolean } | null | undefined,
-  dmRecipientIds: readonly number[],
-  currentUserId: number | null,
+  _dmChat: { isGroup?: boolean } | null | undefined,
+  _dmRecipientIds: readonly UserId[],
+  _currentUserId: UserId | null,
 ): boolean {
-  const routeSaysGroup = routeImpliesGroupDm(dmRecipientIds, currentUserId);
-  if (dmChat == null) {
-    return routeSaysGroup;
-  }
-  if (dmChat.isGroup === false) {
-    return false;
-  }
-  if (dmChat.isGroup === true) {
-    return routeSaysGroup;
-  }
-  return routeSaysGroup;
+  return false;
 }
 
-/**
- * Sidebar / chat-list row: same reconciliation as the open chat, using raw user ids from the DM
- * slug (before `normalizeDmRouteUserIds`) plus optional API `isGroup`.
- */
 export function effectiveDmIsGroupFromSlug(
-  isGroupFromRow: boolean | undefined,
-  slugUserIds: readonly number[],
-  currentUserId: number | null,
+  _isGroupFromRow: boolean | undefined,
+  _slugUserIds: readonly number[],
+  _currentUserId: UserId | null,
 ): boolean {
-  const normalized = normalizeDmRouteUserIds(slugUserIds, currentUserId);
-  return computeIsGroupDmView({ isGroup: isGroupFromRow }, normalized, currentUserId);
+  return false;
 }

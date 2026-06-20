@@ -3,10 +3,11 @@
  */
 import type { MessengerUnreadMessagesSnapshot } from "~/shared/api/messenger-unread.lib";
 import { dmConversationKey } from "~/shared/lib/dm-key";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import { streamTopicCompositeKey } from "./chat-list-stream-topic-index.lib";
 import type { MessageLocation } from "./chat-list.model.types";
 
-function dmKeyFromUnreadBucketUserIds(userIds: number[], currentUserId: number | null): string {
+function dmKeyFromUnreadBucketUserIds(userIds: number[], currentUserId: UserId | null): string {
   return dmConversationKey(
     userIds.map((id) => ({ id })),
     currentUserId,
@@ -15,7 +16,7 @@ function dmKeyFromUnreadBucketUserIds(userIds: number[], currentUserId: number |
 
 export function buildUnreadReconcileMapsFromRegisterSnapshot(
   snapshot: MessengerUnreadMessagesSnapshot,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): {
   unreadStreamCounts: Map<string, number>;
   unreadDmCounts: Map<string, number>;

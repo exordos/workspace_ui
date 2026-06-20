@@ -1,5 +1,6 @@
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { chatKeyFromRawMessage } from "~/shared/lib/message-cache-keys.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import {
   buildNotificationAggregateTag,
   buildNotificationMessageScopeKey,
@@ -33,7 +34,7 @@ const messageIdToAggregateTag = new Map<string, string>();
 
 export function buildNotificationBucketKeyFromMessage(
   message: WorkspaceRawMessage,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
   currentInstanceId: string | null,
 ): string | null {
   const chatKey = chatKeyFromRawMessage(message, currentUserId);
@@ -84,7 +85,7 @@ function buildSnapshot(
 
 export function upsertNotificationAggregate(input: {
   message: WorkspaceRawMessage;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   currentInstanceId: string | null;
   body: string;
   clickRoute?: string;

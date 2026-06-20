@@ -49,6 +49,24 @@ export interface MessengerRecentPrivateConversation {
   unread_message_ids: number[];
 }
 
+export interface MessengerMeStream {
+  uuid: string;
+  name: string;
+  description: string;
+  project_id?: string;
+  created_at?: string;
+  updated_at?: string;
+  user_uuid?: string;
+  stream_uuid: string;
+  last_synced_at?: string;
+  source_name?: string;
+  source?: Record<string, unknown>;
+  invite_only: boolean;
+  announce: boolean;
+  private: boolean;
+  stream_id?: number;
+}
+
 export interface MessengerGroupSettingValueObject {
   direct_members: number[];
   direct_subgroups: number[];
@@ -267,6 +285,7 @@ export interface DirectMessagesPageResult {
 
 export interface MockStream {
   stream_id: number;
+  stream_uuid?: string;
   name: string;
   description: string;
   is_announcement_only: boolean;
@@ -358,6 +377,7 @@ export interface RawMessageToMockInput {
 
 export interface MessengerSubscription {
   stream_id: number;
+  stream_uuid?: string;
   name: string;
   is_muted: boolean;
   /** Per-channel override; null/undefined inherits global stream notification settings. */

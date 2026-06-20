@@ -14,6 +14,12 @@ import type { UnarchiveStreamResult } from "~/shared/api/messenger-streams";
 import type { MessengerGroupSettingValue } from "~/shared/api/messenger.types";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
+import {
+  compareUserIds,
+  isUserIdentityReady,
+  type UserId,
+  userIdStorageKey,
+} from "~/shared/lib/user-id.lib";
 
 const log = createLogger("create-chat:api");
 
@@ -25,15 +31,13 @@ const log = createLogger("create-chat:api");
 export async function createChannel(params: {
   name: string;
   description?: string;
-  subscribers: number[];
+  subscribers: UserId[];
   inviteOnly?: boolean;
   announce?: boolean;
   canSendMessageGroup?: MessengerGroupSettingValue;
 }): Promise<{ streamId: number } | null> {
   guard.nonEmpty(params.name, "channel name");
-  for (const uid of params.subscribers) {
-    guard.userId(uid, "createChannel subscribers");
-  }
+  const subscribers = normalizePrincipalUserIds(params.subscribers);
 
   try {
     // `/channels/create` payload: name/description at top level (not inside subscriptions[]).
@@ -52,9 +56,9 @@ export async function createChannel(params: {
       body.announce = String(params.announce);
     }
 
-    if (params.subscribers.length > 0) {
+    if (subscribers.length > 0) {
       // Initial subscriber list at create time.
-      body.subscribers = JSON.stringify(params.subscribers);
+      body.subscribers = JSON.stringify(subscribers);
     }
 
     if (params.canSendMessageGroup != null) {
@@ -105,6 +109,15 @@ export interface SubscribedChannel {
   description: string;
   inviteOnly: boolean;
   subscribers: number[];
+}
+
+function normalizePrincipalUserIds(userIds: readonly UserId[]): UserId[] {
+  const byKey = new Map<string, UserId>();
+  for (const userId of userIds) {
+    if (!isUserIdentityReady(userId)) continue;
+    byKey.set(userIdStorageKey(userId), userId);
+  }
+  return Array.from(byKey.values()).sort(compareUserIds);
 }
 
 /**
@@ -161,12 +174,14 @@ export interface SubscribeCurrentUserToStreamResult {
  */
 export async function subscribeCurrentUserToStream(
   streamName: string,
-  userId: number,
+  userId: UserId,
 ): Promise<SubscribeCurrentUserToStreamResult> {
   const normalizedName = guard
     .nonEmpty(streamName, "subscribeCurrentUserToStream.streamName")
     .trim();
-  guard.userId(userId, "subscribeCurrentUserToStream.userId");
+  if (!isUserIdentityReady(userId)) {
+    return { ok: false, errorCode: "invalid_user" };
+  }
 
   try {
     const res = await messengerApi.post("/users/me/subscriptions", {

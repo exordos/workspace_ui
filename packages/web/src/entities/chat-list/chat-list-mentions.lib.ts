@@ -2,21 +2,23 @@
  * Unread @mention tracking for sidebar badge and personal indicator.
  */
 import type { MockMessage, WorkspaceRawMessage } from "~/shared/api/messenger.types";
+import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 
 export type MentionFlagMessage = Pick<WorkspaceRawMessage, "id" | "sender_id" | "flags">;
 
 export function isUnreadMentionFromOthers(
   m: MentionFlagMessage,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): boolean {
-  if (currentUserId != null && m.sender_id === currentUserId) return false;
+  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
+  if (numericCurrentUserId != null && m.sender_id === numericCurrentUserId) return false;
   const flags = m.flags ?? [];
   return flags.includes("mentioned") && !flags.includes("read");
 }
 
 export function collectUnreadMentionIdsFromMessages(
   messages: readonly MentionFlagMessage[],
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): number[] {
   const ids: number[] = [];
   for (const message of messages) {
@@ -33,7 +35,7 @@ export function buildMentionUnreadSetFromIds(messageIds: readonly number[]): Set
 export function tryIncrementMentionUnread(
   mentionedUnreadMessageIds: ReadonlySet<number>,
   message: MentionFlagMessage,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): { mentionedUnreadMessageIds: Set<number>; mentionsUnreadCount: number } | null {
   if (!isUnreadMentionFromOthers(message, currentUserId)) return null;
   if (mentionedUnreadMessageIds.has(message.id)) return null;
@@ -62,7 +64,7 @@ export function decrementMentionUnreadForMessageIds(
 export function incrementMentionUnreadFromBatch(
   mentionedUnreadMessageIds: ReadonlySet<number>,
   messages: readonly MentionFlagMessage[],
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): { mentionedUnreadMessageIds: Set<number>; mentionsUnreadCount: number } | null {
   let next: Set<number> | null = null;
   for (const message of messages) {
@@ -83,7 +85,7 @@ export function incrementMentionUnreadFromBatch(
 export function mergeMentionUnreadPatch<T extends { mentionedUnreadMessageIds: Set<number> }>(
   state: T,
   message: MentionFlagMessage,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
   patch: Partial<T & { mentionsUnreadCount: number }>,
 ): Partial<T & { mentionsUnreadCount: number }> {
   const increment = tryIncrementMentionUnread(
@@ -98,7 +100,7 @@ export function mergeMentionUnreadPatch<T extends { mentionedUnreadMessageIds: S
 /** Maps API page messages (MockMessage) to mention ids for authoritative reconcile. */
 export function collectUnreadMentionIdsFromMockMessages(
   messages: readonly MockMessage[],
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): number[] {
   return collectUnreadMentionIdsFromMessages(messages, currentUserId);
 }

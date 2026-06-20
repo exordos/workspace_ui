@@ -7,6 +7,7 @@ import { upsertDmIndexFromMessages } from "~/shared/lib/dm-index";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
 import { mockMessageToRawMessage } from "~/shared/lib/message-mock-to-raw.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 
 export type DmMessagesAppliedSource = "cache" | "api";
 
@@ -24,7 +25,7 @@ export interface OnDmMessagesAppliedPayload {
 export interface SyncDmSidebarFromLoadedMessagesOptions {
   messages: readonly MockMessage[];
   dmKey: string;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   instanceId: string | null;
   source: DmMessagesAppliedSource;
   focusedMessageId: number | null;
@@ -56,7 +57,7 @@ function isPrivateMessage(message: MockMessage): message is MockMessage & {
 export function pickNewestDmMessageForKey(
   messages: readonly MockMessage[],
   dmKey: string,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): MockMessage | null {
   let newest: MockMessage | null = null;
   for (const message of messages) {
@@ -126,7 +127,7 @@ export function handleOnDmMessagesApplied(
   payload: OnDmMessagesAppliedPayload,
   options: {
     instanceId: string | null;
-    currentUserId: number | null;
+    currentUserId: UserId | null;
   },
 ): void {
   if (payload.context.type !== "dm") {
@@ -145,7 +146,7 @@ export function handleOnDmMessagesApplied(
 
 export function createOnDmMessagesAppliedHandler(options: {
   getInstanceId: () => string | null;
-  getCurrentUserId: () => number | null;
+  getCurrentUserId: () => UserId | null;
 }): (payload: OnDmMessagesAppliedPayload) => void {
   return (payload) => {
     handleOnDmMessagesApplied(payload, {

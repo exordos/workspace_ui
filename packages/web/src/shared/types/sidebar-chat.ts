@@ -1,4 +1,5 @@
 import type { MessengerGroupSettingValue } from "~/shared/api/messenger.types";
+import type { UserId } from "~/shared/lib/user-id.lib";
 
 export interface TopicWithLast {
   subject: string;
@@ -33,7 +34,9 @@ export type SidebarChat =
       badge?: number;
       hasMention?: boolean;
       pinned?: boolean;
-      userIds?: number[];
+      userIds?: UserId[];
+      streamUuid?: string;
+      userUuid?: string;
       avatar_url?: string;
       ts?: number;
     };
@@ -104,7 +107,9 @@ export interface DmEntryInternal {
   lastMessage: string;
   time: string;
   ts: number;
-  userIds?: number[];
+  userIds?: UserId[];
+  streamUuid?: string;
+  userUuid?: string;
   unreadCount: number;
   avatar_url?: string;
   lastMessageId?: number;

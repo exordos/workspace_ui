@@ -1,4 +1,6 @@
 // Minimal shapes needed for unread count math.
+import type { UserId } from "~/shared/lib/user-id.lib";
+
 export interface UnreadBadgeHolder {
   badge?: number | null;
 }
@@ -11,7 +13,7 @@ export interface UnreadStreamBadgeHolder extends UnreadBadgeHolder {
 export interface UnreadDmBadgeHolder extends UnreadBadgeHolder {
   isGroup?: boolean;
   slug?: string;
-  userIds?: readonly number[];
+  userIds?: readonly UserId[];
 }
 
 export interface ComputeInstanceUnreadInput {

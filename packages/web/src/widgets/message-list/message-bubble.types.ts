@@ -5,6 +5,7 @@ import type {
   Reaction,
   RealmEmoji,
 } from "~/shared/api/messenger.types";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type { MessageMediaGallery } from "./message-list-media.lib";
 
 /** Download chip state for user-upload attachment links in the bubble. */
@@ -28,8 +29,8 @@ export interface MessageBubbleCallbacks {
   onOpenInChat?: (message: MockMessage) => void;
   /** Intercepts anchor clicks inside message body. Return true when handled by app navigation. */
   onPermalinkClick?: (href: string) => boolean;
-  onAuthorClick?: (userId: number) => void;
-  onOpenDirectMessage?: (userId: number) => void;
+  onAuthorClick?: (userId: UserId) => void;
+  onOpenDirectMessage?: (userId: UserId) => void;
   /** Resend a failed optimistic outgoing message (negative id, delivery failed). */
   onRetryFailedOutgoing?: (message: MockMessage) => void;
   /** Drop a failed optimistic outgoing message from the list. */
@@ -51,7 +52,7 @@ export interface MessageBubbleProps {
   showTopicInSenderName?: boolean;
   /** Message inside a sender group: avatar is rendered outside, content has no avatar column. */
   inSenderGroup?: boolean;
-  currentUserId?: number;
+  currentUserId?: UserId;
   selectionMode?: boolean;
   isSelected?: boolean;
   isFocused?: boolean;

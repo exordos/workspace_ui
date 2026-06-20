@@ -48,7 +48,7 @@ describe("SidebarDmList", () => {
         createUser({ user_id: 88, full_name: "Carol", email: "carol@example.com" }),
       ]);
 
-    renderWithProviders(<SidebarDmList activeDmId={null} dms={RECENT_DMS} />);
+    renderWithProviders(<SidebarDmList activeDmIdParam={null} dms={RECENT_DMS} />);
 
     expect(screen.getByText("Alice")).toBeInTheDocument();
     expect(screen.getByText("Bob")).toBeInTheDocument();
@@ -70,10 +70,33 @@ describe("SidebarDmList", () => {
     }
     useTypingIndicatorStore.getState().setTyping(key, 42, true);
 
-    renderWithProviders(<SidebarDmList activeDmId={42} dms={RECENT_DMS} />);
+    renderWithProviders(<SidebarDmList activeDmIdParam="42-alice" dms={RECENT_DMS} />);
 
     expect(screen.getByText(/^typing$/i)).toBeInTheDocument();
     expect(screen.queryByText("Hello")).not.toBeInTheDocument();
+  });
+
+  it("links UUID-backed private stream DMs by stream UUID", () => {
+    const streamUuid = "b4460c02-d693-4564-8804-98059613b86e";
+    const userUuid = "00000000-0000-0000-0000-000000000000";
+    const dms: Extract<SidebarChat, { type: "dm" }>[] = [
+      {
+        type: "dm",
+        id: 2_000_001,
+        name: "Alice Smith",
+        slug: streamUuid,
+        streamUuid,
+        userUuid,
+        lastMessage: "",
+        badge: 0,
+        time: "",
+      },
+    ];
+
+    renderWithProviders(<SidebarDmList activeDmIdParam={streamUuid} dms={dms} />);
+
+    const link = screen.getByRole("link", { name: /alice smith/i });
+    expect(link).toHaveAttribute("href", `/dm/${streamUuid}`);
   });
 
   it("renders partner avatar image in recent DMs when user has avatar_url", () => {
@@ -89,7 +112,9 @@ describe("SidebarDmList", () => {
       createUser({ user_id: 77, full_name: "Bob", email: "bob@example.com" }),
     ]);
 
-    const { container } = renderWithProviders(<SidebarDmList activeDmId={null} dms={RECENT_DMS} />);
+    const { container } = renderWithProviders(
+      <SidebarDmList activeDmIdParam={null} dms={RECENT_DMS} />,
+    );
 
     const avatarSrcs = [...container.querySelectorAll("img")].map((el) => el.getAttribute("src"));
     const aliceSrc = avatarSrcs.find((s) => s?.includes("cdn.example.com"));
@@ -123,7 +148,7 @@ describe("SidebarDmList", () => {
     ];
 
     const { container } = renderWithProviders(
-      <SidebarDmList activeDmId={null} dms={dmsWithStaleAvatar} />,
+      <SidebarDmList activeDmIdParam={null} dms={dmsWithStaleAvatar} />,
     );
 
     const avatarSrc = container.querySelector("img")?.getAttribute("src");
@@ -132,7 +157,7 @@ describe("SidebarDmList", () => {
   });
 
   it("uses tokenized compact typography classes in recent dm rows", () => {
-    renderWithProviders(<SidebarDmList activeDmId={42} dms={RECENT_DMS} />);
+    renderWithProviders(<SidebarDmList activeDmIdParam="42-alice" dms={RECENT_DMS} />);
 
     expect(screen.getByText("Hello")).toHaveClass("text-[11px]");
     expect(screen.getByText("Hello")).toHaveClass("text-text-secondary");
@@ -158,7 +183,7 @@ describe("SidebarDmList", () => {
       }),
     ]);
 
-    renderWithProviders(<SidebarDmList activeDmId={42} dms={RECENT_DMS} />);
+    renderWithProviders(<SidebarDmList activeDmIdParam="42-alice" dms={RECENT_DMS} />);
 
     expect(screen.getByRole("status", { name: /online/i })).toBeInTheDocument();
     expect(screen.getByRole("status", { name: /away/i })).toBeInTheDocument();
@@ -183,7 +208,7 @@ describe("SidebarDmList", () => {
       .setStatus(42, { text: "Deep work", emojiName: "speech_balloon", away: false });
     useUsersStore.getState().setStatus(77, { text: "WFH", emojiName: "house", away: false });
 
-    renderWithProviders(<SidebarDmList activeDmId={42} dms={RECENT_DMS} />);
+    renderWithProviders(<SidebarDmList activeDmIdParam="42-alice" dms={RECENT_DMS} />);
 
     expect(screen.getByText("Hello")).toBeInTheDocument();
     expect(screen.queryByText(/Deep work/)).not.toBeInTheDocument();

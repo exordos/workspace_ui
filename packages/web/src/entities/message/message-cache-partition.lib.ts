@@ -11,10 +11,11 @@ import {
 } from "~/shared/lib/message-cache-db";
 import { chatKeyFromMockMessage } from "~/shared/lib/message-cache-keys.lib";
 import { messengerMessageCacheWindowNForChatKey } from "~/shared/lib/messenger-message-window.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 
 export function groupMessagesByChatKey(
   messages: readonly MockMessage[],
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): Map<string, MockMessage[]> {
   const grouped = new Map<string, MockMessage[]>();
   for (const message of messages) {
@@ -33,7 +34,7 @@ export function groupMessagesByChatKey(
 // Wide-mode boundary events may touch several topic partitions in one batch.
 export async function patchPartitionMetaByMessages(options: {
   instanceId: string;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   messages: readonly MockMessage[];
   patch: Partial<
     Pick<
@@ -59,7 +60,7 @@ export async function patchPartitionMetaByMessages(options: {
 
 export async function upsertMessagesByChatPartitions(options: {
   instanceId: string;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   messages: readonly MockMessage[];
   resetBoundaries?: boolean;
 }): Promise<void> {

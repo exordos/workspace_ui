@@ -1,12 +1,13 @@
 import { useEffect } from "react";
 import { requestUserStatus } from "~/entities/user/api/user.api";
+import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 
 export function useLayoutUserStatusFallback(options: {
   enabled: boolean;
-  currentUserId: number | null;
-  partnerUserId: number | undefined;
+  currentUserId: UserId | null;
+  partnerUserId: UserId | undefined;
   rightDrawerOpen: boolean;
-  rightDrawerTargetUserId: number | undefined;
+  rightDrawerTargetUserId: UserId | undefined;
   rightPanelMemberStatusIds: number[];
 }): void {
   const {
@@ -19,18 +20,21 @@ export function useLayoutUserStatusFallback(options: {
   } = options;
 
   useEffect(() => {
-    if (!enabled || currentUserId == null) return;
-    void requestUserStatus(currentUserId, { reason: "top_bar", priority: "high" });
+    const numericCurrentUserId = numericUserIdOrNull(currentUserId);
+    if (!enabled || numericCurrentUserId == null) return;
+    void requestUserStatus(numericCurrentUserId, { reason: "top_bar", priority: "high" });
   }, [enabled, currentUserId]);
 
   useEffect(() => {
-    if (!enabled || partnerUserId == null) return;
-    void requestUserStatus(partnerUserId, { reason: "dm_header", priority: "high" });
+    const numericPartnerUserId = numericUserIdOrNull(partnerUserId);
+    if (!enabled || numericPartnerUserId == null) return;
+    void requestUserStatus(numericPartnerUserId, { reason: "dm_header", priority: "high" });
   }, [enabled, partnerUserId]);
 
   useEffect(() => {
-    if (!enabled || !rightDrawerOpen || rightDrawerTargetUserId == null) return;
-    void requestUserStatus(rightDrawerTargetUserId, { reason: "right_panel", priority: "high" });
+    const numericTargetUserId = numericUserIdOrNull(rightDrawerTargetUserId);
+    if (!enabled || !rightDrawerOpen || numericTargetUserId == null) return;
+    void requestUserStatus(numericTargetUserId, { reason: "right_panel", priority: "high" });
   }, [enabled, rightDrawerOpen, rightDrawerTargetUserId]);
 
   useEffect(() => {

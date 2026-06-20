@@ -32,13 +32,20 @@ import {
 import {
   getMockRefreshMessengerApiBase,
   getMockMessengerApi,
-  getMockWorkspaceClient,
   TEST_INSTANCE,
 } from "./messenger.test.setup";
 
 const mockMessengerApi = getMockMessengerApi();
 const mockRefreshMessengerApiBase = getMockRefreshMessengerApiBase();
-const mockWorkspaceClient = getMockWorkspaceClient();
+
+function mockMessagesResponse(data: Record<string, unknown>): void {
+  mockMessengerApi.get.mockResolvedValue({
+    ok: true,
+    status: 200,
+    data,
+    raw: { statusText: "OK" },
+  });
+}
 
 describe("rawMessageToMockMessage", () => {
   it("maps a stream message", () => {
@@ -337,10 +344,11 @@ describe("fetchActivityMessagesPage", () => {
     expect(mockMessengerApi.get).not.toHaveBeenCalled();
   });
 
-  it("fails fast when reactions filter has no current user id", async () => {
-    await expect(fetchActivityMessagesPage("reactions", null)).rejects.toThrow(
-      /fetchActivityMessagesPage\.currentUserId/i,
-    );
+  it("returns an empty reactions page when there is no numeric current user id", async () => {
+    await expect(fetchActivityMessagesPage("reactions", null)).resolves.toEqual({
+      messages: [],
+      foundOldest: true,
+    });
     expect(mockMessengerApi.get).not.toHaveBeenCalled();
   });
 
@@ -512,7 +520,7 @@ describe("fetchMessageById", () => {
 
 describe("fetchMessages", () => {
   it("returns mapped messages with narrow", async () => {
-    mockWorkspaceClient.messages.retrieve.mockResolvedValue({
+    mockMessagesResponse({
       messages: [
         {
           id: 10,
@@ -531,46 +539,52 @@ describe("fetchMessages", () => {
   });
 
   it("uses literal general topic narrow operand for literal general topic route", async () => {
-    mockWorkspaceClient.messages.retrieve.mockResolvedValue({ messages: [] });
+    mockMessagesResponse({ messages: [] });
     await fetchMessages("engineering", "general");
-    expect(mockWorkspaceClient.messages.retrieve).toHaveBeenCalledWith(
+    expect(mockMessengerApi.get).toHaveBeenCalledWith(
+      "/messages",
       expect.objectContaining({
-        narrow: [
+        narrow: JSON.stringify([
           { operator: "stream", operand: "engineering" },
           { operator: "topic", operand: "general" },
-        ],
+        ]),
       }),
+      undefined,
     );
   });
 
   it("uses empty topic narrow operand for explicit empty topic route", async () => {
-    mockWorkspaceClient.messages.retrieve.mockResolvedValue({ messages: [] });
+    mockMessagesResponse({ messages: [] });
     await fetchMessages("engineering", "");
-    expect(mockWorkspaceClient.messages.retrieve).toHaveBeenCalledWith(
+    expect(mockMessengerApi.get).toHaveBeenCalledWith(
+      "/messages",
       expect.objectContaining({
-        narrow: [
+        narrow: JSON.stringify([
           { operator: "stream", operand: "engineering" },
           { operator: "topic", operand: "" },
-        ],
+        ]),
       }),
+      undefined,
     );
   });
 
   it("returns empty array on error result", async () => {
-    mockWorkspaceClient.messages.retrieve.mockResolvedValue({ result: "error" });
+    mockMessagesResponse({ result: "error" });
     expect(await fetchMessages("general")).toEqual([]);
   });
 
   it("returns empty array on exception", async () => {
-    mockWorkspaceClient.messages.retrieve.mockRejectedValue(new Error("Network"));
+    mockMessengerApi.get.mockRejectedValue(new Error("Network"));
     expect(await fetchMessages("general")).toEqual([]);
   });
 
   it("passes no narrow when no filters given", async () => {
-    mockWorkspaceClient.messages.retrieve.mockResolvedValue({ messages: [] });
+    mockMessagesResponse({ messages: [] });
     await fetchMessages();
-    expect(mockWorkspaceClient.messages.retrieve).toHaveBeenCalledWith(
-      expect.objectContaining({ narrow: undefined, apply_markdown: false }),
+    expect(mockMessengerApi.get).toHaveBeenCalledWith(
+      "/messages",
+      expect.not.objectContaining({ narrow: expect.anything() }),
+      undefined,
     );
   });
 
@@ -578,14 +592,14 @@ describe("fetchMessages", () => {
     await expect(fetchMessages(undefined, "bugs")).rejects.toThrow(
       /fetchMessages\.stream is required when topic is provided/,
     );
-    expect(mockWorkspaceClient.messages.retrieve).not.toHaveBeenCalled();
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
   });
 
   it("throws when stream name is blank", async () => {
     await expect(fetchMessages("   ")).rejects.toThrow(
       /fetchMessages\.stream must be a non-empty string/,
     );
-    expect(mockWorkspaceClient.messages.retrieve).not.toHaveBeenCalled();
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
   });
 });
 
@@ -595,39 +609,43 @@ describe("fetchMessages", () => {
 
 describe("fetchMessagesWithNarrow", () => {
   it("passes narrow, anchor, and counts to client", async () => {
-    mockWorkspaceClient.messages.retrieve.mockResolvedValue({ messages: [] });
+    mockMessagesResponse({ messages: [] });
     await fetchMessagesWithNarrow([{ operator: "is", operand: "unread" }], "newest", 200, 0);
-    expect(mockWorkspaceClient.messages.retrieve).toHaveBeenCalledWith(
+    expect(mockMessengerApi.get).toHaveBeenCalledWith(
+      "/messages",
       expect.objectContaining({
-        narrow: [{ operator: "is", operand: "unread" }],
+        narrow: JSON.stringify([{ operator: "is", operand: "unread" }]),
         anchor: "newest",
-        num_before: 200,
-        num_after: 0,
-        apply_markdown: false,
+        num_before: "200",
+        num_after: "0",
+        apply_markdown: "false",
       }),
+      undefined,
     );
   });
 
   it("returns empty on error result", async () => {
-    mockWorkspaceClient.messages.retrieve.mockResolvedValue({ result: "error" });
+    mockMessagesResponse({ result: "error" });
     expect(await fetchMessagesWithNarrow([])).toEqual([]);
   });
 
   it("allows callers to explicitly request rendered HTML", async () => {
-    mockWorkspaceClient.messages.retrieve.mockResolvedValue({ messages: [] });
+    mockMessagesResponse({ messages: [] });
     await fetchMessagesWithNarrow([{ operator: "stream", operand: "general" }], "newest", 200, 0, {
       applyMarkdown: true,
     });
-    expect(mockWorkspaceClient.messages.retrieve).toHaveBeenCalledWith(
+    expect(mockMessengerApi.get).toHaveBeenCalledWith(
+      "/messages",
       expect.objectContaining({
-        narrow: [{ operator: "stream", operand: "general" }],
-        apply_markdown: true,
+        narrow: JSON.stringify([{ operator: "stream", operand: "general" }]),
+        apply_markdown: "true",
       }),
+      undefined,
     );
   });
 
   it("preserves markdown_source for html-like text in markdown mode", async () => {
-    mockWorkspaceClient.messages.retrieve.mockResolvedValue({
+    mockMessagesResponse({
       messages: [
         {
           id: 1,
@@ -661,30 +679,30 @@ describe("fetchMessagesWithNarrow", () => {
     await expect(
       fetchMessagesWithNarrow([{ operator: "is", operand: "unread" }], "invalid_anchor"),
     ).rejects.toThrow(/anchor must be one of/i);
-    expect(mockWorkspaceClient.messages.retrieve).not.toHaveBeenCalled();
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
   });
 
   it("throws for invalid numeric anchor", async () => {
     await expect(fetchMessagesWithNarrow([], 0)).rejects.toThrow(/Invalid messageId/);
-    expect(mockWorkspaceClient.messages.retrieve).not.toHaveBeenCalled();
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
   });
 
   it("throws for negative numBefore", async () => {
     await expect(fetchMessagesWithNarrow([], "newest", -1, 0)).rejects.toThrow(
       /numBefore must be a non-negative integer/i,
     );
-    expect(mockWorkspaceClient.messages.retrieve).not.toHaveBeenCalled();
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
   });
 
   it("throws for negative numAfter", async () => {
     await expect(fetchMessagesWithNarrow([], "newest", 0, -1)).rejects.toThrow(
       /numAfter must be a non-negative integer/i,
     );
-    expect(mockWorkspaceClient.messages.retrieve).not.toHaveBeenCalled();
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
   });
 
   it("fetchMessagesWithNarrowPage returns foundOldest and foundNewest from server", async () => {
-    mockWorkspaceClient.messages.retrieve.mockResolvedValue({
+    mockMessagesResponse({
       messages: [{ id: 1, sender_id: 1, content: "x", timestamp: 1, type: "stream", stream_id: 1 }],
       found_oldest: true,
       found_newest: true,
@@ -701,7 +719,7 @@ describe("fetchMessagesWithNarrow", () => {
   });
 
   it("fetchUnreadMentionsPage uses is:mentioned AND is:unread narrow", async () => {
-    mockWorkspaceClient.messages.retrieve.mockResolvedValue({
+    mockMessagesResponse({
       messages: [],
       found_oldest: true,
       found_newest: true,
@@ -709,17 +727,19 @@ describe("fetchMessagesWithNarrow", () => {
 
     await fetchUnreadMentionsPage();
 
-    expect(mockWorkspaceClient.messages.retrieve).toHaveBeenCalledWith(
+    expect(mockMessengerApi.get).toHaveBeenCalledWith(
+      "/messages",
       expect.objectContaining({
-        narrow: [
+        narrow: JSON.stringify([
           { negated: false, operator: "is", operand: "mentioned" },
           { negated: false, operator: "is", operand: "unread" },
-        ],
+        ]),
         anchor: "newest",
-        num_before: 200,
-        num_after: 0,
-        apply_markdown: false,
+        num_before: "200",
+        num_after: "0",
+        apply_markdown: "false",
       }),
+      undefined,
     );
   });
 });
@@ -809,12 +829,12 @@ describe("fetchAllMessagesPage", () => {
 });
 
 // ---------------------------------------------------------------------------
-// fetchDmMessages — uses zulip-js client
+// fetchDmMessages — uses Messenger REST client
 // ---------------------------------------------------------------------------
 
 describe("fetchDmMessages", () => {
   it("returns DM messages for a single user", async () => {
-    mockWorkspaceClient.messages.retrieve.mockResolvedValue({
+    mockMessagesResponse({
       messages: [
         { id: 1, sender_id: 42, content: "dm", timestamp: 100, type: "private", stream_id: null },
       ],
@@ -825,24 +845,30 @@ describe("fetchDmMessages", () => {
   });
 
   it("handles array of user IDs", async () => {
-    mockWorkspaceClient.messages.retrieve.mockResolvedValue({ messages: [] });
+    mockMessagesResponse({ messages: [] });
     await fetchDmMessages([42, 43]);
-    expect(mockWorkspaceClient.messages.retrieve).toHaveBeenCalled();
+    expect(mockMessengerApi.get).toHaveBeenCalledWith(
+      "/messages",
+      expect.objectContaining({
+        narrow: JSON.stringify([{ negated: false, operator: "dm", operand: [42, 43] }]),
+      }),
+      undefined,
+    );
   });
 
   it("returns empty for group DM offset IDs (>=2_000_000)", async () => {
     const result = await fetchDmMessages([2_000_001]);
     expect(result).toEqual([]);
-    expect(mockWorkspaceClient.messages.retrieve).not.toHaveBeenCalled();
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
   });
 
   it("returns empty on exception", async () => {
-    mockWorkspaceClient.messages.retrieve.mockRejectedValue(new Error("fail"));
+    mockMessengerApi.get.mockRejectedValue(new Error("fail"));
     expect(await fetchDmMessages(42)).toEqual([]);
   });
 
   it("does not synthesize markdown_source for rendered html bodies", async () => {
-    mockWorkspaceClient.messages.retrieve.mockResolvedValue({
+    mockMessagesResponse({
       messages: [
         {
           id: 1,
@@ -862,7 +888,7 @@ describe("fetchDmMessages", () => {
 
   it("throws for invalid user id", async () => {
     await expect(fetchDmMessages([0])).rejects.toThrow(/Invalid userId/);
-    expect(mockWorkspaceClient.messages.retrieve).not.toHaveBeenCalled();
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
   });
 });
 

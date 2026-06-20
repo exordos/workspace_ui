@@ -8,6 +8,7 @@ import { t } from "~/i18n/i18n";
 import { sendMessage } from "~/shared/api/messenger-messages";
 import type { MockMessage } from "~/shared/api/messenger.types";
 import { buildJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
+import { numericUserIdOrNull, userIdsEqual, type UserId } from "~/shared/lib/user-id.lib";
 import { startCallFromHeader } from "./chat-call-start.lib";
 import {
   buildCallRoomName,
@@ -20,16 +21,16 @@ export interface UseChatPageCallOptions {
   isGroupDmView: boolean;
   isOneToOneDm: boolean;
   partnerDeactivated: boolean;
-  partnerUserId: number | null;
+  partnerUserId: UserId | null;
   partnerUserFullName: string | undefined;
-  activeDmUserIds: number[] | null;
+  activeDmUserIds: UserId[] | null;
   activeStream: string | null;
   activeStreamId: number | null;
   activeTopic: string | null;
   dmChatName: string | undefined;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   setSendError: (error: string | null) => void;
-  navigateToDm: (targetUserId: number) => void;
+  navigateToDm: (targetUserId: UserId) => void;
 }
 
 export interface UseChatPageCallResult {
@@ -58,6 +59,7 @@ export function useChatPageCall(options: UseChatPageCallOptions): UseChatPageCal
 
   const openJitsiCall = useJitsiCallStore((s) => s.openCall);
   const jitsiHeaderCallInFlightRef = useRef<symbol | null>(null);
+  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
 
   const callTarget = useMemo(
     () =>
@@ -75,9 +77,9 @@ export function useChatPageCall(options: UseChatPageCallOptions): UseChatPageCal
     () =>
       canStartCallFromHeader({
         target: callTarget,
-        currentUserId,
+        currentUserId: numericCurrentUserId,
       }) && !(isOneToOneDm && partnerDeactivated),
-    [callTarget, currentUserId, isOneToOneDm, partnerDeactivated],
+    [callTarget, numericCurrentUserId, isOneToOneDm, partnerDeactivated],
   );
 
   const callRoomChatLabel = useMemo(() => {
@@ -106,18 +108,21 @@ export function useChatPageCall(options: UseChatPageCallOptions): UseChatPageCal
 
   const buildCurrentCallLink = useCallback(() => {
     if (isOneToOneDm && partnerDeactivated) return null;
-    if (!canStartCallFromHeader({ target: callTarget, currentUserId }) || callTarget == null) {
+    if (
+      !canStartCallFromHeader({ target: callTarget, currentUserId: numericCurrentUserId }) ||
+      callTarget == null
+    ) {
       return null;
     }
     const roomName = buildCallRoomName({
       target: callTarget,
-      currentUserId,
+      currentUserId: numericCurrentUserId,
       chatLabel: callRoomChatLabel,
     });
     return buildJitsiMeetingUrl(roomName, jitsiLinkOptions);
   }, [
     callTarget,
-    currentUserId,
+    numericCurrentUserId,
     callRoomChatLabel,
     jitsiLinkOptions,
     isOneToOneDm,
@@ -136,7 +141,10 @@ export function useChatPageCall(options: UseChatPageCallOptions): UseChatPageCal
 
   const performStartCallFromHeader = useCallback(async () => {
     if (isOneToOneDm && partnerDeactivated) return;
-    if (!canStartCallFromHeader({ target: callTarget, currentUserId }) || callTarget == null) {
+    if (
+      !canStartCallFromHeader({ target: callTarget, currentUserId: numericCurrentUserId }) ||
+      callTarget == null
+    ) {
       return;
     }
     if (jitsiHeaderCallInFlightRef.current != null) {
@@ -148,7 +156,7 @@ export function useChatPageCall(options: UseChatPageCallOptions): UseChatPageCal
     try {
       const result = await startCallFromHeader({
         target: callTarget,
-        currentUserId,
+        currentUserId: numericCurrentUserId,
         buildCurrentCallLink,
         isOneToOneDm,
         callRoomChatLabel,
@@ -184,9 +192,12 @@ export function useChatPageCall(options: UseChatPageCallOptions): UseChatPageCal
 
   const invokeDmCallFromProfileHandler = useCallback(
     (targetUserId: number) => {
-      if (currentUserId == null || targetUserId === currentUserId) return;
+      if (currentUserId == null || userIdsEqual(targetUserId, currentUserId)) return;
       const inOneToOneWithPartner =
-        isDmView && !isGroupDmView && partnerUserId != null && partnerUserId === targetUserId;
+        isDmView &&
+        !isGroupDmView &&
+        partnerUserId != null &&
+        userIdsEqual(partnerUserId, targetUserId);
       if (inOneToOneWithPartner) {
         void performStartCallFromHeader();
         return;
@@ -224,7 +235,7 @@ export function useChatPageCall(options: UseChatPageCallOptions): UseChatPageCal
   useEffect(() => {
     if (pendingDmCallPartnerUserId == null) return;
     if (!isDmView || isGroupDmView) return;
-    if (partnerUserId !== pendingDmCallPartnerUserId) return;
+    if (partnerUserId == null || !userIdsEqual(partnerUserId, pendingDmCallPartnerUserId)) return;
     useChatDmCallBridgeStore.getState().clearPendingDmCallPartner();
     void performStartCallFromHeader();
   }, [

@@ -1,10 +1,11 @@
 import type { FolderItemForClient } from "~/shared/api/workspace-client";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type { SidebarChat, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import { addChatIdAliases } from "./folder-sync-chat-id.lib";
 import { SYSTEM_CHANNELS_FOLDER_ID, SYSTEM_PERSONAL_FOLDER_ID } from "./folder-sync-constants.lib";
 import { filterHiddenDmChats } from "./folder-sync-sidebar-chats-dm.lib";
 import { buildCustomFolderSidebarChats } from "./folder-sync-sidebar-chats-projection.lib";
-import type { FolderSyncUserLike } from "./folder-sync-chat-id.lib";
+import type { FolderSyncUsersMap } from "./folder-sync-chat-id.lib";
 
 export { hasMatchingChatId } from "./folder-sync-chat-id.lib";
 
@@ -14,8 +15,8 @@ export interface SelectedFolderSidebarProjectionInput {
   folderItemsByFolderId: ReadonlyMap<string, FolderItemForClient[]>;
   chatsSortedByLastMessage: readonly SidebarChat[];
   streamsMap: ReadonlyMap<number, StreamEntryInternal>;
-  usersMapForChatInfo: ReadonlyMap<number, FolderSyncUserLike>;
-  currentUserId: number | null;
+  usersMapForChatInfo: FolderSyncUsersMap;
+  currentUserId: UserId | null;
   hideUnknownArchivedStreams?: boolean;
   isStreamMuted?: (streamId: number) => boolean;
 }

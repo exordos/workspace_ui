@@ -19,7 +19,7 @@ import type { ChatListBootstrapResult } from "./layout-chat-list-bootstrap.lib";
 
 const startMessengerEventLoopMock = vi.hoisted(() => vi.fn());
 const fetchUsersMock = vi.hoisted(() => vi.fn(() => Promise.resolve([])));
-const fetchSubscriptionsMock = vi.hoisted(() => vi.fn(() => Promise.resolve([])));
+const fetchMyStreamsMock = vi.hoisted(() => vi.fn(() => Promise.resolve([])));
 const getCurrentUserMock = vi.hoisted(() => vi.fn(() => Promise.resolve({ user_id: 7 })));
 const deleteQueueMock = vi.hoisted(() => vi.fn(() => Promise.resolve(undefined)));
 const fetchDirectMessagesPageMock = vi.hoisted(() =>
@@ -65,7 +65,7 @@ vi.mock("~/shared/api/messenger-sidebar-preview.lib", () => ({
 }));
 
 vi.mock("~/shared/api/messenger-streams", () => ({
-  fetchSubscriptions: fetchSubscriptionsMock,
+  fetchMyStreams: fetchMyStreamsMock,
 }));
 
 vi.mock("~/shared/api/messenger-users", () => ({
@@ -358,7 +358,7 @@ describe("useLayoutMessengerEventLoop", () => {
     await waitFor(() => {
       expect(startMessengerEventLoopMock).toHaveBeenCalledTimes(1);
     });
-    expect(fetchSubscriptionsMock).toHaveBeenCalledTimes(1);
+    expect(fetchMyStreamsMock).toHaveBeenCalledTimes(1);
 
     const firstCallArg = startMessengerEventLoopMock.mock.calls[0]?.[0] as
       | { fetchEventTypes?: string[] }
@@ -381,8 +381,53 @@ describe("useLayoutMessengerEventLoop", () => {
     expect(useChatListStore.getState().streamMetadataHydrated).toBe(true);
   });
 
-  it("does not mark stream metadata as hydrated when subscriptions bootstrap fails", async () => {
-    fetchSubscriptionsMock.mockRejectedValueOnce(new Error("subscriptions failed"));
+  it("hydrates private DM metadata from /me/streams as UUID routes", async () => {
+    const streamUuid = "b4460c02-d693-4564-8804-98059613b86e";
+    const userUuid = "00000000-0000-0000-0000-000000000000";
+    fetchMyStreamsMock.mockResolvedValueOnce([
+      {
+        uuid: "1bce03ca-d6d9-4fdb-82cb-7ec05fa7a8e9",
+        name: "Alice Smith",
+        description: "",
+        stream_uuid: streamUuid,
+        user_uuid: userUuid,
+        last_synced_at: "2026-06-20T16:30:19.824219Z",
+        invite_only: false,
+        announce: false,
+        private: true,
+      },
+    ] as never);
+
+    render(<Harness currentInstanceId="inst-1" />);
+
+    await waitFor(() => {
+      expect(startMessengerEventLoopMock).toHaveBeenCalledTimes(1);
+    });
+
+    const dm = useChatListStore
+      .getState()
+      .dms()
+      .find((entry) => entry.streamUuid === streamUuid);
+    expect(dm).toEqual(
+      expect.objectContaining({
+        name: "Alice Smith",
+        slug: streamUuid,
+        streamUuid,
+        userUuid,
+      }),
+    );
+    expect(useChatListStore.getState().dmsMap.get(`stream:${streamUuid}`)).toEqual(
+      expect.objectContaining({
+        name: "Alice Smith",
+        slug: streamUuid,
+        streamUuid,
+        userUuid,
+      }),
+    );
+  });
+
+  it("does not mark stream metadata as hydrated when /me/streams bootstrap fails", async () => {
+    fetchMyStreamsMock.mockRejectedValueOnce(new Error("streams failed"));
     const props = createHarnessProps();
 
     render(<Harness currentInstanceId="inst-1" props={props} />);

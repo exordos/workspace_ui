@@ -18,6 +18,10 @@ export function isNumericUserId(value: UserId): value is number {
   return typeof value === "number";
 }
 
+export function numericUserIdOrNull(userId: UserId | null | undefined): number | null {
+  return typeof userId === "number" ? userId : null;
+}
+
 /** Normalized map key for `useUsersStore.users`. */
 export function userIdStorageKey(userId: UserId): string {
   if (typeof userId === "number") {

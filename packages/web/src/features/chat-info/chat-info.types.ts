@@ -1,3 +1,5 @@
+import type { UserId } from "~/shared/lib/user-id.lib";
+
 /**
  * Chat/DM/Channel info panel types.
  *
@@ -7,7 +9,7 @@
  */
 
 export interface ChatInfoMember {
-  userId: number;
+  userId: UserId;
   fullName: string;
   email: string;
   avatarUrl: string | null;
@@ -30,7 +32,7 @@ export type ChatInfoContext =
       kind: "dm";
       instanceId: string;
       dmName: string;
-      participantIds: number[];
+      participantIds: UserId[];
     }
   | {
       kind: "stream";

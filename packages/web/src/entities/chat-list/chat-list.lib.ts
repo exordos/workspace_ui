@@ -14,9 +14,9 @@ import {
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
+import { dmConversationKey } from "~/shared/lib/dm-key";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
-import type { UserId } from "~/shared/lib/user-id.lib";
-import { userIdStorageKey } from "~/shared/lib/user-id.lib";
+import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 import type {
   SidebarChat,
   StreamWithLast,
@@ -45,9 +45,10 @@ export function isUnread(m: WorkspaceRawMessage): boolean {
 }
 
 /** Unread for sidebar/UX: message lacks "read" and is not from the current user. */
-export function isUnreadFromOthers(m: WorkspaceRawMessage, currentUserId: number | null): boolean {
+export function isUnreadFromOthers(m: WorkspaceRawMessage, currentUserId: UserId | null): boolean {
   if (!isUnread(m)) return false;
-  if (currentUserId != null && m.sender_id === currentUserId) return false;
+  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
+  if (numericCurrentUserId != null && m.sender_id === numericCurrentUserId) return false;
   return true;
 }
 
@@ -145,7 +146,7 @@ function resolveDmEntryIdentity(
   recipients: DmRecipientRow[],
   otherUsers: DmRecipientRow[],
   key: string,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
   message: WorkspaceRawMessage,
   getAvatar: (userId: number) => string | undefined,
 ): { id: number; userIds?: number[]; avatar_url?: string } | null {
@@ -156,9 +157,12 @@ function resolveDmEntryIdentity(
     };
   }
   const other = otherUsers[0];
+  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
   const otherUserId =
     other?.id ??
-    (currentUserId != null ? recipients.find((r) => r.id !== currentUserId)?.id : undefined);
+    (numericCurrentUserId != null
+      ? recipients.find((r) => r.id !== numericCurrentUserId)?.id
+      : undefined);
   if (otherUserId == null) return null;
   const fromMessage =
     message.sender_id === otherUserId && message.avatar_url
@@ -188,7 +192,7 @@ function buildDmEntrySlug(
 export function messageToDmEntry(
   m: WorkspaceRawMessage,
   currentUserId: UserId | null,
-  avatarUrlByUserId?: Map<string, string>,
+  avatarUrlByUserId?: Map<number, string>,
 ): DmEntryInternal | null {
   if (m.type !== "private" || !Array.isArray(m.display_recipient)) return null;
   const usersStore = useUsersStore.getState();
@@ -200,12 +204,14 @@ export function messageToDmEntry(
       avatar_url: r.avatar_url,
     }))
     .sort((a, b) => a.id - b.id);
+  if (recipients.length !== 2) return null;
   const key = recipients.map((r) => r.id).join(",");
   const otherUsers = resolveDmOtherUsers(recipients, currentUserId, m.sender_id);
-  const isGroup = recipients.length !== 2 || otherUsers.length !== 1;
+  if (otherUsers.length !== 1) return null;
+  const isGroup = false;
   const getName = (userId: number) => usersStore.getDisplayName(userId);
   const getAvatar = (userId: number) =>
-    usersStore.getAvatarUrl(userId) ?? avatarUrlByUserId?.get(userIdStorageKey(userId));
+    usersStore.getAvatarUrl(userId) ?? avatarUrlByUserId?.get(userId);
   const name = buildDmEntryDisplayName(isGroup, otherUsers, getName);
   const identity = resolveDmEntryIdentity(
     isGroup,
@@ -260,7 +266,7 @@ function applyUnreadCountsToSidebarMaps(
 
 function accumulateSidebarUnreadFromMessage(
   m: WorkspaceRawMessage,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
   streamUnread: Map<string, number>,
   dmUnread: Map<string, number>,
 ): void {
@@ -323,7 +329,7 @@ function upsertStreamFromMessage(
 
 function upsertDmFromMessage(
   m: WorkspaceRawMessage,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
   avatarUrlByUserId: Map<number, string> | undefined,
   dmsByKey: Map<string, DmEntryInternal>,
 ): void {
@@ -381,6 +387,7 @@ function mapInternalDmToSidebar(x: DmEntryInternal): Extract<SidebarChat, { type
     lastMessage: x.lastMessage,
     time: x.time,
     userIds: x.userIds,
+    streamUuid: x.streamUuid,
     badge: x.unreadCount > 0 ? x.unreadCount : undefined,
     avatar_url: x.avatar_url,
     ts: x.ts,
@@ -394,7 +401,7 @@ function mapInternalDmToSidebar(x: DmEntryInternal): Extract<SidebarChat, { type
  */
 export function buildSidebarFromMessages(
   messages: WorkspaceRawMessage[],
-  currentUserId: number | null,
+  currentUserId: UserId | null,
   avatarUrlByUserId?: Map<number, string>,
 ): {
   streams: StreamWithLast[];

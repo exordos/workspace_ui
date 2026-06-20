@@ -6,21 +6,6 @@
 import { afterEach, beforeEach, vi } from "vitest";
 import { clearAllMessengerEventQueueIds } from "~/shared/lib/messenger-event-queue-registry.lib";
 
-const mockWorkspaceClient = vi.hoisted(() => ({
-  streams: {
-    retrieve: vi.fn(),
-    topics: { retrieve: vi.fn() },
-  },
-  messages: {
-    retrieve: vi.fn(),
-    send: vi.fn(),
-  },
-}));
-
-export function getMockWorkspaceClient() {
-  return mockWorkspaceClient;
-}
-
 const mockGetCurrentInstance = vi.hoisted(() => vi.fn());
 
 const mockMessengerApi = vi.hoisted(() => ({
@@ -49,6 +34,7 @@ export function getMockRefreshMessengerApiBase() {
 
 vi.mock("./client", () => ({
   getCurrentInstance: mockGetCurrentInstance,
+  getMessengerGatewayApiBaseForCurrentInstance: () => "/api/messanger/v1",
   messengerApi: mockMessengerApi,
   refreshMessengerApiBase: mockRefreshMessengerApiBase,
   refreshWorkspaceApiBase: mockRefreshWorkspaceApiBase,
@@ -75,10 +61,6 @@ vi.mock("~/shared/lib/logger", async (importOriginal) => {
   );
 });
 
-vi.mock("zulip-js", () => ({
-  default: vi.fn(() => Promise.resolve(mockWorkspaceClient)),
-}));
-
 export const TEST_INSTANCE = {
   id: "test-inst",
   realm: "https://chat.example.com",
@@ -103,10 +85,6 @@ beforeEach(() => {
   mockFetch.mockReset();
   mockGetCurrentInstance.mockReset();
   mockGetCurrentInstance.mockReturnValue(TEST_INSTANCE);
-  mockWorkspaceClient.streams.retrieve.mockReset();
-  mockWorkspaceClient.streams.topics.retrieve.mockReset();
-  mockWorkspaceClient.messages.retrieve.mockReset();
-  mockWorkspaceClient.messages.send.mockReset();
   mockMessengerApi.get.mockReset();
   mockMessengerApi.getWithBase.mockReset();
   mockMessengerApi.post.mockReset();

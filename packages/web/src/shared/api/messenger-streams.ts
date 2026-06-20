@@ -3,32 +3,33 @@
  */
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
-import { normalizeGroupSettingValue } from "~/shared/lib/messenger-group-setting.lib";
-import { getClient } from "./messenger-client.internal";
+import {
+  compareUserIds,
+  isUserIdentityReady,
+  type UserId,
+  userIdStorageKey,
+} from "~/shared/lib/user-id.lib";
+import { getMessengerGatewayApiBaseForCurrentInstance, messengerApi } from "./client";
 import {
   messengerPipelineDelete,
   messengerPipelineGet,
   messengerPipelinePost,
   messengerPipelinePatch,
 } from "./messenger-pipeline.internal";
-import type {
-  MockStream,
-  MessengerGroupSettingValue,
-  MessengerSubscription,
-} from "./messenger.types";
+import type { MockStream, MessengerMeStream, MessengerSubscription } from "./messenger.types";
 
 const log = createLogger("messenger-streams");
 
 export interface AddStreamMembersParams {
   streamName: string;
-  userIds: number[];
+  userIds: UserId[];
   authorizationErrorsFatal?: boolean;
 }
 
 export interface AddStreamMembersResult {
   ok: boolean;
-  addedUserIds: number[];
-  alreadySubscribedUserIds: number[];
+  addedUserIds: UserId[];
+  alreadySubscribedUserIds: UserId[];
   unauthorizedStreams: string[];
   errorCode?: string;
 }
@@ -45,6 +46,15 @@ export interface RemoveStreamMembersResult {
   alreadyUnsubscribedUserIds: number[];
   unauthorizedStreams: string[];
   errorCode?: string;
+}
+
+function normalizePrincipalUserIds(userIds: readonly UserId[]): UserId[] {
+  const byKey = new Map<string, UserId>();
+  for (const userId of userIds) {
+    if (!isUserIdentityReady(userId)) continue;
+    byKey.set(userIdStorageKey(userId), userId);
+  }
+  return Array.from(byKey.values()).sort(compareUserIds);
 }
 
 export interface DeleteTopicResult {
@@ -144,221 +154,138 @@ function hasPrincipalMap(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === "object" && !Array.isArray(value);
 }
 
-/** Fetches the user's subscriptions (GET /users/me/subscriptions) including is_muted per stream. */
-export async function fetchSubscriptions(): Promise<MessengerSubscription[]> {
-  const res = await messengerPipelineGet("/users/me/subscriptions");
-  if (!res?.ok) {
-    return [];
-  }
-  const data = res.data as {
-    subscriptions?: {
-      stream_id: number;
-      name: string;
-      is_muted?: boolean;
-      desktop_notifications?: boolean | null;
-      audible_notifications?: boolean | null;
-      is_archived?: boolean;
-      in_home_view?: boolean;
-      creator_id?: unknown;
-      invite_only?: boolean;
-      can_add_subscribers_group?: unknown;
-      can_remove_subscribers_group?: unknown;
-      can_administer_channel_group?: unknown;
-      can_resolve_topics_group?: unknown;
-      can_move_messages_out_of_channel_group?: unknown;
-    }[];
-  };
-  // Normalizes channel-level permission fields from /users/me/subscriptions.
-  return (data.subscriptions ?? []).map((subscription) => {
-    const creatorId =
-      typeof subscription.creator_id === "number" &&
-      Number.isInteger(subscription.creator_id) &&
-      subscription.creator_id > 0
-        ? subscription.creator_id
-        : undefined;
-    const canAddSubscribersGroup = normalizeGroupSettingValue(
-      subscription.can_add_subscribers_group,
-    );
-    const canRemoveSubscribersGroup = normalizeGroupSettingValue(
-      subscription.can_remove_subscribers_group,
-    );
-    const canAdministerChannelGroup = normalizeGroupSettingValue(
-      subscription.can_administer_channel_group,
-    );
-    const canResolveTopicsGroup = normalizeGroupSettingValue(subscription.can_resolve_topics_group);
-    const canMoveMessagesOutOfChannelGroup = normalizeGroupSettingValue(
-      subscription.can_move_messages_out_of_channel_group,
-    );
-    return {
-      stream_id: subscription.stream_id,
-      name: subscription.name,
-      is_muted: subscription.is_muted ?? !(subscription.in_home_view ?? true),
-      ...(subscription.desktop_notifications === true ||
-      subscription.desktop_notifications === false
-        ? { desktop_notifications: subscription.desktop_notifications }
-        : {}),
-      ...(subscription.audible_notifications === true ||
-      subscription.audible_notifications === false
-        ? { audible_notifications: subscription.audible_notifications }
-        : {}),
-      ...(typeof subscription.is_archived === "boolean"
-        ? { is_archived: subscription.is_archived }
-        : {}),
-      ...(creatorId != null ? { creator_id: creatorId } : {}),
-      ...(typeof subscription.invite_only === "boolean"
-        ? { invite_only: subscription.invite_only }
-        : {}),
-      ...(canAddSubscribersGroup != null
-        ? { can_add_subscribers_group: canAddSubscribersGroup }
-        : {}),
-      ...(canRemoveSubscribersGroup != null
-        ? { can_remove_subscribers_group: canRemoveSubscribersGroup }
-        : {}),
-      ...(canAdministerChannelGroup != null
-        ? { can_administer_channel_group: canAdministerChannelGroup }
-        : {}),
-      ...(canResolveTopicsGroup != null ? { can_resolve_topics_group: canResolveTopicsGroup } : {}),
-      ...(canMoveMessagesOutOfChannelGroup != null
-        ? { can_move_messages_out_of_channel_group: canMoveMessagesOutOfChannelGroup }
-        : {}),
-    };
-  });
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
 }
 
-function readOptionalBoolean(value: unknown): boolean | undefined {
-  return typeof value === "boolean" ? value : undefined;
-}
-
-function readOptionalCount(value: unknown): number | null | undefined {
-  if (value == null) {
-    return null;
-  }
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+function readUuid(value: unknown): string | undefined {
+  if (typeof value !== "string") {
     return undefined;
   }
-  return Math.floor(value);
+  const trimmed = value.trim().toLowerCase();
+  return UUID_RE.test(trimmed) ? trimmed : undefined;
 }
 
-function readOptionalPolicy(value: unknown): number | null | undefined {
-  if (value == null) {
-    return null;
+function readTrimmedString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
   }
-  if (typeof value !== "number" || !Number.isInteger(value)) {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function readOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function readOptionalPositiveInteger(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
     return undefined;
   }
   return value;
 }
 
-function readOptionalUnixTimestamp(value: unknown): number | null | undefined {
-  if (value == null) {
+function extractMeStreamItems(data: unknown): unknown[] {
+  if (Array.isArray(data)) {
+    return data;
+  }
+  if (!isRecord(data)) {
+    return [];
+  }
+  if (Array.isArray(data.streams)) {
+    return data.streams;
+  }
+  if (Array.isArray(data.results)) {
+    return data.results;
+  }
+  return [];
+}
+
+function parseMeStream(row: unknown): MessengerMeStream | null {
+  if (!isRecord(row)) {
     return null;
   }
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    return undefined;
-  }
-  return Math.floor(value);
-}
-
-function readOptionalGroupSetting(value: unknown): MessengerGroupSettingValue | undefined {
-  return normalizeGroupSettingValue(value);
-}
-
-interface RawStreamPayload {
-  stream_id: number;
-  name: string;
-  description?: string;
-  invite_only?: unknown;
-  is_announcement_only?: unknown;
-  history_public_to_subscribers?: unknown;
-  is_web_public?: unknown;
-  subscriber_count?: unknown;
-  stream_weekly_traffic?: unknown;
-  stream_post_policy?: unknown;
-  creator_id?: unknown;
-  date_created?: unknown;
-  folder_id?: unknown;
-  is_default?: unknown;
-  is_recently_active?: unknown;
-  message_retention_days?: unknown;
-  can_subscribe_group?: unknown;
-  can_add_subscribers_group?: unknown;
-  can_remove_subscribers_group?: unknown;
-  can_administer_channel_group?: unknown;
-  can_resolve_topics_group?: unknown;
-  can_move_messages_out_of_channel_group?: unknown;
-}
-
-function readOptionalCreatorId(value: unknown): number | null | undefined {
-  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
-    return value;
-  }
-  if (value === null) {
+  const uuid = readUuid(row.uuid);
+  const streamUuid = readUuid(row.stream_uuid);
+  const name = readTrimmedString(row.name);
+  if (uuid == null || streamUuid == null || name == null) {
     return null;
   }
-  return undefined;
-}
-
-function parseRawStream(raw: unknown): MockStream {
-  const stream = raw as RawStreamPayload;
-  const inviteOnly = readOptionalBoolean(stream.invite_only);
-  const historyPublic = readOptionalBoolean(stream.history_public_to_subscribers);
-  const isWebPublic = readOptionalBoolean(stream.is_web_public);
-  const isDefault = readOptionalBoolean(stream.is_default);
-  const isRecentlyActive = readOptionalBoolean(stream.is_recently_active);
-  const subscriberCount = readOptionalCount(stream.subscriber_count);
-  const weeklyTraffic = readOptionalCount(stream.stream_weekly_traffic);
-  const postPolicy = readOptionalPolicy(stream.stream_post_policy);
-  const creatorId = readOptionalCreatorId(stream.creator_id);
-  const dateCreated = readOptionalUnixTimestamp(stream.date_created);
-  const folderId = readOptionalCount(stream.folder_id);
-  const messageRetentionDays = readOptionalCount(stream.message_retention_days);
-  const canSubscribeGroup = readOptionalGroupSetting(stream.can_subscribe_group);
-  const canAddSubscribersGroup = readOptionalGroupSetting(stream.can_add_subscribers_group);
-  const canRemoveSubscribersGroup = readOptionalGroupSetting(stream.can_remove_subscribers_group);
-  const canAdministerChannelGroup = readOptionalGroupSetting(stream.can_administer_channel_group);
-  const canResolveTopicsGroup = readOptionalGroupSetting(stream.can_resolve_topics_group);
-  const canMoveMessagesOutOfChannelGroup = readOptionalGroupSetting(
-    stream.can_move_messages_out_of_channel_group,
-  );
+  const projectId = readUuid(row.project_id);
+  const userUuid = readUuid(row.user_uuid);
+  const source = isRecord(row.source) ? row.source : undefined;
+  const streamId = readOptionalPositiveInteger(row.stream_id);
+  const createdAt = readOptionalString(row.created_at);
+  const updatedAt = readOptionalString(row.updated_at);
+  const lastSyncedAt = readOptionalString(row.last_synced_at);
+  const sourceName = readOptionalString(row.source_name);
   return {
-    stream_id: stream.stream_id,
-    name: stream.name,
-    description: stream.description ?? "",
-    is_announcement_only: stream.is_announcement_only === true,
-    ...(inviteOnly != null ? { invite_only: inviteOnly } : {}),
-    ...(historyPublic != null ? { history_public_to_subscribers: historyPublic } : {}),
-    ...(isWebPublic != null ? { is_web_public: isWebPublic } : {}),
-    ...(subscriberCount !== undefined ? { subscriber_count: subscriberCount } : {}),
-    ...(weeklyTraffic !== undefined ? { stream_weekly_traffic: weeklyTraffic } : {}),
-    ...(postPolicy !== undefined ? { stream_post_policy: postPolicy } : {}),
-    ...(creatorId !== undefined ? { creator_id: creatorId } : {}),
-    ...(dateCreated !== undefined ? { date_created: dateCreated } : {}),
-    ...(folderId !== undefined ? { folder_id: folderId } : {}),
-    ...(isDefault != null ? { is_default: isDefault } : {}),
-    ...(isRecentlyActive != null ? { is_recently_active: isRecentlyActive } : {}),
-    ...(messageRetentionDays !== undefined ? { message_retention_days: messageRetentionDays } : {}),
-    ...(canSubscribeGroup != null ? { can_subscribe_group: canSubscribeGroup } : {}),
-    ...(canAddSubscribersGroup != null
-      ? { can_add_subscribers_group: canAddSubscribersGroup }
-      : {}),
-    ...(canRemoveSubscribersGroup != null
-      ? { can_remove_subscribers_group: canRemoveSubscribersGroup }
-      : {}),
-    ...(canAdministerChannelGroup != null
-      ? { can_administer_channel_group: canAdministerChannelGroup }
-      : {}),
-    ...(canResolveTopicsGroup != null ? { can_resolve_topics_group: canResolveTopicsGroup } : {}),
-    ...(canMoveMessagesOutOfChannelGroup != null
-      ? { can_move_messages_out_of_channel_group: canMoveMessagesOutOfChannelGroup }
-      : {}),
+    uuid,
+    name,
+    description: typeof row.description === "string" ? row.description : "",
+    ...(projectId != null ? { project_id: projectId } : {}),
+    ...(createdAt != null ? { created_at: createdAt } : {}),
+    ...(updatedAt != null ? { updated_at: updatedAt } : {}),
+    ...(userUuid != null ? { user_uuid: userUuid } : {}),
+    stream_uuid: streamUuid,
+    ...(lastSyncedAt != null ? { last_synced_at: lastSyncedAt } : {}),
+    ...(sourceName != null ? { source_name: sourceName } : {}),
+    ...(source != null ? { source } : {}),
+    invite_only: row.invite_only === true,
+    announce: row.announce === true,
+    private: row.private === true,
+    ...(streamId != null ? { stream_id: streamId } : {}),
   };
 }
 
+export async function fetchMyStreams(): Promise<MessengerMeStream[]> {
+  const res = await messengerApi.getWithBase(
+    getMessengerGatewayApiBaseForCurrentInstance(),
+    "/me/streams/",
+  );
+  if (!res.ok) {
+    return [];
+  }
+  return extractMeStreamItems(res.data)
+    .map((row) => parseMeStream(row))
+    .filter((row): row is MessengerMeStream => row != null);
+}
+
+function subscriptionFromMeStream(stream: MessengerMeStream): MessengerSubscription | null {
+  if (stream.private || stream.stream_id == null) {
+    return null;
+  }
+  return {
+    stream_id: stream.stream_id,
+    stream_uuid: stream.stream_uuid,
+    name: stream.name,
+    is_muted: false,
+    invite_only: stream.invite_only,
+  };
+}
+
+/** Fetches the user's channel subscriptions from Workspace gateway /me/streams/. */
+export async function fetchSubscriptions(): Promise<MessengerSubscription[]> {
+  const gatewayStreams = await fetchMyStreams();
+  return gatewayStreams
+    .map((stream) => subscriptionFromMeStream(stream))
+    .filter((stream): stream is MessengerSubscription => stream != null);
+}
+
 export async function fetchStreams(): Promise<MockStream[]> {
-  const client = await getClient();
-  const data = await client.streams.retrieve();
-  const list = data.streams ?? [];
-  return list.map(parseRawStream);
+  const streams = await fetchMyStreams();
+  return streams
+    .filter((stream) => !stream.private && stream.stream_id != null)
+    .map((stream) => ({
+      stream_id: stream.stream_id!,
+      stream_uuid: stream.stream_uuid,
+      name: stream.name,
+      description: stream.description,
+      is_announcement_only: stream.announce,
+      invite_only: stream.invite_only,
+    }));
 }
 
 /** Adds users to an existing stream (POST /users/me/subscriptions with principals). */
@@ -366,9 +293,7 @@ export async function addMembersToStream(
   params: AddStreamMembersParams,
 ): Promise<AddStreamMembersResult> {
   const streamName = guard.nonEmpty(params.streamName, "addMembersToStream.streamName").trim();
-  const requestedUserIds = Array.from(
-    new Set(params.userIds.map((userId) => guard.userId(userId, "addMembersToStream.userIds"))),
-  ).sort((a, b) => a - b);
+  const requestedUserIds = normalizePrincipalUserIds(params.userIds);
 
   if (requestedUserIds.length === 0) {
     return {
@@ -420,9 +345,10 @@ export async function addMembersToStream(
 
     const alreadySubscribedUserIds = parseUserIdsFromPrincipalMap(payload.already_subscribed);
     const addedFromPayload = parseUserIdsFromPrincipalMap(payload.subscribed);
+    const alreadySubscribedKeys = new Set(alreadySubscribedUserIds.map(userIdStorageKey));
     const addedUserIds = hasPrincipalMap(payload.subscribed)
       ? addedFromPayload
-      : requestedUserIds.filter((userId) => !alreadySubscribedUserIds.includes(userId));
+      : requestedUserIds.filter((userId) => !alreadySubscribedKeys.has(userIdStorageKey(userId)));
 
     log.info("Stream members added", {
       streamNameLength: streamName.length,
@@ -564,9 +490,8 @@ export async function fetchStreamMembers(streamId: number): Promise<number[]> {
 
 export async function fetchTopics(stream: string): Promise<string[]> {
   const streamName = guard.nonEmpty(stream, "fetchTopics.stream");
-  const client = await getClient();
-  const streamsData = await client.streams.retrieve();
-  const streamObj = (streamsData.streams ?? []).find((s) => s.name === streamName);
+  const streamsData = await fetchStreams();
+  const streamObj = streamsData.find((s) => s.name === streamName);
   if (!streamObj) return [];
   return fetchStreamTopicNames(streamObj.stream_id);
 }

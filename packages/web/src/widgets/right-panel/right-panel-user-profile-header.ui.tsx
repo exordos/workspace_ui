@@ -2,6 +2,7 @@ import React, { useCallback } from "react";
 import { UserStatusLabel } from "~/entities/user/user-status-label.ui";
 import type { UserStatus } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import { Copyable } from "~/shared/ui/copyable";
 import { Icon } from "~/shared/ui/icon";
@@ -19,8 +20,8 @@ export interface RightPanelUserProfileHeaderProps {
   status: UserStatus | null | undefined;
   statusLabel: string | undefined;
   contactRows: RightPanelUserContactRow[];
-  directMessageUserId: number | undefined;
-  onOpenDirectMessage?: (userId: number) => void;
+  directMessageUserId: UserId | undefined;
+  onOpenDirectMessage?: (userId: UserId) => void;
   showProfileCallButton: boolean;
   onProfileDmCall: () => void;
   onAvatarAction: () => void;

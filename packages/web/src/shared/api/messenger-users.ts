@@ -3,7 +3,7 @@
  */
 import { guard } from "~/shared/lib/guards";
 import type { UserId } from "~/shared/lib/user-id.lib";
-import { isIamUserUuid, userIdStorageKey } from "~/shared/lib/user-id.lib";
+import { userIdStorageKey } from "~/shared/lib/user-id.lib";
 import { getCurrentInstance } from "./client";
 import { fetchIamUserByUuid, fetchIamUsers, getIamCurrentUser } from "./iam-api";
 import { parseCurrentUserFromApiData } from "./messenger-current-user.lib";

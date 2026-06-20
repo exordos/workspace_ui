@@ -4,6 +4,7 @@
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import { rebuildStreamFromTopics } from "./chat-list-stream-entry-merge.lib";
 import {
@@ -71,7 +72,7 @@ export function isMessageNewer(
 
 export function buildLatestUnreadStreamMessageMap(
   messages: readonly WorkspaceRawMessage[],
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): Map<string, WorkspaceRawMessage> {
   const map = new Map<string, WorkspaceRawMessage>();
   for (const message of messages) {
@@ -89,7 +90,7 @@ export function buildLatestUnreadStreamMessageMap(
 
 export function buildLatestUnreadDmMessageMap(
   messages: readonly WorkspaceRawMessage[],
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): Map<string, WorkspaceRawMessage> {
   const map = new Map<string, WorkspaceRawMessage>();
   for (const message of messages) {
@@ -306,7 +307,7 @@ function reconcileLatestDmUnreadPreviews(
   dmsMap: Map<string, DmEntryInternal>,
   latestUnreadDms: Map<string, WorkspaceRawMessage>,
   unreadDmCounts: Map<string, number>,
-  effectiveUserId: number | null,
+  effectiveUserId: UserId | null,
   avatarMap: Map<number, string>,
 ): { dmsMap: Map<string, DmEntryInternal>; changed: boolean } {
   let nextDms = dmsMap;
@@ -396,7 +397,7 @@ export interface ApplyReconcileUnreadMapsParams {
   unreadLocationMap: Map<number, MessageLocation>;
   latestUnreadStreams: Map<string, WorkspaceRawMessage>;
   latestUnreadDms: Map<string, WorkspaceRawMessage>;
-  effectiveUserId: number | null;
+  effectiveUserId: UserId | null;
   avatarMap: Map<number, string>;
 }
 

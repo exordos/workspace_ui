@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { dmRouteKey } from "~/shared/lib/dm-key";
 import { computeIsGroupDmView, normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
 import { decodeTopicFromRoute } from "~/shared/lib/topic-identity.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import {
   getDmById,
   parseDmSlugToUserIds,
@@ -24,7 +25,7 @@ export function useChatRouteContext(options: {
   location: Location;
   streamsMap: Map<number, { name: string }>;
   dmsFromStore: unknown[];
-  currentUserId: number | null;
+  currentUserId: UserId | null;
 }): {
   activeTopic: string | undefined;
   streamRouteTopic: string;
@@ -32,11 +33,11 @@ export function useChatRouteContext(options: {
   resolvedStreamName: string;
   canonicalStreamName: string | null;
   resolvedStreamId: number | null;
-  dmRecipientIds: number[];
+  dmRecipientIds: UserId[];
   isDmView: boolean;
   dmChat: ReturnType<typeof getDmById> | undefined;
   isGroupDmView: boolean;
-  partnerUserId: number | null;
+  partnerUserId: UserId | null;
   dmKey: string | null;
   focusedMessageId: number | null;
   forwardMessageId: number | null;
@@ -58,19 +59,6 @@ export function useChatRouteContext(options: {
   const streamRouteTopic = topicName != null ? decodeTopicFromRoute(topicName) : "";
   const activeStream = parsedStream ? resolvedStreamName : undefined;
 
-  const rawDmUserIds = useMemo(() => {
-    if (dmIdParam == null || dmIdParam === "") return null;
-    return parseDmSlugToUserIds(dmIdParam);
-  }, [dmIdParam]);
-
-  const activeDmUserIds = useMemo(
-    () => (rawDmUserIds == null ? null : normalizeDmRouteUserIds(rawDmUserIds, currentUserId)),
-    [rawDmUserIds, currentUserId],
-  );
-
-  const dmRecipientIds = activeDmUserIds ?? [];
-  const isDmView = dmRecipientIds.length > 0;
-
   const dmChat = useMemo(
     () =>
       dmIdParam != null && dmIdParam !== ""
@@ -78,6 +66,27 @@ export function useChatRouteContext(options: {
         : undefined,
     [dmIdParam, dmsFromStore],
   );
+
+  const rawDmUserIds = useMemo(() => {
+    if (dmIdParam == null || dmIdParam === "") return null;
+    return parseDmSlugToUserIds(dmIdParam);
+  }, [dmIdParam]);
+
+  const activeDmUserIds = useMemo(() => {
+    if (rawDmUserIds != null && rawDmUserIds.length > 0) {
+      return normalizeDmRouteUserIds(rawDmUserIds, currentUserId);
+    }
+    if (dmChat?.userIds != null && dmChat.userIds.length > 0) {
+      return dmChat.userIds;
+    }
+    if (dmChat?.userUuid != null && dmChat.userUuid.trim().length > 0) {
+      return [dmChat.userUuid];
+    }
+    return null;
+  }, [rawDmUserIds, currentUserId, dmChat?.userIds, dmChat?.userUuid]);
+
+  const dmRecipientIds = activeDmUserIds ?? [];
+  const isDmView = dmRecipientIds.length > 0;
 
   const isGroupDmView = isDmView && computeIsGroupDmView(dmChat, dmRecipientIds, currentUserId);
   const partnerUserId =

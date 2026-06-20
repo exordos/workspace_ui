@@ -3,6 +3,7 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import type { MockMessage } from "~/shared/api/messenger.types";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { buildRouteFromMessage } from "~/shared/lib/push-click";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import { useSearchModalStore } from "~/widgets/search-modal/search-modal.model";
 import type { NavigateFunction } from "react-router-dom";
 
@@ -10,7 +11,7 @@ export function useTopBarSearchModal(options: { navigate: NavigateFunction }): {
   open: boolean;
   setOpen: (open: boolean) => void;
   onSelectMessage: (msg: MockMessage) => void;
-  onSelectUser: (userId: number) => void;
+  onSelectUser: (userId: UserId) => void;
 } {
   const { navigate } = options;
   const open = useSearchModalStore((s) => s.open);
@@ -30,9 +31,9 @@ export function useTopBarSearchModal(options: { navigate: NavigateFunction }): {
   );
 
   const onSelectUser = useCallback(
-    (userId: number) => {
+    (userId: UserId) => {
       closeModal();
-      void navigate(withCurrentOrgRoute(`/users/${userId}`));
+      void navigate(withCurrentOrgRoute(`/users/${encodeURIComponent(String(userId))}`));
     },
     [navigate, closeModal],
   );

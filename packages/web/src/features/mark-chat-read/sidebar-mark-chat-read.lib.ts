@@ -12,6 +12,7 @@ import { markDmAsRead, markStreamAsRead, markTopicAsRead } from "~/shared/api/me
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { logSidebarUnreadFlow } from "~/shared/lib/sidebar-unread-debug.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 
 export type SidebarMarkReadTarget =
   | { type: "dm"; userIds: number[] }
@@ -20,7 +21,7 @@ export type SidebarMarkReadTarget =
 
 function fallbackContextForTarget(
   target: SidebarMarkReadTarget,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): ChatListReadFallbackContext {
   if (target.type === "dm") {
     const dmKey = dmConversationKey(
@@ -127,7 +128,7 @@ export async function applySidebarMarkChatAsRead(target: SidebarMarkReadTarget):
 
   useInboxStore
     .getState()
-    .removeEntriesForTarget(target, useChatListStore.getState().currentUserId);
+    .removeEntriesForTarget(target, numericUserIdOrNull(useChatListStore.getState().currentUserId));
 
   logSidebarUnreadFlow("sidebar:markAsRead:done", {
     target,

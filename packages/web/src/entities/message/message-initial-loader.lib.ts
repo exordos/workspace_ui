@@ -25,6 +25,7 @@ import {
   messengerMessageCacheWindowN,
 } from "~/shared/lib/messenger-message-window.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import { upsertMessagesByChatPartitions } from "./message-cache-partition.lib";
 import { parseDmKeyToUserIds } from "./message-chat-context.lib";
 import { deriveFocusedPaginationFlags } from "./message-pagination-helpers.lib";
@@ -41,7 +42,7 @@ interface CachedSnapshot {
 export interface LoadInitialMessagesRouteDrivenOptions {
   context: CurrentChatContext;
   focusedMessageId: number | null;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   persistToIndexedDb: boolean;
   instanceId: string | null;
   /** Propagate abort through the pipeline so stale route requests stop before applying results. */
@@ -104,7 +105,7 @@ async function fetchNetworkMessagesByMode(options: {
   mode: InitialLoadMode;
   context: CurrentChatContext;
   focusedMessageId: number | null;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   signal?: AbortSignal;
 }): Promise<MockMessage[]> {
   const { mode, context, focusedMessageId, currentUserId, signal } = options;
@@ -151,7 +152,7 @@ function resolveNextContextFromApi(options: {
   mode: InitialLoadMode;
   context: CurrentChatContext;
   messages: readonly MockMessage[];
-  currentUserId: number | null;
+  currentUserId: UserId | null;
 }): CurrentChatContext {
   const { mode, context, messages, currentUserId } = options;
   if (messages.length === 0) {
@@ -184,7 +185,7 @@ async function persistNetworkMessagesByMode(options: {
   context: CurrentChatContext;
   nextContext: CurrentChatContext;
   messages: readonly MockMessage[];
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   persistToIndexedDb: boolean;
   instanceId: string | null;
 }): Promise<void> {

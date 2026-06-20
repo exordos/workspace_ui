@@ -4,13 +4,14 @@ import {
   chatKeyFromMockMessage,
   normalizeStreamTopicForMessageCache,
 } from "~/shared/lib/message-cache-keys.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 
 interface IsFocusedMessageLoadedInRouteParams {
   focusedMessageId: number | null;
   messages: MockMessage[];
   isDmView: boolean;
-  currentUserId: number | null;
-  dmRecipientIds: number[];
+  currentUserId: UserId | null;
+  dmRecipientIds: UserId[];
   resolvedStreamId: number | null;
   topicName: string | undefined;
   streamRouteTopic: string;

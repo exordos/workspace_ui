@@ -1,6 +1,8 @@
+import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
+
 export interface ResolveCallMessageTargetParamsInput {
   isDmView: boolean;
-  activeDmUserIds: number[] | null;
+  activeDmUserIds: UserId[] | null;
   activeStream: string | null;
   activeStreamId: number | null;
   activeTopic: string | null;
@@ -33,11 +35,13 @@ export interface CanStartCallFromHeaderInput {
 const DEFAULT_TOPIC = "";
 const NON_ROOM_SYMBOLS = /[^\p{L}\p{N}-]+/gu;
 
-function normalizeDmUserIds(userIds: number[] | null): number[] {
+function normalizeDmUserIds(userIds: UserId[] | null): number[] {
   if (userIds == null || userIds.length === 0) {
     return [];
   }
-  const normalized = [...new Set(userIds)];
+  const normalized = [...new Set(userIds.map((userId) => numericUserIdOrNull(userId)))].filter(
+    (userId): userId is number => userId != null,
+  );
   const hasInvalidId = normalized.some((id) => !Number.isInteger(id) || id <= 0);
   if (hasInvalidId) {
     return [];

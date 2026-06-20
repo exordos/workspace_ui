@@ -7,6 +7,7 @@ import type {
   MessengerEvent,
   WorkspaceRawMessage,
 } from "~/shared/api/messenger.types";
+import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 import type { LayoutMessageFlagOp } from "./layout-messenger-event-dispatch.types";
 
 export interface ParsedUpdateMessageFlagsEvent {
@@ -77,11 +78,12 @@ export function collectUnreadLoadedMessageIds(messages: readonly MockMessage[]):
 export function messengerRawMessagesFromMarkUnreadDetails(
   messageIds: readonly number[],
   messageDetails: Record<string, WorkspaceMarkUnreadMessageDetail> | undefined,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): WorkspaceRawMessage[] {
   if (messageDetails == null) return [];
+  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
   const placeholderSenderId =
-    currentUserId != null && currentUserId > 0 ? currentUserId + 100_000 : 1;
+    numericCurrentUserId != null && numericCurrentUserId > 0 ? numericCurrentUserId + 100_000 : 1;
   const out: WorkspaceRawMessage[] = [];
 
   for (const messageId of messageIds) {

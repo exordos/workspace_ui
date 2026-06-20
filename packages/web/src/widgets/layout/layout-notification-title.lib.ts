@@ -1,5 +1,6 @@
 import { t } from "~/i18n/i18n";
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
+import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 
 const DEFAULT_NOTIFICATION_SENDER = "New message";
 
@@ -48,16 +49,19 @@ function resolveNotificationChannelName(message: NotificationTitleMessage): stri
 
 function resolveDmConversationName(
   message: NotificationTitleMessage,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
   senderName: string,
 ): string {
   if (!Array.isArray(message.display_recipient) || message.display_recipient.length === 0) {
     return senderName;
   }
 
+  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
   const recipients = [...message.display_recipient].sort((left, right) => left.id - right.id);
   const currentUserFiltered =
-    currentUserId != null ? recipients.filter((recipient) => recipient.id !== currentUserId) : null;
+    numericCurrentUserId != null
+      ? recipients.filter((recipient) => recipient.id !== numericCurrentUserId)
+      : null;
   const oneToOneFallback =
     currentUserFiltered == null && recipients.length === 2
       ? recipients.filter((recipient) => recipient.id !== message.sender_id)
@@ -78,7 +82,7 @@ function resolveDmConversationName(
 
 export function buildNotificationTitleContextFromMessage(
   message: NotificationTitleMessage,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): NotificationTitleContext {
   const senderName = resolveNotificationSenderName(message.sender_full_name);
   const isStreamMessage = message.type === "stream" || message.stream_id != null;

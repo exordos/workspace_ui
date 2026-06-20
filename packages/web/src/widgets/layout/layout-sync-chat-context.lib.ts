@@ -7,6 +7,7 @@
 import type { CurrentChatContext } from "~/entities/message/message.model.types";
 import { dmRouteKey } from "~/shared/lib/dm-key";
 import { decodeTopicFromRoute, normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import { parseDmSlugToUserIds, parseStreamSlug } from "~/widgets/sidebar/sidebar.lib";
 
 const ORG_PREFIX_PATH = /^\/org\/[^/]+(\/.*)?$/;
@@ -65,7 +66,7 @@ export function isStoreContextAlignedWithParsedRoute(
 export function parseChatContextFromPathname(options: {
   pathname: string;
   streamsMap: Map<number, { name: string }>;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
 }): ParsedChatRoute {
   const { streamsMap, currentUserId } = options;
   const pathname = stripOrgSegmentFromPathname(options.pathname);
@@ -74,7 +75,7 @@ export function parseChatContextFromPathname(options: {
   if (dmMatch) {
     const dmSlug = decodeURIComponent(dmMatch[1] ?? "");
     const userIds = parseDmSlugToUserIds(dmSlug);
-    const dmKey = dmRouteKey(userIds, currentUserId);
+    const dmKey = userIds.length > 0 ? dmRouteKey(userIds, currentUserId) : dmSlug;
     return { context: { type: "dm", dmKey }, streamTopicExplicitInUrl: false };
   }
 

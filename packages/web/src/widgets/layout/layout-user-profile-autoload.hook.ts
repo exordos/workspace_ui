@@ -1,21 +1,23 @@
 import { useEffect } from "react";
 import { useUserProfileStore } from "~/features/user-profile/user-profile.model";
+import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 
 export function useLayoutUserProfileAutoload(options: {
   currentInstanceId: string | null;
   rightDrawerOpen: boolean;
   rightDrawerMode: "info" | "settings" | "user-menu" | "about" | "builds";
-  rightDrawerTargetUserId: number | undefined;
+  rightDrawerTargetUserId: UserId | undefined;
 }): void {
   const { currentInstanceId, rightDrawerMode, rightDrawerTargetUserId, rightDrawerOpen } = options;
 
   useEffect(() => {
+    const numericTargetUserId = numericUserIdOrNull(rightDrawerTargetUserId);
     if (
       rightDrawerMode === "settings" ||
       rightDrawerMode === "user-menu" ||
       rightDrawerMode === "about" ||
       rightDrawerMode === "builds" ||
-      rightDrawerTargetUserId == null ||
+      numericTargetUserId == null ||
       !rightDrawerOpen
     ) {
       useUserProfileStore.getState().clear();
@@ -23,7 +25,7 @@ export function useLayoutUserProfileAutoload(options: {
     }
 
     const controller = new AbortController();
-    void useUserProfileStore.getState().loadProfile(rightDrawerTargetUserId, {
+    void useUserProfileStore.getState().loadProfile(numericTargetUserId, {
       signal: controller.signal,
     });
     return () => {

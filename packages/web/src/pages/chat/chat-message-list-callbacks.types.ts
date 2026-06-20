@@ -1,22 +1,23 @@
 import type { MessageReactionPayload, MockMessage } from "~/shared/api/messenger.types";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type { Dispatch, SetStateAction } from "react";
 import type { NavigateFunction } from "react-router-dom";
 
 export interface UseChatMessageListCallbacksParams {
   selectionMode: boolean;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   /** Active organization realm base URL for reply-quote permalinks */
   realmBaseUrl: string;
   streams: { stream_id: number; name: string }[];
   locationPathname: string;
   locationSearch: string;
   isDmView: boolean;
-  dmRecipientIds: number[];
+  dmRecipientIds: UserId[];
   resolvedStreamId: number | null;
   topicName: string | undefined;
   streamRouteTopic: string;
   navigate: NavigateFunction;
-  rightDrawer: { openUserProfile?: (userId: number) => void } | null;
+  rightDrawer: { openUserProfile?: (userId: UserId) => void } | null;
   setReplyQuote: Dispatch<
     SetStateAction<{
       id: number;

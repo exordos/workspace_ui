@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { resolvePersonalDmSidebarTitle } from "~/entities/chat-list/chat-list-format.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
-import { computeIsGroupDmView, normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
+import { normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
 import {
   getDmById,
   parseDmSlugToUserIds,
@@ -70,15 +70,11 @@ export function useLayoutRightDrawerContext(
     [rawDmUserIds, currentUserId],
   );
 
-  const isGroupDm = useMemo(
-    () => computeIsGroupDmView(dmChat, dmRecipientIds, currentUserId),
-    [dmChat, dmRecipientIds, currentUserId],
-  );
+  const isGroupDm = false;
 
   const partnerUserId = useMemo(() => {
-    if (isGroupDm) return undefined;
-    return dmRecipientIds[0] ?? dmChat?.id;
-  }, [isGroupDm, dmRecipientIds, dmChat?.id]);
+    return dmChat?.userUuid ?? dmRecipientIds[0] ?? dmChat?.id;
+  }, [dmRecipientIds, dmChat?.id, dmChat?.userUuid]);
 
   const partnerUserRecord = useUsersStore((s) =>
     partnerUserId != null ? s.getUser(partnerUserId) : undefined,
@@ -91,25 +87,15 @@ export function useLayoutRightDrawerContext(
 
   const dmParticipantIds = useMemo(() => {
     if (dmIdParam == null || dmIdParam === "") return [];
-    const isGroup = computeIsGroupDmView(dmChat, dmRecipientIds, currentUserId);
-
-    if (isGroup) {
-      if (dmChat?.userIds != null && dmChat.userIds.length > 0) {
-        return dmChat.userIds;
-      }
-      const raw =
-        dmChat != null ? parseDmSlugToUserIds(dmChat.slug) : parseDmSlugToUserIds(dmIdParam);
-      if (currentUserId != null) {
-        return Array.from(new Set([...raw, currentUserId]));
-      }
-      return raw;
+    if (dmChat?.userIds != null && dmChat.userIds.length > 0) {
+      return dmChat.userIds;
     }
-
-    if (currentUserId != null && dmRecipientIds.length > 0) {
-      return Array.from(new Set([...dmRecipientIds, currentUserId]));
+    const partnerId = dmChat?.userUuid ?? dmRecipientIds[0] ?? dmChat?.id;
+    if (currentUserId != null && partnerId != null) {
+      return Array.from(new Set([currentUserId, partnerId]));
     }
-    if (dmRecipientIds.length > 0) {
-      return dmRecipientIds;
+    if (partnerId != null) {
+      return [partnerId];
     }
     return parseDmSlugToUserIds(dmIdParam);
   }, [dmChat, dmIdParam, dmRecipientIds, currentUserId]);

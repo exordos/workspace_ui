@@ -1,3 +1,4 @@
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type { RightPanelUserInfo } from "~/widgets/right-panel/right-panel.types";
 
 export interface RightPanelCommonGroup {
@@ -13,7 +14,7 @@ export interface RightPanelPresenceLike {
 }
 
 export interface RightPanelUserFromStoreLike {
-  user_id?: number;
+  user_id?: UserId;
   full_name?: string;
   email?: string;
   avatar_url?: string | null;
@@ -48,7 +49,7 @@ export interface BuildRightPanelUserInfoOptions {
   userFromStore: RightPanelUserFromStoreLike | undefined;
   detailedProfile: RightPanelDetailedProfileLike | null | undefined;
   dmChat: RightPanelDmChatLike | undefined;
-  rightDrawerTargetUserId: number | null | undefined;
+  rightDrawerTargetUserId: UserId | null | undefined;
   userStatusLabel: string | undefined;
   currentInstanceRealm: string | undefined;
   media: RightPanelUserInfo["media"] | undefined;

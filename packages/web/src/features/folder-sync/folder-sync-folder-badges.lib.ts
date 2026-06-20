@@ -5,6 +5,7 @@
  * so rail counts stay in sync with the messenger API chat-list updates (not only Workspace folder poll).
  */
 import type { FolderItemForClient, WorkspaceFolderForRail } from "~/shared/api/workspace-client";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type { SidebarChat, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import {
   SYSTEM_ALL_FOLDER_ID,
@@ -12,14 +13,14 @@ import {
   SYSTEM_PERSONAL_FOLDER_ID,
 } from "./folder-sync-constants.lib";
 import { buildSelectedFolderSidebarChats, toChatIdSet } from "./folder-sync-sidebar-chats.lib";
-import type { FolderSyncUserLike } from "./folder-sync-chat-id.lib";
+import type { FolderSyncUsersMap } from "./folder-sync-chat-id.lib";
 
 export interface FolderUnreadBadgesInput {
   folderItemsByFolderId: ReadonlyMap<string, FolderItemForClient[]>;
   chatsSortedByLastMessage: readonly SidebarChat[];
   streamsMap: ReadonlyMap<number, StreamEntryInternal>;
-  usersMapForChatInfo: ReadonlyMap<number, FolderSyncUserLike>;
-  currentUserId: number | null;
+  usersMapForChatInfo: FolderSyncUsersMap;
+  currentUserId: UserId | null;
   hideUnknownArchivedStreams?: boolean;
   isStreamMuted?: (streamId: number) => boolean;
 }

@@ -110,24 +110,6 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
         </button>
         <button
           type="button"
-          ref={(node) => vm.setTabRef("group", node)}
-          role="tab"
-          id={vm.tabIds.group}
-          aria-selected={vm.tab === "group"}
-          aria-controls={vm.panelIds.group}
-          tabIndex={vm.tab === "group" ? 0 : -1}
-          className={`flex-1 whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors ${
-            vm.tab === "group"
-              ? "border-b-2 border-accent text-accent"
-              : "text-text-muted hover:text-text-primary"
-          }`}
-          onClick={() => vm.setTab("group")}
-          onKeyDown={(event) => vm.onTabKeyDown(event, "group")}
-        >
-          {t("dm.createGroup")}
-        </button>
-        <button
-          type="button"
           ref={(node) => vm.setTabRef("channels", node)}
           role="tab"
           id={vm.tabIds.channels}
@@ -225,52 +207,6 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                           )}
                         </span>
                       </button>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          )}
-
-          {vm.tab === "group" && (
-            <div
-              role="tabpanel"
-              id={vm.panelIds.group}
-              aria-labelledby={vm.tabIds.group}
-              className="flex flex-col gap-3"
-            >
-              <input
-                type="text"
-                value={vm.userSearch}
-                onChange={(e) => vm.setUserSearch(e.target.value)}
-                className={CREATE_CHAT_TEXT_INPUT_CLASS}
-                placeholder={t("message.searchUsers")}
-              />
-              <div className={CREATE_CHAT_USER_LIST_CLASS}>
-                {vm.groupUsers.length === 0 ? (
-                  <p className="px-3 py-4 text-center text-sm text-text-muted">
-                    {t(vm.userPickerEmptyLabelKey)}
-                  </p>
-                ) : (
-                  vm.groupUsers.map((u) => {
-                    return (
-                      <label key={u.userId} className={CREATE_CHAT_LIST_ROW_CLASS}>
-                        <input
-                          type="checkbox"
-                          checked={vm.groupSelectedUserIds.has(u.userId)}
-                          onChange={() => vm.toggleGroupUser(u.userId)}
-                          className="h-4 w-4 rounded border-border-subtle"
-                        />
-                        <PresenceIndicator status={u.presence} size="sm" />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate font-medium">{u.fullName}</span>
-                          {(u.statusLabel ?? u.email) && (
-                            <span className="block truncate text-[11px] text-text-secondary">
-                              {u.statusLabel ?? u.email}
-                            </span>
-                          )}
-                        </span>
-                      </label>
                     );
                   })
                 )}
@@ -499,26 +435,6 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
         </div>
 
         <div className={CREATE_CHAT_FOOTER_CLASS}>
-          {vm.tab === "group" && (
-            <>
-              <Dialog.Close asChild>
-                <button
-                  type="button"
-                  className="hover:bg-bg/50 rounded-lg px-3 py-1.5 text-sm text-text-muted"
-                >
-                  {t("common.cancel")}
-                </button>
-              </Dialog.Close>
-              <button
-                type="button"
-                disabled={vm.groupSelectedUserIds.size === 0}
-                onClick={vm.createGroup}
-                className="rounded-lg bg-accent px-3 py-1.5 text-sm text-bg hover:opacity-90 disabled:opacity-50"
-              >
-                {t("common.create")}
-              </button>
-            </>
-          )}
           {vm.tab === "channel" && (
             <>
               <Dialog.Close asChild>

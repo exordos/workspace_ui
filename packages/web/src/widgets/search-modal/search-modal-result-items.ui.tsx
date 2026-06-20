@@ -4,6 +4,7 @@ import { useUsersStore, type UserStatus } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import type { MockMessage } from "~/shared/api/messenger.types";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { SelectableRow } from "~/shared/ui/selectable-row.ui";
@@ -57,7 +58,7 @@ export const UserResultItem = React.memo(function UserResultItem({
   presenceState,
   onSelect,
 }: {
-  userId: number;
+  userId: UserId;
   fullName: string;
   email?: string;
   status?: UserStatus;
@@ -87,7 +88,7 @@ export const UserResultItem = React.memo(function UserResultItem({
             <span className="block truncate text-[11px] text-text-secondary">{secondaryText}</span>
           ) : null}
         </span>
-        <span className="ml-2 shrink-0 text-[11px] text-text-muted">#{userId}</span>
+        <span className="ml-2 shrink-0 text-[11px] text-text-muted">#{String(userId)}</span>
       </SelectableRow>
     </li>
   );

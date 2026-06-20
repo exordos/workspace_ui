@@ -1,23 +1,13 @@
 /**
- * zulip-js (messenger API) client cache and session-backed client.
+ * Messenger API REST client cache.
  * Internal module for shared/api and `messenger-*` modules.
  */
-import { Buffer } from "buffer";
-import messengerJsInitDefault from "zulip-js";
 import { t } from "~/i18n/i18n";
 import { getCurrentInstance } from "./client";
 import { messengerPipelineGet, messengerPipelinePost } from "./messenger-pipeline.internal";
 import { normalizeRealm as normalizeRealmUrl } from "./messenger-realm.internal";
 
-if (typeof (globalThis as unknown as { Buffer?: unknown }).Buffer === "undefined") {
-  (globalThis as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
-}
-
-const messengerJsInit = messengerJsInitDefault as unknown as (config: {
-  realm: string;
-  username: string;
-  apiKey: string;
-}) => Promise<{
+export interface WorkspaceClient {
   streams: {
     retrieve: (
       params?: Record<string, unknown>,
@@ -56,21 +46,9 @@ const messengerJsInit = messengerJsInitDefault as unknown as (config: {
       content: string;
     }) => Promise<{ id?: number }>;
   };
-}>;
-
-export type WorkspaceClient = Awaited<ReturnType<typeof messengerJsInit>>;
+}
 
 let clientCache: { instanceId: string; promise: Promise<WorkspaceClient> } | null = null;
-
-type SessionAuthInstance = NonNullable<ReturnType<typeof getCurrentInstance>> & {
-  authType: "session";
-};
-
-function isSessionAuthInstance(
-  instance: ReturnType<typeof getCurrentInstance>,
-): instance is SessionAuthInstance {
-  return instance?.authType === "session";
-}
 
 export function buildMessagesQueryParams(params: {
   narrow?: unknown;
@@ -92,8 +70,8 @@ export function buildMessagesQueryParams(params: {
   return query;
 }
 
-function createSessionClient(): Promise<WorkspaceClient> {
-  const sessionClient: WorkspaceClient = {
+function createRestClient(): Promise<WorkspaceClient> {
+  const restClient: WorkspaceClient = {
     streams: {
       retrieve: async () => {
         const res = await messengerPipelineGet("/streams");
@@ -182,7 +160,7 @@ function createSessionClient(): Promise<WorkspaceClient> {
       },
     },
   };
-  return Promise.resolve(sessionClient);
+  return Promise.resolve(restClient);
 }
 
 export function getClient(): Promise<WorkspaceClient> {
@@ -193,17 +171,7 @@ export function getClient(): Promise<WorkspaceClient> {
   if (clientCache?.instanceId === instance.id) {
     return clientCache.promise;
   }
-  if (isSessionAuthInstance(instance)) {
-    const promise = createSessionClient();
-    clientCache = { instanceId: instance.id, promise };
-    return promise;
-  }
-  const realm = instance.realm.replace(/\/api\/v1$/, "").replace(/\/+$/, "") || instance.realm;
-  const promise = messengerJsInit({
-    realm,
-    username: instance.login,
-    apiKey: instance.apiKey,
-  });
+  const promise = createRestClient();
   clientCache = { instanceId: instance.id, promise };
   return promise;
 }

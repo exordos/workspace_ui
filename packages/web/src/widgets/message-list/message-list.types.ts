@@ -4,6 +4,7 @@ import type {
   Reaction,
   RealmEmoji,
 } from "~/shared/api/messenger.types";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type { MessageBubbleCallbacks } from "./message-bubble.types";
 import type { MessageMediaGallery } from "./message-list-media.lib";
 
@@ -22,8 +23,8 @@ export interface MessageListCallbacks {
   onMessageOpenInChat?: (message: MockMessage) => void;
   onMessagePermalinkClick?: (href: string) => boolean;
   onTopicSeparatorClick?: (message: MockMessage) => void;
-  onMessageAuthorClick?: (userId: number) => void;
-  onOpenDirectMessage?: (userId: number) => void;
+  onMessageAuthorClick?: (userId: UserId) => void;
+  onOpenDirectMessage?: (userId: UserId) => void;
   onRetryFailedOutgoing?: (message: MockMessage) => void;
   onRemoveFailedOutgoing?: (message: MockMessage) => void;
   onRetryFailedEdit?: (message: MockMessage) => void;
@@ -33,7 +34,7 @@ export interface MessageListCallbacks {
 /** Props for grouped non-own messages (avatar column + bubbles). */
 export interface MessageListSenderGroupProps {
   messages: MockMessage[];
-  currentUserId?: number;
+  currentUserId?: UserId;
   bubbleCallbacks?: MessageBubbleCallbacks;
   selectionMode?: boolean;
   selectedMessageIds?: Set<number>;
@@ -49,7 +50,7 @@ export interface MessageListSenderGroupProps {
 
 export interface MessageListProps {
   messages: MockMessage[];
-  currentUserId?: number;
+  currentUserId?: UserId;
   /** When the key changes (chat/topic/DM), scroll resets to the latest messages */
   scrollToBottomKey?: string;
   /** Increment after the user sends a message to force scroll to the latest row */

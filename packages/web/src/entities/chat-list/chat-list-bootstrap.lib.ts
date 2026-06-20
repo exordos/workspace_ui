@@ -9,14 +9,22 @@ import {
 } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import {
+  compareUserIds,
+  isUserIdentityReady,
+  numericUserIdOrNull,
+  type UserId,
+  userIdStorageKey,
+  userIdsEqual,
+} from "~/shared/lib/user-id.lib";
 import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import { formatMessageTime, GROUP_DM_ID_OFFSET, hashKey, slugify } from "./chat-list-format.lib";
 import { buildSidebarFromMessages, isUnreadFromOthers } from "./chat-list.lib";
 import type { ChatListDmMetadataRow, MessageLocation } from "./chat-list.model.types";
 
 export interface ChatListDmBootstrapDisplayContext {
-  getParticipantDisplayName: (userId: number) => string;
-  getAvatarUrl: (userId: number) => string | undefined;
+  getParticipantDisplayName: (userId: UserId) => string;
+  getAvatarUrl: (userId: UserId) => string | undefined;
   groupChatFallbackLabel: string;
 }
 
@@ -28,7 +36,7 @@ export function clearBootstrapErrorPatch(): { bootstrapError: null } {
 /** Builds message id → sidebar location index from a bootstrap message batch. */
 export function buildMessageIdToLocation(
   messages: readonly WorkspaceRawMessage[],
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): Map<number, MessageLocation> {
   const map = new Map<number, MessageLocation>();
   for (const m of messages) {
@@ -46,7 +54,7 @@ export function buildMessageIdToLocation(
 /** Unread-only location map for bootstrap unread reconcile from message snapshots. */
 export function buildUnreadLocationMap(
   messages: readonly WorkspaceRawMessage[],
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): Map<number, MessageLocation> {
   const map = new Map<number, MessageLocation>();
   for (const message of messages) {
@@ -120,59 +128,67 @@ export function mergeBootstrapStreamsWithPreviousMetadata(
 
 /** Normalizes DM participant ids; injects current user for metadata-only 1:1 rows. */
 export function normalizeDmUserIds(
-  userIds: readonly number[],
-  currentUserId: number | null,
-): number[] {
-  const uniqueSorted = Array.from(
-    new Set(userIds.filter((id) => Number.isInteger(id) && id > 0)),
-  ).sort((left, right) => left - right);
+  userIds: readonly UserId[],
+  currentUserId: UserId | null,
+): UserId[] {
+  const uniqueByKey = new Map<string, UserId>();
+  for (const userId of userIds) {
+    if (!isUserIdentityReady(userId)) continue;
+    uniqueByKey.set(userIdStorageKey(userId), userId);
+  }
+  const uniqueSorted = Array.from(uniqueByKey.values()).sort(compareUserIds);
   if (
     currentUserId != null &&
+    isUserIdentityReady(currentUserId) &&
     uniqueSorted.length === 1 &&
     uniqueSorted[0] != null &&
-    uniqueSorted[0] !== currentUserId
+    !userIdsEqual(uniqueSorted[0], currentUserId)
   ) {
-    return [currentUserId, uniqueSorted[0]].sort((left, right) => left - right);
+    return [currentUserId, uniqueSorted[0]].sort(compareUserIds);
   }
   return uniqueSorted;
+}
+
+function metadataOnlySyntheticDmId(row: ChatListDmMetadataRow): number {
+  return GROUP_DM_ID_OFFSET + hashKey(row.streamUuid ?? row.userUuid ?? row.name ?? "dm");
 }
 
 /** Builds or merges a metadata-only DM sidebar row (register / DM index bootstrap). */
 export function buildDmMetadataEntry(
   row: ChatListDmMetadataRow,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
   existing: DmEntryInternal | undefined,
   display: ChatListDmBootstrapDisplayContext,
 ): { key: string; entry: DmEntryInternal } | null {
   const userIds = normalizeDmUserIds(row.userIds, currentUserId);
-  if (userIds.length === 0) return null;
-  const key = userIds.join(",");
+  if (userIds.length === 0 && row.streamUuid == null && row.userUuid == null) return null;
+  const key =
+    row.streamUuid != null ? `stream:${row.streamUuid}` : userIds.map(userIdStorageKey).join(",");
   const participants =
-    currentUserId != null ? userIds.filter((userId) => userId !== currentUserId) : userIds;
+    currentUserId != null
+      ? userIds.filter((userId) => !userIdsEqual(userId, currentUserId))
+      : userIds;
   const ts = Math.max(existing?.ts ?? 0, row.lastActivityTs ?? 0);
   const time = ts > 0 ? formatMessageTime(ts) : (existing?.time ?? "");
   const lastMessageId = row.lastMessageId ?? existing?.lastMessageId;
   const unreadCount = row.unreadCount ?? existing?.unreadCount ?? 0;
-  const isGroup = participants.length > 1;
+  const hasTooManyKnownPeers =
+    currentUserId != null ? participants.length > 1 : participants.length > 2;
 
-  if (isGroup) {
-    const names = participants.map((userId) => display.getParticipantDisplayName(userId));
-    const groupName =
-      names.filter((name) => name.trim().length > 0).join(", ") || display.groupChatFallbackLabel;
-    const slug = userIds
-      .map((userId) => `${userId}-${slugify(display.getParticipantDisplayName(userId))}`)
-      .join(",");
+  if (userIds.length === 0) {
+    const name = row.name?.trim() || display.groupChatFallbackLabel;
     return {
       key,
       entry: {
-        id: GROUP_DM_ID_OFFSET + hashKey(key),
-        name: groupName,
-        slug,
-        isGroup: true,
+        id: metadataOnlySyntheticDmId(row),
+        name,
+        slug: row.streamUuid ?? row.userUuid ?? String(metadataOnlySyntheticDmId(row)),
+        isGroup: false,
         lastMessage: existing?.lastMessage ?? "",
         time,
         ts,
-        userIds,
+        ...(row.streamUuid != null ? { streamUuid: row.streamUuid } : {}),
+        ...(row.userUuid != null ? { userUuid: row.userUuid } : {}),
         unreadCount,
         avatar_url: existing?.avatar_url,
         lastMessageId,
@@ -180,20 +196,28 @@ export function buildDmMetadataEntry(
     };
   }
 
+  if (hasTooManyKnownPeers) {
+    return null;
+  }
+
   const partnerId = participants[0] ?? userIds[0];
   if (partnerId == null) return null;
-  const name = display.getParticipantDisplayName(partnerId);
+  const name = row.name?.trim() || display.getParticipantDisplayName(partnerId);
+  const numericPartnerId = numericUserIdOrNull(partnerId);
+  const entryId = numericPartnerId ?? metadataOnlySyntheticDmId(row);
   return {
     key,
     entry: {
-      id: partnerId,
+      id: entryId,
       name,
-      slug: `${partnerId}-${slugify(name)}`,
+      slug: row.streamUuid ?? `${userIdStorageKey(partnerId)}-${slugify(name)}`,
       isGroup: false,
       lastMessage: existing?.lastMessage ?? "",
       time,
       ts,
       userIds,
+      ...(row.streamUuid != null ? { streamUuid: row.streamUuid } : {}),
+      ...(row.userUuid != null ? { userUuid: row.userUuid } : {}),
       unreadCount,
       avatar_url: display.getAvatarUrl(partnerId) ?? existing?.avatar_url,
       lastMessageId,
@@ -210,7 +234,7 @@ export interface ChatListDmMetadataUpsertPatch {
 /** Pure upsert for metadata-only DM rows; returns null when maps are unchanged. */
 export function buildDmMetadataUpsertPatch(
   rows: readonly ChatListDmMetadataRow[],
-  currentUserId: number | null,
+  currentUserId: UserId | null,
   existingDmsMap: Map<string, DmEntryInternal>,
   display: ChatListDmBootstrapDisplayContext,
 ): ChatListDmMetadataUpsertPatch | null {
@@ -242,6 +266,9 @@ export function buildDmMetadataRowsFromDmsMap(
 ): ChatListDmMetadataRow[] {
   return Array.from(dmsMap.values()).map((entry) => ({
     userIds: entry.userIds ?? [entry.id],
+    name: entry.name,
+    ...(entry.streamUuid != null ? { streamUuid: entry.streamUuid } : {}),
+    ...(entry.userUuid != null ? { userUuid: entry.userUuid } : {}),
     lastActivityTs: entry.ts,
     lastMessageId: entry.lastMessageId ?? null,
     unreadCount: entry.unreadCount,
@@ -252,7 +279,7 @@ export interface SetFromMessagesBootstrapState {
   streamsMap: Map<number, StreamEntryInternal>;
   dmsMap: Map<string, DmEntryInternal>;
   sidebarDataHydrated: true;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   lastAppliedMessages: WorkspaceRawMessage[];
   messageIdToLocation: Map<number, MessageLocation>;
   bootstrapError: null;
@@ -261,7 +288,7 @@ export interface SetFromMessagesBootstrapState {
 /** Builds store fields for full sidebar rebuild from a message history batch. */
 export function buildSetFromMessagesBootstrapState(
   messages: WorkspaceRawMessage[],
-  currentUserId: number | null,
+  currentUserId: UserId | null,
   previousStreamsMap: Map<number, StreamEntryInternal>,
   avatarMap: Map<number, string | undefined>,
 ): SetFromMessagesBootstrapState {
@@ -294,14 +321,14 @@ export interface ChatListHydrateFromSnapshotState {
   sidebarDataHydrated: boolean;
   streamMetadataHydrated: false;
   messageIdToLocation: Map<number, MessageLocation>;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   lastAppliedMessages: null;
 }
 
 /** Deserializes IndexedDB snapshot into chat-list bootstrap state fields. */
 export function buildChatListHydrateFromSnapshotState(
   snapshot: ChatListSnapshotSerialized,
-  fallbackCurrentUserId: number | null,
+  fallbackCurrentUserId: UserId | null,
 ): ChatListHydrateFromSnapshotState {
   const streamsMap = new Map<number, StreamEntryInternal>();
   for (const [id, s] of snapshot.streamsEntries) {

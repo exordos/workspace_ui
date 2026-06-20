@@ -7,6 +7,7 @@ import { dmRouteKey } from "~/shared/lib/dm-key";
 import { parseDmRouteParticipantIds } from "~/shared/lib/dm-route-slug.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { encodeTopicForRoute, normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 
 export type MessengerNarrowPermalinkKind = "dm" | "stream";
 
@@ -185,8 +186,8 @@ export function isSameRealmAsPermalink(
 export interface SameChatAsNarrowPermalinkParams {
   parsed: ParsedMessengerNarrowPermalink;
   isDmView: boolean;
-  currentUserId: number | null;
-  dmRecipientIds: number[];
+  currentUserId: UserId | null;
+  dmRecipientIds: UserId[];
   resolvedStreamId: number | null;
   topicName: string | undefined;
   streamRouteTopic: string;
@@ -221,7 +222,7 @@ export function isSameChatAsNarrowPermalink(params: SameChatAsNarrowPermalinkPar
 
 export interface BuildRouteFromMessengerNarrowPermalinkParams {
   parsed: ParsedMessengerNarrowPermalink;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   resolveStreamName: (streamId: number) => string | undefined;
 }
 
@@ -237,9 +238,10 @@ export function buildRouteFromMessengerNarrowPermalink(
     const routeKey = dmRouteKey(parsed.dmParticipantIds, currentUserId);
     const routeUserIds = routeKey.split(",").map((raw) => Number(raw));
     if (routeUserIds.some((id) => !Number.isSafeInteger(id) || id <= 0)) return null;
+    const numericCurrentUserId = numericUserIdOrNull(currentUserId);
     const others =
-      currentUserId != null
-        ? routeUserIds.filter((userId) => userId !== currentUserId)
+      numericCurrentUserId != null
+        ? routeUserIds.filter((userId) => userId !== numericCurrentUserId)
         : routeUserIds;
     const dmSlugSegment =
       others.length > 0

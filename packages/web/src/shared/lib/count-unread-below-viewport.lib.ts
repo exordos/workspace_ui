@@ -1,4 +1,5 @@
 import type { MockMessage } from "~/shared/api/messenger.types";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import { isUnreadMessageFromOthers } from "./message-unread-boundary.lib";
 
 /** True when the message bubble starts at or below the scroll root bottom edge. */
@@ -16,7 +17,7 @@ export function isMessageNodeBelowViewport(
 export function countUnreadMessagesBelowViewport(
   root: HTMLElement,
   messages: readonly MockMessage[],
-  currentUserId: number | null | undefined,
+  currentUserId: UserId | null | undefined,
 ): number {
   const rootRect = root.getBoundingClientRect();
   let count = 0;

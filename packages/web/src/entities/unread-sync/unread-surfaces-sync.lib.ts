@@ -10,6 +10,7 @@ import {
   logSidebarUnreadFlow,
   summarizeSidebarUnreadTotals,
 } from "~/shared/lib/sidebar-unread-debug.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import {
   computeInstanceDmUnreadCount,
   computeInstanceUnreadCount,
@@ -28,7 +29,7 @@ export type UnreadSurfaceSyncSource =
 export interface SyncUnreadSurfacesFromSnapshotOptions {
   source: UnreadSurfaceSyncSource;
   instanceId: string | null;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   snapshot: MessengerUnreadMessagesSnapshot;
   messages?: readonly WorkspaceRawMessage[];
   applyChatList?: boolean;

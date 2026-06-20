@@ -1,4 +1,5 @@
 import type { CurrentChatContext } from "~/entities/message/message.model.types";
+import type { UserId } from "~/shared/lib/user-id.lib";
 
 export interface TopicResolveTarget {
   streamId: number;
@@ -18,7 +19,7 @@ export interface MarkTopicResolvedVisibility {
   blockers: MarkTopicResolvedBlocker[];
   hasTarget: boolean;
   hasStreamSlug: boolean;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   streamId: number | null;
   streamNameFromMap: string;
   streamNameFromContext: string;
@@ -42,7 +43,7 @@ export function resolveEffectiveStreamName(
 
 export function resolveMarkTopicResolvedVisibility(options: {
   context: CurrentChatContext | null;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   streamNameFromMap: string;
   buildStreamSlug: (streamId: number, streamName: string) => string;
 }): MarkTopicResolvedVisibility {
@@ -103,7 +104,7 @@ export function resolveMarkTopicResolvedVisibilityForTopic(options: {
   streamId: number;
   topic: string;
   streamName: string;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   buildStreamSlug: (streamId: number, streamName: string) => string;
 }): MarkTopicResolvedVisibility {
   const { streamId, topic, streamName, currentUserId, buildStreamSlug } = options;

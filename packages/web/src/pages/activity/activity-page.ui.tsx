@@ -96,7 +96,7 @@ const DraftChatContextLabel = React.memo<{ draft: Draft }>(({ draft }) => {
       streamsMap,
       currentUserId,
       getUserDisplayName: (userId) => {
-        const name = s.users.get(userId)?.full_name?.trim();
+        const name = s.getUser(userId)?.full_name?.trim();
         return name != null && name.length > 0 ? name : "Unknown";
       },
       generalChatLabel: t("chat.generalChat"),

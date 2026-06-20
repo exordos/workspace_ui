@@ -15,7 +15,8 @@ import {
   messengerTopicNarrowOperandForApi,
 } from "~/shared/lib/messenger-topic-narrow.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
-import { getClient, buildMessagesQueryParams } from "./messenger-client.internal";
+import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
+import { buildMessagesQueryParams } from "./messenger-client.internal";
 import {
   mockMessageFromGetMessageApiData,
   rawMessageToMockMessage,
@@ -177,21 +178,26 @@ async function fetchMessagesByIdsFallback(messageIds: number[]): Promise<Workspa
   return results;
 }
 
-function getActivityNarrow(filter: ActivityFilter, currentUserId?: number | null): NarrowEntry[] {
+function getActivityNarrow(filter: ActivityFilter, currentUserId?: UserId | null): NarrowEntry[] {
   switch (filter) {
     case "starred":
       return [{ negated: false, operator: "is", operand: "starred" }];
     case "mentions":
       return [{ negated: false, operator: "is", operand: "mentioned" }];
-    case "reactions":
+    case "reactions": {
+      const numericCurrentUserId = numericUserIdOrNull(currentUserId);
+      if (numericCurrentUserId == null) {
+        return [];
+      }
       return [
         { negated: false, operator: "has", operand: "reaction" },
         {
           negated: false,
           operator: "sender",
-          operand: guard.userId(currentUserId, "fetchActivityMessagesPage.currentUserId"),
+          operand: guard.userId(numericCurrentUserId, "fetchActivityMessagesPage.currentUserId"),
         },
       ];
+    }
     default:
       return [];
   }
@@ -276,7 +282,7 @@ export async function fetchMessagesAfterAnchor(
 /** Activity section narrows: starred, mentions, and reactions. */
 export async function fetchActivityMessages(
   filter: ActivityFilter,
-  currentUserId?: number | null,
+  currentUserId?: UserId | null,
   anchor: number | "newest" = "newest",
   numBefore = 200,
   options?: { signal?: AbortSignal },
@@ -287,7 +293,7 @@ export async function fetchActivityMessages(
 
 export async function fetchActivityMessagesPage(
   filter: ActivityFilter,
-  currentUserId?: number | null,
+  currentUserId?: UserId | null,
   anchor: number | "newest" = "newest",
   numBefore = 200,
   options?: { signal?: AbortSignal },
@@ -295,6 +301,9 @@ export async function fetchActivityMessagesPage(
   const normalizedAnchor =
     anchor === "newest" ? anchor : guard.messageId(anchor, "fetchActivityMessagesPage.anchor");
   const narrow = getActivityNarrow(filter, currentUserId);
+  if (filter === "reactions" && narrow.length === 0) {
+    return { messages: [], foundOldest: true };
+  }
   if (options?.signal?.aborted) {
     throw new DOMException("Aborted", "AbortError");
   }
@@ -421,7 +430,7 @@ async function fetchMessagesWithNarrowPageViaPipeline(args: {
   validatedNumBefore: number;
   validatedNumAfter: number;
   applyMarkdown: boolean;
-  signal: AbortSignal;
+  signal?: AbortSignal;
 }): Promise<MessagesPageResult> {
   const query = buildMessagesQueryParams({
     narrow: args.apiNarrow.length > 0 ? args.apiNarrow : undefined,
@@ -436,30 +445,9 @@ async function fetchMessagesWithNarrowPageViaPipeline(args: {
     throw new Error(t("app.errorStatus", { status: String(response.status) }));
   }
   const data = response.data as Parameters<typeof mapMessagesPageFromApiData>[0];
-  if (args.signal.aborted) {
+  if (args.signal?.aborted) {
     throw new DOMException("Aborted", "AbortError");
   }
-  return mapMessagesPageFromApiData(
-    data,
-    args.applyMarkdown ? mapMessengerMessage : mapMarkdownModeMessengerMessage,
-  );
-}
-
-async function fetchMessagesWithNarrowPageViaClient(args: {
-  apiNarrow: { operator: string; operand: string | number | number[] }[];
-  validatedAnchor: string | number;
-  validatedNumBefore: number;
-  validatedNumAfter: number;
-  applyMarkdown: boolean;
-}): Promise<MessagesPageResult> {
-  const client = await getClient();
-  const data = (await client.messages.retrieve({
-    narrow: args.apiNarrow.length > 0 ? args.apiNarrow : undefined,
-    anchor: args.validatedAnchor,
-    num_before: args.validatedNumBefore,
-    num_after: args.validatedNumAfter,
-    apply_markdown: args.applyMarkdown,
-  })) as Parameters<typeof mapMessagesPageFromApiData>[0];
   return mapMessagesPageFromApiData(
     data,
     args.applyMarkdown ? mapMessengerMessage : mapMarkdownModeMessengerMessage,
@@ -483,23 +471,13 @@ export async function fetchMessagesWithNarrowPage(
     throw new DOMException("Aborted", "AbortError");
   }
   try {
-    if (options?.signal) {
-      return await fetchMessagesWithNarrowPageViaPipeline({
-        apiNarrow,
-        validatedAnchor,
-        validatedNumBefore,
-        validatedNumAfter,
-        applyMarkdown,
-        signal: options.signal,
-      });
-    }
-
-    return await fetchMessagesWithNarrowPageViaClient({
+    return await fetchMessagesWithNarrowPageViaPipeline({
       apiNarrow,
       validatedAnchor,
       validatedNumBefore,
       validatedNumAfter,
       applyMarkdown,
+      signal: options?.signal,
     });
   } catch (error) {
     if (isAbortError(error) || options?.signal?.aborted) {
@@ -616,35 +594,26 @@ export async function fetchDmMessages(
     apply_markdown: true,
   };
   try {
-    if (options?.signal) {
-      const response = await messengerPipelineGet(
-        "/messages",
-        buildMessagesQueryParams({
-          narrow: params.narrow,
-          anchor: params.anchor,
-          num_before: params.num_before,
-          num_after: params.num_after,
-        }),
-        options.signal,
-      );
-      throwIfWorkspacePipelineGetNull(response, options.signal);
-      if (!response.ok) {
-        throw new Error(t("app.errorStatus", { status: String(response.status) }));
-      }
-      const data = response.data as { result?: string; messages?: RawMessageToMockInput[] };
-      if (data.result === "error") return [];
-      if (options.signal.aborted) {
-        throw new DOMException("Aborted", "AbortError");
-      }
-      return (data.messages ?? []).map(rawMessageToMockMessage);
+    const response = await messengerPipelineGet(
+      "/messages",
+      buildMessagesQueryParams({
+        narrow: params.narrow,
+        anchor: params.anchor,
+        num_before: params.num_before,
+        num_after: params.num_after,
+      }),
+      options?.signal,
+    );
+    throwIfWorkspacePipelineGetNull(response, options?.signal);
+    if (!response.ok) {
+      throw new Error(t("app.errorStatus", { status: String(response.status) }));
     }
-
-    const client = await getClient();
-    const data = await client.messages.retrieve(params);
-    const raw = data as { result?: string; messages?: RawMessageToMockInput[] };
-    if (raw.result === "error") return [];
-    const list = raw.messages ?? [];
-    return list.map(rawMessageToMockMessage);
+    const data = response.data as { result?: string; messages?: RawMessageToMockInput[] };
+    if (data.result === "error") return [];
+    if (options?.signal?.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
+    return (data.messages ?? []).map(rawMessageToMockMessage);
   } catch (error) {
     if (isAbortError(error) || options?.signal?.aborted) {
       throw error;

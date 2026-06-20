@@ -1,5 +1,6 @@
 import type { MockMessage, Reaction } from "~/shared/api/messenger.types";
 import type { LinkPreviewData } from "~/shared/lib/message-link-preview.types";
+import type { UserId } from "~/shared/lib/user-id.lib";
 
 export type DmMessagesAppliedSource = "cache" | "api";
 
@@ -92,7 +93,7 @@ export interface CurrentChatMessagesState {
   loadInitialMessagesForContext: (options: {
     context: CurrentChatContext;
     focusedMessageId: number | null;
-    currentUserId: number | null;
+    currentUserId: UserId | null;
     /** Fired once cache-first payload is in store — use to hide blocking loader while API refresh runs. */
     onCacheHydrated?: () => void;
     /** Aborts in-flight initial load on fast route switches so stale requests do not compete. */
@@ -104,10 +105,10 @@ export interface CurrentChatMessagesState {
   }) => Promise<void>;
   loadOlderBoundaryPage: (options: {
     pageSize: number;
-    currentUserId: number | null;
+    currentUserId: UserId | null;
   }) => Promise<void>;
   loadNewerBoundaryPage: (options: {
     pageSize: number;
-    currentUserId: number | null;
+    currentUserId: UserId | null;
   }) => Promise<void>;
 }

@@ -1,4 +1,5 @@
 import type { UserRecord } from "~/entities/user/user.model";
+import { compareUserIds, userIdStorageKey, userIdsEqual } from "~/shared/lib/user-id.lib";
 import { areCustomProfileDataEqual } from "~/shared/lib/user-profile-fields.lib";
 import type {
   ChatInfoContext,
@@ -20,7 +21,10 @@ export function getChatInfoNetworkKey(context: ChatInfoContext): string {
   if (context.kind === "stream") {
     return `stream:${context.instanceId}:${context.streamId}`;
   }
-  const participantKey = [...context.participantIds].sort((a, b) => a - b).join(",");
+  const participantKey = [...context.participantIds]
+    .sort(compareUserIds)
+    .map(userIdStorageKey)
+    .join(",");
   return `dm:${context.instanceId}:${participantKey}`;
 }
 
@@ -52,9 +56,9 @@ export function buildDmChatInfoData(
   memberCount = participants.length,
 ): ChatInfoData {
   // Dedupe members; online count only from loaded user records.
-  const uniqueParticipants = new Map<number, UserRecord>();
+  const uniqueParticipants = new Map<string, UserRecord>();
   for (const participant of participants) {
-    uniqueParticipants.set(participant.user_id, participant);
+    uniqueParticipants.set(userIdStorageKey(participant.user_id), participant);
   }
   const members = Array.from(uniqueParticipants.values()).map(mapMember);
   return {
@@ -105,7 +109,7 @@ function areMembersEqual(a: ChatInfoMember[], b: ChatInfoMember[]): boolean {
     const left = a[i]!;
     const right = b[i]!;
     if (
-      left.userId !== right.userId ||
+      !userIdsEqual(left.userId, right.userId) ||
       left.fullName !== right.fullName ||
       left.email !== right.email ||
       left.avatarUrl !== right.avatarUrl ||

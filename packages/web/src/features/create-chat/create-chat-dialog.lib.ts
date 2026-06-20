@@ -1,4 +1,4 @@
-const CREATE_CHAT_TABS = ["dm", "group", "channels", "channel", "archived"] as const;
+const CREATE_CHAT_TABS = ["dm", "channels", "channel", "archived"] as const;
 export type CreateChatTab = (typeof CREATE_CHAT_TABS)[number];
 
 import type { UserId } from "~/shared/lib/user-id.lib";

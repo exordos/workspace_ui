@@ -20,6 +20,7 @@ import { useOpenSearch } from "~/shared/contexts/open-search";
 import { formatMessageTimeShort } from "~/shared/lib/datetime.lib";
 import { createLogger } from "~/shared/lib/logger";
 import { useCacheFirstPageLoad } from "~/shared/lib/use-cache-first-page.hook";
+import { numericUserIdOrNull } from "~/shared/lib/user-id.lib";
 import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
 import { Icon } from "~/shared/ui/icon";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
@@ -66,6 +67,7 @@ export const InboxPage: React.FC = () => {
   const navigate = useNavigate();
   const openSearch = useOpenSearch();
   const currentUserId = useChatListStore((s) => s.currentUserId ?? null);
+  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const loading = useInboxStore((s) => s.isInitialLoading);
   const isRefreshing = useInboxStore((s) => s.isRefreshing);
@@ -108,7 +110,7 @@ export const InboxPage: React.FC = () => {
       lastInstanceIdRef.current = instanceId;
     },
     hydrate: async ({ instanceId, signal, orgContext }) => {
-      const cached = await hydrateInboxEntriesFromCache(instanceId, currentUserId, {
+      const cached = await hydrateInboxEntriesFromCache(instanceId, numericCurrentUserId, {
         isStreamMuted,
         isEffectivelyMuted,
       });
@@ -125,7 +127,7 @@ export const InboxPage: React.FC = () => {
     startRequest: (hasCached) => startRequest(hasCached),
     fetch: async ({ instanceId, orgContext, requestVersion, signal }) => {
       const data = await fetchInboxEntriesWithSnapshot(
-        currentUserId,
+        numericCurrentUserId,
         { isStreamMuted, isEffectivelyMuted },
         { signal },
       );

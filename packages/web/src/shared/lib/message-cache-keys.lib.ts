@@ -9,6 +9,7 @@
 import type { MockMessage, WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 
 /** Narrow context shape for cache keys (compatible with `CurrentChatContext`). */
 export type MessageCacheChatContext =
@@ -30,7 +31,7 @@ export function chatKeyFromContext(context: MessageCacheChatContext): string {
 
 export function chatKeyFromRawMessage(
   raw: WorkspaceRawMessage,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): string | null {
   if (raw.type === "stream" && raw.stream_id != null) {
     const topic = normalizeTopicForIdentity(raw.subject ?? "");
@@ -44,7 +45,7 @@ export function chatKeyFromRawMessage(
 
 export function chatKeyFromMockMessage(
   msg: MockMessage,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): string | null {
   if (msg.stream_id != null) {
     const topic = normalizeTopicForIdentity(msg.subject ?? "");

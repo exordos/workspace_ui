@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createLogger } from "~/shared/lib/logger";
 import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
+import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 import { requestUserStatus, type RequestUserStatusOptions } from "./api/user.api";
 import {
   formatUserStatusLabel,
@@ -46,20 +47,21 @@ export function selectUserStatusSnapshot(user: UserRecord | undefined): UserStat
 }
 
 export function useUserStatus(
-  userId: number | undefined | null,
+  userId: UserId | undefined | null,
   options?: UseUserStatusOptions,
 ): UserStatusSnapshot {
   const user = useUsersStore((state) => (userId != null ? state.getUser(userId) : undefined));
   const snapshot = useMemo(() => selectUserStatusSnapshot(user), [user]);
 
   useEffect(() => {
-    if (userId == null || options?.requestOnMissing !== true) {
+    const numericUserId = numericUserIdOrNull(userId);
+    if (numericUserId == null || options?.requestOnMissing !== true) {
       return;
     }
     if (snapshot.hasStatus || snapshot.fetchState === "loading") {
       return;
     }
-    void requestUserStatus(userId, {
+    void requestUserStatus(numericUserId, {
       reason: options.reason ?? "compat",
       priority: options.priority ?? "low",
     });

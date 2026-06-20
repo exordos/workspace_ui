@@ -1,3 +1,5 @@
+import type { UserId } from "~/shared/lib/user-id.lib";
+
 /** User data for the DM info panel */
 export interface RightPanelUserInfo {
   name: string;
@@ -5,7 +7,7 @@ export interface RightPanelUserInfo {
   status?: string;
   /** Full avatar URL (or relative path — realm will be prepended) */
   avatarUrl?: string | null;
-  userId?: number;
+  userId?: UserId;
   email?: string;
   phone?: string;
   username?: string;
@@ -34,7 +36,7 @@ export interface RightPanelProps {
   /** Navigation callback for common group items */
   onSelectCommonGroup?: (slug: string) => void;
   /** Optional callback to open a direct message with the profile user */
-  onOpenDirectMessage?: (userId: number) => void;
+  onOpenDirectMessage?: (userId: UserId) => void;
   /** Backward-compatible callback for legacy settings opener */
   onOpenSettingsDrawer?: () => void;
   /** Optional callback used by authenticated user menu mode */

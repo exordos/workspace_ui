@@ -1717,13 +1717,13 @@ describe("chatListStore", () => {
       expect(useChatListStore.getState().streams().length).toBeGreaterThanOrEqual(1);
     });
 
-    it("rebuilds metadata-only DM rows when userId arrives late", () => {
+    it("keeps metadata-only DM rows personal when userId arrives late", () => {
       useUsersStore.getState().mergeUser({ user_id: 10, full_name: "Alice", email: "a@x.test" });
       useUsersStore.getState().mergeUser({ user_id: 20, full_name: "Bob", email: "b@x.test" });
       useChatListStore.getState().upsertDmMetadataRows([{ userIds: [10, 20], unreadCount: 1 }]);
 
       const before = [...useChatListStore.getState().dmsMap.values()][0];
-      expect(before?.isGroup).toBe(true);
+      expect(before?.isGroup).toBe(false);
 
       useChatListStore.getState().setCurrentUserId(10);
 

@@ -16,12 +16,14 @@ import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
 import type { MessengerUnreadMessagesSnapshot } from "~/shared/api/messenger-unread.lib";
 import type {
+  MessengerMeStream,
   RegisterQueueResult,
   MessengerRecentPrivateConversation,
   MessengerSubscription,
 } from "~/shared/api/messenger.types";
 import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
+import { numericUserIdOrNull, userIdStorageKey, type UserId } from "~/shared/lib/user-id.lib";
 import { setCachedRegisterUnreadSnapshot } from "./layout-instance-register-unread.lib";
 import { createRegisterMuteSnapshotAppliedMarker } from "./layout-messenger-event-loop-bootstrap.lib";
 import {
@@ -79,6 +81,61 @@ export function toStreamMetadataRows(
     });
 }
 
+function parseIsoTimestampSeconds(value: string | undefined): number | undefined {
+  if (value == null) {
+    return undefined;
+  }
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms) || ms <= 0) {
+    return undefined;
+  }
+  return Math.floor(ms / 1000);
+}
+
+export function toSubscriptionsFromMeStreams(
+  streams: readonly MessengerMeStream[],
+): MessengerSubscription[] {
+  return streams
+    .filter(
+      (stream): stream is MessengerMeStream & { stream_id: number } =>
+        !stream.private &&
+        typeof stream.stream_id === "number" &&
+        Number.isInteger(stream.stream_id) &&
+        stream.stream_id > 0,
+    )
+    .map((stream) => ({
+      stream_id: stream.stream_id,
+      stream_uuid: stream.stream_uuid,
+      name: stream.name,
+      is_muted: false,
+      invite_only: stream.invite_only,
+    }));
+}
+
+export function toDmMetadataRowsFromMeStreams(
+  streams: readonly MessengerMeStream[],
+): ChatListDmMetadataRow[] {
+  const rows: ChatListDmMetadataRow[] = [];
+  for (const stream of streams) {
+    if (!stream.private || stream.user_uuid == null) {
+      continue;
+    }
+    const lastActivityTs =
+      parseIsoTimestampSeconds(stream.last_synced_at) ??
+      parseIsoTimestampSeconds(stream.updated_at) ??
+      parseIsoTimestampSeconds(stream.created_at);
+    rows.push({
+      userIds: [],
+      streamUuid: stream.stream_uuid,
+      userUuid: stream.user_uuid,
+      name: stream.name,
+      ...(lastActivityTs != null ? { lastActivityTs } : {}),
+      unreadCount: 0,
+    });
+  }
+  return rows;
+}
+
 export function toDmMetadataRowsFromRecentConversations(
   conversations: Record<string, MessengerRecentPrivateConversation> | undefined,
 ): ChatListDmMetadataRow[] {
@@ -87,7 +144,11 @@ export function toDmMetadataRowsFromRecentConversations(
   }
   const rows: ChatListDmMetadataRow[] = [];
   for (const conversation of Object.values(conversations)) {
-    if (!Array.isArray(conversation.user_ids) || conversation.user_ids.length === 0) {
+    if (
+      !Array.isArray(conversation.user_ids) ||
+      conversation.user_ids.length === 0 ||
+      conversation.user_ids.length > 2
+    ) {
       continue;
     }
     rows.push({
@@ -122,18 +183,18 @@ function applyRegisterUserStatusSnapshot(
   }
 
   const fetchedAt = Date.now();
-  const snapshotUserIds = new Set<number>();
+  const snapshotUserIds = new Set<string>();
 
   for (const entry of snapshot) {
     if (useUsersStore.getState().getUser(entry.userId) == null) {
       continue;
     }
-    snapshotUserIds.add(entry.userId);
+    snapshotUserIds.add(userIdStorageKey(entry.userId));
     applyUserStatusSnapshot(entry.userId, entry.status, fetchedAt);
   }
 
   for (const user of useUsersStore.getState().users.values()) {
-    if (user.status == null || snapshotUserIds.has(user.user_id)) {
+    if (user.status == null || snapshotUserIds.has(userIdStorageKey(user.user_id))) {
       continue;
     }
     applyUserStatusSnapshot(user.user_id, null, fetchedAt);
@@ -143,7 +204,7 @@ function applyRegisterUserStatusSnapshot(
 export interface LayoutBootstrapQueueRegisteredDeps {
   isCancelled: () => boolean;
   currentInstanceId: string | null;
-  bootstrapUserId: number | null;
+  bootstrapUserId: UserId | null;
   metadataDmPreviewHydrationEnabled: boolean;
   queueIdRef: { current: string | null };
   registerUnreadSnapshotRef: { current: MessengerUnreadMessagesSnapshot | null };
@@ -280,16 +341,14 @@ export function createLayoutBootstrapQueueRegisteredHandler(
       );
     });
     queuePriorityStreamSidebarTopicsHydrate(registration?.unread_snapshot);
-    deps.scheduleDmPreviewHydration(
-      conversations,
+    const numericCurrentUserId = numericUserIdOrNull(
       useChatListStore.getState().currentUserId ?? deps.bootstrapUserId,
-      rows,
-      "onQueueRegistered",
     );
+    deps.scheduleDmPreviewHydration(conversations, numericCurrentUserId, rows, "onQueueRegistered");
     deps.startSidebarUnreadReconcile({
       cancelled: deps.isCancelled,
       instanceId: deps.currentInstanceId,
-      currentUserId: useChatListStore.getState().currentUserId ?? deps.bootstrapUserId,
+      currentUserId: numericCurrentUserId,
       registerSnapshot: deps.registerUnreadSnapshotRef.current,
     });
     void deps

@@ -4,6 +4,7 @@
 import { t } from "~/i18n/i18n";
 import { formatMessageTimeRelative } from "~/shared/lib/datetime.lib";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 
 const MAX_PREVIEW_LEN = 60;
 
@@ -43,7 +44,7 @@ export function getDisplayName(recipient: { email?: string; full_name?: string }
 }
 
 export function getDmPartnerName(recipient: {
-  id?: number;
+  id?: UserId;
   email?: string;
   full_name?: string;
 }): string {
@@ -51,7 +52,7 @@ export function getDmPartnerName(recipient: {
   if (name) return name;
   const fromEmail = getDisplayName(recipient);
   if (fromEmail) return fromEmail;
-  if (recipient.id != null && Number.isFinite(recipient.id) && recipient.id > 0) {
+  if (typeof recipient.id === "number" && Number.isFinite(recipient.id) && recipient.id > 0) {
     return t("dm.partner");
   }
   return t("dm.privateChat");

@@ -38,6 +38,7 @@ import {
 import { messengerMessageCacheWindowN } from "~/shared/lib/messenger-message-window.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { resolveTopicMoveTargetMessageIds } from "~/shared/lib/update-message-topic-move.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import {
   computeAppendMessageStateUpdate,
   type MessageAppendIdbPlan,
@@ -61,7 +62,7 @@ const loadOlderLog = createLogger("messages:loadOlder");
 function hydratedMessagesMatchContext(
   messages: readonly MockMessage[],
   next: CurrentChatContext,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): boolean {
   if (messages.length === 0) return true;
   if (next.type === "dm") {

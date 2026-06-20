@@ -3,7 +3,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 // eslint-disable-next-line import-x/order -- must run before API modules to register vi.mock hooks
-import { getMockMessengerApi, getMockWorkspaceClient, TEST_INSTANCE } from "./messenger.test.setup";
+import { getMockMessengerApi, TEST_INSTANCE } from "./messenger.test.setup";
 import { getCurrentInstance } from "./client";
 import { fetchUserTopics, registerQueue } from "./messenger-queue";
 import {
@@ -21,60 +21,77 @@ import {
 } from "./messenger-streams";
 
 const mockMessengerApi = getMockMessengerApi();
-const mockWorkspaceClient = getMockWorkspaceClient();
+
+function mockMyStreamsResponse(rows: unknown[]): void {
+  mockMessengerApi.getWithBase.mockResolvedValue({
+    ok: true,
+    status: 200,
+    data: rows,
+    raw: { statusText: "OK" },
+  });
+}
 
 describe("fetchSubscriptions", () => {
-  it("maps subscriptions and derives muted state", async () => {
-    mockMessengerApi.get.mockResolvedValue({
+  it("maps non-private /me/streams rows to subscriptions", async () => {
+    mockMessengerApi.getWithBase.mockResolvedValue({
       ok: true,
       status: 200,
-      data: {
-        subscriptions: [
-          { stream_id: 1, name: "general", is_muted: true, is_archived: false },
-          { stream_id: 2, name: "dev", in_home_view: false, is_archived: true },
-        ],
-      },
-      raw: { statusText: "OK" },
-    });
-
-    await expect(fetchSubscriptions()).resolves.toEqual([
-      { stream_id: 1, name: "general", is_muted: true, is_archived: false },
-      { stream_id: 2, name: "dev", is_muted: true, is_archived: true },
-    ]);
-    expect(mockMessengerApi.get).toHaveBeenCalledWith(
-      "/users/me/subscriptions",
-      undefined,
-      undefined,
-    );
-  });
-
-  it("maps channel-level remove-members group metadata", async () => {
-    mockMessengerApi.get.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: {
-        subscriptions: [
-          {
-            stream_id: 1,
-            name: "general",
-            is_muted: false,
-            creator_id: 77,
-            can_remove_subscribers_group: { direct_members: [42], direct_subgroups: [] },
-          },
-        ],
-      },
+      data: [
+        {
+          uuid: "11111111-1111-4111-8111-111111111111",
+          stream_uuid: "22222222-2222-4222-8222-222222222222",
+          stream_id: 1,
+          name: "general",
+          description: "Main",
+          invite_only: false,
+          announce: false,
+          private: false,
+        },
+        {
+          uuid: "33333333-3333-4333-8333-333333333333",
+          stream_uuid: "44444444-4444-4444-8444-444444444444",
+          user_uuid: "55555555-5555-4555-8555-555555555555",
+          name: "Alice",
+          description: "",
+          invite_only: false,
+          announce: false,
+          private: true,
+        },
+      ],
       raw: { statusText: "OK" },
     });
 
     await expect(fetchSubscriptions()).resolves.toEqual([
       {
         stream_id: 1,
+        stream_uuid: "22222222-2222-4222-8222-222222222222",
         name: "general",
         is_muted: false,
-        creator_id: 77,
-        can_remove_subscribers_group: { direct_members: [42], direct_subgroups: [] },
+        invite_only: false,
       },
     ]);
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith("/api/messanger/v1", "/me/streams/");
+  });
+
+  it("returns empty subscriptions when gateway omits numeric stream_id", async () => {
+    mockMessengerApi.getWithBase.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: [
+        {
+          uuid: "11111111-1111-4111-8111-111111111111",
+          stream_uuid: "22222222-2222-4222-8222-222222222222",
+          name: "general",
+          description: "Main",
+          invite_only: false,
+          announce: false,
+          private: false,
+        },
+      ],
+      raw: { statusText: "OK" },
+    });
+
+    await expect(fetchSubscriptions()).resolves.toEqual([]);
   });
 });
 
@@ -412,9 +429,18 @@ describe("removeMembersFromStream", () => {
 
 describe("fetchTopics", () => {
   it("returns topic names for an existing stream", async () => {
-    mockWorkspaceClient.streams.retrieve.mockResolvedValue({
-      streams: [{ stream_id: 10, name: "engineering" }],
-    });
+    mockMyStreamsResponse([
+      {
+        uuid: "11111111-1111-4111-8111-111111111111",
+        stream_uuid: "22222222-2222-4222-8222-222222222222",
+        stream_id: 10,
+        name: "engineering",
+        description: "",
+        invite_only: false,
+        announce: false,
+        private: false,
+      },
+    ]);
     mockMessengerApi.get.mockResolvedValue({
       ok: true,
       status: 200,
@@ -477,9 +503,18 @@ describe("fetchTopics", () => {
   });
 
   it("returns empty array when stream is not found", async () => {
-    mockWorkspaceClient.streams.retrieve.mockResolvedValue({
-      streams: [{ stream_id: 10, name: "engineering" }],
-    });
+    mockMyStreamsResponse([
+      {
+        uuid: "11111111-1111-4111-8111-111111111111",
+        stream_uuid: "22222222-2222-4222-8222-222222222222",
+        stream_id: 10,
+        name: "engineering",
+        description: "",
+        invite_only: false,
+        announce: false,
+        private: false,
+      },
+    ]);
 
     await expect(fetchTopics("design")).resolves.toEqual([]);
     expect(mockMessengerApi.get).not.toHaveBeenCalled();
@@ -489,98 +524,83 @@ describe("fetchTopics", () => {
     await expect(fetchTopics("   ")).rejects.toThrow(
       /fetchTopics\.stream must be a non-empty string/,
     );
-    expect(mockWorkspaceClient.streams.retrieve).not.toHaveBeenCalled();
+    expect(mockMessengerApi.getWithBase).not.toHaveBeenCalled();
   });
 });
 
 // ---------------------------------------------------------------------------
-// fetchStreams — uses zulip-js client
+// fetchStreams — uses Workspace gateway /me/streams
 // ---------------------------------------------------------------------------
 
 describe("fetchStreams", () => {
-  it("returns mapped streams with optional metadata fields", async () => {
-    mockWorkspaceClient.streams.retrieve.mockResolvedValue({
-      streams: [
+  it("returns mapped non-private streams", async () => {
+    mockMessengerApi.getWithBase.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: [
         {
+          uuid: "11111111-1111-4111-8111-111111111111",
+          stream_uuid: "22222222-2222-4222-8222-222222222222",
           stream_id: 1,
           name: "general",
           description: "Main",
+          announce: true,
           invite_only: false,
-          is_announcement_only: true,
-          history_public_to_subscribers: true,
-          is_web_public: false,
-          subscriber_count: 12,
-          stream_weekly_traffic: 40,
-          stream_post_policy: 2,
+          private: false,
         },
-        { stream_id: 2, name: "dev" },
+        {
+          uuid: "33333333-3333-4333-8333-333333333333",
+          stream_uuid: "44444444-4444-4444-8444-444444444444",
+          user_uuid: "55555555-5555-4555-8555-555555555555",
+          name: "Alice",
+          description: "",
+          invite_only: false,
+          announce: false,
+          private: true,
+        },
       ],
+      raw: { statusText: "OK" },
     });
 
     const result = await fetchStreams();
-    expect(result).toHaveLength(2);
-    expect(result[0]).toEqual({
-      stream_id: 1,
-      name: "general",
-      description: "Main",
-      is_announcement_only: true,
-      invite_only: false,
-      history_public_to_subscribers: true,
-      is_web_public: false,
-      subscriber_count: 12,
-      stream_weekly_traffic: 40,
-      stream_post_policy: 2,
-      date_created: null,
-      folder_id: null,
-      message_retention_days: null,
-    });
-    expect(result[1]).toEqual({
-      stream_id: 2,
-      name: "dev",
-      description: "",
-      is_announcement_only: false,
-      subscriber_count: null,
-      stream_weekly_traffic: null,
-      stream_post_policy: null,
-      date_created: null,
-      folder_id: null,
-      message_retention_days: null,
-    });
-  });
-
-  it("maps optional group settings from stream payload", async () => {
-    mockWorkspaceClient.streams.retrieve.mockResolvedValue({
-      streams: [
-        {
-          stream_id: 3,
-          name: "restricted",
-          can_subscribe_group: 9,
-          can_add_subscribers_group: { direct_members: [1], direct_subgroups: [] },
-        },
-      ],
-    });
-
-    await expect(fetchStreams()).resolves.toEqual([
+    expect(result).toEqual([
       {
-        stream_id: 3,
-        name: "restricted",
-        description: "",
-        is_announcement_only: false,
-        subscriber_count: null,
-        stream_weekly_traffic: null,
-        stream_post_policy: null,
-        date_created: null,
-        folder_id: null,
-        message_retention_days: null,
-        can_subscribe_group: 9,
-        can_add_subscribers_group: { direct_members: [1], direct_subgroups: [] },
+        stream_id: 1,
+        stream_uuid: "22222222-2222-4222-8222-222222222222",
+        name: "general",
+        description: "Main",
+        is_announcement_only: true,
+        invite_only: false,
       },
     ]);
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith("/api/messanger/v1", "/me/streams/");
+  });
+
+  it("returns empty list when gateway rows only contain private streams", async () => {
+    mockMessengerApi.getWithBase.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: [
+        {
+          uuid: "33333333-3333-4333-8333-333333333333",
+          stream_uuid: "44444444-4444-4444-8444-444444444444",
+          user_uuid: "55555555-5555-4555-8555-555555555555",
+          name: "Alice",
+          description: "",
+          invite_only: false,
+          announce: false,
+          private: true,
+        },
+      ],
+      raw: { statusText: "OK" },
+    });
+
+    await expect(fetchStreams()).resolves.toEqual([]);
   });
 });
 
 // ---------------------------------------------------------------------------
-// fetchMessages — uses zulip-js client
+// updateStream — uses Messenger REST client
 // ---------------------------------------------------------------------------
 describe("updateStream", () => {
   it("patches stream name and description", async () => {

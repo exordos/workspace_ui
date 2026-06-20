@@ -15,6 +15,7 @@ import {
   mirrorMessengerUpdateMessageFlagsToIndexedDb,
   mirrorMessengerUpdateMessageToIndexedDb,
 } from "~/shared/lib/message-idb-handlers.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 
 export function isChatMessagesPersistToIndexedDbEnabled(): boolean {
   return env.CHAT_MESSAGES_PERSIST_INDEXEDDB;
@@ -22,7 +23,7 @@ export function isChatMessagesPersistToIndexedDbEnabled(): boolean {
 
 export async function applyMessengerEventToMessageIndexedDb(options: {
   instanceId: string;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   event: MessengerEvent;
 }): Promise<void> {
   if (!isChatMessagesPersistToIndexedDbEnabled()) return;

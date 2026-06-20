@@ -1,6 +1,8 @@
 import type { UserRecord } from "~/entities/user/user.model";
 import type { TypingUser } from "~/features/typing-indicator/typing-indicator.types";
 import { buildDmTypingChatKey } from "~/features/typing-indicator/typing-key";
+import type { UserId } from "~/shared/lib/user-id.lib";
+import { numericUserIdOrNull, userIdStorageKey, userIdsEqual } from "~/shared/lib/user-id.lib";
 
 function presenceRank(status: "active" | "idle" | undefined): number {
   if (status === "active") return 0;
@@ -10,15 +12,16 @@ function presenceRank(status: "active" | "idle" | undefined): number {
 
 export function sortDmAllUsersForDisplay(
   users: UserRecord[],
-  unreadByUserId: Map<number, number>,
-  currentUserId: number | null,
+  unreadByUserId: Map<string, number>,
+  currentUserId: UserId | null,
 ): UserRecord[] {
   return users
     .filter((user) => user.full_name.trim().length > 0)
-    .filter((user) => (currentUserId == null ? true : user.user_id !== currentUserId))
+    .filter((user) => (currentUserId == null ? true : !userIdsEqual(user.user_id, currentUserId)))
     .sort((left, right) => {
       const unreadDiff =
-        (unreadByUserId.get(right.user_id) ?? 0) - (unreadByUserId.get(left.user_id) ?? 0);
+        (unreadByUserId.get(userIdStorageKey(right.user_id)) ?? 0) -
+        (unreadByUserId.get(userIdStorageKey(left.user_id)) ?? 0);
       if (unreadDiff !== 0) return unreadDiff;
 
       const presenceDiff =
@@ -34,13 +37,15 @@ export function isDmPartnerTyping({
   currentUserId,
   typingMap,
 }: {
-  partnerUserId: number | null;
-  currentUserId: number | null;
+  partnerUserId: UserId | null;
+  currentUserId: UserId | null;
   typingMap: Map<string, TypingUser[]>;
 }): boolean {
   if (partnerUserId == null || currentUserId == null) return false;
-  const chatKey = buildDmTypingChatKey([partnerUserId], currentUserId);
+  const numericPartnerUserId = numericUserIdOrNull(partnerUserId);
+  if (numericPartnerUserId == null) return false;
+  const chatKey = buildDmTypingChatKey([numericPartnerUserId], currentUserId);
   if (chatKey == null) return false;
   const typingUsers = typingMap.get(chatKey) ?? [];
-  return typingUsers.some((typingUser) => typingUser.userId === partnerUserId);
+  return typingUsers.some((typingUser) => typingUser.userId === numericPartnerUserId);
 }

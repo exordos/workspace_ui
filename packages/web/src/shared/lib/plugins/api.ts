@@ -10,6 +10,7 @@ import { analytics } from "../analytics/analytics";
 import { showDesktopNotification } from "../electron";
 import { createLogger } from "../logger";
 import { getRuntime } from "../pwa";
+import type { UserId } from "../user-id.lib";
 import type {
   PluginAPI,
   PluginEventName,
@@ -23,7 +24,7 @@ import type {
 // ---------------------------------------------------------------------------
 
 export interface PluginDataProvider {
-  getCurrentUserId(): number | null;
+  getCurrentUserId(): UserId | null;
   getStreams(): { id: number; name: string; badge?: number }[];
   getThemeMode(): string;
 }

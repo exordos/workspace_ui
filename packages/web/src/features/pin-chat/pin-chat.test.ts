@@ -4,7 +4,7 @@
  * Verifies that chats can be pinned/unpinned within folders,
  * and that the pinned state is correctly tracked.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { usePinStore } from "./pin-chat.model";
 
 vi.mock("~/shared/api/client", () => {

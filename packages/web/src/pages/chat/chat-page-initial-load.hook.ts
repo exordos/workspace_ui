@@ -11,6 +11,7 @@ import { dmRouteKey } from "~/shared/lib/dm-key";
 import { normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
 import { createLogger } from "~/shared/lib/logger";
 import { logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import { parseDmSlugToUserIds } from "~/widgets/sidebar/sidebar.lib";
 import { shouldSkipFocusedAnchorInitialLoad } from "./chat-anchor-load.lib";
 import { isAbortLikeError } from "./chat-page-ai.lib";
@@ -29,7 +30,7 @@ export interface UseChatPageInitialLoadOptions {
   resolvedStreamId: number | null;
   streamRouteTopic: string;
   focusedMessageId: number | null;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   isFocusedMessageLoadedInCurrentRoute: boolean;
   setActionError: (error: string | null) => void;
 }
@@ -234,9 +235,8 @@ export function useChatPageInitialLoad(
 
     const routeUserIds = parseDmSlugToUserIds(dmIdParam);
     const userIds = normalizeDmRouteUserIds(routeUserIds, currentUserId);
-    if (userIds.length === 0) return;
+    const dmKey = userIds.length > 0 ? dmRouteKey(userIds, currentUserId) : dmIdParam;
 
-    const dmKey = dmRouteKey(userIds, currentUserId);
     logMessageFlow("ui:dm route effect → setContext(dm)", { dmKey });
     setContext({ type: "dm", dmKey });
   }, [dmIdParam, streamSlug, currentUserId, setContext]);
@@ -248,7 +248,6 @@ export function useChatPageInitialLoad(
     const userIds = Array.from(new Set(routeUserIds)).filter(
       (userId) => Number.isSafeInteger(userId) && userId > 0,
     );
-    if (userIds.length === 0) return;
     const { hasOlderMessages, hasNewerMessages } = useCurrentChatMessagesStore.getState();
     if (
       shouldSkipFocusedAnchorInitialLoad({
@@ -271,7 +270,7 @@ export function useChatPageInitialLoad(
     }
     setMessagesLoading(true);
     const initialLoadController = new AbortController();
-    const dmKey = dmRouteKey(userIds, currentUserId);
+    const dmKey = userIds.length > 0 ? dmRouteKey(userIds, currentUserId) : dmIdParam;
     loadInitialMessagesForContext({
       context: { type: "dm", dmKey },
       focusedMessageId,

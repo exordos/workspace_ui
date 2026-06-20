@@ -215,17 +215,7 @@ export const SidebarInner: React.FC<SidebarUiProps> = ({
               <h3 className="mb-2 px-3 text-xs font-medium text-text-muted">
                 {t("nav.directMessages")}
               </h3>
-              <SidebarDmList
-                activeDmId={
-                  activeDmIdParam
-                    ? (() => {
-                        const n = parseInt(activeDmIdParam.split("-")[0] ?? "", 10);
-                        return n > 0 ? n : null;
-                      })()
-                    : null
-                }
-                dms={sidebarDms}
-              />
+              <SidebarDmList activeDmIdParam={activeDmIdParam} dms={sidebarDms} />
             </div>
           )}
         </ScrollArea>

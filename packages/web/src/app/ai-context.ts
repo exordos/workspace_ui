@@ -26,6 +26,7 @@ import { useThemeStore } from "~/entities/theme/theme.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { getLocale } from "~/i18n/i18n";
 import { createLogger } from "~/shared/lib/logger";
+import type { UserId } from "~/shared/lib/user-id.lib";
 
 const log = createLogger("ai-context");
 
@@ -37,13 +38,13 @@ export interface AiChatContext {
   type: "stream" | "dm" | null;
   streamName?: string;
   topic?: string;
-  dmPartnerIds?: number[];
+  dmPartnerIds?: UserId[];
   messageCount: number;
   lastMessageTimestamp?: number;
 }
 
 export interface AiUserContext {
-  userId: number | null;
+  userId: UserId | null;
   email?: string;
   fullName?: string;
   realm?: string;

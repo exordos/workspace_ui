@@ -1,3 +1,5 @@
+import type { UserId } from "~/shared/lib/user-id.lib";
+
 /**
  * Mention Suggestions type definitions.
  *
@@ -6,7 +8,7 @@
  */
 
 export interface MentionSuggestion {
-  userId: number;
+  userId: UserId;
   fullName: string;
   email: string;
   avatarUrl?: string;

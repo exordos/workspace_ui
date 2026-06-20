@@ -38,10 +38,10 @@ describe("sidebar-dm-list.lib", () => {
         full_name: "Self",
       }),
     ];
-    const unreadByUserId = new Map<number, number>([
-      [102, 3],
-      [101, 0],
-      [103, 0],
+    const unreadByUserId = new Map<string, number>([
+      ["102", 3],
+      ["101", 0],
+      ["103", 0],
     ]);
 
     const sorted = sortDmAllUsersForDisplay(users, unreadByUserId, 999);

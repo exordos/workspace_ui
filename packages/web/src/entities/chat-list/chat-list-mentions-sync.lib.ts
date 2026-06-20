@@ -10,12 +10,13 @@ import {
 } from "~/shared/api/messenger-messages";
 import { createLogger } from "~/shared/lib/logger";
 import { runInFlightDeduped } from "~/shared/lib/request-lifecycle.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 
 const log = createLogger("chat-list:mentions-sync");
 
 export interface EnsureMentionsUnreadSyncedOptions {
   currentInstanceId: string | null;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   forceRefresh?: boolean;
   pageSize?: number;
 }

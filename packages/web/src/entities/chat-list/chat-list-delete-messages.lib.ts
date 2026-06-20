@@ -6,6 +6,7 @@ import { fetchMessagesWithNarrow } from "~/shared/api/messenger-messages";
 import type { MockMessage } from "~/shared/api/messenger.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import { formatMessageTime, truncatePreview } from "./chat-list-format.lib";
 import { getNewestTopicEntry } from "./chat-list-stream-entry-merge.lib";
@@ -105,7 +106,7 @@ export function pickReplacementForStreamTopic<T extends ChatListPreviewSourceMes
 export function pickReplacementForDm<T extends ChatListPreviewSourceMessage>(
   messages: readonly T[],
   dmKey: string,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
   excludedMessageIds?: ReadonlySet<number>,
 ): T | null {
   return pickNewestMessage(
@@ -120,7 +121,7 @@ export function pickReplacementForDm<T extends ChatListPreviewSourceMessage>(
 
 export async function fetchReplacementMessageForDeletedPreview(
   context: DeletedPreviewContext,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
   signal?: AbortSignal,
 ): Promise<MockMessage | null> {
   try {
@@ -144,7 +145,7 @@ export async function fetchReplacementMessageForDeletedPreview(
       return replacement?.id === context.deletedLastMessageId ? null : replacement;
     }
 
-    const userIds = parseDmKeyToUserIds(context.dmKey, currentUserId);
+    const userIds = parseDmKeyToUserIds(context.dmKey, numericUserIdOrNull(currentUserId));
     if (userIds.length === 0) return null;
     const messages = await fetchMessagesWithNarrow(
       [{ operator: "dm", operand: userIds }],
@@ -387,7 +388,7 @@ function applyDmDeletedPreviewRepairs(
   dmContextsByKey: Map<string, DmDeleteContext>,
   replacementMessages: readonly ChatListPreviewSourceMessage[],
   deletedMessageIds: Set<number>,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
   resolveMissingPreview: boolean,
   contextsToResolveFromNetwork: DeletedPreviewContext[],
 ): Map<string, DmEntryInternal> {
@@ -437,7 +438,7 @@ export interface ApplyHandleDeleteMessagesStateParams {
   deletedMessageIds: Set<number>;
   replacementMessages: readonly ChatListPreviewSourceMessage[];
   resolveMissingPreview: boolean;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
 }
 
 export function applyHandleDeleteMessagesStatePatch(

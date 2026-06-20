@@ -7,6 +7,7 @@ import { useUsersStore } from "~/entities/user/user.model";
 import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
+import { numericUserIdOrNull, userIdsEqual } from "~/shared/lib/user-id.lib";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { useRightDrawerStore } from "./right-drawer.model";
 import { RightPanelUserCommonGroups } from "./right-panel-user-common-groups.ui";
@@ -24,6 +25,7 @@ export const RightPanelUser = React.memo(function RightPanelUser({
   const navigate = useNavigate();
   const media = user.media ?? {};
   const directMessageUserId = user.userId;
+  const numericDirectMessageUserId = numericUserIdOrNull(directMessageUserId);
   const contactRows = buildRightPanelUserContactRows(user);
   const avatarSrc = resolveAvatarSrc(user.avatarUrl);
   const openMediaViewer = useMediaViewerStore((s) => s.open);
@@ -44,14 +46,17 @@ export const RightPanelUser = React.memo(function RightPanelUser({
   }, [avatarSrc, openMediaViewer, user.name]);
 
   const currentUserId = useChatListStore((s) => s.currentUserId);
-  const isOwnProfile = currentUserId != null && directMessageUserId === currentUserId;
+  const isOwnProfile =
+    currentUserId != null &&
+    directMessageUserId != null &&
+    userIdsEqual(directMessageUserId, currentUserId);
   const profileDmCallHandlerReady = useChatDmCallBridgeStore(
     (s) => s.invokeDmCallFromProfileHandler != null,
   );
   const handleProfileDmCall = useCallback(() => {
-    if (directMessageUserId == null) return;
-    useChatDmCallBridgeStore.getState().invokeDmCallFromProfile(directMessageUserId);
-  }, [directMessageUserId]);
+    if (numericDirectMessageUserId == null) return;
+    useChatDmCallBridgeStore.getState().invokeDmCallFromProfile(numericDirectMessageUserId);
+  }, [numericDirectMessageUserId]);
   const handleOpenOwnPersonalInfoSettings = useCallback(() => {
     void navigate(withCurrentOrgRoute("/settings/personal-info"));
   }, [navigate]);
@@ -64,10 +69,11 @@ export const RightPanelUser = React.memo(function RightPanelUser({
   }, [handleOpenAvatarPreview, handleOpenOwnPersonalInfoSettings, isOwnProfile]);
 
   useEffect(() => {
-    if (user.userId == null) {
+    const numericUserId = numericUserIdOrNull(user.userId);
+    if (numericUserId == null) {
       return;
     }
-    void ensureUserStatusLoaded(user.userId);
+    void ensureUserStatusLoaded(numericUserId);
   }, [user.userId]);
 
   const userIdOverride = useRightDrawerStore((s) => s.userIdOverride);
@@ -80,8 +86,9 @@ export const RightPanelUser = React.memo(function RightPanelUser({
   const showProfileCallButton =
     profileDmCallHandlerReady &&
     currentUserId != null &&
+    numericDirectMessageUserId != null &&
     directMessageUserId != null &&
-    directMessageUserId !== currentUserId &&
+    !userIdsEqual(directMessageUserId, currentUserId) &&
     user.isActive !== false;
 
   return (

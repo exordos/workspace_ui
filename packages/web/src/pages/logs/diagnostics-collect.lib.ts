@@ -18,6 +18,7 @@ import { isOnline } from "~/shared/lib/network";
 import { getIdleTimeMs, getLocalPresenceStatus } from "~/shared/lib/presence";
 import type { PushState } from "~/shared/lib/push/types";
 import { getRuntime, isPwa } from "~/shared/lib/pwa";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import { isTabVisible } from "~/shared/lib/visibility";
 import { getWebViewPlatform, isWebView } from "~/shared/lib/webview";
 
@@ -79,7 +80,7 @@ export interface DiagnosticsPageSnapshot {
     cdnUrl: string;
   };
   session: {
-    currentUserId: number | null;
+    currentUserId: UserId | null;
     locale: string;
     themeMode: string;
     themePalette: string;
@@ -136,7 +137,7 @@ export interface DiagnosticsCollectInput {
   realtimeStats: DiagnosticRealtimeStats;
   sessionRemainingMs: number | null;
   authIdleTimeoutMs: number | null;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   streamsCount: number;
   dmsCount: number;
   usersCount: number;

@@ -1,9 +1,11 @@
 import type { FolderItemForClient } from "~/shared/api/workspace-client";
+import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 import type { SidebarChat, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import {
   chatToWorkspaceChatIds,
+  getFolderSyncUser,
   hasMatchingChatId,
-  type FolderSyncUserLike,
+  type FolderSyncUsersMap,
   parseFolderItemDmUserIds,
   parseFolderItemStreamId,
   resolveFallbackUserName,
@@ -21,7 +23,7 @@ export interface KnownMatchedChatKeys {
 
 export function collectKnownMatchedChatKeys(
   matchedChats: readonly SidebarChat[],
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): KnownMatchedChatKeys {
   const knownMatchedStreamIds = new Set<number>();
   const knownMatchedDmKeys = new Set<string>();
@@ -44,7 +46,7 @@ export function collectKnownMatchedChatKeys(
 function hasMatchingSidebarChatId(
   folderChatIds: ReadonlySet<string>,
   chat: SidebarChat,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): boolean {
   return chatToWorkspaceChatIds(chat, currentUserId).some((chatId) =>
     hasMatchingChatId(folderChatIds, chatId),
@@ -53,9 +55,9 @@ function hasMatchingSidebarChatId(
 
 function buildSingleUserDmFallback(
   dmUserId: number,
-  usersMapForChatInfo: ReadonlyMap<number, FolderSyncUserLike>,
+  usersMapForChatInfo: FolderSyncUsersMap,
 ): SidebarChat | null {
-  const dmUser = usersMapForChatInfo.get(dmUserId);
+  const dmUser = getFolderSyncUser(usersMapForChatInfo, dmUserId);
   const dmName = resolveFallbackUserName(dmUser, `User ${dmUserId}`);
   return {
     type: "dm",
@@ -71,15 +73,16 @@ function buildSingleUserDmFallback(
 
 function buildPairDmFallback(
   dmUserIds: readonly number[],
-  currentUserId: number | null,
-  usersMapForChatInfo: ReadonlyMap<number, FolderSyncUserLike>,
+  currentUserId: UserId | null,
+  usersMapForChatInfo: FolderSyncUsersMap,
 ): SidebarChat {
   const sortedPair = [...dmUserIds].sort((left, right) => left - right);
+  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
   const peerId =
-    currentUserId != null
-      ? (sortedPair.find((id) => id !== currentUserId) ?? sortedPair[0]!)
+    numericCurrentUserId != null
+      ? (sortedPair.find((id) => id !== numericCurrentUserId) ?? sortedPair[0]!)
       : sortedPair[0]!;
-  const dmUser = usersMapForChatInfo.get(peerId);
+  const dmUser = getFolderSyncUser(usersMapForChatInfo, peerId);
   const dmName = resolveFallbackUserName(dmUser, `User ${peerId}`);
   return {
     type: "dm",
@@ -93,43 +96,10 @@ function buildPairDmFallback(
   };
 }
 
-function buildGroupDmFallback(
-  dmUserIds: readonly number[],
-  currentUserId: number | null,
-  usersMapForChatInfo: ReadonlyMap<number, FolderSyncUserLike>,
-): SidebarChat {
-  const groupUsers: number[] =
-    currentUserId != null && !dmUserIds.includes(currentUserId)
-      ? [...dmUserIds, currentUserId]
-      : [...dmUserIds];
-  const groupNames = groupUsers.map((userId) => {
-    const user = usersMapForChatInfo.get(userId);
-    return resolveFallbackUserName(user, `User ${userId}`);
-  });
-  const groupName = groupNames.join(", ");
-  const slug = groupUsers
-    .map((userId) => {
-      const user = usersMapForChatInfo.get(userId);
-      const userName = resolveFallbackUserName(user, `user-${userId}`);
-      return `${userId}-${slugifyFallbackName(userName)}`;
-    })
-    .join(",");
-  return {
-    type: "dm",
-    id: groupUsers[0] ?? dmUserIds[0] ?? 0,
-    name: groupName,
-    slug,
-    isGroup: true,
-    userIds: [...groupUsers],
-    lastMessage: "",
-    time: "",
-  };
-}
-
 function buildDmFallbackFromFolderItem(
   dmUserIds: readonly number[],
-  currentUserId: number | null,
-  usersMapForChatInfo: ReadonlyMap<number, FolderSyncUserLike>,
+  currentUserId: UserId | null,
+  usersMapForChatInfo: FolderSyncUsersMap,
 ): SidebarChat | null {
   if (dmUserIds.length === 1) {
     const dmUserId = dmUserIds[0];
@@ -141,15 +111,15 @@ function buildDmFallbackFromFolderItem(
   if (dmUserIds.length === 2) {
     return buildPairDmFallback(dmUserIds, currentUserId, usersMapForChatInfo);
   }
-  return buildGroupDmFallback(dmUserIds, currentUserId, usersMapForChatInfo);
+  return null;
 }
 
 // Folder item may reference a DM missing from matchedChats — build fallbacks in orderIndex order.
 export function buildFallbackDmChatsFromFolderItems(
   orderedItems: readonly FolderItemForClient[],
   knownMatchedDmKeys: ReadonlySet<string>,
-  currentUserId: number | null,
-  usersMapForChatInfo: ReadonlyMap<number, FolderSyncUserLike>,
+  currentUserId: UserId | null,
+  usersMapForChatInfo: FolderSyncUsersMap,
 ): SidebarChat[] {
   const fallbackDmChats: SidebarChat[] = [];
   const seenFallbackDmKeys = new Set<string>();

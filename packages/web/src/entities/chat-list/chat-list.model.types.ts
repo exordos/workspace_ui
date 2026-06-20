@@ -28,7 +28,10 @@ export interface ChatListStreamMetadataRow {
 }
 
 export interface ChatListDmMetadataRow {
-  userIds: number[];
+  userIds: UserId[];
+  streamUuid?: string;
+  userUuid?: string;
+  name?: string;
   lastActivityTs?: number;
   lastMessageId?: number | null;
   unreadCount?: number;
@@ -86,18 +89,18 @@ export interface ChatListState {
   bootstrapError: string | null;
   setBootstrapError: (error: string | null) => void;
   clearBootstrapError: () => void;
-  setFromMessages: (messages: WorkspaceRawMessage[], currentUserId: number | null) => void;
+  setFromMessages: (messages: WorkspaceRawMessage[], currentUserId: UserId | null) => void;
   /** Restore sidebar maps from IndexedDB snapshot (no raw `lastAppliedMessages`). */
   hydrateFromIndexedDbSnapshot: (snapshot: ChatListSnapshotSerialized) => void;
   /** Authoritative unread reconcile from server snapshot (e.g. `is:unread`). */
   reconcileUnreadFromMessages: (
     messages: readonly WorkspaceRawMessage[],
-    currentUserId: number | null,
+    currentUserId: UserId | null,
   ) => void;
   /** Authoritative unread reconcile from register `unread_msgs` buckets. */
   reconcileUnreadFromSnapshot: (
     snapshot: MessengerUnreadMessagesSnapshot,
-    currentUserId: number | null,
+    currentUserId: UserId | null,
   ) => void;
   /** Authoritative replace of unread mention ids/count from GET is:mentioned+is:unread. */
   reconcileMentionsFromServer: (
@@ -129,7 +132,7 @@ export interface ChatListState {
   setStreamArchived: (streamId: number, isArchived: boolean | undefined) => void;
   /** Upserts DM rows from metadata and the local DM index (not only from loaded messages). */
   upsertDmMetadataRows: (rows: ChatListDmMetadataRow[]) => void;
-  setCurrentUserId: (id: number | null) => void;
+  setCurrentUserId: (id: UserId | null) => void;
   renameStream: (streamId: number, nextName: string) => void;
   moveStreamTopic: (params: {
     streamId: number;
@@ -149,7 +152,7 @@ export interface ChatListState {
   removeStreamTopic: (streamId: number, topic: string) => void;
   removeStream: (streamId: number) => void;
   /** After a user profile is fetched, refresh personal DM row titles that still use placeholders. */
-  patchPersonalDmRowLabelsForUser: (userId: number) => void;
+  patchPersonalDmRowLabelsForUser: (userId: UserId) => void;
   /** Recomputes sidebar unread totals, mentions count, and stream-topic index from current maps. */
   syncDerivedScalars: () => void;
   clear: () => void;

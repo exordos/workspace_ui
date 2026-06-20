@@ -1,4 +1,5 @@
 import { getRoleLabel, parseRole } from "~/shared/lib/roles";
+import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 import { isValidRealmUrl } from "~/shared/lib/validation";
 import type {
   BuildRightPanelUserInfoOptions,
@@ -19,7 +20,7 @@ export function resolveRightPanelUserName(options: {
   profile: RightPanelDetailedProfileLike | undefined;
   userFromStore: RightPanelUserFromStoreLike | undefined;
   dmChat: RightPanelDmChatLike | undefined;
-  fallbackUserId: number | null | undefined;
+  fallbackUserId: UserId | null | undefined;
 }): string {
   const fromProfile = pickNonEmptyString(options.profile?.fullName);
   if (fromProfile != null) return fromProfile;
@@ -51,21 +52,22 @@ export function resolveRightPanelEmail(options: {
 export function resolveRightPanelUserId(options: {
   profile: RightPanelDetailedProfileLike | undefined;
   userFromStore: RightPanelUserFromStoreLike | undefined;
-  fallbackUserId: number | null | undefined;
-}): number | undefined {
+  fallbackUserId: UserId | null | undefined;
+}): UserId | undefined {
   return (
     options.profile?.userId ?? options.userFromStore?.user_id ?? options.fallbackUserId ?? undefined
   );
 }
 
 export function resolveRightPanelProfileLink(
-  userId: number | undefined,
+  userId: UserId | undefined,
   realm: string | undefined,
 ): string | undefined {
   const trimmedRealm = realm?.trim();
-  if (userId == null || trimmedRealm == null || trimmedRealm.length === 0) return undefined;
+  const numericUserId = numericUserIdOrNull(userId);
+  if (numericUserId == null || trimmedRealm == null || trimmedRealm.length === 0) return undefined;
   if (!isValidRealmUrl(trimmedRealm)) return undefined;
-  return `${trimmedRealm.replace(/\/+$/, "")}/#user/${userId}`;
+  return `${trimmedRealm.replace(/\/+$/, "")}/#user/${numericUserId}`;
 }
 
 export function resolveRightPanelRoleLabel(options: {
@@ -85,7 +87,8 @@ export function selectRightPanelDetailedProfile(
   options: Pick<BuildRightPanelUserInfoOptions, "detailedProfile" | "rightDrawerTargetUserId">,
 ): RightPanelDetailedProfileLike | undefined {
   const { detailedProfile, rightDrawerTargetUserId } = options;
-  if (rightDrawerTargetUserId == null) return undefined;
-  if (detailedProfile?.userId !== rightDrawerTargetUserId) return undefined;
+  const numericTargetUserId = numericUserIdOrNull(rightDrawerTargetUserId);
+  if (numericTargetUserId == null) return undefined;
+  if (detailedProfile?.userId !== numericTargetUserId) return undefined;
   return detailedProfile;
 }

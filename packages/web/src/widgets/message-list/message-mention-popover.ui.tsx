@@ -11,6 +11,7 @@ import { t } from "~/i18n/i18n";
 import { getRealmBaseUrl } from "~/shared/api/messenger-client.internal";
 import { fetchUser } from "~/shared/api/messenger-users";
 import { formatLastSeen, getPresenceState } from "~/shared/lib/format";
+import { numericUserIdOrNull, userIdsEqual } from "~/shared/lib/user-id.lib";
 import { isValidEmail } from "~/shared/lib/validation";
 import { APP_DIALOG_BACKDROP_STATIC_CLASS } from "~/shared/ui/app-dialog.ui";
 import { Avatar } from "~/shared/ui/avatar";
@@ -76,10 +77,12 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
   const user = useUsersStore((s) => s.getUser(userId));
   const cardRef = useRef<HTMLDivElement>(null);
   const [popoverHeight, setPopoverHeight] = useState(MENTION_POPOVER_EST_HEIGHT);
+  const numericUserId = numericUserIdOrNull(userId);
 
   useEffect(() => {
-    void ensureUserStatusLoaded(userId);
-  }, [userId]);
+    if (numericUserId == null) return;
+    void ensureUserStatusLoaded(numericUserId);
+  }, [numericUserId]);
 
   useEffect(() => {
     if (useUsersStore.getState().getUser(userId) != null) {
@@ -169,9 +172,10 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
     (s) => s.invokeDmCallFromProfileHandler != null,
   );
   const handleProfileDmCall = useCallback(() => {
-    useChatDmCallBridgeStore.getState().invokeDmCallFromProfile(userId);
+    if (numericUserId == null) return;
+    useChatDmCallBridgeStore.getState().invokeDmCallFromProfile(numericUserId);
     onClose();
-  }, [onClose, userId]);
+  }, [numericUserId, onClose]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -298,17 +302,20 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
             <Icon name="chatBubble" size={16} className="shrink-0 text-current" />
             <span className="truncate">{t("info.openDirectMessages")}</span>
           </button>
-          {profileDmCallHandlerReady && currentUserId != null && userId !== currentUserId && (
-            <button
-              type="button"
-              className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2 text-sm font-medium text-text-primary hover:bg-bg"
-              onClick={handleProfileDmCall}
-              aria-label={t("call.call")}
-            >
-              <Icon name="phone" size={16} className="shrink-0 text-current" />
-              <span className="truncate">{t("call.call")}</span>
-            </button>
-          )}
+          {profileDmCallHandlerReady &&
+            numericUserId != null &&
+            currentUserId != null &&
+            !userIdsEqual(userId, currentUserId) && (
+              <button
+                type="button"
+                className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2 text-sm font-medium text-text-primary hover:bg-bg"
+                onClick={handleProfileDmCall}
+                aria-label={t("call.call")}
+              >
+                <Icon name="phone" size={16} className="shrink-0 text-current" />
+                <span className="truncate">{t("call.call")}</span>
+              </button>
+            )}
         </div>
       </div>
     </>,

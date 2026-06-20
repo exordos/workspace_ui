@@ -12,6 +12,7 @@ import { buildRouteFromMessage } from "~/shared/lib/push-click";
 import { buildStreamMessageNotificationFlags } from "~/shared/lib/stream-notification-notify.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import { readViewportState } from "./layout-messenger-event-viewport.lib";
 import { buildNotificationFallbackTag } from "./layout-notification-tag.lib";
 import {
@@ -41,7 +42,7 @@ export function deliverDesktopNotificationForMessage(
   notifications: LayoutMessengerEventDispatchContext["notifications"],
   playSound: boolean,
   soundPreset: ReturnType<typeof resolveNotificationSoundPreset>,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
   currentInstanceId: string | null,
 ): void {
   registerNotifiedMessageId(raw.id);
@@ -92,7 +93,7 @@ export function deliverDesktopNotificationForMessage(
 export function maybeNotifyNewMessage(
   ctx: LayoutMessengerEventDispatchContext,
   raw: WorkspaceRawMessage,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
   isForCurrentChat: boolean,
   isFromSelf: boolean,
 ): void {

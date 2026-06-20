@@ -1,12 +1,13 @@
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type { RightDrawerMode } from "~/widgets/right-panel/right-drawer.model";
 import type { SidebarChat, StreamWithLast } from "~/widgets/sidebar/sidebar.types";
 
 export interface LayoutRightDrawerContext {
   title: string;
-  rightDrawerTargetUserId: number | undefined;
-  partnerUserId: number | undefined;
+  rightDrawerTargetUserId: UserId | undefined;
+  partnerUserId: UserId | undefined;
   dmChat: Extract<SidebarChat, { type: "dm" }> | undefined;
-  dmParticipantIds: number[];
+  dmParticipantIds: UserId[];
   activeStreamId: number | null;
   activeStreamName: string | null;
 }
@@ -18,9 +19,9 @@ export interface UseLayoutRightDrawerContextOptions {
   activeStreamSlug: string | undefined;
   activeTopic: string | null;
   dmIdParam: string | undefined;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   rightDrawerMode: RightDrawerMode;
-  rightDrawerUserIdOverride: number | null;
+  rightDrawerUserIdOverride: UserId | null;
   rightDrawerOverrideUserName: string | undefined;
   rightDrawerOpen: boolean;
 }

@@ -1,6 +1,7 @@
+import { topicMatchesDisplayQuery } from "~/shared/lib/topic-display.lib";
+import { userIdStorageKey } from "~/shared/lib/user-id.lib";
 import { parseDmSlugToUserIds } from "./sidebar.lib";
 import type { SidebarChat } from "./sidebar.types";
-import { topicMatchesDisplayQuery } from "~/shared/lib/topic-display.lib";
 
 export function normalizeSidebarSearchQuery(query: string): string {
   return query.trim().toLowerCase();
@@ -9,7 +10,7 @@ export function normalizeSidebarSearchQuery(query: string): string {
 export function doesSidebarChatMatchQuery(options: {
   chat: SidebarChat;
   normalizedQuery: string;
-  users: Map<number, { full_name: string; email?: string | null | undefined }>;
+  users: Map<string, { full_name: string; email?: string | null | undefined }>;
 }): boolean {
   const { chat, normalizedQuery, users } = options;
   if (!normalizedQuery) return true;
@@ -31,7 +32,7 @@ export function doesSidebarChatMatchQuery(options: {
       : parseDmSlugToUserIds(chat.slug);
 
   return participantIds.some((userId) => {
-    const user = users.get(userId);
+    const user = users.get(userIdStorageKey(userId));
     if (!user) return false;
     if (user.full_name.toLowerCase().includes(normalizedQuery)) return true;
     return user.email?.toLowerCase().includes(normalizedQuery) ?? false;

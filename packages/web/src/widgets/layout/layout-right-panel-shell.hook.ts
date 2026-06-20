@@ -4,8 +4,10 @@
  */
 import { useMemo } from "react";
 import type { WorkspaceInstance } from "~/entities/instance/instance.model";
+import type { UserRecord } from "~/entities/user/user.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
+import { isNumericUserId, type UserId } from "~/shared/lib/user-id.lib";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import type { RightDrawerMode } from "~/widgets/right-panel/right-drawer.model";
 import type { RightPanelUserInfo } from "~/widgets/right-panel/right-panel.types";
@@ -27,12 +29,12 @@ export interface UseLayoutRightPanelShellParams {
   activeStreamSlug: string | undefined;
   activeTopic: string | null;
   dmIdParam: string | undefined;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   rightDrawerOpen: boolean;
   rightDrawerMode: RightDrawerMode;
-  rightDrawerUserIdOverride: number | null;
+  rightDrawerUserIdOverride: UserId | null;
   mutedStreamIds: Set<number>;
-  usersMapForChatInfo: Map<number, { full_name?: string; email?: string }>;
+  usersMapForChatInfo: Map<string, UserRecord>;
 }
 
 export interface LayoutRightPanelShellResult {
@@ -136,7 +138,7 @@ export function useLayoutRightPanelShell(
     return chatInfoData.members
       .slice(0, 40)
       .map((member) => member.userId)
-      .filter((userId) => Number.isFinite(userId) && userId > 0);
+      .filter(isNumericUserId);
   }, [chatInfoData, rightDrawerOpen]);
 
   useLayoutUserStatusFallback({

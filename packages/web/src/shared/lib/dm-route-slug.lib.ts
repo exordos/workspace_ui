@@ -2,6 +2,7 @@
  * DM URL slug helpers — canonical participant ids and sidebar-compatible slugs.
  */
 import { dmRouteKey } from "~/shared/lib/dm-key";
+import type { UserId } from "~/shared/lib/user-id.lib";
 
 const DM_SLUG_CACHE_LIMIT = 200;
 const dmSlugUserIdsCache = new Map<string, number[]>();
@@ -41,13 +42,15 @@ export function parseDmRouteParticipantIds(dmSlug: string): number[] {
 /** Builds `/dm/:slug` segment aligned with sidebar DM entries (`id-name` or group list). */
 export function buildDmRouteSlugFromRecipients(
   recipients: readonly { id: number; full_name?: string }[],
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): string | null {
   if (recipients.length === 0) return null;
 
   const sorted = [...recipients].sort((a, b) => a.id - b.id);
   const others =
-    currentUserId != null ? sorted.filter((recipient) => recipient.id !== currentUserId) : sorted;
+    typeof currentUserId === "number"
+      ? sorted.filter((recipient) => recipient.id !== currentUserId)
+      : sorted;
   const targets = others.length > 0 ? others : sorted;
 
   if (targets.length === 1) {
@@ -64,9 +67,10 @@ export function buildDmRouteSlugFromRecipients(
 export function isDmRouteSlugActive(
   chatSlug: string,
   activeDmRouteSlug: string | null | undefined,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): boolean {
   if (activeDmRouteSlug == null || activeDmRouteSlug.length === 0) return false;
+  if (chatSlug === activeDmRouteSlug) return true;
 
   const routeUserIds = parseDmRouteParticipantIds(activeDmRouteSlug);
   const chatUserIds = parseDmRouteParticipantIds(chatSlug);

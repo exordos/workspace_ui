@@ -11,6 +11,7 @@ import { t } from "~/i18n/i18n";
 import type { FolderItemForClient } from "~/shared/api/workspace-client";
 import { FOLDER_SYNC_POLL_INTERVAL_MS } from "~/shared/config/constants";
 import { createLogger } from "~/shared/lib/logger";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type { SidebarChat, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import { startFolderPolling } from "./layout-folder-polling.lib";
 import { shouldBootstrapFolderSyncForLayout } from "./layout-folder-sync-bootstrap.lib";
@@ -35,8 +36,8 @@ export interface UseLayoutFolderSyncOrchestrationParams {
   chatsSortedByLastMessage: SidebarChat[];
   streamsMap: Map<number, StreamEntryInternal>;
   dmsMapSize: number;
-  usersMapForChatInfo: Map<number, { full_name?: string; email?: string }>;
-  currentUserId: number | null;
+  usersMapForChatInfo: Map<string, { full_name?: string; email?: string }>;
+  currentUserId: UserId | null;
   selectedFolderId: string;
   selectedFolderChatIds: ReadonlySet<string> | null;
   bootstrapFolderSync: (options: {
@@ -47,8 +48,8 @@ export interface UseLayoutFolderSyncOrchestrationParams {
   syncFolderSyncSidebarProjection: (input: {
     chatsSortedByLastMessage: SidebarChat[];
     streamsMap: Map<number, StreamEntryInternal>;
-    usersMapForChatInfo: Map<number, { full_name?: string; email?: string }>;
-    currentUserId: number | null;
+    usersMapForChatInfo: Map<string, { full_name?: string; email?: string }>;
+    currentUserId: UserId | null;
     hideUnknownArchivedStreams: boolean;
     isStreamMuted?: (streamId: number) => boolean;
   }) => void;

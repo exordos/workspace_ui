@@ -3,6 +3,7 @@ import { resolvePersonalDmSidebarTitle } from "~/entities/chat-list/chat-list-fo
 import type { WorkspaceInstance } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { computeIsGroupDmView, normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
 import { getDmById, parseDmSlugToUserIds, parseStreamSlug } from "~/widgets/sidebar/sidebar.lib";
 import type { StreamWithLast } from "~/widgets/sidebar/sidebar.types";
@@ -22,7 +23,7 @@ export function useLayoutUnreadAndTitle(options: {
   activeStreamSlug: string | undefined;
   activeTopic: string | null;
   dmIdParam: string | undefined;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   isStreamMuted?: (streamId: number) => boolean;
   isEffectivelyMuted?: (streamId: number, topic: string) => boolean;
 }): {
@@ -76,8 +77,17 @@ export function useLayoutUnreadAndTitle(options: {
   const dmRecipientIdsForTitle = useMemo(() => {
     if (dmIdParam == null || dmIdParam === "") return [];
     const raw = parseDmSlugToUserIds(dmIdParam);
-    return normalizeDmRouteUserIds(raw, currentUserId);
-  }, [dmIdParam, currentUserId]);
+    if (raw.length > 0) {
+      return normalizeDmRouteUserIds(raw, currentUserId);
+    }
+    if (activeDmChatForTitle?.userIds != null && activeDmChatForTitle.userIds.length > 0) {
+      return activeDmChatForTitle.userIds;
+    }
+    if (activeDmChatForTitle?.userUuid != null && activeDmChatForTitle.userUuid.trim().length > 0) {
+      return [activeDmChatForTitle.userUuid];
+    }
+    return [];
+  }, [dmIdParam, currentUserId, activeDmChatForTitle]);
 
   const isDmRouteForTitle = dmRecipientIdsForTitle.length > 0;
 

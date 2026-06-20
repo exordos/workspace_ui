@@ -5,6 +5,8 @@
  *   import { buildMessageIdMap, createMessageIdSet } from "~/shared/lib/message-id-index.lib";
  */
 
+import { numericUserIdOrNull, type UserId } from "./user-id.lib";
+
 export function buildMessageIdMap<T extends { id: number }>(
   messages: readonly T[],
 ): Map<number, T> {
@@ -32,15 +34,16 @@ export interface ViewportUnreadMessageSlice {
 export function filterViewportUnreadIdsForReadDispatch(
   viewportIds: Iterable<number>,
   messageById: ReadonlyMap<number, ViewportUnreadMessageSlice>,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): number[] {
+  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
   const out: number[] = [];
   for (const id of viewportIds) {
     const msg = messageById.get(id);
     if (
       msg != null &&
       !(msg.flags ?? []).includes("read") &&
-      (currentUserId == null || msg.sender_id !== currentUserId)
+      (numericCurrentUserId == null || msg.sender_id !== numericCurrentUserId)
     ) {
       out.push(id);
     }

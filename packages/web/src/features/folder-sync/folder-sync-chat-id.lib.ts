@@ -1,8 +1,24 @@
+import { userIdsEqual, type UserId } from "~/shared/lib/user-id.lib";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
 
 export interface FolderSyncUserLike {
   full_name?: string;
   email?: string;
+}
+
+export type FolderSyncUsersMap =
+  | ReadonlyMap<string, FolderSyncUserLike>
+  | ReadonlyMap<number, FolderSyncUserLike>;
+
+export function getFolderSyncUser(
+  usersMap: FolderSyncUsersMap,
+  userId: number,
+): FolderSyncUserLike | undefined {
+  const byStringKey = (usersMap as ReadonlyMap<string, FolderSyncUserLike>).get(String(userId));
+  if (byStringKey != null) {
+    return byStringKey;
+  }
+  return (usersMap as ReadonlyMap<number, FolderSyncUserLike>).get(userId);
 }
 
 export function parseNumericChatId(chatId: string): number | null {
@@ -78,7 +94,7 @@ export function chatToWorkspaceChatId(chat: SidebarChat): string {
   return `dm:${userIds.join(",")}`;
 }
 
-export function chatToWorkspaceChatIds(chat: SidebarChat, currentUserId: number | null): string[] {
+export function chatToWorkspaceChatIds(chat: SidebarChat, currentUserId: UserId | null): string[] {
   const ids = [chatToWorkspaceChatId(chat)];
   if (chat.type !== "dm" || chat.isGroup === true || currentUserId == null) {
     return ids;
@@ -88,11 +104,11 @@ export function chatToWorkspaceChatIds(chat: SidebarChat, currentUserId: number 
     Array.isArray(chat.userIds) && chat.userIds.length > 0
       ? chat.userIds
       : parseDmSlugToUserIds(chat.slug);
-  if (userIds.length !== 2 || !userIds.includes(currentUserId)) {
+  if (userIds.length !== 2 || !userIds.some((userId) => userIdsEqual(userId, currentUserId))) {
     return ids;
   }
 
-  const peerId = userIds.find((userId) => userId !== currentUserId);
+  const peerId = userIds.find((userId) => !userIdsEqual(userId, currentUserId));
   if (peerId != null) {
     ids.push(`dm:${peerId}`);
   }

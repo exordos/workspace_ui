@@ -30,5 +30,6 @@
       "~/*": ["./src/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/shared/api/zulip*", "src/shared/lib/*zulip*", "src/widgets/layout/layout-zulip*"]
 }

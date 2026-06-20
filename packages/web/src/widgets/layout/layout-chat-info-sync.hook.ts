@@ -1,18 +1,20 @@
 import { useEffect, useMemo, useRef } from "react";
+import type { UserRecord } from "~/entities/user/user.model";
 import { getChatInfoNetworkKey } from "~/features/chat-info/chat-info.lib";
 import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
 import type { ChatInfoContext } from "~/features/chat-info/chat-info.types";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type { SidebarChat } from "~/widgets/sidebar/sidebar.types";
 
 export function useLayoutChatInfoSync(options: {
   currentInstanceId: string | null;
   dmChat: Extract<SidebarChat, { type: "dm" }> | undefined;
-  dmParticipantIds: number[];
+  dmParticipantIds: UserId[];
   activeStreamId: number | null;
   activeStreamName: string | null;
   mutedStreamIds: Set<number>;
   topics: { name: string; unreadCount: number }[];
-  usersMapForChatInfo: Map<number, unknown>;
+  usersMapForChatInfo: Map<string, UserRecord>;
 }) {
   const {
     currentInstanceId,

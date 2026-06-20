@@ -4,6 +4,7 @@
 import type { MockMessage, WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type { MessageLocation } from "./chat-list.model.types";
 
 export type MentionFlagMessage = Pick<WorkspaceRawMessage, "id" | "sender_id" | "flags">;
@@ -54,7 +55,7 @@ export function buildMentionLocationFlags(
 
 export function messageLocationFromMockMessage(
   message: Pick<MockMessage, "stream_id" | "subject" | "display_recipient">,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): MessageLocation | null {
   if (message.stream_id != null) {
     return {
@@ -73,7 +74,7 @@ export function messageLocationFromMockMessage(
 
 export function messageLocationFromRawMessage(
   message: Pick<WorkspaceRawMessage, "id" | "type" | "stream_id" | "subject" | "display_recipient">,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): MessageLocation | null {
   if (message.type === "stream" && message.stream_id != null) {
     return {

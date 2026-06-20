@@ -10,6 +10,7 @@ import { getRealmBaseUrl } from "~/shared/api/messenger-client.internal";
 import { resolveAvatarUrl } from "~/shared/lib/avatar";
 import { effectiveDmIsGroupFromSlug } from "~/shared/lib/dm-route.lib";
 import { getPresenceState, sidebarRowClass } from "~/shared/lib/format";
+import { isNumericUserId, userIdStorageKey } from "~/shared/lib/user-id.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
@@ -22,10 +23,16 @@ import type { SidebarChat } from "./sidebar.types";
 
 function isPersonalDmChat(
   chat: SidebarChat,
-  currentUserId: number | null,
+  currentUserId: ReturnType<typeof useChatListStore.getState>["currentUserId"],
 ): chat is Extract<SidebarChat, { type: "dm" }> {
   if (chat.type !== "dm") return false;
-  return !effectiveDmIsGroupFromSlug(chat.isGroup, parseDmSlugToUserIds(chat.slug), currentUserId);
+  const numericCurrentUserId =
+    currentUserId != null && isNumericUserId(currentUserId) ? currentUserId : null;
+  return !effectiveDmIsGroupFromSlug(
+    chat.isGroup,
+    parseDmSlugToUserIds(chat.slug),
+    numericCurrentUserId,
+  );
 }
 
 function resolvePersonalDmListAvatarSrc(
@@ -38,7 +45,7 @@ function resolvePersonalDmListAvatarSrc(
   );
 }
 
-export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmId, dms }) => {
+export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmIdParam, dms }) => {
   const [tab, setTab] = useState<SidebarDmTab>("recent");
   const currentUserId = useChatListStore((s) => s.currentUserId);
   const allUsers = useUsersStore((s) => s.users);
@@ -50,9 +57,9 @@ export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmId, dms })
     [dms, currentUserId],
   );
   const unreadByUserId = useMemo(() => {
-    const unreadByUser = new Map<number, number>();
+    const unreadByUser = new Map<string, number>();
     for (const chat of recentDms) {
-      unreadByUser.set(chat.id, chat.badge ?? 0);
+      unreadByUser.set(userIdStorageKey(chat.id), chat.badge ?? 0);
     }
     return unreadByUser;
   }, [recentDms]);
@@ -90,8 +97,11 @@ export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmId, dms })
       <div className="space-y-0.5">
         {tab === "recent" &&
           recentDms.map((chat) => {
-            const isActive = chat.id === activeDmId;
-            const recentDmUser = allUsers.get(chat.id);
+            const chatIdKey = userIdStorageKey(chat.id);
+            const isActive =
+              chat.slug === activeDmIdParam ||
+              (activeDmIdParam != null && chatIdKey === activeDmIdParam);
+            const recentDmUser = allUsers.get(chatIdKey);
             const storeDisplayName = useUsersStore.getState().getDisplayName(chat.id);
             const rowTitle = resolvePersonalDmSidebarTitle({
               chatName: chat.name,
@@ -104,8 +114,9 @@ export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmId, dms })
                 ? getPresenceState(recentDmUser.presence.timestamp, recentDmUser.presence.status)
                 : null;
             const isTyping = isDmPartnerTyping({
-              partnerUserId: chat.id,
-              currentUserId,
+              partnerUserId: isNumericUserId(chat.id) ? chat.id : null,
+              currentUserId:
+                currentUserId != null && isNumericUserId(currentUserId) ? currentUserId : null,
               typingMap,
             });
             const secondaryText = isTyping ? t("chat.typing") : (chat.lastMessage ?? "");
@@ -170,8 +181,9 @@ export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmId, dms })
                 ? getPresenceState(user.presence.timestamp, user.presence.status)
                 : null;
             const isTyping = isDmPartnerTyping({
-              partnerUserId: user.user_id,
-              currentUserId,
+              partnerUserId: isNumericUserId(user.user_id) ? user.user_id : null,
+              currentUserId:
+                currentUserId != null && isNumericUserId(currentUserId) ? currentUserId : null,
               typingMap,
             });
             const allUsersAvatarSrc = resolveAvatarUrl(user.avatar_url, getRealmBaseUrl());

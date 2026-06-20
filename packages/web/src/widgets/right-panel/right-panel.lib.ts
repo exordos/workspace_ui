@@ -5,12 +5,18 @@ import { getRealmBaseUrl } from "~/shared/api/messenger-client.internal";
 import type { MessengerGroupSettingValue } from "~/shared/api/messenger.types";
 import { resolveAvatarUrl } from "~/shared/lib/avatar";
 import { parseRole, UserRole } from "~/shared/lib/roles";
+import {
+  numericUserIdOrNull,
+  userIdsEqual,
+  userIdStorageKey,
+  type UserId,
+} from "~/shared/lib/user-id.lib";
 import { isValidEmail } from "~/shared/lib/validation";
 import type { RightPanelUserInfo } from "./right-panel.types";
 
 // Channel member view-model for right panel — precomputed flags for thin UI render.
 export interface RightPanelStreamMemberViewModel {
-  userId: number;
+  userId: UserId;
   name: string;
   status: string;
   isOrgOwner: boolean;
@@ -23,7 +29,7 @@ export interface RightPanelStreamMemberViewModel {
 // Inputs: chat-info members, users directory, channel permission metadata.
 interface BuildRightPanelStreamMembersInput {
   members: readonly ChatInfoMember[];
-  users: Map<number, UserRecord>;
+  users: Map<string, UserRecord>;
   streamCreatorId: number | undefined;
   canAdministerChannelGroup: MessengerGroupSettingValue | undefined;
   isUserInGroupSetting: (
@@ -40,8 +46,9 @@ export function buildRightPanelStreamMembers(
   input: BuildRightPanelStreamMembersInput,
 ): RightPanelStreamMemberViewModel[] {
   return input.members.map((member) => {
-    const userRecord = input.users.get(member.userId);
+    const userRecord = input.users.get(userIdStorageKey(member.userId));
     const memberRole = parseRole(userRecord?.role);
+    const numericMemberId = numericUserIdOrNull(member.userId);
     return {
       userId: member.userId,
       name: member.fullName || input.memberFallbackLabel,
@@ -49,11 +56,13 @@ export function buildRightPanelStreamMembers(
         formatUserStatusLabel(userRecord?.status) ??
         (member.isOnline ? input.onlineLabel : input.offlineLabel),
       isOrgOwner: memberRole === UserRole.Owner,
-      isCreator: input.streamCreatorId != null && member.userId === input.streamCreatorId,
+      isCreator:
+        input.streamCreatorId != null && userIdsEqual(member.userId, input.streamCreatorId),
       isChannelAdmin:
         memberRole === UserRole.Owner ||
         memberRole === UserRole.Admin ||
-        input.isUserInGroupSetting(input.canAdministerChannelGroup, member.userId),
+        (numericMemberId != null &&
+          input.isUserInGroupSetting(input.canAdministerChannelGroup, numericMemberId)),
       isOnline: member.isOnline,
       avatarUrl: member.avatarUrl,
     };

@@ -7,6 +7,7 @@ import { fetchMessages } from "~/shared/api/messenger-messages";
 import type { MockMessage } from "~/shared/api/messenger.types";
 import { SEARCH_INPUT_DEBOUNCE_MS } from "~/shared/config/constants";
 import { getPresenceState } from "~/shared/lib/format";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import { AppDialogShell, APP_DIALOG_CONTENT_BASE_CLASS } from "~/shared/ui/app-dialog.ui";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { SearchInput } from "~/shared/ui/search-input";
@@ -120,7 +121,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   );
 
   const handleSelectUser = useCallback(
-    (userId: number) => {
+    (userId: UserId) => {
       onSelectUser?.(userId);
       onOpenChange(false);
     },
@@ -185,7 +186,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
             <ul className="space-y-0.5">
               {userResults.map((user) => (
                 <UserResultItem
-                  key={user.userId}
+                  key={String(user.userId)}
                   userId={user.userId}
                   fullName={user.fullName}
                   email={user.email}

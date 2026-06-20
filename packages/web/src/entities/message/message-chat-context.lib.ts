@@ -6,6 +6,7 @@ import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { normalizeStreamTopicForMessageCache } from "~/shared/lib/message-cache-keys.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type { CurrentChatContext } from "./message.model.types";
 
 /** True when route points to the same stream/topic or DM as the current store context (re-sync without navigation). */
@@ -37,7 +38,7 @@ export function isMessageForContext(
     display_recipient?: string | { id: number }[];
   },
   context: CurrentChatContext | null,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): boolean {
   if (!context) return false;
   if (context.type === "stream") {
@@ -58,7 +59,7 @@ export function isMessageForContext(
 
 export function contextFromMessage(
   msg: WorkspaceRawMessage,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): CurrentChatContext | null {
   if (msg.type === "stream" && msg.stream_id != null) {
     const name =
@@ -76,7 +77,7 @@ export function contextFromMessage(
 /** Parse DM key string into participant user ids (excluding current user when possible). */
 export function buildMessageFetchNarrow(
   context: CurrentChatContext,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): { operator: string; operand: string | number | number[] }[] {
   if (context.type === "stream") {
     if (context.streamWideView) {
@@ -90,13 +91,13 @@ export function buildMessageFetchNarrow(
   return [{ operator: "dm", operand: parseDmKeyToUserIds(context.dmKey, currentUserId) }];
 }
 
-export function parseDmKeyToUserIds(dmKey: string, currentUserId: number | null): number[] {
+export function parseDmKeyToUserIds(dmKey: string, currentUserId: UserId | null): number[] {
   const parts = dmKey
     .split(",")
     .map((p) => Number(p))
     .filter((n) => Number.isSafeInteger(n) && n > 0);
   const uniqueValidIds = Array.from(new Set(parts));
-  if (currentUserId == null) return uniqueValidIds;
+  if (typeof currentUserId !== "number") return uniqueValidIds;
   const withoutCurrentUser = uniqueValidIds.filter((id) => id !== currentUserId);
   return withoutCurrentUser.length > 0 ? withoutCurrentUser : uniqueValidIds;
 }

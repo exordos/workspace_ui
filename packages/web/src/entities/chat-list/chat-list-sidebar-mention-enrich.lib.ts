@@ -1,5 +1,6 @@
 import { dmRouteKey } from "~/shared/lib/dm-key";
 import { effectiveDmIsGroupFromSlug } from "~/shared/lib/dm-route.lib";
+import { isNumericUserId, numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 import type { SidebarChat, DmEntryInternal } from "~/shared/types/sidebar-chat";
 import {
   buildMentionLocationFlags,
@@ -19,25 +20,29 @@ function parseSlugUserIds(slug: string): number[] {
 
 function resolveDmSlugUserIds(entry: Pick<DmEntryInternal, "slug" | "userIds">): number[] {
   return entry.userIds != null && entry.userIds.length > 0
-    ? entry.userIds
+    ? entry.userIds.filter(isNumericUserId)
     : parseSlugUserIds(entry.slug);
 }
 
 export function shouldShowMentionBadgeOnDmRow(
   entry: Pick<DmEntryInternal, "isGroup" | "slug" | "userIds">,
   dmKey: string,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
   mentionFlags: MentionLocationFlags,
 ): boolean {
   if (!mentionFlags.dmKeys.has(dmKey)) return false;
-  return effectiveDmIsGroupFromSlug(entry.isGroup, resolveDmSlugUserIds(entry), currentUserId);
+  return effectiveDmIsGroupFromSlug(
+    entry.isGroup,
+    resolveDmSlugUserIds(entry),
+    numericUserIdOrNull(currentUserId),
+  );
 }
 
 export function enrichSidebarChatsWithMentionFlags(
   chats: readonly SidebarChat[],
   mentionedUnreadMessageIds: ReadonlySet<number>,
   messageIdToLocation: ReadonlyMap<number, import("./chat-list.model.types").MessageLocation>,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): SidebarChat[] {
   const mentionFlags = buildMentionLocationFlags(mentionedUnreadMessageIds, messageIdToLocation);
   if (
@@ -64,11 +69,14 @@ export function enrichSidebarChatsWithMentionFlags(
     }
 
     const slugUserIds =
-      chat.userIds != null && chat.userIds.length > 0 ? chat.userIds : parseSlugUserIds(chat.slug);
-    if (!effectiveDmIsGroupFromSlug(chat.isGroup, slugUserIds, currentUserId)) {
+      chat.userIds != null && chat.userIds.length > 0
+        ? chat.userIds.filter(isNumericUserId)
+        : parseSlugUserIds(chat.slug);
+    const numericCurrentUserId = numericUserIdOrNull(currentUserId);
+    if (!effectiveDmIsGroupFromSlug(chat.isGroup, slugUserIds, numericCurrentUserId)) {
       return chat;
     }
-    const dmKey = dmRouteKey(slugUserIds, currentUserId);
+    const dmKey = dmRouteKey(slugUserIds, numericCurrentUserId);
     if (!mentionFlags.dmKeys.has(dmKey)) {
       return chat;
     }

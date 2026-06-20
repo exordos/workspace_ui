@@ -27,6 +27,7 @@ import {
 } from "~/shared/lib/message-id-index.lib";
 import { useShortcut } from "~/shared/lib/shortcuts";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import {
   applyOpenChatMarkAllAsRead,
   filterMessageIdsStillUnreadForOptimisticApply,
@@ -39,9 +40,9 @@ const log = createLogger("chat-page");
 
 export interface UseChatPageMarkReadParams {
   messages: MockMessage[];
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   isDmView: boolean;
-  activeDmUserIds: number[] | null;
+  activeDmUserIds: UserId[] | null;
   activeStreamId: number | null | undefined;
   activeTopic: string | undefined;
   streamSlug: string | undefined;

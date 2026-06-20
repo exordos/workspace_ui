@@ -9,6 +9,7 @@ import {
   buildMessageRedirectRoute,
   buildMessageRedirectRouteFromWorkspacePermalink,
 } from "~/shared/lib/push-click";
+import type { UserId } from "~/shared/lib/user-id.lib";
 
 export type QuotePermalinkNavigationTarget =
   | { kind: "path"; path: string; replace?: boolean }
@@ -20,8 +21,8 @@ export interface ResolveQuotePermalinkNavigationParams {
   locationPathname: string;
   locationSearch: string;
   isDmView: boolean;
-  currentUserId: number | null;
-  dmRecipientIds: number[];
+  currentUserId: UserId | null;
+  dmRecipientIds: UserId[];
   resolvedStreamId: number | null;
   topicName: string | undefined;
   streamRouteTopic: string;

@@ -1,5 +1,12 @@
 import { create } from "zustand";
 import { logStoreAction } from "~/shared/lib/logger";
+import {
+  compareUserIds,
+  isNumericUserId,
+  isUserIdentityReady,
+  type UserId,
+  userIdStorageKey,
+} from "~/shared/lib/user-id.lib";
 import { toggleUserPickerSelection } from "~/shared/lib/user-picker";
 import { addStreamMembers } from "./add-stream-members.api";
 import type {
@@ -7,7 +14,8 @@ import type {
   AddStreamMembersSubmitOptions,
 } from "./add-stream-members.types";
 
-const EMPTY_IDS: number[] = [];
+const EMPTY_IDS: UserId[] = [];
+const EMPTY_NUMERIC_IDS: number[] = [];
 
 interface AddStreamMembersState {
   open: boolean;
@@ -15,7 +23,7 @@ interface AddStreamMembersState {
   streamName: string;
   existingMemberIds: number[];
   query: string;
-  selectedIds: number[];
+  selectedIds: UserId[];
   submitting: boolean;
   error: string | null;
   lastResult: AddStreamMembersResult | null;
@@ -27,23 +35,32 @@ interface AddStreamMembersState {
   }) => void;
   close: () => void;
   setQuery: (query: string) => void;
-  toggleSelected: (userId: number) => void;
+  toggleSelected: (userId: UserId) => void;
   setExistingMemberIds: (ids: number[]) => void;
   clearSelection: () => void;
   submit: (options: AddStreamMembersSubmitOptions) => Promise<AddStreamMembersResult | null>;
 }
 
-function normalizeUserIds(ids: readonly number[]): number[] {
+function normalizeNumericUserIds(ids: readonly number[]): number[] {
   return Array.from(new Set(ids.filter((userId) => Number.isInteger(userId) && userId > 0))).sort(
     (a, b) => a - b,
   );
+}
+
+function normalizeSelectableUserIds(ids: readonly UserId[]): UserId[] {
+  const byKey = new Map<string, UserId>();
+  for (const userId of ids) {
+    if (!isUserIdentityReady(userId)) continue;
+    byKey.set(userIdStorageKey(userId), userId);
+  }
+  return Array.from(byKey.values()).sort(compareUserIds);
 }
 
 export const useAddStreamMembersStore = create<AddStreamMembersState>((set, get) => ({
   open: false,
   streamId: null,
   streamName: "",
-  existingMemberIds: EMPTY_IDS,
+  existingMemberIds: EMPTY_NUMERIC_IDS,
   query: "",
   selectedIds: EMPTY_IDS,
   submitting: false,
@@ -51,7 +68,7 @@ export const useAddStreamMembersStore = create<AddStreamMembersState>((set, get)
   lastResult: null,
 
   openForStream({ streamId, streamName, existingMemberIds }) {
-    const normalizedExisting = normalizeUserIds(existingMemberIds);
+    const normalizedExisting = normalizeNumericUserIds(existingMemberIds);
     logStoreAction("addStreamMembers", "openForStream", {
       streamId,
       existingCount: normalizedExisting.length,
@@ -75,7 +92,7 @@ export const useAddStreamMembersStore = create<AddStreamMembersState>((set, get)
       open: false,
       streamId: null,
       streamName: "",
-      existingMemberIds: EMPTY_IDS,
+      existingMemberIds: EMPTY_NUMERIC_IDS,
       query: "",
       selectedIds: EMPTY_IDS,
       submitting: false,
@@ -89,7 +106,7 @@ export const useAddStreamMembersStore = create<AddStreamMembersState>((set, get)
 
   toggleSelected(userId) {
     const state = get();
-    if (state.existingMemberIds.includes(userId)) {
+    if (isNumericUserId(userId) && state.existingMemberIds.includes(userId)) {
       return;
     }
     const selectedIds = toggleUserPickerSelection(state.selectedIds, userId);
@@ -97,9 +114,11 @@ export const useAddStreamMembersStore = create<AddStreamMembersState>((set, get)
   },
 
   setExistingMemberIds(ids) {
-    const nextExisting = normalizeUserIds(ids);
+    const nextExisting = normalizeNumericUserIds(ids);
     const existingSet = new Set(nextExisting);
-    const selectedIds = get().selectedIds.filter((userId) => !existingSet.has(userId));
+    const selectedIds = get().selectedIds.filter(
+      (userId) => !isNumericUserId(userId) || !existingSet.has(userId),
+    );
     set({ existingMemberIds: nextExisting, selectedIds });
   },
 
@@ -117,10 +136,12 @@ export const useAddStreamMembersStore = create<AddStreamMembersState>((set, get)
       return null;
     }
 
-    const selectedIds = normalizeUserIds(state.selectedIds);
+    const selectedIds = normalizeSelectableUserIds(state.selectedIds);
     const existingSet = new Set(state.existingMemberIds);
     // Skip already-subscribed members only; Messenger API allows self-add.
-    const filteredIds = selectedIds.filter((userId) => !existingSet.has(userId));
+    const filteredIds = selectedIds.filter(
+      (userId) => !isNumericUserId(userId) || !existingSet.has(userId),
+    );
 
     if (filteredIds.length === 0) {
       set({ error: null });
@@ -167,7 +188,7 @@ export const useAddStreamMembersStore = create<AddStreamMembersState>((set, get)
       open: false,
       streamId: null,
       streamName: "",
-      existingMemberIds: EMPTY_IDS,
+      existingMemberIds: EMPTY_NUMERIC_IDS,
       query: "",
       selectedIds: EMPTY_IDS,
     });

@@ -3,18 +3,19 @@ import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { selectUserStatusSnapshot } from "~/entities/user/user-status.hooks";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserProfileStore } from "~/features/user-profile/user-profile.model";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type { RightPanelUserInfo } from "~/widgets/right-panel/right-panel.types";
 import type { SidebarChat } from "~/widgets/sidebar/sidebar.types";
 import { buildRightPanelMedia } from "./layout-media.lib";
-import { buildRightPanelCommonGroups, buildRightPanelUserInfo } from "./layout-right-panel.lib";
+import { buildRightPanelUserInfo } from "./layout-right-panel.lib";
 
 export function useLayoutRightPanelUser(options: {
-  rightDrawerTargetUserId: number | undefined;
+  rightDrawerTargetUserId: UserId | undefined;
   dmChat: Extract<SidebarChat, { type: "dm" }> | undefined;
   dms: SidebarChat[];
   currentInstanceRealm: string | undefined;
 }): RightPanelUserInfo | undefined {
-  const { rightDrawerTargetUserId, dmChat, dms, currentInstanceRealm } = options;
+  const { rightDrawerTargetUserId, dmChat, currentInstanceRealm } = options;
 
   const userFromStore = useUsersStore((s) =>
     rightDrawerTargetUserId != null ? s.getUser(rightDrawerTargetUserId) : undefined,
@@ -29,15 +30,7 @@ export function useLayoutRightPanelUser(options: {
     [rightDrawerTargetUserId, currentChatMessages],
   );
 
-  const rightPanelCommonGroups = useMemo(() => {
-    if (rightDrawerTargetUserId == null) return undefined;
-    const groups = buildRightPanelCommonGroups(
-      dms as Extract<SidebarChat, { type: "dm" }>[],
-      rightDrawerTargetUserId,
-      dmChat?.slug,
-    );
-    return groups.length > 0 ? groups : undefined;
-  }, [rightDrawerTargetUserId, dms, dmChat?.slug]);
+  const rightPanelCommonGroups = undefined;
 
   return useMemo(() => {
     return buildRightPanelUserInfo({

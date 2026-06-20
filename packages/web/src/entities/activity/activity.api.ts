@@ -16,6 +16,7 @@ import { createLogger } from "~/shared/lib/logger";
 import { upsertChatMessages } from "~/shared/lib/message-cache-db";
 import { chatKeyFromMockMessage } from "~/shared/lib/message-cache-keys.lib";
 import { messengerMessageCacheWindowNForChatKey } from "~/shared/lib/messenger-message-window.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 
 const log = createLogger("activity:api");
 
@@ -28,7 +29,7 @@ function throwIfAborted(signal?: AbortSignal): void {
 async function persistActivityMessagesToIdb(
   instanceId: string | null,
   messages: readonly WorkspaceRawMessage[],
-  currentUserId: number | null,
+  currentUserId: UserId | null,
   signal?: AbortSignal,
 ): Promise<void> {
   if (!persistChatMessagesToIndexedDb()) return;
@@ -77,7 +78,7 @@ async function persistActivityMessagesToIdb(
 
 export async function fetchActivityMessagesPageWithPersist(
   filter: ActivityFilter,
-  currentUserId?: number | null,
+  currentUserId?: UserId | null,
   anchor: number | "newest" = "newest",
   numBefore = 200,
   options?: { signal?: AbortSignal },

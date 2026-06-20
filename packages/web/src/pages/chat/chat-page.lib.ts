@@ -1,6 +1,7 @@
 import type { DraftType } from "~/entities/draft/draft.types";
 import { t } from "~/i18n/i18n";
 import { dmRouteKey } from "~/shared/lib/dm-key";
+import { userIdStorageKey, type UserId } from "~/shared/lib/user-id.lib";
 
 export type ReadFallbackContext =
   | { type: "stream"; streamId: number; topic: string }
@@ -21,8 +22,8 @@ export function resolveDraftType(
 
 export function buildReadFallbackContext(options: {
   isDmView: boolean;
-  activeDmUserIds: number[] | null | undefined;
-  currentUserId: number | null | undefined;
+  activeDmUserIds: UserId[] | null | undefined;
+  currentUserId: UserId | null | undefined;
   activeStreamId: number | null | undefined;
   activeTopic: string | null | undefined;
 }): ReadFallbackContext | undefined {
@@ -46,15 +47,19 @@ export function buildReadFallbackContext(options: {
 }
 
 export function resolveDmGroupParticipantIds(options: {
-  dmUserIds: number[] | undefined;
-  currentUserId: number | null | undefined;
-  dmRecipientIds: number[];
-}): number[] {
+  dmUserIds: UserId[] | undefined;
+  currentUserId: UserId | null | undefined;
+  dmRecipientIds: UserId[];
+}): UserId[] {
   if (options.dmUserIds != null && options.dmUserIds.length > 0) {
     return options.dmUserIds;
   }
   if (options.currentUserId != null) {
-    return Array.from(new Set([...options.dmRecipientIds, options.currentUserId]));
+    const unique = new Map<string, UserId>();
+    for (const userId of [...options.dmRecipientIds, options.currentUserId]) {
+      unique.set(userIdStorageKey(userId), userId);
+    }
+    return Array.from(unique.values());
   }
   return options.dmRecipientIds;
 }
@@ -74,7 +79,7 @@ export function resolveChatHeaderRightPanelLabel(
 
 export function resolveMessageListScrollKey(options: {
   isDmView: boolean;
-  activeDmUserIds: number[] | null;
+  activeDmUserIds: UserId[] | null;
   activeStream: string | null | undefined;
   activeTopic: string | null | undefined;
 }): string | undefined {

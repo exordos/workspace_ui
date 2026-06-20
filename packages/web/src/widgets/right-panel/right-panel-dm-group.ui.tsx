@@ -4,6 +4,7 @@ import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import { getRealmBaseUrl } from "~/shared/api/messenger-client.internal";
+import { userIdStorageKey } from "~/shared/lib/user-id.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
@@ -24,7 +25,7 @@ export const RightPanelDmGroup = React.memo(function RightPanelDmGroup({
         id: member.userId,
         name: member.fullName || t("roles.member"),
         email: member.email ?? "",
-        statusLabel: formatUserStatusLabel(users.get(member.userId)?.status),
+        statusLabel: formatUserStatusLabel(users.get(userIdStorageKey(member.userId))?.status),
         isOnline: member.isOnline,
         avatarUrl: member.avatarUrl,
         profileData: member.profileData,
@@ -62,7 +63,7 @@ export const RightPanelDmGroup = React.memo(function RightPanelDmGroup({
           ) : (
             <ul className="space-y-2">
               {members.map((member) => (
-                <li key={member.id}>
+                <li key={userIdStorageKey(member.id)}>
                   <div className="rounded-lg px-1.5 py-1 transition-colors hover:bg-bg-elevated">
                     <button
                       type="button"

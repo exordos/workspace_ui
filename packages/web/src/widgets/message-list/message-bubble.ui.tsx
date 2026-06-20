@@ -7,6 +7,7 @@ import { getJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 import { messageBodyToUnsanitizedDisplayHtml } from "~/shared/lib/message-markdown-display.lib";
 import { prepareProtectedMessageHtml } from "~/shared/lib/protected-message-media";
 import { useProtectedMessageHtml } from "~/shared/lib/protected-message-media.hook";
+import { numericUserIdOrNull } from "~/shared/lib/user-id.lib";
 import { filterVisibleContextSections } from "./message-bubble-actions.lib";
 import {
   MessageBubbleStandardBody,
@@ -65,7 +66,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     const user = getUser(message.sender_id);
     const findUserIdByDisplayName = useUsersStore((s) => s.findUserIdByDisplayName);
     const resolveUserMention = useCallback(
-      (displayName: string): number | null => findUserIdByDisplayName(displayName),
+      (displayName: string): number | null =>
+        numericUserIdOrNull(findUserIdByDisplayName(displayName)),
       [findUserIdByDisplayName],
     );
     const trimmedUserName = user?.full_name?.trim();
@@ -96,6 +98,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       },
       [getUser],
     );
+    const numericCurrentUserId = numericUserIdOrNull(currentUserId);
     const imagesBase = getMessageImagesBaseUrl();
     const { safeMessageHtml, displayHtmlForJitsi } = useMemo(() => {
       const displaySourceBody = message.markdown_source ?? message.content;
@@ -128,12 +131,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       setCanEditMessageContentForMenu(
         canStartMessageContentEdit(
           message,
-          currentUserId ?? (isOwn ? message.sender_id : undefined),
+          numericCurrentUserId ?? (isOwn ? message.sender_id : undefined),
           currentUserMessageEditPolicy,
           Math.floor(Date.now() / 1000),
         ),
       );
-    }, [currentUserId, isOwn, message]);
+    }, [numericCurrentUserId, isOwn, message]);
 
     const interactions = useMessageBubbleInteractions({
       message,
@@ -244,7 +247,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
           time={time}
           hasReactions={hasReactions}
           reactionGroups={reactionGroups}
-          currentUserId={currentUserId}
+          currentUserId={numericCurrentUserId ?? undefined}
           resolveReactionAuthorLabel={resolveReactionAuthorLabel}
           callbacks={callbacks}
           ownDeliveryIndicator={ownDeliveryIndicator}

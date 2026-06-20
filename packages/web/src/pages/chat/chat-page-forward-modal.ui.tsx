@@ -5,6 +5,7 @@ import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
+import { numericUserIdOrNull } from "~/shared/lib/user-id.lib";
 import { Icon } from "~/shared/ui/icon";
 import { toggleForwardRecipient } from "./chat-forward.lib";
 import type { ForwardMessageModalBodyProps } from "./chat-page.types";
@@ -20,7 +21,9 @@ export const ForwardMessageModalBody = React.memo<ForwardMessageModalBodyProps>(
     const topics = stream?.topics ?? [];
     const allUsers = useUsersStore((s) => s.users);
     const userList = useMemo(() => {
-      const list = Array.from(allUsers.values());
+      const list = Array.from(allUsers.values()).filter(
+        (user) => numericUserIdOrNull(user.user_id) != null,
+      );
       if (!dmSearch.trim()) return list;
       const q = dmSearch.trim().toLowerCase();
       return list.filter(
@@ -131,6 +134,7 @@ export const ForwardMessageModalBody = React.memo<ForwardMessageModalBodyProps>(
                   </p>
                 ) : (
                   userList.map((u) => {
+                    const numericUserId = numericUserIdOrNull(u.user_id);
                     const statusLabel = formatUserStatusLabel(u.status);
                     const shouldRenderRichStatus = u.status?.reactionType === "realm_emoji";
                     return (
@@ -138,12 +142,16 @@ export const ForwardMessageModalBody = React.memo<ForwardMessageModalBodyProps>(
                         type="button"
                         key={u.user_id}
                         className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors ${
-                          selectedUserIds.includes(u.user_id)
+                          numericUserId != null && selectedUserIds.includes(numericUserId)
                             ? "bg-accent/20 text-text-primary"
                             : "text-text-primary hover:bg-bg-elevated"
                         }`}
                         onClick={() =>
-                          setSelectedUserIds((prev) => toggleForwardRecipient(prev, u.user_id))
+                          setSelectedUserIds((prev) =>
+                            numericUserId == null
+                              ? prev
+                              : toggleForwardRecipient(prev, numericUserId),
+                          )
                         }
                       >
                         <span className="min-w-0 flex-1">
@@ -159,7 +167,7 @@ export const ForwardMessageModalBody = React.memo<ForwardMessageModalBodyProps>(
                             </span>
                           ) : null}
                         </span>
-                        {selectedUserIds.includes(u.user_id) ? (
+                        {numericUserId != null && selectedUserIds.includes(numericUserId) ? (
                           <Icon name="check" size={14} className="ml-auto text-accent" />
                         ) : null}
                       </button>

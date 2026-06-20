@@ -1,5 +1,6 @@
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
+import type { UserId } from "~/shared/lib/user-id.lib";
 
 /** Compact localStorage DM index to restore dialog list without deep message loads. */
 const DM_INDEX_STORAGE_PREFIX = "workspace-dm-index";
@@ -124,7 +125,7 @@ export function upsertDmIndexEntries(instanceId: string, entries: readonly DmInd
 export function upsertDmIndexFromMessages(
   instanceId: string,
   messages: readonly WorkspaceRawMessage[],
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): void {
   const rows: DmIndexEntry[] = [];
   for (const message of messages) {

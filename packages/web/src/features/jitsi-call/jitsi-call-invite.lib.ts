@@ -1,5 +1,6 @@
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { getJitsiMeetingUrl, parseJitsiUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
+import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 import { parseJitsiMeetingUrlLoose } from "./jitsi-call-url.lib";
 import type { IncomingDmCallInvite } from "./jitsi-call.model";
 
@@ -20,13 +21,14 @@ function isOneToOneDmForCurrentUser(message: WorkspaceRawMessage, currentUserId:
  */
 export function resolveIncomingDmCallInvite(
   message: WorkspaceRawMessage,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
   jitsiLinkOptions?: JitsiLinkOptions,
 ): IncomingDmCallInvite | null {
-  if (currentUserId == null) return null;
+  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
+  if (numericCurrentUserId == null) return null;
   if (message.type !== "private") return null;
-  if (message.sender_id === currentUserId) return null;
-  if (!isOneToOneDmForCurrentUser(message, currentUserId)) return null;
+  if (message.sender_id === numericCurrentUserId) return null;
+  if (!isOneToOneDmForCurrentUser(message, numericCurrentUserId)) return null;
 
   const meetingUrl = getJitsiMeetingUrl(message.content, jitsiLinkOptions);
   if (meetingUrl == null) return null;

@@ -16,6 +16,7 @@ import {
 import { useUsersStore } from "~/entities/user/user.model";
 import { createLogger } from "~/shared/lib/logger";
 import { runInFlightDeduped } from "~/shared/lib/request-lifecycle.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 
 const log = createLogger("activity:starred-loader");
 
@@ -23,7 +24,7 @@ export const STARRED_SUMMARY_PAGE_SIZE = 200;
 
 export interface EnsureStarredLoadedOptions {
   currentInstanceId: string | null;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   forceRefresh?: boolean;
   pageSize?: number;
   signal?: AbortSignal;

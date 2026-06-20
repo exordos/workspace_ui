@@ -10,6 +10,7 @@ import type {
 } from "~/shared/api/messenger.types";
 import { getInstanceMessagesAscending } from "~/shared/lib/message-cache-db";
 import { mockMessageToRawMessage } from "~/shared/lib/message-mock-to-raw.lib";
+import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 
 function getActivityMessagesNewestTimestamp(messages: readonly WorkspaceRawMessage[]): number {
   if (messages.length === 0) return 0;
@@ -54,7 +55,7 @@ export function isActivityMessagesSnapshotFresher(
 export function matchesActivityFilter(
   message: MockMessage,
   filter: ActivityFilter,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): boolean {
   const flags = message.flags ?? [];
   if (filter === "starred") {
@@ -66,18 +67,19 @@ export function matchesActivityFilter(
   if ((message.reactions?.length ?? 0) === 0) {
     return false;
   }
-  if (currentUserId == null) {
+  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
+  if (numericCurrentUserId == null) {
     return false;
   }
   // Workspace reactions view: own messages that have at least one emoji reaction.
-  return message.sender_id === currentUserId && (message.reactions?.length ?? 0) > 0;
+  return message.sender_id === numericCurrentUserId && (message.reactions?.length ?? 0) > 0;
 }
 
 /** Oldest→newest slice aligned with server pagination shape to avoid UI jumps after hydrate. */
 export async function hydrateActivityMessagesFromCache(
   instanceId: string | null,
   filter: ActivityFilter,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
   limit = 200,
 ): Promise<WorkspaceRawMessage[]> {
   if (instanceId == null) return [];

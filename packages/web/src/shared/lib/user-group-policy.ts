@@ -1,4 +1,5 @@
 import type { MessengerGroupSettingValue } from "~/shared/api/messenger.types";
+import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 
 interface AnnouncementOnlyGroupRecord {
   id: number;
@@ -8,7 +9,7 @@ interface AnnouncementOnlyGroupRecord {
 
 interface BuildAnnouncementOnlyCanSendGroupInput {
   userGroups: ReadonlyMap<number, AnnouncementOnlyGroupRecord>;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
 }
 
 const ANNOUNCEMENT_ONLY_ROLE_NAMES = new Set(["role:moderators", "role:administrators"]);
@@ -41,7 +42,10 @@ export function buildAnnouncementOnlyCanSendGroup(
   }
 
   return {
-    direct_members: isValidPositiveInteger(input.currentUserId) ? [input.currentUserId] : [],
+    direct_members:
+      numericUserIdOrNull(input.currentUserId) != null
+        ? [numericUserIdOrNull(input.currentUserId)!]
+        : [],
     direct_subgroups: subgroupIds,
   };
 }

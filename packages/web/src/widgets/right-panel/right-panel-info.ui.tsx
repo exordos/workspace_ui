@@ -26,6 +26,12 @@ import { resolveCanonicalStreamName } from "~/shared/lib/stream-name.lib";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { encodeTopicForRoute, normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { useInputMode } from "~/shared/lib/touch";
+import {
+  numericUserIdOrNull,
+  userIdsEqual,
+  userIdStorageKey,
+  type UserId,
+} from "~/shared/lib/user-id.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
@@ -59,6 +65,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   const context = useCurrentChatMessagesStore((s) => s.context);
   const streamId = context?.type === "stream" ? context.streamId : null;
   const currentUserId = useChatListStore((s) => s.currentUserId);
+  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
   const streamMetadataHydrated = useChatListStore((s) => s.streamMetadataHydrated);
   const streamEntry = useChatListStore((s) =>
     streamId != null ? s.streamsMap.get(streamId) : undefined,
@@ -76,7 +83,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     () =>
       streamId != null
         ? resolveCurrentUserChannelCapabilities({
-            currentUserId,
+            currentUserId: numericCurrentUserId,
             orgRole: currentUserRole,
             currentUserChannelCapabilities,
             inviteOnly: streamEntry?.inviteOnly,
@@ -93,7 +100,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
           },
     [
       currentUserChannelCapabilities,
-      currentUserId,
+      numericCurrentUserId,
       currentUserRole,
       isUserInGroupSetting,
       streamEntry?.canAddSubscribersGroup,
@@ -151,17 +158,17 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   );
 
   const handleOpenDirectMessage = useCallback(
-    (userId: number) => {
+    (userId: UserId) => {
       if (onOpenDirectMessage) {
         onOpenDirectMessage(userId);
         return;
       }
-      void navigate(withCurrentOrgRoute(`/dm/${userId}`));
+      void navigate(withCurrentOrgRoute(`/dm/${encodeURIComponent(String(userId))}`));
     },
     [navigate, onOpenDirectMessage],
   );
   const handleOpenUserProfile = useCallback(
-    (userId: number) => {
+    (userId: UserId) => {
       rightDrawer?.openUserProfile?.(userId);
     },
     [rightDrawer],
@@ -172,7 +179,8 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     }
     const ids = chatInfoData.members
       .map((member) => member.userId)
-      .filter((userId) => Number.isFinite(userId) && userId > 0);
+      .map((userId) => numericUserIdOrNull(userId))
+      .filter((userId): userId is number => userId != null);
     return Array.from(new Set(ids));
   }, [chatInfoData]);
 
@@ -229,8 +237,13 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     [currentInstanceId],
   );
   const handleRemoveMember = useCallback(
-    (userId: number) => {
+    (userId: UserId) => {
       if (streamId == null) return;
+      const numericUserId = numericUserIdOrNull(userId);
+      if (numericUserId == null) {
+        setChannelActionError(t("app.error"));
+        return;
+      }
       if (canonicalStreamName == null) {
         log.warn("Blocked remove-member without canonical stream name", { streamId, userId });
         setChannelActionError(t("app.error"));
@@ -239,7 +252,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
       void removeMember({
         streamId,
         streamName: canonicalStreamName,
-        userId,
+        userId: numericUserId,
         onSuccess: handleStreamMembersChangedSuccess,
       });
     },
@@ -668,68 +681,77 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
             </p>
           ) : (
             <ul className="space-y-2">
-              {members.map((p) => (
-                <li key={p.userId} className="group/member">
-                  <div className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-bg-elevated">
-                    <button
-                      type="button"
-                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                      onClick={() => handleOpenUserProfile(p.userId)}
-                      aria-label={t("a11y.openUserProfile", { name: p.name })}
-                    >
-                      <div className="relative shrink-0">
-                        <Avatar
-                          size="sm"
-                          className="bg-bg-elevated text-text-primary"
-                          src={resolveAvatarSrc(p.avatarUrl) ?? undefined}
-                        >
-                          {p.name.slice(0, 1)}
-                        </Avatar>
-                        <span className="absolute -bottom-0.5 -right-0.5">
-                          <PresenceIndicator status={p.isOnline ? "active" : "offline"} size="sm" />
-                        </span>
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="flex items-center gap-1.5 truncate text-sm text-text-primary">
-                          {p.name}
-                          {p.isCreator && (
-                            <span className="text-[10px] font-normal text-text-secondary">
-                              {t("channel.memberBadgeCreator")}
-                            </span>
+              {members.map((p) => {
+                const numericMemberId = numericUserIdOrNull(p.userId);
+                const isCurrentUserMember =
+                  currentUserId != null && userIdsEqual(p.userId, currentUserId);
+                return (
+                  <li key={userIdStorageKey(p.userId)} className="group/member">
+                    <div className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-bg-elevated">
+                      <button
+                        type="button"
+                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                        onClick={() => handleOpenUserProfile(p.userId)}
+                        aria-label={t("a11y.openUserProfile", { name: p.name })}
+                      >
+                        <div className="relative shrink-0">
+                          <Avatar
+                            size="sm"
+                            className="bg-bg-elevated text-text-primary"
+                            src={resolveAvatarSrc(p.avatarUrl) ?? undefined}
+                          >
+                            {p.name.slice(0, 1)}
+                          </Avatar>
+                          <span className="absolute -bottom-0.5 -right-0.5">
+                            <PresenceIndicator
+                              status={p.isOnline ? "active" : "offline"}
+                              size="sm"
+                            />
+                          </span>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="flex items-center gap-1.5 truncate text-sm text-text-primary">
+                            {p.name}
+                            {p.isCreator && (
+                              <span className="text-[10px] font-normal text-text-secondary">
+                                {t("channel.memberBadgeCreator")}
+                              </span>
+                            )}
+                            {!p.isCreator && p.isChannelAdmin && (
+                              <span className="text-[10px] font-normal text-text-secondary">
+                                {t("channel.memberBadgeChannelAdmin")}
+                              </span>
+                            )}
+                          </p>
+                          {p.status && (
+                            <p className="truncate text-[11px] text-text-secondary">{p.status}</p>
                           )}
-                          {!p.isCreator && p.isChannelAdmin && (
-                            <span className="text-[10px] font-normal text-text-secondary">
-                              {t("channel.memberBadgeChannelAdmin")}
-                            </span>
-                          )}
-                        </p>
-                        {p.status && (
-                          <p className="truncate text-[11px] text-text-secondary">{p.status}</p>
+                        </div>
+                      </button>
+                      {canRemoveMembers &&
+                        currentUserId != null &&
+                        numericMemberId != null &&
+                        !isCurrentUserMember &&
+                        !p.isCreator &&
+                        !p.isOrgOwner && (
+                          <button
+                            type="button"
+                            aria-label={t("a11y.removeMemberFromChannel", { name: p.name })}
+                            disabled={removeMemberPendingUserIds.includes(numericMemberId)}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              handleRemoveMember(p.userId);
+                            }}
+                            className={removeMemberActionClassName}
+                          >
+                            <Icon name="close" size={14} className="text-current" />
+                          </button>
                         )}
-                      </div>
-                    </button>
-                    {canRemoveMembers &&
-                      currentUserId != null &&
-                      p.userId !== currentUserId &&
-                      !p.isCreator &&
-                      !p.isOrgOwner && (
-                        <button
-                          type="button"
-                          aria-label={t("a11y.removeMemberFromChannel", { name: p.name })}
-                          disabled={removeMemberPendingUserIds.includes(p.userId)}
-                          onClick={(event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            handleRemoveMember(p.userId);
-                          }}
-                          className={removeMemberActionClassName}
-                        >
-                          <Icon name="close" size={14} className="text-current" />
-                        </button>
-                      )}
-                  </div>
-                </li>
-              ))}
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
           {removeMemberLastError && (

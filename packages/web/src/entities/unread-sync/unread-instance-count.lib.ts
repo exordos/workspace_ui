@@ -1,5 +1,6 @@
 import { parseDmRouteParticipantIds } from "~/shared/lib/dm-route-slug.lib";
 import { effectiveDmIsGroupFromSlug } from "~/shared/lib/dm-route.lib";
+import { isNumericUserId, numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 import {
   computeInstanceStreamUnreadCountWithMute,
   toSafeUnreadCount,
@@ -34,7 +35,7 @@ export function computeInstanceUnreadCount({
 // Some callers pass userIds, some pass route slug. This normalizes both.
 function resolveDmSlugUserIds(dm: UnreadDmBadgeHolder): number[] {
   if (Array.isArray(dm.userIds) && dm.userIds.length > 0) {
-    return [...dm.userIds];
+    return dm.userIds.filter(isNumericUserId);
   }
   if (typeof dm.slug === "string" && dm.slug.length > 0) {
     return parseDmRouteParticipantIds(dm.slug);
@@ -45,9 +46,13 @@ function resolveDmSlugUserIds(dm: UnreadDmBadgeHolder): number[] {
 // Personal DMs count for the org dot. Group DMs do not.
 export function isPersonalDmUnreadEntry(
   dm: UnreadDmBadgeHolder,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): boolean {
-  return !effectiveDmIsGroupFromSlug(dm.isGroup, resolveDmSlugUserIds(dm), currentUserId);
+  return !effectiveDmIsGroupFromSlug(
+    dm.isGroup,
+    resolveDmSlugUserIds(dm),
+    numericUserIdOrNull(currentUserId),
+  );
 }
 
 // Sums unread badges only for personal DMs.
@@ -55,7 +60,7 @@ export function computeInstanceDmUnreadCount({
   dms,
   currentUserId = null,
 }: Pick<ComputeInstanceUnreadInput, "dms"> & {
-  currentUserId?: number | null;
+  currentUserId?: UserId | null;
 }): number {
   return dms
     .filter((dm) => isPersonalDmUnreadEntry(dm, currentUserId))

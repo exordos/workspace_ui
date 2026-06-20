@@ -1,4 +1,5 @@
 import type { MockMessage } from "~/shared/api/messenger.types";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type { MessageListCallbacks } from "~/widgets/message-list/message-list.types";
 
 export type ChatMessagesLoadErrorKind = "initial" | "refresh";
@@ -8,11 +9,11 @@ export interface ChatPageMessageListSectionProps {
   // True when initial payload exists for current route — blocking loader depends on data presence, not loading flag alone.
   hasInitialPayload: boolean;
   isDmView: boolean;
-  activeDmUserIds: number[] | null;
+  activeDmUserIds: UserId[] | null;
   activeStream: string | null | undefined;
   activeTopic: string | null | undefined;
   messages: MockMessage[];
-  currentUserId: number | undefined;
+  currentUserId: UserId | undefined;
   callbacks: MessageListCallbacks;
   selectionMode: boolean;
   selectedMessageIds: Set<number>;

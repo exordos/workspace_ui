@@ -3,12 +3,13 @@ import { useUsersStore } from "~/entities/user/user.model";
 import type { Reaction, RealmEmoji, WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { normalizeEmojiShortcodeName } from "~/shared/lib/emoji-shortcodes.lib";
 import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
+import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 import { resolveReactionTitle } from "~/widgets/message-list/message-bubble-reactions-row.lib";
 import { getActivityPeerReactionGroups } from "./activity-page.lib";
 
 export interface ActivityPeerReactionsRowProps {
   message: WorkspaceRawMessage;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
 }
 
 const ActivityPeerReactionsRowComponent: React.FC<ActivityPeerReactionsRowProps> = ({
@@ -17,16 +18,17 @@ const ActivityPeerReactionsRowComponent: React.FC<ActivityPeerReactionsRowProps>
 }) => {
   const getUser = useUsersStore((s) => s.getUser);
   const [customEmojis, setCustomEmojis] = useState<RealmEmoji[]>(() => getCachedRealmEmojis());
+  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
 
   const hasPeerRealmEmoji = useMemo(
     () =>
       (message.reactions ?? []).some(
         (reaction) =>
           reaction.reaction_type === "realm_emoji" &&
-          currentUserId != null &&
-          reaction.user_id !== currentUserId,
+          numericCurrentUserId != null &&
+          reaction.user_id !== numericCurrentUserId,
       ),
-    [currentUserId, message.reactions],
+    [numericCurrentUserId, message.reactions],
   );
 
   useEffect(() => {

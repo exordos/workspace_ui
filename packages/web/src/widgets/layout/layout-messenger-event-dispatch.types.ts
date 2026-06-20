@@ -3,12 +3,13 @@ import type { CurrentChatContext } from "~/entities/message/message.model";
 import type { IncomingDmCallInvite } from "~/features/jitsi-call/jitsi-call.model";
 import type { MockMessage, WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import type { LinkPreviewData } from "~/shared/lib/message-link-preview.types";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
 
 export type LayoutMessageFlagOp = "add" | "remove";
 
 export interface LayoutChatListActions {
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   // Current stream metadata map (partial channel-level permission updates).
   streamsMap: Map<number, StreamEntryInternal>;
   addMessage: (message: WorkspaceRawMessage, options?: { suppressUnreadBump?: boolean }) => void;
@@ -85,7 +86,7 @@ export interface LayoutUsersActions {
     presence: { status: "active" | "idle"; timestamp: number },
   ) => void;
   setStatus: (
-    userId: number,
+    userId: UserId,
     status: {
       text: string;
       emojiName?: string;

@@ -4,6 +4,7 @@ import { MediaViewerOverlay } from "~/features/media-viewer/media-viewer-overlay
 import { OpenSearchContext } from "~/shared/contexts/open-search";
 import { RightDrawerContext } from "~/shared/contexts/right-drawer";
 import { brand } from "~/shared/lib/brand";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type { RightDrawerMode } from "~/widgets/right-panel/right-drawer.model";
 import type { RightPanelUserInfo } from "~/widgets/right-panel/right-panel.types";
 import { TopBar } from "~/widgets/top-bar/top-bar.ui";
@@ -14,7 +15,7 @@ export interface LayoutAppShellProps {
   rightDrawerOpen: boolean;
   setRightDrawerOpen: (open: boolean) => void;
   openRightDrawerInfo: () => void;
-  openRightDrawerUserProfile: (userId: number) => void;
+  openRightDrawerUserProfile: (userId: UserId) => void;
   shouldShowChatShell: boolean;
   sidebarOpen: boolean;
   rightDrawerMode: RightDrawerMode;

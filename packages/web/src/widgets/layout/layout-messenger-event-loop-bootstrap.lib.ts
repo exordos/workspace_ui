@@ -79,7 +79,7 @@ export function createStreamPreviewBootstrapRejectedHandler(options: {
 
 export function createManualReconnectBootstrapHandler(options: {
   getCancelled: () => boolean;
-  attemptResolveCurrentUser: () => Promise<number | null>;
+  attemptResolveCurrentUser: () => Promise<UserId | null>;
 }): () => void {
   return () => {
     if (options.getCancelled()) {
@@ -98,7 +98,7 @@ export function createRegisterMuteSnapshotAppliedMarker(target: {
 }
 
 export function createCurrentUserReconnectRunner(
-  attemptResolveCurrentUser: () => Promise<number | null>,
+  attemptResolveCurrentUser: () => Promise<UserId | null>,
 ): () => Promise<boolean> {
   return () => resolveCurrentUserIdForReconnect(attemptResolveCurrentUser);
 }
@@ -135,7 +135,7 @@ export function onDmPreviewHydrateRejected(options: {
 }
 
 export async function resolveCurrentUserIdForReconnect(
-  attemptResolveCurrentUser: () => Promise<number | null>,
+  attemptResolveCurrentUser: () => Promise<UserId | null>,
 ): Promise<boolean> {
   const id = await attemptResolveCurrentUser();
   return id != null;

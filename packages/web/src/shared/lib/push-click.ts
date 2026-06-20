@@ -2,6 +2,7 @@ import type { MockMessage } from "~/shared/api/messenger.types";
 import { buildDmRouteSlugFromRecipients } from "~/shared/lib/dm-route-slug.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { encodeTopicForRoute, normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type { PushClickTargetInput, PushNotificationClickPayload } from "./push-click.types";
 
 export type { PushClickTargetInput, PushNotificationClickPayload };
@@ -141,7 +142,7 @@ export function buildRouteFromPushNotificationClick(payload: PushNotificationCli
 
 export function buildRouteFromMessage(
   message: Pick<MockMessage, "id" | "stream_id" | "channel" | "display_recipient" | "subject">,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): string | null {
   if (message.stream_id != null) {
     const streamName =
@@ -177,7 +178,7 @@ export function buildNavigableRouteFromMessage(
     subject?: string;
     sender_id?: number;
   },
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): string | null {
   const exactRoute = buildRouteFromMessage(
     {
@@ -194,7 +195,7 @@ export function buildNavigableRouteFromMessage(
   }
 
   if (message.sender_id != null) {
-    if (currentUserId != null && message.sender_id === currentUserId) {
+    if (typeof currentUserId === "number" && message.sender_id === currentUserId) {
       return null;
     }
     return `${withCurrentOrgRoute(`/dm/${message.sender_id}`)}?msg=${message.id}`;

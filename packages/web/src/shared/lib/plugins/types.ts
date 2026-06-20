@@ -8,6 +8,7 @@
  * - PluginAPI: restricted surface exposed to each plugin
  */
 
+import type { UserId } from "../user-id.lib";
 import type { ReactNode } from "react";
 
 // ---------------------------------------------------------------------------
@@ -138,7 +139,7 @@ export interface PluginAPI {
 
   // -- Read-only data (if permissions granted) ------------------------------
   data: {
-    getCurrentUserId(): number | null;
+    getCurrentUserId(): UserId | null;
     getStreams(): { id: number; name: string }[];
     getUnreadCount(): number;
     getTheme(): string;

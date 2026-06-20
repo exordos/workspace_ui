@@ -8,9 +8,10 @@ import {
 import { useUsersStore } from "~/entities/user/user.model";
 import { fetchUser } from "~/shared/api/messenger-users";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
+import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 
 export function useChatPartnerProfileHydration(options: {
-  partnerUserId: number | null;
+  partnerUserId: UserId | null;
   isDmView: boolean;
   isGroupDmView: boolean;
 }): void {
@@ -19,10 +20,11 @@ export function useChatPartnerProfileHydration(options: {
 
   // Load partner profile in DM (avatar, name, presence)
   useEffect(() => {
-    if (!partnerUserId || !isDmView || isGroupDmView) return;
+    const numericPartnerUserId = numericUserIdOrNull(partnerUserId);
+    if (numericPartnerUserId == null || !isDmView || isGroupDmView) return;
     const controller = new AbortController();
     const orgContext = captureActiveOrgRequestContext();
-    fetchUser(partnerUserId, { signal: controller.signal })
+    fetchUser(numericPartnerUserId, { signal: controller.signal })
       .then((user) => {
         if (!isActiveOrgRequestInvalidated(orgContext, controller.signal) && user) {
           useUsersStore.getState().mergeUser({
@@ -39,7 +41,7 @@ export function useChatPartnerProfileHydration(options: {
         if (controller.signal.aborted) {
           return;
         }
-        reportUnexpectedError("chat:partnerProfile", err, { partnerUserId });
+        reportUnexpectedError("chat:partnerProfile", err, { partnerUserId: numericPartnerUserId });
       });
     return () => {
       controller.abort();

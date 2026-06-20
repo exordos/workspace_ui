@@ -1,3 +1,4 @@
+import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 import { buildDmTypingChatKey, buildStreamTypingChatKey } from "./typing-key";
 
 interface ResolveTypingEventRouteInput {
@@ -7,7 +8,7 @@ interface ResolveTypingEventRouteInput {
   recipients?: { user_id: number }[];
   streamId?: number;
   topic?: string;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
 }
 
 interface TypingRoute {
@@ -25,8 +26,10 @@ export function resolveTypingEventRoute(input: ResolveTypingEventRouteInput): Ty
     return null;
   }
 
+  const numericCurrentUserId = numericUserIdOrNull(input.currentUserId);
+
   // Ignore self-echo typing events to avoid local indicator noise.
-  if (input.currentUserId != null && input.senderUserId === input.currentUserId) {
+  if (numericCurrentUserId != null && input.senderUserId === numericCurrentUserId) {
     return null;
   }
 

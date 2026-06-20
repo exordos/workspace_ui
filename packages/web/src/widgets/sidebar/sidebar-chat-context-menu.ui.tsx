@@ -19,6 +19,7 @@ import { StreamNotificationLevelSwitch } from "~/features/mute-chat/stream-notif
 import type { StreamNotificationLevel } from "~/features/mute-chat/stream-notification-level.lib";
 import { TopicNotificationLevelMenuPicker } from "~/features/mute-chat/topic-notification-level-switch.ui";
 import { t } from "~/i18n/i18n";
+import { numericUserIdOrNull } from "~/shared/lib/user-id.lib";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
 import {
@@ -445,9 +446,12 @@ export const DmContextMenu = React.memo(function DmContextMenu({
       Array.isArray(chat.userIds) && chat.userIds.length > 0
         ? chat.userIds
         : parseDmSlugToUserIds(chat.slug);
-    if (userIds.length === 0) return;
+    const numericUserIds = userIds
+      .map((userId) => numericUserIdOrNull(userId))
+      .filter((userId): userId is number => userId != null);
+    if (numericUserIds.length === 0) return;
     setMenuOpen(false);
-    void applySidebarMarkChatAsReadAndSync({ type: "dm", userIds });
+    void applySidebarMarkChatAsReadAndSync({ type: "dm", userIds: numericUserIds });
   }, [chat.slug, chat.userIds]);
 
   const handlePinChat = useCallback(() => {

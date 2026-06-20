@@ -4,6 +4,7 @@
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import { incrementMentionUnreadFromBatch } from "./chat-list-mentions.lib";
 import { mergeStreamEntry } from "./chat-list-stream-entry-merge.lib";
@@ -32,7 +33,7 @@ export function shouldApplyDmPreviewFromFetchedMessage(
 function bumpStreamTopicUnreadFromMessage(
   streamsMap: Map<number, StreamEntryInternal>,
   message: WorkspaceRawMessage,
-  _currentUserId: number | null,
+  _currentUserId: UserId | null,
 ): Map<number, StreamEntryInternal> {
   const result = messageToStreamEntry(message);
   if (!result) return streamsMap;
@@ -81,7 +82,7 @@ function bumpStreamTopicUnreadFromMessage(
 function bumpDmUnreadFromMessage(
   dmsMap: Map<string, DmEntryInternal>,
   message: WorkspaceRawMessage,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
   avatarMap: Map<number, string>,
 ): Map<string, DmEntryInternal> {
   if (!Array.isArray(message.display_recipient)) return dmsMap;
@@ -106,7 +107,7 @@ function bumpDmUnreadFromMessage(
 function indexBatchMessagesAndUnreadBumps(
   state: ChatListState,
   messages: WorkspaceRawMessage[],
-  currentUserId: number | null,
+  currentUserId: UserId | null,
   avatarMap: Map<number, string>,
 ): {
   nextStreams: Map<number, StreamEntryInternal>;
@@ -193,7 +194,7 @@ function mergeStreamTopicPreviewsFromLatest(
 function mergeDmPreviewsFromLatest(
   dmsMap: Map<string, DmEntryInternal>,
   dmLatest: Map<string, WorkspaceRawMessage>,
-  currentUserId: number | null,
+  currentUserId: UserId | null,
   avatarMap: Map<number, string>,
 ): Map<string, DmEntryInternal> {
   let nextDms = dmsMap;
@@ -229,7 +230,7 @@ function mergeDmPreviewsFromLatest(
 
 export interface ApplyAddMessagesBatchParams {
   messages: WorkspaceRawMessage[];
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   avatarMap: Map<number, string>;
   streamTopicLatest: Map<string, WorkspaceRawMessage>;
   dmLatest: Map<string, WorkspaceRawMessage>;
@@ -285,7 +286,7 @@ export function buildStreamTopicLatestMap(
 
 export function buildDmLatestMap(
   messages: WorkspaceRawMessage[],
-  currentUserId: number | null,
+  currentUserId: UserId | null,
 ): Map<string, WorkspaceRawMessage> {
   const dmLatest = new Map<string, WorkspaceRawMessage>();
   for (const m of messages) {
