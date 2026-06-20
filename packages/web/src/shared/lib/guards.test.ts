@@ -127,13 +127,24 @@ describe("domain guards", () => {
   });
 
   // Invalid IDs (0, negative, float, string, null) must throw immediately.
-  it("guard.userId rejects invalid IDs", () => {
-    expect(() => guard.userId(0)).toThrow("Invalid userId");
-    expect(() => guard.userId(-1)).toThrow("Invalid userId");
-    expect(() => guard.userId(NaN)).toThrow("Invalid userId");
-    expect(() => guard.userId(null)).toThrow("Invalid userId");
-    expect(() => guard.userId(1.5)).toThrow("Invalid userId");
-    expect(() => guard.userId("42")).toThrow("Invalid userId");
+  it("guard.userId rejects invalid numeric IDs", () => {
+    expect(() => guard.userId(0)).toThrow(/Invalid userId/);
+    expect(() => guard.userId(-1)).toThrow(/Invalid userId/);
+    expect(() => guard.userId(NaN)).toThrow(/Invalid userId/);
+    expect(() => guard.userId(null)).toThrow(/Invalid userId/);
+    expect(() => guard.userId(1.5)).toThrow(/Invalid userId/);
+    expect(() => guard.userId("42")).toThrow(/Invalid userId/);
+  });
+
+  it("guard.userId rejects IAM UUID strings", () => {
+    expect(() => guard.userId("00000000-0000-0000-0000-000000000001")).toThrow(/Invalid userId/);
+  });
+
+  it("guard.userIdentity accepts messenger integers and IAM UUIDs", () => {
+    expect(guard.userIdentity(42)).toBe(42);
+    expect(guard.userIdentity("00000000-0000-0000-0000-000000000001")).toBe(
+      "00000000-0000-0000-0000-000000000001",
+    );
   });
 
   it("guard.streamId validates correctly", () => {

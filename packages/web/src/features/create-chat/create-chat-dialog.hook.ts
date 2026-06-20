@@ -4,10 +4,17 @@ import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
 import { fetchStreams, fetchSubscriptions } from "~/shared/api/messenger-streams";
+import { fetchUsers } from "~/shared/api/messenger-users";
 import type { MockStream, MessengerSubscription } from "~/shared/api/messenger.types";
 import { createLogger } from "~/shared/lib/logger";
 import { buildAnnouncementOnlyCanSendGroup } from "~/shared/lib/user-group-policy";
-import { buildUserPickerOptions, type UserPickerOption } from "~/shared/lib/user-picker";
+import type { UserId } from "~/shared/lib/user-id.lib";
+import { compareUserIds, isUserIdentityReady } from "~/shared/lib/user-id.lib";
+import {
+  buildUserPickerOptions,
+  resolveUserPickerEmptyLabelKey,
+  type UserPickerOption,
+} from "~/shared/lib/user-picker";
 import {
   buildBrowseChannelRows,
   resolveBrowseChannelSelection,
@@ -48,14 +55,15 @@ export interface UseCreateChatDialogResult {
   userSearch: string;
   setUserSearch: (v: string) => void;
   filteredUsers: UserPickerOption[];
+  userPickerEmptyLabelKey: string;
 
-  groupSelectedUserIds: Set<number>;
-  toggleGroupUser: (userId: number) => void;
+  groupSelectedUserIds: Set<UserId>;
+  toggleGroupUser: (userId: UserId) => void;
   groupUsers: UseCreateChatDialogResult["filteredUsers"];
   createGroup: () => void;
 
-  channelSelectedUserIds: Set<number>;
-  toggleChannelUser: (userId: number) => void;
+  channelSelectedUserIds: Set<UserId>;
+  toggleChannelUser: (userId: UserId) => void;
   channelUsers: UseCreateChatDialogResult["filteredUsers"];
 
   channelName: string;
@@ -99,7 +107,7 @@ export interface UseCreateChatDialogResult {
   subscribePendingStreamIds: readonly number[];
   subscribeInlineError: string | null;
 
-  buildDmSlug: (userId: number, fullName: string) => string;
+  buildDmSlug: (userId: UserId, fullName: string) => string;
 }
 
 export function useCreateChatDialog(options: {
@@ -143,8 +151,8 @@ export function useCreateChatDialog(options: {
 
   const [userSearch, setUserSearch] = useState("");
   const [archivedSearch, setArchivedSearch] = useState("");
-  const [groupSelectedUserIds, setGroupSelectedUserIds] = useState<Set<number>>(new Set());
-  const [channelSelectedUserIds, setChannelSelectedUserIds] = useState<Set<number>>(new Set());
+  const [groupSelectedUserIds, setGroupSelectedUserIds] = useState<Set<UserId>>(new Set());
+  const [channelSelectedUserIds, setChannelSelectedUserIds] = useState<Set<UserId>>(new Set());
   const [channelName, setChannelName] = useState("");
   const [channelDesc, setChannelDesc] = useState("");
   const [channelInviteOnly, setChannelInviteOnly] = useState(false);
@@ -171,7 +179,7 @@ export function useCreateChatDialog(options: {
   const currentUserId = useChatListStore((s) => s.currentUserId ?? null);
   const streamsMap = useChatListStore((s) => s.streamsMap);
   // Block channel create until author profile is loaded.
-  const channelCreateBlocked = currentUserId == null || currentUserId <= 0;
+  const channelCreateBlocked = !isUserIdentityReady(currentUserId);
   const channelCreateBlockedReasonKey = channelCreateBlocked
     ? "channel.creatorProfileLoading"
     : null;
@@ -215,6 +223,17 @@ export function useCreateChatDialog(options: {
         query: userSearch,
       }),
     [pickerCandidates, excludedUserIds, userSearch],
+  );
+
+  const userPickerEmptyLabelKey = useMemo(
+    () =>
+      resolveUserPickerEmptyLabelKey({
+        candidateCount: pickerCandidates.length,
+        visibleCount: filteredUsers.length,
+        query: userSearch,
+        excludesCurrentUser: excludedUserIds.length > 0,
+      }),
+    [pickerCandidates.length, filteredUsers.length, userSearch, excludedUserIds.length],
   );
 
   const groupUsers = useMemo(
@@ -286,6 +305,30 @@ export function useCreateChatDialog(options: {
       resolveBrowseChannelSelection(browseChannels, currentId),
     );
   }, [browseChannels]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const members = await fetchUsers();
+        if (cancelled || members.length === 0) {
+          return;
+        }
+        useUsersStore.getState().mergeUsers(members);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        log.warn("create-chat: user directory refresh failed", { error: message });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open || tab !== "channels") {
@@ -363,7 +406,7 @@ export function useCreateChatDialog(options: {
     });
   }, [open]);
 
-  const toggleGroupUser = useCallback((userId: number) => {
+  const toggleGroupUser = useCallback((userId: UserId) => {
     setGroupSelectedUserIds((prev) => {
       const next = new Set(prev);
       if (next.has(userId)) next.delete(userId);
@@ -372,7 +415,7 @@ export function useCreateChatDialog(options: {
     });
   }, []);
 
-  const toggleChannelUser = useCallback((userId: number) => {
+  const toggleChannelUser = useCallback((userId: UserId) => {
     setChannelSelectedUserIds((prev) => {
       const next = new Set(prev);
       if (next.has(userId)) next.delete(userId);
@@ -383,7 +426,7 @@ export function useCreateChatDialog(options: {
 
   const createGroup = useCallback(() => {
     if (groupSelectedUserIds.size === 0 || currentUserId == null) return;
-    const ids = [...groupSelectedUserIds, currentUserId].sort((a, b) => a - b);
+    const ids = [...groupSelectedUserIds, currentUserId].sort(compareUserIds);
     onNavigateDm(ids.join(","));
     setGroupSelectedUserIds(new Set());
   }, [groupSelectedUserIds, currentUserId, onNavigateDm]);
@@ -409,10 +452,10 @@ export function useCreateChatDialog(options: {
   );
 
   const createChannelAction = useCallback(() => {
-    if (!channelName.trim() || creating || currentUserId == null || currentUserId <= 0) return;
+    if (!channelName.trim() || creating || !isUserIdentityReady(currentUserId)) return;
     // Always include channel author in subscribers even if not manually selected.
-    const subscribers = Array.from(new Set([...channelSelectedUserIds, currentUserId])).sort(
-      (a, b) => a - b,
+    const subscribers = Array.from(new Set([...channelSelectedUserIds, currentUserId!])).sort(
+      compareUserIds,
     );
     setCreating(true);
     const runCreateChannel = async (): Promise<void> => {
@@ -456,7 +499,7 @@ export function useCreateChatDialog(options: {
     onChannelCreated,
   ]);
 
-  const buildDmSlugFn = useCallback((userId: number, fullName: string) => {
+  const buildDmSlugFn = useCallback((userId: UserId, fullName: string) => {
     return buildDmSlug(userId, fullName);
   }, []);
 
@@ -489,7 +532,7 @@ export function useCreateChatDialog(options: {
 
   const onSubscribeToChannel = useCallback(
     async (streamId: number, streamName: string) => {
-      if (currentUserId == null || currentUserId <= 0) {
+      if (!isUserIdentityReady(currentUserId)) {
         return;
       }
       setSubscribeInlineError(null);
@@ -563,6 +606,7 @@ export function useCreateChatDialog(options: {
     userSearch,
     setUserSearch,
     filteredUsers,
+    userPickerEmptyLabelKey,
     groupSelectedUserIds,
     toggleGroupUser,
     groupUsers,

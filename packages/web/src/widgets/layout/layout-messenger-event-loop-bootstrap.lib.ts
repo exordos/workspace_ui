@@ -6,6 +6,7 @@ import {
   logChatListFlow,
   summarizeMessengerMessagesForFlowDebug,
 } from "~/shared/lib/message-flow-debug.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type { ChatListBootstrapResult } from "./layout-chat-list-bootstrap.lib";
 import type { StreamPreviewsBootstrapResult } from "./layout-metadata-stream-preview-coordinator.lib";
 
@@ -142,7 +143,7 @@ export async function resolveCurrentUserIdForReconnect(
 
 export function findWorkspaceMemberByUserId(
   members: readonly MessengerUserMember[],
-  userId: number,
+  userId: UserId,
 ): MessengerUserMember | undefined {
   return members.find((member) => member.user_id === userId);
 }

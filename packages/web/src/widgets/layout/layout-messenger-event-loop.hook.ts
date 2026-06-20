@@ -47,6 +47,7 @@ import { createLogger } from "~/shared/lib/logger";
 import { logChatListFlow, logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
 import { loadMuteSnapshotRow } from "~/shared/lib/mute-snapshot-db";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import { loadUsersDirectoryRow } from "~/shared/lib/users-directory-snapshot-db";
 import { getNewestMessageId } from "./layout-chat-history-sync.lib";
 import {
@@ -221,14 +222,20 @@ function chatListHasCachedRowsInStore(): boolean {
 function resolveSelfUserIdFromMembers(
   members: readonly MessengerUserMember[],
   loginEmail: string | undefined,
-): number | null {
+): UserId | null {
   const normalized = loginEmail?.trim().toLowerCase();
   if (normalized == null || normalized.length === 0) {
     return null;
   }
   for (const member of members) {
     const memberEmail = member.email?.trim().toLowerCase();
-    if (memberEmail === normalized && Number.isInteger(member.user_id) && member.user_id > 0) {
+    if (memberEmail !== normalized || member.user_id == null) {
+      continue;
+    }
+    if (typeof member.user_id === "string") {
+      return member.user_id;
+    }
+    if (Number.isInteger(member.user_id) && member.user_id > 0) {
       return member.user_id;
     }
   }
@@ -246,8 +253,8 @@ export function useLayoutMessengerEventLoop(options: {
     isStale: () => boolean,
   ) => Promise<ChatListBootstrapResult>;
   loadMuteSnapshot: (bootstrap?: LayoutMuteBootstrapData) => Promise<LayoutMuteSnapshot>;
-  setFromMessages: (messages: WorkspaceRawMessage[], currentUserId: number | null) => void;
-  setCurrentUserId: (id: number) => void;
+  setFromMessages: (messages: WorkspaceRawMessage[], currentUserId: UserId | null) => void;
+  setCurrentUserId: (id: UserId) => void;
   setCurrentUserStatus: (status: LayoutUserConnectionStatus) => void;
 }): void {
   const {
@@ -407,7 +414,7 @@ export function useLayoutMessengerEventLoop(options: {
         METADATA_DM_BACKFILL_ENABLED: metadataDmBackfillEnabled,
         metadataDmPreviewHydrationEnabled,
       });
-      let bootstrapUserId: number | null = null;
+      let bootstrapUserId: UserId | null = null;
 
       const bootstrapApplyOptions = {
         currentInstanceId,
@@ -506,7 +513,7 @@ export function useLayoutMessengerEventLoop(options: {
           .then(dmHydrateSettledHandler)
           .catch(dmHydrateRejectedHandler);
       };
-      const attemptResolveCurrentUser = async (): Promise<number | null> => {
+      const attemptResolveCurrentUser = async (): Promise<UserId | null> => {
         try {
           const user = await getCurrentUser();
           if (cancelled || isBootstrapStale()) return null;
@@ -528,7 +535,7 @@ export function useLayoutMessengerEventLoop(options: {
 
       const finalizeBootstrapAuth = (
         members: readonly MessengerUserMember[],
-        fromGetCurrentUser: number | null,
+        fromGetCurrentUser: UserId | null,
       ): void => {
         if (cancelled || isBootstrapStale()) return;
 

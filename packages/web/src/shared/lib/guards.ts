@@ -18,6 +18,8 @@
  */
 
 import { createLogger } from "./logger";
+import { isIamUserUuid } from "./user-id.lib";
+import type { UserId } from "./user-id.lib";
 
 const log = createLogger("guard");
 
@@ -107,6 +109,26 @@ export function safeNumber(value: unknown, fallback = 0): number {
 // ---------------------------------------------------------------------------
 
 export const guard = {
+  /**
+   * Validate user identity before directory/profile API calls.
+   * Accepts positive messenger integers and IAM UUID strings.
+   */
+  userIdentity(value: unknown, context = ""): UserId {
+    if (typeof value === "number") {
+      return guard.userId(value, context);
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      invariant(
+        isIamUserUuid(trimmed),
+        `Invalid userId: ${JSON.stringify(value)}${context ? ` in ${context}` : ""}`,
+      );
+      return trimmed.toLowerCase();
+    }
+    invariant(false, `Invalid userId: ${JSON.stringify(value)}${context ? ` in ${context}` : ""}`);
+    throw new Error("unreachable");
+  },
+
   /**
    * Validate user ID before API calls.
    * Catches: undefined, null, 0, NaN, negative, non-integer.

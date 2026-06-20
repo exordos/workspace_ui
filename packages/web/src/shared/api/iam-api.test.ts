@@ -1,8 +1,17 @@
 /**
  * Tests for IAM API client.
  */
+import "./messenger.test.setup";
 import { beforeEach, describe, expect, it } from "vitest";
-import { buildIamMePath, getIamCurrentUser, IAM_ME_CLIENT_ID } from "./iam-api";
+import {
+  buildIamMePath,
+  buildIamUserPath,
+  fetchIamUserByUuid,
+  fetchIamUsers,
+  getIamCurrentUser,
+  IAM_ME_CLIENT_ID,
+  IAM_USERS_PATH,
+} from "./iam-api";
 import { getMockGetCurrentInstance, getMockMessengerApi } from "./messenger.test.setup";
 
 const mockGetCurrentInstance = getMockGetCurrentInstance();
@@ -18,6 +27,8 @@ const IAM_INSTANCE = {
   workspaceOrgOrigin: "https://chat.example.com",
 };
 
+const TEST_UUID = "00000000-0000-0000-0000-000000000001";
+
 describe("getIamCurrentUser", () => {
   beforeEach(() => {
     mockGetCurrentInstance.mockReturnValue(IAM_INSTANCE);
@@ -29,7 +40,7 @@ describe("getIamCurrentUser", () => {
       status: 200,
       data: {
         user: {
-          uuid: "00000000-0000-0000-0000-000000000001",
+          uuid: TEST_UUID,
           first_name: "Admin",
           last_name: "Admin",
           email: "admin@genesis-core.tech",
@@ -43,10 +54,9 @@ describe("getIamCurrentUser", () => {
     const result = await getIamCurrentUser();
 
     expect(result).toEqual({
-      user_id: 9,
+      user_id: TEST_UUID,
       full_name: "Admin Admin",
       email: "admin@genesis-core.tech",
-      iam_user_uuid: "00000000-0000-0000-0000-000000000001",
     });
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
       "https://chat.example.com",
@@ -74,5 +84,75 @@ describe("getIamCurrentUser", () => {
     });
     expect(await getIamCurrentUser()).toBeNull();
     expect(mockMessengerApi.getWithBase).not.toHaveBeenCalled();
+  });
+});
+
+describe("fetchIamUsers", () => {
+  beforeEach(() => {
+    mockGetCurrentInstance.mockReturnValue(IAM_INSTANCE);
+  });
+
+  it("calls IAM users list endpoint", async () => {
+    mockMessengerApi.getWithBase.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: [
+        {
+          uuid: TEST_UUID,
+          first_name: "Alice",
+          email: "alice@example.com",
+          status: "ACTIVE",
+        },
+      ],
+      raw: { statusText: "OK" },
+    });
+
+    const result = await fetchIamUsers();
+
+    expect(result).toEqual([
+      {
+        user_id: TEST_UUID,
+        full_name: "Alice",
+        email: "alice@example.com",
+        is_active: true,
+      },
+    ]);
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
+      "https://chat.example.com",
+      IAM_USERS_PATH,
+      undefined,
+      undefined,
+    );
+  });
+});
+
+describe("fetchIamUserByUuid", () => {
+  beforeEach(() => {
+    mockGetCurrentInstance.mockReturnValue(IAM_INSTANCE);
+  });
+
+  it("loads IAM user detail by UUID", async () => {
+    const bobUuid = "00000000-0000-0000-0000-000000000002";
+    mockMessengerApi.getWithBase.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        uuid: bobUuid,
+        username: "bob",
+        email: "bob@example.com",
+        status: "ACTIVE",
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await fetchIamUserByUuid(bobUuid);
+
+    expect(result?.full_name).toBe("bob");
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
+      "https://chat.example.com",
+      buildIamUserPath(bobUuid),
+      undefined,
+      undefined,
+    );
   });
 });

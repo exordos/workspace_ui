@@ -3,6 +3,8 @@ import React, { useCallback, useMemo } from "react";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
 import { getLocale, t } from "~/i18n/i18n";
+import type { UserId } from "~/shared/lib/user-id.lib";
+import { userIdStorageKey } from "~/shared/lib/user-id.lib";
 import { AppDialogShell, APP_DIALOG_CONTENT_BASE_CLASS } from "~/shared/ui/app-dialog.ui";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
@@ -202,7 +204,7 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
               <div className={CREATE_CHAT_USER_LIST_CLASS}>
                 {vm.filteredUsers.length === 0 ? (
                   <p className="px-3 py-4 text-center text-sm text-text-muted">
-                    {t("search.noResults")}
+                    {t(vm.userPickerEmptyLabelKey)}
                   </p>
                 ) : (
                   vm.filteredUsers.map((u) => {
@@ -247,7 +249,7 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
               <div className={CREATE_CHAT_USER_LIST_CLASS}>
                 {vm.groupUsers.length === 0 ? (
                   <p className="px-3 py-4 text-center text-sm text-text-muted">
-                    {t("search.noResults")}
+                    {t(vm.userPickerEmptyLabelKey)}
                   </p>
                 ) : (
                   vm.groupUsers.map((u) => {
@@ -413,7 +415,7 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                 <div className={CREATE_CHAT_CHANNEL_MEMBER_LIST_CLASS}>
                   {vm.channelUsers.length === 0 ? (
                     <p className="px-3 py-4 text-center text-sm text-text-muted">
-                      {t("search.noResults")}
+                      {t(vm.userPickerEmptyLabelKey)}
                     </p>
                   ) : (
                     vm.channelUsers.map((u) => {
@@ -698,7 +700,7 @@ const BrowseChannelDetailPanel = React.memo<BrowseChannelDetailPanelProps>(
       const labels = createBrowseChannelDetailLabels({
         t,
         locale: getLocale(),
-        resolveUserName: (userId) => users.get(userId)?.full_name,
+        resolveUserName: (userId: UserId) => users.get(userIdStorageKey(userId))?.full_name,
         resolveGroupName: (groupId) => groups.get(groupId)?.name,
       });
       return buildBrowseChannelDetailSections(channel, labels);

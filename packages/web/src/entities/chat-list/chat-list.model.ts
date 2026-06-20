@@ -22,8 +22,8 @@ import {
   summarizeMessageIdsForFlowDebug,
   summarizeSidebarUnreadTotals,
 } from "~/shared/lib/sidebar-unread-debug.lib";
-import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { resolveTopicMoveTargetMessageIds } from "~/shared/lib/update-message-topic-move.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type {
   SidebarChat,
   StreamWithLast,
@@ -226,7 +226,7 @@ function streamsMapToSortedStreams(
 function dmsMapToSortedDms(
   map: Map<string, DmEntryInternal>,
   mentionFlags: MentionLocationFlags = buildMentionLocationFlags(new Set(), new Map()),
-  currentUserId: number | null = null,
+  currentUserId: UserId | null = null,
 ): Extract<SidebarChat, { type: "dm" }>[] {
   return Array.from(map.entries())
     .sort(([, a], [, b]) => (b.ts ?? 0) - (a.ts ?? 0))

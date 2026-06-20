@@ -14,8 +14,9 @@ import {
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
-import { dmConversationKey } from "~/shared/lib/dm-key";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
+import { userIdStorageKey } from "~/shared/lib/user-id.lib";
 import type {
   SidebarChat,
   StreamWithLast,
@@ -97,11 +98,11 @@ interface DmRecipientRow {
 /** Workspace: two recipients => 1:1 DM; when current user is unknown, infer peer from sender. */
 function resolveDmOtherUsers(
   recipients: DmRecipientRow[],
-  currentUserId: number | null,
+  currentUserId: UserId | null,
   senderId: number,
 ): DmRecipientRow[] {
   const isOneToOneDm = recipients.length === 2;
-  if (currentUserId != null) {
+  if (currentUserId != null && typeof currentUserId === "number") {
     return recipients.filter((r) => r.id !== currentUserId);
   }
   if (isOneToOneDm) {
@@ -186,8 +187,8 @@ function buildDmEntrySlug(
 
 export function messageToDmEntry(
   m: WorkspaceRawMessage,
-  currentUserId: number | null,
-  avatarUrlByUserId?: Map<number, string>,
+  currentUserId: UserId | null,
+  avatarUrlByUserId?: Map<string, string>,
 ): DmEntryInternal | null {
   if (m.type !== "private" || !Array.isArray(m.display_recipient)) return null;
   const usersStore = useUsersStore.getState();
@@ -204,7 +205,7 @@ export function messageToDmEntry(
   const isGroup = recipients.length !== 2 || otherUsers.length !== 1;
   const getName = (userId: number) => usersStore.getDisplayName(userId);
   const getAvatar = (userId: number) =>
-    usersStore.getAvatarUrl(userId) ?? avatarUrlByUserId?.get(userId);
+    usersStore.getAvatarUrl(userId) ?? avatarUrlByUserId?.get(userIdStorageKey(userId));
   const name = buildDmEntryDisplayName(isGroup, otherUsers, getName);
   const identity = resolveDmEntryIdentity(
     isGroup,

@@ -1,6 +1,8 @@
 const CREATE_CHAT_TABS = ["dm", "group", "channels", "channel", "archived"] as const;
 export type CreateChatTab = (typeof CREATE_CHAT_TABS)[number];
 
+import type { UserId } from "~/shared/lib/user-id.lib";
+
 export function slugifyUserNameForDm(name: string): string {
   return name
     .trim()
@@ -9,7 +11,7 @@ export function slugifyUserNameForDm(name: string): string {
     .replace(/[^a-z0-9-]/g, "");
 }
 
-export function buildDmSlug(userId: number, fullName: string): string {
+export function buildDmSlug(userId: UserId, fullName: string): string {
   return `${userId}-${slugifyUserNameForDm(fullName)}`;
 }
 

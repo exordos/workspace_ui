@@ -342,6 +342,8 @@
     "private": "Private",
     "recentDms": "Recent",
     "allUsers": "All users",
+    "noOtherUsers": "No other users in the organization",
+    "usersDirectoryEmpty": "User directory is empty",
     "partnerBlocked": "Account deactivated",
     "composerBlockedPlaceholder": "This account is deactivated. Sending messages is disabled."
   },

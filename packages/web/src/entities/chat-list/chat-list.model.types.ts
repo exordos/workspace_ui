@@ -6,6 +6,7 @@ import type {
   WorkspaceRawMessage,
 } from "~/shared/api/messenger.types";
 import type { ChatListSnapshotSerialized } from "~/shared/lib/chat-list-snapshot-serialize.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type {
   SidebarChat,
   StreamWithLast,
@@ -64,7 +65,7 @@ export interface ChatListState {
   sidebarDataHydrated: boolean;
   /** True after authoritative subscriptions metadata is applied (bootstrap/register). */
   streamMetadataHydrated: boolean;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   lastAppliedMessages: WorkspaceRawMessage[] | null;
   messageIdToLocation: Map<number, MessageLocation>;
   /** Inverted index streamId+topic → message ids; patched incrementally on location changes. */

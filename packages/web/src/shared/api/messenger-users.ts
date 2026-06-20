@@ -2,8 +2,10 @@
  * Workspace users and presence API.
  */
 import { guard } from "~/shared/lib/guards";
+import type { UserId } from "~/shared/lib/user-id.lib";
+import { isIamUserUuid, userIdStorageKey } from "~/shared/lib/user-id.lib";
 import { getCurrentInstance } from "./client";
-import { getIamCurrentUser } from "./iam-api";
+import { fetchIamUserByUuid, fetchIamUsers, getIamCurrentUser } from "./iam-api";
 import { parseCurrentUserFromApiData } from "./messenger-current-user.lib";
 import { messengerPipelineGet } from "./messenger-pipeline.internal";
 import { normalizeRealmEmojiMap } from "./messenger-realm-emoji.lib";
@@ -27,8 +29,12 @@ export async function getCurrentUser(): Promise<WorkspaceCurrentUser | null> {
   return parseCurrentUserFromApiData(res.data);
 }
 
-/** Fetches the full user list (GET /users) for populating usersStore. */
+/** Fetches the full user list for populating usersStore. */
 export async function fetchUsers(): Promise<MessengerUserMember[]> {
+  const instance = getCurrentInstance();
+  if (instance?.authType === "iam") {
+    return fetchIamUsers();
+  }
   const res = await messengerPipelineGet("/users", {
     client_gravatar: "false",
     include_custom_profile_fields: "true",
@@ -51,12 +57,22 @@ export async function fetchUsers(): Promise<MessengerUserMember[]> {
   return [];
 }
 
-/** Fetches a single user by ID (GET /users/{user_id}). Used for DM profile panel. */
+/** Fetches a single user by id (numeric messenger id or IAM UUID). */
 export async function fetchUser(
-  userId: number,
+  userId: UserId,
   options?: { signal?: AbortSignal },
 ): Promise<MessengerUserMember | null> {
-  guard.userId(userId, "fetchUser");
+  guard.userIdentity(userId, "fetchUser");
+  const instance = getCurrentInstance();
+  if (instance?.authType === "iam") {
+    if (typeof userId !== "string") {
+      return null;
+    }
+    return fetchIamUserByUuid(userId, options);
+  }
+  if (typeof userId !== "number") {
+    return null;
+  }
   const res = await messengerPipelineGet(
     `/users/${userId}`,
     {
@@ -110,10 +126,10 @@ export async function fetchRealmEmojis(): Promise<RealmEmoji[]> {
  */
 export async function fetchUsersAvatarMap(): Promise<AvatarUrlByUserId> {
   const list = await fetchUsers();
-  const map = new Map<number, string>();
+  const map = new Map<string, string>();
   for (const u of list) {
     if (u.user_id != null && u.avatar_url != null && String(u.avatar_url).trim() !== "") {
-      map.set(u.user_id, String(u.avatar_url).trim());
+      map.set(userIdStorageKey(u.user_id), String(u.avatar_url).trim());
     }
   }
   return map;

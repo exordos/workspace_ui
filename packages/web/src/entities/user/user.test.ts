@@ -339,8 +339,8 @@ describe("usersStore", () => {
 
       const map = useUsersStore.getState().getAvatarMap();
       expect(map.size).toBe(2);
-      expect(map.get(1)).toBe("/a.png");
-      expect(map.get(3)).toBe("/c.png");
+      expect(map.get("1")).toBe("/a.png");
+      expect(map.get("3")).toBe("/c.png");
     });
   });
 

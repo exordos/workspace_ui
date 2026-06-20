@@ -8,8 +8,12 @@ import type {
   WorkspaceRawMessage,
 } from "~/shared/api/messenger.types";
 import { bumpAvatarVersion } from "~/shared/lib/avatar";
+import type { UserId } from "~/shared/lib/user-id.lib";
+import { userIdStorageKey } from "~/shared/lib/user-id.lib";
 import type { WorkspaceCustomProfileDataMap } from "~/shared/lib/user-profile-fields.lib";
 import type { CurrentUserMessageEditPolicy } from "~/shared/types/message-edit-policy";
+
+export type { UserId };
 
 export type PresenceStatus = "active" | "idle";
 
@@ -32,11 +36,9 @@ export type UserStatusFetchState = "idle" | "loading" | "ready" | "error" | "inv
 export type UserStatusErrorKind = "transient" | "invalid_user";
 
 export interface UserRecord {
-  user_id: number;
+  user_id: UserId;
   full_name: string;
   email?: string;
-  /** IAM identity UUID when auth is IAM-backed (distinct from messenger `user_id`). */
-  iam_user_uuid?: string;
   avatar_url?: string | null;
   role?: number;
   presence?: UserPresence;
@@ -66,43 +68,42 @@ export interface CurrentUserChannelCapabilities {
 }
 
 interface UsersState {
-  users: Map<number, UserRecord>;
-  emailToUserId: Map<string, number>;
+  users: Map<string, UserRecord>;
+  emailToUserId: Map<string, UserId>;
   currentUserChannelCapabilities: CurrentUserChannelCapabilities;
   currentUserMessageEditPolicy: CurrentUserMessageEditPolicy;
 
-  mergeUser: (payload: Partial<UserRecord> & { user_id: number }) => void;
-  mergeUsers: (list: (Partial<UserRecord> & { user_id: number })[]) => void;
+  mergeUser: (payload: Partial<UserRecord> & { user_id: UserId }) => void;
+  mergeUsers: (list: (Partial<UserRecord> & { user_id: UserId })[]) => void;
   mergeFromMessage: (msg: WorkspaceRawMessage) => void;
   setCurrentUserChannelCapabilities: (capabilities: CurrentUserChannelCapabilities) => void;
   setCurrentUserMessageEditPolicy: (policy: CurrentUserMessageEditPolicy) => void;
   setPresenceByEmail: (email: string, presence: UserPresence) => void;
-  setPresence: (userId: number, presence: UserPresence) => void;
-  setStatus: (userId: number, status: UserStatus | null, fetchedAt?: number) => void;
-  setStatusFetchMeta: (userId: number, meta: UserStatusFetchMeta) => void;
-  getUser: (userId: number) => UserRecord | undefined;
-  getAvatarUrl: (userId: number) => string | undefined;
-  getDisplayName: (userId: number) => string;
+  setPresence: (userId: UserId, presence: UserPresence) => void;
+  setStatus: (userId: UserId, status: UserStatus | null, fetchedAt?: number) => void;
+  setStatusFetchMeta: (userId: UserId, meta: UserStatusFetchMeta) => void;
+  getUser: (userId: UserId) => UserRecord | undefined;
+  getAvatarUrl: (userId: UserId) => string | undefined;
+  getDisplayName: (userId: UserId) => string;
   /** Resolves mention display name without subscribing to the full users Map. */
-  findUserIdByDisplayName: (displayName: string) => number | null;
+  findUserIdByDisplayName: (displayName: string) => UserId | null;
   getAvatarMap: () => AvatarUrlByUserId;
   clear: () => void;
 }
 
-const emptyUsers = (): Map<number, UserRecord> => new Map();
-const emptyEmailMap = (): Map<string, number> => new Map();
+const emptyUsers = (): Map<string, UserRecord> => new Map();
+const emptyEmailMap = (): Map<string, UserId> => new Map();
 const defaultCurrentUserChannelCapabilities = (): CurrentUserChannelCapabilities => ({});
 const defaultCurrentUserMessageEditPolicy = (): CurrentUserMessageEditPolicy => ({});
 
-let _cachedAvatarMap: Map<number, string> | null = null;
-let _cachedAvatarMapUsersRef: Map<number, UserRecord> | null = null;
+let _cachedAvatarMap: AvatarUrlByUserId | null = null;
+let _cachedAvatarMapUsersRef: Map<string, UserRecord> | null = null;
 
-function normalizeUser(payload: Partial<UserRecord> & { user_id: number }): UserRecord {
+function normalizeUser(payload: Partial<UserRecord> & { user_id: UserId }): UserRecord {
   return {
     user_id: payload.user_id,
     full_name: payload.full_name ?? "",
     email: payload.email,
-    iam_user_uuid: payload.iam_user_uuid,
     avatar_url: payload.avatar_url,
     role: payload.role,
     presence: payload.presence,
@@ -116,6 +117,10 @@ function normalizeUser(payload: Partial<UserRecord> & { user_id: number }): User
   };
 }
 
+function userKey(userId: UserId): string {
+  return userIdStorageKey(userId);
+}
+
 export const useUsersStore = create<UsersState>((set, get) => ({
   users: emptyUsers(),
   emailToUserId: emptyEmailMap(),
@@ -125,9 +130,10 @@ export const useUsersStore = create<UsersState>((set, get) => ({
   mergeUser(payload) {
     const { user_id } = payload;
     if (user_id == null) return;
+    const key = userKey(user_id);
     set((state) => {
       const next = new Map(state.users);
-      const existing = next.get(user_id);
+      const existing = next.get(key);
       const merged: UserRecord = {
         ...normalizeUser(existing ?? payload),
         ...normalizeUser(payload),
@@ -145,7 +151,7 @@ export const useUsersStore = create<UsersState>((set, get) => ({
         is_active: payload.is_active ?? existing?.is_active,
         profile_data: payload.profile_data ?? existing?.profile_data,
       };
-      next.set(user_id, merged);
+      next.set(key, merged);
       const nextEmail = new Map(state.emailToUserId);
       if (merged.email) {
         nextEmail.set(merged.email, user_id);
@@ -161,7 +167,8 @@ export const useUsersStore = create<UsersState>((set, get) => ({
       const nextEmail = new Map(state.emailToUserId);
       for (const u of list) {
         if (u.user_id == null) continue;
-        const existing = next.get(u.user_id);
+        const key = userKey(u.user_id);
+        const existing = next.get(key);
         const merged: UserRecord = {
           ...normalizeUser(existing ?? u),
           ...normalizeUser(u),
@@ -179,7 +186,7 @@ export const useUsersStore = create<UsersState>((set, get) => ({
           is_active: u.is_active ?? existing?.is_active,
           profile_data: u.profile_data ?? existing?.profile_data,
         };
-        next.set(u.user_id, merged);
+        next.set(key, merged);
         if (merged.email) {
           nextEmail.set(merged.email, u.user_id);
         }
@@ -225,20 +232,20 @@ export const useUsersStore = create<UsersState>((set, get) => ({
 
   setPresence(userId, presence) {
     set((state) => {
-      const existing = state.users.get(userId);
+      const existing = state.users.get(userKey(userId));
       if (!existing) return state;
       const next = new Map(state.users);
-      next.set(userId, { ...existing, presence });
+      next.set(userKey(userId), { ...existing, presence });
       return { users: next };
     });
   },
 
   setStatus(userId, status, fetchedAt = Date.now()) {
     set((state) => {
-      const existing = state.users.get(userId);
+      const existing = state.users.get(userKey(userId));
       if (!existing) return state;
       const next = new Map(state.users);
-      next.set(userId, {
+      next.set(userKey(userId), {
         ...existing,
         status: status ?? undefined,
         statusFetchedAt: fetchedAt,
@@ -252,10 +259,10 @@ export const useUsersStore = create<UsersState>((set, get) => ({
 
   setStatusFetchMeta(userId, meta) {
     set((state) => {
-      const existing = state.users.get(userId);
+      const existing = state.users.get(userKey(userId));
       if (!existing) return state;
       const next = new Map(state.users);
-      next.set(userId, {
+      next.set(userKey(userId), {
         ...existing,
         statusFetchState: meta.fetchState ?? existing.statusFetchState,
         statusNextRetryAt:
@@ -271,18 +278,18 @@ export const useUsersStore = create<UsersState>((set, get) => ({
   },
 
   getUser(userId) {
-    return get().users.get(userId);
+    return get().users.get(userKey(userId));
   },
 
   getAvatarUrl(userId) {
-    const u = get().users.get(userId);
+    const u = get().users.get(userKey(userId));
     const url = u?.avatar_url;
     if (url == null || String(url).trim() === "") return undefined;
     return String(url).trim();
   },
 
   getDisplayName(userId) {
-    const u = get().users.get(userId);
+    const u = get().users.get(userKey(userId));
     const name = u?.full_name;
     if (name != null && String(name).trim() !== "") return String(name).trim();
     return "Unknown";
@@ -301,7 +308,7 @@ export const useUsersStore = create<UsersState>((set, get) => ({
     const users = get().users;
     if (users === _cachedAvatarMapUsersRef && _cachedAvatarMap != null) return _cachedAvatarMap;
     _cachedAvatarMapUsersRef = users;
-    const map = new Map<number, string>();
+    const map: AvatarUrlByUserId = new Map();
     for (const [id, u] of users) {
       const url = u?.avatar_url;
       if (url != null && String(url).trim() !== "") {

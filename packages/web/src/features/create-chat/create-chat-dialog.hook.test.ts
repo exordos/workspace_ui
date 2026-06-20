@@ -24,6 +24,10 @@ vi.mock("~/shared/api/messenger-streams", () => ({
   fetchSubscriptions: vi.fn(),
 }));
 
+vi.mock("~/shared/api/messenger-users", () => ({
+  fetchUsers: vi.fn(() => Promise.resolve([])),
+}));
+
 function defaultHookOptions(overrides: Partial<Parameters<typeof useCreateChatDialog>[0]> = {}) {
   return {
     open: true,
@@ -338,5 +342,22 @@ describe("useCreateChatDialog", () => {
     expect(unsubscribeChannel).toHaveBeenCalledWith("design");
     expect(useChatListStore.getState().streamsMap.has(7)).toBe(false);
     expect(result.current.browseChannels).toHaveLength(0);
+  });
+
+  it("shows noOtherUsers when IAM directory contains only the signed-in user", () => {
+    const adminUuid = "00000000-0000-0000-0000-000000000000";
+    useUsersStore.getState().mergeUsers([
+      {
+        user_id: adminUuid,
+        full_name: "Admin User",
+        email: "admin@example.com",
+      },
+    ]);
+    useChatListStore.setState({ currentUserId: adminUuid });
+
+    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
+
+    expect(result.current.filteredUsers).toEqual([]);
+    expect(result.current.userPickerEmptyLabelKey).toBe("dm.noOtherUsers");
   });
 });

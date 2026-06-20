@@ -1,6 +1,7 @@
 /**
  * Tests for Messenger API (messenger-users module).
  */
+import "./messenger.test.setup";
 import { describe, expect, it } from "vitest";
 import {
   fetchRealmPresence,
@@ -125,10 +126,9 @@ describe("getCurrentUser", () => {
     const result = await getCurrentUser();
 
     expect(result).toEqual({
-      user_id: 9,
+      user_id: "00000000-0000-0000-0000-000000000001",
       full_name: "Admin User",
       email: "admin@example.com",
-      iam_user_uuid: "00000000-0000-0000-0000-000000000001",
     });
     expect(mockMessengerApi.get).not.toHaveBeenCalled();
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
@@ -201,6 +201,47 @@ describe("fetchUsers", () => {
     mockMessengerApi.get.mockRejectedValue(new TypeError("Offline"));
     expect(await fetchUsers()).toEqual([]);
   });
+
+  it("uses IAM users list when authType is iam", async () => {
+    mockGetCurrentInstance.mockReturnValue({
+      ...TEST_INSTANCE,
+      apiKey: "",
+      authType: "iam",
+      iamAccessToken: "iam-token",
+      workspaceOrgOrigin: "https://chat.example.com",
+    });
+    mockMessengerApi.getWithBase.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: [
+        {
+          uuid: "00000000-0000-0000-0000-000000000001",
+          first_name: "Alice",
+          email: "alice@example.com",
+          status: "ACTIVE",
+        },
+      ],
+      raw: { statusText: "OK" },
+    });
+
+    const result = await fetchUsers();
+
+    expect(result).toEqual([
+      {
+        user_id: "00000000-0000-0000-0000-000000000001",
+        full_name: "Alice",
+        email: "alice@example.com",
+        is_active: true,
+      },
+    ]);
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
+      "https://chat.example.com",
+      "/api/core/v1/iam/users/",
+      undefined,
+      undefined,
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -253,6 +294,39 @@ describe("fetchUser", () => {
       raw: { statusText: "OK" },
     });
     expect(await fetchUser(42)).toBeNull();
+  });
+
+  it("uses IAM user detail when authType is iam", async () => {
+    const bobUuid = "00000000-0000-0000-0000-000000000002";
+    mockGetCurrentInstance.mockReturnValue({
+      ...TEST_INSTANCE,
+      apiKey: "",
+      authType: "iam",
+      iamAccessToken: "iam-token",
+      workspaceOrgOrigin: "https://chat.example.com",
+    });
+    mockMessengerApi.getWithBase.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        uuid: bobUuid,
+        username: "bob",
+        email: "bob@example.com",
+        status: "ACTIVE",
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await fetchUser(bobUuid);
+
+    expect(result?.full_name).toBe("bob");
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
+      "https://chat.example.com",
+      `/api/core/v1/iam/users/${bobUuid}`,
+      undefined,
+      undefined,
+    );
   });
 });
 
@@ -308,8 +382,8 @@ describe("fetchUsersAvatarMap", () => {
     });
     const map = await fetchUsersAvatarMap();
     expect(map.size).toBe(2);
-    expect(map.get(1)).toBe("/avatar/1.png");
-    expect(map.get(3)).toBe("/avatar/3.png");
-    expect(map.has(2)).toBe(false);
+    expect(map.get("1")).toBe("/avatar/1.png");
+    expect(map.get("3")).toBe("/avatar/3.png");
+    expect(map.has("2")).toBe(false);
   });
 });

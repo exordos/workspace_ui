@@ -3,6 +3,7 @@
  */
 import type { MessengerUnreadMessagesSnapshot } from "~/shared/api/messenger-unread.lib";
 import type { LinkPreviewData } from "~/shared/lib/message-link-preview.types";
+import type { UserId } from "~/shared/lib/user-id.lib";
 
 export class MessengerAuthError extends Error {
   constructor(
@@ -171,21 +172,19 @@ export interface MessengerCredentials {
 }
 
 export interface WorkspaceCurrentUser {
-  user_id: number;
+  user_id: UserId;
   full_name: string;
   email: string;
   /** organization realm role code (100=owner, 200=admin, 300=moderator, 400=member, 600=guest). */
   role?: number;
-  /** IAM identity UUID (distinct from messenger `user_id`). */
-  iam_user_uuid?: string;
 }
 
-/** Map of user_id to relative avatar_url path. */
-export type AvatarUrlByUserId = Map<number, string>;
+/** Map of normalized user id key → relative avatar_url path. */
+export type AvatarUrlByUserId = Map<string, string>;
 
-/** A single user entry from GET /users. */
+/** A single user entry from GET /users or IAM `/api/core/v1/iam/users/`. */
 export interface MessengerUserMember {
-  user_id: number;
+  user_id: UserId;
   full_name?: string;
   email?: string;
   avatar_url?: string | null;

@@ -1,10 +1,8 @@
 /**
  * Parses IAM `GET .../actions/me` payloads into a normalized current-user record.
  */
+import { buildFullNameFromIamUser, type IamDirectoryUser } from "./iam-users.lib";
 import type { WorkspaceCurrentUser } from "./messenger.types";
-
-/** Temporary messenger user_id until per-server identity mapping is implemented. */
-export const TEMPORARY_MESSENGER_USER_ID = 9;
 
 export interface IamMeOrganization {
   uuid: string;
@@ -13,16 +11,7 @@ export interface IamMeOrganization {
   status?: string;
 }
 
-export interface IamMeUser {
-  uuid: string;
-  name?: string;
-  first_name?: string;
-  last_name?: string;
-  surname?: string;
-  email?: string;
-  username?: string;
-  status?: string;
-}
+export type IamMeUser = IamDirectoryUser;
 
 export interface IamMeResponse {
   user: IamMeUser;
@@ -32,21 +21,6 @@ export interface IamMeResponse {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function buildFullNameFromIamUser(user: IamMeUser): string {
-  const parts = [user.first_name, user.last_name, user.surname]
-    .map((part) => (typeof part === "string" ? part.trim() : ""))
-    .filter((part) => part.length > 0);
-  if (parts.length > 0) {
-    return parts.join(" ");
-  }
-  const name = typeof user.name === "string" ? user.name.trim() : "";
-  if (name.length > 0) {
-    return name;
-  }
-  const username = typeof user.username === "string" ? user.username.trim() : "";
-  return username;
 }
 
 function parseIamMeUser(data: unknown): IamMeUser | null {
@@ -83,9 +57,8 @@ export function parseIamCurrentUserFromApiData(data: unknown): WorkspaceCurrentU
   const email = typeof user.email === "string" ? user.email.trim() : "";
 
   return {
-    user_id: TEMPORARY_MESSENGER_USER_ID,
+    user_id: user.uuid.trim().toLowerCase(),
     full_name: buildFullNameFromIamUser(user),
     email,
-    iam_user_uuid: user.uuid,
   };
 }

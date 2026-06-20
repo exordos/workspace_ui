@@ -1,3 +1,6 @@
+import type { UserId } from "~/shared/lib/user-id.lib";
+import { compareUserIds, userIdStorageKey } from "~/shared/lib/user-id.lib";
+
 type PresenceStatus = "active" | "idle";
 
 export type UserPickerPresence = "active" | "idle" | "offline" | null;
@@ -6,7 +9,7 @@ const ACTIVE_PRESENCE_WINDOW_SECONDS = 2 * 60;
 const IDLE_PRESENCE_WINDOW_SECONDS = 10 * 60;
 
 export interface UserPickerOption {
-  userId: number;
+  userId: UserId;
   fullName: string;
   email: string;
   presence: UserPickerPresence;
@@ -15,7 +18,7 @@ export interface UserPickerOption {
 }
 
 export interface UserPickerCandidate {
-  userId: number;
+  userId: UserId;
   fullName: string;
   email?: string;
   presenceStatus?: PresenceStatus;
@@ -27,9 +30,21 @@ function normalizeSearchValue(value: string | undefined): string {
   return (value ?? "").trim().toLowerCase();
 }
 
+function resolveDisplayName(candidate: UserPickerCandidate): string {
+  const fullName = candidate.fullName.trim();
+  if (fullName.length > 0) {
+    return fullName;
+  }
+  const email = (candidate.email ?? "").trim();
+  if (email.length > 0) {
+    return email;
+  }
+  return userIdStorageKey(candidate.userId);
+}
+
 function matchesQuery(candidate: UserPickerCandidate, query: string): boolean {
   if (query.length === 0) return true;
-  const normalizedName = normalizeSearchValue(candidate.fullName);
+  const normalizedName = normalizeSearchValue(resolveDisplayName(candidate));
   const normalizedEmail = normalizeSearchValue(candidate.email);
   return normalizedName.includes(query) || normalizedEmail.includes(query);
 }
@@ -52,35 +67,33 @@ function toPresence(
 
 export function buildUserPickerOptions(options: {
   candidates: readonly UserPickerCandidate[];
-  selectedUserIds: readonly number[];
-  excludedUserIds?: readonly number[];
+  selectedUserIds: readonly UserId[];
+  excludedUserIds?: readonly UserId[];
   query?: string;
 }): UserPickerOption[] {
   const { candidates, selectedUserIds, excludedUserIds = [], query = "" } = options;
   const normalizedQuery = query.trim().toLowerCase();
-  const selected = new Set(selectedUserIds);
-  const excluded = new Set(excludedUserIds);
+  const selected = new Set(selectedUserIds.map(userIdStorageKey));
+  const excluded = new Set(excludedUserIds.map(userIdStorageKey));
   const now = Math.floor(Date.now() / 1000);
 
-  const deduped = new Map<number, UserPickerOption>();
+  const deduped = new Map<string, UserPickerOption>();
   for (const candidate of candidates) {
-    if (deduped.has(candidate.userId)) {
+    const key = userIdStorageKey(candidate.userId);
+    if (deduped.has(key)) {
       continue;
     }
-    if (excluded.has(candidate.userId)) {
-      continue;
-    }
-    const fullName = candidate.fullName.trim();
-    if (fullName.length === 0) {
+    if (excluded.has(key)) {
       continue;
     }
     if (!matchesQuery(candidate, normalizedQuery)) {
       continue;
     }
 
+    const fullName = resolveDisplayName(candidate);
     const statusLabel = candidate.statusLabel?.trim();
 
-    deduped.set(candidate.userId, {
+    deduped.set(key, {
       userId: candidate.userId,
       fullName,
       email: (candidate.email ?? "").trim(),
@@ -92,8 +105,8 @@ export function buildUserPickerOptions(options: {
 
   const rows = Array.from(deduped.values());
   rows.sort((left, right) => {
-    const leftSelected = selected.has(left.userId) ? 0 : 1;
-    const rightSelected = selected.has(right.userId) ? 0 : 1;
+    const leftSelected = selected.has(userIdStorageKey(left.userId)) ? 0 : 1;
+    const rightSelected = selected.has(userIdStorageKey(right.userId)) ? 0 : 1;
     if (leftSelected !== rightSelected) {
       return leftSelected - rightSelected;
     }
@@ -102,15 +115,37 @@ export function buildUserPickerOptions(options: {
   return rows;
 }
 
-export function toggleUserPickerSelection(
-  selectedUserIds: readonly number[],
-  userId: number,
-): number[] {
-  const next = new Set(selectedUserIds);
-  if (next.has(userId)) {
-    next.delete(userId);
-  } else {
-    next.add(userId);
+/** i18n key for an empty user picker (see `dm.*` and `search.noResults`). */
+export function resolveUserPickerEmptyLabelKey(options: {
+  candidateCount: number;
+  visibleCount: number;
+  query: string;
+  excludesCurrentUser: boolean;
+}): string {
+  const { candidateCount, visibleCount, query, excludesCurrentUser } = options;
+  if (visibleCount > 0) {
+    return "search.noResults";
   }
-  return Array.from(next).sort((a, b) => a - b);
+  if (candidateCount === 0) {
+    return "dm.usersDirectoryEmpty";
+  }
+  if (query.trim().length > 0) {
+    return "search.noResults";
+  }
+  if (excludesCurrentUser && candidateCount === 1) {
+    return "dm.noOtherUsers";
+  }
+  return "search.noResults";
+}
+
+export function toggleUserPickerSelection(
+  selectedUserIds: readonly UserId[],
+  userId: UserId,
+): UserId[] {
+  const targetKey = userIdStorageKey(userId);
+  const next = selectedUserIds.filter((id) => userIdStorageKey(id) !== targetKey);
+  if (next.length === selectedUserIds.length) {
+    next.push(userId);
+  }
+  return next.sort(compareUserIds);
 }
