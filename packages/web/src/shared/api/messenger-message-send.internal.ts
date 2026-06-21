@@ -1,69 +1,55 @@
 /**
- * POST /messages with `read_by_sender` and optional Workspace local echo (`queue_id` + `local_id`).
+ * POST /messages to the Workspace gateway native message API.
  */
 import { t } from "~/i18n/i18n";
 import { normalizeMessageId } from "~/shared/lib/message-id.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
-import { getMessengerEventQueueIdForCurrentInstance } from "~/shared/lib/messenger-event-queue-registry.lib";
-import { messengerPipelinePost } from "./messenger-pipeline.internal";
+import { getMessengerGatewayApiBaseForCurrentInstance, messengerApi } from "./client";
 
-export type MessengerMessageSendClientParams =
-  | {
-      type: "private";
-      to: number[];
-      content: string;
-    }
-  | {
-      type: "stream";
-      to: string;
-      topic?: string;
-      content: string;
-    };
+export interface MessengerMessageSendClientParams {
+  streamUuid: string;
+  content: string;
+}
 
-export interface MessengerMessageSendOptions {
-  /** Client local echo id; requires an active event `queue_id` on the server. */
-  localId?: string;
+export interface WorkspaceMessagePayload {
+  kind: "markdown";
+  content: string;
+}
+
+export interface WorkspaceMessageCreateBody {
+  stream_uuid: string;
+  payload: WorkspaceMessagePayload;
 }
 
 export function buildMessengerMessageSendBody(
   params: MessengerMessageSendClientParams,
-  options?: MessengerMessageSendOptions,
-): Record<string, string> {
-  const body: Record<string, string> = {
-    type: params.type,
-    content: params.content,
-    read_by_sender: "true",
+): WorkspaceMessageCreateBody {
+  return {
+    stream_uuid: params.streamUuid,
+    payload: {
+      kind: "markdown",
+      content: params.content,
+    },
   };
-  if (params.type === "private") {
-    body.to = JSON.stringify(params.to);
-  } else {
-    body.to = params.to;
-    if (params.topic != null) {
-      body.topic = params.topic;
-    }
-  }
-  const localId = options?.localId?.trim() ?? "";
-  const queueId = getMessengerEventQueueIdForCurrentInstance();
-  if (queueId != null && localId.length > 0) {
-    body.queue_id = queueId;
-    body.local_id = localId;
-  }
-  return body;
 }
 
 export async function postWorkspaceSendMessage(
   params: MessengerMessageSendClientParams,
-  options?: MessengerMessageSendOptions,
 ): Promise<{ id?: MessageId }> {
-  const body = buildMessengerMessageSendBody(params, options);
-  const response = await messengerPipelinePost("/messages", body);
+  const body = buildMessengerMessageSendBody(params);
+  const response = await messengerApi.postJsonWithBase(
+    getMessengerGatewayApiBaseForCurrentInstance(),
+    "/messages/",
+    body,
+  );
   const data = response.data as {
     result?: string;
     msg?: string;
+    uuid?: unknown;
     id?: unknown;
   };
   if (!response.ok || data.result === "error") {
     throw new Error(data.msg ?? t("app.unknownError"));
   }
-  return { id: normalizeMessageId(data.id) ?? undefined };
+  return { id: normalizeMessageId(data.uuid) ?? normalizeMessageId(data.id) ?? undefined };
 }

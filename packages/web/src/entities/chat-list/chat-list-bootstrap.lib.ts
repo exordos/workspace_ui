@@ -156,7 +156,10 @@ export function normalizeDmUserIds(
 }
 
 function metadataOnlySyntheticDmId(row: ChatListDmMetadataRow): number {
-  return SYNTHETIC_DM_ID_OFFSET + hashKey(row.streamUuid ?? row.userUuid ?? row.name ?? "dm");
+  return (
+    SYNTHETIC_DM_ID_OFFSET +
+    hashKey(row.streamUuid ?? row.sourceStreamUuid ?? row.userUuid ?? row.name ?? "dm")
+  );
 }
 
 /** Builds or merges a metadata-only DM sidebar row (register / DM index bootstrap). */
@@ -182,7 +185,9 @@ export function buildDmMetadataEntry(
     currentUserId != null ? participants.length > 1 : participants.length > 2;
 
   if (userIds.length === 0) {
-    const name = row.name?.trim() || display.dmFallbackLabel;
+    const trimmedName = row.name?.trim();
+    const name =
+      trimmedName != null && trimmedName.length > 0 ? trimmedName : display.dmFallbackLabel;
     return {
       key,
       entry: {
@@ -193,6 +198,7 @@ export function buildDmMetadataEntry(
         time,
         ts,
         ...(row.streamUuid != null ? { streamUuid: row.streamUuid } : {}),
+        ...(row.sourceStreamUuid != null ? { sourceStreamUuid: row.sourceStreamUuid } : {}),
         ...(row.userUuid != null ? { userUuid: row.userUuid } : {}),
         unreadCount,
         avatar_url: existing?.avatar_url,
@@ -207,7 +213,11 @@ export function buildDmMetadataEntry(
 
   const partnerId = participants[0] ?? userIds[0];
   if (partnerId == null) return null;
-  const name = row.name?.trim() || display.getParticipantDisplayName(partnerId);
+  const trimmedName = row.name?.trim();
+  const name =
+    trimmedName != null && trimmedName.length > 0
+      ? trimmedName
+      : display.getParticipantDisplayName(partnerId);
   const numericPartnerId = numericUserIdOrNull(partnerId);
   const entryId = numericPartnerId ?? metadataOnlySyntheticDmId(row);
   return {
@@ -221,6 +231,7 @@ export function buildDmMetadataEntry(
       ts,
       userIds,
       ...(row.streamUuid != null ? { streamUuid: row.streamUuid } : {}),
+      ...(row.sourceStreamUuid != null ? { sourceStreamUuid: row.sourceStreamUuid } : {}),
       ...(row.userUuid != null ? { userUuid: row.userUuid } : {}),
       unreadCount,
       avatar_url: display.getAvatarUrl(partnerId) ?? existing?.avatar_url,

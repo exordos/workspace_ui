@@ -51,6 +51,7 @@ export interface MessengerRecentPrivateConversation {
 }
 
 export interface MessengerMeStream {
+  /** Per-user stream row id. Use this for me/messages user_stream_uuid filtering. */
   uuid: string;
   name: string;
   description: string;
@@ -58,7 +59,10 @@ export interface MessengerMeStream {
   created_at?: string;
   updated_at?: string;
   user_uuid?: string;
+  /** UI alias for the per-user stream row id. */
   stream_uuid: string;
+  /** Source WorkspaceStream.uuid. Use this when creating messages. */
+  source_stream_uuid: string;
   last_synced_at?: string;
   source_name?: string;
   source?: Record<string, unknown>;
@@ -82,7 +86,10 @@ export interface MessengerMeMessagePayload {
  * IAM token (project_id + user_uuid). Field names are snake_case (`convert_underscore=False`).
  */
 export interface MessengerMeMessage {
+  /** Per-user message row id. Use this for me/messages paging and row lookup. */
   uuid: string;
+  /** Source WorkspaceMessage.uuid. Use this for source-message operations. */
+  source_message_uuid: string;
   user_stream_uuid: string;
   payload: MessengerMeMessagePayload;
   read: boolean;
@@ -288,6 +295,7 @@ export interface MessageReactionPayload {
 /** Raw message from GET /messages. Absence of 'read' in flags means unread. */
 export interface WorkspaceRawMessage {
   id: MessageId;
+  source_message_uuid?: MessageId;
   sender_id: number;
   sender_full_name?: string;
   /** Sender avatar (relative path), present in GET /messages response. */
@@ -320,7 +328,10 @@ export interface DirectMessagesPageResult {
 
 export interface MockStream {
   stream_id: number;
+  /** Per-user stream UUID used for me/messages reads. */
   stream_uuid?: string;
+  /** Source stream UUID used for messages writes. */
+  source_stream_uuid?: string;
   name: string;
   description: string;
   is_announcement_only: boolean;
@@ -349,6 +360,7 @@ export type MockMessageEditStatus = "saving" | "failed";
 
 export interface MockMessage {
   id: MessageId;
+  source_message_uuid?: MessageId;
   sender_id: number;
   sender_full_name: string;
   stream_id: number | null;
@@ -396,6 +408,7 @@ export interface MockMessage {
 /** Input shape for normalizing API messages to MockMessage. */
 export interface RawMessageToMockInput {
   id: MessageId;
+  source_message_uuid?: MessageId;
   sender_id: number;
   sender_full_name?: string;
   content: string;
@@ -412,7 +425,10 @@ export interface RawMessageToMockInput {
 
 export interface MessengerSubscription {
   stream_id: number;
+  /** Per-user stream UUID used for me/messages reads. */
   stream_uuid?: string;
+  /** Source stream UUID used for messages writes. */
+  source_stream_uuid?: string;
   name: string;
   is_muted: boolean;
   /** Per-channel override; null/undefined inherits global stream notification settings. */
@@ -438,16 +454,14 @@ export interface MessagesPageResult {
 export interface SendMessageParams {
   /** For stream message: stream name. Omit when using `to` for private. */
   stream?: string;
+  /** Source stream UUID for Workspace gateway message creation. */
+  streamUuid?: string;
   /** Optional stream ID for a more faithful optimistic payload. */
   streamId?: number;
   subject?: string;
   content: string;
   sender_id?: number;
   sender_full_name?: string;
-  /** For private/DM message: recipient user ids. When set, `stream` is ignored. */
-  to?: number[];
-  /** Workspace local echo id (pairs with the active event queue `queue_id`). */
-  local_id?: string;
 }
 
 export interface CreateSavedSnippetParams {

@@ -20,6 +20,7 @@ export function rawMessageToMockMessage(m: RawMessageToMockInput): MockMessage {
 
   const base: MockMessage = {
     id: m.id,
+    ...(m.source_message_uuid != null ? { source_message_uuid: m.source_message_uuid } : {}),
     sender_id: m.sender_id,
     sender_full_name: m.sender_full_name ?? "",
     stream_id: m.stream_id ?? (m.type === "private" ? null : (m.stream_id ?? null)),
@@ -63,6 +64,7 @@ export function mockMessageFromGetMessageApiData(data: unknown): MockMessage | n
 
   return rawMessageToMockMessage({
     id: rowId,
+    source_message_uuid: row.source_message_uuid,
     sender_id: row.sender_id,
     sender_full_name: row.sender_full_name,
     content: row.content,

@@ -25,6 +25,7 @@ export interface UseChatPageSendMessageParams {
   activeStream: string | null;
   activeStreamCanonicalName: string | null;
   activeStreamId: number | null | undefined;
+  activeSourceStreamUuid: string | null | undefined;
   activeTopic: string | null | undefined;
   appendMessage: (message: MockMessage) => void;
   commitOutgoingMessage: (optimisticId: MessageId, message: MockMessage) => void;
@@ -53,6 +54,7 @@ export function useChatPageSendMessage(
     activeStream,
     activeStreamCanonicalName,
     activeStreamId,
+    activeSourceStreamUuid,
     activeTopic,
     appendMessage,
     commitOutgoingMessage,
@@ -83,6 +85,7 @@ export function useChatPageSendMessage(
           activeStream,
           activeStreamCanonicalName,
           activeStreamId,
+          activeSourceStreamUuid,
           activeTopic,
           allocateOptimisticMessageId: createMessageId,
           appendMessage,
@@ -113,6 +116,7 @@ export function useChatPageSendMessage(
       activeStream,
       activeStreamCanonicalName,
       activeStreamId,
+      activeSourceStreamUuid,
       activeTopic,
       appendMessage,
       commitOutgoingMessage,
@@ -145,6 +149,10 @@ export function useChatPageSendMessage(
       };
 
       if (isDmView && activeDmUserIds?.length) {
+        if (activeSourceStreamUuid == null) {
+          setSendError(t("message.sendFailed"));
+          return;
+        }
         const optimisticMessageId = createMessageId();
         const optimisticMessage = buildOptimisticOutgoingMessage({
           id: optimisticMessageId,
@@ -157,11 +165,10 @@ export function useChatPageSendMessage(
         requestScrollToBottom();
         try {
           const newMsg = await sendMessage({
-            to: activeDmUserIds,
+            streamUuid: activeSourceStreamUuid,
             content: body,
             sender_id: currentUserId ?? 0,
             sender_full_name: t("common.you"),
-            local_id: String(optimisticMessageId),
           });
           commitOutgoingMessage(optimisticMessageId, newMsg);
           clearReplyQuote();
@@ -176,12 +183,16 @@ export function useChatPageSendMessage(
         return;
       }
       if (activeStream) {
-        if (!activeStreamCanonicalName) {
-          log.warn("Blocked retry for failed stream message without canonical stream name", {
-            streamId: activeStreamId ?? undefined,
-            displayName: activeStream,
-            failedMessageId: msg.id,
-          });
+        if (!activeStreamCanonicalName || activeSourceStreamUuid == null) {
+          log.warn(
+            "Blocked retry for failed stream message without canonical stream name or source uuid",
+            {
+              streamId: activeStreamId ?? undefined,
+              displayName: activeStream,
+              failedMessageId: msg.id,
+              hasSourceStreamUuid: activeSourceStreamUuid != null,
+            },
+          );
           setSendError(t("message.sendFailed"));
           return;
         }
@@ -204,12 +215,12 @@ export function useChatPageSendMessage(
         try {
           const newMsg = await sendMessage({
             stream: activeStreamCanonicalName,
+            streamUuid: activeSourceStreamUuid,
             streamId: activeStreamId ?? undefined,
             subject,
             content: body,
             sender_id: currentUserId ?? 0,
             sender_full_name: t("common.you"),
-            local_id: String(optimisticMessageId),
           });
           commitOutgoingMessage(optimisticMessageId, newMsg);
           clearReplyQuote();
@@ -228,6 +239,7 @@ export function useChatPageSendMessage(
       activeStream,
       activeStreamCanonicalName,
       activeStreamId,
+      activeSourceStreamUuid,
       activeTopic,
       appendMessage,
       clearReplyQuote,

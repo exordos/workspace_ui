@@ -786,72 +786,34 @@ export async function createSavedSnippet(params: CreateSavedSnippetParams): Prom
 }
 
 export async function sendMessage(params: SendMessageParams): Promise<MockMessage> {
-  const isPrivate = params.to != null && params.to.length > 0;
-  if (!isPrivate && !params.stream) {
-    throw new Error(t("message.sendRequiresStreamOrTo"));
-  }
   const content = guard.nonEmpty(params.content, "sendMessage.content");
-  const sendOptions =
-    params.local_id != null && params.local_id.trim().length > 0
-      ? { localId: params.local_id.trim() }
-      : undefined;
-
-  if (isPrivate) {
-    const recipients = params.to ?? [];
-    for (const recipientId of recipients) {
-      guard.userId(recipientId, "sendMessage.to");
-    }
-    const result = await postWorkspaceSendMessage(
-      {
-        type: "private",
-        to: recipients,
-        content,
-      },
-      sendOptions,
-    );
-    const id = guard.messageId(result.id, "sendMessage.id");
-    const authoritative = await fetchMessageById(id);
-    if (authoritative) return authoritative;
-    return {
-      id,
-      sender_id: params.sender_id ?? 0,
-      sender_full_name: params.sender_full_name ?? t("common.you"),
-      stream_id: null,
-      display_recipient: recipients.map((recipientId) => ({ id: recipientId, full_name: "" })),
-      subject: "",
-      content,
-      timestamp: Math.floor(Date.now() / 1000),
-    };
-  }
-
-  const stream = guard.nonEmpty(params.stream, "sendMessage.stream");
+  const streamUuid = guard.nonEmpty(params.streamUuid, "sendMessage.streamUuid").trim();
   if (params.streamId != null) {
     guard.streamId(params.streamId, "sendMessage.streamId");
   }
-  const subject = params.subject ?? "";
-  const result = await postWorkspaceSendMessage(
-    {
-      type: "stream",
-      to: stream,
-      topic: subject,
-      content,
-    },
-    sendOptions,
-  );
+
+  const result = await postWorkspaceSendMessage({
+    streamUuid,
+    content,
+  });
   const id = guard.messageId(result.id, "sendMessage.id");
-  const authoritative = await fetchMessageById(id);
-  if (authoritative) return authoritative;
-  return {
+  const streamName = params.stream?.trim() ?? "";
+  const message: MockMessage = {
     id,
+    source_message_uuid: id,
     sender_id: params.sender_id ?? 0,
     sender_full_name: params.sender_full_name ?? t("common.you"),
     stream_id: params.streamId ?? null,
-    display_recipient: stream,
-    channel: stream,
-    subject,
+    subject: params.subject ?? "",
     content,
+    markdown_source: content,
     timestamp: Math.floor(Date.now() / 1000),
   };
+  if (streamName.length > 0) {
+    message.display_recipient = streamName;
+    message.channel = streamName;
+  }
+  return message;
 }
 
 /** Renders markdown via Workspace for composer preview. */

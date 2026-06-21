@@ -1,12 +1,10 @@
 /**
  * Tests for Messenger API (messenger-messages module).
  */
-import "./messenger.test.setup";
 import { describe, expect, it } from "vitest";
-import {
-  clearAllMessengerEventQueueIds,
-  setMessengerEventQueueId,
-} from "~/shared/lib/messenger-event-queue-registry.lib";
+// messenger.test.setup must load before the module under test so its vi.mock hooks register first.
+// eslint-disable-next-line import-x/order -- keep setup import above first for vi.mock registration
+import { getMockRefreshMessengerApiBase, getMockMessengerApi } from "./messenger.test.setup";
 import { testMessageId } from "~/test/factories";
 import {
   addReaction,
@@ -30,12 +28,6 @@ import {
   sendMessage,
   updateMessage,
 } from "./messenger-messages";
-import {
-  getMockRefreshMessengerApiBase,
-  getMockMessengerApi,
-  TEST_INSTANCE,
-} from "./messenger.test.setup";
-
 const mockMessengerApi = getMockMessengerApi();
 const mockRefreshMessengerApiBase = getMockRefreshMessengerApiBase();
 
@@ -931,71 +923,22 @@ describe("fetchDmMessages", () => {
 });
 
 // ---------------------------------------------------------------------------
-// sendMessage — POST /messages via API pipeline
+// sendMessage — POST /messages via Workspace gateway
 // ---------------------------------------------------------------------------
 
 describe("sendMessage", () => {
-  it("returns the authoritative server message when follow-up fetch succeeds", async () => {
-    mockMessengerApi.post.mockResolvedValue({
+  const sourceStreamUuid = "22222222-2222-4222-8222-222222222222";
+
+  it("sends a stream message through the gateway native endpoint", async () => {
+    mockMessengerApi.postJsonWithBase.mockResolvedValue({
       ok: true,
-      status: 200,
-      data: { result: "success", id: testMessageId(100) },
-    });
-    mockMessengerApi.get.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: {
-        id: "00000000-0000-4000-8000-000000000100",
-        sender_id: 42,
-        sender_full_name: "Alice",
-        content: "<p>hello</p>",
-        timestamp: 1710000000,
-        display_recipient: "general",
-        subject: "test",
-        type: "stream",
-        stream_id: 10,
-        flags: ["read"],
-        reactions: [],
-      },
-      raw: { statusText: "OK" },
+      status: 201,
+      data: { uuid: testMessageId(100) },
+      raw: { statusText: "Created" },
     });
 
     const result = await sendMessage({
-      stream: "general",
-      streamId: 10,
-      subject: "test",
-      content: "hello",
-    });
-
-    expect(result).toEqual({
-      id: "00000000-0000-4000-8000-000000000100",
-      sender_id: 42,
-      sender_full_name: "Alice",
-      stream_id: 10,
-      display_recipient: "general",
-      channel: "general",
-      subject: "test",
-      content: "<p>hello</p>",
-      timestamp: 1710000000,
-      flags: ["read"],
-      reactions: [],
-    });
-  });
-
-  it("falls back to synthetic stream payload when follow-up fetch fails", async () => {
-    mockMessengerApi.post.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: { result: "success", id: testMessageId(100) },
-    });
-    mockMessengerApi.get.mockResolvedValue({
-      ok: false,
-      status: 404,
-      data: { msg: "not found" },
-      raw: { statusText: "Not Found" },
-    });
-
-    const result = await sendMessage({
+      streamUuid: sourceStreamUuid,
       stream: "general",
       streamId: 10,
       subject: "test",
@@ -1004,158 +947,122 @@ describe("sendMessage", () => {
       sender_full_name: "You",
     });
 
-    expect(result.id).toBe(testMessageId(100));
-    expect(result.sender_id).toBe(7);
-    expect(result.sender_full_name).toBe("You");
-    expect(result.stream_id).toBe(10);
-    expect(result.display_recipient).toBe("general");
-    expect(result.subject).toBe("test");
-    expect(result.content).toBe("hello");
-  });
-
-  it("sends a stream message", async () => {
-    mockMessengerApi.post.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: { result: "success", id: testMessageId(100) },
-    });
-    const result = await sendMessage({
-      stream: "general",
-      streamId: 10,
+    expect(result).toEqual({
+      id: testMessageId(100),
+      source_message_uuid: testMessageId(100),
+      sender_id: 7,
+      sender_full_name: "You",
+      stream_id: 10,
+      display_recipient: "general",
+      channel: "general",
       subject: "test",
       content: "hello",
+      markdown_source: "hello",
+      timestamp: expect.any(Number),
     });
-    expect(result.id).toBe(testMessageId(100));
-    expect(result.stream_id).toBe(10);
-    expect(result.display_recipient).toBe("general");
-    expect(result.channel).toBe("general");
-    expect(result.subject).toBe("test");
-    expect(mockMessengerApi.post).toHaveBeenCalledWith(
-      "/messages",
-      expect.objectContaining({
-        type: "stream",
-        to: "general",
-        topic: "test",
-        content: "hello",
-        read_by_sender: "true",
-      }),
+    expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
+      "/api/messanger/v1",
+      "/messages/",
+      {
+        stream_uuid: sourceStreamUuid,
+        payload: {
+          kind: "markdown",
+          content: "hello",
+        },
+      },
     );
-  });
-
-  it("sends a private message", async () => {
-    mockMessengerApi.post.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: { result: "success", id: testMessageId(101) },
-    });
-    const result = await sendMessage({ to: [42], content: "hi" });
-    expect(result.id).toBe(testMessageId(101));
-    expect(result.stream_id).toBeNull();
-    expect(result.display_recipient).toEqual([{ id: 42, full_name: "" }]);
-    expect(mockMessengerApi.post).toHaveBeenCalledWith(
-      "/messages",
-      expect.objectContaining({
-        type: "private",
-        to: "[42]",
-        content: "hi",
-        read_by_sender: "true",
-      }),
-    );
-  });
-
-  it("throws when private recipient id is invalid", async () => {
-    await expect(sendMessage({ to: [0], content: "hi" })).rejects.toThrow(/Invalid userId/);
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
     expect(mockMessengerApi.post).not.toHaveBeenCalled();
+  });
+
+  it("sends a DM message with the private source stream uuid", async () => {
+    mockMessengerApi.postJsonWithBase.mockResolvedValue({
+      ok: true,
+      status: 201,
+      data: { uuid: testMessageId(101) },
+      raw: { statusText: "Created" },
+    });
+
+    const result = await sendMessage({
+      streamUuid: sourceStreamUuid,
+      content: "hi",
+    });
+
+    expect(result).toMatchObject({
+      id: testMessageId(101),
+      source_message_uuid: testMessageId(101),
+      stream_id: null,
+      subject: "",
+      content: "hi",
+      markdown_source: "hi",
+    });
+    expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
+      "/api/messanger/v1",
+      "/messages/",
+      {
+        stream_uuid: sourceStreamUuid,
+        payload: {
+          kind: "markdown",
+          content: "hi",
+        },
+      },
+    );
+  });
+
+  it("throws when source stream uuid is missing", async () => {
+    await expect(sendMessage({ content: "hi" })).rejects.toThrow(
+      /sendMessage\.streamUuid must be a non-empty string/,
+    );
+    expect(mockMessengerApi.postJsonWithBase).not.toHaveBeenCalled();
   });
 
   it("throws when provided stream id is invalid", async () => {
     await expect(
-      sendMessage({ stream: "engineering", streamId: 0, content: "hi" }),
+      sendMessage({
+        streamUuid: sourceStreamUuid,
+        stream: "engineering",
+        streamId: 0,
+        content: "hi",
+      }),
     ).rejects.toThrow(/Invalid streamId/);
-    expect(mockMessengerApi.post).not.toHaveBeenCalled();
-  });
-
-  it("throws when stream name is blank", async () => {
-    await expect(sendMessage({ stream: "   ", content: "hi" })).rejects.toThrow(
-      /sendMessage\.stream must be a non-empty string/,
-    );
-    expect(mockMessengerApi.post).not.toHaveBeenCalled();
+    expect(mockMessengerApi.postJsonWithBase).not.toHaveBeenCalled();
   });
 
   it("throws when message content is blank", async () => {
-    await expect(sendMessage({ stream: "engineering", content: "   " })).rejects.toThrow(
+    await expect(sendMessage({ streamUuid: sourceStreamUuid, content: "   " })).rejects.toThrow(
       /sendMessage\.content must be a non-empty string/,
     );
-    expect(mockMessengerApi.post).not.toHaveBeenCalled();
+    expect(mockMessengerApi.postJsonWithBase).not.toHaveBeenCalled();
   });
 
-  it("defaults subject to empty topic for stream message", async () => {
-    mockMessengerApi.post.mockResolvedValue({
+  it("defaults subject to empty string for optimistic stream payload", async () => {
+    mockMessengerApi.postJsonWithBase.mockResolvedValue({
       ok: true,
-      status: 200,
-      data: { result: "success", id: testMessageId(102) },
+      status: 201,
+      data: { uuid: testMessageId(102) },
+      raw: { statusText: "Created" },
     });
-    const result = await sendMessage({ stream: "engineering", content: "test" });
+
+    const result = await sendMessage({
+      streamUuid: sourceStreamUuid,
+      stream: "engineering",
+      content: "test",
+    });
+
     expect(result.subject).toBe("");
   });
 
-  it("throws when neither stream nor to is provided", async () => {
-    await expect(sendMessage({ content: "orphan" })).rejects.toThrow();
-  });
-
-  it("includes read_by_sender on every send", async () => {
-    mockMessengerApi.post.mockResolvedValue({
+  it("throws when gateway does not return a message uuid", async () => {
+    mockMessengerApi.postJsonWithBase.mockResolvedValue({
       ok: true,
-      status: 200,
-      data: { result: "success", id: testMessageId(104) },
+      status: 201,
+      data: {},
+      raw: { statusText: "Created" },
     });
 
-    await sendMessage({ stream: "general", content: "hello" });
-
-    expect(mockMessengerApi.post).toHaveBeenCalledWith(
-      "/messages",
-      expect.objectContaining({ read_by_sender: "true" }),
+    await expect(sendMessage({ streamUuid: sourceStreamUuid, content: "hi" })).rejects.toThrow(
+      /Invalid messageId/,
     );
-  });
-
-  it("includes queue_id and local_id when echo ids are provided and queue is registered", async () => {
-    clearAllMessengerEventQueueIds();
-    setMessengerEventQueueId(TEST_INSTANCE.id, "q-active");
-    mockMessengerApi.post.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: { result: "success", id: testMessageId(103) },
-    });
-
-    await sendMessage({ stream: "general", content: "hello", local_id: "-7" });
-
-    expect(mockMessengerApi.post).toHaveBeenCalledWith(
-      "/messages",
-      expect.objectContaining({
-        queue_id: "q-active",
-        local_id: "-7",
-        read_by_sender: "true",
-      }),
-    );
-    clearAllMessengerEventQueueIds();
-  });
-
-  it("omits queue_id when local_id is not provided even if queue is registered", async () => {
-    clearAllMessengerEventQueueIds();
-    setMessengerEventQueueId(TEST_INSTANCE.id, "q-active");
-    mockMessengerApi.post.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: { result: "success", id: testMessageId(105) },
-    });
-
-    await sendMessage({ stream: "general", content: "hello" });
-
-    expect(mockMessengerApi.post).toHaveBeenCalledWith(
-      "/messages",
-      expect.not.objectContaining({ queue_id: "q-active" }),
-    );
-    clearAllMessengerEventQueueIds();
   });
 });
 

@@ -94,9 +94,10 @@ export function parseMeMessage(row: unknown): MessengerMeMessage | null {
     return null;
   }
   const uuid = readUuid(row.uuid);
+  const sourceMessageUuid = readUuid(row.source_message_uuid);
   const userStreamUuid = readUuid(row.user_stream_uuid);
   const payload = parseMeMessagePayload(row.payload);
-  if (uuid == null || userStreamUuid == null || payload == null) {
+  if (uuid == null || sourceMessageUuid == null || userStreamUuid == null || payload == null) {
     return null;
   }
   const userUuid = readUuid(row.user_uuid);
@@ -106,6 +107,7 @@ export function parseMeMessage(row: unknown): MessengerMeMessage | null {
   const updatedAt = readOptionalString(row.updated_at);
   return {
     uuid,
+    source_message_uuid: sourceMessageUuid,
     user_stream_uuid: userStreamUuid,
     payload,
     read: row.read === true,
@@ -258,6 +260,7 @@ export function meMessageToMockMessage(
   const id: MessageId = message.uuid;
   const base: MockMessage = {
     id,
+    source_message_uuid: message.source_message_uuid,
     sender_id: 0,
     sender_full_name: "",
     stream_id: streamId,

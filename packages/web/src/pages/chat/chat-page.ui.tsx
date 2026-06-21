@@ -159,6 +159,14 @@ export const ChatPage: React.FC = () => {
       }),
     [activeStreamId, canonicalStreamName, streamsMap],
   );
+  const activeSourceStreamUuid = useMemo(() => {
+    if (isDmView) {
+      return dmChat?.sourceStreamUuid ?? null;
+    }
+    return activeStreamId != null
+      ? (streamsMap.get(activeStreamId)?.sourceStreamUuid ?? null)
+      : null;
+  }, [activeStreamId, dmChat?.sourceStreamUuid, isDmView, streamsMap]);
   const partnerUser = useUsersStore((s) =>
     partnerUserId != null ? s.getUser(partnerUserId) : undefined,
   );
@@ -626,6 +634,7 @@ export const ChatPage: React.FC = () => {
       activeStream: activeStream ?? null,
       activeStreamCanonicalName: activeStreamCanonicalName ?? null,
       activeStreamId,
+      activeSourceStreamUuid,
       activeTopic,
       appendMessage: appendMessageToStore,
       commitOutgoingMessage: commitOutgoingMessageToStore,

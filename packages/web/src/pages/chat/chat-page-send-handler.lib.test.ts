@@ -37,6 +37,7 @@ function createDeps(overrides: Partial<ChatPageSendHandlerDeps> = {}): ChatPageS
     activeStream: "Engineering",
     activeStreamCanonicalName: "engineering",
     activeStreamId: 10,
+    activeSourceStreamUuid: "22222222-2222-4222-8222-222222222222",
     activeTopic: "",
     allocateOptimisticMessageId: () => -1,
     appendMessage,
@@ -69,6 +70,7 @@ describe("executeChatPageSend", () => {
     expect(sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         stream: "engineering",
+        streamUuid: "22222222-2222-4222-8222-222222222222",
         streamId: 10,
         subject: "",
         content: "hello",

@@ -49,6 +49,7 @@ function defaultParams(overrides: Partial<Parameters<typeof useChatPageSendMessa
     activeStream: null,
     activeStreamCanonicalName: null,
     activeStreamId: undefined,
+    activeSourceStreamUuid: "22222222-2222-4222-8222-222222222222",
     activeTopic: null,
     appendMessage,
     commitOutgoingMessage,
@@ -125,9 +126,8 @@ describe("useChatPageSendMessage", () => {
     expect(params.removeMessage).toHaveBeenCalledWith(testMessageId(-3));
     expect(sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({
-        to: [42],
+        streamUuid: "22222222-2222-4222-8222-222222222222",
         content: "retry me",
-        local_id: expect.any(String),
       }),
     );
     await waitFor(() => {
@@ -146,6 +146,7 @@ describe("useChatPageSendMessage", () => {
       activeStream: "Engineering",
       activeStreamCanonicalName: "engineering",
       activeStreamId: 5,
+      activeSourceStreamUuid: "33333333-3333-4333-8333-333333333333",
       activeTopic: "general",
     });
     const { result } = renderHook(() => useChatPageSendMessage(params));
@@ -164,9 +165,9 @@ describe("useChatPageSendMessage", () => {
       expect(sendMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           stream: "engineering",
+          streamUuid: "33333333-3333-4333-8333-333333333333",
           streamId: 5,
           subject: "general",
-          local_id: expect.any(String),
         }),
       );
       expect(params.removeMessage).toHaveBeenCalledWith(testMessageId(-3));
