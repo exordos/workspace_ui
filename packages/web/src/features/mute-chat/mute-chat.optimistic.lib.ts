@@ -5,7 +5,7 @@ import { useMuteStore } from "./mute-chat.model";
 export type TopicVisibilityOverrideSnapshot = "muted" | "unmuted" | "followed" | "none";
 
 function restoreTopicVisibilityOverrideFromSnapshot(
-  streamId: number,
+  streamId: string,
   topic: string,
   snapshot: TopicVisibilityOverrideSnapshot,
 ): void {
@@ -26,10 +26,10 @@ function restoreTopicVisibilityOverrideFromSnapshot(
 }
 
 export function captureTopicVisibilityOverrideSnapshot(
-  streamId: number,
+  streamId: string,
   topic: string,
 ): TopicVisibilityOverrideSnapshot {
-  guard.streamId(streamId, "captureTopicVisibilityOverrideSnapshot");
+  guard.streamUuid(streamId, "captureTopicVisibilityOverrideSnapshot");
 
   const muteStore = useMuteStore.getState();
   if (muteStore.isTopicMuted(streamId, topic)) return "muted";
@@ -39,7 +39,7 @@ export function captureTopicVisibilityOverrideSnapshot(
 }
 
 interface RunOptimisticTopicVisibilityUpdateParams {
-  streamId: number;
+  streamId: string;
   topic: string;
   applyOptimistic: () => void;
   request: () => Promise<boolean>;
@@ -64,7 +64,7 @@ export async function runOptimisticTopicVisibilityUpdate({
 }
 
 interface RunOptimisticStreamMuteUpdateParams {
-  streamId: number;
+  streamId: string;
   applyOptimistic: (wasMuted: boolean) => void;
   request: (wasMuted: boolean) => Promise<boolean>;
 }
@@ -74,7 +74,7 @@ export async function runOptimisticStreamMuteUpdate({
   applyOptimistic,
   request,
 }: RunOptimisticStreamMuteUpdateParams): Promise<boolean> {
-  guard.streamId(streamId, "runOptimisticStreamMuteUpdate");
+  guard.streamUuid(streamId, "runOptimisticStreamMuteUpdate");
 
   const muteStore = useMuteStore.getState();
   const wasMuted = muteStore.isStreamMuted(streamId);

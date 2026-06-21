@@ -21,9 +21,10 @@ export interface ChatPageSendHandlerDeps {
   activeDmUserIds: number[] | null;
   activeStream: string | null;
   activeStreamCanonicalName: string | null;
-  activeStreamId: number | null | undefined;
+  activeStreamId: string | null | undefined;
   activeStreamUuid: string | null | undefined;
   activeTopic: string | null | undefined;
+  activeTopicUuid: string | null | undefined;
   allocateOptimisticMessageId: () => MessageId;
   appendMessage: (message: MockMessage) => void;
   commitOutgoingMessage: (optimisticId: MessageId, message: MockMessage) => void;
@@ -177,13 +178,14 @@ export async function executeChatPageSend(
     target: {
       mode: "stream",
       stream: deps.activeStreamCanonicalName,
-      streamId: deps.activeStreamId ?? undefined,
+      streamUuid: deps.activeStreamUuid,
       subject,
+      ...(deps.activeTopicUuid != null ? { topicUuid: deps.activeTopicUuid } : {}),
     },
     apiPayload: {
       stream: deps.activeStreamCanonicalName,
       streamUuid: deps.activeStreamUuid,
-      streamId: deps.activeStreamId ?? undefined,
+      ...(deps.activeTopicUuid != null ? { topicUuid: deps.activeTopicUuid } : {}),
       subject,
       content: body,
     },

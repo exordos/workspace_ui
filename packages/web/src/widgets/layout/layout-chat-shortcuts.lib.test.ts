@@ -9,12 +9,6 @@ const chats: SidebarChat[] = [
     name: "engineering",
   },
   {
-    type: "dm",
-    id: 42,
-    name: "Alice",
-    slug: "42-alice",
-  },
-  {
     type: "stream",
     stream_id: 11,
     name: "design",
@@ -28,16 +22,14 @@ describe("layout-chat-shortcuts", () => {
         sidebarChats: chats,
         direction: "next",
         activeStreamSlug: "10-engineering",
-        activeDmIdParam: null,
       }),
-    ).toBe("/dm/42-alice");
+    ).toBe("/stream/11-design");
 
     expect(
       resolveChatShortcutRoute({
         sidebarChats: chats,
         direction: "next",
         activeStreamSlug: "11-design",
-        activeDmIdParam: null,
       }),
     ).toBe("/stream/10-engineering");
   });
@@ -48,7 +40,6 @@ describe("layout-chat-shortcuts", () => {
         sidebarChats: chats,
         direction: "prev",
         activeStreamSlug: "10-engineering",
-        activeDmIdParam: null,
       }),
     ).toBe("/stream/11-design");
 
@@ -57,9 +48,8 @@ describe("layout-chat-shortcuts", () => {
         sidebarChats: chats,
         direction: "prev",
         activeStreamSlug: null,
-        activeDmIdParam: "42-alice",
       }),
-    ).toBe("/stream/10-engineering");
+    ).toBe("/stream/11-design");
   });
 
   it("falls back to first or last chat when active chat is missing", () => {
@@ -68,7 +58,6 @@ describe("layout-chat-shortcuts", () => {
         sidebarChats: chats,
         direction: "next",
         activeStreamSlug: null,
-        activeDmIdParam: null,
       }),
     ).toBe("/stream/10-engineering");
 
@@ -77,7 +66,6 @@ describe("layout-chat-shortcuts", () => {
         sidebarChats: chats,
         direction: "prev",
         activeStreamSlug: null,
-        activeDmIdParam: null,
       }),
     ).toBe("/stream/11-design");
   });
@@ -88,7 +76,6 @@ describe("layout-chat-shortcuts", () => {
         sidebarChats: [],
         direction: "next",
         activeStreamSlug: null,
-        activeDmIdParam: null,
       }),
     ).toBeNull();
   });

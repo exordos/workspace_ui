@@ -29,7 +29,7 @@ export interface PushMessagePayload {
     stream_name?: string;
     topic?: string;
     content: string;
-    stream_id?: number;
+    stream_uuid?: string;
     flags?: string[];
     /** Unix timestamp */
     timestamp: number;

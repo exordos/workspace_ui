@@ -28,8 +28,9 @@ export interface UseChatPageInitialLoadOptions {
   topicName: string | undefined;
   dmIdParam: string | undefined;
   activeStreamCanonicalName: string | null;
-  resolvedStreamId: number | null;
+  resolvedStreamId: string | null;
   streamRouteTopic: string;
+  activeTopicUuid: string | undefined;
   focusedMessageId: MessageId | null;
   currentUserId: UserId | null;
   isFocusedMessageLoadedInCurrentRoute: boolean;
@@ -55,6 +56,7 @@ export function useChatPageInitialLoad(
     activeStreamCanonicalName,
     resolvedStreamId,
     streamRouteTopic,
+    activeTopicUuid,
     focusedMessageId,
     currentUserId,
     isFocusedMessageLoadedInCurrentRoute,
@@ -108,6 +110,7 @@ export function useChatPageInitialLoad(
       streamId: resolvedStreamId,
       streamName: activeStreamCanonicalName,
       topic: streamRouteTopic,
+      ...(activeTopicUuid != null ? { topicUuid: activeTopicUuid } : {}),
       streamWideView,
     };
     if (isSameChatLocation(useCurrentChatMessagesStore.getState().context, nextContext)) {
@@ -116,6 +119,7 @@ export function useChatPageInitialLoad(
     logMessageFlow("ui:stream route effect → setContext(stream)", {
       streamId: resolvedStreamId,
       topic: streamRouteTopic,
+      ...(activeTopicUuid != null ? { topicUuid: activeTopicUuid } : {}),
       streamWideView,
     });
     setContext(nextContext);
@@ -126,6 +130,7 @@ export function useChatPageInitialLoad(
     resolvedStreamId,
     activeStreamCanonicalName,
     streamRouteTopic,
+    activeTopicUuid,
     topicName,
   ]);
 
@@ -168,6 +173,7 @@ export function useChatPageInitialLoad(
         streamId: resolvedStreamId,
         streamName: activeStreamCanonicalName,
         topic: streamRouteTopic,
+        ...(activeTopicUuid != null ? { topicUuid: activeTopicUuid } : {}),
         streamWideView: topicName == null,
       },
       focusedMessageId,
@@ -214,6 +220,7 @@ export function useChatPageInitialLoad(
     activeStreamCanonicalName,
     resolvedStreamId,
     streamRouteTopic,
+    activeTopicUuid,
     topicName,
     focusedMessageId,
     currentUserId,

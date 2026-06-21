@@ -16,7 +16,7 @@ export type CallMessageTargetParams =
   | {
       mode: "stream";
       stream: string;
-      streamId?: number;
+      streamId?: string;
       subject: string;
     };
 

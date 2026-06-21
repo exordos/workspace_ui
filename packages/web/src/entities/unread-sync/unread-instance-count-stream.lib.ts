@@ -4,8 +4,8 @@ import type {
 } from "./unread-instance-count.types";
 
 export interface UnreadStreamMutePredicates {
-  isStreamMuted?: (streamId: number) => boolean;
-  isEffectivelyMuted?: (streamId: number, topic: string) => boolean;
+  isStreamMuted?: (streamId: string) => boolean;
+  isEffectivelyMuted?: (streamId: string, topic: string) => boolean;
 }
 
 // Badge values can be missing or bad; counters should never go below zero.
@@ -16,16 +16,16 @@ export function toSafeUnreadCount(value: number | null | undefined): number {
 }
 
 // Stream id is optional because some callers pass a compact sidebar row.
-function resolveStreamId(stream: UnreadStreamBadgeHolder): number | null {
-  const streamIdRaw = stream.stream_id;
-  if (typeof streamIdRaw !== "number" || !Number.isInteger(streamIdRaw)) return null;
-  return streamIdRaw;
+function resolveStreamId(stream: UnreadStreamBadgeHolder): string | null {
+  const streamIdRaw = stream.streamUuid;
+  if (typeof streamIdRaw !== "string" || streamIdRaw.trim().length === 0) return null;
+  return streamIdRaw.trim().toLowerCase();
 }
 
 // If topics are not loaded, use the stream badge unless the whole stream is muted.
 function sumStreamBadgeWhenTopicsUnknown(
   stream: UnreadStreamBadgeHolder,
-  streamId: number | null,
+  streamId: string | null,
   predicates: UnreadStreamMutePredicates,
 ): number {
   if (streamId != null && predicates.isStreamMuted?.(streamId)) {
@@ -37,7 +37,7 @@ function sumStreamBadgeWhenTopicsUnknown(
 // If topics are loaded, muted topics are skipped one by one.
 function sumTopicBadgesForStream(
   stream: UnreadStreamBadgeHolder,
-  streamId: number,
+  streamId: string,
   predicates: UnreadStreamMutePredicates,
 ): number {
   const topics = stream.topics;

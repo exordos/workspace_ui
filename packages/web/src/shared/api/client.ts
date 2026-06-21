@@ -449,7 +449,7 @@ function shouldSkipAuth401Handling(req: ApiRequest): boolean {
     }
     // Workspace messenger gateway APIs use IAM Bearer; 401 must not wipe the session.
     if (
-      /\/api\/messenger(?:\/v1)?\/(?:folders|streams|stream_bindings|messages)(?:\/|$)/.test(path)
+      /\/api\/messenger(?:\/v1)?\/(?:folders|streams|stream_bindings|stream_topics|messages)(?:\/|$)/.test(path)
     ) {
       return true;
     }

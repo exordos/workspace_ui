@@ -8,14 +8,14 @@ export interface LayoutRightDrawerContext {
   partnerUserId: UserId | undefined;
   dmChat: Extract<SidebarChat, { type: "dm" }> | undefined;
   dmParticipantIds: UserId[];
-  activeStreamId: number | null;
+  activeStreamId: string | null;
   activeStreamName: string | null;
 }
 
 export interface UseLayoutRightDrawerContextOptions {
   streams: StreamWithLast[];
   dms: SidebarChat[];
-  streamsMap: Map<number, { name: string }>;
+  streamsMap: Map<string, { name: string }>;
   activeStreamSlug: string | undefined;
   activeTopic: string | null;
   dmIdParam: string | undefined;

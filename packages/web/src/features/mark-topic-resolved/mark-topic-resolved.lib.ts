@@ -2,7 +2,7 @@ import type { CurrentChatContext } from "~/entities/message/message.model.types"
 import type { UserId } from "~/shared/lib/user-id.lib";
 
 export interface TopicResolveTarget {
-  streamId: number;
+  streamId: string;
   topic: string;
 }
 
@@ -20,7 +20,7 @@ export interface MarkTopicResolvedVisibility {
   hasTarget: boolean;
   hasStreamSlug: boolean;
   currentUserId: UserId | null;
-  streamId: number | null;
+  streamId: string | null;
   streamNameFromMap: string;
   streamNameFromContext: string;
   effectiveStreamName: string;
@@ -45,7 +45,7 @@ export function resolveMarkTopicResolvedVisibility(options: {
   context: CurrentChatContext | null;
   currentUserId: UserId | null;
   streamNameFromMap: string;
-  buildStreamSlug: (streamId: number, streamName: string) => string;
+  buildStreamSlug: (streamId: string) => string;
 }): MarkTopicResolvedVisibility {
   const { context, currentUserId, streamNameFromMap, buildStreamSlug } = options;
   const target = resolveTopicResolveTargetFromContext(context);
@@ -54,9 +54,7 @@ export function resolveMarkTopicResolvedVisibility(options: {
   const effectiveStreamName = resolveEffectiveStreamName(streamNameFromMap, streamNameFromContext);
   const streamId = target?.streamId ?? null;
   const streamSlug =
-    streamId != null && effectiveStreamName.length > 0
-      ? buildStreamSlug(streamId, effectiveStreamName)
-      : null;
+    streamId != null && effectiveStreamName.length > 0 ? buildStreamSlug(streamId) : null;
 
   const blockers: MarkTopicResolvedBlocker[] = [];
   if (context == null) {
@@ -101,16 +99,15 @@ export function resolveMarkTopicResolvedVisibility(options: {
 
 /** Sidebar topic row / explicit target — not tied to open chat context. */
 export function resolveMarkTopicResolvedVisibilityForTopic(options: {
-  streamId: number;
+  streamId: string;
   topic: string;
   streamName: string;
   currentUserId: UserId | null;
-  buildStreamSlug: (streamId: number, streamName: string) => string;
+  buildStreamSlug: (streamId: string) => string;
 }): MarkTopicResolvedVisibility {
   const { streamId, topic, streamName, currentUserId, buildStreamSlug } = options;
   const effectiveStreamName = streamName.trim();
-  const streamSlug =
-    effectiveStreamName.length > 0 ? buildStreamSlug(streamId, effectiveStreamName) : null;
+  const streamSlug = effectiveStreamName.length > 0 ? buildStreamSlug(streamId) : null;
   const topicTrimmed = topic.trim();
 
   const blockers: MarkTopicResolvedBlocker[] = [];

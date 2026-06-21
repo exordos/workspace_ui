@@ -33,7 +33,7 @@ export function buildUnreadReconcileMapsFromRegisterSnapshot(
     for (const messageId of bucket.unreadMessageIds) {
       unreadLocationMap.set(messageId, {
         type: "stream",
-        stream_id: bucket.streamId,
+        streamUuid: bucket.streamId,
         topic: bucket.topic,
       });
     }

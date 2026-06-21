@@ -343,7 +343,6 @@ export const Layout: React.FC = () => {
     setSidebarOpen,
     sidebarChats: selectedFolderSidebarChats,
     activeStreamSlug: activeStreamSlug ?? null,
-    activeDmIdParam: dmIdParam ?? null,
     navigate,
   });
 
@@ -368,7 +367,6 @@ export const Layout: React.FC = () => {
       rightDrawerOpen,
       rightDrawerMode,
       rightDrawerUserIdOverride,
-      mutedStreamIds,
       usersMapForChatInfo,
     });
 

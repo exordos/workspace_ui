@@ -4,15 +4,17 @@ import type { MessageId } from "~/shared/lib/message-id.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 
 export interface UpdateMessageTopicMovePayload {
-  streamId: number;
+  streamId: string;
   oldTopic: string;
   newTopic: string;
   messageIds?: MessageId[];
   anchorMessageId?: MessageId;
 }
 
-function parsePositiveInteger(value: unknown): number | null {
-  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
+function parseStreamUuid(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().toLowerCase();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function parseMessageIdArray(value: unknown): MessageId[] | null {
@@ -45,7 +47,7 @@ export function extractTopicMoveFromUpdateEvent(
 ): UpdateMessageTopicMovePayload | null {
   if (event.type !== "update_message") return null;
 
-  const streamId = parsePositiveInteger(event.stream_id);
+  const streamId = parseStreamUuid(event.stream_uuid);
   const oldTopicRaw = typeof event.orig_subject === "string" ? event.orig_subject : null;
   const newTopicRaw = typeof event.subject === "string" ? event.subject : null;
   if (streamId == null || oldTopicRaw == null || newTopicRaw == null) return null;

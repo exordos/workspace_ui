@@ -788,12 +788,11 @@ export async function createSavedSnippet(params: CreateSavedSnippetParams): Prom
 export async function sendMessage(params: SendMessageParams): Promise<MockMessage> {
   const content = guard.nonEmpty(params.content, "sendMessage.content");
   const streamUuid = guard.nonEmpty(params.streamUuid, "sendMessage.streamUuid").trim();
-  if (params.streamId != null) {
-    guard.streamId(params.streamId, "sendMessage.streamId");
-  }
+  const topicUuid = params.topicUuid?.trim();
 
   const result = await postWorkspaceSendMessage({
     streamUuid,
+    ...(topicUuid != null && topicUuid.length > 0 ? { topicUuid } : {}),
     content,
   });
   const id = guard.messageId(result.id, "sendMessage.id");
@@ -803,8 +802,9 @@ export async function sendMessage(params: SendMessageParams): Promise<MockMessag
     source_message_uuid: id,
     sender_id: params.sender_id ?? 0,
     sender_full_name: params.sender_full_name ?? t("common.you"),
-    stream_id: params.streamId ?? null,
+    stream_uuid: streamUuid,
     subject: params.subject ?? "",
+    ...(topicUuid != null && topicUuid.length > 0 ? { topic_uuid: topicUuid } : {}),
     content,
     markdown_source: content,
     timestamp: Math.floor(Date.now() / 1000),

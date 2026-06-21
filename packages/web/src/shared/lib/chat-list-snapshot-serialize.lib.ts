@@ -7,7 +7,7 @@ import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sideba
 
 /** Same shape as `MessageLocation` in chat-list entity (kept here to avoid shared→entities import). */
 export type ChatListSnapshotMessageLocation =
-  | { type: "stream"; stream_id: number; topic: string }
+  | { type: "stream"; streamUuid: string; topic: string; topicUuid?: string }
   | { type: "dm"; dmKey: string };
 
 export interface ChatListSnapshotSerialized {
@@ -17,7 +17,7 @@ export interface ChatListSnapshotSerialized {
   lastMessageId: MessageId | null;
   /** Min message id from last bootstrap window (optional, for debugging). */
   oldestMessageId: MessageId | null;
-  streamsEntries: [number, StreamEntryInternalSerialized][];
+  streamsEntries: [string, StreamEntryInternalSerialized][];
   dmsEntries: [string, DmEntryInternal][];
   messageIdToLocationEntries: [MessageId, ChatListSnapshotMessageLocation][];
   updatedAt: number;

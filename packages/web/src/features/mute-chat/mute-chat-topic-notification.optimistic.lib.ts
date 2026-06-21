@@ -5,7 +5,7 @@ import { captureTopicVisibilityOverrideSnapshot } from "./mute-chat.optimistic.l
 import type { TopicVisibilityLevel } from "./notification-level.lib";
 
 function applyTopicVisibilityLevelOptimistic(
-  streamId: number,
+  streamId: string,
   topic: string,
   level: TopicVisibilityLevel,
 ): void {
@@ -31,7 +31,7 @@ function applyTopicVisibilityLevelOptimistic(
 }
 
 interface RunOptimisticTopicVisibilityLevelUpdateParams {
-  streamId: number;
+  streamId: string;
   topic: string;
   level: TopicVisibilityLevel;
   request: () => Promise<boolean>;
@@ -43,7 +43,7 @@ export async function runOptimisticTopicVisibilityLevelUpdate({
   level,
   request,
 }: RunOptimisticTopicVisibilityLevelUpdateParams): Promise<boolean> {
-  guard.streamId(streamId, "runOptimisticTopicVisibilityLevelUpdate");
+  guard.streamUuid(streamId, "runOptimisticTopicVisibilityLevelUpdate");
   const snapshot = captureTopicVisibilityOverrideSnapshot(streamId, topic);
   const result = await optimisticMutation({
     apply: () => applyTopicVisibilityLevelOptimistic(streamId, topic, level),

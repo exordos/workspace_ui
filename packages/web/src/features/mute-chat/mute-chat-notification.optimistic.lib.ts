@@ -11,7 +11,7 @@ interface StreamNotificationSnapshot {
   audibleDisabled: boolean;
 }
 
-function captureStreamNotificationSnapshot(streamId: number): StreamNotificationSnapshot {
+function captureStreamNotificationSnapshot(streamId: string): StreamNotificationSnapshot {
   const muteStore = useMuteStore.getState();
   return {
     isMuted: muteStore.isStreamMuted(streamId),
@@ -23,7 +23,7 @@ function captureStreamNotificationSnapshot(streamId: number): StreamNotification
 }
 
 function restoreStreamNotificationSnapshot(
-  streamId: number,
+  streamId: string,
   snapshot: StreamNotificationSnapshot,
 ): void {
   const muteStore = useMuteStore.getState();
@@ -50,7 +50,7 @@ function restoreStreamNotificationSnapshot(
   }
 }
 
-function applyStreamNotificationLevelOptimistic(streamId: number, level: NotificationLevel): void {
+function applyStreamNotificationLevelOptimistic(streamId: string, level: NotificationLevel): void {
   const muteStore = useMuteStore.getState();
   if (level === "muted") {
     muteStore.muteStream(streamId);
@@ -67,7 +67,7 @@ function applyStreamNotificationLevelOptimistic(streamId: number, level: Notific
 }
 
 interface RunOptimisticStreamNotificationLevelUpdateParams {
-  streamId: number;
+  streamId: string;
   level: NotificationLevel;
   request: () => Promise<boolean>;
 }
@@ -77,7 +77,7 @@ export async function runOptimisticStreamNotificationLevelUpdate({
   level,
   request,
 }: RunOptimisticStreamNotificationLevelUpdateParams): Promise<boolean> {
-  guard.streamId(streamId, "runOptimisticStreamNotificationLevelUpdate");
+  guard.streamUuid(streamId, "runOptimisticStreamNotificationLevelUpdate");
   const snapshot = captureStreamNotificationSnapshot(streamId);
   const result = await optimisticMutation({
     apply: () => applyStreamNotificationLevelOptimistic(streamId, level),

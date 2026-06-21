@@ -118,14 +118,14 @@ export const SidebarStreamListTopics = React.memo<SidebarStreamListTopicsProps>(
               return (
                 <TopicContextMenu
                   key={encodeTopicForRoute(topic.subject)}
-                  streamId={stream.stream_id}
+                  streamId={stream.streamUuid}
                   streamName={stream.name}
                   topic={topic.subject}
                   rowClassName={`group/topic relative w-full rounded-r-lg border-l-4 transition-colors ${sidebarRowClass(isTopicActive)}`}
                   rowStyle={{ borderLeftColor: topicColor }}
                   sideActions={
                     <TopicMuteButton
-                      streamId={stream.stream_id}
+                      streamId={stream.streamUuid}
                       topic={topic.subject}
                       onMuteError={onMuteError}
                     />

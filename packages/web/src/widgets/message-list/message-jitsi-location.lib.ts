@@ -10,7 +10,7 @@ export function formatJitsiRoomDisplayName(jitsiUrl: string, options?: JitsiLink
 }
 
 export function resolveJitsiLocationName(message: MockMessage): string {
-  if (message.stream_id != null) {
+  if (message.stream_uuid != null) {
     if (typeof message.display_recipient === "string") {
       const streamName = message.display_recipient.trim();
       if (streamName.length > 0) return streamName;

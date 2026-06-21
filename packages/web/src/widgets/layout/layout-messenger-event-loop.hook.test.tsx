@@ -388,12 +388,14 @@ describe("useLayoutMessengerEventLoop", () => {
     expect(useChatListStore.getState().streamMetadataHydrated).toBe(true);
   });
 
-  it("hydrates private DM metadata from /streams as UUID routes", async () => {
+  it("hydrates private stream metadata from /streams into Personal", async () => {
     const streamUuid = "1bce03ca-d6d9-4fdb-82cb-7ec05fa7a8e9";
+    const streamId = 42;
     const currentUserUuid = "00000000-0000-0000-0000-000000000000";
     fetchMyStreamsMock.mockResolvedValueOnce([
       {
         uuid: streamUuid,
+        stream_id: streamId,
         name: "Alice Smith",
         description: "",
         stream_uuid: streamUuid,
@@ -411,28 +413,13 @@ describe("useLayoutMessengerEventLoop", () => {
       expect(startMessengerEventLoopMock).toHaveBeenCalledTimes(1);
     });
 
-    const dm = useChatListStore
-      .getState()
-      .dms()
-      .find((entry) => entry.streamUuid === streamUuid);
-    expect(dm).toEqual(
+    expect(useChatListStore.getState().streamsMap.get(streamId)).toEqual(
       expect.objectContaining({
         name: "Alice Smith",
-        slug: streamUuid,
-        streamUuid: streamUuid,
+        private: true,
+        streamUuid,
       }),
     );
-    expect(dm?.userUuid).toBeUndefined();
-
-    const internalDm = useChatListStore.getState().dmsMap.get(`stream:${streamUuid}`);
-    expect(internalDm).toEqual(
-      expect.objectContaining({
-        name: "Alice Smith",
-        slug: streamUuid,
-        streamUuid: streamUuid,
-      }),
-    );
-    expect(internalDm?.userUuid).toBeUndefined();
   });
 
   it("does not mark stream metadata as hydrated when /streams bootstrap fails", async () => {
@@ -781,20 +768,8 @@ describe("useLayoutMessengerEventLoop", () => {
               ],
             },
           ],
-          dms: [
-            {
-              userIds: [20],
-              unreadMessageIds: ["00000000-0000-4000-8000-000000000501"],
-            },
-          ],
-          totalCount: 3,
-        },
-        recent_private_conversations: {
-          "7,20": {
-            user_ids: [7, 20],
-            max_message_id: "00000000-0000-4000-8000-000000000900",
-            unread_message_ids: ["00000000-0000-4000-8000-000000000501"],
-          },
+          dms: [],
+          totalCount: 2,
         },
       });
     });
@@ -806,73 +781,7 @@ describe("useLayoutMessengerEventLoop", () => {
     expect(
       useChatListStore.getState().streamsMap.get(12)?.topics.get("incidents")?.unreadCount,
     ).toBe(2);
-    expect(useChatListStore.getState().dmsMap.get("7,20")?.unreadCount).toBe(1);
     reconcileSpy.mockRestore();
-  });
-
-  it("hydrates DM previews from recent_private_conversations when metadata bootstrap is enabled", async () => {
-    const props = createHarnessProps();
-    props.setCurrentUserId.mockImplementation((id: number) => {
-      useChatListStore.getState().setCurrentUserId(id);
-    });
-
-    render(<Harness currentInstanceId="inst-1" props={props} />);
-
-    await waitFor(() => {
-      expect(startMessengerEventLoopMock).toHaveBeenCalledTimes(1);
-    });
-
-    const firstCallArg = startMessengerEventLoopMock.mock.calls[0]?.[0] as
-      | {
-          onQueueRegistered?: (
-            id: string,
-            registration?: {
-              recent_private_conversations?: Record<
-                string,
-                {
-                  user_ids: number[];
-                  max_message_id: MessageId | null;
-                  unread_message_ids: MessageId[];
-                }
-              >;
-            },
-          ) => void;
-        }
-      | undefined;
-
-    act(() => {
-      firstCallArg?.onQueueRegistered?.("q-dm", {
-        recent_private_conversations: {
-          "7,20": {
-            user_ids: [7, 20],
-            max_message_id: "00000000-0000-4000-8000-000000000900",
-            unread_message_ids: ["00000000-0000-4000-8000-000000000900"],
-          },
-        },
-      });
-    });
-
-    await waitFor(() => {
-      expect(hydrateDmSidebarPreviewsMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          currentUserId: 7,
-          conversations: {
-            "7,20": {
-              user_ids: [7, 20],
-              max_message_id: "00000000-0000-4000-8000-000000000900",
-              unread_message_ids: ["00000000-0000-4000-8000-000000000900"],
-            },
-          },
-          metadataRows: [
-            expect.objectContaining({
-              userIds: [7, 20],
-              lastMessageId: "00000000-0000-4000-8000-000000000900",
-            }),
-          ],
-        }),
-      );
-    });
-    expect(fetchDirectMessagesPageMock).not.toHaveBeenCalled();
   });
 
   it("marks stream metadata as hydrated on queue register even without subscriptions payload", async () => {

@@ -1,15 +1,9 @@
 // Bootstrap + long-poll event loop orchestration for the active instance.
 import { useEffect, useRef } from "react";
 import { useActivityStore } from "~/entities/activity/activity.model";
-import {
-  summarizeRecentPrivateConversationsForTrace,
-  traceDmPreviewHydrate,
-} from "~/entities/chat-list/chat-list-dm-preview-hydrate-trace.lib";
-import { hydrateDmSidebarPreviewsFromRecentConversations } from "~/entities/chat-list/chat-list-dm-preview-hydrate.lib";
 import { clearStreamSidebarHydrateState } from "~/entities/chat-list/chat-list-hydrate-stream-sidebar.lib";
 import { hydrateStreamSidebarPreviewsFromUnreadSnapshot } from "~/entities/chat-list/chat-list-unread-preview-hydrate.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import type { ChatListDmMetadataRow } from "~/entities/chat-list/chat-list.model.types";
 import { useInboxStore } from "~/entities/inbox/inbox.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
@@ -23,16 +17,14 @@ import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useUserProfileStore } from "~/features/user-profile/user-profile.model";
 import { t } from "~/i18n/i18n";
 import { deleteQueue, DEFAULT_REGISTER_FETCH_EVENT_TYPES } from "~/shared/api/messenger-queue";
-import { fetchMyStreams } from "~/shared/api/messenger-streams";
+import { fetchMyStreams, fetchStreamTopics } from "~/shared/api/messenger-streams";
 import type { MessengerUnreadMessagesSnapshot } from "~/shared/api/messenger-unread.lib";
 import { fetchUsers, getCurrentUser } from "~/shared/api/messenger-users";
 import type {
   RegisterQueueResult,
   WorkspaceRawMessage,
-  MessengerRecentPrivateConversation,
   MessengerUserMember,
 } from "~/shared/api/messenger.types";
-import { METADATA_DM_BACKFILL_ENABLED } from "~/shared/config/metadata-chat-bootstrap.constants";
 import {
   cancelScheduledReconnect,
   registerManualReconnectListener,
@@ -41,7 +33,6 @@ import {
   scheduleReconnect,
   setConnectionPhase,
 } from "~/shared/lib/connection-health";
-import { upsertDmIndexEntries, type DmIndexEntry } from "~/shared/lib/dm-index";
 import { startMessengerEventLoop } from "~/shared/lib/event-loop";
 import { createLogger } from "~/shared/lib/logger";
 import { logChatListFlow, logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
@@ -53,13 +44,10 @@ import { loadUsersDirectoryRow } from "~/shared/lib/users-directory-snapshot-db"
 import { getNewestMessageId } from "./layout-chat-history-sync.lib";
 import {
   applyChatListBootstrapResult,
-  hydrateChatListDmIndexForInstance,
   type ApplyChatListBootstrapResultOptions,
 } from "./layout-chat-list-bootstrap-apply.lib";
 import {
   createCurrentUserReconnectRunner,
-  createDmPreviewHydrateRejectedHandler,
-  createDmPreviewHydrateSettledHandler,
   createManualReconnectBootstrapHandler,
   createStreamPreviewBootstrapRejectedHandler,
   createStreamPreviewBootstrapSettledHandler,
@@ -69,13 +57,11 @@ import { applyLayoutRegisterMuteSnapshot } from "./layout-messenger-event-loop-m
 import { createLayoutMessengerEventLoopOnEventHandler } from "./layout-messenger-event-loop-on-event.lib";
 import {
   createLayoutBootstrapQueueRegisteredHandler,
-  toDmMetadataRowsFromRecentConversations,
-  toDmMetadataRowsFromMeStreams,
+  toStreamTopicMetadataRows,
   toSubscriptionsFromMeStreams,
   toStreamMetadataRows,
 } from "./layout-messenger-event-loop-register.lib";
 import { runLayoutReconnectRefresh } from "./layout-messenger-refresh-stale.lib";
-import { runMetadataDmBackfillLoop } from "./layout-metadata-dm-backfill.lib";
 import { createMetadataStreamPreviewCoordinator } from "./layout-metadata-stream-preview-coordinator.lib";
 import { resetReconnectStreamPreviewStaging } from "./layout-reconnect-stream-preview.lib";
 import { reconcileSidebarUnreadAfterBootstrap } from "./layout-sidebar-unread-reconcile.lib";
@@ -87,11 +73,6 @@ import type { LayoutUserConnectionStatus } from "./layout-user-connection-status
 // Increments on effect cleanup so superseded `runChatListBootstrap` runs skip hydrate/API (React Strict Mode).
 let chatListBootstrapEffectEpoch = 0;
 
-// DM backfill page size — caps background batch count to avoid network overload.
-const METADATA_DM_BACKFILL_PAGE_SIZE = 5000;
-const METADATA_DM_BACKFILL_MAX_BATCHES = 3;
-// Stop backfill when consecutive batches add no new DMs.
-const METADATA_DM_BACKFILL_STAGNATION_LIMIT = 2;
 const LAYOUT_REGISTER_FETCH_EVENT_TYPES = [
   ...DEFAULT_REGISTER_FETCH_EVENT_TYPES,
   "starred_messages",
@@ -132,32 +113,6 @@ function clearRefreshStaleCallback(ref: RefreshStaleCallbackRef | undefined): vo
   }
 }
 
-// Persist merged DM index so the next cold start has a fuller sidebar snapshot.
-function persistDmIndexFromStore(instanceId: string): void {
-  const rows: DmIndexEntry[] = [];
-  for (const [dmKey, entry] of useChatListStore.getState().dmsMap.entries()) {
-    const userIds =
-      entry.userIds
-        ?.map((userId) => numericUserIdOrNull(userId))
-        .filter((userId): userId is number => userId != null && userId > 0) ??
-      dmKey
-        .split(",")
-        .map((part) => Number(part))
-        .filter((userId) => Number.isInteger(userId) && userId > 0);
-    if (userIds.length === 0) continue;
-    rows.push({
-      dmKey,
-      userIds,
-      lastActivityTs: entry.ts ?? 0,
-      lastMessageId: entry.lastMessageId ?? null,
-      unreadCount: entry.unreadCount,
-    });
-  }
-  if (rows.length > 0) {
-    upsertDmIndexEntries(instanceId, rows);
-  }
-}
-
 function startSidebarUnreadReconcile(options: {
   cancelled: () => boolean;
   instanceId: string | null;
@@ -190,18 +145,18 @@ function reconcileSidebarUnreadFromRegister(
 // Normalize IDB row shape to the mute-store contract (storage vs application layer).
 function toLayoutMuteSnapshotFromRow(row: {
   mutedStreamIds: number[];
-  mutedTopics: { streamId: number; topic: string }[];
-  unmutedTopics: { streamId: number; topic: string }[];
-  followedTopics?: { streamId: number; topic: string }[];
+  mutedTopics: { streamId: string; topic: string }[];
+  unmutedTopics: { streamId: string; topic: string }[];
+  followedTopics?: { streamId: string; topic: string }[];
   streamDesktopNotifyEnabledIds?: number[];
   streamDesktopNotifyDisabledIds?: number[];
   streamAudibleNotifyEnabledIds?: number[];
   streamAudibleNotifyDisabledIds?: number[];
 }): {
   mutedStreamIds: number[];
-  mutedTopics: { streamId: number; topic: string }[];
-  unmutedTopics: { streamId: number; topic: string }[];
-  followedTopics: { streamId: number; topic: string }[];
+  mutedTopics: { streamId: string; topic: string }[];
+  unmutedTopics: { streamId: string; topic: string }[];
+  followedTopics: { streamId: string; topic: string }[];
   streamDesktopNotifyEnabledIds: number[];
   streamDesktopNotifyDisabledIds: number[];
   streamAudibleNotifyEnabledIds: number[];
@@ -304,15 +259,10 @@ export function useLayoutMessengerEventLoop(options: {
   );
   const internalLatestMessageIdRef = useRef<MessageId | null>(null);
   const registerUnreadSnapshotRef = useRef<MessengerUnreadMessagesSnapshot | null>(null);
-  const recentPrivateConversationsRef = useRef<
-    Record<string, MessengerRecentPrivateConversation> | undefined
-  >(undefined);
-
   const clearMessengerShellState = (
     reason: "instance switched" | "active instance cleared",
   ): void => {
     registerUnreadSnapshotRef.current = null;
-    recentPrivateConversationsRef.current = undefined;
     logMessageFlow(`eventLoop:clear stores (${reason})`, {
       instanceId: currentInstanceId,
     });
@@ -412,13 +362,6 @@ export function useLayoutMessengerEventLoop(options: {
             })
         : Promise.resolve();
 
-      const metadataDmBackfillEnabled = METADATA_DM_BACKFILL_ENABLED;
-      const metadataDmPreviewHydrationEnabled = !METADATA_DM_BACKFILL_ENABLED;
-      traceDmPreviewHydrate("bootstrap:dmFlags", {
-        instanceId: currentInstanceId,
-        METADATA_DM_BACKFILL_ENABLED: metadataDmBackfillEnabled,
-        metadataDmPreviewHydrationEnabled,
-      });
       let bootstrapUserId: UserId | null = null;
 
       const bootstrapApplyOptions = {
@@ -454,70 +397,6 @@ export function useLayoutMessengerEventLoop(options: {
         tryFlushMetadataStreamPreviews();
       };
 
-      const scheduleDmPreviewHydration = (
-        conversations?: Record<string, MessengerRecentPrivateConversation>,
-        currentUserIdOverride?: number | null,
-        metadataRows?: ChatListDmMetadataRow[],
-        source = "unknown",
-      ): void => {
-        traceDmPreviewHydrate("schedule:called", {
-          source,
-          cancelled,
-          metadataDmBackfillEnabled,
-          metadataDmPreviewHydrationEnabled,
-          hasConversationsArg: conversations != null,
-          conversations: summarizeRecentPrivateConversationsForTrace(conversations),
-          currentUserIdOverride: currentUserIdOverride ?? null,
-          storeCurrentUserId: useChatListStore.getState().currentUserId,
-          bootstrapUserId,
-          metadataRowsArgCount: metadataRows?.length ?? null,
-        });
-
-        if (!metadataDmPreviewHydrationEnabled) {
-          logChatListFlow("eventLoop: skip DM preview hydrate (feature disabled)", {
-            metadataDmBackfillEnabled,
-          });
-          traceDmPreviewHydrate("schedule:skip", { reason: "feature_disabled", source });
-          return;
-        }
-        if (conversations != null) {
-          recentPrivateConversationsRef.current = conversations;
-        }
-        const snapshot = conversations ?? recentPrivateConversationsRef.current;
-        if (snapshot == null) {
-          logChatListFlow("eventLoop: skip DM preview hydrate (no recent_private_conversations)");
-          traceDmPreviewHydrate("schedule:skip", { reason: "no_conversations_snapshot", source });
-          return;
-        }
-        const currentUserId = numericUserIdOrNull(
-          currentUserIdOverride ?? useChatListStore.getState().currentUserId ?? bootstrapUserId,
-        );
-        const rows = metadataRows ?? toDmMetadataRowsFromRecentConversations(snapshot);
-
-        traceDmPreviewHydrate("schedule:dispatchHydrate", {
-          source,
-          currentUserId,
-          metadataRowCount: rows.length,
-          conversations: summarizeRecentPrivateConversationsForTrace(snapshot),
-        });
-
-        const dmHydrateSettledHandler = createDmPreviewHydrateSettledHandler({
-          getCancelled: () => cancelled,
-          instanceId: currentInstanceId,
-          source,
-          persistDmIndexFromStore,
-        });
-        const dmHydrateRejectedHandler = createDmPreviewHydrateRejectedHandler({ source, log });
-        void hydrateDmSidebarPreviewsFromRecentConversations({
-          conversations: snapshot,
-          metadataRows: rows,
-          currentUserId,
-          instanceId: currentInstanceId ?? undefined,
-          cancelled: () => cancelled,
-        })
-          .then(dmHydrateSettledHandler)
-          .catch(dmHydrateRejectedHandler);
-      };
       const attemptResolveCurrentUser = async (): Promise<UserId | null> => {
         try {
           const user = await getCurrentUser();
@@ -526,12 +405,6 @@ export function useLayoutMessengerEventLoop(options: {
             bootstrapUserId = user.user_id;
             useUsersStore.getState().mergeUser(user);
             setCurrentUserIdRef.current(user.user_id);
-            scheduleDmPreviewHydration(
-              undefined,
-              numericUserIdOrNull(user.user_id),
-              undefined,
-              "getCurrentUser",
-            );
             setBootstrapStatus("ready");
             reportSuccess();
             return user.user_id;
@@ -556,12 +429,6 @@ export function useLayoutMessengerEventLoop(options: {
           if (uid != null) {
             bootstrapUserId = uid;
             setCurrentUserIdRef.current(uid);
-            scheduleDmPreviewHydration(
-              undefined,
-              numericUserIdOrNull(uid),
-              undefined,
-              "finalizeBootstrapAuth",
-            );
             const member = findWorkspaceMemberByUserId(members, uid);
             if (member != null) {
               useUsersStore.getState().mergeUser(member);
@@ -602,6 +469,7 @@ export function useLayoutMessengerEventLoop(options: {
 
       const pUsers = fetchUsers();
       const pMyStreams = fetchMyStreams();
+      const pStreamTopics = fetchStreamTopics();
       const pStreamPreviews = loadBootstrapMessagesRef.current(
         bootstrapAbort.signal,
         isBootstrapStale,
@@ -614,12 +482,14 @@ export function useLayoutMessengerEventLoop(options: {
           pUsersDir,
           pUsers,
           pMyStreams,
+          pStreamTopics,
           pCurrentUserId,
         ]);
         if (cancelled) return;
         const members = bootstrapCore[2];
         const myStreams = bootstrapCore[3];
-        const resolvedCurrentUserId = bootstrapCore[4];
+        const streamTopics = bootstrapCore[4];
+        const resolvedCurrentUserId = bootstrapCore[5];
         const subscriptions = toSubscriptionsFromMeStreams(myStreams ?? []);
         const apiMembers: MessengerUserMember[] = members ?? [];
         useUsersStore.getState().mergeUsers(apiMembers);
@@ -632,6 +502,15 @@ export function useLayoutMessengerEventLoop(options: {
         if (streamRowsFromSubscriptions.length > 0) {
           useChatListStore.getState().upsertStreamMetadataRows(streamRowsFromSubscriptions);
         }
+        const topicRowsByStream = new Map<string, ReturnType<typeof toStreamTopicMetadataRows>>();
+        for (const topicRow of toStreamTopicMetadataRows(streamTopics ?? [])) {
+          const rows = topicRowsByStream.get(topicRow.streamUuid) ?? [];
+          rows.push(topicRow);
+          topicRowsByStream.set(topicRow.streamUuid, rows);
+        }
+        for (const [streamUuid, topicRows] of topicRowsByStream) {
+          useChatListStore.getState().upsertStreamTopicShells(streamUuid, topicRows);
+        }
         useChatListStore.getState().setStreamMetadataHydrated(true);
 
         const uid = resolvedCurrentUserId ?? useChatListStore.getState().currentUserId ?? null;
@@ -639,26 +518,12 @@ export function useLayoutMessengerEventLoop(options: {
           bootstrapUserId = uid;
         }
 
-        const dmRowsFromMyStreams = toDmMetadataRowsFromMeStreams(myStreams ?? []);
-        if (dmRowsFromMyStreams.length > 0) {
-          logChatListFlow("eventLoop: bootstrap → upsertDmMetadataRows from /streams", {
-            rowCount: dmRowsFromMyStreams.length,
-          });
-          useChatListStore.getState().upsertDmMetadataRows(dmRowsFromMyStreams);
-          if (currentInstanceId != null) {
-            persistDmIndexFromStore(currentInstanceId);
-          }
-        }
-
         logChatListFlow("eventLoop: bootstrap core settled (progressive)", {
           instanceId: currentInstanceId,
-          metadataDmBackfillEnabled,
           usersMerged: apiMembers.length,
           streamsMapSize: useChatListStore.getState().streamsMap.size,
           currentUserId: uid,
         });
-
-        hydrateChatListDmIndexForInstance(currentInstanceId);
 
         const applyBootstrapFromEventLoop = (
           result: ChatListBootstrapResult,
@@ -693,26 +558,6 @@ export function useLayoutMessengerEventLoop(options: {
           log,
         });
         void pStreamPreviews.then(streamPreviewSettledHandler).catch(streamPreviewRejectedHandler);
-
-        const numericUid = numericUserIdOrNull(uid);
-        if (metadataDmBackfillEnabled && currentInstanceId != null && numericUid != null) {
-          logChatListFlow("eventLoop: starting metadata DM backfill loop", {
-            maxBatches: METADATA_DM_BACKFILL_MAX_BATCHES,
-            pageSize: METADATA_DM_BACKFILL_PAGE_SIZE,
-          });
-          void runMetadataDmBackfillLoop({
-            instanceId: currentInstanceId,
-            initialUserId: numericUid,
-            maxBatches: METADATA_DM_BACKFILL_MAX_BATCHES,
-            pageSize: METADATA_DM_BACKFILL_PAGE_SIZE,
-            stagnationLimit: METADATA_DM_BACKFILL_STAGNATION_LIMIT,
-            isCancelled: () => cancelled,
-          }).catch((err) =>
-            reportUnexpectedError("layout:metadataDmBackfill", err, {
-              instanceId: currentInstanceId,
-            }),
-          );
-        }
 
         const instanceIdPersist = useInstancesStore.getState().currentInstanceId;
         if (instanceIdPersist != null) {
@@ -754,15 +599,12 @@ export function useLayoutMessengerEventLoop(options: {
           isCancelled: () => cancelled,
           currentInstanceId,
           bootstrapUserId,
-          metadataDmPreviewHydrationEnabled,
           queueIdRef,
           registerUnreadSnapshotRef,
-          persistDmIndexFromStore,
           reconcileSidebarUnreadFromRegister,
           streamPreviewCoordinator,
           tryFlushMetadataStreamPreviews,
           applyChatListBootstrapResult: applyBootstrapFromEventLoop,
-          scheduleDmPreviewHydration,
           startSidebarUnreadReconcile,
           loadMuteSnapshot: loadMuteSnapshotRef.current,
           applyLayoutRegisterMuteSnapshot,

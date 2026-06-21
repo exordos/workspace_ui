@@ -46,16 +46,16 @@ export function lookupPinnedSortIndex(
   return bestIndex;
 }
 
-export interface OrderChatsWithPinnedFirstOptions {
-  isMuted?: (chat: SidebarChat) => boolean;
+export interface OrderChatsWithPinnedFirstOptions<TChat extends SidebarChat = SidebarChat> {
+  isMuted?: (chat: TChat) => boolean;
 }
 
-function orderChatsPartitionWithPinnedFirst(
-  chats: readonly SidebarChat[],
+function orderChatsPartitionWithPinnedFirst<TChat extends SidebarChat>(
+  chats: readonly TChat[],
   sortIndexByAlias: ReadonlyMap<string, number>,
-): SidebarChat[] {
-  const pinnedEntries: { chat: SidebarChat; order: number }[] = [];
-  const regularChats: SidebarChat[] = [];
+): TChat[] {
+  const pinnedEntries: { chat: TChat; order: number }[] = [];
+  const regularChats: TChat[] = [];
 
   for (const chat of chats) {
     const order = lookupPinnedSortIndex(sortIndexByAlias, chatToWorkspaceChatId(chat));
@@ -71,11 +71,11 @@ function orderChatsPartitionWithPinnedFirst(
 }
 
 /** Pinned chats first (by pin order), then unpinned — preserves relative order within each group. */
-export function orderChatsWithPinnedFirst(
-  chats: readonly SidebarChat[],
+export function orderChatsWithPinnedFirst<TChat extends SidebarChat>(
+  chats: readonly TChat[],
   pinnedChatIdsSorted: readonly string[],
-  options: OrderChatsWithPinnedFirstOptions = {},
-): SidebarChat[] {
+  options: OrderChatsWithPinnedFirstOptions<TChat> = {},
+): TChat[] {
   if (pinnedChatIdsSorted.length === 0) {
     return [...chats];
   }
@@ -85,8 +85,8 @@ export function orderChatsWithPinnedFirst(
     return orderChatsPartitionWithPinnedFirst(chats, sortIndexByAlias);
   }
 
-  const unmutedChats: SidebarChat[] = [];
-  const mutedChats: SidebarChat[] = [];
+  const unmutedChats: TChat[] = [];
+  const mutedChats: TChat[] = [];
   for (const chat of chats) {
     if (options.isMuted(chat)) {
       mutedChats.push(chat);

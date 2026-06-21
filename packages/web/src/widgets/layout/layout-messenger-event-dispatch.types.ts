@@ -12,31 +12,31 @@ export type LayoutMessageFlagOp = "add" | "remove";
 export interface LayoutChatListActions {
   currentUserId: UserId | null;
   // Current stream metadata map (partial channel-level permission updates).
-  streamsMap: Map<number, StreamEntryInternal>;
+  streamsMap: Map<string, StreamEntryInternal>;
   addMessage: (message: WorkspaceRawMessage, options?: { suppressUnreadBump?: boolean }) => void;
   // Upsert channels from metadata and subscription events.
   upsertStreamMetadataRows: (rows: ChatListStreamMetadataRow[]) => void;
   // Rename channel on subscription update(name).
-  renameStream: (streamId: number, nextName: string) => void;
+  renameStream: (streamId: string, nextName: string) => void;
   // Move topic within channel on update_message rename (resolved/unresolved).
   moveStreamTopic: (params: {
-    streamId: number;
+    streamId: string;
     oldTopic: string;
     newTopic: string;
     messageIds?: MessageId[];
     anchorMessageId?: MessageId;
   }) => void;
-  // Move topic to another channel on update_message with new_stream_id.
+  // Move topic to another channel on update_message with new_stream_uuid.
   moveTopicToStream: (params: {
-    sourceStreamId: number;
-    targetStreamId: number;
+    sourceStreamId: string;
+    targetStreamId: string;
     oldTopic: string;
     newTopic: string;
     messageIds?: MessageId[];
     anchorMessageId?: MessageId;
   }) => void;
   // Remove channel from sidebar on unsubscribe/remove.
-  removeStream: (streamId: number) => void;
+  removeStream: (streamId: string) => void;
   decrementUnreadForMessages: (messageIds: MessageId[]) => void;
   incrementUnreadForMessages: (messageIds: MessageId[]) => void;
   handleDeleteMessages: (messageIds: MessageId[]) => void;
@@ -63,15 +63,15 @@ export interface LayoutCurrentChatActions {
   updateMessageContent: (messageId: MessageId, content: string, markdownSource?: string) => void;
   updateMessageLinkPreview: (messageId: MessageId, linkPreview: LinkPreviewData | null) => void;
   moveStreamTopicMessages: (params: {
-    streamId: number;
+    streamId: string;
     oldTopic: string;
     newTopic: string;
     messageIds?: MessageId[];
     anchorMessageId?: MessageId;
   }) => void;
   moveTopicToStreamMessages: (params: {
-    sourceStreamId: number;
-    targetStreamId: number;
+    sourceStreamId: string;
+    targetStreamId: string;
     targetStreamName: string;
     oldTopic: string;
     newTopic: string;
@@ -104,19 +104,19 @@ export interface LayoutTypingActions {
 }
 
 export interface LayoutMuteActions {
-  isStreamMuted: (streamId: number) => boolean;
-  isEffectivelyMuted: (streamId: number, topic: string) => boolean;
-  isTopicFollowed: (streamId: number, topic: string) => boolean;
-  getStreamDesktopNotificationsOverride: (streamId: number) => boolean | null;
-  getStreamAudibleNotificationsOverride: (streamId: number) => boolean | null;
-  muteStream: (streamId: number) => void;
-  unmuteStream: (streamId: number) => void;
-  muteTopic: (streamId: number, topic: string) => void;
-  unmuteTopic: (streamId: number, topic: string) => void;
-  followTopic: (streamId: number, topic: string) => void;
-  clearTopicVisibilityOverride: (streamId: number, topic: string) => void;
-  setStreamDesktopNotifications: (streamId: number, enabled: boolean) => void;
-  setStreamAudibleNotifications: (streamId: number, enabled: boolean) => void;
+  isStreamMuted: (streamId: string) => boolean;
+  isEffectivelyMuted: (streamId: string, topic: string) => boolean;
+  isTopicFollowed: (streamId: string, topic: string) => boolean;
+  getStreamDesktopNotificationsOverride: (streamId: string) => boolean | null;
+  getStreamAudibleNotificationsOverride: (streamId: string) => boolean | null;
+  muteStream: (streamId: string) => void;
+  unmuteStream: (streamId: string) => void;
+  muteTopic: (streamId: string, topic: string) => void;
+  unmuteTopic: (streamId: string, topic: string) => void;
+  followTopic: (streamId: string, topic: string) => void;
+  clearTopicVisibilityOverride: (streamId: string, topic: string) => void;
+  setStreamDesktopNotifications: (streamId: string, enabled: boolean) => void;
+  setStreamAudibleNotifications: (streamId: string, enabled: boolean) => void;
 }
 
 export interface LayoutActivityActions {
@@ -162,6 +162,6 @@ export interface LayoutMessengerEventDispatchContext {
   jitsiCall: LayoutJitsiCallActions;
   updateLatestMessageId: (id: MessageId) => void;
   // Notifies stream member changes from peer_add/peer_remove for external index updates.
-  onStreamPeerMembersChanged?: (streamIds: number[]) => void;
+  onStreamPeerMembersChanged?: (streamIds: string[]) => void;
   onMessage?: (message: WorkspaceRawMessage) => void;
 }

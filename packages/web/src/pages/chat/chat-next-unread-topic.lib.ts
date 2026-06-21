@@ -4,7 +4,7 @@ import type { TopicWithLast } from "~/shared/types/sidebar-chat";
 import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
 
 interface ResolveNextUnreadTopicRouteOptions {
-  streamId: number;
+  streamId: string;
   streamName: string;
   currentTopic?: string;
   topics?: readonly TopicWithLast[];
@@ -28,7 +28,7 @@ export function resolveNextUnreadTopicRoute({
     return null;
   }
 
-  const streamSlug = slugForStream({ stream_id: streamId, name: streamName });
+  const streamSlug = slugForStream({ streamUuid: streamId, name: streamName });
   return withCurrentOrgRoute(
     `/stream/${streamSlug}/topic/${encodeURIComponent(encodeTopicForRoute(nextTopic.subject))}`,
   );

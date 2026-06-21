@@ -6,7 +6,7 @@ interface ResolveTypingEventRouteInput {
   messageType?: string;
   senderUserId?: number;
   recipients?: { user_id: number }[];
-  streamId?: number;
+  streamId?: string;
   topic?: string;
   currentUserId: UserId | null;
 }

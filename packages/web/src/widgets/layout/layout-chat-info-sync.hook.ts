@@ -10,10 +10,9 @@ export function useLayoutChatInfoSync(options: {
   currentInstanceId: string | null;
   dmChat: Extract<SidebarChat, { type: "dm" }> | undefined;
   dmParticipantIds: UserId[];
-  activeStreamId: number | null;
+  activeStreamId: string | null;
   activeStreamName: string | null;
-  mutedStreamIds: Set<number>;
-  topics: { name: string; unreadCount: number }[];
+  topics: { name: string; topicUuid?: string; unreadCount: number }[];
   usersMapForChatInfo: Map<string, UserRecord>;
 }) {
   const {
@@ -22,7 +21,6 @@ export function useLayoutChatInfoSync(options: {
     dmParticipantIds,
     activeStreamId,
     activeStreamName,
-    mutedStreamIds,
     topics,
     usersMapForChatInfo,
   } = options;
@@ -43,22 +41,14 @@ export function useLayoutChatInfoSync(options: {
       return {
         kind: "stream",
         instanceId: currentInstanceId,
-        streamId: activeStreamId,
+        streamUuid: activeStreamId,
         streamName: activeStreamName ?? "",
-        isMuted: mutedStreamIds.has(activeStreamId),
+        isMuted: false,
         topics,
       };
     }
     return { kind: "none", instanceId: currentInstanceId };
-  }, [
-    activeStreamId,
-    activeStreamName,
-    currentInstanceId,
-    dmChat,
-    dmParticipantIds,
-    mutedStreamIds,
-    topics,
-  ]);
+  }, [activeStreamId, activeStreamName, currentInstanceId, dmChat, dmParticipantIds, topics]);
 
   const chatInfoNetworkKey = useMemo(
     () => getChatInfoNetworkKey(chatInfoContext),

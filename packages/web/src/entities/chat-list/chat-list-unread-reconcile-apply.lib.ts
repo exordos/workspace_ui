@@ -21,17 +21,17 @@ type StreamTopicEntryInternal =
 
 export function parseStreamTopicCompositeKey(
   key: string,
-): { streamId: number; topicKey: string } | null {
+): { streamId: string; topicKey: string } | null {
   const tab = key.indexOf("\t");
   if (tab <= 0) return null;
-  const streamId = Number(key.slice(0, tab));
-  if (!Number.isInteger(streamId) || streamId <= 0) return null;
+  const streamId = key.slice(0, tab).trim().toLowerCase();
+  if (streamId.length === 0) return null;
   return { streamId, topicKey: key.slice(tab + 1) };
 }
 
 /** Keys that may need unread count updates: server snapshot + locally non-zero (stale reset). */
 export function collectStreamTopicKeysForUnreadReconcile(
-  streamsMap: Map<number, StreamEntryInternal>,
+  streamsMap: Map<string, StreamEntryInternal>,
   unreadStreamCounts: Map<string, number>,
 ): Set<string> {
   const keys = new Set<string>(unreadStreamCounts.keys());
@@ -81,9 +81,9 @@ export function buildLatestUnreadStreamMessageMap(
   const map = new Map<string, WorkspaceRawMessage>();
   for (const message of messages) {
     if (!isUnreadFromOthers(message, currentUserId)) continue;
-    if (message.type !== "stream" || message.stream_id == null) continue;
+    if (message.type !== "stream" || message.stream_uuid == null) continue;
     const topic = normalizeTopicForIdentity(message.subject ?? "");
-    const key = streamTopicCompositeKey(message.stream_id, topic);
+    const key = streamTopicCompositeKey(message.stream_uuid, topic);
     const existing = map.get(key);
     if (!existing || isMessageNewer(message, existing.timestamp, existing.id)) {
       map.set(key, message);
@@ -116,11 +116,11 @@ interface StreamTopicUnreadPatch {
 
 /** Groups topic unread count changes by stream for a single topics-map clone per stream. */
 export function groupStreamTopicUnreadPatches(
-  streamsMap: ReadonlyMap<number, StreamEntryInternal>,
+  streamsMap: ReadonlyMap<string, StreamEntryInternal>,
   streamTopicKeysToReconcile: Iterable<string>,
   unreadStreamCounts: ReadonlyMap<string, number>,
-): Map<number, StreamTopicUnreadPatch[]> {
-  const byStream = new Map<number, StreamTopicUnreadPatch[]>();
+): Map<string, StreamTopicUnreadPatch[]> {
+  const byStream = new Map<string, StreamTopicUnreadPatch[]>();
   for (const compositeKey of streamTopicKeysToReconcile) {
     const parsed = parseStreamTopicCompositeKey(compositeKey);
     if (parsed == null) continue;
@@ -146,9 +146,9 @@ export function groupStreamTopicUnreadPatches(
 }
 
 export function applyStreamTopicUnreadPatches(
-  streamsMap: Map<number, StreamEntryInternal>,
-  patchesByStream: Map<number, StreamTopicUnreadPatch[]>,
-): Map<number, StreamEntryInternal> {
+  streamsMap: Map<string, StreamEntryInternal>,
+  patchesByStream: Map<string, StreamTopicUnreadPatch[]>,
+): Map<string, StreamEntryInternal> {
   const nextStreams = new Map(streamsMap);
   for (const [streamId, patches] of patchesByStream) {
     const stream = nextStreams.get(streamId);
@@ -176,11 +176,11 @@ export function applyStreamTopicUnreadPatches(
 
 export function groupLatestUnreadStreamMessagesByStream(
   latestUnreadStreams: ReadonlyMap<string, WorkspaceRawMessage>,
-): Map<number, WorkspaceRawMessage[]> {
-  const byStream = new Map<number, WorkspaceRawMessage[]>();
+): Map<string, WorkspaceRawMessage[]> {
+  const byStream = new Map<string, WorkspaceRawMessage[]>();
   for (const message of latestUnreadStreams.values()) {
-    if (message.stream_id == null) continue;
-    const streamId = message.stream_id;
+    if (message.stream_uuid == null) continue;
+    const streamId = message.stream_uuid;
     const list = byStream.get(streamId);
     if (list) {
       list.push(message);
@@ -192,10 +192,10 @@ export function groupLatestUnreadStreamMessagesByStream(
 }
 
 export function applyLatestUnreadStreamMetadata(
-  streamsMap: Map<number, StreamEntryInternal>,
-  latestByStream: Map<number, WorkspaceRawMessage[]>,
+  streamsMap: Map<string, StreamEntryInternal>,
+  latestByStream: Map<string, WorkspaceRawMessage[]>,
   unreadStreamCounts: ReadonlyMap<string, number>,
-): { streamsMap: Map<number, StreamEntryInternal>; changed: boolean } {
+): { streamsMap: Map<string, StreamEntryInternal>; changed: boolean } {
   let nextStreams = streamsMap;
   let changed = false;
 
@@ -256,12 +256,12 @@ export function applyLatestUnreadStreamMetadata(
 }
 
 function reconcileStreamUnreadCounts(
-  streamsMap: Map<number, StreamEntryInternal>,
+  streamsMap: Map<string, StreamEntryInternal>,
   unreadStreamCounts: Map<string, number>,
 ): {
-  streamsMap: Map<number, StreamEntryInternal>;
+  streamsMap: Map<string, StreamEntryInternal>;
   changed: boolean;
-  topicUnreadPatchesByStream: Map<number, StreamTopicUnreadPatch[]>;
+  topicUnreadPatchesByStream: Map<string, StreamTopicUnreadPatch[]>;
 } {
   const streamTopicKeysToReconcile = collectStreamTopicKeysForUnreadReconcile(
     streamsMap,
@@ -361,7 +361,7 @@ function mergeUnreadLocationMap(
       existing?.type === location.type &&
       (existing?.type === "stream"
         ? location.type === "stream" &&
-          existing.stream_id === location.stream_id &&
+          existing.streamUuid === location.streamUuid &&
           existing.topic === location.topic
         : location.type === "dm" && existing?.dmKey === location.dmKey);
     if (sameLocation) continue;
@@ -376,7 +376,7 @@ function mergeUnreadLocationMap(
 
 function computeReconcileSidebarUnreadDeltas(
   state: ChatListState,
-  topicUnreadPatchesByStream: Map<number, StreamTopicUnreadPatch[]>,
+  topicUnreadPatchesByStream: Map<string, StreamTopicUnreadPatch[]>,
   dmKeysToReconcile: Set<string>,
   unreadDmCounts: Map<string, number>,
 ): { sidebarStreamsUnreadDelta: number; sidebarDmsUnreadDelta: number } {

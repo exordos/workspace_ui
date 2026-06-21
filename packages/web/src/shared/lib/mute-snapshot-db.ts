@@ -9,7 +9,7 @@ const STORE_MUTE_SNAPSHOT = "muteSnapshot";
 export type MuteSnapshotRowVersion = 1 | 2;
 
 export interface MuteSnapshotTopicRow {
-  streamId: number;
+  streamId: string;
   topic: string;
 }
 
@@ -17,7 +17,7 @@ export interface MuteSnapshotRowV1 {
   instanceId: string;
   version: 1;
   savedAt: number;
-  mutedStreamIds: number[];
+  mutedStreamIds: string[];
   mutedTopics: MuteSnapshotTopicRow[];
   unmutedTopics: MuteSnapshotTopicRow[];
   followedTopics: MuteSnapshotTopicRow[];
@@ -25,10 +25,10 @@ export interface MuteSnapshotRowV1 {
 
 export interface MuteSnapshotRowV2 extends Omit<MuteSnapshotRowV1, "version"> {
   version: 2;
-  streamDesktopNotifyEnabledIds: number[];
-  streamDesktopNotifyDisabledIds: number[];
-  streamAudibleNotifyEnabledIds: number[];
-  streamAudibleNotifyDisabledIds: number[];
+  streamDesktopNotifyEnabledIds: string[];
+  streamDesktopNotifyDisabledIds: string[];
+  streamAudibleNotifyEnabledIds: string[];
+  streamAudibleNotifyDisabledIds: string[];
 }
 
 export type MuteSnapshotRow = MuteSnapshotRowV1 | MuteSnapshotRowV2;

@@ -6,7 +6,7 @@
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { MessageLocation } from "./chat-list.model.types";
 
-export function streamTopicCompositeKey(streamId: number, topicKey: string): string {
+export function streamTopicCompositeKey(streamId: string, topicKey: string): string {
   return `${streamId}\t${topicKey}`;
 }
 
@@ -16,7 +16,7 @@ export function buildStreamTopicMessageIndex(
   const index = new Map<string, MessageId[]>();
   for (const [messageId, location] of messageIdToLocation) {
     if (location.type !== "stream") continue;
-    const key = streamTopicCompositeKey(location.stream_id, location.topic);
+    const key = streamTopicCompositeKey(location.streamUuid, location.topic);
     const list = index.get(key);
     if (list) {
       list.push(messageId);
@@ -35,7 +35,7 @@ function isSameMessageLocation(
   if (a == null || b == null) return false;
   if (a.type !== b.type) return false;
   if (a.type === "stream" && b.type === "stream") {
-    return a.stream_id === b.stream_id && a.topic === b.topic;
+    return a.streamUuid === b.streamUuid && a.topic === b.topic;
   }
   if (a.type === "dm" && b.type === "dm") {
     return a.dmKey === b.dmKey;
@@ -85,7 +85,7 @@ function cloneStreamTopicIndex(
 export function addMessageIdToStreamTopicIndex(
   index: ReadonlyMap<string, readonly MessageId[]>,
   messageId: MessageId,
-  streamId: number,
+  streamId: string,
   topicKey: string,
 ): Map<string, MessageId[]> {
   const next = cloneStreamTopicIndex(index);
@@ -97,7 +97,7 @@ export function addMessageIdToStreamTopicIndex(
 export function removeMessageIdFromStreamTopicIndex(
   index: ReadonlyMap<string, readonly MessageId[]>,
   messageId: MessageId,
-  streamId: number,
+  streamId: string,
   topicKey: string,
 ): Map<string, MessageId[]> {
   const next = cloneStreamTopicIndex(index);
@@ -107,7 +107,7 @@ export function removeMessageIdFromStreamTopicIndex(
 
 export function removeStreamTopicKeyFromIndex(
   index: ReadonlyMap<string, readonly MessageId[]>,
-  streamId: number,
+  streamId: string,
   topicKey: string,
 ): Map<string, MessageId[]> {
   const next = cloneStreamTopicIndex(index);
@@ -117,7 +117,7 @@ export function removeStreamTopicKeyFromIndex(
 
 export function removeStreamFromStreamTopicIndex(
   index: ReadonlyMap<string, readonly MessageId[]>,
-  streamId: number,
+  streamId: string,
 ): Map<string, MessageId[]> {
   const prefix = `${streamId}\t`;
   const next = cloneStreamTopicIndex(index);
@@ -145,14 +145,14 @@ export function patchStreamTopicMessageIndex(
     if (prevLocation.type === "stream") {
       removeIdFromIndexKey(
         nextIndex,
-        streamTopicCompositeKey(prevLocation.stream_id, prevLocation.topic),
+        streamTopicCompositeKey(prevLocation.streamUuid, prevLocation.topic),
         messageId,
       );
     }
     if (nextLocation?.type === "stream") {
       appendIdToIndexKey(
         nextIndex,
-        streamTopicCompositeKey(nextLocation.stream_id, nextLocation.topic),
+        streamTopicCompositeKey(nextLocation.streamUuid, nextLocation.topic),
         messageId,
       );
     }
@@ -163,7 +163,7 @@ export function patchStreamTopicMessageIndex(
     if (nextLocation.type === "stream") {
       appendIdToIndexKey(
         nextIndex,
-        streamTopicCompositeKey(nextLocation.stream_id, nextLocation.topic),
+        streamTopicCompositeKey(nextLocation.streamUuid, nextLocation.topic),
         messageId,
       );
     }
@@ -174,7 +174,7 @@ export function patchStreamTopicMessageIndex(
 
 export function getStreamTopicMessageIds(
   index: ReadonlyMap<string, readonly MessageId[]>,
-  streamId: number,
+  streamId: string,
   topicKey: string,
 ): readonly MessageId[] {
   return index.get(streamTopicCompositeKey(streamId, topicKey)) ?? [];
@@ -183,7 +183,7 @@ export function getStreamTopicMessageIds(
 /** All message ids located in any topic of the given stream. */
 export function collectMessageIdsForStream(
   index: ReadonlyMap<string, readonly MessageId[]>,
-  streamId: number,
+  streamId: string,
 ): MessageId[] {
   const prefix = `${streamId}\t`;
   const ids: MessageId[] = [];

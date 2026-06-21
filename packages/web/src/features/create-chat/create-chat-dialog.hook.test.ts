@@ -31,7 +31,6 @@ vi.mock("~/shared/api/messenger-users", () => ({
 function defaultHookOptions(overrides: Partial<Parameters<typeof useCreateChatDialog>[0]> = {}) {
   return {
     open: true,
-    onNavigateDm: vi.fn(),
     onNavigateStream: vi.fn(),
     onChannelCreated: vi.fn(),
     ...overrides,

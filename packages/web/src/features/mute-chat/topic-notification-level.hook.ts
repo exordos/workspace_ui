@@ -6,7 +6,7 @@ import type { TopicVisibilityLevel } from "~/features/mute-chat/notification-lev
 import { getNextTopicVisibilityLevel } from "~/features/mute-chat/notification-level.ui.lib";
 
 interface UseTopicVisibilityLevelControlParams {
-  streamId: number;
+  streamId: string;
   topic: string;
   onError?: (retry: () => void) => void;
 }

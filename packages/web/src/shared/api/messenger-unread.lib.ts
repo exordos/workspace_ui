@@ -14,6 +14,7 @@ import {
   parsePmUnreadBuckets,
   parseStreamUnreadBuckets,
   parseUnreadMessageIds,
+  readStreamUuid,
 } from "./messenger-unread-buckets.lib";
 
 function toSafeCount(value: unknown): number {
@@ -48,7 +49,7 @@ function sumUnreadMessageIds(entries: unknown): number {
 }
 
 export interface WorkspaceUnreadStreamBucket {
-  streamId: number;
+  streamId: string;
   topic: string;
   unreadMessageIds: MessageId[];
 }
@@ -135,8 +136,8 @@ function accumulateUnreadStreamMessage(
   rawMessage: Record<string, unknown>,
   messageId: MessageId,
 ): void {
-  const streamId = rawMessage.stream_id;
-  if (!isPositiveInteger(streamId)) return;
+  const streamId = readStreamUuid(rawMessage.stream_uuid);
+  if (streamId == null) return;
   const topicRaw = typeof rawMessage.subject === "string" ? rawMessage.subject : "";
   const topic = normalizeTopicForIdentity(topicRaw);
   const key = `${streamId}\t${topic}`;

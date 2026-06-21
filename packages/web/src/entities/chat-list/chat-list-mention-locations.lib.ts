@@ -11,18 +11,18 @@ import type { MessageLocation } from "./chat-list.model.types";
 export type MentionFlagMessage = Pick<WorkspaceRawMessage, "id" | "sender_id" | "flags">;
 
 export interface MentionLocationFlags {
-  streamIds: ReadonlySet<number>;
+  streamIds: ReadonlySet<string>;
   topicKeys: ReadonlySet<string>;
   dmKeys: ReadonlySet<string>;
 }
 
 const EMPTY_MENTION_FLAGS: MentionLocationFlags = {
-  streamIds: new Set<number>(),
+  streamIds: new Set<string>(),
   topicKeys: new Set<string>(),
   dmKeys: new Set<string>(),
 };
 
-export function buildTopicMentionKey(streamId: number, topic: string): string {
+export function buildTopicMentionKey(streamId: string, topic: string): string {
   return `${streamId}:${normalizeTopicForIdentity(topic)}`;
 }
 
@@ -34,7 +34,7 @@ export function buildMentionLocationFlags(
     return EMPTY_MENTION_FLAGS;
   }
 
-  const streamIds = new Set<number>();
+  const streamIds = new Set<string>();
   const topicKeys = new Set<string>();
   const dmKeys = new Set<string>();
 
@@ -42,8 +42,8 @@ export function buildMentionLocationFlags(
     const location = messageIdToLocation.get(messageId);
     if (location == null) continue;
     if (location.type === "stream") {
-      streamIds.add(location.stream_id);
-      topicKeys.add(buildTopicMentionKey(location.stream_id, location.topic));
+      streamIds.add(location.streamUuid);
+      topicKeys.add(buildTopicMentionKey(location.streamUuid, location.topic));
       continue;
     }
     if (location.dmKey.length > 0) {
@@ -55,13 +55,13 @@ export function buildMentionLocationFlags(
 }
 
 export function messageLocationFromMockMessage(
-  message: Pick<MockMessage, "stream_id" | "subject" | "display_recipient">,
+  message: Pick<MockMessage, "stream_uuid" | "subject" | "display_recipient">,
   currentUserId: UserId | null,
 ): MessageLocation | null {
-  if (message.stream_id != null) {
+  if (message.stream_uuid != null) {
     return {
       type: "stream",
-      stream_id: message.stream_id,
+      streamUuid: message.stream_uuid,
       topic: normalizeTopicForIdentity(message.subject ?? ""),
     };
   }
@@ -74,13 +74,13 @@ export function messageLocationFromMockMessage(
 }
 
 export function messageLocationFromRawMessage(
-  message: Pick<WorkspaceRawMessage, "id" | "type" | "stream_id" | "subject" | "display_recipient">,
+  message: Pick<WorkspaceRawMessage, "id" | "type" | "stream_uuid" | "subject" | "display_recipient">,
   currentUserId: UserId | null,
 ): MessageLocation | null {
-  if (message.type === "stream" && message.stream_id != null) {
+  if (message.type === "stream" && message.stream_uuid != null) {
     return {
       type: "stream",
-      stream_id: message.stream_id,
+      streamUuid: message.stream_uuid,
       topic: normalizeTopicForIdentity(message.subject ?? ""),
     };
   }
@@ -89,10 +89,10 @@ export function messageLocationFromRawMessage(
     if (dmKey.length === 0) return null;
     return { type: "dm", dmKey };
   }
-  if (message.stream_id != null) {
+  if (message.stream_uuid != null) {
     return {
       type: "stream",
-      stream_id: message.stream_id,
+      streamUuid: message.stream_uuid,
       topic: normalizeTopicForIdentity(message.subject ?? ""),
     };
   }

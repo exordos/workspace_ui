@@ -12,8 +12,6 @@ import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import type * as PinChatApiModule from "~/features/pin-chat/pin-chat.api";
 import { usePinStore } from "~/features/pin-chat/pin-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
-import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indicator.model";
-import { buildDmTypingChatKey } from "~/features/typing-indicator/typing-key";
 import { t } from "~/i18n/i18n";
 import type * as MessengerReadStateModule from "~/shared/api/messenger-read-state";
 import type * as WorkspaceApiModule from "~/shared/api/workspace-client";
@@ -97,24 +95,24 @@ vi.mock("~/shared/api/workspace-client", async (importOriginal) => {
   };
 });
 
-const DM_CHAT: Extract<SidebarChat, { type: "dm" }> = {
-  type: "dm",
-  id: 42,
+const PRIVATE_STREAM_CHAT: Extract<SidebarChat, { type: "stream" }> = {
+  type: "stream",
+  stream_id: 42,
   name: "Alice",
-  slug: "42-alice",
-  userIds: [42],
+  private: true,
   lastMessage: "Hello",
   time: "10:13",
+  topics: [],
 };
 
-const DM_CHAT_SECOND: Extract<SidebarChat, { type: "dm" }> = {
-  type: "dm",
-  id: 77,
+const PRIVATE_STREAM_CHAT_SECOND: Extract<SidebarChat, { type: "stream" }> = {
+  type: "stream",
+  stream_id: 77,
   name: "Bob",
-  slug: "77-bob",
-  userIds: [77],
+  private: true,
   lastMessage: "Hi",
   time: "10:45",
+  topics: [],
 };
 
 const STREAM_CHAT: Extract<SidebarChat, { type: "stream" }> = {
@@ -158,7 +156,6 @@ describe("Sidebar", () => {
   afterEach(() => {
     useFolderSyncStore.getState().clear();
     useUsersStore.getState().clear();
-    useTypingIndicatorStore.getState().clearAll();
     useMuteStore.getState().clear();
     usePinStore.getState().clear();
     useInstancesStore.setState({
@@ -209,23 +206,21 @@ describe("Sidebar", () => {
       <Sidebar
         streams={[]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[DM_CHAT]}
-        sidebarDms={[DM_CHAT]}
+        sidebarChats={[PRIVATE_STREAM_CHAT]}
       />,
     );
 
     expect(screen.queryByText(/direct messages/i)).not.toBeInTheDocument();
-    expect(screen.getByText("Alice")).toBeInTheDocument();
+    expect(screen.getByText("#Alice")).toBeInTheDocument();
   });
 
-  it("highlights DM chat when route slug is numeric ids only", () => {
+  it("highlights private stream chat when route slug matches", () => {
     renderWithProviders(
       <Sidebar
         streams={[]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[DM_CHAT]}
-        sidebarDms={[DM_CHAT]}
-        activeDmIdParam="42"
+        sidebarChats={[PRIVATE_STREAM_CHAT]}
+        activeStreamSlug="42-alice"
       />,
     );
 
@@ -246,8 +241,7 @@ describe("Sidebar", () => {
         <Sidebar
           streams={[]}
           selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-          sidebarChats={[DM_CHAT]}
-          sidebarDms={[DM_CHAT]}
+          sidebarChats={[PRIVATE_STREAM_CHAT]}
         />
       </>,
       { route: "/" },
@@ -269,13 +263,7 @@ describe("Sidebar", () => {
   it("renders loading state for folder chat list", () => {
     // When loading a folder list explicitly, show a loading state (spinner + label).
     renderWithProviders(
-      <Sidebar
-        streams={[]}
-        selectedFolderId="folder-1"
-        sidebarChats={[]}
-        sidebarChatsLoading
-        sidebarDms={[DM_CHAT]}
-      />,
+      <Sidebar streams={[]} selectedFolderId="folder-1" sidebarChats={[]} sidebarChatsLoading />,
     );
 
     expect(screen.getByRole("status", { name: t("app.loading") })).toBeInTheDocument();
@@ -287,14 +275,13 @@ describe("Sidebar", () => {
       <Sidebar
         streams={[]}
         selectedFolderId="folder-1"
-        sidebarChats={[DM_CHAT]}
+        sidebarChats={[PRIVATE_STREAM_CHAT]}
         sidebarChatsLoading
-        sidebarDms={[DM_CHAT]}
       />,
     );
 
     expect(screen.queryByText(t("app.loading"))).not.toBeInTheDocument();
-    expect(screen.getByText("Alice")).toBeInTheDocument();
+    expect(screen.getByText("#Alice")).toBeInTheDocument();
   });
 
   it("does not render legacy chats-and-channels heading", () => {
@@ -302,8 +289,7 @@ describe("Sidebar", () => {
       <Sidebar
         streams={[]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[DM_CHAT]}
-        sidebarDms={[DM_CHAT]}
+        sidebarChats={[PRIVATE_STREAM_CHAT]}
       />,
     );
 
@@ -312,34 +298,12 @@ describe("Sidebar", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("matches dm chats by participant email in sidebar search", () => {
-    useUsersStore
-      .getState()
-      .mergeUsers([createUser({ user_id: 42, full_name: "Alice", email: "alice@example.com" })]);
-
-    renderWithProviders(
-      <Sidebar
-        streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[DM_CHAT]}
-        sidebarDms={[DM_CHAT]}
-      />,
-    );
-
-    fireEvent.change(screen.getByPlaceholderText(/find/i), {
-      target: { value: "alice@example.com" },
-    });
-
-    expect(screen.getByText("Alice")).toBeInTheDocument();
-  });
-
   it("uses semantic token classes for sidebar search input container", () => {
     renderWithProviders(
       <Sidebar
         streams={[]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[DM_CHAT]}
-        sidebarDms={[DM_CHAT]}
+        sidebarChats={[PRIVATE_STREAM_CHAT]}
       />,
     );
 
@@ -357,8 +321,7 @@ describe("Sidebar", () => {
       <Sidebar
         streams={[]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[DM_CHAT]}
-        sidebarDms={[DM_CHAT]}
+        sidebarChats={[PRIVATE_STREAM_CHAT]}
       />,
     );
 
@@ -378,8 +341,7 @@ describe("Sidebar", () => {
       <Sidebar
         streams={[]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[DM_CHAT]}
-        sidebarDms={[DM_CHAT]}
+        sidebarChats={[PRIVATE_STREAM_CHAT]}
       />,
     );
 
@@ -388,7 +350,7 @@ describe("Sidebar", () => {
     expect(dmLink).toHaveClass("px-2");
     expect(dmLink).toHaveClass("py-1.5");
 
-    const avatarText = within(dmLink).getByText("A");
+    const avatarText = within(dmLink).getByText("#");
     const avatar = avatarText.closest("div");
     expect(avatar).not.toBeNull();
     expect(avatar).toHaveClass("w-8");
@@ -400,8 +362,7 @@ describe("Sidebar", () => {
       <Sidebar
         streams={[]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[DM_CHAT]}
-        sidebarDms={[DM_CHAT]}
+        sidebarChats={[PRIVATE_STREAM_CHAT]}
       />,
     );
 
@@ -415,8 +376,7 @@ describe("Sidebar", () => {
       <Sidebar
         streams={[]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[DM_CHAT]}
-        sidebarDms={[DM_CHAT]}
+        sidebarChats={[PRIVATE_STREAM_CHAT]}
         activityPanelBottomSlot={
           <div data-testid="activity-panel-bottom-slot">Horizontal folders rail slot</div>
         }
@@ -431,13 +391,12 @@ describe("Sidebar", () => {
     expect(slot.nextElementSibling).toBe(separator);
   });
 
-  it("matches dm chats by display title in sidebar search", () => {
+  it("matches private stream chats by display title in sidebar search", () => {
     renderWithProviders(
       <Sidebar
         streams={[]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[STREAM_CHAT, DM_CHAT]}
-        sidebarDms={[DM_CHAT]}
+        sidebarChats={[STREAM_CHAT, PRIVATE_STREAM_CHAT]}
       />,
     );
 
@@ -445,7 +404,7 @@ describe("Sidebar", () => {
       target: { value: "alice" },
     });
 
-    expect(screen.getByText("Alice")).toBeInTheDocument();
+    expect(screen.getByText("#Alice")).toBeInTheDocument();
     expect(screen.queryByText("#Engineering")).not.toBeInTheDocument();
   });
 
@@ -454,8 +413,7 @@ describe("Sidebar", () => {
       <Sidebar
         streams={[]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[STREAM_CHAT, DM_CHAT]}
-        sidebarDms={[DM_CHAT]}
+        sidebarChats={[STREAM_CHAT, PRIVATE_STREAM_CHAT]}
       />,
     );
 
@@ -464,7 +422,7 @@ describe("Sidebar", () => {
     });
 
     expect(screen.getByText("#Engineering")).toBeInTheDocument();
-    expect(screen.queryByText("Alice")).not.toBeInTheDocument();
+    expect(screen.queryByText("#Alice")).not.toBeInTheDocument();
   });
 
   it("matches stream chats by topic name in sidebar search", () => {
@@ -477,8 +435,7 @@ describe("Sidebar", () => {
       <Sidebar
         streams={[]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[streamWithTopic, DM_CHAT]}
-        sidebarDms={[DM_CHAT]}
+        sidebarChats={[streamWithTopic, PRIVATE_STREAM_CHAT]}
       />,
     );
 
@@ -487,7 +444,7 @@ describe("Sidebar", () => {
     });
 
     expect(screen.getByText("#Engineering")).toBeInTheDocument();
-    expect(screen.queryByText("Alice")).not.toBeInTheDocument();
+    expect(screen.queryByText("#Alice")).not.toBeInTheDocument();
   });
 
   it("matches the system general-chat topic by its localized label in sidebar search", () => {
@@ -500,8 +457,7 @@ describe("Sidebar", () => {
       <Sidebar
         streams={[]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[streamWithTopic, DM_CHAT]}
-        sidebarDms={[DM_CHAT]}
+        sidebarChats={[streamWithTopic, PRIVATE_STREAM_CHAT]}
       />,
     );
 
@@ -510,57 +466,18 @@ describe("Sidebar", () => {
     });
 
     expect(screen.getByText("#Engineering")).toBeInTheDocument();
-    expect(screen.queryByText("Alice")).not.toBeInTheDocument();
+    expect(screen.queryByText("#Alice")).not.toBeInTheDocument();
   });
 
-  it("matches dm chats by member email in sidebar search", () => {
-    useUsersStore
-      .getState()
-      .mergeUsers([
-        createUser({ user_id: 1002, full_name: "Bob Teammate", email: "bob@example.com" }),
-      ]);
-    const dmChat: Extract<SidebarChat, { type: "dm" }> = {
-      type: "dm",
-      id: 1002,
-      name: "Bob Teammate",
-      slug: "1002-bob",
-      userIds: [1002],
-      lastMessage: "Weekly sync",
-      time: "11:05",
-    };
+  it("does not render the separate direct-messages section when sidebarChats is absent", () => {
+    renderWithProviders(<Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} />);
 
-    renderWithProviders(
-      <Sidebar
-        streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[dmChat]}
-        sidebarDms={[dmChat]}
-      />,
-    );
-
-    fireEvent.change(screen.getByPlaceholderText(/find/i), {
-      target: { value: "bob@example.com" },
-    });
-
-    expect(screen.getByText("Bob Teammate")).toBeInTheDocument();
-  });
-
-  it("renders the separate direct-messages section when sidebarChats is absent", () => {
-    renderWithProviders(
-      <Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} sidebarDms={[DM_CHAT]} />,
-    );
-
-    expect(screen.getByText(/direct messages/i)).toBeInTheDocument();
+    expect(screen.queryByText(/direct messages/i)).not.toBeInTheDocument();
   });
 
   it("shows empty-folder state when folder mode has no chats", () => {
     renderWithProviders(
-      <Sidebar
-        streams={[]}
-        selectedFolderId="custom-folder"
-        sidebarChats={[]}
-        sidebarDms={[DM_CHAT]}
-      />,
+      <Sidebar streams={[]} selectedFolderId="custom-folder" sidebarChats={[]} />,
     );
 
     expect(screen.getByText(/folder is empty/i)).toBeInTheDocument();
@@ -569,17 +486,13 @@ describe("Sidebar", () => {
   });
 
   it("does not show empty-folder state in split sidebar mode", () => {
-    renderWithProviders(
-      <Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} sidebarDms={[DM_CHAT]} />,
-    );
+    renderWithProviders(<Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} />);
 
     expect(screen.queryByText(/folder is empty/i)).not.toBeInTheDocument();
   });
 
   it("does not render a static fake call footer by default", () => {
-    renderWithProviders(
-      <Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} sidebarDms={[DM_CHAT]} />,
-    );
+    renderWithProviders(<Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} />);
 
     expect(screen.queryByText(/calling, trying to connect/i)).not.toBeInTheDocument();
     expect(screen.queryByText("0:47")).not.toBeInTheDocument();
@@ -587,9 +500,7 @@ describe("Sidebar", () => {
 
   it("exposes activity toggle expanded state for assistive technologies", () => {
     useSidebarConfigStore.getState().setConfig({ activityOpen: true });
-    renderWithProviders(
-      <Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} sidebarDms={[DM_CHAT]} />,
-    );
+    renderWithProviders(<Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} />);
 
     const activityToggle = screen.getByRole("button", { name: /activity/i });
     expect(activityToggle).toHaveAttribute("aria-expanded", "true");
@@ -608,9 +519,7 @@ describe("Sidebar", () => {
         createUser({ user_id: 1002, full_name: "Bob Teammate", email: "bob@example.com" }),
       ]);
 
-    renderWithProviders(
-      <Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} sidebarDms={[DM_CHAT]} />,
-    );
+    renderWithProviders(<Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} />);
 
     fireEvent.click(screen.getByRole("button", { name: /new chat/i }));
 
@@ -637,9 +546,7 @@ describe("Sidebar", () => {
       }),
     ]);
 
-    renderWithProviders(
-      <Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} sidebarDms={[DM_CHAT]} />,
-    );
+    renderWithProviders(<Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} />);
 
     fireEvent.click(screen.getByRole("button", { name: /new chat/i }));
     expect(screen.getByRole("status", { name: /online/i })).toBeInTheDocument();
@@ -656,9 +563,7 @@ describe("Sidebar", () => {
         createUser({ user_id: 1003, full_name: "Carol Teammate", email: "carol@example.com" }),
       ]);
 
-    renderWithProviders(
-      <Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} sidebarDms={[DM_CHAT]} />,
-    );
+    renderWithProviders(<Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} />);
 
     fireEvent.click(screen.getByRole("button", { name: /new chat/i }));
     fireEvent.change(screen.getByPlaceholderText(/search users/i), { target: { value: "carol" } });
@@ -673,9 +578,7 @@ describe("Sidebar", () => {
   });
 
   it("supports keyboard navigation between create-chat tabs", () => {
-    renderWithProviders(
-      <Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} sidebarDms={[DM_CHAT]} />,
-    );
+    renderWithProviders(<Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} />);
 
     fireEvent.click(screen.getByRole("button", { name: /new chat/i }));
 
@@ -707,9 +610,7 @@ describe("Sidebar", () => {
   });
 
   it("wires create-chat tabs to tabpanels with aria relationships", () => {
-    renderWithProviders(
-      <Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} sidebarDms={[DM_CHAT]} />,
-    );
+    renderWithProviders(<Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} />);
 
     fireEvent.click(screen.getByRole("button", { name: /new chat/i }));
 
@@ -757,9 +658,7 @@ describe("Sidebar", () => {
         createUser({ user_id: 1003, full_name: "Carol Teammate", email: "carol@example.com" }),
       ]);
 
-    renderWithProviders(
-      <Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} sidebarDms={[DM_CHAT]} />,
-    );
+    renderWithProviders(<Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} />);
 
     fireEvent.click(screen.getByRole("button", { name: /new chat/i }));
     fireEvent.click(screen.getByRole("tab", { name: /create channel/i }));
@@ -779,31 +678,6 @@ describe("Sidebar", () => {
         inviteOnly: true,
         announce: true,
       });
-    });
-  });
-
-  it("shows mark-as-read action in dm context menu and triggers dm narrow API", async () => {
-    markDmAsReadMock.mockResolvedValue(true);
-    renderWithProviders(
-      <Sidebar
-        streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[DM_CHAT]}
-        sidebarDms={[DM_CHAT]}
-      />,
-    );
-
-    fireEvent.contextMenu(screen.getByText("Alice"));
-
-    const markAsReadItem = await screen.findByRole("menuitem", { name: /mark as read/i });
-    expect(markAsReadItem).toHaveClass("hover:bg-sidebar-hover");
-    expect(markAsReadItem).toHaveClass("data-[highlighted]:bg-sidebar-hover");
-    expect(markAsReadItem).toHaveClass("focus-visible:outline-none");
-    expect(markAsReadItem).not.toHaveClass("hover:bg-bg-elevated");
-    fireEvent.click(markAsReadItem);
-
-    await waitFor(() => {
-      expect(markDmAsReadMock).toHaveBeenCalledWith([42]);
     });
   });
 
@@ -851,11 +725,10 @@ describe("Sidebar", () => {
 
     renderWithProviders(
       <Sidebar
-        streams={[{ stream_id: 11, name: "Engineering" }]}
+        streams={[streamWithTopics]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
         activeStreamSlug="11-engineering"
         sidebarChats={[streamWithTopics]}
-        sidebarDms={[]}
       />,
     );
 
@@ -908,10 +781,15 @@ describe("Sidebar", () => {
       1,
     );
     useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+    const streamWithTopics = {
+      ...STREAM_CHAT,
+      badge: 2,
+      topics: [{ subject: "incident", badge: 2, lastMessage: "Need fix" }],
+    };
 
     renderWithProviders(
       <Sidebar
-        streams={[{ stream_id: 11, name: "Engineering" }]}
+        streams={[streamWithTopics]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
         activeStreamSlug="11-engineering"
         sidebarChats={[
@@ -921,7 +799,6 @@ describe("Sidebar", () => {
             topics: [{ subject: "incident", badge: 2, lastMessage: "Need fix" }],
           },
         ]}
-        sidebarDms={[]}
       />,
     );
 
@@ -945,11 +822,10 @@ describe("Sidebar", () => {
 
     renderWithProviders(
       <Sidebar
-        streams={[{ stream_id: 11, name: "Engineering" }]}
+        streams={[streamWithTopics]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
         activeStreamSlug="11-engineering"
         sidebarChats={[streamWithTopics]}
-        sidebarDms={[]}
       />,
     );
 
@@ -972,11 +848,10 @@ describe("Sidebar", () => {
 
     renderWithProviders(
       <Sidebar
-        streams={[{ stream_id: 11, name: "Engineering" }]}
+        streams={[streamWithTopics]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
         activeStreamSlug="11-engineering"
         sidebarChats={[streamWithTopics]}
-        sidebarDms={[]}
       />,
     );
 
@@ -992,61 +867,23 @@ describe("Sidebar", () => {
     });
   });
 
-  it("does not show pin action in personal system folder context menu", async () => {
+  it("does not show pin action in personal system folder stream context menu", async () => {
     renderWithProviders(
       <Sidebar
         streams={[]}
         selectedFolderId="system:personal"
-        sidebarChats={[DM_CHAT]}
-        sidebarDms={[DM_CHAT]}
+        sidebarChats={[PRIVATE_STREAM_CHAT]}
       />,
     );
 
-    fireEvent.contextMenu(screen.getByText("Alice"));
+    fireEvent.contextMenu(screen.getByText("#Alice"));
 
     await screen.findByRole("menuitem", { name: /mark as read/i });
     expect(screen.queryByRole("menuitem", { name: /^pin$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /^unpin$/i })).not.toBeInTheDocument();
   });
 
-  it("opens dm context menu from keyboard on focused row", async () => {
-    renderWithProviders(
-      <Sidebar
-        streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[DM_CHAT]}
-        sidebarDms={[DM_CHAT]}
-      />,
-    );
-
-    const dmLink = screen.getByRole("link", { name: /alice/i });
-    dmLink.focus();
-    fireEvent.keyDown(dmLink, { key: "F10", shiftKey: true });
-
-    expect(await screen.findByRole("menuitem", { name: /mark as read/i })).toBeInTheDocument();
-  });
-
-  it("shows typing status in DM row when partner is typing", () => {
-    useChatListStore.setState({ currentUserId: 100 });
-    const typingKey = buildDmTypingChatKey([42], 100);
-    if (typingKey == null) {
-      throw new Error("Expected typing key");
-    }
-    useTypingIndicatorStore.getState().setTyping(typingKey, 42, true);
-    renderWithProviders(
-      <Sidebar
-        streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[DM_CHAT]}
-        sidebarDms={[DM_CHAT]}
-      />,
-    );
-
-    expect(screen.getByText(/^typing$/i)).toBeInTheDocument();
-    expect(screen.queryByText("Hello")).not.toBeInTheDocument();
-  });
-
-  it("shows pin action in dm context menu and pins chat in selected folder", async () => {
+  it("shows pin action in private stream context menu and pins chat in selected folder", async () => {
     useFolderSyncStore.setState({ allFolderApiUuid: "all" });
     getFoldersMock.mockResolvedValue([
       {
@@ -1060,8 +897,8 @@ describe("Sidebar", () => {
         items: [
           {
             uuid: "item-42",
-            chat_id: "dm:42",
-            chat_type: "private",
+            chat_id: 42,
+            chat_type: "stream",
             folder_uuid: "all",
             order_index: 0,
             pinned_at: null,
@@ -1077,12 +914,11 @@ describe("Sidebar", () => {
       <Sidebar
         streams={[]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[DM_CHAT]}
-        sidebarDms={[DM_CHAT]}
+        sidebarChats={[PRIVATE_STREAM_CHAT]}
       />,
     );
 
-    fireEvent.contextMenu(screen.getByText("Alice"));
+    fireEvent.contextMenu(screen.getByText("#Alice"));
 
     const pinItem = await screen.findByRole("menuitem", { name: /^pin$/i });
     fireEvent.click(pinItem);
@@ -1090,7 +926,7 @@ describe("Sidebar", () => {
     await waitFor(() => {
       expect(getFoldersMock).toHaveBeenCalled();
       expect(pinChatInFolderMock).toHaveBeenCalledWith("all", "item-42");
-      expect(usePinStore.getState().isPinned("all", "dm:42")).toBe(true);
+      expect(usePinStore.getState().isPinned("all", "stream:42:general")).toBe(true);
     });
   });
 
@@ -1121,12 +957,7 @@ describe("Sidebar", () => {
     pinChatInFolderMock.mockResolvedValue(true);
 
     renderWithProviders(
-      <Sidebar
-        streams={[]}
-        selectedFolderId="custom-folder"
-        sidebarChats={[STREAM_CHAT]}
-        sidebarDms={[]}
-      />,
+      <Sidebar streams={[]} selectedFolderId="custom-folder" sidebarChats={[STREAM_CHAT]} />,
     );
 
     const streamRow = screen.getByRole("link", { name: /engineering/i });
@@ -1139,34 +970,33 @@ describe("Sidebar", () => {
     });
   });
 
-  it("shows unpin action in dm context menu when chat is already pinned", async () => {
+  it("shows unpin action in private stream context menu when chat is already pinned", async () => {
     useFolderSyncStore.setState({ allFolderApiUuid: "all" });
-    usePinStore.getState().pinChat("all", "dm:42", { folderItemUuid: "item-42" });
+    usePinStore.getState().pinChat("all", "stream:42:general", { folderItemUuid: "item-42" });
     unpinChatInFolderMock.mockResolvedValue(true);
 
     renderWithProviders(
       <Sidebar
         streams={[]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[DM_CHAT]}
-        sidebarDms={[DM_CHAT]}
+        sidebarChats={[PRIVATE_STREAM_CHAT]}
       />,
     );
 
-    fireEvent.contextMenu(screen.getByText("Alice"));
+    fireEvent.contextMenu(screen.getByText("#Alice"));
 
     const unpinItem = await screen.findByRole("menuitem", { name: /^unpin$/i });
     fireEvent.click(unpinItem);
 
     await waitFor(() => {
       expect(unpinChatInFolderMock).toHaveBeenCalledWith("all", "item-42");
-      expect(usePinStore.getState().isPinned("all", "dm:42")).toBe(false);
+      expect(usePinStore.getState().isPinned("all", "stream:42:general")).toBe(false);
     });
   });
 
-  it("navigates to pinned dm without leaving org scope on click", () => {
+  it("navigates to pinned private stream without leaving org scope on click", () => {
     setCurrentOrgRouteIdResolver(() => "chat.example.com");
-    usePinStore.getState().pinChat("all", "dm:42", {
+    usePinStore.getState().pinChat("all", "stream:42:general", {
       folderItemUuid: "item-42",
       pinnedAt: "2026-03-14T12:00:00Z",
     });
@@ -1176,8 +1006,7 @@ describe("Sidebar", () => {
         <Sidebar
           streams={[]}
           selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-          sidebarChats={[DM_CHAT, DM_CHAT_SECOND]}
-          sidebarDms={[DM_CHAT, DM_CHAT_SECOND]}
+          sidebarChats={[PRIVATE_STREAM_CHAT, PRIVATE_STREAM_CHAT_SECOND]}
         />
         <RoutePathProbe />
       </>,
@@ -1186,30 +1015,31 @@ describe("Sidebar", () => {
 
     fireEvent.click(screen.getByRole("link", { name: /alice/i }));
 
-    expect(screen.getByTestId("route-path")).toHaveTextContent("/org/chat.example.com/dm/42-alice");
+    expect(screen.getByTestId("route-path")).toHaveTextContent(
+      "/org/chat.example.com/stream/42-alice",
+    );
   });
 
-  it("prefixes folder dm links with current org route", () => {
+  it("prefixes folder private stream links with current org route", () => {
     setCurrentOrgRouteIdResolver(() => "chat.example.com");
 
     renderWithProviders(
       <Sidebar
         streams={[]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[DM_CHAT]}
-        sidebarDms={[DM_CHAT]}
+        sidebarChats={[PRIVATE_STREAM_CHAT]}
       />,
     );
 
     expect(screen.getByRole("link", { name: /alice/i })).toHaveAttribute(
       "href",
-      "/org/chat.example.com/dm/42-alice",
+      "/org/chat.example.com/stream/42-alice",
     );
   });
 
-  it("renders pinned dm chats before unpinned ones", () => {
+  it("renders pinned private stream chats before unpinned ones", () => {
     useFolderSyncStore.setState({ allFolderApiUuid: "all" });
-    usePinStore.getState().pinChat("all", "dm:77", {
+    usePinStore.getState().pinChat("all", "stream:77:general", {
       folderItemUuid: "item-77",
       pinnedAt: "2026-03-14T12:00:00Z",
     });
@@ -1218,16 +1048,15 @@ describe("Sidebar", () => {
       <Sidebar
         streams={[]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[DM_CHAT, DM_CHAT_SECOND]}
-        sidebarDms={[DM_CHAT, DM_CHAT_SECOND]}
+        sidebarChats={[PRIVATE_STREAM_CHAT, PRIVATE_STREAM_CHAT_SECOND]}
       />,
     );
 
-    const dmLinks = screen
+    const streamLinks = screen
       .getAllByRole("link")
-      .filter((link) => link.getAttribute("href")?.startsWith("/dm/"));
-    expect(dmLinks[0]).toHaveAttribute("href", "/dm/77-bob");
-    expect(dmLinks[1]).toHaveAttribute("href", "/dm/42-alice");
+      .filter((link) => link.getAttribute("href")?.startsWith("/stream/"));
+    expect(streamLinks[0]).toHaveAttribute("href", "/stream/77-bob");
+    expect(streamLinks[1]).toHaveAttribute("href", "/stream/42-alice");
   });
 
   it("renders pinned stream chats before unpinned ones when folder item uses numeric chat_id", () => {
@@ -1247,7 +1076,6 @@ describe("Sidebar", () => {
         streams={[]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
         sidebarChats={[STREAM_CHAT, STREAM_CHAT_SECOND]}
-        sidebarDms={[]}
       />,
     );
 
@@ -1275,7 +1103,6 @@ describe("Sidebar", () => {
         selectedFolderId="system:channels"
         pinFolderId="all"
         sidebarChats={[STREAM_CHAT, STREAM_CHAT_SECOND]}
-        sidebarDms={[]}
       />,
     );
 
@@ -1317,7 +1144,6 @@ describe("Sidebar", () => {
         selectedFolderId="system:channels"
         pinFolderId="all"
         sidebarChats={[STREAM_CHAT]}
-        sidebarDms={[]}
       />,
     );
 
@@ -1334,12 +1160,7 @@ describe("Sidebar", () => {
 
   it("opens stream new-topic dialog with messenger topic settings from context menu action", async () => {
     renderWithProviders(
-      <Sidebar
-        streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[STREAM_CHAT]}
-        sidebarDms={[]}
-      />,
+      <Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} sidebarChats={[STREAM_CHAT]} />,
     );
 
     fireEvent.contextMenu(screen.getByText("#Engineering"));
@@ -1370,12 +1191,7 @@ describe("Sidebar", () => {
     setTopicVisibilityLevelMock.mockResolvedValue(false);
 
     renderWithProviders(
-      <Sidebar
-        streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[STREAM_CHAT]}
-        sidebarDms={[]}
-      />,
+      <Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} sidebarChats={[STREAM_CHAT]} />,
     );
 
     fireEvent.contextMenu(screen.getByText("#Engineering"));
@@ -1407,12 +1223,7 @@ describe("Sidebar", () => {
 
   it("opens stream context menu from keyboard on focused stream row", async () => {
     renderWithProviders(
-      <Sidebar
-        streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[STREAM_CHAT]}
-        sidebarDms={[]}
-      />,
+      <Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} sidebarChats={[STREAM_CHAT]} />,
     );
 
     const streamLink = screen.getByRole("link", { name: /engineering/i });
@@ -1426,12 +1237,7 @@ describe("Sidebar", () => {
     setStreamNotificationLevelMock.mockResolvedValue(false);
 
     renderWithProviders(
-      <Sidebar
-        streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[STREAM_CHAT]}
-        sidebarDms={[]}
-      />,
+      <Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} sidebarChats={[STREAM_CHAT]} />,
     );
 
     const streamLink = screen.getByRole("link", { name: /engineering/i });
@@ -1514,12 +1320,7 @@ describe("Sidebar", () => {
     addChatToFolderMock.mockResolvedValue(true);
 
     renderWithProviders(
-      <Sidebar
-        streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[STREAM_CHAT]}
-        sidebarDms={[]}
-      />,
+      <Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} sidebarChats={[STREAM_CHAT]} />,
     );
 
     fireEvent.contextMenu(screen.getByText("#Engineering"));
@@ -1553,7 +1354,6 @@ describe("Sidebar", () => {
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
         activeStreamSlug="11-engineering"
         sidebarChats={[streamWithTopics]}
-        sidebarDms={[]}
       />,
     );
 
@@ -1576,7 +1376,6 @@ describe("Sidebar", () => {
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
         activeStreamSlug="11-engineering"
         sidebarChats={[streamWithTopics]}
-        sidebarDms={[]}
       />,
     );
 
@@ -1611,7 +1410,6 @@ describe("Sidebar", () => {
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
         activeStreamSlug="11-engineering"
         sidebarChats={[streamWithManyTopics]}
-        sidebarDms={[]}
       />,
     );
 
@@ -1652,7 +1450,6 @@ describe("Sidebar", () => {
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
         activeStreamSlug="11-engineering"
         sidebarChats={[streamWithTopics]}
-        sidebarDms={[]}
       />,
     );
 
@@ -1675,7 +1472,6 @@ describe("Sidebar", () => {
         streams={[]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
         sidebarChats={[streamWithTopics]}
-        sidebarDms={[]}
       />,
     );
 
@@ -1705,7 +1501,6 @@ describe("Sidebar", () => {
         ]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
         activeStreamSlug="11-engineering"
-        sidebarDms={[]}
       />,
     );
 
@@ -1725,7 +1520,6 @@ describe("Sidebar", () => {
           streams={[]}
           selectedFolderId={SYSTEM_ALL_FOLDER_ID}
           sidebarChats={[streamWithTopics]}
-          sidebarDms={[]}
         />
         <RoutePathProbe />
       </>,
@@ -1756,7 +1550,6 @@ describe("Sidebar", () => {
             },
           ]}
           selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-          sidebarDms={[]}
         />
         <RoutePathProbe />
       </>,
@@ -1783,7 +1576,6 @@ describe("Sidebar", () => {
         streams={[]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
         sidebarChats={[streamWithTopics]}
-        sidebarDms={[]}
       />,
     );
 
@@ -1807,7 +1599,6 @@ describe("Sidebar", () => {
         streams={[]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
         sidebarChats={[streamWithIncidentTopic, streamWithLaunchTopic]}
-        sidebarDms={[]}
       />,
     );
 
@@ -1819,7 +1610,7 @@ describe("Sidebar", () => {
     expect(screen.getByText("launch")).toBeInTheDocument();
   });
 
-  it("keeps stream topics expanded after manual toggle when dm chat is active", () => {
+  it("keeps stream topics expanded after manual toggle when private stream is present", () => {
     const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
       ...STREAM_CHAT,
       topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
@@ -1829,13 +1620,12 @@ describe("Sidebar", () => {
       <Sidebar
         streams={[]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[streamWithTopics, DM_CHAT]}
-        sidebarDms={[DM_CHAT]}
-        activeDmIdParam={DM_CHAT.slug}
+        sidebarChats={[streamWithTopics, PRIVATE_STREAM_CHAT]}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /expand topics/i }));
+    const toggleButtons = screen.getAllByRole("button", { name: /expand topics/i });
+    fireEvent.click(toggleButtons[0]!);
 
     expect(screen.getByText("incident")).toBeInTheDocument();
   });
@@ -1856,7 +1646,6 @@ describe("Sidebar", () => {
           streams={[]}
           selectedFolderId={SYSTEM_ALL_FOLDER_ID}
           sidebarChats={[streamWithIncidentTopic, streamWithLaunchTopic]}
-          sidebarDms={[]}
         />
         <RoutePathProbe />
       </>,
@@ -1895,7 +1684,6 @@ describe("Sidebar", () => {
           streams={[]}
           selectedFolderId={SYSTEM_ALL_FOLDER_ID}
           sidebarChats={[streamWithIncidentTopic, streamWithLaunchTopic]}
-          sidebarDms={[]}
         />
         <RouteNavigateButton to="/inbox" label="go-inbox" />
         <RoutePathProbe />
@@ -1930,9 +1718,7 @@ describe("Sidebar", () => {
       <Sidebar
         streams={[]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[streamWithTopics, DM_CHAT]}
-        sidebarDms={[DM_CHAT]}
-        activeDmIdParam={DM_CHAT.slug}
+        sidebarChats={[streamWithTopics, PRIVATE_STREAM_CHAT]}
       />,
     );
 
@@ -1952,7 +1738,6 @@ describe("Sidebar", () => {
         streams={[]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
         sidebarChats={[streamWithUnread]}
-        sidebarDms={[]}
       />,
     );
 
@@ -1981,36 +1766,6 @@ describe("Sidebar", () => {
     expect(expandButton).not.toHaveClass("opacity-0");
   });
 
-  it("aligns dm chat-menu trigger horizontally with unread and keeps time left of unread", () => {
-    const dmWithUnread: Extract<SidebarChat, { type: "dm" }> = {
-      ...DM_CHAT,
-      badge: 3,
-    };
-
-    renderWithProviders(
-      <Sidebar
-        streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[dmWithUnread]}
-        sidebarDms={[dmWithUnread]}
-      />,
-    );
-
-    const dmLink = screen.getByRole("link", { name: /alice/i });
-    const dmTime = within(dmLink).getByText("10:13");
-    const dmUnreadBadge = within(dmLink).getByText("3");
-    const dmMetaRow = dmTime.parentElement;
-
-    expect(dmMetaRow).not.toBeNull();
-    expect(dmMetaRow!).toContainElement(dmUnreadBadge);
-    expect(dmMetaRow!).toHaveClass("items-center");
-    expect(dmMetaRow!).not.toHaveClass("flex-col");
-
-    const chatMenuButton = screen.getByRole("button", { name: /chat menu/i });
-    expect(chatMenuButton).toHaveClass("top-8");
-    expect(chatMenuButton).not.toHaveClass("top-1");
-  });
-
   it("places topic notification cycle button under topic unread badge", () => {
     const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
       ...STREAM_CHAT,
@@ -2024,7 +1779,6 @@ describe("Sidebar", () => {
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
         activeStreamSlug="11-engineering"
         sidebarChats={[streamWithTopics]}
-        sidebarDms={[]}
       />,
     );
 
@@ -2056,7 +1810,6 @@ describe("Sidebar", () => {
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
         activeStreamSlug="11-engineering"
         sidebarChats={[streamWithTopics]}
-        sidebarDms={[]}
       />,
     );
 
@@ -2081,7 +1834,6 @@ describe("Sidebar", () => {
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
         activeStreamSlug="11-engineering"
         sidebarChats={[streamWithTopics]}
-        sidebarDms={[]}
       />,
     );
 
@@ -2111,7 +1863,6 @@ describe("Sidebar", () => {
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
         activeStreamSlug="11-engineering"
         sidebarChats={[streamWithTopics]}
-        sidebarDms={[]}
       />,
     );
 
@@ -2147,7 +1898,6 @@ describe("Sidebar", () => {
           selectedFolderId={SYSTEM_ALL_FOLDER_ID}
           activeStreamSlug="11-engineering"
           sidebarChats={[streamWithTopics]}
-          sidebarDms={[]}
         />
         <RoutePathProbe />
       </>,
@@ -2178,7 +1928,6 @@ describe("Sidebar", () => {
           ]}
           selectedFolderId={SYSTEM_ALL_FOLDER_ID}
           activeStreamSlug="11-engineering"
-          sidebarDms={[]}
         />
         <RoutePathProbe />
       </>,

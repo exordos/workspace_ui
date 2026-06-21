@@ -1,15 +1,15 @@
 import type { MockMessage } from "~/shared/api/messenger.types";
 
 export function resolveStreamNameForPermalink(
-  streams: readonly { stream_id: number; name: string }[],
-  streamId: number,
+  streams: readonly { stream_uuid: string; name: string }[],
+  streamId: string,
 ): string | undefined {
-  return streams.find((stream) => stream.stream_id === streamId)?.name;
+  return streams.find((stream) => stream.stream_uuid === streamId)?.name;
 }
 
 export function buildReplyPermalinkStreamNameResolver(
-  streams: readonly { stream_id: number; name: string }[],
-): (streamId: number) => string | undefined {
+  streams: readonly { stream_uuid: string; name: string }[],
+): (streamId: string) => string | undefined {
   return (streamId) => resolveStreamNameForPermalink(streams, streamId);
 }
 

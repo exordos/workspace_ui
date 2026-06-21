@@ -16,8 +16,8 @@ import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 
 export type SidebarMarkReadTarget =
   | { type: "dm"; userIds: number[] }
-  | { type: "stream"; streamId: number }
-  | { type: "topic"; streamId: number; topic: string };
+  | { type: "stream"; streamId: string }
+  | { type: "topic"; streamId: string; topic: string };
 
 function fallbackContextForTarget(
   target: SidebarMarkReadTarget,
@@ -40,7 +40,7 @@ function fallbackContextForTarget(
   };
 }
 
-function clearStreamWideUnread(streamId: number): void {
+function clearStreamWideUnread(streamId: string): void {
   const chatListState = useChatListStore.getState();
   const stream = chatListState.streamsMap.get(streamId);
   if (stream == null) return;

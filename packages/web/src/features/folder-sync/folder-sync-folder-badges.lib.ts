@@ -22,7 +22,7 @@ export interface FolderUnreadBadgesInput {
   usersMapForChatInfo: FolderSyncUsersMap;
   currentUserId: UserId | null;
   hideUnknownArchivedStreams?: boolean;
-  isStreamMuted?: (streamId: number) => boolean;
+  isStreamMuted?: (streamId: string) => boolean;
 }
 
 function isSystemFolderWithoutItemMembership(folder: WorkspaceFolderForRail): boolean {

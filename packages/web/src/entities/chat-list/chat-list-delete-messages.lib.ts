@@ -25,7 +25,7 @@ import type {
 export type DeletedPreviewContext =
   | {
       kind: "stream";
-      streamId: number;
+      streamId: string;
       topicKey: string;
       streamName: string;
       deletedLastMessageId: MessageId;
@@ -88,14 +88,14 @@ function pickNewestMessage<T extends ChatListPreviewSourceMessage>(
 
 export function pickReplacementForStreamTopic<T extends ChatListPreviewSourceMessage>(
   messages: readonly T[],
-  streamId: number,
+  streamId: string,
   topicKey: string,
   excludedMessageIds?: ReadonlySet<MessageId>,
 ): T | null {
   return pickNewestMessage(
     messages,
     (message) =>
-      message.stream_id === streamId &&
+      message.stream_uuid === streamId &&
       normalizeTopicForIdentity(message.subject ?? "") === topicKey,
     excludedMessageIds,
   );
@@ -110,7 +110,7 @@ export function pickReplacementForDm<T extends ChatListPreviewSourceMessage>(
   return pickNewestMessage(
     messages,
     (message) => {
-      if (message.stream_id != null || !Array.isArray(message.display_recipient)) return false;
+      if (message.stream_uuid != null || !Array.isArray(message.display_recipient)) return false;
       return dmConversationKey(message.display_recipient, currentUserId) === dmKey;
     },
     excludedMessageIds,
@@ -167,7 +167,7 @@ type DmDeleteContext = Extract<DeletedPreviewContext, { kind: "dm" }>;
 
 function registerStreamDeleteContext(
   streamContextsByKey: Map<string, StreamDeleteContext>,
-  streamId: number,
+  streamId: string,
   topicKey: string,
   streamName: string,
   deletedLastMessageId: MessageId,
@@ -211,12 +211,12 @@ function collectDeleteContextsFromMessageLocations(
     const loc = locMap.get(mid);
     if (!loc) continue;
     if (loc.type === "stream") {
-      const stream = state.streamsMap.get(loc.stream_id);
+      const stream = state.streamsMap.get(loc.streamUuid);
       const topic = stream?.topics.get(loc.topic);
       if (topic?.lastMessageId === mid && stream != null) {
         registerStreamDeleteContext(
           streamContextsByKey,
-          loc.stream_id,
+          loc.streamUuid,
           loc.topic,
           stream.name,
           mid,
@@ -300,16 +300,16 @@ function removeDeletedMessageIdsFromLocationMap(
 }
 
 function applyStreamDeletedPreviewRepairs(
-  nextStreams: Map<number, StreamEntryInternal>,
+  nextStreams: Map<string, StreamEntryInternal>,
   streamContextsByKey: Map<string, StreamDeleteContext>,
   replacementMessages: readonly ChatListPreviewSourceMessage[],
   deletedMessageIds: Set<MessageId>,
   resolveMissingPreview: boolean,
   contextsToResolveFromNetwork: DeletedPreviewContext[],
-): { streamsMap: Map<number, StreamEntryInternal>; changedStreamIds: Set<number> } {
+): { streamsMap: Map<string, StreamEntryInternal>; changedStreamIds: Set<string> } {
   let streamsMap = nextStreams;
   let streamsChanged = false;
-  const changedStreamIds = new Set<number>();
+  const changedStreamIds = new Set<string>();
 
   const ensureMutableStreams = () => {
     if (!streamsChanged) {

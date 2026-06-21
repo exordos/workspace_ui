@@ -33,22 +33,22 @@ export function shouldApplyDmPreviewFromFetchedMessage(
 }
 
 function bumpStreamTopicUnreadFromMessage(
-  streamsMap: Map<number, StreamEntryInternal>,
+  streamsMap: Map<string, StreamEntryInternal>,
   message: WorkspaceRawMessage,
   _currentUserId: UserId | null,
-): Map<number, StreamEntryInternal> {
+): Map<string, StreamEntryInternal> {
   const result = messageToStreamEntry(message);
   if (!result) return streamsMap;
-  const { stream_id, name, lastMessage, lastMessageSenderName, time, ts } = result.stream;
+  const { streamUuid, name, lastMessage, lastMessageSenderName, time, ts } = result.stream;
   const topic = result.topic;
-  const existing = streamsMap.get(stream_id);
+  const existing = streamsMap.get(streamUuid);
   if (!existing) {
     const next = new Map(streamsMap);
     next.set(
-      stream_id,
+      streamUuid,
       mergeStreamEntry(
         undefined,
-        stream_id,
+        streamUuid,
         name,
         lastMessage,
         lastMessageSenderName,
@@ -77,7 +77,7 @@ function bumpStreamTopicUnreadFromMessage(
     unreadCount: (existingTopic?.unreadCount ?? 0) + 1,
     lastMessageId: existingTopic?.lastMessageId,
   });
-  next.set(stream_id, { ...existing, topics: nextTopics });
+  next.set(streamUuid, { ...existing, topics: nextTopics });
   return next;
 }
 
@@ -112,7 +112,7 @@ function indexBatchMessagesAndUnreadBumps(
   currentUserId: UserId | null,
   avatarMap: Map<number, string>,
 ): {
-  nextStreams: Map<number, StreamEntryInternal>;
+  nextStreams: Map<string, StreamEntryInternal>;
   nextDms: Map<string, DmEntryInternal>;
   nextLoc: Map<MessageId, MessageLocation>;
   sidebarStreamsUnreadDelta: number;
@@ -128,9 +128,9 @@ function indexBatchMessagesAndUnreadBumps(
     if (state.messageIdToLocation.has(m.id)) {
       continue;
     }
-    if (m.type === "stream" && m.stream_id != null) {
+    if (m.type === "stream" && m.stream_uuid != null) {
       const topic = normalizeTopicForIdentity(m.subject ?? "");
-      nextLoc.set(m.id, { type: "stream", stream_id: m.stream_id, topic });
+      nextLoc.set(m.id, { type: "stream", streamUuid: m.stream_uuid, topic });
       if (isUnreadFromOthers(m, currentUserId)) {
         nextStreams = bumpStreamTopicUnreadFromMessage(nextStreams, m, currentUserId);
         sidebarStreamsUnreadDelta += 1;
@@ -155,16 +155,16 @@ function indexBatchMessagesAndUnreadBumps(
 }
 
 function mergeStreamTopicPreviewsFromLatest(
-  streamsMap: Map<number, StreamEntryInternal>,
+  streamsMap: Map<string, StreamEntryInternal>,
   streamTopicLatest: Map<string, WorkspaceRawMessage>,
-): Map<number, StreamEntryInternal> {
+): Map<string, StreamEntryInternal> {
   let nextStreams = streamsMap;
   for (const m of streamTopicLatest.values()) {
     const result = messageToStreamEntry(m);
     if (!result) continue;
-    const { stream_id, name, lastMessage, lastMessageSenderName, time, ts } = result.stream;
+    const { streamUuid, name, lastMessage, lastMessageSenderName, time, ts } = result.stream;
     const topic = result.topic;
-    const existing = nextStreams.get(stream_id);
+    const existing = nextStreams.get(streamUuid);
     if (existing && m.timestamp <= existing.ts) {
       const existingTopic = existing.topics.get(topic.subject);
       if (existingTopic && m.timestamp <= existingTopic.ts) {
@@ -174,7 +174,7 @@ function mergeStreamTopicPreviewsFromLatest(
     nextStreams = new Map(nextStreams);
     const merged = mergeStreamEntry(
       existing,
-      stream_id,
+      streamUuid,
       name,
       lastMessage,
       lastMessageSenderName,
@@ -188,7 +188,7 @@ function mergeStreamTopicPreviewsFromLatest(
       0,
       m.id,
     );
-    nextStreams.set(stream_id, merged);
+    nextStreams.set(streamUuid, merged);
   }
   return nextStreams;
 }
@@ -274,9 +274,9 @@ export function buildStreamTopicLatestMap(
 ): Map<string, WorkspaceRawMessage> {
   const streamTopicLatest = new Map<string, WorkspaceRawMessage>();
   for (const m of messages) {
-    if (m.type === "stream" && m.stream_id != null) {
+    if (m.type === "stream" && m.stream_uuid != null) {
       const topic = normalizeTopicForIdentity(m.subject ?? "");
-      const key = streamTopicCompositeKey(m.stream_id, topic);
+      const key = streamTopicCompositeKey(m.stream_uuid, topic);
       const existing = streamTopicLatest.get(key);
       if (!existing || compareMessageTimeline(m, existing) >= 0) {
         streamTopicLatest.set(key, m);

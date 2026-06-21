@@ -30,10 +30,10 @@ export function buildSidebarMarkReadNarrowForDm(
 
 /** Sidebar stream mark-read: is:unread + channel (whole stream). */
 export function buildSidebarMarkReadNarrowForChannel(
-  streamId: number,
+  streamId: string,
   useStreamOperator = false,
 ): MessengerMessagesNarrowClause[] {
-  guard.streamId(streamId, "buildSidebarMarkReadNarrowForChannel");
+  guard.streamUuid(streamId, "buildSidebarMarkReadNarrowForChannel");
   const channelOperator = useStreamOperator ? "stream" : "channel";
   return normalizeMessengerMessagesNarrowForApi([
     IS_UNREAD_NARROW_CLAUSE,
@@ -43,11 +43,11 @@ export function buildSidebarMarkReadNarrowForChannel(
 
 /** Sidebar topic mark-read: is:unread + channel + topic. */
 export function buildSidebarMarkReadNarrowForTopic(
-  streamId: number,
+  streamId: string,
   topic: string,
   useStreamOperator = false,
 ): MessengerMessagesNarrowClause[] {
-  guard.streamId(streamId, "buildSidebarMarkReadNarrowForTopic");
+  guard.streamUuid(streamId, "buildSidebarMarkReadNarrowForTopic");
   const normalizedTopic = normalizeTopicForIdentity(topic);
   const channelOperator = useStreamOperator ? "stream" : "channel";
   return normalizeMessengerMessagesNarrowForApi([

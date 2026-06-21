@@ -61,7 +61,7 @@ export function buildPushPayloadFromEnvelopeData(
       sender_avatar_url: data.sender_avatar_url,
       type: data.message_type === "private" ? "private" : "stream",
       stream_name: data.stream_name,
-      stream_id: data.stream_id != null ? Number(data.stream_id) : undefined,
+      stream_uuid: data.stream_uuid,
       topic: data.topic,
       content: data.content ?? notificationBody ?? "",
       flags: parsePushFlags(data.flags),

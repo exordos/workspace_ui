@@ -15,7 +15,7 @@ import type { UserId } from "~/shared/lib/user-id.lib";
 interface ResolveMarkAllAsReadTargetOptions {
   isDmView: boolean;
   activeDmUserIds: UserId[] | null;
-  activeStreamId: number | null;
+  activeStreamId: string | null;
   activeTopic: string | undefined;
 }
 
@@ -26,7 +26,7 @@ export type MarkAllAsReadTarget =
     }
   | {
       type: "topic";
-      streamId: number;
+      streamId: string;
       topic: string;
     };
 
@@ -71,7 +71,7 @@ function messageLocationMatchesMarkAllTarget(
     return location.dmKey === dmRouteKey(target.userIds, currentUserId);
   }
   if (location.type !== "stream") return false;
-  if (location.stream_id !== target.streamId) return false;
+  if (location.streamUuid !== target.streamId) return false;
   return normalizeTopicForIdentity(location.topic) === normalizeTopicForIdentity(target.topic);
 }
 

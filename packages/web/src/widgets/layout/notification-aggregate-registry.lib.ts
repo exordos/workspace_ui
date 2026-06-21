@@ -45,7 +45,7 @@ export function buildNotificationBucketKeyFromMessage(
   }
 
   const baseKey =
-    message.type === "stream" && message.stream_id != null
+    message.type === "stream" && message.stream_uuid != null
       ? Number.isInteger(message.sender_id) && message.sender_id > 0
         ? `${chatKey}:sender:${message.sender_id}`
         : null

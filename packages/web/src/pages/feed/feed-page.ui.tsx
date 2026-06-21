@@ -269,7 +269,7 @@ export const FeedPage: React.FC = () => {
               className="overscroll-behavior-contain flex min-h-0 flex-1 flex-col space-y-2 overflow-auto scroll-auto px-3 pb-3 pt-2"
             >
               {messages.map((m) => {
-                const isStream = m.stream_id != null;
+                const isStream = m.stream_uuid != null;
                 const streamName = isStream ? (m.channel ?? null) : null;
                 const topic = isStream ? (m.subject ?? "").trim() : null;
                 const contextTopic = topic != null && topic.length > 0 ? topic : t("feed.title");

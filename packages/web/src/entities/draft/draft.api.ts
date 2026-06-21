@@ -51,7 +51,7 @@ export async function createDraft(input: DraftInput): Promise<MessageId | null> 
   guard.nonEmptyArray(input.to, "draft to (stream ID or recipient IDs)");
   for (const id of input.to) {
     if (input.type === "stream") {
-      guard.streamId(id, "createDraft to");
+      guard.streamUuid(id, "createDraft to");
     } else {
       guard.userId(id, "createDraft to");
     }
@@ -86,7 +86,7 @@ export async function updateDraftOnServer(id: MessageId, input: DraftInput): Pro
   guard.nonEmptyArray(input.to, "draft to");
   for (const uid of input.to) {
     if (input.type === "stream") {
-      guard.streamId(uid, "updateDraftOnServer to");
+      guard.streamUuid(uid, "updateDraftOnServer to");
     } else {
       guard.userId(uid, "updateDraftOnServer to");
     }

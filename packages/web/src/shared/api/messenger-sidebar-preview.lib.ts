@@ -139,11 +139,11 @@ export async function fetchRecentStreamMessagesForSidebarPreview(
 
 /** Recent messages in one channel for lazy sidebar topic previews. */
 export async function fetchStreamChannelMessagesForSidebarTopics(
-  streamId: number,
+  streamId: string,
   numBefore = STREAM_SIDEBAR_TOPIC_HYDRATE_LIMIT,
   signal?: AbortSignal,
 ): Promise<WorkspaceRawMessage[]> {
-  guard.streamId(streamId, "fetchStreamChannelMessagesForSidebarTopics");
+  const streamUuid = guard.streamUuid(streamId, "fetchStreamChannelMessagesForSidebarTopics");
   const safeNumBefore = validateNonNegativeInteger(
     numBefore,
     "fetchStreamChannelMessagesForSidebarTopics.numBefore",
@@ -152,7 +152,7 @@ export async function fetchStreamChannelMessagesForSidebarTopics(
     anchor: "newest",
     numBefore: safeNumBefore,
     numAfter: MESSENGER_STREAM_CHAT_NUM_AFTER,
-    narrow: [{ operator: "stream", operand: streamId }],
+    narrow: [{ operator: "stream", operand: streamUuid }],
     applyMarkdown: false,
     signal,
     flowDebugLabel: "fetchStreamChannelMessagesForSidebarTopics (sidebar topic hydrate)",
@@ -161,11 +161,11 @@ export async function fetchStreamChannelMessagesForSidebarTopics(
 
 /** Latest message per topic for expanded sidebar rows that only have topic-name shells. */
 export async function fetchLatestMessagesForSidebarTopics(
-  streamId: number,
+  streamId: string,
   topics: readonly string[],
   signal?: AbortSignal,
 ): Promise<WorkspaceRawMessage[]> {
-  guard.streamId(streamId, "fetchLatestMessagesForSidebarTopics.streamId");
+  const streamUuid = guard.streamUuid(streamId, "fetchLatestMessagesForSidebarTopics.streamId");
   const uniqueTopics = Array.from(new Set(topics));
   if (uniqueTopics.length === 0) {
     return [];
@@ -189,7 +189,7 @@ export async function fetchLatestMessagesForSidebarTopics(
         numBefore: 1,
         numAfter: 0,
         narrow: normalizeMessengerMessagesNarrowForApi([
-          { operator: "stream", operand: streamId },
+          { operator: "stream", operand: streamUuid },
           { operator: "topic", operand: topic },
         ]),
         applyMarkdown: false,

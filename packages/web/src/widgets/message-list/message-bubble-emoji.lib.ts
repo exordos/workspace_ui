@@ -59,7 +59,7 @@ function hasEmojiPresentationSelector(value: string): boolean {
  */
 export function isOneToOneDirectMessage(message: MockMessage): boolean {
   return (
-    message.stream_id == null &&
+    message.stream_uuid == null &&
     Array.isArray(message.display_recipient) &&
     message.display_recipient.length === 2
   );

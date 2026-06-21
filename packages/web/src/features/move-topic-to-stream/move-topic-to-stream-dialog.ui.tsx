@@ -7,7 +7,7 @@ export interface MoveTopicToStreamDialogProps {
   sourceChannelName: string;
   targetStreamId: string;
   onTargetStreamIdChange: (value: string) => void;
-  targetStreamOptions: readonly { streamId: number; name: string }[];
+  targetStreamOptions: readonly { streamId: string; name: string }[];
   topicName: string;
   onTopicNameChange: (value: string) => void;
   pending: boolean;
@@ -64,7 +64,7 @@ export const MoveTopicToStreamDialog = React.memo(function MoveTopicToStreamDial
           >
             <option value="">{t("channel.selectChannel")}</option>
             {targetStreamOptions.map((stream) => (
-              <option key={stream.streamId} value={String(stream.streamId)}>
+              <option key={stream.streamId} value={stream.streamId}>
                 #{stream.name}
               </option>
             ))}

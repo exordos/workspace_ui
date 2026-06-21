@@ -3,20 +3,20 @@
  *
  * Generates shareable URLs for any content within the app.
  * Handles three runtimes:
- * - Web/PWA: standard URL paths (https://app.example.com/stream/5-general)
+ * - Web/PWA: standard URL paths (https://app.example.com/stream/<stream-uuid>)
  * - Electron: custom protocol (workspace://open/stream/5-general)
  * - Internal: react-router paths (/stream/5-general)
  *
  * Usage:
  *   import { deeplink } from "~/lib/deeplinks";
  *
- *   deeplink.toStream(5, "general");          // "/stream/5-general"
- *   deeplink.toTopic(5, "general", "bugs");   // "/stream/5-general/topic/bugs"
+ *   deeplink.toStream("<stream-uuid>");          // "/stream/<stream-uuid>"
+ *   deeplink.toTopic("<stream-uuid>", "bugs");   // "/stream/<stream-uuid>/topic/bugs"
  *   deeplink.toDm(42);                        // "/dm/42"
  *   deeplink.toActivity("starred");           // "/activity/starred"
- *   deeplink.toMessage(5, "general", 12345);  // "/stream/5-general/topic/general?msg=12345"
+ *   deeplink.toMessage("<stream-uuid>", "general", 12345);  // "/stream/<stream-uuid>/topic/general?msg=12345"
  *
- *   deeplink.toShareableUrl("/stream/5-general");  // "https://app.example.com/stream/5-general"
+ *   deeplink.toShareableUrl("/stream/<stream-uuid>");  // "https://app.example.com/stream/<stream-uuid>"
  *   deeplink.parse("workspace://open/dm/42");      // { type: "dm", dmId: "42" }
  *
  *   await deeplink.share({ title: "#general", url: shareUrl });
@@ -36,32 +36,23 @@ const log = createLogger("deeplinks");
 // Route builders (internal paths)
 // ---------------------------------------------------------------------------
 
-function slugForStream(streamId: number, streamName: string): string {
-  const slug = streamName
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/-+$/, "");
-  return `${streamId}-${slug || "channel"}`;
+function slugForStream(streamUuid: string): string {
+  return encodeURIComponent(streamUuid.trim().toLowerCase());
 }
 
-export function toStream(streamId: number, streamName: string): string {
-  return withCurrentOrgRoute(`/stream/${slugForStream(streamId, streamName)}`);
+export function toStream(streamUuid: string): string {
+  return withCurrentOrgRoute(`/stream/${slugForStream(streamUuid)}`);
 }
 
-export function toTopic(streamId: number, streamName: string, topic: string): string {
+export function toTopic(streamUuid: string, topic: string): string {
   const topicSegment = encodeTopicForRoute(topic);
   return withCurrentOrgRoute(
-    `/stream/${slugForStream(streamId, streamName)}/topic/${encodeURIComponent(topicSegment)}`,
+    `/stream/${slugForStream(streamUuid)}/topic/${encodeURIComponent(topicSegment)}`,
   );
 }
 
-export function toMessage(
-  streamId: number,
-  streamName: string,
-  topic: string,
-  messageId: MessageId,
-): string {
-  return `${toTopic(streamId, streamName, topic)}?msg=${messageId}`;
+export function toMessage(streamUuid: string, topic: string, messageId: MessageId): string {
+  return `${toTopic(streamUuid, topic)}?msg=${messageId}`;
 }
 
 export function toDm(dmId: number | string): string {

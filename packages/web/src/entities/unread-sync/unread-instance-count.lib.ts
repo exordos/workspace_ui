@@ -5,8 +5,8 @@ import {
 import type { ComputeInstanceUnreadInput } from "./unread-instance-count.types";
 
 interface UnreadMutePredicates {
-  isStreamMuted?: (streamId: number) => boolean;
-  isEffectivelyMuted?: (streamId: number, topic: string) => boolean;
+  isStreamMuted?: (streamId: string) => boolean;
+  isEffectivelyMuted?: (streamId: string, topic: string) => boolean;
 }
 
 type ComputeInstanceUnreadWithMuteInput = ComputeInstanceUnreadInput & UnreadMutePredicates;

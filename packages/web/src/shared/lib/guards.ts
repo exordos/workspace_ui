@@ -26,6 +26,7 @@ import type { UserId } from "./user-id.lib";
 const log = createLogger("guard");
 
 const IS_DEV = import.meta.env?.DEV ?? false;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 // ---------------------------------------------------------------------------
 // invariant — assert a condition, throw in dev, log+return in prod
@@ -144,14 +145,15 @@ export const guard = {
   },
 
   /**
-   * Validate stream ID before API calls.
+   * Validate Workspace stream UUID before API calls.
    */
-  streamId(value: unknown, context = ""): number {
+  streamUuid(value: unknown, context = ""): string {
+    const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
     invariant(
-      typeof value === "number" && Number.isInteger(value) && value > 0,
-      `Invalid streamId: ${JSON.stringify(value)}${context ? ` in ${context}` : ""}`,
+      UUID_RE.test(normalized),
+      `Invalid streamUuid: ${JSON.stringify(value)}${context ? ` in ${context}` : ""}`,
     );
-    return value;
+    return normalized;
   },
 
   /**

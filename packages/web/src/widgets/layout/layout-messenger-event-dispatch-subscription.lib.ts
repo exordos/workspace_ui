@@ -11,12 +11,14 @@ export function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
 
-export function parsePositiveInteger(value: unknown): number | null {
-  return isPositiveInteger(value) ? value : null;
+export function parseStreamUuid(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const streamUuid = value.trim().toLowerCase();
+  return streamUuid.length > 0 ? streamUuid : null;
 }
 
 export function parseSubscriptionRows(value: unknown): {
-  streamId: number;
+  streamUuid: string;
   name: string;
   isArchived?: boolean;
   creatorId?: number;
@@ -27,7 +29,7 @@ export function parseSubscriptionRows(value: unknown): {
 }[] {
   if (!Array.isArray(value)) return [];
   const rows: {
-    streamId: number;
+    streamUuid: string;
     name: string;
     isArchived?: boolean;
     creatorId?: number;
@@ -47,7 +49,7 @@ export function parseSubscriptionRows(value: unknown): {
 }
 
 export function parseOneSubscriptionRow(record: Record<string, unknown>): {
-  streamId: number;
+  streamUuid: string;
   name: string;
   isArchived?: boolean;
   creatorId?: number;
@@ -58,9 +60,9 @@ export function parseOneSubscriptionRow(record: Record<string, unknown>): {
   canResolveTopicsGroup?: MessengerGroupSettingValue;
   canMoveMessagesOutOfChannelGroup?: MessengerGroupSettingValue;
 } | null {
-  const streamIdRaw = record.stream_id;
+  const streamUuidRaw = parseStreamUuid(record.stream_uuid);
   const name = record.name;
-  if (!isPositiveInteger(streamIdRaw) || typeof name !== "string") return null;
+  if (streamUuidRaw == null || typeof name !== "string") return null;
   const creatorId = isPositiveInteger(record.creator_id) ? record.creator_id : undefined;
   const canAddSubscribersGroup = normalizeGroupSettingValue(record.can_add_subscribers_group);
   const canRemoveSubscribersGroup = normalizeGroupSettingValue(record.can_remove_subscribers_group);
@@ -70,7 +72,7 @@ export function parseOneSubscriptionRow(record: Record<string, unknown>): {
     record.can_move_messages_out_of_channel_group,
   );
   return {
-    streamId: streamIdRaw,
+    streamUuid: streamUuidRaw,
     name: name.trim(),
     ...(typeof record.is_archived === "boolean" ? { isArchived: record.is_archived } : {}),
     ...(creatorId != null ? { creatorId } : {}),
@@ -83,12 +85,13 @@ export function parseOneSubscriptionRow(record: Record<string, unknown>): {
   };
 }
 
-export function parseSubscriptionStreamIds(value: unknown): number[] {
+export function parseSubscriptionStreamUuids(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  const ids: number[] = [];
+  const ids: string[] = [];
   for (const raw of value) {
-    if (!isPositiveInteger(raw)) continue;
-    ids.push(raw);
+    const streamUuid = parseStreamUuid(raw);
+    if (streamUuid == null) continue;
+    ids.push(streamUuid);
   }
   return ids;
 }
@@ -107,11 +110,11 @@ export function handleSubscriptionRemove(
   ctx: LayoutMessengerEventDispatchContext,
 ): void {
   const { chatList } = ctx;
-  const fromArray = parseSubscriptionRows(event.subscriptions).map((row) => row.streamId);
-  const fromIds = parseSubscriptionStreamIds(event.stream_ids);
+  const fromArray = parseSubscriptionRows(event.subscriptions).map((row) => row.streamUuid);
+  const fromIds = parseSubscriptionStreamUuids(event.stream_uuids);
   const ids = Array.from(new Set([...fromArray, ...fromIds]));
-  for (const streamId of ids) {
-    chatList.removeStream(streamId);
+  for (const streamUuid of ids) {
+    chatList.removeStream(streamUuid);
   }
 }
 
@@ -119,19 +122,19 @@ export function handleSubscriptionPeer(
   event: MessengerEvent,
   ctx: LayoutMessengerEventDispatchContext,
 ): void {
-  const fromArray = parseSubscriptionRows(event.subscriptions).map((row) => row.streamId);
-  const fromIds = parseSubscriptionStreamIds(event.stream_ids);
-  const streamIds = Array.from(new Set([...fromArray, ...fromIds]));
-  if (streamIds.length > 0) {
-    ctx.onStreamPeerMembersChanged?.(streamIds);
+  const fromArray = parseSubscriptionRows(event.subscriptions).map((row) => row.streamUuid);
+  const fromIds = parseSubscriptionStreamUuids(event.stream_uuids);
+  const streamUuids = Array.from(new Set([...fromArray, ...fromIds]));
+  if (streamUuids.length > 0) {
+    ctx.onStreamPeerMembersChanged?.(streamUuids);
   }
 }
 
 export function buildStreamMetadataRowFromExisting(
-  streamId: number,
+  streamUuid: string,
   existing: ReturnType<LayoutMessengerEventDispatchContext["chatList"]["streamsMap"]["get"]>,
 ): {
-  streamId: number;
+  streamUuid: string;
   name: string;
   isArchived?: boolean;
   inviteOnly?: boolean;
@@ -142,7 +145,7 @@ export function buildStreamMetadataRowFromExisting(
   const streamName = existing?.name?.trim() ?? "";
   if (streamName.length === 0) return null;
   return {
-    streamId,
+    streamUuid,
     name: streamName,
     ...(existing?.isArchived != null ? { isArchived: existing.isArchived } : {}),
     ...(existing?.inviteOnly != null ? { inviteOnly: existing.inviteOnly } : {}),
@@ -165,7 +168,7 @@ export function buildStreamMetadataRowFromExisting(
 }
 
 interface SubscriptionMetadataRow {
-  streamId: number;
+  streamUuid: string;
   name: string;
   isArchived?: boolean;
   inviteOnly?: boolean;
@@ -231,7 +234,7 @@ export function applySubscriptionMetadataField(
 export function handleSubscriptionPropertyUpdate(
   event: MessengerEvent,
   ctx: LayoutMessengerEventDispatchContext,
-  streamId: number,
+  streamUuid: string,
   property: string,
 ): void {
   const { chatList, mute } = ctx;
@@ -239,28 +242,28 @@ export function handleSubscriptionPropertyUpdate(
     const value = event.value as boolean | undefined;
     if (value == null) return;
     if (value) {
-      mute.muteStream(streamId);
+      mute.muteStream(streamUuid);
     } else {
-      mute.unmuteStream(streamId);
+      mute.unmuteStream(streamUuid);
     }
     return;
   }
   if (property === "desktop_notifications") {
     const value = event.value as boolean | undefined;
     if (typeof value !== "boolean") return;
-    mute.setStreamDesktopNotifications(streamId, value);
+    mute.setStreamDesktopNotifications(streamUuid, value);
     return;
   }
   if (property === "audible_notifications") {
     const value = event.value as boolean | undefined;
     if (typeof value !== "boolean") return;
-    mute.setStreamAudibleNotifications(streamId, value);
+    mute.setStreamAudibleNotifications(streamUuid, value);
     return;
   }
   if (property === "name") {
     const value = event.value as string | undefined;
     if (typeof value === "string" && value.trim().length > 0) {
-      chatList.renameStream(streamId, value);
+      chatList.renameStream(streamUuid, value);
     }
     return;
   }
@@ -276,8 +279,8 @@ export function handleSubscriptionPropertyUpdate(
     return;
   }
 
-  const existing = chatList.streamsMap.get(streamId);
-  const row = buildStreamMetadataRowFromExisting(streamId, existing);
+  const existing = chatList.streamsMap.get(streamUuid);
+  const row = buildStreamMetadataRowFromExisting(streamUuid, existing);
   if (row == null) return;
   applySubscriptionMetadataField(row, property, event);
   chatList.upsertStreamMetadataRows([row]);
@@ -303,18 +306,18 @@ export function handleSubscription(
   }
   if (op !== "update") return;
 
-  const streamId = event.stream_id as number | undefined;
+  const streamUuid = parseStreamUuid(event.stream_uuid);
   const property = event.property as string | undefined;
-  if (!Number.isInteger(streamId) || streamId == null || streamId <= 0 || property == null) {
+  if (streamUuid == null || property == null) {
     return;
   }
-  handleSubscriptionPropertyUpdate(event, ctx, streamId, property);
+  handleSubscriptionPropertyUpdate(event, ctx, streamUuid, property);
 }
 
 export function handleStreamPropertyUpdate(
   event: MessengerEvent,
   ctx: LayoutMessengerEventDispatchContext,
-  streamId: number,
+  streamUuid: string,
   property: string,
 ): void {
   // Apply targeted stream field updates from stream:update — some servers send rename/ACL via stream event, not subscription.
@@ -325,7 +328,7 @@ export function handleStreamPropertyUpdate(
     const nameFromField = typeof event.name === "string" ? event.name : null;
     const nextName = nameFromValue ?? nameFromField;
     if (nextName != null && nextName.trim().length > 0) {
-      chatList.renameStream(streamId, nextName);
+      chatList.renameStream(streamUuid, nextName);
     }
     return;
   }
@@ -342,8 +345,8 @@ export function handleStreamPropertyUpdate(
   }
 
   // Reuse shared metadata applier to avoid duplicating update logic.
-  const existing = chatList.streamsMap.get(streamId);
-  const row = buildStreamMetadataRowFromExisting(streamId, existing);
+  const existing = chatList.streamsMap.get(streamUuid);
+  const row = buildStreamMetadataRowFromExisting(streamUuid, existing);
   if (row == null) return;
   applySubscriptionMetadataField(row, property, event);
   chatList.upsertStreamMetadataRows([row]);
@@ -365,31 +368,31 @@ export function handleStream(
     return;
   }
   if (op === "delete") {
-    // stream:delete — cover streams, stream_ids, and stream_id payload variants.
-    const fromRows = parseSubscriptionRows(event.streams).map((row) => row.streamId);
-    const fromIds = parseSubscriptionStreamIds(event.stream_ids);
-    const fromSingle = parsePositiveInteger(event.stream_id);
+    // stream:delete — cover streams, stream_uuids, and stream_uuid payload variants.
+    const fromRows = parseSubscriptionRows(event.streams).map((row) => row.streamUuid);
+    const fromIds = parseSubscriptionStreamUuids(event.stream_uuids);
+    const fromSingle = parseStreamUuid(event.stream_uuid);
     const ids = Array.from(
       new Set([...fromRows, ...fromIds, ...(fromSingle != null ? [fromSingle] : [])]),
     );
-    for (const streamId of ids) {
-      ctx.chatList.removeStream(streamId);
+    for (const streamUuid of ids) {
+      ctx.chatList.removeStream(streamUuid);
     }
     return;
   }
   if (op !== "update") return;
-  const streamId = parsePositiveInteger(event.stream_id);
-  if (streamId == null) return;
+  const streamUuid = parseStreamUuid(event.stream_uuid);
+  if (streamUuid == null) return;
   const property = typeof event.property === "string" ? event.property : null;
   if (property != null) {
     // Property-based updates (name, invite_only, can_*_group) — keep format branching in one place.
-    handleStreamPropertyUpdate(event, ctx, streamId, property);
+    handleStreamPropertyUpdate(event, ctx, streamUuid, property);
     return;
   }
   // Fallback: flat rename payload without property field.
   const nextName = typeof event.name === "string" ? event.name : null;
   if (nextName != null && nextName.trim().length > 0) {
-    ctx.chatList.renameStream(streamId, nextName);
+    ctx.chatList.renameStream(streamUuid, nextName);
   }
 }
 
@@ -399,18 +402,18 @@ export function handleUserTopic(
 ): void {
   if (event.type !== "user_topic") return;
   const { mute } = ctx;
-  const streamId = event.stream_id as number | undefined;
+  const streamUuid = parseStreamUuid(event.stream_uuid);
   const topicName = event.topic_name as string | undefined;
   const visibilityPolicy = event.visibility_policy as number | undefined;
-  if (streamId == null || topicName == null || visibilityPolicy == null) return;
+  if (streamUuid == null || topicName == null || visibilityPolicy == null) return;
   const normalizedTopic = normalizeTopicForIdentity(topicName);
   if (visibilityPolicy === 1) {
-    mute.muteTopic(streamId, normalizedTopic);
+    mute.muteTopic(streamUuid, normalizedTopic);
   } else if (visibilityPolicy === 2) {
-    mute.unmuteTopic(streamId, normalizedTopic);
+    mute.unmuteTopic(streamUuid, normalizedTopic);
   } else if (visibilityPolicy === 3) {
-    mute.followTopic(streamId, normalizedTopic);
+    mute.followTopic(streamUuid, normalizedTopic);
   } else {
-    mute.clearTopicVisibilityOverride(streamId, normalizedTopic);
+    mute.clearTopicVisibilityOverride(streamUuid, normalizedTopic);
   }
 }

@@ -39,7 +39,8 @@ export interface DesktopFlowExchangeResult {
 }
 
 export interface MessengerUserTopic {
-  stream_id: number;
+  stream_uuid: string;
+  topic_uuid?: string;
   topic_name: string;
   visibility_policy: number;
 }
@@ -68,7 +69,6 @@ export interface MessengerMeStream {
   invite_only: boolean;
   announce: boolean;
   private: boolean;
-  stream_id?: number;
 }
 
 /** Markdown message body from the Workspace gateway `/messages/` payload. */
@@ -86,6 +86,7 @@ export interface MessengerMeMessage {
   /** Message UUID. Use this for paging, row lookup, and message operations. */
   uuid: string;
   stream_uuid: string;
+  topic_uuid?: string;
   payload: MessengerMeMessagePayload;
   read: boolean;
   pinned: boolean;
@@ -93,6 +94,17 @@ export interface MessengerMeMessage {
   user_uuid?: string;
   project_id?: string;
   last_synced_at?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Stream topic row returned by `GET /api/messenger/v1/stream_topics/`. */
+export interface MessengerStreamTopic {
+  uuid: string;
+  name: string;
+  stream_uuid: string;
+  default_for_stream_uuid?: string;
+  project_id?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -303,8 +315,9 @@ export interface WorkspaceRawMessage {
     | string
     | { id: number; full_name: string; email?: string; avatar_url?: string }[];
   subject?: string;
+  topic_uuid?: string;
   type?: string;
-  stream_id?: number | null;
+  stream_uuid?: string | null;
   flags?: string[];
   reactions?: Reaction[];
 }
@@ -322,9 +335,8 @@ export interface DirectMessagesPageResult {
 }
 
 export interface MockStream {
-  stream_id: number;
-  /** Workspace stream UUID used for message reads and writes. */
-  stream_uuid?: string;
+  /** Workspace stream UUID used as the stream identity and for message reads/writes. */
+  stream_uuid: string;
   name: string;
   description: string;
   is_announcement_only: boolean;
@@ -356,12 +368,13 @@ export interface MockMessage {
   source_message_uuid?: MessageId;
   sender_id: number;
   sender_full_name: string;
-  stream_id: number | null;
+  stream_uuid: string | null;
   display_recipient?:
     | string
     | { id: number; full_name: string; email?: string; avatar_url?: string }[];
   channel?: string;
   subject: string;
+  topic_uuid?: string;
   /**
    * Message body: Workspace-flavored Markdown when fetched with `apply_markdown=false` (app default),
    * or rendered HTML from some real-time payloads / legacy cache.
@@ -410,16 +423,16 @@ export interface RawMessageToMockInput {
   timestamp: number;
   display_recipient?: WorkspaceRawMessage["display_recipient"];
   subject?: string;
+  topic_uuid?: string;
   type?: string;
-  stream_id?: number | null;
+  stream_uuid?: string | null;
   flags?: string[];
   reactions?: Reaction[];
 }
 
 export interface MessengerSubscription {
-  stream_id: number;
-  /** Workspace stream UUID used for message reads and writes. */
-  stream_uuid?: string;
+  /** Workspace stream UUID used as the stream identity. */
+  stream_uuid: string;
   name: string;
   is_muted: boolean;
   /** Per-channel override; null/undefined inherits global stream notification settings. */
@@ -428,6 +441,7 @@ export interface MessengerSubscription {
   is_archived?: boolean;
   creator_id?: number;
   invite_only?: boolean;
+  private?: boolean;
   can_add_subscribers_group?: MessengerGroupSettingValue;
   can_remove_subscribers_group?: MessengerGroupSettingValue;
   can_administer_channel_group?: MessengerGroupSettingValue;
@@ -447,8 +461,8 @@ export interface SendMessageParams {
   stream?: string;
   /** Workspace stream UUID for gateway message creation. */
   streamUuid?: string;
-  /** Optional stream ID for a more faithful optimistic payload. */
-  streamId?: number;
+  /** Workspace topic UUID for stream-topic messages. */
+  topicUuid?: string;
   subject?: string;
   content: string;
   sender_id?: number;

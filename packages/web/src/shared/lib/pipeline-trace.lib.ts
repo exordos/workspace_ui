@@ -107,7 +107,7 @@ function tracePipeline(
 /** Narrow shape for log labels only (mirrors `CurrentChatContext`). */
 export type ChatContextLogShape =
   | null
-  | { type: "stream"; streamId: number; topic: string }
+  | { type: "stream"; streamId: string; topic: string }
   | { type: "dm"; dmKey: string };
 
 /** Short, stable label for logs (no message content). */
@@ -182,7 +182,7 @@ export function logLinkPreviewTrace(event: string, data?: Record<string, unknown
 }
 
 export type SidebarUnreadLogContext =
-  | { type: "stream"; streamId: number; topic: string }
+  | { type: "stream"; streamId: string; topic: string }
   | { type: "dm"; dmKey: string };
 
 export interface SidebarUnreadLogStateSlice {
@@ -235,7 +235,7 @@ export function summarizeContextBadge(
 }
 
 export function summarizeRegisterUnreadSnapshot(snapshot: {
-  streams: readonly { streamId: number; topic: string; unreadMessageIds: readonly MessageId[] }[];
+  streams: readonly { streamId: string; topic: string; unreadMessageIds: readonly MessageId[] }[];
   dms: readonly { userIds: readonly number[]; unreadMessageIds: readonly MessageId[] }[];
   totalCount: number;
   oldUnreadsMissing?: boolean;

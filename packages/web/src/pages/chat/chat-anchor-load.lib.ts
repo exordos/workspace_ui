@@ -42,7 +42,7 @@ export function isFocusedMessageLoadedInRoute(
     return messageChatKey === expectedDmKey;
   }
 
-  if (resolvedStreamId == null || focusedMessage.stream_id !== resolvedStreamId) {
+  if (resolvedStreamId == null || focusedMessage.stream_uuid !== resolvedStreamId) {
     return false;
   }
   if (topicName == null) return true;

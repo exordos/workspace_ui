@@ -1,10 +1,9 @@
 /**
  * Create chat API — Workspace endpoints for starting new conversations.
  *
- * DM (IAM): resolve or create private stream via gateway POST /streams/, then navigate to /dm/:streamUuid.
- * DM (legacy numeric): navigate to /dm/<userId>-<name> — no explicit create API.
+ * Personal chat: resolve or create a private stream via gateway POST /streams/, then navigate to /stream.
  * Channel: POST /channels/create to create and subscribe.
- * Unarchive: PATCH /streams/{stream_id} with is_archived=false (delegates to shared unarchiveStream).
+ * Unarchive: PATCH /streams/{stream_uuid} with is_archived=false (delegates to shared unarchiveStream).
  * Also: channel listing and unsubscribe for management flows.
  */
 
@@ -25,17 +24,12 @@ import {
   type UserId,
   userIdStorageKey,
 } from "~/shared/lib/user-id.lib";
-import { buildDmSlug } from "./create-chat-dialog.lib";
 
 const log = createLogger("create-chat:api");
 
-export type StartDirectMessageResult =
-  | ({ kind: "gateway" } & DirectMessageStreamRef)
-  | { kind: "legacy"; slug: string };
+export type StartDirectMessageResult = { kind: "gateway" } & DirectMessageStreamRef;
 
-/**
- * Starts a 1:1 DM: gateway private stream for IAM UUID peers, legacy slug navigation otherwise.
- */
+/** Starts a 1:1 personal chat as a gateway private stream. */
 export async function startDirectMessage(
   peerUserId: UserId,
   peerFullName: string,
@@ -50,7 +44,7 @@ export async function startDirectMessage(
     }
     return { kind: "gateway", ...stream };
   }
-  return { kind: "legacy", slug: buildDmSlug(peerUserId, peerFullName) };
+  return null;
 }
 
 /**
@@ -65,7 +59,7 @@ export async function createChannel(params: {
   inviteOnly?: boolean;
   announce?: boolean;
   canSendMessageGroup?: MessengerGroupSettingValue;
-}): Promise<{ streamId: number } | null> {
+}): Promise<{ streamUuid: string } | null> {
   guard.nonEmpty(params.name, "channel name");
   const subscribers = normalizePrincipalUserIds(params.subscribers);
 
@@ -103,10 +97,16 @@ export async function createChannel(params: {
 
     if (res.ok) {
       log.info("Channel created", { name: params.name });
-      // `/channels/create` returns stream id in `id`; fallback 0 if missing.
-      const data = res.data as { id?: unknown };
-      const streamId = typeof data.id === "number" && Number.isInteger(data.id) ? data.id : 0;
-      return { streamId };
+      const data = res.data as { stream_uuid?: unknown; uuid?: unknown; id?: unknown };
+      const streamUuid =
+        typeof data.stream_uuid === "string"
+          ? data.stream_uuid
+          : typeof data.uuid === "string"
+            ? data.uuid
+            : typeof data.id === "string"
+              ? data.id
+              : "";
+      return streamUuid.length > 0 ? { streamUuid } : null;
     }
 
     log.warn("Channel creation failed", { status: res.status });
@@ -121,12 +121,11 @@ export async function createChannel(params: {
 export type UnarchiveChannelResult = UnarchiveStreamResult;
 
 /**
- * Unarchive channel: PATCH /streams/{stream_id} with is_archived=false.
- * Compatibility errors (ignored_parameters_unsupported) are classified inside unarchiveStream.
+ * Unarchive channel: PATCH /streams/{stream_uuid} with is_archived=false.
  */
-export async function unarchiveChannel(streamId: number): Promise<UnarchiveChannelResult> {
-  guard.streamId(streamId, "unarchiveChannel.streamId");
-  return unarchiveStream(streamId);
+export async function unarchiveChannel(streamUuid: string): Promise<UnarchiveChannelResult> {
+  guard.streamUuid(streamUuid, "unarchiveChannel.streamUuid");
+  return unarchiveStream(streamUuid);
 }
 
 // ---------------------------------------------------------------------------
@@ -134,7 +133,7 @@ export async function unarchiveChannel(streamId: number): Promise<UnarchiveChann
 // ---------------------------------------------------------------------------
 
 export interface SubscribedChannel {
-  streamId: number;
+  streamUuid: string;
   name: string;
   description: string;
   inviteOnly: boolean;
@@ -166,7 +165,7 @@ export async function fetchSubscribedChannels(): Promise<SubscribedChannel[]> {
 
     const data = res.data as {
       subscriptions?: {
-        stream_id: number;
+        stream_uuid: string;
         name: string;
         description: string;
         invite_only: boolean;
@@ -176,7 +175,7 @@ export async function fetchSubscribedChannels(): Promise<SubscribedChannel[]> {
 
     const subscriptions = data.subscriptions ?? [];
     return subscriptions.map((s) => ({
-      streamId: s.stream_id,
+      streamUuid: s.stream_uuid,
       name: s.name,
       description: s.description,
       inviteOnly: s.invite_only,

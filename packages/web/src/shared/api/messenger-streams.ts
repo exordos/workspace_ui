@@ -25,7 +25,12 @@ import {
   buildCreateStreamBindingBody,
   parseCreatedWorkspaceStream,
 } from "./messenger-private-stream-create.lib";
-import type { MockStream, MessengerMeStream, MessengerSubscription } from "./messenger.types";
+import type {
+  MockStream,
+  MessengerMeStream,
+  MessengerStreamTopic,
+  MessengerSubscription,
+} from "./messenger.types";
 
 const log = createLogger("messenger-streams");
 
@@ -189,13 +194,6 @@ function readOptionalString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-function readOptionalPositiveInteger(value: unknown): number | undefined {
-  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
-    return undefined;
-  }
-  return value;
-}
-
 function extractMeStreamItems(data: unknown): unknown[] {
   if (Array.isArray(data)) {
     return data;
@@ -225,9 +223,6 @@ function parseMeStream(row: unknown): MessengerMeStream | null {
   const projectId = readUuid(row.project_id);
   const userUuid = readUuid(row.user_uuid);
   const source = isRecord(row.source) ? row.source : undefined;
-  // Numeric Zulip id lives in `source.stream_id` for zulip-sourced streams; tolerate a top-level one too.
-  const streamId =
-    readOptionalPositiveInteger(row.stream_id) ?? readOptionalPositiveInteger(source?.stream_id);
   const createdAt = readOptionalString(row.created_at);
   const updatedAt = readOptionalString(row.updated_at);
   const lastSyncedAt = readOptionalString(row.last_synced_at);
@@ -247,7 +242,6 @@ function parseMeStream(row: unknown): MessengerMeStream | null {
     invite_only: row.invite_only === true,
     announce: row.announce === true,
     private: row.private === true,
-    ...(streamId != null ? { stream_id: streamId } : {}),
   };
 }
 
@@ -312,6 +306,79 @@ async function fetchStreamBindings(): Promise<WorkspaceStreamBindingRef[]> {
   return extractStreamBindingItems(response.data)
     .map(parseStreamBinding)
     .filter((binding): binding is WorkspaceStreamBindingRef => binding != null);
+}
+
+function extractStreamTopicItems(data: unknown): unknown[] {
+  if (Array.isArray(data)) {
+    return data;
+  }
+  if (!isRecord(data)) {
+    return [];
+  }
+  if (Array.isArray(data.stream_topics)) {
+    return data.stream_topics;
+  }
+  if (Array.isArray(data.topics)) {
+    return data.topics;
+  }
+  if (Array.isArray(data.results)) {
+    return data.results;
+  }
+  return [];
+}
+
+function parseStreamTopic(row: unknown): MessengerStreamTopic | null {
+  if (!isRecord(row)) {
+    return null;
+  }
+  const uuid = readUuid(row.uuid);
+  const streamUuid = readUuid(row.stream_uuid);
+  const name = readTrimmedString(row.name);
+  if (uuid == null || streamUuid == null || name == null) {
+    return null;
+  }
+  const projectId = readUuid(row.project_id);
+  const defaultForStreamUuid = readUuid(row.default_for_stream_uuid);
+  const createdAt = readOptionalString(row.created_at);
+  const updatedAt = readOptionalString(row.updated_at);
+  return {
+    uuid,
+    name,
+    stream_uuid: streamUuid,
+    ...(defaultForStreamUuid != null ? { default_for_stream_uuid: defaultForStreamUuid } : {}),
+    ...(projectId != null ? { project_id: projectId } : {}),
+    ...(createdAt != null ? { created_at: createdAt } : {}),
+    ...(updatedAt != null ? { updated_at: updatedAt } : {}),
+  };
+}
+
+export async function fetchStreamTopics(
+  streamUuid?: string,
+  signal?: AbortSignal,
+): Promise<MessengerStreamTopic[]> {
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+  const normalizedStreamUuid = streamUuid == null ? undefined : readUuid(streamUuid);
+  if (streamUuid != null && normalizedStreamUuid == null) {
+    return [];
+  }
+  const response = await messengerApi.getWithBase(
+    getMessengerWorkspaceApiBaseForCurrentInstance(),
+    "/stream_topics/",
+    normalizedStreamUuid != null ? { stream_uuid: normalizedStreamUuid } : undefined,
+    signal,
+  );
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+  if (!response.ok) {
+    log.warn("Stream topics fetch failed", { status: response.status });
+    return [];
+  }
+  return extractStreamTopicItems(response.data)
+    .map(parseStreamTopic)
+    .filter((topic): topic is MessengerStreamTopic => topic != null);
 }
 
 /** Finds an existing 1:1 private stream row for a peer IAM UUID through stream bindings. */
@@ -410,15 +477,12 @@ export async function resolveOrCreateDirectMessageStream(
 }
 
 function subscriptionFromMeStream(stream: MessengerMeStream): MessengerSubscription | null {
-  if (stream.private || stream.stream_id == null) {
-    return null;
-  }
   return {
-    stream_id: stream.stream_id,
     stream_uuid: stream.stream_uuid,
     name: stream.name,
     is_muted: false,
     invite_only: stream.invite_only,
+    private: stream.private,
   };
 }
 
@@ -433,9 +497,8 @@ export async function fetchSubscriptions(): Promise<MessengerSubscription[]> {
 export async function fetchStreams(): Promise<MockStream[]> {
   const streams = await fetchMyStreams();
   return streams
-    .filter((stream) => !stream.private && stream.stream_id != null)
+    .filter((stream) => !stream.private)
     .map((stream) => ({
-      stream_id: stream.stream_id!,
       stream_uuid: stream.stream_uuid,
       name: stream.name,
       description: stream.description,
@@ -632,61 +695,44 @@ export async function removeMembersFromStream(
   }
 }
 
-/** Fetches subscriber IDs for a stream (GET /streams/{stream_id}/members). */
-export async function fetchStreamMembers(streamId: number): Promise<number[]> {
-  guard.streamId(streamId, "fetchStreamMembers");
-  const res = await messengerPipelineGet(`/streams/${streamId}/members`);
-  if (!res?.ok) {
+/** Fetches stream member IAM UUIDs from Workspace stream bindings. */
+export async function fetchStreamMembers(streamUuid: string): Promise<UserId[]> {
+  const normalizedStreamUuid = readUuid(streamUuid);
+  if (normalizedStreamUuid == null) {
     return [];
   }
-  const data = res.data as { result?: string; subscribers?: number[] };
-  if (data.result === "error") return [];
-  return data.subscribers ?? [];
+  const bindings = await fetchStreamBindings();
+  return bindings
+    .filter((binding) => binding.stream_uuid === normalizedStreamUuid)
+    .map((binding) => binding.user_uuid);
 }
 
-export async function fetchTopics(stream: string): Promise<string[]> {
-  const streamName = guard.nonEmpty(stream, "fetchTopics.stream");
-  const streamsData = await fetchStreams();
-  const streamObj = streamsData.find((s) => s.name === streamName);
-  if (!streamObj) return [];
-  return fetchStreamTopicNames(streamObj.stream_id);
+export async function fetchTopics(streamUuid: string): Promise<string[]> {
+  const normalizedStreamUuid = guard.nonEmpty(streamUuid, "fetchTopics.streamUuid").trim();
+  return fetchStreamTopics(normalizedStreamUuid).then((topics) =>
+    topics.map((topic) => topic.name),
+  );
 }
 
-/** Loads topic names for a stream id (used for sidebar expand topic list). */
+/** Loads topic names for a stream UUID (used for sidebar expand topic list). */
 export async function fetchStreamTopicNames(
-  streamId: number,
+  streamUuid: string,
   signal?: AbortSignal,
 ): Promise<string[]> {
-  guard.streamId(streamId, "fetchStreamTopicNames.streamId");
-  if (signal?.aborted) {
-    throw new DOMException("Aborted", "AbortError");
-  }
-  const res = await messengerPipelineGet(
-    `/users/me/${streamId}/topics`,
-    {
-      allow_empty_topic_name: "true",
-    },
-    signal,
+  const normalizedStreamUuid = guard
+    .nonEmpty(streamUuid, "fetchStreamTopicNames.streamUuid")
+    .trim();
+  return fetchStreamTopics(normalizedStreamUuid, signal).then((topics) =>
+    topics.map((topic) => topic.name),
   );
-  if (signal?.aborted) {
-    throw new DOMException("Aborted", "AbortError");
-  }
-  if (!res?.ok) {
-    return [];
-  }
-  const data = res.data as { result?: string; topics?: { name?: string }[] };
-  if (data.result === "error") {
-    return [];
-  }
-  return (data.topics ?? []).map((topic) => topic.name ?? "");
 }
 
-/** Updates stream metadata (PATCH /api/v1/streams/{stream_id}). */
+/** Updates stream metadata (PATCH /api/v1/streams/{stream_uuid}). */
 export async function updateStream(
-  streamId: number,
+  streamId: string,
   params: { name?: string; description?: string; isArchived?: boolean },
 ): Promise<boolean> {
-  guard.streamId(streamId, "updateStream.streamId");
+  guard.streamUuid(streamId, "updateStream.streamId");
   const body: Record<string, string> = {};
   const trimmedName = params.name?.trim();
   if (trimmedName != null && trimmedName.length > 0) {
@@ -713,12 +759,9 @@ export async function updateStream(
   }
 }
 
-/**
- * Unarchives a channel: PATCH streams/{id} with is_archived=false.
- * Older servers may succeed but list `is_archived` in ignored_parameters_unsupported — treat as unsupported.
- */
-export async function unarchiveStream(streamId: number): Promise<UnarchiveStreamResult> {
-  guard.streamId(streamId, "unarchiveStream.streamId");
+/** Unarchives a channel: PATCH streams/{stream_uuid} with is_archived=false. */
+export async function unarchiveStream(streamId: string): Promise<UnarchiveStreamResult> {
+  guard.streamUuid(streamId, "unarchiveStream.streamId");
   try {
     const res = await messengerPipelinePatch(`streams/${streamId}`, { is_archived: "false" });
     const data = (res.data ?? {}) as StreamPatchResponsePayload;
@@ -754,9 +797,9 @@ export async function unarchiveStream(streamId: number): Promise<UnarchiveStream
   }
 }
 
-/** Deletes a stream (DELETE /api/v1/streams/{stream_id}). */
-export async function deleteStream(streamId: number): Promise<boolean> {
-  guard.streamId(streamId, "deleteStream.streamId");
+/** Deletes a stream (DELETE /api/v1/streams/{stream_uuid}). */
+export async function deleteStream(streamId: string): Promise<boolean> {
+  guard.streamUuid(streamId, "deleteStream.streamId");
   try {
     const res = await messengerPipelineDelete(`streams/${streamId}`);
     if (!res.ok) return false;
@@ -767,62 +810,37 @@ export async function deleteStream(streamId: number): Promise<boolean> {
   }
 }
 
-/** Deletes all messages in a topic (POST /api/v1/streams/{stream_id}/delete_topic). */
-export async function deleteTopic(
-  streamId: number,
-  topicName: string,
-  maxAttempts = 5,
-): Promise<DeleteTopicResult> {
-  guard.streamId(streamId, "deleteTopic.streamId");
-  const normalizedTopicName = topicName.trim();
-  const attemptsLimit = Math.max(1, Math.floor(maxAttempts));
+/** Deletes a stream topic row through Workspace `DELETE /stream_topics/{topic_uuid}`. */
+export async function deleteTopic(topicUuid: string): Promise<DeleteTopicResult> {
+  const normalizedTopicUuid = readUuid(topicUuid);
+  if (normalizedTopicUuid == null) {
+    return { ok: false, complete: false, attempts: 0, errorCode: "invalid_topic_uuid" };
+  }
 
-  for (let attempt = 1; attempt <= attemptsLimit; attempt += 1) {
-    try {
-      const res = await messengerPipelinePost(`/streams/${streamId}/delete_topic`, {
-        topic_name: normalizedTopicName,
-      });
-      if (!res.ok) {
-        return {
-          ok: false,
-          complete: false,
-          attempts: attempt,
-          errorCode: `http_${res.status}`,
-        };
-      }
-
-      const data = res.data as { result?: string; complete?: unknown; code?: string };
-      if (data.result === "error") {
-        return {
-          ok: false,
-          complete: false,
-          attempts: attempt,
-          errorCode: data.code ?? "unknown_error",
-        };
-      }
-
-      const complete = data.complete !== false;
-      if (complete) {
-        return {
-          ok: true,
-          complete: true,
-          attempts: attempt,
-        };
-      }
-    } catch {
+  try {
+    const res = await messengerApi.deleteWithBase(
+      getMessengerWorkspaceApiBaseForCurrentInstance(),
+      `/stream_topics/${normalizedTopicUuid}`,
+    );
+    if (!res.ok) {
       return {
         ok: false,
         complete: false,
-        attempts: attempt,
-        errorCode: "network_error",
+        attempts: 1,
+        errorCode: `http_${res.status}`,
       };
     }
+    const data = res.data as { result?: string; code?: string };
+    if (data.result === "error") {
+      return {
+        ok: false,
+        complete: false,
+        attempts: 1,
+        errorCode: data.code ?? "unknown_error",
+      };
+    }
+    return { ok: true, complete: true, attempts: 1 };
+  } catch {
+    return { ok: false, complete: false, attempts: 1, errorCode: "network_error" };
   }
-
-  return {
-    ok: false,
-    complete: false,
-    attempts: attemptsLimit,
-    errorCode: "incomplete_after_retries",
-  };
 }

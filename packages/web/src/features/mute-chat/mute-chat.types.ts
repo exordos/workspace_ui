@@ -7,8 +7,8 @@
  */
 
 export type MuteTarget =
-  | { type: "stream"; streamId: number }
-  | { type: "topic"; streamId: number; topic: string };
+  | { type: "stream"; streamId: string }
+  | { type: "topic"; streamId: string; topic: string };
 
 export type VisibilityPolicy = 0 | 1 | 2 | 3;
 
@@ -27,9 +27,9 @@ export const VISIBILITY_POLICY = {
 } as const;
 
 export interface MuteState {
-  /** Stream IDs that the user has muted. */
-  mutedStreamIds: Set<number>;
-  /** Topic keys ("streamId:topicName") that the user has explicitly muted. */
+  /** Stream UUIDs that the user has muted. */
+  mutedStreamIds: Set<string>;
+  /** Topic keys ("streamUuid:topicName") that the user has explicitly muted. */
   mutedTopicKeys: Set<string>;
   /** Topic keys that are explicitly unmuted (override stream-level mute). */
   unmutedTopicKeys: Set<string>;

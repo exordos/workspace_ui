@@ -1,6 +1,16 @@
 import { normalizeGroupSettingValue } from "~/shared/lib/messenger-group-setting.lib";
 import type { MessengerSubscription } from "./messenger.types";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function readUuid(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim().toLowerCase();
+  return UUID_RE.test(trimmed) ? trimmed : null;
+}
+
 function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
@@ -16,7 +26,8 @@ function parseSubscriptionRow(row: unknown): MessengerSubscription | null {
     return null;
   }
   const subscription = row as {
-    stream_id?: unknown;
+    stream_uuid?: unknown;
+    uuid?: unknown;
     name?: unknown;
     is_muted?: unknown;
     desktop_notifications?: unknown;
@@ -25,13 +36,15 @@ function parseSubscriptionRow(row: unknown): MessengerSubscription | null {
     in_home_view?: unknown;
     creator_id?: unknown;
     invite_only?: unknown;
+    private?: unknown;
     can_add_subscribers_group?: unknown;
     can_remove_subscribers_group?: unknown;
     can_administer_channel_group?: unknown;
     can_resolve_topics_group?: unknown;
     can_move_messages_out_of_channel_group?: unknown;
   };
-  if (!isPositiveInteger(subscription.stream_id) || typeof subscription.name !== "string") {
+  const streamUuid = readUuid(subscription.stream_uuid) ?? readUuid(subscription.uuid);
+  if (streamUuid == null || typeof subscription.name !== "string") {
     return null;
   }
   const canAddSubscribersGroup = normalizeGroupSettingValue(subscription.can_add_subscribers_group);
@@ -46,7 +59,7 @@ function parseSubscriptionRow(row: unknown): MessengerSubscription | null {
     subscription.can_move_messages_out_of_channel_group,
   );
   return {
-    stream_id: subscription.stream_id,
+    stream_uuid: streamUuid,
     name: subscription.name,
     is_muted:
       typeof subscription.is_muted === "boolean"
@@ -67,6 +80,7 @@ function parseSubscriptionRow(row: unknown): MessengerSubscription | null {
     ...(typeof subscription.invite_only === "boolean"
       ? { invite_only: subscription.invite_only }
       : {}),
+    ...(typeof subscription.private === "boolean" ? { private: subscription.private } : {}),
     ...(canAddSubscribersGroup != null
       ? { can_add_subscribers_group: canAddSubscribersGroup }
       : {}),

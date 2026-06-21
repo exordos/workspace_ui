@@ -2,7 +2,7 @@ import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
 
 export function sidebarDmRoute(dmSlug: string): string {
-  return withCurrentOrgRoute(`/dm/${dmSlug}`);
+  return withCurrentOrgRoute(`/stream/${dmSlug}`);
 }
 
 export function sidebarStreamRoute(streamSlug: string): string {

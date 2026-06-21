@@ -24,7 +24,7 @@ import { isTopicRenameUnchanged, resolveRenamedTopicName } from "./rename-stream
 const log = createLogger("mark-topic-resolved");
 
 export interface UseMarkTopicResolvedOptions {
-  streamId: number;
+  streamId: string;
   topic: string;
   /** Canonical stream name for slug/API (not localized display label). */
   streamName: string;
@@ -85,7 +85,7 @@ export function useMarkTopicResolved(explicitTarget?: UseMarkTopicResolvedOption
         .getState()
         .messages.filter(
           (message) =>
-            message.stream_id === streamId &&
+            message.stream_uuid === streamId &&
             normalizeTopicForIdentity(message.subject ?? "") === oldTopicKey,
         )
         .map((message) => message.id);

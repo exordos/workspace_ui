@@ -6,7 +6,7 @@ export interface ChatSortingOptions {
   prioritizePersonalUnread?: boolean;
   prioritizeUnmutedUnreadChannels?: boolean;
   hideUnknownArchivedStreams?: boolean;
-  isEffectivelyMuted?: (streamId: number, topic: string) => boolean;
+  isEffectivelyMuted?: (streamId: string, topic: string) => boolean;
 }
 
 export type ResolvedChatSortingOptions = ChatSortingOptions &
@@ -33,20 +33,20 @@ function comparePersonalUnreadPriority(a: SidebarChat, b: SidebarChat): number {
   return 0;
 }
 
-function compareUnmutedUnreadStreams(a: SidebarChat, b: SidebarChat, muteSet: Set<number>): number {
+function compareUnmutedUnreadStreams(a: SidebarChat, b: SidebarChat, muteSet: Set<string>): number {
   const aHasUnread = (a.badge ?? 0) > 0;
   const bHasUnread = (b.badge ?? 0) > 0;
   if (!aHasUnread || !bHasUnread) return 0;
   if (a.type !== "stream" || b.type !== "stream") return 0;
-  const aIsMuted = muteSet.has(a.stream_id);
-  const bIsMuted = muteSet.has(b.stream_id);
+  const aIsMuted = muteSet.has(a.streamUuid);
+  const bIsMuted = muteSet.has(b.streamUuid);
   if (aIsMuted === bIsMuted) return 0;
   return aIsMuted ? 1 : -1;
 }
 
-function compareMutedStreamPartition(a: SidebarChat, b: SidebarChat, muteSet: Set<number>): number {
-  const aIsMuted = a.type === "stream" && muteSet.has(a.stream_id);
-  const bIsMuted = b.type === "stream" && muteSet.has(b.stream_id);
+function compareMutedStreamPartition(a: SidebarChat, b: SidebarChat, muteSet: Set<string>): number {
+  const aIsMuted = a.type === "stream" && muteSet.has(a.streamUuid);
+  const bIsMuted = b.type === "stream" && muteSet.has(b.streamUuid);
   if (aIsMuted === bIsMuted) return 0;
   return aIsMuted ? 1 : -1;
 }
@@ -77,7 +77,7 @@ export function compareChatsByActivity(
   b: TimestampedChat,
   recentDmIds: readonly number[],
   options: ResolvedChatSortingOptions,
-  muteSet: Set<number>,
+  muteSet: Set<string>,
 ): number {
   const mutedPartition = compareMutedStreamPartition(a.c, b.c, muteSet);
   if (mutedPartition !== 0) return mutedPartition;

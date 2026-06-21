@@ -1,5 +1,10 @@
 import type { UserRecord } from "~/entities/user/user.model";
-import { compareUserIds, userIdStorageKey, userIdsEqual } from "~/shared/lib/user-id.lib";
+import {
+  compareUserIds,
+  userIdStorageKey,
+  userIdsEqual,
+  type UserId,
+} from "~/shared/lib/user-id.lib";
 import { areCustomProfileDataEqual } from "~/shared/lib/user-profile-fields.lib";
 import type {
   ChatInfoContext,
@@ -19,7 +24,7 @@ export function getChatInfoNetworkKey(context: ChatInfoContext): string {
     return `none:${context.instanceId ?? ""}`;
   }
   if (context.kind === "stream") {
-    return `stream:${context.instanceId}:${context.streamId}`;
+    return `stream:${context.instanceId}:${context.streamUuid}`;
   }
   const participantKey = [...context.participantIds]
     .sort(compareUserIds)
@@ -74,7 +79,7 @@ export function buildDmChatInfoData(
 
 export function buildStreamChatInfoData(
   streamName: string,
-  memberIds: number[],
+  memberIds: UserId[],
   users: UserRecord[],
   isMuted: boolean,
   metadata?: {
@@ -130,7 +135,7 @@ function areTopicsEqual(a: ChatInfoTopic[] | undefined, b: ChatInfoTopic[] | und
   for (let i = 0; i < left.length; i++) {
     const l = left[i]!;
     const r = right[i]!;
-    if (l.name !== r.name || l.unreadCount !== r.unreadCount) {
+    if (l.name !== r.name || l.topicUuid !== r.topicUuid || l.unreadCount !== r.unreadCount) {
       return false;
     }
   }

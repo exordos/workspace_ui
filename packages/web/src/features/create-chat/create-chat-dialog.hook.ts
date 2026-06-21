@@ -21,7 +21,7 @@ import {
   type BrowseChannelRow,
   type BrowseChannelSubscriptionFilter,
 } from "./create-chat-browse-channels.lib";
-import { buildDmSlug, resolveNextTabFromKey, type CreateChatTab } from "./create-chat-dialog.lib";
+import { resolveNextTabFromKey, type CreateChatTab } from "./create-chat-dialog.lib";
 import {
   createChannel,
   startDirectMessage,
@@ -33,7 +33,7 @@ import {
 const log = createLogger("create-chat:dialog");
 
 interface ArchivedChannelOption {
-  streamId: number;
+  streamUuid: string;
   name: string;
   lastMessage: string;
   time: string;
@@ -83,9 +83,9 @@ export interface UseCreateChatDialogResult {
   setArchivedSearch: (v: string) => void;
   archivedChannels: ArchivedChannelOption[];
   /** Async unarchive; on success the channel drops from the list after store refresh. */
-  onUnarchiveArchivedChannel: (streamId: number) => Promise<void>;
+  onUnarchiveArchivedChannel: (streamUuid: string) => Promise<void>;
   /** Stream ids with in-flight unarchive (button shows loading). */
-  unarchivePendingStreamIds: readonly number[];
+  unarchivePendingStreamUuids: readonly string[];
   unarchiveInlineError: UnarchiveInlineErrorState | null;
 
   channelsSearch: string;
@@ -93,28 +93,26 @@ export interface UseCreateChatDialogResult {
   channelsSubscriptionFilter: BrowseChannelSubscriptionFilter;
   setChannelsSubscriptionFilter: (filter: BrowseChannelSubscriptionFilter) => void;
   browseChannels: BrowseChannelRow[];
-  selectedBrowseChannelId: number | null;
-  setSelectedBrowseChannelId: (streamId: number) => void;
+  selectedBrowseChannelUuid: string | null;
+  setSelectedBrowseChannelUuid: (streamUuid: string) => void;
   selectedBrowseChannel: BrowseChannelRow | null;
   channelsLoading: boolean;
   channelsError: boolean;
-  onSubscribeToChannel: (streamId: number, streamName: string) => Promise<void>;
-  onUnsubscribeFromChannel: (streamId: number, streamName: string) => Promise<void>;
-  subscribePendingStreamIds: readonly number[];
+  onSubscribeToChannel: (streamUuid: string, streamName: string) => Promise<void>;
+  onUnsubscribeFromChannel: (streamUuid: string, streamName: string) => Promise<void>;
+  subscribePendingStreamUuids: readonly string[];
   subscribeInlineError: string | null;
 
-  buildDmSlug: (userId: UserId, fullName: string) => string;
   startingDmUserId: UserId | null;
   onStartDirectMessage: (userId: UserId, fullName: string) => Promise<void>;
 }
 
 export function useCreateChatDialog(options: {
   open: boolean;
-  onNavigateDm: (slug: string) => void;
-  onNavigateStream: (streamId: number, streamName: string) => void;
+  onNavigateStream: (streamUuid: string, streamName: string) => void;
   onChannelCreated: () => void;
 }): UseCreateChatDialogResult {
-  const { open, onChannelCreated, onNavigateDm } = options;
+  const { open, onChannelCreated, onNavigateStream } = options;
 
   const [tab, setTab] = useState<CreateChatTab>("dm");
   const tabBaseId = useId();
@@ -156,7 +154,7 @@ export function useCreateChatDialog(options: {
   const [startingDmUserId, setStartingDmUserId] = useState<UserId | null>(null);
   const [unarchiveInlineError, setUnarchiveInlineError] =
     useState<UnarchiveInlineErrorState | null>(null);
-  const [unarchivePendingStreamIds, setUnarchivePendingStreamIds] = useState<number[]>([]);
+  const [unarchivePendingStreamUuids, setUnarchivePendingStreamUuids] = useState<string[]>([]);
   const [channelsSearch, setChannelsSearch] = useState("");
   const [channelsSubscriptionFilter, setChannelsSubscriptionFilter] =
     useState<BrowseChannelSubscriptionFilter>("unsubscribed");
@@ -164,9 +162,11 @@ export function useCreateChatDialog(options: {
   const [browseSubscriptions, setBrowseSubscriptions] = useState<MessengerSubscription[]>([]);
   const [channelsLoading, setChannelsLoading] = useState(false);
   const [channelsError, setChannelsError] = useState(false);
-  const [subscribePendingStreamIds, setSubscribePendingStreamIds] = useState<number[]>([]);
+  const [subscribePendingStreamUuids, setSubscribePendingStreamUuids] = useState<string[]>([]);
   const [subscribeInlineError, setSubscribeInlineError] = useState<string | null>(null);
-  const [selectedBrowseChannelId, setSelectedBrowseChannelIdState] = useState<number | null>(null);
+  const [selectedBrowseChannelUuid, setSelectedBrowseChannelUuidState] = useState<string | null>(
+    null,
+  );
   const channelsFetchedRef = useRef(false);
 
   const allUsers = useUsersStore((s) => s.users);
@@ -247,7 +247,7 @@ export function useCreateChatDialog(options: {
     const archived = Array.from(streamsMap.values())
       .filter((stream) => stream.isArchived === true)
       .map((stream) => ({
-        streamId: stream.stream_id,
+        streamUuid: stream.streamUuid,
         name: stream.name,
         lastMessage: stream.lastMessage,
         time: stream.time,
@@ -256,7 +256,7 @@ export function useCreateChatDialog(options: {
       .sort((left, right) => right.ts - left.ts)
       .filter((stream) => stream.name.toLowerCase().includes(normalizedQuery))
       .map((stream) => ({
-        streamId: stream.streamId,
+        streamUuid: stream.streamUuid,
         name: stream.name,
         lastMessage: stream.lastMessage,
         time: stream.time,
@@ -276,17 +276,18 @@ export function useCreateChatDialog(options: {
   );
 
   const selectedBrowseChannel = useMemo(
-    () => browseChannels.find((channel) => channel.streamId === selectedBrowseChannelId) ?? null,
-    [browseChannels, selectedBrowseChannelId],
+    () =>
+      browseChannels.find((channel) => channel.streamUuid === selectedBrowseChannelUuid) ?? null,
+    [browseChannels, selectedBrowseChannelUuid],
   );
 
-  const setSelectedBrowseChannelId = useCallback((streamId: number) => {
-    setSelectedBrowseChannelIdState(streamId);
+  const setSelectedBrowseChannelUuid = useCallback((streamUuid: string) => {
+    setSelectedBrowseChannelUuidState(streamUuid);
   }, []);
 
   useEffect(() => {
-    setSelectedBrowseChannelIdState((currentId) =>
-      resolveBrowseChannelSelection(browseChannels, currentId),
+    setSelectedBrowseChannelUuidState((currentUuid) =>
+      resolveBrowseChannelSelection(browseChannels, currentUuid),
     );
   }, [browseChannels]);
 
@@ -376,16 +377,16 @@ export function useCreateChatDialog(options: {
       setChannelAnnouncementOnly(false);
       setCreating(false);
       setUnarchiveInlineError(null);
-      setUnarchivePendingStreamIds([]);
+      setUnarchivePendingStreamUuids([]);
       setChannelsSearch("");
       setBrowseStreams([]);
       setBrowseSubscriptions([]);
       channelsFetchedRef.current = false;
       setChannelsLoading(false);
       setChannelsError(false);
-      setSubscribePendingStreamIds([]);
+      setSubscribePendingStreamUuids([]);
       setSubscribeInlineError(null);
-      setSelectedBrowseChannelIdState(null);
+      setSelectedBrowseChannelUuidState(null);
     });
   }, [open]);
 
@@ -466,10 +467,6 @@ export function useCreateChatDialog(options: {
     onChannelCreated,
   ]);
 
-  const buildDmSlugFn = useCallback((userId: UserId, fullName: string) => {
-    return buildDmSlug(userId, fullName);
-  }, []);
-
   const onStartDirectMessage = useCallback(
     async (userId: UserId, fullName: string) => {
       if (startingDmUserId != null) {
@@ -482,19 +479,14 @@ export function useCreateChatDialog(options: {
           log.warn("create-chat: direct message start failed");
           return;
         }
-        if (result.kind === "gateway") {
-          useChatListStore.getState().upsertDmMetadataRows([
-            {
-              streamUuid: result.streamUuid,
-              userUuid: result.userUuid,
-              name: result.name,
-              userIds: [],
-            },
-          ]);
-          onNavigateDm(result.streamUuid);
-          return;
-        }
-        onNavigateDm(result.slug);
+        useChatListStore.getState().upsertStreamMetadataRows([
+          {
+            streamUuid: result.streamUuid,
+            private: true,
+            name: result.name,
+          },
+        ]);
+        onNavigateStream(result.streamUuid, result.name);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         log.error("create-chat: direct message start threw", { error: message });
@@ -502,14 +494,16 @@ export function useCreateChatDialog(options: {
         setStartingDmUserId(null);
       }
     },
-    [onNavigateDm, startingDmUserId],
+    [onNavigateStream, startingDmUserId],
   );
 
-  const onUnarchiveArchivedChannel = useCallback(async (streamId: number) => {
+  const onUnarchiveArchivedChannel = useCallback(async (streamUuid: string) => {
     setUnarchiveInlineError(null);
-    setUnarchivePendingStreamIds((prev) => (prev.includes(streamId) ? prev : [...prev, streamId]));
+    setUnarchivePendingStreamUuids((prev) =>
+      prev.includes(streamUuid) ? prev : [...prev, streamUuid],
+    );
     try {
-      const result = await unarchiveChannel(streamId);
+      const result = await unarchiveChannel(streamUuid);
       if (result.ok) {
         return;
       }
@@ -519,44 +513,44 @@ export function useCreateChatDialog(options: {
         setUnarchiveInlineError({ kind: "failed", message: result.message });
       }
       log.warn("unarchive channel rejected", {
-        streamId,
+        streamUuid,
         kind: result.kind,
         status: result.status,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setUnarchiveInlineError({ kind: "failed", message });
-      log.error("unarchive channel threw", { streamId, error: message });
+      log.error("unarchive channel threw", { streamUuid, error: message });
     } finally {
-      setUnarchivePendingStreamIds((prev) => prev.filter((id) => id !== streamId));
+      setUnarchivePendingStreamUuids((prev) => prev.filter((id) => id !== streamUuid));
     }
   }, []);
 
   const onSubscribeToChannel = useCallback(
-    async (streamId: number, streamName: string) => {
+    async (streamUuid: string, streamName: string) => {
       if (currentUserId == null || !isUserIdentityReady(currentUserId)) {
         return;
       }
       setSubscribeInlineError(null);
-      setSubscribePendingStreamIds((prev) =>
-        prev.includes(streamId) ? prev : [...prev, streamId],
+      setSubscribePendingStreamUuids((prev) =>
+        prev.includes(streamUuid) ? prev : [...prev, streamUuid],
       );
       try {
         const result = await subscribeCurrentUserToStream(streamName, currentUserId);
         if (!result.ok) {
           setSubscribeInlineError(result.errorCode ?? "unknown_error");
-          log.warn("subscribe to channel rejected", { streamId, errorCode: result.errorCode });
+          log.warn("subscribe to channel rejected", { streamUuid, errorCode: result.errorCode });
           return;
         }
-        useChatListStore.getState().upsertStreamMetadataRows([{ streamId, name: streamName }]);
+        useChatListStore.getState().upsertStreamMetadataRows([{ streamUuid, name: streamName }]);
         setBrowseSubscriptions((prev) => {
-          if (prev.some((subscription) => subscription.stream_id === streamId)) {
+          if (prev.some((subscription) => subscription.stream_uuid === streamUuid)) {
             return prev;
           }
           return [
             ...prev,
             {
-              stream_id: streamId,
+              stream_uuid: streamUuid,
               name: streamName,
               is_muted: false,
               is_archived: false,
@@ -567,34 +561,36 @@ export function useCreateChatDialog(options: {
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         setSubscribeInlineError(message);
-        log.error("subscribe to channel threw", { streamId, error: message });
+        log.error("subscribe to channel threw", { streamUuid, error: message });
       } finally {
-        setSubscribePendingStreamIds((prev) => prev.filter((id) => id !== streamId));
+        setSubscribePendingStreamUuids((prev) => prev.filter((id) => id !== streamUuid));
       }
     },
     [currentUserId],
   );
 
-  const onUnsubscribeFromChannel = useCallback(async (streamId: number, streamName: string) => {
+  const onUnsubscribeFromChannel = useCallback(async (streamUuid: string, streamName: string) => {
     setSubscribeInlineError(null);
-    setSubscribePendingStreamIds((prev) => (prev.includes(streamId) ? prev : [...prev, streamId]));
+    setSubscribePendingStreamUuids((prev) =>
+      prev.includes(streamUuid) ? prev : [...prev, streamUuid],
+    );
     try {
       const ok = await unsubscribeChannel(streamName);
       if (!ok) {
         setSubscribeInlineError("unsubscribe_failed");
-        log.warn("unsubscribe from channel rejected", { streamId });
+        log.warn("unsubscribe from channel rejected", { streamUuid });
         return;
       }
-      useChatListStore.getState().removeStream(streamId);
+      useChatListStore.getState().removeStream(streamUuid);
       setBrowseSubscriptions((prev) =>
-        prev.filter((subscription) => subscription.stream_id !== streamId),
+        prev.filter((subscription) => subscription.stream_uuid !== streamUuid),
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setSubscribeInlineError(message);
-      log.error("unsubscribe from channel threw", { streamId, error: message });
+      log.error("unsubscribe from channel threw", { streamUuid, error: message });
     } finally {
-      setSubscribePendingStreamIds((prev) => prev.filter((id) => id !== streamId));
+      setSubscribePendingStreamUuids((prev) => prev.filter((id) => id !== streamUuid));
     }
   }, []);
 
@@ -632,23 +628,22 @@ export function useCreateChatDialog(options: {
     setArchivedSearch,
     archivedChannels,
     onUnarchiveArchivedChannel,
-    unarchivePendingStreamIds,
+    unarchivePendingStreamUuids,
     unarchiveInlineError,
     channelsSearch,
     setChannelsSearch,
     channelsSubscriptionFilter,
     setChannelsSubscriptionFilter,
     browseChannels,
-    selectedBrowseChannelId,
-    setSelectedBrowseChannelId,
+    selectedBrowseChannelUuid,
+    setSelectedBrowseChannelUuid,
     selectedBrowseChannel,
     channelsLoading,
     channelsError,
     onSubscribeToChannel,
     onUnsubscribeFromChannel,
-    subscribePendingStreamIds,
+    subscribePendingStreamUuids,
     subscribeInlineError,
-    buildDmSlug: buildDmSlugFn,
     startingDmUserId,
     onStartDirectMessage,
   };

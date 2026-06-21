@@ -11,7 +11,7 @@ import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sideba
 import { useChatListStore } from "./chat-list.model";
 
 export interface ChatListUuidMaps {
-  streamsMap: Map<number, StreamEntryInternal>;
+  streamsMap: Map<string, StreamEntryInternal>;
   dmsMap: Map<string, DmEntryInternal>;
 }
 
@@ -65,8 +65,11 @@ export function resolveStreamUuidForContext(
   maps: ChatListUuidMaps,
 ): string | null {
   if (context.type === "stream") {
-    const uuid = maps.streamsMap.get(context.streamId)?.streamUuid;
-    return uuid != null && uuid.length > 0 ? uuid : null;
+    const streamUuid = String(context.streamId).trim().toLowerCase();
+    if (streamUuid.length > 0) {
+      return streamUuid;
+    }
+    return null;
   }
   return resolveDmStreamUuid(context.dmKey, currentUserId, maps.dmsMap);
 }

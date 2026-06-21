@@ -51,16 +51,15 @@ const CREATE_CHAT_FOOTER_CLASS =
 export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
   open,
   onOpenChange,
-  onNavigateDm,
   onNavigateStream,
   onChannelCreated,
 }) => {
-  const vm = useCreateChatDialog({ open, onNavigateDm, onNavigateStream, onChannelCreated });
+  const vm = useCreateChatDialog({ open, onNavigateStream, onChannelCreated });
   // Three independent channel checkboxes: inviteOnly, channelAnnounce (bot notification), channelAnnouncementOnly (posting policy).
 
   const handleOpenArchivedChannel = useCallback(
-    (streamId: number, streamName: string) => {
-      onNavigateStream(streamId, streamName);
+    (streamUuid: string, streamName: string) => {
+      onNavigateStream(streamUuid, streamName);
     },
     [onNavigateStream],
   );
@@ -259,10 +258,10 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                     ) : (
                       vm.browseChannels.map((channel) => (
                         <BrowseChannelListItem
-                          key={channel.streamId}
+                          key={channel.streamUuid}
                           channel={channel}
-                          isSelected={vm.selectedBrowseChannelId === channel.streamId}
-                          onSelect={vm.setSelectedBrowseChannelId}
+                          isSelected={vm.selectedBrowseChannelUuid === channel.streamUuid}
+                          onSelect={vm.setSelectedBrowseChannelUuid}
                         />
                       ))
                     )}
@@ -272,7 +271,7 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                   channel={vm.selectedBrowseChannel}
                   isActionPending={
                     vm.selectedBrowseChannel != null &&
-                    vm.subscribePendingStreamIds.includes(vm.selectedBrowseChannel.streamId)
+                    vm.subscribePendingStreamUuids.includes(vm.selectedBrowseChannel.streamUuid)
                   }
                   onSubscribe={vm.onSubscribeToChannel}
                   onUnsubscribe={vm.onUnsubscribeFromChannel}
@@ -419,12 +418,14 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                 ) : (
                   vm.archivedChannels.map((channel) => (
                     <ArchivedChannelRow
-                      key={channel.streamId}
-                      streamId={channel.streamId}
+                      key={channel.streamUuid}
+                      streamUuid={channel.streamUuid}
                       name={channel.name}
                       lastMessage={channel.lastMessage}
                       time={channel.time}
-                      isUnarchivePending={vm.unarchivePendingStreamIds.includes(channel.streamId)}
+                      isUnarchivePending={vm.unarchivePendingStreamUuids.includes(
+                        channel.streamUuid,
+                      )}
                       onOpenChannel={handleOpenArchivedChannel}
                       onUnarchive={vm.onUnarchiveArchivedChannel}
                     />
@@ -526,14 +527,14 @@ const BrowseChannelSubscriptionToggle = React.memo<BrowseChannelSubscriptionTogg
 interface BrowseChannelListItemProps {
   channel: BrowseChannelRowData;
   isSelected: boolean;
-  onSelect: (streamId: number) => void;
+  onSelect: (streamUuid: string) => void;
 }
 
 const BrowseChannelListItem = React.memo<BrowseChannelListItemProps>(
   function BrowseChannelListItem({ channel, isSelected, onSelect }) {
     const handleClick = useCallback(() => {
-      onSelect(channel.streamId);
-    }, [channel.streamId, onSelect]);
+      onSelect(channel.streamUuid);
+    }, [channel.streamUuid, onSelect]);
 
     return (
       <button
@@ -594,9 +595,9 @@ const BrowseChannelRowMetrics = React.memo<{ channel: BrowseChannelRowData }>(
 interface BrowseChannelDetailPanelProps {
   channel: BrowseChannelRowData | null;
   isActionPending: boolean;
-  onSubscribe: (streamId: number, streamName: string) => Promise<void>;
-  onUnsubscribe: (streamId: number, streamName: string) => Promise<void>;
-  onOpenChannel: (streamId: number, streamName: string) => void;
+  onSubscribe: (streamUuid: string, streamName: string) => Promise<void>;
+  onUnsubscribe: (streamUuid: string, streamName: string) => Promise<void>;
+  onOpenChannel: (streamUuid: string, streamName: string) => void;
 }
 
 const BrowseChannelDetailPanel = React.memo<BrowseChannelDetailPanelProps>(
@@ -625,17 +626,17 @@ const BrowseChannelDetailPanel = React.memo<BrowseChannelDetailPanelProps>(
 
     const handleSubscribe = useCallback(() => {
       if (channel == null) return;
-      void onSubscribe(channel.streamId, channel.name);
+      void onSubscribe(channel.streamUuid, channel.name);
     }, [channel, onSubscribe]);
 
     const handleUnsubscribe = useCallback(() => {
       if (channel == null) return;
-      void onUnsubscribe(channel.streamId, channel.name);
+      void onUnsubscribe(channel.streamUuid, channel.name);
     }, [channel, onUnsubscribe]);
 
     const handleOpen = useCallback(() => {
       if (!channel?.isSubscribed) return;
-      onOpenChannel(channel.streamId, channel.name);
+      onOpenChannel(channel.streamUuid, channel.name);
     }, [channel, onOpenChannel]);
 
     if (channel == null) {
@@ -715,18 +716,18 @@ const BrowseChannelDetailPanel = React.memo<BrowseChannelDetailPanelProps>(
 );
 
 interface ArchivedChannelRowProps {
-  streamId: number;
+  streamUuid: string;
   name: string;
   lastMessage: string;
   time: string;
   isUnarchivePending: boolean;
-  onOpenChannel: (streamId: number, streamName: string) => void;
-  onUnarchive: (streamId: number) => Promise<void>;
+  onOpenChannel: (streamUuid: string, streamName: string) => void;
+  onUnarchive: (streamUuid: string) => Promise<void>;
 }
 
 /** Archived channel row: row click opens chat; unarchive button is separate. */
 const ArchivedChannelRow = React.memo<ArchivedChannelRowProps>(function ArchivedChannelRow({
-  streamId,
+  streamUuid,
   name,
   lastMessage,
   time,
@@ -735,16 +736,16 @@ const ArchivedChannelRow = React.memo<ArchivedChannelRowProps>(function Archived
   onUnarchive,
 }) {
   const handleRowClick = useCallback(() => {
-    onOpenChannel(streamId, name);
-  }, [onOpenChannel, streamId, name]);
+    onOpenChannel(streamUuid, name);
+  }, [onOpenChannel, streamUuid, name]);
 
   const handleUnarchiveClick = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
       // Stop propagation so row click and unarchive do not fire together.
       event.stopPropagation();
-      void onUnarchive(streamId);
+      void onUnarchive(streamUuid);
     },
-    [onUnarchive, streamId],
+    [onUnarchive, streamUuid],
   );
 
   const previewLine =

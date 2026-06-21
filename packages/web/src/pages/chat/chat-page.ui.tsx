@@ -130,6 +130,7 @@ export const ChatPage: React.FC = () => {
   });
   const {
     activeTopic,
+    activeTopicUuid,
     streamRouteTopic,
     activeStream,
     canonicalStreamName,
@@ -163,7 +164,9 @@ export const ChatPage: React.FC = () => {
     if (isDmView) {
       return dmChat?.streamUuid ?? null;
     }
-    return activeStreamId != null ? (streamsMap.get(activeStreamId)?.streamUuid ?? null) : null;
+    return activeStreamId != null
+      ? (streamsMap.get(activeStreamId)?.streamUuid ?? activeStreamId)
+      : null;
   }, [activeStreamId, dmChat?.streamUuid, isDmView, streamsMap]);
   const partnerUser = useUsersStore((s) =>
     partnerUserId != null ? s.getUser(partnerUserId) : undefined,
@@ -347,7 +350,7 @@ export const ChatPage: React.FC = () => {
   const pendingForwardPrefillRef = useRef<string | null>(null);
 
   const draftType: DraftType | null = resolveDraftType(isDmView, activeStream);
-  const draftTo: number[] = useMemo(() => {
+  const draftTo: (number | string)[] = useMemo(() => {
     const ctx = useCurrentChatMessagesStore.getState().context;
     return resolveDraftTargetIds({
       isDmView,
@@ -496,10 +499,10 @@ export const ChatPage: React.FC = () => {
 
   const handleOpenNextUnreadTopic = useCallback(() => {
     if (isTextInputFocused() || isDmView || activeStreamId == null) return;
-    const currentStream = streams.find((stream) => stream.stream_id === activeStreamId);
+    const currentStream = streams.find((stream) => stream.stream_uuid === activeStreamId);
     if (!currentStream) return;
     const route = resolveNextUnreadTopicRoute({
-      streamId: currentStream.stream_id,
+      streamId: currentStream.stream_uuid,
       streamName: currentStream.name,
       currentTopic: activeTopic,
       topics: currentStream.topics,
@@ -591,6 +594,7 @@ export const ChatPage: React.FC = () => {
     activeStreamCanonicalName,
     resolvedStreamId,
     streamRouteTopic,
+    activeTopicUuid,
     focusedMessageId,
     currentUserId,
     isFocusedMessageLoadedInCurrentRoute,
@@ -634,6 +638,7 @@ export const ChatPage: React.FC = () => {
       activeStreamId,
       activeStreamUuid,
       activeTopic,
+      activeTopicUuid,
       appendMessage: appendMessageToStore,
       commitOutgoingMessage: commitOutgoingMessageToStore,
       removeMessage: removeMessageFromStore,
@@ -852,7 +857,7 @@ export const ChatPage: React.FC = () => {
         realmBaseUrl,
         wroteLabel: t("message.replyQuoteWrote"),
         resolveStreamName: (streamId, message) =>
-          streams.find((candidate) => candidate.stream_id === streamId)?.name ??
+          streams.find((candidate) => candidate.stream_uuid === streamId)?.name ??
           message.channel ??
           (typeof message.display_recipient === "string" ? message.display_recipient : undefined),
       });

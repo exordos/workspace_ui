@@ -14,20 +14,20 @@ export interface TimestampedSidebarChat {
 }
 
 export interface SidebarChatMuteProjectionOptions {
-  mutedStreamIds?: Set<number>;
-  isEffectivelyMuted?: (streamId: number, topic: string) => boolean;
+  mutedStreamIds?: Set<string>;
+  isEffectivelyMuted?: (streamId: string, topic: string) => boolean;
 }
 
 function streamTopicsToSidebarTopics(
   s: StreamEntryInternal,
   options: SidebarChatMuteProjectionOptions,
 ) {
-  const streamMuted = options.mutedStreamIds?.has(s.stream_id) ?? false;
+  const streamMuted = options.mutedStreamIds?.has(s.streamUuid) ?? false;
   return Array.from(s.topics.values())
     .sort((a, b) => b.ts - a.ts)
     .map((t) => {
       const topicMuted =
-        streamMuted || (options.isEffectivelyMuted?.(s.stream_id, t.subject) ?? false);
+        streamMuted || (options.isEffectivelyMuted?.(s.streamUuid, t.subject) ?? false);
       return {
         subject: t.subject,
         lastMessage: t.lastMessage,
@@ -48,7 +48,8 @@ function streamEntryToTimestampedChat(
     ts: s.ts,
     c: {
       type: "stream",
-      stream_id: s.stream_id,
+      streamUuid: s.streamUuid,
+      private: s.private,
       name: s.name,
       lastMessage: s.lastMessage,
       lastMessageSenderName: s.lastMessageSenderName,

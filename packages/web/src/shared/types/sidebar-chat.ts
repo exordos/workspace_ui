@@ -3,6 +3,7 @@ import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 
 export interface TopicWithLast {
+  topicUuid?: string;
   subject: string;
   lastMessage?: string;
   lastMessageSenderName?: string;
@@ -15,7 +16,8 @@ export interface TopicWithLast {
 export type SidebarChat =
   | {
       type: "stream";
-      stream_id: number;
+      streamUuid: string;
+      private?: boolean;
       name: string;
       lastMessage?: string;
       lastMessageSenderName?: string;
@@ -43,7 +45,8 @@ export type SidebarChat =
 
 export interface SidebarProps {
   streams: {
-    stream_id: number;
+    streamUuid: string;
+    private?: boolean;
     name: string;
     lastMessage?: string;
     time?: string;
@@ -53,14 +56,13 @@ export interface SidebarProps {
   pinFolderId?: string;
   activeStreamSlug?: string | null;
   activeTopic?: string | null;
-  activeDmIdParam?: string | null;
-  sidebarDms?: Extract<SidebarChat, { type: "dm" }>[];
-  sidebarChats?: SidebarChat[];
+  sidebarChats?: Extract<SidebarChat, { type: "stream" }>[];
   sidebarChatsLoading?: boolean;
 }
 
 export interface StreamWithLast {
-  stream_id: number;
+  streamUuid: string;
+  private?: boolean;
   name: string;
   lastMessage?: string;
   lastMessageSenderName?: string;
@@ -71,9 +73,10 @@ export interface StreamWithLast {
 }
 
 export interface StreamEntryInternal {
-  stream_id: number;
-  /** Stream UUID used to fetch and create messages via the gateway. */
-  streamUuid?: string;
+  /** Workspace stream UUID used as the stream identity and for gateway reads/writes. */
+  streamUuid: string;
+  /** Workspace private streams are shown in Personal. */
+  private?: boolean;
   name: string;
   lastMessage: string;
   lastMessageSenderName?: string;
@@ -90,6 +93,7 @@ export interface StreamEntryInternal {
   topics: Map<
     string,
     {
+      topicUuid?: string;
       subject: string;
       lastMessage: string;
       lastMessageSenderName?: string;

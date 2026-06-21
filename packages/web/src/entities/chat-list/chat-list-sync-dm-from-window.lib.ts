@@ -48,7 +48,7 @@ export function shouldSyncDmPreviewFromWindow(options: {
 function isPrivateMessage(message: MockMessage): message is MockMessage & {
   display_recipient: { id: number }[];
 } {
-  if (message.stream_id != null) {
+  if (message.stream_uuid != null) {
     return false;
   }
   const recipient = message.display_recipient;

@@ -15,14 +15,16 @@ vi.mock("~/shared/api/messenger-streams", () => ({
 
 const PEER_UUID = "00000000-0000-0000-0000-000000000002";
 const STREAM_UUID = "b4460c02-d693-4564-8804-98059613b86e";
+const STREAM_ID = 77;
 describe("startDirectMessage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("creates gateway private stream for IAM peer and returns streamUuid route", async () => {
+  it("creates gateway private stream for IAM peer and returns stream route metadata", async () => {
     vi.mocked(resolveOrCreateDirectMessageStream).mockResolvedValue({
       streamUuid: STREAM_UUID,
+      streamId: STREAM_ID,
       userUuid: PEER_UUID,
       name: "Alice Smith",
     });
@@ -30,17 +32,15 @@ describe("startDirectMessage", () => {
     await expect(startDirectMessage(PEER_UUID, "Alice Smith")).resolves.toEqual({
       kind: "gateway",
       streamUuid: STREAM_UUID,
+      streamId: STREAM_ID,
       userUuid: PEER_UUID,
       name: "Alice Smith",
     });
     expect(resolveOrCreateDirectMessageStream).toHaveBeenCalledWith(PEER_UUID, "Alice Smith");
   });
 
-  it("returns legacy slug for numeric messenger ids", async () => {
-    await expect(startDirectMessage(42, "Alice")).resolves.toEqual({
-      kind: "legacy",
-      slug: "42-alice",
-    });
+  it("does not fall back to legacy numeric messenger ids", async () => {
+    await expect(startDirectMessage(42, "Alice")).resolves.toBeNull();
     expect(resolveOrCreateDirectMessageStream).not.toHaveBeenCalled();
   });
 });

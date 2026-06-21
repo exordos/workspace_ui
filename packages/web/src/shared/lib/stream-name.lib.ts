@@ -4,7 +4,7 @@ function normalizeStreamName(value: string | null | undefined): string | null {
 }
 
 export interface ResolveCanonicalStreamNameInput {
-  streamId: number | null | undefined;
+  streamId: string | null | undefined;
   streamMapName?: string | null;
   metadataName?: string | null;
 }

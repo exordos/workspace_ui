@@ -83,7 +83,7 @@ export function handleTyping(
     messageType: event.message_type as string | undefined,
     senderUserId: sender?.user_id,
     recipients,
-    streamId: event.stream_id as number | undefined,
+    streamId: event.stream_uuid as string | undefined,
     topic: event.topic as string | undefined,
     currentUserId,
   });

@@ -6,7 +6,7 @@ const DEFAULT_NOTIFICATION_SENDER = "New message";
 
 export type NotificationTitleMessage = Pick<
   WorkspaceRawMessage,
-  "display_recipient" | "sender_full_name" | "sender_id" | "stream_id" | "subject" | "type"
+  "display_recipient" | "sender_full_name" | "sender_id" | "stream_uuid" | "subject" | "type"
 > & {
   channel?: string;
 };
@@ -85,7 +85,7 @@ export function buildNotificationTitleContextFromMessage(
   currentUserId: UserId | null,
 ): NotificationTitleContext {
   const senderName = resolveNotificationSenderName(message.sender_full_name);
-  const isStreamMessage = message.type === "stream" || message.stream_id != null;
+  const isStreamMessage = message.type === "stream" || message.stream_uuid != null;
   if (!isStreamMessage) {
     return {
       kind: "dm",

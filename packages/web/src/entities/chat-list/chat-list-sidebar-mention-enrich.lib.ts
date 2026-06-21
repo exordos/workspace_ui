@@ -22,14 +22,14 @@ export function enrichSidebarChatsWithMentionFlags(
     if (chat.type === "stream") {
       const topics = chat.topics?.map((topic) => ({
         ...topic,
-        hasMention: mentionFlags.topicKeys.has(buildTopicMentionKey(chat.stream_id, topic.subject))
+        hasMention: mentionFlags.topicKeys.has(buildTopicMentionKey(chat.streamUuid, topic.subject))
           ? true
           : undefined,
       }));
       return {
         ...chat,
         topics,
-        hasMention: mentionFlags.streamIds.has(chat.stream_id) ? true : undefined,
+        hasMention: mentionFlags.streamIds.has(chat.streamUuid) ? true : undefined,
       };
     }
     // Workspace DMs are 1:1 only; the unread badge already covers direct messages.

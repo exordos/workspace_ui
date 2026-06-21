@@ -37,11 +37,6 @@ function normalizeRealmOrigin(realmBaseUrl: string): string | null {
   }
 }
 
-function streamIdToWorkspaceSlug(streamId: number, streamName: string): string {
-  const name = streamName.trim().replaceAll(" ", "-");
-  return `${streamId}-${name}`;
-}
-
 function privateRecipientUserIds(
   displayRecipient: MockMessage["display_recipient"],
 ): number[] | null {
@@ -61,13 +56,8 @@ function buildPrivateNarrowHash(userIds: number[], messageId: MessageId): string
   return `#narrow/dm/${slug}/near/${encodeWorkspaceHashComponent(String(messageId))}`;
 }
 
-function buildStreamNarrowHash(
-  streamId: number,
-  streamName: string,
-  topic: string,
-  messageId: MessageId,
-): string {
-  const streamSlug = encodeWorkspaceHashComponent(streamIdToWorkspaceSlug(streamId, streamName));
+function buildStreamNarrowHash(streamUuid: string, topic: string, messageId: MessageId): string {
+  const streamSlug = encodeWorkspaceHashComponent(streamUuid.trim().toLowerCase());
   const topicEnc = encodeWorkspaceHashComponent(topic);
   const nearEnc = encodeWorkspaceHashComponent(String(messageId));
   return `#narrow/channel/${streamSlug}/topic/${topicEnc}/near/${nearEnc}`;
@@ -78,17 +68,17 @@ function buildStreamNarrowHash(
  */
 export function buildMessengerMessageWebPermalink(
   realmBaseUrl: string,
-  message: Pick<MockMessage, "id" | "stream_id" | "subject" | "display_recipient">,
-  resolveStreamName: (streamId: number) => string | undefined,
+  message: Pick<MockMessage, "id" | "stream_uuid" | "subject" | "display_recipient">,
+  resolveStreamName: (streamUuid: string) => string | undefined,
 ): string | null {
   const origin = normalizeRealmOrigin(realmBaseUrl);
   if (origin == null) return null;
 
   const messageId = message.id;
-  if (message.stream_id != null) {
-    const name = resolveStreamName(message.stream_id) ?? "unknown";
+  if (message.stream_uuid != null) {
+    resolveStreamName(message.stream_uuid);
     const topic = (message.subject ?? "").trim();
-    const hash = buildStreamNarrowHash(message.stream_id, name, topic, messageId);
+    const hash = buildStreamNarrowHash(message.stream_uuid, topic, messageId);
     return `${origin}/${hash}`;
   }
 

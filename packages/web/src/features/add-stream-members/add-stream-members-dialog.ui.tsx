@@ -20,7 +20,7 @@ const ADD_STREAM_MEMBERS_INPUT_CLASS =
 const CONTENT_CLASS = `${APP_DIALOG_CONTENT_BASE_CLASS} top-1/2 flex max-h-[70vh] max-w-md -translate-y-1/2 flex-col p-0`;
 
 export interface AddStreamMembersDialogProps {
-  onSuccess: (streamId: number) => void;
+  onSuccess: (streamId: string) => void;
 }
 
 export const AddStreamMembersDialog: React.FC<AddStreamMembersDialogProps> = ({ onSuccess }) => {

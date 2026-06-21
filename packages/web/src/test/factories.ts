@@ -57,7 +57,7 @@ interface MessageOverrides {
   id?: MessageId | number;
   sender_id?: number;
   sender_full_name?: string;
-  stream_id?: number | null;
+  stream_uuid?: string | null;
   channel?: string;
   subject?: string;
   content?: string;
@@ -75,7 +75,7 @@ export function createMessage(overrides: MessageOverrides = {}) {
     id,
     sender_id: overrides.sender_id ?? 1,
     sender_full_name: overrides.sender_full_name ?? "Test User",
-    stream_id: overrides.stream_id ?? 10,
+    stream_uuid: overrides.stream_uuid ?? autoUuid(),
     channel: overrides.channel ?? "general",
     subject: overrides.subject ?? "test-topic",
     content: overrides.content ?? `Message ${id}`,
@@ -92,7 +92,7 @@ export function createDmMessage(overrides: MessageOverrides & { to?: number[] } 
   const recipientIds = overrides.to ?? [1, 2];
   return createMessage({
     type: "private",
-    stream_id: null,
+    stream_uuid: null,
     channel: undefined,
     display_recipient: recipientIds.map((id) => ({
       id,
@@ -131,16 +131,16 @@ export function createUser(overrides: UserOverrides = {}) {
 // ---------------------------------------------------------------------------
 
 interface StreamOverrides {
-  stream_id?: number;
+  stream_uuid?: string;
   name?: string;
   description?: string;
 }
 
 export function createStream(overrides: StreamOverrides = {}) {
-  const id = overrides.stream_id ?? autoId();
+  const uuid = overrides.stream_uuid ?? autoUuid();
   return {
-    stream_id: id,
-    name: overrides.name ?? `stream-${id}`,
+    stream_uuid: uuid,
+    name: overrides.name ?? `stream-${uuid.slice(0, 8)}`,
     description: overrides.description ?? "",
   };
 }

@@ -5,6 +5,7 @@ interface StreamMetadataAccessFields {
   isArchived?: boolean;
   creatorId?: number;
   inviteOnly?: boolean;
+  private?: boolean;
   canAddSubscribersGroup?: StreamEntryInternal["canAddSubscribersGroup"];
   canRemoveSubscribersGroup?: StreamEntryInternal["canRemoveSubscribersGroup"];
   canAdministerChannelGroup?: StreamEntryInternal["canAdministerChannelGroup"];
@@ -20,6 +21,7 @@ function resolveStreamMetadataAccessFields(
     isArchived: row.isArchived ?? existing?.isArchived,
     creatorId: row.creatorId ?? existing?.creatorId,
     inviteOnly: row.inviteOnly ?? existing?.inviteOnly,
+    private: row.private ?? existing?.private,
     canAddSubscribersGroup: row.canAddSubscribersGroup ?? existing?.canAddSubscribersGroup,
     canRemoveSubscribersGroup: row.canRemoveSubscribersGroup ?? existing?.canRemoveSubscribersGroup,
     canAdministerChannelGroup: row.canAdministerChannelGroup ?? existing?.canAdministerChannelGroup,
@@ -36,6 +38,7 @@ function spreadStreamMetadataAccessFields(
     ...(fields.isArchived != null ? { isArchived: fields.isArchived } : {}),
     ...(fields.creatorId != null ? { creatorId: fields.creatorId } : {}),
     ...(fields.inviteOnly != null ? { inviteOnly: fields.inviteOnly } : {}),
+    ...(fields.private != null ? { private: fields.private } : {}),
     ...(fields.canAddSubscribersGroup != null
       ? { canAddSubscribersGroup: fields.canAddSubscribersGroup }
       : {}),
@@ -62,19 +65,18 @@ export function buildStreamMetadataEntry(
   const name = row.name.trim();
   const accessFields = resolveStreamMetadataAccessFields(row, existing);
   const accessSpread = spreadStreamMetadataAccessFields(accessFields);
-  const streamUuid = existing?.streamUuid ?? row.streamUuid;
+  const streamUuid = row.streamUuid;
   if (existing) {
     return {
       ...existing,
       name: name.length > 0 ? name : existing.name,
-      ...(streamUuid != null ? { streamUuid } : {}),
+      streamUuid,
       ...accessSpread,
     };
   }
   return {
-    stream_id: row.streamId,
-    name: name.length > 0 ? name : String(row.streamId),
-    ...(streamUuid != null ? { streamUuid } : {}),
+    streamUuid,
+    name: name.length > 0 ? name : row.streamUuid,
     lastMessage: "",
     lastMessageSenderName: undefined,
     time: "",

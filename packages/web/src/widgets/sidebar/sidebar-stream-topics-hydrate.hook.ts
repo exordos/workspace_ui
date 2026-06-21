@@ -13,7 +13,7 @@ import { useIntersectedOnce } from "~/shared/lib/intersected-once.hook";
 const SIDEBAR_SCROLL_ROOT_SELECTOR = "[data-sidebar-scroll]";
 
 export interface UseStreamSidebarTopicsHydrateOptions {
-  streamId: number;
+  streamId: string;
   topicsCount: number;
   expanded: boolean;
 }

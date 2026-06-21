@@ -11,7 +11,7 @@ import {
   fetchLatestMessagesForSidebarTopics,
   fetchStreamChannelMessagesForSidebarTopics,
 } from "~/shared/api/messenger-sidebar-preview.lib";
-import { fetchStreamTopicNames } from "~/shared/api/messenger-streams";
+import { fetchStreamTopics } from "~/shared/api/messenger-streams";
 import type { MessengerUnreadMessagesSnapshot } from "~/shared/api/messenger-unread.lib";
 import { guard } from "~/shared/lib/guards";
 import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
@@ -41,12 +41,12 @@ function isAbortLikeError(error: unknown): boolean {
   );
 }
 
-function buildScopedStreamKey(instanceId: string, streamId: number): string {
+function buildScopedStreamKey(instanceId: string, streamId: string): string {
   return `${instanceId}::${streamId}`;
 }
 
 function getActiveScopedStreamContext(
-  streamId: number,
+  streamId: string,
 ): { key: string; orgContext: ActiveOrgRequestContext } | null {
   const orgContext = captureActiveOrgRequestContext();
   if (orgContext.instanceId == null) {
@@ -98,13 +98,13 @@ async function acquireHydrateSlot(priority: boolean): Promise<void> {
   });
 }
 
-function streamHasSidebarTopics(streamId: number): boolean {
+function streamHasSidebarTopics(streamId: string): boolean {
   const entry = useChatListStore.getState().streamsMap.get(streamId);
   return (entry?.topics.size ?? 0) > 0;
 }
 
 function collectStreamTopicsMissingPreview(
-  streamId: number,
+  streamId: string,
   limit = TOPIC_PREVIEW_BACKFILL_LIMIT,
 ): string[] {
   const entry = useChatListStore.getState().streamsMap.get(streamId);
@@ -123,7 +123,7 @@ function hasNonEmptyPreviewText(value: string | undefined): boolean {
 }
 
 /** Topic rows from API shells or unread without a message preview yet. */
-function streamHasTopicsNeedingPreview(streamId: number): boolean {
+function streamHasTopicsNeedingPreview(streamId: string): boolean {
   const entry = useChatListStore.getState().streamsMap.get(streamId);
   if (entry == null) return false;
   if (entry.topics.size === 0) return false;
@@ -135,14 +135,15 @@ function streamHasTopicsNeedingPreview(streamId: number): boolean {
   return false;
 }
 
-function shouldHydrateStreamSidebarTopics(streamId: number, key: string): boolean {
+function shouldHydrateStreamSidebarTopics(streamId: string, key: string): boolean {
   if (streamHasTopicsNeedingPreview(streamId)) return true;
   if (streamHasSidebarTopics(streamId)) return false;
   return !hydratedStreamIds.has(key);
 }
 
-export function isStreamSidebarTopicsHydrateInFlight(streamId: number): boolean {
-  const scoped = getActiveScopedStreamContext(streamId);
+export function isStreamSidebarTopicsHydrateInFlight(streamId: string): boolean {
+  const normalizedStreamId = guard.streamUuid(streamId, "isStreamSidebarTopicsHydrateInFlight");
+  const scoped = getActiveScopedStreamContext(normalizedStreamId);
   if (scoped == null) {
     return false;
   }
@@ -165,13 +166,13 @@ export function clearStreamSidebarHydrateState(): void {
 }
 
 /** Backfills latest message preview for topic shells discovered from the topic-name API. */
-export function requestStreamSidebarTopicPreviewBackfill(streamId: number): Promise<void> {
-  guard.streamId(streamId, "requestStreamSidebarTopicPreviewBackfill");
-  const scoped = getActiveScopedStreamContext(streamId);
+export function requestStreamSidebarTopicPreviewBackfill(streamId: string): Promise<void> {
+  const normalizedStreamId = guard.streamUuid(streamId, "requestStreamSidebarTopicPreviewBackfill");
+  const scoped = getActiveScopedStreamContext(normalizedStreamId);
   if (scoped == null) {
     return Promise.resolve();
   }
-  const topicNames = collectStreamTopicsMissingPreview(streamId);
+  const topicNames = collectStreamTopicsMissingPreview(normalizedStreamId);
   if (topicNames.length === 0) {
     return Promise.resolve();
   }
@@ -188,7 +189,7 @@ export function requestStreamSidebarTopicPreviewBackfill(streamId: number): Prom
       let batchTopics = topicNames;
       for (let batch = 0; batch < MAX_TOPIC_PREVIEW_BACKFILL_BATCHES; batch += 1) {
         const messages = await fetchLatestMessagesForSidebarTopics(
-          streamId,
+          normalizedStreamId,
           batchTopics,
           controller.signal,
         );
@@ -200,7 +201,7 @@ export function requestStreamSidebarTopicPreviewBackfill(streamId: number): Prom
         }
         useChatListStore.getState().applyStreamSidebarPreviewsFromMessages(messages);
 
-        const remaining = collectStreamTopicsMissingPreview(streamId);
+        const remaining = collectStreamTopicsMissingPreview(normalizedStreamId);
         if (remaining.length === 0 || remaining.length >= batchTopics.length) {
           return;
         }
@@ -211,7 +212,7 @@ export function requestStreamSidebarTopicPreviewBackfill(streamId: number): Prom
         return;
       }
       logChatListFlow("chatList: stream sidebar topic preview backfill failed", {
-        streamId,
+        streamId: normalizedStreamId,
         error: error instanceof Error ? error.message : String(error),
       });
     } finally {
@@ -228,9 +229,9 @@ export function requestStreamSidebarTopicPreviewBackfill(streamId: number): Prom
  * Loads topic names list for a stream and inserts topic shells into the sidebar store.
  * This is needed because message-based hydration only discovers topics that have loaded messages.
  */
-export function requestStreamSidebarTopicListHydrate(streamId: number): Promise<void> {
-  guard.streamId(streamId, "requestStreamSidebarTopicListHydrate");
-  const scoped = getActiveScopedStreamContext(streamId);
+export function requestStreamSidebarTopicListHydrate(streamId: string): Promise<void> {
+  const normalizedStreamId = guard.streamUuid(streamId, "requestStreamSidebarTopicListHydrate");
+  const scoped = getActiveScopedStreamContext(normalizedStreamId);
   if (scoped == null) {
     return Promise.resolve();
   }
@@ -246,15 +247,25 @@ export function requestStreamSidebarTopicListHydrate(streamId: number): Promise<
   inFlightTopicListControllers.set(scoped.key, controller);
   const promise = (async () => {
     try {
-      const topics = await fetchStreamTopicNames(streamId, controller.signal);
+      const topics = await fetchStreamTopics(normalizedStreamId, controller.signal);
       if (!isScopedRequestCurrent(scoped.orgContext, controller)) {
         return;
       }
-      useChatListStore.getState().upsertStreamTopicShells(streamId, topics);
+      useChatListStore.getState().upsertStreamTopicShells(
+        normalizedStreamId,
+        topics.map((topic) => ({
+          topicUuid: topic.uuid,
+          streamUuid: topic.stream_uuid,
+          name: topic.name,
+          ...(topic.default_for_stream_uuid != null
+            ? { defaultForStreamUuid: topic.default_for_stream_uuid }
+            : {}),
+        })),
+      );
       hydratedStreamTopicLists.add(scoped.key);
-      if (streamHasTopicsNeedingPreview(streamId)) {
+      if (streamHasTopicsNeedingPreview(normalizedStreamId)) {
         const messages = await fetchStreamChannelMessagesForSidebarTopics(
-          streamId,
+          normalizedStreamId,
           undefined,
           controller.signal,
         );
@@ -263,7 +274,7 @@ export function requestStreamSidebarTopicListHydrate(streamId: number): Promise<
         }
         if (messages.length > 0) {
           useChatListStore.getState().applyStreamSidebarPreviewsFromMessages(messages);
-          if (streamHasSidebarTopics(streamId)) {
+          if (streamHasSidebarTopics(normalizedStreamId)) {
             hydratedStreamIds.add(scoped.key);
           }
         }
@@ -273,7 +284,7 @@ export function requestStreamSidebarTopicListHydrate(streamId: number): Promise<
         return;
       }
       logChatListFlow("chatList: stream sidebar topic list hydrate failed", {
-        streamId,
+        streamId: normalizedStreamId,
         error: error instanceof Error ? error.message : String(error),
       });
     } finally {
@@ -292,7 +303,7 @@ export function queuePriorityStreamSidebarTopicsHydrate(
 ): void {
   if (unreadSnapshot != null) {
     const { streamsMap } = useChatListStore.getState();
-    const seen = new Set<number>();
+    const seen = new Set<string>();
     for (const bucket of unreadSnapshot.streams) {
       if (seen.has(bucket.streamId)) continue;
       seen.add(bucket.streamId);
@@ -307,7 +318,7 @@ export function queuePriorityStreamSidebarTopicsHydrate(
   for (const stream of useChatListStore.getState().streams()) {
     const topicCount = stream.topics?.length ?? 0;
     if ((stream.badge ?? 0) > 0 && topicCount === 0) {
-      void requestStreamSidebarTopicsHydrate(stream.stream_id, "unread-register");
+      void requestStreamSidebarTopicsHydrate(stream.streamUuid, "unread-register");
     }
   }
 }
@@ -317,12 +328,12 @@ export function queuePriorityStreamSidebarTopicsHydrate(
  * Dedupes in-flight and successful hydrates; retries when API returns no messages.
  */
 export function requestStreamSidebarTopicsHydrate(
-  streamId: number,
+  streamId: string,
   reason: StreamSidebarTopicsHydrateReason,
 ): Promise<void> {
-  guard.streamId(streamId, "requestStreamSidebarTopicsHydrate");
-  const scoped = getActiveScopedStreamContext(streamId);
-  if (scoped == null || !shouldHydrateStreamSidebarTopics(streamId, scoped.key)) {
+  const normalizedStreamId = guard.streamUuid(streamId, "requestStreamSidebarTopicsHydrate");
+  const scoped = getActiveScopedStreamContext(normalizedStreamId);
+  if (scoped == null || !shouldHydrateStreamSidebarTopics(normalizedStreamId, scoped.key)) {
     return Promise.resolve();
   }
   const existing = inFlight.get(scoped.key);
@@ -337,13 +348,13 @@ export function requestStreamSidebarTopicsHydrate(
   const promise = (async () => {
     await acquireHydrateSlot(priority);
     try {
-      if (!shouldHydrateStreamSidebarTopics(streamId, scoped.key)) {
+      if (!shouldHydrateStreamSidebarTopics(normalizedStreamId, scoped.key)) {
         return;
       }
 
-      logChatListFlow("chatList: stream sidebar topics hydrate start", { streamId, reason });
+      logChatListFlow("chatList: stream sidebar topics hydrate start", { streamId: normalizedStreamId, reason });
       const messages = await fetchStreamChannelMessagesForSidebarTopics(
-        streamId,
+        normalizedStreamId,
         undefined,
         controller.signal,
       );
@@ -351,15 +362,15 @@ export function requestStreamSidebarTopicsHydrate(
         return;
       }
       if (messages.length === 0) {
-        logChatListFlow("chatList: stream sidebar topics hydrate empty", { streamId, reason });
+        logChatListFlow("chatList: stream sidebar topics hydrate empty", { streamId: normalizedStreamId, reason });
         return;
       }
 
       useChatListStore.getState().applyStreamSidebarPreviewsFromMessages(messages);
-      if (streamHasSidebarTopics(streamId)) {
+      if (streamHasSidebarTopics(normalizedStreamId)) {
         hydratedStreamIds.add(scoped.key);
         logChatListFlow("chatList: stream sidebar topics hydrate done", {
-          streamId,
+          streamId: normalizedStreamId,
           reason,
           messageCount: messages.length,
         });
@@ -369,7 +380,7 @@ export function requestStreamSidebarTopicsHydrate(
         return;
       }
       logChatListFlow("chatList: stream sidebar topics hydrate failed", {
-        streamId,
+        streamId: normalizedStreamId,
         reason,
         error: error instanceof Error ? error.message : String(error),
       });

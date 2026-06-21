@@ -2,7 +2,7 @@ import React from "react";
 import { useStreamSidebarTopicsHydrate } from "./sidebar-stream-topics-hydrate.hook";
 
 export interface SidebarStreamHydrateWrapperProps {
-  streamId: number;
+  streamId: string;
   topicsCount: number;
   expanded: boolean;
   children: (state: { topicsLoading: boolean }) => React.ReactNode;

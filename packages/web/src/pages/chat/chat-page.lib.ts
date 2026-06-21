@@ -4,7 +4,7 @@ import { dmRouteKey } from "~/shared/lib/dm-key";
 import { type UserId } from "~/shared/lib/user-id.lib";
 
 export type ReadFallbackContext =
-  | { type: "stream"; streamId: number; topic: string }
+  | { type: "stream"; streamId: string; topic: string }
   | { type: "dm"; dmKey: string };
 
 export function resolveDraftType(
@@ -24,7 +24,7 @@ export function buildReadFallbackContext(options: {
   isDmView: boolean;
   activeDmUserIds: UserId[] | null | undefined;
   currentUserId: UserId | null | undefined;
-  activeStreamId: number | null | undefined;
+  activeStreamId: string | null | undefined;
   activeTopic: string | null | undefined;
 }): ReadFallbackContext | undefined {
   if (options.isDmView) {

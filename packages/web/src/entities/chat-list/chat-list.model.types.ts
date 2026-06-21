@@ -16,10 +16,10 @@ import type {
 } from "~/shared/types/sidebar-chat";
 
 export interface ChatListStreamMetadataRow {
-  streamId: number;
+  /** Workspace stream UUID used as the stream identity and for gateway reads/writes. */
+  streamUuid: string;
   name: string;
-  /** Stream UUID used to fetch and create messages via the gateway. */
-  streamUuid?: string;
+  private?: boolean;
   isArchived?: boolean;
   creatorId?: number;
   inviteOnly?: boolean;
@@ -28,6 +28,13 @@ export interface ChatListStreamMetadataRow {
   canAdministerChannelGroup?: MessengerGroupSettingValue;
   canResolveTopicsGroup?: MessengerGroupSettingValue;
   canMoveMessagesOutOfChannelGroup?: MessengerGroupSettingValue;
+}
+
+export interface ChatListStreamTopicMetadataRow {
+  topicUuid: string;
+  streamUuid: string;
+  name: string;
+  defaultForStreamUuid?: string;
 }
 
 export interface ChatListDmMetadataRow {
@@ -41,12 +48,12 @@ export interface ChatListDmMetadataRow {
 }
 
 export type MessageLocation =
-  | { type: "stream"; stream_id: number; topic: string }
+  | { type: "stream"; streamUuid: string; topic: string; topicUuid?: string }
   | { type: "dm"; dmKey: string };
 
 export interface ChatListPreviewSourceMessage {
   id: MessageId;
-  stream_id?: number | null;
+  stream_uuid?: string | null;
   display_recipient?:
     | string
     | { id: number; full_name: string; email?: string; avatar_url?: string }[];
@@ -62,7 +69,7 @@ export interface ChatListHandleDeleteMessagesOptions {
 }
 
 export interface ChatListState {
-  streamsMap: Map<number, StreamEntryInternal>;
+  streamsMap: Map<string, StreamEntryInternal>;
   dmsMap: Map<string, DmEntryInternal>;
   /**
    * True once the sidebar can rely on local chat sources: first setFromMessages/addMessages,
@@ -125,42 +132,45 @@ export interface ChatListState {
   upsertMentionMessageLocations: (messages: readonly MockMessage[]) => void;
   /** Stream/topic preview only — does not bump unread (metadata-first stream batch). */
   applyStreamSidebarPreviewsFromMessages: (messages: WorkspaceRawMessage[]) => void;
-  /** Ensures topic shells exist for a stream (used when expanding channel in sidebar). */
-  upsertStreamTopicShells: (streamId: number, topics: string[]) => void;
+  /** Ensures topic rows exist for a stream (used by Workspace stream_topics API). */
+  upsertStreamTopicShells: (
+    streamUuid: string,
+    topics: readonly ChatListStreamTopicMetadataRow[],
+  ) => void;
   /** Adds channels from subscriptions metadata even when no messages for them are in memory. */
   upsertStreamMetadataRows: (rows: ChatListStreamMetadataRow[]) => void;
   /** Marks stream metadata readiness from authoritative subscriptions sources. */
   setStreamMetadataHydrated: (value: boolean) => void;
   /** Optimistically toggles archived state for a stream; `undefined` clears local override. */
-  setStreamArchived: (streamId: number, isArchived: boolean | undefined) => void;
+  setStreamArchived: (streamId: string, isArchived: boolean | undefined) => void;
   /** Upserts DM rows from metadata and the local DM index (not only from loaded messages). */
   upsertDmMetadataRows: (rows: ChatListDmMetadataRow[]) => void;
   setCurrentUserId: (id: UserId | null) => void;
-  renameStream: (streamId: number, nextName: string) => void;
+  renameStream: (streamId: string, nextName: string) => void;
   moveStreamTopic: (params: {
-    streamId: number;
+    streamId: string;
     oldTopic: string;
     newTopic: string;
     messageIds?: MessageId[];
     anchorMessageId?: MessageId;
   }) => void;
   moveTopicToStream: (params: {
-    sourceStreamId: number;
-    targetStreamId: number;
+    sourceStreamId: string;
+    targetStreamId: string;
     oldTopic: string;
     newTopic: string;
     messageIds?: MessageId[];
     anchorMessageId?: MessageId;
   }) => void;
-  removeStreamTopic: (streamId: number, topic: string) => void;
-  removeStream: (streamId: number) => void;
+  removeStreamTopic: (streamId: string, topic: string) => void;
+  removeStream: (streamId: string) => void;
   /** After a user profile is fetched, refresh personal DM row titles that still use placeholders. */
   patchPersonalDmRowLabelsForUser: (userId: UserId) => void;
   /** Recomputes sidebar unread totals, mentions count, and stream-topic index from current maps. */
   syncDerivedScalars: () => void;
   clear: () => void;
   decrementUnreadForMessages: (messageIds: MessageId[]) => void;
-  decrementUnreadForTopic: (streamId: number, topic: string, count: number) => void;
+  decrementUnreadForTopic: (streamId: string, topic: string, count: number) => void;
   decrementUnreadForDmKey: (dmKey: string, count: number) => void;
   incrementUnreadForMessages: (messageIds: MessageId[]) => void;
   handleDeleteMessages: (

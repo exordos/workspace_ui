@@ -83,18 +83,18 @@ export async function markDmAsRead(userIds: number[]): Promise<boolean> {
 }
 
 /** Bulk-marks all unread in a stream as read (sidebar context menu). */
-export async function markStreamAsRead(streamId: number): Promise<boolean> {
+export async function markStreamAsRead(streamId: string): Promise<boolean> {
   return markUnreadInNarrow(buildSidebarMarkReadNarrowForChannel(streamId));
 }
 
 /** Bulk-marks all unread in a stream topic as read (sidebar context menu). */
-export async function markTopicAsRead(streamId: number, topic: string): Promise<boolean> {
-  guard.streamId(streamId, "markTopicAsRead");
+export async function markTopicAsRead(streamId: string, topic: string): Promise<boolean> {
+  guard.streamUuid(streamId, "markTopicAsRead");
   return markUnreadInNarrow(buildSidebarMarkReadNarrowForTopic(streamId, topic));
 }
 
 async function findTopicAnchorMessageId(
-  streamId: number,
+  streamId: string,
   topic: string,
 ): Promise<MessageId | null> {
   const normalizedTopic = normalizeTopicForIdentity(topic);
@@ -156,11 +156,11 @@ async function patchStreamTopicForAllMessages(
  * Renames a stream topic by PATCHing the anchor message with propagate_mode=change_all.
  */
 export async function renameStreamTopic(
-  streamId: number,
+  streamId: string,
   topic: string,
   newTopic: string,
 ): Promise<boolean> {
-  guard.streamId(streamId, "renameStreamTopic.streamId");
+  guard.streamUuid(streamId, "renameStreamTopic.streamId");
   const normalizedTopic = normalizeTopicForIdentity(topic);
   const targetTopic = normalizeTopicForIdentity(newTopic.trim());
   if (targetTopic.length === 0) {
@@ -180,11 +180,11 @@ export async function renameStreamTopic(
 
 async function patchStreamTopicToChannelForAllMessages(
   anchorMessageId: MessageId,
-  targetStreamId: number,
+  targetStreamId: string,
   targetTopic: string,
 ): Promise<boolean> {
   const patchResponse = await messengerPipelinePatch(`messages/${anchorMessageId}`, {
-    stream_id: String(targetStreamId),
+    stream_uuid: targetStreamId,
     topic: targetTopic,
     propagate_mode: "change_all",
     send_notification_to_old_thread: "false",
@@ -210,13 +210,13 @@ async function patchStreamTopicToChannelForAllMessages(
  * Moves an entire stream topic to another channel via PATCH with propagate_mode=change_all.
  */
 export async function moveStreamTopicToChannel(
-  sourceStreamId: number,
+  sourceStreamId: string,
   topic: string,
-  targetStreamId: number,
+  targetStreamId: string,
   targetTopic: string,
 ): Promise<boolean> {
-  guard.streamId(sourceStreamId, "moveStreamTopicToChannel.sourceStreamId");
-  guard.streamId(targetStreamId, "moveStreamTopicToChannel.targetStreamId");
+  guard.streamUuid(sourceStreamId, "moveStreamTopicToChannel.sourceStreamId");
+  guard.streamUuid(targetStreamId, "moveStreamTopicToChannel.targetStreamId");
   const normalizedTargetTopic = normalizeTopicForIdentity(targetTopic.trim());
   if (normalizedTargetTopic.length === 0) {
     return false;
@@ -244,11 +244,11 @@ export async function moveStreamTopicToChannel(
  * We PATCH the first message in the topic with propagate_mode=change_all.
  */
 export async function setTopicResolvedState(
-  streamId: number,
+  streamId: string,
   topic: string,
   resolved: boolean,
 ): Promise<boolean> {
-  guard.streamId(streamId, "setTopicResolvedState.streamId");
+  guard.streamUuid(streamId, "setTopicResolvedState.streamId");
   const normalizedTopic = normalizeTopicForIdentity(topic);
   const targetTopic = resolved
     ? toResolvedTopicName(normalizedTopic)

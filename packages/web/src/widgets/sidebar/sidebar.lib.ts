@@ -114,10 +114,13 @@ export const MOCK_DMS: SidebarChat[] = [
   },
 ];
 
-export function getStreamChats(streams: StreamWithLast[]): SidebarChat[] {
+export function getStreamChats(
+  streams: StreamWithLast[],
+): Extract<SidebarChat, { type: "stream" }>[] {
   return streams.map((s) => ({
     type: "stream" as const,
-    stream_id: s.stream_id,
+    streamUuid: s.streamUuid,
+    private: s.private,
     name: s.name,
     lastMessage: s.lastMessage,
     lastMessageSenderName: s.lastMessageSenderName,
@@ -147,50 +150,36 @@ function slugify(s: string): string {
   return safe.replace(/^-|-$/g, "") || "chat";
 }
 
-/** Slug for stream: stream_id-stream_name. */
-export function slugForStream(stream: { stream_id: number; name: string }): string {
-  return `${stream.stream_id}-${slugify(stream.name)}`;
+/** Slug for stream: the Workspace stream UUID. */
+export function slugForStream(stream: { streamUuid: string }): string {
+  return stream.streamUuid.trim().toLowerCase();
 }
 
-/** Parse stream slug from URL: "5-general" -> { stream_id: 5, stream_name: "general" }. */
-export function parseStreamSlug(
-  streamSlug: string,
-): { stream_id: number; stream_name: string } | null {
-  const firstDash = streamSlug.indexOf("-");
-  if (firstDash > 0) {
-    const lead = streamSlug.slice(0, firstDash);
-    const num = parseInt(lead, 10);
-    if (!Number.isNaN(num) && String(num) === lead) {
-      const rest = streamSlug.slice(firstDash + 1);
-      return { stream_id: num, stream_name: rest };
-    }
-  }
-  return null;
+/** Parse stream slug from URL: uuid-only Workspace stream route. */
+export function parseStreamSlug(streamSlug: string): { streamUuid: string } | null {
+  const streamUuid = streamSlug.trim().toLowerCase();
+  return streamUuid.length > 0 ? { streamUuid } : null;
 }
 
 /**
- * Resolves canonical stream name and id from a parsed slug plus the chat-list map.
+ * Resolves canonical stream name and uuid from a parsed slug plus the chat-list map.
  */
 export function resolveStreamRouteFromSlug(
-  parsedStream: { stream_id: number; stream_name: string } | null,
-  streamsMap: Map<number, { name: string }>,
+  parsedStream: { streamUuid: string } | null,
+  streamsMap: Map<string, { name: string }>,
 ): {
   resolvedStreamName: string;
   resolvedCanonicalStreamName: string | null;
-  resolvedStreamId: number | null;
+  resolvedStreamId: string | null;
 } {
   if (!parsedStream) {
     return { resolvedStreamName: "", resolvedCanonicalStreamName: null, resolvedStreamId: null };
   }
-  const streamMapName = streamsMap.get(parsedStream.stream_id)?.name ?? null;
-  const resolvedStreamName = streamMapName ?? parsedStream.stream_name;
+  const streamMapName = streamsMap.get(parsedStream.streamUuid)?.name ?? null;
   return {
-    resolvedStreamName,
-    resolvedCanonicalStreamName: resolveCanonicalStreamName({
-      streamId: parsedStream.stream_id,
-      streamMapName,
-    }),
-    resolvedStreamId: parsedStream.stream_id,
+    resolvedStreamName: streamMapName ?? parsedStream.streamUuid,
+    resolvedCanonicalStreamName: streamMapName,
+    resolvedStreamId: parsedStream.streamUuid,
   };
 }
 
@@ -199,10 +188,10 @@ export function parseDmSlugToUserIds(dmSlug: string): UserId[] {
   return parseDmRouteParticipantIds(dmSlug);
 }
 
-/** Workspace API chat_id format: stream:${stream_id}:${topic} or dm:${userIds.join(",")}. */
+/** Workspace API chat_id format: stream:${stream_uuid}:${topic} or dm:${userIds.join(",")}. */
 export function chatToWorkspaceChatId(chat: SidebarChat): string {
   if (chat.type === "stream") {
-    return `stream:${chat.stream_id}:general`;
+    return `stream:${chat.streamUuid}:general`;
   }
   const userIds =
     Array.isArray(chat.userIds) && chat.userIds.length > 0

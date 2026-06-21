@@ -14,21 +14,21 @@ export type ForwardableMessage = Pick<
   | "sender_id"
   | "content"
   | "markdown_source"
-  | "stream_id"
+  | "stream_uuid"
   | "subject"
   | "display_recipient"
   | "channel"
 >;
 
 interface ForwardTargetStream {
-  stream_id: number;
+  stream_uuid: string;
   name: string;
 }
 
 interface ForwardDraftTarget {
   route: string;
   draftType: "stream" | "private";
-  draftTo: number[];
+  draftTo: (number | string)[];
   draftTopic: string;
 }
 
@@ -37,7 +37,7 @@ const pendingForwardPrefills = new Map<string, string>();
 interface ForwardQuotePermalinkOptions {
   realmBaseUrl: string;
   wroteLabel: string;
-  resolveStreamName: (streamId: number, message: ForwardableMessage) => string | undefined;
+  resolveStreamName: (streamUuid: string, message: ForwardableMessage) => string | undefined;
 }
 
 function buildSingleForwardQuote(
@@ -115,12 +115,12 @@ export function resolveForwardDraftTarget(
   const normalizedTopic = normalizeTopicForIdentity(topic);
   return {
     route: withCurrentOrgRoute(
-      `/stream/${slugForStream(matchedStream)}/topic/${encodeURIComponent(
+      `/stream/${slugForStream({ streamUuid: matchedStream.stream_uuid })}/topic/${encodeURIComponent(
         encodeTopicForRoute(normalizedTopic),
       )}`,
     ),
     draftType: "stream",
-    draftTo: [matchedStream.stream_id],
+    draftTo: [matchedStream.stream_uuid],
     draftTopic: normalizedTopic,
   };
 }

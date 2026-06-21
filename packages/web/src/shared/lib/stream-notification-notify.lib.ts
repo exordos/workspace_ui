@@ -9,13 +9,13 @@ import {
 import type { WorkspaceNotificationSettings } from "./messenger-notification-settings.lib";
 
 export interface StreamNotificationOverrideReader {
-  isStreamMuted?: (streamId: number) => boolean;
-  getStreamDesktopNotificationsOverride: (streamId: number) => boolean | null;
-  getStreamAudibleNotificationsOverride: (streamId: number) => boolean | null;
+  isStreamMuted?: (streamId: string) => boolean;
+  getStreamDesktopNotificationsOverride: (streamId: string) => boolean | null;
+  getStreamAudibleNotificationsOverride: (streamId: string) => boolean | null;
 }
 
 export function buildStreamMessageNotificationFlags(
-  streamId: number,
+  streamId: string,
   settings: WorkspaceNotificationSettings,
   overrides: StreamNotificationOverrideReader,
 ): {

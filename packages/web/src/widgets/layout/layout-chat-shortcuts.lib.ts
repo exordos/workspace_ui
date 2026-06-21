@@ -3,20 +3,14 @@ import type { SidebarChat } from "~/shared/types/sidebar-chat";
 import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
 import type { ResolveChatShortcutRouteOptions } from "./layout-chat-shortcuts.types";
 
-function toChatRoute(chat: SidebarChat): string {
-  if (chat.type === "dm") {
-    return withCurrentOrgRoute(`/dm/${chat.slug}`);
+function toChatRoute(chat: SidebarChat): string | null {
+  if (chat.type !== "stream") {
+    return null;
   }
   return withCurrentOrgRoute(`/stream/${slugForStream(chat)}`);
 }
 
-function getActiveChatRoute(
-  activeStreamSlug: string | null | undefined,
-  activeDmIdParam: string | null | undefined,
-): string | null {
-  if (activeDmIdParam != null && activeDmIdParam.length > 0) {
-    return withCurrentOrgRoute(`/dm/${activeDmIdParam}`);
-  }
+function getActiveChatRoute(activeStreamSlug: string | null | undefined): string | null {
   if (activeStreamSlug != null && activeStreamSlug.length > 0) {
     return withCurrentOrgRoute(`/stream/${activeStreamSlug}`);
   }
@@ -27,12 +21,12 @@ export function resolveChatShortcutRoute({
   sidebarChats,
   direction,
   activeStreamSlug,
-  activeDmIdParam,
 }: ResolveChatShortcutRouteOptions): string | null {
   if (sidebarChats.length === 0) return null;
 
-  const routes = sidebarChats.map(toChatRoute);
-  const activeRoute = getActiveChatRoute(activeStreamSlug, activeDmIdParam);
+  const routes = sidebarChats.map(toChatRoute).filter((route): route is string => route != null);
+  if (routes.length === 0) return null;
+  const activeRoute = getActiveChatRoute(activeStreamSlug);
   const activeIndex = activeRoute != null ? routes.indexOf(activeRoute) : -1;
 
   if (activeIndex < 0) {

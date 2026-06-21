@@ -199,19 +199,20 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     [streamEntry?.name, streamId, title],
   );
   const handleOpenTopic = useCallback(
-    (topicName: string) => {
+    (topic: { name: string; topicUuid?: string }) => {
       if (streamId == null) {
         return;
       }
+      const topicRouteSegment = topic.topicUuid ?? topic.name;
       void navigate(
         withCurrentOrgRoute(
-          `/stream/${buildStreamSlug(streamId, canonicalStreamName ?? displayStreamName)}/topic/${encodeURIComponent(
-            encodeTopicForRoute(topicName),
+          `/stream/${buildStreamSlug(streamId)}/topic/${encodeURIComponent(
+            encodeTopicForRoute(topicRouteSegment),
           )}`,
         ),
       );
     },
-    [canonicalStreamName, displayStreamName, navigate, streamId],
+    [navigate, streamId],
   );
   const handleOpenAddMembers = useCallback(() => {
     if (streamId == null) return;
@@ -356,7 +357,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
           description: editDescription.trim().length > 0 ? editDescription.trim() : null,
         });
       }
-      void navigate(withCurrentOrgRoute(`/stream/${buildStreamSlug(streamId, trimmedName)}`), {
+      void navigate(withCurrentOrgRoute(`/stream/${buildStreamSlug(streamId)}`), {
         replace: true,
       });
       setEditOpen(false);
@@ -379,8 +380,8 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     useCurrentChatMessagesStore.getState().setMessages([]);
 
     const nextVisibleStream = chatList.streams().find((candidate) => {
-      if (candidate.stream_id === streamId) return false;
-      const metadata = chatList.streamsMap.get(candidate.stream_id);
+      if (candidate.streamUuid === streamId) return false;
+      const metadata = chatList.streamsMap.get(candidate.streamUuid);
       if (metadata?.isArchived === true) return false;
       if (!streamMetadataHydrated && metadata?.isArchived == null) return false;
       return true;
@@ -388,7 +389,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     if (nextVisibleStream) {
       void navigate(
         withCurrentOrgRoute(
-          `/stream/${buildStreamSlug(nextVisibleStream.stream_id, nextVisibleStream.name)}`,
+          `/stream/${buildStreamSlug(nextVisibleStream.streamUuid)}`,
         ),
         { replace: true },
       );
@@ -409,24 +410,29 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
       setChannelActionPending(false);
     }
   };
-  const handleDeleteTopic = async (topicName: string) => {
+  const handleDeleteTopic = async (topic: { name: string; topicUuid?: string }) => {
     if (streamId == null || topicDeletePendingName != null) return;
-    const topicLabel = resolveTopicDisplayInfo(topicName).label;
+    if (topic.topicUuid == null) {
+      setTopicDeleteError(t("app.error"));
+      return;
+    }
+    const topicLabel = resolveTopicDisplayInfo(topic.name).label;
     if (!window.confirm(t("channel.deleteTopicConfirm", { topic: topicLabel }))) return;
 
-    setTopicDeletePendingName(topicName);
+    setTopicDeletePendingName(topic.name);
     setTopicDeleteError(null);
-    const result = await deleteTopic(streamId, topicName);
+    const result = await deleteTopic(topic.topicUuid);
     if (result.ok && result.complete) {
       const chatList = useChatListStore.getState();
-      chatList.removeStreamTopic(streamId, topicName);
+      chatList.removeStreamTopic(streamId, topic.name);
       const nextInfo = useChatInfoStore.getState().data;
       if (nextInfo?.type === "stream") {
         useChatInfoStore.getState().setData({
           ...nextInfo,
-          topics: (nextInfo.topics ?? []).filter(
-            (topic) =>
-              normalizeTopicForIdentity(topic.name) !== normalizeTopicForIdentity(topicName),
+          topics: (nextInfo.topics ?? []).filter((candidate) =>
+            topic.topicUuid != null
+              ? candidate.topicUuid !== topic.topicUuid
+              : normalizeTopicForIdentity(candidate.name) !== normalizeTopicForIdentity(topic.name),
           ),
         });
       }
@@ -435,14 +441,12 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
         context?.type === "stream" &&
         context.streamId === streamId &&
         context.streamWideView !== true &&
-        normalizeTopicForIdentity(context.topic) === normalizeTopicForIdentity(topicName);
+        (context.topicUuid === topic.topicUuid ||
+          normalizeTopicForIdentity(context.topic) === normalizeTopicForIdentity(topic.name));
       if (isDeletingActiveTopic) {
-        void navigate(
-          withCurrentOrgRoute(
-            `/stream/${buildStreamSlug(streamId, canonicalStreamName ?? displayStreamName)}`,
-          ),
-          { replace: true },
-        );
+        void navigate(withCurrentOrgRoute(`/stream/${buildStreamSlug(streamId)}`), {
+          replace: true,
+        });
       }
     } else {
       setTopicDeleteError(t("app.error"));
@@ -599,12 +603,12 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
               {channelTopics.map((topic) => {
                 const topicDisplay = resolveTopicDisplayInfo(topic.name);
                 return (
-                  <li key={topic.name}>
+                  <li key={topic.topicUuid ?? topic.name}>
                     <div className="flex items-center gap-2 rounded-lg px-2 py-1 text-left text-sm text-text-primary transition-colors hover:bg-bg-elevated">
                       <button
                         type="button"
                         className="flex min-w-0 flex-1 items-center justify-between gap-2 py-0.5 text-left"
-                        onClick={() => handleOpenTopic(topic.name)}
+                        onClick={() => handleOpenTopic(topic)}
                         disabled={topicDeletePendingName === topic.name}
                       >
                         <span className={`truncate ${topicDisplay.isSystem ? "italic" : ""}`}>
@@ -621,7 +625,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
                           type="button"
                           className="hover:bg-notice-base/10 flex h-6 w-6 shrink-0 items-center justify-center rounded text-notice-base transition-colors disabled:opacity-40"
                           onClick={() => {
-                            void handleDeleteTopic(topic.name);
+                            void handleDeleteTopic(topic);
                           }}
                           disabled={topicDeletePendingName != null}
                           aria-label={t("channel.deleteTopic")}

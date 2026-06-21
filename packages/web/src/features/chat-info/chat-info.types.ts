@@ -20,6 +20,7 @@ export interface ChatInfoMember {
 
 export interface ChatInfoTopic {
   name: string;
+  topicUuid?: string;
   unreadCount: number;
 }
 
@@ -37,7 +38,7 @@ export type ChatInfoContext =
   | {
       kind: "stream";
       instanceId: string;
-      streamId: number;
+      streamUuid: string;
       streamName: string;
       isMuted: boolean;
       topics: ChatInfoTopic[];

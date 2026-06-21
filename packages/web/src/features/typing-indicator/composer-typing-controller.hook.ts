@@ -9,7 +9,7 @@ import { resolveComposerTypingTransition, resolveTypingIdleTransition } from "./
 
 type ComposerTypingTarget =
   | { kind: "dm"; userIds: number[] }
-  | { kind: "stream"; streamId: number; topic: string };
+  | { kind: "stream"; streamId: string; topic: string };
 
 function startTyping(target: ComposerTypingTarget): void {
   if (target.kind === "dm") {

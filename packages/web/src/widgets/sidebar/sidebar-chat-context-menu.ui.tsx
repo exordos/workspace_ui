@@ -206,7 +206,7 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
   triggerOffsetClassName = "right-1 top-8",
   children,
 }: {
-  streamId: number;
+  streamId: string;
   chat: Extract<SidebarChat, { type: "stream" }>;
   folderId?: string;
   onCreateTopic?: () => void;
@@ -567,7 +567,7 @@ export const TopicContextMenu = React.memo(function TopicContextMenu({
   sideActions,
   children,
 }: {
-  streamId: number;
+  streamId: string;
   streamName: string;
   topic: string;
   rowClassName: string;

@@ -107,7 +107,6 @@ export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
           path="/stream/:streamSlug/topic/:topicName"
           element={<ChatPage key={location.pathname} />}
         />
-        <Route path="/dm/:dmId" element={<ChatPage key={location.pathname} />} />
         <Route path="/message/:messageId" element={<MessageRedirectPage />} />
         <Route path="/activity/:filter" element={<ActivityPage />} />
         <Route path="/calendar" element={<CalendarPage />} />
@@ -134,7 +133,6 @@ export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
           path="stream/:streamSlug/topic/:topicName"
           element={<ChatPage key={location.pathname} />}
         />
-        <Route path="dm/:dmId" element={<ChatPage key={location.pathname} />} />
         <Route path="message/:messageId" element={<MessageRedirectPage />} />
         <Route path="activity/:filter" element={<ActivityPage />} />
         <Route path="calendar" element={<CalendarPage />} />

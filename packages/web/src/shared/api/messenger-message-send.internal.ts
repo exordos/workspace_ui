@@ -8,6 +8,7 @@ import { getMessengerWorkspaceApiBaseForCurrentInstance, messengerApi } from "./
 
 export interface MessengerMessageSendClientParams {
   streamUuid: string;
+  topicUuid?: string;
   content: string;
 }
 
@@ -18,6 +19,7 @@ export interface WorkspaceMessagePayload {
 
 export interface WorkspaceMessageCreateBody {
   stream_uuid: string;
+  topic_uuid?: string;
   payload: WorkspaceMessagePayload;
 }
 
@@ -26,6 +28,7 @@ export function buildMessengerMessageSendBody(
 ): WorkspaceMessageCreateBody {
   return {
     stream_uuid: params.streamUuid,
+    ...(params.topicUuid != null ? { topic_uuid: params.topicUuid } : {}),
     payload: {
       kind: "markdown",
       content: params.content,

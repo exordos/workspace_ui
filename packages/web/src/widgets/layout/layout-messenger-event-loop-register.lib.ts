@@ -1,13 +1,9 @@
 import { useActivityStore } from "~/entities/activity/activity.model";
-import {
-  summarizeRecentPrivateConversationsForTrace,
-  traceDmPreviewHydrate,
-} from "~/entities/chat-list/chat-list-dm-preview-hydrate-trace.lib";
 import { queuePriorityStreamSidebarTopicsHydrate } from "~/entities/chat-list/chat-list-hydrate-stream-sidebar.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import type {
-  ChatListDmMetadataRow,
   ChatListStreamMetadataRow,
+  ChatListStreamTopicMetadataRow,
 } from "~/entities/chat-list/chat-list.model.types";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useNotificationSettingsStore } from "~/entities/notification-settings/notification-settings.model";
@@ -17,8 +13,8 @@ import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
 import type { MessengerUnreadMessagesSnapshot } from "~/shared/api/messenger-unread.lib";
 import type {
   MessengerMeStream,
+  MessengerStreamTopic,
   RegisterQueueResult,
-  MessengerRecentPrivateConversation,
   MessengerSubscription,
 } from "~/shared/api/messenger.types";
 import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
@@ -39,9 +35,7 @@ export function toStreamMetadataRows(
   return subscriptions
     .filter(
       (subscription): subscription is MessengerSubscription =>
-        Number.isInteger(subscription.stream_id) &&
-        subscription.stream_id > 0 &&
-        subscription.name.trim().length > 0,
+        subscription.stream_uuid.trim().length > 0 && subscription.name.trim().length > 0,
     )
     .map((subscription) => {
       const creatorId =
@@ -51,11 +45,8 @@ export function toStreamMetadataRows(
           ? subscription.creator_id
           : undefined;
       return {
-        streamId: subscription.stream_id,
+        streamUuid: subscription.stream_uuid,
         name: subscription.name,
-        ...(subscription.stream_uuid != null && subscription.stream_uuid.length > 0
-          ? { streamUuid: subscription.stream_uuid }
-          : {}),
         ...(typeof subscription.is_archived === "boolean"
           ? { isArchived: subscription.is_archived }
           : {}),
@@ -63,6 +54,7 @@ export function toStreamMetadataRows(
         ...(typeof subscription.invite_only === "boolean"
           ? { inviteOnly: subscription.invite_only }
           : {}),
+        ...(typeof subscription.private === "boolean" ? { private: subscription.private } : {}),
         ...(subscription.can_add_subscribers_group != null
           ? { canAddSubscribersGroup: subscription.can_add_subscribers_group }
           : {}),
@@ -84,89 +76,38 @@ export function toStreamMetadataRows(
     });
 }
 
-function parseIsoTimestampSeconds(value: string | undefined): number | undefined {
-  if (value == null) {
-    return undefined;
-  }
-  const ms = Date.parse(value);
-  if (!Number.isFinite(ms) || ms <= 0) {
-    return undefined;
-  }
-  return Math.floor(ms / 1000);
-}
-
 export function toSubscriptionsFromMeStreams(
   streams: readonly MessengerMeStream[],
 ): MessengerSubscription[] {
-  return streams
-    .filter(
-      (stream): stream is MessengerMeStream & { stream_id: number } =>
-        !stream.private &&
-        typeof stream.stream_id === "number" &&
-        Number.isInteger(stream.stream_id) &&
-        stream.stream_id > 0,
-    )
-    .map((stream) => ({
-      stream_id: stream.stream_id,
-      stream_uuid: stream.stream_uuid,
-      name: stream.name,
-      is_muted: false,
-      invite_only: stream.invite_only,
+  return streams.map((stream) => ({
+    stream_uuid: stream.stream_uuid,
+    name: stream.name,
+    is_muted: false,
+    invite_only: stream.invite_only,
+    private: stream.private,
+  }));
+}
+
+export function toStreamTopicMetadataRows(
+  topics: readonly MessengerStreamTopic[],
+): ChatListStreamTopicMetadataRow[] {
+  return topics
+    .filter((topic) => topic.uuid.trim().length > 0 && topic.stream_uuid.trim().length > 0)
+    .map((topic) => ({
+      topicUuid: topic.uuid,
+      streamUuid: topic.stream_uuid,
+      name: topic.name,
+      ...(topic.default_for_stream_uuid != null
+        ? { defaultForStreamUuid: topic.default_for_stream_uuid }
+        : {}),
     }));
 }
 
-export function toDmMetadataRowsFromMeStreams(
-  streams: readonly MessengerMeStream[],
-): ChatListDmMetadataRow[] {
-  const rows: ChatListDmMetadataRow[] = [];
-  for (const stream of streams) {
-    if (!stream.private) {
-      continue;
-    }
-    const lastActivityTs =
-      parseIsoTimestampSeconds(stream.last_synced_at) ??
-      parseIsoTimestampSeconds(stream.updated_at) ??
-      parseIsoTimestampSeconds(stream.created_at);
-    rows.push({
-      userIds: [],
-      streamUuid: stream.stream_uuid,
-      name: stream.name,
-      ...(lastActivityTs != null ? { lastActivityTs } : {}),
-      unreadCount: 0,
-    });
-  }
-  return rows;
-}
-
-export function toDmMetadataRowsFromRecentConversations(
-  conversations: Record<string, MessengerRecentPrivateConversation> | undefined,
-): ChatListDmMetadataRow[] {
-  if (conversations == null) {
-    return [];
-  }
-  const rows: ChatListDmMetadataRow[] = [];
-  for (const conversation of Object.values(conversations)) {
-    if (
-      !Array.isArray(conversation.user_ids) ||
-      conversation.user_ids.length === 0 ||
-      conversation.user_ids.length > 2
-    ) {
-      continue;
-    }
-    rows.push({
-      userIds: conversation.user_ids,
-      lastMessageId: conversation.max_message_id ?? null,
-      unreadCount: conversation.unread_message_ids?.length ?? 0,
-    });
-  }
-  return rows;
-}
-
 function streamMetadataRowMissingInChatList(
-  streamsMap: ReadonlyMap<number, unknown>,
+  streamsMap: ReadonlyMap<string, unknown>,
   row: ChatListStreamMetadataRow,
 ): boolean {
-  return !streamsMap.has(row.streamId);
+  return !streamsMap.has(row.streamUuid);
 }
 
 function applyReconnectStreamPreviewBootstrap(
@@ -207,10 +148,8 @@ export interface LayoutBootstrapQueueRegisteredDeps {
   isCancelled: () => boolean;
   currentInstanceId: string | null;
   bootstrapUserId: UserId | null;
-  metadataDmPreviewHydrationEnabled: boolean;
   queueIdRef: { current: string | null };
   registerUnreadSnapshotRef: { current: MessengerUnreadMessagesSnapshot | null };
-  persistDmIndexFromStore: (instanceId: string) => void;
   reconcileSidebarUnreadFromRegister: (
     instanceId: string | null,
     registration: RegisterQueueResult | undefined,
@@ -219,12 +158,6 @@ export interface LayoutBootstrapQueueRegisteredDeps {
   streamPreviewCoordinator: { markRegisterHydrationReady: () => void };
   tryFlushMetadataStreamPreviews: () => void;
   applyChatListBootstrapResult: (result: ChatListBootstrapResult, applyOptions: unknown) => void;
-  scheduleDmPreviewHydration: (
-    conversations?: Record<string, MessengerRecentPrivateConversation>,
-    currentUserIdOverride?: number | null,
-    metadataRows?: ChatListDmMetadataRow[],
-    source?: string,
-  ) => void;
   startSidebarUnreadReconcile: (params: {
     cancelled: () => boolean;
     instanceId: string | null;
@@ -245,16 +178,6 @@ export function createLayoutBootstrapQueueRegisteredHandler(
   deps: LayoutBootstrapQueueRegisteredDeps,
 ): (id: string, registration: RegisterQueueResult | undefined) => void {
   return function handleLayoutBootstrapQueueRegistered(id, registration): void {
-    traceDmPreviewHydrate("register:onQueueRegistered", {
-      queueId: id,
-      metadataDmPreviewHydrationEnabled: deps.metadataDmPreviewHydrationEnabled,
-      conversations: summarizeRecentPrivateConversationsForTrace(
-        registration?.recent_private_conversations,
-      ),
-      storeCurrentUserId: useChatListStore.getState().currentUserId,
-      bootstrapUserId: deps.bootstrapUserId,
-    });
-
     deps.queueIdRef.current = id;
     deps.registerUnreadSnapshotRef.current = registration?.unread_snapshot ?? null;
     if (deps.currentInstanceId != null && registration?.unread_snapshot != null) {
@@ -318,20 +241,6 @@ export function createLayoutBootstrapQueueRegisteredHandler(
       useNotificationSettingsStore.getState().setFromServer(registration.user_settings);
     }
     applyRegisterUserStatusSnapshot(registration?.userStatusSnapshot);
-    const conversations = registration?.recent_private_conversations;
-    const rows = toDmMetadataRowsFromRecentConversations(conversations);
-    if (rows.length > 0) {
-      logChatListFlow(
-        "eventLoop: registerQueue → upsertDmMetadataRows from recent_private_conversations",
-        {
-          rowCount: rows.length,
-        },
-      );
-      useChatListStore.getState().upsertDmMetadataRows(rows);
-      if (deps.currentInstanceId != null) {
-        deps.persistDmIndexFromStore(deps.currentInstanceId);
-      }
-    }
     deps.streamPreviewCoordinator.markRegisterHydrationReady();
     markReconnectStreamPreviewRegisterReady();
     deps.tryFlushMetadataStreamPreviews();
@@ -346,7 +255,6 @@ export function createLayoutBootstrapQueueRegisteredHandler(
     const numericCurrentUserId = numericUserIdOrNull(
       useChatListStore.getState().currentUserId ?? deps.bootstrapUserId,
     );
-    deps.scheduleDmPreviewHydration(conversations, numericCurrentUserId, rows, "onQueueRegistered");
     deps.startSidebarUnreadReconcile({
       cancelled: deps.isCancelled,
       instanceId: deps.currentInstanceId,

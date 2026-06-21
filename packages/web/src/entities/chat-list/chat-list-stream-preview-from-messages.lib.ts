@@ -14,7 +14,7 @@ import { streamTopicCompositeKey } from "./chat-list-stream-topic-index.lib";
 export function filterStreamMessagesForSidebar(
   messages: readonly WorkspaceRawMessage[],
 ): WorkspaceRawMessage[] {
-  return messages.filter((m) => m.type === "stream" && m.stream_id != null);
+  return messages.filter((m) => m.type === "stream" && m.stream_uuid != null);
 }
 
 /** Metadata shells can have activity ts without preview text — still apply newer fetched bodies. */
@@ -41,7 +41,7 @@ export function shouldApplyStreamTopicPreviewFromFetchedMessage(
 
 function mergeStreamPreviewEntry(
   existing: StreamEntryInternal | undefined,
-  streamId: number,
+  streamId: string,
   name: string,
   lastMessage: string,
   lastMessageSenderName: string | undefined,
@@ -57,6 +57,7 @@ function mergeStreamPreviewEntry(
   const existingTopic = existing?.topics.get(topicSubject);
   const unreadCount = existingTopic?.unreadCount ?? 0;
   const topicEntry = {
+    ...(existingTopic?.topicUuid != null ? { topicUuid: existingTopic.topicUuid } : {}),
     subject: topicSubject,
     lastMessage: topicLastMessage,
     lastMessageSenderName: topicLastMessageSenderName,
@@ -67,7 +68,7 @@ function mergeStreamPreviewEntry(
   };
   if (!existing) {
     const topics = new Map([[topicSubject, topicEntry]]);
-    return { stream_id: streamId, name, lastMessage, lastMessageSenderName, time, ts, topics };
+    return { streamUuid: streamId, name, lastMessage, lastMessageSenderName, time, ts, topics };
   }
   const nextTopics = new Map(existing.topics);
   if (!existingTopic || topicTs >= existingTopic.ts) {
@@ -77,7 +78,8 @@ function mergeStreamPreviewEntry(
   }
   const newerStream = ts >= existing.ts;
   return {
-    stream_id: streamId,
+    streamUuid: existing.streamUuid,
+    private: existing.private,
     name: existing.name,
     lastMessage: newerStream ? lastMessage : existing.lastMessage,
     lastMessageSenderName: newerStream ? lastMessageSenderName : existing.lastMessageSenderName,
@@ -99,14 +101,14 @@ function mergeStreamPreviewEntry(
  * Returns updated `streamsMap` with stream/topic previews from messages — does not change unread counts.
  */
 export function mergeStreamSidebarPreviewsFromMessages(
-  streamsMap: Map<number, StreamEntryInternal>,
+  streamsMap: Map<string, StreamEntryInternal>,
   messages: readonly WorkspaceRawMessage[],
-): Map<number, StreamEntryInternal> {
+): Map<string, StreamEntryInternal> {
   const streamTopicLatest = new Map<string, WorkspaceRawMessage>();
   for (const m of messages) {
-    if (m.type !== "stream" || m.stream_id == null) continue;
+    if (m.type !== "stream" || m.stream_uuid == null) continue;
     const topic = normalizeTopicForIdentity(m.subject ?? "");
-    const key = streamTopicCompositeKey(m.stream_id, topic);
+    const key = streamTopicCompositeKey(m.stream_uuid, topic);
     const existing = streamTopicLatest.get(key);
     if (!existing || m.timestamp >= existing.timestamp) {
       streamTopicLatest.set(key, m);
@@ -117,9 +119,9 @@ export function mergeStreamSidebarPreviewsFromMessages(
   for (const m of streamTopicLatest.values()) {
     const result = messageToStreamEntry(m);
     if (!result) continue;
-    const { stream_id, name, lastMessage, lastMessageSenderName, time, ts } = result.stream;
+    const { streamUuid, name, lastMessage, lastMessageSenderName, time, ts } = result.stream;
     const topic = result.topic;
-    const existing = nextStreams.get(stream_id);
+    const existing = nextStreams.get(streamUuid);
     const existingTopic = existing?.topics.get(topic.subject);
     if (
       !shouldApplyStreamTopicPreviewFromFetchedMessage(
@@ -133,10 +135,10 @@ export function mergeStreamSidebarPreviewsFromMessages(
     }
     nextStreams = new Map(nextStreams);
     nextStreams.set(
-      stream_id,
+      streamUuid,
       mergeStreamPreviewEntry(
         existing,
-        stream_id,
+        streamUuid,
         name,
         lastMessage,
         lastMessageSenderName,

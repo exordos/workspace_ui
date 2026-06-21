@@ -3,7 +3,7 @@ import type { MessageId } from "./message-id.lib";
 export interface PushClickTargetInput {
   type?: "stream" | "private";
   messageId?: MessageId;
-  streamId?: number;
+  streamId?: string;
   streamName?: string;
   topic?: string;
   senderId?: number;
@@ -12,7 +12,7 @@ export interface PushClickTargetInput {
 export interface PushNotificationClickPayload {
   messageId?: MessageId;
   messageType?: string;
-  streamId?: number | string;
+  streamId?: string;
   streamName?: string;
   topic?: string;
   senderId?: number | string;

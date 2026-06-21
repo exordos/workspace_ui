@@ -51,10 +51,10 @@ export interface UseLayoutFolderSyncOrchestrationParams {
     usersMapForChatInfo: Map<string, { full_name?: string; email?: string }>;
     currentUserId: UserId | null;
     hideUnknownArchivedStreams: boolean;
-    isStreamMuted?: (streamId: number) => boolean;
+    isStreamMuted?: (streamId: string) => boolean;
   }) => void;
   hideUnknownArchivedStreams: boolean;
-  isStreamMuted?: (streamId: number) => boolean;
+  isStreamMuted?: (streamId: string) => boolean;
   syncFolderSyncDerived: (showSystemFolders: boolean, labels: FolderSyncSystemLabels) => void;
   refreshFolderSync: (reason: FolderRefreshReason) => Promise<void>;
   online: boolean;

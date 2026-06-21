@@ -46,9 +46,9 @@ export function buildMessageIdToLocation(
 ): Map<MessageId, MessageLocation> {
   const map = new Map<MessageId, MessageLocation>();
   for (const m of messages) {
-    if (m.type === "stream" && m.stream_id != null) {
+    if (m.type === "stream" && m.stream_uuid != null) {
       const topic = normalizeTopicForIdentity(m.subject ?? "");
-      map.set(m.id, { type: "stream", stream_id: m.stream_id, topic });
+      map.set(m.id, { type: "stream", streamUuid: m.stream_uuid, topic });
     } else if (m.type === "private" && Array.isArray(m.display_recipient)) {
       const dmKey = dmConversationKey(m.display_recipient, currentUserId);
       map.set(m.id, { type: "dm", dmKey });
@@ -65,9 +65,9 @@ export function buildUnreadLocationMap(
   const map = new Map<MessageId, MessageLocation>();
   for (const message of messages) {
     if (!isUnreadFromOthers(message, currentUserId)) continue;
-    if (message.type === "stream" && message.stream_id != null) {
+    if (message.type === "stream" && message.stream_uuid != null) {
       const topic = normalizeTopicForIdentity(message.subject ?? "");
-      map.set(message.id, { type: "stream", stream_id: message.stream_id, topic });
+      map.set(message.id, { type: "stream", streamUuid: message.stream_uuid, topic });
       continue;
     }
     if (message.type === "private" && Array.isArray(message.display_recipient)) {
@@ -119,9 +119,9 @@ export function mergeStreamAccessMetadata(
 
 /** Applies access-metadata merge across a rebuilt streams map. */
 export function mergeBootstrapStreamsWithPreviousMetadata(
-  streamsMap: Map<number, StreamEntryInternal>,
-  previousStreamsMap: Map<number, StreamEntryInternal>,
-): Map<number, StreamEntryInternal> {
+  streamsMap: Map<string, StreamEntryInternal>,
+  previousStreamsMap: Map<string, StreamEntryInternal>,
+): Map<string, StreamEntryInternal> {
   if (previousStreamsMap.size === 0 || streamsMap.size === 0) {
     return streamsMap;
   }
@@ -286,7 +286,7 @@ export function buildDmMetadataRowsFromDmsMap(
 }
 
 export interface SetFromMessagesBootstrapState {
-  streamsMap: Map<number, StreamEntryInternal>;
+  streamsMap: Map<string, StreamEntryInternal>;
   dmsMap: Map<string, DmEntryInternal>;
   sidebarDataHydrated: true;
   currentUserId: UserId | null;
@@ -299,7 +299,7 @@ export interface SetFromMessagesBootstrapState {
 export function buildSetFromMessagesBootstrapState(
   messages: WorkspaceRawMessage[],
   currentUserId: UserId | null,
-  previousStreamsMap: Map<number, StreamEntryInternal>,
+  previousStreamsMap: Map<string, StreamEntryInternal>,
   avatarMap: Map<number, string | undefined>,
 ): SetFromMessagesBootstrapState {
   const avatarUrlByUserId = new Map<number, string>();
@@ -326,7 +326,7 @@ export function buildSetFromMessagesBootstrapState(
 }
 
 export interface ChatListHydrateFromSnapshotState {
-  streamsMap: Map<number, StreamEntryInternal>;
+  streamsMap: Map<string, StreamEntryInternal>;
   dmsMap: Map<string, DmEntryInternal>;
   sidebarDataHydrated: boolean;
   streamMetadataHydrated: false;
@@ -340,7 +340,7 @@ export function buildChatListHydrateFromSnapshotState(
   snapshot: ChatListSnapshotSerialized,
   fallbackCurrentUserId: UserId | null,
 ): ChatListHydrateFromSnapshotState {
-  const streamsMap = new Map<number, StreamEntryInternal>();
+  const streamsMap = new Map<string, StreamEntryInternal>();
   for (const [id, s] of snapshot.streamsEntries) {
     streamsMap.set(id, deserializeStreamEntry(s));
   }

@@ -9,8 +9,9 @@ export type OutgoingMessageTarget =
   | {
       mode: "stream";
       stream: string;
-      streamId?: number;
+      streamUuid: string;
       subject: string;
+      topicUuid?: string;
     };
 
 export interface BuildOptimisticOutgoingMessageInput {
@@ -32,7 +33,7 @@ export function buildOptimisticOutgoingMessage(
       id: input.id,
       sender_id: input.senderId,
       sender_full_name: input.senderFullName,
-      stream_id: null,
+      stream_uuid: null,
       display_recipient: input.target.recipientIds.map((id) => ({ id, full_name: "" })),
       subject: "",
       content: input.content,
@@ -47,10 +48,11 @@ export function buildOptimisticOutgoingMessage(
     id: input.id,
     sender_id: input.senderId,
     sender_full_name: input.senderFullName,
-    stream_id: input.target.streamId ?? null,
+    stream_uuid: input.target.streamUuid,
     display_recipient: input.target.stream,
     channel: input.target.stream,
     subject: input.target.subject,
+    ...(input.target.topicUuid != null ? { topic_uuid: input.target.topicUuid } : {}),
     content: input.content,
     markdown_source: input.content,
     timestamp,

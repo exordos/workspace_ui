@@ -7,8 +7,8 @@ import type {
 export type { RemoveStreamMembersParams, RemoveStreamMembersResult };
 
 export interface RemoveStreamMemberSubmitOptions {
-  streamId: number;
+  streamId: string;
   streamName: string;
   userId: number;
-  onSuccess?: (streamId: number) => void;
+  onSuccess?: (streamId: string) => void;
 }

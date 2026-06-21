@@ -6,5 +6,4 @@ export interface ResolveChatShortcutRouteOptions {
   sidebarChats: SidebarChat[];
   direction: ChatShortcutDirection;
   activeStreamSlug?: string | null;
-  activeDmIdParam?: string | null;
 }

@@ -41,6 +41,8 @@ export type MeMessagesSortDir = "asc" | "desc";
 export interface FetchMyMessagesOptions {
   /** Restrict to a single stream (`stream_uuid` equality filter). */
   streamUuid?: string;
+  /** Restrict to a single topic (`topic_uuid` equality filter). */
+  topicUuid?: string;
   /** Page size (`page_limit`); defaults to {@link ME_MESSAGES_PAGE_LIMIT}. */
   limit?: number;
   /** Pagination cursor (`page_marker`): the previous page's last row uuid. */
@@ -68,12 +70,16 @@ function readOptionalString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-function normalizeStreamUuid(value: string, context: string): string {
+function normalizeUuid(value: string, context: string): string {
   const normalized = readUuid(value);
   if (normalized == null) {
-    throw new Error(`Invalid stream uuid in ${context}: ${JSON.stringify(value)}`);
+    throw new Error(`Invalid uuid in ${context}: ${JSON.stringify(value)}`);
   }
   return normalized;
+}
+
+function normalizeStreamUuid(value: string, context: string): string {
+  return normalizeUuid(value, context);
 }
 
 function parseMeMessagePayload(value: unknown): MessengerMeMessagePayload | null {
@@ -99,6 +105,7 @@ export function parseMeMessage(row: unknown): MessengerMeMessage | null {
   if (uuid == null || streamUuid == null || payload == null) {
     return null;
   }
+  const topicUuid = readUuid(row.topic_uuid);
   const userUuid = readUuid(row.user_uuid);
   const projectId = readUuid(row.project_id);
   const lastSyncedAt = readOptionalString(row.last_synced_at);
@@ -107,6 +114,7 @@ export function parseMeMessage(row: unknown): MessengerMeMessage | null {
   return {
     uuid,
     stream_uuid: streamUuid,
+    ...(topicUuid != null ? { topic_uuid: topicUuid } : {}),
     payload,
     read: row.read === true,
     pinned: row.pinned === true,
@@ -153,6 +161,9 @@ function buildMeMessagesParams(options: FetchMyMessagesOptions): Record<string, 
   };
   if (options.streamUuid != null) {
     params.stream_uuid = normalizeStreamUuid(options.streamUuid, "fetchMyMessages.streamUuid");
+  }
+  if (options.topicUuid != null) {
+    params.topic_uuid = normalizeUuid(options.topicUuid, "fetchMyMessages.topicUuid");
   }
   const marker = options.marker?.trim();
   if (marker != null && marker.length > 0) {
@@ -245,23 +256,26 @@ function isoToEpochSeconds(value: string | undefined): number {
  * rendered by the existing message list. The `/messages/` endpoint carries no sender identity,
  * so `sender_id` is `0` and `sender_full_name` is empty; resolve those from stream/membership data
  * at the call site when needed. The body is markdown, mirrored into `markdown_source` for editing.
- * Pass `streamId` to stamp the numeric channel id used by sidebar/route association (null for DMs).
+ * Pass `streamUuid` to stamp the stream identity used by sidebar/route association.
  */
 export function meMessageToMockMessage(
   message: MessengerMeMessage,
-  streamId: number | null = null,
+  options: { streamUuid?: string | null; topicName?: string | null } = {},
 ): MockMessage {
   const content = message.payload.content;
   const flags: string[] = [];
   if (message.read) flags.push("read");
   if (message.starred) flags.push("starred");
   const id: MessageId = message.uuid;
+  const streamUuid = options.streamUuid ?? message.stream_uuid;
+  const topicName = options.topicName ?? "";
   const base: MockMessage = {
     id,
     sender_id: 0,
     sender_full_name: "",
-    stream_id: streamId,
-    subject: "",
+    stream_uuid: streamUuid,
+    subject: topicName,
+    ...(message.topic_uuid != null ? { topic_uuid: message.topic_uuid } : {}),
     content,
     timestamp: isoToEpochSeconds(message.created_at),
     flags,
@@ -295,8 +309,10 @@ export async function fetchMeMessageById(
 
 export interface FetchStreamMessagesPageArgs {
   streamUuid: string;
-  /** Stamped onto each {@link MockMessage}; pass the numeric channel id or null for DMs. */
-  streamId?: number | null;
+  /** Topic UUID filter for `/stream/:streamUuid/topic/:topicUuid`. */
+  topicUuid?: string | null;
+  /** Topic display name resolved from the stream topic metadata. */
+  topicName?: string | null;
   /** A message uuid pages relative to it; the `"newest"` sentinel loads the latest window. */
   anchor?: MessageId;
   /** Older rows to load (relative to anchor, or window size when anchor is `"newest"`). */
@@ -322,16 +338,18 @@ export async function fetchStreamMessagesPage(
   args: FetchStreamMessagesPageArgs,
 ): Promise<MessagesPageResult> {
   const streamUuid = normalizeStreamUuid(args.streamUuid, "fetchStreamMessagesPage.streamUuid");
-  const streamId = args.streamId ?? null;
+  const topicUuid = args.topicUuid != null ? normalizeUuid(args.topicUuid, "fetchStreamMessagesPage.topicUuid") : undefined;
+  const topicName = args.topicName ?? "";
   const anchor = args.anchor ?? "newest";
   const numBefore = Math.max(0, Math.floor(args.numBefore ?? 0));
   const numAfter = Math.max(0, Math.floor(args.numAfter ?? 0));
   const toMock = (rows: MessengerMeMessage[]): MockMessage[] =>
-    rows.map((row) => meMessageToMockMessage(row, streamId));
+    rows.map((row) => meMessageToMockMessage(row, { streamUuid, topicName }));
 
   if (anchor === "newest") {
     const page = await fetchMyMessagesPage({
       streamUuid,
+      ...(topicUuid != null ? { topicUuid } : {}),
       limit: numBefore > 0 ? numBefore : ME_MESSAGES_PAGE_LIMIT,
       sortKey: "created_at",
       sortDir: "desc",
@@ -348,6 +366,7 @@ export async function fetchStreamMessagesPage(
     const [olderPage, center, newerPage] = await Promise.all([
       fetchMyMessagesPage({
         streamUuid,
+        ...(topicUuid != null ? { topicUuid } : {}),
         limit: numBefore,
         sortKey: "created_at",
         sortDir: "desc",
@@ -357,6 +376,7 @@ export async function fetchStreamMessagesPage(
       fetchMeMessageById(anchor, args.signal),
       fetchMyMessagesPage({
         streamUuid,
+        ...(topicUuid != null ? { topicUuid } : {}),
         limit: numAfter,
         sortKey: "created_at",
         sortDir: "asc",
@@ -379,6 +399,7 @@ export async function fetchStreamMessagesPage(
   if (numAfter > 0) {
     const page = await fetchMyMessagesPage({
       streamUuid,
+      ...(topicUuid != null ? { topicUuid } : {}),
       limit: numAfter,
       sortKey: "created_at",
       sortDir: "asc",
@@ -394,6 +415,7 @@ export async function fetchStreamMessagesPage(
 
   const page = await fetchMyMessagesPage({
     streamUuid,
+    ...(topicUuid != null ? { topicUuid } : {}),
     limit: numBefore > 0 ? numBefore : ME_MESSAGES_PAGE_LIMIT,
     sortKey: "created_at",
     sortDir: "desc",

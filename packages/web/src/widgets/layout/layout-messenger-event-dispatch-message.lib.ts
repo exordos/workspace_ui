@@ -90,12 +90,12 @@ export function handleIncomingMessage(
   // Fallback when channel rename arrives via message display_recipient instead of a stream event.
   if (
     raw.type === "stream" &&
-    Number.isInteger(raw.stream_id) &&
-    raw.stream_id != null &&
+    Number.isInteger(raw.stream_uuid) &&
+    raw.stream_uuid != null &&
     typeof raw.display_recipient === "string" &&
     raw.display_recipient.trim().length > 0
   ) {
-    chatList.renameStream(raw.stream_id, raw.display_recipient);
+    chatList.renameStream(raw.stream_uuid, raw.display_recipient);
   }
   ctx.updateLatestMessageId(raw.id);
   activity.markStale();

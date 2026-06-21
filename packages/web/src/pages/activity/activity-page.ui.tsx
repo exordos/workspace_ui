@@ -304,7 +304,7 @@ export const ActivityPage: React.FC = () => {
       const route = buildNavigableRouteFromMessage(
         {
           id: m.id,
-          stream_id: m.stream_id,
+          stream_uuid: m.stream_uuid,
           display_recipient: m.display_recipient,
           subject: m.subject,
           sender_id: m.sender_id,
@@ -357,9 +357,9 @@ export const ActivityPage: React.FC = () => {
   const handleDraftClick = useCallback(
     (draft: Draft) => {
       if (draft.type === "stream" && draft.to.length > 0) {
-        const streamId = draft.to[0]!;
-        const streamName = streamsMap.get(streamId)?.name ?? String(streamId);
-        const slug = slugForStream({ stream_id: streamId, name: streamName });
+        const streamUuid = draft.to[0]!;
+        if (typeof streamUuid !== "string") return;
+        const slug = slugForStream({ streamUuid });
         const topic = draft.topic ?? "";
         void navigate(
           withCurrentOrgRoute(
@@ -575,7 +575,7 @@ export const ActivityPage: React.FC = () => {
           className="flex min-h-0 flex-1 flex-col space-y-1 overflow-auto scroll-auto p-2"
         >
           {messages.map((m) => {
-            const isStream = m.type === "stream" && m.stream_id != null;
+            const isStream = m.type === "stream" && m.stream_uuid != null;
             const streamName =
               isStream && typeof m.display_recipient === "string" ? m.display_recipient : null;
             const topic = isStream ? (m.subject ?? "").trim() : null;

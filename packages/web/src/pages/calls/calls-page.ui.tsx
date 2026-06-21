@@ -25,7 +25,7 @@ const CALLS_ACTION_BUTTON_CLASS =
   "rounded-md p-1.5 text-text-muted transition-colors hover:bg-card-bg-active hover:text-text-primary";
 
 function resolveCallLocationName(message: MockMessage): string {
-  if (message.stream_id != null) {
+  if (message.stream_uuid != null) {
     if (typeof message.display_recipient === "string") {
       const streamName = message.display_recipient.trim();
       if (streamName.length > 0) return streamName;
@@ -65,7 +65,7 @@ function resolveCallContextLabel(
   locationName: string,
   dmFallbackLabel: string,
 ): string {
-  if (message.stream_id != null) {
+  if (message.stream_uuid != null) {
     const topic = message.subject.trim();
     if (locationName.length === 0) {
       return topic.length > 0 ? topic : dmFallbackLabel;

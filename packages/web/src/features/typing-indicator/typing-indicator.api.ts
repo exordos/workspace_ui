@@ -6,7 +6,7 @@
  *   type: "direct" | "stream"
  *
  * For DMs: to = JSON array of user IDs
- * For streams: stream_id + topic
+ * For streams: stream_uuid + topic
  */
 
 import { messengerApi } from "~/shared/api/client";
@@ -42,12 +42,12 @@ export async function sendTypingStop(userIds: number[]): Promise<void> {
   }
 }
 
-export async function sendStreamTypingStart(streamId: number, topic: string): Promise<void> {
+export async function sendStreamTypingStart(streamUuid: string, topic: string): Promise<void> {
   try {
     await messengerApi.post("/typing", {
       op: "start",
       type: "stream",
-      stream_id: String(streamId),
+      stream_uuid: streamUuid,
       topic,
     });
   } catch (err) {
@@ -57,12 +57,12 @@ export async function sendStreamTypingStart(streamId: number, topic: string): Pr
   }
 }
 
-export async function sendStreamTypingStop(streamId: number, topic: string): Promise<void> {
+export async function sendStreamTypingStop(streamUuid: string, topic: string): Promise<void> {
   try {
     await messengerApi.post("/typing", {
       op: "stop",
       type: "stream",
-      stream_id: String(streamId),
+      stream_uuid: streamUuid,
       topic,
     });
   } catch (err) {

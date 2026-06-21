@@ -17,7 +17,7 @@ import {
 } from "./move-topic-to-stream.lib";
 
 export interface UseMoveTopicToStreamOptions {
-  streamId: number;
+  streamId: string;
   topic: string;
   streamName: string;
 }
@@ -37,8 +37,7 @@ export function useMoveTopicToStream(options: UseMoveTopicToStreamOptions) {
 
   const topicTrimmed = topic.trim();
   const effectiveStreamName = streamName.trim() || (streamEntry?.name ?? "").trim();
-  const streamSlug =
-    effectiveStreamName.length > 0 ? buildStreamSlug(streamId, effectiveStreamName) : null;
+  const streamSlug = effectiveStreamName.length > 0 ? buildStreamSlug(streamId) : null;
 
   // Permission groups deferred — Messenger API remains the final arbiter on submit.
   const canMove = topicTrimmed.length > 0 && streamSlug != null && currentUserId != null;
@@ -47,7 +46,7 @@ export function useMoveTopicToStream(options: UseMoveTopicToStreamOptions) {
     () =>
       buildMoveTopicTargetStreamOptions(
         Array.from(streamsMap.values()).map((stream) => ({
-          streamId: stream.stream_id,
+          streamId: stream.streamUuid,
           name: stream.name,
         })),
         streamId,
@@ -56,13 +55,13 @@ export function useMoveTopicToStream(options: UseMoveTopicToStreamOptions) {
   );
 
   const syncTopicMoveLocally = useCallback(
-    (targetStreamId: number, targetStreamName: string, oldTopic: string, newTopic: string) => {
+    (targetStreamId: string, targetStreamName: string, oldTopic: string, newTopic: string) => {
       const oldTopicKey = normalizeTopicForIdentity(oldTopic);
       const messageIds = useCurrentChatMessagesStore
         .getState()
         .messages.filter(
           (message) =>
-            message.stream_id === streamId &&
+            message.stream_uuid === streamId &&
             normalizeTopicForIdentity(message.subject ?? "") === oldTopicKey,
         )
         .map((message) => message.id);
@@ -91,7 +90,7 @@ export function useMoveTopicToStream(options: UseMoveTopicToStreamOptions) {
         void deleteChatListSnapshotRow(instanceId).catch(() => {});
       }
 
-      const targetSlug = buildStreamSlug(targetStreamId, targetStreamName);
+      const targetSlug = buildStreamSlug(targetStreamId);
       const openContext = useCurrentChatMessagesStore.getState().context;
       const isOpenTopic =
         openContext?.type === "stream" &&

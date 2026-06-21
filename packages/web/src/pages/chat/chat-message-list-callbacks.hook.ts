@@ -145,14 +145,14 @@ export function useChatMessageListCallbacks(
         setReadReceiptsOpen(true);
       },
       onTopicSeparatorClick(msg) {
-        if (msg.stream_id == null || msg.subject == null) return;
+        if (msg.stream_uuid == null || msg.subject == null) return;
         const topic = msg.subject.trim();
         if (topic.length === 0) return;
         const streamName =
-          streams.find((stream) => stream.stream_id === msg.stream_id)?.name ??
+          streams.find((stream) => stream.stream_uuid === msg.stream_uuid)?.name ??
           (typeof msg.display_recipient === "string" ? msg.display_recipient : undefined);
         if (!streamName) return;
-        const route = `/stream/${slugForStream({ stream_id: msg.stream_id, name: streamName })}/topic/${encodeURIComponent(
+        const route = `/stream/${slugForStream({ streamUuid: msg.stream_uuid, name: streamName })}/topic/${encodeURIComponent(
           encodeTopicForRoute(topic),
         )}`;
         if (route === locationPathname) return;

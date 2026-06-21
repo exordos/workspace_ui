@@ -35,7 +35,7 @@ interface ChatInfoState {
   // Last active chat-info context (none/dm/stream).
   context: ChatInfoContext;
   // Last server-fetched member ids for stream context.
-  streamMemberIds: number[];
+  streamMemberIds: UserId[];
   // Request version for stale-response protection.
   requestVersion: number;
 
@@ -45,7 +45,7 @@ interface ChatInfoState {
   setContext: (context: ChatInfoContext) => void;
   hydrate: (context: ChatInfoContext) => Promise<void>;
   syncDerived: (context: ChatInfoContext) => void;
-  invalidateStream: (instanceId: string, streamId: number) => void;
+  invalidateStream: (instanceId: string, streamUuid: string) => void;
   clear: () => void;
 }
 
@@ -113,7 +113,7 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
     logStoreAction("chatInfo", "hydrate:start", {
       context: context.kind,
       instanceId: context.instanceId ?? undefined,
-      streamId: context.kind === "stream" ? context.streamId : undefined,
+      streamUuid: context.kind === "stream" ? context.streamUuid : undefined,
     });
     set({
       requestVersion: nextVersion,
@@ -155,8 +155,8 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
     try {
       // Stream: fetch members and metadata in parallel.
       const [memberIds, metadata] = await Promise.all([
-        loadStreamMembers(context.instanceId, context.streamId),
-        loadStreamMetadata(context.instanceId, context.streamId),
+        loadStreamMembers(context.instanceId, context.streamUuid),
+        loadStreamMetadata(context.instanceId, context.streamUuid),
       ]);
       const state = get();
       // Stale response must not overwrite current context.
@@ -243,16 +243,16 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
     set({ data: nextData, loading: false, error: null });
   },
 
-  invalidateStream(instanceId, streamId) {
-    logStoreAction("chatInfo", "invalidateStream", { instanceId, streamId });
+  invalidateStream(instanceId, streamUuid) {
+    logStoreAction("chatInfo", "invalidateStream", { instanceId, streamUuid });
     // Clear stream API cache and instance snapshot.
-    invalidateStreamCache(instanceId, streamId);
+    invalidateStreamCache(instanceId, streamUuid);
     const context = get().context;
     // Re-hydrate immediately when invalidating the active stream.
     if (
       context.kind === "stream" &&
       context.instanceId === instanceId &&
-      context.streamId === streamId
+      context.streamUuid === streamUuid
     ) {
       void get().hydrate(context);
     }

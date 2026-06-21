@@ -14,19 +14,19 @@ import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sideba
 import type { MessageLocation } from "./chat-list.model.types";
 
 export type ChatListReadFallbackContext =
-  | { type: "stream"; streamId: number; topic: string }
+  | { type: "stream"; streamId: string; topic: string }
   | { type: "dm"; dmKey: string };
 
 export interface ChatListUnreadDecrementActions {
   decrementUnreadForMessages: (messageIds: MessageId[]) => void;
-  decrementUnreadForTopic: (streamId: number, topic: string, count: number) => void;
+  decrementUnreadForTopic: (streamId: string, topic: string, count: number) => void;
   decrementUnreadForDmKey: (dmKey: string, count: number) => void;
   decrementMentionsForReadMessages: (messageIds: readonly MessageId[]) => void;
 }
 
 export interface ChatListUnreadDecrementState {
   messageIdToLocation: ReadonlyMap<MessageId, MessageLocation>;
-  streamsMap: ReadonlyMap<number, StreamEntryInternal>;
+  streamsMap: ReadonlyMap<string, StreamEntryInternal>;
   dmsMap: ReadonlyMap<string, DmEntryInternal>;
   sidebarStreamsUnread: number;
   sidebarDmsUnread: number;
@@ -71,7 +71,7 @@ function fallbackContextFromMessageLocation(
   if (location.type === "stream") {
     return {
       type: "stream",
-      streamId: location.stream_id,
+      streamId: location.streamUuid,
       topic: location.topic,
     };
   }
@@ -80,7 +80,7 @@ function fallbackContextFromMessageLocation(
 
 function readLocationGroupKey(location: MessageLocation): string {
   if (location.type === "stream") {
-    return `stream:${location.stream_id}\t${normalizeTopicForIdentity(location.topic)}`;
+    return `stream:${location.streamUuid}\t${normalizeTopicForIdentity(location.topic)}`;
   }
   return `dm:${location.dmKey.trim()}`;
 }

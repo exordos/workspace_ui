@@ -12,6 +12,41 @@ import {
 } from "~/widgets/sidebar/sidebar.lib";
 import type { Location } from "react-router-dom";
 
+type RouteStreamTopicEntry = { subject: string; topicUuid?: string };
+type RouteStreamEntry = { name: string; topics?: Map<string, RouteStreamTopicEntry> };
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function normalizeRouteUuid(value: string): string | null {
+  const trimmed = value.trim().toLowerCase();
+  return UUID_RE.test(trimmed) ? trimmed : null;
+}
+
+function resolveRouteTopic(
+  topicName: string | undefined,
+  streamEntry: RouteStreamEntry | undefined,
+): { activeTopic: string | undefined; activeTopicUuid: string | undefined } {
+  if (topicName == null) {
+    return { activeTopic: undefined, activeTopicUuid: undefined };
+  }
+  const decoded = decodeTopicFromRoute(topicName);
+  const routeTopicUuid = normalizeRouteUuid(decoded);
+  if (streamEntry?.topics != null) {
+    for (const topic of streamEntry.topics.values()) {
+      const normalizedTopicUuid =
+        topic.topicUuid != null ? normalizeRouteUuid(topic.topicUuid) : null;
+      if (routeTopicUuid != null && normalizedTopicUuid === routeTopicUuid) {
+        return { activeTopic: topic.subject, activeTopicUuid: routeTopicUuid };
+      }
+      if (topic.subject === decoded && normalizedTopicUuid != null) {
+        return { activeTopic: topic.subject, activeTopicUuid: normalizedTopicUuid };
+      }
+    }
+  }
+  return { activeTopic: decoded, activeTopicUuid: routeTopicUuid ?? undefined };
+}
+
+
 function parseMessageIdFromSearch(location: Location, key: string): MessageId | null {
   const raw = new URLSearchParams(location.search).get(key);
   return normalizeMessageId(raw);
@@ -22,16 +57,17 @@ export function useChatRouteContext(options: {
   topicName: string | undefined;
   dmIdParam: string | undefined;
   location: Location;
-  streamsMap: Map<number, { name: string }>;
+  streamsMap: Map<string, RouteStreamEntry>;
   dmsFromStore: unknown[];
   currentUserId: UserId | null;
 }): {
   activeTopic: string | undefined;
+  activeTopicUuid: string | undefined;
   streamRouteTopic: string;
   activeStream: string | undefined;
   resolvedStreamName: string;
   canonicalStreamName: string | null;
-  resolvedStreamId: number | null;
+  resolvedStreamId: string | null;
   dmRecipientIds: UserId[];
   isDmView: boolean;
   dmChat: ReturnType<typeof getDmById> | undefined;
@@ -43,7 +79,6 @@ export function useChatRouteContext(options: {
   const { streamSlug, topicName, dmIdParam, location, streamsMap, dmsFromStore, currentUserId } =
     options;
 
-  const activeTopic = topicName != null ? decodeTopicFromRoute(topicName) : undefined;
   const parsedStream = useMemo(
     () => (streamSlug ? parseStreamSlug(streamSlug) : null),
     [streamSlug],
@@ -54,7 +89,9 @@ export function useChatRouteContext(options: {
     [parsedStream, streamsMap],
   );
 
-  const streamRouteTopic = topicName != null ? decodeTopicFromRoute(topicName) : "";
+  const streamEntry = resolvedStreamId != null ? streamsMap.get(resolvedStreamId) : undefined;
+  const { activeTopic, activeTopicUuid } = resolveRouteTopic(topicName, streamEntry);
+  const streamRouteTopic = activeTopic ?? "";
   const activeStream = parsedStream ? resolvedStreamName : undefined;
 
   const dmChat = useMemo(
@@ -110,6 +147,7 @@ export function useChatRouteContext(options: {
 
   return {
     activeTopic,
+    activeTopicUuid,
     streamRouteTopic,
     activeStream,
     resolvedStreamName,

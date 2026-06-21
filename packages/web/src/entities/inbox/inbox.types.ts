@@ -1,7 +1,7 @@
 /**
  * Inbox entry types — unified unread message grouping.
  *
- * Stream messages group by (streamId + topic).
+ * Stream messages group by (streamUuid + topic).
  * DM messages group by conversation route slug.
  * Each entry tracks the unread count and latest message timestamp
  * for sorting and display in the inbox view.
@@ -9,10 +9,10 @@
 import type { MessageId } from "~/shared/lib/message-id.lib";
 
 export interface InboxEntry {
-  /** Unique key for this inbox row: "stream:{streamId}:{topic}" or "dm:{dmSlug}". */
+  /** Unique key for this inbox row: "stream:{streamUuid}:{topic}" or "dm:{dmSlug}". */
   key: string;
-  /** Stream ID (present for stream messages, null for DMs). */
-  streamId: number | null;
+  /** Stream UUID (present for stream messages, null for DMs). */
+  streamId: string | null;
   /** Stream/channel name (present for stream messages). */
   streamName: string | null;
   /** Topic name (present for stream messages). */
@@ -36,5 +36,5 @@ export type InboxGroupType = "stream" | "dm";
 /** Target for removing inbox rows after sidebar/context mark-as-read. */
 export type InboxMarkReadTarget =
   | { type: "dm"; userIds: number[] }
-  | { type: "stream"; streamId: number }
-  | { type: "topic"; streamId: number; topic: string };
+  | { type: "stream"; streamId: string }
+  | { type: "topic"; streamId: string; topic: string };

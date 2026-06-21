@@ -7,5 +7,5 @@ import type { UserPickerOption } from "~/shared/lib/user-picker";
 export type { AddStreamMembersParams, AddStreamMembersResult, UserPickerOption };
 
 export interface AddStreamMembersSubmitOptions {
-  onSuccess?: (streamId: number) => void;
+  onSuccess?: (streamId: string) => void;
 }

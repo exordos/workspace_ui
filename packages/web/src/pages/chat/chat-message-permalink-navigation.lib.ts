@@ -23,10 +23,10 @@ export interface ResolveQuotePermalinkNavigationParams {
   isDmView: boolean;
   currentUserId: UserId | null;
   dmRecipientIds: UserId[];
-  resolvedStreamId: number | null;
+  resolvedStreamId: string | null;
   topicName: string | undefined;
   streamRouteTopic: string;
-  resolveStreamName: (streamId: number) => string | undefined;
+  resolveStreamName: (streamId: string) => string | undefined;
 }
 
 /** Resolves quote permalink click into an in-app navigation target. Returns null when not handled. */

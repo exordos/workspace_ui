@@ -6,7 +6,7 @@ export interface UnreadBadgeHolder {
 }
 
 export interface UnreadStreamBadgeHolder extends UnreadBadgeHolder {
-  stream_id?: number | null;
+  streamUuid?: string | null;
   topics?: readonly { subject?: string; badge?: number | null }[] | null;
 }
 

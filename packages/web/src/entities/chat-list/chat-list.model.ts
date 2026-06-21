@@ -193,7 +193,7 @@ function finalizeChatListPatch(
 }
 
 function streamsMapToSortedStreams(
-  streamsMap: Map<number, StreamEntryInternal>,
+  streamsMap: Map<string, StreamEntryInternal>,
   mentionFlags: MentionLocationFlags = buildMentionLocationFlags(new Set(), new Map()),
 ): StreamWithLast[] {
   return Array.from(streamsMap.values())
@@ -202,25 +202,27 @@ function streamsMapToSortedStreams(
       const topics = Array.from(s.topics.values())
         .sort((a, b) => b.ts - a.ts)
         .map((t) => ({
+          topicUuid: t.topicUuid,
           subject: t.subject,
           lastMessage: t.lastMessage,
           lastMessageSenderName: t.lastMessageSenderName,
           time: t.time,
           badge: t.unreadCount > 0 ? t.unreadCount : undefined,
-          hasMention: mentionFlags.topicKeys.has(buildTopicMentionKey(s.stream_id, t.subject))
+          hasMention: false
             ? true
             : undefined,
         }));
       const badge = topics.reduce((sum, t) => sum + (t.badge ?? 0), 0);
       return {
-        stream_id: s.stream_id,
+        streamUuid: s.streamUuid,
+        private: s.private,
         name: s.name,
         lastMessage: s.lastMessage,
         lastMessageSenderName: s.lastMessageSenderName,
         time: s.time,
         topics,
         badge: badge > 0 ? badge : undefined,
-        hasMention: mentionFlags.streamIds.has(s.stream_id) ? true : undefined,
+        hasMention: undefined,
       };
     });
 }
@@ -264,12 +266,12 @@ function mergeTopicsForMove(
   };
 }
 
-const emptyStreamsMap = () => new Map<number, StreamEntryInternal>();
+const emptyStreamsMap = () => new Map<string, StreamEntryInternal>();
 const emptyDmsMap = () => new Map<string, DmEntryInternal>();
 
 // Referential-identity caches: recompute only when the underlying Map reference changes.
 let _cachedStreams: StreamWithLast[] | null = null;
-let _cachedStreamsMapRef: Map<number, StreamEntryInternal> | null = null;
+let _cachedStreamsMapRef: Map<string, StreamEntryInternal> | null = null;
 let _cachedStreamsMentionIdsRef: ReadonlySet<MessageId> | null = null;
 let _cachedStreamsLocationsRef: ReadonlyMap<MessageId, MessageLocation> | null = null;
 
@@ -333,6 +335,9 @@ function hasStreamMetadataAccessChanged(
     return true;
   }
   if (existing.inviteOnly !== nextEntry.inviteOnly) {
+    return true;
+  }
+  if (existing.private !== nextEntry.private) {
     return true;
   }
   if (
@@ -514,7 +519,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
 
       for (const location of unreadLocationMap.values()) {
         if (location.type === "stream") {
-          const key = streamTopicCompositeKey(location.stream_id, location.topic);
+          const key = streamTopicCompositeKey(location.streamUuid, location.topic);
           unreadStreamCounts.set(key, (unreadStreamCounts.get(key) ?? 0) + 1);
         } else {
           unreadDmCounts.set(location.dmKey, (unreadDmCounts.get(location.dmKey) ?? 0) + 1);
@@ -632,17 +637,17 @@ export const useChatListStore = create<ChatListState>((set, get) => {
 
       const { type } = message;
 
-      if (type === "stream" && message.stream_id != null) {
+      if (type === "stream" && message.stream_uuid != null) {
         const result = messageToStreamEntry(message);
         if (!result) return;
-        const { stream_id, name, lastMessage, lastMessageSenderName, time, ts } = result.stream;
+        const { streamUuid, name, lastMessage, lastMessageSenderName, time, ts } = result.stream;
         const topic = result.topic;
         const topicUnreadDelta =
           !suppressUnreadBump && isUnreadFromOthers(message, currentUserId) ? 1 : 0;
         if (topicUnreadDelta > 0) {
           logSidebarUnreadFlow("store:addMessage:stream", {
             messageId: message.id,
-            streamId: stream_id,
+            streamId: streamUuid,
             topic: topic.subject,
             topicUnreadDelta,
             ...summarizeSidebarUnreadTotals(get()),
@@ -656,7 +661,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
             });
             return state;
           }
-          const existing = state.streamsMap.get(stream_id);
+          const existing = state.streamsMap.get(streamUuid);
           if (existing && message.timestamp <= existing.ts) {
             const existingTopic = existing.topics.get(topic.subject);
             if (existingTopic && message.timestamp <= existingTopic.ts) {
@@ -672,13 +677,13 @@ export const useChatListStore = create<ChatListState>((set, get) => {
               }
               logSidebarUnreadFlow("store:addMessage:stream:indexOnly", {
                 messageId: message.id,
-                streamId: stream_id,
+                streamId: streamUuid,
                 topic: topic.subject,
               });
               const nextLoc = new Map(state.messageIdToLocation);
               nextLoc.set(message.id, {
                 type: "stream",
-                stream_id,
+                streamUuid,
                 topic: topic.subject,
               });
               return {
@@ -686,7 +691,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
                 streamTopicMessageIds: addMessageIdToStreamTopicIndex(
                   state.streamTopicMessageIds,
                   message.id,
-                  stream_id,
+                  streamUuid,
                   topic.subject,
                 ),
               };
@@ -695,7 +700,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           const next = new Map(state.streamsMap);
           const merged = mergeStreamEntry(
             existing,
-            stream_id,
+            streamUuid,
             name,
             lastMessage,
             lastMessageSenderName,
@@ -709,10 +714,10 @@ export const useChatListStore = create<ChatListState>((set, get) => {
             topicUnreadDelta,
             message.id,
           );
-          next.set(stream_id, merged);
+          next.set(streamUuid, merged);
           const nextLoc = new Map(state.messageIdToLocation).set(message.id, {
             type: "stream",
-            stream_id,
+            streamUuid,
             topic: topic.subject,
           });
           return {
@@ -722,7 +727,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
             streamTopicMessageIds: addMessageIdToStreamTopicIndex(
               state.streamTopicMessageIds,
               message.id,
-              stream_id,
+              streamUuid,
               topic.subject,
             ),
           };
@@ -849,9 +854,9 @@ export const useChatListStore = create<ChatListState>((set, get) => {
             if (!isUnreadFromOthers(m, currentUserId)) continue;
             if (nextLoc.has(m.id)) continue;
 
-            if (m.type === "stream" && m.stream_id != null) {
+            if (m.type === "stream" && m.stream_uuid != null) {
               const topic = normalizeTopicForIdentity(m.subject ?? "");
-              nextLoc.set(m.id, { type: "stream", stream_id: m.stream_id, topic });
+              nextLoc.set(m.id, { type: "stream", streamUuid: m.stream_uuid, topic });
               changed = true;
             } else if (m.type === "private" && Array.isArray(m.display_recipient)) {
               const dmKey = dmConversationKey(m.display_recipient, currentUserId);
@@ -908,9 +913,9 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           if (nextStreams === state.streamsMap) return state;
           const nextLoc = new Map(state.messageIdToLocation);
           for (const m of streamMessages) {
-            if (m.stream_id == null) continue;
+            if (m.stream_uuid == null) continue;
             const topic = normalizeTopicForIdentity(m.subject ?? "");
-            nextLoc.set(m.id, { type: "stream", stream_id: m.stream_id, topic });
+            nextLoc.set(m.id, { type: "stream", streamUuid: m.stream_uuid, topic });
           }
           return {
             streamsMap: nextStreams,
@@ -922,38 +927,42 @@ export const useChatListStore = create<ChatListState>((set, get) => {
       );
     },
 
-    upsertStreamTopicShells(streamId, topics) {
-      if (!Number.isInteger(streamId) || streamId <= 0) return;
-      const normalizedTopics = [
-        ...new Set(topics.map((topicName) => normalizeTopicForIdentity(topicName))),
-      ];
-      if (normalizedTopics.length === 0) return;
+    upsertStreamTopicShells(streamUuid, topics) {
+      const normalizedStreamUuid = streamUuid.trim().toLowerCase();
+      if (normalizedStreamUuid.length === 0 || topics.length === 0) return;
 
       patchSet(
         (state) => {
-          const stream = state.streamsMap.get(streamId);
+          const stream = state.streamsMap.get(normalizedStreamUuid);
           if (stream == null) return state;
 
           let nextTopics = stream.topics;
           let changed = false;
-          for (const topic of normalizedTopics) {
-            if (nextTopics.has(topic)) continue;
+          for (const row of topics) {
+            const topicUuid = row.topicUuid.trim().toLowerCase();
+            const topicName = normalizeTopicForIdentity(row.name);
+            if (topicUuid.length === 0 || topicName.length === 0) continue;
+            const existing = nextTopics.get(topicName);
+            if (existing?.topicUuid === topicUuid && existing.subject === topicName) continue;
             if (!changed) {
               nextTopics = new Map(nextTopics);
               changed = true;
             }
-            nextTopics.set(topic, {
-              subject: topic,
-              lastMessage: "",
-              lastMessageSenderName: undefined,
-              time: "",
-              ts: 0,
-              unreadCount: 0,
+            nextTopics.set(topicName, {
+              ...(existing ?? {
+                lastMessage: "",
+                lastMessageSenderName: undefined,
+                time: "",
+                ts: 0,
+                unreadCount: 0,
+              }),
+              topicUuid,
+              subject: topicName,
             });
           }
           if (!changed) return state;
           const nextStreams = new Map(state.streamsMap);
-          nextStreams.set(streamId, { ...stream, topics: nextTopics });
+          nextStreams.set(normalizedStreamUuid, { ...stream, topics: nextTopics });
           return { streamsMap: nextStreams, sidebarDataHydrated: true };
         },
         { preserveSidebarTotals: true },
@@ -968,26 +977,28 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           let changed = false;
           let nextStreams = state.streamsMap;
           for (const row of rows) {
-            if (!Number.isInteger(row.streamId) || row.streamId <= 0) continue;
-            const existing = nextStreams.get(row.streamId);
-            const nextEntry = buildStreamMetadataEntry(row, existing);
+            const streamUuid = row.streamUuid.trim().toLowerCase();
+            if (streamUuid.length === 0) continue;
+            const existing = nextStreams.get(streamUuid);
+            const normalizedRow = { ...row, streamUuid };
+            const nextEntry = buildStreamMetadataEntry(normalizedRow, existing);
             if (existing === undefined) {
-              // Subscribed channels must appear even when the active message window has no rows for them.
+              // Subscribed streams must appear even when the active message window has no rows for them.
               if (!changed) nextStreams = new Map(nextStreams);
               changed = true;
-              nextStreams.set(row.streamId, nextEntry);
+              nextStreams.set(streamUuid, nextEntry);
               continue;
             }
             if (existing.name !== nextEntry.name) {
               if (!changed) nextStreams = new Map(nextStreams);
               changed = true;
-              nextStreams.set(row.streamId, nextEntry);
+              nextStreams.set(streamUuid, nextEntry);
               continue;
             }
             if (hasStreamMetadataAccessChanged(existing, nextEntry)) {
               if (!changed) nextStreams = new Map(nextStreams);
               changed = true;
-              nextStreams.set(row.streamId, nextEntry);
+              nextStreams.set(streamUuid, nextEntry);
             }
           }
           if (!changed) return state;
@@ -1005,18 +1016,19 @@ export const useChatListStore = create<ChatListState>((set, get) => {
     },
 
     setStreamArchived(streamId, isArchived) {
-      if (!Number.isInteger(streamId) || streamId <= 0) return;
+      const streamUuid = streamId.trim().toLowerCase();
+      if (streamUuid.length === 0) return;
       patchSet(
         (state) => {
-          const existing = state.streamsMap.get(streamId);
+          const existing = state.streamsMap.get(streamUuid);
           if (!existing || existing.isArchived === isArchived) return state;
           const nextStreams = new Map(state.streamsMap);
           if (isArchived === undefined) {
             const rest = { ...existing };
             delete rest.isArchived;
-            nextStreams.set(streamId, rest);
+            nextStreams.set(streamUuid, rest);
           } else {
-            nextStreams.set(streamId, { ...existing, isArchived });
+            nextStreams.set(streamUuid, { ...existing, isArchived });
           }
           return { streamsMap: nextStreams };
         },
@@ -1069,7 +1081,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           const existing = state.streamsMap.get(streamId);
           if (!existing) return state;
           const nextStreams = new Map(state.streamsMap);
-          nextStreams.set(streamId, { ...existing, name: trimmedName });
+          nextStreams.set(normalizedStreamId, { ...existing, name: trimmedName });
           return { streamsMap: nextStreams };
         },
         { preserveSidebarTotals: true },
@@ -1077,7 +1089,8 @@ export const useChatListStore = create<ChatListState>((set, get) => {
     },
 
     moveStreamTopic({ streamId, oldTopic, newTopic, messageIds, anchorMessageId }) {
-      if (!Number.isInteger(streamId) || streamId <= 0) return;
+      const normalizedStreamId = streamId.trim().toLowerCase();
+      if (normalizedStreamId.length === 0) return;
       const oldTopicKey = normalizeTopicForIdentity(oldTopic);
       const nextTopicKey = normalizeTopicForIdentity(newTopic);
       if (oldTopicKey === nextTopicKey) {
@@ -1089,7 +1102,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
 
       patchSet(
         (state) => {
-          const stream = state.streamsMap.get(streamId);
+          const stream = state.streamsMap.get(normalizedStreamId);
           if (!stream) return state;
           let nextLocations = state.messageIdToLocation;
           let locationsChanged = false;
@@ -1101,7 +1114,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           };
           const assignTopicForLocation = (messageId: MessageId) => {
             const location = nextLocations.get(messageId);
-            if (location?.type !== "stream" || location.stream_id !== streamId) return;
+            if (location?.type !== "stream" || location.streamUuid !== normalizedStreamId) return;
             if (location.topic === nextTopicKey) return;
             ensureMutableLocations();
             nextLocations.set(messageId, { ...location, topic: nextTopicKey });
@@ -1112,7 +1125,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           }
 
           const knownOldTopicMessageIds = [
-            ...getStreamTopicMessageIds(state.streamTopicMessageIds, streamId, oldTopicKey),
+            ...getStreamTopicMessageIds(state.streamTopicMessageIds, normalizedStreamId, oldTopicKey),
           ];
           const canMoveTopicEntry =
             knownOldTopicMessageIds.length > 0 &&
@@ -1131,7 +1144,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
 
               const newestTopic = getNewestTopicEntry(nextTopics);
               nextStreams = new Map(state.streamsMap);
-              nextStreams.set(streamId, {
+              nextStreams.set(normalizedStreamId, {
                 ...stream,
                 topics: nextTopics,
                 ...(newestTopic != null
@@ -1176,9 +1189,10 @@ export const useChatListStore = create<ChatListState>((set, get) => {
       messageIds,
       anchorMessageId,
     }) {
-      if (!Number.isInteger(sourceStreamId) || sourceStreamId <= 0) return;
-      if (!Number.isInteger(targetStreamId) || targetStreamId <= 0) return;
-      if (sourceStreamId === targetStreamId) return;
+      const normalizedSourceStreamId = sourceStreamId.trim().toLowerCase();
+      const normalizedTargetStreamId = targetStreamId.trim().toLowerCase();
+      if (normalizedSourceStreamId.length === 0 || normalizedTargetStreamId.length === 0) return;
+      if (normalizedSourceStreamId === normalizedTargetStreamId) return;
       const oldTopicKey = normalizeTopicForIdentity(oldTopic);
       const nextTopicKey = normalizeTopicForIdentity(newTopic);
       const targetMessageIds = resolveTopicMoveTargetMessageIds({ messageIds, anchorMessageId });
@@ -1187,8 +1201,8 @@ export const useChatListStore = create<ChatListState>((set, get) => {
 
       patchSet(
         (state) => {
-          const sourceStream = state.streamsMap.get(sourceStreamId);
-          const targetStream = state.streamsMap.get(targetStreamId);
+          const sourceStream = state.streamsMap.get(normalizedSourceStreamId);
+          const targetStream = state.streamsMap.get(normalizedTargetStreamId);
           if (!sourceStream || !targetStream) return state;
 
           let nextLocations = state.messageIdToLocation;
@@ -1201,12 +1215,12 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           };
           const assignStreamTopicForLocation = (messageId: MessageId) => {
             const location = nextLocations.get(messageId);
-            if (location?.type !== "stream" || location.stream_id !== sourceStreamId) return;
-            if (location.stream_id === targetStreamId && location.topic === nextTopicKey) return;
+            if (location?.type !== "stream" || location.streamUuid !== normalizedSourceStreamId) return;
+            if (location.streamUuid === normalizedTargetStreamId && location.topic === nextTopicKey) return;
             ensureMutableLocations();
             nextLocations.set(messageId, {
               type: "stream",
-              stream_id: targetStreamId,
+              streamUuid: normalizedTargetStreamId,
               topic: nextTopicKey,
             });
           };
@@ -1216,7 +1230,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           }
 
           const knownOldTopicMessageIds = [
-            ...getStreamTopicMessageIds(state.streamTopicMessageIds, sourceStreamId, oldTopicKey),
+            ...getStreamTopicMessageIds(state.streamTopicMessageIds, normalizedSourceStreamId, oldTopicKey),
           ];
           const canMoveTopicEntry =
             knownOldTopicMessageIds.length > 0 &&
@@ -1238,7 +1252,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
               const targetNewestTopic = getNewestTopicEntry(targetTopics);
 
               nextStreams = new Map(state.streamsMap);
-              nextStreams.set(sourceStreamId, {
+              nextStreams.set(normalizedSourceStreamId, {
                 ...sourceStream,
                 topics: sourceTopics,
                 ...(sourceNewestTopic != null
@@ -1255,7 +1269,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
                       ts: 0,
                     }),
               });
-              nextStreams.set(targetStreamId, {
+              nextStreams.set(normalizedTargetStreamId, {
                 ...targetStream,
                 topics: targetTopics,
                 ...(targetNewestTopic != null
@@ -1293,11 +1307,12 @@ export const useChatListStore = create<ChatListState>((set, get) => {
     },
 
     removeStreamTopic(streamId, topic) {
-      if (!Number.isInteger(streamId) || streamId <= 0) return;
+      const streamUuid = streamId.trim().toLowerCase();
+      if (streamUuid.length === 0) return;
       const topicKey = normalizeTopicForIdentity(topic);
 
       patchSet((state) => {
-        const stream = state.streamsMap.get(streamId);
+        const stream = state.streamsMap.get(streamUuid);
         if (!stream) return state;
 
         let nextLocations = state.messageIdToLocation;
@@ -1325,7 +1340,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
         nextTopics.delete(topicKey);
         const newestTopic = getNewestTopicEntry(nextTopics);
         const nextStreams = new Map(state.streamsMap);
-        nextStreams.set(streamId, {
+        nextStreams.set(streamUuid, {
           ...stream,
           topics: nextTopics,
           ...(newestTopic != null
@@ -1416,7 +1431,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
         }
 
         const nextLastAppliedMessages =
-          state.lastAppliedMessages?.filter((message) => message.stream_id !== streamId) ?? null;
+          state.lastAppliedMessages?.filter((message) => message.stream_uuid !== streamId) ?? null;
 
         return {
           streamsMap: nextStreams,
@@ -1495,7 +1510,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           const loc = locMap.get(mid);
           if (!loc) continue;
           if (loc.type === "stream") {
-            const stream = nextStreams.get(loc.stream_id);
+            const stream = nextStreams.get(loc.streamUuid);
             if (!stream) continue;
             const topic = stream.topics.get(loc.topic);
             if (!topic || topic.unreadCount <= 0) continue;
@@ -1506,7 +1521,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
               ...topic,
               unreadCount: Math.max(0, topic.unreadCount - 1),
             });
-            nextStreams.set(loc.stream_id, { ...stream, topics: nextTopics });
+            nextStreams.set(loc.streamUuid, { ...stream, topics: nextTopics });
           } else {
             const dm = nextDms.get(loc.dmKey);
             if (!dm || dm.unreadCount <= 0) continue;
@@ -1535,6 +1550,8 @@ export const useChatListStore = create<ChatListState>((set, get) => {
 
     decrementUnreadForTopic(streamId, topic, count) {
       if (!Number.isFinite(count) || count <= 0) return;
+      const normalizedStreamId = streamId.trim().toLowerCase();
+      if (normalizedStreamId.length === 0) return;
       const topicKey = normalizeTopicForIdentity(topic);
       logSidebarUnreadFlow("store:decrementUnreadForTopic", {
         streamId,
@@ -1543,7 +1560,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
         totalsBefore: summarizeSidebarUnreadTotals(get()),
       });
       patchSet((state) => {
-        const stream = state.streamsMap.get(streamId);
+        const stream = state.streamsMap.get(normalizedStreamId);
         const streamTopic = stream?.topics.get(topicKey);
         if (!stream || !streamTopic || streamTopic.unreadCount <= 0) return state;
         const decrement = Math.min(count, streamTopic.unreadCount);
@@ -1553,7 +1570,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           ...streamTopic,
           unreadCount: streamTopic.unreadCount - decrement,
         });
-        nextStreams.set(streamId, { ...stream, topics: nextTopics });
+        nextStreams.set(normalizedStreamId, { ...stream, topics: nextTopics });
         return {
           streamsMap: nextStreams,
           sidebarStreamsUnread: state.sidebarStreamsUnread - decrement,
@@ -1599,7 +1616,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           const loc = locMap.get(mid);
           if (!loc) continue;
           if (loc.type === "stream") {
-            const stream = nextStreams.get(loc.stream_id);
+            const stream = nextStreams.get(loc.streamUuid);
             if (!stream) continue;
             const topic = stream.topics.get(loc.topic);
             if (!topic) continue;
@@ -1607,7 +1624,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
             nextStreams = new Map(nextStreams);
             const nextTopics = new Map(stream.topics);
             nextTopics.set(loc.topic, { ...topic, unreadCount: topic.unreadCount + 1 });
-            nextStreams.set(loc.stream_id, { ...stream, topics: nextTopics });
+            nextStreams.set(loc.streamUuid, { ...stream, topics: nextTopics });
           } else {
             const dm = nextDms.get(loc.dmKey);
             if (!dm) continue;

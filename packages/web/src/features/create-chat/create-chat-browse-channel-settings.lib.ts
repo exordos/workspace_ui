@@ -5,7 +5,7 @@ import type { MessengerGroupSettingValue } from "~/shared/api/messenger.types";
 import { formatGroupSettingDisplay } from "~/shared/lib/messenger-group-setting-display.lib";
 
 export interface BrowseChannelDetailInput {
-  streamId: number;
+  streamUuid: string;
   inviteOnly: boolean | null;
   historyPublicToSubscribers: boolean | null;
   isAnnouncementOnly: boolean;
@@ -126,7 +126,7 @@ export function buildBrowseChannelDetailSections(
   const sections: BrowseChannelDetailSection[] = [];
 
   const generalFields: BrowseChannelDetailField[] = [];
-  pushField(generalFields, "stream-id", "channel.browseStreamId", String(input.streamId));
+  pushField(generalFields, "stream-id", "channel.browseStreamUuid", String(input.streamUuid));
   pushField(generalFields, "type", "channel.type", labels.resolveChannelType(input));
   pushField(
     generalFields,

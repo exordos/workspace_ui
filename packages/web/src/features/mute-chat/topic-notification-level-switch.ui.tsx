@@ -6,7 +6,7 @@ import { TopicVisibilityLevelSwitch } from "~/features/mute-chat/topic-visibilit
 import { t } from "~/i18n/i18n";
 
 export interface TopicNotificationLevelCycleButtonProps {
-  streamId: number;
+  streamId: string;
   topic: string;
   onError?: (retry: () => void) => void;
   onMuteError?: (retry: () => void) => void;
@@ -44,7 +44,7 @@ export const TopicNotificationLevelCycleButton = React.memo<TopicNotificationLev
 TopicNotificationLevelCycleButton.displayName = "TopicNotificationLevelCycleButton";
 
 export interface TopicNotificationLevelMenuPickerProps {
-  streamId: number;
+  streamId: string;
   topic: string;
   onError?: (retry: () => void) => void;
 }

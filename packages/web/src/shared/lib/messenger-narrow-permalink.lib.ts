@@ -19,7 +19,7 @@ export interface ParsedMessengerNarrowPermalink {
   /** Present for DM permalinks with participant slug. */
   dmParticipantIds?: UserId[];
   /** Present for stream permalinks. */
-  streamId?: number;
+  streamId?: string;
   topic?: string;
   /** Origin from absolute permalink URLs; omitted for hash-only links. */
   realmOrigin?: string;
@@ -34,20 +34,8 @@ const MESSENGER_HASH_DECODE_REPLACEMENTS: Readonly<Record<string, string>> = {
   ".2E": ".",
 };
 
-function slugForStreamRoute(streamId: number, streamName: string): string {
-  const slug = streamName
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/-+$/, "");
-  return `${streamId}-${slug || "channel"}`;
-}
-
-function parsePositiveInt(value: string | undefined): number | undefined {
-  if (value == null || value.length === 0) return undefined;
-  if (!/^\d+$/.test(value)) return undefined;
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) return undefined;
-  return parsed;
+function slugForStreamRoute(streamId: string): string {
+  return encodeURIComponent(streamId.trim().toLowerCase());
 }
 
 /** Reverses Workspace `encodeHashComponent` for narrow hash operands. */
@@ -120,12 +108,8 @@ function parseStreamNarrowPermalink(
   const topicEnc = streamMatch[2];
   if (streamSlugEnc == null || topicEnc == null) return null;
 
-  const streamSlug = decodeWorkspaceHashComponent(streamSlugEnc);
-  const firstDash = streamSlug.indexOf("-");
-  if (firstDash <= 0) return null;
-  const streamIdRaw = streamSlug.slice(0, firstDash);
-  const streamId = parsePositiveInt(streamIdRaw);
-  if (streamId == null) return null;
+  const streamId = decodeWorkspaceHashComponent(streamSlugEnc).trim().toLowerCase();
+  if (streamId.length === 0) return null;
 
   const topic = normalizeTopicForIdentity(decodeWorkspaceHashComponent(topicEnc));
   return {
@@ -190,7 +174,7 @@ export interface SameChatAsNarrowPermalinkParams {
   isDmView: boolean;
   currentUserId: UserId | null;
   dmRecipientIds: UserId[];
-  resolvedStreamId: number | null;
+  resolvedStreamId: string | null;
   topicName: string | undefined;
   streamRouteTopic: string;
 }
@@ -225,7 +209,7 @@ export function isSameChatAsNarrowPermalink(params: SameChatAsNarrowPermalinkPar
 export interface BuildRouteFromMessengerNarrowPermalinkParams {
   parsed: ParsedMessengerNarrowPermalink;
   currentUserId: UserId | null;
-  resolveStreamName: (streamId: number) => string | undefined;
+  resolveStreamName: (streamId: string) => string | undefined;
 }
 
 /** Builds an internal messenger route with `?msg=` from a parsed narrow permalink. */
@@ -253,8 +237,8 @@ export function buildRouteFromMessengerNarrowPermalink(
   }
 
   if (parsed.streamId == null) return null;
-  const streamName = resolveStreamName(parsed.streamId) ?? "channel";
-  const streamSlug = slugForStreamRoute(parsed.streamId, streamName);
+  resolveStreamName(parsed.streamId);
+  const streamSlug = slugForStreamRoute(parsed.streamId);
   const topic = parsed.topic ?? "";
   return withMessageId(
     withCurrentOrgRoute(

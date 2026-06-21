@@ -35,7 +35,7 @@ function mockMyStreamsResponse(rows: unknown[]): void {
 }
 
 describe("fetchSubscriptions", () => {
-  it("maps non-private /streams rows to subscriptions", async () => {
+  it("maps /streams rows with numeric ids to subscriptions", async () => {
     mockMessengerApi.getWithBase.mockResolvedValue({
       ok: true,
       status: 200,
@@ -69,6 +69,7 @@ describe("fetchSubscriptions", () => {
         name: "general",
         is_muted: false,
         invite_only: false,
+        private: false,
       },
     ]);
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith("/api/messenger/v1", "/streams/");

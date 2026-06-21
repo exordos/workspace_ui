@@ -36,8 +36,8 @@ export interface SyncUnreadSurfacesFromSnapshotOptions {
   applyInstanceCounts?: boolean;
   // Active org should use chat-list-derived, so muted topics do not raise the org badge.
   instanceCountMode?: "snapshot-total" | "chat-list-derived";
-  isStreamMuted?: (streamId: number) => boolean;
-  isEffectivelyMuted?: (streamId: number, topic: string) => boolean;
+  isStreamMuted?: (streamId: string) => boolean;
+  isEffectivelyMuted?: (streamId: string, topic: string) => boolean;
 }
 
 // Small unread changes come from live events or local optimistic actions.
@@ -62,8 +62,8 @@ export interface SyncUnreadSurfacesFromDeltaOptions {
   instanceId: string | null;
   applyDelta: () => void;
   applyInstanceCounts?: boolean;
-  isStreamMuted?: (streamId: number) => boolean;
-  isEffectivelyMuted?: (streamId: number, topic: string) => boolean;
+  isStreamMuted?: (streamId: string) => boolean;
+  isEffectivelyMuted?: (streamId: string, topic: string) => boolean;
 }
 
 function hasPersonalUnreadFromSnapshot(snapshot: MessengerUnreadMessagesSnapshot): boolean {
@@ -84,8 +84,8 @@ function writeInstanceCountsFromSnapshot(
 
 // Builds the active org total from the current sidebar model.
 function computeCurrentInstanceUnreadTotal(options: {
-  isStreamMuted?: (streamId: number) => boolean;
-  isEffectivelyMuted?: (streamId: number, topic: string) => boolean;
+  isStreamMuted?: (streamId: string) => boolean;
+  isEffectivelyMuted?: (streamId: string, topic: string) => boolean;
 }): number {
   const chatList = useChatListStore.getState();
   return computeInstanceUnreadCount({
@@ -112,8 +112,8 @@ function writeInstanceCountsFromCurrentChatList({
   isEffectivelyMuted,
 }: {
   instanceId: string;
-  isStreamMuted?: (streamId: number) => boolean;
-  isEffectivelyMuted?: (streamId: number, topic: string) => boolean;
+  isStreamMuted?: (streamId: string) => boolean;
+  isEffectivelyMuted?: (streamId: string, topic: string) => boolean;
 }): void {
   const instances = useInstancesStore.getState();
   instances.setInstanceUnreadCount(

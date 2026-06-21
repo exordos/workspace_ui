@@ -13,7 +13,7 @@ import type { UserId } from "~/shared/lib/user-id.lib";
 
 /** Narrow context shape for cache keys (compatible with `CurrentChatContext`). */
 export type MessageCacheChatContext =
-  | { type: "stream"; streamId: number; topic: string }
+  | { type: "stream"; streamId: string; topic: string; topicUuid?: string }
   | { type: "dm"; dmKey: string };
 
 /** Align with `chatKeyFromRawMessage` / Workspace topic identity normalization. */
@@ -23,7 +23,7 @@ export function normalizeStreamTopicForMessageCache(topic: string): string {
 
 export function chatKeyFromContext(context: MessageCacheChatContext): string {
   if (context.type === "stream") {
-    const topic = normalizeStreamTopicForMessageCache(context.topic);
+    const topic = normalizeStreamTopicForMessageCache(context.topicUuid ?? context.topic);
     return `stream:${context.streamId}:${topic}`;
   }
   return `dm:${context.dmKey}`;
@@ -33,9 +33,9 @@ export function chatKeyFromRawMessage(
   raw: WorkspaceRawMessage,
   currentUserId: UserId | null,
 ): string | null {
-  if (raw.type === "stream" && raw.stream_id != null) {
-    const topic = normalizeTopicForIdentity(raw.subject ?? "");
-    return `stream:${raw.stream_id}:${topic}`;
+  if (raw.type === "stream" && raw.stream_uuid != null) {
+    const topic = normalizeTopicForIdentity(raw.topic_uuid ?? raw.subject ?? "");
+    return `stream:${raw.stream_uuid}:${topic}`;
   }
   if (raw.type === "private" && Array.isArray(raw.display_recipient)) {
     return `dm:${dmConversationKey(raw.display_recipient, currentUserId)}`;
@@ -47,9 +47,9 @@ export function chatKeyFromMockMessage(
   msg: MockMessage,
   currentUserId: UserId | null,
 ): string | null {
-  if (msg.stream_id != null) {
-    const topic = normalizeTopicForIdentity(msg.subject ?? "");
-    return `stream:${msg.stream_id}:${topic}`;
+  if (msg.stream_uuid != null) {
+    const topic = normalizeTopicForIdentity(msg.topic_uuid ?? msg.subject ?? "");
+    return `stream:${msg.stream_uuid}:${topic}`;
   }
   if (Array.isArray(msg.display_recipient)) {
     return `dm:${dmConversationKey(msg.display_recipient, currentUserId)}`;

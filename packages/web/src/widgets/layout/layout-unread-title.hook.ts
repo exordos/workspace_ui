@@ -24,8 +24,8 @@ export function useLayoutUnreadAndTitle(options: {
   activeTopic: string | null;
   dmIdParam: string | undefined;
   currentUserId: UserId | null;
-  isStreamMuted?: (streamId: number) => boolean;
-  isEffectivelyMuted?: (streamId: number, topic: string) => boolean;
+  isStreamMuted?: (streamId: string) => boolean;
+  isEffectivelyMuted?: (streamId: string, topic: string) => boolean;
 }): {
   realmIcon: string | undefined;
   unreadCount: number;
@@ -65,7 +65,7 @@ export function useLayoutUnreadAndTitle(options: {
     if (!activeStreamSlug) return null;
     const parsedActiveStream = parseStreamSlug(activeStreamSlug);
     if (!parsedActiveStream) return null;
-    return streamsMap.get(parsedActiveStream.stream_id)?.name ?? parsedActiveStream.stream_name;
+    return streamsMap.get(parsedActiveStream.stream_uuid)?.name ?? parsedActiveStream.stream_name;
   }, [activeStreamSlug, streamsMap]);
 
   const activeDmChatForTitle = useMemo((): DmSidebarChat | undefined => {

@@ -29,8 +29,8 @@ function hasNonEmptyPreviewText(value: string | undefined): boolean {
 }
 
 function shouldHydrateBucketPreview(
-  streamsMap: Map<number, StreamEntryInternal>,
-  bucket: { streamId: number; topic: string },
+  streamsMap: Map<string, StreamEntryInternal>,
+  bucket: { streamId: string; topic: string },
 ): boolean {
   const stream = streamsMap.get(bucket.streamId);
   const topicKey = normalizeTopicForIdentity(bucket.topic);
@@ -48,11 +48,11 @@ function shouldHydrateBucketPreview(
 
 export function resolveLatestUnreadMessageIdsForMissingPreviews(
   snapshot: MessengerUnreadMessagesSnapshot,
-  streamsMap: Map<number, StreamEntryInternal>,
+  streamsMap: Map<string, StreamEntryInternal>,
 ): MessageId[] {
   const ids = new Set<MessageId>();
   for (const bucket of snapshot.streams) {
-    if (!Number.isInteger(bucket.streamId) || bucket.streamId <= 0) continue;
+    if (bucket.streamId.trim().length === 0) continue;
     if (!Array.isArray(bucket.unreadMessageIds) || bucket.unreadMessageIds.length === 0) continue;
     if (
       !shouldHydrateBucketPreview(streamsMap, { streamId: bucket.streamId, topic: bucket.topic })

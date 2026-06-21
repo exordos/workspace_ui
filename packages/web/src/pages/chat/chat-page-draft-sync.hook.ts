@@ -2,13 +2,13 @@ import { useEffect, type RefObject } from "react";
 import { useLocation } from "react-router-dom";
 import { resolveHydratedDraftBootstrap } from "~/entities/draft/draft-chat-bootstrap.lib";
 import { useDraftStore } from "~/entities/draft/draft.model";
-import type { DraftType } from "~/entities/draft/draft.types";
+import type { DraftTargetId, DraftType } from "~/entities/draft/draft.types";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import { consumePendingForwardPrefill } from "./chat-forward.lib";
 
 export interface UseChatPageDraftSyncParams {
   draftType: DraftType | null;
-  draftTo: number[];
+  draftTo: DraftTargetId[];
   draftTopic: string;
   drafts: ReturnType<typeof useDraftStore.getState>["drafts"];
   composerValueRef: RefObject<string>;

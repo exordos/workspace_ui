@@ -1,4 +1,5 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useMemo } from "react";
+import { isSystemRailFolderId } from "~/features/folder-sync/folder-sync-constants.lib";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { selectSidebarChatsLoading } from "~/features/folder-sync/folder-sync.selectors";
 import { useSettingsStore } from "~/features/settings/settings.model";
@@ -6,17 +7,26 @@ import type { FolderRailFoldersChangedDetail } from "~/widgets/folder-rail/folde
 import { FolderRail } from "~/widgets/folder-rail/folder-rail.ui";
 import { useSidebarConfigStore } from "./sidebar-config.model";
 import { Sidebar } from "./sidebar.ui";
+import type { SidebarChat } from "./sidebar.types";
+
+function isStreamChat(chat: SidebarChat): chat is Extract<SidebarChat, { type: "stream" }> {
+  return chat.type === "stream";
+}
 
 export const SidebarShell: React.FC = () => {
   const folderRailLayout = useSettingsStore((s) => s.folderRailLayout);
   const folders = useFolderSyncStore((s) => s.folders);
   const sidebarChats = useFolderSyncStore((s) => s.selectedFolderSidebarChats);
+  const sidebarStreamChats = useMemo(() => sidebarChats.filter(isStreamChat), [sidebarChats]);
   const sidebarChatsLoading = useFolderSyncStore(selectSidebarChatsLoading);
   const refreshFolderSync = useFolderSyncStore((s) => s.refresh);
   const applyLocallyCreatedFolder = useFolderSyncStore((s) => s.applyLocallyCreatedFolder);
   const applyLocallyDeletedFolder = useFolderSyncStore((s) => s.applyLocallyDeletedFolder);
   const selectFolderSync = useFolderSyncStore((s) => s.selectFolder);
   const selectedFolderId = useFolderSyncStore((s) => s.selectedFolderId);
+  const sidebarChatsForSelectedFolder = isSystemRailFolderId(selectedFolderId)
+    ? undefined
+    : sidebarStreamChats;
   const setSelectedFolderId = useSidebarConfigStore((s) => s.setSelectedFolderId);
 
   const handleSelectFolder = useCallback(
@@ -55,14 +65,17 @@ export const SidebarShell: React.FC = () => {
             layout="vertical"
           />
         </div>
-        <Sidebar sidebarChats={sidebarChats} sidebarChatsLoading={sidebarChatsLoading} />
+        <Sidebar
+          sidebarChats={sidebarChatsForSelectedFolder}
+          sidebarChatsLoading={sidebarChatsLoading}
+        />
       </>
     );
   }
 
   return (
     <Sidebar
-      sidebarChats={sidebarChats}
+      sidebarChats={sidebarChatsForSelectedFolder}
       sidebarChatsLoading={sidebarChatsLoading}
       activityPanelBottomSlot={
         <>

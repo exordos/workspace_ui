@@ -8,7 +8,7 @@ import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { InboxEntry, InboxMarkReadTarget } from "./inbox.types";
 
 export interface GroupedInboxStream {
-  streamId: number;
+  streamId: string;
   streamName: string;
   unreadCount: number;
   lastMessageTimestamp: number;
@@ -73,12 +73,12 @@ interface DmConversationMeta {
 }
 
 export interface InboxMuteFilterOptions {
-  isStreamMuted?: (streamId: number) => boolean;
-  isEffectivelyMuted?: (streamId: number, topic: string) => boolean;
+  isStreamMuted?: (streamId: string) => boolean;
+  isEffectivelyMuted?: (streamId: string, topic: string) => boolean;
 }
 
 function shouldOmitStreamInboxMessage(
-  streamId: number,
+  streamId: string,
   topic: string,
   options: InboxMuteFilterOptions,
 ): boolean {
@@ -126,7 +126,7 @@ function updateExistingInboxEntry(existing: InboxEntry, msg: MockMessage): void 
 function addStreamInboxEntry(
   entryMap: Map<string, InboxEntry>,
   msg: MockMessage,
-  streamId: number,
+  streamId: string,
   topic: string,
 ): void {
   const key = `stream:${streamId}:${topic}`;
@@ -185,8 +185,8 @@ export function buildInboxEntries(
   const entryMap = new Map<string, InboxEntry>();
 
   for (const msg of messages) {
-    const streamId = msg.stream_id;
-    const isStream = streamId != null && streamId > 0;
+    const streamId = msg.stream_uuid;
+    const isStream = streamId != null && streamId.trim().length > 0;
     const topic = (msg.subject ?? "").trim();
 
     if (isStream) {
@@ -208,7 +208,7 @@ export function groupInboxEntries(entries: InboxEntry[]): GroupedInboxEntries {
     .filter((entry) => entry.streamId == null)
     .sort((a, b) => b.lastMessageTimestamp - a.lastMessageTimestamp);
 
-  const streamsMap = new Map<number, GroupedInboxStream>();
+  const streamsMap = new Map<string, GroupedInboxStream>();
 
   for (const entry of entries) {
     if (entry.streamId == null || entry.streamName == null) continue;

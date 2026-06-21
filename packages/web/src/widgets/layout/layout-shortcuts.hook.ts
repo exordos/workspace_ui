@@ -14,7 +14,6 @@ export function useLayoutShortcuts(options: {
   setSidebarOpen: React.Dispatch<React.SetStateAction<boolean>>;
   sidebarChats: SidebarChat[];
   activeStreamSlug: string | null;
-  activeDmIdParam: string | null;
   navigate: NavigateFunction;
 }): void {
   const {
@@ -25,7 +24,6 @@ export function useLayoutShortcuts(options: {
     setSidebarOpen,
     sidebarChats,
     activeStreamSlug,
-    activeDmIdParam,
     navigate,
   } = options;
 
@@ -43,12 +41,11 @@ export function useLayoutShortcuts(options: {
         sidebarChats,
         direction,
         activeStreamSlug,
-        activeDmIdParam,
       });
       if (!route) return;
       void navigate(route);
     },
-    [activeDmIdParam, activeStreamSlug, navigate, sidebarChats],
+    [activeStreamSlug, navigate, sidebarChats],
   );
 
   const prevChat = useCallback(() => navigateToAdjacent("prev"), [navigateToAdjacent]);

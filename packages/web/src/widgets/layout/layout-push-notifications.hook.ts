@@ -59,10 +59,10 @@ function handleForegroundPush(payload: PushMessagePayload): void {
   const mute = useMuteStore.getState();
   let isMuted = false;
   let isTopicFollowed = false;
-  if (message.type === "stream" && message.stream_id != null) {
+  if (message.type === "stream" && message.stream_uuid != null) {
     const topic = normalizeTopicForIdentity(message.topic ?? "");
-    isMuted = mute.isEffectivelyMuted(message.stream_id, topic);
-    isTopicFollowed = mute.isTopicFollowed(message.stream_id, topic);
+    isMuted = mute.isEffectivelyMuted(message.stream_uuid, topic);
+    isTopicFollowed = mute.isTopicFollowed(message.stream_uuid, topic);
   }
 
   const serverSettings = useNotificationSettingsStore.getState().settings;
@@ -73,8 +73,8 @@ function handleForegroundPush(payload: PushMessagePayload): void {
   );
 
   const streamFlags =
-    message.type === "stream" && message.stream_id != null
-      ? buildStreamMessageNotificationFlags(message.stream_id, serverSettings, mute)
+    message.type === "stream" && message.stream_uuid != null
+      ? buildStreamMessageNotificationFlags(message.stream_uuid, serverSettings, mute)
       : {
           streamAllMessagesNotifyEnabled: false,
           streamAllMessagesAudibleEnabled: false,

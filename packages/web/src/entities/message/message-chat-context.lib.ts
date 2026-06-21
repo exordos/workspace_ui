@@ -25,8 +25,8 @@ export function isSameChatLocation(
   if (prev.type === "stream" && next.type === "stream") {
     if (prev.streamId !== next.streamId) return false;
     if (prev.streamWideView === true && next.streamWideView === true) return true;
-    const pt = normalizeStreamTopicForMessageCache(prev.topic);
-    const nt = normalizeStreamTopicForMessageCache(next.topic);
+    const pt = normalizeStreamTopicForMessageCache(prev.topicUuid ?? prev.topic);
+    const nt = normalizeStreamTopicForMessageCache(next.topicUuid ?? next.topic);
     if (pt === nt) return true;
     return pt.toLowerCase() === nt.toLowerCase();
   }
@@ -39,8 +39,9 @@ export function isSameChatLocation(
 export function isMessageForContext(
   msg: {
     type?: string;
-    stream_id?: number | null;
+    stream_uuid?: string | null;
     subject?: string;
+    topic_uuid?: string;
     display_recipient?: string | { id: number }[];
   },
   context: CurrentChatContext | null,
@@ -48,11 +49,12 @@ export function isMessageForContext(
 ): boolean {
   if (!context) return false;
   if (context.type === "stream") {
-    if (msg.type !== "stream" || msg.stream_id !== context.streamId) return false;
+    if (msg.type !== "stream" || msg.stream_uuid !== context.streamId) return false;
     if (context.streamWideView) return true;
     return (
-      normalizeStreamTopicForMessageCache(normalizeTopicForIdentity(msg.subject ?? "")) ===
-      normalizeStreamTopicForMessageCache(context.topic)
+      normalizeStreamTopicForMessageCache(
+        normalizeTopicForIdentity(msg.topic_uuid ?? msg.subject ?? ""),
+      ) === normalizeStreamTopicForMessageCache(context.topicUuid ?? context.topic)
     );
   }
   if (context.type === "dm") {
@@ -67,11 +69,18 @@ export function contextFromMessage(
   msg: WorkspaceRawMessage,
   currentUserId: UserId | null,
 ): CurrentChatContext | null {
-  if (msg.type === "stream" && msg.stream_id != null) {
+  if (msg.type === "stream" && msg.stream_uuid != null) {
     const name =
-      typeof msg.display_recipient === "string" ? msg.display_recipient : String(msg.stream_id);
+      typeof msg.display_recipient === "string" ? msg.display_recipient : String(msg.stream_uuid);
     const topic = normalizeTopicForIdentity(msg.subject ?? "");
-    return { type: "stream", streamId: msg.stream_id, streamName: name, topic };
+    const topicUuid = typeof msg.topic_uuid === "string" ? msg.topic_uuid : undefined;
+    return {
+      type: "stream",
+      streamId: msg.stream_uuid,
+      streamName: name,
+      topic,
+      ...(topicUuid != null ? { topicUuid } : {}),
+    };
   }
   if (msg.type === "private" && Array.isArray(msg.display_recipient)) {
     const dmKey = dmConversationKey(msg.display_recipient, currentUserId);

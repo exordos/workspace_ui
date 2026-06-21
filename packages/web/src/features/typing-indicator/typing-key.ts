@@ -13,6 +13,6 @@ export function buildDmTypingChatKey(
     .join(",");
 }
 
-export function buildStreamTypingChatKey(streamId: number, topic: string): string {
+export function buildStreamTypingChatKey(streamId: string, topic: string): string {
   return `stream:${streamId}:${normalizeTopicForIdentity(topic)}`;
 }

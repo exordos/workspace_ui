@@ -33,13 +33,10 @@ export function parseNumericChatId(chatId: string): number | null {
   return parsed;
 }
 
-function parseStreamChatId(chatId: string): { streamId: number; topic: string | null } | null {
+function parseStreamChatId(chatId: string): { streamId: string; topic: string | null } | null {
   const [kind, streamIdRaw, ...topicParts] = chatId.split(":");
-  if (kind !== "stream" || streamIdRaw == null || streamIdRaw.length === 0) {
-    return null;
-  }
-  const streamId = Number(streamIdRaw);
-  if (!Number.isSafeInteger(streamId) || streamId <= 0) {
+  const streamId = streamIdRaw?.trim().toLowerCase() ?? "";
+  if (kind !== "stream" || streamId.length === 0) {
     return null;
   }
   const topic = topicParts.length > 0 ? topicParts.join(":") : null;
@@ -85,7 +82,7 @@ function parseDmSlugToUserIds(dmSlug: string): number[] {
 
 export function chatToWorkspaceChatId(chat: SidebarChat): string {
   if (chat.type === "stream") {
-    return `stream:${chat.stream_id}:general`;
+    return `stream:${chat.streamUuid}:general`;
   }
   const userIds =
     Array.isArray(chat.userIds) && chat.userIds.length > 0
@@ -115,34 +112,9 @@ export function chatToWorkspaceChatIds(chat: SidebarChat, currentUserId: UserId 
   return [...new Set(ids)];
 }
 
-export function parseFolderItemStreamId(chatId: string): number | null {
-  const trimmed = chatId.trim();
-  if (trimmed.length === 0) {
-    return null;
-  }
-
-  const streamColonMatch = /^stream:(\d+)/.exec(trimmed);
-  if (streamColonMatch?.[1]) {
-    const parsed = Number(streamColonMatch[1]);
-    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
-  }
-
-  const streamDashMatch = /^stream-(\d+)$/.exec(trimmed);
-  if (streamDashMatch?.[1]) {
-    const parsed = Number(streamDashMatch[1]);
-    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
-  }
-
-  if (/^(dm|pm):/i.test(trimmed)) {
-    return null;
-  }
-
-  if (/^\d+$/.test(trimmed)) {
-    const parsed = Number(trimmed);
-    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
-  }
-
-  return null;
+export function parseFolderItemStreamId(chatId: string): string | null {
+  const streamChat = parseStreamChatId(chatId);
+  return streamChat?.streamId ?? null;
 }
 
 export function parseFolderItemDmUserIds(chatId: string): number[] | null {

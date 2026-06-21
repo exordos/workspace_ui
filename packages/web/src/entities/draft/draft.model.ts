@@ -5,10 +5,10 @@
 import { create } from "zustand";
 import { logStoreAction } from "~/shared/lib/logger";
 import type { MessageId } from "~/shared/lib/message-id.lib";
-import type { Draft, DraftType } from "./draft.types";
+import type { Draft, DraftTargetId, DraftType } from "./draft.types";
 
-function buildDraftChatKey(type: DraftType, to: number[], topic?: string): string {
-  const toKey = [...to].sort((a, b) => a - b).join(",");
+function buildDraftChatKey(type: DraftType, to: DraftTargetId[], topic?: string): string {
+  const toKey = [...to].map(String).sort().join(",");
   return type === "stream" ? `${type}:${toKey}:${topic ?? ""}` : `${type}:${toKey}`;
 }
 
@@ -32,15 +32,15 @@ interface DraftState {
   updateDraftId: (oldId: MessageId, newId: MessageId) => void;
   linkDraftToServerId: (
     type: DraftType,
-    to: number[],
+    to: DraftTargetId[],
     topic: string | undefined,
     newId: MessageId,
   ) => void;
   removeDraft: (id: MessageId) => void;
   /** Removes draft by id (server) or timestamp (local-only). Use when draft.id may be null. */
   removeDraftByIdentifier: (identifier: MessageId | number) => void;
-  removeDraftForChat: (type: DraftType, to: number[], topic?: string) => void;
-  getDraftForChat: (type: DraftType, to: number[], topic?: string) => Draft | undefined;
+  removeDraftForChat: (type: DraftType, to: DraftTargetId[], topic?: string) => void;
+  getDraftForChat: (type: DraftType, to: DraftTargetId[], topic?: string) => Draft | undefined;
   setLoading: (loading: boolean) => void;
   clear: () => void;
 }

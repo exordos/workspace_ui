@@ -75,7 +75,7 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
           const expanded = expandedStreamSlugs.includes(streamSlug);
           const isGeneral = stream.name.toLowerCase() === "general";
           const displayName = isGeneral ? t("chat.generalChat") : stream.name;
-          const streamMuted = isStreamMuted(stream.stream_id);
+          const streamMuted = isStreamMuted(stream.streamUuid);
           const topics = stream.topics ?? [];
           const streamRowClass = isCompactDensity
             ? "flex items-start gap-2 rounded-md px-2 py-1.5 transition-colors"
@@ -83,8 +83,8 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
 
           return (
             <SidebarStreamHydrateWrapper
-              key={`stream-${stream.stream_id}`}
-              streamId={stream.stream_id}
+              key={`stream-${stream.streamUuid}`}
+              streamId={stream.streamUuid}
               topicsCount={topics.length}
               expanded={expanded}
             >

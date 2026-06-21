@@ -19,7 +19,7 @@ const EMPTY_NUMERIC_IDS: number[] = [];
 
 interface AddStreamMembersState {
   open: boolean;
-  streamId: number | null;
+  streamId: string | null;
   streamName: string;
   existingMemberIds: number[];
   query: string;
@@ -29,7 +29,7 @@ interface AddStreamMembersState {
   lastResult: AddStreamMembersResult | null;
 
   openForStream: (params: {
-    streamId: number;
+    streamId: string;
     streamName: string;
     existingMemberIds: number[];
   }) => void;

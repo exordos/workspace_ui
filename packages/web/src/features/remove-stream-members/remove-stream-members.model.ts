@@ -40,7 +40,7 @@ export const useRemoveStreamMembersStore = create<RemoveStreamMembersState>((set
       set({ lastError: "app.error" });
       return null;
     }
-    const streamId = guard.streamId(options.streamId, "removeStreamMembers.submit.streamId");
+    const streamId = guard.streamUuid(options.streamId, "removeStreamMembers.submit.streamId");
     const userId = guard.userId(options.userId, "removeStreamMembers.submit.userId");
     const state = get();
     if (state.pendingUserIds.includes(userId)) {

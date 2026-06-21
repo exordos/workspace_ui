@@ -43,7 +43,6 @@ function getExpandedActivityIconSize(key: string): number {
 export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle }) => {
   const { pathname } = useLocation();
   const { scopedPathname } = extractOrgRouteFromPathname(pathname);
-  const currentUserId = useChatListStore((s) => s.currentUserId);
   const streamsMap = useChatListStore((s) => s.streamsMap);
   const dmsMap = useChatListStore((s) => s.dmsMap);
   const mutedStreamIds = useMuteStore((s) => s.mutedStreamIds);
@@ -74,7 +73,6 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
   const isCompactDensity = useSettingsStore((s) => s.chatListDensity === "compact");
   const favoritesCount = useActivityStore((s) => s.starredSummary.count);
   const favoritesError = useActivityStore((s) => s.starredSummary.error);
-  const isPrivateNotesActive = currentUserId != null && scopedPathname === `/dm/${currentUserId}`;
   const expandedListClass = "mt-2 space-y-1";
   const expandedRowClass = isCompactDensity ? expandedRowCompactClass : expandedRowBaseClass;
   const expandedIconClass = isCompactDensity ? expandedIconChipCompactClass : expandedIconChipClass;
@@ -102,20 +100,6 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
           className="mt-1 flex flex-nowrap items-center gap-0.5"
           aria-label={t("nav.activity")}
         >
-          {currentUserId != null && (
-            <li>
-              <Link
-                to={withCurrentOrgRoute(`/dm/${currentUserId}`)}
-                aria-label={t("activity.home")}
-                aria-current={isPrivateNotesActive ? "page" : undefined}
-                className={`${compactRowClass} ${
-                  isPrivateNotesActive ? compactRowActiveClass : ""
-                }`}
-              >
-                <Icon name="accountCircle" size={18} className="shrink-0 text-current" />
-              </Link>
-            </li>
-          )}
           {MY_ACTIVITY.map((item) => {
             const route = "route" in item ? item.route : undefined;
             const isActive = route !== undefined && scopedPathname === route;
@@ -196,25 +180,6 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
       )}
       {open && (
         <ul id={activityListId} className={expandedListClass}>
-          {currentUserId != null && (
-            <li>
-              <Link
-                to={withCurrentOrgRoute(`/dm/${currentUserId}`)}
-                className={`${expandedRowClass} ${
-                  scopedPathname === `/dm/${currentUserId}` ? expandedRowActiveClass : ""
-                }`}
-                aria-current={scopedPathname === `/dm/${currentUserId}` ? "page" : undefined}
-              >
-                <span
-                  className={`${expandedIconClass} bg-accent`}
-                  data-testid="activity-icon-bg-home"
-                >
-                  <Icon name="accountCircle" size={18} className="shrink-0 text-on-accent" />
-                </span>
-                <span className={expandedLabel}>{t("activity.home")}</span>
-              </Link>
-            </li>
-          )}
           {MY_ACTIVITY.map((item) => {
             const route = "route" in item ? item.route : undefined;
             const isActive = route !== undefined && scopedPathname === route;

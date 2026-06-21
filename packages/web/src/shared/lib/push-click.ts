@@ -18,14 +18,6 @@ function normalizeRealmForComparison(realm: string): string {
     .toLowerCase();
 }
 
-function slugifyStreamName(streamName: string): string {
-  return streamName
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/-+$/, "")
-    .replace(/^-+/, "");
-}
-
 function parsePositiveInt(value: number | string | undefined): number | undefined {
   if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) {
     return value;
@@ -53,6 +45,11 @@ function normalizeNonEmpty(value: string | undefined): string | undefined {
   return normalized.length > 0 ? normalized : undefined;
 }
 
+function parseStreamUuid(value: string | undefined): string | undefined {
+  const normalized = normalizeNonEmpty(value);
+  return normalized?.toLowerCase();
+}
+
 function parseNearMessageIdFromWorkspaceHash(hash: string): MessageId | undefined {
   const normalizedHash = hash.startsWith("#") ? hash.slice(1) : hash;
   if (!normalizedHash.startsWith("narrow/")) {
@@ -76,17 +73,15 @@ function parseNearMessageIdFromWorkspaceHash(hash: string): MessageId | undefine
 export function buildPushClickUrl(input: PushClickTargetInput): string {
   const withMessageId = (base: string): string =>
     input.messageId != null ? `${base}?msg=${input.messageId}` : base;
-  const streamName = normalizeNonEmpty(input.streamName);
   const hasTopic = input.topic != null;
   const topic = hasTopic ? normalizeTopicForIdentity(input.topic ?? "") : undefined;
 
-  if (input.type === "stream" && streamName) {
-    const base =
-      input.streamId != null
-        ? withCurrentOrgRoute(
-            `/stream/${input.streamId}-${slugifyStreamName(streamName) || "channel"}`,
-          )
-        : withCurrentOrgRoute(`/stream/${encodeURIComponent(streamName)}`);
+  if (input.type === "stream") {
+    const streamUuid = normalizeNonEmpty(input.streamId);
+    if (streamUuid == null) {
+      return withCurrentOrgRoute("/");
+    }
+    const base = withCurrentOrgRoute(`/stream/${encodeURIComponent(streamUuid.toLowerCase())}`);
     return hasTopic
       ? withMessageId(`${base}/topic/${encodeURIComponent(encodeTopicForRoute(topic ?? ""))}`)
       : withMessageId(base);
@@ -139,7 +134,7 @@ export function buildRouteFromPushNotificationClick(payload: PushNotificationCli
 
   return buildPushClickUrl({
     type: messageType,
-    streamId: parsePositiveInt(payload.streamId),
+    streamId: parseStreamUuid(payload.streamId),
     streamName: typeof payload.streamName === "string" ? payload.streamName : undefined,
     topic: typeof payload.topic === "string" ? payload.topic : undefined,
     senderId: parsePositiveInt(payload.senderId),
@@ -147,17 +142,17 @@ export function buildRouteFromPushNotificationClick(payload: PushNotificationCli
 }
 
 export function buildRouteFromMessage(
-  message: Pick<MockMessage, "id" | "stream_id" | "channel" | "display_recipient" | "subject">,
+  message: Pick<MockMessage, "id" | "stream_uuid" | "channel" | "display_recipient" | "subject">,
   currentUserId: UserId | null,
 ): string | null {
-  if (message.stream_id != null) {
+  if (message.stream_uuid != null) {
     const streamName =
       message.channel ??
       (typeof message.display_recipient === "string" ? message.display_recipient : "general");
     const topic = (message.subject ?? "").trim();
     return buildPushClickUrl({
       type: "stream",
-      streamId: message.stream_id,
+      streamId: message.stream_uuid,
       streamName,
       topic,
       messageId: message.id,
@@ -178,7 +173,7 @@ export function buildRouteFromMessage(
 export function buildNavigableRouteFromMessage(
   message: {
     id: MessageId;
-    stream_id?: number | null;
+    stream_uuid?: string | null;
     channel?: string;
     display_recipient?: MockMessage["display_recipient"];
     subject?: string;
@@ -189,7 +184,7 @@ export function buildNavigableRouteFromMessage(
   const exactRoute = buildRouteFromMessage(
     {
       id: message.id,
-      stream_id: message.stream_id ?? null,
+      stream_uuid: message.stream_uuid ?? null,
       channel: message.channel,
       display_recipient: message.display_recipient,
       subject: message.subject ?? "",

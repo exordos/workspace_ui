@@ -5,9 +5,9 @@ import type { MockMessage, WorkspaceRawMessage } from "~/shared/api/messenger.ty
 
 export function mockMessageToRawMessage(message: MockMessage): WorkspaceRawMessage {
   const displayRecipient =
-    message.display_recipient ?? (message.stream_id != null ? (message.channel ?? "") : undefined);
+    message.display_recipient ?? (message.stream_uuid != null ? (message.channel ?? "") : undefined);
   const isPrivate =
-    message.stream_id == null &&
+    message.stream_uuid == null &&
     (Array.isArray(displayRecipient) || typeof displayRecipient !== "string");
 
   return {
@@ -18,8 +18,9 @@ export function mockMessageToRawMessage(message: MockMessage): WorkspaceRawMessa
     timestamp: message.timestamp,
     display_recipient: displayRecipient,
     subject: message.subject,
+    topic_uuid: message.topic_uuid,
     type: isPrivate ? "private" : "stream",
-    stream_id: message.stream_id,
+    stream_uuid: message.stream_uuid,
     flags: message.flags,
     reactions: message.reactions,
   };

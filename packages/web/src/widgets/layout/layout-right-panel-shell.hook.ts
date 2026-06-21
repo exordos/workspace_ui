@@ -25,7 +25,7 @@ export interface UseLayoutRightPanelShellParams {
   currentUserStatus: "idle" | "loading" | "ready" | "degraded" | "blocked";
   streamsFromStore: StreamWithLast[];
   dmsFromStore: SidebarChat[];
-  streamsMap: Map<number, StreamEntryInternal>;
+  streamsMap: Map<string, StreamEntryInternal>;
   activeStreamSlug: string | undefined;
   activeTopic: string | null;
   dmIdParam: string | undefined;
@@ -33,7 +33,6 @@ export interface UseLayoutRightPanelShellParams {
   rightDrawerOpen: boolean;
   rightDrawerMode: RightDrawerMode;
   rightDrawerUserIdOverride: UserId | null;
-  mutedStreamIds: Set<number>;
   usersMapForChatInfo: Map<string, UserRecord>;
 }
 
@@ -61,7 +60,6 @@ export function useLayoutRightPanelShell(
     rightDrawerOpen,
     rightDrawerMode,
     rightDrawerUserIdOverride,
-    mutedStreamIds,
     usersMapForChatInfo,
   } = params;
 
@@ -115,6 +113,7 @@ export function useLayoutRightPanelShell(
     if (activeStreamId == null) return [];
     return Array.from(streamsMap.get(activeStreamId)?.topics.values() ?? []).map((topic) => ({
       name: topic.subject,
+      ...(topic.topicUuid != null ? { topicUuid: topic.topicUuid } : {}),
       unreadCount: topic.unreadCount,
     }));
   }, [activeStreamId, streamsMap]);
@@ -125,7 +124,6 @@ export function useLayoutRightPanelShell(
     dmParticipantIds,
     activeStreamId,
     activeStreamName,
-    mutedStreamIds,
     topics: chatInfoTopics,
     usersMapForChatInfo,
   });

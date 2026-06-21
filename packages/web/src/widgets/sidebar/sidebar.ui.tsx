@@ -3,6 +3,11 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { CreateChatDialog } from "~/features/create-chat/create-chat-dialog.ui";
+import {
+  SYSTEM_ALL_FOLDER_ID,
+  SYSTEM_CHANNELS_FOLDER_ID,
+  SYSTEM_PERSONAL_FOLDER_ID,
+} from "~/features/folder-sync/folder-sync-constants.lib";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { t } from "~/i18n/i18n";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
@@ -12,12 +17,10 @@ import { ScrollArea } from "~/shared/ui/scroll-area";
 import { WidgetErrorBoundary } from "~/shared/ui/widget-error-boundary.ui";
 import { SidebarActivity } from "./sidebar-activity.ui";
 import { useSidebarConfigStore } from "./sidebar-config.model";
-import { SidebarDmList } from "./sidebar-dm-list.ui";
 import { doesSidebarChatMatchQuery, normalizeSidebarSearchQuery } from "./sidebar-filtering.lib";
 import { SidebarFolderChatList } from "./sidebar-folder-chat-list.ui";
 import { SidebarSearchHeader } from "./sidebar-search-header.ui";
-import { SidebarStreamList } from "./sidebar-stream-list.ui";
-import { getStreamChats, isSidebarSystemFolderScope } from "./sidebar.lib";
+import { getStreamChats } from "./sidebar.lib";
 import type { SidebarChat, SidebarUiProps } from "./sidebar.types";
 
 function stripOrgPrefix(pathname: string): string {
@@ -38,10 +41,32 @@ function extractStreamSlugFromPath(pathname: string): string | null {
   return match?.[1] ? decodePathSegment(match[1]) : null;
 }
 
-function extractDmIdFromPath(pathname: string): string | null {
-  const normalizedPath = stripOrgPrefix(pathname);
-  const match = /^\/dm\/([^/]+)/.exec(normalizedPath);
-  return match?.[1] ? decodePathSegment(match[1]) : null;
+function isStreamChat(chat: SidebarChat): chat is Extract<SidebarChat, { type: "stream" }> {
+  return chat.type === "stream";
+}
+
+function selectStreamsForFolder(options: {
+  selectedFolderId: string;
+  allStreams: Extract<SidebarChat, { type: "stream" }>[];
+  folderChats: SidebarChat[] | null;
+}): Extract<SidebarChat, { type: "stream" }>[] {
+  const { selectedFolderId, allStreams, folderChats } = options;
+  const folderStreams = folderChats == null ? null : folderChats.filter(isStreamChat);
+  const systemStreams = allStreams.length > 0 ? allStreams : (folderStreams ?? allStreams);
+
+  if (selectedFolderId === SYSTEM_PERSONAL_FOLDER_ID) {
+    return systemStreams.filter((chat) => chat.private === true);
+  }
+  if (selectedFolderId === SYSTEM_CHANNELS_FOLDER_ID) {
+    return systemStreams.filter((chat) => chat.private !== true);
+  }
+  if (selectedFolderId === SYSTEM_ALL_FOLDER_ID) {
+    return systemStreams;
+  }
+  if (folderStreams != null) {
+    return folderStreams;
+  }
+  return allStreams;
 }
 
 export const SidebarInner: React.FC<SidebarUiProps> = ({
@@ -50,42 +75,27 @@ export const SidebarInner: React.FC<SidebarUiProps> = ({
   pinFolderId: pinFolderIdProp,
   activeStreamSlug: activeStreamSlugProp = null,
   activeTopic: activeTopicProp = null,
-  activeDmIdParam: activeDmIdParamProp = null,
-  sidebarDms: sidebarDmsProp,
   sidebarChats: sidebarChatsProp,
   sidebarChatsLoading: sidebarChatsLoadingProp = false,
   activityPanelBottomSlot,
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const {
-    streamSlug,
-    topicName,
-    dmId: dmIdParamFromRoute,
-  } = useParams<{
+  const { streamSlug, topicName } = useParams<{
     streamSlug?: string;
     topicName?: string;
-    dmId?: string;
   }>();
 
   const streamsFromStore = useChatListStore((s) => s.streams());
-  const sidebarDmsFromStore = useChatListStore((s) => s.dms());
   const sidebarDataHydrated = useChatListStore((s) => s.sidebarDataHydrated);
   const streams = streamsProp ?? streamsFromStore;
-  const sidebarDms = sidebarDmsProp ?? sidebarDmsFromStore;
   const selectedFolderIdFromUi = useSidebarConfigStore((s) => s.selectedFolderId);
   const selectedFolderIdFromSync = useFolderSyncStore((s) => s.selectedFolderId);
   const selectedFolderId =
     selectedFolderIdProp ?? selectedFolderIdFromSync ?? selectedFolderIdFromUi;
-  const sidebarChats = sidebarChatsProp ?? null;
-  const sidebarChatsLoading = sidebarChatsLoadingProp || false;
-  const pinFolderId = pinFolderIdProp ?? undefined;
   const activeStreamSlug = activeStreamSlugProp ?? streamSlug ?? null;
   const activeTopic = activeTopicProp ?? topicName ?? null;
-  const activeDmIdParam = activeDmIdParamProp ?? dmIdParamFromRoute ?? null;
-  // Route-sync: props override pathname parse.
   const routeStreamSlug = activeStreamSlug ?? extractStreamSlugFromPath(location.pathname);
-  const routeDmIdParam = activeDmIdParam ?? extractDmIdFromPath(location.pathname);
   const activityOpen = useSidebarConfigStore((s) => s.activityOpen);
   const expandedStreamSlugs = useSidebarConfigStore((s) => s.expandedStreamSlugs);
   const setActivityOpen = useSidebarConfigStore((s) => s.setActivityOpen);
@@ -101,33 +111,29 @@ export const SidebarInner: React.FC<SidebarUiProps> = ({
   const users = useUsersStore((s) => s.users);
 
   useEffect(() => {
-    // Route-sync expansions: stream -> target only; dm/other -> collapse all.
     if (routeStreamSlug != null && routeStreamSlug !== "") {
       collapseExpandedStreamsExcept(routeStreamSlug);
-      return;
-    }
-    if (routeDmIdParam != null && routeDmIdParam !== "") {
-      collapseAllExpandedStreams();
       return;
     }
     collapseAllExpandedStreams();
   }, [
     location.pathname,
-    routeDmIdParam,
     routeStreamSlug,
     collapseAllExpandedStreams,
     collapseExpandedStreamsExcept,
   ]);
 
   const streamChats = useMemo(() => getStreamChats(streams), [streams]);
-
-  const listChats = useMemo<SidebarChat[]>(() => sidebarChats ?? [], [sidebarChats]);
-  const systemFolderAwaitingChatHydration = useMemo(
-    () => isSidebarSystemFolderScope(selectedFolderId) && !sidebarDataHydrated,
-    [selectedFolderId, sidebarDataHydrated],
+  const folderStreamChats = useMemo(
+    () =>
+      selectStreamsForFolder({
+        selectedFolderId,
+        allStreams: streamChats,
+        folderChats: sidebarChatsProp ?? null,
+      }),
+    [selectedFolderId, sidebarChatsProp, streamChats],
   );
-  const folderChatListLoading =
-    (sidebarChatsLoading || systemFolderAwaitingChatHydration) && listChats.length === 0;
+  const pinFolderId = pinFolderIdProp ?? selectedFolderId;
   const normalizedQuery = useMemo(() => normalizeSidebarSearchQuery(searchQuery), [searchQuery]);
 
   const doesChatMatchQuery = useCallback(
@@ -135,14 +141,13 @@ export const SidebarInner: React.FC<SidebarUiProps> = ({
     [normalizedQuery, users],
   );
 
-  const filteredChats = useMemo(
-    () => listChats.filter(doesChatMatchQuery),
-    [listChats, doesChatMatchQuery],
-  );
   const filteredStreamChats = useMemo(
-    () => streamChats.filter(doesChatMatchQuery),
-    [streamChats, doesChatMatchQuery],
+    () => folderStreamChats.filter(doesChatMatchQuery),
+    [folderStreamChats, doesChatMatchQuery],
   );
+
+  const streamListLoading =
+    (sidebarChatsLoadingProp || !sidebarDataHydrated) && folderStreamChats.length === 0;
 
   const handleToggleStream = useCallback(
     (slug: string) => toggleExpandedStreamSlug(slug),
@@ -164,6 +169,7 @@ export const SidebarInner: React.FC<SidebarUiProps> = ({
     () => setActivityOpen(!activityOpen),
     [setActivityOpen, activityOpen],
   );
+
   return (
     <aside
       className="flex min-h-0 w-sidebar min-w-sidebar max-w-sidebar flex-shrink-0 overflow-hidden rounded-xl bg-sidebar-bg"
@@ -188,48 +194,25 @@ export const SidebarInner: React.FC<SidebarUiProps> = ({
             </>
           )}
           <SidebarFolderChatList
-            chats={filteredChats}
+            chats={filteredStreamChats}
             selectedFolderId={selectedFolderId}
             pinFolderId={pinFolderId}
             activeStreamSlug={activeStreamSlug}
-            activeDmIdParam={activeDmIdParam}
             activeTopic={activeTopic}
             expandedStreamSlugs={expandedStreamSlugs}
             onToggleStream={handleToggleStream}
             onNewTopic={handleNewTopic}
-            loading={folderChatListLoading}
-            showEmptyState={sidebarChats != null && normalizedQuery.length === 0}
+            loading={streamListLoading}
+            showEmptyState={normalizedQuery.length === 0}
           />
-          {!sidebarChats && (
-            <SidebarStreamList
-              streamChats={filteredStreamChats}
-              activeStreamSlug={activeStreamSlug}
-              activeTopic={activeTopic}
-              expandedStreamSlugs={expandedStreamSlugs}
-              onToggleStream={handleToggleStream}
-              onNewTopic={handleNewTopic}
-            />
-          )}
-          {!sidebarChats && (
-            <div className="mt-4">
-              <h3 className="mb-2 px-3 text-xs font-medium text-text-muted">
-                {t("nav.directMessages")}
-              </h3>
-              <SidebarDmList activeDmIdParam={activeDmIdParam} dms={sidebarDms} />
-            </div>
-          )}
         </ScrollArea>
       </div>
       <CreateChatDialog
         open={createChatOpen}
         onOpenChange={setCreateChatOpen}
-        onNavigateDm={(slug) => {
+        onNavigateStream={(streamUuid) => {
           setCreateChatOpen(false);
-          void navigate(withCurrentOrgRoute(`/dm/${slug}`));
-        }}
-        onNavigateStream={(streamId, streamName) => {
-          setCreateChatOpen(false);
-          void navigate(withCurrentOrgRoute(`/stream/${buildStreamSlug(streamId, streamName)}`));
+          void navigate(withCurrentOrgRoute(`/stream/${buildStreamSlug(streamUuid)}`));
         }}
         onChannelCreated={() => {
           setCreateChatOpen(false);

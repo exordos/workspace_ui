@@ -7,12 +7,12 @@ import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 
 export interface SidebarUnreadMutePredicates {
-  isStreamMuted?: (streamId: number) => boolean;
-  isEffectivelyMuted?: (streamId: number, topic: string) => boolean;
+  isStreamMuted?: (streamId: string) => boolean;
+  isEffectivelyMuted?: (streamId: string, topic: string) => boolean;
 }
 
 export function computeSidebarUnreadTotals(
-  streamsMap: Map<number, StreamEntryInternal>,
+  streamsMap: Map<string, StreamEntryInternal>,
   dmsMap: Map<string, DmEntryInternal>,
 ): { sidebarStreamsUnread: number; sidebarDmsUnread: number } {
   let sidebarStreamsUnread = 0;
@@ -29,17 +29,17 @@ export function computeSidebarUnreadTotals(
 }
 
 export function computeSidebarUnreadTotalsWithMute(
-  streamsMap: Map<number, StreamEntryInternal>,
+  streamsMap: Map<string, StreamEntryInternal>,
   dmsMap: Map<string, DmEntryInternal>,
   predicates: SidebarUnreadMutePredicates,
 ): { sidebarStreamsUnread: number; sidebarDmsUnread: number } {
   let sidebarStreamsUnread = 0;
   for (const stream of streamsMap.values()) {
-    if (predicates.isStreamMuted?.(stream.stream_id)) {
+    if (predicates.isStreamMuted?.(stream.streamUuid)) {
       continue;
     }
     for (const topic of stream.topics.values()) {
-      if (predicates.isEffectivelyMuted?.(stream.stream_id, topic.subject)) {
+      if (predicates.isEffectivelyMuted?.(stream.streamUuid, topic.subject)) {
         continue;
       }
       sidebarStreamsUnread += topic.unreadCount;

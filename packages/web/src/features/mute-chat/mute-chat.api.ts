@@ -16,7 +16,7 @@ import type { NotificationLevel, TopicVisibilityLevel } from "./notification-lev
 const log = createLogger("mute:api");
 
 interface SubscriptionPropertyRow {
-  stream_id: number;
+  stream_uuid: string;
   property: string;
   value: boolean;
 }
@@ -40,64 +40,64 @@ async function postSubscriptionProperties(rows: SubscriptionPropertyRow[]): Prom
  * Mute or unmute a stream (channel).
  * Sets the `is_muted` property on the user's subscription.
  */
-export async function setStreamMuted(streamId: number, muted: boolean): Promise<boolean> {
-  guard.streamId(streamId, "setStreamMuted");
+export async function setStreamMuted(streamId: string, muted: boolean): Promise<boolean> {
+  const streamUuid = guard.streamUuid(streamId, "setStreamMuted");
   const ok = await postSubscriptionProperties([
-    { stream_id: streamId, property: "is_muted", value: muted },
+    { stream_uuid: streamUuid, property: "is_muted", value: muted },
   ]);
   if (ok) {
-    log.info(`Stream ${muted ? "muted" : "unmuted"}`, { streamId });
+    log.info(`Stream ${muted ? "muted" : "unmuted"}`, { streamId: streamUuid });
   }
   return ok;
 }
 
 export async function setStreamDesktopNotifications(
-  streamId: number,
+  streamId: string,
   enabled: boolean,
 ): Promise<boolean> {
-  guard.streamId(streamId, "setStreamDesktopNotifications");
+  const streamUuid = guard.streamUuid(streamId, "setStreamDesktopNotifications");
   const ok = await postSubscriptionProperties([
-    { stream_id: streamId, property: "desktop_notifications", value: enabled },
+    { stream_uuid: streamUuid, property: "desktop_notifications", value: enabled },
   ]);
   if (ok) {
-    log.info("Stream desktop notifications set", { streamId, enabled });
+    log.info("Stream desktop notifications set", { streamId: streamUuid, enabled });
   }
   return ok;
 }
 
 export async function setStreamAudibleNotifications(
-  streamId: number,
+  streamId: string,
   enabled: boolean,
 ): Promise<boolean> {
-  guard.streamId(streamId, "setStreamAudibleNotifications");
+  const streamUuid = guard.streamUuid(streamId, "setStreamAudibleNotifications");
   const ok = await postSubscriptionProperties([
-    { stream_id: streamId, property: "audible_notifications", value: enabled },
+    { stream_uuid: streamUuid, property: "audible_notifications", value: enabled },
   ]);
   if (ok) {
-    log.info("Stream audible notifications set", { streamId, enabled });
+    log.info("Stream audible notifications set", { streamId: streamUuid, enabled });
   }
   return ok;
 }
 
 /** Applies Workspace channel notification level in one request (mute + desktop). */
 export async function setStreamNotificationLevel(
-  streamId: number,
+  streamId: string,
   level: NotificationLevel,
 ): Promise<boolean> {
-  guard.streamId(streamId, "setStreamNotificationLevel");
+  const streamUuid = guard.streamUuid(streamId, "setStreamNotificationLevel");
 
   const rows: SubscriptionPropertyRow[] = [];
   if (level === "muted") {
-    rows.push({ stream_id: streamId, property: "is_muted", value: true });
+    rows.push({ stream_uuid: streamUuid, property: "is_muted", value: true });
   } else {
-    rows.push({ stream_id: streamId, property: "is_muted", value: false });
+    rows.push({ stream_uuid: streamUuid, property: "is_muted", value: false });
     rows.push({
-      stream_id: streamId,
+      stream_uuid: streamUuid,
       property: "desktop_notifications",
       value: level === "subscribed",
     });
     rows.push({
-      stream_id: streamId,
+      stream_uuid: streamUuid,
       property: "audible_notifications",
       value: level === "subscribed",
     });
@@ -105,7 +105,7 @@ export async function setStreamNotificationLevel(
 
   const ok = await postSubscriptionProperties(rows);
   if (ok) {
-    log.info("Stream notification level set", { streamId, level });
+    log.info("Stream notification level set", { streamId: streamUuid, level });
   }
   return ok;
 }
@@ -120,38 +120,38 @@ export async function setStreamNotificationLevel(
  *   3 = followed
  */
 export async function setTopicVisibility(
-  streamId: number,
+  streamId: string,
   topic: string,
   policy: VisibilityPolicy,
 ): Promise<boolean> {
-  guard.streamId(streamId, "setTopicVisibility");
+  const streamUuid = guard.streamUuid(streamId, "setTopicVisibility");
   const normalizedTopic = normalizeTopicForIdentity(topic);
 
   try {
     const res = await messengerApi.post("/user_topics", {
-      stream_id: String(streamId),
+      stream_uuid: streamUuid,
       topic: normalizedTopic,
       visibility_policy: String(policy),
     });
 
     if (res.ok) {
-      log.info("Topic visibility set", { streamId, topic: normalizedTopic, policy });
+      log.info("Topic visibility set", { streamId: streamUuid, topic: normalizedTopic, policy });
       return true;
     }
 
-    log.warn("Topic visibility failed", { streamId, topic: normalizedTopic, status: res.status });
+    log.warn("Topic visibility failed", { streamId: streamUuid, topic: normalizedTopic, status: res.status });
     return false;
   } catch (err) {
-    log.error("Topic visibility error", { streamId, topic: normalizedTopic, error: String(err) });
+    log.error("Topic visibility error", { streamId: streamUuid, topic: normalizedTopic, error: String(err) });
     return false;
   }
 }
 
-export async function muteStream(streamId: number): Promise<boolean> {
+export async function muteStream(streamId: string): Promise<boolean> {
   return setStreamMuted(streamId, true);
 }
 
-export async function unmuteStream(streamId: number): Promise<boolean> {
+export async function unmuteStream(streamId: string): Promise<boolean> {
   return setStreamMuted(streamId, false);
 }
 
@@ -174,11 +174,11 @@ function topicVisibilityLevelToPolicy(level: TopicVisibilityLevel): VisibilityPo
 
 /** Sets Workspace user_topics.visibility_policy (0–3). */
 export async function setTopicVisibilityLevel(
-  streamId: number,
+  streamId: string,
   topic: string,
   level: TopicVisibilityLevel,
 ): Promise<boolean> {
-  guard.streamId(streamId, "setTopicVisibilityLevel");
+  guard.streamUuid(streamId, "setTopicVisibilityLevel");
   return setTopicVisibility(streamId, topic, topicVisibilityLevelToPolicy(level));
 }
 
@@ -186,11 +186,11 @@ export async function setTopicVisibilityLevel(
  * @deprecated Use setTopicVisibilityLevel — maps legacy 3-level UI to visibility_policy.
  */
 export async function setTopicNotificationLevel(
-  streamId: number,
+  streamId: string,
   topic: string,
   level: NotificationLevel,
 ): Promise<boolean> {
-  guard.streamId(streamId, "setTopicNotificationLevel");
+  guard.streamUuid(streamId, "setTopicNotificationLevel");
   if (level === "muted") {
     return setTopicVisibilityLevel(streamId, topic, "muted");
   }
@@ -203,14 +203,14 @@ export async function setTopicNotificationLevel(
   return setTopicVisibilityLevel(streamId, topic, "inherit");
 }
 
-export async function muteTopic(streamId: number, topic: string): Promise<boolean> {
+export async function muteTopic(streamId: string, topic: string): Promise<boolean> {
   return setTopicVisibility(streamId, topic, VISIBILITY_POLICY.MUTED);
 }
 
-export async function unmuteTopic(streamId: number, topic: string): Promise<boolean> {
+export async function unmuteTopic(streamId: string, topic: string): Promise<boolean> {
   return setTopicVisibility(streamId, topic, VISIBILITY_POLICY.INHERIT);
 }
 
-export async function unmuteTopicInMutedStream(streamId: number, topic: string): Promise<boolean> {
+export async function unmuteTopicInMutedStream(streamId: string, topic: string): Promise<boolean> {
   return setTopicVisibility(streamId, topic, VISIBILITY_POLICY.UNMUTED);
 }

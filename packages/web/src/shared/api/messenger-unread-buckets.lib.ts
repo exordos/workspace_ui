@@ -4,15 +4,21 @@ import type { MessageId } from "~/shared/lib/message-id.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { WorkspaceUnreadDmBucket, WorkspaceUnreadStreamBucket } from "./messenger-unread.lib";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === "object" && !Array.isArray(value);
 }
 
-function isPositiveInteger(value: unknown): value is number {
+export function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
 
-function parseUnreadMessageIds(value: unknown): MessageId[] {
+export function readStreamUuid(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().toLowerCase();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+export function parseUnreadMessageIds(value: unknown): MessageId[] {
   if (!Array.isArray(value)) return [];
   const result: MessageId[] = [];
   for (const rawId of value) {
@@ -28,8 +34,8 @@ export function parseStreamUnreadBuckets(streamsRaw: unknown): WorkspaceUnreadSt
   const streams: WorkspaceUnreadStreamBucket[] = [];
   for (const entry of streamsRaw) {
     if (!isRecord(entry)) continue;
-    const streamId = entry.stream_id;
-    if (!isPositiveInteger(streamId)) continue;
+    const streamId = readStreamUuid(entry.stream_uuid);
+    if (streamId == null) continue;
     const topicRaw = typeof entry.topic === "string" ? entry.topic : "";
     const topic = normalizeTopicForIdentity(topicRaw);
     const unreadMessageIds = parseUnreadMessageIds(entry.unread_message_ids);
@@ -80,8 +86,6 @@ export function isUnreadMessengerMessage(rawMessage: Record<string, unknown>): b
 export function isStreamMessengerMessage(rawMessage: Record<string, unknown>): boolean {
   return (
     rawMessage.type === "stream" ||
-    (rawMessage.stream_id != null && isPositiveInteger(rawMessage.stream_id))
+    readStreamUuid(rawMessage.stream_uuid) != null
   );
 }
-
-export { isPositiveInteger, isRecord, parseUnreadMessageIds };

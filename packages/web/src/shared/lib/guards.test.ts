@@ -148,9 +148,11 @@ describe("domain guards", () => {
     );
   });
 
-  it("guard.streamId validates correctly", () => {
-    expect(guard.streamId(10)).toBe(10);
-    expect(() => guard.streamId(0)).toThrow("Invalid streamId");
+  it("guard.streamUuid validates correctly", () => {
+    expect(guard.streamUuid("00000000-0000-4000-8000-000000000010")).toBe(
+      "00000000-0000-4000-8000-000000000010",
+    );
+    expect(() => guard.streamUuid("not-a-uuid")).toThrow("Invalid streamUuid");
   });
 
   it("guard.messageId validates correctly", () => {

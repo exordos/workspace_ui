@@ -277,7 +277,7 @@ interface FolderSyncState {
     usersMapForChatInfo: Map<string, { full_name?: string; email?: string }>;
     currentUserId: UserId | null;
     hideUnknownArchivedStreams: boolean;
-    isStreamMuted?: (streamId: number) => boolean;
+    isStreamMuted?: (streamId: string) => boolean;
   }) => void;
   syncDerived: (showSystemFolders: boolean, labels: FolderSyncSystemLabels) => void;
   clear: () => void;

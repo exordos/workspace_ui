@@ -6,7 +6,7 @@ import type { MessengerGroupSettingValue } from "~/shared/api/messenger.types";
 export type BrowseChannelSubscriptionFilter = "unsubscribed" | "subscribed" | "all";
 
 export interface BrowseChannelRow {
-  streamId: number;
+  streamUuid: string;
   name: string;
   description: string;
   isSubscribed: boolean;
@@ -35,7 +35,7 @@ export interface BrowseChannelRow {
 }
 
 export interface BrowseChannelStreamLike {
-  stream_id: number;
+  stream_uuid: string;
   name: string;
   description: string;
   invite_only?: boolean;
@@ -60,7 +60,7 @@ export interface BrowseChannelStreamLike {
 }
 
 export interface BrowseChannelSubscriptionLike {
-  stream_id: number;
+  stream_uuid: string;
   is_archived?: boolean;
   invite_only?: boolean;
   is_muted?: boolean;
@@ -195,7 +195,7 @@ function buildBrowseChannelRowCore(
 ): BrowseChannelRow {
   const isSubscribed = subscription != null;
   return {
-    streamId: stream.stream_id,
+    streamUuid: stream.stream_uuid,
     name: stream.name,
     description: stream.description,
     isSubscribed,
@@ -264,14 +264,14 @@ export function buildBrowseChannelRows(input: BuildBrowseChannelRowsInput): Brow
   const { streams, subscriptions, searchQuery, subscriptionFilter } = input;
   const normalizedQuery = searchQuery.trim().toLowerCase();
 
-  const subscriptionByStreamId = new Map<number, BrowseChannelSubscriptionLike>();
+  const subscriptionByStreamUuid = new Map<string, BrowseChannelSubscriptionLike>();
   for (const subscription of subscriptions) {
-    subscriptionByStreamId.set(subscription.stream_id, subscription);
+    subscriptionByStreamUuid.set(subscription.stream_uuid, subscription);
   }
 
   const rows: BrowseChannelRow[] = [];
   for (const stream of streams) {
-    const subscription = subscriptionByStreamId.get(stream.stream_id);
+    const subscription = subscriptionByStreamUuid.get(stream.stream_uuid);
     if (isArchivedSubscription(subscription)) {
       continue;
     }
@@ -290,13 +290,13 @@ export function buildBrowseChannelRows(input: BuildBrowseChannelRowsInput): Brow
 /** Keeps selection stable when the filtered list changes. */
 export function resolveBrowseChannelSelection(
   channels: readonly BrowseChannelRow[],
-  currentId: number | null,
-): number | null {
+  currentUuid: string | null,
+): string | null {
   if (channels.length === 0) {
     return null;
   }
-  if (currentId != null && channels.some((channel) => channel.streamId === currentId)) {
-    return currentId;
+  if (currentUuid != null && channels.some((channel) => channel.streamUuid === currentUuid)) {
+    return currentUuid;
   }
-  return channels[0]?.streamId ?? null;
+  return channels[0]?.streamUuid ?? null;
 }

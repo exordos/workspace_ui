@@ -211,7 +211,7 @@ export async function getInstanceMessagesAscending(instanceId: string): Promise<
 /** Cache-first bootstrap for stream-wide mode (`/stream/:slug`). */
 export async function getStreamMessagesAscending(
   instanceId: string,
-  streamId: number,
+  streamId: string,
 ): Promise<MockMessage[]> {
   if (!isIndexedDBAvailable()) return [];
   try {
@@ -630,7 +630,7 @@ function buildChatMetaRowFromRows(options: {
 
 export async function moveTopicMessagesInCache(options: {
   instanceId: string;
-  streamId: number;
+  streamId: string;
   oldTopic: string;
   newTopic: string;
   messageIds?: readonly MessageId[];
@@ -638,7 +638,7 @@ export async function moveTopicMessagesInCache(options: {
 }): Promise<void> {
   const { instanceId, streamId, oldTopic, newTopic, messageIds, anchorMessageId } = options;
   if (!isIndexedDBAvailable()) return;
-  if (!Number.isInteger(streamId) || streamId <= 0) return;
+  if (streamId.trim().length === 0) return;
   const oldTopicKey = normalizeTopicForIdentity(oldTopic);
   const newTopicKey = normalizeTopicForIdentity(newTopic);
   if (oldTopicKey === newTopicKey) return;
@@ -668,7 +668,7 @@ export async function moveTopicMessagesInCache(options: {
   for (const messageId of targetMessageIds) {
     const row = await getMessageRow(db, instanceId, messageId);
     if (!row) continue;
-    if (row.message.stream_id !== streamId) continue;
+    if (row.message.stream_uuid !== streamId) continue;
     if (normalizedTopicFromMessage(row.message) !== oldTopicKey) continue;
     byIdCandidates.set(messageId, row);
   }
@@ -739,8 +739,8 @@ export async function moveTopicMessagesInCache(options: {
 
 export async function moveTopicToStreamInCache(options: {
   instanceId: string;
-  sourceStreamId: number;
-  targetStreamId: number;
+  sourceStreamId: string;
+  targetStreamId: string;
   oldTopic: string;
   newTopic: string;
   messageIds?: readonly MessageId[];
@@ -756,8 +756,8 @@ export async function moveTopicToStreamInCache(options: {
     anchorMessageId,
   } = options;
   if (!isIndexedDBAvailable()) return;
-  if (!Number.isInteger(sourceStreamId) || sourceStreamId <= 0) return;
-  if (!Number.isInteger(targetStreamId) || targetStreamId <= 0) return;
+  if (sourceStreamId.trim().length === 0) return;
+  if (targetStreamId.trim().length === 0) return;
   if (sourceStreamId === targetStreamId) return;
   const oldTopicKey = normalizeTopicForIdentity(oldTopic);
   const newTopicKey = normalizeTopicForIdentity(newTopic);
@@ -787,7 +787,7 @@ export async function moveTopicToStreamInCache(options: {
   for (const messageId of targetMessageIds) {
     const row = await getMessageRow(db, instanceId, messageId);
     if (!row) continue;
-    if (row.message.stream_id !== sourceStreamId) continue;
+    if (row.message.stream_uuid !== sourceStreamId) continue;
     if (normalizedTopicFromMessage(row.message) !== oldTopicKey) continue;
     byIdCandidates.set(messageId, row);
   }
@@ -811,7 +811,7 @@ export async function moveTopicToStreamInCache(options: {
     for (const row of effectiveRowsToMove) {
       const nextMessage = {
         ...row.message,
-        stream_id: targetStreamId,
+        stream_uuid: targetStreamId,
         subject: newTopicKey,
       };
       store.put({

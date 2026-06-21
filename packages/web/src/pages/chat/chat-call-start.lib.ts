@@ -19,7 +19,7 @@ export interface StartCallFromHeaderInput {
         }
       | {
           stream: string;
-          streamId?: number;
+          streamId?: string;
           subject: string;
           content: string;
           sender_id: number;

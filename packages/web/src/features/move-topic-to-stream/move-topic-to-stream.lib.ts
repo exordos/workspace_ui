@@ -1,7 +1,7 @@
 import { resolveRenamedTopicName } from "~/features/mark-topic-resolved/rename-stream-topic.lib";
 
 export interface MoveTopicTargetStream {
-  streamId: number;
+  streamId: string;
   name: string;
 }
 
@@ -15,7 +15,7 @@ export function resolveMoveTopicTargetName(
 
 export function buildMoveTopicTargetStreamOptions(
   streams: readonly MoveTopicTargetStream[],
-  sourceStreamId: number,
+  sourceStreamId: string,
 ): MoveTopicTargetStream[] {
   return streams
     .filter((stream) => stream.streamId !== sourceStreamId && stream.name.trim().length > 0)
@@ -26,10 +26,10 @@ export function buildMoveTopicTargetStreamOptions(
 export function resolveSelectedTargetStreamId(
   targetStreamIdRaw: string,
   options: readonly MoveTopicTargetStream[],
-): number | null {
-  const parsed = Number.parseInt(targetStreamIdRaw, 10);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
+): string | null {
+  const targetStreamId = targetStreamIdRaw.trim().toLowerCase();
+  if (targetStreamId.length === 0) {
     return null;
   }
-  return options.some((stream) => stream.streamId === parsed) ? parsed : null;
+  return options.some((stream) => stream.streamId === targetStreamId) ? targetStreamId : null;
 }

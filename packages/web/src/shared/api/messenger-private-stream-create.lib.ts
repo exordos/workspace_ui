@@ -74,7 +74,7 @@ function readTrimmedUuid(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-/** Parses `POST /streams/` WorkspaceStream response (`uuid` is the stream id). */
+/** Parses `POST /streams/` WorkspaceStream response. */
 export function parseCreatedWorkspaceStream(
   row: unknown,
 ): { streamUuid: string; name: string } | null {

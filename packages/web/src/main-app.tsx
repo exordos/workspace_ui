@@ -105,7 +105,7 @@ setPluginDataProvider({
       .getState()
       .streams()
       .map((s) => ({
-        id: s.stream_id,
+        id: s.streamUuid,
         name: s.name,
         badge: s.badge,
       })),

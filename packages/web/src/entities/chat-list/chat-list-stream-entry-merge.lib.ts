@@ -9,7 +9,7 @@ type StreamTopicEntryInternal =
 
 export function mergeStreamEntry(
   existing: StreamEntryInternal | undefined,
-  streamId: number,
+  streamId: string,
   name: string,
   lastMessage: string,
   lastMessageSenderName: string | undefined,
@@ -36,7 +36,7 @@ export function mergeStreamEntry(
   };
   if (!existing) {
     const topics = new Map<string, StreamTopicEntryInternal>([[topicSubject, topicEntry]]);
-    return { stream_id: streamId, name, lastMessage, lastMessageSenderName, time, ts, topics };
+    return { streamUuid: streamId, name, lastMessage, lastMessageSenderName, time, ts, topics };
   }
   const nextTopics = new Map(existing.topics);
   if (!existingTopic || topicTs >= existingTopic.ts) {
@@ -46,7 +46,8 @@ export function mergeStreamEntry(
   }
   const newerStream = ts >= existing.ts;
   return {
-    stream_id: streamId,
+    streamUuid: existing.streamUuid,
+    private: existing.private,
     name: existing.name,
     lastMessage: newerStream ? lastMessage : existing.lastMessage,
     lastMessageSenderName: newerStream ? lastMessageSenderName : existing.lastMessageSenderName,

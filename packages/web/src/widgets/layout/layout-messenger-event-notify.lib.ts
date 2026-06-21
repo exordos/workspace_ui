@@ -26,14 +26,14 @@ export function resolveStreamMessageMuteState(
   raw: WorkspaceRawMessage,
   mute: LayoutMessengerEventDispatchContext["mute"],
 ): { isMuted: boolean; isTopicFollowed: boolean } {
-  if (raw.type !== "stream" || raw.stream_id == null) {
+  if (raw.type !== "stream" || raw.stream_uuid == null) {
     return { isMuted: false, isTopicFollowed: false };
   }
   const topic = normalizeTopicForIdentity(raw.subject ?? "");
-  const isStreamMuted = mute.isStreamMuted(raw.stream_id);
+  const isStreamMuted = mute.isStreamMuted(raw.stream_uuid);
   return {
-    isMuted: isStreamMuted || mute.isEffectivelyMuted(raw.stream_id, topic),
-    isTopicFollowed: mute.isTopicFollowed(raw.stream_id, topic),
+    isMuted: isStreamMuted || mute.isEffectivelyMuted(raw.stream_uuid, topic),
+    isTopicFollowed: mute.isTopicFollowed(raw.stream_uuid, topic),
   };
 }
 
@@ -52,7 +52,7 @@ export function deliverDesktopNotificationForMessage(
     buildRouteFromMessage(
       {
         id: raw.id,
-        stream_id: raw.stream_id ?? null,
+        stream_uuid: raw.stream_uuid ?? null,
         display_recipient: raw.display_recipient,
         subject: raw.subject ?? "",
       },
@@ -106,8 +106,8 @@ export function maybeNotifyNewMessage(
   );
 
   const streamFlags =
-    raw.type === "stream" && raw.stream_id != null
-      ? buildStreamMessageNotificationFlags(raw.stream_id, serverSettings, ctx.mute)
+    raw.type === "stream" && raw.stream_uuid != null
+      ? buildStreamMessageNotificationFlags(raw.stream_uuid, serverSettings, ctx.mute)
       : {
           streamAllMessagesNotifyEnabled: false,
           streamAllMessagesAudibleEnabled: false,

@@ -6,9 +6,9 @@ import type { MessengerSubscription, MessengerUserTopic } from "~/shared/api/mes
 
 export interface LayoutMuteSnapshot {
   mutedStreamIds: number[];
-  mutedTopics: { streamId: number; topic: string }[];
-  unmutedTopics: { streamId: number; topic: string }[];
-  followedTopics: { streamId: number; topic: string }[];
+  mutedTopics: { streamId: string; topic: string }[];
+  unmutedTopics: { streamId: string; topic: string }[];
+  followedTopics: { streamId: string; topic: string }[];
   streamDesktopNotifyEnabledIds: number[];
   streamDesktopNotifyDisabledIds: number[];
   streamAudibleNotifyEnabledIds: number[];

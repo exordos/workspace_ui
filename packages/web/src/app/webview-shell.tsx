@@ -160,7 +160,6 @@ export const WebViewShell: React.FC = () => {
               <Route path="/org/:orgId" element={<WebviewOrgInboxRedirect />} />
               <Route path="/stream/:streamSlug" element={<ChatPage />} />
               <Route path="/stream/:streamSlug/topic/:topicName" element={<ChatPage />} />
-              <Route path="/dm/:dmId" element={<ChatPage />} />
               <Route path="/activity/:filter" element={<ActivityPage />} />
               <Route path="/calendar" element={<CalendarPage />} />
               <Route path="/mail" element={<MailPage />} />
@@ -185,7 +184,6 @@ export const WebViewShell: React.FC = () => {
                 path="/org/:orgId/stream/:streamSlug/topic/:topicName"
                 element={<ChatPage />}
               />
-              <Route path="/org/:orgId/dm/:dmId" element={<ChatPage />} />
               <Route path="/org/:orgId/activity/:filter" element={<ActivityPage />} />
               <Route path="/org/:orgId/calendar" element={<CalendarPage />} />
               <Route path="/org/:orgId/mail" element={<MailPage />} />

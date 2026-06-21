@@ -17,7 +17,7 @@ export type StreamMessagesAppliedSource = "cache" | "api";
 
 export interface OnStreamMessagesAppliedPayload {
   messages: readonly MockMessage[];
-  context: { type: "stream"; streamId: number };
+  context: { type: "stream"; streamId: string; topicUuid?: string };
   hasNewerMessages: boolean;
   focusedMessageId: MessageId | null;
   source: StreamMessagesAppliedSource;
@@ -26,9 +26,10 @@ export interface OnStreamMessagesAppliedPayload {
 export type CurrentChatContext =
   | {
       type: "stream";
-      streamId: number;
+      streamId: string;
       streamName: string;
       topic: string;
+      topicUuid?: string;
       /** True when the route is `/stream/:slug` without `/topic/...` (whole-stream view). */
       streamWideView?: boolean;
     }
@@ -71,15 +72,15 @@ export interface CurrentChatMessagesState {
   cancelFailedMessageEdit: (messageId: MessageId) => void;
   updateMessageLinkPreview: (messageId: MessageId, linkPreview: LinkPreviewData | null) => void;
   moveStreamTopicMessages: (params: {
-    streamId: number;
+    streamId: string;
     oldTopic: string;
     newTopic: string;
     messageIds?: MessageId[];
     anchorMessageId?: MessageId;
   }) => void;
   moveTopicToStreamMessages: (params: {
-    sourceStreamId: number;
-    targetStreamId: number;
+    sourceStreamId: string;
+    targetStreamId: string;
     targetStreamName: string;
     oldTopic: string;
     newTopic: string;

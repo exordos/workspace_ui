@@ -24,9 +24,10 @@ export interface UseChatPageSendMessageParams {
   activeDmUserIds: number[] | null;
   activeStream: string | null;
   activeStreamCanonicalName: string | null;
-  activeStreamId: number | null | undefined;
+  activeStreamId: string | null | undefined;
   activeStreamUuid: string | null | undefined;
   activeTopic: string | null | undefined;
+  activeTopicUuid: string | null | undefined;
   appendMessage: (message: MockMessage) => void;
   commitOutgoingMessage: (optimisticId: MessageId, message: MockMessage) => void;
   removeMessage: (messageId: MessageId) => void;
@@ -56,6 +57,7 @@ export function useChatPageSendMessage(
     activeStreamId,
     activeStreamUuid,
     activeTopic,
+    activeTopicUuid,
     appendMessage,
     commitOutgoingMessage,
     removeMessage,
@@ -87,6 +89,7 @@ export function useChatPageSendMessage(
           activeStreamId,
           activeStreamUuid,
           activeTopic,
+          activeTopicUuid,
           allocateOptimisticMessageId: createMessageId,
           appendMessage,
           commitOutgoingMessage,
@@ -118,6 +121,7 @@ export function useChatPageSendMessage(
       activeStreamId,
       activeStreamUuid,
       activeTopic,
+      activeTopicUuid,
       appendMessage,
       commitOutgoingMessage,
       requestScrollToBottom,
@@ -202,8 +206,9 @@ export function useChatPageSendMessage(
           target: {
             mode: "stream",
             stream: activeStreamCanonicalName,
-            streamId: activeStreamId ?? undefined,
+            streamUuid: activeStreamUuid,
             subject,
+            ...(msg.topic_uuid != null ? { topicUuid: msg.topic_uuid } : activeTopicUuid != null ? { topicUuid: activeTopicUuid } : {}),
           },
         });
         appendMessage(optimisticMessage);
@@ -212,7 +217,7 @@ export function useChatPageSendMessage(
           const newMsg = await sendMessage({
             stream: activeStreamCanonicalName,
             streamUuid: activeStreamUuid,
-            streamId: activeStreamId ?? undefined,
+            ...(msg.topic_uuid != null ? { topicUuid: msg.topic_uuid } : activeTopicUuid != null ? { topicUuid: activeTopicUuid } : {}),
             subject,
             content: body,
             sender_id: currentUserId ?? 0,
@@ -237,6 +242,7 @@ export function useChatPageSendMessage(
       activeStreamId,
       activeStreamUuid,
       activeTopic,
+      activeTopicUuid,
       appendMessage,
       clearReplyQuote,
       commitOutgoingMessage,

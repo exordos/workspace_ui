@@ -19,10 +19,7 @@ export function buildInboxEntryRoute(entry: InboxEntry): string | null {
   const focusMessageId = resolveInboxFocusMessageId(entry.messageIds);
 
   if (entry.streamId != null) {
-    const slug = slugForStream({
-      stream_id: entry.streamId,
-      name: entry.streamName ?? String(entry.streamId),
-    });
+    const slug = slugForStream({ streamUuid: entry.streamId });
     const normalizedTopic = entry.topic?.trim() ?? "";
     const streamRoute = withCurrentOrgRoute(
       `/stream/${slug}/topic/${encodeURIComponent(encodeTopicForRoute(normalizedTopic))}`,

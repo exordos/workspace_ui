@@ -13,7 +13,7 @@ export type StreamMessagesAppliedSource = "cache" | "api";
 
 export interface OnStreamMessagesAppliedPayload {
   messages: readonly MockMessage[];
-  context: { type: "stream"; streamId: number };
+  context: { type: "stream"; streamId: string };
   hasNewerMessages: boolean;
   focusedMessageId: MessageId | null;
   source: StreamMessagesAppliedSource;
@@ -21,7 +21,7 @@ export interface OnStreamMessagesAppliedPayload {
 
 export interface SyncStreamSidebarFromLoadedMessagesOptions {
   messages: readonly MockMessage[];
-  streamId: number;
+  streamId: string;
   source: StreamMessagesAppliedSource;
   focusedMessageId: MessageId | null;
   hasNewerMessages: boolean;
@@ -41,9 +41,9 @@ export function shouldSyncStreamPreviewFromWindow(options: {
 /** Keeps stream messages for a single channel id. */
 export function filterMessagesForStreamId(
   messages: readonly MockMessage[],
-  streamId: number,
+  streamId: string,
 ): MockMessage[] {
-  return messages.filter((m) => m.stream_id === streamId);
+  return messages.filter((m) => m.stream_uuid === streamId);
 }
 
 /** Merges loaded stream messages into chat-list previews (no unread bumps). */

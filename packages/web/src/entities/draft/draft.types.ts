@@ -8,14 +8,15 @@
 import type { MessageId } from "~/shared/lib/message-id.lib";
 
 export type DraftType = "stream" | "private";
+export type DraftTargetId = number | string;
 
 export interface Draft {
   /** Server-assigned UUID (null if local-only, not yet synced). */
   id: MessageId | null;
   /** "stream" for channel messages, "private" for DMs. */
   type: DraftType;
-  /** For stream: [streamId]. For DM: recipient user IDs. */
-  to: number[];
+  /** For stream: [streamUuid]. For DM: recipient user IDs. */
+  to: DraftTargetId[];
   /** Topic name (stream drafts only). */
   topic: string;
   /** Draft message content (markdown). */
@@ -26,7 +27,7 @@ export interface Draft {
 
 export interface DraftInput {
   type: DraftType;
-  to: number[];
+  to: DraftTargetId[];
   topic: string;
   content: string;
 }

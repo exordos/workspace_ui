@@ -41,7 +41,6 @@ describe("CreateChatDialog", () => {
       <CreateChatDialog
         open
         onOpenChange={vi.fn()}
-        onNavigateDm={vi.fn()}
         onNavigateStream={vi.fn()}
         onChannelCreated={vi.fn()}
       />,
@@ -81,7 +80,6 @@ describe("CreateChatDialog", () => {
       <CreateChatDialog
         open
         onOpenChange={vi.fn()}
-        onNavigateDm={vi.fn()}
         onNavigateStream={vi.fn()}
         onChannelCreated={vi.fn()}
       />,
@@ -120,7 +118,6 @@ describe("CreateChatDialog", () => {
       <CreateChatDialog
         open
         onOpenChange={vi.fn()}
-        onNavigateDm={vi.fn()}
         onNavigateStream={vi.fn()}
         onChannelCreated={vi.fn()}
       />,
@@ -144,7 +141,6 @@ describe("CreateChatDialog", () => {
       <CreateChatDialog
         open
         onOpenChange={vi.fn()}
-        onNavigateDm={vi.fn()}
         onNavigateStream={vi.fn()}
         onChannelCreated={vi.fn()}
       />,
@@ -166,7 +162,6 @@ describe("CreateChatDialog", () => {
       <CreateChatDialog
         open
         onOpenChange={vi.fn()}
-        onNavigateDm={vi.fn()}
         onNavigateStream={vi.fn()}
         onChannelCreated={vi.fn()}
       />,
@@ -195,7 +190,6 @@ describe("CreateChatDialog", () => {
       <CreateChatDialog
         open
         onOpenChange={vi.fn()}
-        onNavigateDm={vi.fn()}
         onNavigateStream={vi.fn()}
         onChannelCreated={vi.fn()}
       />,
@@ -221,7 +215,6 @@ describe("CreateChatDialog", () => {
       <CreateChatDialog
         open
         onOpenChange={vi.fn()}
-        onNavigateDm={vi.fn()}
         onNavigateStream={onNavigateStream}
         onChannelCreated={vi.fn()}
       />,
@@ -245,7 +238,6 @@ describe("CreateChatDialog", () => {
       <CreateChatDialog
         open
         onOpenChange={vi.fn()}
-        onNavigateDm={vi.fn()}
         onNavigateStream={onNavigateStream}
         onChannelCreated={vi.fn()}
       />,
@@ -270,7 +262,6 @@ describe("CreateChatDialog", () => {
       <CreateChatDialog
         open
         onOpenChange={vi.fn()}
-        onNavigateDm={vi.fn()}
         onNavigateStream={vi.fn()}
         onChannelCreated={vi.fn()}
       />,
@@ -307,7 +298,6 @@ describe("CreateChatDialog", () => {
       <CreateChatDialog
         open
         onOpenChange={vi.fn()}
-        onNavigateDm={vi.fn()}
         onNavigateStream={vi.fn()}
         onChannelCreated={vi.fn()}
       />,
@@ -335,7 +325,6 @@ describe("CreateChatDialog", () => {
       <CreateChatDialog
         open
         onOpenChange={vi.fn()}
-        onNavigateDm={vi.fn()}
         onNavigateStream={vi.fn()}
         onChannelCreated={vi.fn()}
       />,

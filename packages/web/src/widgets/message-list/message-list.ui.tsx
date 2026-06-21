@@ -1339,7 +1339,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
                 unreadCount > 0 &&
                 senderMessages.some((m) => m.id === unreadAnchorId);
               const first = senderMessages[0]!;
-              const isStream = first.stream_id != null;
+              const isStream = first.stream_uuid != null;
               const topicKey = normalizeStreamTopicForMessageCache(first.subject ?? "");
               const topicDisplay = resolveTopicDisplayInfo(topicKey);
               const showTopicSeparator =

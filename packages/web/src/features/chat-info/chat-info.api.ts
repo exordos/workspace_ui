@@ -1,5 +1,6 @@
 import { fetchStreamMembers, fetchStreams } from "~/shared/api/messenger-streams";
 import type { MockStream } from "~/shared/api/messenger.types";
+import type { UserId } from "~/shared/lib/user-id.lib";
 
 // chat-info data layer: eager members/metadata load, TTL cache, in-flight dedupe, invalidation.
 interface CacheEntry<T> {
@@ -10,14 +11,18 @@ interface CacheEntry<T> {
 const MEMBERS_TTL_MS = 60_000;
 const STREAMS_TTL_MS = 5 * 60_000;
 
-const streamMembersCache = new Map<string, CacheEntry<number[]>>();
+const streamMembersCache = new Map<string, CacheEntry<UserId[]>>();
 const streamsSnapshotCache = new Map<string, CacheEntry<MockStream[]>>();
 
-const streamMembersInFlight = new Map<string, Promise<number[]>>();
+const streamMembersInFlight = new Map<string, Promise<UserId[]>>();
 const streamsSnapshotInFlight = new Map<string, Promise<MockStream[]>>();
 
-function streamMembersCacheKey(instanceId: string, streamId: number): string {
-  return `${instanceId}:${streamId}`;
+function normalizeStreamUuid(streamUuid: string): string {
+  return streamUuid.trim().toLowerCase();
+}
+
+function streamMembersCacheKey(instanceId: string, streamUuid: string): string {
+  return `${instanceId}:${normalizeStreamUuid(streamUuid)}`;
 }
 
 function isEntryFresh<T>(entry: CacheEntry<T> | undefined, now: number): entry is CacheEntry<T> {
@@ -26,11 +31,11 @@ function isEntryFresh<T>(entry: CacheEntry<T> | undefined, now: number): entry i
 
 export async function loadStreamMembers(
   instanceId: string,
-  streamId: number,
+  streamUuid: string,
   options?: { force?: boolean },
-): Promise<number[]> {
-  // cache → in-flight → network → cache
-  const key = streamMembersCacheKey(instanceId, streamId);
+): Promise<UserId[]> {
+  // cache -> in-flight -> network -> cache
+  const key = streamMembersCacheKey(instanceId, streamUuid);
   const now = Date.now();
   if (!options?.force) {
     const cached = streamMembersCache.get(key);
@@ -44,7 +49,7 @@ export async function loadStreamMembers(
     return inFlight;
   }
 
-  const request = fetchStreamMembers(streamId)
+  const request = fetchStreamMembers(streamUuid)
     .then((memberIds) => {
       const next = [...memberIds];
       streamMembersCache.set(key, {
@@ -96,20 +101,21 @@ export async function loadStreamsSnapshot(
 
 export async function loadStreamMetadata(
   instanceId: string,
-  streamId: number,
+  streamUuid: string,
   options?: { force?: boolean },
 ): Promise<{ name: string | null; description: string | null }> {
   // Name + description come from the streams list snapshot.
+  const normalizedStreamUuid = normalizeStreamUuid(streamUuid);
   const streams = await loadStreamsSnapshot(instanceId, options);
-  const stream = streams.find((entry) => entry.stream_id === streamId);
+  const stream = streams.find((entry) => entry.stream_uuid === normalizedStreamUuid);
   return {
     name: stream?.name ?? null,
     description: stream?.description ?? null,
   };
 }
 
-export function invalidateStream(instanceId: string, streamId: number): void {
-  const key = streamMembersCacheKey(instanceId, streamId);
+export function invalidateStream(instanceId: string, streamUuid: string): void {
+  const key = streamMembersCacheKey(instanceId, streamUuid);
   streamMembersCache.delete(key);
   streamMembersInFlight.delete(key);
   streamsSnapshotCache.delete(instanceId);

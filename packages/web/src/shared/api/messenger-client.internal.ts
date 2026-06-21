@@ -12,9 +12,9 @@ export interface WorkspaceClient {
   streams: {
     retrieve: (
       params?: Record<string, unknown>,
-    ) => Promise<{ streams?: { stream_id: number; name: string; description?: string }[] }>;
+    ) => Promise<{ streams?: { stream_uuid: string; name: string; description?: string }[] }>;
     topics: {
-      retrieve: (params: { stream_id: number }) => Promise<{ topics?: { name: string }[] }>;
+      retrieve: (params: { stream_uuid: string }) => Promise<{ topics?: { name: string }[] }>;
     };
   };
   messages: {
@@ -37,7 +37,7 @@ export interface WorkspaceClient {
         display_recipient?: string;
         subject?: string;
         type?: string;
-        stream_id?: number | null;
+        stream_uuid?: string | null;
       }[];
     }>;
     send: (params: {
@@ -81,7 +81,7 @@ function createRestClient(): Promise<WorkspaceClient> {
         }
         const data = res.data as {
           result?: string;
-          streams?: { stream_id: number; name: string; description?: string }[];
+          streams?: { stream_uuid: string; name: string; description?: string }[];
         };
         if (data.result === "error") {
           return { streams: [] };
@@ -91,8 +91,10 @@ function createRestClient(): Promise<WorkspaceClient> {
         };
       },
       topics: {
-        retrieve: async (params: { stream_id: number }) => {
-          const res = await messengerPipelineGet(`/users/me/${params.stream_id}/topics`);
+        retrieve: async (params: { stream_uuid: string }) => {
+          const res = await messengerPipelineGet(`/stream_topics/`, {
+            stream_uuid: params.stream_uuid,
+          });
           if (!res?.ok) {
             return { topics: [] };
           }
@@ -126,7 +128,7 @@ function createRestClient(): Promise<WorkspaceClient> {
             display_recipient?: string;
             subject?: string;
             type?: string;
-            stream_id?: number | null;
+            stream_uuid?: string | null;
           }[];
         };
         return {

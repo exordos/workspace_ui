@@ -1,5 +1,4 @@
 import type {
-  DmEntryInternal,
   SidebarChat,
   StreamEntryInternal,
   StreamWithLast,
@@ -7,7 +6,7 @@ import type {
 } from "~/shared/types/sidebar-chat";
 import type { ReactNode } from "react";
 
-export type { TopicWithLast, SidebarChat, StreamWithLast, StreamEntryInternal, DmEntryInternal };
+export type { TopicWithLast, SidebarChat, StreamWithLast, StreamEntryInternal };
 
 /**
  * Sidebar props.
@@ -21,9 +20,7 @@ export interface SidebarProps {
   pinFolderId?: string;
   activeStreamSlug?: string | null;
   activeTopic?: string | null;
-  activeDmIdParam?: string | null;
-  sidebarDms?: Extract<SidebarChat, { type: "dm" }>[];
-  sidebarChats?: SidebarChat[];
+  sidebarChats?: Extract<SidebarChat, { type: "stream" }>[];
   sidebarChatsLoading?: boolean;
 }
 

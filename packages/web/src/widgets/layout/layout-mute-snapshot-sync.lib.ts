@@ -47,13 +47,13 @@ function hasTrackedMuteRefsChanged(prev: MuteRefs, next: MuteRefs): boolean {
   );
 }
 
-function toSnapshotTopicRows(keys: ReadonlySet<string>): { streamId: number; topic: string }[] {
-  const rows: { streamId: number; topic: string }[] = [];
+function toSnapshotTopicRows(keys: ReadonlySet<string>): { streamId: string; topic: string }[] {
+  const rows: { streamId: string; topic: string }[] = [];
   for (const key of keys) {
     const separatorIndex = key.indexOf(":");
     if (separatorIndex <= 0) continue;
-    const streamId = Number(key.slice(0, separatorIndex));
-    if (!Number.isInteger(streamId) || streamId <= 0) continue;
+    const streamId = key.slice(0, separatorIndex).trim().toLowerCase();
+    if (streamId.length === 0) continue;
     const topic = key.slice(separatorIndex + 1);
     if (topic.length === 0) continue;
     rows.push({ streamId, topic });
@@ -64,7 +64,7 @@ function toSnapshotTopicRows(keys: ReadonlySet<string>): { streamId: number; top
 function buildMuteSnapshotRow(instanceId: string): MuteSnapshotRowV2 {
   const state = useMuteStore.getState();
   const mutedStreamIds = Array.from(state.mutedStreamIds).filter(
-    (streamId) => Number.isInteger(streamId) && streamId > 0,
+    (streamId) => streamId.trim().length > 0,
   );
   return {
     instanceId,
@@ -75,16 +75,16 @@ function buildMuteSnapshotRow(instanceId: string): MuteSnapshotRowV2 {
     unmutedTopics: toSnapshotTopicRows(state.unmutedTopicKeys),
     followedTopics: toSnapshotTopicRows(state.followedTopicKeys),
     streamDesktopNotifyEnabledIds: Array.from(state.streamDesktopNotifyEnabledIds).filter(
-      (streamId) => Number.isInteger(streamId) && streamId > 0,
+      (streamId) => streamId.trim().length > 0,
     ),
     streamDesktopNotifyDisabledIds: Array.from(state.streamDesktopNotifyDisabledIds).filter(
-      (streamId) => Number.isInteger(streamId) && streamId > 0,
+      (streamId) => streamId.trim().length > 0,
     ),
     streamAudibleNotifyEnabledIds: Array.from(state.streamAudibleNotifyEnabledIds).filter(
-      (streamId) => Number.isInteger(streamId) && streamId > 0,
+      (streamId) => streamId.trim().length > 0,
     ),
     streamAudibleNotifyDisabledIds: Array.from(state.streamAudibleNotifyDisabledIds).filter(
-      (streamId) => Number.isInteger(streamId) && streamId > 0,
+      (streamId) => streamId.trim().length > 0,
     ),
   };
 }

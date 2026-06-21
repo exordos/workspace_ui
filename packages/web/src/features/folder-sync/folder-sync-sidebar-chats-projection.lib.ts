@@ -17,7 +17,7 @@ import type { SelectedFolderSidebarProjectionInput } from "./folder-sync-sidebar
 // (greenfield) Numeric chat_id ambiguity is not supported.
 
 export interface KnownMatchedChatKeys {
-  knownMatchedStreamIds: Set<number>;
+  knownMatchedStreamIds: Set<string>;
   knownMatchedDmKeys: Set<string>;
 }
 
@@ -25,11 +25,11 @@ export function collectKnownMatchedChatKeys(
   matchedChats: readonly SidebarChat[],
   currentUserId: UserId | null,
 ): KnownMatchedChatKeys {
-  const knownMatchedStreamIds = new Set<number>();
+  const knownMatchedStreamIds = new Set<string>();
   const knownMatchedDmKeys = new Set<string>();
   for (const chat of matchedChats) {
     if (chat.type === "stream") {
-      knownMatchedStreamIds.add(chat.stream_id);
+      knownMatchedStreamIds.add(chat.streamUuid);
       continue;
     }
     for (const chatId of chatToWorkspaceChatIds(chat, currentUserId)) {
@@ -148,12 +148,12 @@ export function buildFallbackDmChatsFromFolderItems(
 // Folder item may reference a stream missing from matchedChats — build fallbacks in orderIndex order.
 export function buildFallbackStreamChatsFromFolderItems(
   orderedItems: readonly FolderItemForClient[],
-  knownMatchedStreamIds: ReadonlySet<number>,
-  streamsMap: ReadonlyMap<number, StreamEntryInternal>,
+  knownMatchedStreamIds: ReadonlySet<string>,
+  streamsMap: ReadonlyMap<string, StreamEntryInternal>,
   hideUnknownArchivedStreams: boolean,
 ): SidebarChat[] {
   const fallbackStreamChats: SidebarChat[] = [];
-  const seenFallbackStreamIds = new Set<number>();
+  const seenFallbackStreamIds = new Set<string>();
 
   for (const item of orderedItems) {
     const dmUserIds = parseFolderItemDmUserIds(item.chatId);
@@ -180,7 +180,7 @@ export function buildFallbackStreamChatsFromFolderItems(
     const streamName = streamRecord?.name ?? `stream-${streamId}`;
     fallbackStreamChats.push({
       type: "stream",
-      stream_id: streamId,
+      streamUuid: streamId,
       name: streamName,
       lastMessage: "",
       time: "",
@@ -197,14 +197,14 @@ function sortFolderItemsByOrderIndex(items: readonly FolderItemForClient[]): Fol
 
 function orderMutedStreamsLast(
   chats: readonly SidebarChat[],
-  isStreamMuted: ((streamId: number) => boolean) | undefined,
+  isStreamMuted: ((streamId: string) => boolean) | undefined,
 ): SidebarChat[] {
   if (isStreamMuted == null) return [...chats];
 
   const unmutedChats: SidebarChat[] = [];
   const mutedChats: SidebarChat[] = [];
   for (const chat of chats) {
-    if (chat.type === "stream" && isStreamMuted(chat.stream_id)) {
+    if (chat.type === "stream" && isStreamMuted(chat.streamUuid)) {
       mutedChats.push(chat);
     } else {
       unmutedChats.push(chat);

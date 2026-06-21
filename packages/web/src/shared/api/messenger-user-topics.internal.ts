@@ -33,7 +33,7 @@ function isMessengerUserTopic(value: unknown): value is MessengerUserTopic {
   }
   const data = value as Record<string, unknown>;
   return (
-    typeof data.stream_id === "number" &&
+    typeof data.stream_uuid === "string" &&
     typeof data.topic_name === "string" &&
     typeof data.visibility_policy === "number"
   );

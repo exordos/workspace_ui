@@ -71,7 +71,7 @@ function hydratedMessagesMatchContext(
     return messages.every((m) => chatKeyFromMockMessage(m, currentUserId) === expected);
   }
   if (next.streamWideView) {
-    return messages.every((m) => m.stream_id === next.streamId);
+    return messages.every((m) => m.stream_uuid === next.streamId);
   }
   const expected = chatKeyFromContext({
     type: "stream",
@@ -659,7 +659,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
   },
 
   moveStreamTopicMessages({ streamId, oldTopic, newTopic, messageIds, anchorMessageId }) {
-    if (!Number.isInteger(streamId) || streamId <= 0) return;
+    if (streamId.trim().length === 0) return;
     const oldTopicKey = normalizeTopicForIdentity(oldTopic);
     const newTopicKey = normalizeTopicForIdentity(newTopic);
     if (oldTopicKey === newTopicKey) return;
@@ -673,7 +673,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       for (let i = 0; i < nextMessages.length; i++) {
         const message = nextMessages[i]!;
         if (!targetedIds.has(message.id)) continue;
-        if (message.stream_id !== streamId) continue;
+        if (message.stream_uuid !== streamId) continue;
         const topic = normalizeTopicForIdentity(message.subject ?? "");
         if (topic !== oldTopicKey) continue;
         if (message.subject === newTopicKey) continue;
@@ -712,8 +712,8 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     messageIds,
     anchorMessageId,
   }) {
-    if (!Number.isInteger(sourceStreamId) || sourceStreamId <= 0) return;
-    if (!Number.isInteger(targetStreamId) || targetStreamId <= 0) return;
+    if (sourceStreamId.trim().length === 0) return;
+    if (targetStreamId.trim().length === 0) return;
     const oldTopicKey = normalizeTopicForIdentity(oldTopic);
     const newTopicKey = normalizeTopicForIdentity(newTopic);
     const targetMessageIds = resolveTopicMoveTargetMessageIds({ messageIds, anchorMessageId });
@@ -726,12 +726,12 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       for (let i = 0; i < nextMessages.length; i++) {
         const message = nextMessages[i]!;
         if (!targetedIds.has(message.id)) continue;
-        if (message.stream_id !== sourceStreamId) continue;
+        if (message.stream_uuid !== sourceStreamId) continue;
         const topic = normalizeTopicForIdentity(message.subject ?? "");
         if (topic !== oldTopicKey) continue;
         nextMessages[i] = {
           ...message,
-          stream_id: targetStreamId,
+          stream_uuid: targetStreamId,
           subject: newTopicKey,
           channel: targetStreamName,
         };
