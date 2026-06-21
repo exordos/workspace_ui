@@ -11,7 +11,7 @@ import type { ChatPageComposerSectionProps } from "./chat-page-composer-section.
 
 export const ChatPageComposerSection = React.memo(function ChatPageComposerSection({
   isDmView,
-  activeDmUserIds,
+  activeStreamUuid,
   dmPartnerDeactivated = false,
   activeStream,
   showTopicPrompt,
@@ -54,7 +54,7 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
   const placeholder = resolveComposerPlaceholder({
     dmPartnerDeactivated,
     isDmView,
-    activeDmUserIds,
+    activeStreamUuid,
     activeStream,
   });
 
@@ -66,7 +66,7 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
       disabled={isComposerDisabled({
         dmPartnerDeactivated,
         isDmView,
-        activeDmUserIds,
+        activeStreamUuid,
         activeStream,
       })}
       uploadProgress={uploadProgress}

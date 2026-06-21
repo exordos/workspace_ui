@@ -42,7 +42,6 @@ describe("fetchSubscriptions", () => {
       data: [
         {
           uuid: "11111111-1111-4111-8111-111111111111",
-          source_stream_uuid: "22222222-2222-4222-8222-222222222222",
           stream_id: 1,
           name: "general",
           description: "Main",
@@ -52,7 +51,6 @@ describe("fetchSubscriptions", () => {
         },
         {
           uuid: "33333333-3333-4333-8333-333333333333",
-          source_stream_uuid: "44444444-4444-4444-8444-444444444444",
           user_uuid: "55555555-5555-4555-8555-555555555555",
           name: "Alice",
           description: "",
@@ -68,7 +66,6 @@ describe("fetchSubscriptions", () => {
       {
         stream_id: 1,
         stream_uuid: "11111111-1111-4111-8111-111111111111",
-        source_stream_uuid: "22222222-2222-4222-8222-222222222222",
         name: "general",
         is_muted: false,
         invite_only: false,
@@ -84,7 +81,6 @@ describe("fetchSubscriptions", () => {
       data: [
         {
           uuid: "11111111-1111-4111-8111-111111111111",
-          source_stream_uuid: "22222222-2222-4222-8222-222222222222",
           name: "general",
           description: "Main",
           invite_only: false,
@@ -102,7 +98,6 @@ describe("fetchSubscriptions", () => {
 const PEER_UUID = "00000000-0000-0000-0000-000000000002";
 const CURRENT_USER_UUID = "00000000-0000-0000-0000-000000000001";
 const STREAM_UUID = "b4460c02-d693-4564-8804-98059613b86e";
-const USER_STREAM_UUID = "1bce03ca-d6d9-4fdb-82cb-7ec05fa7a8e9";
 
 describe("createPrivateMessageStream", () => {
   it("posts stream then peer binding without user_uuid on stream create", async () => {
@@ -136,7 +131,6 @@ describe("createPrivateMessageStream", () => {
       createPrivateMessageStream({ userUuid: PEER_UUID, displayName: "Alice Smith" }),
     ).resolves.toEqual({
       streamUuid: STREAM_UUID,
-      sourceStreamUuid: STREAM_UUID,
       userUuid: PEER_UUID,
       name: "Alice Smith",
     });
@@ -199,8 +193,7 @@ describe("resolveOrCreateDirectMessageStream", () => {
         status: 200,
         data: [
           {
-            uuid: USER_STREAM_UUID,
-            source_stream_uuid: STREAM_UUID,
+            uuid: STREAM_UUID,
             name: "Alice Smith",
             description: "",
             user_uuid: CURRENT_USER_UUID,
@@ -226,8 +219,7 @@ describe("resolveOrCreateDirectMessageStream", () => {
       });
 
     await expect(resolveOrCreateDirectMessageStream(PEER_UUID, "Alice Smith")).resolves.toEqual({
-      streamUuid: USER_STREAM_UUID,
-      sourceStreamUuid: STREAM_UUID,
+      streamUuid: STREAM_UUID,
       userUuid: PEER_UUID,
       name: "Alice Smith",
     });
@@ -262,7 +254,6 @@ describe("resolveOrCreateDirectMessageStream", () => {
 
     await expect(resolveOrCreateDirectMessageStream(PEER_UUID, "Alice Smith")).resolves.toEqual({
       streamUuid: STREAM_UUID,
-      sourceStreamUuid: STREAM_UUID,
       userUuid: PEER_UUID,
       name: "Alice Smith",
     });
@@ -271,13 +262,12 @@ describe("resolveOrCreateDirectMessageStream", () => {
 });
 
 describe("findPrivateStreamForUserUuid", () => {
-  it("matches private stream rows through peer source stream binding", () => {
+  it("matches private stream rows through peer stream binding", () => {
     const match = findPrivateStreamForUserUuid(
       [
         {
-          uuid: USER_STREAM_UUID,
-          stream_uuid: USER_STREAM_UUID,
-          source_stream_uuid: STREAM_UUID,
+          uuid: STREAM_UUID,
+          stream_uuid: STREAM_UUID,
           name: "Alice Smith",
           description: "",
           user_uuid: CURRENT_USER_UUID,
@@ -289,8 +279,7 @@ describe("findPrivateStreamForUserUuid", () => {
       PEER_UUID,
       [{ stream_uuid: STREAM_UUID, user_uuid: PEER_UUID }],
     );
-    expect(match?.stream_uuid).toBe(USER_STREAM_UUID);
-    expect(match?.source_stream_uuid).toBe(STREAM_UUID);
+    expect(match?.stream_uuid).toBe(STREAM_UUID);
   });
 });
 
@@ -631,7 +620,6 @@ describe("fetchTopics", () => {
     mockMyStreamsResponse([
       {
         uuid: "11111111-1111-4111-8111-111111111111",
-        source_stream_uuid: "22222222-2222-4222-8222-222222222222",
         stream_id: 10,
         name: "engineering",
         description: "",
@@ -739,7 +727,6 @@ describe("fetchStreams", () => {
       data: [
         {
           uuid: "11111111-1111-4111-8111-111111111111",
-          source_stream_uuid: "22222222-2222-4222-8222-222222222222",
           stream_id: 1,
           name: "general",
           description: "Main",
@@ -749,7 +736,6 @@ describe("fetchStreams", () => {
         },
         {
           uuid: "33333333-3333-4333-8333-333333333333",
-          source_stream_uuid: "44444444-4444-4444-8444-444444444444",
           user_uuid: "55555555-5555-4555-8555-555555555555",
           name: "Alice",
           description: "",
@@ -766,7 +752,6 @@ describe("fetchStreams", () => {
       {
         stream_id: 1,
         stream_uuid: "11111111-1111-4111-8111-111111111111",
-        source_stream_uuid: "22222222-2222-4222-8222-222222222222",
         name: "general",
         description: "Main",
         is_announcement_only: true,
@@ -783,7 +768,6 @@ describe("fetchStreams", () => {
       data: [
         {
           uuid: "33333333-3333-4333-8333-333333333333",
-          source_stream_uuid: "44444444-4444-4444-8444-444444444444",
           user_uuid: "55555555-5555-4555-8555-555555555555",
           name: "Alice",
           description: "",
@@ -798,15 +782,13 @@ describe("fetchStreams", () => {
     await expect(fetchStreams()).resolves.toEqual([]);
   });
 
-  it("uses row uuid as stream_uuid, source_stream_uuid for writes, and source.stream_id", async () => {
-    // WorkspaceUserStream.uuid is the read identity; source_stream_uuid is the write identity.
+  it("uses row uuid as stream_uuid for reads and writes, and source.stream_id", async () => {
     mockMessengerApi.getWithBase.mockResolvedValue({
       ok: true,
       status: 200,
       data: [
         {
           uuid: "11111111-1111-4111-8111-111111111111",
-          source_stream_uuid: "22222222-2222-4222-8222-222222222222",
           name: "general",
           description: "Main",
           announce: false,
@@ -823,7 +805,6 @@ describe("fetchStreams", () => {
       {
         stream_id: 7,
         stream_uuid: "11111111-1111-4111-8111-111111111111",
-        source_stream_uuid: "22222222-2222-4222-8222-222222222222",
         name: "general",
         description: "Main",
         is_announcement_only: false,

@@ -239,7 +239,6 @@ function dmsMapToSortedDms(
       time: x.time,
       userIds: x.userIds,
       streamUuid: x.streamUuid,
-      sourceStreamUuid: x.sourceStreamUuid,
       userUuid: x.userUuid,
       badge: x.unreadCount > 0 ? x.unreadCount : undefined,
       avatar_url: x.avatar_url,
@@ -325,9 +324,6 @@ function hasStreamMetadataAccessChanged(
   nextEntry: StreamEntryInternal,
 ): boolean {
   if (existing.streamUuid !== nextEntry.streamUuid) {
-    return true;
-  }
-  if (existing.sourceStreamUuid !== nextEntry.sourceStreamUuid) {
     return true;
   }
   if (existing.isArchived !== nextEntry.isArchived) {

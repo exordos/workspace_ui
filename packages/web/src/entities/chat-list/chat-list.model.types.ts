@@ -18,10 +18,8 @@ import type {
 export interface ChatListStreamMetadataRow {
   streamId: number;
   name: string;
-  /** Per-user stream UUID; used to fetch channel messages via the messages endpoint. */
+  /** Stream UUID used to fetch and create messages via the gateway. */
   streamUuid?: string;
-  /** Source stream UUID; used to create messages via the gateway messages endpoint. */
-  sourceStreamUuid?: string;
   isArchived?: boolean;
   creatorId?: number;
   inviteOnly?: boolean;
@@ -35,7 +33,6 @@ export interface ChatListStreamMetadataRow {
 export interface ChatListDmMetadataRow {
   userIds: UserId[];
   streamUuid?: string;
-  sourceStreamUuid?: string;
   userUuid?: string;
   name?: string;
   lastActivityTs?: number;

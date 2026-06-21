@@ -927,7 +927,7 @@ describe("fetchDmMessages", () => {
 // ---------------------------------------------------------------------------
 
 describe("sendMessage", () => {
-  const sourceStreamUuid = "22222222-2222-4222-8222-222222222222";
+  const streamUuid = "22222222-2222-4222-8222-222222222222";
 
   it("sends a stream message through the gateway native endpoint", async () => {
     mockMessengerApi.postJsonWithBase.mockResolvedValue({
@@ -938,7 +938,7 @@ describe("sendMessage", () => {
     });
 
     const result = await sendMessage({
-      streamUuid: sourceStreamUuid,
+      streamUuid: streamUuid,
       stream: "general",
       streamId: 10,
       subject: "test",
@@ -964,7 +964,7 @@ describe("sendMessage", () => {
       "/api/messenger/v1",
       "/messages/",
       {
-        stream_uuid: sourceStreamUuid,
+        stream_uuid: streamUuid,
         payload: {
           kind: "markdown",
           content: "hello",
@@ -975,7 +975,7 @@ describe("sendMessage", () => {
     expect(mockMessengerApi.post).not.toHaveBeenCalled();
   });
 
-  it("sends a DM message with the private source stream uuid", async () => {
+  it("sends a DM message with the private stream uuid", async () => {
     mockMessengerApi.postJsonWithBase.mockResolvedValue({
       ok: true,
       status: 201,
@@ -984,7 +984,7 @@ describe("sendMessage", () => {
     });
 
     const result = await sendMessage({
-      streamUuid: sourceStreamUuid,
+      streamUuid: streamUuid,
       content: "hi",
     });
 
@@ -1000,7 +1000,7 @@ describe("sendMessage", () => {
       "/api/messenger/v1",
       "/messages/",
       {
-        stream_uuid: sourceStreamUuid,
+        stream_uuid: streamUuid,
         payload: {
           kind: "markdown",
           content: "hi",
@@ -1009,7 +1009,7 @@ describe("sendMessage", () => {
     );
   });
 
-  it("throws when source stream uuid is missing", async () => {
+  it("throws when stream uuid is missing", async () => {
     await expect(sendMessage({ content: "hi" })).rejects.toThrow(
       /sendMessage\.streamUuid must be a non-empty string/,
     );
@@ -1019,7 +1019,7 @@ describe("sendMessage", () => {
   it("throws when provided stream id is invalid", async () => {
     await expect(
       sendMessage({
-        streamUuid: sourceStreamUuid,
+        streamUuid: streamUuid,
         stream: "engineering",
         streamId: 0,
         content: "hi",
@@ -1029,7 +1029,7 @@ describe("sendMessage", () => {
   });
 
   it("throws when message content is blank", async () => {
-    await expect(sendMessage({ streamUuid: sourceStreamUuid, content: "   " })).rejects.toThrow(
+    await expect(sendMessage({ streamUuid: streamUuid, content: "   " })).rejects.toThrow(
       /sendMessage\.content must be a non-empty string/,
     );
     expect(mockMessengerApi.postJsonWithBase).not.toHaveBeenCalled();
@@ -1044,7 +1044,7 @@ describe("sendMessage", () => {
     });
 
     const result = await sendMessage({
-      streamUuid: sourceStreamUuid,
+      streamUuid: streamUuid,
       stream: "engineering",
       content: "test",
     });
@@ -1060,7 +1060,7 @@ describe("sendMessage", () => {
       raw: { statusText: "Created" },
     });
 
-    await expect(sendMessage({ streamUuid: sourceStreamUuid, content: "hi" })).rejects.toThrow(
+    await expect(sendMessage({ streamUuid: streamUuid, content: "hi" })).rejects.toThrow(
       /Invalid messageId/,
     );
   });

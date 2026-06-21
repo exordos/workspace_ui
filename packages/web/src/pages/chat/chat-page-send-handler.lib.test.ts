@@ -37,7 +37,7 @@ function createDeps(overrides: Partial<ChatPageSendHandlerDeps> = {}): ChatPageS
     activeStream: "Engineering",
     activeStreamCanonicalName: "engineering",
     activeStreamId: 10,
-    activeSourceStreamUuid: "22222222-2222-4222-8222-222222222222",
+    activeStreamUuid: "22222222-2222-4222-8222-222222222222",
     activeTopic: "",
     allocateOptimisticMessageId: () => -1,
     appendMessage,
@@ -79,6 +79,27 @@ describe("executeChatPageSend", () => {
     expect(deps.commitOutgoingMessage).toHaveBeenCalledWith(
       -1,
       expect.objectContaining({ id: testMessageId(99) }),
+    );
+  });
+
+  it("sends DM when stream uuid is resolved even without numeric peer ids", async () => {
+    const streamUuid = "5d4ad324-de78-49ac-9759-ed3d0758fa16";
+    const deps = createDeps({
+      isDmView: true,
+      activeDmUserIds: [],
+      activeStream: null,
+      activeStreamCanonicalName: null,
+      activeStreamId: null,
+      activeStreamUuid: streamUuid,
+    });
+
+    await executeChatPageSend(deps, "hello dm");
+
+    expect(sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        streamUuid,
+        content: "hello dm",
+      }),
     );
   });
 });

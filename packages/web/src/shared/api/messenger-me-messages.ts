@@ -94,10 +94,9 @@ export function parseMeMessage(row: unknown): MessengerMeMessage | null {
     return null;
   }
   const uuid = readUuid(row.uuid);
-  const sourceMessageUuid = readUuid(row.source_message_uuid);
-  const userStreamUuid = readUuid(row.user_stream_uuid);
+  const streamUuid = readUuid(row.stream_uuid);
   const payload = parseMeMessagePayload(row.payload);
-  if (uuid == null || sourceMessageUuid == null || userStreamUuid == null || payload == null) {
+  if (uuid == null || streamUuid == null || payload == null) {
     return null;
   }
   const userUuid = readUuid(row.user_uuid);
@@ -107,8 +106,7 @@ export function parseMeMessage(row: unknown): MessengerMeMessage | null {
   const updatedAt = readOptionalString(row.updated_at);
   return {
     uuid,
-    source_message_uuid: sourceMessageUuid,
-    user_stream_uuid: userStreamUuid,
+    stream_uuid: streamUuid,
     payload,
     read: row.read === true,
     pinned: row.pinned === true,
@@ -223,7 +221,7 @@ export async function fetchMyMessages(
 
 /**
  * Fetches all of a stream's messages for the current user (oldest first), following pagination.
- * `streamUuid` is the stream's `stream_uuid` (a.k.a. `user_stream_uuid` on message rows).
+ * `streamUuid` is the stream's `stream_uuid`.
  */
 export async function fetchStreamMessages(
   streamUuid: string,
@@ -260,7 +258,6 @@ export function meMessageToMockMessage(
   const id: MessageId = message.uuid;
   const base: MockMessage = {
     id,
-    source_message_uuid: message.source_message_uuid,
     sender_id: 0,
     sender_full_name: "",
     stream_id: streamId,

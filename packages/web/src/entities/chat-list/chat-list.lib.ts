@@ -344,7 +344,6 @@ function mapInternalDmToSidebar(x: DmEntryInternal): Extract<SidebarChat, { type
     time: x.time,
     userIds: x.userIds,
     streamUuid: x.streamUuid,
-    sourceStreamUuid: x.sourceStreamUuid,
     badge: x.unreadCount > 0 ? x.unreadCount : undefined,
     avatar_url: x.avatar_url,
     ts: x.ts,

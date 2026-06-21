@@ -15,8 +15,6 @@ vi.mock("~/shared/api/messenger-streams", () => ({
 
 const PEER_UUID = "00000000-0000-0000-0000-000000000002";
 const STREAM_UUID = "b4460c02-d693-4564-8804-98059613b86e";
-const SOURCE_STREAM_UUID = "c4460c02-d693-4564-8804-98059613b86e";
-
 describe("startDirectMessage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -25,7 +23,6 @@ describe("startDirectMessage", () => {
   it("creates gateway private stream for IAM peer and returns streamUuid route", async () => {
     vi.mocked(resolveOrCreateDirectMessageStream).mockResolvedValue({
       streamUuid: STREAM_UUID,
-      sourceStreamUuid: SOURCE_STREAM_UUID,
       userUuid: PEER_UUID,
       name: "Alice Smith",
     });
@@ -33,7 +30,6 @@ describe("startDirectMessage", () => {
     await expect(startDirectMessage(PEER_UUID, "Alice Smith")).resolves.toEqual({
       kind: "gateway",
       streamUuid: STREAM_UUID,
-      sourceStreamUuid: SOURCE_STREAM_UUID,
       userUuid: PEER_UUID,
       name: "Alice Smith",
     });

@@ -156,10 +156,7 @@ export function normalizeDmUserIds(
 }
 
 function metadataOnlySyntheticDmId(row: ChatListDmMetadataRow): number {
-  return (
-    SYNTHETIC_DM_ID_OFFSET +
-    hashKey(row.streamUuid ?? row.sourceStreamUuid ?? row.userUuid ?? row.name ?? "dm")
-  );
+  return SYNTHETIC_DM_ID_OFFSET + hashKey(row.streamUuid ?? row.userUuid ?? row.name ?? "dm");
 }
 
 /** Builds or merges a metadata-only DM sidebar row (register / DM index bootstrap). */
@@ -198,7 +195,6 @@ export function buildDmMetadataEntry(
         time,
         ts,
         ...(row.streamUuid != null ? { streamUuid: row.streamUuid } : {}),
-        ...(row.sourceStreamUuid != null ? { sourceStreamUuid: row.sourceStreamUuid } : {}),
         ...(row.userUuid != null ? { userUuid: row.userUuid } : {}),
         unreadCount,
         avatar_url: existing?.avatar_url,
@@ -231,7 +227,6 @@ export function buildDmMetadataEntry(
       ts,
       userIds,
       ...(row.streamUuid != null ? { streamUuid: row.streamUuid } : {}),
-      ...(row.sourceStreamUuid != null ? { sourceStreamUuid: row.sourceStreamUuid } : {}),
       ...(row.userUuid != null ? { userUuid: row.userUuid } : {}),
       unreadCount,
       avatar_url: display.getAvatarUrl(partnerId) ?? existing?.avatar_url,

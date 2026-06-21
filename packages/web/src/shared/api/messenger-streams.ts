@@ -218,12 +218,9 @@ function parseMeStream(row: unknown): MessengerMeStream | null {
   }
   const uuid = readUuid(row.uuid);
   const name = readTrimmedString(row.name);
-  const sourceStreamUuid = readUuid(row.source_stream_uuid);
-  if (uuid == null || name == null || sourceStreamUuid == null) {
+  if (uuid == null || name == null) {
     return null;
   }
-  // The row id is the per-user stream identity referenced by message rows as user_stream_uuid.
-  // The backend exposes source_stream_uuid separately for writes.
   const streamUuid = uuid;
   const projectId = readUuid(row.project_id);
   const userUuid = readUuid(row.user_uuid);
@@ -244,7 +241,6 @@ function parseMeStream(row: unknown): MessengerMeStream | null {
     ...(updatedAt != null ? { updated_at: updatedAt } : {}),
     ...(userUuid != null ? { user_uuid: userUuid } : {}),
     stream_uuid: streamUuid,
-    source_stream_uuid: sourceStreamUuid,
     ...(lastSyncedAt != null ? { last_synced_at: lastSyncedAt } : {}),
     ...(sourceName != null ? { source_name: sourceName } : {}),
     ...(source != null ? { source } : {}),
@@ -270,7 +266,6 @@ export async function fetchMyStreams(): Promise<MessengerMeStream[]> {
 
 export interface DirectMessageStreamRef {
   streamUuid: string;
-  sourceStreamUuid: string;
   userUuid: string;
   name: string;
 }
@@ -319,21 +314,19 @@ async function fetchStreamBindings(): Promise<WorkspaceStreamBindingRef[]> {
     .filter((binding): binding is WorkspaceStreamBindingRef => binding != null);
 }
 
-/** Finds an existing 1:1 private stream row for a peer IAM UUID through source stream bindings. */
+/** Finds an existing 1:1 private stream row for a peer IAM UUID through stream bindings. */
 export function findPrivateStreamForUserUuid(
   streams: readonly MessengerMeStream[],
   peerUserUuid: string,
   bindings: readonly WorkspaceStreamBindingRef[],
 ): MessengerMeStream | undefined {
   const normalizedPeer = peerUserUuid.trim().toLowerCase();
-  const peerSourceStreamUuids = new Set(
+  const peerStreamUuids = new Set(
     bindings
       .filter((binding) => binding.user_uuid.toLowerCase() === normalizedPeer)
       .map((binding) => binding.stream_uuid),
   );
-  return streams.find(
-    (stream) => stream.private && peerSourceStreamUuids.has(stream.source_stream_uuid),
-  );
+  return streams.find((stream) => stream.private && peerStreamUuids.has(stream.stream_uuid));
 }
 
 /** Creates a 1:1 private stream via native Workspace messenger `POST /streams/`. */
@@ -385,7 +378,6 @@ export async function createPrivateMessageStream(options: {
     log.info("Private stream created", { streamUuid: created.streamUuid });
     return {
       streamUuid: created.streamUuid,
-      sourceStreamUuid: created.streamUuid,
       userUuid: peerUuid,
       name: created.name,
     };
@@ -410,7 +402,6 @@ export async function resolveOrCreateDirectMessageStream(
   if (existing != null) {
     return {
       streamUuid: existing.stream_uuid,
-      sourceStreamUuid: existing.source_stream_uuid,
       userUuid: peerUuid,
       name: existing.name,
     };
@@ -425,7 +416,6 @@ function subscriptionFromMeStream(stream: MessengerMeStream): MessengerSubscript
   return {
     stream_id: stream.stream_id,
     stream_uuid: stream.stream_uuid,
-    source_stream_uuid: stream.source_stream_uuid,
     name: stream.name,
     is_muted: false,
     invite_only: stream.invite_only,
@@ -447,7 +437,6 @@ export async function fetchStreams(): Promise<MockStream[]> {
     .map((stream) => ({
       stream_id: stream.stream_id!,
       stream_uuid: stream.stream_uuid,
-      source_stream_uuid: stream.source_stream_uuid,
       name: stream.name,
       description: stream.description,
       is_announcement_only: stream.announce,

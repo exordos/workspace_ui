@@ -54,4 +54,41 @@ describe("useChatRouteContext", () => {
     expect(result.current.forwardMessageId).toBe(forwardId);
     expect(result.current.isDmView).toBe(true);
   });
+
+  it("treats stream-backed DM route as DM view without peer ids", () => {
+    const streamUuid = "1a4e14ff-436e-4552-8a81-ed838425e1fc";
+    const { result } = renderHook(() =>
+      useChatRouteContext({
+        streamSlug: undefined,
+        topicName: undefined,
+        dmIdParam: streamUuid,
+        location: {
+          pathname: "/org/example.com/dm/" + streamUuid,
+          search: "",
+          hash: "",
+          state: null,
+          key: "test",
+        },
+        streamsMap: new Map(),
+        dmsFromStore: [
+          {
+            type: "dm",
+            id: 1,
+            name: "Alice",
+            slug: streamUuid,
+            streamUuid,
+            lastMessage: "",
+            time: "",
+            unreadCount: 0,
+          },
+        ],
+        currentUserId: "00000000-0000-4000-8000-000000000001",
+      }),
+    );
+
+    expect(result.current.isDmView).toBe(true);
+    expect(result.current.dmRecipientIds).toEqual([]);
+    expect(result.current.dmKey).toBe(streamUuid);
+    expect(result.current.dmChat?.streamUuid).toBe(streamUuid);
+  });
 });

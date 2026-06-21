@@ -486,7 +486,6 @@ export function useCreateChatDialog(options: {
           useChatListStore.getState().upsertDmMetadataRows([
             {
               streamUuid: result.streamUuid,
-              sourceStreamUuid: result.sourceStreamUuid,
               userUuid: result.userUuid,
               name: result.name,
               userIds: [],

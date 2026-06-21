@@ -389,16 +389,14 @@ describe("useLayoutMessengerEventLoop", () => {
   });
 
   it("hydrates private DM metadata from /streams as UUID routes", async () => {
-    const userStreamUuid = "1bce03ca-d6d9-4fdb-82cb-7ec05fa7a8e9";
-    const sourceStreamUuid = "b4460c02-d693-4564-8804-98059613b86e";
+    const streamUuid = "1bce03ca-d6d9-4fdb-82cb-7ec05fa7a8e9";
     const currentUserUuid = "00000000-0000-0000-0000-000000000000";
     fetchMyStreamsMock.mockResolvedValueOnce([
       {
-        uuid: userStreamUuid,
+        uuid: streamUuid,
         name: "Alice Smith",
         description: "",
-        stream_uuid: userStreamUuid,
-        source_stream_uuid: sourceStreamUuid,
+        stream_uuid: streamUuid,
         user_uuid: currentUserUuid,
         last_synced_at: "2026-06-20T16:30:19.824219Z",
         invite_only: false,
@@ -416,24 +414,22 @@ describe("useLayoutMessengerEventLoop", () => {
     const dm = useChatListStore
       .getState()
       .dms()
-      .find((entry) => entry.streamUuid === userStreamUuid);
+      .find((entry) => entry.streamUuid === streamUuid);
     expect(dm).toEqual(
       expect.objectContaining({
         name: "Alice Smith",
-        slug: userStreamUuid,
-        streamUuid: userStreamUuid,
-        sourceStreamUuid,
+        slug: streamUuid,
+        streamUuid: streamUuid,
       }),
     );
     expect(dm?.userUuid).toBeUndefined();
 
-    const internalDm = useChatListStore.getState().dmsMap.get(`stream:${userStreamUuid}`);
+    const internalDm = useChatListStore.getState().dmsMap.get(`stream:${streamUuid}`);
     expect(internalDm).toEqual(
       expect.objectContaining({
         name: "Alice Smith",
-        slug: userStreamUuid,
-        streamUuid: userStreamUuid,
-        sourceStreamUuid,
+        slug: streamUuid,
+        streamUuid: streamUuid,
       }),
     );
     expect(internalDm?.userUuid).toBeUndefined();

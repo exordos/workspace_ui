@@ -22,14 +22,12 @@ const mockMessengerApi = getMockMessengerApi();
 const STREAM_UUID = "22222222-2222-4222-8222-222222222222";
 const MSG_UUID_1 = "11111111-1111-4111-8111-111111111111";
 const MSG_UUID_2 = "33333333-3333-4333-8333-333333333333";
-const SOURCE_MSG_UUID = "44444444-4444-4444-8444-444444444444";
 const USER_UUID = "55555555-5555-4555-8555-555555555555";
 
 function rawRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     uuid: MSG_UUID_1,
-    source_message_uuid: SOURCE_MSG_UUID,
-    user_stream_uuid: STREAM_UUID,
+    stream_uuid: STREAM_UUID,
     user_uuid: USER_UUID,
     payload: { kind: "markdown", content: "Hello world" },
     last_synced_at: "2026-06-21T10:30:00Z",
@@ -56,8 +54,7 @@ describe("parseMeMessage", () => {
   it("maps a full row into the domain shape", () => {
     expect(parseMeMessage(rawRow())).toEqual<MessengerMeMessage>({
       uuid: MSG_UUID_1,
-      source_message_uuid: SOURCE_MSG_UUID,
-      user_stream_uuid: STREAM_UUID,
+      stream_uuid: STREAM_UUID,
       user_uuid: USER_UUID,
       payload: { kind: "markdown", content: "Hello world" },
       read: false,
@@ -72,8 +69,7 @@ describe("parseMeMessage", () => {
   it("coerces flags to booleans and tolerates missing optional fields", () => {
     const parsed = parseMeMessage({
       uuid: MSG_UUID_1,
-      source_message_uuid: SOURCE_MSG_UUID,
-      user_stream_uuid: STREAM_UUID,
+      stream_uuid: STREAM_UUID,
       payload: { content: "hi" },
       read: true,
       starred: true,
@@ -87,25 +83,16 @@ describe("parseMeMessage", () => {
     expect(parsed?.created_at).toBeUndefined();
   });
 
-  it("rejects rows missing uuid, source message uuid, stream uuid, or payload content", () => {
+  it("rejects rows missing uuid, stream uuid or payload content", () => {
     expect(
       parseMeMessage({
-        source_message_uuid: SOURCE_MSG_UUID,
-        user_stream_uuid: STREAM_UUID,
+        stream_uuid: STREAM_UUID,
         payload: { content: "x" },
       }),
     ).toBeNull();
     expect(
       parseMeMessage({
         uuid: MSG_UUID_1,
-        user_stream_uuid: STREAM_UUID,
-        payload: { content: "x" },
-      }),
-    ).toBeNull();
-    expect(
-      parseMeMessage({
-        uuid: MSG_UUID_1,
-        source_message_uuid: SOURCE_MSG_UUID,
         payload: { content: "x" },
       }),
     ).toBeNull();
@@ -238,7 +225,6 @@ describe("meMessageToMockMessage", () => {
 
     expect(mock).toMatchObject({
       id: MSG_UUID_1,
-      source_message_uuid: SOURCE_MSG_UUID,
       sender_id: 0,
       sender_full_name: "",
       stream_id: null,
@@ -253,8 +239,7 @@ describe("meMessageToMockMessage", () => {
   it("uses timestamp 0 when created_at is absent", () => {
     const parsed = parseMeMessage({
       uuid: MSG_UUID_1,
-      source_message_uuid: SOURCE_MSG_UUID,
-      user_stream_uuid: STREAM_UUID,
+      stream_uuid: STREAM_UUID,
       payload: { content: "hi" },
     });
     expect(meMessageToMockMessage(parsed!).timestamp).toBe(0);

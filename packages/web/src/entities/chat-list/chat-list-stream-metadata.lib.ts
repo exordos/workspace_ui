@@ -63,13 +63,11 @@ export function buildStreamMetadataEntry(
   const accessFields = resolveStreamMetadataAccessFields(row, existing);
   const accessSpread = spreadStreamMetadataAccessFields(accessFields);
   const streamUuid = existing?.streamUuid ?? row.streamUuid;
-  const sourceStreamUuid = existing?.sourceStreamUuid ?? row.sourceStreamUuid;
   if (existing) {
     return {
       ...existing,
       name: name.length > 0 ? name : existing.name,
       ...(streamUuid != null ? { streamUuid } : {}),
-      ...(sourceStreamUuid != null ? { sourceStreamUuid } : {}),
       ...accessSpread,
     };
   }
@@ -77,7 +75,6 @@ export function buildStreamMetadataEntry(
     stream_id: row.streamId,
     name: name.length > 0 ? name : String(row.streamId),
     ...(streamUuid != null ? { streamUuid } : {}),
-    ...(sourceStreamUuid != null ? { sourceStreamUuid } : {}),
     lastMessage: "",
     lastMessageSenderName: undefined,
     time: "",

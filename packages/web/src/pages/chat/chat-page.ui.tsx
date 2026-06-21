@@ -159,14 +159,12 @@ export const ChatPage: React.FC = () => {
       }),
     [activeStreamId, canonicalStreamName, streamsMap],
   );
-  const activeSourceStreamUuid = useMemo(() => {
+  const activeStreamUuid = useMemo(() => {
     if (isDmView) {
-      return dmChat?.sourceStreamUuid ?? null;
+      return dmChat?.streamUuid ?? null;
     }
-    return activeStreamId != null
-      ? (streamsMap.get(activeStreamId)?.sourceStreamUuid ?? null)
-      : null;
-  }, [activeStreamId, dmChat?.sourceStreamUuid, isDmView, streamsMap]);
+    return activeStreamId != null ? (streamsMap.get(activeStreamId)?.streamUuid ?? null) : null;
+  }, [activeStreamId, dmChat?.streamUuid, isDmView, streamsMap]);
   const partnerUser = useUsersStore((s) =>
     partnerUserId != null ? s.getUser(partnerUserId) : undefined,
   );
@@ -634,7 +632,7 @@ export const ChatPage: React.FC = () => {
       activeStream: activeStream ?? null,
       activeStreamCanonicalName: activeStreamCanonicalName ?? null,
       activeStreamId,
-      activeSourceStreamUuid,
+      activeStreamUuid,
       activeTopic,
       appendMessage: appendMessageToStore,
       commitOutgoingMessage: commitOutgoingMessageToStore,
@@ -1175,7 +1173,7 @@ export const ChatPage: React.FC = () => {
         />
         <ChatPageComposerSection
           isDmView={isDmView}
-          activeDmUserIds={numericActiveDmUserIds}
+          activeStreamUuid={activeStreamUuid}
           dmPartnerDeactivated={partnerDeactivated}
           activeStream={activeStream}
           showTopicPrompt={!isDmView && activeTopic == null}

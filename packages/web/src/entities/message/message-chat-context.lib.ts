@@ -81,22 +81,6 @@ export function contextFromMessage(
 }
 
 /** Parse DM key string into participant user ids (excluding current user when possible). */
-export function buildMessageFetchNarrow(
-  context: CurrentChatContext,
-  currentUserId: UserId | null,
-): { operator: string; operand: string | number | UserId[] }[] {
-  if (context.type === "stream") {
-    if (context.streamWideView) {
-      return [{ operator: "stream", operand: context.streamName }];
-    }
-    return [
-      { operator: "stream", operand: context.streamName },
-      { operator: "topic", operand: context.topic },
-    ];
-  }
-  return [{ operator: "dm", operand: parseDmKeyToUserIds(context.dmKey, currentUserId) }];
-}
-
 export function parseDmKeyToUserIds(dmKey: string, currentUserId: UserId | null): UserId[] {
   const uniqueByKey = new Map<string, UserId>();
   for (const part of dmKey.split(",")) {

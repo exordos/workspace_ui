@@ -77,21 +77,33 @@ export function useChatRouteContext(options: {
     if (dmChat?.userIds != null && dmChat.userIds.length > 0) {
       return dmChat.userIds;
     }
+    if (dmChat?.streamUuid != null && dmChat.streamUuid === dmIdParam) {
+      return null;
+    }
     if (rawDmUserIds != null && rawDmUserIds.length > 0) {
       return normalizeDmRouteUserIds(rawDmUserIds, currentUserId);
     }
     return null;
-  }, [rawDmUserIds, currentUserId, dmChat?.userIds, dmChat?.userUuid]);
+  }, [
+    rawDmUserIds,
+    currentUserId,
+    dmChat?.streamUuid,
+    dmChat?.userIds,
+    dmChat?.userUuid,
+    dmIdParam,
+  ]);
 
   const dmRecipientIds = activeDmUserIds ?? [];
-  const isDmView = dmRecipientIds.length > 0;
+  const isDmView = dmIdParam != null && dmIdParam !== "";
 
-  const partnerUserId = isDmView && dmRecipientIds.length > 0 ? (dmRecipientIds[0] ?? null) : null;
+  const partnerUserId = dmRecipientIds.length > 0 ? (dmRecipientIds[0] ?? null) : null;
 
   const dmKey = useMemo(() => {
-    if (!isDmView || currentUserId == null) return null;
+    if (!isDmView) return null;
+    if (dmRecipientIds.length === 0) return dmIdParam ?? null;
+    if (currentUserId == null) return null;
     return dmRouteKey(dmRecipientIds, currentUserId);
-  }, [dmRecipientIds, isDmView, currentUserId]);
+  }, [dmIdParam, dmRecipientIds, isDmView, currentUserId]);
 
   const focusedMessageId = useMemo(() => parseMessageIdFromSearch(location, "msg"), [location]);
   const forwardMessageId = useMemo(() => parseMessageIdFromSearch(location, "forward"), [location]);

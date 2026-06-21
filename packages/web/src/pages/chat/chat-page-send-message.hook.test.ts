@@ -49,7 +49,7 @@ function defaultParams(overrides: Partial<Parameters<typeof useChatPageSendMessa
     activeStream: null,
     activeStreamCanonicalName: null,
     activeStreamId: undefined,
-    activeSourceStreamUuid: "22222222-2222-4222-8222-222222222222",
+    activeStreamUuid: "22222222-2222-4222-8222-222222222222",
     activeTopic: null,
     appendMessage,
     commitOutgoingMessage,
@@ -146,7 +146,7 @@ describe("useChatPageSendMessage", () => {
       activeStream: "Engineering",
       activeStreamCanonicalName: "engineering",
       activeStreamId: 5,
-      activeSourceStreamUuid: "33333333-3333-4333-8333-333333333333",
+      activeStreamUuid: "33333333-3333-4333-8333-333333333333",
       activeTopic: "general",
     });
     const { result } = renderHook(() => useChatPageSendMessage(params));

@@ -50,8 +50,9 @@ export interface MessengerRecentPrivateConversation {
   unread_message_ids: MessageId[];
 }
 
+/** Stream row returned by `GET /api/messenger/v1/streams/`. */
 export interface MessengerMeStream {
-  /** Per-user stream row id. Use this for messages stream_uuid filtering. */
+  /** Workspace stream UUID used for reads and writes. */
   uuid: string;
   name: string;
   description: string;
@@ -59,10 +60,8 @@ export interface MessengerMeStream {
   created_at?: string;
   updated_at?: string;
   user_uuid?: string;
-  /** UI alias for the per-user stream row id. */
+  /** UI/API alias for the stream UUID. */
   stream_uuid: string;
-  /** Source WorkspaceStream.uuid. Use this when creating messages. */
-  source_stream_uuid: string;
   last_synced_at?: string;
   source_name?: string;
   source?: Record<string, unknown>;
@@ -79,18 +78,14 @@ export interface MessengerMeMessagePayload {
 }
 
 /**
- * One per-user message-view row from the Workspace gateway
- * `GET /api/messenger/v1/messages/`. Represents the authenticated user's synced copy of a
- * stream message together with its personal read/pinned/starred flags. The endpoint does not
- * carry sender identity — these rows are the user's own message inbox, scoped server-side by
- * IAM token (project_id + user_uuid). Field names are snake_case (`convert_underscore=False`).
+ * One message row from `GET /api/messenger/v1/messages/` for the authenticated user.
+ * `stream_uuid` is the single stream identity used for reads and writes. Field names are
+ * snake_case (`convert_underscore=False`).
  */
 export interface MessengerMeMessage {
-  /** Per-user message row id. Use this for messages paging and row lookup. */
+  /** Message UUID. Use this for paging, row lookup, and message operations. */
   uuid: string;
-  /** Source WorkspaceMessage.uuid. Use this for source-message operations. */
-  source_message_uuid: string;
-  user_stream_uuid: string;
+  stream_uuid: string;
   payload: MessengerMeMessagePayload;
   read: boolean;
   pinned: boolean;
@@ -328,10 +323,8 @@ export interface DirectMessagesPageResult {
 
 export interface MockStream {
   stream_id: number;
-  /** Per-user stream UUID used for messages reads. */
+  /** Workspace stream UUID used for message reads and writes. */
   stream_uuid?: string;
-  /** Source stream UUID used for messages writes. */
-  source_stream_uuid?: string;
   name: string;
   description: string;
   is_announcement_only: boolean;
@@ -425,10 +418,8 @@ export interface RawMessageToMockInput {
 
 export interface MessengerSubscription {
   stream_id: number;
-  /** Per-user stream UUID used for messages reads. */
+  /** Workspace stream UUID used for message reads and writes. */
   stream_uuid?: string;
-  /** Source stream UUID used for messages writes. */
-  source_stream_uuid?: string;
   name: string;
   is_muted: boolean;
   /** Per-channel override; null/undefined inherits global stream notification settings. */
@@ -454,7 +445,7 @@ export interface MessagesPageResult {
 export interface SendMessageParams {
   /** For stream message: stream name. Omit when using `to` for private. */
   stream?: string;
-  /** Source stream UUID for Workspace gateway message creation. */
+  /** Workspace stream UUID for gateway message creation. */
   streamUuid?: string;
   /** Optional stream ID for a more faithful optimistic payload. */
   streamId?: number;

@@ -36,7 +36,6 @@ export type SidebarChat =
       pinned?: boolean;
       userIds?: UserId[];
       streamUuid?: string;
-      sourceStreamUuid?: string;
       userUuid?: string;
       avatar_url?: string;
       ts?: number;
@@ -73,10 +72,8 @@ export interface StreamWithLast {
 
 export interface StreamEntryInternal {
   stream_id: number;
-  /** Per-user stream UUID; used to fetch channel messages via the messages endpoint. */
+  /** Stream UUID used to fetch and create messages via the gateway. */
   streamUuid?: string;
-  /** Source stream UUID; used to create messages via the gateway messages endpoint. */
-  sourceStreamUuid?: string;
   name: string;
   lastMessage: string;
   lastMessageSenderName?: string;
@@ -113,7 +110,6 @@ export interface DmEntryInternal {
   ts: number;
   userIds?: UserId[];
   streamUuid?: string;
-  sourceStreamUuid?: string;
   userUuid?: string;
   unreadCount: number;
   avatar_url?: string;

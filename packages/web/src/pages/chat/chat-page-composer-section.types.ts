@@ -5,7 +5,7 @@ import type { ComposerUploadProgressState } from "./chat-upload.lib";
 
 export interface ChatPageComposerSectionProps {
   isDmView: boolean;
-  activeDmUserIds: number[] | null;
+  activeStreamUuid: string | null | undefined;
   /** 1:1 DM with a Workspace-deactivated partner — composer disabled. */
   dmPartnerDeactivated?: boolean;
   activeStream: string | null | undefined;

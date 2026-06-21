@@ -22,7 +22,7 @@ export interface ChatPageSendHandlerDeps {
   activeStream: string | null;
   activeStreamCanonicalName: string | null;
   activeStreamId: number | null | undefined;
-  activeSourceStreamUuid: string | null | undefined;
+  activeStreamUuid: string | null | undefined;
   activeTopic: string | null | undefined;
   allocateOptimisticMessageId: () => MessageId;
   appendMessage: (message: MockMessage) => void;
@@ -143,18 +143,12 @@ export async function executeChatPageSend(
     setSendError: deps.setSendError,
   });
 
-  if (deps.isDmView && deps.activeDmUserIds != null && deps.activeDmUserIds.length > 0) {
-    if (deps.activeSourceStreamUuid == null) {
-      const error = t("message.sendFailed");
-      deps.setSendError(error);
-      deps.setUploadProgress(null);
-      throw new Error(error);
-    }
+  if (deps.isDmView && deps.activeStreamUuid != null) {
     await sendOutgoingMessageWithOptimisticUi({
       deps,
       body,
-      target: { mode: "dm", recipientIds: deps.activeDmUserIds },
-      apiPayload: { streamUuid: deps.activeSourceStreamUuid, content: body },
+      target: { mode: "dm", recipientIds: deps.activeDmUserIds ?? [] },
+      apiPayload: { streamUuid: deps.activeStreamUuid, content: body },
     });
     return;
   }
@@ -164,11 +158,11 @@ export async function executeChatPageSend(
     return;
   }
 
-  if (deps.activeStreamCanonicalName == null || deps.activeSourceStreamUuid == null) {
-    log.warn("Blocked stream send without canonical stream name or source uuid", {
+  if (deps.activeStreamCanonicalName == null || deps.activeStreamUuid == null) {
+    log.warn("Blocked stream send without canonical stream name or stream uuid", {
       streamId: deps.activeStreamId ?? undefined,
       displayName: deps.activeStream,
-      hasSourceStreamUuid: deps.activeSourceStreamUuid != null,
+      hasStreamUuid: deps.activeStreamUuid != null,
     });
     const error = t("message.sendFailed");
     deps.setSendError(error);
@@ -188,7 +182,7 @@ export async function executeChatPageSend(
     },
     apiPayload: {
       stream: deps.activeStreamCanonicalName,
-      streamUuid: deps.activeSourceStreamUuid,
+      streamUuid: deps.activeStreamUuid,
       streamId: deps.activeStreamId ?? undefined,
       subject,
       content: body,

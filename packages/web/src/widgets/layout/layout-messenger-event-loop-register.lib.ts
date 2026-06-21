@@ -56,9 +56,6 @@ export function toStreamMetadataRows(
         ...(subscription.stream_uuid != null && subscription.stream_uuid.length > 0
           ? { streamUuid: subscription.stream_uuid }
           : {}),
-        ...(subscription.source_stream_uuid != null && subscription.source_stream_uuid.length > 0
-          ? { sourceStreamUuid: subscription.source_stream_uuid }
-          : {}),
         ...(typeof subscription.is_archived === "boolean"
           ? { isArchived: subscription.is_archived }
           : {}),
@@ -112,7 +109,6 @@ export function toSubscriptionsFromMeStreams(
     .map((stream) => ({
       stream_id: stream.stream_id,
       stream_uuid: stream.stream_uuid,
-      source_stream_uuid: stream.source_stream_uuid,
       name: stream.name,
       is_muted: false,
       invite_only: stream.invite_only,
@@ -134,7 +130,6 @@ export function toDmMetadataRowsFromMeStreams(
     rows.push({
       userIds: [],
       streamUuid: stream.stream_uuid,
-      sourceStreamUuid: stream.source_stream_uuid,
       name: stream.name,
       ...(lastActivityTs != null ? { lastActivityTs } : {}),
       unreadCount: 0,
