@@ -208,7 +208,7 @@ function streamsMapToSortedStreams(
           lastMessageSenderName: t.lastMessageSenderName,
           time: t.time,
           badge: t.unreadCount > 0 ? t.unreadCount : undefined,
-          hasMention: false
+          hasMention: mentionFlags.topicKeys.has(buildTopicMentionKey(s.streamUuid, t.subject))
             ? true
             : undefined,
         }));
@@ -222,7 +222,7 @@ function streamsMapToSortedStreams(
         time: s.time,
         topics,
         badge: badge > 0 ? badge : undefined,
-        hasMention: undefined,
+        hasMention: mentionFlags.streamIds.has(s.streamUuid) ? true : undefined,
       };
     });
 }
@@ -940,8 +940,10 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           let changed = false;
           for (const row of topics) {
             const topicUuid = row.topicUuid.trim().toLowerCase();
-            const topicName = normalizeTopicForIdentity(row.name);
-            if (topicUuid.length === 0 || topicName.length === 0) continue;
+            const topicName = row.isDefault === true ? "" : row.name.trim();
+            if (topicUuid.length === 0 || (row.isDefault !== true && topicName.length === 0)) {
+              continue;
+            }
             const existing = nextTopics.get(topicName);
             if (existing?.topicUuid === topicUuid && existing.subject === topicName) continue;
             if (!changed) {
@@ -1125,7 +1127,11 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           }
 
           const knownOldTopicMessageIds = [
-            ...getStreamTopicMessageIds(state.streamTopicMessageIds, normalizedStreamId, oldTopicKey),
+            ...getStreamTopicMessageIds(
+              state.streamTopicMessageIds,
+              normalizedStreamId,
+              oldTopicKey,
+            ),
           ];
           const canMoveTopicEntry =
             knownOldTopicMessageIds.length > 0 &&
@@ -1215,8 +1221,10 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           };
           const assignStreamTopicForLocation = (messageId: MessageId) => {
             const location = nextLocations.get(messageId);
-            if (location?.type !== "stream" || location.streamUuid !== normalizedSourceStreamId) return;
-            if (location.streamUuid === normalizedTargetStreamId && location.topic === nextTopicKey) return;
+            if (location?.type !== "stream" || location.streamUuid !== normalizedSourceStreamId)
+              return;
+            if (location.streamUuid === normalizedTargetStreamId && location.topic === nextTopicKey)
+              return;
             ensureMutableLocations();
             nextLocations.set(messageId, {
               type: "stream",
@@ -1230,7 +1238,11 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           }
 
           const knownOldTopicMessageIds = [
-            ...getStreamTopicMessageIds(state.streamTopicMessageIds, normalizedSourceStreamId, oldTopicKey),
+            ...getStreamTopicMessageIds(
+              state.streamTopicMessageIds,
+              normalizedSourceStreamId,
+              oldTopicKey,
+            ),
           ];
           const canMoveTopicEntry =
             knownOldTopicMessageIds.length > 0 &&

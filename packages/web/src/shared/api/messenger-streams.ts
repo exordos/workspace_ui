@@ -16,7 +16,6 @@ import {
 } from "./client";
 import {
   messengerPipelineDelete,
-  messengerPipelineGet,
   messengerPipelinePost,
   messengerPipelinePatch,
 } from "./messenger-pipeline.internal";
@@ -338,14 +337,13 @@ function parseStreamTopic(row: unknown): MessengerStreamTopic | null {
     return null;
   }
   const projectId = readUuid(row.project_id);
-  const defaultForStreamUuid = readUuid(row.default_for_stream_uuid);
   const createdAt = readOptionalString(row.created_at);
   const updatedAt = readOptionalString(row.updated_at);
   return {
     uuid,
     name,
     stream_uuid: streamUuid,
-    ...(defaultForStreamUuid != null ? { default_for_stream_uuid: defaultForStreamUuid } : {}),
+    is_default: row.is_default === true,
     ...(projectId != null ? { project_id: projectId } : {}),
     ...(createdAt != null ? { created_at: createdAt } : {}),
     ...(updatedAt != null ? { updated_at: updatedAt } : {}),
@@ -379,6 +377,32 @@ export async function fetchStreamTopics(
   return extractStreamTopicItems(response.data)
     .map(parseStreamTopic)
     .filter((topic): topic is MessengerStreamTopic => topic != null);
+}
+
+export async function createStreamTopic(params: {
+  streamUuid: string;
+  name: string;
+}): Promise<MessengerStreamTopic | null> {
+  const streamUuid = guard.streamUuid(params.streamUuid, "createStreamTopic.streamUuid");
+  const name = guard.nonEmpty(params.name, "createStreamTopic.name").trim();
+  const response = await messengerApi.postJsonWithBase(
+    getMessengerWorkspaceApiBaseForCurrentInstance(),
+    "/stream_topics/",
+    {
+      stream_uuid: streamUuid,
+      name,
+    },
+  );
+  if (!response.ok) {
+    log.warn("Stream topic creation failed", { status: response.status, streamUuid });
+    return null;
+  }
+  const topic = parseStreamTopic(response.data);
+  if (topic == null) {
+    log.warn("Stream topic creation returned invalid payload", { streamUuid });
+    return null;
+  }
+  return topic;
 }
 
 /** Finds an existing 1:1 private stream row for a peer IAM UUID through stream bindings. */

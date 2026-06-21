@@ -257,9 +257,7 @@ export function requestStreamSidebarTopicListHydrate(streamId: string): Promise<
           topicUuid: topic.uuid,
           streamUuid: topic.stream_uuid,
           name: topic.name,
-          ...(topic.default_for_stream_uuid != null
-            ? { defaultForStreamUuid: topic.default_for_stream_uuid }
-            : {}),
+          isDefault: topic.is_default,
         })),
       );
       hydratedStreamTopicLists.add(scoped.key);
@@ -352,7 +350,10 @@ export function requestStreamSidebarTopicsHydrate(
         return;
       }
 
-      logChatListFlow("chatList: stream sidebar topics hydrate start", { streamId: normalizedStreamId, reason });
+      logChatListFlow("chatList: stream sidebar topics hydrate start", {
+        streamId: normalizedStreamId,
+        reason,
+      });
       const messages = await fetchStreamChannelMessagesForSidebarTopics(
         normalizedStreamId,
         undefined,
@@ -362,7 +363,10 @@ export function requestStreamSidebarTopicsHydrate(
         return;
       }
       if (messages.length === 0) {
-        logChatListFlow("chatList: stream sidebar topics hydrate empty", { streamId: normalizedStreamId, reason });
+        logChatListFlow("chatList: stream sidebar topics hydrate empty", {
+          streamId: normalizedStreamId,
+          reason,
+        });
         return;
       }
 

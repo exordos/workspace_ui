@@ -34,7 +34,7 @@ export interface ChatListStreamTopicMetadataRow {
   topicUuid: string;
   streamUuid: string;
   name: string;
-  defaultForStreamUuid?: string;
+  isDefault?: boolean;
 }
 
 export interface ChatListDmMetadataRow {

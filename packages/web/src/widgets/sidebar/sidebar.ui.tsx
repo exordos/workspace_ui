@@ -10,6 +10,8 @@ import {
 } from "~/features/folder-sync/folder-sync-constants.lib";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { t } from "~/i18n/i18n";
+import { createStreamTopic } from "~/shared/api/messenger-streams";
+import { createLogger } from "~/shared/lib/logger";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { buildStreamSlug } from "~/shared/lib/stream-slug.lib";
 import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
@@ -22,6 +24,8 @@ import { SidebarFolderChatList } from "./sidebar-folder-chat-list.ui";
 import { SidebarSearchHeader } from "./sidebar-search-header.ui";
 import { getStreamChats } from "./sidebar.lib";
 import type { SidebarChat, SidebarUiProps } from "./sidebar.types";
+
+const log = createLogger("sidebar");
 
 function stripOrgPrefix(pathname: string): string {
   return pathname.replace(/^\/org\/[^/]+(?=\/|$)/, "");
@@ -156,11 +160,36 @@ export const SidebarInner: React.FC<SidebarUiProps> = ({
 
   const handleNewTopic = useCallback(
     (streamSlug: string, topicName: string) => {
-      void navigate(
-        withCurrentOrgRoute(
-          `/stream/${streamSlug}/topic/${encodeURIComponent(encodeTopicForRoute(topicName))}`,
-        ),
-      );
+      const trimmedTopicName = topicName.trim();
+      if (trimmedTopicName.length === 0) return;
+
+      void (async () => {
+        const createdTopic = await createStreamTopic({
+          streamUuid: streamSlug,
+          name: trimmedTopicName,
+        });
+        if (createdTopic == null) {
+          log.warn("Could not create stream topic", { streamUuid: streamSlug });
+          return;
+        }
+
+        useChatListStore.getState().upsertStreamTopicShells(createdTopic.stream_uuid, [
+          {
+            topicUuid: createdTopic.uuid,
+            streamUuid: createdTopic.stream_uuid,
+            name: createdTopic.name,
+            isDefault: createdTopic.is_default,
+          },
+        ]);
+
+        void navigate(
+          withCurrentOrgRoute(
+            `/stream/${buildStreamSlug(createdTopic.stream_uuid)}/topic/${encodeURIComponent(
+              encodeTopicForRoute(createdTopic.uuid),
+            )}`,
+          ),
+        );
+      })();
     },
     [navigate],
   );

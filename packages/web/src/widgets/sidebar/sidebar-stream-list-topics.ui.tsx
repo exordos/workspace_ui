@@ -4,7 +4,6 @@ import { t } from "~/i18n/i18n";
 import { sidebarRowClass } from "~/shared/lib/format";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
-import { Icon } from "~/shared/ui/icon";
 import { SidebarChatBadges } from "./sidebar-chat-badges.ui";
 import { TopicContextMenu } from "./sidebar-chat-context-menu.ui";
 import { sidebarStreamTopicRoute } from "./sidebar-chat-routes.lib";
@@ -59,50 +58,34 @@ export const SidebarStreamListTopics = React.memo<SidebarStreamListTopicsProps>(
     return (
       <>
         <div className="ml-4 mt-0.5 space-y-0.5 border-l-2 border-transparent pl-2">
-          {onNewTopic && (
+          {onNewTopic && creatingTopicForSlug === streamSlug && (
             <div className="flex items-center gap-1 py-1 pl-3">
-              {creatingTopicForSlug === streamSlug ? (
-                <input
-                  ref={newTopicInputRef}
-                  type="text"
-                  value={newTopicName}
-                  onChange={(e) => setNewTopicName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && newTopicName.trim()) {
-                      onNewTopic(streamSlug, newTopicName.trim());
-                      setCreatingTopicForSlug(null);
-                      setNewTopicName("");
-                    } else if (e.key === "Escape") {
-                      setCreatingTopicForSlug(null);
-                      setNewTopicName("");
-                    }
-                  }}
-                  onBlur={() => {
-                    if (newTopicName.trim()) {
-                      onNewTopic(streamSlug, newTopicName.trim());
-                    }
+              <input
+                ref={newTopicInputRef}
+                type="text"
+                value={newTopicName}
+                onChange={(e) => setNewTopicName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newTopicName.trim()) {
+                    onNewTopic(streamSlug, newTopicName.trim());
                     setCreatingTopicForSlug(null);
                     setNewTopicName("");
-                  }}
-                  className="w-full rounded bg-bg px-2 py-1 text-xs text-text-primary outline-none ring-1 ring-accent"
-                  placeholder={t("channel.newTopic")}
-                />
-              ) : (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setCreatingTopicForSlug(streamSlug);
+                  } else if (e.key === "Escape") {
+                    setCreatingTopicForSlug(null);
                     setNewTopicName("");
-                  }}
-                  className="flex items-center gap-1 rounded px-2 py-1 text-xs text-text-muted transition-colors hover:bg-sidebar-hover hover:text-text-primary"
-                  aria-label={t("channel.newTopic")}
-                >
-                  <Icon name="plus" size={12} />
-                  {t("channel.newTopic")}
-                </button>
-              )}
+                  }
+                }}
+                onBlur={() => {
+                  if (newTopicName.trim()) {
+                    onNewTopic(streamSlug, newTopicName.trim());
+                  }
+                  setCreatingTopicForSlug(null);
+                  setNewTopicName("");
+                }}
+                className="w-full rounded bg-bg px-2 py-1 text-xs text-text-primary outline-none ring-1 ring-accent"
+                placeholder={t("channel.topicName")}
+                aria-label={t("channel.topicName")}
+              />
             </div>
           )}
           {topics.length === 0 ? (
@@ -112,12 +95,15 @@ export const SidebarStreamListTopics = React.memo<SidebarStreamListTopicsProps>(
           ) : (
             visibleTopics.map((topic, idx) => {
               const topicColor = TOPIC_BAR_COLORS[idx % TOPIC_BAR_COLORS.length];
+              const topicRouteSegment = topic.topicUuid ?? topic.subject;
               const isTopicActive =
-                streamSlug === activeStreamSlug && activeTopic === topic.subject;
+                streamSlug === activeStreamSlug &&
+                ((topic.topicUuid != null && activeTopic === topic.topicUuid) ||
+                  activeTopic === topic.subject);
               const topicDisplay = resolveTopicDisplayInfo(topic.subject);
               return (
                 <TopicContextMenu
-                  key={encodeTopicForRoute(topic.subject)}
+                  key={topic.topicUuid ?? encodeTopicForRoute(topic.subject)}
                   streamId={stream.streamUuid}
                   streamName={stream.name}
                   topic={topic.subject}
@@ -132,7 +118,7 @@ export const SidebarStreamListTopics = React.memo<SidebarStreamListTopicsProps>(
                   }
                 >
                   <Link
-                    to={sidebarStreamTopicRoute(streamSlug, topic.subject)}
+                    to={sidebarStreamTopicRoute(streamSlug, topicRouteSegment)}
                     className="flex w-full min-w-0 items-start gap-3 py-2 pl-3 pr-12"
                   >
                     <div className="min-w-0 flex-1">

@@ -97,9 +97,7 @@ export function toStreamTopicMetadataRows(
       topicUuid: topic.uuid,
       streamUuid: topic.stream_uuid,
       name: topic.name,
-      ...(topic.default_for_stream_uuid != null
-        ? { defaultForStreamUuid: topic.default_for_stream_uuid }
-        : {}),
+      isDefault: topic.is_default,
     }));
 }
 

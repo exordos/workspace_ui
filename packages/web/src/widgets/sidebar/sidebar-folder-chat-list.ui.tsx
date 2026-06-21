@@ -20,6 +20,7 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
   activeTopic: activeTopicProp,
   expandedStreamSlugs,
   onToggleStream,
+  onNewTopic,
   loading = false,
   showEmptyState = false,
 }) => {
@@ -94,12 +95,14 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
             key={`stream-${chat.streamUuid}`}
             chat={chat}
             pinApiFolderUuid={pinApiFolderUuid}
+            selectedFolderId={selectedFolderId}
             isCompactDensity={isCompactDensity}
             canExpandStreams={canExpandStreams}
             expandedStreamSlugs={expandedStreamSlugs ?? []}
             activeStreamSlug={activeStreamSlug}
             activeTopic={activeTopic}
             onToggleStream={onToggleStream}
+            onNewTopic={onNewTopic}
           />
         ))}
       </div>

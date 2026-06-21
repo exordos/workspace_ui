@@ -103,7 +103,7 @@ export interface MessengerStreamTopic {
   uuid: string;
   name: string;
   stream_uuid: string;
-  default_for_stream_uuid?: string;
+  is_default: boolean;
   project_id?: string;
   created_at?: string;
   updated_at?: string;
