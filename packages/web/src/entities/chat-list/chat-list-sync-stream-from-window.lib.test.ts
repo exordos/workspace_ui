@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { MockMessage } from "~/shared/api/messenger.types";
+import { testMessageId } from "~/test/factories";
 
 const isHydrateInFlightMock = vi.hoisted(() => vi.fn((_streamId: number) => false));
 
@@ -29,9 +30,14 @@ vi.mock("~/shared/api/messenger-sidebar-preview.lib", async (importOriginal) => 
   };
 });
 
-function streamMessage(overrides: Partial<MockMessage> = {}): MockMessage {
+type MockMessageOverrides = Partial<Omit<MockMessage, "id">> & {
+  id?: MockMessage["id"] | number;
+};
+
+function streamMessage(overrides: MockMessageOverrides = {}): MockMessage {
+  const { id, ...rest } = overrides;
   return {
-    id: 50,
+    id: testMessageId(id ?? 50),
     sender_id: 20,
     sender_full_name: "Bob",
     content: "hello",
@@ -40,7 +46,7 @@ function streamMessage(overrides: Partial<MockMessage> = {}): MockMessage {
     subject: "topic-a",
     display_recipient: "engineering",
     flags: [],
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -53,13 +59,19 @@ describe("shouldSyncStreamPreviewFromWindow", () => {
 
   it("skips sync when focused anchor has newer messages beyond the window", () => {
     expect(
-      shouldSyncStreamPreviewFromWindow({ focusedMessageId: 100, hasNewerMessages: true }),
+      shouldSyncStreamPreviewFromWindow({
+        focusedMessageId: "00000000-0000-4000-8000-000000000100",
+        hasNewerMessages: true,
+      }),
     ).toBe(false);
   });
 
   it("allows sync when focused anchor reached conversation end", () => {
     expect(
-      shouldSyncStreamPreviewFromWindow({ focusedMessageId: 100, hasNewerMessages: false }),
+      shouldSyncStreamPreviewFromWindow({
+        focusedMessageId: "00000000-0000-4000-8000-000000000100",
+        hasNewerMessages: false,
+      }),
     ).toBe(true);
   });
 });
@@ -67,12 +79,12 @@ describe("shouldSyncStreamPreviewFromWindow", () => {
 describe("filterMessagesForStreamId", () => {
   it("keeps only messages for the requested stream", () => {
     const messages = [
-      streamMessage({ id: 1, stream_id: 99, subject: "a" }),
-      streamMessage({ id: 2, stream_id: 100, subject: "b" }),
-      streamMessage({ id: 3, stream_id: 99, subject: "c" }),
+      streamMessage({ id: "00000000-0000-4000-8000-000000000001", stream_id: 99, subject: "a" }),
+      streamMessage({ id: "00000000-0000-4000-8000-000000000002", stream_id: 100, subject: "b" }),
+      streamMessage({ id: "00000000-0000-4000-8000-000000000003", stream_id: 99, subject: "c" }),
     ];
     const filtered = filterMessagesForStreamId(messages, 99);
-    expect(filtered.map((m) => m.id)).toEqual([1, 3]);
+    expect(filtered.map((m) => m.id)).toEqual([testMessageId(1), testMessageId(3)]);
   });
 });
 
@@ -99,7 +111,7 @@ describe("syncStreamSidebarFromLoadedMessages", () => {
     syncStreamSidebarFromLoadedMessages({
       messages: [
         streamMessage({
-          id: 10,
+          id: "00000000-0000-4000-8000-000000000010",
           content: "preview from opened chat",
           subject: "topic-a",
           timestamp: 1_750_000_000,
@@ -142,7 +154,7 @@ describe("syncStreamSidebarFromLoadedMessages", () => {
       ],
       streamId: 99,
       source: "api",
-      focusedMessageId: 100,
+      focusedMessageId: "00000000-0000-4000-8000-000000000100",
       hasNewerMessages: true,
     });
 
@@ -153,17 +165,20 @@ describe("syncStreamSidebarFromLoadedMessages", () => {
     syncStreamSidebarFromLoadedMessages({
       messages: [
         streamMessage({
-          id: 555,
+          id: "00000000-0000-4000-8000-000000000555",
           subject: "topic-a",
           flags: ["unread"],
         }),
       ],
       streamId: 99,
       source: "api",
-      focusedMessageId: 999,
+      focusedMessageId: "00000000-0000-4000-8000-000000000999",
       hasNewerMessages: true,
     });
 
-    expect(useChatListStore.getState().messageIdToLocation.get(555)?.type).toBe("stream");
+    expect(
+      useChatListStore.getState().messageIdToLocation.get("00000000-0000-4000-8000-000000000555")
+        ?.type,
+    ).toBe("stream");
   });
 });

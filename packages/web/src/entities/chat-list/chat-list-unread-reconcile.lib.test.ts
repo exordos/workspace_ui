@@ -5,8 +5,17 @@ describe("buildUnreadReconcileMapsFromRegisterSnapshot", () => {
   it("builds stream topic and dm unread maps with message locations", () => {
     const maps = buildUnreadReconcileMapsFromRegisterSnapshot(
       {
-        streams: [{ streamId: 5, topic: "general", unreadMessageIds: [101, 102] }],
-        dms: [{ userIds: [10, 20], unreadMessageIds: [201] }],
+        streams: [
+          {
+            streamId: 5,
+            topic: "general",
+            unreadMessageIds: [
+              "00000000-0000-4000-8000-000000000101",
+              "00000000-0000-4000-8000-000000000102",
+            ],
+          },
+        ],
+        dms: [{ userIds: [10, 20], unreadMessageIds: ["00000000-0000-4000-8000-000000000201"] }],
         totalCount: 3,
         mentionMessageIds: [],
       },
@@ -15,12 +24,12 @@ describe("buildUnreadReconcileMapsFromRegisterSnapshot", () => {
 
     expect(maps.unreadStreamCounts.get("5\tgeneral")).toBe(2);
     expect(maps.unreadDmCounts.get("10,20")).toBe(1);
-    expect(maps.unreadLocationMap.get(101)).toEqual({
+    expect(maps.unreadLocationMap.get("00000000-0000-4000-8000-000000000101")).toEqual({
       type: "stream",
       stream_id: 5,
       topic: "general",
     });
-    expect(maps.unreadLocationMap.get(201)?.type).toBe("dm");
+    expect(maps.unreadLocationMap.get("00000000-0000-4000-8000-000000000201")?.type).toBe("dm");
   });
 
   it("returns empty maps for empty snapshot", () => {

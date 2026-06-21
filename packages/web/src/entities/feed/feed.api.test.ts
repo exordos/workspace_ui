@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchAllMessagesPage } from "~/shared/api/messenger-messages";
 import type { MockMessage } from "~/shared/api/messenger.types";
-import { createMessage, createMessages } from "~/test/factories";
+import { createMessage, createMessages, testMessageId } from "~/test/factories";
 import { fetchFeedMessages } from "./feed.api";
 
 vi.mock("~/shared/api/messenger-messages", () => ({
@@ -61,8 +61,9 @@ describe("fetchFeedMessages", () => {
       foundOldest: false,
       foundNewest: false,
     });
-    await fetchFeedMessages(42, 100);
-    expect(fetchAllMessagesPage).toHaveBeenCalledWith(42, 100, undefined);
+    const anchor = testMessageId(42);
+    await fetchFeedMessages(anchor, 100);
+    expect(fetchAllMessagesPage).toHaveBeenCalledWith(anchor, 100, undefined);
   });
 
   it("propagates errors from the page fetch", async () => {
@@ -80,16 +81,17 @@ describe("fetchFeedMessages", () => {
     expect(result).toEqual({ messages: [], foundOldest: true, foundNewest: false });
   });
 
-  it("passes numeric anchor for pagination", async () => {
+  it("passes UUID anchor for pagination", async () => {
     const msg = createMessage({ id: 500 }) as MockMessage;
     vi.mocked(fetchAllMessagesPage).mockResolvedValue({
       messages: [msg],
       foundOldest: true,
       foundNewest: false,
     });
-    const result = await fetchFeedMessages(500, 25);
+    const anchor = testMessageId(500);
+    const result = await fetchFeedMessages(anchor, 25);
     expect(result).toEqual({ messages: [msg], foundOldest: true, foundNewest: false });
-    expect(fetchAllMessagesPage).toHaveBeenCalledWith(500, 25, undefined);
+    expect(fetchAllMessagesPage).toHaveBeenCalledWith(anchor, 25, undefined);
   });
 
   it("preserves the foundOldest metadata from the server", async () => {

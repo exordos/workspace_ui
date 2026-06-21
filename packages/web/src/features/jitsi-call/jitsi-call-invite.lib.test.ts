@@ -4,7 +4,7 @@ import { resolveIncomingDmCallInvite } from "./jitsi-call-invite.lib";
 
 function buildPrivateMessage(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessage {
   return {
-    id: 77,
+    id: "00000000-0000-4000-8000-000000000077",
     sender_id: 24,
     sender_full_name: "Slon",
     content: "https://meet.jit.si/messenger-dm-slon-123",
@@ -25,7 +25,7 @@ describe("resolveIncomingDmCallInvite", () => {
     const invite = resolveIncomingDmCallInvite(message, 25);
 
     expect(invite).toEqual({
-      messageId: 77,
+      messageId: "00000000-0000-4000-8000-000000000077",
       meetingUrl: "https://meet.jit.si/messenger-dm-slon-123",
       callerName: "Slon",
       locationName: "Slon",
@@ -40,7 +40,7 @@ describe("resolveIncomingDmCallInvite", () => {
     const invite = resolveIncomingDmCallInvite(message, 25);
 
     expect(invite).toMatchObject({
-      messageId: 77,
+      messageId: "00000000-0000-4000-8000-000000000077",
       avatarUrl: undefined,
     });
   });

@@ -1,17 +1,23 @@
 import { describe, expect, it } from "vitest";
 import type { MockMessage } from "~/shared/api/messenger.types";
+import { testMessageId } from "~/test/factories";
 import { mergeMessagePreservingLinkPreview } from "./message-link-preview-merge.lib";
 
-function baseMessage(overrides: Partial<MockMessage> = {}): MockMessage {
+type MockMessageOverrides = Partial<Omit<MockMessage, "id">> & {
+  id?: MockMessage["id"] | number;
+};
+
+function baseMessage(overrides: MockMessageOverrides = {}): MockMessage {
+  const { id, ...rest } = overrides;
   return {
-    id: 1,
+    id: testMessageId(id ?? 1),
     sender_id: 1,
     sender_full_name: "Alice",
     stream_id: 10,
     subject: "general",
     content: "https://example.com",
     timestamp: 1,
-    ...overrides,
+    ...rest,
   };
 }
 

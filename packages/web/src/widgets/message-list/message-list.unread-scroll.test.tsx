@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as MessengerUsersApi from "~/shared/api/messenger-users";
 import type { MockMessage } from "~/shared/api/messenger.types";
 import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
+import { testMessageId, testMessageOrdinal } from "~/test/factories";
 import { MessageList } from "./message-list.ui";
 
 const fetchRealmEmojisMock = vi.hoisted(() => vi.fn());
@@ -20,9 +21,9 @@ vi.mock("~/shared/lib/scroll-position.lib", () => ({
   scrollToBottom: (...args: unknown[]) => scrollToBottomMock(...args),
 }));
 
-function msg(id: number, overrides: Partial<MockMessage> = {}): MockMessage {
+function msg(id: number | string, overrides: Partial<MockMessage> = {}): MockMessage {
   return {
-    id,
+    id: testMessageId(id),
     sender_id: 43,
     sender_full_name: "Alice",
     stream_id: 10,
@@ -30,7 +31,7 @@ function msg(id: number, overrides: Partial<MockMessage> = {}): MockMessage {
     channel: "general",
     subject: "bugs",
     content: `<p>Message ${id}</p>`,
-    timestamp: 1710000000 + id,
+    timestamp: 1710000000 + testMessageOrdinal(id),
     ...overrides,
   };
 }
@@ -69,7 +70,8 @@ function stubVisibleTailLayout(
   } as DOMRect;
   vi.spyOn(root, "getBoundingClientRect").mockReturnValue(rootRect);
 
-  for (const [messageId, rect] of Object.entries(rectsByMessageId)) {
+  for (const [rawMessageId, rect] of Object.entries(rectsByMessageId)) {
+    const messageId = testMessageId(Number(rawMessageId));
     const node = root.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`);
     if (node == null) {
       throw new Error(`expected node for message ${messageId}`);
@@ -143,7 +145,7 @@ describe("MessageList unread anchor scroll", () => {
       <MessageList
         messages={initialMessages}
         currentUserId={7}
-        firstUnreadId={3}
+        firstUnreadId={testMessageId(3)}
         unreadCount={2}
         scrollToBottomKey="unread-anchor-a"
       />,
@@ -154,13 +156,15 @@ describe("MessageList unread anchor scroll", () => {
     });
 
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
-    expect(scrollTargets).toEqual(["3"]);
+    expect(scrollTargets).toEqual([testMessageId(3)]);
 
     rerender(
       <MessageList
-        messages={initialMessages.map((m) => (m.id === 3 ? { ...m, flags: ["read"] } : m))}
+        messages={initialMessages.map((m) =>
+          m.id === testMessageId(3) ? { ...m, flags: ["read"] } : m,
+        )}
         currentUserId={7}
-        firstUnreadId={4}
+        firstUnreadId={testMessageId(4)}
         unreadCount={1}
         scrollToBottomKey="unread-anchor-a"
       />,
@@ -171,13 +175,13 @@ describe("MessageList unread anchor scroll", () => {
     });
 
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
-    expect(scrollTargets).toEqual(["3"]);
+    expect(scrollTargets).toEqual([testMessageId(3)]);
   });
 
   it("marks a single unread as read after scroll-to-unread without manual scroll", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const onUnreadMessagesVisible = vi.fn();
-    const unreadId = 3118;
+    const unreadId = testMessageId(3118);
     const messages = [
       msg(1, { sender_id: 99, flags: ["read"] }),
       msg(2, { sender_id: 43, flags: ["read"] }),
@@ -253,7 +257,7 @@ describe("MessageList unread anchor scroll", () => {
       <MessageList
         messages={messages}
         currentUserId={7}
-        firstUnreadId={2}
+        firstUnreadId={"00000000-0000-4000-8000-000000000002"}
         unreadCount={4}
         scrollToBottomKey="unread-no-autoread"
         onUnreadMessagesVisible={onUnreadMessagesVisible}
@@ -309,7 +313,7 @@ describe("MessageList unread anchor scroll", () => {
       <MessageList
         messages={messages}
         currentUserId={7}
-        firstUnreadId={2}
+        firstUnreadId={"00000000-0000-4000-8000-000000000002"}
         unreadCount={3}
         scrollToBottomKey="unread-io-defer"
         onUnreadMessagesVisible={onUnreadMessagesVisible}
@@ -354,7 +358,7 @@ describe("MessageList unread anchor scroll", () => {
             msg(3, { sender_id: 43, flags: [] }),
           ]}
           currentUserId={7}
-          firstUnreadId={2}
+          firstUnreadId={"00000000-0000-4000-8000-000000000002"}
           unreadCount={2}
           scrollToBottomKey="visible-tail-complete"
           onUnreadMessagesVisible={onUnreadMessagesVisible}
@@ -373,8 +377,8 @@ describe("MessageList unread anchor scroll", () => {
 
       await advanceVisibleTailFlush();
 
-      expect(onUnreadMessagesVisible).toHaveBeenCalledWith([2, 3]);
-      expect(onUnreadMessagesAtBottom).toHaveBeenCalledWith([2, 3]);
+      expect(onUnreadMessagesVisible).toHaveBeenCalledWith([testMessageId(2), testMessageId(3)]);
+      expect(onUnreadMessagesAtBottom).toHaveBeenCalledWith([testMessageId(2), testMessageId(3)]);
     } finally {
       vi.useRealTimers();
     }
@@ -392,7 +396,7 @@ describe("MessageList unread anchor scroll", () => {
             msg(3, { sender_id: 43, flags: [] }),
           ]}
           currentUserId={7}
-          firstUnreadId={2}
+          firstUnreadId={"00000000-0000-4000-8000-000000000002"}
           unreadCount={2}
           scrollToBottomKey="visible-tail-has-newer"
           hasNewerMessages
@@ -429,7 +433,7 @@ describe("MessageList unread anchor scroll", () => {
             msg(3, { sender_id: 43, flags: [] }),
           ]}
           currentUserId={7}
-          firstUnreadId={2}
+          firstUnreadId={"00000000-0000-4000-8000-000000000002"}
           unreadCount={2}
           scrollToBottomKey="visible-tail-loading-newer"
           isLoadingNewer
@@ -466,7 +470,7 @@ describe("MessageList unread anchor scroll", () => {
             msg(3, { sender_id: 43, flags: [] }),
           ]}
           currentUserId={7}
-          firstUnreadId={2}
+          firstUnreadId={"00000000-0000-4000-8000-000000000002"}
           unreadCount={3}
           scrollToBottomKey="visible-tail-incomplete-window"
           onUnreadMessagesVisible={onUnreadMessagesVisible}
@@ -502,7 +506,7 @@ describe("MessageList unread anchor scroll", () => {
             msg(3, { sender_id: 43, flags: [] }),
           ]}
           currentUserId={7}
-          firstUnreadId={2}
+          firstUnreadId={"00000000-0000-4000-8000-000000000002"}
           unreadCount={2}
           scrollToBottomKey="visible-tail-partial"
           onUnreadMessagesVisible={onUnreadMessagesVisible}
@@ -539,7 +543,7 @@ describe("MessageList unread anchor scroll", () => {
             msg(4, { sender_id: 43, flags: [] }),
           ]}
           currentUserId={7}
-          firstUnreadId={2}
+          firstUnreadId={"00000000-0000-4000-8000-000000000002"}
           unreadCount={3}
           scrollToBottomKey="visible-tail-long-chat"
           onUnreadMessagesVisible={onUnreadMessagesVisible}
@@ -578,7 +582,7 @@ describe("MessageList unread anchor scroll", () => {
       <MessageList
         messages={cachedWindow}
         currentUserId={7}
-        firstUnreadId={105}
+        firstUnreadId={"00000000-0000-4000-8000-000000000105"}
         unreadCount={5}
         scrollToBottomKey="unread-api-shrink"
         onUnreadMessagesVisible={onUnreadMessagesVisible}
@@ -601,7 +605,7 @@ describe("MessageList unread anchor scroll", () => {
       <MessageList
         messages={apiWindow}
         currentUserId={7}
-        firstUnreadId={105}
+        firstUnreadId={"00000000-0000-4000-8000-000000000105"}
         unreadCount={5}
         scrollToBottomKey="unread-api-shrink"
         onUnreadMessagesVisible={onUnreadMessagesVisible}
@@ -627,7 +631,7 @@ describe("MessageList unread anchor scroll", () => {
       <MessageList
         messages={base}
         currentUserId={7}
-        firstUnreadId={2}
+        firstUnreadId={"00000000-0000-4000-8000-000000000002"}
         unreadCount={2}
         scrollToBottomKey="unread-anchor-b"
       />,
@@ -648,7 +652,7 @@ describe("MessageList unread anchor scroll", () => {
       <MessageList
         messages={[msg(0, { sender_id: 99, flags: ["read"] }), ...base]}
         currentUserId={7}
-        firstUnreadId={2}
+        firstUnreadId={"00000000-0000-4000-8000-000000000002"}
         unreadCount={2}
         scrollToBottomKey="unread-anchor-b"
       />,
@@ -685,7 +689,7 @@ describe("MessageList unread anchor scroll", () => {
       <MessageList
         messages={messages}
         currentUserId={7}
-        firstUnreadId={2}
+        firstUnreadId={"00000000-0000-4000-8000-000000000002"}
         unreadCount={2}
         scrollToBottomKey="resize-skip-unread"
       />,
@@ -949,7 +953,7 @@ describe("MessageList chat open scroll to bottom", () => {
       <MessageList
         messages={withTransientUnread}
         currentUserId={7}
-        firstUnreadId={2}
+        firstUnreadId={testMessageId(2)}
         unreadCount={1}
         scrollToBottomKey="open-recovery"
       />,
@@ -1000,14 +1004,14 @@ describe("MessageList chat open scroll to bottom", () => {
         messages={base}
         currentUserId={7}
         scrollToBottomKey="anchor-open"
-        focusedMessageId={25}
+        focusedMessageId={testMessageId(25)}
       />,
     );
 
     await flushOpenScroll();
 
     expect(scrollIntoView).toHaveBeenCalled();
-    expect(scrollTargets).toContain("25");
+    expect(scrollTargets).toContain(testMessageId(25));
     expect(scrollToBottomMock).not.toHaveBeenCalled();
   });
 });

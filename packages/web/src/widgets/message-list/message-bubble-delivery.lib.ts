@@ -7,5 +7,5 @@ export function resolveOwnMessageDeliveryStatus(
   if (message.delivery_status != null) {
     return message.delivery_status;
   }
-  return message.id > 0 ? "sent" : "sending";
+  return "sent";
 }

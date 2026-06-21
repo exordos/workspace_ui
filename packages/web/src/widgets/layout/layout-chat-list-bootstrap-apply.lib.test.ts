@@ -46,7 +46,14 @@ describe("applyChatListBootstrapResult", () => {
 
   it("applies streamPreviews via applyStreamSidebarPreviewsFromMessages", () => {
     const messages = [
-      { id: 30, sender_id: 1, type: "stream", stream_id: 9, content: "ch", timestamp: 3 },
+      {
+        id: "00000000-0000-4000-8000-000000000030",
+        sender_id: 1,
+        type: "stream",
+        stream_id: 9,
+        content: "ch",
+        timestamp: 3,
+      },
     ] as WorkspaceRawMessage[];
 
     applyChatListBootstrapResult(

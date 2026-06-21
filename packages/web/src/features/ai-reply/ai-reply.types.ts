@@ -11,6 +11,7 @@
  * self-hosted, Workspace-integrated). The backend is not yet available —
  * these types define the contract.
  */
+import type { MessageId } from "~/shared/lib/message-id.lib";
 
 // ---------------------------------------------------------------------------
 // Request
@@ -49,7 +50,7 @@ export interface AiReplyRequest {
 }
 
 export interface AiMessageContext {
-  id: number;
+  id: MessageId;
   senderId: number;
   senderName: string;
   content: string;

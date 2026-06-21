@@ -5,7 +5,7 @@ import type { CallMessageTargetParams } from "./chat-call.lib";
 
 function createMessage(): MockMessage {
   return {
-    id: 101,
+    id: "00000000-0000-4000-8000-000000000101",
     sender_id: 10,
     sender_full_name: "Tester",
     content: "https://meet.jit.si/room-1",

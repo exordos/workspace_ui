@@ -1,8 +1,9 @@
 import { create } from "zustand";
 import { logStoreAction } from "~/shared/lib/logger";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 
 export interface IncomingDmCallInvite {
-  messageId: number;
+  messageId: MessageId;
   meetingUrl: string;
   callerName: string;
   locationName: string;
@@ -19,7 +20,7 @@ export interface ActiveJitsiCall {
 interface JitsiCallStoreState {
   activeCall: ActiveJitsiCall | null;
   incomingInvite: IncomingDmCallInvite | null;
-  lastIncomingMessageId: number | null;
+  lastIncomingMessageId: MessageId | null;
   openCall: (payload: ActiveJitsiCall) => void;
   closeCall: () => void;
   ingestIncomingInvite: (invite: IncomingDmCallInvite) => void;

@@ -18,7 +18,9 @@
  */
 
 import { createLogger } from "./logger";
+import { normalizeMessageId } from "./message-id.lib";
 import { isIamUserUuid } from "./user-id.lib";
+import type { MessageId } from "./message-id.lib";
 import type { UserId } from "./user-id.lib";
 
 const log = createLogger("guard");
@@ -153,9 +155,21 @@ export const guard = {
   },
 
   /**
-   * Validate message ID.
+   * Validate Workspace message UUID.
    */
-  messageId(value: unknown, context = ""): number {
+  messageId(value: unknown, context = ""): MessageId {
+    const id = normalizeMessageId(value);
+    invariant(
+      id != null,
+      `Invalid messageId: ${JSON.stringify(value)}${context ? ` in ${context}` : ""}`,
+    );
+    return id;
+  },
+
+  /**
+   * Validate legacy numeric message ID.
+   */
+  numericMessageId(value: unknown, context = ""): number {
     invariant(
       typeof value === "number" && Number.isInteger(value) && value > 0,
       `Invalid messageId: ${JSON.stringify(value)}${context ? ` in ${context}` : ""}`,

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { resolvePersonalDmSidebarTitle } from "~/entities/chat-list/chat-list-format.lib";
 import type { WorkspaceInstance } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
-import { computeIsGroupDmView, normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
+import { normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
 import { getDmById, parseDmSlugToUserIds, parseStreamSlug } from "~/widgets/sidebar/sidebar.lib";
@@ -91,17 +91,9 @@ export function useLayoutUnreadAndTitle(options: {
 
   const isDmRouteForTitle = dmRecipientIdsForTitle.length > 0;
 
-  const isGroupDmForTitle = useMemo(
-    () =>
-      isDmRouteForTitle &&
-      computeIsGroupDmView(activeDmChatForTitle, dmRecipientIdsForTitle, currentUserId),
-    [isDmRouteForTitle, activeDmChatForTitle, dmRecipientIdsForTitle, currentUserId],
-  );
-
-  const dmTitlePartnerId =
-    isDmRouteForTitle && !isGroupDmForTitle
-      ? (dmRecipientIdsForTitle[0] ?? activeDmChatForTitle?.id ?? null)
-      : null;
+  const dmTitlePartnerId = isDmRouteForTitle
+    ? (dmRecipientIdsForTitle[0] ?? activeDmChatForTitle?.id ?? null)
+    : null;
   const dmTitlePartnerUser = useUsersStore((s) =>
     dmTitlePartnerId != null ? s.getUser(dmTitlePartnerId) : undefined,
   );
@@ -113,9 +105,6 @@ export function useLayoutUnreadAndTitle(options: {
     if (!isDmRouteForTitle) {
       return undefined;
     }
-    if (isGroupDmForTitle) {
-      return activeDmChatForTitle?.name;
-    }
     if (dmTitlePartnerId == null) {
       return undefined;
     }
@@ -126,7 +115,6 @@ export function useLayoutUnreadAndTitle(options: {
     });
   }, [
     isDmRouteForTitle,
-    isGroupDmForTitle,
     activeDmChatForTitle,
     dmTitlePartnerId,
     dmTitlePartnerUser?.full_name,

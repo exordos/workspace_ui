@@ -65,7 +65,7 @@ async function flushMicrotasks(turns = 5): Promise<void> {
 
 function streamMsg(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessage {
   return {
-    id: 1,
+    id: "00000000-0000-4000-8000-000000000001",
     sender_id: 10,
     sender_full_name: "Sender",
     content: "hello",
@@ -137,7 +137,9 @@ describe("requestStreamSidebarTopicsHydrate", () => {
     fetchStreamChannelMock.mockResolvedValue([streamMsg({ stream_id: 5, subject: "prio" })]);
 
     queuePriorityStreamSidebarTopicsHydrate({
-      streams: [{ streamId: 5, topic: "t", unreadMessageIds: [1] }],
+      streams: [
+        { streamId: 5, topic: "t", unreadMessageIds: ["00000000-0000-4000-8000-000000000001"] },
+      ],
       dms: [],
       totalCount: 1,
       mentionMessageIds: [],
@@ -291,13 +293,19 @@ describe("requestStreamSidebarTopicPreviewBackfill", () => {
     useChatListStore.getState().upsertStreamTopicShells(5, ["alpha", "beta"]);
     fetchLatestTopicMessagesMock.mockResolvedValue([
       streamMsg({
-        id: 10,
+        id: "00000000-0000-4000-8000-000000000010",
         stream_id: 5,
         subject: "alpha",
         content: "alpha preview",
         timestamp: 10,
       }),
-      streamMsg({ id: 11, stream_id: 5, subject: "beta", content: "beta preview", timestamp: 11 }),
+      streamMsg({
+        id: "00000000-0000-4000-8000-000000000011",
+        stream_id: 5,
+        subject: "beta",
+        content: "beta preview",
+        timestamp: 11,
+      }),
     ]);
 
     await requestStreamSidebarTopicPreviewBackfill(5);

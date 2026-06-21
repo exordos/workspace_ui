@@ -31,18 +31,11 @@ function createStreamEntry(
   };
 }
 
-function createDmEntry(
-  id: number,
-  name: string,
-  ts: number,
-  unreadCount: number,
-  isGroup = false,
-): DmEntryInternal {
+function createDmEntry(id: number, name: string, ts: number, unreadCount: number): DmEntryInternal {
   return {
     id,
     name,
     slug: `${id}-${name.toLowerCase()}`,
-    isGroup,
     lastMessage: `${name} dm`,
     time: "10:00",
     ts,
@@ -117,7 +110,7 @@ describe("sortChatsByLastMessage", () => {
       [1, createStreamEntry(1, "General", 5000, 1)],
     ]);
     const dmsMap = new Map<string, DmEntryInternal>([
-      ["42-alice", createDmEntry(42, "Alice", 1000, 1, false)],
+      ["42-alice", createDmEntry(42, "Alice", 1000, 1)],
     ]);
 
     const withoutFlag = sortChatsByLastMessage(streamsMap, dmsMap, new Set());

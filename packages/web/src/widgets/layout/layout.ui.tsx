@@ -11,7 +11,7 @@ import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { sortChatsByLastMessage } from "~/shared/lib/chat-sorting";
-import { withCurrentOrgRoute } from "~/shared/lib/org-route";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { useRightDrawerStore } from "~/widgets/right-panel/right-drawer.model";
 import { useSearchModalStore } from "~/widgets/search-modal/search-modal.model";
 import { getSectionFromPathname } from "~/widgets/top-bar/top-bar.lib";
@@ -117,14 +117,12 @@ export const Layout: React.FC = () => {
         }),
         mentionedUnreadMessageIds,
         messageIdToLocation,
-        currentUserId,
       ),
     [
       streamsMap,
       dmsMap,
       mentionedUnreadMessageIds,
       messageIdToLocation,
-      currentUserId,
       mutedStreamIds,
       mutedTopicKeys,
       unmutedTopicKeys,
@@ -151,8 +149,8 @@ export const Layout: React.FC = () => {
     });
 
   const dmUnreadCountForCurrentInstance = useMemo(
-    () => computeInstanceDmUnreadCount({ dms: dmsFromStore, currentUserId }),
-    [dmsFromStore, currentUserId],
+    () => computeInstanceDmUnreadCount({ dms: dmsFromStore }),
+    [dmsFromStore],
   );
   const mentionsUnreadCount = useChatListStore((s) => s.mentionsUnreadCount);
   const personalUnreadIndicatorActive = useMemo(
@@ -180,7 +178,7 @@ export const Layout: React.FC = () => {
   const openRightDrawerAbout = useRightDrawerStore((s) => s.openAbout);
   const [currentUserStatus, setCurrentUserStatus] = useState<LayoutUserConnectionStatus>("idle");
   const refreshStaleRef = useRef<(() => void) | null>(null);
-  const latestMessageIdRef = useRef<number | null>(null);
+  const latestMessageIdRef = useRef<MessageId | null>(null);
 
   const { loadMuteSnapshot } = useLayoutInstanceBootstrap({
     currentInstanceId,
@@ -333,17 +331,6 @@ export const Layout: React.FC = () => {
 
   useLayoutPresencePolling({ enabled: layoutConnectionReady });
 
-  const handleSelectDm = useCallback(
-    (slug: string | null) => {
-      if (slug) {
-        void navigate(withCurrentOrgRoute(`/dm/${slug}`));
-      } else {
-        void navigate(withCurrentOrgRoute("/"));
-      }
-    },
-    [navigate],
-  );
-
   useLayoutLastMessengerRoutePersistence();
 
   const activeSection = getSectionFromPathname(location.pathname);
@@ -424,7 +411,6 @@ export const Layout: React.FC = () => {
             participantsCount={participantsCount}
             onlineCount={onlineCount}
             rightPanelUser={rightPanelUser}
-            onSelectCommonGroup={(slug: string) => handleSelectDm(slug)}
             onOpenSettingsDrawer={openRightDrawerSettings}
             onOpenAboutDrawer={openRightDrawerAbout}
           />

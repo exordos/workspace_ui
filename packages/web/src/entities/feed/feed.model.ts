@@ -7,6 +7,8 @@
 import { create } from "zustand";
 import type { MockMessage } from "~/shared/api/messenger.types";
 import { logStoreAction } from "~/shared/lib/logger";
+import { compareMessageTimeline } from "~/shared/lib/message-id.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 
 interface FeedState {
   instanceId: string | null;
@@ -15,7 +17,7 @@ interface FeedState {
   isRefreshing: boolean;
   isLoadingMore: boolean;
   isAllLoaded: boolean;
-  lastMessageId: number | null;
+  lastMessageId: MessageId | null;
   requestVersion: number;
   lastLoadedAt: number | null;
   error: string | null;
@@ -34,11 +36,11 @@ interface FeedState {
   startRequest: (hasCachedData: boolean) => number;
 }
 
-function findOldestId(messages: MockMessage[]): number | null {
+function findOldestId(messages: MockMessage[]): MessageId | null {
   if (messages.length === 0) return null;
   let oldest = messages[0]!;
   for (let i = 1; i < messages.length; i++) {
-    if (messages[i]!.id < oldest.id) {
+    if (compareMessageTimeline(messages[i]!, oldest) < 0) {
       oldest = messages[i]!;
     }
   }

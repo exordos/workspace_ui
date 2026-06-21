@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useDownloadStore } from "~/entities/download/download.model";
 import type { MockMessage } from "~/shared/api/messenger.types";
 import type * as AuthGuardModule from "~/shared/lib/auth-guard";
+import { testMessageId } from "~/test/factories";
 import { MessageBubble } from "./message-bubble.ui";
 import type * as AttachmentDownloadModule from "./message-attachment-download.lib";
 
@@ -43,7 +44,7 @@ vi.mock("~/shared/lib/auth-guard", async () => {
 
 function msg(overrides: Partial<MockMessage> = {}): MockMessage {
   const base: MockMessage = {
-    id: 1,
+    id: "00000000-0000-4000-8000-000000000001",
     sender_id: 77,
     sender_full_name: "Alice",
     stream_id: 10,
@@ -94,7 +95,7 @@ describe("MessageBubble attachment links", () => {
   it("opens message context menu on right click", async () => {
     render(<MessageBubble message={msg()} />);
 
-    const bubble = screen.getByTestId("message-1");
+    const bubble = screen.getByTestId(`message-${testMessageId(1)}`);
     fireEvent.contextMenu(bubble);
 
     expect(await screen.findByRole("menuitem", { name: /reply/i })).toBeInTheDocument();
@@ -103,7 +104,7 @@ describe("MessageBubble attachment links", () => {
   it("opens message context menu from keyboard ContextMenu key", async () => {
     render(<MessageBubble message={msg()} />);
 
-    const bubble = screen.getByTestId("message-1");
+    const bubble = screen.getByTestId(`message-${testMessageId(1)}`);
     fireEvent.keyDown(bubble, { key: "ContextMenu" });
 
     expect(await screen.findByRole("menuitem", { name: /reply/i })).toBeInTheDocument();
@@ -112,7 +113,7 @@ describe("MessageBubble attachment links", () => {
   it("opens message context menu from keyboard Shift+F10", async () => {
     render(<MessageBubble message={msg()} />);
 
-    const bubble = screen.getByTestId("message-1");
+    const bubble = screen.getByTestId(`message-${testMessageId(1)}`);
     fireEvent.keyDown(bubble, { key: "F10", shiftKey: true });
 
     expect(await screen.findByRole("menuitem", { name: /reply/i })).toBeInTheDocument();

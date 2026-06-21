@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { testMessageId } from "~/test/factories";
 import {
   buildMessengerMessageWebPermalink,
   encodeWorkspaceHashComponent,
@@ -12,10 +13,11 @@ describe("encodeWorkspaceHashComponent", () => {
 
 describe("buildMessengerMessageWebPermalink", () => {
   it("builds DM permalink matching Workspace pm_perma_link (sorted ids + -dm)", () => {
+    const messageId = testMessageId(5635212);
     const url = buildMessengerMessageWebPermalink(
       "https://chat.example.com",
       {
-        id: 5635212,
+        id: messageId,
         stream_id: null,
         subject: "",
         display_recipient: [
@@ -25,14 +27,15 @@ describe("buildMessengerMessageWebPermalink", () => {
       },
       () => undefined,
     );
-    expect(url).toBe("https://chat.example.com/#narrow/dm/422,507-dm/near/5635212");
+    expect(url).toBe(`https://chat.example.com/#narrow/dm/422,507-dm/near/${messageId}`);
   });
 
   it("uses -group for 3+ participants", () => {
+    const messageId = testMessageId(10);
     const url = buildMessengerMessageWebPermalink(
       "https://chat.example.com",
       {
-        id: 10,
+        id: messageId,
         stream_id: null,
         subject: "",
         display_recipient: [
@@ -43,14 +46,15 @@ describe("buildMessengerMessageWebPermalink", () => {
       },
       () => undefined,
     );
-    expect(url).toBe("https://chat.example.com/#narrow/dm/1,2,3-group/near/10");
+    expect(url).toBe(`https://chat.example.com/#narrow/dm/1,2,3-group/near/${messageId}`);
   });
 
   it("builds stream permalink with channel + topic + near", () => {
+    const messageId = testMessageId(99);
     const url = buildMessengerMessageWebPermalink(
       "https://chat.example.com",
       {
-        id: 99,
+        id: messageId,
         stream_id: 5,
         subject: "general chat",
         display_recipient: "general",
@@ -59,7 +63,7 @@ describe("buildMessengerMessageWebPermalink", () => {
     );
     expect(url).toContain("https://chat.example.com/#narrow/channel/");
     expect(url).toContain("/topic/");
-    expect(url).toContain("/near/99");
+    expect(url).toContain(`/near/${messageId}`);
   });
 
   it("returns null when realm is empty", () => {
@@ -67,7 +71,7 @@ describe("buildMessengerMessageWebPermalink", () => {
       buildMessengerMessageWebPermalink(
         "",
         {
-          id: 1,
+          id: "00000000-0000-4000-8000-000000000001",
           stream_id: null,
           subject: "",
           display_recipient: [{ id: 1, full_name: "A" }],
@@ -82,7 +86,7 @@ describe("buildMessengerMessageWebPermalink", () => {
       buildMessengerMessageWebPermalink(
         "https://chat.example.com",
         {
-          id: 1,
+          id: "00000000-0000-4000-8000-000000000001",
           stream_id: null,
           subject: "",
           display_recipient: undefined,

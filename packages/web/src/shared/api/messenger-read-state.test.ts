@@ -17,6 +17,12 @@ import {
 import { getMockMessengerApi } from "./messenger.test.setup";
 
 const mockMessengerApi = getMockMessengerApi();
+const MESSAGE_ID_1 = "00000000-0000-4000-8000-000000000001";
+const MESSAGE_ID_2 = "00000000-0000-4000-8000-000000000002";
+const MESSAGE_ID_3 = "00000000-0000-4000-8000-000000000003";
+const MESSAGE_ID_501 = "00000000-0000-4000-8000-000000000501";
+const MESSAGE_ID_777 = "00000000-0000-4000-8000-000000000777";
+const MESSAGE_ID_901 = "00000000-0000-4000-8000-000000000901";
 
 describe("markMessagesAsRead", () => {
   it("posts flag update for message IDs", async () => {
@@ -26,9 +32,9 @@ describe("markMessagesAsRead", () => {
       data: { result: "success" },
       raw: { statusText: "OK" },
     });
-    await markMessagesAsRead([1, 2, 3]);
+    await markMessagesAsRead([MESSAGE_ID_1, MESSAGE_ID_2, MESSAGE_ID_3]);
     expect(mockMessengerApi.post).toHaveBeenCalledWith("/messages/flags", {
-      messages: "[1,2,3]",
+      messages: JSON.stringify([MESSAGE_ID_1, MESSAGE_ID_2, MESSAGE_ID_3]),
       op: "add",
       flag: "read",
     });
@@ -40,7 +46,9 @@ describe("markMessagesAsRead", () => {
   });
 
   it("throws for invalid message id", async () => {
-    await expect(markMessagesAsRead([1, 0])).rejects.toThrow(/Invalid messageId/);
+    await expect(markMessagesAsRead([MESSAGE_ID_1, "not-a-message-id"])).rejects.toThrow(
+      /Invalid messageId/,
+    );
     expect(mockMessengerApi.post).not.toHaveBeenCalled();
   });
 });
@@ -222,7 +230,7 @@ describe("renameStreamTopic", () => {
       status: 200,
       data: {
         result: "success",
-        messages: [{ id: 901 }],
+        messages: [{ id: MESSAGE_ID_901 }],
       },
       raw: { statusText: "OK" },
     });
@@ -234,7 +242,7 @@ describe("renameStreamTopic", () => {
     });
 
     await expect(renameStreamTopic(10, "incident", "postmortem")).resolves.toBe(true);
-    expect(mockMessengerApi.patch).toHaveBeenCalledWith("/messages/901", {
+    expect(mockMessengerApi.patch).toHaveBeenCalledWith(`/messages/${MESSAGE_ID_901}`, {
       topic: "postmortem",
       propagate_mode: "change_all",
       send_notification_to_old_thread: "false",
@@ -255,7 +263,7 @@ describe("moveStreamTopicToChannel", () => {
       status: 200,
       data: {
         result: "success",
-        messages: [{ id: 901 }],
+        messages: [{ id: MESSAGE_ID_901 }],
       },
       raw: { statusText: "OK" },
     });
@@ -267,7 +275,7 @@ describe("moveStreamTopicToChannel", () => {
     });
 
     await expect(moveStreamTopicToChannel(10, "incident", 20, "incident")).resolves.toBe(true);
-    expect(mockMessengerApi.patch).toHaveBeenCalledWith("/messages/901", {
+    expect(mockMessengerApi.patch).toHaveBeenCalledWith(`/messages/${MESSAGE_ID_901}`, {
       stream_id: "20",
       topic: "incident",
       propagate_mode: "change_all",
@@ -289,7 +297,7 @@ describe("moveStreamTopicToChannel", () => {
       status: 200,
       data: {
         result: "success",
-        messages: [{ id: 901 }],
+        messages: [{ id: MESSAGE_ID_901 }],
       },
       raw: { statusText: "OK" },
     });
@@ -315,7 +323,7 @@ describe("setTopicResolvedState", () => {
       status: 200,
       data: {
         result: "success",
-        messages: [{ id: 501 }],
+        messages: [{ id: MESSAGE_ID_501 }],
       },
       raw: { statusText: "OK" },
     });
@@ -344,7 +352,7 @@ describe("setTopicResolvedState", () => {
       },
       undefined,
     );
-    expect(mockMessengerApi.patch).toHaveBeenCalledWith("/messages/501", {
+    expect(mockMessengerApi.patch).toHaveBeenCalledWith(`/messages/${MESSAGE_ID_501}`, {
       topic: "\u2714 incident",
       propagate_mode: "change_all",
       send_notification_to_old_thread: "false",
@@ -359,7 +367,7 @@ describe("setTopicResolvedState", () => {
       status: 200,
       data: {
         result: "success",
-        messages: [{ id: 777 }],
+        messages: [{ id: MESSAGE_ID_777 }],
       },
       raw: { statusText: "OK" },
     });
@@ -371,7 +379,7 @@ describe("setTopicResolvedState", () => {
     });
 
     await expect(setTopicResolvedState(10, "\u2714 incident", false)).resolves.toBe(true);
-    expect(mockMessengerApi.patch).toHaveBeenCalledWith("/messages/777", {
+    expect(mockMessengerApi.patch).toHaveBeenCalledWith(`/messages/${MESSAGE_ID_777}`, {
       topic: "incident",
       propagate_mode: "change_all",
       send_notification_to_old_thread: "false",
@@ -405,9 +413,9 @@ describe("updateMessageFlags", () => {
       data: { result: "success" },
       raw: { statusText: "OK" },
     });
-    await updateMessageFlags([1, 2], "add", "starred");
+    await updateMessageFlags([MESSAGE_ID_1, MESSAGE_ID_2], "add", "starred");
     expect(mockMessengerApi.post).toHaveBeenCalledWith("/messages/flags", {
-      messages: "[1,2]",
+      messages: JSON.stringify([MESSAGE_ID_1, MESSAGE_ID_2]),
       op: "add",
       flag: "starred",
     });
@@ -419,12 +427,14 @@ describe("updateMessageFlags", () => {
   });
 
   it("throws for invalid message id", async () => {
-    await expect(updateMessageFlags([1, -5], "add", "read")).rejects.toThrow(/Invalid messageId/);
+    await expect(
+      updateMessageFlags([MESSAGE_ID_1, "not-a-message-id"], "add", "read"),
+    ).rejects.toThrow(/Invalid messageId/);
     expect(mockMessengerApi.post).not.toHaveBeenCalled();
   });
 
   it("throws for blank flag name", async () => {
-    await expect(updateMessageFlags([1], "add", "   ")).rejects.toThrow(
+    await expect(updateMessageFlags([MESSAGE_ID_1], "add", "   ")).rejects.toThrow(
       /updateMessageFlags\.flag must be a non-empty string/,
     );
     expect(mockMessengerApi.post).not.toHaveBeenCalled();

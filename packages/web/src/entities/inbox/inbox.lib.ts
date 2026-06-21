@@ -31,8 +31,8 @@ function getInboxEntriesNewestTimestamp(entries: readonly InboxEntry[]): number 
   return newest;
 }
 
-function getInboxEntriesMaxMessageId(entries: readonly InboxEntry[]): number {
-  let maxId = 0;
+function getInboxEntriesLastIdFingerprint(entries: readonly InboxEntry[]): string {
+  let maxId = "";
   for (const entry of entries) {
     for (const id of entry.messageIds) {
       if (id > maxId) {
@@ -45,7 +45,7 @@ function getInboxEntriesMaxMessageId(entries: readonly InboxEntry[]): number {
 
 /**
  * Returns true when `candidate` is objectively fresher than `current`.
- * Compares max `lastMessageTimestamp`, then max message id as tie-breaker,
+ * Compares max `lastMessageTimestamp`, then UUID fingerprint as tie-breaker,
  * so re-entering Inbox does not regress to an older cache snapshot.
  */
 export function isInboxEntriesSnapshotFresher(
@@ -61,9 +61,9 @@ export function isInboxEntriesSnapshotFresher(
     return candidateNewestTimestamp > currentNewestTimestamp;
   }
 
-  const candidateMaxMessageId = getInboxEntriesMaxMessageId(candidate);
-  const currentMaxMessageId = getInboxEntriesMaxMessageId(current);
-  return candidateMaxMessageId > currentMaxMessageId;
+  const candidateIdFingerprint = getInboxEntriesLastIdFingerprint(candidate);
+  const currentIdFingerprint = getInboxEntriesLastIdFingerprint(current);
+  return candidateIdFingerprint > currentIdFingerprint;
 }
 
 interface DmConversationMeta {

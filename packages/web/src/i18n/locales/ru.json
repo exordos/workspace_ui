@@ -93,7 +93,6 @@
     "allChats": "Все",
     "channels": "Каналы",
     "directMessages": "Личные сообщения",
-    "groupChats": "Групповые чаты",
     "chatsAndChannels": "Чаты и каналы",
     "newChat": "Новый чат",
     "inbox": "Входящие",
@@ -340,9 +339,7 @@
     "selectTargetChannel": "Целевой канал"
   },
   "dm": {
-    "groupChat": "Групповой чат",
     "startChat": "Начать чат",
-    "createGroup": "Групповой чат",
     "privateChat": "Личный диалог",
     "partner": "Собеседник",
     "private": "Личное",

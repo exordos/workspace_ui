@@ -15,6 +15,7 @@ import type {
 import { createLogger } from "~/shared/lib/logger";
 import { upsertChatMessages } from "~/shared/lib/message-cache-db";
 import { chatKeyFromMockMessage } from "~/shared/lib/message-cache-keys.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { messengerMessageCacheWindowNForChatKey } from "~/shared/lib/messenger-message-window.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 
@@ -79,7 +80,7 @@ async function persistActivityMessagesToIdb(
 export async function fetchActivityMessagesPageWithPersist(
   filter: ActivityFilter,
   currentUserId?: UserId | null,
-  anchor: number | "newest" = "newest",
+  anchor: MessageId = "newest",
   numBefore = 200,
   options?: { signal?: AbortSignal },
 ): Promise<ActivityMessagesPageResult> {

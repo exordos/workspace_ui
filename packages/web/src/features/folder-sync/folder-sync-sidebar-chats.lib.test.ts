@@ -16,7 +16,7 @@ function folderItem(chatId: string, orderIndex: number): FolderItemForClient {
 }
 
 describe("buildSelectedFolderSidebarChats", () => {
-  it("filters self DM and group DM in personal system folder", () => {
+  it("filters self DM in personal system folder", () => {
     const result = buildSelectedFolderSidebarChats({
       selectedFolderId: SYSTEM_PERSONAL_FOLDER_ID,
       folderChatIds: null,
@@ -27,7 +27,6 @@ describe("buildSelectedFolderSidebarChats", () => {
           id: 10,
           name: "Me",
           slug: "10-me",
-          isGroup: false,
           lastMessage: "",
           time: "",
         },
@@ -36,17 +35,6 @@ describe("buildSelectedFolderSidebarChats", () => {
           id: 20,
           name: "Bob",
           slug: "20-bob",
-          isGroup: false,
-          lastMessage: "",
-          time: "",
-        },
-        {
-          type: "dm",
-          id: 999,
-          name: "Design Squad",
-          slug: "10-me,30-alice",
-          isGroup: true,
-          userIds: [10, 30],
           lastMessage: "",
           time: "",
         },
@@ -57,11 +45,8 @@ describe("buildSelectedFolderSidebarChats", () => {
     });
 
     expect(result).toHaveLength(1);
-    expect(
-      result.some((chat) => chat.type === "dm" && chat.id === 10 && chat.isGroup !== true),
-    ).toBe(false);
+    expect(result.some((chat) => chat.type === "dm" && chat.id === 10)).toBe(false);
     expect(result.some((chat) => chat.type === "dm" && chat.id === 20)).toBe(true);
-    expect(result.some((chat) => chat.type === "dm" && chat.isGroup === true)).toBe(false);
   });
 
   it("filters self DM from fallback folder item dm:{currentUserId}", () => {
@@ -90,7 +75,6 @@ describe("buildSelectedFolderSidebarChats", () => {
           id: 42,
           name: "Alice",
           slug: "42-alice",
-          isGroup: false,
           lastMessage: "",
           time: "",
         },
@@ -123,7 +107,6 @@ describe("buildSelectedFolderSidebarChats", () => {
           id: 10,
           name: "Me",
           slug: "10-me",
-          isGroup: false,
           lastMessage: "",
           time: "",
         },
@@ -132,7 +115,6 @@ describe("buildSelectedFolderSidebarChats", () => {
           id: 20,
           name: "Bob",
           slug: "20-bob",
-          isGroup: false,
           lastMessage: "",
           time: "",
         },
@@ -173,7 +155,6 @@ describe("buildSelectedFolderSidebarChats", () => {
     expect(dm).toBeDefined();
     expect(dm).toMatchObject({
       type: "dm",
-      isGroup: false,
       id: 20,
       name: "Bob",
     });
@@ -192,7 +173,6 @@ describe("buildSelectedFolderSidebarChats", () => {
           id: 20,
           name: "Bob",
           slug: "20-bob",
-          isGroup: false,
           userIds: [10, 20],
           lastMessage: "cached preview",
           time: "10:00",
@@ -227,7 +207,6 @@ describe("buildSelectedFolderSidebarChats", () => {
           id: 20,
           name: "Bob",
           slug: "10-me,20-bob",
-          isGroup: false,
           lastMessage: "cached preview",
           time: "10:00",
           ts: 5000,
@@ -287,7 +266,6 @@ describe("buildSelectedFolderSidebarChats", () => {
           id: 42,
           name: "Bob",
           slug: "42-bob",
-          isGroup: false,
           lastMessage: "",
           time: "",
         },

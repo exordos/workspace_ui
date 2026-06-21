@@ -1,6 +1,7 @@
 /**
  * Merges stream/topic sidebar entries when applying messages or unread reconcile patches.
  */
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
 
 type StreamTopicEntryInternal =
@@ -20,7 +21,7 @@ export function mergeStreamEntry(
   topicTime: string,
   topicTs: number,
   topicUnreadDelta: number,
-  lastMessageId?: number,
+  lastMessageId?: MessageId,
 ): StreamEntryInternal {
   const existingTopic = existing?.topics.get(topicSubject);
   const unreadCount = (existingTopic?.unreadCount ?? 0) + topicUnreadDelta;

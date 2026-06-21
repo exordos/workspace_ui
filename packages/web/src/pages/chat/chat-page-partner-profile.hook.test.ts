@@ -53,7 +53,6 @@ describe("useChatPartnerProfileHydration", () => {
       useChatPartnerProfileHydration({
         partnerUserId: 7,
         isDmView: true,
-        isGroupDmView: false,
       }),
     );
 

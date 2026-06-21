@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
-import { createMessage, createUser } from "~/test/factories";
+import { createMessage, createUser, testMessageId } from "~/test/factories";
 import { SearchModal } from "./search-modal.ui";
 
 const fetchMessages = vi.hoisted(() => vi.fn());
@@ -69,7 +69,9 @@ describe("SearchModal open-in-chat action", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open in chat" }));
 
-    expect(onSelectMessage).toHaveBeenCalledWith(expect.objectContaining({ id: 55 }));
+    expect(onSelectMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ id: testMessageId(55) }),
+    );
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 

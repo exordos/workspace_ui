@@ -17,7 +17,7 @@ describe("message-composer-body.lib", () => {
 
     it("prepends messenger-style reply quote with silent mention, link, and quote fence", () => {
       const body = buildOutgoingMessageBody("text", {
-        id: 1,
+        id: "00000000-0000-4000-8000-000000000001",
         content: "q",
         sender_full_name: "Alice",
         sender_id: 42,
@@ -33,7 +33,7 @@ describe("message-composer-body.lib", () => {
 
     it("omits wrote link when permalink is null", () => {
       const body = buildOutgoingMessageBody("x", {
-        id: 1,
+        id: "00000000-0000-4000-8000-000000000001",
         content: "c",
         sender_full_name: "Bob",
         sender_id: 7,
@@ -46,7 +46,7 @@ describe("message-composer-body.lib", () => {
 
     it("uses longer quote fences when quoted content already contains fences", () => {
       const body = buildOutgoingMessageBody("reply", {
-        id: 1,
+        id: "00000000-0000-4000-8000-000000000001",
         content: "@_**Bob|3**:\n```quote\ninner\n```",
         sender_full_name: "Alice",
         sender_id: 42,
@@ -59,7 +59,7 @@ describe("message-composer-body.lib", () => {
 
     it("keeps multiline content inside the quote fence", () => {
       const body = buildOutgoingMessageBody("reply", {
-        id: 1,
+        id: "00000000-0000-4000-8000-000000000001",
         content: "line one\n\nline two",
         sender_full_name: "Bob",
         sender_id: 3,

@@ -1,9 +1,10 @@
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { Draft } from "./draft.types";
 
 export function resolveHydratedDraftBootstrap(
   composerValue: string,
   matchingDraft: Draft | undefined,
-): { initialValue: string; activeDraftId: number | null } | null {
+): { initialValue: string; activeDraftId: MessageId | null } | null {
   if (composerValue.trim().length > 0 || matchingDraft == null) {
     return null;
   }

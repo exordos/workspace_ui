@@ -17,6 +17,7 @@ import {
   upsertChatMessages,
 } from "~/shared/lib/message-cache-db";
 import { chatKeyFromContext, chatKeyFromMockMessage } from "~/shared/lib/message-cache-keys.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import {
   MESSENGER_DM_ANCHOR_NUM_AFTER,
   MESSENGER_DM_ANCHOR_NUM_BEFORE,
@@ -41,7 +42,7 @@ interface CachedSnapshot {
 
 export interface LoadInitialMessagesRouteDrivenOptions {
   context: CurrentChatContext;
-  focusedMessageId: number | null;
+  focusedMessageId: MessageId | null;
   currentUserId: UserId | null;
   persistToIndexedDb: boolean;
   instanceId: string | null;
@@ -104,7 +105,7 @@ async function readCachedMessagesByMode(options: {
 async function fetchNetworkMessagesByMode(options: {
   mode: InitialLoadMode;
   context: CurrentChatContext;
-  focusedMessageId: number | null;
+  focusedMessageId: MessageId | null;
   currentUserId: UserId | null;
   signal?: AbortSignal;
 }): Promise<MockMessage[]> {

@@ -10,7 +10,6 @@ import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { numericUserIdOrNull, userIdsEqual } from "~/shared/lib/user-id.lib";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { useRightDrawerStore } from "./right-drawer.model";
-import { RightPanelUserCommonGroups } from "./right-panel-user-common-groups.ui";
 import { buildRightPanelUserContactRows } from "./right-panel-user-contact.lib";
 import { RightPanelUserMediaList } from "./right-panel-user-media-list.ui";
 import { RightPanelUserProfileHeader } from "./right-panel-user-profile-header.ui";
@@ -19,7 +18,6 @@ import type { RightPanelUserProps } from "./right-panel-user.types";
 
 export const RightPanelUser = React.memo(function RightPanelUser({
   user,
-  onSelectCommonGroup,
   onOpenDirectMessage,
 }: RightPanelUserProps) {
   const navigate = useNavigate();
@@ -119,12 +117,6 @@ export const RightPanelUser = React.memo(function RightPanelUser({
               links: media.links ?? 0,
             }}
           />
-          {user.commonGroups != null && user.commonGroups.length > 0 && (
-            <RightPanelUserCommonGroups
-              groups={user.commonGroups}
-              onSelectCommonGroup={onSelectCommonGroup}
-            />
-          )}
         </div>
       </ScrollArea>
     </div>

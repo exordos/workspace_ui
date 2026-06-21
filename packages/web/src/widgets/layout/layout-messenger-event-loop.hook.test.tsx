@@ -12,8 +12,9 @@ import { useMessageReadersStore } from "~/features/message-readers/message-reade
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useUserProfileStore } from "~/features/user-profile/user-profile.model";
 import { DEFAULT_REGISTER_FETCH_EVENT_TYPES } from "~/shared/api/messenger-queue";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { loadUsersDirectoryRow } from "~/shared/lib/users-directory-snapshot-db";
-import { createMessage } from "~/test/factories";
+import { createMessage, testMessageId } from "~/test/factories";
 import { useLayoutMessengerEventLoop } from "./layout-messenger-event-loop.hook";
 import type { ChatListBootstrapResult } from "./layout-chat-list-bootstrap.lib";
 
@@ -33,7 +34,7 @@ const loadDmIndexEntriesMock = vi.hoisted(() =>
       dmKey: string;
       userIds: number[];
       lastActivityTs: number;
-      lastMessageId: number;
+      lastMessageId: MessageId;
       unreadCount: number;
     }[]
   >(() => []),
@@ -206,7 +207,7 @@ describe("useLayoutMessengerEventLoop", () => {
       mode: "streamPreviews",
       messages: [
         {
-          id: 101,
+          id: "00000000-0000-4000-8000-000000000101",
           sender_id: 20,
           sender_full_name: "Notifier",
           content: "rename",
@@ -233,7 +234,7 @@ describe("useLayoutMessengerEventLoop", () => {
           id: string,
           registration?: {
             unread_snapshot?: {
-              streams: { streamId: number; topic: string; unreadMessageIds: number[] }[];
+              streams: { streamId: number; topic: string; unreadMessageIds: MessageId[] }[];
               dms: unknown[];
               totalCount: number;
             };
@@ -267,7 +268,7 @@ describe("useLayoutMessengerEventLoop", () => {
       mode: "streamPreviews",
       messages: [
         {
-          id: 201,
+          id: "00000000-0000-4000-8000-000000000201",
           sender_id: 20,
           sender_full_name: "Older Sender",
           content: "older stream preview",
@@ -279,7 +280,7 @@ describe("useLayoutMessengerEventLoop", () => {
           flags: ["read"],
         },
         {
-          id: 202,
+          id: "00000000-0000-4000-8000-000000000202",
           sender_id: 21,
           sender_full_name: "Baseline Sender",
           content: "baseline preview",
@@ -291,7 +292,7 @@ describe("useLayoutMessengerEventLoop", () => {
           flags: ["read"],
         },
         {
-          id: 203,
+          id: "00000000-0000-4000-8000-000000000203",
           sender_id: 20,
           sender_full_name: "Fresh Sender",
           content: "fresh unread preview",
@@ -318,7 +319,7 @@ describe("useLayoutMessengerEventLoop", () => {
           id: string,
           registration?: {
             unread_snapshot?: {
-              streams: { streamId: number; topic: string; unreadMessageIds: number[] }[];
+              streams: { streamId: number; topic: string; unreadMessageIds: MessageId[] }[];
               dms: unknown[];
               totalCount: number;
             };
@@ -335,7 +336,13 @@ describe("useLayoutMessengerEventLoop", () => {
           { stream_id: 20, name: "design" },
         ],
         unread_snapshot: {
-          streams: [{ streamId: 12, topic: "incident response", unreadMessageIds: [203] }],
+          streams: [
+            {
+              streamId: 12,
+              topic: "incident response",
+              unreadMessageIds: ["00000000-0000-4000-8000-000000000203"],
+            },
+          ],
           dms: [],
           totalCount: 1,
         },
@@ -348,7 +355,7 @@ describe("useLayoutMessengerEventLoop", () => {
 
     const stream = useChatListStore.getState().streamsMap.get(12);
     expect(stream?.lastMessage).toContain("fresh unread preview");
-    expect(stream?.topics.get("incident response")?.lastMessageId).toBe(203);
+    expect(stream?.topics.get("incident response")?.lastMessageId).toBe(testMessageId(203));
     expect(stream?.topics.get("incident response")?.unreadCount).toBe(1);
   });
 
@@ -492,7 +499,7 @@ describe("useLayoutMessengerEventLoop", () => {
           onQueueRegistered?: (
             id: string,
             registration?: {
-              starred_message_ids?: number[];
+              starred_message_ids?: MessageId[];
             },
           ) => void;
         }
@@ -500,7 +507,11 @@ describe("useLayoutMessengerEventLoop", () => {
 
     act(() => {
       firstCallArg?.onQueueRegistered?.("q-starred", {
-        starred_message_ids: [11, 12, 13],
+        starred_message_ids: [
+          "00000000-0000-4000-8000-000000000011",
+          "00000000-0000-4000-8000-000000000012",
+          "00000000-0000-4000-8000-000000000013",
+        ],
       });
     });
 
@@ -542,7 +553,7 @@ describe("useLayoutMessengerEventLoop", () => {
         dmKey: "7,20",
         userIds: [7, 20],
         lastActivityTs: 100,
-        lastMessageId: 55,
+        lastMessageId: "00000000-0000-4000-8000-000000000055",
         unreadCount: 0,
       },
     ]);
@@ -738,7 +749,11 @@ describe("useLayoutMessengerEventLoop", () => {
               };
               recent_private_conversations?: Record<
                 string,
-                { user_ids: number[]; max_message_id: number | null; unread_message_ids: number[] }
+                {
+                  user_ids: number[];
+                  max_message_id: MessageId | null;
+                  unread_message_ids: MessageId[];
+                }
               >;
               subscriptions?: { stream_id: number; name: string }[];
             },
@@ -754,15 +769,29 @@ describe("useLayoutMessengerEventLoop", () => {
       firstCallArg?.onQueueRegistered?.("q-unread", {
         subscriptions: [{ stream_id: 12, name: "engineering" }],
         unread_snapshot: {
-          streams: [{ streamId: 12, topic: "incidents", unreadMessageIds: [401, 402] }],
-          dms: [{ userIds: [20], unreadMessageIds: [501], isGroup: false }],
+          streams: [
+            {
+              streamId: 12,
+              topic: "incidents",
+              unreadMessageIds: [
+                "00000000-0000-4000-8000-000000000401",
+                "00000000-0000-4000-8000-000000000402",
+              ],
+            },
+          ],
+          dms: [
+            {
+              userIds: [20],
+              unreadMessageIds: ["00000000-0000-4000-8000-000000000501"],
+            },
+          ],
           totalCount: 3,
         },
         recent_private_conversations: {
           "7,20": {
             user_ids: [7, 20],
-            max_message_id: 900,
-            unread_message_ids: [501],
+            max_message_id: "00000000-0000-4000-8000-000000000900",
+            unread_message_ids: ["00000000-0000-4000-8000-000000000501"],
           },
         },
       });
@@ -798,7 +827,11 @@ describe("useLayoutMessengerEventLoop", () => {
             registration?: {
               recent_private_conversations?: Record<
                 string,
-                { user_ids: number[]; max_message_id: number | null; unread_message_ids: number[] }
+                {
+                  user_ids: number[];
+                  max_message_id: MessageId | null;
+                  unread_message_ids: MessageId[];
+                }
               >;
             },
           ) => void;
@@ -810,8 +843,8 @@ describe("useLayoutMessengerEventLoop", () => {
         recent_private_conversations: {
           "7,20": {
             user_ids: [7, 20],
-            max_message_id: 900,
-            unread_message_ids: [900],
+            max_message_id: "00000000-0000-4000-8000-000000000900",
+            unread_message_ids: ["00000000-0000-4000-8000-000000000900"],
           },
         },
       });
@@ -824,14 +857,14 @@ describe("useLayoutMessengerEventLoop", () => {
           conversations: {
             "7,20": {
               user_ids: [7, 20],
-              max_message_id: 900,
-              unread_message_ids: [900],
+              max_message_id: "00000000-0000-4000-8000-000000000900",
+              unread_message_ids: ["00000000-0000-4000-8000-000000000900"],
             },
           },
           metadataRows: [
             expect.objectContaining({
               userIds: [7, 20],
-              lastMessageId: 900,
+              lastMessageId: "00000000-0000-4000-8000-000000000900",
             }),
           ],
         }),
@@ -892,7 +925,7 @@ describe("useLayoutMessengerEventLoop", () => {
           dmSlug: null,
           unreadCount: 1,
           lastMessageTimestamp: 1000,
-          messageIds: [77],
+          messageIds: ["00000000-0000-4000-8000-000000000077"],
         },
       ],
     });
@@ -921,7 +954,7 @@ describe("useLayoutMessengerEventLoop", () => {
     });
     useCurrentChatMessagesStore.getState().setMessages([
       createMessage({
-        id: 88,
+        id: "00000000-0000-4000-8000-000000000088",
         stream_id: 10,
         subject: "bugs",
         content: "Current chat message",
@@ -933,7 +966,7 @@ describe("useLayoutMessengerEventLoop", () => {
       loading: false,
       userIds: [1],
       error: null,
-      messageId: 88,
+      messageId: "00000000-0000-4000-8000-000000000088",
       requestVersion: 1,
     });
     useMuteStore.getState().muteStream(10);

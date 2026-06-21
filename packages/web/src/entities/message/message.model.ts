@@ -25,6 +25,7 @@ import {
 } from "~/shared/lib/message-cache-db";
 import { chatKeyFromContext, chatKeyFromMockMessage } from "~/shared/lib/message-cache-keys.lib";
 import { logMessageFlow, summarizeChatContextForLog } from "~/shared/lib/message-flow-debug.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { filterMessageLinkPreviewsForMarkdown } from "~/shared/lib/message-link-preview-filter.lib";
 import { upsertLinkPreviewOnMessage } from "~/shared/lib/message-link-preview-list.lib";
 import { mergeMessagePreservingLinkPreview } from "~/shared/lib/message-link-preview-merge.lib";
@@ -137,14 +138,15 @@ function mergeUsersFromMessages(messages: readonly MockMessage[]): void {
 }
 
 function withOutgoingDeliveryStatus(message: MockMessage): MockMessage {
-  if (message.id > 0) {
-    return { ...message, delivery_status: "sent" };
-  }
-  return { ...message, delivery_status: "failed" };
+  return { ...message, delivery_status: "sent" };
+}
+
+function shouldPersistMessage(message: MockMessage): boolean {
+  return message.delivery_status !== "sending" && message.delivery_status !== "failed";
 }
 
 function withPendingLinkPreviewsIfPersisted(message: MockMessage): MockMessage {
-  return message.id > 0 ? applyPendingLinkPreviewsToMessage(message) : message;
+  return shouldPersistMessage(message) ? applyPendingLinkPreviewsToMessage(message) : message;
 }
 
 function clearMessageEditState(message: MockMessage): MockMessage {
@@ -220,7 +222,11 @@ function commitOptimisticEditOnMessage(
   return filterMessageLinkPreviewsForMarkdown(next, markdownSource ?? content);
 }
 
-function persistMessageContent(messageId: number, content: string, markdownSource?: string): void {
+function persistMessageContent(
+  messageId: MessageId,
+  content: string,
+  markdownSource?: string,
+): void {
   if (!persistChatMessagesToIndexedDb()) return;
   const inst = getCurrentInstance()?.id;
   if (!inst) return;
@@ -395,9 +401,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         windowSizeN: messengerMessageCacheWindowN(state.context),
       });
     } else if (idbPlan.kind === "mergeReplace") {
-      if (idbPlan.removeId < 0) {
-        void deleteMessagesByIds(inst, [idbPlan.removeId]);
-      }
+      void deleteMessagesByIds(inst, [idbPlan.removeId]);
       void putSingleMessage({
         instanceId: inst,
         chatKey: resolvePersistChatKeyForMessage(state.context, idbPlan.message),
@@ -411,7 +415,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     const idbRef: {
       current:
         | { kind: "none" }
-        | { kind: "sync"; deleteNegativeId: number | null; message: MockMessage };
+        | { kind: "sync"; deleteOptimisticId: MessageId | null; message: MockMessage };
     } = { current: { kind: "none" } };
 
     set((state) => {
@@ -441,7 +445,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         updated[targetIdx] = merged;
         idbRef.current = {
           kind: "sync",
-          deleteNegativeId: optimistic.id < 0 ? optimistic.id : null,
+          deleteOptimisticId: optimistic.id,
           message: merged,
         };
         return { messages: updated, pendingOutgoingEchoKeys: nextQueue };
@@ -457,7 +461,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         updated[optIdx] = merged;
         idbRef.current = {
           kind: "sync",
-          deleteNegativeId: prev.id < 0 ? prev.id : null,
+          deleteOptimisticId: prev.id,
           message: merged,
         };
         return { messages: updated, pendingOutgoingEchoKeys: nextQueue };
@@ -471,7 +475,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         );
         const updated = [...state.messages];
         updated[realIdx] = merged;
-        idbRef.current = { kind: "sync", deleteNegativeId: null, message: merged };
+        idbRef.current = { kind: "sync", deleteOptimisticId: null, message: merged };
         return { messages: updated, pendingOutgoingEchoKeys: nextQueue };
       }
 
@@ -479,7 +483,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         ...delivered,
         local_echo_key: optimisticId,
       });
-      idbRef.current = { kind: "sync", deleteNegativeId: null, message: merged };
+      idbRef.current = { kind: "sync", deleteOptimisticId: null, message: merged };
       return {
         messages: [...state.messages, merged],
         pendingOutgoingEchoKeys: nextQueue,
@@ -491,10 +495,10 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     const state = get();
     const inst = getCurrentInstance()?.id;
     if (!state.context || !inst) return;
-    if (idbPlan.deleteNegativeId != null && idbPlan.deleteNegativeId < 0) {
-      void deleteMessagesByIds(inst, [idbPlan.deleteNegativeId]);
+    if (idbPlan.deleteOptimisticId != null) {
+      void deleteMessagesByIds(inst, [idbPlan.deleteOptimisticId]);
     }
-    if (idbPlan.message.id > 0) {
+    if (shouldPersistMessage(idbPlan.message)) {
       void putSingleMessage({
         instanceId: inst,
         chatKey: resolvePersistChatKeyForMessage(state.context, idbPlan.message),
@@ -508,7 +512,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     set((state) => {
       const removed = state.messages.find((m) => m.id === messageId);
       const echoKey =
-        removed?.local_echo_key ?? (removed != null && removed.id < 0 ? removed.id : null);
+        removed?.local_echo_key ?? (removed?.delivery_status === "sending" ? removed.id : null);
       const nextQueue =
         echoKey != null
           ? state.pendingOutgoingEchoKeys.filter((k) => k !== echoKey)
@@ -527,10 +531,10 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
   removeMessages(messageIds) {
     const ids = new Set(messageIds);
     set((state) => {
-      const echoKeysToDrop = new Set<number>();
+      const echoKeysToDrop = new Set<MessageId>();
       for (const m of state.messages) {
         if (!ids.has(m.id)) continue;
-        const k = m.local_echo_key ?? (m.id < 0 ? m.id : undefined);
+        const k = m.local_echo_key ?? (m.delivery_status === "sending" ? m.id : undefined);
         if (k != null) echoKeysToDrop.add(k);
       }
       const nextQueue =

@@ -14,18 +14,14 @@ import {
 } from "~/entities/instance/instance.model";
 import { fetchMessagesByIds } from "~/shared/api/messenger-messages";
 import type { MessengerUnreadMessagesSnapshot } from "~/shared/api/messenger-unread.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import { filterStreamMessagesForSidebar } from "./chat-list-stream-preview-from-messages.lib";
 import { useChatListStore } from "./chat-list.model";
 
-function maxPositiveInt(values: readonly number[]): number | null {
-  let max: number | null = null;
-  for (const v of values) {
-    if (!Number.isInteger(v) || v <= 0) continue;
-    if (max == null || v > max) max = v;
-  }
-  return max;
+function latestMessageIdFromBucket(values: readonly MessageId[]): MessageId | null {
+  return values[values.length - 1] ?? null;
 }
 
 function hasNonEmptyPreviewText(value: string | undefined): boolean {
@@ -53,8 +49,8 @@ function shouldHydrateBucketPreview(
 export function resolveLatestUnreadMessageIdsForMissingPreviews(
   snapshot: MessengerUnreadMessagesSnapshot,
   streamsMap: Map<number, StreamEntryInternal>,
-): number[] {
-  const ids = new Set<number>();
+): MessageId[] {
+  const ids = new Set<MessageId>();
   for (const bucket of snapshot.streams) {
     if (!Number.isInteger(bucket.streamId) || bucket.streamId <= 0) continue;
     if (!Array.isArray(bucket.unreadMessageIds) || bucket.unreadMessageIds.length === 0) continue;
@@ -63,7 +59,7 @@ export function resolveLatestUnreadMessageIdsForMissingPreviews(
     ) {
       continue;
     }
-    const latest = maxPositiveInt(bucket.unreadMessageIds);
+    const latest = latestMessageIdFromBucket(bucket.unreadMessageIds);
     if (latest != null) {
       ids.add(latest);
     }

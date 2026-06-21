@@ -5,20 +5,21 @@ import { useCallback } from "react";
 import { t } from "~/i18n/i18n";
 import { addReaction, removeReaction } from "~/shared/api/messenger-messages";
 import type { MessageReactionPayload, Reaction } from "~/shared/api/messenger.types";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 
 export interface UseChatPageReactionParams {
   currentUserId: number | null;
   setActionError: (message: string | null) => void;
   updateMessageReactionInStore: (
-    messageId: number,
+    messageId: MessageId,
     reaction: Reaction,
     op: "add" | "remove",
   ) => void;
 }
 
 export interface UseChatPageReactionResult {
-  onMessageAddReaction: (messageId: number, payload: MessageReactionPayload) => void;
-  onMessageRemoveReaction: (messageId: number, payload: MessageReactionPayload) => void;
+  onMessageAddReaction: (messageId: MessageId, payload: MessageReactionPayload) => void;
+  onMessageRemoveReaction: (messageId: MessageId, payload: MessageReactionPayload) => void;
 }
 
 function reactionFromPayload(payload: MessageReactionPayload, userId: number): Reaction {
@@ -34,7 +35,7 @@ export function useChatPageReaction(params: UseChatPageReactionParams): UseChatP
   const { currentUserId, setActionError, updateMessageReactionInStore } = params;
 
   const onMessageAddReaction = useCallback(
-    (messageId: number, payload: MessageReactionPayload) => {
+    (messageId: MessageId, payload: MessageReactionPayload) => {
       setActionError(null);
       addReaction(messageId, payload.emojiName, {
         reactionType: payload.reactionType,
@@ -55,7 +56,7 @@ export function useChatPageReaction(params: UseChatPageReactionParams): UseChatP
   );
 
   const onMessageRemoveReaction = useCallback(
-    (messageId: number, payload: MessageReactionPayload) => {
+    (messageId: MessageId, payload: MessageReactionPayload) => {
       setActionError(null);
       removeReaction(messageId, payload.emojiName, {
         reactionType: payload.reactionType,

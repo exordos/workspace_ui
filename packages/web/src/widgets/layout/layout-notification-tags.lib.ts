@@ -1,3 +1,4 @@
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import { buildNotificationFallbackTag } from "./layout-notification-tag.lib";
 import { formatNotificationTitle } from "./layout-notification-title.lib";
@@ -26,7 +27,7 @@ function closeTag(closeByTag: NotificationTagActions["closeByTag"], tag: string)
 
 function closeMessageTags(
   closeByTag: NotificationTagActions["closeByTag"],
-  messageIds: number[],
+  messageIds: MessageId[],
   currentInstanceId: string | null,
 ): void {
   for (const messageId of messageIds) {
@@ -60,7 +61,7 @@ export function closeAllActiveMessageNotifications(
 
 export function closeReadMessageNotifications(
   notifications: NotificationTagActions,
-  messageIds: number[],
+  messageIds: MessageId[],
   currentInstanceId: string | null,
 ): void {
   const { closedTags, updatedSnapshots, untrackedMessageIds } =

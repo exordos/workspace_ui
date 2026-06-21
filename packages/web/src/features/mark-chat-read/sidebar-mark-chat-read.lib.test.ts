@@ -24,11 +24,23 @@ describe("applySidebarMarkChatAsRead", () => {
 
   it("clears DM unread after successful narrow API", async () => {
     useChatListStore.getState().setCurrentUserId(10);
-    useChatListStore.getState().upsertDmMetadataRows([{ userIds: [10, 20], lastMessageId: 1 }]);
+    useChatListStore
+      .getState()
+      .upsertDmMetadataRows([
+        { userIds: [10, 20], lastMessageId: "00000000-0000-4000-8000-000000000001" },
+      ]);
     useChatListStore.getState().reconcileUnreadFromSnapshot(
       {
         streams: [],
-        dms: [{ userIds: [20], unreadMessageIds: [1, 2], isGroup: false }],
+        dms: [
+          {
+            userIds: [20],
+            unreadMessageIds: [
+              "00000000-0000-4000-8000-000000000001",
+              "00000000-0000-4000-8000-000000000002",
+            ],
+          },
+        ],
         totalCount: 2,
         mentionMessageIds: [],
       },
@@ -47,7 +59,16 @@ describe("applySidebarMarkChatAsRead", () => {
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
     useChatListStore.getState().reconcileUnreadFromSnapshot(
       {
-        streams: [{ streamId: 5, topic: "alpha", unreadMessageIds: [10, 11] }],
+        streams: [
+          {
+            streamId: 5,
+            topic: "alpha",
+            unreadMessageIds: [
+              "00000000-0000-4000-8000-000000000010",
+              "00000000-0000-4000-8000-000000000011",
+            ],
+          },
+        ],
         dms: [],
         totalCount: 2,
         mentionMessageIds: [],
@@ -79,7 +100,10 @@ describe("applySidebarMarkChatAsRead", () => {
         dmSlug: null,
         unreadCount: 2,
         lastMessageTimestamp: 100,
-        messageIds: [10, 11],
+        messageIds: [
+          "00000000-0000-4000-8000-000000000010",
+          "00000000-0000-4000-8000-000000000011",
+        ],
       },
       {
         key: "stream:5:beta",
@@ -91,13 +115,22 @@ describe("applySidebarMarkChatAsRead", () => {
         dmSlug: null,
         unreadCount: 1,
         lastMessageTimestamp: 90,
-        messageIds: [12],
+        messageIds: ["00000000-0000-4000-8000-000000000012"],
       },
     ]);
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
     useChatListStore.getState().reconcileUnreadFromSnapshot(
       {
-        streams: [{ streamId: 5, topic: "alpha", unreadMessageIds: [10, 11] }],
+        streams: [
+          {
+            streamId: 5,
+            topic: "alpha",
+            unreadMessageIds: [
+              "00000000-0000-4000-8000-000000000010",
+              "00000000-0000-4000-8000-000000000011",
+            ],
+          },
+        ],
         dms: [],
         totalCount: 2,
         mentionMessageIds: [],

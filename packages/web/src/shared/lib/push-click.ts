@@ -1,5 +1,7 @@
 import type { MockMessage } from "~/shared/api/messenger.types";
 import { buildDmRouteSlugFromRecipients } from "~/shared/lib/dm-route-slug.lib";
+import { normalizeMessageId } from "~/shared/lib/message-id.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { encodeTopicForRoute, normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
@@ -41,13 +43,17 @@ function parsePositiveInt(value: number | string | undefined): number | undefine
   return undefined;
 }
 
+function parseMessageId(value: MessageId | undefined): MessageId | undefined {
+  return normalizeMessageId(value) ?? undefined;
+}
+
 function normalizeNonEmpty(value: string | undefined): string | undefined {
   if (value == null) return undefined;
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : undefined;
 }
 
-function parseNearMessageIdFromWorkspaceHash(hash: string): number | undefined {
+function parseNearMessageIdFromWorkspaceHash(hash: string): MessageId | undefined {
   const normalizedHash = hash.startsWith("#") ? hash.slice(1) : hash;
   if (!normalizedHash.startsWith("narrow/")) {
     return undefined;
@@ -61,9 +67,9 @@ function parseNearMessageIdFromWorkspaceHash(hash: string): number | undefined {
     return undefined;
   }
   try {
-    return parsePositiveInt(decodeURIComponent(rawNear));
+    return parseMessageId(decodeURIComponent(rawNear));
   } catch {
-    return parsePositiveInt(rawNear);
+    return parseMessageId(rawNear);
   }
 }
 
@@ -93,7 +99,7 @@ export function buildPushClickUrl(input: PushClickTargetInput): string {
   return withCurrentOrgRoute("/");
 }
 
-export function buildMessageRedirectRoute(messageId: number, realmUri?: string): string {
+export function buildMessageRedirectRoute(messageId: MessageId, realmUri?: string): string {
   const base = withCurrentOrgRoute(`/message/${messageId}`);
   return realmUri ? `${base}?realm=${encodeURIComponent(realmUri)}` : base;
 }
@@ -121,7 +127,7 @@ export function buildMessageRedirectRouteFromWorkspacePermalink(permalink: strin
 }
 
 export function buildRouteFromPushNotificationClick(payload: PushNotificationClickPayload): string {
-  const messageId = parsePositiveInt(payload.messageId);
+  const messageId = parseMessageId(payload.messageId);
   if (messageId != null) {
     return buildMessageRedirectRoute(messageId, payload.realmUri);
   }
@@ -171,7 +177,7 @@ export function buildRouteFromMessage(
 
 export function buildNavigableRouteFromMessage(
   message: {
-    id: number;
+    id: MessageId;
     stream_id?: number | null;
     channel?: string;
     display_recipient?: MockMessage["display_recipient"];

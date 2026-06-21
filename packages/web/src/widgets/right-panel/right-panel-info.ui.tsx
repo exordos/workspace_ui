@@ -36,7 +36,6 @@ import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { ScrollArea } from "~/shared/ui/scroll-area";
-import { RightPanelDmGroup } from "./right-panel-dm-group.ui";
 import { RightPanelUser } from "./right-panel-user.ui";
 import { buildRightPanelStreamMembers, buildStreamSlug, resolveAvatarSrc } from "./right-panel.lib";
 import type { RightPanelInfoProps } from "./right-panel.types";
@@ -55,7 +54,6 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   participantsCount = 0,
   onlineCount = 0,
   user,
-  onSelectCommonGroup,
   onOpenDirectMessage,
 }) => {
   const navigate = useNavigate();
@@ -308,23 +306,12 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   }, [clearRemoveMembersState, streamId]);
 
   if (user) {
-    return (
-      <RightPanelUser
-        user={user}
-        onSelectCommonGroup={onSelectCommonGroup}
-        onOpenDirectMessage={handleOpenDirectMessage}
-      />
-    );
+    return <RightPanelUser user={user} onOpenDirectMessage={handleOpenDirectMessage} />;
   }
 
   if (chatInfoData?.type === "dm") {
-    return (
-      <RightPanelDmGroup
-        title={title}
-        data={chatInfoData}
-        onOpenUserProfile={handleOpenUserProfile}
-      />
-    );
+    // Workspace DMs are 1:1 only; the partner profile is shown via RightPanelUser above.
+    return null;
   }
 
   const rawChannelDescription =

@@ -21,7 +21,7 @@ vi.mock("~/shared/lib/clipboard", () => ({
 
 function createMessage(overrides: Partial<MockMessage> = {}): MockMessage {
   return {
-    id: 201,
+    id: "00000000-0000-4000-8000-000000000201",
     sender_id: 77,
     sender_full_name: "Alice",
     stream_id: 10,

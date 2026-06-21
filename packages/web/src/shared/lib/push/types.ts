@@ -8,6 +8,7 @@
  * Both channels can work together: FCM handles delivery,
  * server decides WHEN to send (new message, mention, DM).
  */
+import type { MessageId } from "../message-id.lib";
 
 // ---------------------------------------------------------------------------
 // Push message payload (from server → client)
@@ -20,7 +21,7 @@ export interface PushMessagePayload {
   realm_uri?: string;
   /** Message data (for "message" event) */
   message?: {
-    id: number;
+    id: MessageId;
     sender_id: number;
     sender_full_name: string;
     sender_avatar_url?: string;
@@ -34,7 +35,7 @@ export interface PushMessagePayload {
     timestamp: number;
   };
   /** Message IDs to dismiss (for "remove" event) */
-  message_ids?: number[];
+  message_ids?: MessageId[];
 }
 
 // ---------------------------------------------------------------------------

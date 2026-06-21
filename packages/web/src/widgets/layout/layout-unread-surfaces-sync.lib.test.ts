@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
+import { testMessageId, testMessageOrdinal } from "~/test/factories";
 import {
   syncUnreadSurfacesFromDelta,
   syncUnreadSurfacesFromEventDelta,
@@ -10,13 +11,13 @@ import {
 
 const INSTANCE_ID = "instance-sync-test";
 
-function unreadStreamMessage(id: number): WorkspaceRawMessage {
+function unreadStreamMessage(id: number | string): WorkspaceRawMessage {
   return {
-    id,
+    id: testMessageId(id),
     sender_id: 2,
     sender_full_name: "Alice",
     content: "",
-    timestamp: id,
+    timestamp: testMessageOrdinal(id),
     type: "stream",
     stream_id: 5,
     display_recipient: "engineering",
@@ -25,13 +26,13 @@ function unreadStreamMessage(id: number): WorkspaceRawMessage {
   };
 }
 
-function unreadDmMessage(id: number): WorkspaceRawMessage {
+function unreadDmMessage(id: number | string): WorkspaceRawMessage {
   return {
-    id,
+    id: testMessageId(id),
     sender_id: 2,
     sender_full_name: "Alice",
     content: "",
-    timestamp: id,
+    timestamp: testMessageOrdinal(id),
     type: "private",
     display_recipient: [
       { id: 1, full_name: "Me", email: "me@example.com" },
@@ -100,7 +101,9 @@ describe("syncUnreadSurfacesFromEventDelta", () => {
       source: "event-read-add",
       instanceId: INSTANCE_ID,
       applyDelta: () => {
-        useChatListStore.getState().decrementUnreadForMessages([10]);
+        useChatListStore
+          .getState()
+          .decrementUnreadForMessages(["00000000-0000-4000-8000-000000000010"]);
       },
     });
 
@@ -112,7 +115,16 @@ describe("syncUnreadSurfacesFromEventDelta", () => {
     useChatListStore.getState().setCurrentUserId(1);
     useChatListStore.getState().reconcileUnreadFromSnapshot(
       {
-        streams: [{ streamId: 5, topic: "general", unreadMessageIds: [10, 11] }],
+        streams: [
+          {
+            streamId: 5,
+            topic: "general",
+            unreadMessageIds: [
+              "00000000-0000-4000-8000-000000000010",
+              "00000000-0000-4000-8000-000000000011",
+            ],
+          },
+        ],
         dms: [],
         totalCount: 2,
         mentionMessageIds: [],
@@ -186,7 +198,16 @@ describe("syncUnreadSurfacesFromSnapshot", () => {
       instanceId: INSTANCE_ID,
       currentUserId: 1,
       snapshot: {
-        streams: [{ streamId: 5, topic: "general", unreadMessageIds: [10, 11] }],
+        streams: [
+          {
+            streamId: 5,
+            topic: "general",
+            unreadMessageIds: [
+              "00000000-0000-4000-8000-000000000010",
+              "00000000-0000-4000-8000-000000000011",
+            ],
+          },
+        ],
         dms: [],
         totalCount: 2,
         mentionMessageIds: [],
@@ -207,7 +228,13 @@ describe("syncUnreadSurfacesFromSnapshot", () => {
       instanceId: INSTANCE_ID,
       currentUserId: 1,
       snapshot: {
-        streams: [{ streamId: 5, topic: "general", unreadMessageIds: [10] }],
+        streams: [
+          {
+            streamId: 5,
+            topic: "general",
+            unreadMessageIds: ["00000000-0000-4000-8000-000000000010"],
+          },
+        ],
         dms: [],
         totalCount: 1,
         mentionMessageIds: [],
@@ -227,7 +254,7 @@ describe("syncUnreadSurfacesFromSnapshot", () => {
       currentUserId: 1,
       snapshot: {
         streams: [],
-        dms: [{ userIds: [2], unreadMessageIds: [20], isGroup: false }],
+        dms: [{ userIds: [2], unreadMessageIds: ["00000000-0000-4000-8000-000000000020"] }],
         totalCount: 1,
         mentionMessageIds: [],
       },
@@ -243,7 +270,13 @@ describe("syncUnreadSurfacesFromSnapshot", () => {
       instanceId: INSTANCE_ID,
       currentUserId: null,
       snapshot: {
-        streams: [{ streamId: 5, topic: "general", unreadMessageIds: [10] }],
+        streams: [
+          {
+            streamId: 5,
+            topic: "general",
+            unreadMessageIds: ["00000000-0000-4000-8000-000000000010"],
+          },
+        ],
         dms: [],
         totalCount: 1,
         mentionMessageIds: [],
@@ -261,7 +294,16 @@ describe("syncUnreadSurfacesFromSnapshot", () => {
       instanceId: INSTANCE_ID,
       currentUserId: null,
       snapshot: {
-        streams: [{ streamId: 5, topic: "general", unreadMessageIds: [10, 11] }],
+        streams: [
+          {
+            streamId: 5,
+            topic: "general",
+            unreadMessageIds: [
+              "00000000-0000-4000-8000-000000000010",
+              "00000000-0000-4000-8000-000000000011",
+            ],
+          },
+        ],
         dms: [],
         totalCount: 2,
         mentionMessageIds: [],

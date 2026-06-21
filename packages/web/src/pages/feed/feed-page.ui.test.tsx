@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useFeedStore } from "~/entities/feed/feed.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import type { MockMessage } from "~/shared/api/messenger.types";
-import { createMessage } from "~/test/factories";
+import { createMessage, testMessageId } from "~/test/factories";
 import { FeedPage } from "./feed-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
 
@@ -101,7 +101,7 @@ describe("FeedPage forward action", () => {
     });
 
     const message = createMessage({
-      id: 55,
+      id: "00000000-0000-4000-8000-000000000055",
       sender_id: 42,
       sender_full_name: "Alice",
       stream_id: 10,
@@ -132,7 +132,9 @@ describe("FeedPage forward action", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Forward" }));
 
-    expect(navigateSpy).toHaveBeenCalledWith("/stream/10-engineering/topic/bugs?msg=55&forward=55");
+    expect(navigateSpy).toHaveBeenCalledWith(
+      `/stream/10-engineering/topic/bugs?msg=${testMessageId(55)}&forward=${testMessageId(55)}`,
+    );
   });
 
   it("opens explicit empty-topic forward flow when feed message topic is empty", async () => {
@@ -150,7 +152,7 @@ describe("FeedPage forward action", () => {
     });
 
     const message = createMessage({
-      id: 57,
+      id: "00000000-0000-4000-8000-000000000057",
       sender_id: 42,
       sender_full_name: "Alice",
       stream_id: 10,
@@ -182,13 +184,13 @@ describe("FeedPage forward action", () => {
     fireEvent.click(screen.getByRole("button", { name: "Forward" }));
 
     expect(navigateSpy).toHaveBeenCalledWith(
-      "/stream/10-engineering/topic/__empty__?msg=57&forward=57",
+      `/stream/10-engineering/topic/__empty__?msg=${testMessageId(57)}&forward=${testMessageId(57)}`,
     );
   });
 
   it("loads feed after active instance becomes available", async () => {
     const message = createMessage({
-      id: 56,
+      id: "00000000-0000-4000-8000-000000000056",
       sender_id: 42,
       sender_full_name: "Alice",
       stream_id: 10,
@@ -262,7 +264,7 @@ describe("FeedPage forward action", () => {
     });
 
     const message = createMessage({
-      id: 58,
+      id: "00000000-0000-4000-8000-000000000058",
       sender_id: 42,
       sender_full_name: "Alice",
       stream_id: 10,
@@ -316,7 +318,7 @@ describe("FeedPage forward action", () => {
       instanceId: "instance-1",
       messages: [
         createMessage({
-          id: 99,
+          id: "00000000-0000-4000-8000-000000000099",
           sender_id: 42,
           sender_full_name: "Alice",
           stream_id: 10,
@@ -332,7 +334,7 @@ describe("FeedPage forward action", () => {
       isRefreshing: false,
       isLoadingMore: false,
       isAllLoaded: false,
-      lastMessageId: 99,
+      lastMessageId: "00000000-0000-4000-8000-000000000099",
       requestVersion: 0,
       lastLoadedAt: Date.now(),
       error: null,
@@ -341,7 +343,7 @@ describe("FeedPage forward action", () => {
     fetchFeedMessages.mockResolvedValue({
       messages: [
         createMessage({
-          id: 99,
+          id: "00000000-0000-4000-8000-000000000099",
           sender_id: 42,
           sender_full_name: "Alice",
           stream_id: 10,
@@ -394,7 +396,7 @@ describe("FeedPage forward action", () => {
       fetchFeedMessages.mockResolvedValue({
         messages: [
           createMessage({
-            id: 60,
+            id: "00000000-0000-4000-8000-000000000060",
             sender_id: 42,
             sender_full_name: "Alice",
             stream_id: 10,
@@ -406,7 +408,7 @@ describe("FeedPage forward action", () => {
             channel: "engineering",
           }),
           createMessage({
-            id: 61,
+            id: "00000000-0000-4000-8000-000000000061",
             sender_id: 42,
             sender_full_name: "Alice",
             stream_id: 10,
@@ -467,7 +469,7 @@ describe("FeedPage forward action", () => {
       });
 
       const message = createMessage({
-        id: 59,
+        id: "00000000-0000-4000-8000-000000000059",
         sender_id: 42,
         sender_full_name: "Alice",
         stream_id: 10,
@@ -568,7 +570,7 @@ describe("FeedPage forward action", () => {
     await act(async () => {
       resolveHydrate([
         createMessage({
-          id: 500,
+          id: "00000000-0000-4000-8000-000000000500",
           sender_id: 42,
           sender_full_name: "Alice",
           stream_id: 10,
@@ -589,7 +591,7 @@ describe("FeedPage forward action", () => {
       resolveNextOrgFetch({
         messages: [
           createMessage({
-            id: 600,
+            id: "00000000-0000-4000-8000-000000000600",
             sender_id: 99,
             sender_full_name: "Bob",
             stream_id: 20,
@@ -670,7 +672,7 @@ describe("FeedPage forward action", () => {
       resolveOldFetch({
         messages: [
           createMessage({
-            id: 700,
+            id: "00000000-0000-4000-8000-000000000700",
             sender_id: 42,
             sender_full_name: "Alice",
             stream_id: 10,
@@ -693,7 +695,7 @@ describe("FeedPage forward action", () => {
       resolveNewFetch({
         messages: [
           createMessage({
-            id: 800,
+            id: "00000000-0000-4000-8000-000000000800",
             sender_id: 99,
             sender_full_name: "Bob",
             stream_id: 20,
@@ -749,7 +751,7 @@ describe("FeedPage forward action", () => {
       instanceId: "instance-1",
       messages: [
         createMessage({
-          id: 100,
+          id: "00000000-0000-4000-8000-000000000100",
           sender_id: 42,
           sender_full_name: "Alice",
           stream_id: 10,
@@ -765,7 +767,7 @@ describe("FeedPage forward action", () => {
       isRefreshing: false,
       isLoadingMore: false,
       isAllLoaded: false,
-      lastMessageId: 100,
+      lastMessageId: "00000000-0000-4000-8000-000000000100",
       requestVersion: 0,
       lastLoadedAt: Date.now(),
       error: null,
@@ -789,7 +791,7 @@ describe("FeedPage forward action", () => {
     fireEvent.scroll(list);
 
     await waitFor(() => {
-      expect(fetchFeedMessages).toHaveBeenCalledWith(100, 50);
+      expect(fetchFeedMessages).toHaveBeenCalledWith(testMessageId(100), 50);
     });
 
     act(() => {
@@ -800,7 +802,7 @@ describe("FeedPage forward action", () => {
       resolveOlderPage({
         messages: [
           createMessage({
-            id: 90,
+            id: "00000000-0000-4000-8000-000000000090",
             sender_id: 42,
             sender_full_name: "Alice",
             stream_id: 10,
@@ -812,7 +814,7 @@ describe("FeedPage forward action", () => {
             channel: "engineering",
           }),
           createMessage({
-            id: 100,
+            id: "00000000-0000-4000-8000-000000000100",
             sender_id: 42,
             sender_full_name: "Alice",
             stream_id: 10,

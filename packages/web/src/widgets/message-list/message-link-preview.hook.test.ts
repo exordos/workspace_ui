@@ -2,19 +2,25 @@ import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useLinkPreviewStore } from "~/entities/link-preview/link-preview.model";
 import type { MockMessage } from "~/shared/api/messenger.types";
+import { testMessageId } from "~/test/factories";
 import { useMessageLinkPreview } from "./message-link-preview.hook";
 import type { RefObject } from "react";
 
-function baseMessage(overrides: Partial<MockMessage> = {}): MockMessage {
+type MockMessageOverrides = Partial<Omit<MockMessage, "id">> & {
+  id?: MockMessage["id"] | number;
+};
+
+function baseMessage(overrides: MockMessageOverrides = {}): MockMessage {
+  const { id, ...rest } = overrides;
   return {
-    id: 42,
+    id: testMessageId(id ?? 42),
     sender_id: 1,
     sender_full_name: "Alice",
     stream_id: 5,
     subject: "general",
     content: "https://example.com",
     timestamp: 1,
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -164,7 +170,7 @@ describe("useMessageLinkPreview", () => {
     const { unmount } = renderHook(() => useMessageLinkPreview(baseMessage(), ref));
 
     await waitFor(() => {
-      expect(requestSpy).toHaveBeenCalledWith(42, "https://example.com");
+      expect(requestSpy).toHaveBeenCalledWith(testMessageId(42), "https://example.com");
     });
     unmount();
     teardown();

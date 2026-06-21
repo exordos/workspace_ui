@@ -5,7 +5,7 @@ import { useUsersStore } from "~/entities/user/user.model";
 import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
 import type * as MessengerMessagesApi from "~/shared/api/messenger-messages";
 import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
-import { createUser } from "~/test/factories";
+import { createUser, testMessageId } from "~/test/factories";
 import { renderWithProviders } from "~/test/render";
 import { computeFloatingPickerPosition } from "./message-composer-picker-position.lib";
 import { resetComposerSavedSnippetsModelForTests } from "./message-composer-saved-snippets.model";
@@ -1184,7 +1184,7 @@ describe("MessageComposer edit-last shortcut", () => {
 
 describe("MessageComposer reply quote", () => {
   const sampleReplyQuote = {
-    id: 101,
+    id: testMessageId(101),
     content: "Original message",
     sender_full_name: "Alice",
     sender_id: 42,
@@ -1240,7 +1240,7 @@ describe("MessageComposer edit session", () => {
         onValueChange={onValueChange}
         onSubmitEdit={onSubmitEdit}
         onCancelEdit={onCancelEdit}
-        editSession={{ messageId: 42, initialMarkdown: "message to edit" }}
+        editSession={{ messageId: testMessageId(42), initialMarkdown: "message to edit" }}
       />,
     );
 
@@ -1249,7 +1249,7 @@ describe("MessageComposer edit session", () => {
     fireEvent.keyDown(textbox, { key: "Enter" });
 
     await waitFor(() => {
-      expect(onSubmitEdit).toHaveBeenCalledWith(42, "edited message body");
+      expect(onSubmitEdit).toHaveBeenCalledWith(testMessageId(42), "edited message body");
     });
     expect(onValueChange).not.toHaveBeenCalled();
 
@@ -1278,7 +1278,7 @@ describe("MessageComposer edit session", () => {
         onSend={vi.fn()}
         initialValue="draft text"
         onCancelEdit={onCancelEdit}
-        editSession={{ messageId: 7, initialMarkdown: "server markdown" }}
+        editSession={{ messageId: testMessageId(7), initialMarkdown: "server markdown" }}
       />,
     );
 
@@ -1306,7 +1306,7 @@ describe("MessageComposer edit session", () => {
         onSend={vi.fn()}
         initialValue="draft text"
         onCancelEdit={onCancelEdit}
-        editSession={{ messageId: 7, initialMarkdown: "message A" }}
+        editSession={{ messageId: testMessageId(7), initialMarkdown: "message A" }}
       />,
     );
     expect(textbox).toHaveValue("message A");
@@ -1318,7 +1318,7 @@ describe("MessageComposer edit session", () => {
         onSend={vi.fn()}
         initialValue="draft text"
         onCancelEdit={onCancelEdit}
-        editSession={{ messageId: 8, initialMarkdown: "message B" }}
+        editSession={{ messageId: testMessageId(8), initialMarkdown: "message B" }}
       />,
     );
     expect(textbox).toHaveValue("message B");

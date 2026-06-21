@@ -1,4 +1,5 @@
 import type { Reaction } from "~/shared/api/messenger.types";
+import { normalizeMessageId, type MessageId } from "~/shared/lib/message-id.lib";
 
 /**
  * Test data factories — typed builders for domain objects.
@@ -20,8 +21,32 @@ function autoId(): number {
   return nextId++;
 }
 
+function autoUuid(): MessageId {
+  const suffix = String(nextId++).padStart(12, "0");
+  return `00000000-0000-4000-8000-${suffix}`;
+}
+
 export function resetFactoryIds(): void {
   nextId = 1000;
+}
+
+export function testMessageId(value: MessageId | number): MessageId {
+  if (typeof value === "number") {
+    const suffix = String(value).padStart(12, "0");
+    return `00000000-0000-4000-8000-${suffix}`;
+  }
+  return normalizeMessageId(value) ?? value;
+}
+
+export function testMessageOrdinal(value: MessageId | number): number {
+  if (typeof value === "number") {
+    return value;
+  }
+  const normalized = normalizeMessageId(value);
+  if (normalized == null) {
+    return 0;
+  }
+  return Number(normalized.slice(-12));
 }
 
 // ---------------------------------------------------------------------------
@@ -29,7 +54,7 @@ export function resetFactoryIds(): void {
 // ---------------------------------------------------------------------------
 
 interface MessageOverrides {
-  id?: number;
+  id?: MessageId | number;
   sender_id?: number;
   sender_full_name?: string;
   stream_id?: number | null;
@@ -45,7 +70,7 @@ interface MessageOverrides {
 }
 
 export function createMessage(overrides: MessageOverrides = {}) {
-  const id = overrides.id ?? autoId();
+  const id = overrides.id == null ? autoUuid() : testMessageId(overrides.id);
   return {
     id,
     sender_id: overrides.sender_id ?? 1,

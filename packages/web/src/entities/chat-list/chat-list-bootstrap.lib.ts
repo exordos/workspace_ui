@@ -8,6 +8,7 @@ import {
   type ChatListSnapshotSerialized,
 } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import { dmConversationKey } from "~/shared/lib/dm-key";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import {
   compareUserIds,
@@ -18,14 +19,19 @@ import {
   userIdsEqual,
 } from "~/shared/lib/user-id.lib";
 import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sidebar-chat";
-import { formatMessageTime, GROUP_DM_ID_OFFSET, hashKey, slugify } from "./chat-list-format.lib";
+import {
+  formatMessageTime,
+  SYNTHETIC_DM_ID_OFFSET,
+  hashKey,
+  slugify,
+} from "./chat-list-format.lib";
 import { buildSidebarFromMessages, isUnreadFromOthers } from "./chat-list.lib";
 import type { ChatListDmMetadataRow, MessageLocation } from "./chat-list.model.types";
 
 export interface ChatListDmBootstrapDisplayContext {
   getParticipantDisplayName: (userId: UserId) => string;
   getAvatarUrl: (userId: UserId) => string | undefined;
-  groupChatFallbackLabel: string;
+  dmFallbackLabel: string;
 }
 
 /** Patch fragment that clears bootstrap error after a successful sidebar rebuild. */
@@ -37,8 +43,8 @@ export function clearBootstrapErrorPatch(): { bootstrapError: null } {
 export function buildMessageIdToLocation(
   messages: readonly WorkspaceRawMessage[],
   currentUserId: UserId | null,
-): Map<number, MessageLocation> {
-  const map = new Map<number, MessageLocation>();
+): Map<MessageId, MessageLocation> {
+  const map = new Map<MessageId, MessageLocation>();
   for (const m of messages) {
     if (m.type === "stream" && m.stream_id != null) {
       const topic = normalizeTopicForIdentity(m.subject ?? "");
@@ -55,8 +61,8 @@ export function buildMessageIdToLocation(
 export function buildUnreadLocationMap(
   messages: readonly WorkspaceRawMessage[],
   currentUserId: UserId | null,
-): Map<number, MessageLocation> {
-  const map = new Map<number, MessageLocation>();
+): Map<MessageId, MessageLocation> {
+  const map = new Map<MessageId, MessageLocation>();
   for (const message of messages) {
     if (!isUnreadFromOthers(message, currentUserId)) continue;
     if (message.type === "stream" && message.stream_id != null) {
@@ -150,7 +156,7 @@ export function normalizeDmUserIds(
 }
 
 function metadataOnlySyntheticDmId(row: ChatListDmMetadataRow): number {
-  return GROUP_DM_ID_OFFSET + hashKey(row.streamUuid ?? row.userUuid ?? row.name ?? "dm");
+  return SYNTHETIC_DM_ID_OFFSET + hashKey(row.streamUuid ?? row.userUuid ?? row.name ?? "dm");
 }
 
 /** Builds or merges a metadata-only DM sidebar row (register / DM index bootstrap). */
@@ -176,14 +182,13 @@ export function buildDmMetadataEntry(
     currentUserId != null ? participants.length > 1 : participants.length > 2;
 
   if (userIds.length === 0) {
-    const name = row.name?.trim() || display.groupChatFallbackLabel;
+    const name = row.name?.trim() || display.dmFallbackLabel;
     return {
       key,
       entry: {
         id: metadataOnlySyntheticDmId(row),
         name,
         slug: row.streamUuid ?? row.userUuid ?? String(metadataOnlySyntheticDmId(row)),
-        isGroup: false,
         lastMessage: existing?.lastMessage ?? "",
         time,
         ts,
@@ -211,7 +216,6 @@ export function buildDmMetadataEntry(
       id: entryId,
       name,
       slug: row.streamUuid ?? `${userIdStorageKey(partnerId)}-${slugify(name)}`,
-      isGroup: false,
       lastMessage: existing?.lastMessage ?? "",
       time,
       ts,
@@ -281,7 +285,7 @@ export interface SetFromMessagesBootstrapState {
   sidebarDataHydrated: true;
   currentUserId: UserId | null;
   lastAppliedMessages: WorkspaceRawMessage[];
-  messageIdToLocation: Map<number, MessageLocation>;
+  messageIdToLocation: Map<MessageId, MessageLocation>;
   bootstrapError: null;
 }
 
@@ -320,7 +324,7 @@ export interface ChatListHydrateFromSnapshotState {
   dmsMap: Map<string, DmEntryInternal>;
   sidebarDataHydrated: boolean;
   streamMetadataHydrated: false;
-  messageIdToLocation: Map<number, MessageLocation>;
+  messageIdToLocation: Map<MessageId, MessageLocation>;
   currentUserId: UserId | null;
   lastAppliedMessages: null;
 }
@@ -335,8 +339,8 @@ export function buildChatListHydrateFromSnapshotState(
     streamsMap.set(id, deserializeStreamEntry(s));
   }
   const dmsMap = new Map(snapshot.dmsEntries);
-  const messageIdToLocation = new Map<number, MessageLocation>(
-    snapshot.messageIdToLocationEntries as [number, MessageLocation][],
+  const messageIdToLocation = new Map<MessageId, MessageLocation>(
+    snapshot.messageIdToLocationEntries as [MessageId, MessageLocation][],
   );
   return {
     streamsMap,

@@ -43,7 +43,7 @@ describe("runChatListBootstrap", () => {
       instanceId: "test-instance",
       version: 1,
       currentUserId: 1,
-      lastMessageId: 100,
+      lastMessageId: "00000000-0000-4000-8000-000000000100",
       oldestMessageId: null,
       streamsEntries: [],
       dmsEntries: [],

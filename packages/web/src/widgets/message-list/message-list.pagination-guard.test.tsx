@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MockMessage } from "~/shared/api/messenger.types";
 import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
+import { testMessageId, testMessageOrdinal } from "~/test/factories";
 import { MessageList } from "./message-list.ui";
 
 const fetchRealmEmojisMock = vi.hoisted(() => vi.fn());
@@ -14,9 +15,9 @@ vi.mock("~/shared/api/messenger-users", async (importOriginal) => {
   };
 });
 
-function msg(id: number, overrides: Partial<MockMessage> = {}): MockMessage {
+function msg(id: number | string, overrides: Partial<MockMessage> = {}): MockMessage {
   return {
-    id,
+    id: testMessageId(id),
     sender_id: 42,
     sender_full_name: "Alice",
     stream_id: 10,
@@ -24,7 +25,7 @@ function msg(id: number, overrides: Partial<MockMessage> = {}): MockMessage {
     channel: "general",
     subject: "bugs",
     content: `<p>Message ${id}</p>`,
-    timestamp: 1710000000 + id,
+    timestamp: 1710000000 + testMessageOrdinal(id),
     ...overrides,
   };
 }
@@ -93,7 +94,7 @@ describe("MessageList boundary pagination guards", () => {
       <MessageList
         messages={messages}
         currentUserId={7}
-        firstUnreadId={3}
+        firstUnreadId={"00000000-0000-4000-8000-000000000003"}
         unreadCount={21}
         scrollToBottomKey="chat-a"
         onLoadMore={onLoadMore}
@@ -299,7 +300,7 @@ describe("MessageList boundary pagination guards", () => {
       await flushProgrammaticScrollFrames();
     });
 
-    const message3 = screen.getByTestId("message-3");
+    const message3 = screen.getByTestId(`message-${testMessageId(3)}`);
     message3.getBoundingClientRect = () => ({
       top: 300,
       bottom: 380,

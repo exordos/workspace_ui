@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
+import { testMessageId } from "~/test/factories";
 import { MessageRedirectPage } from "./message-redirect-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
 
@@ -44,7 +45,9 @@ describe("MessageRedirectPage", () => {
     });
 
     render(
-      <MemoryRouter initialEntries={["/message/123?realm=https%3A%2F%2Fchat.example.com"]}>
+      <MemoryRouter
+        initialEntries={[`/message/${testMessageId(123)}?realm=https%3A%2F%2Fchat.example.com`]}
+      >
         <Routes>
           <Route path="/message/:messageId" element={<MessageRedirectPage />} />
         </Routes>
@@ -53,7 +56,9 @@ describe("MessageRedirectPage", () => {
 
     await waitFor(() => {
       expect(navigateSpy).toHaveBeenCalledWith(
-        "/login?realm=https%3A%2F%2Fchat.example.com&redirectTo=%2Fmessage%2F123%3Frealm%3Dhttps%253A%252F%252Fchat.example.com",
+        `/login?realm=https%3A%2F%2Fchat.example.com&redirectTo=${encodeURIComponent(
+          `/message/${testMessageId(123)}?realm=https%3A%2F%2Fchat.example.com`,
+        )}`,
         {
           replace: true,
         },
@@ -72,7 +77,7 @@ describe("MessageRedirectPage", () => {
     });
     useChatListStore.setState({ currentUserId: 7 });
     fetchMessageById.mockResolvedValue({
-      id: 123,
+      id: testMessageId(123),
       sender_id: 42,
       sender_full_name: "Alice",
       stream_id: 10,
@@ -85,7 +90,9 @@ describe("MessageRedirectPage", () => {
     getCurrentUser.mockResolvedValue({ user_id: 7, full_name: "You", email: "you@test.com" });
 
     render(
-      <MemoryRouter initialEntries={["/message/123?realm=https%3A%2F%2Fchat.example.com"]}>
+      <MemoryRouter
+        initialEntries={[`/message/${testMessageId(123)}?realm=https%3A%2F%2Fchat.example.com`]}
+      >
         <Routes>
           <Route path="/message/:messageId" element={<MessageRedirectPage />} />
         </Routes>
@@ -96,9 +103,12 @@ describe("MessageRedirectPage", () => {
       expect(useInstancesStore.getState().currentInstanceId).toBe("2");
     });
     await waitFor(() => {
-      expect(navigateSpy).toHaveBeenCalledWith("/stream/10-engineering/topic/bugs?msg=123", {
-        replace: true,
-      });
+      expect(navigateSpy).toHaveBeenCalledWith(
+        `/stream/10-engineering/topic/bugs?msg=${testMessageId(123)}`,
+        {
+          replace: true,
+        },
+      );
     });
   });
 
@@ -144,7 +154,7 @@ describe("MessageRedirectPage", () => {
     fetchMessageById.mockResolvedValue(null);
 
     render(
-      <MemoryRouter initialEntries={["/message/123"]}>
+      <MemoryRouter initialEntries={[`/message/${testMessageId(123)}`]}>
         <Routes>
           <Route path="/message/:messageId" element={<MessageRedirectPage />} />
         </Routes>
@@ -163,7 +173,7 @@ describe("MessageRedirectPage", () => {
     });
     useChatListStore.setState({ currentUserId: 7 });
     fetchMessageById.mockResolvedValue({
-      id: 123,
+      id: testMessageId(123),
       sender_id: 42,
       sender_full_name: "Alice",
       stream_id: 10,
@@ -175,7 +185,7 @@ describe("MessageRedirectPage", () => {
     });
 
     render(
-      <MemoryRouter initialEntries={["/message/123?realm=javascript%3Aalert(1)"]}>
+      <MemoryRouter initialEntries={[`/message/${testMessageId(123)}?realm=javascript%3Aalert(1)`]}>
         <Routes>
           <Route path="/message/:messageId" element={<MessageRedirectPage />} />
         </Routes>
@@ -183,11 +193,14 @@ describe("MessageRedirectPage", () => {
     );
 
     await waitFor(() => {
-      expect(navigateSpy).toHaveBeenCalledWith("/stream/10-engineering/topic/bugs?msg=123", {
-        replace: true,
-      });
+      expect(navigateSpy).toHaveBeenCalledWith(
+        `/stream/10-engineering/topic/bugs?msg=${testMessageId(123)}`,
+        {
+          replace: true,
+        },
+      );
     });
-    expect(fetchMessageById).toHaveBeenCalledWith(123);
+    expect(fetchMessageById).toHaveBeenCalledWith(testMessageId(123));
     expect(navigateSpy.mock.calls.some(([path]) => String(path).startsWith("/login?"))).toBe(false);
   });
 });

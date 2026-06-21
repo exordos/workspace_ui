@@ -1,13 +1,6 @@
 import type { UserId } from "~/shared/lib/user-id.lib";
 import type { RightPanelUserInfo } from "~/widgets/right-panel/right-panel.types";
 
-export interface RightPanelCommonGroup {
-  name: string;
-  lastMessage?: string;
-  unread?: number;
-  slug?: string;
-}
-
 export interface RightPanelPresenceLike {
   status?: "active" | "idle";
   timestamp: number;
@@ -42,7 +35,6 @@ export interface RightPanelDetailedProfileLike {
 export interface RightPanelDmChatLike {
   name: string;
   slug?: string;
-  isGroup?: boolean;
 }
 
 export interface BuildRightPanelUserInfoOptions {
@@ -53,5 +45,4 @@ export interface BuildRightPanelUserInfoOptions {
   userStatusLabel: string | undefined;
   currentInstanceRealm: string | undefined;
   media: RightPanelUserInfo["media"] | undefined;
-  commonGroups: RightPanelUserInfo["commonGroups"] | undefined;
 }

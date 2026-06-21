@@ -6,7 +6,7 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import type { MockMessage } from "~/shared/api/messenger.types";
-import { createMessage, createMessages } from "~/test/factories";
+import { createMessage, createMessages, testMessageId } from "~/test/factories";
 import { useFeedStore } from "./feed.model";
 
 function msg(overrides: Parameters<typeof createMessage>[0] = {}): MockMessage {
@@ -47,7 +47,7 @@ describe("useFeedStore", () => {
     useFeedStore.getState().setMessages(list, false);
     const state = useFeedStore.getState();
     expect(state.messages).toHaveLength(2);
-    expect(state.lastMessageId).toBe(10);
+    expect(state.lastMessageId).toBe(testMessageId(10));
   });
 
   it("setMessages sets lastMessageId to null for empty array", () => {
@@ -64,8 +64,8 @@ describe("useFeedStore", () => {
 
     const state = useFeedStore.getState();
     expect(state.messages).toHaveLength(2);
-    expect(state.messages[0]!.id).toBe(10);
-    expect(state.lastMessageId).toBe(10);
+    expect(state.messages[0]!.id).toBe(testMessageId(10));
+    expect(state.lastMessageId).toBe(testMessageId(10));
   });
 
   it("appendOlder marks isAllLoaded when receiving empty batch", () => {
@@ -110,7 +110,7 @@ describe("useFeedStore", () => {
     useFeedStore
       .getState()
       .appendOlder([msg({ id: 5, timestamp: 500 }), msg({ id: 15, timestamp: 1500 })], false);
-    expect(useFeedStore.getState().lastMessageId).toBe(5);
+    expect(useFeedStore.getState().lastMessageId).toBe(testMessageId(5));
   });
 
   it("setMessages clears isAllLoaded flag", () => {

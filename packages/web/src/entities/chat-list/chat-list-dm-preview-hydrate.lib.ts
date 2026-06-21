@@ -18,25 +18,28 @@ import { fetchMessagesByIds } from "~/shared/api/messenger-messages";
 import type { MessengerRecentPrivateConversation } from "~/shared/api/messenger.types";
 import { upsertDmIndexFromMessages } from "~/shared/lib/dm-index";
 import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
+import { normalizeMessageId } from "~/shared/lib/message-id.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 
-function addPositiveMessageId(ids: Set<number>, messageId: number | null | undefined): void {
-  if (messageId != null && Number.isInteger(messageId) && messageId > 0) {
-    ids.add(messageId);
+function addMessageId(ids: Set<MessageId>, messageId: unknown): void {
+  const normalized = normalizeMessageId(messageId);
+  if (normalized != null) {
+    ids.add(normalized);
   }
 }
 
 export function collectLastMessageIdsFromRecentPrivateConversations(
   conversations: Record<string, MessengerRecentPrivateConversation> | undefined,
   metadataRows?: readonly ChatListDmMetadataRow[],
-): number[] {
-  const ids = new Set<number>();
+): MessageId[] {
+  const ids = new Set<MessageId>();
   if (conversations != null) {
     for (const conversation of Object.values(conversations)) {
-      addPositiveMessageId(ids, conversation.max_message_id);
+      addMessageId(ids, conversation.max_message_id);
     }
   }
   for (const row of metadataRows ?? []) {
-    addPositiveMessageId(ids, row.lastMessageId);
+    addMessageId(ids, row.lastMessageId);
   }
   return [...ids];
 }

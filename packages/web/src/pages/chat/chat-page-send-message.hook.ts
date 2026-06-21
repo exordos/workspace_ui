@@ -6,6 +6,8 @@ import { t } from "~/i18n/i18n";
 import { sendMessage } from "~/shared/api/messenger-messages";
 import type { MockMessage } from "~/shared/api/messenger.types";
 import { createLogger } from "~/shared/lib/logger";
+import { createMessageId } from "~/shared/lib/message-id.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { executeChatPageSend } from "./chat-page-send-handler.lib";
 import {
@@ -25,8 +27,8 @@ export interface UseChatPageSendMessageParams {
   activeStreamId: number | null | undefined;
   activeTopic: string | null | undefined;
   appendMessage: (message: MockMessage) => void;
-  commitOutgoingMessage: (optimisticId: number, message: MockMessage) => void;
-  removeMessage: (messageId: number) => void;
+  commitOutgoingMessage: (optimisticId: MessageId, message: MockMessage) => void;
+  removeMessage: (messageId: MessageId) => void;
   requestScrollToBottom: () => void;
   clearReplyQuote: () => void;
   stopTyping: () => void;
@@ -62,7 +64,6 @@ export function useChatPageSendMessage(
     setUploadProgress,
   } = params;
 
-  const optimisticMessageIdRef = useRef(-1);
   const uploadAbortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -83,11 +84,7 @@ export function useChatPageSendMessage(
           activeStreamCanonicalName,
           activeStreamId,
           activeTopic,
-          allocateOptimisticMessageId: () => {
-            const id = optimisticMessageIdRef.current;
-            optimisticMessageIdRef.current -= 1;
-            return id;
-          },
+          allocateOptimisticMessageId: createMessageId,
           appendMessage,
           commitOutgoingMessage,
           requestScrollToBottom,
@@ -129,7 +126,7 @@ export function useChatPageSendMessage(
 
   const handleRemoveFailedOutgoing = useCallback(
     (msg: MockMessage) => {
-      if (msg.delivery_status !== "failed" || msg.id >= 0) return;
+      if (msg.delivery_status !== "failed") return;
       removeMessage(msg.id);
       setSendError(null);
     },
@@ -138,7 +135,7 @@ export function useChatPageSendMessage(
 
   const handleRetryFailedOutgoing = useCallback(
     async (msg: MockMessage) => {
-      if (msg.delivery_status !== "failed" || msg.id >= 0) return;
+      if (msg.delivery_status !== "failed") return;
       setSendError(null);
       const body = msg.content;
       removeMessage(msg.id);
@@ -148,8 +145,7 @@ export function useChatPageSendMessage(
       };
 
       if (isDmView && activeDmUserIds?.length) {
-        const optimisticMessageId = optimisticMessageIdRef.current;
-        optimisticMessageIdRef.current -= 1;
+        const optimisticMessageId = createMessageId();
         const optimisticMessage = buildOptimisticOutgoingMessage({
           id: optimisticMessageId,
           senderId: currentUserId ?? 0,
@@ -190,8 +186,7 @@ export function useChatPageSendMessage(
           return;
         }
         const subject = normalizeTopicForIdentity(msg.subject ?? activeTopic ?? "");
-        const optimisticMessageId = optimisticMessageIdRef.current;
-        optimisticMessageIdRef.current -= 1;
+        const optimisticMessageId = createMessageId();
         const optimisticMessage = buildOptimisticOutgoingMessage({
           id: optimisticMessageId,
           senderId: currentUserId ?? 0,

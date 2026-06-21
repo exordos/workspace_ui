@@ -7,12 +7,13 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useDraftStore } from "~/entities/draft/draft.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
+import { testMessageId } from "~/test/factories";
 import { SidebarActivity } from "./sidebar-activity.ui";
 import { MY_ACTIVITY } from "./sidebar.lib";
 
 const INBOX_COUNT_ONE_MESSAGES = [
   {
-    id: 31,
+    id: "00000000-0000-4000-8000-000000000031",
     sender_id: 42,
     sender_full_name: "Alice",
     content: "dm unread",
@@ -28,7 +29,7 @@ const INBOX_COUNT_ONE_MESSAGES = [
 
 const INBOX_COUNT_THREE_MESSAGES = [
   {
-    id: 11,
+    id: "00000000-0000-4000-8000-000000000011",
     sender_id: 42,
     sender_full_name: "Alice",
     stream_id: 10,
@@ -40,7 +41,7 @@ const INBOX_COUNT_THREE_MESSAGES = [
     flags: [],
   },
   {
-    id: 12,
+    id: "00000000-0000-4000-8000-000000000012",
     sender_id: 43,
     sender_full_name: "Bob",
     stream_id: 10,
@@ -52,7 +53,7 @@ const INBOX_COUNT_THREE_MESSAGES = [
     flags: [],
   },
   {
-    id: 13,
+    id: "00000000-0000-4000-8000-000000000013",
     sender_id: 42,
     sender_full_name: "Alice",
     content: "dm unread",
@@ -78,7 +79,7 @@ describe("SidebarActivity", () => {
   it("shows mention and draft badges from current store state", () => {
     const lastAppliedMessages = [
       {
-        id: 1,
+        id: "00000000-0000-4000-8000-000000000001",
         sender_id: 42,
         sender_full_name: "Alice",
         stream_id: 10,
@@ -90,7 +91,7 @@ describe("SidebarActivity", () => {
         flags: ["mentioned"],
       },
       {
-        id: 2,
+        id: "00000000-0000-4000-8000-000000000002",
         sender_id: 43,
         sender_full_name: "Bob",
         stream_id: 10,
@@ -102,7 +103,7 @@ describe("SidebarActivity", () => {
         flags: ["mentioned", "read"],
       },
       {
-        id: 3,
+        id: "00000000-0000-4000-8000-000000000003",
         sender_id: 7,
         sender_full_name: "Me",
         stream_id: 10,
@@ -120,9 +121,16 @@ describe("SidebarActivity", () => {
       mentionsUnreadCount: countMentionsUnread(lastAppliedMessages, 7),
     });
     useDraftStore.getState().setDrafts([
-      { id: 1, type: "stream", to: [10], topic: "general", content: "one", timestamp: 1 },
-      { id: 2, type: "private", to: [42], topic: "", content: "two", timestamp: 2 },
-      { id: 3, type: "private", to: [42], topic: "", content: "   ", timestamp: 3 },
+      {
+        id: testMessageId(1),
+        type: "stream",
+        to: [10],
+        topic: "general",
+        content: "one",
+        timestamp: 1,
+      },
+      { id: testMessageId(2), type: "private", to: [42], topic: "", content: "two", timestamp: 2 },
+      { id: testMessageId(3), type: "private", to: [42], topic: "", content: "   ", timestamp: 3 },
     ]);
 
     render(
@@ -170,7 +178,14 @@ describe("SidebarActivity", () => {
 
   it("shows favorites badge in expanded view from starred summary", () => {
     useChatListStore.setState({ currentUserId: 7, lastAppliedMessages: [] });
-    useActivityStore.getState().setStarredSummaryFromRegisterMessageIds([1, 2, 3, 4]);
+    useActivityStore
+      .getState()
+      .setStarredSummaryFromRegisterMessageIds([
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003",
+        "00000000-0000-4000-8000-000000000004",
+      ]);
 
     render(
       <MemoryRouter>
@@ -185,7 +200,7 @@ describe("SidebarActivity", () => {
   it("renders compact activity shortcuts with badges when collapsed", () => {
     const lastAppliedMessages = [
       {
-        id: 1,
+        id: "00000000-0000-4000-8000-000000000001",
         sender_id: 42,
         sender_full_name: "Alice",
         stream_id: 10,
@@ -203,8 +218,15 @@ describe("SidebarActivity", () => {
       mentionsUnreadCount: countMentionsUnread(lastAppliedMessages, 7),
     });
     useDraftStore.getState().setDrafts([
-      { id: 1, type: "stream", to: [10], topic: "general", content: "one", timestamp: 1 },
-      { id: 2, type: "private", to: [42], topic: "", content: "two", timestamp: 2 },
+      {
+        id: testMessageId(1),
+        type: "stream",
+        to: [10],
+        topic: "general",
+        content: "one",
+        timestamp: 1,
+      },
+      { id: testMessageId(2), type: "private", to: [42], topic: "", content: "two", timestamp: 2 },
     ]);
 
     render(
@@ -268,7 +290,17 @@ describe("SidebarActivity", () => {
 
   it("shows compact favorites badge from starred summary", () => {
     useChatListStore.setState({ currentUserId: 7, lastAppliedMessages: [] });
-    useActivityStore.getState().setStarredSummaryFromRegisterMessageIds([1, 2, 3, 4, 5, 6, 7]);
+    useActivityStore
+      .getState()
+      .setStarredSummaryFromRegisterMessageIds([
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003",
+        "00000000-0000-4000-8000-000000000004",
+        "00000000-0000-4000-8000-000000000005",
+        "00000000-0000-4000-8000-000000000006",
+        "00000000-0000-4000-8000-000000000007",
+      ]);
 
     render(
       <MemoryRouter>

@@ -1,4 +1,5 @@
 import type { MockMessage } from "~/shared/api/messenger.types";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { mergeMessagePreservingLinkPreview } from "~/shared/lib/message-link-preview-merge.lib";
 import { applyPendingLinkPreviewsToMessage } from "~/shared/lib/message-link-preview-pending.lib";
 import { buildSendingEchoKeyIndex } from "./message-outgoing-echo-index.lib";
@@ -8,7 +9,7 @@ import type { CurrentChatMessagesState } from "./message.model.types";
 export type MessageAppendIdbPlan =
   | { kind: "none" }
   | { kind: "put"; message: MockMessage }
-  | { kind: "mergeReplace"; removeId: number; message: MockMessage };
+  | { kind: "mergeReplace"; removeId: MessageId; message: MockMessage };
 
 type AppendMessageStateSlice = Pick<
   CurrentChatMessagesState,
@@ -16,14 +17,15 @@ type AppendMessageStateSlice = Pick<
 >;
 
 function withOutgoingDeliveryStatus(message: MockMessage): MockMessage {
-  if (message.id > 0) {
-    return { ...message, delivery_status: "sent" };
-  }
-  return { ...message, delivery_status: "failed" };
+  return { ...message, delivery_status: "sent" };
+}
+
+function shouldPersistMessage(message: MockMessage): boolean {
+  return message.delivery_status !== "sending" && message.delivery_status !== "failed";
 }
 
 function withPendingLinkPreviewsIfPersisted(message: MockMessage): MockMessage {
-  return message.id > 0 ? applyPendingLinkPreviewsToMessage(message) : message;
+  return shouldPersistMessage(message) ? applyPendingLinkPreviewsToMessage(message) : message;
 }
 
 function tryMergeOutgoingEcho(
@@ -101,18 +103,18 @@ export function computeAppendMessageStateUpdate(
   msg: MockMessage,
   idbRef: { current: MessageAppendIdbPlan },
 ): Partial<AppendMessageStateSlice> {
-  if (msg.id > 0) {
+  if (shouldPersistMessage(msg)) {
     const mergedEcho = tryMergeOutgoingEcho(state, msg, idbRef);
     if (mergedEcho) {
       return mergedEcho;
     }
   }
 
-  if (msg.id < 0 && msg.delivery_status === "failed") {
+  if (msg.delivery_status === "failed") {
     return applyFailedOutgoingMessage(state, msg);
   }
 
-  if (msg.id < 0 && msg.delivery_status === "sending") {
+  if (msg.delivery_status === "sending") {
     return applySendingOutgoingMessage(state, msg);
   }
 
@@ -121,11 +123,13 @@ export function computeAppendMessageStateUpdate(
   if (idx >= 0) {
     const updated = [...state.messages];
     updated[idx] = normalizedMsg;
-    idbRef.current =
-      normalizedMsg.id < 0 ? { kind: "none" } : { kind: "put", message: normalizedMsg };
+    idbRef.current = shouldPersistMessage(normalizedMsg)
+      ? { kind: "put", message: normalizedMsg }
+      : { kind: "none" };
     return { messages: updated };
   }
-  idbRef.current =
-    normalizedMsg.id < 0 ? { kind: "none" } : { kind: "put", message: normalizedMsg };
+  idbRef.current = shouldPersistMessage(normalizedMsg)
+    ? { kind: "put", message: normalizedMsg }
+    : { kind: "none" };
   return { messages: [...state.messages, normalizedMsg] };
 }

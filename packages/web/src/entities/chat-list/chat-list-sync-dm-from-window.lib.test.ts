@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { MockMessage } from "~/shared/api/messenger.types";
+import { testMessageId } from "~/test/factories";
 import {
   pickNewestDmMessageForKey,
   shouldSyncDmPreviewFromWindow,
@@ -8,9 +9,14 @@ import {
 } from "./chat-list-sync-dm-from-window.lib";
 import { useChatListStore } from "./chat-list.model";
 
-function dmMessage(overrides: Partial<MockMessage> = {}): MockMessage {
+type MockMessageOverrides = Partial<Omit<MockMessage, "id">> & {
+  id?: MockMessage["id"] | number;
+};
+
+function dmMessage(overrides: MockMessageOverrides = {}): MockMessage {
+  const { id, ...rest } = overrides;
   return {
-    id: 50,
+    id: testMessageId(id ?? 50),
     sender_id: 20,
     sender_full_name: "Bob",
     content: "hello",
@@ -22,7 +28,7 @@ function dmMessage(overrides: Partial<MockMessage> = {}): MockMessage {
       { id: 20, full_name: "Bob", email: "b@x.test" },
     ],
     flags: [],
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -34,15 +40,21 @@ describe("shouldSyncDmPreviewFromWindow", () => {
   });
 
   it("skips sync when focused anchor has newer messages beyond the window", () => {
-    expect(shouldSyncDmPreviewFromWindow({ focusedMessageId: 100, hasNewerMessages: true })).toBe(
-      false,
-    );
+    expect(
+      shouldSyncDmPreviewFromWindow({
+        focusedMessageId: "00000000-0000-4000-8000-000000000100",
+        hasNewerMessages: true,
+      }),
+    ).toBe(false);
   });
 
   it("allows sync when focused anchor reached conversation end", () => {
-    expect(shouldSyncDmPreviewFromWindow({ focusedMessageId: 100, hasNewerMessages: false })).toBe(
-      true,
-    );
+    expect(
+      shouldSyncDmPreviewFromWindow({
+        focusedMessageId: "00000000-0000-4000-8000-000000000100",
+        hasNewerMessages: false,
+      }),
+    ).toBe(true);
   });
 });
 
@@ -54,7 +66,7 @@ describe("pickNewestDmMessageForKey", () => {
       dmMessage({ id: 3, content: "middle", timestamp: 2000 }),
     ];
     const picked = pickNewestDmMessageForKey(messages, "10,20", 10);
-    expect(picked?.id).toBe(2);
+    expect(picked?.id).toBe(testMessageId(2));
     expect(picked?.content).toContain("newest");
   });
 });
@@ -78,7 +90,7 @@ describe("syncDmSidebarFromLoadedMessages", () => {
       {
         userIds: [10, 20],
         unreadCount: 0,
-        lastMessageId: 123,
+        lastMessageId: "00000000-0000-4000-8000-000000000123",
         lastActivityTs: 1_700_000_000,
       },
     ]);
@@ -101,7 +113,7 @@ describe("syncDmSidebarFromLoadedMessages", () => {
 
     const dm = useChatListStore.getState().dmsMap.get("10,20");
     expect(dm?.lastMessage).toContain("preview from opened chat");
-    expect(dm?.lastMessageId).toBe(123);
+    expect(dm?.lastMessageId).toBe(testMessageId(123));
     expect(dm?.ts).toBe(1_700_000_000);
   });
 
@@ -110,7 +122,7 @@ describe("syncDmSidebarFromLoadedMessages", () => {
       {
         userIds: [10, 20],
         unreadCount: 0,
-        lastMessageId: 500,
+        lastMessageId: "00000000-0000-4000-8000-000000000500",
         lastActivityTs: 1_700_000_000,
       },
     ]);
@@ -127,7 +139,7 @@ describe("syncDmSidebarFromLoadedMessages", () => {
       currentUserId: 10,
       instanceId: null,
       source: "api",
-      focusedMessageId: 100,
+      focusedMessageId: "00000000-0000-4000-8000-000000000100",
       hasNewerMessages: true,
     });
 
@@ -139,7 +151,7 @@ describe("syncDmSidebarFromLoadedMessages", () => {
     syncDmSidebarFromLoadedMessages({
       messages: [
         dmMessage({
-          id: 777,
+          id: "00000000-0000-4000-8000-000000000777",
           flags: ["unread"],
         }),
       ],
@@ -147,10 +159,13 @@ describe("syncDmSidebarFromLoadedMessages", () => {
       currentUserId: 10,
       instanceId: null,
       source: "api",
-      focusedMessageId: 777,
+      focusedMessageId: "00000000-0000-4000-8000-000000000777",
       hasNewerMessages: true,
     });
 
-    expect(useChatListStore.getState().messageIdToLocation.get(777)?.type).toBe("dm");
+    expect(
+      useChatListStore.getState().messageIdToLocation.get("00000000-0000-4000-8000-000000000777")
+        ?.type,
+    ).toBe("dm");
   });
 });

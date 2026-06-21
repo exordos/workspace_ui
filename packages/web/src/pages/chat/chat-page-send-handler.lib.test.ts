@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { sendMessage } from "~/shared/api/messenger-messages";
 import type { MockMessage } from "~/shared/api/messenger.types";
-import { createMessage } from "~/test/factories";
+import { createMessage, testMessageId } from "~/test/factories";
 import { executeChatPageSend, type ChatPageSendHandlerDeps } from "./chat-page-send-handler.lib";
 
 vi.mock("~/shared/api/messenger-messages", () => ({
@@ -76,7 +76,7 @@ describe("executeChatPageSend", () => {
     );
     expect(deps.commitOutgoingMessage).toHaveBeenCalledWith(
       -1,
-      expect.objectContaining({ id: 99 }),
+      expect.objectContaining({ id: testMessageId(99) }),
     );
   });
 });

@@ -10080,13 +10080,6 @@
     "publisher": "Dimitrios C. Michalakos"
   },
   {
-    "name": "zulip-js",
-    "version": "2.1.0",
-    "license": "MIT",
-    "repository": "https://github.com/zulip/zulip-js",
-    "publisher": ""
-  },
-  {
     "name": "zustand",
     "version": "4.5.7",
     "license": "MIT",

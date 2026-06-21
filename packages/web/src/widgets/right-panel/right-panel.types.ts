@@ -22,7 +22,6 @@ export interface RightPanelUserInfo {
   localTime?: string;
   birthday?: string;
   media?: { photos?: number; videos?: number; files?: number; links?: number };
-  commonGroups?: { name: string; lastMessage?: string; unread?: number; slug?: string }[];
 }
 
 export interface RightPanelProps {
@@ -33,8 +32,6 @@ export interface RightPanelProps {
   onlineCount?: number;
   /** For DMs: user data (when present, shows the user info panel) */
   user?: RightPanelUserInfo;
-  /** Navigation callback for common group items */
-  onSelectCommonGroup?: (slug: string) => void;
   /** Optional callback to open a direct message with the profile user */
   onOpenDirectMessage?: (userId: UserId) => void;
   /** Backward-compatible callback for legacy settings opener */

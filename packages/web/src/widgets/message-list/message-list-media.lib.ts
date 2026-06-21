@@ -1,5 +1,6 @@
 import type { MediaItem } from "~/features/media-viewer/media-viewer.types";
 import type { MockMessage } from "~/shared/api/messenger.types";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { normalizeUserUploadImageIdentity } from "~/shared/lib/message-inline-user-upload-image.lib";
 import {
   isLikelyRenderedMessageHtml,
@@ -292,7 +293,7 @@ function fileExtensionFromMediaUrl(url: string, type: MediaItem["type"]): string
 }
 
 function buildGalleryDownloadFileName(
-  messageId: number,
+  messageId: MessageId,
   sequence: number,
   total: number,
   type: MediaItem["type"],

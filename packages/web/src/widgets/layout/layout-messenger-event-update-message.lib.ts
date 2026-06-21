@@ -1,5 +1,6 @@
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import type { MessengerEvent } from "~/shared/api/messenger.types";
+import { normalizeMessageId } from "~/shared/lib/message-id.lib";
 import { parseAllMessageEmbedsFromRenderedHtml } from "~/shared/lib/message-link-preview-fetch.lib";
 import { enqueuePendingLinkPreview } from "~/shared/lib/message-link-preview-pending.lib";
 import { linkPreviewUrlsMatch } from "~/shared/lib/message-link-preview-url-match.lib";
@@ -12,7 +13,7 @@ export function applyUpdateMessageContent(
   event: MessengerEvent,
   ctx: LayoutMessengerEventDispatchContext,
 ): void {
-  const messageId = event.message_id as number | undefined;
+  const messageId = normalizeMessageId(event.message_id);
   const renderingOnly = event.rendering_only === true;
   const newMarkdown =
     !renderingOnly && typeof event.content === "string" ? event.content : undefined;
@@ -33,7 +34,7 @@ export function applyRenderingOnlyLinkPreviews(
   if (event.rendering_only !== true) return;
   if (typeof event.rendered_content !== "string") return;
 
-  const messageId = event.message_id as number | undefined;
+  const messageId = normalizeMessageId(event.message_id);
   if (messageId == null) return;
 
   const embeds = parseAllMessageEmbedsFromRenderedHtml(event.rendered_content);

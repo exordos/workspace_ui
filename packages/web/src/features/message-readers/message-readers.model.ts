@@ -12,6 +12,7 @@ import {
 } from "~/entities/instance/instance.model";
 import { guard } from "~/shared/lib/guards";
 import { createLogger, logStoreAction } from "~/shared/lib/logger";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { fetchReadReceipts } from "./message-readers.api";
 import type { MessageReadersState } from "./message-readers.types";
 
@@ -34,7 +35,7 @@ export const useMessageReadersStore = create<MessageReadersState>((set, get) => 
   messageId: null,
   requestVersion: 0,
 
-  async fetchReadReceipts(messageId: number) {
+  async fetchReadReceipts(messageId: MessageId) {
     guard.messageId(messageId, "useMessageReadersStore.fetchReadReceipts");
     logStoreAction("message-readers", "fetchReadReceipts", { messageId });
 

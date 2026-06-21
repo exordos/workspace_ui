@@ -13,6 +13,7 @@ import { fetchMessagesWithNarrow, rawMessageToMockMessage } from "~/shared/api/m
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import type { ChatListSnapshotSerialized } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import { sortChatsByLastMessage } from "~/shared/lib/chat-sorting";
+import { testMessageId } from "~/test/factories";
 import { useUsersStore } from "../user/user.model";
 import { buildChatListSnapshotSerialized } from "./chat-list-snapshot.lib";
 import { getStreamTopicMessageIds } from "./chat-list-stream-topic-index.lib";
@@ -53,9 +54,14 @@ function resetStores() {
   useUsersStore.getState().clear();
 }
 
-function streamMsg(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessage {
+type WorkspaceRawMessageOverrides = Partial<Omit<WorkspaceRawMessage, "id">> & {
+  id?: WorkspaceRawMessage["id"] | number;
+};
+
+function streamMsg(overrides: WorkspaceRawMessageOverrides = {}): WorkspaceRawMessage {
+  const { id, ...rest } = overrides;
   return {
-    id: 1,
+    id: testMessageId(id ?? 1),
     sender_id: 10,
     sender_full_name: "Sender",
     content: "hello",
@@ -65,13 +71,14 @@ function streamMsg(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMe
     display_recipient: "general",
     subject: "topic1",
     flags: [],
-    ...overrides,
+    ...rest,
   };
 }
 
-function dmMsg(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessage {
+function dmMsg(overrides: WorkspaceRawMessageOverrides = {}): WorkspaceRawMessage {
+  const { id, ...rest } = overrides;
   return {
-    id: 50,
+    id: testMessageId(id ?? 50),
     sender_id: 10,
     sender_full_name: "Alice",
     content: "hi there",
@@ -82,7 +89,7 @@ function dmMsg(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessag
       { id: 20, full_name: "Bob", email: "bob@t.com" },
     ],
     flags: [],
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -125,8 +132,14 @@ describe("chatListStore", () => {
       useChatListStore.getState().setFromMessages([], 10);
       useChatListStore.setState({
         messageIdToLocation: new Map([
-          [1, { type: "stream", stream_id: 5, topic: "topic1" }],
-          [2, { type: "stream", stream_id: 5, topic: "topic1" }],
+          [
+            "00000000-0000-4000-8000-000000000001",
+            { type: "stream", stream_id: 5, topic: "topic1" },
+          ],
+          [
+            "00000000-0000-4000-8000-000000000002",
+            { type: "stream", stream_id: 5, topic: "topic1" },
+          ],
         ]),
         streamTopicMessageIds: new Map(),
       });
@@ -136,7 +149,7 @@ describe("chatListStore", () => {
       useChatListStore.getState().syncDerivedScalars();
       expect(
         getStreamTopicMessageIds(useChatListStore.getState().streamTopicMessageIds, 5, "topic1"),
-      ).toEqual([1, 2]);
+      ).toEqual([testMessageId(1), testMessageId(2)]);
     });
   });
 
@@ -219,14 +232,14 @@ describe("chatListStore", () => {
       useChatListStore.getState().setFromMessages(
         [
           streamMsg({
-            id: 201,
+            id: "00000000-0000-4000-8000-000000000201",
             stream_id: 5,
             subject: "alpha",
             sender_id: OTHER_SENDER_ID,
             flags: ["read"],
           }),
           dmMsg({
-            id: 50,
+            id: "00000000-0000-4000-8000-000000000050",
             timestamp: 1000,
             display_recipient: [
               { id: 10, full_name: "Me", email: "me@t.com" },
@@ -241,8 +254,17 @@ describe("chatListStore", () => {
 
       useChatListStore.getState().reconcileUnreadFromSnapshot(
         {
-          streams: [{ streamId: 5, topic: "alpha", unreadMessageIds: [301, 302] }],
-          dms: [{ userIds: [20], unreadMessageIds: [303], isGroup: false }],
+          streams: [
+            {
+              streamId: 5,
+              topic: "alpha",
+              unreadMessageIds: [
+                "00000000-0000-4000-8000-000000000301",
+                "00000000-0000-4000-8000-000000000302",
+              ],
+            },
+          ],
+          dms: [{ userIds: [20], unreadMessageIds: ["00000000-0000-4000-8000-000000000303"] }],
           totalCount: 3,
           mentionMessageIds: [],
         },
@@ -260,7 +282,16 @@ describe("chatListStore", () => {
 
       useChatListStore.getState().reconcileUnreadFromSnapshot(
         {
-          streams: [{ streamId: 5, topic: "alpha", unreadMessageIds: [301, 302] }],
+          streams: [
+            {
+              streamId: 5,
+              topic: "alpha",
+              unreadMessageIds: [
+                "00000000-0000-4000-8000-000000000301",
+                "00000000-0000-4000-8000-000000000302",
+              ],
+            },
+          ],
           dms: [],
           totalCount: 2,
           mentionMessageIds: [],
@@ -275,14 +306,26 @@ describe("chatListStore", () => {
 
     it("reconciles DM unread after metadata-only DM rows exist", () => {
       useChatListStore.getState().setCurrentUserId(10);
-      useChatListStore
-        .getState()
-        .upsertDmMetadataRows([{ userIds: [10, 20], lastMessageId: 50, unreadCount: 0 }]);
+      useChatListStore.getState().upsertDmMetadataRows([
+        {
+          userIds: [10, 20],
+          lastMessageId: "00000000-0000-4000-8000-000000000050",
+          unreadCount: 0,
+        },
+      ]);
 
       useChatListStore.getState().reconcileUnreadFromSnapshot(
         {
           streams: [],
-          dms: [{ userIds: [20], unreadMessageIds: [303, 304], isGroup: false }],
+          dms: [
+            {
+              userIds: [20],
+              unreadMessageIds: [
+                "00000000-0000-4000-8000-000000000303",
+                "00000000-0000-4000-8000-000000000304",
+              ],
+            },
+          ],
           totalCount: 2,
           mentionMessageIds: [],
         },
@@ -298,14 +341,14 @@ describe("chatListStore", () => {
       useChatListStore.getState().setFromMessages(
         [
           streamMsg({
-            id: 201,
+            id: "00000000-0000-4000-8000-000000000201",
             stream_id: 5,
             subject: "alpha",
             sender_id: OTHER_SENDER_ID,
             flags: [],
           }),
           streamMsg({
-            id: 202,
+            id: "00000000-0000-4000-8000-000000000202",
             stream_id: 5,
             subject: "beta",
             sender_id: OTHER_SENDER_ID,
@@ -313,7 +356,7 @@ describe("chatListStore", () => {
             timestamp: 2000,
           }),
           streamMsg({
-            id: 203,
+            id: "00000000-0000-4000-8000-000000000203",
             stream_id: 5,
             subject: "gamma",
             sender_id: OTHER_SENDER_ID,
@@ -327,14 +370,14 @@ describe("chatListStore", () => {
       useChatListStore.getState().reconcileUnreadFromMessages(
         [
           streamMsg({
-            id: 201,
+            id: "00000000-0000-4000-8000-000000000201",
             stream_id: 5,
             subject: "alpha",
             sender_id: OTHER_SENDER_ID,
             flags: [],
           }),
           streamMsg({
-            id: 204,
+            id: "00000000-0000-4000-8000-000000000204",
             stream_id: 5,
             subject: "beta",
             sender_id: OTHER_SENDER_ID,
@@ -355,7 +398,7 @@ describe("chatListStore", () => {
       useChatListStore.getState().setFromMessages(
         [
           streamMsg({
-            id: 101,
+            id: "00000000-0000-4000-8000-000000000101",
             stream_id: 12,
             display_recipient: "engineering",
             subject: "channel events",
@@ -363,7 +406,7 @@ describe("chatListStore", () => {
             flags: [],
           }),
           streamMsg({
-            id: 102,
+            id: "00000000-0000-4000-8000-000000000102",
             stream_id: 12,
             display_recipient: "engineering",
             subject: "channel events",
@@ -389,7 +432,7 @@ describe("chatListStore", () => {
       useChatListStore.getState().setFromMessages(
         [
           dmMsg({
-            id: 50,
+            id: "00000000-0000-4000-8000-000000000050",
             timestamp: 1000,
             display_recipient: [
               { id: 10, full_name: "Me", email: "me@t.com" },
@@ -405,7 +448,7 @@ describe("chatListStore", () => {
       useChatListStore.getState().reconcileUnreadFromMessages(
         [
           dmMsg({
-            id: 60,
+            id: "00000000-0000-4000-8000-000000000060",
             timestamp: 5000,
             sender_id: 30,
             sender_full_name: "Newer Sender",
@@ -431,7 +474,7 @@ describe("chatListStore", () => {
       useChatListStore.getState().setFromMessages(
         [
           dmMsg({
-            id: 50,
+            id: "00000000-0000-4000-8000-000000000050",
             timestamp: 1000,
             sender_id: OTHER_SENDER_ID,
             sender_full_name: "Older Sender",
@@ -445,7 +488,7 @@ describe("chatListStore", () => {
       useChatListStore.getState().reconcileUnreadFromMessages(
         [
           dmMsg({
-            id: 61,
+            id: "00000000-0000-4000-8000-000000000061",
             timestamp: 7000,
             sender_id: OTHER_SENDER_ID,
             sender_full_name: "Fresh Sender",
@@ -459,7 +502,7 @@ describe("chatListStore", () => {
       const dm = useChatListStore.getState().dmsMap.get("10,20");
       expect(dm?.ts).toBe(7000);
       expect(dm?.lastMessage).toContain("fresh unread dm preview");
-      expect(dm?.lastMessageId).toBe(61);
+      expect(dm?.lastMessageId).toBe(testMessageId(61));
       expect(dm?.unreadCount).toBe(1);
     });
 
@@ -467,7 +510,7 @@ describe("chatListStore", () => {
       useChatListStore.getState().setFromMessages(
         [
           streamMsg({
-            id: 101,
+            id: "00000000-0000-4000-8000-000000000101",
             stream_id: 12,
             display_recipient: "engineering",
             subject: "older topic",
@@ -477,7 +520,7 @@ describe("chatListStore", () => {
             flags: ["read"],
           }),
           streamMsg({
-            id: 102,
+            id: "00000000-0000-4000-8000-000000000102",
             stream_id: 30,
             display_recipient: "design",
             subject: "baseline",
@@ -493,7 +536,7 @@ describe("chatListStore", () => {
       useChatListStore.getState().reconcileUnreadFromMessages(
         [
           streamMsg({
-            id: 103,
+            id: "00000000-0000-4000-8000-000000000103",
             stream_id: 12,
             display_recipient: "engineering",
             subject: "fresh topic",
@@ -513,7 +556,7 @@ describe("chatListStore", () => {
 
       expect(topic?.ts).toBe(9000);
       expect(topic?.lastMessage).toContain("fresh unread topic preview");
-      expect(topic?.lastMessageId).toBe(103);
+      expect(topic?.lastMessageId).toBe(testMessageId(103));
       expect(topic?.unreadCount).toBe(1);
       expect(stream?.ts).toBe(9000);
       expect(stream?.lastMessage).toContain("fresh unread topic preview");
@@ -524,7 +567,7 @@ describe("chatListStore", () => {
       useChatListStore.getState().setFromMessages(
         [
           streamMsg({
-            id: 104,
+            id: "00000000-0000-4000-8000-000000000104",
             stream_id: 12,
             display_recipient: "engineering",
             subject: "channel events",
@@ -541,7 +584,7 @@ describe("chatListStore", () => {
       useChatListStore.getState().reconcileUnreadFromMessages(
         [
           streamMsg({
-            id: 105,
+            id: "00000000-0000-4000-8000-000000000105",
             stream_id: 12,
             display_recipient: "engineering",
             subject: "channel events",
@@ -561,7 +604,7 @@ describe("chatListStore", () => {
       expect(topic?.ts).toBe(8000);
       expect(topic?.lastMessage).toContain("new unread topic preview");
       expect(topic?.lastMessageSenderName).toBe("New Sender");
-      expect(topic?.lastMessageId).toBe(105);
+      expect(topic?.lastMessageId).toBe(testMessageId(105));
       expect(topic?.unreadCount).toBe(1);
       expect(stream?.ts).toBe(8000);
       expect(stream?.lastMessage).toContain("new unread topic preview");
@@ -572,15 +615,23 @@ describe("chatListStore", () => {
   describe("setFromMessages", () => {
     // Stream messages must be grouped by stream_id with topics nested inside.
     it("builds stream entries from stream messages", () => {
-      useChatListStore
-        .getState()
-        .setFromMessages(
-          [
-            streamMsg({ id: 1, stream_id: 5, subject: "topic1", timestamp: 1000 }),
-            streamMsg({ id: 2, stream_id: 5, subject: "topic2", timestamp: 2000 }),
-          ],
-          10,
-        );
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000001",
+            stream_id: 5,
+            subject: "topic1",
+            timestamp: 1000,
+          }),
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000002",
+            stream_id: 5,
+            subject: "topic2",
+            timestamp: 2000,
+          }),
+        ],
+        10,
+      );
 
       const streams = useChatListStore.getState().streams();
       expect(streams).toHaveLength(1);
@@ -593,14 +644,14 @@ describe("chatListStore", () => {
       useChatListStore.getState().setFromMessages(
         [
           streamMsg({
-            id: 1,
+            id: "00000000-0000-4000-8000-000000000001",
             stream_id: 5,
             subject: "topic1",
             timestamp: 1000,
             sender_full_name: "Alice",
           }),
           streamMsg({
-            id: 2,
+            id: "00000000-0000-4000-8000-000000000002",
             stream_id: 5,
             subject: "topic2",
             timestamp: 2000,
@@ -644,11 +695,20 @@ describe("chatListStore", () => {
 
     // The location index enables O(1) unread-decrement without scanning all streams.
     it("builds messageIdToLocation index for stream messages", () => {
-      useChatListStore
-        .getState()
-        .setFromMessages([streamMsg({ id: 100, stream_id: 7, subject: "topicA" })], 10);
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000100",
+            stream_id: 7,
+            subject: "topicA",
+          }),
+        ],
+        10,
+      );
 
-      const loc = useChatListStore.getState().messageIdToLocation.get(100);
+      const loc = useChatListStore
+        .getState()
+        .messageIdToLocation.get("00000000-0000-4000-8000-000000000100");
       expect(loc).toBeDefined();
       expect(loc!.type).toBe("stream");
       if (loc!.type === "stream") {
@@ -661,22 +721,32 @@ describe("chatListStore", () => {
     it("builds messageIdToLocation index for DM messages", () => {
       useChatListStore.getState().setFromMessages([dmMsg({ id: 200 })], 10);
 
-      const loc = useChatListStore.getState().messageIdToLocation.get(200);
+      const loc = useChatListStore
+        .getState()
+        .messageIdToLocation.get("00000000-0000-4000-8000-000000000200");
       expect(loc).toBeDefined();
       expect(loc!.type).toBe("dm");
     });
 
     // Messages from different streams must not be merged into one entry.
     it("separates multiple streams by stream_id", () => {
-      useChatListStore
-        .getState()
-        .setFromMessages(
-          [
-            streamMsg({ id: 1, stream_id: 5, display_recipient: "stream-a", timestamp: 1000 }),
-            streamMsg({ id: 2, stream_id: 8, display_recipient: "stream-b", timestamp: 2000 }),
-          ],
-          10,
-        );
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000001",
+            stream_id: 5,
+            display_recipient: "stream-a",
+            timestamp: 1000,
+          }),
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000002",
+            stream_id: 8,
+            display_recipient: "stream-b",
+            timestamp: 2000,
+          }),
+        ],
+        10,
+      );
 
       const streams = useChatListStore.getState().streams();
       expect(streams).toHaveLength(2);
@@ -686,16 +756,26 @@ describe("chatListStore", () => {
 
     // Badge count drives the unread indicator — only messages without "read" flag count.
     it("counts unread messages (messages without 'read' flag)", () => {
-      useChatListStore
-        .getState()
-        .setFromMessages(
-          [
-            streamMsg({ id: 1, flags: [], sender_id: OTHER_SENDER_ID }),
-            streamMsg({ id: 2, flags: ["read"], sender_id: OTHER_SENDER_ID }),
-            streamMsg({ id: 3, flags: [], sender_id: OTHER_SENDER_ID }),
-          ],
-          10,
-        );
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000001",
+            flags: [],
+            sender_id: OTHER_SENDER_ID,
+          }),
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000002",
+            flags: ["read"],
+            sender_id: OTHER_SENDER_ID,
+          }),
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000003",
+            flags: [],
+            sender_id: OTHER_SENDER_ID,
+          }),
+        ],
+        10,
+      );
 
       const streams = useChatListStore.getState().streams();
       expect(streams[0]!.badge).toBe(2);
@@ -708,7 +788,7 @@ describe("chatListStore", () => {
     it("creates a new stream entry for a stream message", () => {
       useChatListStore.getState().addMessage(
         streamMsg({
-          id: 10,
+          id: "00000000-0000-4000-8000-000000000010",
           stream_id: 99,
           display_recipient: "new-stream",
           subject: "intro",
@@ -722,18 +802,28 @@ describe("chatListStore", () => {
 
     // Existing entries must update their last message preview on new activity.
     it("updates an existing stream entry with a newer message", () => {
-      useChatListStore
-        .getState()
-        .setFromMessages(
-          [streamMsg({ id: 1, stream_id: 5, subject: "t", timestamp: 1000, content: "old" })],
-          10,
-        );
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000001",
+            stream_id: 5,
+            subject: "t",
+            timestamp: 1000,
+            content: "old",
+          }),
+        ],
+        10,
+      );
 
-      useChatListStore
-        .getState()
-        .addMessage(
-          streamMsg({ id: 2, stream_id: 5, subject: "t", timestamp: 2000, content: "new" }),
-        );
+      useChatListStore.getState().addMessage(
+        streamMsg({
+          id: "00000000-0000-4000-8000-000000000002",
+          stream_id: 5,
+          subject: "t",
+          timestamp: 2000,
+          content: "new",
+        }),
+      );
 
       const streams = useChatListStore.getState().streams();
       const stream = streams.find((s) => s.stream_id === 5)!;
@@ -742,22 +832,42 @@ describe("chatListStore", () => {
 
     // New unread messages must bump the badge so the user sees new activity.
     it("increments unread count for unread stream messages", () => {
-      useChatListStore.getState().setFromMessages([streamMsg({ id: 1, flags: ["read"] })], 10);
-
       useChatListStore
         .getState()
-        .addMessage(streamMsg({ id: 2, flags: [], timestamp: 3000, sender_id: OTHER_SENDER_ID }));
+        .setFromMessages(
+          [streamMsg({ id: "00000000-0000-4000-8000-000000000001", flags: ["read"] })],
+          10,
+        );
+
+      useChatListStore.getState().addMessage(
+        streamMsg({
+          id: "00000000-0000-4000-8000-000000000002",
+          flags: [],
+          timestamp: 3000,
+          sender_id: OTHER_SENDER_ID,
+        }),
+      );
 
       const streams = useChatListStore.getState().streams();
       expect(streams[0]!.badge).toBe(1);
     });
 
     it("does not increment unread count for own stream messages", () => {
-      useChatListStore.getState().setFromMessages([streamMsg({ id: 1, flags: ["read"] })], 10);
-
       useChatListStore
         .getState()
-        .addMessage(streamMsg({ id: 2, flags: [], timestamp: 3000, sender_id: 10 }));
+        .setFromMessages(
+          [streamMsg({ id: "00000000-0000-4000-8000-000000000001", flags: ["read"] })],
+          10,
+        );
+
+      useChatListStore.getState().addMessage(
+        streamMsg({
+          id: "00000000-0000-4000-8000-000000000002",
+          flags: [],
+          timestamp: 3000,
+          sender_id: 10,
+        }),
+      );
 
       const streams = useChatListStore.getState().streams();
       expect(streams[0]!.badge).toBeUndefined();
@@ -765,11 +875,18 @@ describe("chatListStore", () => {
 
     // Location index must be updated for every new message so decrements work later.
     it("updates messageIdToLocation for newly added stream message", () => {
-      useChatListStore
-        .getState()
-        .addMessage(streamMsg({ id: 77, stream_id: 5, subject: "topicX", timestamp: 3000 }));
+      useChatListStore.getState().addMessage(
+        streamMsg({
+          id: "00000000-0000-4000-8000-000000000077",
+          stream_id: 5,
+          subject: "topicX",
+          timestamp: 3000,
+        }),
+      );
 
-      const loc = useChatListStore.getState().messageIdToLocation.get(77);
+      const loc = useChatListStore
+        .getState()
+        .messageIdToLocation.get("00000000-0000-4000-8000-000000000077");
       expect(loc).toBeDefined();
       expect(loc!.type).toBe("stream");
     });
@@ -791,12 +908,22 @@ describe("chatListStore", () => {
     it("increments unread count for unread DM messages", () => {
       useChatListStore.setState({ currentUserId: 10 });
 
-      useChatListStore
-        .getState()
-        .addMessage(dmMsg({ id: 60, flags: [], timestamp: 3000, sender_id: OTHER_SENDER_ID }));
-      useChatListStore
-        .getState()
-        .addMessage(dmMsg({ id: 61, flags: [], timestamp: 4000, sender_id: OTHER_SENDER_ID }));
+      useChatListStore.getState().addMessage(
+        dmMsg({
+          id: "00000000-0000-4000-8000-000000000060",
+          flags: [],
+          timestamp: 3000,
+          sender_id: OTHER_SENDER_ID,
+        }),
+      );
+      useChatListStore.getState().addMessage(
+        dmMsg({
+          id: "00000000-0000-4000-8000-000000000061",
+          flags: [],
+          timestamp: 4000,
+          sender_id: OTHER_SENDER_ID,
+        }),
+      );
 
       const dms = useChatListStore.getState().dms();
       const dm = dms.find((d) => d.type === "dm");
@@ -808,10 +935,18 @@ describe("chatListStore", () => {
 
       useChatListStore
         .getState()
-        .setFromMessages([dmMsg({ id: 59, flags: ["read"], timestamp: 1000 })], 10);
-      useChatListStore
-        .getState()
-        .addMessage(dmMsg({ id: 60, flags: [], timestamp: 3000, sender_id: 10 }));
+        .setFromMessages(
+          [dmMsg({ id: "00000000-0000-4000-8000-000000000059", flags: ["read"], timestamp: 1000 })],
+          10,
+        );
+      useChatListStore.getState().addMessage(
+        dmMsg({
+          id: "00000000-0000-4000-8000-000000000060",
+          flags: [],
+          timestamp: 3000,
+          sender_id: 10,
+        }),
+      );
 
       const dms = useChatListStore.getState().dms();
       const dm = dms.find((d) => d.type === "dm");
@@ -824,7 +959,9 @@ describe("chatListStore", () => {
 
       useChatListStore.getState().addMessage(dmMsg({ id: 88, timestamp: 5000 }));
 
-      const loc = useChatListStore.getState().messageIdToLocation.get(88);
+      const loc = useChatListStore
+        .getState()
+        .messageIdToLocation.get("00000000-0000-4000-8000-000000000088");
       expect(loc).toBeDefined();
       expect(loc!.type).toBe("dm");
     });
@@ -833,15 +970,27 @@ describe("chatListStore", () => {
       useChatListStore.setState({ currentUserId: 10 });
       const dmKey = "10,20";
 
-      useChatListStore
-        .getState()
-        .addMessage(dmMsg({ id: 3083, flags: [], timestamp: 3000, sender_id: OTHER_SENDER_ID }));
-      useChatListStore
-        .getState()
-        .addMessage(dmMsg({ id: 3082, flags: [], timestamp: 2000, sender_id: OTHER_SENDER_ID }));
+      useChatListStore.getState().addMessage(
+        dmMsg({
+          id: "00000000-0000-4000-8000-000000003083",
+          flags: [],
+          timestamp: 3000,
+          sender_id: OTHER_SENDER_ID,
+        }),
+      );
+      useChatListStore.getState().addMessage(
+        dmMsg({
+          id: "00000000-0000-4000-8000-000000003082",
+          flags: [],
+          timestamp: 2000,
+          sender_id: OTHER_SENDER_ID,
+        }),
+      );
 
       expect(useChatListStore.getState().dmsMap.get(dmKey)?.unreadCount).toBe(2);
-      expect(useChatListStore.getState().messageIdToLocation.has(3082)).toBe(true);
+      expect(
+        useChatListStore.getState().messageIdToLocation.has("00000000-0000-4000-8000-000000003082"),
+      ).toBe(true);
     });
   });
 
@@ -853,7 +1002,7 @@ describe("chatListStore", () => {
     it("indexes every message and aggregates unread per topic in one batch", () => {
       useChatListStore.getState().addMessages([
         streamMsg({
-          id: 10,
+          id: "00000000-0000-4000-8000-000000000010",
           stream_id: 5,
           subject: "alpha",
           timestamp: 1000,
@@ -861,7 +1010,7 @@ describe("chatListStore", () => {
           sender_id: OTHER_SENDER_ID,
         }),
         streamMsg({
-          id: 11,
+          id: "00000000-0000-4000-8000-000000000011",
           stream_id: 5,
           subject: "beta",
           timestamp: 2000,
@@ -869,7 +1018,7 @@ describe("chatListStore", () => {
           sender_id: OTHER_SENDER_ID,
         }),
         streamMsg({
-          id: 12,
+          id: "00000000-0000-4000-8000-000000000012",
           stream_id: 5,
           subject: "alpha",
           timestamp: 3000,
@@ -877,7 +1026,7 @@ describe("chatListStore", () => {
           sender_id: OTHER_SENDER_ID,
         }),
         streamMsg({
-          id: 13,
+          id: "00000000-0000-4000-8000-000000000013",
           stream_id: 5,
           subject: "alpha",
           timestamp: 4000,
@@ -887,10 +1036,18 @@ describe("chatListStore", () => {
       ]);
 
       const state = useChatListStore.getState();
-      expect(state.messageIdToLocation.get(10)?.type).toBe("stream");
-      expect(state.messageIdToLocation.get(11)?.type).toBe("stream");
-      expect(state.messageIdToLocation.get(12)?.type).toBe("stream");
-      expect(state.messageIdToLocation.get(13)?.type).toBe("stream");
+      expect(state.messageIdToLocation.get("00000000-0000-4000-8000-000000000010")?.type).toBe(
+        "stream",
+      );
+      expect(state.messageIdToLocation.get("00000000-0000-4000-8000-000000000011")?.type).toBe(
+        "stream",
+      );
+      expect(state.messageIdToLocation.get("00000000-0000-4000-8000-000000000012")?.type).toBe(
+        "stream",
+      );
+      expect(state.messageIdToLocation.get("00000000-0000-4000-8000-000000000013")?.type).toBe(
+        "stream",
+      );
 
       const stream = state.streamsMap.get(5);
       expect(stream?.topics.get("alpha")?.unreadCount).toBe(3);
@@ -900,32 +1057,69 @@ describe("chatListStore", () => {
     });
 
     it("decrements unread for each message id added in the same batch", () => {
-      useChatListStore
-        .getState()
-        .addMessages([
-          streamMsg({ id: 20, flags: [], sender_id: OTHER_SENDER_ID, timestamp: 1000 }),
-          streamMsg({ id: 21, flags: [], sender_id: OTHER_SENDER_ID, timestamp: 2000 }),
-          streamMsg({ id: 22, flags: [], sender_id: OTHER_SENDER_ID, timestamp: 3000 }),
-        ]);
+      useChatListStore.getState().addMessages([
+        streamMsg({
+          id: "00000000-0000-4000-8000-000000000020",
+          flags: [],
+          sender_id: OTHER_SENDER_ID,
+          timestamp: 1000,
+        }),
+        streamMsg({
+          id: "00000000-0000-4000-8000-000000000021",
+          flags: [],
+          sender_id: OTHER_SENDER_ID,
+          timestamp: 2000,
+        }),
+        streamMsg({
+          id: "00000000-0000-4000-8000-000000000022",
+          flags: [],
+          sender_id: OTHER_SENDER_ID,
+          timestamp: 3000,
+        }),
+      ]);
 
       expect(useChatListStore.getState().streams()[0]!.badge).toBe(3);
 
-      useChatListStore.getState().decrementUnreadForMessages([20, 21]);
+      useChatListStore
+        .getState()
+        .decrementUnreadForMessages([
+          "00000000-0000-4000-8000-000000000020",
+          "00000000-0000-4000-8000-000000000021",
+        ]);
 
       expect(useChatListStore.getState().streams()[0]!.badge).toBe(1);
-      expect(useChatListStore.getState().messageIdToLocation.has(20)).toBe(true);
-      expect(useChatListStore.getState().messageIdToLocation.has(21)).toBe(true);
-      expect(useChatListStore.getState().messageIdToLocation.has(22)).toBe(true);
+      expect(
+        useChatListStore.getState().messageIdToLocation.has("00000000-0000-4000-8000-000000000020"),
+      ).toBe(true);
+      expect(
+        useChatListStore.getState().messageIdToLocation.has("00000000-0000-4000-8000-000000000021"),
+      ).toBe(true);
+      expect(
+        useChatListStore.getState().messageIdToLocation.has("00000000-0000-4000-8000-000000000022"),
+      ).toBe(true);
     });
 
     it("aggregates DM unread for multiple messages in one batch", () => {
-      useChatListStore
-        .getState()
-        .addMessages([
-          dmMsg({ id: 60, flags: [], timestamp: 3000, sender_id: OTHER_SENDER_ID }),
-          dmMsg({ id: 61, flags: [], timestamp: 4000, sender_id: OTHER_SENDER_ID }),
-          dmMsg({ id: 62, flags: [], timestamp: 5000, sender_id: OTHER_SENDER_ID }),
-        ]);
+      useChatListStore.getState().addMessages([
+        dmMsg({
+          id: "00000000-0000-4000-8000-000000000060",
+          flags: [],
+          timestamp: 3000,
+          sender_id: OTHER_SENDER_ID,
+        }),
+        dmMsg({
+          id: "00000000-0000-4000-8000-000000000061",
+          flags: [],
+          timestamp: 4000,
+          sender_id: OTHER_SENDER_ID,
+        }),
+        dmMsg({
+          id: "00000000-0000-4000-8000-000000000062",
+          flags: [],
+          timestamp: 5000,
+          sender_id: OTHER_SENDER_ID,
+        }),
+      ]);
 
       const dms = useChatListStore.getState().dms();
       const dm = dms.find((d) => d.type === "dm");
@@ -934,7 +1128,7 @@ describe("chatListStore", () => {
 
     it("does not double-count unread when batch includes already-indexed message ids", () => {
       const msg = streamMsg({
-        id: 50,
+        id: "00000000-0000-4000-8000-000000000050",
         stream_id: 5,
         subject: "alpha",
         timestamp: 1000,
@@ -956,14 +1150,14 @@ describe("chatListStore", () => {
         {
           userIds: [10, 20],
           unreadCount: 0,
-          lastMessageId: 123,
+          lastMessageId: "00000000-0000-4000-8000-000000000123",
           lastActivityTs: 1_700_000_000,
         },
       ]);
 
       useChatListStore.getState().addMessages([
         dmMsg({
-          id: 123,
+          id: "00000000-0000-4000-8000-000000000123",
           content: "preview from message_ids hydrate",
           timestamp: 1_600_000_000,
           sender_id: OTHER_SENDER_ID,
@@ -972,7 +1166,7 @@ describe("chatListStore", () => {
 
       const dm = useChatListStore.getState().dmsMap.get("10,20");
       expect(dm?.lastMessage).toContain("preview from message_ids hydrate");
-      expect(dm?.lastMessageId).toBe(123);
+      expect(dm?.lastMessageId).toBe(testMessageId(123));
       expect(dm?.ts).toBe(1_700_000_000);
     });
 
@@ -1007,13 +1201,13 @@ describe("chatListStore", () => {
         {
           userIds: [10, 20],
           unreadCount: 5,
-          lastMessageId: 500,
+          lastMessageId: "00000000-0000-4000-8000-000000000500",
           lastActivityTs: 1_800_000_000,
         },
       ]);
       useChatListStore.getState().addMessages([
         dmMsg({
-          id: 500,
+          id: "00000000-0000-4000-8000-000000000500",
           content: "dm from register",
           timestamp: 1_600_000_000,
           sender_id: OTHER_SENDER_ID,
@@ -1023,14 +1217,14 @@ describe("chatListStore", () => {
 
       useChatListStore.getState().applyStreamSidebarPreviewsFromMessages([
         streamMsg({
-          id: 1000,
+          id: "00000000-0000-4000-8000-000000001000",
           stream_id: 99,
           subject: "topic-a",
           content: "stream preview body",
           timestamp: 1_750_000_000,
         }),
         dmMsg({
-          id: 2000,
+          id: "00000000-0000-4000-8000-000000002000",
           content: "must not replace dm preview",
           timestamp: 1_900_000_000,
           sender_id: OTHER_SENDER_ID,
@@ -1052,7 +1246,17 @@ describe("chatListStore", () => {
       useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 1, name: "c1" }]);
       useChatListStore.getState().reconcileUnreadFromSnapshot(
         {
-          streams: [{ streamId: 1, topic: "t", unreadMessageIds: [1, 2, 3] }],
+          streams: [
+            {
+              streamId: 1,
+              topic: "t",
+              unreadMessageIds: [
+                "00000000-0000-4000-8000-000000000001",
+                "00000000-0000-4000-8000-000000000002",
+                "00000000-0000-4000-8000-000000000003",
+              ],
+            },
+          ],
           dms: [],
           totalCount: 3,
           mentionMessageIds: [],
@@ -1063,7 +1267,7 @@ describe("chatListStore", () => {
 
       useChatListStore.getState().applyStreamSidebarPreviewsFromMessages([
         streamMsg({
-          id: 10,
+          id: "00000000-0000-4000-8000-000000000010",
           stream_id: 1,
           subject: "t",
           content: "read preview",
@@ -1083,7 +1287,12 @@ describe("chatListStore", () => {
             {
               streamId: 5,
               topic: "topic1",
-              unreadMessageIds: [1, 2, 3, 4],
+              unreadMessageIds: [
+                "00000000-0000-4000-8000-000000000001",
+                "00000000-0000-4000-8000-000000000002",
+                "00000000-0000-4000-8000-000000000003",
+                "00000000-0000-4000-8000-000000000004",
+              ],
             },
           ],
           dms: [],
@@ -1099,7 +1308,7 @@ describe("chatListStore", () => {
 
       useChatListStore.getState().addMessage(
         streamMsg({
-          id: 1,
+          id: "00000000-0000-4000-8000-000000000001",
           flags: [],
           sender_id: OTHER_SENDER_ID,
           timestamp: 500,
@@ -1109,7 +1318,9 @@ describe("chatListStore", () => {
       expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("topic1")?.unreadCount).toBe(
         4,
       );
-      expect(useChatListStore.getState().messageIdToLocation.has(1)).toBe(true);
+      expect(
+        useChatListStore.getState().messageIdToLocation.has("00000000-0000-4000-8000-000000000001"),
+      ).toBe(true);
     });
   });
 
@@ -1117,15 +1328,23 @@ describe("chatListStore", () => {
   describe("streams() sort order", () => {
     // Most-recent-first ensures active conversations are immediately visible.
     it("returns streams sorted by most recent message first", () => {
-      useChatListStore
-        .getState()
-        .setFromMessages(
-          [
-            streamMsg({ id: 1, stream_id: 1, display_recipient: "older", timestamp: 1000 }),
-            streamMsg({ id: 2, stream_id: 2, display_recipient: "newer", timestamp: 5000 }),
-          ],
-          10,
-        );
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000001",
+            stream_id: 1,
+            display_recipient: "older",
+            timestamp: 1000,
+          }),
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000002",
+            stream_id: 2,
+            display_recipient: "newer",
+            timestamp: 5000,
+          }),
+        ],
+        10,
+      );
 
       const streams = useChatListStore.getState().streams();
       expect(streams[0]!.stream_id).toBe(2);
@@ -1140,7 +1359,7 @@ describe("chatListStore", () => {
       useChatListStore.getState().setFromMessages(
         [
           dmMsg({
-            id: 50,
+            id: "00000000-0000-4000-8000-000000000050",
             timestamp: 1000,
             display_recipient: [
               { id: 10, full_name: "Me" },
@@ -1148,7 +1367,7 @@ describe("chatListStore", () => {
             ],
           }),
           dmMsg({
-            id: 51,
+            id: "00000000-0000-4000-8000-000000000051",
             timestamp: 5000,
             display_recipient: [
               { id: 10, full_name: "Me" },
@@ -1169,41 +1388,69 @@ describe("chatListStore", () => {
   describe("decrementUnreadForMessages", () => {
     // Reading a message must reduce the badge by exactly one.
     it("decrements stream topic unread count", () => {
-      useChatListStore
-        .getState()
-        .setFromMessages(
-          [
-            streamMsg({ id: 1, flags: [], sender_id: OTHER_SENDER_ID }),
-            streamMsg({ id: 2, flags: [], sender_id: OTHER_SENDER_ID }),
-          ],
-          10,
-        );
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000001",
+            flags: [],
+            sender_id: OTHER_SENDER_ID,
+          }),
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000002",
+            flags: [],
+            sender_id: OTHER_SENDER_ID,
+          }),
+        ],
+        10,
+      );
 
       expect(useChatListStore.getState().streams()[0]!.badge).toBe(2);
 
-      useChatListStore.getState().decrementUnreadForMessages([1]);
+      useChatListStore
+        .getState()
+        .decrementUnreadForMessages(["00000000-0000-4000-8000-000000000001"]);
 
       expect(useChatListStore.getState().streams()[0]!.badge).toBe(1);
     });
 
     it("keeps messageId in location index after decrement so duplicate read events do not re-count", () => {
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000001",
+            flags: [],
+            sender_id: OTHER_SENDER_ID,
+          }),
+        ],
+        10,
+      );
+
       useChatListStore
         .getState()
-        .setFromMessages([streamMsg({ id: 1, flags: [], sender_id: OTHER_SENDER_ID })], 10);
-
-      useChatListStore.getState().decrementUnreadForMessages([1]);
-      expect(useChatListStore.getState().messageIdToLocation.has(1)).toBe(true);
+        .decrementUnreadForMessages(["00000000-0000-4000-8000-000000000001"]);
+      expect(
+        useChatListStore.getState().messageIdToLocation.has("00000000-0000-4000-8000-000000000001"),
+      ).toBe(true);
       expect(useChatListStore.getState().streams()[0]?.badge ?? 0).toBe(0);
 
-      useChatListStore.getState().decrementUnreadForMessages([1]);
+      useChatListStore
+        .getState()
+        .decrementUnreadForMessages(["00000000-0000-4000-8000-000000000001"]);
       expect(useChatListStore.getState().streams()[0]?.badge ?? 0).toBe(0);
     });
 
     // Defensive: badge must never become negative even with duplicate events.
     it("does not go below zero", () => {
-      useChatListStore.getState().setFromMessages([streamMsg({ id: 1, flags: ["read"] })], 10);
+      useChatListStore
+        .getState()
+        .setFromMessages(
+          [streamMsg({ id: "00000000-0000-4000-8000-000000000001", flags: ["read"] })],
+          10,
+        );
 
-      useChatListStore.getState().decrementUnreadForMessages([1]);
+      useChatListStore
+        .getState()
+        .decrementUnreadForMessages(["00000000-0000-4000-8000-000000000001"]);
 
       const streams = useChatListStore.getState().streams();
       const badge = streams[0]?.badge;
@@ -1212,9 +1459,16 @@ describe("chatListStore", () => {
 
     // Empty array is a valid input from the event loop — must be a safe no-op.
     it("handles empty messageIds array", () => {
-      useChatListStore
-        .getState()
-        .setFromMessages([streamMsg({ id: 1, flags: [], sender_id: OTHER_SENDER_ID })], 10);
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000001",
+            flags: [],
+            sender_id: OTHER_SENDER_ID,
+          }),
+        ],
+        10,
+      );
 
       useChatListStore.getState().decrementUnreadForMessages([]);
 
@@ -1223,17 +1477,26 @@ describe("chatListStore", () => {
 
     // DMs use the same decrement path — verify badge decreases for private messages.
     it("decrements DM unread count", () => {
+      useChatListStore.getState().setFromMessages(
+        [
+          dmMsg({
+            id: "00000000-0000-4000-8000-000000000050",
+            flags: [],
+            sender_id: OTHER_SENDER_ID,
+          }),
+          dmMsg({
+            id: "00000000-0000-4000-8000-000000000051",
+            flags: [],
+            timestamp: 3000,
+            sender_id: OTHER_SENDER_ID,
+          }),
+        ],
+        10,
+      );
+
       useChatListStore
         .getState()
-        .setFromMessages(
-          [
-            dmMsg({ id: 50, flags: [], sender_id: OTHER_SENDER_ID }),
-            dmMsg({ id: 51, flags: [], timestamp: 3000, sender_id: OTHER_SENDER_ID }),
-          ],
-          10,
-        );
-
-      useChatListStore.getState().decrementUnreadForMessages([50]);
+        .decrementUnreadForMessages(["00000000-0000-4000-8000-000000000050"]);
 
       const dms = useChatListStore.getState().dms();
       const totalBadge = dms.reduce((sum, d) => sum + (d.badge ?? 0), 0);
@@ -1243,15 +1506,21 @@ describe("chatListStore", () => {
 
   describe("decrementUnreadForTopic / decrementUnreadForDmKey", () => {
     it("decrements stream topic unread count by explicit amount", () => {
-      useChatListStore
-        .getState()
-        .setFromMessages(
-          [
-            streamMsg({ id: 1, flags: [], sender_id: OTHER_SENDER_ID }),
-            streamMsg({ id: 2, flags: [], sender_id: OTHER_SENDER_ID }),
-          ],
-          10,
-        );
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000001",
+            flags: [],
+            sender_id: OTHER_SENDER_ID,
+          }),
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000002",
+            flags: [],
+            sender_id: OTHER_SENDER_ID,
+          }),
+        ],
+        10,
+      );
 
       useChatListStore.getState().decrementUnreadForTopic(5, "topic1", 1);
 
@@ -1259,9 +1528,16 @@ describe("chatListStore", () => {
     });
 
     it("clamps stream topic unread count to zero", () => {
-      useChatListStore
-        .getState()
-        .setFromMessages([streamMsg({ id: 1, flags: [], sender_id: OTHER_SENDER_ID })], 10);
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000001",
+            flags: [],
+            sender_id: OTHER_SENDER_ID,
+          }),
+        ],
+        10,
+      );
 
       useChatListStore.getState().decrementUnreadForTopic(5, "topic1", 10);
 
@@ -1270,17 +1546,26 @@ describe("chatListStore", () => {
     });
 
     it("decrements DM unread count by explicit amount", () => {
-      useChatListStore
-        .getState()
-        .setFromMessages(
-          [
-            dmMsg({ id: 50, flags: [], sender_id: OTHER_SENDER_ID }),
-            dmMsg({ id: 51, flags: [], timestamp: 3000, sender_id: OTHER_SENDER_ID }),
-          ],
-          10,
-        );
+      useChatListStore.getState().setFromMessages(
+        [
+          dmMsg({
+            id: "00000000-0000-4000-8000-000000000050",
+            flags: [],
+            sender_id: OTHER_SENDER_ID,
+          }),
+          dmMsg({
+            id: "00000000-0000-4000-8000-000000000051",
+            flags: [],
+            timestamp: 3000,
+            sender_id: OTHER_SENDER_ID,
+          }),
+        ],
+        10,
+      );
 
-      const dmLocation = useChatListStore.getState().messageIdToLocation.get(50);
+      const dmLocation = useChatListStore
+        .getState()
+        .messageIdToLocation.get("00000000-0000-4000-8000-000000000050");
       expect(dmLocation?.type).toBe("dm");
       if (dmLocation?.type !== "dm") return;
 
@@ -1292,11 +1577,20 @@ describe("chatListStore", () => {
     });
 
     it("clamps DM unread count to zero", () => {
-      useChatListStore
-        .getState()
-        .setFromMessages([dmMsg({ id: 50, flags: [], sender_id: OTHER_SENDER_ID })], 10);
+      useChatListStore.getState().setFromMessages(
+        [
+          dmMsg({
+            id: "00000000-0000-4000-8000-000000000050",
+            flags: [],
+            sender_id: OTHER_SENDER_ID,
+          }),
+        ],
+        10,
+      );
 
-      const dmLocation = useChatListStore.getState().messageIdToLocation.get(50);
+      const dmLocation = useChatListStore
+        .getState()
+        .messageIdToLocation.get("00000000-0000-4000-8000-000000000050");
       expect(dmLocation?.type).toBe("dm");
       if (dmLocation?.type !== "dm") return;
 
@@ -1312,20 +1606,34 @@ describe("chatListStore", () => {
   describe("incrementUnreadForMessages", () => {
     // Marking as unread must bump the badge from zero.
     it("increments stream topic unread count", () => {
-      useChatListStore.getState().setFromMessages([streamMsg({ id: 1, flags: ["read"] })], 10);
+      useChatListStore
+        .getState()
+        .setFromMessages(
+          [streamMsg({ id: "00000000-0000-4000-8000-000000000001", flags: ["read"] })],
+          10,
+        );
 
       expect(useChatListStore.getState().streams()[0]!.badge).toBeUndefined();
 
-      useChatListStore.getState().incrementUnreadForMessages([1]);
+      useChatListStore
+        .getState()
+        .incrementUnreadForMessages(["00000000-0000-4000-8000-000000000001"]);
 
       expect(useChatListStore.getState().streams()[0]!.badge).toBe(1);
     });
 
     // Empty array must be a safe no-op.
     it("handles empty messageIds array", () => {
-      useChatListStore
-        .getState()
-        .setFromMessages([streamMsg({ id: 1, flags: [], sender_id: OTHER_SENDER_ID })], 10);
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000001",
+            flags: [],
+            sender_id: OTHER_SENDER_ID,
+          }),
+        ],
+        10,
+      );
 
       useChatListStore.getState().incrementUnreadForMessages([]);
 
@@ -1334,11 +1642,20 @@ describe("chatListStore", () => {
 
     // Unknown IDs may come from stale events — must not crash or change state.
     it("is a no-op for unknown message ids", () => {
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000001",
+            flags: [],
+            sender_id: OTHER_SENDER_ID,
+          }),
+        ],
+        10,
+      );
+
       useChatListStore
         .getState()
-        .setFromMessages([streamMsg({ id: 1, flags: [], sender_id: OTHER_SENDER_ID })], 10);
-
-      useChatListStore.getState().incrementUnreadForMessages([999]);
+        .incrementUnreadForMessages(["00000000-0000-4000-8000-000000000999"]);
 
       expect(useChatListStore.getState().streams()[0]!.badge).toBe(1);
     });
@@ -1348,17 +1665,25 @@ describe("chatListStore", () => {
   describe("handleDeleteMessages", () => {
     // Deleting a known lastMessageId should keep topic row and clear stale preview fields.
     it("keeps topic row and clears preview when deleting topic last message", () => {
-      useChatListStore
-        .getState()
-        .setFromMessages(
-          [
-            streamMsg({ id: 1, stream_id: 5, subject: "topicA", timestamp: 1000 }),
-            streamMsg({ id: 2, stream_id: 5, subject: "topicB", timestamp: 2000 }),
-          ],
-          10,
-        );
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000001",
+            stream_id: 5,
+            subject: "topicA",
+            timestamp: 1000,
+          }),
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000002",
+            stream_id: 5,
+            subject: "topicB",
+            timestamp: 2000,
+          }),
+        ],
+        10,
+      );
 
-      useChatListStore.getState().handleDeleteMessages([1]);
+      useChatListStore.getState().handleDeleteMessages(["00000000-0000-4000-8000-000000000001"]);
 
       const stream = useChatListStore
         .getState()
@@ -1380,14 +1705,14 @@ describe("chatListStore", () => {
       useChatListStore.getState().setFromMessages(
         [
           streamMsg({
-            id: 1,
+            id: "00000000-0000-4000-8000-000000000001",
             stream_id: 5,
             subject: "topicA",
             timestamp: 1000,
             sender_full_name: "Alice",
           }),
           streamMsg({
-            id: 2,
+            id: "00000000-0000-4000-8000-000000000002",
             stream_id: 5,
             subject: "topicB",
             timestamp: 2000,
@@ -1397,7 +1722,7 @@ describe("chatListStore", () => {
         10,
       );
 
-      useChatListStore.getState().handleDeleteMessages([2]);
+      useChatListStore.getState().handleDeleteMessages(["00000000-0000-4000-8000-000000000002"]);
 
       const stream = useChatListStore
         .getState()
@@ -1409,14 +1734,19 @@ describe("chatListStore", () => {
 
     // Single-topic stream should remain visible after deleting currently tracked lastMessageId.
     it("keeps stream and topic row when its only topic last message is deleted", () => {
-      useChatListStore
-        .getState()
-        .setFromMessages(
-          [streamMsg({ id: 1, stream_id: 5, subject: "only", timestamp: 1000 })],
-          10,
-        );
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000001",
+            stream_id: 5,
+            subject: "only",
+            timestamp: 1000,
+          }),
+        ],
+        10,
+      );
 
-      useChatListStore.getState().handleDeleteMessages([1]);
+      useChatListStore.getState().handleDeleteMessages(["00000000-0000-4000-8000-000000000001"]);
 
       const stream = useChatListStore
         .getState()
@@ -1433,7 +1763,7 @@ describe("chatListStore", () => {
     it("keeps DM row and clears lastMessageId when its last message is deleted", () => {
       useChatListStore.getState().setFromMessages([dmMsg({ id: 50 })], 10);
 
-      useChatListStore.getState().handleDeleteMessages([50]);
+      useChatListStore.getState().handleDeleteMessages(["00000000-0000-4000-8000-000000000050"]);
 
       const dms = useChatListStore.getState().dms();
       expect(dms).toHaveLength(1);
@@ -1443,7 +1773,7 @@ describe("chatListStore", () => {
 
     it("uses local replacementMessages to update stream/topic preview without waiting for network", () => {
       const older = streamMsg({
-        id: 1,
+        id: "00000000-0000-4000-8000-000000000001",
         stream_id: 5,
         subject: "topicA",
         timestamp: 1000,
@@ -1451,7 +1781,7 @@ describe("chatListStore", () => {
         sender_full_name: "Alice",
       });
       const newer = streamMsg({
-        id: 2,
+        id: "00000000-0000-4000-8000-000000000002",
         stream_id: 5,
         subject: "topicA",
         timestamp: 2000,
@@ -1460,39 +1790,39 @@ describe("chatListStore", () => {
       });
       useChatListStore.getState().setFromMessages([older, newer], 10);
 
-      useChatListStore.getState().handleDeleteMessages([2], {
+      useChatListStore.getState().handleDeleteMessages(["00000000-0000-4000-8000-000000000002"], {
         replacementMessages: [older, newer],
         resolveMissingPreview: false,
       });
 
       const topic = useChatListStore.getState().streamsMap.get(5)?.topics.get("topicA");
-      expect(topic?.lastMessageId).toBe(1);
+      expect(topic?.lastMessageId).toBe(testMessageId(1));
       expect(topic?.lastMessage).toContain("older preview");
       expect(topic?.lastMessageSenderName).toBe("Alice");
     });
 
     it("uses local replacementMessages to update DM preview without waiting for network", () => {
       const older = dmMsg({
-        id: 50,
+        id: "00000000-0000-4000-8000-000000000050",
         timestamp: 1000,
         content: "dm older",
         sender_full_name: "Alice",
       });
       const newer = dmMsg({
-        id: 51,
+        id: "00000000-0000-4000-8000-000000000051",
         timestamp: 2000,
         content: "dm newer",
         sender_full_name: "Bob",
       });
       useChatListStore.getState().setFromMessages([older, newer], 10);
 
-      useChatListStore.getState().handleDeleteMessages([51], {
+      useChatListStore.getState().handleDeleteMessages(["00000000-0000-4000-8000-000000000051"], {
         replacementMessages: [older, newer],
         resolveMissingPreview: false,
       });
 
       const dm = useChatListStore.getState().dmsMap.get("10,20");
-      expect(dm?.lastMessageId).toBe(50);
+      expect(dm?.lastMessageId).toBe(testMessageId(50));
       expect(dm?.lastMessage).toContain("dm older");
     });
 
@@ -1510,14 +1840,16 @@ describe("chatListStore", () => {
       useChatListStore.getState().setFromMessages([older, newer], 10);
       fetchMessagesWithNarrowMock.mockResolvedValueOnce([rawMessageToMockMessage(older)]);
 
-      useChatListStore.getState().handleDeleteMessages([51]);
+      useChatListStore.getState().handleDeleteMessages(["00000000-0000-4000-8000-000000000051"]);
       await flushMicrotasks();
 
       expect(fetchMessagesWithNarrowMock).toHaveBeenCalledTimes(1);
       expect(fetchMessagesWithNarrowMock.mock.calls[0]?.[0]).toEqual([
         { operator: "dm", operand: [20] },
       ]);
-      expect(useChatListStore.getState().dmsMap.get("10,20")?.lastMessageId).toBe(50);
+      expect(useChatListStore.getState().dmsMap.get("10,20")?.lastMessageId).toBe(
+        testMessageId(50),
+      );
     });
 
     it("builds DM fallback narrow from dmKey when currentUserId is null", async () => {
@@ -1535,14 +1867,16 @@ describe("chatListStore", () => {
       useChatListStore.getState().setCurrentUserId(null);
       fetchMessagesWithNarrowMock.mockResolvedValueOnce([rawMessageToMockMessage(older)]);
 
-      useChatListStore.getState().handleDeleteMessages([51]);
+      useChatListStore.getState().handleDeleteMessages(["00000000-0000-4000-8000-000000000051"]);
       await flushMicrotasks();
 
       expect(fetchMessagesWithNarrowMock).toHaveBeenCalledTimes(1);
       expect(fetchMessagesWithNarrowMock.mock.calls[0]?.[0]).toEqual([
         { operator: "dm", operand: [10, 20] },
       ]);
-      expect(useChatListStore.getState().dmsMap.get("10,20")?.lastMessageId).toBe(50);
+      expect(useChatListStore.getState().dmsMap.get("10,20")?.lastMessageId).toBe(
+        testMessageId(50),
+      );
     });
 
     it("ignores stale async refetch response after clear", async () => {
@@ -1570,7 +1904,7 @@ describe("chatListStore", () => {
         },
       );
 
-      useChatListStore.getState().handleDeleteMessages([51]);
+      useChatListStore.getState().handleDeleteMessages(["00000000-0000-4000-8000-000000000051"]);
       useChatListStore.getState().clear();
       expect(signal?.aborted).toBe(true);
 
@@ -1605,7 +1939,7 @@ describe("chatListStore", () => {
         },
       );
 
-      useChatListStore.getState().handleDeleteMessages([51]);
+      useChatListStore.getState().handleDeleteMessages(["00000000-0000-4000-8000-000000000051"]);
       useChatListStore.getState().setCurrentUserId(999);
       expect(signal?.aborted).toBe(true);
 
@@ -1616,21 +1950,26 @@ describe("chatListStore", () => {
     });
 
     it("keeps moved topic row after deleting moved topic lastMessageId", () => {
-      useChatListStore
-        .getState()
-        .setFromMessages(
-          [streamMsg({ id: 1, stream_id: 5, subject: "incident", timestamp: 1000 })],
-          10,
-        );
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000001",
+            stream_id: 5,
+            subject: "incident",
+            timestamp: 1000,
+          }),
+        ],
+        10,
+      );
       useChatListStore.getState().moveStreamTopic({
         streamId: 5,
         oldTopic: "incident",
         newTopic: "\u2714 incident",
-        messageIds: [1],
-        anchorMessageId: 1,
+        messageIds: ["00000000-0000-4000-8000-000000000001"],
+        anchorMessageId: "00000000-0000-4000-8000-000000000001",
       });
 
-      useChatListStore.getState().handleDeleteMessages([1]);
+      useChatListStore.getState().handleDeleteMessages(["00000000-0000-4000-8000-000000000001"]);
 
       const stream = useChatListStore.getState().streamsMap.get(5);
       expect(stream?.topics.has("\u2714 incident")).toBe(true);
@@ -1641,9 +1980,11 @@ describe("chatListStore", () => {
     it("removes messageId from location index after delete", () => {
       useChatListStore.getState().setFromMessages([streamMsg({ id: 1 })], 10);
 
-      useChatListStore.getState().handleDeleteMessages([1]);
+      useChatListStore.getState().handleDeleteMessages(["00000000-0000-4000-8000-000000000001"]);
 
-      expect(useChatListStore.getState().messageIdToLocation.has(1)).toBe(false);
+      expect(
+        useChatListStore.getState().messageIdToLocation.has("00000000-0000-4000-8000-000000000001"),
+      ).toBe(false);
     });
 
     // Empty array is a valid edge case from the event loop.
@@ -1659,7 +2000,7 @@ describe("chatListStore", () => {
     it("is a no-op for message ids not in the index", () => {
       useChatListStore.getState().setFromMessages([streamMsg({ id: 1 })], 10);
 
-      useChatListStore.getState().handleDeleteMessages([999]);
+      useChatListStore.getState().handleDeleteMessages(["00000000-0000-4000-8000-000000000999"]);
 
       expect(useChatListStore.getState().streams()).toHaveLength(1);
     });
@@ -1669,16 +2010,24 @@ describe("chatListStore", () => {
   describe("sortChatsByLastMessage", () => {
     // Streams and DMs must interleave by timestamp so the user sees one merged list.
     it("returns mixed streams and DMs sorted by timestamp", () => {
-      useChatListStore
-        .getState()
-        .setFromMessages(
-          [
-            streamMsg({ id: 1, stream_id: 5, display_recipient: "chan", timestamp: 1000 }),
-            dmMsg({ id: 50, timestamp: 3000 }),
-            streamMsg({ id: 3, stream_id: 8, display_recipient: "chan2", timestamp: 5000 }),
-          ],
-          10,
-        );
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000001",
+            stream_id: 5,
+            display_recipient: "chan",
+            timestamp: 1000,
+          }),
+          dmMsg({ id: 50, timestamp: 3000 }),
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000003",
+            stream_id: 8,
+            display_recipient: "chan2",
+            timestamp: 5000,
+          }),
+        ],
+        10,
+      );
 
       const { streamsMap, dmsMap } = useChatListStore.getState();
       const sorted = sortChatsByLastMessage(streamsMap, dmsMap, new Set());
@@ -1723,12 +2072,11 @@ describe("chatListStore", () => {
       useChatListStore.getState().upsertDmMetadataRows([{ userIds: [10, 20], unreadCount: 1 }]);
 
       const before = [...useChatListStore.getState().dmsMap.values()][0];
-      expect(before?.isGroup).toBe(false);
+      expect(before).toBeDefined();
 
       useChatListStore.getState().setCurrentUserId(10);
 
       const after = [...useChatListStore.getState().dmsMap.values()][0];
-      expect(after?.isGroup).toBe(false);
       expect(after?.id).toBe(20);
     });
   });
@@ -1792,7 +2140,7 @@ describe("chatListStore", () => {
       useChatListStore.getState().setFromMessages(
         [
           streamMsg({
-            id: 1,
+            id: "00000000-0000-4000-8000-000000000001",
             stream_id: 11,
             display_recipient: "engineering",
             timestamp: 1000,
@@ -1811,7 +2159,7 @@ describe("chatListStore", () => {
 
       useChatListStore.getState().addMessages([
         streamMsg({
-          id: 2,
+          id: "00000000-0000-4000-8000-000000000002",
           stream_id: 11,
           display_recipient: "engineering",
           timestamp: 2000,
@@ -1830,28 +2178,32 @@ describe("chatListStore", () => {
         {
           userIds: [10, 20],
           unreadCount: 3,
-          lastMessageId: 123,
+          lastMessageId: "00000000-0000-4000-8000-000000000123",
           lastActivityTs: 1_700_000_000,
         },
       ]);
 
       const dm = useChatListStore.getState().dmsMap.get("10,20");
       expect(dm).toBeDefined();
-      expect(dm?.isGroup).toBe(false);
       expect(dm?.id).toBe(20);
       expect(dm?.unreadCount).toBe(3);
-      expect(dm?.lastMessageId).toBe(123);
+      expect(dm?.lastMessageId).toBe(testMessageId(123));
     });
   });
 
   describe("stream admin actions", () => {
     it("renames an existing stream entry", () => {
-      useChatListStore
-        .getState()
-        .setFromMessages(
-          [streamMsg({ id: 1, stream_id: 10, display_recipient: "engineering", timestamp: 1000 })],
-          10,
-        );
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000001",
+            stream_id: 10,
+            display_recipient: "engineering",
+            timestamp: 1000,
+          }),
+        ],
+        10,
+      );
 
       useChatListStore.getState().renameStream(10, "platform");
 
@@ -1863,13 +2215,13 @@ describe("chatListStore", () => {
       useChatListStore.getState().setFromMessages(
         [
           streamMsg({
-            id: 1,
+            id: "00000000-0000-4000-8000-000000000001",
             stream_id: 10,
             display_recipient: "engineering",
             subject: "general",
           }),
           streamMsg({
-            id: 2,
+            id: "00000000-0000-4000-8000-000000000002",
             stream_id: 10,
             display_recipient: "engineering",
             subject: "release",
@@ -1883,9 +2235,11 @@ describe("chatListStore", () => {
 
       const state = useChatListStore.getState();
       expect(state.streamsMap.has(10)).toBe(false);
-      expect(state.messageIdToLocation.get(1)).toBeUndefined();
-      expect(state.messageIdToLocation.get(2)).toBeUndefined();
-      expect(state.messageIdToLocation.get(50)?.type).toBe("dm");
+      expect(state.messageIdToLocation.get("00000000-0000-4000-8000-000000000001")).toBeUndefined();
+      expect(state.messageIdToLocation.get("00000000-0000-4000-8000-000000000002")).toBeUndefined();
+      expect(state.messageIdToLocation.get("00000000-0000-4000-8000-000000000050")?.type).toBe(
+        "dm",
+      );
     });
 
     it("optimistically sets and rolls back stream archived flag", () => {
@@ -1913,7 +2267,7 @@ describe("chatListStore", () => {
       useChatListStore.getState().setFromMessages(
         [
           streamMsg({
-            id: 1,
+            id: "00000000-0000-4000-8000-000000000001",
             stream_id: 10,
             display_recipient: "engineering",
             subject: "incident",
@@ -1921,7 +2275,7 @@ describe("chatListStore", () => {
             sender_full_name: "Alice",
           }),
           streamMsg({
-            id: 2,
+            id: "00000000-0000-4000-8000-000000000002",
             stream_id: 10,
             display_recipient: "engineering",
             subject: "release",
@@ -1936,8 +2290,8 @@ describe("chatListStore", () => {
         streamId: 10,
         oldTopic: "incident",
         newTopic: "\u2714 incident",
-        messageIds: [1],
-        anchorMessageId: 1,
+        messageIds: ["00000000-0000-4000-8000-000000000001"],
+        anchorMessageId: "00000000-0000-4000-8000-000000000001",
       });
 
       const stream = useChatListStore.getState().streamsMap.get(10);
@@ -1949,14 +2303,14 @@ describe("chatListStore", () => {
       useChatListStore.getState().setFromMessages(
         [
           streamMsg({
-            id: 1,
+            id: "00000000-0000-4000-8000-000000000001",
             stream_id: 10,
             display_recipient: "engineering",
             subject: "incident",
             timestamp: 1000,
           }),
           streamMsg({
-            id: 2,
+            id: "00000000-0000-4000-8000-000000000002",
             stream_id: 10,
             display_recipient: "engineering",
             subject: "release",
@@ -1973,16 +2327,20 @@ describe("chatListStore", () => {
       const stream = state.streamsMap.get(10);
       expect(stream?.topics.has("incident")).toBe(false);
       expect(stream?.topics.has("release")).toBe(true);
-      expect(state.messageIdToLocation.get(1)).toBeUndefined();
-      expect(state.messageIdToLocation.get(2)?.type).toBe("stream");
-      expect(state.messageIdToLocation.get(50)?.type).toBe("dm");
+      expect(state.messageIdToLocation.get("00000000-0000-4000-8000-000000000001")).toBeUndefined();
+      expect(state.messageIdToLocation.get("00000000-0000-4000-8000-000000000002")?.type).toBe(
+        "stream",
+      );
+      expect(state.messageIdToLocation.get("00000000-0000-4000-8000-000000000050")?.type).toBe(
+        "dm",
+      );
     });
 
     it("recomputes stream preview fields from remaining topics", () => {
       useChatListStore.getState().setFromMessages(
         [
           streamMsg({
-            id: 1,
+            id: "00000000-0000-4000-8000-000000000001",
             stream_id: 10,
             display_recipient: "engineering",
             subject: "incident",
@@ -1990,7 +2348,7 @@ describe("chatListStore", () => {
             sender_full_name: "Alice",
           }),
           streamMsg({
-            id: 2,
+            id: "00000000-0000-4000-8000-000000000002",
             stream_id: 10,
             display_recipient: "engineering",
             subject: "release",
@@ -2013,7 +2371,7 @@ describe("chatListStore", () => {
       useChatListStore.getState().setFromMessages(
         [
           streamMsg({
-            id: 1,
+            id: "00000000-0000-4000-8000-000000000001",
             stream_id: 10,
             display_recipient: "engineering",
             subject: "incident",
@@ -2037,7 +2395,7 @@ describe("chatListStore", () => {
       useChatListStore.getState().setFromMessages(
         [
           streamMsg({
-            id: 1,
+            id: "00000000-0000-4000-8000-000000000001",
             stream_id: 10,
             display_recipient: "engineering",
             subject: "incident",
@@ -2047,7 +2405,7 @@ describe("chatListStore", () => {
             sender_id: OTHER_SENDER_ID,
           }),
           streamMsg({
-            id: 2,
+            id: "00000000-0000-4000-8000-000000000002",
             stream_id: 10,
             display_recipient: "engineering",
             subject: "\u2714 incident",
@@ -2064,8 +2422,8 @@ describe("chatListStore", () => {
         streamId: 10,
         oldTopic: "incident",
         newTopic: "\u2714 incident",
-        messageIds: [1],
-        anchorMessageId: 1,
+        messageIds: ["00000000-0000-4000-8000-000000000001"],
+        anchorMessageId: "00000000-0000-4000-8000-000000000001",
       });
 
       const stream = useChatListStore.getState().streamsMap.get(10);
@@ -2081,7 +2439,7 @@ describe("chatListStore", () => {
       useChatListStore.getState().setFromMessages(
         [
           streamMsg({
-            id: 1,
+            id: "00000000-0000-4000-8000-000000000001",
             stream_id: 10,
             display_recipient: "engineering",
             subject: "incident",
@@ -2094,10 +2452,12 @@ describe("chatListStore", () => {
         streamId: 10,
         oldTopic: "incident",
         newTopic: "\u2714 incident",
-        messageIds: [1],
+        messageIds: ["00000000-0000-4000-8000-000000000001"],
       });
 
-      const location = useChatListStore.getState().messageIdToLocation.get(1);
+      const location = useChatListStore
+        .getState()
+        .messageIdToLocation.get("00000000-0000-4000-8000-000000000001");
       expect(location?.type).toBe("stream");
       if (location?.type !== "stream") return;
       expect(location.topic).toBe("\u2714 incident");
@@ -2107,14 +2467,14 @@ describe("chatListStore", () => {
       useChatListStore.getState().setFromMessages(
         [
           streamMsg({
-            id: 1,
+            id: "00000000-0000-4000-8000-000000000001",
             stream_id: 10,
             display_recipient: "engineering",
             subject: "incident",
             timestamp: 1000,
           }),
           streamMsg({
-            id: 2,
+            id: "00000000-0000-4000-8000-000000000002",
             stream_id: 10,
             display_recipient: "engineering",
             subject: "incident",
@@ -2128,15 +2488,19 @@ describe("chatListStore", () => {
         streamId: 10,
         oldTopic: "incident",
         newTopic: "\u2714 incident",
-        messageIds: [1],
-        anchorMessageId: 1,
+        messageIds: ["00000000-0000-4000-8000-000000000001"],
+        anchorMessageId: "00000000-0000-4000-8000-000000000001",
       });
 
       const stream = useChatListStore.getState().streamsMap.get(10);
       expect(stream?.topics.has("incident")).toBe(true);
       expect(stream?.topics.has("\u2714 incident")).toBe(false);
-      const movedLocation = useChatListStore.getState().messageIdToLocation.get(1);
-      const untouchedLocation = useChatListStore.getState().messageIdToLocation.get(2);
+      const movedLocation = useChatListStore
+        .getState()
+        .messageIdToLocation.get("00000000-0000-4000-8000-000000000001");
+      const untouchedLocation = useChatListStore
+        .getState()
+        .messageIdToLocation.get("00000000-0000-4000-8000-000000000002");
       expect(movedLocation?.type).toBe("stream");
       if (movedLocation?.type !== "stream") return;
       expect(movedLocation.topic).toBe("\u2714 incident");
@@ -2149,7 +2513,7 @@ describe("chatListStore", () => {
       useChatListStore.getState().setFromMessages(
         [
           streamMsg({
-            id: 1,
+            id: "00000000-0000-4000-8000-000000000001",
             stream_id: 10,
             display_recipient: "engineering",
             subject: "incident",
@@ -2166,11 +2530,11 @@ describe("chatListStore", () => {
         streamId: 10,
         oldTopic: "incident",
         newTopic: "\u2714 incident",
-        messageIds: [1],
+        messageIds: ["00000000-0000-4000-8000-000000000001"],
       });
       useChatListStore.getState().addMessages([
         streamMsg({
-          id: 2,
+          id: "00000000-0000-4000-8000-000000000002",
           stream_id: 10,
           display_recipient: "engineering",
           subject: "\u2714 incident",
@@ -2192,7 +2556,7 @@ describe("chatListStore", () => {
       useChatListStore.getState().setFromMessages(
         [
           streamMsg({
-            id: 1,
+            id: "00000000-0000-4000-8000-000000000001",
             stream_id: 10,
             display_recipient: "engineering",
             subject: "incident",
@@ -2200,7 +2564,7 @@ describe("chatListStore", () => {
             sender_full_name: "Alice",
           }),
           streamMsg({
-            id: 2,
+            id: "00000000-0000-4000-8000-000000000002",
             stream_id: 20,
             display_recipient: "dev",
             subject: "release",
@@ -2216,8 +2580,8 @@ describe("chatListStore", () => {
         targetStreamId: 20,
         oldTopic: "incident",
         newTopic: "incident",
-        messageIds: [1],
-        anchorMessageId: 1,
+        messageIds: ["00000000-0000-4000-8000-000000000001"],
+        anchorMessageId: "00000000-0000-4000-8000-000000000001",
       });
 
       const source = useChatListStore.getState().streamsMap.get(10);
@@ -2225,7 +2589,9 @@ describe("chatListStore", () => {
       expect(source).toBeDefined();
       expect(source?.topics.has("incident")).toBe(false);
       expect(target?.topics.has("incident")).toBe(true);
-      expect(useChatListStore.getState().messageIdToLocation.get(1)).toEqual({
+      expect(
+        useChatListStore.getState().messageIdToLocation.get("00000000-0000-4000-8000-000000000001"),
+      ).toEqual({
         type: "stream",
         stream_id: 20,
         topic: "incident",

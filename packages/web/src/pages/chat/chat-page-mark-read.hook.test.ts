@@ -7,7 +7,7 @@ import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import type { CurrentChatContext } from "~/entities/message/message.model.types";
 import { markMessagesAsRead } from "~/shared/api/messenger-read-state";
 import type { MockMessage } from "~/shared/api/messenger.types";
-import { createMessage } from "~/test/factories";
+import { createMessage, testMessageId } from "~/test/factories";
 import { applyOpenChatMarkAllAsRead } from "./chat-mark-all-read.lib";
 import { useChatPageMarkRead } from "./chat-page-mark-read.hook";
 
@@ -31,7 +31,7 @@ vi.mock("~/shared/lib/shortcuts", () => ({
 const CURRENT_USER_ID = 7;
 const STREAM_ID = 12;
 const TOPIC = "general";
-const MESSAGE_ID = 501;
+const MESSAGE_ID = "00000000-0000-4000-8000-000000000501";
 const INSTANCE_ID = "chat-mark-read-test";
 
 function streamTopicMessage(overrides: Partial<MockMessage> = {}): MockMessage {
@@ -164,7 +164,7 @@ describe("useChatPageMarkRead", () => {
         dmSlug: null,
         unreadCount: 2,
         lastMessageTimestamp: 100,
-        messageIds: [MESSAGE_ID, 502],
+        messageIds: [MESSAGE_ID, "00000000-0000-4000-8000-000000000502"],
       },
     ]);
 
@@ -180,7 +180,7 @@ describe("useChatPageMarkRead", () => {
     const entries = useInboxStore.getState().entries;
     expect(entries).toHaveLength(1);
     expect(entries[0]!.unreadCount).toBe(1);
-    expect(entries[0]!.messageIds).toEqual([502]);
+    expect(entries[0]!.messageIds).toEqual([testMessageId(502)]);
   });
 
   it("skips scheduling when stream route has no active topic", () => {

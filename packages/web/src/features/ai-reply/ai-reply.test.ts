@@ -7,13 +7,14 @@
  * provider factory. The provider pattern decouples the UI from the backend.
  */
 import { afterEach, describe, expect, it } from "vitest";
+import { testMessageId } from "~/test/factories";
 import { createMockProvider } from "./ai-reply.api";
 import { useAiReplyStore, setAiReplyProvider } from "./ai-reply.model";
 import type { AiMessageContext } from "./ai-reply.types";
 
 const MOCK_MESSAGES: AiMessageContext[] = [
   {
-    id: 1,
+    id: testMessageId(1),
     senderId: 10,
     senderName: "Alice",
     content: "How does this work?",
@@ -21,7 +22,7 @@ const MOCK_MESSAGES: AiMessageContext[] = [
     isOwn: false,
   },
   {
-    id: 2,
+    id: testMessageId(2),
     senderId: 20,
     senderName: "Bob",
     content: "Let me explain...",
@@ -190,7 +191,7 @@ describe("Mock Provider", () => {
       action: "smart-reply",
       messages: [
         {
-          id: 1,
+          id: testMessageId(1),
           senderId: 1,
           senderName: "A",
           content: "What time is the meeting?",
@@ -209,7 +210,7 @@ describe("Mock Provider", () => {
       action: "smart-reply",
       messages: [
         {
-          id: 1,
+          id: testMessageId(1),
           senderId: 1,
           senderName: "A",
           content: "Hi everyone!",

@@ -10,10 +10,23 @@ const STORE_FOLDERS_SNAPSHOT = "foldersSnapshot";
 const STORE_MUTE_SNAPSHOT = "muteSnapshot";
 const STORE_AVATAR_BLOBS = "avatarBlobs";
 
-export function createMessageCacheDbSchema(db: IDBDatabase): void {
+export function createMessageCacheDbSchema(
+  db: IDBDatabase,
+  transaction?: IDBTransaction | null,
+): void {
   if (!db.objectStoreNames.contains(STORE_MESSAGES)) {
     const store = db.createObjectStore(STORE_MESSAGES, { keyPath: "id" });
     store.createIndex("byChatOrder", ["instanceChatKey", "messageId"], { unique: true });
+    store.createIndex("byChatTimeline", ["instanceChatKey", "timeline", "messageId"], {
+      unique: true,
+    });
+  } else {
+    const store = transaction?.objectStore(STORE_MESSAGES);
+    if (store != null && !store.indexNames.contains("byChatTimeline")) {
+      store.createIndex("byChatTimeline", ["instanceChatKey", "timeline", "messageId"], {
+        unique: true,
+      });
+    }
   }
   if (!db.objectStoreNames.contains(STORE_CHAT_META)) {
     db.createObjectStore(STORE_CHAT_META, { keyPath: "instanceChatKey" });
@@ -41,6 +54,9 @@ export function createMessageCacheDbSchema(db: IDBDatabase): void {
 }
 
 /** Ensures the latest schema exists during `openMessageCacheDb` upgrade. */
-export function runMessageCacheDbUpgrade(db: IDBDatabase): void {
-  createMessageCacheDbSchema(db);
+export function runMessageCacheDbUpgrade(
+  db: IDBDatabase,
+  transaction?: IDBTransaction | null,
+): void {
+  createMessageCacheDbSchema(db, transaction);
 }

@@ -7,6 +7,7 @@
  * content, or process the same message twice.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { testMessageId } from "~/test/factories";
 import {
   pushPipeline,
   installDefaultMiddlewares,
@@ -22,7 +23,7 @@ function createEnvelope(data: Record<string, string> = {}): RawPushEnvelope {
   return {
     data: {
       event: "message",
-      message_id: "42",
+      message_id: testMessageId(42),
       sender_id: "1",
       sender_full_name: "Alice",
       content: "Hi",
@@ -117,7 +118,7 @@ describe("parsingMiddleware", () => {
     const result = await pushPipeline.process(
       createEnvelope({
         event: "message",
-        message_id: "123",
+        message_id: testMessageId(123),
         sender_id: "42",
         sender_full_name: "Bob",
         content: "Hello world",
@@ -128,7 +129,7 @@ describe("parsingMiddleware", () => {
     );
 
     expect(result?.event).toBe("message");
-    expect(result?.message?.id).toBe(123);
+    expect(result?.message?.id).toBe(testMessageId(123));
     expect(result?.message?.sender_full_name).toBe("Bob");
     expect(result?.message?.stream_name).toBe("general");
   });
@@ -139,12 +140,12 @@ describe("parsingMiddleware", () => {
     const result = await pushPipeline.process(
       createEnvelope({
         event: "remove",
-        message_ids: "[1, 2, 3]",
+        message_ids: JSON.stringify([testMessageId(1), testMessageId(2), testMessageId(3)]),
       }),
     );
 
     expect(result?.event).toBe("remove");
-    expect(result?.message_ids).toEqual([1, 2, 3]);
+    expect(result?.message_ids).toEqual([testMessageId(1), testMessageId(2), testMessageId(3)]);
   });
 
   // "test" events verify push is working — no message data needed
@@ -166,7 +167,7 @@ describe("parsingMiddleware", () => {
     pushPipeline.use(parsingMiddleware);
     const result = await pushPipeline.process(
       createEnvelope({
-        message_id: "99",
+        message_id: testMessageId(99),
         sender_id: "1",
         content: "hi",
       }),
@@ -213,7 +214,7 @@ describe("deduplicationMiddleware", () => {
     pushPipeline.use(parsingMiddleware);
     pushPipeline.use(deduplicationMiddleware);
 
-    const env = createEnvelope({ message_id: "555" });
+    const env = createEnvelope({ message_id: testMessageId(555) });
     const first = await pushPipeline.process(env);
     const second = await pushPipeline.process(env);
 
@@ -226,8 +227,8 @@ describe("deduplicationMiddleware", () => {
     pushPipeline.use(parsingMiddleware);
     pushPipeline.use(deduplicationMiddleware);
 
-    const first = await pushPipeline.process(createEnvelope({ message_id: "100" }));
-    const second = await pushPipeline.process(createEnvelope({ message_id: "101" }));
+    const first = await pushPipeline.process(createEnvelope({ message_id: testMessageId(100) }));
+    const second = await pushPipeline.process(createEnvelope({ message_id: testMessageId(101) }));
 
     expect(first).not.toBeNull();
     expect(second).not.toBeNull();
@@ -272,7 +273,7 @@ describe("decryptionMiddleware", () => {
         encrypted_payload: "base64data==",
         encryption_scheme: "aes-256-gcm",
         event: "message",
-        message_id: "42",
+        message_id: testMessageId(42),
         sender_id: "1",
         content: "plaintext fallback",
       }),
@@ -291,7 +292,7 @@ describe("installDefaultMiddlewares", () => {
 
     const result = await pushPipeline.process(
       createEnvelope({
-        message_id: "999",
+        message_id: testMessageId(999),
         sender_id: "5",
         sender_full_name: "Test",
         content: "Hello",
@@ -299,7 +300,7 @@ describe("installDefaultMiddlewares", () => {
     );
 
     expect(result?.event).toBe("message");
-    expect(result?.message?.id).toBe(999);
+    expect(result?.message?.id).toBe(testMessageId(999));
   });
 
   // Calling twice should reset, not double-stack
@@ -334,7 +335,7 @@ describe("custom middleware", () => {
     expect(muted).toBeNull();
 
     const normal = await pushPipeline.process(
-      createEnvelope({ stream_name: "general", message_id: "200" }),
+      createEnvelope({ stream_name: "general", message_id: testMessageId(200) }),
     );
     expect(normal).not.toBeNull();
   });

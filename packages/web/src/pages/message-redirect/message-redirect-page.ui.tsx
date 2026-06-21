@@ -5,18 +5,13 @@ import { useInstancesStore } from "~/entities/instance/instance.model";
 import { t } from "~/i18n/i18n";
 import { fetchMessageById } from "~/shared/api/messenger-messages";
 import { getCurrentUser } from "~/shared/api/messenger-users";
+import { normalizeMessageId } from "~/shared/lib/message-id.lib";
 import { buildRouteFromMessage, findInstanceIdByRealmUri } from "~/shared/lib/push-click";
 import { isValidUrl } from "~/shared/lib/validation";
 import { PageLoader } from "~/shared/ui/error-boundary";
 
-const DECIMAL_MESSAGE_ID_RE = /^\d+$/;
-
-function parseMessageIdParam(value: string | undefined): number | null {
-  if (value == null || !DECIMAL_MESSAGE_ID_RE.test(value)) {
-    return null;
-  }
-  const parsed = Number(value);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+function parseMessageIdParam(value: string | undefined) {
+  return normalizeMessageId(value);
 }
 
 export const MessageRedirectPage: React.FC = () => {

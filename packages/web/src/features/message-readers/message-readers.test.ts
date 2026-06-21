@@ -7,6 +7,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useInstancesStore } from "~/entities/instance/instance.model";
+import { testMessageId } from "~/test/factories";
 import { useMessageReadersStore } from "./message-readers.model";
 
 vi.mock("~/shared/api/client", () => {
@@ -52,9 +53,10 @@ describe("useMessageReadersStore", () => {
       data: { user_ids: [1, 2, 3] },
     });
 
-    const promise = useMessageReadersStore.getState().fetchReadReceipts(42);
+    const messageId = testMessageId(42);
+    const promise = useMessageReadersStore.getState().fetchReadReceipts(messageId);
     expect(useMessageReadersStore.getState().loading).toBe(true);
-    expect(useMessageReadersStore.getState().messageId).toBe(42);
+    expect(useMessageReadersStore.getState().messageId).toBe(messageId);
 
     await promise;
 
@@ -71,7 +73,7 @@ describe("useMessageReadersStore", () => {
       data: { msg: "Message not found" },
     });
 
-    await useMessageReadersStore.getState().fetchReadReceipts(999);
+    await useMessageReadersStore.getState().fetchReadReceipts(testMessageId(999));
 
     expect(useMessageReadersStore.getState().loading).toBe(false);
     expect(useMessageReadersStore.getState().error).toBeTruthy();
@@ -82,7 +84,7 @@ describe("useMessageReadersStore", () => {
     const mock = await getWorkspaceMock();
     mock.mockRejectedValue(new Error("Network failure"));
 
-    await useMessageReadersStore.getState().fetchReadReceipts(42);
+    await useMessageReadersStore.getState().fetchReadReceipts(testMessageId(42));
 
     expect(useMessageReadersStore.getState().loading).toBe(false);
     expect(useMessageReadersStore.getState().error).toContain("Network failure");
@@ -93,7 +95,7 @@ describe("useMessageReadersStore", () => {
       loading: false,
       userIds: [1, 2, 3],
       error: null,
-      messageId: 42,
+      messageId: testMessageId(42),
     });
 
     useMessageReadersStore.getState().clear();
@@ -105,7 +107,7 @@ describe("useMessageReadersStore", () => {
   });
 
   it("replaces previous results on new fetch", async () => {
-    useMessageReadersStore.setState({ userIds: [10, 20], messageId: 1 });
+    useMessageReadersStore.setState({ userIds: [10, 20], messageId: testMessageId(1) });
 
     const mock = await getWorkspaceMock();
     mock.mockResolvedValue({
@@ -114,10 +116,11 @@ describe("useMessageReadersStore", () => {
       data: { user_ids: [30, 40] },
     });
 
-    await useMessageReadersStore.getState().fetchReadReceipts(2);
+    const messageId = testMessageId(2);
+    await useMessageReadersStore.getState().fetchReadReceipts(messageId);
 
     expect(useMessageReadersStore.getState().userIds).toEqual([30, 40]);
-    expect(useMessageReadersStore.getState().messageId).toBe(2);
+    expect(useMessageReadersStore.getState().messageId).toBe(messageId);
   });
 
   it("does not apply stale read receipts after organization switch and clear", async () => {
@@ -141,7 +144,9 @@ describe("useMessageReadersStore", () => {
         }),
     );
 
-    const pending = useMessageReadersStore.getState().fetchReadReceipts(42);
+    const pending = useMessageReadersStore
+      .getState()
+      .fetchReadReceipts("00000000-0000-4000-8000-000000000042");
     useInstancesStore.getState().setCurrentInstanceId("inst-b");
     useMessageReadersStore.getState().clear();
 
@@ -181,7 +186,7 @@ describe("fetchReadReceipts", () => {
     });
 
     const { fetchReadReceipts } = await import("./message-readers.api");
-    const result = await fetchReadReceipts(100);
+    const result = await fetchReadReceipts("00000000-0000-4000-8000-000000000100");
     expect(result).toEqual({ user_ids: [5, 10, 15] });
   });
 
@@ -194,6 +199,6 @@ describe("fetchReadReceipts", () => {
     });
 
     const { fetchReadReceipts } = await import("./message-readers.api");
-    await expect(fetchReadReceipts(100)).rejects.toThrow();
+    await expect(fetchReadReceipts("00000000-0000-4000-8000-000000000100")).rejects.toThrow();
   });
 });

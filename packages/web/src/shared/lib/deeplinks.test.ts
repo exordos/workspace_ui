@@ -8,6 +8,7 @@
  */
 
 import { describe, expect, it, vi, afterEach } from "vitest";
+import { testMessageId } from "~/test/factories";
 import { deeplink } from "./deeplinks";
 import { setCurrentOrgRouteIdResolver } from "./org-route";
 
@@ -49,8 +50,9 @@ describe("deeplink builders", () => {
 
   // Message URLs include a ?msg= query param for scroll-to-message navigation
   it("toMessage", () => {
-    const result = deeplink.toMessage(5, "general", "bugs", 12345);
-    expect(result).toBe("/stream/5-general/topic/bugs?msg=12345");
+    const messageId = testMessageId(12345);
+    const result = deeplink.toMessage(5, "general", "bugs", messageId);
+    expect(result).toBe(`/stream/5-general/topic/bugs?msg=${messageId}`);
   });
 
   // DM deep link uses the user's ID for one-on-one conversations
@@ -116,11 +118,18 @@ describe("deeplink parser", () => {
     expect(result.topicName).toBe("%E0%A4%A");
   });
 
-  // Message URLs extract the numeric message ID from the ?msg= param
+  // Message URLs extract the UUID message ID from the ?msg= param
   it("parses message URL", () => {
-    const result = deeplink.parse("/stream/5-general/topic/bugs?msg=12345");
+    const messageId = testMessageId(12345);
+    const result = deeplink.parse(`/stream/5-general/topic/bugs?msg=${messageId}`);
     expect(result.type).toBe("message");
-    expect(result.messageId).toBe(12345);
+    expect(result.messageId).toBe(messageId);
+  });
+
+  it("ignores numeric msg query values in stream topic links", () => {
+    const result = deeplink.parse("/stream/5-general/topic/bugs?msg=12345");
+    expect(result.type).toBe("topic");
+    expect(result.messageId).toBeUndefined();
   });
 
   it("ignores invalid msg query values in stream topic links", () => {

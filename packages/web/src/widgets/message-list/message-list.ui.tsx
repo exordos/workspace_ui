@@ -17,6 +17,7 @@ import {
   buildMessageIdMap,
   filterViewportUnreadIdsForReadDispatch,
 } from "~/shared/lib/message-id-index.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import {
   canAutoLoadNewer,
   canAutoLoadOlder,
@@ -55,7 +56,7 @@ const FOCUSED_MESSAGE_HIGHLIGHT_DURATION_MS = 6_000;
 
 interface PendingPrependScrollSnapshot extends ScrollPrependSnapshot {
   messageCount: number;
-  firstMessageId: number | undefined;
+  firstMessageId: MessageId | undefined;
   anchor: ScrollPrependAnchor | null;
 }
 
@@ -144,7 +145,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
   const userScrollSeenRef = useRef(false);
   const programmaticScrollRef = useRef(false);
   const topPaginationArmedRef = useRef(true);
-  const prevFirstMessageIdForTopPaginationRef = useRef<number | undefined>(undefined);
+  const prevFirstMessageIdForTopPaginationRef = useRef<MessageId | undefined>(undefined);
   const pendingScrollToBottomKeyRef = useRef<string | null>(null);
   const openAtBottomIntentKeyRef = useRef<string | null>(null);
   const unreadScrollKeyRef = useRef<string | null>(null);
@@ -152,15 +153,15 @@ export const MessageListInner: React.FC<MessageListProps> = ({
   const scrollLogLastAtMsRef = useRef(0);
   const bottomReadDispatchKeyRef = useRef<string | null>(null);
   const prevMessagesLengthForReanchorRef = useRef<number | null>(null);
-  const [unreadAnchorId, setUnreadAnchorId] = useState<number | null>(null);
+  const [unreadAnchorId, setUnreadAnchorId] = useState<MessageId | null>(null);
   const intersectionObserverRef = useRef<IntersectionObserver | null>(null);
-  const observedUnreadNodesRef = useRef<Map<number, HTMLElement>>(new Map());
-  const viewportUnreadIdsRef = useRef<Set<number>>(new Set());
-  const unreadCandidatesRef = useRef<Set<number>>(new Set());
+  const observedUnreadNodesRef = useRef<Map<MessageId, HTMLElement>>(new Map());
+  const viewportUnreadIdsRef = useRef<Set<MessageId>>(new Set());
+  const unreadCandidatesRef = useRef<Set<MessageId>>(new Set());
   const focusedHighlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const focusedHighlightFrameRef = useRef<number | null>(null);
-  const highlightedFocusedMessageRef = useRef<number | null>(null);
-  const [flashFocusedMessageId, setFlashFocusedMessageId] = useState<number | null>(
+  const highlightedFocusedMessageRef = useRef<MessageId | null>(null);
+  const [flashFocusedMessageId, setFlashFocusedMessageId] = useState<MessageId | null>(
     focusedMessageId,
   );
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -355,7 +356,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     [customEmojiByName],
   );
 
-  const scheduleFlashFocusedMessageId = useCallback((nextFocusedMessageId: number | null) => {
+  const scheduleFlashFocusedMessageId = useCallback((nextFocusedMessageId: MessageId | null) => {
     if (focusedHighlightFrameRef.current != null) {
       cancelAnimationFrame(focusedHighlightFrameRef.current);
     }
@@ -448,13 +449,13 @@ export const MessageListInner: React.FC<MessageListProps> = ({
         return;
       }
       const candidates = unreadCandidatesRef.current;
-      const visibleThisFrame: number[] = [];
+      const visibleThisFrame: MessageId[] = [];
       for (const entry of entries) {
         const element = entry.target as HTMLElement;
         const rawId = element.getAttribute("data-message-id");
         if (!rawId) continue;
-        const messageId = Number(rawId);
-        if (!Number.isInteger(messageId) || !candidates.has(messageId)) continue;
+        const messageId = rawId;
+        if (!candidates.has(messageId)) continue;
         if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
           viewportUnreadIdsRef.current.add(messageId);
           visibleThisFrame.push(messageId);
@@ -532,7 +533,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     );
     if (ids.length === 0) return;
 
-    const sorted = [...ids].sort((a, b) => a - b);
+    const sorted = [...ids].sort();
     const dispatchKey = `${scrollToBottomKey ?? "__default__"}:${sorted.join(",")}`;
     if (bottomReadDispatchKeyRef.current === dispatchKey) return;
     bottomReadDispatchKeyRef.current = dispatchKey;
@@ -746,7 +747,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     );
     if (ids.length === 0) return;
 
-    const sorted = [...ids].sort((a, b) => a - b);
+    const sorted = [...ids].sort();
     const dispatchKey = `${scrollToBottomKey ?? "__default__"}:${sorted.join(",")}`;
     if (bottomReadDispatchKeyRef.current === dispatchKey) return;
     bottomReadDispatchKeyRef.current = dispatchKey;
@@ -1104,12 +1105,12 @@ export const MessageListInner: React.FC<MessageListProps> = ({
 
     const candidates = unreadCandidatesRef.current;
     const prevObserved = observedUnreadNodesRef.current;
-    const nextObserved = new Map<number, HTMLElement>();
+    const nextObserved = new Map<MessageId, HTMLElement>();
     for (const node of root.querySelectorAll<HTMLElement>("[data-message-id]")) {
       const rawId = node.getAttribute("data-message-id");
       if (!rawId) continue;
-      const messageId = Number(rawId);
-      if (!Number.isInteger(messageId) || !candidates.has(messageId)) continue;
+      const messageId = rawId;
+      if (!candidates.has(messageId)) continue;
       nextObserved.set(messageId, node);
     }
     for (const [messageId, node] of prevObserved) {

@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
+import { testMessageId } from "~/test/factories";
 import { getInMemoryLatestMessageId, maxMessageId } from "./layout-chat-list-latest-message-id.lib";
 
-function createStreamEntry(streamId: number, topicLastMessageId: number): StreamEntryInternal {
+function createStreamEntry(streamId: number, topicLastMessageId: string): StreamEntryInternal {
   return {
     stream_id: streamId,
     name: "general",
@@ -32,16 +33,18 @@ describe("layout-chat-list-latest-message-id", () => {
   });
 
   it("maxMessageId picks the greater anchor", () => {
-    expect(maxMessageId(10, 20)).toBe(20);
-    expect(maxMessageId(null, 15)).toBe(15);
+    expect(maxMessageId(testMessageId(10), testMessageId(20))).toBe(testMessageId(20));
+    expect(maxMessageId(null, testMessageId(15))).toBe(testMessageId(15));
   });
 
   it("getInMemoryLatestMessageId scans streams, dms, and location index", () => {
     useChatListStore.setState({
-      streamsMap: new Map([[1, createStreamEntry(1, 42)]]),
-      messageIdToLocation: new Map([[99, { type: "stream", stream_id: 1, topic: "t" }]]),
+      streamsMap: new Map([[1, createStreamEntry(1, testMessageId(42))]]),
+      messageIdToLocation: new Map([
+        [testMessageId(99), { type: "stream", stream_id: 1, topic: "t" }],
+      ]),
     });
 
-    expect(getInMemoryLatestMessageId()).toBe(99);
+    expect(getInMemoryLatestMessageId()).toBe(testMessageId(99));
   });
 });

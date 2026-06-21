@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { testMessageId } from "~/test/factories";
 import {
   buildMessageRedirectRouteFromWorkspacePermalink,
   buildPushClickUrl,
@@ -20,15 +21,16 @@ describe("buildPushClickUrl", () => {
   });
 
   it("appends ?msg= when message id is provided", () => {
+    const messageId = testMessageId(123);
     const url = buildPushClickUrl({
       type: "stream",
       streamId: 15,
       streamName: "General Discussion",
       topic: "Release Notes",
-      messageId: 123,
+      messageId,
     });
 
-    expect(url).toBe("/stream/15-general-discussion/topic/Release%20Notes?msg=123");
+    expect(url).toBe(`/stream/15-general-discussion/topic/Release%20Notes?msg=${messageId}`);
   });
 
   it("falls back to legacy stream-name URL when stream id is missing", () => {
@@ -52,24 +54,26 @@ describe("buildPushClickUrl", () => {
   });
 
   it("uses explicit empty-topic route token when topic is whitespace-only", () => {
+    const messageId = testMessageId(42);
     const url = buildPushClickUrl({
       type: "stream",
       streamName: "general",
       topic: "   ",
-      messageId: 42,
+      messageId,
     });
 
-    expect(url).toBe("/stream/general/topic/__empty__?msg=42");
+    expect(url).toBe(`/stream/general/topic/__empty__?msg=${messageId}`);
   });
 
   it("builds a private DM URL from sender id", () => {
+    const messageId = testMessageId(99);
     const url = buildPushClickUrl({
       type: "private",
       senderId: 42,
-      messageId: 99,
+      messageId,
     });
 
-    expect(url).toBe("/dm/42?msg=99");
+    expect(url).toBe(`/dm/42?msg=${messageId}`);
   });
 
   it("returns root when payload lacks enough routing data", () => {
@@ -103,9 +107,10 @@ describe("findInstanceIdByRealmUri", () => {
 
 describe("buildRouteFromMessage", () => {
   it("builds a canonical stream route with message focus", () => {
+    const messageId = testMessageId(55);
     const route = buildRouteFromMessage(
       {
-        id: 55,
+        id: messageId,
         stream_id: 10,
         channel: "General Discussion",
         subject: "Bugs",
@@ -113,13 +118,14 @@ describe("buildRouteFromMessage", () => {
       7,
     );
 
-    expect(route).toBe("/stream/10-general-discussion/topic/Bugs?msg=55");
+    expect(route).toBe(`/stream/10-general-discussion/topic/Bugs?msg=${messageId}`);
   });
 
   it("builds explicit empty-topic route when topic is empty", () => {
+    const messageId = testMessageId(56);
     const route = buildRouteFromMessage(
       {
-        id: 56,
+        id: messageId,
         stream_id: 10,
         channel: "General Discussion",
         subject: "   ",
@@ -127,13 +133,14 @@ describe("buildRouteFromMessage", () => {
       7,
     );
 
-    expect(route).toBe("/stream/10-general-discussion/topic/__empty__?msg=56");
+    expect(route).toBe(`/stream/10-general-discussion/topic/__empty__?msg=${messageId}`);
   });
 
   it("builds a DM route using recipients other than current user", () => {
+    const messageId = testMessageId(77);
     const route = buildRouteFromMessage(
       {
-        id: 77,
+        id: messageId,
         stream_id: null,
         display_recipient: [
           { id: 7, full_name: "You" },
@@ -144,13 +151,14 @@ describe("buildRouteFromMessage", () => {
       7,
     );
 
-    expect(route).toBe("/dm/42-alice?msg=77");
+    expect(route).toBe(`/dm/42-alice?msg=${messageId}`);
   });
 
   it("builds a group-DM route from all non-self recipients", () => {
+    const messageId = testMessageId(99);
     const route = buildRouteFromMessage(
       {
-        id: 99,
+        id: messageId,
         stream_id: null,
         display_recipient: [
           { id: 7, full_name: "You" },
@@ -162,37 +170,41 @@ describe("buildRouteFromMessage", () => {
       7,
     );
 
-    expect(route).toBe("/dm/42-alice,51-bob?msg=99");
+    expect(route).toBe(`/dm/42-alice,51-bob?msg=${messageId}`);
   });
 });
 
 describe("buildMessageRedirectRoute", () => {
   it("builds a redirect route with encoded realm query", async () => {
     const { buildMessageRedirectRoute } = await import("./push-click");
-    expect(buildMessageRedirectRoute(123, "https://chat.example.com")).toBe(
-      "/message/123?realm=https%3A%2F%2Fchat.example.com",
+    const messageId = testMessageId(123);
+    expect(buildMessageRedirectRoute(messageId, "https://chat.example.com")).toBe(
+      `/message/${messageId}?realm=https%3A%2F%2Fchat.example.com`,
     );
   });
 
   it("omits realm query when missing", async () => {
     const { buildMessageRedirectRoute } = await import("./push-click");
-    expect(buildMessageRedirectRoute(123)).toBe("/message/123");
+    const messageId = testMessageId(123);
+    expect(buildMessageRedirectRoute(messageId)).toBe(`/message/${messageId}`);
   });
 });
 
 describe("buildMessageRedirectRouteFromWorkspacePermalink", () => {
   it("maps absolute messenger narrow permalink to internal message redirect route", () => {
+    const messageId = testMessageId(5743236);
     expect(
       buildMessageRedirectRouteFromWorkspacePermalink(
-        "https://chat.example.com/#narrow/channel/33-InternalServicesDev/topic/Workspace/near/5743236",
+        `https://chat.example.com/#narrow/channel/33-InternalServicesDev/topic/Workspace/near/${messageId}`,
       ),
-    ).toBe("/message/5743236?realm=https%3A%2F%2Fchat.example.com");
+    ).toBe(`/message/${messageId}?realm=https%3A%2F%2Fchat.example.com`);
   });
 
   it("maps hash-only narrow permalink to current-instance redirect route", () => {
-    expect(buildMessageRedirectRouteFromWorkspacePermalink("#narrow/dm/7,42-dm/near/123")).toBe(
-      "/message/123",
-    );
+    const messageId = testMessageId(123);
+    expect(
+      buildMessageRedirectRouteFromWorkspacePermalink(`#narrow/dm/7,42-dm/near/${messageId}`),
+    ).toBe(`/message/${messageId}`);
   });
 
   it("returns null for non-message permalinks", () => {
@@ -207,10 +219,11 @@ describe("buildMessageRedirectRouteFromWorkspacePermalink", () => {
 describe("buildNavigableRouteFromMessage", () => {
   it("builds an exact stream route with focused message query", async () => {
     const { buildNavigableRouteFromMessage } = await import("./push-click");
+    const messageId = testMessageId(15);
     expect(
       buildNavigableRouteFromMessage(
         {
-          id: 15,
+          id: messageId,
           stream_id: 10,
           channel: "Engineering",
           subject: "Bugs",
@@ -218,15 +231,16 @@ describe("buildNavigableRouteFromMessage", () => {
         },
         7,
       ),
-    ).toBe("/stream/10-engineering/topic/Bugs?msg=15");
+    ).toBe(`/stream/10-engineering/topic/Bugs?msg=${messageId}`);
   });
 
   it("builds explicit empty-topic route for empty stream topic", async () => {
     const { buildNavigableRouteFromMessage } = await import("./push-click");
+    const messageId = testMessageId(16);
     expect(
       buildNavigableRouteFromMessage(
         {
-          id: 16,
+          id: messageId,
           stream_id: 10,
           channel: "Engineering",
           subject: "",
@@ -234,22 +248,23 @@ describe("buildNavigableRouteFromMessage", () => {
         },
         7,
       ),
-    ).toBe("/stream/10-engineering/topic/__empty__?msg=16");
+    ).toBe(`/stream/10-engineering/topic/__empty__?msg=${messageId}`);
   });
 
   it("falls back to sender-based DM routing when recipients are unavailable", async () => {
     const { buildNavigableRouteFromMessage } = await import("./push-click");
+    const messageId = testMessageId(77);
     expect(
       buildNavigableRouteFromMessage(
         {
-          id: 77,
+          id: messageId,
           stream_id: null,
           subject: "",
           sender_id: 42,
         },
         7,
       ),
-    ).toBe("/dm/42?msg=77");
+    ).toBe(`/dm/42?msg=${messageId}`);
   });
 
   it("returns null when recipients are unavailable and sender is current user", async () => {
@@ -257,7 +272,7 @@ describe("buildNavigableRouteFromMessage", () => {
     expect(
       buildNavigableRouteFromMessage(
         {
-          id: 88,
+          id: "00000000-0000-4000-8000-000000000088",
           stream_id: null,
           subject: "",
           sender_id: 7,
@@ -270,13 +285,14 @@ describe("buildNavigableRouteFromMessage", () => {
 
 describe("buildRouteFromPushNotificationClick", () => {
   it("prefers redirect route when messageId is present", () => {
+    const messageId = testMessageId(321);
     expect(
       buildRouteFromPushNotificationClick({
-        messageId: "321",
+        messageId,
         realmUri: "https://chat.example.com",
         messageType: "stream",
       }),
-    ).toBe("/message/321?realm=https%3A%2F%2Fchat.example.com");
+    ).toBe(`/message/${messageId}?realm=https%3A%2F%2Fchat.example.com`);
   });
 
   it("ignores non-decimal messageId and falls back to stream route", () => {

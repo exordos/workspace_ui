@@ -2,7 +2,7 @@
  * IAM-backed login for Workspace UI.
  *
  * Password grant against Exordos Core IAM (same contract as exordos_ecosystem/web).
- * Returns the IAM access token for Bearer auth — no Zulip api_key exchange.
+ * Returns the IAM access token for Bearer auth, without a legacy API-key exchange.
  */
 import { t } from "~/i18n/i18n";
 import { MessengerAuthError } from "~/shared/api/messenger.types";

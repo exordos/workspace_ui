@@ -1,11 +1,12 @@
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { LoadDeepHistoryMessagesOptions } from "./layout-chat-history-sync.types";
 
 const DEFAULT_PAGE_SIZE = 5000;
 const DEFAULT_MAX_BATCHES = 5;
 
 function mergeUniqueById(messages: readonly WorkspaceRawMessage[]): WorkspaceRawMessage[] {
-  const seenIds = new Set<number>();
+  const seenIds = new Set<MessageId>();
   const uniqueMessages: WorkspaceRawMessage[] = [];
 
   for (const message of messages) {
@@ -55,7 +56,7 @@ export async function loadDeepHistoryMessages(
   return messages;
 }
 
-export function getNewestMessageId(messages: readonly WorkspaceRawMessage[]): number | null {
+export function getNewestMessageId(messages: readonly WorkspaceRawMessage[]): MessageId | null {
   const lastMessage = messages[messages.length - 1];
   return lastMessage?.id ?? null;
 }

@@ -11,7 +11,6 @@ export interface LayoutMainWorkspaceProps {
   participantsCount: number;
   onlineCount: number;
   rightPanelUser: RightPanelUserInfo | undefined;
-  onSelectCommonGroup: (slug: string) => void;
   onOpenSettingsDrawer: () => void;
   onOpenAboutDrawer: () => void;
 }

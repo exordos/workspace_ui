@@ -4,6 +4,7 @@ import type {
   Reaction,
   RealmEmoji,
 } from "~/shared/api/messenger.types";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import type { MessageBubbleCallbacks } from "./message-bubble.types";
 import type { MessageMediaGallery } from "./message-list-media.lib";
@@ -16,8 +17,8 @@ export interface MessageListCallbacks {
   onMessageForward?: (message: MockMessage, selectedText?: string) => void;
   onMessageStar?: (message: MockMessage) => void;
   onMessageSelect?: (message: MockMessage) => void;
-  onMessageAddReaction?: (messageId: number, payload: MessageReactionPayload) => void;
-  onMessageRemoveReaction?: (messageId: number, payload: MessageReactionPayload) => void;
+  onMessageAddReaction?: (messageId: MessageId, payload: MessageReactionPayload) => void;
+  onMessageRemoveReaction?: (messageId: MessageId, payload: MessageReactionPayload) => void;
   onOpenJitsiCall?: (url: string, locationName?: string) => void;
   onMessageViews?: (message: MockMessage) => void;
   onMessageOpenInChat?: (message: MockMessage) => void;
@@ -37,8 +38,8 @@ export interface MessageListSenderGroupProps {
   currentUserId?: UserId;
   bubbleCallbacks?: MessageBubbleCallbacks;
   selectionMode?: boolean;
-  selectedMessageIds?: Set<number>;
-  focusedMessageId?: number | null;
+  selectedMessageIds?: Set<MessageId>;
+  focusedMessageId?: MessageId | null;
   mediaGallery: MessageMediaGallery;
   customEmojis?: RealmEmoji[];
   onEmojiPickerOpen?: () => void;
@@ -57,7 +58,7 @@ export interface MessageListProps {
   scrollToBottomAfterSendNonce?: number;
   callbacks?: MessageListCallbacks;
   selectionMode?: boolean;
-  selectedMessageIds?: Set<number>;
+  selectedMessageIds?: Set<MessageId>;
   onLoadMore?: () => void;
   isLoadingMore?: boolean;
   /** True only while load-newer is in flight (excludes load-older). */
@@ -65,15 +66,15 @@ export interface MessageListProps {
   onLoadNewer?: () => void;
   hasNewerMessages?: boolean;
   /** ID of the first unread message — an "unread" separator is shown above it */
-  firstUnreadId?: number;
+  firstUnreadId?: MessageId;
   /** Count of unread messages for marker text parity. */
   unreadCount?: number;
   /** Optional message to bring into view and visually highlight. */
-  focusedMessageId?: number | null;
+  focusedMessageId?: MessageId | null;
   /** Called when unread messages become at least 50% visible in viewport. */
-  onUnreadMessagesVisible?: (messageIds: number[]) => void;
+  onUnreadMessagesVisible?: (messageIds: MessageId[]) => void;
   /** Called when user reaches chat bottom with unread messages in the loaded list. */
-  onUnreadMessagesAtBottom?: (messageIds: number[]) => void;
+  onUnreadMessagesAtBottom?: (messageIds: MessageId[]) => void;
   /** Shows non-blocking floating loading indicator above the list. */
   showLoadingOverlay?: boolean;
   /** Show topic label next to sender name in stream messages (default: true). */

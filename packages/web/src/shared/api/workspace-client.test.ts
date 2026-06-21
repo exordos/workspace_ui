@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { testMessageId } from "~/test/factories";
 import type { WorkspaceFolder } from "./workspace-client";
+
+const ids = (...values: number[]) => values.map(testMessageId);
 
 const getCurrentInstance = vi.fn();
 const getWorkspaceApiBaseForCurrentInstance = vi.fn(() => "https://messenger.genesis-core.tech");
@@ -140,8 +143,8 @@ describe("workspace-client", () => {
         system_type: "created",
         unread_messages: [
           { count: 4 },
-          { unread_message_ids: [11, 12, 13] },
-          { message_ids: [14, 15] },
+          { unread_message_ids: ids(11, 12, 13) },
+          { message_ids: ids(14, 15) },
         ],
       } as unknown as WorkspaceFolder,
     ]);

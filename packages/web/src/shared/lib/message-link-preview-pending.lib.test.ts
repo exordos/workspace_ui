@@ -8,7 +8,7 @@ import {
 
 function baseMessage(overrides: Partial<MockMessage> = {}): MockMessage {
   return {
-    id: 9,
+    id: "00000000-0000-4000-8000-000000000009",
     sender_id: 1,
     sender_full_name: "Alice",
     stream_id: 10,
@@ -25,7 +25,7 @@ describe("pending link previews", () => {
   });
 
   it("applies buffered preview when message row appears", () => {
-    enqueuePendingLinkPreview(9, {
+    enqueuePendingLinkPreview("00000000-0000-4000-8000-000000000009", {
       targetUrl: "https://example.com/",
       title: "Example",
     });
@@ -34,7 +34,7 @@ describe("pending link previews", () => {
   });
 
   it("drops pending preview when URL is not in markdown", () => {
-    enqueuePendingLinkPreview(9, {
+    enqueuePendingLinkPreview("00000000-0000-4000-8000-000000000009", {
       targetUrl: "https://other.test",
       title: "Other",
     });

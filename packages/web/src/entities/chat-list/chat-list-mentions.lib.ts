@@ -2,6 +2,7 @@
  * Unread @mention tracking for sidebar badge and personal indicator.
  */
 import type { MockMessage, WorkspaceRawMessage } from "~/shared/api/messenger.types";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 
 export type MentionFlagMessage = Pick<WorkspaceRawMessage, "id" | "sender_id" | "flags">;
@@ -19,8 +20,8 @@ export function isUnreadMentionFromOthers(
 export function collectUnreadMentionIdsFromMessages(
   messages: readonly MentionFlagMessage[],
   currentUserId: UserId | null,
-): number[] {
-  const ids: number[] = [];
+): MessageId[] {
+  const ids: MessageId[] = [];
   for (const message of messages) {
     if (!isUnreadMentionFromOthers(message, currentUserId)) continue;
     ids.push(message.id);
@@ -28,15 +29,15 @@ export function collectUnreadMentionIdsFromMessages(
   return ids;
 }
 
-export function buildMentionUnreadSetFromIds(messageIds: readonly number[]): Set<number> {
+export function buildMentionUnreadSetFromIds(messageIds: readonly MessageId[]): Set<MessageId> {
   return new Set(messageIds);
 }
 
 export function tryIncrementMentionUnread(
-  mentionedUnreadMessageIds: ReadonlySet<number>,
+  mentionedUnreadMessageIds: ReadonlySet<MessageId>,
   message: MentionFlagMessage,
   currentUserId: UserId | null,
-): { mentionedUnreadMessageIds: Set<number>; mentionsUnreadCount: number } | null {
+): { mentionedUnreadMessageIds: Set<MessageId>; mentionsUnreadCount: number } | null {
   if (!isUnreadMentionFromOthers(message, currentUserId)) return null;
   if (mentionedUnreadMessageIds.has(message.id)) return null;
   const next = new Set(mentionedUnreadMessageIds);
@@ -45,9 +46,9 @@ export function tryIncrementMentionUnread(
 }
 
 export function decrementMentionUnreadForMessageIds(
-  mentionedUnreadMessageIds: ReadonlySet<number>,
-  messageIds: readonly number[],
-): { mentionedUnreadMessageIds: Set<number>; mentionsUnreadCount: number } {
+  mentionedUnreadMessageIds: ReadonlySet<MessageId>,
+  messageIds: readonly MessageId[],
+): { mentionedUnreadMessageIds: Set<MessageId>; mentionsUnreadCount: number } {
   if (messageIds.length === 0) {
     return {
       mentionedUnreadMessageIds: new Set(mentionedUnreadMessageIds),
@@ -62,11 +63,11 @@ export function decrementMentionUnreadForMessageIds(
 }
 
 export function incrementMentionUnreadFromBatch(
-  mentionedUnreadMessageIds: ReadonlySet<number>,
+  mentionedUnreadMessageIds: ReadonlySet<MessageId>,
   messages: readonly MentionFlagMessage[],
   currentUserId: UserId | null,
-): { mentionedUnreadMessageIds: Set<number>; mentionsUnreadCount: number } | null {
-  let next: Set<number> | null = null;
+): { mentionedUnreadMessageIds: Set<MessageId>; mentionsUnreadCount: number } | null {
+  let next: Set<MessageId> | null = null;
   for (const message of messages) {
     if (isUnreadMentionFromOthers(message, currentUserId)) {
       if (next === null) {
@@ -82,7 +83,7 @@ export function incrementMentionUnreadFromBatch(
   return { mentionedUnreadMessageIds: next, mentionsUnreadCount: next.size };
 }
 
-export function mergeMentionUnreadPatch<T extends { mentionedUnreadMessageIds: Set<number> }>(
+export function mergeMentionUnreadPatch<T extends { mentionedUnreadMessageIds: Set<MessageId> }>(
   state: T,
   message: MentionFlagMessage,
   currentUserId: UserId | null,
@@ -101,6 +102,6 @@ export function mergeMentionUnreadPatch<T extends { mentionedUnreadMessageIds: S
 export function collectUnreadMentionIdsFromMockMessages(
   messages: readonly MockMessage[],
   currentUserId: UserId | null,
-): number[] {
+): MessageId[] {
   return collectUnreadMentionIdsFromMessages(messages, currentUserId);
 }

@@ -6,6 +6,8 @@ import type { MockMessage } from "~/shared/api/messenger.types";
 import { upsertDmIndexFromMessages } from "~/shared/lib/dm-index";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
+import { compareMessageTimeline } from "~/shared/lib/message-id.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { mockMessageToRawMessage } from "~/shared/lib/message-mock-to-raw.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 
@@ -18,7 +20,7 @@ export interface OnDmMessagesAppliedPayload {
   messages: readonly MockMessage[];
   context: DmMessagesAppliedContext;
   hasNewerMessages: boolean;
-  focusedMessageId: number | null;
+  focusedMessageId: MessageId | null;
   source: DmMessagesAppliedSource;
 }
 
@@ -28,13 +30,13 @@ export interface SyncDmSidebarFromLoadedMessagesOptions {
   currentUserId: UserId | null;
   instanceId: string | null;
   source: DmMessagesAppliedSource;
-  focusedMessageId: number | null;
+  focusedMessageId: MessageId | null;
   hasNewerMessages: boolean;
 }
 
 /** True when the loaded window includes the conversation tail (safe to use for last-message preview). */
 export function shouldSyncDmPreviewFromWindow(options: {
-  focusedMessageId: number | null;
+  focusedMessageId: MessageId | null;
   hasNewerMessages: boolean;
 }): boolean {
   if (options.focusedMessageId == null) {
@@ -68,11 +70,7 @@ export function pickNewestDmMessageForKey(
     if (key !== dmKey) {
       continue;
     }
-    if (
-      newest == null ||
-      message.timestamp > newest.timestamp ||
-      (message.timestamp === newest.timestamp && message.id > newest.id)
-    ) {
+    if (newest == null || compareMessageTimeline(message, newest) > 0) {
       newest = message;
     }
   }

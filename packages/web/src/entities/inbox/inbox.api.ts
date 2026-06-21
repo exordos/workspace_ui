@@ -13,6 +13,7 @@ import type { MockMessage, WorkspaceRawMessage } from "~/shared/api/messenger.ty
 import { createLogger, logApiCall } from "~/shared/lib/logger";
 import { getInstanceMessagesAscending, upsertChatMessages } from "~/shared/lib/message-cache-db";
 import { chatKeyFromMockMessage } from "~/shared/lib/message-cache-keys.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { mockMessageToRawMessage } from "~/shared/lib/message-mock-to-raw.lib";
 import { messengerMessageCacheWindowNForChatKey } from "~/shared/lib/messenger-message-window.lib";
 import { buildInboxEntries } from "./inbox.lib";
@@ -94,8 +95,8 @@ async function persistUnreadMessagesToIdb(
 function collectMentionMessageIds(
   messages: readonly MockMessage[],
   currentUserId: number | null,
-): number[] {
-  const mentionIds: number[] = [];
+): MessageId[] {
+  const mentionIds: MessageId[] = [];
   for (const message of messages) {
     if (message.flags?.includes("read")) continue;
     if (!message.flags?.includes("mentioned")) continue;

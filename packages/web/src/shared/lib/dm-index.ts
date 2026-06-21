@@ -1,5 +1,7 @@
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
+import { normalizeMessageId } from "~/shared/lib/message-id.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 
 /** Compact localStorage DM index to restore dialog list without deep message loads. */
@@ -10,7 +12,7 @@ export interface DmIndexEntry {
   dmKey: string;
   userIds: number[];
   lastActivityTs: number;
-  lastMessageId: number | null;
+  lastMessageId: MessageId | null;
   unreadCount?: number;
 }
 
@@ -42,7 +44,7 @@ function normalizeEntry(entry: unknown): DmIndexEntry | null {
     typeof row.lastActivityTs === "number" && Number.isFinite(row.lastActivityTs)
       ? Math.max(0, Math.trunc(row.lastActivityTs))
       : 0;
-  const lastMessageId = isPositiveInteger(row.lastMessageId) ? row.lastMessageId : null;
+  const lastMessageId = normalizeMessageId(row.lastMessageId);
   const unreadCount =
     typeof row.unreadCount === "number" && Number.isFinite(row.unreadCount)
       ? Math.max(0, Math.trunc(row.unreadCount))
@@ -94,13 +96,11 @@ export function upsertDmIndexEntries(instanceId: string, entries: readonly DmInd
         next.set(normalized.dmKey, normalized);
         continue;
       }
+      const incomingIsNewer = normalized.lastActivityTs >= existing.lastActivityTs;
       const lastActivityTs = Math.max(existing.lastActivityTs, normalized.lastActivityTs);
-      let lastMessageId = existing.lastMessageId;
-      if (existing.lastMessageId == null) {
-        lastMessageId = normalized.lastMessageId;
-      } else if (normalized.lastMessageId != null) {
-        lastMessageId = Math.max(existing.lastMessageId, normalized.lastMessageId);
-      }
+      const lastMessageId = incomingIsNewer
+        ? (normalized.lastMessageId ?? existing.lastMessageId)
+        : existing.lastMessageId;
       // Preserve existing unreadCount when the incoming source omits it.
       const unreadCount = normalized.unreadCount ?? existing.unreadCount;
       next.set(normalized.dmKey, {

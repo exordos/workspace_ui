@@ -3,6 +3,7 @@ import { t } from "~/i18n/i18n";
 import { getRealmBaseUrl } from "~/shared/api/messenger-client.internal";
 import { CALL_INCOMING_MODAL_VARIANT } from "~/shared/config/constants";
 import { resolveAvatarUrl } from "~/shared/lib/avatar";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { IncomingCallCompact } from "./jitsi-call-incoming-compact.ui";
 import { IncomingCallLarge } from "./jitsi-call-incoming-large.ui";
 import { useIncomingCallLifecycle } from "./jitsi-call-incoming-lifecycle.hook";
@@ -15,7 +16,7 @@ export const JitsiCallShell: React.FC = () => {
   const acceptIncomingInvite = useJitsiCallStore((s) => s.acceptIncomingInvite);
   const declineIncomingInvite = useJitsiCallStore((s) => s.declineIncomingInvite);
   const closeCall = useJitsiCallStore((s) => s.closeCall);
-  const [videoEnabledByInvite, setVideoEnabledByInvite] = useState<Record<number, boolean>>({});
+  const [videoEnabledByInvite, setVideoEnabledByInvite] = useState<Record<MessageId, boolean>>({});
 
   const trimmedCallerName = incomingInvite?.callerName.trim() ?? "";
   const inviteTitle = trimmedCallerName.length > 0 ? trimmedCallerName : t("call.participant");
@@ -26,7 +27,7 @@ export const JitsiCallShell: React.FC = () => {
     incomingMessageId != null ? (videoEnabledByInvite[incomingMessageId] ?? false) : false;
   const isCompactIncomingVariant = CALL_INCOMING_MODAL_VARIANT === "compact";
 
-  const clearVideoPreference = useCallback((messageId: number | null) => {
+  const clearVideoPreference = useCallback((messageId: MessageId | null) => {
     if (messageId == null) return;
     setVideoEnabledByInvite((current) => {
       if (current[messageId] == null) return current;

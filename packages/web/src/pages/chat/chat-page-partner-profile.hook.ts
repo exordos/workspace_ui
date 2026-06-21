@@ -13,15 +13,14 @@ import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 export function useChatPartnerProfileHydration(options: {
   partnerUserId: UserId | null;
   isDmView: boolean;
-  isGroupDmView: boolean;
 }): void {
-  const { partnerUserId, isDmView, isGroupDmView } = options;
+  const { partnerUserId, isDmView } = options;
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
 
   // Load partner profile in DM (avatar, name, presence)
   useEffect(() => {
     const numericPartnerUserId = numericUserIdOrNull(partnerUserId);
-    if (numericPartnerUserId == null || !isDmView || isGroupDmView) return;
+    if (numericPartnerUserId == null || !isDmView) return;
     const controller = new AbortController();
     const orgContext = captureActiveOrgRequestContext();
     fetchUser(numericPartnerUserId, { signal: controller.signal })
@@ -46,5 +45,5 @@ export function useChatPartnerProfileHydration(options: {
     return () => {
       controller.abort();
     };
-  }, [partnerUserId, isDmView, isGroupDmView, currentInstanceId]);
+  }, [partnerUserId, isDmView, currentInstanceId]);
 }

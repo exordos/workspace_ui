@@ -16,7 +16,7 @@ describe("isOneToOneDirectMessage", () => {
   it("returns false for stream messages", () => {
     expect(
       isOneToOneDirectMessage({
-        id: 1,
+        id: "00000000-0000-4000-8000-000000000001",
         sender_id: 1,
         sender_full_name: "A",
         stream_id: 5,
@@ -31,7 +31,7 @@ describe("isOneToOneDirectMessage", () => {
   it("returns true when private and exactly two recipients", () => {
     expect(
       isOneToOneDirectMessage({
-        id: 1,
+        id: "00000000-0000-4000-8000-000000000001",
         sender_id: 1,
         sender_full_name: "A",
         stream_id: null,
@@ -49,7 +49,7 @@ describe("isOneToOneDirectMessage", () => {
   it("returns false for group DM (three or more recipients)", () => {
     expect(
       isOneToOneDirectMessage({
-        id: 1,
+        id: "00000000-0000-4000-8000-000000000001",
         sender_id: 1,
         sender_full_name: "A",
         stream_id: null,
@@ -68,7 +68,7 @@ describe("isOneToOneDirectMessage", () => {
   it("returns false when display_recipient is missing or not an array", () => {
     expect(
       isOneToOneDirectMessage({
-        id: 1,
+        id: "00000000-0000-4000-8000-000000000001",
         sender_id: 1,
         sender_full_name: "A",
         stream_id: null,

@@ -42,7 +42,6 @@
     "react-rnd": "10.5.3",
     "react-router-dom": "7.17.0",
     "tinyexec": "1.2.4",
-    "zulip-js": "2.1.0",
     "zustand": "5.0.14"
   },
   "devDependencies": {

@@ -32,6 +32,7 @@
 import { createLogger } from "../logger";
 import { buildPushPayloadFromEnvelopeData } from "./push-payload-parse.lib";
 import { isValidPushMessagePayload } from "./push-payload-validate.lib";
+import type { MessageId } from "../message-id.lib";
 import type { PushMessagePayload } from "./types";
 
 const log = createLogger("push:middleware");
@@ -236,8 +237,8 @@ export const validationMiddleware: PushMiddleware = async (ctx, next) => {
  * Keeps a sliding window of recent message IDs.
  */
 const DEDUP_WINDOW = 200;
-const recentIds = new Set<number>();
-const recentIdQueue: number[] = [];
+const recentIds = new Set<MessageId>();
+const recentIdQueue: MessageId[] = [];
 
 export const deduplicationMiddleware: PushMiddleware = async (ctx, next) => {
   if (ctx.payload?.event === "message" && ctx.payload.message) {

@@ -32,13 +32,13 @@ function isThemeMode(value: unknown): value is NativeThemeMode {
 }
 
 function parseAuthMessage(payload: Record<string, unknown>): NativeAuthMessage | null {
-  const email = payload.email;
+  const login = payload.login;
   const apiKey = payload.apiKey;
   const realm = payload.realm;
-  if (typeof email !== "string" || typeof apiKey !== "string" || typeof realm !== "string") {
+  if (typeof login !== "string" || typeof apiKey !== "string" || typeof realm !== "string") {
     return null;
   }
-  return { type: "auth", email, apiKey, realm };
+  return { type: "auth", login, apiKey, realm };
 }
 
 function parseNavigateMessage(payload: Record<string, unknown>): NativeNavigateMessage | null {

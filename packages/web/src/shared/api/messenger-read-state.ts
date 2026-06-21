@@ -4,6 +4,7 @@
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 import { logScrollReadFlow } from "~/shared/lib/message-flow-debug.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import {
   buildSidebarMarkReadNarrowForChannel,
   buildSidebarMarkReadNarrowForDm,
@@ -92,7 +93,10 @@ export async function markTopicAsRead(streamId: number, topic: string): Promise<
   return markUnreadInNarrow(buildSidebarMarkReadNarrowForTopic(streamId, topic));
 }
 
-async function findTopicAnchorMessageId(streamId: number, topic: string): Promise<number | null> {
+async function findTopicAnchorMessageId(
+  streamId: number,
+  topic: string,
+): Promise<MessageId | null> {
   const normalizedTopic = normalizeTopicForIdentity(topic);
   const anchorMessageResponse = await messengerPipelineGet("/messages", {
     anchor: "oldest",
@@ -114,7 +118,7 @@ async function findTopicAnchorMessageId(streamId: number, topic: string): Promis
 
   const anchorData = anchorMessageResponse.data as {
     result?: string;
-    messages?: { id?: number }[];
+    messages?: { id?: MessageId }[];
   };
   if (anchorData.result === "error") {
     return null;
@@ -129,7 +133,7 @@ async function findTopicAnchorMessageId(streamId: number, topic: string): Promis
 }
 
 async function patchStreamTopicForAllMessages(
-  anchorMessageId: number,
+  anchorMessageId: MessageId,
   targetTopic: string,
 ): Promise<boolean> {
   const patchResponse = await messengerPipelinePatch(`messages/${anchorMessageId}`, {
@@ -175,7 +179,7 @@ export async function renameStreamTopic(
 }
 
 async function patchStreamTopicToChannelForAllMessages(
-  anchorMessageId: number,
+  anchorMessageId: MessageId,
   targetStreamId: number,
   targetTopic: string,
 ): Promise<boolean> {
@@ -263,7 +267,7 @@ export async function setTopicResolvedState(
 }
 
 /** Marks messages as read (POST /api/v1/messages/flags). Used for viewport/scroll read in open chat. */
-export async function markMessagesAsRead(messageIds: number[]): Promise<void> {
+export async function markMessagesAsRead(messageIds: MessageId[]): Promise<void> {
   if (messageIds.length === 0) return;
   const validatedMessageIds = validateMessageIds(messageIds, "markMessagesAsRead.messageIds");
   logScrollReadFlow("api:markMessagesAsRead", { count: validatedMessageIds.length });

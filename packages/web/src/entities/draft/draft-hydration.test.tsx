@@ -1,5 +1,6 @@
 import { render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { testMessageId } from "~/test/factories";
 import { useHydrateDrafts } from "./draft-hydration";
 import { useDraftStore } from "./draft.model";
 
@@ -32,7 +33,14 @@ describe("useHydrateDrafts", () => {
 
   it("loads drafts when an instance is ready", async () => {
     fetchDrafts.mockResolvedValue([
-      { id: 1, type: "stream", to: [10], topic: "general", content: "Draft 1", timestamp: 1 },
+      {
+        id: testMessageId(1),
+        type: "stream",
+        to: [10],
+        topic: "general",
+        content: "Draft 1",
+        timestamp: 1,
+      },
     ]);
 
     render(<Harness currentInstanceId="inst-1" currentUserStatus="ready" />);
@@ -44,11 +52,16 @@ describe("useHydrateDrafts", () => {
 
   it("clears stale drafts when readiness is lost", () => {
     fetchDrafts.mockResolvedValue([]);
-    useDraftStore
-      .getState()
-      .setDrafts([
-        { id: 1, type: "stream", to: [10], topic: "general", content: "Draft 1", timestamp: 1 },
-      ]);
+    useDraftStore.getState().setDrafts([
+      {
+        id: testMessageId(1),
+        type: "stream",
+        to: [10],
+        topic: "general",
+        content: "Draft 1",
+        timestamp: 1,
+      },
+    ]);
 
     const { rerender } = render(<Harness currentInstanceId="inst-1" currentUserStatus="ready" />);
     rerender(<Harness currentInstanceId="inst-1" currentUserStatus="loading" />);
@@ -58,11 +71,16 @@ describe("useHydrateDrafts", () => {
 
   it("preserves existing drafts when refresh fails", async () => {
     fetchDrafts.mockRejectedValue(new Error("offline"));
-    useDraftStore
-      .getState()
-      .setDrafts([
-        { id: 1, type: "stream", to: [10], topic: "general", content: "Draft 1", timestamp: 1 },
-      ]);
+    useDraftStore.getState().setDrafts([
+      {
+        id: testMessageId(1),
+        type: "stream",
+        to: [10],
+        topic: "general",
+        content: "Draft 1",
+        timestamp: 1,
+      },
+    ]);
 
     render(<Harness currentInstanceId="inst-1" currentUserStatus="ready" />);
 

@@ -2,12 +2,12 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { MockMessage } from "~/shared/api/messenger.types";
-import { createUser } from "~/test/factories";
+import { createUser, testMessageId } from "~/test/factories";
 import { MessageBubble } from "./message-bubble.ui";
 
 function createMessage(overrides: Partial<MockMessage> = {}): MockMessage {
   return {
-    id: 1,
+    id: "00000000-0000-4000-8000-000000000001",
     sender_id: 77,
     sender_full_name: "Alice",
     stream_id: 10,
@@ -26,7 +26,7 @@ describe("MessageBubble quick reactions", () => {
   it("renders Flutter-parity quick reaction buttons in context menu", async () => {
     render(<MessageBubble message={createMessage()} />);
 
-    fireEvent.contextMenu(screen.getByTestId("message-1"));
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(1)}`));
 
     expect(await screen.findByRole("button", { name: /like/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /thumbs up/i })).toBeInTheDocument();
@@ -47,11 +47,11 @@ describe("MessageBubble quick reactions", () => {
       />,
     );
 
-    fireEvent.contextMenu(screen.getByTestId("message-1"));
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(1)}`));
     fireEvent.click(await screen.findByRole("button", { name: /clap/i }));
 
     await waitFor(() => {
-      expect(onAddReaction).toHaveBeenCalledWith(1, {
+      expect(onAddReaction).toHaveBeenCalledWith(testMessageId(1), {
         emojiName: "clap",
         reactionType: "unicode_emoji",
       });
@@ -94,7 +94,7 @@ describe("MessageBubble quick reactions", () => {
 
     fireEvent.click(reactionButton);
     await waitFor(() => {
-      expect(onRemoveReaction).toHaveBeenCalledWith(1, {
+      expect(onRemoveReaction).toHaveBeenCalledWith(testMessageId(1), {
         emojiName: "party_node",
         emojiCode: "43",
         reactionType: "realm_emoji",
@@ -114,11 +114,11 @@ describe("MessageBubble quick reactions", () => {
       />,
     );
 
-    fireEvent.contextMenu(screen.getByTestId("message-1"));
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(1)}`));
     fireEvent.click(await screen.findByText("Open in chat"));
 
     await waitFor(() => {
-      expect(onOpenInChat).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }));
+      expect(onOpenInChat).toHaveBeenCalledWith(expect.objectContaining({ id: testMessageId(1) }));
     });
   });
 
@@ -386,7 +386,7 @@ describe("MessageBubble quick reactions", () => {
       <MessageBubble
         isOwn
         message={createMessage({
-          id: 101,
+          id: "00000000-0000-4000-8000-000000000101",
           delivery_status: "sent",
           reactions: [
             {
@@ -418,12 +418,14 @@ describe("MessageBubble quick reactions", () => {
       />,
     );
 
-    const bubbleRoot = screen.getByTestId("message-101");
+    const bubbleRoot = screen.getByTestId(`message-${testMessageId(101)}`);
     const bubbleSurface = bubbleRoot.querySelector(".overflow-hidden.rounded-\\[18px\\]");
     expect(bubbleSurface).toBeTruthy();
 
     const metadata = bubbleSurface?.querySelector(".flex.flex-shrink-0.items-center.gap-1");
     expect(metadata).not.toBeNull();
-    expect(metadata?.querySelector('[data-testid="message-delivery-101"]')).not.toBeNull();
+    expect(
+      metadata?.querySelector(`[data-testid="message-delivery-${testMessageId(101)}"]`),
+    ).not.toBeNull();
   });
 });

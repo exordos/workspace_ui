@@ -4,6 +4,7 @@
 
 import type { Draft } from "~/entities/draft/draft.types";
 import type { Reaction } from "~/shared/api/messenger.types";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { formatStreamTopicLabel } from "~/shared/lib/topic-display.lib";
 import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 import {
@@ -11,7 +12,11 @@ import {
   type GroupedReaction,
 } from "~/widgets/message-list/message-bubble-emoji.lib";
 
-export function buildMessageNavigateRoute(route: string, messageId: number, mode: string): string {
+export function buildMessageNavigateRoute(
+  route: string,
+  messageId: MessageId,
+  mode: string,
+): string {
   if (mode !== "forward") {
     return route;
   }
@@ -42,7 +47,6 @@ export function resolveDraftDmDisplayName(options: {
   recipientIds: number[];
   currentUserId: UserId | null;
   getUserDisplayName: (userId: number) => string;
-  groupChatLabel: string;
 }): string | null {
   const { recipientIds, currentUserId, getUserDisplayName } = options;
   if (recipientIds.length === 0) return null;
@@ -69,17 +73,9 @@ export function formatDraftMessageContext(options: {
   getUserDisplayName: (userId: number) => string;
   generalChatLabel: string;
   privateLabel: string;
-  groupChatLabel: string;
 }): string {
-  const {
-    draft,
-    streamsMap,
-    currentUserId,
-    getUserDisplayName,
-    generalChatLabel,
-    privateLabel,
-    groupChatLabel,
-  } = options;
+  const { draft, streamsMap, currentUserId, getUserDisplayName, generalChatLabel, privateLabel } =
+    options;
 
   if (draft.type === "stream" && draft.to.length > 0) {
     const streamId = draft.to[0]!;
@@ -99,7 +95,6 @@ export function formatDraftMessageContext(options: {
       recipientIds: draft.to,
       currentUserId,
       getUserDisplayName,
-      groupChatLabel,
     });
     return formatActivityMessageContext({
       isStream: false,

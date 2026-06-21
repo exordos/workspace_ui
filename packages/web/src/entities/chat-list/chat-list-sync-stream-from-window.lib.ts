@@ -6,6 +6,7 @@ import { filterStreamMessagesForSidebar } from "~/entities/chat-list/chat-list-s
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import type { MockMessage } from "~/shared/api/messenger.types";
 import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { mockMessageToRawMessage } from "~/shared/lib/message-mock-to-raw.lib";
 
 export type StreamMessagesAppliedSource = "cache" | "api";
@@ -14,7 +15,7 @@ export interface OnStreamMessagesAppliedPayload {
   messages: readonly MockMessage[];
   context: { type: "stream"; streamId: number };
   hasNewerMessages: boolean;
-  focusedMessageId: number | null;
+  focusedMessageId: MessageId | null;
   source: StreamMessagesAppliedSource;
 }
 
@@ -22,13 +23,13 @@ export interface SyncStreamSidebarFromLoadedMessagesOptions {
   messages: readonly MockMessage[];
   streamId: number;
   source: StreamMessagesAppliedSource;
-  focusedMessageId: number | null;
+  focusedMessageId: MessageId | null;
   hasNewerMessages: boolean;
 }
 
 /** True when the loaded window includes the channel tail (safe for topic previews). */
 export function shouldSyncStreamPreviewFromWindow(options: {
-  focusedMessageId: number | null;
+  focusedMessageId: MessageId | null;
   hasNewerMessages: boolean;
 }): boolean {
   if (options.focusedMessageId == null) {

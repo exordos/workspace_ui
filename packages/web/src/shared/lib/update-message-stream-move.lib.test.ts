@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MessengerEvent } from "~/shared/api/messenger.types";
+import { testMessageId } from "~/test/factories";
 import { extractStreamMoveFromUpdateEvent } from "./update-message-stream-move.lib";
 
 describe("update-message-stream-move.lib", () => {
@@ -11,8 +12,8 @@ describe("update-message-stream-move.lib", () => {
       new_stream_id: 20,
       orig_subject: " incident ",
       subject: " incident ",
-      message_ids: [1, 2],
-      message_id: 99,
+      message_ids: [testMessageId(1), testMessageId(2)],
+      message_id: testMessageId(99),
     };
 
     expect(extractStreamMoveFromUpdateEvent(event)).toEqual({
@@ -20,8 +21,8 @@ describe("update-message-stream-move.lib", () => {
       targetStreamId: 20,
       oldTopic: "incident",
       newTopic: "incident",
-      messageIds: [1, 2],
-      anchorMessageId: 99,
+      messageIds: [testMessageId(1), testMessageId(2)],
+      anchorMessageId: testMessageId(99),
     });
   });
 
@@ -33,8 +34,8 @@ describe("update-message-stream-move.lib", () => {
         stream_id: 10,
         orig_subject: "t",
         subject: "t",
-        message_ids: [1],
-        message_id: 1,
+        message_ids: [testMessageId(1)],
+        message_id: testMessageId(1),
       }),
     ).toBeNull();
 
@@ -46,8 +47,8 @@ describe("update-message-stream-move.lib", () => {
         new_stream_id: 10,
         orig_subject: "t",
         subject: "t",
-        message_ids: [1],
-        message_id: 1,
+        message_ids: [testMessageId(1)],
+        message_id: testMessageId(1),
       }),
     ).toBeNull();
   });
@@ -60,8 +61,8 @@ describe("update-message-stream-move.lib", () => {
         stream_id: 10,
         new_stream_id: 20,
         subject: "t",
-        message_ids: [1],
-        message_id: 1,
+        message_ids: [testMessageId(1)],
+        message_id: testMessageId(1),
       }),
     ).toBeNull();
   });

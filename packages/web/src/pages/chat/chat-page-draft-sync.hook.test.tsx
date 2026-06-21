@@ -2,6 +2,8 @@ import { renderHook } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { useDraftStore } from "~/entities/draft/draft.model";
+import type { MessageId } from "~/shared/lib/message-id.lib";
+import { testMessageId } from "~/test/factories";
 import { useChatPageDraftHydration } from "./chat-page-draft-sync.hook";
 import type React from "react";
 
@@ -18,7 +20,7 @@ describe("useChatPageDraftHydration", () => {
     useDraftStore.setState({
       drafts: [
         {
-          id: 1,
+          id: testMessageId(1),
           type: "stream",
           to: [5],
           topic: "general",
@@ -29,7 +31,9 @@ describe("useChatPageDraftHydration", () => {
     });
 
     const composerValueRef = { current: "" } as React.RefObject<string>;
-    const activeDraftIdRef = { current: null as number | null } as React.RefObject<number | null>;
+    const activeDraftIdRef = {
+      current: null as MessageId | null,
+    } as React.RefObject<MessageId | null>;
     const pendingForwardPrefillRef = { current: null as string | null } as React.RefObject<
       string | null
     >;
@@ -57,6 +61,6 @@ describe("useChatPageDraftHydration", () => {
     );
 
     expect(setDraftInitialValue).toHaveBeenCalledWith("saved draft");
-    expect(activeDraftIdRef.current).toBe(1);
+    expect(activeDraftIdRef.current).toBe(testMessageId(1));
   });
 });

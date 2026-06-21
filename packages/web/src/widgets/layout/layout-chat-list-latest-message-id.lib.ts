@@ -1,15 +1,14 @@
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 
-/** Max known message id from in-memory sidebar state (streams, DMs, location index). */
-export function getInMemoryLatestMessageId(): number | null {
+/** Latest known message id from in-memory sidebar state (streams, DMs, location index). */
+export function getInMemoryLatestMessageId(): MessageId | null {
   const state = useChatListStore.getState();
-  let max: number | null = null;
+  let latest: MessageId | null = null;
 
-  const consider = (id: number | null | undefined): void => {
-    if (id == null || !Number.isInteger(id) || id <= 0) return;
-    if (max == null || id > max) {
-      max = id;
-    }
+  const consider = (id: MessageId | null | undefined): void => {
+    if (id == null) return;
+    latest = id;
   };
 
   for (const stream of state.streamsMap.values()) {
@@ -24,11 +23,11 @@ export function getInMemoryLatestMessageId(): number | null {
     consider(messageId);
   }
 
-  return max;
+  return latest;
 }
 
-export function maxMessageId(a: number | null, b: number | null): number | null {
+export function maxMessageId(a: MessageId | null, b: MessageId | null): MessageId | null {
   if (a == null) return b;
   if (b == null) return a;
-  return Math.max(a, b);
+  return b;
 }

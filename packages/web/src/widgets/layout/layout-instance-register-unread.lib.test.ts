@@ -8,7 +8,9 @@ describe("layout-instance-register-unread", () => {
   it("isRegisterUnreadSnapshotEmpty is false when buckets have ids", () => {
     expect(
       isRegisterUnreadSnapshotEmpty({
-        streams: [{ streamId: 1, topic: "t", unreadMessageIds: [1] }],
+        streams: [
+          { streamId: 1, topic: "t", unreadMessageIds: ["00000000-0000-4000-8000-000000000001"] },
+        ],
         dms: [],
         totalCount: 0,
         mentionMessageIds: [],

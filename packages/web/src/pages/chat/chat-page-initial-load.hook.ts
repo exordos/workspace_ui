@@ -11,6 +11,7 @@ import { dmRouteKey } from "~/shared/lib/dm-key";
 import { normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
 import { createLogger } from "~/shared/lib/logger";
 import { logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import { parseDmSlugToUserIds } from "~/widgets/sidebar/sidebar.lib";
 import { shouldSkipFocusedAnchorInitialLoad } from "./chat-anchor-load.lib";
@@ -29,7 +30,7 @@ export interface UseChatPageInitialLoadOptions {
   activeStreamCanonicalName: string | null;
   resolvedStreamId: number | null;
   streamRouteTopic: string;
-  focusedMessageId: number | null;
+  focusedMessageId: MessageId | null;
   currentUserId: UserId | null;
   isFocusedMessageLoadedInCurrentRoute: boolean;
   setActionError: (error: string | null) => void;

@@ -25,8 +25,10 @@
 import { writeText } from "./clipboard";
 import { isElectron } from "./electron";
 import { createLogger } from "./logger";
+import { normalizeMessageId } from "./message-id.lib";
 import { extractOrgRouteFromPathname, withCurrentOrgRoute } from "./org-route";
 import { decodeTopicFromRoute, encodeTopicForRoute } from "./topic-identity.lib";
+import type { MessageId } from "./message-id.lib";
 
 const log = createLogger("deeplinks");
 
@@ -57,7 +59,7 @@ export function toMessage(
   streamId: number,
   streamName: string,
   topic: string,
-  messageId: number,
+  messageId: MessageId,
 ): string {
   return `${toTopic(streamId, streamName, topic)}?msg=${messageId}`;
 }
@@ -125,24 +127,12 @@ export interface ParsedDeepLink {
   topicName?: string;
   dmId?: string;
   filter?: string;
-  messageId?: number;
+  messageId?: MessageId;
 }
 
-const DECIMAL_INTEGER_RE = /^\d+$/;
-
-function parseMessageId(searchParams: URLSearchParams): number | undefined {
+function parseMessageId(searchParams: URLSearchParams): MessageId | undefined {
   const rawMessageId = searchParams.get("msg");
-  if (rawMessageId == null) {
-    return undefined;
-  }
-  if (!DECIMAL_INTEGER_RE.test(rawMessageId)) {
-    return undefined;
-  }
-  const parsed = Number(rawMessageId);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    return undefined;
-  }
-  return parsed;
+  return normalizeMessageId(rawMessageId) ?? undefined;
 }
 
 function decodeUriComponentSafe(value: string): string {

@@ -2,12 +2,14 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { fetchDirectMessagesPage } from "~/shared/api/messenger-sidebar-preview.lib";
 import { upsertDmIndexFromMessages } from "~/shared/lib/dm-index";
+import { compareMessageTimeline } from "~/shared/lib/message-id.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 
 function ingestDmBackfillPage(
   instanceId: string,
   initialUserId: number,
   messages: Awaited<ReturnType<typeof fetchDirectMessagesPage>>["messages"],
-): { stagnant: boolean; oldestMessageId: number | null } {
+): { stagnant: boolean; oldestMessageId: MessageId | null } {
   const currentUserId = useChatListStore.getState().currentUserId ?? initialUserId;
   for (const message of messages) {
     useUsersStore.getState().mergeFromMessage(message);
@@ -17,13 +19,13 @@ function ingestDmBackfillPage(
   upsertDmIndexFromMessages(instanceId, messages, currentUserId);
   const stagnant = useChatListStore.getState().dmsMap.size <= dmsBefore;
 
-  let oldestMessageId: number | null = null;
+  let oldestMessage: (typeof messages)[number] | null = null;
   for (const message of messages) {
-    if (oldestMessageId == null || message.id < oldestMessageId) {
-      oldestMessageId = message.id;
+    if (oldestMessage == null || compareMessageTimeline(message, oldestMessage) < 0) {
+      oldestMessage = message;
     }
   }
-  return { stagnant, oldestMessageId };
+  return { stagnant, oldestMessageId: oldestMessage?.id ?? null };
 }
 
 export async function runMetadataDmBackfillLoop(options: {
@@ -34,7 +36,7 @@ export async function runMetadataDmBackfillLoop(options: {
   stagnationLimit: number;
   isCancelled: () => boolean;
 }): Promise<void> {
-  let anchor: number | "newest" = "newest";
+  let anchor: MessageId = "newest";
   let stagnantBatches = 0;
   for (let batchIndex = 0; batchIndex < options.maxBatches; batchIndex += 1) {
     if (options.isCancelled()) {
@@ -51,7 +53,7 @@ export async function runMetadataDmBackfillLoop(options: {
       page.messages,
     );
     stagnantBatches = stagnant ? stagnantBatches + 1 : 0;
-    if (oldestMessageId == null || oldestMessageId <= 0) {
+    if (oldestMessageId == null) {
       break;
     }
     anchor = oldestMessageId;

@@ -126,11 +126,6 @@ interface ElectronRendererMemorySnapshot {
   };
 }
 
-declare module "zulip-js" {
-  const init: (config: { realm: string; username: string; apiKey: string }) => Promise<unknown>;
-  export default init;
-}
-
 interface ElectronAPI {
   /** Node `process.platform` from preload — used for macOS window chrome. Omitted in partial test mocks. */
   platform?: NodeJS.Platform;

@@ -19,7 +19,7 @@ describe("push notification types", () => {
       event: "message",
       realm_uri: "https://chat.example.com",
       message: {
-        id: 1,
+        id: "00000000-0000-4000-8000-000000000001",
         sender_id: 42,
         sender_full_name: "Alice",
         type: "stream",
@@ -37,7 +37,11 @@ describe("push notification types", () => {
   it("PushMessagePayload remove event has message_ids", () => {
     const payload: PushMessagePayload = {
       event: "remove",
-      message_ids: [1, 2, 3],
+      message_ids: [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003",
+      ],
     };
     expect(payload.message_ids).toHaveLength(3);
   });

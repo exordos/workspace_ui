@@ -3,6 +3,7 @@ import { useNotificationSettingsStore } from "~/entities/notification-settings/n
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { DEFAULT_MESSENGER_NOTIFICATION_SETTINGS } from "~/shared/lib/messenger-notification-settings.lib";
+import { testMessageId } from "~/test/factories";
 import {
   deliverDesktopNotificationForMessage,
   maybeNotifyNewMessage,
@@ -23,9 +24,14 @@ function createNotifications(): LayoutMessengerEventDispatchContext["notificatio
   };
 }
 
-function createRawMessage(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessage {
+type WorkspaceRawMessageOverrides = Partial<Omit<WorkspaceRawMessage, "id">> & {
+  id?: WorkspaceRawMessage["id"] | number;
+};
+
+function createRawMessage(overrides: WorkspaceRawMessageOverrides = {}): WorkspaceRawMessage {
+  const { id, ...rest } = overrides;
   return {
-    id: 55,
+    id: testMessageId(id ?? 55),
     sender_id: 42,
     sender_full_name: "Alice",
     content: "<p>Hello</p>",
@@ -35,7 +41,7 @@ function createRawMessage(overrides: Partial<WorkspaceRawMessage> = {}): Workspa
     display_recipient: "General Discussion",
     subject: "Bugs",
     flags: [],
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -129,7 +135,7 @@ describe("deliverDesktopNotificationForMessage", () => {
       body: "Hello",
       tag: "bucket:inst-1::stream:10:Bugs:sender:42",
       silent: true,
-      clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=55",
+      clickRoute: `/stream/10-general-discussion/topic/Bugs?msg=${testMessageId(55)}`,
     });
   });
 
@@ -138,7 +144,7 @@ describe("deliverDesktopNotificationForMessage", () => {
 
     deliverDesktopNotificationForMessage(
       createRawMessage({
-        id: 77,
+        id: "00000000-0000-4000-8000-000000000077",
         type: "private",
         stream_id: null,
         subject: "",
@@ -159,7 +165,7 @@ describe("deliverDesktopNotificationForMessage", () => {
       body: "Hello",
       tag: "bucket:inst-1::dm:7,42",
       silent: true,
-      clickRoute: "/dm/42-alice?msg=77",
+      clickRoute: `/dm/42-alice?msg=${testMessageId(77)}`,
     });
   });
 
@@ -183,7 +189,7 @@ describe("deliverDesktopNotificationForMessage", () => {
     expect(notifications.show).toHaveBeenCalledWith({
       title: "Alice",
       body: "Hello",
-      tag: "msg:inst-1::55",
+      tag: `msg:inst-1::${testMessageId(55)}`,
       silent: true,
     });
   });
@@ -237,7 +243,13 @@ describe("maybeNotifyNewMessage", () => {
     const ctx = createContext(notifications);
 
     maybeNotifyNewMessage(ctx, createRawMessage(), 7, false, false);
-    maybeNotifyNewMessage(ctx, createRawMessage({ id: 56, flags: ["mentioned"] }), 7, false, false);
+    maybeNotifyNewMessage(
+      ctx,
+      createRawMessage({ id: "00000000-0000-4000-8000-000000000056", flags: ["mentioned"] }),
+      7,
+      false,
+      false,
+    );
 
     expect(notifications.show).not.toHaveBeenCalled();
   });
@@ -266,7 +278,7 @@ describe("maybeNotifyNewMessage", () => {
       body: "Hello",
       tag: "bucket:inst-1::stream:10:Bugs:sender:42",
       silent: true,
-      clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=55",
+      clickRoute: `/stream/10-general-discussion/topic/Bugs?msg=${testMessageId(55)}`,
     });
   });
 
@@ -284,7 +296,7 @@ describe("maybeNotifyNewMessage", () => {
       body: "Hello",
       tag: "bucket:inst-1::stream:10:Bugs:sender:42",
       silent: true,
-      clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=55",
+      clickRoute: `/stream/10-general-discussion/topic/Bugs?msg=${testMessageId(55)}`,
     });
     expect(notifications.playSound).toHaveBeenCalledWith("default");
   });
@@ -310,7 +322,7 @@ describe("maybeNotifyNewMessage", () => {
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({
         tag: "bucket:inst-1::stream:10:Bugs:sender:42",
-        clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=55",
+        clickRoute: `/stream/10-general-discussion/topic/Bugs?msg=${testMessageId(55)}`,
       }),
     );
   });
@@ -341,14 +353,14 @@ describe("maybeNotifyNewMessage", () => {
       body: "Hello",
       tag: "bucket:inst-1::stream:10:Bugs:sender:42",
       silent: true,
-      clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=55",
+      clickRoute: `/stream/10-general-discussion/topic/Bugs?msg=${testMessageId(55)}`,
     });
     expect(notifications.show).toHaveBeenNthCalledWith(2, {
       title: "2 messages from Alice · General Discussion · Bugs",
       body: "Latest",
       tag: "bucket:inst-1::stream:10:Bugs:sender:42",
       silent: true,
-      clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=56",
+      clickRoute: `/stream/10-general-discussion/topic/Bugs?msg=${testMessageId(56)}`,
     });
   });
 
@@ -364,7 +376,7 @@ describe("maybeNotifyNewMessage", () => {
     maybeNotifyNewMessage(
       ctx,
       createRawMessage({
-        id: 56,
+        id: "00000000-0000-4000-8000-000000000056",
         sender_id: 99,
         sender_full_name: "Bob",
       }),
@@ -393,7 +405,7 @@ describe("maybeNotifyNewMessage", () => {
     maybeNotifyNewMessage(
       createContext(notifications),
       createRawMessage({
-        id: 77,
+        id: "00000000-0000-4000-8000-000000000077",
         type: "private",
         stream_id: null,
         subject: "",
@@ -412,7 +424,7 @@ describe("maybeNotifyNewMessage", () => {
       body: "Hello",
       tag: "bucket:inst-1::dm:7,42",
       silent: true,
-      clickRoute: "/dm/42-alice?msg=77",
+      clickRoute: `/dm/42-alice?msg=${testMessageId(77)}`,
     });
   });
 

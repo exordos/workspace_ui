@@ -27,7 +27,8 @@ export function hashKey(s: string): number {
   return h % 1000000;
 }
 
-export const GROUP_DM_ID_OFFSET = 2000000;
+/** Offset for synthesized numeric DM ids when a peer has no messenger integer id. */
+export const SYNTHETIC_DM_ID_OFFSET = 2000000;
 
 export function slugify(s: string): string {
   const lower = s.trim().toLowerCase();

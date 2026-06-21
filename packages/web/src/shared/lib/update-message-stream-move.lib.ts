@@ -1,4 +1,5 @@
 import type { MessengerEvent } from "~/shared/api/messenger.types";
+import { normalizeMessageId, type MessageId } from "~/shared/lib/message-id.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { resolveTopicMoveTargetMessageIds } from "~/shared/lib/update-message-topic-move.lib";
 
@@ -7,19 +8,20 @@ export interface UpdateMessageStreamMovePayload {
   targetStreamId: number;
   oldTopic: string;
   newTopic: string;
-  messageIds?: number[];
-  anchorMessageId?: number;
+  messageIds?: MessageId[];
+  anchorMessageId?: MessageId;
 }
 
 function parsePositiveInteger(value: unknown): number | null {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
 }
 
-function parsePositiveIntegerArray(value: unknown): number[] | null {
+function parseMessageIdArray(value: unknown): MessageId[] | null {
   if (!Array.isArray(value)) return null;
-  const ids = value.filter(
-    (item): item is number => typeof item === "number" && Number.isInteger(item) && item > 0,
-  );
+  const ids = value.flatMap((item) => {
+    const id = normalizeMessageId(item);
+    return id == null ? [] : [id];
+  });
   return ids.length > 0 ? Array.from(new Set(ids)) : null;
 }
 
@@ -41,8 +43,8 @@ export function extractStreamMoveFromUpdateEvent(
 
   const oldTopic = normalizeTopicForIdentity(oldTopicRaw);
   const newTopic = normalizeTopicForIdentity(newTopicRaw);
-  const messageIds = parsePositiveIntegerArray(event.message_ids) ?? undefined;
-  const anchorMessageId = parsePositiveInteger(event.message_id) ?? undefined;
+  const messageIds = parseMessageIdArray(event.message_ids) ?? undefined;
+  const anchorMessageId = normalizeMessageId(event.message_id) ?? undefined;
   const targetMessageIds = resolveTopicMoveTargetMessageIds({ messageIds, anchorMessageId });
   if (targetMessageIds.length === 0) return null;
 

@@ -5,7 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { setInstanceProvider } from "~/shared/api/client";
 import type { MockMessage } from "~/shared/api/messenger.types";
+import { testMessageId } from "~/test/factories";
 import { useCurrentChatMessagesStore, type CurrentChatContext } from "./message.model";
+
+type MockMessageOverrides = Partial<Omit<MockMessage, "id">> & {
+  id?: MockMessage["id"] | number;
+};
 
 const mockFetchMessagesWithNarrowPage = vi.hoisted(() => vi.fn());
 const mockUpdateChatMetaPatch = vi.hoisted(() => vi.fn());
@@ -37,16 +42,17 @@ vi.mock("./message-local-cache.lib", async (importOriginal) => {
   };
 });
 
-function mockMsg(overrides: Partial<MockMessage> = {}): MockMessage {
+function mockMsg(overrides: MockMessageOverrides = {}): MockMessage {
+  const { id, ...rest } = overrides;
   return {
-    id: 1,
+    id: testMessageId(id ?? 1),
     sender_id: 10,
     sender_full_name: "Test User",
     stream_id: 5,
     subject: "topic1",
     content: "<p>hello</p>",
     timestamp: 1000,
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -100,7 +106,7 @@ describe("loadOlderBoundaryPage", () => {
     const storeMessages = Array.from({ length: pageSize * 2 }, (_, index) =>
       mockMsg({ id: 50 + index }),
     );
-    const anchorId = 50;
+    const anchorId = testMessageId(50);
     const apiPage = [
       mockMsg({ id: anchorId }),
       ...Array.from({ length: pageSize }, (_, index) => mockMsg({ id: 50 + index })),
@@ -164,10 +170,10 @@ describe("loadOlderBoundaryPage", () => {
     const state = useCurrentChatMessagesStore.getState();
     expect(state.hasOlderMessages).toBe(true);
     expect(state.messages.length).toBe(storeMessages.length + olderMessages.length);
-    expect(state.messages[0]?.id).toBe(0);
+    expect(state.messages[0]?.id).toBe(testMessageId(0));
   });
 
-  it("uses minimum message id as anchor when store order is not ascending", async () => {
+  it("uses first ordered message id as anchor when UUIDs are not numeric cursors", async () => {
     const pageSize = 10;
     useCurrentChatMessagesStore.setState({
       context: streamCtx,
@@ -188,7 +194,7 @@ describe("loadOlderBoundaryPage", () => {
 
     expect(mockFetchMessagesWithNarrowPage).toHaveBeenCalledWith(
       expect.any(Array),
-      100,
+      testMessageId(105),
       pageSize,
       0,
       expect.objectContaining({

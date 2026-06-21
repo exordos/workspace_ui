@@ -6,6 +6,7 @@
  */
 import { create } from "zustand";
 import { logStoreAction } from "~/shared/lib/logger";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { fetchLinkPreviewsFromMessageMarkdown } from "~/shared/lib/message-link-preview-fetch.lib";
 import { linkPreviewContentFingerprint } from "~/shared/lib/message-link-preview-fingerprint.lib";
 import { traceLinkPreview } from "~/shared/lib/message-link-preview-trace.lib";
@@ -19,32 +20,33 @@ import { sliceAfterPreviewFetchAborted, sliceAfterPreviewResolved } from "./link
 
 const DEFAULT_MAX_ENTRIES = 100;
 
-const abortByMessageId = new Map<number, AbortController>();
+const abortByMessageId = new Map<MessageId, AbortController>();
 
 interface LinkPreviewState {
-  byMessageId: Record<number, LinkPreviewCacheEntry>;
+  byMessageId: Record<MessageId, LinkPreviewCacheEntry>;
   maxEntries: number;
-  inFlight: Map<number, Promise<LinkPreviewCacheEntry>>;
-  requestPreviewForMessage: (messageId: number, markdown: string) => Promise<LinkPreviewCacheEntry>;
-  cancelPreviewForMessage: (messageId: number) => void;
-  getEntry: (messageId: number) => LinkPreviewCacheEntry | undefined;
+  inFlight: Map<MessageId, Promise<LinkPreviewCacheEntry>>;
+  requestPreviewForMessage: (
+    messageId: MessageId,
+    markdown: string,
+  ) => Promise<LinkPreviewCacheEntry>;
+  cancelPreviewForMessage: (messageId: MessageId) => void;
+  getEntry: (messageId: MessageId) => LinkPreviewCacheEntry | undefined;
   clear: () => void;
   setMaxEntriesForTests: (max: number) => void;
 }
 
 function evictOldestEntries(
-  entries: Record<number, LinkPreviewCacheEntry>,
+  entries: Record<MessageId, LinkPreviewCacheEntry>,
   maxEntries: number,
-): Record<number, LinkPreviewCacheEntry> {
-  const keys = Object.keys(entries)
-    .map(Number)
-    .filter((id) => Number.isInteger(id));
+): Record<MessageId, LinkPreviewCacheEntry> {
+  const keys = Object.keys(entries);
   if (keys.length <= maxEntries) {
     return entries;
   }
   const sorted = [...keys].sort((a, b) => entries[a]!.fetchedAt - entries[b]!.fetchedAt);
   const keepIds = sorted.slice(sorted.length - maxEntries);
-  const trimmed: Record<number, LinkPreviewCacheEntry> = {};
+  const trimmed: Record<MessageId, LinkPreviewCacheEntry> = {};
   for (const id of keepIds) {
     trimmed[id] = entries[id]!;
   }
@@ -52,14 +54,14 @@ function evictOldestEntries(
 }
 
 function touchMessageEntry(
-  entries: Record<number, LinkPreviewCacheEntry>,
-  messageId: number,
+  entries: Record<MessageId, LinkPreviewCacheEntry>,
+  messageId: MessageId,
   entry: LinkPreviewCacheEntry,
   maxEntries: number,
-): Record<number, LinkPreviewCacheEntry> {
+): Record<MessageId, LinkPreviewCacheEntry> {
   const rest = { ...entries };
   delete rest[messageId];
-  const next: Record<number, LinkPreviewCacheEntry> = { ...rest, [messageId]: entry };
+  const next: Record<MessageId, LinkPreviewCacheEntry> = { ...rest, [messageId]: entry };
   return evictOldestEntries(next, maxEntries);
 }
 
@@ -97,9 +99,9 @@ function isStaleLoadingCacheEntry(entry: LinkPreviewCacheEntry | undefined): boo
 }
 
 function removeMessageCacheEntry(
-  entries: Record<number, LinkPreviewCacheEntry>,
-  messageId: number,
-): Record<number, LinkPreviewCacheEntry> {
+  entries: Record<MessageId, LinkPreviewCacheEntry>,
+  messageId: MessageId,
+): Record<MessageId, LinkPreviewCacheEntry> {
   if (entries[messageId] == null) {
     return entries;
   }
@@ -108,7 +110,7 @@ function removeMessageCacheEntry(
   return next;
 }
 
-function endFetchAbort(messageId: number, controller: AbortController): void {
+function endFetchAbort(messageId: MessageId, controller: AbortController): void {
   if (abortByMessageId.get(messageId) === controller) {
     abortByMessageId.delete(messageId);
   }

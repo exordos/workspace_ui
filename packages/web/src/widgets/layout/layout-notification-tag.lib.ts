@@ -1,4 +1,5 @@
 import { instanceChatKey } from "~/shared/lib/message-cache-keys.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 
 function normalizeNotificationInstanceId(instanceId: string | null | undefined): string | null {
   const trimmed = instanceId?.trim() ?? "";
@@ -24,14 +25,14 @@ export function buildNotificationAggregateTag(
 }
 
 export function buildNotificationFallbackTag(
-  messageId: number,
+  messageId: MessageId,
   instanceId: string | null | undefined,
 ): string {
   return `msg:${buildScopedNotificationKey(String(messageId), instanceId)}`;
 }
 
 export function buildNotificationMessageScopeKey(
-  messageId: number,
+  messageId: MessageId,
   instanceId: string | null | undefined,
 ): string {
   return buildScopedNotificationKey(`message:${messageId}`, instanceId);

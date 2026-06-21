@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { MockMessage } from "~/shared/api/messenger.types";
+import { testMessageId, testMessageOrdinal } from "~/test/factories";
 import {
   resolveFirstUnreadBoundaryMessageId,
   resolveLastUnreadBoundaryMessageId,
 } from "./message-unread-boundary.lib";
 
-function createMessage(id: number, senderId: number, flags?: string[]): MockMessage {
+function createMessage(id: number | string, senderId: number, flags?: string[]): MockMessage {
   return {
-    id,
+    id: testMessageId(id),
     sender_id: senderId,
     sender_full_name: `User ${senderId}`,
     stream_id: 10,
@@ -15,7 +16,7 @@ function createMessage(id: number, senderId: number, flags?: string[]): MockMess
     channel: "general",
     subject: "general",
     content: `<p>Message ${id}</p>`,
-    timestamp: 1700000000 + id,
+    timestamp: 1700000000 + testMessageOrdinal(id),
     flags,
   };
 }
@@ -30,10 +31,10 @@ describe("message-unread-boundary", () => {
   ];
 
   it("resolveFirstUnreadBoundaryMessageId returns first other-user unread", () => {
-    expect(resolveFirstUnreadBoundaryMessageId(messages, 7)).toBe(2);
+    expect(resolveFirstUnreadBoundaryMessageId(messages, 7)).toBe(testMessageId(2));
   });
 
   it("resolveLastUnreadBoundaryMessageId returns last other-user unread", () => {
-    expect(resolveLastUnreadBoundaryMessageId(messages, 7)).toBe(5);
+    expect(resolveLastUnreadBoundaryMessageId(messages, 7)).toBe(testMessageId(5));
   });
 });

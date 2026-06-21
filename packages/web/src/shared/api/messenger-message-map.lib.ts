@@ -3,6 +3,7 @@
  * With `apply_markdown=false`, `content` is Workspace-flavored Markdown; optional `markdown_source`
  * from the API is preserved. Rendered HTML from events/API (legacy) is stored as-is in `content`.
  */
+import { normalizeMessageId } from "~/shared/lib/message-id.lib";
 import { isLikelyRenderedMessageHtml } from "~/shared/lib/message-markdown-display.lib";
 import type { MockMessage, RawMessageToMockInput, WorkspaceRawMessage } from "./messenger.types";
 
@@ -48,10 +49,11 @@ export function mockMessageFromGetMessageApiData(data: unknown): MockMessage | n
   let row: MessageRow | null = null;
   if (d.message != null && typeof d.message === "object") {
     row = d.message as MessageRow;
-  } else if (typeof d.id === "number") {
+  } else if (normalizeMessageId(d.id) != null) {
     row = d as unknown as MessageRow;
   }
-  if (row?.id == null) return null;
+  const rowId = normalizeMessageId(row?.id);
+  if (rowId == null || row == null) return null;
 
   const markdownFromMarkdownMode = row.content_type === "text/x-markdown" ? row.content : undefined;
   const markdownSource =
@@ -60,7 +62,7 @@ export function mockMessageFromGetMessageApiData(data: unknown): MockMessage | n
       : markdownFromMarkdownMode;
 
   return rawMessageToMockMessage({
-    id: row.id,
+    id: rowId,
     sender_id: row.sender_id,
     sender_full_name: row.sender_full_name,
     content: row.content,

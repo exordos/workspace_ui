@@ -3,6 +3,7 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { fetchUnreadMentionsPage } from "~/shared/api/messenger-messages";
 import type { MockMessage } from "~/shared/api/messenger.types";
+import { testMessageId } from "~/test/factories";
 import { ensureMentionsUnreadSynced } from "./chat-list-mentions-sync.lib";
 
 vi.mock("~/shared/api/messenger-messages", () => ({
@@ -40,7 +41,7 @@ describe("ensureMentionsUnreadSynced", () => {
     vi.mocked(fetchUnreadMentionsPage).mockResolvedValue({
       messages: [
         {
-          id: 1,
+          id: "00000000-0000-4000-8000-000000000001",
           sender_id: 10,
           sender_full_name: "Alice",
           content: "hi",
@@ -51,7 +52,7 @@ describe("ensureMentionsUnreadSynced", () => {
           flags: ["mentioned"],
         },
         {
-          id: 2,
+          id: "00000000-0000-4000-8000-000000000002",
           sender_id: 7,
           sender_full_name: "Me",
           content: "self",
@@ -76,12 +77,12 @@ describe("ensureMentionsUnreadSynced", () => {
     expect(fetchUnreadMentionsPage).toHaveBeenCalledWith(200);
     expect(useChatListStore.getState().mentionsUnreadCount).toBe(1);
     expect(useChatListStore.getState().mentionsUnreadApiSynced).toBe(true);
-    expect([...useChatListStore.getState().mentionedUnreadMessageIds]).toEqual([1]);
+    expect([...useChatListStore.getState().mentionedUnreadMessageIds]).toEqual([testMessageId(1)]);
   });
 
   it("does not write mentions when active instance changed during fetch", async () => {
     const mentionMessage: MockMessage = {
-      id: 99,
+      id: "00000000-0000-4000-8000-000000000099",
       sender_id: 10,
       sender_full_name: "Alice",
       content: "hi",
@@ -124,7 +125,10 @@ describe("ensureMentionsUnreadSynced", () => {
     useChatListStore.setState({
       mentionsUnreadApiSynced: true,
       mentionsUnreadCount: 2,
-      mentionedUnreadMessageIds: new Set([1, 2]),
+      mentionedUnreadMessageIds: new Set([
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+      ]),
     });
 
     setActiveInstance("inst-1");

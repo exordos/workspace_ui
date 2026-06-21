@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { sendMessage } from "~/shared/api/messenger-messages";
 import type { MockMessage } from "~/shared/api/messenger.types";
-import { createMessage } from "~/test/factories";
+import { createMessage, testMessageId } from "~/test/factories";
 import { executeChatPageSend } from "./chat-page-send-handler.lib";
 import { useChatPageSendMessage } from "./chat-page-send-message.hook";
 
@@ -99,7 +99,7 @@ describe("useChatPageSendMessage", () => {
       result.current.handleRemoveFailedOutgoing(msg);
     });
 
-    expect(params.removeMessage).toHaveBeenCalledWith(-3);
+    expect(params.removeMessage).toHaveBeenCalledWith(testMessageId(-3));
     expect(params.setSendError).toHaveBeenCalledWith(null);
   });
 
@@ -122,18 +122,18 @@ describe("useChatPageSendMessage", () => {
       await result.current.handleRetryFailedOutgoing(failedOutgoing());
     });
 
-    expect(params.removeMessage).toHaveBeenCalledWith(-3);
+    expect(params.removeMessage).toHaveBeenCalledWith(testMessageId(-3));
     expect(sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         to: [42],
         content: "retry me",
-        local_id: "-1",
+        local_id: expect.any(String),
       }),
     );
     await waitFor(() => {
       expect(params.commitOutgoingMessage).toHaveBeenCalledWith(
-        -1,
-        expect.objectContaining({ id: 99 }),
+        expect.any(String),
+        expect.objectContaining({ id: testMessageId(99) }),
       );
     });
   });
@@ -166,13 +166,13 @@ describe("useChatPageSendMessage", () => {
           stream: "engineering",
           streamId: 5,
           subject: "general",
-          local_id: "-1",
+          local_id: expect.any(String),
         }),
       );
-      expect(params.removeMessage).toHaveBeenCalledWith(-3);
-      expect(params.removeMessage).toHaveBeenCalledWith(-1);
+      expect(params.removeMessage).toHaveBeenCalledWith(testMessageId(-3));
+      expect(params.removeMessage).toHaveBeenCalledWith(expect.any(String));
       expect(params.appendMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ id: -1, delivery_status: "failed" }),
+        expect.objectContaining({ id: expect.any(String), delivery_status: "failed" }),
       );
     });
   });
@@ -187,11 +187,11 @@ describe("useChatPageSendMessage", () => {
     });
 
     await waitFor(() => {
-      expect(params.removeMessage).toHaveBeenCalledWith(-3);
-      expect(params.removeMessage).toHaveBeenCalledWith(-1);
+      expect(params.removeMessage).toHaveBeenCalledWith(testMessageId(-3));
+      expect(params.removeMessage).toHaveBeenCalledWith(expect.any(String));
       expect(params.setSendError).toHaveBeenCalledWith("network");
       expect(params.appendMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ id: -1, delivery_status: "failed" }),
+        expect.objectContaining({ id: expect.any(String), delivery_status: "failed" }),
       );
     });
   });

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Draft } from "~/entities/draft/draft.types";
+import { testMessageId } from "~/test/factories";
 import {
   reconcileCreatedDraftServerId,
   syncExistingDraftDeleteOnClear,
@@ -8,7 +9,7 @@ import {
 } from "./draft-chat-sync.lib";
 
 const EXISTING_DRAFT: Draft = {
-  id: 7,
+  id: testMessageId(7),
   type: "stream",
   to: [10],
   topic: "general",
@@ -24,7 +25,7 @@ describe("chat-page draft cleanup sync", () => {
 
     await syncExistingDraftUpdateOnCleanup({
       draft: EXISTING_DRAFT,
-      existingId: 7,
+      existingId: testMessageId(7),
       draftType: "stream",
       draftTo: [10],
       draftTopic: "general",
@@ -34,8 +35,8 @@ describe("chat-page draft cleanup sync", () => {
       updateDraftOnServer,
     });
 
-    expect(updateDraft).toHaveBeenCalledWith(7, { content: "Edited draft" });
-    expect(updateDraftOnServer).toHaveBeenCalledWith(7, {
+    expect(updateDraft).toHaveBeenCalledWith(testMessageId(7), { content: "Edited draft" });
+    expect(updateDraftOnServer).toHaveBeenCalledWith(testMessageId(7), {
       type: "stream",
       to: [10],
       topic: "general",
@@ -52,7 +53,7 @@ describe("chat-page draft cleanup sync", () => {
 
     await syncExistingDraftDeleteOnCleanup({
       draft: EXISTING_DRAFT,
-      existingId: 7,
+      existingId: testMessageId(7),
       draftType: "stream",
       draftTo: [10],
       draftTopic: "general",
@@ -63,7 +64,7 @@ describe("chat-page draft cleanup sync", () => {
     });
 
     expect(removeDraftForChat).toHaveBeenCalledWith("stream", [10], "general");
-    expect(deleteDraftOnServer).toHaveBeenCalledWith(7);
+    expect(deleteDraftOnServer).toHaveBeenCalledWith(testMessageId(7));
     expect(restoreDraft).toHaveBeenCalledWith(EXISTING_DRAFT);
     expect(setActiveDraftId).not.toHaveBeenCalled();
   });
@@ -76,7 +77,7 @@ describe("chat-page draft cleanup sync", () => {
 
     await syncExistingDraftDeleteOnClear({
       draft: EXISTING_DRAFT,
-      existingId: 7,
+      existingId: testMessageId(7),
       draftType: "stream",
       draftTo: [10],
       draftTopic: "general",
@@ -98,7 +99,7 @@ describe("chat-page draft cleanup sync", () => {
 
     await syncExistingDraftDeleteOnClear({
       draft: EXISTING_DRAFT,
-      existingId: 7,
+      existingId: testMessageId(7),
       draftType: "stream",
       draftTo: [10],
       draftTopic: "general",
@@ -124,7 +125,7 @@ describe("reconcileCreatedDraftServerId", () => {
     const deleteDraftOnServer = vi.fn().mockResolvedValue(true);
 
     await reconcileCreatedDraftServerId({
-      serverId: 101,
+      serverId: testMessageId(101),
       draftType: "stream",
       draftTo: [10],
       draftTopic: "general",
@@ -133,7 +134,7 @@ describe("reconcileCreatedDraftServerId", () => {
       deleteDraftOnServer,
     });
 
-    expect(linkDraftToServerId).toHaveBeenCalledWith("stream", [10], "general", 101);
+    expect(linkDraftToServerId).toHaveBeenCalledWith("stream", [10], "general", testMessageId(101));
     expect(deleteDraftOnServer).not.toHaveBeenCalled();
   });
 
@@ -143,7 +144,7 @@ describe("reconcileCreatedDraftServerId", () => {
     const deleteDraftOnServer = vi.fn().mockResolvedValue(true);
 
     await reconcileCreatedDraftServerId({
-      serverId: 202,
+      serverId: testMessageId(202),
       draftType: "private",
       draftTo: [42],
       draftTopic: "general",
@@ -152,20 +153,20 @@ describe("reconcileCreatedDraftServerId", () => {
       deleteDraftOnServer,
     });
 
-    expect(deleteDraftOnServer).toHaveBeenCalledWith(202);
+    expect(deleteDraftOnServer).toHaveBeenCalledWith(testMessageId(202));
     expect(linkDraftToServerId).not.toHaveBeenCalled();
   });
 
   it("deletes duplicate server draft when local draft is already linked to another id", async () => {
     const getDraftForChat = vi.fn().mockReturnValue({
       ...EXISTING_DRAFT,
-      id: 77,
+      id: testMessageId(77),
     });
     const linkDraftToServerId = vi.fn();
     const deleteDraftOnServer = vi.fn().mockResolvedValue(true);
 
     await reconcileCreatedDraftServerId({
-      serverId: 303,
+      serverId: testMessageId(303),
       draftType: "stream",
       draftTo: [10],
       draftTopic: "general",
@@ -174,20 +175,20 @@ describe("reconcileCreatedDraftServerId", () => {
       deleteDraftOnServer,
     });
 
-    expect(deleteDraftOnServer).toHaveBeenCalledWith(303);
+    expect(deleteDraftOnServer).toHaveBeenCalledWith(testMessageId(303));
     expect(linkDraftToServerId).not.toHaveBeenCalled();
   });
 
   it("does nothing when local draft is already linked to the same server id", async () => {
     const getDraftForChat = vi.fn().mockReturnValue({
       ...EXISTING_DRAFT,
-      id: 404,
+      id: testMessageId(404),
     });
     const linkDraftToServerId = vi.fn();
     const deleteDraftOnServer = vi.fn().mockResolvedValue(true);
 
     await reconcileCreatedDraftServerId({
-      serverId: 404,
+      serverId: testMessageId(404),
       draftType: "stream",
       draftTo: [10],
       draftTopic: "general",

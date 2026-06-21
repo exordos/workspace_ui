@@ -15,11 +15,15 @@ describe("buildMentionLocationFlags", () => {
 
   it("maps stream and topic mention ids from messageIdToLocation", () => {
     const flags = buildMentionLocationFlags(
-      new Set([1, 2, 99]),
+      new Set([
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000099",
+      ]),
       new Map([
-        [1, { type: "stream", stream_id: 5, topic: "alpha" }],
-        [2, { type: "stream", stream_id: 5, topic: "beta" }],
-        [99, { type: "dm", dmKey: "10,20" }],
+        ["00000000-0000-4000-8000-000000000001", { type: "stream", stream_id: 5, topic: "alpha" }],
+        ["00000000-0000-4000-8000-000000000002", { type: "stream", stream_id: 5, topic: "beta" }],
+        ["00000000-0000-4000-8000-000000000099", { type: "dm", dmKey: "10,20" }],
       ]),
     );
 

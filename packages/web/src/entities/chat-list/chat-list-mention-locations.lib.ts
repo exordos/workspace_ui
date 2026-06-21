@@ -3,6 +3,7 @@
  */
 import type { MockMessage, WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import type { MessageLocation } from "./chat-list.model.types";
@@ -26,8 +27,8 @@ export function buildTopicMentionKey(streamId: number, topic: string): string {
 }
 
 export function buildMentionLocationFlags(
-  mentionedUnreadMessageIds: ReadonlySet<number>,
-  messageIdToLocation: ReadonlyMap<number, MessageLocation>,
+  mentionedUnreadMessageIds: ReadonlySet<MessageId>,
+  messageIdToLocation: ReadonlyMap<MessageId, MessageLocation>,
 ): MentionLocationFlags {
   if (mentionedUnreadMessageIds.size === 0) {
     return EMPTY_MENTION_FLAGS;

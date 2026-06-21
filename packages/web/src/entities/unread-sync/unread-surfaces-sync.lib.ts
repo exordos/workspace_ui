@@ -101,7 +101,6 @@ function computeCurrentPersonalUnreadIndicator(): number {
   const chatList = useChatListStore.getState();
   const personalDmUnread = computeInstanceDmUnreadCount({
     dms: chatList.dms(),
-    currentUserId: chatList.currentUserId,
   });
   return hasPersonalUnreadIndicator(personalDmUnread, chatList.mentionsUnreadCount) ? 1 : 0;
 }

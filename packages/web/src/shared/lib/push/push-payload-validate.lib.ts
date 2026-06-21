@@ -3,6 +3,7 @@
  *
  * Keep logic in sync with `public/firebase-messaging-sw.js` (SW cannot import TS modules).
  */
+import { isMessageId } from "../message-id.lib";
 import type { PushMessagePayload } from "./types";
 
 export function resolvePushEventType(data: Record<string, string>): PushMessagePayload["event"] {
@@ -25,9 +26,8 @@ export function isValidPushEnvelopeData(data: Record<string, string>): boolean {
     return false;
   }
 
-  const messageId = Number(data.message_id);
   const senderId = Number(data.sender_id);
-  return Number.isFinite(messageId) && messageId > 0 && Number.isFinite(senderId) && senderId > 0;
+  return isMessageId(data.message_id) && Number.isFinite(senderId) && senderId > 0;
 }
 
 export function isValidPushMessagePayload(payload: PushMessagePayload): boolean {
@@ -38,5 +38,5 @@ export function isValidPushMessagePayload(payload: PushMessagePayload): boolean 
   if (msg == null) {
     return false;
   }
-  return msg.id > 0 && msg.sender_id > 0;
+  return isMessageId(msg.id) && msg.sender_id > 0;
 }

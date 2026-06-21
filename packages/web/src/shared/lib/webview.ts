@@ -122,7 +122,8 @@ export type NativeThemeMode = "light" | "dark" | "system";
 
 export interface NativeAuthMessage {
   type: "auth";
-  email: string;
+  /** Messenger login — may be a username or an email (IAM accepts both). */
+  login: string;
   apiKey: string;
   realm: string;
 }
@@ -211,7 +212,7 @@ function handleAuthMessage(msg: NativeMessage): void {
   }
 
   log.info("Auth credentials received from native");
-  authCallback({ login: msg.email, apiKey: msg.apiKey, realm: msg.realm });
+  authCallback({ login: msg.login, apiKey: msg.apiKey, realm: msg.realm });
 }
 
 // ---------------------------------------------------------------------------

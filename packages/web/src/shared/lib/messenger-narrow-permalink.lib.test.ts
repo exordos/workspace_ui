@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { testMessageId } from "~/test/factories";
 import {
   buildMessageFocusSearch,
   buildRouteFromMessengerNarrowPermalink,
@@ -16,36 +17,40 @@ describe("decodeWorkspaceHashComponent", () => {
 
 describe("parseMessengerNarrowPermalink", () => {
   it("parses DM permalink with participant slug", () => {
-    expect(parseMessengerNarrowPermalink("#narrow/dm/23-dm/near/3373")).toEqual({
-      messageId: 3373,
+    const messageId = testMessageId(3373);
+    expect(parseMessengerNarrowPermalink(`#narrow/dm/23-dm/near/${messageId}`)).toEqual({
+      messageId,
       kind: "dm",
       dmParticipantIds: [23],
     });
   });
 
   it("parses multi-user DM permalink", () => {
-    expect(parseMessengerNarrowPermalink("#narrow/dm/7,42-dm/near/123")).toEqual({
-      messageId: 123,
+    const messageId = testMessageId(123);
+    expect(parseMessengerNarrowPermalink(`#narrow/dm/7,42-dm/near/${messageId}`)).toEqual({
+      messageId,
       kind: "dm",
       dmParticipantIds: [7, 42],
     });
   });
 
   it("parses group DM permalink", () => {
-    expect(parseMessengerNarrowPermalink("#narrow/dm/1,2,3-group/near/10")).toEqual({
-      messageId: 10,
+    const messageId = testMessageId(10);
+    expect(parseMessengerNarrowPermalink(`#narrow/dm/1,2,3-group/near/${messageId}`)).toEqual({
+      messageId,
       kind: "dm",
       dmParticipantIds: [1, 2, 3],
     });
   });
 
   it("parses stream permalink with topic and near id", () => {
+    const messageId = testMessageId(5743236);
     expect(
       parseMessengerNarrowPermalink(
-        "https://chat.example.com/#narrow/channel/33-InternalServicesDev/topic/Workspace/near/5743236",
+        `https://chat.example.com/#narrow/channel/33-InternalServicesDev/topic/Workspace/near/${messageId}`,
       ),
     ).toEqual({
-      messageId: 5743236,
+      messageId,
       kind: "stream",
       streamId: 33,
       topic: "Workspace",
@@ -66,7 +71,8 @@ describe("parseMessengerNarrowPermalink", () => {
 
 describe("buildRouteFromMessengerNarrowPermalink", () => {
   it("builds DM route with focused message query", () => {
-    const parsed = parseMessengerNarrowPermalink("#narrow/dm/23-dm/near/3373");
+    const messageId = testMessageId(3373);
+    const parsed = parseMessengerNarrowPermalink(`#narrow/dm/23-dm/near/${messageId}`);
     expect(parsed).not.toBeNull();
     expect(
       buildRouteFromMessengerNarrowPermalink({
@@ -74,12 +80,13 @@ describe("buildRouteFromMessengerNarrowPermalink", () => {
         currentUserId: 7,
         resolveStreamName: () => undefined,
       }),
-    ).toBe("/dm/23?msg=3373");
+    ).toBe(`/dm/23?msg=${messageId}`);
   });
 
   it("builds stream route with focused message query", () => {
+    const messageId = testMessageId(15);
     const parsed = parseMessengerNarrowPermalink(
-      "https://chat.example.com/#narrow/channel/10-Engineering/topic/Bugs/near/15",
+      `https://chat.example.com/#narrow/channel/10-Engineering/topic/Bugs/near/${messageId}`,
     );
     expect(parsed).not.toBeNull();
     expect(
@@ -88,13 +95,13 @@ describe("buildRouteFromMessengerNarrowPermalink", () => {
         currentUserId: 7,
         resolveStreamName: (streamId) => (streamId === 10 ? "Engineering" : undefined),
       }),
-    ).toBe("/stream/10-engineering/topic/Bugs?msg=15");
+    ).toBe(`/stream/10-engineering/topic/Bugs?msg=${messageId}`);
   });
 });
 
 describe("isSameChatAsNarrowPermalink", () => {
   it("returns true for matching DM conversation", () => {
-    const parsed = parseMessengerNarrowPermalink("#narrow/dm/42-dm/near/99");
+    const parsed = parseMessengerNarrowPermalink(`#narrow/dm/42-dm/near/${testMessageId(99)}`);
     expect(parsed).not.toBeNull();
     expect(
       isSameChatAsNarrowPermalink({
@@ -111,7 +118,7 @@ describe("isSameChatAsNarrowPermalink", () => {
 
   it("returns true for matching stream topic", () => {
     const parsed = parseMessengerNarrowPermalink(
-      "#narrow/channel/10-Engineering/topic/Bugs/near/15",
+      `#narrow/channel/10-Engineering/topic/Bugs/near/${testMessageId(15)}`,
     );
     expect(parsed).not.toBeNull();
     expect(
@@ -129,7 +136,7 @@ describe("isSameChatAsNarrowPermalink", () => {
 
   it("returns false for different topic in same stream", () => {
     const parsed = parseMessengerNarrowPermalink(
-      "#narrow/channel/10-Engineering/topic/Bugs/near/15",
+      `#narrow/channel/10-Engineering/topic/Bugs/near/${testMessageId(15)}`,
     );
     expect(parsed).not.toBeNull();
     expect(
@@ -166,10 +173,14 @@ describe("isSameRealmAsPermalink", () => {
 
 describe("buildMessageFocusSearch", () => {
   it("sets msg while preserving other query params", () => {
-    expect(buildMessageFocusSearch("?forward=44&msg=10", 3373)).toBe("?forward=44&msg=3373");
+    const messageId = testMessageId(3373);
+    expect(buildMessageFocusSearch("?forward=44&msg=10", messageId)).toBe(
+      `?forward=44&msg=${messageId}`,
+    );
   });
 
   it("adds msg to empty search", () => {
-    expect(buildMessageFocusSearch("", 3373)).toBe("?msg=3373");
+    const messageId = testMessageId(3373);
+    expect(buildMessageFocusSearch("", messageId)).toBe(`?msg=${messageId}`);
   });
 });

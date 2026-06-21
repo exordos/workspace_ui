@@ -1,5 +1,7 @@
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { chatKeyFromRawMessage } from "~/shared/lib/message-cache-keys.lib";
+import { isMessageId } from "~/shared/lib/message-id.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import {
   buildNotificationAggregateTag,
@@ -13,7 +15,7 @@ export { buildNotificationAggregateTag } from "./layout-notification-tag.lib";
 export interface NotificationAggregateSnapshot {
   tag: string;
   count: number;
-  lastMessageId: number;
+  lastMessageId: MessageId;
   latestBody: string;
   latestClickRoute?: string;
   titleContext: NotificationTitleContext;
@@ -26,7 +28,7 @@ interface NotificationAggregateMessageState {
 }
 
 interface NotificationAggregateEntry {
-  messages: Map<number, NotificationAggregateMessageState>;
+  messages: Map<MessageId, NotificationAggregateMessageState>;
 }
 
 const aggregatesByTag = new Map<string, NotificationAggregateEntry>();
@@ -59,17 +61,15 @@ function buildSnapshot(
   tag: string,
   entry: NotificationAggregateEntry,
 ): NotificationAggregateSnapshot | null {
-  let lastMessageId = 0;
+  let lastMessageId: MessageId | null = null;
   let lastState: NotificationAggregateMessageState | null = null;
 
   for (const [messageId, state] of entry.messages) {
-    if (messageId > lastMessageId) {
-      lastMessageId = messageId;
-      lastState = state;
-    }
+    lastMessageId = messageId;
+    lastState = state;
   }
 
-  if (lastState == null || lastMessageId <= 0) {
+  if (lastState == null || lastMessageId == null) {
     return null;
   }
 
@@ -92,7 +92,7 @@ export function upsertNotificationAggregate(input: {
   titleContext: NotificationTitleContext;
 }): NotificationAggregateSnapshot | null {
   const { message, currentUserId, currentInstanceId, body, clickRoute, titleContext } = input;
-  if (!Number.isInteger(message.id) || message.id <= 0) {
+  if (!isMessageId(message.id)) {
     return null;
   }
 
@@ -113,7 +113,7 @@ export function upsertNotificationAggregate(input: {
   }
 
   const entry = aggregatesByTag.get(tag) ?? {
-    messages: new Map<number, NotificationAggregateMessageState>(),
+    messages: new Map<MessageId, NotificationAggregateMessageState>(),
   };
   entry.messages.set(message.id, { body, clickRoute, titleContext });
   aggregatesByTag.set(tag, entry);
@@ -123,19 +123,19 @@ export function upsertNotificationAggregate(input: {
 }
 
 export function consumeReadMessagesFromNotificationAggregates(
-  messageIds: number[],
+  messageIds: MessageId[],
   currentInstanceId: string | null,
 ): {
   closedTags: string[];
   updatedSnapshots: NotificationAggregateSnapshot[];
-  untrackedMessageIds: number[];
+  untrackedMessageIds: MessageId[];
 } {
-  const uniqueValidIds = new Set<number>();
+  const uniqueValidIds = new Set<MessageId>();
   const affectedTags = new Set<string>();
-  const untrackedMessageIds: number[] = [];
+  const untrackedMessageIds: MessageId[] = [];
 
   for (const messageId of messageIds) {
-    if (!Number.isInteger(messageId) || messageId <= 0) {
+    if (!isMessageId(messageId)) {
       continue;
     }
     uniqueValidIds.add(messageId);

@@ -7,6 +7,7 @@ import type {
   WorkspaceRawMessage,
 } from "~/shared/api/messenger.types";
 import { upsertDmIndexFromMessages } from "~/shared/lib/dm-index";
+import { testMessageId } from "~/test/factories";
 import {
   collectLastMessageIdsFromRecentPrivateConversations,
   hydrateDmSidebarPreviewsFromRecentConversations,
@@ -31,6 +32,9 @@ vi.mock("~/shared/lib/dm-index", async (importOriginal) => {
 
 const fetchMessagesByIdsMock = vi.mocked(fetchMessagesByIds);
 const upsertDmIndexFromMessagesMock = vi.mocked(upsertDmIndexFromMessages);
+const MESSAGE_ID_100 = testMessageId(100);
+const MESSAGE_ID_200 = testMessageId(200);
+const MESSAGE_ID_555 = testMessageId(555);
 
 function resetInstancesStore(): void {
   useInstancesStore.setState({
@@ -51,9 +55,14 @@ function seedActiveInstance(realm = "https://messenger.test"): string {
   }).id;
 }
 
-function dmMessage(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessage {
+type WorkspaceRawMessageOverrides = Partial<Omit<WorkspaceRawMessage, "id">> & {
+  id?: WorkspaceRawMessage["id"] | number;
+};
+
+function dmMessage(overrides: WorkspaceRawMessageOverrides = {}): WorkspaceRawMessage {
+  const { id, ...rest } = overrides;
   return {
-    id: 100,
+    id: testMessageId(id ?? 100),
     sender_id: 20,
     sender_full_name: "DM Sender",
     content: "hello",
@@ -64,21 +73,26 @@ function dmMessage(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMe
       { id: 20, full_name: "Other User" },
     ],
     flags: [],
-    ...overrides,
+    ...rest,
   };
 }
 
 describe("collectLastMessageIdsFromRecentPrivateConversations", () => {
   it("returns unique positive max_message_id values", () => {
     const conversations: Record<string, MessengerRecentPrivateConversation> = {
-      a: { user_ids: [7, 20], max_message_id: 100, unread_message_ids: [] },
-      b: { user_ids: [7, 30], max_message_id: 100, unread_message_ids: [1] },
-      c: { user_ids: [7, 40], max_message_id: 200, unread_message_ids: [] },
+      a: { user_ids: [7, 20], max_message_id: MESSAGE_ID_100, unread_message_ids: [] },
+      b: {
+        user_ids: [7, 30],
+        max_message_id: MESSAGE_ID_100,
+        unread_message_ids: [testMessageId(1)],
+      },
+      c: { user_ids: [7, 40], max_message_id: MESSAGE_ID_200, unread_message_ids: [] },
     };
 
-    expect(
-      collectLastMessageIdsFromRecentPrivateConversations(conversations).sort((a, b) => a - b),
-    ).toEqual([100, 200]);
+    expect(collectLastMessageIdsFromRecentPrivateConversations(conversations).sort()).toEqual([
+      MESSAGE_ID_100,
+      MESSAGE_ID_200,
+    ]);
   });
 
   it("collects lastMessageId from metadata rows when register max_message_id is missing", () => {
@@ -87,15 +101,15 @@ describe("collectLastMessageIdsFromRecentPrivateConversations", () => {
         {
           a: { user_ids: [7, 20], max_message_id: null, unread_message_ids: [] },
         },
-        [{ userIds: [7, 20], lastMessageId: 555 }],
+        [{ userIds: [7, 20], lastMessageId: MESSAGE_ID_555 }],
       ),
-    ).toEqual([555]);
+    ).toEqual([MESSAGE_ID_555]);
   });
 
-  it("ignores null, zero, and missing conversations", () => {
+  it("ignores null, invalid, and missing conversations", () => {
     const conversations: Record<string, MessengerRecentPrivateConversation> = {
       a: { user_ids: [7, 20], max_message_id: null, unread_message_ids: [] },
-      b: { user_ids: [7, 30], max_message_id: 0, unread_message_ids: [] },
+      b: { user_ids: [7, 30], max_message_id: "not-a-message-id", unread_message_ids: [] },
     };
 
     expect(collectLastMessageIdsFromRecentPrivateConversations(conversations)).toEqual([]);
@@ -120,21 +134,21 @@ describe("hydrateDmSidebarPreviewsFromRecentConversations", () => {
   });
 
   it("applies fetched DM previews to chat list and DM index", async () => {
-    fetchMessagesByIdsMock.mockResolvedValue([dmMessage({ id: 555 })]);
+    fetchMessagesByIdsMock.mockResolvedValue([dmMessage({ id: MESSAGE_ID_555 })]);
 
     await hydrateDmSidebarPreviewsFromRecentConversations({
       conversations: {
-        a: { user_ids: [7, 20], max_message_id: 555, unread_message_ids: [] },
+        a: { user_ids: [7, 20], max_message_id: MESSAGE_ID_555, unread_message_ids: [] },
       },
       currentUserId: 7,
       instanceId: useInstancesStore.getState().currentInstanceId ?? undefined,
     });
 
-    expect(fetchMessagesByIdsMock).toHaveBeenCalledWith([555]);
+    expect(fetchMessagesByIdsMock).toHaveBeenCalledWith([MESSAGE_ID_555]);
     expect(useChatListStore.getState().dmsMap.size).toBe(1);
     expect(upsertDmIndexFromMessagesMock).toHaveBeenCalledWith(
       expect.any(String),
-      [expect.objectContaining({ id: 555 })],
+      [expect.objectContaining({ id: MESSAGE_ID_555 })],
       7,
     );
   });
@@ -150,7 +164,7 @@ describe("hydrateDmSidebarPreviewsFromRecentConversations", () => {
 
     const pending = hydrateDmSidebarPreviewsFromRecentConversations({
       conversations: {
-        a: { user_ids: [7, 20], max_message_id: 555, unread_message_ids: [] },
+        a: { user_ids: [7, 20], max_message_id: MESSAGE_ID_555, unread_message_ids: [] },
       },
       currentUserId: 7,
       instanceId: useInstancesStore.getState().currentInstanceId ?? undefined,
@@ -160,7 +174,7 @@ describe("hydrateDmSidebarPreviewsFromRecentConversations", () => {
     useInstancesStore.getState().setCurrentInstanceId(secondInstanceId);
     useChatListStore.getState().clear();
 
-    resolveFetch([dmMessage({ id: 555, content: "stale dm preview" })]);
+    resolveFetch([dmMessage({ id: MESSAGE_ID_555, content: "stale dm preview" })]);
     await pending;
 
     expect(useChatListStore.getState().dmsMap.size).toBe(0);

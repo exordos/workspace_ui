@@ -24,7 +24,6 @@ export interface LayoutAppShellProps {
   participantsCount: number;
   onlineCount: number;
   rightPanelUser: RightPanelUserInfo | undefined;
-  onSelectCommonGroup: (slug: string) => void;
   onOpenSettingsDrawer: () => void;
   onOpenAboutDrawer: () => void;
 }
@@ -43,7 +42,6 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
   participantsCount,
   onlineCount,
   rightPanelUser,
-  onSelectCommonGroup,
   onOpenSettingsDrawer,
   onOpenAboutDrawer,
 }) {
@@ -75,7 +73,6 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
             participantsCount={participantsCount}
             onlineCount={onlineCount}
             rightPanelUser={rightPanelUser}
-            onSelectCommonGroup={onSelectCommonGroup}
             onOpenSettingsDrawer={onOpenSettingsDrawer}
             onOpenAboutDrawer={onOpenAboutDrawer}
           />

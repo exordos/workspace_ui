@@ -28,7 +28,6 @@ describe("folder-sync-sidebar-chats-projection", () => {
           id: 20,
           name: "Bob",
           slug: "20-bob",
-          isGroup: false,
           userIds: [10, 20],
           lastMessage: "",
           time: "",

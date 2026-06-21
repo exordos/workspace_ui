@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { t } from "~/i18n/i18n";
 import type { MockMessage } from "~/shared/api/messenger.types";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { createMessage } from "~/test/factories";
 import { ChatPageMessageListSection } from "./chat-page-message-list-section.ui";
 
@@ -18,17 +19,17 @@ const baseProps = {
   currentUserId: 1,
   callbacks: {},
   selectionMode: false,
-  selectedMessageIds: new Set<number>(),
+  selectedMessageIds: new Set<MessageId>(),
   onLoadMore: noop,
   isLoadingMore: false,
   isLoadingNewer: false,
   onLoadNewer: noop,
   hasNewerMessages: false,
-  firstUnreadId: undefined as number | undefined,
+  firstUnreadId: undefined as MessageId | undefined,
   unreadCount: 0,
-  focusedMessageId: null as number | null | undefined,
-  onUnreadMessagesVisible: noop as (ids: number[]) => void,
-  onUnreadMessagesAtBottom: noop as (ids: number[]) => void,
+  focusedMessageId: null as MessageId | null | undefined,
+  onUnreadMessagesVisible: noop as (ids: MessageId[]) => void,
+  onUnreadMessagesAtBottom: noop as (ids: MessageId[]) => void,
   messagesLoadError: null as "initial" | "refresh" | null,
   onRetryMessagesLoad: noop,
   boundaryLoadFailed: false,

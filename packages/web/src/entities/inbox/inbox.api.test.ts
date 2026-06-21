@@ -8,7 +8,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchMessagesWithNarrowPage } from "~/shared/api/messenger-messages";
 import type { MockMessage } from "~/shared/api/messenger.types";
-import { createMessage } from "~/test/factories";
+import { createMessage, testMessageId } from "~/test/factories";
 import { fetchInboxEntries, fetchInboxEntriesWithSnapshot } from "./inbox.api";
 
 const upsertChatMessages = vi.hoisted(() => vi.fn());
@@ -103,7 +103,7 @@ describe("fetchInboxEntries", () => {
     const bugsEntry = entries.find((e) => e.topic === "bugs");
     expect(bugsEntry).toBeDefined();
     expect(bugsEntry!.unreadCount).toBe(2);
-    expect(bugsEntry!.messageIds).toEqual([1, 2]);
+    expect(bugsEntry!.messageIds).toEqual([testMessageId(1), testMessageId(2)]);
     expect(bugsEntry!.streamName).toBe("engineering");
   });
 
@@ -256,8 +256,8 @@ describe("fetchInboxEntries", () => {
         instanceId: "instance-1",
         chatKey: "stream:10:general",
         messages: expect.arrayContaining([
-          expect.objectContaining({ id: 1 }),
-          expect.objectContaining({ id: 2 }),
+          expect.objectContaining({ id: testMessageId(1) }),
+          expect.objectContaining({ id: testMessageId(2) }),
         ]),
       }),
     );
@@ -265,7 +265,7 @@ describe("fetchInboxEntries", () => {
       expect.objectContaining({
         instanceId: "instance-1",
         chatKey: "dm:7,42",
-        messages: expect.arrayContaining([expect.objectContaining({ id: 3 })]),
+        messages: expect.arrayContaining([expect.objectContaining({ id: testMessageId(3) })]),
       }),
     );
   });
@@ -330,10 +330,10 @@ describe("fetchInboxEntriesWithSnapshot", () => {
     expect(result.unreadMessages).toHaveLength(2);
     expect(result.unreadSnapshot.totalCount).toBe(2);
     expect(result.unreadSnapshot.streams).toEqual([
-      { streamId: 10, topic: "general", unreadMessageIds: [1] },
+      { streamId: 10, topic: "general", unreadMessageIds: [testMessageId(1)] },
     ]);
     expect(result.unreadSnapshot.dms).toEqual([
-      { userIds: [7, 42], unreadMessageIds: [2], isGroup: false },
+      { userIds: [7, 42], unreadMessageIds: [testMessageId(2)] },
     ]);
     expect(result.unreadSnapshotComplete).toBe(true);
   });
@@ -362,7 +362,7 @@ describe("fetchInboxEntriesWithSnapshot", () => {
 
     const result = await fetchInboxEntriesWithSnapshot(7);
 
-    expect(result.unreadSnapshot.mentionMessageIds).toEqual([1]);
+    expect(result.unreadSnapshot.mentionMessageIds).toEqual([testMessageId(1)]);
   });
 
   it("marks unread snapshot incomplete when the unread page is capped", async () => {

@@ -22,7 +22,11 @@ const STREAM_ENTRY_1: InboxEntry = {
   dmSlug: null,
   unreadCount: 3,
   lastMessageTimestamp: 1710000300,
-  messageIds: [101, 102, 103],
+  messageIds: [
+    "00000000-0000-4000-8000-000000000101",
+    "00000000-0000-4000-8000-000000000102",
+    "00000000-0000-4000-8000-000000000103",
+  ],
 };
 
 const STREAM_ENTRY_2: InboxEntry = {
@@ -35,7 +39,7 @@ const STREAM_ENTRY_2: InboxEntry = {
   dmSlug: null,
   unreadCount: 1,
   lastMessageTimestamp: 1710000100,
-  messageIds: [201],
+  messageIds: ["00000000-0000-4000-8000-000000000201"],
 };
 
 const DM_ENTRY: InboxEntry = {
@@ -48,7 +52,13 @@ const DM_ENTRY: InboxEntry = {
   dmSlug: "42",
   unreadCount: 5,
   lastMessageTimestamp: 1710000500,
-  messageIds: [301, 302, 303, 304, 305],
+  messageIds: [
+    "00000000-0000-4000-8000-000000000301",
+    "00000000-0000-4000-8000-000000000302",
+    "00000000-0000-4000-8000-000000000303",
+    "00000000-0000-4000-8000-000000000304",
+    "00000000-0000-4000-8000-000000000305",
+  ],
 };
 
 // ---------------------------------------------------------------------------
@@ -89,7 +99,13 @@ describe("useInboxStore", () => {
 
   it("markAsRead removes entries whose messageIds are fully covered", () => {
     useInboxStore.getState().setEntries([STREAM_ENTRY_1, DM_ENTRY]);
-    useInboxStore.getState().markAsRead([101, 102, 103]);
+    useInboxStore
+      .getState()
+      .markAsRead([
+        "00000000-0000-4000-8000-000000000101",
+        "00000000-0000-4000-8000-000000000102",
+        "00000000-0000-4000-8000-000000000103",
+      ]);
     const entries = useInboxStore.getState().entries;
     expect(entries).toHaveLength(1);
     expect(entries[0]!.key).toBe("dm:42");
@@ -97,7 +113,9 @@ describe("useInboxStore", () => {
 
   it("markAsRead decrements unreadCount for partially read entries", () => {
     useInboxStore.getState().setEntries([DM_ENTRY]);
-    useInboxStore.getState().markAsRead([301, 302]);
+    useInboxStore
+      .getState()
+      .markAsRead(["00000000-0000-4000-8000-000000000301", "00000000-0000-4000-8000-000000000302"]);
     const entry = useInboxStore.getState().entries[0]!;
     expect(entry.unreadCount).toBe(3);
     expect(entry.messageIds).toHaveLength(3);

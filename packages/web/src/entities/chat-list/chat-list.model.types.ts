@@ -6,6 +6,7 @@ import type {
   WorkspaceRawMessage,
 } from "~/shared/api/messenger.types";
 import type { ChatListSnapshotSerialized } from "~/shared/lib/chat-list-snapshot-serialize.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import type {
   SidebarChat,
@@ -33,7 +34,7 @@ export interface ChatListDmMetadataRow {
   userUuid?: string;
   name?: string;
   lastActivityTs?: number;
-  lastMessageId?: number | null;
+  lastMessageId?: MessageId | null;
   unreadCount?: number;
 }
 
@@ -42,7 +43,7 @@ export type MessageLocation =
   | { type: "dm"; dmKey: string };
 
 export interface ChatListPreviewSourceMessage {
-  id: number;
+  id: MessageId;
   stream_id?: number | null;
   display_recipient?:
     | string
@@ -70,9 +71,9 @@ export interface ChatListState {
   streamMetadataHydrated: boolean;
   currentUserId: UserId | null;
   lastAppliedMessages: WorkspaceRawMessage[] | null;
-  messageIdToLocation: Map<number, MessageLocation>;
+  messageIdToLocation: Map<MessageId, MessageLocation>;
   /** Inverted index streamId+topic → message ids; patched incrementally on location changes. */
-  streamTopicMessageIds: Map<string, number[]>;
+  streamTopicMessageIds: Map<string, MessageId[]>;
   /** Sum of stream topic unread counts; updated incrementally or on full rebuild. */
   sidebarStreamsUnread: number;
   /** Sum of DM unread counts; updated incrementally or on full rebuild. */
@@ -80,7 +81,7 @@ export interface ChatListState {
   /** Unread @mentions tracked for sidebar badge and personal indicator. */
   mentionsUnreadCount: number;
   /** Message ids counted in `mentionsUnreadCount` (in-memory; rebuilt from API/register). */
-  mentionedUnreadMessageIds: Set<number>;
+  mentionedUnreadMessageIds: Set<MessageId>;
   /** True when `mentionsUnreadCount` hit page cap (more unread mentions may exist server-side). */
   mentionsUnreadCapped: boolean;
   /** After authoritative GET is:mentioned+is:unread sync, register mention ids are not applied. */
@@ -108,8 +109,8 @@ export interface ChatListState {
     options?: { capped?: boolean },
   ) => void;
   /** Register fallback for mention ids until first API sync. */
-  reconcileMentionsFromRegisterIds: (messageIds: readonly number[]) => void;
-  decrementMentionsForReadMessages: (messageIds: readonly number[]) => void;
+  reconcileMentionsFromRegisterIds: (messageIds: readonly MessageId[]) => void;
+  decrementMentionsForReadMessages: (messageIds: readonly MessageId[]) => void;
   addMessage: (message: WorkspaceRawMessage, options?: { suppressUnreadBump?: boolean }) => void;
   addMessages: (messages: WorkspaceRawMessage[]) => void;
   /**
@@ -138,16 +139,16 @@ export interface ChatListState {
     streamId: number;
     oldTopic: string;
     newTopic: string;
-    messageIds?: number[];
-    anchorMessageId?: number;
+    messageIds?: MessageId[];
+    anchorMessageId?: MessageId;
   }) => void;
   moveTopicToStream: (params: {
     sourceStreamId: number;
     targetStreamId: number;
     oldTopic: string;
     newTopic: string;
-    messageIds?: number[];
-    anchorMessageId?: number;
+    messageIds?: MessageId[];
+    anchorMessageId?: MessageId;
   }) => void;
   removeStreamTopic: (streamId: number, topic: string) => void;
   removeStream: (streamId: number) => void;
@@ -156,12 +157,12 @@ export interface ChatListState {
   /** Recomputes sidebar unread totals, mentions count, and stream-topic index from current maps. */
   syncDerivedScalars: () => void;
   clear: () => void;
-  decrementUnreadForMessages: (messageIds: number[]) => void;
+  decrementUnreadForMessages: (messageIds: MessageId[]) => void;
   decrementUnreadForTopic: (streamId: number, topic: string, count: number) => void;
   decrementUnreadForDmKey: (dmKey: string, count: number) => void;
-  incrementUnreadForMessages: (messageIds: number[]) => void;
+  incrementUnreadForMessages: (messageIds: MessageId[]) => void;
   handleDeleteMessages: (
-    messageIds: number[],
+    messageIds: MessageId[],
     options?: ChatListHandleDeleteMessagesOptions,
   ) => void;
   streams: () => StreamWithLast[];

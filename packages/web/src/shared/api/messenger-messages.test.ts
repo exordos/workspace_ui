@@ -7,6 +7,7 @@ import {
   clearAllMessengerEventQueueIds,
   setMessengerEventQueueId,
 } from "~/shared/lib/messenger-event-queue-registry.lib";
+import { testMessageId } from "~/test/factories";
 import {
   addReaction,
   deleteMessage,
@@ -50,7 +51,7 @@ function mockMessagesResponse(data: Record<string, unknown>): void {
 describe("rawMessageToMockMessage", () => {
   it("maps a stream message", () => {
     const result = rawMessageToMockMessage({
-      id: 1,
+      id: "00000000-0000-4000-8000-000000000001",
       sender_id: 42,
       sender_full_name: "Alice",
       content: "<p>hello</p>",
@@ -64,7 +65,7 @@ describe("rawMessageToMockMessage", () => {
     });
 
     expect(result).toEqual({
-      id: 1,
+      id: "00000000-0000-4000-8000-000000000001",
       sender_id: 42,
       sender_full_name: "Alice",
       stream_id: 10,
@@ -80,7 +81,7 @@ describe("rawMessageToMockMessage", () => {
 
   it("maps a private message with null stream_id", () => {
     const result = rawMessageToMockMessage({
-      id: 2,
+      id: "00000000-0000-4000-8000-000000000002",
       sender_id: 5,
       content: "hi",
       timestamp: 1710000100,
@@ -102,7 +103,7 @@ describe("rawMessageToMockMessage", () => {
 
   it("defaults missing fields", () => {
     const result = rawMessageToMockMessage({
-      id: 3,
+      id: "00000000-0000-4000-8000-000000000003",
       sender_id: 1,
       content: "text",
       timestamp: 0,
@@ -115,7 +116,7 @@ describe("rawMessageToMockMessage", () => {
 
   it("maps markdown_source when present", () => {
     const result = rawMessageToMockMessage({
-      id: 1,
+      id: "00000000-0000-4000-8000-000000000001",
       sender_id: 1,
       content: "<p>x</p>",
       timestamp: 0,
@@ -133,7 +134,7 @@ describe("fetchRecentMessages", () => {
         result: "success",
         messages: [
           {
-            id: 1,
+            id: "00000000-0000-4000-8000-000000000001",
             sender_id: 42,
             content: "hi",
             timestamp: 100,
@@ -146,7 +147,7 @@ describe("fetchRecentMessages", () => {
     });
     const result = await fetchRecentMessages();
     expect(result).toHaveLength(1);
-    expect(result[0]!.id).toBe(1);
+    expect(result[0]!.id).toBe(testMessageId(1));
     expect(mockRefreshMessengerApiBase).toHaveBeenCalled();
     expect(mockMessengerApi.get).toHaveBeenCalledWith(
       "/messages",
@@ -195,19 +196,26 @@ describe("fetchMessagesBeforeAnchor", () => {
       status: 200,
       data: {
         result: "success",
-        messages: [{ id: 50, sender_id: 1, content: "older", timestamp: 10 }],
+        messages: [
+          {
+            id: "00000000-0000-4000-8000-000000000050",
+            sender_id: 1,
+            content: "older",
+            timestamp: 10,
+          },
+        ],
       },
       raw: { statusText: "OK" },
     });
 
-    const result = await fetchMessagesBeforeAnchor(100);
+    const result = await fetchMessagesBeforeAnchor("00000000-0000-4000-8000-000000000100");
 
     expect(result).toHaveLength(1);
-    expect(result[0]!.id).toBe(50);
+    expect(result[0]!.id).toBe(testMessageId(50));
     expect(mockMessengerApi.get).toHaveBeenCalledWith(
       "/messages",
       {
-        anchor: "100",
+        anchor: testMessageId(100),
         include_anchor: "false",
         num_before: "5000",
         num_after: "0",
@@ -227,7 +235,9 @@ describe("fetchMessagesBeforeAnchor", () => {
       raw: { statusText: "Server Error" },
     });
 
-    await expect(fetchMessagesBeforeAnchor(100)).resolves.toEqual([]);
+    await expect(
+      fetchMessagesBeforeAnchor("00000000-0000-4000-8000-000000000100"),
+    ).resolves.toEqual([]);
   });
 });
 
@@ -238,19 +248,26 @@ describe("fetchMessagesAfterAnchor", () => {
       status: 200,
       data: {
         result: "success",
-        messages: [{ id: 101, sender_id: 1, content: "new", timestamp: 11 }],
+        messages: [
+          {
+            id: "00000000-0000-4000-8000-000000000101",
+            sender_id: 1,
+            content: "new",
+            timestamp: 11,
+          },
+        ],
       },
       raw: { statusText: "OK" },
     });
 
-    const result = await fetchMessagesAfterAnchor(100);
+    const result = await fetchMessagesAfterAnchor("00000000-0000-4000-8000-000000000100");
 
     expect(result).toHaveLength(1);
-    expect(result[0]!.id).toBe(101);
+    expect(result[0]!.id).toBe(testMessageId(101));
     expect(mockMessengerApi.get).toHaveBeenCalledWith(
       "/messages",
       {
-        anchor: "100",
+        anchor: testMessageId(100),
         include_anchor: "false",
         num_before: "0",
         num_after: "5000",
@@ -264,7 +281,9 @@ describe("fetchMessagesAfterAnchor", () => {
 
   it("returns empty array on transport error", async () => {
     mockMessengerApi.get.mockRejectedValue(new Error("boom"));
-    await expect(fetchMessagesAfterAnchor(100)).resolves.toEqual([]);
+    await expect(fetchMessagesAfterAnchor("00000000-0000-4000-8000-000000000100")).resolves.toEqual(
+      [],
+    );
   });
 });
 
@@ -279,7 +298,9 @@ describe("fetchActivityMessages", () => {
       status: 200,
       data: {
         result: "success",
-        messages: [{ id: 1, sender_id: 1, content: "x", timestamp: 1 }],
+        messages: [
+          { id: "00000000-0000-4000-8000-000000000001", sender_id: 1, content: "x", timestamp: 1 },
+        ],
       },
       raw: { statusText: "OK" },
     });
@@ -318,7 +339,9 @@ describe("fetchActivityMessagesPage", () => {
       status: 200,
       data: {
         result: "success",
-        messages: [{ id: 1, sender_id: 1, content: "x", timestamp: 1 }],
+        messages: [
+          { id: "00000000-0000-4000-8000-000000000001", sender_id: 1, content: "x", timestamp: 1 },
+        ],
         found_oldest: true,
       },
       raw: { statusText: "OK" },
@@ -330,8 +353,8 @@ describe("fetchActivityMessagesPage", () => {
     expect(result.messages).toHaveLength(1);
   });
 
-  it("fails fast when numeric anchor is invalid", async () => {
-    await expect(fetchActivityMessagesPage("mentions", null, 0)).rejects.toThrow(
+  it("fails fast when message anchor is invalid", async () => {
+    await expect(fetchActivityMessagesPage("mentions", null, "not-a-message-id")).rejects.toThrow(
       /fetchActivityMessagesPage\.anchor/i,
     );
     expect(mockMessengerApi.get).not.toHaveBeenCalled();
@@ -358,7 +381,9 @@ describe("fetchActivityMessagesPage", () => {
       status: 200,
       data: {
         result: "success",
-        messages: [{ id: 1, sender_id: 42, content: "x", timestamp: 1 }],
+        messages: [
+          { id: "00000000-0000-4000-8000-000000000001", sender_id: 42, content: "x", timestamp: 1 },
+        ],
         found_oldest: true,
       },
       raw: { statusText: "OK" },
@@ -402,7 +427,7 @@ describe("fetchMessagesByIds", () => {
         result: "success",
         messages: [
           {
-            id: 501,
+            id: "00000000-0000-4000-8000-000000000501",
             sender_id: 42,
             sender_full_name: "Alice",
             content: "dm preview",
@@ -419,14 +444,15 @@ describe("fetchMessagesByIds", () => {
       raw: { statusText: "OK" },
     });
 
-    const result = await fetchMessagesByIds([501, 501, 0, -1]);
+    const messageId = "00000000-0000-4000-8000-000000000501";
+    const result = await fetchMessagesByIds([messageId, messageId, "not-a-message-id"]);
 
     expect(result).toHaveLength(1);
-    expect(result[0]?.id).toBe(501);
+    expect(result[0]?.id).toBe(messageId);
     expect(mockMessengerApi.get).toHaveBeenCalledWith(
       "/messages",
       {
-        message_ids: "[501]",
+        message_ids: JSON.stringify([messageId]),
         allow_empty_topic_name: "true",
         client_gravatar: "true",
         apply_markdown: "false",
@@ -449,7 +475,7 @@ describe("fetchMessagesByIds", () => {
         data: {
           result: "success",
           message: {
-            id: 777,
+            id: "00000000-0000-4000-8000-000000000777",
             sender_id: 42,
             sender_full_name: "Alice",
             content: "fallback dm",
@@ -465,14 +491,14 @@ describe("fetchMessagesByIds", () => {
         raw: { statusText: "OK" },
       });
 
-    const result = await fetchMessagesByIds([777]);
+    const result = await fetchMessagesByIds(["00000000-0000-4000-8000-000000000777"]);
 
     expect(result).toHaveLength(1);
     expect(result[0]?.content).toBe("fallback dm");
     expect(mockMessengerApi.get).toHaveBeenCalledTimes(2);
     expect(mockMessengerApi.get).toHaveBeenNthCalledWith(
       2,
-      "/messages/777",
+      `/messages/${testMessageId(777)}`,
       {
         allow_empty_topic_name: "true",
         apply_markdown: "false",
@@ -488,7 +514,7 @@ describe("fetchMessageById", () => {
       ok: true,
       status: 200,
       data: {
-        id: 100,
+        id: "00000000-0000-4000-8000-000000000100",
         sender_id: 42,
         sender_full_name: "Alice",
         content: "<p>hello</p>",
@@ -502,13 +528,13 @@ describe("fetchMessageById", () => {
       raw: { statusText: "OK" },
     });
 
-    const result = await fetchMessageById(100);
+    const result = await fetchMessageById("00000000-0000-4000-8000-000000000100");
 
-    expect(result?.id).toBe(100);
+    expect(result?.id).toBe(testMessageId(100));
     expect(result?.channel).toBe("general");
     expect(result?.markdown_source).toBe("hello");
     expect(mockMessengerApi.get).toHaveBeenCalledWith(
-      "/messages/100",
+      `/messages/${testMessageId(100)}`,
       {
         allow_empty_topic_name: "true",
         apply_markdown: "false",
@@ -523,7 +549,7 @@ describe("fetchMessages", () => {
     mockMessagesResponse({
       messages: [
         {
-          id: 10,
+          id: "00000000-0000-4000-8000-000000000010",
           sender_id: 1,
           content: "test",
           timestamp: 100,
@@ -535,7 +561,7 @@ describe("fetchMessages", () => {
 
     const result = await fetchMessages("general", "topic1");
     expect(result).toHaveLength(1);
-    expect(result[0]!.id).toBe(10);
+    expect(result[0]!.id).toBe(testMessageId(10));
   });
 
   it("uses literal general topic narrow operand for literal general topic route", async () => {
@@ -648,7 +674,7 @@ describe("fetchMessagesWithNarrow", () => {
     mockMessagesResponse({
       messages: [
         {
-          id: 1,
+          id: "00000000-0000-4000-8000-000000000001",
           sender_id: 42,
           content: '<img src="x" onerror="alert(1)">',
           timestamp: 1710000000,
@@ -678,12 +704,14 @@ describe("fetchMessagesWithNarrow", () => {
   it("throws for unsupported anchor string", async () => {
     await expect(
       fetchMessagesWithNarrow([{ operator: "is", operand: "unread" }], "invalid_anchor"),
-    ).rejects.toThrow(/anchor must be one of/i);
+    ).rejects.toThrow(/Invalid messageId/i);
     expect(mockMessengerApi.get).not.toHaveBeenCalled();
   });
 
-  it("throws for invalid numeric anchor", async () => {
-    await expect(fetchMessagesWithNarrow([], 0)).rejects.toThrow(/Invalid messageId/);
+  it("throws for invalid message anchor", async () => {
+    await expect(fetchMessagesWithNarrow([], "not-a-message-id")).rejects.toThrow(
+      /Invalid messageId/,
+    );
     expect(mockMessengerApi.get).not.toHaveBeenCalled();
   });
 
@@ -703,7 +731,16 @@ describe("fetchMessagesWithNarrow", () => {
 
   it("fetchMessagesWithNarrowPage returns foundOldest and foundNewest from server", async () => {
     mockMessagesResponse({
-      messages: [{ id: 1, sender_id: 1, content: "x", timestamp: 1, type: "stream", stream_id: 1 }],
+      messages: [
+        {
+          id: "00000000-0000-4000-8000-000000000001",
+          sender_id: 1,
+          content: "x",
+          timestamp: 1,
+          type: "stream",
+          stream_id: 1,
+        },
+      ],
       found_oldest: true,
       found_newest: true,
     });
@@ -787,7 +824,7 @@ describe("fetchAllMessagesPage", () => {
         result: "success",
         messages: [
           {
-            id: 1,
+            id: "00000000-0000-4000-8000-000000000001",
             sender_id: 42,
             content: 'hi <img src="x" onerror="alert(1)">',
             timestamp: 1710000000,
@@ -811,12 +848,12 @@ describe("fetchAllMessagesPage", () => {
   });
 
   it("throws for unsupported anchor string", async () => {
-    await expect(fetchAllMessagesPage("invalid_anchor")).rejects.toThrow(/anchor must be one of/i);
+    await expect(fetchAllMessagesPage("invalid_anchor")).rejects.toThrow(/Invalid messageId/i);
     expect(mockMessengerApi.get).not.toHaveBeenCalled();
   });
 
-  it("throws for invalid numeric anchor", async () => {
-    await expect(fetchAllMessagesPage(0)).rejects.toThrow(/Invalid messageId/);
+  it("throws for invalid message anchor", async () => {
+    await expect(fetchAllMessagesPage("not-a-message-id")).rejects.toThrow(/Invalid messageId/);
     expect(mockMessengerApi.get).not.toHaveBeenCalled();
   });
 
@@ -836,7 +873,14 @@ describe("fetchDmMessages", () => {
   it("returns DM messages for a single user", async () => {
     mockMessagesResponse({
       messages: [
-        { id: 1, sender_id: 42, content: "dm", timestamp: 100, type: "private", stream_id: null },
+        {
+          id: "00000000-0000-4000-8000-000000000001",
+          sender_id: 42,
+          content: "dm",
+          timestamp: 100,
+          type: "private",
+          stream_id: null,
+        },
       ],
     });
     const result = await fetchDmMessages(42);
@@ -856,12 +900,6 @@ describe("fetchDmMessages", () => {
     );
   });
 
-  it("returns empty for group DM offset IDs (>=2_000_000)", async () => {
-    const result = await fetchDmMessages([2_000_001]);
-    expect(result).toEqual([]);
-    expect(mockMessengerApi.get).not.toHaveBeenCalled();
-  });
-
   it("returns empty on exception", async () => {
     mockMessengerApi.get.mockRejectedValue(new Error("fail"));
     expect(await fetchDmMessages(42)).toEqual([]);
@@ -871,7 +909,7 @@ describe("fetchDmMessages", () => {
     mockMessagesResponse({
       messages: [
         {
-          id: 1,
+          id: "00000000-0000-4000-8000-000000000001",
           sender_id: 42,
           content: "<p>dm</p>",
           timestamp: 100,
@@ -901,13 +939,13 @@ describe("sendMessage", () => {
     mockMessengerApi.post.mockResolvedValue({
       ok: true,
       status: 200,
-      data: { result: "success", id: 100 },
+      data: { result: "success", id: testMessageId(100) },
     });
     mockMessengerApi.get.mockResolvedValue({
       ok: true,
       status: 200,
       data: {
-        id: 100,
+        id: "00000000-0000-4000-8000-000000000100",
         sender_id: 42,
         sender_full_name: "Alice",
         content: "<p>hello</p>",
@@ -930,7 +968,7 @@ describe("sendMessage", () => {
     });
 
     expect(result).toEqual({
-      id: 100,
+      id: "00000000-0000-4000-8000-000000000100",
       sender_id: 42,
       sender_full_name: "Alice",
       stream_id: 10,
@@ -948,7 +986,7 @@ describe("sendMessage", () => {
     mockMessengerApi.post.mockResolvedValue({
       ok: true,
       status: 200,
-      data: { result: "success", id: 100 },
+      data: { result: "success", id: testMessageId(100) },
     });
     mockMessengerApi.get.mockResolvedValue({
       ok: false,
@@ -966,7 +1004,7 @@ describe("sendMessage", () => {
       sender_full_name: "You",
     });
 
-    expect(result.id).toBe(100);
+    expect(result.id).toBe(testMessageId(100));
     expect(result.sender_id).toBe(7);
     expect(result.sender_full_name).toBe("You");
     expect(result.stream_id).toBe(10);
@@ -979,7 +1017,7 @@ describe("sendMessage", () => {
     mockMessengerApi.post.mockResolvedValue({
       ok: true,
       status: 200,
-      data: { result: "success", id: 100 },
+      data: { result: "success", id: testMessageId(100) },
     });
     const result = await sendMessage({
       stream: "general",
@@ -987,7 +1025,7 @@ describe("sendMessage", () => {
       subject: "test",
       content: "hello",
     });
-    expect(result.id).toBe(100);
+    expect(result.id).toBe(testMessageId(100));
     expect(result.stream_id).toBe(10);
     expect(result.display_recipient).toBe("general");
     expect(result.channel).toBe("general");
@@ -1008,10 +1046,10 @@ describe("sendMessage", () => {
     mockMessengerApi.post.mockResolvedValue({
       ok: true,
       status: 200,
-      data: { result: "success", id: 101 },
+      data: { result: "success", id: testMessageId(101) },
     });
     const result = await sendMessage({ to: [42], content: "hi" });
-    expect(result.id).toBe(101);
+    expect(result.id).toBe(testMessageId(101));
     expect(result.stream_id).toBeNull();
     expect(result.display_recipient).toEqual([{ id: 42, full_name: "" }]);
     expect(mockMessengerApi.post).toHaveBeenCalledWith(
@@ -1055,7 +1093,7 @@ describe("sendMessage", () => {
     mockMessengerApi.post.mockResolvedValue({
       ok: true,
       status: 200,
-      data: { result: "success", id: 102 },
+      data: { result: "success", id: testMessageId(102) },
     });
     const result = await sendMessage({ stream: "engineering", content: "test" });
     expect(result.subject).toBe("");
@@ -1069,7 +1107,7 @@ describe("sendMessage", () => {
     mockMessengerApi.post.mockResolvedValue({
       ok: true,
       status: 200,
-      data: { result: "success", id: 104 },
+      data: { result: "success", id: testMessageId(104) },
     });
 
     await sendMessage({ stream: "general", content: "hello" });
@@ -1086,7 +1124,7 @@ describe("sendMessage", () => {
     mockMessengerApi.post.mockResolvedValue({
       ok: true,
       status: 200,
-      data: { result: "success", id: 103 },
+      data: { result: "success", id: testMessageId(103) },
     });
 
     await sendMessage({ stream: "general", content: "hello", local_id: "-7" });
@@ -1108,7 +1146,7 @@ describe("sendMessage", () => {
     mockMessengerApi.post.mockResolvedValue({
       ok: true,
       status: 200,
-      data: { result: "success", id: 105 },
+      data: { result: "success", id: testMessageId(105) },
     });
 
     await sendMessage({ stream: "general", content: "hello" });
@@ -1172,19 +1210,25 @@ describe("updateMessage", () => {
       data: { result: "success" },
       raw: { statusText: "OK" },
     });
-    await expect(updateMessage(42, { content: "updated" })).resolves.toBeUndefined();
+    await expect(
+      updateMessage("00000000-0000-4000-8000-000000000042", { content: "updated" }),
+    ).resolves.toBeUndefined();
     expect(mockRefreshMessengerApiBase).toHaveBeenCalled();
-    expect(mockMessengerApi.patch).toHaveBeenCalledWith("/messages/42", { content: "updated" });
+    expect(mockMessengerApi.patch).toHaveBeenCalledWith(`/messages/${testMessageId(42)}`, {
+      content: "updated",
+    });
   });
 
   it("throws for invalid messageId", async () => {
-    await expect(updateMessage(0, { content: "x" })).rejects.toThrow(/Invalid messageId/);
+    await expect(updateMessage("not-a-message-id", { content: "x" })).rejects.toThrow(
+      /Invalid messageId/,
+    );
   });
 
   it("throws for blank content", async () => {
-    await expect(updateMessage(42, { content: "   " })).rejects.toThrow(
-      /updateMessage\.content must be a non-empty string/,
-    );
+    await expect(
+      updateMessage("00000000-0000-4000-8000-000000000042", { content: "   " }),
+    ).rejects.toThrow(/updateMessage\.content must be a non-empty string/);
     expect(mockMessengerApi.patch).not.toHaveBeenCalled();
   });
 
@@ -1195,7 +1239,9 @@ describe("updateMessage", () => {
       data: { msg: "Not allowed" },
       raw: { statusText: "Forbidden" },
     });
-    await expect(updateMessage(42, { content: "x" })).rejects.toThrow("Not allowed");
+    await expect(
+      updateMessage("00000000-0000-4000-8000-000000000042", { content: "x" }),
+    ).rejects.toThrow("Not allowed");
   });
 });
 
@@ -1211,13 +1257,16 @@ describe("deleteMessage", () => {
       data: { result: "success" },
       raw: { statusText: "OK" },
     });
-    await expect(deleteMessage(42)).resolves.toBeUndefined();
+    await expect(deleteMessage("00000000-0000-4000-8000-000000000042")).resolves.toBeUndefined();
     expect(mockRefreshMessengerApiBase).toHaveBeenCalled();
-    expect(mockMessengerApi.delete).toHaveBeenCalledWith("/messages/42", undefined);
+    expect(mockMessengerApi.delete).toHaveBeenCalledWith(
+      `/messages/${testMessageId(42)}`,
+      undefined,
+    );
   });
 
   it("throws for invalid messageId", async () => {
-    await expect(deleteMessage(0)).rejects.toThrow(/Invalid messageId/);
+    await expect(deleteMessage("not-a-message-id")).rejects.toThrow(/Invalid messageId/);
   });
 
   it("throws on non-ok response", async () => {
@@ -1227,7 +1276,9 @@ describe("deleteMessage", () => {
       data: { msg: "Forbidden" },
       raw: { statusText: "Forbidden" },
     });
-    await expect(deleteMessage(42)).rejects.toThrow("Forbidden");
+    await expect(deleteMessage("00000000-0000-4000-8000-000000000042")).rejects.toThrow(
+      "Forbidden",
+    );
   });
 });
 describe("addReaction", () => {
@@ -1238,20 +1289,22 @@ describe("addReaction", () => {
       data: { result: "success" },
       raw: { statusText: "OK" },
     });
-    await expect(addReaction(42, "thumbs_up")).resolves.toBeUndefined();
+    await expect(
+      addReaction("00000000-0000-4000-8000-000000000042", "thumbs_up"),
+    ).resolves.toBeUndefined();
     expect(mockRefreshMessengerApiBase).toHaveBeenCalled();
-    expect(mockMessengerApi.post).toHaveBeenCalledWith("/messages/42/reactions", {
+    expect(mockMessengerApi.post).toHaveBeenCalledWith(`/messages/${testMessageId(42)}/reactions`, {
       emoji_name: "thumbs_up",
       reaction_type: "unicode_emoji",
     });
   });
 
   it("throws for invalid messageId", async () => {
-    await expect(addReaction(-1, "thumbs_up")).rejects.toThrow(/Invalid messageId/);
+    await expect(addReaction("not-a-message-id", "thumbs_up")).rejects.toThrow(/Invalid messageId/);
   });
 
   it("throws for blank emoji name", async () => {
-    await expect(addReaction(42, "   ")).rejects.toThrow(
+    await expect(addReaction("00000000-0000-4000-8000-000000000042", "   ")).rejects.toThrow(
       /addReaction\.emojiName must be a non-empty string/,
     );
     expect(mockMessengerApi.post).not.toHaveBeenCalled();
@@ -1264,7 +1317,9 @@ describe("addReaction", () => {
       data: { msg: "Already exists", code: "REACTION_ALREADY_EXISTS" },
       raw: { statusText: "Bad Request" },
     });
-    await expect(addReaction(42, "thumbs_up")).resolves.toBeUndefined();
+    await expect(
+      addReaction("00000000-0000-4000-8000-000000000042", "thumbs_up"),
+    ).resolves.toBeUndefined();
   });
 
   it("throws on other non-ok errors", async () => {
@@ -1274,7 +1329,9 @@ describe("addReaction", () => {
       data: { msg: "Server error" },
       raw: { statusText: "Server Error" },
     });
-    await expect(addReaction(42, "thumbs_up")).rejects.toThrow("Server error");
+    await expect(addReaction("00000000-0000-4000-8000-000000000042", "thumbs_up")).rejects.toThrow(
+      "Server error",
+    );
   });
 
   it("passes optional emojiCode and reactionType", async () => {
@@ -1284,8 +1341,11 @@ describe("addReaction", () => {
       data: { result: "success" },
       raw: { statusText: "OK" },
     });
-    await addReaction(42, "party_node", { emojiCode: "43", reactionType: "realm_emoji" });
-    expect(mockMessengerApi.post).toHaveBeenCalledWith("/messages/42/reactions", {
+    await addReaction("00000000-0000-4000-8000-000000000042", "party_node", {
+      emojiCode: "43",
+      reactionType: "realm_emoji",
+    });
+    expect(mockMessengerApi.post).toHaveBeenCalledWith(`/messages/${testMessageId(42)}/reactions`, {
       emoji_name: "party_node",
       emoji_code: "43",
       reaction_type: "realm_emoji",
@@ -1305,10 +1365,15 @@ describe("removeReaction", () => {
       data: { result: "success" },
       raw: { statusText: "OK" },
     });
-    await expect(removeReaction(42, "thumbs_up")).resolves.toBeUndefined();
-    expect(mockMessengerApi.delete).toHaveBeenCalledWith("/messages/42/reactions", {
-      emoji_name: "thumbs_up",
-    });
+    await expect(
+      removeReaction("00000000-0000-4000-8000-000000000042", "thumbs_up"),
+    ).resolves.toBeUndefined();
+    expect(mockMessengerApi.delete).toHaveBeenCalledWith(
+      `/messages/${testMessageId(42)}/reactions`,
+      {
+        emoji_name: "thumbs_up",
+      },
+    );
   });
 
   it("throws on non-ok response", async () => {
@@ -1318,11 +1383,13 @@ describe("removeReaction", () => {
       data: { msg: "Not found" },
       raw: { statusText: "Not Found" },
     });
-    await expect(removeReaction(42, "thumbs_up")).rejects.toThrow("Not found");
+    await expect(
+      removeReaction("00000000-0000-4000-8000-000000000042", "thumbs_up"),
+    ).rejects.toThrow("Not found");
   });
 
   it("throws for blank emoji name", async () => {
-    await expect(removeReaction(42, "   ")).rejects.toThrow(
+    await expect(removeReaction("00000000-0000-4000-8000-000000000042", "   ")).rejects.toThrow(
       /removeReaction\.emojiName must be a non-empty string/,
     );
     expect(mockMessengerApi.delete).not.toHaveBeenCalled();
@@ -1335,12 +1402,18 @@ describe("removeReaction", () => {
       data: { result: "success" },
       raw: { statusText: "OK" },
     });
-    await removeReaction(42, "emoji", { emojiCode: "1f44d", reactionType: "unicode_emoji" });
-    expect(mockMessengerApi.delete).toHaveBeenCalledWith("/messages/42/reactions", {
-      emoji_name: "emoji",
-      emoji_code: "1f44d",
-      reaction_type: "unicode_emoji",
+    await removeReaction("00000000-0000-4000-8000-000000000042", "emoji", {
+      emojiCode: "1f44d",
+      reactionType: "unicode_emoji",
     });
+    expect(mockMessengerApi.delete).toHaveBeenCalledWith(
+      `/messages/${testMessageId(42)}/reactions`,
+      {
+        emoji_name: "emoji",
+        emoji_code: "1f44d",
+        reaction_type: "unicode_emoji",
+      },
+    );
   });
 });
 

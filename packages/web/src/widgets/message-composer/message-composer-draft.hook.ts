@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { MessageComposerProps } from "./message-composer.types";
 
 interface UseComposerDraftParams {
@@ -25,7 +26,7 @@ export function useComposerDraft({
   const [value, setRawValue] = useState(initialValue ?? "");
   const isEditing = editSession != null;
   const editModeDraftSnapshotRef = useRef<string | null>(null);
-  const activeEditMessageIdRef = useRef<number | null>(null);
+  const activeEditMessageIdRef = useRef<MessageId | null>(null);
   const initialValueRef = useRef(initialValue);
 
   useEffect(() => {

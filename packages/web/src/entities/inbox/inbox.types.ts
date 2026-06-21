@@ -6,6 +6,7 @@
  * Each entry tracks the unread count and latest message timestamp
  * for sorting and display in the inbox view.
  */
+import type { MessageId } from "~/shared/lib/message-id.lib";
 
 export interface InboxEntry {
   /** Unique key for this inbox row: "stream:{streamId}:{topic}" or "dm:{dmSlug}". */
@@ -27,7 +28,7 @@ export interface InboxEntry {
   /** Unix timestamp of the most recent unread message. */
   lastMessageTimestamp: number;
   /** Message IDs belonging to this group (for batch mark-as-read). */
-  messageIds: number[];
+  messageIds: MessageId[];
 }
 
 export type InboxGroupType = "stream" | "dm";

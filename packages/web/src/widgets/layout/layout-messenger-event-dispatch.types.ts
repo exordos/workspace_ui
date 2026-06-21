@@ -2,6 +2,7 @@ import type { ChatListStreamMetadataRow } from "~/entities/chat-list/chat-list.m
 import type { CurrentChatContext } from "~/entities/message/message.model";
 import type { IncomingDmCallInvite } from "~/features/jitsi-call/jitsi-call.model";
 import type { MockMessage, WorkspaceRawMessage } from "~/shared/api/messenger.types";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { LinkPreviewData } from "~/shared/lib/message-link-preview.types";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
@@ -22,8 +23,8 @@ export interface LayoutChatListActions {
     streamId: number;
     oldTopic: string;
     newTopic: string;
-    messageIds?: number[];
-    anchorMessageId?: number;
+    messageIds?: MessageId[];
+    anchorMessageId?: MessageId;
   }) => void;
   // Move topic to another channel on update_message with new_stream_id.
   moveTopicToStream: (params: {
@@ -31,14 +32,14 @@ export interface LayoutChatListActions {
     targetStreamId: number;
     oldTopic: string;
     newTopic: string;
-    messageIds?: number[];
-    anchorMessageId?: number;
+    messageIds?: MessageId[];
+    anchorMessageId?: MessageId;
   }) => void;
   // Remove channel from sidebar on unsubscribe/remove.
   removeStream: (streamId: number) => void;
-  decrementUnreadForMessages: (messageIds: number[]) => void;
-  incrementUnreadForMessages: (messageIds: number[]) => void;
-  handleDeleteMessages: (messageIds: number[]) => void;
+  decrementUnreadForMessages: (messageIds: MessageId[]) => void;
+  incrementUnreadForMessages: (messageIds: MessageId[]) => void;
+  handleDeleteMessages: (messageIds: MessageId[]) => void;
 }
 
 export interface LayoutCurrentChatReaction {
@@ -52,21 +53,21 @@ export interface LayoutCurrentChatActions {
   context: CurrentChatContext | null;
   hasNewerMessages: boolean;
   appendMessage: (message: MockMessage) => void;
-  updateMessageFlags: (messageIds: number[], flag: string, op: LayoutMessageFlagOp) => void;
+  updateMessageFlags: (messageIds: MessageId[], flag: string, op: LayoutMessageFlagOp) => void;
   updateMessageReaction: (
-    messageId: number,
+    messageId: MessageId,
     reaction: LayoutCurrentChatReaction,
     op: LayoutMessageFlagOp,
   ) => void;
-  removeMessages: (messageIds: number[]) => void;
-  updateMessageContent: (messageId: number, content: string, markdownSource?: string) => void;
-  updateMessageLinkPreview: (messageId: number, linkPreview: LinkPreviewData | null) => void;
+  removeMessages: (messageIds: MessageId[]) => void;
+  updateMessageContent: (messageId: MessageId, content: string, markdownSource?: string) => void;
+  updateMessageLinkPreview: (messageId: MessageId, linkPreview: LinkPreviewData | null) => void;
   moveStreamTopicMessages: (params: {
     streamId: number;
     oldTopic: string;
     newTopic: string;
-    messageIds?: number[];
-    anchorMessageId?: number;
+    messageIds?: MessageId[];
+    anchorMessageId?: MessageId;
   }) => void;
   moveTopicToStreamMessages: (params: {
     sourceStreamId: number;
@@ -74,8 +75,8 @@ export interface LayoutCurrentChatActions {
     targetStreamName: string;
     oldTopic: string;
     newTopic: string;
-    messageIds?: number[];
-    anchorMessageId?: number;
+    messageIds?: MessageId[];
+    anchorMessageId?: MessageId;
   }) => void;
 }
 
@@ -121,12 +122,12 @@ export interface LayoutMuteActions {
 export interface LayoutActivityActions {
   markStale: () => void;
   markStarredSummaryStale: () => void;
-  applyStarredSummaryFlagEvent: (op: "add" | "remove", messageIds: readonly number[]) => void;
+  applyStarredSummaryFlagEvent: (op: "add" | "remove", messageIds: readonly MessageId[]) => void;
 }
 
 export interface LayoutInboxActions {
   markStale: () => void;
-  markAsRead: (messageIds: number[]) => void;
+  markAsRead: (messageIds: MessageId[]) => void;
   clearEntries: () => void;
 }
 
@@ -159,7 +160,7 @@ export interface LayoutMessengerEventDispatchContext {
   inbox: LayoutInboxActions;
   notifications: LayoutNotificationsActions;
   jitsiCall: LayoutJitsiCallActions;
-  updateLatestMessageId: (id: number) => void;
+  updateLatestMessageId: (id: MessageId) => void;
   // Notifies stream member changes from peer_add/peer_remove for external index updates.
   onStreamPeerMembersChanged?: (streamIds: number[]) => void;
   onMessage?: (message: WorkspaceRawMessage) => void;

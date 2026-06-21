@@ -3,18 +3,15 @@
  * Workspace raw messages into sidebar-ready structures.
  */
 import {
-  GROUP_DM_ID_OFFSET,
   formatMessageTime,
-  getDisplayName,
   getDmPartnerName,
-  hashKey,
   slugify,
   truncatePreview,
 } from "~/entities/chat-list/chat-list-format.lib";
 import { useUsersStore } from "~/entities/user/user.model";
-import { t } from "~/i18n/i18n";
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 import type {
@@ -37,7 +34,7 @@ interface StreamTopicEntry {
   time: string;
   ts: number;
   unreadCount: number;
-  lastMessageId?: number;
+  lastMessageId?: MessageId;
 }
 
 export function isUnread(m: WorkspaceRawMessage): boolean {
@@ -114,18 +111,9 @@ function resolveDmOtherUsers(
 }
 
 function buildDmEntryDisplayName(
-  isGroup: boolean,
   otherUsers: DmRecipientRow[],
   getName: (userId: number) => string,
 ): string {
-  if (isGroup) {
-    return (
-      otherUsers
-        .map((u) => getName(u.id) || getDisplayName(u))
-        .filter(Boolean)
-        .join(", ") || t("dm.groupChat")
-    );
-  }
   const rawStoreName = otherUsers[0] != null ? getName(otherUsers[0].id) : undefined;
   const fromStore =
     rawStoreName != null && rawStoreName.length > 0 && rawStoreName !== "Unknown"
@@ -142,20 +130,12 @@ function buildDmEntryDisplayName(
 }
 
 function resolveDmEntryIdentity(
-  isGroup: boolean,
   recipients: DmRecipientRow[],
   otherUsers: DmRecipientRow[],
-  key: string,
   currentUserId: UserId | null,
   message: WorkspaceRawMessage,
   getAvatar: (userId: number) => string | undefined,
-): { id: number; userIds?: number[]; avatar_url?: string } | null {
-  if (isGroup) {
-    return {
-      id: GROUP_DM_ID_OFFSET + hashKey(key),
-      userIds: recipients.map((r) => r.id),
-    };
-  }
+): { id: number; avatar_url?: string } | null {
   const other = otherUsers[0];
   const numericCurrentUserId = numericUserIdOrNull(currentUserId);
   const otherUserId =
@@ -174,18 +154,7 @@ function resolveDmEntryIdentity(
   };
 }
 
-function buildDmEntrySlug(
-  isGroup: boolean,
-  id: number,
-  name: string,
-  otherUsers: DmRecipientRow[],
-  getName: (userId: number) => string,
-): string {
-  if (isGroup) {
-    return otherUsers
-      .map((u) => `${u.id}-${slugify(getName(u.id) || getDisplayName(u))}`)
-      .join(",");
-  }
+function buildDmEntrySlug(id: number, name: string): string {
   return `${id}-${slugify(name)}`;
 }
 
@@ -205,34 +174,22 @@ export function messageToDmEntry(
     }))
     .sort((a, b) => a.id - b.id);
   if (recipients.length !== 2) return null;
-  const key = recipients.map((r) => r.id).join(",");
   const otherUsers = resolveDmOtherUsers(recipients, currentUserId, m.sender_id);
   if (otherUsers.length !== 1) return null;
-  const isGroup = false;
   const getName = (userId: number) => usersStore.getDisplayName(userId);
   const getAvatar = (userId: number) =>
     usersStore.getAvatarUrl(userId) ?? avatarUrlByUserId?.get(userId);
-  const name = buildDmEntryDisplayName(isGroup, otherUsers, getName);
-  const identity = resolveDmEntryIdentity(
-    isGroup,
-    recipients,
-    otherUsers,
-    key,
-    currentUserId,
-    m,
-    getAvatar,
-  );
+  const name = buildDmEntryDisplayName(otherUsers, getName);
+  const identity = resolveDmEntryIdentity(recipients, otherUsers, currentUserId, m, getAvatar);
   if (identity == null) return null;
-  const slug = buildDmEntrySlug(isGroup, identity.id, name, otherUsers, getName);
+  const slug = buildDmEntrySlug(identity.id, name);
   return {
     id: identity.id,
     name,
     slug,
-    isGroup,
     lastMessage: truncatePreview(m.content),
     time: formatMessageTime(m.timestamp),
     ts: m.timestamp,
-    userIds: identity.userIds,
     unreadCount: isUnread(m) ? 1 : 0,
     avatar_url: identity.avatar_url,
     lastMessageId: m.id,
@@ -383,7 +340,6 @@ function mapInternalDmToSidebar(x: DmEntryInternal): Extract<SidebarChat, { type
     id: x.id,
     name: x.name,
     slug: x.slug,
-    isGroup: x.isGroup,
     lastMessage: x.lastMessage,
     time: x.time,
     userIds: x.userIds,

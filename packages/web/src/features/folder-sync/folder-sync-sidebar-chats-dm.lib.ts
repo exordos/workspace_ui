@@ -4,15 +4,12 @@ import type { SidebarChat } from "~/shared/types/sidebar-chat";
 // Self-DM belongs in "My activity", not the regular chat list.
 function isSelfDmChat(chat: SidebarChat, currentUserId: UserId | null): boolean {
   if (chat.type !== "dm") return false;
-  if (chat.isGroup === true) return false;
   if (currentUserId == null) return false;
   return userIdsEqual(chat.id, currentUserId);
 }
 
-// Group DMs and self-DMs must not appear in sidebar chat projection.
+// Self-DMs must not appear in sidebar chat projection.
 function shouldHideDmChat(chat: SidebarChat, currentUserId: UserId | null): boolean {
-  if (chat.type !== "dm") return false;
-  if (chat.isGroup === true) return true;
   return isSelfDmChat(chat, currentUserId);
 }
 

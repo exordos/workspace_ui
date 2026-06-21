@@ -1,4 +1,5 @@
 import type { MockMessage } from "~/shared/api/messenger.types";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 
 /** True when the message is unread and not sent by the current user. */
@@ -20,7 +21,7 @@ export function isUnreadMessageFromOthers(
 export function resolveFirstUnreadBoundaryMessageId(
   messages: readonly MockMessage[],
   currentUserId: UserId | null | undefined,
-): number | undefined {
+): MessageId | undefined {
   for (const message of messages) {
     if (isUnreadMessageFromOthers(message, currentUserId)) {
       return message.id;
@@ -33,7 +34,7 @@ export function resolveFirstUnreadBoundaryMessageId(
 export function resolveLastUnreadBoundaryMessageId(
   messages: readonly MockMessage[],
   currentUserId: UserId | null | undefined,
-): number | undefined {
+): MessageId | undefined {
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i]!;
     if (isUnreadMessageFromOthers(message, currentUserId)) {

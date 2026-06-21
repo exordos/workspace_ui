@@ -4,7 +4,7 @@ import * as messengerSidebarPreview from "~/shared/api/messenger-sidebar-preview
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { METADATA_STREAM_PREVIEW_MESSAGE_LIMIT } from "~/shared/config/metadata-chat-bootstrap.constants";
 import * as chatListSnapshotDb from "~/shared/lib/chat-list-snapshot-db";
-import { createMessage } from "~/test/factories";
+import { createMessage, testMessageId } from "~/test/factories";
 import { runChatListBootstrap } from "./layout-chat-list-bootstrap.lib";
 
 function streamMessage(overrides: Parameters<typeof createMessage>[0] = {}): WorkspaceRawMessage {
@@ -42,7 +42,7 @@ describe("runChatListBootstrap (metadata-first)", () => {
       instanceId: "test-instance",
       version: 1,
       currentUserId: 1,
-      lastMessageId: 6558867,
+      lastMessageId: testMessageId(6558867),
       oldestMessageId: null,
       streamsEntries: [],
       dmsEntries: [],
@@ -56,9 +56,9 @@ describe("runChatListBootstrap (metadata-first)", () => {
     if (result.mode !== "streamPreviews") return;
     expect(result.messages).toHaveLength(1);
     expect(result.messages[0]?.stream_id).toBe(5);
-    expect(result.latestMessageIdHint).toBe(6558867);
+    expect(result.latestMessageIdHint).toBe(testMessageId(6558867));
     expect(deltaSpy).toHaveBeenCalledWith(
-      6558867,
+      testMessageId(6558867),
       METADATA_STREAM_PREVIEW_MESSAGE_LIMIT,
       expect.arrayContaining([
         expect.objectContaining({ negated: true, operator: "is", operand: "dm" }),

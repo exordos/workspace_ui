@@ -26,8 +26,8 @@ function comparePersonalUnreadPriority(a: SidebarChat, b: SidebarChat): number {
   const aHasUnread = (a.badge ?? 0) > 0;
   const bHasUnread = (b.badge ?? 0) > 0;
   if (!aHasUnread || !bHasUnread) return 0;
-  const aIsPersonalDm = a.type === "dm" && !a.isGroup;
-  const bIsPersonalDm = b.type === "dm" && !b.isGroup;
+  const aIsPersonalDm = a.type === "dm";
+  const bIsPersonalDm = b.type === "dm";
   if (aIsPersonalDm && !bIsPersonalDm) return -1;
   if (!aIsPersonalDm && bIsPersonalDm) return 1;
   return 0;
@@ -56,7 +56,7 @@ function dmRecentRank(
   ts: number,
   recentDmIds: readonly number[],
 ): [number, number] {
-  if (c.type !== "dm" || c.isGroup) return [9999, -ts];
+  if (c.type !== "dm") return [9999, -ts];
   const idx = recentDmIds.indexOf(c.id);
   return [idx >= 0 ? idx : 9999, -ts];
 }

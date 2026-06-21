@@ -7,6 +7,14 @@ import {
   shouldDeferAutoMarkUnreadUntilUserScroll,
 } from "./read-receipts-policy.lib";
 
+const MESSAGE_ID_1 = "00000000-0000-4000-8000-000000000001";
+const MESSAGE_ID_2 = "00000000-0000-4000-8000-000000000002";
+const MESSAGE_ID_3 = "00000000-0000-4000-8000-000000000003";
+const MESSAGE_ID_9 = "00000000-0000-4000-8000-000000000009";
+const MESSAGE_ID_10 = "00000000-0000-4000-8000-000000000010";
+const MESSAGE_ID_42 = "00000000-0000-4000-8000-000000000042";
+const MESSAGE_ID_99 = "00000000-0000-4000-8000-000000000099";
+
 describe("read-receipts-policy", () => {
   describe("computeReadTailReady", () => {
     it("is false when not at bottom", () => {
@@ -52,11 +60,18 @@ describe("read-receipts-policy", () => {
 
   describe("filterMessageIdsToViewportAllowlist", () => {
     it("returns empty when allowlist empty", () => {
-      expect(filterMessageIdsToViewportAllowlist([1, 2, 3], new Set())).toEqual([]);
+      expect(
+        filterMessageIdsToViewportAllowlist([MESSAGE_ID_1, MESSAGE_ID_2, MESSAGE_ID_3], new Set()),
+      ).toEqual([]);
     });
 
     it("filters to ids present in allowlist", () => {
-      expect(filterMessageIdsToViewportAllowlist([1, 2, 3], new Set([2, 9]))).toEqual([2]);
+      expect(
+        filterMessageIdsToViewportAllowlist(
+          [MESSAGE_ID_1, MESSAGE_ID_2, MESSAGE_ID_3],
+          new Set([MESSAGE_ID_2, MESSAGE_ID_9]),
+        ),
+      ).toEqual([MESSAGE_ID_2]);
     });
   });
 
@@ -76,14 +91,14 @@ describe("read-receipts-policy", () => {
       });
 
       const visible = document.createElement("div");
-      visible.setAttribute("data-message-id", "42");
+      visible.setAttribute("data-message-id", MESSAGE_ID_42);
       Object.defineProperty(visible, "getBoundingClientRect", {
         configurable: true,
         value: () => ({ top: 100, bottom: 200, left: 0, right: 300, width: 300, height: 100 }),
       });
 
       const hidden = document.createElement("div");
-      hidden.setAttribute("data-message-id", "99");
+      hidden.setAttribute("data-message-id", MESSAGE_ID_99);
       Object.defineProperty(hidden, "getBoundingClientRect", {
         configurable: true,
         value: () => ({ top: -50, bottom: -10, left: 0, right: 300, width: 300, height: 40 }),
@@ -91,7 +106,9 @@ describe("read-receipts-policy", () => {
 
       root.append(visible, hidden);
 
-      expect(collectViewportVisibleUnreadIds(root, new Set([42, 99]))).toEqual([42]);
+      expect(
+        collectViewportVisibleUnreadIds(root, new Set([MESSAGE_ID_42, MESSAGE_ID_99])),
+      ).toEqual([MESSAGE_ID_42]);
     });
   });
 
@@ -99,7 +116,7 @@ describe("read-receipts-policy", () => {
     it("defers when chat opened with unreads before user scroll", () => {
       expect(
         shouldDeferAutoMarkUnreadUntilUserScroll({
-          firstUnreadId: 10,
+          firstUnreadId: MESSAGE_ID_10,
           unreadCount: 3,
           userScrollSeen: false,
         }),
@@ -109,7 +126,7 @@ describe("read-receipts-policy", () => {
     it("does not defer after user scroll or without unreads", () => {
       expect(
         shouldDeferAutoMarkUnreadUntilUserScroll({
-          firstUnreadId: 10,
+          firstUnreadId: MESSAGE_ID_10,
           unreadCount: 3,
           userScrollSeen: true,
         }),

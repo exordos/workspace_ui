@@ -419,7 +419,7 @@ describe("auth from native — realm validation", () => {
 
     expect(callback).toHaveBeenCalledWith(
       expect.objectContaining({
-        email: "user@example.com",
+        login: "user@example.com",
         realm: "https://chat.example.com",
       }),
     );
@@ -433,7 +433,7 @@ describe("auth from native — realm validation", () => {
     window.dispatchEvent(
       new MessageEvent("message", {
         origin: window.location.origin,
-        data: { type: "auth", email: "user@example.com" },
+        data: { type: "auth", login: "user@example.com" },
       }),
     );
 

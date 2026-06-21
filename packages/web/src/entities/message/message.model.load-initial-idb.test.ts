@@ -4,6 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setInstanceProvider } from "~/shared/api/client";
 import { type MockMessage } from "~/shared/api/messenger.types";
+import { testMessageId } from "~/test/factories";
 // eslint-disable-next-line import-x/order -- inline type + lib import; false positive
 import {
   MESSENGER_DM_ANCHOR_NUM_AFTER,
@@ -65,16 +66,21 @@ vi.mock("~/shared/api/messenger-messages", async (importOriginal) => {
 
 import { useCurrentChatMessagesStore, type CurrentChatContext } from "./message.model";
 
-function mockMsg(overrides: Partial<MockMessage> = {}): MockMessage {
+type MockMessageOverrides = Partial<Omit<MockMessage, "id">> & {
+  id?: MockMessage["id"] | number;
+};
+
+function mockMsg(overrides: MockMessageOverrides = {}): MockMessage {
+  const { id, ...rest } = overrides;
   return {
-    id: 1,
+    id: testMessageId(id ?? 1),
     sender_id: 10,
     sender_full_name: "Test User",
     stream_id: 5,
     subject: "topic1",
     content: "<p>hello</p>",
     timestamp: 1000,
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -125,7 +131,14 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       mockMsg({ id: 86 + i, stream_id: 5, subject: "topic1" }),
     );
     mockGetChatMessagesAscending.mockResolvedValue(cached);
-    const boot = [mockMsg({ id: 200, stream_id: 5, subject: "topic1", content: "<p>api</p>" })];
+    const boot = [
+      mockMsg({
+        id: "00000000-0000-4000-8000-000000000200",
+        stream_id: 5,
+        subject: "topic1",
+        content: "<p>api</p>",
+      }),
+    ];
     mockFetchMessages.mockResolvedValue(boot);
 
     await useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
@@ -157,7 +170,14 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       streamName: "general",
       topic: "topic1",
     };
-    const cached = [mockMsg({ id: 86, stream_id: 5, subject: "topic1", content: "<p>cached</p>" })];
+    const cached = [
+      mockMsg({
+        id: "00000000-0000-4000-8000-000000000086",
+        stream_id: 5,
+        subject: "topic1",
+        content: "<p>cached</p>",
+      }),
+    ];
     mockGetChatMessagesAscending.mockResolvedValue(cached);
     mockFetchMessages.mockResolvedValue([]);
 
@@ -183,7 +203,14 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       streamName: "general",
       topic: "topic1",
     };
-    const cached = [mockMsg({ id: 86, stream_id: 5, subject: "topic1", content: "<p>cached</p>" })];
+    const cached = [
+      mockMsg({
+        id: "00000000-0000-4000-8000-000000000086",
+        stream_id: 5,
+        subject: "topic1",
+        content: "<p>cached</p>",
+      }),
+    ];
     const deferred = Promise.withResolvers<MockMessage[]>();
     mockGetChatMessagesAscending.mockResolvedValue(cached);
     mockGetChatMeta.mockResolvedValue({ reachedOldest: false, reachedNewest: false });
@@ -202,7 +229,9 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     expect(useCurrentChatMessagesStore.getState().hasOlderMessages).toBe(true);
     expect(useCurrentChatMessagesStore.getState().hasNewerMessages).toBe(false);
 
-    deferred.resolve([mockMsg({ id: 200, stream_id: 5, subject: "topic1" })]);
+    deferred.resolve([
+      mockMsg({ id: "00000000-0000-4000-8000-000000000200", stream_id: 5, subject: "topic1" }),
+    ]);
     await loadPromise;
   });
 
@@ -211,7 +240,13 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       type: "dm",
       dmKey: "7,42",
     };
-    const cached = [mockMsg({ id: 86, stream_id: null, content: "<p>cached dm</p>" })];
+    const cached = [
+      mockMsg({
+        id: "00000000-0000-4000-8000-000000000086",
+        stream_id: null,
+        content: "<p>cached dm</p>",
+      }),
+    ];
     mockGetChatMessagesAscending.mockResolvedValue(cached);
     mockGetChatMeta.mockResolvedValue({ reachedOldest: false, reachedNewest: false });
     mockFetchDmMessages.mockRejectedValue(new Error("network down"));
@@ -237,7 +272,9 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       topic: "topic1",
     };
     mockGetChatMessagesAscending.mockResolvedValue([]);
-    const boot = [mockMsg({ id: 1, stream_id: 5, subject: "topic1" })];
+    const boot = [
+      mockMsg({ id: "00000000-0000-4000-8000-000000000001", stream_id: 5, subject: "topic1" }),
+    ];
     mockFetchMessages.mockResolvedValue(boot);
 
     await useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
@@ -266,12 +303,14 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       streamName: "general",
       topic: "topic1",
     };
-    const focused = [mockMsg({ id: 50, stream_id: 5, subject: "topic1" })];
+    const focused = [
+      mockMsg({ id: "00000000-0000-4000-8000-000000000050", stream_id: 5, subject: "topic1" }),
+    ];
     mockFetchMessagesWithNarrow.mockResolvedValue(focused);
 
     await useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
       context: ctx,
-      focusedMessageId: 50,
+      focusedMessageId: "00000000-0000-4000-8000-000000000050",
       currentUserId: 1,
     });
 
@@ -281,7 +320,7 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
         { operator: "stream", operand: "general" },
         { operator: "topic", operand: "topic1" },
       ],
-      50,
+      testMessageId(50),
       MESSENGER_STREAM_ANCHOR_NUM_BEFORE,
       MESSENGER_STREAM_ANCHOR_NUM_AFTER,
       expect.objectContaining({ signal: expect.any(AbortSignal), applyMarkdown: false }),
@@ -293,18 +332,18 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       type: "dm",
       dmKey: "7,42",
     };
-    const focusedDm = [mockMsg({ id: 50, stream_id: null })];
+    const focusedDm = [mockMsg({ id: "00000000-0000-4000-8000-000000000050", stream_id: null })];
     mockFetchMessagesWithNarrow.mockResolvedValue(focusedDm);
 
     await useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
       context: ctx,
-      focusedMessageId: 50,
+      focusedMessageId: "00000000-0000-4000-8000-000000000050",
       currentUserId: 7,
     });
 
     expect(mockFetchMessagesWithNarrow).toHaveBeenCalledWith(
       [{ operator: "dm", operand: [42] }],
-      50,
+      testMessageId(50),
       MESSENGER_DM_ANCHOR_NUM_BEFORE,
       MESSENGER_DM_ANCHOR_NUM_AFTER,
       expect.objectContaining({ signal: expect.any(AbortSignal), applyMarkdown: false }),
@@ -320,7 +359,9 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       streamWideView: false,
     };
     mockGetChatMessagesAscending.mockResolvedValue([]);
-    mockFetchMessages.mockResolvedValue([mockMsg({ id: 2, stream_id: 5, subject: "general" })]);
+    mockFetchMessages.mockResolvedValue([
+      mockMsg({ id: "00000000-0000-4000-8000-000000000002", stream_id: 5, subject: "general" }),
+    ]);
 
     await useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
       context: ctx,
@@ -371,10 +412,12 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
 
     const hydrated = useCurrentChatMessagesStore.getState().messages;
     expect(hydrated).toHaveLength(100);
-    expect(hydrated[0]!.id).toBe(31);
-    expect(hydrated[99]!.id).toBe(130);
+    expect(hydrated[0]!.id).toBe(testMessageId(31));
+    expect(hydrated[99]!.id).toBe(testMessageId(130));
 
-    deferred.resolve([mockMsg({ id: 999, stream_id: 5, subject: "alpha" })]);
+    deferred.resolve([
+      mockMsg({ id: "00000000-0000-4000-8000-000000000999", stream_id: 5, subject: "alpha" }),
+    ]);
     await loadPromise;
   });
 
@@ -388,8 +431,8 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     };
     mockGetStreamMessagesAscending.mockResolvedValue([]);
     mockFetchMessages.mockResolvedValue([
-      mockMsg({ id: 10, stream_id: 5, subject: "alpha" }),
-      mockMsg({ id: 11, stream_id: 5, subject: "beta" }),
+      mockMsg({ id: "00000000-0000-4000-8000-000000000010", stream_id: 5, subject: "alpha" }),
+      mockMsg({ id: "00000000-0000-4000-8000-000000000011", stream_id: 5, subject: "beta" }),
     ]);
 
     await useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
@@ -442,11 +485,15 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       currentUserId: 1,
     });
 
-    secondDeferred.resolve([mockMsg({ id: 202, stream_id: 5, subject: "topic-2" })]);
+    secondDeferred.resolve([
+      mockMsg({ id: "00000000-0000-4000-8000-000000000202", stream_id: 5, subject: "topic-2" }),
+    ]);
     await secondLoad;
     expect(useCurrentChatMessagesStore.getState().messages[0]?.subject).toBe("topic-2");
 
-    firstDeferred.resolve([mockMsg({ id: 101, stream_id: 5, subject: "topic-1" })]);
+    firstDeferred.resolve([
+      mockMsg({ id: "00000000-0000-4000-8000-000000000101", stream_id: 5, subject: "topic-1" }),
+    ]);
     await firstLoad;
     expect(useCurrentChatMessagesStore.getState().messages[0]?.subject).toBe("topic-2");
   });

@@ -63,9 +63,7 @@ export function useMessageLinkPreview(
 
   useEffect(() => {
     return () => {
-      if (message.id > 0) {
-        useLinkPreviewStore.getState().cancelPreviewForMessage(message.id);
-      }
+      useLinkPreviewStore.getState().cancelPreviewForMessage(message.id);
     };
   }, [message.id]);
 
@@ -74,13 +72,6 @@ export function useMessageLinkPreview(
       traceLinkPreview("hook:fetch-skipped", {
         messageId: message.id,
         reason: "no-preview-url",
-      });
-      return;
-    }
-    if (message.id <= 0) {
-      traceLinkPreview("hook:fetch-skipped", {
-        messageId: message.id,
-        reason: "non-persisted-id",
       });
       return;
     }

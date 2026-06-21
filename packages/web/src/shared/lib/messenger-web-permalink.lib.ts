@@ -5,6 +5,7 @@
  * See: https://github.com/messenger/messenger/blob/main/web/src/people.ts (pm_perma_link)
  */
 import type { MockMessage } from "~/shared/api/messenger.types";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 
 // Workspace `internal_url.encodeHashComponent` — browsers decode hash aggressively.
 const HASH_REPLACEMENTS = new Map<string, string>([
@@ -54,7 +55,7 @@ function privateRecipientUserIds(
   return [...displayRecipient.map((r) => r.id)].sort((a, b) => a - b);
 }
 
-function buildPrivateNarrowHash(userIds: number[], messageId: number): string {
+function buildPrivateNarrowHash(userIds: number[], messageId: MessageId): string {
   const suffix = userIds.length >= 3 ? "group" : "dm";
   const slug = `${userIds.join(",")}-${suffix}`;
   return `#narrow/dm/${slug}/near/${encodeWorkspaceHashComponent(String(messageId))}`;
@@ -64,7 +65,7 @@ function buildStreamNarrowHash(
   streamId: number,
   streamName: string,
   topic: string,
-  messageId: number,
+  messageId: MessageId,
 ): string {
   const streamSlug = encodeWorkspaceHashComponent(streamIdToWorkspaceSlug(streamId, streamName));
   const topicEnc = encodeWorkspaceHashComponent(topic);

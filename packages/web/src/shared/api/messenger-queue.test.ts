@@ -3,6 +3,7 @@
  */
 import "./messenger.test.setup";
 import { describe, expect, it, vi } from "vitest";
+import { testMessageId } from "~/test/factories";
 import { getCurrentInstance } from "./client";
 import {
   DEFAULT_REGISTER_FETCH_EVENT_TYPES,
@@ -23,6 +24,7 @@ import {
 
 const mockMessengerApi = getMockMessengerApi();
 const mockRefreshMessengerApiBase = getMockRefreshMessengerApiBase();
+const ids = (...values: number[]) => values.map(testMessageId);
 
 describe("registerQueue", () => {
   it("returns queue_id and last_event_id on success", async () => {
@@ -69,14 +71,21 @@ describe("registerQueue", () => {
         result: "success",
         queue_id: "q-starred",
         last_event_id: 1,
-        starred_messages: [55, 56, 56, "bad", -1, 57],
+        starred_messages: [
+          testMessageId(55),
+          testMessageId(56),
+          testMessageId(56),
+          "bad",
+          -1,
+          testMessageId(57),
+        ],
       },
       raw: { statusText: "OK" },
     });
 
     const result = await registerQueue(["message", "update_message_flags"]);
 
-    expect(result.starred_message_ids).toEqual([55, 56, 57]);
+    expect(result.starred_message_ids).toEqual(ids(55, 56, 57));
   });
 
   it("throws on error result", async () => {
@@ -120,8 +129,8 @@ describe("registerQueue", () => {
         recent_private_conversations: {
           "1": {
             user_ids: [10, 20],
-            max_message_id: 555,
-            unread_message_ids: [551, 552],
+            max_message_id: testMessageId(555),
+            unread_message_ids: ids(551, 552),
           },
         },
       },
@@ -132,8 +141,8 @@ describe("registerQueue", () => {
     expect(result.recent_private_conversations).toEqual({
       "1": {
         user_ids: [10, 20],
-        max_message_id: 555,
-        unread_message_ids: [551, 552],
+        max_message_id: testMessageId(555),
+        unread_message_ids: ids(551, 552),
       },
     });
   });
@@ -149,8 +158,8 @@ describe("registerQueue", () => {
         recent_private_conversations: [
           {
             user_ids: [20],
-            max_message_id: 900,
-            unread_message_ids: [900],
+            max_message_id: testMessageId(900),
+            unread_message_ids: ids(900),
           },
         ],
       },
@@ -161,8 +170,8 @@ describe("registerQueue", () => {
     expect(result.recent_private_conversations).toEqual({
       "20": {
         user_ids: [20],
-        max_message_id: 900,
-        unread_message_ids: [900],
+        max_message_id: testMessageId(900),
+        unread_message_ids: ids(900),
       },
     });
   });
@@ -274,10 +283,10 @@ describe("registerQueue", () => {
         last_event_id: -1,
         unread_msgs: {
           count: 4,
-          streams: [{ stream_id: 10, topic: "general", unread_message_ids: [1, 2] }],
-          pms: [{ other_user_id: 20, unread_message_ids: [3] }],
+          streams: [{ stream_id: 10, topic: "general", unread_message_ids: ids(1, 2) }],
+          pms: [{ other_user_id: 20, unread_message_ids: ids(3) }],
           huddles: [],
-          mentions: [{ unread_message_ids: [4] }],
+          mentions: [{ unread_message_ids: ids(4) }],
         },
       },
       raw: { statusText: "OK" },
@@ -285,10 +294,10 @@ describe("registerQueue", () => {
 
     const result = await registerQueue(["message", "update_message_flags"]);
     expect(result.unread_snapshot).toEqual({
-      streams: [{ streamId: 10, topic: "general", unreadMessageIds: [1, 2] }],
-      dms: [{ userIds: [20], unreadMessageIds: [3], isGroup: false }],
+      streams: [{ streamId: 10, topic: "general", unreadMessageIds: ids(1, 2) }],
+      dms: [{ userIds: [20], unreadMessageIds: ids(3) }],
       totalCount: 4,
-      mentionMessageIds: [4],
+      mentionMessageIds: ids(4),
     });
   });
 
@@ -303,7 +312,7 @@ describe("registerQueue", () => {
         unread_msgs: {
           count: 1,
           streams: [],
-          pms: [{ sender_id: 20, unread_message_ids: [1] }],
+          pms: [{ sender_id: 20, unread_message_ids: ids(1) }],
           huddles: [],
           mentions: [],
           old_unreads_missing: true,
@@ -639,7 +648,7 @@ describe("fetchUnreadMessagesCountForCredentials", () => {
   it("returns unread count from messages payload", async () => {
     mockFetch.mockResolvedValue(
       jsonResponse({
-        messages: [{ id: 1 }, { id: 2 }, { id: 3 }],
+        messages: [{ id: testMessageId(1) }, { id: testMessageId(2) }, { id: testMessageId(3) }],
       }),
     );
 
@@ -679,7 +688,7 @@ describe("fetchUnreadMessagesCountForCredentials", () => {
   it("returns null without network call when realm url is invalid", async () => {
     mockFetch.mockResolvedValue(
       jsonResponse({
-        messages: [{ id: 1 }],
+        messages: [{ id: testMessageId(1) }],
       }),
     );
 

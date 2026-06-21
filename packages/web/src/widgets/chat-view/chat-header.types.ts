@@ -18,12 +18,6 @@ export interface ChatHeaderDmPartner {
   isTyping?: boolean;
 }
 
-/** Group DM summary for the chat header. */
-export interface ChatHeaderDmGroup {
-  name: string;
-  participantsCount: number;
-}
-
 export interface ChatHeaderProps {
   channelName: string;
   topic?: string;
@@ -44,8 +38,6 @@ export interface ChatHeaderProps {
   onCallClick?: () => void;
   /** For DMs: show avatar, name and presence status instead of channelName */
   dmPartner?: ChatHeaderDmPartner;
-  /** For group DMs: show conversation name and participant count. */
-  dmGroup?: ChatHeaderDmGroup;
   /** Opens DM partner profile in the right info panel when avatar is clicked. */
   onDmPartnerClick?: () => void;
 }

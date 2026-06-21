@@ -1,8 +1,9 @@
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { InboxEntry } from "./inbox.types";
 
 export function mapInboxEntryAfterMarkRead(
   entry: InboxEntry,
-  readIds: ReadonlySet<number>,
+  readIds: ReadonlySet<MessageId>,
 ): InboxEntry | null {
   const remaining = entry.messageIds.filter((id) => !readIds.has(id));
   if (remaining.length === entry.messageIds.length) {
@@ -20,7 +21,7 @@ export function mapInboxEntryAfterMarkRead(
 
 export function applyMarkAsReadToInboxEntries(
   entries: InboxEntry[],
-  messageIds: number[],
+  messageIds: MessageId[],
 ): InboxEntry[] {
   const readIds = new Set(messageIds);
   return entries

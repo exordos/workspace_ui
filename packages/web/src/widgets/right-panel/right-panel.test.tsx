@@ -592,24 +592,6 @@ describe("RightPanel truthfulness", () => {
     expect(screen.getByRole("button", { name: /open source licenses/i })).toBeInTheDocument();
   });
 
-  it("routes to common group dm when a common-group row is clicked", () => {
-    const onSelectCommonGroup = vi.fn();
-
-    renderWithProviders(
-      <RightPanelShell
-        title="Alice"
-        user={{
-          name: "Alice",
-          commonGroups: [{ name: "Design Team", slug: "7,42,99", unread: 1 }],
-        }}
-        onSelectCommonGroup={onSelectCommonGroup}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: /design team/i }));
-    expect(onSelectCommonGroup).toHaveBeenCalledWith("7,42,99");
-  });
-
   it("renders extended dm profile rows when user profile fields are provided", () => {
     const user = {
       name: "Alice",
@@ -755,76 +737,6 @@ describe("RightPanel truthfulness", () => {
     fireEvent.click(screen.getByRole("button", { name: /^call$/i }));
     expect(invokeDmCall).toHaveBeenCalledTimes(1);
     expect(invokeDmCall).toHaveBeenCalledWith(42);
-  });
-
-  it("renders group dm member info without channel-only sections", () => {
-    act(() => {
-      useChatInfoStore.getState().setData({
-        type: "dm",
-        name: "Alice, Bob, Me",
-        memberCount: 3,
-        onlineCount: 2,
-        description: null,
-        isMuted: false,
-        members: [
-          {
-            userId: 1,
-            fullName: "Alice",
-            email: "alice@example.com",
-            avatarUrl: null,
-            isOnline: true,
-          },
-          { userId: 2, fullName: "Bob", email: "", avatarUrl: null, isOnline: false },
-        ],
-      });
-    });
-
-    act(() => {
-      renderWithProviders(<RightPanelShell title="Group chat" />);
-    });
-
-    expect(screen.getByText("Alice")).toBeInTheDocument();
-    expect(screen.getByText("Bob")).toBeInTheDocument();
-    expect(screen.queryByText(/channel info/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/^topics$/i)).not.toBeInTheDocument();
-  });
-
-  it("shows custom user statuses in group dm members list", () => {
-    act(() => {
-      useUsersStore.getState().mergeUser({
-        user_id: 1,
-        full_name: "Alice",
-        status: {
-          text: "Working remotely",
-          emojiCode: "1f3e0",
-          away: false,
-        },
-        statusFetchedAt: Date.now(),
-      });
-      useChatInfoStore.getState().setData({
-        type: "dm",
-        name: "Alice, Bob, Me",
-        memberCount: 2,
-        onlineCount: 1,
-        description: null,
-        isMuted: false,
-        members: [
-          {
-            userId: 1,
-            fullName: "Alice",
-            email: "alice@example.com",
-            avatarUrl: null,
-            isOnline: true,
-          },
-          { userId: 2, fullName: "Bob", email: "", avatarUrl: null, isOnline: false },
-        ],
-      });
-    });
-
-    renderWithProviders(<RightPanelShell title="Group chat" />);
-
-    expect(screen.getByText("🏠 Working remotely")).toBeInTheDocument();
-    expect(screen.getByText("Bob")).toBeInTheDocument();
   });
 
   it("uses semantic text tokens in dm info panel for light themes", () => {
@@ -1057,7 +969,7 @@ describe("RightPanel truthfulness", () => {
       useChatListStore.getState().setFromMessages(
         [
           {
-            id: 1,
+            id: "00000000-0000-4000-8000-000000000001",
             sender_id: 20,
             sender_full_name: "Alice",
             content: "hello",
@@ -2268,7 +2180,7 @@ describe("RightPanel truthfulness", () => {
       useChatListStore.getState().setFromMessages(
         [
           {
-            id: 1,
+            id: "00000000-0000-4000-8000-000000000001",
             sender_id: 50,
             sender_full_name: "Sender",
             content: "latest",
@@ -2280,7 +2192,7 @@ describe("RightPanel truthfulness", () => {
             flags: [],
           },
           {
-            id: 2,
+            id: "00000000-0000-4000-8000-000000000002",
             sender_id: 50,
             sender_full_name: "Sender",
             content: "older",

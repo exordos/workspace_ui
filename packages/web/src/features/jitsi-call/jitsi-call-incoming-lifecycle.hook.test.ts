@@ -2,6 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
+import { testMessageId } from "~/test/factories";
 import { useIncomingCallLifecycle } from "./jitsi-call-incoming-lifecycle.hook";
 import type { ActiveJitsiCall, IncomingDmCallInvite } from "./jitsi-call.model";
 
@@ -9,10 +10,11 @@ vi.mock("~/shared/lib/notification-sound", () => ({
   playNotificationSound: vi.fn(),
 }));
 
-function buildInvite(messageId = 777): IncomingDmCallInvite {
+function buildInvite(messageId: number | string = 777): IncomingDmCallInvite {
+  const normalizedMessageId = testMessageId(messageId);
   return {
-    messageId,
-    meetingUrl: `https://meet.jit.si/messenger-dm-room-${messageId}`,
+    messageId: normalizedMessageId,
+    meetingUrl: `https://meet.jit.si/messenger-dm-room-${normalizedMessageId}`,
     callerName: "Fox",
     locationName: "Fox",
     avatarUrl: undefined,

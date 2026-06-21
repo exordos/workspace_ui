@@ -11,6 +11,7 @@ import { useSettingsStore } from "~/features/settings/settings.model";
 import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indicator.model";
 import type { MessengerEvent } from "~/shared/api/messenger.types";
 import { upsertDmIndexFromMessages } from "~/shared/lib/dm-index";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
 import { resolveNotificationSoundPreset } from "~/shared/lib/notification-sound-preset.lib";
 import { notificationService } from "~/shared/lib/notifications";
@@ -44,13 +45,11 @@ function getLayoutNotificationSoundPreset(): string {
 }
 
 interface LatestMessageIdRef {
-  current: number | null;
+  current: MessageId | null;
 }
 
-export function updateLatestMessageIdMax(ref: LatestMessageIdRef, id: number): void {
-  if (ref.current == null || id > ref.current) {
-    ref.current = id;
-  }
+export function updateLatestMessageIdMax(ref: LatestMessageIdRef, id: MessageId): void {
+  ref.current = id;
 }
 
 export interface LayoutMessengerEventLoopOnEventOptions {

@@ -3,6 +3,7 @@ import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import type { ChatListSnapshotSerialized } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import { serializeStreamEntry } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
+import { testMessageId } from "~/test/factories";
 import {
   buildChatListHydrateFromSnapshotState,
   buildDmMetadataEntry,
@@ -19,10 +20,18 @@ import {
 } from "./chat-list-bootstrap.lib";
 
 const CURRENT_USER_ID = 10;
+const MESSAGE_ID_1 = testMessageId(1);
+const MESSAGE_ID_2 = testMessageId(2);
+const MESSAGE_ID_200 = testMessageId(200);
 
-function streamMsg(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessage {
+type WorkspaceRawMessageOverrides = Partial<Omit<WorkspaceRawMessage, "id">> & {
+  id?: WorkspaceRawMessage["id"] | number;
+};
+
+function streamMsg(overrides: WorkspaceRawMessageOverrides = {}): WorkspaceRawMessage {
+  const { id, ...rest } = overrides;
   return {
-    id: 1,
+    id: testMessageId(id ?? 1),
     sender_id: CURRENT_USER_ID,
     sender_full_name: "Sender",
     content: "hello",
@@ -32,13 +41,14 @@ function streamMsg(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMe
     display_recipient: "general",
     subject: "topic1",
     flags: [],
-    ...overrides,
+    ...rest,
   };
 }
 
-function dmMsg(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessage {
+function dmMsg(overrides: WorkspaceRawMessageOverrides = {}): WorkspaceRawMessage {
+  const { id, ...rest } = overrides;
   return {
-    id: 50,
+    id: testMessageId(id ?? 50),
     sender_id: CURRENT_USER_ID,
     sender_full_name: "Alice",
     content: "hi there",
@@ -49,7 +59,7 @@ function dmMsg(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessag
       { id: 20, full_name: "Bob", email: "bob@t.com" },
     ],
     flags: [],
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -59,7 +69,7 @@ function displayContext(
   return {
     getParticipantDisplayName: (userId) => (userId === 20 ? "Bob" : `User ${userId}`),
     getAvatarUrl: () => undefined,
-    groupChatFallbackLabel: "Group chat",
+    dmFallbackLabel: "Direct message",
     ...overrides,
   };
 }
@@ -73,15 +83,19 @@ describe("clearBootstrapErrorPatch", () => {
 describe("buildMessageIdToLocation", () => {
   it("indexes stream messages by normalized topic", () => {
     const map = buildMessageIdToLocation(
-      [streamMsg({ id: 100, stream_id: 7, subject: "Topic A" })],
+      [streamMsg({ id: "00000000-0000-4000-8000-000000000100", stream_id: 7, subject: "Topic A" })],
       CURRENT_USER_ID,
     );
-    expect(map.get(100)).toEqual({ type: "stream", stream_id: 7, topic: "Topic A" });
+    expect(map.get("00000000-0000-4000-8000-000000000100")).toEqual({
+      type: "stream",
+      stream_id: 7,
+      topic: "Topic A",
+    });
   });
 
   it("indexes DM messages by conversation key", () => {
     const map = buildMessageIdToLocation([dmMsg({ id: 200 })], CURRENT_USER_ID);
-    expect(map.get(200)).toEqual({ type: "dm", dmKey: "10,20" });
+    expect(map.get(MESSAGE_ID_200)).toEqual({ type: "dm", dmKey: "10,20" });
   });
 });
 
@@ -89,13 +103,17 @@ describe("buildUnreadLocationMap", () => {
   it("includes only unread messages from others", () => {
     const map = buildUnreadLocationMap(
       [
-        streamMsg({ id: 1, flags: [], sender_id: 20 }),
-        streamMsg({ id: 2, flags: ["read"], sender_id: 20 }),
-        streamMsg({ id: 3, flags: [], sender_id: CURRENT_USER_ID }),
+        streamMsg({ id: "00000000-0000-4000-8000-000000000001", flags: [], sender_id: 20 }),
+        streamMsg({ id: "00000000-0000-4000-8000-000000000002", flags: ["read"], sender_id: 20 }),
+        streamMsg({
+          id: "00000000-0000-4000-8000-000000000003",
+          flags: [],
+          sender_id: CURRENT_USER_ID,
+        }),
       ],
       CURRENT_USER_ID,
     );
-    expect([...map.keys()]).toEqual([1]);
+    expect([...map.keys()]).toEqual([MESSAGE_ID_1]);
   });
 });
 
@@ -166,12 +184,11 @@ describe("buildDmMetadataEntry", () => {
       displayContext(),
     );
     expect(result?.key).toBe("10,20");
-    expect(result?.entry.isGroup).toBe(false);
     expect(result?.entry.id).toBe(20);
     expect(result?.entry.unreadCount).toBe(2);
   });
 
-  it("builds group DM row with synthetic id", () => {
+  it("returns null when metadata row has too many known peers", () => {
     const result = buildDmMetadataEntry(
       { userIds: [10, 20, 30], unreadCount: 0 },
       CURRENT_USER_ID,
@@ -180,9 +197,7 @@ describe("buildDmMetadataEntry", () => {
         getParticipantDisplayName: (id) => `Name${id}`,
       }),
     );
-    expect(result?.entry.isGroup).toBe(true);
-    expect(result?.entry.name).toContain("Name20");
-    expect(result?.entry.name).toContain("Name30");
+    expect(result).toBeNull();
   });
 
   it("accumulates unread and ts when merging with existing entry", () => {
@@ -224,7 +239,12 @@ describe("buildDmMetadataUpsertPatch", () => {
 describe("buildDmMetadataRowsFromDmsMap", () => {
   it("maps existing DM entries back to metadata rows", () => {
     const entry = buildDmMetadataEntry(
-      { userIds: [10, 20], unreadCount: 2, lastActivityTs: 900, lastMessageId: 42 },
+      {
+        userIds: [10, 20],
+        unreadCount: 2,
+        lastActivityTs: 900,
+        lastMessageId: "00000000-0000-4000-8000-000000000042",
+      },
       CURRENT_USER_ID,
       undefined,
       displayContext(),
@@ -234,7 +254,8 @@ describe("buildDmMetadataRowsFromDmsMap", () => {
       {
         userIds: [10, 20],
         lastActivityTs: 900,
-        lastMessageId: 42,
+        lastMessageId: "00000000-0000-4000-8000-000000000042",
+        name: "Bob",
         unreadCount: 2,
       },
     ]);
@@ -244,7 +265,7 @@ describe("buildDmMetadataRowsFromDmsMap", () => {
 describe("buildSetFromMessagesBootstrapState", () => {
   it("builds sidebar maps, location index, and clears bootstrap error", () => {
     const state = buildSetFromMessagesBootstrapState(
-      [streamMsg({ id: 1 }), dmMsg({ id: 2 })],
+      [streamMsg({ id: MESSAGE_ID_1 }), dmMsg({ id: MESSAGE_ID_2 })],
       CURRENT_USER_ID,
       new Map(),
       new Map(),
@@ -286,18 +307,20 @@ describe("buildChatListHydrateFromSnapshotState", () => {
     const snapshot: ChatListSnapshotSerialized = {
       version: 1,
       currentUserId: 10,
-      lastMessageId: 99,
-      oldestMessageId: 1,
+      lastMessageId: "00000000-0000-4000-8000-000000000099",
+      oldestMessageId: "00000000-0000-4000-8000-000000000001",
       streamsEntries: [[5, serializeStreamEntry(streamEntry)]],
       dmsEntries: [],
-      messageIdToLocationEntries: [[1, { type: "stream", stream_id: 5, topic: "topic1" }]],
+      messageIdToLocationEntries: [
+        ["00000000-0000-4000-8000-000000000001", { type: "stream", stream_id: 5, topic: "topic1" }],
+      ],
       updatedAt: Date.now(),
     };
     const state = buildChatListHydrateFromSnapshotState(snapshot, null);
     expect(state.sidebarDataHydrated).toBe(true);
     expect(state.streamMetadataHydrated).toBe(false);
     expect(state.streamsMap.get(5)?.name).toBe("general");
-    expect(state.messageIdToLocation.get(1)).toEqual({
+    expect(state.messageIdToLocation.get("00000000-0000-4000-8000-000000000001")).toEqual({
       type: "stream",
       stream_id: 5,
       topic: "topic1",

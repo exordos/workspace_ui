@@ -6,7 +6,7 @@ import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm
 import type * as MessengerUsersApi from "~/shared/api/messenger-users";
 import type { MockMessage } from "~/shared/api/messenger.types";
 import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
-import { createUser } from "~/test/factories";
+import { createUser, testMessageId, testMessageOrdinal } from "~/test/factories";
 import { MessageList } from "./message-list.ui";
 
 const fetchRealmEmojisMock = vi.hoisted(() => vi.fn());
@@ -24,9 +24,15 @@ vi.mock("~/entities/user/api/user.api", () => ({
   ensureUserStatusLoaded: (...args: unknown[]) => ensureUserStatusLoadedMock(...args),
 }));
 
-function msg(id: number, overrides: Partial<MockMessage> = {}): MockMessage {
+const MESSAGE_ID_1 = testMessageId(1);
+const MESSAGE_ID_2 = testMessageId(2);
+const MESSAGE_ID_3 = testMessageId(3);
+const MESSAGE_ID_11 = testMessageId(11);
+const MESSAGE_ID_12 = testMessageId(12);
+
+function msg(id: number | string, overrides: Partial<MockMessage> = {}): MockMessage {
   return {
-    id,
+    id: testMessageId(id),
     sender_id: 42,
     sender_full_name: "Alice",
     stream_id: 10,
@@ -34,7 +40,7 @@ function msg(id: number, overrides: Partial<MockMessage> = {}): MockMessage {
     channel: "general",
     subject: "bugs",
     content: `<p>Message ${id}</p>`,
-    timestamp: 1710000000 + id,
+    timestamp: 1710000000 + testMessageOrdinal(id),
     ...overrides,
   };
 }
@@ -92,27 +98,38 @@ describe("MessageList focused message behavior", () => {
 
   it("marks and scrolls the focused message into view", () => {
     render(
-      <MessageList messages={[msg(1), msg(2), msg(3)]} currentUserId={7} focusedMessageId={2} />,
+      <MessageList
+        messages={[msg(1), msg(2), msg(3)]}
+        currentUserId={7}
+        focusedMessageId={MESSAGE_ID_2}
+      />,
     );
 
-    const focused = screen.getByTestId("message-2");
+    const focused = screen.getByTestId(`message-${MESSAGE_ID_2}`);
     expect(focused).toHaveAttribute("data-focused", "true");
     expect(scrollIntoView).toHaveBeenCalled();
-    expect(scrollTargets).toContain("2");
+    expect(scrollTargets).toContain(MESSAGE_ID_2);
   });
 
   it("clears focused highlight after temporary flash duration", () => {
     vi.useFakeTimers();
     try {
       render(
-        <MessageList messages={[msg(1), msg(2), msg(3)]} currentUserId={7} focusedMessageId={2} />,
+        <MessageList
+          messages={[msg(1), msg(2), msg(3)]}
+          currentUserId={7}
+          focusedMessageId={MESSAGE_ID_2}
+        />,
       );
-      expect(screen.getByTestId("message-2")).toHaveAttribute("data-focused", "true");
+      expect(screen.getByTestId(`message-${MESSAGE_ID_2}`)).toHaveAttribute("data-focused", "true");
 
       act(() => {
         vi.advanceTimersByTime(8_000);
       });
-      expect(screen.getByTestId("message-2")).toHaveAttribute("data-focused", "false");
+      expect(screen.getByTestId(`message-${MESSAGE_ID_2}`)).toHaveAttribute(
+        "data-focused",
+        "false",
+      );
     } finally {
       vi.useRealTimers();
     }
@@ -123,13 +140,13 @@ describe("MessageList focused message behavior", () => {
       <MessageList
         messages={[msg(1), msg(2), msg(3)]}
         currentUserId={7}
-        firstUnreadId={3}
+        firstUnreadId={MESSAGE_ID_3}
         unreadCount={2}
       />,
     );
 
     expect(scrollIntoView).toHaveBeenCalled();
-    expect(scrollTargets).toContain("3");
+    expect(scrollTargets).toContain(MESSAGE_ID_3);
     expect(screen.getByText("Unread messages • 2")).toBeInTheDocument();
   });
 
@@ -138,15 +155,15 @@ describe("MessageList focused message behavior", () => {
       <MessageList
         messages={[msg(1), msg(2), msg(3)]}
         currentUserId={7}
-        firstUnreadId={3}
+        firstUnreadId={MESSAGE_ID_3}
         unreadCount={2}
-        focusedMessageId={2}
+        focusedMessageId={MESSAGE_ID_2}
       />,
     );
 
     expect(scrollIntoView).toHaveBeenCalled();
-    expect(scrollTargets).toContain("2");
-    expect(scrollTargets).not.toContain("3");
+    expect(scrollTargets).toContain(MESSAGE_ID_2);
+    expect(scrollTargets).not.toContain(MESSAGE_ID_3);
   });
 
   it("calls topic separator callback when separator is clicked", () => {
@@ -167,7 +184,7 @@ describe("MessageList focused message behavior", () => {
     fireEvent.click(separator);
 
     expect(onTopicSeparatorClick).toHaveBeenCalledTimes(1);
-    expect(onTopicSeparatorClick.mock.calls[0]?.[0]?.id).toBe(3);
+    expect(onTopicSeparatorClick.mock.calls[0]?.[0]?.id).toBe(MESSAGE_ID_3);
   });
 
   it("shows topic separator when topic changes across calendar days", () => {
@@ -443,8 +460,8 @@ describe("MessageList focused message behavior", () => {
     );
     onUnreadMessagesVisible.mockClear();
 
-    const targetUnread = screen.getByTestId("message-1");
-    const targetRead = screen.getByTestId("message-2");
+    const targetUnread = screen.getByTestId(`message-${MESSAGE_ID_1}`);
+    const targetRead = screen.getByTestId(`message-${MESSAGE_ID_2}`);
 
     intersectionCallback?.(
       [
@@ -462,7 +479,7 @@ describe("MessageList focused message behavior", () => {
       {} as IntersectionObserver,
     );
     expect(onUnreadMessagesVisible).toHaveBeenCalledTimes(1);
-    expect(onUnreadMessagesVisible).toHaveBeenCalledWith([1]);
+    expect(onUnreadMessagesVisible).toHaveBeenCalledWith([MESSAGE_ID_1]);
   });
 
   it("reports viewport unread messages when user scrolls to chat bottom", () => {
@@ -479,8 +496,8 @@ describe("MessageList focused message behavior", () => {
       />,
     );
 
-    const targetUnread1 = screen.getByTestId("message-1");
-    const targetUnread2 = screen.getByTestId("message-2");
+    const targetUnread1 = screen.getByTestId(`message-${MESSAGE_ID_1}`);
+    const targetUnread2 = screen.getByTestId(`message-${MESSAGE_ID_2}`);
     intersectionCallback?.(
       [
         { target: targetUnread1, isIntersecting: true, intersectionRatio: 1 },
@@ -497,7 +514,7 @@ describe("MessageList focused message behavior", () => {
 
     fireEvent.scroll(feed);
 
-    expect(onUnreadMessagesVisible).toHaveBeenCalledWith([1, 2]);
+    expect(onUnreadMessagesVisible).toHaveBeenCalledWith([MESSAGE_ID_1, MESSAGE_ID_2]);
   });
 
   it("reports unread messages through bottom callback when user reaches chat bottom", () => {
@@ -514,8 +531,8 @@ describe("MessageList focused message behavior", () => {
       />,
     );
 
-    const targetUnread1 = screen.getByTestId("message-1");
-    const targetUnread2 = screen.getByTestId("message-2");
+    const targetUnread1 = screen.getByTestId(`message-${MESSAGE_ID_1}`);
+    const targetUnread2 = screen.getByTestId(`message-${MESSAGE_ID_2}`);
     intersectionCallback?.(
       [
         { target: targetUnread1, isIntersecting: true, intersectionRatio: 1 },
@@ -531,7 +548,7 @@ describe("MessageList focused message behavior", () => {
 
     fireEvent.scroll(feed);
 
-    expect(onUnreadMessagesAtBottom).toHaveBeenCalledWith([1, 2]);
+    expect(onUnreadMessagesAtBottom).toHaveBeenCalledWith([MESSAGE_ID_1, MESSAGE_ID_2]);
   });
 
   it("does not bulk-mark unread at bottom while hasNewerMessages even when scrolled to tail", () => {
@@ -551,8 +568,8 @@ describe("MessageList focused message behavior", () => {
       />,
     );
 
-    const targetUnread1 = screen.getByTestId("message-1");
-    const targetUnread2 = screen.getByTestId("message-2");
+    const targetUnread1 = screen.getByTestId(`message-${MESSAGE_ID_1}`);
+    const targetUnread2 = screen.getByTestId(`message-${MESSAGE_ID_2}`);
     intersectionCallback?.(
       [
         { target: targetUnread1, isIntersecting: true, intersectionRatio: 1 },
@@ -588,7 +605,7 @@ describe("MessageList focused message behavior", () => {
       />,
     );
 
-    const targetUnread2 = screen.getByTestId("message-2");
+    const targetUnread2 = screen.getByTestId(`message-${MESSAGE_ID_2}`);
     intersectionCallback?.(
       [
         { target: targetUnread2, isIntersecting: true, intersectionRatio: 1 },
@@ -604,7 +621,7 @@ describe("MessageList focused message behavior", () => {
 
     fireEvent.scroll(feed);
 
-    expect(onUnreadMessagesVisible).toHaveBeenCalledWith([2]);
+    expect(onUnreadMessagesVisible).toHaveBeenCalledWith([MESSAGE_ID_2]);
   });
 
   it("reports unread messages when list stays at bottom after rerender", async () => {
@@ -630,7 +647,7 @@ describe("MessageList focused message behavior", () => {
       />,
     );
 
-    const targetUnread2 = screen.getByTestId("message-2");
+    const targetUnread2 = screen.getByTestId(`message-${MESSAGE_ID_2}`);
     intersectionCallback?.(
       [
         { target: targetUnread2, isIntersecting: true, intersectionRatio: 1 },
@@ -639,7 +656,7 @@ describe("MessageList focused message behavior", () => {
     );
 
     await waitFor(() => {
-      expect(onUnreadMessagesVisible).toHaveBeenCalledWith([2]);
+      expect(onUnreadMessagesVisible).toHaveBeenCalledWith([MESSAGE_ID_2]);
     });
   });
 
@@ -705,19 +722,23 @@ describe("MessageList selection mode", () => {
       <MessageList
         messages={[msg(11)]}
         selectionMode
-        selectedMessageIds={new Set<number>()}
+        selectedMessageIds={new Set()}
         callbacks={{ onMessageSelect }}
       />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: /select/i }));
     expect(onMessageSelect).toHaveBeenCalledTimes(1);
-    expect(onMessageSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 11 }));
+    expect(onMessageSelect).toHaveBeenCalledWith(expect.objectContaining({ id: MESSAGE_ID_11 }));
   });
 
   it("uses deselect label for already selected message", () => {
     render(
-      <MessageList messages={[msg(12)]} selectionMode selectedMessageIds={new Set<number>([12])} />,
+      <MessageList
+        messages={[msg(12)]}
+        selectionMode
+        selectedMessageIds={new Set([MESSAGE_ID_12])}
+      />,
     );
 
     expect(screen.getByRole("button", { name: /deselect/i })).toBeInTheDocument();

@@ -8,7 +8,7 @@ import { useDraftStore } from "~/entities/draft/draft.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
-import { createMessage, createUser } from "~/test/factories";
+import { createMessage, createUser, testMessageId } from "~/test/factories";
 import { ActivityPage } from "./activity-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
 
@@ -134,7 +134,7 @@ describe("ActivityPage drafts routing", () => {
 
     useDraftStore.getState().setDrafts([
       {
-        id: 1,
+        id: testMessageId(1),
         type: "stream",
         to: [10],
         topic: "general",
@@ -182,7 +182,7 @@ describe("ActivityPage drafts routing", () => {
 
     useDraftStore.getState().setDrafts([
       {
-        id: 1,
+        id: testMessageId(1),
         type: "stream",
         to: [10],
         topic: "",
@@ -215,7 +215,7 @@ describe("ActivityPage drafts routing", () => {
 
     useDraftStore.getState().setDrafts([
       {
-        id: 2,
+        id: testMessageId(2),
         type: "private",
         to: [7, 42],
         topic: "",
@@ -272,7 +272,9 @@ describe("ActivityPage drafts routing", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open in chat" }));
 
-    expect(navigateSpy).toHaveBeenCalledWith("/stream/10-engineering/topic/bugs?msg=33");
+    expect(navigateSpy).toHaveBeenCalledWith(
+      `/stream/10-engineering/topic/bugs?msg=${testMessageId(33)}`,
+    );
   });
 
   it("opens forward flow from activity message action", async () => {
@@ -309,7 +311,9 @@ describe("ActivityPage drafts routing", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Forward" }));
 
-    expect(navigateSpy).toHaveBeenCalledWith("/stream/10-engineering/topic/bugs?msg=44&forward=44");
+    expect(navigateSpy).toHaveBeenCalledWith(
+      `/stream/10-engineering/topic/bugs?msg=${testMessageId(44)}&forward=${testMessageId(44)}`,
+    );
   });
 
   it("renders cached activity list immediately while newest refresh is in flight", () => {
@@ -484,7 +488,7 @@ describe("ActivityPage drafts routing", () => {
     fireEvent.click(screen.getByRole("button", { name: /unstar/i }));
 
     await waitFor(() => {
-      expect(removeMessageFlag).toHaveBeenCalledWith([55], "starred");
+      expect(removeMessageFlag).toHaveBeenCalledWith([testMessageId(55)], "starred");
     });
     expect(screen.queryByText("Starred message")).not.toBeInTheDocument();
   });
@@ -525,7 +529,7 @@ describe("ActivityPage drafts routing", () => {
     fireEvent.click(screen.getByRole("button", { name: /unstar/i }));
 
     await waitFor(() => {
-      expect(removeMessageFlag).toHaveBeenCalledWith([56], "starred");
+      expect(removeMessageFlag).toHaveBeenCalledWith([testMessageId(56)], "starred");
     });
     expect(screen.getByText("Starred message persists")).toBeInTheDocument();
   });
@@ -589,7 +593,7 @@ describe("ActivityPage drafts routing", () => {
     fireEvent.click(screen.getByRole("button", { name: /unstar/i }));
 
     await waitFor(() => {
-      expect(removeMessageFlag).toHaveBeenCalledWith([55], "starred");
+      expect(removeMessageFlag).toHaveBeenCalledWith([testMessageId(55)], "starred");
     });
 
     act(() => {
@@ -736,7 +740,7 @@ describe("ActivityPage drafts routing", () => {
       expect(screen.getByText("My reacted message")).toBeInTheDocument();
     });
 
-    const reactionsRow = screen.getByTestId("activity-peer-reactions-50");
+    const reactionsRow = screen.getByTestId(`activity-peer-reactions-${testMessageId(50)}`);
     expect(reactionsRow).toHaveTextContent("Bob");
     expect(reactionsRow).toHaveTextContent("👍");
     expect(reactionsRow).not.toHaveTextContent("Me");
@@ -806,7 +810,7 @@ describe("ActivityPage drafts routing", () => {
     try {
       useDraftStore.getState().setDrafts([
         {
-          id: 1,
+          id: testMessageId(1),
           type: "stream",
           to: [10],
           topic: "general",
@@ -814,7 +818,7 @@ describe("ActivityPage drafts routing", () => {
           timestamp: 1710000000,
         },
         {
-          id: 2,
+          id: testMessageId(2),
           type: "stream",
           to: [10],
           topic: "general",
@@ -854,7 +858,7 @@ describe("ActivityPage drafts routing", () => {
     );
     useDraftStore.getState().setDrafts([
       {
-        id: 7,
+        id: testMessageId(7),
         type: "stream",
         to: [10],
         topic: "general",
@@ -878,7 +882,7 @@ describe("ActivityPage drafts routing", () => {
     const deleteButton = screen.getByTitle("Delete draft");
     fireEvent.click(deleteButton);
 
-    expect(deleteDraftOnServer).toHaveBeenCalledWith(7);
+    expect(deleteDraftOnServer).toHaveBeenCalledWith(testMessageId(7));
     expect(screen.getByText("Pending delete draft")).toBeInTheDocument();
     expect(deleteButton).toBeDisabled();
 
@@ -893,7 +897,7 @@ describe("ActivityPage drafts routing", () => {
     deleteDraftOnServer.mockResolvedValue(false);
     useDraftStore.getState().setDrafts([
       {
-        id: 11,
+        id: testMessageId(11),
         type: "stream",
         to: [10],
         topic: "general",
@@ -917,7 +921,7 @@ describe("ActivityPage drafts routing", () => {
     fireEvent.click(screen.getByTitle("Delete draft"));
 
     await waitFor(() => {
-      expect(deleteDraftOnServer).toHaveBeenCalledWith(11);
+      expect(deleteDraftOnServer).toHaveBeenCalledWith(testMessageId(11));
     });
 
     expect(screen.getByText("Failed delete draft")).toBeInTheDocument();
@@ -952,7 +956,7 @@ describe("ActivityPage drafts routing", () => {
     });
     useDraftStore.getState().setDrafts([
       {
-        id: 7,
+        id: testMessageId(7),
         type: "stream",
         to: [10],
         topic: "general",
@@ -974,13 +978,13 @@ describe("ActivityPage drafts routing", () => {
     });
 
     fireEvent.click(screen.getByTitle("Delete draft"));
-    expect(deleteDraftOnServer).toHaveBeenCalledWith(7);
+    expect(deleteDraftOnServer).toHaveBeenCalledWith(testMessageId(7));
 
     act(() => {
       useInstancesStore.getState().setCurrentInstanceId("instance-2");
       useDraftStore.getState().setDrafts([
         {
-          id: 7,
+          id: testMessageId(7),
           type: "stream",
           to: [20],
           topic: "triage",
@@ -1001,7 +1005,7 @@ describe("ActivityPage drafts routing", () => {
     updateDraftOnServer.mockResolvedValue(true);
     useDraftStore.getState().setDrafts([
       {
-        id: 8,
+        id: testMessageId(8),
         type: "stream",
         to: [10],
         topic: "general",
@@ -1027,7 +1031,7 @@ describe("ActivityPage drafts routing", () => {
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
 
     await waitFor(() => {
-      expect(updateDraftOnServer).toHaveBeenCalledWith(8, {
+      expect(updateDraftOnServer).toHaveBeenCalledWith(testMessageId(8), {
         type: "stream",
         to: [10],
         topic: "general",
@@ -1067,7 +1071,7 @@ describe("ActivityPage drafts routing", () => {
     });
     useDraftStore.getState().setDrafts([
       {
-        id: 8,
+        id: testMessageId(8),
         type: "stream",
         to: [10],
         topic: "general",
@@ -1093,7 +1097,7 @@ describe("ActivityPage drafts routing", () => {
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
 
     await waitFor(() => {
-      expect(updateDraftOnServer).toHaveBeenCalledWith(8, {
+      expect(updateDraftOnServer).toHaveBeenCalledWith(testMessageId(8), {
         type: "stream",
         to: [10],
         topic: "general",
@@ -1105,7 +1109,7 @@ describe("ActivityPage drafts routing", () => {
       useInstancesStore.getState().setCurrentInstanceId("instance-2");
       useDraftStore.getState().setDrafts([
         {
-          id: 8,
+          id: testMessageId(8),
           type: "stream",
           to: [20],
           topic: "triage",
@@ -1126,7 +1130,7 @@ describe("ActivityPage drafts routing", () => {
     deleteDraftOnServer.mockResolvedValue(true);
     useDraftStore.getState().setDrafts([
       {
-        id: 12,
+        id: testMessageId(12),
         type: "stream",
         to: [10],
         topic: "general",
@@ -1152,7 +1156,7 @@ describe("ActivityPage drafts routing", () => {
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
 
     await waitFor(() => {
-      expect(deleteDraftOnServer).toHaveBeenCalledWith(12);
+      expect(deleteDraftOnServer).toHaveBeenCalledWith(testMessageId(12));
     });
 
     expect(screen.queryByText("Delete from edit draft")).not.toBeInTheDocument();

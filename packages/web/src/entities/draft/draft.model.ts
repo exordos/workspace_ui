@@ -4,6 +4,7 @@
 
 import { create } from "zustand";
 import { logStoreAction } from "~/shared/lib/logger";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { Draft, DraftType } from "./draft.types";
 
 function buildDraftChatKey(type: DraftType, to: number[], topic?: string): string {
@@ -27,17 +28,17 @@ interface DraftState {
   setDrafts: (drafts: Draft[]) => void;
   addDraft: (draft: Draft) => void;
   setLocalDraft: (draft: Draft) => void;
-  updateDraft: (id: number, patch: Partial<Pick<Draft, "content" | "topic" | "to">>) => void;
-  updateDraftId: (oldId: number, newId: number) => void;
+  updateDraft: (id: MessageId, patch: Partial<Pick<Draft, "content" | "topic" | "to">>) => void;
+  updateDraftId: (oldId: MessageId, newId: MessageId) => void;
   linkDraftToServerId: (
     type: DraftType,
     to: number[],
     topic: string | undefined,
-    newId: number,
+    newId: MessageId,
   ) => void;
-  removeDraft: (id: number) => void;
+  removeDraft: (id: MessageId) => void;
   /** Removes draft by id (server) or timestamp (local-only). Use when draft.id may be null. */
-  removeDraftByIdentifier: (identifier: number) => void;
+  removeDraftByIdentifier: (identifier: MessageId | number) => void;
   removeDraftForChat: (type: DraftType, to: number[], topic?: string) => void;
   getDraftForChat: (type: DraftType, to: number[], topic?: string) => Draft | undefined;
   setLoading: (loading: boolean) => void;

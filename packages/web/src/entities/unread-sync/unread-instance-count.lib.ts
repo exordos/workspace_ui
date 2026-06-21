@@ -1,14 +1,8 @@
-import { parseDmRouteParticipantIds } from "~/shared/lib/dm-route-slug.lib";
-import { effectiveDmIsGroupFromSlug } from "~/shared/lib/dm-route.lib";
-import { isUserIdentityReady, type UserId } from "~/shared/lib/user-id.lib";
 import {
   computeInstanceStreamUnreadCountWithMute,
   toSafeUnreadCount,
 } from "./unread-instance-count-stream.lib";
-import type {
-  ComputeInstanceUnreadInput,
-  UnreadDmBadgeHolder,
-} from "./unread-instance-count.types";
+import type { ComputeInstanceUnreadInput } from "./unread-instance-count.types";
 
 interface UnreadMutePredicates {
   isStreamMuted?: (streamId: number) => boolean;
@@ -32,35 +26,11 @@ export function computeInstanceUnreadCount({
   return streamUnread + dmUnread;
 }
 
-// Some callers pass userIds, some pass route slug. This normalizes both.
-function resolveDmSlugUserIds(dm: UnreadDmBadgeHolder): UserId[] {
-  if (Array.isArray(dm.userIds) && dm.userIds.length > 0) {
-    return dm.userIds.filter((userId): userId is UserId => isUserIdentityReady(userId));
-  }
-  if (typeof dm.slug === "string" && dm.slug.length > 0) {
-    return parseDmRouteParticipantIds(dm.slug);
-  }
-  return [];
-}
-
-// Personal DMs count for the org dot. Group DMs do not.
-export function isPersonalDmUnreadEntry(
-  dm: UnreadDmBadgeHolder,
-  currentUserId: UserId | null,
-): boolean {
-  return !effectiveDmIsGroupFromSlug(dm.isGroup, resolveDmSlugUserIds(dm), currentUserId);
-}
-
-// Sums unread badges only for personal DMs.
+// Sums unread badges across all DMs (Workspace DMs are 1:1 only).
 export function computeInstanceDmUnreadCount({
   dms,
-  currentUserId = null,
-}: Pick<ComputeInstanceUnreadInput, "dms"> & {
-  currentUserId?: UserId | null;
-}): number {
-  return dms
-    .filter((dm) => isPersonalDmUnreadEntry(dm, currentUserId))
-    .reduce((sum, dm) => sum + toSafeUnreadCount(dm.badge), 0);
+}: Pick<ComputeInstanceUnreadInput, "dms">): number {
+  return dms.reduce((sum, dm) => sum + toSafeUnreadCount(dm.badge), 0);
 }
 
 // Used by app/dock/fav icon logic.

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { testMessageId } from "~/test/factories";
 import {
   fetchLinkPreviewsFromMessageMarkdown,
   parseAllMessageEmbedsFromRenderedHtml,
@@ -79,13 +80,15 @@ describe("fetchLinkPreviewsFromMessageMarkdown", () => {
         </div>
       </div>`);
 
-    const items = await fetchLinkPreviewsFromMessageMarkdown("https://example.com", 42);
-    expect(fetchMessageRenderedHtmlByIdMock).toHaveBeenCalledWith(42, undefined);
+    const messageId = testMessageId(42);
+    const items = await fetchLinkPreviewsFromMessageMarkdown("https://example.com", messageId);
+    expect(fetchMessageRenderedHtmlByIdMock).toHaveBeenCalledWith(messageId, undefined);
     expect(renderMessageContentMock).not.toHaveBeenCalled();
     expect(items[0]?.data?.title).toBe("Example");
   });
 
-  it("uses POST render when message id is not persisted", async () => {
+  it("uses POST render when GET message HTML is unavailable", async () => {
+    fetchMessageRenderedHtmlByIdMock.mockResolvedValue(null);
     renderMessageContentMock.mockResolvedValue(`
       <div class="message_embed">
         <a class="message_embed_image" href="https://example.com"></a>
@@ -94,9 +97,10 @@ describe("fetchLinkPreviewsFromMessageMarkdown", () => {
         </div>
       </div>`);
 
-    const items = await fetchLinkPreviewsFromMessageMarkdown("https://example.com", 0);
+    const messageId = testMessageId(7);
+    const items = await fetchLinkPreviewsFromMessageMarkdown("https://example.com", messageId);
+    expect(fetchMessageRenderedHtmlByIdMock).toHaveBeenCalledWith(messageId, undefined);
     expect(renderMessageContentMock).toHaveBeenCalledWith("https://example.com");
-    expect(fetchMessageRenderedHtmlByIdMock).not.toHaveBeenCalled();
     expect(items[0]?.data?.title).toBe("Rendered");
   });
 
@@ -117,7 +121,7 @@ describe("fetchLinkPreviewsFromMessageMarkdown", () => {
 
     const items = await fetchLinkPreviewsFromMessageMarkdown(
       "https://example.com https://other.test",
-      7,
+      "00000000-0000-4000-8000-000000000007",
     );
     expect(items).toHaveLength(2);
     expect(items[0]?.targetUrl).toBe("https://example.com");
@@ -135,7 +139,10 @@ describe("fetchLinkPreviewsFromMessageMarkdown", () => {
         </div>
       </div>`);
 
-    const items = await fetchLinkPreviewsFromMessageMarkdown("https://www.example.com/page", 3);
+    const items = await fetchLinkPreviewsFromMessageMarkdown(
+      "https://www.example.com/page",
+      "00000000-0000-4000-8000-000000000003",
+    );
     expect(items[0]?.data?.title).toBe("Canonical");
   });
 });

@@ -2,6 +2,7 @@
  * Public TypeScript contracts for the Messenger API client (`messenger-*.ts` modules).
  */
 import type { MessengerUnreadMessagesSnapshot } from "~/shared/api/messenger-unread.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { LinkPreviewData } from "~/shared/lib/message-link-preview.types";
 import type { UserId } from "~/shared/lib/user-id.lib";
 
@@ -45,8 +46,8 @@ export interface MessengerUserTopic {
 
 export interface MessengerRecentPrivateConversation {
   user_ids: number[];
-  max_message_id: number | null;
-  unread_message_ids: number[];
+  max_message_id: MessageId | null;
+  unread_message_ids: MessageId[];
 }
 
 export interface MessengerMeStream {
@@ -164,7 +165,7 @@ export interface RegisterQueueResult {
    */
   unread_snapshot?: MessengerUnreadMessagesSnapshot;
   /** Starred message ids from register metadata, used for an exact sidebar count. */
-  starred_message_ids?: number[];
+  starred_message_ids?: MessageId[];
 }
 
 export interface MessengerEvent {
@@ -252,7 +253,7 @@ export interface MessageReactionPayload {
 
 /** Raw message from GET /messages. Absence of 'read' in flags means unread. */
 export interface WorkspaceRawMessage {
-  id: number;
+  id: MessageId;
   sender_id: number;
   sender_full_name?: string;
   /** Sender avatar (relative path), present in GET /messages response. */
@@ -313,7 +314,7 @@ export type MockMessageDeliveryStatus = "sending" | "failed" | "sent";
 export type MockMessageEditStatus = "saving" | "failed";
 
 export interface MockMessage {
-  id: number;
+  id: MessageId;
   sender_id: number;
   sender_full_name: string;
   stream_id: number | null;
@@ -348,10 +349,10 @@ export interface MockMessage {
   /** Last server/client error for an optimistic edit. */
   edit_error?: string;
   /**
-   * Stable client key for list reconciliation (negative id while optimistic).
-   * Preserved after the server assigns a positive message id.
+   * Stable client key for list reconciliation while optimistic.
+   * Preserved after the server assigns the final message id.
    */
-  local_echo_key?: number;
+  local_echo_key?: MessageId;
   /** Client-side link preview card data (messenger unfurl via messages/render). */
   link_preview?: LinkPreviewData;
   /** Multiple link preview cards (one per URL in message). */
@@ -360,7 +361,7 @@ export interface MockMessage {
 
 /** Input shape for normalizing API messages to MockMessage. */
 export interface RawMessageToMockInput {
-  id: number;
+  id: MessageId;
   sender_id: number;
   sender_full_name?: string;
   content: string;

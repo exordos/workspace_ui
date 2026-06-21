@@ -11,7 +11,6 @@ export interface UnreadStreamBadgeHolder extends UnreadBadgeHolder {
 }
 
 export interface UnreadDmBadgeHolder extends UnreadBadgeHolder {
-  isGroup?: boolean;
   slug?: string;
   userIds?: readonly UserId[];
 }

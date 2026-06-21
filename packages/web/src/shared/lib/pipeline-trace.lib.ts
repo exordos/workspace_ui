@@ -13,6 +13,7 @@
 import type { MessageLocation } from "~/entities/chat-list/chat-list.model.types";
 import type { MessengerRecentPrivateConversation } from "~/shared/api/messenger.types";
 import { createLogger } from "~/shared/lib/logger";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 
@@ -148,22 +149,12 @@ export function summarizeScrollElement(
   };
 }
 
-/** Count and min/max for message id batches in scroll/read traces (no full id lists). */
-export function summarizeMessageIdsForFlowDebug(messageIds: readonly number[]): {
+/** Count and short sample for message id batches in scroll/read traces (no full id lists). */
+export function summarizeMessageIdsForFlowDebug(messageIds: readonly MessageId[]): {
   count: number;
-  minId: number | null;
-  maxId: number | null;
+  sampleIds: MessageId[];
 } {
-  if (messageIds.length === 0) {
-    return { count: 0, minId: null, maxId: null };
-  }
-  let minId = messageIds[0]!;
-  let maxId = messageIds[0]!;
-  for (const id of messageIds) {
-    if (id < minId) minId = id;
-    if (id > maxId) maxId = id;
-  }
-  return { count: messageIds.length, minId, maxId };
+  return { count: messageIds.length, sampleIds: messageIds.slice(0, 3) };
 }
 
 export function logScrollReadFlow(phase: string, data?: Record<string, unknown>): void {
@@ -174,22 +165,12 @@ export function logFolderFlow(phase: string, data?: Record<string, unknown>): vo
   tracePipeline("folders", phase, data);
 }
 
-/** Min/max message id and count for chat-list / API traces (no message content). */
-export function summarizeMessengerMessagesForFlowDebug(messages: readonly { id: number }[]): {
+/** Message id sample and count for chat-list / API traces (no message content). */
+export function summarizeMessengerMessagesForFlowDebug(messages: readonly { id: MessageId }[]): {
   count: number;
-  minId: number | null;
-  maxId: number | null;
+  sampleIds: MessageId[];
 } {
-  if (messages.length === 0) {
-    return { count: 0, minId: null, maxId: null };
-  }
-  let minId = messages[0]!.id;
-  let maxId = messages[0]!.id;
-  for (const m of messages) {
-    if (m.id < minId) minId = m.id;
-    if (m.id > maxId) maxId = m.id;
-  }
-  return { count: messages.length, minId, maxId };
+  return { count: messages.length, sampleIds: messages.slice(0, 3).map((message) => message.id) };
 }
 
 export function logChatListFlow(phase: string, data?: Record<string, unknown>): void {
@@ -207,7 +188,7 @@ export type SidebarUnreadLogContext =
 export interface SidebarUnreadLogStateSlice {
   sidebarStreamsUnread: number;
   sidebarDmsUnread: number;
-  messageIdToLocation: ReadonlyMap<number, MessageLocation>;
+  messageIdToLocation: ReadonlyMap<MessageId, MessageLocation>;
   streamsMap: ReadonlyMap<number, StreamEntryInternal>;
   dmsMap: ReadonlyMap<string, DmEntryInternal>;
 }
@@ -254,8 +235,8 @@ export function summarizeContextBadge(
 }
 
 export function summarizeRegisterUnreadSnapshot(snapshot: {
-  streams: readonly { streamId: number; topic: string; unreadMessageIds: readonly number[] }[];
-  dms: readonly { userIds: readonly number[]; unreadMessageIds: readonly number[] }[];
+  streams: readonly { streamId: number; topic: string; unreadMessageIds: readonly MessageId[] }[];
+  dms: readonly { userIds: readonly number[]; unreadMessageIds: readonly MessageId[] }[];
   totalCount: number;
   oldUnreadsMissing?: boolean;
 }): Record<string, unknown> {
@@ -301,10 +282,10 @@ export function summarizeRecentPrivateConversationsForTrace(
   const entries = Object.entries(conversations);
   let withMaxMessageId = 0;
   let withUnreadIds = 0;
-  const maxMessageIdSample: number[] = [];
+  const maxMessageIdSample: MessageId[] = [];
   for (const [, conversation] of entries) {
     const maxId = conversation.max_message_id;
-    if (maxId != null && Number.isInteger(maxId) && maxId > 0) {
+    if (maxId != null) {
       withMaxMessageId += 1;
       if (maxMessageIdSample.length < 8) {
         maxMessageIdSample.push(maxId);

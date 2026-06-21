@@ -1,11 +1,12 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MockMessage } from "~/shared/api/messenger.types";
+import { testMessageId } from "~/test/factories";
 import { MessageBubble } from "./message-bubble.ui";
 
 function createMessage(overrides: Partial<MockMessage> = {}): MockMessage {
   return {
-    id: 1,
+    id: "00000000-0000-4000-8000-000000000001",
     sender_id: 77,
     sender_full_name: "Alice",
     stream_id: 10,
@@ -41,10 +42,13 @@ describe("MessageBubble reply selected text", () => {
     selection?.removeAllRanges();
     selection?.addRange(range);
 
-    fireEvent.contextMenu(screen.getByTestId("message-1"));
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(1)}`));
     fireEvent.click(await screen.findByRole("menuitem", { name: /reply/i }));
 
-    expect(onReply).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }), "Hello");
+    expect(onReply).toHaveBeenCalledWith(
+      expect.objectContaining({ id: testMessageId(1) }),
+      "Hello",
+    );
   });
 
   it("falls back to full-message reply when no selection exists", async () => {
@@ -58,10 +62,13 @@ describe("MessageBubble reply selected text", () => {
       />,
     );
 
-    fireEvent.contextMenu(screen.getByTestId("message-1"));
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(1)}`));
     fireEvent.click(await screen.findByRole("menuitem", { name: /reply/i }));
 
-    expect(onReply).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }), undefined);
+    expect(onReply).toHaveBeenCalledWith(
+      expect.objectContaining({ id: testMessageId(1) }),
+      undefined,
+    );
   });
 });
 
@@ -90,10 +97,13 @@ describe("MessageBubble forward selected text", () => {
     selection?.removeAllRanges();
     selection?.addRange(range);
 
-    fireEvent.contextMenu(screen.getByTestId("message-1"));
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(1)}`));
     fireEvent.click(await screen.findByRole("menuitem", { name: /forward/i }));
 
-    expect(onForward).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }), "Hello");
+    expect(onForward).toHaveBeenCalledWith(
+      expect.objectContaining({ id: testMessageId(1) }),
+      "Hello",
+    );
   });
 
   it("falls back to full-message forward when no selection exists", async () => {
@@ -107,9 +117,12 @@ describe("MessageBubble forward selected text", () => {
       />,
     );
 
-    fireEvent.contextMenu(screen.getByTestId("message-1"));
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(1)}`));
     fireEvent.click(await screen.findByRole("menuitem", { name: /forward/i }));
 
-    expect(onForward).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }), undefined);
+    expect(onForward).toHaveBeenCalledWith(
+      expect.objectContaining({ id: testMessageId(1) }),
+      undefined,
+    );
   });
 });

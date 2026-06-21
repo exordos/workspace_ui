@@ -4,7 +4,7 @@ import { formatJitsiRoomDisplayName, resolveJitsiLocationName } from "./message-
 
 function createMessage(overrides: Partial<MockMessage>): MockMessage {
   return {
-    id: 1,
+    id: "00000000-0000-4000-8000-000000000001",
     sender_id: 10,
     sender_full_name: "Alice",
     stream_id: null,

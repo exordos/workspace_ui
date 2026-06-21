@@ -4,6 +4,7 @@
  * Used by the current-chat messages store for IndexedDB and in-memory paths
  * so flags stay consistent with `found_oldest` / `found_newest` and local dedup.
  */
+import type { MessageId } from "~/shared/lib/message-id.lib";
 
 /** After loading older messages (anchor = oldest in cache, num_before = pageSize). */
 export function computeHasOlderAfterLoadOlderIdbPage(input: {
@@ -37,15 +38,10 @@ export function resolveHasOlderAfterLoadOlderPage(input: {
   return false;
 }
 
-/** Minimum message id in the store — safe anchor when list order may drift. */
-export function resolveOldestMessageId(messages: readonly { id: number }[]): number | null {
+/** First message id in the ordered store — safe anchor for UUID ids. */
+export function resolveOldestMessageId(messages: readonly { id: MessageId }[]): MessageId | null {
   if (messages.length === 0) return null;
-  let minId = messages[0]!.id;
-  for (let i = 1; i < messages.length; i++) {
-    const id = messages[i]!.id;
-    if (id < minId) minId = id;
-  }
-  return minId;
+  return messages[0]!.id;
 }
 
 /** After loading newer messages (anchor = newest in cache, num_after = pageSize). */
@@ -84,10 +80,9 @@ export function computeHasNewerAfterLoadNewerMemoryPage(input: {
  * minimum id so the API anchor matches the true oldest row in memory or cache.
  */
 export function mergeOlderLoadAnchor(
-  storeOldestId: number | null | undefined,
-  idbOldestId: number | null | undefined,
-): number | null {
-  if (storeOldestId != null && idbOldestId != null) return Math.min(storeOldestId, idbOldestId);
+  storeOldestId: MessageId | null | undefined,
+  idbOldestId: MessageId | null | undefined,
+): MessageId | null {
   if (storeOldestId != null) return storeOldestId;
   if (idbOldestId != null) return idbOldestId;
   return null;

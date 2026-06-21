@@ -4,6 +4,7 @@
  * Used by the message list (viewport) and chat page (bulk narrow). Tab
  * visibility is handled separately via `isTabVisible()` in UI layers.
  */
+import type { MessageId } from "~/shared/lib/message-id.lib";
 
 export interface ReadTailReadyInput {
   isAtBottom: boolean;
@@ -19,13 +20,13 @@ export function computeReadTailReady(input: ReadTailReadyInput): boolean {
 
 /** Keeps only ids that appear in the viewport-derived allowlist (IntersectionObserver / takeRecords). */
 export function filterMessageIdsToViewportAllowlist(
-  messageIds: readonly number[],
-  viewportMessageIds: ReadonlySet<number>,
-): number[] {
+  messageIds: readonly MessageId[],
+  viewportMessageIds: ReadonlySet<MessageId>,
+): MessageId[] {
   if (messageIds.length === 0 || viewportMessageIds.size === 0) return [];
-  const out: number[] = [];
+  const out: MessageId[] = [];
   for (const id of messageIds) {
-    if (Number.isInteger(id) && id > 0 && viewportMessageIds.has(id)) {
+    if (viewportMessageIds.has(id)) {
       out.push(id);
     }
   }
@@ -38,7 +39,7 @@ export function canAutoBulkMarkAsRead(tailReady: boolean): boolean {
 }
 
 export interface DeferAutoMarkUnreadInput {
-  firstUnreadId: number | null | undefined;
+  firstUnreadId: MessageId | null | undefined;
   unreadCount: number;
   userScrollSeen: boolean;
 }
@@ -58,12 +59,12 @@ export function shouldDeferAutoMarkUnreadUntilUserScroll(input: DeferAutoMarkUnr
 /** DOM fallback when IntersectionObserver has not fired yet after scroll-to-unread. */
 export function collectViewportVisibleUnreadIds(
   root: HTMLElement,
-  candidateIds: ReadonlySet<number>,
+  candidateIds: ReadonlySet<MessageId>,
   minVisibleRatio: number = VIEWPORT_READ_VISIBLE_RATIO,
-): number[] {
+): MessageId[] {
   if (candidateIds.size === 0) return [];
   const rootRect = root.getBoundingClientRect();
-  const visible: number[] = [];
+  const visible: MessageId[] = [];
   for (const messageId of candidateIds) {
     const node = root.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`);
     if (node == null) continue;

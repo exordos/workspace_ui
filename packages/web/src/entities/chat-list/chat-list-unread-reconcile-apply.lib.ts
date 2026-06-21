@@ -3,6 +3,8 @@
  */
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
+import { compareMessageTimeline } from "~/shared/lib/message-id.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sidebar-chat";
@@ -59,15 +61,17 @@ export function collectDmKeysForUnreadReconcile(
 export function isMessageNewer(
   message: WorkspaceRawMessage,
   existingTs: number,
-  existingLastMessageId?: number | null,
+  existingLastMessageId?: MessageId | null,
 ): boolean {
-  if (message.timestamp !== existingTs) {
-    return message.timestamp > existingTs;
-  }
   if (existingLastMessageId == null) {
     return true;
   }
-  return message.id > existingLastMessageId;
+  return (
+    compareMessageTimeline(message, {
+      id: existingLastMessageId,
+      timestamp: existingTs,
+    }) > 0
+  );
 }
 
 export function buildLatestUnreadStreamMessageMap(
@@ -346,9 +350,9 @@ function reconcileLatestDmUnreadPreviews(
 }
 
 function mergeUnreadLocationMap(
-  messageIdToLocation: Map<number, MessageLocation>,
-  unreadLocationMap: Map<number, MessageLocation>,
-): { messageIdToLocation: Map<number, MessageLocation>; changed: boolean } {
+  messageIdToLocation: Map<MessageId, MessageLocation>,
+  unreadLocationMap: Map<MessageId, MessageLocation>,
+): { messageIdToLocation: Map<MessageId, MessageLocation>; changed: boolean } {
   let nextLocations = messageIdToLocation;
   let changed = false;
   for (const [messageId, location] of unreadLocationMap.entries()) {
@@ -394,7 +398,7 @@ function computeReconcileSidebarUnreadDeltas(
 export interface ApplyReconcileUnreadMapsParams {
   unreadStreamCounts: Map<string, number>;
   unreadDmCounts: Map<string, number>;
-  unreadLocationMap: Map<number, MessageLocation>;
+  unreadLocationMap: Map<MessageId, MessageLocation>;
   latestUnreadStreams: Map<string, WorkspaceRawMessage>;
   latestUnreadDms: Map<string, WorkspaceRawMessage>;
   effectiveUserId: UserId | null;

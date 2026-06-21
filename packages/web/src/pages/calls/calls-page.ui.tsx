@@ -9,6 +9,7 @@ import type { MockMessage } from "~/shared/api/messenger.types";
 import { formatMessageTimeShort } from "~/shared/lib/datetime.lib";
 import { getJitsiMeetingUrl, parseJitsiUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 import { createLogger } from "~/shared/lib/logger";
+import { compareMessageTimeline } from "~/shared/lib/message-id.lib";
 import { buildNavigableRouteFromMessage } from "~/shared/lib/push-click";
 import { Icon } from "~/shared/ui/icon";
 import type { CallsRowProps, RecentJitsiCallEntry } from "./calls-page.types";
@@ -104,7 +105,8 @@ function collectRecentJitsiCalls(
     if (
       existing == null ||
       message.timestamp > existing.message.timestamp ||
-      (message.timestamp === existing.message.timestamp && message.id > existing.id)
+      (message.timestamp === existing.message.timestamp &&
+        compareMessageTimeline(message, existing.message) > 0)
     ) {
       entriesByUrl.set(meetingUrl, entry);
     }
@@ -115,7 +117,7 @@ function collectRecentJitsiCalls(
       if (left.message.timestamp !== right.message.timestamp) {
         return right.message.timestamp - left.message.timestamp;
       }
-      return right.id - left.id;
+      return compareMessageTimeline(right.message, left.message);
     })
     .slice(0, RECENT_CALLS_LIMIT);
 }

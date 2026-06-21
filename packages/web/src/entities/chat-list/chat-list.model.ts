@@ -15,6 +15,7 @@ import {
   logChatListFlow,
   summarizeMessengerMessagesForFlowDebug,
 } from "~/shared/lib/message-flow-debug.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { areGroupSettingValuesEqual } from "~/shared/lib/messenger-group-setting.lib";
 import { saveRecentDmPartners } from "~/shared/lib/recent-dms";
 import {
@@ -71,7 +72,6 @@ import {
   isUnreadMentionFromOthers,
   mergeMentionUnreadPatch,
 } from "./chat-list-mentions.lib";
-import { shouldShowMentionBadgeOnDmRow } from "./chat-list-sidebar-mention-enrich.lib";
 import {
   applySidebarUnreadDeltas,
   computeSidebarUnreadTotals,
@@ -227,26 +227,20 @@ function streamsMapToSortedStreams(
 
 function dmsMapToSortedDms(
   map: Map<string, DmEntryInternal>,
-  mentionFlags: MentionLocationFlags = buildMentionLocationFlags(new Set(), new Map()),
-  currentUserId: UserId | null = null,
 ): Extract<SidebarChat, { type: "dm" }>[] {
   return Array.from(map.entries())
     .sort(([, a], [, b]) => (b.ts ?? 0) - (a.ts ?? 0))
-    .map(([dmKey, x]) => ({
+    .map(([, x]) => ({
       type: "dm" as const,
       id: x.id,
       name: x.name,
       slug: x.slug,
-      isGroup: x.isGroup,
       lastMessage: x.lastMessage,
       time: x.time,
       userIds: x.userIds,
       streamUuid: x.streamUuid,
       userUuid: x.userUuid,
       badge: x.unreadCount > 0 ? x.unreadCount : undefined,
-      hasMention: shouldShowMentionBadgeOnDmRow(x, dmKey, currentUserId, mentionFlags)
-        ? true
-        : undefined,
       avatar_url: x.avatar_url,
       ts: x.ts,
     }));
@@ -276,13 +270,13 @@ const emptyDmsMap = () => new Map<string, DmEntryInternal>();
 // Referential-identity caches: recompute only when the underlying Map reference changes.
 let _cachedStreams: StreamWithLast[] | null = null;
 let _cachedStreamsMapRef: Map<number, StreamEntryInternal> | null = null;
-let _cachedStreamsMentionIdsRef: ReadonlySet<number> | null = null;
-let _cachedStreamsLocationsRef: ReadonlyMap<number, MessageLocation> | null = null;
+let _cachedStreamsMentionIdsRef: ReadonlySet<MessageId> | null = null;
+let _cachedStreamsLocationsRef: ReadonlyMap<MessageId, MessageLocation> | null = null;
 
 let _cachedDms: Extract<SidebarChat, { type: "dm" }>[] | null = null;
 let _cachedDmsMapRef: Map<string, DmEntryInternal> | null = null;
-let _cachedDmsMentionIdsRef: ReadonlySet<number> | null = null;
-let _cachedDmsLocationsRef: ReadonlyMap<number, MessageLocation> | null = null;
+let _cachedDmsMentionIdsRef: ReadonlySet<MessageId> | null = null;
+let _cachedDmsLocationsRef: ReadonlyMap<MessageId, MessageLocation> | null = null;
 
 function getAvatarMap() {
   const source = useUsersStore.getState().getAvatarMap();
@@ -298,7 +292,6 @@ function getAvatarMap() {
 
 function persistRecentDmPartnersFromMap(map: Map<string, DmEntryInternal>): void {
   const partnerIds = Array.from(map.values())
-    .filter((dm) => !dm.isGroup)
     .sort((left, right) => (right.ts ?? 0) - (left.ts ?? 0))
     .map((dm) => dm.id)
     .slice(0, 50);
@@ -321,7 +314,7 @@ function createDmBootstrapDisplayContext(): ChatListDmBootstrapDisplayContext {
       });
     },
     getAvatarUrl: (userId) => usersStore.getAvatarUrl(userId),
-    groupChatFallbackLabel: t("dm.groupChat"),
+    dmFallbackLabel: t("dm.privateChat"),
   };
 }
 
@@ -408,7 +401,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
   const reconcileUnreadMaps = (
     unreadStreamCounts: Map<string, number>,
     unreadDmCounts: Map<string, number>,
-    unreadLocationMap: Map<number, MessageLocation>,
+    unreadLocationMap: Map<MessageId, MessageLocation>,
     latestUnreadStreams: Map<string, WorkspaceRawMessage>,
     latestUnreadDms: Map<string, WorkspaceRawMessage>,
     effectiveUserId: UserId | null,
@@ -451,7 +444,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
     sidebarStreamsUnread: 0,
     sidebarDmsUnread: 0,
     mentionsUnreadCount: 0,
-    mentionedUnreadMessageIds: new Set<number>(),
+    mentionedUnreadMessageIds: new Set<MessageId>(),
     mentionsUnreadCapped: false,
     mentionsUnreadApiSynced: false,
     bootstrapError: null,
@@ -1103,7 +1096,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
               locationsChanged = true;
             }
           };
-          const assignTopicForLocation = (messageId: number) => {
+          const assignTopicForLocation = (messageId: MessageId) => {
             const location = nextLocations.get(messageId);
             if (location?.type !== "stream" || location.stream_id !== streamId) return;
             if (location.topic === nextTopicKey) return;
@@ -1203,7 +1196,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
               locationsChanged = true;
             }
           };
-          const assignStreamTopicForLocation = (messageId: number) => {
+          const assignStreamTopicForLocation = (messageId: MessageId) => {
             const location = nextLocations.get(messageId);
             if (location?.type !== "stream" || location.stream_id !== sourceStreamId) return;
             if (location.stream_id === targetStreamId && location.topic === nextTopicKey) return;
@@ -1381,7 +1374,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           let changed = false;
           const next = new Map(state.dmsMap);
           for (const [key, entry] of next) {
-            if (entry.isGroup || entry.id !== userId) continue;
+            if (entry.id !== userId) continue;
             const resolved = resolvePersonalDmSidebarTitle({
               chatName: entry.name,
               userFullName,
@@ -1473,7 +1466,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           sidebarDmsUnread: 0,
           streamTopicMessageIds: new Map(),
           mentionsUnreadCount: 0,
-          mentionedUnreadMessageIds: new Set<number>(),
+          mentionedUnreadMessageIds: new Set<MessageId>(),
           mentionsUnreadCapped: false,
           mentionsUnreadApiSynced: false,
         },
@@ -1775,11 +1768,10 @@ export const useChatListStore = create<ChatListState>((set, get) => {
       ) {
         return _cachedDms;
       }
-      const mentionFlags = buildMentionLocationFlags(mentionIds, locations);
       _cachedDmsMapRef = map;
       _cachedDmsMentionIdsRef = mentionIds;
       _cachedDmsLocationsRef = locations;
-      _cachedDms = dmsMapToSortedDms(map, mentionFlags, state.currentUserId);
+      _cachedDms = dmsMapToSortedDms(map);
       return _cachedDms;
     },
   };

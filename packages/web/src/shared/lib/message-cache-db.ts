@@ -4,6 +4,8 @@
 import type { MockMessage, Reaction } from "~/shared/api/messenger.types";
 import { runMessageCacheDbUpgrade } from "~/shared/lib/message-cache-db-upgrade.lib";
 import { instanceChatKey } from "~/shared/lib/message-cache-keys.lib";
+import { compareMessageTimeline } from "~/shared/lib/message-id.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { MESSENGER_DM_INITIAL_WINDOW_TOTAL } from "~/shared/lib/messenger-message-window.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { resolveTopicMoveTargetMessageIds } from "~/shared/lib/update-message-topic-move.lib";
@@ -13,7 +15,7 @@ function idbError(reason: unknown): Error {
 }
 
 const DB_NAME = "workspace-message-cache-v1";
-const DB_VERSION = 9;
+const DB_VERSION = 10;
 
 /** IndexedDB database name for message/chat bootstrap cache (tests, cold-start wipe). */
 export const MESSAGE_CACHE_DB_NAME = DB_NAME;
@@ -35,15 +37,16 @@ export interface MessageCacheRow {
   instanceId: string;
   instanceChatKey: string;
   chatKey: string;
-  messageId: number;
+  messageId: MessageId;
+  timeline: number;
   message: MockMessage;
   version: number;
 }
 
 export interface ChatMetaRow {
   instanceChatKey: string;
-  newestMessageId: number | null;
-  oldestMessageId: number | null;
+  newestMessageId: MessageId | null;
+  oldestMessageId: MessageId | null;
   hasGaps: boolean;
   windowSizeN: number;
   lastEventIdApplied: number | null;
@@ -71,7 +74,7 @@ export function openMessageCacheDb(): Promise<IDBDatabase> {
     req.onsuccess = () => resolve(req.result);
     req.onupgradeneeded = (event) => {
       void event;
-      runMessageCacheDbUpgrade(req.result);
+      runMessageCacheDbUpgrade(req.result, req.transaction);
     };
   });
   return dbPromise;
@@ -116,7 +119,7 @@ export async function deleteMessageCacheDatabase(): Promise<void> {
   });
 }
 
-function rowId(instanceId: string, messageId: number): string {
+function rowId(instanceId: string, messageId: MessageId): string {
   return `${instanceId}:${messageId}`;
 }
 
@@ -127,10 +130,10 @@ async function readAllMessagesInChat(
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_MESSAGES, "readonly");
     const store = tx.objectStore(STORE_MESSAGES);
-    const index = store.index("byChatOrder");
+    const index = store.index("byChatTimeline");
     const range = IDBKeyRange.bound(
-      [instanceChatKey, 0],
-      [instanceChatKey, Number.MAX_SAFE_INTEGER],
+      [instanceChatKey, 0, ""],
+      [instanceChatKey, Number.MAX_SAFE_INTEGER, "\uffff"],
     );
     const req = index.openCursor(range);
     const rows: MessageCacheRow[] = [];
@@ -156,7 +159,7 @@ export async function getChatMessagesAscending(
     const db = await openMessageCacheDb();
     const iKey = instanceChatKey(instanceId, chatKey);
     const rows = await readAllMessagesInChat(db, iKey);
-    rows.sort((a, b) => a.messageId - b.messageId);
+    rows.sort((a, b) => compareMessageTimeline(a.message, b.message));
     return rows.map((r) => r.message);
   } catch {
     return [];
@@ -176,8 +179,7 @@ export async function getInstanceMessagesAscending(instanceId: string): Promise<
 
       /**
        * Primary keys are `${instanceId}:${messageId}` — range-scan by instance prefix
-       * avoids a full store scan. Lexicographic key order is not numeric message.id order
-       * (`1, 10, 100, 2`), so sort by id before returning for cache-first bootstrap.
+       * avoids a full store scan. UUID keys are not timeline order, so sort by timestamp.
        */
       const range = IDBKeyRange.bound(`${instanceId}:`, `${instanceId}:\uffff`);
 
@@ -190,7 +192,7 @@ export async function getInstanceMessagesAscending(instanceId: string): Promise<
         const cursor = req.result;
 
         if (!cursor) {
-          messages.sort((a, b) => a.id - b.id);
+          messages.sort(compareMessageTimeline);
           resolve(messages);
           return;
         }
@@ -218,10 +220,10 @@ export async function getStreamMessagesAscending(
     return await new Promise<MockMessage[]>((resolve, reject) => {
       const tx = db.transaction(STORE_MESSAGES, "readonly");
       const store = tx.objectStore(STORE_MESSAGES);
-      const index = store.index("byChatOrder");
+      const index = store.index("byChatTimeline");
       const range = IDBKeyRange.bound(
-        [indexPrefix, 0],
-        [`${indexPrefix}\uffff`, Number.MAX_SAFE_INTEGER],
+        [indexPrefix, 0, ""],
+        [`${indexPrefix}\uffff`, Number.MAX_SAFE_INTEGER, "\uffff"],
       );
       const req = index.openCursor(range);
       const rows: MessageCacheRow[] = [];
@@ -234,7 +236,7 @@ export async function getStreamMessagesAscending(
           cursor.continue();
           return;
         }
-        rows.sort((a, b) => a.messageId - b.messageId);
+        rows.sort((a, b) => compareMessageTimeline(a.message, b.message));
         resolve(rows.map((row) => row.message));
       };
     });
@@ -246,7 +248,7 @@ export async function getStreamMessagesAscending(
 export async function getExistingMessageIdsInChat(
   instanceId: string,
   chatKey: string,
-): Promise<Set<number>> {
+): Promise<Set<MessageId>> {
   if (!isIndexedDBAvailable()) return new Set();
   try {
     const db = await openMessageCacheDb();
@@ -261,7 +263,7 @@ export async function getExistingMessageIdsInChat(
 export async function getChatMessageBounds(
   instanceId: string,
   chatKey: string,
-): Promise<{ oldestId: number | null; newestId: number | null; count: number }> {
+): Promise<{ oldestId: MessageId | null; newestId: MessageId | null; count: number }> {
   if (!isIndexedDBAvailable()) {
     return { oldestId: null, newestId: null, count: 0 };
   }
@@ -272,13 +274,12 @@ export async function getChatMessageBounds(
     if (rows.length === 0) {
       return { oldestId: null, newestId: null, count: 0 };
     }
-    let min = rows[0]!.messageId;
-    let max = rows[0]!.messageId;
-    for (const r of rows) {
-      if (r.messageId < min) min = r.messageId;
-      if (r.messageId > max) max = r.messageId;
-    }
-    return { oldestId: min, newestId: max, count: rows.length };
+    rows.sort((a, b) => compareMessageTimeline(a.message, b.message));
+    return {
+      oldestId: rows[0]!.messageId,
+      newestId: rows[rows.length - 1]!.messageId,
+      count: rows.length,
+    };
   } catch {
     return { oldestId: null, newestId: null, count: 0 };
   }
@@ -319,7 +320,7 @@ export async function applyRetentionForChat(
   const rows = await readAllMessagesInChat(db, iKey);
   if (rows.length <= maxPerChat) return;
 
-  rows.sort((a, b) => a.messageId - b.messageId);
+  rows.sort((a, b) => compareMessageTimeline(a.message, b.message));
   const toRemove = rows.slice(0, rows.length - maxPerChat);
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE_MESSAGES, "readwrite");
@@ -339,16 +340,13 @@ export async function applyRetentionForChat(
 function mergeChatMetaAfterUpsert(
   prev: ChatMetaRow | null,
   instanceChatKeyValue: string,
-  messageIds: readonly number[],
+  messages: readonly MockMessage[],
   windowSizeN: number,
 ): ChatMetaRow {
   const now = Date.now();
-  let newest: number | null = prev?.newestMessageId ?? null;
-  let oldest: number | null = prev?.oldestMessageId ?? null;
-  for (const id of messageIds) {
-    if (newest == null || id > newest) newest = id;
-    if (oldest == null || id < oldest) oldest = id;
-  }
+  const sorted = [...messages].sort(compareMessageTimeline);
+  const oldest = sorted[0]?.id ?? prev?.oldestMessageId ?? null;
+  const newest = sorted[sorted.length - 1]?.id ?? prev?.newestMessageId ?? null;
   return {
     instanceChatKey: instanceChatKeyValue,
     newestMessageId: newest,
@@ -380,7 +378,6 @@ export async function upsertChatMessages(options: {
 
   const db = await openMessageCacheDb();
   const meta = await getChatMeta(instanceId, chatKey);
-  const ids = messages.map((m) => m.id);
 
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction([STORE_MESSAGES, STORE_CHAT_META], "readwrite");
@@ -396,12 +393,13 @@ export async function upsertChatMessages(options: {
         instanceChatKey: iKey,
         chatKey,
         messageId: m.id,
+        timeline: m.timestamp,
         message: m,
         version: versionCounter,
       };
       msgStore.put(row);
     }
-    const nextMeta = mergeChatMetaAfterUpsert(meta, iKey, ids, windowSizeN);
+    const nextMeta = mergeChatMetaAfterUpsert(meta, iKey, messages, windowSizeN);
     tx.objectStore(STORE_CHAT_META).put(nextMeta);
   });
 
@@ -446,7 +444,7 @@ export async function updateChatMetaPatch(
 async function getMessageRow(
   db: IDBDatabase,
   instanceId: string,
-  messageId: number,
+  messageId: MessageId,
 ): Promise<MessageCacheRow | undefined> {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_MESSAGES, "readonly");
@@ -458,7 +456,7 @@ async function getMessageRow(
 
 export async function deleteMessagesByIds(
   instanceId: string,
-  messageIds: readonly number[],
+  messageIds: readonly MessageId[],
 ): Promise<void> {
   if (!isIndexedDBAvailable() || messageIds.length === 0) return;
   const db = await openMessageCacheDb();
@@ -475,7 +473,7 @@ export async function deleteMessagesByIds(
 
 export async function patchMessageFlagsInCache(options: {
   instanceId: string;
-  messageIds: readonly number[];
+  messageIds: readonly MessageId[];
   flag: string;
   op: "add" | "remove";
 }): Promise<void> {
@@ -516,7 +514,7 @@ export async function patchMessageFlagsInCache(options: {
 
 export async function patchMessageReactionInCache(options: {
   instanceId: string;
-  messageId: number;
+  messageId: MessageId;
   reaction: Reaction;
   op: "add" | "remove";
 }): Promise<void> {
@@ -552,7 +550,7 @@ export async function patchMessageReactionInCache(options: {
 
 export async function patchMessageContentInCache(options: {
   instanceId: string;
-  messageId: number;
+  messageId: MessageId;
   content: string;
   /** When set, updates `markdown_source`; when omitted, keeps the previous value. */
   markdown_source?: string;
@@ -614,12 +612,9 @@ function buildChatMetaRowFromRows(options: {
 }): ChatMetaRow | null {
   const { rows, seed, instanceChatKeyValue } = options;
   if (rows.length === 0) return null;
-  let oldest = rows[0]!.messageId;
-  let newest = rows[0]!.messageId;
-  for (const row of rows) {
-    if (row.messageId < oldest) oldest = row.messageId;
-    if (row.messageId > newest) newest = row.messageId;
-  }
+  const sortedRows = [...rows].sort((a, b) => compareMessageTimeline(a.message, b.message));
+  const oldest = sortedRows[0]!.messageId;
+  const newest = sortedRows[sortedRows.length - 1]!.messageId;
   return {
     instanceChatKey: instanceChatKeyValue,
     oldestMessageId: oldest,
@@ -638,8 +633,8 @@ export async function moveTopicMessagesInCache(options: {
   streamId: number;
   oldTopic: string;
   newTopic: string;
-  messageIds?: readonly number[];
-  anchorMessageId?: number;
+  messageIds?: readonly MessageId[];
+  anchorMessageId?: MessageId;
 }): Promise<void> {
   const { instanceId, streamId, oldTopic, newTopic, messageIds, anchorMessageId } = options;
   if (!isIndexedDBAvailable()) return;
@@ -669,7 +664,7 @@ export async function moveTopicMessagesInCache(options: {
   const newMetaBefore = await getChatMeta(instanceId, newChatKey).catch(() => null);
   const rowsInOldPartition = await readAllMessagesInChat(db, oldInstanceChatKey);
 
-  const byIdCandidates = new Map<number, MessageCacheRow>();
+  const byIdCandidates = new Map<MessageId, MessageCacheRow>();
   for (const messageId of targetMessageIds) {
     const row = await getMessageRow(db, instanceId, messageId);
     if (!row) continue;
@@ -678,7 +673,7 @@ export async function moveTopicMessagesInCache(options: {
     byIdCandidates.set(messageId, row);
   }
 
-  const effectiveRowsToMoveMap = new Map<number, MessageCacheRow>();
+  const effectiveRowsToMoveMap = new Map<MessageId, MessageCacheRow>();
   for (const row of rowsInOldPartition) {
     if (!targetMessageIds.has(row.messageId)) continue;
     effectiveRowsToMoveMap.set(row.messageId, row);
@@ -748,8 +743,8 @@ export async function moveTopicToStreamInCache(options: {
   targetStreamId: number;
   oldTopic: string;
   newTopic: string;
-  messageIds?: readonly number[];
-  anchorMessageId?: number;
+  messageIds?: readonly MessageId[];
+  anchorMessageId?: MessageId;
 }): Promise<void> {
   const {
     instanceId,
@@ -788,7 +783,7 @@ export async function moveTopicToStreamInCache(options: {
   const newMetaBefore = await getChatMeta(instanceId, newChatKey).catch(() => null);
   const rowsInOldPartition = await readAllMessagesInChat(db, oldInstanceChatKey);
 
-  const byIdCandidates = new Map<number, MessageCacheRow>();
+  const byIdCandidates = new Map<MessageId, MessageCacheRow>();
   for (const messageId of targetMessageIds) {
     const row = await getMessageRow(db, instanceId, messageId);
     if (!row) continue;
@@ -797,7 +792,7 @@ export async function moveTopicToStreamInCache(options: {
     byIdCandidates.set(messageId, row);
   }
 
-  const effectiveRowsToMoveMap = new Map<number, MessageCacheRow>();
+  const effectiveRowsToMoveMap = new Map<MessageId, MessageCacheRow>();
   for (const row of rowsInOldPartition) {
     if (!targetMessageIds.has(row.messageId)) continue;
     effectiveRowsToMoveMap.set(row.messageId, row);

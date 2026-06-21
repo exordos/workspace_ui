@@ -6,6 +6,7 @@
  */
 import { messageToStreamEntry } from "~/entities/chat-list/chat-list.lib";
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import { streamTopicCompositeKey } from "./chat-list-stream-topic-index.lib";
@@ -19,7 +20,7 @@ export function filterStreamMessagesForSidebar(
 /** Metadata shells can have activity ts without preview text — still apply newer fetched bodies. */
 export function shouldApplyStreamTopicPreviewFromFetchedMessage(
   existingStream: StreamEntryInternal | undefined,
-  existingTopic: { ts: number; lastMessage: string; lastMessageId?: number } | undefined,
+  existingTopic: { ts: number; lastMessage: string; lastMessageId?: MessageId } | undefined,
   message: WorkspaceRawMessage,
   previewText: string,
 ): boolean {
@@ -51,7 +52,7 @@ function mergeStreamPreviewEntry(
   topicLastMessageSenderName: string | undefined,
   topicTime: string,
   topicTs: number,
-  lastMessageId?: number,
+  lastMessageId?: MessageId,
 ): StreamEntryInternal {
   const existingTopic = existing?.topics.get(topicSubject);
   const unreadCount = existingTopic?.unreadCount ?? 0;

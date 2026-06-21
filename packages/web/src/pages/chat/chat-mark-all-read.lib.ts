@@ -8,6 +8,7 @@ import type { UnreadDeltaSyncSource } from "~/entities/unread-sync/unread-surfac
 import { markMessagesAsRead } from "~/shared/api/messenger-read-state";
 import { dmRouteKey } from "~/shared/lib/dm-key";
 import { buildMessageIdMap } from "~/shared/lib/message-id-index.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 
@@ -50,10 +51,10 @@ export function resolveMarkAllAsReadTarget({
 // Finds unread ids that are visible in the loaded message window.
 export function collectUnreadMessageIds(
   messages: readonly {
-    id: number;
+    id: MessageId;
     flags?: string[];
   }[],
-): number[] {
+): MessageId[] {
   return messages
     .filter((message) => !(message.flags ?? []).includes("read"))
     .map((message) => message.id);
@@ -76,18 +77,18 @@ function messageLocationMatchesMarkAllTarget(
 
 /** Loaded-window unread ids plus index ids for the current narrow (server unreads outside the window). */
 export function collectMarkAllAsReadMessageIds(
-  loadedMessages: readonly { id: number; flags?: string[] }[],
-  messageIdToLocation: ReadonlyMap<number, MessageLocation>,
+  loadedMessages: readonly { id: MessageId; flags?: string[] }[],
+  messageIdToLocation: ReadonlyMap<MessageId, MessageLocation>,
   target: MarkAllAsReadTarget,
   currentUserId: UserId | null,
-): number[] {
+): MessageId[] {
   const ids = new Set(collectUnreadMessageIds(loadedMessages));
   for (const [messageId, location] of messageIdToLocation) {
     if (messageLocationMatchesMarkAllTarget(location, target, currentUserId)) {
       ids.add(messageId);
     }
   }
-  return Array.from(ids).sort((a, b) => a - b);
+  return Array.from(ids);
 }
 
 // Used when some unread messages are not present in the local id index.
@@ -107,9 +108,9 @@ export function markAllAsReadFallbackContext(
 
 export interface ApplyOpenChatMarkAllAsReadOptions {
   target: MarkAllAsReadTarget;
-  loadedMessages: readonly { id: number; flags?: string[] }[];
+  loadedMessages: readonly { id: MessageId; flags?: string[] }[];
   currentUserId: UserId | null;
-  applyOptimistic: (messageIds: number[], fallbackContext: ChatListReadFallbackContext) => void;
+  applyOptimistic: (messageIds: MessageId[], fallbackContext: ChatListReadFallbackContext) => void;
   // Wraps every local unread change so the org badge is updated in the same step.
   applyUnreadDelta: (
     source: Extract<UnreadDeltaSyncSource, "local-chat-mark-all-read">,
@@ -152,7 +153,7 @@ export async function applyOpenChatMarkAllAsRead(
 
 /** Message shape needed to decide if an id still counts as unread for optimistic read application. */
 export interface MessageReadFlagSlice {
-  id: number;
+  id: MessageId;
   flags?: string[];
 }
 
@@ -164,16 +165,16 @@ export interface MessageReadFlagSlice {
  * optimistic flag updates and chat-list decrements were skipped even after a successful API call.
  */
 export function filterMessageIdsStillUnreadForOptimisticApply(
-  messageIds: readonly number[],
+  messageIds: readonly MessageId[],
   options: {
     storeMessages: readonly MessageReadFlagSlice[];
     effectiveMessages: readonly MessageReadFlagSlice[];
   },
-): number[] {
+): MessageId[] {
   const { storeMessages, effectiveMessages } = options;
   const storeById = buildMessageIdMap(storeMessages);
   const effectiveById = buildMessageIdMap(effectiveMessages);
-  const out: number[] = [];
+  const out: MessageId[] = [];
   for (const messageId of messageIds) {
     const message = storeById.get(messageId) ?? effectiveById.get(messageId);
     if (message != null && !(message.flags ?? []).includes("read")) {

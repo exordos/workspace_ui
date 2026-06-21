@@ -1,4 +1,5 @@
 import type { MockMessage } from "~/shared/api/messenger.types";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 
 export type OutgoingMessageTarget =
   | {
@@ -13,7 +14,7 @@ export type OutgoingMessageTarget =
     };
 
 export interface BuildOptimisticOutgoingMessageInput {
-  id: number;
+  id: MessageId;
   senderId: number;
   senderFullName: string;
   content: string;

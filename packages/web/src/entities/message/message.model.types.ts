@@ -1,4 +1,5 @@
 import type { MockMessage, Reaction } from "~/shared/api/messenger.types";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { LinkPreviewData } from "~/shared/lib/message-link-preview.types";
 import type { UserId } from "~/shared/lib/user-id.lib";
 
@@ -8,7 +9,7 @@ export interface OnDmMessagesAppliedPayload {
   messages: readonly MockMessage[];
   context: CurrentChatContext;
   hasNewerMessages: boolean;
-  focusedMessageId: number | null;
+  focusedMessageId: MessageId | null;
   source: DmMessagesAppliedSource;
 }
 
@@ -18,7 +19,7 @@ export interface OnStreamMessagesAppliedPayload {
   messages: readonly MockMessage[];
   context: { type: "stream"; streamId: number };
   hasNewerMessages: boolean;
-  focusedMessageId: number | null;
+  focusedMessageId: MessageId | null;
   source: StreamMessagesAppliedSource;
 }
 
@@ -40,7 +41,7 @@ export interface CurrentChatMessagesState {
    * FIFO keys (`local_echo_key`) for optimistic sends still waiting for a server id.
    * Drives pairing when several outgoing messages are in flight.
    */
-  pendingOutgoingEchoKeys: number[];
+  pendingOutgoingEchoKeys: MessageId[];
   isLoadingMore: boolean;
   /** True only while load-newer pagination is in flight (excludes load-older). */
   isLoadingNewer: boolean;
@@ -58,23 +59,23 @@ export interface CurrentChatMessagesState {
   appendMessages: (msgs: MockMessage[]) => void;
   appendMessage: (msg: MockMessage) => void;
   /** Replaces optimistic row and/or merges with an existing server echo in one update. */
-  commitOutgoingMessage: (optimisticId: number, finalMessage: MockMessage) => void;
-  removeMessage: (messageId: number) => void;
-  removeMessages: (messageIds: number[]) => void;
-  updateMessageReaction: (messageId: number, reaction: Reaction, op: "add" | "remove") => void;
-  updateMessageFlags: (messageIds: number[], flag: string, op: "add" | "remove") => void;
-  updateMessageContent: (messageId: number, content: string, markdownSource?: string) => void;
-  applyOptimisticMessageEdit: (messageId: number, markdown: string) => void;
-  commitOptimisticMessageEdit: (messageId: number, serverMessage?: MockMessage | null) => void;
-  failOptimisticMessageEdit: (messageId: number, error: string) => void;
-  cancelFailedMessageEdit: (messageId: number) => void;
-  updateMessageLinkPreview: (messageId: number, linkPreview: LinkPreviewData | null) => void;
+  commitOutgoingMessage: (optimisticId: MessageId, finalMessage: MockMessage) => void;
+  removeMessage: (messageId: MessageId) => void;
+  removeMessages: (messageIds: MessageId[]) => void;
+  updateMessageReaction: (messageId: MessageId, reaction: Reaction, op: "add" | "remove") => void;
+  updateMessageFlags: (messageIds: MessageId[], flag: string, op: "add" | "remove") => void;
+  updateMessageContent: (messageId: MessageId, content: string, markdownSource?: string) => void;
+  applyOptimisticMessageEdit: (messageId: MessageId, markdown: string) => void;
+  commitOptimisticMessageEdit: (messageId: MessageId, serverMessage?: MockMessage | null) => void;
+  failOptimisticMessageEdit: (messageId: MessageId, error: string) => void;
+  cancelFailedMessageEdit: (messageId: MessageId) => void;
+  updateMessageLinkPreview: (messageId: MessageId, linkPreview: LinkPreviewData | null) => void;
   moveStreamTopicMessages: (params: {
     streamId: number;
     oldTopic: string;
     newTopic: string;
-    messageIds?: number[];
-    anchorMessageId?: number;
+    messageIds?: MessageId[];
+    anchorMessageId?: MessageId;
   }) => void;
   moveTopicToStreamMessages: (params: {
     sourceStreamId: number;
@@ -82,8 +83,8 @@ export interface CurrentChatMessagesState {
     targetStreamName: string;
     oldTopic: string;
     newTopic: string;
-    messageIds?: number[];
-    anchorMessageId?: number;
+    messageIds?: MessageId[];
+    anchorMessageId?: MessageId;
   }) => void;
   setIsLoadingMore: (loading: boolean) => void;
   setHasOlderMessages: (has: boolean) => void;
@@ -92,7 +93,7 @@ export interface CurrentChatMessagesState {
 
   loadInitialMessagesForContext: (options: {
     context: CurrentChatContext;
-    focusedMessageId: number | null;
+    focusedMessageId: MessageId | null;
     currentUserId: UserId | null;
     /** Fired once cache-first payload is in store — use to hide blocking loader while API refresh runs. */
     onCacheHydrated?: () => void;

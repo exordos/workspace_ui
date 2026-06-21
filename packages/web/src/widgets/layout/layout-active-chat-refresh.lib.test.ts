@@ -32,12 +32,12 @@ describe("refreshActiveChatMessagesFromApi", () => {
   it("reloads the open chat context from the API", () => {
     loadInitialMessagesForContextMock.mockResolvedValue(undefined);
 
-    refreshActiveChatMessagesFromApi({ focusedMessageId: 77 });
+    refreshActiveChatMessagesFromApi({ focusedMessageId: "00000000-0000-4000-8000-000000000077" });
 
     expect(loadInitialMessagesForContextMock).toHaveBeenCalledWith(
       expect.objectContaining({
         context: streamContext,
-        focusedMessageId: 77,
+        focusedMessageId: "00000000-0000-4000-8000-000000000077",
         currentUserId: 42,
         onStreamMessagesApplied: expect.any(Function),
         onDmMessagesApplied: expect.any(Function),

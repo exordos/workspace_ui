@@ -1,6 +1,7 @@
 /**
  * JSON-serializable representation of chat-list store maps for IndexedDB persistence.
  */
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 
@@ -13,12 +14,12 @@ export interface ChatListSnapshotSerialized {
   version: 1;
   currentUserId: UserId | null;
   /** Max messenger message id seen in the last full/delta bootstrap (for incremental fetch). */
-  lastMessageId: number | null;
+  lastMessageId: MessageId | null;
   /** Min message id from last bootstrap window (optional, for debugging). */
-  oldestMessageId: number | null;
+  oldestMessageId: MessageId | null;
   streamsEntries: [number, StreamEntryInternalSerialized][];
   dmsEntries: [string, DmEntryInternal][];
-  messageIdToLocationEntries: [number, ChatListSnapshotMessageLocation][];
+  messageIdToLocationEntries: [MessageId, ChatListSnapshotMessageLocation][];
   updatedAt: number;
 }
 

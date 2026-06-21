@@ -129,7 +129,7 @@ describe("usersStore", () => {
     // Stream messages carry sender info — must be extracted to avoid extra API calls.
     it("extracts sender from a stream message", () => {
       const msg: WorkspaceRawMessage = {
-        id: 100,
+        id: "00000000-0000-4000-8000-000000000100",
         sender_id: 10,
         sender_full_name: "Charlie",
         avatar_url: "/charlie.png",
@@ -150,7 +150,7 @@ describe("usersStore", () => {
     // DM messages include all participants in display_recipient — extract them all.
     it("extracts recipients from a private message", () => {
       const msg: WorkspaceRawMessage = {
-        id: 101,
+        id: "00000000-0000-4000-8000-000000000101",
         sender_id: 10,
         sender_full_name: "Charlie",
         content: "hi",

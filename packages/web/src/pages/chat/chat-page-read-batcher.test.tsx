@@ -145,7 +145,7 @@ const CURRENT_USER_ID = 7;
 const STREAM_ID = 12;
 const STREAM_NAME = "engineering";
 const TOPIC = "события канала";
-const MESSAGE_ID = 1988;
+const MESSAGE_ID = "00000000-0000-4000-8000-000000001988";
 
 function streamTopicMessage(overrides: Partial<MockMessage> = {}): MockMessage {
   return {
@@ -344,18 +344,18 @@ describe("ChatPage mark-as-read batching", () => {
   it("opens the last editable own message from composer ArrowUp", async () => {
     const nowSeconds = Math.floor(Date.now() / 1000);
     const editableOwnMessage = streamTopicMessage({
-      id: 1000,
+      id: "00000000-0000-4000-8000-000000001000",
       sender_id: CURRENT_USER_ID,
       timestamp: nowSeconds - 50,
       markdown_source: "older typo",
     });
     const otherUserMessage = streamTopicMessage({
-      id: 2000,
+      id: "00000000-0000-4000-8000-000000002000",
       sender_id: 42,
       timestamp: nowSeconds - 30,
     });
     const expiredOwnMessage = streamTopicMessage({
-      id: 3000,
+      id: "00000000-0000-4000-8000-000000003000",
       sender_id: CURRENT_USER_ID,
       timestamp: nowSeconds - 61,
       markdown_source: "newer typo",
@@ -399,7 +399,7 @@ describe("ChatPage mark-as-read batching", () => {
 
     await waitFor(() => {
       expect(captured.composerProps?.editSession).toEqual({
-        messageId: 1000,
+        messageId: "00000000-0000-4000-8000-000000001000",
         initialMarkdown: "older typo",
       });
     });

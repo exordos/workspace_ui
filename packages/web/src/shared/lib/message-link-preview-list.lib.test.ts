@@ -7,7 +7,7 @@ import {
 
 function baseMessage(overrides: Partial<MockMessage> = {}): MockMessage {
   return {
-    id: 1,
+    id: "00000000-0000-4000-8000-000000000001",
     sender_id: 1,
     sender_full_name: "Alice",
     stream_id: 10,

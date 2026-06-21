@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MockMessage } from "~/shared/api/messenger.types";
+import { testMessageId } from "~/test/factories";
 import {
   collectUnreadLoadedMessageIds,
   parseUpdateMessageFlagsEvent,
@@ -13,12 +14,12 @@ describe("parseUpdateMessageFlagsEvent", () => {
       type: "update_message_flags",
       op: "add",
       flag: "read",
-      messages: [10, 20],
+      messages: [testMessageId(10), testMessageId(20)],
     });
     expect(parsed).toEqual({
       op: "add",
       flag: "read",
-      messageIds: [10, 20],
+      messageIds: ["00000000-0000-4000-8000-000000000010", "00000000-0000-4000-8000-000000000020"],
       markAllRead: false,
     });
   });
@@ -29,7 +30,7 @@ describe("parseUpdateMessageFlagsEvent", () => {
       type: "update_message_flags",
       operation: "remove",
       flag: "read",
-      messages: [5],
+      messages: [testMessageId(5)],
     });
     expect(parsed?.op).toBe("remove");
   });
@@ -41,7 +42,7 @@ describe("parseUpdateMessageFlagsEvent", () => {
         type: "update_message_flags",
         op: "invalid",
         flag: "read",
-        messages: [1],
+        messages: [testMessageId(1)],
       }),
     ).toBeNull();
   });
@@ -52,9 +53,9 @@ describe("parseUpdateMessageFlagsEvent", () => {
       type: "update_message_flags",
       op: "add",
       flag: "read",
-      messages: [3, 3, 0, -1, 4],
+      messages: [testMessageId(3), testMessageId(3), "not-a-message-id", testMessageId(4)],
     });
-    expect(parsed?.messageIds).toEqual([3, 4]);
+    expect(parsed?.messageIds).toEqual([testMessageId(3), testMessageId(4)]);
   });
 
   it("sets markAllRead when all is true with read add", () => {
@@ -83,7 +84,7 @@ describe("collectUnreadLoadedMessageIds", () => {
   it("returns ids without read flag", () => {
     const messages: MockMessage[] = [
       {
-        id: 1,
+        id: "00000000-0000-4000-8000-000000000001",
         sender_id: 2,
         sender_full_name: "Bob",
         stream_id: 5,
@@ -93,7 +94,7 @@ describe("collectUnreadLoadedMessageIds", () => {
         flags: ["read"],
       },
       {
-        id: 2,
+        id: "00000000-0000-4000-8000-000000000002",
         sender_id: 2,
         sender_full_name: "Bob",
         stream_id: 5,
@@ -103,7 +104,7 @@ describe("collectUnreadLoadedMessageIds", () => {
         flags: [],
       },
       {
-        id: 3,
+        id: "00000000-0000-4000-8000-000000000003",
         sender_id: 2,
         sender_full_name: "Bob",
         stream_id: 5,
@@ -112,21 +113,21 @@ describe("collectUnreadLoadedMessageIds", () => {
         timestamp: 0,
       },
     ];
-    expect(collectUnreadLoadedMessageIds(messages)).toEqual([2, 3]);
+    expect(collectUnreadLoadedMessageIds(messages)).toEqual([testMessageId(2), testMessageId(3)]);
   });
 });
 
 describe("messengerRawMessagesFromMarkUnreadDetails", () => {
   it("builds stream rows from message_details", () => {
     const rows = messengerRawMessagesFromMarkUnreadDetails(
-      [42],
+      ["00000000-0000-4000-8000-000000000042"],
       {
-        "42": { type: "stream", stream_id: 5, topic: "general" },
+        [testMessageId(42)]: { type: "stream", stream_id: 5, topic: "general" },
       },
       10,
     );
     expect(rows).toHaveLength(1);
-    expect(rows[0]!.id).toBe(42);
+    expect(rows[0]!.id).toBe(testMessageId(42));
     expect(rows[0]!.type).toBe("stream");
     expect(rows[0]!.stream_id).toBe(5);
     expect(rows[0]!.subject).toBe("general");
@@ -134,9 +135,9 @@ describe("messengerRawMessagesFromMarkUnreadDetails", () => {
 
   it("builds private rows from message_details", () => {
     const rows = messengerRawMessagesFromMarkUnreadDetails(
-      [99],
+      ["00000000-0000-4000-8000-000000000099"],
       {
-        "99": { type: "private", user_ids: [10, 20] },
+        [testMessageId(99)]: { type: "private", user_ids: [10, 20] },
       },
       10,
     );

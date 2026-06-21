@@ -2,6 +2,8 @@
  * Parses Workspace unread payloads (legacy `unread_msgs` or GET /messages?narrow=is:unread)
  * into total counts and sidebar reconciliation snapshots.
  */
+import { normalizeMessageId } from "~/shared/lib/message-id.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import {
   isPositiveInteger,
@@ -9,7 +11,6 @@ import {
   isStreamMessengerMessage,
   isUnreadMessengerMessage,
   parseDmParticipantIds,
-  parseHuddleUnreadBuckets,
   parsePmUnreadBuckets,
   parseStreamUnreadBuckets,
   parseUnreadMessageIds,
@@ -26,14 +27,12 @@ function resolveUnreadMsgsTotalCount(
   unreadMsgs: Record<string, unknown>,
   streamsRaw: unknown[],
   pmsRaw: unknown[],
-  huddlesRaw: unknown[],
 ): number {
   const directCount = toSafeCount(unreadMsgs.count);
   if (directCount > 0) return directCount;
   return (
     sumUnreadMessageIds(streamsRaw) +
     sumUnreadMessageIds(pmsRaw) +
-    sumUnreadMessageIds(huddlesRaw) +
     sumUnreadMessageIds(unreadMsgs.mentions)
   );
 }
@@ -51,14 +50,12 @@ function sumUnreadMessageIds(entries: unknown): number {
 export interface WorkspaceUnreadStreamBucket {
   streamId: number;
   topic: string;
-  unreadMessageIds: number[];
+  unreadMessageIds: MessageId[];
 }
 
 export interface WorkspaceUnreadDmBucket {
   userIds: number[];
-  unreadMessageIds: number[];
-  /** True for huddles / group DMs (excluded from personal DM badge counts). */
-  isGroup?: boolean;
+  unreadMessageIds: MessageId[];
 }
 
 export interface MessengerUnreadMessagesSnapshot {
@@ -66,7 +63,7 @@ export interface MessengerUnreadMessagesSnapshot {
   dms: WorkspaceUnreadDmBucket[];
   totalCount: number;
   /** Unread @mention message ids from register `unread_msgs.mentions` buckets. */
-  mentionMessageIds: number[];
+  mentionMessageIds: MessageId[];
   /** Workspace `old_unreads_missing` — snapshot truncated; caller should fall back to GET /messages. */
   oldUnreadsMissing?: boolean;
 }
@@ -102,27 +99,26 @@ function parseUnreadMessagesSnapshotFromUnreadMsgs(
 
   const streamsRaw = unreadMsgs.streams;
   const pmsRaw = unreadMsgs.pms;
-  const huddlesRaw = unreadMsgs.huddles;
 
-  if (!Array.isArray(streamsRaw) || !Array.isArray(pmsRaw) || !Array.isArray(huddlesRaw)) {
+  if (!Array.isArray(streamsRaw) || !Array.isArray(pmsRaw)) {
     return null;
   }
 
   const streams = parseStreamUnreadBuckets(streamsRaw);
-  const dms = [...parsePmUnreadBuckets(pmsRaw), ...parseHuddleUnreadBuckets(huddlesRaw)];
+  const dms = parsePmUnreadBuckets(pmsRaw);
   const mentionMessageIds = parseMentionUnreadMessageIds(unreadMsgs.mentions);
 
   // Prefer server-provided count; otherwise sum unread id array lengths.
-  const totalCount = resolveUnreadMsgsTotalCount(unreadMsgs, streamsRaw, pmsRaw, huddlesRaw);
+  const totalCount = resolveUnreadMsgsTotalCount(unreadMsgs, streamsRaw, pmsRaw);
 
   return { streams, dms, totalCount, mentionMessageIds };
 }
 
-function parseMentionUnreadMessageIds(mentionsRaw: unknown): number[] {
+function parseMentionUnreadMessageIds(mentionsRaw: unknown): MessageId[] {
   if (!Array.isArray(mentionsRaw)) {
     return [];
   }
-  const ids: number[] = [];
+  const ids: MessageId[] = [];
   for (const entry of mentionsRaw) {
     if (!isRecord(entry)) continue;
     ids.push(...parseUnreadMessageIds(entry.unread_message_ids));
@@ -137,7 +133,7 @@ export function countMentionsUnreadFromSnapshot(snapshot: MessengerUnreadMessage
 function accumulateUnreadStreamMessage(
   streamBuckets: Map<string, WorkspaceUnreadStreamBucket>,
   rawMessage: Record<string, unknown>,
-  messageId: number,
+  messageId: MessageId,
 ): void {
   const streamId = rawMessage.stream_id;
   if (!isPositiveInteger(streamId)) return;
@@ -156,12 +152,12 @@ function ingestUnreadMessageFromPayload(
   rawMessage: unknown,
   streamBuckets: Map<string, WorkspaceUnreadStreamBucket>,
   dmBuckets: Map<string, WorkspaceUnreadDmBucket>,
-  unreadMessageIds: Set<number>,
+  unreadMessageIds: Set<MessageId>,
 ): void {
   if (!isRecord(rawMessage)) return;
   if (!isUnreadMessengerMessage(rawMessage)) return;
-  const messageId = rawMessage.id;
-  if (!isPositiveInteger(messageId)) return;
+  const messageId = normalizeMessageId(rawMessage.id);
+  if (messageId == null) return;
 
   unreadMessageIds.add(messageId);
 
@@ -176,10 +172,12 @@ function ingestUnreadMessageFromPayload(
 function accumulateUnreadDmMessage(
   dmBuckets: Map<string, WorkspaceUnreadDmBucket>,
   rawMessage: Record<string, unknown>,
-  messageId: number,
+  messageId: MessageId,
 ): void {
   const participantIds = parseDmParticipantIds(rawMessage);
   if (participantIds.length === 0) return;
+  // Workspace DMs are 1:1 only; skip any legacy multi-party (group) conversations.
+  if (participantIds.length > 2) return;
   const key = participantIds.join(",");
   const existing = dmBuckets.get(key);
   if (existing) {
@@ -189,7 +187,6 @@ function accumulateUnreadDmMessage(
   dmBuckets.set(key, {
     userIds: participantIds,
     unreadMessageIds: [messageId],
-    isGroup: participantIds.length > 2,
   });
 }
 
@@ -202,7 +199,7 @@ function parseUnreadMessagesSnapshotFromMessages(
 
   const streamBuckets = new Map<string, WorkspaceUnreadStreamBucket>();
   const dmBuckets = new Map<string, WorkspaceUnreadDmBucket>();
-  const unreadMessageIds = new Set<number>();
+  const unreadMessageIds = new Set<MessageId>();
 
   for (const rawMessage of payload.messages) {
     ingestUnreadMessageFromPayload(rawMessage, streamBuckets, dmBuckets, unreadMessageIds);
@@ -252,7 +249,6 @@ function parseUnreadDmMessagesSnapshot(payload: unknown): MessengerUnreadMessage
 
 /** Personal 1:1 for inactive-instance badge polling (stricter than sidebar row reconciliation). */
 function isPersonalDmBucketForBadge(dm: WorkspaceUnreadDmBucket): boolean {
-  if (dm.isGroup === true) return false;
   // Legacy `unread_msgs.pms` buckets only include the other party's user id.
   if (dm.userIds.length === 1) return true;
   // `/messages` buckets list every participant — only two-user conversations are 1:1.

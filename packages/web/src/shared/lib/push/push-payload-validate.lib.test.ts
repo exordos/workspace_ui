@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { testMessageId } from "~/test/factories";
 import {
   isValidPushEnvelopeData,
   isValidPushMessagePayload,
@@ -14,7 +15,7 @@ describe("push-payload-validate", () => {
 
   it("isValidPushEnvelopeData rejects message without ids", () => {
     expect(isValidPushEnvelopeData({ message_id: "0", sender_id: "1" })).toBe(false);
-    expect(isValidPushEnvelopeData({ message_id: "10", sender_id: "2" })).toBe(true);
+    expect(isValidPushEnvelopeData({ message_id: testMessageId(10), sender_id: "2" })).toBe(true);
   });
 
   it("isValidPushEnvelopeData rejects undecryptable encrypted payload", () => {
@@ -25,7 +26,7 @@ describe("push-payload-validate", () => {
     const payload: PushMessagePayload = {
       event: "message",
       message: {
-        id: 1,
+        id: testMessageId(1),
         sender_id: 2,
         sender_full_name: "Alice",
         type: "stream",

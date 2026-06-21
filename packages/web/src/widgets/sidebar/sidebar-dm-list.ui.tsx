@@ -8,7 +8,6 @@ import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indi
 import { t } from "~/i18n/i18n";
 import { getRealmBaseUrl } from "~/shared/api/messenger-client.internal";
 import { resolveAvatarUrl } from "~/shared/lib/avatar";
-import { effectiveDmIsGroupFromSlug } from "~/shared/lib/dm-route.lib";
 import { getPresenceState, sidebarRowClass } from "~/shared/lib/format";
 import { isNumericUserId, userIdStorageKey } from "~/shared/lib/user-id.lib";
 import { Avatar } from "~/shared/ui/avatar";
@@ -17,22 +16,12 @@ import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { SidebarChatBadges } from "./sidebar-chat-badges.ui";
 import { isDmPartnerTyping, sortDmAllUsersForDisplay } from "./sidebar-dm-list.lib";
 import { SidebarUserStatusEmoji } from "./sidebar-user-status-emoji.ui";
-import { MOCK_DMS, parseDmSlugToUserIds } from "./sidebar.lib";
+import { MOCK_DMS } from "./sidebar.lib";
 import type { SidebarDmListProps, SidebarDmTab } from "./sidebar-dm-list.types";
 import type { SidebarChat } from "./sidebar.types";
 
-function isPersonalDmChat(
-  chat: SidebarChat,
-  currentUserId: ReturnType<typeof useChatListStore.getState>["currentUserId"],
-): chat is Extract<SidebarChat, { type: "dm" }> {
-  if (chat.type !== "dm") return false;
-  const numericCurrentUserId =
-    currentUserId != null && isNumericUserId(currentUserId) ? currentUserId : null;
-  return !effectiveDmIsGroupFromSlug(
-    chat.isGroup,
-    parseDmSlugToUserIds(chat.slug),
-    numericCurrentUserId,
-  );
+function isPersonalDmChat(chat: SidebarChat): chat is Extract<SidebarChat, { type: "dm" }> {
+  return chat.type === "dm";
 }
 
 function resolvePersonalDmListAvatarSrc(
@@ -52,10 +41,7 @@ export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmIdParam, d
   const isCompactDensity = useSettingsStore((s) => s.chatListDensity === "compact");
   const typingMap = useTypingIndicatorStore((s) => s.typingMap);
 
-  const recentDms = useMemo(
-    () => (dms ?? MOCK_DMS).filter((c) => isPersonalDmChat(c, currentUserId)),
-    [dms, currentUserId],
-  );
+  const recentDms = useMemo(() => (dms ?? MOCK_DMS).filter((c) => isPersonalDmChat(c)), [dms]);
   const unreadByUserId = useMemo(() => {
     const unreadByUser = new Map<string, number>();
     for (const chat of recentDms) {

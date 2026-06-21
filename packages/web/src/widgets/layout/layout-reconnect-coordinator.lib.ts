@@ -7,6 +7,7 @@ import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { createLogger } from "~/shared/lib/logger";
 import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { refreshActiveChatMessagesFromApi } from "./layout-active-chat-refresh.lib";
 import { runChatListBootstrap } from "./layout-chat-list-bootstrap.lib";
 import { getCachedRegisterUnreadSnapshot } from "./layout-instance-register-unread.lib";
@@ -23,8 +24,8 @@ export type LayoutReconnectRefreshMode = "full" | "light";
 
 export interface LayoutReconnectRefreshParams {
   instanceId: string | null;
-  latestMessageIdRef?: { current: number | null };
-  focusedMessageId?: number | null;
+  latestMessageIdRef?: { current: MessageId | null };
+  focusedMessageId?: MessageId | null;
   isCancelled?: () => boolean;
 }
 

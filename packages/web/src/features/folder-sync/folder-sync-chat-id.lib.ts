@@ -96,7 +96,7 @@ export function chatToWorkspaceChatId(chat: SidebarChat): string {
 
 export function chatToWorkspaceChatIds(chat: SidebarChat, currentUserId: UserId | null): string[] {
   const ids = [chatToWorkspaceChatId(chat)];
-  if (chat.type !== "dm" || chat.isGroup === true || currentUserId == null) {
+  if (chat.type !== "dm" || currentUserId == null) {
     return ids;
   }
 

@@ -4,6 +4,7 @@ import type { MentionSuggestion } from "~/features/mention-suggest/mention-sugge
 import { t } from "~/i18n/i18n";
 import type { SavedSnippet } from "~/shared/api/messenger.types";
 import { COMPOSER_FORMATTING_TOOLBAR_ALWAYS_VISIBLE } from "~/shared/config/constants";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
 import { useViewportKeyboard } from "~/shared/lib/touch";
 import { isWebView } from "~/shared/lib/webview";
@@ -140,7 +141,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   const effectiveReplyQuote = isEditing ? null : replyQuote;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const prevDisabledRef = useRef(disabled);
-  const prevReplyQuoteIdRef = useRef<number | null>(null);
+  const prevReplyQuoteIdRef = useRef<MessageId | null>(null);
   useLayoutEffect(() => {
     if (prevDisabledRef.current && !disabled && mode === "write") {
       textareaRef.current?.focus();

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { testMessageId } from "~/test/factories";
 import { summarizeMessageIdsForFlowDebug, summarizeScrollElement } from "./pipeline-trace.lib";
 
 describe("pipeline-trace scroll helpers", () => {
@@ -18,16 +19,15 @@ describe("pipeline-trace scroll helpers", () => {
     });
   });
 
-  it("summarizeMessageIdsForFlowDebug returns count and min/max", () => {
+  it("summarizeMessageIdsForFlowDebug returns count and sample ids", () => {
     expect(summarizeMessageIdsForFlowDebug([])).toEqual({
       count: 0,
-      minId: null,
-      maxId: null,
+      sampleIds: [],
     });
-    expect(summarizeMessageIdsForFlowDebug([5, 2, 9])).toEqual({
+    const ids = [testMessageId(5), testMessageId(2), testMessageId(9)];
+    expect(summarizeMessageIdsForFlowDebug(ids)).toEqual({
       count: 3,
-      minId: 2,
-      maxId: 9,
+      sampleIds: ids,
     });
   });
 });

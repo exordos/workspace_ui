@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchActivityMessagesPage } from "~/shared/api/messenger-messages";
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
-import { createMessage } from "~/test/factories";
+import { createMessage, testMessageId } from "~/test/factories";
 import { fetchActivityMessagesPageWithPersist } from "./activity.api";
 
 const upsertChatMessages = vi.hoisted(() => vi.fn());
@@ -115,8 +115,8 @@ describe("fetchActivityMessagesPageWithPersist", () => {
         instanceId: "instance-1",
         chatKey: "stream:10:general",
         messages: expect.arrayContaining([
-          expect.objectContaining({ id: 1 }),
-          expect.objectContaining({ id: 2 }),
+          expect.objectContaining({ id: testMessageId(1) }),
+          expect.objectContaining({ id: testMessageId(2) }),
         ]),
       }),
     );
@@ -124,7 +124,7 @@ describe("fetchActivityMessagesPageWithPersist", () => {
       expect.objectContaining({
         instanceId: "instance-1",
         chatKey: "dm:7,42",
-        messages: expect.arrayContaining([expect.objectContaining({ id: 3 })]),
+        messages: expect.arrayContaining([expect.objectContaining({ id: testMessageId(3) })]),
       }),
     );
   });
@@ -154,7 +154,7 @@ describe("fetchActivityMessagesPageWithPersist", () => {
     const result = await fetchActivityMessagesPageWithPersist("reactions", 7);
 
     expect(result.messages).toHaveLength(1);
-    expect(result.messages[0]?.id).toBe(1);
+    expect(result.messages[0]?.id).toBe(testMessageId(1));
     expect(upsertChatMessages).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,37 +1,67 @@
 import { describe, expect, it } from "vitest";
+import { testMessageId } from "~/test/factories";
 import { deriveFocusedPaginationFlags, shouldLoadBoundaryPage } from "./chat-pagination.lib";
 
 describe("deriveFocusedPaginationFlags", () => {
   it("defaults to older=true/newer=false without focused message", () => {
-    expect(deriveFocusedPaginationFlags([{ id: 10 }, { id: 20 }], null)).toEqual({
+    expect(
+      deriveFocusedPaginationFlags([{ id: testMessageId(10) }, { id: testMessageId(20) }], null),
+    ).toEqual({
       hasOlderMessages: true,
       hasNewerMessages: false,
     });
   });
 
   it("detects both older and newer messages around focused anchor", () => {
-    expect(deriveFocusedPaginationFlags([{ id: 10 }, { id: 20 }, { id: 30 }], 20)).toEqual({
+    expect(
+      deriveFocusedPaginationFlags(
+        [{ id: testMessageId(10) }, { id: testMessageId(20) }, { id: testMessageId(30) }],
+        testMessageId(20),
+      ),
+    ).toEqual({
       hasOlderMessages: true,
       hasNewerMessages: true,
     });
   });
 
-  it("detects only newer messages when all fetched ids are above anchor", () => {
-    expect(deriveFocusedPaginationFlags([{ id: 21 }, { id: 22 }, { id: 23 }], 20)).toEqual({
+  it("keeps older open when focused anchor is outside the batch", () => {
+    expect(
+      deriveFocusedPaginationFlags(
+        [{ id: testMessageId(21) }, { id: testMessageId(22) }, { id: testMessageId(23) }],
+        testMessageId(20),
+      ),
+    ).toEqual({
+      hasOlderMessages: true,
+      hasNewerMessages: false,
+    });
+  });
+
+  it("detects only newer messages when focused anchor is first in the batch", () => {
+    expect(
+      deriveFocusedPaginationFlags(
+        [{ id: testMessageId(20) }, { id: testMessageId(21) }, { id: testMessageId(22) }],
+        testMessageId(20),
+      ),
+    ).toEqual({
       hasOlderMessages: false,
       hasNewerMessages: true,
     });
   });
 
-  it("detects only older messages when all fetched ids are below anchor", () => {
-    expect(deriveFocusedPaginationFlags([{ id: 10 }, { id: 11 }, { id: 12 }], 20)).toEqual({
+  it("detects only older messages when focused anchor is last in the batch", () => {
+    expect(
+      deriveFocusedPaginationFlags(
+        [{ id: testMessageId(10) }, { id: testMessageId(11) }, { id: testMessageId(20) }],
+        testMessageId(20),
+      ),
+    ).toEqual({
       hasOlderMessages: true,
       hasNewerMessages: false,
     });
   });
 
   it("returns both flags false for focused anchor with empty batch", () => {
-    expect(deriveFocusedPaginationFlags([], 20)).toEqual({
+    expect(deriveFocusedPaginationFlags([], testMessageId(20))).toEqual({
       hasOlderMessages: false,
       hasNewerMessages: false,
     });

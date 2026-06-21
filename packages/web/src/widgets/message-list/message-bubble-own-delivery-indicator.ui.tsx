@@ -51,7 +51,7 @@ export const MessageBubbleOwnDeliveryIndicator = React.memo(
         </span>
       );
     }
-    const failedOptimistic = message.id < 0;
+    const failedOptimistic = message.delivery_status === "failed";
     const showRetry = failedOptimistic && onRetryFailedOutgoing != null;
     const showRemove = failedOptimistic && onRemoveFailedOutgoing != null;
     return (

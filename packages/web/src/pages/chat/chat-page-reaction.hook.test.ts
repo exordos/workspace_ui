@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { testMessageId } from "~/test/factories";
 import { useChatPageReaction } from "./chat-page-reaction.hook";
 
 vi.mock("~/shared/api/messenger-messages", () => ({
@@ -38,16 +39,16 @@ describe("useChatPageReaction", () => {
     );
 
     act(() => {
-      result.current.onMessageAddReaction(10, payload);
+      result.current.onMessageAddReaction(testMessageId(10), payload);
     });
 
     await waitFor(() => {
-      expect(addReaction).toHaveBeenCalledWith(10, "thumbs_up", {
+      expect(addReaction).toHaveBeenCalledWith(testMessageId(10), "thumbs_up", {
         reactionType: "unicode_emoji",
         emojiCode: "1f44d",
       });
       expect(updateMessageReactionInStore).toHaveBeenCalledWith(
-        10,
+        testMessageId(10),
         {
           emoji_name: "thumbs_up",
           emoji_code: "1f44d",
@@ -72,16 +73,16 @@ describe("useChatPageReaction", () => {
     );
 
     act(() => {
-      result.current.onMessageRemoveReaction(11, payload);
+      result.current.onMessageRemoveReaction(testMessageId(11), payload);
     });
 
     await waitFor(() => {
-      expect(removeReaction).toHaveBeenCalledWith(11, "thumbs_up", {
+      expect(removeReaction).toHaveBeenCalledWith(testMessageId(11), "thumbs_up", {
         reactionType: "unicode_emoji",
         emojiCode: "1f44d",
       });
       expect(updateMessageReactionInStore).toHaveBeenCalledWith(
-        11,
+        testMessageId(11),
         expect.objectContaining({ user_id: 5 }),
         "remove",
       );
@@ -100,7 +101,7 @@ describe("useChatPageReaction", () => {
     );
 
     act(() => {
-      result.current.onMessageAddReaction(12, payload);
+      result.current.onMessageAddReaction("00000000-0000-4000-8000-000000000012", payload);
     });
 
     await waitFor(() => {

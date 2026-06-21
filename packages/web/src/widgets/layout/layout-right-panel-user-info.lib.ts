@@ -22,7 +22,6 @@ function buildRightPanelUserInfoFromProfileSources(
     userStatusLabel,
     currentInstanceRealm,
     media,
-    commonGroups,
   } = options;
   const userPresence = userFromStore?.presence;
   const resolvedUserId = resolveRightPanelUserId({
@@ -59,20 +58,18 @@ function buildRightPanelUserInfoFromProfileSources(
     birthday: profileForRightPanelUser?.birthday ?? undefined,
     localTime: formatRightPanelLocalTime(profileForRightPanelUser?.timezone),
     media,
-    commonGroups,
   };
 }
 
 function buildRightPanelUserInfoFromDmOnly(
   options: BuildRightPanelUserInfoOptions,
 ): RightPanelUserInfo | undefined {
-  const { dmChat, userFromStore, userStatusLabel, commonGroups } = options;
-  if (!dmChat || dmChat.isGroup) return undefined;
+  const { dmChat, userFromStore, userStatusLabel } = options;
+  if (!dmChat) return undefined;
   return {
     name: dmChat.name,
     status: userStatusLabel,
     lastSeen: formatRightPanelLastSeen(userFromStore?.presence),
-    commonGroups,
   };
 }
 

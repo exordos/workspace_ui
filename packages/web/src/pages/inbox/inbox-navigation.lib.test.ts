@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { InboxEntry } from "~/entities/inbox/inbox.types";
 import { setCurrentOrgRouteIdResolver } from "~/shared/lib/org-route";
+import { testMessageId } from "~/test/factories";
 import { buildInboxEntryRoute } from "./inbox-navigation.lib";
 
 function baseEntry(overrides: Partial<InboxEntry>): InboxEntry {
@@ -14,7 +15,7 @@ function baseEntry(overrides: Partial<InboxEntry>): InboxEntry {
     dmSlug: "42",
     unreadCount: 2,
     lastMessageTimestamp: 100,
-    messageIds: [10, 25],
+    messageIds: [testMessageId(10), testMessageId(25)],
     ...overrides,
   };
 }
@@ -28,7 +29,7 @@ describe("buildInboxEntryRoute", () => {
     setCurrentOrgRouteIdResolver(() => "chat.example.com");
 
     expect(buildInboxEntryRoute(baseEntry({ dmSlug: "42,99", senderId: null }))).toBe(
-      "/org/chat.example.com/dm/42,99?msg=25",
+      `/org/chat.example.com/dm/42,99?msg=${testMessageId(25)}`,
     );
   });
 
@@ -43,10 +44,10 @@ describe("buildInboxEntryRoute", () => {
           senderId: null,
           senderName: null,
           dmSlug: null,
-          messageIds: [101, 90, 111],
+          messageIds: [testMessageId(101), testMessageId(90), testMessageId(111)],
         }),
       ),
-    ).toBe("/stream/10-engineering/topic/general?msg=111");
+    ).toBe(`/stream/10-engineering/topic/general?msg=${testMessageId(111)}`);
   });
 
   it("builds explicit empty-topic route for empty topic", () => {
@@ -60,25 +61,27 @@ describe("buildInboxEntryRoute", () => {
           senderId: null,
           senderName: null,
           dmSlug: null,
-          messageIds: [101, 90, 111],
+          messageIds: [testMessageId(101), testMessageId(90), testMessageId(111)],
         }),
       ),
-    ).toBe("/stream/10-engineering/topic/__empty__?msg=111");
+    ).toBe(`/stream/10-engineering/topic/__empty__?msg=${testMessageId(111)}`);
   });
 
   it("builds dm route with message focus", () => {
     expect(buildInboxEntryRoute(baseEntry({ dmSlug: "42,99", senderId: null }))).toBe(
-      "/dm/42,99?msg=25",
+      `/dm/42,99?msg=${testMessageId(25)}`,
     );
   });
 
   it("falls back to senderId route when dmSlug is missing", () => {
-    expect(buildInboxEntryRoute(baseEntry({ dmSlug: null, senderId: 55 }))).toBe("/dm/55?msg=25");
+    expect(buildInboxEntryRoute(baseEntry({ dmSlug: null, senderId: 55 }))).toBe(
+      `/dm/55?msg=${testMessageId(25)}`,
+    );
   });
 
   it("omits msg query when there is no valid message id", () => {
-    expect(buildInboxEntryRoute(baseEntry({ messageIds: [0, -1], dmSlug: "42,99" }))).toBe(
-      "/dm/42,99",
-    );
+    expect(
+      buildInboxEntryRoute(baseEntry({ messageIds: ["not-a-message-id"], dmSlug: "42,99" })),
+    ).toBe("/dm/42,99");
   });
 });

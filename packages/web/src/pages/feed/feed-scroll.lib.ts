@@ -1,3 +1,4 @@
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { ScrollPrependSnapshot } from "~/shared/lib/scroll-prepend-anchor.lib";
 import { computeScrollTopAfterPrepend } from "~/shared/lib/scroll-prepend-anchor.lib";
 
@@ -5,7 +6,7 @@ export interface FeedPaginationScrollState {
   scrollTop: number;
   isLoadingMore: boolean;
   isAllLoaded: boolean;
-  lastMessageId: number | null;
+  lastMessageId: MessageId | null;
 }
 
 export type FeedScrollSnapshot = ScrollPrependSnapshot;

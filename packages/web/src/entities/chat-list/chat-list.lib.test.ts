@@ -5,7 +5,7 @@ import { buildSidebarFromMessages, messageToDmEntry, messageToStreamEntry } from
 
 function dmMessage(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessage {
   return {
-    id: 1,
+    id: "00000000-0000-4000-8000-000000000001",
     sender_id: 20,
     sender_full_name: "Bob",
     content: "hi",
@@ -25,10 +25,9 @@ describe("messageToDmEntry", () => {
     useUsersStore.getState().clear();
   });
 
-  it("treats two-recipient DM as 1:1 when currentUserId is null (not a group chat)", () => {
+  it("treats two-recipient DM as 1:1 when currentUserId is null", () => {
     const entry = messageToDmEntry(dmMessage(), null);
     expect(entry).not.toBeNull();
-    expect(entry!.isGroup).toBe(false);
     expect(entry!.userIds).toBeUndefined();
   });
 
@@ -52,11 +51,10 @@ describe("messageToDmEntry", () => {
       }),
       10,
     );
-    expect(entry?.isGroup).toBe(false);
     expect(entry?.name).toBe("Bob");
   });
 
-  it("still classifies 3+ recipient huddles as group when currentUserId is null", () => {
+  it("returns null for 3+ recipient messages (group DMs removed)", () => {
     const entry = messageToDmEntry(
       dmMessage({
         display_recipient: [
@@ -67,16 +65,14 @@ describe("messageToDmEntry", () => {
       }),
       null,
     );
-    expect(entry).not.toBeNull();
-    expect(entry!.isGroup).toBe(true);
-    expect(entry!.userIds).toHaveLength(3);
+    expect(entry).toBeNull();
   });
 });
 
 describe("messageToStreamEntry", () => {
   it("maps sender_full_name as stream and topic last message sender", () => {
     const entry = messageToStreamEntry({
-      id: 9,
+      id: "00000000-0000-4000-8000-000000000009",
       sender_id: 20,
       sender_full_name: "Bob",
       content: "hello stream",
@@ -95,7 +91,7 @@ describe("messageToStreamEntry", () => {
 
   it("stores undefined sender name when sender_full_name is empty", () => {
     const entry = messageToStreamEntry({
-      id: 10,
+      id: "00000000-0000-4000-8000-000000000010",
       sender_id: 20,
       sender_full_name: "   ",
       content: "hello stream",
@@ -114,7 +110,7 @@ describe("messageToStreamEntry", () => {
 
   it("keeps empty subject distinct from literal general", () => {
     const emptyTopic = messageToStreamEntry({
-      id: 11,
+      id: "00000000-0000-4000-8000-000000000011",
       sender_id: 20,
       sender_full_name: "Bob",
       content: "empty topic",
@@ -126,7 +122,7 @@ describe("messageToStreamEntry", () => {
       flags: [],
     });
     const generalTopic = messageToStreamEntry({
-      id: 12,
+      id: "00000000-0000-4000-8000-000000000012",
       sender_id: 20,
       sender_full_name: "Bob",
       content: "literal general",
@@ -147,7 +143,7 @@ describe("buildSidebarFromMessages", () => {
   it("aggregates unread per topic and dm in a single messages pass", () => {
     const messages: WorkspaceRawMessage[] = [
       {
-        id: 1,
+        id: "00000000-0000-4000-8000-000000000001",
         sender_id: 20,
         sender_full_name: "Bob",
         content: "unread stream",
@@ -159,7 +155,7 @@ describe("buildSidebarFromMessages", () => {
         flags: [],
       },
       {
-        id: 2,
+        id: "00000000-0000-4000-8000-000000000002",
         sender_id: 20,
         sender_full_name: "Bob",
         content: "read stream",
@@ -171,7 +167,7 @@ describe("buildSidebarFromMessages", () => {
         flags: ["read"],
       },
       {
-        id: 3,
+        id: "00000000-0000-4000-8000-000000000003",
         sender_id: 20,
         sender_full_name: "Bob",
         content: "dm unread",

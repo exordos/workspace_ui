@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { testMessageId } from "~/test/factories";
 import {
   buildForwardQuote,
   consumePendingForwardPrefill,
@@ -21,7 +22,7 @@ describe("buildForwardQuote", () => {
       buildForwardQuote(
         [
           {
-            id: 1,
+            id: "00000000-0000-4000-8000-000000000001",
             sender_full_name: "Alice",
             sender_id: 42,
             content: "Hello",
@@ -37,7 +38,7 @@ describe("buildForwardQuote", () => {
         permalinkOptions,
       ),
     ).toBe(
-      "@_**Alice|42** [wrote](https://chat.example.com/#narrow/dm/7,42-dm/near/1):\n```quote\nHello\n```\n\n",
+      `@_**Alice|42** [wrote](https://chat.example.com/#narrow/dm/7,42-dm/near/${testMessageId(1)}):\n\`\`\`quote\nHello\n\`\`\`\n\n`,
     );
   });
 
@@ -46,7 +47,7 @@ describe("buildForwardQuote", () => {
       buildForwardQuote(
         [
           {
-            id: 10,
+            id: "00000000-0000-4000-8000-000000000010",
             sender_full_name: "Alice",
             sender_id: 42,
             content: "First",
@@ -58,7 +59,7 @@ describe("buildForwardQuote", () => {
             ],
           },
           {
-            id: 11,
+            id: "00000000-0000-4000-8000-000000000011",
             sender_full_name: "Bob",
             sender_id: 55,
             content: "Second",
@@ -71,7 +72,7 @@ describe("buildForwardQuote", () => {
         permalinkOptions,
       ),
     ).toBe(
-      "@_**Alice|42** [wrote](https://chat.example.com/#narrow/dm/7,42-dm/near/10):\n```quote\nFirst\n```\n\n\n\n@_**Bob|55** [wrote](https://chat.example.com/#narrow/channel/33-InternalServicesDev/topic/Workspace/near/11):\n```quote\nSecond\n```\n\n",
+      `@_**Alice|42** [wrote](https://chat.example.com/#narrow/dm/7,42-dm/near/${testMessageId(10)}):\n\`\`\`quote\nFirst\n\`\`\`\n\n\n\n@_**Bob|55** [wrote](https://chat.example.com/#narrow/channel/33-InternalServicesDev/topic/Workspace/near/${testMessageId(11)}):\n\`\`\`quote\nSecond\n\`\`\`\n\n`,
     );
   });
 
@@ -80,7 +81,7 @@ describe("buildForwardQuote", () => {
       buildForwardQuote(
         [
           {
-            id: 1,
+            id: "00000000-0000-4000-8000-000000000001",
             sender_full_name: "Alice",
             sender_id: 42,
             content: "Original",
@@ -93,7 +94,7 @@ describe("buildForwardQuote", () => {
         permalinkOptions,
       ),
     ).toBe(
-      "@_**Alice|42** [wrote](https://chat.example.com/#narrow/dm/42-dm/near/1):\n```quote\nSelected excerpt\n```\n\n",
+      `@_**Alice|42** [wrote](https://chat.example.com/#narrow/dm/42-dm/near/${testMessageId(1)}):\n\`\`\`quote\nSelected excerpt\n\`\`\`\n\n`,
     );
   });
 
@@ -102,7 +103,7 @@ describe("buildForwardQuote", () => {
       buildForwardQuote(
         [
           {
-            id: 20,
+            id: "00000000-0000-4000-8000-000000000020",
             sender_full_name: "Alice",
             sender_id: 42,
             content: "Original body",
@@ -122,7 +123,7 @@ describe("buildForwardQuote", () => {
       buildForwardQuote(
         [
           {
-            id: 1,
+            id: "00000000-0000-4000-8000-000000000001",
             sender_full_name: "Alice",
             sender_id: 42,
             content: "<p>Hello <strong>world</strong></p>",
@@ -135,7 +136,7 @@ describe("buildForwardQuote", () => {
         permalinkOptions,
       ),
     ).toBe(
-      "@_**Alice|42** [wrote](https://chat.example.com/#narrow/dm/42-dm/near/1):\n```quote\nHello world\n```\n\n",
+      `@_**Alice|42** [wrote](https://chat.example.com/#narrow/dm/42-dm/near/${testMessageId(1)}):\n\`\`\`quote\nHello world\n\`\`\`\n\n`,
     );
   });
 
@@ -150,7 +151,7 @@ describe("buildForwardQuote", () => {
     const result = buildForwardQuote(
       [
         {
-          id: 2275,
+          id: "00000000-0000-4000-8000-000000002275",
           sender_full_name: "user",
           sender_id: 9,
           content: "<p>rendered html</p>",
@@ -176,7 +177,7 @@ describe("buildForwardQuote", () => {
       buildForwardQuote(
         [
           {
-            id: 1,
+            id: "00000000-0000-4000-8000-000000000001",
             sender_full_name: "Alice",
             sender_id: 42,
             content: "<p><strong>Hi</strong></p>",
@@ -190,7 +191,7 @@ describe("buildForwardQuote", () => {
         permalinkOptions,
       ),
     ).toBe(
-      "@_**Alice|42** [wrote](https://chat.example.com/#narrow/dm/42-dm/near/1):\n```quote\n**Hi**\n```\n\n",
+      `@_**Alice|42** [wrote](https://chat.example.com/#narrow/dm/42-dm/near/${testMessageId(1)}):\n\`\`\`quote\n**Hi**\n\`\`\`\n\n`,
     );
   });
 
@@ -199,7 +200,7 @@ describe("buildForwardQuote", () => {
       buildForwardQuote(
         [
           {
-            id: 10,
+            id: "00000000-0000-4000-8000-000000000010",
             sender_full_name: "Alice",
             sender_id: 42,
             content: "First",
@@ -211,7 +212,7 @@ describe("buildForwardQuote", () => {
             ],
           },
           {
-            id: 11,
+            id: "00000000-0000-4000-8000-000000000011",
             sender_full_name: "Bob",
             sender_id: 55,
             content: "Second",
@@ -224,7 +225,7 @@ describe("buildForwardQuote", () => {
         permalinkOptions,
       ),
     ).toBe(
-      "@_**Alice|42** [wrote](https://chat.example.com/#narrow/dm/7,42-dm/near/10):\n```quote\nFirst\n```\n\n\n\n@_**Bob|55** [wrote](https://chat.example.com/#narrow/channel/33-InternalServicesDev/topic/Workspace/near/11):\n```quote\nSecond\n```\n\n",
+      `@_**Alice|42** [wrote](https://chat.example.com/#narrow/dm/7,42-dm/near/${testMessageId(10)}):\n\`\`\`quote\nFirst\n\`\`\`\n\n\n\n@_**Bob|55** [wrote](https://chat.example.com/#narrow/channel/33-InternalServicesDev/topic/Workspace/near/${testMessageId(11)}):\n\`\`\`quote\nSecond\n\`\`\`\n\n`,
     );
   });
 

@@ -1,4 +1,5 @@
 import type { MockMessage } from "~/shared/api/messenger.types";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import type { MessageListCallbacks } from "~/widgets/message-list/message-list.types";
 
@@ -16,17 +17,17 @@ export interface ChatPageMessageListSectionProps {
   currentUserId: UserId | undefined;
   callbacks: MessageListCallbacks;
   selectionMode: boolean;
-  selectedMessageIds: Set<number>;
+  selectedMessageIds: Set<MessageId>;
   onLoadMore: () => void;
   isLoadingMore: boolean;
   isLoadingNewer: boolean;
   onLoadNewer: () => void;
   hasNewerMessages: boolean;
-  firstUnreadId: number | undefined;
+  firstUnreadId: MessageId | undefined;
   unreadCount: number;
-  focusedMessageId: number | null | undefined;
-  onUnreadMessagesVisible: (messageIds: number[]) => void;
-  onUnreadMessagesAtBottom: (messageIds: number[]) => void;
+  focusedMessageId: MessageId | null | undefined;
+  onUnreadMessagesVisible: (messageIds: MessageId[]) => void;
+  onUnreadMessagesAtBottom: (messageIds: MessageId[]) => void;
   /** Failed initial load (no cache) vs network refresh failed after IndexedDB hydrate. */
   messagesLoadError: ChatMessagesLoadErrorKind | null;
   onRetryMessagesLoad: () => void;

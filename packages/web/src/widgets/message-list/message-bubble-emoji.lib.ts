@@ -54,7 +54,7 @@ function hasEmojiPresentationSelector(value: string): boolean {
 }
 
 /**
- * True for a Workspace 1:1 DM (`private` with exactly two recipients). Group huddles have three or more.
+ * True for a Workspace 1:1 DM (`private` with exactly two recipients).
  * Aligned with `messageToDmEntry` in `entities/chat-list/chat-list.lib.ts`.
  */
 export function isOneToOneDirectMessage(message: MockMessage): boolean {

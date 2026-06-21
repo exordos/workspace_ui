@@ -3,6 +3,7 @@
  *
  * Workspace returns an array of conversation objects; older fixtures may use a string-keyed map.
  */
+import { normalizeMessageId } from "~/shared/lib/message-id.lib";
 import type { MessengerRecentPrivateConversation } from "./messenger.types";
 
 function isPositiveInteger(value: unknown): value is number {
@@ -20,9 +21,12 @@ function parseRecentPrivateConversationEntry(
     return null;
   }
   const unreadMessageIds = Array.isArray(record.unread_message_ids)
-    ? record.unread_message_ids.filter(isPositiveInteger)
+    ? record.unread_message_ids.flatMap((id) => {
+        const normalized = normalizeMessageId(id);
+        return normalized == null ? [] : [normalized];
+      })
     : [];
-  const maxMessageId = isPositiveInteger(record.max_message_id) ? record.max_message_id : null;
+  const maxMessageId = normalizeMessageId(record.max_message_id);
   return {
     user_ids: Array.from(new Set(userIds)).sort((left, right) => left - right),
     max_message_id: maxMessageId,

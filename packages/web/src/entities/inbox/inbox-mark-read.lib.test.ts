@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { testMessageId } from "~/test/factories";
 import { applyMarkAsReadToInboxEntries, mapInboxEntryAfterMarkRead } from "./inbox-mark-read.lib";
 import { removeInboxEntriesForMarkReadTarget } from "./inbox.lib";
 import type { InboxEntry } from "./inbox.types";
@@ -13,7 +14,7 @@ const STREAM_ENTRY: InboxEntry = {
   dmSlug: null,
   unreadCount: 3,
   lastMessageTimestamp: 100,
-  messageIds: [101, 102, 103],
+  messageIds: [testMessageId(101), testMessageId(102), testMessageId(103)],
 };
 
 const DM_ENTRY: InboxEntry = {
@@ -26,32 +27,42 @@ const DM_ENTRY: InboxEntry = {
   dmSlug: "42",
   unreadCount: 2,
   lastMessageTimestamp: 200,
-  messageIds: [201, 202],
+  messageIds: [testMessageId(201), testMessageId(202)],
 };
 
 describe("mapInboxEntryAfterMarkRead", () => {
   it("returns null when all message ids are read", () => {
-    expect(mapInboxEntryAfterMarkRead(STREAM_ENTRY, new Set([101, 102, 103]))).toBeNull();
+    expect(
+      mapInboxEntryAfterMarkRead(
+        STREAM_ENTRY,
+        new Set([testMessageId(101), testMessageId(102), testMessageId(103)]),
+      ),
+    ).toBeNull();
   });
 
   it("decrements unread count for partial read", () => {
-    const result = mapInboxEntryAfterMarkRead(STREAM_ENTRY, new Set([101]));
+    const result = mapInboxEntryAfterMarkRead(STREAM_ENTRY, new Set([testMessageId(101)]));
     expect(result?.unreadCount).toBe(2);
-    expect(result?.messageIds).toEqual([102, 103]);
+    expect(result?.messageIds).toEqual([testMessageId(102), testMessageId(103)]);
   });
 
   it("returns unchanged entry when no ids match", () => {
-    expect(mapInboxEntryAfterMarkRead(STREAM_ENTRY, new Set([999]))).toBe(STREAM_ENTRY);
+    expect(mapInboxEntryAfterMarkRead(STREAM_ENTRY, new Set([testMessageId(999)]))).toBe(
+      STREAM_ENTRY,
+    );
   });
 });
 
 describe("applyMarkAsReadToInboxEntries", () => {
   it("removes fully read entries and keeps partial ones", () => {
-    const result = applyMarkAsReadToInboxEntries([STREAM_ENTRY, DM_ENTRY], [101, 102, 103, 201]);
+    const result = applyMarkAsReadToInboxEntries(
+      [STREAM_ENTRY, DM_ENTRY],
+      [testMessageId(101), testMessageId(102), testMessageId(103), testMessageId(201)],
+    );
     expect(result).toHaveLength(1);
     expect(result[0]!.key).toBe("dm:42");
     expect(result[0]!.unreadCount).toBe(1);
-    expect(result[0]!.messageIds).toEqual([202]);
+    expect(result[0]!.messageIds).toEqual([testMessageId(202)]);
   });
 });
 
@@ -83,7 +94,7 @@ describe("removeInboxEntriesForMarkReadTarget", () => {
       ...STREAM_ENTRY,
       key: "stream:10:bugs",
       topic: "bugs",
-      messageIds: [301],
+      messageIds: [testMessageId(301)],
       unreadCount: 1,
     };
     const result = removeInboxEntriesForMarkReadTarget(

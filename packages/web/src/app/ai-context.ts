@@ -26,6 +26,7 @@ import { useThemeStore } from "~/entities/theme/theme.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { getLocale } from "~/i18n/i18n";
 import { createLogger } from "~/shared/lib/logger";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 
 const log = createLogger("ai-context");
@@ -67,7 +68,7 @@ export interface AiCommand {
 }
 
 type MessageCallback = (msg: {
-  id: number;
+  id: MessageId;
   content: string;
   senderId: number;
   timestamp: number;
@@ -137,7 +138,7 @@ function getAppState(): AiAppState {
 
 function getRecentMessages(
   limit = 20,
-): { id: number; content: string; sender: string; timestamp: number }[] {
+): { id: MessageId; content: string; sender: string; timestamp: number }[] {
   const msgs = useCurrentChatMessagesStore.getState().messages;
   return msgs.slice(-limit).map((m) => ({
     id: m.id,
@@ -166,7 +167,7 @@ function onStateChange(callback: StateCallback): () => void {
 
 /** Call from event loop when new message arrives. */
 export function notifyAiNewMessage(msg: {
-  id: number;
+  id: MessageId;
   content: string;
   sender_id: number;
   timestamp: number;

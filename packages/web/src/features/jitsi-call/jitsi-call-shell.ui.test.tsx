@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { testMessageId } from "~/test/factories";
 import type { IncomingDmCallInvite } from "./jitsi-call.model";
 
 vi.mock("~/shared/api/messenger-client.internal", () => ({
@@ -16,10 +17,11 @@ vi.mock("./jitsi-call.ui", () => ({
   ),
 }));
 
-function buildInvite(messageId = 777): IncomingDmCallInvite {
+function buildInvite(messageId: number | string = 777): IncomingDmCallInvite {
+  const normalizedMessageId = testMessageId(messageId);
   return {
-    messageId,
-    meetingUrl: "https://meet.jit.si/messenger-dm-room-777",
+    messageId: normalizedMessageId,
+    meetingUrl: `https://meet.jit.si/messenger-dm-room-${normalizedMessageId}`,
     callerName: "Fox",
     locationName: "Fox",
     avatarUrl: undefined,

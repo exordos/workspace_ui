@@ -9,6 +9,7 @@ import {
   logChatListFlow,
   summarizeMessengerMessagesForFlowDebug,
 } from "~/shared/lib/message-flow-debug.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { getNewestMessageId } from "./layout-chat-history-sync.lib";
 import type { ChatListBootstrapResult } from "./layout-chat-list-bootstrap.lib";
 
@@ -24,7 +25,7 @@ function toDmMetadataRowsFromIndex(entries: readonly DmIndexEntry[]): ChatListDm
 export interface ApplyChatListBootstrapResultOptions {
   currentInstanceId: string | null;
   setFromMessages: (messages: WorkspaceRawMessage[], currentUserId: number | null) => void;
-  latestMessageIdRef?: { current: number | null };
+  latestMessageIdRef?: { current: MessageId | null };
   /** When true, skips DM index restore (caller already hydrated once). */
   skipDmIndexHydrate?: boolean;
 }
@@ -69,8 +70,7 @@ export function applyChatListBootstrapResult(
     const newest = getNewestMessageId(result.messages);
     const prev = result.latestMessageIdHint;
     if (latestMessageIdRef != null) {
-      latestMessageIdRef.current =
-        newest != null && (prev == null || newest > prev) ? newest : (prev ?? newest);
+      latestMessageIdRef.current = newest ?? prev ?? latestMessageIdRef.current;
     }
     if (result.messages.length > 0) {
       useActivityStore.getState().markStale();

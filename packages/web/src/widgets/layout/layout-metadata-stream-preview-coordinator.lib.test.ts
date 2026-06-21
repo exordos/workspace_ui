@@ -29,12 +29,15 @@ describe("createMetadataStreamPreviewCoordinator", () => {
     coordinator.stageStreamPreviews({
       mode: "streamPreviews",
       messages: [],
-      latestMessageIdHint: 42,
+      latestMessageIdHint: "00000000-0000-4000-8000-000000000042",
     });
 
     expect(coordinator.flushStreamPreviews(apply)).toBe(true);
     expect(apply).toHaveBeenCalledWith(
-      expect.objectContaining({ mode: "streamPreviews", latestMessageIdHint: 42 }),
+      expect.objectContaining({
+        mode: "streamPreviews",
+        latestMessageIdHint: "00000000-0000-4000-8000-000000000042",
+      }),
     );
   });
 });

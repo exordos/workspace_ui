@@ -2,6 +2,7 @@ import {
   parseMessageContentEditLimitSeconds,
   parseMessageEditPolicyBoolean,
 } from "~/shared/lib/message-edit-policy-parse.lib";
+import { normalizeMessageId, type MessageId } from "~/shared/lib/message-id.lib";
 import { normalizeGroupSettingValue } from "~/shared/lib/messenger-group-setting.lib";
 import { extractUserSettingsFromRegisterData } from "~/shared/lib/messenger-notification-settings.lib";
 import { parseSubscriptions } from "./messenger-queue-parse-subscription.lib";
@@ -169,25 +170,26 @@ export interface RegisterQueueParsedMetadata {
   serverAvatarChangesDisabled: ReturnType<typeof parseAvatarChangesDisabledFlag>;
   jitsiServerUrlEffective: ReturnType<typeof parseRegisterResponseJitsiServerUrl>;
   userStatusSnapshot: ReturnType<typeof parseUserStatusSnapshot>;
-  starredMessageIds: number[] | null;
+  starredMessageIds: MessageId[] | null;
 }
 
-function parseRegisterStarredMessageIds(data: RegisterQueueRawData): number[] | null {
+function parseRegisterStarredMessageIds(data: RegisterQueueRawData): MessageId[] | null {
   if (!Array.isArray(data.starred_messages)) {
     return null;
   }
 
-  const seen = new Set<number>();
-  const ids: number[] = [];
+  const seen = new Set<MessageId>();
+  const ids: MessageId[] = [];
   for (const value of data.starred_messages) {
-    if (!isPositiveInteger(value)) {
+    const id = normalizeMessageId(value);
+    if (id == null) {
       continue;
     }
-    if (seen.has(value)) {
+    if (seen.has(id)) {
       continue;
     }
-    seen.add(value);
-    ids.push(value);
+    seen.add(id);
+    ids.push(id);
   }
   return ids;
 }

@@ -4,10 +4,11 @@ import {
   chatKeyFromMockMessage,
   normalizeStreamTopicForMessageCache,
 } from "~/shared/lib/message-cache-keys.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 
 interface IsFocusedMessageLoadedInRouteParams {
-  focusedMessageId: number | null;
+  focusedMessageId: MessageId | null;
   messages: MockMessage[];
   isDmView: boolean;
   currentUserId: UserId | null;
@@ -50,7 +51,7 @@ export function isFocusedMessageLoadedInRoute(
 
 /** Skip anchor API reload when the focused id is in-route and already present in the store. */
 export function shouldSkipFocusedAnchorInitialLoad(options: {
-  focusedMessageId: number | null;
+  focusedMessageId: MessageId | null;
   isFocusedMessageLoadedInCurrentRoute: boolean;
   hasOlderMessages: boolean;
   hasNewerMessages: boolean;

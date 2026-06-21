@@ -2,6 +2,8 @@
  * POST /messages with `read_by_sender` and optional Workspace local echo (`queue_id` + `local_id`).
  */
 import { t } from "~/i18n/i18n";
+import { normalizeMessageId } from "~/shared/lib/message-id.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { getMessengerEventQueueIdForCurrentInstance } from "~/shared/lib/messenger-event-queue-registry.lib";
 import { messengerPipelinePost } from "./messenger-pipeline.internal";
 
@@ -52,16 +54,16 @@ export function buildMessengerMessageSendBody(
 export async function postWorkspaceSendMessage(
   params: MessengerMessageSendClientParams,
   options?: MessengerMessageSendOptions,
-): Promise<{ id?: number }> {
+): Promise<{ id?: MessageId }> {
   const body = buildMessengerMessageSendBody(params, options);
   const response = await messengerPipelinePost("/messages", body);
   const data = response.data as {
     result?: string;
     msg?: string;
-    id?: number;
+    id?: unknown;
   };
   if (!response.ok || data.result === "error") {
     throw new Error(data.msg ?? t("app.unknownError"));
   }
-  return { id: data.id };
+  return { id: normalizeMessageId(data.id) ?? undefined };
 }

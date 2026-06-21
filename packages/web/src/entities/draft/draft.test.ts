@@ -5,11 +5,12 @@
  * A bug here could cause users to lose unsent messages.
  */
 import { afterEach, describe, expect, it } from "vitest";
+import { testMessageId } from "~/test/factories";
 import { useDraftStore } from "./draft.model";
 import type { Draft } from "./draft.types";
 
 const STREAM_DRAFT: Draft = {
-  id: 1,
+  id: testMessageId(1),
   type: "stream",
   to: [10],
   topic: "general",
@@ -18,7 +19,7 @@ const STREAM_DRAFT: Draft = {
 };
 
 const DM_DRAFT: Draft = {
-  id: 2,
+  id: testMessageId(2),
   type: "private",
   to: [42],
   topic: "",
@@ -52,23 +53,23 @@ describe("useDraftStore", () => {
   // updateDraft modifies content and timestamp
   it("updateDraft updates content by id", () => {
     useDraftStore.getState().setDrafts([STREAM_DRAFT]);
-    useDraftStore.getState().updateDraft(1, { content: "Updated" });
+    useDraftStore.getState().updateDraft(testMessageId(1), { content: "Updated" });
     expect(useDraftStore.getState().drafts[0]!.content).toBe("Updated");
   });
 
   // updateDraft on non-existent ID is a no-op
   it("updateDraft is a no-op for unknown id", () => {
     useDraftStore.getState().setDrafts([STREAM_DRAFT]);
-    useDraftStore.getState().updateDraft(999, { content: "Nope" });
+    useDraftStore.getState().updateDraft(testMessageId(999), { content: "Nope" });
     expect(useDraftStore.getState().drafts[0]!.content).toBe("Hello world");
   });
 
   // removeDraft deletes by id
   it("removeDraft removes by id", () => {
     useDraftStore.getState().setDrafts([STREAM_DRAFT, DM_DRAFT]);
-    useDraftStore.getState().removeDraft(1);
+    useDraftStore.getState().removeDraft(testMessageId(1));
     expect(useDraftStore.getState().drafts).toHaveLength(1);
-    expect(useDraftStore.getState().drafts[0]!.id).toBe(2);
+    expect(useDraftStore.getState().drafts[0]!.id).toBe(testMessageId(2));
   });
 
   // getDraftForChat finds a matching draft by type + target
@@ -127,10 +128,10 @@ describe("useDraftStore", () => {
       },
     ]);
 
-    useDraftStore.getState().linkDraftToServerId("private", [42], "", 99);
+    useDraftStore.getState().linkDraftToServerId("private", [42], "", testMessageId(99));
 
     const draft = useDraftStore.getState().getDraftForChat("private", [42]);
-    expect(draft?.id).toBe(99);
+    expect(draft?.id).toBe(testMessageId(99));
   });
 
   it("removeDraftForChat removes a local-only draft by chat identity", () => {
@@ -150,7 +151,7 @@ describe("useDraftStore", () => {
 
     const state = useDraftStore.getState();
     expect(state.drafts).toHaveLength(1);
-    expect(state.drafts[0]!.id).toBe(2);
+    expect(state.drafts[0]!.id).toBe(testMessageId(2));
   });
 
   // clear removes everything

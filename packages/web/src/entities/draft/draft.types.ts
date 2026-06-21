@@ -5,11 +5,13 @@
  * Each draft has a type (stream or DM), target, and content.
  */
 
+import type { MessageId } from "~/shared/lib/message-id.lib";
+
 export type DraftType = "stream" | "private";
 
 export interface Draft {
-  /** Server-assigned ID (null if local-only, not yet synced). */
-  id: number | null;
+  /** Server-assigned UUID (null if local-only, not yet synced). */
+  id: MessageId | null;
   /** "stream" for channel messages, "private" for DMs. */
   type: DraftType;
   /** For stream: [streamId]. For DM: recipient user IDs. */

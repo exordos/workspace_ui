@@ -83,12 +83,11 @@ describe("resolveDraftDmDisplayName", () => {
         recipientIds: [7, 42],
         currentUserId: 42,
         getUserDisplayName: (id) => (id === 7 ? "Bob" : "Me"),
-        groupChatLabel: "Group chat",
       }),
     ).toBe("Bob");
   });
 
-  it("returns comma-separated names for group DM drafts", () => {
+  it("returns null for 3+ recipient drafts (group DMs removed)", () => {
     expect(
       resolveDraftDmDisplayName({
         recipientIds: [7, 8, 42],
@@ -98,9 +97,8 @@ describe("resolveDraftDmDisplayName", () => {
           if (id === 8) return "Carol";
           return "Me";
         },
-        groupChatLabel: "Group chat",
       }),
-    ).toBe("Bob, Carol");
+    ).toBeNull();
   });
 });
 
@@ -108,7 +106,6 @@ describe("formatDraftMessageContext", () => {
   const labels = {
     generalChatLabel: "General Chat",
     privateLabel: "DM",
-    groupChatLabel: "Group chat",
   };
 
   it("formats stream drafts as channel and topic", () => {

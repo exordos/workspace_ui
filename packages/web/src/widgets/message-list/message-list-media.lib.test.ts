@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { MockMessage } from "~/shared/api/messenger.types";
+import { testMessageId, testMessageOrdinal } from "~/test/factories";
 import { buildMessageMediaGallery, resolveGalleryMediaIndex } from "./message-list-media.lib";
 
-function msg(id: number, content: string): MockMessage {
+function msg(id: number | string, content: string): MockMessage {
   return {
-    id,
+    id: testMessageId(id),
     sender_id: 42,
     sender_full_name: "Alice",
     stream_id: 10,
@@ -12,7 +13,7 @@ function msg(id: number, content: string): MockMessage {
     channel: "engineering",
     subject: "general",
     content,
-    timestamp: 1_710_000_000 + id,
+    timestamp: 1_710_000_000 + testMessageOrdinal(id),
   };
 }
 
@@ -84,7 +85,7 @@ describe("buildMessageMediaGallery", () => {
     expect(gallery.items[0]?.url).toMatch(
       /\/user_uploads\/2\/ff\/aP3oHiNs40xdmpUNVol7Z5ga\/image\.png$/,
     );
-    expect(gallery.items[0]?.downloadFileName).toBe("image-42.png");
+    expect(gallery.items[0]?.downloadFileName).toBe(`image-${testMessageId(42)}.png`);
   });
 
   it("adds message id and per-message counter to generic image download names", () => {
@@ -99,8 +100,8 @@ describe("buildMessageMediaGallery", () => {
     ]);
 
     expect(gallery.items).toHaveLength(2);
-    expect(gallery.items[0]?.downloadFileName).toBe("image-42-1.png");
-    expect(gallery.items[1]?.downloadFileName).toBe("image-42-2.png");
+    expect(gallery.items[0]?.downloadFileName).toBe(`image-${testMessageId(42)}-1.png`);
+    expect(gallery.items[1]?.downloadFileName).toBe(`image-${testMessageId(42)}-2.png`);
   });
 
   it("prefers original user_upload path over thumbnail img src", () => {

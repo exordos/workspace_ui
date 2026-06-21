@@ -2,6 +2,7 @@
  * Shared sidebar unread decrement when messages are marked read (API, optimistic, or messenger events).
  */
 import type { CurrentChatContext } from "~/entities/message/message.model";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import {
   logSidebarUnreadFlow,
   summarizeContextBadge,
@@ -17,14 +18,14 @@ export type ChatListReadFallbackContext =
   | { type: "dm"; dmKey: string };
 
 export interface ChatListUnreadDecrementActions {
-  decrementUnreadForMessages: (messageIds: number[]) => void;
+  decrementUnreadForMessages: (messageIds: MessageId[]) => void;
   decrementUnreadForTopic: (streamId: number, topic: string, count: number) => void;
   decrementUnreadForDmKey: (dmKey: string, count: number) => void;
-  decrementMentionsForReadMessages: (messageIds: readonly number[]) => void;
+  decrementMentionsForReadMessages: (messageIds: readonly MessageId[]) => void;
 }
 
 export interface ChatListUnreadDecrementState {
-  messageIdToLocation: ReadonlyMap<number, MessageLocation>;
+  messageIdToLocation: ReadonlyMap<MessageId, MessageLocation>;
   streamsMap: ReadonlyMap<number, StreamEntryInternal>;
   dmsMap: ReadonlyMap<string, DmEntryInternal>;
   sidebarStreamsUnread: number;
@@ -33,7 +34,7 @@ export interface ChatListUnreadDecrementState {
 
 export interface ApplyChatListReadDecrementOptions {
   /** Message ids reported read (API batch, messenger event, or optimistic). */
-  messageIds: readonly number[];
+  messageIds: readonly MessageId[];
   fallbackContext?: ChatListReadFallbackContext;
   /**
    * When local message flags are already `read` but sidebar badge is stale, apply extra
@@ -87,16 +88,16 @@ function readLocationGroupKey(location: MessageLocation): string {
 /** Partitions read message ids by sidebar location for per-context fallback decrement. */
 export function groupMessageIdsByReadLocation(
   state: ChatListUnreadDecrementState,
-  messageIds: readonly number[],
+  messageIds: readonly MessageId[],
 ): {
-  groups: { fallbackContext: ChatListReadFallbackContext; messageIds: number[] }[];
-  unindexedIds: number[];
+  groups: { fallbackContext: ChatListReadFallbackContext; messageIds: MessageId[] }[];
+  unindexedIds: MessageId[];
 } {
   const byKey = new Map<
     string,
-    { fallbackContext: ChatListReadFallbackContext; messageIds: number[] }
+    { fallbackContext: ChatListReadFallbackContext; messageIds: MessageId[] }
   >();
-  const unindexedIds: number[] = [];
+  const unindexedIds: MessageId[] = [];
 
   for (const messageId of messageIds) {
     const location = state.messageIdToLocation.get(messageId);
@@ -124,7 +125,7 @@ export function applyChatListReadDecrementGrouped(
   getState: () => ChatListUnreadDecrementState,
   actions: ChatListUnreadDecrementActions,
   options: {
-    messageIds: readonly number[];
+    messageIds: readonly MessageId[];
     clampWhenAlreadyRead?: boolean;
     source?: string;
   },
@@ -234,7 +235,7 @@ function applyReadDecrementStaleClamp(
   actions: ChatListUnreadDecrementActions,
   options: {
     fallbackContext: ChatListReadFallbackContext;
-    messageIds: readonly number[];
+    messageIds: readonly MessageId[];
     source: string;
   },
 ): void {

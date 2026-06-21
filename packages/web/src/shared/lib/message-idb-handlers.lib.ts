@@ -13,6 +13,8 @@ import {
   putSingleMessage,
 } from "~/shared/lib/message-cache-db";
 import { chatKeyFromRawMessage } from "~/shared/lib/message-cache-keys.lib";
+import { normalizeMessageId } from "~/shared/lib/message-id.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { messengerMessageCacheWindowNForChatKey } from "~/shared/lib/messenger-message-window.lib";
 import { extractStreamMoveFromUpdateEvent } from "~/shared/lib/update-message-stream-move.lib";
 import { extractTopicMoveFromUpdateEvent } from "~/shared/lib/update-message-topic-move.lib";
@@ -40,7 +42,9 @@ export async function mirrorMessengerUpdateMessageFlagsToIndexedDb(options: {
 }): Promise<void> {
   const op = options.event.op as "add" | "remove";
   const flag = options.event.flag as string;
-  const messageIds = (options.event.messages ?? []) as number[];
+  const messageIds = Array.isArray(options.event.messages)
+    ? options.event.messages.map(normalizeMessageId).filter((id) => id != null)
+    : [];
   if (messageIds.length === 0) return;
   await patchMessageFlagsInCache({ instanceId: options.instanceId, messageIds, flag, op });
 }
@@ -49,7 +53,7 @@ export async function mirrorMessengerReactionToIndexedDb(options: {
   instanceId: string;
   event: MessengerEvent;
 }): Promise<void> {
-  const messageId = options.event.message_id as number;
+  const messageId = normalizeMessageId(options.event.message_id);
   const reaction =
     options.event.emoji_name != null
       ? {
@@ -64,13 +68,17 @@ export async function mirrorMessengerReactionToIndexedDb(options: {
         }
       : null;
   if (!reaction) return;
+  if (messageId == null) return;
   const op = (options.event.op as "add" | "remove") ?? "add";
   await patchMessageReactionInCache({ instanceId: options.instanceId, messageId, reaction, op });
 }
 
-export function resolveDeleteMessageIdsFromMessengerEvent(event: MessengerEvent): number[] {
-  if (event.message_ids) return event.message_ids as number[];
-  if (event.message_id != null) return [event.message_id as number];
+export function resolveDeleteMessageIdsFromMessengerEvent(event: MessengerEvent): MessageId[] {
+  if (Array.isArray(event.message_ids)) {
+    return event.message_ids.map(normalizeMessageId).filter((id) => id != null);
+  }
+  const messageId = normalizeMessageId(event.message_id);
+  if (messageId != null) return [messageId];
   return [];
 }
 
@@ -87,7 +95,7 @@ export async function mirrorMessengerUpdateMessageToIndexedDb(options: {
   instanceId: string;
   event: MessengerEvent;
 }): Promise<void> {
-  const messageId = options.event.message_id as number | undefined;
+  const messageId = normalizeMessageId(options.event.message_id);
   const renderingOnly = options.event.rendering_only === true;
   const newMarkdown =
     !renderingOnly && typeof options.event.content === "string" ? options.event.content : undefined;

@@ -14,7 +14,11 @@ describe("layout-reconnect-stream-preview", () => {
   it("does not flush before register hydration is ready", () => {
     const apply = vi.fn();
     stageReconnectStreamPreviews(
-      { mode: "streamPreviews", messages: [], latestMessageIdHint: 1 },
+      {
+        mode: "streamPreviews",
+        messages: [],
+        latestMessageIdHint: "00000000-0000-4000-8000-000000000001",
+      },
       { currentInstanceId: "i1", setFromMessages: vi.fn() },
     );
     expect(flushReconnectStreamPreviewsAfterRegister(apply)).toBe(false);
@@ -26,7 +30,7 @@ describe("layout-reconnect-stream-preview", () => {
     const result = {
       mode: "streamPreviews" as const,
       messages: [],
-      latestMessageIdHint: 1,
+      latestMessageIdHint: "00000000-0000-4000-8000-000000000001",
     };
     const options = { currentInstanceId: "i1", setFromMessages: vi.fn() };
     stageReconnectStreamPreviews(result, options);

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { testMessageId } from "~/test/factories";
 import { createMarkAsReadBatcher } from "./chat-mark-as-read.lib";
 
 const isTabVisible = vi.fn(() => true);
@@ -39,14 +40,14 @@ describe("createMarkAsReadBatcher", () => {
     const onSchedule = vi.fn();
     const batcher = createMarkAsReadBatcher({ markAsRead, onSchedule, debounceMs: 200 });
 
-    batcher.schedule([1, 2]);
-    batcher.schedule([2]);
+    batcher.schedule([testMessageId(1), testMessageId(2)]);
+    batcher.schedule([testMessageId(2)]);
 
     expect(onSchedule).toHaveBeenCalledTimes(1);
-    expect(onSchedule).toHaveBeenCalledWith([1, 2]);
+    expect(onSchedule).toHaveBeenCalledWith([testMessageId(1), testMessageId(2)]);
 
     await vi.advanceTimersByTimeAsync(200);
-    expect(markAsRead).toHaveBeenCalledWith([1, 2]);
+    expect(markAsRead).toHaveBeenCalledWith([testMessageId(1), testMessageId(2)]);
   });
 
   it("debounces and deduplicates scheduled message ids", async () => {
@@ -54,34 +55,34 @@ describe("createMarkAsReadBatcher", () => {
     const onMarked = vi.fn();
     const batcher = createMarkAsReadBatcher({ markAsRead, onMarked, debounceMs: 200 });
 
-    batcher.schedule([1, 2]);
-    batcher.schedule([2, 3]);
+    batcher.schedule([testMessageId(1), testMessageId(2)]);
+    batcher.schedule([testMessageId(2), testMessageId(3)]);
 
     await vi.advanceTimersByTimeAsync(199);
     expect(markAsRead).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(1);
     expect(markAsRead).toHaveBeenCalledTimes(1);
-    expect(markAsRead).toHaveBeenCalledWith([1, 2, 3]);
-    expect(onMarked).toHaveBeenCalledWith([1, 2, 3]);
+    expect(markAsRead).toHaveBeenCalledWith([testMessageId(1), testMessageId(2), testMessageId(3)]);
+    expect(onMarked).toHaveBeenCalledWith([testMessageId(1), testMessageId(2), testMessageId(3)]);
   });
 
   it("flushes immediately when requested", async () => {
     const markAsRead = vi.fn().mockResolvedValue(true);
     const batcher = createMarkAsReadBatcher({ markAsRead, debounceMs: 500 });
 
-    batcher.schedule([10, 11]);
+    batcher.schedule([testMessageId(10), testMessageId(11)]);
     await batcher.flush();
 
     expect(markAsRead).toHaveBeenCalledTimes(1);
-    expect(markAsRead).toHaveBeenCalledWith([10, 11]);
+    expect(markAsRead).toHaveBeenCalledWith([testMessageId(10), testMessageId(11)]);
   });
 
   it("cancels queued ids without calling markAsRead", async () => {
     const markAsRead = vi.fn().mockResolvedValue(true);
     const batcher = createMarkAsReadBatcher({ markAsRead, debounceMs: 100 });
 
-    batcher.schedule([7, 8]);
+    batcher.schedule([testMessageId(7), testMessageId(8)]);
     batcher.cancel();
 
     await vi.advanceTimersByTimeAsync(120);
@@ -91,17 +92,17 @@ describe("createMarkAsReadBatcher", () => {
   it("simulates route switch: cancelled batcher never flushes; new batcher only sends its ids", async () => {
     const markAsReadOld = vi.fn().mockResolvedValue(true);
     const batcherOld = createMarkAsReadBatcher({ markAsRead: markAsReadOld, debounceMs: 100 });
-    batcherOld.schedule([100, 101]);
+    batcherOld.schedule([testMessageId(100), testMessageId(101)]);
     batcherOld.cancel();
     await vi.advanceTimersByTimeAsync(120);
     expect(markAsReadOld).not.toHaveBeenCalled();
 
     const markAsReadNew = vi.fn().mockResolvedValue(true);
     const batcherNew = createMarkAsReadBatcher({ markAsRead: markAsReadNew, debounceMs: 100 });
-    batcherNew.schedule([202]);
+    batcherNew.schedule([testMessageId(202)]);
     await vi.advanceTimersByTimeAsync(100);
     expect(markAsReadNew).toHaveBeenCalledTimes(1);
-    expect(markAsReadNew).toHaveBeenCalledWith([202]);
+    expect(markAsReadNew).toHaveBeenCalledWith([testMessageId(202)]);
     expect(markAsReadOld).not.toHaveBeenCalled();
   });
 
@@ -115,7 +116,7 @@ describe("createMarkAsReadBatcher", () => {
       respectTabVisibility: true,
     });
 
-    batcher.schedule([5, 6]);
+    batcher.schedule([testMessageId(5), testMessageId(6)]);
     await new Promise<void>((resolve) => {
       setTimeout(resolve, 110);
     });
@@ -127,7 +128,7 @@ describe("createMarkAsReadBatcher", () => {
     await Promise.resolve();
 
     expect(markAsRead).toHaveBeenCalledTimes(1);
-    expect(markAsRead).toHaveBeenCalledWith([5, 6]);
+    expect(markAsRead).toHaveBeenCalledWith([testMessageId(5), testMessageId(6)]);
     vi.useFakeTimers();
   });
 
@@ -140,8 +141,8 @@ describe("createMarkAsReadBatcher", () => {
       respectTabVisibility: false,
     });
 
-    batcher.schedule([9]);
+    batcher.schedule([testMessageId(9)]);
     await vi.advanceTimersByTimeAsync(50);
-    expect(markAsRead).toHaveBeenCalledWith([9]);
+    expect(markAsRead).toHaveBeenCalledWith([testMessageId(9)]);
   });
 });

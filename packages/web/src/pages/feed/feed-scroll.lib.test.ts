@@ -8,7 +8,7 @@ describe("shouldRequestOlderFeedPage", () => {
         scrollTop: 24,
         isLoadingMore: false,
         isAllLoaded: false,
-        lastMessageId: 120,
+        lastMessageId: "00000000-0000-4000-8000-000000000120",
       }),
     ).toBe(true);
   });
@@ -19,7 +19,7 @@ describe("shouldRequestOlderFeedPage", () => {
         scrollTop: 140,
         isLoadingMore: false,
         isAllLoaded: false,
-        lastMessageId: 120,
+        lastMessageId: "00000000-0000-4000-8000-000000000120",
       }),
     ).toBe(false);
   });
@@ -30,7 +30,7 @@ describe("shouldRequestOlderFeedPage", () => {
         scrollTop: 10,
         isLoadingMore: true,
         isAllLoaded: false,
-        lastMessageId: 120,
+        lastMessageId: "00000000-0000-4000-8000-000000000120",
       }),
     ).toBe(false);
   });
@@ -41,7 +41,7 @@ describe("shouldRequestOlderFeedPage", () => {
         scrollTop: 10,
         isLoadingMore: false,
         isAllLoaded: true,
-        lastMessageId: 120,
+        lastMessageId: "00000000-0000-4000-8000-000000000120",
       }),
     ).toBe(false);
   });

@@ -4,11 +4,12 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { getCurrentInstance } from "~/shared/api/client";
 import { createLogger } from "~/shared/lib/logger";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 
 const log = createLogger("layout-reconnect");
 
 export interface RefreshActiveChatMessagesOptions {
-  focusedMessageId?: number | null;
+  focusedMessageId?: MessageId | null;
   isCancelled?: () => boolean;
 }
 

@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { dmRouteKey } from "~/shared/lib/dm-key";
-import { computeIsGroupDmView, normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
+import { normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
+import { normalizeMessageId, type MessageId } from "~/shared/lib/message-id.lib";
 import { decodeTopicFromRoute } from "~/shared/lib/topic-identity.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import {
@@ -11,11 +12,9 @@ import {
 } from "~/widgets/sidebar/sidebar.lib";
 import type { Location } from "react-router-dom";
 
-function parsePositiveIntFromSearch(location: Location, key: string): number | null {
+function parseMessageIdFromSearch(location: Location, key: string): MessageId | null {
   const raw = new URLSearchParams(location.search).get(key);
-  if (!raw) return null;
-  const parsed = Number(raw);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  return normalizeMessageId(raw);
 }
 
 export function useChatRouteContext(options: {
@@ -36,11 +35,10 @@ export function useChatRouteContext(options: {
   dmRecipientIds: UserId[];
   isDmView: boolean;
   dmChat: ReturnType<typeof getDmById> | undefined;
-  isGroupDmView: boolean;
   partnerUserId: UserId | null;
   dmKey: string | null;
-  focusedMessageId: number | null;
-  forwardMessageId: number | null;
+  focusedMessageId: MessageId | null;
+  forwardMessageId: MessageId | null;
 } {
   const { streamSlug, topicName, dmIdParam, location, streamsMap, dmsFromStore, currentUserId } =
     options;
@@ -88,20 +86,15 @@ export function useChatRouteContext(options: {
   const dmRecipientIds = activeDmUserIds ?? [];
   const isDmView = dmRecipientIds.length > 0;
 
-  const isGroupDmView = isDmView && computeIsGroupDmView(dmChat, dmRecipientIds, currentUserId);
-  const partnerUserId =
-    isDmView && !isGroupDmView && dmRecipientIds.length > 0 ? (dmRecipientIds[0] ?? null) : null;
+  const partnerUserId = isDmView && dmRecipientIds.length > 0 ? (dmRecipientIds[0] ?? null) : null;
 
   const dmKey = useMemo(() => {
     if (!isDmView || currentUserId == null) return null;
     return dmRouteKey(dmRecipientIds, currentUserId);
   }, [dmRecipientIds, isDmView, currentUserId]);
 
-  const focusedMessageId = useMemo(() => parsePositiveIntFromSearch(location, "msg"), [location]);
-  const forwardMessageId = useMemo(
-    () => parsePositiveIntFromSearch(location, "forward"),
-    [location],
-  );
+  const focusedMessageId = useMemo(() => parseMessageIdFromSearch(location, "msg"), [location]);
+  const forwardMessageId = useMemo(() => parseMessageIdFromSearch(location, "forward"), [location]);
 
   return {
     activeTopic,
@@ -113,7 +106,6 @@ export function useChatRouteContext(options: {
     dmRecipientIds,
     isDmView,
     dmChat,
-    isGroupDmView,
     partnerUserId,
     dmKey,
     focusedMessageId,

@@ -1,5 +1,7 @@
+import type { MessageId } from "~/shared/lib/message-id.lib";
+
 interface MessageWithId {
-  id: number;
+  id: MessageId;
 }
 
 export interface FocusedPaginationFlags {
@@ -19,26 +21,21 @@ export interface BoundaryLoadState {
  */
 export function deriveFocusedPaginationFlags(
   messages: readonly MessageWithId[],
-  focusedMessageId: number | null,
+  focusedMessageId: MessageId | null,
 ): FocusedPaginationFlags {
   if (focusedMessageId == null) {
     return { hasOlderMessages: true, hasNewerMessages: false };
   }
 
-  let hasOlderMessages = false;
-  let hasNewerMessages = false;
-
-  for (const message of messages) {
-    if (message.id < focusedMessageId) {
-      hasOlderMessages = true;
-    } else if (message.id > focusedMessageId) {
-      hasNewerMessages = true;
-    }
-
-    if (hasOlderMessages && hasNewerMessages) break;
+  const focusedIndex = messages.findIndex((message) => message.id === focusedMessageId);
+  if (focusedIndex < 0) {
+    return { hasOlderMessages: messages.length > 0, hasNewerMessages: false };
   }
 
-  return { hasOlderMessages, hasNewerMessages };
+  return {
+    hasOlderMessages: focusedIndex > 0,
+    hasNewerMessages: focusedIndex < messages.length - 1,
+  };
 }
 
 /**

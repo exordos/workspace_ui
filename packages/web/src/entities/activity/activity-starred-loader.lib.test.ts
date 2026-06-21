@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
-import { createMessage } from "~/test/factories";
+import { createMessage, testMessageId } from "~/test/factories";
 import { ensureStarredLoaded } from "./activity-starred-loader.lib";
 
 const fetchActivityMessagesPageWithPersist = vi.hoisted(() => vi.fn());
@@ -49,10 +49,16 @@ describe("ensureStarredLoaded", () => {
 
   it("refreshes starred filter without recalculating summary from server page", async () => {
     // Assert basic happy path: cache-first + server refresh.
-    useActivityStore.getState().setStarredSummaryFromRegisterMessageIds([1, 2, 3]);
+    useActivityStore
+      .getState()
+      .setStarredSummaryFromRegisterMessageIds([
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003",
+      ]);
     const cached = [
       createMessage({
-        id: 10,
+        id: "00000000-0000-4000-8000-000000000010",
         sender_id: 42,
         sender_full_name: "Alice",
         stream_id: 10,
@@ -66,7 +72,7 @@ describe("ensureStarredLoaded", () => {
     ];
     const server = [
       createMessage({
-        id: 22,
+        id: "00000000-0000-4000-8000-000000000022",
         sender_id: 42,
         sender_full_name: "Alice",
         stream_id: 10,
@@ -91,7 +97,7 @@ describe("ensureStarredLoaded", () => {
     });
 
     const state = useActivityStore.getState();
-    expect(state.filters.starred.messages.map((m) => m.id)).toEqual([22]);
+    expect(state.filters.starred.messages.map((m) => m.id)).toEqual([testMessageId(22)]);
     expect(state.starredSummary.count).toBe(3);
     expect(state.starredSummary.isCapped).toBe(false);
     expect(fetchActivityMessagesPageWithPersist).toHaveBeenCalledWith("starred", 7, "newest", 200, {
@@ -100,11 +106,19 @@ describe("ensureStarredLoaded", () => {
   });
 
   it("does not replace exact register summary with capped page size", async () => {
-    useActivityStore.getState().setStarredSummaryFromRegisterMessageIds([1, 2, 3, 4, 5]);
+    useActivityStore
+      .getState()
+      .setStarredSummaryFromRegisterMessageIds([
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003",
+        "00000000-0000-4000-8000-000000000004",
+        "00000000-0000-4000-8000-000000000005",
+      ]);
     fetchActivityMessagesPageWithPersist.mockResolvedValue({
       messages: [
-        createMessage({ id: 4, flags: ["starred"] }),
-        createMessage({ id: 5, flags: ["starred"] }),
+        createMessage({ id: "00000000-0000-4000-8000-000000000004", flags: ["starred"] }),
+        createMessage({ id: "00000000-0000-4000-8000-000000000005", flags: ["starred"] }),
       ],
       foundOldest: false,
     });
@@ -116,7 +130,10 @@ describe("ensureStarredLoaded", () => {
     });
 
     const state = useActivityStore.getState();
-    expect(state.filters.starred.messages.map((m) => m.id)).toEqual([4, 5]);
+    expect(state.filters.starred.messages.map((m) => m.id)).toEqual([
+      testMessageId(4),
+      testMessageId(5),
+    ]);
     expect(state.starredSummary.count).toBe(5);
     expect(state.starredSummary.isCapped).toBe(false);
   });
@@ -151,7 +168,7 @@ describe("ensureStarredLoaded", () => {
     resolveFetch({
       messages: [
         createMessage({
-          id: 33,
+          id: "00000000-0000-4000-8000-000000000033",
           sender_id: 42,
           sender_full_name: "Alice",
           stream_id: 10,
@@ -239,7 +256,7 @@ describe("ensureStarredLoaded", () => {
     resolveOldFetch({
       messages: [
         createMessage({
-          id: 44,
+          id: "00000000-0000-4000-8000-000000000044",
           sender_id: 42,
           sender_full_name: "Alice",
           stream_id: 10,
@@ -260,7 +277,7 @@ describe("ensureStarredLoaded", () => {
     resolveNewFetch({
       messages: [
         createMessage({
-          id: 55,
+          id: "00000000-0000-4000-8000-000000000055",
           sender_id: 42,
           sender_full_name: "Alice",
           stream_id: 10,
@@ -278,6 +295,6 @@ describe("ensureStarredLoaded", () => {
     await second;
     expect(
       useActivityStore.getState().filters.starred.messages.map((message) => message.id),
-    ).toEqual([55]);
+    ).toEqual([testMessageId(55)]);
   });
 });

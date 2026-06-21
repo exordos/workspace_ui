@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { testMessageId } from "~/test/factories";
 import { useJitsiCallStore } from "./jitsi-call.model";
 
 describe("useJitsiCallStore", () => {
@@ -8,7 +9,7 @@ describe("useJitsiCallStore", () => {
 
   it("opens active call and clears incoming invite", () => {
     useJitsiCallStore.getState().ingestIncomingInvite({
-      messageId: 10,
+      messageId: "00000000-0000-4000-8000-000000000010",
       meetingUrl: "https://meet.jit.si/messenger-dm-room-10",
       callerName: "Slon",
       locationName: "Slon",
@@ -29,7 +30,7 @@ describe("useJitsiCallStore", () => {
 
   it("accepts incoming invite and opens call with default muted video", () => {
     useJitsiCallStore.getState().ingestIncomingInvite({
-      messageId: 11,
+      messageId: "00000000-0000-4000-8000-000000000011",
       meetingUrl: "https://meet.jit.si/messenger-dm-room-11",
       callerName: "Ku",
       locationName: "Ku",
@@ -47,7 +48,7 @@ describe("useJitsiCallStore", () => {
 
   it("accepts incoming invite with unmuted video when requested", () => {
     useJitsiCallStore.getState().ingestIncomingInvite({
-      messageId: 13,
+      messageId: "00000000-0000-4000-8000-000000000013",
       meetingUrl: "https://meet.jit.si/messenger-dm-room-13",
       callerName: "Dog",
       locationName: "Dog",
@@ -64,7 +65,7 @@ describe("useJitsiCallStore", () => {
 
   it("deduplicates incoming invite by message id", () => {
     const invite = {
-      messageId: 12,
+      messageId: "00000000-0000-4000-8000-000000000012",
       meetingUrl: "https://meet.jit.si/messenger-dm-room-12",
       callerName: "Fox",
       locationName: "Fox",
@@ -85,7 +86,7 @@ describe("useJitsiCallStore", () => {
     });
 
     useJitsiCallStore.getState().ingestIncomingInvite({
-      messageId: 21,
+      messageId: "00000000-0000-4000-8000-000000000021",
       meetingUrl: "https://meet.jit.si/messenger-dm-room-21",
       callerName: "Cat",
       locationName: "Cat",
@@ -96,12 +97,12 @@ describe("useJitsiCallStore", () => {
     const state = useJitsiCallStore.getState();
     expect(state.activeCall?.meetingUrl).toBe("https://meet.jit.si/messenger-dm-room-active");
     expect(state.incomingInvite).toBeNull();
-    expect(state.lastIncomingMessageId).toBe(21);
+    expect(state.lastIncomingMessageId).toBe(testMessageId(21));
   });
 
   it("keeps first incoming invite while another incoming invite arrives", () => {
     useJitsiCallStore.getState().ingestIncomingInvite({
-      messageId: 31,
+      messageId: "00000000-0000-4000-8000-000000000031",
       meetingUrl: "https://meet.jit.si/messenger-dm-room-31",
       callerName: "Fox",
       locationName: "Fox",
@@ -110,7 +111,7 @@ describe("useJitsiCallStore", () => {
     });
 
     useJitsiCallStore.getState().ingestIncomingInvite({
-      messageId: 32,
+      messageId: "00000000-0000-4000-8000-000000000032",
       meetingUrl: "https://meet.jit.si/messenger-dm-room-32",
       callerName: "Wolf",
       locationName: "Wolf",
@@ -119,8 +120,8 @@ describe("useJitsiCallStore", () => {
     });
 
     const state = useJitsiCallStore.getState();
-    expect(state.incomingInvite?.messageId).toBe(31);
+    expect(state.incomingInvite?.messageId).toBe(testMessageId(31));
     expect(state.incomingInvite?.meetingUrl).toBe("https://meet.jit.si/messenger-dm-room-31");
-    expect(state.lastIncomingMessageId).toBe(32);
+    expect(state.lastIncomingMessageId).toBe(testMessageId(32));
   });
 });

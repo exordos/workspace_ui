@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { testMessageId } from "~/test/factories";
 import {
   mockMessageFromGetMessageApiData,
   rawMessageToMockMessage,
@@ -8,7 +9,7 @@ describe("messenger-message-map.lib", () => {
   describe("rawMessageToMockMessage", () => {
     it("includes markdown_source when provided", () => {
       const result = rawMessageToMockMessage({
-        id: 1,
+        id: "00000000-0000-4000-8000-000000000001",
         sender_id: 2,
         content: "<p>x</p>",
         timestamp: 1,
@@ -20,7 +21,7 @@ describe("messenger-message-map.lib", () => {
 
     it("omits markdown_source when blank", () => {
       const result = rawMessageToMockMessage({
-        id: 1,
+        id: "00000000-0000-4000-8000-000000000001",
         sender_id: 2,
         content: "<p>x</p>",
         timestamp: 1,
@@ -31,7 +32,7 @@ describe("messenger-message-map.lib", () => {
 
     it("mirrors markdown body into markdown_source when API omits markdown_source", () => {
       const result = rawMessageToMockMessage({
-        id: 1,
+        id: "00000000-0000-4000-8000-000000000001",
         sender_id: 2,
         content: "**bold**",
         timestamp: 1,
@@ -42,7 +43,7 @@ describe("messenger-message-map.lib", () => {
 
     it("does not set markdown_source for HTML-only body without API markdown_source", () => {
       const result = rawMessageToMockMessage({
-        id: 1,
+        id: "00000000-0000-4000-8000-000000000001",
         sender_id: 2,
         content: "<p>hi</p>",
         timestamp: 1,
@@ -57,7 +58,7 @@ describe("messenger-message-map.lib", () => {
         result: "success",
         raw_content: "**hi**",
         message: {
-          id: 9,
+          id: "00000000-0000-4000-8000-000000000009",
           sender_id: 3,
           sender_full_name: "Bob",
           content: "<p>hi</p>",
@@ -69,7 +70,7 @@ describe("messenger-message-map.lib", () => {
         },
       });
       expect(result).not.toBeNull();
-      expect(result!.id).toBe(9);
+      expect(result!.id).toBe(testMessageId(9));
       expect(result!.content).toBe("<p>hi</p>");
       expect(result!.markdown_source).toBe("**hi**");
     });
@@ -78,7 +79,7 @@ describe("messenger-message-map.lib", () => {
       const result = mockMessageFromGetMessageApiData({
         result: "success",
         message: {
-          id: 1,
+          id: "00000000-0000-4000-8000-000000000001",
           sender_id: 1,
           content: "*italic*",
           content_type: "text/x-markdown",
@@ -95,13 +96,13 @@ describe("messenger-message-map.lib", () => {
     it("supports flat message shape (tests / legacy)", () => {
       const result = mockMessageFromGetMessageApiData({
         result: "success",
-        id: 100,
+        id: "00000000-0000-4000-8000-000000000100",
         sender_id: 42,
         content: "<p>hello</p>",
         timestamp: 1710000000,
         raw_content: "hello",
       });
-      expect(result?.id).toBe(100);
+      expect(result?.id).toBe(testMessageId(100));
       expect(result?.markdown_source).toBe("hello");
     });
   });

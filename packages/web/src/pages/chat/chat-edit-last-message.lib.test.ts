@@ -1,16 +1,17 @@
 import { describe, expect, it } from "vitest";
 import type { MockMessage } from "~/shared/api/messenger.types";
+import { testMessageId, testMessageOrdinal } from "~/test/factories";
 import { resolveLastOwnMessageForEdit } from "./chat-edit-last-message.lib";
 
-function createMessage(id: number, senderId: number, content = `m${id}`): MockMessage {
+function createMessage(id: number | string, senderId: number, content = `m${id}`): MockMessage {
   return {
-    id,
+    id: testMessageId(id),
     sender_id: senderId,
     sender_full_name: `User ${senderId}`,
     stream_id: 1,
     subject: "general",
     content,
-    timestamp: id,
+    timestamp: testMessageOrdinal(id),
   };
 }
 
@@ -18,7 +19,7 @@ describe("chat-edit-last-message", () => {
   it("returns the last message authored by current user", () => {
     const messages = [createMessage(1, 10), createMessage(2, 42), createMessage(3, 42)];
     const result = resolveLastOwnMessageForEdit(messages, 42, undefined, 10);
-    expect(result?.id).toBe(3);
+    expect(result?.id).toBe(testMessageId(3));
   });
 
   it("returns null when current user has no messages", () => {
@@ -43,6 +44,6 @@ describe("chat-edit-last-message", () => {
       { allowMessageEditing: true, messageContentEditLimitSeconds: 60 },
       3061,
     );
-    expect(result?.id).toBe(1000);
+    expect(result?.id).toBe(testMessageId(1000));
   });
 });

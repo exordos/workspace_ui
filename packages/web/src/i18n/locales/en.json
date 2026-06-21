@@ -93,7 +93,6 @@
     "allChats": "All chats",
     "channels": "Channels",
     "directMessages": "Direct Messages",
-    "groupChats": "Group chats",
     "chatsAndChannels": "Chats & channels",
     "newChat": "New chat",
     "inbox": "Inbox",
@@ -334,9 +333,7 @@
     "selectTargetChannel": "Target channel"
   },
   "dm": {
-    "groupChat": "Group chat",
     "startChat": "Start chat",
-    "createGroup": "Group chat",
     "privateChat": "Direct message",
     "partner": "Partner",
     "private": "Private",

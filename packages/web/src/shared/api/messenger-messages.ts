@@ -4,6 +4,8 @@
 import { t } from "~/i18n/i18n";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
+import { normalizeMessageId } from "~/shared/lib/message-id.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import {
   MESSENGER_DM_CHAT_NUM_AFTER,
   MESSENGER_DM_ANCHOR_NUM_BEFORE,
@@ -51,7 +53,7 @@ import type {
 const activityMessagesLog = createLogger("api:activity-messages");
 
 interface MessageWindowOptions {
-  anchor: string | number;
+  anchor: string;
   numBefore: number;
   numAfter: number;
   includeAnchor?: boolean;
@@ -85,15 +87,15 @@ function messengerRawMessageFromGetMessageApiData(data: unknown): WorkspaceRawMe
   if (row.result === "error") return null;
   if (row.message != null && typeof row.message === "object") {
     const message = row.message as WorkspaceRawMessage;
-    return Number.isInteger(message.id) && message.id > 0 ? message : null;
+    return normalizeMessageId(message.id) != null ? message : null;
   }
-  if (typeof row.id === "number" && row.id > 0) {
+  if (normalizeMessageId(row.id) != null) {
     return row as unknown as WorkspaceRawMessage;
   }
   return null;
 }
 
-async function fetchMessagesByIdsChunk(messageIds: number[]): Promise<{
+async function fetchMessagesByIdsChunk(messageIds: MessageId[]): Promise<{
   messages: WorkspaceRawMessage[];
   apiError: boolean;
 }> {
@@ -148,7 +150,7 @@ async function fetchMessagesByIdsChunk(messageIds: number[]): Promise<{
   return { messages: parsed, apiError: false };
 }
 
-async function fetchMessagesByIdsFallback(messageIds: number[]): Promise<WorkspaceRawMessage[]> {
+async function fetchMessagesByIdsFallback(messageIds: MessageId[]): Promise<WorkspaceRawMessage[]> {
   if (!loggedMessageIdsBatchFallback) {
     loggedMessageIdsBatchFallback = true;
     log.warn("GET /messages message_ids unavailable; falling back to per-message fetch", {
@@ -252,7 +254,7 @@ export async function fetchRecentMessages(numBefore = 1000): Promise<WorkspaceRa
 
 /** Deep backfill: older chat-list messages before anchor. */
 export async function fetchMessagesBeforeAnchor(
-  anchorMessageId: number,
+  anchorMessageId: MessageId,
   numBefore = 5000,
 ): Promise<WorkspaceRawMessage[]> {
   guard.messageId(anchorMessageId, "fetchMessagesBeforeAnchor.anchorMessageId");
@@ -267,7 +269,7 @@ export async function fetchMessagesBeforeAnchor(
 
 /** Loads newer chat-list messages after anchor (post-reconnect catch-up). */
 export async function fetchMessagesAfterAnchor(
-  anchorMessageId: number,
+  anchorMessageId: MessageId,
   numAfter = 5000,
 ): Promise<WorkspaceRawMessage[]> {
   guard.messageId(anchorMessageId, "fetchMessagesAfterAnchor.anchorMessageId");
@@ -284,7 +286,7 @@ export async function fetchMessagesAfterAnchor(
 export async function fetchActivityMessages(
   filter: ActivityFilter,
   currentUserId?: UserId | null,
-  anchor: number | "newest" = "newest",
+  anchor: MessageId = "newest",
   numBefore = 200,
   options?: { signal?: AbortSignal },
 ): Promise<WorkspaceRawMessage[]> {
@@ -295,7 +297,7 @@ export async function fetchActivityMessages(
 export async function fetchActivityMessagesPage(
   filter: ActivityFilter,
   currentUserId?: UserId | null,
-  anchor: number | "newest" = "newest",
+  anchor: MessageId = "newest",
   numBefore = 200,
   options?: { signal?: AbortSignal },
 ): Promise<ActivityMessagesPageResult> {
@@ -416,7 +418,7 @@ export async function fetchMessages(
 /** Loads messages by narrow with configurable anchor and window sizes. */
 export async function fetchMessagesWithNarrow(
   narrow: MessengerMessagesNarrowClause[],
-  anchor: string | number = "newest",
+  anchor: MessageId = "newest",
   numBefore = MESSENGER_STREAM_ANCHOR_NUM_BEFORE,
   numAfter = MESSENGER_STREAM_CHAT_NUM_AFTER,
   options?: { signal?: AbortSignal; applyMarkdown?: boolean },
@@ -427,7 +429,7 @@ export async function fetchMessagesWithNarrow(
 
 async function fetchMessagesWithNarrowPageViaPipeline(args: {
   apiNarrow: MessengerMessagesNarrowClause[];
-  validatedAnchor: string | number;
+  validatedAnchor: string;
   validatedNumBefore: number;
   validatedNumAfter: number;
   applyMarkdown: boolean;
@@ -458,7 +460,7 @@ async function fetchMessagesWithNarrowPageViaPipeline(args: {
 /** Loads a narrow message page including pagination metadata. */
 export async function fetchMessagesWithNarrowPage(
   narrow: MessengerMessagesNarrowClause[],
-  anchor: string | number = "newest",
+  anchor: MessageId = "newest",
   numBefore = MESSENGER_STREAM_ANCHOR_NUM_BEFORE,
   numAfter = MESSENGER_STREAM_CHAT_NUM_AFTER,
   options?: { signal?: AbortSignal; applyMarkdown?: boolean },
@@ -493,7 +495,7 @@ export async function fetchMessagesWithNarrowPage(
 
 /** Loads one page of all messages (no narrow) via the API pipeline. */
 export async function fetchAllMessagesPage(
-  anchor: string | number = "newest",
+  anchor: MessageId = "newest",
   numBefore = 100,
   options?: { applyMarkdown?: boolean; signal?: AbortSignal },
 ): Promise<MessagesPageResult> {
@@ -569,9 +571,7 @@ interface DmNarrow {
   operand: UserId[];
 }
 
-const GROUP_DM_ID_OFFSET = 2_000_000;
-
-/** Loads DM messages (1:1 or group); for 1:1 pass the peer `userId`. */
+/** Loads 1:1 DM messages; pass the peer `userId`. */
 export async function fetchDmMessages(
   userIds: UserId | UserId[],
   options?: { signal?: AbortSignal },
@@ -581,9 +581,6 @@ export async function fetchDmMessages(
   const ids = rawIds.map((userId, index) =>
     guard.userIdentity(userId, `fetchDmMessages.userIds[${index}]`),
   );
-  if (ids.some((id) => typeof id === "number" && id >= GROUP_DM_ID_OFFSET)) {
-    return [];
-  }
   if (options?.signal?.aborted) {
     throw new DOMException("Aborted", "AbortError");
   }
@@ -632,14 +629,12 @@ export async function fetchDmMessages(
  * Fetches specific messages by id (messenger 10+ `message_ids` on GET /messages).
  * Falls back to per-id GET when the server rejects batch fetch.
  */
-export async function fetchMessagesByIds(messageIds: number[]): Promise<WorkspaceRawMessage[]> {
+export async function fetchMessagesByIds(messageIds: MessageId[]): Promise<WorkspaceRawMessage[]> {
   log.info("fetchMessagesByIds: called", { inputCount: messageIds.length });
 
-  const uniqueIds = [
-    ...new Set(messageIds.filter((messageId) => Number.isInteger(messageId) && messageId > 0)),
-  ];
+  const uniqueIds = [...new Set(messageIds.map(normalizeMessageId).filter((id) => id != null))];
   if (uniqueIds.length === 0) {
-    log.info("fetchMessagesByIds: no positive ids after filter", { inputCount: messageIds.length });
+    log.info("fetchMessagesByIds: no valid ids after filter", { inputCount: messageIds.length });
     return [];
   }
 
@@ -695,7 +690,7 @@ export async function fetchMessagesByIds(messageIds: number[]): Promise<Workspac
 }
 
 /** Loads one message by id; returns null on error or non-ok response. */
-export async function fetchMessageById(messageId: number): Promise<MockMessage | null> {
+export async function fetchMessageById(messageId: MessageId): Promise<MockMessage | null> {
   guard.messageId(messageId, "fetchMessageById");
   const res = await messengerPipelineGet(`/messages/${messageId}`, {
     allow_empty_topic_name: "true",
@@ -709,7 +704,7 @@ export async function fetchMessageById(messageId: number): Promise<MockMessage |
 
 /** Server-rendered HTML for one message (includes `.message_embed` when link previews are enabled). */
 export async function fetchMessageRenderedHtmlById(
-  messageId: number,
+  messageId: MessageId,
   signal?: AbortSignal,
 ): Promise<string | null> {
   guard.messageId(messageId, "fetchMessageRenderedHtmlById");
@@ -814,8 +809,8 @@ export async function sendMessage(params: SendMessageParams): Promise<MockMessag
       },
       sendOptions,
     );
-    const id = result.id ?? 0;
-    const authoritative = id > 0 ? await fetchMessageById(id) : null;
+    const id = guard.messageId(result.id, "sendMessage.id");
+    const authoritative = await fetchMessageById(id);
     if (authoritative) return authoritative;
     return {
       id,
@@ -843,8 +838,8 @@ export async function sendMessage(params: SendMessageParams): Promise<MockMessag
     },
     sendOptions,
   );
-  const id = result.id ?? 0;
-  const authoritative = id > 0 ? await fetchMessageById(id) : null;
+  const id = guard.messageId(result.id, "sendMessage.id");
+  const authoritative = await fetchMessageById(id);
   if (authoritative) return authoritative;
   return {
     id,
@@ -873,7 +868,10 @@ export async function renderMessageContent(content: string): Promise<string> {
   return data.rendered;
 }
 
-export async function updateMessage(messageId: number, params: { content: string }): Promise<void> {
+export async function updateMessage(
+  messageId: MessageId,
+  params: { content: string },
+): Promise<void> {
   guard.messageId(messageId, "updateMessage");
   const content = guard.nonEmpty(params.content, "updateMessage.content");
   const res = await messengerPipelinePatch(`messages/${messageId}`, {
@@ -885,7 +883,7 @@ export async function updateMessage(messageId: number, params: { content: string
   }
 }
 
-export async function deleteMessage(messageId: number): Promise<void> {
+export async function deleteMessage(messageId: MessageId): Promise<void> {
   guard.messageId(messageId, "deleteMessage");
   const res = await messengerPipelineDelete(`messages/${messageId}`);
   if (!res.ok) {
@@ -895,7 +893,7 @@ export async function deleteMessage(messageId: number): Promise<void> {
 }
 
 export async function addReaction(
-  messageId: number,
+  messageId: MessageId,
   emojiName: string,
   options?: ReactionType | { emojiCode?: string; reactionType?: ReactionType },
 ): Promise<void> {
@@ -920,7 +918,7 @@ export async function addReaction(
 }
 
 export async function removeReaction(
-  messageId: number,
+  messageId: MessageId,
   emojiName: string,
   options?: { emojiCode?: string; reactionType?: ReactionType },
 ): Promise<void> {
@@ -937,7 +935,7 @@ export async function removeReaction(
 }
 
 export async function updateMessageFlags(
-  messageIds: number[],
+  messageIds: MessageId[],
   op: "add" | "remove",
   flag: string,
 ): Promise<void> {
@@ -951,10 +949,10 @@ export async function updateMessageFlags(
   });
 }
 
-export async function addMessageFlag(messageIds: number[], flag: string): Promise<void> {
+export async function addMessageFlag(messageIds: MessageId[], flag: string): Promise<void> {
   await updateMessageFlags(messageIds, "add", flag);
 }
 
-export async function removeMessageFlag(messageIds: number[], flag: string): Promise<void> {
+export async function removeMessageFlag(messageIds: MessageId[], flag: string): Promise<void> {
   await updateMessageFlags(messageIds, "remove", flag);
 }

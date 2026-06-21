@@ -5,6 +5,8 @@ import { parseDmKeyToUserIds } from "~/entities/message/message-chat-context.lib
 import { fetchMessagesWithNarrow } from "~/shared/api/messenger-messages";
 import type { MockMessage } from "~/shared/api/messenger.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
+import { compareMessageTimeline } from "~/shared/lib/message-id.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sidebar-chat";
@@ -26,16 +28,16 @@ export type DeletedPreviewContext =
       streamId: number;
       topicKey: string;
       streamName: string;
-      deletedLastMessageId: number;
+      deletedLastMessageId: MessageId;
     }
   | {
       kind: "dm";
       dmKey: string;
-      deletedLastMessageId: number;
+      deletedLastMessageId: MessageId;
     };
 
 interface SidebarResolvedPreview {
-  lastMessageId: number;
+  lastMessageId: MessageId;
   lastMessage: string;
   lastMessageSenderName?: string;
   time: string;
@@ -71,17 +73,13 @@ export function buildResolvedDmPreviewFromMessage(
 function pickNewestMessage<T extends ChatListPreviewSourceMessage>(
   messages: readonly T[],
   predicate: (message: T) => boolean,
-  excludedMessageIds?: ReadonlySet<number>,
+  excludedMessageIds?: ReadonlySet<MessageId>,
 ): T | null {
   let newest: T | null = null;
   for (const message of messages) {
     if (excludedMessageIds?.has(message.id)) continue;
     if (!predicate(message)) continue;
-    if (
-      newest == null ||
-      message.timestamp > newest.timestamp ||
-      (message.timestamp === newest.timestamp && message.id > newest.id)
-    ) {
+    if (newest == null || compareMessageTimeline(message, newest) > 0) {
       newest = message;
     }
   }
@@ -92,7 +90,7 @@ export function pickReplacementForStreamTopic<T extends ChatListPreviewSourceMes
   messages: readonly T[],
   streamId: number,
   topicKey: string,
-  excludedMessageIds?: ReadonlySet<number>,
+  excludedMessageIds?: ReadonlySet<MessageId>,
 ): T | null {
   return pickNewestMessage(
     messages,
@@ -107,7 +105,7 @@ export function pickReplacementForDm<T extends ChatListPreviewSourceMessage>(
   messages: readonly T[],
   dmKey: string,
   currentUserId: UserId | null,
-  excludedMessageIds?: ReadonlySet<number>,
+  excludedMessageIds?: ReadonlySet<MessageId>,
 ): T | null {
   return pickNewestMessage(
     messages,
@@ -172,11 +170,11 @@ function registerStreamDeleteContext(
   streamId: number,
   topicKey: string,
   streamName: string,
-  deletedLastMessageId: number,
+  deletedLastMessageId: MessageId,
 ): void {
   const key = streamTopicCompositeKey(streamId, topicKey);
   const existing = streamContextsByKey.get(key);
-  if (!existing || deletedLastMessageId > existing.deletedLastMessageId) {
+  if (!existing) {
     streamContextsByKey.set(key, {
       kind: "stream",
       streamId,
@@ -190,10 +188,10 @@ function registerStreamDeleteContext(
 function registerDmDeleteContext(
   dmContextsByKey: Map<string, DmDeleteContext>,
   dmKey: string,
-  deletedLastMessageId: number,
+  deletedLastMessageId: MessageId,
 ): void {
   const existing = dmContextsByKey.get(dmKey);
-  if (!existing || deletedLastMessageId > existing.deletedLastMessageId) {
+  if (!existing) {
     dmContextsByKey.set(dmKey, {
       kind: "dm",
       dmKey,
@@ -204,7 +202,7 @@ function registerDmDeleteContext(
 
 function collectDeleteContextsFromMessageLocations(
   state: ChatListState,
-  messageIds: number[],
+  messageIds: MessageId[],
   streamContextsByKey: Map<string, StreamDeleteContext>,
   dmContextsByKey: Map<string, DmDeleteContext>,
 ): void {
@@ -235,7 +233,7 @@ function collectDeleteContextsFromMessageLocations(
 
 function collectDeleteContextsFromStoredLastMessageIds(
   state: ChatListState,
-  deletedMessageIds: Set<number>,
+  deletedMessageIds: Set<MessageId>,
   streamContextsByKey: Map<string, StreamDeleteContext>,
   dmContextsByKey: Map<string, DmDeleteContext>,
 ): void {
@@ -261,8 +259,8 @@ function collectDeleteContextsFromStoredLastMessageIds(
 
 function collectDeletedPreviewContexts(
   state: ChatListState,
-  messageIds: number[],
-  deletedMessageIds: Set<number>,
+  messageIds: MessageId[],
+  deletedMessageIds: Set<MessageId>,
 ): {
   streamContextsByKey: Map<string, StreamDeleteContext>;
   dmContextsByKey: Map<string, DmDeleteContext>;
@@ -285,9 +283,9 @@ function collectDeletedPreviewContexts(
 }
 
 function removeDeletedMessageIdsFromLocationMap(
-  locMap: Map<number, MessageLocation>,
-  messageIds: number[],
-): { nextLoc: Map<number, MessageLocation>; changed: boolean } {
+  locMap: Map<MessageId, MessageLocation>,
+  messageIds: MessageId[],
+): { nextLoc: Map<MessageId, MessageLocation>; changed: boolean } {
   let nextLoc = locMap;
   let changed = false;
   for (const mid of messageIds) {
@@ -305,7 +303,7 @@ function applyStreamDeletedPreviewRepairs(
   nextStreams: Map<number, StreamEntryInternal>,
   streamContextsByKey: Map<string, StreamDeleteContext>,
   replacementMessages: readonly ChatListPreviewSourceMessage[],
-  deletedMessageIds: Set<number>,
+  deletedMessageIds: Set<MessageId>,
   resolveMissingPreview: boolean,
   contextsToResolveFromNetwork: DeletedPreviewContext[],
 ): { streamsMap: Map<number, StreamEntryInternal>; changedStreamIds: Set<number> } {
@@ -387,7 +385,7 @@ function applyDmDeletedPreviewRepairs(
   nextDms: Map<string, DmEntryInternal>,
   dmContextsByKey: Map<string, DmDeleteContext>,
   replacementMessages: readonly ChatListPreviewSourceMessage[],
-  deletedMessageIds: Set<number>,
+  deletedMessageIds: Set<MessageId>,
   currentUserId: UserId | null,
   resolveMissingPreview: boolean,
   contextsToResolveFromNetwork: DeletedPreviewContext[],
@@ -434,8 +432,8 @@ function applyDmDeletedPreviewRepairs(
 }
 
 export interface ApplyHandleDeleteMessagesStateParams {
-  messageIds: number[];
-  deletedMessageIds: Set<number>;
+  messageIds: MessageId[];
+  deletedMessageIds: Set<MessageId>;
   replacementMessages: readonly ChatListPreviewSourceMessage[];
   resolveMissingPreview: boolean;
   currentUserId: UserId | null;

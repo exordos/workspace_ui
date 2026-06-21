@@ -4,6 +4,7 @@
  * After `scrollHeight` grows at the top, the browser keeps the same `scrollTop`, which shifts the
  * visible messages. Restoring with the delta keeps the prior viewport anchored.
  */
+import type { MessageId } from "~/shared/lib/message-id.lib";
 
 export interface ScrollPrependSnapshot {
   scrollTop: number;
@@ -11,11 +12,11 @@ export interface ScrollPrependSnapshot {
 }
 
 export interface ScrollPrependAnchor {
-  messageId: number;
+  messageId: MessageId;
   offsetTop: number;
 }
 
-function findMessageNode(root: HTMLElement, messageId: number): HTMLElement | null {
+function findMessageNode(root: HTMLElement, messageId: MessageId): HTMLElement | null {
   return root.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`);
 }
 
@@ -24,14 +25,12 @@ export function resolveVisibleMessageAnchor(root: HTMLElement): ScrollPrependAnc
   for (const node of root.querySelectorAll<HTMLElement>("[data-message-id]")) {
     const rawId = node.getAttribute("data-message-id");
     if (rawId == null) continue;
-    const messageId = Number(rawId);
-    if (!Number.isInteger(messageId)) continue;
 
     const rect = node.getBoundingClientRect();
     if (rect.bottom <= rootRect.top || rect.top >= rootRect.bottom) continue;
 
     return {
-      messageId,
+      messageId: rawId,
       offsetTop: rect.top - rootRect.top,
     };
   }

@@ -5,6 +5,7 @@ import type {
   Reaction,
   RealmEmoji,
 } from "~/shared/api/messenger.types";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import type { MessageMediaGallery } from "./message-list-media.lib";
 
@@ -22,8 +23,8 @@ export interface MessageBubbleCallbacks {
   onStar?: (message: MockMessage) => void;
   onSelect?: (message: MockMessage) => void;
   onToggleSelect?: (message: MockMessage) => void;
-  onAddReaction?: (messageId: number, payload: MessageReactionPayload) => void;
-  onRemoveReaction?: (messageId: number, payload: MessageReactionPayload) => void;
+  onAddReaction?: (messageId: MessageId, payload: MessageReactionPayload) => void;
+  onRemoveReaction?: (messageId: MessageId, payload: MessageReactionPayload) => void;
   onOpenJitsiCall?: (url: string, locationName?: string) => void;
   onViews?: (message: MockMessage) => void;
   onOpenInChat?: (message: MockMessage) => void;
@@ -31,7 +32,7 @@ export interface MessageBubbleCallbacks {
   onPermalinkClick?: (href: string) => boolean;
   onAuthorClick?: (userId: UserId) => void;
   onOpenDirectMessage?: (userId: UserId) => void;
-  /** Resend a failed optimistic outgoing message (negative id, delivery failed). */
+  /** Resend a failed optimistic outgoing message. */
   onRetryFailedOutgoing?: (message: MockMessage) => void;
   /** Drop a failed optimistic outgoing message from the list. */
   onRemoveFailedOutgoing?: (message: MockMessage) => void;

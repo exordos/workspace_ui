@@ -3,7 +3,6 @@ import {
   computeInstanceUnreadCount,
   hasPersonalDmUnreadForActiveInstance,
   hasPersonalUnreadIndicator,
-  isPersonalDmUnreadEntry,
   toSafeUnreadCount,
 } from "~/entities/unread-sync/unread-instance-count.lib";
 import type { LayoutBuildActiveChatWindowTitleInput } from "./layout-instance-unread.types";
@@ -13,7 +12,6 @@ export {
   computeInstanceUnreadCount,
   hasPersonalDmUnreadForActiveInstance,
   hasPersonalUnreadIndicator,
-  isPersonalDmUnreadEntry,
 };
 
 function sumUnreadCountsByInstance(

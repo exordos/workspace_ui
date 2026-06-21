@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
+import { testMessageId } from "~/test/factories";
 import { buildNotificationTitleContextFromMessage } from "./layout-notification-title.lib";
 import {
   buildNotificationAggregateTag,
@@ -9,9 +10,14 @@ import {
   upsertNotificationAggregate,
 } from "./notification-aggregate-registry.lib";
 
-function createStreamMessage(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessage {
+type WorkspaceRawMessageOverrides = Partial<Omit<WorkspaceRawMessage, "id">> & {
+  id?: WorkspaceRawMessage["id"] | number;
+};
+
+function createStreamMessage(overrides: WorkspaceRawMessageOverrides = {}): WorkspaceRawMessage {
+  const { id, ...rest } = overrides;
   return {
-    id: 55,
+    id: testMessageId(id ?? 55),
     sender_id: 42,
     sender_full_name: "Alice",
     content: "<p>Hello</p>",
@@ -21,13 +27,14 @@ function createStreamMessage(overrides: Partial<WorkspaceRawMessage> = {}): Work
     display_recipient: "General Discussion",
     subject: "Bugs",
     flags: [],
-    ...overrides,
+    ...rest,
   };
 }
 
-function createDmMessage(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessage {
+function createDmMessage(overrides: WorkspaceRawMessageOverrides = {}): WorkspaceRawMessage {
+  const { id, ...rest } = overrides;
   return {
-    id: 77,
+    id: testMessageId(id ?? 77),
     sender_id: 42,
     sender_full_name: "Alice",
     content: "<p>Hello</p>",
@@ -40,7 +47,7 @@ function createDmMessage(overrides: Partial<WorkspaceRawMessage> = {}): Workspac
       { id: 42, full_name: "Alice" },
     ],
     flags: [],
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -64,7 +71,11 @@ describe("buildNotificationBucketKeyFromMessage", () => {
   it("returns a different key for a different sender in the same stream topic", () => {
     const first = buildNotificationBucketKeyFromMessage(createStreamMessage(), 7, "inst-1");
     const second = buildNotificationBucketKeyFromMessage(
-      createStreamMessage({ id: 56, sender_id: 99, sender_full_name: "Bob" }),
+      createStreamMessage({
+        id: "00000000-0000-4000-8000-000000000056",
+        sender_id: 99,
+        sender_full_name: "Bob",
+      }),
       7,
       "inst-1",
     );
@@ -110,13 +121,13 @@ describe("notification aggregate registry", () => {
     expect(first).toMatchObject({
       tag: buildNotificationAggregateTag("inst-1::stream:10:Bugs:sender:42", null),
       count: 1,
-      lastMessageId: 55,
+      lastMessageId: "00000000-0000-4000-8000-000000000055",
       latestBody: "Hello",
     });
     expect(second).toMatchObject({
       tag: buildNotificationAggregateTag("inst-1::stream:10:Bugs:sender:42", null),
       count: 2,
-      lastMessageId: 56,
+      lastMessageId: "00000000-0000-4000-8000-000000000056",
       latestBody: "Latest",
       latestClickRoute: "/stream/10-general-discussion/topic/Bugs?msg=56",
     });
@@ -146,7 +157,10 @@ describe("notification aggregate registry", () => {
       titleContext: buildNotificationTitleContextFromMessage(secondMessage, 7),
     });
 
-    const result = consumeReadMessagesFromNotificationAggregates([56], "inst-1");
+    const result = consumeReadMessagesFromNotificationAggregates(
+      ["00000000-0000-4000-8000-000000000056"],
+      "inst-1",
+    );
 
     expect(result.closedTags).toEqual([]);
     expect(result.untrackedMessageIds).toEqual([]);
@@ -154,7 +168,7 @@ describe("notification aggregate registry", () => {
       {
         tag: "bucket:inst-1::stream:10:Bugs:sender:42",
         count: 1,
-        lastMessageId: 55,
+        lastMessageId: "00000000-0000-4000-8000-000000000055",
         latestBody: "Hello",
         latestClickRoute: "/stream/10-general-discussion/topic/Bugs?msg=55",
         titleContext: {
@@ -168,11 +182,15 @@ describe("notification aggregate registry", () => {
   });
 
   it("returns untracked message ids for fallback notifications", () => {
-    const result = consumeReadMessagesFromNotificationAggregates([101, 101, 0, -1], "inst-1");
+    const id = testMessageId(101);
+    const result = consumeReadMessagesFromNotificationAggregates(
+      [id, id, "not-a-message-id"],
+      "inst-1",
+    );
 
     expect(result.closedTags).toEqual([]);
     expect(result.updatedSnapshots).toEqual([]);
-    expect(result.untrackedMessageIds).toEqual([101]);
+    expect(result.untrackedMessageIds).toEqual([id]);
   });
 
   it("keeps aggregates isolated across instances even with identical message ids", () => {
@@ -216,8 +234,14 @@ describe("notification aggregate registry", () => {
       titleContext: buildNotificationTitleContextFromMessage(createStreamMessage(), 7),
     });
 
-    const inst2Result = consumeReadMessagesFromNotificationAggregates([55], "inst-2");
-    const inst1Result = consumeReadMessagesFromNotificationAggregates([55], "inst-1");
+    const inst2Result = consumeReadMessagesFromNotificationAggregates(
+      ["00000000-0000-4000-8000-000000000055"],
+      "inst-2",
+    );
+    const inst1Result = consumeReadMessagesFromNotificationAggregates(
+      ["00000000-0000-4000-8000-000000000055"],
+      "inst-1",
+    );
 
     expect(inst2Result.closedTags).toEqual(["bucket:inst-2::stream:10:Bugs:sender:42"]);
     expect(inst2Result.untrackedMessageIds).toEqual([]);

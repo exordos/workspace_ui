@@ -2,8 +2,9 @@
  * Shared validation helpers for Messenger API calls. Internal to messenger API modules.
  */
 import { guard, invariant } from "~/shared/lib/guards";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 
-export function validateMessageIds(messageIds: number[], context: string): number[] {
+export function validateMessageIds(messageIds: MessageId[], context: string): MessageId[] {
   return messageIds.map((messageId, index) => guard.messageId(messageId, `${context}[${index}]`));
 }
 
@@ -21,19 +22,15 @@ export function validateEventCursor(lastEventId: number, context: string): numbe
 
 const ALLOWED_MESSAGE_ANCHORS = ["newest", "oldest", "first_unread"] as const;
 
-export type MessagesApiAnchor = number | "newest" | "oldest" | "first_unread";
+/** A message UUID, or one of the `ALLOWED_MESSAGE_ANCHORS` sentinel strings. */
+export type MessagesApiAnchor = MessageId;
 
-export function validateMessagesApiAnchor(
-  anchor: string | number,
-  context: string,
-): MessagesApiAnchor {
-  return typeof anchor === "number"
-    ? guard.messageId(anchor, `${context}.anchor`)
-    : guard.oneOf(
-        guard.nonEmpty(anchor, `${context}.anchor`),
-        ALLOWED_MESSAGE_ANCHORS,
-        `${context}.anchor`,
-      );
+export function validateMessagesApiAnchor(anchor: string, context: string): MessagesApiAnchor {
+  const normalizedAnchor = guard.nonEmpty(anchor, `${context}.anchor`);
+  if ((ALLOWED_MESSAGE_ANCHORS as readonly string[]).includes(normalizedAnchor)) {
+    return normalizedAnchor;
+  }
+  return guard.messageId(normalizedAnchor, `${context}.anchor`);
 }
 
 export function validateNonNegativeInteger(value: number, label: string): number {

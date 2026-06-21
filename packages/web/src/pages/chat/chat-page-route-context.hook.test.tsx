@@ -1,5 +1,6 @@
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { testMessageId } from "~/test/factories";
 import { useChatRouteContext } from "./chat-page-route-context.hook";
 
 describe("useChatRouteContext", () => {
@@ -29,6 +30,8 @@ describe("useChatRouteContext", () => {
   });
 
   it("parses focused and forward message ids from query", () => {
+    const focusedId = testMessageId(999);
+    const forwardId = testMessageId(888);
     const { result } = renderHook(() =>
       useChatRouteContext({
         streamSlug: undefined,
@@ -36,7 +39,7 @@ describe("useChatRouteContext", () => {
         dmIdParam: "20-bob",
         location: {
           pathname: "/org/example.com/dm/20-bob",
-          search: "?msg=999&forward=888",
+          search: `?msg=${focusedId}&forward=${forwardId}`,
           hash: "",
           state: null,
           key: "test",
@@ -47,8 +50,8 @@ describe("useChatRouteContext", () => {
       }),
     );
 
-    expect(result.current.focusedMessageId).toBe(999);
-    expect(result.current.forwardMessageId).toBe(888);
+    expect(result.current.focusedMessageId).toBe(focusedId);
+    expect(result.current.forwardMessageId).toBe(forwardId);
     expect(result.current.isDmView).toBe(true);
   });
 });

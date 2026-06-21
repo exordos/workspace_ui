@@ -13,6 +13,7 @@ import {
   logChatListFlow,
   summarizeMessengerMessagesForFlowDebug,
 } from "~/shared/lib/message-flow-debug.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { MESSENGER_STREAM_CHAT_NUM_AFTER } from "~/shared/lib/messenger-message-window.lib";
 import { buildStreamSidebarPreviewNarrow } from "~/shared/lib/messenger-stream-sidebar-preview-narrow.lib";
 import {
@@ -24,7 +25,7 @@ import { validateNonNegativeInteger } from "./messenger-validation.internal";
 import type { DirectMessagesPageResult, WorkspaceRawMessage } from "./messenger.types";
 
 interface MessageWindowOptions {
-  anchor: string | number;
+  anchor: string;
   numBefore: number;
   numAfter: number;
   includeAnchor?: boolean;
@@ -245,7 +246,7 @@ export async function fetchStreamUnreadMessagesForSidebarPreview(
 
 /** Loads newer chat-list messages after anchor. Used after reconnect. */
 export async function fetchMessagesAfterAnchor(
-  anchorMessageId: number,
+  anchorMessageId: MessageId,
   numAfter = 5000,
   narrow?: MessageWindowOptions["narrow"],
   signal?: AbortSignal,
@@ -265,7 +266,7 @@ export async function fetchMessagesAfterAnchor(
 
 /** Loads a page of all direct messages via `narrow=is:dm` for metadata backfill. */
 export async function fetchDirectMessagesPage(
-  anchor: number | "newest" = "newest",
+  anchor: MessageId = "newest",
   numBefore = 5000,
 ): Promise<DirectMessagesPageResult> {
   const normalizedAnchor =

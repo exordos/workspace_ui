@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { testMessageId } from "~/test/factories";
 import { resolveQuotePermalinkNavigation } from "./chat-message-permalink-navigation.lib";
 
 const baseParams = {
@@ -19,12 +20,12 @@ describe("resolveQuotePermalinkNavigation", () => {
     expect(
       resolveQuotePermalinkNavigation({
         ...baseParams,
-        href: "https://chat.example.com/#narrow/dm/23-dm/near/3373",
+        href: `https://chat.example.com/#narrow/dm/23-dm/near/${testMessageId(3373)}`,
       }),
     ).toEqual({
       kind: "inPlace",
       pathname: "/dm/23",
-      search: "?msg=3373",
+      search: `?msg=${testMessageId(3373)}`,
     });
   });
 
@@ -33,12 +34,12 @@ describe("resolveQuotePermalinkNavigation", () => {
       resolveQuotePermalinkNavigation({
         ...baseParams,
         locationSearch: "?forward=44",
-        href: "#narrow/dm/23-dm/near/3373",
+        href: `#narrow/dm/23-dm/near/${testMessageId(3373)}`,
       }),
     ).toEqual({
       kind: "inPlace",
       pathname: "/dm/23",
-      search: "?forward=44&msg=3373",
+      search: `?forward=44&msg=${testMessageId(3373)}`,
     });
   });
 
@@ -46,11 +47,11 @@ describe("resolveQuotePermalinkNavigation", () => {
     expect(
       resolveQuotePermalinkNavigation({
         ...baseParams,
-        href: "#narrow/dm/42-dm/near/99",
+        href: `#narrow/dm/42-dm/near/${testMessageId(99)}`,
       }),
     ).toEqual({
       kind: "path",
-      path: "/dm/42?msg=99",
+      path: `/dm/42?msg=${testMessageId(99)}`,
     });
   });
 
@@ -60,12 +61,12 @@ describe("resolveQuotePermalinkNavigation", () => {
         ...baseParams,
         locationPathname: "/dm/23",
         isDmView: true,
-        href: "https://chat.example.com/#narrow/channel/10-Engineering/topic/Bugs/near/15",
+        href: `https://chat.example.com/#narrow/channel/10-Engineering/topic/Bugs/near/${testMessageId(15)}`,
         resolveStreamName: (streamId) => (streamId === 10 ? "Engineering" : undefined),
       }),
     ).toEqual({
       kind: "path",
-      path: "/stream/10-engineering/topic/Bugs?msg=15",
+      path: `/stream/10-engineering/topic/Bugs?msg=${testMessageId(15)}`,
     });
   });
 
@@ -74,11 +75,11 @@ describe("resolveQuotePermalinkNavigation", () => {
       resolveQuotePermalinkNavigation({
         ...baseParams,
         realmBaseUrl: "https://chat.example.com",
-        href: "https://other.example.com/#narrow/dm/23-dm/near/3373",
+        href: `https://other.example.com/#narrow/dm/23-dm/near/${testMessageId(3373)}`,
       }),
     ).toEqual({
       kind: "path",
-      path: "/message/3373?realm=https%3A%2F%2Fother.example.com",
+      path: `/message/${testMessageId(3373)}?realm=https%3A%2F%2Fother.example.com`,
     });
   });
 
@@ -86,11 +87,11 @@ describe("resolveQuotePermalinkNavigation", () => {
     expect(
       resolveQuotePermalinkNavigation({
         ...baseParams,
-        href: "#narrow/dm/near/1",
+        href: `#narrow/dm/near/${testMessageId(1)}`,
       }),
     ).toEqual({
       kind: "path",
-      path: "/message/1",
+      path: `/message/${testMessageId(1)}`,
     });
   });
 

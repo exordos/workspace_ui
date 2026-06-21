@@ -9,12 +9,20 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setInstanceProvider } from "~/shared/api/client";
 import type { MockMessage, Reaction, WorkspaceRawMessage } from "~/shared/api/messenger.types";
+import { testMessageId } from "~/test/factories";
 import {
   useCurrentChatMessagesStore,
   isMessageForContext,
   contextFromMessage,
   type CurrentChatContext,
 } from "./message.model";
+
+type MockMessageOverrides = Partial<Omit<MockMessage, "id">> & {
+  id?: MockMessage["id"] | number;
+};
+
+const LOCAL_ECHO_1 = testMessageId(900001);
+const LOCAL_ECHO_2 = testMessageId(900002);
 
 function resetStore() {
   useCurrentChatMessagesStore.setState({
@@ -25,16 +33,17 @@ function resetStore() {
   });
 }
 
-function mockMsg(overrides: Partial<MockMessage> = {}): MockMessage {
+function mockMsg(overrides: MockMessageOverrides = {}): MockMessage {
+  const { id, ...rest } = overrides;
   return {
-    id: 1,
+    id: testMessageId(id ?? 1),
     sender_id: 10,
     sender_full_name: "Test User",
     stream_id: 5,
     subject: "general",
     content: "<p>hello</p>",
     timestamp: 1000,
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -112,7 +121,9 @@ describe("currentChatMessagesStore", () => {
       useCurrentChatMessagesStore.getState().setContext(streamA);
       useCurrentChatMessagesStore
         .getState()
-        .setMessages([mockMsg({ id: 101, stream_id: 5, subject: "topic-a" })]);
+        .setMessages([
+          mockMsg({ id: "00000000-0000-4000-8000-000000000101", stream_id: 5, subject: "topic-a" }),
+        ]);
 
       useCurrentChatMessagesStore.getState().setContext(streamB);
       expect(useCurrentChatMessagesStore.getState().messages).toHaveLength(0);
@@ -152,7 +163,9 @@ describe("currentChatMessagesStore", () => {
       useCurrentChatMessagesStore.getState().setContext(ctx);
       useCurrentChatMessagesStore
         .getState()
-        .setMessages([mockMsg({ id: 1, stream_id: 5, subject: "bugs" })]);
+        .setMessages([
+          mockMsg({ id: "00000000-0000-4000-8000-000000000001", stream_id: 5, subject: "bugs" }),
+        ]);
 
       useCurrentChatMessagesStore.getState().setContext({ ...ctx });
 
@@ -170,7 +183,9 @@ describe("currentChatMessagesStore", () => {
       useCurrentChatMessagesStore.getState().setContext(ctx);
       useCurrentChatMessagesStore
         .getState()
-        .setMessages([mockMsg({ id: 1, stream_id: 5, subject: "bugs" })]);
+        .setMessages([
+          mockMsg({ id: "00000000-0000-4000-8000-000000000001", stream_id: 5, subject: "bugs" }),
+        ]);
 
       useCurrentChatMessagesStore.getState().setContext({
         ...ctx,
@@ -215,7 +230,7 @@ describe("currentChatMessagesStore", () => {
       useCurrentChatMessagesStore.getState().setContext(dmContext);
       useCurrentChatMessagesStore.getState().setMessages([
         mockMsg({
-          id: -1,
+          id: "00000000-0000-4000-8000-0000000000n1",
           stream_id: null,
           subject: "",
           display_recipient: [
@@ -251,7 +266,7 @@ describe("currentChatMessagesStore", () => {
       useCurrentChatMessagesStore.getState().appendMessage(mockMsg({ id: 2 }));
 
       expect(useCurrentChatMessagesStore.getState().messages).toHaveLength(2);
-      expect(useCurrentChatMessagesStore.getState().messages[1]!.id).toBe(2);
+      expect(useCurrentChatMessagesStore.getState().messages[1]!.id).toBe(testMessageId(2));
     });
 
     // Duplicate events from long-polling must not create duplicate messages.
@@ -265,7 +280,7 @@ describe("currentChatMessagesStore", () => {
     it("merges richer data when a duplicate message id arrives later", () => {
       useCurrentChatMessagesStore.getState().setMessages([
         mockMsg({
-          id: 1,
+          id: "00000000-0000-4000-8000-000000000001",
           sender_id: 0,
           sender_full_name: "You",
           stream_id: null,
@@ -275,7 +290,7 @@ describe("currentChatMessagesStore", () => {
 
       useCurrentChatMessagesStore.getState().appendMessage(
         mockMsg({
-          id: 1,
+          id: "00000000-0000-4000-8000-000000000001",
           sender_id: 42,
           sender_full_name: "Alice",
           stream_id: 5,
@@ -298,21 +313,28 @@ describe("currentChatMessagesStore", () => {
     it("commitOutgoingMessage replaces optimistic and clears echo queue", () => {
       const me = 42;
       useCurrentChatMessagesStore.getState().appendMessage({
-        ...mockMsg({ id: -1, sender_id: me, stream_id: 5, content: "hi" }),
+        ...mockMsg({ id: LOCAL_ECHO_1, sender_id: me, stream_id: 5, content: "hi" }),
         delivery_status: "sending",
-        local_echo_key: -1,
+        local_echo_key: LOCAL_ECHO_1,
       });
-      expect(useCurrentChatMessagesStore.getState().pendingOutgoingEchoKeys).toEqual([-1]);
+      expect(useCurrentChatMessagesStore.getState().pendingOutgoingEchoKeys).toEqual([
+        LOCAL_ECHO_1,
+      ]);
 
-      useCurrentChatMessagesStore.getState().commitOutgoingMessage(-1, {
-        ...mockMsg({ id: 100, sender_id: me, stream_id: 5, content: "<p>hi</p>" }),
+      useCurrentChatMessagesStore.getState().commitOutgoingMessage(LOCAL_ECHO_1, {
+        ...mockMsg({
+          id: "00000000-0000-4000-8000-000000000100",
+          sender_id: me,
+          stream_id: 5,
+          content: "<p>hi</p>",
+        }),
       });
 
       const state = useCurrentChatMessagesStore.getState();
       expect(state.messages).toHaveLength(1);
-      expect(state.messages[0]!.id).toBe(100);
+      expect(state.messages[0]!.id).toBe(testMessageId(100));
       expect(state.messages[0]!.delivery_status).toBe("sent");
-      expect(state.messages[0]!.local_echo_key).toBe(-1);
+      expect(state.messages[0]!.local_echo_key).toBe(LOCAL_ECHO_1);
       expect(state.pendingOutgoingEchoKeys).toHaveLength(0);
     });
 
@@ -320,18 +342,23 @@ describe("currentChatMessagesStore", () => {
       const me = 42;
       useCurrentChatMessagesStore.getState().appendMessage({
         ...mockMsg({
-          id: -1,
+          id: LOCAL_ECHO_1,
           sender_id: me,
           stream_id: 5,
           content: "https://example.com",
           link_preview: { targetUrl: "https://example.com", title: "Example" },
         }),
         delivery_status: "sending",
-        local_echo_key: -1,
+        local_echo_key: LOCAL_ECHO_1,
       });
 
-      useCurrentChatMessagesStore.getState().commitOutgoingMessage(-1, {
-        ...mockMsg({ id: 100, sender_id: me, stream_id: 5, content: "https://example.com" }),
+      useCurrentChatMessagesStore.getState().commitOutgoingMessage(LOCAL_ECHO_1, {
+        ...mockMsg({
+          id: "00000000-0000-4000-8000-000000000100",
+          sender_id: me,
+          stream_id: 5,
+          content: "https://example.com",
+        }),
       });
 
       const previews =
@@ -345,43 +372,53 @@ describe("currentChatMessagesStore", () => {
     it("commitOutgoingMessage updates server row when real-time echo merged first", () => {
       const me = 42;
       useCurrentChatMessagesStore.getState().appendMessage({
-        ...mockMsg({ id: -1, sender_id: me, content: "x", stream_id: 5 }),
+        ...mockMsg({ id: LOCAL_ECHO_1, sender_id: me, content: "x", stream_id: 5 }),
         delivery_status: "sending",
-        local_echo_key: -1,
+        local_echo_key: LOCAL_ECHO_1,
       });
       useCurrentChatMessagesStore.getState().appendMessage({
-        ...mockMsg({ id: 200, sender_id: me, content: "<p>x</p>", stream_id: 5 }),
+        ...mockMsg({
+          id: "00000000-0000-4000-8000-000000000200",
+          sender_id: me,
+          content: "<p>x</p>",
+          stream_id: 5,
+        }),
       });
 
       expect(useCurrentChatMessagesStore.getState().messages).toHaveLength(1);
       expect(useCurrentChatMessagesStore.getState().pendingOutgoingEchoKeys).toEqual([]);
 
-      useCurrentChatMessagesStore.getState().commitOutgoingMessage(-1, {
-        ...mockMsg({ id: 200, sender_id: me, content: "<p>x</p>", stream_id: 5 }),
+      useCurrentChatMessagesStore.getState().commitOutgoingMessage(LOCAL_ECHO_1, {
+        ...mockMsg({
+          id: "00000000-0000-4000-8000-000000000200",
+          sender_id: me,
+          content: "<p>x</p>",
+          stream_id: 5,
+        }),
       });
 
       const state = useCurrentChatMessagesStore.getState();
       expect(state.messages).toHaveLength(1);
-      expect(state.messages[0]!.id).toBe(200);
+      expect(state.messages[0]!.id).toBe(testMessageId(200));
       expect(state.messages[0]!.delivery_status).toBe("sent");
-      expect(state.messages[0]!.local_echo_key).toBe(-1);
+      expect(state.messages[0]!.local_echo_key).toBe(LOCAL_ECHO_1);
     });
 
     it("commitOutgoingMessage collapses optimistic+server duplicates when content match fails", () => {
       const me = 42;
       useCurrentChatMessagesStore.getState().appendMessage({
         ...mockMsg({
-          id: -1,
+          id: LOCAL_ECHO_1,
           sender_id: me,
           content: "emoji :party_parrot: /user_uploads/1/private.png",
           stream_id: 5,
         }),
         delivery_status: "sending",
-        local_echo_key: -1,
+        local_echo_key: LOCAL_ECHO_1,
       });
       useCurrentChatMessagesStore.getState().appendMessage({
         ...mockMsg({
-          id: 777,
+          id: "00000000-0000-4000-8000-000000000777",
           sender_id: me,
           content:
             '<p>emoji <img class="emoji" alt=":party_parrot:" src="/static/generated/emoji/parrot.png"></p><div class="message_inline_image"><img src="/spinner.png"></div>',
@@ -390,11 +427,13 @@ describe("currentChatMessagesStore", () => {
       });
 
       expect(useCurrentChatMessagesStore.getState().messages).toHaveLength(2);
-      expect(useCurrentChatMessagesStore.getState().pendingOutgoingEchoKeys).toEqual([-1]);
+      expect(useCurrentChatMessagesStore.getState().pendingOutgoingEchoKeys).toEqual([
+        LOCAL_ECHO_1,
+      ]);
 
-      useCurrentChatMessagesStore.getState().commitOutgoingMessage(-1, {
+      useCurrentChatMessagesStore.getState().commitOutgoingMessage(LOCAL_ECHO_1, {
         ...mockMsg({
-          id: 777,
+          id: "00000000-0000-4000-8000-000000000777",
           sender_id: me,
           content: "<p>emoji delivered</p>",
           stream_id: 5,
@@ -403,34 +442,44 @@ describe("currentChatMessagesStore", () => {
 
       const state = useCurrentChatMessagesStore.getState();
       expect(state.messages).toHaveLength(1);
-      expect(state.messages[0]!.id).toBe(777);
+      expect(state.messages[0]!.id).toBe(testMessageId(777));
       expect(state.messages[0]!.delivery_status).toBe("sent");
-      expect(state.messages[0]!.local_echo_key).toBe(-1);
+      expect(state.messages[0]!.local_echo_key).toBe(LOCAL_ECHO_1);
       expect(state.pendingOutgoingEchoKeys).toEqual([]);
     });
 
     it("commitOutgoingMessage keeps a single row on repeated updates after duplicate collapse", () => {
       const me = 42;
       useCurrentChatMessagesStore.getState().appendMessage({
-        ...mockMsg({ id: -1, sender_id: me, content: "emoji :party_parrot:", stream_id: 5 }),
+        ...mockMsg({
+          id: LOCAL_ECHO_1,
+          sender_id: me,
+          content: "emoji :party_parrot:",
+          stream_id: 5,
+        }),
         delivery_status: "sending",
-        local_echo_key: -1,
+        local_echo_key: LOCAL_ECHO_1,
       });
       useCurrentChatMessagesStore.getState().appendMessage({
         ...mockMsg({
-          id: 778,
+          id: "00000000-0000-4000-8000-000000000778",
           sender_id: me,
           content: '<p>emoji <img class="emoji" alt=":party_parrot:" src="/emoji.png"></p>',
           stream_id: 5,
         }),
       });
 
-      useCurrentChatMessagesStore.getState().commitOutgoingMessage(-1, {
-        ...mockMsg({ id: 778, sender_id: me, content: "<p>first canonical</p>", stream_id: 5 }),
-      });
-      useCurrentChatMessagesStore.getState().commitOutgoingMessage(-1, {
+      useCurrentChatMessagesStore.getState().commitOutgoingMessage(LOCAL_ECHO_1, {
         ...mockMsg({
-          id: 778,
+          id: "00000000-0000-4000-8000-000000000778",
+          sender_id: me,
+          content: "<p>first canonical</p>",
+          stream_id: 5,
+        }),
+      });
+      useCurrentChatMessagesStore.getState().commitOutgoingMessage(LOCAL_ECHO_1, {
+        ...mockMsg({
+          id: "00000000-0000-4000-8000-000000000778",
           sender_id: me,
           content: "<p>second canonical update</p>",
           stream_id: 5,
@@ -440,9 +489,9 @@ describe("currentChatMessagesStore", () => {
 
       const state = useCurrentChatMessagesStore.getState();
       expect(state.messages).toHaveLength(1);
-      expect(state.messages[0]!.id).toBe(778);
+      expect(state.messages[0]!.id).toBe(testMessageId(778));
       expect(state.messages[0]!.content).toBe("<p>second canonical update</p>");
-      expect(state.messages[0]!.local_echo_key).toBe(-1);
+      expect(state.messages[0]!.local_echo_key).toBe(LOCAL_ECHO_1);
       expect(state.messages[0]!.flags).toEqual(["read"]);
       expect(state.pendingOutgoingEchoKeys).toEqual([]);
     });
@@ -450,67 +499,87 @@ describe("currentChatMessagesStore", () => {
     it("appendMessage merges distinct pendings using queue order and content", () => {
       const me = 99;
       useCurrentChatMessagesStore.getState().appendMessage({
-        ...mockMsg({ id: -1, sender_id: me, content: "a", stream_id: 5 }),
+        ...mockMsg({ id: LOCAL_ECHO_1, sender_id: me, content: "a", stream_id: 5 }),
         delivery_status: "sending",
-        local_echo_key: -1,
+        local_echo_key: LOCAL_ECHO_1,
       });
       useCurrentChatMessagesStore.getState().appendMessage({
-        ...mockMsg({ id: -2, sender_id: me, content: "b", stream_id: 5 }),
+        ...mockMsg({ id: LOCAL_ECHO_2, sender_id: me, content: "b", stream_id: 5 }),
         delivery_status: "sending",
-        local_echo_key: -2,
+        local_echo_key: LOCAL_ECHO_2,
       });
 
       useCurrentChatMessagesStore.getState().appendMessage({
-        ...mockMsg({ id: 301, sender_id: me, content: "<p>a</p>", stream_id: 5 }),
+        ...mockMsg({
+          id: "00000000-0000-4000-8000-000000000301",
+          sender_id: me,
+          content: "<p>a</p>",
+          stream_id: 5,
+        }),
       });
       useCurrentChatMessagesStore.getState().appendMessage({
-        ...mockMsg({ id: 302, sender_id: me, content: "<p>b</p>", stream_id: 5 }),
+        ...mockMsg({
+          id: "00000000-0000-4000-8000-000000000302",
+          sender_id: me,
+          content: "<p>b</p>",
+          stream_id: 5,
+        }),
       });
 
       const state = useCurrentChatMessagesStore.getState();
-      expect(state.messages.map((m) => m.id)).toEqual([301, 302]);
-      expect(state.messages[0]!.local_echo_key).toBe(-1);
-      expect(state.messages[1]!.local_echo_key).toBe(-2);
+      expect(state.messages.map((m) => m.id)).toEqual([testMessageId(301), testMessageId(302)]);
+      expect(state.messages[0]!.local_echo_key).toBe(LOCAL_ECHO_1);
+      expect(state.messages[1]!.local_echo_key).toBe(LOCAL_ECHO_2);
       expect(state.pendingOutgoingEchoKeys).toHaveLength(0);
     });
 
     it("appendMessage pairs identical bodies in FIFO order when echoes arrive in send order", () => {
       const me = 7;
       useCurrentChatMessagesStore.getState().appendMessage({
-        ...mockMsg({ id: -1, sender_id: me, content: "ok", stream_id: 5 }),
+        ...mockMsg({ id: LOCAL_ECHO_1, sender_id: me, content: "ok", stream_id: 5 }),
         delivery_status: "sending",
-        local_echo_key: -1,
+        local_echo_key: LOCAL_ECHO_1,
       });
       useCurrentChatMessagesStore.getState().appendMessage({
-        ...mockMsg({ id: -2, sender_id: me, content: "ok", stream_id: 5 }),
+        ...mockMsg({ id: LOCAL_ECHO_2, sender_id: me, content: "ok", stream_id: 5 }),
         delivery_status: "sending",
-        local_echo_key: -2,
+        local_echo_key: LOCAL_ECHO_2,
       });
 
       useCurrentChatMessagesStore.getState().appendMessage({
-        ...mockMsg({ id: 401, sender_id: me, content: "<p>ok</p>", stream_id: 5 }),
+        ...mockMsg({
+          id: "00000000-0000-4000-8000-000000000401",
+          sender_id: me,
+          content: "<p>ok</p>",
+          stream_id: 5,
+        }),
       });
       useCurrentChatMessagesStore.getState().appendMessage({
-        ...mockMsg({ id: 402, sender_id: me, content: "<p>ok</p>", stream_id: 5 }),
+        ...mockMsg({
+          id: "00000000-0000-4000-8000-000000000402",
+          sender_id: me,
+          content: "<p>ok</p>",
+          stream_id: 5,
+        }),
       });
 
       const state = useCurrentChatMessagesStore.getState();
       expect(state.messages.map((m) => ({ id: m.id, key: m.local_echo_key }))).toEqual([
-        { id: 401, key: -1 },
-        { id: 402, key: -2 },
+        { id: testMessageId(401), key: LOCAL_ECHO_1 },
+        { id: testMessageId(402), key: LOCAL_ECHO_2 },
       ]);
     });
 
     it("failed appendMessage removes echo key from queue", () => {
       useCurrentChatMessagesStore.getState().appendMessage({
-        ...mockMsg({ id: -1, sender_id: 1, stream_id: 5, content: "n" }),
+        ...mockMsg({ id: LOCAL_ECHO_1, sender_id: 1, stream_id: 5, content: "n" }),
         delivery_status: "sending",
-        local_echo_key: -1,
+        local_echo_key: LOCAL_ECHO_1,
       });
       useCurrentChatMessagesStore.getState().appendMessage({
-        ...mockMsg({ id: -1, sender_id: 1, stream_id: 5, content: "n" }),
+        ...mockMsg({ id: LOCAL_ECHO_1, sender_id: 1, stream_id: 5, content: "n" }),
         delivery_status: "failed",
-        local_echo_key: -1,
+        local_echo_key: LOCAL_ECHO_1,
       });
       expect(useCurrentChatMessagesStore.getState().pendingOutgoingEchoKeys).toHaveLength(0);
     });
@@ -524,16 +593,16 @@ describe("currentChatMessagesStore", () => {
         .getState()
         .setMessages([mockMsg({ id: 1 }), mockMsg({ id: 2 }), mockMsg({ id: 3 })]);
 
-      useCurrentChatMessagesStore.getState().removeMessage(2);
+      useCurrentChatMessagesStore.getState().removeMessage("00000000-0000-4000-8000-000000000002");
 
       const ids = useCurrentChatMessagesStore.getState().messages.map((m) => m.id);
-      expect(ids).toEqual([1, 3]);
+      expect(ids).toEqual([testMessageId(1), testMessageId(3)]);
     });
 
     // Deleting an already-absent message must not throw or change state.
     it("is a no-op for nonexistent message id", () => {
       useCurrentChatMessagesStore.getState().setMessages([mockMsg({ id: 1 })]);
-      useCurrentChatMessagesStore.getState().removeMessage(999);
+      useCurrentChatMessagesStore.getState().removeMessage("00000000-0000-4000-8000-000000000999");
 
       expect(useCurrentChatMessagesStore.getState().messages).toHaveLength(1);
     });
@@ -547,10 +616,15 @@ describe("currentChatMessagesStore", () => {
         .getState()
         .setMessages([mockMsg({ id: 1 }), mockMsg({ id: 2 }), mockMsg({ id: 3 })]);
 
-      useCurrentChatMessagesStore.getState().removeMessages([1, 3]);
+      useCurrentChatMessagesStore
+        .getState()
+        .removeMessages([
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000003",
+        ]);
 
       const ids = useCurrentChatMessagesStore.getState().messages.map((m) => m.id);
-      expect(ids).toEqual([2]);
+      expect(ids).toEqual([testMessageId(2)]);
     });
 
     // Empty array is a valid edge case — must be a safe no-op.
@@ -568,9 +642,14 @@ describe("currentChatMessagesStore", () => {
     it("adds a flag to specified messages", () => {
       useCurrentChatMessagesStore
         .getState()
-        .setMessages([mockMsg({ id: 1, flags: [] }), mockMsg({ id: 2, flags: [] })]);
+        .setMessages([
+          mockMsg({ id: "00000000-0000-4000-8000-000000000001", flags: [] }),
+          mockMsg({ id: "00000000-0000-4000-8000-000000000002", flags: [] }),
+        ]);
 
-      useCurrentChatMessagesStore.getState().updateMessageFlags([1], "read", "add");
+      useCurrentChatMessagesStore
+        .getState()
+        .updateMessageFlags(["00000000-0000-4000-8000-000000000001"], "read", "add");
 
       const msgs = useCurrentChatMessagesStore.getState().messages;
       expect(msgs[0]!.flags).toContain("read");
@@ -582,11 +661,17 @@ describe("currentChatMessagesStore", () => {
       useCurrentChatMessagesStore
         .getState()
         .setMessages([
-          mockMsg({ id: 1, flags: ["read", "starred"] }),
-          mockMsg({ id: 2, flags: ["read"] }),
+          mockMsg({ id: "00000000-0000-4000-8000-000000000001", flags: ["read", "starred"] }),
+          mockMsg({ id: "00000000-0000-4000-8000-000000000002", flags: ["read"] }),
         ]);
 
-      useCurrentChatMessagesStore.getState().updateMessageFlags([1, 2], "read", "remove");
+      useCurrentChatMessagesStore
+        .getState()
+        .updateMessageFlags(
+          ["00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000002"],
+          "read",
+          "remove",
+        );
 
       const msgs = useCurrentChatMessagesStore.getState().messages;
       expect(msgs[0]!.flags).not.toContain("read");
@@ -596,18 +681,26 @@ describe("currentChatMessagesStore", () => {
 
     // Idempotency: adding an already-present flag must not create duplicates.
     it("does not duplicate a flag when adding one already present", () => {
-      useCurrentChatMessagesStore.getState().setMessages([mockMsg({ id: 1, flags: ["read"] })]);
+      useCurrentChatMessagesStore
+        .getState()
+        .setMessages([mockMsg({ id: "00000000-0000-4000-8000-000000000001", flags: ["read"] })]);
 
-      useCurrentChatMessagesStore.getState().updateMessageFlags([1], "read", "add");
+      useCurrentChatMessagesStore
+        .getState()
+        .updateMessageFlags(["00000000-0000-4000-8000-000000000001"], "read", "add");
 
       expect(useCurrentChatMessagesStore.getState().messages[0]!.flags).toEqual(["read"]);
     });
 
     // Removing an absent flag must be a safe no-op.
     it("is a no-op when removing a flag that is not present", () => {
-      useCurrentChatMessagesStore.getState().setMessages([mockMsg({ id: 1, flags: ["read"] })]);
+      useCurrentChatMessagesStore
+        .getState()
+        .setMessages([mockMsg({ id: "00000000-0000-4000-8000-000000000001", flags: ["read"] })]);
 
-      useCurrentChatMessagesStore.getState().updateMessageFlags([1], "starred", "remove");
+      useCurrentChatMessagesStore
+        .getState()
+        .updateMessageFlags(["00000000-0000-4000-8000-000000000001"], "starred", "remove");
 
       expect(useCurrentChatMessagesStore.getState().messages[0]!.flags).toEqual(["read"]);
     });
@@ -624,9 +717,13 @@ describe("currentChatMessagesStore", () => {
 
     // A new reaction must be appended to the message's reaction list.
     it("adds a reaction to a message", () => {
-      useCurrentChatMessagesStore.getState().setMessages([mockMsg({ id: 1, reactions: [] })]);
+      useCurrentChatMessagesStore
+        .getState()
+        .setMessages([mockMsg({ id: "00000000-0000-4000-8000-000000000001", reactions: [] })]);
 
-      useCurrentChatMessagesStore.getState().updateMessageReaction(1, reaction, "add");
+      useCurrentChatMessagesStore
+        .getState()
+        .updateMessageReaction("00000000-0000-4000-8000-000000000001", reaction, "add");
 
       const reactions = useCurrentChatMessagesStore.getState().messages[0]!.reactions;
       expect(reactions).toHaveLength(1);
@@ -637,9 +734,13 @@ describe("currentChatMessagesStore", () => {
     it("does not duplicate a reaction from the same user", () => {
       useCurrentChatMessagesStore
         .getState()
-        .setMessages([mockMsg({ id: 1, reactions: [reaction] })]);
+        .setMessages([
+          mockMsg({ id: "00000000-0000-4000-8000-000000000001", reactions: [reaction] }),
+        ]);
 
-      useCurrentChatMessagesStore.getState().updateMessageReaction(1, reaction, "add");
+      useCurrentChatMessagesStore
+        .getState()
+        .updateMessageReaction("00000000-0000-4000-8000-000000000001", reaction, "add");
 
       expect(useCurrentChatMessagesStore.getState().messages[0]!.reactions).toHaveLength(1);
     });
@@ -648,9 +749,13 @@ describe("currentChatMessagesStore", () => {
     it("removes a reaction by emoji_name and user_id", () => {
       useCurrentChatMessagesStore
         .getState()
-        .setMessages([mockMsg({ id: 1, reactions: [reaction] })]);
+        .setMessages([
+          mockMsg({ id: "00000000-0000-4000-8000-000000000001", reactions: [reaction] }),
+        ]);
 
-      useCurrentChatMessagesStore.getState().updateMessageReaction(1, reaction, "remove");
+      useCurrentChatMessagesStore
+        .getState()
+        .updateMessageReaction("00000000-0000-4000-8000-000000000001", reaction, "remove");
 
       expect(useCurrentChatMessagesStore.getState().messages[0]!.reactions).toHaveLength(0);
     });
@@ -660,9 +765,13 @@ describe("currentChatMessagesStore", () => {
       const reaction2: Reaction = { ...reaction, user_id: 20 };
       useCurrentChatMessagesStore
         .getState()
-        .setMessages([mockMsg({ id: 1, reactions: [reaction] })]);
+        .setMessages([
+          mockMsg({ id: "00000000-0000-4000-8000-000000000001", reactions: [reaction] }),
+        ]);
 
-      useCurrentChatMessagesStore.getState().updateMessageReaction(1, reaction2, "add");
+      useCurrentChatMessagesStore
+        .getState()
+        .updateMessageReaction("00000000-0000-4000-8000-000000000001", reaction2, "add");
 
       expect(useCurrentChatMessagesStore.getState().messages[0]!.reactions).toHaveLength(2);
     });
@@ -674,7 +783,9 @@ describe("currentChatMessagesStore", () => {
     it("updates the content of a message by id", () => {
       useCurrentChatMessagesStore.getState().setMessages([mockMsg({ id: 1, content: "old" })]);
 
-      useCurrentChatMessagesStore.getState().updateMessageContent(1, "new content");
+      useCurrentChatMessagesStore
+        .getState()
+        .updateMessageContent("00000000-0000-4000-8000-000000000001", "new content");
 
       expect(useCurrentChatMessagesStore.getState().messages[0]!.content).toBe("new content");
     });
@@ -685,17 +796,25 @@ describe("currentChatMessagesStore", () => {
         .getState()
         .setMessages([mockMsg({ id: 1, content: "a" }), mockMsg({ id: 2, content: "b" })]);
 
-      useCurrentChatMessagesStore.getState().updateMessageContent(1, "updated");
+      useCurrentChatMessagesStore
+        .getState()
+        .updateMessageContent("00000000-0000-4000-8000-000000000001", "updated");
 
       expect(useCurrentChatMessagesStore.getState().messages[1]!.content).toBe("b");
     });
 
     it("updates markdown_source when the third argument is provided", () => {
+      useCurrentChatMessagesStore.getState().setMessages([
+        mockMsg({
+          id: "00000000-0000-4000-8000-000000000001",
+          content: "<p>o</p>",
+          markdown_source: "old",
+        }),
+      ]);
+
       useCurrentChatMessagesStore
         .getState()
-        .setMessages([mockMsg({ id: 1, content: "<p>o</p>", markdown_source: "old" })]);
-
-      useCurrentChatMessagesStore.getState().updateMessageContent(1, "<p>n</p>", "new");
+        .updateMessageContent("00000000-0000-4000-8000-000000000001", "<p>n</p>", "new");
 
       const m = useCurrentChatMessagesStore.getState().messages[0]!;
       expect(m.content).toBe("<p>n</p>");
@@ -705,9 +824,13 @@ describe("currentChatMessagesStore", () => {
     it("preserves markdown_source when the third argument is omitted", () => {
       useCurrentChatMessagesStore
         .getState()
-        .setMessages([mockMsg({ id: 1, markdown_source: "keep" })]);
+        .setMessages([
+          mockMsg({ id: "00000000-0000-4000-8000-000000000001", markdown_source: "keep" }),
+        ]);
 
-      useCurrentChatMessagesStore.getState().updateMessageContent(1, "<p>only html</p>");
+      useCurrentChatMessagesStore
+        .getState()
+        .updateMessageContent("00000000-0000-4000-8000-000000000001", "<p>only html</p>");
 
       expect(useCurrentChatMessagesStore.getState().messages[0]!.markdown_source).toBe("keep");
     });
@@ -724,7 +847,9 @@ describe("currentChatMessagesStore", () => {
         }),
       ]);
 
-      useCurrentChatMessagesStore.getState().updateMessageContent(1, "https://stay.test");
+      useCurrentChatMessagesStore
+        .getState()
+        .updateMessageContent("00000000-0000-4000-8000-000000000001", "https://stay.test");
 
       const previews = useCurrentChatMessagesStore.getState().messages[0]!.link_previews;
       expect(previews?.map((p) => p.targetUrl)).toEqual(["https://stay.test"]);
@@ -733,7 +858,7 @@ describe("currentChatMessagesStore", () => {
     it("clears optimistic edit state when server content arrives", () => {
       useCurrentChatMessagesStore.getState().setMessages([
         mockMsg({
-          id: 1,
+          id: "00000000-0000-4000-8000-000000000001",
           content: "local",
           markdown_source: "local",
           edit_status: "saving",
@@ -744,7 +869,9 @@ describe("currentChatMessagesStore", () => {
         }),
       ]);
 
-      useCurrentChatMessagesStore.getState().updateMessageContent(1, "server", "server");
+      useCurrentChatMessagesStore
+        .getState()
+        .updateMessageContent("00000000-0000-4000-8000-000000000001", "server", "server");
 
       const message = useCurrentChatMessagesStore.getState().messages[0]!;
       expect(message.content).toBe("server");
@@ -758,11 +885,17 @@ describe("currentChatMessagesStore", () => {
 
   describe("optimistic message edit", () => {
     it("applies optimistic markdown and remembers previous body", () => {
+      useCurrentChatMessagesStore.getState().setMessages([
+        mockMsg({
+          id: "00000000-0000-4000-8000-000000000001",
+          content: "<p>old</p>",
+          markdown_source: "old",
+        }),
+      ]);
+
       useCurrentChatMessagesStore
         .getState()
-        .setMessages([mockMsg({ id: 1, content: "<p>old</p>", markdown_source: "old" })]);
-
-      useCurrentChatMessagesStore.getState().applyOptimisticMessageEdit(1, "new **body**");
+        .applyOptimisticMessageEdit("00000000-0000-4000-8000-000000000001", "new **body**");
 
       const message = useCurrentChatMessagesStore.getState().messages[0]!;
       expect(message.content).toBe("new **body**");
@@ -776,7 +909,7 @@ describe("currentChatMessagesStore", () => {
     it("commits optimistic edit with server message", () => {
       useCurrentChatMessagesStore.getState().setMessages([
         mockMsg({
-          id: 1,
+          id: "00000000-0000-4000-8000-000000000001",
           content: "local",
           markdown_source: "local",
           edit_status: "saving",
@@ -785,12 +918,14 @@ describe("currentChatMessagesStore", () => {
         }),
       ]);
 
-      useCurrentChatMessagesStore
-        .getState()
-        .commitOptimisticMessageEdit(
-          1,
-          mockMsg({ id: 1, content: "<p>server</p>", markdown_source: "server" }),
-        );
+      useCurrentChatMessagesStore.getState().commitOptimisticMessageEdit(
+        "00000000-0000-4000-8000-000000000001",
+        mockMsg({
+          id: "00000000-0000-4000-8000-000000000001",
+          content: "<p>server</p>",
+          markdown_source: "server",
+        }),
+      );
 
       const message = useCurrentChatMessagesStore.getState().messages[0]!;
       expect(message.content).toBe("<p>server</p>");
@@ -804,7 +939,9 @@ describe("currentChatMessagesStore", () => {
         .getState()
         .setMessages([mockMsg({ id: 1, content: "new", edit_status: "saving" })]);
 
-      useCurrentChatMessagesStore.getState().failOptimisticMessageEdit(1, "server rejected");
+      useCurrentChatMessagesStore
+        .getState()
+        .failOptimisticMessageEdit("00000000-0000-4000-8000-000000000001", "server rejected");
 
       const message = useCurrentChatMessagesStore.getState().messages[0]!;
       expect(message.content).toBe("new");
@@ -815,7 +952,7 @@ describe("currentChatMessagesStore", () => {
     it("cancels failed optimistic edit and restores previous body", () => {
       useCurrentChatMessagesStore.getState().setMessages([
         mockMsg({
-          id: 1,
+          id: "00000000-0000-4000-8000-000000000001",
           content: "new",
           markdown_source: "new",
           edit_status: "failed",
@@ -826,7 +963,9 @@ describe("currentChatMessagesStore", () => {
         }),
       ]);
 
-      useCurrentChatMessagesStore.getState().cancelFailedMessageEdit(1);
+      useCurrentChatMessagesStore
+        .getState()
+        .cancelFailedMessageEdit("00000000-0000-4000-8000-000000000001");
 
       const message = useCurrentChatMessagesStore.getState().messages[0]!;
       expect(message.content).toBe("<p>old</p>");
@@ -840,19 +979,28 @@ describe("currentChatMessagesStore", () => {
 
   describe("moveStreamTopicMessages", () => {
     it("moves message subjects from old topic to new topic", () => {
-      useCurrentChatMessagesStore
-        .getState()
-        .setMessages([
-          mockMsg({ id: 1, stream_id: 5, subject: "incident" }),
-          mockMsg({ id: 2, stream_id: 5, subject: "incident" }),
-          mockMsg({ id: 3, stream_id: 5, subject: "other" }),
-        ]);
+      useCurrentChatMessagesStore.getState().setMessages([
+        mockMsg({
+          id: "00000000-0000-4000-8000-000000000001",
+          stream_id: 5,
+          subject: "incident",
+        }),
+        mockMsg({
+          id: "00000000-0000-4000-8000-000000000002",
+          stream_id: 5,
+          subject: "incident",
+        }),
+        mockMsg({ id: "00000000-0000-4000-8000-000000000003", stream_id: 5, subject: "other" }),
+      ]);
 
       useCurrentChatMessagesStore.getState().moveStreamTopicMessages({
         streamId: 5,
         oldTopic: "incident",
         newTopic: "\u2714 incident",
-        messageIds: [1, 2],
+        messageIds: [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002",
+        ],
       });
 
       const messages = useCurrentChatMessagesStore.getState().messages;
@@ -868,16 +1016,20 @@ describe("currentChatMessagesStore", () => {
         streamName: "engineering",
         topic: "incident",
       });
-      useCurrentChatMessagesStore
-        .getState()
-        .setMessages([mockMsg({ id: 1, stream_id: 5, subject: "incident" })]);
+      useCurrentChatMessagesStore.getState().setMessages([
+        mockMsg({
+          id: "00000000-0000-4000-8000-000000000001",
+          stream_id: 5,
+          subject: "incident",
+        }),
+      ]);
 
       useCurrentChatMessagesStore.getState().moveStreamTopicMessages({
         streamId: 5,
         oldTopic: "incident",
         newTopic: "\u2714 incident",
-        messageIds: [1],
-        anchorMessageId: 1,
+        messageIds: ["00000000-0000-4000-8000-000000000001"],
+        anchorMessageId: "00000000-0000-4000-8000-000000000001",
       });
 
       const state = useCurrentChatMessagesStore.getState();
@@ -895,16 +1047,20 @@ describe("currentChatMessagesStore", () => {
         topic: "incident",
         streamWideView: true,
       });
-      useCurrentChatMessagesStore
-        .getState()
-        .setMessages([mockMsg({ id: 1, stream_id: 5, subject: "incident" })]);
+      useCurrentChatMessagesStore.getState().setMessages([
+        mockMsg({
+          id: "00000000-0000-4000-8000-000000000001",
+          stream_id: 5,
+          subject: "incident",
+        }),
+      ]);
 
       useCurrentChatMessagesStore.getState().moveStreamTopicMessages({
         streamId: 5,
         oldTopic: "incident",
         newTopic: "\u2714 incident",
-        messageIds: [1],
-        anchorMessageId: 1,
+        messageIds: ["00000000-0000-4000-8000-000000000001"],
+        anchorMessageId: "00000000-0000-4000-8000-000000000001",
       });
 
       const state = useCurrentChatMessagesStore.getState();
@@ -916,18 +1072,24 @@ describe("currentChatMessagesStore", () => {
     });
 
     it("does not bulk-move by stream/topic when messageIds miss loaded slice", () => {
-      useCurrentChatMessagesStore
-        .getState()
-        .setMessages([
-          mockMsg({ id: 101, stream_id: 5, subject: "incident" }),
-          mockMsg({ id: 102, stream_id: 5, subject: "incident" }),
-        ]);
+      useCurrentChatMessagesStore.getState().setMessages([
+        mockMsg({
+          id: "00000000-0000-4000-8000-000000000101",
+          stream_id: 5,
+          subject: "incident",
+        }),
+        mockMsg({
+          id: "00000000-0000-4000-8000-000000000102",
+          stream_id: 5,
+          subject: "incident",
+        }),
+      ]);
 
       useCurrentChatMessagesStore.getState().moveStreamTopicMessages({
         streamId: 5,
         oldTopic: "incident",
         newTopic: "\u2714 incident",
-        messageIds: [999999],
+        messageIds: ["00000000-0000-4000-8000-000000999999"],
       });
 
       const messages = useCurrentChatMessagesStore.getState().messages;
@@ -935,20 +1097,34 @@ describe("currentChatMessagesStore", () => {
     });
 
     it("deduplicates messageIds with anchor and moves only targeted ids", () => {
-      useCurrentChatMessagesStore
-        .getState()
-        .setMessages([
-          mockMsg({ id: 1, stream_id: 5, subject: "incident" }),
-          mockMsg({ id: 2, stream_id: 5, subject: "incident" }),
-          mockMsg({ id: 3, stream_id: 5, subject: "incident" }),
-        ]);
+      useCurrentChatMessagesStore.getState().setMessages([
+        mockMsg({
+          id: "00000000-0000-4000-8000-000000000001",
+          stream_id: 5,
+          subject: "incident",
+        }),
+        mockMsg({
+          id: "00000000-0000-4000-8000-000000000002",
+          stream_id: 5,
+          subject: "incident",
+        }),
+        mockMsg({
+          id: "00000000-0000-4000-8000-000000000003",
+          stream_id: 5,
+          subject: "incident",
+        }),
+      ]);
 
       useCurrentChatMessagesStore.getState().moveStreamTopicMessages({
         streamId: 5,
         oldTopic: "incident",
         newTopic: "\u2714 incident",
-        messageIds: [1, 2, 1],
-        anchorMessageId: 2,
+        messageIds: [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002",
+          "00000000-0000-4000-8000-000000000001",
+        ],
+        anchorMessageId: "00000000-0000-4000-8000-000000000002",
       });
 
       const messages = useCurrentChatMessagesStore.getState().messages;
@@ -962,12 +1138,20 @@ describe("currentChatMessagesStore", () => {
 
   describe("moveTopicToStreamMessages", () => {
     it("updates stream_id and subject for targeted messages", () => {
-      useCurrentChatMessagesStore
-        .getState()
-        .setMessages([
-          mockMsg({ id: 1, stream_id: 5, subject: "incident", channel: "eng" }),
-          mockMsg({ id: 2, stream_id: 5, subject: "incident", channel: "eng" }),
-        ]);
+      useCurrentChatMessagesStore.getState().setMessages([
+        mockMsg({
+          id: "00000000-0000-4000-8000-000000000001",
+          stream_id: 5,
+          subject: "incident",
+          channel: "eng",
+        }),
+        mockMsg({
+          id: "00000000-0000-4000-8000-000000000002",
+          stream_id: 5,
+          subject: "incident",
+          channel: "eng",
+        }),
+      ]);
 
       useCurrentChatMessagesStore.getState().moveTopicToStreamMessages({
         sourceStreamId: 5,
@@ -975,8 +1159,11 @@ describe("currentChatMessagesStore", () => {
         targetStreamName: "dev",
         oldTopic: "incident",
         newTopic: "incident",
-        messageIds: [1, 2],
-        anchorMessageId: 1,
+        messageIds: [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002",
+        ],
+        anchorMessageId: "00000000-0000-4000-8000-000000000001",
       });
 
       const messages = useCurrentChatMessagesStore.getState().messages;
@@ -1091,7 +1278,7 @@ describe("contextFromMessage", () => {
   // Stream messages produce a context with streamId, streamName, and topic.
   it("creates stream context from a stream message", () => {
     const msg: WorkspaceRawMessage = {
-      id: 1,
+      id: "00000000-0000-4000-8000-000000000001",
       sender_id: 10,
       content: "test",
       timestamp: 1000,
@@ -1113,7 +1300,7 @@ describe("contextFromMessage", () => {
   // Empty subject must remain empty in route context identity.
   it("keeps empty topic for stream messages with empty subject", () => {
     const msg: WorkspaceRawMessage = {
-      id: 1,
+      id: "00000000-0000-4000-8000-000000000001",
       sender_id: 10,
       content: "test",
       timestamp: 1000,
@@ -1133,7 +1320,7 @@ describe("contextFromMessage", () => {
   // Private messages produce a DM context with a sorted participant key.
   it("creates DM context from a private message", () => {
     const msg: WorkspaceRawMessage = {
-      id: 2,
+      id: "00000000-0000-4000-8000-000000000002",
       sender_id: 10,
       content: "hi",
       timestamp: 1000,
@@ -1151,7 +1338,7 @@ describe("contextFromMessage", () => {
   // Unknown message types (e.g. future Workspace extensions) must return null safely.
   it("returns null for a message with no valid type", () => {
     const msg: WorkspaceRawMessage = {
-      id: 3,
+      id: "00000000-0000-4000-8000-000000000003",
       sender_id: 10,
       content: "?",
       timestamp: 1000,
@@ -1164,7 +1351,7 @@ describe("contextFromMessage", () => {
   // Malformed stream messages (null stream_id) must be safely rejected.
   it("returns null for stream message with null stream_id", () => {
     const msg: WorkspaceRawMessage = {
-      id: 4,
+      id: "00000000-0000-4000-8000-000000000004",
       sender_id: 10,
       content: "?",
       timestamp: 1000,

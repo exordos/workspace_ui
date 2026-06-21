@@ -3,6 +3,7 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { syncUnreadSurfacesFromDelta } from "~/entities/unread-sync/unread-surfaces-sync.lib";
 import { markMessagesAsRead } from "~/shared/api/messenger-read-state";
+import { testMessageId } from "~/test/factories";
 import {
   applyOpenChatMarkAllAsRead,
   collectMarkAllAsReadMessageIds,
@@ -109,29 +110,34 @@ describe("chat-mark-all-read", () => {
   it("collects unread ids from loaded messages", () => {
     expect(
       collectUnreadMessageIds([
-        { id: 1, flags: ["read"] },
-        { id: 2, flags: ["starred"] },
-        { id: 3, flags: undefined },
+        { id: "00000000-0000-4000-8000-000000000001", flags: ["read"] },
+        { id: "00000000-0000-4000-8000-000000000002", flags: ["starred"] },
+        { id: "00000000-0000-4000-8000-000000000003", flags: undefined },
       ]),
-    ).toEqual([2, 3]);
+    ).toEqual([testMessageId(2), testMessageId(3)]);
   });
 
   it("collectMarkAllAsReadMessageIds merges loaded and index ids", () => {
     useChatListStore.setState({
-      messageIdToLocation: new Map([[99, { type: "stream", stream_id: 10, topic: "incident" }]]),
+      messageIdToLocation: new Map([
+        [
+          "00000000-0000-4000-8000-000000000099",
+          { type: "stream", stream_id: 10, topic: "incident" },
+        ],
+      ]),
     });
     const target: MarkAllAsReadTarget = { type: "topic", streamId: 10, topic: "incident" };
     expect(
       collectMarkAllAsReadMessageIds(
         [
-          { id: 1, flags: [] },
-          { id: 2, flags: ["read"] },
+          { id: "00000000-0000-4000-8000-000000000001", flags: [] },
+          { id: "00000000-0000-4000-8000-000000000002", flags: ["read"] },
         ],
         useChatListStore.getState().messageIdToLocation,
         target,
         7,
       ),
-    ).toEqual([1, 99]);
+    ).toEqual([testMessageId(1), testMessageId(99)]);
   });
 
   it("applyOpenChatMarkAllAsRead uses per-id flags API", async () => {
@@ -139,13 +145,13 @@ describe("chat-mark-all-read", () => {
     const target: MarkAllAsReadTarget = { type: "topic", streamId: 5, topic: "bugs" };
     await applyOpenChatMarkAllAsRead({
       target,
-      loadedMessages: [{ id: 10, flags: [] }],
+      loadedMessages: [{ id: "00000000-0000-4000-8000-000000000010", flags: [] }],
       currentUserId: 1,
       applyOptimistic,
       applyUnreadDelta,
     });
-    expect(markMessagesAsRead).toHaveBeenCalledWith([10]);
-    expect(applyOptimistic).toHaveBeenCalledWith([10], {
+    expect(markMessagesAsRead).toHaveBeenCalledWith([testMessageId(10)]);
+    expect(applyOptimistic).toHaveBeenCalledWith([testMessageId(10)], {
       type: "stream",
       streamId: 5,
       topic: "bugs",
@@ -156,7 +162,16 @@ describe("chat-mark-all-read", () => {
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "Engineering" }]);
     useChatListStore.getState().reconcileUnreadFromSnapshot(
       {
-        streams: [{ streamId: 5, topic: "bugs", unreadMessageIds: [10, 11] }],
+        streams: [
+          {
+            streamId: 5,
+            topic: "bugs",
+            unreadMessageIds: [
+              "00000000-0000-4000-8000-000000000010",
+              "00000000-0000-4000-8000-000000000011",
+            ],
+          },
+        ],
         dms: [],
         totalCount: 2,
         mentionMessageIds: [],
@@ -183,7 +198,16 @@ describe("chat-mark-all-read", () => {
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "Engineering" }]);
     useChatListStore.getState().reconcileUnreadFromSnapshot(
       {
-        streams: [{ streamId: 5, topic: "bugs", unreadMessageIds: [10, 11] }],
+        streams: [
+          {
+            streamId: 5,
+            topic: "bugs",
+            unreadMessageIds: [
+              "00000000-0000-4000-8000-000000000010",
+              "00000000-0000-4000-8000-000000000011",
+            ],
+          },
+        ],
         dms: [],
         totalCount: 2,
         mentionMessageIds: [],
@@ -191,13 +215,15 @@ describe("chat-mark-all-read", () => {
       1,
     );
     useChatListStore.setState({
-      messageIdToLocation: new Map([[10, { type: "stream", stream_id: 5, topic: "bugs" }]]),
+      messageIdToLocation: new Map([
+        ["00000000-0000-4000-8000-000000000010", { type: "stream", stream_id: 5, topic: "bugs" }],
+      ]),
     });
     useInstancesStore.getState().setInstanceUnreadCount(INSTANCE_ID, 2);
 
     await applyOpenChatMarkAllAsRead({
       target: { type: "topic", streamId: 5, topic: "bugs" },
-      loadedMessages: [{ id: 10, flags: [] }],
+      loadedMessages: [{ id: "00000000-0000-4000-8000-000000000010", flags: [] }],
       currentUserId: 1,
       applyOptimistic: (messageIds) => {
         useChatListStore.getState().decrementUnreadForMessages(messageIds);
@@ -205,7 +231,7 @@ describe("chat-mark-all-read", () => {
       applyUnreadDelta,
     });
 
-    expect(markMessagesAsRead).toHaveBeenCalledWith([10]);
+    expect(markMessagesAsRead).toHaveBeenCalledWith([testMessageId(10)]);
     expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("bugs")?.unreadCount).toBe(0);
     expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(0);
   });
@@ -213,42 +239,42 @@ describe("chat-mark-all-read", () => {
   describe("filterMessageIdsStillUnreadForOptimisticApply", () => {
     it("uses store messages when present", () => {
       expect(
-        filterMessageIdsStillUnreadForOptimisticApply([1, 2], {
+        filterMessageIdsStillUnreadForOptimisticApply([testMessageId(1), testMessageId(2)], {
           storeMessages: [
-            { id: 1, flags: [] },
-            { id: 2, flags: ["read"] },
+            { id: "00000000-0000-4000-8000-000000000001", flags: [] },
+            { id: "00000000-0000-4000-8000-000000000002", flags: ["read"] },
           ],
-          effectiveMessages: [{ id: 1, flags: ["read"] }],
+          effectiveMessages: [{ id: "00000000-0000-4000-8000-000000000001", flags: ["read"] }],
         }),
-      ).toEqual([1]);
+      ).toEqual([testMessageId(1)]);
     });
 
     it("falls back to effective list when id is missing from store (IDB vs store divergence)", () => {
       expect(
-        filterMessageIdsStillUnreadForOptimisticApply([10, 11], {
-          storeMessages: [{ id: 10, flags: [] }],
+        filterMessageIdsStillUnreadForOptimisticApply([testMessageId(10), testMessageId(11)], {
+          storeMessages: [{ id: "00000000-0000-4000-8000-000000000010", flags: [] }],
           effectiveMessages: [
-            { id: 10, flags: [] },
-            { id: 11, flags: [] },
+            { id: "00000000-0000-4000-8000-000000000010", flags: [] },
+            { id: "00000000-0000-4000-8000-000000000011", flags: [] },
           ],
         }),
-      ).toEqual([10, 11]);
+      ).toEqual([testMessageId(10), testMessageId(11)]);
     });
 
     it("returns empty when store is empty but effective has no matching unread ids", () => {
       expect(
-        filterMessageIdsStillUnreadForOptimisticApply([99], {
+        filterMessageIdsStillUnreadForOptimisticApply([testMessageId(99)], {
           storeMessages: [],
-          effectiveMessages: [{ id: 99, flags: ["read"] }],
+          effectiveMessages: [{ id: "00000000-0000-4000-8000-000000000099", flags: ["read"] }],
         }),
       ).toEqual([]);
     });
 
     it("prefers store row over effective when both contain the same id", () => {
       expect(
-        filterMessageIdsStillUnreadForOptimisticApply([5], {
-          storeMessages: [{ id: 5, flags: ["read"] }],
-          effectiveMessages: [{ id: 5, flags: [] }],
+        filterMessageIdsStillUnreadForOptimisticApply([testMessageId(5)], {
+          storeMessages: [{ id: "00000000-0000-4000-8000-000000000005", flags: ["read"] }],
+          effectiveMessages: [{ id: "00000000-0000-4000-8000-000000000005", flags: [] }],
         }),
       ).toEqual([]);
     });

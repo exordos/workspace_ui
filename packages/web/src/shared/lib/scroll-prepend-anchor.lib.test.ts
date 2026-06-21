@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { testMessageId } from "~/test/factories";
 import {
   computeScrollTopAfterPrepend,
   computeScrollTopFromAnchor,
@@ -58,12 +59,12 @@ describe("resolveVisibleMessageAnchor", () => {
   it("returns the first visible message node with its viewport offset", () => {
     const root = document.createElement("div");
     setRect(root, { top: 100, bottom: 500 });
-    appendMessage(root, "1", { top: 20, bottom: 80 });
-    appendMessage(root, "2", { top: 80, bottom: 160 });
-    appendMessage(root, "3", { top: 180, bottom: 260 });
+    appendMessage(root, testMessageId(1), { top: 20, bottom: 80 });
+    appendMessage(root, testMessageId(2), { top: 80, bottom: 160 });
+    appendMessage(root, testMessageId(3), { top: 180, bottom: 260 });
 
     expect(resolveVisibleMessageAnchor(root)).toEqual({
-      messageId: 2,
+      messageId: "00000000-0000-4000-8000-000000000002",
       offsetTop: -20,
     });
   });
@@ -71,8 +72,8 @@ describe("resolveVisibleMessageAnchor", () => {
   it("returns null when no message node is visible", () => {
     const root = document.createElement("div");
     setRect(root, { top: 100, bottom: 500 });
-    appendMessage(root, "1", { top: 20, bottom: 80 });
-    appendMessage(root, "2", { top: 520, bottom: 600 });
+    appendMessage(root, testMessageId(1), { top: 20, bottom: 80 });
+    appendMessage(root, testMessageId(2), { top: 520, bottom: 600 });
 
     expect(resolveVisibleMessageAnchor(root)).toBeNull();
   });
@@ -83,9 +84,14 @@ describe("computeScrollTopFromAnchor", () => {
     const root = document.createElement("div");
     Object.defineProperty(root, "scrollTop", { configurable: true, writable: true, value: 50 });
     setRect(root, { top: 100, bottom: 500 });
-    appendMessage(root, "2", { top: 260, bottom: 320 });
+    appendMessage(root, testMessageId(2), { top: 260, bottom: 320 });
 
-    expect(computeScrollTopFromAnchor(root, { messageId: 2, offsetTop: -20 })).toBe(230);
+    expect(
+      computeScrollTopFromAnchor(root, {
+        messageId: "00000000-0000-4000-8000-000000000002",
+        offsetTop: -20,
+      }),
+    ).toBe(230);
   });
 
   it("returns null when the anchor message is not in the DOM", () => {
@@ -93,6 +99,11 @@ describe("computeScrollTopFromAnchor", () => {
     Object.defineProperty(root, "scrollTop", { configurable: true, writable: true, value: 50 });
     setRect(root, { top: 100, bottom: 500 });
 
-    expect(computeScrollTopFromAnchor(root, { messageId: 2, offsetTop: -20 })).toBeNull();
+    expect(
+      computeScrollTopFromAnchor(root, {
+        messageId: "00000000-0000-4000-8000-000000000002",
+        offsetTop: -20,
+      }),
+    ).toBeNull();
   });
 });

@@ -1,7 +1,7 @@
 import type { DraftType } from "~/entities/draft/draft.types";
 import { t } from "~/i18n/i18n";
 import { dmRouteKey } from "~/shared/lib/dm-key";
-import { userIdStorageKey, type UserId } from "~/shared/lib/user-id.lib";
+import { type UserId } from "~/shared/lib/user-id.lib";
 
 export type ReadFallbackContext =
   | { type: "stream"; streamId: number; topic: string }
@@ -46,31 +46,7 @@ export function buildReadFallbackContext(options: {
   };
 }
 
-export function resolveDmGroupParticipantIds(options: {
-  dmUserIds: UserId[] | undefined;
-  currentUserId: UserId | null | undefined;
-  dmRecipientIds: UserId[];
-}): UserId[] {
-  if (options.dmUserIds != null && options.dmUserIds.length > 0) {
-    return options.dmUserIds;
-  }
-  if (options.currentUserId != null) {
-    const unique = new Map<string, UserId>();
-    for (const userId of [...options.dmRecipientIds, options.currentUserId]) {
-      unique.set(userIdStorageKey(userId), userId);
-    }
-    return Array.from(unique.values());
-  }
-  return options.dmRecipientIds;
-}
-
-export function resolveChatHeaderRightPanelLabel(
-  isGroupDmView: boolean,
-  isDmView: boolean,
-): string | undefined {
-  if (isGroupDmView) {
-    return t("dm.groupChat");
-  }
+export function resolveChatHeaderRightPanelLabel(isDmView: boolean): string | undefined {
   if (isDmView) {
     return t("info.partnerInfo");
   }

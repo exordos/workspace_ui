@@ -13,16 +13,22 @@ describe("update-message-topic-move.lib", () => {
       stream_id: 42,
       orig_subject: " incident ",
       subject: "  resolved incident  ",
-      message_ids: [1, 2, -3, 0, 2.5, "x", null],
-      message_id: 99,
+      message_ids: [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-0000000000n3",
+        "x",
+        null,
+      ],
+      message_id: "00000000-0000-4000-8000-000000000099",
     };
 
     expect(extractTopicMoveFromUpdateEvent(event)).toEqual({
       streamId: 42,
       oldTopic: "incident",
       newTopic: "resolved incident",
-      messageIds: [1, 2],
-      anchorMessageId: 99,
+      messageIds: ["00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000002"],
+      anchorMessageId: "00000000-0000-4000-8000-000000000099",
     });
   });
 
@@ -32,21 +38,21 @@ describe("update-message-topic-move.lib", () => {
       type: "update_message",
       orig_subject: "incident",
       subject: "resolved incident",
-      message_id: 1,
+      message_id: "00000000-0000-4000-8000-000000000001",
     };
     const missingOrigSubject: MessengerEvent = {
       id: 3,
       type: "update_message",
       stream_id: 42,
       subject: "resolved incident",
-      message_id: 1,
+      message_id: "00000000-0000-4000-8000-000000000001",
     };
     const missingSubject: MessengerEvent = {
       id: 4,
       type: "update_message",
       stream_id: 42,
       orig_subject: "incident",
-      message_id: 1,
+      message_id: "00000000-0000-4000-8000-000000000001",
     };
 
     expect(extractTopicMoveFromUpdateEvent(missingStreamId)).toBeNull();
@@ -61,8 +67,8 @@ describe("update-message-topic-move.lib", () => {
       stream_id: 42,
       orig_subject: " incident ",
       subject: "incident",
-      message_ids: [1],
-      message_id: 1,
+      message_ids: ["00000000-0000-4000-8000-000000000001"],
+      message_id: "00000000-0000-4000-8000-000000000001",
     };
 
     expect(extractTopicMoveFromUpdateEvent(event)).toBeNull();
@@ -75,8 +81,8 @@ describe("update-message-topic-move.lib", () => {
       stream_id: 42,
       orig_subject: "incident",
       subject: "resolved incident",
-      message_ids: [-1, 0, 2.5, "x", null],
-      message_id: -7,
+      message_ids: ["00000000-0000-4000-8000-0000000000n1", "x", null],
+      message_id: "00000000-0000-4000-8000-0000000000n7",
     };
 
     expect(extractTopicMoveFromUpdateEvent(event)).toBeNull();
@@ -85,9 +91,14 @@ describe("update-message-topic-move.lib", () => {
   it("deduplicates and merges message_ids with anchor", () => {
     expect(
       resolveTopicMoveTargetMessageIds({
-        messageIds: [10, 11, 10, -1, 0],
-        anchorMessageId: 11,
+        messageIds: [
+          "00000000-0000-4000-8000-000000000010",
+          "00000000-0000-4000-8000-000000000011",
+          "00000000-0000-4000-8000-000000000010",
+          "00000000-0000-4000-8000-0000000000n1",
+        ],
+        anchorMessageId: "00000000-0000-4000-8000-000000000011",
       }),
-    ).toEqual([10, 11]);
+    ).toEqual(["00000000-0000-4000-8000-000000000010", "00000000-0000-4000-8000-000000000011"]);
   });
 });

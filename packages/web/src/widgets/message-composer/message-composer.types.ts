@@ -2,10 +2,11 @@
  * Types for the message composer widget.
  */
 import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply/ai-reply.types";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { RefObject, ReactNode } from "react";
 
 export interface ReplyQuote {
-  id: number;
+  id: MessageId;
   content: string;
   sender_full_name: string;
   sender_id: number;
@@ -28,13 +29,13 @@ export interface ScheduledComposerMessage {
 }
 
 export interface ComposerEditSession {
-  messageId: number;
+  messageId: MessageId;
   initialMarkdown: string;
 }
 
 export interface MessageComposerProps {
   onSend?: (content: string, subject?: string, files?: File[]) => void | Promise<void>;
-  onSubmitEdit?: (messageId: number, content: string) => void | Promise<void>;
+  onSubmitEdit?: (messageId: MessageId, content: string) => void | Promise<void>;
   onCancelEdit?: () => void;
   onCreateCallLink?: () => string | null;
   onCancelUpload?: () => void;

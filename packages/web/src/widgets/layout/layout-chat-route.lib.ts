@@ -1,7 +1,8 @@
 /** Parses `?msg=` anchor id from messenger route search string. */
-export function parseFocusedMessageIdFromSearch(search: string): number | null {
+import { normalizeMessageId } from "~/shared/lib/message-id.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
+
+export function parseFocusedMessageIdFromSearch(search: string): MessageId | null {
   const raw = new URLSearchParams(search).get("msg");
-  if (raw == null || raw === "") return null;
-  const parsed = Number(raw);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  return normalizeMessageId(raw);
 }

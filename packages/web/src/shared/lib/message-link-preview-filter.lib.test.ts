@@ -5,7 +5,7 @@ import { filterMessageLinkPreviewsForMarkdown } from "./message-link-preview-fil
 describe("filterMessageLinkPreviewsForMarkdown", () => {
   it("removes previews for URLs no longer in body", () => {
     const message: MockMessage = {
-      id: 1,
+      id: "00000000-0000-4000-8000-000000000001",
       sender_id: 1,
       sender_full_name: "A",
       stream_id: 1,

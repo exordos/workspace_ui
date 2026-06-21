@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchMessageById } from "~/shared/api/messenger-messages";
 import type { MockMessage } from "~/shared/api/messenger.types";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 
 export function useChatForwardHydration(options: {
-  forwardMessageId: number | null;
+  forwardMessageId: MessageId | null;
   messages: MockMessage[];
 }): {
   forwardMessages: MockMessage[];
@@ -16,7 +17,7 @@ export function useChatForwardHydration(options: {
 
   const [forwardMessages, setForwardMessages] = useState<MockMessage[]>([]);
   const [forwardSelectedText, setForwardSelectedText] = useState<string | undefined>(undefined);
-  const processedForwardMessageIdRef = useRef<number | null>(null);
+  const processedForwardMessageIdRef = useRef<MessageId | null>(null);
 
   useEffect(() => {
     if (forwardMessageId == null) {

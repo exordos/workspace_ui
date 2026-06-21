@@ -7,13 +7,15 @@ import type {
   MessengerEvent,
   WorkspaceRawMessage,
 } from "~/shared/api/messenger.types";
+import { normalizeMessageId } from "~/shared/lib/message-id.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 import type { LayoutMessageFlagOp } from "./layout-messenger-event-dispatch.types";
 
 export interface ParsedUpdateMessageFlagsEvent {
   op: LayoutMessageFlagOp;
   flag: string;
-  messageIds: number[];
+  messageIds: MessageId[];
   markAllRead: boolean;
 }
 
@@ -32,12 +34,13 @@ export const EMPTY_MARK_ALL_READ_SNAPSHOT: MessengerUnreadMessagesSnapshot = {
   mentionMessageIds: [],
 };
 
-function dedupeValidMessageIds(raw: unknown): number[] {
+function dedupeValidMessageIds(raw: unknown): MessageId[] {
   if (!Array.isArray(raw)) return [];
-  const seen = new Set<number>();
-  const out: number[] = [];
-  for (const id of raw) {
-    if (!Number.isInteger(id) || id <= 0 || seen.has(id)) continue;
+  const seen = new Set<MessageId>();
+  const out: MessageId[] = [];
+  for (const rawId of raw) {
+    const id = normalizeMessageId(rawId);
+    if (id == null || seen.has(id)) continue;
     seen.add(id);
     out.push(id);
   }
@@ -64,11 +67,10 @@ export function parseUpdateMessageFlagsEvent(
 }
 
 /** Loaded open-chat rows that still lack the read flag. */
-export function collectUnreadLoadedMessageIds(messages: readonly MockMessage[]): number[] {
-  const out: number[] = [];
+export function collectUnreadLoadedMessageIds(messages: readonly MockMessage[]): MessageId[] {
+  const out: MessageId[] = [];
   for (const message of messages) {
     if (message.flags?.includes("read")) continue;
-    if (!Number.isInteger(message.id) || message.id <= 0) continue;
     out.push(message.id);
   }
   return out;
@@ -76,7 +78,7 @@ export function collectUnreadLoadedMessageIds(messages: readonly MockMessage[]):
 
 /** Converts Workspace mark-unread `message_details` into minimal raw messages for location indexing. */
 export function messengerRawMessagesFromMarkUnreadDetails(
-  messageIds: readonly number[],
+  messageIds: readonly MessageId[],
   messageDetails: Record<string, WorkspaceMarkUnreadMessageDetail> | undefined,
   currentUserId: UserId | null,
 ): WorkspaceRawMessage[] {

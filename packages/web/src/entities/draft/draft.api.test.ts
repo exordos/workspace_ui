@@ -7,6 +7,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiResponse } from "~/shared/api/client";
+import { testMessageId } from "~/test/factories";
 import { fetchDrafts, createDraft, updateDraftOnServer, deleteDraftOnServer } from "./draft.api";
 
 const mockGet = vi.fn();
@@ -79,8 +80,22 @@ describe("fetchDrafts", () => {
     mockGet.mockResolvedValue(
       apiOk({
         drafts: [
-          { id: 1, type: "stream", to: [10], topic: "general", content: "hello", timestamp: 100 },
-          { id: 2, type: "private", to: [42], topic: "", content: "hi", timestamp: 200 },
+          {
+            id: testMessageId(1),
+            type: "stream",
+            to: [10],
+            topic: "general",
+            content: "hello",
+            timestamp: 100,
+          },
+          {
+            id: testMessageId(2),
+            type: "private",
+            to: [42],
+            topic: "",
+            content: "hi",
+            timestamp: 200,
+          },
         ],
       }),
     );
@@ -88,7 +103,7 @@ describe("fetchDrafts", () => {
     const result = await fetchDrafts();
     expect(result).toHaveLength(2);
     expect(result[0]).toEqual({
-      id: 1,
+      id: testMessageId(1),
       type: "stream",
       to: [10],
       topic: "general",
@@ -115,7 +130,9 @@ describe("fetchDrafts", () => {
 
   it("defaults missing topic to empty string", async () => {
     mockGet.mockResolvedValue(
-      apiOk({ drafts: [{ id: 1, type: "stream", to: [10], content: "x", timestamp: 0 }] }),
+      apiOk({
+        drafts: [{ id: testMessageId(1), type: "stream", to: [10], content: "x", timestamp: 0 }],
+      }),
     );
     const result = await fetchDrafts();
     expect(result[0]!.topic).toBe("");
@@ -128,9 +145,9 @@ describe("fetchDrafts", () => {
 
 describe("createDraft", () => {
   it("returns draft ID on success", async () => {
-    mockPost.mockResolvedValue(apiOk({ ids: [42] }));
+    mockPost.mockResolvedValue(apiOk({ ids: [testMessageId(42)] }));
     const id = await createDraft({ type: "stream", to: [10], topic: "test", content: "hello" });
-    expect(id).toBe(42);
+    expect(id).toBe(testMessageId(42));
   });
 
   it("returns null on non-ok response", async () => {
@@ -183,7 +200,7 @@ describe("createDraft", () => {
 describe("updateDraftOnServer", () => {
   it("returns true on success", async () => {
     mockPatch.mockResolvedValue(apiOk({}));
-    const result = await updateDraftOnServer(1, {
+    const result = await updateDraftOnServer(testMessageId(1), {
       type: "stream",
       to: [10],
       topic: "test",
@@ -194,7 +211,7 @@ describe("updateDraftOnServer", () => {
 
   it("returns false on non-ok response", async () => {
     mockPatch.mockResolvedValue(apiFail(500));
-    const result = await updateDraftOnServer(1, {
+    const result = await updateDraftOnServer(testMessageId(1), {
       type: "stream",
       to: [10],
       topic: "test",
@@ -205,7 +222,7 @@ describe("updateDraftOnServer", () => {
 
   it("returns false on network error", async () => {
     mockPatch.mockRejectedValue(new Error("Offline"));
-    const result = await updateDraftOnServer(1, {
+    const result = await updateDraftOnServer(testMessageId(1), {
       type: "stream",
       to: [10],
       topic: "test",
@@ -216,13 +233,18 @@ describe("updateDraftOnServer", () => {
 
   it("throws for invalid draft id (0)", async () => {
     await expect(
-      updateDraftOnServer(0, { type: "stream", to: [10], topic: "test", content: "x" }),
+      updateDraftOnServer(0 as never, { type: "stream", to: [10], topic: "test", content: "x" }),
     ).rejects.toThrow(/Invalid messageId/);
   });
 
   it("throws for invalid type", async () => {
     await expect(
-      updateDraftOnServer(1, { type: "bad" as "stream", to: [10], topic: "test", content: "x" }),
+      updateDraftOnServer(testMessageId(1), {
+        type: "bad" as "stream",
+        to: [10],
+        topic: "test",
+        content: "x",
+      }),
     ).rejects.toThrow();
   });
 });
@@ -235,32 +257,33 @@ describe("deleteDraftOnServer", () => {
   it("uses DELETE /drafts/{id} endpoint", async () => {
     mockDelete.mockResolvedValue(apiOk({}));
 
-    await expect(deleteDraftOnServer(5)).resolves.toBe(true);
-    expect(mockDelete).toHaveBeenCalledWith("/drafts/5");
+    const draftId = testMessageId(5);
+    await expect(deleteDraftOnServer(draftId)).resolves.toBe(true);
+    expect(mockDelete).toHaveBeenCalledWith(`/drafts/${draftId}`);
     expect(mockPost).not.toHaveBeenCalled();
   });
 
   it("returns true on success", async () => {
     mockDelete.mockResolvedValue(apiOk({}));
-    const result = await deleteDraftOnServer(1);
+    const result = await deleteDraftOnServer(testMessageId(1));
     expect(result).toBe(true);
   });
 
   it("returns false on non-ok response", async () => {
     mockDelete.mockResolvedValue(apiFail(500));
-    expect(await deleteDraftOnServer(1)).toBe(false);
+    expect(await deleteDraftOnServer(testMessageId(1))).toBe(false);
   });
 
   it("returns false on network error", async () => {
     mockDelete.mockRejectedValue(new Error("Offline"));
-    expect(await deleteDraftOnServer(1)).toBe(false);
+    expect(await deleteDraftOnServer(testMessageId(1))).toBe(false);
   });
 
   it("throws for invalid draft id", async () => {
-    await expect(deleteDraftOnServer(0)).rejects.toThrow(/Invalid messageId/);
+    await expect(deleteDraftOnServer(0 as never)).rejects.toThrow(/Invalid messageId/);
   });
 
   it("throws for negative id", async () => {
-    await expect(deleteDraftOnServer(-5)).rejects.toThrow(/Invalid messageId/);
+    await expect(deleteDraftOnServer(-5 as never)).rejects.toThrow(/Invalid messageId/);
   });
 });

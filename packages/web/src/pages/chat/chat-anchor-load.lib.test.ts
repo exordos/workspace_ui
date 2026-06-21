@@ -7,7 +7,7 @@ import {
 
 function message(overrides: Partial<MockMessage>): MockMessage {
   return {
-    id: 1,
+    id: "00000000-0000-4000-8000-000000000001",
     sender_id: 7,
     sender_full_name: "Alice",
     stream_id: 10,
@@ -22,8 +22,10 @@ describe("isFocusedMessageLoadedInRoute", () => {
   it("returns true when focused stream message is already in loaded topic", () => {
     expect(
       isFocusedMessageLoadedInRoute({
-        focusedMessageId: 55,
-        messages: [message({ id: 55, stream_id: 10, subject: "bugs" })],
+        focusedMessageId: "00000000-0000-4000-8000-000000000055",
+        messages: [
+          message({ id: "00000000-0000-4000-8000-000000000055", stream_id: 10, subject: "bugs" }),
+        ],
         isDmView: false,
         currentUserId: 7,
         dmRecipientIds: [],
@@ -37,8 +39,10 @@ describe("isFocusedMessageLoadedInRoute", () => {
   it("returns false when focused stream message belongs to another topic route", () => {
     expect(
       isFocusedMessageLoadedInRoute({
-        focusedMessageId: 55,
-        messages: [message({ id: 55, stream_id: 10, subject: "bugs" })],
+        focusedMessageId: "00000000-0000-4000-8000-000000000055",
+        messages: [
+          message({ id: "00000000-0000-4000-8000-000000000055", stream_id: 10, subject: "bugs" }),
+        ],
         isDmView: false,
         currentUserId: 7,
         dmRecipientIds: [],
@@ -52,10 +56,10 @@ describe("isFocusedMessageLoadedInRoute", () => {
   it("returns true when focused dm message is already in loaded dm conversation", () => {
     expect(
       isFocusedMessageLoadedInRoute({
-        focusedMessageId: 99,
+        focusedMessageId: "00000000-0000-4000-8000-000000000099",
         messages: [
           message({
-            id: 99,
+            id: "00000000-0000-4000-8000-000000000099",
             stream_id: null,
             display_recipient: [
               { id: 7, full_name: "You" },
@@ -89,7 +93,7 @@ describe("shouldSkipFocusedAnchorInitialLoad", () => {
   it("returns false when focused message is not in the loaded route window", () => {
     expect(
       shouldSkipFocusedAnchorInitialLoad({
-        focusedMessageId: 55,
+        focusedMessageId: "00000000-0000-4000-8000-000000000055",
         isFocusedMessageLoadedInCurrentRoute: false,
         hasOlderMessages: true,
         hasNewerMessages: true,
@@ -100,7 +104,7 @@ describe("shouldSkipFocusedAnchorInitialLoad", () => {
   it("returns true when focused message is already loaded in the current route", () => {
     expect(
       shouldSkipFocusedAnchorInitialLoad({
-        focusedMessageId: 55,
+        focusedMessageId: "00000000-0000-4000-8000-000000000055",
         isFocusedMessageLoadedInCurrentRoute: true,
         hasOlderMessages: false,
         hasNewerMessages: false,
@@ -111,7 +115,7 @@ describe("shouldSkipFocusedAnchorInitialLoad", () => {
   it("returns true when focused message is in route with anchor pagination flags", () => {
     expect(
       shouldSkipFocusedAnchorInitialLoad({
-        focusedMessageId: 55,
+        focusedMessageId: "00000000-0000-4000-8000-000000000055",
         isFocusedMessageLoadedInCurrentRoute: true,
         hasOlderMessages: true,
         hasNewerMessages: false,
@@ -119,7 +123,7 @@ describe("shouldSkipFocusedAnchorInitialLoad", () => {
     ).toBe(true);
     expect(
       shouldSkipFocusedAnchorInitialLoad({
-        focusedMessageId: 55,
+        focusedMessageId: "00000000-0000-4000-8000-000000000055",
         isFocusedMessageLoadedInCurrentRoute: true,
         hasOlderMessages: false,
         hasNewerMessages: true,

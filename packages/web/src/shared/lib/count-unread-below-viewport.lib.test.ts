@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { MockMessage } from "~/shared/api/messenger.types";
+import { testMessageId, testMessageOrdinal } from "~/test/factories";
 import {
   countUnreadMessagesBelowViewport,
   isMessageNodeBelowViewport,
 } from "./count-unread-below-viewport.lib";
 
-function createMessage(id: number, senderId: number, flags?: string[]): MockMessage {
+function createMessage(id: number | string, senderId: number, flags?: string[]): MockMessage {
   return {
-    id,
+    id: testMessageId(id),
     sender_id: senderId,
     sender_full_name: `User ${senderId}`,
     stream_id: 10,
@@ -15,7 +16,7 @@ function createMessage(id: number, senderId: number, flags?: string[]): MockMess
     channel: "general",
     subject: "general",
     content: `<p>Message ${id}</p>`,
-    timestamp: 1700000000 + id,
+    timestamp: 1700000000 + testMessageOrdinal(id),
     flags,
   };
 }
@@ -63,18 +64,18 @@ describe("countUnreadMessagesBelowViewport", () => {
       createMessage(5, 42, ["read"]),
     ];
 
-    const topsById: Record<number, number> = {
-      1: 120,
-      2: 460,
-      3: 510,
-      4: 560,
-      5: 610,
-    };
+    const topsById = new Map([
+      [testMessageId(1), 120],
+      [testMessageId(2), 460],
+      [testMessageId(3), 510],
+      [testMessageId(4), 560],
+      [testMessageId(5), 610],
+    ]);
 
     for (const message of messages) {
       const node = document.createElement("div");
       node.setAttribute("data-message-id", String(message.id));
-      const top = topsById[message.id] ?? 120;
+      const top = topsById.get(message.id) ?? 120;
       node.getBoundingClientRect = () => ({
         top,
         bottom: top + 30,

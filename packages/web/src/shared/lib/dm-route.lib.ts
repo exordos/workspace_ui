@@ -26,26 +26,3 @@ export function normalizeDmRouteUserIds(
   );
   return withoutCurrentUser.length > 0 ? withoutCurrentUser : uniqueValidIds;
 }
-
-export function routeImpliesGroupDm(
-  _dmRecipientIds: readonly UserId[],
-  _currentUserId: UserId | null,
-): boolean {
-  return false;
-}
-
-export function computeIsGroupDmView(
-  _dmChat: { isGroup?: boolean } | null | undefined,
-  _dmRecipientIds: readonly UserId[],
-  _currentUserId: UserId | null,
-): boolean {
-  return false;
-}
-
-export function effectiveDmIsGroupFromSlug(
-  _isGroupFromRow: boolean | undefined,
-  _slugUserIds: readonly UserId[],
-  _currentUserId: UserId | null,
-): boolean {
-  return false;
-}

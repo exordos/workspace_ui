@@ -10,6 +10,7 @@
 import { messengerApi } from "~/shared/api/client";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { Draft, DraftInput } from "./draft.types";
 
 const log = createLogger("draft:api");
@@ -23,7 +24,7 @@ export async function fetchDrafts(): Promise<Draft[]> {
     }
     const data = res.data as {
       drafts?: {
-        id: number;
+        id: MessageId;
         type: string;
         to: number[];
         topic: string;
@@ -45,7 +46,7 @@ export async function fetchDrafts(): Promise<Draft[]> {
   }
 }
 
-export async function createDraft(input: DraftInput): Promise<number | null> {
+export async function createDraft(input: DraftInput): Promise<MessageId | null> {
   guard.oneOf(input.type, ["stream", "private"] as const, "draft type");
   guard.nonEmptyArray(input.to, "draft to (stream ID or recipient IDs)");
   for (const id of input.to) {
@@ -71,7 +72,7 @@ export async function createDraft(input: DraftInput): Promise<number | null> {
       log.warn("Create draft failed", { status: res.status });
       return null;
     }
-    const data = res.data as { ids?: number[] };
+    const data = res.data as { ids?: MessageId[] };
     return data.ids?.[0] ?? null;
   } catch (err) {
     log.error("Create draft error", { error: String(err) });
@@ -79,7 +80,7 @@ export async function createDraft(input: DraftInput): Promise<number | null> {
   }
 }
 
-export async function updateDraftOnServer(id: number, input: DraftInput): Promise<boolean> {
+export async function updateDraftOnServer(id: MessageId, input: DraftInput): Promise<boolean> {
   guard.messageId(id, "updateDraftOnServer");
   guard.oneOf(input.type, ["stream", "private"] as const, "draft type");
   guard.nonEmptyArray(input.to, "draft to");
@@ -107,7 +108,7 @@ export async function updateDraftOnServer(id: number, input: DraftInput): Promis
   }
 }
 
-export async function deleteDraftOnServer(id: number): Promise<boolean> {
+export async function deleteDraftOnServer(id: MessageId): Promise<boolean> {
   guard.messageId(id, "deleteDraftOnServer");
 
   try {

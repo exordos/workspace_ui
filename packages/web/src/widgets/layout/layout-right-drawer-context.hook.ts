@@ -70,8 +70,6 @@ export function useLayoutRightDrawerContext(
     [rawDmUserIds, currentUserId],
   );
 
-  const isGroupDm = false;
-
   const partnerUserId = useMemo(() => {
     return dmChat?.userUuid ?? dmRecipientIds[0] ?? dmChat?.id;
   }, [dmRecipientIds, dmChat?.id, dmChat?.userUuid]);
@@ -110,9 +108,6 @@ export function useLayoutRightDrawerContext(
       return name != null && name.length > 0 ? name : `User #${rightDrawerUserIdOverride}`;
     }
     if (dmIdParam != null && dmIdParam !== "") {
-      if (isGroupDm) {
-        return (dmChat?.name?.trim() ?? "") || t("dm.groupChat");
-      }
       return resolvePersonalDmSidebarTitle({
         chatName: dmChat?.name ?? "",
         userFullName: partnerUserRecord?.full_name,
@@ -131,7 +126,6 @@ export function useLayoutRightDrawerContext(
     activeTopic,
     dmChat?.name,
     dmIdParam,
-    isGroupDm,
     partnerStoreDisplayName,
     partnerUserRecord?.full_name,
     rightDrawerOpen,

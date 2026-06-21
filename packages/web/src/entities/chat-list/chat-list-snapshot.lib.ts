@@ -7,41 +7,66 @@ import type {
   ChatListSnapshotMessageLocation,
 } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import { serializeStreamEntry } from "~/shared/lib/chat-list-snapshot-serialize.lib";
+import { compareMessageTimeline } from "~/shared/lib/message-id.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { ChatListState } from "./chat-list.model.types";
 
 export function computeMessageIdBounds(messages: readonly WorkspaceRawMessage[]): {
-  lastMessageId: number | null;
-  oldestMessageId: number | null;
+  lastMessageId: MessageId | null;
+  oldestMessageId: MessageId | null;
 } {
   if (messages.length === 0) return { lastMessageId: null, oldestMessageId: null };
-  let min = messages[0]!.id;
-  let max = messages[0]!.id;
-  for (const m of messages) {
-    if (m.id < min) min = m.id;
-    if (m.id > max) max = m.id;
+  let oldest = messages[0]!;
+  let newest = messages[0]!;
+  for (const message of messages) {
+    if (compareMessageTimeline(message, oldest) < 0) oldest = message;
+    if (compareMessageTimeline(message, newest) > 0) newest = message;
   }
-  return { lastMessageId: max, oldestMessageId: min };
+  return { lastMessageId: newest.id, oldestMessageId: oldest.id };
+}
+
+interface MessageTimelineBounds {
+  newestId: MessageId | null;
+  newestTimestamp: number;
+  oldestId: MessageId | null;
+  oldestTimestamp: number;
 }
 
 function updateMessageIdBounds(
-  bounds: { maxId: number; minId: number; any: boolean },
-  messageId: number,
+  bounds: MessageTimelineBounds,
+  messageId: MessageId,
+  timestamp: number,
 ): void {
-  bounds.any = true;
-  if (messageId > bounds.maxId) bounds.maxId = messageId;
-  if (messageId < bounds.minId) bounds.minId = messageId;
+  const next = { id: messageId, timestamp };
+  if (
+    bounds.newestId == null ||
+    compareMessageTimeline(next, { id: bounds.newestId, timestamp: bounds.newestTimestamp }) > 0
+  ) {
+    bounds.newestId = messageId;
+    bounds.newestTimestamp = timestamp;
+  }
+  if (
+    bounds.oldestId == null ||
+    compareMessageTimeline(next, { id: bounds.oldestId, timestamp: bounds.oldestTimestamp }) < 0
+  ) {
+    bounds.oldestId = messageId;
+    bounds.oldestTimestamp = timestamp;
+  }
 }
 
-function collectMessageIdBoundsFromStreamMaps(streamsMap: ChatListState["streamsMap"]): {
-  maxId: number;
-  minId: number;
-  any: boolean;
-} {
-  const bounds = { maxId: 0, minId: Number.MAX_SAFE_INTEGER, any: false };
+function collectMessageIdBoundsFromStreamMaps(
+  streamsMap: ChatListState["streamsMap"],
+): MessageTimelineBounds {
+  const bounds: MessageTimelineBounds = {
+    newestId: null,
+    newestTimestamp: 0,
+    oldestId: null,
+    oldestTimestamp: 0,
+  };
   for (const s of streamsMap.values()) {
     for (const t of s.topics.values()) {
       if (t.lastMessageId != null) {
-        updateMessageIdBounds(bounds, t.lastMessageId);
+        updateMessageIdBounds(bounds, t.lastMessageId, t.ts);
       }
     }
   }
@@ -50,26 +75,25 @@ function collectMessageIdBoundsFromStreamMaps(streamsMap: ChatListState["streams
 
 function collectMessageIdBoundsFromDmMaps(
   dmsMap: ChatListState["dmsMap"],
-  bounds: { maxId: number; minId: number; any: boolean },
+  bounds: MessageTimelineBounds,
 ): void {
   for (const d of dmsMap.values()) {
     if (d.lastMessageId != null) {
-      updateMessageIdBounds(bounds, d.lastMessageId);
+      updateMessageIdBounds(bounds, d.lastMessageId, d.ts);
     }
   }
 }
 
 export function computeMessageIdBoundsFromMaps(state: ChatListState): {
-  lastMessageId: number | null;
-  oldestMessageId: number | null;
+  lastMessageId: MessageId | null;
+  oldestMessageId: MessageId | null;
 } {
   if (state.lastAppliedMessages != null && state.lastAppliedMessages.length > 0) {
     return computeMessageIdBounds(state.lastAppliedMessages);
   }
   const bounds = collectMessageIdBoundsFromStreamMaps(state.streamsMap);
   collectMessageIdBoundsFromDmMaps(state.dmsMap, bounds);
-  if (!bounds.any) return { lastMessageId: null, oldestMessageId: null };
-  return { lastMessageId: bounds.maxId, oldestMessageId: bounds.minId };
+  return { lastMessageId: bounds.newestId, oldestMessageId: bounds.oldestId };
 }
 
 export function buildChatListSnapshotSerialized(state: ChatListState): ChatListSnapshotSerialized {
@@ -78,7 +102,7 @@ export function buildChatListSnapshotSerialized(state: ChatListState): ChatListS
   for (const [id, s] of state.streamsMap.entries()) {
     streamsEntries.push([id, serializeStreamEntry(s)]);
   }
-  const messageIdToLocationEntries: [number, ChatListSnapshotMessageLocation][] = [];
+  const messageIdToLocationEntries: [MessageId, ChatListSnapshotMessageLocation][] = [];
   for (const [id, loc] of state.messageIdToLocation.entries()) {
     messageIdToLocationEntries.push([id, loc]);
   }

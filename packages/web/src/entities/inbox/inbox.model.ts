@@ -4,6 +4,7 @@
 
 import { create } from "zustand";
 import { logStoreAction } from "~/shared/lib/logger";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { applyMarkAsReadToInboxEntries } from "./inbox-mark-read.lib";
 import { removeInboxEntriesForMarkReadTarget } from "./inbox.lib";
 import type { InboxEntry, InboxMarkReadTarget } from "./inbox.types";
@@ -24,7 +25,7 @@ interface InboxState {
   staleVersion: number;
 
   setEntries: (entries: InboxEntry[], requestVersion?: number) => void;
-  markAsRead: (messageIds: number[]) => void;
+  markAsRead: (messageIds: MessageId[]) => void;
   removeEntriesForTarget: (target: InboxMarkReadTarget, currentUserId: number | null) => void;
   clearEntries: () => void;
   markStale: () => void;

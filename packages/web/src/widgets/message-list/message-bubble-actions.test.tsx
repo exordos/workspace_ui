@@ -8,7 +8,7 @@ import {
   MESSAGE_BUBBLE_BODY_CLASS_NAME,
   MESSAGE_MEDIA_PREVIEW_CLASS_NAME,
 } from "~/shared/lib/message-body-rich-text-classes";
-import { createUser } from "~/test/factories";
+import { createUser, testMessageId } from "~/test/factories";
 import { MessageBubble } from "./message-bubble.ui";
 import { buildMessageMediaGallery } from "./message-list-media.lib";
 
@@ -61,16 +61,21 @@ vi.mock("~/shared/lib/auth-guard", async (importOriginal) => {
   };
 });
 
-function createMessage(overrides: Partial<MockMessage> = {}): MockMessage {
+type MockMessageOverrides = Partial<Omit<MockMessage, "id">> & {
+  id?: MockMessage["id"] | number;
+};
+
+function createMessage(overrides: MockMessageOverrides = {}): MockMessage {
+  const { id, ...rest } = overrides;
   return {
-    id: 101,
+    id: testMessageId(id ?? 101),
     sender_id: 77,
     sender_full_name: "Alice",
     stream_id: 10,
     subject: "general",
     content: "<p>Hello</p>",
     timestamp: 1710000000,
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -112,7 +117,7 @@ describe("MessageBubble edit/delete actions parity", () => {
   it("hides edit and delete actions for non-own messages", async () => {
     render(<MessageBubble message={createMessage()} isOwn={false} />);
 
-    fireEvent.contextMenu(screen.getByTestId("message-101"));
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(101)}`));
     expect(await screen.findByRole("menuitem", { name: /reply/i })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /(edit|редакт)/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /(delete|удал)/i })).not.toBeInTheDocument();
@@ -133,13 +138,13 @@ describe("MessageBubble edit/delete actions parity", () => {
       />,
     );
 
-    fireEvent.contextMenu(screen.getByTestId("message-101"));
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(101)}`));
     fireEvent.click(await screen.findByRole("menuitem", { name: /(edit|редакт)/i }));
-    expect(onEdit).toHaveBeenCalledWith(expect.objectContaining({ id: 101 }));
+    expect(onEdit).toHaveBeenCalledWith(expect.objectContaining({ id: testMessageId(101) }));
 
-    fireEvent.contextMenu(screen.getByTestId("message-101"));
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(101)}`));
     fireEvent.click(await screen.findByRole("menuitem", { name: /(delete|удал)/i }));
-    expect(onDelete).toHaveBeenCalledWith(expect.objectContaining({ id: 101 }));
+    expect(onDelete).toHaveBeenCalledWith(expect.objectContaining({ id: testMessageId(101) }));
   });
 
   it("hides edit action when own message edit time has expired", async () => {
@@ -150,7 +155,7 @@ describe("MessageBubble edit/delete actions parity", () => {
 
     render(<MessageBubble message={createMessage({ timestamp: 1000 })} isOwn />);
 
-    fireEvent.contextMenu(screen.getByTestId("message-101"));
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(101)}`));
     expect(await screen.findByRole("menuitem", { name: /(delete|удал)/i })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /(edit|редакт)/i })).not.toBeInTheDocument();
   });
@@ -176,7 +181,7 @@ describe("MessageBubble edit/delete actions parity", () => {
 
     dateNow.mockReturnValue((nowSeconds + 2) * 1000);
 
-    fireEvent.contextMenu(screen.getByTestId("message-101"));
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(101)}`));
 
     expect(await screen.findByRole("menuitem", { name: /(delete|удал)/i })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /(edit|редакт)/i })).not.toBeInTheDocument();
@@ -197,11 +202,11 @@ describe("MessageBubble edit/delete actions parity", () => {
       />,
     );
 
-    fireEvent.contextMenu(screen.getByTestId("message-101"));
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(101)}`));
     fireEvent.click(await screen.findByRole("menuitem", { name: /select/i }));
 
     expect(onSelect).toHaveBeenCalledTimes(1);
-    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 101 }));
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: testMessageId(101) }));
   });
 
   it("renders SVG icons for every message action menu item", async () => {
@@ -215,7 +220,7 @@ describe("MessageBubble edit/delete actions parity", () => {
       />,
     );
 
-    fireEvent.contextMenu(screen.getByTestId("message-101"));
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(101)}`));
     const menuItems = await screen.findAllByRole("menuitem");
 
     expect(menuItems.length).toBeGreaterThan(0);
@@ -227,7 +232,7 @@ describe("MessageBubble edit/delete actions parity", () => {
   it("uses explicit highlight hover contract for message menu items", async () => {
     render(<MessageBubble message={createMessage()} isOwn={false} />);
 
-    fireEvent.contextMenu(screen.getByTestId("message-101"));
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(101)}`));
     const replyItem = await screen.findByRole("menuitem", { name: /reply/i });
     const moreReactionsButton = screen.getByRole("button", { name: /more reactions/i });
 
@@ -253,7 +258,7 @@ describe("MessageBubble edit/delete actions parity", () => {
       />,
     );
 
-    fireEvent.contextMenu(screen.getByTestId("message-103"));
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(103)}`));
 
     const menuItems = await screen.findAllByRole("menuitem");
     const labels = menuItems.map((item) => item.textContent?.trim());
@@ -301,7 +306,10 @@ describe("MessageBubble edit/delete actions parity", () => {
       }),
     );
 
-    fireEvent.contextMenu(screen.getByTestId("message-101"), { clientX: 860, clientY: 320 });
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(101)}`), {
+      clientX: 860,
+      clientY: 320,
+    });
     expect(await screen.findByRole("menuitem", { name: /reply/i })).toBeInTheDocument();
 
     const contextTrigger = document.querySelector<HTMLElement>(
@@ -318,7 +326,10 @@ describe("MessageBubble edit/delete actions parity", () => {
 
     render(<MessageBubble message={createMessage()} isOwn={false} />);
 
-    fireEvent.contextMenu(screen.getByTestId("message-101"), { clientX: 320, clientY: 360 });
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(101)}`), {
+      clientX: 320,
+      clientY: 360,
+    });
     const moreReactionsButton = await screen.findByRole("button", { name: /more reactions/i });
     vi.spyOn(moreReactionsButton, "getBoundingClientRect").mockReturnValue(
       createRect({
@@ -360,7 +371,10 @@ describe("MessageBubble edit/delete actions parity", () => {
       />,
     );
 
-    fireEvent.contextMenu(screen.getByTestId("message-101"), { clientX: 320, clientY: 360 });
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(101)}`), {
+      clientX: 320,
+      clientY: 360,
+    });
     fireEvent.click(await screen.findByRole("button", { name: /more reactions/i }));
 
     const popover = await screen.findByTestId("message-reaction-emoji-picker-popover");
@@ -371,7 +385,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(backdrop).toHaveClass("pointer-events-auto");
 
     fireEvent.click(await screen.findByRole("button", { name: /pick emoji/i }));
-    expect(onAddReaction).toHaveBeenCalledWith(101, {
+    expect(onAddReaction).toHaveBeenCalledWith(testMessageId(101), {
       emojiName: "grinning",
       emojiCode: "1f600",
       reactionType: "unicode_emoji",
@@ -381,7 +395,10 @@ describe("MessageBubble edit/delete actions parity", () => {
   it("closes the extended reaction picker when the message menu closes", async () => {
     render(<MessageBubble message={createMessage()} isOwn={false} />);
 
-    fireEvent.contextMenu(screen.getByTestId("message-101"), { clientX: 320, clientY: 360 });
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(101)}`), {
+      clientX: 320,
+      clientY: 360,
+    });
     fireEvent.click(await screen.findByRole("button", { name: /more reactions/i }));
     expect(await screen.findByTestId("message-reaction-emoji-picker-popover")).toBeInTheDocument();
 
@@ -390,7 +407,10 @@ describe("MessageBubble edit/delete actions parity", () => {
       expect(screen.queryByTestId("message-reaction-emoji-picker-popover")).not.toBeInTheDocument();
     });
 
-    fireEvent.contextMenu(screen.getByTestId("message-101"), { clientX: 320, clientY: 360 });
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(101)}`), {
+      clientX: 320,
+      clientY: 360,
+    });
     expect(await screen.findByRole("button", { name: /more reactions/i })).toBeInTheDocument();
     expect(screen.queryByTestId("message-reaction-emoji-picker-popover")).not.toBeInTheDocument();
   });
@@ -408,7 +428,7 @@ describe("MessageBubble edit/delete actions parity", () => {
       />,
     );
 
-    fireEvent.contextMenu(screen.getByTestId("message-101"), {
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(101)}`), {
       clientX: 860,
       clientY: 320,
     });
@@ -510,7 +530,7 @@ describe("MessageBubble edit/delete actions parity", () => {
   it("keeps message content selectable", () => {
     const { container } = render(<MessageBubble message={createMessage()} isOwn={false} />);
 
-    expect(screen.getByTestId("message-101")).toHaveClass("selectable");
+    expect(screen.getByTestId(`message-${testMessageId(101)}`)).toHaveClass("selectable");
     expect(container.querySelector(".message-body")).toHaveClass("select-text");
   });
 
@@ -527,10 +547,10 @@ describe("MessageBubble edit/delete actions parity", () => {
       />,
     );
 
-    fireEvent.click(screen.getByTestId("message-delivery-101"));
+    fireEvent.click(screen.getByTestId(`message-delivery-${testMessageId(101)}`));
 
     expect(onViews).toHaveBeenCalledTimes(1);
-    expect(onViews).toHaveBeenCalledWith(expect.objectContaining({ id: 101 }));
+    expect(onViews).toHaveBeenCalledWith(expect.objectContaining({ id: testMessageId(101) }));
   });
 
   it("shows static pending icon for optimistic own messages without sent check", () => {
@@ -543,7 +563,7 @@ describe("MessageBubble edit/delete actions parity", () => {
       />,
     );
 
-    const deliveryIndicator = screen.getByTestId("message-delivery-101");
+    const deliveryIndicator = screen.getByTestId(`message-delivery-${testMessageId(101)}`);
     expect(deliveryIndicator).toBeInTheDocument();
     expect(screen.getByText(/sending/i)).toHaveClass("sr-only");
     expect(deliveryIndicator.querySelector("svg")).toBeInTheDocument();
@@ -598,7 +618,7 @@ describe("MessageBubble edit/delete actions parity", () => {
       />,
     );
 
-    const editStatus = screen.getByTestId("message-edit-status-101");
+    const editStatus = screen.getByTestId(`message-edit-status-${testMessageId(101)}`);
     expect(editStatus).toBeInTheDocument();
     expect(screen.getByText(/saving edit/i)).toHaveClass("sr-only");
     expect(editStatus.querySelector(".animate-spin")).toBeInTheDocument();
@@ -622,7 +642,7 @@ describe("MessageBubble edit/delete actions parity", () => {
       />,
     );
 
-    expect(screen.getByTestId("message-edit-status-101")).toHaveAttribute(
+    expect(screen.getByTestId(`message-edit-status-${testMessageId(101)}`)).toHaveAttribute(
       "title",
       "server rejected",
     );
@@ -1155,7 +1175,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(jitsiCallButton).not.toHaveClass("rounded-xl");
     expect(jitsiCallButton).toHaveTextContent(/design sync room/i);
     expect(jitsiCallButton).toHaveTextContent(/topic\s*2/i);
-    expect(screen.getByTestId("jitsi-call-participants-101")).toBeInTheDocument();
+    expect(screen.getByTestId(`jitsi-call-participants-${testMessageId(101)}`)).toBeInTheDocument();
     expect(screen.getByText("+1")).toBeInTheDocument();
 
     fireEvent.click(jitsiCallButton!);
@@ -1178,7 +1198,7 @@ describe("MessageBubble edit/delete actions parity", () => {
       />,
     );
 
-    fireEvent.contextMenu(screen.getByTestId("message-105"));
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(105)}`));
 
     expect(await screen.findByRole("menuitem", { name: /join call/i })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /reply/i })).toBeInTheDocument();
@@ -1187,9 +1207,9 @@ describe("MessageBubble edit/delete actions parity", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: /join call/i }));
     expect(onOpenJitsiCall).toHaveBeenCalledWith(jitsiUrl, "");
 
-    fireEvent.contextMenu(screen.getByTestId("message-105"));
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(105)}`));
     fireEvent.click(await screen.findByRole("menuitem", { name: /select/i }));
-    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 105 }));
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: testMessageId(105) }));
   });
 
   it("renders call message actions with call-specific group first", async () => {
@@ -1210,7 +1230,7 @@ describe("MessageBubble edit/delete actions parity", () => {
       />,
     );
 
-    fireEvent.contextMenu(screen.getByTestId("message-107"));
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(107)}`));
 
     const menuItems = await screen.findAllByRole("menuitem");
     const labels = menuItems.map((item) => item.textContent?.trim());
@@ -1244,14 +1264,14 @@ describe("MessageBubble edit/delete actions parity", () => {
       />,
     );
 
-    fireEvent.contextMenu(screen.getByTestId("message-106"));
+    fireEvent.contextMenu(screen.getByTestId(`message-${testMessageId(106)}`));
 
     const copyCallLinkItem = await screen.findByRole("menuitem", { name: /copy call link/i });
     fireEvent.click(copyCallLinkItem);
 
     expect(onCopy).toHaveBeenCalledWith(
       expect.objectContaining({
-        id: 106,
+        id: testMessageId(106),
         content: jitsiUrl,
       }),
     );

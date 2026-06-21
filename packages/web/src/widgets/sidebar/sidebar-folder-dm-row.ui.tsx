@@ -7,7 +7,7 @@ import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indi
 import { t } from "~/i18n/i18n";
 import { getRealmBaseUrl } from "~/shared/api/messenger-client.internal";
 import { resolveAvatarUrl } from "~/shared/lib/avatar";
-import { computeIsGroupDmView, normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
+import { normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
 import { sidebarRowClass, getPresenceState } from "~/shared/lib/format";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
@@ -44,18 +44,14 @@ export const DmChatRow = React.memo(function DmChatRow({
     () => normalizeDmRouteUserIds(slugUserIds, currentUserId),
     [slugUserIds, currentUserId],
   );
-  const isGroupDm = useMemo(
-    () => computeIsGroupDmView({ isGroup: chat.isGroup }, normalizedPeerIds, currentUserId),
-    [chat.isGroup, normalizedPeerIds, currentUserId],
-  );
-  const partnerUserId = isGroupDm ? null : (normalizedPeerIds[0] ?? chat.id);
+  const partnerUserId = normalizedPeerIds[0] ?? chat.id;
   const typingMap = useTypingIndicatorStore((s) => s.typingMap);
   const user = useUsersStore((s) => (partnerUserId != null ? s.getUser(partnerUserId) : undefined));
   const storeDisplayName = useUsersStore((s) =>
     partnerUserId != null ? s.getDisplayName(partnerUserId) : "Unknown",
   );
   const rowTitle =
-    isGroupDm || partnerUserId == null
+    partnerUserId == null
       ? chat.name
       : resolvePersonalDmSidebarTitle({
           chatName: chat.name,
@@ -71,9 +67,7 @@ export const DmChatRow = React.memo(function DmChatRow({
   const partnerDeactivated = user?.is_active === false;
   const presenceState =
     user?.presence != null ? getPresenceState(user.presence.timestamp, user.presence.status) : null;
-  const avatarSrc = !isGroupDm
-    ? (getAvatarUrl(user?.avatar_url ?? undefined) ?? getAvatarUrl(chat.avatar_url))
-    : null;
+  const avatarSrc = getAvatarUrl(user?.avatar_url ?? undefined) ?? getAvatarUrl(chat.avatar_url);
   const rowClass = compact
     ? "flex items-start gap-2 rounded-md px-2 py-1.5 transition-colors"
     : "flex items-start gap-3 rounded-lg px-2.5 py-2.5 transition-colors";
@@ -88,27 +82,19 @@ export const DmChatRow = React.memo(function DmChatRow({
     >
       <div className="relative shrink-0">
         <Avatar size={compact ? "sm" : "md"} src={avatarSrc ?? undefined}>
-          {isGroupDm ? (
-            <span data-testid={`group-avatar-icon-${chat.slug}`}>
-              <Icon name="group" size={16} className="text-text-primary" />
-            </span>
-          ) : (
-            rowTitle.slice(0, 1)
-          )}
+          {rowTitle.slice(0, 1)}
         </Avatar>
-        {!isGroupDm && (
-          <PresenceIndicator
-            status={presenceState}
-            size="sm"
-            deactivated={partnerDeactivated}
-            className="absolute bottom-0 right-0"
-          />
-        )}
+        <PresenceIndicator
+          status={presenceState}
+          size="sm"
+          deactivated={partnerDeactivated}
+          className="absolute bottom-0 right-0"
+        />
       </div>
       <div className="flex min-w-0 flex-1 flex-col justify-center">
         <div className="flex min-w-0 items-center gap-1.5">
           <span className="min-w-0 truncate text-sm font-medium text-text-primary">{rowTitle}</span>
-          {!isGroupDm && <SidebarUserStatusEmoji status={user?.status} />}
+          <SidebarUserStatusEmoji status={user?.status} />
         </div>
         {!compact && (
           <span

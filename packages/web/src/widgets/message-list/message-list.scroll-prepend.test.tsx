@@ -1,6 +1,7 @@
 import { act, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MockMessage } from "~/shared/api/messenger.types";
+import { testMessageId, testMessageOrdinal } from "~/test/factories";
 import { MessageList } from "./message-list.ui";
 
 vi.mock("~/shared/lib/scroll-position.lib", async (importOriginal) => {
@@ -8,7 +9,7 @@ vi.mock("~/shared/lib/scroll-position.lib", async (importOriginal) => {
   return { ...mod, scrollToBottom: vi.fn() };
 });
 
-const messageRects = new Map<number, Partial<DOMRectReadOnly>>();
+const messageRects = new Map<string, Partial<DOMRectReadOnly>>();
 const originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
 
 beforeEach(() => {
@@ -16,7 +17,7 @@ beforeEach(() => {
   HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRectMock() {
     const messageId = this.getAttribute("data-message-id");
     if (messageId != null) {
-      const rect = messageRects.get(Number(messageId));
+      const rect = messageRects.get(messageId);
       if (rect != null) {
         return buildRect(rect);
       }
@@ -29,9 +30,9 @@ afterEach(() => {
   HTMLElement.prototype.getBoundingClientRect = originalGetBoundingClientRect;
 });
 
-function msg(id: number, overrides: Partial<MockMessage> = {}): MockMessage {
+function msg(id: number | string, overrides: Partial<MockMessage> = {}): MockMessage {
   return {
-    id,
+    id: testMessageId(id),
     sender_id: 42,
     sender_full_name: "Alice",
     stream_id: 10,
@@ -39,7 +40,7 @@ function msg(id: number, overrides: Partial<MockMessage> = {}): MockMessage {
     channel: "general",
     subject: "bugs",
     content: `<p>Message ${id}</p>`,
-    timestamp: 1710000000 + id,
+    timestamp: 1710000000 + testMessageOrdinal(id),
     ...overrides,
   };
 }
@@ -63,7 +64,7 @@ function setRect(el: HTMLElement, rect: Partial<DOMRectReadOnly>): void {
 }
 
 function setMessageRect(messageId: number, rect: Partial<DOMRectReadOnly>): void {
-  messageRects.set(messageId, rect);
+  messageRects.set(testMessageId(messageId), rect);
 }
 
 describe("MessageList prepend scroll anchor", () => {

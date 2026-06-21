@@ -1,14 +1,18 @@
 import { createLogger } from "../logger";
+import { normalizeMessageId } from "../message-id.lib";
+import type { MessageId } from "../message-id.lib";
 import type { PushMessagePayload } from "./types";
 
 const log = createLogger("push:parse");
 
-function parsePushMessageIds(raw: string | undefined): number[] {
+function parsePushMessageIds(raw: string | undefined): MessageId[] {
   if (!raw) {
     return [];
   }
   try {
-    return JSON.parse(raw) as number[];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(normalizeMessageId).filter((id) => id != null);
   } catch {
     log.warn("Failed to parse message_ids in push middleware");
     return [];
@@ -51,7 +55,7 @@ export function buildPushPayloadFromEnvelopeData(
     event: "message",
     realm_uri: data.realm_uri,
     message: {
-      id: Number(data.message_id) || 0,
+      id: normalizeMessageId(data.message_id) ?? "",
       sender_id: Number(data.sender_id) || 0,
       sender_full_name: data.sender_full_name ?? "",
       sender_avatar_url: data.sender_avatar_url,

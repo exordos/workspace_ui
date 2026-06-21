@@ -30,8 +30,6 @@ export function useLayoutRightPanelUser(options: {
     [rightDrawerTargetUserId, currentChatMessages],
   );
 
-  const rightPanelCommonGroups = undefined;
-
   return useMemo(() => {
     return buildRightPanelUserInfo({
       userFromStore:
@@ -47,7 +45,6 @@ export function useLayoutRightPanelUser(options: {
       userStatusLabel,
       currentInstanceRealm,
       media: rightPanelMedia,
-      commonGroups: rightPanelCommonGroups,
     });
   }, [
     userFromStore,
@@ -57,6 +54,5 @@ export function useLayoutRightPanelUser(options: {
     userStatusLabel,
     currentInstanceRealm,
     rightPanelMedia,
-    rightPanelCommonGroups,
   ]);
 }

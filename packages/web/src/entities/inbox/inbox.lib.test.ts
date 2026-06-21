@@ -13,7 +13,7 @@ const DM_A: InboxEntry = {
   dmSlug: "42",
   unreadCount: 2,
   lastMessageTimestamp: 200,
-  messageIds: [1, 2],
+  messageIds: ["00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000002"],
 };
 
 const STREAM_TOPIC_A: InboxEntry = {
@@ -26,7 +26,11 @@ const STREAM_TOPIC_A: InboxEntry = {
   dmSlug: null,
   unreadCount: 3,
   lastMessageTimestamp: 300,
-  messageIds: [3, 4, 5],
+  messageIds: [
+    "00000000-0000-4000-8000-000000000003",
+    "00000000-0000-4000-8000-000000000004",
+    "00000000-0000-4000-8000-000000000005",
+  ],
 };
 
 const STREAM_TOPIC_B: InboxEntry = {
@@ -39,7 +43,7 @@ const STREAM_TOPIC_B: InboxEntry = {
   dmSlug: null,
   unreadCount: 1,
   lastMessageTimestamp: 100,
-  messageIds: [6],
+  messageIds: ["00000000-0000-4000-8000-000000000006"],
 };
 
 const STREAM_TOPIC_C: InboxEntry = {
@@ -52,7 +56,7 @@ const STREAM_TOPIC_C: InboxEntry = {
   dmSlug: null,
   unreadCount: 1,
   lastMessageTimestamp: 500,
-  messageIds: [7],
+  messageIds: ["00000000-0000-4000-8000-000000000007"],
 };
 
 describe("groupInboxEntries", () => {
@@ -110,7 +114,7 @@ describe("buildInboxEntries", () => {
     const { buildInboxEntries } = await import("./inbox.lib");
     const messages: MockMessage[] = [
       {
-        id: 10,
+        id: "00000000-0000-4000-8000-000000000010",
         sender_id: 42,
         sender_full_name: "Alice",
         stream_id: 10,
@@ -121,7 +125,7 @@ describe("buildInboxEntries", () => {
         display_recipient: "muted-channel",
       },
       {
-        id: 11,
+        id: "00000000-0000-4000-8000-000000000011",
         sender_id: 42,
         sender_full_name: "Alice",
         stream_id: 20,
@@ -132,7 +136,7 @@ describe("buildInboxEntries", () => {
         display_recipient: "engineering",
       },
       {
-        id: 12,
+        id: "00000000-0000-4000-8000-000000000012",
         sender_id: 42,
         sender_full_name: "Alice",
         stream_id: 20,
@@ -152,7 +156,7 @@ describe("buildInboxEntries", () => {
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
       key: "stream:20:open-topic",
-      messageIds: [12],
+      messageIds: ["00000000-0000-4000-8000-000000000012"],
       unreadCount: 1,
     });
   });
@@ -161,7 +165,7 @@ describe("buildInboxEntries", () => {
     const { buildInboxEntries } = await import("./inbox.lib");
     const messages: MockMessage[] = [
       {
-        id: 20,
+        id: "00000000-0000-4000-8000-000000000020",
         sender_id: 42,
         sender_full_name: "Alice",
         stream_id: 10,
@@ -185,7 +189,7 @@ describe("buildInboxEntries", () => {
     const { buildInboxEntries } = await import("./inbox.lib");
     const messages: MockMessage[] = [
       {
-        id: 10,
+        id: "00000000-0000-4000-8000-000000000010",
         sender_id: 42,
         sender_full_name: "Alice",
         stream_id: null,
@@ -200,7 +204,7 @@ describe("buildInboxEntries", () => {
         ],
       },
       {
-        id: 11,
+        id: "00000000-0000-4000-8000-000000000011",
         sender_id: 99,
         sender_full_name: "Bob",
         stream_id: null,
@@ -225,7 +229,7 @@ describe("buildInboxEntries", () => {
       senderId: null,
       senderName: "Alice, Bob",
       unreadCount: 2,
-      messageIds: [10, 11],
+      messageIds: ["00000000-0000-4000-8000-000000000010", "00000000-0000-4000-8000-000000000011"],
       lastMessageTimestamp: 200,
     });
   });
@@ -234,7 +238,7 @@ describe("buildInboxEntries", () => {
     const { buildInboxEntries } = await import("./inbox.lib");
     const messages: MockMessage[] = [
       {
-        id: 77,
+        id: "00000000-0000-4000-8000-000000000077",
         sender_id: 42,
         sender_full_name: "Alice",
         stream_id: 10,
@@ -255,29 +259,69 @@ describe("buildInboxEntries", () => {
       streamName: "engineering",
       topic: "",
       unreadCount: 1,
-      messageIds: [77],
+      messageIds: ["00000000-0000-4000-8000-000000000077"],
     });
   });
 });
 
 describe("isInboxEntriesSnapshotFresher", () => {
   it("returns true when candidate has newer timestamp", () => {
-    const current = [{ ...DM_A, lastMessageTimestamp: 100, messageIds: [10] }];
-    const candidate = [{ ...DM_A, lastMessageTimestamp: 200, messageIds: [11] }];
+    const current = [
+      { ...DM_A, lastMessageTimestamp: 100, messageIds: ["00000000-0000-4000-8000-000000000010"] },
+    ];
+    const candidate = [
+      { ...DM_A, lastMessageTimestamp: 200, messageIds: ["00000000-0000-4000-8000-000000000011"] },
+    ];
 
     expect(isInboxEntriesSnapshotFresher(candidate, current)).toBe(true);
   });
 
   it("returns true when timestamp is equal but candidate has higher max messageId", () => {
-    const current = [{ ...DM_A, lastMessageTimestamp: 200, messageIds: [100, 120] }];
-    const candidate = [{ ...DM_A, lastMessageTimestamp: 200, messageIds: [100, 130] }];
+    const current = [
+      {
+        ...DM_A,
+        lastMessageTimestamp: 200,
+        messageIds: [
+          "00000000-0000-4000-8000-000000000100",
+          "00000000-0000-4000-8000-000000000120",
+        ],
+      },
+    ];
+    const candidate = [
+      {
+        ...DM_A,
+        lastMessageTimestamp: 200,
+        messageIds: [
+          "00000000-0000-4000-8000-000000000100",
+          "00000000-0000-4000-8000-000000000130",
+        ],
+      },
+    ];
 
     expect(isInboxEntriesSnapshotFresher(candidate, current)).toBe(true);
   });
 
   it("returns false when candidate is not fresher", () => {
-    const current = [{ ...DM_A, lastMessageTimestamp: 200, messageIds: [100, 130] }];
-    const candidate = [{ ...DM_A, lastMessageTimestamp: 200, messageIds: [100, 120] }];
+    const current = [
+      {
+        ...DM_A,
+        lastMessageTimestamp: 200,
+        messageIds: [
+          "00000000-0000-4000-8000-000000000100",
+          "00000000-0000-4000-8000-000000000130",
+        ],
+      },
+    ];
+    const candidate = [
+      {
+        ...DM_A,
+        lastMessageTimestamp: 200,
+        messageIds: [
+          "00000000-0000-4000-8000-000000000100",
+          "00000000-0000-4000-8000-000000000120",
+        ],
+      },
+    ];
 
     expect(isInboxEntriesSnapshotFresher(candidate, current)).toBe(false);
   });

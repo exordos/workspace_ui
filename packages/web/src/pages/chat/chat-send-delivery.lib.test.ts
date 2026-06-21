@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { testMessageId } from "~/test/factories";
 import {
   buildOptimisticOutgoingMessage,
   markOutgoingMessageFailed,
@@ -7,9 +8,10 @@ import {
 
 describe("buildOptimisticOutgoingMessage", () => {
   it("builds optimistic DM message with sending state", () => {
+    const id = testMessageId(900001);
     expect(
       buildOptimisticOutgoingMessage({
-        id: -1,
+        id,
         senderId: 42,
         senderFullName: "You",
         content: "hello",
@@ -17,7 +19,7 @@ describe("buildOptimisticOutgoingMessage", () => {
         nowSec: 123,
       }),
     ).toEqual({
-      id: -1,
+      id,
       sender_id: 42,
       sender_full_name: "You",
       stream_id: null,
@@ -30,14 +32,15 @@ describe("buildOptimisticOutgoingMessage", () => {
       markdown_source: "hello",
       timestamp: 123,
       delivery_status: "sending",
-      local_echo_key: -1,
+      local_echo_key: id,
     });
   });
 
   it("builds optimistic stream message with sending state", () => {
+    const id = testMessageId(900002);
     expect(
       buildOptimisticOutgoingMessage({
-        id: -2,
+        id,
         senderId: 42,
         senderFullName: "You",
         content: "hello stream",
@@ -45,7 +48,7 @@ describe("buildOptimisticOutgoingMessage", () => {
         nowSec: 456,
       }),
     ).toEqual({
-      id: -2,
+      id,
       sender_id: 42,
       sender_full_name: "You",
       stream_id: 5,
@@ -56,14 +59,14 @@ describe("buildOptimisticOutgoingMessage", () => {
       markdown_source: "hello stream",
       timestamp: 456,
       delivery_status: "sending",
-      local_echo_key: -2,
+      local_echo_key: id,
     });
   });
 
   it("stores composer text as markdown_source for optimistic HTML-like bodies", () => {
     expect(
       buildOptimisticOutgoingMessage({
-        id: -5,
+        id: testMessageId(900005),
         senderId: 42,
         senderFullName: "You",
         content: '<img src="x" onerror="alert(1)">',
@@ -82,7 +85,7 @@ describe("buildOptimisticOutgoingMessage", () => {
 describe("delivery transitions", () => {
   it("marks optimistic message as failed", () => {
     const message = buildOptimisticOutgoingMessage({
-      id: -3,
+      id: testMessageId(900003),
       senderId: 42,
       senderFullName: "You",
       content: "hello",
@@ -95,7 +98,7 @@ describe("delivery transitions", () => {
 
   it("marks outgoing message as sent", () => {
     const message = buildOptimisticOutgoingMessage({
-      id: -4,
+      id: testMessageId(900004),
       senderId: 42,
       senderFullName: "You",
       content: "hello",

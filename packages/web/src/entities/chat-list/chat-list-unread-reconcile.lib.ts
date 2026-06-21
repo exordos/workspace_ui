@@ -3,6 +3,7 @@
  */
 import type { MessengerUnreadMessagesSnapshot } from "~/shared/api/messenger-unread.lib";
 import { dmConversationKey } from "~/shared/lib/dm-key";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import { streamTopicCompositeKey } from "./chat-list-stream-topic-index.lib";
 import type { MessageLocation } from "./chat-list.model.types";
@@ -20,11 +21,11 @@ export function buildUnreadReconcileMapsFromRegisterSnapshot(
 ): {
   unreadStreamCounts: Map<string, number>;
   unreadDmCounts: Map<string, number>;
-  unreadLocationMap: Map<number, MessageLocation>;
+  unreadLocationMap: Map<MessageId, MessageLocation>;
 } {
   const unreadStreamCounts = new Map<string, number>();
   const unreadDmCounts = new Map<string, number>();
-  const unreadLocationMap = new Map<number, MessageLocation>();
+  const unreadLocationMap = new Map<MessageId, MessageLocation>();
 
   for (const bucket of snapshot.streams) {
     const key = streamTopicCompositeKey(bucket.streamId, bucket.topic);

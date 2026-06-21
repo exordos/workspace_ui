@@ -1,18 +1,15 @@
 import type { InboxEntry } from "~/entities/inbox/inbox.types";
+import { normalizeMessageId, type MessageId } from "~/shared/lib/message-id.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
 import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
 
-function resolveInboxFocusMessageId(messageIds: number[]): number | null {
-  let maxId: number | null = null;
-  for (const id of messageIds) {
-    if (!Number.isInteger(id) || id <= 0) continue;
-    maxId = maxId == null ? id : Math.max(maxId, id);
-  }
-  return maxId;
+function resolveInboxFocusMessageId(messageIds: MessageId[]): MessageId | null {
+  const latest = messageIds[messageIds.length - 1];
+  return normalizeMessageId(latest);
 }
 
-function withMessageFocus(route: string, focusMessageId: number | null): string {
+function withMessageFocus(route: string, focusMessageId: MessageId | null): string {
   if (focusMessageId == null) return route;
   const separator = route.includes("?") ? "&" : "?";
   return `${route}${separator}msg=${focusMessageId}`;

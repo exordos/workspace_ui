@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { testMessageId } from "~/test/factories";
 import { useLinkPreviewStore } from "./link-preview.model";
 
 const fetchLinkPreviewsFromMessageMarkdownMock = vi.hoisted(() => vi.fn());
@@ -28,8 +29,9 @@ describe("useLinkPreviewStore", () => {
     );
 
     const markdown = "see https://example.com";
-    const first = useLinkPreviewStore.getState().requestPreviewForMessage(1, markdown);
-    const second = useLinkPreviewStore.getState().requestPreviewForMessage(1, markdown);
+    const messageId = testMessageId(1);
+    const first = useLinkPreviewStore.getState().requestPreviewForMessage(messageId, markdown);
+    const second = useLinkPreviewStore.getState().requestPreviewForMessage(messageId, markdown);
 
     expect(fetchLinkPreviewsFromMessageMarkdownMock).toHaveBeenCalledTimes(1);
 
@@ -42,8 +44,8 @@ describe("useLinkPreviewStore", () => {
 
     await Promise.all([first, second]);
 
-    expect(useLinkPreviewStore.getState().byMessageId[1]?.status).toBe("ready");
-    expect(useLinkPreviewStore.getState().byMessageId[1]?.items).toHaveLength(1);
+    expect(useLinkPreviewStore.getState().byMessageId[messageId]?.status).toBe("ready");
+    expect(useLinkPreviewStore.getState().byMessageId[messageId]?.items).toHaveLength(1);
   });
 
   it("returns cached ready entry without refetching when fingerprint matches", async () => {
@@ -55,10 +57,13 @@ describe("useLinkPreviewStore", () => {
     ]);
 
     const markdown = "https://cached.test";
-    await useLinkPreviewStore.getState().requestPreviewForMessage(2, markdown);
+    const messageId = testMessageId(2);
+    await useLinkPreviewStore.getState().requestPreviewForMessage(messageId, markdown);
     fetchLinkPreviewsFromMessageMarkdownMock.mockClear();
 
-    const entry = await useLinkPreviewStore.getState().requestPreviewForMessage(2, markdown);
+    const entry = await useLinkPreviewStore
+      .getState()
+      .requestPreviewForMessage(messageId, markdown);
     expect(fetchLinkPreviewsFromMessageMarkdownMock).not.toHaveBeenCalled();
     expect(entry.status).toBe("ready");
     expect(entry.items[0]?.data?.title).toBe("Cached");
@@ -72,7 +77,8 @@ describe("useLinkPreviewStore", () => {
       },
     ]);
 
-    await useLinkPreviewStore.getState().requestPreviewForMessage(3, "https://example.com");
+    const messageId = testMessageId(3);
+    await useLinkPreviewStore.getState().requestPreviewForMessage(messageId, "https://example.com");
     fetchLinkPreviewsFromMessageMarkdownMock.mockClear();
     fetchLinkPreviewsFromMessageMarkdownMock.mockResolvedValue([
       {
@@ -81,10 +87,10 @@ describe("useLinkPreviewStore", () => {
       },
     ]);
 
-    await useLinkPreviewStore.getState().requestPreviewForMessage(3, "https://other.test");
+    await useLinkPreviewStore.getState().requestPreviewForMessage(messageId, "https://other.test");
     expect(fetchLinkPreviewsFromMessageMarkdownMock).toHaveBeenCalledWith(
       "https://other.test",
-      3,
+      messageId,
       expect.any(AbortSignal),
     );
   });
@@ -93,11 +99,12 @@ describe("useLinkPreviewStore", () => {
     fetchLinkPreviewsFromMessageMarkdownMock.mockImplementation(() => new Promise(() => {}));
 
     const markdown = "https://example.com";
-    void useLinkPreviewStore.getState().requestPreviewForMessage(20, markdown);
-    expect(useLinkPreviewStore.getState().byMessageId[20]?.status).toBe("loading");
+    const messageId = testMessageId(20);
+    void useLinkPreviewStore.getState().requestPreviewForMessage(messageId, markdown);
+    expect(useLinkPreviewStore.getState().byMessageId[messageId]?.status).toBe("loading");
 
-    useLinkPreviewStore.getState().cancelPreviewForMessage(20);
-    expect(useLinkPreviewStore.getState().byMessageId[20]).toBeUndefined();
+    useLinkPreviewStore.getState().cancelPreviewForMessage(messageId);
+    expect(useLinkPreviewStore.getState().byMessageId[messageId]).toBeUndefined();
 
     fetchLinkPreviewsFromMessageMarkdownMock.mockResolvedValue([
       {
@@ -106,9 +113,9 @@ describe("useLinkPreviewStore", () => {
       },
     ]);
 
-    await useLinkPreviewStore.getState().requestPreviewForMessage(20, markdown);
+    await useLinkPreviewStore.getState().requestPreviewForMessage(messageId, markdown);
     expect(fetchLinkPreviewsFromMessageMarkdownMock).toHaveBeenCalledTimes(2);
-    expect(useLinkPreviewStore.getState().byMessageId[20]?.status).toBe("ready");
+    expect(useLinkPreviewStore.getState().byMessageId[messageId]?.status).toBe("ready");
   });
 
   it("evicts oldest entries when cache exceeds max size", async () => {
@@ -123,13 +130,16 @@ describe("useLinkPreviewStore", () => {
       ]),
     );
 
-    await useLinkPreviewStore.getState().requestPreviewForMessage(10, "https://a.test");
-    await useLinkPreviewStore.getState().requestPreviewForMessage(11, "https://b.test");
-    await useLinkPreviewStore.getState().requestPreviewForMessage(12, "https://c.test");
+    const firstId = testMessageId(10);
+    const secondId = testMessageId(11);
+    const thirdId = testMessageId(12);
+    await useLinkPreviewStore.getState().requestPreviewForMessage(firstId, "https://a.test");
+    await useLinkPreviewStore.getState().requestPreviewForMessage(secondId, "https://b.test");
+    await useLinkPreviewStore.getState().requestPreviewForMessage(thirdId, "https://c.test");
 
     const byMessageId = useLinkPreviewStore.getState().byMessageId;
-    expect(byMessageId[10]).toBeUndefined();
-    expect(byMessageId[11]?.status).toBe("ready");
-    expect(byMessageId[12]?.status).toBe("ready");
+    expect(byMessageId[firstId]).toBeUndefined();
+    expect(byMessageId[secondId]?.status).toBe("ready");
+    expect(byMessageId[thirdId]?.status).toBe("ready");
   });
 });

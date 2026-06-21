@@ -4,10 +4,11 @@
  * Avoids full `messages.map` on single-id realtime updates (reactions, flags, edits).
  */
 import type { MockMessage } from "~/shared/api/messenger.types";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 
 export function patchMessageAtId(
   messages: readonly MockMessage[],
-  messageId: number,
+  messageId: MessageId,
   patch: (message: MockMessage) => MockMessage,
 ): MockMessage[] {
   const idx = messages.findIndex((m) => m.id === messageId);
@@ -22,7 +23,7 @@ export function patchMessageAtId(
 
 export function patchMessagesFlags(
   messages: readonly MockMessage[],
-  messageIds: ReadonlySet<number>,
+  messageIds: ReadonlySet<MessageId>,
   flag: string,
   op: "add" | "remove",
 ): MockMessage[] {

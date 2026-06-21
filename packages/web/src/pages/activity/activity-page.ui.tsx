@@ -29,6 +29,7 @@ import type { ActivityFilter, WorkspaceRawMessage } from "~/shared/api/messenger
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { formatActivityItemTime } from "~/shared/lib/datetime.lib";
 import { createLogger } from "~/shared/lib/logger";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { buildNavigableRouteFromMessage } from "~/shared/lib/push-click";
@@ -101,7 +102,6 @@ const DraftChatContextLabel = React.memo<{ draft: Draft }>(({ draft }) => {
       },
       generalChatLabel: t("chat.generalChat"),
       privateLabel: t("dm.private"),
-      groupChatLabel: t("dm.groupChat"),
     }),
   );
   if (draft.type === "stream" && draft.to.length > 0) {
@@ -128,8 +128,8 @@ export const ActivityPage: React.FC = () => {
   const currentUserId = useChatListStore((s) => s.currentUserId ?? null);
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const streamsMap = useChatListStore((s) => s.streamsMap);
-  const [pendingDraftId, setPendingDraftId] = useState<number | null>(null);
-  const [pendingUnstarIds, setPendingUnstarIds] = useState<Set<number>>(() => new Set());
+  const [pendingDraftId, setPendingDraftId] = useState<MessageId | null>(null);
+  const [pendingUnstarIds, setPendingUnstarIds] = useState<Set<MessageId>>(() => new Set());
   const [editingDraft, setEditingDraft] = useState<Draft | null>(null);
   const [editingContent, setEditingContent] = useState("");
   const listScrollRef = useRef<HTMLUListElement>(null);
@@ -320,7 +320,7 @@ export const ActivityPage: React.FC = () => {
   );
 
   const handleUnstarMessage = useCallback(
-    async (messageId: number) => {
+    async (messageId: MessageId) => {
       const orgContext = captureActiveOrgRequestContext();
       setPendingUnstarIds((current) => {
         const next = new Set(current);

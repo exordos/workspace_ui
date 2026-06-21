@@ -3,6 +3,8 @@
  */
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
+import { compareMessageTimeline } from "~/shared/lib/message-id.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sidebar-chat";
@@ -112,7 +114,7 @@ function indexBatchMessagesAndUnreadBumps(
 ): {
   nextStreams: Map<number, StreamEntryInternal>;
   nextDms: Map<string, DmEntryInternal>;
-  nextLoc: Map<number, MessageLocation>;
+  nextLoc: Map<MessageId, MessageLocation>;
   sidebarStreamsUnreadDelta: number;
   sidebarDmsUnreadDelta: number;
 } {
@@ -276,7 +278,7 @@ export function buildStreamTopicLatestMap(
       const topic = normalizeTopicForIdentity(m.subject ?? "");
       const key = streamTopicCompositeKey(m.stream_id, topic);
       const existing = streamTopicLatest.get(key);
-      if (!existing || m.timestamp >= existing.timestamp) {
+      if (!existing || compareMessageTimeline(m, existing) >= 0) {
         streamTopicLatest.set(key, m);
       }
     }
@@ -293,7 +295,7 @@ export function buildDmLatestMap(
     if (m.type === "private" && Array.isArray(m.display_recipient)) {
       const key = dmConversationKey(m.display_recipient, currentUserId);
       const existing = dmLatest.get(key);
-      if (!existing || m.timestamp >= existing.timestamp) {
+      if (!existing || compareMessageTimeline(m, existing) >= 0) {
         dmLatest.set(key, m);
       }
     }

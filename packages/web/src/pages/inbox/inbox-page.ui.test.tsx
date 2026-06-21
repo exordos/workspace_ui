@@ -32,7 +32,6 @@ const buildUnreadSnapshotFromEntries = vi.hoisted(() => (entries: readonly Inbox
       return {
         userIds,
         unreadMessageIds: entry.messageIds,
-        isGroup: userIds.length > 1,
       };
     });
   return {
@@ -67,11 +66,17 @@ const buildUnreadMessagesFromEntries = vi.hoisted(
           content: "",
           timestamp: entry.lastMessageTimestamp,
           type: "private",
+          // Workspace 1:1 DMs carry both participants in display_recipient.
           display_recipient: [
             {
               id: entry.senderId ?? 42,
               full_name: entry.senderName ?? "Alice",
               email: "alice@example.com",
+            },
+            {
+              id: 1001,
+              full_name: "Me",
+              email: "me@example.com",
             },
           ],
           flags: [],
@@ -165,7 +170,10 @@ describe("InboxPage styling contract", () => {
         dmSlug: "42",
         unreadCount: 2,
         lastMessageTimestamp: 10,
-        messageIds: [1, 2],
+        messageIds: [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002",
+        ],
       },
       {
         key: "stream:10:release",
@@ -177,7 +185,7 @@ describe("InboxPage styling contract", () => {
         dmSlug: null,
         unreadCount: 1,
         lastMessageTimestamp: 9,
-        messageIds: [3],
+        messageIds: ["00000000-0000-4000-8000-000000000003"],
       },
     ]);
 
@@ -219,7 +227,10 @@ describe("InboxPage styling contract", () => {
         dmSlug: "42",
         unreadCount: 2,
         lastMessageTimestamp: 10,
-        messageIds: [1, 2],
+        messageIds: [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002",
+        ],
       },
     ];
 
@@ -258,7 +269,10 @@ describe("InboxPage styling contract", () => {
         dmSlug: "42",
         unreadCount: 2,
         lastMessageTimestamp: 10,
-        messageIds: [1, 2],
+        messageIds: [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002",
+        ],
       },
       {
         key: "stream:10:release",
@@ -270,7 +284,7 @@ describe("InboxPage styling contract", () => {
         dmSlug: null,
         unreadCount: 1,
         lastMessageTimestamp: 9,
-        messageIds: [3],
+        messageIds: ["00000000-0000-4000-8000-000000000003"],
       },
     ]);
 
@@ -301,7 +315,10 @@ describe("InboxPage styling contract", () => {
         dmSlug: "42",
         unreadCount: 2,
         lastMessageTimestamp: 10,
-        messageIds: [1, 2],
+        messageIds: [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002",
+        ],
       },
       {
         key: "stream:10:release",
@@ -313,7 +330,7 @@ describe("InboxPage styling contract", () => {
         dmSlug: null,
         unreadCount: 1,
         lastMessageTimestamp: 9,
-        messageIds: [3],
+        messageIds: ["00000000-0000-4000-8000-000000000003"],
       },
     ]);
 
@@ -344,7 +361,7 @@ describe("InboxPage styling contract", () => {
           dmSlug: null,
           unreadCount: 1,
           lastMessageTimestamp: 100,
-          messageIds: [10],
+          messageIds: ["00000000-0000-4000-8000-000000000010"],
         },
       ],
       loading: false,
@@ -389,7 +406,7 @@ describe("InboxPage styling contract", () => {
           dmSlug: null,
           unreadCount: 1,
           lastMessageTimestamp: 100,
-          messageIds: [10],
+          messageIds: ["00000000-0000-4000-8000-000000000010"],
         },
       ],
       loading: false,
@@ -435,7 +452,7 @@ describe("InboxPage styling contract", () => {
           dmSlug: "42",
           unreadCount: 1,
           lastMessageTimestamp: 300,
-          messageIds: [30],
+          messageIds: ["00000000-0000-4000-8000-000000000030"],
         },
       ],
       loading: false,
@@ -457,7 +474,7 @@ describe("InboxPage styling contract", () => {
         dmSlug: "42",
         unreadCount: 1,
         lastMessageTimestamp: 100,
-        messageIds: [10],
+        messageIds: ["00000000-0000-4000-8000-000000000010"],
       },
     ]);
     fetchInboxEntries.mockResolvedValue([
@@ -471,7 +488,7 @@ describe("InboxPage styling contract", () => {
         dmSlug: "42",
         unreadCount: 1,
         lastMessageTimestamp: 300,
-        messageIds: [30],
+        messageIds: ["00000000-0000-4000-8000-000000000030"],
       },
     ]);
 
@@ -503,7 +520,7 @@ describe("InboxPage styling contract", () => {
           dmSlug: "42",
           unreadCount: 1,
           lastMessageTimestamp: 100,
-          messageIds: [10],
+          messageIds: ["00000000-0000-4000-8000-000000000010"],
         },
       ],
       loading: false,
@@ -525,7 +542,7 @@ describe("InboxPage styling contract", () => {
         dmSlug: "42",
         unreadCount: 1,
         lastMessageTimestamp: 300,
-        messageIds: [30],
+        messageIds: ["00000000-0000-4000-8000-000000000030"],
       },
     ]);
     fetchInboxEntries.mockResolvedValue([
@@ -539,7 +556,7 @@ describe("InboxPage styling contract", () => {
         dmSlug: "42",
         unreadCount: 1,
         lastMessageTimestamp: 300,
-        messageIds: [30],
+        messageIds: ["00000000-0000-4000-8000-000000000030"],
       },
     ]);
 
@@ -571,7 +588,7 @@ describe("InboxPage styling contract", () => {
         dmSlug: "42",
         unreadCount: 1,
         lastMessageTimestamp: 10,
-        messageIds: [1],
+        messageIds: ["00000000-0000-4000-8000-000000000001"],
       },
     ]);
 
@@ -602,7 +619,7 @@ describe("InboxPage styling contract", () => {
           dmSlug: "42",
           unreadCount: 1,
           lastMessageTimestamp: 10,
-          messageIds: [1],
+          messageIds: ["00000000-0000-4000-8000-000000000001"],
         },
       ])
       .mockResolvedValueOnce([
@@ -616,7 +633,7 @@ describe("InboxPage styling contract", () => {
           dmSlug: "99",
           unreadCount: 1,
           lastMessageTimestamp: 20,
-          messageIds: [2],
+          messageIds: ["00000000-0000-4000-8000-000000000002"],
         },
       ]);
 
@@ -704,7 +721,7 @@ describe("InboxPage styling contract", () => {
           dmSlug: "42",
           unreadCount: 1,
           lastMessageTimestamp: 10,
-          messageIds: [1],
+          messageIds: ["00000000-0000-4000-8000-000000000001"],
         },
       ]);
       await staleHydrate;
@@ -724,7 +741,7 @@ describe("InboxPage styling contract", () => {
           dmSlug: "99",
           unreadCount: 2,
           lastMessageTimestamp: 20,
-          messageIds: [2],
+          messageIds: ["00000000-0000-4000-8000-000000000002"],
         },
       ]);
       await nextOrgFetch;
@@ -802,7 +819,7 @@ describe("InboxPage styling contract", () => {
           dmSlug: "42",
           unreadCount: 1,
           lastMessageTimestamp: 10,
-          messageIds: [1],
+          messageIds: ["00000000-0000-4000-8000-000000000001"],
         },
       ]);
       await oldFetch;
@@ -822,7 +839,7 @@ describe("InboxPage styling contract", () => {
           dmSlug: "99",
           unreadCount: 2,
           lastMessageTimestamp: 20,
-          messageIds: [2],
+          messageIds: ["00000000-0000-4000-8000-000000000002"],
         },
       ]);
       await newFetch;

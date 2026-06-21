@@ -23,8 +23,8 @@ function getActivityMessagesNewestTimestamp(messages: readonly WorkspaceRawMessa
   return newest;
 }
 
-function getActivityMessagesMaxMessageId(messages: readonly WorkspaceRawMessage[]): number {
-  let maxId = 0;
+function getActivityMessagesLastIdFingerprint(messages: readonly WorkspaceRawMessage[]): string {
+  let maxId = "";
   for (const message of messages) {
     if (message.id > maxId) {
       maxId = message.id;
@@ -46,9 +46,9 @@ export function isActivityMessagesSnapshotFresher(
     return candidateNewestTimestamp > currentNewestTimestamp;
   }
 
-  const candidateMaxMessageId = getActivityMessagesMaxMessageId(candidate);
-  const currentMaxMessageId = getActivityMessagesMaxMessageId(current);
-  return candidateMaxMessageId > currentMaxMessageId;
+  const candidateIdFingerprint = getActivityMessagesLastIdFingerprint(candidate);
+  const currentIdFingerprint = getActivityMessagesLastIdFingerprint(current);
+  return candidateIdFingerprint > currentIdFingerprint;
 }
 
 /** Whether a cached message belongs in an activity filter (exported for tests). */

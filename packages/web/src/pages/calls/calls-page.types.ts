@@ -1,7 +1,8 @@
 import type { MockMessage } from "~/shared/api/messenger.types";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 
 export interface RecentJitsiCallEntry {
-  id: number;
+  id: MessageId;
   meetingUrl: string;
   roomLabel: string;
   locationName: string;

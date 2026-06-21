@@ -10,6 +10,8 @@ import { resolveIncomingDmCallInvite } from "~/features/jitsi-call/jitsi-call-in
 import { getCurrentInstance } from "~/shared/api/client";
 import { rawMessageToMockMessage } from "~/shared/api/messenger-messages";
 import type { MessengerEvent, WorkspaceRawMessage } from "~/shared/api/messenger.types";
+import { normalizeMessageId } from "~/shared/lib/message-id.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import {
   applyMessengerEventToMessageIndexedDb,
   isChatMessagesPersistToIndexedDbEnabled,
@@ -252,7 +254,7 @@ export function handleReaction(
   if (event.type !== "reaction") return;
   const { currentChat, activity } = ctx;
   activity.markStale();
-  const messageId = event.message_id as number;
+  const messageId = normalizeMessageId(event.message_id);
   const reaction =
     event.emoji_name != null
       ? {
@@ -265,14 +267,18 @@ export function handleReaction(
         }
       : null;
   if (!reaction) return;
+  if (messageId == null) return;
   const op = (event.op as LayoutMessageFlagOp) ?? "add";
   currentChat.updateMessageReaction(messageId, reaction, op);
 }
 
-export function deleteMessageIdsFromEvent(event: MessengerEvent): number[] {
+export function deleteMessageIdsFromEvent(event: MessengerEvent): MessageId[] {
   if (event.type !== "delete_message") return [];
-  if (event.message_ids) return event.message_ids as number[];
-  if (event.message_id != null) return [event.message_id as number];
+  if (Array.isArray(event.message_ids)) {
+    return event.message_ids.map(normalizeMessageId).filter((id) => id != null);
+  }
+  const messageId = normalizeMessageId(event.message_id);
+  if (messageId != null) return [messageId];
   return [];
 }
 

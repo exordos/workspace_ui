@@ -5,6 +5,8 @@
  */
 import { dmRouteKey } from "~/shared/lib/dm-key";
 import { parseDmRouteParticipantIds } from "~/shared/lib/dm-route-slug.lib";
+import { normalizeMessageId } from "~/shared/lib/message-id.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { encodeTopicForRoute, normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
@@ -12,7 +14,7 @@ import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 export type MessengerNarrowPermalinkKind = "dm" | "stream";
 
 export interface ParsedMessengerNarrowPermalink {
-  messageId: number;
+  messageId: MessageId;
   kind: MessengerNarrowPermalinkKind;
   /** Present for DM permalinks with participant slug. */
   dmParticipantIds?: UserId[];
@@ -82,18 +84,18 @@ function normalizeHashFromHref(href: string): string | null {
   }
 }
 
-function parseNearMessageIdFromNarrowHash(normalizedHash: string): number | undefined {
+function parseNearMessageIdFromNarrowHash(normalizedHash: string): MessageId | undefined {
   if (!normalizedHash.startsWith("narrow/")) return undefined;
   const nearMatch = /(?:^|\/)near\/([^/?#]+)/i.exec(normalizedHash);
   if (nearMatch == null) return undefined;
   const rawNear = nearMatch[1];
   if (rawNear == null || rawNear.length === 0) return undefined;
-  return parsePositiveInt(decodeWorkspaceHashComponent(rawNear));
+  return normalizeMessageId(decodeWorkspaceHashComponent(rawNear)) ?? undefined;
 }
 
 function parseDmNarrowPermalink(
   normalizedHash: string,
-  messageId: number,
+  messageId: MessageId,
 ): ParsedMessengerNarrowPermalink | null {
   const dmMatch = /^narrow\/dm\/([^/]+)\/near\//i.exec(normalizedHash);
   if (dmMatch == null) return null;
@@ -110,7 +112,7 @@ function parseDmNarrowPermalink(
 
 function parseStreamNarrowPermalink(
   normalizedHash: string,
-  messageId: number,
+  messageId: MessageId,
 ): ParsedMessengerNarrowPermalink | null {
   const streamMatch = /^narrow\/channel\/([^/]+)\/topic\/([^/]+)\/near\//i.exec(normalizedHash);
   if (streamMatch == null) return null;
@@ -262,7 +264,7 @@ export function buildRouteFromMessengerNarrowPermalink(
 }
 
 /** Replaces or sets `msg` query param while preserving other search params. */
-export function buildMessageFocusSearch(currentSearch: string, messageId: number): string {
+export function buildMessageFocusSearch(currentSearch: string, messageId: MessageId): string {
   const params = new URLSearchParams(
     currentSearch.startsWith("?") ? currentSearch.slice(1) : currentSearch,
   );

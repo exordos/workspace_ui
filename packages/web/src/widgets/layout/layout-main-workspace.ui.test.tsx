@@ -33,7 +33,6 @@ function buildProps(overrides: Partial<LayoutMainWorkspaceProps> = {}): LayoutMa
     participantsCount: 0,
     onlineCount: 0,
     rightPanelUser: undefined,
-    onSelectCommonGroup: vi.fn(),
     onOpenSettingsDrawer: vi.fn(),
     onOpenAboutDrawer: vi.fn(),
     ...overrides,

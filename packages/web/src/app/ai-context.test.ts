@@ -7,6 +7,7 @@
  * state and receive real-time events without direct store access.
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { testMessageId } from "~/test/factories";
 import { useChatListStore } from "../entities/chat-list/chat-list.model";
 import { useInstancesStore } from "../entities/instance/instance.model";
 import { useCurrentChatMessagesStore } from "../entities/message/message.model";
@@ -220,7 +221,7 @@ describe("ai-context", () => {
       } as never);
       vi.mocked(useInstancesStore.getState).mockReturnValue({
         getCurrentInstance: vi.fn(() => ({
-          email: "alice@example.com",
+          login: "alice@example.com",
           realm: "https://chat.example.com",
         })),
       } as never);
@@ -245,7 +246,7 @@ describe("ai-context", () => {
       } as never);
       vi.mocked(useInstancesStore.getState).mockReturnValue({
         getCurrentInstance: vi.fn(() => ({
-          email: "user@example.com",
+          login: "user@example.com",
           realm: "https://chat.example.com",
         })),
       } as never);
@@ -308,7 +309,7 @@ describe("ai-context", () => {
   // Verifies message history retrieval with limit and field mapping
   describe("context.getRecentMessages", () => {
     const mockMessages = Array.from({ length: 30 }, (_, i) => ({
-      id: i + 1,
+      id: testMessageId(i + 1),
       content: `message-${i + 1}`,
       sender_full_name: `User ${i}`,
       timestamp: 1000 + i,
@@ -324,8 +325,8 @@ describe("ai-context", () => {
       installAiContext();
       const result = getAi().context.getRecentMessages();
       expect(result).toHaveLength(20);
-      expect(result[0]!.id).toBe(11);
-      expect(result[19]!.id).toBe(30);
+      expect(result[0]!.id).toBe(testMessageId(11));
+      expect(result[19]!.id).toBe(testMessageId(30));
     });
 
     // AI callers can request fewer messages to reduce token usage
@@ -338,19 +339,28 @@ describe("ai-context", () => {
       installAiContext();
       const result = getAi().context.getRecentMessages(5);
       expect(result).toHaveLength(5);
-      expect(result[0]!.id).toBe(26);
+      expect(result[0]!.id).toBe(testMessageId(26));
     });
 
     // Internal field names (sender_full_name) are mapped to clean API names (sender)
     it("maps message fields correctly", () => {
       vi.mocked(useCurrentChatMessagesStore.getState).mockReturnValue({
         context: null,
-        messages: [{ id: 42, content: "<p>Hello</p>", sender_full_name: "Bob", timestamp: 9999 }],
+        messages: [
+          {
+            id: testMessageId(42),
+            content: "<p>Hello</p>",
+            sender_full_name: "Bob",
+            timestamp: 9999,
+          },
+        ],
       } as never);
 
       installAiContext();
       const result = getAi().context.getRecentMessages();
-      expect(result).toEqual([{ id: 42, content: "<p>Hello</p>", sender: "Bob", timestamp: 9999 }]);
+      expect(result).toEqual([
+        { id: testMessageId(42), content: "<p>Hello</p>", sender: "Bob", timestamp: 9999 },
+      ]);
     });
 
     // Empty chat returns empty array, not null or undefined
@@ -373,10 +383,15 @@ describe("ai-context", () => {
       const received: unknown[] = [];
       const unsub = getAi().events.onNewMessage((msg) => received.push(msg));
 
-      notifyAiNewMessage({ id: 1, content: "hi", sender_id: 10, timestamp: 5000 });
+      notifyAiNewMessage({ id: testMessageId(1), content: "hi", sender_id: 10, timestamp: 5000 });
 
       expect(received).toHaveLength(1);
-      expect(received[0]).toEqual({ id: 1, content: "hi", senderId: 10, timestamp: 5000 });
+      expect(received[0]).toEqual({
+        id: testMessageId(1),
+        content: "hi",
+        senderId: 10,
+        timestamp: 5000,
+      });
 
       unsub();
     });
@@ -388,7 +403,12 @@ describe("ai-context", () => {
       const unsub = getAi().events.onNewMessage((msg) => received.push(msg));
 
       unsub();
-      notifyAiNewMessage({ id: 2, content: "missed", sender_id: 11, timestamp: 6000 });
+      notifyAiNewMessage({
+        id: "00000000-0000-4000-8000-000000000002",
+        content: "missed",
+        sender_id: 11,
+        timestamp: 6000,
+      });
 
       expect(received).toHaveLength(0);
     });
@@ -401,7 +421,12 @@ describe("ai-context", () => {
       const unsubA = getAi().events.onNewMessage(() => countA++);
       const unsubB = getAi().events.onNewMessage(() => countB++);
 
-      notifyAiNewMessage({ id: 3, content: "x", sender_id: 1, timestamp: 1 });
+      notifyAiNewMessage({
+        id: "00000000-0000-4000-8000-000000000003",
+        content: "x",
+        sender_id: 1,
+        timestamp: 1,
+      });
 
       expect(countA).toBe(1);
       expect(countB).toBe(1);
@@ -421,7 +446,12 @@ describe("ai-context", () => {
         received = true;
       });
 
-      notifyAiNewMessage({ id: 4, content: "ok", sender_id: 1, timestamp: 1 });
+      notifyAiNewMessage({
+        id: "00000000-0000-4000-8000-000000000004",
+        content: "ok",
+        sender_id: 1,
+        timestamp: 1,
+      });
 
       expect(received).toBe(true);
 

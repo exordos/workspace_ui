@@ -26,7 +26,9 @@ describe("reconcileSidebarUnreadAfterBootstrap", () => {
       cancelled: () => false,
       currentUserId: 10,
       registerSnapshot: {
-        streams: [{ streamId: 1, topic: "t", unreadMessageIds: [1] }],
+        streams: [
+          { streamId: 1, topic: "t", unreadMessageIds: ["00000000-0000-4000-8000-000000000001"] },
+        ],
         dms: [],
         totalCount: 1,
         mentionMessageIds: [],
@@ -53,9 +55,9 @@ describe("reconcileSidebarUnreadAfterBootstrap", () => {
       sidebarStreamsUnread: 2,
       sidebarDmsUnread: 1,
       messageIdToLocation: new Map([
-        [1, { type: "stream", stream_id: 1, topic: "t" }],
-        [2, { type: "stream", stream_id: 1, topic: "t2" }],
-        [3, { type: "dm", dmKey: "1,2" }],
+        ["00000000-0000-4000-8000-000000000001", { type: "stream", stream_id: 1, topic: "t" }],
+        ["00000000-0000-4000-8000-000000000002", { type: "stream", stream_id: 1, topic: "t2" }],
+        ["00000000-0000-4000-8000-000000000003", { type: "dm", dmKey: "1,2" }],
       ]),
     });
 
@@ -82,7 +84,9 @@ describe("reconcileSidebarUnreadAfterBootstrap", () => {
 
   it("skips duplicate register snapshot reconcile", () => {
     const snapshot = {
-      streams: [{ streamId: 1, topic: "t", unreadMessageIds: [1] }],
+      streams: [
+        { streamId: 1, topic: "t", unreadMessageIds: ["00000000-0000-4000-8000-000000000001"] },
+      ],
       dms: [],
       totalCount: 1,
       mentionMessageIds: [],
@@ -102,7 +106,9 @@ describe("reconcileSidebarUnreadAfterBootstrap", () => {
 
   it("does not dedupe the same snapshot across different instances", () => {
     const snapshot = {
-      streams: [{ streamId: 1, topic: "t", unreadMessageIds: [1] }],
+      streams: [
+        { streamId: 1, topic: "t", unreadMessageIds: ["00000000-0000-4000-8000-000000000001"] },
+      ],
       dms: [],
       totalCount: 1,
       mentionMessageIds: [],

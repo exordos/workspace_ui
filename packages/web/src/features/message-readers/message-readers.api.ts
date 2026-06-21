@@ -7,12 +7,13 @@
 import { messengerApi } from "~/shared/api/client";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { ReadReceiptsResponse } from "./message-readers.types";
 
 const log = createLogger("message-readers:api");
 
 export async function fetchReadReceipts(
-  messageId: number,
+  messageId: MessageId,
   options?: { signal?: AbortSignal },
 ): Promise<ReadReceiptsResponse> {
   guard.messageId(messageId, "fetchReadReceipts");

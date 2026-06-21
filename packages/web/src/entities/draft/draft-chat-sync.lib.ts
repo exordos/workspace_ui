@@ -1,15 +1,16 @@
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { Draft, DraftInput, DraftType } from "./draft.types";
 
 interface SyncExistingDraftDeleteOnCleanupOptions {
   draft: Draft | undefined;
-  existingId: number | null;
+  existingId: MessageId | null;
   draftType: DraftType;
   draftTo: number[];
   draftTopic: string;
-  deleteDraftOnServer: (id: number) => Promise<boolean>;
+  deleteDraftOnServer: (id: MessageId) => Promise<boolean>;
   removeDraftForChat: (type: DraftType, to: number[], topic?: string) => void;
   restoreDraft: (draft: Draft) => void;
-  setActiveDraftId: (id: number | null) => void;
+  setActiveDraftId: (id: MessageId | null) => void;
 }
 
 interface SyncExistingDraftDeleteOnClearOptions extends SyncExistingDraftDeleteOnCleanupOptions {
@@ -18,24 +19,24 @@ interface SyncExistingDraftDeleteOnClearOptions extends SyncExistingDraftDeleteO
 
 interface SyncExistingDraftUpdateOnCleanupOptions {
   draft: Draft | undefined;
-  existingId: number;
+  existingId: MessageId;
   draftType: DraftType;
   draftTo: number[];
   draftTopic: string;
   nextContent: string;
-  updateDraft: (id: number, patch: Partial<Pick<Draft, "content" | "topic" | "to">>) => void;
+  updateDraft: (id: MessageId, patch: Partial<Pick<Draft, "content" | "topic" | "to">>) => void;
   restoreDraft: (draft: Draft) => void;
-  updateDraftOnServer: (id: number, input: DraftInput) => Promise<boolean>;
+  updateDraftOnServer: (id: MessageId, input: DraftInput) => Promise<boolean>;
 }
 
 interface ReconcileCreatedDraftServerIdOptions {
-  serverId: number | null;
+  serverId: MessageId | null;
   draftType: DraftType;
   draftTo: number[];
   draftTopic: string;
   getDraftForChat: (type: DraftType, to: number[], topic?: string) => Draft | undefined;
-  linkDraftToServerId: (type: DraftType, to: number[], topic: string, newId: number) => void;
-  deleteDraftOnServer: (id: number) => Promise<boolean>;
+  linkDraftToServerId: (type: DraftType, to: number[], topic: string, newId: MessageId) => void;
+  deleteDraftOnServer: (id: MessageId) => Promise<boolean>;
 }
 
 export async function syncExistingDraftDeleteOnCleanup({

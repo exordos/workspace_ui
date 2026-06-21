@@ -16,7 +16,6 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
   participantsCount,
   onlineCount,
   rightPanelUser,
-  onSelectCommonGroup,
   onOpenSettingsDrawer,
   onOpenAboutDrawer,
 }: LayoutMainWorkspaceProps) {
@@ -58,7 +57,6 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
               participantsCount={participantsCount}
               onlineCount={onlineCount}
               user={rightPanelUser}
-              onSelectCommonGroup={onSelectCommonGroup}
               onOpenSettingsDrawer={onOpenSettingsDrawer}
               onOpenAboutDrawer={onOpenAboutDrawer}
             />

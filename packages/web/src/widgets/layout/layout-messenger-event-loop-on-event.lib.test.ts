@@ -3,6 +3,7 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import * as client from "~/shared/api/client";
 import type { MockMessage } from "~/shared/api/messenger.types";
+import { testMessageId, testMessageOrdinal } from "~/test/factories";
 import { handleLayoutMessengerEventLoopQueueEvent } from "./layout-messenger-event-loop-on-event.lib";
 
 vi.mock("~/shared/lib/notifications", () => ({
@@ -12,15 +13,15 @@ vi.mock("~/shared/lib/notifications", () => ({
   },
 }));
 
-function mockMsg(id: number, overrides: Partial<MockMessage> = {}): MockMessage {
+function mockMsg(id: number | string, overrides: Partial<MockMessage> = {}): MockMessage {
   return {
-    id,
+    id: testMessageId(id),
     sender_id: 99,
     sender_full_name: "Alice",
     stream_id: null,
     subject: "",
     content: "hi",
-    timestamp: id,
+    timestamp: testMessageOrdinal(id),
     flags: [],
     ...overrides,
   };
@@ -53,7 +54,7 @@ describe("handleLayoutMessengerEventLoopQueueEvent", () => {
         type: "update_message_flags",
         op: "add",
         flag: "read",
-        messages: [55],
+        messages: [testMessageId(55)],
       },
       { currentInstanceId: "inst-1", latestMessageIdRef: { current: null } },
     );
@@ -66,7 +67,16 @@ describe("handleLayoutMessengerEventLoopQueueEvent", () => {
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
     useChatListStore.getState().reconcileUnreadFromSnapshot(
       {
-        streams: [{ streamId: 5, topic: "topic1", unreadMessageIds: [1, 2] }],
+        streams: [
+          {
+            streamId: 5,
+            topic: "topic1",
+            unreadMessageIds: [
+              "00000000-0000-4000-8000-000000000001",
+              "00000000-0000-4000-8000-000000000002",
+            ],
+          },
+        ],
         dms: [],
         totalCount: 2,
         mentionMessageIds: [],

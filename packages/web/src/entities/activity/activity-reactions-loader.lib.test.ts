@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
-import { createMessage } from "~/test/factories";
+import { createMessage, testMessageId } from "~/test/factories";
 import { ensureReactionsLoaded } from "./activity-reactions-loader.lib";
 
 const fetchActivityMessagesPageWithPersist = vi.hoisted(() => vi.fn());
@@ -136,6 +136,6 @@ describe("ensureReactionsLoaded", () => {
     await second;
     expect(
       useActivityStore.getState().filters.reactions.messages.map((message) => message.id),
-    ).toEqual([77]);
+    ).toEqual([testMessageId(77)]);
   });
 });

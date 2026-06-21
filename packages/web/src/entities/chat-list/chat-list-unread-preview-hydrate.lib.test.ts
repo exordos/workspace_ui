@@ -3,6 +3,7 @@ import { useInstancesStore } from "~/entities/instance/instance.model";
 import { fetchMessagesByIds } from "~/shared/api/messenger-messages";
 import type { MessengerUnreadMessagesSnapshot } from "~/shared/api/messenger-unread.lib";
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
+import { testMessageId } from "~/test/factories";
 import {
   hydrateStreamSidebarPreviewsFromUnreadSnapshot,
   resolveLatestUnreadMessageIdsForMissingPreviews,
@@ -40,7 +41,7 @@ function seedActiveInstance(realm = "https://messenger.test"): string {
 
 function streamMsg(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessage {
   return {
-    id: 1,
+    id: "00000000-0000-4000-8000-000000000001",
     sender_id: 10,
     sender_full_name: "Sender",
     content: "hello",
@@ -66,12 +67,20 @@ describe("resolveLatestUnreadMessageIdsForMissingPreviews", () => {
     useChatListStore.getState().clear();
   });
 
-  it("picks max unread id per bucket and dedupes ids", () => {
+  it("picks the latest ordered unread id per bucket and dedupes ids", () => {
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
     const snapshot: MessengerUnreadMessagesSnapshot = {
       streams: [
-        { streamId: 5, topic: "alpha", unreadMessageIds: [1, 5, 3] },
-        { streamId: 5, topic: "beta", unreadMessageIds: [5, 2] },
+        {
+          streamId: 5,
+          topic: "alpha",
+          unreadMessageIds: [testMessageId(1), testMessageId(5), testMessageId(3)],
+        },
+        {
+          streamId: 5,
+          topic: "beta",
+          unreadMessageIds: [testMessageId(5), testMessageId(2)],
+        },
       ],
       dms: [],
       totalCount: 5,
@@ -83,7 +92,7 @@ describe("resolveLatestUnreadMessageIdsForMissingPreviews", () => {
       useChatListStore.getState().streamsMap,
     );
 
-    expect(ids).toEqual([5]);
+    expect(ids).toEqual([testMessageId(3), testMessageId(2)]);
   });
 
   it("skips bucket when topic preview already exists and stream preview is non-empty", () => {
@@ -91,11 +100,11 @@ describe("resolveLatestUnreadMessageIdsForMissingPreviews", () => {
     useChatListStore
       .getState()
       .applyStreamSidebarPreviewsFromMessages([
-        streamMsg({ id: 10, subject: "alpha", content: "ok" }),
+        streamMsg({ id: testMessageId(10), subject: "alpha", content: "ok" }),
       ]);
 
     const snapshot: MessengerUnreadMessagesSnapshot = {
-      streams: [{ streamId: 5, topic: "alpha", unreadMessageIds: [99] }],
+      streams: [{ streamId: 5, topic: "alpha", unreadMessageIds: [testMessageId(99)] }],
       dms: [],
       totalCount: 1,
       mentionMessageIds: [],
@@ -127,7 +136,13 @@ describe("hydrateStreamSidebarPreviewsFromUnreadSnapshot", () => {
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
 
     const snapshot: MessengerUnreadMessagesSnapshot = {
-      streams: [{ streamId: 5, topic: "alpha", unreadMessageIds: [301, 302] }],
+      streams: [
+        {
+          streamId: 5,
+          topic: "alpha",
+          unreadMessageIds: [testMessageId(301), testMessageId(302)],
+        },
+      ],
       dms: [],
       totalCount: 2,
       mentionMessageIds: [],
@@ -135,7 +150,7 @@ describe("hydrateStreamSidebarPreviewsFromUnreadSnapshot", () => {
 
     fetchMessagesByIdsMock.mockResolvedValue([
       streamMsg({
-        id: 302,
+        id: testMessageId(302),
         stream_id: 5,
         subject: "alpha",
         content: "fresh preview",
@@ -146,7 +161,7 @@ describe("hydrateStreamSidebarPreviewsFromUnreadSnapshot", () => {
 
     await hydrateStreamSidebarPreviewsFromUnreadSnapshot(snapshot);
 
-    expect(fetchMessagesByIdsMock).toHaveBeenCalledWith([302]);
+    expect(fetchMessagesByIdsMock).toHaveBeenCalledWith([testMessageId(302)]);
     const stream = useChatListStore.getState().streamsMap.get(5);
     expect(stream?.topics.get("alpha")?.lastMessage).toContain("fresh preview");
     expect(stream?.topics.get("alpha")?.ts).toBe(9000);
@@ -157,7 +172,7 @@ describe("hydrateStreamSidebarPreviewsFromUnreadSnapshot", () => {
   it("dedupes concurrent hydrate calls", async () => {
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
     const snapshot: MessengerUnreadMessagesSnapshot = {
-      streams: [{ streamId: 5, topic: "alpha", unreadMessageIds: [301] }],
+      streams: [{ streamId: 5, topic: "alpha", unreadMessageIds: [testMessageId(301)] }],
       dms: [],
       totalCount: 1,
       mentionMessageIds: [],
@@ -178,7 +193,7 @@ describe("hydrateStreamSidebarPreviewsFromUnreadSnapshot", () => {
 
     resolveFetch([
       streamMsg({
-        id: 301,
+        id: "00000000-0000-4000-8000-000000000301",
         stream_id: 5,
         subject: "alpha",
         content: "hello",
@@ -193,7 +208,9 @@ describe("hydrateStreamSidebarPreviewsFromUnreadSnapshot", () => {
   it("drops stale unread preview hydrate after organization switch", async () => {
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
     const snapshot: MessengerUnreadMessagesSnapshot = {
-      streams: [{ streamId: 5, topic: "alpha", unreadMessageIds: [301] }],
+      streams: [
+        { streamId: 5, topic: "alpha", unreadMessageIds: ["00000000-0000-4000-8000-000000000301"] },
+      ],
       dms: [],
       totalCount: 1,
       mentionMessageIds: [],
@@ -214,7 +231,7 @@ describe("hydrateStreamSidebarPreviewsFromUnreadSnapshot", () => {
 
     resolveFetch([
       streamMsg({
-        id: 301,
+        id: "00000000-0000-4000-8000-000000000301",
         stream_id: 5,
         subject: "alpha",
         content: "stale preview",
@@ -229,7 +246,9 @@ describe("hydrateStreamSidebarPreviewsFromUnreadSnapshot", () => {
   it("does not dedupe unread preview hydrate across organizations", async () => {
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
     const snapshot: MessengerUnreadMessagesSnapshot = {
-      streams: [{ streamId: 5, topic: "alpha", unreadMessageIds: [301] }],
+      streams: [
+        { streamId: 5, topic: "alpha", unreadMessageIds: ["00000000-0000-4000-8000-000000000301"] },
+      ],
       dms: [],
       totalCount: 1,
       mentionMessageIds: [],
@@ -261,8 +280,22 @@ describe("hydrateStreamSidebarPreviewsFromUnreadSnapshot", () => {
 
     expect(fetchMessagesByIdsMock).toHaveBeenCalledTimes(2);
 
-    resolveFirst([streamMsg({ id: 301, stream_id: 5, subject: "alpha", content: "old" })]);
-    resolveSecond([streamMsg({ id: 301, stream_id: 5, subject: "alpha", content: "new" })]);
+    resolveFirst([
+      streamMsg({
+        id: "00000000-0000-4000-8000-000000000301",
+        stream_id: 5,
+        subject: "alpha",
+        content: "old",
+      }),
+    ]);
+    resolveSecond([
+      streamMsg({
+        id: "00000000-0000-4000-8000-000000000301",
+        stream_id: 5,
+        subject: "alpha",
+        content: "new",
+      }),
+    ]);
     await Promise.all([first, second]);
 
     expect(useChatListStore.getState().streamsMap.get(5)?.lastMessage).toContain("new");

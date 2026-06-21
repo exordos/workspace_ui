@@ -3,6 +3,7 @@ import { sendMessage } from "~/shared/api/messenger-messages";
 import { uploadFile } from "~/shared/api/messenger-upload";
 import type { MockMessage } from "~/shared/api/messenger.types";
 import { createLogger } from "~/shared/lib/logger";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { isAbortLikeError } from "./chat-page-ai.lib";
 import {
@@ -22,9 +23,9 @@ export interface ChatPageSendHandlerDeps {
   activeStreamCanonicalName: string | null;
   activeStreamId: number | null | undefined;
   activeTopic: string | null | undefined;
-  allocateOptimisticMessageId: () => number;
+  allocateOptimisticMessageId: () => MessageId;
   appendMessage: (message: MockMessage) => void;
-  commitOutgoingMessage: (optimisticId: number, message: MockMessage) => void;
+  commitOutgoingMessage: (optimisticId: MessageId, message: MockMessage) => void;
   requestScrollToBottom: () => void;
   clearReplyQuote: () => void;
   stopTyping: () => void;

@@ -19,6 +19,7 @@ import {
   logChatListFlow,
   summarizeMessengerMessagesForFlowDebug,
 } from "~/shared/lib/message-flow-debug.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { buildStreamSidebarPreviewNarrow } from "~/shared/lib/messenger-stream-sidebar-preview-narrow.lib";
 import { normalizeMessengerMessagesNarrowForApi } from "~/shared/lib/messenger-topic-narrow.lib";
 import { getInMemoryLatestMessageId, maxMessageId } from "./layout-chat-list-latest-message-id.lib";
@@ -29,8 +30,12 @@ export function getStreamPreviewBatchLimit(): number {
 }
 
 export type ChatListBootstrapResult =
-  | { mode: "streamPreviews"; messages: WorkspaceRawMessage[]; latestMessageIdHint: number | null }
-  | { mode: "none"; latestMessageIdHint: number | null };
+  | {
+      mode: "streamPreviews";
+      messages: WorkspaceRawMessage[];
+      latestMessageIdHint: MessageId | null;
+    }
+  | { mode: "none"; latestMessageIdHint: MessageId | null };
 
 export type ChatListBootstrapKind = "cold" | "reconnect";
 
@@ -52,7 +57,7 @@ function isBootstrapSuperseded(options?: RunChatListBootstrapOptions): boolean {
 
 /** One batch of stream messages for sidebar preview in metadata-first (no unread reconcile). */
 async function fetchStreamPreviewMessageBatch(
-  hint: number | null,
+  hint: MessageId | null,
   options?: RunChatListBootstrapOptions,
 ): Promise<WorkspaceRawMessage[]> {
   const limit = getStreamPreviewBatchLimit();

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
+import { testMessageId } from "~/test/factories";
 import {
   closeAllActiveMessageNotifications,
   closeReadMessageNotifications,
@@ -40,9 +41,14 @@ function createNotifications(): {
   };
 }
 
-function createStreamMessage(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessage {
+type WorkspaceRawMessageOverrides = Partial<Omit<WorkspaceRawMessage, "id">> & {
+  id?: WorkspaceRawMessage["id"] | number;
+};
+
+function createStreamMessage(overrides: WorkspaceRawMessageOverrides = {}): WorkspaceRawMessage {
+  const { id, ...rest } = overrides;
   return {
-    id: 55,
+    id: testMessageId(id ?? 55),
     sender_id: 42,
     sender_full_name: "Alice",
     content: "<p>Hello</p>",
@@ -52,7 +58,7 @@ function createStreamMessage(overrides: Partial<WorkspaceRawMessage> = {}): Work
     display_recipient: "General Discussion",
     subject: "Bugs",
     flags: [],
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -64,22 +70,24 @@ beforeEach(() => {
 describe("closeReadMessageNotifications", () => {
   it("closes fallback message notifications for untracked read message ids", () => {
     const notifications = createNotifications();
+    const ids = [testMessageId(101), testMessageId(202), testMessageId(303)];
 
-    closeReadMessageNotifications(notifications, [101, 202, 303], "inst-1");
+    closeReadMessageNotifications(notifications, ids, "inst-1");
 
     expect(notifications.closeByTag).toHaveBeenCalledTimes(3);
-    expect(notifications.closeByTag).toHaveBeenNthCalledWith(1, "msg:inst-1::101");
-    expect(notifications.closeByTag).toHaveBeenNthCalledWith(2, "msg:inst-1::202");
-    expect(notifications.closeByTag).toHaveBeenNthCalledWith(3, "msg:inst-1::303");
+    expect(notifications.closeByTag).toHaveBeenNthCalledWith(1, `msg:inst-1::${ids[0]}`);
+    expect(notifications.closeByTag).toHaveBeenNthCalledWith(2, `msg:inst-1::${ids[1]}`);
+    expect(notifications.closeByTag).toHaveBeenNthCalledWith(3, `msg:inst-1::${ids[2]}`);
   });
 
   it("deduplicates IDs and ignores invalid values", () => {
     const notifications = createNotifications();
+    const id = testMessageId(101);
 
-    closeReadMessageNotifications(notifications, [101, 101, 0, -1, Number.NaN], "inst-1");
+    closeReadMessageNotifications(notifications, [id, id, "not-a-message-id"], "inst-1");
 
     expect(notifications.closeByTag).toHaveBeenCalledTimes(1);
-    expect(notifications.closeByTag).toHaveBeenCalledWith("msg:inst-1::101");
+    expect(notifications.closeByTag).toHaveBeenCalledWith(`msg:inst-1::${id}`);
   });
 
   it("updates the bucket notification when only part of it is read", async () => {
@@ -104,7 +112,11 @@ describe("closeReadMessageNotifications", () => {
       titleContext: buildNotificationTitleContextFromMessage(second, 7),
     });
 
-    closeReadMessageNotifications(notifications, [56], "inst-1");
+    closeReadMessageNotifications(
+      notifications,
+      ["00000000-0000-4000-8000-000000000056"],
+      "inst-1",
+    );
 
     expect(notifications.closeByTag).not.toHaveBeenCalled();
     await vi.waitFor(() => {
@@ -131,7 +143,11 @@ describe("closeReadMessageNotifications", () => {
       titleContext: buildNotificationTitleContextFromMessage(message, 7),
     });
 
-    closeReadMessageNotifications(notifications, [55], "inst-1");
+    closeReadMessageNotifications(
+      notifications,
+      ["00000000-0000-4000-8000-000000000055"],
+      "inst-1",
+    );
 
     expect(notifications.closeByTag).toHaveBeenCalledTimes(1);
     expect(notifications.closeByTag).toHaveBeenCalledWith(
@@ -144,7 +160,11 @@ describe("closeReadMessageNotifications", () => {
     const notifications = createNotifications();
 
     const first = createStreamMessage();
-    const second = createStreamMessage({ id: 56, sender_id: 99, sender_full_name: "Bob" });
+    const second = createStreamMessage({
+      id: "00000000-0000-4000-8000-000000000056",
+      sender_id: 99,
+      sender_full_name: "Bob",
+    });
 
     upsertNotificationAggregate({
       message: first,
@@ -177,8 +197,14 @@ describe("closeReadMessageNotifications", () => {
   it("does not close fallback tags for another instance", () => {
     const notifications = createNotifications();
 
-    closeReadMessageNotifications(notifications, [101], "inst-2");
+    closeReadMessageNotifications(
+      notifications,
+      ["00000000-0000-4000-8000-000000000101"],
+      "inst-2",
+    );
 
-    expect(notifications.closeByTag).toHaveBeenCalledWith("msg:inst-2::101");
+    expect(notifications.closeByTag).toHaveBeenCalledWith(
+      "msg:inst-2::00000000-0000-4000-8000-000000000101",
+    );
   });
 });

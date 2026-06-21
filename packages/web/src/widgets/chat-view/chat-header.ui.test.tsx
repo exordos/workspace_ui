@@ -148,20 +148,6 @@ describe("ChatHeader", () => {
     expect(onDmPartnerClick).toHaveBeenCalledTimes(1);
   });
 
-  it("shows group dm title and participant count", () => {
-    renderWithProviders(
-      <ChatHeader
-        channelName="unused"
-        dmGroup={{ name: "Alice, Bob, Me", participantsCount: 3 }}
-        hideParticipants
-        hideTopic
-      />,
-    );
-
-    expect(screen.getByText("Alice, Bob, Me")).toBeInTheDocument();
-    expect(screen.getByText(/3 (members?|участник|участника|участников)/i)).toBeInTheDocument();
-  });
-
   it("uses rounded top shell, compact metadata typography and topbar-aligned height", () => {
     renderWithProviders(
       <ChatHeader

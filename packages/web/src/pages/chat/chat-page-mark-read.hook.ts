@@ -25,6 +25,7 @@ import {
   createMessageIdSet,
   messageIdsMissingFromBothLists,
 } from "~/shared/lib/message-id-index.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { useShortcut } from "~/shared/lib/shortcuts";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
@@ -48,12 +49,12 @@ export interface UseChatPageMarkReadParams {
   streamSlug: string | undefined;
   topicName: string | undefined;
   dmIdParam: string | undefined;
-  updateMessageFlagsInStore: (messageIds: number[], flag: string, op: "add" | "remove") => void;
+  updateMessageFlagsInStore: (messageIds: MessageId[], flag: string, op: "add" | "remove") => void;
 }
 
 export interface UseChatPageMarkReadResult {
-  handleUnreadMessagesVisible: (messageIds: number[]) => void;
-  handleUnreadMessagesAtBottom: (messageIds: number[]) => void;
+  handleUnreadMessagesVisible: (messageIds: MessageId[]) => void;
+  handleUnreadMessagesAtBottom: (messageIds: MessageId[]) => void;
   handleMarkAllAsRead: () => void;
 }
 
@@ -100,7 +101,7 @@ export function useChatPageMarkRead({
   );
 
   const applyReadMessagesOptimistically = useCallback(
-    (messageIds: number[], fallbackContext?: ReadFallbackContext) => {
+    (messageIds: MessageId[], fallbackContext?: ReadFallbackContext) => {
       if (messageIds.length === 0) return;
 
       const storeMessages = useCurrentChatMessagesStore.getState().messages;
@@ -148,7 +149,7 @@ export function useChatPageMarkRead({
   );
 
   const handleUnreadMessagesVisible = useCallback(
-    (messageIds: number[]) => {
+    (messageIds: MessageId[]) => {
       if (!isDmView && activeTopic == null) return;
       markAsReadBatcherRef.current?.schedule(messageIds);
     },
@@ -156,7 +157,7 @@ export function useChatPageMarkRead({
   );
 
   const handleUnreadMessagesAtBottom = useCallback(
-    (messageIds: number[]) => {
+    (messageIds: MessageId[]) => {
       if (!isDmView && activeTopic == null) return;
       markAsReadBatcherRef.current?.schedule(messageIds);
     },

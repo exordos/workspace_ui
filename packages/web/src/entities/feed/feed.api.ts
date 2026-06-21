@@ -6,11 +6,12 @@ import { fetchAllMessagesPage } from "~/shared/api/messenger-messages";
 import type { MessagesPageResult, MockMessage } from "~/shared/api/messenger.types";
 import { createLogger, logApiCall } from "~/shared/lib/logger";
 import { getInstanceMessagesAscending } from "~/shared/lib/message-cache-db";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 
 const log = createLogger("feed:api");
 
 export async function fetchFeedMessages(
-  anchor: number | "newest" = "newest",
+  anchor: MessageId = "newest",
   numBefore = 50,
   options?: { signal?: AbortSignal },
 ): Promise<MessagesPageResult> {

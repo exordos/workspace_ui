@@ -8,6 +8,7 @@ import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import * as client from "~/shared/api/client";
 import type { MockMessage } from "~/shared/api/messenger.types";
+import { testMessageId, testMessageOrdinal } from "~/test/factories";
 import { dispatchMessengerEvent } from "./layout-messenger-event-dispatch.lib";
 import type {
   LayoutCurrentChatActions,
@@ -157,15 +158,15 @@ function buildIntegrationCtx(): LayoutMessengerEventDispatchContext {
   };
 }
 
-function mockMsg(id: number, overrides: Partial<MockMessage> = {}): MockMessage {
+function mockMsg(id: number | string, overrides: Partial<MockMessage> = {}): MockMessage {
   return {
-    id,
+    id: testMessageId(id),
     sender_id: 99,
     sender_full_name: "Alice",
     stream_id: null,
     subject: "",
     content: "hi",
-    timestamp: id,
+    timestamp: testMessageOrdinal(testMessageOrdinal(id)),
     flags: [],
     ...overrides,
   };
@@ -325,14 +326,14 @@ describe("dispatchMessengerEvent", () => {
         {
           id: 1,
           type: "update_message",
-          message_id: 42,
+          message_id: "00000000-0000-4000-8000-000000000042",
           rendered_content: "<p>new</p>",
           content: "*new*",
           rendering_only: false,
         },
         ctx,
       );
-      expect(updateMessageContentMock).toHaveBeenCalledWith(42, "*new*", "*new*");
+      expect(updateMessageContentMock).toHaveBeenCalledWith(testMessageId(42), "*new*", "*new*");
     });
 
     it("does not overwrite content when rendering_only", () => {
@@ -342,7 +343,7 @@ describe("dispatchMessengerEvent", () => {
         {
           id: 2,
           type: "update_message",
-          message_id: 7,
+          message_id: "00000000-0000-4000-8000-000000000007",
           rendered_content: "<p>preview</p>",
           content: "same md",
           rendering_only: true,
@@ -361,7 +362,7 @@ describe("dispatchMessengerEvent", () => {
         {
           id: 5,
           type: "update_message",
-          message_id: 9,
+          message_id: "00000000-0000-4000-8000-000000000009",
           rendering_only: true,
           rendered_content: `
             <div class="message_embed">
@@ -375,7 +376,7 @@ describe("dispatchMessengerEvent", () => {
       );
       expect(updateMessageLinkPreviewMock).not.toHaveBeenCalled();
       useCurrentChatMessagesStore.getState().appendMessage({
-        id: 9,
+        id: "00000000-0000-4000-8000-000000000009",
         sender_id: 1,
         sender_full_name: "Alice",
         stream_id: 5,
@@ -391,7 +392,7 @@ describe("dispatchMessengerEvent", () => {
     it("applies link preview from rendering_only rendered_content without changing markdown", () => {
       const { ctx, updateMessageContentMock, updateMessageLinkPreviewMock } = buildCtx();
       const message: MockMessage = {
-        id: 9,
+        id: "00000000-0000-4000-8000-000000000009",
         sender_id: 1,
         sender_full_name: "Alice",
         stream_id: 5,
@@ -404,7 +405,7 @@ describe("dispatchMessengerEvent", () => {
         {
           id: 4,
           type: "update_message",
-          message_id: 9,
+          message_id: "00000000-0000-4000-8000-000000000009",
           rendering_only: true,
           rendered_content: `
             <p><a href="https://example.com">https://example.com</a></p>
@@ -419,11 +420,14 @@ describe("dispatchMessengerEvent", () => {
         ctx,
       );
       expect(updateMessageContentMock).not.toHaveBeenCalled();
-      expect(updateMessageLinkPreviewMock).toHaveBeenCalledWith(9, {
-        targetUrl: "https://example.com",
-        title: "Example",
-        description: "Site description",
-      });
+      expect(updateMessageLinkPreviewMock).toHaveBeenCalledWith(
+        testMessageId(9),
+        expect.objectContaining({
+          targetUrl: "https://example.com",
+          title: "Example",
+          description: "Site description",
+        }),
+      );
     });
 
     it("moves stream topic in chat list when topic is renamed", () => {
@@ -432,11 +436,15 @@ describe("dispatchMessengerEvent", () => {
         {
           id: 3,
           type: "update_message",
-          message_id: 99,
+          message_id: "00000000-0000-4000-8000-000000000099",
           stream_id: 42,
           orig_subject: "incident",
           subject: "\u2714 incident",
-          message_ids: [1, 2, 3],
+          message_ids: [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002",
+            "00000000-0000-4000-8000-000000000003",
+          ],
         },
         ctx,
       );
@@ -444,15 +452,23 @@ describe("dispatchMessengerEvent", () => {
         streamId: 42,
         oldTopic: "incident",
         newTopic: "\u2714 incident",
-        messageIds: [1, 2, 3],
-        anchorMessageId: 99,
+        messageIds: [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002",
+          "00000000-0000-4000-8000-000000000003",
+        ],
+        anchorMessageId: "00000000-0000-4000-8000-000000000099",
       });
       expect(moveStreamTopicMessagesMock).toHaveBeenCalledWith({
         streamId: 42,
         oldTopic: "incident",
         newTopic: "\u2714 incident",
-        messageIds: [1, 2, 3],
-        anchorMessageId: 99,
+        messageIds: [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002",
+          "00000000-0000-4000-8000-000000000003",
+        ],
+        anchorMessageId: "00000000-0000-4000-8000-000000000099",
       });
     });
 
@@ -484,12 +500,15 @@ describe("dispatchMessengerEvent", () => {
         {
           id: 4,
           type: "update_message",
-          message_id: 99,
+          message_id: "00000000-0000-4000-8000-000000000099",
           stream_id: 10,
           new_stream_id: 20,
           orig_subject: "incident",
           subject: "incident",
-          message_ids: [1, 2],
+          message_ids: [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002",
+          ],
         },
         ctx,
       );
@@ -498,16 +517,22 @@ describe("dispatchMessengerEvent", () => {
         targetStreamId: 20,
         oldTopic: "incident",
         newTopic: "incident",
-        messageIds: [1, 2],
-        anchorMessageId: 99,
+        messageIds: [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002",
+        ],
+        anchorMessageId: "00000000-0000-4000-8000-000000000099",
       });
       expect(moveTopicToStreamMessagesMock).toHaveBeenCalledWith({
         sourceStreamId: 10,
         targetStreamId: 20,
         oldTopic: "incident",
         newTopic: "incident",
-        messageIds: [1, 2],
-        anchorMessageId: 99,
+        messageIds: [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002",
+        ],
+        anchorMessageId: "00000000-0000-4000-8000-000000000099",
         targetStreamName: "dev",
       });
       expect(moveStreamTopicMock).not.toHaveBeenCalled();
@@ -520,7 +545,7 @@ describe("dispatchMessengerEvent", () => {
         {
           id: 4,
           type: "update_message",
-          message_id: 7,
+          message_id: "00000000-0000-4000-8000-000000000007",
           stream_id: 42,
           subject: "incident",
         },
@@ -534,7 +559,7 @@ describe("dispatchMessengerEvent", () => {
       useChatListStore.getState().setFromMessages(
         [
           {
-            id: 1,
+            id: "00000000-0000-4000-8000-000000000001",
             sender_id: 10,
             sender_full_name: "Alice",
             content: "first",
@@ -565,11 +590,11 @@ describe("dispatchMessengerEvent", () => {
         {
           id: 10,
           type: "update_message",
-          message_id: 1,
+          message_id: "00000000-0000-4000-8000-000000000001",
           stream_id: 42,
           orig_subject: "incident",
           subject: "\u2714 incident",
-          message_ids: [1],
+          message_ids: ["00000000-0000-4000-8000-000000000001"],
         },
         integrationCtx,
       );
@@ -577,7 +602,7 @@ describe("dispatchMessengerEvent", () => {
         {
           id: 11,
           type: "delete_message",
-          message_ids: [1],
+          message_ids: ["00000000-0000-4000-8000-000000000001"],
         },
         integrationCtx,
       );
@@ -820,7 +845,7 @@ describe("dispatchMessengerEvent", () => {
           type: "message",
           flags: [],
           message: {
-            id: 1988,
+            id: "00000000-0000-4000-8000-000000001988",
             sender_id: 6,
             content: "rename notice",
             timestamp: 1777960620,
@@ -846,7 +871,7 @@ describe("dispatchMessengerEvent", () => {
           type: "message",
           flags: [],
           message: {
-            id: 1989,
+            id: "00000000-0000-4000-8000-000000001989",
             sender_id: 6,
             sender_full_name: "Alice",
             content: "new unread",
@@ -878,7 +903,7 @@ describe("dispatchMessengerEvent", () => {
           type: "message",
           flags: [],
           message: {
-            id: 1990,
+            id: "00000000-0000-4000-8000-000000001990",
             sender_id: 6,
             sender_full_name: "Alice",
             content: "muted unread",
@@ -1067,7 +1092,17 @@ describe("dispatchMessengerEvent", () => {
       useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
       useChatListStore.getState().reconcileUnreadFromSnapshot(
         {
-          streams: [{ streamId: 5, topic: "topic1", unreadMessageIds: [1, 2, 3] }],
+          streams: [
+            {
+              streamId: 5,
+              topic: "topic1",
+              unreadMessageIds: [
+                "00000000-0000-4000-8000-000000000001",
+                "00000000-0000-4000-8000-000000000002",
+                "00000000-0000-4000-8000-000000000003",
+              ],
+            },
+          ],
           dms: [],
           totalCount: 3,
           mentionMessageIds: [],
@@ -1075,7 +1110,12 @@ describe("dispatchMessengerEvent", () => {
         1,
       );
       useChatListStore.setState({
-        messageIdToLocation: new Map([[1, { type: "stream", stream_id: 5, topic: "topic1" }]]),
+        messageIdToLocation: new Map([
+          [
+            "00000000-0000-4000-8000-000000000001",
+            { type: "stream", stream_id: 5, topic: "topic1" },
+          ],
+        ]),
       });
 
       const { ctx } = buildCtx();
@@ -1093,7 +1133,7 @@ describe("dispatchMessengerEvent", () => {
           type: "update_message_flags",
           op: "add",
           flag: "read",
-          messages: [1, 2, 3],
+          messages: [testMessageId(1), testMessageId(2), testMessageId(3)],
         },
         ctx,
       );
@@ -1105,13 +1145,26 @@ describe("dispatchMessengerEvent", () => {
 
     it("skips sidebar decrement when optimistic read already cleared open DM unread", () => {
       useChatListStore.getState().setCurrentUserId(10);
-      useChatListStore
-        .getState()
-        .upsertDmMetadataRows([{ userIds: [10, 20], lastMessageId: 3083, unreadCount: 0 }]);
+      useChatListStore.getState().upsertDmMetadataRows([
+        {
+          userIds: [10, 20],
+          lastMessageId: "00000000-0000-4000-8000-000000003083",
+          unreadCount: 0,
+        },
+      ]);
       useChatListStore.getState().reconcileUnreadFromSnapshot(
         {
           streams: [],
-          dms: [{ userIds: [20], unreadMessageIds: [3081, 3082, 3083], isGroup: false }],
+          dms: [
+            {
+              userIds: [20],
+              unreadMessageIds: [
+                "00000000-0000-4000-8000-000000003081",
+                "00000000-0000-4000-8000-000000003082",
+                "00000000-0000-4000-8000-000000003083",
+              ],
+            },
+          ],
           totalCount: 3,
           mentionMessageIds: [],
         },
@@ -1120,7 +1173,11 @@ describe("dispatchMessengerEvent", () => {
 
       const store = useChatListStore.getState();
       applyChatListReadDecrement(() => useChatListStore.getState(), store, {
-        messageIds: [3081, 3082, 3083],
+        messageIds: [
+          "00000000-0000-4000-8000-000000003081",
+          "00000000-0000-4000-8000-000000003082",
+          "00000000-0000-4000-8000-000000003083",
+        ],
         fallbackContext: { type: "dm", dmKey: "10,20" },
         source: "test:optimistic",
       });
@@ -1135,7 +1192,7 @@ describe("dispatchMessengerEvent", () => {
           type: "update_message_flags",
           op: "add",
           flag: "read",
-          messages: [3081, 3082, 3083],
+          messages: [testMessageId(3081), testMessageId(3082), testMessageId(3083)],
         },
         ctx,
       );
@@ -1148,8 +1205,19 @@ describe("dispatchMessengerEvent", () => {
       useChatListStore.getState().reconcileUnreadFromSnapshot(
         {
           streams: [
-            { streamId: 5, topic: "topicA", unreadMessageIds: [1] },
-            { streamId: 5, topic: "topicB", unreadMessageIds: [10, 11] },
+            {
+              streamId: 5,
+              topic: "topicA",
+              unreadMessageIds: ["00000000-0000-4000-8000-000000000001"],
+            },
+            {
+              streamId: 5,
+              topic: "topicB",
+              unreadMessageIds: [
+                "00000000-0000-4000-8000-000000000010",
+                "00000000-0000-4000-8000-000000000011",
+              ],
+            },
           ],
           dms: [],
           totalCount: 3,
@@ -1176,7 +1244,7 @@ describe("dispatchMessengerEvent", () => {
           type: "update_message_flags",
           op: "add",
           flag: "read",
-          messages: [10, 11],
+          messages: [testMessageId(10), testMessageId(11)],
         },
         ctx,
       );
@@ -1207,21 +1275,21 @@ describe("dispatchMessengerEvent", () => {
           type: "update_message_flags",
           op: "add",
           flag: "read",
-          messages: [10],
+          messages: [testMessageId(10)],
         },
         buildIntegrationCtx(),
       );
 
       const messages = useCurrentChatMessagesStore.getState().messages;
-      expect(messages.find((m) => m.id === 10)?.flags).toContain("read");
-      expect(messages.find((m) => m.id === 11)?.flags).toContain("read");
+      expect(messages.find((m) => m.id === testMessageId(10))?.flags).toContain("read");
+      expect(messages.find((m) => m.id === testMessageId(11))?.flags).toContain("read");
     });
 
     it("syncs organization count after read:add decrements unread", () => {
       setCurrentInstanceForUnreadTests();
       useChatListStore.getState().setCurrentUserId(1);
       useChatListStore.getState().addMessage({
-        id: 12,
+        id: "00000000-0000-4000-8000-000000000012",
         sender_id: 2,
         sender_full_name: "Alice",
         content: "unread",
@@ -1243,7 +1311,7 @@ describe("dispatchMessengerEvent", () => {
           dmSlug: null,
           unreadCount: 1,
           lastMessageTimestamp: 12,
-          messageIds: [12],
+          messageIds: ["00000000-0000-4000-8000-000000000012"],
         },
       ]);
       useInstancesStore.getState().setInstanceUnreadCount("inst-1", 1);
@@ -1254,7 +1322,7 @@ describe("dispatchMessengerEvent", () => {
           type: "update_message_flags",
           op: "add",
           flag: "read",
-          messages: [12],
+          messages: [testMessageId(12)],
         },
         buildIntegrationCtx(),
       );
@@ -1268,7 +1336,7 @@ describe("dispatchMessengerEvent", () => {
       setCurrentInstanceForUnreadTests();
       useChatListStore.getState().setCurrentUserId(1);
       useChatListStore.getState().addMessage({
-        id: 13,
+        id: "00000000-0000-4000-8000-000000000013",
         sender_id: 2,
         sender_full_name: "Alice",
         content: "read",
@@ -1286,7 +1354,7 @@ describe("dispatchMessengerEvent", () => {
           type: "update_message_flags",
           op: "remove",
           flag: "read",
-          messages: [13],
+          messages: [testMessageId(13)],
         },
         buildIntegrationCtx(),
       );
@@ -1308,7 +1376,13 @@ describe("dispatchMessengerEvent", () => {
       useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
       useChatListStore.getState().reconcileUnreadFromSnapshot(
         {
-          streams: [{ streamId: 5, topic: "topicB", unreadMessageIds: [10] }],
+          streams: [
+            {
+              streamId: 5,
+              topic: "topicB",
+              unreadMessageIds: ["00000000-0000-4000-8000-000000000010"],
+            },
+          ],
           dms: [],
           totalCount: 1,
           mentionMessageIds: [],
@@ -1322,7 +1396,7 @@ describe("dispatchMessengerEvent", () => {
           type: "update_message_flags",
           op: "add",
           flag: "read",
-          messages: [10],
+          messages: [testMessageId(10)],
         },
         buildIntegrationCtx(),
       );
@@ -1339,7 +1413,16 @@ describe("dispatchMessengerEvent", () => {
       useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
       useChatListStore.getState().reconcileUnreadFromSnapshot(
         {
-          streams: [{ streamId: 5, topic: "topic1", unreadMessageIds: [1, 2] }],
+          streams: [
+            {
+              streamId: 5,
+              topic: "topic1",
+              unreadMessageIds: [
+                "00000000-0000-4000-8000-000000000001",
+                "00000000-0000-4000-8000-000000000002",
+              ],
+            },
+          ],
           dms: [],
           totalCount: 2,
           mentionMessageIds: [],
@@ -1380,7 +1463,7 @@ describe("dispatchMessengerEvent", () => {
           type: "update_message_flags",
           operation: "remove",
           flag: "read",
-          messages: [20],
+          messages: [testMessageId(20)],
         },
         buildIntegrationCtx(),
       );
@@ -1399,7 +1482,11 @@ describe("dispatchMessengerEvent", () => {
         dmSlug: null,
         unreadCount: 3,
         lastMessageTimestamp: 100,
-        messageIds: [1, 2, 3],
+        messageIds: [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002",
+          "00000000-0000-4000-8000-000000000003",
+        ],
       };
       useInboxStore.getState().setEntries([inboxEntry]);
       const markStaleSpy = vi.spyOn(useInboxStore.getState(), "markStale");
@@ -1410,7 +1497,7 @@ describe("dispatchMessengerEvent", () => {
           type: "update_message_flags",
           op: "add",
           flag: "read",
-          messages: [1, 2],
+          messages: [testMessageId(1), testMessageId(2)],
         },
         buildIntegrationCtx(),
       );
@@ -1418,7 +1505,7 @@ describe("dispatchMessengerEvent", () => {
       const entries = useInboxStore.getState().entries;
       expect(entries).toHaveLength(1);
       expect(entries[0]!.unreadCount).toBe(1);
-      expect(entries[0]!.messageIds).toEqual([3]);
+      expect(entries[0]!.messageIds).toEqual([testMessageId(3)]);
       expect(markStaleSpy).not.toHaveBeenCalled();
       markStaleSpy.mockRestore();
     });
@@ -1435,7 +1522,7 @@ describe("dispatchMessengerEvent", () => {
           dmSlug: "42",
           unreadCount: 1,
           lastMessageTimestamp: 10,
-          messageIds: [1],
+          messageIds: ["00000000-0000-4000-8000-000000000001"],
         },
       ]);
 

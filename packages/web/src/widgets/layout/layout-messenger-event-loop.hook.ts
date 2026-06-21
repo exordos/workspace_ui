@@ -45,6 +45,7 @@ import { upsertDmIndexEntries, type DmIndexEntry } from "~/shared/lib/dm-index";
 import { startMessengerEventLoop } from "~/shared/lib/event-loop";
 import { createLogger } from "~/shared/lib/logger";
 import { logChatListFlow, logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { loadMuteSnapshotRow } from "~/shared/lib/mute-snapshot-db";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
@@ -98,7 +99,7 @@ const LAYOUT_REGISTER_FETCH_EVENT_TYPES = [
 const log = createLogger("layout-messenger-event-loop");
 
 interface LatestMessageIdRef {
-  current: number | null;
+  current: MessageId | null;
 }
 
 interface RefreshStaleCallbackRef {
@@ -250,7 +251,7 @@ export function useLayoutMessengerEventLoop(options: {
   currentInstanceId: string | null;
   /** Shared with reconnect refresh so sidebar delta anchor stays in sync. */
   latestMessageIdRef?: LatestMessageIdRef;
-  focusedMessageId?: number | null;
+  focusedMessageId?: MessageId | null;
   onRefreshStaleRef?: RefreshStaleCallbackRef;
   loadBootstrapMessages: (
     signal: AbortSignal,
@@ -301,7 +302,7 @@ export function useLayoutMessengerEventLoop(options: {
   const instanceAtLoopStartRef = useRef<{ realm: string; login: string; apiKey: string } | null>(
     null,
   );
-  const internalLatestMessageIdRef = useRef<number | null>(null);
+  const internalLatestMessageIdRef = useRef<MessageId | null>(null);
   const registerUnreadSnapshotRef = useRef<MessengerUnreadMessagesSnapshot | null>(null);
   const recentPrivateConversationsRef = useRef<
     Record<string, MessengerRecentPrivateConversation> | undefined
@@ -447,8 +448,7 @@ export function useLayoutMessengerEventLoop(options: {
         const prev = streamResult.latestMessageIdHint;
         const latestRef = bootstrapApplyOptions.latestMessageIdRef;
         if (latestRef != null) {
-          latestRef.current =
-            newest != null && (prev == null || newest > prev) ? newest : (prev ?? newest);
+          latestRef.current = newest ?? prev ?? latestRef.current;
         }
         streamPreviewCoordinator.stageStreamPreviews(streamResult);
         tryFlushMetadataStreamPreviews();

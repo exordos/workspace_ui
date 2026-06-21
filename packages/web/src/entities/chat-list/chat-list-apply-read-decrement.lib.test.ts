@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { testMessageId } from "~/test/factories";
 import {
   applyChatListReadDecrement,
   applyChatListReadDecrementGrouped,
@@ -14,7 +15,7 @@ function streamMsg(
   overrides: Partial<import("~/shared/api/messenger.types").WorkspaceRawMessage> = {},
 ) {
   return {
-    id: 1,
+    id: "00000000-0000-4000-8000-000000000001",
     sender_id: OTHER_SENDER_ID,
     sender_full_name: "Sender",
     content: "hello",
@@ -42,9 +43,9 @@ describe("applyChatListReadDecrement", () => {
       .getState()
       .setFromMessages(
         [
-          streamMsg({ id: 1, flags: [] }),
-          streamMsg({ id: 2, flags: [], timestamp: 2000 }),
-          streamMsg({ id: 3, flags: [], timestamp: 3000 }),
+          streamMsg({ id: "00000000-0000-4000-8000-000000000001", flags: [] }),
+          streamMsg({ id: "00000000-0000-4000-8000-000000000002", flags: [], timestamp: 2000 }),
+          streamMsg({ id: "00000000-0000-4000-8000-000000000003", flags: [], timestamp: 3000 }),
         ],
         10,
       );
@@ -52,7 +53,11 @@ describe("applyChatListReadDecrement", () => {
     const store = useChatListStore.getState();
     const context = { type: "stream" as const, streamId: 5, topic: "topic1" };
     applyChatListReadDecrement(() => useChatListStore.getState(), store, {
-      messageIds: [1, 99, 100],
+      messageIds: [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000099",
+        "00000000-0000-4000-8000-000000000100",
+      ],
       fallbackContext: context,
     });
 
@@ -62,16 +67,22 @@ describe("applyChatListReadDecrement", () => {
   });
 
   it("clears stale badge when flags already read via clampWhenAlreadyRead", () => {
-    useChatListStore
-      .getState()
-      .setFromMessages(
-        [
-          streamMsg({ id: 1, flags: ["read"] }),
-          streamMsg({ id: 2, flags: ["read"], timestamp: 2000 }),
-          streamMsg({ id: 3, flags: ["read"], timestamp: 3000 }),
-        ],
-        10,
-      );
+    useChatListStore.getState().setFromMessages(
+      [
+        streamMsg({ id: "00000000-0000-4000-8000-000000000001", flags: ["read"] }),
+        streamMsg({
+          id: "00000000-0000-4000-8000-000000000002",
+          flags: ["read"],
+          timestamp: 2000,
+        }),
+        streamMsg({
+          id: "00000000-0000-4000-8000-000000000003",
+          flags: ["read"],
+          timestamp: 3000,
+        }),
+      ],
+      10,
+    );
     useChatListStore.setState({
       streamsMap: new Map(useChatListStore.getState().streamsMap).set(5, {
         ...useChatListStore.getState().streamsMap.get(5)!,
@@ -93,7 +104,11 @@ describe("applyChatListReadDecrement", () => {
 
     const store = useChatListStore.getState();
     applyChatListReadDecrement(() => useChatListStore.getState(), store, {
-      messageIds: [1, 2, 3],
+      messageIds: [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000003",
+      ],
       fallbackContext: { type: "stream", streamId: 5, topic: "topic1" },
       clampWhenAlreadyRead: true,
     });
@@ -108,7 +123,7 @@ describe("applyChatListReadDecrement", () => {
       id: number,
       flags: string[] = [],
     ): import("~/shared/api/messenger.types").WorkspaceRawMessage => ({
-      id,
+      id: testMessageId(id),
       sender_id: OTHER_SENDER_ID,
       sender_full_name: "Peer",
       content: "hi",
@@ -129,7 +144,12 @@ describe("applyChatListReadDecrement", () => {
     expect(useChatListStore.getState().dmsMap.get("23,35")?.unreadCount).toBe(4);
 
     applyChatListReadDecrement(() => useChatListStore.getState(), store, {
-      messageIds: [3055, 3056, 3057, 3058],
+      messageIds: [
+        "00000000-0000-4000-8000-000000003055",
+        "00000000-0000-4000-8000-000000003056",
+        "00000000-0000-4000-8000-000000003057",
+        "00000000-0000-4000-8000-000000003058",
+      ],
       fallbackContext: context,
       source: "test:optimistic",
     });
@@ -137,14 +157,21 @@ describe("applyChatListReadDecrement", () => {
 
     const dmUnreadAfterOptimistic = useChatListStore.getState().dmsMap.get("23,35")?.unreadCount;
     applyChatListReadDecrement(() => useChatListStore.getState(), useChatListStore.getState(), {
-      messageIds: [3055, 3056, 3057, 3058],
+      messageIds: [
+        "00000000-0000-4000-8000-000000003055",
+        "00000000-0000-4000-8000-000000003056",
+        "00000000-0000-4000-8000-000000003057",
+        "00000000-0000-4000-8000-000000003058",
+      ],
       fallbackContext: context,
       source: "test:eventReplay",
     });
     expect(useChatListStore.getState().dmsMap.get("23,35")?.unreadCount).toBe(
       dmUnreadAfterOptimistic,
     );
-    expect(useChatListStore.getState().messageIdToLocation.has(3055)).toBe(true);
+    expect(
+      useChatListStore.getState().messageIdToLocation.has("00000000-0000-4000-8000-000000003055"),
+    ).toBe(true);
   });
 
   it("readFallbackContextFromCurrentChat ignores stream-wide view", () => {
@@ -170,18 +197,25 @@ describe("applyChatListReadDecrement", () => {
 
   it("decrements mentionsUnreadCount when read ids are in mentionedUnreadMessageIds", () => {
     useChatListStore.setState({
-      mentionedUnreadMessageIds: new Set([10, 11, 12]),
+      mentionedUnreadMessageIds: new Set([
+        "00000000-0000-4000-8000-000000000010",
+        "00000000-0000-4000-8000-000000000011",
+        "00000000-0000-4000-8000-000000000012",
+      ]),
       mentionsUnreadCount: 3,
     });
 
     const store = useChatListStore.getState();
     applyChatListReadDecrement(() => useChatListStore.getState(), store, {
-      messageIds: [10, 99],
+      messageIds: ["00000000-0000-4000-8000-000000000010", "00000000-0000-4000-8000-000000000099"],
       source: "test:mentions",
     });
 
     expect(useChatListStore.getState().mentionsUnreadCount).toBe(2);
-    expect([...useChatListStore.getState().mentionedUnreadMessageIds]).toEqual([11, 12]);
+    expect([...useChatListStore.getState().mentionedUnreadMessageIds]).toEqual([
+      testMessageId(11),
+      testMessageId(12),
+    ]);
   });
 });
 
@@ -195,8 +229,22 @@ describe("applyChatListReadDecrementGrouped", () => {
     useChatListStore.getState().reconcileUnreadFromSnapshot(
       {
         streams: [
-          { streamId: 5, topic: "alpha", unreadMessageIds: [1, 2] },
-          { streamId: 5, topic: "beta", unreadMessageIds: [10, 11] },
+          {
+            streamId: 5,
+            topic: "alpha",
+            unreadMessageIds: [
+              "00000000-0000-4000-8000-000000000001",
+              "00000000-0000-4000-8000-000000000002",
+            ],
+          },
+          {
+            streamId: 5,
+            topic: "beta",
+            unreadMessageIds: [
+              "00000000-0000-4000-8000-000000000010",
+              "00000000-0000-4000-8000-000000000011",
+            ],
+          },
         ],
         dms: [],
         totalCount: 4,
@@ -207,7 +255,12 @@ describe("applyChatListReadDecrementGrouped", () => {
 
     const store = useChatListStore.getState();
     applyChatListReadDecrementGrouped(() => useChatListStore.getState(), store, {
-      messageIds: [1, 2, 10, 11],
+      messageIds: [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        "00000000-0000-4000-8000-000000000010",
+        "00000000-0000-4000-8000-000000000011",
+      ],
       source: "test:multiTopic",
     });
 
@@ -224,15 +277,16 @@ describe("groupMessageIdsByReadLocation", () => {
   it("groups ids by stream topic location", () => {
     useChatListStore.setState({
       messageIdToLocation: new Map([
-        [1, { type: "stream", stream_id: 5, topic: "a" }],
-        [2, { type: "stream", stream_id: 5, topic: "b" }],
+        ["00000000-0000-4000-8000-000000000001", { type: "stream", stream_id: 5, topic: "a" }],
+        ["00000000-0000-4000-8000-000000000002", { type: "stream", stream_id: 5, topic: "b" }],
       ]),
     });
-    const { groups, unindexedIds } = groupMessageIdsByReadLocation(
-      useChatListStore.getState(),
-      [1, 2, 99],
-    );
-    expect(unindexedIds).toEqual([99]);
+    const { groups, unindexedIds } = groupMessageIdsByReadLocation(useChatListStore.getState(), [
+      "00000000-0000-4000-8000-000000000001",
+      "00000000-0000-4000-8000-000000000002",
+      "00000000-0000-4000-8000-000000000099",
+    ]);
+    expect(unindexedIds).toEqual([testMessageId(99)]);
     expect(groups).toHaveLength(2);
   });
 });
@@ -243,7 +297,9 @@ describe("getContextUnreadCount", () => {
   });
 
   it("reads topic unread from streamsMap", () => {
-    useChatListStore.getState().setFromMessages([streamMsg({ id: 1, flags: [] })], 10);
+    useChatListStore
+      .getState()
+      .setFromMessages([streamMsg({ id: "00000000-0000-4000-8000-000000000001", flags: [] })], 10);
     const state = useChatListStore.getState();
     expect(getContextUnreadCount(state, { type: "stream", streamId: 5, topic: "topic1" })).toBe(1);
   });

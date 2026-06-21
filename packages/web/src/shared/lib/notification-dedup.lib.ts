@@ -3,13 +3,15 @@
  *
  * Prevents duplicate OS toasts when the same message is delivered via long-poll and FCM.
  */
+import { isMessageId } from "./message-id.lib";
+import type { MessageId } from "./message-id.lib";
 
 const MAX_RECENT_IDS = 200;
-const recentIds: number[] = [];
-const recentIdSet = new Set<number>();
+const recentIds: MessageId[] = [];
+const recentIdSet = new Set<MessageId>();
 
-export function registerNotifiedMessageId(messageId: number): void {
-  if (!Number.isInteger(messageId) || messageId <= 0) return;
+export function registerNotifiedMessageId(messageId: MessageId): void {
+  if (!isMessageId(messageId)) return;
   if (recentIdSet.has(messageId)) return;
 
   recentIds.push(messageId);
@@ -23,7 +25,7 @@ export function registerNotifiedMessageId(messageId: number): void {
   }
 }
 
-export function wasRecentlyNotified(messageId: number): boolean {
+export function wasRecentlyNotified(messageId: MessageId): boolean {
   return recentIdSet.has(messageId);
 }
 

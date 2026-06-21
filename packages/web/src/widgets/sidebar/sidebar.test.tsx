@@ -117,16 +117,6 @@ const DM_CHAT_SECOND: Extract<SidebarChat, { type: "dm" }> = {
   time: "10:45",
 };
 
-const GROUP_DM_CHAT: Extract<SidebarChat, { type: "dm" }> = {
-  type: "dm",
-  id: 201,
-  name: "Design Squad",
-  slug: "201,202,203",
-  isGroup: true,
-  lastMessage: "Weekly sync",
-  time: "11:05",
-};
-
 const STREAM_CHAT: Extract<SidebarChat, { type: "stream" }> = {
   type: "stream",
   stream_id: 11,
@@ -523,24 +513,28 @@ describe("Sidebar", () => {
     expect(screen.queryByText("Alice")).not.toBeInTheDocument();
   });
 
-  it("matches group dm chats by member email in sidebar search", () => {
+  it("matches dm chats by member email in sidebar search", () => {
     useUsersStore
       .getState()
       .mergeUsers([
         createUser({ user_id: 1002, full_name: "Bob Teammate", email: "bob@example.com" }),
-        createUser({ user_id: 1003, full_name: "Carol Teammate", email: "carol@example.com" }),
       ]);
-    const groupChat: Extract<SidebarChat, { type: "dm" }> = {
-      ...GROUP_DM_CHAT,
-      userIds: [1002, 1003],
+    const dmChat: Extract<SidebarChat, { type: "dm" }> = {
+      type: "dm",
+      id: 1002,
+      name: "Bob Teammate",
+      slug: "1002-bob",
+      userIds: [1002],
+      lastMessage: "Weekly sync",
+      time: "11:05",
     };
 
     renderWithProviders(
       <Sidebar
         streams={[]}
         selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[groupChat]}
-        sidebarDms={[groupChat]}
+        sidebarChats={[dmChat]}
+        sidebarDms={[dmChat]}
       />,
     );
 
@@ -548,7 +542,7 @@ describe("Sidebar", () => {
       target: { value: "bob@example.com" },
     });
 
-    expect(screen.getByText("Design Squad")).toBeInTheDocument();
+    expect(screen.getByText("Bob Teammate")).toBeInTheDocument();
   });
 
   it("renders the separate direct-messages section when sidebarChats is absent", () => {
@@ -650,10 +644,6 @@ describe("Sidebar", () => {
     fireEvent.click(screen.getByRole("button", { name: /new chat/i }));
     expect(screen.getByRole("status", { name: /online/i })).toBeInTheDocument();
     expect(screen.getByRole("status", { name: /away/i })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("tab", { name: /group chat/i }));
-    expect(screen.getByRole("status", { name: /online/i })).toBeInTheDocument();
-    expect(screen.getByRole("status", { name: /away/i })).toBeInTheDocument();
   });
 
   it("resets create-chat dialog state after close and reopen", async () => {
@@ -671,9 +661,7 @@ describe("Sidebar", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: /new chat/i }));
-    fireEvent.click(screen.getByRole("tab", { name: /group chat/i }));
     fireEvent.change(screen.getByPlaceholderText(/search users/i), { target: { value: "carol" } });
-    fireEvent.click(screen.getByRole("checkbox", { name: /carol teammate/i }));
     fireEvent.click(screen.getByRole("button", { name: /close/i }));
 
     fireEvent.click(screen.getByRole("button", { name: /new chat/i }));
@@ -682,7 +670,6 @@ describe("Sidebar", () => {
       expect(screen.getByRole("tab", { name: /start chat/i })).toHaveClass("border-b-2");
     });
     expect(screen.getByPlaceholderText(/search users/i)).toHaveValue("");
-    expect(screen.queryByRole("checkbox", { name: /carol teammate/i })).not.toBeInTheDocument();
   });
 
   it("supports keyboard navigation between create-chat tabs", () => {
@@ -693,20 +680,20 @@ describe("Sidebar", () => {
     fireEvent.click(screen.getByRole("button", { name: /new chat/i }));
 
     const startChatTab = screen.getByRole("tab", { name: /start chat/i });
-    const groupChatTab = screen.getByRole("tab", { name: /group chat/i });
+    const browseChannelsTab = screen.getByRole("tab", { name: /^channels$/i });
     const createChannelTab = screen.getByRole("tab", { name: /create channel/i });
     const archivedChannelsTab = screen.getByRole("tab", { name: /archived channels/i });
 
     expect(startChatTab).toHaveAttribute("aria-selected", "true");
-    expect(groupChatTab).toHaveAttribute("aria-selected", "false");
+    expect(browseChannelsTab).toHaveAttribute("aria-selected", "false");
 
     startChatTab.focus();
     fireEvent.keyDown(startChatTab, { key: "ArrowRight" });
 
-    expect(groupChatTab).toHaveFocus();
-    expect(groupChatTab).toHaveAttribute("aria-selected", "true");
+    expect(browseChannelsTab).toHaveFocus();
+    expect(browseChannelsTab).toHaveAttribute("aria-selected", "true");
 
-    fireEvent.keyDown(groupChatTab, { key: "End" });
+    fireEvent.keyDown(browseChannelsTab, { key: "End" });
     expect(archivedChannelsTab).toHaveFocus();
     expect(archivedChannelsTab).toHaveAttribute("aria-selected", "true");
 
@@ -730,11 +717,10 @@ describe("Sidebar", () => {
     expect(tablist).toBeInTheDocument();
 
     const startChatTab = screen.getByRole("tab", { name: /start chat/i });
-    const groupChatTab = screen.getByRole("tab", { name: /group chat/i });
     const browseChannelsTab = screen.getByRole("tab", { name: /^channels$/i });
     const createChannelTab = screen.getByRole("tab", { name: /create channel/i });
     const archivedChannelsTab = screen.getByRole("tab", { name: /archived channels/i });
-    expect(screen.getAllByRole("tab")).toHaveLength(5);
+    expect(screen.getAllByRole("tab")).toHaveLength(4);
 
     const startPanelId = startChatTab.getAttribute("aria-controls");
     expect(startPanelId).toBeTruthy();
@@ -744,20 +730,19 @@ describe("Sidebar", () => {
     expect(startPanel).toHaveAttribute("aria-labelledby", startChatTab.id);
 
     fireEvent.keyDown(startChatTab, { key: "ArrowRight" });
-    expect(groupChatTab).toHaveAttribute("aria-selected", "true");
-    expect(groupChatTab).toHaveAttribute("tabindex", "0");
+    expect(browseChannelsTab).toHaveAttribute("aria-selected", "true");
+    expect(browseChannelsTab).toHaveAttribute("tabindex", "0");
     expect(startChatTab).toHaveAttribute("aria-selected", "false");
     expect(startChatTab).toHaveAttribute("tabindex", "-1");
 
-    const groupPanelId = groupChatTab.getAttribute("aria-controls");
-    expect(groupPanelId).toBeTruthy();
-    const groupPanel = document.getElementById(groupPanelId!);
-    expect(groupPanel).toBeInTheDocument();
-    expect(groupPanel).toHaveAttribute("role", "tabpanel");
-    expect(groupPanel).toHaveAttribute("aria-labelledby", groupChatTab.id);
+    const browsePanelId = browseChannelsTab.getAttribute("aria-controls");
+    expect(browsePanelId).toBeTruthy();
+    const browsePanel = document.getElementById(browsePanelId!);
+    expect(browsePanel).toBeInTheDocument();
+    expect(browsePanel).toHaveAttribute("role", "tabpanel");
+    expect(browsePanel).toHaveAttribute("aria-labelledby", browseChannelsTab.id);
 
     expect(createChannelTab).toHaveAttribute("aria-selected", "false");
-    expect(browseChannelsTab).toHaveAttribute("aria-selected", "false");
     expect(archivedChannelsTab).toHaveAttribute("aria-selected", "false");
   });
 
@@ -795,20 +780,6 @@ describe("Sidebar", () => {
         announce: true,
       });
     });
-  });
-
-  it("renders dedicated group avatar icon for group dm chats", () => {
-    renderWithProviders(
-      <Sidebar
-        streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[GROUP_DM_CHAT]}
-        sidebarDms={[GROUP_DM_CHAT]}
-      />,
-    );
-
-    expect(screen.getByText("Design Squad")).toBeInTheDocument();
-    expect(screen.getByTestId("group-avatar-icon-201,202,203")).toBeInTheDocument();
   });
 
   it("shows mark-as-read action in dm context menu and triggers dm narrow API", async () => {
@@ -855,7 +826,16 @@ describe("Sidebar", () => {
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 11, name: "Engineering" }]);
     useChatListStore.getState().reconcileUnreadFromSnapshot(
       {
-        streams: [{ streamId: 11, topic: "incident", unreadMessageIds: [1, 2] }],
+        streams: [
+          {
+            streamId: 11,
+            topic: "incident",
+            unreadMessageIds: [
+              "00000000-0000-4000-8000-000000000001",
+              "00000000-0000-4000-8000-000000000002",
+            ],
+          },
+        ],
         dms: [],
         totalCount: 2,
         mentionMessageIds: [],
@@ -911,7 +891,16 @@ describe("Sidebar", () => {
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 11, name: "Engineering" }]);
     useChatListStore.getState().reconcileUnreadFromSnapshot(
       {
-        streams: [{ streamId: 11, topic: "incident", unreadMessageIds: [1, 2] }],
+        streams: [
+          {
+            streamId: 11,
+            topic: "incident",
+            unreadMessageIds: [
+              "00000000-0000-4000-8000-000000000001",
+              "00000000-0000-4000-8000-000000000002",
+            ],
+          },
+        ],
         dms: [],
         totalCount: 2,
         mentionMessageIds: [],

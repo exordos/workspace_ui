@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { testMessageId } from "~/test/factories";
 import {
   computeHasNewerAfterLoadNewerIdbPage,
   computeHasNewerAfterLoadNewerMemoryPage,
@@ -102,8 +103,14 @@ describe("resolveHasOlderAfterLoadOlderPage", () => {
 });
 
 describe("resolveOldestMessageId", () => {
-  it("returns minimum id when messages are not sorted", () => {
-    expect(resolveOldestMessageId([{ id: 105 }, { id: 100 }, { id: 102 }])).toBe(100);
+  it("returns first ordered id", () => {
+    expect(
+      resolveOldestMessageId([
+        { id: testMessageId(105) },
+        { id: testMessageId(100) },
+        { id: testMessageId(102) },
+      ]),
+    ).toBe(testMessageId(105));
   });
 
   it("returns null for empty list", () => {
@@ -136,16 +143,25 @@ describe("computeHasNewerAfterLoadNewerIdbPage", () => {
 });
 
 describe("mergeOlderLoadAnchor", () => {
-  it("prefers lower id when store is ahead of idb", () => {
-    expect(mergeOlderLoadAnchor(4154137, 4288890)).toBe(4154137);
+  it("prefers store anchor when store is ahead of idb", () => {
+    expect(
+      mergeOlderLoadAnchor(
+        "00000000-0000-4000-8000-000004154137",
+        "00000000-0000-4000-8000-000004288890",
+      ),
+    ).toBe("00000000-0000-4000-8000-000004154137");
   });
 
   it("uses idb when store is empty", () => {
-    expect(mergeOlderLoadAnchor(null, 4288890)).toBe(4288890);
+    expect(mergeOlderLoadAnchor(null, "00000000-0000-4000-8000-000004288890")).toBe(
+      "00000000-0000-4000-8000-000004288890",
+    );
   });
 
   it("uses store when idb has no oldest", () => {
-    expect(mergeOlderLoadAnchor(100, null)).toBe(100);
+    expect(mergeOlderLoadAnchor("00000000-0000-4000-8000-000000000100", null)).toBe(
+      "00000000-0000-4000-8000-000000000100",
+    );
   });
 
   it("returns null when both missing", () => {

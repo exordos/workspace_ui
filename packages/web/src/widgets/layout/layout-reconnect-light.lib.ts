@@ -2,6 +2,7 @@ import { filterStreamMessagesForSidebar } from "~/entities/chat-list/chat-list-s
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { getNewestMessageId } from "./layout-chat-history-sync.lib";
 import { runChatListBootstrap } from "./layout-chat-list-bootstrap.lib";
 import { getCachedRegisterUnreadSnapshot } from "./layout-instance-register-unread.lib";
@@ -9,7 +10,7 @@ import { reconcileSidebarUnreadAfterBootstrap } from "./layout-sidebar-unread-re
 
 export interface RefreshLayoutReconnectLightOptions {
   instanceId?: string | null;
-  latestMessageIdRef?: { current: number | null };
+  latestMessageIdRef?: { current: MessageId | null };
   isCancelled?: () => boolean;
 }
 
@@ -64,8 +65,7 @@ export async function refreshLayoutReconnectLight(
     const newest = getNewestMessageId(streamOnly);
     const prev = result.latestMessageIdHint;
     if (options.latestMessageIdRef != null) {
-      options.latestMessageIdRef.current =
-        newest != null && (prev == null || newest > prev) ? newest : (prev ?? newest);
+      options.latestMessageIdRef.current = newest ?? prev ?? options.latestMessageIdRef.current;
     }
     logChatListFlow("reconnectLight: applied stream preview delta", {
       messageCount: streamOnly.length,

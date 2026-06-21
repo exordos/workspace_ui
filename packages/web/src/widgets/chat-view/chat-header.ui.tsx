@@ -31,7 +31,6 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   hideParticipants = false,
   onCallClick,
   dmPartner,
-  dmGroup,
   onDmPartnerClick,
 }) => {
   const infoLabel = rightPanelLabel ?? t("info.channelInfo");
@@ -96,32 +95,6 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
               onClick={handleDmPartnerAvatarClick}
               className={TITLE_ACTION_BUTTON_CLASS}
               aria-label={t("a11y.openUserProfile", { name: dmPartner.name })}
-            />
-          )}
-        </div>
-      );
-    }
-    if (dmGroup) {
-      return (
-        <div className="relative flex min-w-0 items-center gap-3 rounded-lg text-left">
-          <Avatar
-            size="md"
-            className="shrink-0 border border-border-subtle bg-bg-elevated text-text-muted"
-          >
-            {dmGroup.name.slice(0, 1).toUpperCase()}
-          </Avatar>
-          <div className="flex min-w-0 flex-1 flex-col">
-            <h1 className="truncate text-sm font-semibold text-text-primary">{dmGroup.name}</h1>
-            <p className="truncate text-xs text-text-muted">
-              {t("channel.participants", { count: dmGroup.participantsCount })}
-            </p>
-          </div>
-          {canOpenRightPanelFromHeader && (
-            <button
-              type="button"
-              onClick={handleOpenRightPanelFromHeaderBlock}
-              className={TITLE_ACTION_BUTTON_CLASS}
-              aria-label={infoLabel}
             />
           )}
         </div>

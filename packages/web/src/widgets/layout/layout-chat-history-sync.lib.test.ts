@@ -1,14 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
+import { testMessageId, testMessageOrdinal } from "~/test/factories";
 import { loadDeepHistoryMessages } from "./layout-chat-history-sync.lib";
 
-function createMessage(id: number): WorkspaceRawMessage {
+function createMessage(id: number | string): WorkspaceRawMessage {
   return {
-    id,
+    id: testMessageId(id),
     sender_id: 1,
     sender_full_name: "Test User",
     content: `message-${id}`,
-    timestamp: id,
+    timestamp: testMessageOrdinal(id),
     display_recipient: "general",
     subject: "topic",
     type: "stream",
@@ -33,9 +34,18 @@ describe("loadDeepHistoryMessages", () => {
     });
 
     expect(fetchOlderMessages).toHaveBeenCalledTimes(2);
-    expect(fetchOlderMessages).toHaveBeenNthCalledWith(1, 100, 3);
-    expect(fetchOlderMessages).toHaveBeenNthCalledWith(2, 97, 3);
-    expect(result.map((message) => message.id)).toEqual([94, 95, 96, 97, 98, 99, 100, 101]);
+    expect(fetchOlderMessages).toHaveBeenNthCalledWith(1, testMessageId(100), 3);
+    expect(fetchOlderMessages).toHaveBeenNthCalledWith(2, testMessageId(97), 3);
+    expect(result.map((message) => message.id)).toEqual([
+      testMessageId(94),
+      testMessageId(95),
+      testMessageId(96),
+      testMessageId(97),
+      testMessageId(98),
+      testMessageId(99),
+      testMessageId(100),
+      testMessageId(101),
+    ]);
   });
 
   it("stops loading when the server returns only the anchor overlap", async () => {
@@ -49,7 +59,7 @@ describe("loadDeepHistoryMessages", () => {
     });
 
     expect(fetchOlderMessages).toHaveBeenCalledTimes(1);
-    expect(result.map((message) => message.id)).toEqual([100, 101]);
+    expect(result.map((message) => message.id)).toEqual([testMessageId(100), testMessageId(101)]);
   });
 
   it("keeps unique IDs when older pages overlap with existing messages", async () => {
@@ -64,6 +74,11 @@ describe("loadDeepHistoryMessages", () => {
       maxBatches: 5,
     });
 
-    expect(result.map((message) => message.id)).toEqual([98, 99, 100, 101]);
+    expect(result.map((message) => message.id)).toEqual([
+      testMessageId(98),
+      testMessageId(99),
+      testMessageId(100),
+      testMessageId(101),
+    ]);
   });
 });

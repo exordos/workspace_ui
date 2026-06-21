@@ -2,17 +2,15 @@
  * Buffers link previews from `rendering_only` events that arrive before the message row exists.
  */
 import type { MockMessage } from "~/shared/api/messenger.types";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { upsertLinkPreviewOnMessage } from "~/shared/lib/message-link-preview-list.lib";
 import { linkPreviewUrlKey } from "~/shared/lib/message-link-preview-url-match.lib";
 import { extractLinkPreviewUrls } from "~/shared/lib/message-link-preview-urls.lib";
 import type { LinkPreviewData } from "~/shared/lib/message-link-preview.types";
 
-const pendingByMessageId = new Map<number, LinkPreviewData[]>();
+const pendingByMessageId = new Map<MessageId, LinkPreviewData[]>();
 
-export function enqueuePendingLinkPreview(messageId: number, preview: LinkPreviewData): void {
-  if (!Number.isInteger(messageId) || messageId <= 0) {
-    return;
-  }
+export function enqueuePendingLinkPreview(messageId: MessageId, preview: LinkPreviewData): void {
   const key = linkPreviewUrlKey(preview.targetUrl);
   const list = pendingByMessageId.get(messageId) ?? [];
   if (!list.some((item) => linkPreviewUrlKey(item.targetUrl) === key)) {
@@ -21,7 +19,7 @@ export function enqueuePendingLinkPreview(messageId: number, preview: LinkPrevie
   pendingByMessageId.set(messageId, list);
 }
 
-export function drainPendingLinkPreviews(messageId: number): LinkPreviewData[] {
+export function drainPendingLinkPreviews(messageId: MessageId): LinkPreviewData[] {
   const list = pendingByMessageId.get(messageId) ?? [];
   pendingByMessageId.delete(messageId);
   return list;
@@ -39,9 +37,6 @@ function isPreviewUrlExpectedInMarkdown(markdown: string, preview: LinkPreviewDa
 
 /** Applies buffered previews when a persisted message row appears or updates. */
 export function applyPendingLinkPreviewsToMessage(message: MockMessage): MockMessage {
-  if (message.id <= 0) {
-    return message;
-  }
   const pending = drainPendingLinkPreviews(message.id);
   if (pending.length === 0) {
     return message;

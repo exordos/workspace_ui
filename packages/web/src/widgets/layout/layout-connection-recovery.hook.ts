@@ -5,6 +5,7 @@ import {
   subscribeConnectionHealth,
   type ConnectionHealthPhase,
 } from "~/shared/lib/connection-health";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { onReconnect } from "~/shared/lib/network";
 import { onTabResume, onVisibilityChange } from "~/shared/lib/visibility";
 import {
@@ -26,8 +27,8 @@ function isLayoutConnectionRecovered(prevPhase: ConnectionHealthPhase): boolean 
 export interface UseLayoutConnectionRecoveryOptions {
   currentUserStatus: LayoutUserConnectionStatus;
   currentInstanceId: string | null;
-  latestMessageIdRef?: { current: number | null };
-  focusedMessageId?: number | null;
+  latestMessageIdRef?: { current: MessageId | null };
+  focusedMessageId?: MessageId | null;
 }
 
 /** Triggers coalesced reconnect refresh on network restore or light refresh on tab resume. */

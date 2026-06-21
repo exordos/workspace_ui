@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createMessage } from "~/test/factories";
+import { createMessage, testMessageId } from "~/test/factories";
 import { CallsPage } from "./calls-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
 
@@ -103,7 +103,9 @@ describe("CallsPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /open in chat/i }));
 
-    expect(navigateSpy).toHaveBeenCalledWith("/stream/10-engineering/topic/standup?msg=77");
+    expect(navigateSpy).toHaveBeenCalledWith(
+      `/stream/10-engineering/topic/standup?msg=${testMessageId(77)}`,
+    );
   });
 
   it("shows empty-state hint when there are no jitsi calls", async () => {

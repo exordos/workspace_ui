@@ -7,6 +7,7 @@
  * validators (userId, email, URL), error boundary wrappers, and frozen objects.
  */
 import { describe, expect, it } from "vitest";
+import { testMessageId } from "~/test/factories";
 import {
   invariant,
   isNonNull,
@@ -153,7 +154,8 @@ describe("domain guards", () => {
   });
 
   it("guard.messageId validates correctly", () => {
-    expect(guard.messageId(999)).toBe(999);
+    expect(guard.messageId(testMessageId(999))).toBe(testMessageId(999));
+    expect(() => guard.messageId(999)).toThrow("Invalid messageId");
     expect(() => guard.messageId(-5)).toThrow("Invalid messageId");
   });
 

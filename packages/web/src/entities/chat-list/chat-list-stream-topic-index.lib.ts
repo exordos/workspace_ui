@@ -3,6 +3,7 @@
  *
  * Rebuilt when messageIdToLocation changes; avoids O(L) scans on topic move/remove.
  */
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { MessageLocation } from "./chat-list.model.types";
 
 export function streamTopicCompositeKey(streamId: number, topicKey: string): string {
@@ -10,9 +11,9 @@ export function streamTopicCompositeKey(streamId: number, topicKey: string): str
 }
 
 export function buildStreamTopicMessageIndex(
-  messageIdToLocation: ReadonlyMap<number, MessageLocation>,
-): Map<string, number[]> {
-  const index = new Map<string, number[]>();
+  messageIdToLocation: ReadonlyMap<MessageId, MessageLocation>,
+): Map<string, MessageId[]> {
+  const index = new Map<string, MessageId[]>();
   for (const [messageId, location] of messageIdToLocation) {
     if (location.type !== "stream") continue;
     const key = streamTopicCompositeKey(location.stream_id, location.topic);
@@ -42,7 +43,11 @@ function isSameMessageLocation(
   return false;
 }
 
-function appendIdToIndexKey(index: Map<string, number[]>, key: string, messageId: number): void {
+function appendIdToIndexKey(
+  index: Map<string, MessageId[]>,
+  key: string,
+  messageId: MessageId,
+): void {
   const list = index.get(key);
   if (list) {
     list.push(messageId);
@@ -51,7 +56,11 @@ function appendIdToIndexKey(index: Map<string, number[]>, key: string, messageId
   }
 }
 
-function removeIdFromIndexKey(index: Map<string, number[]>, key: string, messageId: number): void {
+function removeIdFromIndexKey(
+  index: Map<string, MessageId[]>,
+  key: string,
+  messageId: MessageId,
+): void {
   const list = index.get(key);
   if (!list) return;
   const filtered = list.filter((id) => id !== messageId);
@@ -64,9 +73,9 @@ function removeIdFromIndexKey(index: Map<string, number[]>, key: string, message
 
 /** O(1) add for a single new stream message location. */
 function cloneStreamTopicIndex(
-  index: ReadonlyMap<string, readonly number[]>,
-): Map<string, number[]> {
-  const next = new Map<string, number[]>();
+  index: ReadonlyMap<string, readonly MessageId[]>,
+): Map<string, MessageId[]> {
+  const next = new Map<string, MessageId[]>();
   for (const [key, ids] of index) {
     next.set(key, [...ids]);
   }
@@ -74,11 +83,11 @@ function cloneStreamTopicIndex(
 }
 
 export function addMessageIdToStreamTopicIndex(
-  index: ReadonlyMap<string, readonly number[]>,
-  messageId: number,
+  index: ReadonlyMap<string, readonly MessageId[]>,
+  messageId: MessageId,
   streamId: number,
   topicKey: string,
-): Map<string, number[]> {
+): Map<string, MessageId[]> {
   const next = cloneStreamTopicIndex(index);
   appendIdToIndexKey(next, streamTopicCompositeKey(streamId, topicKey), messageId);
   return next;
@@ -86,30 +95,30 @@ export function addMessageIdToStreamTopicIndex(
 
 /** O(list size) remove for one message id in a stream topic bucket. */
 export function removeMessageIdFromStreamTopicIndex(
-  index: ReadonlyMap<string, readonly number[]>,
-  messageId: number,
+  index: ReadonlyMap<string, readonly MessageId[]>,
+  messageId: MessageId,
   streamId: number,
   topicKey: string,
-): Map<string, number[]> {
+): Map<string, MessageId[]> {
   const next = cloneStreamTopicIndex(index);
   removeIdFromIndexKey(next, streamTopicCompositeKey(streamId, topicKey), messageId);
   return next;
 }
 
 export function removeStreamTopicKeyFromIndex(
-  index: ReadonlyMap<string, readonly number[]>,
+  index: ReadonlyMap<string, readonly MessageId[]>,
   streamId: number,
   topicKey: string,
-): Map<string, number[]> {
+): Map<string, MessageId[]> {
   const next = cloneStreamTopicIndex(index);
   next.delete(streamTopicCompositeKey(streamId, topicKey));
   return next;
 }
 
 export function removeStreamFromStreamTopicIndex(
-  index: ReadonlyMap<string, readonly number[]>,
+  index: ReadonlyMap<string, readonly MessageId[]>,
   streamId: number,
-): Map<string, number[]> {
+): Map<string, MessageId[]> {
   const prefix = `${streamId}\t`;
   const next = cloneStreamTopicIndex(index);
   for (const key of next.keys()) {
@@ -124,10 +133,10 @@ export function removeStreamFromStreamTopicIndex(
  * Patches the inverted index from location-map changes only (O(changed message ids)).
  */
 export function patchStreamTopicMessageIndex(
-  prevIndex: ReadonlyMap<string, readonly number[]>,
-  prevLoc: ReadonlyMap<number, MessageLocation>,
-  nextLoc: ReadonlyMap<number, MessageLocation>,
-): Map<string, number[]> {
+  prevIndex: ReadonlyMap<string, readonly MessageId[]>,
+  prevLoc: ReadonlyMap<MessageId, MessageLocation>,
+  nextLoc: ReadonlyMap<MessageId, MessageLocation>,
+): Map<string, MessageId[]> {
   const nextIndex = cloneStreamTopicIndex(prevIndex);
 
   for (const [messageId, prevLocation] of prevLoc) {
@@ -164,20 +173,20 @@ export function patchStreamTopicMessageIndex(
 }
 
 export function getStreamTopicMessageIds(
-  index: ReadonlyMap<string, readonly number[]>,
+  index: ReadonlyMap<string, readonly MessageId[]>,
   streamId: number,
   topicKey: string,
-): readonly number[] {
+): readonly MessageId[] {
   return index.get(streamTopicCompositeKey(streamId, topicKey)) ?? [];
 }
 
 /** All message ids located in any topic of the given stream. */
 export function collectMessageIdsForStream(
-  index: ReadonlyMap<string, readonly number[]>,
+  index: ReadonlyMap<string, readonly MessageId[]>,
   streamId: number,
-): number[] {
+): MessageId[] {
   const prefix = `${streamId}\t`;
-  const ids: number[] = [];
+  const ids: MessageId[] = [];
   for (const [key, list] of index) {
     if (key.startsWith(prefix)) {
       for (const messageId of list) {

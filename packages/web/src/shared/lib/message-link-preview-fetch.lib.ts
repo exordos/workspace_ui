@@ -17,6 +17,7 @@ import {
 import { guard } from "~/shared/lib/guards";
 import { sanitizeHtmlToFragment } from "~/shared/lib/html";
 import { createLogger } from "~/shared/lib/logger";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { traceLinkPreview } from "~/shared/lib/message-link-preview-trace.lib";
 import {
   findLinkPreviewDataForUrl,
@@ -145,7 +146,7 @@ function resolveItemsFromHtml(
  */
 export async function fetchLinkPreviewsFromMessageMarkdown(
   markdown: string,
-  messageId: number,
+  messageId: MessageId,
   signal?: AbortSignal,
 ): Promise<LinkPreviewResolvedItem[]> {
   const body = markdown.trim();
@@ -160,14 +161,11 @@ export async function fetchLinkPreviewsFromMessageMarkdown(
     if (signal?.aborted) {
       return expectedUrls.map((targetUrl) => ({ targetUrl, data: null }));
     }
-    if (messageId > 0) {
-      const html = await fetchMessageRenderedHtmlById(messageId, signal);
-      if (signal?.aborted) {
-        return expectedUrls.map((targetUrl) => ({ targetUrl, data: null }));
-      }
-      if (html == null) {
-        return expectedUrls.map((targetUrl) => ({ targetUrl, data: null }));
-      }
+    const html = await fetchMessageRenderedHtmlById(messageId, signal);
+    if (signal?.aborted) {
+      return expectedUrls.map((targetUrl) => ({ targetUrl, data: null }));
+    }
+    if (html != null) {
       return resolveItemsFromHtml(html, expectedUrls, "get-message");
     }
     const rendered = await renderMessageContent(body);

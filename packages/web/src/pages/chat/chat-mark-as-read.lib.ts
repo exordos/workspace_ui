@@ -10,15 +10,17 @@ import {
   logScrollReadFlow,
   summarizeMessageIdsForFlowDebug,
 } from "~/shared/lib/message-flow-debug.lib";
+import { normalizeMessageId } from "~/shared/lib/message-id.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { logSidebarUnreadFlow } from "~/shared/lib/sidebar-unread-debug.lib";
 import { isTabVisible, onVisibilityChange } from "~/shared/lib/visibility";
 
 export interface MarkAsReadBatcherOptions {
-  markAsRead: (messageIds: number[]) => Promise<unknown>;
-  onMarked?: (messageIds: number[]) => void;
+  markAsRead: (messageIds: MessageId[]) => Promise<unknown>;
+  onMarked?: (messageIds: MessageId[]) => void;
   /** Optimistic read applied when ids enter the queue (before API flush). */
-  onSchedule?: (messageIds: number[]) => void;
-  onError?: (error: unknown, messageIds: number[]) => void;
+  onSchedule?: (messageIds: MessageId[]) => void;
+  onError?: (error: unknown, messageIds: MessageId[]) => void;
   debounceMs?: number;
   /**
    * When true (default), skips network flush while the document is hidden and
@@ -28,15 +30,15 @@ export interface MarkAsReadBatcherOptions {
 }
 
 export interface MarkAsReadBatcher {
-  schedule: (messageIds: number[]) => void;
+  schedule: (messageIds: MessageId[]) => void;
   flush: () => Promise<void>;
   cancel: () => void;
 }
 
 const DEFAULT_DEBOUNCE_MS = 250;
 
-function normalizeMessageIds(messageIds: number[]): number[] {
-  return messageIds.filter((id) => Number.isInteger(id) && id > 0);
+function normalizeMessageIds(messageIds: MessageId[]): MessageId[] {
+  return messageIds.map(normalizeMessageId).filter((id) => id != null);
 }
 
 export function createMarkAsReadBatcher(options: MarkAsReadBatcherOptions): MarkAsReadBatcher {
@@ -48,7 +50,7 @@ export function createMarkAsReadBatcher(options: MarkAsReadBatcherOptions): Mark
     debounceMs = DEFAULT_DEBOUNCE_MS,
     respectTabVisibility = true,
   } = options;
-  const queued = new Set<number>();
+  const queued = new Set<MessageId>();
   let timer: ReturnType<typeof setTimeout> | null = null;
   let inFlight = false;
   let visibilityUnsub: (() => void) | null = null;

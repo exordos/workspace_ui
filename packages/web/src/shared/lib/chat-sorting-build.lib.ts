@@ -67,7 +67,6 @@ function dmEntryToTimestampedChat(x: DmEntryInternal): TimestampedSidebarChat {
       id: x.id,
       name: x.name,
       slug: x.slug,
-      isGroup: x.isGroup,
       lastMessage: x.lastMessage,
       time: x.time,
       userIds: x.userIds,

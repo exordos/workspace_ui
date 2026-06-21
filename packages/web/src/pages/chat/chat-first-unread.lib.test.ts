@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { MockMessage } from "~/shared/api/messenger.types";
+import { testMessageId, testMessageOrdinal } from "~/test/factories";
 import {
   countUnreadMessages,
   resolveFirstUnreadBoundaryMessageId,
   resolveLastUnreadBoundaryMessageId,
 } from "./chat-first-unread.lib";
 
-function createMessage(id: number, senderId: number, flags?: string[]): MockMessage {
+function createMessage(id: number | string, senderId: number, flags?: string[]): MockMessage {
   return {
-    id,
+    id: testMessageId(id),
     sender_id: senderId,
     sender_full_name: `User ${senderId}`,
     stream_id: 10,
@@ -16,7 +17,7 @@ function createMessage(id: number, senderId: number, flags?: string[]): MockMess
     channel: "general",
     subject: "general",
     content: `<p>Message ${id}</p>`,
-    timestamp: 1700000000 + id,
+    timestamp: 1700000000 + testMessageOrdinal(id),
     flags,
   };
 }
@@ -32,7 +33,7 @@ describe("chat-first-unread", () => {
 
     const result = resolveFirstUnreadBoundaryMessageId(messages, 7);
 
-    expect(result).toBe(3);
+    expect(result).toBe(testMessageId(3));
   });
 
   it("returns undefined when only own unread messages exist", () => {
@@ -68,7 +69,7 @@ describe("chat-first-unread", () => {
       createMessage(4, 42),
     ];
 
-    expect(resolveLastUnreadBoundaryMessageId(messages, 7)).toBe(4);
+    expect(resolveLastUnreadBoundaryMessageId(messages, 7)).toBe(testMessageId(4));
   });
 
   it("counts every message without read when currentUserId is omitted", () => {

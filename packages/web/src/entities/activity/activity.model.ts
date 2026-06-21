@@ -4,6 +4,7 @@
 import { create } from "zustand";
 import type { ActivityFilter, WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { logStoreAction } from "~/shared/lib/logger";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 
 export interface ActivityFilterState {
   messages: WorkspaceRawMessage[];
@@ -81,10 +82,10 @@ interface ActivityState {
     messages: WorkspaceRawMessage[],
     hasMore: boolean,
   ) => void;
-  removeMessageFromFilter: (filter: ActivityFilter, messageId: number) => void;
+  removeMessageFromFilter: (filter: ActivityFilter, messageId: MessageId) => void;
   setFilterErrorIfActual: (filter: ActivityFilter, requestVersion: number, error: string) => void;
-  setStarredSummaryFromRegisterMessageIds: (messageIds: readonly number[]) => void;
-  applyStarredSummaryFlagEvent: (op: "add" | "remove", messageIds: readonly number[]) => void;
+  setStarredSummaryFromRegisterMessageIds: (messageIds: readonly MessageId[]) => void;
+  applyStarredSummaryFlagEvent: (op: "add" | "remove", messageIds: readonly MessageId[]) => void;
   markStarredSummaryStale: () => void;
   markStale: () => void;
   clear: () => void;

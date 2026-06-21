@@ -42,6 +42,7 @@ import {
   logScrollReadFlow,
   summarizeChatContextForLog,
 } from "~/shared/lib/message-flow-debug.lib";
+import type { MessageId } from "~/shared/lib/message-id.lib";
 import { isLikelyRenderedMessageHtml } from "~/shared/lib/message-markdown-display.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { useShortcut } from "~/shared/lib/shortcuts";
@@ -88,18 +89,14 @@ import { ChatPageSelectionBar } from "./chat-page-selection-bar.ui";
 import { useChatPageSendMessage } from "./chat-page-send-message.hook";
 import { useChatToastAutoClear } from "./chat-page-toast.hook";
 import { ChatPageTypingLine } from "./chat-page-typing-line.ui";
-import {
-  resolveChatHeaderRightPanelLabel,
-  resolveDmGroupParticipantIds,
-  resolveDraftType,
-} from "./chat-page.lib";
+import { resolveChatHeaderRightPanelLabel, resolveDraftType } from "./chat-page.lib";
 import type { ComposerUploadProgressState } from "./chat-upload.lib";
 
 const log = createLogger("chat-page");
 const AI_CONTEXT_MESSAGES_LIMIT = 30;
 
 interface ComposerEditSessionState {
-  messageId: number;
+  messageId: MessageId;
   initialMarkdown: string;
 }
 
@@ -140,7 +137,6 @@ export const ChatPage: React.FC = () => {
     dmRecipientIds,
     isDmView,
     dmChat,
-    isGroupDmView,
     partnerUserId,
     focusedMessageId,
     forwardMessageId,
@@ -169,9 +165,9 @@ export const ChatPage: React.FC = () => {
   const partnerStoreDisplayName = useUsersStore((s) =>
     partnerUserId != null ? s.getDisplayName(partnerUserId) : "Unknown",
   );
-  const isOneToOneDm = isDmView && !isGroupDmView;
+  const isOneToOneDm = isDmView;
   const partnerDeactivated = isOneToOneDm ? partnerUser?.is_active === false : false;
-  useChatPartnerProfileHydration({ partnerUserId, isDmView, isGroupDmView });
+  useChatPartnerProfileHydration({ partnerUserId, isDmView });
 
   const chatContextForMessages = useCurrentChatMessagesStore((s) => s.context);
   const messages = useCurrentChatMessagesStore((s) => s.messages);
@@ -255,14 +251,14 @@ export const ChatPage: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState<ComposerUploadProgressState | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [replyQuote, setReplyQuote] = useState<{
-    id: number;
+    id: MessageId;
     content: string;
     sender_full_name: string;
     sender_id: number;
     permalinkUrl: string | null;
   } | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedMessageIds, setSelectedMessageIds] = useState<Set<number>>(new Set());
+  const [selectedMessageIds, setSelectedMessageIds] = useState<Set<MessageId>>(new Set());
   const [composerEditSession, setComposerEditSession] = useState<ComposerEditSessionState | null>(
     null,
   );
@@ -277,7 +273,7 @@ export const ChatPage: React.FC = () => {
   }, []);
   const editRequestTokenRef = useRef(0);
   const [deleteConfirm, setDeleteConfirm] = useState<
-    { type: "single"; messageId: number } | { type: "bulk"; messageIds: number[] } | null
+    { type: "single"; messageId: MessageId } | { type: "bulk"; messageIds: MessageId[] } | null
   >(null);
   const rightDrawer = useRightDrawer();
   const openJitsiCall = useJitsiCallStore((s) => s.openCall);
@@ -341,7 +337,7 @@ export const ChatPage: React.FC = () => {
   // --- Draft persistence ---
   const composerValueRef = useRef("");
   const [draftInitialValue, setDraftInitialValue] = useState<string | undefined>(undefined);
-  const activeDraftIdRef = useRef<number | null>(null);
+  const activeDraftIdRef = useRef<MessageId | null>(null);
   const pendingForwardPrefillRef = useRef<string | null>(null);
 
   const draftType: DraftType | null = resolveDraftType(isDmView, activeStream);
@@ -609,7 +605,6 @@ export const ChatPage: React.FC = () => {
 
   const { canStartCall, buildCurrentCallLink, handleCallClick } = useChatPageCall({
     isDmView,
-    isGroupDmView,
     isOneToOneDm,
     partnerDeactivated,
     partnerUserId,
@@ -618,7 +613,6 @@ export const ChatPage: React.FC = () => {
     activeStream: activeStream ?? null,
     activeStreamId,
     activeTopic: activeTopic ?? null,
-    dmChatName: dmChat?.name,
     currentUserId,
     setSendError,
     navigateToDm,
@@ -682,7 +676,6 @@ export const ChatPage: React.FC = () => {
 
   const requestMessageEdit = useCallback(
     (message: MockMessage) => {
-      if (message.id <= 0) return;
       if (
         !canStartMessageContentEdit(
           message,
@@ -707,7 +700,7 @@ export const ChatPage: React.FC = () => {
   );
 
   const persistOptimisticMessageEdit = useCallback(
-    async (messageId: number, markdown: string) => {
+    async (messageId: MessageId, markdown: string) => {
       try {
         await updateMessage(messageId, { content: markdown });
       } catch (err) {
@@ -732,7 +725,7 @@ export const ChatPage: React.FC = () => {
   );
 
   const handleSubmitComposerEdit = useCallback(
-    async (messageId: number, markdown: string) => {
+    async (messageId: MessageId, markdown: string) => {
       setActionError(null);
       const message = useCurrentChatMessagesStore
         .getState()
@@ -974,7 +967,7 @@ export const ChatPage: React.FC = () => {
   );
 
   const dmPartner = useMemo(() => {
-    if (!isDmView || isGroupDmView || partnerUserId == null) return undefined;
+    if (!isDmView || partnerUserId == null) return undefined;
     const resolvedName = resolvePersonalDmSidebarTitle({
       chatName: dmChat?.name ?? "",
       userFullName: partnerUser?.full_name,
@@ -998,7 +991,6 @@ export const ChatPage: React.FC = () => {
     };
   }, [
     isDmView,
-    isGroupDmView,
     partnerUserId,
     partnerUser,
     dmPartnerIsTyping,
@@ -1006,22 +998,6 @@ export const ChatPage: React.FC = () => {
     dmChat?.name,
     partnerStoreDisplayName,
   ]);
-
-  const dmGroup = useMemo(() => {
-    if (!isGroupDmView || !dmChat) return undefined;
-    const participantIds = resolveDmGroupParticipantIds({
-      dmUserIds: dmChat.userIds,
-      currentUserId,
-      dmRecipientIds,
-    });
-    const rawName = dmChat.name?.trim() ?? "";
-    const resolvedName =
-      rawName.length === 0 || rawName === t("dm.privateChat") ? t("dm.groupChat") : rawName;
-    return {
-      name: resolvedName,
-      participantsCount: participantIds.length,
-    };
-  }, [isGroupDmView, dmChat, currentUserId, dmRecipientIds]);
 
   const handleSelectionForward = useCallback(() => {
     if (forwardableSelectedMessages.length === 0) return;
@@ -1124,11 +1100,10 @@ export const ChatPage: React.FC = () => {
         onToggleRightPanel={rightDrawer ? handleToggleRightPanel : undefined}
         onOpenRightPanel={rightDrawer ? handleOpenRightPanel : undefined}
         rightPanelOpen={rightDrawer?.open ?? false}
-        rightPanelLabel={resolveChatHeaderRightPanelLabel(isGroupDmView, isDmView)}
+        rightPanelLabel={resolveChatHeaderRightPanelLabel(isDmView)}
         hideParticipants={isDmView}
         onCallClick={canStartCall ? handleCallClick : undefined}
         dmPartner={dmPartner}
-        dmGroup={dmGroup}
         onDmPartnerClick={handleOpenDmPartnerProfile}
       />
       <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
