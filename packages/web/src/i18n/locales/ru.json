@@ -133,7 +133,6 @@
     "yesterday": "Вчера"
   },
   "message": {
-    "sendRequiresStreamOrTo": "Нужен канал (stream) или получатели (to) для отправки",
     "views": "Просмотры",
     "reply": "Ответить",
     "edit": "Изменить сообщение",

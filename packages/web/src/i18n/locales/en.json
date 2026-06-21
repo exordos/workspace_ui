@@ -133,7 +133,6 @@
     "loadNewer": "Load newer messages"
   },
   "message": {
-    "sendRequiresStreamOrTo": "Stream or recipients (to) required for sending",
     "views": "Views",
     "reply": "Reply",
     "edit": "Edit message",

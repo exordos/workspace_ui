@@ -389,15 +389,17 @@ describe("useLayoutMessengerEventLoop", () => {
   });
 
   it("hydrates private DM metadata from /me/streams as UUID routes", async () => {
-    const streamUuid = "b4460c02-d693-4564-8804-98059613b86e";
-    const userUuid = "00000000-0000-0000-0000-000000000000";
+    const userStreamUuid = "1bce03ca-d6d9-4fdb-82cb-7ec05fa7a8e9";
+    const sourceStreamUuid = "b4460c02-d693-4564-8804-98059613b86e";
+    const currentUserUuid = "00000000-0000-0000-0000-000000000000";
     fetchMyStreamsMock.mockResolvedValueOnce([
       {
-        uuid: "1bce03ca-d6d9-4fdb-82cb-7ec05fa7a8e9",
+        uuid: userStreamUuid,
         name: "Alice Smith",
         description: "",
-        stream_uuid: streamUuid,
-        user_uuid: userUuid,
+        stream_uuid: userStreamUuid,
+        source_stream_uuid: sourceStreamUuid,
+        user_uuid: currentUserUuid,
         last_synced_at: "2026-06-20T16:30:19.824219Z",
         invite_only: false,
         announce: false,
@@ -414,23 +416,27 @@ describe("useLayoutMessengerEventLoop", () => {
     const dm = useChatListStore
       .getState()
       .dms()
-      .find((entry) => entry.streamUuid === streamUuid);
+      .find((entry) => entry.streamUuid === userStreamUuid);
     expect(dm).toEqual(
       expect.objectContaining({
         name: "Alice Smith",
-        slug: streamUuid,
-        streamUuid,
-        userUuid,
+        slug: userStreamUuid,
+        streamUuid: userStreamUuid,
+        sourceStreamUuid,
       }),
     );
-    expect(useChatListStore.getState().dmsMap.get(`stream:${streamUuid}`)).toEqual(
+    expect(dm?.userUuid).toBeUndefined();
+
+    const internalDm = useChatListStore.getState().dmsMap.get(`stream:${userStreamUuid}`);
+    expect(internalDm).toEqual(
       expect.objectContaining({
         name: "Alice Smith",
-        slug: streamUuid,
-        streamUuid,
-        userUuid,
+        slug: userStreamUuid,
+        streamUuid: userStreamUuid,
+        sourceStreamUuid,
       }),
     );
+    expect(internalDm?.userUuid).toBeUndefined();
   });
 
   it("does not mark stream metadata as hydrated when /me/streams bootstrap fails", async () => {
