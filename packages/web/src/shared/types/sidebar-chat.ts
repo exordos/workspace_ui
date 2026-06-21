@@ -72,6 +72,8 @@ export interface StreamWithLast {
 
 export interface StreamEntryInternal {
   stream_id: number;
+  /** Gateway stream UUID; used to fetch channel messages via the `/me/messages/` endpoint. */
+  streamUuid?: string;
   name: string;
   lastMessage: string;
   lastMessageSenderName?: string;

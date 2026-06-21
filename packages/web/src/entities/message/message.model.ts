@@ -11,7 +11,6 @@ import {
 } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { getCurrentInstance } from "~/shared/api/client";
-import { fetchMessagesWithNarrowPage } from "~/shared/api/messenger-messages";
 import type { MockMessage } from "~/shared/api/messenger.types";
 import { createLogger, logStoreAction } from "~/shared/lib/logger";
 import {
@@ -48,7 +47,8 @@ import {
   patchPartitionMetaByMessages,
   upsertMessagesByChatPartitions,
 } from "./message-cache-partition.lib";
-import { buildMessageFetchNarrow, isSameChatLocation } from "./message-chat-context.lib";
+import { isSameChatLocation } from "./message-chat-context.lib";
+import { fetchChatMessagesPage } from "./message-fetch.lib";
 import { loadInitialMessagesRouteDriven } from "./message-initial-loader.lib";
 import { persistChatMessagesToIndexedDb } from "./message-local-cache.lib";
 import { patchMessageAtId, patchMessagesFlags } from "./message-patch.lib";
@@ -1011,13 +1011,14 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     });
     set({ isLoadingMore: true });
     try {
-      const page = await fetchMessagesWithNarrowPage(
-        buildMessageFetchNarrow(ctx, currentUserId),
-        anchorOldestId,
-        pageSize,
-        0,
-        { applyMarkdown: false, signal: controller.signal },
-      );
+      const page = await fetchChatMessagesPage({
+        context: ctx,
+        currentUserId,
+        anchor: anchorOldestId,
+        numBefore: pageSize,
+        numAfter: 0,
+        signal: controller.signal,
+      });
       if (!isRequestCurrent()) {
         return;
       }
@@ -1155,13 +1156,14 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     });
     set({ isLoadingMore: true, isLoadingNewer: true });
     try {
-      const page = await fetchMessagesWithNarrowPage(
-        buildMessageFetchNarrow(ctx, currentUserId),
-        newest.id,
-        0,
-        pageSize,
-        { applyMarkdown: false, signal: controller.signal },
-      );
+      const page = await fetchChatMessagesPage({
+        context: ctx,
+        currentUserId,
+        anchor: newest.id,
+        numBefore: 0,
+        numAfter: pageSize,
+        signal: controller.signal,
+      });
       if (!isRequestCurrent()) {
         return;
       }

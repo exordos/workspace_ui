@@ -18,6 +18,8 @@ import type {
 export interface ChatListStreamMetadataRow {
   streamId: number;
   name: string;
+  /** Gateway stream UUID; used to fetch channel messages via the `/me/messages/` endpoint. */
+  streamUuid?: string;
   isArchived?: boolean;
   creatorId?: number;
   inviteOnly?: boolean;

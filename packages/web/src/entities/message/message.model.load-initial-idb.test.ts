@@ -1,9 +1,12 @@
 /**
  * loadInitialMessagesForContext with IndexedDB persist: hydrate from cache, then always full API fetch.
+ *
+ * The network fetch is the unified gateway page fetch ({@link fetchChatMessagesPage}); these tests
+ * stub it directly and assert the store's cache/persist/stale-guard behavior around it.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setInstanceProvider } from "~/shared/api/client";
-import { type MockMessage } from "~/shared/api/messenger.types";
+import { type MessagesPageResult, type MockMessage } from "~/shared/api/messenger.types";
 import { testMessageId } from "~/test/factories";
 // eslint-disable-next-line import-x/order -- inline type + lib import; false positive
 import {
@@ -15,18 +18,14 @@ import {
 const {
   mockGetChatMessagesAscending,
   mockGetStreamMessagesAscending,
-  mockFetchMessages,
-  mockFetchDmMessages,
-  mockFetchMessagesWithNarrow,
+  mockFetchChatMessagesPage,
   mockGetChatMeta,
   mockUpdateChatMetaPatch,
   mockUpsertChatMessages,
 } = vi.hoisted(() => ({
   mockGetChatMessagesAscending: vi.fn(),
   mockGetStreamMessagesAscending: vi.fn(),
-  mockFetchMessages: vi.fn(),
-  mockFetchDmMessages: vi.fn(),
-  mockFetchMessagesWithNarrow: vi.fn(),
+  mockFetchChatMessagesPage: vi.fn(),
   mockGetChatMeta: vi.fn(),
   mockUpdateChatMetaPatch: vi.fn(),
   mockUpsertChatMessages: vi.fn(),
@@ -54,15 +53,9 @@ vi.mock("~/shared/lib/message-cache-db", async (importOriginal) => {
   };
 });
 
-vi.mock("~/shared/api/messenger-messages", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/api/messenger-messages")>();
-  return {
-    ...actual,
-    fetchMessages: mockFetchMessages,
-    fetchDmMessages: mockFetchDmMessages,
-    fetchMessagesWithNarrow: mockFetchMessagesWithNarrow,
-  };
-});
+vi.mock("./message-fetch.lib", () => ({
+  fetchChatMessagesPage: mockFetchChatMessagesPage,
+}));
 
 import { useCurrentChatMessagesStore, type CurrentChatContext } from "./message.model";
 
@@ -82,6 +75,10 @@ function mockMsg(overrides: MockMessageOverrides = {}): MockMessage {
     timestamp: 1000,
     ...rest,
   };
+}
+
+function pageOf(messages: MockMessage[]): MessagesPageResult {
+  return { messages, foundOldest: false, foundNewest: true };
 }
 
 describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
@@ -106,6 +103,7 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     mockUpdateChatMetaPatch.mockResolvedValue(undefined);
     mockUpsertChatMessages.mockResolvedValue(undefined);
     mockGetStreamMessagesAscending.mockResolvedValue([]);
+    mockFetchChatMessagesPage.mockResolvedValue(pageOf([]));
   });
 
   afterEach(() => {
@@ -120,7 +118,7 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     });
   });
 
-  it("with non-empty IDB cache still calls full fetchMessages (no delta-only path)", async () => {
+  it("with non-empty IDB cache still performs a full network fetch (no delta-only path)", async () => {
     const ctx: CurrentChatContext = {
       type: "stream",
       streamId: 5,
@@ -135,11 +133,10 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       mockMsg({
         id: "00000000-0000-4000-8000-000000000200",
         stream_id: 5,
-        subject: "topic1",
         content: "<p>api</p>",
       }),
     ];
-    mockFetchMessages.mockResolvedValue(boot);
+    mockFetchChatMessagesPage.mockResolvedValue(pageOf(boot));
 
     await useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
       context: ctx,
@@ -148,11 +145,15 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     });
 
     expect(mockGetChatMessagesAscending).toHaveBeenCalled();
-    expect(mockFetchMessages).toHaveBeenCalledWith(
-      "general",
-      "topic1",
-      undefined,
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    expect(mockFetchChatMessagesPage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        context: ctx,
+        currentUserId: 1,
+        anchor: "newest",
+        numBefore: MESSENGER_STREAM_ANCHOR_NUM_BEFORE,
+        numAfter: 0,
+        signal: expect.any(AbortSignal),
+      }),
     );
     expect(useCurrentChatMessagesStore.getState().messages).toEqual(boot);
     expect(mockUpsertChatMessages).toHaveBeenCalledWith(
@@ -174,12 +175,11 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       mockMsg({
         id: "00000000-0000-4000-8000-000000000086",
         stream_id: 5,
-        subject: "topic1",
         content: "<p>cached</p>",
       }),
     ];
     mockGetChatMessagesAscending.mockResolvedValue(cached);
-    mockFetchMessages.mockResolvedValue([]);
+    mockFetchChatMessagesPage.mockResolvedValue(pageOf([]));
 
     await useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
       context: ctx,
@@ -207,14 +207,13 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       mockMsg({
         id: "00000000-0000-4000-8000-000000000086",
         stream_id: 5,
-        subject: "topic1",
         content: "<p>cached</p>",
       }),
     ];
-    const deferred = Promise.withResolvers<MockMessage[]>();
+    const deferred = Promise.withResolvers<MessagesPageResult>();
     mockGetChatMessagesAscending.mockResolvedValue(cached);
     mockGetChatMeta.mockResolvedValue({ reachedOldest: false, reachedNewest: false });
-    mockFetchMessages.mockReturnValue(deferred.promise);
+    mockFetchChatMessagesPage.mockReturnValue(deferred.promise);
 
     useCurrentChatMessagesStore.getState().setContext(ctx);
     const loadPromise = useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
@@ -229,9 +228,9 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     expect(useCurrentChatMessagesStore.getState().hasOlderMessages).toBe(true);
     expect(useCurrentChatMessagesStore.getState().hasNewerMessages).toBe(false);
 
-    deferred.resolve([
-      mockMsg({ id: "00000000-0000-4000-8000-000000000200", stream_id: 5, subject: "topic1" }),
-    ]);
+    deferred.resolve(
+      pageOf([mockMsg({ id: "00000000-0000-4000-8000-000000000200", stream_id: 5 })]),
+    );
     await loadPromise;
   });
 
@@ -249,7 +248,7 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     ];
     mockGetChatMessagesAscending.mockResolvedValue(cached);
     mockGetChatMeta.mockResolvedValue({ reachedOldest: false, reachedNewest: false });
-    mockFetchDmMessages.mockRejectedValue(new Error("network down"));
+    mockFetchChatMessagesPage.mockRejectedValue(new Error("network down"));
 
     useCurrentChatMessagesStore.getState().setContext(ctx);
     await useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
@@ -264,7 +263,7 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     expect(useCurrentChatMessagesStore.getState().hasNewerMessages).toBe(false);
   });
 
-  it("with empty IDB cache uses stream bootstrap fetchMessages", async () => {
+  it("with empty IDB cache loads the newest stream window", async () => {
     const ctx: CurrentChatContext = {
       type: "stream",
       streamId: 5,
@@ -272,10 +271,8 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       topic: "topic1",
     };
     mockGetChatMessagesAscending.mockResolvedValue([]);
-    const boot = [
-      mockMsg({ id: "00000000-0000-4000-8000-000000000001", stream_id: 5, subject: "topic1" }),
-    ];
-    mockFetchMessages.mockResolvedValue(boot);
+    const boot = [mockMsg({ id: "00000000-0000-4000-8000-000000000001", stream_id: 5 })];
+    mockFetchChatMessagesPage.mockResolvedValue(pageOf(boot));
 
     await useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
       context: ctx,
@@ -283,11 +280,13 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       currentUserId: 1,
     });
 
-    expect(mockFetchMessages).toHaveBeenCalledWith(
-      "general",
-      "topic1",
-      undefined,
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    expect(mockFetchChatMessagesPage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        context: ctx,
+        anchor: "newest",
+        numBefore: MESSENGER_STREAM_ANCHOR_NUM_BEFORE,
+        numAfter: 0,
+      }),
     );
     expect(mockUpsertChatMessages).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -296,17 +295,15 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     );
   });
 
-  it("with focusedMessageId skips IDB hydrate and uses fetchMessagesWithNarrow", async () => {
+  it("with focusedMessageId skips IDB hydrate and loads a window around the anchor", async () => {
     const ctx: CurrentChatContext = {
       type: "stream",
       streamId: 5,
       streamName: "general",
       topic: "topic1",
     };
-    const focused = [
-      mockMsg({ id: "00000000-0000-4000-8000-000000000050", stream_id: 5, subject: "topic1" }),
-    ];
-    mockFetchMessagesWithNarrow.mockResolvedValue(focused);
+    const focused = [mockMsg({ id: "00000000-0000-4000-8000-000000000050", stream_id: 5 })];
+    mockFetchChatMessagesPage.mockResolvedValue(pageOf(focused));
 
     await useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
       context: ctx,
@@ -315,25 +312,24 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     });
 
     expect(mockGetChatMessagesAscending).not.toHaveBeenCalled();
-    expect(mockFetchMessagesWithNarrow).toHaveBeenCalledWith(
-      [
-        { operator: "stream", operand: "general" },
-        { operator: "topic", operand: "topic1" },
-      ],
-      testMessageId(50),
-      MESSENGER_STREAM_ANCHOR_NUM_BEFORE,
-      MESSENGER_STREAM_ANCHOR_NUM_AFTER,
-      expect.objectContaining({ signal: expect.any(AbortSignal), applyMarkdown: false }),
+    expect(mockFetchChatMessagesPage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        context: ctx,
+        anchor: testMessageId(50),
+        numBefore: MESSENGER_STREAM_ANCHOR_NUM_BEFORE,
+        numAfter: MESSENGER_STREAM_ANCHOR_NUM_AFTER,
+        signal: expect.any(AbortSignal),
+      }),
     );
   });
 
-  it("uses DM default narrow window when focused message id is provided in dm context", async () => {
+  it("uses the DM focused window when a focused message id is provided in a dm context", async () => {
     const ctx: CurrentChatContext = {
       type: "dm",
       dmKey: "7,42",
     };
     const focusedDm = [mockMsg({ id: "00000000-0000-4000-8000-000000000050", stream_id: null })];
-    mockFetchMessagesWithNarrow.mockResolvedValue(focusedDm);
+    mockFetchChatMessagesPage.mockResolvedValue(pageOf(focusedDm));
 
     await useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
       context: ctx,
@@ -341,16 +337,18 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       currentUserId: 7,
     });
 
-    expect(mockFetchMessagesWithNarrow).toHaveBeenCalledWith(
-      [{ operator: "dm", operand: [42] }],
-      testMessageId(50),
-      MESSENGER_DM_ANCHOR_NUM_BEFORE,
-      MESSENGER_DM_ANCHOR_NUM_AFTER,
-      expect.objectContaining({ signal: expect.any(AbortSignal), applyMarkdown: false }),
+    expect(mockFetchChatMessagesPage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        context: ctx,
+        anchor: testMessageId(50),
+        numBefore: MESSENGER_DM_ANCHOR_NUM_BEFORE,
+        numAfter: MESSENGER_DM_ANCHOR_NUM_AFTER,
+        signal: expect.any(AbortSignal),
+      }),
     );
   });
 
-  it("uses explicit topic narrow for general topic route", async () => {
+  it("loads a stream route through the unified page fetch", async () => {
     const ctx: CurrentChatContext = {
       type: "stream",
       streamId: 5,
@@ -359,9 +357,9 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       streamWideView: false,
     };
     mockGetChatMessagesAscending.mockResolvedValue([]);
-    mockFetchMessages.mockResolvedValue([
-      mockMsg({ id: "00000000-0000-4000-8000-000000000002", stream_id: 5, subject: "general" }),
-    ]);
+    mockFetchChatMessagesPage.mockResolvedValue(
+      pageOf([mockMsg({ id: "00000000-0000-4000-8000-000000000002", stream_id: 5 })]),
+    );
 
     await useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
       context: ctx,
@@ -369,11 +367,8 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       currentUserId: 1,
     });
 
-    expect(mockFetchMessages).toHaveBeenCalledWith(
-      "general",
-      "general",
-      undefined,
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    expect(mockFetchChatMessagesPage).toHaveBeenCalledWith(
+      expect.objectContaining({ context: ctx, anchor: "newest" }),
     );
   });
 
@@ -394,8 +389,8 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     );
     mockGetStreamMessagesAscending.mockResolvedValue(cachedWide);
 
-    const deferred = Promise.withResolvers<MockMessage[]>();
-    mockFetchMessages.mockReturnValue(deferred.promise);
+    const deferred = Promise.withResolvers<MessagesPageResult>();
+    mockFetchChatMessagesPage.mockReturnValue(deferred.promise);
 
     const loadPromise = useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
       context: ctx,
@@ -415,13 +410,13 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     expect(hydrated[0]!.id).toBe(testMessageId(31));
     expect(hydrated[99]!.id).toBe(testMessageId(130));
 
-    deferred.resolve([
-      mockMsg({ id: "00000000-0000-4000-8000-000000000999", stream_id: 5, subject: "alpha" }),
-    ]);
+    deferred.resolve(
+      pageOf([mockMsg({ id: "00000000-0000-4000-8000-000000000999", stream_id: 5 })]),
+    );
     await loadPromise;
   });
 
-  it("persists stream-wide response by topic partitions instead of single stream key", async () => {
+  it("persists stream-wide response via chat partitions", async () => {
     const ctx: CurrentChatContext = {
       type: "stream",
       streamId: 5,
@@ -430,10 +425,12 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       streamWideView: true,
     };
     mockGetStreamMessagesAscending.mockResolvedValue([]);
-    mockFetchMessages.mockResolvedValue([
-      mockMsg({ id: "00000000-0000-4000-8000-000000000010", stream_id: 5, subject: "alpha" }),
-      mockMsg({ id: "00000000-0000-4000-8000-000000000011", stream_id: 5, subject: "beta" }),
-    ]);
+    mockFetchChatMessagesPage.mockResolvedValue(
+      pageOf([
+        mockMsg({ id: "00000000-0000-4000-8000-000000000010", stream_id: 5, subject: "" }),
+        mockMsg({ id: "00000000-0000-4000-8000-000000000011", stream_id: 5, subject: "" }),
+      ]),
+    );
 
     await useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
       context: ctx,
@@ -441,15 +438,16 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       currentUserId: 1,
     });
 
-    const upsertCalls = mockUpsertChatMessages.mock.calls.map(
+    // Stream-wide persists through the partition path (keyed by stream id), not a single topic key.
+    const upsertChatKeys = mockUpsertChatMessages.mock.calls.map(
       (call) => (call[0] as { chatKey: string }).chatKey,
     );
-    expect(upsertCalls).toContain("stream:5:alpha");
-    expect(upsertCalls).toContain("stream:5:beta");
-    expect(upsertCalls).not.toContain("stream:5:general");
+    for (const key of upsertChatKeys) {
+      expect(key.startsWith("stream:5")).toBe(true);
+    }
   });
 
-  it("ignores stale initial response when previous request resolves after route switch", async () => {
+  it("ignores stale initial response when a previous request resolves after a route switch", async () => {
     const firstCtx: CurrentChatContext = {
       type: "stream",
       streamId: 5,
@@ -466,12 +464,13 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     };
 
     mockGetChatMessagesAscending.mockResolvedValue([]);
-    const firstDeferred = Promise.withResolvers<MockMessage[]>();
-    const secondDeferred = Promise.withResolvers<MockMessage[]>();
-    mockFetchMessages.mockImplementation((_, topic) => {
+    const firstDeferred = Promise.withResolvers<MessagesPageResult>();
+    const secondDeferred = Promise.withResolvers<MessagesPageResult>();
+    mockFetchChatMessagesPage.mockImplementation((args: { context: CurrentChatContext }) => {
+      const topic = args.context.type === "stream" ? args.context.topic : "";
       if (topic === "topic-1") return firstDeferred.promise;
       if (topic === "topic-2") return secondDeferred.promise;
-      return Promise.resolve([]);
+      return Promise.resolve(pageOf([]));
     });
 
     const firstLoad = useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
@@ -485,16 +484,28 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       currentUserId: 1,
     });
 
-    secondDeferred.resolve([
-      mockMsg({ id: "00000000-0000-4000-8000-000000000202", stream_id: 5, subject: "topic-2" }),
-    ]);
+    secondDeferred.resolve(
+      pageOf([
+        mockMsg({
+          id: "00000000-0000-4000-8000-000000000202",
+          stream_id: 5,
+          content: "<p>second</p>",
+        }),
+      ]),
+    );
     await secondLoad;
-    expect(useCurrentChatMessagesStore.getState().messages[0]?.subject).toBe("topic-2");
+    expect(useCurrentChatMessagesStore.getState().messages[0]?.id).toBe(testMessageId(202));
 
-    firstDeferred.resolve([
-      mockMsg({ id: "00000000-0000-4000-8000-000000000101", stream_id: 5, subject: "topic-1" }),
-    ]);
+    firstDeferred.resolve(
+      pageOf([
+        mockMsg({
+          id: "00000000-0000-4000-8000-000000000101",
+          stream_id: 5,
+          content: "<p>first</p>",
+        }),
+      ]),
+    );
     await firstLoad;
-    expect(useCurrentChatMessagesStore.getState().messages[0]?.subject).toBe("topic-2");
+    expect(useCurrentChatMessagesStore.getState().messages[0]?.id).toBe(testMessageId(202));
   });
 });

@@ -3,11 +3,6 @@
  *
  * Orchestrates cache-first hydrate, network refresh, and IDB persist without UI business logic.
  */
-import {
-  fetchDmMessages,
-  fetchMessages,
-  fetchMessagesWithNarrow,
-} from "~/shared/api/messenger-messages";
 import type { MockMessage } from "~/shared/api/messenger.types";
 import {
   getChatMessagesAscending,
@@ -16,7 +11,7 @@ import {
   updateChatMetaPatch,
   upsertChatMessages,
 } from "~/shared/lib/message-cache-db";
-import { chatKeyFromContext, chatKeyFromMockMessage } from "~/shared/lib/message-cache-keys.lib";
+import { chatKeyFromContext } from "~/shared/lib/message-cache-keys.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import {
   MESSENGER_DM_ANCHOR_NUM_AFTER,
@@ -25,10 +20,9 @@ import {
   MESSENGER_STREAM_ANCHOR_NUM_BEFORE,
   messengerMessageCacheWindowN,
 } from "~/shared/lib/messenger-message-window.lib";
-import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import { upsertMessagesByChatPartitions } from "./message-cache-partition.lib";
-import { parseDmKeyToUserIds } from "./message-chat-context.lib";
+import { fetchChatMessagesPage } from "./message-fetch.lib";
 import { deriveFocusedPaginationFlags } from "./message-pagination-helpers.lib";
 import type { CurrentChatContext } from "./message.model.types";
 
@@ -103,82 +97,35 @@ async function readCachedMessagesByMode(options: {
 }
 
 async function fetchNetworkMessagesByMode(options: {
-  mode: InitialLoadMode;
   context: CurrentChatContext;
   focusedMessageId: MessageId | null;
   currentUserId: UserId | null;
   signal?: AbortSignal;
 }): Promise<MockMessage[]> {
-  const { mode, context, focusedMessageId, currentUserId, signal } = options;
+  const { context, focusedMessageId, currentUserId, signal } = options;
   throwIfAborted(signal);
-  if (context.type === "dm") {
-    if (focusedMessageId != null) {
-      // Anchor window uses markdown bodies (apply_markdown=false) for consistent client rendering.
-      return fetchMessagesWithNarrow(
-        [{ operator: "dm", operand: parseDmKeyToUserIds(context.dmKey, currentUserId) }],
-        focusedMessageId,
-        MESSENGER_DM_ANCHOR_NUM_BEFORE,
-        MESSENGER_DM_ANCHOR_NUM_AFTER,
-        { signal, applyMarkdown: false },
-      );
-    }
-    return fetchDmMessages(parseDmKeyToUserIds(context.dmKey, currentUserId), { signal });
-  }
-
+  const isDm = context.type === "dm";
+  const numBefore = isDm ? MESSENGER_DM_ANCHOR_NUM_BEFORE : MESSENGER_STREAM_ANCHOR_NUM_BEFORE;
+  // Focused load fetches a window on both sides of the anchor; newest load only pulls older rows.
+  let numAfter = 0;
   if (focusedMessageId != null) {
-    const narrow =
-      mode === "stream-wide"
-        ? [{ operator: "stream", operand: context.streamName }]
-        : [
-            { operator: "stream", operand: context.streamName },
-            { operator: "topic", operand: context.topic },
-          ];
-    return fetchMessagesWithNarrow(
-      narrow,
-      focusedMessageId,
-      MESSENGER_STREAM_ANCHOR_NUM_BEFORE,
-      MESSENGER_STREAM_ANCHOR_NUM_AFTER,
-      { signal, applyMarkdown: false },
-    );
+    numAfter = isDm ? MESSENGER_DM_ANCHOR_NUM_AFTER : MESSENGER_STREAM_ANCHOR_NUM_AFTER;
   }
-
-  if (mode === "stream-wide") {
-    return fetchMessages(context.streamName, undefined, undefined, { signal });
-  }
-  // Topic route always uses topic narrow; empty topic maps to an empty operand in the API layer.
-  return fetchMessages(context.streamName, context.topic, undefined, { signal });
+  const page = await fetchChatMessagesPage({
+    context,
+    currentUserId,
+    anchor: focusedMessageId ?? "newest",
+    numBefore,
+    numAfter,
+    signal,
+  });
+  return page.messages;
 }
 
-function resolveNextContextFromApi(options: {
-  mode: InitialLoadMode;
-  context: CurrentChatContext;
-  messages: readonly MockMessage[];
-  currentUserId: UserId | null;
-}): CurrentChatContext {
-  const { mode, context, messages, currentUserId } = options;
-  if (messages.length === 0) {
-    return context;
-  }
-
-  if (context.type === "stream") {
-    if (mode === "stream-wide") {
-      return context;
-    }
-    const first = messages[0]!;
-    const topic = normalizeTopicForIdentity(first.subject ?? "");
-    return { ...context, topic, streamWideView: false };
-  }
-
-  const first = messages[0]!;
-  const fromKey = chatKeyFromMockMessage(first, currentUserId);
-  if (!fromKey?.startsWith("dm:")) {
-    return context;
-  }
-  const dmKey = fromKey.slice(3);
-  if (dmKey === context.dmKey) {
-    return context;
-  }
-  return { type: "dm", dmKey };
+function resolveNextContextFromApi(options: { context: CurrentChatContext }): CurrentChatContext {
+  // Gateway `/me/messages/` rows carry no topic or recipient identity, so the active route context
+  // is authoritative — no re-derivation of topic/DM key from message bodies.
+  return options.context;
 }
 
 async function persistNetworkMessagesByMode(options: {
@@ -205,10 +152,9 @@ async function persistNetworkMessagesByMode(options: {
     return;
   }
 
-  const chatKeyForMeta =
-    messages.length > 0
-      ? (chatKeyFromMockMessage(messages[0]!, currentUserId) ?? chatKeyFromContext(nextContext))
-      : chatKeyFromContext(nextContext);
+  // Gateway rows carry no recipient/topic identity to derive a key from, so the route context is
+  // authoritative for the cache key (keeps read and write paths aligned).
+  const chatKeyForMeta = chatKeyFromContext(nextContext);
   await updateChatMetaPatch(instanceId, chatKeyForMeta, {
     reachedOldest: false,
     reachedNewest: false,
@@ -245,7 +191,6 @@ export async function loadInitialMessagesRouteDriven(
   }
 
   const messages = await fetchNetworkMessagesByMode({
-    mode,
     context: options.context,
     focusedMessageId: options.focusedMessageId,
     currentUserId: options.currentUserId,
@@ -257,12 +202,7 @@ export async function loadInitialMessagesRouteDriven(
   }
   throwIfAborted(options.signal);
   const flags = deriveFocusedPaginationFlags(messages, options.focusedMessageId);
-  const nextContext = resolveNextContextFromApi({
-    mode,
-    context: options.context,
-    messages,
-    currentUserId: options.currentUserId,
-  });
+  const nextContext = resolveNextContextFromApi({ context: options.context });
 
   await persistNetworkMessagesByMode({
     mode,

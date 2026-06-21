@@ -323,6 +323,9 @@ function hasStreamMetadataAccessChanged(
   existing: StreamEntryInternal,
   nextEntry: StreamEntryInternal,
 ): boolean {
+  if (existing.streamUuid !== nextEntry.streamUuid) {
+    return true;
+  }
   if (existing.isArchived !== nextEntry.isArchived) {
     return true;
   }

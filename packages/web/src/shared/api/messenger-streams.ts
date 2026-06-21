@@ -213,15 +213,20 @@ function parseMeStream(row: unknown): MessengerMeStream | null {
     return null;
   }
   const uuid = readUuid(row.uuid);
-  const streamUuid = readUuid(row.stream_uuid);
   const name = readTrimmedString(row.name);
-  if (uuid == null || streamUuid == null || name == null) {
+  if (uuid == null || name == null) {
     return null;
   }
+  // The gateway `/me/streams/` row id (`uuid`) IS the canonical stream identity referenced by
+  // message rows as `user_stream_uuid`. A distinct `stream_uuid` field is not sent, so fall back to
+  // `uuid`. (WorkspaceUserStream.uuid == WorkspaceStream.uuid == WorkspaceUserMessage.user_stream_uuid.)
+  const streamUuid = readUuid(row.stream_uuid) ?? uuid;
   const projectId = readUuid(row.project_id);
   const userUuid = readUuid(row.user_uuid);
   const source = isRecord(row.source) ? row.source : undefined;
-  const streamId = readOptionalPositiveInteger(row.stream_id);
+  // Numeric Zulip id lives in `source.stream_id` for zulip-sourced streams; tolerate a top-level one too.
+  const streamId =
+    readOptionalPositiveInteger(row.stream_id) ?? readOptionalPositiveInteger(source?.stream_id);
   const createdAt = readOptionalString(row.created_at);
   const updatedAt = readOptionalString(row.updated_at);
   const lastSyncedAt = readOptionalString(row.last_synced_at);

@@ -768,6 +768,39 @@ describe("fetchStreams", () => {
 
     await expect(fetchStreams()).resolves.toEqual([]);
   });
+
+  it("uses row uuid as stream_uuid and source.stream_id when top-level fields are absent", async () => {
+    // Real gateway shape: WorkspaceUserStream has no `stream_uuid`/top-level `stream_id`;
+    // identity is `uuid` and the numeric id lives under `source.stream_id`.
+    mockMessengerApi.getWithBase.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: [
+        {
+          uuid: "11111111-1111-4111-8111-111111111111",
+          name: "general",
+          description: "Main",
+          announce: false,
+          invite_only: false,
+          private: false,
+          source_name: "zulip",
+          source: { kind: "zulip", stream_id: 7 },
+        },
+      ],
+      raw: { statusText: "OK" },
+    });
+
+    await expect(fetchStreams()).resolves.toEqual([
+      {
+        stream_id: 7,
+        stream_uuid: "11111111-1111-4111-8111-111111111111",
+        name: "general",
+        description: "Main",
+        is_announcement_only: false,
+        invite_only: false,
+      },
+    ]);
+  });
 });
 
 // ---------------------------------------------------------------------------

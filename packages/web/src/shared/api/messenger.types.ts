@@ -68,6 +68,40 @@ export interface MessengerMeStream {
   stream_id?: number;
 }
 
+/** Markdown message body from the Workspace gateway `/me/messages/` payload. */
+export interface MessengerMeMessagePayload {
+  kind: "markdown";
+  content: string;
+}
+
+/**
+ * One per-user message-view row from the Workspace gateway
+ * `GET /api/messanger/v1/me/messages/`. Represents the authenticated user's synced copy of a
+ * stream message together with its personal read/pinned/starred flags. The endpoint does not
+ * carry sender identity — these rows are the user's own message inbox, scoped server-side by
+ * IAM token (project_id + user_uuid). Field names are snake_case (`convert_underscore=False`).
+ */
+export interface MessengerMeMessage {
+  uuid: string;
+  user_stream_uuid: string;
+  payload: MessengerMeMessagePayload;
+  read: boolean;
+  pinned: boolean;
+  starred: boolean;
+  user_uuid?: string;
+  project_id?: string;
+  last_synced_at?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** One page of `/me/messages/` rows plus the marker-based pagination cursor. */
+export interface MessengerMeMessagesPage {
+  messages: MessengerMeMessage[];
+  /** `X-Pagination-Marker` of the last row; `null` when this is the final page. */
+  nextMarker: string | null;
+}
+
 export interface MessengerGroupSettingValueObject {
   direct_members: number[];
   direct_subgroups: number[];

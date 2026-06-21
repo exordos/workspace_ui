@@ -53,6 +53,9 @@ export function toStreamMetadataRows(
       return {
         streamId: subscription.stream_id,
         name: subscription.name,
+        ...(subscription.stream_uuid != null && subscription.stream_uuid.length > 0
+          ? { streamUuid: subscription.stream_uuid }
+          : {}),
         ...(typeof subscription.is_archived === "boolean"
           ? { isArchived: subscription.is_archived }
           : {}),
