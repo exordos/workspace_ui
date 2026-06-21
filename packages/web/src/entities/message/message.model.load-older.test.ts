@@ -2,6 +2,7 @@
  * loadOlderBoundaryPage — stops pagination when API returns duplicates with no store progress.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { setInstanceProvider } from "~/shared/api/client";
 import type { MockMessage } from "~/shared/api/messenger.types";
@@ -12,16 +13,16 @@ type MockMessageOverrides = Partial<Omit<MockMessage, "id">> & {
   id?: MockMessage["id"] | number;
 };
 
-const mockFetchMessagesWithNarrowPage = vi.hoisted(() => vi.fn());
+const mockFetchStreamMessagesPage = vi.hoisted(() => vi.fn());
 const mockUpdateChatMetaPatch = vi.hoisted(() => vi.fn());
 const mockUpsertChatMessages = vi.hoisted(() => vi.fn());
 const mockPersistChatMessagesToIndexedDb = vi.hoisted(() => vi.fn(() => false));
 
-vi.mock("~/shared/api/messenger-messages", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/api/messenger-messages")>();
+vi.mock("~/shared/api/messenger-me-messages", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/shared/api/messenger-me-messages")>();
   return {
     ...actual,
-    fetchMessagesWithNarrowPage: mockFetchMessagesWithNarrowPage,
+    fetchStreamMessagesPage: mockFetchStreamMessagesPage,
   };
 });
 
@@ -56,6 +57,8 @@ function mockMsg(overrides: MockMessageOverrides = {}): MockMessage {
   };
 }
 
+const STREAM_UUID = "22222222-2222-4222-8222-222222222222";
+
 const streamCtx: CurrentChatContext = {
   type: "stream",
   streamId: 5,
@@ -84,11 +87,16 @@ describe("loadOlderBoundaryPage", () => {
     });
     setInstanceProvider(() => useInstancesStore.getState().getCurrentInstance());
     vi.clearAllMocks();
+    useChatListStore.getState().clear();
+    useChatListStore
+      .getState()
+      .upsertStreamMetadataRows([{ streamId: 5, name: "general", streamUuid: STREAM_UUID }]);
   });
 
   afterEach(() => {
     setInstanceProvider(() => null);
     resetInstancesStore();
+    useChatListStore.getState().clear();
     useCurrentChatMessagesStore.setState({
       context: null,
       messages: [],
@@ -112,7 +120,7 @@ describe("loadOlderBoundaryPage", () => {
       ...Array.from({ length: pageSize }, (_, index) => mockMsg({ id: 50 + index })),
     ];
 
-    mockFetchMessagesWithNarrowPage.mockResolvedValue({
+    mockFetchStreamMessagesPage.mockResolvedValue({
       messages: apiPage,
       foundOldest: false,
       foundNewest: true,
@@ -132,14 +140,14 @@ describe("loadOlderBoundaryPage", () => {
     const state = useCurrentChatMessagesStore.getState();
     expect(state.hasOlderMessages).toBe(false);
     expect(state.messages).toHaveLength(pageSize * 2);
-    expect(mockFetchMessagesWithNarrowPage).toHaveBeenCalledTimes(1);
-    expect(mockFetchMessagesWithNarrowPage).toHaveBeenCalledWith(
-      expect.any(Array),
-      anchorId,
-      pageSize,
-      0,
+    expect(mockFetchStreamMessagesPage).toHaveBeenCalledTimes(1);
+    expect(mockFetchStreamMessagesPage).toHaveBeenCalledWith(
       expect.objectContaining({
-        applyMarkdown: false,
+        streamUuid: STREAM_UUID,
+        streamId: 5,
+        anchor: anchorId,
+        numBefore: pageSize,
+        numAfter: 0,
         signal: expect.any(AbortSignal),
       }),
     );
@@ -150,7 +158,7 @@ describe("loadOlderBoundaryPage", () => {
     const storeMessages = [mockMsg({ id: 100 }), mockMsg({ id: 101 })];
     const olderMessages = Array.from({ length: pageSize }, (_, index) => mockMsg({ id: index }));
 
-    mockFetchMessagesWithNarrowPage.mockResolvedValue({
+    mockFetchStreamMessagesPage.mockResolvedValue({
       messages: [mockMsg({ id: 100 }), ...olderMessages],
       foundOldest: false,
       foundNewest: true,
@@ -182,7 +190,7 @@ describe("loadOlderBoundaryPage", () => {
       isLoadingMore: false,
     });
 
-    mockFetchMessagesWithNarrowPage.mockResolvedValue({
+    mockFetchStreamMessagesPage.mockResolvedValue({
       messages: [mockMsg({ id: 100 })],
       foundOldest: true,
       foundNewest: true,
@@ -192,13 +200,13 @@ describe("loadOlderBoundaryPage", () => {
       .getState()
       .loadOlderBoundaryPage({ pageSize, currentUserId: 10 });
 
-    expect(mockFetchMessagesWithNarrowPage).toHaveBeenCalledWith(
-      expect.any(Array),
-      testMessageId(105),
-      pageSize,
-      0,
+    expect(mockFetchStreamMessagesPage).toHaveBeenCalledWith(
       expect.objectContaining({
-        applyMarkdown: false,
+        streamUuid: STREAM_UUID,
+        streamId: 5,
+        anchor: testMessageId(105),
+        numBefore: pageSize,
+        numAfter: 0,
         signal: expect.any(AbortSignal),
       }),
     );
@@ -218,7 +226,7 @@ describe("loadOlderBoundaryPage", () => {
     }).id;
 
     mockPersistChatMessagesToIndexedDb.mockReturnValue(true);
-    mockFetchMessagesWithNarrowPage.mockReturnValue(deferred.promise);
+    mockFetchStreamMessagesPage.mockReturnValue(deferred.promise);
 
     useCurrentChatMessagesStore.setState({
       context: streamCtx,
@@ -262,7 +270,7 @@ describe("loadOlderBoundaryPage", () => {
     }).id;
 
     mockPersistChatMessagesToIndexedDb.mockReturnValue(true);
-    mockFetchMessagesWithNarrowPage.mockReturnValue(deferred.promise);
+    mockFetchStreamMessagesPage.mockReturnValue(deferred.promise);
 
     useCurrentChatMessagesStore.setState({
       context: streamCtx,
