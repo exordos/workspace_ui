@@ -18,7 +18,7 @@ import {
 import { foldersSuccess } from "../mocks/workspace-default-responses";
 
 const API_ROUTE = "**/api/v1/**";
-const MESSENGER_API_ROUTE = "**/api/messanger/v1/**";
+const MESSENGER_API_ROUTE = "**/api/messenger/v1/**";
 
 export interface MessengerApiFailRule {
   pattern: RegExp;
@@ -175,7 +175,10 @@ export class MessengerApiMock {
       return;
     }
 
-    if (/\/folders\/[^/]+\/items\/[^/]+\/actions\/(?:pin|unpin)\/invoke\/?$/.test(path) && method === "POST") {
+    if (
+      /\/folders\/[^/]+\/items\/[^/]+\/actions\/(?:pin|unpin)\/invoke\/?$/.test(path) &&
+      method === "POST"
+    ) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -209,7 +212,11 @@ export class MessengerApiMock {
       return;
     }
 
-    if (path.includes("/folders/") && path.includes("/items/") && (method === "PUT" || method === "DELETE")) {
+    if (
+      path.includes("/folders/") &&
+      path.includes("/items/") &&
+      (method === "PUT" || method === "DELETE")
+    ) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -218,7 +225,10 @@ export class MessengerApiMock {
       return;
     }
 
-    if (/\/folders\/[^/]+\/?$/.test(path) && (method === "PUT" || method === "DELETE" || method === "GET")) {
+    if (
+      /\/folders\/[^/]+\/?$/.test(path) &&
+      (method === "PUT" || method === "DELETE" || method === "GET")
+    ) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",

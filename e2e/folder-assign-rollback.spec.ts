@@ -5,7 +5,10 @@ import { test, expect } from "./fixtures";
 import { seedChatListIndexedDb } from "./helpers/seed-chat-list-cache";
 
 test.describe("Folder assign rollback @mock", () => {
-  test("rolls back folder assignment when items API returns 500", async ({ page, authenticated }) => {
+  test("rolls back folder assignment when items API returns 500", async ({
+    page,
+    authenticated,
+  }) => {
     await authenticated.waitForSelector("[data-focus-zone='topbar']", { timeout: 45_000 });
     await seedChatListIndexedDb(authenticated);
     await authenticated.reload();
@@ -14,7 +17,7 @@ test.describe("Folder assign rollback @mock", () => {
     const chatPreview = authenticated.getByText("Cached hello");
     await expect(chatPreview).toBeVisible({ timeout: 15_000 });
 
-    await page.route(/\/api\/messanger\/v1\/folders\/.*\/items\/?$/, async (route) => {
+    await page.route(/\/api\/messenger\/v1\/folders\/.*\/items\/?$/, async (route) => {
       if (route.request().method() === "POST") {
         await route.fulfill({
           status: 500,

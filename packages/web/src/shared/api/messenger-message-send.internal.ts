@@ -1,10 +1,10 @@
 /**
- * POST /messages to the Workspace gateway native message API.
+ * POST /api/messenger/v1/messages/ to the Workspace native messenger API.
  */
 import { t } from "~/i18n/i18n";
 import { normalizeMessageId } from "~/shared/lib/message-id.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
-import { getMessengerGatewayApiBaseForCurrentInstance, messengerApi } from "./client";
+import { getMessengerWorkspaceApiBaseForCurrentInstance, messengerApi } from "./client";
 
 export interface MessengerMessageSendClientParams {
   streamUuid: string;
@@ -38,7 +38,7 @@ export async function postWorkspaceSendMessage(
 ): Promise<{ id?: MessageId }> {
   const body = buildMessengerMessageSendBody(params);
   const response = await messengerApi.postJsonWithBase(
-    getMessengerGatewayApiBaseForCurrentInstance(),
+    getMessengerWorkspaceApiBaseForCurrentInstance(),
     "/messages/",
     body,
   );

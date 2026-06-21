@@ -1,7 +1,7 @@
 /**
  * Unified chat message-page fetch.
  *
- * Resolves the chat's gateway `stream_uuid` and loads a page from the `/me/messages/` endpoint
+ * Resolves the chat's gateway `stream_uuid` and loads a page from the `/messages/` endpoint
  * (marker pagination), returning the legacy {@link MessagesPageResult} shape so it is a drop-in for
  * the store's initial load and older/newer boundary pagination. Chats without a resolvable stream
  * uuid (legacy or not-yet-bootstrapped) fall back to the narrow `/messages` fetch.

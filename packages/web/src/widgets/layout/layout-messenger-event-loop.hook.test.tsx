@@ -388,7 +388,7 @@ describe("useLayoutMessengerEventLoop", () => {
     expect(useChatListStore.getState().streamMetadataHydrated).toBe(true);
   });
 
-  it("hydrates private DM metadata from /me/streams as UUID routes", async () => {
+  it("hydrates private DM metadata from /streams as UUID routes", async () => {
     const userStreamUuid = "1bce03ca-d6d9-4fdb-82cb-7ec05fa7a8e9";
     const sourceStreamUuid = "b4460c02-d693-4564-8804-98059613b86e";
     const currentUserUuid = "00000000-0000-0000-0000-000000000000";
@@ -439,7 +439,7 @@ describe("useLayoutMessengerEventLoop", () => {
     expect(internalDm?.userUuid).toBeUndefined();
   });
 
-  it("does not mark stream metadata as hydrated when /me/streams bootstrap fails", async () => {
+  it("does not mark stream metadata as hydrated when /streams bootstrap fails", async () => {
     fetchMyStreamsMock.mockRejectedValueOnce(new Error("streams failed"));
     const props = createHarnessProps();
 

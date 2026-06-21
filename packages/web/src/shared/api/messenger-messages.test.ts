@@ -961,7 +961,7 @@ describe("sendMessage", () => {
       timestamp: expect.any(Number),
     });
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
-      "/api/messanger/v1",
+      "/api/messenger/v1",
       "/messages/",
       {
         stream_uuid: sourceStreamUuid,
@@ -997,7 +997,7 @@ describe("sendMessage", () => {
       markdown_source: "hi",
     });
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
-      "/api/messanger/v1",
+      "/api/messenger/v1",
       "/messages/",
       {
         stream_uuid: sourceStreamUuid,

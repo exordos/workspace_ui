@@ -115,7 +115,7 @@ describe("parseMeMessage", () => {
 });
 
 describe("fetchMyMessagesPage", () => {
-  it("requests /me/messages/ with default pagination and sort params", async () => {
+  it("requests /messages/ with default pagination and sort params", async () => {
     mockMessengerApi.getWithBase.mockResolvedValue(pageResponse([rawRow()]));
 
     const page = await fetchMyMessagesPage({ streamUuid: STREAM_UUID });
@@ -123,13 +123,13 @@ describe("fetchMyMessagesPage", () => {
     expect(page.messages).toHaveLength(1);
     expect(page.nextMarker).toBeNull();
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messanger/v1",
-      "/me/messages/",
+      "/api/messenger/v1",
+      "/messages/",
       {
         page_limit: String(ME_MESSAGES_PAGE_LIMIT),
         sort_key: "created_at",
         sort_dir: "asc",
-        user_stream_uuid: STREAM_UUID,
+        stream_uuid: STREAM_UUID,
       },
       undefined,
     );
@@ -147,13 +147,13 @@ describe("fetchMyMessagesPage", () => {
     });
 
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messanger/v1",
-      "/me/messages/",
+      "/api/messenger/v1",
+      "/messages/",
       {
         page_limit: "25",
         sort_key: "updated_at",
         sort_dir: "desc",
-        user_stream_uuid: STREAM_UUID,
+        stream_uuid: STREAM_UUID,
         page_marker: "cursor-1",
       },
       undefined,
@@ -195,9 +195,9 @@ describe("fetchStreamMessages", () => {
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledTimes(2);
     expect(mockMessengerApi.getWithBase).toHaveBeenNthCalledWith(
       2,
-      "/api/messanger/v1",
-      "/me/messages/",
-      expect.objectContaining({ page_marker: MSG_UUID_1, user_stream_uuid: STREAM_UUID }),
+      "/api/messenger/v1",
+      "/messages/",
+      expect.objectContaining({ page_marker: MSG_UUID_1, stream_uuid: STREAM_UUID }),
       undefined,
     );
   });
@@ -208,9 +208,9 @@ describe("fetchStreamMessages", () => {
     await fetchStreamMessages(STREAM_UUID.toUpperCase());
 
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messanger/v1",
-      "/me/messages/",
-      expect.objectContaining({ user_stream_uuid: STREAM_UUID }),
+      "/api/messenger/v1",
+      "/messages/",
+      expect.objectContaining({ stream_uuid: STREAM_UUID }),
       undefined,
     );
   });
@@ -270,15 +270,15 @@ function singleResponse(row: unknown) {
 }
 
 describe("fetchMeMessageById", () => {
-  it("fetches one row by uuid via /me/messages/<uuid>", async () => {
+  it("fetches one row by uuid via /messages/<uuid>", async () => {
     mockMessengerApi.getWithBase.mockResolvedValue(singleResponse(rawRow()));
 
     const result = await fetchMeMessageById(MSG_UUID_1);
 
     expect(result?.uuid).toBe(MSG_UUID_1);
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messanger/v1",
-      `/me/messages/${MSG_UUID_1}`,
+      "/api/messenger/v1",
+      `/messages/${MSG_UUID_1}`,
       undefined,
       undefined,
     );
@@ -318,10 +318,10 @@ describe("fetchStreamMessagesPage", () => {
     expect(page.foundNewest).toBe(true);
     expect(page.foundOldest).toBe(true);
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messanger/v1",
-      "/me/messages/",
+      "/api/messenger/v1",
+      "/messages/",
       expect.objectContaining({
-        user_stream_uuid: STREAM_UUID,
+        stream_uuid: STREAM_UUID,
         page_limit: "50",
         sort_key: "created_at",
         sort_dir: "desc",
@@ -353,8 +353,8 @@ describe("fetchStreamMessagesPage", () => {
     expect(page.foundOldest).toBe(true);
     expect(page.foundNewest).toBe(false);
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messanger/v1",
-      "/me/messages/",
+      "/api/messenger/v1",
+      "/messages/",
       expect.objectContaining({ sort_dir: "desc", page_marker: MSG_UUID_2, page_limit: "30" }),
       undefined,
     );
@@ -376,8 +376,8 @@ describe("fetchStreamMessagesPage", () => {
     expect(page.foundOldest).toBe(false);
     expect(page.foundNewest).toBe(false);
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messanger/v1",
-      "/me/messages/",
+      "/api/messenger/v1",
+      "/messages/",
       expect.objectContaining({ sort_dir: "asc", page_marker: MSG_UUID_1, page_limit: "30" }),
       undefined,
     );
@@ -389,7 +389,7 @@ describe("fetchStreamMessagesPage", () => {
     const NEWER = MSG_UUID_2;
     mockMessengerApi.getWithBase.mockImplementation(
       (_base: string, path: string, params?: Record<string, string>) => {
-        if (path === `/me/messages/${ANCHOR}`) {
+        if (path === `/messages/${ANCHOR}`) {
           return Promise.resolve(singleResponse(rawRow({ uuid: ANCHOR })));
         }
         if (params?.sort_dir === "desc") {

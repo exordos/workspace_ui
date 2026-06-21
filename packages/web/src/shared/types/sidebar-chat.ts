@@ -73,7 +73,7 @@ export interface StreamWithLast {
 
 export interface StreamEntryInternal {
   stream_id: number;
-  /** Per-user stream UUID; used to fetch channel messages via the me/messages endpoint. */
+  /** Per-user stream UUID; used to fetch channel messages via the messages endpoint. */
   streamUuid?: string;
   /** Source stream UUID; used to create messages via the gateway messages endpoint. */
   sourceStreamUuid?: string;

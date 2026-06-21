@@ -641,7 +641,7 @@ export function useLayoutMessengerEventLoop(options: {
 
         const dmRowsFromMyStreams = toDmMetadataRowsFromMeStreams(myStreams ?? []);
         if (dmRowsFromMyStreams.length > 0) {
-          logChatListFlow("eventLoop: bootstrap → upsertDmMetadataRows from /me/streams", {
+          logChatListFlow("eventLoop: bootstrap → upsertDmMetadataRows from /streams", {
             rowCount: dmRowsFromMyStreams.length,
           });
           useChatListStore.getState().upsertDmMetadataRows(dmRowsFromMyStreams);

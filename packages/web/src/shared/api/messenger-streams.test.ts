@@ -35,7 +35,7 @@ function mockMyStreamsResponse(rows: unknown[]): void {
 }
 
 describe("fetchSubscriptions", () => {
-  it("maps non-private /me/streams rows to subscriptions", async () => {
+  it("maps non-private /streams rows to subscriptions", async () => {
     mockMessengerApi.getWithBase.mockResolvedValue({
       ok: true,
       status: 200,
@@ -74,7 +74,7 @@ describe("fetchSubscriptions", () => {
         invite_only: false,
       },
     ]);
-    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith("/api/messanger/v1", "/me/streams/");
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith("/api/messenger/v1", "/streams/");
   });
 
   it("returns empty subscriptions when gateway omits numeric stream_id", async () => {
@@ -143,7 +143,7 @@ describe("createPrivateMessageStream", () => {
 
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
       1,
-      "/api/messanger/v1",
+      "/api/messenger/v1",
       "/streams/",
       {
         private: true,
@@ -155,7 +155,7 @@ describe("createPrivateMessageStream", () => {
     );
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
       2,
-      "/api/messanger/v1",
+      "/api/messenger/v1",
       "/stream_bindings/",
       {
         stream_uuid: STREAM_UUID,
@@ -728,7 +728,7 @@ describe("fetchTopics", () => {
 });
 
 // ---------------------------------------------------------------------------
-// fetchStreams — uses Workspace gateway /me/streams
+// fetchStreams — uses Workspace gateway /streams
 // ---------------------------------------------------------------------------
 
 describe("fetchStreams", () => {
@@ -773,7 +773,7 @@ describe("fetchStreams", () => {
         invite_only: false,
       },
     ]);
-    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith("/api/messanger/v1", "/me/streams/");
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith("/api/messenger/v1", "/streams/");
   });
 
   it("returns empty list when gateway rows only contain private streams", async () => {

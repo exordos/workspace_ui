@@ -34,7 +34,7 @@ const inFlightWorkspaceGets = new Map<string, Promise<unknown>>();
 
 const MESSENGER_FOLDERS_LIST_PATH = "/folders/";
 
-/** Folder row from `GET /api/messanger/v1/folders/` (nested items included). */
+/** Folder row from `GET /api/messenger/v1/folders/` (nested items included). */
 export type WorkspaceFolder = FilterV1Folders200Item;
 
 type WorkspaceFolderSystemType = "created" | "all";

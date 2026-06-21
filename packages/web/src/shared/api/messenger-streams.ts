@@ -9,7 +9,11 @@ import {
   type UserId,
   userIdStorageKey,
 } from "~/shared/lib/user-id.lib";
-import { getMessengerGatewayApiBaseForCurrentInstance, messengerApi } from "./client";
+import {
+  getMessengerGatewayApiBaseForCurrentInstance,
+  getMessengerWorkspaceApiBaseForCurrentInstance,
+  messengerApi,
+} from "./client";
 import {
   messengerPipelineDelete,
   messengerPipelineGet,
@@ -254,7 +258,7 @@ function parseMeStream(row: unknown): MessengerMeStream | null {
 export async function fetchMyStreams(): Promise<MessengerMeStream[]> {
   const res = await messengerApi.getWithBase(
     getMessengerGatewayApiBaseForCurrentInstance(),
-    "/me/streams/",
+    "/streams/",
   );
   if (!res.ok) {
     return [];
@@ -303,7 +307,7 @@ function parseStreamBinding(row: unknown): WorkspaceStreamBindingRef | null {
 
 async function fetchStreamBindings(): Promise<WorkspaceStreamBindingRef[]> {
   const response = await messengerApi.getWithBase(
-    getMessengerGatewayApiBaseForCurrentInstance(),
+    getMessengerWorkspaceApiBaseForCurrentInstance(),
     "/stream_bindings/",
   );
   if (!response.ok) {
@@ -332,7 +336,7 @@ export function findPrivateStreamForUserUuid(
   );
 }
 
-/** Creates a 1:1 private stream via gateway `POST /streams/`. */
+/** Creates a 1:1 private stream via native Workspace messenger `POST /streams/`. */
 export async function createPrivateMessageStream(options: {
   userUuid: UserId;
   displayName: string;
@@ -343,7 +347,7 @@ export async function createPrivateMessageStream(options: {
   }
 
   try {
-    const base = getMessengerGatewayApiBaseForCurrentInstance();
+    const base = getMessengerWorkspaceApiBaseForCurrentInstance();
     const res = await messengerApi.postJsonWithBase(
       base,
       "/streams/",
@@ -428,7 +432,7 @@ function subscriptionFromMeStream(stream: MessengerMeStream): MessengerSubscript
   };
 }
 
-/** Fetches the user's channel subscriptions from Workspace gateway /me/streams/. */
+/** Fetches the user's channel subscriptions from Workspace gateway /streams/. */
 export async function fetchSubscriptions(): Promise<MessengerSubscription[]> {
   const gatewayStreams = await fetchMyStreams();
   return gatewayStreams

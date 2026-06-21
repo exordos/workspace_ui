@@ -117,11 +117,11 @@ describe("fetchServerSettings", () => {
     expect(result?.realm_url).toBe("https://preferred.example.com");
   });
 
-  it("strips /api/messanger/v1 suffix before constructing URL", async () => {
+  it("strips /api/messenger/v1 suffix before constructing URL", async () => {
     mockFetch.mockResolvedValue(jsonResponse({}));
-    await fetchServerSettings("http://workspace.exordos.local/api/messanger/v1");
+    await fetchServerSettings("http://workspace.exordos.local/api/messenger/v1");
     expect(mockFetch).toHaveBeenCalledWith(
-      "http://workspace.exordos.local/api/messanger/v1/server_settings",
+      "http://workspace.exordos.local/api/messenger/v1/server_settings",
       undefined,
     );
   });
@@ -130,7 +130,7 @@ describe("fetchServerSettings", () => {
     mockFetch.mockResolvedValue(jsonResponse({}));
     await fetchServerSettings("https://chat.example.com/api/v1");
     expect(mockFetch).toHaveBeenCalledWith(
-      "https://chat.example.com/api/messanger/v1/server_settings",
+      "https://chat.example.com/api/messenger/v1/server_settings",
       undefined,
     );
   });

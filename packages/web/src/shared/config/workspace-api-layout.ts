@@ -10,8 +10,11 @@
 /** Messenger JSON API path on the realm host. */
 export const MESSENGER_API_V1_PATH = "/api/v1";
 
-/** Messenger JSON API path behind Workspace messenger gateway (`/api/messanger/v1/...`). */
-export const MESSENGER_API_PATH = "/api/messanger/v1";
+/** Messenger JSON API path behind Workspace messenger gateway (`/api/messenger/v1/...`). */
+export const MESSENGER_API_PATH = "/api/messenger/v1";
+
+/** Native Workspace messenger API path for stream/message writes (`/api/messenger/v1/...`). */
+export const MESSENGER_WORKSPACE_API_PATH = "/api/messenger/v1";
 
 /** Gateway REST mount after origin (Orval `/v1/...` → `/workspace/v1/...`). */
 export const WORKSPACE_REST_API_PATH = "/workspace";

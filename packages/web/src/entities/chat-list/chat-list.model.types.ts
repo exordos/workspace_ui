@@ -18,7 +18,7 @@ import type {
 export interface ChatListStreamMetadataRow {
   streamId: number;
   name: string;
-  /** Per-user stream UUID; used to fetch channel messages via the me/messages endpoint. */
+  /** Per-user stream UUID; used to fetch channel messages via the messages endpoint. */
   streamUuid?: string;
   /** Source stream UUID; used to create messages via the gateway messages endpoint. */
   sourceStreamUuid?: string;

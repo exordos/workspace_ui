@@ -39,7 +39,7 @@ export function resolvePrivateMessageStreamName(
   return peerUserUuid.trim();
 }
 
-/** POST /api/messanger/v1/streams/ payload for a new 1:1 private stream. */
+/** POST /api/messenger/v1/streams/ payload for a new 1:1 private stream. */
 export function buildCreatePrivateMessageStreamBody(options: {
   peerUserUuid: string;
   peerDisplayName: string;
@@ -54,7 +54,7 @@ export function buildCreatePrivateMessageStreamBody(options: {
   };
 }
 
-/** POST /api/messanger/v1/stream_bindings/ payload for the DM peer. */
+/** POST /api/messenger/v1/stream_bindings/ payload for the DM peer. */
 export function buildCreateStreamBindingBody(options: {
   streamUuid: string;
   peerUserUuid: string;

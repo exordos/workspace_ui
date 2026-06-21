@@ -1099,7 +1099,39 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
       }),
     );
 
-    const res = await messengerApi.getWithBase("/api/messanger/v1", "/folders/");
+    const res = await messengerApi.getWithBase("/api/messenger/v1", "/folders/");
+
+    expect(res.status).toBe(401);
+    expect(vi.mocked(wipeCredentials)).not.toHaveBeenCalled();
+    expect(onAuthError).not.toHaveBeenCalled();
+    setAuthErrorHandler(null);
+  });
+
+  it("does not wipe credentials on POST messenger native /messages/ 401", async () => {
+    const { setInstanceProvider, messengerApi, setAuthErrorHandler } = await import("./client");
+    const onAuthError = vi.fn();
+
+    setInstanceProvider(() => ({
+      id: "i-iam",
+      realm: "https://messenger.test",
+      login: "u@example.com",
+      apiKey: "",
+      authType: "iam",
+      iamAccessToken: "iam-access-token",
+    }));
+    setAuthErrorHandler(onAuthError);
+
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const res = await messengerApi.postJsonWithBase("/api/messenger/v1", "/messages/", {
+      stream_uuid: "22222222-2222-4222-8222-222222222222",
+      payload: { kind: "markdown", content: "hi" },
+    });
 
     expect(res.status).toBe(401);
     expect(vi.mocked(wipeCredentials)).not.toHaveBeenCalled();

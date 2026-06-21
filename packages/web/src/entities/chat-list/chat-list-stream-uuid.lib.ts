@@ -1,6 +1,6 @@
 /**
  * Resolves the gateway `stream_uuid` for an active chat context so messages can be fetched from the
- * `/me/messages/` endpoint. Channels resolve via stream metadata (`streamsMap`); DMs via the
+ * `/messages/` endpoint. Channels resolve via stream metadata (`streamsMap`); DMs via the
  * private-stream uuid carried on the DM sidebar entry — either because the route slug / `dmKey`
  * segment is itself the stream uuid (sidebar slug == streamUuid), or by matching the peer identity.
  */

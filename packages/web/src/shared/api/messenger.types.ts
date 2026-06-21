@@ -51,7 +51,7 @@ export interface MessengerRecentPrivateConversation {
 }
 
 export interface MessengerMeStream {
-  /** Per-user stream row id. Use this for me/messages user_stream_uuid filtering. */
+  /** Per-user stream row id. Use this for messages stream_uuid filtering. */
   uuid: string;
   name: string;
   description: string;
@@ -72,7 +72,7 @@ export interface MessengerMeStream {
   stream_id?: number;
 }
 
-/** Markdown message body from the Workspace gateway `/me/messages/` payload. */
+/** Markdown message body from the Workspace gateway `/messages/` payload. */
 export interface MessengerMeMessagePayload {
   kind: "markdown";
   content: string;
@@ -80,13 +80,13 @@ export interface MessengerMeMessagePayload {
 
 /**
  * One per-user message-view row from the Workspace gateway
- * `GET /api/messanger/v1/me/messages/`. Represents the authenticated user's synced copy of a
+ * `GET /api/messenger/v1/messages/`. Represents the authenticated user's synced copy of a
  * stream message together with its personal read/pinned/starred flags. The endpoint does not
  * carry sender identity — these rows are the user's own message inbox, scoped server-side by
  * IAM token (project_id + user_uuid). Field names are snake_case (`convert_underscore=False`).
  */
 export interface MessengerMeMessage {
-  /** Per-user message row id. Use this for me/messages paging and row lookup. */
+  /** Per-user message row id. Use this for messages paging and row lookup. */
   uuid: string;
   /** Source WorkspaceMessage.uuid. Use this for source-message operations. */
   source_message_uuid: string;
@@ -102,7 +102,7 @@ export interface MessengerMeMessage {
   updated_at?: string;
 }
 
-/** One page of `/me/messages/` rows plus the marker-based pagination cursor. */
+/** One page of `/messages/` rows plus the marker-based pagination cursor. */
 export interface MessengerMeMessagesPage {
   messages: MessengerMeMessage[];
   /** `X-Pagination-Marker` of the last row; `null` when this is the final page. */
@@ -328,7 +328,7 @@ export interface DirectMessagesPageResult {
 
 export interface MockStream {
   stream_id: number;
-  /** Per-user stream UUID used for me/messages reads. */
+  /** Per-user stream UUID used for messages reads. */
   stream_uuid?: string;
   /** Source stream UUID used for messages writes. */
   source_stream_uuid?: string;
@@ -425,7 +425,7 @@ export interface RawMessageToMockInput {
 
 export interface MessengerSubscription {
   stream_id: number;
-  /** Per-user stream UUID used for me/messages reads. */
+  /** Per-user stream UUID used for messages reads. */
   stream_uuid?: string;
   /** Source stream UUID used for messages writes. */
   source_stream_uuid?: string;

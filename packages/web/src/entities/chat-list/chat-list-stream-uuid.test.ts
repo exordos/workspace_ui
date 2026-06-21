@@ -1,5 +1,5 @@
 /**
- * Tests for the pure stream-uuid resolver used to route chat message fetches to `/me/messages/`.
+ * Tests for the pure stream-uuid resolver used to route chat message fetches to `/messages/`.
  */
 import { describe, expect, it } from "vitest";
 import type { CurrentChatContext } from "~/entities/message/message.model.types";

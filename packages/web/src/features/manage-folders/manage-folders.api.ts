@@ -1,8 +1,8 @@
 /**
  * Folder CRUD API — messenger gateway endpoints for folder management.
  *
- * `POST /api/messanger/v1/folders/`, `PUT /api/messanger/v1/folders/{uuid}`,
- * `DELETE /api/messanger/v1/folders/{uuid}`.
+ * `POST /api/messenger/v1/folders/`, `PUT /api/messenger/v1/folders/{uuid}`,
+ * `DELETE /api/messenger/v1/folders/{uuid}`.
  */
 
 import {

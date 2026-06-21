@@ -123,7 +123,7 @@ async function fetchNetworkMessagesByMode(options: {
 }
 
 function resolveNextContextFromApi(options: { context: CurrentChatContext }): CurrentChatContext {
-  // Gateway `/me/messages/` rows carry no topic or recipient identity, so the active route context
+  // Gateway `/messages/` rows carry no topic or recipient identity, so the active route context
   // is authoritative — no re-derivation of topic/DM key from message bodies.
   return options.context;
 }

@@ -1,5 +1,5 @@
 /**
- * Workspace gateway per-user message API (`GET /api/messanger/v1/me/messages/`).
+ * Workspace gateway per-user message API (`GET /api/messenger/v1/messages/`).
  *
  * Returns the authenticated user's synced message-view rows (markdown content plus personal
  * read/pinned/starred flags) for their streams. The request is authenticated with the instance
@@ -9,7 +9,7 @@
  * Pagination is marker-based: send `page_limit` and, for subsequent pages, `page_marker` set to
  * the previous page's last row uuid. The server echoes the next marker in the
  * `X-Pagination-Marker` response header and omits it on the final page. Filtering by stream is a
- * plain `user_stream_uuid=<uuid>` equality query param; `project_id`/`user_uuid` are scoped
+ * plain `stream_uuid=<uuid>` equality query param; `project_id`/`user_uuid` are scoped
  * server-side from the token and must not be sent.
  */
 import { createLogger } from "~/shared/lib/logger";
@@ -27,19 +27,19 @@ const log = createLogger("messenger-me-messages");
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Default rows per `/me/messages/` request. */
+/** Default rows per `/messages/` request. */
 export const ME_MESSAGES_PAGE_LIMIT = 100;
 
 /** Safety bound on marker-following so a misbehaving cursor cannot loop forever. */
 const ME_MESSAGES_MAX_PAGES = 100;
 
-const ME_MESSAGES_PATH = "/me/messages/";
+const ME_MESSAGES_PATH = "/messages/";
 
 export type MeMessagesSortKey = "created_at" | "updated_at" | "last_synced_at" | "uuid";
 export type MeMessagesSortDir = "asc" | "desc";
 
 export interface FetchMyMessagesOptions {
-  /** Restrict to a single stream (`user_stream_uuid` equality filter). */
+  /** Restrict to a single stream (`stream_uuid` equality filter). */
   streamUuid?: string;
   /** Page size (`page_limit`); defaults to {@link ME_MESSAGES_PAGE_LIMIT}. */
   limit?: number;
@@ -88,7 +88,7 @@ function parseMeMessagePayload(value: unknown): MessengerMeMessagePayload | null
   return { kind: "markdown", content };
 }
 
-/** Maps one raw `/me/messages/` row to {@link MessengerMeMessage}; returns null when unusable. */
+/** Maps one raw `/messages/` row to {@link MessengerMeMessage}; returns null when unusable. */
 export function parseMeMessage(row: unknown): MessengerMeMessage | null {
   if (!isRecord(row)) {
     return null;
@@ -154,7 +154,7 @@ function buildMeMessagesParams(options: FetchMyMessagesOptions): Record<string, 
     sort_dir: options.sortDir ?? "asc",
   };
   if (options.streamUuid != null) {
-    params.user_stream_uuid = normalizeStreamUuid(options.streamUuid, "fetchMyMessages.streamUuid");
+    params.stream_uuid = normalizeStreamUuid(options.streamUuid, "fetchMyMessages.streamUuid");
   }
   const marker = options.marker?.trim();
   if (marker != null && marker.length > 0) {
@@ -181,7 +181,7 @@ export async function fetchMyMessagesPage(
     options.signal,
   );
   if (!res.ok) {
-    log.warn("me/messages page request failed", { status: res.status });
+    log.warn("messages page request failed", { status: res.status });
     return { messages: [], nextMarker: null };
   }
   const messages = extractMeMessageItems(res.data)
@@ -213,7 +213,7 @@ export async function fetchMyMessages(
     marker = next;
   }
 
-  log.warn("me/messages pagination hit max pages; results may be truncated", {
+  log.warn("messages pagination hit max pages; results may be truncated", {
     maxPages: ME_MESSAGES_MAX_PAGES,
     collected: collected.length,
     ...(options.streamUuid != null ? { streamUuid: options.streamUuid } : {}),
@@ -244,7 +244,7 @@ function isoToEpochSeconds(value: string | undefined): number {
 
 /**
  * Bridges a gateway message-view row to the UI {@link MockMessage} shape so stream messages can be
- * rendered by the existing message list. The `/me/messages/` endpoint carries no sender identity,
+ * rendered by the existing message list. The `/messages/` endpoint carries no sender identity,
  * so `sender_id` is `0` and `sender_full_name` is empty; resolve those from stream/membership data
  * at the call site when needed. The body is markdown, mirrored into `markdown_source` for editing.
  * Pass `streamId` to stamp the numeric channel id used by sidebar/route association (null for DMs).
@@ -275,7 +275,7 @@ export function meMessageToMockMessage(
   return base;
 }
 
-/** Fetches a single message-view row by uuid (`GET /me/messages/<uuid>`); null on miss/non-ok. */
+/** Fetches a single message-view row by uuid (`GET /messages/<uuid>`); null on miss/non-ok. */
 export async function fetchMeMessageById(
   uuid: string,
   signal?: AbortSignal,

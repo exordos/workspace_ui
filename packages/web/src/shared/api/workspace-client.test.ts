@@ -55,7 +55,7 @@ const messengerApi = {
   ),
   delete: vi.fn(),
   setBaseUrl: vi.fn(),
-  getBaseUrl: vi.fn(() => "/api/messanger/v1"),
+  getBaseUrl: vi.fn(() => "/api/messenger/v1"),
 };
 type MessengerGetResponse = Awaited<ReturnType<typeof messengerApi.get>>;
 
@@ -64,7 +64,7 @@ vi.mock("./client", () => ({
   messengerApi,
   getCurrentInstance,
   getWorkspaceApiBaseForCurrentInstance,
-  getMessengerGatewayApiBaseForCurrentInstance: () => "/api/messanger/v1",
+  getMessengerGatewayApiBaseForCurrentInstance: () => "/api/messenger/v1",
 }));
 
 describe("workspace-client", () => {
@@ -95,7 +95,7 @@ describe("workspace-client", () => {
     await getFolders();
 
     expect(messengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messanger/v1",
+      "/api/messenger/v1",
       "/folders/",
       undefined,
       undefined,
@@ -342,7 +342,7 @@ describe("workspace-client", () => {
     await expect(addChatToFolder("folder-1", "dm:42")).resolves.toBe(true);
 
     expect(messengerApi.postJsonWithBase).toHaveBeenCalledWith(
-      "/api/messanger/v1",
+      "/api/messenger/v1",
       "/folders/folder-1/items/",
       expect.objectContaining({
         chat_id: 42,
@@ -363,7 +363,7 @@ describe("workspace-client", () => {
 
     expect(messengerApi.postJsonWithBase).toHaveBeenCalledTimes(1);
     expect(messengerApi.postJsonWithBase).toHaveBeenCalledWith(
-      "/api/messanger/v1",
+      "/api/messenger/v1",
       "/folders/folder-1/items/",
       expect.objectContaining({
         chat_id: 1,
@@ -385,7 +385,7 @@ describe("workspace-client", () => {
     await expect(removeChatFromFolder("folder-1", "item-1")).resolves.toBe(true);
 
     expect(messengerApi.deleteWithBase).toHaveBeenCalledWith(
-      "/api/messanger/v1",
+      "/api/messenger/v1",
       "/folders/folder-1/items/item-1",
     );
   });
@@ -411,13 +411,13 @@ describe("workspace-client", () => {
     await expect(updateFolderItemOrder("folder-1", "item-1", 3)).resolves.toBe(true);
 
     expect(messengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messanger/v1",
+      "/api/messenger/v1",
       "/folders/folder-1/items/item-1",
       undefined,
       undefined,
     );
     expect(messengerApi.putJsonWithBase).toHaveBeenCalledWith(
-      "/api/messanger/v1",
+      "/api/messenger/v1",
       "/folders/folder-1/items/item-1",
       expect.objectContaining({
         order_index: 3,

@@ -16,7 +16,10 @@ import {
   isAllowedDevWorkspaceProxyTargetOrigin,
   workspaceRestApiPathSuffix,
 } from "~/shared/config/dev-workspace-org-proxy";
-import { MESSENGER_API_PATH } from "~/shared/config/workspace-api-layout";
+import {
+  MESSENGER_API_PATH,
+  MESSENGER_WORKSPACE_API_PATH,
+} from "~/shared/config/workspace-api-layout";
 import { getBasicAuthValue, wipeCredentials } from "~/shared/lib/auth-guard";
 import {
   noteApiTransportFailure,
@@ -444,8 +447,10 @@ function shouldSkipAuth401Handling(req: ApiRequest): boolean {
     if (/\/v1\/(?:folders|services)(?:\/|$)/.test(path)) {
       return true;
     }
-    // Messenger gateway folder API uses IAM Bearer; 401 must not wipe the session.
-    if (/\/api\/messanger\/v1\/folders(?:\/|$)/.test(path)) {
+    // Workspace messenger gateway APIs use IAM Bearer; 401 must not wipe the session.
+    if (
+      /\/api\/messenger(?:\/v1)?\/(?:folders|streams|stream_bindings|messages)(?:\/|$)/.test(path)
+    ) {
       return true;
     }
     return false;
@@ -855,17 +860,26 @@ function getDevWorkspaceProxyBase(): string {
   return base.replace(/\/+$/, "");
 }
 
-/** Messenger gateway REST base (`/api/messanger/v1`) for the active org. */
-export function getMessengerGatewayApiBaseForCurrentInstance(): string {
+function getOrgScopedMessengerApiBase(path: string): string {
   const instance = getCurrentInstance();
   if (instance == null || import.meta.env.DEV) {
-    return MESSENGER_API_PATH;
+    return path;
   }
   const orgOrigin = resolveIamApiOrigin(instance).replace(/\/+$/, "");
   if (orgOrigin === "") {
-    return MESSENGER_API_PATH;
+    return path;
   }
-  return `${orgOrigin}${MESSENGER_API_PATH}`;
+  return `${orgOrigin}${path}`;
+}
+
+/** Messenger gateway REST base (`/api/messenger/v1`) for the active org. */
+export function getMessengerGatewayApiBaseForCurrentInstance(): string {
+  return getOrgScopedMessengerApiBase(MESSENGER_API_PATH);
+}
+
+/** Native Workspace messenger REST base (`/api/messenger`) for the active org. */
+export function getMessengerWorkspaceApiBaseForCurrentInstance(): string {
+  return getOrgScopedMessengerApiBase(MESSENGER_WORKSPACE_API_PATH);
 }
 
 /** Workspace REST `/v1/...` base for the active org (Workspace API origin, not always organization realm). */

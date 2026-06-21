@@ -84,7 +84,7 @@ export const env = {
   /** Messenger JSON API path (`/api/v1`). Fixed — `~/shared/config/workspace-api-layout`. */
   MESSENGER_API_V1_PATH,
 
-  /** Messenger gateway Messenger API path (`/api/messanger/v1`). Fixed — same module. */
+  /** Messenger gateway Messenger API path (`/api/messenger/v1`). Fixed — same module. */
   MESSENGER_API_PATH,
 
   /** Workspace gateway API path (`/workspace/v1`). Fixed — same module. */

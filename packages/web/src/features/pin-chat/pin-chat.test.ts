@@ -13,7 +13,7 @@ vi.mock("~/shared/api/client", () => {
     messengerApi: {
       postWithBase: api.postWithBase,
     },
-    getMessengerGatewayApiBaseForCurrentInstance: vi.fn(() => "/api/messanger/v1"),
+    getMessengerGatewayApiBaseForCurrentInstance: vi.fn(() => "/api/messenger/v1"),
   };
 });
 
@@ -221,7 +221,7 @@ describe("pin-chat API", () => {
 
       expect(result).toBe(true);
       expect(messengerApi.postWithBase).toHaveBeenCalledWith(
-        "/api/messanger/v1",
+        "/api/messenger/v1",
         "/folders/folder-abc/items/item-xyz/actions/pin/invoke",
         {},
         undefined,
@@ -270,7 +270,7 @@ describe("pin-chat API", () => {
 
       expect(result).toBe(true);
       expect(messengerApi.postWithBase).toHaveBeenCalledWith(
-        "/api/messanger/v1",
+        "/api/messenger/v1",
         "/folders/folder-abc/items/item-xyz/actions/unpin/invoke",
         {},
         undefined,

@@ -29,7 +29,7 @@ interface FetchApiKeyResult {
 }
 
 /**
- * Fetches server settings (GET /api/messanger/v1/server_settings). No auth required.
+ * Fetches server settings (GET /api/messenger/v1/server_settings). No auth required.
  * Used on login page to show realm icon, name, and auth methods.
  */
 export async function fetchServerSettings(
@@ -42,7 +42,7 @@ export async function fetchServerSettings(
     const parsedRealm = new URL(realmUrl.trim());
     const normalizedPath = parsedRealm.pathname
       .replace(/\/+$/, "")
-      .replace(/\/api\/messanger\/v1$/i, "")
+      .replace(/\/api\/messenger\/v1$/i, "")
       .replace(/\/api\/v1$/, "")
       .replace(/\/api$/, "");
     const base = `${parsedRealm.origin}${normalizedPath}`.replace(/\/+$/, "");

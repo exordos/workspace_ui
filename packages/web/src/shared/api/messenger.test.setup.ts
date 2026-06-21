@@ -35,7 +35,8 @@ export function getMockRefreshMessengerApiBase() {
 
 vi.mock("./client", () => ({
   getCurrentInstance: mockGetCurrentInstance,
-  getMessengerGatewayApiBaseForCurrentInstance: () => "/api/messanger/v1",
+  getMessengerGatewayApiBaseForCurrentInstance: () => "/api/messenger/v1",
+  getMessengerWorkspaceApiBaseForCurrentInstance: () => "/api/messenger/v1",
   messengerApi: mockMessengerApi,
   refreshMessengerApiBase: mockRefreshMessengerApiBase,
   refreshWorkspaceApiBase: mockRefreshWorkspaceApiBase,

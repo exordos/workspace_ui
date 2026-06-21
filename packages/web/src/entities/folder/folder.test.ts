@@ -48,7 +48,7 @@ vi.mock("~/shared/api/client", () => ({
     iamAccessToken: "iam-token",
   }),
   getWorkspaceApiBaseForCurrentInstance: () => "https://messenger.test",
-  getMessengerGatewayApiBaseForCurrentInstance: () => "/api/messanger/v1",
+  getMessengerGatewayApiBaseForCurrentInstance: () => "/api/messenger/v1",
   setInstanceProvider: vi.fn(),
 }));
 
@@ -212,7 +212,7 @@ describe("getFolders", () => {
     await getFolders();
 
     expect(messengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messanger/v1",
+      "/api/messenger/v1",
       "/folders/",
       undefined,
       undefined,
