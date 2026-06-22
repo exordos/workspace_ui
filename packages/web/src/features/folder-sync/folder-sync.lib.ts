@@ -112,9 +112,7 @@ export function withDefaultSystemFolders(
   const foldersWithoutApiAll = baseFolders.filter((folder) => folder.systemType !== "all");
   const normalizedBaseFolders = [normalizedAllFolder, ...foldersWithoutApiAll];
 
-  const includePersonalAndChannels =
-    showSystemFolders && baseFolders.some((folder) => folder.id !== SYSTEM_ALL_FOLDER_ID);
-  if (!includePersonalAndChannels) {
+  if (!showSystemFolders) {
     return normalizedBaseFolders;
   }
 

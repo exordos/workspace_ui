@@ -143,6 +143,44 @@ describe("withDefaultSystemFolders", () => {
     expect(result.some((f) => f.id === apiAllUuid)).toBe(false);
     expect(result.find((f) => f.id === "other-created")).toBeDefined();
   });
+
+  it("keeps personal/channels visible when only synthetic all-folder remains", () => {
+    const result = withDefaultSystemFolders(
+      [{ id: SYSTEM_ALL_FOLDER_ID, label: "All", backgroundColor: 0, systemType: "all" }],
+      LABELS,
+      true,
+    );
+
+    expect(result.map((folder) => folder.id)).toEqual([
+      SYSTEM_ALL_FOLDER_ID,
+      "system:personal",
+      "system:channels",
+    ]);
+  });
+
+  it("keeps personal/channels visible when only API all-folder remains", () => {
+    const apiAllUuid = "550e8400-e29b-41d4-a716-446655440000";
+    const result = withDefaultSystemFolders(
+      [
+        {
+          id: apiAllUuid,
+          label: "All from API",
+          backgroundColor: 2,
+          systemType: "all",
+          badge: 3,
+        },
+      ],
+      LABELS,
+      true,
+    );
+
+    expect(result.map((folder) => folder.id)).toEqual([
+      SYSTEM_ALL_FOLDER_ID,
+      "system:personal",
+      "system:channels",
+    ]);
+    expect(result[0]?.badge).toBe(3);
+  });
 });
 
 describe("folder-sync chat id matching", () => {
