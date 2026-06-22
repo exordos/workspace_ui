@@ -142,4 +142,41 @@ describe("MessageBubble attachment links", () => {
       });
     });
   });
+
+  it("keeps canonical workspace gateway attachment links clickable", async () => {
+    render(
+      <MessageBubble
+        message={msg({
+          content:
+            '<p><a href="https://uploads.example.com/workspace/v1/user_uploads/1/report.pdf">report.pdf</a></p>',
+        })}
+      />,
+    );
+
+    const link = await screen.findByRole("link", { name: "report.pdf" });
+    await waitFor(() => {
+      expect(link).toHaveAttribute("data-attachment-link", "true");
+      expect(link).toHaveAttribute("data-attachment-path", "/user_uploads/1/report.pdf");
+    });
+
+    fireEvent.click(link);
+
+    await waitFor(() => {
+      expect(downloadUserUploadAttachmentMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: "/user_uploads/1/report.pdf",
+          fileName: "report.pdf",
+          authHeaders: { Authorization: "Basic token" },
+          onProgress: expect.any(Function),
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(useDownloadStore.getState().entries[0]).toMatchObject({
+        path: "/user_uploads/1/report.pdf",
+        status: "downloaded",
+      });
+    });
+  });
 });

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setInstanceProvider } from "~/shared/api/client";
 import {
   deriveAttachmentFileName,
   downloadUserUploadAttachment,
@@ -14,6 +15,18 @@ describe("extractUserUploadPath", () => {
 
   it("returns relative path for raw /user_uploads value", () => {
     expect(extractUserUploadPath("/user_uploads/2/file.txt")).toBe("/user_uploads/2/file.txt");
+  });
+
+  it("strips workspace gateway prefix from relative user_upload path", () => {
+    expect(extractUserUploadPath("/workspace/v1/user_uploads/2/file.txt?download=1")).toBe(
+      "/user_uploads/2/file.txt?download=1",
+    );
+  });
+
+  it("strips workspace gateway prefix from absolute user_upload URL", () => {
+    expect(
+      extractUserUploadPath("https://chat.example.com/workspace/v1/user_uploads/1/report.pdf"),
+    ).toBe("/user_uploads/1/report.pdf");
   });
 
   it("returns null for non-upload links", () => {
@@ -62,6 +75,7 @@ describe("downloadUserUploadAttachment", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    setInstanceProvider(() => null);
     Object.defineProperty(URL, "createObjectURL", {
       configurable: true,
       writable: true,
@@ -201,6 +215,47 @@ describe("downloadUserUploadAttachment", () => {
       headers: { Authorization: "Basic token" },
       credentials: "include",
     });
+  });
+
+  it("builds canonical fetch URL for workspace gateway user_upload links", async () => {
+    const createObjectURLMock = vi.fn(() => "blob:test-canonical");
+    const revokeObjectURLMock = vi.fn();
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      writable: true,
+      value: createObjectURLMock,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      writable: true,
+      value: revokeObjectURLMock,
+    });
+    setInstanceProvider(() => ({
+      id: "inst-1",
+      realm: "https://chat.example.com/workspace/v1/api/v1",
+      email: "alice@example.com",
+      apiKey: "token",
+    }));
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response("ok", { status: 200, headers: { "content-length": "2" } }));
+
+    const success = await downloadUserUploadAttachment({
+      path: "https://chat.example.com/workspace/v1/user_uploads/1/file.txt?token=unsafe",
+      fileName: "file.txt",
+      authHeaders: { Authorization: "Basic token" },
+      fetchImpl: fetchMock as typeof fetch,
+    });
+
+    expect(success).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://chat.example.com/workspace/v1/user_uploads/1/file.txt?token=unsafe",
+      {
+        headers: { Authorization: "Basic token" },
+        credentials: "omit",
+      },
+    );
   });
 
   it("does not issue request for invalid non-upload path", async () => {

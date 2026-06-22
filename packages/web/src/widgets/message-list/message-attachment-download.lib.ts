@@ -1,15 +1,11 @@
-import { appendDevUserUploadsProxyHeaders } from "~/shared/api/client";
+import {
+  buildProtectedUploadFetchUrl,
+  resolveProtectedUploadFetchOptions,
+} from "~/shared/lib/protected-message-media";
+import { extractUserUploadsPathAndQuery } from "~/shared/lib/user-uploads-url.lib";
 import { sanitizeFilename } from "~/shared/lib/validation";
 
 const USER_UPLOADS_SEGMENT = "/user_uploads/";
-
-function safeParseUrl(value: string): URL | null {
-  try {
-    return new URL(value, window.location.origin);
-  } catch {
-    return null;
-  }
-}
 
 function safeDecodeUriComponent(value: string): string {
   try {
@@ -22,11 +18,8 @@ function safeDecodeUriComponent(value: string): string {
 export function extractUserUploadPath(rawHref: string): string | null {
   const href = rawHref.trim();
   if (!href) return null;
-  if (href.startsWith(USER_UPLOADS_SEGMENT)) return href;
-
-  const parsed = safeParseUrl(href);
-  if (!parsed?.pathname.includes(USER_UPLOADS_SEGMENT)) return null;
-  return `${parsed.pathname}${parsed.search}`;
+  const normalizedPath = extractUserUploadsPathAndQuery(href);
+  return normalizedPath?.startsWith(USER_UPLOADS_SEGMENT) ? normalizedPath : null;
 }
 
 export function deriveAttachmentFileName(rawLabel: string, path: string): string {
@@ -109,23 +102,17 @@ async function readResponseBlob(
 export async function downloadUserUploadAttachment(
   options: DownloadUserUploadAttachmentOptions,
 ): Promise<boolean> {
-  const {
-    path,
-    fileName,
-    authHeaders,
-    credentials = "include",
-    onProgress,
-    fetchImpl = fetch,
-  } = options;
+  const { path, fileName, authHeaders, onProgress, fetchImpl = fetch } = options;
   const normalizedPath = extractUserUploadPath(path);
   if (!normalizedPath?.startsWith(USER_UPLOADS_SEGMENT)) {
     return false;
   }
 
-  const response = await fetchImpl(normalizedPath, {
-    headers: appendDevUserUploadsProxyHeaders(normalizedPath, authHeaders),
-    credentials,
-  });
+  const fetchUrl = buildProtectedUploadFetchUrl(normalizedPath);
+  const response = await fetchImpl(
+    fetchUrl,
+    resolveProtectedUploadFetchOptions(fetchUrl, authHeaders),
+  );
   if (!response.ok) return false;
 
   const blob = await readResponseBlob(response, onProgress);
