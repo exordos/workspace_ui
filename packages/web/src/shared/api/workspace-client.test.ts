@@ -1,8 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { testMessageId } from "~/test/factories";
 import type { WorkspaceFolder } from "./workspace-client";
-
-const ids = (...values: number[]) => values.map(testMessageId);
 
 const getCurrentInstance = vi.fn();
 const getWorkspaceApiBaseForCurrentInstance = vi.fn(() => "https://messenger.genesis-core.tech");
@@ -88,7 +85,7 @@ describe("workspace-client", () => {
   it("delegates folder listing to messengerApi.getWithBase using messenger gateway base", async () => {
     messengerApi.get.mockResolvedValue({
       ok: true,
-      data: [{ uuid: "f1", title: "Work", unread_messages: [] }],
+      data: [{ uuid: "f1", title: "Work", unread_count: 0, folder_items: [] }],
     });
 
     const { getFolders } = await import("./workspace-client");
@@ -102,7 +99,7 @@ describe("workspace-client", () => {
     );
   });
 
-  it("getFolders keeps folders when unread_messages is omitted or null", async () => {
+  it("getFolders keeps folders when unread_count is omitted or null", async () => {
     messengerApi.get.mockResolvedValue({
       ok: true,
       data: [
@@ -119,7 +116,7 @@ describe("workspace-client", () => {
           created_at: "2026-01-01T00:00:00Z",
           updated_at: "2026-01-01T00:00:00Z",
           system_type: "created",
-          unread_messages: null,
+          unread_count: null,
         },
       ],
     });
@@ -128,10 +125,10 @@ describe("workspace-client", () => {
     const folders = await getFolders();
 
     expect(folders).toHaveLength(2);
-    expect(folders.map((f) => f.uuid).sort()).toEqual(["f-no-unread", "f-null-unread"].sort());
+    expect(folders.map((f) => f.uuid)).toEqual(["f-no-unread", "f-null-unread"]);
   });
 
-  it("maps folder rail badge as total unread messages count", async () => {
+  it("maps folder rail badge from server unread_count", async () => {
     const { mapWorkspaceFoldersToRail } = await import("./workspace-client");
     const mapped = mapWorkspaceFoldersToRail([
       {
@@ -141,11 +138,7 @@ describe("workspace-client", () => {
         created_at: "2026-03-17T00:00:00Z",
         updated_at: "2026-03-17T00:00:00Z",
         system_type: "created",
-        unread_messages: [
-          { count: 4 },
-          { unread_message_ids: ids(11, 12, 13) },
-          { message_ids: ids(14, 15) },
-        ],
+        unread_count: 9,
       } as unknown as WorkspaceFolder,
     ]);
 
@@ -221,7 +214,8 @@ describe("workspace-client", () => {
           uuid: "folder-shared",
           title: "All",
           background_color_value: 7,
-          unread_messages: [],
+          unread_count: 0,
+          folder_items: [],
           created_at: "2026-03-14T00:00:00Z",
           updated_at: "2026-03-14T00:00:00Z",
           system_type: "all",
@@ -235,7 +229,8 @@ describe("workspace-client", () => {
           uuid: "folder-shared",
           title: "All",
           background_color_value: 7,
-          unread_messages: [],
+          unread_count: 0,
+          folder_items: [],
           created_at: "2026-03-14T00:00:00Z",
           updated_at: "2026-03-14T00:00:00Z",
           system_type: "all",
@@ -246,7 +241,8 @@ describe("workspace-client", () => {
           uuid: "folder-shared",
           title: "All",
           background_color_value: 7,
-          unread_messages: [],
+          unread_count: 0,
+          folder_items: [],
           created_at: "2026-03-14T00:00:00Z",
           updated_at: "2026-03-14T00:00:00Z",
           system_type: "all",
@@ -285,12 +281,14 @@ describe("workspace-client", () => {
       title: "Work",
       background_color_value: 0,
       system_type: "created",
-      unread_messages: [],
-      items: [
+      unread_count: 5,
+      folder_items: [
         {
           uuid: "item-1",
-          chat_id: 42,
+          folder: "folder-1",
+          stream_uuid: "6738f91a-4fd1-416e-807f-cb4ae00ec1d3",
           chat_type: "private",
+          unread_count: 5,
           order_index: 2,
           pinned_at: "2026-03-14T01:00:00Z",
           created_at: "2026-03-14T00:00:00Z",
@@ -301,8 +299,11 @@ describe("workspace-client", () => {
     expect(items).toEqual([
       {
         uuid: "item-1",
-        chatId: "dm:42",
+        chatId: "stream:6738f91a-4fd1-416e-807f-cb4ae00ec1d3:general",
         folderUuid: "folder-1",
+        streamUuid: "6738f91a-4fd1-416e-807f-cb4ae00ec1d3",
+        chatType: "private",
+        unreadCount: 5,
         orderIndex: 2,
         pinnedAt: "2026-03-14T01:00:00Z",
         createdAt: "2026-03-14T00:00:00Z",
@@ -311,7 +312,7 @@ describe("workspace-client", () => {
     ]);
   });
 
-  it("encodes stream folder items as canonical stream chat ids using chat_type", async () => {
+  it("uses folder uuid fallback when item folder field is absent", async () => {
     const { mapWorkspaceFolderItems } = await import("./workspace-client");
     const items = mapWorkspaceFolderItems({
       uuid: "folder-1",
@@ -320,33 +321,39 @@ describe("workspace-client", () => {
       title: "Channels",
       background_color_value: 0,
       system_type: "created",
-      unread_messages: [],
-      items: [
+      unread_count: 0,
+      folder_items: [
         {
           uuid: "item-11",
-          chat_id: 11,
+          stream_uuid: "815890be-9819-46b1-9291-880602e62b96",
           chat_type: "stream",
-          order_index: 0,
+          order_index: null,
           created_at: "2026-03-14T00:00:00Z",
           updated_at: "2026-03-14T00:00:00Z",
         },
       ],
     });
-    expect(items[0]?.chatId).toBe("stream:11:general");
+    expect(items[0]).toMatchObject({
+      chatId: "stream:815890be-9819-46b1-9291-880602e62b96:general",
+      folderUuid: "folder-1",
+      orderIndex: 0,
+    });
   });
 
   it("delegates folder assignment to messengerApi.postJsonWithBase", async () => {
     messengerApi.postJson.mockResolvedValue({ ok: true, data: {} });
 
     const { addChatToFolder } = await import("./workspace-client");
-    await expect(addChatToFolder("folder-1", "dm:42")).resolves.toBe(true);
+    await expect(
+      addChatToFolder("folder-1", "stream:6738f91a-4fd1-416e-807f-cb4ae00ec1d3:general"),
+    ).resolves.toBe(true);
 
     expect(messengerApi.postJsonWithBase).toHaveBeenCalledWith(
       "/api/messenger/v1",
       "/folders/folder-1/items/",
       expect.objectContaining({
-        chat_id: 42,
-        chat_type: "private",
+        stream_uuid: "6738f91a-4fd1-416e-807f-cb4ae00ec1d3",
+        chat_type: "stream",
       }),
     );
   });
@@ -359,20 +366,22 @@ describe("workspace-client", () => {
     });
 
     const { addChatToFolder } = await import("./workspace-client");
-    await expect(addChatToFolder("folder-1", "stream:1:general")).resolves.toBe(false);
+    await expect(
+      addChatToFolder("folder-1", "stream:6738f91a-4fd1-416e-807f-cb4ae00ec1d3:general"),
+    ).resolves.toBe(false);
 
     expect(messengerApi.postJsonWithBase).toHaveBeenCalledTimes(1);
     expect(messengerApi.postJsonWithBase).toHaveBeenCalledWith(
       "/api/messenger/v1",
       "/folders/folder-1/items/",
       expect.objectContaining({
-        chat_id: 1,
+        stream_uuid: "6738f91a-4fd1-416e-807f-cb4ae00ec1d3",
         chat_type: "stream",
       }),
     );
   });
 
-  it("returns false when chat id cannot be mapped to API integer", async () => {
+  it("returns false when chat id cannot be mapped to stream uuid", async () => {
     const { addChatToFolder } = await import("./workspace-client");
     await expect(addChatToFolder("folder-1", "dm:abc")).resolves.toBe(false);
     expect(messengerApi.postJsonWithBase).not.toHaveBeenCalled();
@@ -397,8 +406,9 @@ describe("workspace-client", () => {
       raw: { statusText: "OK" },
       data: {
         uuid: "item-1",
-        chat_id: 42,
-        folder_uuid: "folder-1",
+        stream_uuid: "6738f91a-4fd1-416e-807f-cb4ae00ec1d3",
+        folder: "folder-1",
+        chat_type: "stream",
         order_index: 1,
         pinned_at: null,
         created_at: "2026-03-14T00:00:00Z",
@@ -421,7 +431,7 @@ describe("workspace-client", () => {
       "/folders/folder-1/items/item-1",
       expect.objectContaining({
         order_index: 3,
-        chat_id: 42,
+        stream_uuid: "6738f91a-4fd1-416e-807f-cb4ae00ec1d3",
       }),
     );
   });

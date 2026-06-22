@@ -8,7 +8,7 @@ import {
 } from "~/features/folder-sync/folder-sync-chat-id.lib";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
 
-/** Maps chat_id aliases to pinned sort index (0 = top). Built once per sorted pinned id list. */
+/** Maps chat identifier aliases to pinned sort index (0 = top). */
 export function buildPinnedChatSortIndexLookup(
   pinnedChatIdsSorted: readonly string[],
 ): Map<string, number> {

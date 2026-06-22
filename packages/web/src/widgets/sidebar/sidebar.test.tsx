@@ -5,7 +5,6 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import type * as CreateChatApiModule from "~/features/create-chat/create-chat.api";
-import { SYSTEM_ALL_FOLDER_ID } from "~/features/folder-sync/folder-sync-constants.lib";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import type * as MuteChatApiModule from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
@@ -41,6 +40,13 @@ const getFoldersMock = vi.fn().mockResolvedValue([]);
 const addChatToFolderMock = vi.fn();
 const removeChatFromFolderMock = vi.fn();
 const INSTANCE_ID = "sidebar-test-instance";
+const ALL_FOLDER_UUID = "00000000-0000-0000-0000-000000000000";
+const PERSONAL_FOLDER_UUID = "00000000-0000-0000-0000-000000000001";
+const CHANNELS_FOLDER_UUID = "00000000-0000-0000-0000-000000000002";
+const PRIVATE_STREAM_UUID = "6738f91a-4fd1-416e-807f-cb4ae00ec1d3";
+const PRIVATE_STREAM_SECOND_UUID = "815890be-9819-46b1-9291-880602e62b96";
+const STREAM_UUID = "11111111-1111-4111-8111-111111111111";
+const STREAM_SECOND_UUID = "22222222-2222-4222-8222-222222222222";
 
 vi.mock("~/features/create-chat/create-chat.api", async (importOriginal) => {
   const actual = await importOriginal<typeof CreateChatApiModule>();
@@ -97,7 +103,7 @@ vi.mock("~/shared/api/workspace-client", async (importOriginal) => {
 
 const PRIVATE_STREAM_CHAT: Extract<SidebarChat, { type: "stream" }> = {
   type: "stream",
-  stream_id: 42,
+  streamUuid: PRIVATE_STREAM_UUID,
   name: "Alice",
   private: true,
   lastMessage: "Hello",
@@ -107,7 +113,7 @@ const PRIVATE_STREAM_CHAT: Extract<SidebarChat, { type: "stream" }> = {
 
 const PRIVATE_STREAM_CHAT_SECOND: Extract<SidebarChat, { type: "stream" }> = {
   type: "stream",
-  stream_id: 77,
+  streamUuid: PRIVATE_STREAM_SECOND_UUID,
   name: "Bob",
   private: true,
   lastMessage: "Hi",
@@ -117,7 +123,7 @@ const PRIVATE_STREAM_CHAT_SECOND: Extract<SidebarChat, { type: "stream" }> = {
 
 const STREAM_CHAT: Extract<SidebarChat, { type: "stream" }> = {
   type: "stream",
-  stream_id: 11,
+  streamUuid: STREAM_UUID,
   name: "Engineering",
   lastMessage: "Deploy today",
   time: "12:10",
@@ -126,7 +132,7 @@ const STREAM_CHAT: Extract<SidebarChat, { type: "stream" }> = {
 
 const STREAM_CHAT_SECOND: Extract<SidebarChat, { type: "stream" }> = {
   type: "stream",
-  stream_id: 12,
+  streamUuid: STREAM_SECOND_UUID,
   name: "Marketing",
   lastMessage: "Campaign draft",
   time: "11:20",
@@ -205,7 +211,7 @@ describe("Sidebar", () => {
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        selectedFolderId={ALL_FOLDER_UUID}
         sidebarChats={[PRIVATE_STREAM_CHAT]}
       />,
     );
@@ -218,9 +224,9 @@ describe("Sidebar", () => {
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        selectedFolderId={ALL_FOLDER_UUID}
         sidebarChats={[PRIVATE_STREAM_CHAT]}
-        activeStreamSlug="42-alice"
+        activeStreamSlug="6738f91a-4fd1-416e-807f-cb4ae00ec1d3"
       />,
     );
 
@@ -240,7 +246,7 @@ describe("Sidebar", () => {
         <RoutePathProbe />
         <Sidebar
           streams={[]}
-          selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+          selectedFolderId={ALL_FOLDER_UUID}
           sidebarChats={[PRIVATE_STREAM_CHAT]}
         />
       </>,
@@ -288,7 +294,7 @@ describe("Sidebar", () => {
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        selectedFolderId={ALL_FOLDER_UUID}
         sidebarChats={[PRIVATE_STREAM_CHAT]}
       />,
     );
@@ -302,7 +308,7 @@ describe("Sidebar", () => {
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        selectedFolderId={ALL_FOLDER_UUID}
         sidebarChats={[PRIVATE_STREAM_CHAT]}
       />,
     );
@@ -320,7 +326,7 @@ describe("Sidebar", () => {
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        selectedFolderId={ALL_FOLDER_UUID}
         sidebarChats={[PRIVATE_STREAM_CHAT]}
       />,
     );
@@ -340,7 +346,7 @@ describe("Sidebar", () => {
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        selectedFolderId={ALL_FOLDER_UUID}
         sidebarChats={[PRIVATE_STREAM_CHAT]}
       />,
     );
@@ -361,7 +367,7 @@ describe("Sidebar", () => {
     const { container } = renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        selectedFolderId={ALL_FOLDER_UUID}
         sidebarChats={[PRIVATE_STREAM_CHAT]}
       />,
     );
@@ -375,7 +381,7 @@ describe("Sidebar", () => {
     const { container } = renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        selectedFolderId={ALL_FOLDER_UUID}
         sidebarChats={[PRIVATE_STREAM_CHAT]}
         activityPanelBottomSlot={
           <div data-testid="activity-panel-bottom-slot">Horizontal folders rail slot</div>
@@ -395,7 +401,7 @@ describe("Sidebar", () => {
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        selectedFolderId={ALL_FOLDER_UUID}
         sidebarChats={[STREAM_CHAT, PRIVATE_STREAM_CHAT]}
       />,
     );
@@ -412,7 +418,7 @@ describe("Sidebar", () => {
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        selectedFolderId={ALL_FOLDER_UUID}
         sidebarChats={[STREAM_CHAT, PRIVATE_STREAM_CHAT]}
       />,
     );
@@ -434,7 +440,7 @@ describe("Sidebar", () => {
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        selectedFolderId={ALL_FOLDER_UUID}
         sidebarChats={[streamWithTopic, PRIVATE_STREAM_CHAT]}
       />,
     );
@@ -456,7 +462,7 @@ describe("Sidebar", () => {
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        selectedFolderId={ALL_FOLDER_UUID}
         sidebarChats={[streamWithTopic, PRIVATE_STREAM_CHAT]}
       />,
     );
@@ -470,7 +476,7 @@ describe("Sidebar", () => {
   });
 
   it("does not render the separate direct-messages section when sidebarChats is absent", () => {
-    renderWithProviders(<Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} />);
+    renderWithProviders(<Sidebar streams={[]} selectedFolderId={ALL_FOLDER_UUID} />);
 
     expect(screen.queryByText(/direct messages/i)).not.toBeInTheDocument();
   });
@@ -486,13 +492,13 @@ describe("Sidebar", () => {
   });
 
   it("does not show empty-folder state in split sidebar mode", () => {
-    renderWithProviders(<Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} />);
+    renderWithProviders(<Sidebar streams={[]} selectedFolderId={ALL_FOLDER_UUID} />);
 
     expect(screen.queryByText(/folder is empty/i)).not.toBeInTheDocument();
   });
 
   it("does not render a static fake call footer by default", () => {
-    renderWithProviders(<Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} />);
+    renderWithProviders(<Sidebar streams={[]} selectedFolderId={ALL_FOLDER_UUID} />);
 
     expect(screen.queryByText(/calling, trying to connect/i)).not.toBeInTheDocument();
     expect(screen.queryByText("0:47")).not.toBeInTheDocument();
@@ -500,7 +506,7 @@ describe("Sidebar", () => {
 
   it("exposes activity toggle expanded state for assistive technologies", () => {
     useSidebarConfigStore.getState().setConfig({ activityOpen: true });
-    renderWithProviders(<Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} />);
+    renderWithProviders(<Sidebar streams={[]} selectedFolderId={ALL_FOLDER_UUID} />);
 
     const activityToggle = screen.getByRole("button", { name: /activity/i });
     expect(activityToggle).toHaveAttribute("aria-expanded", "true");
@@ -519,7 +525,7 @@ describe("Sidebar", () => {
         createUser({ user_id: 1002, full_name: "Bob Teammate", email: "bob@example.com" }),
       ]);
 
-    renderWithProviders(<Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} />);
+    renderWithProviders(<Sidebar streams={[]} selectedFolderId={ALL_FOLDER_UUID} />);
 
     fireEvent.click(screen.getByRole("button", { name: /new chat/i }));
 
@@ -546,7 +552,7 @@ describe("Sidebar", () => {
       }),
     ]);
 
-    renderWithProviders(<Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} />);
+    renderWithProviders(<Sidebar streams={[]} selectedFolderId={ALL_FOLDER_UUID} />);
 
     fireEvent.click(screen.getByRole("button", { name: /new chat/i }));
     expect(screen.getByRole("status", { name: /online/i })).toBeInTheDocument();
@@ -563,7 +569,7 @@ describe("Sidebar", () => {
         createUser({ user_id: 1003, full_name: "Carol Teammate", email: "carol@example.com" }),
       ]);
 
-    renderWithProviders(<Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} />);
+    renderWithProviders(<Sidebar streams={[]} selectedFolderId={ALL_FOLDER_UUID} />);
 
     fireEvent.click(screen.getByRole("button", { name: /new chat/i }));
     fireEvent.change(screen.getByPlaceholderText(/search users/i), { target: { value: "carol" } });
@@ -578,7 +584,7 @@ describe("Sidebar", () => {
   });
 
   it("supports keyboard navigation between create-chat tabs", () => {
-    renderWithProviders(<Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} />);
+    renderWithProviders(<Sidebar streams={[]} selectedFolderId={ALL_FOLDER_UUID} />);
 
     fireEvent.click(screen.getByRole("button", { name: /new chat/i }));
 
@@ -610,7 +616,7 @@ describe("Sidebar", () => {
   });
 
   it("wires create-chat tabs to tabpanels with aria relationships", () => {
-    renderWithProviders(<Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} />);
+    renderWithProviders(<Sidebar streams={[]} selectedFolderId={ALL_FOLDER_UUID} />);
 
     fireEvent.click(screen.getByRole("button", { name: /new chat/i }));
 
@@ -658,7 +664,7 @@ describe("Sidebar", () => {
         createUser({ user_id: 1003, full_name: "Carol Teammate", email: "carol@example.com" }),
       ]);
 
-    renderWithProviders(<Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} />);
+    renderWithProviders(<Sidebar streams={[]} selectedFolderId={ALL_FOLDER_UUID} />);
 
     fireEvent.click(screen.getByRole("button", { name: /new chat/i }));
     fireEvent.click(screen.getByRole("tab", { name: /create channel/i }));
@@ -697,7 +703,9 @@ describe("Sidebar", () => {
       dmUnreadCountsByInstance: {},
       activeOrgEpoch: 0,
     });
-    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+    useSidebarConfigStore
+      .getState()
+      .setConfig({ expandedStreamSlugs: ["11111111-1111-4111-8111-111111111111"] });
     const streamWithTopics = {
       ...STREAM_CHAT,
       badge: 2,
@@ -707,8 +715,8 @@ describe("Sidebar", () => {
     renderWithProviders(
       <Sidebar
         streams={[streamWithTopics]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        activeStreamSlug="11-engineering"
+        selectedFolderId={ALL_FOLDER_UUID}
+        activeStreamSlug="11111111-1111-4111-8111-111111111111"
         sidebarChats={[streamWithTopics]}
       />,
     );
@@ -718,7 +726,10 @@ describe("Sidebar", () => {
     fireEvent.click(markAsReadItem);
 
     await waitFor(() => {
-      expect(markTopicAsReadMock).toHaveBeenCalledWith(11, "incident");
+      expect(markTopicAsReadMock).toHaveBeenCalledWith(
+        "11111111-1111-4111-8111-111111111111",
+        "incident",
+      );
     });
   });
 
@@ -738,7 +749,9 @@ describe("Sidebar", () => {
       dmUnreadCountsByInstance: {},
       activeOrgEpoch: 0,
     });
-    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+    useSidebarConfigStore
+      .getState()
+      .setConfig({ expandedStreamSlugs: ["11111111-1111-4111-8111-111111111111"] });
     const streamWithTopics = {
       ...STREAM_CHAT,
       badge: 2,
@@ -748,8 +761,8 @@ describe("Sidebar", () => {
     renderWithProviders(
       <Sidebar
         streams={[streamWithTopics]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        activeStreamSlug="11-engineering"
+        selectedFolderId={ALL_FOLDER_UUID}
+        activeStreamSlug="11111111-1111-4111-8111-111111111111"
         sidebarChats={[
           {
             ...STREAM_CHAT,
@@ -764,7 +777,10 @@ describe("Sidebar", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: /mark as read/i }));
 
     await waitFor(() => {
-      expect(markTopicAsReadMock).toHaveBeenCalledWith(11, "incident");
+      expect(markTopicAsReadMock).toHaveBeenCalledWith(
+        "11111111-1111-4111-8111-111111111111",
+        "incident",
+      );
     });
     expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(2);
   });
@@ -772,7 +788,9 @@ describe("Sidebar", () => {
   it("marks topic as done from topic context menu", async () => {
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 11, name: "Engineering" }]);
     useChatListStore.getState().setCurrentUserId(42);
-    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+    useSidebarConfigStore
+      .getState()
+      .setConfig({ expandedStreamSlugs: ["11111111-1111-4111-8111-111111111111"] });
     const streamWithTopics = {
       ...STREAM_CHAT,
       topics: [{ subject: "incident", badge: 0, lastMessage: "Need fix" }],
@@ -781,8 +799,8 @@ describe("Sidebar", () => {
     renderWithProviders(
       <Sidebar
         streams={[streamWithTopics]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        activeStreamSlug="11-engineering"
+        selectedFolderId={ALL_FOLDER_UUID}
+        activeStreamSlug="11111111-1111-4111-8111-111111111111"
         sidebarChats={[streamWithTopics]}
       />,
     );
@@ -791,14 +809,20 @@ describe("Sidebar", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: /mark topic as done/i }));
 
     await waitFor(() => {
-      expect(setTopicResolvedStateMock).toHaveBeenCalledWith(11, "incident", true);
+      expect(setTopicResolvedStateMock).toHaveBeenCalledWith(
+        "11111111-1111-4111-8111-111111111111",
+        "incident",
+        true,
+      );
     });
   });
 
   it("renames topic from topic context menu", async () => {
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 11, name: "Engineering" }]);
     useChatListStore.getState().setCurrentUserId(42);
-    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+    useSidebarConfigStore
+      .getState()
+      .setConfig({ expandedStreamSlugs: ["11111111-1111-4111-8111-111111111111"] });
     const streamWithTopics = {
       ...STREAM_CHAT,
       topics: [{ subject: "incident", badge: 0, lastMessage: "Need fix" }],
@@ -807,8 +831,8 @@ describe("Sidebar", () => {
     renderWithProviders(
       <Sidebar
         streams={[streamWithTopics]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        activeStreamSlug="11-engineering"
+        selectedFolderId={ALL_FOLDER_UUID}
+        activeStreamSlug="11111111-1111-4111-8111-111111111111"
         sidebarChats={[streamWithTopics]}
       />,
     );
@@ -821,7 +845,11 @@ describe("Sidebar", () => {
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
 
     await waitFor(() => {
-      expect(renameStreamTopicMock).toHaveBeenCalledWith(11, "incident", "postmortem");
+      expect(renameStreamTopicMock).toHaveBeenCalledWith(
+        "11111111-1111-4111-8111-111111111111",
+        "incident",
+        "postmortem",
+      );
     });
   });
 
@@ -829,7 +857,7 @@ describe("Sidebar", () => {
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId="system:personal"
+        selectedFolderId={PERSONAL_FOLDER_UUID}
         sidebarChats={[PRIVATE_STREAM_CHAT]}
       />,
     );
@@ -850,14 +878,14 @@ describe("Sidebar", () => {
         created_at: "",
         updated_at: "",
         background_color_value: 0,
-        unread_messages: [],
+        unread_count: 0,
         system_type: "all",
-        items: [
+        folder_items: [
           {
             uuid: "item-42",
-            chat_id: 42,
+            stream_uuid: "6738f91a-4fd1-416e-807f-cb4ae00ec1d3",
             chat_type: "stream",
-            folder_uuid: "all",
+            folder: "all",
             order_index: 0,
             pinned_at: null,
             created_at: "",
@@ -871,7 +899,7 @@ describe("Sidebar", () => {
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        selectedFolderId={ALL_FOLDER_UUID}
         sidebarChats={[PRIVATE_STREAM_CHAT]}
       />,
     );
@@ -884,11 +912,15 @@ describe("Sidebar", () => {
     await waitFor(() => {
       expect(getFoldersMock).toHaveBeenCalled();
       expect(pinChatInFolderMock).toHaveBeenCalledWith("all", "item-42");
-      expect(usePinStore.getState().isPinned("all", "stream:42:general")).toBe(true);
+      expect(
+        usePinStore
+          .getState()
+          .isPinned("all", "stream:6738f91a-4fd1-416e-807f-cb4ae00ec1d3:general"),
+      ).toBe(true);
     });
   });
 
-  it("pins stream chat when folder item chat_id is numeric", async () => {
+  it("pins stream chat when folder item uses stream_uuid", async () => {
     getFoldersMock.mockResolvedValue([
       {
         uuid: "custom-folder",
@@ -896,14 +928,14 @@ describe("Sidebar", () => {
         created_at: "",
         updated_at: "",
         background_color_value: 0,
-        unread_messages: [],
+        unread_count: 0,
         system_type: "created",
-        items: [
+        folder_items: [
           {
             uuid: "item-11",
-            chat_id: 11,
+            stream_uuid: "11111111-1111-4111-8111-111111111111",
             chat_type: "stream",
-            folder_uuid: "custom-folder",
+            folder: "custom-folder",
             order_index: 0,
             pinned_at: null,
             created_at: "",
@@ -930,13 +962,17 @@ describe("Sidebar", () => {
 
   it("shows unpin action in private stream context menu when chat is already pinned", async () => {
     useFolderSyncStore.setState({ allFolderApiUuid: "all" });
-    usePinStore.getState().pinChat("all", "stream:42:general", { folderItemUuid: "item-42" });
+    usePinStore
+      .getState()
+      .pinChat("all", "stream:6738f91a-4fd1-416e-807f-cb4ae00ec1d3:general", {
+        folderItemUuid: "item-42",
+      });
     unpinChatInFolderMock.mockResolvedValue(true);
 
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        selectedFolderId={ALL_FOLDER_UUID}
         sidebarChats={[PRIVATE_STREAM_CHAT]}
       />,
     );
@@ -948,13 +984,17 @@ describe("Sidebar", () => {
 
     await waitFor(() => {
       expect(unpinChatInFolderMock).toHaveBeenCalledWith("all", "item-42");
-      expect(usePinStore.getState().isPinned("all", "stream:42:general")).toBe(false);
+      expect(
+        usePinStore
+          .getState()
+          .isPinned("all", "stream:6738f91a-4fd1-416e-807f-cb4ae00ec1d3:general"),
+      ).toBe(false);
     });
   });
 
   it("navigates to pinned private stream without leaving org scope on click", () => {
     setCurrentOrgRouteIdResolver(() => "chat.example.com");
-    usePinStore.getState().pinChat("all", "stream:42:general", {
+    usePinStore.getState().pinChat("all", "stream:6738f91a-4fd1-416e-807f-cb4ae00ec1d3:general", {
       folderItemUuid: "item-42",
       pinnedAt: "2026-03-14T12:00:00Z",
     });
@@ -963,7 +1003,7 @@ describe("Sidebar", () => {
       <>
         <Sidebar
           streams={[]}
-          selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+          selectedFolderId={ALL_FOLDER_UUID}
           sidebarChats={[PRIVATE_STREAM_CHAT, PRIVATE_STREAM_CHAT_SECOND]}
         />
         <RoutePathProbe />
@@ -974,7 +1014,7 @@ describe("Sidebar", () => {
     fireEvent.click(screen.getByRole("link", { name: /alice/i }));
 
     expect(screen.getByTestId("route-path")).toHaveTextContent(
-      "/org/chat.example.com/stream/42-alice",
+      "/org/chat.example.com/stream/6738f91a-4fd1-416e-807f-cb4ae00ec1d3",
     );
   });
 
@@ -984,20 +1024,20 @@ describe("Sidebar", () => {
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        selectedFolderId={ALL_FOLDER_UUID}
         sidebarChats={[PRIVATE_STREAM_CHAT]}
       />,
     );
 
     expect(screen.getByRole("link", { name: /alice/i })).toHaveAttribute(
       "href",
-      "/org/chat.example.com/stream/42-alice",
+      "/org/chat.example.com/stream/6738f91a-4fd1-416e-807f-cb4ae00ec1d3",
     );
   });
 
   it("renders pinned private stream chats before unpinned ones", () => {
     useFolderSyncStore.setState({ allFolderApiUuid: "all" });
-    usePinStore.getState().pinChat("all", "stream:77:general", {
+    usePinStore.getState().pinChat("all", "stream:815890be-9819-46b1-9291-880602e62b96:general", {
       folderItemUuid: "item-77",
       pinnedAt: "2026-03-14T12:00:00Z",
     });
@@ -1005,7 +1045,7 @@ describe("Sidebar", () => {
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        selectedFolderId={ALL_FOLDER_UUID}
         sidebarChats={[PRIVATE_STREAM_CHAT, PRIVATE_STREAM_CHAT_SECOND]}
       />,
     );
@@ -1013,11 +1053,11 @@ describe("Sidebar", () => {
     const streamLinks = screen
       .getAllByRole("link")
       .filter((link) => link.getAttribute("href")?.startsWith("/stream/"));
-    expect(streamLinks[0]).toHaveAttribute("href", "/stream/77-bob");
-    expect(streamLinks[1]).toHaveAttribute("href", "/stream/42-alice");
+    expect(streamLinks[0]).toHaveAttribute("href", "/stream/815890be-9819-46b1-9291-880602e62b96");
+    expect(streamLinks[1]).toHaveAttribute("href", "/stream/6738f91a-4fd1-416e-807f-cb4ae00ec1d3");
   });
 
-  it("renders pinned stream chats before unpinned ones when folder item uses numeric chat_id", () => {
+  it("renders pinned stream chats before unpinned ones when folder item uses stream_uuid", () => {
     useFolderSyncStore.setState({ allFolderApiUuid: "all" });
     usePinStore.getState().setFromServer([
       {
@@ -1032,7 +1072,7 @@ describe("Sidebar", () => {
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        selectedFolderId={ALL_FOLDER_UUID}
         sidebarChats={[STREAM_CHAT, STREAM_CHAT_SECOND]}
       />,
     );
@@ -1040,8 +1080,8 @@ describe("Sidebar", () => {
     const streamLinks = screen
       .getAllByRole("link")
       .filter((link) => link.getAttribute("href")?.startsWith("/stream/"));
-    expect(streamLinks[0]).toHaveAttribute("href", "/stream/12-marketing");
-    expect(streamLinks[1]).toHaveAttribute("href", "/stream/11-engineering");
+    expect(streamLinks[0]).toHaveAttribute("href", "/stream/22222222-2222-4222-8222-222222222222");
+    expect(streamLinks[1]).toHaveAttribute("href", "/stream/11111111-1111-4111-8111-111111111111");
   });
 
   it("uses pinFolderId to order chats in system folders", () => {
@@ -1058,7 +1098,7 @@ describe("Sidebar", () => {
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId="system:channels"
+        selectedFolderId={CHANNELS_FOLDER_UUID}
         pinFolderId="all"
         sidebarChats={[STREAM_CHAT, STREAM_CHAT_SECOND]}
       />,
@@ -1067,7 +1107,7 @@ describe("Sidebar", () => {
     const streamLink = screen
       .getAllByRole("link")
       .find((link) => link.getAttribute("href")?.startsWith("/stream/"));
-    expect(streamLink).toHaveAttribute("href", "/stream/12-marketing");
+    expect(streamLink).toHaveAttribute("href", "/stream/22222222-2222-4222-8222-222222222222");
   });
 
   it("uses pinFolderId for pin action in system folders", async () => {
@@ -1078,14 +1118,14 @@ describe("Sidebar", () => {
         created_at: "2026-01-01T00:00:00Z",
         updated_at: "2026-01-01T00:00:00Z",
         background_color_value: 0,
-        unread_messages: [],
+        unread_count: 0,
         system_type: "all",
-        items: [
+        folder_items: [
           {
             uuid: "item-11",
-            chat_id: 11,
+            stream_uuid: "11111111-1111-4111-8111-111111111111",
             chat_type: "stream",
-            folder_uuid: "all",
+            folder: "all",
             order_index: 0,
             pinned_at: null,
             created_at: "2026-01-01T00:00:00Z",
@@ -1099,7 +1139,7 @@ describe("Sidebar", () => {
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId="system:channels"
+        selectedFolderId={CHANNELS_FOLDER_UUID}
         pinFolderId="all"
         sidebarChats={[STREAM_CHAT]}
       />,
@@ -1118,7 +1158,7 @@ describe("Sidebar", () => {
 
   it("opens stream new-topic dialog with messenger topic settings from context menu action", async () => {
     renderWithProviders(
-      <Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} sidebarChats={[STREAM_CHAT]} />,
+      <Sidebar streams={[]} selectedFolderId={ALL_FOLDER_UUID} sidebarChats={[STREAM_CHAT]} />,
     );
 
     fireEvent.contextMenu(screen.getByText("#Engineering"));
@@ -1149,7 +1189,7 @@ describe("Sidebar", () => {
     setTopicVisibilityLevelMock.mockResolvedValue(false);
 
     renderWithProviders(
-      <Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} sidebarChats={[STREAM_CHAT]} />,
+      <Sidebar streams={[]} selectedFolderId={ALL_FOLDER_UUID} sidebarChats={[STREAM_CHAT]} />,
     );
 
     fireEvent.contextMenu(screen.getByText("#Engineering"));
@@ -1167,7 +1207,11 @@ describe("Sidebar", () => {
     fireEvent.click(createButton);
 
     await waitFor(() => {
-      expect(setTopicVisibilityLevelMock).toHaveBeenCalledWith(11, "release", "muted");
+      expect(setTopicVisibilityLevelMock).toHaveBeenCalledWith(
+        "11111111-1111-4111-8111-111111111111",
+        "release",
+        "muted",
+      );
       expect(useMuteStore.getState().isTopicMuted(11, "release")).toBe(false);
       expect(screen.getByText(t("app.error"))).toBeInTheDocument();
     });
@@ -1181,7 +1225,7 @@ describe("Sidebar", () => {
 
   it("opens stream context menu from keyboard on focused stream row", async () => {
     renderWithProviders(
-      <Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} sidebarChats={[STREAM_CHAT]} />,
+      <Sidebar streams={[]} selectedFolderId={ALL_FOLDER_UUID} sidebarChats={[STREAM_CHAT]} />,
     );
 
     const streamLink = screen.getByRole("link", { name: /engineering/i });
@@ -1195,7 +1239,7 @@ describe("Sidebar", () => {
     setStreamNotificationLevelMock.mockResolvedValue(false);
 
     renderWithProviders(
-      <Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} sidebarChats={[STREAM_CHAT]} />,
+      <Sidebar streams={[]} selectedFolderId={ALL_FOLDER_UUID} sidebarChats={[STREAM_CHAT]} />,
     );
 
     const streamLink = screen.getByRole("link", { name: /engineering/i });
@@ -1205,7 +1249,10 @@ describe("Sidebar", () => {
     fireEvent.click(mutedOption);
 
     await waitFor(() => {
-      expect(setStreamNotificationLevelMock).toHaveBeenCalledWith(11, "muted");
+      expect(setStreamNotificationLevelMock).toHaveBeenCalledWith(
+        "11111111-1111-4111-8111-111111111111",
+        "muted",
+      );
       expect(useMuteStore.getState().getStreamNotificationLevel(11)).toBe("default");
       expect(screen.getByText(t("app.error"))).toBeInTheDocument();
     });
@@ -1225,9 +1272,9 @@ describe("Sidebar", () => {
           created_at: "",
           updated_at: "",
           background_color_value: 0xff8438,
-          unread_messages: [],
+          unread_count: 0,
           system_type: "all",
-          items: [],
+          folder_items: [],
         },
         {
           uuid: "work-folder",
@@ -1235,10 +1282,10 @@ describe("Sidebar", () => {
           created_at: "",
           updated_at: "",
           background_color_value: 0x3a92ff,
-          unread_messages: [],
+          unread_count: 0,
           system_type: "created",
           // Initially empty: user action should ADD the stream.
-          items: [],
+          folder_items: [],
         },
       ])
       .mockResolvedValue([
@@ -1248,9 +1295,9 @@ describe("Sidebar", () => {
           created_at: "",
           updated_at: "",
           background_color_value: 0xff8438,
-          unread_messages: [],
+          unread_count: 0,
           system_type: "all",
-          items: [],
+          folder_items: [],
         },
         {
           uuid: "work-folder",
@@ -1258,15 +1305,15 @@ describe("Sidebar", () => {
           created_at: "",
           updated_at: "",
           background_color_value: 0x3a92ff,
-          unread_messages: [],
+          unread_count: 0,
           system_type: "created",
           // After add: server returns the assignment in the folders list.
-          items: [
+          folder_items: [
             {
               uuid: "work-item-1",
-              chat_id: 11,
+              stream_uuid: "11111111-1111-4111-8111-111111111111",
               chat_type: "stream",
-              folder_uuid: "work-folder",
+              folder: "work-folder",
               order_index: 0,
               pinned_at: null,
               created_at: "",
@@ -1278,7 +1325,7 @@ describe("Sidebar", () => {
     addChatToFolderMock.mockResolvedValue(true);
 
     renderWithProviders(
-      <Sidebar streams={[]} selectedFolderId={SYSTEM_ALL_FOLDER_ID} sidebarChats={[STREAM_CHAT]} />,
+      <Sidebar streams={[]} selectedFolderId={ALL_FOLDER_UUID} sidebarChats={[STREAM_CHAT]} />,
     );
 
     fireEvent.contextMenu(screen.getByText("#Engineering"));
@@ -1290,7 +1337,10 @@ describe("Sidebar", () => {
     fireEvent.click(workFolderItem);
 
     await waitFor(() => {
-      expect(addChatToFolderMock).toHaveBeenCalledWith("work-folder", "stream:11:general");
+      expect(addChatToFolderMock).toHaveBeenCalledWith(
+        "work-folder",
+        "stream:11111111-1111-4111-8111-111111111111:general",
+      );
       expect(addChatToFolderMock).toHaveBeenCalledTimes(1);
     });
 
@@ -1304,13 +1354,15 @@ describe("Sidebar", () => {
       ...STREAM_CHAT,
       topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
     };
-    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+    useSidebarConfigStore
+      .getState()
+      .setConfig({ expandedStreamSlugs: ["11111111-1111-4111-8111-111111111111"] });
 
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        activeStreamSlug="11-engineering"
+        selectedFolderId={ALL_FOLDER_UUID}
+        activeStreamSlug="11111111-1111-4111-8111-111111111111"
         sidebarChats={[streamWithTopics]}
       />,
     );
@@ -1326,13 +1378,15 @@ describe("Sidebar", () => {
         { subject: t("chat.generalChat"), badge: 0, lastMessage: "User topic" },
       ],
     };
-    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+    useSidebarConfigStore
+      .getState()
+      .setConfig({ expandedStreamSlugs: ["11111111-1111-4111-8111-111111111111"] });
 
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        activeStreamSlug="11-engineering"
+        selectedFolderId={ALL_FOLDER_UUID}
+        activeStreamSlug="11111111-1111-4111-8111-111111111111"
         sidebarChats={[streamWithTopics]}
       />,
     );
@@ -1360,13 +1414,15 @@ describe("Sidebar", () => {
         { subject: "topic-e", badge: 0, lastMessage: "E" },
       ],
     };
-    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+    useSidebarConfigStore
+      .getState()
+      .setConfig({ expandedStreamSlugs: ["11111111-1111-4111-8111-111111111111"] });
 
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        activeStreamSlug="11-engineering"
+        selectedFolderId={ALL_FOLDER_UUID}
+        activeStreamSlug="11111111-1111-4111-8111-111111111111"
         sidebarChats={[streamWithManyTopics]}
       />,
     );
@@ -1400,13 +1456,15 @@ describe("Sidebar", () => {
         },
       ],
     };
-    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+    useSidebarConfigStore
+      .getState()
+      .setConfig({ expandedStreamSlugs: ["11111111-1111-4111-8111-111111111111"] });
 
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        activeStreamSlug="11-engineering"
+        selectedFolderId={ALL_FOLDER_UUID}
+        activeStreamSlug="11111111-1111-4111-8111-111111111111"
         sidebarChats={[streamWithTopics]}
       />,
     );
@@ -1423,27 +1481,27 @@ describe("Sidebar", () => {
       ...STREAM_CHAT,
       topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
     };
-    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+    useSidebarConfigStore
+      .getState()
+      .setConfig({ expandedStreamSlugs: ["11111111-1111-4111-8111-111111111111"] });
 
     renderWithProviders(
-      <Sidebar
-        streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[streamWithTopics]}
-      />,
+      <Sidebar streams={[]} selectedFolderId={ALL_FOLDER_UUID} sidebarChats={[streamWithTopics]} />,
     );
 
     expect(screen.queryByText(t("roles.member"))).not.toBeInTheDocument();
   });
 
   it("shows topic last message sender name in stream list when sidebarChats is absent", () => {
-    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+    useSidebarConfigStore
+      .getState()
+      .setConfig({ expandedStreamSlugs: ["11111111-1111-4111-8111-111111111111"] });
 
     renderWithProviders(
       <Sidebar
         streams={[
           {
-            stream_id: 11,
+            streamUuid: STREAM_UUID,
             name: "Engineering",
             lastMessage: "Deploy today",
             time: "12:10",
@@ -1457,8 +1515,8 @@ describe("Sidebar", () => {
             ],
           },
         ]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        activeStreamSlug="11-engineering"
+        selectedFolderId={ALL_FOLDER_UUID}
+        activeStreamSlug="11111111-1111-4111-8111-111111111111"
       />,
     );
 
@@ -1476,7 +1534,7 @@ describe("Sidebar", () => {
       <>
         <Sidebar
           streams={[]}
-          selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+          selectedFolderId={ALL_FOLDER_UUID}
           sidebarChats={[streamWithTopics]}
         />
         <RoutePathProbe />
@@ -1490,7 +1548,9 @@ describe("Sidebar", () => {
     fireEvent.click(within(streamLink).getByText("3"));
 
     expect(screen.getByText("incident")).toBeInTheDocument();
-    expect(screen.getByTestId("route-path")).toHaveTextContent("/stream/11-engineering");
+    expect(screen.getByTestId("route-path")).toHaveTextContent(
+      "/stream/11111111-1111-4111-8111-111111111111",
+    );
   });
 
   it("opens stream from stream list when unread badge in meta area is clicked", () => {
@@ -1499,7 +1559,7 @@ describe("Sidebar", () => {
         <Sidebar
           streams={[
             {
-              stream_id: 11,
+              streamUuid: STREAM_UUID,
               name: "Engineering",
               lastMessage: "Deploy today",
               time: "12:10",
@@ -1507,7 +1567,7 @@ describe("Sidebar", () => {
               topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
             },
           ]}
-          selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+          selectedFolderId={ALL_FOLDER_UUID}
         />
         <RoutePathProbe />
       </>,
@@ -1520,7 +1580,9 @@ describe("Sidebar", () => {
     fireEvent.click(within(streamLink).getByText("3"));
 
     expect(screen.getByText("incident")).toBeInTheDocument();
-    expect(screen.getByTestId("route-path")).toHaveTextContent("/stream/11-engineering");
+    expect(screen.getByTestId("route-path")).toHaveTextContent(
+      "/stream/11111111-1111-4111-8111-111111111111",
+    );
   });
 
   it("auto-expands stream topics when stream is clicked in sidebar", () => {
@@ -1530,11 +1592,7 @@ describe("Sidebar", () => {
     };
 
     renderWithProviders(
-      <Sidebar
-        streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[streamWithTopics]}
-      />,
+      <Sidebar streams={[]} selectedFolderId={ALL_FOLDER_UUID} sidebarChats={[streamWithTopics]} />,
     );
 
     expect(screen.queryByText("incident")).not.toBeInTheDocument();
@@ -1555,7 +1613,7 @@ describe("Sidebar", () => {
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        selectedFolderId={ALL_FOLDER_UUID}
         sidebarChats={[streamWithIncidentTopic, streamWithLaunchTopic]}
       />,
     );
@@ -1577,7 +1635,7 @@ describe("Sidebar", () => {
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        selectedFolderId={ALL_FOLDER_UUID}
         sidebarChats={[streamWithTopics, PRIVATE_STREAM_CHAT]}
       />,
     );
@@ -1602,7 +1660,7 @@ describe("Sidebar", () => {
       <>
         <Sidebar
           streams={[]}
-          selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+          selectedFolderId={ALL_FOLDER_UUID}
           sidebarChats={[streamWithIncidentTopic, streamWithLaunchTopic]}
         />
         <RoutePathProbe />
@@ -1618,7 +1676,9 @@ describe("Sidebar", () => {
     fireEvent.click(screen.getByRole("link", { name: /marketing/i }));
 
     await waitFor(() => {
-      expect(screen.getByTestId("route-path")).toHaveTextContent("/stream/12-marketing");
+      expect(screen.getByTestId("route-path")).toHaveTextContent(
+        "/stream/22222222-2222-4222-8222-222222222222",
+      );
     });
     await waitFor(() => {
       expect(screen.queryByText("incident")).not.toBeInTheDocument();
@@ -1640,7 +1700,7 @@ describe("Sidebar", () => {
       <>
         <Sidebar
           streams={[]}
-          selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+          selectedFolderId={ALL_FOLDER_UUID}
           sidebarChats={[streamWithIncidentTopic, streamWithLaunchTopic]}
         />
         <RouteNavigateButton to="/inbox" label="go-inbox" />
@@ -1670,12 +1730,14 @@ describe("Sidebar", () => {
       ...STREAM_CHAT,
       topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
     };
-    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+    useSidebarConfigStore
+      .getState()
+      .setConfig({ expandedStreamSlugs: ["11111111-1111-4111-8111-111111111111"] });
 
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        selectedFolderId={ALL_FOLDER_UUID}
         sidebarChats={[streamWithTopics, PRIVATE_STREAM_CHAT]}
       />,
     );
@@ -1692,11 +1754,7 @@ describe("Sidebar", () => {
     };
 
     renderWithProviders(
-      <Sidebar
-        streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        sidebarChats={[streamWithUnread]}
-      />,
+      <Sidebar streams={[]} selectedFolderId={ALL_FOLDER_UUID} sidebarChats={[streamWithUnread]} />,
     );
 
     const chatMenuButton = screen.getByRole("button", { name: /chat menu/i });
@@ -1729,13 +1787,15 @@ describe("Sidebar", () => {
       ...STREAM_CHAT,
       topics: [{ subject: "incident", badge: 2, lastMessage: "Topic update" }],
     };
-    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+    useSidebarConfigStore
+      .getState()
+      .setConfig({ expandedStreamSlugs: ["11111111-1111-4111-8111-111111111111"] });
 
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        activeStreamSlug="11-engineering"
+        selectedFolderId={ALL_FOLDER_UUID}
+        activeStreamSlug="11111111-1111-4111-8111-111111111111"
         sidebarChats={[streamWithTopics]}
       />,
     );
@@ -1760,13 +1820,15 @@ describe("Sidebar", () => {
       ...STREAM_CHAT,
       topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
     };
-    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+    useSidebarConfigStore
+      .getState()
+      .setConfig({ expandedStreamSlugs: ["11111111-1111-4111-8111-111111111111"] });
 
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        activeStreamSlug="11-engineering"
+        selectedFolderId={ALL_FOLDER_UUID}
+        activeStreamSlug="11111111-1111-4111-8111-111111111111"
         sidebarChats={[streamWithTopics]}
       />,
     );
@@ -1784,13 +1846,15 @@ describe("Sidebar", () => {
       ...STREAM_CHAT,
       topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
     };
-    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+    useSidebarConfigStore
+      .getState()
+      .setConfig({ expandedStreamSlugs: ["11111111-1111-4111-8111-111111111111"] });
 
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        activeStreamSlug="11-engineering"
+        selectedFolderId={ALL_FOLDER_UUID}
+        activeStreamSlug="11111111-1111-4111-8111-111111111111"
         sidebarChats={[streamWithTopics]}
       />,
     );
@@ -1802,7 +1866,11 @@ describe("Sidebar", () => {
     );
 
     await waitFor(() => {
-      expect(setTopicVisibilityLevelMock).toHaveBeenCalledWith(11, "incident", "unmuted");
+      expect(setTopicVisibilityLevelMock).toHaveBeenCalledWith(
+        "11111111-1111-4111-8111-111111111111",
+        "incident",
+        "unmuted",
+      );
       expect(useMuteStore.getState().isTopicUnmuted(11, "incident")).toBe(true);
     });
   });
@@ -1813,13 +1881,15 @@ describe("Sidebar", () => {
       ...STREAM_CHAT,
       topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
     };
-    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+    useSidebarConfigStore
+      .getState()
+      .setConfig({ expandedStreamSlugs: ["11111111-1111-4111-8111-111111111111"] });
 
     renderWithProviders(
       <Sidebar
         streams={[]}
-        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-        activeStreamSlug="11-engineering"
+        selectedFolderId={ALL_FOLDER_UUID}
+        activeStreamSlug="11111111-1111-4111-8111-111111111111"
         sidebarChats={[streamWithTopics]}
       />,
     );
@@ -1831,7 +1901,11 @@ describe("Sidebar", () => {
     );
 
     await waitFor(() => {
-      expect(setTopicVisibilityLevelMock).toHaveBeenCalledWith(11, "incident", "followed");
+      expect(setTopicVisibilityLevelMock).toHaveBeenCalledWith(
+        "11111111-1111-4111-8111-111111111111",
+        "incident",
+        "followed",
+      );
       expect(useMuteStore.getState().getTopicVisibilityLevel(11, "incident")).toBe("inherit");
     });
     expect(screen.getByText(t("app.error"))).toBeInTheDocument();
@@ -1847,14 +1921,16 @@ describe("Sidebar", () => {
       ...STREAM_CHAT,
       topics: [{ subject: "incident", badge: 2, lastMessage: "Topic update" }],
     };
-    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+    useSidebarConfigStore
+      .getState()
+      .setConfig({ expandedStreamSlugs: ["11111111-1111-4111-8111-111111111111"] });
 
     renderWithProviders(
       <>
         <Sidebar
           streams={[]}
-          selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-          activeStreamSlug="11-engineering"
+          selectedFolderId={ALL_FOLDER_UUID}
+          activeStreamSlug="11111111-1111-4111-8111-111111111111"
           sidebarChats={[streamWithTopics]}
         />
         <RoutePathProbe />
@@ -1865,27 +1941,29 @@ describe("Sidebar", () => {
     fireEvent.click(within(topicLink).getByText("2"));
 
     expect(screen.getByTestId("route-path")).toHaveTextContent(
-      "/stream/11-engineering/topic/incident",
+      "/stream/11111111-1111-4111-8111-111111111111/topic/incident",
     );
   });
 
   it("does not navigate when topic notification switch is clicked", async () => {
-    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+    useSidebarConfigStore
+      .getState()
+      .setConfig({ expandedStreamSlugs: ["11111111-1111-4111-8111-111111111111"] });
 
     renderWithProviders(
       <>
         <Sidebar
           streams={[
             {
-              stream_id: 11,
+              streamUuid: STREAM_UUID,
               name: "Engineering",
               lastMessage: "Deploy today",
               time: "12:10",
               topics: [{ subject: "incident", badge: 2, lastMessage: "Topic update" }],
             },
           ]}
-          selectedFolderId={SYSTEM_ALL_FOLDER_ID}
-          activeStreamSlug="11-engineering"
+          selectedFolderId={ALL_FOLDER_UUID}
+          activeStreamSlug="11111111-1111-4111-8111-111111111111"
         />
         <RoutePathProbe />
       </>,

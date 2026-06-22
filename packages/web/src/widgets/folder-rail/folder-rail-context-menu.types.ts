@@ -6,10 +6,7 @@ export interface FolderContextMenuContentProps {
   isSystemFolder: boolean;
   /** Current rail layout (toggle label copy). */
   layout: FolderRailLayout;
-  /** Global show/hide system folders in rail (not the same as isSystemFolder). */
-  showSystemFolders: boolean;
   onRename: () => void;
   onToggleLayout: () => void;
-  onToggleShowSystemFolders: () => void;
   onDelete: () => void;
 }

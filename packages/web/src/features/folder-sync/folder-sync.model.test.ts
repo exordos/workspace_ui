@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SYSTEM_ALL_FOLDER_ID } from "./folder-sync-constants.lib";
 import { loadFolderSyncSnapshot } from "./folder-sync.api";
 import { useFolderSyncStore } from "./folder-sync.model";
+
+const ALL_FOLDER_UUID = "00000000-0000-0000-0000-000000000000";
+const PERSONAL_FOLDER_UUID = "00000000-0000-0000-0000-000000000001";
 
 const getFoldersMock = vi.fn().mockResolvedValue([]);
 const addChatToFolderMock = vi.fn().mockResolvedValue(true);
@@ -20,8 +22,10 @@ vi.mock("~/shared/api/workspace-client", () => ({
   getFolders: (...args: unknown[]) => getFoldersMock(...args),
   addChatToFolder: (...args: unknown[]) => addChatToFolderMock(...args),
   removeChatFromFolder: (...args: unknown[]) => removeChatFromFolderMock(...args),
-  mapWorkspaceFolderItems: (folder: { uuid?: string; items?: unknown }) =>
-    typeof folder.uuid === "string" && Array.isArray(folder.items) ? folder.items : [],
+  mapWorkspaceFolderItems: (folder: { uuid?: string; folder_items?: unknown }) =>
+    typeof folder.uuid === "string" && Array.isArray(folder.folder_items)
+      ? folder.folder_items
+      : [],
   mapWorkspaceFoldersToRail: (
     folders: {
       uuid: string;
@@ -62,7 +66,7 @@ function makeFolderSnapshot(options: {
         uuid: folderId,
         title: "All",
         background_color_value: 0,
-        unread_messages: [],
+        unread_count: 0,
         created_at: "2026-01-01T00:00:00Z",
         updated_at: "2026-01-01T00:00:00Z",
         system_type: "created" as const,
@@ -109,13 +113,13 @@ describe("folder-sync model orchestration", () => {
     useFolderSyncStore.getState().clear();
   });
 
-  it("clear resets selected folder to synthetic «all chats» id", () => {
+  it("clear resets selected folder to no local default", () => {
     useFolderSyncStore.setState({ selectedFolderId: "custom-folder" });
     useFolderSyncStore.getState().clear();
-    expect(useFolderSyncStore.getState().selectedFolderId).toBe(SYSTEM_ALL_FOLDER_ID);
+    expect(useFolderSyncStore.getState().selectedFolderId).toBe("");
   });
 
-  it("preserves rail and folder items when snapshot returns empty folder list (IDB cache)", async () => {
+  it("uses the server folder list as authoritative when refresh returns no folders", async () => {
     const cachedItem = {
       uuid: "it-1",
       chatId: "dm:99",
@@ -130,7 +134,7 @@ describe("folder-sync model orchestration", () => {
       labels: { allChats: "All", personal: "Personal", channels: "Channels" },
       showSystemFolders: false,
       folders: [
-        { id: SYSTEM_ALL_FOLDER_ID, label: "All", backgroundColor: 0, systemType: "all" },
+        { id: ALL_FOLDER_UUID, label: "All", backgroundColor: 0, systemType: "all" },
         { id: "f-cached", label: "Cached", backgroundColor: 2, systemType: "created" },
       ],
       selectedFolderId: "f-cached",
@@ -145,8 +149,8 @@ describe("folder-sync model orchestration", () => {
     await useFolderSyncStore.getState().refresh("mutation");
 
     const state = useFolderSyncStore.getState();
-    expect(state.folders.some((f) => f.id === "f-cached")).toBe(true);
-    expect(state.folderItemsByFolderId.get("f-cached")).toEqual([cachedItem]);
+    expect(state.folders).toEqual([]);
+    expect(state.folderItemsByFolderId.has("f-cached")).toBe(false);
   });
 
   it("refresh uses selected items from snapshot (no extra fetch)", async () => {
@@ -164,7 +168,7 @@ describe("folder-sync model orchestration", () => {
     expect(useFolderSyncStore.getState().selectedFolderChatIds?.has("dm:42")).toBe(true);
   });
 
-  it("passes selective items load scope for polling refresh", async () => {
+  it("loads one server snapshot for polling refresh", async () => {
     useFolderSyncStore.setState({
       instanceId: "inst-a",
       labels: { allChats: "All", personal: "Personal", channels: "Channels" },
@@ -175,13 +179,16 @@ describe("folder-sync model orchestration", () => {
 
     await useFolderSyncStore.getState().refresh("polling");
 
+    const options = vi.mocked(loadFolderSyncSnapshot).mock.calls[0]?.[1];
     expect(loadFolderSyncSnapshot).toHaveBeenCalledWith(
       "inst-a",
       expect.objectContaining({
-        itemsLoadScope: "selective",
-        resolveSelectiveFolderUuids: expect.any(Function),
+        force: false,
+        onFoldersLoaded: expect.any(Function),
       }),
     );
+    expect(options).not.toHaveProperty("itemsLoadScope");
+    expect(options).not.toHaveProperty("resolveSelectiveFolderUuids");
   });
 
   it("passes full items load scope with force for reconnect refresh without loading flag", async () => {
@@ -198,13 +205,14 @@ describe("folder-sync model orchestration", () => {
     expect(useFolderSyncStore.getState().loading).toBe(false);
     await refreshPromise;
 
+    const options = vi.mocked(loadFolderSyncSnapshot).mock.calls[0]?.[1];
     expect(loadFolderSyncSnapshot).toHaveBeenCalledWith(
       "inst-a",
       expect.objectContaining({
-        itemsLoadScope: "all",
         force: true,
       }),
     );
+    expect(options).not.toHaveProperty("itemsLoadScope");
     expect(useFolderSyncStore.getState().loading).toBe(false);
   });
 
@@ -321,7 +329,7 @@ describe("folder-sync model orchestration", () => {
       showSystemFolders: false,
       selectedFolderId: "folder-7",
       folders: [
-        { id: SYSTEM_ALL_FOLDER_ID, label: "All", backgroundColor: 0, systemType: "all" },
+        { id: ALL_FOLDER_UUID, label: "All", backgroundColor: 0, systemType: "all" },
         { id: "folder-7", label: "Team", backgroundColor: 0, systemType: "created" },
       ],
       folderItemsByFolderId: new Map([["folder-7", cachedItems]]),
@@ -332,7 +340,7 @@ describe("folder-sync model orchestration", () => {
 
     expect(stateAfterFoldersLoaded).not.toBeNull();
     expect(stateAfterFoldersLoaded!.folderItemsByFolderId.get("folder-7")).toEqual(cachedItems);
-    expect(stateAfterFoldersLoaded!.selectedFolderChatIds?.has("dm:42")).toBe(true);
+    expect(stateAfterFoldersLoaded!.selectedFolderChatIds?.size).toBe(0);
     expect(useFolderSyncStore.getState().selectedFolderChatIds?.has("dm:final")).toBe(true);
   });
 
@@ -422,16 +430,16 @@ describe("refreshFolderItemsCache", () => {
         created_at: "",
         updated_at: "",
         background_color_value: 0,
-        unread_messages: [],
+        unread_count: 0,
         system_type: "created",
-        items,
+        folder_items: items,
       },
     ]);
 
     useFolderSyncStore.setState({
       instanceId: "inst-1",
       folders: [
-        { id: SYSTEM_ALL_FOLDER_ID, label: "All", backgroundColor: 0, systemType: "all" },
+        { id: ALL_FOLDER_UUID, label: "All", backgroundColor: 0, systemType: "all" },
         { id: folderId, label: "Work", backgroundColor: 1, systemType: "created" },
       ],
       selectedFolderId: folderId,
@@ -471,16 +479,16 @@ describe("refreshFolderItemsCache", () => {
         created_at: "",
         updated_at: "",
         background_color_value: 0,
-        unread_messages: [],
+        unread_count: 0,
         system_type: "created",
-        items,
+        folder_items: items,
       },
     ]);
     const previousSelection = new Set(["dm:2"]);
     useFolderSyncStore.setState({
       instanceId: "inst-1",
       folders: [
-        { id: SYSTEM_ALL_FOLDER_ID, label: "All", backgroundColor: 0, systemType: "all" },
+        { id: ALL_FOLDER_UUID, label: "All", backgroundColor: 0, systemType: "all" },
         { id: "folder-other", label: "Other", backgroundColor: 1, systemType: "created" },
         { id: folderId, label: "Work", backgroundColor: 2, systemType: "created" },
       ],
@@ -505,9 +513,9 @@ describe("refreshFolderItemsCache", () => {
         created_at: "",
         updated_at: "",
         background_color_value: 0,
-        unread_messages: [],
+        unread_count: 0,
         system_type: "created",
-        items: [
+        folder_items: [
           {
             uuid: "i",
             chatId: "dm:1",
@@ -570,9 +578,9 @@ describe("folder assignment orchestration", () => {
         created_at: "",
         updated_at: "",
         background_color_value: 0,
-        unread_messages: [],
+        unread_count: 0,
         system_type: "created",
-        items: [
+        folder_items: [
           {
             uuid: "item-stale",
             chatId: "dm:10",
@@ -651,9 +659,9 @@ describe("folder assignment orchestration", () => {
         created_at: "",
         updated_at: "",
         background_color_value: 0,
-        unread_messages: [],
+        unread_count: 0,
         system_type: "created",
-        items: [
+        folder_items: [
           {
             uuid: "item-real",
             chatId: "dm:42",
@@ -687,9 +695,9 @@ describe("folder assignment orchestration", () => {
         created_at: "",
         updated_at: "",
         background_color_value: 0,
-        unread_messages: [],
+        unread_count: 0,
         system_type: "created",
-        items: [],
+        folder_items: [],
       },
     ]);
 
@@ -742,9 +750,9 @@ describe("folder assignment orchestration", () => {
           created_at: "",
           updated_at: "",
           background_color_value: 0,
-          unread_messages: [],
+          unread_count: 0,
           system_type: "created",
-          items: [],
+          folder_items: [],
         },
       ])
       .mockResolvedValueOnce([
@@ -754,9 +762,9 @@ describe("folder assignment orchestration", () => {
           created_at: "",
           updated_at: "",
           background_color_value: 0,
-          unread_messages: [],
+          unread_count: 0,
           system_type: "created",
-          items: [
+          folder_items: [
             {
               uuid: "item-2",
               chatId: "dm:42",
@@ -829,7 +837,7 @@ describe("applyLocallyCreatedFolder", () => {
 
     useFolderSyncStore.setState({
       instanceId: "inst-1",
-      folders: [{ id: SYSTEM_ALL_FOLDER_ID, label: "All", backgroundColor: 0, systemType: "all" }],
+      folders: [{ id: ALL_FOLDER_UUID, label: "All", backgroundColor: 0, systemType: "all" }],
       folderItemsByFolderId: new Map(),
     });
 
@@ -852,7 +860,7 @@ describe("applyLocallyCreatedFolder", () => {
     useFolderSyncStore.setState({
       instanceId: "inst-1",
       folders: [
-        { id: SYSTEM_ALL_FOLDER_ID, label: "All", backgroundColor: 0, systemType: "all" },
+        { id: ALL_FOLDER_UUID, label: "All", backgroundColor: 0, systemType: "all" },
         { id: "dup", label: "First", backgroundColor: 1, systemType: "created" },
       ],
       folderItemsByFolderId: new Map([["dup", []]]),
@@ -886,7 +894,7 @@ describe("applyLocallyDeletedFolder", () => {
     useFolderSyncStore.setState({
       instanceId: "inst-1",
       folders: [
-        { id: SYSTEM_ALL_FOLDER_ID, label: "All", backgroundColor: 0, systemType: "all" },
+        { id: ALL_FOLDER_UUID, label: "All", backgroundColor: 0, systemType: "all" },
         { id: victim, label: "Trash me", backgroundColor: 3, systemType: "created" },
       ],
       selectedFolderId: victim,
@@ -915,8 +923,8 @@ describe("applyLocallyDeletedFolder", () => {
     const state = useFolderSyncStore.getState();
     expect(state.folders.some((f) => f.id === victim)).toBe(false);
     expect(state.folderItemsByFolderId.has(victim)).toBe(false);
-    expect(state.selectedFolderId).toBe(SYSTEM_ALL_FOLDER_ID);
-    expect(state.selectedFolderChatIds).toBeNull();
+    expect(state.selectedFolderId).toBe(ALL_FOLDER_UUID);
+    expect(state.selectedFolderChatIds?.size).toBe(0);
   });
 
   it("does not change selected folder when deleted folder was not selected", () => {
@@ -924,7 +932,7 @@ describe("applyLocallyDeletedFolder", () => {
     useFolderSyncStore.setState({
       instanceId: "inst-1",
       folders: [
-        { id: SYSTEM_ALL_FOLDER_ID, label: "All", backgroundColor: 0, systemType: "all" },
+        { id: ALL_FOLDER_UUID, label: "All", backgroundColor: 0, systemType: "all" },
         { id: victim, label: "X", backgroundColor: 1, systemType: "created" },
         { id: "current", label: "Current", backgroundColor: 2, systemType: "created" },
       ],
@@ -956,13 +964,13 @@ describe("syncDerived", () => {
     useFolderSyncStore.getState().clear();
   });
 
-  it("uses empty chat id set for created folder when items not yet in map (not null)", () => {
+  it("does not derive selected folder chat ids when items are not in the server cache", () => {
     useFolderSyncStore.setState({
       instanceId: "inst-1",
       labels,
       showSystemFolders: false,
       folders: [
-        { id: SYSTEM_ALL_FOLDER_ID, label: "All", backgroundColor: 0, systemType: "all" },
+        { id: ALL_FOLDER_UUID, label: "All", backgroundColor: 0, systemType: "all" },
         { id: "folder-1", label: "Work", backgroundColor: 1, systemType: "created" },
       ],
       selectedFolderId: "folder-1",
@@ -972,8 +980,7 @@ describe("syncDerived", () => {
     useFolderSyncStore.getState().syncDerived(false, labels);
 
     const { selectedFolderChatIds } = useFolderSyncStore.getState();
-    expect(selectedFolderChatIds).not.toBeNull();
-    expect(selectedFolderChatIds?.size).toBe(0);
+    expect(selectedFolderChatIds).toBeNull();
   });
 
   it("keeps null selectedFolderChatIds for system «all» folder", () => {
@@ -982,10 +989,10 @@ describe("syncDerived", () => {
       labels,
       showSystemFolders: false,
       folders: [
-        { id: SYSTEM_ALL_FOLDER_ID, label: "All", backgroundColor: 0, systemType: "all" },
+        { id: ALL_FOLDER_UUID, label: "All", backgroundColor: 0, systemType: "all" },
         { id: "folder-1", label: "Work", backgroundColor: 1, systemType: "created" },
       ],
-      selectedFolderId: SYSTEM_ALL_FOLDER_ID,
+      selectedFolderId: ALL_FOLDER_UUID,
       selectedFolderChatIds: null,
       folderItemsByFolderId: new Map(),
     });
@@ -995,16 +1002,22 @@ describe("syncDerived", () => {
     expect(useFolderSyncStore.getState().selectedFolderChatIds).toBeNull();
   });
 
-  it("syncSidebarProjection updates folder rail badges from chat-list unread", () => {
+  it("syncSidebarProjection keeps server folder badges unchanged", () => {
     useFolderSyncStore.setState({
       instanceId: "inst-1",
       labels,
       showSystemFolders: true,
       folders: [
-        { id: SYSTEM_ALL_FOLDER_ID, label: "All", backgroundColor: 0, systemType: "all" },
-        { id: "system:personal", label: "Personal", backgroundColor: 0, systemType: "personal" },
+        { id: ALL_FOLDER_UUID, label: "All", backgroundColor: 0, systemType: "all", badge: 7 },
+        {
+          id: PERSONAL_FOLDER_UUID,
+          label: "Personal",
+          backgroundColor: 0,
+          systemType: "personal",
+          badge: 4,
+        },
       ],
-      selectedFolderId: SYSTEM_ALL_FOLDER_ID,
+      selectedFolderId: ALL_FOLDER_UUID,
       selectedFolderChatIds: null,
       folderItemsByFolderId: new Map(),
     });
@@ -1032,7 +1045,7 @@ describe("syncDerived", () => {
     });
 
     const { folders } = useFolderSyncStore.getState();
-    expect(folders.find((f) => f.id === SYSTEM_ALL_FOLDER_ID)?.badge).toBe(5);
-    expect(folders.find((f) => f.id === "system:personal")?.badge).toBe(2);
+    expect(folders.find((f) => f.id === ALL_FOLDER_UUID)?.badge).toBe(7);
+    expect(folders.find((f) => f.id === PERSONAL_FOLDER_UUID)?.badge).toBe(4);
   });
 });

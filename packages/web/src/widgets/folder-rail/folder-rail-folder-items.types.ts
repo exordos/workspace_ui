@@ -5,10 +5,8 @@ export interface FolderItemProps {
   folder: FolderRailFolder;
   index: number;
   isSelected: boolean;
-  showSystemFolders: boolean;
   onSelectFolder: (id: string) => void;
   onToggleLayout: () => void;
-  onToggleShowSystemFolders: () => void;
   onRequestRename: (folder: FolderRailFolder) => void;
   onRequestDelete: (folder: FolderRailFolder) => void;
 }

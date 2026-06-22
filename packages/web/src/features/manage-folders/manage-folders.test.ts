@@ -39,7 +39,8 @@ const folderGetResponse = {
     background_color_value: 0,
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
-    unread_messages: [] as number[],
+    unread_count: 0,
+    folder_items: [],
     system_type: "created" as const,
   },
   headers: new Headers(),
@@ -152,7 +153,8 @@ describe("manage-folders API", () => {
       const body = putJsonWithBase.mock.calls[0]![2] as Record<string, unknown>;
       expect(body).not.toHaveProperty("updated_at");
       expect(body).not.toHaveProperty("created_at");
-      expect(body).not.toHaveProperty("unread_messages");
+      expect(body).not.toHaveProperty("unread_count");
+      expect(body).not.toHaveProperty("folder_items");
     });
 
     it("sends backgroundColor when provided", async () => {

@@ -5,17 +5,12 @@ import type { FolderContextMenuContentProps } from "./folder-rail-context-menu.t
 export function buildFolderContextMenuItems({
   isSystemFolder,
   layout,
-  showSystemFolders,
   onRename,
   onToggleLayout,
-  onToggleShowSystemFolders,
   onDelete,
 }: FolderContextMenuContentProps): DropdownMenuItem[] {
   const toggleLayoutLabel =
     layout === "horizontal" ? t("folder.displayVertical") : t("folder.displayHorizontal");
-  const toggleSystemFoldersLabel = showSystemFolders
-    ? t("folder.hideSystemFolders")
-    : t("folder.showSystemFolders");
 
   return [
     {
@@ -32,13 +27,6 @@ export function buildFolderContextMenuItems({
       icon: "folders",
       label: toggleLayoutLabel,
       onSelect: onToggleLayout,
-    },
-    {
-      type: "action",
-      key: "toggle-system-folders",
-      icon: "folder",
-      label: toggleSystemFoldersLabel,
-      onSelect: onToggleShowSystemFolders,
     },
     {
       type: "action",

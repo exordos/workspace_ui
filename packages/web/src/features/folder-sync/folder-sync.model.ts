@@ -29,23 +29,17 @@ import {
   type ToggleAssignmentResult,
 } from "./folder-sync-assignment.types";
 import { areEquivalentChatIds, resolveFolderItemUuid } from "./folder-sync-chat-id.lib";
-import { SYSTEM_ALL_FOLDER_ID } from "./folder-sync-constants.lib";
-import { applyFolderUnreadBadges } from "./folder-sync-folder-badges.lib";
 import { buildSelectedFolderSidebarChats, toChatIdSet } from "./folder-sync-sidebar-chats.lib";
 import { loadFolderSyncSnapshot, type FolderSyncSnapshot } from "./folder-sync.api";
 import {
-  aliasAllFolderItemsCacheKeys,
   resolveAllFolderApiUuid,
   resolveFolderItemsRequestUuid,
   resolveSelectedFolderChatIdsOnSelect,
-  resolveSelectedFolderChatIdsOnSyncDerived,
 } from "./folder-sync.lib";
 import {
   mergeFolderItemsSnapshot,
-  resolveFolderUuidsForPollingItemsRefresh,
   resolveSelectedFolderId,
   shouldLoadFolderItemsForSelection,
-  withDefaultSystemFolders,
   type FolderSyncSystemLabels,
 } from "./folder-sync.lib";
 
@@ -139,7 +133,7 @@ function upsertOptimisticFolderItem(
   return [...previousItems, { ...optimistic, orderIndex: previousItems.length }];
 }
 
-// Remove assignment item (by uuid and/or equivalent chat_id) and recompute orderIndex.
+// Remove assignment item (by uuid and/or equivalent chat identifier) and recompute orderIndex.
 function removeFolderAssignmentItem(
   previousItems: readonly FolderItemForClient[],
   chatId: string,
@@ -233,7 +227,7 @@ interface FolderSyncState {
   folders: WorkspaceFolderForRail[];
   // Currently selected rail/sidebar folder.
   selectedFolderId: string;
-  // Normalized chat_id set for the selected folder.
+  // Normalized chat identifier set for the selected folder.
   selectedFolderChatIds: Set<string> | null;
   // Ready sidebar chat projection for the selected folder.
   selectedFolderSidebarChats: SidebarChat[];
@@ -273,7 +267,7 @@ interface FolderSyncState {
   applyLocallyDeletedFolder: (folderId: string) => void;
   syncSidebarProjection: (input: {
     chatsSortedByLastMessage: SidebarChat[];
-    streamsMap: Map<number, StreamEntryInternal>;
+    streamsMap: Map<string, StreamEntryInternal>;
     usersMapForChatInfo: Map<string, { full_name?: string; email?: string }>;
     currentUserId: UserId | null;
     hideUnknownArchivedStreams: boolean;
@@ -283,8 +277,7 @@ interface FolderSyncState {
   clear: () => void;
 }
 
-/** Aligns with synthetic «All chats» id from `withDefaultSystemFolders` before API folders arrive. */
-const DEFAULT_SELECTED_FOLDER_ID = SYSTEM_ALL_FOLDER_ID;
+const DEFAULT_SELECTED_FOLDER_ID = "";
 const DEFAULT_LABELS: FolderSyncSystemLabels = {
   allChats: "All chats",
   personal: "Personal",
@@ -302,18 +295,12 @@ function isCurrentRequest(
 
 function normalizeFoldersForPresentation(
   snapshot: FolderSyncSnapshot,
-  labels: FolderSyncSystemLabels,
-  showSystemFolders: boolean,
+  _labels: FolderSyncSystemLabels,
+  _showSystemFolders: boolean,
 ): WorkspaceFolderForRail[] {
-  // Map backend folders to rail model and inject system folders when needed.
-  return withDefaultSystemFolders(
-    mapWorkspaceFoldersToRail(snapshot.folders),
-    labels,
-    showSystemFolders,
-  );
+  return mapWorkspaceFoldersToRail(snapshot.folders);
 }
 
-/** When Workspace returns an empty folder list, keep IDB-hydrated rail and item cache instead of wiping UI. */
 function applySnapshotToFolderState(
   snapshot: FolderSyncSnapshot,
   latestState: FolderSyncState,
@@ -321,27 +308,15 @@ function applySnapshotToFolderState(
   foldersWithSystemDefaults: WorkspaceFolderForRail[];
   nextFolderItemsByFolderId: Map<string, FolderItemForClient[]>;
 } {
-  const apiFoldersEmpty = snapshot.folders.length === 0;
-  const hadLocalFolders = latestState.folders.length > 0;
-
-  let foldersWithSystemDefaults = normalizeFoldersForPresentation(
+  const foldersWithSystemDefaults = normalizeFoldersForPresentation(
     snapshot,
     latestState.labels,
     latestState.showSystemFolders,
   );
-  let nextFolderItemsByFolderId = mergeFolderItemsSnapshot(
+  const nextFolderItemsByFolderId = mergeFolderItemsSnapshot(
     latestState.folderItemsByFolderId,
     snapshot,
   );
-
-  if (apiFoldersEmpty && hadLocalFolders) {
-    foldersWithSystemDefaults = withDefaultSystemFolders(
-      latestState.folders,
-      latestState.labels,
-      latestState.showSystemFolders,
-    );
-    nextFolderItemsByFolderId = new Map(latestState.folderItemsByFolderId);
-  }
 
   return { foldersWithSystemDefaults, nextFolderItemsByFolderId };
 }
@@ -450,29 +425,8 @@ async function runFolderSyncRefreshAttempt(
   const { instanceId, reason, requestVersion, shouldToggleLoading } = options;
 
   try {
-    const stateBeforeSnapshot = get();
-    const priorityFolderUuid = resolveFolderItemsRequestUuid(
-      stateBeforeSnapshot.selectedFolderId,
-      stateBeforeSnapshot.allFolderApiUuid,
-    );
-    const itemsLoadScope = reason === "polling" ? "selective" : "all";
     const snapshot = await loadFolderSyncSnapshot(instanceId, {
       force: reason === "bootstrap" || reason === "reconnect",
-      priorityFolderUuid,
-      itemsLoadScope,
-      ...(itemsLoadScope === "selective"
-        ? {
-            resolveSelectiveFolderUuids: (folderRows) =>
-              resolveFolderUuidsForPollingItemsRefresh({
-                foldersFromApi: folderRows,
-                folderItemsByFolderId: stateBeforeSnapshot.folderItemsByFolderId,
-                staleFolderIds: stateBeforeSnapshot.staleFolderIds,
-                selectedFolderId: stateBeforeSnapshot.selectedFolderId,
-                foldersForRail: stateBeforeSnapshot.folders,
-                allFolderApiUuid: stateBeforeSnapshot.allFolderApiUuid,
-              }),
-          }
-        : {}),
       onFoldersLoaded: (folderRows) => {
         const phaseState = get();
         if (!isCurrentRequest(phaseState, instanceId, requestVersion) || folderRows.length === 0) {
@@ -502,6 +456,12 @@ async function runFolderSyncRefreshAttempt(
         set({
           folders: foldersWithSystemDefaults,
           selectedFolderId,
+          selectedFolderChatIds: shouldLoadFolderItemsForSelection(
+            foldersWithSystemDefaults,
+            selectedFolderId,
+          )
+            ? new Set<string>()
+            : null,
           staleFolderIds: nextStaleFolderIds,
           allFolderApiUuid: resolveAllFolderApiUuid(folderRows),
           error: null,
@@ -523,11 +483,7 @@ async function runFolderSyncRefreshAttempt(
 
     const row = await loadFoldersSnapshotRow(instanceId).catch(() => null);
     const offlineRail = row?.folders ?? [];
-    const offlineFolders = withDefaultSystemFolders(
-      offlineRail,
-      stateOnFailure.labels,
-      stateOnFailure.showSystemFolders,
-    );
+    const offlineFolders = [...offlineRail];
     const selectedFolderId =
       resolveSelectedFolderId(offlineFolders, stateOnFailure.selectedFolderId) ??
       stateOnFailure.selectedFolderId;
@@ -592,32 +548,39 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         instanceId,
         railCount: railFromCache.length,
       });
-      const cachedFolders = withDefaultSystemFolders(railFromCache, labels, showSystemFolders);
+      const cachedFolders = [...railFromCache];
       const currentSelected = isInstanceChanged
         ? DEFAULT_SELECTED_FOLDER_ID
         : get().selectedFolderId;
       const resolvedSelectedFolderId =
         resolveSelectedFolderId(cachedFolders, currentSelected) ?? currentSelected;
 
-      set((state) => ({
-        instanceId,
-        showSystemFolders,
-        labels,
-        folders: cachedFolders,
-        selectedFolderId: resolvedSelectedFolderId,
-        selectedFolderChatIds: shouldLoadFolderItemsForSelection(
+      set((state) => {
+        const shouldUseSelectedFolderItems = shouldLoadFolderItemsForSelection(
           cachedFolders,
           resolvedSelectedFolderId,
-        )
-          ? state.selectedFolderChatIds
-          : null,
-        error: null,
-        loading: state.loading && !isInstanceChanged,
-        // On instance switch clear items cache; otherwise reuse current map.
-        folderItemsByFolderId: isInstanceChanged ? new Map() : state.folderItemsByFolderId,
-        allFolderApiUuid: isInstanceChanged ? null : state.allFolderApiUuid,
-        staleFolderIds: isInstanceChanged ? new Set() : state.staleFolderIds,
-      }));
+        );
+        let selectedFolderChatIds: Set<string> | null = null;
+        if (shouldUseSelectedFolderItems) {
+          selectedFolderChatIds = isInstanceChanged
+            ? new Set<string>()
+            : state.selectedFolderChatIds;
+        }
+        return {
+          instanceId,
+          showSystemFolders,
+          labels,
+          folders: cachedFolders,
+          selectedFolderId: resolvedSelectedFolderId,
+          selectedFolderChatIds,
+          error: null,
+          loading: state.loading && !isInstanceChanged,
+          // On instance switch clear items cache; otherwise reuse current map.
+          folderItemsByFolderId: isInstanceChanged ? new Map() : state.folderItemsByFolderId,
+          allFolderApiUuid: isInstanceChanged ? null : state.allFolderApiUuid,
+          staleFolderIds: isInstanceChanged ? new Set() : state.staleFolderIds,
+        };
+      });
       if (isInstanceChanged) {
         usePinStore.getState().clear();
       }
@@ -730,8 +693,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         return;
       }
       logStoreAction("folderSync", "refreshFolderItemsCache", { folderUuid: trimmed });
-      const allFolderApiUuid = get().allFolderApiUuid;
-      const apiUuid = resolveFolderItemsRequestUuid(trimmed, allFolderApiUuid);
+      const apiUuid = resolveFolderItemsRequestUuid(trimmed);
       if (apiUuid == null) {
         return;
       }
@@ -745,7 +707,6 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
           if (apiUuid !== trimmed) {
             nextMap.set(trimmed, items);
           }
-          aliasAllFolderItemsCacheKeys(nextMap, state.allFolderApiUuid);
           let nextStaleFolderIds = unmarkFolderAsStale(state.staleFolderIds, apiUuid);
           if (apiUuid !== trimmed) {
             nextStaleFolderIds = unmarkFolderAsStale(nextStaleFolderIds, trimmed);
@@ -1132,18 +1093,8 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         hideUnknownArchivedStreams: input.hideUnknownArchivedStreams,
         isStreamMuted: input.isStreamMuted,
       });
-      const nextFolders = applyFolderUnreadBadges(state.folders, {
-        folderItemsByFolderId: state.folderItemsByFolderId,
-        chatsSortedByLastMessage: input.chatsSortedByLastMessage,
-        streamsMap: input.streamsMap,
-        usersMapForChatInfo: input.usersMapForChatInfo,
-        currentUserId: input.currentUserId,
-        hideUnknownArchivedStreams: input.hideUnknownArchivedStreams,
-        isStreamMuted: input.isStreamMuted,
-      });
       set({
         selectedFolderSidebarChats: nextChats,
-        folders: [...nextFolders],
       });
 
       folderSyncLog.debug("sidebarProjection", {
@@ -1170,28 +1121,15 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
 
     syncDerived(showSystemFolders, labels) {
       logStoreAction("folderSync", "syncDerived", { showSystemFolders });
-      const state = get();
-      // Recompute presentation only — no network.
-      const nextFolders = withDefaultSystemFolders(state.folders, labels, showSystemFolders);
-      const selectedFolderId =
-        resolveSelectedFolderId(nextFolders, state.selectedFolderId) ?? state.selectedFolderId;
-      const selectedFolderItems = state.folderItemsByFolderId.get(selectedFolderId);
-      const selectedFolderChatIds = resolveSelectedFolderChatIdsOnSyncDerived({
-        shouldLoadItems: shouldLoadFolderItemsForSelection(nextFolders, selectedFolderId),
-        selectedFolderItems,
-      });
       set({
-        folders: nextFolders,
-        selectedFolderId,
-        selectedFolderChatIds,
         showSystemFolders,
         labels,
       });
 
       folderSyncLog.debug("syncDerived:applied", {
-        folderCount: nextFolders.length,
-        selectedFolderId,
-        folderChatIds: describeFolderChatIds(selectedFolderChatIds),
+        folderCount: get().folders.length,
+        selectedFolderId: get().selectedFolderId,
+        folderChatIds: describeFolderChatIds(get().selectedFolderChatIds),
       });
     },
 

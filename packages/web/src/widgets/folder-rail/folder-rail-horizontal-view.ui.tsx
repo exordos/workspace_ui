@@ -9,10 +9,8 @@ export const FolderRailHorizontalView: React.FC<FolderRailHorizontalViewProps> =
   function FolderRailHorizontalView({
     indexedFolders,
     selectedFolderId,
-    showSystemFolders,
     onSelectFolder,
     onToggleLayout,
-    onToggleShowSystemFolders,
     onRequestRename,
     onRequestDelete,
     onOpenCreateDialog,
@@ -147,10 +145,8 @@ export const FolderRailHorizontalView: React.FC<FolderRailHorizontalViewProps> =
             folder={folder}
             index={index}
             isSelected={selectedFolderId === folder.id}
-            showSystemFolders={showSystemFolders}
             onSelectFolder={onSelectFolder}
             onToggleLayout={onToggleLayout}
-            onToggleShowSystemFolders={onToggleShowSystemFolders}
             onRequestRename={onRequestRename}
             onRequestDelete={onRequestDelete}
           />

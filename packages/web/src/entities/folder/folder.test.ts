@@ -7,9 +7,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceFolder } from "~/shared/api/workspace-client";
 import { getFolders, mapWorkspaceFoldersToRail } from "~/shared/api/workspace-client";
-import { testMessageId } from "~/test/factories";
-
-const ids = (...values: number[]) => values.map(testMessageId);
 
 const { workspaceApi, messengerApi } = vi.hoisted(() => {
   const get = vi.fn();
@@ -59,8 +56,9 @@ function makeFolderPayload(overrides: Record<string, unknown> = {}): WorkspaceFo
     background_color_value: 0xff0000,
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
-    unread_messages: [],
+    unread_count: 0,
     system_type: "created",
+    folder_items: [],
     ...overrides,
   };
 }
@@ -69,8 +67,8 @@ function makeFolderPayload(overrides: Record<string, unknown> = {}): WorkspaceFo
 describe("mapWorkspaceFoldersToRail", () => {
   it("maps folders to rail format with correct fields", () => {
     const folders = [
-      makeFolderPayload({ uuid: "f1", title: "Work", unread_messages: ids(1, 2, 3) }),
-      makeFolderPayload({ uuid: "f2", title: "Personal", unread_messages: [] }),
+      makeFolderPayload({ uuid: "f1", title: "Work", unread_count: 3 }),
+      makeFolderPayload({ uuid: "f2", title: "Personal", unread_count: 0 }),
     ];
 
     const result = mapWorkspaceFoldersToRail(folders);
@@ -96,29 +94,14 @@ describe("mapWorkspaceFoldersToRail", () => {
     expect(mapWorkspaceFoldersToRail([])).toEqual([]);
   });
 
-  it("sets badge to undefined when no unread messages", () => {
+  it("sets badge to undefined when unread_count is zero", () => {
     const result = mapWorkspaceFoldersToRail([makeFolderPayload()]);
     expect(result[0]!.badge).toBeUndefined();
   });
 
-  it("counts unread_messages array length for badge", () => {
-    const result = mapWorkspaceFoldersToRail([
-      makeFolderPayload({ unread_messages: ids(10, 20, 30, 40, 50) }),
-    ]);
+  it("uses unread_count directly for badge", () => {
+    const result = mapWorkspaceFoldersToRail([makeFolderPayload({ unread_count: 5 })]);
     expect(result[0]!.badge).toBe(5);
-  });
-
-  it("sums unread messages from object payloads for badge", () => {
-    const result = mapWorkspaceFoldersToRail([
-      makeFolderPayload({
-        unread_messages: [
-          { count: 3 },
-          { unread_message_ids: ids(1, 2, 3, 4) },
-          { message_ids: ids(10, 11) },
-        ],
-      }),
-    ]);
-    expect(result[0]!.badge).toBe(9);
   });
 
   it("maps system all folders with explicit system type", () => {

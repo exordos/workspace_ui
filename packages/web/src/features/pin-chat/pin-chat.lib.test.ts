@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SYSTEM_ALL_FOLDER_ID } from "~/features/folder-sync/folder-sync-constants.lib";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { usePinStore } from "~/features/pin-chat/pin-chat.model";
+import type * as WorkspaceClientModule from "~/shared/api/workspace-client";
 
 const unpinChatInFolderMock = vi.fn();
 const pinChatInFolderMock = vi.fn();
@@ -14,7 +14,7 @@ vi.mock("~/features/pin-chat/pin-chat.api", () => ({
 }));
 
 vi.mock("~/shared/api/workspace-client", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/api/workspace-client")>();
+  const actual = await importOriginal<typeof WorkspaceClientModule>();
   return {
     ...actual,
     getFolders: (...args: unknown[]) => getFoldersMock(...args),
@@ -81,7 +81,7 @@ describe("runFolderPinToggle", () => {
     ).toBe(null);
   });
 
-  it("unpins via API all-folder uuid when scope is virtual system:all", async () => {
+  it("unpins via the server all-folder uuid", async () => {
     const apiAllUuid = "api-all-folder-uuid";
     useFolderSyncStore.setState({
       folderItemsByFolderId: new Map([
@@ -90,7 +90,7 @@ describe("runFolderPinToggle", () => {
           [
             {
               uuid: "item-all",
-              chatId: "dm:42",
+              chatId: "stream:42:general",
               folderUuid: apiAllUuid,
               orderIndex: 0,
               pinnedAt: "2026-03-14T10:00:00Z",
@@ -105,7 +105,7 @@ describe("runFolderPinToggle", () => {
       {
         folderUuid: apiAllUuid,
         folderItemUuid: "item-all",
-        chatId: "dm:42",
+        chatId: "stream:42:general",
         orderIndex: 0,
         pinnedAt: "2026-03-14T10:00:00Z",
       },
@@ -116,8 +116,8 @@ describe("runFolderPinToggle", () => {
     const { runFolderPinToggle } = await import("./pin-chat.lib");
     await runFolderPinToggle({
       apiFolderUuid: apiAllUuid,
-      scopeFolderId: SYSTEM_ALL_FOLDER_ID,
-      chatId: "dm:42",
+      scopeFolderId: apiAllUuid,
+      chatId: "stream:42:general",
       isPinned: true,
     });
 
@@ -133,7 +133,7 @@ describe("runFolderPinToggle", () => {
           [
             {
               uuid: "item-99",
-              chatId: "dm:42",
+              chatId: "stream:42:general",
               folderUuid: "folder-api",
               orderIndex: 0,
               pinnedAt: "2026-03-14T10:00:00Z",
@@ -150,7 +150,7 @@ describe("runFolderPinToggle", () => {
     const { runFolderPinToggle } = await import("./pin-chat.lib");
     await runFolderPinToggle({
       apiFolderUuid: "folder-api",
-      chatId: "dm:42",
+      chatId: "stream:42:general",
       isPinned: true,
     });
 
@@ -158,7 +158,7 @@ describe("runFolderPinToggle", () => {
     expect(getFoldersMock).not.toHaveBeenCalled();
   });
 
-  it("pins in system:all by adding chat to all folder when folder item is missing", async () => {
+  it("pins in server all-folder by adding chat when folder item is missing", async () => {
     const apiAllUuid = "api-all-folder-uuid";
     useFolderSyncStore.setState({
       instanceId: "inst-pin",
@@ -174,9 +174,9 @@ describe("runFolderPinToggle", () => {
           created_at: "",
           updated_at: "",
           background_color_value: 0,
-          unread_messages: [],
+          unread_count: 0,
           system_type: "all",
-          items: [],
+          folder_items: [],
         },
       ])
       .mockResolvedValue([
@@ -186,14 +186,14 @@ describe("runFolderPinToggle", () => {
           created_at: "",
           updated_at: "",
           background_color_value: 0,
-          unread_messages: [],
+          unread_count: 0,
           system_type: "all",
-          items: [
+          folder_items: [
             {
               uuid: "item-new",
-              chat_id: "dm:42",
+              stream_uuid: "42",
               chat_type: "private",
-              folder_uuid: apiAllUuid,
+              folder: apiAllUuid,
               order_index: 0,
               pinned_at: null,
               created_at: "",
@@ -207,16 +207,16 @@ describe("runFolderPinToggle", () => {
     const { runFolderPinToggle } = await import("./pin-chat.lib");
     await runFolderPinToggle({
       apiFolderUuid: apiAllUuid,
-      scopeFolderId: SYSTEM_ALL_FOLDER_ID,
-      chatId: "dm:42",
+      scopeFolderId: apiAllUuid,
+      chatId: "stream:42:general",
       isPinned: false,
     });
 
-    expect(addChatToFolderMock).toHaveBeenCalledWith(apiAllUuid, "dm:42");
+    expect(addChatToFolderMock).toHaveBeenCalledWith(apiAllUuid, "stream:42:general");
     expect(pinChatInFolderMock).toHaveBeenCalledWith(apiAllUuid, "item-new");
   });
 
-  it("fetches folders to resolve folder item when scope is system:all and cache is empty", async () => {
+  it("fetches folders to resolve folder item when server all-folder cache is empty", async () => {
     const apiAllUuid = "api-all-folder-uuid";
     useFolderSyncStore.setState({ allFolderApiUuid: apiAllUuid });
     getFoldersMock.mockResolvedValue([
@@ -226,14 +226,14 @@ describe("runFolderPinToggle", () => {
         created_at: "",
         updated_at: "",
         background_color_value: 0,
-        unread_messages: [],
+        unread_count: 0,
         system_type: "all",
-        items: [
+        folder_items: [
           {
             uuid: "item-net",
-            chat_id: "dm:42",
+            stream_uuid: "42",
             chat_type: "private",
-            folder_uuid: apiAllUuid,
+            folder: apiAllUuid,
             order_index: 0,
             pinned_at: null,
             created_at: "",
@@ -247,8 +247,8 @@ describe("runFolderPinToggle", () => {
     const { runFolderPinToggle } = await import("./pin-chat.lib");
     await runFolderPinToggle({
       apiFolderUuid: apiAllUuid,
-      scopeFolderId: SYSTEM_ALL_FOLDER_ID,
-      chatId: "dm:42",
+      scopeFolderId: apiAllUuid,
+      chatId: "stream:42:general",
       isPinned: false,
     });
 
@@ -256,17 +256,17 @@ describe("runFolderPinToggle", () => {
     expect(pinChatInFolderMock).toHaveBeenCalledWith(apiAllUuid, "item-net");
   });
 
-  it("unpins when folder items are cached under system:all key in all-folder context", async () => {
+  it("unpins when server all-folder items are cached", async () => {
     const apiAllUuid = "api-all-folder-uuid";
     useFolderSyncStore.setState({
       allFolderApiUuid: apiAllUuid,
       folderItemsByFolderId: new Map([
         [
-          SYSTEM_ALL_FOLDER_ID,
+          apiAllUuid,
           [
             {
               uuid: "item-legacy",
-              chatId: "11",
+              chatId: "stream:11:general",
               folderUuid: apiAllUuid,
               orderIndex: 0,
               pinnedAt: "2026-03-14T10:00:00Z",
@@ -283,7 +283,7 @@ describe("runFolderPinToggle", () => {
     const { runFolderPinToggle } = await import("./pin-chat.lib");
     await runFolderPinToggle({
       apiFolderUuid: apiAllUuid,
-      scopeFolderId: SYSTEM_ALL_FOLDER_ID,
+      scopeFolderId: apiAllUuid,
       chatId: "stream:11:general",
       isPinned: true,
     });
@@ -303,7 +303,7 @@ describe("runFolderPinToggle", () => {
           [
             {
               uuid: "item-all-only",
-              chatId: "dm:42",
+              chatId: "stream:42:general",
               folderUuid: apiAllUuid,
               orderIndex: 0,
               pinnedAt: "2026-03-14T10:00:00Z",
@@ -318,7 +318,7 @@ describe("runFolderPinToggle", () => {
       {
         folderUuid: apiAllUuid,
         folderItemUuid: "item-all-only",
-        chatId: "dm:42",
+        chatId: "stream:42:general",
         orderIndex: 0,
         pinnedAt: "2026-03-14T10:00:00Z",
       },
@@ -330,11 +330,11 @@ describe("runFolderPinToggle", () => {
     await runFolderPinToggle({
       apiFolderUuid: customUuid,
       scopeFolderId: customUuid,
-      chatId: "dm:42",
+      chatId: "stream:42:general",
       isPinned: true,
     });
 
     expect(unpinChatInFolderMock).not.toHaveBeenCalled();
-    expect(usePinStore.getState().isPinned(apiAllUuid, "dm:42")).toBe(true);
+    expect(usePinStore.getState().isPinned(apiAllUuid, "stream:42:general")).toBe(true);
   });
 });

@@ -73,10 +73,8 @@ export const HorizontalFolderItem: React.FC<FolderItemProps> = React.memo(
     folder,
     index,
     isSelected,
-    showSystemFolders,
     onSelectFolder,
     onToggleLayout,
-    onToggleShowSystemFolders,
     onRequestRename,
     onRequestDelete,
   }) {
@@ -147,10 +145,8 @@ export const HorizontalFolderItem: React.FC<FolderItemProps> = React.memo(
         items={buildFolderContextMenuItems({
           isSystemFolder: visualState.isSystemFolder,
           layout: "horizontal",
-          showSystemFolders,
           onRename: handleRename,
           onToggleLayout: handleToggleLayout,
-          onToggleShowSystemFolders,
           onDelete: handleDelete,
         })}
         contentVariant="default"
@@ -165,10 +161,8 @@ export const VerticalFolderItem: React.FC<FolderItemProps> = React.memo(
     folder,
     index,
     isSelected,
-    showSystemFolders,
     onSelectFolder,
     onToggleLayout,
-    onToggleShowSystemFolders,
     onRequestRename,
     onRequestDelete,
   }) {
@@ -263,10 +257,8 @@ export const VerticalFolderItem: React.FC<FolderItemProps> = React.memo(
         items={buildFolderContextMenuItems({
           isSystemFolder: visualState.isSystemFolder,
           layout: "vertical",
-          showSystemFolders,
           onRename: handleRename,
           onToggleLayout: handleToggleLayout,
-          onToggleShowSystemFolders,
           onDelete: handleDelete,
         })}
         contentVariant="default"

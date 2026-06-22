@@ -9,7 +9,7 @@
  * Usage:
  *   import { getFolders, mapWorkspaceFoldersToRail } from "~/shared/api/workspace-client";
  */
-import { filterV1Services, FolderItemCreateChatType } from "@workspace/api/workspace-api.generated";
+import { filterV1Services } from "@workspace/api/workspace-api.generated";
 import { MESSENGER_API_PATH } from "~/shared/config/workspace-api-layout";
 import { guard, invariant } from "~/shared/lib/guards";
 import { isValidUrl } from "~/shared/lib/validation";
@@ -22,13 +22,7 @@ import {
   messengerFoldersPostJson,
   messengerFoldersPutJson,
 } from "./messenger-folders.internal";
-import type {
-  FilterV1Folders200Item,
-  FilterV1Folders200ItemItemsItem,
-  FilterV1Folders200ItemItemsItemChatType,
-  FolderItemCreate,
-  ServiceFilter,
-} from "@workspace/api/workspace-api.generated";
+import type { FilterV1Folders200Item, ServiceFilter } from "@workspace/api/workspace-api.generated";
 
 const inFlightWorkspaceGets = new Map<string, Promise<unknown>>();
 
@@ -37,7 +31,7 @@ const MESSENGER_FOLDERS_LIST_PATH = "/folders/";
 /** Folder row from `GET /api/messenger/v1/folders/` (nested items included). */
 export type WorkspaceFolder = FilterV1Folders200Item;
 
-type WorkspaceFolderSystemType = "created" | "all";
+type WorkspaceFolderSystemType = "created" | "all" | "personal" | "channels";
 export type WorkspaceFolderRailSystemType = WorkspaceFolderSystemType | "personal" | "channels";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -51,51 +45,17 @@ function toSafeCount(value: unknown): number {
   return Math.max(0, Math.trunc(value));
 }
 
-function countUnreadMessageIds(value: unknown): number {
-  return Array.isArray(value) ? value.length : 0;
-}
-
-function countUnreadEntry(entry: unknown): number {
-  if (typeof entry === "number" || typeof entry === "string") {
-    return 1;
-  }
-  if (Array.isArray(entry)) {
-    return entry.length;
-  }
-  if (!isRecord(entry)) {
-    return 0;
-  }
-
-  const directCount =
-    toSafeCount(entry.count) || toSafeCount(entry.unread_count) || toSafeCount(entry.unreadCount);
-  if (directCount > 0) {
-    return directCount;
-  }
-
-  const unreadMessageIdsCount = countUnreadMessageIds(entry.unread_message_ids);
-  if (unreadMessageIdsCount > 0) {
-    return unreadMessageIdsCount;
-  }
-
-  const messageIdsCount = countUnreadMessageIds(entry.message_ids);
-  if (messageIdsCount > 0) {
-    return messageIdsCount;
-  }
-
-  return countUnreadMessageIds(entry.unread_messages);
-}
-
-function countFolderUnreadMessages(unreadMessages: readonly unknown[]): number {
-  return unreadMessages.reduce<number>((sum, entry) => sum + countUnreadEntry(entry), 0);
-}
-
 function isWorkspaceFolder(value: unknown): value is WorkspaceFolder {
   if (!isRecord(value)) {
     return false;
   }
   const bg = value.background_color_value;
   const bgOk = bg === undefined || bg === null || (typeof bg === "number" && Number.isFinite(bg));
-  const unreadOk = value.unread_messages == null || Array.isArray(value.unread_messages);
+  const unreadOk =
+    value.unread_count === undefined ||
+    value.unread_count === null ||
+    (typeof value.unread_count === "number" && Number.isFinite(value.unread_count));
+  const itemsOk = value.folder_items === undefined || Array.isArray(value.folder_items);
   const titleOk = value.title === undefined || typeof value.title === "string";
   return (
     typeof value.uuid === "string" &&
@@ -104,8 +64,11 @@ function isWorkspaceFolder(value: unknown): value is WorkspaceFolder {
     titleOk &&
     bgOk &&
     unreadOk &&
+    itemsOk &&
     (value.system_type === "created" ||
       value.system_type === "all" ||
+      value.system_type === "personal" ||
+      value.system_type === "channels" ||
       value.system_type === null ||
       value.system_type === undefined)
   );
@@ -202,16 +165,31 @@ export interface WorkspaceFolderForRail {
   systemType?: WorkspaceFolderRailSystemType;
 }
 
+function readWorkspaceFolderSystemType(
+  folder: WorkspaceFolder,
+): WorkspaceFolderRailSystemType | undefined {
+  const systemType = (folder as Record<string, unknown>).system_type;
+  if (
+    systemType === "created" ||
+    systemType === "all" ||
+    systemType === "personal" ||
+    systemType === "channels"
+  ) {
+    return systemType;
+  }
+  return undefined;
+}
+
 export function mapWorkspaceFoldersToRail(folders: WorkspaceFolder[]): WorkspaceFolderForRail[] {
   return folders.map((f) => ({
     id: f.uuid ?? "",
     label: f.title ?? "",
     backgroundColor: f.background_color_value ?? 0,
     badge: (() => {
-      const unreadCount = countFolderUnreadMessages(f.unread_messages ?? []);
+      const unreadCount = toSafeCount((f as Record<string, unknown>).unread_count);
       return unreadCount > 0 ? unreadCount : undefined;
     })(),
-    systemType: f.system_type === "created" || f.system_type === "all" ? f.system_type : undefined,
+    systemType: readWorkspaceFolderSystemType(f),
   }));
 }
 
@@ -223,6 +201,9 @@ export interface FolderItemForClient {
   uuid: string;
   chatId: string;
   folderUuid: string;
+  streamUuid?: string;
+  chatType?: "private" | "stream" | "group";
+  unreadCount?: number;
   orderIndex: number;
   pinnedAt: string | null;
   createdAt: string;
@@ -242,48 +223,46 @@ function parseFolderItemOrderIndex(value: unknown): number {
   return 0;
 }
 
-function parseFolderItemChatId(value: unknown): string | null {
+function parseFolderItemStreamUuid(value: unknown): string | null {
   if (typeof value === "string") {
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : null;
   }
-  if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) {
-    return String(value);
-  }
   return null;
 }
 
-function encodeFolderItemChatId(
-  chatType: FilterV1Folders200ItemItemsItemChatType | undefined,
-  chatId: string,
-): string {
-  if (chatType === "stream" && /^\d+$/.test(chatId)) {
-    return `stream:${chatId}:general`;
+function parseFolderItemChatType(value: unknown): FolderItemForClient["chatType"] {
+  if (value === "stream" || value === "private" || value === "group") {
+    return value;
   }
-  if (chatType === "private" && /^\d+$/.test(chatId)) {
-    return `dm:${chatId}`;
-  }
-  return chatId;
+  return "stream";
 }
 
 function mapFolderListItemToClient(
-  raw: FilterV1Folders200ItemItemsItem,
+  raw: unknown,
   requestFolderUuid: string,
 ): FolderItemForClient | null {
+  if (!isRecord(raw)) {
+    return null;
+  }
   const uuid = typeof raw.uuid === "string" ? raw.uuid.trim() : "";
-  const folderUuid = requestFolderUuid.trim();
-  const chatIdRaw = raw.chat_id != null ? parseFolderItemChatId(raw.chat_id) : null;
-  const chatId = chatIdRaw != null ? encodeFolderItemChatId(raw.chat_type, chatIdRaw) : null;
-  if (uuid.length === 0 || folderUuid.length === 0 || chatId == null) {
+  const folderFromItem = typeof raw.folder === "string" ? raw.folder.trim() : "";
+  const folderUuid = folderFromItem.length > 0 ? folderFromItem : requestFolderUuid.trim();
+  const streamUuid = parseFolderItemStreamUuid(raw.stream_uuid);
+  if (uuid.length === 0 || folderUuid.length === 0 || streamUuid == null) {
     return null;
   }
   const createdAt = typeof raw.created_at === "string" ? raw.created_at : "";
   const updatedAt = typeof raw.updated_at === "string" ? raw.updated_at : createdAt;
   const pinnedAt = typeof raw.pinned_at === "string" ? raw.pinned_at : null;
+  const chatType = parseFolderItemChatType(raw.chat_type);
   return {
     uuid,
-    chatId,
+    chatId: `stream:${streamUuid}:general`,
     folderUuid,
+    streamUuid,
+    chatType,
+    unreadCount: toSafeCount(raw.unread_count),
     orderIndex: parseFolderItemOrderIndex(raw.order_index),
     pinnedAt,
     createdAt,
@@ -297,7 +276,7 @@ export function mapWorkspaceFolderItems(folder: WorkspaceFolder): FolderItemForC
   if (folderUuid.length === 0) {
     return [];
   }
-  const rawItems = folder.items;
+  const rawItems = (folder as Record<string, unknown>).folder_items;
   if (!Array.isArray(rawItems)) {
     return [];
   }
@@ -331,60 +310,27 @@ function validateOrderIndex(orderIndex: number): number {
   return orderIndex;
 }
 
-function parseNumericFolderChatId(chatId: string): number | null {
+function parseFolderStreamUuidForCreate(chatId: string): string | null {
   const trimmed = chatId.trim();
-  if (!trimmed) return null;
-
-  const decimalMatch = /^\d+$/.exec(trimmed);
-  if (decimalMatch) {
-    const parsed = Number(trimmed);
-    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+  const streamMatch = /^stream:([^:]+)(?::.*)?$/.exec(trimmed);
+  const streamUuid = streamMatch?.[1]?.trim();
+  if (streamUuid != null && streamUuid.length > 0) {
+    return streamUuid;
   }
-
-  const streamMatch = /^stream:(\d+)(?::.*)?$/.exec(trimmed);
-  if (streamMatch?.[1]) {
-    const parsed = Number(streamMatch[1]);
-    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
-  }
-
-  const singleDmMatch = /^dm:(\d+)$/.exec(trimmed);
-  if (singleDmMatch?.[1]) {
-    const parsed = Number(singleDmMatch[1]);
-    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
-  }
-
-  return null;
-}
-
-function parseChatIdToApiInteger(chatId: string): number | null {
-  const numeric = parseNumericFolderChatId(chatId);
-  if (numeric != null) {
-    return numeric;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(trimmed)) {
+    return trimmed;
   }
   return null;
 }
 
-function inferChatTypeForCreate(chatId: string): FolderItemCreateChatType {
-  const trimmed = chatId.trim();
-  if (/^stream:\d+/.test(trimmed)) {
-    return FolderItemCreateChatType.stream;
-  }
-  if (trimmed.startsWith("dm:")) {
-    return FolderItemCreateChatType.private;
-  }
-  return FolderItemCreateChatType.private;
-}
-
-function folderItemCreateStub(
-  chatId: number,
-  chatType: FolderItemCreateChatType,
-): FolderItemCreate {
+function folderItemCreateBody(streamUuid: string): Record<string, string | null> {
   const now = new Date().toISOString();
   return {
     created_at: now,
     updated_at: now,
-    chat_id: chatId,
-    chat_type: chatType,
+    stream_uuid: streamUuid,
+    chat_type: "stream",
+    pinned_at: null,
   };
 }
 
@@ -393,14 +339,13 @@ export async function addChatToFolder(folderUuid: string, chatId: string): Promi
   try {
     const safeFolderUuid = validateFolderUuid(folderUuid);
     const safeChatId = validateChatId(chatId);
-    const chatIdNum = parseChatIdToApiInteger(safeChatId);
-    if (chatIdNum == null) {
+    const streamUuid = parseFolderStreamUuidForCreate(safeChatId);
+    if (streamUuid == null) {
       return false;
     }
-    const chatType = inferChatTypeForCreate(safeChatId);
     await messengerFoldersPostJson(
       messengerFolderItemsPath(safeFolderUuid),
-      folderItemCreateStub(chatIdNum, chatType),
+      folderItemCreateBody(streamUuid),
     );
     return true;
   } catch {

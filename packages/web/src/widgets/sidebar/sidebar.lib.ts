@@ -1,27 +1,18 @@
-import { isSystemRailFolderId } from "~/features/folder-sync/folder-sync-constants.lib";
-import { resolveCanonicalStreamName } from "~/shared/lib/stream-name.lib";
-import type { UserId } from "~/shared/lib/user-id.lib";
-import type { SidebarChat, StreamWithLast } from "~/shared/types/sidebar-chat";
-
-export { dmConversationKey } from "~/shared/lib/dm-key";
 import {
   buildDmRouteSlugFromRecipients,
   isDmRouteSlugActive,
   parseDmRouteParticipantIds,
 } from "~/shared/lib/dm-route-slug.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
+import type { SidebarChat, StreamWithLast } from "~/shared/types/sidebar-chat";
 
+export { dmConversationKey } from "~/shared/lib/dm-key";
 export { buildDmRouteSlugFromRecipients, isDmRouteSlugActive, parseDmRouteParticipantIds };
 export {
   buildSidebarFromMessages,
   messageToStreamEntry,
   messageToDmEntry,
 } from "~/entities/chat-list/chat-list.lib";
-
-/** System rail folders plus legacy `selectedFolderId="all"` used in tests and older routes. */
-export function isSidebarSystemFolderScope(folderId: string | undefined): boolean {
-  if (folderId == null || folderId === "") return false;
-  return isSystemRailFolderId(folderId);
-}
 
 /**
  * Sidebar activity metadata.
@@ -142,13 +133,6 @@ export function getDmById(
   return list.find((c) => c.id === slugOrId);
 }
 
-/** URL-safe slug: lowercase, spaces and invalid chars → "-", remove duplicate "-". */
-function slugify(s: string): string {
-  const lower = s.trim().toLowerCase();
-  const safe = lower.replace(/[^\p{L}\p{N}-]/gu, "-").replace(/-+/g, "-");
-  return safe.replace(/^-|-$/g, "") || "chat";
-}
-
 /** Slug for stream: the Workspace stream UUID. */
 export function slugForStream(stream: { streamUuid: string }): string {
   return stream.streamUuid.trim().toLowerCase();
@@ -187,7 +171,7 @@ export function parseDmSlugToUserIds(dmSlug: string): UserId[] {
   return parseDmRouteParticipantIds(dmSlug);
 }
 
-/** Workspace API chat_id format: stream:${stream_uuid}:${topic} or dm:${userIds.join(",")}. */
+/** Internal folder chat identifier for stream rows. */
 export function chatToWorkspaceChatId(chat: SidebarChat): string {
   if (chat.type === "stream") {
     return `stream:${chat.streamUuid}:general`;
@@ -195,6 +179,6 @@ export function chatToWorkspaceChatId(chat: SidebarChat): string {
   const userIds =
     Array.isArray(chat.userIds) && chat.userIds.length > 0
       ? chat.userIds
-      : parseDmSlugToUserIds(chat.slug);
+      : parseDmRouteParticipantIds(chat.slug);
   return `dm:${userIds.join(",")}`;
 }

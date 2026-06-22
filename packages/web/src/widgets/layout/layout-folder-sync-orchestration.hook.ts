@@ -34,7 +34,7 @@ export interface UseLayoutFolderSyncOrchestrationParams {
   language: string;
   folderItemsByFolderId: ReadonlyMap<string, FolderItemForClient[]>;
   chatsSortedByLastMessage: SidebarChat[];
-  streamsMap: Map<number, StreamEntryInternal>;
+  streamsMap: Map<string, StreamEntryInternal>;
   dmsMapSize: number;
   usersMapForChatInfo: Map<string, { full_name?: string; email?: string }>;
   currentUserId: UserId | null;
@@ -47,7 +47,7 @@ export interface UseLayoutFolderSyncOrchestrationParams {
   }) => Promise<void>;
   syncFolderSyncSidebarProjection: (input: {
     chatsSortedByLastMessage: SidebarChat[];
-    streamsMap: Map<number, StreamEntryInternal>;
+    streamsMap: Map<string, StreamEntryInternal>;
     usersMapForChatInfo: Map<string, { full_name?: string; email?: string }>;
     currentUserId: UserId | null;
     hideUnknownArchivedStreams: boolean;

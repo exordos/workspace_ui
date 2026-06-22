@@ -1,5 +1,4 @@
 import React, { useCallback, useMemo } from "react";
-import { isSystemRailFolderId } from "~/features/folder-sync/folder-sync-constants.lib";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { selectSidebarChatsLoading } from "~/features/folder-sync/folder-sync.selectors";
 import { useSettingsStore } from "~/features/settings/settings.model";
@@ -24,9 +23,6 @@ export const SidebarShell: React.FC = () => {
   const applyLocallyDeletedFolder = useFolderSyncStore((s) => s.applyLocallyDeletedFolder);
   const selectFolderSync = useFolderSyncStore((s) => s.selectFolder);
   const selectedFolderId = useFolderSyncStore((s) => s.selectedFolderId);
-  const sidebarChatsForSelectedFolder = isSystemRailFolderId(selectedFolderId)
-    ? undefined
-    : sidebarStreamChats;
   const setSelectedFolderId = useSidebarConfigStore((s) => s.setSelectedFolderId);
 
   const handleSelectFolder = useCallback(
@@ -65,17 +61,14 @@ export const SidebarShell: React.FC = () => {
             layout="vertical"
           />
         </div>
-        <Sidebar
-          sidebarChats={sidebarChatsForSelectedFolder}
-          sidebarChatsLoading={sidebarChatsLoading}
-        />
+        <Sidebar sidebarChats={sidebarStreamChats} sidebarChatsLoading={sidebarChatsLoading} />
       </>
     );
   }
 
   return (
     <Sidebar
-      sidebarChats={sidebarChatsForSelectedFolder}
+      sidebarChats={sidebarStreamChats}
       sidebarChatsLoading={sidebarChatsLoading}
       activityPanelBottomSlot={
         <>

@@ -14,7 +14,7 @@ import {
 import { filterHiddenDmChats } from "./folder-sync-sidebar-chats-dm.lib";
 import type { SelectedFolderSidebarProjectionInput } from "./folder-sync-sidebar-chats.lib";
 
-// (greenfield) Numeric chat_id ambiguity is not supported.
+// (greenfield) Numeric-only stream identifiers are ambiguous and not supported.
 
 export interface KnownMatchedChatKeys {
   knownMatchedStreamIds: Set<string>;
@@ -229,7 +229,7 @@ export function buildCustomFolderSidebarChats(
   } = input;
 
   if (folderChatIds == null) {
-    return filterHiddenDmChats(chatsSortedByLastMessage, currentUserId);
+    return [];
   }
 
   const matchedChats = chatsSortedByLastMessage.filter((chat) =>

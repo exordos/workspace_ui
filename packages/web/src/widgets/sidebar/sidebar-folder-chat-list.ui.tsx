@@ -1,6 +1,5 @@
 import React, { useMemo } from "react";
 import { resolvePinScopeFolderUuid } from "~/features/folder-sync/folder-sync.lib";
-import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { orderChatsWithPinnedFirst } from "~/features/pin-chat/pin-chat-order.lib";
 import { usePinStore } from "~/features/pin-chat/pin-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
@@ -29,13 +28,9 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
   const isCompactDensity = useSettingsStore((s) => s.chatListDensity === "compact");
   const canExpandStreams = onToggleStream != null && expandedStreamSlugs !== undefined;
   const pinScopeFolderId = pinFolderId ?? selectedFolderId;
-  const allFolderApiUuid = useFolderSyncStore((s) => s.allFolderApiUuid);
   const pinApiFolderUuid = useMemo(
-    () =>
-      pinScopeFolderId != null
-        ? resolvePinScopeFolderUuid(pinScopeFolderId, allFolderApiUuid)
-        : null,
-    [allFolderApiUuid, pinScopeFolderId],
+    () => (pinScopeFolderId != null ? resolvePinScopeFolderUuid(pinScopeFolderId) : null),
+    [pinScopeFolderId],
   );
 
   const pinnedChatIds = usePinStore((s) =>

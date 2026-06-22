@@ -3,11 +3,6 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { CreateChatDialog } from "~/features/create-chat/create-chat-dialog.ui";
-import {
-  SYSTEM_ALL_FOLDER_ID,
-  SYSTEM_CHANNELS_FOLDER_ID,
-  SYSTEM_PERSONAL_FOLDER_ID,
-} from "~/features/folder-sync/folder-sync-constants.lib";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { t } from "~/i18n/i18n";
 import { createStreamTopic } from "~/shared/api/messenger-streams";
@@ -47,30 +42,6 @@ function extractStreamSlugFromPath(pathname: string): string | null {
 
 function isStreamChat(chat: SidebarChat): chat is Extract<SidebarChat, { type: "stream" }> {
   return chat.type === "stream";
-}
-
-function selectStreamsForFolder(options: {
-  selectedFolderId: string;
-  allStreams: Extract<SidebarChat, { type: "stream" }>[];
-  folderChats: SidebarChat[] | null;
-}): Extract<SidebarChat, { type: "stream" }>[] {
-  const { selectedFolderId, allStreams, folderChats } = options;
-  const folderStreams = folderChats == null ? null : folderChats.filter(isStreamChat);
-  const systemStreams = allStreams.length > 0 ? allStreams : (folderStreams ?? allStreams);
-
-  if (selectedFolderId === SYSTEM_PERSONAL_FOLDER_ID) {
-    return systemStreams.filter((chat) => chat.private === true);
-  }
-  if (selectedFolderId === SYSTEM_CHANNELS_FOLDER_ID) {
-    return systemStreams.filter((chat) => chat.private !== true);
-  }
-  if (selectedFolderId === SYSTEM_ALL_FOLDER_ID) {
-    return systemStreams;
-  }
-  if (folderStreams != null) {
-    return folderStreams;
-  }
-  return allStreams;
 }
 
 export const SidebarInner: React.FC<SidebarUiProps> = ({
@@ -129,13 +100,8 @@ export const SidebarInner: React.FC<SidebarUiProps> = ({
 
   const streamChats = useMemo(() => getStreamChats(streams), [streams]);
   const folderStreamChats = useMemo(
-    () =>
-      selectStreamsForFolder({
-        selectedFolderId,
-        allStreams: streamChats,
-        folderChats: sidebarChatsProp ?? null,
-      }),
-    [selectedFolderId, sidebarChatsProp, streamChats],
+    () => (sidebarChatsProp != null ? sidebarChatsProp.filter(isStreamChat) : streamChats),
+    [sidebarChatsProp, streamChats],
   );
   const pinFolderId = pinFolderIdProp ?? selectedFolderId;
   const normalizedQuery = useMemo(() => normalizeSidebarSearchQuery(searchQuery), [searchQuery]);

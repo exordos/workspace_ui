@@ -30,7 +30,7 @@ export interface FolderItemsLoadResult {
 }
 
 export interface FolderSyncSnapshot {
-  // Folders + items slice assembled in one refresh cycle.
+  // Folders and embedded folder_items from one server snapshot.
   folders: WorkspaceFolder[];
   itemsByFolderId: Map<string, FolderItemsLoadResult>;
   loadedAt: number;
@@ -38,23 +38,10 @@ export interface FolderSyncSnapshot {
 
 // Dedupe parallel refresh calls per instance so identical batches are not duplicated.
 const inFlightSnapshotsByInstance = new Map<string, Promise<FolderSyncSnapshot>>();
-// Last successful snapshot for the current instanceId.
-const latestSnapshotByInstance = new Map<string, FolderSyncSnapshot>();
-
-export type FolderSyncItemsLoadScope = "all" | "selective";
 
 export interface LoadFolderSyncSnapshotOptions {
   force?: boolean;
-  /** Fetched before the parallel batch so the active folder hydrates first. */
-  priorityFolderUuid?: string | null;
-  /**
-   * `all` — request items for every folder with uuid (bootstrap, mutation, reconnect).
-   * `selective` — only uuids from `resolveSelectiveFolderUuids` (background polling).
-   */
-  itemsLoadScope?: FolderSyncItemsLoadScope;
-  /** Called after `getFolders()` when `itemsLoadScope` is `selective`. */
-  resolveSelectiveFolderUuids?: (folders: WorkspaceFolder[]) => string[];
-  /** After `getFolders()`, before item requests complete — for early rail update. */
+  /** After `getFolders()`, before applying the full snapshot. */
   onFoldersLoaded?: (folders: WorkspaceFolder[]) => void | Promise<void>;
 }
 
@@ -80,8 +67,6 @@ export async function loadFolderSyncSnapshot(
       itemsByFolderId,
       loadedAt: Date.now(),
     };
-    // Cache latest snapshot for reuse inside the orchestrator.
-    latestSnapshotByInstance.set(instanceId, snapshot);
     return snapshot;
   })();
 
@@ -99,5 +84,4 @@ export async function loadFolderSyncSnapshot(
 export function resetFolderSyncApiCacheForTests(): void {
   // Test helper: reset state between cases.
   inFlightSnapshotsByInstance.clear();
-  latestSnapshotByInstance.clear();
 }

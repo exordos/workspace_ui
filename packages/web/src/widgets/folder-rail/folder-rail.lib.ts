@@ -11,28 +11,11 @@ export interface IndexedFolderEntry {
   index: number;
 }
 
-/**
- * Rail display order: "All" (or legacy first slot) first, rest in relative order.
- * Shared by vertical and horizontal rail modes.
- */
+/** Rail display order is owned by the server. */
 export function orderedIndexedFoldersForRail(
   indexedFolders: readonly IndexedFolderEntry[],
 ): IndexedFolderEntry[] {
-  if (indexedFolders.length === 0) {
-    return [];
-  }
-  const allFolderEntry =
-    indexedFolders.find(
-      ({ folder, index }) =>
-        folder.systemType === "all" || (folder.systemType == null && index === 0),
-    ) ??
-    indexedFolders[0] ??
-    null;
-  if (allFolderEntry == null) {
-    return [...indexedFolders];
-  }
-  const rest = indexedFolders.filter(({ folder }) => folder.id !== allFolderEntry.folder.id);
-  return [allFolderEntry, ...rest];
+  return [...indexedFolders];
 }
 
 /** Context menu keyboard trigger: ContextMenu key or Shift+F10. */
@@ -40,18 +23,15 @@ export function isContextMenuKeyboardTrigger(event: KeyboardEvent): boolean {
   return event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey);
 }
 
-/**
- * Normalize folder system type.
- * When API omits systemType, treat index 0 as "all" for backward compatibility.
- */
+/** Normalize folder system type from server metadata only. */
 export function resolveFolderSystemType(
   folder: FolderRailFolder,
-  index: number,
+  _index: number,
 ): NonNullable<FolderRailFolder["systemType"]> {
   if (folder.systemType != null) {
     return folder.systemType;
   }
-  return index === 0 ? "all" : "created";
+  return "created";
 }
 
 /** Derived folder visuals — thin UI components consume ready-made colors/classes. */

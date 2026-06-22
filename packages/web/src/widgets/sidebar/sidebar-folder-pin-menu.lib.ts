@@ -1,29 +1,19 @@
 import { useCallback, useMemo } from "react";
 import { resolvePinScopeFolderUuid } from "~/features/folder-sync/folder-sync.lib";
-import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { resolveFolderItemUuidForMenu, runFolderPinToggle } from "~/features/pin-chat/pin-chat.lib";
 import { usePinStore } from "~/features/pin-chat/pin-chat.model";
 
-function isVirtualSystemFolderId(folderId: string | undefined): boolean {
-  return folderId === "system:personal" || folderId === "system:channels";
-}
-
 /** Pin scope + handlers shared by stream/DM sidebar context menus. */
 export function useSidebarFolderPinMenu(folderId: string | undefined, chatId: string) {
-  const allFolderApiUuid = useFolderSyncStore((s) => s.allFolderApiUuid);
   const pinApiFolderUuid = useMemo(
-    () => (folderId != null ? resolvePinScopeFolderUuid(folderId, allFolderApiUuid) : null),
-    [allFolderApiUuid, folderId],
+    () => (folderId != null ? resolvePinScopeFolderUuid(folderId) : null),
+    [folderId],
   );
   const isPinnedInFolder = usePinStore((s) =>
     pinApiFolderUuid != null ? s.isPinned(pinApiFolderUuid, chatId) : false,
   );
   const isPinned = pinApiFolderUuid != null && isPinnedInFolder;
-  const showFolderPinAction =
-    folderId != null &&
-    folderId.length > 0 &&
-    !isVirtualSystemFolderId(folderId) &&
-    pinApiFolderUuid != null;
+  const showFolderPinAction = folderId != null && folderId.length > 0 && pinApiFolderUuid != null;
 
   const runPin = useCallback(() => {
     if (pinApiFolderUuid == null) return;

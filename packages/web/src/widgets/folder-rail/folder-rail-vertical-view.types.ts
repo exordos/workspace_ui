@@ -5,10 +5,8 @@ import type { FolderRailFolder } from "./folder-rail.types";
 export interface FolderRailVerticalViewProps {
   indexedFolders: IndexedFolderEntry[];
   selectedFolderId: string;
-  showSystemFolders: boolean;
   onSelectFolder: (id: string) => void;
   onToggleLayout: () => void;
-  onToggleShowSystemFolders: () => void;
   onRequestRename: (folder: FolderRailFolder) => void;
   onRequestDelete: (folder: FolderRailFolder) => void;
   onOpenCreateDialog: () => void;

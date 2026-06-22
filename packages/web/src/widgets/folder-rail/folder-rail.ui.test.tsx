@@ -8,9 +8,13 @@ import {
 import * as manageFolders from "~/features/manage-folders/manage-folders.api";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
+import type * as SharedConstantsModule from "~/shared/config/constants";
 import { applyTheme } from "~/shared/lib/themes/engine";
 import { FOLDER_QUICK_LIST_SHORTCUT } from "./folder-rail.lib";
 import { FolderRail } from "./folder-rail.ui";
+
+const PERSONAL_FOLDER_UUID = "00000000-0000-0000-0000-000000000001";
+const CHANNELS_FOLDER_UUID = "00000000-0000-0000-0000-000000000002";
 
 const toastErrorMock = vi.hoisted(() => vi.fn());
 
@@ -24,17 +28,25 @@ vi.mock("~/shared/lib/toast/toast", () => ({
 }));
 
 vi.mock("~/shared/config/constants", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/config/constants")>();
+  const actual = await importOriginal<typeof SharedConstantsModule>();
   return { ...actual, KEYBOARD_SHORTCUTS_ENABLED: true };
 });
 
 function dispatchShortcut(combo: string): void {
   const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
   const parts = combo.toLowerCase().split("+");
+  const modifierKeys: { ctrlKey?: true; metaKey?: true } = {};
+  if (parts.includes("mod")) {
+    if (isMac) {
+      modifierKeys.metaKey = true;
+    } else {
+      modifierKeys.ctrlKey = true;
+    }
+  }
   window.dispatchEvent(
     new KeyboardEvent("keydown", {
       key: parts.find((part) => !["mod", "alt", "shift"].includes(part)) ?? "",
-      ...(parts.includes("mod") ? (isMac ? { metaKey: true } : { ctrlKey: true }) : {}),
+      ...modifierKeys,
       shiftKey: parts.includes("shift"),
       altKey: parts.includes("alt"),
       bubbles: true,
@@ -167,11 +179,13 @@ describe("FolderRail visual parity", () => {
     expect(customButton).toHaveStyle({ color: folderColorValueToCssHex(customColor) });
   });
 
-  it("highlights all-folder label on hover in horizontal layout", () => {
+  it("uses server folder color for all-folder hover in horizontal layout", () => {
+    const allColor = 0xff8438;
+
     render(
       <FolderRail
         folders={[
-          { id: "all", label: "All", backgroundColor: 0xff8438 },
+          { id: "all", label: "All", backgroundColor: allColor, systemType: "all" },
           { id: "custom", label: "Team", backgroundColor: 0x3a92ff },
         ]}
         selectedFolderId="custom"
@@ -196,7 +210,7 @@ describe("FolderRail visual parity", () => {
     render(
       <FolderRail
         folders={[
-          { id: "all", label: "All", backgroundColor: 0xff8438 },
+          { id: "all", label: "All", backgroundColor: 0xff8438, systemType: "all" },
           { id: "custom", label: "Team", backgroundColor: customColor },
         ]}
         selectedFolderId="all"
@@ -379,7 +393,7 @@ describe("FolderRail visual parity", () => {
     render(
       <FolderRail
         folders={[
-          { id: "all", label: "All", backgroundColor: 0xff8438 },
+          { id: "all", label: "All", backgroundColor: 0xff8438, systemType: "all" },
           { id: "custom", label: "Team", backgroundColor: 0x3a92ff },
         ]}
         selectedFolderId="all"
@@ -408,13 +422,13 @@ describe("FolderRail visual parity", () => {
         folders={[
           { id: "all", label: "All", backgroundColor: 0xff8438, systemType: "all" },
           {
-            id: "system:personal",
+            id: PERSONAL_FOLDER_UUID,
             label: "Personal",
             backgroundColor: 0,
             systemType: "personal",
           },
           {
-            id: "system:channels",
+            id: CHANNELS_FOLDER_UUID,
             label: "Channels",
             backgroundColor: 0,
             systemType: "channels",
@@ -1031,54 +1045,6 @@ describe("FolderRail visual parity", () => {
     expect(useSettingsStore.getState().folderRailLayout).toBe("vertical");
   });
 
-  it("shows 'Show system folders' and toggles settings flag from folder menu", () => {
-    useSettingsStore.getState().setShowSystemFolders(false);
-
-    render(
-      <FolderRail
-        folders={[
-          { id: "all", label: "All", backgroundColor: 0xff8438 },
-          { id: "custom", label: "Team", backgroundColor: 0x3a92ff },
-        ]}
-        selectedFolderId="all"
-        onSelectFolder={vi.fn()}
-      />,
-    );
-
-    const customNodes = screen.getAllByTitle("Team");
-    const customButton = customNodes.find((node) => node.tagName === "BUTTON");
-    expect(customButton).toBeDefined();
-
-    fireEvent.contextMenu(customButton!);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Show system folders" }));
-
-    expect(useSettingsStore.getState().showSystemFolders).toBe(true);
-  });
-
-  it("shows 'Hide system folders' when flag is enabled and toggles it off", () => {
-    useSettingsStore.getState().setShowSystemFolders(true);
-
-    render(
-      <FolderRail
-        folders={[
-          { id: "all", label: "All", backgroundColor: 0xff8438 },
-          { id: "custom", label: "Team", backgroundColor: 0x3a92ff },
-        ]}
-        selectedFolderId="all"
-        onSelectFolder={vi.fn()}
-      />,
-    );
-
-    const customNodes = screen.getAllByTitle("Team");
-    const customButton = customNodes.find((node) => node.tagName === "BUTTON");
-    expect(customButton).toBeDefined();
-
-    fireEvent.contextMenu(customButton!);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Hide system folders" }));
-
-    expect(useSettingsStore.getState().showSystemFolders).toBe(false);
-  });
-
   it("selects folder on pointer click of folder icon button", async () => {
     const user = userEvent.setup();
     const onSelectFolder = vi.fn();
@@ -1086,7 +1052,7 @@ describe("FolderRail visual parity", () => {
     render(
       <FolderRail
         folders={[
-          { id: "all", label: "All", backgroundColor: 0xff8438 },
+          { id: "all", label: "All", backgroundColor: 0xff8438, systemType: "all" },
           { id: "custom", label: "Team", backgroundColor: 0x3a92ff },
         ]}
         selectedFolderId="all"
@@ -1176,7 +1142,7 @@ describe("FolderRail visual parity", () => {
     render(
       <FolderRail
         folders={[
-          { id: "all", label: "All", backgroundColor: 0xff8438 },
+          { id: "all", label: "All", backgroundColor: 0xff8438, systemType: "all" },
           { id: "custom", label: "Team", backgroundColor: 0x3a92ff },
         ]}
         selectedFolderId="custom"
@@ -1239,13 +1205,13 @@ describe("FolderRail visual parity", () => {
         folders={[
           { id: "all", label: "All", backgroundColor: 0xff8438, systemType: "all" },
           {
-            id: "system:personal",
+            id: PERSONAL_FOLDER_UUID,
             label: "Personal",
             backgroundColor: 0,
             systemType: "personal",
           },
           {
-            id: "system:channels",
+            id: CHANNELS_FOLDER_UUID,
             label: "Channels",
             backgroundColor: 0,
             systemType: "channels",

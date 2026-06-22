@@ -1,5 +1,4 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { SYSTEM_ALL_FOLDER_ID } from "~/features/folder-sync/folder-sync-constants.lib";
 import { CreateFolderModal } from "~/features/manage-folders/create-folder-modal.ui";
 import {
   createFolder,
@@ -32,21 +31,14 @@ export const FolderRail: React.FC<FolderRailProps> = ({
   onFoldersChanged,
   layout = "vertical",
 }) => {
-  const normalizedFolders = useMemo(() => {
-    return folders.map((folder) =>
-      folder.id === "all" ? { ...folder, id: SYSTEM_ALL_FOLDER_ID } : folder,
-    );
-  }, [folders]);
-  const resolvedSelectedFolderId =
-    selectedFolderId === "all" ? SYSTEM_ALL_FOLDER_ID : selectedFolderId;
+  const normalizedFolders = folders;
+  const resolvedSelectedFolderId = selectedFolderId;
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renamingFolder, setRenamingFolder] = useState<FolderRailFolder | null>(null);
   const [deletingFolder, setDeletingFolder] = useState<FolderRailFolder | null>(null);
   const [isDeletingFolder, setIsDeletingFolder] = useState(false);
-  const showSystemFolders = useSettingsStore((s) => s.showSystemFolders);
   const setFolderRailLayout = useSettingsStore((s) => s.setFolderRailLayout);
-  const setShowSystemFolders = useSettingsStore((s) => s.setShowSystemFolders);
 
   const handleCreate = useCallback(
     async ({ name, backgroundColor }: { name: string; backgroundColor: number }) => {
@@ -127,10 +119,6 @@ export const FolderRail: React.FC<FolderRailProps> = ({
     setFolderRailLayout(layout === "horizontal" ? "vertical" : "horizontal");
   }, [layout, onToggleLayout, setFolderRailLayout]);
 
-  const handleToggleShowSystemFolders = useCallback(() => {
-    setShowSystemFolders(!showSystemFolders);
-  }, [setShowSystemFolders, showSystemFolders]);
-
   const indexedFolders = useMemo<IndexedFolderEntry[]>(
     () => normalizedFolders.map((folder, index) => ({ folder, index })),
     [normalizedFolders],
@@ -142,10 +130,8 @@ export const FolderRail: React.FC<FolderRailProps> = ({
         <FolderRailHorizontalView
           indexedFolders={indexedFolders}
           selectedFolderId={resolvedSelectedFolderId}
-          showSystemFolders={showSystemFolders}
           onSelectFolder={onSelectFolder}
           onToggleLayout={handleToggleLayout}
-          onToggleShowSystemFolders={handleToggleShowSystemFolders}
           onRequestRename={handleRequestRename}
           onRequestDelete={handleRequestDelete}
           onOpenCreateDialog={() => setCreateDialogOpen(true)}
@@ -154,10 +140,8 @@ export const FolderRail: React.FC<FolderRailProps> = ({
         <FolderRailVerticalView
           indexedFolders={indexedFolders}
           selectedFolderId={resolvedSelectedFolderId}
-          showSystemFolders={showSystemFolders}
           onSelectFolder={onSelectFolder}
           onToggleLayout={handleToggleLayout}
-          onToggleShowSystemFolders={handleToggleShowSystemFolders}
           onRequestRename={handleRequestRename}
           onRequestDelete={handleRequestDelete}
           onOpenCreateDialog={() => setCreateDialogOpen(true)}

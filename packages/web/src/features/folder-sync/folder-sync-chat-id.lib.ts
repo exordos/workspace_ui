@@ -162,8 +162,8 @@ export function resolveFallbackUserName(
 }
 
 /**
- * Stable map/set key for a folder or pin chat_id.
- * Bare numeric API ids are stream ids (`stream:N:general`); DM ids are sorted `dm:a,b`.
+ * Stable map/set key for a folder or pin chat identifier.
+ * Bare numeric ids are stream ids (`stream:N:general`); DM ids are sorted `dm:a,b`.
  */
 export function canonicalizeChatId(chatId: string): string {
   const trimmed = chatId.trim();
@@ -197,7 +197,7 @@ export function canonicalizeChatId(chatId: string): string {
   return trimmed;
 }
 
-/** Canonical map keys for one folder item chat_id. */
+/** Canonical map keys for one folder item chat identifier. */
 export function folderItemLookupKeysForChatId(chatId: string): readonly string[] {
   const aliases = new Set<string>();
   addChatIdAliases(aliases, chatId);
@@ -208,7 +208,7 @@ export function folderItemLookupKeysForChatId(chatId: string): readonly string[]
   return [...keys];
 }
 
-/** True when two folder/API chat_id values refer to the same chat (numeric, stream, dm aliases). */
+/** True when two folder chat identifiers refer to the same chat. */
 export function areEquivalentChatIds(leftChatId: string, rightChatId: string): boolean {
   const leftAliases = new Set<string>();
   addChatIdAliases(leftAliases, leftChatId);
@@ -267,7 +267,7 @@ export function addChatIdAliases(target: Set<string>, chatId: string): void {
   target.add(`dm:${dmUserIds.join(",")}`);
 }
 
-// Same chat may appear under multiple chat_id aliases — match any alias variant.
+// Same chat may appear under multiple aliases — match any alias variant.
 export function hasMatchingChatId(chatIdSet: ReadonlySet<string>, chatId: string): boolean {
   const aliases = new Set<string>();
   addChatIdAliases(aliases, chatId);

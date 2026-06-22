@@ -109,7 +109,7 @@ interface PinStoreState {
   folderItemIds: Map<string, Map<string, string>>;
   /** Sorted pinned chat ids per folder — rebuilt on pin/unpin/setFromServer only. */
   sortedPinnedIdsByFolder: Map<string, string[]>;
-  /** chat_id alias → sort index; avoids re-sorting in getPinnedSortIndex. */
+  /** Chat identifier alias to sort index; avoids re-sorting in getPinnedSortIndex. */
   pinnedSortLookupByFolder: Map<string, Map<string, number>>;
 
   pinChat: (
