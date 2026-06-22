@@ -228,6 +228,15 @@ interface FolderSyncBootstrapOptions {
   labels: FolderSyncSystemLabels;
 }
 
+interface FolderSyncSidebarProjectionInput {
+  chatsSortedByLastMessage: SidebarChat[];
+  streamsMap: Map<number, StreamEntryInternal>;
+  usersMapForChatInfo: Map<number, { full_name?: string; email?: string }>;
+  currentUserId: number | null;
+  hideUnknownArchivedStreams: boolean;
+  isStreamMuted?: (streamId: number) => boolean;
+}
+
 interface FolderSyncState {
   folders: WorkspaceFolderForRail[];
   // Currently selected rail/sidebar folder.
@@ -243,6 +252,7 @@ interface FolderSyncState {
   instanceId: string | null;
   showSystemFolders: boolean;
   labels: FolderSyncSystemLabels;
+  lastSidebarProjectionInput: FolderSyncSidebarProjectionInput | null;
   // Per-folder items cache (fallback and fast folder select).
   folderItemsByFolderId: Map<string, FolderItemForClient[]>;
   /** Workspace API uuid for the «all chats» folder (pin/unpin endpoints). */
@@ -312,6 +322,52 @@ function normalizeFoldersForPresentation(
   );
 }
 
+function applyProjectedSidebarState(
+  state: Pick<
+    FolderSyncState,
+    | "folders"
+    | "selectedFolderId"
+    | "selectedFolderChatIds"
+    | "selectedFolderSidebarChats"
+    | "folderItemsByFolderId"
+    | "lastSidebarProjectionInput"
+  >,
+): Pick<FolderSyncState, "folders" | "selectedFolderSidebarChats"> {
+  const projection = state.lastSidebarProjectionInput;
+  if (projection == null) {
+    return {
+      folders: state.folders,
+      selectedFolderSidebarChats: state.selectedFolderSidebarChats,
+    };
+  }
+
+  const nextChats = buildSelectedFolderSidebarChats({
+    selectedFolderId: state.selectedFolderId,
+    folderChatIds: state.selectedFolderChatIds,
+    folderItemsByFolderId: state.folderItemsByFolderId,
+    chatsSortedByLastMessage: projection.chatsSortedByLastMessage,
+    streamsMap: projection.streamsMap,
+    usersMapForChatInfo: projection.usersMapForChatInfo,
+    currentUserId: projection.currentUserId,
+    hideUnknownArchivedStreams: projection.hideUnknownArchivedStreams,
+    isStreamMuted: projection.isStreamMuted,
+  });
+  const nextFolders = applyFolderUnreadBadges(state.folders, {
+    folderItemsByFolderId: state.folderItemsByFolderId,
+    chatsSortedByLastMessage: projection.chatsSortedByLastMessage,
+    streamsMap: projection.streamsMap,
+    usersMapForChatInfo: projection.usersMapForChatInfo,
+    currentUserId: projection.currentUserId,
+    hideUnknownArchivedStreams: projection.hideUnknownArchivedStreams,
+    isStreamMuted: projection.isStreamMuted,
+  });
+
+  return {
+    selectedFolderSidebarChats: nextChats,
+    folders: nextFolders === state.folders ? state.folders : [...nextFolders],
+  };
+}
+
 /** When Workspace returns an empty folder list, keep IDB-hydrated rail and item cache instead of wiping UI. */
 function applySnapshotToFolderState(
   snapshot: FolderSyncSnapshot,
@@ -378,7 +434,6 @@ function applyFolderSyncRefreshSnapshot(
     snapshot,
     latestState,
   );
-  schedulePersistFolders(instanceId, foldersWithSystemDefaults);
 
   const selectedFolderId =
     resolveSelectedFolderId(foldersWithSystemDefaults, latestState.selectedFolderId) ??
@@ -412,10 +467,20 @@ function applyFolderSyncRefreshSnapshot(
     }
   }
 
-  set({
+  const projectedState = applyProjectedSidebarState({
+    ...latestState,
     folders: foldersWithSystemDefaults,
     selectedFolderId,
     selectedFolderChatIds,
+    folderItemsByFolderId: nextFolderItemsByFolderId,
+  });
+  schedulePersistFolders(instanceId, projectedState.folders);
+
+  set({
+    folders: projectedState.folders,
+    selectedFolderId,
+    selectedFolderChatIds,
+    selectedFolderSidebarChats: projectedState.selectedFolderSidebarChats,
     folderItemsByFolderId: nextFolderItemsByFolderId,
     allFolderApiUuid: resolveAllFolderApiUuid(snapshot.folders),
     staleFolderIds: nextStaleFolderIds,
@@ -488,7 +553,6 @@ async function runFolderSyncRefreshAttempt(
           phaseState.labels,
           phaseState.showSystemFolders,
         );
-        schedulePersistFolders(instanceId, foldersWithSystemDefaults);
 
         const selectedFolderId =
           resolveSelectedFolderId(foldersWithSystemDefaults, phaseState.selectedFolderId) ??
@@ -497,10 +561,17 @@ async function runFolderSyncRefreshAttempt(
           phaseState.staleFolderIds,
           foldersWithSystemDefaults,
         );
-
-        set({
+        const projectedState = applyProjectedSidebarState({
+          ...phaseState,
           folders: foldersWithSystemDefaults,
           selectedFolderId,
+        });
+        schedulePersistFolders(instanceId, projectedState.folders);
+
+        set({
+          folders: projectedState.folders,
+          selectedFolderId,
+          selectedFolderSidebarChats: projectedState.selectedFolderSidebarChats,
           staleFolderIds: nextStaleFolderIds,
           allFolderApiUuid: resolveAllFolderApiUuid(folderRows),
           error: null,
@@ -536,11 +607,18 @@ async function runFolderSyncRefreshAttempt(
     )
       ? stateOnFailure.selectedFolderChatIds
       : null;
-
-    set({
+    const projectedState = applyProjectedSidebarState({
+      ...stateOnFailure,
       folders: offlineFolders,
       selectedFolderId,
       selectedFolderChatIds,
+    });
+
+    set({
+      folders: projectedState.folders,
+      selectedFolderId,
+      selectedFolderChatIds,
+      selectedFolderSidebarChats: projectedState.selectedFolderSidebarChats,
       staleFolderIds: filterStaleFolderIdsByFolders(stateOnFailure.staleFolderIds, offlineFolders),
       error: "folder-sync:refresh_failed",
       ...(shouldToggleLoading ? { loading: false } : {}),
@@ -576,6 +654,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
     instanceId: null,
     showSystemFolders: true,
     labels: DEFAULT_LABELS,
+    lastSidebarProjectionInput: null,
     folderItemsByFolderId: new Map(),
     allFolderApiUuid: null,
     staleFolderIds: new Set(),
@@ -598,25 +677,39 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
       const resolvedSelectedFolderId =
         resolveSelectedFolderId(cachedFolders, currentSelected) ?? currentSelected;
 
-      set((state) => ({
-        instanceId,
-        showSystemFolders,
-        labels,
-        folders: cachedFolders,
-        selectedFolderId: resolvedSelectedFolderId,
-        selectedFolderChatIds: shouldLoadFolderItemsForSelection(
+      set((state) => {
+        const nextFolderItemsByFolderId = isInstanceChanged
+          ? new Map()
+          : state.folderItemsByFolderId;
+        const nextSelectedFolderChatIds = shouldLoadFolderItemsForSelection(
           cachedFolders,
           resolvedSelectedFolderId,
         )
           ? state.selectedFolderChatIds
-          : null,
-        error: null,
-        loading: state.loading && !isInstanceChanged,
-        // On instance switch clear items cache; otherwise reuse current map.
-        folderItemsByFolderId: isInstanceChanged ? new Map() : state.folderItemsByFolderId,
-        allFolderApiUuid: isInstanceChanged ? null : state.allFolderApiUuid,
-        staleFolderIds: isInstanceChanged ? new Set() : state.staleFolderIds,
-      }));
+          : null;
+        const projectedState = applyProjectedSidebarState({
+          ...state,
+          folders: cachedFolders,
+          selectedFolderId: resolvedSelectedFolderId,
+          selectedFolderChatIds: nextSelectedFolderChatIds,
+          folderItemsByFolderId: nextFolderItemsByFolderId,
+        });
+        return {
+          instanceId,
+          showSystemFolders,
+          labels,
+          folders: projectedState.folders,
+          selectedFolderId: resolvedSelectedFolderId,
+          selectedFolderChatIds: nextSelectedFolderChatIds,
+          selectedFolderSidebarChats: projectedState.selectedFolderSidebarChats,
+          error: null,
+          loading: state.loading && !isInstanceChanged,
+          // On instance switch clear items cache; otherwise reuse current map.
+          folderItemsByFolderId: nextFolderItemsByFolderId,
+          allFolderApiUuid: isInstanceChanged ? null : state.allFolderApiUuid,
+          staleFolderIds: isInstanceChanged ? new Set() : state.staleFolderIds,
+        };
+      });
       if (isInstanceChanged) {
         usePinStore.getState().clear();
       }
@@ -1054,9 +1147,15 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         if (!nextMap.has(id)) {
           nextMap.set(id, []);
         }
-        schedulePersistFolders(instanceId, nextFolders);
-        return {
+        const projectedState = applyProjectedSidebarState({
+          ...state,
           folders: nextFolders,
+          folderItemsByFolderId: nextMap,
+        });
+        schedulePersistFolders(instanceId, projectedState.folders);
+        return {
+          folders: projectedState.folders,
+          selectedFolderSidebarChats: projectedState.selectedFolderSidebarChats,
           folderItemsByFolderId: nextMap,
         };
       });
@@ -1104,14 +1203,22 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
               : new Set<string>();
         }
 
-        schedulePersistFolders(instanceId, nextFolders);
+        const projectedState = applyProjectedSidebarState({
+          ...state,
+          folders: nextFolders,
+          selectedFolderId: nextSelectedId,
+          selectedFolderChatIds,
+          folderItemsByFolderId: nextMap,
+        });
+        schedulePersistFolders(instanceId, projectedState.folders);
 
         return {
-          folders: nextFolders,
+          folders: projectedState.folders,
           folderItemsByFolderId: nextMap,
           staleFolderIds: nextStaleFolderIds,
           selectedFolderId: nextSelectedId,
           selectedFolderChatIds,
+          selectedFolderSidebarChats: projectedState.selectedFolderSidebarChats,
         };
       });
     },
@@ -1120,29 +1227,22 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
       const state = get();
       const inputChatCount = input.chatsSortedByLastMessage.length;
       const streamsCount = input.streamsMap.size;
-      const nextChats = buildSelectedFolderSidebarChats({
-        selectedFolderId: state.selectedFolderId,
-        folderChatIds: state.selectedFolderChatIds,
-        folderItemsByFolderId: state.folderItemsByFolderId,
+      const projectionInput: FolderSyncSidebarProjectionInput = {
         chatsSortedByLastMessage: input.chatsSortedByLastMessage,
         streamsMap: input.streamsMap,
         usersMapForChatInfo: input.usersMapForChatInfo,
         currentUserId: input.currentUserId,
         hideUnknownArchivedStreams: input.hideUnknownArchivedStreams,
         isStreamMuted: input.isStreamMuted,
-      });
-      const nextFolders = applyFolderUnreadBadges(state.folders, {
-        folderItemsByFolderId: state.folderItemsByFolderId,
-        chatsSortedByLastMessage: input.chatsSortedByLastMessage,
-        streamsMap: input.streamsMap,
-        usersMapForChatInfo: input.usersMapForChatInfo,
-        currentUserId: input.currentUserId,
-        hideUnknownArchivedStreams: input.hideUnknownArchivedStreams,
-        isStreamMuted: input.isStreamMuted,
+      };
+      const projectedState = applyProjectedSidebarState({
+        ...state,
+        lastSidebarProjectionInput: projectionInput,
       });
       set({
-        selectedFolderSidebarChats: nextChats,
-        folders: [...nextFolders],
+        lastSidebarProjectionInput: projectionInput,
+        selectedFolderSidebarChats: projectedState.selectedFolderSidebarChats,
+        folders: projectedState.folders,
       });
 
       folderSyncLog.debug("sidebarProjection", {
@@ -1151,12 +1251,12 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         loading: state.loading,
         inputChatCount,
         streamsCount,
-        sidebarChatCount: nextChats.length,
+        sidebarChatCount: projectedState.selectedFolderSidebarChats.length,
         folderItemsForSelectedCount:
           state.folderItemsByFolderId.get(state.selectedFolderId)?.length ?? 0,
       });
 
-      if (inputChatCount > 0 && nextChats.length === 0) {
+      if (inputChatCount > 0 && projectedState.selectedFolderSidebarChats.length === 0) {
         folderSyncLog.warn("sidebarProjection:emptyDespiteInputChats", {
           selectedFolderId: state.selectedFolderId,
           folderChatIds: describeFolderChatIds(state.selectedFolderChatIds),
@@ -1179,10 +1279,17 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         shouldLoadItems: shouldLoadFolderItemsForSelection(nextFolders, selectedFolderId),
         selectedFolderItems,
       });
-      set({
+      const projectedState = applyProjectedSidebarState({
+        ...state,
         folders: nextFolders,
         selectedFolderId,
         selectedFolderChatIds,
+      });
+      set({
+        folders: projectedState.folders,
+        selectedFolderId,
+        selectedFolderChatIds,
+        selectedFolderSidebarChats: projectedState.selectedFolderSidebarChats,
         showSystemFolders,
         labels,
       });
@@ -1209,6 +1316,7 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
         // Version bump blocks stale in-flight responses from applying.
         requestVersion: state.requestVersion + 1,
         instanceId: null,
+        lastSidebarProjectionInput: null,
         folderItemsByFolderId: new Map(),
         allFolderApiUuid: null,
         staleFolderIds: new Set(),
