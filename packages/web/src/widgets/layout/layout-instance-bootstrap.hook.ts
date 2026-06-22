@@ -3,14 +3,14 @@ import { buildMuteSnapshotFromBootstrap } from "~/features/mute-chat/mute-chat.m
 import type { MessengerSubscription, MessengerUserTopic } from "~/shared/api/messenger.types";
 
 export interface LayoutMuteSnapshot {
-  mutedStreamIds: number[];
+  mutedStreamIds: string[];
   mutedTopics: { streamId: string; topic: string }[];
   unmutedTopics: { streamId: string; topic: string }[];
   followedTopics: { streamId: string; topic: string }[];
-  streamDesktopNotifyEnabledIds: number[];
-  streamDesktopNotifyDisabledIds: number[];
-  streamAudibleNotifyEnabledIds: number[];
-  streamAudibleNotifyDisabledIds: number[];
+  streamDesktopNotifyEnabledIds: string[];
+  streamDesktopNotifyDisabledIds: string[];
+  streamAudibleNotifyEnabledIds: string[];
+  streamAudibleNotifyDisabledIds: string[];
 }
 
 export interface LayoutMuteBootstrapData {

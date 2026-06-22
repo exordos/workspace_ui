@@ -8,7 +8,7 @@ import {
 import type { MediaItem } from "./media-viewer.types";
 
 vi.mock("~/shared/lib/auth-guard", () => ({
-  buildAuthHeader: () => ({ Authorization: "Basic test" }),
+  buildAuthHeader: () => ({ Authorization: "Bearer test" }),
 }));
 
 describe("deriveMediaFileName", () => {

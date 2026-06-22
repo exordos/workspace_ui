@@ -3,10 +3,9 @@ import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspac
 
 /** IAM credential fields on a saved organization instance. */
 export interface IamInstanceTokens {
-  authType?: "api_key" | "session" | "iam";
+  authType: "iam";
   iamAccessToken?: string;
   iamRefreshToken?: string;
-  apiKey: string;
 }
 
 /** Fields required to resolve the IAM HTTP API origin for an instance. */
@@ -32,14 +31,10 @@ export function resolveIamApiOrigin(source: IamOriginSource): string {
   }
 }
 
-/** Resolves IAM access token, including legacy instances that stored it in `apiKey`. */
+/** Resolves the IAM access token for Bearer-authenticated backend calls. */
 export function resolveIamAccessToken(instance: IamInstanceTokens): string {
   if (instance.authType !== "iam") {
     return "";
   }
-  const fromField = instance.iamAccessToken?.trim() ?? "";
-  if (fromField.length > 0) {
-    return fromField;
-  }
-  return instance.apiKey.trim();
+  return instance.iamAccessToken?.trim() ?? "";
 }

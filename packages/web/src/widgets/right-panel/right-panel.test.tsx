@@ -499,7 +499,8 @@ describe("RightPanel truthfulness", () => {
     const instanceId = useInstancesStore.getState().addInstance({
       realm: "https://chat.example.test",
       login: "qa-user@example.test",
-      apiKey: "",
+      authType: "iam",
+      iamAccessToken: "",
     }).id;
     useInstancesStore.getState().setCurrentInstanceId(instanceId);
 

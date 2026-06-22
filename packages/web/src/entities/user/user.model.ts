@@ -23,7 +23,7 @@ export interface UserPresence {
   timestamp: number;
 }
 
-export type UserStatusReactionType = "unicode_emoji" | "realm_emoji" | "zulip_extra_emoji";
+export type UserStatusReactionType = "unicode_emoji" | "realm_emoji";
 
 export interface UserStatus {
   text: string;

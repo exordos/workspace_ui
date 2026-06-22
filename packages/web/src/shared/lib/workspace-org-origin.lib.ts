@@ -2,8 +2,8 @@
  * Workspace REST API origin helpers: login URL → origin, and organization realm → origin.
  *
  * Login stores the origin of the URL the user typed (`workspaceOrgOriginFromLoginServerUrlInput`).
- * When that field is missing (legacy data), `workspaceOrgApiOriginFromRealmRoot`
- * falls back to the canonical organization realm origin instead of inventing a sibling host.
+ * `workspaceOrgApiOriginFromRealmRoot` falls back to the canonical organization realm origin
+ * instead of inventing a sibling host.
  */
 
 /** Workspace API origin from the server URL the user typed at login (before Workspace canonical realm). */
@@ -11,9 +11,9 @@ export function workspaceOrgOriginFromLoginServerUrlInput(serverUrlInput: string
   const base = serverUrlInput
     .trim()
     .replace(/\/+$/, "")
-    .replace(/\/api\/v1$/i, "")
-    .replace(/\/api$/i, "")
-    .replace(/\/json$/i, "");
+    .replace(/\/api\/messenger\/v1$/i, "")
+    .replace(/\/workspace\/v1$/i, "")
+    .replace(/\/workspace$/i, "");
   if (base === "") {
     return "";
   }
@@ -25,7 +25,7 @@ export function workspaceOrgOriginFromLoginServerUrlInput(serverUrlInput: string
   }
 }
 
-/** Workspace HTTP API origin for legacy API calls with no stored Workspace origin. */
+/** Workspace HTTP API origin derived from the canonical organization realm. */
 export function workspaceOrgApiOriginFromRealmRoot(realmRoot: string): string {
   const trimmed = realmRoot.trim().replace(/\/+$/, "");
   if (trimmed === "") {

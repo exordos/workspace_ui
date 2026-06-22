@@ -73,7 +73,7 @@ export interface ChatListState {
    * metadata upserts that changed maps, or IDB hydrate with non-empty maps. False after clear.
    */
   sidebarDataHydrated: boolean;
-  /** True after authoritative subscriptions metadata is applied (bootstrap/register). */
+  /** True after authoritative stream metadata is applied. */
   streamMetadataHydrated: boolean;
   currentUserId: UserId | null;
   lastAppliedMessages: WorkspaceRawMessage[] | null;

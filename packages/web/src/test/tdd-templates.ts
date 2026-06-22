@@ -116,7 +116,7 @@ import { http, HttpResponse } from "msw";
 import { fetchItems } from "./my.api";
 
 const server = setupServer(
-  http.get("*\/api/v1/items", () => {
+  http.get("*\/api/messenger/v1/items", () => {
     return HttpResponse.json({
       result: "success",
       items: [{ id: 1, name: "Test" }],
@@ -137,7 +137,7 @@ describe("fetchItems", () => {
 
   it("handles server error", async () => {
     server.use(
-      http.get("*\/api/v1/items", () => {
+      http.get("*\/api/messenger/v1/items", () => {
         return HttpResponse.json({ result: "error" }, { status: 500 });
       }),
     );
@@ -146,7 +146,7 @@ describe("fetchItems", () => {
 
   it("handles empty response", async () => {
     server.use(
-      http.get("*\/api/v1/items", () => {
+      http.get("*\/api/messenger/v1/items", () => {
         return HttpResponse.json({ result: "success", items: [] });
       }),
     );

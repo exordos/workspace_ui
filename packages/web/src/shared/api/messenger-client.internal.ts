@@ -24,7 +24,6 @@ export interface WorkspaceClient {
       num_before?: number;
       num_after?: number;
       include_anchor?: boolean;
-      client_gravatar?: boolean;
       allow_empty_topic_name?: boolean;
       apply_markdown?: boolean;
     }) => Promise<{
@@ -56,7 +55,6 @@ export function buildMessagesQueryParams(params: {
     num_before: String(params.num_before ?? 100),
     num_after: String(params.num_after ?? 0),
     allow_empty_topic_name: "true",
-    client_gravatar: "true",
     apply_markdown: "false",
   };
   if (params.narrow != null) {

@@ -56,9 +56,7 @@ describe("extractFirstLinkPreviewUrl", () => {
 
   it("skips Messenger REST API URLs in message text", () => {
     expect(
-      extractFirstLinkPreviewUrl(
-        "https://messenger.tokens.team/api/v1/users?client_gravatar=false",
-      ),
+      extractFirstLinkPreviewUrl("https://messenger.tokens.team/api/messenger/v1/users"),
     ).toBeNull();
   });
 

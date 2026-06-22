@@ -50,7 +50,6 @@ async function findTopicAnchorMessageId(
     num_after: "1",
     include_anchor: "true",
     allow_empty_topic_name: "true",
-    client_gravatar: "false",
     apply_markdown: "false",
     narrow: JSON.stringify([
       { operator: "stream", operand: streamId },

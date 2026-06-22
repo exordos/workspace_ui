@@ -4,6 +4,7 @@
 import { t } from "~/i18n/i18n";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
+import { messageBodyToUnsanitizedDisplayHtml } from "~/shared/lib/message-markdown-display.lib";
 import { createMessageId, normalizeMessageId } from "~/shared/lib/message-id.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import {
@@ -111,7 +112,6 @@ async function fetchMessagesByIdsChunk(messageIds: MessageId[]): Promise<{
   const res = await messengerPipelineGet("/messages", {
     message_ids: messageIdsParam,
     allow_empty_topic_name: "true",
-    client_gravatar: "true",
     apply_markdown: "false",
   });
   if (!res?.ok) {
@@ -213,7 +213,6 @@ async function fetchMessageWindow(options: MessageWindowOptions): Promise<Worksp
     ...(includeAnchor == null ? {} : { include_anchor: includeAnchor ? "true" : "false" }),
     num_before: String(numBefore),
     num_after: String(numAfter),
-    client_gravatar: "true",
     allow_empty_topic_name: "true",
     apply_markdown: applyMarkdown ? "true" : "false",
   });
@@ -300,7 +299,6 @@ export async function fetchActivityMessagesPage(
         num_after: "0",
         narrow: JSON.stringify(narrow),
         allow_empty_topic_name: "true",
-        client_gravatar: "true",
         apply_markdown: "false",
       },
       options?.signal,
@@ -495,7 +493,6 @@ export async function fetchAllMessagesPage(
         num_after: "0",
         narrow: "[]",
         allow_empty_topic_name: "true",
-        client_gravatar: "true",
         apply_markdown: applyMarkdown ? "true" : "false",
       },
       options?.signal,
@@ -570,7 +567,6 @@ export async function fetchDmMessages(
     anchor: "newest",
     num_before: MESSENGER_DM_ANCHOR_NUM_BEFORE,
     num_after: MESSENGER_DM_CHAT_NUM_AFTER,
-    client_gravatar: true,
     allow_empty_topic_name: true,
     apply_markdown: true,
   };
@@ -719,51 +715,13 @@ export async function fetchMessageRenderedHtmlById(
 }
 
 export async function fetchSavedSnippets(): Promise<SavedSnippet[]> {
-  const res = await messengerPipelineGet("/saved_snippets");
-  if (!res?.ok) {
-    throw new Error(t("app.errorStatus", { status: String(res?.status ?? 0) }));
-  }
-  const data = res.data as { result?: string; msg?: string; saved_snippets?: unknown[] };
-  if (data.result === "error") {
-    throw new Error(data.msg ?? t("app.unknownError"));
-  }
-  if (!Array.isArray(data.saved_snippets)) {
-    return [];
-  }
-  const snippets: SavedSnippet[] = [];
-  for (const item of data.saved_snippets) {
-    if (item == null || typeof item !== "object") continue;
-    const row = item as Record<string, unknown>;
-    const id = typeof row.id === "number" ? row.id : 0;
-    const title = typeof row.title === "string" ? row.title : "";
-    const content = typeof row.content === "string" ? row.content : "";
-    let dateCreated = 0;
-    if (typeof row.date_created === "number") {
-      dateCreated = row.date_created;
-    } else if (typeof row.dateCreated === "number") {
-      dateCreated = row.dateCreated;
-    }
-    if (id <= 0 || title.trim().length === 0 || content.trim().length === 0) continue;
-    snippets.push({
-      id,
-      title,
-      content,
-      date_created: dateCreated,
-    });
-  }
-  snippets.sort((left, right) => left.title.localeCompare(right.title));
-  return snippets;
+  return [];
 }
 
 export async function createSavedSnippet(params: CreateSavedSnippetParams): Promise<number> {
-  const title = guard.nonEmpty(params.title.trim(), "createSavedSnippet.title");
-  const content = guard.nonEmpty(params.content.trim(), "createSavedSnippet.content");
-  const res = await messengerPipelinePost("/saved_snippets", { title, content });
-  const data = res.data as { result?: string; msg?: string; saved_snippet_id?: number };
-  if (!res.ok || data.result === "error") {
-    throw new Error(data.msg ?? t("app.errorStatus", { status: String(res.status) }));
-  }
-  return data.saved_snippet_id ?? 0;
+  guard.nonEmpty(params.title.trim(), "createSavedSnippet.title");
+  guard.nonEmpty(params.content.trim(), "createSavedSnippet.content");
+  throw new Error("Saved snippets are unsupported by the current backend");
 }
 
 export async function sendMessage(params: SendMessageParams): Promise<MockMessage> {
@@ -808,18 +766,10 @@ export async function sendMessage(params: SendMessageParams): Promise<MockMessag
   return message;
 }
 
-/** Renders markdown via Workspace for composer preview. */
+/** Renders markdown locally for composer preview. */
 export async function renderMessageContent(content: string): Promise<string> {
   const normalizedContent = guard.nonEmpty(content, "renderMessageContent.content");
-  const res = await messengerPipelinePost("messages/render", { content: normalizedContent });
-  const data = res.data as { result?: string; msg?: string; rendered?: string };
-  if (!res.ok || data.result === "error") {
-    throw new Error(data.msg ?? t("app.errorStatus", { status: String(res.status) }));
-  }
-  if (typeof data.rendered !== "string") {
-    throw new Error(t("app.invalidResponse"));
-  }
-  return data.rendered;
+  return messageBodyToUnsanitizedDisplayHtml(normalizedContent, { treatAsMarkdown: true });
 }
 
 export async function updateMessage(

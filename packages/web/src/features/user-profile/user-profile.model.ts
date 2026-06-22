@@ -10,6 +10,7 @@ import {
 import { requestUserStatus } from "~/entities/user/api/user.api";
 import { useUsersStore } from "~/entities/user/user.model";
 import { logStoreAction } from "~/shared/lib/logger";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import { fetchUserProfile as apiFetchUserProfile } from "./user-profile.api";
 import type { UserProfileData } from "./user-profile.types";
 
@@ -21,7 +22,7 @@ interface UserProfileState {
   error: string | null;
   requestVersion: number;
 
-  loadProfile: (userId: number, options?: { signal?: AbortSignal }) => Promise<void>;
+  loadProfile: (userId: UserId, options?: { signal?: AbortSignal }) => Promise<void>;
   clear: () => void;
 }
 

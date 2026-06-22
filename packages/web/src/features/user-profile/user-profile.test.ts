@@ -1,41 +1,34 @@
 /**
- * Tests for user profile feature — loading, caching, clearing, and error handling.
+ * Tests for user profile feature backed by the new users API.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
-import { clearRealmProfileFieldsCache } from "~/shared/api/messenger-realm-profile-fields";
 import { useUserProfileStore } from "./user-profile.model";
 
-const requestUserStatusMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+const USER_UUID = "11111111-1111-4111-8111-111111111111";
+const OTHER_USER_UUID = "22222222-2222-4222-8222-222222222222";
 
-vi.mock("~/shared/api/client", () => ({
-  messengerApi: {
-    get: vi.fn(),
-  },
-  getCurrentInstance: vi.fn(() => null),
+const { fetchUserMock, requestUserStatusMock } = vi.hoisted(() => ({
+  fetchUserMock: vi.fn(),
+  requestUserStatusMock: vi.fn(() => Promise.resolve()),
+}));
+
+vi.mock("~/shared/api/messenger-users", () => ({
+  fetchUser: (...args: unknown[]) => fetchUserMock(...args),
 }));
 
 vi.mock("~/entities/user/api/user.api", () => ({
-  requestUserStatus: requestUserStatusMock,
+  requestUserStatus: (...args: unknown[]) => requestUserStatusMock(...args),
 }));
 
-const MOCK_MESSENGER_USER = {
-  user: {
-    user_id: 42,
-    full_name: "Alice Wonderland",
-    email: "alice@example.com",
-    avatar_url: "https://example.com/avatar.png",
-    role: 400,
-    is_bot: false,
-    is_active: true,
-    date_joined: "2025-01-10T08:15:00Z",
-    timezone: "Europe/Moscow",
-    profile_data: {
-      "1": { value: "Engineer" },
-      "2": { value: "+7-999-123-4567" },
-    },
-  },
+const MOCK_USER = {
+  user_id: USER_UUID,
+  full_name: "Alice Wonderland",
+  email: "alice@example.com",
+  avatar_url: "https://example.com/avatar.png",
+  role: 400,
+  is_active: true,
 };
 
 describe("useUserProfileStore", () => {
@@ -43,7 +36,7 @@ describe("useUserProfileStore", () => {
     useUserProfileStore.getState().clear();
     useUsersStore.getState().clear();
     useInstancesStore.setState({ instances: [], currentInstanceId: null, activeOrgEpoch: 0 });
-    clearRealmProfileFieldsCache();
+    fetchUserMock.mockReset();
     requestUserStatusMock.mockReset();
     vi.restoreAllMocks();
   });
@@ -58,209 +51,113 @@ describe("useUserProfileStore", () => {
   });
 
   describe("loadProfile", () => {
-    it("loads profile on success", async () => {
-      const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.get).mockResolvedValue({
-        ok: true,
-        status: 200,
-        data: MOCK_MESSENGER_USER,
-        headers: new Headers(),
-        raw: new Response(),
-        durationMs: 50,
-      });
+    it("loads a UUID profile from the new users API", async () => {
+      fetchUserMock.mockResolvedValue(MOCK_USER);
 
-      await useUserProfileStore.getState().loadProfile(42);
+      await useUserProfileStore.getState().loadProfile(USER_UUID);
 
-      expect(messengerApi.get).toHaveBeenCalledWith(
-        "/users/42",
-        {
-          client_gravatar: "false",
-          include_custom_profile_fields: "true",
-        },
-        undefined,
-      );
+      expect(fetchUserMock).toHaveBeenCalledWith(USER_UUID, undefined);
 
       const state = useUserProfileStore.getState();
       expect(state.status).toBe("done");
-      expect(state.profile).not.toBeNull();
-      expect(state.profile!.userId).toBe(42);
-      expect(state.profile!.fullName).toBe("Alice Wonderland");
-      expect(state.profile!.email).toBe("alice@example.com");
-      expect(state.profile!.timezone).toBe("Europe/Moscow");
-      expect(state.profile!.jobTitle).toBe("Engineer");
-      expect(state.profile!.phone).toBe("+7-999-123-4567");
-      expect(state.profile!.isBot).toBe(false);
-      expect(state.profile!.isActive).toBe(true);
-      expect(state.profile!.dateJoined).toBe("2025-01-10T08:15:00Z");
+      expect(state.profile).toEqual({
+        userId: USER_UUID,
+        fullName: "Alice Wonderland",
+        email: "alice@example.com",
+        avatarUrl: "https://example.com/avatar.png",
+        role: 400,
+        isActive: true,
+      });
 
-      const merged = useUsersStore.getState().getUser(42);
+      const merged = useUsersStore.getState().getUser(USER_UUID);
       expect(merged?.full_name).toBe("Alice Wonderland");
       expect(merged?.email).toBe("alice@example.com");
       expect(merged?.avatar_url).toBe("https://example.com/avatar.png");
       expect(merged?.role).toBe(400);
       expect(merged?.is_active).toBe(true);
-      expect(requestUserStatusMock).toHaveBeenCalledWith(42, {
+      expect(requestUserStatusMock).toHaveBeenCalledWith(USER_UUID, {
         reason: "right_panel",
         priority: "high",
       });
     });
 
-    it("maps profile_data using realm field definitions when instance is active", async () => {
-      const { messengerApi, getCurrentInstance } = await import("~/shared/api/client");
-      vi.mocked(getCurrentInstance).mockReturnValue({
-        id: "test-inst",
-        realm: "https://z.example.com",
-        login: "a@b.com",
-        apiKey: "key",
-      });
-      vi.mocked(messengerApi.get).mockImplementation((path: string) => {
-        if (path === "/realm/profile_fields") {
-          return Promise.resolve({
-            ok: true,
-            status: 200,
-            data: {
-              custom_fields: [
-                { id: 5, name: "Должность", type: 1, order: 1 },
-                { id: 6, name: "Телефон", type: 1, order: 2 },
-              ],
-            },
-            headers: new Headers(),
-            raw: new Response(),
-            durationMs: 1,
-          });
-        }
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          data: {
-            user: {
-              user_id: 7,
-              full_name: "Sam",
-              email: "sam@example.com",
-              avatar_url: "",
-              role: 400,
-              profile_data: {
-                "5": { value: "AQA Lead" },
-                "6": { value: "+7 900 000-00-00" },
-              },
-            },
-          },
-          headers: new Headers(),
-          raw: new Response(),
-          durationMs: 1,
-        });
+    it("handles optional fields omitted by the new backend", async () => {
+      fetchUserMock.mockResolvedValue({
+        user_id: OTHER_USER_UUID,
+        full_name: "Bob",
       });
 
-      await useUserProfileStore.getState().loadProfile(7);
+      await useUserProfileStore.getState().loadProfile(OTHER_USER_UUID);
 
       const state = useUserProfileStore.getState();
-      expect(state.profile?.jobTitle).toBe("AQA Lead");
-      expect(state.profile?.phone).toBe("+7 900 000-00-00");
+      expect(state.status).toBe("done");
+      expect(state.profile).toEqual({
+        userId: OTHER_USER_UUID,
+        fullName: "Bob",
+        email: "",
+        avatarUrl: undefined,
+        role: undefined,
+        isActive: undefined,
+      });
     });
 
-    it("sets error on failed response", async () => {
-      const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.get).mockResolvedValue({
-        ok: false,
-        status: 404,
-        data: null,
-        headers: new Headers(),
-        raw: new Response(),
-        durationMs: 10,
-      });
+    it("sets error when the user is not returned", async () => {
+      fetchUserMock.mockResolvedValue(null);
 
-      await useUserProfileStore.getState().loadProfile(999);
+      await useUserProfileStore.getState().loadProfile(USER_UUID);
 
       const state = useUserProfileStore.getState();
       expect(state.status).toBe("error");
       expect(state.error).toContain("Failed");
       expect(state.profile).toBeNull();
+      expect(requestUserStatusMock).not.toHaveBeenCalled();
     });
 
     it("sets error on network exception", async () => {
-      const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.get).mockRejectedValue(new Error("timeout"));
+      fetchUserMock.mockRejectedValue(new Error("timeout"));
 
-      await useUserProfileStore.getState().loadProfile(42);
+      await useUserProfileStore.getState().loadProfile(USER_UUID);
 
       const state = useUserProfileStore.getState();
       expect(state.status).toBe("error");
     });
 
-    it("handles missing optional profile fields", async () => {
-      const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.get).mockResolvedValue({
-        ok: true,
-        status: 200,
-        data: {
-          user: {
-            user_id: 10,
-            full_name: "Bob",
-            email: "bob@example.com",
-            avatar_url: "",
-            role: 400,
-          },
-        },
-        headers: new Headers(),
-        raw: new Response(),
-        durationMs: 20,
-      });
-
-      await useUserProfileStore.getState().loadProfile(10);
-
-      const state = useUserProfileStore.getState();
-      expect(state.status).toBe("done");
-      expect(state.profile!.userId).toBe(10);
-      expect(state.profile!.jobTitle).toBeUndefined();
-      expect(state.profile!.phone).toBeUndefined();
-      expect(state.profile!.timezone).toBeUndefined();
-      expect(state.profile!.isBot).toBeUndefined();
-      expect(state.profile!.isActive).toBeUndefined();
-      expect(state.profile!.dateJoined).toBeUndefined();
-    });
-
     it("does not apply stale profile after organization switch and clear", async () => {
-      const { messengerApi, getCurrentInstance } = await import("~/shared/api/client");
-      vi.mocked(getCurrentInstance).mockReturnValue(null);
       useInstancesStore.setState({
         instances: [
-          { id: "inst-a", realm: "https://a.test", login: "a@test.com", apiKey: "a-key" },
-          { id: "inst-b", realm: "https://b.test", login: "b@test.com", apiKey: "b-key" },
+          {
+            id: "inst-a",
+            realm: "https://a.test",
+            login: "a@test.com",
+            authType: "iam",
+            iamAccessToken: "a-key",
+          },
+          {
+            id: "inst-b",
+            realm: "https://b.test",
+            login: "b@test.com",
+            authType: "iam",
+            iamAccessToken: "b-key",
+          },
         ],
         currentInstanceId: "inst-a",
         activeOrgEpoch: 0,
       });
 
-      let resolveResponse:
-        | ((value: {
-            ok: true;
-            status: number;
-            data: typeof MOCK_MESSENGER_USER;
-            headers: Headers;
-            raw: Response;
-            durationMs: number;
-          }) => void)
-        | undefined;
-      vi.mocked(messengerApi.get).mockImplementationOnce(
+      let resolveResponse: ((value: typeof MOCK_USER) => void) | undefined;
+      fetchUserMock.mockImplementationOnce(
         () =>
           new Promise((resolve) => {
             resolveResponse = resolve;
           }),
       );
 
-      const pending = useUserProfileStore.getState().loadProfile(42);
+      const pending = useUserProfileStore.getState().loadProfile(USER_UUID);
       useInstancesStore.getState().setCurrentInstanceId("inst-b");
       useUserProfileStore.getState().clear();
 
       expect(resolveResponse).toBeTypeOf("function");
-      resolveResponse!({
-        ok: true,
-        status: 200,
-        data: MOCK_MESSENGER_USER,
-        headers: new Headers(),
-        raw: new Response(),
-        durationMs: 50,
-      });
+      resolveResponse!(MOCK_USER);
 
       await pending;
 
@@ -268,24 +165,16 @@ describe("useUserProfileStore", () => {
       expect(state.status).toBe("idle");
       expect(state.profile).toBeNull();
       expect(state.error).toBeNull();
-      expect(useUsersStore.getState().getUser(42)).toBeUndefined();
+      expect(useUsersStore.getState().getUser(USER_UUID)).toBeUndefined();
       expect(requestUserStatusMock).not.toHaveBeenCalled();
     });
   });
 
   describe("clear", () => {
     it("resets profile and status", async () => {
-      const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.get).mockResolvedValue({
-        ok: true,
-        status: 200,
-        data: MOCK_MESSENGER_USER,
-        headers: new Headers(),
-        raw: new Response(),
-        durationMs: 50,
-      });
+      fetchUserMock.mockResolvedValue(MOCK_USER);
 
-      await useUserProfileStore.getState().loadProfile(42);
+      await useUserProfileStore.getState().loadProfile(USER_UUID);
       useUserProfileStore.getState().clear();
 
       const state = useUserProfileStore.getState();
@@ -297,20 +186,12 @@ describe("useUserProfileStore", () => {
 
   describe("status transitions", () => {
     it("transitions through loading to done", async () => {
-      const { messengerApi } = await import("~/shared/api/client");
       const statuses: string[] = [];
       const unsub = useUserProfileStore.subscribe((s) => statuses.push(s.status));
 
-      vi.mocked(messengerApi.get).mockResolvedValue({
-        ok: true,
-        status: 200,
-        data: MOCK_MESSENGER_USER,
-        headers: new Headers(),
-        raw: new Response(),
-        durationMs: 50,
-      });
+      fetchUserMock.mockResolvedValue(MOCK_USER);
 
-      await useUserProfileStore.getState().loadProfile(42);
+      await useUserProfileStore.getState().loadProfile(USER_UUID);
       unsub();
 
       expect(statuses).toContain("loading");
@@ -318,20 +199,12 @@ describe("useUserProfileStore", () => {
     });
 
     it("transitions through loading to error on failure", async () => {
-      const { messengerApi } = await import("~/shared/api/client");
       const statuses: string[] = [];
       const unsub = useUserProfileStore.subscribe((s) => statuses.push(s.status));
 
-      vi.mocked(messengerApi.get).mockResolvedValue({
-        ok: false,
-        status: 500,
-        data: null,
-        headers: new Headers(),
-        raw: new Response(),
-        durationMs: 10,
-      });
+      fetchUserMock.mockResolvedValue(null);
 
-      await useUserProfileStore.getState().loadProfile(42);
+      await useUserProfileStore.getState().loadProfile(USER_UUID);
       unsub();
 
       expect(statuses).toContain("loading");

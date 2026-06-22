@@ -1,123 +1,87 @@
 /**
  * Workspace users and presence API.
  */
-import { guard } from "~/shared/lib/guards";
+import { resolveUserUuidFromAccessToken } from "~/shared/lib/access-token-claims.lib";
+import { resolveIamAccessToken } from "~/shared/lib/iam-instance.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
-import { userIdStorageKey } from "~/shared/lib/user-id.lib";
-import { getCurrentInstance } from "./client";
-import { fetchIamUserByUuid, fetchIamUsers, getIamCurrentUser } from "./iam-api";
-import { parseCurrentUserFromApiData } from "./messenger-current-user.lib";
-import { messengerPipelineGet } from "./messenger-pipeline.internal";
-import { normalizeRealmEmojiMap } from "./messenger-realm-emoji.lib";
+import { isIamUserUuid, userIdStorageKey } from "~/shared/lib/user-id.lib";
+import {
+  getCurrentInstance,
+  getMessengerGatewayApiBaseForCurrentInstance,
+  messengerApi,
+} from "./client";
+import { parseMessengerGatewayUser, parseMessengerGatewayUserList } from "./messenger-users.lib";
 import type {
   AvatarUrlByUserId,
   RealmEmoji,
-  RealmPresenceResponse,
   WorkspaceCurrentUser,
   MessengerUserMember,
 } from "./messenger.types";
 
 export async function getCurrentUser(): Promise<WorkspaceCurrentUser | null> {
   const instance = getCurrentInstance();
-  if (instance?.authType === "iam") {
-    return getIamCurrentUser();
-  }
-  const res = await messengerPipelineGet("/users/me");
-  if (!res?.ok) {
+  if (instance == null) {
     return null;
   }
-  return parseCurrentUserFromApiData(res.data);
+  const userUuid = resolveUserUuidFromAccessToken(resolveIamAccessToken(instance));
+  if (userUuid == null) {
+    return null;
+  }
+  const user = await fetchUser(userUuid);
+  if (user == null) {
+    return null;
+  }
+  return {
+    user_id: user.user_id,
+    full_name: user.full_name ?? "",
+    email: user.email ?? "",
+  };
 }
 
 /** Fetches the full user list for populating usersStore. */
 export async function fetchUsers(): Promise<MessengerUserMember[]> {
-  const instance = getCurrentInstance();
-  if (instance?.authType === "iam") {
-    return fetchIamUsers();
-  }
-  const res = await messengerPipelineGet("/users", {
-    client_gravatar: "false",
-    include_custom_profile_fields: "true",
-  });
-  if (!res?.ok) {
+  try {
+    const res = await messengerApi.getWithBase(
+      getMessengerGatewayApiBaseForCurrentInstance(),
+      "/users/",
+    );
+    if (!res.ok) {
+      return [];
+    }
+    return parseMessengerGatewayUserList(res.data);
+  } catch {
     return [];
   }
-  const data = res.data as {
-    result?: string;
-    members?: MessengerUserMember[];
-    users?: MessengerUserMember[];
-  };
-  if (data.result === "error") return [];
-  if (Array.isArray(data.members)) {
-    return data.members;
-  }
-  if (Array.isArray(data.users)) {
-    return data.users;
-  }
-  return [];
 }
 
-/** Fetches a single user by id (numeric messenger id or IAM UUID). */
+/** Fetches a single user by UUID from the Workspace gateway backend. */
 export async function fetchUser(
   userId: UserId,
   options?: { signal?: AbortSignal },
 ): Promise<MessengerUserMember | null> {
-  guard.userIdentity(userId, "fetchUser");
-  const instance = getCurrentInstance();
-  if (instance?.authType === "iam") {
-    if (typeof userId !== "string") {
+  if (!isIamUserUuid(userId)) {
+    return null;
+  }
+  const userUuid = userId.trim().toLowerCase();
+  try {
+    const res = await messengerApi.getWithBase(
+      getMessengerGatewayApiBaseForCurrentInstance(),
+      "/users/" + userUuid,
+      undefined,
+      options?.signal,
+    );
+    if (!res.ok) {
       return null;
     }
-    return fetchIamUserByUuid(userId, options);
-  }
-  if (typeof userId !== "number") {
+    return parseMessengerGatewayUser(res.data);
+  } catch {
     return null;
   }
-  const res = await messengerPipelineGet(
-    `/users/${userId}`,
-    {
-      client_gravatar: "false",
-      include_custom_profile_fields: "true",
-    },
-    options?.signal,
-  );
-  if (!res?.ok) {
-    return null;
-  }
-  const data = res.data as {
-    result?: string;
-    user?: MessengerUserMember;
-  };
-  if (data.result === "error" || !data.user?.user_id) return null;
-  return data.user;
 }
 
-/** Fetches presence data for all users (GET /api/v1/realm/presence). */
-export async function fetchRealmPresence(): Promise<RealmPresenceResponse> {
-  const res = await messengerPipelineGet("/realm/presence");
-  if (!res?.ok) {
-    return { result: "error" };
-  }
-  return res.data as RealmPresenceResponse;
-}
-
-/** Fetches custom realm emoji in emoji-picker-react compatible shape (GET /realm/emoji). */
+/** The current backend does not expose custom realm emoji metadata. */
 export async function fetchRealmEmojis(): Promise<RealmEmoji[]> {
-  const res = await messengerPipelineGet("/realm/emoji");
-  if (!res?.ok) {
-    return [];
-  }
-  const data = res.data as {
-    result?: string;
-    emoji?: Record<
-      string,
-      { id?: string | number; name?: string; source_url?: string; deactivated?: boolean }
-    >;
-  };
-  if (data.result === "error") {
-    return [];
-  }
-  return normalizeRealmEmojiMap(data.emoji);
+  return [];
 }
 
 /**

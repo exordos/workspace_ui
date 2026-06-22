@@ -39,7 +39,7 @@ export const FOLDER_SYNC_POLL_INTERVAL_MS = 5 * 60_000;
 
 /**
  * Hard cap for each Workspace HTTP request (until response headers + JSON body read via fetch).
- * Retries receive a fresh timeout window. Does not apply to GET long-poll `.../events`.
+ * Retries receive a fresh timeout window.
  */
 export const MESSENGER_API_FETCH_TIMEOUT_MS = 60_000;
 

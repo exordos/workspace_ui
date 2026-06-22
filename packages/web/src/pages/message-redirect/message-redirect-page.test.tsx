@@ -39,7 +39,13 @@ describe("MessageRedirectPage", () => {
   it("redirects to login with realm prefill when no saved instance matches", async () => {
     useInstancesStore.setState({
       instances: [
-        { id: "1", realm: "https://other.example.com", login: "a@test.com", apiKey: "k" },
+        {
+          id: "1",
+          realm: "https://other.example.com",
+          login: "a@test.com",
+          authType: "iam",
+          iamAccessToken: "k",
+        },
       ],
       currentInstanceId: "1",
     });
@@ -70,8 +76,20 @@ describe("MessageRedirectPage", () => {
   it("switches to the matched saved instance before resolving the final route", async () => {
     useInstancesStore.setState({
       instances: [
-        { id: "1", realm: "https://other.example.com", login: "a@test.com", apiKey: "k1" },
-        { id: "2", realm: "https://chat.example.com", login: "b@test.com", apiKey: "k2" },
+        {
+          id: "1",
+          realm: "https://other.example.com",
+          login: "a@test.com",
+          authType: "iam",
+          iamAccessToken: "k1",
+        },
+        {
+          id: "2",
+          realm: "https://chat.example.com",
+          login: "b@test.com",
+          authType: "iam",
+          iamAccessToken: "k2",
+        },
       ],
       currentInstanceId: "1",
     });
@@ -114,7 +132,15 @@ describe("MessageRedirectPage", () => {
 
   it("fails fast for non-decimal message id params", async () => {
     useInstancesStore.setState({
-      instances: [{ id: "1", realm: "https://chat.example.com", login: "a@test.com", apiKey: "k" }],
+      instances: [
+        {
+          id: "1",
+          realm: "https://chat.example.com",
+          login: "a@test.com",
+          authType: "iam",
+          iamAccessToken: "k",
+        },
+      ],
       currentInstanceId: "1",
     });
     useChatListStore.setState({ currentUserId: 7 });
@@ -147,7 +173,15 @@ describe("MessageRedirectPage", () => {
 
   it("shows access denied error when target message is unavailable", async () => {
     useInstancesStore.setState({
-      instances: [{ id: "1", realm: "https://chat.example.com", login: "a@test.com", apiKey: "k" }],
+      instances: [
+        {
+          id: "1",
+          realm: "https://chat.example.com",
+          login: "a@test.com",
+          authType: "iam",
+          iamAccessToken: "k",
+        },
+      ],
       currentInstanceId: "1",
     });
     useChatListStore.setState({ currentUserId: 7 });
@@ -168,7 +202,15 @@ describe("MessageRedirectPage", () => {
 
   it("ignores invalid realm query values and resolves within current instance", async () => {
     useInstancesStore.setState({
-      instances: [{ id: "1", realm: "https://chat.example.com", login: "a@test.com", apiKey: "k" }],
+      instances: [
+        {
+          id: "1",
+          realm: "https://chat.example.com",
+          login: "a@test.com",
+          authType: "iam",
+          iamAccessToken: "k",
+        },
+      ],
       currentInstanceId: "1",
     });
     useChatListStore.setState({ currentUserId: 7 });

@@ -8,9 +8,6 @@ import { WebViewShell } from "./webview-shell";
 const LoginPage = React.lazy(() =>
   import("~/pages/login/login-page.ui").then((m) => ({ default: m.LoginPage })),
 );
-const PasteTokenPage = React.lazy(() =>
-  import("~/pages/login/paste-token-page.ui").then((m) => ({ default: m.PasteTokenPage })),
-);
 const ChatPage = React.lazy(() =>
   import("~/pages/chat/chat-page.ui").then((m) => ({ default: m.ChatPage })),
 );
@@ -72,7 +69,6 @@ export const WebViewAppRoutes: React.FC = () => (
 
 export const LoginAppRoutes: React.FC = () => (
   <Routes>
-    <Route path="/paste-token" element={<PasteTokenPage />} />
     <Route path="*" element={<LoginPage />} />
   </Routes>
 );
@@ -94,7 +90,6 @@ export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/paste-token" element={<PasteTokenPage />} />
       <Route path="/" element={<Navigate to={defaultInboxRoute} replace />} />
       <Route path="/org/:orgId" element={<OrgInboxRedirect />} />
       <Route path="/force-update" element={<UpdatePage forceMode />} />

@@ -25,7 +25,7 @@ describe("loggingMiddleware", () => {
     const next: NextFn = vi.fn().mockResolvedValue(createMockResponse({ status: 201 }));
     const req: ApiRequest = {
       method: "POST",
-      url: "https://chat.example.com/api/v1/messages",
+      url: "https://chat.example.com/api/messenger/v1/messages",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: "type=stream&stream_id=10",
       meta: {},
@@ -35,9 +35,26 @@ describe("loggingMiddleware", () => {
 
     const entry = getLogHistory().find((e) => e.scope === "api");
     expect(entry).toBeDefined();
-    expect(entry!.message).toBe("POST /api/v1/messages");
+    expect(entry!.message).toBe("POST /api/messenger/v1/messages");
     const data = entry!.data as Record<string, unknown>;
     expect(data.status).toBe(201);
     expect((data.params as Record<string, string>).stream_id).toBe("10");
+  });
+
+  it("does not log aborted requests as API failures", async () => {
+    const abortError = new DOMException("Aborted", "AbortError");
+    const next: NextFn = vi.fn().mockRejectedValue(abortError);
+    const controller = new AbortController();
+    controller.abort();
+    const req: ApiRequest = {
+      method: "GET",
+      url: "https://chat.example.com/api/messenger/v1/messages",
+      headers: {},
+      meta: {},
+      signal: controller.signal,
+    };
+
+    await expect(loggingMiddleware(req, next)).rejects.toBe(abortError);
+    expect(getLogHistory().filter((entry) => entry.scope === "api")).toEqual([]);
   });
 });

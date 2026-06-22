@@ -1,14 +1,14 @@
 /**
  * Hook for reading user custom status in UI.
  *
- * Exposes `{ statusLabel, fetchState, hasStatus }` and routes missing-status fetches
- * through the centralized orchestrator — components never call the network directly.
+ * Exposes `{ statusLabel, fetchState, hasStatus }` and routes optional missing-status
+ * requests through the backend-only user API facade.
  */
 import { useEffect, useMemo, useState } from "react";
 import { createLogger } from "~/shared/lib/logger";
 import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
-import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
-import { requestUserStatus, type RequestUserStatusOptions } from "./api/user.api";
+import type { UserId } from "~/shared/lib/user-id.lib";
+import type { RequestUserStatusOptions } from "./api/user.api";
 import {
   formatUserStatusLabel,
   getUserStatusEmojiDisplay,
@@ -32,10 +32,7 @@ export interface UserStatusSnapshot {
 export interface UseUserStatusOptions extends Pick<
   RequestUserStatusOptions,
   "reason" | "priority"
-> {
-  /** When true and status is missing, triggers centralized fallback load. */
-  requestOnMissing?: boolean;
-}
+> {}
 
 export function selectUserStatusSnapshot(user: UserRecord | undefined): UserStatusSnapshot {
   const statusLabel = formatUserStatusLabel(user?.status) ?? undefined;
@@ -52,27 +49,6 @@ export function useUserStatus(
 ): UserStatusSnapshot {
   const user = useUsersStore((state) => (userId != null ? state.getUser(userId) : undefined));
   const snapshot = useMemo(() => selectUserStatusSnapshot(user), [user]);
-
-  useEffect(() => {
-    const numericUserId = numericUserIdOrNull(userId);
-    if (numericUserId == null || options?.requestOnMissing !== true) {
-      return;
-    }
-    if (snapshot.hasStatus || snapshot.fetchState === "loading") {
-      return;
-    }
-    void requestUserStatus(numericUserId, {
-      reason: options.reason ?? "compat",
-      priority: options.priority ?? "low",
-    });
-  }, [
-    options?.priority,
-    options?.reason,
-    options?.requestOnMissing,
-    snapshot.fetchState,
-    snapshot.hasStatus,
-    userId,
-  ]);
 
   return snapshot;
 }

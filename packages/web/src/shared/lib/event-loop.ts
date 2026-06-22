@@ -1,351 +1,36 @@
 /**
- * Long-poll event loop for Workspace messenger real-time events API.
+ * Workspace realtime event loop facade.
  *
- * Network awareness:
- * - Detects offline state, pauses retries (no wasted requests)
- * - On reconnect: immediately re-registers queue and resumes
- *
- * Background tab resilience:
- * - Long-poll fetch works in background (not throttled)
- * - On tab resume: nudges event loop to continue without timer delay
+ * The old Messenger queue transport is not part of the Workspace gateway backend. Realtime
+ * bootstrap now happens through explicit gateway fetches; this facade is kept so
+ * callers can be simplified incrementally without reintroducing old network traffic.
  */
-import {
-  getEvents,
-  getEventsForCredentials,
-  registerQueue,
-  registerQueueForCredentials,
-} from "~/shared/api/messenger-queue";
-import type {
-  RegisterQueueResult,
-  MessengerCredentials,
-  MessengerEvent,
-} from "~/shared/api/messenger.types";
-import {
-  isLikelyNetworkError,
-  noteApiTransportFailure,
-  noteApiTransportSuccess,
-} from "~/shared/lib/connection-health";
-import { recordDiagnosticRealtimeEvent } from "~/shared/lib/diagnostics-realtime.lib";
-import {
-  runEventLoopPollCycle,
-  shouldExitEventLoop,
-  waitForNetworkAtLoopStart,
-} from "~/shared/lib/event-loop-handlers/event-loop-poll.lib";
-import { attachEventLoopLifecycle } from "~/shared/lib/event-loop-lifecycle.lib";
+import type { MessengerCredentials, MessengerEvent } from "~/shared/api/messenger.types";
 import { createLogger } from "~/shared/lib/logger";
-import {
-  clearMessengerEventQueueId,
-  setMessengerEventQueueId,
-} from "~/shared/lib/messenger-event-queue-registry.lib";
-import { isOnline, waitForOnline } from "~/shared/lib/network";
-import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 
 const log = createLogger("realtime");
 
-const DEFAULT_EVENT_TYPES = [
-  "message",
-  "update_message_flags",
-  "reaction",
-  "delete_message",
-  "typing",
-  "update_message",
-  "presence",
-  "user_status",
-  "realm",
-  "subscription",
-  /** Stream lifecycle events so renames and deletes update UI without reload. */
-  "stream",
-  "user_topic",
-  "user_settings",
-] as const;
-
-const RETRY_PAUSE_MS = 2000;
-const MAX_RETRY_PAUSE_MS = 30000;
-const DEFAULT_LONGPOLL_TIMEOUT_SEC = 90;
-
 export interface StartMessengerEventLoopOptions {
+  enabled?: boolean;
   onEvent: (event: MessengerEvent) => void;
   onBadQueue?: () => void;
-  /** Called after the event queue is registered or re-registered successfully. */
   onQueueReady?: () => void;
-  /** Called when the tab resumes after being hidden (in addition to waking the poll loop). */
   onTabStaleResume?: (hiddenDurationMs: number) => void;
-  /** Called when a queue is registered (for cleanup on logout/instance switch). */
-  onQueueRegistered?: (queueId: string, registration?: RegisterQueueResult) => void;
-  /** Instance that owns this loop — used to expose `queue_id` for message send on that org. */
   instanceId?: string;
   signal?: AbortSignal;
   eventTypes?: string[];
-  fetchEventTypes?: string[];
 }
 
 export interface StartMessengerEventLoopForCredentialsOptions extends StartMessengerEventLoopOptions {
   credentials: MessengerCredentials;
 }
 
-interface EventLoopTransport {
-  registerQueue: (
-    eventTypes: string[],
-    fetchEventTypes?: string[],
-  ) => ReturnType<typeof registerQueue>;
-  getEvents: (
-    queueId: string,
-    lastEventId: number,
-    options?: { timeoutSec?: number; signal?: AbortSignal },
-  ) => ReturnType<typeof getEvents>;
-}
-
-function startMessengerEventLoopWithTransport(
-  transport: EventLoopTransport,
-  options: StartMessengerEventLoopOptions,
-): void {
-  const {
-    onEvent,
-    onBadQueue,
-    onQueueReady,
-    onTabStaleResume,
-    onQueueRegistered,
-    instanceId,
-    signal,
-    eventTypes = [...DEFAULT_EVENT_TYPES],
-    fetchEventTypes,
-  } = options;
-  const registryInstanceId = instanceId?.trim() ?? "";
-  const onQueueReadyCb = onQueueReady;
-  const queueState: { id: string | null } = { id: null };
-  let lastEventId = -1;
-  let longpollTimeoutSec = DEFAULT_LONGPOLL_TIMEOUT_SEC;
-  let retryCount = 0;
-  let wakeUpResolve: (() => void) | null = null;
-  let activePollAbort: AbortController | null = null;
-
-  function setQueueId(nextQueueId: string): void {
-    queueState.id = nextQueueId;
-    if (registryInstanceId.length > 0) {
-      setMessengerEventQueueId(registryInstanceId, nextQueueId);
-    }
-  }
-
-  function clearQueueId(): void {
-    queueState.id = null;
-    if (registryInstanceId.length > 0) {
-      clearMessengerEventQueueId(registryInstanceId);
-    }
-  }
-
-  function handleEvent(event: MessengerEvent): void {
-    lastEventId = Math.max(lastEventId, event.id);
-    if (event.type === "heartbeat") return;
-    recordDiagnosticRealtimeEvent(event.type);
-    onEvent(event);
-  }
-
-  function wake(): void {
-    if (wakeUpResolve) {
-      wakeUpResolve();
-      wakeUpResolve = null;
-    }
-  }
-
-  function abortActivePoll(): void {
-    activePollAbort?.abort();
-    activePollAbort = null;
-  }
-
-  /** Drop stale queue + interrupt in-flight long-poll so register/events resume promptly. */
-  function nudgeEventLoopAfterNetworkRestore(reason: "reconnect" | "online"): void {
-    log.info("Network restored, nudging event loop", { reason });
-    retryCount = 0;
-    clearQueueId();
-    abortActivePoll();
-    wake();
-  }
-
-  /** Abort hung long-poll immediately — do not wait for server timeout (up to 90s). */
-  function pauseEventLoopForOffline(): void {
-    log.info("Network offline, interrupting event loop");
-    retryCount = 0;
-    abortActivePoll();
-    wake();
-  }
-
-  const detachLifecycle = attachEventLoopLifecycle({
-    onTabResume: (hiddenDurationMs) => {
-      log.info("Tab resumed, nudging event loop", { hiddenDurationMs });
-      wake();
-      onTabStaleResume?.(hiddenDurationMs);
-    },
-    onReconnect: () => {
-      nudgeEventLoopAfterNetworkRestore("reconnect");
-    },
-    onOnline: () => {
-      // onReconnect already nudges after offline→online; skip duplicate wake.
-    },
-    onOffline: () => {
-      pauseEventLoopForOffline();
-    },
-  });
-
-  let cleanedUp = false;
-  let removeAbortListener: (() => void) | null = null;
-
-  const cleanupLoop = () => {
-    if (cleanedUp) return;
-    cleanedUp = true;
-    detachLifecycle();
-    abortActivePoll();
-    clearQueueId();
-    removeAbortListener?.();
-    removeAbortListener = null;
-    wake();
-  };
-
-  if (signal) {
-    const handleAbort = () => {
-      cleanupLoop();
-    };
-    signal.addEventListener("abort", handleAbort);
-    removeAbortListener = () => {
-      signal.removeEventListener("abort", handleAbort);
-    };
-  }
-
-  function interruptibleSleep(ms: number): Promise<void> {
-    return new Promise((resolve) => {
-      const timer = setTimeout(resolve, ms);
-      wakeUpResolve = () => {
-        clearTimeout(timer);
-        resolve();
-      };
-    });
-  }
-
-  function getRetryDelay(): number {
-    const delay = Math.min(RETRY_PAUSE_MS * Math.pow(1.5, retryCount), MAX_RETRY_PAUSE_MS);
-    retryCount++;
-    return delay;
-  }
-
-  async function registerEventQueue(): Promise<boolean> {
-    try {
-      log.info("Registering event queue");
-      // Register returns sidebar bootstrap metadata together with queue_id.
-      const reg = await transport.registerQueue(eventTypes, fetchEventTypes);
-      const nextQueueId = reg.queue_id;
-      setQueueId(nextQueueId);
-      lastEventId = reg.last_event_id;
-      longpollTimeoutSec = reg.event_queue_longpoll_timeout_seconds ?? DEFAULT_LONGPOLL_TIMEOUT_SEC;
-      retryCount = 0;
-      log.info("Queue registered", { queueId: nextQueueId, lastEventId });
-      onQueueRegistered?.(nextQueueId, reg);
-      onQueueReadyCb?.();
-      noteApiTransportSuccess();
-      return true;
-    } catch (err) {
-      if (signal?.aborted) return false;
-      if (!isOnline()) {
-        await waitForOnline();
-        if (signal?.aborted) return false;
-        return false;
-      }
-      noteApiTransportFailure(err);
-      const delay = isLikelyNetworkError(err) ? RETRY_PAUSE_MS : getRetryDelay();
-      if (isLikelyNetworkError(err)) {
-        retryCount = 0;
-      }
-      log.warn("Queue registration failed, retrying", { delayMs: delay, retryCount });
-      await interruptibleSleep(delay);
-      return false;
-    }
-  }
-
-  async function reRegisterEventQueueAfterPollFailure(): Promise<void> {
-    log.warn("Event poll failed, re-registering queue");
-    clearQueueId();
-    retryCount = 0;
-    onBadQueue?.();
-    wake();
-    await registerEventQueue();
-  }
-
-  async function runLoop(): Promise<void> {
-    while (true) {
-      if (shouldExitEventLoop(signal)) return;
-
-      const networkWait = await waitForNetworkAtLoopStart({
-        signal,
-        onRestored: () => {
-          clearQueueId();
-          retryCount = 0;
-        },
-      });
-      if (networkWait === "exit") return;
-
-      if (queueState.id == null) {
-        await registerEventQueue();
-        continue;
-      }
-
-      const pollCycle = await runEventLoopPollCycle({
-        signal,
-        getQueueId: () => queueState.id,
-        lastEventId,
-        longpollTimeoutSec,
-        getEvents: transport.getEvents,
-        setActivePollAbort: (controller) => {
-          activePollAbort = controller;
-        },
-        abortActivePoll,
-        onReRegister: reRegisterEventQueueAfterPollFailure,
-        onEvents: (events) => {
-          for (const ev of events) {
-            handleEvent(ev);
-          }
-        },
-        resetRetryCount: () => {
-          retryCount = 0;
-        },
-        clearQueueId,
-        wake,
-        resetRetryCountOnTransportError: () => {
-          retryCount = 0;
-        },
-      });
-      if (pollCycle === "exit") return;
-    }
-  }
-
-  void runLoop()
-    .catch((err) => {
-      reportUnexpectedError("realtime", err, { phase: "event-loop-exit" });
-    })
-    .finally(() => {
-      cleanupLoop();
-    });
-}
-
-export function startMessengerEventLoop(options: StartMessengerEventLoopOptions): void {
-  startMessengerEventLoopWithTransport(
-    {
-      registerQueue: (eventTypes, fetchEventTypes) => registerQueue(eventTypes, fetchEventTypes),
-      getEvents: (queueId, lastEventId, requestOptions) =>
-        getEvents(queueId, lastEventId, requestOptions),
-    },
-    options,
-  );
+export function startMessengerEventLoop(_options: StartMessengerEventLoopOptions): void {
+  log.info("Messenger event queue transport disabled for Workspace gateway backend");
 }
 
 export function startMessengerEventLoopForCredentials(
-  options: StartMessengerEventLoopForCredentialsOptions,
+  _options: StartMessengerEventLoopForCredentialsOptions,
 ): void {
-  const { credentials, ...loopOptions } = options;
-  startMessengerEventLoopWithTransport(
-    {
-      registerQueue: (eventTypes, fetchEventTypes) =>
-        registerQueueForCredentials(credentials, eventTypes, fetchEventTypes),
-      getEvents: (queueId, lastEventId, requestOptions) =>
-        getEventsForCredentials(credentials, queueId, lastEventId, requestOptions),
-    },
-    loopOptions,
-  );
+  log.info("Background messenger event queue transport disabled for Workspace gateway backend");
 }

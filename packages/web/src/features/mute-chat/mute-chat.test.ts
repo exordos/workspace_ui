@@ -19,6 +19,8 @@ vi.mock("~/shared/api/client", () => ({
   },
 }));
 
+const TEST_STREAM_UUID = "00000000-0000-4000-8000-000000000010";
+
 describe("useMuteStore", () => {
   afterEach(() => {
     useMuteStore.getState().clear();
@@ -197,56 +199,56 @@ describe("mute-chat optimistic helpers", () => {
   });
 
   it("captures topic visibility snapshot from store", () => {
-    useMuteStore.getState().followTopic(10, "incidents");
-    expect(captureTopicVisibilityOverrideSnapshot(10, "incidents")).toBe("followed");
+    useMuteStore.getState().followTopic(TEST_STREAM_UUID, "incidents");
+    expect(captureTopicVisibilityOverrideSnapshot(TEST_STREAM_UUID, "incidents")).toBe("followed");
   });
 
   it("keeps optimistic topic state on successful request", async () => {
     const ok = await runOptimisticTopicVisibilityUpdate({
-      streamId: 10,
+      streamId: TEST_STREAM_UUID,
       topic: "announcements",
       applyOptimistic: () => {
-        useMuteStore.getState().muteTopic(10, "announcements");
+        useMuteStore.getState().muteTopic(TEST_STREAM_UUID, "announcements");
       },
       request: () => Promise.resolve(true),
     });
 
     expect(ok).toBe(true);
-    expect(useMuteStore.getState().isTopicMuted(10, "announcements")).toBe(true);
+    expect(useMuteStore.getState().isTopicMuted(TEST_STREAM_UUID, "announcements")).toBe(true);
   });
 
   it("rolls back topic visibility when request returns false", async () => {
-    useMuteStore.getState().followTopic(10, "announcements");
+    useMuteStore.getState().followTopic(TEST_STREAM_UUID, "announcements");
 
     const ok = await runOptimisticTopicVisibilityUpdate({
-      streamId: 10,
+      streamId: TEST_STREAM_UUID,
       topic: "announcements",
       applyOptimistic: () => {
-        useMuteStore.getState().muteTopic(10, "announcements");
+        useMuteStore.getState().muteTopic(TEST_STREAM_UUID, "announcements");
       },
       request: () => Promise.resolve(false),
     });
 
     expect(ok).toBe(false);
-    expect(useMuteStore.getState().isTopicFollowed(10, "announcements")).toBe(true);
-    expect(useMuteStore.getState().isTopicMuted(10, "announcements")).toBe(false);
+    expect(useMuteStore.getState().isTopicFollowed(TEST_STREAM_UUID, "announcements")).toBe(true);
+    expect(useMuteStore.getState().isTopicMuted(TEST_STREAM_UUID, "announcements")).toBe(false);
   });
 
   it("rolls back topic visibility when request throws", async () => {
-    useMuteStore.getState().unmuteTopic(10, "announcements");
+    useMuteStore.getState().unmuteTopic(TEST_STREAM_UUID, "announcements");
 
     const ok = await runOptimisticTopicVisibilityUpdate({
-      streamId: 10,
+      streamId: TEST_STREAM_UUID,
       topic: "announcements",
       applyOptimistic: () => {
-        useMuteStore.getState().muteTopic(10, "announcements");
+        useMuteStore.getState().muteTopic(TEST_STREAM_UUID, "announcements");
       },
       request: () => Promise.reject(new Error("offline")),
     });
 
     expect(ok).toBe(false);
-    expect(useMuteStore.getState().isTopicUnmuted(10, "announcements")).toBe(true);
-    expect(useMuteStore.getState().isTopicMuted(10, "announcements")).toBe(false);
+    expect(useMuteStore.getState().isTopicUnmuted(TEST_STREAM_UUID, "announcements")).toBe(true);
+    expect(useMuteStore.getState().isTopicMuted(TEST_STREAM_UUID, "announcements")).toBe(false);
   });
 
   it("rolls back topic notification level when request returns false", async () => {
@@ -254,19 +256,21 @@ describe("mute-chat optimistic helpers", () => {
       await import("./mute-chat-topic-notification.optimistic.lib");
 
     const ok = await runOptimisticTopicNotificationLevelUpdate({
-      streamId: 10,
+      streamId: TEST_STREAM_UUID,
       topic: "incident",
       level: "muted",
       request: () => Promise.resolve(false),
     });
 
     expect(ok).toBe(false);
-    expect(useMuteStore.getState().isTopicMuted(10, "incident")).toBe(false);
-    expect(useMuteStore.getState().getTopicNotificationLevel(10, "incident")).toBe("default");
+    expect(useMuteStore.getState().isTopicMuted(TEST_STREAM_UUID, "incident")).toBe(false);
+    expect(useMuteStore.getState().getTopicNotificationLevel(TEST_STREAM_UUID, "incident")).toBe(
+      "default",
+    );
   });
 
   it("re-captures snapshot on each retry attempt", async () => {
-    const streamId = 10;
+    const streamId = TEST_STREAM_UUID;
     const topic = "release";
 
     const first = await runOptimisticTopicVisibilityUpdate({
@@ -299,343 +303,137 @@ describe("mute-chat optimistic helpers", () => {
 
   it("rolls back stream mute on failed request", async () => {
     const ok = await runOptimisticStreamMuteUpdate({
-      streamId: 10,
+      streamId: TEST_STREAM_UUID,
       applyOptimistic: (wasMuted) => {
         const muteStore = useMuteStore.getState();
         if (wasMuted) {
-          muteStore.unmuteStream(10);
+          muteStore.unmuteStream(TEST_STREAM_UUID);
           return;
         }
-        muteStore.muteStream(10);
+        muteStore.muteStream(TEST_STREAM_UUID);
       },
       request: () => Promise.resolve(false),
     });
 
     expect(ok).toBe(false);
-    expect(useMuteStore.getState().isStreamMuted(10)).toBe(false);
+    expect(useMuteStore.getState().isStreamMuted(TEST_STREAM_UUID)).toBe(false);
   });
 });
 
 // Mute API — calls Workspace endpoints to mute/unmute streams and topics.
 describe("mute-chat API", () => {
   afterEach(() => {
+    vi.clearAllMocks();
     vi.restoreAllMocks();
   });
 
-  const mockOk = {
-    ok: true,
-    status: 200,
-    data: {},
-    headers: new Headers(),
-    raw: new Response(),
-    durationMs: 20,
-  };
-
-  const mockFail = {
-    ok: false,
-    status: 400,
-    data: null,
-    headers: new Headers(),
-    raw: new Response(),
-    durationMs: 10,
-  };
-
   describe("setStreamMuted", () => {
-    it("sends mute request with correct subscription data", async () => {
+    it("returns false without calling removed subscription properties endpoint", async () => {
       const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.post).mockResolvedValue(mockOk);
-
       const { setStreamMuted } = await import("./mute-chat.api");
-      const result = await setStreamMuted(10, true);
 
-      expect(result).toBe(true);
-      expect(messengerApi.post).toHaveBeenCalledWith("/users/me/subscriptions/properties", {
-        subscription_data: JSON.stringify([{ stream_id: 10, property: "is_muted", value: true }]),
-      });
+      await expect(setStreamMuted(TEST_STREAM_UUID, true)).resolves.toBe(false);
+
+      expect(messengerApi.post).not.toHaveBeenCalled();
     });
 
-    it("sends unmute request with value=false", async () => {
+    it("also skips the removed endpoint for unmute", async () => {
       const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.post).mockResolvedValue(mockOk);
-
       const { setStreamMuted } = await import("./mute-chat.api");
-      await setStreamMuted(10, false);
 
-      expect(messengerApi.post).toHaveBeenCalledWith(
-        "/users/me/subscriptions/properties",
-        expect.objectContaining({
-          subscription_data: JSON.stringify([
-            { stream_id: 10, property: "is_muted", value: false },
-          ]),
-        }),
-      );
-    });
+      await expect(setStreamMuted(TEST_STREAM_UUID, false)).resolves.toBe(false);
 
-    it("returns false on API failure", async () => {
-      const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.post).mockResolvedValue(mockFail);
-
-      const { setStreamMuted } = await import("./mute-chat.api");
-      expect(await setStreamMuted(10, true)).toBe(false);
-    });
-
-    it("returns false on network error", async () => {
-      const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.post).mockRejectedValue(new Error("Timeout"));
-
-      const { setStreamMuted } = await import("./mute-chat.api");
-      expect(await setStreamMuted(10, true)).toBe(false);
+      expect(messengerApi.post).not.toHaveBeenCalled();
     });
   });
 
   describe("setTopicVisibility", () => {
-    it("sends topic visibility policy with correct params", async () => {
+    it("returns false without calling the removed topic visibility endpoint", async () => {
       const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.post).mockResolvedValue(mockOk);
-
       const { setTopicVisibility } = await import("./mute-chat.api");
-      const result = await setTopicVisibility(10, "announcements", 1);
 
-      expect(result).toBe(true);
-      expect(messengerApi.post).toHaveBeenCalledWith("/user_topics", {
-        stream_id: "10",
-        topic: "announcements",
-        visibility_policy: "1",
-      });
+      await expect(setTopicVisibility(TEST_STREAM_UUID, "announcements", 1)).resolves.toBe(false);
+
+      expect(messengerApi.post).not.toHaveBeenCalled();
     });
 
-    it("preserves literal general topic in user_topics payload", async () => {
+    it("still validates stream UUIDs before returning unsupported", async () => {
       const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.post).mockResolvedValue(mockOk);
-
       const { setTopicVisibility } = await import("./mute-chat.api");
-      const result = await setTopicVisibility(10, "general", 1);
 
-      expect(result).toBe(true);
-      expect(messengerApi.post).toHaveBeenCalledWith("/user_topics", {
-        stream_id: "10",
-        topic: "general",
-        visibility_policy: "1",
-      });
-    });
-
-    it("supports explicit empty topic in user_topics payload", async () => {
-      const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.post).mockResolvedValue(mockOk);
-
-      const { setTopicVisibility } = await import("./mute-chat.api");
-      const result = await setTopicVisibility(10, "", 1);
-
-      expect(result).toBe(true);
-      expect(messengerApi.post).toHaveBeenCalledWith("/user_topics", {
-        stream_id: "10",
-        topic: "",
-        visibility_policy: "1",
-      });
-    });
-
-    it("returns false on API failure", async () => {
-      const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.post).mockResolvedValue(mockFail);
-
-      const { setTopicVisibility } = await import("./mute-chat.api");
-      expect(await setTopicVisibility(10, "spam", 1)).toBe(false);
-    });
-
-    it("returns false on network error", async () => {
-      const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.post).mockRejectedValue(new Error("Offline"));
-
-      const { setTopicVisibility } = await import("./mute-chat.api");
-      expect(await setTopicVisibility(10, "spam", 1)).toBe(false);
+      await expect(setTopicVisibility("not-a-uuid", "announcements", 1)).rejects.toThrow(
+        /Invalid streamUuid/,
+      );
+      expect(messengerApi.post).not.toHaveBeenCalled();
     });
   });
 
-  // Convenience wrappers delegate to the core functions.
+  // Convenience wrappers delegate to the unsupported facade without network calls.
   describe("muteStream / unmuteStream", () => {
-    it("muteStream calls setStreamMuted with true", async () => {
+    it("muteStream returns false without removed subscription call", async () => {
       const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.post).mockResolvedValue(mockOk);
-
       const { muteStream } = await import("./mute-chat.api");
-      expect(await muteStream(42)).toBe(true);
 
-      const body = vi.mocked(messengerApi.post).mock.calls[0]![1];
-      const data = JSON.parse(body.subscription_data!) as { value: boolean }[];
-      expect(data[0]!.value).toBe(true);
+      await expect(muteStream(TEST_STREAM_UUID)).resolves.toBe(false);
+
+      expect(messengerApi.post).not.toHaveBeenCalled();
     });
 
-    it("unmuteStream calls setStreamMuted with false", async () => {
+    it("unmuteStream returns false without removed subscription call", async () => {
       const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.post).mockClear();
-      vi.mocked(messengerApi.post).mockResolvedValue(mockOk);
-
       const { unmuteStream } = await import("./mute-chat.api");
-      expect(await unmuteStream(42)).toBe(true);
 
-      const body = vi.mocked(messengerApi.post).mock.calls[0]![1];
-      const data = JSON.parse(body.subscription_data!) as { value: boolean }[];
-      expect(data[0]!.value).toBe(false);
+      await expect(unmuteStream(TEST_STREAM_UUID)).resolves.toBe(false);
+
+      expect(messengerApi.post).not.toHaveBeenCalled();
     });
   });
 
   describe("setStreamNotificationLevel", () => {
-    it("sends mute and desktop properties for subscribed level", async () => {
+    it("returns false without calling removed subscription properties endpoint", async () => {
       const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.post).mockClear();
-      vi.mocked(messengerApi.post).mockResolvedValue(mockOk);
-
       const { setStreamNotificationLevel } = await import("./mute-chat.api");
-      const result = await setStreamNotificationLevel(10, "subscribed");
 
-      expect(result).toBe(true);
-      const body = vi.mocked(messengerApi.post).mock.calls.at(-1)![1];
-      const data = JSON.parse(body.subscription_data!) as { property: string; value: boolean }[];
-      expect(data).toEqual(
-        expect.arrayContaining([
-          { stream_id: 10, property: "is_muted", value: false },
-          { stream_id: 10, property: "desktop_notifications", value: true },
-          { stream_id: 10, property: "audible_notifications", value: true },
-        ]),
+      await expect(setStreamNotificationLevel(TEST_STREAM_UUID, "subscribed")).resolves.toBe(false);
+      await expect(setStreamNotificationLevel(TEST_STREAM_UUID, "muted")).resolves.toBe(false);
+
+      expect(messengerApi.post).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("topic visibility wrappers", () => {
+    it("return false without calling the removed topic visibility endpoint", async () => {
+      const { messengerApi } = await import("~/shared/api/client");
+      const { muteTopic, unmuteTopic, unmuteTopicInMutedStream } = await import("./mute-chat.api");
+
+      await expect(muteTopic(TEST_STREAM_UUID, "off-topic")).resolves.toBe(false);
+      await expect(unmuteTopic(TEST_STREAM_UUID, "off-topic")).resolves.toBe(false);
+      await expect(unmuteTopicInMutedStream(TEST_STREAM_UUID, "off-topic")).resolves.toBe(false);
+
+      expect(messengerApi.post).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("topic notification level helpers", () => {
+    it("return false without calling the removed topic visibility endpoint", async () => {
+      const { messengerApi } = await import("~/shared/api/client");
+      const { setTopicNotificationLevel, setTopicVisibilityLevel } =
+        await import("./mute-chat.api");
+
+      await expect(setTopicNotificationLevel(TEST_STREAM_UUID, "general", "muted")).resolves.toBe(
+        false,
       );
-    });
+      await expect(
+        setTopicNotificationLevel(TEST_STREAM_UUID, "general", "subscribed"),
+      ).resolves.toBe(false);
+      await expect(setTopicNotificationLevel(TEST_STREAM_UUID, "general", "default")).resolves.toBe(
+        false,
+      );
+      await expect(setTopicVisibilityLevel(TEST_STREAM_UUID, "general", "followed")).resolves.toBe(
+        false,
+      );
 
-    it("sends only is_muted for muted level", async () => {
-      const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.post).mockClear();
-      vi.mocked(messengerApi.post).mockResolvedValue(mockOk);
-
-      const { setStreamNotificationLevel } = await import("./mute-chat.api");
-      await setStreamNotificationLevel(10, "muted");
-
-      const body = vi.mocked(messengerApi.post).mock.calls.at(-1)![1];
-      const data = JSON.parse(body.subscription_data!) as { property: string }[];
-      expect(data).toEqual([{ stream_id: 10, property: "is_muted", value: true }]);
-    });
-  });
-
-  describe("muteTopic / unmuteTopic", () => {
-    it("muteTopic sends MUTED policy (1)", async () => {
-      const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.post).mockResolvedValue(mockOk);
-
-      const { muteTopic } = await import("./mute-chat.api");
-      expect(await muteTopic(10, "off-topic")).toBe(true);
-
-      expect(messengerApi.post).toHaveBeenCalledWith("/user_topics", {
-        stream_id: "10",
-        topic: "off-topic",
-        visibility_policy: "1",
-      });
-    });
-
-    it("unmuteTopic sends INHERIT policy (0)", async () => {
-      const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.post).mockResolvedValue(mockOk);
-
-      const { unmuteTopic } = await import("./mute-chat.api");
-      expect(await unmuteTopic(10, "off-topic")).toBe(true);
-
-      expect(messengerApi.post).toHaveBeenCalledWith("/user_topics", {
-        stream_id: "10",
-        topic: "off-topic",
-        visibility_policy: "0",
-      });
-    });
-
-    it("unmuteTopicInMutedStream sends UNMUTED policy (2)", async () => {
-      const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.post).mockResolvedValue(mockOk);
-
-      const { unmuteTopicInMutedStream } = await import("./mute-chat.api");
-      expect(await unmuteTopicInMutedStream(10, "off-topic")).toBe(true);
-
-      expect(messengerApi.post).toHaveBeenCalledWith("/user_topics", {
-        stream_id: "10",
-        topic: "off-topic",
-        visibility_policy: "2",
-      });
-    });
-  });
-
-  describe("setTopicNotificationLevel", () => {
-    it("maps muted, subscribed, and default in a normal stream", async () => {
-      const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.post).mockClear();
-      vi.mocked(messengerApi.post).mockResolvedValue(mockOk);
-
-      const { setTopicNotificationLevel } = await import("./mute-chat.api");
-
-      expect(await setTopicNotificationLevel(10, "general", "muted")).toBe(true);
-      expect(await setTopicNotificationLevel(10, "general", "subscribed")).toBe(true);
-      expect(await setTopicNotificationLevel(10, "general", "default")).toBe(true);
-
-      expect(messengerApi.post).toHaveBeenNthCalledWith(1, "/user_topics", {
-        stream_id: "10",
-        topic: "general",
-        visibility_policy: "1",
-      });
-      expect(messengerApi.post).toHaveBeenNthCalledWith(2, "/user_topics", {
-        stream_id: "10",
-        topic: "general",
-        visibility_policy: "3",
-      });
-      expect(messengerApi.post).toHaveBeenNthCalledWith(3, "/user_topics", {
-        stream_id: "10",
-        topic: "general",
-        visibility_policy: "0",
-      });
-    });
-
-    it("uses UNMUTED policy for default when stream is muted", async () => {
-      useMuteStore.getState().muteStream(10);
-      const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.post).mockResolvedValue(mockOk);
-
-      const { setTopicNotificationLevel } = await import("./mute-chat.api");
-      expect(await setTopicNotificationLevel(10, "general", "default")).toBe(true);
-
-      expect(messengerApi.post).toHaveBeenCalledWith("/user_topics", {
-        stream_id: "10",
-        topic: "general",
-        visibility_policy: "2",
-      });
-    });
-  });
-
-  describe("setTopicVisibilityLevel", () => {
-    it("maps each TopicVisibilityLevel to visibility_policy", async () => {
-      const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.post).mockClear();
-      vi.mocked(messengerApi.post).mockResolvedValue(mockOk);
-
-      const { setTopicVisibilityLevel } = await import("./mute-chat.api");
-
-      expect(await setTopicVisibilityLevel(10, "general", "muted")).toBe(true);
-      expect(await setTopicVisibilityLevel(10, "general", "inherit")).toBe(true);
-      expect(await setTopicVisibilityLevel(10, "general", "unmuted")).toBe(true);
-      expect(await setTopicVisibilityLevel(10, "general", "followed")).toBe(true);
-
-      expect(messengerApi.post).toHaveBeenNthCalledWith(1, "/user_topics", {
-        stream_id: "10",
-        topic: "general",
-        visibility_policy: "1",
-      });
-      expect(messengerApi.post).toHaveBeenNthCalledWith(2, "/user_topics", {
-        stream_id: "10",
-        topic: "general",
-        visibility_policy: "0",
-      });
-      expect(messengerApi.post).toHaveBeenNthCalledWith(3, "/user_topics", {
-        stream_id: "10",
-        topic: "general",
-        visibility_policy: "2",
-      });
-      expect(messengerApi.post).toHaveBeenNthCalledWith(4, "/user_topics", {
-        stream_id: "10",
-        topic: "general",
-        visibility_policy: "3",
-      });
+      expect(messengerApi.post).not.toHaveBeenCalled();
     });
   });
 

@@ -77,7 +77,8 @@ describe("fetchActivityMessagesPageWithPersist", () => {
       id: "instance-1",
       realm: "https://chat.example.com",
       login: "user@example.com",
-      apiKey: "api-key",
+      authType: "iam",
+      iamAccessToken: "api-key",
     });
     upsertChatMessages.mockResolvedValue(undefined);
     vi.mocked(fetchActivityMessagesPage).mockResolvedValue({
@@ -135,7 +136,8 @@ describe("fetchActivityMessagesPageWithPersist", () => {
       id: "instance-1",
       realm: "https://chat.example.com",
       login: "user@example.com",
-      apiKey: "api-key",
+      authType: "iam",
+      iamAccessToken: "api-key",
     });
     upsertChatMessages.mockRejectedValue(new Error("idb failure"));
     vi.mocked(fetchActivityMessagesPage).mockResolvedValue({

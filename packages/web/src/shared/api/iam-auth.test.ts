@@ -8,6 +8,7 @@ import { MessengerAuthError } from "./messenger.types";
 
 const IAM_ORIGIN = "https://chat.example.com";
 const REALM = "https://chat.example.com";
+const USER_UUID = "00000000-0000-0000-0000-000000000000";
 
 function jwtWithClaims(claims: Record<string, unknown>): string {
   const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
@@ -20,7 +21,7 @@ describe("loginWithIamCredentials", () => {
   });
 
   it("returns IAM access token and email from JWT claims", async () => {
-    const accessToken = jwtWithClaims({ email: "user@example.com", sub: "42" });
+    const accessToken = jwtWithClaims({ email: "user@example.com", sub: USER_UUID });
     mockFetch.mockResolvedValueOnce(
       jsonResponse({
         access_token: accessToken,
@@ -34,7 +35,7 @@ describe("loginWithIamCredentials", () => {
     expect(result).toEqual({
       access_token: accessToken,
       email: "user@example.com",
-      user_id: 42,
+      user_id: USER_UUID,
       refresh_token: "refresh-token",
     });
     expect(mockFetch).toHaveBeenCalledTimes(1);
@@ -51,17 +52,19 @@ describe("loginWithIamCredentials", () => {
   });
 
   it("falls back to login when JWT has no email claim", async () => {
-    mockFetch.mockResolvedValueOnce(jsonResponse({ access_token: jwtWithClaims({ sub: "7" }) }));
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({ access_token: jwtWithClaims({ sub: USER_UUID }) }),
+    );
 
     const result = await loginWithIamCredentials(REALM, "alice", "pw");
 
     expect(result.email).toBe("alice");
-    expect(result.user_id).toBe(7);
+    expect(result.user_id).toBe(USER_UUID);
   });
 
   it("sends login+password grant payload to IAM", async () => {
     mockFetch.mockResolvedValueOnce(
-      jsonResponse({ access_token: jwtWithClaims({ email: "u@t.com" }) }),
+      jsonResponse({ access_token: jwtWithClaims({ email: "u@t.com", sub: USER_UUID }) }),
     );
 
     await loginWithIamCredentials(REALM, "alice", "pw");
@@ -79,7 +82,7 @@ describe("loginWithIamCredentials", () => {
 
   it("forwards OTP code via X-OTP header", async () => {
     mockFetch.mockResolvedValueOnce(
-      jsonResponse({ access_token: jwtWithClaims({ email: "u@t.com" }) }),
+      jsonResponse({ access_token: jwtWithClaims({ email: "u@t.com", sub: USER_UUID }) }),
     );
 
     await loginWithIamCredentials(REALM, "alice", "pw", { otpCode: "123456" });
@@ -98,6 +101,14 @@ describe("loginWithIamCredentials", () => {
     );
   });
 
+  it("throws MessengerAuthError when access token has no user UUID", async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({ access_token: jwtWithClaims({ email: "u@t.com" }) }),
+    );
+
+    await expect(loginWithIamCredentials(REALM, "alice", "pw")).rejects.toThrow(MessengerAuthError);
+  });
+
   it("throws MessengerAuthError when IAM login fails", async () => {
     mockFetch.mockResolvedValueOnce(jsonResponse({ message: "Invalid credentials" }, 401));
 
@@ -113,7 +124,7 @@ describe("refreshIamAccessToken", () => {
   });
 
   it("returns a new access token using refresh_token grant", async () => {
-    const accessToken = jwtWithClaims({ email: "user@example.com", sub: "42" });
+    const accessToken = jwtWithClaims({ email: "user@example.com", sub: USER_UUID });
     mockFetch.mockResolvedValueOnce(
       jsonResponse({
         access_token: accessToken,

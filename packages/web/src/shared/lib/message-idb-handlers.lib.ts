@@ -60,10 +60,7 @@ export async function mirrorMessengerReactionToIndexedDb(options: {
           emoji_name: options.event.emoji_name as string,
           emoji_code: (options.event.emoji_code as string) ?? "",
           reaction_type:
-            (options.event.reaction_type as
-              | "unicode_emoji"
-              | "realm_emoji"
-              | "zulip_extra_emoji") ?? "unicode_emoji",
+            (options.event.reaction_type as "unicode_emoji" | "realm_emoji") ?? "unicode_emoji",
           user_id: options.event.user_id as number,
         }
       : null;

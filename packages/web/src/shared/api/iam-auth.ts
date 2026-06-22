@@ -2,10 +2,14 @@
  * IAM-backed login for Workspace UI.
  *
  * Password grant against Exordos Core IAM (same contract as exordos_ecosystem/web).
- * Returns the IAM access token for Bearer auth, without a legacy API-key exchange.
+ * Returns the IAM access token for Bearer auth, without an API-key exchange.
  */
 import { t } from "~/i18n/i18n";
 import { MessengerAuthError } from "~/shared/api/messenger.types";
+import {
+  resolveEmailFromAccessToken,
+  resolveUserUuidFromAccessToken,
+} from "~/shared/lib/access-token-claims.lib";
 import { resolveIamApiOrigin } from "~/shared/lib/iam-instance.lib";
 import { loggedFetch } from "~/shared/lib/logged-fetch.lib";
 import { logAction } from "~/shared/lib/logger";
@@ -31,7 +35,7 @@ interface IamTokenResponse {
 export interface IamLoginResult {
   access_token: string;
   email: string;
-  user_id: number;
+  user_id: string;
   refresh_token?: string;
 }
 
@@ -132,28 +136,9 @@ function isOtpChallengeResponse(
   );
 }
 
-function decodeJwtPayload(token: string): Record<string, unknown> | null {
-  const segments = token.trim().split(".");
-  if (segments.length < 2) {
-    return null;
-  }
-  const encoded = segments[1]!.replace(/-/g, "+").replace(/_/g, "/");
-  const padding = "=".repeat((4 - (encoded.length % 4)) % 4);
-  try {
-    const json = atob(`${encoded}${padding}`);
-    const parsed: unknown = JSON.parse(json);
-    return typeof parsed === "object" && parsed !== null
-      ? (parsed as Record<string, unknown>)
-      : null;
-  } catch {
-    return null;
-  }
-}
-
 function resolveEmailFromIamToken(accessToken: string, loginFallback: string): string {
-  const payload = decodeJwtPayload(accessToken);
-  const email = typeof payload?.email === "string" ? payload.email.trim() : "";
-  if (email.length > 0) {
+  const email = resolveEmailFromAccessToken(accessToken);
+  if (email != null) {
     return email;
   }
   const login = loginFallback.trim();
@@ -161,19 +146,6 @@ function resolveEmailFromIamToken(accessToken: string, loginFallback: string): s
     return login;
   }
   throw new MessengerAuthError(t("auth.loginError"));
-}
-
-function resolveUserIdFromIamToken(accessToken: string): number {
-  const payload = decodeJwtPayload(accessToken);
-  const sub = payload?.sub;
-  if (typeof sub === "number" && Number.isFinite(sub)) {
-    return sub;
-  }
-  if (typeof sub === "string" && sub.trim().length > 0) {
-    const parsed = Number.parseInt(sub, 10);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  return 0;
 }
 
 async function loginViaIam(
@@ -251,13 +223,17 @@ export async function loginWithIamCredentials(
   if (accessToken.length === 0) {
     throw new MessengerAuthError(t("auth.loginError"));
   }
+  const userUuid = resolveUserUuidFromAccessToken(accessToken);
+  if (userUuid == null) {
+    throw new MessengerAuthError(t("auth.loginError"));
+  }
 
   logAction("iam_login_success", { realmHost: new URL(iamOrigin).hostname });
 
   return {
     access_token: accessToken,
     email: resolveEmailFromIamToken(accessToken, login),
-    user_id: resolveUserIdFromIamToken(accessToken),
+    user_id: userUuid,
     ...(typeof tokenResponse.refresh_token === "string" && tokenResponse.refresh_token.trim() !== ""
       ? { refresh_token: tokenResponse.refresh_token.trim() }
       : {}),

@@ -1,11 +1,11 @@
 /**
- * Mute/unmute API — calls Workspace endpoints for stream and topic muting.
+ * Mute/unmute API facade.
  *
- * Stream mute: POST /users/me/subscriptions/properties
- * Topic mute: POST /user_topics
+ * Stream-level subscription properties and topic visibility writes are not
+ * exposed by the Workspace gateway backend. These functions validate inputs and return
+ * unsupported without network calls.
  */
 
-import { messengerApi } from "~/shared/api/client";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
@@ -23,17 +23,10 @@ interface SubscriptionPropertyRow {
 
 async function postSubscriptionProperties(rows: SubscriptionPropertyRow[]): Promise<boolean> {
   if (rows.length === 0) return true;
-  try {
-    const res = await messengerApi.post("/users/me/subscriptions/properties", {
-      subscription_data: JSON.stringify(rows),
-    });
-    if (res.ok) return true;
-    log.warn("Subscription properties failed", { status: res.status, count: rows.length });
-    return false;
-  } catch (err) {
-    log.error("Subscription properties error", { error: String(err), count: rows.length });
-    return false;
-  }
+  log.warn("Subscription properties are unsupported by the current backend", {
+    count: rows.length,
+  });
+  return false;
 }
 
 /**
@@ -127,24 +120,12 @@ export async function setTopicVisibility(
   const streamUuid = guard.streamUuid(streamId, "setTopicVisibility");
   const normalizedTopic = normalizeTopicForIdentity(topic);
 
-  try {
-    const res = await messengerApi.post("/user_topics", {
-      stream_uuid: streamUuid,
-      topic: normalizedTopic,
-      visibility_policy: String(policy),
-    });
-
-    if (res.ok) {
-      log.info("Topic visibility set", { streamId: streamUuid, topic: normalizedTopic, policy });
-      return true;
-    }
-
-    log.warn("Topic visibility failed", { streamId: streamUuid, topic: normalizedTopic, status: res.status });
-    return false;
-  } catch (err) {
-    log.error("Topic visibility error", { streamId: streamUuid, topic: normalizedTopic, error: String(err) });
-    return false;
-  }
+  log.warn("Topic visibility is unsupported by the current backend", {
+    streamId: streamUuid,
+    topic: normalizedTopic,
+    policy,
+  });
+  return false;
 }
 
 export async function muteStream(streamId: string): Promise<boolean> {
@@ -172,7 +153,7 @@ function topicVisibilityLevelToPolicy(level: TopicVisibilityLevel): VisibilityPo
   }
 }
 
-/** Sets Workspace user_topics.visibility_policy (0–3). */
+/** Validates topic visibility policy values (0-3). */
 export async function setTopicVisibilityLevel(
   streamId: string,
   topic: string,
@@ -182,9 +163,7 @@ export async function setTopicVisibilityLevel(
   return setTopicVisibility(streamId, topic, topicVisibilityLevelToPolicy(level));
 }
 
-/**
- * @deprecated Use setTopicVisibilityLevel — maps legacy 3-level UI to visibility_policy.
- */
+/** Maps the 3-level UI to local topic visibility semantics. */
 export async function setTopicNotificationLevel(
   streamId: string,
   topic: string,

@@ -88,7 +88,8 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       id: "test-instance",
       realm: "https://messenger.test",
       login: "test@messenger.test",
-      apiKey: runtimeTestApiKey,
+      authType: "iam",
+      iamAccessToken: runtimeTestApiKey,
     }));
     useCurrentChatMessagesStore.setState({
       context: null,

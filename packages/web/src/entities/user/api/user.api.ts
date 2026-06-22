@@ -1,29 +1,12 @@
 /**
- * Public user API — endpoint calls and status-load orchestrator wiring.
+ * Public user API facade for backend-only user data.
+ *
+ * The new backend user contract exposes account data through /api/messenger/v1/users/.
+ * Separate presence and custom status endpoints are not part of this contract.
  */
 
-import {
-  getCurrentInstance,
-  refreshWorkspaceApiBase,
-  refreshMessengerApiBase,
-  messengerApi,
-} from "~/shared/api/client";
-import { createLogger } from "~/shared/lib/logger";
-import { requestUserStatusWithPolicy } from "./user.api.orchestrator";
-import {
-  isBadRequestError,
-  normalizeGetUserStatusPayload,
-  normalizeOwnStatusResponse,
-} from "./user.api.parsers";
-import type { UserStatus, UserStatusReactionType } from "../user.model";
-import type {
-  OwnStatusMutationErrorKind,
-  OwnStatusMutationResult,
-  RequestUserStatusOptions,
-  StatusFetchOutcome,
-  WorkspaceGetUserStatusResponse,
-  WorkspaceUpdateOwnStatusResponse,
-} from "./user.api.types";
+import type { UserId, UserStatus, UserStatusReactionType } from "../user.model";
+import type { OwnStatusMutationResult, RequestUserStatusOptions } from "./user.api.types";
 
 export type {
   OwnStatusMutationResult,
@@ -40,225 +23,62 @@ export interface UpdateOwnStatusParams {
   away?: boolean;
 }
 
-const log = createLogger("user:api");
-
-function hasUsableWorkspaceAuth(instance: ReturnType<typeof getCurrentInstance>): boolean {
-  if (!instance?.realm) {
-    return false;
-  }
-  if (instance.authType === "session") {
-    return true;
-  }
-  return Boolean(instance.login && instance.apiKey);
-}
-
-function mapStatusMutationError(status: number): OwnStatusMutationErrorKind {
-  if (status === 403) return "forbidden";
-  if (status === 400) return "invalid";
-  if (status === 404 || status === 405) return "unsupported";
-  return "transient";
-}
-
-function readStatusMutationErrorMessage(
-  data: WorkspaceUpdateOwnStatusResponse,
-  status: number,
-  fallback: string,
-): string {
-  if (typeof data.msg === "string" && data.msg.trim().length > 0) {
-    return data.msg;
-  }
-  if (typeof data.code === "string" && data.code.trim().length > 0) {
-    return data.code;
-  }
-  if (status > 0) {
-    return `${fallback} (HTTP ${status})`;
-  }
-  return fallback;
-}
-
-/** pingOnly=true sends keep-alive without changing the reported activity status. */
-export async function reportPresence(status: "active" | "idle", pingOnly = false): Promise<void> {
-  const instance = getCurrentInstance();
-  if (!hasUsableWorkspaceAuth(instance)) {
-    return;
-  }
-
-  try {
-    refreshMessengerApiBase();
-    refreshWorkspaceApiBase();
-    await messengerApi.post("/users/me/presence", {
-      status: pingOnly ? "idle" : status,
-      client: "workspace-web",
-      ...(pingOnly ? { ping_only: "true" } : {}),
-    });
-  } catch (err) {
-    log.warn("Failed to report presence", { status, error: String(err) });
-  }
-}
-
-async function fetchUserStatusDetailed(userId: number): Promise<StatusFetchOutcome> {
-  const instance = getCurrentInstance();
-  if (!hasUsableWorkspaceAuth(instance)) {
-    return { kind: "transient_error", status: null };
-  }
-
-  try {
-    refreshMessengerApiBase();
-    refreshWorkspaceApiBase();
-    const response = await messengerApi.get(`/users/${userId}/status`);
-    const data = (response.data ?? {}) as WorkspaceGetUserStatusResponse;
-
-    if (!response.ok) {
-      if (response.status === 400 || isBadRequestError(data)) {
-        log.warn("User status rejected as invalid user", { userId, status: response.status });
-        return { kind: "invalid_user", status: null };
-      }
-      log.warn("User status request failed", { userId, status: response.status });
-      return { kind: "transient_error", status: null };
-    }
-
-    if (data.result === "error") {
-      if (isBadRequestError(data)) {
-        return { kind: "invalid_user", status: null };
-      }
-      log.warn("User status payload returned error", { userId, code: data.code ?? "unknown" });
-      return { kind: "transient_error", status: null };
-    }
-
-    // Workspace contract: payload lives under `status`, not at the top level.
-    if (!("status" in data)) {
-      log.warn("User status payload has unexpected shape", { userId });
-      return { kind: "transient_error", status: null };
-    }
-
-    return {
-      kind: "ok",
-      status: normalizeGetUserStatusPayload(data.status),
-    };
-  } catch (err) {
-    log.warn("Failed to fetch user status", { userId, error: String(err) });
-    return { kind: "transient_error", status: null };
-  }
-}
-
-/** Reads user status without writing to the store. */
-export async function fetchUserStatus(userId: number): Promise<UserStatus | null> {
-  const outcome = await fetchUserStatusDetailed(userId);
-  return outcome.kind === "ok" ? outcome.status : null;
-}
-
-/** Reads the authenticated user's status using the full custom-status model. */
-export async function fetchOwnStatus(): Promise<UserStatus | null> {
-  const instance = getCurrentInstance();
-  if (!hasUsableWorkspaceAuth(instance)) {
-    return null;
-  }
-
-  try {
-    refreshMessengerApiBase();
-    refreshWorkspaceApiBase();
-    const response = await messengerApi.get("/users/me/status");
-    if (!response.ok) {
-      log.warn("Own status request failed", { status: response.status });
-      return null;
-    }
-
-    return normalizeOwnStatusResponse(response.data ?? {});
-  } catch (err) {
-    log.warn("Failed to fetch own status", { error: String(err) });
-    return null;
-  }
-}
-
-export async function updateOwnStatus(
-  params: UpdateOwnStatusParams,
-): Promise<OwnStatusMutationResult> {
-  const instance = getCurrentInstance();
-  if (!hasUsableWorkspaceAuth(instance)) {
-    return {
-      ok: false,
-      status: 0,
-      kind: "transient",
-      message: "No active instance",
-    };
-  }
-
+function normalizeSubmittedStatus(params: UpdateOwnStatusParams): UserStatus | null {
   const text = params.text.trim();
   const emojiName = params.emojiName?.trim() ?? "";
   const emojiCode = emojiName ? (params.emojiCode?.trim() ?? "") : "";
   const reactionType = emojiName ? params.reactionType : undefined;
   const away = params.away === true;
 
-  try {
-    refreshMessengerApiBase();
-    refreshWorkspaceApiBase();
-    const payload: Record<string, string> = {
-      status_text: text,
-      emoji_name: emojiName,
-      away: String(away),
-    };
-    if (emojiName && emojiCode) {
-      payload.emoji_code = emojiCode;
-    }
-    if (emojiName && reactionType != null) {
-      payload.reaction_type = reactionType;
-    }
-    const response = await messengerApi.post("/users/me/status", payload);
-    const data = (response.data ?? {}) as WorkspaceUpdateOwnStatusResponse;
-
-    if (!response.ok || data.result === "error") {
-      return {
-        ok: false,
-        status: response.status,
-        kind: mapStatusMutationError(response.status),
-        message: readStatusMutationErrorMessage(data, response.status, "Failed to update status"),
-        ...(typeof data.code === "string" ? { code: data.code } : {}),
-      };
-    }
-
-    const normalized = normalizeOwnStatusResponse(data);
-
-    if (normalized != null) {
-      return { ok: true, status: normalized };
-    }
-
-    // Some Workspace versions return an empty body on success — fall back to the submitted values.
-    if (!text && !emojiName && !away) {
-      return { ok: true, status: null };
-    }
-    return {
-      ok: true,
-      status: {
-        text,
-        emojiName: emojiName || undefined,
-        emojiCode: emojiCode || undefined,
-        reactionType,
-        away,
-      },
-    };
-  } catch (err) {
-    log.warn("Failed to update own status", { error: String(err) });
-    return {
-      ok: false,
-      status: 0,
-      kind: "transient",
-      message: String(err),
-    };
+  if (!text && !emojiName && !away) {
+    return null;
   }
+
+  return {
+    text,
+    emojiName: emojiName || undefined,
+    emojiCode: emojiCode || undefined,
+    reactionType,
+    away,
+  };
 }
 
-/** Central entry for fallback status loads that write into the users store. */
+/** The new backend has no presence mutation endpoint; keep local presence tracking client-side only. */
+export async function reportPresence(_status: "active" | "idle", _pingOnly = false): Promise<void> {
+  return;
+}
+
+/** The new backend has no per-user custom status payload endpoint. */
+export async function fetchUserStatus(_userId: UserId): Promise<UserStatus | null> {
+  return null;
+}
+
+/** The new backend has no own custom status payload endpoint. */
+export async function fetchOwnStatus(): Promise<UserStatus | null> {
+  return null;
+}
+
+/**
+ * Custom status is not persisted through the backend.
+ * Return a normalized local snapshot so existing UI can update without issuing a request.
+ */
+export async function updateOwnStatus(
+  params: UpdateOwnStatusParams,
+): Promise<OwnStatusMutationResult> {
+  return { ok: true, status: normalizeSubmittedStatus(params) };
+}
+
+/** Status hydration is now driven by the users list/current-user payloads. */
 export async function requestUserStatus(
-  userId: number,
-  options?: RequestUserStatusOptions,
+  _userId: UserId,
+  _options?: RequestUserStatusOptions,
 ): Promise<void> {
-  await requestUserStatusWithPolicy(userId, options, fetchUserStatusDetailed);
+  return;
 }
 
-/** @deprecated Use `requestUserStatus` — kept for legacy call sites. */
 export async function ensureUserStatusLoaded(
-  userId: number,
-  options?: RequestUserStatusOptions,
+  _userId: UserId,
+  _options?: RequestUserStatusOptions,
 ): Promise<void> {
-  await requestUserStatus(userId, { ...options, reason: options?.reason ?? "compat" });
+  return;
 }

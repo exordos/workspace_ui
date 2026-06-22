@@ -12,14 +12,13 @@ const INSTANCES_STORAGE_KEY = "messenger-web-instances";
 const CURRENT_INSTANCE_KEY = "messenger-web-current-instance";
 const UNREAD_BY_INSTANCE_KEY = "messenger-web-instance-unread-counts";
 
-export type WorkspaceAuthType = "api_key" | "session" | "iam";
+export type WorkspaceAuthType = "iam";
 
 export interface WorkspaceInstance {
   id: string;
   realm: string;
   login: string;
-  apiKey: string;
-  authType?: WorkspaceAuthType;
+  authType: WorkspaceAuthType;
   /** IAM Bearer access token (authType `iam`). */
   iamAccessToken?: string;
   /** IAM refresh token (authType `iam`). */
@@ -52,9 +51,7 @@ function toSafeUnreadCount(value: unknown): number {
 }
 
 function normalizeAuthType(value: unknown): WorkspaceAuthType {
-  if (value === "session") return "session";
-  if (value === "iam") return "iam";
-  return "api_key";
+  return value === "iam" ? "iam" : "iam";
 }
 
 function normalizeStoredInstances(value: unknown): WorkspaceInstance[] {
@@ -72,27 +69,18 @@ function normalizeStoredInstances(value: unknown): WorkspaceInstance[] {
       typeof record.id !== "string" ||
       typeof record.realm !== "string" ||
       typeof loginRaw !== "string" ||
-      typeof record.apiKey !== "string"
+      record.authType !== "iam"
     ) {
       continue;
     }
     const authType = normalizeAuthType(record.authType);
     const iamAccessTokenRaw = record.iamAccessToken;
     const iamRefreshTokenRaw = record.iamRefreshToken;
-    let apiKey = record.apiKey;
-    let iamAccessToken = typeof iamAccessTokenRaw === "string" ? iamAccessTokenRaw.trim() : "";
+    const iamAccessToken = typeof iamAccessTokenRaw === "string" ? iamAccessTokenRaw.trim() : "";
     const iamRefreshToken =
       typeof iamRefreshTokenRaw === "string" ? iamRefreshTokenRaw.trim() : undefined;
 
-    if (authType === "iam") {
-      if (iamAccessToken === "" && apiKey.trim() !== "") {
-        iamAccessToken = apiKey.trim();
-        apiKey = "";
-      }
-      if (iamAccessToken === "") {
-        continue;
-      }
-    } else if (apiKey.trim() === "") {
+    if (iamAccessToken === "") {
       continue;
     }
 
@@ -101,7 +89,6 @@ function normalizeStoredInstances(value: unknown): WorkspaceInstance[] {
       id: record.id,
       realm: record.realm,
       login: loginRaw,
-      apiKey,
       authType,
       iamAccessToken: authType === "iam" ? iamAccessToken : undefined,
       iamRefreshToken: authType === "iam" ? iamRefreshToken : undefined,

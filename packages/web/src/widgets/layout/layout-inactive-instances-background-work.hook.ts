@@ -1,10 +1,6 @@
 import { useEffect } from "react";
 import type { WorkspaceInstance } from "~/entities/instance/instance.model";
 import { startMessengerEventLoopForCredentials } from "~/shared/lib/event-loop";
-import {
-  abortInactiveInstanceQueueOnTeardown,
-  handleInactiveInstanceQueueRegistered,
-} from "./layout-inactive-instance-queue.lib";
 import { startInactiveInstanceEventStreams } from "./layout-multi-org-event-streams.lib";
 
 export function useInactiveInstancesBackgroundWork(options: {
@@ -24,14 +20,14 @@ export function useInactiveInstancesBackgroundWork(options: {
       enabled,
       online,
       refreshUnreadForInstance: async () => {},
-      startEventLoop: ({ credentials, onEvent, onBadQueue, onQueueReady, onQueueRegistered }) => {
+      startEventLoop: ({ credentials, onEvent, onBadQueue, onQueueReady }) => {
         const controller = new AbortController();
-        let queueId: string | null = null;
-        let stopped = false;
         const instance = instances.find(
           (row) => row.realm === credentials.realm && row.login === credentials.login,
         );
         startMessengerEventLoopForCredentials({
+          // The Workspace gateway backend does not expose old event queues.
+          enabled: false,
           credentials,
           instanceId: instance?.id,
           signal: controller.signal,
@@ -45,23 +41,9 @@ export function useInactiveInstancesBackgroundWork(options: {
             "subscription",
             "user_topic",
           ],
-          onQueueRegistered: (id, registration) => {
-            const nextQueueId = handleInactiveInstanceQueueRegistered({
-              queueId: id,
-              registration,
-              stopped,
-              credentials,
-              instance,
-              onQueueRegistered,
-            });
-            if (nextQueueId != null) {
-              queueId = nextQueueId;
-            }
-          },
         });
         return () => {
-          stopped = true;
-          abortInactiveInstanceQueueOnTeardown(queueId, credentials, controller);
+          controller.abort();
         };
       },
     });

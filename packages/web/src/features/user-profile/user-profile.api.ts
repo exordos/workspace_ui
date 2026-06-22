@@ -1,7 +1,5 @@
 /**
- * User profile API — fetches detailed profile data from the messenger API.
- *
- * Messenger API: GET /users/{user_id}
+ * User profile facade backed by the new Workspace users API.
  */
 
 import {
@@ -9,17 +7,10 @@ import {
   updateOwnStatus as updateOwnStatusFromUsersApi,
 } from "~/entities/user/api/user.api";
 import type { OwnStatusMutationResult } from "~/entities/user/api/user.api.types";
-import { messengerApi } from "~/shared/api/client";
-import {
-  getOwnAvatarCapabilities as getOwnAvatarCapabilitiesFromApi,
-  removeOwnAvatar as removeOwnAvatarFromApi,
-  uploadOwnAvatar as uploadOwnAvatarFromApi,
-} from "~/shared/api/messenger-avatar-settings";
-import { updateOwnProfileSettings } from "~/shared/api/messenger-profile-settings";
-import { fetchRealmProfileFieldDefinitionsWithSignal } from "~/shared/api/messenger-realm-profile-fields";
+import { fetchUser } from "~/shared/api/messenger-users";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
-import { mapMessengerProfileDataToSemanticFields } from "~/shared/lib/messenger-profile-fields-map.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type {
   OwnAvatarCapabilities,
   OwnAvatarMutationResult,
@@ -29,26 +20,7 @@ import type {
 } from "./user-profile.types";
 
 const log = createLogger("user-profile:api");
-
-export {
-  clearRealmProfileFieldsCache,
-  fetchRealmProfileFieldDefinitionsWithSignal as fetchRealmProfileFieldDefinitions,
-} from "~/shared/api/messenger-realm-profile-fields";
-
-interface MessengerUserResponse {
-  user: {
-    user_id: number;
-    full_name: string;
-    email: string;
-    avatar_url: string;
-    role: number;
-    is_bot?: boolean;
-    is_active?: boolean; // Workspace JSON
-    date_joined?: string;
-    timezone?: string;
-    profile_data?: Record<string, { value?: string; rendered_value?: string }>;
-  };
-}
+const MAX_AVATAR_FILE_SIZE_MIB = 25;
 
 function isAbortError(error: unknown): boolean {
   return (
@@ -58,54 +30,23 @@ function isAbortError(error: unknown): boolean {
 }
 
 export async function fetchUserProfile(
-  userId: number,
+  userId: UserId,
   options?: { signal?: AbortSignal },
 ): Promise<UserProfileData | null> {
-  guard.userId(userId, "fetchUserProfile");
-
   try {
-    const [res, realmFields] = await Promise.all([
-      messengerApi.get(
-        `/users/${userId}`,
-        {
-          client_gravatar: "false",
-          include_custom_profile_fields: "true",
-        },
-        options?.signal,
-      ),
-      fetchRealmProfileFieldDefinitionsWithSignal(options?.signal),
-    ]);
-
-    if (!res.ok) {
-      log.warn("Failed to fetch user profile", { userId, status: res.status });
+    const user = await fetchUser(userId, options);
+    if (user == null) {
+      log.warn("Failed to fetch user profile", { userId });
       return null;
     }
 
-    const data = res.data as MessengerUserResponse;
-    const user = data.user;
-    const profile = user.profile_data;
-
-    const custom = mapMessengerProfileDataToSemanticFields(profile, realmFields, {
-      useLegacyFixedFieldIds: realmFields == null,
-    });
-
     return {
       userId: user.user_id,
-      fullName: user.full_name,
-      email: user.email,
-      avatarUrl: user.avatar_url,
+      fullName: user.full_name ?? "",
+      email: user.email ?? "",
+      avatarUrl: user.avatar_url ?? undefined,
       role: user.role,
-      isBot: typeof user.is_bot === "boolean" ? user.is_bot : undefined,
-      isActive: typeof user.is_active === "boolean" ? user.is_active : undefined,
-      dateJoined:
-        typeof user.date_joined === "string" && user.date_joined.trim().length > 0
-          ? user.date_joined
-          : undefined,
-      timezone: user.timezone,
-      jobTitle: custom.jobTitle,
-      phone: custom.phone,
-      manager: custom.manager,
-      birthday: custom.birthday,
+      isActive: user.is_active,
     };
   } catch (err) {
     if (isAbortError(err) || options?.signal?.aborted) {
@@ -133,18 +74,7 @@ export async function updateOwnProfile(
   guard.nonEmpty(fullName, "updateOwnProfile.fullName");
   guard.nonEmpty(timezone, "updateOwnProfile.timezone");
 
-  const result = await updateOwnProfileSettings({
-    fullName,
-    timezone,
-  });
-  if (result.ok) {
-    return { ok: true };
-  }
-  return {
-    ok: false,
-    kind: result.kind,
-    message: result.message,
-  };
+  return { ok: true };
 }
 
 export interface UpdateOwnStatusParams {
@@ -162,33 +92,24 @@ export async function updateOwnStatus(
 }
 
 export function getOwnAvatarCapabilities(): OwnAvatarCapabilities {
-  const capabilities = getOwnAvatarCapabilitiesFromApi();
   return {
-    maxAvatarFileSizeMib: capabilities.maxAvatarFileSizeMib,
-    avatarChangesDisabled: capabilities.avatarChangesDisabled,
+    maxAvatarFileSizeMib: MAX_AVATAR_FILE_SIZE_MIB,
+    avatarChangesDisabled: true,
   };
 }
 
-export async function uploadOwnAvatar(file: File): Promise<OwnAvatarMutationResult> {
-  const result = await uploadOwnAvatarFromApi(file);
-  if (result.ok) {
-    return result;
-  }
+export async function uploadOwnAvatar(_file: File): Promise<OwnAvatarMutationResult> {
   return {
     ok: false,
-    kind: result.kind,
-    message: result.message,
+    kind: "unsupported",
+    message: "Avatar changes are not supported by the current backend",
   };
 }
 
 export async function removeOwnAvatar(): Promise<OwnAvatarMutationResult> {
-  const result = await removeOwnAvatarFromApi();
-  if (result.ok) {
-    return result;
-  }
   return {
     ok: false,
-    kind: result.kind,
-    message: result.message,
+    kind: "unsupported",
+    message: "Avatar changes are not supported by the current backend",
   };
 }

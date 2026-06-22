@@ -23,18 +23,6 @@ export interface MessengerServerSettings {
   realm_uri: string;
   /** Canonical organization URL (server 9+). Alias of realm_uri in older docs. */
   realm_url: string;
-  external_authentication_methods: {
-    name: string;
-    display_name: string;
-    display_icon?: string;
-    login_url: string;
-  }[];
-}
-
-export interface DesktopFlowExchangeResult {
-  authType: "api_key" | "session";
-  email: string;
-  apiKey?: string;
 }
 
 export interface MessengerUserTopic {
@@ -160,62 +148,6 @@ export interface WorkspaceOwnAvatarCapabilities {
   server_avatar_changes_disabled?: boolean;
 }
 
-export type MessengerUserStatusReactionType = "unicode_emoji" | "realm_emoji" | "zulip_extra_emoji";
-
-export interface MessengerUserStatusSnapshot {
-  text: string;
-  emojiName?: string;
-  emojiCode?: string;
-  reactionType?: MessengerUserStatusReactionType;
-  away: boolean;
-}
-
-export interface MessengerUserStatusSnapshotEntry {
-  userId: number;
-  status: MessengerUserStatusSnapshot;
-}
-
-export interface RegisterQueueResult {
-  queue_id: string;
-  last_event_id: number;
-  event_queue_longpoll_timeout_seconds?: number;
-  subscriptions?: MessengerSubscription[];
-  user_topics?: MessengerUserTopic[];
-  /** Recent DM metadata for initial sidebar dialog list. */
-  recent_private_conversations?: Record<string, MessengerRecentPrivateConversation>;
-  /** Org groups from register metadata (channel-level permission resolution). */
-  realm_user_groups?: MessengerRealmUserGroup[];
-  /** Present when `realm` is included in `fetch_event_types` (modern Workspace 10+). */
-  realm_can_add_subscribers_group?: MessengerGroupSettingValue;
-  /** Present when `realm` is in `fetch_event_types` (messenger 10+). */
-  realm_can_resolve_topics_group?: MessengerGroupSettingValue;
-  /** Present when `realm` is in `fetch_event_types` (messenger 10+). */
-  realm_can_move_messages_between_channels_group?: MessengerGroupSettingValue;
-  /** Present when `realm` is in `fetch_event_types`. */
-  realm_allow_message_editing?: boolean;
-  /** `null` means message content can be edited indefinitely. */
-  realm_message_content_edit_limit_seconds?: number | null;
-  /** Present when `realm` is included in `fetch_event_types` (server 9.0+). */
-  server_thumbnail_formats?: MessengerServerThumbnailFormat[];
-  /** Present when `realm` is included in `fetch_event_types`. */
-  max_avatar_file_size_mib?: number;
-  /** Present when `realm` is included in `fetch_event_types`. */
-  realm_avatar_changes_disabled?: boolean;
-  /** Present when `realm` is included in `fetch_event_types`. */
-  server_avatar_changes_disabled?: boolean;
-  /**
-   * Effective Jitsi Meet base URL from register (`jitsi_server_url` or realm/server fields).
-   * Canonical origin without trailing slash.
-   */
-  jitsi_server_url_effective?: string;
-  /** Present when `user_settings_object` client capability is set. */
-  user_settings?: Record<string, unknown>;
-  /** Present when `user_status` is included in `fetch_event_types`. */
-  userStatusSnapshot?: MessengerUserStatusSnapshotEntry[];
-  /** Starred message ids from register metadata, used for an exact sidebar count. */
-  starred_message_ids?: MessageId[];
-}
-
 export interface MessengerEvent {
   id: number;
   type: string;
@@ -235,21 +167,21 @@ export interface GetEventsResult {
 export interface MessengerCredentials {
   realm: string;
   login: string;
-  apiKey: string;
+  accessToken: string;
 }
 
 export interface WorkspaceCurrentUser {
   user_id: UserId;
   full_name: string;
   email: string;
-  /** organization realm role code (100=owner, 200=admin, 300=moderator, 400=member, 600=guest). */
+  /** Optional organization role code when the backend provides one. */
   role?: number;
 }
 
 /** Map of normalized user id key → relative avatar_url path. */
 export type AvatarUrlByUserId = Map<string, string>;
 
-/** A single user entry from GET /users or IAM `/api/core/v1/iam/users/`. */
+/** A normalized user entry from `GET /api/messenger/v1/users/`. */
 export interface MessengerUserMember {
   user_id: UserId;
   full_name?: string;
@@ -258,23 +190,11 @@ export interface MessengerUserMember {
   role?: number;
   /** Workspace: `false` when the account is deactivated. */
   is_active?: boolean;
-  /** Present when `include_custom_profile_fields=true`. */
+  /** Optional custom profile fields when the backend provides them. */
   profile_data?: Record<string, { value?: string; rendered_value?: string }>;
 }
 
-/** Response shape from GET /api/v1/realm/presence (keyed by user email). */
-export interface RealmPresenceEntry {
-  aggregated?: { status: string; timestamp: number };
-  website?: { status: string; timestamp: number };
-}
-
-export interface RealmPresenceResponse {
-  result?: string;
-  presences?: Record<string, RealmPresenceEntry>;
-  server_timestamp?: number;
-}
-
-/** Normalized custom emoji entry from GET /realm/emoji for emoji-picker-react. */
+/** Optional realm-wide presence response shape when a backend provides one. */
 export interface RealmEmoji {
   id: string;
   names: string[];
@@ -285,7 +205,7 @@ export interface RealmEmoji {
 export interface Reaction {
   emoji_name: string;
   emoji_code: string;
-  reaction_type: "unicode_emoji" | "realm_emoji" | "zulip_extra_emoji";
+  reaction_type: "unicode_emoji" | "realm_emoji";
   user_id: number;
 }
 
@@ -423,7 +343,7 @@ export interface MockMessage {
    * Preserved after the server assigns the final message id.
    */
   local_echo_key?: MessageId;
-  /** Client-side link preview card data (messenger unfurl via messages/render). */
+  /** Client-side link preview card data from rendered message embed metadata. */
   link_preview?: LinkPreviewData;
   /** Multiple link preview cards (one per URL in message). */
   link_previews?: LinkPreviewData[];

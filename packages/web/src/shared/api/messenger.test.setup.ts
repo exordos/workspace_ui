@@ -4,7 +4,6 @@
  * Import this module first in each test file so `vi.mock` runs before the module under test loads.
  */
 import { afterEach, beforeEach, vi } from "vitest";
-import { clearAllMessengerEventQueueIds } from "~/shared/lib/messenger-event-queue-registry.lib";
 
 const mockGetCurrentInstance = vi.hoisted(() => vi.fn());
 
@@ -44,17 +43,12 @@ vi.mock("./client", () => ({
 }));
 
 vi.mock("~/shared/lib/auth-guard", () => ({
-  getBasicAuthValue: () => "Basic dGVzdEB0LmNvbTprZXkxMjM=",
-  buildAuthHeader: () => ({ Authorization: "Basic dGVzdEB0LmNvbTprZXkxMjM=" }),
+  buildAuthHeader: () => ({ Authorization: "Bearer test-access-token" }),
   setAuthInstanceGetter: vi.fn(),
 }));
 
 vi.mock("~/i18n/i18n", () => ({
   t: (key: string) => key,
-}));
-
-vi.mock("~/shared/lib/env", () => ({
-  env: { MESSENGER_API_V1_PATH: "/api/v1" },
 }));
 
 vi.mock("~/shared/lib/logger", async (importOriginal) => {
@@ -68,7 +62,8 @@ export const TEST_INSTANCE = {
   id: "test-inst",
   realm: "https://chat.example.com",
   login: "user@example.com",
-  apiKey: "test",
+  authType: "iam" as const,
+  iamAccessToken: "test-access-token",
 };
 
 export const mockFetch = vi.fn();
@@ -83,7 +78,6 @@ export function jsonResponse(data: unknown, status = 200): Response {
 }
 
 beforeEach(() => {
-  clearAllMessengerEventQueueIds();
   vi.stubGlobal("fetch", mockFetch);
   mockFetch.mockReset();
   mockGetCurrentInstance.mockReset();

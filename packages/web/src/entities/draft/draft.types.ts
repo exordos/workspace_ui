@@ -1,8 +1,7 @@
 /**
  * Draft entity type definitions.
  *
- * Drafts are saved locally and synced with the Workspace Drafts API.
- * Each draft has a type (stream or DM), target, and content.
+ * Drafts are saved locally. Each draft has a type (stream or DM), target, and content.
  */
 
 import type { MessageId } from "~/shared/lib/message-id.lib";

@@ -38,7 +38,7 @@ vi.mock("~/shared/lib/auth-guard", async () => {
   const actual = await vi.importActual<typeof AuthGuardModule>("~/shared/lib/auth-guard");
   return {
     ...actual,
-    buildAuthHeader: () => ({ Authorization: "Basic token" }),
+    buildAuthHeader: () => ({ Authorization: "Bearer token" }),
   };
 });
 
@@ -130,7 +130,7 @@ describe("MessageBubble attachment links", () => {
         expect.objectContaining({
           path: "/user_uploads/1/report.pdf",
           fileName: "report.pdf",
-          authHeaders: { Authorization: "Basic token" },
+          authHeaders: { Authorization: "Bearer token" },
           onProgress: expect.any(Function),
         }),
       );

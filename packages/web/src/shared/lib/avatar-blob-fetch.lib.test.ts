@@ -10,7 +10,7 @@ vi.mock("~/shared/lib/env", () => ({
 }));
 
 vi.mock("~/shared/lib/auth-guard", () => ({
-  buildAuthHeader: () => ({ Authorization: "Basic test" }),
+  buildAuthHeader: () => ({ Authorization: "Bearer test" }),
 }));
 
 vi.mock("~/shared/api/client", () => ({
@@ -122,7 +122,7 @@ describe("fetchAvatarBlob", () => {
       "/avatar/1.png",
       expect.objectContaining({
         credentials: "include",
-        headers: { Authorization: "Basic test" },
+        headers: { Authorization: "Bearer test" },
       }),
     );
   });

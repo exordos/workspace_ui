@@ -1,43 +1,9 @@
 /**
- * Types for user API responses and the status-load orchestrator.
+ * Types for the backend-only user API facade.
  */
 
 import type { ActiveOrgRequestContext } from "~/entities/instance/instance.model";
 import type { UserStatus } from "../user.model";
-
-export interface MessengerApiResultEnvelope {
-  result?: "success" | "error";
-  msg?: string;
-  code?: string;
-}
-
-export interface WorkspaceStatusEmojiDisplayInfo {
-  emoji_name?: string;
-  emoji_code?: string;
-  reaction_type?: string;
-}
-
-export interface WorkspaceGetUserStatusPayload {
-  status_text?: string;
-  emoji_name?: string;
-  emoji_code?: string;
-  reaction_type?: string;
-  away?: boolean;
-}
-
-export interface WorkspaceGetUserStatusResponse extends MessengerApiResultEnvelope {
-  status?: WorkspaceGetUserStatusPayload | null;
-}
-
-export interface WorkspaceUpdateOwnStatusResponse extends MessengerApiResultEnvelope {
-  status_text?: string;
-  status_emoji?: string;
-  away?: boolean;
-  status_emoji_display_info?:
-    | WorkspaceStatusEmojiDisplayInfo
-    | WorkspaceStatusEmojiDisplayInfo[]
-    | null;
-}
 
 export type OwnStatusMutationErrorKind = "forbidden" | "invalid" | "unsupported" | "transient";
 
@@ -51,31 +17,19 @@ export type OwnStatusMutationResult =
       code?: string;
     };
 
-export type StatusFetchOutcome =
-  | { kind: "ok"; status: UserStatus | null }
-  | { kind: "invalid_user"; status: null }
-  | { kind: "transient_error"; status: null };
-
-export type UserStatusRequestReason =
-  | "bootstrap"
-  | "dm_header"
-  | "right_panel"
-  | "top_bar"
-  | "compat";
+export type UserStatusRequestReason = "bootstrap" | "dm_header" | "right_panel" | "top_bar";
 
 export type UserStatusRequestPriority = "high" | "low";
 
 export interface RequestUserStatusOptions {
-  /** Bypass TTL/backoff and enqueue immediately. */
+  /** Keep the old call shape while status hydration is owned by backend user payloads. */
   force?: boolean;
-  /** Diagnostic tag for the request source (logging / TTL tuning). */
+  /** Diagnostic tag for the UI source. */
   reason?: UserStatusRequestReason;
-  /** High-priority requests drain before low-priority background loads. */
+  /** Diagnostic priority for UI callers. */
   priority?: UserStatusRequestPriority;
-  /** Internal active-organization context captured at request start. */
+  /** Active-organization context captured at request start. */
   orgContext?: ActiveOrgRequestContext;
-  /** Internal instance ID captured at request start for cache writes/reads. */
+  /** Instance ID captured at request start. */
   instanceId?: string;
 }
-
-export type FetchUserStatusDetailed = (userId: number) => Promise<StatusFetchOutcome>;

@@ -131,7 +131,7 @@ describe("MessageBubble deferred protected media (IntersectionObserver)", () => 
     });
     vi.stubGlobal("fetch", fetchMock);
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:deferred-test");
-    buildAuthHeaderMock.mockReturnValue({ Authorization: "Basic test" });
+    buildAuthHeaderMock.mockReturnValue({ Authorization: "Bearer test" });
 
     const { container } = render(
       <div role="feed" className="h-40 overflow-y-auto">
@@ -173,7 +173,7 @@ describe("MessageBubble deferred protected media (IntersectionObserver)", () => 
     });
     vi.stubGlobal("fetch", fetchMock);
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:deferred-once");
-    buildAuthHeaderMock.mockReturnValue({ Authorization: "Basic test" });
+    buildAuthHeaderMock.mockReturnValue({ Authorization: "Bearer test" });
 
     const { container } = render(
       <div role="feed">
@@ -214,7 +214,7 @@ describe("MessageBubble deferred protected media (IntersectionObserver)", () => 
     });
     vi.stubGlobal("fetch", fetchMock);
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:deferred-video");
-    buildAuthHeaderMock.mockReturnValue({ Authorization: "Basic test" });
+    buildAuthHeaderMock.mockReturnValue({ Authorization: "Bearer test" });
 
     const { container } = render(
       <div role="feed" className="h-40 overflow-y-auto">
@@ -248,7 +248,7 @@ describe("MessageBubble deferred protected media (IntersectionObserver)", () => 
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    buildAuthHeaderMock.mockReturnValue({ Authorization: "Basic test" });
+    buildAuthHeaderMock.mockReturnValue({ Authorization: "Bearer test" });
 
     const { container } = render(
       <div role="feed" className="h-40 overflow-y-auto">

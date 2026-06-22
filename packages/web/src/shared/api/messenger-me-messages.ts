@@ -336,7 +336,7 @@ export interface FetchStreamMessagesPageArgs {
 
 /**
  * Marker-paginated page fetch for one chat (channel or DM) keyed by `stream_uuid`, returning the
- * UI {@link MessagesPageResult} shape so it is a drop-in replacement for the legacy narrow page
+ * UI {@link MessagesPageResult} shape so callers can reuse the same message page rendering
  * fetch. Modes by argument:
  * - `anchor: "newest"` → latest `numBefore` rows (initial load); `foundNewest` is always true.
  * - `numBefore > 0` only → older rows before `anchor` (load-older).

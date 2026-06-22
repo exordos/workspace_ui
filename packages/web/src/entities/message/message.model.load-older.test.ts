@@ -83,7 +83,8 @@ describe("loadOlderBoundaryPage", () => {
     useInstancesStore.getState().addInstance({
       realm: "https://messenger.test",
       login: "test@messenger.test",
-      apiKey: `runtime-test-key-${Date.now()}`,
+      authType: "iam",
+      iamAccessToken: `runtime-test-key-${Date.now()}`,
     });
     setInstanceProvider(() => useInstancesStore.getState().getCurrentInstance());
     vi.clearAllMocks();
@@ -222,7 +223,8 @@ describe("loadOlderBoundaryPage", () => {
     const secondInstanceId = useInstancesStore.getState().addInstance({
       realm: "https://messenger-2.test",
       login: "two@messenger.test",
-      apiKey: "k2",
+      authType: "iam",
+      iamAccessToken: "k2",
     }).id;
 
     mockPersistChatMessagesToIndexedDb.mockReturnValue(true);
@@ -266,7 +268,8 @@ describe("loadOlderBoundaryPage", () => {
     const secondInstanceId = useInstancesStore.getState().addInstance({
       realm: "https://messenger-2.test",
       login: "two@messenger.test",
-      apiKey: "k2",
+      authType: "iam",
+      iamAccessToken: "k2",
     }).id;
 
     mockPersistChatMessagesToIndexedDb.mockReturnValue(true);

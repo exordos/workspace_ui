@@ -24,8 +24,20 @@ describe("useChatPartnerProfileHydration", () => {
   it("does not merge stale partner profile after organization switch", async () => {
     useInstancesStore.setState({
       instances: [
-        { id: "inst-a", realm: "https://a.test", login: "a@test.com", apiKey: "a-key" },
-        { id: "inst-b", realm: "https://b.test", login: "b@test.com", apiKey: "b-key" },
+        {
+          id: "inst-a",
+          realm: "https://a.test",
+          login: "a@test.com",
+          authType: "iam",
+          iamAccessToken: "a-key",
+        },
+        {
+          id: "inst-b",
+          realm: "https://b.test",
+          login: "b@test.com",
+          authType: "iam",
+          iamAccessToken: "b-key",
+        },
       ],
       currentInstanceId: "inst-a",
       activeOrgEpoch: 0,

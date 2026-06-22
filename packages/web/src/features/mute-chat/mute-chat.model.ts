@@ -1,8 +1,8 @@
 /**
  * Mute store — tracks which streams and topics the user has muted.
  *
- * Populated from subscription data (stream is_muted, desktop_notifications) and user_topics
- * (topic visibility_policy). Updated via API calls when the user toggles mute in the UI.
+ * Populated from channel and topic visibility metadata. Updated optimistically when the user
+ * toggles mute in the UI.
  */
 
 import { create } from "zustand";

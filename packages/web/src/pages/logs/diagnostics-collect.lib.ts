@@ -13,7 +13,6 @@ import type { DiagnosticVitalEntry } from "~/shared/lib/diagnostics-vitals.lib";
 import { isElectron } from "~/shared/lib/electron";
 import { env } from "~/shared/lib/env";
 import type { LogEntry } from "~/shared/lib/logger";
-import { getMessengerEventQueueIdForCurrentInstance } from "~/shared/lib/messenger-event-queue-registry.lib";
 import { isOnline } from "~/shared/lib/network";
 import { getIdleTimeMs, getLocalPresenceStatus } from "~/shared/lib/presence";
 import type { PushState } from "~/shared/lib/push/types";
@@ -38,7 +37,6 @@ export interface DiagnosticsPageSnapshot {
   connection: ConnectionHealthSnapshot;
   rateLimitBlockedUntil: number | null;
   realtime: {
-    eventQueueId: string | null;
     online: boolean;
     tabVisible: boolean;
     stats: DiagnosticRealtimeStats;
@@ -247,7 +245,6 @@ export function collectDiagnosticsPageSnapshot(
     connection,
     rateLimitBlockedUntil: input.rateLimitBlockedUntil,
     realtime: {
-      eventQueueId: getMessengerEventQueueIdForCurrentInstance() ?? null,
       online,
       tabVisible: isTabVisible(),
       stats: input.realtimeStats,
@@ -360,10 +357,4 @@ export function buildConnectionReportSnapshot(
       data: entry.data,
     })),
   };
-}
-
-export function truncateQueueId(queueId: string | null, maxLength = 12): string | null {
-  if (queueId == null) return null;
-  if (queueId.length <= maxLength) return queueId;
-  return `${queueId.slice(0, maxLength)}…`;
 }

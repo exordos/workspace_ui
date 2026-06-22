@@ -15,7 +15,7 @@ describe("extractLoggableRequestParams", () => {
     const params = extractLoggableRequestParams(
       makeReq({
         method: "GET",
-        url: "https://chat.example.com/api/v1/messages",
+        url: "https://chat.example.com/api/messenger/v1/messages",
         params: { anchor: "newest", num_before: "50" },
       }),
     );
@@ -27,7 +27,7 @@ describe("extractLoggableRequestParams", () => {
     const params = extractLoggableRequestParams(
       makeReq({
         method: "GET",
-        url: "https://chat.example.com/api/v1/messages?anchor=newest&num_before=50",
+        url: "https://chat.example.com/api/messenger/v1/messages?anchor=newest&num_before=50",
       }),
     );
 
@@ -38,7 +38,7 @@ describe("extractLoggableRequestParams", () => {
     const params = extractLoggableRequestParams(
       makeReq({
         method: "POST",
-        url: "https://chat.example.com/api/v1/messages",
+        url: "https://chat.example.com/api/messenger/v1/messages",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: "type=stream&stream_id=10&topic=general",
       }),
@@ -52,7 +52,7 @@ describe("extractLoggableRequestParams", () => {
     const params = extractLoggableRequestParams(
       makeReq({
         method: "POST",
-        url: "https://chat.example.com/api/v1/messages",
+        url: "https://chat.example.com/api/messenger/v1/messages",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: `type=direct&content=${encodeURIComponent(longContent)}&password=secret`,
       }),
@@ -83,7 +83,7 @@ describe("extractLoggableRequestParams", () => {
     const params = extractLoggableRequestParams(
       makeReq({
         method: "POST",
-        url: "https://chat.example.com/api/v1/users/me/avatar",
+        url: "https://chat.example.com/api/messenger/v1/users/00000000-0000-0000-0000-000000000001",
         body: form,
       }),
     );
@@ -91,27 +91,12 @@ describe("extractLoggableRequestParams", () => {
     expect(params).toEqual({ body: "[FormData]" });
   });
 
-  it("limits long-poll events params to queue fields", () => {
-    const params = extractLoggableRequestParams(
-      makeReq({
-        method: "GET",
-        url: "https://chat.example.com/api/v1/events?queue_id=q1&last_event_id=5&timeout=90&dont_care=1",
-      }),
-    );
-
-    expect(params).toEqual({
-      queue_id: "q1",
-      last_event_id: "5",
-      timeout: "90",
-    });
-  });
-
   it("returns undefined when no params", () => {
     expect(
       extractLoggableRequestParams(
         makeReq({
           method: "GET",
-          url: "https://chat.example.com/api/v1/streams",
+          url: "https://chat.example.com/api/messenger/v1/streams",
         }),
       ),
     ).toBeUndefined();

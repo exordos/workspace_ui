@@ -9,7 +9,6 @@ import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import { refreshActiveChatMessagesFromApi } from "./layout-active-chat-refresh.lib";
 import { runChatListBootstrap } from "./layout-chat-list-bootstrap.lib";
-import { refreshRealmPresenceFromApi } from "./layout-realm-presence-refresh.lib";
 import { refreshLayoutReconnectLight } from "./layout-reconnect-light.lib";
 import { stageReconnectStreamPreviews } from "./layout-reconnect-stream-preview.lib";
 
@@ -161,7 +160,6 @@ function refreshSharedLayers(
 ): void {
   if (params.isCancelled?.()) return;
 
-  refreshRealmPresenceFromApi({ isCancelled: params.isCancelled });
   refreshActiveChatMessagesFromApi({
     focusedMessageId: params.focusedMessageId ?? null,
     isCancelled: params.isCancelled,

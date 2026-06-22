@@ -8,10 +8,12 @@ import { getMockRefreshMessengerApiBase, getMockMessengerApi } from "./messenger
 import { testMessageId } from "~/test/factories";
 import {
   addReaction,
+  createSavedSnippet,
   deleteMessage,
   fetchActivityMessages,
   fetchActivityMessagesPage,
   fetchAllMessagesPage,
+  fetchSavedSnippets,
   fetchDmMessages,
   fetchMessageById,
   fetchMessagesByIds,
@@ -148,7 +150,6 @@ describe("fetchRecentMessages", () => {
         anchor: "newest",
         num_before: "1000",
         num_after: "0",
-        client_gravatar: "true",
         allow_empty_topic_name: "true",
         apply_markdown: "false",
       },
@@ -212,7 +213,6 @@ describe("fetchMessagesBeforeAnchor", () => {
         include_anchor: "false",
         num_before: "5000",
         num_after: "0",
-        client_gravatar: "true",
         allow_empty_topic_name: "true",
         apply_markdown: "false",
       },
@@ -264,7 +264,6 @@ describe("fetchMessagesAfterAnchor", () => {
         include_anchor: "false",
         num_before: "0",
         num_after: "5000",
-        client_gravatar: "true",
         allow_empty_topic_name: "true",
         apply_markdown: "false",
       },
@@ -307,7 +306,6 @@ describe("fetchActivityMessages", () => {
         num_after: "0",
         narrow: JSON.stringify([{ negated: false, operator: "is", operand: "starred" }]),
         allow_empty_topic_name: "true",
-        client_gravatar: "true",
         apply_markdown: "false",
       },
       undefined,
@@ -395,7 +393,6 @@ describe("fetchActivityMessagesPage", () => {
           { negated: false, operator: "sender", operand: 42 },
         ]),
         allow_empty_topic_name: "true",
-        client_gravatar: "true",
         apply_markdown: "false",
       },
       undefined,
@@ -447,7 +444,6 @@ describe("fetchMessagesByIds", () => {
       {
         message_ids: JSON.stringify([messageId]),
         allow_empty_topic_name: "true",
-        client_gravatar: "true",
         apply_markdown: "false",
       },
       undefined,
@@ -777,7 +773,6 @@ describe("fetchAllMessagesPage", () => {
         num_after: "0",
         narrow: "[]",
         allow_empty_topic_name: "true",
-        client_gravatar: "true",
         apply_markdown: "false",
       },
       undefined,
@@ -1100,23 +1095,32 @@ describe("sendMessage", () => {
 });
 
 // ---------------------------------------------------------------------------
-// renderMessageContent — authenticated markdown preview rendering
+// saved snippets — unsupported by the current backend
+// ---------------------------------------------------------------------------
+
+describe("saved snippets", () => {
+  it("returns an empty list without calling the removed saved snippets API", async () => {
+    await expect(fetchSavedSnippets()).resolves.toEqual([]);
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
+  });
+
+  it("validates snippet input and fails without calling the removed saved snippets API", async () => {
+    await expect(createSavedSnippet({ title: "Bug", content: "Steps" })).rejects.toThrow(
+      "Saved snippets are unsupported",
+    );
+    expect(mockMessengerApi.post).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// renderMessageContent — local markdown preview rendering
 // ---------------------------------------------------------------------------
 
 describe("renderMessageContent", () => {
-  it("renders markdown via messenger messages/render endpoint", async () => {
-    mockMessengerApi.post.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: { result: "success", rendered: "<p><strong>Hello</strong></p>" },
-      raw: { statusText: "OK" },
-    });
-
-    await expect(renderMessageContent("**Hello**")).resolves.toBe("<p><strong>Hello</strong></p>");
-    expect(mockRefreshMessengerApiBase).toHaveBeenCalled();
-    expect(mockMessengerApi.post).toHaveBeenCalledWith("/messages/render", {
-      content: "**Hello**",
-    });
+  it("renders markdown locally without calling the removed render endpoint", async () => {
+    await expect(renderMessageContent("**Hello**")).resolves.toContain("<strong>Hello</strong>");
+    expect(mockRefreshMessengerApiBase).not.toHaveBeenCalled();
+    expect(mockMessengerApi.post).not.toHaveBeenCalled();
   });
 
   it("throws for blank content", async () => {
@@ -1124,17 +1128,6 @@ describe("renderMessageContent", () => {
       /renderMessageContent\.content must be a non-empty string/,
     );
     expect(mockMessengerApi.post).not.toHaveBeenCalled();
-  });
-
-  it("throws when render endpoint returns error", async () => {
-    mockMessengerApi.post.mockResolvedValue({
-      ok: false,
-      status: 400,
-      data: { result: "error", msg: "Bad markdown" },
-      raw: { statusText: "Bad Request" },
-    });
-
-    await expect(renderMessageContent("**broken**")).rejects.toThrow("Bad markdown");
   });
 });
 

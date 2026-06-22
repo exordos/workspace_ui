@@ -11,23 +11,23 @@ import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
 import { useMessageReadersStore } from "~/features/message-readers/message-readers.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useUserProfileStore } from "~/features/user-profile/user-profile.model";
-import { DEFAULT_REGISTER_FETCH_EVENT_TYPES } from "~/shared/api/messenger-queue";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import { loadUsersDirectoryRow } from "~/shared/lib/users-directory-snapshot-db";
-import { createMessage, testMessageId } from "~/test/factories";
+import { createMessage } from "~/test/factories";
 import { useLayoutMessengerEventLoop } from "./layout-messenger-event-loop.hook";
 import type { ChatListBootstrapResult } from "./layout-chat-list-bootstrap.lib";
 
 const startMessengerEventLoopMock = vi.hoisted(() => vi.fn());
 const fetchUsersMock = vi.hoisted(() => vi.fn(() => Promise.resolve([])));
 const fetchMyStreamsMock = vi.hoisted(() => vi.fn(() => Promise.resolve([])));
-const getCurrentUserMock = vi.hoisted(() => vi.fn(() => Promise.resolve({ user_id: 7 })));
-const deleteQueueMock = vi.hoisted(() => vi.fn(() => Promise.resolve(undefined)));
+const fetchStreamTopicsMock = vi.hoisted(() => vi.fn(() => Promise.resolve([])));
+const getCurrentUserMock = vi.hoisted(() =>
+  vi.fn(() => Promise.resolve({ user_id: "00000000-0000-0000-0000-000000000000" })),
+);
 const fetchDirectMessagesPageMock = vi.hoisted(() =>
   vi.fn(() => Promise.resolve({ messages: [], foundOldest: true })),
 );
 const hydrateDmSidebarPreviewsMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
-const requestUserStatusMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 const loadDmIndexEntriesMock = vi.hoisted(() =>
   vi.fn<
     () => {
@@ -53,29 +53,18 @@ vi.mock("~/shared/lib/connection-health", () => ({
   setConnectionPhase: vi.fn(),
 }));
 
-vi.mock("~/shared/api/messenger-queue", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/api/messenger-queue")>();
-  return {
-    ...actual,
-    deleteQueue: deleteQueueMock,
-  };
-});
-
 vi.mock("~/shared/api/messenger-sidebar-preview.lib", () => ({
   fetchDirectMessagesPage: fetchDirectMessagesPageMock,
 }));
 
 vi.mock("~/shared/api/messenger-streams", () => ({
   fetchMyStreams: fetchMyStreamsMock,
+  fetchStreamTopics: fetchStreamTopicsMock,
 }));
 
 vi.mock("~/shared/api/messenger-users", () => ({
   fetchUsers: fetchUsersMock,
   getCurrentUser: getCurrentUserMock,
-}));
-
-vi.mock("~/entities/user/api/user.api", () => ({
-  requestUserStatus: requestUserStatusMock,
 }));
 
 vi.mock("~/entities/chat-list/chat-list-dm-preview-hydrate.lib", () => ({
@@ -153,9 +142,10 @@ function Harness({
 describe("useLayoutMessengerEventLoop", () => {
   beforeEach(() => {
     hydrateDmSidebarPreviewsMock.mockClear();
-    requestUserStatusMock.mockClear();
     loadDmIndexEntriesMock.mockReset();
     loadDmIndexEntriesMock.mockReturnValue([]);
+    fetchStreamTopicsMock.mockReset();
+    fetchStreamTopicsMock.mockResolvedValue([]);
     useActivityStore.getState().clear();
     useChatListStore.getState().clear();
     useInboxStore.getState().clear();
@@ -173,7 +163,8 @@ describe("useLayoutMessengerEventLoop", () => {
           id: "inst-1",
           realm: "https://chat.example.com",
           login: "test@example.com",
-          apiKey: "api-key",
+          authType: "iam",
+          iamAccessToken: "access-token",
         },
       ],
       currentInstanceId: "inst-1",
@@ -210,14 +201,11 @@ describe("useLayoutMessengerEventLoop", () => {
     expect(fetchMyStreamsMock).toHaveBeenCalledTimes(1);
 
     const firstCallArg = startMessengerEventLoopMock.mock.calls[0]?.[0] as
-      | { fetchEventTypes?: string[] }
+      | { enabled?: boolean; fetchEventTypes?: string[]; onQueueRegistered?: unknown }
       | undefined;
-    expect(firstCallArg?.fetchEventTypes).toEqual([
-      ...DEFAULT_REGISTER_FETCH_EVENT_TYPES,
-      "starred_messages",
-    ]);
-    expect(firstCallArg?.fetchEventTypes).toContain("user_status");
-    expect(firstCallArg?.fetchEventTypes).toContain("starred_messages");
+    expect(firstCallArg?.enabled).toBe(false);
+    expect(firstCallArg?.fetchEventTypes).toBeUndefined();
+    expect(firstCallArg?.onQueueRegistered).toBeUndefined();
   });
 
   it("marks stream metadata as hydrated after bootstrap subscriptions success, even if empty", async () => {
@@ -232,12 +220,10 @@ describe("useLayoutMessengerEventLoop", () => {
 
   it("hydrates private stream metadata from /streams into Personal", async () => {
     const streamUuid = "1bce03ca-d6d9-4fdb-82cb-7ec05fa7a8e9";
-    const streamId = 42;
     const currentUserUuid = "00000000-0000-0000-0000-000000000000";
     fetchMyStreamsMock.mockResolvedValueOnce([
       {
         uuid: streamUuid,
-        stream_id: streamId,
         name: "Alice Smith",
         description: "",
         stream_uuid: streamUuid,
@@ -255,7 +241,7 @@ describe("useLayoutMessengerEventLoop", () => {
       expect(startMessengerEventLoopMock).toHaveBeenCalledTimes(1);
     });
 
-    expect(useChatListStore.getState().streamsMap.get(streamId)).toEqual(
+    expect(useChatListStore.getState().streamsMap.get(streamUuid)).toEqual(
       expect.objectContaining({
         name: "Alice Smith",
         private: true,
@@ -289,88 +275,24 @@ describe("useLayoutMessengerEventLoop", () => {
     expect(props.setCurrentUserStatus).not.toHaveBeenCalledWith("blocked");
   });
 
-  it("stores modern realm add-subscribers group from register metadata", async () => {
-    render(<Harness currentInstanceId="inst-1" />);
-
-    await waitFor(() => {
-      expect(startMessengerEventLoopMock).toHaveBeenCalledTimes(1);
-    });
-
-    const firstCallArg = startMessengerEventLoopMock.mock.calls[0]?.[0] as
-      | {
-          onQueueRegistered?: (
-            id: string,
-            registration?: {
-              realm_can_add_subscribers_group?: number;
-            },
-          ) => void;
-        }
-      | undefined;
-
-    act(() => {
-      firstCallArg?.onQueueRegistered?.("q-1", {
-        realm_can_add_subscribers_group: 14,
-      });
-    });
-
-    expect(useUsersStore.getState().currentUserChannelCapabilities).toEqual({
-      realmCanAddSubscribersGroup: 14,
-    });
-  });
-
-  it("sets starred summary count from register message ids", async () => {
-    render(<Harness currentInstanceId="inst-1" />);
-
-    await waitFor(() => {
-      expect(startMessengerEventLoopMock).toHaveBeenCalledTimes(1);
-    });
-
-    const firstCallArg = startMessengerEventLoopMock.mock.calls[0]?.[0] as
-      | {
-          onQueueRegistered?: (
-            id: string,
-            registration?: {
-              starred_message_ids?: MessageId[];
-            },
-          ) => void;
-        }
-      | undefined;
-
-    act(() => {
-      firstCallArg?.onQueueRegistered?.("q-starred", {
-        starred_message_ids: [
-          "00000000-0000-4000-8000-000000000011",
-          "00000000-0000-4000-8000-000000000012",
-          "00000000-0000-4000-8000-000000000013",
-        ],
-      });
-    });
-
-    expect(useActivityStore.getState().starredSummary).toEqual(
-      expect.objectContaining({
-        count: 3,
-        isCapped: false,
-        stale: false,
-      }),
-    );
-  });
-
-  it("resolves current user from /users when /users/me returns null", async () => {
-    getCurrentUserMock.mockResolvedValueOnce(null as unknown as { user_id: number });
+  it("does not resolve current user from directory when token user lookup fails", async () => {
+    getCurrentUserMock.mockResolvedValueOnce(null as unknown as { user_id: string });
     fetchUsersMock.mockResolvedValueOnce([
-      { user_id: 7, full_name: "Test User", email: "test@example.com" },
+      {
+        user_id: "00000000-0000-0000-0000-000000000000",
+        full_name: "Test User",
+        email: "test@example.com",
+      },
     ] as never);
     const props = createHarnessProps();
 
     render(<Harness currentInstanceId="inst-1" props={props} />);
 
     await waitFor(() => {
-      expect(props.setCurrentUserStatus).toHaveBeenCalledWith("ready");
+      expect(props.setCurrentUserStatus).toHaveBeenCalledWith("blocked");
     });
-    expect(props.setCurrentUserId).toHaveBeenCalledWith(7);
-    await waitFor(() => {
-      expect(startMessengerEventLoopMock).toHaveBeenCalledTimes(1);
-    });
+    expect(props.setCurrentUserId).not.toHaveBeenCalled();
+    expect(startMessengerEventLoopMock).toHaveBeenCalledTimes(1);
   });
 
   it("does not preload bootstrap statuses for users directory members", async () => {
@@ -394,137 +316,6 @@ describe("useLayoutMessengerEventLoop", () => {
     await waitFor(() => {
       expect(startMessengerEventLoopMock).toHaveBeenCalledTimes(1);
     });
-    expect(requestUserStatusMock).not.toHaveBeenCalled();
-  });
-
-  it("hydrates known user statuses from register snapshot without fallback requests", async () => {
-    fetchUsersMock.mockResolvedValueOnce([
-      { user_id: 7, full_name: "Current User", email: "test@example.com" },
-      { user_id: 20, full_name: "Partner", email: "partner@example.com" },
-    ] as never);
-
-    render(<Harness currentInstanceId="inst-1" />);
-
-    await waitFor(() => {
-      expect(startMessengerEventLoopMock).toHaveBeenCalledTimes(1);
-    });
-
-    const firstCallArg = startMessengerEventLoopMock.mock.calls[0]?.[0] as
-      | {
-          onQueueRegistered?: (
-            id: string,
-            registration?: {
-              userStatusSnapshot?: {
-                userId: number;
-                status: {
-                  text: string;
-                  emojiName?: string;
-                  emojiCode?: string;
-                  reactionType?: "unicode_emoji";
-                  away: boolean;
-                };
-              }[];
-            },
-          ) => void;
-        }
-      | undefined;
-
-    act(() => {
-      firstCallArg?.onQueueRegistered?.("q-status", {
-        userStatusSnapshot: [
-          {
-            userId: 20,
-            status: {
-              text: "Heads down",
-              emojiName: "speech_balloon",
-              emojiCode: "1f4ac",
-              reactionType: "unicode_emoji",
-              away: true,
-            },
-          },
-        ],
-      });
-    });
-
-    const partner = useUsersStore.getState().getUser(20);
-    expect(partner?.status).toEqual({
-      text: "Heads down",
-      emojiName: "speech_balloon",
-      emojiCode: "1f4ac",
-      reactionType: "unicode_emoji",
-      away: true,
-    });
-    expect(partner?.statusFetchedAt).toEqual(expect.any(Number));
-    expect(requestUserStatusMock).not.toHaveBeenCalled();
-  });
-
-  it("clears stale user statuses when register snapshot is present but empty", async () => {
-    fetchUsersMock.mockResolvedValueOnce([
-      { user_id: 7, full_name: "Current User", email: "test@example.com" },
-      { user_id: 20, full_name: "Partner", email: "partner@example.com" },
-    ] as never);
-
-    render(<Harness currentInstanceId="inst-1" />);
-
-    await waitFor(() => {
-      expect(startMessengerEventLoopMock).toHaveBeenCalledTimes(1);
-    });
-
-    useUsersStore.getState().setStatus(20, { text: "Old status", away: false }, 123);
-
-    const firstCallArg = startMessengerEventLoopMock.mock.calls[0]?.[0] as
-      | {
-          onQueueRegistered?: (
-            id: string,
-            registration?: {
-              userStatusSnapshot?: {
-                userId: number;
-                status: { text: string; away: boolean };
-              }[];
-            },
-          ) => void;
-        }
-      | undefined;
-
-    act(() => {
-      firstCallArg?.onQueueRegistered?.("q-empty-status", {
-        userStatusSnapshot: [],
-      });
-    });
-
-    const partner = useUsersStore.getState().getUser(20);
-    expect(partner?.status).toBeUndefined();
-    expect(partner?.statusFetchedAt).toEqual(expect.any(Number));
-  });
-
-  it("does not clear statuses when register snapshot field is absent", async () => {
-    fetchUsersMock.mockResolvedValueOnce([
-      { user_id: 7, full_name: "Current User", email: "test@example.com" },
-      { user_id: 20, full_name: "Partner", email: "partner@example.com" },
-    ] as never);
-
-    render(<Harness currentInstanceId="inst-1" />);
-
-    await waitFor(() => {
-      expect(startMessengerEventLoopMock).toHaveBeenCalledTimes(1);
-    });
-
-    useUsersStore.getState().setStatus(20, { text: "Keep me", away: false }, 123);
-
-    const firstCallArg = startMessengerEventLoopMock.mock.calls[0]?.[0] as
-      | {
-          onQueueRegistered?: (id: string, registration?: Record<string, unknown>) => void;
-        }
-      | undefined;
-
-    act(() => {
-      firstCallArg?.onQueueRegistered?.("q-no-status", {});
-    });
-
-    expect(useUsersStore.getState().getUser(20)?.status).toEqual({
-      text: "Keep me",
-      away: false,
-    });
   });
 
   it("does not let a superseded bootstrap run set blocked after ready", async () => {
@@ -536,7 +327,7 @@ describe("useLayoutMessengerEventLoop", () => {
           resolveUsers = resolve;
         }),
     );
-    getCurrentUserMock.mockResolvedValueOnce({ user_id: 7 });
+    getCurrentUserMock.mockResolvedValueOnce({ user_id: "00000000-0000-0000-0000-000000000000" });
 
     const { unmount } = render(<Harness currentInstanceId="inst-1" props={props} />);
 
@@ -555,37 +346,12 @@ describe("useLayoutMessengerEventLoop", () => {
     expect(props.setCurrentUserStatus).not.toHaveBeenCalledWith("blocked");
   });
 
-  it("marks stream metadata as hydrated on queue register even without subscriptions payload", async () => {
-    render(<Harness currentInstanceId="inst-1" />);
-
-    await waitFor(() => {
-      expect(startMessengerEventLoopMock).toHaveBeenCalledTimes(1);
-    });
-
-    useChatListStore.getState().setStreamMetadataHydrated(false);
-    const firstCallArg = startMessengerEventLoopMock.mock.calls[0]?.[0] as
-      | {
-          onQueueRegistered?: (
-            id: string,
-            registration?: {
-              realm_can_add_subscribers_group?: number;
-            },
-          ) => void;
-        }
-      | undefined;
-    act(() => {
-      firstCallArg?.onQueueRegistered?.("q-1", {
-        realm_can_add_subscribers_group: 14,
-      });
-    });
-
-    expect(useChatListStore.getState().streamMetadataHydrated).toBe(true);
-  });
-
   it("clears messenger shell state when active instance becomes null", async () => {
+    const streamUuid = "00000000-0000-4000-8000-000000000010";
+    const currentUserUuid = "00000000-0000-0000-0000-000000000000";
     const view = render(<Harness currentInstanceId="inst-1" />);
 
-    useUsersStore.getState().mergeUser({ user_id: 1, full_name: "Alice" });
+    useUsersStore.getState().mergeUser({ user_id: currentUserUuid, full_name: "Alice" });
     useActivityStore.setState((state) => ({
       filters: {
         ...state.filters,
@@ -598,8 +364,8 @@ describe("useLayoutMessengerEventLoop", () => {
     useInboxStore.setState({
       entries: [
         {
-          key: "stream:10:bugs",
-          streamId: 10,
+          key: "stream:" + streamUuid + ":bugs",
+          streamId: streamUuid,
           streamName: "engineering",
           topic: "bugs",
           senderId: null,
@@ -612,12 +378,12 @@ describe("useLayoutMessengerEventLoop", () => {
       ],
     });
     useChatListStore.setState({
-      currentUserId: 7,
+      currentUserId: currentUserUuid,
       streamsMap: new Map([
         [
-          10,
+          streamUuid,
           {
-            stream_id: 10,
+            streamUuid,
             name: "engineering",
             lastMessage: "Mention from org A",
             time: "",
@@ -629,7 +395,7 @@ describe("useLayoutMessengerEventLoop", () => {
     });
     useCurrentChatMessagesStore.getState().setContext({
       type: "stream",
-      streamId: 10,
+      streamId: streamUuid,
       streamName: "engineering",
       topic: "bugs",
       streamWideView: false,
@@ -637,7 +403,7 @@ describe("useLayoutMessengerEventLoop", () => {
     useCurrentChatMessagesStore.getState().setMessages([
       createMessage({
         id: "00000000-0000-4000-8000-000000000088",
-        stream_id: 10,
+        stream_uuid: streamUuid,
         subject: "bugs",
         content: "Current chat message",
         type: "stream",
@@ -651,7 +417,7 @@ describe("useLayoutMessengerEventLoop", () => {
       messageId: "00000000-0000-4000-8000-000000000088",
       requestVersion: 1,
     });
-    useMuteStore.getState().muteStream(10);
+    useMuteStore.getState().muteStream(streamUuid);
     useNotificationSettingsStore.getState().setFromServer({ enable_desktop_notifications: false });
     useUserProfileStore.setState({
       profile: {

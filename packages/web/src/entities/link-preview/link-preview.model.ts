@@ -1,5 +1,5 @@
 /**
- * Per-message link preview cache (messenger unfurl via messages/render on full markdown).
+ * Per-message link preview cache for rendered message embed metadata.
  *
  * Usage:
  *   import { useLinkPreviewStore } from "~/entities/link-preview/link-preview.model";

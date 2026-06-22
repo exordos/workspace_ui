@@ -17,7 +17,7 @@ export interface RightPanelUserFromStoreLike {
 }
 
 export interface RightPanelDetailedProfileLike {
-  userId: number;
+  userId: UserId;
   fullName?: string;
   email?: string;
   avatarUrl?: string;

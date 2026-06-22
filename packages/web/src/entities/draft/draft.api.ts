@@ -1,121 +1,43 @@
 /**
- * Draft API — Workspace Drafts endpoints.
+ * Draft API facade.
  *
- * GET /drafts — fetch all drafts
- * POST /drafts — create draft(s)
- * PATCH /drafts/{id} — update a draft
- * DELETE /drafts/{id} — delete a draft
+ * The Workspace gateway backend currently has no server-side drafts endpoint. Drafts stay local in
+ * the Zustand draft store; these functions preserve validation and expose no-network fallbacks for
+ * call sites that still use the server-sync shape.
  */
 
-import { messengerApi } from "~/shared/api/client";
 import { guard } from "~/shared/lib/guards";
-import { createLogger } from "~/shared/lib/logger";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { Draft, DraftInput } from "./draft.types";
 
-const log = createLogger("draft:api");
-
-export async function fetchDrafts(): Promise<Draft[]> {
-  try {
-    const res = await messengerApi.get("/drafts");
-    if (!res.ok) {
-      log.warn("Fetch drafts failed", { status: res.status });
-      throw new Error(`Fetch drafts failed with status ${res.status}`);
+function validateDraftInput(input: DraftInput, scope: string): void {
+  guard.oneOf(input.type, ["stream", "private"] as const, `${scope} draft type`);
+  guard.nonEmptyArray(input.to, `${scope} draft to`);
+  for (const id of input.to) {
+    if (input.type === "stream") {
+      guard.streamUuid(id, `${scope} to`);
+    } else {
+      guard.userId(id, `${scope} to`);
     }
-    const data = res.data as {
-      drafts?: {
-        id: MessageId;
-        type: string;
-        to: number[];
-        topic: string;
-        content: string;
-        timestamp: number;
-      }[];
-    };
-    return (data.drafts ?? []).map((d) => ({
-      id: d.id,
-      type: d.type === "private" ? "private" : "stream",
-      to: d.to,
-      topic: d.topic ?? "",
-      content: d.content,
-      timestamp: d.timestamp,
-    }));
-  } catch (err) {
-    log.error("Fetch drafts error", { error: String(err) });
-    throw err;
   }
 }
 
-export async function createDraft(input: DraftInput): Promise<MessageId | null> {
-  guard.oneOf(input.type, ["stream", "private"] as const, "draft type");
-  guard.nonEmptyArray(input.to, "draft to (stream ID or recipient IDs)");
-  for (const id of input.to) {
-    if (input.type === "stream") {
-      guard.streamUuid(id, "createDraft to");
-    } else {
-      guard.userId(id, "createDraft to");
-    }
-  }
+export async function fetchDrafts(): Promise<Draft[]> {
+  return [];
+}
 
-  try {
-    const res = await messengerApi.post("/drafts", {
-      drafts: JSON.stringify([
-        {
-          type: input.type,
-          to: input.to,
-          topic: input.topic,
-          content: input.content,
-        },
-      ]),
-    });
-    if (!res.ok) {
-      log.warn("Create draft failed", { status: res.status });
-      return null;
-    }
-    const data = res.data as { ids?: MessageId[] };
-    return data.ids?.[0] ?? null;
-  } catch (err) {
-    log.error("Create draft error", { error: String(err) });
-    return null;
-  }
+export async function createDraft(input: DraftInput): Promise<MessageId | null> {
+  validateDraftInput(input, "createDraft");
+  return null;
 }
 
 export async function updateDraftOnServer(id: MessageId, input: DraftInput): Promise<boolean> {
   guard.messageId(id, "updateDraftOnServer");
-  guard.oneOf(input.type, ["stream", "private"] as const, "draft type");
-  guard.nonEmptyArray(input.to, "draft to");
-  for (const uid of input.to) {
-    if (input.type === "stream") {
-      guard.streamUuid(uid, "updateDraftOnServer to");
-    } else {
-      guard.userId(uid, "updateDraftOnServer to");
-    }
-  }
-
-  try {
-    const res = await messengerApi.patch(`/drafts/${id}`, {
-      draft: JSON.stringify({
-        type: input.type,
-        to: input.to,
-        topic: input.topic,
-        content: input.content,
-      }),
-    });
-    return res.ok;
-  } catch (err) {
-    log.error("Update draft error", { id, error: String(err) });
-    return false;
-  }
+  validateDraftInput(input, "updateDraftOnServer");
+  return false;
 }
 
 export async function deleteDraftOnServer(id: MessageId): Promise<boolean> {
   guard.messageId(id, "deleteDraftOnServer");
-
-  try {
-    const res = await messengerApi.delete(`/drafts/${id}`);
-    return res.ok;
-  } catch (err) {
-    log.error("Delete draft error", { id, error: String(err) });
-    return false;
-  }
+  return false;
 }

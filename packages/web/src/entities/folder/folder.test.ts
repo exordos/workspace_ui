@@ -21,13 +21,13 @@ const { workspaceApi, messengerApi } = vi.hoisted(() => {
         (_base: string, path: string, params?: Record<string, string>, signal?: AbortSignal) =>
           get(path, params, signal),
       ),
-      getBaseUrl: vi.fn(() => "/api/v1"),
+      getBaseUrl: vi.fn(() => "/api/messenger/v1"),
       setBaseUrl: vi.fn(),
     },
     messengerApi: {
       get,
       getWithBase,
-      getBaseUrl: vi.fn(() => "/api/v1"),
+      getBaseUrl: vi.fn(() => "/api/messenger/v1"),
       setBaseUrl: vi.fn(),
     },
   };
@@ -40,7 +40,8 @@ vi.mock("~/shared/api/client", () => ({
     id: "test-inst",
     realm: "https://messenger.test",
     login: "test@test.com",
-    apiKey: "test",
+    authType: "iam",
+    iamAccessToken: "test",
     authType: "iam",
     iamAccessToken: "iam-token",
   }),

@@ -165,7 +165,7 @@ interface InstanceOverrides {
   id?: string;
   login?: string;
   realm?: string;
-  apiKey?: string;
+  iamAccessToken?: string;
 }
 
 export function createInstance(overrides: InstanceOverrides = {}) {
@@ -173,7 +173,8 @@ export function createInstance(overrides: InstanceOverrides = {}) {
     id: overrides.id ?? `inst-${autoId()}`,
     realm: overrides.realm ?? "https://chat.example.com",
     login: overrides.login ?? "test@example.com",
-    apiKey: overrides.apiKey ?? "test-api-key-12345",
+    authType: "iam",
+    iamAccessToken: overrides.iamAccessToken ?? "test-access-token-12345",
   };
 }
 

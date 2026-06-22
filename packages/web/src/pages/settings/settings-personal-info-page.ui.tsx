@@ -20,7 +20,6 @@ import { bumpAvatarVersion, resolveAvatarUrl } from "~/shared/lib/avatar";
 import { writeText } from "~/shared/lib/clipboard";
 import { formatDateJoined } from "~/shared/lib/datetime.lib";
 import { getRoleLabel, parseRole } from "~/shared/lib/roles";
-import { numericUserIdOrNull } from "~/shared/lib/user-id.lib";
 import { detectImageMime, isValidRealmUrl, validateFileUpload } from "~/shared/lib/validation";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
@@ -108,7 +107,6 @@ export const SettingsPersonalInfoPage: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
-    const numericCurrentUserId = numericUserIdOrNull(currentUserId);
     if (currentUserId == null) {
       void Promise.resolve().then(() => {
         if (!cancelled) {
@@ -121,7 +119,7 @@ export const SettingsPersonalInfoPage: React.FC = () => {
       };
     }
     const profilePromise =
-      numericCurrentUserId != null ? fetchUserProfile(numericCurrentUserId) : Promise.resolve(null);
+      currentUserId != null ? fetchUserProfile(currentUserId) : Promise.resolve(null);
     void Promise.all([profilePromise, fetchOwnStatus()])
       .then(([nextProfile, nextOwnStatus]) => {
         if (!cancelled) {

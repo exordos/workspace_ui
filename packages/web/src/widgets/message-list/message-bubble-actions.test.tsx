@@ -830,7 +830,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test-image");
-    buildAuthHeaderMock.mockReturnValue({ Authorization: "Basic test" });
+    buildAuthHeaderMock.mockReturnValue({ Authorization: "Bearer test" });
 
     const { container } = render(
       <MessageBubble
@@ -850,7 +850,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringMatching(/\/user_uploads\/thumbnail\/1\/private\.png\/840x560\.webp$/),
       expect.objectContaining({
-        headers: { Authorization: "Basic test" },
+        headers: { Authorization: "Bearer test" },
       }),
     );
   });
@@ -871,7 +871,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test-image");
-    buildAuthHeaderMock.mockReturnValue({ Authorization: "Basic test" });
+    buildAuthHeaderMock.mockReturnValue({ Authorization: "Bearer test" });
 
     const contentA = '<p>a</p><img src="/user_uploads/1/a.png" alt="a" />';
     const contentB = '<p>b</p><img src="/user_uploads/1/b.png" alt="b" />';
@@ -928,7 +928,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test-preview");
-    buildAuthHeaderMock.mockReturnValue({ Authorization: "Basic test" });
+    buildAuthHeaderMock.mockReturnValue({ Authorization: "Bearer test" });
 
     const { container } = render(
       <MessageBubble
@@ -949,7 +949,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringMatching(/\/external_content\/preview\.png\?url=https%3A%2F%2Fexample\.com$/),
       expect.objectContaining({
-        headers: { Authorization: "Basic test" },
+        headers: { Authorization: "Bearer test" },
       }),
     );
   });
@@ -973,7 +973,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test-embed-preview");
-    buildAuthHeaderMock.mockReturnValue({ Authorization: "Basic test" });
+    buildAuthHeaderMock.mockReturnValue({ Authorization: "Bearer test" });
 
     const { container } = render(
       <MessageBubble
@@ -996,7 +996,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringMatching(/\/external_content\/hash\/preview\.jpeg$/),
       expect.objectContaining({
-        headers: { Authorization: "Basic test" },
+        headers: { Authorization: "Bearer test" },
       }),
     );
   });
@@ -1019,7 +1019,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test-thumbnail");
-    buildAuthHeaderMock.mockReturnValue({ Authorization: "Basic test" });
+    buildAuthHeaderMock.mockReturnValue({ Authorization: "Bearer test" });
 
     const { container } = render(
       <MessageBubble
@@ -1041,7 +1041,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       canonicalThumbnailPath,
       expect.objectContaining({
-        headers: { Authorization: "Basic test" },
+        headers: { Authorization: "Bearer test" },
       }),
     );
   });
@@ -1054,7 +1054,7 @@ describe("MessageBubble edit/delete actions parity", () => {
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    buildAuthHeaderMock.mockReturnValue({ Authorization: "Basic test" });
+    buildAuthHeaderMock.mockReturnValue({ Authorization: "Bearer test" });
 
     const originalImageUrl =
       "https://uploads.example.com/user_uploads/thumbnail/1/private.png/840x560.webp";
@@ -1085,7 +1085,7 @@ describe("MessageBubble edit/delete actions parity", () => {
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    buildAuthHeaderMock.mockReturnValue({ Authorization: "Basic test" });
+    buildAuthHeaderMock.mockReturnValue({ Authorization: "Bearer test" });
 
     const originalVideoUrl = "https://uploads.example.com/user_uploads/1/private.mp4";
     const { container } = render(
@@ -1115,7 +1115,7 @@ describe("MessageBubble edit/delete actions parity", () => {
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    buildAuthHeaderMock.mockReturnValue({ Authorization: "Basic test" });
+    buildAuthHeaderMock.mockReturnValue({ Authorization: "Bearer test" });
 
     const { container } = render(
       <MessageBubble

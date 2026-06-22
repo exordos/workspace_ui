@@ -9,8 +9,6 @@ import type { ApiRequest } from "~/shared/api/client";
 import { redact } from "./logger";
 
 const MAX_PARAM_STRING_LENGTH = 200;
-const LONG_POLL_PARAM_KEYS = new Set(["queue_id", "last_event_id", "timeout"]);
-
 function truncateString(value: string): string {
   if (value.length <= MAX_PARAM_STRING_LENGTH) {
     return value;
@@ -42,23 +40,6 @@ function recordFromSearchParams(searchParams: URLSearchParams): Record<string, s
     result[key] = value;
   }
   return result;
-}
-
-function isEventsLongPollPath(pathname: string): boolean {
-  return /\/events\/?$/.test(pathname);
-}
-
-function filterEventsLongPollParams(
-  params: Record<string, string>,
-): Record<string, string> | undefined {
-  const filtered: Record<string, string> = {};
-  for (const key of LONG_POLL_PARAM_KEYS) {
-    const value = params[key];
-    if (value != null) {
-      filtered[key] = value;
-    }
-  }
-  return Object.keys(filtered).length > 0 ? filtered : undefined;
 }
 
 function parseUrlencodedBody(body: string): Record<string, string> {
@@ -109,9 +90,6 @@ export function extractLoggableRequestParams(req: ApiRequest): Record<string, un
     const query = new URL(req.url).searchParams;
     if ([...query.keys()].length > 0) {
       fromQuery = recordFromSearchParams(query);
-      if (isEventsLongPollPath(pathname)) {
-        fromQuery = filterEventsLongPollParams(fromQuery);
-      }
     }
   } catch {
     fromQuery = undefined;
@@ -134,10 +112,6 @@ export function extractLoggableRequestParams(req: ApiRequest): Record<string, un
   const combined = mergeParams(fromExplicitParams, fromQuery, fromBody);
   if (!combined) {
     return undefined;
-  }
-
-  if (isEventsLongPollPath(pathname) && fromQuery) {
-    return sanitizeParams(filterEventsLongPollParams(fromQuery) ?? {});
   }
 
   return sanitizeParams(combined);

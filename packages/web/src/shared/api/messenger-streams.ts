@@ -14,11 +14,7 @@ import {
   getMessengerWorkspaceApiBaseForCurrentInstance,
   messengerApi,
 } from "./client";
-import {
-  messengerPipelineDelete,
-  messengerPipelinePost,
-  messengerPipelinePatch,
-} from "./messenger-pipeline.internal";
+import { messengerPipelineDelete, messengerPipelinePatch } from "./messenger-pipeline.internal";
 import {
   buildCreatePrivateMessageStreamBody,
   buildCreateStreamBindingBody,
@@ -315,6 +311,17 @@ async function fetchStreamBindings(): Promise<WorkspaceStreamBindingRef[]> {
     .filter((binding): binding is WorkspaceStreamBindingRef => binding != null);
 }
 
+export async function fetchStreamMembers(streamUuid: string): Promise<UserId[]> {
+  const normalizedStreamUuid = readUuid(streamUuid);
+  if (normalizedStreamUuid == null) {
+    return [];
+  }
+  const bindings = await fetchStreamBindings();
+  return bindings
+    .filter((binding) => binding.stream_uuid === normalizedStreamUuid)
+    .map((binding) => binding.user_uuid);
+}
+
 function extractStreamTopicItems(data: unknown): unknown[] {
   if (Array.isArray(data)) {
     return data;
@@ -541,7 +548,7 @@ export async function fetchStreams(): Promise<MockStream[]> {
     }));
 }
 
-/** Adds users to an existing stream (POST /users/me/subscriptions with principals). */
+/** Adds users to an existing stream when the backend supports member mutations. */
 export async function addMembersToStream(
   params: AddStreamMembersParams,
 ): Promise<AddStreamMembersResult> {
@@ -557,77 +564,20 @@ export async function addMembersToStream(
     };
   }
 
-  const requestBody: Record<string, string> = {
-    subscriptions: JSON.stringify([{ name: streamName }]),
-    principals: JSON.stringify(requestedUserIds),
+  log.warn("Stream member mutation is unsupported by the current backend", {
+    streamNameLength: streamName.length,
+    requestedCount: requestedUserIds.length,
+  });
+  return {
+    ok: false,
+    addedUserIds: [],
+    alreadySubscribedUserIds: [],
+    unauthorizedStreams: [],
+    errorCode: "unsupported",
   };
-
-  if (params.authorizationErrorsFatal != null) {
-    requestBody.authorization_errors_fatal = String(params.authorizationErrorsFatal);
-  }
-
-  try {
-    const response = await messengerPipelinePost("/users/me/subscriptions", requestBody);
-    if (!response.ok) {
-      return {
-        ok: false,
-        addedUserIds: [],
-        alreadySubscribedUserIds: [],
-        unauthorizedStreams: [],
-        errorCode: `http_${response.status}`,
-      };
-    }
-
-    const payload = response.data as {
-      result?: string;
-      code?: string;
-      msg?: string;
-      subscribed?: unknown;
-      already_subscribed?: unknown;
-      unauthorized?: unknown;
-    };
-    if (payload.result === "error") {
-      return {
-        ok: false,
-        addedUserIds: [],
-        alreadySubscribedUserIds: [],
-        unauthorizedStreams: parseUnauthorizedStreams(payload.unauthorized),
-        errorCode: payload.code ?? "unknown_error",
-      };
-    }
-
-    const alreadySubscribedUserIds = parseUserIdsFromPrincipalMap(payload.already_subscribed);
-    const addedFromPayload = parseUserIdsFromPrincipalMap(payload.subscribed);
-    const alreadySubscribedKeys = new Set(alreadySubscribedUserIds.map(userIdStorageKey));
-    const addedUserIds = hasPrincipalMap(payload.subscribed)
-      ? addedFromPayload
-      : requestedUserIds.filter((userId) => !alreadySubscribedKeys.has(userIdStorageKey(userId)));
-
-    log.info("Stream members added", {
-      streamNameLength: streamName.length,
-      requestedCount: requestedUserIds.length,
-      addedCount: addedUserIds.length,
-      alreadySubscribedCount: alreadySubscribedUserIds.length,
-    });
-
-    return {
-      ok: true,
-      addedUserIds,
-      alreadySubscribedUserIds,
-      unauthorizedStreams: parseUnauthorizedStreams(payload.unauthorized),
-    };
-  } catch {
-    return {
-      ok: false,
-      addedUserIds: [],
-      alreadySubscribedUserIds: [],
-      unauthorizedStreams: [],
-      errorCode: "network_error",
-    };
-  }
 }
 
-/** Removes members from a stream (DELETE /users/me/subscriptions with principals). */
+/** Removes members from a stream when the backend supports member mutations. */
 export async function removeMembersFromStream(
   params: RemoveStreamMembersParams,
 ): Promise<RemoveStreamMembersResult> {
@@ -647,98 +597,17 @@ export async function removeMembersFromStream(
     };
   }
 
-  const requestBody: Record<string, string> = {
-    subscriptions: JSON.stringify([streamName]),
-    principals: JSON.stringify(requestedUserIds),
+  log.warn("Stream member removal is unsupported by the current backend", {
+    streamNameLength: streamName.length,
+    requestedCount: requestedUserIds.length,
+  });
+  return {
+    ok: false,
+    removedUserIds: [],
+    alreadyUnsubscribedUserIds: [],
+    unauthorizedStreams: [],
+    errorCode: "unsupported",
   };
-
-  if (params.authorizationErrorsFatal != null) {
-    requestBody.authorization_errors_fatal = String(params.authorizationErrorsFatal);
-  }
-
-  try {
-    const response = await messengerPipelineDelete("/users/me/subscriptions", requestBody);
-    if (!response.ok) {
-      return {
-        ok: false,
-        removedUserIds: [],
-        alreadyUnsubscribedUserIds: [],
-        unauthorizedStreams: [],
-        errorCode: `http_${response.status}`,
-      };
-    }
-
-    const payload = response.data as {
-      result?: string;
-      code?: string;
-      msg?: string;
-      removed?: unknown;
-      unsubscribed?: unknown;
-      already_unsubscribed?: unknown;
-      not_removed?: unknown;
-      unauthorized?: unknown;
-    };
-    if (payload.result === "error") {
-      return {
-        ok: false,
-        removedUserIds: [],
-        alreadyUnsubscribedUserIds: [],
-        unauthorizedStreams: parseUnauthorizedStreams(payload.unauthorized),
-        errorCode: payload.code ?? "unknown_error",
-      };
-    }
-
-    const alreadyUnsubscribedUserIds = Array.from(
-      new Set([
-        ...parseUserIdsFromPrincipalMap(payload.already_unsubscribed),
-        ...parseUserIdsFromPrincipalMap(payload.not_removed),
-      ]),
-    ).sort((a, b) => a - b);
-    const removedFromPayload = Array.from(
-      new Set([
-        ...parseUserIdsFromPrincipalMap(payload.removed),
-        ...parseUserIdsFromPrincipalMap(payload.unsubscribed),
-      ]),
-    ).sort((a, b) => a - b);
-    const hasRemovedMap = hasPrincipalMap(payload.removed) || hasPrincipalMap(payload.unsubscribed);
-    const removedUserIds = hasRemovedMap
-      ? removedFromPayload
-      : requestedUserIds.filter((userId) => !alreadyUnsubscribedUserIds.includes(userId));
-
-    log.info("Stream members removed", {
-      streamNameLength: streamName.length,
-      requestedCount: requestedUserIds.length,
-      removedCount: removedUserIds.length,
-      alreadyUnsubscribedCount: alreadyUnsubscribedUserIds.length,
-    });
-
-    return {
-      ok: true,
-      removedUserIds,
-      alreadyUnsubscribedUserIds,
-      unauthorizedStreams: parseUnauthorizedStreams(payload.unauthorized),
-    };
-  } catch {
-    return {
-      ok: false,
-      removedUserIds: [],
-      alreadyUnsubscribedUserIds: [],
-      unauthorizedStreams: [],
-      errorCode: "network_error",
-    };
-  }
-}
-
-/** Fetches stream member IAM UUIDs from Workspace stream bindings. */
-export async function fetchStreamMembers(streamUuid: string): Promise<UserId[]> {
-  const normalizedStreamUuid = readUuid(streamUuid);
-  if (normalizedStreamUuid == null) {
-    return [];
-  }
-  const bindings = await fetchStreamBindings();
-  return bindings
-    .filter((binding) => binding.stream_uuid === normalizedStreamUuid)
-    .map((binding) => binding.user_uuid);
 }
 
 export async function fetchTopics(streamUuid: string): Promise<string[]> {
@@ -761,7 +630,7 @@ export async function fetchStreamTopicNames(
   );
 }
 
-/** Updates stream metadata (PATCH /api/v1/streams/{stream_uuid}). */
+/** Updates stream metadata (PATCH /api/messenger/v1/streams/{stream_uuid}). */
 export async function updateStream(
   streamId: string,
   params: { name?: string; description?: string; isArchived?: boolean },
@@ -831,7 +700,7 @@ export async function unarchiveStream(streamId: string): Promise<UnarchiveStream
   }
 }
 
-/** Deletes a stream (DELETE /api/v1/streams/{stream_uuid}). */
+/** Deletes a stream (DELETE /api/messenger/v1/streams/{stream_uuid}). */
 export async function deleteStream(streamId: string): Promise<boolean> {
   guard.streamUuid(streamId, "deleteStream.streamId");
   try {

@@ -55,7 +55,8 @@ describe("currentChatMessagesStore", () => {
       id: "test-instance",
       realm: "https://messenger.test",
       login: "test@messenger.test",
-      apiKey: runtimeTestApiKey,
+      authType: "iam",
+      iamAccessToken: runtimeTestApiKey,
     }));
     resetStore();
   });

@@ -1,7 +1,7 @@
 /**
  * server notification settings — parse and defaults.
  *
- * Values come from `/register` (`user_settings`) and `user_settings` realtime events.
+ * Values come from Workspace user settings when backend support exists.
  * Used by desktop notification policy to mirror Workspace web client behavior.
  */
 
@@ -151,7 +151,6 @@ export function extractUserSettingsFromRegisterData(
     return nested as Record<string, unknown>;
   }
 
-  // Legacy register responses (pre user_settings fetch_event_types) inline keys at top level.
   const flat: Record<string, unknown> = {};
   let found = false;
   for (const key of NOTIFICATION_SETTING_KEYS) {

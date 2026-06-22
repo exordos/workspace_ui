@@ -56,27 +56,18 @@ export function extractProtectedMessageMediaPathAndQuery(
   try {
     const parsed = new URL(value, base);
     if (!isProtectedMessageMediaPath(parsed.pathname)) return null;
-    let normalizedPath = parsed.pathname.replace(
-      /^\/api\/v1(?=\/(?:user_uploads|external_content)\/)/,
-      "",
-    );
-    normalizedPath = pathnameFromFirstProtectedMessageMediaSegment(normalizedPath);
+    const normalizedPath = pathnameFromFirstProtectedMessageMediaSegment(parsed.pathname);
     return `${normalizedPath}${parsed.search}`;
   } catch {
     if (isProtectedMessageMediaPath(value)) {
       try {
         const parsed = new URL(value, base);
-        let normalizedPath = parsed.pathname.replace(
-          /^\/api\/v1(?=\/(?:user_uploads|external_content)\/)/,
-          "",
-        );
-        normalizedPath = pathnameFromFirstProtectedMessageMediaSegment(normalizedPath);
+        const normalizedPath = pathnameFromFirstProtectedMessageMediaSegment(parsed.pathname);
         return `${normalizedPath}${parsed.search}`;
       } catch {
-        const stripped = value.replace(/^\/api\/v1(?=\/(?:user_uploads|external_content)\/)/, "");
-        const q = stripped.indexOf("?");
-        const pathOnly = q === -1 ? stripped : stripped.slice(0, q);
-        const search = q === -1 ? "" : stripped.slice(q);
+        const q = value.indexOf("?");
+        const pathOnly = q === -1 ? value : value.slice(0, q);
+        const search = q === -1 ? "" : value.slice(q);
         return `${pathnameFromFirstProtectedMessageMediaSegment(pathOnly)}${search}`;
       }
     }

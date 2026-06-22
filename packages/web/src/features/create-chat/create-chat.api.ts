@@ -2,13 +2,13 @@
  * Create chat API — Workspace endpoints for starting new conversations.
  *
  * Personal chat: resolve or create a private stream via gateway POST /streams/, then navigate to /stream.
- * Channel: POST /channels/create to create and subscribe.
+ * Channel creation is not exposed by the current Workspace gateway backend.
  * Unarchive: PATCH /streams/{stream_uuid} with is_archived=false (delegates to shared unarchiveStream).
  * Also: channel listing and unsubscribe for management flows.
  */
 
-import { messengerApi } from "~/shared/api/client";
 import {
+  fetchSubscriptions,
   resolveOrCreateDirectMessageStream,
   type DirectMessageStreamRef,
   unarchiveStream,
@@ -48,9 +48,7 @@ export async function startDirectMessage(
 }
 
 /**
- * Create a new channel (stream) and subscribe the current user + selected subscribers.
- *
- * Messenger API: POST /channels/create
+ * Create a new channel (stream) when supported by the backend.
  */
 export async function createChannel(params: {
   name: string;
@@ -63,58 +61,11 @@ export async function createChannel(params: {
   guard.nonEmpty(params.name, "channel name");
   const subscribers = normalizePrincipalUserIds(params.subscribers);
 
-  try {
-    // `/channels/create` payload: name/description at top level (not inside subscriptions[]).
-    const body: Record<string, string> = {
-      name: params.name.trim(),
-      description: params.description ?? "",
-    };
-
-    if (params.inviteOnly) {
-      // Invite-only private channel.
-      body.invite_only = "true";
-    }
-
-    if (params.announce != null) {
-      // Notification-bot announce only — not posting policy.
-      body.announce = String(params.announce);
-    }
-
-    if (subscribers.length > 0) {
-      // Initial subscriber list at create time.
-      body.subscribers = JSON.stringify(subscribers);
-    }
-
-    if (params.canSendMessageGroup != null) {
-      // Posting policy via can_send_message_group (group id or direct_members/direct_subgroups object).
-      body.can_send_message_group =
-        typeof params.canSendMessageGroup === "number"
-          ? String(params.canSendMessageGroup)
-          : JSON.stringify(params.canSendMessageGroup);
-    }
-
-    const res = await messengerApi.post("/channels/create", body);
-
-    if (res.ok) {
-      log.info("Channel created", { name: params.name });
-      const data = res.data as { stream_uuid?: unknown; uuid?: unknown; id?: unknown };
-      const streamUuid =
-        typeof data.stream_uuid === "string"
-          ? data.stream_uuid
-          : typeof data.uuid === "string"
-            ? data.uuid
-            : typeof data.id === "string"
-              ? data.id
-              : "";
-      return streamUuid.length > 0 ? { streamUuid } : null;
-    }
-
-    log.warn("Channel creation failed", { status: res.status });
-    return null;
-  } catch (err) {
-    log.error("Channel creation error", { error: String(err) });
-    return null;
-  }
+  log.warn("Channel creation is unsupported by the current backend", {
+    nameLength: params.name.trim().length,
+    subscriberCount: subscribers.length,
+  });
+  return null;
 }
 
 /** Unarchive channel result (thin wrapper over Workspace PATCH). */
@@ -150,41 +101,17 @@ function normalizePrincipalUserIds(userIds: readonly UserId[]): UserId[] {
 }
 
 /**
- * Fetch all channels the current user is subscribed to.
- *
- * Messenger API: GET /users/me/subscriptions
+ * Fetch all channels the current user is subscribed to through the new streams facade.
  */
 export async function fetchSubscribedChannels(): Promise<SubscribedChannel[]> {
-  try {
-    const res = await messengerApi.get("/users/me/subscriptions");
-
-    if (!res.ok) {
-      log.warn("Failed to fetch subscribed channels", { status: res.status });
-      return [];
-    }
-
-    const data = res.data as {
-      subscriptions?: {
-        stream_uuid: string;
-        name: string;
-        description: string;
-        invite_only: boolean;
-        subscribers?: number[];
-      }[];
-    };
-
-    const subscriptions = data.subscriptions ?? [];
-    return subscriptions.map((s) => ({
-      streamUuid: s.stream_uuid,
-      name: s.name,
-      description: s.description,
-      inviteOnly: s.invite_only,
-      subscribers: s.subscribers ?? [],
-    }));
-  } catch (err) {
-    log.error("Error fetching subscribed channels", { error: String(err) });
-    return [];
-  }
+  const subscriptions = await fetchSubscriptions();
+  return subscriptions.map((s) => ({
+    streamUuid: s.stream_uuid,
+    name: s.name,
+    description: s.description,
+    inviteOnly: s.invite_only,
+    subscribers: [],
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -197,9 +124,7 @@ export interface SubscribeCurrentUserToStreamResult {
 }
 
 /**
- * Subscribes the current user to an existing channel.
- *
- * Messenger API: POST /users/me/subscriptions (no principals — caller is subscribed).
+ * Subscribes the current user to an existing channel when supported by the backend.
  */
 export async function subscribeCurrentUserToStream(
   streamName: string,
@@ -212,28 +137,10 @@ export async function subscribeCurrentUserToStream(
     return { ok: false, errorCode: "invalid_user" };
   }
 
-  try {
-    const res = await messengerApi.post("/users/me/subscriptions", {
-      subscriptions: JSON.stringify([{ name: normalizedName }]),
-    });
-
-    if (!res.ok) {
-      log.warn("Subscribe to channel failed", { status: res.status });
-      return { ok: false, errorCode: `http_${res.status}` };
-    }
-
-    const payload = res.data as { result?: string; code?: string };
-    if (payload.result === "error") {
-      log.warn("Subscribe to channel rejected", { code: payload.code });
-      return { ok: false, errorCode: payload.code ?? "unknown_error" };
-    }
-
-    log.info("Subscribed to channel", { streamNameLength: normalizedName.length });
-    return { ok: true };
-  } catch (err) {
-    log.error("Subscribe to channel error", { error: String(err) });
-    return { ok: false, errorCode: "network_error" };
-  }
+  log.warn("Channel subscription is unsupported by the current backend", {
+    streamNameLength: normalizedName.length,
+  });
+  return { ok: false, errorCode: "unsupported" };
 }
 
 // ---------------------------------------------------------------------------
@@ -241,27 +148,12 @@ export async function subscribeCurrentUserToStream(
 // ---------------------------------------------------------------------------
 
 /**
- * Unsubscribe the current user from a channel.
- *
- * Messenger API: DELETE /users/me/subscriptions with subscriptions body.
+ * Unsubscribe the current user from a channel when supported by the backend.
  */
 export async function unsubscribeChannel(streamName: string): Promise<boolean> {
-  guard.nonEmpty(streamName, "stream name");
-
-  try {
-    const res = await messengerApi.delete("/users/me/subscriptions", {
-      subscriptions: JSON.stringify([streamName]),
-    });
-
-    if (res.ok) {
-      log.info("Unsubscribed from channel", { streamName });
-      return true;
-    }
-
-    log.warn("Channel unsubscribe failed", { streamName, status: res.status });
-    return false;
-  } catch (err) {
-    log.error("Channel unsubscribe error", { streamName, error: String(err) });
-    return false;
-  }
+  const normalizedName = guard.nonEmpty(streamName, "stream name").trim();
+  log.warn("Channel unsubscribe is unsupported by the current backend", {
+    streamNameLength: normalizedName.length,
+  });
+  return false;
 }

@@ -1,6 +1,7 @@
 import type { WorkspaceInstance } from "~/entities/instance/instance.model";
 import type { MessengerEvent } from "~/shared/api/messenger.types";
 import { MULTI_ORG_UNREAD_REFRESH_DEBOUNCE_MS } from "~/shared/config/constants";
+import { resolveIamAccessToken } from "~/shared/lib/iam-instance.lib";
 import type { StartInactiveInstanceEventStreamsOptions } from "./layout-multi-org-event-streams.types";
 
 export type {
@@ -63,11 +64,15 @@ export function startInactiveInstanceEventStreams(
   };
 
   for (const instance of inactiveInstances) {
+    const accessToken = resolveIamAccessToken(instance);
+    if (accessToken.length === 0) {
+      continue;
+    }
     const stop = startEventLoop({
       credentials: {
         realm: instance.realm,
         login: instance.login,
-        apiKey: instance.apiKey,
+        accessToken,
       },
       onEvent: (event) => {
         if (shouldRefreshUnreadForEvent(event)) {

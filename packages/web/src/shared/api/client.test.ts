@@ -16,9 +16,8 @@ vi.mock("../lib/logger", async (importOriginal) => {
 
 vi.mock("../lib/env", () => ({
   env: {
-    WORKSPACE_API_BASE: "https://workspace.test/api/v1",
+    WORKSPACE_API_BASE: "https://workspace.test/workspace",
     WORKSPACE_REST_API_PATH: "",
-    MESSENGER_API_V1_PATH: "/api/v1",
   },
 }));
 
@@ -99,7 +98,7 @@ describe("Middleware pipeline", () => {
   // Auth middleware must pass headers through to the fetch layer.
   it("middleware can inject headers", async () => {
     const authMw: Middleware = async (req, next) => {
-      req.headers.Authorization = "Basic abc";
+      req.headers.Authorization = "Bearer abc";
       return next(req);
     };
 
@@ -111,7 +110,7 @@ describe("Middleware pipeline", () => {
 
     await buildChain([authMw], fetchFn)(makeReq());
 
-    expect(captured[0]).toHaveProperty("Authorization", "Basic abc");
+    expect(captured[0]).toHaveProperty("Authorization", "Bearer abc");
   });
 
   // Short-circuit: middleware returns without `next()`, so `fetch` must not run.
@@ -251,7 +250,8 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
       id: "i1",
       realm: "https://messenger.test",
       login: "u@t.com",
-      apiKey: "key123",
+      authType: "iam",
+      iamAccessToken: "key123",
     }));
     refreshMessengerApiBase();
 
@@ -283,7 +283,8 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
         id: "i1",
         realm: "https://messenger.test",
         login: "u@t.com",
-        apiKey: "key123",
+        authType: "iam",
+        iamAccessToken: "key123",
       }));
       refreshMessengerApiBase();
 
@@ -312,30 +313,6 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     }
   });
 
-  // Long-poll `GET /events` stays open on the server,
-  // so a generic REST deadline must not apply here.
-  it("messengerApi GET /events skips wall-clock fetch timeout", async () => {
-    const { setInstanceProvider, messengerApi, refreshMessengerApiBase } = await import("./client");
-    setInstanceProvider(() => ({
-      id: "i1",
-      realm: "https://messenger.test",
-      login: "u@t.com",
-      apiKey: "key123",
-    }));
-    refreshMessengerApiBase();
-
-    mockFetch.mockResolvedValueOnce(mockJsonResponse({ result: "success", events: [] }));
-    await messengerApi.get("/events", { queue_id: "q-1", last_event_id: "0" });
-    const [, initNoCaller] = mockFetch.mock.calls[0] as [string, RequestInit];
-    expect(initNoCaller.signal).toBeUndefined();
-
-    const user = new AbortController();
-    mockFetch.mockResolvedValueOnce(mockJsonResponse({ result: "success", events: [] }));
-    await messengerApi.get("/events", { queue_id: "q-1", last_event_id: "1" }, user.signal);
-    const [, initWithCaller] = mockFetch.mock.calls[1] as [string, RequestInit];
-    expect(initWithCaller.signal).toBe(user.signal);
-  });
-
   // `POST` must use `application/x-www-form-urlencoded` per Messenger API convention.
   it("POST sends form-encoded body", async () => {
     const { setInstanceProvider, messengerApi, refreshMessengerApiBase } = await import("./client");
@@ -343,7 +320,8 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
       id: "i1",
       realm: "https://messenger.test",
       login: "u@t.com",
-      apiKey: "key123",
+      authType: "iam",
+      iamAccessToken: "key123",
     }));
     refreshMessengerApiBase();
 
@@ -366,7 +344,8 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
       id: "i1",
       realm: "https://messenger.test",
       login: "u@t.com",
-      apiKey: "key123",
+      authType: "iam",
+      iamAccessToken: "key123",
     }));
     refreshMessengerApiBase();
 
@@ -386,7 +365,8 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
       id: "i1",
       realm: "https://messenger.test",
       login: "u@t.com",
-      apiKey: "key123",
+      authType: "iam",
+      iamAccessToken: "key123",
     }));
     refreshMessengerApiBase();
 
@@ -406,7 +386,8 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
       id: "i1",
       realm: "https://messenger.test",
       login: "u@t.com",
-      apiKey: "key123",
+      authType: "iam",
+      iamAccessToken: "key123",
     }));
     refreshMessengerApiBase();
 
@@ -426,7 +407,8 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
       id: "i1",
       realm: "https://messenger.test",
       login: "u@t.com",
-      apiKey: "key123",
+      authType: "iam",
+      iamAccessToken: "key123",
     }));
     refreshMessengerApiBase();
 
@@ -446,7 +428,8 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
       id: "i1",
       realm: "https://workspace.test",
       login: "u@t.com",
-      apiKey: "key123",
+      authType: "iam",
+      iamAccessToken: "key123",
     }));
 
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true }));
@@ -465,7 +448,8 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
       id: "i1",
       realm: "https://messenger.test",
       login: "u@t.com",
-      apiKey: "key123",
+      authType: "iam",
+      iamAccessToken: "key123",
     }));
 
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true, folders: [] }));
@@ -487,7 +471,8 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
       id: "i1",
       realm: "https://messenger.test",
       login: "u@t.com",
-      apiKey: "key123",
+      authType: "iam",
+      iamAccessToken: "key123",
     }));
     refreshMessengerApiBase();
 
@@ -508,33 +493,12 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     expect(headers["Content-Type"]).toBeUndefined();
   });
 
-  // Auth middleware must inject Basic credentials for the active instance.
-  it("authMiddleware injects Basic auth header from current instance", async () => {
-    const { setInstanceProvider, messengerApi, refreshMessengerApiBase } = await import("./client");
-    setInstanceProvider(() => ({
-      id: "i1",
-      realm: "https://messenger.test",
-      login: "user@test.com",
-      apiKey: "abc",
-    }));
-    refreshMessengerApiBase();
-
-    mockFetch.mockResolvedValueOnce(mockJsonResponse({ result: "success" }));
-
-    await messengerApi.get("/test");
-
-    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
-    const headers = init.headers as Record<string, string>;
-    expect(headers.Authorization).toMatch(/^Basic /);
-  });
-
   it("authMiddleware injects Bearer header for IAM auth instances", async () => {
     const { setInstanceProvider, messengerApi, refreshMessengerApiBase } = await import("./client");
     setInstanceProvider(() => ({
       id: "i-iam",
       realm: "https://messenger.test",
       login: "user@test.com",
-      apiKey: "",
       authType: "iam",
       iamAccessToken: "iam-access-token",
       iamRefreshToken: "iam-refresh-token",
@@ -562,181 +526,6 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
     const headers = init.headers as Record<string, string>;
     expect(headers.Authorization).toBeUndefined();
-  });
-
-  it("uses /json API path and cookie credentials for session auth instances", async () => {
-    const { setInstanceProvider, messengerApi, refreshMessengerApiBase } = await import("./client");
-    setInstanceProvider(() => ({
-      id: "i-session",
-      realm: "https://messenger.test",
-      login: "session-user@example.com",
-      apiKey: "",
-      authType: "session",
-    }));
-    refreshMessengerApiBase();
-
-    mockFetch.mockResolvedValueOnce(mockJsonResponse({ result: "success" }));
-
-    await messengerApi.get("/messages");
-
-    const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
-    expect(url).toContain("/json/messages");
-    expect(init.credentials).toBe("include");
-    const headers = init.headers as Record<string, string>;
-    expect(headers.Authorization).toBeUndefined();
-  });
-
-  it("adds cached csrf header for session auth register requests", async () => {
-    const { setCachedSessionCsrfToken } = await import("./messenger-session-csrf.internal");
-    const { setInstanceProvider, messengerApi, refreshMessengerApiBase } = await import("./client");
-    setCachedSessionCsrfToken("https://messenger.test", "cached-oidc-csrf-token");
-    setInstanceProvider(() => ({
-      id: "i-session",
-      realm: "https://messenger.test",
-      login: "session-user@example.com",
-      apiKey: "",
-      authType: "session",
-    }));
-    refreshMessengerApiBase();
-
-    mockFetch.mockResolvedValueOnce(mockJsonResponse({ result: "success" }));
-
-    await messengerApi.post("/register", { event_types: JSON.stringify(["message"]) });
-
-    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
-    const headers = init.headers as Record<string, string>;
-    expect(headers["X-CSRFToken"]).toBe("cached-oidc-csrf-token");
-    expect(init.credentials).toBe("include");
-  });
-
-  it("fetches csrf token from web legacy HTML for session auth register requests", async () => {
-    const { setInstanceProvider, messengerApi, refreshMessengerApiBase } = await import("./client");
-    setInstanceProvider(() => ({
-      id: "i-session",
-      realm: "https://messenger-web-legacy.test/json",
-      login: "session-user@example.com",
-      apiKey: "",
-      authType: "session",
-    }));
-    refreshMessengerApiBase();
-
-    mockFetch
-      .mockResolvedValueOnce(
-        new Response('<input name="csrfmiddlewaretoken" value="  web-legacy-csrf-token  " />', {
-          status: 200,
-          headers: { "Content-Type": "text/html" },
-        }),
-      )
-      .mockResolvedValueOnce(mockJsonResponse({ result: "success" }));
-
-    await messengerApi.post("/register", { event_types: JSON.stringify(["message"]) });
-
-    const [legacyUrl, legacyInit] = mockFetch.mock.calls[0] as [string, RequestInit];
-    expect(legacyUrl).toBe("https://messenger-web-legacy.test/legacy");
-    expect(legacyInit).toEqual(
-      expect.objectContaining({
-        method: "GET",
-        credentials: "include",
-        cache: "no-store",
-      }),
-    );
-    const [, init] = mockFetch.mock.calls[1] as [string, RequestInit];
-    const headers = init.headers as Record<string, string>;
-    expect(headers["X-CSRFToken"]).toBe("web-legacy-csrf-token");
-    expect(init.credentials).toBe("include");
-  });
-
-  it("reads csrf token from Electron bridge when session cookie is not visible to document", async () => {
-    const { setInstanceProvider, messengerApi, refreshMessengerApiBase } = await import("./client");
-    document.cookie = "__Host-csrftoken=; Max-Age=0";
-    document.cookie = "csrftoken=; Max-Age=0";
-    document.cookie = "csrf=; Max-Age=0";
-    const electronApi = {
-      auth: {
-        getCsrfToken: vi.fn().mockResolvedValue("electron-csrf-token"),
-      },
-    };
-    Object.defineProperty(window, "electronAPI", {
-      configurable: true,
-      value: electronApi,
-    });
-    setInstanceProvider(() => ({
-      id: "i-session",
-      realm: "https://electron-messenger.test",
-      login: "session-user@example.com",
-      apiKey: "",
-      authType: "session",
-    }));
-    refreshMessengerApiBase();
-
-    mockFetch
-      .mockResolvedValueOnce(new Response("<html></html>", { status: 200 }))
-      .mockResolvedValueOnce(mockJsonResponse({ result: "success" }));
-
-    await messengerApi.post("/register", { event_types: JSON.stringify(["message"]) });
-
-    const [legacyUrl, legacyInit] = mockFetch.mock.calls[0] as [string, RequestInit];
-    expect(legacyUrl).toBe("https://electron-messenger.test/legacy");
-    expect(legacyInit.credentials).toBe("include");
-    const [, init] = mockFetch.mock.calls[1] as [string, RequestInit];
-    const headers = init.headers as Record<string, string>;
-    expect(electronApi.auth.getCsrfToken).toHaveBeenCalledWith({
-      realm: "https://electron-messenger.test",
-    });
-    expect(headers["X-CSRFToken"]).toBe("electron-csrf-token");
-    expect(init.credentials).toBe("include");
-  });
-
-  it("does not add cached csrf header to workspace postJson requests", async () => {
-    const { setCachedSessionCsrfToken } = await import("./messenger-session-csrf.internal");
-    const { setInstanceProvider, workspaceApi } = await import("./client");
-    setCachedSessionCsrfToken("https://messenger.test", "cached-oidc-csrf-token");
-    setInstanceProvider(() => ({
-      id: "i-session",
-      realm: "https://messenger.test",
-      login: "session-user@example.com",
-      apiKey: "",
-      authType: "session",
-    }));
-
-    mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true }));
-
-    await workspaceApi.postJson("/v1/folders/", { name: "Inbox" });
-
-    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
-    const headers = init.headers as Record<string, string>;
-    expect(headers["X-CSRFToken"]).toBeUndefined();
-    expect(init.credentials).toBe("include");
-  });
-
-  it("does not add csrf header or call Electron bridge for workspace putJson requests", async () => {
-    const { setInstanceProvider, workspaceApi } = await import("./client");
-    const electronApi = {
-      auth: {
-        getCsrfToken: vi.fn().mockResolvedValue("electron-csrf-token"),
-      },
-    };
-    Object.defineProperty(window, "electronAPI", {
-      configurable: true,
-      value: electronApi,
-    });
-    setInstanceProvider(() => ({
-      id: "i-session",
-      realm: "https://electron-messenger.test",
-      login: "session-user@example.com",
-      apiKey: "",
-      authType: "session",
-    }));
-
-    mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true }));
-
-    await workspaceApi.putJson("/v1/folders/f1/items/i1", { order_index: 3 });
-
-    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
-    const headers = init.headers as Record<string, string>;
-    expect(electronApi.auth.getCsrfToken).not.toHaveBeenCalled();
-    expect(headers["X-CSRFToken"]).toBeUndefined();
-    expect(init.credentials).toBe("include");
   });
 
   // Retry middleware must retry on 5xx and succeed after the server recovers.
@@ -826,7 +615,8 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
       id: "i1",
       realm: "https://messenger.test",
       login: "u@t.com",
-      apiKey: "key123",
+      authType: "iam",
+      iamAccessToken: "key123",
     }));
     refreshMessengerApiBase();
 
@@ -898,7 +688,8 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
       id: "i1",
       realm: "https://messenger.test",
       login: "u@t.com",
-      apiKey: "key123",
+      authType: "iam",
+      iamAccessToken: "key123",
     }));
     setAuthErrorHandler(onAuthError);
     refreshMessengerApiBase();
@@ -910,7 +701,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
       }),
     );
 
-    const res = await messengerApi.get("/messages");
+    const res = await messengerApi.get("/users/00000000-0000-0000-0000-000000000001");
 
     expect(res.status).toBe(401);
     expect(vi.mocked(wipeCredentials)).toHaveBeenCalledTimes(1);
@@ -933,7 +724,6 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
       id: "i-iam",
       realm: "https://chat.example.com",
       login: "u@t.com",
-      apiKey: "",
       authType: "iam",
       iamAccessToken: "expired-access-token",
       iamRefreshToken: "refresh-token",
@@ -968,7 +758,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
         }),
       );
 
-    const res = await messengerApi.get("/messages");
+    const res = await messengerApi.get("/users/00000000-0000-0000-0000-000000000001");
 
     expect(res.status).toBe(200);
     expect(mockFetch).toHaveBeenCalledTimes(3);
@@ -988,7 +778,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     resetIamRefreshSessionForTests();
   });
 
-  it("does not trigger auth-error handling for excluded auth paths", async () => {
+  it("does not trigger auth-error handling for IAM token endpoint", async () => {
     const { setInstanceProvider, messengerApi, refreshMessengerApiBase, setAuthErrorHandler } =
       await import("./client");
     const onAuthError = vi.fn();
@@ -997,7 +787,8 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
       id: "i1",
       realm: "https://messenger.test",
       login: "u@t.com",
-      apiKey: "key123",
+      authType: "iam",
+      iamAccessToken: "key123",
     }));
     setAuthErrorHandler(onAuthError);
     refreshMessengerApiBase();
@@ -1009,10 +800,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
       }),
     );
 
-    const res = await messengerApi.post("/fetch_api_key", {
-      username: "u@t.com",
-      password: "pass",
-    });
+    const res = await messengerApi.postJson("/actions/get_token/invoke", {});
 
     expect(res.status).toBe(401);
     expect(vi.mocked(wipeCredentials)).not.toHaveBeenCalled();
@@ -1028,7 +816,8 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
       id: "i1",
       realm: "https://messenger.test",
       login: "u@t.com",
-      apiKey: "key123",
+      authType: "iam",
+      iamAccessToken: "key123",
     }));
     setAuthErrorHandler(onAuthError);
 
@@ -1056,7 +845,8 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
       id: "i1",
       realm: "https://messenger.test",
       login: "u@t.com",
-      apiKey: "key123",
+      authType: "iam",
+      iamAccessToken: "key123",
     }));
     setAuthErrorHandler(onAuthError);
 
@@ -1086,7 +876,6 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
       id: "i-iam",
       realm: "https://messenger.test",
       login: "u@t.com",
-      apiKey: "",
       authType: "iam",
       iamAccessToken: "iam-access-token",
     }));
@@ -1115,7 +904,6 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
       id: "i-iam",
       realm: "https://messenger.test",
       login: "u@example.com",
-      apiKey: "",
       authType: "iam",
       iamAccessToken: "iam-access-token",
     }));
@@ -1145,7 +933,8 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
       id: "i1",
       realm: "https://messenger.test",
       login: "u@t.com",
-      apiKey: "key123",
+      authType: "iam",
+      iamAccessToken: "key123",
     }));
     refreshMessengerApiBase();
 
@@ -1184,7 +973,8 @@ describe("ApiClient middleware management", () => {
       id: "i1",
       realm: "https://messenger.test",
       login: "u@t.com",
-      apiKey: "k",
+      authType: "iam",
+      iamAccessToken: "k",
     }));
     refreshMessengerApiBase();
 
@@ -1229,7 +1019,8 @@ describe("ApiClient middleware management", () => {
       id: "i1",
       realm: "https://messenger.test",
       login: "u@t.com",
-      apiKey: "k",
+      authType: "iam",
+      iamAccessToken: "k",
     }));
     refreshMessengerApiBase();
 
@@ -1287,7 +1078,7 @@ describe("appendDevUserUploadsProxyHeaders", () => {
   it("returns unchanged headers when no instance supplies a dev upload target", async () => {
     const { appendDevUserUploadsProxyHeaders, setInstanceProvider } = await import("./client");
     setInstanceProvider(() => null);
-    const headers = { Authorization: "Basic x" };
+    const headers = { Authorization: "Bearer x" };
     expect(appendDevUserUploadsProxyHeaders("/user_uploads/1/a.png", headers)).toBe(headers);
   });
 
@@ -1298,11 +1089,12 @@ describe("appendDevUserUploadsProxyHeaders", () => {
       id: "i1",
       realm: "https://messenger.realm.test",
       login: "u@t.com",
-      apiKey: "k",
+      authType: "iam",
+      iamAccessToken: "k",
       workspaceOrgOrigin: "https://workspace.gateway.test",
     }));
     const out = appendDevUserUploadsProxyHeaders("/user_uploads/1/a.png", {
-      Authorization: "Basic x",
+      Authorization: "Bearer x",
     });
     if (!import.meta.env.DEV) {
       expect(out["X-Workspace-Dev-Target-Origin"]).toBeUndefined();
@@ -1319,11 +1111,12 @@ describe("appendDevUserUploadsProxyHeaders", () => {
       id: "i1",
       realm: "https://messenger.realm.test",
       login: "u@t.com",
-      apiKey: "k",
+      authType: "iam",
+      iamAccessToken: "k",
       workspaceOrgOrigin: "https://workspace.gateway.test",
     }));
     const out = appendDevRealmMediaProxyHeaders("/external_content/preview.png", {
-      Authorization: "Basic x",
+      Authorization: "Bearer x",
     });
     if (!import.meta.env.DEV) {
       expect(out["X-Workspace-Dev-Target-Origin"]).toBeUndefined();
@@ -1340,11 +1133,12 @@ describe("appendDevUserUploadsProxyHeaders", () => {
       id: "i1",
       realm: "https://messenger.realm.test",
       login: "u@t.com",
-      apiKey: "k",
+      authType: "iam",
+      iamAccessToken: "k",
       workspaceOrgOrigin: "https://workspace.gateway.test",
     }));
     const out = appendDevRealmMediaProxyHeaders("/avatar/42.png", {
-      Authorization: "Basic x",
+      Authorization: "Bearer x",
     });
     if (!import.meta.env.DEV) {
       expect(out["X-Workspace-Dev-Target-Origin"]).toBeUndefined();

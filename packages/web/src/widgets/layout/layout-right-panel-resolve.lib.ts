@@ -1,5 +1,5 @@
 import { getRoleLabel, parseRole } from "~/shared/lib/roles";
-import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
+import { numericUserIdOrNull, userIdsEqual, type UserId } from "~/shared/lib/user-id.lib";
 import { isValidRealmUrl } from "~/shared/lib/validation";
 import type {
   BuildRightPanelUserInfoOptions,
@@ -87,8 +87,7 @@ export function selectRightPanelDetailedProfile(
   options: Pick<BuildRightPanelUserInfoOptions, "detailedProfile" | "rightDrawerTargetUserId">,
 ): RightPanelDetailedProfileLike | undefined {
   const { detailedProfile, rightDrawerTargetUserId } = options;
-  const numericTargetUserId = numericUserIdOrNull(rightDrawerTargetUserId);
-  if (numericTargetUserId == null) return undefined;
-  if (detailedProfile?.userId !== numericTargetUserId) return undefined;
+  if (detailedProfile == null || rightDrawerTargetUserId == null) return undefined;
+  if (!userIdsEqual(detailedProfile.userId, rightDrawerTargetUserId)) return undefined;
   return detailedProfile;
 }

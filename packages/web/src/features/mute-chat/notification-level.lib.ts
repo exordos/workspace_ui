@@ -7,7 +7,7 @@
 
 export type NotificationLevel = "default" | "muted" | "subscribed";
 
-/** Maps 1:1 to the messenger API user_topics.visibility_policy. */
+/** Topic visibility policy exposed by the UI. */
 export type TopicVisibilityLevel = "inherit" | "muted" | "unmuted" | "followed";
 
 /** @deprecated Use NotificationLevel — kept for channel call sites. */

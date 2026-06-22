@@ -1,8 +1,7 @@
 /**
  * Message Readers ("Read By" modal) type definitions.
  *
- * Messenger API: GET /messages/{id}/read_receipts → { user_ids: number[] }
- * Displays which users have read a particular message.
+ * Displays which users have read a particular message when backend support exists.
  */
 import type { MessageId } from "~/shared/lib/message-id.lib";
 

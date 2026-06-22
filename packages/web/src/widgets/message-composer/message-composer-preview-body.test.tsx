@@ -18,7 +18,7 @@ vi.mock("~/shared/lib/env", async (importOriginal) => {
 });
 
 vi.mock("~/shared/lib/auth-guard", () => ({
-  buildAuthHeader: () => ({ Authorization: "Basic test" }),
+  buildAuthHeader: () => ({ Authorization: "Bearer test" }),
 }));
 
 describe("MessageComposerPreviewBody", () => {

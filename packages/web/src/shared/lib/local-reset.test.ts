@@ -78,7 +78,7 @@ describe("performApplicationColdStart", () => {
     localStorage.setItem("analytics_consent", "granted");
     localStorage.setItem("push_token", "abc");
     localStorage.setItem("workspace-last-messenger-route", '{"path":"/chat"}');
-    sessionStorage.setItem("messenger-web-oidc-desktop-flow", "flow");
+    sessionStorage.setItem("workspace-session-temp", "flow");
 
     await performApplicationColdStart();
 
@@ -99,7 +99,7 @@ describe("performApplicationColdStart", () => {
     expect(localStorage.getItem("analytics_consent")).toBeNull();
     expect(localStorage.getItem("push_token")).toBeNull();
     expect(localStorage.getItem("workspace-last-messenger-route")).toBeNull();
-    expect(sessionStorage.getItem("messenger-web-oidc-desktop-flow")).toBeNull();
+    expect(sessionStorage.getItem("workspace-session-temp")).toBeNull();
   });
 
   it("deletes cached messages from IndexedDB", async () => {

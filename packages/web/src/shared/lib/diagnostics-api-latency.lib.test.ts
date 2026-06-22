@@ -18,8 +18,8 @@ describe("summarizeApiLogs", () => {
         level: "info",
         scope: "api",
         runtime: "browser",
-        message: "GET /register",
-        data: { method: "GET", path: "/register", durationMs: 300 },
+        message: "GET /messages",
+        data: { method: "GET", path: "/messages", durationMs: 300 },
       },
       {
         timestamp: new Date(3).toISOString(),

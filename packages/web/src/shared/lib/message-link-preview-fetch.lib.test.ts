@@ -87,7 +87,7 @@ describe("fetchLinkPreviewsFromMessageMarkdown", () => {
     expect(items[0]?.data?.title).toBe("Example");
   });
 
-  it("uses POST render when GET message HTML is unavailable", async () => {
+  it("uses local render when GET message HTML is unavailable", async () => {
     fetchMessageRenderedHtmlByIdMock.mockResolvedValue(null);
     renderMessageContentMock.mockResolvedValue(`
       <div class="message_embed">

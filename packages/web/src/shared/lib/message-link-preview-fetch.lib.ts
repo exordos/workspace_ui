@@ -1,8 +1,8 @@
 /**
- * Fetches link preview metadata from the messenger API-rendered HTML (`.message_embed`).
+ * Resolves link preview metadata from rendered message HTML (`.message_embed`).
  *
- * Persisted messages: GET `/messages/{id}?apply_markdown=true` (includes server unfurl).
- * Ephemeral content: POST `/messages/render` (composer-style, often without embed).
+ * Persisted messages: GET `/messages/{id}?apply_markdown=true` may include server unfurl data.
+ * Ephemeral content uses the local markdown renderer and usually has no embed data.
  *
  * Usage:
  *   import {
@@ -118,7 +118,7 @@ export function parseAllMessageEmbedsFromRenderedHtml(html: string): LinkPreview
 function resolveItemsFromHtml(
   html: string,
   expectedUrls: string[],
-  source: "get-message" | "render",
+  source: "get-message" | "local-render",
 ): LinkPreviewResolvedItem[] {
   const embeds = parseAllMessageEmbedsFromRenderedHtml(html);
 
@@ -172,7 +172,7 @@ export async function fetchLinkPreviewsFromMessageMarkdown(
     if (signal?.aborted) {
       return expectedUrls.map((targetUrl) => ({ targetUrl, data: null }));
     }
-    return resolveItemsFromHtml(rendered, expectedUrls, "render");
+    return resolveItemsFromHtml(rendered, expectedUrls, "local-render");
   } catch (error) {
     if (signal?.aborted) {
       return expectedUrls.map((targetUrl) => ({ targetUrl, data: null }));

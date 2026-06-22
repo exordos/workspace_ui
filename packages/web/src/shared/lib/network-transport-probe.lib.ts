@@ -4,7 +4,10 @@
  * `navigator.onLine` can be true while the realm is still unreachable — this HEAD
  * request confirms the server responds before connection-health clears failure UI.
  */
-import { getCurrentInstance } from "~/shared/api/client";
+import {
+  getCurrentInstance,
+  getMessengerGatewayApiBaseForCurrentInstance,
+} from "~/shared/api/client";
 import { createLogger } from "~/shared/lib/logger";
 
 const log = createLogger("network-probe");
@@ -32,7 +35,7 @@ export async function probeApiTransportWithLatency(
     return { ok: true, latencyMs: 0 };
   }
 
-  const base = instance.realm.replace(/\/$/, "");
+  const base = getMessengerGatewayApiBaseForCurrentInstance().replace(/\/$/, "");
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
   const linkedSignal = signal;
@@ -40,7 +43,7 @@ export async function probeApiTransportWithLatency(
   linkedSignal?.addEventListener("abort", onLinkedAbort);
 
   try {
-    const res = await fetch(`${base}/api/v1/register`, {
+    const res = await fetch(`${base}/server_settings`, {
       method: "HEAD",
       signal: controller.signal,
     });

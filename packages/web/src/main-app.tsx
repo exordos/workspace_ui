@@ -49,8 +49,7 @@ setInstanceProvider(() => {
     id: inst.id,
     realm: inst.realm,
     login: inst.login,
-    apiKey: inst.apiKey,
-    authType: inst.authType ?? "api_key",
+    authType: "iam",
     iamAccessToken: inst.iamAccessToken,
     iamRefreshToken: inst.iamRefreshToken,
     workspaceOrgOrigin: inst.workspaceOrgOrigin,
@@ -81,9 +80,8 @@ setAuthInstanceGetter(() => {
   if (!inst) return null;
   return {
     login: inst.login,
-    apiKey: inst.apiKey,
     realm: inst.realm,
-    authType: inst.authType ?? "api_key",
+    authType: "iam",
     iamAccessToken: inst.iamAccessToken,
     iamRefreshToken: inst.iamRefreshToken,
   };

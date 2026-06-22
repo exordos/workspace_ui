@@ -284,80 +284,33 @@ describe("typing transitions", () => {
   });
 });
 
-// Typing notification API — sends start/stop events to the messenger API.
+// Typing notification API — no transport call is used with the Workspace gateway backend.
 describe("typing-indicator API", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  const mockOk = {
-    ok: true,
-    status: 200,
-    data: {},
-    headers: new Headers(),
-    raw: new Response(),
-    durationMs: 10,
-  };
+  it("does not call transport for direct typing", async () => {
+    const { messengerApi } = await import("~/shared/api/client");
+    const { sendTypingStart, sendTypingStop } = await import("./typing-indicator.api");
 
-  describe("sendTypingStart", () => {
-    it("calls POST /typing with start op and user IDs", async () => {
-      const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.post).mockResolvedValue(mockOk);
+    await expect(sendTypingStart([42, 99])).resolves.toBeUndefined();
+    await expect(sendTypingStop([42])).resolves.toBeUndefined();
 
-      const { sendTypingStart } = await import("./typing-indicator.api");
-      await sendTypingStart([42, 99]);
-
-      expect(messengerApi.post).toHaveBeenCalledWith("/typing", {
-        op: "start",
-        to: JSON.stringify([42, 99]),
-        type: "direct",
-      });
-    });
-
-    it("does not throw on API error (logs warning instead)", async () => {
-      const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.post).mockRejectedValue(new Error("Network error"));
-
-      const { sendTypingStart } = await import("./typing-indicator.api");
-      await expect(sendTypingStart([42])).resolves.toBeUndefined();
-    });
-
-    it("sends empty array when no users", async () => {
-      const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.post).mockResolvedValue(mockOk);
-
-      const { sendTypingStart } = await import("./typing-indicator.api");
-      await sendTypingStart([]);
-
-      expect(messengerApi.post).toHaveBeenCalledWith("/typing", {
-        op: "start",
-        to: "[]",
-        type: "direct",
-      });
-    });
+    expect(messengerApi.post).not.toHaveBeenCalled();
   });
 
-  describe("sendTypingStop", () => {
-    it("calls POST /typing with stop op and user IDs", async () => {
-      const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.post).mockResolvedValue(mockOk);
+  it("does not call transport for stream typing", async () => {
+    const { messengerApi } = await import("~/shared/api/client");
+    const { sendStreamTypingStart, sendStreamTypingStop } = await import("./typing-indicator.api");
 
-      const { sendTypingStop } = await import("./typing-indicator.api");
-      await sendTypingStop([42]);
+    await expect(
+      sendStreamTypingStart("11111111-1111-4111-8111-111111111111", "general"),
+    ).resolves.toBeUndefined();
+    await expect(
+      sendStreamTypingStop("11111111-1111-4111-8111-111111111111", "general"),
+    ).resolves.toBeUndefined();
 
-      expect(messengerApi.post).toHaveBeenCalledWith("/typing", {
-        op: "stop",
-        to: JSON.stringify([42]),
-        type: "direct",
-      });
-    });
-
-    it("does not throw on API error (logs warning instead)", async () => {
-      const { messengerApi } = await import("~/shared/api/client");
-      vi.mocked(messengerApi.post).mockRejectedValue(new Error("Server down"));
-
-      const { sendTypingStop } = await import("./typing-indicator.api");
-      await expect(sendTypingStop([42])).resolves.toBeUndefined();
-    });
+    expect(messengerApi.post).not.toHaveBeenCalled();
   });
 });

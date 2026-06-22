@@ -33,22 +33,16 @@ describe("parseRecentPrivateConversations", () => {
     });
   });
 
-  it("parses legacy string-keyed map format", () => {
-    const result = parseRecentPrivateConversations({
-      "10,20": {
-        user_ids: [10, 20],
-        max_message_id: testMessageId(555),
-        unread_message_ids: ids(551, 552),
-      },
-    });
-
-    expect(result).toEqual({
-      "10,20": {
-        user_ids: [10, 20],
-        max_message_id: testMessageId(555),
-        unread_message_ids: ids(551, 552),
-      },
-    });
+  it("ignores non-array payloads", () => {
+    expect(
+      parseRecentPrivateConversations({
+        "10,20": {
+          user_ids: [10, 20],
+          max_message_id: testMessageId(555),
+          unread_message_ids: ids(551, 552),
+        },
+      }),
+    ).toBeNull();
   });
 
   it("returns null for invalid payload", () => {

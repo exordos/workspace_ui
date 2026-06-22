@@ -234,8 +234,7 @@ export function handleReaction(
           emoji_name: event.emoji_name as string,
           emoji_code: (event.emoji_code as string) ?? "",
           reaction_type:
-            (event.reaction_type as "unicode_emoji" | "realm_emoji" | "zulip_extra_emoji") ??
-            "unicode_emoji",
+            (event.reaction_type as "unicode_emoji" | "realm_emoji") ?? "unicode_emoji",
           user_id: event.user_id as number,
         }
       : null;

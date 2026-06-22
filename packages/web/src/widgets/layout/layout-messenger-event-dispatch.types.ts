@@ -43,7 +43,7 @@ export interface LayoutChatListActions {
 export interface LayoutCurrentChatReaction {
   emoji_name: string;
   emoji_code: string;
-  reaction_type: "unicode_emoji" | "realm_emoji" | "zulip_extra_emoji";
+  reaction_type: "unicode_emoji" | "realm_emoji";
   user_id: number;
 }
 
@@ -90,7 +90,7 @@ export interface LayoutUsersActions {
       text: string;
       emojiName?: string;
       emojiCode?: string;
-      reactionType?: "unicode_emoji" | "realm_emoji" | "zulip_extra_emoji";
+      reactionType?: "unicode_emoji" | "realm_emoji";
       away: boolean;
     } | null,
     updatedAtMs: number,

@@ -13,7 +13,6 @@ import {
   WORKSPACE_API_PATH,
   WORKSPACE_GATEWAY_V1_PATH,
   WORKSPACE_REST_API_PATH,
-  MESSENGER_API_V1_PATH,
 } from "~/shared/config/workspace-api-layout";
 
 // Core env object shape and types
@@ -30,7 +29,6 @@ describe("env", () => {
     expect(env).toHaveProperty("PROD");
     expect(env).toHaveProperty("MODE");
     expect(env).toHaveProperty("WORKSPACE_API_ORIGIN");
-    expect(env).toHaveProperty("MESSENGER_API_V1_PATH");
     expect(env).toHaveProperty("MESSENGER_API_PATH");
     expect(env).toHaveProperty("WORKSPACE_API_PATH");
     expect(env).toHaveProperty("WORKSPACE_REST_API_PATH");
@@ -75,19 +73,16 @@ describe("env", () => {
   describe("fixed API paths (not from VITE_*)", () => {
     it("re-exports layout constants", async () => {
       const { env } = await import("./env");
-      expect(env.MESSENGER_API_V1_PATH).toBe(MESSENGER_API_V1_PATH);
       expect(env.MESSENGER_API_PATH).toBe(MESSENGER_API_PATH);
       expect(env.WORKSPACE_API_PATH).toBe(WORKSPACE_API_PATH);
       expect(env.WORKSPACE_REST_API_PATH).toBe(WORKSPACE_REST_API_PATH);
       expect(env.USER_UPLOADS_PATH_PREFIX).toBe(WORKSPACE_GATEWAY_V1_PATH);
     });
 
-    it("ignores legacy VITE_MESSENGER_API_V1_PATH / VITE_WORKSPACE_API_PATH", async () => {
-      vi.stubEnv("VITE_MESSENGER_API_V1_PATH", "/custom");
+    it("ignores legacy VITE_WORKSPACE_API_PATH", async () => {
       vi.stubEnv("VITE_WORKSPACE_API_PATH", "/custom");
       vi.resetModules();
       const { env } = await import("./env");
-      expect(env.MESSENGER_API_V1_PATH).toBe("/api/v1");
       expect(env.WORKSPACE_API_PATH).toBe("/workspace/v1");
     });
   });
@@ -106,7 +101,6 @@ describe("env", () => {
     const stringKeys = [
       "MODE",
       "WORKSPACE_API_ORIGIN",
-      "MESSENGER_API_V1_PATH",
       "MESSENGER_API_PATH",
       "WORKSPACE_API_PATH",
       "WORKSPACE_REST_API_PATH",

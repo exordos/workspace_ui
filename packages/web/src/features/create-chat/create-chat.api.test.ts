@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { messengerApi } from "~/shared/api/client";
 import { resolveOrCreateDirectMessageStream } from "~/shared/api/messenger-streams";
-import { startDirectMessage, subscribeCurrentUserToStream } from "./create-chat.api";
+import { createChannel, startDirectMessage, subscribeCurrentUserToStream } from "./create-chat.api";
 
 vi.mock("~/shared/api/client", () => ({
   messengerApi: {
@@ -10,7 +10,9 @@ vi.mock("~/shared/api/client", () => ({
 }));
 
 vi.mock("~/shared/api/messenger-streams", () => ({
+  fetchSubscriptions: vi.fn(() => Promise.resolve([])),
   resolveOrCreateDirectMessageStream: vi.fn(),
+  unarchiveStream: vi.fn(),
 }));
 
 const PEER_UUID = "00000000-0000-0000-0000-000000000002";
@@ -50,52 +52,40 @@ describe("subscribeCurrentUserToStream", () => {
     vi.clearAllMocks();
   });
 
-  it("posts subscriptions without principals for the current user", async () => {
-    vi.mocked(messengerApi.post).mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: { result: "success" },
-      headers: new Headers(),
-      raw: new Response(),
-      durationMs: 0,
+  it("returns unsupported without calling removed current-user subscriptions endpoint", async () => {
+    await expect(subscribeCurrentUserToStream("engineering", PEER_UUID)).resolves.toEqual({
+      ok: false,
+      errorCode: "unsupported",
     });
 
-    await expect(subscribeCurrentUserToStream("engineering", 10)).resolves.toEqual({ ok: true });
-
-    expect(messengerApi.post).toHaveBeenCalledWith("/users/me/subscriptions", {
-      subscriptions: JSON.stringify([{ name: "engineering" }]),
-    });
+    expect(messengerApi.post).not.toHaveBeenCalled();
   });
 
-  it("returns error code for non-ok http response", async () => {
-    vi.mocked(messengerApi.post).mockResolvedValue({
+  it("returns invalid_user for an empty user id", async () => {
+    await expect(subscribeCurrentUserToStream("engineering", "")).resolves.toEqual({
       ok: false,
-      status: 403,
-      data: { result: "error" },
-      headers: new Headers(),
-      raw: new Response(),
-      durationMs: 0,
+      errorCode: "invalid_user",
     });
 
-    await expect(subscribeCurrentUserToStream("engineering", 10)).resolves.toEqual({
-      ok: false,
-      errorCode: "http_403",
-    });
+    expect(messengerApi.post).not.toHaveBeenCalled();
+  });
+});
+
+describe("createChannel", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
-  it("returns error code when api responds with result=error", async () => {
-    vi.mocked(messengerApi.post).mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: { result: "error", code: "BAD_REQUEST" },
-      headers: new Headers(),
-      raw: new Response(),
-      durationMs: 0,
-    });
+  it("returns null without calling the removed channel creation endpoint", async () => {
+    await expect(
+      createChannel({ name: "engineering", subscribers: [PEER_UUID], inviteOnly: true }),
+    ).resolves.toBeNull();
 
-    await expect(subscribeCurrentUserToStream("engineering", 10)).resolves.toEqual({
-      ok: false,
-      errorCode: "BAD_REQUEST",
-    });
+    expect(messengerApi.post).not.toHaveBeenCalled();
+  });
+
+  it("still validates channel name before returning unsupported", async () => {
+    await expect(createChannel({ name: "   ", subscribers: [] })).rejects.toThrow(/channel name/);
+    expect(messengerApi.post).not.toHaveBeenCalled();
   });
 });

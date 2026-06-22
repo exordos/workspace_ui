@@ -85,4 +85,27 @@ describe("buildRightPanelUserInfo", () => {
 
     expect(userInfo?.avatarUrl).toBe("/avatar/profile.png");
   });
+
+  it("keeps detailed profile data for UUID users", () => {
+    const userUuid = "11111111-1111-4111-8111-111111111111";
+    const userInfo = buildRightPanelUserInfo({
+      userFromStore: undefined,
+      detailedProfile: {
+        userId: userUuid,
+        fullName: "Alice UUID",
+        email: "alice@example.com",
+        avatarUrl: "/avatar/profile.png",
+      },
+      dmChat: undefined,
+      rightDrawerTargetUserId: userUuid,
+      userStatusLabel: undefined,
+      currentInstanceRealm: "https://chat.example.com",
+      media: undefined,
+    });
+
+    expect(userInfo?.userId).toBe(userUuid);
+    expect(userInfo?.name).toBe("Alice UUID");
+    expect(userInfo?.email).toBe("alice@example.com");
+    expect(userInfo?.profileLink).toBeUndefined();
+  });
 });

@@ -1,62 +1,19 @@
 /**
- * Workspace Push Registration — registers/unregisters the FCM token with the server.
+ * Workspace Push Registration facade.
  *
- * server uses this token to send push notifications via its Push Notification
- * Service (which proxies through FCM). This is the standard way Workspace mobile/web
- * clients receive server-initiated notifications.
- *
- * API endpoints:
- *   POST /users/me/apns_device_token    — iOS (not used here)
- *   POST /users/me/android_gcm_reg_id   — FCM token registration (also used by web)
- *   DELETE /users/me/android_gcm_reg_id  — unregister
+ * The current backend does not expose a push-token registration endpoint.
  */
 
-import { messengerApi } from "~/shared/api/client";
 import { createLogger } from "../logger";
 
 const log = createLogger("push:messenger");
 
-/**
- * Register an FCM token with the server.
- * The server will use this to send push notifications for new messages, DMs, mentions.
- */
-export async function registerPushToken(token: string): Promise<boolean> {
-  try {
-    const res = await messengerApi.post("/users/me/android_gcm_reg_id", {
-      token,
-    });
-
-    if (res.ok) {
-      log.info("Push token registered with server");
-      return true;
-    }
-
-    log.warn("Push token registration failed", { status: res.status });
-    return false;
-  } catch (err) {
-    log.error("Push token registration error", { error: String(err) });
-    return false;
-  }
+export async function registerPushToken(_token: string): Promise<boolean> {
+  log.warn("Push token registration is unsupported by the current backend");
+  return false;
 }
 
-/**
- * Unregister the FCM token from the server.
- * Call on logout or when the token changes.
- */
-export async function unregisterPushToken(token: string): Promise<boolean> {
-  try {
-    const res = await messengerApi.post("/users/me/android_gcm_reg_id/unregister", {
-      token,
-    });
-
-    if (res.ok) {
-      log.info("Push token unregistered from server");
-      return true;
-    }
-
-    return false;
-  } catch (err) {
-    log.warn("Push token unregister error", { error: String(err) });
-    return false;
-  }
+export async function unregisterPushToken(_token: string): Promise<boolean> {
+  log.warn("Push token unregister is unsupported by the current backend");
+  return false;
 }

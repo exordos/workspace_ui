@@ -72,7 +72,8 @@ describe("workspace-client", () => {
       id: "instance-1",
       realm: "https://messenger.genesis-core.tech",
       login: "user@example.com",
-      apiKey: "api-key",
+      authType: "iam",
+      iamAccessToken: "api-key",
     });
     const { registerWorkspaceOrvalMutator } = await import("./workspace-orval-mutator");
     registerWorkspaceOrvalMutator();

@@ -10,7 +10,6 @@ async function flushPromises(): Promise<void> {
 }
 
 const runChatListBootstrapMock = vi.fn();
-const fetchRealmPresenceMock = vi.fn();
 const loadInitialMessagesForContextMock = vi.fn();
 const lightRefreshMock = vi.fn();
 const folderSyncRefreshMock = vi.fn().mockResolvedValue(undefined);
@@ -25,10 +24,6 @@ vi.mock("./layout-reconnect-stream-preview.lib", () => ({
   stageReconnectStreamPreviews: (...args: unknown[]) => stageReconnectStreamPreviewsMock(...args),
 }));
 
-vi.mock("./layout-realm-presence-refresh.lib", () => ({
-  refreshRealmPresenceFromApi: vi.fn(),
-}));
-
 vi.mock("./layout-active-chat-refresh.lib", () => ({
   refreshActiveChatMessagesFromApi: (...args: unknown[]) => {
     loadInitialMessagesForContextMock(...args);
@@ -37,10 +32,6 @@ vi.mock("./layout-active-chat-refresh.lib", () => ({
 
 vi.mock("./layout-reconnect-light.lib", () => ({
   refreshLayoutReconnectLight: (...args: unknown[]) => lightRefreshMock(...args),
-}));
-
-vi.mock("~/shared/api/messenger-users", () => ({
-  fetchRealmPresence: () => fetchRealmPresenceMock(),
 }));
 
 vi.mock("~/entities/chat-list/chat-list.model", () => ({

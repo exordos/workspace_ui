@@ -1,21 +1,14 @@
+import { env } from "~/shared/lib/env";
+
 /**
  * organization realm URL normalization. Internal to shared/api messenger modules.
  */
-import { env } from "~/shared/lib/env";
-
 export function normalizeRealm(realm: string): string {
-  let r = realm.trim().replace(/\/+$/, "");
-  const apiPath = env.MESSENGER_API_V1_PATH;
-  if (r.endsWith(apiPath)) {
-    r = r.slice(0, -apiPath.length);
-  } else if (r.endsWith("/api/v1")) {
-    r = r.slice(0, -"/api/v1".length);
-  } else if (r.endsWith("/json")) {
-    r = r.slice(0, -"/json".length);
-  } else if (r.endsWith("/api")) {
-    r = r.slice(0, -"/api".length);
-  }
-  return r.replace(/\/+$/, "");
+  return realm
+    .trim()
+    .replace(/\/+$/, "")
+    .replace(/\/api\/messenger\/v1$/i, "")
+    .replace(/\/+$/, "");
 }
 
 /**

@@ -695,7 +695,8 @@ describe("Sidebar", () => {
           id: INSTANCE_ID,
           realm: "https://chat.example.com",
           login: "user@example.com",
-          apiKey: "api-key",
+          authType: "iam",
+          iamAccessToken: "api-key",
         },
       ],
       currentInstanceId: INSTANCE_ID,
@@ -741,7 +742,8 @@ describe("Sidebar", () => {
           id: INSTANCE_ID,
           realm: "https://chat.example.com",
           login: "user@example.com",
-          apiKey: "api-key",
+          authType: "iam",
+          iamAccessToken: "api-key",
         },
       ],
       currentInstanceId: INSTANCE_ID,
@@ -962,11 +964,9 @@ describe("Sidebar", () => {
 
   it("shows unpin action in private stream context menu when chat is already pinned", async () => {
     useFolderSyncStore.setState({ allFolderApiUuid: "all" });
-    usePinStore
-      .getState()
-      .pinChat("all", "stream:6738f91a-4fd1-416e-807f-cb4ae00ec1d3:general", {
-        folderItemUuid: "item-42",
-      });
+    usePinStore.getState().pinChat("all", "stream:6738f91a-4fd1-416e-807f-cb4ae00ec1d3:general", {
+      folderItemUuid: "item-42",
+    });
     unpinChatInFolderMock.mockResolvedValue(true);
 
     renderWithProviders(

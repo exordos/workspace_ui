@@ -10,7 +10,7 @@
 import { http, HttpResponse } from "msw";
 
 export const handlers = [
-  http.get("*/api/v1/users/me", () => {
+  http.get("*/api/messenger/v1/users/me", () => {
     return HttpResponse.json({
       result: "success",
       user_id: 1,
@@ -19,7 +19,7 @@ export const handlers = [
     });
   }),
 
-  http.get("*/api/v1/users", () => {
+  http.get("*/api/messenger/v1/users", () => {
     return HttpResponse.json({
       result: "success",
       members: [
@@ -43,7 +43,7 @@ export const handlers = [
     });
   }),
 
-  http.get("*/api/v1/messages", () => {
+  http.get("*/api/messenger/v1/messages", () => {
     return HttpResponse.json({
       result: "success",
       messages: [],
@@ -52,14 +52,14 @@ export const handlers = [
     });
   }),
 
-  http.post("*/api/v1/messages", () => {
+  http.post("*/api/messenger/v1/messages", () => {
     return HttpResponse.json({
       result: "success",
       id: 1001,
     });
   }),
 
-  http.post("*/api/v1/messages/flags", () => {
+  http.post("*/api/messenger/v1/messages/flags", () => {
     return HttpResponse.json({
       result: "success",
       messages: [],

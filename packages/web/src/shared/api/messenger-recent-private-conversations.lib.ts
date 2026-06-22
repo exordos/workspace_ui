@@ -1,7 +1,5 @@
 /**
- * Parses `recent_private_conversations` from POST /register.
- *
- * Workspace returns an array of conversation objects; older fixtures may use a string-keyed map.
+ * Parses `recent_private_conversations` arrays from backend metadata snapshots.
  */
 import { normalizeMessageId } from "~/shared/lib/message-id.lib";
 import type { MessengerRecentPrivateConversation } from "./messenger.types";
@@ -40,9 +38,16 @@ function conversationKeyForUserIds(userIds: readonly number[]): string {
     .join(",");
 }
 
-function parseRecentPrivateConversationsFromArray(
-  data: unknown[],
-): Record<string, MessengerRecentPrivateConversation> {
+/** Normalizes `recent_private_conversations` array for the app. */
+export function parseRecentPrivateConversations(
+  data: unknown,
+): Record<string, MessengerRecentPrivateConversation> | null {
+  if (data == null) {
+    return null;
+  }
+  if (!Array.isArray(data)) {
+    return null;
+  }
   const parsed: Record<string, MessengerRecentPrivateConversation> = {};
   for (const item of data) {
     if (item == null || typeof item !== "object" || Array.isArray(item)) {
@@ -56,37 +61,4 @@ function parseRecentPrivateConversationsFromArray(
     parsed[key] = entry;
   }
   return parsed;
-}
-
-function parseRecentPrivateConversationsFromMap(
-  data: Record<string, unknown>,
-): Record<string, MessengerRecentPrivateConversation> {
-  const parsed: Record<string, MessengerRecentPrivateConversation> = {};
-  for (const [key, value] of Object.entries(data)) {
-    if (value == null || typeof value !== "object" || Array.isArray(value)) {
-      continue;
-    }
-    const entry = parseRecentPrivateConversationEntry(value as Record<string, unknown>);
-    if (entry == null) {
-      continue;
-    }
-    parsed[key] = entry;
-  }
-  return parsed;
-}
-
-/** Normalizes register `recent_private_conversations` (array or legacy map) for the app. */
-export function parseRecentPrivateConversations(
-  data: unknown,
-): Record<string, MessengerRecentPrivateConversation> | null {
-  if (data == null) {
-    return null;
-  }
-  if (Array.isArray(data)) {
-    return parseRecentPrivateConversationsFromArray(data);
-  }
-  if (typeof data === "object") {
-    return parseRecentPrivateConversationsFromMap(data as Record<string, unknown>);
-  }
-  return null;
 }

@@ -1,18 +1,16 @@
 /**
  * User profile type definitions.
- *
- * Maps the messenger API's user object to a richer profile view with optional
- * fields for job title, manager, birthday, local time, phone, and timezone.
  */
 
 import type { UserStatus } from "~/entities/user/user.model";
+import type { UserId } from "~/shared/lib/user-id.lib";
 
 export interface UserProfileData {
-  userId: number;
+  userId: UserId;
   fullName: string;
-  email: string;
-  avatarUrl: string;
-  role: number;
+  email?: string;
+  avatarUrl?: string | null;
+  role?: number;
   isBot?: boolean;
   isActive?: boolean;
   dateJoined?: string;

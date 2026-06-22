@@ -13,7 +13,6 @@ const VALID_SERVER_SETTINGS = {
   realm_uri: "https://chat.example.com",
   realm_url: "https://chat.example.com",
   realm_icon: "",
-  external_authentication_methods: [],
 };
 
 const USERNAME_PLACEHOLDER = "username or email@example.com";
@@ -263,7 +262,6 @@ describe("LoginPage", () => {
     expect(instance?.authType).toBe("iam");
     expect(instance?.iamAccessToken).toBe("iam-access-token");
     expect(instance?.iamRefreshToken).toBe("iam-refresh-token");
-    expect(instance?.apiKey).toBe("");
   });
 
   it("ignores external redirectTo values and falls back to root", async () => {
@@ -340,7 +338,6 @@ describe("LoginPage", () => {
       realm_uri: "",
       realm_url: "",
       realm_icon: "https://cdn.example.com/realm-logo.svg",
-      external_authentication_methods: [],
     });
     loginWithIamCredentials.mockResolvedValue({
       access_token: "key-123",
@@ -384,7 +381,6 @@ describe("LoginPage", () => {
       realm_uri: "",
       realm_url: "",
       realm_icon: "/user_avatars/1/realm/icon.png",
-      external_authentication_methods: [],
     });
     loginWithIamCredentials.mockResolvedValue({
       access_token: "key-123",
@@ -428,7 +424,6 @@ describe("LoginPage", () => {
       realm_uri: "https://canonical.example.com",
       realm_url: "https://canonical.example.com",
       realm_icon: "",
-      external_authentication_methods: [],
     });
     loginWithIamCredentials.mockResolvedValue({
       access_token: "key-123",
@@ -471,23 +466,24 @@ describe("LoginPage", () => {
     useInstancesStore.getState().addInstance({
       realm: "https://chat.example.com",
       login: "user@example.com",
-      apiKey: "existing-key",
+      authType: "iam",
+      iamAccessToken: "existing-token",
     });
     fetchServerSettings.mockResolvedValue(VALID_SERVER_SETTINGS);
     loginWithIamCredentials.mockResolvedValue({
-      api_key: "key-123",
+      access_token: "key-123",
       email: "USER@example.com",
       user_id: 7,
     });
 
     renderWithProviders(<LoginPage />, {
-      route: "/login?realm=https%3A%2F%2Fchat.example.com%2Fapi%2Fv1",
+      route: "/login?realm=https%3A%2F%2Fchat.example.com%2Fapi%2Fmessenger%2Fv1",
     });
 
     const realmInput = await screen.findByLabelText(/server address/i);
     fireEvent.blur(realmInput);
     await waitFor(() => {
-      expect(fetchServerSettings).toHaveBeenCalledWith("https://chat.example.com/api/v1");
+      expect(fetchServerSettings).toHaveBeenCalledWith("https://chat.example.com/api/messenger/v1");
     });
 
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
@@ -504,7 +500,7 @@ describe("LoginPage", () => {
     expect(await screen.findByText(/this account has already been added/i)).toBeInTheDocument();
     expect(navigateSpy).not.toHaveBeenCalled();
     expect(useInstancesStore.getState().instances).toHaveLength(1);
-    expect(useInstancesStore.getState().instances[0]?.apiKey).toBe("existing-key");
+    expect(useInstancesStore.getState().instances[0]?.iamAccessToken).toBe("existing-token");
   });
 
   it("shows fallback organization logo when realm icon is absent", async () => {
@@ -513,7 +509,6 @@ describe("LoginPage", () => {
       realm_uri: "",
       realm_url: "",
       realm_icon: "",
-      external_authentication_methods: [],
     });
 
     renderWithProviders(<LoginPage />, {
@@ -532,202 +527,5 @@ describe("LoginPage", () => {
       "src",
       expect.stringContaining("organization-fallback.svg"),
     );
-  });
-
-  it("starts desktop OIDC flow and navigates to paste-token page", async () => {
-    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
-    fetchServerSettings.mockResolvedValue({
-      ...VALID_SERVER_SETTINGS,
-      external_authentication_methods: [
-        {
-          name: "google",
-          display_name: "Google",
-          login_url: "/accounts/login/google/",
-        },
-      ],
-    });
-
-    renderWithProviders(<LoginPage />, {
-      route: "/login?realm=https%3A%2F%2Fchat.example.com",
-    });
-
-    await screen.findByRole("button", { name: /next/i });
-    fireEvent.click(screen.getByRole("button", { name: /next/i }));
-
-    const button = await screen.findByRole("button", { name: "Google" }, { timeout: 4000 });
-    fireEvent.click(button);
-
-    await waitFor(() => {
-      expect(openSpy).toHaveBeenCalledTimes(1);
-      const openedUrl = String(openSpy.mock.calls[0]?.[0] ?? "");
-      expect(openedUrl).toContain("desktop_flow_otp=");
-      expect(openedUrl).toContain("next=%2F");
-    });
-    await waitFor(() => {
-      expect(navigateSpy).toHaveBeenCalledWith("/paste-token?realm=https%3A%2F%2Fchat.example.com");
-    });
-
-    openSpy.mockRestore();
-  });
-
-  it("renders multiple external auth providers from server settings", async () => {
-    fetchServerSettings.mockResolvedValue({
-      ...VALID_SERVER_SETTINGS,
-      external_authentication_methods: [
-        {
-          name: "google",
-          display_name: "Google",
-          login_url: "/accounts/login/google/",
-        },
-        {
-          name: "github",
-          display_name: "GitHub",
-          login_url: "/accounts/login/social/github",
-        },
-        {
-          name: "gitlab",
-          display_name: "GitLab",
-          login_url: "/accounts/login/social/gitlab",
-        },
-      ],
-    });
-
-    renderWithProviders(<LoginPage />, {
-      route: "/login?realm=https%3A%2F%2Fchat.example.com",
-    });
-
-    const realmInput = await screen.findByLabelText(/server address/i);
-    fireEvent.blur(realmInput);
-    await screen.findByRole("button", { name: /next/i });
-    fireEvent.click(screen.getByRole("button", { name: /next/i }));
-
-    expect(
-      await screen.findByRole("button", { name: "Google" }, { timeout: 4000 }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "GitHub" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "GitLab" })).toBeInTheDocument();
-  });
-
-  it("preserves redirect target when switching to desktop OIDC paste-token flow", async () => {
-    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
-    fetchServerSettings.mockResolvedValue({
-      ...VALID_SERVER_SETTINGS,
-      external_authentication_methods: [
-        {
-          name: "google",
-          display_name: "Google",
-          login_url: "/accounts/login/google/",
-        },
-      ],
-    });
-
-    renderWithProviders(<LoginPage />, {
-      route:
-        "/login?realm=https%3A%2F%2Fchat.example.com&redirectTo=%2Fmessage%2F123%3Frealm%3Dhttps%253A%252F%252Fchat.example.com",
-    });
-
-    await screen.findByRole("button", { name: /next/i });
-    fireEvent.click(screen.getByRole("button", { name: /next/i }));
-    fireEvent.click(await screen.findByRole("button", { name: "Google" }, { timeout: 4000 }));
-
-    await waitFor(() => {
-      expect(navigateSpy).toHaveBeenCalledWith(
-        "/paste-token?realm=https%3A%2F%2Fchat.example.com&redirectTo=%2Fmessage%2F123%3Frealm%3Dhttps%253A%252F%252Fchat.example.com",
-      );
-    });
-    await waitFor(() => {
-      expect(openSpy).toHaveBeenCalledTimes(1);
-    });
-
-    openSpy.mockRestore();
-  });
-
-  it("blocks cross-origin desktop OIDC login urls", async () => {
-    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
-    fetchServerSettings.mockResolvedValue({
-      ...VALID_SERVER_SETTINGS,
-      external_authentication_methods: [
-        {
-          name: "google",
-          display_name: "Google",
-          login_url: "https://evil.example.com/accounts/login/google/",
-        },
-      ],
-    });
-
-    renderWithProviders(<LoginPage />, {
-      route: "/login?realm=https%3A%2F%2Fchat.example.com",
-    });
-
-    await screen.findByRole("button", { name: /next/i });
-    fireEvent.click(screen.getByRole("button", { name: /next/i }));
-    fireEvent.click(await screen.findByRole("button", { name: "Google" }, { timeout: 4000 }));
-
-    await waitFor(() => {
-      expect(openSpy).not.toHaveBeenCalled();
-      expect(navigateSpy).not.toHaveBeenCalled();
-    });
-
-    openSpy.mockRestore();
-  });
-
-  it("renders fallback realm logo and omits invalid provider icons", async () => {
-    fetchServerSettings.mockResolvedValue({
-      ...VALID_SERVER_SETTINGS,
-      realm_icon: "mailto:icons@example.com",
-      external_authentication_methods: [
-        {
-          name: "google",
-          display_name: "Google",
-          display_icon: "file:///tmp/icon.svg",
-          login_url: "/accounts/login/google/",
-        },
-      ],
-    });
-
-    const { container } = renderWithProviders(<LoginPage />, {
-      route: "/login?realm=https%3A%2F%2Fchat.example.com",
-    });
-
-    await screen.findByRole("button", { name: /next/i });
-    fireEvent.click(screen.getByRole("button", { name: /next/i }));
-    await screen.findByRole("button", { name: "Google" }, { timeout: 4000 });
-
-    expect(screen.getByTestId("realm-logo-preview")).toHaveAttribute(
-      "src",
-      expect.stringContaining("organization-fallback.svg"),
-    );
-    expect(container.querySelectorAll("img")).toHaveLength(1);
-  });
-
-  it("uses fallback realm logo and blocks same-origin icon urls before auth", async () => {
-    fetchServerSettings.mockResolvedValue({
-      ...VALID_SERVER_SETTINGS,
-      realm_icon: "/user_avatars/1/realm/icon.png",
-      external_authentication_methods: [
-        {
-          name: "google",
-          display_name: "Google",
-          display_icon: "/user_uploads/1/provider/google.png",
-          login_url: "/accounts/login/google/",
-        },
-      ],
-    });
-
-    const { container } = renderWithProviders(<LoginPage />, {
-      route: "/login?realm=https%3A%2F%2Fchat.example.com",
-    });
-
-    await screen.findByRole("button", { name: /next/i });
-    fireEvent.click(screen.getByRole("button", { name: /next/i }));
-    await screen.findByRole("button", { name: "Google" }, { timeout: 4000 });
-
-    const fallbackLogo = screen.getByTestId("realm-logo-preview");
-    expect(fallbackLogo).toHaveAttribute(
-      "src",
-      expect.stringContaining("organization-fallback.svg"),
-    );
-    expect(fallbackLogo.getAttribute("src")).not.toContain("/user_avatars/");
-    expect(container.querySelectorAll("img")).toHaveLength(1);
   });
 });

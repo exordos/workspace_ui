@@ -74,7 +74,7 @@ describe("uploadFile", () => {
       .mockResolvedValueOnce({
         ok: true,
         status: 201,
-        headers: new Headers({ Location: "/api/v1/tus/upload-1" }),
+        headers: new Headers({ Location: "/api/messenger/v1/tus/upload-1" }),
         json: () => Promise.resolve({}),
       })
       .mockResolvedValueOnce({
@@ -124,7 +124,7 @@ describe("uploadFile", () => {
 
     expect(uri).toBe("/user_uploads/1/large-video.mp4");
     expect(mockFetch).toHaveBeenCalledWith(
-      "https://chat.example.com/api/v1/tus",
+      "https://chat.example.com/api/messenger/v1/tus",
       expect.objectContaining({
         method: "POST",
       }),

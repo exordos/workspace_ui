@@ -11,10 +11,10 @@ describe("workspaceOrgOriginFromLoginServerUrlInput", () => {
     );
   });
 
-  it("strips /api/v1 before taking origin", () => {
-    expect(workspaceOrgOriginFromLoginServerUrlInput("https://gw.example.com/api/v1")).toBe(
-      "https://gw.example.com",
-    );
+  it("strips /api/messenger/v1 before taking origin", () => {
+    expect(
+      workspaceOrgOriginFromLoginServerUrlInput("https://gw.example.com/api/messenger/v1"),
+    ).toBe("https://gw.example.com");
   });
 
   it("adds https when scheme omitted", () => {

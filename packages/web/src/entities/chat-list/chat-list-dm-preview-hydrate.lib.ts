@@ -1,5 +1,5 @@
 /**
- * Hydrates DM sidebar previews from register `recent_private_conversations` metadata.
+ * Hydrates DM sidebar previews from cached DM metadata.
  *
  * Uses GET /messages `message_ids` for one batch request per chunk instead of loading DM history.
  */
@@ -59,7 +59,7 @@ function isCancelledOrStale(
   return cancelled?.() === true || !isActiveOrgRequestContextCurrent(orgContext);
 }
 
-/** Loads last DM messages from register metadata and merges them into the chat list store. */
+/** Loads last DM messages from cached metadata and merges them into the chat list store. */
 export async function hydrateDmSidebarPreviewsFromRecentConversations(
   options: HydrateDmSidebarPreviewsOptions,
 ): Promise<void> {

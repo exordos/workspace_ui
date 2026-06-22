@@ -3,8 +3,8 @@
  */
 import { Buffer } from "buffer";
 import { t } from "~/i18n/i18n";
-import { getBasicAuthValue } from "~/shared/lib/auth-guard";
-import { env } from "~/shared/lib/env";
+import { MESSENGER_API_PATH } from "~/shared/config/workspace-api-layout";
+import { resolveIamAccessToken } from "~/shared/lib/iam-instance.lib";
 import { validateFileUpload } from "~/shared/lib/validation";
 import { getCurrentInstance, messengerApi } from "./client";
 import { ensureMessengerApiReady } from "./messenger-pipeline.internal";
@@ -99,19 +99,16 @@ async function uploadFileViaTus(
   credentials: MessengerCredentials,
   options?: { signal?: AbortSignal },
 ): Promise<string> {
-  const authValue = getBasicAuthValue({
-    login: credentials.login,
-    apiKey: credentials.apiKey,
-  });
-  if (authValue == null) {
+  const accessToken = credentials.accessToken.trim();
+  if (accessToken.length === 0) {
     throw new Error(t("app.noInstance"));
   }
 
-  const apiBaseUrl = `${normalizeRealm(credentials.realm)}${env.MESSENGER_API_V1_PATH}`;
+  const apiBaseUrl = `${normalizeRealm(credentials.realm)}${MESSENGER_API_PATH}`;
   const createRes = await fetch(`${apiBaseUrl}/tus`, {
     method: "POST",
     headers: {
-      Authorization: authValue,
+      Authorization: `Bearer ${accessToken}`,
       "Tus-Resumable": TUS_VERSION,
       "Upload-Length": String(file.size),
       "Upload-Metadata": buildTusMetadata(file),
@@ -131,7 +128,7 @@ async function uploadFileViaTus(
   const headRes = await fetch(uploadUrl, {
     method: "HEAD",
     headers: {
-      Authorization: authValue,
+      Authorization: `Bearer ${accessToken}`,
       "Tus-Resumable": TUS_VERSION,
     },
     signal: options?.signal,
@@ -147,7 +144,7 @@ async function uploadFileViaTus(
     const patchRes = await fetch(uploadUrl, {
       method: "PATCH",
       headers: {
-        Authorization: authValue,
+        Authorization: `Bearer ${accessToken}`,
         "Tus-Resumable": TUS_VERSION,
         "Upload-Offset": String(offset),
         "Content-Type": "application/offset+octet-stream",
@@ -165,7 +162,7 @@ async function uploadFileViaTus(
 
   const pathId = await findTusUploadedAttachmentPath(
     apiBaseUrl,
-    authValue,
+    `Bearer ${accessToken}`,
     file.name,
     file.size,
     options?.signal,
@@ -209,7 +206,7 @@ export async function uploadFile(file: File, options?: { signal?: AbortSignal })
   const credentials: MessengerCredentials = {
     realm: instance.realm,
     login: instance.login,
-    apiKey: instance.apiKey,
+    accessToken: resolveIamAccessToken(instance),
   };
 
   if (file.size > TUS_UPLOAD_THRESHOLD_BYTES) {

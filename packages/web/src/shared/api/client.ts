@@ -4,7 +4,6 @@
  * Usage:
  *   import { messengerApi, workspaceApi } from "~/shared/api/client";
  *   const res = await messengerApi.get("/messages", { anchor: "newest" });
- *   await messengerApi.post("/events/register", { event_types: "message" });
  *   messengerApi.use(myMiddleware);
  */
 
@@ -20,7 +19,7 @@ import {
   MESSENGER_API_PATH,
   MESSENGER_WORKSPACE_API_PATH,
 } from "~/shared/config/workspace-api-layout";
-import { getBasicAuthValue, wipeCredentials } from "~/shared/lib/auth-guard";
+import { wipeCredentials } from "~/shared/lib/auth-guard";
 import {
   noteApiTransportFailure,
   noteApiTransportSuccess,
@@ -36,11 +35,6 @@ import {
 } from "~/shared/lib/messenger-rate-limit-gate";
 import { workspaceOrgApiOriginFromRealmRoot } from "~/shared/lib/workspace-org-origin.lib";
 import { refreshStoredIamAccessToken } from "./iam-refresh-session.lib";
-import {
-  getCachedSessionCsrfToken,
-  getOrFetchWebSessionCsrfToken,
-  readSessionCsrfTokenFromDocument,
-} from "./messenger-session-csrf.internal";
 
 // ---
 // Instance credentials provider (injected from `app` to avoid shared → entities import)
@@ -50,8 +44,7 @@ export interface InstanceCredentials {
   id: string;
   realm: string;
   login: string;
-  apiKey: string;
-  authType?: "api_key" | "session" | "iam";
+  authType: "iam";
   iamAccessToken?: string;
   iamRefreshToken?: string;
   /** Workspace REST origin for this org (from the server URL entered at login). */
@@ -69,22 +62,11 @@ export function getCurrentInstance(): InstanceCredentials | null {
   return instanceProvider?.() ?? null;
 }
 
-type InstanceAuthType = "api_key" | "session" | "iam";
-
-function resolveInstanceAuthType(instance: InstanceCredentials | null): InstanceAuthType {
-  if (instance?.authType === "session") return "session";
-  if (instance?.authType === "iam") return "iam";
-  return "api_key";
-}
-
 function normalizeInstanceRealmRoot(realmInput: string): string {
-  const trimmed = realmInput.trim().replace(/\/+$/, "");
-  const escapedConfiguredApiPath = env.MESSENGER_API_V1_PATH.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return trimmed
-    .replace(new RegExp(`${escapedConfiguredApiPath}$`), "")
-    .replace(/\/api\/v1$/, "")
-    .replace(/\/json$/, "")
-    .replace(/\/api$/, "")
+  return realmInput
+    .trim()
+    .replace(/\/+$/, "")
+    .replace(/\/api\/messenger\/v1$/i, "")
     .replace(/\/+$/, "");
 }
 
@@ -171,7 +153,6 @@ export function appendDevRealmMediaProxyHeaders(
   }
 }
 
-/** Back-compat alias; `/external_content` uses the same realm-target proxy flow. */
 export function appendDevUserUploadsProxyHeaders(
   candidateUrl: string,
   headers: Record<string, string>,
@@ -227,55 +208,11 @@ const noCacheMiddleware: Middleware = async (req, next) => {
 
 const authMiddleware: Middleware = async (req, next) => {
   const instance = getCurrentInstance();
-  const authType = resolveInstanceAuthType(instance);
-  if (authType === "iam" && instance) {
+  if (instance != null) {
     const accessToken = resolveIamAccessToken(instance);
     if (accessToken.length > 0) {
       req.headers.Authorization = `Bearer ${accessToken}`;
     }
-  } else if (authType === "api_key" && instance?.login && instance?.apiKey) {
-    const authValue = getBasicAuthValue({ login: instance.login, apiKey: instance.apiKey });
-    if (authValue) {
-      req.headers.Authorization = authValue;
-    }
-  }
-  return next(req);
-};
-
-async function readElectronCsrfToken(realm: string): Promise<string | null> {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  const getCsrfToken = window.electronAPI?.auth?.getCsrfToken;
-  if (typeof getCsrfToken !== "function") {
-    return null;
-  }
-  try {
-    const token = await getCsrfToken({ realm });
-    return token != null && token.length > 0 ? token : null;
-  } catch {
-    return null;
-  }
-}
-
-const messengerSessionCsrfMiddleware: Middleware = async (req, next) => {
-  const instance = getCurrentInstance();
-  if (resolveInstanceAuthType(instance) !== "session" || req.method === "GET") {
-    return next(req);
-  }
-  const csrfToken =
-    (instance != null ? getCachedSessionCsrfToken(instance.realm) : null) ??
-    (instance != null ? await getOrFetchWebSessionCsrfToken(instance.realm) : null) ??
-    readSessionCsrfTokenFromDocument() ??
-    (instance != null ? await readElectronCsrfToken(instance.realm) : null);
-  if (csrfToken && csrfToken.length > 0) {
-    return next({
-      ...req,
-      headers: {
-        ...req.headers,
-        "X-CSRFToken": csrfToken,
-      },
-    });
   }
   return next(req);
 };
@@ -339,6 +276,9 @@ const loggingMiddleware: Middleware = async (req, next) => {
     });
     return res;
   } catch (err) {
+    if (isAbortError(err) || req.signal?.aborted === true) {
+      throw err;
+    }
     const durationMs = Math.round(performance.now() - start);
     logApiCall(req.method, logPath, {
       durationMs,
@@ -436,7 +376,6 @@ function shouldSkipAuth401Handling(req: ApiRequest): boolean {
     const parsed = new URL(req.url);
     const path = parsed.pathname;
     if (
-      /\/fetch_api_key\/?$/.test(path) ||
       /\/server_settings\/?$/.test(path) ||
       /\/accounts\/login\/?$/.test(path) ||
       /\/actions\/get_token\/invoke\/?$/.test(path)
@@ -489,23 +428,8 @@ function createLinkedAbortSignal(
   };
 }
 
-/** messenger event long-poll must not use the generic REST timeout (server holds the connection). */
-function isMessengerEventsLongPollGet(req: ApiRequest): boolean {
-  if (req.method !== "GET") {
-    return false;
-  }
-  try {
-    return /\/events\/?$/.test(new URL(req.url).pathname);
-  } catch {
-    return false;
-  }
-}
-
 /** Applies `MESSENGER_API_FETCH_TIMEOUT_MS` per retry attempt (runs after retry middleware). */
 const messengerRequestTimeoutMiddleware: Middleware = async (req, next) => {
-  if (isMessengerEventsLongPollGet(req)) {
-    return next(req);
-  }
   const { signal, cleanup } = createLinkedAbortSignal(req.signal, MESSENGER_API_FETCH_TIMEOUT_MS);
   try {
     return await next({ ...req, signal });
@@ -527,9 +451,8 @@ const authErrorMiddleware: Middleware = async (req, next) => {
     return res;
   }
 
-  const authType = resolveInstanceAuthType(instance);
   const alreadyRetried = req.meta.iamAuthRetried === true;
-  if (authType === "iam" && !alreadyRetried) {
+  if (!alreadyRetried) {
     const refreshToken = instance.iamRefreshToken?.trim() ?? "";
     if (refreshToken.length > 0) {
       const refreshed = await refreshStoredIamAccessToken({
@@ -639,13 +562,12 @@ class ApiClient {
     const chain = [...this.middlewares];
 
     const fetchFn: NextFn = async (r) => {
-      const authType = resolveInstanceAuthType(getCurrentInstance());
       const init: RequestInit = {
         method: r.method,
         headers: r.headers,
         signal: r.signal,
         cache: r.cache,
-        credentials: authType === "session" ? "include" : "same-origin",
+        credentials: "same-origin",
       };
       if (r.body) {
         init.body = r.body;
@@ -901,16 +823,11 @@ export function getWorkspaceApiBaseForCurrentInstance(): string {
 }
 
 function getMessengerBaseUrl(): string {
-  const instance = getCurrentInstance();
-  if (!instance) return "";
-  const authType = resolveInstanceAuthType(instance);
-  const apiPath = authType === "session" ? "/json" : env.MESSENGER_API_V1_PATH;
-  const realm = normalizeInstanceRealmRoot(instance.realm);
-  return `${realm}${apiPath}`;
+  return getMessengerGatewayApiBaseForCurrentInstance();
 }
 
 export const messengerApi = new ApiClient("");
-messengerApi.useBefore(loggingMiddleware, messengerSessionCsrfMiddleware);
+messengerApi.use(loggingMiddleware);
 messengerApi.useBefore(retryMiddleware, messengerRateLimitGateMiddleware);
 messengerApi.useBefore(authErrorMiddleware, messengerRequestTimeoutMiddleware);
 
@@ -938,7 +855,6 @@ export {
   connectionHealthMiddleware,
   noCacheMiddleware,
   authMiddleware,
-  messengerSessionCsrfMiddleware,
   loggingMiddleware,
   retryMiddleware,
   messengerRateLimitGateMiddleware,

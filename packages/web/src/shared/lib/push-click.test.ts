@@ -84,8 +84,20 @@ describe("buildPushClickUrl", () => {
 
 describe("findInstanceIdByRealmUri", () => {
   const instances = [
-    { id: "1", realm: "https://chat.example.com", login: "a@test.com", apiKey: "k1" },
-    { id: "2", realm: "https://chat.example.com", login: "b@test.com", apiKey: "k2" },
+    {
+      id: "1",
+      realm: "https://chat.example.com",
+      login: "a@test.com",
+      authType: "iam",
+      iamAccessToken: "k1",
+    },
+    {
+      id: "2",
+      realm: "https://chat.example.com",
+      login: "b@test.com",
+      authType: "iam",
+      iamAccessToken: "k2",
+    },
   ];
 
   it("matches exact realm url", () => {
@@ -93,7 +105,9 @@ describe("findInstanceIdByRealmUri", () => {
   });
 
   it("matches normalized realm url with api suffix and trailing slash", () => {
-    expect(findInstanceIdByRealmUri(instances, "https://chat.example.com/api/v1/")).toBe("1");
+    expect(findInstanceIdByRealmUri(instances, "https://chat.example.com/api/messenger/v1/")).toBe(
+      "1",
+    );
   });
 
   it("returns null when no realm matches", () => {

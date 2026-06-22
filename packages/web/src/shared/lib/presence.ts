@@ -1,16 +1,16 @@
 /**
  * Presence tracker — reports local user activity to the server.
  *
- * Detects user activity (mouse, keyboard, touch, scroll) and reports
- * presence status to the server via POST /users/me/presence.
+ * Detects user activity (mouse, keyboard, touch, scroll) and keeps
+ * local presence state for UI subscribers.
  *
  * States:
  *   active  — user is interacting with the app right now
  *   idle    — no interaction for IDLE_TIMEOUT_MS (default 5 min)
  *   offline — tab hidden for > OFFLINE_DELAY_MS or browser closed
  *
- * The module integrates with visibility tracking: hidden tab → idle → offline.
- * On tab resume, presence is immediately reported as "active".
+ * The module integrates with visibility tracking: hidden tab -> idle -> offline.
+ * On tab resume, presence is immediately restored to "active" locally.
  *
  * Usage:
  *   import { initPresenceTracker, getLocalPresenceStatus } from "~/shared/lib/presence";
@@ -162,8 +162,8 @@ export function useLocalPresence(): LocalPresenceStatus {
 }
 
 /**
- * Set the function that reports presence to the server.
- * Called by the event loop / layout after Messenger API is available.
+ * Set the function that receives local presence changes.
+ * Called by the event loop / layout after the application shell is ready.
  *
  * @param fn Called with "active" or "idle" every REPORT_INTERVAL_MS and on status change.
  */

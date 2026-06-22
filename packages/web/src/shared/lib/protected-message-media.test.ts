@@ -265,18 +265,18 @@ describe("resolveProtectedUploadFetchOptions", () => {
     vi.restoreAllMocks();
   });
 
-  it("sends Authorization on cross-origin candidate (credentials omit, headers kept)", () => {
+  it("sends Bearer Authorization on cross-origin candidate (credentials omit, headers kept)", () => {
     vi.spyOn(apiClient, "getCurrentInstance").mockReturnValue({
-      id: "api-key",
+      id: "iam",
       realm: "https://chat.example.com",
       login: "user@example.com",
-      apiKey: "key",
-      authType: "api_key",
+      authType: "iam",
+      iamAccessToken: "token",
     });
     vi.stubGlobal("window", {
       location: { origin: "https://app.example.com" },
     });
-    const headers = { Authorization: "Basic abc" };
+    const headers = { Authorization: "Bearer abc" };
     const init = resolveProtectedUploadFetchOptions(
       "https://chat.example.com/user_uploads/1/a.png",
       headers,
@@ -285,13 +285,13 @@ describe("resolveProtectedUploadFetchOptions", () => {
     expect(init.headers).toEqual(headers);
   });
 
-  it("uses include credentials for cross-origin session auth without Basic header", () => {
+  it("uses include credentials for cross-origin protected media without Authorization header", () => {
     vi.spyOn(apiClient, "getCurrentInstance").mockReturnValue({
-      id: "session",
+      id: "iam",
       realm: "https://chat.example.com",
       login: "user@example.com",
-      apiKey: "",
-      authType: "session",
+      authType: "iam",
+      iamAccessToken: "token",
     });
     vi.stubGlobal("window", {
       location: { origin: "file://" },
@@ -318,27 +318,28 @@ describe("resolveProtectedUploadFetchOptions", () => {
 
   it("uses include credentials for same-origin candidate", () => {
     vi.spyOn(apiClient, "getCurrentInstance").mockReturnValue({
-      id: "api-key",
+      id: "iam",
       realm: "https://chat.example.com",
       login: "user@example.com",
-      apiKey: "key",
+      authType: "iam",
+      iamAccessToken: "token",
     });
     vi.stubGlobal("window", {
       location: { origin: "https://chat.example.com" },
     });
-    const headers = { Authorization: "Basic abc" };
+    const headers = { Authorization: "Bearer abc" };
     const init = resolveProtectedUploadFetchOptions("/user_uploads/1/a.png", headers);
     expect(init.credentials).toBe("include");
     expect(init.headers).toEqual(headers);
   });
 
-  it("uses include credentials for same-origin session auth", () => {
+  it("uses include credentials for same-origin protected media without Authorization header", () => {
     vi.spyOn(apiClient, "getCurrentInstance").mockReturnValue({
-      id: "session",
+      id: "iam",
       realm: "https://chat.example.com",
       login: "user@example.com",
-      apiKey: "",
-      authType: "session",
+      authType: "iam",
+      iamAccessToken: "token",
     });
     vi.stubGlobal("window", {
       location: { origin: "https://chat.example.com" },
@@ -352,7 +353,7 @@ describe("resolveProtectedUploadFetchOptions", () => {
       location: { origin: "https://app.example.com" },
     });
     const init = resolveProtectedUploadFetchOptions("https://attacker.example/collect", {
-      Authorization: "Basic abc",
+      Authorization: "Bearer abc",
     });
     expect(init.credentials).toBe("omit");
     expect(init.headers).toEqual({});
@@ -363,7 +364,7 @@ describe("resolveProtectedUploadFetchOptions", () => {
       location: { origin: "https://app.example.com" },
     });
     const init = resolveProtectedUploadFetchOptions("https://attacker.example/user_uploads/x.png", {
-      Authorization: "Basic abc",
+      Authorization: "Bearer abc",
     });
     expect(init.credentials).toBe("omit");
     expect(init.headers).toEqual({});
@@ -375,7 +376,7 @@ describe("resolveProtectedUploadFetchOptions", () => {
 
     await expect(
       fetchProtectedUploadBlob("https://attacker.example/collect", {
-        Authorization: "Basic abc",
+        Authorization: "Bearer abc",
       }),
     ).resolves.toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
@@ -390,7 +391,7 @@ describe("resolveProtectedUploadFetchOptions", () => {
 
     await expect(
       fetchProtectedUploadBlob("https://attacker.example/user_uploads/x.png", {
-        Authorization: "Basic abc",
+        Authorization: "Bearer abc",
       }),
     ).resolves.toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();

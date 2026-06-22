@@ -37,10 +37,10 @@ describe("extractUserUploadsPathAndQuery", () => {
     ).toBe("/user_uploads/2/ab/file.png?q=1");
   });
 
-  it("removes /api/v1 prefix before user_uploads", () => {
+  it("removes gateway prefix before user_uploads", () => {
     expect(
       extractUserUploadsPathAndQuery(
-        "https://gw.example.com/api/v1/user_uploads/x/y.png",
+        "https://gw.example.com/workspace/v1/user_uploads/x/y.png",
         "https://localhost",
       ),
     ).toBe("/user_uploads/x/y.png");

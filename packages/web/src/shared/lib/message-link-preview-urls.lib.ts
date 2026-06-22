@@ -1,7 +1,7 @@
 /**
- * Extracts external URLs from message markdown suitable for the messenger API link-preview unfurl.
+ * Extracts external URLs from message markdown suitable for link-preview matching.
  *
- * Used with POST /messages/render — does not fetch OG data in the browser.
+ * URL extraction does not fetch OG data in the browser.
  *
  * Usage:
  *   import {
@@ -107,7 +107,7 @@ function isExcludedPreviewUrl(
     if (path.includes("/user_uploads/")) {
       return true;
     }
-    if (path.includes("/api/v1/")) {
+    if (path.includes("/api/messenger/v1/")) {
       return true;
     }
     if (MESSENGER_PERMALINK_PATH_PATTERN.test(parsed.hash)) {

@@ -12,12 +12,7 @@ import {
   handleUpdateMessage,
   handleUpdateMessageFlags,
 } from "./layout-messenger-event-dispatch-message.lib";
-import {
-  handlePresence,
-  handleTyping,
-  handleUserSettings,
-  handleUserStatus,
-} from "./layout-messenger-event-dispatch-presence.lib";
+import { handleTyping, handleUserSettings } from "./layout-messenger-event-dispatch-presence.lib";
 import { handleRealm } from "./layout-messenger-event-dispatch-realm.lib";
 import {
   handleStream,
@@ -66,16 +61,6 @@ export function dispatchMessengerEvent(
 
   if (event.type === "update_message") {
     runDispatchHandler("dispatch:update_message", () => handleUpdateMessage(event, ctx));
-    return;
-  }
-
-  if (event.type === "presence") {
-    runDispatchHandler("dispatch:presence", () => handlePresence(event, ctx));
-    return;
-  }
-
-  if (event.type === "user_status") {
-    runDispatchHandler("dispatch:user_status", () => handleUserStatus(event, ctx));
     return;
   }
 

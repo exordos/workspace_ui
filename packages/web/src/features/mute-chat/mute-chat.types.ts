@@ -2,8 +2,8 @@
  * Mute/unmute type definitions.
  *
  * Workspace supports muting at two levels:
- * 1. Channel (stream) level — via subscription properties
- * 2. Topic level — via user_topics visibility policy
+ * 1. Channel (stream) level
+ * 2. Topic level via visibility policy values
  */
 
 export type MuteTarget =

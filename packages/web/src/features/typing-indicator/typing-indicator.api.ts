@@ -1,73 +1,22 @@
 /**
- * Typing indicator API — sends start/stop typing notifications to the messenger API.
+ * Typing indicator API facade.
  *
- * Messenger API: POST /typing
- *   op: "start" | "stop"
- *   type: "direct" | "stream"
- *
- * For DMs: to = JSON array of user IDs
- * For streams: stream_uuid + topic
+ * The Workspace gateway backend does not expose a typing notification endpoint. Typing
+ * notifications are therefore local/realtime-consumer-only until a new backend contract exists.
  */
 
-import { messengerApi } from "~/shared/api/client";
-import { createLogger } from "~/shared/lib/logger";
-
-const log = createLogger("typing-api");
-
-export async function sendTypingStart(userIds: number[]): Promise<void> {
-  try {
-    await messengerApi.post("/typing", {
-      op: "start",
-      to: JSON.stringify(userIds),
-      type: "direct",
-    });
-  } catch (err) {
-    log.warn("Failed to send typing start", {
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
+export async function sendTypingStart(_userIds: number[]): Promise<void> {
+  return undefined;
 }
 
-export async function sendTypingStop(userIds: number[]): Promise<void> {
-  try {
-    await messengerApi.post("/typing", {
-      op: "stop",
-      to: JSON.stringify(userIds),
-      type: "direct",
-    });
-  } catch (err) {
-    log.warn("Failed to send typing stop", {
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
+export async function sendTypingStop(_userIds: number[]): Promise<void> {
+  return undefined;
 }
 
-export async function sendStreamTypingStart(streamUuid: string, topic: string): Promise<void> {
-  try {
-    await messengerApi.post("/typing", {
-      op: "start",
-      type: "stream",
-      stream_uuid: streamUuid,
-      topic,
-    });
-  } catch (err) {
-    log.warn("Failed to send stream typing start", {
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
+export async function sendStreamTypingStart(_streamUuid: string, _topic: string): Promise<void> {
+  return undefined;
 }
 
-export async function sendStreamTypingStop(streamUuid: string, topic: string): Promise<void> {
-  try {
-    await messengerApi.post("/typing", {
-      op: "stop",
-      type: "stream",
-      stream_uuid: streamUuid,
-      topic,
-    });
-  } catch (err) {
-    log.warn("Failed to send stream typing stop", {
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
+export async function sendStreamTypingStop(_streamUuid: string, _topic: string): Promise<void> {
+  return undefined;
 }

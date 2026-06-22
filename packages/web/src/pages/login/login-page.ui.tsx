@@ -8,20 +8,14 @@ import { normalizeRealm } from "~/shared/api/messenger-realm.internal";
 import { MessengerAuthError } from "~/shared/api/messenger.types";
 import { brand } from "~/shared/lib/brand";
 import { env } from "~/shared/lib/env";
-import {
-  buildDesktopFlowLoginUrl,
-  generateDesktopFlowOtp,
-  saveDesktopFlowState,
-} from "~/shared/lib/oidc-desktop";
 import { extractOrgRouteFromPathname } from "~/shared/lib/org-route";
 import { getOrganizationFallbackLogoUrl } from "~/shared/lib/organization-branding";
-import { isValidRealmUrl, isValidUrl } from "~/shared/lib/validation";
+import { isValidRealmUrl } from "~/shared/lib/validation";
 import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspace-org-origin.lib";
 import { Button } from "~/shared/ui/button";
 import { FormField } from "~/shared/ui/form-field.ui";
 import { Icon } from "~/shared/ui/icon";
 import { LoginPageCredentialsForm } from "./login-page-credentials-form.ui";
-import { LoginPageExternalAuth } from "./login-page-external-auth.ui";
 import { resolveLoginIconUrl } from "./login-page-icon-url.lib";
 import { LoginPageRealmPreview } from "./login-page-realm-preview.ui";
 import { sanitizeInternalRedirectTarget } from "./login-redirect.lib";
@@ -37,12 +31,6 @@ interface LoginServerSettings {
   realm_icon_raw: string;
   realm_uri: string;
   realm_url: string;
-  external_authentication_methods: {
-    name: string;
-    display_name: string;
-    display_icon?: string;
-    login_url: string;
-  }[];
 }
 
 export const LoginPage: React.FC = () => {
@@ -125,7 +113,6 @@ export const LoginPage: React.FC = () => {
               realm_icon_raw: (data.realm_icon ?? "").trim(),
               realm_uri: data.realm_uri,
               realm_url: data.realm_url,
-              external_authentication_methods: data.external_authentication_methods,
             };
 
       setServerSettings(nextSettings);
@@ -312,7 +299,6 @@ export const LoginPage: React.FC = () => {
       const addInstanceResult = addInstance({
         realm: realmToStore,
         login: usernameTrim,
-        apiKey: "",
         authType: "iam",
         iamAccessToken: result.access_token,
         ...(result.refresh_token != null && result.refresh_token.length > 0
@@ -341,51 +327,6 @@ export const LoginPage: React.FC = () => {
       setLoading(false);
     }
   };
-
-  const handleStartOidcFlow = useCallback(
-    (loginPath: string) => {
-      try {
-        const normalizedRealm = normalizeRealm(serverSettings?.realm_base ?? realmTrim);
-        if (!isValidRealmUrl(normalizedRealm)) {
-          setError(t("auth.invalidServerUrl"));
-          return;
-        }
-
-        const otp = generateDesktopFlowOtp();
-        let loginUrl: string;
-        try {
-          loginUrl = buildDesktopFlowLoginUrl({
-            realmBaseUrl: normalizedRealm,
-            loginPath,
-            next: "/",
-            desktopFlowOtp: otp,
-          });
-        } catch {
-          setError(t("auth.loginError"));
-          return;
-        }
-        if (!isValidUrl(loginUrl)) {
-          setError(t("auth.loginError"));
-          return;
-        }
-
-        saveDesktopFlowState({
-          realm: normalizedRealm,
-          otp,
-          createdAt: Date.now(),
-        });
-        window.open(loginUrl, "_blank", "noopener,noreferrer");
-        const params = new URLSearchParams({ realm: normalizedRealm });
-        if (redirectTarget != null) {
-          params.set("redirectTo", redirectTarget);
-        }
-        void navigate(`/paste-token?${params.toString()}`);
-      } catch {
-        setError(t("auth.loginError"));
-      }
-    },
-    [navigate, realmTrim, redirectTarget, serverSettings?.realm_base],
-  );
 
   const toggleShowPassword = useCallback(() => {
     setShowPassword((p) => !p);
@@ -472,15 +413,6 @@ export const LoginPage: React.FC = () => {
           </form>
         ) : (
           <div className="flex flex-col gap-4">
-            {serverSettings != null &&
-              serverSettings.external_authentication_methods.length > 0 && (
-                <LoginPageExternalAuth
-                  realmBase={serverSettings.realm_base}
-                  methods={serverSettings.external_authentication_methods}
-                  onSelectLoginPath={handleStartOidcFlow}
-                />
-              )}
-
             <LoginPageCredentialsForm
               username={username}
               password={password}

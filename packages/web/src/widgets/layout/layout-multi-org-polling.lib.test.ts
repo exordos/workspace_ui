@@ -3,9 +3,33 @@ import type { WorkspaceInstance } from "~/entities/instance/instance.model";
 import { startInactiveInstanceUnreadPolling } from "./layout-multi-org-polling.lib";
 
 const INSTANCES: WorkspaceInstance[] = [
-  { id: "inst-1", realm: "https://a.example.com", login: "a@example.com", apiKey: "k1" },
-  { id: "inst-2", realm: "https://b.example.com", login: "b@example.com", apiKey: "k2" },
-  { id: "inst-3", realm: "https://c.example.com", login: "c@example.com", apiKey: "k3" },
+  {
+    id: "inst-1",
+    realm: "https://a.example.com",
+    login: "a@example.com",
+    authType: "iam",
+    iamAccessToken: "",
+    authType: "iam",
+    iamAccessToken: "token-1",
+  },
+  {
+    id: "inst-2",
+    realm: "https://b.example.com",
+    login: "b@example.com",
+    authType: "iam",
+    iamAccessToken: "",
+    authType: "iam",
+    iamAccessToken: "token-2",
+  },
+  {
+    id: "inst-3",
+    realm: "https://c.example.com",
+    login: "c@example.com",
+    authType: "iam",
+    iamAccessToken: "",
+    authType: "iam",
+    iamAccessToken: "token-3",
+  },
 ];
 
 describe("startInactiveInstanceUnreadPolling", () => {

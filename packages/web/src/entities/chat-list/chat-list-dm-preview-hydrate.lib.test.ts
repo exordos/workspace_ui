@@ -51,7 +51,8 @@ function seedActiveInstance(realm = "https://messenger.test"): string {
   return useInstancesStore.getState().addInstance({
     realm,
     login: "dm@example.com",
-    apiKey: `key-${realm}`,
+    authType: "iam",
+    iamAccessToken: `key-${realm}`,
   }).id;
 }
 

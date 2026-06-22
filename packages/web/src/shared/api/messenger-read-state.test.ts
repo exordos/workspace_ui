@@ -26,7 +26,7 @@ const STREAM_UUID = "6738f91a-4fd1-416e-807f-cb4ae00ec1d3";
 const TARGET_STREAM_UUID = "815890be-9819-46b1-9291-880602e62b96";
 
 describe("markMessagesAsRead", () => {
-  it("does not call legacy flags API for message IDs", async () => {
+  it("does not call removed flags API for message IDs", async () => {
     await expect(markMessagesAsRead([MESSAGE_ID_1, MESSAGE_ID_2, MESSAGE_ID_3])).rejects.toThrow(
       /Read-state write API is not available/,
     );
@@ -51,7 +51,7 @@ describe("markMessagesAsRead", () => {
 // ---------------------------------------------------------------------------
 
 describe("markDmAsRead", () => {
-  it("returns false without calling legacy flags/narrow API", async () => {
+  it("returns false without calling removed flags/narrow API", async () => {
     const result = await markDmAsRead([42]);
     expect(result).toBe(false);
     expect(mockMessengerApi.post).not.toHaveBeenCalled();
@@ -75,7 +75,7 @@ describe("markDmAsRead", () => {
 // ---------------------------------------------------------------------------
 
 describe("markStreamAsRead", () => {
-  it("returns false without calling legacy flags/narrow API", async () => {
+  it("returns false without calling removed flags/narrow API", async () => {
     const result = await markStreamAsRead(STREAM_UUID);
     expect(result).toBe(false);
     expect(mockMessengerApi.post).not.toHaveBeenCalled();
@@ -91,7 +91,7 @@ describe("markStreamAsRead", () => {
 // ---------------------------------------------------------------------------
 
 describe("markTopicAsRead", () => {
-  it("returns false without calling legacy flags/narrow API", async () => {
+  it("returns false without calling removed flags/narrow API", async () => {
     const result = await markTopicAsRead(STREAM_UUID, "bugs");
     expect(result).toBe(false);
     expect(mockMessengerApi.post).not.toHaveBeenCalled();
@@ -101,13 +101,13 @@ describe("markTopicAsRead", () => {
     await expect(markTopicAsRead("not-a-uuid", "bugs")).rejects.toThrow(/Invalid streamUuid/);
   });
 
-  it("returns false for empty topic without calling legacy flags/narrow API", async () => {
+  it("returns false for empty topic without calling removed flags/narrow API", async () => {
     const result = await markTopicAsRead(STREAM_UUID, "");
     expect(result).toBe(false);
     expect(mockMessengerApi.post).not.toHaveBeenCalled();
   });
 
-  it("returns false for literal general topic without calling legacy flags/narrow API", async () => {
+  it("returns false for literal general topic without calling removed flags/narrow API", async () => {
     const result = await markTopicAsRead(STREAM_UUID, "general");
     expect(result).toBe(false);
     expect(mockMessengerApi.post).not.toHaveBeenCalled();
@@ -244,7 +244,6 @@ describe("setTopicResolvedState", () => {
         num_after: "1",
         include_anchor: "true",
         allow_empty_topic_name: "true",
-        client_gravatar: "false",
         apply_markdown: "false",
         narrow: JSON.stringify([
           { operator: "stream", operand: STREAM_UUID },
@@ -307,7 +306,7 @@ describe("setTopicResolvedState", () => {
 // ---------------------------------------------------------------------------
 
 describe("updateMessageFlags", () => {
-  it("does not call legacy flags API", async () => {
+  it("does not call removed flags API", async () => {
     await expect(
       updateMessageFlags([MESSAGE_ID_1, MESSAGE_ID_2], "add", "starred"),
     ).rejects.toThrow(/Message flag write API is not available/);

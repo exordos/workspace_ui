@@ -95,13 +95,13 @@ describe("downloadUserUploadAttachment", () => {
     const success = await downloadUserUploadAttachment({
       path: "/user_uploads/1/file.txt",
       fileName: "file.txt",
-      authHeaders: { Authorization: "Basic token" },
+      authHeaders: { Authorization: "Bearer token" },
       fetchImpl: fetchMock as typeof fetch,
     });
 
     expect(success).toBe(true);
     expect(fetchMock).toHaveBeenCalledWith("/user_uploads/1/file.txt", {
-      headers: { Authorization: "Basic token" },
+      headers: { Authorization: "Bearer token" },
       credentials: "include",
     });
     expect(createObjectURLMock).toHaveBeenCalledTimes(1);
@@ -158,7 +158,7 @@ describe("downloadUserUploadAttachment", () => {
     const success = await downloadUserUploadAttachment({
       path: "/user_uploads/1/file.txt",
       fileName: "file.txt",
-      authHeaders: { Authorization: "Basic token" },
+      authHeaders: { Authorization: "Bearer token" },
       onProgress,
       fetchImpl: fetchMock as typeof fetch,
     });
@@ -192,13 +192,13 @@ describe("downloadUserUploadAttachment", () => {
     const success = await downloadUserUploadAttachment({
       path: "https://evil.example.com/user_uploads/1/file.txt?token=unsafe",
       fileName: "file.txt",
-      authHeaders: { Authorization: "Basic token" },
+      authHeaders: { Authorization: "Bearer token" },
       fetchImpl: fetchMock as typeof fetch,
     });
 
     expect(success).toBe(true);
     expect(fetchMock).toHaveBeenCalledWith("/user_uploads/1/file.txt?token=unsafe", {
-      headers: { Authorization: "Basic token" },
+      headers: { Authorization: "Bearer token" },
       credentials: "include",
     });
   });
@@ -209,7 +209,7 @@ describe("downloadUserUploadAttachment", () => {
     const success = await downloadUserUploadAttachment({
       path: "https://evil.example.com/public/file.txt",
       fileName: "file.txt",
-      authHeaders: { Authorization: "Basic token" },
+      authHeaders: { Authorization: "Bearer token" },
       fetchImpl: fetchMock as typeof fetch,
     });
 

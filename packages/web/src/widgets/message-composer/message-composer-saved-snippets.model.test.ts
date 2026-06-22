@@ -26,7 +26,8 @@ describe("message-composer-saved-snippets.model", () => {
       id: "inst-a",
       realm: "https://example.com",
       login: "user@example.com",
-      apiKey: "api-key",
+      authType: "iam",
+      iamAccessToken: "api-key",
     });
     fetchSavedSnippetsMock.mockReset();
     createSavedSnippetMock.mockReset();

@@ -7,7 +7,7 @@
  */
 
 const ORG_PATH_PREFIX = "/org/";
-const PUBLIC_ROUTE_PREFIXES = ["/login", "/paste-token"] as const;
+const PUBLIC_ROUTE_PREFIXES = ["/login"] as const;
 type OrgRouteIdResolver = (() => string | null) | null;
 let currentOrgRouteIdResolver: OrgRouteIdResolver = null;
 

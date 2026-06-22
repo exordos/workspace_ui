@@ -13,11 +13,6 @@ import {
   ipcMain,
 } from "electron";
 import { autoUpdater } from "electron-updater";
-import {
-  DesktopAuthExchangeError,
-  exchangeDesktopFlowToken as exchangeDesktopFlowTokenInMain,
-  getSessionCsrfTokenForRealm,
-} from "./desktop-auth";
 import { isSafeDeeplinkRoute, resolveNotificationClickRoute } from "./deeplink-route.lib";
 import { getShellContentSecurityPolicy } from "./security-policy.lib";
 import { createUnreadDotOverlaySvg } from "./unread-indicator.lib";
@@ -1076,57 +1071,6 @@ function registerIpcHandlers(): void {
   ipcMain.on("updater:install", () => {
     if (IS_DEV || IS_AUTO_UPDATE_DISABLED) return;
     autoUpdater.quitAndInstall(false, true);
-  });
-
-  ipcMain.handle("auth:exchangeDesktopFlowToken", async (_event, payload: unknown) => {
-    // The renderer can send anything, so first check the payload shape.
-    if (typeof payload !== "object" || payload == null) {
-      return { ok: false as const, reason: "INVALID_DESKTOP_FLOW_TOKEN" as const };
-    }
-    const record = payload as Record<string, unknown>;
-    // Clean realm and token in the main process, even if the renderer already checked them.
-    const realm = typeof record.realm === "string" ? record.realm.trim() : "";
-    const token = typeof record.token === "string" ? record.token.trim() : "";
-    if (realm.length === 0 || token.length === 0) {
-      return { ok: false as const, reason: "INVALID_DESKTOP_FLOW_TOKEN" as const };
-    }
-    try {
-      // The exchange runs in the main process so the Chromium session jar stores cookies.
-      const data = await exchangeDesktopFlowTokenInMain(realm, token);
-      return { ok: true as const, data };
-    } catch (error) {
-      if (error instanceof DesktopAuthExchangeError) {
-        // Return known errors as data, without parsing text in the renderer.
-        return {
-          ok: false as const,
-          reason: error.reason,
-          ...(error.status != null ? { status: error.status } : {}),
-          ...(error.details != null ? { details: error.details } : {}),
-        };
-      }
-      // Convert unknown failures to a safe response too, so IPC does not fail with an exception.
-      return {
-        ok: false as const,
-        reason: "DESKTOP_FLOW_EXCHANGE_NETWORK_ERROR" as const,
-        details: error instanceof Error ? error.message : String(error),
-      };
-    }
-  });
-
-  ipcMain.handle("auth:getCsrfToken", async (_event, payload: unknown) => {
-    if (typeof payload !== "object" || payload == null) {
-      return null;
-    }
-    const record = payload as Record<string, unknown>;
-    const realm = typeof record.realm === "string" ? record.realm.trim() : "";
-    if (realm.length === 0) {
-      return null;
-    }
-    try {
-      return await getSessionCsrfTokenForRealm(realm);
-    } catch {
-      return null;
-    }
   });
 }
 

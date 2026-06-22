@@ -43,7 +43,6 @@ import { useLayoutMuteSnapshotSync } from "./layout-mute-snapshot-sync.hook";
 import { LayoutNotificationPermissionBanner } from "./layout-notification-permission-banner.ui";
 import { useLayoutNotificationPermission } from "./layout-notification-permission.hook";
 import { useLayoutOnlineStatus } from "./layout-online-status.hook";
-import { useLayoutPresencePolling } from "./layout-presence-polling.hook";
 import { useLayoutPushClickRouting } from "./layout-push-click-routing.hook";
 import { useLayoutPushNotifications } from "./layout-push-notifications.hook";
 import { useLayoutPushPermission } from "./layout-push-permission.hook";
@@ -322,8 +321,6 @@ export const Layout: React.FC = () => {
     enabled: layoutConnectionReady,
     organizationId: currentInstanceId,
   });
-
-  useLayoutPresencePolling({ enabled: layoutConnectionReady });
 
   useLayoutLastMessengerRoutePersistence();
 

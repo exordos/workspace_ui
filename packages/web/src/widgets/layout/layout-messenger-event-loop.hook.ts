@@ -15,14 +15,9 @@ import { useMessageReadersStore } from "~/features/message-readers/message-reade
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useUserProfileStore } from "~/features/user-profile/user-profile.model";
 import { t } from "~/i18n/i18n";
-import { deleteQueue, DEFAULT_REGISTER_FETCH_EVENT_TYPES } from "~/shared/api/messenger-queue";
 import { fetchMyStreams, fetchStreamTopics } from "~/shared/api/messenger-streams";
 import { fetchUsers, getCurrentUser } from "~/shared/api/messenger-users";
-import type {
-  RegisterQueueResult,
-  WorkspaceRawMessage,
-  MessengerUserMember,
-} from "~/shared/api/messenger.types";
+import type { WorkspaceRawMessage, MessengerUserMember } from "~/shared/api/messenger.types";
 import {
   cancelScheduledReconnect,
   registerManualReconnectListener,
@@ -36,7 +31,6 @@ import { createLogger } from "~/shared/lib/logger";
 import { logChatListFlow, logMessageFlow } from "~/shared/lib/message-flow-debug.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import { loadMuteSnapshotRow } from "~/shared/lib/mute-snapshot-db";
-import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import { loadUsersDirectoryRow } from "~/shared/lib/users-directory-snapshot-db";
 import { getNewestMessageId } from "./layout-chat-history-sync.lib";
@@ -49,12 +43,9 @@ import {
   createManualReconnectBootstrapHandler,
   createStreamPreviewBootstrapRejectedHandler,
   createStreamPreviewBootstrapSettledHandler,
-  findWorkspaceMemberByUserId,
 } from "./layout-messenger-event-loop-bootstrap.lib";
-import { applyLayoutRegisterMuteSnapshot } from "./layout-messenger-event-loop-mute-register.lib";
 import { createLayoutMessengerEventLoopOnEventHandler } from "./layout-messenger-event-loop-on-event.lib";
 import {
-  createLayoutBootstrapQueueRegisteredHandler,
   toStreamMetadataRowsFromMeStreams,
   toStreamTopicMetadataRows,
 } from "./layout-messenger-event-loop-register.lib";
@@ -69,10 +60,6 @@ import type { LayoutUserConnectionStatus } from "./layout-user-connection-status
 // Increments on effect cleanup so superseded `runChatListBootstrap` runs skip hydrate/API (React Strict Mode).
 let chatListBootstrapEffectEpoch = 0;
 
-const LAYOUT_REGISTER_FETCH_EVENT_TYPES = [
-  ...DEFAULT_REGISTER_FETCH_EVENT_TYPES,
-  "starred_messages",
-];
 const log = createLogger("layout-messenger-event-loop");
 
 interface LatestMessageIdRef {
@@ -111,23 +98,23 @@ function clearRefreshStaleCallback(ref: RefreshStaleCallbackRef | undefined): vo
 
 // Normalize IDB row shape to the mute-store contract (storage vs application layer).
 function toLayoutMuteSnapshotFromRow(row: {
-  mutedStreamIds: number[];
+  mutedStreamIds: string[];
   mutedTopics: { streamId: string; topic: string }[];
   unmutedTopics: { streamId: string; topic: string }[];
   followedTopics?: { streamId: string; topic: string }[];
-  streamDesktopNotifyEnabledIds?: number[];
-  streamDesktopNotifyDisabledIds?: number[];
-  streamAudibleNotifyEnabledIds?: number[];
-  streamAudibleNotifyDisabledIds?: number[];
+  streamDesktopNotifyEnabledIds?: string[];
+  streamDesktopNotifyDisabledIds?: string[];
+  streamAudibleNotifyEnabledIds?: string[];
+  streamAudibleNotifyDisabledIds?: string[];
 }): {
-  mutedStreamIds: number[];
+  mutedStreamIds: string[];
   mutedTopics: { streamId: string; topic: string }[];
   unmutedTopics: { streamId: string; topic: string }[];
   followedTopics: { streamId: string; topic: string }[];
-  streamDesktopNotifyEnabledIds: number[];
-  streamDesktopNotifyDisabledIds: number[];
-  streamAudibleNotifyEnabledIds: number[];
-  streamAudibleNotifyDisabledIds: number[];
+  streamDesktopNotifyEnabledIds: string[];
+  streamDesktopNotifyDisabledIds: string[];
+  streamAudibleNotifyEnabledIds: string[];
+  streamAudibleNotifyDisabledIds: string[];
 } {
   return {
     mutedStreamIds: row.mutedStreamIds,
@@ -144,29 +131,6 @@ function toLayoutMuteSnapshotFromRow(row: {
 function chatListHasCachedRowsInStore(): boolean {
   const state = useChatListStore.getState();
   return state.streamsMap.size > 0 || state.dmsMap.size > 0;
-}
-
-function resolveSelfUserIdFromMembers(
-  members: readonly MessengerUserMember[],
-  loginEmail: string | undefined,
-): UserId | null {
-  const normalized = loginEmail?.trim().toLowerCase();
-  if (normalized == null || normalized.length === 0) {
-    return null;
-  }
-  for (const member of members) {
-    const memberEmail = member.email?.trim().toLowerCase();
-    if (memberEmail !== normalized || member.user_id == null) {
-      continue;
-    }
-    if (typeof member.user_id === "string") {
-      return member.user_id;
-    }
-    if (Number.isInteger(member.user_id) && member.user_id > 0) {
-      return member.user_id;
-    }
-  }
-  return null;
 }
 
 export function useLayoutMessengerEventLoop(options: {
@@ -220,10 +184,6 @@ export function useLayoutMessengerEventLoop(options: {
   const prevInstanceForBootstrapRef = useRef<string | null>(null);
 
   const eventLoopAbortRef = useRef<AbortController | null>(null);
-  const queueIdRef = useRef<string | null>(null);
-  const instanceAtLoopStartRef = useRef<{ realm: string; login: string; apiKey: string } | null>(
-    null,
-  );
   const internalLatestMessageIdRef = useRef<MessageId | null>(null);
   const clearMessengerShellState = (
     reason: "instance switched" | "active instance cleared",
@@ -277,7 +237,7 @@ export function useLayoutMessengerEventLoop(options: {
     const prevInstanceId = prevInstanceForBootstrapRef.current;
     const instanceSwitched = prevInstanceId != null && prevInstanceId !== currentInstanceId;
     prevInstanceForBootstrapRef.current = currentInstanceId;
-    // Register response is authoritative; cache must not overwrite state after it applies.
+    // Gateway API bootstrap is authoritative; cache must not overwrite state after it applies.
     const registerMuteSnapshotAppliedRef = { registerMuteSnapshotApplied: false };
     // Hydrate mute cache on cold start / instance switch so unread titles respect mutes immediately.
     const shouldHydrateMuteFromCache = prevInstanceId == null || instanceSwitched;
@@ -378,24 +338,10 @@ export function useLayoutMessengerEventLoop(options: {
         }
       };
 
-      const finalizeBootstrapAuth = (
-        members: readonly MessengerUserMember[],
-        fromGetCurrentUser: UserId | null,
-      ): void => {
+      const finalizeBootstrapAuth = (fromGetCurrentUser: UserId | null): void => {
         if (cancelled || isBootstrapStale()) return;
 
-        let uid = fromGetCurrentUser ?? useChatListStore.getState().currentUserId;
-        if (uid == null) {
-          const inst = useInstancesStore.getState().getCurrentInstance();
-          uid = resolveSelfUserIdFromMembers(members, inst?.login);
-          if (uid != null) {
-            setCurrentUserIdRef.current(uid);
-            const member = findWorkspaceMemberByUserId(members, uid);
-            if (member != null) {
-              useUsersStore.getState().mergeUser(member);
-            }
-          }
-        }
+        const uid = fromGetCurrentUser ?? useChatListStore.getState().currentUserId;
 
         if (uid != null) {
           useChatListStore.getState().clearBootstrapError();
@@ -455,7 +401,7 @@ export function useLayoutMessengerEventLoop(options: {
         useUsersStore.getState().mergeUsers(apiMembers);
 
         if (resolvedCurrentUserId == null) {
-          finalizeBootstrapAuth(apiMembers, null);
+          finalizeBootstrapAuth(null);
         }
 
         const streamRowsFromGateway = toStreamMetadataRowsFromMeStreams(myStreams ?? []);
@@ -522,12 +468,6 @@ export function useLayoutMessengerEventLoop(options: {
 
         eventLoopAbortRef.current?.abort();
         eventLoopAbortRef.current = new AbortController();
-        queueIdRef.current = null;
-        const inst = useInstancesStore.getState().getCurrentInstance();
-        instanceAtLoopStartRef.current = inst
-          ? { realm: inst.realm, login: inst.login, apiKey: inst.apiKey }
-          : null;
-
         const refreshStaleData = () => {
           runLayoutReconnectRefresh({
             cancelled,
@@ -549,18 +489,6 @@ export function useLayoutMessengerEventLoop(options: {
             internalLatestMessageIdRef,
           ),
         });
-        const onQueueRegisteredHandler = createLayoutBootstrapQueueRegisteredHandler({
-          isCancelled: () => cancelled,
-          currentInstanceId,
-          queueIdRef,
-          streamPreviewCoordinator,
-          tryFlushMetadataStreamPreviews,
-          applyChatListBootstrapResult: applyBootstrapFromEventLoop,
-          loadMuteSnapshot: loadMuteSnapshotRef.current,
-          applyLayoutRegisterMuteSnapshot,
-          registerMuteSnapshotAppliedRef,
-        });
-
         startEventLoopFn = () => {
           if (eventLoopStartedRef.current) return;
           const loopAbort = eventLoopAbortRef.current;
@@ -568,12 +496,12 @@ export function useLayoutMessengerEventLoop(options: {
           eventLoopStartedRef.current = true;
 
           startMessengerEventLoop({
+            // The Workspace gateway backend does not expose old event queues.
+            enabled: false,
             signal: loopAbort.signal,
             instanceId: currentInstanceId ?? undefined,
             onTabStaleResume: refreshStaleData,
             onBadQueue: refreshStaleData,
-            fetchEventTypes: [...LAYOUT_REGISTER_FETCH_EVENT_TYPES],
-            onQueueRegistered: onQueueRegisteredHandler,
             onEvent: onEventHandler,
           });
         };
@@ -613,20 +541,8 @@ export function useLayoutMessengerEventLoop(options: {
       cancelScheduledReconnect();
       chatListBootstrapEffectEpoch += 1;
       bootstrapAbort.abort();
-      const qid = queueIdRef.current;
-      const creds = instanceAtLoopStartRef.current;
-      if (qid && creds) {
-        deleteQueue(qid, creds).catch((err) =>
-          reportUnexpectedError("layout:eventLoop", err, {
-            phase: "deleteQueueOnCleanup",
-            queueId: qid,
-          }),
-        );
-      }
       eventLoopAbortRef.current?.abort();
       eventLoopAbortRef.current = null;
-      queueIdRef.current = null;
-      instanceAtLoopStartRef.current = null;
       resetLatestMessageIdRef(
         resolveLatestMessageIdRef(latestMessageIdRefProp, internalLatestMessageIdRef),
       );

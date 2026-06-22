@@ -21,7 +21,7 @@ vi.mock("~/shared/lib/env", async (importOriginal) => {
 });
 
 vi.mock("~/shared/lib/auth-guard", () => ({
-  buildAuthHeader: () => ({ Authorization: "Basic test" }),
+  buildAuthHeader: () => ({ Authorization: "Bearer test" }),
 }));
 
 const GALLERY_ITEMS = [
@@ -84,7 +84,7 @@ describe("MediaViewerOverlay", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "https://chat.example.com/external_content/preview.png",
       expect.objectContaining({
-        headers: { Authorization: "Basic test" },
+        headers: { Authorization: "Bearer test" },
       }),
     );
   });

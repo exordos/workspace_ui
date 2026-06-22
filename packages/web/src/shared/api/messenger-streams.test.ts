@@ -2,6 +2,7 @@
  * Tests for Messenger API (messenger-streams module).
  */
 import { describe, expect, it, vi } from "vitest";
+import { getMockMessengerApi } from "./messenger.test.setup";
 import {
   addMembersToStream,
   createPrivateMessageStream,
@@ -18,8 +19,6 @@ import {
   unarchiveStream,
   updateStream,
 } from "./messenger-streams";
-import { getMockMessengerApi } from "./messenger.test.setup";
-
 const mockMessengerApi = getMockMessengerApi();
 
 function mockMyStreamsResponse(rows: unknown[]): void {
@@ -112,7 +111,7 @@ describe("fetchSubscriptions", () => {
 });
 
 const PEER_UUID = "00000000-0000-0000-0000-000000000002";
-const CURRENT_USER_UUID = "00000000-0000-0000-0000-000000000001";
+const CURRENT_PEER_UUID = "00000000-0000-0000-0000-000000000001";
 const STREAM_UUID = "b4460c02-d693-4564-8804-98059613b86e";
 const OTHER_STREAM_UUID = "7a2d1d10-5998-4df8-9241-92524b592fb7";
 const TOPIC_UUID = "7a83bf8f-3ad0-4d68-b5e6-f3bf637bd650";
@@ -215,7 +214,7 @@ describe("resolveOrCreateDirectMessageStream", () => {
             uuid: STREAM_UUID,
             name: "Alice Smith",
             description: "",
-            user_uuid: CURRENT_USER_UUID,
+            user_uuid: CURRENT_PEER_UUID,
             invite_only: false,
             announce: false,
             private: true,
@@ -289,7 +288,7 @@ describe("findPrivateStreamForUserUuid", () => {
           stream_uuid: STREAM_UUID,
           name: "Alice Smith",
           description: "",
-          user_uuid: CURRENT_USER_UUID,
+          user_uuid: CURRENT_PEER_UUID,
           invite_only: false,
           announce: false,
           private: true,
@@ -309,7 +308,7 @@ describe("fetchStreamMembers", () => {
       status: 200,
       data: [
         { stream_uuid: STREAM_UUID, user_uuid: PEER_UUID },
-        { stream_uuid: OTHER_STREAM_UUID, user_uuid: CURRENT_USER_UUID },
+        { stream_uuid: OTHER_STREAM_UUID, user_uuid: CURRENT_PEER_UUID },
       ],
       raw: { statusText: "OK" },
     });
@@ -323,279 +322,81 @@ describe("fetchStreamMembers", () => {
 });
 
 describe("addMembersToStream", () => {
-  it("posts subscriptions and principals and returns normalized success result", async () => {
-    mockMessengerApi.post.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: {
-        result: "success",
-        subscribed: {
-          "1": [{ id: 10, name: "engineering" }],
-          "3": [{ id: 10, name: "engineering" }],
-        },
-        already_subscribed: {
-          "2": [{ id: 10, name: "engineering" }],
-        },
-      },
-      raw: { statusText: "OK" },
-    });
-
+  it("returns unsupported without calling removed current-user subscriptions endpoint", async () => {
     await expect(
       addMembersToStream({
         streamName: "engineering",
-        userIds: [3, 1, 2, 1],
-      }),
-    ).resolves.toEqual({
-      ok: true,
-      addedUserIds: [1, 3],
-      alreadySubscribedUserIds: [2],
-      unauthorizedStreams: [],
-    });
-    expect(mockMessengerApi.post).toHaveBeenCalledWith("/users/me/subscriptions", {
-      subscriptions: JSON.stringify([{ name: "engineering" }]),
-      principals: JSON.stringify([1, 2, 3]),
-    });
-  });
-
-  it("passes authorization_errors_fatal when provided", async () => {
-    mockMessengerApi.post.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: { result: "success" },
-      raw: { statusText: "OK" },
-    });
-
-    await addMembersToStream({
-      streamName: "engineering",
-      userIds: [1],
-      authorizationErrorsFatal: false,
-    });
-
-    expect(mockMessengerApi.post).toHaveBeenCalledWith(
-      "/users/me/subscriptions",
-      expect.objectContaining({
-        authorization_errors_fatal: "false",
-      }),
-    );
-  });
-
-  it("returns error result for non-ok http response", async () => {
-    mockMessengerApi.post.mockResolvedValue({
-      ok: false,
-      status: 403,
-      data: { msg: "forbidden" },
-      raw: { statusText: "Forbidden" },
-    });
-
-    await expect(
-      addMembersToStream({
-        streamName: "engineering",
-        userIds: [1],
+        userIds: [PEER_UUID, CURRENT_PEER_UUID, PEER_UUID],
       }),
     ).resolves.toEqual({
       ok: false,
       addedUserIds: [],
       alreadySubscribedUserIds: [],
       unauthorizedStreams: [],
-      errorCode: "http_403",
+      errorCode: "unsupported",
     });
+
+    expect(mockMessengerApi.post).not.toHaveBeenCalled();
   });
 
-  it("returns error result when api response is result=error", async () => {
-    mockMessengerApi.post.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: {
-        result: "error",
-        code: "BAD_REQUEST",
-        unauthorized: ["engineering"],
-      },
-      raw: { statusText: "OK" },
-    });
-
+  it("returns success for an empty principal list", async () => {
     await expect(
       addMembersToStream({
         streamName: "engineering",
-        userIds: [1],
+        userIds: [],
       }),
     ).resolves.toEqual({
-      ok: false,
+      ok: true,
       addedUserIds: [],
       alreadySubscribedUserIds: [],
-      unauthorizedStreams: ["engineering"],
-      errorCode: "BAD_REQUEST",
-    });
-  });
-
-  it("does not assume additions when subscribed map has no numeric principals", async () => {
-    mockMessengerApi.post.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: {
-        result: "success",
-        subscribed: {
-          "alice@example.com": [{ id: 10, name: "engineering" }],
-        },
-        already_subscribed: {
-          "2": [{ id: 10, name: "engineering" }],
-        },
-      },
-      raw: { statusText: "OK" },
-    });
-
-    await expect(
-      addMembersToStream({
-        streamName: "engineering",
-        userIds: [1, 2, 3],
-      }),
-    ).resolves.toEqual({
-      ok: true,
-      addedUserIds: [],
-      alreadySubscribedUserIds: [2],
       unauthorizedStreams: [],
     });
-  });
 
-  it("falls back to requested-minus-already only when subscribed is absent", async () => {
-    mockMessengerApi.post.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: {
-        result: "success",
-        already_subscribed: {
-          "2": [{ id: 10, name: "engineering" }],
-        },
-      },
-      raw: { statusText: "OK" },
-    });
-
-    await expect(
-      addMembersToStream({
-        streamName: "engineering",
-        userIds: [1, 2, 3],
-      }),
-    ).resolves.toEqual({
-      ok: true,
-      addedUserIds: [1, 3],
-      alreadySubscribedUserIds: [2],
-      unauthorizedStreams: [],
-    });
+    expect(mockMessengerApi.post).not.toHaveBeenCalled();
   });
 
   it("throws on blank stream name (guard)", async () => {
     await expect(
       addMembersToStream({
         streamName: "   ",
-        userIds: [1],
+        userIds: [PEER_UUID],
       }),
     ).rejects.toThrow(/addMembersToStream\.streamName must be a non-empty string/);
   });
 });
 
 describe("removeMembersFromStream", () => {
-  it("sends delete payload and returns normalized success result", async () => {
-    mockMessengerApi.delete.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: {
-        result: "success",
-        removed: {
-          "1": [{ id: 10, name: "engineering" }],
-          "3": [{ id: 10, name: "engineering" }],
-        },
-        already_unsubscribed: {
-          "2": [{ id: 10, name: "engineering" }],
-        },
-      },
-      raw: { statusText: "OK" },
-    });
-
+  it("returns unsupported without calling removed current-user subscriptions endpoint", async () => {
     await expect(
       removeMembersFromStream({
         streamName: "engineering",
-        userIds: [3, 1, 2, 1],
-      }),
-    ).resolves.toEqual({
-      ok: true,
-      removedUserIds: [1, 3],
-      alreadyUnsubscribedUserIds: [2],
-      unauthorizedStreams: [],
-    });
-
-    expect(mockMessengerApi.delete).toHaveBeenCalledWith("/users/me/subscriptions", {
-      subscriptions: JSON.stringify(["engineering"]),
-      principals: JSON.stringify([1, 2, 3]),
-    });
-  });
-
-  it("passes authorization_errors_fatal when provided", async () => {
-    mockMessengerApi.delete.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: { result: "success" },
-      raw: { statusText: "OK" },
-    });
-
-    await removeMembersFromStream({
-      streamName: "engineering",
-      userIds: [1],
-      authorizationErrorsFatal: false,
-    });
-
-    expect(mockMessengerApi.delete).toHaveBeenCalledWith(
-      "/users/me/subscriptions",
-      expect.objectContaining({
-        authorization_errors_fatal: "false",
-      }),
-    );
-  });
-
-  it("returns error result for non-ok http response", async () => {
-    mockMessengerApi.delete.mockResolvedValue({
-      ok: false,
-      status: 403,
-      data: { msg: "forbidden" },
-      raw: { statusText: "Forbidden" },
-    });
-
-    await expect(
-      removeMembersFromStream({
-        streamName: "engineering",
-        userIds: [1],
+        userIds: [1, 2, 1],
       }),
     ).resolves.toEqual({
       ok: false,
       removedUserIds: [],
       alreadyUnsubscribedUserIds: [],
       unauthorizedStreams: [],
-      errorCode: "http_403",
+      errorCode: "unsupported",
     });
+
+    expect(mockMessengerApi.delete).not.toHaveBeenCalled();
   });
 
-  it("returns error result when api response is result=error", async () => {
-    mockMessengerApi.delete.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: {
-        result: "error",
-        code: "BAD_REQUEST",
-        unauthorized: ["engineering"],
-      },
-      raw: { statusText: "OK" },
-    });
-
+  it("returns success for an empty principal list", async () => {
     await expect(
       removeMembersFromStream({
         streamName: "engineering",
-        userIds: [1],
+        userIds: [],
       }),
     ).resolves.toEqual({
-      ok: false,
+      ok: true,
       removedUserIds: [],
       alreadyUnsubscribedUserIds: [],
-      unauthorizedStreams: ["engineering"],
-      errorCode: "BAD_REQUEST",
+      unauthorizedStreams: [],
     });
+
+    expect(mockMessengerApi.delete).not.toHaveBeenCalled();
   });
 
   it("throws on blank stream name (guard)", async () => {

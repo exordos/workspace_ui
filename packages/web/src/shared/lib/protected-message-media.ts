@@ -5,7 +5,7 @@
  * until `fetch → blob/data:` assigns display URLs.
  */
 import hljs from "highlight.js/lib/common";
-import { appendDevRealmMediaProxyHeaders, getCurrentInstance } from "~/shared/api/client";
+import { appendDevRealmMediaProxyHeaders } from "~/shared/api/client";
 import { getRealmBaseUrl } from "~/shared/api/messenger-client.internal";
 import {
   appendUserUploadsPathPrefix,
@@ -429,18 +429,12 @@ export function buildProtectedUploadFetchUrl(url: string): string {
   return value.length > 0 ? value : collapseDuplicateWorkspaceV1InUrl(normalizedPath);
 }
 
-/** Cross-origin protected media: cookies for OIDC session; Basic auth header for API key. */
+/** Cross-origin protected media: Bearer-authenticated requests can omit cookies. */
 function resolveCrossOriginProtectedUploadCredentials(
   headers: Record<string, string>,
 ): RequestCredentials {
-  if (getCurrentInstance()?.authType === "session") {
-    return "include";
-  }
   const authorization = headers.Authorization?.trim() ?? "";
-  if (authorization.length === 0) {
-    return "include";
-  }
-  return "omit";
+  return authorization.length > 0 ? "omit" : "include";
 }
 
 export function resolveProtectedUploadFetchOptions(

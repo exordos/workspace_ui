@@ -3,17 +3,17 @@
  *
  * Extracts, parses, and builds Jitsi meeting URLs.
  * Resolution order for "this organization's" Jitsi host: optional {@link JitsiLinkOptions.serverBaseUrl}
- * (from the messenger API `POST /register`) then `VITE_JITSI_MEET_DOMAIN` via constants; public `meet.jit.si` is always
- * accepted for link detection and parsing.
+ * then `VITE_JITSI_MEET_DOMAIN` via constants; public `meet.jit.si` is always accepted for
+ * link detection and parsing.
  *
  * Usage:
  *   import { getJitsiMeetingUrl, parseJitsiUrl, buildJitsiMeetingUrl } from "~/shared/lib/jitsi";
  */
 import { JITSI_MEET_BASE_URL, JITSI_MEET_DOMAIN } from "~/shared/config/constants";
 
-/** Optional overrides from messenger register (per realm), see module header. */
+/** Optional per-organization Jitsi host override, see module header. */
 export interface JitsiLinkOptions {
-  /** Effective Jitsi base URL (`https://host`, no trailing slash), e.g. from messenger register. */
+  /** Effective Jitsi base URL (`https://host`, no trailing slash). */
   serverBaseUrl?: string | null;
 }
 
@@ -31,14 +31,14 @@ function getEffectiveJitsiBaseAndDomain(options?: JitsiLinkOptions): {
   baseUrl: string;
   domain: string;
 } {
-  const fromRegister =
+  const fromOptions =
     options?.serverBaseUrl != null && String(options.serverBaseUrl).trim() !== ""
       ? normalizeHttpOrigin(String(options.serverBaseUrl))
       : null;
-  if (fromRegister) {
+  if (fromOptions) {
     return {
-      baseUrl: fromRegister,
-      domain: new URL(fromRegister).hostname.toLowerCase(),
+      baseUrl: fromOptions,
+      domain: new URL(fromOptions).hostname.toLowerCase(),
     };
   }
   const base = JITSI_MEET_BASE_URL.replace(/\/+$/, "");

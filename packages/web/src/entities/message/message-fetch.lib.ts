@@ -3,7 +3,7 @@
  *
  * Resolves the chat gateway `stream_uuid` and loads a page from the `/messages/` endpoint
  * (marker pagination), returning the existing MessagesPageResult shape for the store.
- * Chats without a resolvable stream uuid fail fast instead of calling legacy narrow endpoints.
+ * Chats without a resolvable stream uuid fail fast instead of calling stream message endpoints.
  */
 import { getStreamUuidForContext } from "~/entities/chat-list/chat-list-stream-uuid.lib";
 import { fetchStreamMessagesPage } from "~/shared/api/messenger-me-messages";

@@ -17,7 +17,6 @@ import {
   WORKSPACE_API_PATH,
   WORKSPACE_GATEWAY_V1_PATH,
   WORKSPACE_REST_API_PATH,
-  MESSENGER_API_V1_PATH,
 } from "~/shared/config/workspace-api-layout";
 
 function optional(key: string, fallback = ""): string {
@@ -27,7 +26,7 @@ function optional(key: string, fallback = ""): string {
 }
 
 function cleanOrigin(url: string): string {
-  return url.replace(/\/api\/v1\/?$/, "").replace(/\/+$/, "");
+  return url.replace(/\/api\/messenger\/v1\/?$/i, "").replace(/\/+$/, "");
 }
 
 const chatMessagesPersistIndexedDb = (() => {
@@ -81,9 +80,6 @@ export const env = {
    */
   WORKSPACE_API_ORIGIN: cleanOrigin(WORKSPACE_API_ORIGIN_RAW),
 
-  /** Messenger JSON API path (`/api/v1`). Fixed — `~/shared/config/workspace-api-layout`. */
-  MESSENGER_API_V1_PATH,
-
   /** Messenger gateway Messenger API path (`/api/messenger/v1`). Fixed — same module. */
   MESSENGER_API_PATH,
 
@@ -123,7 +119,7 @@ export const env = {
 
   /**
    * Workspace uploads origin for absolute URLs in messages.
-   * e.g. `https://chat.example.com/api/v1`
+   * e.g. `https://chat.example.com/workspace/v1`
    */
   WORKSPACE_UPLOADS_ORIGIN: (() => {
     const origin = cleanOrigin(WORKSPACE_API_ORIGIN_RAW);
@@ -132,8 +128,8 @@ export const env = {
 
   /**
    * Jitsi Meet domain without protocol (e.g. `meet.example.com`).
-   * Build-time fallback when the server does not return a Jitsi URL in `POST /api/v1/register`.
-   * Runtime resolution: messenger register `jitsi_server_url` / realm+server fields → this env →
+   * Build-time fallback when the server does not return a Jitsi URL in messenger metadata.
+   * Runtime resolution: messenger register realm/server Jitsi fields → this env →
    * link detection still accepts public `meet.jit.si` (see `~/shared/lib/jitsi`).
    */
   JITSI_MEET_DOMAIN: optional("VITE_JITSI_MEET_DOMAIN"),
