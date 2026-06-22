@@ -13,7 +13,7 @@ export interface LayoutChatListActions {
   currentUserId: UserId | null;
   // Current stream metadata map (partial channel-level permission updates).
   streamsMap: Map<string, StreamEntryInternal>;
-  addMessage: (message: WorkspaceRawMessage, options?: { suppressUnreadBump?: boolean }) => void;
+  addMessage: (message: WorkspaceRawMessage) => void;
   // Upsert channels from metadata and subscription events.
   upsertStreamMetadataRows: (rows: ChatListStreamMetadataRow[]) => void;
   // Rename channel on subscription update(name).
@@ -37,8 +37,6 @@ export interface LayoutChatListActions {
   }) => void;
   // Remove channel from sidebar on unsubscribe/remove.
   removeStream: (streamId: string) => void;
-  decrementUnreadForMessages: (messageIds: MessageId[]) => void;
-  incrementUnreadForMessages: (messageIds: MessageId[]) => void;
   handleDeleteMessages: (messageIds: MessageId[]) => void;
 }
 

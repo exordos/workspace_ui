@@ -106,24 +106,6 @@ describe("chat-list mentions counter", () => {
     expect(useChatListStore.getState().mentionsUnreadCount).toBe(2);
   });
 
-  it("reconcileUnreadFromSnapshot uses register mentions before API sync", () => {
-    useChatListStore.getState().reconcileUnreadFromSnapshot(
-      {
-        totalCount: 0,
-        streams: [],
-        dms: [],
-        mentionMessageIds: [
-          "00000000-0000-4000-8000-000000000011",
-          "00000000-0000-4000-8000-000000000012",
-        ],
-      },
-      CURRENT_USER_ID,
-    );
-
-    expect(useChatListStore.getState().mentionsUnreadCount).toBe(2);
-    expect(useChatListStore.getState().mentionsUnreadApiSynced).toBe(false);
-  });
-
   it("decrementMentionsForReadMessages removes ids from set", () => {
     useChatListStore.setState({
       mentionedUnreadMessageIds: new Set([

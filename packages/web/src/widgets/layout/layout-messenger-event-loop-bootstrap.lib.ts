@@ -1,5 +1,4 @@
 import { traceDmPreviewHydrate } from "~/entities/chat-list/chat-list-dm-preview-hydrate-trace.lib";
-import type { MessengerUnreadMessagesSnapshot } from "~/shared/api/messenger-unread.lib";
 import type { MessengerUserMember } from "~/shared/api/messenger.types";
 import type { createLogger } from "~/shared/lib/logger";
 import {
@@ -41,14 +40,6 @@ export interface StreamPreviewBootstrapSettledHandlerParams {
   stageMetadataStreamPreviewsBootstrap: (result: StreamPreviewsBootstrapResult) => void;
   applyChatListBootstrapResult: (result: ChatListBootstrapResult, applyOptions: unknown) => void;
   bootstrapApplyOptions: unknown;
-  startSidebarUnreadReconcile: (params: {
-    cancelled: () => boolean;
-    instanceId: string | null;
-    currentUserId: number | null;
-    registerSnapshot?: MessengerUnreadMessagesSnapshot | null;
-  }) => void;
-  currentUserId: number | null;
-  registerSnapshot: MessengerUnreadMessagesSnapshot | null;
   log: ReturnType<typeof createLogger>;
 }
 
@@ -165,12 +156,6 @@ export function onStreamPreviewBootstrapSettled(
     return;
   }
   options.applyChatListBootstrapResult(options.streamBootstrap, options.bootstrapApplyOptions);
-  options.startSidebarUnreadReconcile({
-    cancelled: options.getCancelled,
-    instanceId: options.instanceId,
-    currentUserId: options.currentUserId,
-    registerSnapshot: options.registerSnapshot,
-  });
 }
 
 export function onStreamPreviewBootstrapRejected(options: {

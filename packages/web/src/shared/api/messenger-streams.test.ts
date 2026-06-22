@@ -2,10 +2,6 @@
  * Tests for Messenger API (messenger-streams module).
  */
 import { describe, expect, it, vi } from "vitest";
-// eslint-disable-next-line import-x/order -- must run before API modules to register vi.mock hooks
-import { getMockMessengerApi, TEST_INSTANCE } from "./messenger.test.setup";
-import { getCurrentInstance } from "./client";
-import { fetchUserTopics, registerQueue } from "./messenger-queue";
 import {
   addMembersToStream,
   createPrivateMessageStream,
@@ -22,6 +18,7 @@ import {
   unarchiveStream,
   updateStream,
 } from "./messenger-streams";
+import { getMockMessengerApi } from "./messenger.test.setup";
 
 const mockMessengerApi = getMockMessengerApi();
 
@@ -35,19 +32,19 @@ function mockMyStreamsResponse(rows: unknown[]): void {
 }
 
 describe("fetchSubscriptions", () => {
-  it("maps /streams rows with numeric ids to subscriptions", async () => {
+  it("maps /streams rows to UUID subscriptions", async () => {
     mockMessengerApi.getWithBase.mockResolvedValue({
       ok: true,
       status: 200,
       data: [
         {
           uuid: "11111111-1111-4111-8111-111111111111",
-          stream_id: 1,
           name: "general",
           description: "Main",
           invite_only: false,
           announce: false,
           private: false,
+          unread_count: 5,
         },
         {
           uuid: "33333333-3333-4333-8333-333333333333",
@@ -57,6 +54,7 @@ describe("fetchSubscriptions", () => {
           invite_only: false,
           announce: false,
           private: true,
+          unread_count: 2,
         },
       ],
       raw: { statusText: "OK" },
@@ -64,18 +62,26 @@ describe("fetchSubscriptions", () => {
 
     await expect(fetchSubscriptions()).resolves.toEqual([
       {
-        stream_id: 1,
         stream_uuid: "11111111-1111-4111-8111-111111111111",
         name: "general",
         is_muted: false,
         invite_only: false,
         private: false,
+        unread_count: 5,
+      },
+      {
+        stream_uuid: "33333333-3333-4333-8333-333333333333",
+        name: "Alice",
+        is_muted: false,
+        invite_only: false,
+        private: true,
+        unread_count: 2,
       },
     ]);
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith("/api/messenger/v1", "/streams/");
   });
 
-  it("returns empty subscriptions when gateway omits numeric stream_id", async () => {
+  it("keeps UUID-only gateway stream rows", async () => {
     mockMessengerApi.getWithBase.mockResolvedValue({
       ok: true,
       status: 200,
@@ -92,13 +98,25 @@ describe("fetchSubscriptions", () => {
       raw: { statusText: "OK" },
     });
 
-    await expect(fetchSubscriptions()).resolves.toEqual([]);
+    await expect(fetchSubscriptions()).resolves.toEqual([
+      {
+        stream_uuid: "11111111-1111-4111-8111-111111111111",
+        name: "general",
+        is_muted: false,
+        invite_only: false,
+        private: false,
+        unread_count: 0,
+      },
+    ]);
   });
 });
 
 const PEER_UUID = "00000000-0000-0000-0000-000000000002";
 const CURRENT_USER_UUID = "00000000-0000-0000-0000-000000000001";
 const STREAM_UUID = "b4460c02-d693-4564-8804-98059613b86e";
+const OTHER_STREAM_UUID = "7a2d1d10-5998-4df8-9241-92524b592fb7";
+const TOPIC_UUID = "7a83bf8f-3ad0-4d68-b5e6-f3bf637bd650";
+const OTHER_TOPIC_UUID = "f44274ce-6b70-4e8c-a0d9-d56951d6f3b1";
 
 describe("createPrivateMessageStream", () => {
   it("posts stream then peer binding without user_uuid on stream create", async () => {
@@ -284,49 +302,23 @@ describe("findPrivateStreamForUserUuid", () => {
   });
 });
 
-describe("fetchUserTopics", () => {
-  it("returns user topic visibility overrides cached from register", async () => {
-    mockMessengerApi.post.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: {
-        result: "success",
-        queue_id: "q-with-topics",
-        last_event_id: -1,
-        user_topics: [{ stream_id: 10, topic_name: "bugs", visibility_policy: 1 }],
-      },
-      raw: { statusText: "OK" },
-    });
-
-    await registerQueue(["message", "user_topic"]);
-    await expect(fetchUserTopics()).resolves.toEqual([
-      { stream_id: 10, topic_name: "bugs", visibility_policy: 1 },
-    ]);
-    expect(mockMessengerApi.get).not.toHaveBeenCalled();
-  });
-
-  it("returns empty array when register cache is not available", async () => {
-    vi.mocked(getCurrentInstance).mockReturnValue({
-      ...TEST_INSTANCE,
-      login: "uncached@example.com",
-    });
-
-    await expect(fetchUserTopics()).resolves.toEqual([]);
-    expect(mockMessengerApi.get).not.toHaveBeenCalled();
-  });
-});
-
 describe("fetchStreamMembers", () => {
-  it("returns subscriber ids", async () => {
-    mockMessengerApi.get.mockResolvedValue({
+  it("returns bound user UUIDs for a stream", async () => {
+    mockMessengerApi.getWithBase.mockResolvedValue({
       ok: true,
       status: 200,
-      data: { subscribers: [1, 2, 3] },
+      data: [
+        { stream_uuid: STREAM_UUID, user_uuid: PEER_UUID },
+        { stream_uuid: OTHER_STREAM_UUID, user_uuid: CURRENT_USER_UUID },
+      ],
       raw: { statusText: "OK" },
     });
 
-    await expect(fetchStreamMembers(10)).resolves.toEqual([1, 2, 3]);
-    expect(mockMessengerApi.get).toHaveBeenCalledWith("/streams/10/members", undefined, undefined);
+    await expect(fetchStreamMembers(STREAM_UUID)).resolves.toEqual([PEER_UUID]);
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      "/stream_bindings/",
+    );
   });
 });
 
@@ -617,68 +609,59 @@ describe("removeMembersFromStream", () => {
 });
 
 describe("fetchTopics", () => {
-  it("returns topic names for an existing stream", async () => {
-    mockMyStreamsResponse([
-      {
-        uuid: "11111111-1111-4111-8111-111111111111",
-        stream_id: 10,
-        name: "engineering",
-        description: "",
-        invite_only: false,
-        announce: false,
-        private: false,
-      },
-    ]);
-    mockMessengerApi.get.mockResolvedValue({
+  it("returns topic names for a stream UUID", async () => {
+    mockMessengerApi.getWithBase.mockResolvedValue({
       ok: true,
       status: 200,
-      data: {
-        result: "success",
-        topics: [{ name: "planning" }, { name: "release" }],
-      },
+      data: [
+        { uuid: TOPIC_UUID, stream_uuid: STREAM_UUID, name: "planning" },
+        { uuid: OTHER_TOPIC_UUID, stream_uuid: STREAM_UUID, name: "release" },
+      ],
       raw: { statusText: "OK" },
     });
 
-    await expect(fetchTopics("engineering")).resolves.toEqual(["planning", "release"]);
-    expect(mockMessengerApi.get).toHaveBeenCalledWith(
-      "/users/me/10/topics",
-      { allow_empty_topic_name: "true" },
+    await expect(fetchTopics(STREAM_UUID)).resolves.toEqual(["planning", "release"]);
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      "/stream_topics/",
+      { stream_uuid: STREAM_UUID },
       undefined,
     );
   });
 
-  it("returns raw empty topic name when server supports allow_empty_topic_name", async () => {
-    mockMessengerApi.get.mockResolvedValue({
+  it("drops topic rows without a UUID, stream UUID, or non-empty name", async () => {
+    mockMessengerApi.getWithBase.mockResolvedValue({
       ok: true,
       status: 200,
-      data: {
-        result: "success",
-        topics: [{ name: "" }, { name: "release" }],
-      },
+      data: [
+        { uuid: TOPIC_UUID, stream_uuid: STREAM_UUID, name: "" },
+        { uuid: OTHER_TOPIC_UUID, stream_uuid: STREAM_UUID, name: "release" },
+      ],
       raw: { statusText: "OK" },
     });
 
-    await expect(fetchStreamTopicNames(10)).resolves.toEqual(["", "release"]);
-    expect(mockMessengerApi.get).toHaveBeenCalledWith(
-      "/users/me/10/topics",
-      { allow_empty_topic_name: "true" },
+    await expect(fetchStreamTopicNames(STREAM_UUID)).resolves.toEqual(["release"]);
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      "/stream_topics/",
+      { stream_uuid: STREAM_UUID },
       undefined,
     );
   });
 
   it("returns empty array when topics endpoint is not ok", async () => {
-    mockMessengerApi.get.mockResolvedValue({
+    mockMessengerApi.getWithBase.mockResolvedValue({
       ok: false,
       status: 500,
       data: { result: "error" },
       raw: { statusText: "Server Error" },
     });
 
-    await expect(fetchStreamTopicNames(10)).resolves.toEqual([]);
+    await expect(fetchStreamTopicNames(STREAM_UUID)).resolves.toEqual([]);
   });
 
   it("returns empty array when topics endpoint responds with error result", async () => {
-    mockMessengerApi.get.mockResolvedValue({
+    mockMessengerApi.getWithBase.mockResolvedValue({
       ok: true,
       status: 200,
       data: {
@@ -687,30 +670,17 @@ describe("fetchTopics", () => {
       raw: { statusText: "OK" },
     });
 
-    await expect(fetchStreamTopicNames(10)).resolves.toEqual([]);
+    await expect(fetchStreamTopicNames(STREAM_UUID)).resolves.toEqual([]);
   });
 
-  it("returns empty array when stream is not found", async () => {
-    mockMyStreamsResponse([
-      {
-        uuid: "11111111-1111-4111-8111-111111111111",
-        stream_uuid: "22222222-2222-4222-8222-222222222222",
-        stream_id: 10,
-        name: "engineering",
-        description: "",
-        invite_only: false,
-        announce: false,
-        private: false,
-      },
-    ]);
-
-    await expect(fetchTopics("design")).resolves.toEqual([]);
-    expect(mockMessengerApi.get).not.toHaveBeenCalled();
+  it("returns empty array when stream UUID is invalid", async () => {
+    await expect(fetchTopics("not-a-uuid")).resolves.toEqual([]);
+    expect(mockMessengerApi.getWithBase).not.toHaveBeenCalled();
   });
 
-  it("throws when stream name is blank", async () => {
+  it("throws when stream UUID is blank", async () => {
     await expect(fetchTopics("   ")).rejects.toThrow(
-      /fetchTopics\.stream must be a non-empty string/,
+      /fetchTopics\.streamUuid must be a non-empty string/,
     );
     expect(mockMessengerApi.getWithBase).not.toHaveBeenCalled();
   });
@@ -728,7 +698,6 @@ describe("fetchStreams", () => {
       data: [
         {
           uuid: "11111111-1111-4111-8111-111111111111",
-          stream_id: 1,
           name: "general",
           description: "Main",
           announce: true,
@@ -751,7 +720,6 @@ describe("fetchStreams", () => {
     const result = await fetchStreams();
     expect(result).toEqual([
       {
-        stream_id: 1,
         stream_uuid: "11111111-1111-4111-8111-111111111111",
         name: "general",
         description: "Main",
@@ -783,7 +751,7 @@ describe("fetchStreams", () => {
     await expect(fetchStreams()).resolves.toEqual([]);
   });
 
-  it("uses row uuid as stream_uuid for reads and writes, and source.stream_id", async () => {
+  it("uses row uuid as stream_uuid", async () => {
     mockMessengerApi.getWithBase.mockResolvedValue({
       ok: true,
       status: 200,
@@ -795,8 +763,6 @@ describe("fetchStreams", () => {
           announce: false,
           invite_only: false,
           private: false,
-          source_name: "zulip",
-          source: { kind: "zulip", stream_id: 7 },
         },
       ],
       raw: { statusText: "OK" },
@@ -804,7 +770,6 @@ describe("fetchStreams", () => {
 
     await expect(fetchStreams()).resolves.toEqual([
       {
-        stream_id: 7,
         stream_uuid: "11111111-1111-4111-8111-111111111111",
         name: "general",
         description: "Main",
@@ -828,9 +793,9 @@ describe("updateStream", () => {
     });
 
     await expect(
-      updateStream(10, { name: "platform", description: "Platform discussions" }),
+      updateStream(STREAM_UUID, { name: "platform", description: "Platform discussions" }),
     ).resolves.toBe(true);
-    expect(mockMessengerApi.patch).toHaveBeenCalledWith("/streams/10", {
+    expect(mockMessengerApi.patch).toHaveBeenCalledWith(`/streams/${STREAM_UUID}`, {
       new_name: "platform",
       description: "Platform discussions",
     });
@@ -844,12 +809,14 @@ describe("updateStream", () => {
       raw: { statusText: "OK" },
     });
 
-    await expect(updateStream(10, { isArchived: false })).resolves.toBe(true);
-    expect(mockMessengerApi.patch).toHaveBeenCalledWith("/streams/10", { is_archived: "false" });
+    await expect(updateStream(STREAM_UUID, { isArchived: false })).resolves.toBe(true);
+    expect(mockMessengerApi.patch).toHaveBeenCalledWith(`/streams/${STREAM_UUID}`, {
+      is_archived: "false",
+    });
   });
 
   it("short-circuits when PATCH body would be empty", async () => {
-    await expect(updateStream(10, {})).resolves.toBe(true);
+    await expect(updateStream(STREAM_UUID, {})).resolves.toBe(true);
     expect(mockMessengerApi.patch).not.toHaveBeenCalled();
   });
 
@@ -861,7 +828,7 @@ describe("updateStream", () => {
       raw: { statusText: "Forbidden" },
     });
 
-    await expect(updateStream(10, { name: "platform" })).resolves.toBe(false);
+    await expect(updateStream(STREAM_UUID, { name: "platform" })).resolves.toBe(false);
   });
 });
 
@@ -874,8 +841,10 @@ describe("unarchiveStream", () => {
       raw: { statusText: "OK" },
     });
 
-    await expect(unarchiveStream(10)).resolves.toEqual({ ok: true });
-    expect(mockMessengerApi.patch).toHaveBeenCalledWith("/streams/10", { is_archived: "false" });
+    await expect(unarchiveStream(STREAM_UUID)).resolves.toEqual({ ok: true });
+    expect(mockMessengerApi.patch).toHaveBeenCalledWith(`/streams/${STREAM_UUID}`, {
+      is_archived: "false",
+    });
   });
 
   it("returns unsupported when server ignores is_archived parameter", async () => {
@@ -889,7 +858,7 @@ describe("unarchiveStream", () => {
       raw: { statusText: "OK" },
     });
 
-    await expect(unarchiveStream(10)).resolves.toEqual(
+    await expect(unarchiveStream(STREAM_UUID)).resolves.toEqual(
       expect.objectContaining({
         ok: false,
         kind: "unsupported",
@@ -905,7 +874,7 @@ describe("unarchiveStream", () => {
       raw: { statusText: "Forbidden" },
     });
 
-    await expect(unarchiveStream(88)).resolves.toEqual({
+    await expect(unarchiveStream(STREAM_UUID)).resolves.toEqual({
       ok: false,
       kind: "forbidden",
       status: 403,
@@ -916,7 +885,7 @@ describe("unarchiveStream", () => {
 });
 
 describe("deleteStream", () => {
-  it("deletes stream by id", async () => {
+  it("deletes stream by UUID", async () => {
     mockMessengerApi.delete.mockResolvedValue({
       ok: true,
       status: 200,
@@ -924,8 +893,8 @@ describe("deleteStream", () => {
       raw: { statusText: "OK" },
     });
 
-    await expect(deleteStream(10)).resolves.toBe(true);
-    expect(mockMessengerApi.delete).toHaveBeenCalledWith("/streams/10", undefined);
+    await expect(deleteStream(STREAM_UUID)).resolves.toBe(true);
+    expect(mockMessengerApi.delete).toHaveBeenCalledWith(`/streams/${STREAM_UUID}`, undefined);
   });
 
   it("returns false on delete failure", async () => {
@@ -936,96 +905,49 @@ describe("deleteStream", () => {
       raw: { statusText: "Bad Request" },
     });
 
-    await expect(deleteStream(10)).resolves.toBe(false);
+    await expect(deleteStream(STREAM_UUID)).resolves.toBe(false);
   });
 });
 
 describe("deleteTopic", () => {
-  it("deletes topic in one request when complete=true", async () => {
-    mockMessengerApi.post.mockResolvedValue({
+  it("deletes topic by topic UUID through workspace API", async () => {
+    mockMessengerApi.deleteWithBase.mockResolvedValue({
       ok: true,
       status: 200,
-      data: { result: "success", complete: true },
+      data: { result: "success" },
       raw: { statusText: "OK" },
     });
 
-    await expect(deleteTopic(10, "incident")).resolves.toEqual({
+    await expect(deleteTopic(TOPIC_UUID)).resolves.toEqual({
       ok: true,
       complete: true,
       attempts: 1,
     });
-    expect(mockMessengerApi.post).toHaveBeenCalledWith("/streams/10/delete_topic", {
-      topic_name: "incident",
-    });
+    expect(mockMessengerApi.deleteWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      `/stream_topics/${TOPIC_UUID}`,
+    );
   });
 
-  it("allows deleting empty topic name", async () => {
-    mockMessengerApi.post.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: { result: "success", complete: true },
-      raw: { statusText: "OK" },
-    });
-
-    await expect(deleteTopic(10, "   ")).resolves.toEqual({
-      ok: true,
-      complete: true,
-      attempts: 1,
-    });
-    expect(mockMessengerApi.post).toHaveBeenCalledWith("/streams/10/delete_topic", {
-      topic_name: "",
-    });
-  });
-
-  it("retries on complete=false and succeeds on second attempt", async () => {
-    mockMessengerApi.post
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        data: { result: "success", complete: false },
-        raw: { statusText: "OK" },
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        data: { result: "success", complete: true },
-        raw: { statusText: "OK" },
-      });
-
-    await expect(deleteTopic(10, "incident")).resolves.toEqual({
-      ok: true,
-      complete: true,
-      attempts: 2,
-    });
-    expect(mockMessengerApi.post).toHaveBeenCalledTimes(2);
-  });
-
-  it("returns incomplete_after_retries when complete stays false", async () => {
-    mockMessengerApi.post.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: { result: "success", complete: false },
-      raw: { statusText: "OK" },
-    });
-
-    await expect(deleteTopic(10, "incident", 3)).resolves.toEqual({
+  it("returns invalid_topic_uuid before calling the API", async () => {
+    await expect(deleteTopic("not-a-uuid")).resolves.toEqual({
       ok: false,
       complete: false,
-      attempts: 3,
-      errorCode: "incomplete_after_retries",
+      attempts: 0,
+      errorCode: "invalid_topic_uuid",
     });
-    expect(mockMessengerApi.post).toHaveBeenCalledTimes(3);
+    expect(mockMessengerApi.deleteWithBase).not.toHaveBeenCalled();
   });
 
   it("returns authorization error from API payload", async () => {
-    mockMessengerApi.post.mockResolvedValue({
+    mockMessengerApi.deleteWithBase.mockResolvedValue({
       ok: true,
       status: 200,
       data: { result: "error", code: "UNAUTHORIZED_PRINCIPAL" },
       raw: { statusText: "OK" },
     });
 
-    await expect(deleteTopic(10, "incident")).resolves.toEqual({
+    await expect(deleteTopic(TOPIC_UUID)).resolves.toEqual({
       ok: false,
       complete: false,
       attempts: 1,
@@ -1034,14 +956,14 @@ describe("deleteTopic", () => {
   });
 
   it("returns http error for non-ok response", async () => {
-    mockMessengerApi.post.mockResolvedValue({
+    mockMessengerApi.deleteWithBase.mockResolvedValue({
       ok: false,
       status: 400,
       data: { msg: "Bad Request" },
       raw: { statusText: "Bad Request" },
     });
 
-    await expect(deleteTopic(10, "incident")).resolves.toEqual({
+    await expect(deleteTopic(TOPIC_UUID)).resolves.toEqual({
       ok: false,
       complete: false,
       attempts: 1,
@@ -1050,9 +972,9 @@ describe("deleteTopic", () => {
   });
 
   it("returns network_error on request failure", async () => {
-    mockMessengerApi.post.mockRejectedValue(new Error("offline"));
+    mockMessengerApi.deleteWithBase.mockRejectedValue(new Error("offline"));
 
-    await expect(deleteTopic(10, "incident")).resolves.toEqual({
+    await expect(deleteTopic(TOPIC_UUID)).resolves.toEqual({
       ok: false,
       complete: false,
       attempts: 1,

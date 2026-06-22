@@ -1,10 +1,5 @@
 /** Types for the chat-list Zustand store — state and public actions consumed by layout/widgets. */
-import type { MessengerUnreadMessagesSnapshot } from "~/shared/api/messenger-unread.lib";
-import type {
-  MockMessage,
-  MessengerGroupSettingValue,
-  WorkspaceRawMessage,
-} from "~/shared/api/messenger.types";
+import type { MessengerGroupSettingValue, WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import type { ChatListSnapshotSerialized } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
@@ -19,6 +14,7 @@ export interface ChatListStreamMetadataRow {
   /** Workspace stream UUID used as the stream identity and for gateway reads/writes. */
   streamUuid: string;
   name: string;
+  unreadCount?: number;
   private?: boolean;
   isArchived?: boolean;
   creatorId?: number;
@@ -34,6 +30,7 @@ export interface ChatListStreamTopicMetadataRow {
   topicUuid: string;
   streamUuid: string;
   name: string;
+  unreadCount?: number;
   isDefault?: boolean;
 }
 
@@ -83,18 +80,14 @@ export interface ChatListState {
   messageIdToLocation: Map<MessageId, MessageLocation>;
   /** Inverted index streamId+topic → message ids; patched incrementally on location changes. */
   streamTopicMessageIds: Map<string, MessageId[]>;
-  /** Sum of stream topic unread counts; updated incrementally or on full rebuild. */
+  /** Sum of server stream unread counts; recomputed from metadata-backed maps. */
   sidebarStreamsUnread: number;
-  /** Sum of DM unread counts; updated incrementally or on full rebuild. */
+  /** Sum of server DM unread counts; recomputed from metadata-backed maps. */
   sidebarDmsUnread: number;
-  /** Unread @mentions tracked for sidebar badge and personal indicator. */
+  /** Server-backed unread @mentions count. Kept zero until the new backend exposes this value. */
   mentionsUnreadCount: number;
-  /** Message ids counted in `mentionsUnreadCount` (in-memory; rebuilt from API/register). */
+  /** Message ids counted in `mentionsUnreadCount`; empty until the new backend exposes them. */
   mentionedUnreadMessageIds: Set<MessageId>;
-  /** True when `mentionsUnreadCount` hit page cap (more unread mentions may exist server-side). */
-  mentionsUnreadCapped: boolean;
-  /** After authoritative GET is:mentioned+is:unread sync, register mention ids are not applied. */
-  mentionsUnreadApiSynced: boolean;
   /** Last sidebar bootstrap failure message, cleared on successful rebuild. */
   bootstrapError: string | null;
   setBootstrapError: (error: string | null) => void;
@@ -102,34 +95,10 @@ export interface ChatListState {
   setFromMessages: (messages: WorkspaceRawMessage[], currentUserId: UserId | null) => void;
   /** Restore sidebar maps from IndexedDB snapshot (no raw `lastAppliedMessages`). */
   hydrateFromIndexedDbSnapshot: (snapshot: ChatListSnapshotSerialized) => void;
-  /** Authoritative unread reconcile from server snapshot (e.g. `is:unread`). */
-  reconcileUnreadFromMessages: (
-    messages: readonly WorkspaceRawMessage[],
-    currentUserId: UserId | null,
-  ) => void;
-  /** Authoritative unread reconcile from register `unread_msgs` buckets. */
-  reconcileUnreadFromSnapshot: (
-    snapshot: MessengerUnreadMessagesSnapshot,
-    currentUserId: UserId | null,
-  ) => void;
-  /** Authoritative replace of unread mention ids/count from GET is:mentioned+is:unread. */
-  reconcileMentionsFromServer: (
-    messages: readonly MockMessage[],
-    options?: { capped?: boolean },
-  ) => void;
-  /** Register fallback for mention ids until first API sync. */
-  reconcileMentionsFromRegisterIds: (messageIds: readonly MessageId[]) => void;
-  decrementMentionsForReadMessages: (messageIds: readonly MessageId[]) => void;
-  addMessage: (message: WorkspaceRawMessage, options?: { suppressUnreadBump?: boolean }) => void;
+  addMessage: (message: WorkspaceRawMessage) => void;
   addMessages: (messages: WorkspaceRawMessage[]) => void;
-  /**
-   * Adds `messageIdToLocation` entries for unread messages without touching previews/unread totals.
-   * Needed so `update_message_flags(read)` can decrement totals for messages that were loaded in the open chat
-   * but not previously indexed by sidebar bootstrap/lazy hydrate.
-   */
-  upsertUnreadMessageLocations: (messages: WorkspaceRawMessage[]) => void;
-  /** Indexes mention message locations from API sync (stream/topic/DM rows for sidebar @ badge). */
-  upsertMentionMessageLocations: (messages: readonly MockMessage[]) => void;
+  /** Adds `messageIdToLocation` entries for loaded messages without touching previews/unread totals. */
+  upsertMessageLocations: (messages: WorkspaceRawMessage[]) => void;
   /** Stream/topic preview only — does not bump unread (metadata-first stream batch). */
   applyStreamSidebarPreviewsFromMessages: (messages: WorkspaceRawMessage[]) => void;
   /** Ensures topic rows exist for a stream (used by Workspace stream_topics API). */
@@ -169,10 +138,6 @@ export interface ChatListState {
   /** Recomputes sidebar unread totals, mentions count, and stream-topic index from current maps. */
   syncDerivedScalars: () => void;
   clear: () => void;
-  decrementUnreadForMessages: (messageIds: MessageId[]) => void;
-  decrementUnreadForTopic: (streamId: string, topic: string, count: number) => void;
-  decrementUnreadForDmKey: (dmKey: string, count: number) => void;
-  incrementUnreadForMessages: (messageIds: MessageId[]) => void;
   handleDeleteMessages: (
     messageIds: MessageId[],
     options?: ChatListHandleDeleteMessagesOptions,

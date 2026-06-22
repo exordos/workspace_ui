@@ -71,8 +71,6 @@ function createContext(notifications = createNotifications()): LayoutMessengerEv
       moveStreamTopic: vi.fn(),
       moveTopicToStream: vi.fn(),
       removeStream: vi.fn(),
-      decrementUnreadForMessages: vi.fn(),
-      incrementUnreadForMessages: vi.fn(),
       handleDeleteMessages: vi.fn(),
     },
     currentChat: {

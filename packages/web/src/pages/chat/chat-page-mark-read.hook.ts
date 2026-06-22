@@ -1,15 +1,9 @@
 /**
- * Mark-as-read batching and mark-all-read for the chat page.
+ * Mark-as-read wiring for the chat page.
  *
- * Debounces scroll-driven read API calls, applies optimistic store updates,
- * and wires the mark-all-read keyboard shortcut.
+ * Scroll-driven read writes are disabled until the new backend exposes a read-state API.
  */
 import { useCallback, useEffect, useRef } from "react";
-import {
-  applyChatListReadDecrement,
-  readFallbackContextFromCurrentChat,
-} from "~/entities/chat-list/chat-list-apply-read-decrement.lib";
-import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInboxStore } from "~/entities/inbox/inbox.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
@@ -18,7 +12,6 @@ import {
   type UnreadDeltaSyncSource,
 } from "~/entities/unread-sync/unread-surfaces-sync.lib";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
-import { markMessagesAsRead } from "~/shared/api/messenger-read-state";
 import type { MockMessage } from "~/shared/api/messenger.types";
 import { createLogger } from "~/shared/lib/logger";
 import {
@@ -34,8 +27,7 @@ import {
   filterMessageIdsStillUnreadForOptimisticApply,
   resolveMarkAllAsReadTarget,
 } from "./chat-mark-all-read.lib";
-import { createMarkAsReadBatcher } from "./chat-mark-as-read.lib";
-import { buildReadFallbackContext, type ReadFallbackContext } from "./chat-page.lib";
+import type { ReadFallbackContext } from "./chat-page.lib";
 
 const log = createLogger("chat-page");
 
@@ -65,9 +57,6 @@ export function useChatPageMarkRead({
   activeDmUserIds,
   activeStreamId,
   activeTopic,
-  streamSlug,
-  topicName,
-  dmIdParam,
   updateMessageFlagsInStore,
 }: UseChatPageMarkReadParams): UseChatPageMarkReadResult {
   const latestMessagesRef = useRef<MockMessage[]>([]);
@@ -75,8 +64,6 @@ export function useChatPageMarkRead({
   useEffect(() => {
     latestMessagesRef.current = messages;
   }, [messages]);
-
-  const markAsReadBatcherRef = useRef<ReturnType<typeof createMarkAsReadBatcher> | null>(null);
 
   // Runs a local unread change and updates the organization badge right after it.
   const syncLocalUnreadDelta = useCallback(
@@ -101,7 +88,7 @@ export function useChatPageMarkRead({
   );
 
   const applyReadMessagesOptimistically = useCallback(
-    (messageIds: MessageId[], fallbackContext?: ReadFallbackContext) => {
+    (messageIds: MessageId[], _fallbackContext?: ReadFallbackContext) => {
       if (messageIds.length === 0) return;
 
       const storeMessages = useCurrentChatMessagesStore.getState().messages;
@@ -123,23 +110,11 @@ export function useChatPageMarkRead({
           });
         }
       } else {
-        // Message flags are updated first, then sidebar/inbox counters follow in the sync block.
+        // Message flags are updated first, then Inbox entries follow in the sync block.
         updateMessageFlagsInStore(unreadMessageIds, "read", "add");
       }
 
-      const readFallback =
-        fallbackContext ??
-        readFallbackContextFromCurrentChat(useCurrentChatMessagesStore.getState().context);
-
       syncLocalUnreadDelta("local-chat-read", () => {
-        const chatListState = useChatListStore.getState();
-        applyChatListReadDecrement(() => useChatListStore.getState(), chatListState, {
-          messageIds,
-          fallbackContext: readFallback,
-          clampWhenAlreadyRead: unreadMessageIds.length === 0,
-          source: "chat:optimisticMarkRead",
-        });
-
         if (unreadMessageIds.length > 0) {
           useInboxStore.getState().markAsRead(unreadMessageIds);
         }
@@ -148,71 +123,9 @@ export function useChatPageMarkRead({
     [syncLocalUnreadDelta, updateMessageFlagsInStore],
   );
 
-  const handleUnreadMessagesVisible = useCallback(
-    (messageIds: MessageId[]) => {
-      if (!isDmView && activeTopic == null) return;
-      markAsReadBatcherRef.current?.schedule(messageIds);
-    },
-    [isDmView, activeTopic],
-  );
+  const handleUnreadMessagesVisible = useCallback((_messageIds: MessageId[]) => {}, []);
 
-  const handleUnreadMessagesAtBottom = useCallback(
-    (messageIds: MessageId[]) => {
-      if (!isDmView && activeTopic == null) return;
-      markAsReadBatcherRef.current?.schedule(messageIds);
-    },
-    [isDmView, activeTopic],
-  );
-
-  useEffect(() => {
-    const batchFallbackContext = buildReadFallbackContext({
-      isDmView,
-      activeDmUserIds,
-      currentUserId,
-      activeStreamId,
-      activeTopic,
-    });
-
-    const batcher = createMarkAsReadBatcher({
-      debounceMs: 250,
-      markAsRead: markMessagesAsRead,
-      onSchedule: (messageIds) => {
-        applyReadMessagesOptimistically(messageIds, batchFallbackContext);
-      },
-      onError: (error, messageIds) => {
-        if (messageIds.length > 0) {
-          // Rollback must also update the org badge, not only the chat-list store.
-          syncLocalUnreadDelta("local-chat-read-rollback", () => {
-            updateMessageFlagsInStore(messageIds, "read", "remove");
-            useChatListStore.getState().incrementUnreadForMessages(messageIds);
-          });
-        }
-        log.warn("markAsRead failed", {
-          requestedCount: messageIds.length,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      },
-    });
-    markAsReadBatcherRef.current = batcher;
-    return () => {
-      batcher.cancel();
-      if (markAsReadBatcherRef.current === batcher) {
-        markAsReadBatcherRef.current = null;
-      }
-    };
-  }, [
-    streamSlug,
-    topicName,
-    dmIdParam,
-    isDmView,
-    activeDmUserIds,
-    currentUserId,
-    activeStreamId,
-    activeTopic,
-    applyReadMessagesOptimistically,
-    syncLocalUnreadDelta,
-    updateMessageFlagsInStore,
-  ]);
+  const handleUnreadMessagesAtBottom = useCallback((_messageIds: MessageId[]) => {}, []);
 
   const handleMarkAllAsRead = useCallback(() => {
     const target = resolveMarkAllAsReadTarget({
@@ -228,7 +141,6 @@ export function useChatPageMarkRead({
       loadedMessages: messages,
       currentUserId,
       applyOptimistic: applyReadMessagesOptimistically,
-      applyUnreadDelta: syncLocalUnreadDelta,
     }).catch((err) => reportUnexpectedError("chat:markAllRead", err));
   }, [
     isDmView,
@@ -238,7 +150,6 @@ export function useChatPageMarkRead({
     messages,
     currentUserId,
     applyReadMessagesOptimistically,
-    syncLocalUnreadDelta,
   ]);
 
   useShortcut("mod+shift+m", handleMarkAllAsRead, {

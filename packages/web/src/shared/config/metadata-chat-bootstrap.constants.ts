@@ -2,10 +2,10 @@
  * Metadata-first sidebar bootstrap defaults (formerly gated by VITE_* env flags).
  */
 
-/** Max messages in stream sidebar preview batch (delta / is:unread / recent fallback). */
+/** Max messages in stream sidebar preview batch (delta / recent fallback). */
 export const METADATA_STREAM_PREVIEW_MESSAGE_LIMIT = 5000;
 
-/** Per-channel lazy sidebar topic hydrate: max messages from GET /messages narrow stream. */
+/** Per-channel lazy sidebar topic hydrate: max rows from the gateway messages API. */
 export const STREAM_SIDEBAR_TOPIC_HYDRATE_LIMIT = 100;
 
 /**

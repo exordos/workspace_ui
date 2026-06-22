@@ -13,6 +13,7 @@ import { useUsersStore } from "~/entities/user/user.model";
 import { getCurrentInstance } from "~/shared/api/client";
 import type { MockMessage } from "~/shared/api/messenger.types";
 import { createLogger, logStoreAction } from "~/shared/lib/logger";
+import { messageAuthorId } from "~/shared/lib/message-author.lib";
 import {
   deleteMessagesByIds,
   patchMessageContentInCache,
@@ -131,7 +132,7 @@ function mergeUsersFromMessages(messages: readonly MockMessage[]): void {
   const store = useUsersStore.getState();
   for (const msg of messages) {
     store.mergeUser({
-      user_id: msg.sender_id,
+      user_id: messageAuthorId(msg),
       full_name: msg.sender_full_name ?? "",
     });
   }

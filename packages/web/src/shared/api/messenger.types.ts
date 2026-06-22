@@ -1,7 +1,6 @@
 /**
  * Public TypeScript contracts for the Messenger API client (`messenger-*.ts` modules).
  */
-import type { MessengerUnreadMessagesSnapshot } from "~/shared/api/messenger-unread.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { LinkPreviewData } from "~/shared/lib/message-link-preview.types";
 import type { UserId } from "~/shared/lib/user-id.lib";
@@ -69,6 +68,7 @@ export interface MessengerMeStream {
   invite_only: boolean;
   announce: boolean;
   private: boolean;
+  unread_count: number;
 }
 
 /** Markdown message body from the Workspace gateway `/messages/` payload. */
@@ -88,6 +88,10 @@ export interface MessengerMeMessage {
   stream_uuid: string;
   topic_uuid?: string;
   payload: MessengerMeMessagePayload;
+  /** IAM UUID of the actual message author. */
+  author_uuid?: string;
+  /** True when the message was authored by the authenticated user. */
+  is_own: boolean;
   read: boolean;
   pinned: boolean;
   starred: boolean;
@@ -103,6 +107,7 @@ export interface MessengerStreamTopic {
   uuid: string;
   name: string;
   stream_uuid: string;
+  unread_count: number;
   is_default: boolean;
   project_id?: string;
   created_at?: string;
@@ -207,11 +212,6 @@ export interface RegisterQueueResult {
   user_settings?: Record<string, unknown>;
   /** Present when `user_status` is included in `fetch_event_types`. */
   userStatusSnapshot?: MessengerUserStatusSnapshotEntry[];
-  /**
-   * Authoritative unread buckets from register `unread_msgs`
-   * (when `message` and `update_message_flags` are in `event_types`).
-   */
-  unread_snapshot?: MessengerUnreadMessagesSnapshot;
   /** Starred message ids from register metadata, used for an exact sidebar count. */
   starred_message_ids?: MessageId[];
 }
@@ -299,11 +299,20 @@ export interface MessageReactionPayload {
   imageUrl?: string;
 }
 
-/** Raw message from GET /messages. Absence of 'read' in flags means unread. */
+/** Raw message from gateway message APIs. `read` is authoritative when present. */
 export interface WorkspaceRawMessage {
   id: MessageId;
   source_message_uuid?: MessageId;
   sender_id: number;
+  /** IAM UUID of the message author from Workspace gateway rows. */
+  author_uuid?: string;
+  /** Alias used by UI code while legacy numeric sender_id is still present. */
+  sender_uuid?: string;
+  /** True when the message was authored by the authenticated user. */
+  is_own?: boolean;
+  read?: boolean;
+  pinned?: boolean;
+  starred?: boolean;
   sender_full_name?: string;
   /** Sender avatar (relative path), present in GET /messages response. */
   avatar_url?: string | null;
@@ -367,6 +376,15 @@ export interface MockMessage {
   id: MessageId;
   source_message_uuid?: MessageId;
   sender_id: number;
+  /** IAM UUID of the message author from Workspace gateway rows. */
+  author_uuid?: string;
+  /** Alias used by UI code while legacy numeric sender_id is still present. */
+  sender_uuid?: string;
+  /** True when the message was authored by the authenticated user. */
+  is_own?: boolean;
+  read?: boolean;
+  pinned?: boolean;
+  starred?: boolean;
   sender_full_name: string;
   stream_uuid: string | null;
   display_recipient?:
@@ -385,7 +403,7 @@ export interface MockMessage {
    */
   markdown_source?: string;
   timestamp: number;
-  /** API flags (e.g. 'read', 'mentioned'). Missing 'read' = unread. */
+  /** Event/cache flags (e.g. 'read', 'mentioned') projected from gateway booleans where needed. */
   flags?: string[];
   reactions?: Reaction[];
   /** Local delivery state for optimistic outgoing messages. */
@@ -416,6 +434,12 @@ export interface RawMessageToMockInput {
   id: MessageId;
   source_message_uuid?: MessageId;
   sender_id: number;
+  author_uuid?: string;
+  sender_uuid?: string;
+  is_own?: boolean;
+  read?: boolean;
+  pinned?: boolean;
+  starred?: boolean;
   sender_full_name?: string;
   content: string;
   /** When set, stored as MockMessage.markdown_source. */
@@ -447,6 +471,7 @@ export interface MessengerSubscription {
   can_administer_channel_group?: MessengerGroupSettingValue;
   can_resolve_topics_group?: MessengerGroupSettingValue;
   can_move_messages_out_of_channel_group?: MessengerGroupSettingValue;
+  unread_count?: number;
 }
 
 export interface MessagesPageResult {
@@ -457,14 +482,17 @@ export interface MessagesPageResult {
 }
 
 export interface SendMessageParams {
-  /** For stream message: stream name. Omit when using `to` for private. */
+  /** Client-generated Workspace message UUID sent to `/api/messenger/v1/messages/`. */
+  messageUuid?: MessageId;
+  /** Display stream name for the local echo. */
   stream?: string;
   /** Workspace stream UUID for gateway message creation. */
-  streamUuid?: string;
+  streamUuid: string;
   /** Workspace topic UUID for stream-topic messages. */
   topicUuid?: string;
   subject?: string;
   content: string;
+  author_id?: UserId;
   sender_id?: number;
   sender_full_name?: string;
 }

@@ -1,96 +1,42 @@
 /**
- * Workspace read/unread and topic resolution (flags API + topic rename).
+ * Workspace read-state and topic resolution.
  */
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 import { logScrollReadFlow } from "~/shared/lib/message-flow-debug.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
-import {
-  buildSidebarMarkReadNarrowForChannel,
-  buildSidebarMarkReadNarrowForDm,
-  buildSidebarMarkReadNarrowForTopic,
-} from "~/shared/lib/messenger-mark-read-narrow.lib";
-import {
-  normalizeMessengerMessagesNarrowForApi,
-  type MessengerMessagesNarrowClause,
-  messengerTopicNarrowOperandForApi,
-} from "~/shared/lib/messenger-topic-narrow.lib";
+import { messengerTopicNarrowOperandForApi } from "~/shared/lib/messenger-topic-narrow.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { toResolvedTopicName, toUnresolvedTopicName } from "~/shared/lib/topic-resolve";
-import {
-  messengerPipelineGet,
-  messengerPipelinePatch,
-  messengerPipelinePost,
-} from "./messenger-pipeline.internal";
+import { messengerPipelineGet, messengerPipelinePatch } from "./messenger-pipeline.internal";
 import { validateMessageIds } from "./messenger-validation.internal";
 
 const log = createLogger("messenger-read-state");
 
-/** Max unread messages marked per sidebar flags/narrow request. */
-export const MARK_READ_NARROW_NUM_AFTER = 5000;
-
-export interface MarkUnreadInNarrowOptions {
-  numAfter?: number;
+function logReadStateUnsupported(action: string): void {
+  log.warn("read-state write is not available in the new backend yet", { action });
 }
 
-/**
- * Marks unread messages in a narrow as read (POST /api/v1/messages/flags/narrow).
- * Sidebar context menu only — not for open-chat viewport read.
- */
-export async function markUnreadInNarrow(
-  narrow: readonly MessengerMessagesNarrowClause[],
-  options?: MarkUnreadInNarrowOptions,
-): Promise<boolean> {
-  const numAfter = options?.numAfter ?? MARK_READ_NARROW_NUM_AFTER;
-  const normalizedNarrow = normalizeMessengerMessagesNarrowForApi([...narrow]);
-  logScrollReadFlow("api:markUnreadInNarrow", {
-    numAfter,
-    narrow: normalizedNarrow,
-  });
-
-  const post = async (clauses: MessengerMessagesNarrowClause[]) => {
-    const res = await messengerPipelinePost("messages/flags/narrow", {
-      anchor: "oldest",
-      include_anchor: "false",
-      num_before: "0",
-      num_after: String(numAfter),
-      narrow: JSON.stringify(clauses),
-      op: "add",
-      flag: "read",
-    });
-    return res.ok;
-  };
-
-  if (await post(normalizedNarrow)) {
-    return true;
-  }
-
-  const hasChannel = normalizedNarrow.some((c) => c.operator === "channel");
-  if (!hasChannel) {
-    return false;
-  }
-
-  const streamNarrow = normalizedNarrow.map((clause) =>
-    clause.operator === "channel" ? { ...clause, operator: "stream" } : clause,
-  );
-  logScrollReadFlow("api:markUnreadInNarrow:retryStreamOperator", {});
-  return post(streamNarrow);
+/** Bulk mark-read is disabled until the new backend exposes a read-state write API. */
+export function markDmAsRead(userIds: number[]): Promise<boolean> {
+  if (userIds.length === 0) return Promise.resolve(false);
+  logReadStateUnsupported("markDmAsRead");
+  return Promise.resolve(false);
 }
 
-/** Bulk-marks all unread in a DM as read (sidebar context menu). */
-export async function markDmAsRead(userIds: number[]): Promise<boolean> {
-  return markUnreadInNarrow(buildSidebarMarkReadNarrowForDm(userIds));
+/** Bulk mark-read is disabled until the new backend exposes a read-state write API. */
+export function markStreamAsRead(streamId: string): Promise<boolean> {
+  guard.streamUuid(streamId, "markStreamAsRead");
+  logReadStateUnsupported("markStreamAsRead");
+  return Promise.resolve(false);
 }
 
-/** Bulk-marks all unread in a stream as read (sidebar context menu). */
-export async function markStreamAsRead(streamId: string): Promise<boolean> {
-  return markUnreadInNarrow(buildSidebarMarkReadNarrowForChannel(streamId));
-}
-
-/** Bulk-marks all unread in a stream topic as read (sidebar context menu). */
-export async function markTopicAsRead(streamId: string, topic: string): Promise<boolean> {
+/** Bulk mark-read is disabled until the new backend exposes a read-state write API. */
+export function markTopicAsRead(streamId: string, topic: string): Promise<boolean> {
   guard.streamUuid(streamId, "markTopicAsRead");
-  return markUnreadInNarrow(buildSidebarMarkReadNarrowForTopic(streamId, topic));
+  if (topic.trim().length === 0) return Promise.resolve(false);
+  logReadStateUnsupported("markTopicAsRead");
+  return Promise.resolve(false);
 }
 
 async function findTopicAnchorMessageId(
@@ -266,14 +212,11 @@ export async function setTopicResolvedState(
   return patchStreamTopicForAllMessages(anchorMessageId, targetTopic);
 }
 
-/** Marks messages as read (POST /api/v1/messages/flags). Used for viewport/scroll read in open chat. */
-export async function markMessagesAsRead(messageIds: MessageId[]): Promise<void> {
-  if (messageIds.length === 0) return;
+/** Marks messages as read. Disabled until the new backend exposes a read-state write API. */
+export function markMessagesAsRead(messageIds: MessageId[]): Promise<void> {
+  if (messageIds.length === 0) return Promise.resolve();
   const validatedMessageIds = validateMessageIds(messageIds, "markMessagesAsRead.messageIds");
   logScrollReadFlow("api:markMessagesAsRead", { count: validatedMessageIds.length });
-  await messengerPipelinePost("messages/flags", {
-    messages: JSON.stringify(validatedMessageIds),
-    op: "add",
-    flag: "read",
-  });
+  logReadStateUnsupported("markMessagesAsRead");
+  return Promise.reject(new Error("Read-state write API is not available in the new backend"));
 }

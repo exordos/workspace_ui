@@ -1,7 +1,6 @@
 /**
  * Coalesces reconnect refreshes (debounce + single in-flight) and splits full vs light paths.
  */
-import { ensureMentionsUnreadSynced } from "~/entities/chat-list/chat-list-mentions-sync.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
@@ -10,11 +9,9 @@ import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import { refreshActiveChatMessagesFromApi } from "./layout-active-chat-refresh.lib";
 import { runChatListBootstrap } from "./layout-chat-list-bootstrap.lib";
-import { getCachedRegisterUnreadSnapshot } from "./layout-instance-register-unread.lib";
 import { refreshRealmPresenceFromApi } from "./layout-realm-presence-refresh.lib";
 import { refreshLayoutReconnectLight } from "./layout-reconnect-light.lib";
 import { stageReconnectStreamPreviews } from "./layout-reconnect-stream-preview.lib";
-import { reconcileSidebarUnreadAfterBootstrap } from "./layout-sidebar-unread-reconcile.lib";
 
 const log = createLogger("layout-reconnect");
 
@@ -170,37 +167,9 @@ function refreshSharedLayers(
     isCancelled: params.isCancelled,
   });
 
-  // Full reconnect re-registers the queue — unread comes from fresh onQueueRegistered, not stale cache.
   if (mode === "full") {
     return;
   }
-
-  const uid = useChatListStore.getState().currentUserId ?? null;
-  const registerSnapshot =
-    params.instanceId != null ? getCachedRegisterUnreadSnapshot(params.instanceId) : undefined;
-  reconcileSidebarUnreadAfterBootstrap({
-    cancelled: () => params.isCancelled?.() ?? false,
-    instanceId: params.instanceId ?? null,
-    currentUserId: uid,
-    registerSnapshot,
-    logScope: "reconnect: refreshSharedLayers",
-    snapshotSource: "cached-register",
-    syncSource: "reconnect",
-  });
-  syncMentionsUnreadAfterReconnect(params.instanceId, params.isCancelled);
-}
-
-function syncMentionsUnreadAfterReconnect(
-  instanceId: string | null | undefined,
-  isCancelled?: () => boolean,
-): void {
-  if (instanceId == null || isCancelled?.()) return;
-  const currentUserId = useChatListStore.getState().currentUserId ?? null;
-  void ensureMentionsUnreadSynced({
-    currentInstanceId: instanceId,
-    currentUserId,
-    forceRefresh: true,
-  });
 }
 
 async function refreshChatListReconnectBootstrap(

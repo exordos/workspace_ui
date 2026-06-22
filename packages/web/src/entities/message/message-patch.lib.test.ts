@@ -5,9 +5,13 @@ import { patchMessageAtId, patchMessagesFlags } from "./message-patch.lib";
 
 describe("message-patch", () => {
   const messages = [
-    createMessage({ id: "00000000-0000-4000-8000-000000000001", flags: [] }),
-    createMessage({ id: "00000000-0000-4000-8000-000000000002", flags: ["read"] }),
-    createMessage({ id: "00000000-0000-4000-8000-000000000003", flags: [] }),
+    createMessage({ id: "00000000-0000-4000-8000-000000000001", flags: [], read: false }),
+    createMessage({
+      id: "00000000-0000-4000-8000-000000000002",
+      flags: ["read"],
+      read: true,
+    }),
+    createMessage({ id: "00000000-0000-4000-8000-000000000003", flags: [], read: false }),
   ] as MockMessage[];
 
   it("patchMessageAtId preserves array reference when message missing", () => {
@@ -64,7 +68,9 @@ describe("message-patch", () => {
       "add",
     );
     expect(next[0]?.flags).toContain("read");
+    expect(next[0]?.read).toBe(true);
     expect(next[1]).toBe(messages[1]);
     expect(next[2]?.flags).toContain("read");
+    expect(next[2]?.read).toBe(true);
   });
 });

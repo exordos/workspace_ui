@@ -1,14 +1,15 @@
 import type { MockMessage } from "~/shared/api/messenger.types";
+import { isMessageFromCurrentUser } from "~/shared/lib/message-author.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type { CurrentUserMessageEditPolicy } from "~/shared/types/message-edit-policy";
 
 export function canStartMessageContentEdit(
   message: MockMessage,
-  currentUserId: number | null | undefined,
+  currentUserId: UserId | null | undefined,
   policy: CurrentUserMessageEditPolicy | undefined,
   nowSeconds: number,
 ): boolean {
-  if (currentUserId == null) return false;
-  if (message.sender_id !== currentUserId) return false;
+  if (!isMessageFromCurrentUser(message, currentUserId)) return false;
   if (policy?.allowMessageEditing === false) return false;
 
   const limitSeconds = policy?.messageContentEditLimitSeconds;

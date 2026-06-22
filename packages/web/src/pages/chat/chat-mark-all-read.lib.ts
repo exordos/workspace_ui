@@ -1,16 +1,12 @@
-import {
-  clearRemainingContextUnread,
-  type ChatListReadFallbackContext,
-} from "~/entities/chat-list/chat-list-apply-read-decrement.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import type { MessageLocation } from "~/entities/chat-list/chat-list.model.types";
-import type { UnreadDeltaSyncSource } from "~/entities/unread-sync/unread-surfaces-sync.lib";
 import { markMessagesAsRead } from "~/shared/api/messenger-read-state";
 import { dmRouteKey } from "~/shared/lib/dm-key";
 import { buildMessageIdMap } from "~/shared/lib/message-id-index.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
+import type { ReadFallbackContext } from "./chat-page.lib";
 
 interface ResolveMarkAllAsReadTargetOptions {
   isDmView: boolean;
@@ -52,12 +48,10 @@ export function resolveMarkAllAsReadTarget({
 export function collectUnreadMessageIds(
   messages: readonly {
     id: MessageId;
-    flags?: string[];
+    read?: boolean;
   }[],
 ): MessageId[] {
-  return messages
-    .filter((message) => !(message.flags ?? []).includes("read"))
-    .map((message) => message.id);
+  return messages.filter((message) => message.read !== true).map((message) => message.id);
 }
 
 // Checks if an indexed unread message belongs to the current open chat.
@@ -77,7 +71,7 @@ function messageLocationMatchesMarkAllTarget(
 
 /** Loaded-window unread ids plus index ids for the current narrow (server unreads outside the window). */
 export function collectMarkAllAsReadMessageIds(
-  loadedMessages: readonly { id: MessageId; flags?: string[] }[],
+  loadedMessages: readonly { id: MessageId; read?: boolean }[],
   messageIdToLocation: ReadonlyMap<MessageId, MessageLocation>,
   target: MarkAllAsReadTarget,
   currentUserId: UserId | null,
@@ -95,7 +89,7 @@ export function collectMarkAllAsReadMessageIds(
 export function markAllAsReadFallbackContext(
   target: MarkAllAsReadTarget,
   currentUserId: UserId | null,
-): ChatListReadFallbackContext {
+): ReadFallbackContext {
   if (target.type === "dm") {
     return { type: "dm", dmKey: dmRouteKey(target.userIds, currentUserId) };
   }
@@ -108,14 +102,9 @@ export function markAllAsReadFallbackContext(
 
 export interface ApplyOpenChatMarkAllAsReadOptions {
   target: MarkAllAsReadTarget;
-  loadedMessages: readonly { id: MessageId; flags?: string[] }[];
+  loadedMessages: readonly { id: MessageId; read?: boolean }[];
   currentUserId: UserId | null;
-  applyOptimistic: (messageIds: MessageId[], fallbackContext: ChatListReadFallbackContext) => void;
-  // Wraps every local unread change so the org badge is updated in the same step.
-  applyUnreadDelta: (
-    source: Extract<UnreadDeltaSyncSource, "local-chat-mark-all-read">,
-    applyDelta: () => void,
-  ) => void;
+  applyOptimistic: (messageIds: MessageId[], fallbackContext: ReadFallbackContext) => void;
 }
 
 /** Marks all unread in the open chat via per-id flags API (never narrow). */
@@ -135,26 +124,16 @@ export async function applyOpenChatMarkAllAsRead(
     await markMessagesAsRead(messageIds);
   }
 
-  // Clear both known ids and any remaining badge inside one unread sync pass.
-  options.applyUnreadDelta("local-chat-mark-all-read", () => {
-    if (messageIds.length > 0) {
-      options.applyOptimistic(messageIds, fallbackContext);
-    }
-
-    clearRemainingContextUnread(
-      () => useChatListStore.getState(),
-      chatListState,
-      fallbackContext,
-      "chat:markAllClearRemaining",
-    );
-  });
+  if (messageIds.length > 0) {
+    options.applyOptimistic(messageIds, fallbackContext);
+  }
   return true;
 }
 
 /** Message shape needed to decide if an id still counts as unread for optimistic read application. */
 export interface MessageReadFlagSlice {
   id: MessageId;
-  flags?: string[];
+  read?: boolean;
 }
 
 /**
@@ -177,7 +156,7 @@ export function filterMessageIdsStillUnreadForOptimisticApply(
   const out: MessageId[] = [];
   for (const messageId of messageIds) {
     const message = storeById.get(messageId) ?? effectiveById.get(messageId);
-    if (message != null && !(message.flags ?? []).includes("read")) {
+    if (message != null && message.read !== true) {
       out.push(messageId);
     }
   }

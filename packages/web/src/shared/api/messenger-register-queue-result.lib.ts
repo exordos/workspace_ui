@@ -13,7 +13,6 @@ import {
   parseMaxAvatarFileSizeMib,
   parseServerThumbnailFormats,
 } from "./messenger-register-metadata.lib";
-import { parseRegisterUnreadSnapshot } from "./messenger-unread.lib";
 import { parseUserTopics } from "./messenger-user-topics.internal";
 import type {
   RegisterQueueResult,
@@ -148,12 +147,10 @@ export interface RegisterQueueRawData {
   server_avatar_changes_disabled?: unknown;
   user_settings?: unknown;
   user_status?: unknown;
-  unread_msgs?: unknown;
   starred_messages?: unknown;
 }
 
 export interface RegisterQueueParsedMetadata {
-  unreadSnapshot: ReturnType<typeof parseRegisterUnreadSnapshot>;
   userSettings: ReturnType<typeof extractUserSettingsFromRegisterData>;
   subscriptions: MessengerSubscription[] | null;
   userTopics: MessengerUserTopic[] | null;
@@ -198,7 +195,6 @@ export function parseRegisterQueueMetadata(
   data: RegisterQueueRawData,
 ): RegisterQueueParsedMetadata {
   return {
-    unreadSnapshot: parseRegisterUnreadSnapshot(data),
     userSettings: extractUserSettingsFromRegisterData(data as Record<string, unknown>),
     subscriptions: parseSubscriptions(data.subscriptions),
     userTopics: parseUserTopics(data.user_topics),
@@ -292,7 +288,6 @@ export function buildRegisterQueueResult(
     ...(metadata.userStatusSnapshot !== undefined
       ? { userStatusSnapshot: metadata.userStatusSnapshot }
       : {}),
-    ...(metadata.unreadSnapshot ? { unread_snapshot: metadata.unreadSnapshot } : {}),
     ...(metadata.starredMessageIds ? { starred_message_ids: metadata.starredMessageIds } : {}),
   };
 }

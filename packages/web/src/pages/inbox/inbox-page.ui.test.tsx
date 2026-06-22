@@ -5,85 +5,12 @@ import { useInboxStore } from "~/entities/inbox/inbox.model";
 import type { InboxEntry } from "~/entities/inbox/inbox.types";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
-import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { InboxPage } from "./inbox-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
 
 const navigateSpy = vi.hoisted(() => vi.fn());
 const fetchInboxEntries = vi.hoisted(() => vi.fn().mockResolvedValue([]));
-const hydrateInboxEntriesFromCache = vi.hoisted(() => vi.fn().mockResolvedValue([]));
-const fetchInboxUnreadSnapshotComplete = vi.hoisted(() => vi.fn(() => true));
-const buildUnreadSnapshotFromEntries = vi.hoisted(() => (entries: readonly InboxEntry[]) => {
-  const streams = entries
-    .filter((entry) => entry.streamId != null)
-    .map((entry) => ({
-      streamId: entry.streamId!,
-      topic: entry.topic ?? "",
-      unreadMessageIds: entry.messageIds,
-    }));
-  const dms = entries
-    .filter((entry) => entry.streamId == null)
-    .map((entry) => {
-      const userIds =
-        entry.dmSlug
-          ?.split(",")
-          .map((id) => Number(id))
-          .filter((id) => Number.isFinite(id)) ?? (entry.senderId != null ? [entry.senderId] : []);
-      return {
-        userIds,
-        unreadMessageIds: entry.messageIds,
-      };
-    });
-  return {
-    streams,
-    dms,
-    totalCount: entries.reduce((total, entry) => total + entry.unreadCount, 0),
-    mentionMessageIds: [],
-  };
-});
-const buildUnreadMessagesFromEntries = vi.hoisted(
-  () => (entries: readonly InboxEntry[]) =>
-    entries.flatMap((entry) =>
-      entry.messageIds.map((messageId): WorkspaceRawMessage => {
-        if (entry.streamId != null) {
-          return {
-            id: messageId,
-            sender_id: entry.senderId ?? 42,
-            sender_full_name: entry.senderName ?? "Alice",
-            content: "",
-            timestamp: entry.lastMessageTimestamp,
-            type: "stream",
-            stream_id: entry.streamId,
-            display_recipient: entry.streamName ?? "engineering",
-            subject: entry.topic ?? "",
-            flags: [],
-          };
-        }
-        return {
-          id: messageId,
-          sender_id: entry.senderId ?? 42,
-          sender_full_name: entry.senderName ?? "Alice",
-          content: "",
-          timestamp: entry.lastMessageTimestamp,
-          type: "private",
-          // Workspace 1:1 DMs carry both participants in display_recipient.
-          display_recipient: [
-            {
-              id: entry.senderId ?? 42,
-              full_name: entry.senderName ?? "Alice",
-              email: "alice@example.com",
-            },
-            {
-              id: 1001,
-              full_name: "Me",
-              email: "me@example.com",
-            },
-          ],
-          flags: [],
-        };
-      }),
-    ),
-);
+const hydrateInboxEntriesFromMetadata = vi.hoisted(() => vi.fn().mockResolvedValue([]));
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual<typeof ReactRouterDom>("react-router-dom");
@@ -100,7 +27,7 @@ vi.mock("~/entities/inbox/inbox.api", async () => {
   return {
     ...actual,
     fetchInboxEntries,
-    fetchInboxEntriesWithSnapshot: async (
+    fetchUnreadInboxEntries: async (
       currentUserId?: number | null,
       options?: unknown,
       requestOptions?: unknown,
@@ -112,12 +39,11 @@ vi.mock("~/entities/inbox/inbox.api", async () => {
       )) as InboxEntry[];
       return {
         entries,
-        unreadSnapshot: buildUnreadSnapshotFromEntries(entries),
-        unreadSnapshotComplete: fetchInboxUnreadSnapshotComplete(),
-        unreadMessages: buildUnreadMessagesFromEntries(entries),
+        complete: true,
+        messages: [],
       };
     },
-    hydrateInboxEntriesFromCache,
+    hydrateInboxEntriesFromMetadata,
   };
 });
 
@@ -143,11 +69,9 @@ describe("InboxPage styling contract", () => {
   afterEach(() => {
     navigateSpy.mockReset();
     fetchInboxEntries.mockReset();
-    fetchInboxUnreadSnapshotComplete.mockReset();
-    hydrateInboxEntriesFromCache.mockReset();
+    hydrateInboxEntriesFromMetadata.mockReset();
     fetchInboxEntries.mockResolvedValue([]);
-    fetchInboxUnreadSnapshotComplete.mockReturnValue(true);
-    hydrateInboxEntriesFromCache.mockResolvedValue([]);
+    hydrateInboxEntriesFromMetadata.mockResolvedValue([]);
     useInboxStore.getState().clear();
     useMuteStore.getState().clear();
     useInstancesStore.setState({
@@ -177,7 +101,7 @@ describe("InboxPage styling contract", () => {
       },
       {
         key: "stream:10:release",
-        streamId: 10,
+        streamId: "10",
         streamName: "engineering",
         topic: "release",
         senderId: null,
@@ -257,103 +181,12 @@ describe("InboxPage styling contract", () => {
     expect(screen.getByText("Cached Alice")).toBeInTheDocument();
   });
 
-  it("syncs organization unread count from network inbox snapshot", async () => {
-    fetchInboxEntries.mockResolvedValue([
-      {
-        key: "dm:42",
-        streamId: null,
-        streamName: null,
-        topic: null,
-        senderId: 42,
-        senderName: "Alice",
-        dmSlug: "42",
-        unreadCount: 2,
-        lastMessageTimestamp: 10,
-        messageIds: [
-          "00000000-0000-4000-8000-000000000001",
-          "00000000-0000-4000-8000-000000000002",
-        ],
-      },
-      {
-        key: "stream:10:release",
-        streamId: 10,
-        streamName: "engineering",
-        topic: "release",
-        senderId: null,
-        senderName: null,
-        dmSlug: null,
-        unreadCount: 1,
-        lastMessageTimestamp: 9,
-        messageIds: ["00000000-0000-4000-8000-000000000003"],
-      },
-    ]);
-
-    render(
-      <MemoryRouter initialEntries={["/inbox"]}>
-        <Routes>
-          <Route path="/inbox" element={<InboxPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    await waitFor(() => {
-      expect(useInstancesStore.getState().getInstanceUnreadCount(TEST_INSTANCE_ID)).toBe(3);
-    });
-  });
-
-  it("does not lower organization unread count from capped network inbox snapshot", async () => {
-    useInstancesStore.getState().setInstanceUnreadCount(TEST_INSTANCE_ID, 100);
-    fetchInboxUnreadSnapshotComplete.mockReturnValue(false);
-    fetchInboxEntries.mockResolvedValue([
-      {
-        key: "dm:42",
-        streamId: null,
-        streamName: null,
-        topic: null,
-        senderId: 42,
-        senderName: "Alice",
-        dmSlug: "42",
-        unreadCount: 2,
-        lastMessageTimestamp: 10,
-        messageIds: [
-          "00000000-0000-4000-8000-000000000001",
-          "00000000-0000-4000-8000-000000000002",
-        ],
-      },
-      {
-        key: "stream:10:release",
-        streamId: 10,
-        streamName: "engineering",
-        topic: "release",
-        senderId: null,
-        senderName: null,
-        dmSlug: null,
-        unreadCount: 1,
-        lastMessageTimestamp: 9,
-        messageIds: ["00000000-0000-4000-8000-000000000003"],
-      },
-    ]);
-
-    render(
-      <MemoryRouter initialEntries={["/inbox"]}>
-        <Routes>
-          <Route path="/inbox" element={<InboxPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("Alice")).toBeInTheDocument();
-    });
-    expect(useInstancesStore.getState().getInstanceUnreadCount(TEST_INSTANCE_ID)).toBe(100);
-  });
-
   it("hides cached muted stream entries even when the topic is explicitly unmuted", () => {
     useInboxStore.setState({
       entries: [
         {
           key: "stream:10:release",
-          streamId: 10,
+          streamId: "10",
           streamName: "engineering",
           topic: "release",
           senderId: null,
@@ -372,8 +205,8 @@ describe("InboxPage styling contract", () => {
       error: null,
       staleVersion: 0,
     });
-    useMuteStore.getState().muteStream(10);
-    useMuteStore.getState().unmuteTopic(10, "release");
+    useMuteStore.getState().muteStream("10");
+    useMuteStore.getState().unmuteTopic("10", "release");
     fetchInboxEntries.mockResolvedValue([]);
 
     render(
@@ -398,7 +231,7 @@ describe("InboxPage styling contract", () => {
       entries: [
         {
           key: "stream:10:release",
-          streamId: 10,
+          streamId: "10",
           streamName: "engineering",
           topic: "release",
           senderId: null,
@@ -417,9 +250,9 @@ describe("InboxPage styling contract", () => {
       error: null,
       staleVersion: 1,
     });
-    useMuteStore.getState().muteStream(10);
+    useMuteStore.getState().muteStream("10");
     fetchInboxEntries.mockReturnValue(fetchPromise);
-    hydrateInboxEntriesFromCache.mockReturnValue(new Promise(() => {}));
+    hydrateInboxEntriesFromMetadata.mockReturnValue(new Promise(() => {}));
 
     render(
       <MemoryRouter initialEntries={["/inbox"]}>
@@ -463,7 +296,7 @@ describe("InboxPage styling contract", () => {
       error: null,
       staleVersion: 0,
     });
-    hydrateInboxEntriesFromCache.mockResolvedValue([
+    hydrateInboxEntriesFromMetadata.mockResolvedValue([
       {
         key: "dm:42",
         streamId: null,
@@ -531,7 +364,7 @@ describe("InboxPage styling contract", () => {
       error: null,
       staleVersion: 0,
     });
-    hydrateInboxEntriesFromCache.mockResolvedValue([
+    hydrateInboxEntriesFromMetadata.mockResolvedValue([
       {
         key: "dm:42",
         streamId: null,
@@ -666,7 +499,7 @@ describe("InboxPage styling contract", () => {
       resolveHydrate = resolve;
     });
 
-    hydrateInboxEntriesFromCache
+    hydrateInboxEntriesFromMetadata
       .mockReturnValueOnce(staleHydrate)
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
@@ -764,7 +597,7 @@ describe("InboxPage styling contract", () => {
       resolveNewFetch = resolve;
     });
 
-    hydrateInboxEntriesFromCache.mockResolvedValue([]);
+    hydrateInboxEntriesFromMetadata.mockResolvedValue([]);
     fetchInboxEntries.mockReturnValueOnce(oldFetch).mockReturnValueOnce(newFetch);
 
     useInstancesStore.setState({

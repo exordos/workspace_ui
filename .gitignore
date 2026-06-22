@@ -49,6 +49,7 @@ yarn-error.log*
 # ── Testing ──────────────────────────────────────────────
 coverage/
 e2e/results/
+.playwright-mcp/
 playwright-report/
 test-results/
 blob-report/
@@ -65,4 +66,3 @@ packages/electron/release/
 *.snap
 *.msi
 *.nsis
-

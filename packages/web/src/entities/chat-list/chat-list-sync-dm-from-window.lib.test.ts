@@ -147,12 +147,12 @@ describe("syncDmSidebarFromLoadedMessages", () => {
     expect(dm?.lastMessage).toBe("");
   });
 
-  it("indexes unread DM message locations even when preview sync is skipped", () => {
+  it("indexes loaded DM message locations even when preview sync is skipped", () => {
     syncDmSidebarFromLoadedMessages({
       messages: [
         dmMessage({
           id: "00000000-0000-4000-8000-000000000777",
-          flags: ["unread"],
+          read: false,
         }),
       ],
       dmKey: "10,20",

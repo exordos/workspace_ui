@@ -5,8 +5,9 @@
  *   import { buildMessageIdMap, createMessageIdSet } from "~/shared/lib/message-id-index.lib";
  */
 
-import { numericUserIdOrNull, type UserId } from "./user-id.lib";
+import { isMessageFromCurrentUser } from "./message-author.lib";
 import type { MessageId } from "./message-id.lib";
+import type { UserId } from "./user-id.lib";
 
 export function buildMessageIdMap<T extends { id: MessageId }>(
   messages: readonly T[],
@@ -27,8 +28,9 @@ export function createMessageIdSet(messages: readonly { id: MessageId }[]): Set<
 }
 
 export interface ViewportUnreadMessageSlice {
-  flags?: string[];
   sender_id: number;
+  is_own?: boolean;
+  read?: boolean;
 }
 
 /** Filters viewport unread ids using a pre-built id index — O(V) not O(V×M). */
@@ -37,15 +39,10 @@ export function filterViewportUnreadIdsForReadDispatch(
   messageById: ReadonlyMap<MessageId, ViewportUnreadMessageSlice>,
   currentUserId: UserId | null,
 ): MessageId[] {
-  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
   const out: MessageId[] = [];
   for (const id of viewportIds) {
     const msg = messageById.get(id);
-    if (
-      msg != null &&
-      !(msg.flags ?? []).includes("read") &&
-      (numericCurrentUserId == null || msg.sender_id !== numericCurrentUserId)
-    ) {
+    if (msg != null && msg.read !== true && !isMessageFromCurrentUser(msg, currentUserId)) {
       out.push(id);
     }
   }

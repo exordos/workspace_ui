@@ -39,12 +39,6 @@ vi.mock("./layout-reconnect-light.lib", () => ({
   refreshLayoutReconnectLight: (...args: unknown[]) => lightRefreshMock(...args),
 }));
 
-const ensureMentionsUnreadSyncedMock = vi.fn().mockResolvedValue(undefined);
-
-vi.mock("~/entities/chat-list/chat-list-mentions-sync.lib", () => ({
-  ensureMentionsUnreadSynced: (...args: unknown[]) => ensureMentionsUnreadSyncedMock(...args),
-}));
-
 vi.mock("~/shared/api/messenger-users", () => ({
   fetchRealmPresence: () => fetchRealmPresenceMock(),
 }));
@@ -54,7 +48,6 @@ vi.mock("~/entities/chat-list/chat-list.model", () => ({
     getState: () => ({
       currentUserId: 1,
       setFromMessages: vi.fn(),
-      reconcileUnreadFromMessages: vi.fn(),
     }),
   },
 }));
@@ -82,7 +75,6 @@ describe("scheduleLayoutReconnectRefresh", () => {
     resetLayoutReconnectCoordinatorForTests();
     runChatListBootstrapMock.mockResolvedValue({ mode: "none", latestMessageIdHint: null });
     folderSyncRefreshMock.mockClear();
-    ensureMentionsUnreadSyncedMock.mockClear();
   });
 
   afterEach(() => {
@@ -116,9 +108,6 @@ describe("scheduleLayoutReconnectRefresh", () => {
     expect(runChatListBootstrapMock).not.toHaveBeenCalled();
     expect(lightRefreshMock).toHaveBeenCalledTimes(1);
     expect(folderSyncRefreshMock).not.toHaveBeenCalled();
-    expect(ensureMentionsUnreadSyncedMock).toHaveBeenCalledWith(
-      expect.objectContaining({ currentInstanceId: "inst-1", forceRefresh: true }),
-    );
   });
 
   it("escalates light then full to full path", async () => {
@@ -136,8 +125,5 @@ describe("scheduleLayoutReconnectRefresh", () => {
     expect(runChatListBootstrapMock).toHaveBeenCalledTimes(1);
     expect(lightRefreshMock).not.toHaveBeenCalled();
     expect(stageReconnectStreamPreviewsMock).toHaveBeenCalledTimes(1);
-    expect(ensureMentionsUnreadSyncedMock).toHaveBeenCalledWith(
-      expect.objectContaining({ currentInstanceId: "inst-1", forceRefresh: true }),
-    );
   });
 });

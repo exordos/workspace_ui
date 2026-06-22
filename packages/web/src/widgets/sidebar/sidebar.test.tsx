@@ -697,25 +697,6 @@ describe("Sidebar", () => {
       dmUnreadCountsByInstance: {},
       activeOrgEpoch: 0,
     });
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 11, name: "Engineering" }]);
-    useChatListStore.getState().reconcileUnreadFromSnapshot(
-      {
-        streams: [
-          {
-            streamId: 11,
-            topic: "incident",
-            unreadMessageIds: [
-              "00000000-0000-4000-8000-000000000001",
-              "00000000-0000-4000-8000-000000000002",
-            ],
-          },
-        ],
-        dms: [],
-        totalCount: 2,
-        mentionMessageIds: [],
-      },
-      1,
-    );
     useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
     const streamWithTopics = {
       ...STREAM_CHAT,
@@ -739,13 +720,9 @@ describe("Sidebar", () => {
     await waitFor(() => {
       expect(markTopicAsReadMock).toHaveBeenCalledWith(11, "incident");
     });
-    expect(
-      useChatListStore.getState().streamsMap.get(11)?.topics.get("incident")?.unreadCount,
-    ).toBe(0);
-    expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(0);
   });
 
-  it("does not sync organization count when topic mark-as-read API fails", async () => {
+  it("keeps topic unread badge rendered when topic mark-as-read API fails", async () => {
     markTopicAsReadMock.mockResolvedValue(false);
     useInstancesStore.setState({
       instances: [
@@ -761,25 +738,6 @@ describe("Sidebar", () => {
       dmUnreadCountsByInstance: {},
       activeOrgEpoch: 0,
     });
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 11, name: "Engineering" }]);
-    useChatListStore.getState().reconcileUnreadFromSnapshot(
-      {
-        streams: [
-          {
-            streamId: 11,
-            topic: "incident",
-            unreadMessageIds: [
-              "00000000-0000-4000-8000-000000000001",
-              "00000000-0000-4000-8000-000000000002",
-            ],
-          },
-        ],
-        dms: [],
-        totalCount: 2,
-        mentionMessageIds: [],
-      },
-      1,
-    );
     useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
     const streamWithTopics = {
       ...STREAM_CHAT,

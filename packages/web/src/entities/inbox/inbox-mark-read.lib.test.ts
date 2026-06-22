@@ -6,7 +6,7 @@ import type { InboxEntry } from "./inbox.types";
 
 const STREAM_ENTRY: InboxEntry = {
   key: "stream:10:general",
-  streamId: 10,
+  streamId: "10",
   streamName: "engineering",
   topic: "general",
   senderId: null,
@@ -82,7 +82,7 @@ describe("removeInboxEntriesForMarkReadTarget", () => {
   it("removes all stream topics for stream-wide mark read", () => {
     const result = removeInboxEntriesForMarkReadTarget(
       entries,
-      { type: "stream", streamId: 10 },
+      { type: "stream", streamId: "10" },
       7,
     );
     expect(result).toHaveLength(1);
@@ -99,7 +99,7 @@ describe("removeInboxEntriesForMarkReadTarget", () => {
     };
     const result = removeInboxEntriesForMarkReadTarget(
       [STREAM_ENTRY, otherTopic, DM_ENTRY],
-      { type: "topic", streamId: 10, topic: "general" },
+      { type: "topic", streamId: "10", topic: "general" },
       7,
     );
     expect(result.map((e) => e.key)).toEqual(["stream:10:bugs", "dm:42"]);

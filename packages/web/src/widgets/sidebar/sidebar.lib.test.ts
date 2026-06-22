@@ -10,6 +10,8 @@ import {
   resolveStreamRouteFromSlug,
 } from "./sidebar.lib";
 
+const STREAM_UUID = "550e8400-e29b-41d4-a716-446655440000";
+
 describe("isSidebarSystemFolderScope", () => {
   it("includes system rail ids", () => {
     expect(isSidebarSystemFolderScope(SYSTEM_ALL_FOLDER_ID)).toBe(true);
@@ -23,27 +25,27 @@ describe("isSidebarSystemFolderScope", () => {
 });
 
 describe("resolveStreamRouteFromSlug", () => {
-  it("keeps slug name only as display fallback until canonical stream name is known", () => {
-    const parsedStream = parseStreamSlug("14-test-slon");
+  it("keeps stream uuid as display fallback until canonical stream name is known", () => {
+    const parsedStream = parseStreamSlug(STREAM_UUID);
     expect(parsedStream).not.toBeNull();
 
     expect(resolveStreamRouteFromSlug(parsedStream, new Map())).toEqual({
-      resolvedStreamName: "test-slon",
+      resolvedStreamName: STREAM_UUID,
       resolvedCanonicalStreamName: null,
-      resolvedStreamId: 14,
+      resolvedStreamId: STREAM_UUID,
     });
   });
 
-  it("prefers authoritative stream name from streamsMap over lowercased slug", () => {
-    const parsedStream = parseStreamSlug("14-test-slon");
+  it("prefers authoritative stream name from streamsMap over uuid route segment", () => {
+    const parsedStream = parseStreamSlug(STREAM_UUID);
     expect(parsedStream).not.toBeNull();
 
     expect(
-      resolveStreamRouteFromSlug(parsedStream, new Map([[14, { name: "Test Slon" }]])),
+      resolveStreamRouteFromSlug(parsedStream, new Map([[STREAM_UUID, { name: "Test Slon" }]])),
     ).toEqual({
       resolvedStreamName: "Test Slon",
       resolvedCanonicalStreamName: "Test Slon",
-      resolvedStreamId: 14,
+      resolvedStreamId: STREAM_UUID,
     });
   });
 });

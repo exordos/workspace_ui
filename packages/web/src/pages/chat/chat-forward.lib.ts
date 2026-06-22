@@ -1,4 +1,5 @@
 import type { MockMessage } from "~/shared/api/messenger.types";
+import { messageAuthorId } from "~/shared/lib/message-author.lib";
 import { buildWorkspaceQuoteBlock } from "~/shared/lib/message-quote.lib";
 import { buildWorkspaceQuoteHeader } from "~/shared/lib/messenger-quote-header.lib";
 import { buildMessengerMessageWebPermalink } from "~/shared/lib/messenger-web-permalink.lib";
@@ -12,6 +13,9 @@ export type ForwardableMessage = Pick<
   | "id"
   | "sender_full_name"
   | "sender_id"
+  | "author_uuid"
+  | "sender_uuid"
+  | "is_own"
   | "content"
   | "markdown_source"
   | "stream_uuid"
@@ -53,7 +57,7 @@ function buildSingleForwardQuote(
       : null;
   const header = buildWorkspaceQuoteHeader({
     senderName: message.sender_full_name,
-    senderId: message.sender_id,
+    senderId: messageAuthorId(message),
     wroteLabel: permalinkOptions?.wroteLabel ?? "wrote",
     permalinkUrl,
   });

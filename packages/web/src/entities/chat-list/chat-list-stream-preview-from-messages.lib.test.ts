@@ -11,10 +11,10 @@ import {
   mergeStreamSidebarPreviewsFromMessages,
 } from "./chat-list-stream-preview-from-messages.lib";
 
-function streamShell(streamId: number, ts: number): StreamEntryInternal {
+function streamShell(streamUuid: string, ts: number): StreamEntryInternal {
   return {
-    stream_id: streamId,
-    name: `channel-${streamId}`,
+    streamUuid,
+    name: `channel-${streamUuid}`,
     lastMessage: "",
     time: "",
     ts,
@@ -33,7 +33,7 @@ describe("chat-list-stream-preview-from-messages.lib", () => {
   });
 
   it("mergeStreamSidebarPreviewsFromMessages updates preview without changing unread", () => {
-    const streamId = 10;
+    const streamId = "00000000-0000-4000-8000-000000000010";
     const topic = "general";
     const existing = streamShell(streamId, 100);
     existing.topics.set(topic, {
@@ -48,7 +48,7 @@ describe("chat-list-stream-preview-from-messages.lib", () => {
     const msg = streamMessage({
       id: 200,
       type: "stream",
-      stream_id: streamId,
+      stream_uuid: streamId,
       subject: topic,
       content: "Hello channel",
       timestamp: 150,
@@ -64,7 +64,7 @@ describe("chat-list-stream-preview-from-messages.lib", () => {
   });
 
   it("does not lower sidebar stream unread when batch has only read stream messages", () => {
-    const streamId = 20;
+    const streamId = "00000000-0000-4000-8000-000000000020";
     const existing = streamShell(streamId, 50);
     existing.topics.set("t", {
       subject: "t",
@@ -78,7 +78,7 @@ describe("chat-list-stream-preview-from-messages.lib", () => {
     const readMsg = streamMessage({
       id: 99,
       type: "stream",
-      stream_id: streamId,
+      stream_uuid: streamId,
       subject: "t",
       content: "read only",
       timestamp: 60,

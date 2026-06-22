@@ -113,7 +113,7 @@ export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmIdParam, d
             return (
               <Link
                 key={`dm-${chat.id}`}
-                to={`/dm/${chat.slug}`}
+                to={chat.streamUuid != null ? `/stream/${chat.streamUuid}` : `/dm/${chat.slug}`}
                 className={`flex items-start ${
                   isCompactDensity
                     ? "gap-2 rounded-md px-2 py-1.5"

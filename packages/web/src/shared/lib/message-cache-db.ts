@@ -491,7 +491,15 @@ export async function patchMessageFlagsInCache(options: {
     if (op === "add" && !has) nextFlags = [...flags, flag];
     else if (op === "remove" && has) nextFlags = flags.filter((f) => f !== flag);
     else nextFlags = flags;
-    const nextMsg: MockMessage = { ...row.message, flags: nextFlags };
+    const booleanPatch = messageFlagBooleanPatch(row.message, flag, op === "add");
+    if (nextFlags === flags && booleanPatch == null) {
+      continue;
+    }
+    const nextMsg: MockMessage = {
+      ...row.message,
+      flags: nextFlags,
+      ...booleanPatch,
+    };
     toWrite.push({
       ...row,
       message: nextMsg,
@@ -510,6 +518,17 @@ export async function patchMessageFlagsInCache(options: {
       store.put(r);
     }
   });
+}
+
+function messageFlagBooleanPatch(
+  message: MockMessage,
+  flag: string,
+  value: boolean,
+): Partial<MockMessage> | null {
+  if (flag === "read") return message.read === value ? null : { read: value };
+  if (flag === "starred") return message.starred === value ? null : { starred: value };
+  if (flag === "pinned") return message.pinned === value ? null : { pinned: value };
+  return null;
 }
 
 export async function patchMessageReactionInCache(options: {

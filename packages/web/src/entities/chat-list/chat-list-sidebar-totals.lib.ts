@@ -1,9 +1,3 @@
-/**
- * Sidebar badge totals derived from chat-list maps (O(streams×topics + dms)).
- *
- * Computed when maps change, not on every unrelated store field update.
- */
-import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 
 export interface SidebarUnreadMutePredicates {
@@ -17,9 +11,7 @@ export function computeSidebarUnreadTotals(
 ): { sidebarStreamsUnread: number; sidebarDmsUnread: number } {
   let sidebarStreamsUnread = 0;
   for (const stream of streamsMap.values()) {
-    for (const topic of stream.topics.values()) {
-      sidebarStreamsUnread += topic.unreadCount;
-    }
+    sidebarStreamsUnread += stream.unreadCount ?? 0;
   }
   let sidebarDmsUnread = 0;
   for (const dm of dmsMap.values()) {
@@ -38,12 +30,7 @@ export function computeSidebarUnreadTotalsWithMute(
     if (predicates.isStreamMuted?.(stream.streamUuid)) {
       continue;
     }
-    for (const topic of stream.topics.values()) {
-      if (predicates.isEffectivelyMuted?.(stream.streamUuid, topic.subject)) {
-        continue;
-      }
-      sidebarStreamsUnread += topic.unreadCount;
-    }
+    sidebarStreamsUnread += stream.unreadCount ?? 0;
   }
 
   let sidebarDmsUnread = 0;
@@ -51,30 +38,4 @@ export function computeSidebarUnreadTotalsWithMute(
     sidebarDmsUnread += dm.unreadCount;
   }
   return { sidebarStreamsUnread, sidebarDmsUnread };
-}
-
-export function applySidebarUnreadDeltas(
-  current: { sidebarStreamsUnread: number; sidebarDmsUnread: number },
-  delta: { streams?: number; dms?: number },
-): { sidebarStreamsUnread: number; sidebarDmsUnread: number } {
-  return {
-    sidebarStreamsUnread: current.sidebarStreamsUnread + (delta.streams ?? 0),
-    sidebarDmsUnread: current.sidebarDmsUnread + (delta.dms ?? 0),
-  };
-}
-
-export function countMentionsUnread(
-  messages: readonly WorkspaceRawMessage[] | null,
-  currentUserId: number | null,
-): number {
-  if (messages == null) return 0;
-  let count = 0;
-  for (const message of messages) {
-    if (currentUserId != null && message.sender_id === currentUserId) continue;
-    const flags = message.flags ?? [];
-    if (flags.includes("mentioned") && !flags.includes("read")) {
-      count += 1;
-    }
-  }
-  return count;
 }

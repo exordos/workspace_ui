@@ -21,10 +21,8 @@ import {
   parseRegisterQueueMetadata,
   toOwnAvatarCapabilities,
 } from "./messenger-register-queue-result.lib";
-import { parseUnreadDmMessagesCount, parseUnreadMessagesCount } from "./messenger-unread.lib";
 import {
   buildUserTopicsCacheKey,
-  getCachedUserTopicsForKey,
   getCurrentUserTopicsCacheKey,
   setCachedUserTopicsForKey,
 } from "./messenger-user-topics.internal";
@@ -34,7 +32,6 @@ import type {
   RegisterQueueResult,
   MessengerCredentials,
   WorkspaceOwnAvatarCapabilities,
-  MessengerUserTopic,
 } from "./messenger.types";
 
 export { parseSubscriptions } from "./messenger-queue-parse-subscription.lib";
@@ -107,7 +104,6 @@ export async function registerQueue(
     server_avatar_changes_disabled?: unknown;
     user_settings?: unknown;
     user_status?: unknown;
-    unread_msgs?: unknown;
     starred_messages?: unknown;
   } | null;
   if (data == null || typeof data !== "object") {
@@ -191,7 +187,6 @@ export async function registerQueueForCredentials(
     server_avatar_changes_disabled?: unknown;
     user_settings?: unknown;
     user_status?: unknown;
-    unread_msgs?: unknown;
   };
   try {
     data = (await response.json()) as typeof data;
@@ -257,87 +252,6 @@ export async function deleteQueue(
   } catch {
     // Best-effort cleanup.
   }
-}
-
-const UNREAD_ONLY_NARROW = [{ operator: "is", operand: "unread" }] as const;
-const UNREAD_DM_NARROW = [
-  { operator: "is", operand: "unread" },
-  { operator: "is", operand: "dm" },
-] as const;
-
-async function fetchUnreadMessagesCountForCredentialsWithNarrow(
-  credentials: MessengerCredentials,
-  narrow: readonly { operator: string; operand: string }[],
-  contextLabel: string,
-  options?: { signal?: AbortSignal },
-  parseCount: (payload: unknown) => number | null = parseUnreadMessagesCount,
-): Promise<number | null> {
-  let base: string;
-  try {
-    base = getValidatedCredentialsRealm(credentials, contextLabel);
-  } catch {
-    return null;
-  }
-  const url = new URL(`${base}${env.MESSENGER_API_V1_PATH}/messages`);
-  url.searchParams.set("anchor", "newest");
-  url.searchParams.set("num_before", "5000");
-  url.searchParams.set("num_after", "0");
-  url.searchParams.set("narrow", JSON.stringify(narrow));
-  url.searchParams.set("allow_empty_topic_name", "true");
-  url.searchParams.set("client_gravatar", "true");
-  const authValue = getBasicAuthValue({
-    login: credentials.login,
-    apiKey: credentials.apiKey,
-  });
-  if (authValue == null) return null;
-
-  let response: Response;
-  try {
-    response = await fetch(url.toString(), {
-      method: "GET",
-      headers: {
-        Authorization: authValue,
-      },
-      signal: options?.signal,
-    });
-  } catch {
-    return null;
-  }
-
-  if (!response.ok) return null;
-
-  try {
-    const payload = (await response.json()) as unknown;
-    return parseCount(payload);
-  } catch {
-    return null;
-  }
-}
-
-export async function fetchUnreadMessagesCountForCredentials(
-  credentials: MessengerCredentials,
-  options?: { signal?: AbortSignal },
-): Promise<number | null> {
-  return fetchUnreadMessagesCountForCredentialsWithNarrow(
-    credentials,
-    UNREAD_ONLY_NARROW,
-    "fetchUnreadMessagesCountForCredentials",
-    options,
-  );
-}
-
-/** Unread direct messages only (personal chats) for inactive-instance app icon badges. */
-export async function fetchUnreadDmMessagesCountForCredentials(
-  credentials: MessengerCredentials,
-  options?: { signal?: AbortSignal },
-): Promise<number | null> {
-  return fetchUnreadMessagesCountForCredentialsWithNarrow(
-    credentials,
-    UNREAD_DM_NARROW,
-    "fetchUnreadDmMessagesCountForCredentials",
-    options,
-    parseUnreadDmMessagesCount,
-  );
 }
 
 /** Long-polls for events; supports timeout and `AbortSignal`. */
@@ -428,13 +342,4 @@ export async function getEventsForCredentials(
     cleanup();
     throw e;
   }
-}
-
-/** Legacy in-memory register cache accessor for callers not yet on the bootstrap pipeline. */
-export function fetchUserTopics(): Promise<MessengerUserTopic[]> {
-  const cacheKey = getCurrentUserTopicsCacheKey();
-  if (!cacheKey) {
-    return Promise.resolve([]);
-  }
-  return Promise.resolve(getCachedUserTopicsForKey(cacheKey));
 }

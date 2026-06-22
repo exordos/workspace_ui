@@ -36,14 +36,27 @@ export function patchMessagesFlags(
     const flags = message.flags ?? [];
     const hasFlag = flags.includes(flag);
     if (op === "add") {
-      if (hasFlag) continue;
+      const booleanPatch = flagBooleanPatch(message, flag, true);
+      if (hasFlag && booleanPatch == null) continue;
       next ??= messages.slice();
-      next[i] = { ...message, flags: [...flags, flag] };
+      next[i] = { ...message, flags: hasFlag ? flags : [...flags, flag], ...booleanPatch };
       continue;
     }
-    if (!hasFlag) continue;
+    const booleanPatch = flagBooleanPatch(message, flag, false);
+    if (!hasFlag && booleanPatch == null) continue;
     next ??= messages.slice();
-    next[i] = { ...message, flags: flags.filter((f) => f !== flag) };
+    next[i] = { ...message, flags: flags.filter((f) => f !== flag), ...booleanPatch };
   }
   return next ?? (messages as MockMessage[]);
+}
+
+function flagBooleanPatch(
+  message: MockMessage,
+  flag: string,
+  value: boolean,
+): Partial<MockMessage> | null {
+  if (flag === "read") return message.read === value ? null : { read: value };
+  if (flag === "starred") return message.starred === value ? null : { starred: value };
+  if (flag === "pinned") return message.pinned === value ? null : { pinned: value };
+  return null;
 }

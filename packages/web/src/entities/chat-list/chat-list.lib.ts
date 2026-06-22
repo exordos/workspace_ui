@@ -38,20 +38,6 @@ interface StreamTopicEntry {
   lastMessageId?: MessageId;
 }
 
-export function isUnread(m: WorkspaceRawMessage): boolean {
-  return !m.flags?.includes("read");
-}
-
-/** Unread for sidebar/UX: message lacks "read" and is not from the current user. */
-export function isUnreadFromOthers(m: WorkspaceRawMessage, currentUserId: UserId | null): boolean {
-  if (!isUnread(m)) return false;
-  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
-  if (numericCurrentUserId != null && m.sender_id === numericCurrentUserId) return false;
-  return true;
-}
-
-export { isUnreadMentionFromOthers } from "./chat-list-mentions.lib";
-
 export function messageToStreamEntry(m: WorkspaceRawMessage): {
   stream: Omit<StreamEntryInternal, "topics"> & { topics: Map<string, StreamTopicEntry> };
   topic: StreamTopicEntry;
@@ -62,7 +48,8 @@ export function messageToStreamEntry(m: WorkspaceRawMessage): {
   const lastMessageSenderName =
     trimmedSenderName && trimmedSenderName.length > 0 ? trimmedSenderName : undefined;
   const time = formatMessageTime(m.timestamp);
-  const name = typeof m.display_recipient === "string" ? m.display_recipient : String(m.stream_uuid);
+  const name =
+    typeof m.display_recipient === "string" ? m.display_recipient : String(m.stream_uuid);
   const subject = normalizeTopicForIdentity(m.subject ?? "");
   const topicUuid = typeof m.topic_uuid === "string" ? m.topic_uuid : undefined;
   const topicEntry: StreamTopicEntry = {
@@ -72,7 +59,7 @@ export function messageToStreamEntry(m: WorkspaceRawMessage): {
     lastMessageSenderName,
     time,
     ts: m.timestamp,
-    unreadCount: isUnread(m) ? 1 : 0,
+    unreadCount: 0,
     lastMessageId: m.id,
   };
   return {
@@ -83,6 +70,7 @@ export function messageToStreamEntry(m: WorkspaceRawMessage): {
       lastMessageSenderName,
       time,
       ts: m.timestamp,
+      unreadCount: 0,
       topics: new Map([[subject, topicEntry]]),
     },
     topic: topicEntry,
@@ -193,54 +181,10 @@ export function messageToDmEntry(
     lastMessage: truncatePreview(m.content),
     time: formatMessageTime(m.timestamp),
     ts: m.timestamp,
-    unreadCount: isUnread(m) ? 1 : 0,
+    unreadCount: 0,
     avatar_url: identity.avatar_url,
     lastMessageId: m.id,
   };
-}
-
-function applyUnreadCountsToSidebarMaps(
-  streamsByKey: Map<string, StreamEntryInternal>,
-  dmsByKey: Map<string, DmEntryInternal>,
-  streamUnread: Map<string, number>,
-  dmUnread: Map<string, number>,
-): void {
-  for (const [streamId, stream] of streamsByKey) {
-    let nextTopics: Map<string, StreamTopicEntry> | null = null;
-    for (const [topicKey, topic] of stream.topics) {
-      const nextUnreadCount = streamUnread.get(`${streamId}\t${topicKey}`) ?? 0;
-      if (topic.unreadCount === nextUnreadCount) continue;
-      nextTopics ??= new Map(stream.topics);
-      nextTopics.set(topicKey, { ...topic, unreadCount: nextUnreadCount });
-    }
-    if (nextTopics != null) {
-      streamsByKey.set(streamId, { ...stream, topics: nextTopics });
-    }
-  }
-  for (const [dmKey, dm] of dmsByKey) {
-    const nextUnreadCount = dmUnread.get(dmKey) ?? 0;
-    if (dm.unreadCount === nextUnreadCount) continue;
-    dmsByKey.set(dmKey, { ...dm, unreadCount: nextUnreadCount });
-  }
-}
-
-function accumulateSidebarUnreadFromMessage(
-  m: WorkspaceRawMessage,
-  currentUserId: UserId | null,
-  streamUnread: Map<string, number>,
-  dmUnread: Map<string, number>,
-): void {
-  if (!isUnreadFromOthers(m, currentUserId)) return;
-  if (m.type === "stream" && m.stream_uuid != null) {
-    const subject = normalizeTopicForIdentity(m.subject ?? "");
-    const key = `${m.stream_uuid}\t${subject}`;
-    streamUnread.set(key, (streamUnread.get(key) ?? 0) + 1);
-    return;
-  }
-  if (m.type === "private" && Array.isArray(m.display_recipient)) {
-    const key = dmConversationKey(m.display_recipient, currentUserId);
-    dmUnread.set(key, (dmUnread.get(key) ?? 0) + 1);
-  }
 }
 
 function upsertStreamFromMessage(
@@ -320,13 +264,14 @@ function mapInternalStreamToSidebar(s: StreamEntryInternal): StreamWithLast {
   const topics = Array.from(s.topics.values())
     .sort((a, b) => b.ts - a.ts)
     .map((t) => ({
+      ...(t.topicUuid != null ? { topicUuid: t.topicUuid } : {}),
       subject: t.subject,
       lastMessage: t.lastMessage,
       lastMessageSenderName: t.lastMessageSenderName,
       time: t.time,
       badge: t.unreadCount > 0 ? t.unreadCount : undefined,
     }));
-  const badge = topics.reduce((sum, t) => sum + (t.badge ?? 0), 0);
+  const badge = s.unreadCount ?? 0;
   return {
     private: s.private,
     streamUuid: s.streamUuid,
@@ -358,7 +303,7 @@ function mapInternalDmToSidebar(x: DmEntryInternal): Extract<SidebarChat, { type
 /**
  * Builds lists of streams with topics and DMs with slug from latest messenger messages.
  * Streams by stream_uuid, topics by subject; stream last message date — max across any topic.
- * Unread: messages without 'read' in flags; counter per stream/topic and per DM.
+ * Unread counts are not derived from messages; server metadata supplies them separately.
  */
 export function buildSidebarFromMessages(
   messages: WorkspaceRawMessage[],
@@ -370,18 +315,13 @@ export function buildSidebarFromMessages(
   streamsMap: Map<string, StreamEntryInternal>;
   dmsMap: Map<string, DmEntryInternal>;
 } {
-  const streamUnread = new Map<string, number>();
-  const dmUnread = new Map<string, number>();
   const streamsByKey = new Map<string, StreamEntryInternal>();
   const dmsByKey = new Map<string, DmEntryInternal>();
 
   for (const m of messages) {
-    accumulateSidebarUnreadFromMessage(m, currentUserId, streamUnread, dmUnread);
     if (upsertStreamFromMessage(m, streamsByKey)) continue;
     upsertDmFromMessage(m, currentUserId, avatarUrlByUserId, dmsByKey);
   }
-
-  applyUnreadCountsToSidebarMaps(streamsByKey, dmsByKey, streamUnread, dmUnread);
 
   const streams = Array.from(streamsByKey.values())
     .sort((a, b) => b.ts - a.ts)

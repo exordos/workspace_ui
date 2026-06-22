@@ -10,13 +10,13 @@ import {
 import {
   fetchLatestMessagesForSidebarTopics,
   fetchStreamChannelMessagesForSidebarTopics,
+  type SidebarTopicPreviewTarget,
 } from "~/shared/api/messenger-sidebar-preview.lib";
 import { fetchStreamTopics } from "~/shared/api/messenger-streams";
-import type { MessengerUnreadMessagesSnapshot } from "~/shared/api/messenger-unread.lib";
 import { guard } from "~/shared/lib/guards";
 import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
 
-export type StreamSidebarTopicsHydrateReason = "expand" | "visible" | "unread-register";
+export type StreamSidebarTopicsHydrateReason = "expand" | "visible";
 
 const MAX_CONCURRENT_HYDRATES = 3;
 const TOPIC_PREVIEW_BACKFILL_LIMIT = 24;
@@ -106,23 +106,31 @@ function streamHasSidebarTopics(streamId: string): boolean {
 function collectStreamTopicsMissingPreview(
   streamId: string,
   limit = TOPIC_PREVIEW_BACKFILL_LIMIT,
-): string[] {
+): SidebarTopicPreviewTarget[] {
   const entry = useChatListStore.getState().streamsMap.get(streamId);
   if (entry == null) {
     return [];
   }
 
   return Array.from(entry.topics.values())
-    .filter((topic) => topic.ts <= 0 || topic.lastMessage.trim().length === 0)
+    .filter(
+      (topic) =>
+        topic.topicUuid != null &&
+        topic.topicUuid.trim().length > 0 &&
+        (topic.ts <= 0 || topic.lastMessage.trim().length === 0),
+    )
     .slice(0, limit)
-    .map((topic) => topic.subject);
+    .map((topic) => ({
+      topicUuid: topic.topicUuid!,
+      subject: topic.subject,
+    }));
 }
 
 function hasNonEmptyPreviewText(value: string | undefined): boolean {
   return (value?.trim() ?? "").length > 0;
 }
 
-/** Topic rows from API shells or unread without a message preview yet. */
+/** Topic rows from API shells without a message preview yet. */
 function streamHasTopicsNeedingPreview(streamId: string): boolean {
   const entry = useChatListStore.getState().streamsMap.get(streamId);
   if (entry == null) return false;
@@ -295,32 +303,6 @@ export function requestStreamSidebarTopicListHydrate(streamId: string): Promise<
   return promise;
 }
 
-/** Enqueues lazy topic hydrate for register-reported unread on channels still missing topic rows. */
-export function queuePriorityStreamSidebarTopicsHydrate(
-  unreadSnapshot?: MessengerUnreadMessagesSnapshot | null,
-): void {
-  if (unreadSnapshot != null) {
-    const { streamsMap } = useChatListStore.getState();
-    const seen = new Set<string>();
-    for (const bucket of unreadSnapshot.streams) {
-      if (seen.has(bucket.streamId)) continue;
-      seen.add(bucket.streamId);
-      const entry = streamsMap.get(bucket.streamId);
-      if (entry?.topics.size === 0) {
-        void requestStreamSidebarTopicsHydrate(bucket.streamId, "unread-register");
-      }
-    }
-    return;
-  }
-
-  for (const stream of useChatListStore.getState().streams()) {
-    const topicCount = stream.topics?.length ?? 0;
-    if ((stream.badge ?? 0) > 0 && topicCount === 0) {
-      void requestStreamSidebarTopicsHydrate(stream.streamUuid, "unread-register");
-    }
-  }
-}
-
 /**
  * Fetches recent messages for one channel and merges topic previews into chat-list store.
  * Dedupes in-flight and successful hydrates; retries when API returns no messages.
@@ -339,12 +321,11 @@ export function requestStreamSidebarTopicsHydrate(
     return existing;
   }
 
-  const priority = reason === "unread-register";
   const controller = new AbortController();
   inFlightControllers.set(scoped.key, controller);
 
   const promise = (async () => {
-    await acquireHydrateSlot(priority);
+    await acquireHydrateSlot(false);
     try {
       if (!shouldHydrateStreamSidebarTopics(normalizedStreamId, scoped.key)) {
         return;

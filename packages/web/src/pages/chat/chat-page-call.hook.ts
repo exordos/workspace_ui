@@ -24,8 +24,9 @@ export interface UseChatPageCallOptions {
   partnerUserFullName: string | undefined;
   activeDmUserIds: UserId[] | null;
   activeStream: string | null;
-  activeStreamId: number | null;
+  activeStreamUuid: string | null;
   activeTopic: string | null;
+  activeTopicUuid: string | null;
   currentUserId: UserId | null;
   setSendError: (error: string | null) => void;
   navigateToDm: (targetUserId: UserId) => void;
@@ -46,8 +47,9 @@ export function useChatPageCall(options: UseChatPageCallOptions): UseChatPageCal
     partnerUserFullName,
     activeDmUserIds,
     activeStream,
-    activeStreamId,
+    activeStreamUuid,
     activeTopic,
+    activeTopicUuid,
     currentUserId,
     setSendError,
     navigateToDm,
@@ -63,10 +65,11 @@ export function useChatPageCall(options: UseChatPageCallOptions): UseChatPageCal
         isDmView,
         activeDmUserIds,
         activeStream,
-        activeStreamId,
+        activeStreamUuid,
         activeTopic,
+        activeTopicUuid,
       }),
-    [isDmView, activeDmUserIds, activeStream, activeStreamId, activeTopic],
+    [isDmView, activeDmUserIds, activeStream, activeStreamUuid, activeTopic, activeTopicUuid],
   );
 
   const canStartCall = useMemo(

@@ -81,9 +81,9 @@ export function pickNewestDmMessageForKey(
 export function syncDmSidebarFromLoadedMessages(
   options: SyncDmSidebarFromLoadedMessagesOptions,
 ): void {
-  // Index unread message locations even when we skip preview sync (needed for update_message_flags(read)).
+  // Index loaded message locations even when we skip preview sync.
   const rawAll = options.messages.map((m) => mockMessageToRawMessage(m));
-  useChatListStore.getState().upsertUnreadMessageLocations(rawAll);
+  useChatListStore.getState().upsertMessageLocations(rawAll);
 
   if (!shouldSyncDmPreviewFromWindow(options)) {
     logChatListFlow("chatList: skip DM preview sync from opened chat", {

@@ -1,45 +1,31 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
-import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
-import { testMessageId, testMessageOrdinal } from "~/test/factories";
 import {
   syncUnreadSurfacesFromDelta,
   syncUnreadSurfacesFromEventDelta,
-  syncUnreadSurfacesFromSnapshot,
 } from "./unread-surfaces-sync.lib";
 
 const INSTANCE_ID = "entity-unread-sync-test";
 
-function unreadStreamMessage(id: number | string): WorkspaceRawMessage {
-  return {
-    id: testMessageId(id),
-    sender_id: 2,
-    sender_full_name: "Alice",
-    content: "",
-    timestamp: testMessageOrdinal(id),
-    type: "stream",
-    stream_id: 5,
-    display_recipient: "engineering",
-    subject: "general",
-    flags: [],
-  };
+function applyStreamUnreadMetadata(unreadCount: number): void {
+  useChatListStore
+    .getState()
+    .upsertStreamMetadataRows([{ streamUuid: "5", name: "engineering", unreadCount }]);
+  useChatListStore.getState().upsertStreamTopicShells("5", [
+    {
+      streamUuid: "5",
+      topicUuid: "55555555-5555-4555-8555-555555555555",
+      name: "general",
+      unreadCount,
+    },
+  ]);
 }
 
-function unreadDmMessage(id: number | string): WorkspaceRawMessage {
-  return {
-    id: testMessageId(id),
-    sender_id: 2,
-    sender_full_name: "Alice",
-    content: "",
-    timestamp: testMessageOrdinal(id),
-    type: "private",
-    display_recipient: [
-      { id: 1, full_name: "Me", email: "me@example.com" },
-      { id: 2, full_name: "Alice", email: "alice@example.com" },
-    ],
-    flags: [],
-  };
+function applyDmUnreadMetadata(unreadCount: number): void {
+  useChatListStore
+    .getState()
+    .upsertDmMetadataRows([{ userIds: [1, 2], name: "Alice", unreadCount, lastActivityTs: 1 }]);
 }
 
 beforeEach(() => {
@@ -67,69 +53,14 @@ describe("unread surface sync", () => {
     syncUnreadSurfacesFromEventDelta({
       source: "event-message",
       instanceId: INSTANCE_ID,
-      isStreamMuted: (streamId) => streamId === 5,
+      isStreamMuted: (streamId) => streamId === "5",
       applyDelta: () => {
-        useChatListStore.getState().addMessage(unreadStreamMessage(10));
+        applyStreamUnreadMetadata(1);
       },
     });
 
     expect(useChatListStore.getState().sidebarStreamsUnread).toBe(1);
     expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(0);
-  });
-
-  it("derives active snapshot count from chat-list with mute rules", () => {
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "engineering" }]);
-
-    syncUnreadSurfacesFromSnapshot({
-      source: "inbox-fetch",
-      instanceId: INSTANCE_ID,
-      currentUserId: 1,
-      snapshot: {
-        streams: [
-          {
-            streamId: 5,
-            topic: "general",
-            unreadMessageIds: ["00000000-0000-4000-8000-000000000010"],
-          },
-        ],
-        dms: [],
-        totalCount: 1,
-        mentionMessageIds: [],
-      },
-      instanceCountMode: "chat-list-derived",
-      isStreamMuted: (streamId) => streamId === 5,
-    });
-
-    expect(useChatListStore.getState().sidebarStreamsUnread).toBe(1);
-    expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(0);
-  });
-
-  it("keeps snapshot-total as default for count-only inactive sources", () => {
-    syncUnreadSurfacesFromSnapshot({
-      source: "inactive-register",
-      instanceId: INSTANCE_ID,
-      currentUserId: null,
-      snapshot: {
-        streams: [
-          {
-            streamId: 5,
-            topic: "general",
-            unreadMessageIds: [
-              "00000000-0000-4000-8000-000000000010",
-              "00000000-0000-4000-8000-000000000011",
-            ],
-          },
-        ],
-        dms: [],
-        totalCount: 2,
-        mentionMessageIds: [],
-      },
-      applyChatList: false,
-      isStreamMuted: (streamId) => streamId === 5,
-    });
-
-    expect(useChatListStore.getState().sidebarStreamsUnread).toBe(0);
-    expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(2);
   });
 
   it("updates personal organization indicator from current chat-list", () => {
@@ -139,7 +70,7 @@ describe("unread surface sync", () => {
       source: "layout-derived",
       instanceId: INSTANCE_ID,
       applyDelta: () => {
-        useChatListStore.getState().addMessage(unreadDmMessage(20));
+        applyDmUnreadMetadata(1);
       },
     });
 

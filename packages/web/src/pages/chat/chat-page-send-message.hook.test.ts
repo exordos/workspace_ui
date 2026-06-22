@@ -154,7 +154,7 @@ describe("useChatPageSendMessage", () => {
     await act(async () => {
       await result.current.handleRetryFailedOutgoing(
         failedOutgoing({
-          stream_id: 5,
+          stream_uuid: "33333333-3333-4333-8333-333333333333",
           subject: "general",
           display_recipient: "engineering",
         }),
@@ -166,7 +166,7 @@ describe("useChatPageSendMessage", () => {
         expect.objectContaining({
           stream: "engineering",
           streamUuid: "33333333-3333-4333-8333-333333333333",
-          streamId: 5,
+          messageUuid: expect.any(String),
           subject: "general",
         }),
       );

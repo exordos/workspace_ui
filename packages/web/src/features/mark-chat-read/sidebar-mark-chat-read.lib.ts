@@ -1,10 +1,6 @@
 /**
- * Sidebar context-menu mark-all-read: narrow API + local unread badge clear.
+ * Sidebar context-menu mark-all-read: API request + open-chat flag sync.
  */
-import {
-  clearRemainingContextUnread,
-  type ChatListReadFallbackContext,
-} from "~/entities/chat-list/chat-list-apply-read-decrement.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInboxStore } from "~/entities/inbox/inbox.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
@@ -19,44 +15,6 @@ export type SidebarMarkReadTarget =
   | { type: "stream"; streamId: string }
   | { type: "topic"; streamId: string; topic: string };
 
-function fallbackContextForTarget(
-  target: SidebarMarkReadTarget,
-  currentUserId: UserId | null,
-): ChatListReadFallbackContext {
-  if (target.type === "dm") {
-    const dmKey = dmConversationKey(
-      target.userIds.map((id) => ({ id })),
-      currentUserId,
-    );
-    return { type: "dm", dmKey };
-  }
-  if (target.type === "stream") {
-    return { type: "stream", streamId: target.streamId, topic: "" };
-  }
-  return {
-    type: "stream",
-    streamId: target.streamId,
-    topic: normalizeTopicForIdentity(target.topic),
-  };
-}
-
-function clearStreamWideUnread(streamId: string): void {
-  const chatListState = useChatListStore.getState();
-  const stream = chatListState.streamsMap.get(streamId);
-  if (stream == null) return;
-
-  let totalRemaining = 0;
-  for (const topic of stream.topics.values()) {
-    totalRemaining += topic.unreadCount;
-  }
-  if (totalRemaining <= 0) return;
-
-  for (const [topicKey, topic] of stream.topics.entries()) {
-    if (topic.unreadCount <= 0) continue;
-    chatListState.decrementUnreadForTopic(streamId, topicKey, topic.unreadCount);
-  }
-}
-
 async function requestSidebarMarkReadApi(target: SidebarMarkReadTarget): Promise<boolean> {
   if (target.type === "dm") {
     return markDmAsRead(target.userIds);
@@ -67,7 +25,7 @@ async function requestSidebarMarkReadApi(target: SidebarMarkReadTarget): Promise
   return markTopicAsRead(target.streamId, target.topic);
 }
 
-/** Marks a sidebar chat/topic read via flags/narrow and clears local unread badges. */
+/** Marks a sidebar chat/topic read and updates the open chat + inbox surfaces. */
 export async function applySidebarMarkChatAsRead(target: SidebarMarkReadTarget): Promise<boolean> {
   const currentUserId = useChatListStore.getState().currentUserId;
   logSidebarUnreadFlow("sidebar:markAsRead:start", { target });
@@ -76,19 +34,6 @@ export async function applySidebarMarkChatAsRead(target: SidebarMarkReadTarget):
   if (!ok) {
     logSidebarUnreadFlow("sidebar:markAsRead:failed", { target });
     return false;
-  }
-
-  const chatListState = useChatListStore.getState();
-  if (target.type === "stream") {
-    clearStreamWideUnread(target.streamId);
-  } else {
-    const fallbackContext = fallbackContextForTarget(target, currentUserId);
-    clearRemainingContextUnread(
-      () => useChatListStore.getState(),
-      chatListState,
-      fallbackContext,
-      "sidebar:markAsRead",
-    );
   }
 
   const openContext = useCurrentChatMessagesStore.getState().context;
@@ -103,7 +48,7 @@ export async function applySidebarMarkChatAsRead(target: SidebarMarkReadTarget):
     ) {
       const unreadIds = useCurrentChatMessagesStore
         .getState()
-        .messages.filter((m) => !(m.flags ?? []).includes("read"))
+        .messages.filter((m) => m.read !== true)
         .map((m) => m.id);
       if (unreadIds.length > 0) {
         useCurrentChatMessagesStore.getState().updateMessageFlags(unreadIds, "read", "add");
@@ -118,7 +63,7 @@ export async function applySidebarMarkChatAsRead(target: SidebarMarkReadTarget):
     ) {
       const unreadIds = useCurrentChatMessagesStore
         .getState()
-        .messages.filter((m) => !(m.flags ?? []).includes("read"))
+        .messages.filter((m) => m.read !== true)
         .map((m) => m.id);
       if (unreadIds.length > 0) {
         useCurrentChatMessagesStore.getState().updateMessageFlags(unreadIds, "read", "add");

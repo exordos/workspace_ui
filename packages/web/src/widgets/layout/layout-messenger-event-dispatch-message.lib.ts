@@ -1,7 +1,6 @@
 /**
  * Workspace realtime handlers: message, flags, reactions, delete, update.
  */
-import { applyChatListReadDecrementGrouped } from "~/entities/chat-list/chat-list-apply-read-decrement.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { isMessageForContext, useCurrentChatMessagesStore } from "~/entities/message/message.model";
@@ -10,6 +9,7 @@ import { resolveIncomingDmCallInvite } from "~/features/jitsi-call/jitsi-call-in
 import { getCurrentInstance } from "~/shared/api/client";
 import { rawMessageToMockMessage } from "~/shared/api/messenger-messages";
 import type { MessengerEvent, WorkspaceRawMessage } from "~/shared/api/messenger.types";
+import { isMessageFromCurrentUser } from "~/shared/lib/message-author.lib";
 import { normalizeMessageId } from "~/shared/lib/message-id.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import {
@@ -21,14 +21,10 @@ import {
   summarizeMessageIdsForFlowDebug,
 } from "~/shared/lib/sidebar-unread-debug.lib";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
-import { isTabVisible } from "~/shared/lib/visibility";
 import { maybeNotifyNewMessage } from "./layout-messenger-event-notify.lib";
 import {
   collectUnreadLoadedMessageIds,
-  EMPTY_MARK_ALL_READ_SNAPSHOT,
   parseUpdateMessageFlagsEvent,
-  messengerRawMessagesFromMarkUnreadDetails,
-  type WorkspaceMarkUnreadMessageDetail,
 } from "./layout-messenger-event-read-flags.lib";
 import {
   applyRenderingOnlyLinkPreviews,
@@ -77,21 +73,20 @@ export function handleIncomingMessage(
     currentChat.context != null &&
     !currentChat.hasNewerMessages &&
     isMessageForContext(raw, currentChat.context, currentUserId);
-  const suppressUnreadBump = isForCurrentChat && isTabVisible();
   syncUnreadSurfacesFromEventDelta({
     source: "event-message",
     instanceId: ctx.currentInstanceId,
     isStreamMuted: ctx.mute.isStreamMuted,
     isEffectivelyMuted: ctx.mute.isEffectivelyMuted,
     applyDelta: () => {
-      chatList.addMessage(raw, { suppressUnreadBump });
+      chatList.addMessage(raw);
     },
   });
   // Fallback when channel rename arrives via message display_recipient instead of a stream event.
   if (
     raw.type === "stream" &&
-    Number.isInteger(raw.stream_uuid) &&
-    raw.stream_uuid != null &&
+    typeof raw.stream_uuid === "string" &&
+    raw.stream_uuid.trim().length > 0 &&
     typeof raw.display_recipient === "string" &&
     raw.display_recipient.trim().length > 0
   ) {
@@ -106,7 +101,7 @@ export function handleIncomingMessage(
 
   inbox.markStale();
 
-  const isFromSelf = raw.sender_id === currentUserId;
+  const isFromSelf = isMessageFromCurrentUser(raw, currentUserId);
   if (!isFromSelf) {
     maybeNotifyNewMessage(ctx, raw, currentUserId, isForCurrentChat, isFromSelf);
   }
@@ -129,10 +124,6 @@ function applyMarkAllReadFromQueueEvent(
 ): void {
   const { currentChat } = ctx;
   const chatListStore = useChatListStore.getState();
-  chatListStore.reconcileUnreadFromSnapshot(
-    EMPTY_MARK_ALL_READ_SNAPSHOT,
-    chatListStore.currentUserId,
-  );
 
   const unreadLoadedIds = collectUnreadLoadedMessageIds(
     useCurrentChatMessagesStore.getState().messages,
@@ -163,7 +154,7 @@ export function handleUpdateMessageFlags(
   const parsed = parseUpdateMessageFlagsEvent(event);
   if (parsed == null) return;
 
-  const { chatList, currentChat, activity, inbox, notifications } = ctx;
+  const { currentChat, activity, inbox, notifications } = ctx;
   const { op, flag, messageIds, markAllRead } = parsed;
 
   activity.markStale();
@@ -207,11 +198,6 @@ export function handleUpdateMessageFlags(
       applyDelta: () => {
         inbox.markAsRead(messageIds);
         closeReadMessageNotifications(notifications, messageIds, ctx.currentInstanceId);
-        const chatListStore = useChatListStore.getState();
-        applyChatListReadDecrementGrouped(() => useChatListStore.getState(), chatListStore, {
-          messageIds,
-          source: "event:update_message_flags:read:add",
-        });
         currentChat.updateMessageFlags(messageIds, "read", "add");
       },
     });
@@ -226,22 +212,9 @@ export function handleUpdateMessageFlags(
     applyDelta: () => {
       inbox.markStale();
 
-      const messageDetails = event.message_details as
-        | Record<string, WorkspaceMarkUnreadMessageDetail>
-        | undefined;
-      const locationRows = messengerRawMessagesFromMarkUnreadDetails(
-        messageIds,
-        messageDetails,
-        chatList.currentUserId,
-      );
-      if (locationRows.length > 0) {
-        useChatListStore.getState().upsertUnreadMessageLocations(locationRows);
-      }
-
       logSidebarUnreadFlow("event:update_message_flags:read:remove", {
         ...summarizeMessageIdsForFlowDebug(messageIds),
       });
-      chatList.incrementUnreadForMessages(messageIds);
       currentChat.updateMessageFlags(messageIds, "read", "remove");
     },
   });

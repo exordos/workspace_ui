@@ -1,6 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
-import { ensureMentionsUnreadSynced } from "~/entities/chat-list/chat-list-mentions-sync.lib";
-import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { useCallback } from "react";
 import { buildMuteSnapshotFromBootstrap } from "~/features/mute-chat/mute-chat.model";
 import type { MessengerSubscription, MessengerUserTopic } from "~/shared/api/messenger.types";
 
@@ -20,15 +18,12 @@ export interface LayoutMuteBootstrapData {
   userTopics?: MessengerUserTopic[];
 }
 
-export function useLayoutInstanceBootstrap(options: {
+export function useLayoutInstanceBootstrap(_options: {
   currentInstanceId: string | null;
   currentUserStatus: "idle" | "loading" | "ready" | "degraded" | "blocked";
 }): {
   loadMuteSnapshot: (bootstrap?: LayoutMuteBootstrapData) => Promise<LayoutMuteSnapshot>;
 } {
-  const { currentInstanceId, currentUserStatus } = options;
-  const mentionsBootstrapInstanceRef = useRef<string | null>(null);
-
   // Load instance mute snapshot (muted streams/topics) for consistent UI.
   const loadMuteSnapshot = useCallback(
     (bootstrap?: LayoutMuteBootstrapData): Promise<LayoutMuteSnapshot> => {
@@ -41,25 +36,6 @@ export function useLayoutInstanceBootstrap(options: {
     },
     [],
   );
-
-  useEffect(() => {
-    if (!currentInstanceId || (currentUserStatus !== "ready" && currentUserStatus !== "degraded")) {
-      mentionsBootstrapInstanceRef.current = null;
-      return;
-    }
-
-    const instanceChanged = mentionsBootstrapInstanceRef.current !== currentInstanceId;
-    const needsSync = instanceChanged || !useChatListStore.getState().mentionsUnreadApiSynced;
-    if (!needsSync) return;
-
-    mentionsBootstrapInstanceRef.current = currentInstanceId;
-    const currentUserId = useChatListStore.getState().currentUserId ?? null;
-    void ensureMentionsUnreadSynced({
-      currentInstanceId,
-      currentUserId,
-      forceRefresh: instanceChanged,
-    });
-  }, [currentInstanceId, currentUserStatus]);
 
   return { loadMuteSnapshot };
 }

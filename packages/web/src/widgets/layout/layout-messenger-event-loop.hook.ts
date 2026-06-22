@@ -2,7 +2,6 @@
 import { useEffect, useRef } from "react";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import { clearStreamSidebarHydrateState } from "~/entities/chat-list/chat-list-hydrate-stream-sidebar.lib";
-import { hydrateStreamSidebarPreviewsFromUnreadSnapshot } from "~/entities/chat-list/chat-list-unread-preview-hydrate.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInboxStore } from "~/entities/inbox/inbox.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
@@ -18,7 +17,6 @@ import { useUserProfileStore } from "~/features/user-profile/user-profile.model"
 import { t } from "~/i18n/i18n";
 import { deleteQueue, DEFAULT_REGISTER_FETCH_EVENT_TYPES } from "~/shared/api/messenger-queue";
 import { fetchMyStreams, fetchStreamTopics } from "~/shared/api/messenger-streams";
-import type { MessengerUnreadMessagesSnapshot } from "~/shared/api/messenger-unread.lib";
 import { fetchUsers, getCurrentUser } from "~/shared/api/messenger-users";
 import type {
   RegisterQueueResult,
@@ -39,7 +37,7 @@ import { logChatListFlow, logMessageFlow } from "~/shared/lib/message-flow-debug
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import { loadMuteSnapshotRow } from "~/shared/lib/mute-snapshot-db";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
-import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import { loadUsersDirectoryRow } from "~/shared/lib/users-directory-snapshot-db";
 import { getNewestMessageId } from "./layout-chat-history-sync.lib";
 import {
@@ -57,14 +55,12 @@ import { applyLayoutRegisterMuteSnapshot } from "./layout-messenger-event-loop-m
 import { createLayoutMessengerEventLoopOnEventHandler } from "./layout-messenger-event-loop-on-event.lib";
 import {
   createLayoutBootstrapQueueRegisteredHandler,
+  toStreamMetadataRowsFromMeStreams,
   toStreamTopicMetadataRows,
-  toSubscriptionsFromMeStreams,
-  toStreamMetadataRows,
 } from "./layout-messenger-event-loop-register.lib";
 import { runLayoutReconnectRefresh } from "./layout-messenger-refresh-stale.lib";
 import { createMetadataStreamPreviewCoordinator } from "./layout-metadata-stream-preview-coordinator.lib";
 import { resetReconnectStreamPreviewStaging } from "./layout-reconnect-stream-preview.lib";
-import { reconcileSidebarUnreadAfterBootstrap } from "./layout-sidebar-unread-reconcile.lib";
 import type { ChatListBootstrapResult } from "./layout-chat-list-bootstrap.lib";
 import type { LayoutMuteBootstrapData, LayoutMuteSnapshot } from "./layout-instance-bootstrap.hook";
 import type { StreamPreviewsBootstrapResult } from "./layout-metadata-stream-preview-coordinator.lib";
@@ -111,35 +107,6 @@ function clearRefreshStaleCallback(ref: RefreshStaleCallbackRef | undefined): vo
   if (ref) {
     ref.current = null;
   }
-}
-
-function startSidebarUnreadReconcile(options: {
-  cancelled: () => boolean;
-  instanceId: string | null;
-  currentUserId: UserId | null;
-  registerSnapshot?: MessengerUnreadMessagesSnapshot | null;
-}): void {
-  reconcileSidebarUnreadAfterBootstrap({
-    ...options,
-    logScope: "eventLoop: startSidebarUnreadReconcile",
-  });
-  void hydrateStreamSidebarPreviewsFromUnreadSnapshot(options.registerSnapshot, options.cancelled);
-}
-
-function reconcileSidebarUnreadFromRegister(
-  instanceId: string | null,
-  registration: RegisterQueueResult | undefined,
-  currentUserId: number | null,
-): void {
-  reconcileSidebarUnreadAfterBootstrap({
-    cancelled: () => false,
-    instanceId,
-    currentUserId,
-    registerSnapshot: registration?.unread_snapshot,
-    logScope: "eventLoop: reconcileSidebarUnreadFromRegister",
-    syncSource: "event-loop-register",
-  });
-  void hydrateStreamSidebarPreviewsFromUnreadSnapshot(registration?.unread_snapshot, () => false);
 }
 
 // Normalize IDB row shape to the mute-store contract (storage vs application layer).
@@ -258,11 +225,9 @@ export function useLayoutMessengerEventLoop(options: {
     null,
   );
   const internalLatestMessageIdRef = useRef<MessageId | null>(null);
-  const registerUnreadSnapshotRef = useRef<MessengerUnreadMessagesSnapshot | null>(null);
   const clearMessengerShellState = (
     reason: "instance switched" | "active instance cleared",
   ): void => {
-    registerUnreadSnapshotRef.current = null;
     logMessageFlow(`eventLoop:clear stores (${reason})`, {
       instanceId: currentInstanceId,
     });
@@ -362,8 +327,6 @@ export function useLayoutMessengerEventLoop(options: {
             })
         : Promise.resolve();
 
-      let bootstrapUserId: UserId | null = null;
-
       const bootstrapApplyOptions = {
         currentInstanceId,
         setFromMessages: setFromMessagesRef.current,
@@ -402,7 +365,6 @@ export function useLayoutMessengerEventLoop(options: {
           const user = await getCurrentUser();
           if (cancelled || isBootstrapStale()) return null;
           if (user?.user_id != null) {
-            bootstrapUserId = user.user_id;
             useUsersStore.getState().mergeUser(user);
             setCurrentUserIdRef.current(user.user_id);
             setBootstrapStatus("ready");
@@ -427,7 +389,6 @@ export function useLayoutMessengerEventLoop(options: {
           const inst = useInstancesStore.getState().getCurrentInstance();
           uid = resolveSelfUserIdFromMembers(members, inst?.login);
           if (uid != null) {
-            bootstrapUserId = uid;
             setCurrentUserIdRef.current(uid);
             const member = findWorkspaceMemberByUserId(members, uid);
             if (member != null) {
@@ -490,7 +451,6 @@ export function useLayoutMessengerEventLoop(options: {
         const myStreams = bootstrapCore[3];
         const streamTopics = bootstrapCore[4];
         const resolvedCurrentUserId = bootstrapCore[5];
-        const subscriptions = toSubscriptionsFromMeStreams(myStreams ?? []);
         const apiMembers: MessengerUserMember[] = members ?? [];
         useUsersStore.getState().mergeUsers(apiMembers);
 
@@ -498,9 +458,9 @@ export function useLayoutMessengerEventLoop(options: {
           finalizeBootstrapAuth(apiMembers, null);
         }
 
-        const streamRowsFromSubscriptions = toStreamMetadataRows(subscriptions ?? []);
-        if (streamRowsFromSubscriptions.length > 0) {
-          useChatListStore.getState().upsertStreamMetadataRows(streamRowsFromSubscriptions);
+        const streamRowsFromGateway = toStreamMetadataRowsFromMeStreams(myStreams ?? []);
+        if (streamRowsFromGateway.length > 0) {
+          useChatListStore.getState().upsertStreamMetadataRows(streamRowsFromGateway);
         }
         const topicRowsByStream = new Map<string, ReturnType<typeof toStreamTopicMetadataRows>>();
         for (const topicRow of toStreamTopicMetadataRows(streamTopics ?? [])) {
@@ -514,9 +474,6 @@ export function useLayoutMessengerEventLoop(options: {
         useChatListStore.getState().setStreamMetadataHydrated(true);
 
         const uid = resolvedCurrentUserId ?? useChatListStore.getState().currentUserId ?? null;
-        if (uid != null) {
-          bootstrapUserId = uid;
-        }
 
         logChatListFlow("eventLoop: bootstrap core settled (progressive)", {
           instanceId: currentInstanceId,
@@ -546,9 +503,6 @@ export function useLayoutMessengerEventLoop(options: {
             ...bootstrapApplyOptions,
             skipDmIndexHydrate: true,
           },
-          startSidebarUnreadReconcile,
-          currentUserId: numericUserIdOrNull(uid),
-          registerSnapshot: registerUnreadSnapshotRef.current,
           log,
         });
         const streamPreviewRejectedHandler = createStreamPreviewBootstrapRejectedHandler({
@@ -598,14 +552,10 @@ export function useLayoutMessengerEventLoop(options: {
         const onQueueRegisteredHandler = createLayoutBootstrapQueueRegisteredHandler({
           isCancelled: () => cancelled,
           currentInstanceId,
-          bootstrapUserId,
           queueIdRef,
-          registerUnreadSnapshotRef,
-          reconcileSidebarUnreadFromRegister,
           streamPreviewCoordinator,
           tryFlushMetadataStreamPreviews,
           applyChatListBootstrapResult: applyBootstrapFromEventLoop,
-          startSidebarUnreadReconcile,
           loadMuteSnapshot: loadMuteSnapshotRef.current,
           applyLayoutRegisterMuteSnapshot,
           registerMuteSnapshotAppliedRef,

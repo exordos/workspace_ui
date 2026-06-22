@@ -4,17 +4,17 @@ import {
   fetchLatestMessagesForSidebarTopics,
   fetchStreamChannelMessagesForSidebarTopics,
 } from "~/shared/api/messenger-sidebar-preview.lib";
-import { fetchStreamTopicNames } from "~/shared/api/messenger-streams";
-import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
+import { fetchStreamTopics } from "~/shared/api/messenger-streams";
+import type { MessengerStreamTopic, WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import {
   clearStreamSidebarHydrateState,
   isStreamSidebarTopicsHydrateInFlight,
-  queuePriorityStreamSidebarTopicsHydrate,
   requestStreamSidebarTopicPreviewBackfill,
   requestStreamSidebarTopicListHydrate,
   requestStreamSidebarTopicsHydrate,
 } from "./chat-list-hydrate-stream-sidebar.lib";
 import { useChatListStore } from "./chat-list.model";
+import type { ChatListStreamTopicMetadataRow } from "./chat-list.model.types";
 
 vi.mock("~/shared/api/messenger-sidebar-preview.lib", async (importOriginal) => {
   const actual =
@@ -30,13 +30,49 @@ vi.mock("~/shared/api/messenger-streams", async (importOriginal) => {
   const actual = await importOriginal<typeof import("~/shared/api/messenger-streams")>();
   return {
     ...actual,
-    fetchStreamTopicNames: vi.fn(),
+    fetchStreamTopics: vi.fn(),
   };
 });
 
 const fetchStreamChannelMock = vi.mocked(fetchStreamChannelMessagesForSidebarTopics);
 const fetchLatestTopicMessagesMock = vi.mocked(fetchLatestMessagesForSidebarTopics);
-const fetchStreamTopicNamesMock = vi.mocked(fetchStreamTopicNames);
+const fetchStreamTopicsMock = vi.mocked(fetchStreamTopics);
+
+const STREAM_UUID = "00000000-0000-4000-8000-000000000005";
+const OTHER_STREAM_UUID = "00000000-0000-4000-8000-000000000006";
+const TOPIC_ALPHA_UUID = "00000000-0000-4000-8000-0000000000a1";
+const TOPIC_BETA_UUID = "00000000-0000-4000-8000-0000000000b2";
+const TOPIC_DEFAULT_UUID = "00000000-0000-4000-8000-0000000000d0";
+const TOPIC_SHELL_UUID = "00000000-0000-4000-8000-0000000000e1";
+
+function topicRow(
+  name: string,
+  uuid: string,
+  overrides: Partial<MessengerStreamTopic> = {},
+): MessengerStreamTopic {
+  return {
+    uuid,
+    stream_uuid: STREAM_UUID,
+    name,
+    unread_count: 0,
+    is_default: false,
+    ...overrides,
+  };
+}
+
+function topicShell(
+  name: string,
+  topicUuid: string,
+  overrides: Partial<ChatListStreamTopicMetadataRow> = {},
+): ChatListStreamTopicMetadataRow {
+  return {
+    topicUuid,
+    streamUuid: STREAM_UUID,
+    name,
+    isDefault: false,
+    ...overrides,
+  };
+}
 
 function resetInstancesStore(): void {
   useInstancesStore.setState({
@@ -71,7 +107,7 @@ function streamMsg(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMe
     content: "hello",
     timestamp: 1000,
     type: "stream",
-    stream_id: 5,
+    stream_uuid: STREAM_UUID,
     display_recipient: "general",
     subject: "topic1",
     flags: [],
@@ -87,7 +123,7 @@ describe("requestStreamSidebarTopicsHydrate", () => {
     useChatListStore.getState().clear();
     fetchStreamChannelMock.mockReset();
     fetchLatestTopicMessagesMock.mockReset();
-    fetchStreamTopicNamesMock.mockReset();
+    fetchStreamTopicsMock.mockReset();
   });
 
   afterEach(() => {
@@ -97,18 +133,24 @@ describe("requestStreamSidebarTopicsHydrate", () => {
   });
 
   it("skips fetch when stream already has topics in store", async () => {
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
     useChatListStore
       .getState()
-      .applyStreamSidebarPreviewsFromMessages([streamMsg({ stream_id: 5, subject: "existing" })]);
+      .upsertStreamMetadataRows([{ streamUuid: STREAM_UUID, name: "general" }]);
+    useChatListStore
+      .getState()
+      .applyStreamSidebarPreviewsFromMessages([
+        streamMsg({ stream_uuid: STREAM_UUID, subject: "existing" }),
+      ]);
 
-    await requestStreamSidebarTopicsHydrate(5, "expand");
+    await requestStreamSidebarTopicsHydrate(STREAM_UUID, "expand");
 
     expect(fetchStreamChannelMock).not.toHaveBeenCalled();
   });
 
   it("dedupes concurrent hydrate for the same stream", async () => {
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
+    useChatListStore
+      .getState()
+      .upsertStreamMetadataRows([{ streamUuid: STREAM_UUID, name: "general" }]);
     let resolveFetch!: (value: WorkspaceRawMessage[]) => void;
     fetchStreamChannelMock.mockImplementation(
       () =>
@@ -117,49 +159,31 @@ describe("requestStreamSidebarTopicsHydrate", () => {
         }),
     );
 
-    const first = requestStreamSidebarTopicsHydrate(5, "expand");
-    const second = requestStreamSidebarTopicsHydrate(5, "visible");
-    expect(isStreamSidebarTopicsHydrateInFlight(5)).toBe(true);
+    const first = requestStreamSidebarTopicsHydrate(STREAM_UUID, "expand");
+    const second = requestStreamSidebarTopicsHydrate(STREAM_UUID, "visible");
+    expect(isStreamSidebarTopicsHydrateInFlight(STREAM_UUID)).toBe(true);
     await flushMicrotasks();
     expect(fetchStreamChannelMock).toHaveBeenCalledTimes(1);
 
-    resolveFetch([streamMsg({ stream_id: 5, subject: "lazy-topic" })]);
+    resolveFetch([streamMsg({ stream_uuid: STREAM_UUID, subject: "lazy-topic" })]);
     await Promise.all([first, second]);
 
-    expect(useChatListStore.getState().streamsMap.get(5)?.topics.has("lazy-topic")).toBe(true);
-  });
-
-  it("queuePriorityStreamSidebarTopicsHydrate requests hydrate for unread streams without topics", async () => {
-    useChatListStore.getState().upsertStreamMetadataRows([
-      { streamId: 5, name: "general" },
-      { streamId: 6, name: "other" },
-    ]);
-    fetchStreamChannelMock.mockResolvedValue([streamMsg({ stream_id: 5, subject: "prio" })]);
-
-    queuePriorityStreamSidebarTopicsHydrate({
-      streams: [
-        { streamId: 5, topic: "t", unreadMessageIds: ["00000000-0000-4000-8000-000000000001"] },
-      ],
-      dms: [],
-      totalCount: 1,
-      mentionMessageIds: [],
-      oldUnreadsMissing: false,
-    });
-    await flushMicrotasks(10);
-
-    expect(fetchStreamChannelMock).toHaveBeenCalledTimes(1);
-    expect(fetchStreamChannelMock.mock.calls[0]?.[0]).toBe(5);
+    expect(useChatListStore.getState().streamsMap.get(STREAM_UUID)?.topics.has("lazy-topic")).toBe(
+      true,
+    );
   });
 
   it("does not mark hydrated when API returns empty messages (allows retry)", async () => {
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
+    useChatListStore
+      .getState()
+      .upsertStreamMetadataRows([{ streamUuid: STREAM_UUID, name: "general" }]);
     fetchStreamChannelMock.mockResolvedValue([]);
 
-    await requestStreamSidebarTopicsHydrate(5, "expand");
-    await requestStreamSidebarTopicsHydrate(5, "expand");
+    await requestStreamSidebarTopicsHydrate(STREAM_UUID, "expand");
+    await requestStreamSidebarTopicsHydrate(STREAM_UUID, "expand");
 
     expect(fetchStreamChannelMock).toHaveBeenCalledTimes(2);
-    expect(useChatListStore.getState().streamsMap.get(5)?.topics.size).toBe(0);
+    expect(useChatListStore.getState().streamsMap.get(STREAM_UUID)?.topics.size).toBe(0);
   });
 });
 
@@ -169,7 +193,7 @@ describe("requestStreamSidebarTopicListHydrate", () => {
     seedActiveInstance();
     clearStreamSidebarHydrateState();
     useChatListStore.getState().clear();
-    fetchStreamTopicNamesMock.mockReset();
+    fetchStreamTopicsMock.mockReset();
     fetchStreamChannelMock.mockReset();
   });
 
@@ -179,65 +203,87 @@ describe("requestStreamSidebarTopicListHydrate", () => {
     useChatListStore.getState().clear();
   });
 
-  it("fetches topic names and inserts topic shells into store", async () => {
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
-    fetchStreamTopicNamesMock.mockResolvedValue(["alpha", "beta"]);
+  it("fetches topic rows and inserts topic shells into store", async () => {
+    useChatListStore
+      .getState()
+      .upsertStreamMetadataRows([{ streamUuid: STREAM_UUID, name: "general" }]);
+    fetchStreamTopicsMock.mockResolvedValue([
+      topicRow("alpha", TOPIC_ALPHA_UUID),
+      topicRow("beta", TOPIC_BETA_UUID),
+    ]);
 
-    await requestStreamSidebarTopicListHydrate(5);
+    await requestStreamSidebarTopicListHydrate(STREAM_UUID);
 
-    expect(fetchStreamTopicNamesMock).toHaveBeenCalledWith(5, expect.any(AbortSignal));
-    const stream = useChatListStore.getState().streamsMap.get(5);
+    expect(fetchStreamTopicsMock).toHaveBeenCalledWith(STREAM_UUID, expect.any(AbortSignal));
+    const stream = useChatListStore.getState().streamsMap.get(STREAM_UUID);
     expect(stream?.topics.has("alpha")).toBe(true);
     expect(stream?.topics.has("beta")).toBe(true);
   });
 
   it("dedupes concurrent requests for the same stream", async () => {
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
-    let resolveFetch!: (value: string[]) => void;
-    fetchStreamTopicNamesMock.mockImplementation(
+    useChatListStore
+      .getState()
+      .upsertStreamMetadataRows([{ streamUuid: STREAM_UUID, name: "general" }]);
+    let resolveFetch!: (value: MessengerStreamTopic[]) => void;
+    fetchStreamTopicsMock.mockImplementation(
       () =>
         new Promise((resolve) => {
           resolveFetch = resolve;
         }),
     );
 
-    const first = requestStreamSidebarTopicListHydrate(5);
-    const second = requestStreamSidebarTopicListHydrate(5);
-    expect(fetchStreamTopicNamesMock).toHaveBeenCalledTimes(1);
+    const first = requestStreamSidebarTopicListHydrate(STREAM_UUID);
+    const second = requestStreamSidebarTopicListHydrate(STREAM_UUID);
+    expect(fetchStreamTopicsMock).toHaveBeenCalledTimes(1);
 
-    resolveFetch(["alpha"]);
+    resolveFetch([topicRow("alpha", TOPIC_ALPHA_UUID)]);
     await Promise.all([first, second]);
-    expect(fetchStreamTopicNamesMock).toHaveBeenCalledTimes(1);
+    expect(fetchStreamTopicsMock).toHaveBeenCalledTimes(1);
   });
 
   it("inserts empty default topic shell and hydrates preview from messages", async () => {
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "engineering" }]);
-    fetchStreamTopicNamesMock.mockResolvedValue(["", "alpha"]);
+    useChatListStore
+      .getState()
+      .upsertStreamMetadataRows([{ streamUuid: STREAM_UUID, name: "engineering" }]);
+    fetchStreamTopicsMock.mockResolvedValue([
+      topicRow("General Chat", TOPIC_DEFAULT_UUID, { is_default: true }),
+      topicRow("alpha", TOPIC_ALPHA_UUID),
+    ]);
     fetchStreamChannelMock.mockResolvedValue([
-      streamMsg({ stream_id: 5, subject: "", content: "no topic preview" }),
+      streamMsg({ stream_uuid: STREAM_UUID, subject: "", content: "no topic preview" }),
     ]);
 
-    await requestStreamSidebarTopicListHydrate(5);
+    await requestStreamSidebarTopicListHydrate(STREAM_UUID);
 
-    const stream = useChatListStore.getState().streamsMap.get(5);
+    const stream = useChatListStore.getState().streamsMap.get(STREAM_UUID);
     expect(stream?.topics.has("")).toBe(true);
     expect(stream?.topics.get("")?.lastMessage).toContain("no topic preview");
-    expect(fetchStreamChannelMock).toHaveBeenCalledWith(5, undefined, expect.any(AbortSignal));
+    expect(fetchStreamChannelMock).toHaveBeenCalledWith(
+      STREAM_UUID,
+      undefined,
+      expect.any(AbortSignal),
+    );
   });
 
   it("hydrates message previews after topic list shells are inserted", async () => {
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "engineering" }]);
-    fetchStreamTopicNamesMock.mockResolvedValue(["alpha"]);
+    useChatListStore
+      .getState()
+      .upsertStreamMetadataRows([{ streamUuid: STREAM_UUID, name: "engineering" }]);
+    fetchStreamTopicsMock.mockResolvedValue([topicRow("alpha", TOPIC_ALPHA_UUID)]);
     fetchStreamChannelMock.mockResolvedValue([
-      streamMsg({ stream_id: 5, subject: "alpha", content: "preview text" }),
+      streamMsg({ stream_uuid: STREAM_UUID, subject: "alpha", content: "preview text" }),
     ]);
 
-    await requestStreamSidebarTopicListHydrate(5);
+    await requestStreamSidebarTopicListHydrate(STREAM_UUID);
 
     expect(
-      useChatListStore.getState().streamsMap.get(5)?.topics.get("alpha")?.lastMessage,
+      useChatListStore.getState().streamsMap.get(STREAM_UUID)?.topics.get("alpha")?.lastMessage,
     ).toContain("preview text");
-    expect(fetchStreamChannelMock).toHaveBeenCalledWith(5, undefined, expect.any(AbortSignal));
+    expect(fetchStreamChannelMock).toHaveBeenCalledWith(
+      STREAM_UUID,
+      undefined,
+      expect.any(AbortSignal),
+    );
   });
 });
 
@@ -257,17 +303,26 @@ describe("requestStreamSidebarTopicsHydrate preview backfill", () => {
   });
 
   it("fetches messages when topic shells exist without preview text", async () => {
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "engineering" }]);
-    useChatListStore.getState().upsertStreamTopicShells(5, ["shell-only"]);
+    useChatListStore
+      .getState()
+      .upsertStreamMetadataRows([{ streamUuid: STREAM_UUID, name: "engineering" }]);
+    useChatListStore
+      .getState()
+      .upsertStreamTopicShells(STREAM_UUID, [topicShell("shell-only", TOPIC_SHELL_UUID)]);
     fetchStreamChannelMock.mockResolvedValue([
-      streamMsg({ stream_id: 5, subject: "shell-only", content: "filled preview" }),
+      streamMsg({ stream_uuid: STREAM_UUID, subject: "shell-only", content: "filled preview" }),
     ]);
 
-    await requestStreamSidebarTopicsHydrate(5, "expand");
+    await requestStreamSidebarTopicsHydrate(STREAM_UUID, "expand");
 
-    expect(fetchStreamChannelMock).toHaveBeenCalledWith(5, undefined, expect.any(AbortSignal));
+    expect(fetchStreamChannelMock).toHaveBeenCalledWith(
+      STREAM_UUID,
+      undefined,
+      expect.any(AbortSignal),
+    );
     expect(
-      useChatListStore.getState().streamsMap.get(5)?.topics.get("shell-only")?.lastMessage,
+      useChatListStore.getState().streamsMap.get(STREAM_UUID)?.topics.get("shell-only")
+        ?.lastMessage,
     ).toContain("filled preview");
   });
 });
@@ -289,31 +344,41 @@ describe("requestStreamSidebarTopicPreviewBackfill", () => {
   });
 
   it("hydrates preview text for topic shells without last message", async () => {
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
-    useChatListStore.getState().upsertStreamTopicShells(5, ["alpha", "beta"]);
+    useChatListStore
+      .getState()
+      .upsertStreamMetadataRows([{ streamUuid: STREAM_UUID, name: "general" }]);
+    useChatListStore
+      .getState()
+      .upsertStreamTopicShells(STREAM_UUID, [
+        topicShell("alpha", TOPIC_ALPHA_UUID),
+        topicShell("beta", TOPIC_BETA_UUID),
+      ]);
     fetchLatestTopicMessagesMock.mockResolvedValue([
       streamMsg({
         id: "00000000-0000-4000-8000-000000000010",
-        stream_id: 5,
+        stream_uuid: STREAM_UUID,
         subject: "alpha",
         content: "alpha preview",
         timestamp: 10,
       }),
       streamMsg({
         id: "00000000-0000-4000-8000-000000000011",
-        stream_id: 5,
+        stream_uuid: STREAM_UUID,
         subject: "beta",
         content: "beta preview",
         timestamp: 11,
       }),
     ]);
 
-    await requestStreamSidebarTopicPreviewBackfill(5);
+    await requestStreamSidebarTopicPreviewBackfill(STREAM_UUID);
 
-    const stream = useChatListStore.getState().streamsMap.get(5);
+    const stream = useChatListStore.getState().streamsMap.get(STREAM_UUID);
     expect(fetchLatestTopicMessagesMock).toHaveBeenCalledWith(
-      5,
-      ["alpha", "beta"],
+      STREAM_UUID,
+      [
+        { topicUuid: TOPIC_ALPHA_UUID, subject: "alpha" },
+        { topicUuid: TOPIC_BETA_UUID, subject: "beta" },
+      ],
       expect.any(AbortSignal),
     );
     expect(stream?.topics.get("alpha")?.lastMessage).toContain("alpha preview");
@@ -321,18 +386,24 @@ describe("requestStreamSidebarTopicPreviewBackfill", () => {
   });
 
   it("skips fetch when stream topics already have previews", async () => {
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
     useChatListStore
       .getState()
-      .applyStreamSidebarPreviewsFromMessages([streamMsg({ stream_id: 5, subject: "alpha" })]);
+      .upsertStreamMetadataRows([{ streamUuid: STREAM_UUID, name: "general" }]);
+    useChatListStore
+      .getState()
+      .applyStreamSidebarPreviewsFromMessages([
+        streamMsg({ stream_uuid: STREAM_UUID, subject: "alpha" }),
+      ]);
 
-    await requestStreamSidebarTopicPreviewBackfill(5);
+    await requestStreamSidebarTopicPreviewBackfill(STREAM_UUID);
 
     expect(fetchLatestTopicMessagesMock).not.toHaveBeenCalled();
   });
 
   it("drops stale hydrate results after sidebar state cleanup", async () => {
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
+    useChatListStore
+      .getState()
+      .upsertStreamMetadataRows([{ streamUuid: STREAM_UUID, name: "general" }]);
     let resolveFetch!: (value: WorkspaceRawMessage[]) => void;
     fetchStreamChannelMock.mockImplementation(
       () =>
@@ -341,18 +412,22 @@ describe("requestStreamSidebarTopicPreviewBackfill", () => {
         }),
     );
 
-    const pending = requestStreamSidebarTopicsHydrate(5, "expand");
+    const pending = requestStreamSidebarTopicsHydrate(STREAM_UUID, "expand");
     await flushMicrotasks();
     clearStreamSidebarHydrateState();
 
-    resolveFetch([streamMsg({ stream_id: 5, subject: "stale-topic", content: "stale preview" })]);
+    resolveFetch([
+      streamMsg({ stream_uuid: STREAM_UUID, subject: "stale-topic", content: "stale preview" }),
+    ]);
     await pending;
 
-    expect(useChatListStore.getState().streamsMap.get(5)?.topics.size).toBe(0);
+    expect(useChatListStore.getState().streamsMap.get(STREAM_UUID)?.topics.size).toBe(0);
   });
 
   it("does not dedupe hydrate requests across different organizations", async () => {
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
+    useChatListStore
+      .getState()
+      .upsertStreamMetadataRows([{ streamUuid: STREAM_UUID, name: "general" }]);
     let firstResolve!: (value: WorkspaceRawMessage[]) => void;
     let secondResolve!: (value: WorkspaceRawMessage[]) => void;
     fetchStreamChannelMock
@@ -369,25 +444,31 @@ describe("requestStreamSidebarTopicPreviewBackfill", () => {
           }),
       );
 
-    const first = requestStreamSidebarTopicsHydrate(5, "expand");
+    const first = requestStreamSidebarTopicsHydrate(STREAM_UUID, "expand");
     await flushMicrotasks();
 
     clearStreamSidebarHydrateState();
     useChatListStore.getState().clear();
     const secondInstanceId = seedActiveInstance("https://messenger-2.test");
     useInstancesStore.getState().setCurrentInstanceId(secondInstanceId);
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
+    useChatListStore
+      .getState()
+      .upsertStreamMetadataRows([{ streamUuid: OTHER_STREAM_UUID, name: "general" }]);
 
-    const second = requestStreamSidebarTopicsHydrate(5, "expand");
+    const second = requestStreamSidebarTopicsHydrate(OTHER_STREAM_UUID, "expand");
     await flushMicrotasks();
 
     expect(fetchStreamChannelMock).toHaveBeenCalledTimes(2);
 
-    firstResolve([streamMsg({ stream_id: 5, subject: "old-org" })]);
-    secondResolve([streamMsg({ stream_id: 5, subject: "new-org" })]);
+    firstResolve([streamMsg({ stream_uuid: STREAM_UUID, subject: "old-org" })]);
+    secondResolve([streamMsg({ stream_uuid: OTHER_STREAM_UUID, subject: "new-org" })]);
     await Promise.all([first, second]);
 
-    expect(useChatListStore.getState().streamsMap.get(5)?.topics.has("new-org")).toBe(true);
-    expect(useChatListStore.getState().streamsMap.get(5)?.topics.has("old-org")).toBe(false);
+    expect(
+      useChatListStore.getState().streamsMap.get(OTHER_STREAM_UUID)?.topics.has("new-org"),
+    ).toBe(true);
+    expect(
+      useChatListStore.getState().streamsMap.get(OTHER_STREAM_UUID)?.topics.has("old-org"),
+    ).toBe(false);
   });
 });

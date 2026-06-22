@@ -37,7 +37,6 @@ import {
 } from "./layout-instance-unread.lib";
 import { useLayoutLastMessengerRoutePersistence } from "./layout-last-messenger-route.hook";
 import { LayoutLoadingGate } from "./layout-loading-gate.ui";
-import { useLayoutMentionsSyncPolling } from "./layout-mentions-sync-polling.hook";
 import { useLayoutMessengerEventLoop } from "./layout-messenger-event-loop.hook";
 import { useWorkspaceRateLimitCountdownSeconds } from "./layout-messenger-rate-limit-banner.hook";
 import { useLayoutMuteSnapshotSync } from "./layout-mute-snapshot-sync.hook";
@@ -226,11 +225,6 @@ export const Layout: React.FC = () => {
   useLayoutAppIconBadge({
     personalDmUnread: dmUnreadCountForCurrentInstance,
     mentionsUnread: mentionsUnreadCount,
-  });
-
-  useLayoutMentionsSyncPolling({
-    enabled: isLayoutUserConnectionReady(currentUserStatus),
-    currentInstanceId,
   });
 
   useInactiveInstancesBackgroundWork({

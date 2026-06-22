@@ -11,7 +11,7 @@ const PEER_UUID = "55555555-5555-4555-8555-555555555555";
 
 function streamEntry(overrides: Partial<StreamEntryInternal>): StreamEntryInternal {
   return {
-    stream_id: 5,
+    streamUuid: STREAM_UUID,
     name: "general",
     lastMessage: "",
     time: "",
@@ -42,20 +42,30 @@ function maps(partial: Partial<ChatListUuidMaps>): ChatListUuidMaps {
 }
 
 describe("resolveStreamUuidForContext — channels", () => {
-  const ctx: CurrentChatContext = { type: "stream", streamId: 5, streamName: "general", topic: "" };
+  const ctx: CurrentChatContext = {
+    type: "stream",
+    streamId: STREAM_UUID,
+    streamName: "general",
+    topic: "",
+  };
 
-  it("returns the stream uuid from stream metadata", () => {
-    const streamsMap = new Map([[5, streamEntry({ streamUuid: STREAM_UUID })]]);
+  it("returns the stream uuid from the context", () => {
+    const streamsMap = new Map([[STREAM_UUID, streamEntry({ streamUuid: STREAM_UUID })]]);
     expect(resolveStreamUuidForContext(ctx, null, maps({ streamsMap }))).toBe(STREAM_UUID);
   });
 
-  it("returns null when the stream entry has no uuid", () => {
-    const streamsMap = new Map([[5, streamEntry({})]]);
-    expect(resolveStreamUuidForContext(ctx, null, maps({ streamsMap }))).toBeNull();
+  it("returns null when the stream id is not a UUID", () => {
+    const legacyCtx: CurrentChatContext = {
+      type: "stream",
+      streamId: "5",
+      streamName: "general",
+      topic: "",
+    };
+    expect(resolveStreamUuidForContext(legacyCtx, null, maps({}))).toBeNull();
   });
 
-  it("returns null when the stream is unknown", () => {
-    expect(resolveStreamUuidForContext(ctx, null, maps({}))).toBeNull();
+  it("returns context UUID even before metadata arrives", () => {
+    expect(resolveStreamUuidForContext(ctx, null, maps({}))).toBe(STREAM_UUID);
   });
 });
 

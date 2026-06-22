@@ -5,7 +5,7 @@
 import { t } from "~/i18n/i18n";
 import type { MessengerMessagesNarrowClause } from "~/shared/lib/messenger-topic-narrow.lib";
 import { getCurrentInstance } from "./client";
-import { messengerPipelineGet, messengerPipelinePost } from "./messenger-pipeline.internal";
+import { messengerPipelineGet } from "./messenger-pipeline.internal";
 import { normalizeRealm as normalizeRealmUrl } from "./messenger-realm.internal";
 
 export interface WorkspaceClient {
@@ -40,12 +40,6 @@ export interface WorkspaceClient {
         stream_uuid?: string | null;
       }[];
     }>;
-    send: (params: {
-      type: string;
-      to: string | number[];
-      topic?: string;
-      content: string;
-    }) => Promise<{ id?: number }>;
   };
 }
 
@@ -135,31 +129,6 @@ function createRestClient(): Promise<WorkspaceClient> {
           result: data.result,
           messages: data.messages ?? [],
         };
-      },
-      send: async (params) => {
-        const body: Record<string, string> = {
-          type: params.type,
-          content: params.content,
-        };
-        if (params.type === "private") {
-          const recipients = Array.isArray(params.to) ? params.to : [params.to];
-          body.to = JSON.stringify(recipients);
-        } else {
-          body.to = String(params.to);
-          if (params.topic != null) {
-            body.topic = params.topic;
-          }
-        }
-        const response = await messengerPipelinePost("/messages", body);
-        const data = response.data as {
-          result?: string;
-          msg?: string;
-          id?: number;
-        };
-        if (!response.ok || data.result === "error") {
-          throw new Error(data.msg ?? t("app.unknownError"));
-        }
-        return { id: data.id };
       },
     },
   };

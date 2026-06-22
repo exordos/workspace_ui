@@ -2,6 +2,7 @@ import React, { useCallback } from "react";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import { getPresenceState } from "~/shared/lib/format";
+import { messageAuthorId } from "~/shared/lib/message-author.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { resolveAvatarSrc } from "./message-avatar.lib";
@@ -24,7 +25,8 @@ export const MessageListSenderGroup = React.memo<MessageListSenderGroupProps>(
     resolveCustomEmojiShortcodeImageUrl,
     showTopicInSenderName = true,
   }) {
-    const user = useUsersStore((s) => s.getUser(messages[0]!.sender_id));
+    const authorId = messageAuthorId(messages[0]!);
+    const user = useUsersStore((s) => s.getUser(authorId));
     const trimmedUserName = user?.full_name?.trim();
     const displayName =
       trimmedUserName != null && trimmedUserName.length > 0
@@ -35,7 +37,6 @@ export const MessageListSenderGroup = React.memo<MessageListSenderGroupProps>(
       user?.presence != null
         ? getPresenceState(user.presence.timestamp, user.presence.status)
         : null;
-    const authorId = messages[0]!.sender_id;
     const handleAuthorClick = useCallback(() => {
       bubbleCallbacks?.onAuthorClick?.(authorId);
     }, [bubbleCallbacks, authorId]);

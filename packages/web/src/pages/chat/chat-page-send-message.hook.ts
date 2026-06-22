@@ -9,6 +9,7 @@ import { createLogger } from "~/shared/lib/logger";
 import { createMessageId } from "~/shared/lib/message-id.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import { executeChatPageSend } from "./chat-page-send-handler.lib";
 import {
   buildOptimisticOutgoingMessage,
@@ -19,7 +20,7 @@ import type { ComposerUploadProgressState } from "./chat-upload.lib";
 const log = createLogger("chat-page");
 
 export interface UseChatPageSendMessageParams {
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   isDmView: boolean;
   activeDmUserIds: number[] | null;
   activeStream: string | null;
@@ -156,7 +157,7 @@ export function useChatPageSendMessage(
         const optimisticMessageId = createMessageId();
         const optimisticMessage = buildOptimisticOutgoingMessage({
           id: optimisticMessageId,
-          senderId: currentUserId ?? 0,
+          senderId: currentUserId,
           senderFullName: t("common.you"),
           content: body,
           target: { mode: "dm", recipientIds: activeDmUserIds ?? [] },
@@ -165,9 +166,10 @@ export function useChatPageSendMessage(
         requestScrollToBottom();
         try {
           const newMsg = await sendMessage({
+            messageUuid: optimisticMessageId,
             streamUuid: activeStreamUuid,
             content: body,
-            sender_id: currentUserId ?? 0,
+            ...(currentUserId != null ? { author_id: currentUserId } : {}),
             sender_full_name: t("common.you"),
           });
           commitOutgoingMessage(optimisticMessageId, newMsg);
@@ -198,9 +200,10 @@ export function useChatPageSendMessage(
         }
         const subject = normalizeTopicForIdentity(msg.subject ?? activeTopic ?? "");
         const optimisticMessageId = createMessageId();
+        const retryTopicUuid = msg.topic_uuid ?? activeTopicUuid ?? null;
         const optimisticMessage = buildOptimisticOutgoingMessage({
           id: optimisticMessageId,
-          senderId: currentUserId ?? 0,
+          senderId: currentUserId,
           senderFullName: t("common.you"),
           content: body,
           target: {
@@ -208,19 +211,20 @@ export function useChatPageSendMessage(
             stream: activeStreamCanonicalName,
             streamUuid: activeStreamUuid,
             subject,
-            ...(msg.topic_uuid != null ? { topicUuid: msg.topic_uuid } : activeTopicUuid != null ? { topicUuid: activeTopicUuid } : {}),
+            ...(retryTopicUuid != null ? { topicUuid: retryTopicUuid } : {}),
           },
         });
         appendMessage(optimisticMessage);
         requestScrollToBottom();
         try {
           const newMsg = await sendMessage({
+            messageUuid: optimisticMessageId,
             stream: activeStreamCanonicalName,
             streamUuid: activeStreamUuid,
-            ...(msg.topic_uuid != null ? { topicUuid: msg.topic_uuid } : activeTopicUuid != null ? { topicUuid: activeTopicUuid } : {}),
+            ...(retryTopicUuid != null ? { topicUuid: retryTopicUuid } : {}),
             subject,
             content: body,
-            sender_id: currentUserId ?? 0,
+            ...(currentUserId != null ? { author_id: currentUserId } : {}),
             sender_full_name: t("common.you"),
           });
           commitOutgoingMessage(optimisticMessageId, newMsg);

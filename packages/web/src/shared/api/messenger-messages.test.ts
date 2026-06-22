@@ -20,7 +20,6 @@ import {
   fetchMessagesBeforeAnchor,
   fetchMessagesWithNarrow,
   fetchMessagesWithNarrowPage,
-  fetchUnreadMentionsPage,
   fetchRecentMessages,
   rawMessageToMockMessage,
   removeReaction,
@@ -41,6 +40,8 @@ function mockMessagesResponse(data: Record<string, unknown>): void {
 }
 
 describe("rawMessageToMockMessage", () => {
+  const streamUuid = "22222222-2222-4222-8222-222222222222";
+
   it("maps a stream message", () => {
     const result = rawMessageToMockMessage({
       id: "00000000-0000-4000-8000-000000000001",
@@ -51,7 +52,7 @@ describe("rawMessageToMockMessage", () => {
       display_recipient: "engineering",
       subject: "bugs",
       type: "stream",
-      stream_id: 10,
+      stream_uuid: streamUuid,
       flags: ["read"],
       reactions: [],
     });
@@ -60,7 +61,7 @@ describe("rawMessageToMockMessage", () => {
       id: "00000000-0000-4000-8000-000000000001",
       sender_id: 42,
       sender_full_name: "Alice",
-      stream_id: 10,
+      stream_uuid: streamUuid,
       display_recipient: "engineering",
       channel: "engineering",
       subject: "bugs",
@@ -71,21 +72,21 @@ describe("rawMessageToMockMessage", () => {
     });
   });
 
-  it("maps a private message with null stream_id", () => {
+  it("maps a private message with null stream uuid", () => {
     const result = rawMessageToMockMessage({
       id: "00000000-0000-4000-8000-000000000002",
       sender_id: 5,
       content: "hi",
       timestamp: 1710000100,
       type: "private",
-      stream_id: null,
+      stream_uuid: null,
       display_recipient: [
         { id: 5, full_name: "Alice" },
         { id: 10, full_name: "Bob" },
       ],
     });
 
-    expect(result.stream_id).toBeNull();
+    expect(result.stream_uuid).toBeNull();
     expect(result.channel).toBeUndefined();
     expect(result.display_recipient).toEqual([
       { id: 5, full_name: "Alice" },
@@ -103,7 +104,7 @@ describe("rawMessageToMockMessage", () => {
 
     expect(result.sender_full_name).toBe("");
     expect(result.subject).toBe("");
-    expect(result.stream_id).toBeNull();
+    expect(result.stream_uuid).toBeNull();
   });
 
   it("maps markdown_source when present", () => {
@@ -403,7 +404,7 @@ describe("fetchActivityMessagesPage", () => {
 });
 
 // ---------------------------------------------------------------------------
-// fetchSubscriptions / fetchUserTopics / fetchMessageById / fetchStreamMembers
+// fetchSubscriptions / fetchMessageById / fetchStreamMembers
 // ---------------------------------------------------------------------------
 describe("fetchMessagesByIds", () => {
   it("returns empty array when no ids are provided", async () => {
@@ -746,31 +747,6 @@ describe("fetchMessagesWithNarrow", () => {
     expect(page.foundNewest).toBe(true);
     expect(page.messages).toHaveLength(1);
   });
-
-  it("fetchUnreadMentionsPage uses is:mentioned AND is:unread narrow", async () => {
-    mockMessagesResponse({
-      messages: [],
-      found_oldest: true,
-      found_newest: true,
-    });
-
-    await fetchUnreadMentionsPage();
-
-    expect(mockMessengerApi.get).toHaveBeenCalledWith(
-      "/messages",
-      expect.objectContaining({
-        narrow: JSON.stringify([
-          { negated: false, operator: "is", operand: "mentioned" },
-          { negated: false, operator: "is", operand: "unread" },
-        ]),
-        anchor: "newest",
-        num_before: "200",
-        num_after: "0",
-        apply_markdown: "false",
-      }),
-      undefined,
-    );
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -871,13 +847,13 @@ describe("fetchDmMessages", () => {
           content: "dm",
           timestamp: 100,
           type: "private",
-          stream_id: null,
+          stream_uuid: null,
         },
       ],
     });
     const result = await fetchDmMessages(42);
     expect(result).toHaveLength(1);
-    expect(result[0]!.stream_id).toBeNull();
+    expect(result[0]!.stream_uuid).toBeNull();
   });
 
   it("handles array of user IDs", async () => {
@@ -930,17 +906,23 @@ describe("sendMessage", () => {
   const streamUuid = "22222222-2222-4222-8222-222222222222";
 
   it("sends a stream message through the gateway native endpoint", async () => {
+    const messageUuid = testMessageId(100);
     mockMessengerApi.postJsonWithBase.mockResolvedValue({
       ok: true,
       status: 201,
-      data: { uuid: testMessageId(100) },
+      data: {
+        uuid: messageUuid,
+        stream_uuid: streamUuid,
+        is_own: true,
+        payload: { kind: "markdown", content: "hello" },
+      },
       raw: { statusText: "Created" },
     });
 
     const result = await sendMessage({
+      messageUuid,
       streamUuid: streamUuid,
       stream: "general",
-      streamId: 10,
       subject: "test",
       content: "hello",
       sender_id: 7,
@@ -948,11 +930,12 @@ describe("sendMessage", () => {
     });
 
     expect(result).toEqual({
-      id: testMessageId(100),
-      source_message_uuid: testMessageId(100),
+      id: messageUuid,
+      source_message_uuid: messageUuid,
       sender_id: 7,
+      is_own: true,
       sender_full_name: "You",
-      stream_id: 10,
+      stream_uuid: streamUuid,
       display_recipient: "general",
       channel: "general",
       subject: "test",
@@ -964,6 +947,7 @@ describe("sendMessage", () => {
       "/api/messenger/v1",
       "/messages/",
       {
+        uuid: messageUuid,
         stream_uuid: streamUuid,
         payload: {
           kind: "markdown",
@@ -975,23 +959,65 @@ describe("sendMessage", () => {
     expect(mockMessengerApi.post).not.toHaveBeenCalled();
   });
 
-  it("sends a DM message with the private stream uuid", async () => {
+  it("stores UUID author identity on the local sent message", async () => {
+    const messageUuid = testMessageId(105);
+    const authorUuid = "00000000-0000-0000-0000-000000000000";
     mockMessengerApi.postJsonWithBase.mockResolvedValue({
       ok: true,
       status: 201,
-      data: { uuid: testMessageId(101) },
+      data: {
+        uuid: messageUuid,
+        stream_uuid: streamUuid,
+        is_own: true,
+        payload: { kind: "markdown", content: "hello uuid" },
+      },
       raw: { statusText: "Created" },
     });
 
     const result = await sendMessage({
+      messageUuid,
+      streamUuid: streamUuid,
+      content: "hello uuid",
+      author_id: authorUuid,
+      sender_full_name: "You",
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        id: messageUuid,
+        sender_id: 0,
+        author_uuid: authorUuid,
+        sender_uuid: authorUuid,
+        is_own: true,
+      }),
+    );
+  });
+
+  it("sends a DM message with the private stream uuid", async () => {
+    const messageUuid = testMessageId(101);
+    mockMessengerApi.postJsonWithBase.mockResolvedValue({
+      ok: true,
+      status: 201,
+      data: {
+        uuid: messageUuid,
+        stream_uuid: streamUuid,
+        is_own: true,
+        payload: { kind: "markdown", content: "hi" },
+      },
+      raw: { statusText: "Created" },
+    });
+
+    const result = await sendMessage({
+      messageUuid,
       streamUuid: streamUuid,
       content: "hi",
     });
 
     expect(result).toMatchObject({
-      id: testMessageId(101),
-      source_message_uuid: testMessageId(101),
-      stream_id: null,
+      id: messageUuid,
+      source_message_uuid: messageUuid,
+      is_own: true,
+      stream_uuid: streamUuid,
       subject: "",
       content: "hi",
       markdown_source: "hi",
@@ -1000,6 +1026,7 @@ describe("sendMessage", () => {
       "/api/messenger/v1",
       "/messages/",
       {
+        uuid: messageUuid,
         stream_uuid: streamUuid,
         payload: {
           kind: "markdown",
@@ -1009,22 +1036,21 @@ describe("sendMessage", () => {
     );
   });
 
-  it("throws when stream uuid is missing", async () => {
-    await expect(sendMessage({ content: "hi" })).rejects.toThrow(
-      /sendMessage\.streamUuid must be a non-empty string/,
+  it("throws when stream uuid is empty", async () => {
+    await expect(sendMessage({ streamUuid: "", content: "hi" })).rejects.toThrow(
+      /Invalid streamUuid/,
     );
     expect(mockMessengerApi.postJsonWithBase).not.toHaveBeenCalled();
   });
 
-  it("throws when provided stream id is invalid", async () => {
+  it("throws when provided stream uuid is invalid", async () => {
     await expect(
       sendMessage({
-        streamUuid: streamUuid,
+        streamUuid: "not-a-uuid",
         stream: "engineering",
-        streamId: 0,
         content: "hi",
       }),
-    ).rejects.toThrow(/Invalid streamId/);
+    ).rejects.toThrow(/Invalid streamUuid/);
     expect(mockMessengerApi.postJsonWithBase).not.toHaveBeenCalled();
   });
 
@@ -1036,14 +1062,20 @@ describe("sendMessage", () => {
   });
 
   it("defaults subject to empty string for optimistic stream payload", async () => {
+    const messageUuid = testMessageId(102);
     mockMessengerApi.postJsonWithBase.mockResolvedValue({
       ok: true,
       status: 201,
-      data: { uuid: testMessageId(102) },
+      data: {
+        uuid: messageUuid,
+        stream_uuid: streamUuid,
+        payload: { kind: "markdown", content: "test" },
+      },
       raw: { statusText: "Created" },
     });
 
     const result = await sendMessage({
+      messageUuid,
       streamUuid: streamUuid,
       stream: "engineering",
       content: "test",
@@ -1052,7 +1084,8 @@ describe("sendMessage", () => {
     expect(result.subject).toBe("");
   });
 
-  it("throws when gateway does not return a message uuid", async () => {
+  it("uses the client message uuid when the API returns an empty body", async () => {
+    const messageUuid = testMessageId(103);
     mockMessengerApi.postJsonWithBase.mockResolvedValue({
       ok: true,
       status: 201,
@@ -1060,9 +1093,9 @@ describe("sendMessage", () => {
       raw: { statusText: "Created" },
     });
 
-    await expect(sendMessage({ streamUuid: streamUuid, content: "hi" })).rejects.toThrow(
-      /Invalid messageId/,
-    );
+    const result = await sendMessage({ messageUuid, streamUuid: streamUuid, content: "hi" });
+
+    expect(result.id).toBe(messageUuid);
   });
 });
 

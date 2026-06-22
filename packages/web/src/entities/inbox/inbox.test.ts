@@ -14,7 +14,7 @@ import type { InboxEntry } from "./inbox.types";
 
 const STREAM_ENTRY_1: InboxEntry = {
   key: "stream:10:general",
-  streamId: 10,
+  streamId: "10",
   streamName: "engineering",
   topic: "general",
   senderId: null,
@@ -31,7 +31,7 @@ const STREAM_ENTRY_1: InboxEntry = {
 
 const STREAM_ENTRY_2: InboxEntry = {
   key: "stream:10:bugs",
-  streamId: 10,
+  streamId: "10",
   streamName: "engineering",
   topic: "bugs",
   senderId: null,

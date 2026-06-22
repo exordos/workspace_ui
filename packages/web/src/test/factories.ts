@@ -58,6 +58,12 @@ interface MessageOverrides {
   sender_id?: number;
   sender_full_name?: string;
   stream_uuid?: string | null;
+  author_uuid?: string;
+  sender_uuid?: string;
+  is_own?: boolean;
+  read?: boolean;
+  pinned?: boolean;
+  starred?: boolean;
   channel?: string;
   subject?: string;
   content?: string;
@@ -76,6 +82,12 @@ export function createMessage(overrides: MessageOverrides = {}) {
     sender_id: overrides.sender_id ?? 1,
     sender_full_name: overrides.sender_full_name ?? "Test User",
     stream_uuid: overrides.stream_uuid ?? autoUuid(),
+    ...(overrides.author_uuid != null ? { author_uuid: overrides.author_uuid } : {}),
+    ...(overrides.sender_uuid != null ? { sender_uuid: overrides.sender_uuid } : {}),
+    ...(overrides.is_own != null ? { is_own: overrides.is_own } : {}),
+    ...(overrides.read != null ? { read: overrides.read } : {}),
+    ...(overrides.pinned != null ? { pinned: overrides.pinned } : {}),
+    ...(overrides.starred != null ? { starred: overrides.starred } : {}),
     channel: overrides.channel ?? "general",
     subject: overrides.subject ?? "test-topic",
     content: overrides.content ?? `Message ${id}`,

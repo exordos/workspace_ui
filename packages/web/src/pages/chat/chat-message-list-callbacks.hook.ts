@@ -6,6 +6,7 @@ import { useMessageReadersStore } from "~/features/message-readers/message-reade
 import { t } from "~/i18n/i18n";
 import { addMessageFlag, removeMessageFlag } from "~/shared/api/messenger-messages";
 import { writeText } from "~/shared/lib/clipboard";
+import { messageAuthorId } from "~/shared/lib/message-author.lib";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { buildMessengerMessageWebPermalink } from "~/shared/lib/messenger-web-permalink.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
@@ -70,7 +71,7 @@ export function useChatMessageListCallbacks(
           id: msg.id,
           content: resolveReplyQuoteContent(msg, selectedText),
           sender_full_name: msg.sender_full_name,
-          sender_id: msg.sender_id,
+          sender_id: messageAuthorId(msg),
           permalinkUrl,
         });
       },

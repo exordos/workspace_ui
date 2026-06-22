@@ -1,5 +1,5 @@
 /**
- * Merges stream/topic sidebar entries when applying messages or unread reconcile patches.
+ * Merges stream/topic sidebar preview entries while preserving server-provided unread counts.
  */
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
@@ -20,11 +20,10 @@ export function mergeStreamEntry(
   topicLastMessageSenderName: string | undefined,
   topicTime: string,
   topicTs: number,
-  topicUnreadDelta: number,
   lastMessageId?: MessageId,
 ): StreamEntryInternal {
   const existingTopic = existing?.topics.get(topicSubject);
-  const unreadCount = (existingTopic?.unreadCount ?? 0) + topicUnreadDelta;
+  const unreadCount = existingTopic?.unreadCount ?? 0;
   const topicEntry = {
     subject: topicSubject,
     lastMessage: topicLastMessage,
@@ -36,7 +35,16 @@ export function mergeStreamEntry(
   };
   if (!existing) {
     const topics = new Map<string, StreamTopicEntryInternal>([[topicSubject, topicEntry]]);
-    return { streamUuid: streamId, name, lastMessage, lastMessageSenderName, time, ts, topics };
+    return {
+      streamUuid: streamId,
+      name,
+      lastMessage,
+      lastMessageSenderName,
+      time,
+      ts,
+      unreadCount: 0,
+      topics,
+    };
   }
   const nextTopics = new Map(existing.topics);
   if (!existingTopic || topicTs >= existingTopic.ts) {
@@ -53,6 +61,7 @@ export function mergeStreamEntry(
     lastMessageSenderName: newerStream ? lastMessageSenderName : existing.lastMessageSenderName,
     time: newerStream ? time : existing.time,
     ts: Math.max(existing.ts, ts),
+    unreadCount: existing.unreadCount,
     isArchived: existing.isArchived,
     creatorId: existing.creatorId,
     inviteOnly: existing.inviteOnly,

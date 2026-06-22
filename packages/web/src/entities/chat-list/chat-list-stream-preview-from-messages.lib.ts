@@ -1,8 +1,8 @@
 /**
  * Stream sidebar preview merge from fetched messages — preview text only, no unread bumps.
  *
- * Used in metadata-first bootstrap: unread counts come from register `unread_msgs`, not from
- * capped GET /messages batches (~5k messages vs 100k+ unread on server).
+ * Used in metadata-first bootstrap: unread counts come from stream/topic metadata, not from
+ * capped GET /messages preview batches.
  */
 import { messageToStreamEntry } from "~/entities/chat-list/chat-list.lib";
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
@@ -37,6 +37,24 @@ export function shouldApplyStreamTopicPreviewFromFetchedMessage(
     return true;
   }
   return existingTopic.lastMessageId === message.id;
+}
+
+export function resolveStreamSidebarTopicSubject(
+  existingStream: StreamEntryInternal | undefined,
+  message: WorkspaceRawMessage,
+): string {
+  const fallback = normalizeTopicForIdentity(message.subject ?? "");
+  const topicUuid = message.topic_uuid?.trim().toLowerCase();
+  if (existingStream == null || topicUuid == null || topicUuid.length === 0) {
+    return fallback;
+  }
+
+  for (const topic of existingStream.topics.values()) {
+    if (topic.topicUuid?.trim().toLowerCase() === topicUuid) {
+      return topic.subject;
+    }
+  }
+  return fallback;
 }
 
 function mergeStreamPreviewEntry(
@@ -107,7 +125,7 @@ export function mergeStreamSidebarPreviewsFromMessages(
   const streamTopicLatest = new Map<string, WorkspaceRawMessage>();
   for (const m of messages) {
     if (m.type !== "stream" || m.stream_uuid == null) continue;
-    const topic = normalizeTopicForIdentity(m.subject ?? "");
+    const topic = resolveStreamSidebarTopicSubject(streamsMap.get(m.stream_uuid), m);
     const key = streamTopicCompositeKey(m.stream_uuid, topic);
     const existing = streamTopicLatest.get(key);
     if (!existing || m.timestamp >= existing.timestamp) {
@@ -117,17 +135,19 @@ export function mergeStreamSidebarPreviewsFromMessages(
 
   let nextStreams = streamsMap;
   for (const m of streamTopicLatest.values()) {
-    const result = messageToStreamEntry(m);
+    const existing = nextStreams.get(m.stream_uuid ?? "");
+    const subject = resolveStreamSidebarTopicSubject(existing, m);
+    const messageForEntry = subject === (m.subject ?? "") ? m : { ...m, subject };
+    const result = messageToStreamEntry(messageForEntry);
     if (!result) continue;
     const { streamUuid, name, lastMessage, lastMessageSenderName, time, ts } = result.stream;
     const topic = result.topic;
-    const existing = nextStreams.get(streamUuid);
     const existingTopic = existing?.topics.get(topic.subject);
     if (
       !shouldApplyStreamTopicPreviewFromFetchedMessage(
         existing,
         existingTopic,
-        m,
+        messageForEntry,
         topic.lastMessage,
       )
     ) {

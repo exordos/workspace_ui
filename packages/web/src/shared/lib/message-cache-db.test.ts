@@ -17,14 +17,16 @@ import {
 import { testMessageId, testMessageOrdinal } from "~/test/factories";
 
 const INSTANCE = "inst-a";
-const CHAT = "stream:1:general";
+const STREAM_UUID_A = "11111111-1111-4111-8111-111111111111";
+const STREAM_UUID_B = "22222222-2222-4222-8222-222222222222";
+const CHAT = `stream:${STREAM_UUID_A}:general`;
 
 function msg(id: number | string, overrides: Partial<MockMessage> = {}): MockMessage {
   return {
     id: testMessageId(id),
     sender_id: 10,
     sender_full_name: "A",
-    stream_id: 1,
+    stream_uuid: STREAM_UUID_A,
     subject: "general",
     content: `<p>${id}</p>`,
     timestamp: 1000 + testMessageOrdinal(id),
@@ -97,7 +99,7 @@ describe("message-cache-db", () => {
     await openMessageCacheDb();
     await upsertChatMessages({
       instanceId: "inst-a",
-      chatKey: "stream:1:general",
+      chatKey: `stream:${STREAM_UUID_A}:general`,
       messages: [msg(100), msg(2)],
       windowSizeN: 200,
     });
@@ -109,8 +111,8 @@ describe("message-cache-db", () => {
     });
     await upsertChatMessages({
       instanceId: "inst-b",
-      chatKey: "stream:9:other",
-      messages: [msg(5)],
+      chatKey: `stream:${STREAM_UUID_B}:other`,
+      messages: [msg(5, { stream_uuid: STREAM_UUID_B })],
       windowSizeN: 200,
     });
 
@@ -126,24 +128,24 @@ describe("message-cache-db", () => {
     await openMessageCacheDb();
     await upsertChatMessages({
       instanceId: "inst-a",
-      chatKey: "stream:1:alpha",
+      chatKey: `stream:${STREAM_UUID_A}:alpha`,
       messages: [msg(30), msg(10)],
       windowSizeN: 200,
     });
     await upsertChatMessages({
       instanceId: "inst-a",
-      chatKey: "stream:1:beta",
+      chatKey: `stream:${STREAM_UUID_A}:beta`,
       messages: [msg(25)],
       windowSizeN: 200,
     });
     await upsertChatMessages({
       instanceId: "inst-a",
-      chatKey: "stream:2:other",
-      messages: [msg(15)],
+      chatKey: `stream:${STREAM_UUID_B}:other`,
+      messages: [msg(15, { stream_uuid: STREAM_UUID_B })],
       windowSizeN: 200,
     });
 
-    const rows = await getStreamMessagesAscending("inst-a", 1);
+    const rows = await getStreamMessagesAscending("inst-a", STREAM_UUID_A);
     expect(rows.map((m) => m.id)).toEqual([
       testMessageId(10),
       testMessageId(25),
@@ -155,27 +157,30 @@ describe("message-cache-db", () => {
     await openMessageCacheDb();
     await upsertChatMessages({
       instanceId: INSTANCE,
-      chatKey: "stream:1:incident",
+      chatKey: `stream:${STREAM_UUID_A}:incident`,
       messages: [msg(1, { subject: "incident" }), msg(2, { subject: "incident" })],
       windowSizeN: 200,
     });
 
     await moveTopicMessagesInCache({
       instanceId: INSTANCE,
-      streamId: 1,
+      streamId: STREAM_UUID_A,
       oldTopic: "incident",
       newTopic: "\u2714 incident",
       messageIds: [testMessageId(1), testMessageId(2)],
       anchorMessageId: testMessageId(1),
     });
 
-    const oldRows = await getChatMessagesAscending(INSTANCE, "stream:1:incident");
-    const newRows = await getChatMessagesAscending(INSTANCE, "stream:1:\u2714 incident");
+    const oldRows = await getChatMessagesAscending(INSTANCE, `stream:${STREAM_UUID_A}:incident`);
+    const newRows = await getChatMessagesAscending(
+      INSTANCE,
+      `stream:${STREAM_UUID_A}:\u2714 incident`,
+    );
     expect(oldRows).toHaveLength(0);
     expect(newRows.map((row) => row.id)).toEqual([testMessageId(1), testMessageId(2)]);
     expect(newRows.every((row) => row.subject === "\u2714 incident")).toBe(true);
-    const oldMeta = await getChatMeta(INSTANCE, "stream:1:incident");
-    const newMeta = await getChatMeta(INSTANCE, "stream:1:\u2714 incident");
+    const oldMeta = await getChatMeta(INSTANCE, `stream:${STREAM_UUID_A}:incident`);
+    const newMeta = await getChatMeta(INSTANCE, `stream:${STREAM_UUID_A}:\u2714 incident`);
     expect(oldMeta).toBeNull();
     expect(newMeta?.oldestMessageId).toBe(testMessageId(1));
     expect(newMeta?.newestMessageId).toBe(testMessageId(2));
@@ -185,33 +190,36 @@ describe("message-cache-db", () => {
     await openMessageCacheDb();
     await upsertChatMessages({
       instanceId: INSTANCE,
-      chatKey: "stream:1:incident",
+      chatKey: `stream:${STREAM_UUID_A}:incident`,
       messages: [msg(10, { subject: "incident" }), msg(30, { subject: "incident" })],
       windowSizeN: 200,
     });
     await upsertChatMessages({
       instanceId: INSTANCE,
-      chatKey: "stream:1:\u2714 incident",
+      chatKey: `stream:${STREAM_UUID_A}:\u2714 incident`,
       messages: [msg(20, { subject: "\u2714 incident" })],
       windowSizeN: 200,
     });
 
     await moveTopicMessagesInCache({
       instanceId: INSTANCE,
-      streamId: 1,
+      streamId: STREAM_UUID_A,
       oldTopic: "incident",
       newTopic: "\u2714 incident",
       messageIds: [testMessageId(10)],
       anchorMessageId: testMessageId(10),
     });
 
-    const oldRows = await getChatMessagesAscending(INSTANCE, "stream:1:incident");
-    const newRows = await getChatMessagesAscending(INSTANCE, "stream:1:\u2714 incident");
+    const oldRows = await getChatMessagesAscending(INSTANCE, `stream:${STREAM_UUID_A}:incident`);
+    const newRows = await getChatMessagesAscending(
+      INSTANCE,
+      `stream:${STREAM_UUID_A}:\u2714 incident`,
+    );
     expect(oldRows.map((row) => row.id)).toEqual([testMessageId(30)]);
     expect(newRows.map((row) => row.id)).toEqual([testMessageId(10), testMessageId(20)]);
     expect(newRows.every((row) => row.subject === "\u2714 incident")).toBe(true);
     expect(oldRows.every((row) => row.subject === "incident")).toBe(true);
-    const streamWideRows = await getStreamMessagesAscending(INSTANCE, 1);
+    const streamWideRows = await getStreamMessagesAscending(INSTANCE, STREAM_UUID_A);
     expect(streamWideRows.map((row) => row.id)).toEqual([
       testMessageId(10),
       testMessageId(20),

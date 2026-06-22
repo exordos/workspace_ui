@@ -229,18 +229,16 @@ export const MessageBubbleStandaloneShell = React.memo<MessageBubbleShellProps>(
             className="self-center"
           />
         ) : null}
-        {!isOwn &&
-          (showAvatar ? (
-            <MessageBubblePeerAvatar
-              displayName={displayName}
-              avatarSrc={avatarSrc ?? undefined}
-              presenceState={presenceState}
-              onAuthorClick={onAuthorClick}
-            />
-          ) : (
-            <div className="w-12 flex-shrink-0" aria-hidden />
-          ))}
-        {isOwn ? <div className="w-12 flex-shrink-0" /> : null}
+        {showAvatar ? (
+          <MessageBubblePeerAvatar
+            displayName={displayName}
+            avatarSrc={avatarSrc ?? undefined}
+            presenceState={presenceState}
+            onAuthorClick={onAuthorClick}
+          />
+        ) : (
+          <div className="w-12 flex-shrink-0" aria-hidden />
+        )}
         <div className={`min-w-0 flex-1 ${isOwn ? "flex flex-col items-end" : ""}`}>
           {showSenderName ? (
             <MessageBubbleSenderMeta

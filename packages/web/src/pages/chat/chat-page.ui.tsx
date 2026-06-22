@@ -37,6 +37,7 @@ import { useOpenSearch } from "~/shared/contexts/open-search";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { getPresenceState, formatLastSeen } from "~/shared/lib/format";
 import { createLogger } from "~/shared/lib/logger";
+import { isMessageFromCurrentUser, messageAuthorId } from "~/shared/lib/message-author.lib";
 import {
   logMessageFlow,
   logScrollReadFlow,
@@ -71,6 +72,7 @@ import { useChatMessageListCallbacks } from "./chat-message-list-callbacks.hook"
 import { resolveNextUnreadTopicRoute } from "./chat-next-unread-topic.lib";
 import { normalizeAiContextContent } from "./chat-page-ai.lib";
 import { useChatPageCall } from "./chat-page-call.hook";
+import { shouldShowTopicPrompt } from "./chat-page-composer-section.lib";
 import { ChatPageComposerSection } from "./chat-page-composer-section.ui";
 import { ChatPageDeleteConfirmBar } from "./chat-page-delete-confirm-bar.ui";
 import { useChatPageDraftHydration } from "./chat-page-draft-sync.hook";
@@ -151,23 +153,32 @@ export const ChatPage: React.FC = () => {
     [activeDmUserIds],
   );
   const activeStreamId = resolvedStreamId;
+  const activeStreamEntry = activeStreamId != null ? streamsMap.get(activeStreamId) : undefined;
+  const isPrivateStreamView = !isDmView && activeStreamEntry?.private === true;
   const activeStreamCanonicalName = useMemo(
     () =>
       resolveCanonicalStreamName({
         streamId: activeStreamId,
-        streamMapName: activeStreamId != null ? streamsMap.get(activeStreamId)?.name : null,
+        streamMapName: activeStreamEntry?.name ?? null,
         metadataName: canonicalStreamName,
       }),
-    [activeStreamId, canonicalStreamName, streamsMap],
+    [activeStreamEntry?.name, activeStreamId, canonicalStreamName],
   );
   const activeStreamUuid = useMemo(() => {
     if (isDmView) {
       return dmChat?.streamUuid ?? null;
     }
-    return activeStreamId != null
-      ? (streamsMap.get(activeStreamId)?.streamUuid ?? activeStreamId)
-      : null;
-  }, [activeStreamId, dmChat?.streamUuid, isDmView, streamsMap]);
+    return activeStreamId != null ? (activeStreamEntry?.streamUuid ?? activeStreamId) : null;
+  }, [activeStreamEntry?.streamUuid, activeStreamId, dmChat?.streamUuid, isDmView]);
+  const effectiveActiveTopicUuid = useMemo(() => {
+    if (activeTopicUuid != null) {
+      return activeTopicUuid;
+    }
+    if (!isPrivateStreamView || activeTopic != null) {
+      return undefined;
+    }
+    return activeStreamEntry?.topics.get("")?.topicUuid;
+  }, [activeStreamEntry?.topics, activeTopic, activeTopicUuid, isPrivateStreamView]);
   const partnerUser = useUsersStore((s) =>
     partnerUserId != null ? s.getUser(partnerUserId) : undefined,
   );
@@ -263,7 +274,7 @@ export const ChatPage: React.FC = () => {
     id: MessageId;
     content: string;
     sender_full_name: string;
-    sender_id: number;
+    sender_id: UserId;
     permalinkUrl: string | null;
   } | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -315,14 +326,14 @@ export const ChatPage: React.FC = () => {
         .slice(-AI_CONTEXT_MESSAGES_LIMIT)
         .map((message) => ({
           id: message.id,
-          senderId: message.sender_id,
+          senderId: messageAuthorId(message),
           senderName: message.sender_full_name,
           content: normalizeAiContextContent(message.content),
           timestamp: message.timestamp,
-          isOwn: numericCurrentUserId != null && message.sender_id === numericCurrentUserId,
+          isOwn: isMessageFromCurrentUser(message, currentUserId),
         }))
         .filter((message) => message.content.length > 0),
-    [messages, numericCurrentUserId],
+    [currentUserId, messages],
   );
   const aiChatContext = useMemo<AiReplyRequest["chatContext"] | undefined>(() => {
     if (isDmView) {
@@ -594,7 +605,7 @@ export const ChatPage: React.FC = () => {
     activeStreamCanonicalName,
     resolvedStreamId,
     streamRouteTopic,
-    activeTopicUuid,
+    activeTopicUuid: effectiveActiveTopicUuid,
     focusedMessageId,
     currentUserId,
     isFocusedMessageLoadedInCurrentRoute,
@@ -621,8 +632,9 @@ export const ChatPage: React.FC = () => {
     partnerUserFullName: partnerUser?.full_name,
     activeDmUserIds,
     activeStream: activeStream ?? null,
-    activeStreamId,
+    activeStreamUuid,
     activeTopic: activeTopic ?? null,
+    activeTopicUuid: effectiveActiveTopicUuid ?? null,
     currentUserId,
     setSendError,
     navigateToDm,
@@ -638,7 +650,7 @@ export const ChatPage: React.FC = () => {
       activeStreamId,
       activeStreamUuid,
       activeTopic,
-      activeTopicUuid,
+      activeTopicUuid: effectiveActiveTopicUuid,
       appendMessage: appendMessageToStore,
       commitOutgoingMessage: commitOutgoingMessageToStore,
       removeMessage: removeMessageFromStore,
@@ -691,7 +703,7 @@ export const ChatPage: React.FC = () => {
       if (
         !canStartMessageContentEdit(
           message,
-          numericCurrentUserId,
+          currentUserId,
           currentUserMessageEditPolicy,
           Math.floor(Date.now() / 1000),
         )
@@ -708,7 +720,7 @@ export const ChatPage: React.FC = () => {
         setComposerEditSession({ messageId: message.id, initialMarkdown });
       });
     },
-    [numericCurrentUserId, currentUserMessageEditPolicy, resolveEditableMessageMarkdown],
+    [currentUserId, currentUserMessageEditPolicy, resolveEditableMessageMarkdown],
   );
 
   const persistOptimisticMessageEdit = useCallback(
@@ -746,7 +758,7 @@ export const ChatPage: React.FC = () => {
         message != null &&
         !canStartMessageContentEdit(
           message,
-          numericCurrentUserId,
+          currentUserId,
           currentUserMessageEditPolicy,
           Math.floor(Date.now() / 1000),
         )
@@ -760,7 +772,7 @@ export const ChatPage: React.FC = () => {
       await persistOptimisticMessageEdit(messageId, markdown);
     },
     [
-      numericCurrentUserId,
+      currentUserId,
       currentUserMessageEditPolicy,
       applyOptimisticMessageEditInStore,
       persistOptimisticMessageEdit,
@@ -775,7 +787,7 @@ export const ChatPage: React.FC = () => {
       if (
         !canStartMessageContentEdit(
           message,
-          numericCurrentUserId,
+          currentUserId,
           currentUserMessageEditPolicy,
           Math.floor(Date.now() / 1000),
         )
@@ -788,7 +800,7 @@ export const ChatPage: React.FC = () => {
       void persistOptimisticMessageEdit(message.id, markdown).catch(() => undefined);
     },
     [
-      numericCurrentUserId,
+      currentUserId,
       currentUserMessageEditPolicy,
       applyOptimisticMessageEditInStore,
       persistOptimisticMessageEdit,
@@ -841,13 +853,13 @@ export const ChatPage: React.FC = () => {
   const handleEditLastMessage = useCallback(() => {
     const lastOwnMessageForEdit = resolveLastOwnMessageForEdit(
       useCurrentChatMessagesStore.getState().messages,
-      numericCurrentUserId,
+      currentUserId,
       currentUserMessageEditPolicy,
       Math.floor(Date.now() / 1000),
     );
     if (lastOwnMessageForEdit == null) return;
     requestMessageEdit(lastOwnMessageForEdit);
-  }, [numericCurrentUserId, currentUserMessageEditPolicy, requestMessageEdit]);
+  }, [currentUserId, currentUserMessageEditPolicy, requestMessageEdit]);
 
   const handleForwardTo = useCallback(
     (stream: string, topic: string, to?: number[]) => {
@@ -963,14 +975,9 @@ export const ChatPage: React.FC = () => {
   const deletableSelectedMessageIds = useMemo(
     () =>
       messages
-        .filter(
-          (m) =>
-            selectedMessageIds.has(m.id) &&
-            numericCurrentUserId != null &&
-            m.sender_id === numericCurrentUserId,
-        )
+        .filter((m) => selectedMessageIds.has(m.id) && isMessageFromCurrentUser(m, currentUserId))
         .map((m) => m.id),
-    [messages, selectedMessageIds, numericCurrentUserId],
+    [currentUserId, messages, selectedMessageIds],
   );
 
   const forwardableSelectedMessages = useMemo(
@@ -1181,7 +1188,11 @@ export const ChatPage: React.FC = () => {
           activeStreamUuid={activeStreamUuid}
           dmPartnerDeactivated={partnerDeactivated}
           activeStream={activeStream}
-          showTopicPrompt={!isDmView && activeTopic == null}
+          showTopicPrompt={shouldShowTopicPrompt({
+            isDmView,
+            isPrivateStreamView,
+            activeTopic,
+          })}
           streamSlug={streamSlug}
           onExpandStreamTopics={handleExpandCurrentStreamTopics}
           uploadProgress={uploadProgress}

@@ -53,7 +53,7 @@ export function syncStreamSidebarFromLoadedMessages(
   const forStream = filterMessagesForStreamId(options.messages, options.streamId);
   if (forStream.length > 0) {
     const raw = forStream.map((m) => mockMessageToRawMessage(m));
-    useChatListStore.getState().upsertUnreadMessageLocations(raw);
+    useChatListStore.getState().upsertMessageLocations(raw);
   }
 
   if (!shouldSyncStreamPreviewFromWindow(options)) {

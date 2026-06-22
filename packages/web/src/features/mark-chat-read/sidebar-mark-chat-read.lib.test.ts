@@ -6,6 +6,7 @@ import { applySidebarMarkChatAsRead } from "./sidebar-mark-chat-read.lib";
 const markDmAsReadMock = vi.fn();
 const markStreamAsReadMock = vi.fn();
 const markTopicAsReadMock = vi.fn();
+const STREAM_UUID = "11111111-1111-4111-8111-111111111111";
 
 vi.mock("~/shared/api/messenger-read-state", () => ({
   markDmAsRead: (...args: unknown[]) => markDmAsReadMock(...args),
@@ -22,77 +23,34 @@ describe("applySidebarMarkChatAsRead", () => {
     markTopicAsReadMock.mockReset();
   });
 
-  it("clears DM unread after successful narrow API", async () => {
+  it("marks DM as read through API", async () => {
     useChatListStore.getState().setCurrentUserId(10);
-    useChatListStore
-      .getState()
-      .upsertDmMetadataRows([
-        { userIds: [10, 20], lastMessageId: "00000000-0000-4000-8000-000000000001" },
-      ]);
-    useChatListStore.getState().reconcileUnreadFromSnapshot(
-      {
-        streams: [],
-        dms: [
-          {
-            userIds: [20],
-            unreadMessageIds: [
-              "00000000-0000-4000-8000-000000000001",
-              "00000000-0000-4000-8000-000000000002",
-            ],
-          },
-        ],
-        totalCount: 2,
-        mentionMessageIds: [],
-      },
-      10,
-    );
     markDmAsReadMock.mockResolvedValue(true);
 
     const ok = await applySidebarMarkChatAsRead({ type: "dm", userIds: [10, 20] });
 
     expect(ok).toBe(true);
     expect(markDmAsReadMock).toHaveBeenCalledWith([10, 20]);
-    expect(useChatListStore.getState().dmsMap.get("10,20")?.unreadCount).toBe(0);
   });
 
-  it("clears topic unread after successful narrow API", async () => {
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
-    useChatListStore.getState().reconcileUnreadFromSnapshot(
-      {
-        streams: [
-          {
-            streamId: 5,
-            topic: "alpha",
-            unreadMessageIds: [
-              "00000000-0000-4000-8000-000000000010",
-              "00000000-0000-4000-8000-000000000011",
-            ],
-          },
-        ],
-        dms: [],
-        totalCount: 2,
-        mentionMessageIds: [],
-      },
-      1,
-    );
+  it("marks topic as read through API", async () => {
     markTopicAsReadMock.mockResolvedValue(true);
 
     const ok = await applySidebarMarkChatAsRead({
       type: "topic",
-      streamId: 5,
+      streamId: STREAM_UUID,
       topic: "alpha",
     });
 
     expect(ok).toBe(true);
-    expect(markTopicAsReadMock).toHaveBeenCalledWith(5, "alpha");
-    expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("alpha")?.unreadCount).toBe(0);
+    expect(markTopicAsReadMock).toHaveBeenCalledWith(STREAM_UUID, "alpha");
   });
 
   it("removes matching inbox entry after topic mark-as-read", async () => {
     useInboxStore.getState().setEntries([
       {
-        key: "stream:5:alpha",
-        streamId: 5,
+        key: `stream:${STREAM_UUID}:alpha`,
+        streamId: STREAM_UUID,
         streamName: "general",
         topic: "alpha",
         senderId: null,
@@ -106,8 +64,8 @@ describe("applySidebarMarkChatAsRead", () => {
         ],
       },
       {
-        key: "stream:5:beta",
-        streamId: 5,
+        key: `stream:${STREAM_UUID}:beta`,
+        streamId: STREAM_UUID,
         streamName: "general",
         topic: "beta",
         senderId: null,
@@ -118,33 +76,16 @@ describe("applySidebarMarkChatAsRead", () => {
         messageIds: ["00000000-0000-4000-8000-000000000012"],
       },
     ]);
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
-    useChatListStore.getState().reconcileUnreadFromSnapshot(
-      {
-        streams: [
-          {
-            streamId: 5,
-            topic: "alpha",
-            unreadMessageIds: [
-              "00000000-0000-4000-8000-000000000010",
-              "00000000-0000-4000-8000-000000000011",
-            ],
-          },
-        ],
-        dms: [],
-        totalCount: 2,
-        mentionMessageIds: [],
-      },
-      1,
-    );
     markTopicAsReadMock.mockResolvedValue(true);
 
     await applySidebarMarkChatAsRead({
       type: "topic",
-      streamId: 5,
+      streamId: STREAM_UUID,
       topic: "alpha",
     });
 
-    expect(useInboxStore.getState().entries.map((e) => e.key)).toEqual(["stream:5:beta"]);
+    expect(useInboxStore.getState().entries.map((e) => e.key)).toEqual([
+      `stream:${STREAM_UUID}:beta`,
+    ]);
   });
 });

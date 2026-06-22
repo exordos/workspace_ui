@@ -8,6 +8,7 @@ import type {
   WorkspaceRawMessage,
 } from "~/shared/api/messenger.types";
 import { bumpAvatarVersion } from "~/shared/lib/avatar";
+import { messageAuthorId } from "~/shared/lib/message-author.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import { userIdStorageKey } from "~/shared/lib/user-id.lib";
 import type { WorkspaceCustomProfileDataMap } from "~/shared/lib/user-profile-fields.lib";
@@ -198,7 +199,7 @@ export const useUsersStore = create<UsersState>((set, get) => ({
   mergeFromMessage(msg) {
     const { mergeUser } = get();
     mergeUser({
-      user_id: msg.sender_id,
+      user_id: messageAuthorId(msg),
       full_name: msg.sender_full_name ?? "",
       avatar_url: msg.avatar_url ?? undefined,
     });

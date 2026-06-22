@@ -10,7 +10,6 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import {
   fetchMessagesAfterAnchor,
   fetchRecentStreamMessagesForSidebarPreview,
-  fetchStreamUnreadMessagesForSidebarPreview,
 } from "~/shared/api/messenger-sidebar-preview.lib";
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { METADATA_STREAM_PREVIEW_MESSAGE_LIMIT } from "~/shared/config/metadata-chat-bootstrap.constants";
@@ -20,8 +19,6 @@ import {
   summarizeMessengerMessagesForFlowDebug,
 } from "~/shared/lib/message-flow-debug.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
-import { buildStreamSidebarPreviewNarrow } from "~/shared/lib/messenger-stream-sidebar-preview-narrow.lib";
-import { normalizeMessengerMessagesNarrowForApi } from "~/shared/lib/messenger-topic-narrow.lib";
 import { getInMemoryLatestMessageId, maxMessageId } from "./layout-chat-list-latest-message-id.lib";
 
 /** Stream preview batch size (metadata-first bootstrap). */
@@ -71,12 +68,7 @@ async function fetchStreamPreviewMessageBatch(
         lastMessageId: hint,
         limit,
       });
-      const delta = await fetchMessagesAfterAnchor(
-        hint,
-        limit,
-        normalizeMessengerMessagesNarrowForApi(buildStreamSidebarPreviewNarrow(false)),
-        options?.signal,
-      );
+      const delta = await fetchMessagesAfterAnchor(hint, limit, options?.signal);
       if (isBootstrapSuperseded(options)) {
         return [];
       }
@@ -93,17 +85,7 @@ async function fetchStreamPreviewMessageBatch(
     return [];
   }
 
-  logChatListFlow("bootstrap: stream preview unread snapshot (channels only)", { limit });
-  const unread = await fetchStreamUnreadMessagesForSidebarPreview(limit, options?.signal);
-  if (isBootstrapSuperseded(options)) {
-    return [];
-  }
-  const streamUnread = filterStreamMessagesForSidebar(unread ?? []);
-  if (streamUnread.length > 0) {
-    return streamUnread;
-  }
-
-  logChatListFlow("bootstrap: stream preview recent messages (unread snapshot empty)", {
+  logChatListFlow("bootstrap: stream preview recent messages", {
     limit,
   });
   const recent = await fetchRecentStreamMessagesForSidebarPreview(limit, options?.signal);

@@ -1,15 +1,9 @@
 /**
- * Pure helpers for the messenger API `update_message_flags` realtime events (read/unread sync).
+ * Pure helpers for the messenger API `update_message_flags` realtime events.
  */
-import type { MessengerUnreadMessagesSnapshot } from "~/shared/api/messenger-unread.lib";
-import type {
-  MockMessage,
-  MessengerEvent,
-  WorkspaceRawMessage,
-} from "~/shared/api/messenger.types";
+import type { MockMessage, MessengerEvent } from "~/shared/api/messenger.types";
 import { normalizeMessageId } from "~/shared/lib/message-id.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
-import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 import type { LayoutMessageFlagOp } from "./layout-messenger-event-dispatch.types";
 
 export interface ParsedUpdateMessageFlagsEvent {
@@ -18,21 +12,6 @@ export interface ParsedUpdateMessageFlagsEvent {
   messageIds: MessageId[];
   markAllRead: boolean;
 }
-
-export interface WorkspaceMarkUnreadMessageDetail {
-  type: "stream" | "private";
-  stream_uuid?: string;
-  topic?: string;
-  user_ids?: number[];
-  mentioned?: boolean;
-}
-
-export const EMPTY_MARK_ALL_READ_SNAPSHOT: MessengerUnreadMessagesSnapshot = {
-  streams: [],
-  dms: [],
-  totalCount: 0,
-  mentionMessageIds: [],
-};
 
 function dedupeValidMessageIds(raw: unknown): MessageId[] {
   if (!Array.isArray(raw)) return [];
@@ -70,63 +49,8 @@ export function parseUpdateMessageFlagsEvent(
 export function collectUnreadLoadedMessageIds(messages: readonly MockMessage[]): MessageId[] {
   const out: MessageId[] = [];
   for (const message of messages) {
-    if (message.flags?.includes("read")) continue;
+    if (message.read === true) continue;
     out.push(message.id);
   }
-  return out;
-}
-
-/** Converts Workspace mark-unread `message_details` into minimal raw messages for location indexing. */
-export function messengerRawMessagesFromMarkUnreadDetails(
-  messageIds: readonly MessageId[],
-  messageDetails: Record<string, WorkspaceMarkUnreadMessageDetail> | undefined,
-  currentUserId: UserId | null,
-): WorkspaceRawMessage[] {
-  if (messageDetails == null) return [];
-  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
-  const placeholderSenderId =
-    numericCurrentUserId != null && numericCurrentUserId > 0 ? numericCurrentUserId + 100_000 : 1;
-  const out: WorkspaceRawMessage[] = [];
-
-  for (const messageId of messageIds) {
-    const detail = messageDetails[String(messageId)];
-    if (detail == null) continue;
-
-    if (detail.type === "stream" && detail.stream_uuid != null) {
-      out.push({
-        id: messageId,
-        sender_id: placeholderSenderId,
-        content: "",
-        timestamp: 0,
-        type: "stream",
-        stream_uuid: detail.stream_uuid,
-        subject: detail.topic ?? "",
-        flags: [],
-      });
-      continue;
-    }
-
-    if (detail.type === "private" && detail.user_ids != null) {
-      const display_recipient = detail.user_ids.map((id) => ({
-        id,
-        full_name: "",
-        email: "",
-      }));
-      const senderId =
-        detail.user_ids.find((id) => id !== currentUserId) ??
-        detail.user_ids[0] ??
-        placeholderSenderId;
-      out.push({
-        id: messageId,
-        sender_id: senderId,
-        content: "",
-        timestamp: 0,
-        type: "private",
-        display_recipient,
-        flags: [],
-      });
-    }
-  }
-
   return out;
 }

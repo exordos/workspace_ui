@@ -21,8 +21,9 @@ describe("buildOptimisticOutgoingMessage", () => {
     ).toEqual({
       id,
       sender_id: 42,
+      is_own: true,
       sender_full_name: "You",
-      stream_id: null,
+      stream_uuid: null,
       display_recipient: [
         { id: 7, full_name: "" },
         { id: 10, full_name: "" },
@@ -44,14 +45,20 @@ describe("buildOptimisticOutgoingMessage", () => {
         senderId: 42,
         senderFullName: "You",
         content: "hello stream",
-        target: { mode: "stream", stream: "engineering", streamId: 5, subject: "general" },
+        target: {
+          mode: "stream",
+          stream: "engineering",
+          streamUuid: "22222222-2222-4222-8222-222222222222",
+          subject: "general",
+        },
         nowSec: 456,
       }),
     ).toEqual({
       id,
       sender_id: 42,
+      is_own: true,
       sender_full_name: "You",
-      stream_id: 5,
+      stream_uuid: "22222222-2222-4222-8222-222222222222",
       display_recipient: "engineering",
       channel: "engineering",
       subject: "general",
@@ -61,6 +68,35 @@ describe("buildOptimisticOutgoingMessage", () => {
       delivery_status: "sending",
       local_echo_key: id,
     });
+  });
+
+  it("builds optimistic message with UUID author identity", () => {
+    const id = testMessageId(900006);
+    const authorUuid = "00000000-0000-0000-0000-000000000000";
+
+    expect(
+      buildOptimisticOutgoingMessage({
+        id,
+        senderId: authorUuid,
+        senderFullName: "You",
+        content: "hello uuid",
+        target: {
+          mode: "stream",
+          stream: "engineering",
+          streamUuid: "22222222-2222-4222-8222-222222222222",
+          subject: "general",
+        },
+        nowSec: 457,
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        id,
+        sender_id: 0,
+        author_uuid: authorUuid,
+        sender_uuid: authorUuid,
+        is_own: true,
+      }),
+    );
   });
 
   it("stores composer text as markdown_source for optimistic HTML-like bodies", () => {
@@ -89,7 +125,12 @@ describe("delivery transitions", () => {
       senderId: 42,
       senderFullName: "You",
       content: "hello",
-      target: { mode: "stream", stream: "engineering", subject: "general" },
+      target: {
+        mode: "stream",
+        stream: "engineering",
+        streamUuid: "22222222-2222-4222-8222-222222222222",
+        subject: "general",
+      },
       nowSec: 789,
     });
 

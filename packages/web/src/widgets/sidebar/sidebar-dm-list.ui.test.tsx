@@ -76,7 +76,7 @@ describe("SidebarDmList", () => {
     expect(screen.queryByText("Hello")).not.toBeInTheDocument();
   });
 
-  it("links UUID-backed private stream DMs by stream UUID", () => {
+  it("links UUID-backed private stream DMs through the stream route", () => {
     const streamUuid = "b4460c02-d693-4564-8804-98059613b86e";
     const userUuid = "00000000-0000-0000-0000-000000000000";
     const dms: Extract<SidebarChat, { type: "dm" }>[] = [
@@ -96,7 +96,7 @@ describe("SidebarDmList", () => {
     renderWithProviders(<SidebarDmList activeDmIdParam={streamUuid} dms={dms} />);
 
     const link = screen.getByRole("link", { name: /alice smith/i });
-    expect(link).toHaveAttribute("href", `/dm/${streamUuid}`);
+    expect(link).toHaveAttribute("href", `/stream/${streamUuid}`);
   });
 
   it("renders partner avatar image in recent DMs when user has avatar_url", () => {

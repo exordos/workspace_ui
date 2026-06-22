@@ -20,10 +20,10 @@ const MESSAGE_ID_99 = testMessageId(99);
 describe("message-id-index", () => {
   it("buildMessageIdMap returns O(1) lookup", () => {
     const map = buildMessageIdMap([
-      { id: MESSAGE_ID_1, flags: ["read"] },
-      { id: MESSAGE_ID_2, flags: [] },
+      { id: MESSAGE_ID_1, read: true },
+      { id: MESSAGE_ID_2, read: false },
     ]);
-    expect(map.get(MESSAGE_ID_2)?.flags).toEqual([]);
+    expect(map.get(MESSAGE_ID_2)?.read).toBe(false);
     expect(map.get(MESSAGE_ID_99)).toBeUndefined();
   });
 
@@ -35,9 +35,9 @@ describe("message-id-index", () => {
 
   it("filterViewportUnreadIdsForReadDispatch skips read and own messages", () => {
     const byId = buildMessageIdMap([
-      { id: MESSAGE_ID_10, flags: [], sender_id: 2 },
-      { id: MESSAGE_ID_11, flags: ["read"], sender_id: 2 },
-      { id: MESSAGE_ID_12, flags: [], sender_id: 1 },
+      { id: MESSAGE_ID_10, read: false, sender_id: 2 },
+      { id: MESSAGE_ID_11, read: true, sender_id: 2 },
+      { id: MESSAGE_ID_12, read: false, sender_id: 1 },
     ]);
     expect(
       filterViewportUnreadIdsForReadDispatch(

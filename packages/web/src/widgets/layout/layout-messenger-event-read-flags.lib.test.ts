@@ -4,7 +4,6 @@ import { testMessageId } from "~/test/factories";
 import {
   collectUnreadLoadedMessageIds,
   parseUpdateMessageFlagsEvent,
-  messengerRawMessagesFromMarkUnreadDetails,
 } from "./layout-messenger-event-read-flags.lib";
 
 describe("parseUpdateMessageFlagsEvent", () => {
@@ -81,7 +80,7 @@ describe("parseUpdateMessageFlagsEvent", () => {
 });
 
 describe("collectUnreadLoadedMessageIds", () => {
-  it("returns ids without read flag", () => {
+  it("returns ids where read is not true", () => {
     const messages: MockMessage[] = [
       {
         id: "00000000-0000-4000-8000-000000000001",
@@ -91,7 +90,7 @@ describe("collectUnreadLoadedMessageIds", () => {
         subject: "general",
         content: "",
         timestamp: 0,
-        flags: ["read"],
+        read: true,
       },
       {
         id: "00000000-0000-4000-8000-000000000002",
@@ -101,7 +100,7 @@ describe("collectUnreadLoadedMessageIds", () => {
         subject: "general",
         content: "",
         timestamp: 0,
-        flags: [],
+        read: false,
       },
       {
         id: "00000000-0000-4000-8000-000000000003",
@@ -114,35 +113,5 @@ describe("collectUnreadLoadedMessageIds", () => {
       },
     ];
     expect(collectUnreadLoadedMessageIds(messages)).toEqual([testMessageId(2), testMessageId(3)]);
-  });
-});
-
-describe("messengerRawMessagesFromMarkUnreadDetails", () => {
-  it("builds stream rows from message_details", () => {
-    const rows = messengerRawMessagesFromMarkUnreadDetails(
-      ["00000000-0000-4000-8000-000000000042"],
-      {
-        [testMessageId(42)]: { type: "stream", stream_id: 5, topic: "general" },
-      },
-      10,
-    );
-    expect(rows).toHaveLength(1);
-    expect(rows[0]!.id).toBe(testMessageId(42));
-    expect(rows[0]!.type).toBe("stream");
-    expect(rows[0]!.stream_id).toBe(5);
-    expect(rows[0]!.subject).toBe("general");
-  });
-
-  it("builds private rows from message_details", () => {
-    const rows = messengerRawMessagesFromMarkUnreadDetails(
-      ["00000000-0000-4000-8000-000000000099"],
-      {
-        [testMessageId(99)]: { type: "private", user_ids: [10, 20] },
-      },
-      10,
-    );
-    expect(rows).toHaveLength(1);
-    expect(rows[0]!.type).toBe("private");
-    expect(Array.isArray(rows[0]!.display_recipient)).toBe(true);
   });
 });

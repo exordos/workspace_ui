@@ -24,7 +24,7 @@ export interface UseChatMessageListCallbacksParams {
       id: MessageId;
       content: string;
       sender_full_name: string;
-      sender_id: number;
+      sender_id: UserId;
       permalinkUrl: string | null;
     } | null>
   >;

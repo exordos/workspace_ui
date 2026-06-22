@@ -2,8 +2,10 @@ import React, { useCallback, useMemo, useRef, useState } from "react";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { canStartMessageContentEdit } from "~/entities/message/message-edit-policy.lib";
 import { useUsersStore } from "~/entities/user/user.model";
+import { t } from "~/i18n/i18n";
 import { formatMessageTimeShort } from "~/shared/lib/datetime.lib";
 import { getJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
+import { messageAuthorId } from "~/shared/lib/message-author.lib";
 import { messageBodyToUnsanitizedDisplayHtml } from "~/shared/lib/message-markdown-display.lib";
 import { prepareProtectedMessageHtml } from "~/shared/lib/protected-message-media";
 import { useProtectedMessageHtml } from "~/shared/lib/protected-message-media.hook";
@@ -63,7 +65,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       [jitsiMeetBaseUrl],
     );
     const getUser = useUsersStore((s) => s.getUser);
-    const user = getUser(message.sender_id);
+    const authorId = isOwn && currentUserId != null ? currentUserId : messageAuthorId(message);
+    const user = getUser(authorId);
     const findUserIdByDisplayName = useUsersStore((s) => s.findUserIdByDisplayName);
     const resolveUserMention = useCallback(
       (displayName: string): number | null =>
@@ -74,10 +77,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     const displayName =
       trimmedUserName != null && trimmedUserName.length > 0
         ? trimmedUserName
-        : (message.sender_full_name ?? "");
+        : message.sender_full_name || (isOwn ? t("common.you") : "");
     const handleAuthorClick = useCallback(() => {
-      callbacks?.onAuthorClick?.(message.sender_id);
-    }, [callbacks, message.sender_id]);
+      callbacks?.onAuthorClick?.(authorId);
+    }, [authorId, callbacks]);
     const handleToggleSelect = useCallback(() => {
       callbacks?.onToggleSelect?.(message);
     }, [callbacks, message]);
@@ -131,12 +134,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       setCanEditMessageContentForMenu(
         canStartMessageContentEdit(
           message,
-          numericCurrentUserId ?? (isOwn ? message.sender_id : undefined),
+          currentUserId ?? null,
           currentUserMessageEditPolicy,
           Math.floor(Date.now() / 1000),
         ),
       );
-    }, [numericCurrentUserId, isOwn, message]);
+    }, [currentUserId, message]);
 
     const interactions = useMessageBubbleInteractions({
       message,

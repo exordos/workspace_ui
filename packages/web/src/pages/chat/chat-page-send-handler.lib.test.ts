@@ -24,6 +24,8 @@ vi.mock("~/i18n/i18n", () => ({
   t: (key: string) => key,
 }));
 
+const optimisticMessageUuid = "11111111-1111-4111-8111-111111111111";
+
 function createDeps(overrides: Partial<ChatPageSendHandlerDeps> = {}): ChatPageSendHandlerDeps & {
   appendMessage: ReturnType<typeof vi.fn>;
   commitOutgoingMessage: ReturnType<typeof vi.fn>;
@@ -39,7 +41,8 @@ function createDeps(overrides: Partial<ChatPageSendHandlerDeps> = {}): ChatPageS
     activeStreamId: 10,
     activeStreamUuid: "22222222-2222-4222-8222-222222222222",
     activeTopic: "",
-    allocateOptimisticMessageId: () => -1,
+    activeTopicUuid: null,
+    allocateOptimisticMessageId: () => optimisticMessageUuid,
     appendMessage,
     commitOutgoingMessage,
     requestScrollToBottom: vi.fn(),
@@ -71,13 +74,13 @@ describe("executeChatPageSend", () => {
       expect.objectContaining({
         stream: "engineering",
         streamUuid: "22222222-2222-4222-8222-222222222222",
-        streamId: 10,
+        messageUuid: optimisticMessageUuid,
         subject: "",
         content: "hello",
       }),
     );
     expect(deps.commitOutgoingMessage).toHaveBeenCalledWith(
-      -1,
+      optimisticMessageUuid,
       expect.objectContaining({ id: testMessageId(99) }),
     );
   });
@@ -101,5 +104,21 @@ describe("executeChatPageSend", () => {
         content: "hello dm",
       }),
     );
+  });
+
+  it("fails loudly instead of silently skipping DM send without stream uuid", async () => {
+    const deps = createDeps({
+      isDmView: true,
+      activeDmUserIds: [],
+      activeStream: null,
+      activeStreamCanonicalName: null,
+      activeStreamId: null,
+      activeStreamUuid: null,
+    });
+
+    await expect(executeChatPageSend(deps, "hello dm")).rejects.toThrow("message.sendFailed");
+
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(deps.setSendError).toHaveBeenCalledWith("message.sendFailed");
   });
 });

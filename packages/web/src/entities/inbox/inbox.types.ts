@@ -1,10 +1,8 @@
 /**
- * Inbox entry types — unified unread message grouping.
+ * Inbox entry types — metadata-backed unread grouping.
  *
  * Stream messages group by (streamUuid + topic).
- * DM messages group by conversation route slug.
- * Each entry tracks the unread count and latest message timestamp
- * for sorting and display in the inbox view.
+ * Each entry tracks server unread_count and latest metadata timestamp for sorting.
  */
 import type { MessageId } from "~/shared/lib/message-id.lib";
 
@@ -15,7 +13,7 @@ export interface InboxEntry {
   streamId: string | null;
   /** Stream/channel name (present for stream messages). */
   streamName: string | null;
-  /** Topic name (present for stream messages). */
+  /** Topic name for topic rows; null for stream-level fallback rows. */
   topic: string | null;
   /** Direct-chat partner user ID when the DM is 1:1; null for stream/group-DM entries. */
   senderId: number | null;
@@ -27,7 +25,7 @@ export interface InboxEntry {
   unreadCount: number;
   /** Unix timestamp of the most recent unread message. */
   lastMessageTimestamp: number;
-  /** Message IDs belonging to this group (for batch mark-as-read). */
+  /** Optional focus ids only; unread counts are not derived from this list. */
   messageIds: MessageId[];
 }
 

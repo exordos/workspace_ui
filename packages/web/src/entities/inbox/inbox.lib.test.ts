@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { MockMessage } from "~/shared/api/messenger.types";
-import { groupInboxEntries, isInboxEntriesSnapshotFresher } from "./inbox.lib";
+import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
+import {
+  buildInboxEntriesFromStreamMetadata,
+  groupInboxEntries,
+  isInboxEntriesSnapshotFresher,
+} from "./inbox.lib";
 import type { InboxEntry } from "./inbox.types";
 
 const DM_A: InboxEntry = {
@@ -18,7 +22,7 @@ const DM_A: InboxEntry = {
 
 const STREAM_TOPIC_A: InboxEntry = {
   key: "stream:10:general",
-  streamId: 10,
+  streamId: "10",
   streamName: "engineering",
   topic: "general",
   senderId: null,
@@ -35,7 +39,7 @@ const STREAM_TOPIC_A: InboxEntry = {
 
 const STREAM_TOPIC_B: InboxEntry = {
   key: "stream:10:bugs",
-  streamId: 10,
+  streamId: "10",
   streamName: "engineering",
   topic: "bugs",
   senderId: null,
@@ -48,7 +52,7 @@ const STREAM_TOPIC_B: InboxEntry = {
 
 const STREAM_TOPIC_C: InboxEntry = {
   key: "stream:11:design",
-  streamId: 11,
+  streamId: "11",
   streamName: "design",
   topic: "design",
   senderId: null,
@@ -109,158 +113,115 @@ describe("groupInboxEntries", () => {
   });
 });
 
-describe("buildInboxEntries", () => {
-  it("omits muted stream and topic messages from inbox entries", async () => {
-    const { buildInboxEntries } = await import("./inbox.lib");
-    const messages: MockMessage[] = [
-      {
-        id: "00000000-0000-4000-8000-000000000010",
-        sender_id: 42,
-        sender_full_name: "Alice",
-        stream_id: 10,
-        channel: "muted-channel",
-        subject: "general",
-        content: "Muted channel unread",
-        timestamp: 300,
-        display_recipient: "muted-channel",
-      },
-      {
-        id: "00000000-0000-4000-8000-000000000011",
-        sender_id: 42,
-        sender_full_name: "Alice",
-        stream_id: 20,
-        channel: "engineering",
-        subject: "muted-topic",
-        content: "Muted topic unread",
-        timestamp: 200,
-        display_recipient: "engineering",
-      },
-      {
-        id: "00000000-0000-4000-8000-000000000012",
-        sender_id: 42,
-        sender_full_name: "Alice",
-        stream_id: 20,
-        channel: "engineering",
-        subject: "open-topic",
-        content: "Open topic unread",
-        timestamp: 100,
-        display_recipient: "engineering",
-      },
-    ];
+type StreamTopicEntry =
+  StreamEntryInternal["topics"] extends Map<string, infer Topic> ? Topic : never;
 
-    const entries = buildInboxEntries(messages, 7, {
-      isStreamMuted: (streamId) => streamId === 10,
-      isEffectivelyMuted: (streamId, topic) => streamId === 20 && topic === "muted-topic",
+function topicEntry(subject: string, unreadCount: number, ts: number): StreamTopicEntry {
+  return {
+    topicUuid: `topic-${subject || "default"}`,
+    subject,
+    lastMessage: "",
+    time: "",
+    ts,
+    unreadCount,
+  };
+}
+
+function streamEntry(
+  streamUuid: string,
+  name: string,
+  unreadCount: number,
+  topics: readonly StreamTopicEntry[] = [],
+): StreamEntryInternal {
+  return {
+    streamUuid,
+    name,
+    lastMessage: "",
+    time: "",
+    ts: 100,
+    unreadCount,
+    topics: new Map(topics.map((topic) => [topic.subject, topic])),
+  };
+}
+
+describe("buildInboxEntriesFromStreamMetadata", () => {
+  it("builds topic entries from server unread_count metadata", () => {
+    const streamsMap = new Map([
+      [
+        "10",
+        streamEntry("10", "engineering", 3, [
+          topicEntry("general", 2, 300),
+          topicEntry("bugs", 1, 200),
+          topicEntry("read-topic", 0, 400),
+        ]),
+      ],
+    ]);
+
+    const entries = buildInboxEntriesFromStreamMetadata(streamsMap);
+
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({
+      key: "stream:10:general",
+      streamId: "10",
+      streamName: "engineering",
+      topic: "general",
+      unreadCount: 2,
+      lastMessageTimestamp: 300,
+      messageIds: [],
+    });
+    expect(entries[1]!.topic).toBe("bugs");
+  });
+
+  it("omits muted streams and topics", () => {
+    const streamsMap = new Map([
+      ["10", streamEntry("10", "muted-channel", 5, [topicEntry("general", 5, 300)])],
+      [
+        "20",
+        streamEntry("20", "engineering", 3, [
+          topicEntry("muted-topic", 2, 200),
+          topicEntry("open-topic", 1, 100),
+        ]),
+      ],
+    ]);
+
+    const entries = buildInboxEntriesFromStreamMetadata(streamsMap, {
+      isStreamMuted: (streamId) => streamId === "10",
+      isEffectivelyMuted: (streamId, topic) => streamId === "20" && topic === "muted-topic",
     });
 
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
       key: "stream:20:open-topic",
-      messageIds: ["00000000-0000-4000-8000-000000000012"],
       unreadCount: 1,
     });
   });
 
-  it("omits unread messages from muted streams even when topic predicate would allow them", async () => {
-    const { buildInboxEntries } = await import("./inbox.lib");
-    const messages: MockMessage[] = [
-      {
-        id: "00000000-0000-4000-8000-000000000020",
-        sender_id: 42,
-        sender_full_name: "Alice",
-        stream_id: 10,
-        channel: "muted-channel",
-        subject: "followed-topic",
-        content: "Muted channel unread",
-        timestamp: 300,
-        display_recipient: "muted-channel",
-      },
-    ];
+  it("keeps empty default topic as a topic row", () => {
+    const streamsMap = new Map([
+      ["10", streamEntry("10", "engineering", 1, [topicEntry("", 1, 100)])],
+    ]);
 
-    const entries = buildInboxEntries(messages, 7, {
-      isStreamMuted: (streamId) => streamId === 10,
-      isEffectivelyMuted: () => false,
-    });
+    const entries = buildInboxEntriesFromStreamMetadata(streamsMap);
 
-    expect(entries).toEqual([]);
-  });
-
-  it("groups unread private messages by DM conversation rather than sender", async () => {
-    const { buildInboxEntries } = await import("./inbox.lib");
-    const messages: MockMessage[] = [
-      {
-        id: "00000000-0000-4000-8000-000000000010",
-        sender_id: 42,
-        sender_full_name: "Alice",
-        stream_id: null,
-        channel: undefined,
-        subject: "",
-        content: "Hello",
-        timestamp: 100,
-        display_recipient: [
-          { id: 7, full_name: "Me" },
-          { id: 42, full_name: "Alice" },
-          { id: 99, full_name: "Bob" },
-        ],
-      },
-      {
-        id: "00000000-0000-4000-8000-000000000011",
-        sender_id: 99,
-        sender_full_name: "Bob",
-        stream_id: null,
-        channel: undefined,
-        subject: "",
-        content: "Reply",
-        timestamp: 200,
-        display_recipient: [
-          { id: 7, full_name: "Me" },
-          { id: 42, full_name: "Alice" },
-          { id: 99, full_name: "Bob" },
-        ],
-      },
-    ];
-
-    const entries = buildInboxEntries(messages, 7);
-
-    expect(entries).toHaveLength(1);
-    expect(entries[0]).toMatchObject({
-      key: "dm:42,99",
-      dmSlug: "42,99",
-      senderId: null,
-      senderName: "Alice, Bob",
-      unreadCount: 2,
-      messageIds: ["00000000-0000-4000-8000-000000000010", "00000000-0000-4000-8000-000000000011"],
-      lastMessageTimestamp: 200,
-    });
-  });
-
-  it("keeps empty stream topic without falling back to general", async () => {
-    const { buildInboxEntries } = await import("./inbox.lib");
-    const messages: MockMessage[] = [
-      {
-        id: "00000000-0000-4000-8000-000000000077",
-        sender_id: 42,
-        sender_full_name: "Alice",
-        stream_id: 10,
-        channel: "engineering",
-        subject: "",
-        content: "Unread stream without topic",
-        timestamp: 100,
-        display_recipient: "engineering",
-      },
-    ];
-
-    const entries = buildInboxEntries(messages, 7);
-
-    expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
       key: "stream:10:",
-      streamId: 10,
-      streamName: "engineering",
       topic: "",
       unreadCount: 1,
-      messageIds: ["00000000-0000-4000-8000-000000000077"],
     });
+  });
+
+  it("uses stream unread_count fallback when topic unread metadata is absent", () => {
+    const streamsMap = new Map([["10", streamEntry("10", "engineering", 4, [])]]);
+
+    const entries = buildInboxEntriesFromStreamMetadata(streamsMap);
+
+    expect(entries).toEqual([
+      expect.objectContaining({
+        key: "stream:10:__all__",
+        topic: null,
+        unreadCount: 4,
+      }),
+    ]);
   });
 });
 

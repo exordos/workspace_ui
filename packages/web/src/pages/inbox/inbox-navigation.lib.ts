@@ -21,9 +21,12 @@ export function buildInboxEntryRoute(entry: InboxEntry): string | null {
   if (entry.streamId != null) {
     const slug = slugForStream({ streamUuid: entry.streamId });
     const normalizedTopic = entry.topic?.trim() ?? "";
-    const streamRoute = withCurrentOrgRoute(
-      `/stream/${slug}/topic/${encodeURIComponent(encodeTopicForRoute(normalizedTopic))}`,
-    );
+    const streamRoute =
+      entry.topic == null
+        ? withCurrentOrgRoute(`/stream/${slug}`)
+        : withCurrentOrgRoute(
+            `/stream/${slug}/topic/${encodeURIComponent(encodeTopicForRoute(normalizedTopic))}`,
+          );
     return withMessageFocus(streamRoute, focusMessageId);
   }
 

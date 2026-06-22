@@ -1,10 +1,10 @@
 /**
- * Inbox aggregation — group unread messages into entries, section grouping, and snapshot freshness checks.
+ * Inbox aggregation — builds entries from stream/topic unread metadata and groups them for display.
  */
 
-import type { MockMessage } from "~/shared/api/messenger.types";
 import { dmRouteKey } from "~/shared/lib/dm-key";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import type { InboxEntry, InboxMarkReadTarget } from "./inbox.types";
 
 export interface GroupedInboxStream {
@@ -66,18 +66,12 @@ export function isInboxEntriesSnapshotFresher(
   return candidateIdFingerprint > currentIdFingerprint;
 }
 
-interface DmConversationMeta {
-  dmSlug: string;
-  senderId: number | null;
-  senderName: string;
-}
-
 export interface InboxMuteFilterOptions {
   isStreamMuted?: (streamId: string) => boolean;
   isEffectivelyMuted?: (streamId: string, topic: string) => boolean;
 }
 
-function shouldOmitStreamInboxMessage(
+function shouldOmitStreamInboxTopic(
   streamId: string,
   topic: string,
   options: InboxMuteFilterOptions,
@@ -86,121 +80,71 @@ function shouldOmitStreamInboxMessage(
   return options.isEffectivelyMuted?.(streamId, topic) ?? false;
 }
 
-function resolveDmConversationMeta(
-  message: Pick<MockMessage, "display_recipient" | "sender_id" | "sender_full_name">,
-  currentUserId: number | null,
-): DmConversationMeta {
-  if (!Array.isArray(message.display_recipient) || currentUserId == null) {
-    return {
-      dmSlug: String(message.sender_id),
-      senderId: message.sender_id,
-      senderName: message.sender_full_name || String(message.sender_id),
-    };
+function toUnreadCount(value: number | undefined): number {
+  if (value == null || !Number.isFinite(value) || value <= 0) {
+    return 0;
   }
+  return Math.floor(value);
+}
 
-  const recipients = [...message.display_recipient].sort((a, b) => a.id - b.id);
-  const otherRecipients = recipients.filter((recipient) => recipient.id !== currentUserId);
-  const routeRecipients = otherRecipients.length > 0 ? otherRecipients : recipients;
-
-  const dmSlug = routeRecipients.map((recipient) => String(recipient.id)).join(",");
-  const senderName = routeRecipients
-    .map((recipient) => recipient.full_name || String(recipient.id))
-    .join(", ");
-  const senderId = routeRecipients.length === 1 ? routeRecipients[0]!.id : null;
-
+function streamLevelInboxEntry(stream: StreamEntryInternal, unreadCount: number): InboxEntry {
   return {
-    dmSlug,
-    senderId,
-    senderName,
-  };
-}
-
-function updateExistingInboxEntry(existing: InboxEntry, msg: MockMessage): void {
-  existing.unreadCount += 1;
-  existing.messageIds.push(msg.id);
-  if (msg.timestamp > existing.lastMessageTimestamp) {
-    existing.lastMessageTimestamp = msg.timestamp;
-  }
-}
-
-function addStreamInboxEntry(
-  entryMap: Map<string, InboxEntry>,
-  msg: MockMessage,
-  streamId: string,
-  topic: string,
-): void {
-  const key = `stream:${streamId}:${topic}`;
-  const existing = entryMap.get(key);
-  if (existing) {
-    updateExistingInboxEntry(existing, msg);
-    return;
-  }
-
-  entryMap.set(key, {
-    key,
-    streamId,
-    streamName: msg.channel ?? null,
-    topic,
+    key: `stream:${stream.streamUuid}:__all__`,
+    streamId: stream.streamUuid,
+    streamName: stream.name,
+    topic: null,
     senderId: null,
     senderName: null,
     dmSlug: null,
-    unreadCount: 1,
-    lastMessageTimestamp: msg.timestamp,
-    messageIds: [msg.id],
-  });
+    unreadCount,
+    lastMessageTimestamp: stream.ts,
+    messageIds: [],
+  };
 }
 
-function addDmInboxEntry(
-  entryMap: Map<string, InboxEntry>,
-  msg: MockMessage,
-  currentUserId: number | null,
-): void {
-  const dmMeta = resolveDmConversationMeta(msg, currentUserId);
-  const key = `dm:${dmMeta.dmSlug}`;
-  const existing = entryMap.get(key);
-  if (existing) {
-    updateExistingInboxEntry(existing, msg);
-    return;
-  }
-
-  entryMap.set(key, {
-    key,
-    streamId: null,
-    streamName: null,
-    topic: null,
-    senderId: dmMeta.senderId,
-    senderName: dmMeta.senderName,
-    dmSlug: dmMeta.dmSlug,
-    unreadCount: 1,
-    lastMessageTimestamp: msg.timestamp,
-    messageIds: [msg.id],
-  });
-}
-
-export function buildInboxEntries(
-  messages: MockMessage[],
-  currentUserId: number | null = null,
+export function buildInboxEntriesFromStreamMetadata(
+  streamsMap: ReadonlyMap<string, StreamEntryInternal>,
   options: InboxMuteFilterOptions = {},
 ): InboxEntry[] {
-  const entryMap = new Map<string, InboxEntry>();
+  const entries: InboxEntry[] = [];
 
-  for (const msg of messages) {
-    const streamId = msg.stream_uuid;
-    const isStream = streamId != null && streamId.trim().length > 0;
-    const topic = (msg.subject ?? "").trim();
-
-    if (isStream) {
-      if (shouldOmitStreamInboxMessage(streamId, topic, options)) continue;
-      addStreamInboxEntry(entryMap, msg, streamId, topic);
+  for (const stream of streamsMap.values()) {
+    if (options.isStreamMuted?.(stream.streamUuid)) {
       continue;
     }
 
-    addDmInboxEntry(entryMap, msg, currentUserId);
+    let hasUnreadTopicMetadata = false;
+    for (const topic of stream.topics.values()) {
+      const unreadCount = toUnreadCount(topic.unreadCount);
+      if (unreadCount <= 0) {
+        continue;
+      }
+      hasUnreadTopicMetadata = true;
+      if (shouldOmitStreamInboxTopic(stream.streamUuid, topic.subject, options)) {
+        continue;
+      }
+
+      entries.push({
+        key: `stream:${stream.streamUuid}:${topic.subject}`,
+        streamId: stream.streamUuid,
+        streamName: stream.name,
+        topic: topic.subject,
+        senderId: null,
+        senderName: null,
+        dmSlug: null,
+        unreadCount,
+        lastMessageTimestamp: topic.ts || stream.ts,
+        messageIds: [],
+      });
+    }
+
+    const streamUnreadCount = toUnreadCount(stream.unreadCount);
+    if (!hasUnreadTopicMetadata && streamUnreadCount > 0) {
+      entries.push(streamLevelInboxEntry(stream, streamUnreadCount));
+    }
   }
 
-  return Array.from(entryMap.values()).sort(
-    (a, b) => b.lastMessageTimestamp - a.lastMessageTimestamp,
-  );
+  return entries.sort((a, b) => b.lastMessageTimestamp - a.lastMessageTimestamp);
 }
 
 export function groupInboxEntries(entries: InboxEntry[]): GroupedInboxEntries {

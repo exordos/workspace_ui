@@ -4,7 +4,7 @@
  * Usage:
  *   import { messengerApi, workspaceApi } from "~/shared/api/client";
  *   const res = await messengerApi.get("/messages", { anchor: "newest" });
- *   await messengerApi.post("/messages", { type: "stream", content: "hi" });
+ *   await messengerApi.post("/events/register", { event_types: "message" });
  *   messengerApi.use(myMiddleware);
  */
 
@@ -449,7 +449,9 @@ function shouldSkipAuth401Handling(req: ApiRequest): boolean {
     }
     // Workspace messenger gateway APIs use IAM Bearer; 401 must not wipe the session.
     if (
-      /\/api\/messenger(?:\/v1)?\/(?:folders|streams|stream_bindings|stream_topics|messages)(?:\/|$)/.test(path)
+      /\/api\/messenger(?:\/v1)?\/(?:folders|streams|stream_bindings|stream_topics|messages)(?:\/|$)/.test(
+        path,
+      )
     ) {
       return true;
     }

@@ -5,6 +5,7 @@ import type { MockMessage } from "~/shared/api/messenger.types";
 import { createLogger } from "~/shared/lib/logger";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import { isAbortLikeError } from "./chat-page-ai.lib";
 import {
   buildOptimisticOutgoingMessage,
@@ -16,7 +17,7 @@ import { uploadComposerFiles, type ComposerUploadProgressState } from "./chat-up
 const log = createLogger("chat-page");
 
 export interface ChatPageSendHandlerDeps {
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   isDmView: boolean;
   activeDmUserIds: number[] | null;
   activeStream: string | null;
@@ -97,7 +98,7 @@ async function sendOutgoingMessageWithOptimisticUi(options: {
   const optimisticMessageId = deps.allocateOptimisticMessageId();
   const optimisticMessage = buildOptimisticOutgoingMessage({
     id: optimisticMessageId,
-    senderId: deps.currentUserId ?? 0,
+    senderId: deps.currentUserId,
     senderFullName: t("common.you"),
     content: body,
     target,
@@ -109,7 +110,8 @@ async function sendOutgoingMessageWithOptimisticUi(options: {
   try {
     const newMsg = await sendMessage({
       ...apiPayload,
-      sender_id: deps.currentUserId ?? 0,
+      messageUuid: optimisticMessageId,
+      ...(deps.currentUserId != null ? { author_id: deps.currentUserId } : {}),
       sender_full_name: t("common.you"),
     });
     deps.commitOutgoingMessage(optimisticMessageId, newMsg);
@@ -144,7 +146,16 @@ export async function executeChatPageSend(
     setSendError: deps.setSendError,
   });
 
-  if (deps.isDmView && deps.activeStreamUuid != null) {
+  if (deps.isDmView) {
+    if (deps.activeStreamUuid == null) {
+      log.warn("Blocked DM send without stream uuid", {
+        recipientIds: deps.activeDmUserIds ?? [],
+      });
+      const error = t("message.sendFailed");
+      deps.setSendError(error);
+      deps.setUploadProgress(null);
+      throw new Error(error);
+    }
     await sendOutgoingMessageWithOptimisticUi({
       deps,
       body,

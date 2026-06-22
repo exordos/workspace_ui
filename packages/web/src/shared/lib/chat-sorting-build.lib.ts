@@ -29,6 +29,7 @@ function streamTopicsToSidebarTopics(
       const topicMuted =
         streamMuted || (options.isEffectivelyMuted?.(s.streamUuid, t.subject) ?? false);
       return {
+        ...(t.topicUuid != null ? { topicUuid: t.topicUuid } : {}),
         subject: t.subject,
         lastMessage: t.lastMessage,
         lastMessageSenderName: t.lastMessageSenderName,
@@ -43,7 +44,9 @@ function streamEntryToTimestampedChat(
   options: SidebarChatMuteProjectionOptions,
 ): TimestampedSidebarChat {
   const topics = streamTopicsToSidebarTopics(s, options);
-  const badge = topics.reduce((sum, t) => sum + (t.badge ?? 0), 0);
+  const streamMuted = options.mutedStreamIds?.has(s.streamUuid) ?? false;
+  const unreadCount = s.unreadCount ?? 0;
+  const badge = !streamMuted && unreadCount > 0 ? unreadCount : undefined;
   return {
     ts: s.ts,
     c: {
@@ -55,7 +58,7 @@ function streamEntryToTimestampedChat(
       lastMessageSenderName: s.lastMessageSenderName,
       time: s.time,
       topics,
-      badge: badge > 0 ? badge : undefined,
+      badge,
     },
   };
 }
@@ -78,7 +81,7 @@ function dmEntryToTimestampedChat(x: DmEntryInternal): TimestampedSidebarChat {
 }
 
 export function buildTimestampedSidebarChats(
-  streamsMap: Map<number, StreamEntryInternal>,
+  streamsMap: Map<string, StreamEntryInternal>,
   dmsMap: Map<string, DmEntryInternal>,
   hideUnknownArchivedStreams: boolean,
   options: SidebarChatMuteProjectionOptions = {},

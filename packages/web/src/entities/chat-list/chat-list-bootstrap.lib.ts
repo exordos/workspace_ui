@@ -25,7 +25,7 @@ import {
   hashKey,
   slugify,
 } from "./chat-list-format.lib";
-import { buildSidebarFromMessages, isUnreadFromOthers } from "./chat-list.lib";
+import { buildSidebarFromMessages } from "./chat-list.lib";
 import type { ChatListDmMetadataRow, MessageLocation } from "./chat-list.model.types";
 
 export interface ChatListDmBootstrapDisplayContext {
@@ -57,27 +57,6 @@ export function buildMessageIdToLocation(
   return map;
 }
 
-/** Unread-only location map for bootstrap unread reconcile from message snapshots. */
-export function buildUnreadLocationMap(
-  messages: readonly WorkspaceRawMessage[],
-  currentUserId: UserId | null,
-): Map<MessageId, MessageLocation> {
-  const map = new Map<MessageId, MessageLocation>();
-  for (const message of messages) {
-    if (!isUnreadFromOthers(message, currentUserId)) continue;
-    if (message.type === "stream" && message.stream_uuid != null) {
-      const topic = normalizeTopicForIdentity(message.subject ?? "");
-      map.set(message.id, { type: "stream", streamUuid: message.stream_uuid, topic });
-      continue;
-    }
-    if (message.type === "private" && Array.isArray(message.display_recipient)) {
-      const dmKey = dmConversationKey(message.display_recipient, currentUserId);
-      map.set(message.id, { type: "dm", dmKey });
-    }
-  }
-  return map;
-}
-
 /** Preserves stream permission metadata when rebuilding sidebar from messages. */
 export function mergeStreamAccessMetadata(
   stream: StreamEntryInternal,
@@ -85,6 +64,7 @@ export function mergeStreamAccessMetadata(
 ): StreamEntryInternal {
   if (existing == null) return stream;
   const hasMetadata =
+    existing.unreadCount != null ||
     existing.isArchived != null ||
     existing.creatorId != null ||
     existing.inviteOnly != null ||
@@ -96,6 +76,7 @@ export function mergeStreamAccessMetadata(
   if (!hasMetadata) return stream;
   return {
     ...stream,
+    ...(existing.unreadCount != null ? { unreadCount: existing.unreadCount } : {}),
     ...(existing.isArchived != null ? { isArchived: existing.isArchived } : {}),
     ...(existing.creatorId != null ? { creatorId: existing.creatorId } : {}),
     ...(existing.inviteOnly != null ? { inviteOnly: existing.inviteOnly } : {}),
@@ -237,7 +218,6 @@ export function buildDmMetadataEntry(
 
 export interface ChatListDmMetadataUpsertPatch {
   dmsMap: Map<string, DmEntryInternal>;
-  sidebarDmsUnreadDelta: number;
   changed: true;
 }
 
@@ -252,7 +232,6 @@ export function buildDmMetadataUpsertPatch(
 
   let changed = false;
   let nextDms = existingDmsMap;
-  let sidebarDmsUnreadDelta = 0;
 
   for (const row of rows) {
     const normalized = buildDmMetadataEntry(row, currentUserId, undefined, display);
@@ -260,14 +239,13 @@ export function buildDmMetadataUpsertPatch(
     const existing = nextDms.get(normalized.key);
     const merged = buildDmMetadataEntry(row, currentUserId, existing, display);
     if (merged == null) continue;
-    sidebarDmsUnreadDelta += merged.entry.unreadCount - (existing?.unreadCount ?? 0);
     if (!changed) nextDms = new Map(nextDms);
     changed = true;
     nextDms.set(merged.key, merged.entry);
   }
 
   if (!changed) return null;
-  return { dmsMap: nextDms, sidebarDmsUnreadDelta, changed: true };
+  return { dmsMap: nextDms, changed: true };
 }
 
 /** Rebuilds metadata rows from in-memory DM map (late currentUserId bootstrap). */

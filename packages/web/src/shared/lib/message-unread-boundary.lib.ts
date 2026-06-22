@@ -1,17 +1,17 @@
 import type { MockMessage } from "~/shared/api/messenger.types";
 import type { MessageId } from "~/shared/lib/message-id.lib";
-import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
+import { isMessageFromCurrentUser } from "./message-author.lib";
+import type { UserId } from "./user-id.lib";
 
 /** True when the message is unread and not sent by the current user. */
 export function isUnreadMessageFromOthers(
   message: MockMessage,
   currentUserId: UserId | null | undefined,
 ): boolean {
-  if (message.flags?.includes("read")) {
+  if (message.read === true) {
     return false;
   }
-  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
-  if (numericCurrentUserId != null && message.sender_id === numericCurrentUserId) {
+  if (isMessageFromCurrentUser(message, currentUserId)) {
     return false;
   }
   return true;

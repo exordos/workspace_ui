@@ -5,8 +5,6 @@ import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import { getNewestMessageId } from "./layout-chat-history-sync.lib";
 import { runChatListBootstrap } from "./layout-chat-list-bootstrap.lib";
-import { getCachedRegisterUnreadSnapshot } from "./layout-instance-register-unread.lib";
-import { reconcileSidebarUnreadAfterBootstrap } from "./layout-sidebar-unread-reconcile.lib";
 
 export interface RefreshLayoutReconnectLightOptions {
   instanceId?: string | null;
@@ -14,29 +12,13 @@ export interface RefreshLayoutReconnectLightOptions {
   isCancelled?: () => boolean;
 }
 
-/**
- * Tab resume / focus: reconcile unread from cached register, then apply a small stream preview delta
- * (no queue re-register — previews use preserveSidebarTotals).
- */
+/** Tab resume / focus: apply a small stream preview delta without touching server unread counts. */
 export async function refreshLayoutReconnectLight(
   options: RefreshLayoutReconnectLightOptions,
 ): Promise<void> {
   if (options.isCancelled?.()) return;
 
   const instanceId = options.instanceId ?? null;
-  const uid = useChatListStore.getState().currentUserId ?? null;
-  const registerSnapshot =
-    instanceId != null ? getCachedRegisterUnreadSnapshot(instanceId) : undefined;
-  reconcileSidebarUnreadAfterBootstrap({
-    cancelled: () => options.isCancelled?.() ?? false,
-    instanceId,
-    currentUserId: uid,
-    registerSnapshot,
-    logScope: "reconnectLight",
-    snapshotSource: "cached-register",
-    syncSource: "reconnect-light",
-  });
-
   if (instanceId == null) {
     logChatListFlow("reconnectLight: skip stream delta (no instanceId)", {});
     return;

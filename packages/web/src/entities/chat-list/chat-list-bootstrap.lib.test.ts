@@ -11,7 +11,6 @@ import {
   buildDmMetadataUpsertPatch,
   buildMessageIdToLocation,
   buildSetFromMessagesBootstrapState,
-  buildUnreadLocationMap,
   clearBootstrapErrorPatch,
   mergeBootstrapStreamsWithPreviousMetadata,
   mergeStreamAccessMetadata,
@@ -20,6 +19,8 @@ import {
 } from "./chat-list-bootstrap.lib";
 
 const CURRENT_USER_ID = 10;
+const STREAM_UUID = "11111111-1111-4111-8111-111111111111";
+const OTHER_STREAM_UUID = "22222222-2222-4222-8222-222222222222";
 const MESSAGE_ID_1 = testMessageId(1);
 const MESSAGE_ID_2 = testMessageId(2);
 const MESSAGE_ID_200 = testMessageId(200);
@@ -37,7 +38,7 @@ function streamMsg(overrides: WorkspaceRawMessageOverrides = {}): WorkspaceRawMe
     content: "hello",
     timestamp: 1000,
     type: "stream",
-    stream_id: 5,
+    stream_uuid: STREAM_UUID,
     display_recipient: "general",
     subject: "topic1",
     flags: [],
@@ -83,12 +84,18 @@ describe("clearBootstrapErrorPatch", () => {
 describe("buildMessageIdToLocation", () => {
   it("indexes stream messages by normalized topic", () => {
     const map = buildMessageIdToLocation(
-      [streamMsg({ id: "00000000-0000-4000-8000-000000000100", stream_id: 7, subject: "Topic A" })],
+      [
+        streamMsg({
+          id: "00000000-0000-4000-8000-000000000100",
+          stream_uuid: OTHER_STREAM_UUID,
+          subject: "Topic A",
+        }),
+      ],
       CURRENT_USER_ID,
     );
     expect(map.get("00000000-0000-4000-8000-000000000100")).toEqual({
       type: "stream",
-      stream_id: 7,
+      streamUuid: OTHER_STREAM_UUID,
       topic: "Topic A",
     });
   });
@@ -99,28 +106,10 @@ describe("buildMessageIdToLocation", () => {
   });
 });
 
-describe("buildUnreadLocationMap", () => {
-  it("includes only unread messages from others", () => {
-    const map = buildUnreadLocationMap(
-      [
-        streamMsg({ id: "00000000-0000-4000-8000-000000000001", flags: [], sender_id: 20 }),
-        streamMsg({ id: "00000000-0000-4000-8000-000000000002", flags: ["read"], sender_id: 20 }),
-        streamMsg({
-          id: "00000000-0000-4000-8000-000000000003",
-          flags: [],
-          sender_id: CURRENT_USER_ID,
-        }),
-      ],
-      CURRENT_USER_ID,
-    );
-    expect([...map.keys()]).toEqual([MESSAGE_ID_1]);
-  });
-});
-
 describe("mergeStreamAccessMetadata", () => {
   it("preserves access metadata from existing stream entry", () => {
     const existing: StreamEntryInternal = {
-      stream_id: 5,
+      streamUuid: STREAM_UUID,
       name: "general",
       lastMessage: "old",
       time: "1m",
@@ -129,7 +118,7 @@ describe("mergeStreamAccessMetadata", () => {
       topics: new Map(),
     };
     const incoming: StreamEntryInternal = {
-      stream_id: 5,
+      streamUuid: STREAM_UUID,
       name: "general",
       lastMessage: "new",
       time: "now",
@@ -144,11 +133,11 @@ describe("mergeStreamAccessMetadata", () => {
 
 describe("mergeBootstrapStreamsWithPreviousMetadata", () => {
   it("merges access metadata for every stream in the rebuilt map", () => {
-    const previous = new Map<number, StreamEntryInternal>([
+    const previous = new Map<string, StreamEntryInternal>([
       [
-        5,
+        STREAM_UUID,
         {
-          stream_id: 5,
+          streamUuid: STREAM_UUID,
           name: "general",
           lastMessage: "",
           time: "",
@@ -159,13 +148,13 @@ describe("mergeBootstrapStreamsWithPreviousMetadata", () => {
       ],
     ]);
     const rebuilt = buildSetFromMessagesBootstrapState(
-      [streamMsg({ stream_id: 5 })],
+      [streamMsg({ stream_uuid: STREAM_UUID })],
       CURRENT_USER_ID,
       new Map(),
       new Map(),
     ).streamsMap;
     const merged = mergeBootstrapStreamsWithPreviousMetadata(rebuilt, previous);
-    expect(merged.get(5)?.isArchived).toBe(true);
+    expect(merged.get(STREAM_UUID)?.isArchived).toBe(true);
   });
 });
 
@@ -223,7 +212,7 @@ describe("buildDmMetadataUpsertPatch", () => {
     expect(buildDmMetadataUpsertPatch([], CURRENT_USER_ID, new Map(), displayContext())).toBeNull();
   });
 
-  it("upserts metadata rows and computes unread delta", () => {
+  it("upserts metadata rows with server unread count", () => {
     const patch = buildDmMetadataUpsertPatch(
       [{ userIds: [10, 20], unreadCount: 4 }],
       CURRENT_USER_ID,
@@ -231,7 +220,6 @@ describe("buildDmMetadataUpsertPatch", () => {
       displayContext(),
     );
     expect(patch?.changed).toBe(true);
-    expect(patch?.sidebarDmsUnreadDelta).toBe(4);
     expect(patch?.dmsMap.get("10,20")?.unreadCount).toBe(4);
   });
 });
@@ -286,7 +274,7 @@ describe("buildChatListHydrateFromSnapshotState", () => {
 
   it("deserializes snapshot maps and marks hydrated when non-empty", () => {
     const streamEntry: StreamEntryInternal = {
-      stream_id: 5,
+      streamUuid: STREAM_UUID,
       name: "general",
       lastMessage: "hi",
       time: "1m",
@@ -309,20 +297,23 @@ describe("buildChatListHydrateFromSnapshotState", () => {
       currentUserId: 10,
       lastMessageId: "00000000-0000-4000-8000-000000000099",
       oldestMessageId: "00000000-0000-4000-8000-000000000001",
-      streamsEntries: [[5, serializeStreamEntry(streamEntry)]],
+      streamsEntries: [[STREAM_UUID, serializeStreamEntry(streamEntry)]],
       dmsEntries: [],
       messageIdToLocationEntries: [
-        ["00000000-0000-4000-8000-000000000001", { type: "stream", stream_id: 5, topic: "topic1" }],
+        [
+          "00000000-0000-4000-8000-000000000001",
+          { type: "stream", streamUuid: STREAM_UUID, topic: "topic1" },
+        ],
       ],
       updatedAt: Date.now(),
     };
     const state = buildChatListHydrateFromSnapshotState(snapshot, null);
     expect(state.sidebarDataHydrated).toBe(true);
     expect(state.streamMetadataHydrated).toBe(false);
-    expect(state.streamsMap.get(5)?.name).toBe("general");
+    expect(state.streamsMap.get(STREAM_UUID)?.name).toBe("general");
     expect(state.messageIdToLocation.get("00000000-0000-4000-8000-000000000001")).toEqual({
       type: "stream",
-      stream_id: 5,
+      streamUuid: STREAM_UUID,
       topic: "topic1",
     });
     expect(state.currentUserId).toBe(10);

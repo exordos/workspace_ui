@@ -1,44 +1,14 @@
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import {
-  countMentionsUnreadFromSnapshot,
-  countPersonalDmUnreadFromSnapshot,
-  type MessengerUnreadMessagesSnapshot,
-} from "~/shared/api/messenger-unread.lib";
-import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
-import {
   logSidebarUnreadFlow,
   summarizeSidebarUnreadTotals,
 } from "~/shared/lib/sidebar-unread-debug.lib";
-import type { UserId } from "~/shared/lib/user-id.lib";
 import {
   computeInstanceDmUnreadCount,
   computeInstanceUnreadCount,
   hasPersonalUnreadIndicator,
 } from "./unread-instance-count.lib";
-
-// Full unread snapshots come from register, reconnect, inactive org refresh, or Inbox.
-export type UnreadSurfaceSyncSource =
-  | "event-loop-register"
-  | "reconnect"
-  | "reconnect-light"
-  | "inactive-register"
-  | "inactive-cached-register"
-  | "inbox-fetch";
-
-export interface SyncUnreadSurfacesFromSnapshotOptions {
-  source: UnreadSurfaceSyncSource;
-  instanceId: string | null;
-  currentUserId: UserId | null;
-  snapshot: MessengerUnreadMessagesSnapshot;
-  messages?: readonly WorkspaceRawMessage[];
-  applyChatList?: boolean;
-  applyInstanceCounts?: boolean;
-  // Active org should use chat-list-derived, so muted topics do not raise the org badge.
-  instanceCountMode?: "snapshot-total" | "chat-list-derived";
-  isStreamMuted?: (streamId: string) => boolean;
-  isEffectivelyMuted?: (streamId: string, topic: string) => boolean;
-}
 
 // Small unread changes come from live events or local optimistic actions.
 export type UnreadDeltaSyncSource =
@@ -64,22 +34,6 @@ export interface SyncUnreadSurfacesFromDeltaOptions {
   applyInstanceCounts?: boolean;
   isStreamMuted?: (streamId: string) => boolean;
   isEffectivelyMuted?: (streamId: string, topic: string) => boolean;
-}
-
-function hasPersonalUnreadFromSnapshot(snapshot: MessengerUnreadMessagesSnapshot): boolean {
-  return (
-    countPersonalDmUnreadFromSnapshot(snapshot) > 0 || countMentionsUnreadFromSnapshot(snapshot) > 0
-  );
-}
-
-// Used for inactive orgs where we only trust the server total.
-function writeInstanceCountsFromSnapshot(
-  instanceId: string,
-  snapshot: MessengerUnreadMessagesSnapshot,
-): void {
-  const instances = useInstancesStore.getState();
-  instances.setInstanceUnreadCount(instanceId, snapshot.totalCount);
-  instances.setInstanceDmUnreadCount(instanceId, hasPersonalUnreadFromSnapshot(snapshot) ? 1 : 0);
 }
 
 // Builds the active org total from the current sidebar model.
@@ -121,71 +75,6 @@ function writeInstanceCountsFromCurrentChatList({
     computeCurrentInstanceUnreadTotal({ isStreamMuted, isEffectivelyMuted }),
   );
   instances.setInstanceDmUnreadCount(instanceId, computeCurrentPersonalUnreadIndicator());
-}
-
-// Applies a server snapshot, then updates the requested unread surfaces.
-export function syncUnreadSurfacesFromSnapshot({
-  source,
-  instanceId,
-  currentUserId,
-  snapshot,
-  messages,
-  applyChatList = true,
-  applyInstanceCounts = true,
-  instanceCountMode = "snapshot-total",
-  isStreamMuted,
-  isEffectivelyMuted,
-}: SyncUnreadSurfacesFromSnapshotOptions): void {
-  const chatListBefore = useChatListStore.getState();
-  const instancesBefore = useInstancesStore.getState();
-  const instanceUnreadBefore =
-    instanceId != null ? instancesBefore.getInstanceUnreadCount(instanceId) : null;
-  const instanceDmUnreadBefore =
-    instanceId != null ? instancesBefore.getInstanceDmUnreadCount(instanceId) : null;
-
-  logSidebarUnreadFlow("syncUnreadSurfaces:start", {
-    source,
-    instanceId,
-    currentUserId,
-    snapshotTotal: snapshot.totalCount,
-    streamBuckets: snapshot.streams.length,
-    dmBuckets: snapshot.dms.length,
-    messageCount: messages?.length ?? null,
-    applyChatList,
-    applyInstanceCounts,
-    sidebarBefore: summarizeSidebarUnreadTotals(chatListBefore),
-    instanceUnreadBefore,
-    instanceDmUnreadBefore,
-  });
-
-  if (applyChatList) {
-    if (messages != null) {
-      useChatListStore.getState().reconcileUnreadFromMessages([...messages], currentUserId);
-    } else {
-      useChatListStore.getState().reconcileUnreadFromSnapshot(snapshot, currentUserId);
-    }
-  }
-
-  if (applyInstanceCounts && instanceId != null) {
-    // Active org uses the current chat-list; inactive orgs keep the raw snapshot total.
-    if (instanceCountMode === "chat-list-derived") {
-      writeInstanceCountsFromCurrentChatList({ instanceId, isStreamMuted, isEffectivelyMuted });
-    } else {
-      writeInstanceCountsFromSnapshot(instanceId, snapshot);
-    }
-  }
-
-  const chatListAfter = useChatListStore.getState();
-  const instancesAfter = useInstancesStore.getState();
-  logSidebarUnreadFlow("syncUnreadSurfaces:done", {
-    source,
-    instanceId,
-    sidebarAfter: summarizeSidebarUnreadTotals(chatListAfter),
-    instanceUnreadAfter:
-      instanceId != null ? instancesAfter.getInstanceUnreadCount(instanceId) : null,
-    instanceDmUnreadAfter:
-      instanceId != null ? instancesAfter.getInstanceDmUnreadCount(instanceId) : null,
-  });
 }
 
 // Applies a local/event change, then recalculates the active org badge.

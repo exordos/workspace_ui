@@ -3,13 +3,16 @@ import { useUsersStore } from "~/entities/user/user.model";
 import type { MockMessage } from "~/shared/api/messenger.types";
 import { testMessageId } from "~/test/factories";
 
-const isHydrateInFlightMock = vi.hoisted(() => vi.fn((_streamId: number) => false));
+const STREAM_UUID = "11111111-1111-4111-8111-111111111111";
+const OTHER_STREAM_UUID = "22222222-2222-4222-8222-222222222222";
+
+const isHydrateInFlightMock = vi.hoisted(() => vi.fn((_streamId: string) => false));
 
 vi.mock("./chat-list-hydrate-stream-sidebar.lib", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./chat-list-hydrate-stream-sidebar.lib")>();
   return {
     ...actual,
-    isStreamSidebarTopicsHydrateInFlight: (streamId: number) => isHydrateInFlightMock(streamId),
+    isStreamSidebarTopicsHydrateInFlight: (streamId: string) => isHydrateInFlightMock(streamId),
   };
 });
 
@@ -42,7 +45,7 @@ function streamMessage(overrides: MockMessageOverrides = {}): MockMessage {
     sender_full_name: "Bob",
     content: "hello",
     timestamp: 2000,
-    stream_id: 99,
+    stream_uuid: STREAM_UUID,
     subject: "topic-a",
     display_recipient: "engineering",
     flags: [],
@@ -79,11 +82,15 @@ describe("shouldSyncStreamPreviewFromWindow", () => {
 describe("filterMessagesForStreamId", () => {
   it("keeps only messages for the requested stream", () => {
     const messages = [
-      streamMessage({ id: "00000000-0000-4000-8000-000000000001", stream_id: 99, subject: "a" }),
-      streamMessage({ id: "00000000-0000-4000-8000-000000000002", stream_id: 100, subject: "b" }),
-      streamMessage({ id: "00000000-0000-4000-8000-000000000003", stream_id: 99, subject: "c" }),
+      streamMessage({ id: "00000000-0000-4000-8000-000000000001", subject: "a" }),
+      streamMessage({
+        id: "00000000-0000-4000-8000-000000000002",
+        stream_uuid: OTHER_STREAM_UUID,
+        subject: "b",
+      }),
+      streamMessage({ id: "00000000-0000-4000-8000-000000000003", subject: "c" }),
     ];
-    const filtered = filterMessagesForStreamId(messages, 99);
+    const filtered = filterMessagesForStreamId(messages, STREAM_UUID);
     expect(filtered.map((m) => m.id)).toEqual([testMessageId(1), testMessageId(3)]);
   });
 });
@@ -95,7 +102,9 @@ describe("syncStreamSidebarFromLoadedMessages", () => {
     useChatListStore.getState().clear();
     useUsersStore.getState().clear();
     useUsersStore.getState().mergeUser({ user_id: 20, full_name: "Bob", email: "b@x.test" });
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 99, name: "engineering" }]);
+    useChatListStore
+      .getState()
+      .upsertStreamMetadataRows([{ streamUuid: STREAM_UUID, name: "engineering" }]);
     applySpy = vi.spyOn(useChatListStore.getState(), "applyStreamSidebarPreviewsFromMessages");
   });
 
@@ -117,14 +126,14 @@ describe("syncStreamSidebarFromLoadedMessages", () => {
           timestamp: 1_750_000_000,
         }),
       ],
-      streamId: 99,
+      streamId: STREAM_UUID,
       source: "api",
       focusedMessageId: null,
       hasNewerMessages: false,
     });
 
     expect(applySpy).toHaveBeenCalledTimes(1);
-    const stream = useChatListStore.getState().streamsMap.get(99);
+    const stream = useChatListStore.getState().streamsMap.get(STREAM_UUID);
     expect(stream?.topics.get("topic-a")?.lastMessage).toContain("preview from opened chat");
     expect(useChatListStore.getState().sidebarStreamsUnread).toBe(0);
   });
@@ -134,7 +143,7 @@ describe("syncStreamSidebarFromLoadedMessages", () => {
 
     syncStreamSidebarFromLoadedMessages({
       messages: [streamMessage({ id: 11, content: "during hydrate" })],
-      streamId: 99,
+      streamId: STREAM_UUID,
       source: "api",
       focusedMessageId: null,
       hasNewerMessages: false,
@@ -152,25 +161,25 @@ describe("syncStreamSidebarFromLoadedMessages", () => {
           timestamp: 1_000_000_000,
         }),
       ],
-      streamId: 99,
+      streamId: STREAM_UUID,
       source: "api",
       focusedMessageId: "00000000-0000-4000-8000-000000000100",
       hasNewerMessages: true,
     });
 
-    expect(useChatListStore.getState().streamsMap.get(99)?.topics.size).toBe(0);
+    expect(useChatListStore.getState().streamsMap.get(STREAM_UUID)?.topics.size).toBe(0);
   });
 
-  it("indexes unread message locations even when preview sync is skipped", () => {
+  it("indexes loaded message locations even when preview sync is skipped", () => {
     syncStreamSidebarFromLoadedMessages({
       messages: [
         streamMessage({
           id: "00000000-0000-4000-8000-000000000555",
           subject: "topic-a",
-          flags: ["unread"],
+          read: false,
         }),
       ],
-      streamId: 99,
+      streamId: STREAM_UUID,
       source: "api",
       focusedMessageId: "00000000-0000-4000-8000-000000000999",
       hasNewerMessages: true,

@@ -13,7 +13,8 @@ import {
 const permalinkOptions = {
   realmBaseUrl: "https://chat.example.com",
   wroteLabel: "wrote",
-  resolveStreamName: (streamId: number) => (streamId === 33 ? "InternalServicesDev" : "general"),
+  resolveStreamName: (streamUuid: string) =>
+    streamUuid === "33333333-3333-4333-8333-333333333333" ? "InternalServicesDev" : "general",
 };
 
 describe("buildForwardQuote", () => {
@@ -26,7 +27,7 @@ describe("buildForwardQuote", () => {
             sender_full_name: "Alice",
             sender_id: 42,
             content: "Hello",
-            stream_id: null,
+            stream_uuid: null,
             subject: "",
             display_recipient: [
               { id: 7, full_name: "You" },
@@ -51,7 +52,7 @@ describe("buildForwardQuote", () => {
             sender_full_name: "Alice",
             sender_id: 42,
             content: "First",
-            stream_id: null,
+            stream_uuid: null,
             subject: "",
             display_recipient: [
               { id: 7, full_name: "You" },
@@ -63,7 +64,7 @@ describe("buildForwardQuote", () => {
             sender_full_name: "Bob",
             sender_id: 55,
             content: "Second",
-            stream_id: 33,
+            stream_uuid: "33333333-3333-4333-8333-333333333333",
             subject: "Workspace",
             display_recipient: "InternalServicesDev",
           },
@@ -72,7 +73,7 @@ describe("buildForwardQuote", () => {
         permalinkOptions,
       ),
     ).toBe(
-      `@_**Alice|42** [wrote](https://chat.example.com/#narrow/dm/7,42-dm/near/${testMessageId(10)}):\n\`\`\`quote\nFirst\n\`\`\`\n\n\n\n@_**Bob|55** [wrote](https://chat.example.com/#narrow/channel/33-InternalServicesDev/topic/Workspace/near/${testMessageId(11)}):\n\`\`\`quote\nSecond\n\`\`\`\n\n`,
+      `@_**Alice|42** [wrote](https://chat.example.com/#narrow/dm/7,42-dm/near/${testMessageId(10)}):\n\`\`\`quote\nFirst\n\`\`\`\n\n\n\n@_**Bob|55** [wrote](https://chat.example.com/#narrow/channel/33333333-3333-4333-8333-333333333333/topic/Workspace/near/${testMessageId(11)}):\n\`\`\`quote\nSecond\n\`\`\`\n\n`,
     );
   });
 
@@ -85,7 +86,7 @@ describe("buildForwardQuote", () => {
             sender_full_name: "Alice",
             sender_id: 42,
             content: "Original",
-            stream_id: null,
+            stream_uuid: null,
             subject: "",
             display_recipient: [{ id: 42, full_name: "Alice" }],
           },
@@ -107,7 +108,7 @@ describe("buildForwardQuote", () => {
             sender_full_name: "Alice",
             sender_id: 42,
             content: "Original body",
-            stream_id: null,
+            stream_uuid: null,
             subject: "",
             display_recipient: [{ id: 42, full_name: "Alice" }],
           },
@@ -127,7 +128,7 @@ describe("buildForwardQuote", () => {
             sender_full_name: "Alice",
             sender_id: 42,
             content: "<p>Hello <strong>world</strong></p>",
-            stream_id: null,
+            stream_uuid: null,
             subject: "",
             display_recipient: [{ id: 42, full_name: "Alice" }],
           },
@@ -156,7 +157,7 @@ describe("buildForwardQuote", () => {
           sender_id: 9,
           content: "<p>rendered html</p>",
           markdown_source: nestedMarkdown,
-          stream_id: 2,
+          stream_uuid: "33333333-3333-4333-8333-333333333333",
           subject: "general",
           display_recipient: "sandbox",
         },
@@ -182,7 +183,7 @@ describe("buildForwardQuote", () => {
             sender_id: 42,
             content: "<p><strong>Hi</strong></p>",
             markdown_source: "**Hi**",
-            stream_id: null,
+            stream_uuid: null,
             subject: "",
             display_recipient: [{ id: 42, full_name: "Alice" }],
           },
@@ -204,7 +205,7 @@ describe("buildForwardQuote", () => {
             sender_full_name: "Alice",
             sender_id: 42,
             content: "First",
-            stream_id: null,
+            stream_uuid: null,
             subject: "",
             display_recipient: [
               { id: 7, full_name: "You" },
@@ -216,7 +217,7 @@ describe("buildForwardQuote", () => {
             sender_full_name: "Bob",
             sender_id: 55,
             content: "Second",
-            stream_id: 33,
+            stream_uuid: "33333333-3333-4333-8333-333333333333",
             subject: "Workspace",
             display_recipient: "InternalServicesDev",
           },
@@ -225,7 +226,7 @@ describe("buildForwardQuote", () => {
         permalinkOptions,
       ),
     ).toBe(
-      `@_**Alice|42** [wrote](https://chat.example.com/#narrow/dm/7,42-dm/near/${testMessageId(10)}):\n\`\`\`quote\nFirst\n\`\`\`\n\n\n\n@_**Bob|55** [wrote](https://chat.example.com/#narrow/channel/33-InternalServicesDev/topic/Workspace/near/${testMessageId(11)}):\n\`\`\`quote\nSecond\n\`\`\`\n\n`,
+      `@_**Alice|42** [wrote](https://chat.example.com/#narrow/dm/7,42-dm/near/${testMessageId(10)}):\n\`\`\`quote\nFirst\n\`\`\`\n\n\n\n@_**Bob|55** [wrote](https://chat.example.com/#narrow/channel/33333333-3333-4333-8333-333333333333/topic/Workspace/near/${testMessageId(11)}):\n\`\`\`quote\nSecond\n\`\`\`\n\n`,
     );
   });
 
@@ -242,17 +243,17 @@ describe("resolveForwardTargetRoute", () => {
   it("returns stream topic route for stream target", () => {
     expect(
       resolveForwardTargetRoute("engineering", "bugs", undefined, [
-        { stream_id: 10, name: "engineering" },
+        { stream_uuid: "22222222-2222-4222-8222-222222222222", name: "engineering" },
       ]),
-    ).toBe("/stream/10-engineering/topic/bugs");
+    ).toBe("/stream/22222222-2222-4222-8222-222222222222/topic/bugs");
   });
 
   it("uses explicit empty-topic token when topic is empty", () => {
     expect(
       resolveForwardTargetRoute("engineering", "   ", undefined, [
-        { stream_id: 10, name: "engineering" },
+        { stream_uuid: "22222222-2222-4222-8222-222222222222", name: "engineering" },
       ]),
-    ).toBe("/stream/10-engineering/topic/__empty__");
+    ).toBe("/stream/22222222-2222-4222-8222-222222222222/topic/__empty__");
   });
 
   it("returns null when stream cannot be resolved", () => {
@@ -287,12 +288,12 @@ describe("resolveForwardDraftTarget", () => {
   it("builds stream draft target for stream forwarding", () => {
     expect(
       resolveForwardDraftTarget("engineering", "bugs", undefined, [
-        { stream_id: 10, name: "engineering" },
+        { stream_uuid: "22222222-2222-4222-8222-222222222222", name: "engineering" },
       ]),
     ).toEqual({
-      route: "/stream/10-engineering/topic/bugs",
+      route: "/stream/22222222-2222-4222-8222-222222222222/topic/bugs",
       draftType: "stream",
-      draftTo: [10],
+      draftTo: ["22222222-2222-4222-8222-222222222222"],
       draftTopic: "bugs",
     });
   });

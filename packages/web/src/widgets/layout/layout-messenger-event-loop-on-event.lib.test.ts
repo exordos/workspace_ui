@@ -61,41 +61,4 @@ describe("handleLayoutMessengerEventLoopQueueEvent", () => {
 
     expect(useCurrentChatMessagesStore.getState().messages[0]!.flags).toContain("read");
   });
-
-  it("clears sidebar unread on markAllRead queue event", () => {
-    useChatListStore.getState().setCurrentUserId(10);
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
-    useChatListStore.getState().reconcileUnreadFromSnapshot(
-      {
-        streams: [
-          {
-            streamId: 5,
-            topic: "topic1",
-            unreadMessageIds: [
-              "00000000-0000-4000-8000-000000000001",
-              "00000000-0000-4000-8000-000000000002",
-            ],
-          },
-        ],
-        dms: [],
-        totalCount: 2,
-        mentionMessageIds: [],
-      },
-      10,
-    );
-
-    handleLayoutMessengerEventLoopQueueEvent(
-      {
-        id: 2,
-        type: "update_message_flags",
-        op: "add",
-        flag: "read",
-        all: true,
-        messages: [],
-      },
-      { currentInstanceId: "inst-1", latestMessageIdRef: { current: null } },
-    );
-
-    expect(useChatListStore.getState().sidebarStreamsUnread).toBe(0);
-  });
 });

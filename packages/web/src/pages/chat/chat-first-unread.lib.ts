@@ -3,7 +3,7 @@ import {
   resolveFirstUnreadBoundaryMessageId,
   resolveLastUnreadBoundaryMessageId,
 } from "~/shared/lib/message-unread-boundary.lib";
-import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 
 export { resolveFirstUnreadBoundaryMessageId, resolveLastUnreadBoundaryMessageId };
 
@@ -11,13 +11,12 @@ export function countUnreadMessages(
   messages: readonly MockMessage[],
   currentUserId?: UserId | null,
 ): number {
-  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
   let unreadCount = 0;
   for (const message of messages) {
-    if (message.flags?.includes("read")) {
+    if (message.read === true) {
       continue;
     }
-    if (numericCurrentUserId != null && message.sender_id === numericCurrentUserId) {
+    if (message.is_own === true) {
       continue;
     }
     unreadCount += 1;

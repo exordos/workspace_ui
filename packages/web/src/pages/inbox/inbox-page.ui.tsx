@@ -1,10 +1,10 @@
-// /inbox — IDB bootstrap (apply if fresher than memory), then background unread refresh without clearing UI.
+// /inbox — stream/topic metadata unread view; refreshes when chat-list metadata changes.
 import React, { useCallback, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import {
-  fetchInboxEntriesWithSnapshot,
-  hydrateInboxEntriesFromCache,
+  fetchUnreadInboxEntries,
+  hydrateInboxEntriesFromMetadata,
 } from "~/entities/inbox/inbox.api";
 import { groupInboxEntries, isInboxEntriesSnapshotFresher } from "~/entities/inbox/inbox.lib";
 import { useInboxStore } from "~/entities/inbox/inbox.model";
@@ -13,7 +13,6 @@ import {
   isActiveOrgRequestContextCurrent,
   useInstancesStore,
 } from "~/entities/instance/instance.model";
-import { syncUnreadSurfacesFromSnapshot } from "~/entities/unread-sync/unread-surfaces-sync.lib";
 import { topicKey, useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { t } from "~/i18n/i18n";
 import { useOpenSearch } from "~/shared/contexts/open-search";
@@ -67,6 +66,7 @@ export const InboxPage: React.FC = () => {
   const navigate = useNavigate();
   const openSearch = useOpenSearch();
   const currentUserId = useChatListStore((s) => s.currentUserId ?? null);
+  const streamsMap = useChatListStore((s) => s.streamsMap);
   const numericCurrentUserId = numericUserIdOrNull(currentUserId);
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const loading = useInboxStore((s) => s.isInitialLoading);
@@ -81,8 +81,21 @@ export const InboxPage: React.FC = () => {
   const mutedTopicKeys = useMuteStore((s) => s.mutedTopicKeys);
   const unmutedTopicKeys = useMuteStore((s) => s.unmutedTopicKeys);
   const followedTopicKeys = useMuteStore((s) => s.followedTopicKeys);
-  const isStreamMuted = useMuteStore((s) => s.isStreamMuted);
-  const isEffectivelyMuted = useMuteStore((s) => s.isEffectivelyMuted);
+  const inboxMetadataKey = useMemo(() => {
+    const parts: string[] = [];
+    for (const stream of streamsMap.values()) {
+      parts.push(stream.streamUuid, String(stream.unreadCount ?? 0), String(stream.ts));
+      for (const topic of stream.topics.values()) {
+        parts.push(
+          topic.topicUuid ?? topic.subject,
+          topic.subject,
+          String(topic.unreadCount),
+          String(topic.ts),
+        );
+      }
+    }
+    return parts.join("|");
+  }, [streamsMap]);
   const visibleEntries = useMemo(
     () =>
       entries.filter((entry) => {
@@ -101,7 +114,7 @@ export const InboxPage: React.FC = () => {
 
   useCacheFirstPageLoad({
     instanceId: currentInstanceId,
-    dedupeKey: `${currentInstanceId ?? "none"}:inbox:newest`,
+    dedupeKey: `${currentInstanceId ?? "none"}:inbox:metadata:${inboxMetadataKey}`,
     refreshVersion: staleVersion,
     onInstanceChange: (instanceId) => {
       if (lastInstanceIdRef.current != null && lastInstanceIdRef.current !== instanceId) {
@@ -110,10 +123,7 @@ export const InboxPage: React.FC = () => {
       lastInstanceIdRef.current = instanceId;
     },
     hydrate: async ({ instanceId, signal, orgContext }) => {
-      const cached = await hydrateInboxEntriesFromCache(instanceId, numericCurrentUserId, {
-        isStreamMuted,
-        isEffectivelyMuted,
-      });
+      const cached = await hydrateInboxEntriesFromMetadata(instanceId, numericCurrentUserId);
       if (signal.aborted || !isActiveOrgRequestContextCurrent(orgContext)) return;
       const currentEntries = useInboxStore.getState().entries;
       const shouldApplyCached =
@@ -126,28 +136,10 @@ export const InboxPage: React.FC = () => {
     hasCachedData: () => useInboxStore.getState().entries.length > 0,
     startRequest: (hasCached) => startRequest(hasCached),
     fetch: async ({ instanceId, orgContext, requestVersion, signal }) => {
-      const data = await fetchInboxEntriesWithSnapshot(
-        numericCurrentUserId,
-        { isStreamMuted, isEffectivelyMuted },
-        { signal },
-      );
+      void instanceId;
+      const data = await fetchUnreadInboxEntries(numericCurrentUserId, {}, { signal });
       if (signal.aborted || !isActiveOrgRequestContextCurrent(orgContext)) return;
       setEntries(data.entries, requestVersion);
-      if (data.unreadSnapshotComplete) {
-        // Only a full Inbox snapshot can safely update shared unread counters.
-        syncUnreadSurfacesFromSnapshot({
-          source: "inbox-fetch",
-          instanceId,
-          currentUserId,
-          snapshot: data.unreadSnapshot,
-          messages: data.unreadMessages,
-          applyChatList: true,
-          applyInstanceCounts: true,
-          instanceCountMode: "chat-list-derived",
-          isStreamMuted,
-          isEffectivelyMuted,
-        });
-      }
     },
     onFetchError: (err, requestVersion) => {
       setError(String(err), requestVersion);

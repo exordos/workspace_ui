@@ -1,21 +1,11 @@
 import { useEffect } from "react";
 import type { WorkspaceInstance } from "~/entities/instance/instance.model";
-import { syncUnreadSurfacesFromSnapshot } from "~/entities/unread-sync/unread-surfaces-sync.lib";
-import {
-  fetchUnreadDmMessagesCountForCredentials,
-  fetchUnreadMessagesCountForCredentials,
-} from "~/shared/api/messenger-queue";
 import { startMessengerEventLoopForCredentials } from "~/shared/lib/event-loop";
 import {
   abortInactiveInstanceQueueOnTeardown,
   handleInactiveInstanceQueueRegistered,
 } from "./layout-inactive-instance-queue.lib";
-import {
-  getCachedRegisterUnreadSnapshot,
-  isRegisterUnreadSnapshotUsable,
-} from "./layout-instance-register-unread.lib";
 import { startInactiveInstanceEventStreams } from "./layout-multi-org-event-streams.lib";
-import { startInactiveInstanceUnreadPolling } from "./layout-multi-org-polling.lib";
 
 export function useInactiveInstancesBackgroundWork(options: {
   instances: WorkspaceInstance[];
@@ -25,8 +15,7 @@ export function useInactiveInstancesBackgroundWork(options: {
   setUnreadCount: (instanceId: string, unreadCount: number) => void;
   setDmUnreadCount: (instanceId: string, dmUnreadCount: number) => void;
 }): void {
-  const { instances, currentInstanceId, enabled, online, setUnreadCount, setDmUnreadCount } =
-    options;
+  const { instances, currentInstanceId, enabled, online } = options;
 
   useEffect(() => {
     return startInactiveInstanceEventStreams({
@@ -34,35 +23,7 @@ export function useInactiveInstancesBackgroundWork(options: {
       currentInstanceId,
       enabled,
       online,
-      refreshUnreadForInstance: async (instance) => {
-        const cached = getCachedRegisterUnreadSnapshot(instance.id);
-        if (isRegisterUnreadSnapshotUsable(cached)) {
-          syncUnreadSurfacesFromSnapshot({
-            source: "inactive-cached-register",
-            instanceId: instance.id,
-            currentUserId: null,
-            snapshot: cached,
-            applyChatList: false,
-            applyInstanceCounts: true,
-          });
-          return;
-        }
-        const credentials = {
-          realm: instance.realm,
-          login: instance.login,
-          apiKey: instance.apiKey,
-        };
-        const [unreadCount, dmUnreadCount] = await Promise.all([
-          fetchUnreadMessagesCountForCredentials(credentials),
-          fetchUnreadDmMessagesCountForCredentials(credentials),
-        ]);
-        if (unreadCount != null) {
-          setUnreadCount(instance.id, unreadCount);
-        }
-        if (dmUnreadCount != null) {
-          setDmUnreadCount(instance.id, dmUnreadCount);
-        }
-      },
+      refreshUnreadForInstance: async () => {},
       startEventLoop: ({ credentials, onEvent, onBadQueue, onQueueReady, onQueueRegistered }) => {
         const controller = new AbortController();
         let queueId: string | null = null;
@@ -104,34 +65,5 @@ export function useInactiveInstancesBackgroundWork(options: {
         };
       },
     });
-  }, [instances, currentInstanceId, enabled, online, setUnreadCount, setDmUnreadCount]);
-
-  useEffect(() => {
-    return startInactiveInstanceUnreadPolling({
-      instances,
-      currentInstanceId,
-      enabled,
-      online,
-      setUnreadCount,
-      setDmUnreadCount,
-      fetchUnreadCount: (instance, signal) =>
-        fetchUnreadMessagesCountForCredentials(
-          {
-            realm: instance.realm,
-            login: instance.login,
-            apiKey: instance.apiKey,
-          },
-          { signal },
-        ),
-      fetchDmUnreadCount: (instance, signal) =>
-        fetchUnreadDmMessagesCountForCredentials(
-          {
-            realm: instance.realm,
-            login: instance.login,
-            apiKey: instance.apiKey,
-          },
-          { signal },
-        ),
-    });
-  }, [instances, currentInstanceId, enabled, online, setUnreadCount, setDmUnreadCount]);
+  }, [instances, currentInstanceId, enabled, online]);
 }

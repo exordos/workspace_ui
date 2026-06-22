@@ -1,23 +1,23 @@
 import { describe, expect, it } from "vitest";
 import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import {
-  applySidebarUnreadDeltas,
   computeSidebarUnreadTotals,
   computeSidebarUnreadTotalsWithMute,
   countMentionsUnread,
 } from "./chat-list-sidebar-totals.lib";
 
 describe("chat-list-sidebar-totals", () => {
-  it("computeSidebarUnreadTotals sums topic and dm unread", () => {
-    const streamsMap = new Map<number, StreamEntryInternal>([
+  it("computeSidebarUnreadTotals sums server stream and dm unread", () => {
+    const streamsMap = new Map<string, StreamEntryInternal>([
       [
-        1,
+        "11111111-1111-4111-8111-111111111111",
         {
-          stream_id: 1,
+          streamUuid: "11111111-1111-4111-8111-111111111111",
           name: "general",
           lastMessage: "",
           time: "",
           ts: 0,
+          unreadCount: 2,
           topics: new Map([
             [
               "a",
@@ -26,7 +26,7 @@ describe("chat-list-sidebar-totals", () => {
                 lastMessage: "",
                 time: "",
                 ts: 0,
-                unreadCount: 2,
+                unreadCount: 9,
               },
             ],
             [
@@ -63,25 +63,19 @@ describe("chat-list-sidebar-totals", () => {
     });
   });
 
-  it("applySidebarUnreadDeltas adjusts cached totals", () => {
-    expect(
-      applySidebarUnreadDeltas(
-        { sidebarStreamsUnread: 4, sidebarDmsUnread: 2 },
-        { streams: 3, dms: -1 },
-      ),
-    ).toEqual({ sidebarStreamsUnread: 7, sidebarDmsUnread: 1 });
-  });
-
-  it("computeSidebarUnreadTotalsWithMute excludes muted streams and topics", () => {
-    const streamsMap = new Map<number, StreamEntryInternal>([
+  it("computeSidebarUnreadTotalsWithMute excludes muted streams from server stream unread", () => {
+    const mutedStreamUuid = "11111111-1111-4111-8111-111111111111";
+    const openStreamUuid = "22222222-2222-4222-8222-222222222222";
+    const streamsMap = new Map<string, StreamEntryInternal>([
       [
-        10,
+        mutedStreamUuid,
         {
-          stream_id: 10,
+          streamUuid: mutedStreamUuid,
           name: "muted",
           lastMessage: "",
           time: "",
           ts: 0,
+          unreadCount: 5,
           topics: new Map([
             [
               "release",
@@ -97,13 +91,14 @@ describe("chat-list-sidebar-totals", () => {
         },
       ],
       [
-        20,
+        openStreamUuid,
         {
-          stream_id: 20,
+          streamUuid: openStreamUuid,
           name: "engineering",
           lastMessage: "",
           time: "",
           ts: 0,
+          unreadCount: 2,
           topics: new Map([
             [
               "muted-topic",
@@ -146,8 +141,9 @@ describe("chat-list-sidebar-totals", () => {
 
     expect(
       computeSidebarUnreadTotalsWithMute(streamsMap, dmsMap, {
-        isStreamMuted: (streamId) => streamId === 10,
-        isEffectivelyMuted: (streamId, topic) => streamId === 20 && topic === "muted-topic",
+        isStreamMuted: (streamId) => streamId === mutedStreamUuid,
+        isEffectivelyMuted: (streamId, topic) =>
+          streamId === openStreamUuid && topic === "muted-topic",
       }),
     ).toEqual({
       sidebarStreamsUnread: 2,
@@ -171,14 +167,16 @@ describe("chat-list-sidebar-totals", () => {
             sender_id: 10,
             content: "",
             timestamp: 0,
-            flags: ["mentioned", "read"],
+            flags: ["mentioned"],
+            read: true,
           },
           {
             id: "00000000-0000-4000-8000-000000000003",
             sender_id: 11,
             content: "",
             timestamp: 0,
-            flags: ["mentioned", "read"],
+            flags: ["mentioned"],
+            read: true,
           },
           {
             id: "00000000-0000-4000-8000-000000000004",

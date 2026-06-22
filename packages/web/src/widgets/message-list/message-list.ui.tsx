@@ -5,6 +5,7 @@ import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import { countUnreadMessagesBelowViewport } from "~/shared/lib/count-unread-below-viewport.lib";
 import { normalizeEmojiShortcodeName } from "~/shared/lib/emoji-shortcodes.lib";
 import { createLogger } from "~/shared/lib/logger";
+import { isMessageFromCurrentUser } from "~/shared/lib/message-author.lib";
 import { normalizeStreamTopicForMessageCache } from "~/shared/lib/message-cache-keys.lib";
 import { containsEmojiShortcode } from "~/shared/lib/message-emoji-shortcodes.lib";
 import {
@@ -393,10 +394,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
   useEffect(() => {
     const next = new Set(
       messages
-        .filter(
-          (m) =>
-            !m.flags?.includes("read") && (currentUserId == null || m.sender_id !== currentUserId),
-        )
+        .filter((m) => m.read !== true && !isMessageFromCurrentUser(m, currentUserId ?? null))
         .map((m) => m.id),
     );
     unreadCandidatesRef.current = next;
@@ -1333,7 +1331,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
               </span>
             </div>
             {senderGroups.map((senderMessages) => {
-              const isOwn = senderMessages[0]!.sender_id === currentUserId;
+              const isOwn = isMessageFromCurrentUser(senderMessages[0]!, currentUserId ?? null);
               const showUnreadMarker =
                 unreadAnchorId != null &&
                 unreadCount > 0 &&
@@ -1375,7 +1373,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
                         key={m.local_echo_key ?? m.id}
                         message={m}
                         isOwn
-                        showAvatar={false}
+                        showAvatar={i === senderMessages.length - 1}
                         showSenderName={i === 0}
                         currentUserId={currentUserId}
                         callbacks={bubbleCallbacks}

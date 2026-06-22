@@ -12,6 +12,7 @@
  * these types define the contract.
  */
 import type { MessageId } from "~/shared/lib/message-id.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 
 // ---------------------------------------------------------------------------
 // Request
@@ -51,7 +52,7 @@ export interface AiReplyRequest {
 
 export interface AiMessageContext {
   id: MessageId;
-  senderId: number;
+  senderId: UserId;
   senderName: string;
   content: string;
   timestamp: number;

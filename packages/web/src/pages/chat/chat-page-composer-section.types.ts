@@ -1,5 +1,6 @@
 import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply/ai-reply.types";
 import type { MessageId } from "~/shared/lib/message-id.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type { ComposerEditSession } from "~/widgets/message-composer/message-composer.types";
 import type { ComposerUploadProgressState } from "./chat-upload.lib";
 
@@ -21,7 +22,7 @@ export interface ChatPageComposerSectionProps {
     id: MessageId;
     content: string;
     sender_full_name: string;
-    sender_id: number;
+    sender_id: UserId;
     permalinkUrl: string | null;
   } | null;
   onClearReply: () => void;

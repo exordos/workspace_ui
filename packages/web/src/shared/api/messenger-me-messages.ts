@@ -106,6 +106,7 @@ export function parseMeMessage(row: unknown): MessengerMeMessage | null {
     return null;
   }
   const topicUuid = readUuid(row.topic_uuid);
+  const authorUuid = readUuid(row.author_uuid);
   const userUuid = readUuid(row.user_uuid);
   const projectId = readUuid(row.project_id);
   const lastSyncedAt = readOptionalString(row.last_synced_at);
@@ -116,6 +117,8 @@ export function parseMeMessage(row: unknown): MessengerMeMessage | null {
     stream_uuid: streamUuid,
     ...(topicUuid != null ? { topic_uuid: topicUuid } : {}),
     payload,
+    ...(authorUuid != null ? { author_uuid: authorUuid } : {}),
+    is_own: row.is_own === true,
     read: row.read === true,
     pinned: row.pinned === true,
     starred: row.starred === true,
@@ -253,10 +256,11 @@ function isoToEpochSeconds(value: string | undefined): number {
 
 /**
  * Bridges a gateway message-view row to the UI {@link MockMessage} shape so stream messages can be
- * rendered by the existing message list. The `/messages/` endpoint carries no sender identity,
- * so `sender_id` is `0` and `sender_full_name` is empty; resolve those from stream/membership data
- * at the call site when needed. The body is markdown, mirrored into `markdown_source` for editing.
- * Pass `streamUuid` to stamp the stream identity used by sidebar/route association.
+ * rendered by the existing message list. The native `/messages/` endpoint marks whether the row is
+ * authored by the authenticated user; legacy numeric sender ids remain `0` when the author is an
+ * IAM UUID.
+ * The body is markdown, mirrored into `markdown_source` for editing. Pass `streamUuid` to stamp the
+ * stream identity used by sidebar/route association.
  */
 export function meMessageToMockMessage(
   message: MessengerMeMessage,
@@ -265,6 +269,7 @@ export function meMessageToMockMessage(
   const content = message.payload.content;
   const flags: string[] = [];
   if (message.read) flags.push("read");
+  if (message.pinned) flags.push("pinned");
   if (message.starred) flags.push("starred");
   const id: MessageId = message.uuid;
   const streamUuid = options.streamUuid ?? message.stream_uuid;
@@ -272,6 +277,13 @@ export function meMessageToMockMessage(
   const base: MockMessage = {
     id,
     sender_id: 0,
+    ...(message.author_uuid != null
+      ? { author_uuid: message.author_uuid, sender_uuid: message.author_uuid }
+      : {}),
+    is_own: message.is_own,
+    read: message.read,
+    pinned: message.pinned,
+    starred: message.starred,
     sender_full_name: "",
     stream_uuid: streamUuid,
     subject: topicName,
@@ -338,7 +350,10 @@ export async function fetchStreamMessagesPage(
   args: FetchStreamMessagesPageArgs,
 ): Promise<MessagesPageResult> {
   const streamUuid = normalizeStreamUuid(args.streamUuid, "fetchStreamMessagesPage.streamUuid");
-  const topicUuid = args.topicUuid != null ? normalizeUuid(args.topicUuid, "fetchStreamMessagesPage.topicUuid") : undefined;
+  const topicUuid =
+    args.topicUuid != null
+      ? normalizeUuid(args.topicUuid, "fetchStreamMessagesPage.topicUuid")
+      : undefined;
   const topicName = args.topicName ?? "";
   const anchor = args.anchor ?? "newest";
   const numBefore = Math.max(0, Math.floor(args.numBefore ?? 0));

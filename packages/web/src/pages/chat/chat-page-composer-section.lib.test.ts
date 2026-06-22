@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { t } from "~/i18n/i18n";
-import { isComposerDisabled, resolveComposerPlaceholder } from "./chat-page-composer-section.lib";
+import {
+  isComposerDisabled,
+  resolveComposerPlaceholder,
+  shouldShowTopicPrompt,
+} from "./chat-page-composer-section.lib";
 
 const PEER_UUID = "5d4ad324-de78-49ac-9759-ed3d0758fa16";
 
@@ -61,6 +65,28 @@ describe("chat-page-composer-section.lib", () => {
           activeStream: undefined,
         }),
       ).toBe(t("chat.sendPlaceholder"));
+    });
+  });
+
+  describe("shouldShowTopicPrompt", () => {
+    it("does not require a topic prompt for private stream-wide routes", () => {
+      expect(
+        shouldShowTopicPrompt({
+          isDmView: false,
+          isPrivateStreamView: true,
+          activeTopic: undefined,
+        }),
+      ).toBe(false);
+    });
+
+    it("requires a topic prompt for channel stream-wide routes", () => {
+      expect(
+        shouldShowTopicPrompt({
+          isDmView: false,
+          isPrivateStreamView: false,
+          activeTopic: undefined,
+        }),
+      ).toBe(true);
     });
   });
 });

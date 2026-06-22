@@ -38,7 +38,7 @@ describe("buildInboxEntryRoute", () => {
       buildInboxEntryRoute(
         baseEntry({
           key: "stream:10:general",
-          streamId: 10,
+          streamId: "10",
           streamName: "engineering",
           topic: "general",
           senderId: null,
@@ -47,7 +47,7 @@ describe("buildInboxEntryRoute", () => {
           messageIds: [testMessageId(101), testMessageId(90), testMessageId(111)],
         }),
       ),
-    ).toBe(`/stream/10-engineering/topic/general?msg=${testMessageId(111)}`);
+    ).toBe(`/stream/10/topic/general?msg=${testMessageId(111)}`);
   });
 
   it("builds explicit empty-topic route for empty topic", () => {
@@ -55,7 +55,7 @@ describe("buildInboxEntryRoute", () => {
       buildInboxEntryRoute(
         baseEntry({
           key: "stream:10:",
-          streamId: 10,
+          streamId: "10",
           streamName: "engineering",
           topic: "",
           senderId: null,
@@ -64,7 +64,7 @@ describe("buildInboxEntryRoute", () => {
           messageIds: [testMessageId(101), testMessageId(90), testMessageId(111)],
         }),
       ),
-    ).toBe(`/stream/10-engineering/topic/__empty__?msg=${testMessageId(111)}`);
+    ).toBe(`/stream/10/topic/__empty__?msg=${testMessageId(111)}`);
   });
 
   it("builds dm route with message focus", () => {

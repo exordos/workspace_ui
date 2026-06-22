@@ -23,13 +23,16 @@ const STREAM_UUID = "22222222-2222-4222-8222-222222222222";
 const MSG_UUID_1 = "11111111-1111-4111-8111-111111111111";
 const MSG_UUID_2 = "33333333-3333-4333-8333-333333333333";
 const USER_UUID = "55555555-5555-4555-8555-555555555555";
+const AUTHOR_UUID = "66666666-6666-4666-8666-666666666666";
 
 function rawRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     uuid: MSG_UUID_1,
     stream_uuid: STREAM_UUID,
+    author_uuid: AUTHOR_UUID,
     user_uuid: USER_UUID,
     payload: { kind: "markdown", content: "Hello world" },
+    is_own: true,
     last_synced_at: "2026-06-21T10:30:00Z",
     read: false,
     pinned: false,
@@ -55,8 +58,10 @@ describe("parseMeMessage", () => {
     expect(parseMeMessage(rawRow())).toEqual<MessengerMeMessage>({
       uuid: MSG_UUID_1,
       stream_uuid: STREAM_UUID,
+      author_uuid: AUTHOR_UUID,
       user_uuid: USER_UUID,
       payload: { kind: "markdown", content: "Hello world" },
+      is_own: true,
       read: false,
       pinned: false,
       starred: false,
@@ -203,7 +208,7 @@ describe("fetchStreamMessages", () => {
   });
 
   it("throws on an invalid stream uuid", async () => {
-    await expect(fetchStreamMessages("not-a-uuid")).rejects.toThrow(/Invalid stream uuid/);
+    await expect(fetchStreamMessages("not-a-uuid")).rejects.toThrow(/Invalid uuid/);
     expect(mockMessengerApi.getWithBase).not.toHaveBeenCalled();
   });
 });
@@ -221,17 +226,22 @@ describe("fetchMyMessages", () => {
 
 describe("meMessageToMockMessage", () => {
   it("maps content, markdown source, flags, and timestamp", () => {
-    const mock = meMessageToMockMessage(parseMeMessage(rawRow({ read: true, starred: true }))!);
+    const mock = meMessageToMockMessage(
+      parseMeMessage(rawRow({ read: true, pinned: true, starred: true }))!,
+    );
 
     expect(mock).toMatchObject({
       id: MSG_UUID_1,
       sender_id: 0,
+      author_uuid: AUTHOR_UUID,
+      sender_uuid: AUTHOR_UUID,
+      is_own: true,
       sender_full_name: "",
-      stream_id: null,
+      stream_uuid: STREAM_UUID,
       subject: "",
       content: "Hello world",
       markdown_source: "Hello world",
-      flags: ["read", "starred"],
+      flags: ["read", "pinned", "starred"],
       timestamp: Math.floor(Date.parse("2026-06-21T10:20:00Z") / 1000),
     });
   });
@@ -245,8 +255,11 @@ describe("meMessageToMockMessage", () => {
     expect(meMessageToMockMessage(parsed!).timestamp).toBe(0);
   });
 
-  it("stamps the provided stream id", () => {
-    expect(meMessageToMockMessage(parseMeMessage(rawRow())!, 7).stream_id).toBe(7);
+  it("stamps the provided stream uuid", () => {
+    const overrideUuid = "66666666-6666-4666-8666-666666666666";
+    expect(
+      meMessageToMockMessage(parseMeMessage(rawRow())!, { streamUuid: overrideUuid }).stream_uuid,
+    ).toBe(overrideUuid);
   });
 });
 
@@ -294,12 +307,11 @@ describe("fetchStreamMessagesPage", () => {
 
     const page = await fetchStreamMessagesPage({
       streamUuid: STREAM_UUID,
-      streamId: 7,
       numBefore: 50,
     });
 
     expect(page.messages.map((m) => m.id)).toEqual([MSG_UUID_1, MSG_UUID_2]);
-    expect(page.messages[0]?.stream_id).toBe(7);
+    expect(page.messages[0]?.stream_uuid).toBe(STREAM_UUID);
     expect(page.foundNewest).toBe(true);
     expect(page.foundOldest).toBe(true);
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(

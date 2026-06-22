@@ -5,6 +5,9 @@ import {
   resolveCallMessageTargetParams,
 } from "./chat-call.lib";
 
+const streamUuid = "22222222-2222-4222-8222-222222222222";
+const topicUuid = "33333333-3333-4333-8333-333333333333";
+
 describe("resolveCallMessageTargetParams", () => {
   it("returns normalized DM target when DM chat has recipients", () => {
     expect(
@@ -12,12 +15,14 @@ describe("resolveCallMessageTargetParams", () => {
         isDmView: true,
         activeDmUserIds: [42, 7, 42],
         activeStream: null,
-        activeStreamId: null,
+        activeStreamUuid: streamUuid,
         activeTopic: null,
+        activeTopicUuid: null,
       }),
     ).toEqual({
       mode: "dm",
       to: [7, 42],
+      streamUuid,
     });
   });
 
@@ -27,8 +32,22 @@ describe("resolveCallMessageTargetParams", () => {
         isDmView: true,
         activeDmUserIds: [],
         activeStream: null,
-        activeStreamId: null,
+        activeStreamUuid: streamUuid,
         activeTopic: null,
+        activeTopicUuid: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("returns null when DM stream uuid is unavailable", () => {
+    expect(
+      resolveCallMessageTargetParams({
+        isDmView: true,
+        activeDmUserIds: [42],
+        activeStream: null,
+        activeStreamUuid: null,
+        activeTopic: null,
+        activeTopicUuid: null,
       }),
     ).toBeNull();
   });
@@ -39,8 +58,9 @@ describe("resolveCallMessageTargetParams", () => {
         isDmView: true,
         activeDmUserIds: [42, 0],
         activeStream: null,
-        activeStreamId: null,
+        activeStreamUuid: streamUuid,
         activeTopic: null,
+        activeTopicUuid: null,
       }),
     ).toBeNull();
   });
@@ -51,14 +71,16 @@ describe("resolveCallMessageTargetParams", () => {
         isDmView: false,
         activeDmUserIds: null,
         activeStream: "engineering",
-        activeStreamId: 10,
+        activeStreamUuid: streamUuid,
         activeTopic: " ",
+        activeTopicUuid: topicUuid,
       }),
     ).toEqual({
       mode: "stream",
       stream: "engineering",
-      streamId: 10,
+      streamUuid,
       subject: "",
+      topicUuid,
     });
   });
 
@@ -68,8 +90,9 @@ describe("resolveCallMessageTargetParams", () => {
         isDmView: false,
         activeDmUserIds: null,
         activeStream: " ",
-        activeStreamId: null,
+        activeStreamUuid: streamUuid,
         activeTopic: "planning",
+        activeTopicUuid: null,
       }),
     ).toBeNull();
   });
@@ -79,7 +102,7 @@ describe("buildCallRoomName", () => {
   it("builds readable DM room name from current chat label", () => {
     expect(
       buildCallRoomName({
-        target: { mode: "dm", to: [42, 7, 42] },
+        target: { mode: "dm", to: [42, 7, 42], streamUuid },
         currentUserId: 15,
         chatLabel: "Design Sync",
         nowMs: 123,
@@ -93,7 +116,7 @@ describe("buildCallRoomName", () => {
         target: {
           mode: "stream",
           stream: "Engineering Team",
-          streamId: 10,
+          streamUuid,
           subject: "Sprint / Demo",
         },
         currentUserId: 42,
@@ -105,7 +128,7 @@ describe("buildCallRoomName", () => {
   it("keeps unicode letters readable in room names", () => {
     expect(
       buildCallRoomName({
-        target: { mode: "dm", to: [7, 42] },
+        target: { mode: "dm", to: [7, 42], streamUuid },
         currentUserId: 15,
         chatLabel: "Команда разработки",
         nowMs: 55,
@@ -116,7 +139,7 @@ describe("buildCallRoomName", () => {
   it("falls back to participant ids when chat label is unavailable", () => {
     expect(
       buildCallRoomName({
-        target: { mode: "dm", to: [42, 7] },
+        target: { mode: "dm", to: [42, 7], streamUuid },
         currentUserId: null,
         nowMs: 987,
       }),
@@ -132,13 +155,13 @@ describe("canStartCallFromHeader", () => {
   it("returns false when current user id is not ready", () => {
     expect(
       canStartCallFromHeader({
-        target: { mode: "dm", to: [7, 42] },
+        target: { mode: "dm", to: [7, 42], streamUuid },
         currentUserId: null,
       }),
     ).toBe(false);
     expect(
       canStartCallFromHeader({
-        target: { mode: "stream", stream: "engineering", streamId: 10, subject: "" },
+        target: { mode: "stream", stream: "engineering", streamUuid, subject: "" },
         currentUserId: 0,
       }),
     ).toBe(false);
@@ -147,7 +170,7 @@ describe("canStartCallFromHeader", () => {
   it("returns true when target and current user id are valid", () => {
     expect(
       canStartCallFromHeader({
-        target: { mode: "dm", to: [7, 42] },
+        target: { mode: "dm", to: [7, 42], streamUuid },
         currentUserId: 15,
       }),
     ).toBe(true);

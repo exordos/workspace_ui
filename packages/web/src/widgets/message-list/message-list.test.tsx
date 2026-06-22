@@ -35,7 +35,7 @@ function msg(id: number | string, overrides: Partial<MockMessage> = {}): MockMes
     id: testMessageId(id),
     sender_id: 42,
     sender_full_name: "Alice",
-    stream_id: 10,
+    stream_uuid: "22222222-2222-4222-8222-222222222222",
     display_recipient: "general",
     channel: "general",
     subject: "bugs",
@@ -164,6 +164,17 @@ describe("MessageList focused message behavior", () => {
     expect(scrollIntoView).toHaveBeenCalled();
     expect(scrollTargets).toContain(MESSAGE_ID_2);
     expect(scrollTargets).not.toContain(MESSAGE_ID_3);
+  });
+
+  it("renders gateway own messages on the right by is_own", () => {
+    render(
+      <MessageList
+        messages={[msg(11, { sender_id: 0, is_own: true, sender_full_name: "" })]}
+        currentUserId="00000000-0000-0000-0000-000000000000"
+      />,
+    );
+
+    expect(screen.getByTestId(`message-${MESSAGE_ID_11}`)).toHaveClass("flex-row-reverse");
   });
 
   it("calls topic separator callback when separator is clicked", () => {
@@ -450,9 +461,9 @@ describe("MessageList focused message behavior", () => {
     render(
       <MessageList
         messages={[
-          msg(1, { sender_id: 42, flags: [] }),
-          msg(2, { sender_id: 42, flags: ["read"] }),
-          msg(3, { sender_id: 7, flags: [] }),
+          msg(1, { sender_id: 42, read: false }),
+          msg(2, { sender_id: 42, read: true }),
+          msg(3, { sender_id: 7, read: false }),
         ]}
         currentUserId={7}
         onUnreadMessagesVisible={onUnreadMessagesVisible}

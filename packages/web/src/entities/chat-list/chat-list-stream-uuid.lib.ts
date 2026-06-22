@@ -16,6 +16,13 @@ export interface ChatListUuidMaps {
 }
 
 const DM_STREAM_KEY_PREFIX = "stream:";
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function normalizeStreamUuid(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const candidate = value.trim().toLowerCase();
+  return UUID_RE.test(candidate) ? candidate : null;
+}
 
 function peerSetsEqual(left: readonly UserId[], right: readonly UserId[]): boolean {
   if (left.length !== right.length || left.length === 0) {
@@ -65,11 +72,11 @@ export function resolveStreamUuidForContext(
   maps: ChatListUuidMaps,
 ): string | null {
   if (context.type === "stream") {
-    const streamUuid = String(context.streamId).trim().toLowerCase();
-    if (streamUuid.length > 0) {
-      return streamUuid;
+    const streamUuid = normalizeStreamUuid(context.streamId);
+    if (streamUuid == null) {
+      return null;
     }
-    return null;
+    return normalizeStreamUuid(maps.streamsMap.get(streamUuid)?.streamUuid) ?? streamUuid;
   }
   return resolveDmStreamUuid(context.dmKey, currentUserId, maps.dmsMap);
 }

@@ -32,6 +32,14 @@ describe("chat-edit-last-message", () => {
     expect(resolveLastOwnMessageForEdit(messages, null, undefined, 10)).toBeNull();
   });
 
+  it("uses is_own for gateway messages without numeric sender identity", () => {
+    const messages = [createMessage(1, 0), { ...createMessage(2, 0), is_own: true }];
+    expect(
+      resolveLastOwnMessageForEdit(messages, "00000000-0000-0000-0000-000000000000", undefined, 10)
+        ?.id,
+    ).toBe(testMessageId(2));
+  });
+
   it("skips own messages that can no longer be edited", () => {
     const messages = [
       { ...createMessage(1000, 42), timestamp: 3050 },

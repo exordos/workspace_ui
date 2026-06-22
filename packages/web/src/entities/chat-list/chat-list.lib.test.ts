@@ -3,6 +3,8 @@ import { useUsersStore } from "~/entities/user/user.model";
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { buildSidebarFromMessages, messageToDmEntry, messageToStreamEntry } from "./chat-list.lib";
 
+const STREAM_UUID = "11111111-1111-4111-8111-111111111111";
+
 function dmMessage(overrides: Partial<WorkspaceRawMessage> = {}): WorkspaceRawMessage {
   return {
     id: "00000000-0000-4000-8000-000000000001",
@@ -78,7 +80,7 @@ describe("messageToStreamEntry", () => {
       content: "hello stream",
       timestamp: 1_700_000_000,
       type: "stream",
-      stream_id: 10,
+      stream_uuid: STREAM_UUID,
       display_recipient: "engineering",
       subject: "general",
       flags: [],
@@ -97,7 +99,7 @@ describe("messageToStreamEntry", () => {
       content: "hello stream",
       timestamp: 1_700_000_001,
       type: "stream",
-      stream_id: 10,
+      stream_uuid: STREAM_UUID,
       display_recipient: "engineering",
       subject: "general",
       flags: [],
@@ -116,7 +118,7 @@ describe("messageToStreamEntry", () => {
       content: "empty topic",
       timestamp: 1_700_000_002,
       type: "stream",
-      stream_id: 10,
+      stream_uuid: STREAM_UUID,
       display_recipient: "engineering",
       subject: "",
       flags: [],
@@ -128,7 +130,7 @@ describe("messageToStreamEntry", () => {
       content: "literal general",
       timestamp: 1_700_000_003,
       type: "stream",
-      stream_id: 10,
+      stream_uuid: STREAM_UUID,
       display_recipient: "engineering",
       subject: "general",
       flags: [],
@@ -140,7 +142,7 @@ describe("messageToStreamEntry", () => {
 });
 
 describe("buildSidebarFromMessages", () => {
-  it("aggregates unread per topic and dm in a single messages pass", () => {
+  it("does not derive unread counts from message flags", () => {
     const messages: WorkspaceRawMessage[] = [
       {
         id: "00000000-0000-4000-8000-000000000001",
@@ -149,7 +151,7 @@ describe("buildSidebarFromMessages", () => {
         content: "unread stream",
         timestamp: 1000,
         type: "stream",
-        stream_id: 10,
+        stream_uuid: STREAM_UUID,
         display_recipient: "engineering",
         subject: "bugs",
         flags: [],
@@ -161,7 +163,7 @@ describe("buildSidebarFromMessages", () => {
         content: "read stream",
         timestamp: 2000,
         type: "stream",
-        stream_id: 10,
+        stream_uuid: STREAM_UUID,
         display_recipient: "engineering",
         subject: "bugs",
         flags: ["read"],
@@ -183,7 +185,7 @@ describe("buildSidebarFromMessages", () => {
 
     const { streamsMap, dmsMap } = buildSidebarFromMessages(messages, 10);
 
-    expect(streamsMap.get(10)?.topics.get("bugs")?.unreadCount).toBe(1);
-    expect(dmsMap.get("10,20")?.unreadCount).toBe(1);
+    expect(streamsMap.get(STREAM_UUID)?.topics.get("bugs")?.unreadCount).toBe(0);
+    expect(dmsMap.get("10,20")?.unreadCount).toBe(0);
   });
 });

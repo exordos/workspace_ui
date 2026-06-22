@@ -8,7 +8,6 @@ import { getCurrentInstance } from "./client";
 import {
   DEFAULT_REGISTER_FETCH_EVENT_TYPES,
   deleteQueue,
-  fetchUnreadMessagesCountForCredentials,
   getCachedOwnAvatarCapabilities,
   getEvents,
   getEventsForCredentials,
@@ -25,6 +24,8 @@ import {
 const mockMessengerApi = getMockMessengerApi();
 const mockRefreshMessengerApiBase = getMockRefreshMessengerApiBase();
 const ids = (...values: number[]) => values.map(testMessageId);
+const STREAM_UUID = "11111111-1111-4111-8111-111111111111";
+const OTHER_STREAM_UUID = "22222222-2222-4222-8222-222222222222";
 
 describe("registerQueue", () => {
   it("returns queue_id and last_event_id on success", async () => {
@@ -259,8 +260,8 @@ describe("registerQueue", () => {
         queue_id: "q-123",
         last_event_id: -1,
         subscriptions: [
-          { stream_id: 10, name: "general", is_muted: true, is_archived: false },
-          { stream_id: 11, name: "dev", in_home_view: false, is_archived: true },
+          { uuid: STREAM_UUID, name: "general", is_muted: true, is_archived: false },
+          { stream_uuid: OTHER_STREAM_UUID, name: "dev", in_home_view: false, is_archived: true },
         ],
       },
       raw: { statusText: "OK" },
@@ -268,62 +269,9 @@ describe("registerQueue", () => {
 
     const result = await registerQueue(["message"], ["subscription"]);
     expect(result.subscriptions).toEqual([
-      { stream_id: 10, name: "general", is_muted: true, is_archived: false },
-      { stream_id: 11, name: "dev", is_muted: true, is_archived: true },
+      { stream_uuid: STREAM_UUID, name: "general", is_muted: true, is_archived: false },
+      { stream_uuid: OTHER_STREAM_UUID, name: "dev", is_muted: true, is_archived: true },
     ]);
-  });
-
-  it("parses unread_msgs into unread_snapshot from register payload", async () => {
-    mockMessengerApi.post.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: {
-        result: "success",
-        queue_id: "q-123",
-        last_event_id: -1,
-        unread_msgs: {
-          count: 4,
-          streams: [{ stream_id: 10, topic: "general", unread_message_ids: ids(1, 2) }],
-          pms: [{ other_user_id: 20, unread_message_ids: ids(3) }],
-          huddles: [],
-          mentions: [{ unread_message_ids: ids(4) }],
-        },
-      },
-      raw: { statusText: "OK" },
-    });
-
-    const result = await registerQueue(["message", "update_message_flags"]);
-    expect(result.unread_snapshot).toEqual({
-      streams: [{ streamId: 10, topic: "general", unreadMessageIds: ids(1, 2) }],
-      dms: [{ userIds: [20], unreadMessageIds: ids(3) }],
-      totalCount: 4,
-      mentionMessageIds: ids(4),
-    });
-  });
-
-  it("sets oldUnreadsMissing on unread_snapshot when register reports truncation", async () => {
-    mockMessengerApi.post.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: {
-        result: "success",
-        queue_id: "q-123",
-        last_event_id: -1,
-        unread_msgs: {
-          count: 1,
-          streams: [],
-          pms: [{ sender_id: 20, unread_message_ids: ids(1) }],
-          huddles: [],
-          mentions: [],
-          old_unreads_missing: true,
-        },
-      },
-      raw: { statusText: "OK" },
-    });
-
-    const result = await registerQueue(["message", "update_message_flags"]);
-    expect(result.unread_snapshot?.oldUnreadsMissing).toBe(true);
-    expect(result.unread_snapshot?.totalCount).toBe(1);
   });
 
   it("parses server_thumbnail_formats when realm metadata is returned", async () => {
@@ -636,69 +584,6 @@ describe("deleteQueue", () => {
       }),
     ).resolves.toBeUndefined();
 
-    expect(mockFetch).not.toHaveBeenCalled();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// fetchUnreadMessagesCountForCredentials
-// ---------------------------------------------------------------------------
-
-describe("fetchUnreadMessagesCountForCredentials", () => {
-  it("returns unread count from messages payload", async () => {
-    mockFetch.mockResolvedValue(
-      jsonResponse({
-        messages: [{ id: testMessageId(1) }, { id: testMessageId(2) }, { id: testMessageId(3) }],
-      }),
-    );
-
-    const count = await fetchUnreadMessagesCountForCredentials({
-      realm: "https://other.example.com",
-      login: "other@test.com",
-      apiKey: "key",
-    });
-
-    expect(count).toBe(3);
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-    const fetchArgs = mockFetch.mock.calls[0];
-    const calledUrl = new URL(String(fetchArgs?.[0]));
-    expect(fetchArgs?.[1]).toEqual(expect.objectContaining({ method: "GET" }));
-    expect(calledUrl.origin).toBe("https://other.example.com");
-    expect(calledUrl.pathname).toBe("/api/v1/messages");
-    expect(calledUrl.searchParams.get("anchor")).toBe("newest");
-    expect(calledUrl.searchParams.get("num_before")).toBe("5000");
-    expect(calledUrl.searchParams.get("num_after")).toBe("0");
-    expect(calledUrl.searchParams.get("narrow")).toBe(
-      JSON.stringify([{ operator: "is", operand: "unread" }]),
-    );
-  });
-
-  it("returns null on non-ok response", async () => {
-    mockFetch.mockResolvedValue(jsonResponse({ result: "error" }, 500));
-
-    const count = await fetchUnreadMessagesCountForCredentials({
-      realm: "https://other.example.com",
-      login: "other@test.com",
-      apiKey: "key",
-    });
-
-    expect(count).toBeNull();
-  });
-
-  it("returns null without network call when realm url is invalid", async () => {
-    mockFetch.mockResolvedValue(
-      jsonResponse({
-        messages: [{ id: testMessageId(1) }],
-      }),
-    );
-
-    const count = await fetchUnreadMessagesCountForCredentials({
-      realm: "ftp://malicious.example.com",
-      login: "other@test.com",
-      apiKey: "key",
-    });
-
-    expect(count).toBeNull();
     expect(mockFetch).not.toHaveBeenCalled();
   });
 });

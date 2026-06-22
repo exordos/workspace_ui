@@ -26,3 +26,11 @@ export function isComposerDisabled(options: {
   }
   return options.isDmView ? options.activeStreamUuid == null : !options.activeStream;
 }
+
+export function shouldShowTopicPrompt(options: {
+  isDmView: boolean;
+  isPrivateStreamView: boolean;
+  activeTopic: string | null | undefined;
+}): boolean {
+  return !options.isDmView && !options.isPrivateStreamView && options.activeTopic == null;
+}

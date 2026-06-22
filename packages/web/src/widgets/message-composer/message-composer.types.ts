@@ -3,13 +3,14 @@
  */
 import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply/ai-reply.types";
 import type { MessageId } from "~/shared/lib/message-id.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import type { RefObject, ReactNode } from "react";
 
 export interface ReplyQuote {
   id: MessageId;
   content: string;
   sender_full_name: string;
-  sender_id: number;
+  sender_id: UserId;
   /** Full Workspace web URL (`https://realm/#narrow/.../near/id`); omit link text if null */
   permalinkUrl: string | null;
 }

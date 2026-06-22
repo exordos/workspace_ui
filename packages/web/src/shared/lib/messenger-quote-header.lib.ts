@@ -1,6 +1,8 @@
+import type { UserId } from "./user-id.lib";
+
 interface BuildWorkspaceQuoteHeaderOptions {
   senderName: string;
-  senderId: number;
+  senderId: UserId;
   wroteLabel: string;
   permalinkUrl?: string | null;
 }

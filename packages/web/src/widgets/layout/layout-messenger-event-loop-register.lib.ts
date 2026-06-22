@@ -1,5 +1,4 @@
 import { useActivityStore } from "~/entities/activity/activity.model";
-import { queuePriorityStreamSidebarTopicsHydrate } from "~/entities/chat-list/chat-list-hydrate-stream-sidebar.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import type {
   ChatListStreamMetadataRow,
@@ -10,7 +9,6 @@ import { useNotificationSettingsStore } from "~/entities/notification-settings/n
 import { applyUserStatusSnapshot } from "~/entities/user/api/user-status-write.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
-import type { MessengerUnreadMessagesSnapshot } from "~/shared/api/messenger-unread.lib";
 import type {
   MessengerMeStream,
   MessengerStreamTopic,
@@ -19,8 +17,7 @@ import type {
 } from "~/shared/api/messenger.types";
 import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
-import { numericUserIdOrNull, userIdStorageKey, type UserId } from "~/shared/lib/user-id.lib";
-import { setCachedRegisterUnreadSnapshot } from "./layout-instance-register-unread.lib";
+import { userIdStorageKey } from "~/shared/lib/user-id.lib";
 import { createRegisterMuteSnapshotAppliedMarker } from "./layout-messenger-event-loop-bootstrap.lib";
 import {
   flushReconnectStreamPreviewsAfterRegister,
@@ -47,6 +44,7 @@ export function toStreamMetadataRows(
       return {
         streamUuid: subscription.stream_uuid,
         name: subscription.name,
+        ...(subscription.unread_count != null ? { unreadCount: subscription.unread_count } : {}),
         ...(typeof subscription.is_archived === "boolean"
           ? { isArchived: subscription.is_archived }
           : {}),
@@ -76,16 +74,18 @@ export function toStreamMetadataRows(
     });
 }
 
-export function toSubscriptionsFromMeStreams(
+export function toStreamMetadataRowsFromMeStreams(
   streams: readonly MessengerMeStream[],
-): MessengerSubscription[] {
-  return streams.map((stream) => ({
-    stream_uuid: stream.stream_uuid,
-    name: stream.name,
-    is_muted: false,
-    invite_only: stream.invite_only,
-    private: stream.private,
-  }));
+): ChatListStreamMetadataRow[] {
+  return streams
+    .filter((stream) => stream.stream_uuid.trim().length > 0 && stream.name.trim().length > 0)
+    .map((stream) => ({
+      streamUuid: stream.stream_uuid,
+      name: stream.name,
+      unreadCount: stream.unread_count,
+      private: stream.private,
+      inviteOnly: stream.invite_only,
+    }));
 }
 
 export function toStreamTopicMetadataRows(
@@ -97,6 +97,7 @@ export function toStreamTopicMetadataRows(
       topicUuid: topic.uuid,
       streamUuid: topic.stream_uuid,
       name: topic.name,
+      unreadCount: topic.unread_count,
       isDefault: topic.is_default,
     }));
 }
@@ -145,23 +146,10 @@ function applyRegisterUserStatusSnapshot(
 export interface LayoutBootstrapQueueRegisteredDeps {
   isCancelled: () => boolean;
   currentInstanceId: string | null;
-  bootstrapUserId: UserId | null;
   queueIdRef: { current: string | null };
-  registerUnreadSnapshotRef: { current: MessengerUnreadMessagesSnapshot | null };
-  reconcileSidebarUnreadFromRegister: (
-    instanceId: string | null,
-    registration: RegisterQueueResult | undefined,
-    currentUserId: number | null,
-  ) => void;
   streamPreviewCoordinator: { markRegisterHydrationReady: () => void };
   tryFlushMetadataStreamPreviews: () => void;
   applyChatListBootstrapResult: (result: ChatListBootstrapResult, applyOptions: unknown) => void;
-  startSidebarUnreadReconcile: (params: {
-    cancelled: () => boolean;
-    instanceId: string | null;
-    currentUserId: number | null;
-    registerSnapshot: MessengerUnreadMessagesSnapshot | null;
-  }) => void;
   loadMuteSnapshot: (bootstrap?: LayoutMuteBootstrapData) => Promise<LayoutMuteSnapshot>;
   applyLayoutRegisterMuteSnapshot: (options: {
     cancelled: boolean;
@@ -177,10 +165,6 @@ export function createLayoutBootstrapQueueRegisteredHandler(
 ): (id: string, registration: RegisterQueueResult | undefined) => void {
   return function handleLayoutBootstrapQueueRegistered(id, registration): void {
     deps.queueIdRef.current = id;
-    deps.registerUnreadSnapshotRef.current = registration?.unread_snapshot ?? null;
-    if (deps.currentInstanceId != null && registration?.unread_snapshot != null) {
-      setCachedRegisterUnreadSnapshot(deps.currentInstanceId, registration.unread_snapshot);
-    }
     if (registration?.jitsi_server_url_effective != null) {
       useInstancesStore.getState().setJitsiMeetBaseUrl(registration.jitsi_server_url_effective);
     } else {
@@ -248,16 +232,6 @@ export function createLayoutBootstrapQueueRegisteredHandler(
         applyOptions,
         deps.applyChatListBootstrapResult,
       );
-    });
-    queuePriorityStreamSidebarTopicsHydrate(registration?.unread_snapshot);
-    const numericCurrentUserId = numericUserIdOrNull(
-      useChatListStore.getState().currentUserId ?? deps.bootstrapUserId,
-    );
-    deps.startSidebarUnreadReconcile({
-      cancelled: deps.isCancelled,
-      instanceId: deps.currentInstanceId,
-      currentUserId: numericCurrentUserId,
-      registerSnapshot: deps.registerUnreadSnapshotRef.current,
     });
     void deps
       .loadMuteSnapshot({

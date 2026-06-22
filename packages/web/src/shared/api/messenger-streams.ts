@@ -193,6 +193,13 @@ function readOptionalString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+function readSafeCount(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.trunc(value));
+}
+
 function extractMeStreamItems(data: unknown): unknown[] {
   if (Array.isArray(data)) {
     return data;
@@ -241,6 +248,7 @@ function parseMeStream(row: unknown): MessengerMeStream | null {
     invite_only: row.invite_only === true,
     announce: row.announce === true,
     private: row.private === true,
+    unread_count: readSafeCount(row.unread_count),
   };
 }
 
@@ -343,6 +351,7 @@ function parseStreamTopic(row: unknown): MessengerStreamTopic | null {
     uuid,
     name,
     stream_uuid: streamUuid,
+    unread_count: readSafeCount(row.unread_count),
     is_default: row.is_default === true,
     ...(projectId != null ? { project_id: projectId } : {}),
     ...(createdAt != null ? { created_at: createdAt } : {}),
@@ -507,6 +516,7 @@ function subscriptionFromMeStream(stream: MessengerMeStream): MessengerSubscript
     is_muted: false,
     invite_only: stream.invite_only,
     private: stream.private,
+    unread_count: stream.unread_count,
   };
 }
 

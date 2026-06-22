@@ -4,7 +4,7 @@
 import { t } from "~/i18n/i18n";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
-import { normalizeMessageId } from "~/shared/lib/message-id.lib";
+import { createMessageId, normalizeMessageId } from "~/shared/lib/message-id.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import {
   MESSENGER_DM_CHAT_NUM_AFTER,
@@ -204,25 +204,6 @@ function getActivityNarrow(filter: ActivityFilter, currentUserId?: UserId | null
     default:
       return [];
   }
-}
-
-/** Narrow for unread @mentions counter sync (AND: mentioned + unread). */
-export const UNREAD_MENTIONS_NARROW: NarrowEntry[] = [
-  { negated: false, operator: "is", operand: "mentioned" },
-  { negated: false, operator: "is", operand: "unread" },
-];
-
-export const MENTIONS_UNREAD_SYNC_PAGE_SIZE = 200;
-
-/** Fetches newest unread @mentions for sidebar badge authoritative reconcile. */
-export async function fetchUnreadMentionsPage(
-  numBefore = MENTIONS_UNREAD_SYNC_PAGE_SIZE,
-  options?: { signal?: AbortSignal },
-): Promise<MessagesPageResult> {
-  return fetchMessagesWithNarrowPage(UNREAD_MENTIONS_NARROW, "newest", numBefore, 0, {
-    applyMarkdown: false,
-    signal: options?.signal,
-  });
 }
 
 async function fetchMessageWindow(options: MessageWindowOptions): Promise<WorkspaceRawMessage[]> {
@@ -787,27 +768,38 @@ export async function createSavedSnippet(params: CreateSavedSnippetParams): Prom
 
 export async function sendMessage(params: SendMessageParams): Promise<MockMessage> {
   const content = guard.nonEmpty(params.content, "sendMessage.content");
-  const streamUuid = guard.nonEmpty(params.streamUuid, "sendMessage.streamUuid").trim();
-  const topicUuid = params.topicUuid?.trim();
+  const messageUuid = guard.messageId(params.messageUuid ?? createMessageId(), "sendMessage.uuid");
+  const streamUuid = guard.streamUuid(params.streamUuid, "sendMessage.streamUuid");
+  const topicUuid =
+    params.topicUuid != null ? guard.streamUuid(params.topicUuid, "sendMessage.topicUuid") : null;
 
   const result = await postWorkspaceSendMessage({
+    messageUuid,
     streamUuid,
-    ...(topicUuid != null && topicUuid.length > 0 ? { topicUuid } : {}),
+    ...(topicUuid != null ? { topicUuid } : {}),
     content,
   });
-  const id = guard.messageId(result.id, "sendMessage.id");
   const streamName = params.stream?.trim() ?? "";
+  const timestamp =
+    result.createdAt != null && Number.isFinite(Date.parse(result.createdAt))
+      ? Math.floor(Date.parse(result.createdAt) / 1000)
+      : Math.floor(Date.now() / 1000);
+  const authorId = params.author_id ?? params.sender_id;
+  const numericSenderId = numericUserIdOrNull(authorId) ?? params.sender_id ?? 0;
+  const authorUuid = typeof authorId === "string" ? authorId : undefined;
   const message: MockMessage = {
-    id,
-    source_message_uuid: id,
-    sender_id: params.sender_id ?? 0,
+    id: result.messageUuid,
+    source_message_uuid: result.messageUuid,
+    sender_id: numericSenderId,
+    ...(authorUuid != null ? { author_uuid: authorUuid, sender_uuid: authorUuid } : {}),
+    is_own: result.isOwn ?? true,
     sender_full_name: params.sender_full_name ?? t("common.you"),
-    stream_uuid: streamUuid,
+    stream_uuid: result.streamUuid,
     subject: params.subject ?? "",
-    ...(topicUuid != null && topicUuid.length > 0 ? { topic_uuid: topicUuid } : {}),
-    content,
-    markdown_source: content,
-    timestamp: Math.floor(Date.now() / 1000),
+    ...(result.topicUuid != null ? { topic_uuid: result.topicUuid } : {}),
+    content: result.content,
+    markdown_source: result.content,
+    timestamp,
   };
   if (streamName.length > 0) {
     message.display_recipient = streamName;
@@ -896,19 +888,20 @@ export async function removeReaction(
   }
 }
 
-export async function updateMessageFlags(
+export function updateMessageFlags(
   messageIds: MessageId[],
   op: "add" | "remove",
   flag: string,
 ): Promise<void> {
-  if (messageIds.length === 0) return;
+  if (messageIds.length === 0) return Promise.resolve();
   const validatedMessageIds = validateMessageIds(messageIds, "updateMessageFlags.messageIds");
   const validatedFlag = guard.nonEmpty(flag, "updateMessageFlags.flag");
-  await messengerPipelinePost("messages/flags", {
-    messages: JSON.stringify(validatedMessageIds),
+  log.warn("message flag write is not available in the new backend yet", {
+    count: validatedMessageIds.length,
     op,
     flag: validatedFlag,
   });
+  return Promise.reject(new Error("Message flag write API is not available in the new backend"));
 }
 
 export async function addMessageFlag(messageIds: MessageId[], flag: string): Promise<void> {

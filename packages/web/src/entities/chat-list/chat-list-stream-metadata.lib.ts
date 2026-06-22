@@ -63,6 +63,7 @@ export function buildStreamMetadataEntry(
   existing: StreamEntryInternal | undefined,
 ): StreamEntryInternal {
   const name = row.name.trim();
+  const unreadCount = row.unreadCount ?? existing?.unreadCount ?? 0;
   const accessFields = resolveStreamMetadataAccessFields(row, existing);
   const accessSpread = spreadStreamMetadataAccessFields(accessFields);
   const streamUuid = row.streamUuid;
@@ -71,6 +72,7 @@ export function buildStreamMetadataEntry(
       ...existing,
       name: name.length > 0 ? name : existing.name,
       streamUuid,
+      unreadCount,
       ...accessSpread,
     };
   }
@@ -81,6 +83,7 @@ export function buildStreamMetadataEntry(
     lastMessageSenderName: undefined,
     time: "",
     ts: 0,
+    unreadCount,
     ...accessSpread,
     topics: new Map(),
   };

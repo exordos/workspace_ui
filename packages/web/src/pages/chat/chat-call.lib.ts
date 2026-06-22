@@ -4,20 +4,23 @@ export interface ResolveCallMessageTargetParamsInput {
   isDmView: boolean;
   activeDmUserIds: UserId[] | null;
   activeStream: string | null;
-  activeStreamId: number | null;
+  activeStreamUuid: string | null;
   activeTopic: string | null;
+  activeTopicUuid: string | null;
 }
 
 export type CallMessageTargetParams =
   | {
       mode: "dm";
       to: number[];
+      streamUuid: string;
     }
   | {
       mode: "stream";
       stream: string;
-      streamId?: string;
+      streamUuid: string;
       subject: string;
+      topicUuid?: string;
     };
 
 export interface BuildCallRoomNameInput {
@@ -64,17 +67,25 @@ export function resolveCallMessageTargetParams(
 ): CallMessageTargetParams | null {
   if (input.isDmView) {
     const normalizedRecipientIds = normalizeDmUserIds(input.activeDmUserIds);
-    if (normalizedRecipientIds.length === 0) {
+    const streamUuid = input.activeStreamUuid?.trim();
+    if (normalizedRecipientIds.length === 0 || streamUuid == null || streamUuid.length === 0) {
       return null;
     }
     return {
       mode: "dm",
       to: normalizedRecipientIds,
+      streamUuid,
     };
   }
 
   const streamName = input.activeStream?.trim();
-  if (streamName == null || streamName.length === 0) {
+  const streamUuid = input.activeStreamUuid?.trim();
+  if (
+    streamName == null ||
+    streamName.length === 0 ||
+    streamUuid == null ||
+    streamUuid.length === 0
+  ) {
     return null;
   }
 
@@ -82,8 +93,9 @@ export function resolveCallMessageTargetParams(
   return {
     mode: "stream",
     stream: streamName,
-    streamId: input.activeStreamId ?? undefined,
+    streamUuid,
     subject: topic != null && topic.length > 0 ? topic : DEFAULT_TOPIC,
+    ...(input.activeTopicUuid != null ? { topicUuid: input.activeTopicUuid } : {}),
   };
 }
 

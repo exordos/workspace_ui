@@ -349,12 +349,12 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
 
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ result: "success", id: 42 }));
 
-    const res = await messengerApi.post("/messages", { type: "stream", content: "hello" });
+    const res = await messengerApi.post("/custom_form", { action: "ping", content: "hello" });
 
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
     expect(init.method).toBe("POST");
     expect(init.headers).toHaveProperty("Content-Type", "application/x-www-form-urlencoded");
-    expect(init.body).toContain("type=stream");
+    expect(init.body).toContain("action=ping");
     expect(init.body).toContain("content=hello");
     expect(res.data).toEqual({ result: "success", id: 42 });
   });

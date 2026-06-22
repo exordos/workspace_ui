@@ -1,4 +1,5 @@
 import type { MockMessage } from "~/shared/api/messenger.types";
+import { messageSenderGroupKey } from "~/shared/lib/message-author.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import { mergeMessagePreservingLinkPreview } from "~/shared/lib/message-link-preview-merge.lib";
 import { applyPendingLinkPreviewsToMessage } from "~/shared/lib/message-link-preview-pending.lib";
@@ -40,7 +41,7 @@ function tryMergeOutgoingEcho(
     const pendingMessage = msgIdx >= 0 ? state.messages[msgIdx] : undefined;
     if (
       pendingMessage?.delivery_status !== "sending" ||
-      pendingMessage.sender_id !== msg.sender_id ||
+      messageSenderGroupKey(pendingMessage) !== messageSenderGroupKey(msg) ||
       !outgoingEchoContentMatches(pendingMessage, msg)
     ) {
       continue;

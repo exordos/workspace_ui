@@ -1,4 +1,4 @@
-import type { MockMessage } from "~/shared/api/messenger.types";
+import type { MockMessage, SendMessageParams } from "~/shared/api/messenger.types";
 import { canStartCallFromHeader, type CallMessageTargetParams } from "./chat-call.lib";
 
 export interface StartCallFromHeaderInput {
@@ -9,23 +9,7 @@ export interface StartCallFromHeaderInput {
   callRoomChatLabel: string | null;
   fallbackDmPartnerLabel: string;
   currentUserLabel: string;
-  sendMessage: (
-    payload:
-      | {
-          to: number[];
-          content: string;
-          sender_id: number;
-          sender_full_name: string;
-        }
-      | {
-          stream: string;
-          streamId?: string;
-          subject: string;
-          content: string;
-          sender_id: number;
-          sender_full_name: string;
-        },
-  ) => Promise<MockMessage>;
+  sendMessage: (payload: SendMessageParams) => Promise<MockMessage>;
   appendMessageToStore: (message: MockMessage) => void;
   openModal: (url: string, locationName: string) => void;
   resolveErrorMessage: (error: unknown) => string;
@@ -55,14 +39,15 @@ export async function startCallFromHeader(
     const payload =
       input.target.mode === "dm"
         ? {
-            to: input.target.to,
+            streamUuid: input.target.streamUuid,
             content: url,
             sender_id: input.currentUserId,
             sender_full_name: input.currentUserLabel,
           }
         : {
             stream: input.target.stream,
-            streamId: input.target.streamId,
+            streamUuid: input.target.streamUuid,
+            ...(input.target.topicUuid != null ? { topicUuid: input.target.topicUuid } : {}),
             subject: input.target.subject,
             content: url,
             sender_id: input.currentUserId,

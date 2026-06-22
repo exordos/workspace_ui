@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { applyChatListReadDecrement } from "~/entities/chat-list/chat-list-apply-read-decrement.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInboxStore } from "~/entities/inbox/inbox.model";
 import type { InboxEntry } from "~/entities/inbox/inbox.types";
@@ -45,8 +44,6 @@ function buildCtx(
       moveTopicToStream:
         moveTopicToStreamMock as LayoutMessengerEventDispatchContext["chatList"]["moveTopicToStream"],
       removeStream: noop,
-      decrementUnreadForMessages: noop,
-      incrementUnreadForMessages: noop,
       handleDeleteMessages: noop,
     },
     currentChat: {
@@ -1088,175 +1085,6 @@ describe("dispatchMessengerEvent", () => {
   });
 
   describe("update_message_flags", () => {
-    it("decrements sidebar unread with topic fallback when read id is missing from index", () => {
-      useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
-      useChatListStore.getState().reconcileUnreadFromSnapshot(
-        {
-          streams: [
-            {
-              streamId: 5,
-              topic: "topic1",
-              unreadMessageIds: [
-                "00000000-0000-4000-8000-000000000001",
-                "00000000-0000-4000-8000-000000000002",
-                "00000000-0000-4000-8000-000000000003",
-              ],
-            },
-          ],
-          dms: [],
-          totalCount: 3,
-          mentionMessageIds: [],
-        },
-        1,
-      );
-      useChatListStore.setState({
-        messageIdToLocation: new Map([
-          [
-            "00000000-0000-4000-8000-000000000001",
-            { type: "stream", stream_id: 5, topic: "topic1" },
-          ],
-        ]),
-      });
-
-      const { ctx } = buildCtx();
-      ctx.currentChat.context = {
-        type: "stream",
-        streamId: 5,
-        streamName: "general",
-        topic: "topic1",
-        streamWideView: false,
-      };
-
-      dispatchMessengerEvent(
-        {
-          id: 99,
-          type: "update_message_flags",
-          op: "add",
-          flag: "read",
-          messages: [testMessageId(1), testMessageId(2), testMessageId(3)],
-        },
-        ctx,
-      );
-
-      expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("topic1")?.unreadCount).toBe(
-        0,
-      );
-    });
-
-    it("skips sidebar decrement when optimistic read already cleared open DM unread", () => {
-      useChatListStore.getState().setCurrentUserId(10);
-      useChatListStore.getState().upsertDmMetadataRows([
-        {
-          userIds: [10, 20],
-          lastMessageId: "00000000-0000-4000-8000-000000003083",
-          unreadCount: 0,
-        },
-      ]);
-      useChatListStore.getState().reconcileUnreadFromSnapshot(
-        {
-          streams: [],
-          dms: [
-            {
-              userIds: [20],
-              unreadMessageIds: [
-                "00000000-0000-4000-8000-000000003081",
-                "00000000-0000-4000-8000-000000003082",
-                "00000000-0000-4000-8000-000000003083",
-              ],
-            },
-          ],
-          totalCount: 3,
-          mentionMessageIds: [],
-        },
-        10,
-      );
-
-      const store = useChatListStore.getState();
-      applyChatListReadDecrement(() => useChatListStore.getState(), store, {
-        messageIds: [
-          "00000000-0000-4000-8000-000000003081",
-          "00000000-0000-4000-8000-000000003082",
-          "00000000-0000-4000-8000-000000003083",
-        ],
-        fallbackContext: { type: "dm", dmKey: "10,20" },
-        source: "test:optimistic",
-      });
-      expect(useChatListStore.getState().dmsMap.get("10,20")?.unreadCount).toBe(0);
-
-      const { ctx } = buildCtx();
-      ctx.currentChat.context = { type: "dm", dmKey: "10,20" };
-
-      dispatchMessengerEvent(
-        {
-          id: 100,
-          type: "update_message_flags",
-          op: "add",
-          flag: "read",
-          messages: [testMessageId(3081), testMessageId(3082), testMessageId(3083)],
-        },
-        ctx,
-      );
-
-      expect(useChatListStore.getState().dmsMap.get("10,20")?.unreadCount).toBe(0);
-    });
-
-    it("decrements unread for read topic while a different chat is open", () => {
-      useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
-      useChatListStore.getState().reconcileUnreadFromSnapshot(
-        {
-          streams: [
-            {
-              streamId: 5,
-              topic: "topicA",
-              unreadMessageIds: ["00000000-0000-4000-8000-000000000001"],
-            },
-            {
-              streamId: 5,
-              topic: "topicB",
-              unreadMessageIds: [
-                "00000000-0000-4000-8000-000000000010",
-                "00000000-0000-4000-8000-000000000011",
-              ],
-            },
-          ],
-          dms: [],
-          totalCount: 3,
-          mentionMessageIds: [],
-        },
-        1,
-      );
-
-      const { ctx } = buildCtx();
-      ctx.currentChat.context = {
-        type: "stream",
-        streamId: 5,
-        streamName: "general",
-        topic: "topicA",
-        streamWideView: false,
-      };
-      expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("topicB")?.unreadCount).toBe(
-        2,
-      );
-
-      dispatchMessengerEvent(
-        {
-          id: 101,
-          type: "update_message_flags",
-          op: "add",
-          flag: "read",
-          messages: [testMessageId(10), testMessageId(11)],
-        },
-        ctx,
-      );
-
-      expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("topicB")?.unreadCount).toBe(
-        0,
-      );
-      expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("topicA")?.unreadCount).toBe(
-        1,
-      );
-    });
-
     it("adds read flag to open chat messages when queue reports read ids", () => {
       useCurrentChatMessagesStore.getState().setContext({
         type: "stream",
@@ -1285,25 +1113,11 @@ describe("dispatchMessengerEvent", () => {
       expect(messages.find((m) => m.id === testMessageId(11))?.flags).toContain("read");
     });
 
-    it("syncs organization count after read:add decrements unread", () => {
-      setCurrentInstanceForUnreadTests();
-      useChatListStore.getState().setCurrentUserId(1);
-      useChatListStore.getState().addMessage({
-        id: "00000000-0000-4000-8000-000000000012",
-        sender_id: 2,
-        sender_full_name: "Alice",
-        content: "unread",
-        timestamp: 12,
-        type: "stream",
-        stream_id: 5,
-        display_recipient: "general",
-        subject: "topic1",
-        flags: [],
-      });
+    it("removes inbox entries after read:add", () => {
       useInboxStore.getState().setEntries([
         {
-          key: "stream:5:topic1",
-          streamId: 5,
+          key: "stream:11111111-1111-4111-8111-111111111111:topic1",
+          streamId: "11111111-1111-4111-8111-111111111111",
           streamName: "general",
           topic: "topic1",
           senderId: null,
@@ -1314,7 +1128,6 @@ describe("dispatchMessengerEvent", () => {
           messageIds: ["00000000-0000-4000-8000-000000000012"],
         },
       ]);
-      useInstancesStore.getState().setInstanceUnreadCount("inst-1", 1);
 
       dispatchMessengerEvent(
         {
@@ -1327,40 +1140,7 @@ describe("dispatchMessengerEvent", () => {
         buildIntegrationCtx(),
       );
 
-      expect(useChatListStore.getState().sidebarStreamsUnread).toBe(0);
       expect(useInboxStore.getState().entries).toHaveLength(0);
-      expect(useInstancesStore.getState().getInstanceUnreadCount("inst-1")).toBe(0);
-    });
-
-    it("syncs organization count after read:remove increments unread", () => {
-      setCurrentInstanceForUnreadTests();
-      useChatListStore.getState().setCurrentUserId(1);
-      useChatListStore.getState().addMessage({
-        id: "00000000-0000-4000-8000-000000000013",
-        sender_id: 2,
-        sender_full_name: "Alice",
-        content: "read",
-        timestamp: 13,
-        type: "stream",
-        stream_id: 5,
-        display_recipient: "general",
-        subject: "topic1",
-        flags: ["read"],
-      });
-
-      dispatchMessengerEvent(
-        {
-          id: 1022,
-          type: "update_message_flags",
-          op: "remove",
-          flag: "read",
-          messages: [testMessageId(13)],
-        },
-        buildIntegrationCtx(),
-      );
-
-      expect(useChatListStore.getState().sidebarStreamsUnread).toBe(1);
-      expect(useInstancesStore.getState().getInstanceUnreadCount("inst-1")).toBe(1);
     });
 
     it("does not mutate open chat messages when read event targets another context", () => {
@@ -1372,23 +1152,6 @@ describe("dispatchMessengerEvent", () => {
         streamWideView: false,
       });
       useCurrentChatMessagesStore.getState().setMessages([mockMsg(50, { flags: [] })]);
-
-      useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
-      useChatListStore.getState().reconcileUnreadFromSnapshot(
-        {
-          streams: [
-            {
-              streamId: 5,
-              topic: "topicB",
-              unreadMessageIds: ["00000000-0000-4000-8000-000000000010"],
-            },
-          ],
-          dms: [],
-          totalCount: 1,
-          mentionMessageIds: [],
-        },
-        1,
-      );
 
       dispatchMessengerEvent(
         {
@@ -1402,34 +1165,9 @@ describe("dispatchMessengerEvent", () => {
       );
 
       expect(useCurrentChatMessagesStore.getState().messages[0]!.flags ?? []).not.toContain("read");
-      expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("topicB")?.unreadCount).toBe(
-        0,
-      );
     });
 
-    it("marks all read on markAllRead queue event (all: true, empty messages)", () => {
-      setCurrentInstanceForUnreadTests();
-      useChatListStore.getState().setCurrentUserId(10);
-      useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
-      useChatListStore.getState().reconcileUnreadFromSnapshot(
-        {
-          streams: [
-            {
-              streamId: 5,
-              topic: "topic1",
-              unreadMessageIds: [
-                "00000000-0000-4000-8000-000000000001",
-                "00000000-0000-4000-8000-000000000002",
-              ],
-            },
-          ],
-          dms: [],
-          totalCount: 2,
-          mentionMessageIds: [],
-        },
-        10,
-      );
-      useInstancesStore.getState().setInstanceUnreadCount("inst-1", 2);
+    it("marks loaded messages read on markAllRead queue event", () => {
       useCurrentChatMessagesStore
         .getState()
         .setMessages([mockMsg(100, { flags: [] }), mockMsg(101, { flags: [] })]);
@@ -1446,9 +1184,6 @@ describe("dispatchMessengerEvent", () => {
         buildIntegrationCtx(),
       );
 
-      expect(useChatListStore.getState().sidebarStreamsUnread).toBe(0);
-      expect(useChatListStore.getState().sidebarDmsUnread).toBe(0);
-      expect(useInstancesStore.getState().getInstanceUnreadCount("inst-1")).toBe(0);
       for (const message of useCurrentChatMessagesStore.getState().messages) {
         expect(message.flags).toContain("read");
       }

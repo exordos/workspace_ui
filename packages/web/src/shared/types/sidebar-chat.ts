@@ -82,6 +82,7 @@ export interface StreamEntryInternal {
   lastMessageSenderName?: string;
   time: string;
   ts: number;
+  unreadCount?: number;
   isArchived?: boolean;
   creatorId?: number;
   inviteOnly?: boolean;

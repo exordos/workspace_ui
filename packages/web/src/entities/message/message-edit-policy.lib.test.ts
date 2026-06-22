@@ -21,6 +21,17 @@ describe("canStartMessageContentEdit", () => {
     expect(canStartMessageContentEdit(createMessage(), 42, undefined, 2000)).toBe(true);
   });
 
+  it("allows own gateway message without numeric current user id", () => {
+    expect(
+      canStartMessageContentEdit(
+        createMessage({ sender_id: 0, is_own: true }),
+        null,
+        undefined,
+        2000,
+      ),
+    ).toBe(true);
+  });
+
   it("blocks when message editing is disabled by realm policy", () => {
     const policy: CurrentUserMessageEditPolicy = { allowMessageEditing: false };
     expect(canStartMessageContentEdit(createMessage(), 42, policy, 1001)).toBe(false);

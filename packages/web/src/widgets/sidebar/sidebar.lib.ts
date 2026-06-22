@@ -15,7 +15,6 @@ export {
   buildSidebarFromMessages,
   messageToStreamEntry,
   messageToDmEntry,
-  isUnread,
 } from "~/entities/chat-list/chat-list.lib";
 
 /** System rail folders plus legacy `selectedFolderId="all"` used in tests and older routes. */
