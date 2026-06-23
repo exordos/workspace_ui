@@ -104,6 +104,26 @@ describe("MessageBubble markdown body", () => {
     expect(body?.querySelector("pre")?.textContent).toBe(longToken);
   });
 
+  it("adds wrap classes for long auto-linked urls in the bubble", () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+
+    const longUrl =
+      "http://localhost:5473/messenger#narrow/channel/345/topic/" +
+      encodeURIComponent("Офисная эксплуатация").repeat(8);
+
+    const { container } = render(
+      <MessageBubble message={createMessage({ content: longUrl })} isOwn={false} />,
+    );
+
+    const body = container.querySelector(".message-body");
+    expect(body).toBeTruthy();
+    expect(body?.querySelector("a")).toBeTruthy();
+    expect(body?.className).toContain("[overflow-wrap:anywhere]");
+    expect(body?.className).toContain("[word-break:break-word]");
+    expect(body?.className).toContain("[&_a]:[overflow-wrap:anywhere]");
+    expect(body?.className).toContain("[&_a]:[word-break:break-word]");
+  });
+
   it("adds syntax-highlight classes to fenced code blocks in bubble markdown", () => {
     useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
 
