@@ -199,10 +199,14 @@ describe("addMembersToStream", () => {
       alreadySubscribedUserIds: [2],
       unauthorizedStreams: [],
     });
-    expect(mockZulipApi.post).toHaveBeenCalledWith("/users/me/subscriptions", {
-      subscriptions: JSON.stringify([{ name: "engineering" }]),
-      principals: JSON.stringify([1, 2, 3]),
-    });
+    expect(mockZulipApi.post).toHaveBeenCalledWith(
+      "/users/me/subscriptions",
+      {
+        subscriptions: JSON.stringify([{ name: "engineering" }]),
+        principals: JSON.stringify([1, 2, 3]),
+      },
+      undefined,
+    );
   });
 
   it("passes authorization_errors_fatal when provided", async () => {
@@ -224,6 +228,7 @@ describe("addMembersToStream", () => {
       expect.objectContaining({
         authorization_errors_fatal: "false",
       }),
+      undefined,
     );
   });
 
@@ -764,9 +769,13 @@ describe("deleteTopic", () => {
       complete: true,
       attempts: 1,
     });
-    expect(mockZulipApi.post).toHaveBeenCalledWith("/streams/10/delete_topic", {
-      topic_name: "incident",
-    });
+    expect(mockZulipApi.post).toHaveBeenCalledWith(
+      "/streams/10/delete_topic",
+      {
+        topic_name: "incident",
+      },
+      undefined,
+    );
   });
 
   it("allows deleting empty topic name", async () => {
@@ -782,9 +791,13 @@ describe("deleteTopic", () => {
       complete: true,
       attempts: 1,
     });
-    expect(mockZulipApi.post).toHaveBeenCalledWith("/streams/10/delete_topic", {
-      topic_name: "",
-    });
+    expect(mockZulipApi.post).toHaveBeenCalledWith(
+      "/streams/10/delete_topic",
+      {
+        topic_name: "",
+      },
+      undefined,
+    );
   });
 
   it("retries on complete=false and succeeds on second attempt", async () => {

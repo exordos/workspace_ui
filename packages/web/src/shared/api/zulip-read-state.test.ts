@@ -27,11 +27,15 @@ describe("markMessagesAsRead", () => {
       raw: { statusText: "OK" },
     });
     await markMessagesAsRead([1, 2, 3]);
-    expect(mockZulipApi.post).toHaveBeenCalledWith("/messages/flags", {
-      messages: "[1,2,3]",
-      op: "add",
-      flag: "read",
-    });
+    expect(mockZulipApi.post).toHaveBeenCalledWith(
+      "/messages/flags",
+      {
+        messages: "[1,2,3]",
+        op: "add",
+        flag: "read",
+      },
+      undefined,
+    );
   });
 
   it("does nothing for empty array", async () => {
@@ -59,18 +63,22 @@ describe("markDmAsRead", () => {
     });
     const result = await markDmAsRead([42]);
     expect(result).toBe(true);
-    expect(mockZulipApi.post).toHaveBeenCalledWith("/messages/flags/narrow", {
-      anchor: "oldest",
-      include_anchor: "false",
-      num_before: "0",
-      num_after: String(MARK_READ_NARROW_NUM_AFTER),
-      narrow: JSON.stringify([
-        { operator: "is", operand: "unread", negated: false },
-        { operator: "dm", operand: [42] },
-      ]),
-      op: "add",
-      flag: "read",
-    });
+    expect(mockZulipApi.post).toHaveBeenCalledWith(
+      "/messages/flags/narrow",
+      {
+        anchor: "oldest",
+        include_anchor: "false",
+        num_before: "0",
+        num_after: String(MARK_READ_NARROW_NUM_AFTER),
+        narrow: JSON.stringify([
+          { operator: "is", operand: "unread", negated: false },
+          { operator: "dm", operand: [42] },
+        ]),
+        op: "add",
+        flag: "read",
+      },
+      undefined,
+    );
   });
 
   it("returns false on non-ok response", async () => {
@@ -107,18 +115,22 @@ describe("markStreamAsRead", () => {
     });
     const result = await markStreamAsRead(10);
     expect(result).toBe(true);
-    expect(mockZulipApi.post).toHaveBeenCalledWith("/messages/flags/narrow", {
-      anchor: "oldest",
-      include_anchor: "false",
-      num_before: "0",
-      num_after: String(MARK_READ_NARROW_NUM_AFTER),
-      narrow: JSON.stringify([
-        { operator: "is", operand: "unread", negated: false },
-        { operator: "channel", operand: 10 },
-      ]),
-      op: "add",
-      flag: "read",
-    });
+    expect(mockZulipApi.post).toHaveBeenCalledWith(
+      "/messages/flags/narrow",
+      {
+        anchor: "oldest",
+        include_anchor: "false",
+        num_before: "0",
+        num_after: String(MARK_READ_NARROW_NUM_AFTER),
+        narrow: JSON.stringify([
+          { operator: "is", operand: "unread", negated: false },
+          { operator: "channel", operand: 10 },
+        ]),
+        op: "add",
+        flag: "read",
+      },
+      undefined,
+    );
   });
 
   it("returns false on non-ok", async () => {
@@ -151,19 +163,23 @@ describe("markTopicAsRead", () => {
     });
     const result = await markTopicAsRead(10, "bugs");
     expect(result).toBe(true);
-    expect(mockZulipApi.post).toHaveBeenCalledWith("/messages/flags/narrow", {
-      anchor: "oldest",
-      include_anchor: "false",
-      num_before: "0",
-      num_after: String(MARK_READ_NARROW_NUM_AFTER),
-      narrow: JSON.stringify([
-        { operator: "is", operand: "unread", negated: false },
-        { operator: "channel", operand: 10 },
-        { operator: "topic", operand: "bugs" },
-      ]),
-      op: "add",
-      flag: "read",
-    });
+    expect(mockZulipApi.post).toHaveBeenCalledWith(
+      "/messages/flags/narrow",
+      {
+        anchor: "oldest",
+        include_anchor: "false",
+        num_before: "0",
+        num_after: String(MARK_READ_NARROW_NUM_AFTER),
+        narrow: JSON.stringify([
+          { operator: "is", operand: "unread", negated: false },
+          { operator: "channel", operand: 10 },
+          { operator: "topic", operand: "bugs" },
+        ]),
+        op: "add",
+        flag: "read",
+      },
+      undefined,
+    );
   });
 
   it("throws for invalid streamId", async () => {
@@ -187,6 +203,7 @@ describe("markTopicAsRead", () => {
           { operator: "topic", operand: "" },
         ]),
       }),
+      undefined,
     );
   });
 
@@ -207,6 +224,7 @@ describe("markTopicAsRead", () => {
           { operator: "topic", operand: "general" },
         ]),
       }),
+      undefined,
     );
   });
 });
@@ -406,11 +424,15 @@ describe("updateMessageFlags", () => {
       raw: { statusText: "OK" },
     });
     await updateMessageFlags([1, 2], "add", "starred");
-    expect(mockZulipApi.post).toHaveBeenCalledWith("/messages/flags", {
-      messages: "[1,2]",
-      op: "add",
-      flag: "starred",
-    });
+    expect(mockZulipApi.post).toHaveBeenCalledWith(
+      "/messages/flags",
+      {
+        messages: "[1,2]",
+        op: "add",
+        flag: "starred",
+      },
+      undefined,
+    );
   });
 
   it("does nothing for empty array", async () => {

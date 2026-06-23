@@ -44,11 +44,13 @@ test.describe("Connection resilience @mock", () => {
     await page.waitForSelector("[data-focus-zone='topbar']", { timeout: 45_000 });
 
     await expect(page.locator("[data-focus-zone='topbar']")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Cached hello")).toBeVisible({ timeout: 30_000 });
     const banner = new ConnectionBannerPage(page);
     await expect
       .poll(() => banner.banner.isVisible().catch(() => false), { timeout: 30_000 })
       .toBe(true);
     await banner.expectDegradedMessage();
+    await expect(banner.reloadButton).toBeVisible();
   });
 
   test("shows degraded banner when events request aborts", async ({ authenticated, zulipApi }) => {

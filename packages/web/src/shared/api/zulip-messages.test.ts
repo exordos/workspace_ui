@@ -975,6 +975,7 @@ describe("sendMessage", () => {
         content: "hello",
         read_by_sender: "true",
       }),
+      undefined,
     );
   });
 
@@ -996,6 +997,7 @@ describe("sendMessage", () => {
         content: "hi",
         read_by_sender: "true",
       }),
+      undefined,
     );
   });
 
@@ -1051,6 +1053,7 @@ describe("sendMessage", () => {
     expect(mockZulipApi.post).toHaveBeenCalledWith(
       "/messages",
       expect.objectContaining({ read_by_sender: "true" }),
+      undefined,
     );
   });
 
@@ -1072,6 +1075,7 @@ describe("sendMessage", () => {
         local_id: "-7",
         read_by_sender: "true",
       }),
+      undefined,
     );
     clearAllZulipEventQueueIds();
   });
@@ -1090,6 +1094,7 @@ describe("sendMessage", () => {
     expect(mockZulipApi.post).toHaveBeenCalledWith(
       "/messages",
       expect.not.objectContaining({ queue_id: "q-active" }),
+      undefined,
     );
     clearAllZulipEventQueueIds();
   });
@@ -1110,7 +1115,11 @@ describe("renderMessageContent", () => {
 
     await expect(renderMessageContent("**Hello**")).resolves.toBe("<p><strong>Hello</strong></p>");
     expect(mockRefreshZulipApiBase).toHaveBeenCalled();
-    expect(mockZulipApi.post).toHaveBeenCalledWith("/messages/render", { content: "**Hello**" });
+    expect(mockZulipApi.post).toHaveBeenCalledWith(
+      "/messages/render",
+      { content: "**Hello**" },
+      undefined,
+    );
   });
 
   it("throws for blank content", async () => {
@@ -1212,10 +1221,14 @@ describe("addReaction", () => {
     });
     await expect(addReaction(42, "thumbs_up")).resolves.toBeUndefined();
     expect(mockRefreshZulipApiBase).toHaveBeenCalled();
-    expect(mockZulipApi.post).toHaveBeenCalledWith("/messages/42/reactions", {
-      emoji_name: "thumbs_up",
-      reaction_type: "unicode_emoji",
-    });
+    expect(mockZulipApi.post).toHaveBeenCalledWith(
+      "/messages/42/reactions",
+      {
+        emoji_name: "thumbs_up",
+        reaction_type: "unicode_emoji",
+      },
+      undefined,
+    );
   });
 
   it("throws for invalid messageId", async () => {
@@ -1257,11 +1270,15 @@ describe("addReaction", () => {
       raw: { statusText: "OK" },
     });
     await addReaction(42, "party_node", { emojiCode: "43", reactionType: "realm_emoji" });
-    expect(mockZulipApi.post).toHaveBeenCalledWith("/messages/42/reactions", {
-      emoji_name: "party_node",
-      emoji_code: "43",
-      reaction_type: "realm_emoji",
-    });
+    expect(mockZulipApi.post).toHaveBeenCalledWith(
+      "/messages/42/reactions",
+      {
+        emoji_name: "party_node",
+        emoji_code: "43",
+        reaction_type: "realm_emoji",
+      },
+      undefined,
+    );
   });
 });
 

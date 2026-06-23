@@ -5,8 +5,10 @@ export class ConnectionBannerPage {
   readonly reloadButton: Locator;
 
   constructor(private readonly page: Page) {
-    this.banner = page.getByTestId("connection-banner");
-    this.reloadButton = this.banner.getByRole("button", { name: /Перезагрузить|Reload/i });
+    this.banner = page.getByTestId("layout-top-banner-expanded");
+    this.reloadButton = this.banner.getByRole("button", {
+      name: /Повторить|Try again|Перезагрузить|Reload/i,
+    });
   }
 
   async expectVisible(options?: { timeout?: number }): Promise<void> {
