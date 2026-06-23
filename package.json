@@ -1,7 +1,7 @@
 {
   "name": "workspace",
   "private": true,
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "Exordos Workspace - smart corporate messenger built with React/Electron",
   "workspaces": [
     ".",

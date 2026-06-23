@@ -6,6 +6,19 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.12] — 2026-06-23
+
+### Added
+
+- Zulip stream references and unknown stream route resolution (#192)
+- Top overlay host for system banners (#192)
+
+### Fixed
+
+- Current user cache bootstrap and org-safe register flow (#192)
+- Personal/channel folders and system folder unread badges sync (#192)
+- Attachment download URL normalization and long link wrapping in messages (#192)
+
 ## [0.1.11] — 2026-06-18
 
 ### Added
