@@ -11,7 +11,11 @@ import { hydrateStreamSidebarPreviewsFromUnreadSnapshot } from "~/entities/chat-
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import type { ChatListDmMetadataRow } from "~/entities/chat-list/chat-list.model.types";
 import { useInboxStore } from "~/entities/inbox/inbox.model";
-import { useInstancesStore } from "~/entities/instance/instance.model";
+import {
+  captureActiveOrgRequestContext,
+  isActiveOrgRequestContextCurrent,
+  useInstancesStore,
+} from "~/entities/instance/instance.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { useNotificationSettingsStore } from "~/entities/notification-settings/notification-settings.model";
 import { persistUsersDirectoryToIndexedDb } from "~/entities/user/user-directory-snapshot-persist.lib";
@@ -340,6 +344,7 @@ export function useLayoutZulipEventLoop(options: {
     const bootstrapAbort = new AbortController();
     const bootstrapEpoch = ++chatListBootstrapEffectEpoch;
     const isBootstrapStale = () => bootstrapEpoch !== chatListBootstrapEffectEpoch;
+    const registerApplyContext = captureActiveOrgRequestContext();
     const setBootstrapStatus = (status: LayoutUserConnectionStatus): void => {
       if (cancelled || isBootstrapStale()) {
         return;
@@ -722,6 +727,21 @@ export function useLayoutZulipEventLoop(options: {
           ),
         });
         const onQueueRegisteredHandler = createLayoutBootstrapQueueRegisteredHandler({
+          getRegisterApplyGuard: () => {
+            if (cancelled) {
+              return { ok: false, reason: "aborted" as const };
+            }
+            if (isBootstrapStale()) {
+              return { ok: false, reason: "stale_callback" as const };
+            }
+            if (
+              !isActiveOrgRequestContextCurrent(registerApplyContext) ||
+              registerApplyContext.instanceId !== currentInstanceId
+            ) {
+              return { ok: false, reason: "stale_epoch" as const };
+            }
+            return { ok: true };
+          },
           isCancelled: () => cancelled,
           currentInstanceId,
           bootstrapUserId,

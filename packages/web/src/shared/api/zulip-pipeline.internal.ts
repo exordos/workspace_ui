@@ -39,9 +39,13 @@ export async function zulipPipelineGet(
   }
 }
 
-export async function zulipPipelinePost(path: string, body: Record<string, string>) {
+export async function zulipPipelinePost(
+  path: string,
+  body: Record<string, string>,
+  signal?: AbortSignal,
+) {
   ensureZulipApiReady();
-  return zulipApi.post(normalizeApiPath(path), body);
+  return zulipApi.post(normalizeApiPath(path), body, signal);
 }
 
 export async function zulipPipelinePatch(path: string, body: Record<string, string>) {

@@ -31,6 +31,26 @@ import { createRegisterMuteSnapshotAppliedMarker } from "./layout-zulip-event-lo
 import type { ChatListBootstrapResult } from "./layout-chat-list-bootstrap.lib";
 import type { LayoutMuteBootstrapData, LayoutMuteSnapshot } from "./layout-instance-bootstrap.hook";
 
+type RegisterApplySkipReason = "aborted" | "stale_epoch" | "stale_callback";
+
+interface RegisterApplyGuardOutcome {
+  ok: boolean;
+  reason?: RegisterApplySkipReason;
+}
+
+function logRegisterApplySkip(options: {
+  currentInstanceId: string | null;
+  queueId: string;
+  reason: RegisterApplySkipReason;
+}): void {
+  logChatListFlow("eventLoop: skip stale register apply", {
+    instanceId: options.currentInstanceId,
+    queueId: options.queueId,
+    reason: options.reason,
+    activeInstanceId: useInstancesStore.getState().currentInstanceId,
+  });
+}
+
 export function toStreamMetadataRows(
   subscriptions: readonly ZulipSubscription[],
 ): ChatListStreamMetadataRow[] {
@@ -141,6 +161,7 @@ function applyRegisterUserStatusSnapshot(
 }
 
 export interface LayoutBootstrapQueueRegisteredDeps {
+  getRegisterApplyGuard: () => RegisterApplyGuardOutcome;
   isCancelled: () => boolean;
   currentInstanceId: string | null;
   bootstrapUserId: number | null;
@@ -182,6 +203,21 @@ export function createLayoutBootstrapQueueRegisteredHandler(
   deps: LayoutBootstrapQueueRegisteredDeps,
 ): (id: string, registration: RegisterQueueResult | undefined) => void {
   return function handleLayoutBootstrapQueueRegistered(id, registration): void {
+    const applyGuard = deps.getRegisterApplyGuard();
+    if (!applyGuard.ok) {
+      logRegisterApplySkip({
+        currentInstanceId: deps.currentInstanceId,
+        queueId: id,
+        reason: applyGuard.reason ?? "stale_callback",
+      });
+      traceDmPreviewHydrate("register:skip", {
+        queueId: id,
+        reason: applyGuard.reason ?? "stale_callback",
+        instanceId: deps.currentInstanceId,
+      });
+      return;
+    }
+
     traceDmPreviewHydrate("register:onQueueRegistered", {
       queueId: id,
       metadataDmPreviewHydrationEnabled: deps.metadataDmPreviewHydrationEnabled,

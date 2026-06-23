@@ -184,6 +184,7 @@ describe("startZulipEventLoop", () => {
         credentials,
         expect.arrayContaining(["stream", "subscription", "user_topic"]),
         undefined,
+        expect.objectContaining({ signal: controller.signal }),
       );
     });
     await vi.waitFor(() => {
@@ -238,6 +239,42 @@ describe("startZulipEventLoop", () => {
 
     controller.abort();
     await Promise.resolve();
+  });
+
+  it("skips queue registration apply when register resolves after abort", async () => {
+    const onQueueRegistered = vi.fn();
+    let resolveRegister!: (value: { queue_id: string; last_event_id: number }) => void;
+    registerQueueMock.mockImplementationOnce(
+      () =>
+        new Promise<{ queue_id: string; last_event_id: number }>((resolve) => {
+          resolveRegister = resolve;
+        }),
+    );
+    onTabResumeMock.mockReturnValue(unsubResumeMock);
+    onReconnectMock.mockReturnValue(unsubReconnectMock);
+    onStatusChangeMock.mockReturnValue(unsubStatusMock);
+    waitForOnlineMock.mockResolvedValue(undefined);
+    isOnlineMock.mockReturnValue(true);
+
+    const setQueueSpy = vi.spyOn(zulipEventQueueRegistry, "setZulipEventQueueId");
+    const controller = new AbortController();
+    startZulipEventLoop({
+      instanceId: "inst-stale-register",
+      signal: controller.signal,
+      onEvent: vi.fn(),
+      onQueueRegistered,
+    });
+
+    await Promise.resolve();
+    controller.abort();
+    resolveRegister({ queue_id: "q-stale-register", last_event_id: 0 });
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(onQueueRegistered).not.toHaveBeenCalled();
+    expect(setQueueSpy).not.toHaveBeenCalledWith("inst-stale-register", "q-stale-register");
+    setQueueSpy.mockRestore();
   });
 
   it("re-registers on poll error response and on network failure", async () => {

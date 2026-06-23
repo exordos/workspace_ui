@@ -75,6 +75,7 @@ export function getCachedOwnAvatarCapabilities(): ZulipOwnAvatarCapabilities {
 export async function registerQueue(
   eventTypes: string[],
   fetchEventTypes: string[] = [...DEFAULT_REGISTER_FETCH_EVENT_TYPES],
+  options?: { signal?: AbortSignal },
 ): Promise<RegisterQueueResult> {
   const body: Record<string, string> = {
     event_types: JSON.stringify(eventTypes),
@@ -84,7 +85,7 @@ export async function registerQueue(
   if (fetchEventTypes.length > 0) {
     body.fetch_event_types = JSON.stringify(fetchEventTypes);
   }
-  const res = await zulipPipelinePost("register", body);
+  const res = await zulipPipelinePost("register", body, options?.signal);
   const data = res.data as {
     result?: string;
     msg?: string;
@@ -142,6 +143,7 @@ export async function registerQueueForCredentials(
   credentials: ZulipCredentials,
   eventTypes: string[],
   fetchEventTypes: string[] = [...DEFAULT_REGISTER_FETCH_EVENT_TYPES],
+  options?: { signal?: AbortSignal },
 ): Promise<RegisterQueueResult> {
   const base = getValidatedCredentialsRealm(credentials, "registerQueueForCredentials");
   const authValue = getAuthValueForCredentials(credentials);
@@ -164,6 +166,7 @@ export async function registerQueueForCredentials(
           ? { fetch_event_types: JSON.stringify(fetchEventTypes) }
           : {}),
       }).toString(),
+      signal: options?.signal,
     });
   } catch {
     throw new Error(t("app.queueRegistrationError"));

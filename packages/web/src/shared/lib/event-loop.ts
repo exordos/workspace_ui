@@ -83,6 +83,7 @@ interface EventLoopTransport {
   registerQueue: (
     eventTypes: string[],
     fetchEventTypes?: string[],
+    options?: { signal?: AbortSignal },
   ) => ReturnType<typeof registerQueue>;
   getEvents: (
     queueId: string,
@@ -226,7 +227,13 @@ function startZulipEventLoopWithTransport(
     try {
       log.info("Registering event queue");
       // Register returns sidebar bootstrap metadata together with queue_id.
-      const reg = await transport.registerQueue(eventTypes, fetchEventTypes);
+      const reg = await transport.registerQueue(eventTypes, fetchEventTypes, { signal });
+      if (signal?.aborted || cleanedUp) {
+        log.info("Skipping stale queue registration apply", {
+          reason: signal?.aborted === true ? "aborted" : "cleaned_up",
+        });
+        return false;
+      }
       const nextQueueId = reg.queue_id;
       setQueueId(nextQueueId);
       lastEventId = reg.last_event_id;
@@ -323,7 +330,8 @@ function startZulipEventLoopWithTransport(
 export function startZulipEventLoop(options: StartZulipEventLoopOptions): void {
   startZulipEventLoopWithTransport(
     {
-      registerQueue: (eventTypes, fetchEventTypes) => registerQueue(eventTypes, fetchEventTypes),
+      registerQueue: (eventTypes, fetchEventTypes, requestOptions) =>
+        registerQueue(eventTypes, fetchEventTypes, requestOptions),
       getEvents: (queueId, lastEventId, requestOptions) =>
         getEvents(queueId, lastEventId, requestOptions),
     },
@@ -337,8 +345,8 @@ export function startZulipEventLoopForCredentials(
   const { credentials, ...loopOptions } = options;
   startZulipEventLoopWithTransport(
     {
-      registerQueue: (eventTypes, fetchEventTypes) =>
-        registerQueueForCredentials(credentials, eventTypes, fetchEventTypes),
+      registerQueue: (eventTypes, fetchEventTypes, requestOptions) =>
+        registerQueueForCredentials(credentials, eventTypes, fetchEventTypes, requestOptions),
       getEvents: (queueId, lastEventId, requestOptions) =>
         getEventsForCredentials(credentials, queueId, lastEventId, requestOptions),
     },

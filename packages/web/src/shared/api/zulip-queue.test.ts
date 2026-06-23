@@ -45,20 +45,46 @@ describe("registerQueue", () => {
       event_queue_longpoll_timeout_seconds: 90,
     });
     expect(mockRefreshZulipApiBase).toHaveBeenCalled();
-    expect(mockZulipApi.post).toHaveBeenCalledWith("/register", {
-      event_types: JSON.stringify(["message", "presence"]),
-      apply_markdown: "false",
-      client_capabilities: JSON.stringify({
-        notification_settings_null: true,
-        bulk_message_deletion: true,
-        user_avatar_url_field_optional: true,
-        stream_typing_notifications: true,
-        user_settings_object: true,
-        archived_channels: true,
-        empty_topic_name: true,
-      }),
-      fetch_event_types: JSON.stringify([...DEFAULT_REGISTER_FETCH_EVENT_TYPES]),
+    expect(mockZulipApi.post).toHaveBeenCalledWith(
+      "/register",
+      {
+        event_types: JSON.stringify(["message", "presence"]),
+        apply_markdown: "false",
+        client_capabilities: JSON.stringify({
+          notification_settings_null: true,
+          bulk_message_deletion: true,
+          user_avatar_url_field_optional: true,
+          stream_typing_notifications: true,
+          user_settings_object: true,
+          archived_channels: true,
+          empty_topic_name: true,
+        }),
+        fetch_event_types: JSON.stringify([...DEFAULT_REGISTER_FETCH_EVENT_TYPES]),
+      },
+      undefined,
+    );
+  });
+
+  it("passes AbortSignal through register queue requests", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        queue_id: "q-abort",
+        last_event_id: 1,
+      },
+      raw: { statusText: "OK" },
     });
+    const controller = new AbortController();
+
+    await registerQueue(["message"], undefined, { signal: controller.signal });
+
+    expect(mockZulipApi.post).toHaveBeenLastCalledWith(
+      "/register",
+      expect.any(Object),
+      controller.signal,
+    );
   });
 
   it("parses starred message ids from register metadata", async () => {
@@ -531,6 +557,36 @@ describe("registerQueueForCredentials", () => {
             }),
           )}`,
         ),
+      }),
+    );
+  });
+
+  it("passes AbortSignal through explicit-credentials register requests", async () => {
+    mockFetch.mockResolvedValue(
+      jsonResponse({
+        result: "success",
+        queue_id: "q-explicit-signal",
+        last_event_id: 45,
+      }),
+    );
+    const controller = new AbortController();
+
+    await registerQueueForCredentials(
+      {
+        realm: "https://other.example.com",
+        email: "other@test.com",
+        apiKey: "key",
+      },
+      ["message"],
+      undefined,
+      { signal: controller.signal },
+    );
+
+    expect(mockFetch).toHaveBeenLastCalledWith(
+      "https://other.example.com/api/v1/register",
+      expect.objectContaining({
+        method: "POST",
+        signal: controller.signal,
       }),
     );
   });

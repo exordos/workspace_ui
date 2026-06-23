@@ -13,7 +13,7 @@ import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useUserProfileStore } from "~/features/user-profile/user-profile.model";
 import { DEFAULT_REGISTER_FETCH_EVENT_TYPES } from "~/shared/api/zulip-queue";
 import { loadUsersDirectoryRow } from "~/shared/lib/users-directory-snapshot-db";
-import { createMessage } from "~/test/factories";
+import { createInstance, createMessage } from "~/test/factories";
 import { useLayoutZulipEventLoop } from "./layout-zulip-event-loop.hook";
 import type { ChatListBootstrapResult } from "./layout-chat-list-bootstrap.lib";
 
@@ -168,12 +168,11 @@ describe("useLayoutZulipEventLoop", () => {
     useUserProfileStore.getState().clear();
     useInstancesStore.setState({
       instances: [
-        {
+        createInstance({
           id: "inst-1",
           realm: "https://zulip.example.com",
           email: "test@example.com",
-          apiKey: "api-key",
-        },
+        }),
       ],
       currentInstanceId: "inst-1",
       unreadCountsByInstance: {},
@@ -794,6 +793,109 @@ describe("useLayoutZulipEventLoop", () => {
       );
     });
     expect(fetchDirectMessagesPageMock).not.toHaveBeenCalled();
+  });
+
+  it("skips stale register apply after instance switch", async () => {
+    useInstancesStore.setState((state) => ({
+      ...state,
+      instances: [
+        ...state.instances,
+        createInstance({
+          id: "inst-2",
+          realm: "https://zulip-2.example.com",
+          email: "test-2@example.com",
+        }),
+      ],
+    }));
+
+    const view = render(<Harness currentInstanceId="inst-1" />);
+
+    await waitFor(() => {
+      expect(startZulipEventLoopMock).toHaveBeenCalledTimes(1);
+    });
+
+    const staleOnQueueRegistered = (
+      startZulipEventLoopMock.mock.calls[0]?.[0] as {
+        onQueueRegistered?: (
+          id: string,
+          registration?: {
+            subscriptions?: { stream_id: number; name: string }[];
+            recent_private_conversations?: Record<
+              string,
+              { user_ids: number[]; max_message_id: number | null; unread_message_ids: number[] }
+            >;
+          },
+        ) => void;
+      }
+    )?.onQueueRegistered;
+
+    act(() => {
+      useInstancesStore.getState().setCurrentInstanceId("inst-2");
+    });
+    view.rerender(<Harness currentInstanceId="inst-2" />);
+
+    await waitFor(() => {
+      expect(startZulipEventLoopMock).toHaveBeenCalledTimes(2);
+    });
+
+    act(() => {
+      staleOnQueueRegistered?.("q-stale-switch", {
+        subscriptions: [{ stream_id: 44, name: "stale-stream" }],
+        recent_private_conversations: {
+          "7,20": {
+            user_ids: [7, 20],
+            max_message_id: 900,
+            unread_message_ids: [900],
+          },
+        },
+      });
+    });
+
+    expect(useChatListStore.getState().streamsMap.has(44)).toBe(false);
+    expect(useChatListStore.getState().dmsMap.has("7,20")).toBe(false);
+    expect(hydrateDmSidebarPreviewsMock).not.toHaveBeenCalled();
+  });
+
+  it("skips stale register apply after layout unmount", async () => {
+    const view = render(<Harness currentInstanceId="inst-1" />);
+
+    await waitFor(() => {
+      expect(startZulipEventLoopMock).toHaveBeenCalledTimes(1);
+    });
+
+    const staleOnQueueRegistered = (
+      startZulipEventLoopMock.mock.calls[0]?.[0] as {
+        onQueueRegistered?: (
+          id: string,
+          registration?: {
+            subscriptions?: { stream_id: number; name: string }[];
+            recent_private_conversations?: Record<
+              string,
+              { user_ids: number[]; max_message_id: number | null; unread_message_ids: number[] }
+            >;
+          },
+        ) => void;
+      }
+    )?.onQueueRegistered;
+
+    view.unmount();
+
+    act(() => {
+      staleOnQueueRegistered?.("q-stale-unmount", {
+        subscriptions: [{ stream_id: 45, name: "ghost-stream" }],
+        recent_private_conversations: {
+          "7,30": {
+            user_ids: [7, 30],
+            max_message_id: 901,
+            unread_message_ids: [901],
+          },
+        },
+      });
+    });
+
+    expect(useChatListStore.getState().streamsMap.has(45)).toBe(false);
+    expect(useChatListStore.getState().dmsMap.has("7,30")).toBe(false);
+    expect(hydrateDmSidebarPreviewsMock).not.toHaveBeenCalled();
   });
 
   it("marks stream metadata as hydrated on queue register even without subscriptions payload", async () => {
