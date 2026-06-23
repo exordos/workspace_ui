@@ -20,7 +20,7 @@ function msg(id: number | string, overrides: Partial<MockMessage> = {}): MockMes
     id: testMessageId(id),
     sender_id: 42,
     sender_full_name: "Alice",
-    stream_id: 10,
+    stream_uuid: "00000000-0000-4000-8000-000000000010",
     display_recipient: "general",
     channel: "general",
     subject: "bugs",

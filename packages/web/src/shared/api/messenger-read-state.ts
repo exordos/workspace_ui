@@ -5,11 +5,11 @@ import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 import { logScrollReadFlow } from "~/shared/lib/message-flow-debug.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
-import { messengerTopicNarrowOperandForApi } from "~/shared/lib/messenger-topic-narrow.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
-import { toResolvedTopicName, toUnresolvedTopicName } from "~/shared/lib/topic-resolve";
-import { messengerPipelineGet, messengerPipelinePatch } from "./messenger-pipeline.internal";
+import type { UserId } from "~/shared/lib/user-id.lib";
+import { toggleStreamTopicDone, updateStreamTopic } from "./messenger-streams";
 import { validateMessageIds } from "./messenger-validation.internal";
+import type { MessengerStreamTopic } from "./messenger.types";
 
 const log = createLogger("messenger-read-state");
 
@@ -18,7 +18,7 @@ function logReadStateUnsupported(action: string): void {
 }
 
 /** Bulk mark-read is disabled until the new backend exposes a read-state write API. */
-export function markDmAsRead(userIds: number[]): Promise<boolean> {
+export function markDmAsRead(userIds: UserId[]): Promise<boolean> {
   if (userIds.length === 0) return Promise.resolve(false);
   logReadStateUnsupported("markDmAsRead");
   return Promise.resolve(false);
@@ -39,176 +39,70 @@ export function markTopicAsRead(streamId: string, topic: string): Promise<boolea
   return Promise.resolve(false);
 }
 
-async function findTopicAnchorMessageId(
-  streamId: string,
-  topic: string,
-): Promise<MessageId | null> {
-  const normalizedTopic = normalizeTopicForIdentity(topic);
-  const anchorMessageResponse = await messengerPipelineGet("/messages", {
-    anchor: "oldest",
-    num_before: "0",
-    num_after: "1",
-    include_anchor: "true",
-    allow_empty_topic_name: "true",
-    apply_markdown: "false",
-    narrow: JSON.stringify([
-      { operator: "stream", operand: streamId },
-      { operator: "topic", operand: messengerTopicNarrowOperandForApi(normalizedTopic) },
-    ]),
-  });
-
-  if (!anchorMessageResponse?.ok) {
-    return null;
-  }
-
-  const anchorData = anchorMessageResponse.data as {
-    result?: string;
-    messages?: { id?: MessageId }[];
-  };
-  if (anchorData.result === "error") {
-    return null;
-  }
-
-  const anchorMessageId = anchorData.messages?.[0]?.id;
-  if (anchorMessageId == null) {
-    return null;
-  }
-  guard.messageId(anchorMessageId, "findTopicAnchorMessageId");
-  return anchorMessageId;
-}
-
-async function patchStreamTopicForAllMessages(
-  anchorMessageId: MessageId,
-  targetTopic: string,
-): Promise<boolean> {
-  const patchResponse = await messengerPipelinePatch(`messages/${anchorMessageId}`, {
-    topic: targetTopic,
-    propagate_mode: "change_all",
-    send_notification_to_old_thread: "false",
-    send_notification_to_new_thread: "false",
-    send_webhook_notifications: "false",
-  });
-
-  if (!patchResponse.ok) {
-    return false;
-  }
-
-  const patchData = patchResponse.data as { result?: string };
-  return patchData.result !== "error";
-}
-
-/**
- * Renames a stream topic by PATCHing the anchor message with propagate_mode=change_all.
- */
+/** Renames a stream topic through the server-owned topic entity. */
 export async function renameStreamTopic(
+  topicUuid: string,
   streamId: string,
   topic: string,
   newTopic: string,
-): Promise<boolean> {
+): Promise<MessengerStreamTopic | null> {
+  guard.streamUuid(topicUuid, "renameStreamTopic.topicUuid");
   guard.streamUuid(streamId, "renameStreamTopic.streamId");
   const normalizedTopic = normalizeTopicForIdentity(topic);
   const targetTopic = normalizeTopicForIdentity(newTopic.trim());
   if (targetTopic.length === 0) {
-    return false;
+    return null;
   }
   if (targetTopic === normalizedTopic) {
-    return true;
+    return null;
   }
 
-  const anchorMessageId = await findTopicAnchorMessageId(streamId, topic);
-  if (anchorMessageId == null) {
-    return false;
-  }
-
-  return patchStreamTopicForAllMessages(anchorMessageId, targetTopic);
+  const result = await updateStreamTopic({ topicUuid, name: targetTopic });
+  return result.ok ? result.topic : null;
 }
 
-async function patchStreamTopicToChannelForAllMessages(
-  anchorMessageId: MessageId,
-  targetStreamId: string,
-  targetTopic: string,
-): Promise<boolean> {
-  const patchResponse = await messengerPipelinePatch(`messages/${anchorMessageId}`, {
-    stream_uuid: targetStreamId,
-    topic: targetTopic,
-    propagate_mode: "change_all",
-    send_notification_to_old_thread: "false",
-    send_notification_to_new_thread: "false",
-    send_webhook_notifications: "false",
-  });
-
-  if (!patchResponse.ok) {
-    return false;
-  }
-
-  const patchData = patchResponse.data as { result?: string; code?: string };
-  if (patchData.result === "error") {
-    if (patchData.code === "MOVE_MESSAGES_TIME_LIMIT_EXCEEDED") {
-      log.warn("Topic move to channel blocked by time limit", { anchorMessageId, targetStreamId });
-    }
-    return false;
-  }
-  return true;
-}
-
-/**
- * Moves an entire stream topic to another channel via PATCH with propagate_mode=change_all.
- */
+/** Moves a stream topic entity to another channel. */
 export async function moveStreamTopicToChannel(
+  topicUuid: string,
   sourceStreamId: string,
   topic: string,
   targetStreamId: string,
   targetTopic: string,
-): Promise<boolean> {
+): Promise<MessengerStreamTopic | null> {
+  guard.streamUuid(topicUuid, "moveStreamTopicToChannel.topicUuid");
   guard.streamUuid(sourceStreamId, "moveStreamTopicToChannel.sourceStreamId");
   guard.streamUuid(targetStreamId, "moveStreamTopicToChannel.targetStreamId");
+  const normalizedTopic = normalizeTopicForIdentity(topic);
   const normalizedTargetTopic = normalizeTopicForIdentity(targetTopic.trim());
   if (normalizedTargetTopic.length === 0) {
-    return false;
+    return null;
   }
   if (sourceStreamId === targetStreamId) {
-    return false;
+    return null;
   }
 
-  const anchorMessageId = await findTopicAnchorMessageId(sourceStreamId, topic);
-  if (anchorMessageId == null) {
-    return false;
-  }
-
-  return patchStreamTopicToChannelForAllMessages(
-    anchorMessageId,
-    targetStreamId,
-    normalizedTargetTopic,
-  );
+  const result = await updateStreamTopic({
+    topicUuid,
+    streamUuid: targetStreamId,
+    ...(normalizedTargetTopic !== normalizedTopic ? { name: normalizedTargetTopic } : {}),
+  });
+  return result.ok ? result.topic : null;
 }
 
-/**
- * Marks a stream topic as resolved/unresolved by renaming the whole topic thread.
- *
- * Workspace models "resolved" as a topic-name convention (checkmark prefix).
- * We PATCH the first message in the topic with propagate_mode=change_all.
- */
+/** Toggles the server-owned done state for a stream topic. */
 export async function setTopicResolvedState(
+  topicUuid: string,
   streamId: string,
   topic: string,
   resolved: boolean,
-): Promise<boolean> {
+): Promise<MessengerStreamTopic | null> {
+  guard.streamUuid(topicUuid, "setTopicResolvedState.topicUuid");
   guard.streamUuid(streamId, "setTopicResolvedState.streamId");
-  const normalizedTopic = normalizeTopicForIdentity(topic);
-  const targetTopic = resolved
-    ? toResolvedTopicName(normalizedTopic)
-    : toUnresolvedTopicName(normalizedTopic);
+  void topic;
+  void resolved;
 
-  if (targetTopic === normalizedTopic) {
-    return true;
-  }
-
-  const anchorMessageId = await findTopicAnchorMessageId(streamId, topic);
-  if (anchorMessageId == null) {
-    return false;
-  }
-
-  return patchStreamTopicForAllMessages(anchorMessageId, targetTopic);
+  const result = await toggleStreamTopicDone(topicUuid);
+  return result.ok ? result.topic : null;
 }
 
 /** Marks messages as read. Disabled until the new backend exposes a read-state write API. */

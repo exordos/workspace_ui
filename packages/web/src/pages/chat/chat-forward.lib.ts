@@ -25,7 +25,7 @@ export type ForwardableMessage = Pick<
 >;
 
 interface ForwardTargetStream {
-  stream_uuid: string;
+  streamUuid: string;
   name: string;
 }
 
@@ -117,14 +117,17 @@ export function resolveForwardDraftTarget(
   }
 
   const normalizedTopic = normalizeTopicForIdentity(topic);
+  if (normalizedTopic.length === 0) {
+    return null;
+  }
   return {
     route: withCurrentOrgRoute(
-      `/stream/${slugForStream({ streamUuid: matchedStream.stream_uuid })}/topic/${encodeURIComponent(
+      `/stream/${slugForStream({ streamUuid: matchedStream.streamUuid })}/topic/${encodeURIComponent(
         encodeTopicForRoute(normalizedTopic),
       )}`,
     ),
     draftType: "stream",
-    draftTo: [matchedStream.stream_uuid],
+    draftTo: [matchedStream.streamUuid],
     draftTopic: normalizedTopic,
   };
 }

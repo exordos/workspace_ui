@@ -19,11 +19,20 @@ const mockMessengerApi = getMockMessengerApi();
 const MESSAGE_ID_1 = "00000000-0000-4000-8000-000000000001";
 const MESSAGE_ID_2 = "00000000-0000-4000-8000-000000000002";
 const MESSAGE_ID_3 = "00000000-0000-4000-8000-000000000003";
-const MESSAGE_ID_501 = "00000000-0000-4000-8000-000000000501";
-const MESSAGE_ID_777 = "00000000-0000-4000-8000-000000000777";
-const MESSAGE_ID_901 = "00000000-0000-4000-8000-000000000901";
 const STREAM_UUID = "6738f91a-4fd1-416e-807f-cb4ae00ec1d3";
 const TARGET_STREAM_UUID = "815890be-9819-46b1-9291-880602e62b96";
+const TOPIC_UUID = "90dde7a2-0204-4c72-a759-5f3bf80033df";
+
+function streamTopicResponse(name: string, streamUuid = STREAM_UUID) {
+  return {
+    uuid: TOPIC_UUID,
+    stream_uuid: streamUuid,
+    name,
+    unread_count: 0,
+    is_default: false,
+    is_done: false,
+  };
+}
 
 describe("markMessagesAsRead", () => {
   it("does not call removed flags API for message IDs", async () => {
@@ -38,8 +47,8 @@ describe("markMessagesAsRead", () => {
     expect(mockMessengerApi.post).not.toHaveBeenCalled();
   });
 
-  it("throws for invalid message id", async () => {
-    await expect(markMessagesAsRead([MESSAGE_ID_1, "not-a-message-id"])).rejects.toThrow(
+  it("throws for invalid message id", () => {
+    expect(() => markMessagesAsRead([MESSAGE_ID_1, "not-a-message-id"])).toThrow(
       /Invalid messageId/,
     );
     expect(mockMessengerApi.post).not.toHaveBeenCalled();
@@ -81,8 +90,8 @@ describe("markStreamAsRead", () => {
     expect(mockMessengerApi.post).not.toHaveBeenCalled();
   });
 
-  it("throws for invalid streamId", async () => {
-    await expect(markStreamAsRead("not-a-uuid")).rejects.toThrow(/Invalid streamUuid/);
+  it("throws for invalid streamId", () => {
+    expect(() => markStreamAsRead("not-a-uuid")).toThrow(/Invalid streamUuid/);
   });
 });
 
@@ -97,8 +106,8 @@ describe("markTopicAsRead", () => {
     expect(mockMessengerApi.post).not.toHaveBeenCalled();
   });
 
-  it("throws for invalid streamId", async () => {
-    await expect(markTopicAsRead("not-a-uuid", "bugs")).rejects.toThrow(/Invalid streamUuid/);
+  it("throws for invalid streamId", () => {
+    expect(() => markTopicAsRead("not-a-uuid", "bugs")).toThrow(/Invalid streamUuid/);
   });
 
   it("returns false for empty topic without calling removed flags/narrow API", async () => {
@@ -119,31 +128,25 @@ describe("markTopicAsRead", () => {
 // ---------------------------------------------------------------------------
 
 describe("renameStreamTopic", () => {
-  it("renames topic via anchor message patch", async () => {
-    mockMessengerApi.get.mockResolvedValue({
+  it("renames topic via topic entity PUT without reading messages", async () => {
+    const responseTopic = streamTopicResponse("postmortem");
+    mockMessengerApi.putJsonWithBase.mockResolvedValue({
       ok: true,
       status: 200,
-      data: {
-        result: "success",
-        messages: [{ id: MESSAGE_ID_901 }],
-      },
-      raw: { statusText: "OK" },
-    });
-    mockMessengerApi.patch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: { result: "success" },
+      data: responseTopic,
       raw: { statusText: "OK" },
     });
 
-    await expect(renameStreamTopic(STREAM_UUID, "incident", "postmortem")).resolves.toBe(true);
-    expect(mockMessengerApi.patch).toHaveBeenCalledWith(`/messages/${MESSAGE_ID_901}`, {
-      topic: "postmortem",
-      propagate_mode: "change_all",
-      send_notification_to_old_thread: "false",
-      send_notification_to_new_thread: "false",
-      send_webhook_notifications: "false",
-    });
+    await expect(
+      renameStreamTopic(TOPIC_UUID, STREAM_UUID, "incident", "postmortem"),
+    ).resolves.toEqual(responseTopic);
+    expect(mockMessengerApi.putJsonWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      `/stream_topics/${TOPIC_UUID}`,
+      { name: "postmortem" },
+    );
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
+    expect(mockMessengerApi.patch).not.toHaveBeenCalled();
   });
 });
 
@@ -152,64 +155,72 @@ describe("renameStreamTopic", () => {
 // ---------------------------------------------------------------------------
 
 describe("moveStreamTopicToChannel", () => {
-  it("moves topic to another channel via anchor message patch", async () => {
-    mockMessengerApi.get.mockResolvedValue({
+  it("moves topic to another channel via topic entity PUT", async () => {
+    const responseTopic = streamTopicResponse("incident", TARGET_STREAM_UUID);
+    mockMessengerApi.putJsonWithBase.mockResolvedValue({
       ok: true,
       status: 200,
-      data: {
-        result: "success",
-        messages: [{ id: MESSAGE_ID_901 }],
-      },
-      raw: { statusText: "OK" },
-    });
-    mockMessengerApi.patch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: { result: "success" },
+      data: responseTopic,
       raw: { statusText: "OK" },
     });
 
     await expect(
-      moveStreamTopicToChannel(STREAM_UUID, "incident", TARGET_STREAM_UUID, "incident"),
-    ).resolves.toBe(true);
-    expect(mockMessengerApi.patch).toHaveBeenCalledWith(`/messages/${MESSAGE_ID_901}`, {
-      stream_uuid: TARGET_STREAM_UUID,
-      topic: "incident",
-      propagate_mode: "change_all",
-      send_notification_to_old_thread: "false",
-      send_notification_to_new_thread: "false",
-      send_webhook_notifications: "false",
-    });
-  });
-
-  it("returns false when source and target stream are the same", async () => {
-    await expect(
-      moveStreamTopicToChannel(STREAM_UUID, "incident", STREAM_UUID, "incident"),
-    ).resolves.toBe(false);
+      moveStreamTopicToChannel(TOPIC_UUID, STREAM_UUID, "incident", TARGET_STREAM_UUID, "incident"),
+    ).resolves.toEqual(responseTopic);
+    expect(mockMessengerApi.putJsonWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      `/stream_topics/${TOPIC_UUID}`,
+      { stream_uuid: TARGET_STREAM_UUID },
+    );
     expect(mockMessengerApi.get).not.toHaveBeenCalled();
     expect(mockMessengerApi.patch).not.toHaveBeenCalled();
   });
 
-  it("returns false when time limit exceeded", async () => {
-    mockMessengerApi.get.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: {
-        result: "success",
-        messages: [{ id: MESSAGE_ID_901 }],
-      },
-      raw: { statusText: "OK" },
+  it("returns null when source and target stream are the same", async () => {
+    await expect(
+      moveStreamTopicToChannel(TOPIC_UUID, STREAM_UUID, "incident", STREAM_UUID, "incident"),
+    ).resolves.toBeNull();
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
+    expect(mockMessengerApi.patch).not.toHaveBeenCalled();
+    expect(mockMessengerApi.putJsonWithBase).not.toHaveBeenCalled();
+  });
+
+  it("returns null when topic update fails", async () => {
+    mockMessengerApi.putJsonWithBase.mockResolvedValue({
+      ok: false,
+      status: 400,
+      data: { msg: "Bad Request" },
+      raw: { statusText: "Bad Request" },
     });
-    mockMessengerApi.patch.mockResolvedValue({
+
+    await expect(
+      moveStreamTopicToChannel(TOPIC_UUID, STREAM_UUID, "incident", TARGET_STREAM_UUID, "incident"),
+    ).resolves.toBeNull();
+  });
+
+  it("moves and renames topic with both changed fields", async () => {
+    const responseTopic = streamTopicResponse("postmortem", TARGET_STREAM_UUID);
+    mockMessengerApi.putJsonWithBase.mockResolvedValue({
       ok: true,
       status: 200,
-      data: { result: "error", code: "MOVE_MESSAGES_TIME_LIMIT_EXCEEDED" },
+      data: responseTopic,
       raw: { statusText: "OK" },
     });
 
     await expect(
-      moveStreamTopicToChannel(STREAM_UUID, "incident", TARGET_STREAM_UUID, "incident"),
-    ).resolves.toBe(false);
+      moveStreamTopicToChannel(
+        TOPIC_UUID,
+        STREAM_UUID,
+        "incident",
+        TARGET_STREAM_UUID,
+        "postmortem",
+      ),
+    ).resolves.toEqual(responseTopic);
+    expect(mockMessengerApi.putJsonWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      `/stream_topics/${TOPIC_UUID}`,
+      { stream_uuid: TARGET_STREAM_UUID, name: "postmortem" },
+    );
   });
 });
 
@@ -218,86 +229,45 @@ describe("moveStreamTopicToChannel", () => {
 // ---------------------------------------------------------------------------
 
 describe("setTopicResolvedState", () => {
-  it("renames topic to resolved variant", async () => {
-    mockMessengerApi.get.mockResolvedValue({
+  it("toggles topic done state via topic action without renaming the topic", async () => {
+    const responseTopic = { ...streamTopicResponse("incident"), is_done: true };
+    mockMessengerApi.postJsonWithBase.mockResolvedValue({
       ok: true,
       status: 200,
-      data: {
-        result: "success",
-        messages: [{ id: MESSAGE_ID_501 }],
-      },
-      raw: { statusText: "OK" },
-    });
-    mockMessengerApi.patch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: { result: "success" },
+      data: responseTopic,
       raw: { statusText: "OK" },
     });
 
-    await expect(setTopicResolvedState(STREAM_UUID, "incident", true)).resolves.toBe(true);
-    expect(mockMessengerApi.get).toHaveBeenCalledWith(
-      "/messages",
-      {
-        anchor: "oldest",
-        num_before: "0",
-        num_after: "1",
-        include_anchor: "true",
-        allow_empty_topic_name: "true",
-        apply_markdown: "false",
-        narrow: JSON.stringify([
-          { operator: "stream", operand: STREAM_UUID },
-          { operator: "topic", operand: "incident" },
-        ]),
-      },
-      undefined,
+    await expect(setTopicResolvedState(TOPIC_UUID, STREAM_UUID, "incident", true)).resolves.toEqual(
+      responseTopic,
     );
-    expect(mockMessengerApi.patch).toHaveBeenCalledWith(`/messages/${MESSAGE_ID_501}`, {
-      topic: "\u2714 incident",
-      propagate_mode: "change_all",
-      send_notification_to_old_thread: "false",
-      send_notification_to_new_thread: "false",
-      send_webhook_notifications: "false",
-    });
-  });
-
-  it("renames topic to unresolved variant", async () => {
-    mockMessengerApi.get.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: {
-        result: "success",
-        messages: [{ id: MESSAGE_ID_777 }],
-      },
-      raw: { statusText: "OK" },
-    });
-    mockMessengerApi.patch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: { result: "success" },
-      raw: { statusText: "OK" },
-    });
-
-    await expect(setTopicResolvedState(STREAM_UUID, "\u2714 incident", false)).resolves.toBe(true);
-    expect(mockMessengerApi.patch).toHaveBeenCalledWith(`/messages/${MESSAGE_ID_777}`, {
-      topic: "incident",
-      propagate_mode: "change_all",
-      send_notification_to_old_thread: "false",
-      send_notification_to_new_thread: "false",
-      send_webhook_notifications: "false",
-    });
-  });
-
-  it("returns false when topic has no anchor message", async () => {
-    mockMessengerApi.get.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: { result: "success", messages: [] },
-      raw: { statusText: "OK" },
-    });
-
-    await expect(setTopicResolvedState(STREAM_UUID, "incident", true)).resolves.toBe(false);
+    expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      `/stream_topics/${TOPIC_UUID}/actions/toggle_done/invoke`,
+      {},
+    );
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
     expect(mockMessengerApi.patch).not.toHaveBeenCalled();
+    expect(mockMessengerApi.putJsonWithBase).not.toHaveBeenCalled();
+  });
+
+  it("uses the same action for undo done", async () => {
+    const responseTopic = { ...streamTopicResponse("incident"), is_done: false };
+    mockMessengerApi.postJsonWithBase.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: responseTopic,
+      raw: { statusText: "OK" },
+    });
+
+    await expect(
+      setTopicResolvedState(TOPIC_UUID, STREAM_UUID, "incident", false),
+    ).resolves.toEqual(responseTopic);
+    expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      `/stream_topics/${TOPIC_UUID}/actions/toggle_done/invoke`,
+      {},
+    );
   });
 });
 
@@ -318,15 +288,15 @@ describe("updateMessageFlags", () => {
     expect(mockMessengerApi.post).not.toHaveBeenCalled();
   });
 
-  it("throws for invalid message id", async () => {
-    await expect(
-      updateMessageFlags([MESSAGE_ID_1, "not-a-message-id"], "add", "read"),
-    ).rejects.toThrow(/Invalid messageId/);
+  it("throws for invalid message id", () => {
+    expect(() => updateMessageFlags([MESSAGE_ID_1, "not-a-message-id"], "add", "read")).toThrow(
+      /Invalid messageId/,
+    );
     expect(mockMessengerApi.post).not.toHaveBeenCalled();
   });
 
-  it("throws for blank flag name", async () => {
-    await expect(updateMessageFlags([MESSAGE_ID_1], "add", "   ")).rejects.toThrow(
+  it("throws for blank flag name", () => {
+    expect(() => updateMessageFlags([MESSAGE_ID_1], "add", "   ")).toThrow(
       /updateMessageFlags\.flag must be a non-empty string/,
     );
     expect(mockMessengerApi.post).not.toHaveBeenCalled();

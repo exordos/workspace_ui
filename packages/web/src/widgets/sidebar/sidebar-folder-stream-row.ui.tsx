@@ -4,11 +4,13 @@ import { t } from "~/i18n/i18n";
 import { sidebarRowClass } from "~/shared/lib/format";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
+import { formatTopicDoneLabel } from "~/shared/lib/topic-resolve";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { SidebarChatBadges } from "./sidebar-chat-badges.ui";
-import { StreamContextMenu } from "./sidebar-chat-context-menu.ui";
+import { StreamContextMenu, TopicContextMenu } from "./sidebar-chat-context-menu.ui";
 import { sidebarStreamRoute, sidebarStreamTopicRoute } from "./sidebar-chat-routes.lib";
+import { TopicMuteButton } from "./sidebar-folder-topic-buttons.ui";
 import { SidebarMessagePreview } from "./sidebar-message-preview.ui";
 import { useSidebarNewTopicInputFocus } from "./sidebar-new-topic-input-focus.hook";
 import { SidebarStreamHydrateWrapper } from "./sidebar-stream-hydrate-wrapper.ui";
@@ -33,6 +35,7 @@ export interface SidebarFolderStreamRowProps {
   chat: StreamChat;
   isPinnedChat: boolean;
   selectedFolderId?: string;
+  pinFolderId?: string;
   isCompactDensity: boolean;
   canExpandStreams: boolean;
   expandedStreamSlugs: string[];
@@ -87,6 +90,8 @@ function StreamRowLinkContent({
 }
 
 const SidebarFolderStreamTopicsList = React.memo(function SidebarFolderStreamTopicsList({
+  streamId,
+  streamName,
   streamSlug,
   topics,
   activeStreamSlug,
@@ -100,7 +105,10 @@ const SidebarFolderStreamTopicsList = React.memo(function SidebarFolderStreamTop
   onSubmitNewTopic,
   onCancelNewTopic,
   newTopicInputRef,
+  onMuteError,
 }: {
+  streamId: string;
+  streamName: string;
   streamSlug: string;
   topics: NonNullable<StreamChat["topics"]>;
   activeStreamSlug: string | null;
@@ -114,6 +122,7 @@ const SidebarFolderStreamTopicsList = React.memo(function SidebarFolderStreamTop
   onSubmitNewTopic: () => void;
   onCancelNewTopic: () => void;
   newTopicInputRef: React.RefObject<HTMLInputElement | null>;
+  onMuteError: (retry: () => void) => void;
 }): React.ReactElement {
   const { allTopicsVisible, hiddenCount, showToggle, visibleCount, toggleAllTopics } =
     useSidebarTopicCollapse(topics.length);
@@ -162,11 +171,23 @@ const SidebarFolderStreamTopicsList = React.memo(function SidebarFolderStreamTop
               ((topic.topicUuid != null && activeTopic === topic.topicUuid) ||
                 activeTopic === topic.subject);
             const topicDisplay = resolveTopicDisplayInfo(topic.subject);
+            const topicLabel = formatTopicDoneLabel(topicDisplay.label, topic.isDone === true);
             return (
-              <div
+              <TopicContextMenu
                 key={topic.topicUuid ?? encodeTopicForRoute(topic.subject)}
-                className={`group/topic relative w-full rounded-r-lg border-l-4 transition-colors ${sidebarRowClass(isTopicActive)}`}
-                style={{ borderLeftColor: topicColor }}
+                streamId={streamId}
+                streamName={streamName}
+                topic={topic.subject}
+                topicUuid={topic.topicUuid}
+                rowClassName={`group/topic relative w-full rounded-r-lg border-l-4 transition-colors ${sidebarRowClass(isTopicActive)}`}
+                rowStyle={{ borderLeftColor: topicColor }}
+                sideActions={
+                  <TopicMuteButton
+                    streamId={streamId}
+                    topic={topic.subject}
+                    onMuteError={onMuteError}
+                  />
+                }
               >
                 <Link
                   to={sidebarStreamTopicRoute(streamSlug, topicRouteSegment)}
@@ -178,7 +199,7 @@ const SidebarFolderStreamTopicsList = React.memo(function SidebarFolderStreamTop
                         topicDisplay.isSystem ? "italic" : ""
                       }`}
                     >
-                      {topicDisplay.label}
+                      {topicLabel}
                     </div>
                     {!isCompactDensity && (
                       <SidebarMessagePreview
@@ -189,7 +210,7 @@ const SidebarFolderStreamTopicsList = React.memo(function SidebarFolderStreamTop
                   </div>
                   <SidebarChatBadges unreadCount={topic.badge} hasMention={topic.hasMention} />
                 </Link>
-              </div>
+              </TopicContextMenu>
             );
           })
         )}
@@ -212,6 +233,7 @@ export const SidebarFolderStreamRow = React.memo(function SidebarFolderStreamRow
     chat,
     isPinnedChat,
     selectedFolderId,
+    pinFolderId,
     isCompactDensity,
     canExpandStreams,
     expandedStreamSlugs,
@@ -229,8 +251,25 @@ export const SidebarFolderStreamRow = React.memo(function SidebarFolderStreamRow
   const topics = chat.topics ?? [];
   const [creatingTopic, setCreatingTopic] = React.useState(false);
   const [newTopicName, setNewTopicName] = React.useState("");
+  const [notificationErrorRetry, setNotificationErrorRetry] = React.useState<(() => void) | null>(
+    null,
+  );
   const newTopicInputRef = React.useRef<HTMLInputElement>(null);
   useSidebarNewTopicInputFocus(creatingTopic ? streamSlug : null, newTopicInputRef);
+
+  React.useEffect(() => {
+    if (notificationErrorRetry == null) return;
+    const timerId = window.setTimeout(() => {
+      setNotificationErrorRetry(null);
+    }, 4500);
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [notificationErrorRetry]);
+
+  const handleNotificationError = React.useCallback((retry: () => void) => {
+    setNotificationErrorRetry(() => retry);
+  }, []);
 
   const submitNewTopic = React.useCallback(() => {
     const trimmedName = newTopicName.trim();
@@ -289,70 +328,92 @@ export const SidebarFolderStreamRow = React.memo(function SidebarFolderStreamRow
       expanded={expanded}
     >
       {({ topicsLoading }) => (
-        <StreamContextMenu
-          streamId={chat.streamUuid}
-          chat={chat}
-          folderId={selectedFolderId}
-          onCreateTopic={onNewTopic == null ? undefined : startCreatingTopic}
-          triggerOffsetClassName={streamMenuTriggerClassName}
-        >
-          <div className="group/stream relative">
-            <Link
-              to={sidebarStreamRoute(streamSlug)}
-              className={`${streamRowClass} ${streamLinkPaddingClass} w-full ${
-                expanded || isActive ? "bg-sidebar-hover" : "hover:bg-sidebar-hover"
-              }`}
-              onClick={() => {
-                if (!expanded) {
-                  onToggleStream(streamSlug);
-                }
-              }}
-            >
-              <StreamRowLinkContent
-                chat={chat}
-                displayName={displayName}
-                streamMuted={streamMuted}
-                isCompactDensity={isCompactDensity}
-                isPinnedChat={isPinnedChat}
-                streamAvatarSize={streamAvatarSize}
-                showLastMessageSender
-              />
-            </Link>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onToggleStream(streamSlug);
-              }}
-              className={`bg-bg/60 hover:bg-bg-elevated/80 absolute z-10 flex items-center justify-center rounded-lg text-text-muted transition-colors hover:text-text-primary focus-visible:text-text-primary ${streamExpandTriggerClassName}`}
-              aria-label={expanded ? t("a11y.collapseTopics") : t("a11y.expandTopics")}
-            >
-              {expanded ? (
-                <Icon name="chevron-up" size={16} />
-              ) : (
-                <Icon name="chevron-down" size={16} />
-              )}
-            </button>
-          </div>
-          {expanded && (
-            <SidebarFolderStreamTopicsList
-              streamSlug={streamSlug}
-              topics={topics}
-              activeStreamSlug={activeStreamSlug}
-              activeTopic={activeTopic}
-              topicsLoading={topicsLoading}
-              isCompactDensity={isCompactDensity}
-              onNewTopic={onNewTopic}
-              creatingTopic={creatingTopic}
-              newTopicName={newTopicName}
-              onNewTopicNameChange={setNewTopicName}
-              onSubmitNewTopic={submitNewTopic}
-              onCancelNewTopic={cancelNewTopic}
-              newTopicInputRef={newTopicInputRef}
-            />
+        <>
+          {notificationErrorRetry && (
+            <div className="border-notice-base/30 bg-notice-base/10 mb-2 flex items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-xs text-notice-base">
+              <span>{t("app.error")}</span>
+              <button
+                type="button"
+                className="hover:bg-notice-base/20 rounded px-1.5 py-0.5 text-notice-base transition-colors"
+                onClick={() => {
+                  const retry = notificationErrorRetry;
+                  setNotificationErrorRetry(null);
+                  retry?.();
+                }}
+              >
+                {t("common.retry")}
+              </button>
+            </div>
           )}
-        </StreamContextMenu>
+          <StreamContextMenu
+            streamId={chat.streamUuid}
+            chat={chat}
+            folderId={pinFolderId ?? selectedFolderId}
+            onCreateTopic={onNewTopic == null ? undefined : startCreatingTopic}
+            onMuteError={handleNotificationError}
+            triggerOffsetClassName={streamMenuTriggerClassName}
+          >
+            <div className="group/stream relative">
+              <Link
+                to={sidebarStreamRoute(streamSlug)}
+                className={`${streamRowClass} ${streamLinkPaddingClass} w-full ${
+                  expanded || isActive ? "bg-sidebar-hover" : "hover:bg-sidebar-hover"
+                }`}
+                onClick={() => {
+                  if (!expanded) {
+                    onToggleStream(streamSlug);
+                  }
+                }}
+              >
+                <StreamRowLinkContent
+                  chat={chat}
+                  displayName={displayName}
+                  streamMuted={streamMuted}
+                  isCompactDensity={isCompactDensity}
+                  isPinnedChat={isPinnedChat}
+                  streamAvatarSize={streamAvatarSize}
+                  showLastMessageSender
+                />
+              </Link>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onToggleStream(streamSlug);
+                }}
+                className={`bg-bg/60 hover:bg-bg-elevated/80 absolute z-10 flex items-center justify-center rounded-lg text-text-muted transition-colors hover:text-text-primary focus-visible:text-text-primary ${streamExpandTriggerClassName}`}
+                aria-label={expanded ? t("a11y.collapseTopics") : t("a11y.expandTopics")}
+              >
+                {expanded ? (
+                  <Icon name="chevron-up" size={16} />
+                ) : (
+                  <Icon name="chevron-down" size={16} />
+                )}
+              </button>
+            </div>
+            {expanded && (
+              <SidebarFolderStreamTopicsList
+                streamId={chat.streamUuid}
+                streamName={chat.name}
+                streamSlug={streamSlug}
+                topics={topics}
+                activeStreamSlug={activeStreamSlug}
+                activeTopic={activeTopic}
+                topicsLoading={topicsLoading}
+                isCompactDensity={isCompactDensity}
+                onNewTopic={onNewTopic}
+                creatingTopic={creatingTopic}
+                newTopicName={newTopicName}
+                onNewTopicNameChange={setNewTopicName}
+                onSubmitNewTopic={submitNewTopic}
+                onCancelNewTopic={cancelNewTopic}
+                newTopicInputRef={newTopicInputRef}
+                onMuteError={handleNotificationError}
+              />
+            )}
+          </StreamContextMenu>
+        </>
       )}
     </SidebarStreamHydrateWrapper>
   );

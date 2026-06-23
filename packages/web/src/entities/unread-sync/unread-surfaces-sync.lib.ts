@@ -4,11 +4,6 @@ import {
   logSidebarUnreadFlow,
   summarizeSidebarUnreadTotals,
 } from "~/shared/lib/sidebar-unread-debug.lib";
-import {
-  computeInstanceDmUnreadCount,
-  computeInstanceUnreadCount,
-  hasPersonalUnreadIndicator,
-} from "./unread-instance-count.lib";
 
 // Small unread changes come from live events or local optimistic actions.
 export type UnreadDeltaSyncSource =
@@ -36,55 +31,14 @@ export interface SyncUnreadSurfacesFromDeltaOptions {
   isEffectivelyMuted?: (streamId: string, topic: string) => boolean;
 }
 
-// Builds the active org total from the current sidebar model.
-function computeCurrentInstanceUnreadTotal(options: {
-  isStreamMuted?: (streamId: string) => boolean;
-  isEffectivelyMuted?: (streamId: string, topic: string) => boolean;
-}): number {
-  const chatList = useChatListStore.getState();
-  return computeInstanceUnreadCount({
-    streams: chatList.streams(),
-    dms: chatList.dms(),
-    isStreamMuted: options.isStreamMuted,
-    isEffectivelyMuted: options.isEffectivelyMuted,
-  });
-}
-
-// The org dot is shown for personal DMs or mentions.
-function computeCurrentPersonalUnreadIndicator(): number {
-  const chatList = useChatListStore.getState();
-  const personalDmUnread = computeInstanceDmUnreadCount({
-    dms: chatList.dms(),
-  });
-  return hasPersonalUnreadIndicator(personalDmUnread, chatList.mentionsUnreadCount) ? 1 : 0;
-}
-
-// Main writer for the active org badge.
-function writeInstanceCountsFromCurrentChatList({
-  instanceId,
-  isStreamMuted,
-  isEffectivelyMuted,
-}: {
-  instanceId: string;
-  isStreamMuted?: (streamId: string) => boolean;
-  isEffectivelyMuted?: (streamId: string, topic: string) => boolean;
-}): void {
-  const instances = useInstancesStore.getState();
-  instances.setInstanceUnreadCount(
-    instanceId,
-    computeCurrentInstanceUnreadTotal({ isStreamMuted, isEffectivelyMuted }),
-  );
-  instances.setInstanceDmUnreadCount(instanceId, computeCurrentPersonalUnreadIndicator());
-}
-
-// Applies a local/event change, then recalculates the active org badge.
+// Applies a local/event change. Unread counters are server-owned and must not be recomputed here.
 export function syncUnreadSurfacesFromDelta({
   source,
   instanceId,
   applyDelta,
-  applyInstanceCounts = true,
-  isStreamMuted,
-  isEffectivelyMuted,
+  applyInstanceCounts: _applyInstanceCounts = true,
+  isStreamMuted: _isStreamMuted,
+  isEffectivelyMuted: _isEffectivelyMuted,
 }: SyncUnreadSurfacesFromDeltaOptions): void {
   const chatListBefore = useChatListStore.getState();
   const instancesBefore = useInstancesStore.getState();
@@ -92,7 +46,7 @@ export function syncUnreadSurfacesFromDelta({
   logSidebarUnreadFlow("syncUnreadSurfaces:eventDelta:start", {
     source,
     instanceId,
-    applyInstanceCounts,
+    applyInstanceCounts: false,
     sidebarBefore: summarizeSidebarUnreadTotals(chatListBefore),
     instanceUnreadBefore:
       instanceId != null ? instancesBefore.getInstanceUnreadCount(instanceId) : null,
@@ -103,9 +57,6 @@ export function syncUnreadSurfacesFromDelta({
   applyDelta();
 
   const chatListAfter = useChatListStore.getState();
-  if (applyInstanceCounts && instanceId != null) {
-    writeInstanceCountsFromCurrentChatList({ instanceId, isStreamMuted, isEffectivelyMuted });
-  }
 
   const instancesAfter = useInstancesStore.getState();
   logSidebarUnreadFlow("syncUnreadSurfaces:eventDelta:done", {

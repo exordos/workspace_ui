@@ -116,6 +116,8 @@ describe("typing-indicator store", () => {
 });
 
 describe("typing chat keys", () => {
+  const STREAM_UUID = "00000000-0000-4000-8000-000000000015";
+
   it("builds a stable DM chat key including current user", () => {
     expect(buildDmTypingChatKey([42, 99], 7)).toBe("7,42,99");
   });
@@ -129,8 +131,8 @@ describe("typing chat keys", () => {
   });
 
   it("builds a stream typing key with empty-topic identity", () => {
-    expect(buildStreamTypingChatKey(15, "")).toBe("stream:15:");
-    expect(buildStreamTypingChatKey(15, "bugs")).toBe("stream:15:bugs");
+    expect(buildStreamTypingChatKey(STREAM_UUID, "")).toBe(`stream:${STREAM_UUID}:`);
+    expect(buildStreamTypingChatKey(STREAM_UUID, "bugs")).toBe(`stream:${STREAM_UUID}:bugs`);
   });
 });
 
@@ -141,12 +143,12 @@ describe("typing event routing", () => {
         op: "start",
         messageType: "stream",
         senderUserId: 42,
-        streamId: 15,
+        streamId: "00000000-0000-4000-8000-000000000015",
         topic: "",
         currentUserId: 7,
       }),
     ).toEqual({
-      chatKey: "stream:15:",
+      chatKey: "stream:00000000-0000-4000-8000-000000000015:",
       userId: 42,
       isTyping: true,
     });
@@ -158,11 +160,11 @@ describe("typing event routing", () => {
         op: "stop",
         messageType: "stream",
         senderUserId: 42,
-        streamId: 15,
+        streamId: "00000000-0000-4000-8000-000000000015",
         currentUserId: 7,
       }),
     ).toEqual({
-      chatKey: "stream:15:",
+      chatKey: "stream:00000000-0000-4000-8000-000000000015:",
       userId: 42,
       isTyping: false,
     });
@@ -200,7 +202,7 @@ describe("typing event routing", () => {
         op: "stop",
         messageType: "stream",
         senderUserId: 7,
-        streamId: 15,
+        streamId: "00000000-0000-4000-8000-000000000015",
         topic: "general",
         currentUserId: 7,
       }),
@@ -213,7 +215,7 @@ describe("typing event routing", () => {
         op: "noop",
         messageType: "stream",
         senderUserId: 42,
-        streamId: 15,
+        streamId: "00000000-0000-4000-8000-000000000015",
         currentUserId: 7,
       }),
     ).toBeNull();

@@ -3,7 +3,7 @@ import type { MessengerEvent, MessengerGroupSettingValue } from "~/shared/api/me
 import { applySubscriptionMetadataField } from "./layout-messenger-event-dispatch-subscription.lib";
 
 interface TestMetadataRow {
-  streamId: number;
+  streamUuid: string;
   name: string;
   isArchived?: boolean;
   inviteOnly?: boolean;
@@ -16,7 +16,7 @@ interface TestMetadataRow {
 
 function createRow(): TestMetadataRow {
   return {
-    streamId: 1,
+    streamUuid: "00000000-0000-4000-8000-000000000001",
     name: "general",
   };
 }

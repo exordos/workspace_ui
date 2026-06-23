@@ -4,6 +4,7 @@ import type { UserId } from "~/shared/lib/user-id.lib";
 export interface TopicResolveTarget {
   streamId: string;
   topic: string;
+  topicUuid?: string;
 }
 
 export type MarkTopicResolvedBlocker =
@@ -11,6 +12,7 @@ export type MarkTopicResolvedBlocker =
   | "not_stream"
   | "stream_wide_view"
   | "empty_topic"
+  | "no_topic_uuid"
   | "no_stream_slug"
   | "no_current_user";
 
@@ -28,6 +30,7 @@ export interface MarkTopicResolvedVisibility {
   contextType: CurrentChatContext["type"] | null;
   streamWideView: boolean | undefined;
   topic: string | null;
+  topicUuid: string | null;
 }
 
 export function resolveEffectiveStreamName(
@@ -66,6 +69,9 @@ export function resolveMarkTopicResolvedVisibility(options: {
   } else if (context.topic.trim().length === 0) {
     blockers.push("empty_topic");
   }
+  if (target != null && target.topicUuid == null) {
+    blockers.push("no_topic_uuid");
+  }
   if (target == null && blockers.length === 0) {
     blockers.push("no_context");
   }
@@ -78,7 +84,8 @@ export function resolveMarkTopicResolvedVisibility(options: {
 
   const hasTarget = target != null;
   const hasStreamSlug = streamSlug != null;
-  const canToggle = hasTarget && hasStreamSlug && currentUserId != null;
+  const hasTopicUuid = target?.topicUuid != null;
+  const canToggle = hasTarget && hasTopicUuid && hasStreamSlug && currentUserId != null;
 
   return {
     canToggle,
@@ -94,6 +101,7 @@ export function resolveMarkTopicResolvedVisibility(options: {
     contextType: context?.type ?? null,
     streamWideView: context?.type === "stream" ? context.streamWideView : undefined,
     topic: target?.topic ?? null,
+    topicUuid: target?.topicUuid ?? null,
   };
 }
 
@@ -101,18 +109,23 @@ export function resolveMarkTopicResolvedVisibility(options: {
 export function resolveMarkTopicResolvedVisibilityForTopic(options: {
   streamId: string;
   topic: string;
+  topicUuid?: string;
   streamName: string;
   currentUserId: UserId | null;
   buildStreamSlug: (streamId: string) => string;
 }): MarkTopicResolvedVisibility {
-  const { streamId, topic, streamName, currentUserId, buildStreamSlug } = options;
+  const { streamId, topic, topicUuid, streamName, currentUserId, buildStreamSlug } = options;
   const effectiveStreamName = streamName.trim();
   const streamSlug = effectiveStreamName.length > 0 ? buildStreamSlug(streamId) : null;
   const topicTrimmed = topic.trim();
+  const normalizedTopicUuid = topicUuid?.trim().toLowerCase();
 
   const blockers: MarkTopicResolvedBlocker[] = [];
   if (topicTrimmed.length === 0) {
     blockers.push("empty_topic");
+  }
+  if (normalizedTopicUuid == null || normalizedTopicUuid.length === 0) {
+    blockers.push("no_topic_uuid");
   }
   if (streamSlug == null) {
     blockers.push("no_stream_slug");
@@ -123,7 +136,8 @@ export function resolveMarkTopicResolvedVisibilityForTopic(options: {
 
   const hasTarget = topicTrimmed.length > 0;
   const hasStreamSlug = streamSlug != null;
-  const canToggle = hasTarget && hasStreamSlug && currentUserId != null;
+  const hasTopicUuid = normalizedTopicUuid != null && normalizedTopicUuid.length > 0;
+  const canToggle = hasTarget && hasTopicUuid && hasStreamSlug && currentUserId != null;
 
   return {
     canToggle,
@@ -139,6 +153,7 @@ export function resolveMarkTopicResolvedVisibilityForTopic(options: {
     contextType: "stream",
     streamWideView: false,
     topic: topicTrimmed.length > 0 ? topic : null,
+    topicUuid: hasTopicUuid ? normalizedTopicUuid : null,
   };
 }
 
@@ -155,5 +170,10 @@ export function resolveTopicResolveTargetFromContext(
   if (topic.length === 0) {
     return null;
   }
-  return { streamId: context.streamId, topic: context.topic };
+  const topicUuid = context.topicUuid?.trim().toLowerCase();
+  return {
+    streamId: context.streamId,
+    topic: context.topic,
+    ...(topicUuid != null && topicUuid.length > 0 ? { topicUuid } : {}),
+  };
 }

@@ -3,7 +3,7 @@ import { buildDmRouteSlugFromRecipients } from "~/shared/lib/dm-route-slug.lib";
 import { normalizeMessageId } from "~/shared/lib/message-id.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
-import { encodeTopicForRoute, normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import type { PushClickTargetInput, PushNotificationClickPayload } from "./push-click.types";
 
@@ -13,6 +13,7 @@ function normalizeRealmForComparison(realm: string): string {
   return realm
     .trim()
     .replace(/\/+$/, "")
+    .replace(/\/api\/messenger\/v1$/, "")
     .replace(/\/api\/v1$/, "")
     .replace(/\/api$/, "")
     .toLowerCase();
@@ -47,7 +48,11 @@ function normalizeNonEmpty(value: string | undefined): string | undefined {
 
 function parseStreamUuid(value: string | undefined): string | undefined {
   const normalized = normalizeNonEmpty(value);
-  return normalized?.toLowerCase();
+  const lower = normalized?.toLowerCase();
+  if (lower == null) return undefined;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(lower)
+    ? lower
+    : undefined;
 }
 
 function parseNearMessageIdFromWorkspaceHash(hash: string): MessageId | undefined {
@@ -73,11 +78,11 @@ function parseNearMessageIdFromWorkspaceHash(hash: string): MessageId | undefine
 export function buildPushClickUrl(input: PushClickTargetInput): string {
   const withMessageId = (base: string): string =>
     input.messageId != null ? `${base}?msg=${input.messageId}` : base;
-  const hasTopic = input.topic != null;
-  const topic = hasTopic ? normalizeTopicForIdentity(input.topic ?? "") : undefined;
+  const topic = normalizeNonEmpty(input.topic);
+  const hasTopic = topic != null;
 
   if (input.type === "stream") {
-    const streamUuid = normalizeNonEmpty(input.streamId);
+    const streamUuid = parseStreamUuid(input.streamId);
     if (streamUuid == null) {
       return withCurrentOrgRoute("/");
     }
@@ -142,19 +147,26 @@ export function buildRouteFromPushNotificationClick(payload: PushNotificationCli
 }
 
 export function buildRouteFromMessage(
-  message: Pick<MockMessage, "id" | "stream_uuid" | "channel" | "display_recipient" | "subject">,
+  message: {
+    id: MessageId;
+    stream_uuid?: string | null;
+    channel?: string;
+    display_recipient?: MockMessage["display_recipient"];
+    subject?: string;
+    topic_uuid?: string;
+  },
   currentUserId: UserId | null,
 ): string | null {
   if (message.stream_uuid != null) {
     const streamName =
       message.channel ??
       (typeof message.display_recipient === "string" ? message.display_recipient : "general");
-    const topic = (message.subject ?? "").trim();
+    const topic = normalizeNonEmpty(message.topic_uuid) ?? normalizeNonEmpty(message.subject);
     return buildPushClickUrl({
       type: "stream",
       streamId: message.stream_uuid,
       streamName,
-      topic,
+      ...(topic != null ? { topic } : {}),
       messageId: message.id,
     });
   }
@@ -177,6 +189,7 @@ export function buildNavigableRouteFromMessage(
     channel?: string;
     display_recipient?: MockMessage["display_recipient"];
     subject?: string;
+    topic_uuid?: string;
     sender_id?: number;
   },
   currentUserId: UserId | null,
@@ -187,7 +200,8 @@ export function buildNavigableRouteFromMessage(
       stream_uuid: message.stream_uuid ?? null,
       channel: message.channel,
       display_recipient: message.display_recipient,
-      subject: message.subject ?? "",
+      ...(message.subject != null ? { subject: message.subject } : {}),
+      ...(message.topic_uuid != null ? { topic_uuid: message.topic_uuid } : {}),
     },
     currentUserId,
   );

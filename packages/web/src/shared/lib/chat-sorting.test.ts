@@ -3,14 +3,14 @@ import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sideba
 import { sortChatsByLastMessage } from "./chat-sorting";
 
 function createStreamEntry(
-  stream_id: number,
+  streamId: number,
   name: string,
   ts: number,
   unreadCount: number,
   isArchived = false,
 ): StreamEntryInternal {
   return {
-    stream_id,
+    streamUuid: streamUuid(streamId),
     name,
     lastMessage: `${name} message`,
     time: "10:00",
@@ -31,6 +31,10 @@ function createStreamEntry(
   };
 }
 
+function streamUuid(value: number): string {
+  return `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
+}
+
 function createDmEntry(id: number, name: string, ts: number, unreadCount: number): DmEntryInternal {
   return {
     id,
@@ -45,26 +49,26 @@ function createDmEntry(id: number, name: string, ts: number, unreadCount: number
 
 describe("sortChatsByLastMessage", () => {
   it("keeps muted streams below unmuted chats and suppresses their unread badges", () => {
-    const streamsMap = new Map<number, StreamEntryInternal>([
-      [10, createStreamEntry(10, "Muted stream", 5000, 3)],
-      [20, createStreamEntry(20, "Active stream", 1000, 0)],
+    const streamsMap = new Map<string, StreamEntryInternal>([
+      [streamUuid(10), createStreamEntry(10, "Muted stream", 5000, 3)],
+      [streamUuid(20), createStreamEntry(20, "Active stream", 1000, 0)],
     ]);
 
-    const sorted = sortChatsByLastMessage(streamsMap, new Map(), new Set([10]));
+    const sorted = sortChatsByLastMessage(streamsMap, new Map(), new Set([streamUuid(10)]));
 
-    expect(sorted[0]).toMatchObject({ type: "stream", stream_id: 20 });
-    expect(sorted[1]).toMatchObject({ type: "stream", stream_id: 10 });
+    expect(sorted[0]).toMatchObject({ type: "stream", streamUuid: streamUuid(20) });
+    expect(sorted[1]).toMatchObject({ type: "stream", streamUuid: streamUuid(10) });
     const muted = sorted[1];
     expect(muted?.badge).toBeUndefined();
     expect(muted?.type === "stream" ? muted.topics?.[0]?.badge : undefined).toBeUndefined();
   });
 
-  it("suppresses unread badges for muted topics while preserving unmuted topic badges", () => {
-    const streamsMap = new Map<number, StreamEntryInternal>([
+  it("uses server stream unread badge without client-side topic recomputation", () => {
+    const streamsMap = new Map<string, StreamEntryInternal>([
       [
-        10,
+        streamUuid(10),
         {
-          stream_id: 10,
+          streamUuid: streamUuid(10),
           name: "Engineering",
           lastMessage: "Engineering message",
           time: "10:00",
@@ -96,18 +100,18 @@ describe("sortChatsByLastMessage", () => {
     ]);
 
     const sorted = sortChatsByLastMessage(streamsMap, new Map(), new Set(), {
-      isEffectivelyMuted: (streamId, topic) => streamId === 10 && topic === "muted",
+      isEffectivelyMuted: (streamId, topic) => streamId === streamUuid(10) && topic === "muted",
     });
 
     const stream = sorted[0];
-    expect(stream?.badge).toBe(2);
+    expect(stream?.badge).toBeUndefined();
     expect(stream?.type === "stream" ? stream.topics?.[0]?.badge : undefined).toBeUndefined();
     expect(stream?.type === "stream" ? stream.topics?.[1]?.badge : undefined).toBe(2);
   });
 
-  it("prioritizes unread personal DMs above other unread chats when enabled", () => {
-    const streamsMap = new Map<number, StreamEntryInternal>([
-      [1, createStreamEntry(1, "General", 5000, 1)],
+  it("keeps server timestamp order when personal unread prioritization is requested", () => {
+    const streamsMap = new Map<string, StreamEntryInternal>([
+      [streamUuid(1), createStreamEntry(1, "General", 5000, 1)],
     ]);
     const dmsMap = new Map<string, DmEntryInternal>([
       ["42-alice", createDmEntry(42, "Alice", 1000, 1)],
@@ -119,49 +123,49 @@ describe("sortChatsByLastMessage", () => {
     const withFlag = sortChatsByLastMessage(streamsMap, dmsMap, new Set(), {
       prioritizePersonalUnread: true,
     });
-    expect(withFlag[0]?.type).toBe("dm");
+    expect(withFlag[0]?.type).toBe("stream");
   });
 
   it("prioritizes unread unmuted channels above muted unread channels when enabled", () => {
-    const streamsMap = new Map<number, StreamEntryInternal>([
-      [10, createStreamEntry(10, "Muted stream", 5000, 1)],
-      [20, createStreamEntry(20, "Active stream", 1000, 1)],
+    const streamsMap = new Map<string, StreamEntryInternal>([
+      [streamUuid(10), createStreamEntry(10, "Muted stream", 5000, 1)],
+      [streamUuid(20), createStreamEntry(20, "Active stream", 1000, 1)],
     ]);
     const dmsMap = new Map<string, DmEntryInternal>();
 
-    const withoutFlag = sortChatsByLastMessage(streamsMap, dmsMap, new Set([10]));
-    expect(withoutFlag[0]).toMatchObject({ type: "stream", stream_id: 20 });
+    const withoutFlag = sortChatsByLastMessage(streamsMap, dmsMap, new Set([streamUuid(10)]));
+    expect(withoutFlag[0]).toMatchObject({ type: "stream", streamUuid: streamUuid(20) });
 
-    const withFlag = sortChatsByLastMessage(streamsMap, dmsMap, new Set([10]), {
+    const withFlag = sortChatsByLastMessage(streamsMap, dmsMap, new Set([streamUuid(10)]), {
       prioritizeUnmutedUnreadChannels: true,
     });
-    expect(withFlag[0]).toMatchObject({ type: "stream", stream_id: 20 });
+    expect(withFlag[0]).toMatchObject({ type: "stream", streamUuid: streamUuid(20) });
   });
 
   it("excludes archived streams from sidebar projection", () => {
-    const streamsMap = new Map<number, StreamEntryInternal>([
-      [1, createStreamEntry(1, "Active", 2000, 1)],
-      [2, createStreamEntry(2, "Archived", 3000, 1, true)],
+    const streamsMap = new Map<string, StreamEntryInternal>([
+      [streamUuid(1), createStreamEntry(1, "Active", 2000, 1)],
+      [streamUuid(2), createStreamEntry(2, "Archived", 3000, 1, true)],
     ]);
 
     const sorted = sortChatsByLastMessage(streamsMap, new Map(), new Set());
     expect(sorted).toHaveLength(1);
-    expect(sorted[0]).toMatchObject({ type: "stream", stream_id: 1, name: "Active" });
+    expect(sorted[0]).toMatchObject({ type: "stream", streamUuid: streamUuid(1), name: "Active" });
   });
 
   it("hides streams with unknown archived status in strict mode", () => {
-    const streamsMap = new Map<number, StreamEntryInternal>([
+    const streamsMap = new Map<string, StreamEntryInternal>([
       [
-        1,
+        streamUuid(1),
         {
           ...createStreamEntry(1, "Known Active", 2000, 1, false),
           isArchived: false,
         },
       ],
       [
-        2,
+        streamUuid(2),
         {
-          stream_id: 2,
+          streamUuid: streamUuid(2),
           name: "Unknown",
           lastMessage: "Unknown message",
           time: "10:00",
@@ -186,22 +190,26 @@ describe("sortChatsByLastMessage", () => {
       hideUnknownArchivedStreams: true,
     });
     expect(sorted).toHaveLength(1);
-    expect(sorted[0]).toMatchObject({ type: "stream", stream_id: 1, name: "Known Active" });
+    expect(sorted[0]).toMatchObject({
+      type: "stream",
+      streamUuid: streamUuid(1),
+      name: "Known Active",
+    });
   });
 
   it("keeps streams with unknown archived status when strict mode is disabled", () => {
-    const streamsMap = new Map<number, StreamEntryInternal>([
+    const streamsMap = new Map<string, StreamEntryInternal>([
       [
-        1,
+        streamUuid(1),
         {
           ...createStreamEntry(1, "Known Active", 2000, 1, false),
           isArchived: false,
         },
       ],
       [
-        2,
+        streamUuid(2),
         {
-          stream_id: 2,
+          streamUuid: streamUuid(2),
           name: "Unknown",
           lastMessage: "Unknown message",
           time: "10:00",
@@ -226,6 +234,6 @@ describe("sortChatsByLastMessage", () => {
       hideUnknownArchivedStreams: false,
     });
     expect(sorted).toHaveLength(2);
-    expect(sorted[0]).toMatchObject({ type: "stream", stream_id: 2, name: "Unknown" });
+    expect(sorted[0]).toMatchObject({ type: "stream", streamUuid: streamUuid(2), name: "Unknown" });
   });
 });

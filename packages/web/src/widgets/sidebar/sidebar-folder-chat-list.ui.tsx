@@ -91,6 +91,7 @@ export const SidebarFolderChatList: React.FC<SidebarFolderChatListProps> = ({
             chat={chat}
             pinApiFolderUuid={pinApiFolderUuid}
             selectedFolderId={selectedFolderId}
+            pinFolderId={pinScopeFolderId}
             isCompactDensity={isCompactDensity}
             canExpandStreams={canExpandStreams}
             expandedStreamSlugs={expandedStreamSlugs ?? []}

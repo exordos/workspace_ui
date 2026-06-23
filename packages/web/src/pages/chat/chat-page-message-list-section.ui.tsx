@@ -13,7 +13,9 @@ export const ChatPageMessageListSection = React.memo(function ChatPageMessageLis
   hasInitialPayload,
   isDmView,
   activeDmUserIds,
+  activeStreamId,
   activeStream,
+  activeTopicUuid,
   activeTopic,
   messages,
   currentUserId,
@@ -28,8 +30,6 @@ export const ChatPageMessageListSection = React.memo(function ChatPageMessageLis
   firstUnreadId,
   unreadCount,
   focusedMessageId,
-  onUnreadMessagesVisible,
-  onUnreadMessagesAtBottom,
   messagesLoadError,
   onRetryMessagesLoad,
   boundaryLoadFailed,
@@ -45,7 +45,7 @@ export const ChatPageMessageListSection = React.memo(function ChatPageMessageLis
   }, [onDismissBoundaryLoadFailed]);
 
   // Block screen only until neither cached nor server messages exist.
-  const showBlockingLoader = messagesLoading && !hasInitialPayload;
+  const showBlockingLoader = messagesLoading && !hasInitialPayload && messages.length === 0;
   // When data exists, show non-blocking overlay only.
   const showLoadingOverlay =
     !showBlockingLoader && messages.length > 0 && (messagesLoading || isLoadingMore);
@@ -84,7 +84,9 @@ export const ChatPageMessageListSection = React.memo(function ChatPageMessageLis
   const scrollToBottomKey = resolveMessageListScrollKey({
     isDmView,
     activeDmUserIds,
+    activeStreamId,
     activeStream,
+    activeTopicUuid,
     activeTopic,
   });
 
@@ -132,8 +134,6 @@ export const ChatPageMessageListSection = React.memo(function ChatPageMessageLis
         firstUnreadId={firstUnreadId}
         unreadCount={unreadCount}
         focusedMessageId={focusedMessageId}
-        onUnreadMessagesVisible={onUnreadMessagesVisible}
-        onUnreadMessagesAtBottom={onUnreadMessagesAtBottom}
         showLoadingOverlay={showLoadingOverlay}
         showTopicInSenderName={showTopicInSenderName}
       />

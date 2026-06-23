@@ -8,7 +8,7 @@ describe("filterMessageLinkPreviewsForMarkdown", () => {
       id: "00000000-0000-4000-8000-000000000001",
       sender_id: 1,
       sender_full_name: "A",
-      stream_id: 1,
+      stream_uuid: "00000000-0000-4000-8000-000000000001",
       subject: "t",
       content: "https://stay.test only",
       timestamp: 1,

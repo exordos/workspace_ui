@@ -23,7 +23,7 @@ function createStreamMessage(overrides: WorkspaceRawMessageOverrides = {}): Work
     content: "<p>Hello</p>",
     timestamp: 1,
     type: "stream",
-    stream_id: 10,
+    stream_uuid: "00000000-0000-4000-8000-000000000010",
     display_recipient: "General Discussion",
     subject: "Bugs",
     flags: [],
@@ -40,7 +40,7 @@ function createDmMessage(overrides: WorkspaceRawMessageOverrides = {}): Workspac
     content: "<p>Hello</p>",
     timestamp: 1,
     type: "private",
-    stream_id: null,
+    stream_uuid: null,
     subject: "",
     display_recipient: [
       { id: 7, full_name: "You" },
@@ -64,7 +64,7 @@ describe("buildNotificationBucketKeyFromMessage", () => {
       "inst-1",
     );
 
-    expect(first).toBe("inst-1::stream:10:Bugs:sender:42");
+    expect(first).toBe("inst-1::stream:00000000-0000-4000-8000-000000000010:Bugs:sender:42");
     expect(second).toBe(first);
   });
 
@@ -80,7 +80,7 @@ describe("buildNotificationBucketKeyFromMessage", () => {
       "inst-1",
     );
 
-    expect(second).toBe("inst-1::stream:10:Bugs:sender:99");
+    expect(second).toBe("inst-1::stream:00000000-0000-4000-8000-000000000010:Bugs:sender:99");
     expect(second).not.toBe(first);
   });
 
@@ -119,13 +119,19 @@ describe("notification aggregate registry", () => {
     });
 
     expect(first).toMatchObject({
-      tag: buildNotificationAggregateTag("inst-1::stream:10:Bugs:sender:42", null),
+      tag: buildNotificationAggregateTag(
+        "inst-1::stream:00000000-0000-4000-8000-000000000010:Bugs:sender:42",
+        null,
+      ),
       count: 1,
       lastMessageId: "00000000-0000-4000-8000-000000000055",
       latestBody: "Hello",
     });
     expect(second).toMatchObject({
-      tag: buildNotificationAggregateTag("inst-1::stream:10:Bugs:sender:42", null),
+      tag: buildNotificationAggregateTag(
+        "inst-1::stream:00000000-0000-4000-8000-000000000010:Bugs:sender:42",
+        null,
+      ),
       count: 2,
       lastMessageId: "00000000-0000-4000-8000-000000000056",
       latestBody: "Latest",
@@ -166,7 +172,7 @@ describe("notification aggregate registry", () => {
     expect(result.untrackedMessageIds).toEqual([]);
     expect(result.updatedSnapshots).toEqual([
       {
-        tag: "bucket:inst-1::stream:10:Bugs:sender:42",
+        tag: "bucket:inst-1::stream:00000000-0000-4000-8000-000000000010:Bugs:sender:42",
         count: 1,
         lastMessageId: "00000000-0000-4000-8000-000000000055",
         latestBody: "Hello",
@@ -211,8 +217,12 @@ describe("notification aggregate registry", () => {
       titleContext: buildNotificationTitleContextFromMessage(createStreamMessage(), 7),
     });
 
-    expect(first?.tag).toBe("bucket:inst-1::stream:10:Bugs:sender:42");
-    expect(second?.tag).toBe("bucket:inst-2::stream:10:Bugs:sender:42");
+    expect(first?.tag).toBe(
+      "bucket:inst-1::stream:00000000-0000-4000-8000-000000000010:Bugs:sender:42",
+    );
+    expect(second?.tag).toBe(
+      "bucket:inst-2::stream:00000000-0000-4000-8000-000000000010:Bugs:sender:42",
+    );
     expect(second?.tag).not.toBe(first?.tag);
   });
 
@@ -243,9 +253,13 @@ describe("notification aggregate registry", () => {
       "inst-1",
     );
 
-    expect(inst2Result.closedTags).toEqual(["bucket:inst-2::stream:10:Bugs:sender:42"]);
+    expect(inst2Result.closedTags).toEqual([
+      "bucket:inst-2::stream:00000000-0000-4000-8000-000000000010:Bugs:sender:42",
+    ]);
     expect(inst2Result.untrackedMessageIds).toEqual([]);
-    expect(inst1Result.closedTags).toEqual(["bucket:inst-1::stream:10:Bugs:sender:42"]);
+    expect(inst1Result.closedTags).toEqual([
+      "bucket:inst-1::stream:00000000-0000-4000-8000-000000000010:Bugs:sender:42",
+    ]);
     expect(inst1Result.untrackedMessageIds).toEqual([]);
   });
 });

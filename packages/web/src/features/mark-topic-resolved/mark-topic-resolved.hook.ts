@@ -1,20 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
-import { getCurrentInstance } from "~/shared/api/client";
 import { renameStreamTopic, setTopicResolvedState } from "~/shared/api/messenger-read-state";
-import { deleteChatListSnapshotRow } from "~/shared/lib/chat-list-snapshot-db";
+import type { MessengerStreamTopic } from "~/shared/api/messenger.types";
 import { createLogger } from "~/shared/lib/logger";
-import { moveTopicMessagesInCache } from "~/shared/lib/message-cache-db";
-import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { buildStreamSlug } from "~/shared/lib/stream-slug.lib";
-import { encodeTopicForRoute, normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
-import {
-  isTopicResolved,
-  toResolvedTopicName,
-  toUnresolvedTopicName,
-} from "~/shared/lib/topic-resolve";
+import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import {
   resolveMarkTopicResolvedVisibility,
   resolveMarkTopicResolvedVisibilityForTopic,
@@ -26,20 +17,39 @@ const log = createLogger("mark-topic-resolved");
 export interface UseMarkTopicResolvedOptions {
   streamId: string;
   topic: string;
+  topicUuid?: string;
   /** Canonical stream name for slug/API (not localized display label). */
   streamName: string;
 }
 
 export function useMarkTopicResolved(explicitTarget?: UseMarkTopicResolvedOptions) {
-  const navigate = useNavigate();
   const context = useCurrentChatMessagesStore((s) => s.context);
-  const messages = useCurrentChatMessagesStore((s) => s.messages);
   const currentUserId = useChatListStore((s) => s.currentUserId);
   const streamIdFromContext = context?.type === "stream" ? context.streamId : null;
   const streamIdForMap = explicitTarget?.streamId ?? streamIdFromContext;
   const streamNameFromMap = useChatListStore((s) =>
     streamIdForMap != null ? (s.streamsMap.get(streamIdForMap)?.name ?? "") : "",
   );
+  const topicDoneFromMap = useChatListStore((s) => {
+    if (streamIdForMap == null) return false;
+    const stream = s.streamsMap.get(streamIdForMap);
+    if (stream == null) return false;
+    const explicitTopicUuid = explicitTarget?.topicUuid?.trim().toLowerCase();
+    const contextTopicUuid =
+      context?.type === "stream" ? context.topicUuid?.trim().toLowerCase() : undefined;
+    const targetTopicUuid = explicitTopicUuid ?? contextTopicUuid;
+    if (targetTopicUuid != null && targetTopicUuid.length > 0) {
+      for (const topicEntry of stream.topics.values()) {
+        if (topicEntry.topicUuid?.trim().toLowerCase() === targetTopicUuid) {
+          return topicEntry.isDone === true;
+        }
+      }
+    }
+    const targetTopic =
+      explicitTarget?.topic ?? (context?.type === "stream" ? context.topic : null);
+    if (targetTopic == null) return false;
+    return stream.topics.get(targetTopic)?.isDone === true;
+  });
   const [resolvePending, setResolvePending] = useState(false);
   const [renamePending, setRenamePending] = useState(false);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
@@ -51,6 +61,7 @@ export function useMarkTopicResolved(explicitTarget?: UseMarkTopicResolvedOption
       return resolveMarkTopicResolvedVisibilityForTopic({
         streamId: explicitTarget.streamId,
         topic: explicitTarget.topic,
+        topicUuid: explicitTarget.topicUuid,
         streamName: nameFromMap.length > 0 ? nameFromMap : explicitTarget.streamName,
         currentUserId,
         buildStreamSlug,
@@ -64,50 +75,59 @@ export function useMarkTopicResolved(explicitTarget?: UseMarkTopicResolvedOption
     });
   }, [context, currentUserId, streamNameFromMap, explicitTarget]);
 
-  const { canToggle, streamSlug, streamId, topic } = {
+  const { canToggle, streamId, topic } = {
     canToggle: visibility.canToggle,
-    streamSlug: visibility.streamSlug,
     streamId: visibility.streamId,
     topic: visibility.topic,
   };
+  const topicUuid = visibility.topicUuid;
 
-  const isResolved = topic != null ? isTopicResolved(topic) : false;
+  const isResolved = topicDoneFromMap;
   const pending = resolvePending || renamePending;
   const channelName = visibility.effectiveStreamName;
 
+  const syncServerTopicMetadata = useCallback((updatedTopic: MessengerStreamTopic) => {
+    useChatListStore.getState().upsertStreamTopicShells(updatedTopic.stream_uuid, [
+      {
+        topicUuid: updatedTopic.uuid,
+        streamUuid: updatedTopic.stream_uuid,
+        name: updatedTopic.name,
+        unreadCount: updatedTopic.unread_count,
+        isDefault: updatedTopic.is_default,
+        isDone: updatedTopic.is_done,
+      },
+    ]);
+  }, []);
+
   const syncTopicRenameLocally = useCallback(
-    (oldTopic: string, newTopic: string) => {
-      if (streamId == null || streamSlug == null) {
+    (oldTopic: string, newTopic: string, updatedTopic: MessengerStreamTopic) => {
+      if (streamId == null) {
         return;
       }
+      syncServerTopicMetadata(updatedTopic);
       const oldTopicKey = normalizeTopicForIdentity(oldTopic);
+      const updatedTopicUuid = updatedTopic.uuid.trim().toLowerCase();
       const messageIds = useCurrentChatMessagesStore
         .getState()
-        .messages.filter(
-          (message) =>
-            message.stream_uuid === streamId &&
-            normalizeTopicForIdentity(message.subject ?? "") === oldTopicKey,
-        )
+        .messages.filter((message) => {
+          if (message.stream_uuid !== streamId) return false;
+          const messageTopicUuid = message.topic_uuid?.trim().toLowerCase();
+          if (messageTopicUuid != null && messageTopicUuid.length > 0) {
+            return messageTopicUuid === updatedTopicUuid;
+          }
+          return normalizeTopicForIdentity(message.subject ?? "") === oldTopicKey;
+        })
         .map((message) => message.id);
       const anchorMessageId = messageIds[0];
       const topicMoveParams = {
         streamId,
-        oldTopic,
+        oldTopic: updatedTopicUuid,
         newTopic,
         ...(messageIds.length > 0 ? { messageIds } : {}),
         ...(anchorMessageId != null ? { anchorMessageId } : {}),
       };
 
-      useChatListStore.getState().moveStreamTopic(topicMoveParams);
       useCurrentChatMessagesStore.getState().moveStreamTopicMessages(topicMoveParams);
-      const instanceId = getCurrentInstance()?.id;
-      if (instanceId != null && instanceId.length > 0) {
-        void moveTopicMessagesInCache({
-          instanceId,
-          ...topicMoveParams,
-        }).catch(() => {});
-        void deleteChatListSnapshotRow(instanceId).catch(() => {});
-      }
       if (newTopic === oldTopic) {
         return;
       }
@@ -116,18 +136,18 @@ export function useMarkTopicResolved(explicitTarget?: UseMarkTopicResolvedOption
         openContext?.type === "stream" &&
         openContext.streamWideView !== true &&
         openContext.streamId === streamId &&
-        normalizeTopicForIdentity(openContext.topic) === normalizeTopicForIdentity(oldTopic);
+        (openContext.topicUuid?.trim().toLowerCase() === updatedTopicUuid ||
+          normalizeTopicForIdentity(openContext.topic) === normalizeTopicForIdentity(oldTopic));
       if (!isOpenTopic) {
         return;
       }
-      void navigate(
-        withCurrentOrgRoute(
-          `/stream/${streamSlug}/topic/${encodeURIComponent(encodeTopicForRoute(newTopic))}`,
-        ),
-        { replace: true },
-      );
+      useCurrentChatMessagesStore.getState().setContext({
+        ...openContext,
+        topic: newTopic,
+        topicUuid: updatedTopicUuid,
+      });
     },
-    [messages, navigate, streamId, streamSlug],
+    [streamId, syncServerTopicMetadata],
   );
 
   const lastLoggedVisibilityKeyRef = useRef<string | null>(null);
@@ -173,34 +193,33 @@ export function useMarkTopicResolved(explicitTarget?: UseMarkTopicResolvedOption
   }, [visibility]);
 
   const toggleTopicResolved = useCallback(() => {
-    if (!canToggle || topic == null || streamId == null || pending) {
+    if (!canToggle || topic == null || topicUuid == null || streamId == null || pending) {
       return;
     }
 
     const shouldResolve = !isResolved;
-    const nextTopicName = shouldResolve ? toResolvedTopicName(topic) : toUnresolvedTopicName(topic);
 
     setResolvePending(true);
-    void setTopicResolvedState(streamId, topic, shouldResolve)
-      .then((ok) => {
-        if (!ok) return;
-        syncTopicRenameLocally(topic, nextTopicName);
+    void setTopicResolvedState(topicUuid, streamId, topic, shouldResolve)
+      .then((updatedTopic) => {
+        if (updatedTopic == null) return;
+        syncServerTopicMetadata(updatedTopic);
       })
       .finally(() => {
         setResolvePending(false);
       });
-  }, [canToggle, topic, streamId, pending, isResolved, syncTopicRenameLocally]);
+  }, [canToggle, topic, topicUuid, streamId, pending, isResolved, syncServerTopicMetadata]);
 
   const openRenameDialog = useCallback(() => {
     if (!canToggle || topic == null || pending) {
       return;
     }
-    setRenameTopicDraft(toUnresolvedTopicName(topic));
+    setRenameTopicDraft(topic);
     setRenameDialogOpen(true);
   }, [canToggle, pending, topic]);
 
   const submitRename = useCallback(() => {
-    if (!canToggle || topic == null || streamId == null || renamePending) {
+    if (!canToggle || topic == null || topicUuid == null || streamId == null || renamePending) {
       return;
     }
 
@@ -211,16 +230,24 @@ export function useMarkTopicResolved(explicitTarget?: UseMarkTopicResolvedOption
     }
 
     setRenamePending(true);
-    void renameStreamTopic(streamId, topic, targetTopic)
-      .then((ok) => {
-        if (!ok) return;
-        syncTopicRenameLocally(topic, targetTopic);
+    void renameStreamTopic(topicUuid, streamId, topic, targetTopic)
+      .then((updatedTopic) => {
+        if (updatedTopic == null) return;
+        syncTopicRenameLocally(topic, updatedTopic.name || targetTopic, updatedTopic);
         setRenameDialogOpen(false);
       })
       .finally(() => {
         setRenamePending(false);
       });
-  }, [canToggle, topic, streamId, renamePending, renameTopicDraft, syncTopicRenameLocally]);
+  }, [
+    canToggle,
+    topic,
+    topicUuid,
+    streamId,
+    renamePending,
+    renameTopicDraft,
+    syncTopicRenameLocally,
+  ]);
 
   return {
     canToggle,

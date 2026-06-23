@@ -1,19 +1,10 @@
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import { getElectronAPI } from "~/shared/lib/electron";
 import { syncFaviconWithUnreadIndicator } from "~/shared/lib/organization-branding";
 import { osIntegration } from "~/shared/lib/os-integration";
-import { hasPersonalUnreadIndicator } from "./layout-instance-unread.lib";
 
-export function useLayoutAppIconBadge(options: {
-  personalDmUnread: number;
-  mentionsUnread: number;
-}): void {
-  const { personalDmUnread, mentionsUnread } = options;
-
-  const hasPersonalUnread = useMemo(
-    () => hasPersonalUnreadIndicator(personalDmUnread, mentionsUnread),
-    [personalDmUnread, mentionsUnread],
-  );
+export function useLayoutAppIconBadge(options: { personalUnreadCount: number }): void {
+  const hasPersonalUnread = options.personalUnreadCount > 0;
 
   useEffect(() => {
     osIntegration.setBadgeCount(hasPersonalUnread ? 1 : 0);

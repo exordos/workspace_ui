@@ -7,7 +7,7 @@ function msg(partial: Partial<MockMessage>): MockMessage {
     id: "00000000-0000-4000-8000-000000000001",
     sender_id: 10,
     sender_full_name: "A",
-    stream_id: null,
+    stream_uuid: null,
     subject: "",
     content: "",
     timestamp: 0,

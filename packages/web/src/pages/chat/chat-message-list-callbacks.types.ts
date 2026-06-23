@@ -9,7 +9,7 @@ export interface UseChatMessageListCallbacksParams {
   currentUserId: UserId | null;
   /** Active organization realm base URL for reply-quote permalinks */
   realmBaseUrl: string;
-  streams: { stream_uuid: string; name: string }[];
+  streams: { streamUuid: string; name: string }[];
   locationPathname: string;
   locationSearch: string;
   isDmView: boolean;

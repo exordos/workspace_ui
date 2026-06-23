@@ -5,14 +5,12 @@ import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
 
 interface ResolveNextUnreadTopicRouteOptions {
   streamId: string;
-  streamName: string;
   currentTopic?: string;
   topics?: readonly TopicWithLast[];
 }
 
 export function resolveNextUnreadTopicRoute({
   streamId,
-  streamName,
   currentTopic,
   topics,
 }: ResolveNextUnreadTopicRouteOptions): string | null {
@@ -28,7 +26,7 @@ export function resolveNextUnreadTopicRoute({
     return null;
   }
 
-  const streamSlug = slugForStream({ streamUuid: streamId, name: streamName });
+  const streamSlug = slugForStream({ streamUuid: streamId });
   return withCurrentOrgRoute(
     `/stream/${streamSlug}/topic/${encodeURIComponent(encodeTopicForRoute(nextTopic.subject))}`,
   );

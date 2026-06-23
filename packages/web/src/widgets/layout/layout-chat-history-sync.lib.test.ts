@@ -13,7 +13,7 @@ function createMessage(id: number | string): WorkspaceRawMessage {
     display_recipient: "general",
     subject: "topic",
     type: "stream",
-    stream_id: 1,
+    stream_uuid: "00000000-0000-4000-8000-000000000001",
     flags: ["read"],
   };
 }

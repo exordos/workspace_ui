@@ -7,14 +7,15 @@ import {
 } from "./unread-surfaces-sync.lib";
 
 const INSTANCE_ID = "entity-unread-sync-test";
+const STREAM_UUID = "11111111-1111-4111-8111-111111111111";
 
 function applyStreamUnreadMetadata(unreadCount: number): void {
   useChatListStore
     .getState()
-    .upsertStreamMetadataRows([{ streamUuid: "5", name: "engineering", unreadCount }]);
-  useChatListStore.getState().upsertStreamTopicShells("5", [
+    .upsertStreamMetadataRows([{ streamUuid: STREAM_UUID, name: "engineering", unreadCount }]);
+  useChatListStore.getState().upsertStreamTopicShells(STREAM_UUID, [
     {
-      streamUuid: "5",
+      streamUuid: STREAM_UUID,
       topicUuid: "55555555-5555-4555-8555-555555555555",
       name: "general",
       unreadCount,
@@ -54,17 +55,18 @@ describe("unread surface sync", () => {
     syncUnreadSurfacesFromEventDelta({
       source: "event-message",
       instanceId: INSTANCE_ID,
-      isStreamMuted: (streamId) => streamId === "5",
+      isStreamMuted: (streamId) => streamId === STREAM_UUID,
       applyDelta: () => {
         applyStreamUnreadMetadata(1);
       },
     });
 
-    expect(useChatListStore.getState().sidebarStreamsUnread).toBe(1);
+    expect(useChatListStore.getState().streamsMap.get(STREAM_UUID)?.unreadCount).toBe(1);
+    expect(useChatListStore.getState().sidebarStreamsUnread).toBe(0);
     expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(0);
   });
 
-  it("updates personal organization indicator from current chat-list", () => {
+  it("leaves organization counters server-owned after local sidebar changes", () => {
     useChatListStore.getState().setCurrentUserId(1);
 
     syncUnreadSurfacesFromDelta({
@@ -75,7 +77,9 @@ describe("unread surface sync", () => {
       },
     });
 
-    expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(1);
-    expect(useInstancesStore.getState().getInstanceDmUnreadCount(INSTANCE_ID)).toBe(1);
+    expect(Array.from(useChatListStore.getState().dmsMap.values())[0]?.unreadCount).toBe(1);
+    expect(useChatListStore.getState().sidebarDmsUnread).toBe(0);
+    expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(0);
+    expect(useInstancesStore.getState().getInstanceDmUnreadCount(INSTANCE_ID)).toBe(0);
   });
 });

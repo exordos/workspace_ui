@@ -11,7 +11,9 @@ export interface ChatPageMessageListSectionProps {
   hasInitialPayload: boolean;
   isDmView: boolean;
   activeDmUserIds: UserId[] | null;
+  activeStreamId: string | null | undefined;
   activeStream: string | null | undefined;
+  activeTopicUuid: string | null | undefined;
   activeTopic: string | null | undefined;
   messages: MockMessage[];
   currentUserId: UserId | undefined;
@@ -26,8 +28,6 @@ export interface ChatPageMessageListSectionProps {
   firstUnreadId: MessageId | undefined;
   unreadCount: number;
   focusedMessageId: MessageId | null | undefined;
-  onUnreadMessagesVisible: (messageIds: MessageId[]) => void;
-  onUnreadMessagesAtBottom: (messageIds: MessageId[]) => void;
   /** Failed initial load (no cache) vs network refresh failed after IndexedDB hydrate. */
   messagesLoadError: ChatMessagesLoadErrorKind | null;
   onRetryMessagesLoad: () => void;

@@ -4,10 +4,12 @@
  * Used in metadata-first bootstrap: unread counts come from stream/topic metadata, not from
  * capped GET /messages preview batches.
  */
-import { messageToStreamEntry } from "~/entities/chat-list/chat-list.lib";
+import {
+  messageToStreamEntry,
+  streamTopicIdentityFromMessage,
+} from "~/entities/chat-list/chat-list.lib";
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import type { MessageId } from "~/shared/lib/message-id.lib";
-import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import { streamTopicCompositeKey } from "./chat-list-stream-topic-index.lib";
 
@@ -42,8 +44,8 @@ export function shouldApplyStreamTopicPreviewFromFetchedMessage(
 export function resolveStreamSidebarTopicSubject(
   existingStream: StreamEntryInternal | undefined,
   message: WorkspaceRawMessage,
-): string {
-  const fallback = normalizeTopicForIdentity(message.subject ?? "");
+): string | null {
+  const fallback = streamTopicIdentityFromMessage(message)?.subject ?? null;
   const topicUuid = message.topic_uuid?.trim().toLowerCase();
   if (existingStream == null || topicUuid == null || topicUuid.length === 0) {
     return fallback;
@@ -71,11 +73,13 @@ function mergeStreamPreviewEntry(
   topicTime: string,
   topicTs: number,
   lastMessageId?: MessageId,
+  topicUuid?: string,
 ): StreamEntryInternal {
   const existingTopic = existing?.topics.get(topicSubject);
   const unreadCount = existingTopic?.unreadCount ?? 0;
+  const resolvedTopicUuid = topicUuid ?? existingTopic?.topicUuid;
   const topicEntry = {
-    ...(existingTopic?.topicUuid != null ? { topicUuid: existingTopic.topicUuid } : {}),
+    ...(resolvedTopicUuid != null ? { topicUuid: resolvedTopicUuid } : {}),
     subject: topicSubject,
     lastMessage: topicLastMessage,
     lastMessageSenderName: topicLastMessageSenderName,
@@ -126,6 +130,7 @@ export function mergeStreamSidebarPreviewsFromMessages(
   for (const m of messages) {
     if (m.type !== "stream" || m.stream_uuid == null) continue;
     const topic = resolveStreamSidebarTopicSubject(streamsMap.get(m.stream_uuid), m);
+    if (topic == null) continue;
     const key = streamTopicCompositeKey(m.stream_uuid, topic);
     const existing = streamTopicLatest.get(key);
     if (!existing || m.timestamp >= existing.timestamp) {
@@ -137,6 +142,7 @@ export function mergeStreamSidebarPreviewsFromMessages(
   for (const m of streamTopicLatest.values()) {
     const existing = nextStreams.get(m.stream_uuid ?? "");
     const subject = resolveStreamSidebarTopicSubject(existing, m);
+    if (subject == null) continue;
     const messageForEntry = subject === (m.subject ?? "") ? m : { ...m, subject };
     const result = messageToStreamEntry(messageForEntry);
     if (!result) continue;
@@ -170,6 +176,7 @@ export function mergeStreamSidebarPreviewsFromMessages(
         topic.time,
         topic.ts,
         m.id,
+        topic.topicUuid,
       ),
     );
   }

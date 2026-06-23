@@ -30,6 +30,7 @@ const {
   mockUpdateChatMetaPatch: vi.fn(),
   mockUpsertChatMessages: vi.fn(),
 }));
+const STREAM_UUID_5 = "00000000-0000-4000-8000-000000000005";
 
 vi.mock("~/shared/lib/env", async (importOriginal) => {
   const mod = await importOriginal<typeof import("~/shared/lib/env")>();
@@ -69,7 +70,7 @@ function mockMsg(overrides: MockMessageOverrides = {}): MockMessage {
     id: testMessageId(id ?? 1),
     sender_id: 10,
     sender_full_name: "Test User",
-    stream_id: 5,
+    stream_uuid: "00000000-0000-4000-8000-000000000005",
     subject: "topic1",
     content: "<p>hello</p>",
     timestamp: 1000,
@@ -122,18 +123,22 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
   it("with non-empty IDB cache still performs a full network fetch (no delta-only path)", async () => {
     const ctx: CurrentChatContext = {
       type: "stream",
-      streamId: 5,
+      streamId: STREAM_UUID_5,
       streamName: "general",
       topic: "topic1",
     };
     const cached = Array.from({ length: 15 }, (_, i) =>
-      mockMsg({ id: 86 + i, stream_id: 5, subject: "topic1" }),
+      mockMsg({
+        id: 86 + i,
+        stream_uuid: "00000000-0000-4000-8000-000000000005",
+        subject: "topic1",
+      }),
     );
     mockGetChatMessagesAscending.mockResolvedValue(cached);
     const boot = [
       mockMsg({
         id: "00000000-0000-4000-8000-000000000200",
-        stream_id: 5,
+        stream_uuid: "00000000-0000-4000-8000-000000000005",
         content: "<p>api</p>",
       }),
     ];
@@ -168,14 +173,14 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
   it("keeps IDB-hydrated messages when the network refresh returns an empty list", async () => {
     const ctx: CurrentChatContext = {
       type: "stream",
-      streamId: 5,
+      streamId: "00000000-0000-4000-8000-000000000005",
       streamName: "general",
       topic: "topic1",
     };
     const cached = [
       mockMsg({
         id: "00000000-0000-4000-8000-000000000086",
-        stream_id: 5,
+        stream_uuid: "00000000-0000-4000-8000-000000000005",
         content: "<p>cached</p>",
       }),
     ];
@@ -191,7 +196,7 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     expect(useCurrentChatMessagesStore.getState().messages).toEqual(cached);
     expect(useCurrentChatMessagesStore.getState().context).toMatchObject({
       type: "stream",
-      streamId: 5,
+      streamId: "00000000-0000-4000-8000-000000000005",
       streamName: "general",
       topic: "topic1",
     });
@@ -200,14 +205,14 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
   it("does not let cache metadata mark the live tail as having newer messages", async () => {
     const ctx: CurrentChatContext = {
       type: "stream",
-      streamId: 5,
+      streamId: "00000000-0000-4000-8000-000000000005",
       streamName: "general",
       topic: "topic1",
     };
     const cached = [
       mockMsg({
         id: "00000000-0000-4000-8000-000000000086",
-        stream_id: 5,
+        stream_uuid: "00000000-0000-4000-8000-000000000005",
         content: "<p>cached</p>",
       }),
     ];
@@ -230,7 +235,12 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     expect(useCurrentChatMessagesStore.getState().hasNewerMessages).toBe(false);
 
     deferred.resolve(
-      pageOf([mockMsg({ id: "00000000-0000-4000-8000-000000000200", stream_id: 5 })]),
+      pageOf([
+        mockMsg({
+          id: "00000000-0000-4000-8000-000000000200",
+          stream_uuid: STREAM_UUID_5,
+        }),
+      ]),
     );
     await loadPromise;
   });
@@ -243,7 +253,7 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     const cached = [
       mockMsg({
         id: "00000000-0000-4000-8000-000000000086",
-        stream_id: null,
+        stream_uuid: null,
         content: "<p>cached dm</p>",
       }),
     ];
@@ -267,12 +277,17 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
   it("with empty IDB cache loads the newest stream window", async () => {
     const ctx: CurrentChatContext = {
       type: "stream",
-      streamId: 5,
+      streamId: "00000000-0000-4000-8000-000000000005",
       streamName: "general",
       topic: "topic1",
     };
     mockGetChatMessagesAscending.mockResolvedValue([]);
-    const boot = [mockMsg({ id: "00000000-0000-4000-8000-000000000001", stream_id: 5 })];
+    const boot = [
+      mockMsg({
+        id: "00000000-0000-4000-8000-000000000001",
+        stream_uuid: "00000000-0000-4000-8000-000000000005",
+      }),
+    ];
     mockFetchChatMessagesPage.mockResolvedValue(pageOf(boot));
 
     await useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
@@ -299,11 +314,16 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
   it("with focusedMessageId skips IDB hydrate and loads a window around the anchor", async () => {
     const ctx: CurrentChatContext = {
       type: "stream",
-      streamId: 5,
+      streamId: "00000000-0000-4000-8000-000000000005",
       streamName: "general",
       topic: "topic1",
     };
-    const focused = [mockMsg({ id: "00000000-0000-4000-8000-000000000050", stream_id: 5 })];
+    const focused = [
+      mockMsg({
+        id: "00000000-0000-4000-8000-000000000050",
+        stream_uuid: "00000000-0000-4000-8000-000000000005",
+      }),
+    ];
     mockFetchChatMessagesPage.mockResolvedValue(pageOf(focused));
 
     await useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
@@ -329,7 +349,7 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       type: "dm",
       dmKey: "7,42",
     };
-    const focusedDm = [mockMsg({ id: "00000000-0000-4000-8000-000000000050", stream_id: null })];
+    const focusedDm = [mockMsg({ id: "00000000-0000-4000-8000-000000000050", stream_uuid: null })];
     mockFetchChatMessagesPage.mockResolvedValue(pageOf(focusedDm));
 
     await useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
@@ -352,14 +372,19 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
   it("loads a stream route through the unified page fetch", async () => {
     const ctx: CurrentChatContext = {
       type: "stream",
-      streamId: 5,
+      streamId: "00000000-0000-4000-8000-000000000005",
       streamName: "general",
       topic: "general",
       streamWideView: false,
     };
     mockGetChatMessagesAscending.mockResolvedValue([]);
     mockFetchChatMessagesPage.mockResolvedValue(
-      pageOf([mockMsg({ id: "00000000-0000-4000-8000-000000000002", stream_id: 5 })]),
+      pageOf([
+        mockMsg({
+          id: "00000000-0000-4000-8000-000000000002",
+          stream_uuid: STREAM_UUID_5,
+        }),
+      ]),
     );
 
     await useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
@@ -376,7 +401,7 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
   it("hydrates stream-wide mode from merged stream cache and limits to 100", async () => {
     const ctx: CurrentChatContext = {
       type: "stream",
-      streamId: 5,
+      streamId: "00000000-0000-4000-8000-000000000005",
       streamName: "general",
       topic: "general",
       streamWideView: true,
@@ -384,7 +409,7 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     const cachedWide = Array.from({ length: 130 }, (_, i) =>
       mockMsg({
         id: i + 1,
-        stream_id: 5,
+        stream_uuid: "00000000-0000-4000-8000-000000000005",
         subject: i % 2 === 0 ? "alpha" : "beta",
       }),
     );
@@ -400,7 +425,7 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     });
 
     await vi.waitFor(() => {
-      expect(mockGetStreamMessagesAscending).toHaveBeenCalledWith("test-instance", 5);
+      expect(mockGetStreamMessagesAscending).toHaveBeenCalledWith("test-instance", STREAM_UUID_5);
     });
     await vi.waitFor(() => {
       expect(useCurrentChatMessagesStore.getState().messages).toHaveLength(100);
@@ -412,7 +437,12 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     expect(hydrated[99]!.id).toBe(testMessageId(130));
 
     deferred.resolve(
-      pageOf([mockMsg({ id: "00000000-0000-4000-8000-000000000999", stream_id: 5 })]),
+      pageOf([
+        mockMsg({
+          id: "00000000-0000-4000-8000-000000000999",
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
+        }),
+      ]),
     );
     await loadPromise;
   });
@@ -420,7 +450,7 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
   it("persists stream-wide response via chat partitions", async () => {
     const ctx: CurrentChatContext = {
       type: "stream",
-      streamId: 5,
+      streamId: "00000000-0000-4000-8000-000000000005",
       streamName: "general",
       topic: "general",
       streamWideView: true,
@@ -428,8 +458,16 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
     mockGetStreamMessagesAscending.mockResolvedValue([]);
     mockFetchChatMessagesPage.mockResolvedValue(
       pageOf([
-        mockMsg({ id: "00000000-0000-4000-8000-000000000010", stream_id: 5, subject: "" }),
-        mockMsg({ id: "00000000-0000-4000-8000-000000000011", stream_id: 5, subject: "" }),
+        mockMsg({
+          id: "00000000-0000-4000-8000-000000000010",
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
+          subject: "",
+        }),
+        mockMsg({
+          id: "00000000-0000-4000-8000-000000000011",
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
+          subject: "",
+        }),
       ]),
     );
 
@@ -444,21 +482,21 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       (call) => (call[0] as { chatKey: string }).chatKey,
     );
     for (const key of upsertChatKeys) {
-      expect(key.startsWith("stream:5")).toBe(true);
+      expect(key.startsWith(`stream:${STREAM_UUID_5}`)).toBe(true);
     }
   });
 
   it("ignores stale initial response when a previous request resolves after a route switch", async () => {
     const firstCtx: CurrentChatContext = {
       type: "stream",
-      streamId: 5,
+      streamId: "00000000-0000-4000-8000-000000000005",
       streamName: "general",
       topic: "topic-1",
       streamWideView: false,
     };
     const secondCtx: CurrentChatContext = {
       type: "stream",
-      streamId: 5,
+      streamId: "00000000-0000-4000-8000-000000000005",
       streamName: "general",
       topic: "topic-2",
       streamWideView: false,
@@ -489,7 +527,7 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       pageOf([
         mockMsg({
           id: "00000000-0000-4000-8000-000000000202",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
           content: "<p>second</p>",
         }),
       ]),
@@ -501,7 +539,7 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       pageOf([
         mockMsg({
           id: "00000000-0000-4000-8000-000000000101",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
           content: "<p>first</p>",
         }),
       ]),

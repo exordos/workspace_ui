@@ -1,22 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { isTopicResolved, toResolvedTopicName, toUnresolvedTopicName } from "./topic-resolve";
+import { formatTopicDoneLabel } from "./topic-resolve";
 
 describe("topic-resolve", () => {
-  it("detects resolved topics by messenger-style checkmark prefix", () => {
-    expect(isTopicResolved("incident")).toBe(false);
-    expect(isTopicResolved("\u2714 incident")).toBe(true);
-    expect(isTopicResolved("\u2714   incident")).toBe(true);
+  it("adds a visual done marker without changing the underlying topic name", () => {
+    expect(formatTopicDoneLabel("incident", true)).toBe("\u2714 incident");
+    expect(formatTopicDoneLabel("incident", false)).toBe("incident");
   });
 
-  it("adds resolved marker only once", () => {
-    expect(toResolvedTopicName("incident")).toBe("\u2714 incident");
-    expect(toResolvedTopicName("\u2714 incident")).toBe("\u2714 incident");
-  });
-
-  it("removes resolved marker from topic names", () => {
-    expect(toUnresolvedTopicName("\u2714 incident")).toBe("incident");
-    expect(toUnresolvedTopicName("\u2714\uFE0F incident")).toBe("incident");
-    expect(toUnresolvedTopicName("\u2714\uFE0E incident")).toBe("incident");
-    expect(toUnresolvedTopicName("incident")).toBe("incident");
+  it("does not render a marker for blank labels", () => {
+    expect(formatTopicDoneLabel(" ", true)).toBe(" ");
   });
 });

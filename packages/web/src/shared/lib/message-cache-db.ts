@@ -668,7 +668,7 @@ export async function moveTopicMessagesInCache(options: {
   const newInstanceChatKey = instanceChatKey(instanceId, newChatKey);
 
   const normalizedTopicFromMessage = (message: MockMessage): string =>
-    normalizeTopicForIdentity(message.subject ?? "");
+    normalizeTopicForIdentity(message.topic_uuid ?? message.subject ?? "");
 
   const targetMessageIds = new Set(
     resolveTopicMoveTargetMessageIds({
@@ -787,7 +787,7 @@ export async function moveTopicToStreamInCache(options: {
   const newInstanceChatKey = instanceChatKey(instanceId, newChatKey);
 
   const normalizedTopicFromMessage = (message: MockMessage): string =>
-    normalizeTopicForIdentity(message.subject ?? "");
+    normalizeTopicForIdentity(message.topic_uuid ?? message.subject ?? "");
 
   const targetMessageIds = new Set(
     resolveTopicMoveTargetMessageIds({

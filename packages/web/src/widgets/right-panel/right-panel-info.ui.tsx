@@ -25,6 +25,7 @@ import { resolveCurrentUserChannelCapabilities } from "~/shared/lib/stream-membe
 import { resolveCanonicalStreamName } from "~/shared/lib/stream-name.lib";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { encodeTopicForRoute, normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import { formatTopicDoneLabel } from "~/shared/lib/topic-resolve";
 import { useInputMode } from "~/shared/lib/touch";
 import {
   numericUserIdOrNull,
@@ -175,10 +176,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     if (chatInfoData?.type !== "dm" && chatInfoData?.type !== "stream") {
       return [];
     }
-    const ids = chatInfoData.members
-      .map((member) => member.userId)
-      .map((userId) => numericUserIdOrNull(userId))
-      .filter((userId): userId is number => userId != null);
+    const ids = chatInfoData.members.map((member) => member.userId);
     return Array.from(new Set(ids));
   }, [chatInfoData]);
 
@@ -189,7 +187,6 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   }, [memberStatusIds]);
 
   const streamInfoData = chatInfoData?.type === "stream" ? chatInfoData : null;
-  const displayStreamName = (streamInfoData?.name?.trim() ?? "") || title.trim();
   const canonicalStreamName = useMemo(
     () =>
       resolveCanonicalStreamName({
@@ -229,7 +226,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   }, [canonicalStreamName, openAddMembers, streamId, streamMemberIds]);
   // Refetch channel members after add/remove invalidation.
   const handleStreamMembersChangedSuccess = useCallback(
-    (updatedStreamId: number) => {
+    (updatedStreamId: string) => {
       if (currentInstanceId == null) return;
       useChatInfoStore.getState().invalidateStream(currentInstanceId, updatedStreamId);
     },
@@ -326,7 +323,9 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     canonicalEditChannelName != null && canonicalEditChannelName.length > 0
       ? canonicalEditChannelName
       : stripSingleUiHashPrefix(title);
-  const channelTopics = streamInfoData?.topics ?? [];
+  const channelTopics = (streamInfoData?.topics ?? []).filter(
+    (topic) => topic.name.trim().length > 0,
+  );
   const handleOpenEdit = () => {
     setChannelActionError(null);
     setEditName(editChannelNameSeed);
@@ -388,9 +387,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     });
     if (nextVisibleStream) {
       void navigate(
-        withCurrentOrgRoute(
-          `/stream/${buildStreamSlug(nextVisibleStream.streamUuid)}`,
-        ),
+        withCurrentOrgRoute(`/stream/${buildStreamSlug(nextVisibleStream.streamUuid)}`),
         { replace: true },
       );
     } else {
@@ -602,6 +599,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
             <ul className="space-y-1.5">
               {channelTopics.map((topic) => {
                 const topicDisplay = resolveTopicDisplayInfo(topic.name);
+                const topicLabel = formatTopicDoneLabel(topicDisplay.label, topic.isDone === true);
                 return (
                   <li key={topic.topicUuid ?? topic.name}>
                     <div className="flex items-center gap-2 rounded-lg px-2 py-1 text-left text-sm text-text-primary transition-colors hover:bg-bg-elevated">
@@ -612,7 +610,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
                         disabled={topicDeletePendingName === topic.name}
                       >
                         <span className={`truncate ${topicDisplay.isSystem ? "italic" : ""}`}>
-                          {topicDisplay.label}
+                          {topicLabel}
                         </span>
                         {topic.unreadCount > 0 && (
                           <span className="flex h-5 min-w-5 flex-shrink-0 items-center justify-center rounded-full bg-accent px-1.5 text-[11px] font-medium text-on-accent">

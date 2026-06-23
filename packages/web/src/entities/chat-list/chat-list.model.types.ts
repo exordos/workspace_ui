@@ -32,6 +32,7 @@ export interface ChatListStreamTopicMetadataRow {
   name: string;
   unreadCount?: number;
   isDefault?: boolean;
+  isDone?: boolean;
 }
 
 export interface ChatListDmMetadataRow {
@@ -55,6 +56,7 @@ export interface ChatListPreviewSourceMessage {
     | string
     | { id: number; full_name: string; email?: string; avatar_url?: string }[];
   subject?: string;
+  topic_uuid?: string;
   content: string;
   timestamp: number;
   sender_full_name?: string;
@@ -80,9 +82,9 @@ export interface ChatListState {
   messageIdToLocation: Map<MessageId, MessageLocation>;
   /** Inverted index streamId+topic → message ids; patched incrementally on location changes. */
   streamTopicMessageIds: Map<string, MessageId[]>;
-  /** Sum of server stream unread counts; recomputed from metadata-backed maps. */
+  /** Server-owned stream unread total; local maps must not derive it. */
   sidebarStreamsUnread: number;
-  /** Sum of server DM unread counts; recomputed from metadata-backed maps. */
+  /** Server-owned DM unread total; local maps must not derive it. */
   sidebarDmsUnread: number;
   /** Server-backed unread @mentions count. Kept zero until the new backend exposes this value. */
   mentionsUnreadCount: number;

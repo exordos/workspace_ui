@@ -66,7 +66,7 @@ describe("messenger-message-map.lib", () => {
           timestamp: 100,
           subject: "t",
           type: "stream",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
         },
       });
       expect(result).not.toBeNull();

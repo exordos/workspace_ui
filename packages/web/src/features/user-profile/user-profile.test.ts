@@ -11,15 +11,15 @@ const OTHER_USER_UUID = "22222222-2222-4222-8222-222222222222";
 
 const { fetchUserMock, requestUserStatusMock } = vi.hoisted(() => ({
   fetchUserMock: vi.fn(),
-  requestUserStatusMock: vi.fn(() => Promise.resolve()),
+  requestUserStatusMock: vi.fn((_userId?: unknown, _options?: unknown) => Promise.resolve()),
 }));
 
 vi.mock("~/shared/api/messenger-users", () => ({
-  fetchUser: (...args: unknown[]) => fetchUserMock(...args),
+  fetchUser: (userId: unknown, options?: unknown) => fetchUserMock(userId, options),
 }));
 
 vi.mock("~/entities/user/api/user.api", () => ({
-  requestUserStatus: (...args: unknown[]) => requestUserStatusMock(...args),
+  requestUserStatus: (userId: unknown, options?: unknown) => requestUserStatusMock(userId, options),
 }));
 
 const MOCK_USER = {

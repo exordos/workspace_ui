@@ -11,6 +11,9 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import type { AnalyticsProvider, EventProperties, UserTraits } from "~/shared/lib/analytics/types";
 import { analytics, AnalyticsEvent } from "./analytics";
 
+const STREAM_UUID_1 = "00000000-0000-4000-8000-000000000001";
+const STREAM_UUID_42 = "00000000-0000-4000-8000-000000000042";
+
 function createMockProvider(name = "mock"): AnalyticsProvider & {
   trackCalls: { event: string; properties?: EventProperties }[];
   pageCalls: { path: string; title?: string }[];
@@ -215,9 +218,12 @@ describe("Analytics PII stripping", () => {
 
   // Non-sensitive properties must pass through for proper analytics
   it("passes through non-PII properties untouched", () => {
-    analytics.track("evt", { streamId: 42, hasAttachment: true });
+    analytics.track("evt", {
+      streamId: STREAM_UUID_42,
+      hasAttachment: true,
+    });
     const props = provider.trackCalls[0]?.properties;
-    expect(props?.streamId).toBe(42);
+    expect(props?.streamId).toBe(STREAM_UUID_42);
     expect(props?.hasAttachment).toBe(true);
   });
 
@@ -423,11 +429,11 @@ describe("Analytics setSuperProperties", () => {
   // Super props (plan, org) are auto-added so callers don't repeat them
   it("super properties are merged into every track call", () => {
     analytics.setSuperProperties({ plan: "enterprise", org: "acme" });
-    analytics.track("evt", { streamId: 1 });
+    analytics.track("evt", { streamId: STREAM_UUID_1 });
     const props = provider.trackCalls.find((c) => c.event === "evt")?.properties;
     expect(props?.plan).toBe("enterprise");
     expect(props?.org).toBe("acme");
-    expect(props?.streamId).toBe(1);
+    expect(props?.streamId).toBe(STREAM_UUID_1);
   });
 
   // Explicit event props take precedence over super props (specificity wins)

@@ -7,7 +7,7 @@ describe("enrichSidebarChatsWithMentionFlags", () => {
     const chats: SidebarChat[] = [
       {
         type: "stream",
-        stream_id: 5,
+        streamUuid: "00000000-0000-4000-8000-000000000005",
         name: "general",
         topics: [{ subject: "bugs", badge: 2 }],
         badge: 2,
@@ -18,7 +18,10 @@ describe("enrichSidebarChatsWithMentionFlags", () => {
       chats,
       new Set(["00000000-0000-4000-8000-000000000100"]),
       new Map([
-        ["00000000-0000-4000-8000-000000000100", { type: "stream", stream_id: 5, topic: "bugs" }],
+        [
+          "00000000-0000-4000-8000-000000000100",
+          { type: "stream", streamUuid: "00000000-0000-4000-8000-000000000005", topic: "bugs" },
+        ],
       ]),
     );
 

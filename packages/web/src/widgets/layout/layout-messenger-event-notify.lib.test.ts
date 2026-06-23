@@ -11,6 +11,8 @@ import {
 import { clearNotificationAggregateRegistry } from "./notification-aggregate-registry.lib";
 import type { LayoutMessengerEventDispatchContext } from "./layout-messenger-event-dispatch.types";
 
+const STREAM_UUID = "00000000-0000-4000-8000-000000000010";
+
 type MuteStoreState = ReturnType<typeof useMuteStore.getState>;
 type MuteSnapshotInput = Parameters<MuteStoreState["setFromServer"]>[0];
 
@@ -37,7 +39,7 @@ function createRawMessage(overrides: WorkspaceRawMessageOverrides = {}): Workspa
     content: "<p>Hello</p>",
     timestamp: 1,
     type: "stream",
-    stream_id: 10,
+    stream_uuid: STREAM_UUID,
     display_recipient: "General Discussion",
     subject: "Bugs",
     flags: [],
@@ -99,7 +101,6 @@ function createContext(notifications = createNotifications()): LayoutMessengerEv
     },
     inbox: {
       markStale: vi.fn(),
-      markAsRead: vi.fn(),
       clearEntries: vi.fn(),
     },
     notifications,
@@ -131,9 +132,9 @@ describe("deliverDesktopNotificationForMessage", () => {
     expect(notifications.show).toHaveBeenCalledWith({
       title: "Alice · General Discussion · Bugs",
       body: "Hello",
-      tag: "bucket:inst-1::stream:10:Bugs:sender:42",
+      tag: `bucket:inst-1::stream:${STREAM_UUID}:Bugs:sender:42`,
       silent: true,
-      clickRoute: `/stream/10-general-discussion/topic/Bugs?msg=${testMessageId(55)}`,
+      clickRoute: `/stream/${STREAM_UUID}/topic/Bugs?msg=${testMessageId(55)}`,
     });
   });
 
@@ -144,7 +145,7 @@ describe("deliverDesktopNotificationForMessage", () => {
       createRawMessage({
         id: "00000000-0000-4000-8000-000000000077",
         type: "private",
-        stream_id: null,
+        stream_uuid: null,
         subject: "",
         display_recipient: [
           { id: 7, full_name: "You" },
@@ -173,7 +174,7 @@ describe("deliverDesktopNotificationForMessage", () => {
     deliverDesktopNotificationForMessage(
       createRawMessage({
         type: "private",
-        stream_id: null,
+        stream_uuid: null,
         subject: "",
         display_recipient: undefined,
       }),
@@ -195,7 +196,7 @@ describe("deliverDesktopNotificationForMessage", () => {
 
 describe("maybeNotifyNewMessage", () => {
   it("suppresses a normal stream message in a muted channel", () => {
-    setMuteSnapshot({ mutedStreamIds: [10] });
+    setMuteSnapshot({ mutedStreamIds: [STREAM_UUID] });
     const notifications = createNotifications();
 
     maybeNotifyNewMessage(createContext(notifications), createRawMessage(), 7, false, false);
@@ -204,7 +205,7 @@ describe("maybeNotifyNewMessage", () => {
   });
 
   it("suppresses a stream mention in a muted channel", () => {
-    setMuteSnapshot({ mutedStreamIds: [10] });
+    setMuteSnapshot({ mutedStreamIds: [STREAM_UUID] });
     const notifications = createNotifications();
 
     maybeNotifyNewMessage(
@@ -220,8 +221,8 @@ describe("maybeNotifyNewMessage", () => {
 
   it("suppresses a followed topic in a muted channel", () => {
     setMuteSnapshot({
-      mutedStreamIds: [10],
-      followedTopics: [{ streamId: 10, topic: "Bugs" }],
+      mutedStreamIds: [STREAM_UUID],
+      followedTopics: [{ streamId: STREAM_UUID, topic: "Bugs" }],
     });
     const notifications = createNotifications();
 
@@ -233,9 +234,9 @@ describe("maybeNotifyNewMessage", () => {
 
   it("suppresses an unmuted topic in a muted channel", () => {
     setMuteSnapshot({
-      mutedStreamIds: [10],
-      unmutedTopics: [{ streamId: 10, topic: "Bugs" }],
-      streamDesktopNotifyEnabledIds: [10],
+      mutedStreamIds: [STREAM_UUID],
+      unmutedTopics: [{ streamId: STREAM_UUID, topic: "Bugs" }],
+      streamDesktopNotifyEnabledIds: [STREAM_UUID],
     });
     const notifications = createNotifications();
     const ctx = createContext(notifications);
@@ -274,16 +275,16 @@ describe("maybeNotifyNewMessage", () => {
     expect(notifications.show).toHaveBeenCalledWith({
       title: "Alice · General Discussion · Bugs",
       body: "Hello",
-      tag: "bucket:inst-1::stream:10:Bugs:sender:42",
+      tag: `bucket:inst-1::stream:${STREAM_UUID}:Bugs:sender:42`,
       silent: true,
-      clickRoute: `/stream/10-general-discussion/topic/Bugs?msg=${testMessageId(55)}`,
+      clickRoute: `/stream/${STREAM_UUID}/topic/Bugs?msg=${testMessageId(55)}`,
     });
   });
 
   it("allows a normal stream message in a subscribed channel", () => {
     setMuteSnapshot({
-      streamDesktopNotifyEnabledIds: [10],
-      streamAudibleNotifyEnabledIds: [10],
+      streamDesktopNotifyEnabledIds: [STREAM_UUID],
+      streamAudibleNotifyEnabledIds: [STREAM_UUID],
     });
     const notifications = createNotifications();
 
@@ -292,17 +293,17 @@ describe("maybeNotifyNewMessage", () => {
     expect(notifications.show).toHaveBeenCalledWith({
       title: "Alice · General Discussion · Bugs",
       body: "Hello",
-      tag: "bucket:inst-1::stream:10:Bugs:sender:42",
+      tag: `bucket:inst-1::stream:${STREAM_UUID}:Bugs:sender:42`,
       silent: true,
-      clickRoute: `/stream/10-general-discussion/topic/Bugs?msg=${testMessageId(55)}`,
+      clickRoute: `/stream/${STREAM_UUID}/topic/Bugs?msg=${testMessageId(55)}`,
     });
     expect(notifications.playSound).toHaveBeenCalledWith("default");
   });
 
   it("suppresses a muted topic even in a subscribed channel", () => {
     setMuteSnapshot({
-      mutedTopics: [{ streamId: 10, topic: "Bugs" }],
-      streamDesktopNotifyEnabledIds: [10],
+      mutedTopics: [{ streamId: STREAM_UUID, topic: "Bugs" }],
+      streamDesktopNotifyEnabledIds: [STREAM_UUID],
     });
     const notifications = createNotifications();
 
@@ -312,23 +313,23 @@ describe("maybeNotifyNewMessage", () => {
   });
 
   it("allows a followed topic when followed-topic desktop notifications are enabled", () => {
-    setMuteSnapshot({ followedTopics: [{ streamId: 10, topic: "Bugs" }] });
+    setMuteSnapshot({ followedTopics: [{ streamId: STREAM_UUID, topic: "Bugs" }] });
     const notifications = createNotifications();
 
     maybeNotifyNewMessage(createContext(notifications), createRawMessage(), 7, false, false);
 
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({
-        tag: "bucket:inst-1::stream:10:Bugs:sender:42",
-        clickRoute: `/stream/10-general-discussion/topic/Bugs?msg=${testMessageId(55)}`,
+        tag: `bucket:inst-1::stream:${STREAM_UUID}:Bugs:sender:42`,
+        clickRoute: `/stream/${STREAM_UUID}/topic/Bugs?msg=${testMessageId(55)}`,
       }),
     );
   });
 
   it("aggregates repeated stream notifications from the same sender in one bucket", () => {
     setMuteSnapshot({
-      streamDesktopNotifyEnabledIds: [10],
-      streamAudibleNotifyEnabledIds: [10],
+      streamDesktopNotifyEnabledIds: [STREAM_UUID],
+      streamAudibleNotifyEnabledIds: [STREAM_UUID],
     });
     const notifications = createNotifications();
     const ctx = createContext(notifications);
@@ -349,23 +350,23 @@ describe("maybeNotifyNewMessage", () => {
     expect(notifications.show).toHaveBeenNthCalledWith(1, {
       title: "Alice · General Discussion · Bugs",
       body: "Hello",
-      tag: "bucket:inst-1::stream:10:Bugs:sender:42",
+      tag: `bucket:inst-1::stream:${STREAM_UUID}:Bugs:sender:42`,
       silent: true,
-      clickRoute: `/stream/10-general-discussion/topic/Bugs?msg=${testMessageId(55)}`,
+      clickRoute: `/stream/${STREAM_UUID}/topic/Bugs?msg=${testMessageId(55)}`,
     });
     expect(notifications.show).toHaveBeenNthCalledWith(2, {
       title: "2 messages from Alice · General Discussion · Bugs",
       body: "Latest",
-      tag: "bucket:inst-1::stream:10:Bugs:sender:42",
+      tag: `bucket:inst-1::stream:${STREAM_UUID}:Bugs:sender:42`,
       silent: true,
-      clickRoute: `/stream/10-general-discussion/topic/Bugs?msg=${testMessageId(56)}`,
+      clickRoute: `/stream/${STREAM_UUID}/topic/Bugs?msg=${testMessageId(56)}`,
     });
   });
 
   it("keeps separate stream notification buckets for different senders", () => {
     setMuteSnapshot({
-      streamDesktopNotifyEnabledIds: [10],
-      streamAudibleNotifyEnabledIds: [10],
+      streamDesktopNotifyEnabledIds: [STREAM_UUID],
+      streamAudibleNotifyEnabledIds: [STREAM_UUID],
     });
     const notifications = createNotifications();
     const ctx = createContext(notifications);
@@ -386,13 +387,13 @@ describe("maybeNotifyNewMessage", () => {
     expect(notifications.show).toHaveBeenCalledTimes(2);
     expect(notifications.show).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ tag: "bucket:inst-1::stream:10:Bugs:sender:42" }),
+      expect.objectContaining({ tag: `bucket:inst-1::stream:${STREAM_UUID}:Bugs:sender:42` }),
     );
     expect(notifications.show).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
         title: "Bob · General Discussion · Bugs",
-        tag: "bucket:inst-1::stream:10:Bugs:sender:99",
+        tag: `bucket:inst-1::stream:${STREAM_UUID}:Bugs:sender:99`,
       }),
     );
   });
@@ -405,7 +406,7 @@ describe("maybeNotifyNewMessage", () => {
       createRawMessage({
         id: "00000000-0000-4000-8000-000000000077",
         type: "private",
-        stream_id: null,
+        stream_uuid: null,
         subject: "",
         display_recipient: [
           { id: 7, full_name: "You" },
@@ -437,7 +438,7 @@ describe("maybeNotifyNewMessage", () => {
       createContext(notifications),
       createRawMessage({
         type: "private",
-        stream_id: null,
+        stream_uuid: null,
         subject: "",
         display_recipient: [{ id: 42, full_name: "Alice" }],
       }),
@@ -451,8 +452,8 @@ describe("maybeNotifyNewMessage", () => {
 
   it("keeps identical notifications isolated across instances", () => {
     setMuteSnapshot({
-      streamDesktopNotifyEnabledIds: [10],
-      streamAudibleNotifyEnabledIds: [10],
+      streamDesktopNotifyEnabledIds: [STREAM_UUID],
+      streamAudibleNotifyEnabledIds: [STREAM_UUID],
     });
     const notificationsA = createNotifications();
     const notificationsB = createNotifications();
@@ -467,10 +468,10 @@ describe("maybeNotifyNewMessage", () => {
     );
 
     expect(notificationsA.show).toHaveBeenCalledWith(
-      expect.objectContaining({ tag: "bucket:inst-1::stream:10:Bugs:sender:42" }),
+      expect.objectContaining({ tag: `bucket:inst-1::stream:${STREAM_UUID}:Bugs:sender:42` }),
     );
     expect(notificationsB.show).toHaveBeenCalledWith(
-      expect.objectContaining({ tag: "bucket:inst-2::stream:10:Bugs:sender:42" }),
+      expect.objectContaining({ tag: `bucket:inst-2::stream:${STREAM_UUID}:Bugs:sender:42` }),
     );
   });
 });

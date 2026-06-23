@@ -73,6 +73,12 @@ export interface DeleteTopicResult {
   errorCode?: string;
 }
 
+export interface UpdateStreamTopicResult {
+  ok: boolean;
+  topic: MessengerStreamTopic | null;
+  errorCode?: string;
+}
+
 /** PATCH /streams/{id} response fields relevant to unarchive and server compatibility. */
 interface StreamPatchResponsePayload {
   result?: string;
@@ -120,47 +126,6 @@ function readStreamPatchErrorMessage(
 function includesUnsupportedIsArchivedParameter(value: unknown): boolean {
   if (!Array.isArray(value)) return false;
   return value.some((entry) => entry === "is_archived");
-}
-
-function parsePrincipalKeyToUserId(value: string): number | null {
-  const numeric = Number(value);
-  if (!Number.isInteger(numeric) || numeric <= 0) {
-    return null;
-  }
-  return numeric;
-}
-
-function parseUserIdsFromPrincipalMap(value: unknown): number[] {
-  if (value == null || typeof value !== "object" || Array.isArray(value)) {
-    return [];
-  }
-  const ids: number[] = [];
-  for (const key of Object.keys(value)) {
-    const userId = parsePrincipalKeyToUserId(key);
-    if (userId != null) {
-      ids.push(userId);
-    }
-  }
-  return ids;
-}
-
-function parseUnauthorizedStreams(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value
-      .filter((row): row is string => typeof row === "string")
-      .map((row) => row.trim())
-      .filter((row) => row.length > 0);
-  }
-  if (value != null && typeof value === "object" && !Array.isArray(value)) {
-    return Object.keys(value)
-      .filter((row) => row.trim().length > 0)
-      .map((row) => row.trim());
-  }
-  return [];
-}
-
-function hasPrincipalMap(value: unknown): value is Record<string, unknown> {
-  return value != null && typeof value === "object" && !Array.isArray(value);
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -360,6 +325,7 @@ function parseStreamTopic(row: unknown): MessengerStreamTopic | null {
     stream_uuid: streamUuid,
     unread_count: readSafeCount(row.unread_count),
     is_default: row.is_default === true,
+    is_done: row.is_done === true,
     ...(projectId != null ? { project_id: projectId } : {}),
     ...(createdAt != null ? { created_at: createdAt } : {}),
     ...(updatedAt != null ? { updated_at: updatedAt } : {}),
@@ -419,6 +385,98 @@ export async function createStreamTopic(params: {
     return null;
   }
   return topic;
+}
+
+/** Updates a stream topic entity through Workspace `PUT /stream_topics/{topic_uuid}`. */
+export async function updateStreamTopic(params: {
+  topicUuid: string;
+  streamUuid?: string;
+  name?: string;
+}): Promise<UpdateStreamTopicResult> {
+  const topicUuid = readUuid(params.topicUuid);
+  if (topicUuid == null) {
+    return { ok: false, topic: null, errorCode: "invalid_topic_uuid" };
+  }
+
+  const body: Record<string, string> = {};
+  if (params.name !== undefined) {
+    const name = readTrimmedString(params.name);
+    if (name == null) {
+      return { ok: false, topic: null, errorCode: "invalid_topic_name" };
+    }
+    body.name = name;
+  }
+  if (params.streamUuid !== undefined) {
+    const streamUuid = readUuid(params.streamUuid);
+    if (streamUuid == null) {
+      return { ok: false, topic: null, errorCode: "invalid_stream_uuid" };
+    }
+    body.stream_uuid = streamUuid;
+  }
+  if (Object.keys(body).length === 0) {
+    return { ok: false, topic: null, errorCode: "empty_update" };
+  }
+
+  try {
+    const response = await messengerApi.putJsonWithBase(
+      getMessengerWorkspaceApiBaseForCurrentInstance(),
+      `/stream_topics/${topicUuid}`,
+      body,
+    );
+    if (!response.ok) {
+      return { ok: false, topic: null, errorCode: `http_${response.status}` };
+    }
+    const data = isRecord(response.data) ? response.data : {};
+    if (data.result === "error") {
+      const code = typeof data.code === "string" ? data.code : undefined;
+      return { ok: false, topic: null, errorCode: code ?? "unknown_error" };
+    }
+    const topic = parseStreamTopic(response.data);
+    if (topic == null) {
+      log.warn("Stream topic update returned invalid payload", {
+        topicUuid,
+        streamUuid: body.stream_uuid,
+      });
+      return { ok: false, topic: null, errorCode: "invalid_response" };
+    }
+    return { ok: true, topic };
+  } catch {
+    return { ok: false, topic: null, errorCode: "network_error" };
+  }
+}
+
+/** Toggles the server-owned done state for a stream topic. */
+export async function toggleStreamTopicDone(topicUuid: string): Promise<UpdateStreamTopicResult> {
+  const normalizedTopicUuid = readUuid(topicUuid);
+  if (normalizedTopicUuid == null) {
+    return { ok: false, topic: null, errorCode: "invalid_topic_uuid" };
+  }
+
+  try {
+    const response = await messengerApi.postJsonWithBase(
+      getMessengerWorkspaceApiBaseForCurrentInstance(),
+      `/stream_topics/${normalizedTopicUuid}/actions/toggle_done/invoke`,
+      {},
+    );
+    if (!response.ok) {
+      return { ok: false, topic: null, errorCode: `http_${response.status}` };
+    }
+    const data = isRecord(response.data) ? response.data : {};
+    if (data.result === "error") {
+      const code = typeof data.code === "string" ? data.code : undefined;
+      return { ok: false, topic: null, errorCode: code ?? "unknown_error" };
+    }
+    const topic = parseStreamTopic(response.data);
+    if (topic == null) {
+      log.warn("Stream topic done toggle returned invalid payload", {
+        topicUuid: normalizedTopicUuid,
+      });
+      return { ok: false, topic: null, errorCode: "invalid_response" };
+    }
+    return { ok: true, topic };
+  } catch {
+    return { ok: false, topic: null, errorCode: "network_error" };
+  }
 }
 
 /** Finds an existing 1:1 private stream row for a peer IAM UUID through stream bindings. */
@@ -549,36 +607,36 @@ export async function fetchStreams(): Promise<MockStream[]> {
 }
 
 /** Adds users to an existing stream when the backend supports member mutations. */
-export async function addMembersToStream(
+export function addMembersToStream(
   params: AddStreamMembersParams,
 ): Promise<AddStreamMembersResult> {
   const streamName = guard.nonEmpty(params.streamName, "addMembersToStream.streamName").trim();
   const requestedUserIds = normalizePrincipalUserIds(params.userIds);
 
   if (requestedUserIds.length === 0) {
-    return {
+    return Promise.resolve({
       ok: true,
       addedUserIds: [],
       alreadySubscribedUserIds: [],
       unauthorizedStreams: [],
-    };
+    });
   }
 
   log.warn("Stream member mutation is unsupported by the current backend", {
     streamNameLength: streamName.length,
     requestedCount: requestedUserIds.length,
   });
-  return {
+  return Promise.resolve({
     ok: false,
     addedUserIds: [],
     alreadySubscribedUserIds: [],
     unauthorizedStreams: [],
     errorCode: "unsupported",
-  };
+  });
 }
 
 /** Removes members from a stream when the backend supports member mutations. */
-export async function removeMembersFromStream(
+export function removeMembersFromStream(
   params: RemoveStreamMembersParams,
 ): Promise<RemoveStreamMembersResult> {
   const streamName = guard.nonEmpty(params.streamName, "removeMembersFromStream.streamName").trim();
@@ -589,25 +647,25 @@ export async function removeMembersFromStream(
   ).sort((a, b) => a - b);
 
   if (requestedUserIds.length === 0) {
-    return {
+    return Promise.resolve({
       ok: true,
       removedUserIds: [],
       alreadyUnsubscribedUserIds: [],
       unauthorizedStreams: [],
-    };
+    });
   }
 
   log.warn("Stream member removal is unsupported by the current backend", {
     streamNameLength: streamName.length,
     requestedCount: requestedUserIds.length,
   });
-  return {
+  return Promise.resolve({
     ok: false,
     removedUserIds: [],
     alreadyUnsubscribedUserIds: [],
     unauthorizedStreams: [],
     errorCode: "unsupported",
-  };
+  });
 }
 
 export async function fetchTopics(streamUuid: string): Promise<string[]> {

@@ -2,56 +2,55 @@ import { describe, expect, it } from "vitest";
 import {
   decodeTopicFromRoute,
   encodeTopicForRoute,
-  EMPTY_TOPIC_ROUTE_TOKEN,
   isEmptyTopicIdentity,
   normalizeTopicForIdentity,
   topicToApiOperand,
 } from "./topic-identity.lib";
 
 describe("normalizeTopicForIdentity", () => {
-  it("maps legacy general chat alias to empty default topic", () => {
-    expect(normalizeTopicForIdentity("general chat")).toBe("");
-    expect(normalizeTopicForIdentity("General Chat")).toBe("");
-    expect(normalizeTopicForIdentity("  general chat  ")).toBe("");
-  });
-
-  it("maps Russian general chat alias to empty default topic", () => {
-    expect(normalizeTopicForIdentity("общий чат")).toBe("");
-  });
-
-  it("keeps literal general topic distinct from default topic", () => {
+  it("preserves server-provided topic names", () => {
+    expect(normalizeTopicForIdentity("general chat")).toBe("general chat");
+    expect(normalizeTopicForIdentity("General Chat")).toBe("General Chat");
+    expect(normalizeTopicForIdentity("  general chat  ")).toBe("general chat");
+    expect(normalizeTopicForIdentity("общий чат")).toBe("общий чат");
     expect(normalizeTopicForIdentity("general")).toBe("general");
-    expect(normalizeTopicForIdentity("")).toBe("");
   });
 
-  it("preserves non-default topic names", () => {
-    expect(normalizeTopicForIdentity("release")).toBe("release");
+  it("keeps only blank topics empty", () => {
+    expect(normalizeTopicForIdentity("")).toBe("");
+    expect(normalizeTopicForIdentity("   ")).toBe("");
   });
 });
 
 describe("topicToApiOperand", () => {
-  it("uses empty operand for general chat alias", () => {
-    expect(topicToApiOperand("general chat")).toBe("");
+  it("uses empty operand only for blank topic", () => {
+    expect(topicToApiOperand("")).toBe("");
+    expect(topicToApiOperand("general chat")).toBe("general chat");
     expect(topicToApiOperand("general")).toBe("general");
   });
 });
 
 describe("encodeTopicForRoute", () => {
-  it("encodes general chat alias as empty topic route token", () => {
-    expect(encodeTopicForRoute("general chat")).toBe(EMPTY_TOPIC_ROUTE_TOKEN);
+  it("preserves route topic segments without empty-topic tokens", () => {
+    expect(encodeTopicForRoute("")).toBe("");
+    expect(encodeTopicForRoute("general chat")).toBe("general chat");
+    expect(encodeTopicForRoute("__empty__")).toBe("__empty__");
   });
 });
 
 describe("decodeTopicFromRoute", () => {
-  it("decodes general chat segment to empty topic identity", () => {
-    expect(decodeTopicFromRoute("general chat")).toBe("");
+  it("decodes route topic segments as literal server topics", () => {
+    expect(decodeTopicFromRoute("__empty__")).toBe("__empty__");
+    expect(decodeTopicFromRoute("~__empty__")).toBe("~__empty__");
+    expect(decodeTopicFromRoute("general chat")).toBe("general chat");
   });
 });
 
 describe("isEmptyTopicIdentity", () => {
-  it("returns true for empty and alias default topics", () => {
+  it("returns true only for blank topics", () => {
     expect(isEmptyTopicIdentity("")).toBe(true);
-    expect(isEmptyTopicIdentity("general chat")).toBe(true);
+    expect(isEmptyTopicIdentity("   ")).toBe(true);
+    expect(isEmptyTopicIdentity("general chat")).toBe(false);
     expect(isEmptyTopicIdentity("general")).toBe(false);
   });
 });

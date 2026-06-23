@@ -41,8 +41,6 @@ vi.mock("~/shared/api/client", () => ({
     realm: "https://messenger.test",
     login: "test@test.com",
     authType: "iam",
-    iamAccessToken: "test",
-    authType: "iam",
     iamAccessToken: "iam-token",
   }),
   getWorkspaceApiBaseForCurrentInstance: () => "https://messenger.test",

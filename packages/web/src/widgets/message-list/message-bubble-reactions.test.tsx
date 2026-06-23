@@ -10,7 +10,7 @@ function createMessage(overrides: Partial<MockMessage> = {}): MockMessage {
     id: "00000000-0000-4000-8000-000000000001",
     sender_id: 77,
     sender_full_name: "Alice",
-    stream_id: 10,
+    stream_uuid: "00000000-0000-4000-8000-000000000010",
     subject: "general",
     content: "<p>Hello</p>",
     timestamp: 1710000000,
@@ -218,7 +218,7 @@ describe("MessageBubble quick reactions", () => {
     render(
       <MessageBubble
         message={createMessage({
-          stream_id: null,
+          stream_uuid: null,
           subject: "",
           display_recipient: [
             { id: 77, full_name: "Alice" },

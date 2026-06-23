@@ -88,6 +88,29 @@ function ActivitySenderName({ senderId, fallback }: { senderId: number; fallback
   return <>{displayName !== "Unknown" ? displayName : fallback}</>;
 }
 
+function nonEmptyText(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed != null && trimmed.length > 0 ? trimmed : null;
+}
+
+function resolveActivityTopicName(
+  message: WorkspaceRawMessage,
+  streamsMap: ReturnType<typeof useChatListStore.getState>["streamsMap"],
+): string | null {
+  const topicUuid = nonEmptyText(message.topic_uuid);
+  if (message.stream_uuid != null && topicUuid != null) {
+    const stream = streamsMap.get(message.stream_uuid);
+    if (stream != null) {
+      for (const topic of stream.topics.values()) {
+        if (topic.topicUuid === topicUuid) {
+          return nonEmptyText(topic.subject);
+        }
+      }
+    }
+  }
+  return nonEmptyText(message.subject);
+}
+
 const DraftChatContextLabel = React.memo<{ draft: Draft }>(({ draft }) => {
   const streamsMap = useChatListStore((s) => s.streamsMap);
   const currentUserId = useChatListStore((s) => s.currentUserId ?? null);
@@ -105,7 +128,7 @@ const DraftChatContextLabel = React.memo<{ draft: Draft }>(({ draft }) => {
     }),
   );
   if (draft.type === "stream" && draft.to.length > 0) {
-    const streamId = draft.to[0]!;
+    const streamId = String(draft.to[0]!);
     const streamName = streamsMap.get(streamId)?.name ?? String(streamId);
     const topicDisplay = resolveTopicDisplayInfo(draft.topic ?? "");
     return (
@@ -360,7 +383,8 @@ export const ActivityPage: React.FC = () => {
         const streamUuid = draft.to[0]!;
         if (typeof streamUuid !== "string") return;
         const slug = slugForStream({ streamUuid });
-        const topic = draft.topic ?? "";
+        const topic = draft.topic?.trim() ?? "";
+        if (topic.length === 0) return;
         void navigate(
           withCurrentOrgRoute(
             `/stream/${slug}/topic/${encodeURIComponent(encodeTopicForRoute(topic))}`,
@@ -578,7 +602,7 @@ export const ActivityPage: React.FC = () => {
             const isStream = m.type === "stream" && m.stream_uuid != null;
             const streamName =
               isStream && typeof m.display_recipient === "string" ? m.display_recipient : null;
-            const topic = isStream ? (m.subject ?? "").trim() : null;
+            const topic = isStream ? resolveActivityTopicName(m, streamsMap) : null;
             const topicDisplay = isStream ? resolveTopicDisplayInfo(topic ?? "") : null;
             let dmName: string | null = null;
             if (m.type === "private" && Array.isArray(m.display_recipient)) {

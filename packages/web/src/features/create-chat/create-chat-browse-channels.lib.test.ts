@@ -16,11 +16,20 @@ const baseStreamFields = {
   stream_post_policy: 1,
 };
 
+const STREAM_UUID_1 = "00000000-0000-4000-8000-000000000001";
+const STREAM_UUID_2 = "00000000-0000-4000-8000-000000000002";
+const STREAM_UUID_3 = "00000000-0000-4000-8000-000000000003";
+
 describe("buildBrowseChannelRows", () => {
   const streams = [
-    { stream_id: 1, name: "general", description: "General chat", ...baseStreamFields },
     {
-      stream_id: 2,
+      stream_uuid: STREAM_UUID_1,
+      name: "general",
+      description: "General chat",
+      ...baseStreamFields,
+    },
+    {
+      stream_uuid: STREAM_UUID_2,
       name: "engineering",
       description: "Eng team",
       ...baseStreamFields,
@@ -28,7 +37,7 @@ describe("buildBrowseChannelRows", () => {
       stream_weekly_traffic: 100,
     },
     {
-      stream_id: 3,
+      stream_uuid: STREAM_UUID_3,
       name: "design",
       description: "",
       ...baseStreamFields,
@@ -40,27 +49,27 @@ describe("buildBrowseChannelRows", () => {
   it("filters unsubscribed channels by default and sorts alphabetically", () => {
     const rows = buildBrowseChannelRows({
       streams,
-      subscriptions: [{ stream_id: 1, is_archived: false }],
+      subscriptions: [{ stream_uuid: STREAM_UUID_1, is_archived: false }],
       searchQuery: "",
       subscriptionFilter: "unsubscribed",
     });
 
     expect(rows).toHaveLength(2);
-    expect(rows.map((row) => row.streamId)).toEqual([3, 2]);
+    expect(rows.map((row) => row.streamUuid)).toEqual([STREAM_UUID_3, STREAM_UUID_2]);
     expect(rows.every((row) => !row.isSubscribed)).toBe(true);
   });
 
   it("shows only subscribed channels when filter is subscribed", () => {
     const rows = buildBrowseChannelRows({
       streams,
-      subscriptions: [{ stream_id: 1, is_archived: false }],
+      subscriptions: [{ stream_uuid: STREAM_UUID_1, is_archived: false }],
       searchQuery: "",
       subscriptionFilter: "subscribed",
     });
 
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
-      streamId: 1,
+      streamUuid: STREAM_UUID_1,
       isSubscribed: true,
       inviteOnly: false,
       subscriberCount: 10,
@@ -71,26 +80,30 @@ describe("buildBrowseChannelRows", () => {
   it("shows all channels when filter is all", () => {
     const rows = buildBrowseChannelRows({
       streams,
-      subscriptions: [{ stream_id: 1, is_archived: false }],
+      subscriptions: [{ stream_uuid: STREAM_UUID_1, is_archived: false }],
       searchQuery: "",
       subscriptionFilter: "all",
     });
 
-    expect(rows.map((row) => row.streamId)).toEqual([3, 2, 1]);
+    expect(rows.map((row) => row.streamUuid)).toEqual([
+      STREAM_UUID_3,
+      STREAM_UUID_2,
+      STREAM_UUID_1,
+    ]);
   });
 
   it("excludes archived subscriptions from the list", () => {
     const rows = buildBrowseChannelRows({
       streams,
       subscriptions: [
-        { stream_id: 1, is_archived: true },
-        { stream_id: 2, is_archived: false },
+        { stream_uuid: STREAM_UUID_1, is_archived: true },
+        { stream_uuid: STREAM_UUID_2, is_archived: false },
       ],
       searchQuery: "",
       subscriptionFilter: "all",
     });
 
-    expect(rows.map((row) => row.streamId)).toEqual([3, 2]);
+    expect(rows.map((row) => row.streamUuid)).toEqual([STREAM_UUID_3, STREAM_UUID_2]);
   });
 
   it("filters by search query on channel name", () => {
@@ -108,9 +121,17 @@ describe("buildBrowseChannelRows", () => {
   it("maps invite-only flag from subscriptions and stream metadata", () => {
     const rows = buildBrowseChannelRows({
       streams: [
-        { stream_id: 1, name: "secret", description: "", ...baseStreamFields, invite_only: true },
+        {
+          stream_uuid: STREAM_UUID_1,
+          name: "secret",
+          description: "",
+          ...baseStreamFields,
+          invite_only: true,
+        },
       ],
-      subscriptions: [{ stream_id: 1, is_archived: false, invite_only: true, is_muted: true }],
+      subscriptions: [
+        { stream_uuid: STREAM_UUID_1, is_archived: false, invite_only: true, is_muted: true },
+      ],
       searchQuery: "",
       subscriptionFilter: "subscribed",
     });
@@ -123,7 +144,7 @@ describe("buildBrowseChannelRows", () => {
     const rows = buildBrowseChannelRows({
       streams: [
         {
-          stream_id: 1,
+          stream_uuid: STREAM_UUID_1,
           name: "open",
           description: "",
           ...baseStreamFields,
@@ -142,7 +163,7 @@ describe("buildBrowseChannelRows", () => {
 
   it("matchesBrowseChannelSubscriptionFilter covers all filter modes", () => {
     const subscribed = {
-      streamId: 1,
+      streamUuid: STREAM_UUID_1,
       name: "a",
       description: "",
       isSubscribed: true,
@@ -163,7 +184,7 @@ describe("buildBrowseChannelRows", () => {
       desktopNotifications: null,
       audibleNotifications: null,
     };
-    const unsubscribed = { ...subscribed, streamId: 2, isSubscribed: false };
+    const unsubscribed = { ...subscribed, streamUuid: STREAM_UUID_2, isSubscribed: false };
 
     expect(matchesBrowseChannelSubscriptionFilter(subscribed, "subscribed")).toBe(true);
     expect(matchesBrowseChannelSubscriptionFilter(subscribed, "unsubscribed")).toBe(false);
@@ -175,16 +196,16 @@ describe("buildBrowseChannelRows", () => {
   it("resolveBrowseChannelSelection keeps valid id or falls back to first row", () => {
     const channels = buildBrowseChannelRows({
       streams: [
-        { stream_id: 1, name: "a", description: "", ...baseStreamFields },
-        { stream_id: 2, name: "b", description: "", ...baseStreamFields },
+        { stream_uuid: STREAM_UUID_1, name: "a", description: "", ...baseStreamFields },
+        { stream_uuid: STREAM_UUID_2, name: "b", description: "", ...baseStreamFields },
       ],
       subscriptions: [],
       searchQuery: "",
       subscriptionFilter: "all",
     });
 
-    expect(resolveBrowseChannelSelection(channels, 2)).toBe(2);
-    expect(resolveBrowseChannelSelection(channels, 99)).toBe(1);
-    expect(resolveBrowseChannelSelection([], 1)).toBeNull();
+    expect(resolveBrowseChannelSelection(channels, STREAM_UUID_2)).toBe(STREAM_UUID_2);
+    expect(resolveBrowseChannelSelection(channels, "missing")).toBe(STREAM_UUID_1);
+    expect(resolveBrowseChannelSelection([], STREAM_UUID_1)).toBeNull();
   });
 });

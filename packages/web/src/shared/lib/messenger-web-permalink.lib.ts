@@ -68,7 +68,7 @@ function buildStreamNarrowHash(streamUuid: string, topic: string, messageId: Mes
  */
 export function buildMessengerMessageWebPermalink(
   realmBaseUrl: string,
-  message: Pick<MockMessage, "id" | "stream_uuid" | "subject" | "display_recipient">,
+  message: Pick<MockMessage, "id" | "stream_uuid" | "subject" | "topic_uuid" | "display_recipient">,
   resolveStreamName: (streamUuid: string) => string | undefined,
 ): string | null {
   const origin = normalizeRealmOrigin(realmBaseUrl);
@@ -77,7 +77,8 @@ export function buildMessengerMessageWebPermalink(
   const messageId = message.id;
   if (message.stream_uuid != null) {
     resolveStreamName(message.stream_uuid);
-    const topic = (message.subject ?? "").trim();
+    const topic = (message.topic_uuid ?? message.subject ?? "").trim();
+    if (topic.length === 0) return null;
     const hash = buildStreamNarrowHash(message.stream_uuid, topic, messageId);
     return `${origin}/${hash}`;
   }

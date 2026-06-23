@@ -5,7 +5,7 @@ export interface MoveTopicTargetStream {
   name: string;
 }
 
-/** Resolves target topic name, preserving resolved checkmark when applicable. */
+/** Resolves the target topic display name; done state is server metadata, not part of the name. */
 export function resolveMoveTopicTargetName(
   currentTopic: string,
   nextNameInput: string,

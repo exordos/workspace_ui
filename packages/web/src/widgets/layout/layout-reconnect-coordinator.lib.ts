@@ -199,7 +199,6 @@ async function refreshChatListReconnectBootstrap(
         skipDmIndexHydrate: true,
       });
     }
-    syncMentionsUnreadAfterReconnect(instanceId, isCancelled);
   } catch (error: unknown) {
     if (isCancelled?.()) return;
     log.warn("reconnectBootstrap: chat list bootstrap failed", {

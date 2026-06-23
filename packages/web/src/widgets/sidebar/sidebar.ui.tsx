@@ -145,6 +145,7 @@ export const SidebarInner: React.FC<SidebarUiProps> = ({
             streamUuid: createdTopic.stream_uuid,
             name: createdTopic.name,
             isDefault: createdTopic.is_default,
+            isDone: createdTopic.is_done,
           },
         ]);
 
@@ -198,7 +199,7 @@ export const SidebarInner: React.FC<SidebarUiProps> = ({
             onToggleStream={handleToggleStream}
             onNewTopic={handleNewTopic}
             loading={streamListLoading}
-            showEmptyState={normalizedQuery.length === 0}
+            showEmptyState={sidebarChatsProp != null && normalizedQuery.length === 0}
           />
         </ScrollArea>
       </div>

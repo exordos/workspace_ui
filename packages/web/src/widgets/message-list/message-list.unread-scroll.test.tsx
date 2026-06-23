@@ -26,7 +26,7 @@ function msg(id: number | string, overrides: Partial<MockMessage> = {}): MockMes
     id: testMessageId(id),
     sender_id: 43,
     sender_full_name: "Alice",
-    stream_id: 10,
+    stream_uuid: "00000000-0000-4000-8000-000000000010",
     display_recipient: "general",
     channel: "general",
     subject: "bugs",
@@ -178,69 +178,72 @@ describe("MessageList unread anchor scroll", () => {
     expect(scrollTargets).toEqual([testMessageId(3)]);
   });
 
-  it("marks a single unread as read after scroll-to-unread without manual scroll", async () => {
+  it("scrolls to a single unread anchor without marking it locally", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    const onUnreadMessagesVisible = vi.fn();
-    const unreadId = testMessageId(3118);
-    const messages = [
-      msg(1, { sender_id: 99, flags: ["read"] }),
-      msg(2, { sender_id: 43, flags: ["read"] }),
-      msg(unreadId, { sender_id: 43, flags: [] }),
-    ];
+    try {
+      const onUnreadMessagesVisible = vi.fn();
+      const unreadId = testMessageId(3118);
+      const messages = [
+        msg(1, { sender_id: 99, flags: ["read"] }),
+        msg(2, { sender_id: 43, flags: ["read"] }),
+        msg(unreadId, { sender_id: 43, flags: [] }),
+      ];
 
-    render(
-      <MessageList
-        messages={messages}
-        currentUserId={7}
-        firstUnreadId={unreadId}
-        unreadCount={1}
-        scrollToBottomKey="single-unread-autoread"
-        onUnreadMessagesVisible={onUnreadMessagesVisible}
-      />,
-    );
+      render(
+        <MessageList
+          messages={messages}
+          currentUserId={7}
+          firstUnreadId={unreadId}
+          unreadCount={1}
+          scrollToBottomKey="single-unread-autoread"
+          onUnreadMessagesVisible={onUnreadMessagesVisible}
+        />,
+      );
 
-    const feed = document.querySelector('[role="feed"]') as HTMLDivElement;
-    const anchor = feed.querySelector<HTMLElement>(`[data-message-id="${unreadId}"]`);
-    if (anchor == null) {
-      throw new Error("expected unread anchor node");
+      const feed = document.querySelector('[role="feed"]') as HTMLDivElement;
+      const anchor = feed.querySelector<HTMLElement>(`[data-message-id="${unreadId}"]`);
+      if (anchor == null) {
+        throw new Error("expected unread anchor node");
+      }
+      const rootRect = {
+        top: 0,
+        bottom: 400,
+        left: 0,
+        right: 300,
+        width: 300,
+        height: 400,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect;
+      const anchorRect = {
+        top: 150,
+        bottom: 200,
+        left: 0,
+        right: 300,
+        width: 300,
+        height: 50,
+        x: 0,
+        y: 150,
+        toJSON: () => ({}),
+      } as DOMRect;
+      vi.spyOn(feed, "getBoundingClientRect").mockReturnValue(rootRect);
+      vi.spyOn(anchor, "getBoundingClientRect").mockReturnValue(anchorRect);
+
+      await act(async () => {
+        await flushProgrammaticScrollFrames();
+      });
+
+      await act(async () => {
+        vi.advanceTimersByTime(500);
+        await flushProgrammaticScrollFrames();
+      });
+
+      expect(scrollIntoView).toHaveBeenCalled();
+      expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
     }
-    const rootRect = {
-      top: 0,
-      bottom: 400,
-      left: 0,
-      right: 300,
-      width: 300,
-      height: 400,
-      x: 0,
-      y: 0,
-      toJSON: () => ({}),
-    } as DOMRect;
-    const anchorRect = {
-      top: 150,
-      bottom: 200,
-      left: 0,
-      right: 300,
-      width: 300,
-      height: 50,
-      x: 0,
-      y: 150,
-      toJSON: () => ({}),
-    } as DOMRect;
-    vi.spyOn(feed, "getBoundingClientRect").mockReturnValue(rootRect);
-    vi.spyOn(anchor, "getBoundingClientRect").mockReturnValue(anchorRect);
-
-    await act(async () => {
-      await flushProgrammaticScrollFrames();
-    });
-
-    await act(async () => {
-      vi.advanceTimersByTime(500);
-      await flushProgrammaticScrollFrames();
-    });
-
-    expect(scrollIntoView).toHaveBeenCalled();
-    expect(onUnreadMessagesVisible).toHaveBeenCalledWith([unreadId]);
-    vi.useRealTimers();
   });
 
   it("does not auto-mark unread at bottom before user scroll on chat open", async () => {
@@ -345,7 +348,7 @@ describe("MessageList unread anchor scroll", () => {
     expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
   });
 
-  it("marks fully visible unread tail without manual scroll when tail is complete", async () => {
+  it("does not mark fully visible unread tail without a server read update", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       const onUnreadMessagesVisible = vi.fn();
@@ -377,8 +380,8 @@ describe("MessageList unread anchor scroll", () => {
 
       await advanceVisibleTailFlush();
 
-      expect(onUnreadMessagesVisible).toHaveBeenCalledWith([testMessageId(2), testMessageId(3)]);
-      expect(onUnreadMessagesAtBottom).toHaveBeenCalledWith([testMessageId(2), testMessageId(3)]);
+      expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
+      expect(onUnreadMessagesAtBottom).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }

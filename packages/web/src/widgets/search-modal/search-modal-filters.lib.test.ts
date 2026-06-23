@@ -19,7 +19,7 @@ function msg(overrides: MockMessageOverrides): MockMessage {
     channel: "general",
     subject: "topic",
     sender_full_name: "Alice",
-    stream_id: null,
+    stream_uuid: null,
     ...rest,
   };
 }

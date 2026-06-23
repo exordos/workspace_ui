@@ -1,11 +1,14 @@
+import type { UserId } from "~/shared/lib/user-id.lib";
+import type { DraftTargetId } from "./draft.types";
+
 interface ResolveDraftTargetIdsOptions {
   isDmView: boolean;
-  activeDmUserIds: number[] | null;
-  activeStreamId: number | null;
-  fallbackStreamId: number | null;
+  activeDmUserIds: UserId[] | null;
+  activeStreamId: string | null;
+  fallbackStreamId: string | null;
 }
 
-export function resolveDraftTargetIds(options: ResolveDraftTargetIdsOptions): number[] {
+export function resolveDraftTargetIds(options: ResolveDraftTargetIdsOptions): DraftTargetId[] {
   const { isDmView, activeDmUserIds, activeStreamId, fallbackStreamId } = options;
 
   if (isDmView && activeDmUserIds != null) {

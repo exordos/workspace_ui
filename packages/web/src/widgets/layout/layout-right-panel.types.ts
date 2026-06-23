@@ -20,7 +20,7 @@ export interface RightPanelDetailedProfileLike {
   userId: UserId;
   fullName?: string;
   email?: string;
-  avatarUrl?: string;
+  avatarUrl?: string | null;
   role?: number;
   timezone?: string;
   dateJoined?: string;

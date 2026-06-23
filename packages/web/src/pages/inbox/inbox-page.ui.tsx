@@ -18,6 +18,7 @@ import { t } from "~/i18n/i18n";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { formatMessageTimeShort } from "~/shared/lib/datetime.lib";
 import { createLogger } from "~/shared/lib/logger";
+import { formatTopicDoneLabel } from "~/shared/lib/topic-resolve";
 import { useCacheFirstPageLoad } from "~/shared/lib/use-cache-first-page.hook";
 import { numericUserIdOrNull } from "~/shared/lib/user-id.lib";
 import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
@@ -34,8 +35,9 @@ const INBOX_ROW_CLASS =
 const InboxRow = React.memo<{ entry: InboxEntry; onClick: (entry: InboxEntry) => void }>(
   ({ entry, onClick }) => {
     const isStream = entry.streamId != null;
-    const streamTopicLabel =
+    const rawStreamTopicLabel =
       entry.topic != null && entry.topic.trim().length > 0 ? entry.topic : t("inbox.allMessages");
+    const streamTopicLabel = formatTopicDoneLabel(rawStreamTopicLabel, entry.isDone === true);
     const label = isStream
       ? `#${entry.streamName ?? entry.streamId} · ${streamTopicLabel}`
       : (entry.senderName ?? t("dm.private"));

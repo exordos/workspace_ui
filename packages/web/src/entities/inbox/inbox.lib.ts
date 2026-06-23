@@ -97,6 +97,7 @@ function streamLevelInboxEntry(stream: StreamEntryInternal, unreadCount: number)
     senderName: null,
     dmSlug: null,
     unreadCount,
+    streamUnreadCount: unreadCount,
     lastMessageTimestamp: stream.ts,
     messageIds: [],
   };
@@ -113,6 +114,7 @@ export function buildInboxEntriesFromStreamMetadata(
       continue;
     }
 
+    const streamUnreadCount = toUnreadCount(stream.unreadCount);
     let hasUnreadTopicMetadata = false;
     for (const topic of stream.topics.values()) {
       const unreadCount = toUnreadCount(topic.unreadCount);
@@ -125,26 +127,32 @@ export function buildInboxEntriesFromStreamMetadata(
       }
 
       entries.push({
-        key: `stream:${stream.streamUuid}:${topic.subject}`,
+        key: `stream:${stream.streamUuid}:${topic.topicUuid ?? topic.subject}`,
         streamId: stream.streamUuid,
         streamName: stream.name,
         topic: topic.subject,
+        ...(topic.topicUuid != null ? { topicUuid: topic.topicUuid } : {}),
+        ...(topic.isDone === true ? { isDone: true } : {}),
         senderId: null,
         senderName: null,
         dmSlug: null,
         unreadCount,
+        streamUnreadCount,
         lastMessageTimestamp: topic.ts || stream.ts,
         messageIds: [],
       });
     }
 
-    const streamUnreadCount = toUnreadCount(stream.unreadCount);
     if (!hasUnreadTopicMetadata && streamUnreadCount > 0) {
       entries.push(streamLevelInboxEntry(stream, streamUnreadCount));
     }
   }
 
   return entries.sort((a, b) => b.lastMessageTimestamp - a.lastMessageTimestamp);
+}
+
+function getServerStreamUnreadCount(entry: InboxEntry): number {
+  return entry.streamUnreadCount ?? entry.unreadCount;
 }
 
 export function groupInboxEntries(entries: InboxEntry[]): GroupedInboxEntries {
@@ -160,7 +168,9 @@ export function groupInboxEntries(entries: InboxEntry[]): GroupedInboxEntries {
     const existing = streamsMap.get(entry.streamId);
     if (existing) {
       existing.topics.push(entry);
-      existing.unreadCount += entry.unreadCount;
+      if (entry.streamUnreadCount != null) {
+        existing.unreadCount = entry.streamUnreadCount;
+      }
       if (entry.lastMessageTimestamp > existing.lastMessageTimestamp) {
         existing.lastMessageTimestamp = entry.lastMessageTimestamp;
       }
@@ -168,7 +178,7 @@ export function groupInboxEntries(entries: InboxEntry[]): GroupedInboxEntries {
       streamsMap.set(entry.streamId, {
         streamId: entry.streamId,
         streamName: entry.streamName,
-        unreadCount: entry.unreadCount,
+        unreadCount: getServerStreamUnreadCount(entry),
         lastMessageTimestamp: entry.lastMessageTimestamp,
         topics: [entry],
       });

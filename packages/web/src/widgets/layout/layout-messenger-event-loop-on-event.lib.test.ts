@@ -18,7 +18,7 @@ function mockMsg(id: number | string, overrides: Partial<MockMessage> = {}): Moc
     id: testMessageId(id),
     sender_id: 99,
     sender_full_name: "Alice",
-    stream_id: null,
+    stream_uuid: null,
     subject: "",
     content: "hi",
     timestamp: testMessageOrdinal(id),

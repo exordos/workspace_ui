@@ -38,7 +38,7 @@ describe("CallsPage", () => {
         createMessage({
           id: 1,
           content: "https://meet.jit.si/team-sync",
-          stream_id: 10,
+          stream_uuid: "00000000-0000-4000-8000-000000000010",
           display_recipient: "engineering",
           channel: "engineering",
           subject: "daily",
@@ -47,7 +47,7 @@ describe("CallsPage", () => {
         createMessage({
           id: 2,
           content: "Regular message without call link",
-          stream_id: 10,
+          stream_uuid: "00000000-0000-4000-8000-000000000010",
           display_recipient: "engineering",
           channel: "engineering",
           subject: "daily",
@@ -79,7 +79,7 @@ describe("CallsPage", () => {
         createMessage({
           id: 77,
           content: "https://meet.jit.si/engineering-standup",
-          stream_id: 10,
+          stream_uuid: "00000000-0000-4000-8000-000000000010",
           display_recipient: "engineering",
           channel: "engineering",
           subject: "standup",
@@ -104,7 +104,7 @@ describe("CallsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /open in chat/i }));
 
     expect(navigateSpy).toHaveBeenCalledWith(
-      `/stream/10-engineering/topic/standup?msg=${testMessageId(77)}`,
+      `/stream/00000000-0000-4000-8000-000000000010/topic/standup?msg=${testMessageId(77)}`,
     );
   });
 

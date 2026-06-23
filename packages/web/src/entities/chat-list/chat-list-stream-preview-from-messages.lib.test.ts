@@ -24,7 +24,11 @@ function streamShell(streamUuid: string, ts: number): StreamEntryInternal {
 
 describe("chat-list-stream-preview-from-messages.lib", () => {
   it("filterStreamMessagesForSidebar keeps only stream messages", () => {
-    const stream = streamMessage({ type: "stream", stream_id: 1, subject: "general" });
+    const stream = streamMessage({
+      type: "stream",
+      stream_uuid: "00000000-0000-4000-8000-000000000001",
+      subject: "general",
+    });
     const dm = streamMessage({
       type: "private",
       display_recipient: [{ id: 1, email: "a@x.com", full_name: "A" }],

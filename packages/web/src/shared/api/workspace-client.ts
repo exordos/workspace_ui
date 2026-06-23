@@ -28,8 +28,19 @@ const inFlightWorkspaceGets = new Map<string, Promise<unknown>>();
 
 const MESSENGER_FOLDERS_LIST_PATH = "/folders/";
 
+type GeneratedWorkspaceFolderItem = NonNullable<FilterV1Folders200Item["items"]>[number];
+type WorkspaceFolderItem = GeneratedWorkspaceFolderItem & {
+  folder?: string;
+  stream_uuid?: string;
+  unread_count?: number | null;
+};
+
 /** Folder row from `GET /api/messenger/v1/folders/` (nested items included). */
-export type WorkspaceFolder = FilterV1Folders200Item;
+export type WorkspaceFolder = Omit<FilterV1Folders200Item, "items"> & {
+  unread_count?: number | null;
+  folder_items?: WorkspaceFolderItem[];
+  items?: GeneratedWorkspaceFolderItem[];
+};
 
 type WorkspaceFolderSystemType = "created" | "all" | "personal" | "channels";
 export type WorkspaceFolderRailSystemType = WorkspaceFolderSystemType | "personal" | "channels";
@@ -375,7 +386,7 @@ export async function updateFolderItemOrder(
     const safeFolderUuid = validateFolderUuid(folderUuid);
     const safeItemUuid = validateFolderItemUuid(itemUuid);
     const safeOrderIndex = validateOrderIndex(orderIndex);
-    const current = await messengerFoldersGet<FilterV1Folders200ItemItemsItem>(
+    const current = await messengerFoldersGet<WorkspaceFolderItem>(
       messengerFolderItemPath(safeFolderUuid, safeItemUuid),
     );
     const updatedAt = new Date().toISOString();

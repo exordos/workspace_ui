@@ -30,6 +30,9 @@ const navigateMock = vi.hoisted(() => vi.fn());
 const statusEmojiPickerMock = vi.hoisted(() => vi.fn());
 const fetchRealmEmojisMock = vi.hoisted(() => vi.fn());
 const updateOwnStatusMock = vi.hoisted(() => vi.fn());
+const ENGINEERING_STREAM_UUID = "00000000-0000-4000-8000-000000000010";
+const DESIGN_STREAM_UUID = "00000000-0000-4000-8000-000000000011";
+const RELEASE_TOPIC_UUID = "00000000-0000-4000-8000-000000000210";
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual<typeof ReactRouterDom>("react-router-dom");
@@ -188,7 +191,12 @@ describe("RightPanel truthfulness", () => {
 
   it("does not render fake channel media and call-room rows", () => {
     useCurrentChatMessagesStore.setState({
-      context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+      context: {
+        type: "stream",
+        streamId: "00000000-0000-4000-8000-000000000010",
+        streamName: "engineering",
+        topic: "general",
+      },
       messages: [],
       isLoadingMore: false,
       hasOlderMessages: true,
@@ -776,7 +784,12 @@ describe("RightPanel truthfulness", () => {
 
   it("shows retry error and does not mutate local notification state when API fails", async () => {
     useCurrentChatMessagesStore.setState({
-      context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+      context: {
+        type: "stream",
+        streamId: "00000000-0000-4000-8000-000000000010",
+        streamName: "engineering",
+        topic: "general",
+      },
       messages: [],
       isLoadingMore: false,
       hasOlderMessages: true,
@@ -793,13 +806,20 @@ describe("RightPanel truthfulness", () => {
     await waitFor(() => {
       expect(screen.getByText(/something went wrong/i)).toBeInTheDocument();
     });
-    expect(useMuteStore.getState().getStreamNotificationLevel(10)).toBe("default");
+    expect(useMuteStore.getState().getStreamNotificationLevel(ENGINEERING_STREAM_UUID)).toBe(
+      "default",
+    );
   });
 
-  it("renders default topic label for legacy general chat alias in chat info data", () => {
+  it("renders server-provided general chat topic names literally in chat info data", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -821,14 +841,18 @@ describe("RightPanel truthfulness", () => {
       <RightPanelShell title="engineering" participantsCount={3} onlineCount={1} />,
     );
 
-    expect(screen.getByText(t("chat.generalChat"))).toBeInTheDocument();
-    expect(screen.queryByText("general chat")).not.toBeInTheDocument();
+    expect(screen.getByText("general chat")).toBeInTheDocument();
   });
 
-  it("renders default topic label for empty topic name in chat info data", () => {
+  it("does not render empty topic rows from chat info data", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -850,13 +874,18 @@ describe("RightPanel truthfulness", () => {
       <RightPanelShell title="engineering" participantsCount={3} onlineCount={1} />,
     );
 
-    expect(screen.getByText(t("chat.generalChat"))).toBeInTheDocument();
+    expect(screen.getByText(t("channel.noTopics"))).toBeInTheDocument();
   });
 
   it("renders stream description and topic rows from chat info data", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "general",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -887,10 +916,15 @@ describe("RightPanel truthfulness", () => {
     expect(screen.getByText("2")).toBeInTheDocument();
   });
 
-  it("renders the system general-chat topic separately and only it in italic", () => {
+  it("renders non-empty server topics without system empty-topic styling", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -915,14 +949,19 @@ describe("RightPanel truthfulness", () => {
       <RightPanelShell title="engineering" participantsCount={3} onlineCount={1} />,
     );
 
-    expect(screen.getByText(t("chat.generalChat"))).toHaveClass("italic");
     expect(screen.getByText("general")).not.toHaveClass("italic");
+    expect(screen.queryByText(t("chat.generalChat"))).not.toBeInTheDocument();
   });
 
   it("navigates to the selected stream topic from right-panel topic list", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "general",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -947,7 +986,9 @@ describe("RightPanel truthfulness", () => {
     fireEvent.click(screen.getByRole("button", { name: /release/i }));
 
     expect(navigateMock).toHaveBeenCalledWith(
-      withCurrentOrgRoute(`/stream/10-engineering/topic/${encodeURIComponent("release")}`),
+      withCurrentOrgRoute(
+        `/stream/${ENGINEERING_STREAM_UUID}/topic/${encodeURIComponent("release")}`,
+      ),
     );
   });
 
@@ -961,7 +1002,12 @@ describe("RightPanel truthfulness", () => {
 
     act(() => {
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "release" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "release",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -976,7 +1022,7 @@ describe("RightPanel truthfulness", () => {
             content: "hello",
             timestamp: 1000,
             type: "stream",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             display_recipient: "engineering",
             subject: "release",
             flags: [],
@@ -992,7 +1038,7 @@ describe("RightPanel truthfulness", () => {
         members: [],
         description: "Engineering stream for product delivery",
         isMuted: false,
-        topics: [{ name: "release", unreadCount: 2 }],
+        topics: [{ name: "release", topicUuid: RELEASE_TOPIC_UUID, unreadCount: 2 }],
       });
       useChatListStore.getState().setCurrentUserId(42);
       useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin", role: 200 });
@@ -1005,18 +1051,26 @@ describe("RightPanel truthfulness", () => {
     fireEvent.click(screen.getByRole("button", { name: /delete topic/i }));
 
     await waitFor(() => {
-      expect(deleteTopicSpy).toHaveBeenCalledWith(10, "release");
+      expect(deleteTopicSpy).toHaveBeenCalledWith(RELEASE_TOPIC_UUID);
     });
     expect(screen.queryByText("release")).not.toBeInTheDocument();
-    expect(navigateMock).toHaveBeenCalledWith(withCurrentOrgRoute("/stream/10-engineering"), {
-      replace: true,
-    });
+    expect(navigateMock).toHaveBeenCalledWith(
+      withCurrentOrgRoute(`/stream/${ENGINEERING_STREAM_UUID}`),
+      {
+        replace: true,
+      },
+    );
   });
 
   it("hides delete-topic action for non-admin channel admin", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "general",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -1034,7 +1088,7 @@ describe("RightPanel truthfulness", () => {
       });
       useChatListStore.getState().upsertStreamMetadataRows([
         {
-          streamId: 10,
+          streamUuid: "00000000-0000-4000-8000-000000000010",
           name: "engineering",
           canAdministerChannelGroup: 9126,
         },
@@ -1061,7 +1115,12 @@ describe("RightPanel truthfulness", () => {
   it("opens user profile from stream members list", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "general",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -1112,7 +1171,12 @@ describe("RightPanel truthfulness", () => {
         statusFetchedAt: Date.now(),
       });
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "general",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -1148,7 +1212,12 @@ describe("RightPanel truthfulness", () => {
   it("shows add members action for admin role", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "general",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -1189,7 +1258,12 @@ describe("RightPanel truthfulness", () => {
   it("does not show add members action for members without channel-level permission", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "general",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -1230,7 +1304,12 @@ describe("RightPanel truthfulness", () => {
   it("shows add members action for channel-level add-subscribers group member", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "general",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -1259,7 +1338,7 @@ describe("RightPanel truthfulness", () => {
       });
       useChatListStore.getState().upsertStreamMetadataRows([
         {
-          streamId: 10,
+          streamUuid: "00000000-0000-4000-8000-000000000010",
           name: "engineering",
           canAddSubscribersGroup: 9123,
         },
@@ -1286,7 +1365,12 @@ describe("RightPanel truthfulness", () => {
   it("shows add members action for modern org add-subscribers group in public channel", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "general",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -1315,7 +1399,7 @@ describe("RightPanel truthfulness", () => {
       });
       useChatListStore.getState().upsertStreamMetadataRows([
         {
-          streamId: 10,
+          streamUuid: "00000000-0000-4000-8000-000000000010",
           name: "engineering",
           inviteOnly: false,
           canAddSubscribersGroup: 9,
@@ -1346,7 +1430,12 @@ describe("RightPanel truthfulness", () => {
   it("shows add members action for channel admin in public channel", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "general",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -1375,7 +1464,7 @@ describe("RightPanel truthfulness", () => {
       });
       useChatListStore.getState().upsertStreamMetadataRows([
         {
-          streamId: 10,
+          streamUuid: "00000000-0000-4000-8000-000000000010",
           name: "engineering",
           inviteOnly: false,
           canAdministerChannelGroup: 9126,
@@ -1403,7 +1492,12 @@ describe("RightPanel truthfulness", () => {
   it("hides add members action for channel admin in private channel without add-group permission", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "general",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -1432,7 +1526,7 @@ describe("RightPanel truthfulness", () => {
       });
       useChatListStore.getState().upsertStreamMetadataRows([
         {
-          streamId: 10,
+          streamUuid: "00000000-0000-4000-8000-000000000010",
           name: "engineering",
           inviteOnly: true,
           canAdministerChannelGroup: 9126,
@@ -1460,7 +1554,12 @@ describe("RightPanel truthfulness", () => {
   it("shows remove-member action for channel-level remove-subscribers group member", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "general",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -1489,7 +1588,7 @@ describe("RightPanel truthfulness", () => {
       });
       useChatListStore.getState().upsertStreamMetadataRows([
         {
-          streamId: 10,
+          streamUuid: "00000000-0000-4000-8000-000000000010",
           name: "engineering",
           canRemoveSubscribersGroup: 9124,
         },
@@ -1519,7 +1618,12 @@ describe("RightPanel truthfulness", () => {
   it("shows remove-member action for channel admin even without remove-subscribers group membership", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "general",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -1548,7 +1652,7 @@ describe("RightPanel truthfulness", () => {
       });
       useChatListStore.getState().upsertStreamMetadataRows([
         {
-          streamId: 10,
+          streamUuid: "00000000-0000-4000-8000-000000000010",
           name: "engineering",
           canAdministerChannelGroup: 9126,
           canRemoveSubscribersGroup: 9124,
@@ -1586,7 +1690,12 @@ describe("RightPanel truthfulness", () => {
 
     act(() => {
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "general",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -1613,7 +1722,11 @@ describe("RightPanel truthfulness", () => {
         },
         streamMemberIds: [77],
       });
-      useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 10, name: "Test clon" }]);
+      useChatListStore
+        .getState()
+        .upsertStreamMetadataRows([
+          { streamUuid: "00000000-0000-4000-8000-000000000010", name: "Test clon" },
+        ]);
       useChatListStore.getState().setCurrentUserId(42);
       useUsersStore.getState().mergeUsers([
         { user_id: 42, full_name: "Admin", email: "admin@example.com", role: 200 },
@@ -1648,7 +1761,12 @@ describe("RightPanel truthfulness", () => {
 
     act(() => {
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "test-clon", topic: "general" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "test-clon",
+          topic: "general",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -1696,7 +1814,12 @@ describe("RightPanel truthfulness", () => {
   it("shows remove-member action for removable members and hides for self/creator/org-owner", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "general",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -1744,9 +1867,13 @@ describe("RightPanel truthfulness", () => {
         },
         streamMemberIds: [42, 77, 88, 100],
       });
-      useChatListStore
-        .getState()
-        .upsertStreamMetadataRows([{ streamId: 10, name: "engineering", creatorId: 88 }]);
+      useChatListStore.getState().upsertStreamMetadataRows([
+        {
+          streamUuid: "00000000-0000-4000-8000-000000000010",
+          name: "engineering",
+          creatorId: 88,
+        },
+      ]);
       useChatListStore.getState().setCurrentUserId(42);
       useUsersStore.getState().mergeUsers([
         { user_id: 42, full_name: "Current User", role: 200 },
@@ -1775,7 +1902,12 @@ describe("RightPanel truthfulness", () => {
   it("renders Creator and Channel admin badges from channel metadata", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "general",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -1811,7 +1943,7 @@ describe("RightPanel truthfulness", () => {
       });
       useChatListStore.getState().upsertStreamMetadataRows([
         {
-          streamId: 10,
+          streamUuid: "00000000-0000-4000-8000-000000000010",
           name: "engineering",
           creatorId: 77,
           canAdministerChannelGroup: 9126,
@@ -1844,7 +1976,12 @@ describe("RightPanel truthfulness", () => {
   it("prioritizes Creator badge over Channel admin for the same user", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "general",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -1873,7 +2010,7 @@ describe("RightPanel truthfulness", () => {
       });
       useChatListStore.getState().upsertStreamMetadataRows([
         {
-          streamId: 10,
+          streamUuid: "00000000-0000-4000-8000-000000000010",
           name: "engineering",
           creatorId: 77,
           canAdministerChannelGroup: 9126,
@@ -1915,7 +2052,12 @@ describe("RightPanel truthfulness", () => {
 
     act(() => {
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "test-clon", topic: "general" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "test-clon",
+          topic: "general",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -1942,7 +2084,11 @@ describe("RightPanel truthfulness", () => {
         },
         streamMemberIds: [77],
       });
-      useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 10, name: "Test clon" }]);
+      useChatListStore
+        .getState()
+        .upsertStreamMetadataRows([
+          { streamUuid: "00000000-0000-4000-8000-000000000010", name: "Test clon" },
+        ]);
       useChatListStore.getState().setCurrentUserId(42);
       useUsersStore.getState().mergeUsers([
         { user_id: 42, full_name: "Admin", email: "admin@example.com", role: 200 },
@@ -1970,7 +2116,12 @@ describe("RightPanel truthfulness", () => {
   it("hides channel edit/delete actions for member role", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "general",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -2003,7 +2154,12 @@ describe("RightPanel truthfulness", () => {
 
     act(() => {
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "general",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -2041,7 +2197,7 @@ describe("RightPanel truthfulness", () => {
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => {
-      expect(updateStreamSpy).toHaveBeenCalledWith(10, {
+      expect(updateStreamSpy).toHaveBeenCalledWith(ENGINEERING_STREAM_UUID, {
         name: "platform",
         description: "Platform discussions",
       });
@@ -2053,7 +2209,12 @@ describe("RightPanel truthfulness", () => {
 
     act(() => {
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "general",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -2085,7 +2246,7 @@ describe("RightPanel truthfulness", () => {
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => {
-      expect(updateStreamSpy).toHaveBeenCalledWith(10, {
+      expect(updateStreamSpy).toHaveBeenCalledWith(ENGINEERING_STREAM_UUID, {
         name: "engineering",
         description: "",
       });
@@ -2095,7 +2256,12 @@ describe("RightPanel truthfulness", () => {
   it("strips only one UI hash prefix from title fallback in edit channel form", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "general",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -2127,7 +2293,12 @@ describe("RightPanel truthfulness", () => {
   it("shows channel edit/delete actions for channel admin", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "general",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -2145,7 +2316,7 @@ describe("RightPanel truthfulness", () => {
       });
       useChatListStore.getState().upsertStreamMetadataRows([
         {
-          streamId: 10,
+          streamUuid: "00000000-0000-4000-8000-000000000010",
           name: "engineering",
           canAdministerChannelGroup: 9126,
         },
@@ -2187,7 +2358,7 @@ describe("RightPanel truthfulness", () => {
             content: "latest",
             timestamp: 2000,
             type: "stream",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             display_recipient: "engineering",
             subject: "general",
             flags: [],
@@ -2199,7 +2370,7 @@ describe("RightPanel truthfulness", () => {
             content: "older",
             timestamp: 1000,
             type: "stream",
-            stream_id: 11,
+            stream_uuid: "00000000-0000-4000-8000-000000000011",
             display_recipient: "design",
             subject: "general",
             flags: [],
@@ -2207,14 +2378,25 @@ describe("RightPanel truthfulness", () => {
         ],
         42,
       );
+      useChatListStore.getState().upsertStreamMetadataRows([
+        {
+          streamUuid: "00000000-0000-4000-8000-000000000010",
+          name: "engineering",
+          isArchived: false,
+        },
+      ]);
       useChatListStore
         .getState()
-        .upsertStreamMetadataRows([{ streamId: 10, name: "engineering", isArchived: false }]);
-      useChatListStore
-        .getState()
-        .upsertStreamMetadataRows([{ streamId: 11, name: "design", isArchived: false }]);
+        .upsertStreamMetadataRows([
+          { streamUuid: "00000000-0000-4000-8000-000000000011", name: "design", isArchived: false },
+        ]);
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "general",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -2239,13 +2421,18 @@ describe("RightPanel truthfulness", () => {
     fireEvent.click(screen.getByRole("button", { name: /archive channel/i }));
 
     expect(confirmSpy).toHaveBeenCalledTimes(1);
-    expect(useChatListStore.getState().streamsMap.get(10)?.isArchived).toBe(true);
-    expect(navigateMock).toHaveBeenCalledWith(expect.stringContaining("/stream/11"), {
-      replace: true,
-    });
+    expect(useChatListStore.getState().streamsMap.get(ENGINEERING_STREAM_UUID)?.isArchived).toBe(
+      true,
+    );
+    expect(navigateMock).toHaveBeenCalledWith(
+      expect.stringContaining(`/stream/${DESIGN_STREAM_UUID}`),
+      {
+        replace: true,
+      },
+    );
 
     await waitFor(() => {
-      expect(updateStreamSpy).toHaveBeenCalledWith(10, { isArchived: true });
+      expect(updateStreamSpy).toHaveBeenCalledWith(ENGINEERING_STREAM_UUID, { isArchived: true });
     });
   });
 
@@ -2257,11 +2444,20 @@ describe("RightPanel truthfulness", () => {
       useChatListStore.getState().setCurrentUserId(42);
       useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin", role: 200 });
       useChatListStore.getState().setStreamMetadataHydrated(true);
-      useChatListStore
-        .getState()
-        .upsertStreamMetadataRows([{ streamId: 10, name: "engineering", isArchived: false }]);
+      useChatListStore.getState().upsertStreamMetadataRows([
+        {
+          streamUuid: "00000000-0000-4000-8000-000000000010",
+          name: "engineering",
+          isArchived: false,
+        },
+      ]);
       useCurrentChatMessagesStore.setState({
-        context: { type: "stream", streamId: 10, streamName: "engineering", topic: "general" },
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "general",
+        },
         messages: [],
         isLoadingMore: false,
         hasOlderMessages: true,
@@ -2286,7 +2482,9 @@ describe("RightPanel truthfulness", () => {
     fireEvent.click(screen.getByRole("button", { name: /archive channel/i }));
 
     await waitFor(() => {
-      expect(useChatListStore.getState().streamsMap.get(10)?.isArchived).toBe(false);
+      expect(useChatListStore.getState().streamsMap.get(ENGINEERING_STREAM_UUID)?.isArchived).toBe(
+        false,
+      );
     });
   });
 });

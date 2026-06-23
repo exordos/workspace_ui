@@ -4,6 +4,7 @@ import { t } from "~/i18n/i18n";
 import { sidebarRowClass } from "~/shared/lib/format";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
+import { formatTopicDoneLabel } from "~/shared/lib/topic-resolve";
 import { SidebarChatBadges } from "./sidebar-chat-badges.ui";
 import { TopicContextMenu } from "./sidebar-chat-context-menu.ui";
 import { sidebarStreamTopicRoute } from "./sidebar-chat-routes.lib";
@@ -101,12 +102,14 @@ export const SidebarStreamListTopics = React.memo<SidebarStreamListTopicsProps>(
                 ((topic.topicUuid != null && activeTopic === topic.topicUuid) ||
                   activeTopic === topic.subject);
               const topicDisplay = resolveTopicDisplayInfo(topic.subject);
+              const topicLabel = formatTopicDoneLabel(topicDisplay.label, topic.isDone === true);
               return (
                 <TopicContextMenu
                   key={topic.topicUuid ?? encodeTopicForRoute(topic.subject)}
                   streamId={stream.streamUuid}
                   streamName={stream.name}
                   topic={topic.subject}
+                  topicUuid={topic.topicUuid}
                   rowClassName={`group/topic relative w-full rounded-r-lg border-l-4 transition-colors ${sidebarRowClass(isTopicActive)}`}
                   rowStyle={{ borderLeftColor: topicColor }}
                   sideActions={
@@ -127,7 +130,7 @@ export const SidebarStreamListTopics = React.memo<SidebarStreamListTopicsProps>(
                           topicDisplay.isSystem ? "italic" : ""
                         }`}
                       >
-                        {topicDisplay.label}
+                        {topicLabel}
                       </div>
                       {!isCompactDensity && (
                         <SidebarMessagePreview

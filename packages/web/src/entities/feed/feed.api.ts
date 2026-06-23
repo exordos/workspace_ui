@@ -19,14 +19,14 @@ export async function fetchFeedMessages(
   try {
     const page = await fetchAllMessagesPage(anchor, numBefore, options);
     const durationMs = Math.round(performance.now() - start);
-    logApiCall("GET", "/messages?narrow=all", {
+    logApiCall("GET", "/messages/", {
       status: 200,
       durationMs,
     });
     return page;
   } catch (err) {
     const durationMs = Math.round(performance.now() - start);
-    logApiCall("GET", "/messages?narrow=all", {
+    logApiCall("GET", "/messages/", {
       error: String(err),
       durationMs,
     });

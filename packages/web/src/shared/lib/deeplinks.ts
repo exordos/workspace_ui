@@ -46,6 +46,9 @@ export function toStream(streamUuid: string): string {
 
 export function toTopic(streamUuid: string, topic: string): string {
   const topicSegment = encodeTopicForRoute(topic);
+  if (topicSegment.length === 0) {
+    return toStream(streamUuid);
+  }
   return withCurrentOrgRoute(
     `/stream/${slugForStream(streamUuid)}/topic/${encodeURIComponent(topicSegment)}`,
   );

@@ -371,7 +371,7 @@ const messengerRateLimitGateMiddleware: Middleware = async (req, next) => {
   return res;
 };
 
-function shouldSkipAuth401Handling(req: ApiRequest): boolean {
+function shouldSkipAuthRefresh(req: ApiRequest): boolean {
   try {
     const parsed = new URL(req.url);
     const path = parsed.pathname;
@@ -382,11 +382,24 @@ function shouldSkipAuth401Handling(req: ApiRequest): boolean {
     ) {
       return true;
     }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function shouldSkipAuth401Logout(req: ApiRequest): boolean {
+  try {
+    const parsed = new URL(req.url);
+    const path = parsed.pathname;
+    if (shouldSkipAuthRefresh(req)) {
+      return true;
+    }
     // Workspace REST 401 often means gateway policy or disabled feature, not bad Workspace creds.
     if (/\/v1\/(?:folders|services)(?:\/|$)/.test(path)) {
       return true;
     }
-    // Workspace messenger gateway APIs use IAM Bearer; 401 must not wipe the session.
+    // Workspace messenger gateway APIs use IAM Bearer; refresh is allowed, logout is not.
     if (
       /\/api\/messenger(?:\/v1)?\/(?:folders|streams|stream_bindings|stream_topics|messages)(?:\/|$)/.test(
         path,
@@ -443,16 +456,13 @@ const authErrorMiddleware: Middleware = async (req, next) => {
   if (res.status !== 401) {
     return res;
   }
-  if (shouldSkipAuth401Handling(req)) {
-    return res;
-  }
   const instance = getCurrentInstance();
   if (instance == null) {
     return res;
   }
 
   const alreadyRetried = req.meta.iamAuthRetried === true;
-  if (!alreadyRetried) {
+  if (!alreadyRetried && !shouldSkipAuthRefresh(req)) {
     const refreshToken = instance.iamRefreshToken?.trim() ?? "";
     if (refreshToken.length > 0) {
       const refreshed = await refreshStoredIamAccessToken({
@@ -471,6 +481,10 @@ const authErrorMiddleware: Middleware = async (req, next) => {
         });
       }
     }
+  }
+
+  if (shouldSkipAuth401Logout(req)) {
+    return res;
   }
 
   const now = Date.now();

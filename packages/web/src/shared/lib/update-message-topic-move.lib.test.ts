@@ -10,7 +10,7 @@ describe("update-message-topic-move.lib", () => {
     const event: MessengerEvent = {
       id: 1,
       type: "update_message",
-      stream_id: 42,
+      stream_uuid: "00000000-0000-4000-8000-000000000042",
       orig_subject: " incident ",
       subject: "  resolved incident  ",
       message_ids: [
@@ -24,7 +24,7 @@ describe("update-message-topic-move.lib", () => {
     };
 
     expect(extractTopicMoveFromUpdateEvent(event)).toEqual({
-      streamId: 42,
+      streamId: "00000000-0000-4000-8000-000000000042",
       oldTopic: "incident",
       newTopic: "resolved incident",
       messageIds: ["00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000002"],
@@ -43,14 +43,14 @@ describe("update-message-topic-move.lib", () => {
     const missingOrigSubject: MessengerEvent = {
       id: 3,
       type: "update_message",
-      stream_id: 42,
+      stream_uuid: "00000000-0000-4000-8000-000000000042",
       subject: "resolved incident",
       message_id: "00000000-0000-4000-8000-000000000001",
     };
     const missingSubject: MessengerEvent = {
       id: 4,
       type: "update_message",
-      stream_id: 42,
+      stream_uuid: "00000000-0000-4000-8000-000000000042",
       orig_subject: "incident",
       message_id: "00000000-0000-4000-8000-000000000001",
     };
@@ -64,7 +64,7 @@ describe("update-message-topic-move.lib", () => {
     const event: MessengerEvent = {
       id: 5,
       type: "update_message",
-      stream_id: 42,
+      stream_uuid: "00000000-0000-4000-8000-000000000042",
       orig_subject: " incident ",
       subject: "incident",
       message_ids: ["00000000-0000-4000-8000-000000000001"],
@@ -78,7 +78,7 @@ describe("update-message-topic-move.lib", () => {
     const event: MessengerEvent = {
       id: 6,
       type: "update_message",
-      stream_id: 42,
+      stream_uuid: "00000000-0000-4000-8000-000000000042",
       orig_subject: "incident",
       subject: "resolved incident",
       message_ids: ["00000000-0000-4000-8000-0000000000n1", "x", null],

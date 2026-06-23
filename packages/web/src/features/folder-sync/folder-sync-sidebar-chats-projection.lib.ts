@@ -3,6 +3,7 @@ import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 import type { SidebarChat, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import {
   chatToWorkspaceChatIds,
+  folderItemLookupKeysForChatId,
   getFolderSyncUser,
   hasMatchingChatId,
   type FolderSyncUsersMap,
@@ -51,6 +52,10 @@ function hasMatchingSidebarChatId(
   return chatToWorkspaceChatIds(chat, currentUserId).some((chatId) =>
     hasMatchingChatId(folderChatIds, chatId),
   );
+}
+
+function toBadge(unreadCount: number | undefined): number | undefined {
+  return unreadCount != null && unreadCount > 0 ? unreadCount : undefined;
 }
 
 function buildSingleUserDmFallback(
@@ -185,10 +190,58 @@ export function buildFallbackStreamChatsFromFolderItems(
       lastMessage: "",
       time: "",
       topics: [],
+      badge: toBadge(item.unreadCount ?? streamRecord?.unreadCount),
     });
   }
 
   return fallbackStreamChats;
+}
+
+function buildFolderItemUnreadCountByKey(
+  items: readonly FolderItemForClient[],
+): Map<string, number> {
+  const result = new Map<string, number>();
+  for (const item of items) {
+    if (item.unreadCount == null) continue;
+    for (const key of folderItemLookupKeysForChatId(item.chatId)) {
+      result.set(key, item.unreadCount);
+    }
+  }
+  return result;
+}
+
+function getFolderItemUnreadCountForChat(
+  folderItemUnreadCountByKey: ReadonlyMap<string, number>,
+  chat: SidebarChat,
+  currentUserId: UserId | null,
+): number | undefined {
+  for (const chatId of chatToWorkspaceChatIds(chat, currentUserId)) {
+    for (const key of folderItemLookupKeysForChatId(chatId)) {
+      const unreadCount = folderItemUnreadCountByKey.get(key);
+      if (unreadCount != null) {
+        return unreadCount;
+      }
+    }
+  }
+  return undefined;
+}
+
+function applyFolderItemBadge(chat: SidebarChat, unreadCount: number | undefined): SidebarChat {
+  if (unreadCount == null) return chat;
+  return { ...chat, badge: toBadge(unreadCount) };
+}
+
+function applyFolderItemBadges(
+  chats: readonly SidebarChat[],
+  folderItemUnreadCountByKey: ReadonlyMap<string, number>,
+  currentUserId: UserId | null,
+): SidebarChat[] {
+  return chats.map((chat) =>
+    applyFolderItemBadge(
+      chat,
+      getFolderItemUnreadCountForChat(folderItemUnreadCountByKey, chat, currentUserId),
+    ),
+  );
 }
 
 function sortFolderItemsByOrderIndex(items: readonly FolderItemForClient[]): FolderItemForClient[] {
@@ -240,8 +293,14 @@ export function buildCustomFolderSidebarChats(
     return orderMutedStreamsLast(filterHiddenDmChats(matchedChats, currentUserId), isStreamMuted);
   }
 
-  const { knownMatchedStreamIds, knownMatchedDmKeys } = collectKnownMatchedChatKeys(
+  const folderItemUnreadCountByKey = buildFolderItemUnreadCountByKey(selectedFolderItems);
+  const matchedChatsWithFolderBadges = applyFolderItemBadges(
     matchedChats,
+    folderItemUnreadCountByKey,
+    currentUserId,
+  );
+  const { knownMatchedStreamIds, knownMatchedDmKeys } = collectKnownMatchedChatKeys(
+    matchedChatsWithFolderBadges,
     currentUserId,
   );
   const orderedItems = sortFolderItemsByOrderIndex(selectedFolderItems);
@@ -260,7 +319,7 @@ export function buildCustomFolderSidebarChats(
 
   return orderMutedStreamsLast(
     filterHiddenDmChats(
-      [...fallbackDmChats, ...fallbackStreamChats, ...matchedChats],
+      [...fallbackDmChats, ...fallbackStreamChats, ...matchedChatsWithFolderBadges],
       currentUserId,
     ),
     isStreamMuted,

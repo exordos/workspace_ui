@@ -7,9 +7,9 @@ import {
 } from "./topic-display.lib";
 
 describe("topic display helpers", () => {
-  it("treats empty and legacy default-topic aliases as the system topic", () => {
+  it("treats only empty subjects as the system topic", () => {
     expect(isEmptyTopicName("   ")).toBe(true);
-    expect(isEmptyTopicName("general chat")).toBe(true);
+    expect(isEmptyTopicName("general chat")).toBe(false);
     expect(isEmptyTopicName("release")).toBe(false);
   });
 
@@ -21,15 +21,15 @@ describe("topic display helpers", () => {
     });
   });
 
-  it("does not mark legacy alias or user-named general-chat topics as system styling", () => {
+  it("preserves server-provided general-chat topic names", () => {
     expect(resolveTopicDisplayInfo("general chat")).toEqual({
-      label: t("chat.generalChat"),
-      normalized: "",
+      label: "general chat",
+      normalized: "general chat",
       isSystem: false,
     });
     expect(resolveTopicDisplayInfo(t("chat.generalChat"))).toEqual({
       label: t("chat.generalChat"),
-      normalized: "",
+      normalized: t("chat.generalChat"),
       isSystem: false,
     });
   });

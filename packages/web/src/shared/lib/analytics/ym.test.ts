@@ -126,9 +126,11 @@ describe("ym (Yandex Metrika)", () => {
       provider.setConsent(true);
       ymSpy.mockClear();
 
-      provider.track("message_sent", { streamId: 5 });
+      provider.track("message_sent", { streamId: "00000000-0000-4000-8000-000000000005" });
 
-      expect(ymSpy).toHaveBeenCalledWith(222, "reachGoal", "message_sent", { streamId: 5 });
+      expect(ymSpy).toHaveBeenCalledWith(222, "reachGoal", "message_sent", {
+        streamId: "00000000-0000-4000-8000-000000000005",
+      });
     });
 
     it("sends empty object when no properties provided", () => {

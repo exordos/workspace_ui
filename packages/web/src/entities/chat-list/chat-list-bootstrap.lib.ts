@@ -9,7 +9,6 @@ import {
 } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import type { MessageId } from "~/shared/lib/message-id.lib";
-import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import {
   compareUserIds,
   isUserIdentityReady,
@@ -25,7 +24,7 @@ import {
   hashKey,
   slugify,
 } from "./chat-list-format.lib";
-import { buildSidebarFromMessages } from "./chat-list.lib";
+import { buildSidebarFromMessages, streamTopicIdentityFromMessage } from "./chat-list.lib";
 import type { ChatListDmMetadataRow, MessageLocation } from "./chat-list.model.types";
 
 export interface ChatListDmBootstrapDisplayContext {
@@ -47,8 +46,14 @@ export function buildMessageIdToLocation(
   const map = new Map<MessageId, MessageLocation>();
   for (const m of messages) {
     if (m.type === "stream" && m.stream_uuid != null) {
-      const topic = normalizeTopicForIdentity(m.subject ?? "");
-      map.set(m.id, { type: "stream", streamUuid: m.stream_uuid, topic });
+      const topicIdentity = streamTopicIdentityFromMessage(m);
+      if (topicIdentity == null) continue;
+      map.set(m.id, {
+        type: "stream",
+        streamUuid: m.stream_uuid,
+        topic: topicIdentity.topicUuid ?? topicIdentity.subject,
+        ...(topicIdentity.topicUuid != null ? { topicUuid: topicIdentity.topicUuid } : {}),
+      });
     } else if (m.type === "private" && Array.isArray(m.display_recipient)) {
       const dmKey = dmConversationKey(m.display_recipient, currentUserId);
       map.set(m.id, { type: "dm", dmKey });

@@ -87,7 +87,7 @@ export const ForwardMessageModalBody = React.memo<ForwardMessageModalBodyProps>(
               >
                 <option value="">{t("channel.selectChannel")}</option>
                 {streams.map((s) => (
-                  <option key={s.stream_uuid} value={s.name}>
+                  <option key={s.streamUuid} value={s.name}>
                     #{s.name}
                   </option>
                 ))}

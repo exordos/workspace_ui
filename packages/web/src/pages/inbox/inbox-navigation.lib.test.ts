@@ -50,7 +50,27 @@ describe("buildInboxEntryRoute", () => {
     ).toBe(`/stream/10/topic/general?msg=${testMessageId(111)}`);
   });
 
-  it("builds explicit empty-topic route for empty topic", () => {
+  it("prefers server topic UUID over display topic name in stream routes", () => {
+    const topicUuid = "22222222-2222-4222-8222-222222222222";
+
+    expect(
+      buildInboxEntryRoute(
+        baseEntry({
+          key: `stream:10:${topicUuid}`,
+          streamId: "10",
+          streamName: "engineering",
+          topic: "general",
+          topicUuid,
+          senderId: null,
+          senderName: null,
+          dmSlug: null,
+          messageIds: [testMessageId(111)],
+        }),
+      ),
+    ).toBe(`/stream/10/topic/${topicUuid}?msg=${testMessageId(111)}`);
+  });
+
+  it("builds stream-level route when topic is missing", () => {
     expect(
       buildInboxEntryRoute(
         baseEntry({
@@ -64,7 +84,7 @@ describe("buildInboxEntryRoute", () => {
           messageIds: [testMessageId(101), testMessageId(90), testMessageId(111)],
         }),
       ),
-    ).toBe(`/stream/10/topic/__empty__?msg=${testMessageId(111)}`);
+    ).toBe(`/stream/10?msg=${testMessageId(111)}`);
   });
 
   it("builds dm route with message focus", () => {

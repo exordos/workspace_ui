@@ -8,7 +8,7 @@ function msg(id: number | string, content: string): MockMessage {
     id: testMessageId(id),
     sender_id: 42,
     sender_full_name: "Alice",
-    stream_id: 10,
+    stream_uuid: "00000000-0000-4000-8000-000000000010",
     display_recipient: "engineering",
     channel: "engineering",
     subject: "general",

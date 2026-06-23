@@ -146,13 +146,13 @@ describe("ga4", () => {
       provider.setConsent(true);
 
       const before = window.dataLayer.length;
-      provider.track("message_sent", { streamId: 42 });
+      provider.track("message_sent", { streamId: "00000000-0000-4000-8000-000000000042" });
 
       expect(window.dataLayer.length).toBe(before + 1);
       const entry = window.dataLayer[window.dataLayer.length - 1] as unknown[];
       expect(entry[0]).toBe("event");
       expect(entry[1]).toBe("message_sent");
-      expect(entry[2]).toEqual({ streamId: 42 });
+      expect(entry[2]).toEqual({ streamId: "00000000-0000-4000-8000-000000000042" });
     });
 
     it("sends empty object when no properties provided", () => {

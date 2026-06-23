@@ -4,6 +4,7 @@ import {
   buildInboxEntriesFromStreamMetadata,
   groupInboxEntries,
   isInboxEntriesSnapshotFresher,
+  removeInboxEntriesForMarkReadTarget,
 } from "./inbox.lib";
 import type { InboxEntry } from "./inbox.types";
 
@@ -29,6 +30,7 @@ const STREAM_TOPIC_A: InboxEntry = {
   senderName: null,
   dmSlug: null,
   unreadCount: 3,
+  streamUnreadCount: 10,
   lastMessageTimestamp: 300,
   messageIds: [
     "00000000-0000-4000-8000-000000000003",
@@ -46,6 +48,7 @@ const STREAM_TOPIC_B: InboxEntry = {
   senderName: null,
   dmSlug: null,
   unreadCount: 1,
+  streamUnreadCount: 10,
   lastMessageTimestamp: 100,
   messageIds: ["00000000-0000-4000-8000-000000000006"],
 };
@@ -59,6 +62,7 @@ const STREAM_TOPIC_C: InboxEntry = {
   senderName: null,
   dmSlug: null,
   unreadCount: 1,
+  streamUnreadCount: 1,
   lastMessageTimestamp: 500,
   messageIds: ["00000000-0000-4000-8000-000000000007"],
 };
@@ -92,10 +96,10 @@ describe("groupInboxEntries", () => {
     expect(result.streams[0]!.topics[1]!.topic).toBe("bugs");
   });
 
-  it("aggregates unread counts per stream group", () => {
+  it("uses server stream unread count for a stream group", () => {
     const result = groupInboxEntries([STREAM_TOPIC_A, STREAM_TOPIC_B]);
 
-    expect(result.streams[0]!.unreadCount).toBe(4);
+    expect(result.streams[0]!.unreadCount).toBe(10);
   });
 
   it("sorts DMs by newest activity descending", () => {
@@ -161,11 +165,13 @@ describe("buildInboxEntriesFromStreamMetadata", () => {
 
     expect(entries).toHaveLength(2);
     expect(entries[0]).toMatchObject({
-      key: "stream:10:general",
+      key: "stream:10:topic-general",
       streamId: "10",
       streamName: "engineering",
       topic: "general",
+      topicUuid: "topic-general",
       unreadCount: 2,
+      streamUnreadCount: 3,
       lastMessageTimestamp: 300,
       messageIds: [],
     });
@@ -191,7 +197,7 @@ describe("buildInboxEntriesFromStreamMetadata", () => {
 
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
-      key: "stream:20:open-topic",
+      key: "stream:20:topic-open-topic",
       unreadCount: 1,
     });
   });
@@ -204,8 +210,9 @@ describe("buildInboxEntriesFromStreamMetadata", () => {
     const entries = buildInboxEntriesFromStreamMetadata(streamsMap);
 
     expect(entries[0]).toMatchObject({
-      key: "stream:10:",
+      key: "stream:10:topic-default",
       topic: "",
+      topicUuid: "topic-default",
       unreadCount: 1,
     });
   });
@@ -220,8 +227,42 @@ describe("buildInboxEntriesFromStreamMetadata", () => {
         key: "stream:10:__all__",
         topic: null,
         unreadCount: 4,
+        streamUnreadCount: 4,
       }),
     ]);
+  });
+});
+
+describe("removeInboxEntriesForMarkReadTarget", () => {
+  const entries = [STREAM_TOPIC_A, DM_A];
+
+  it("removes DM entry by conversation key", () => {
+    const result = removeInboxEntriesForMarkReadTarget(
+      entries,
+      { type: "dm", userIds: [7, 42] },
+      7,
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0]!.key).toBe("stream:10:general");
+  });
+
+  it("removes all stream topics for stream-wide mark read", () => {
+    const result = removeInboxEntriesForMarkReadTarget(
+      entries,
+      { type: "stream", streamId: "10" },
+      7,
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0]!.key).toBe("dm:42");
+  });
+
+  it("removes only matching topic", () => {
+    const result = removeInboxEntriesForMarkReadTarget(
+      [STREAM_TOPIC_A, STREAM_TOPIC_B, DM_A],
+      { type: "topic", streamId: "10", topic: "general" },
+      7,
+    );
+    expect(result.map((e) => e.key)).toEqual(["stream:10:bugs", "dm:42"]);
   });
 });
 

@@ -18,7 +18,7 @@ describe("buildMessengerMessageWebPermalink", () => {
       "https://chat.example.com",
       {
         id: messageId,
-        stream_id: null,
+        stream_uuid: null,
         subject: "",
         display_recipient: [
           { id: 422, full_name: "Me" },
@@ -36,7 +36,7 @@ describe("buildMessengerMessageWebPermalink", () => {
       "https://chat.example.com",
       {
         id: messageId,
-        stream_id: null,
+        stream_uuid: null,
         subject: "",
         display_recipient: [
           { id: 1, full_name: "A" },
@@ -55,11 +55,11 @@ describe("buildMessengerMessageWebPermalink", () => {
       "https://chat.example.com",
       {
         id: messageId,
-        stream_id: 5,
+        stream_uuid: "00000000-0000-4000-8000-000000000005",
         subject: "general chat",
         display_recipient: "general",
       },
-      (sid) => (sid === 5 ? "general" : undefined),
+      (sid) => (sid === "00000000-0000-4000-8000-000000000005" ? "general" : undefined),
     );
     expect(url).toContain("https://chat.example.com/#narrow/channel/");
     expect(url).toContain("/topic/");
@@ -72,7 +72,7 @@ describe("buildMessengerMessageWebPermalink", () => {
         "",
         {
           id: "00000000-0000-4000-8000-000000000001",
-          stream_id: null,
+          stream_uuid: null,
           subject: "",
           display_recipient: [{ id: 1, full_name: "A" }],
         },
@@ -87,7 +87,7 @@ describe("buildMessengerMessageWebPermalink", () => {
         "https://chat.example.com",
         {
           id: "00000000-0000-4000-8000-000000000001",
-          stream_id: null,
+          stream_uuid: null,
           subject: "",
           display_recipient: undefined,
         },

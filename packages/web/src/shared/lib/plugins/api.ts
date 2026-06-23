@@ -25,7 +25,7 @@ import type {
 
 export interface PluginDataProvider {
   getCurrentUserId(): UserId | null;
-  getStreams(): { id: number; name: string; badge?: number }[];
+  getStreams(): { id: string; name: string; badge?: number }[];
   getThemeMode(): string;
 }
 

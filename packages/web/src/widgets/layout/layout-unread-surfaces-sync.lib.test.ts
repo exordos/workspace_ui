@@ -7,14 +7,15 @@ import {
 } from "./layout-unread-surfaces-sync.lib";
 
 const INSTANCE_ID = "instance-sync-test";
+const STREAM_UUID = "11111111-1111-4111-8111-111111111111";
 
 function applyStreamUnreadMetadata(unreadCount: number): void {
   useChatListStore
     .getState()
-    .upsertStreamMetadataRows([{ streamUuid: "5", name: "engineering", unreadCount }]);
-  useChatListStore.getState().upsertStreamTopicShells("5", [
+    .upsertStreamMetadataRows([{ streamUuid: STREAM_UUID, name: "engineering", unreadCount }]);
+  useChatListStore.getState().upsertStreamTopicShells(STREAM_UUID, [
     {
-      streamUuid: "5",
+      streamUuid: STREAM_UUID,
       topicUuid: "55555555-5555-4555-8555-555555555555",
       name: "general",
       unreadCount,
@@ -48,7 +49,7 @@ beforeEach(() => {
 });
 
 describe("syncUnreadSurfacesFromEventDelta", () => {
-  it("updates organization count after stream unread delta", () => {
+  it("applies stream unread delta without writing organization count", () => {
     useChatListStore.getState().setCurrentUserId(1);
 
     syncUnreadSurfacesFromEventDelta({
@@ -59,8 +60,9 @@ describe("syncUnreadSurfacesFromEventDelta", () => {
       },
     });
 
-    expect(useChatListStore.getState().sidebarStreamsUnread).toBe(1);
-    expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(1);
+    expect(useChatListStore.getState().streamsMap.get(STREAM_UUID)?.unreadCount).toBe(1);
+    expect(useChatListStore.getState().sidebarStreamsUnread).toBe(0);
+    expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(0);
   });
 
   it("keeps organization count muted-aware after stream unread delta", () => {
@@ -69,17 +71,18 @@ describe("syncUnreadSurfacesFromEventDelta", () => {
     syncUnreadSurfacesFromEventDelta({
       source: "event-message",
       instanceId: INSTANCE_ID,
-      isStreamMuted: (streamId) => streamId === "5",
+      isStreamMuted: (streamId) => streamId === STREAM_UUID,
       applyDelta: () => {
         applyStreamUnreadMetadata(1);
       },
     });
 
-    expect(useChatListStore.getState().sidebarStreamsUnread).toBe(1);
+    expect(useChatListStore.getState().streamsMap.get(STREAM_UUID)?.unreadCount).toBe(1);
+    expect(useChatListStore.getState().sidebarStreamsUnread).toBe(0);
     expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(0);
   });
 
-  it("updates personal organization indicator from fresh DM unread", () => {
+  it("applies fresh DM unread without writing organization count", () => {
     useChatListStore.getState().setCurrentUserId(1);
 
     syncUnreadSurfacesFromEventDelta({
@@ -90,11 +93,13 @@ describe("syncUnreadSurfacesFromEventDelta", () => {
       },
     });
 
-    expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(1);
-    expect(useInstancesStore.getState().getInstanceDmUnreadCount(INSTANCE_ID)).toBe(1);
+    expect(Array.from(useChatListStore.getState().dmsMap.values())[0]?.unreadCount).toBe(1);
+    expect(useChatListStore.getState().sidebarDmsUnread).toBe(0);
+    expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(0);
+    expect(useInstancesStore.getState().getInstanceDmUnreadCount(INSTANCE_ID)).toBe(0);
   });
 
-  it("uses the same muted-aware writer for local and layout deltas", () => {
+  it("preserves server organization count for local and layout deltas", () => {
     useChatListStore.getState().setCurrentUserId(1);
     applyStreamUnreadMetadata(1);
     useInstancesStore.getState().setInstanceUnreadCount(INSTANCE_ID, 1);
@@ -102,20 +107,21 @@ describe("syncUnreadSurfacesFromEventDelta", () => {
     syncUnreadSurfacesFromDelta({
       source: "local-chat-read",
       instanceId: INSTANCE_ID,
-      isStreamMuted: (streamId) => streamId === "5",
+      isStreamMuted: (streamId) => streamId === STREAM_UUID,
       applyDelta: () => {},
     });
 
-    expect(useChatListStore.getState().sidebarStreamsUnread).toBe(1);
-    expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(0);
+    expect(useChatListStore.getState().streamsMap.get(STREAM_UUID)?.unreadCount).toBe(1);
+    expect(useChatListStore.getState().sidebarStreamsUnread).toBe(0);
+    expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(1);
 
     syncUnreadSurfacesFromDelta({
       source: "layout-derived",
       instanceId: INSTANCE_ID,
-      isStreamMuted: (streamId) => streamId === "5",
+      isStreamMuted: (streamId) => streamId === STREAM_UUID,
       applyDelta: () => {},
     });
 
-    expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(0);
+    expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(1);
   });
 });

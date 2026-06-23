@@ -5,7 +5,6 @@ import { enrichSidebarChatsWithMentionFlags } from "~/entities/chat-list/chat-li
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useHydrateDrafts } from "~/entities/draft/draft-hydration";
 import { useInstancesStore } from "~/entities/instance/instance.model";
-import { syncUnreadSurfacesFromDelta } from "~/entities/unread-sync/unread-surfaces-sync.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
@@ -31,10 +30,6 @@ import { useLayoutEscapeNavigation } from "./layout-escape-navigation.hook";
 import { useLayoutFolderSyncOrchestration } from "./layout-folder-sync-orchestration.hook";
 import { useInactiveInstancesBackgroundWork } from "./layout-inactive-instances-background-work.hook";
 import { useLayoutInstanceBootstrap } from "./layout-instance-bootstrap.hook";
-import {
-  computeInstanceDmUnreadCount,
-  hasPersonalUnreadIndicator,
-} from "./layout-instance-unread.lib";
 import { useLayoutLastMessengerRoutePersistence } from "./layout-last-messenger-route.hook";
 import { LayoutLoadingGate } from "./layout-loading-gate.ui";
 import { useLayoutMessengerEventLoop } from "./layout-messenger-event-loop.hook";
@@ -63,6 +58,8 @@ export const Layout: React.FC = () => {
   const setCurrentInstanceId = useInstancesStore((s) => s.setCurrentInstanceId);
   const setInstanceUnreadCount = useInstancesStore((s) => s.setInstanceUnreadCount);
   const setInstanceDmUnreadCount = useInstancesStore((s) => s.setInstanceDmUnreadCount);
+  const unreadCountsByInstance = useInstancesStore((s) => s.unreadCountsByInstance);
+  const dmUnreadCountsByInstance = useInstancesStore((s) => s.dmUnreadCountsByInstance);
   const {
     streamSlug,
     topicName,
@@ -131,38 +128,58 @@ export const Layout: React.FC = () => {
       isEffectivelyMuted,
     ],
   );
-  const { unreadCount: unreadCountForCurrentInstance, activeChatWindowTitle } =
-    useLayoutUnreadAndTitle({
-      instances,
-      currentInstanceId,
-      streams: streamsFromStore,
-      dms: dmsFromStore,
-      streamsMap,
-      activeStreamSlug,
-      activeTopic,
-      dmIdParam,
-      currentUserId,
-      isStreamMuted,
-      isEffectivelyMuted,
-    });
-
-  const dmUnreadCountForCurrentInstance = useMemo(
-    () => computeInstanceDmUnreadCount({ dms: dmsFromStore }),
-    [dmsFromStore],
-  );
-  const mentionsUnreadCount = useChatListStore((s) => s.mentionsUnreadCount);
-  const personalUnreadIndicatorActive = useMemo(
-    () => hasPersonalUnreadIndicator(dmUnreadCountForCurrentInstance, mentionsUnreadCount),
-    [dmUnreadCountForCurrentInstance, mentionsUnreadCount],
-  );
-
   const selectedFolderId = useFolderSyncStore((s) => s.selectedFolderId);
   const selectedFolderChatIds = useFolderSyncStore((s) => s.selectedFolderChatIds);
+  const folders = useFolderSyncStore((s) => s.folders);
   const folderItemsByFolderId = useFolderSyncStore((s) => s.folderItemsByFolderId);
   const selectedFolderSidebarChats = useFolderSyncStore((s) => s.selectedFolderSidebarChats);
   const bootstrapFolderSync = useFolderSyncStore((s) => s.bootstrap);
   const refreshFolderSync = useFolderSyncStore((s) => s.refresh);
   const syncFolderSyncSidebarProjection = useFolderSyncStore((s) => s.syncSidebarProjection);
+
+  const serverAllUnreadCount = useMemo(() => {
+    const allFolder = folders.find((folder) => folder.systemType === "all");
+    return allFolder != null ? (allFolder.badge ?? 0) : null;
+  }, [folders]);
+  const serverPersonalUnreadCount = useMemo(() => {
+    const personalFolder = folders.find((folder) => folder.systemType === "personal");
+    return personalFolder != null ? (personalFolder.badge ?? 0) : null;
+  }, [folders]);
+
+  useEffect(() => {
+    if (!currentInstanceId) return;
+    if (serverAllUnreadCount != null) {
+      setInstanceUnreadCount(currentInstanceId, serverAllUnreadCount);
+    }
+    if (serverPersonalUnreadCount != null) {
+      setInstanceDmUnreadCount(currentInstanceId, serverPersonalUnreadCount);
+    }
+  }, [
+    currentInstanceId,
+    serverAllUnreadCount,
+    serverPersonalUnreadCount,
+    setInstanceUnreadCount,
+    setInstanceDmUnreadCount,
+  ]);
+
+  const unreadCountForCurrentInstance =
+    serverAllUnreadCount ??
+    (currentInstanceId ? (unreadCountsByInstance[currentInstanceId] ?? 0) : 0);
+  const personalUnreadCountForCurrentInstance =
+    serverPersonalUnreadCount ??
+    (currentInstanceId ? (dmUnreadCountsByInstance[currentInstanceId] ?? 0) : 0);
+
+  const { activeChatWindowTitle } = useLayoutUnreadAndTitle({
+    instances,
+    currentInstanceId,
+    unreadCount: unreadCountForCurrentInstance,
+    dms: dmsFromStore,
+    streamsMap,
+    activeStreamSlug,
+    activeTopic,
+    dmIdParam,
+    currentUserId,
+  });
   const syncFolderSyncDerived = useFolderSyncStore((s) => s.syncDerived);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const rightDrawerOpen = useRightDrawerStore((s) => s.open);
@@ -194,36 +211,13 @@ export const Layout: React.FC = () => {
   const connectionHealth = useConnectionHealthSnapshot();
   useHydrateDrafts(currentInstanceId, currentUserStatus);
 
-  // Safety net: keeps the org badge correct when mute state changes outside event/local flows.
-  useEffect(() => {
-    if (!currentInstanceId) return;
-    syncUnreadSurfacesFromDelta({
-      source: "layout-derived",
-      instanceId: currentInstanceId,
-      isStreamMuted,
-      isEffectivelyMuted,
-      applyDelta: () => {},
-    });
-  }, [
-    currentInstanceId,
-    unreadCountForCurrentInstance,
-    personalUnreadIndicatorActive,
-    mutedStreamIds,
-    mutedTopicKeys,
-    unmutedTopicKeys,
-    followedTopicKeys,
-    isStreamMuted,
-    isEffectivelyMuted,
-  ]);
-
   useLayoutWindowBranding({
     unreadCount: unreadCountForCurrentInstance,
     activeChatWindowTitle: activeChatWindowTitle ?? "",
   });
 
   useLayoutAppIconBadge({
-    personalDmUnread: dmUnreadCountForCurrentInstance,
-    mentionsUnread: mentionsUnreadCount,
+    personalUnreadCount: personalUnreadCountForCurrentInstance,
   });
 
   useInactiveInstancesBackgroundWork({

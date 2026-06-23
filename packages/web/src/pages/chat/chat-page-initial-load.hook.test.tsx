@@ -5,23 +5,34 @@ import type { CurrentChatContext } from "~/entities/message/message.model.types"
 import { createMessage } from "~/test/factories";
 import { useChatPageInitialLoad } from "./chat-page-initial-load.hook";
 
-const STREAM_ID = 10;
+const STREAM_ID = "00000000-0000-4000-8000-000000000010";
 const STREAM_NAME = "general";
+const TOPIC_UUID = "00000000-0000-4000-8000-0000000000d0";
 
 function streamWideOptions(overrides: Partial<Parameters<typeof useChatPageInitialLoad>[0]> = {}) {
   return {
-    streamSlug: `${STREAM_ID}-${STREAM_NAME}`,
+    streamSlug: STREAM_ID,
     topicName: undefined,
     dmIdParam: undefined,
     activeStreamCanonicalName: STREAM_NAME,
     resolvedStreamId: STREAM_ID,
     streamRouteTopic: "",
+    activeTopicUuid: undefined,
     focusedMessageId: null,
     currentUserId: 7,
     isFocusedMessageLoadedInCurrentRoute: false,
     setActionError: vi.fn(),
     ...overrides,
   };
+}
+
+function streamTopicOptions(overrides: Partial<Parameters<typeof useChatPageInitialLoad>[0]> = {}) {
+  return streamWideOptions({
+    topicName: TOPIC_UUID,
+    streamRouteTopic: "incident",
+    activeTopicUuid: TOPIC_UUID,
+    ...overrides,
+  });
 }
 
 describe("useChatPageInitialLoad", () => {
@@ -52,7 +63,7 @@ describe("useChatPageInitialLoad", () => {
           messages: [
             createMessage({
               id: 1,
-              stream_id: STREAM_ID,
+              stream_uuid: STREAM_ID,
               subject: "bugs",
               type: "stream",
             }),
@@ -86,6 +97,67 @@ describe("useChatPageInitialLoad", () => {
     expect(loadSpy.mock.calls.length).toBe(callCountAfterInitialLoad);
     unmount();
   });
+
+  it("does not reload messages when server topic display name changes for the same topic UUID", async () => {
+    loadSpy.mockImplementation(
+      (
+        options: Parameters<
+          ReturnType<typeof useCurrentChatMessagesStore.getState>["loadInitialMessagesForContext"]
+        >[0],
+      ) => {
+        options.onCacheHydrated?.();
+        useCurrentChatMessagesStore.setState({
+          context: options.context,
+          messages: [
+            {
+              ...createMessage({
+                id: 1,
+                stream_uuid: STREAM_ID,
+                subject: "incident",
+                type: "stream",
+              }),
+              topic_uuid: TOPIC_UUID,
+            },
+          ],
+        });
+        return Promise.resolve();
+      },
+    );
+
+    const initialOptions = streamTopicOptions({ setActionError });
+    const { rerender, unmount } = renderHook(
+      (props: { options: Parameters<typeof useChatPageInitialLoad>[0] }) =>
+        useChatPageInitialLoad(props.options),
+      { initialProps: { options: initialOptions } },
+    );
+
+    await waitFor(() => {
+      expect(loadSpy).toHaveBeenCalled();
+    });
+    const callCountBeforeRename = loadSpy.mock.calls.length;
+
+    rerender({
+      options: streamTopicOptions({
+        setActionError,
+        streamRouteTopic: "postmortem",
+      }),
+    });
+
+    await waitFor(() => {
+      const context = useCurrentChatMessagesStore.getState().context;
+      expect(context?.type).toBe("stream");
+      if (context?.type === "stream") {
+        expect(context.topic).toBe("postmortem");
+        expect(context.topicUuid).toBe(TOPIC_UUID);
+      }
+    });
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 50);
+    });
+    expect(loadSpy).toHaveBeenCalledTimes(callCountBeforeRename);
+    expect(useCurrentChatMessagesStore.getState().messages).toHaveLength(1);
+    unmount();
+  });
 });
 
 describe("useChatPageInitialLoad setContext guard", () => {
@@ -104,7 +176,7 @@ describe("useChatPageInitialLoad setContext guard", () => {
     useCurrentChatMessagesStore.getState().setContext(null);
   });
 
-  it("does not call setContext again when stream-wide route context is unchanged", async () => {
+  it("updates stream display context without clearing messages when route location is unchanged", async () => {
     const streamWideContext: CurrentChatContext = {
       type: "stream",
       streamId: STREAM_ID,
@@ -117,7 +189,7 @@ describe("useChatPageInitialLoad setContext guard", () => {
       messages: [
         createMessage({
           id: 42,
-          stream_id: STREAM_ID,
+          stream_uuid: STREAM_ID,
           subject: "bugs",
           type: "stream",
         }),
@@ -126,14 +198,22 @@ describe("useChatPageInitialLoad setContext guard", () => {
 
     const setContextSpy = vi.spyOn(useCurrentChatMessagesStore.getState(), "setContext");
 
-    const options = streamWideOptions({ setActionError });
+    const options = streamWideOptions({
+      setActionError,
+      activeStreamCanonicalName: "platform",
+    });
     const { unmount } = renderHook(() => useChatPageInitialLoad(options));
 
     await waitFor(() => {
       expect(loadSpy).toHaveBeenCalled();
     });
 
-    expect(setContextSpy).not.toHaveBeenCalled();
+    expect(setContextSpy).toHaveBeenCalledTimes(1);
+    const context = useCurrentChatMessagesStore.getState().context;
+    expect(context?.type).toBe("stream");
+    if (context?.type === "stream") {
+      expect(context.streamName).toBe("platform");
+    }
     expect(useCurrentChatMessagesStore.getState().messages).toHaveLength(1);
     unmount();
   });

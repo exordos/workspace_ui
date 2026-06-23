@@ -1,6 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useInstancesStore } from "~/entities/instance/instance.model";
-import { syncUnreadSurfacesFromDelta } from "~/entities/unread-sync/unread-surfaces-sync.lib";
 import {
   OPTIMISTIC_FOLDER_ASSIGNMENT_ITEM_UUID,
   type FolderAssignmentRow,
@@ -33,19 +31,8 @@ import type { SidebarChat } from "./sidebar.types";
 const SIDEBAR_MENU_ITEM_CLASS =
   "data-[highlighted]:bg-sidebar-hover flex cursor-pointer select-none items-center gap-2 px-2 py-2 text-sm text-text-primary outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-50 hover:bg-sidebar-hover focus-visible:outline-none focus-visible:outline-0 focus-visible:outline-offset-0";
 
-// After the API clears unread, recalculate the active org badge from fresh sidebar state.
 async function applySidebarMarkChatAsReadAndSync(target: SidebarMarkReadTarget): Promise<void> {
-  const ok = await applySidebarMarkChatAsRead(target);
-  if (!ok) return;
-  const instanceId = useInstancesStore.getState().currentInstanceId;
-  const mute = useMuteStore.getState();
-  syncUnreadSurfacesFromDelta({
-    source: "local-sidebar-mark-read",
-    instanceId,
-    isStreamMuted: mute.isStreamMuted,
-    isEffectivelyMuted: mute.isEffectivelyMuted,
-    applyDelta: () => {},
-  });
+  await applySidebarMarkChatAsRead(target);
 }
 
 function useFolderAssignmentsSubmenu(chatId: string, menuOpen: boolean): DropdownMenuItem {
@@ -216,6 +203,7 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [notificationPending, setNotificationPending] = useState(false);
+  const [preventCloseAutoFocus, setPreventCloseAutoFocus] = useState(false);
   const notificationLevel = useMuteStore((s) => s.getStreamNotificationLevel(streamId));
   const chatId = chatToWorkspaceChatId(chat);
   const { isPinned, showFolderPinAction, runPin, runUnpin } = useSidebarFolderPinMenu(
@@ -289,6 +277,7 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
   }, [runUnpin]);
 
   const handleCreateTopic = useCallback(() => {
+    setPreventCloseAutoFocus(true);
     onCreateTopic?.();
     setMenuOpen(false);
   }, [onCreateTopic]);
@@ -416,6 +405,11 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
         contentProps={{
           sideOffset: 4,
           align: "start",
+          onCloseAutoFocus: (event) => {
+            if (!preventCloseAutoFocus) return;
+            setPreventCloseAutoFocus(false);
+            event.preventDefault();
+          },
         }}
       />
     </div>
@@ -562,6 +556,7 @@ export const TopicContextMenu = React.memo(function TopicContextMenu({
   streamId,
   streamName,
   topic,
+  topicUuid,
   rowClassName,
   rowStyle,
   sideActions,
@@ -570,6 +565,7 @@ export const TopicContextMenu = React.memo(function TopicContextMenu({
   streamId: string;
   streamName: string;
   topic: string;
+  topicUuid?: string;
   rowClassName: string;
   rowStyle?: React.CSSProperties;
   /** Mute and other controls rendered below the menu trigger in the right column. */
@@ -590,7 +586,7 @@ export const TopicContextMenu = React.memo(function TopicContextMenu({
     openRenameDialog,
     submitRename,
     renamePending,
-  } = useMarkTopicResolved({ streamId, topic, streamName });
+  } = useMarkTopicResolved({ streamId, topic, topicUuid, streamName });
 
   const {
     canMove: canMoveTopicToChannel,
@@ -605,7 +601,7 @@ export const TopicContextMenu = React.memo(function TopicContextMenu({
     openMoveDialog,
     submitMove,
     channelName: moveChannelName,
-  } = useMoveTopicToStream({ streamId, topic, streamName });
+  } = useMoveTopicToStream({ streamId, topic, topicUuid, streamName });
 
   const topicActionsPending = topicActionPending || movePending;
   const resolveLabel = isResolved ? t("channel.markTopicAsNotDone") : t("channel.markTopicAsDone");

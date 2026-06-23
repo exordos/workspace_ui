@@ -10,6 +10,7 @@ const MESSAGE_ID_1 = testMessageId(1);
 const MESSAGE_ID_2 = testMessageId(2);
 const MESSAGE_ID_10 = testMessageId(10);
 const MESSAGE_ID_11 = testMessageId(11);
+const STREAM_UUID = "00000000-0000-4000-8000-000000000005";
 
 const streamMsg = (
   id: number,
@@ -18,7 +19,7 @@ const streamMsg = (
   ts: number,
 ): ChatListPreviewSourceMessage => ({
   id: testMessageId(id),
-  stream_id: streamId,
+  stream_uuid: `00000000-0000-4000-8000-${String(streamId).padStart(12, "0")}`,
   subject,
   timestamp: ts,
   content: `m${id}`,
@@ -39,11 +40,16 @@ describe("chat-list-delete-messages", () => {
       streamMsg(2, 5, "topic", 20),
       streamMsg(3, 5, "other", 30),
     ];
-    expect(pickReplacementForStreamTopic(messages, 5, "topic", new Set([MESSAGE_ID_2]))?.id).toBe(
-      MESSAGE_ID_1,
-    );
     expect(
-      pickReplacementForStreamTopic(messages, 5, "topic", new Set([MESSAGE_ID_1, MESSAGE_ID_2])),
+      pickReplacementForStreamTopic(messages, STREAM_UUID, "topic", new Set([MESSAGE_ID_2]))?.id,
+    ).toBe(MESSAGE_ID_1);
+    expect(
+      pickReplacementForStreamTopic(
+        messages,
+        STREAM_UUID,
+        "topic",
+        new Set([MESSAGE_ID_1, MESSAGE_ID_2]),
+      ),
     ).toBeNull();
   });
 

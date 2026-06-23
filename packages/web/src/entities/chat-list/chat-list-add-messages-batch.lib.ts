@@ -5,7 +5,6 @@ import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { compareMessageTimeline } from "~/shared/lib/message-id.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
-import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import { mergeStreamEntry } from "./chat-list-stream-entry-merge.lib";
@@ -13,7 +12,11 @@ import {
   patchStreamTopicMessageIndex,
   streamTopicCompositeKey,
 } from "./chat-list-stream-topic-index.lib";
-import { messageToDmEntry, messageToStreamEntry } from "./chat-list.lib";
+import {
+  messageToDmEntry,
+  messageToStreamEntry,
+  streamTopicIdentityFromMessage,
+} from "./chat-list.lib";
 import type { ChatListState, MessageLocation } from "./chat-list.model.types";
 
 /** Metadata/IDB rows can carry lastActivityTs + lastMessageId without preview text — still merge fetched bodies. */
@@ -45,8 +48,16 @@ function indexBatchMessageLocations(
       continue;
     }
     if (m.type === "stream" && m.stream_uuid != null) {
-      const topic = normalizeTopicForIdentity(m.subject ?? "");
-      nextLoc.set(m.id, { type: "stream", streamUuid: m.stream_uuid, topic });
+      const topicIdentity = streamTopicIdentityFromMessage(m);
+      if (topicIdentity == null) {
+        continue;
+      }
+      nextLoc.set(m.id, {
+        type: "stream",
+        streamUuid: m.stream_uuid,
+        topic: topicIdentity.topicUuid ?? topicIdentity.subject,
+        ...(topicIdentity.topicUuid != null ? { topicUuid: topicIdentity.topicUuid } : {}),
+      });
     } else if (m.type === "private" && Array.isArray(m.display_recipient)) {
       const key = dmConversationKey(m.display_recipient, currentUserId);
       nextLoc.set(m.id, { type: "dm", dmKey: key });
@@ -90,6 +101,7 @@ function mergeStreamTopicPreviewsFromLatest(
       topic.time,
       topic.ts,
       m.id,
+      topic.topicUuid,
     );
     nextStreams.set(streamUuid, merged);
   }
@@ -172,8 +184,14 @@ export function buildStreamTopicLatestMap(
   const streamTopicLatest = new Map<string, WorkspaceRawMessage>();
   for (const m of messages) {
     if (m.type === "stream" && m.stream_uuid != null) {
-      const topic = normalizeTopicForIdentity(m.subject ?? "");
-      const key = streamTopicCompositeKey(m.stream_uuid, topic);
+      const topicIdentity = streamTopicIdentityFromMessage(m);
+      if (topicIdentity == null) {
+        continue;
+      }
+      const key = streamTopicCompositeKey(
+        m.stream_uuid,
+        topicIdentity.topicUuid ?? topicIdentity.subject,
+      );
       const existing = streamTopicLatest.get(key);
       if (!existing || compareMessageTimeline(m, existing) >= 0) {
         streamTopicLatest.set(key, m);

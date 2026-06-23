@@ -29,5 +29,6 @@ export function toStreamTopicMetadataRows(
       name: topic.name,
       unreadCount: topic.unread_count,
       isDefault: topic.is_default,
+      isDone: topic.is_done,
     }));
 }

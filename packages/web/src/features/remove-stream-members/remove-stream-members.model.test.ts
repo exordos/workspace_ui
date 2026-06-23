@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { removeStreamMembers } from "./remove-stream-members.api";
 import { useRemoveStreamMembersStore } from "./remove-stream-members.model";
 
+const STREAM_UUID_10 = "00000000-0000-4000-8000-000000000010";
+
 vi.mock("./remove-stream-members.api", () => ({
   removeStreamMembers: vi.fn(),
 }));
@@ -24,7 +26,7 @@ describe("useRemoveStreamMembersStore", () => {
 
     const onSuccess = vi.fn();
     const result = await useRemoveStreamMembersStore.getState().submit({
-      streamId: 10,
+      streamId: STREAM_UUID_10,
       streamName: "engineering",
       userId: 88,
       onSuccess,
@@ -37,7 +39,7 @@ describe("useRemoveStreamMembersStore", () => {
     expect(result?.ok).toBe(true);
     expect(useRemoveStreamMembersStore.getState().pendingUserIds).toEqual([]);
     expect(useRemoveStreamMembersStore.getState().lastError).toBeNull();
-    expect(onSuccess).toHaveBeenCalledWith(10);
+    expect(onSuccess).toHaveBeenCalledWith(STREAM_UUID_10);
   });
 
   it("stores per-user error when request fails", async () => {
@@ -50,7 +52,7 @@ describe("useRemoveStreamMembersStore", () => {
     });
 
     const result = await useRemoveStreamMembersStore.getState().submit({
-      streamId: 10,
+      streamId: "00000000-0000-4000-8000-000000000010",
       streamName: "engineering",
       userId: 88,
     });

@@ -48,6 +48,23 @@ describe("usersStore", () => {
       expect(user!.role).toBe(200);
     });
 
+    it("preserves an existing display name when incoming name is empty", () => {
+      useUsersStore.getState().mergeUser({
+        user_id: "00000000-0000-0000-0000-000000000000",
+        full_name: "Admin User",
+        email: "admin@example.com",
+      });
+      useUsersStore.getState().mergeUser({
+        user_id: "00000000-0000-0000-0000-000000000000",
+        full_name: "",
+        email: "admin@example.com",
+      });
+
+      expect(
+        useUsersStore.getState().getUser("00000000-0000-0000-0000-000000000000")?.full_name,
+      ).toBe("Admin User");
+    });
+
     // Email index is needed because Workspace presence events arrive keyed by email.
     it("builds email-to-userId index", () => {
       useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Bob", email: "bob@t.com" });
@@ -99,6 +116,12 @@ describe("usersStore", () => {
       expect(useUsersStore.getState().getUser(31)?.is_active).toBe(false);
     });
 
+    it("preserves an existing display name when a batch entry has an empty name", () => {
+      useUsersStore.getState().mergeUsers([{ user_id: 32, full_name: "Directory Name" }]);
+      useUsersStore.getState().mergeUsers([{ user_id: 32, full_name: "   " }]);
+      expect(useUsersStore.getState().getUser(32)?.full_name).toBe("Directory Name");
+    });
+
     it("merges profile_data from directory payloads", () => {
       useUsersStore.getState().mergeUsers([
         {
@@ -136,7 +159,7 @@ describe("usersStore", () => {
         content: "hello",
         timestamp: 1000,
         type: "stream",
-        stream_id: 5,
+        stream_uuid: "00000000-0000-4000-8000-000000000005",
       };
 
       useUsersStore.getState().mergeFromMessage(msg);
@@ -167,6 +190,28 @@ describe("usersStore", () => {
       expect(useUsersStore.getState().getUser(10)).toBeDefined();
       expect(useUsersStore.getState().getUser(20)).toBeDefined();
       expect(useUsersStore.getState().getUser(20)!.email).toBe("dana@t.com");
+    });
+
+    it("does not replace a directory name with an empty message sender name", () => {
+      const authorId = "cc0d427f-bd17-437b-9e42-c20a5c26b42d";
+      useUsersStore.getState().mergeUser({
+        user_id: authorId,
+        full_name: "Alice Smith",
+        email: "alice@example.com",
+      });
+
+      useUsersStore.getState().mergeFromMessage({
+        id: "00000000-0000-4000-8000-000000000102",
+        sender_id: 10,
+        author_uuid: authorId,
+        sender_full_name: "",
+        content: "hello",
+        timestamp: 1000,
+        type: "stream",
+        stream_uuid: "00000000-0000-4000-8000-000000000005",
+      });
+
+      expect(useUsersStore.getState().getUser(authorId)?.full_name).toBe("Alice Smith");
     });
   });
 

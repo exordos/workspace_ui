@@ -1,8 +1,7 @@
 /**
- * Tests for the inbox entity — unread message grouping, actions, and derived data.
+ * Tests for the inbox entity — server-owned unread rows and request lifecycle.
  *
- * The inbox groups unread messages by stream+topic or DM conversation,
- * provides sorted views, and supports batch mark-as-read.
+ * The inbox stores server unread metadata, provides sorted views, and refreshes when stale.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { useInboxStore } from "./inbox.model";
@@ -97,30 +96,6 @@ describe("useInboxStore", () => {
     expect(state.error).toBeNull();
   });
 
-  it("markAsRead removes entries whose messageIds are fully covered", () => {
-    useInboxStore.getState().setEntries([STREAM_ENTRY_1, DM_ENTRY]);
-    useInboxStore
-      .getState()
-      .markAsRead([
-        "00000000-0000-4000-8000-000000000101",
-        "00000000-0000-4000-8000-000000000102",
-        "00000000-0000-4000-8000-000000000103",
-      ]);
-    const entries = useInboxStore.getState().entries;
-    expect(entries).toHaveLength(1);
-    expect(entries[0]!.key).toBe("dm:42");
-  });
-
-  it("markAsRead decrements unreadCount for partially read entries", () => {
-    useInboxStore.getState().setEntries([DM_ENTRY]);
-    useInboxStore
-      .getState()
-      .markAsRead(["00000000-0000-4000-8000-000000000301", "00000000-0000-4000-8000-000000000302"]);
-    const entry = useInboxStore.getState().entries[0]!;
-    expect(entry.unreadCount).toBe(3);
-    expect(entry.messageIds).toHaveLength(3);
-  });
-
   it("clear resets to initial state", () => {
     useInboxStore.getState().setEntries([STREAM_ENTRY_1, DM_ENTRY]);
     useInboxStore.getState().clear();
@@ -148,13 +123,12 @@ describe("useInboxStore", () => {
     expect(useInboxStore.getState().error).toBe("Network error");
   });
 
-  it("totalUnreadCount sums all entry counts", () => {
+  it("markStale increments refresh version without changing entries", () => {
     useInboxStore.getState().setEntries([STREAM_ENTRY_1, STREAM_ENTRY_2, DM_ENTRY]);
-    expect(useInboxStore.getState().totalUnreadCount()).toBe(9);
-  });
-
-  it("totalUnreadCount returns 0 for empty entries", () => {
-    expect(useInboxStore.getState().totalUnreadCount()).toBe(0);
+    useInboxStore.getState().markStale();
+    const state = useInboxStore.getState();
+    expect(state.staleVersion).toBe(1);
+    expect(state.entries).toEqual([STREAM_ENTRY_1, STREAM_ENTRY_2, DM_ENTRY]);
   });
 
   it("sortedEntries returns entries newest first", () => {

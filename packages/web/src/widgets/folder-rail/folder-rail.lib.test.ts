@@ -17,21 +17,21 @@ describe("orderedIndexedFoldersForRail", () => {
     expect(orderedIndexedFoldersForRail([])).toEqual([]);
   });
 
-  it("pins all-folder first when it is not first in source order", () => {
+  it("keeps server folder order when all-folder is not first", () => {
     const indexed: IndexedFolderEntry[] = [
       entry("custom", 0, "created"),
       entry("all-api", 1, "all"),
       entry("b", 2, "created"),
     ];
     expect(orderedIndexedFoldersForRail(indexed).map((e) => e.folder.id)).toEqual([
-      "all-api",
       "custom",
+      "all-api",
       "b",
     ]);
-    expect(orderedIndexedFoldersForRail(indexed).map((e) => e.index)).toEqual([1, 0, 2]);
+    expect(orderedIndexedFoldersForRail(indexed).map((e) => e.index)).toEqual([0, 1, 2]);
   });
 
-  it("treats first slot without systemType as all (legacy)", () => {
+  it("keeps first slot without systemType as server-provided created folder", () => {
     const indexed: IndexedFolderEntry[] = [
       { folder: { id: "legacy-all", label: "All", backgroundColor: 1 }, index: 0 },
       entry("b", 1, "created"),

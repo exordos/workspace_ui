@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildReadFallbackContext } from "./chat-page.lib";
+import { buildReadFallbackContext, resolveMessageListScrollKey } from "./chat-page.lib";
 
 /**
  * Characterization tests for chat-page-forward-hydration hook behavior
@@ -19,5 +19,32 @@ describe("chat-page-forward-hydration (characterization)", () => {
       streamId: "11111111-1111-4111-8111-111111111111",
       topic: "bugs",
     });
+  });
+});
+
+describe("resolveMessageListScrollKey", () => {
+  it("keeps stream topic scroll identity stable when only the topic display name changes", () => {
+    const streamId = "11111111-1111-4111-8111-111111111111";
+    const topicUuid = "22222222-2222-4222-8222-222222222222";
+
+    const beforeRename = resolveMessageListScrollKey({
+      isDmView: false,
+      activeDmUserIds: null,
+      activeStreamId: streamId,
+      activeStream: "general",
+      activeTopicUuid: topicUuid,
+      activeTopic: "incident",
+    });
+    const afterRename = resolveMessageListScrollKey({
+      isDmView: false,
+      activeDmUserIds: null,
+      activeStreamId: streamId,
+      activeStream: "general",
+      activeTopicUuid: topicUuid,
+      activeTopic: "postmortem",
+    });
+
+    expect(beforeRename).toBe(`${streamId}|${topicUuid}`);
+    expect(afterRename).toBe(beforeRename);
   });
 });

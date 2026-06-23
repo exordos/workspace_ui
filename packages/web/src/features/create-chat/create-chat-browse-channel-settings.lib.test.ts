@@ -5,6 +5,8 @@ import {
   resolveBrowseChannelTypeKey,
 } from "./create-chat-browse-channel-settings.lib";
 
+const STREAM_UUID_42 = "00000000-0000-4000-8000-000000000042";
+
 const labels = createBrowseChannelDetailLabels({
   t: (key, params) => {
     if (key === "channel.browseDirectMembers" && params?.count != null) {
@@ -57,7 +59,7 @@ describe("create-chat-browse-channel-settings.lib", () => {
   it("buildBrowseChannelDetailSections includes permissions and creator", () => {
     const sections = buildBrowseChannelDetailSections(
       {
-        streamId: 42,
+        streamUuid: STREAM_UUID_42,
         inviteOnly: false,
         historyPublicToSubscribers: true,
         isAnnouncementOnly: false,
@@ -85,7 +87,7 @@ describe("create-chat-browse-channel-settings.lib", () => {
     expect(general?.fields).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: "creator", value: "Alice" }),
-        expect.objectContaining({ id: "stream-id", value: "42" }),
+        expect.objectContaining({ id: "stream-id", value: STREAM_UUID_42 }),
       ]),
     );
 

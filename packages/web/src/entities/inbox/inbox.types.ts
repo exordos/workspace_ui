@@ -15,6 +15,10 @@ export interface InboxEntry {
   streamName: string | null;
   /** Topic name for topic rows; null for stream-level fallback rows. */
   topic: string | null;
+  /** Server topic UUID for topic rows; routes and identity must prefer this over the display name. */
+  topicUuid?: string;
+  /** Server-owned topic done state. The checkmark is visual only. */
+  isDone?: boolean;
   /** Direct-chat partner user ID when the DM is 1:1; null for stream/group-DM entries. */
   senderId: number | null;
   /** Conversation label for the unread DM bucket. */
@@ -23,6 +27,8 @@ export interface InboxEntry {
   dmSlug: string | null;
   /** Number of unread messages in this group. */
   unreadCount: number;
+  /** Server-owned parent stream unread count; never derived from topic rows. */
+  streamUnreadCount?: number;
   /** Unix timestamp of the most recent unread message. */
   lastMessageTimestamp: number;
   /** Optional focus ids only; unread counts are not derived from this list. */

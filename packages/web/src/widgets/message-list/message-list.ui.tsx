@@ -2,7 +2,6 @@ import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallba
 import { t } from "~/i18n/i18n";
 import type { MockMessage, Reaction, RealmEmoji } from "~/shared/api/messenger.types";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
-import { countUnreadMessagesBelowViewport } from "~/shared/lib/count-unread-below-viewport.lib";
 import { normalizeEmojiShortcodeName } from "~/shared/lib/emoji-shortcodes.lib";
 import { createLogger } from "~/shared/lib/logger";
 import { isMessageFromCurrentUser } from "~/shared/lib/message-author.lib";
@@ -14,18 +13,12 @@ import {
   summarizeMessageIdsForFlowDebug,
   summarizeScrollElement,
 } from "~/shared/lib/message-flow-debug.lib";
-import {
-  buildMessageIdMap,
-  filterViewportUnreadIdsForReadDispatch,
-} from "~/shared/lib/message-id-index.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import {
   canAutoLoadNewer,
   canAutoLoadOlder,
-  isElementNearViewportBottom,
 } from "~/shared/lib/message-list-pagination-policy.lib";
 import { isLikelyRenderedMessageHtml } from "~/shared/lib/message-markdown-display.lib";
-import { resolveLastUnreadBoundaryMessageId } from "~/shared/lib/message-unread-boundary.lib";
 import {
   collectViewportVisibleUnreadIds,
   computeReadTailReady,
@@ -222,23 +215,11 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     [messages],
   );
 
-  const messageById = useMemo(() => buildMessageIdMap(messages), [messages]);
-  const lastUnreadId = useMemo(
-    () => resolveLastUnreadBoundaryMessageId(messages, currentUserId),
-    [messages, currentUserId],
-  );
+  const lastUnreadId = undefined;
 
-  const syncBelowViewportUnreadCount = useCallback(
-    (atBottom: boolean) => {
-      const el = scrollRef.current;
-      if (!el || atBottom) {
-        setBelowViewportUnreadCount(0);
-        return;
-      }
-      setBelowViewportUnreadCount(countUnreadMessagesBelowViewport(el, messages, currentUserId));
-    },
-    [messages, currentUserId],
-  );
+  const syncBelowViewportUnreadCount = useCallback((_atBottom: boolean) => {
+    setBelowViewportUnreadCount(0);
+  }, []);
 
   const deferAutoMarkUnreadUntilUserScroll = useCallback(() => {
     return shouldDeferAutoMarkUnreadUntilUserScroll({
@@ -305,26 +286,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     [runProgrammaticScroll, logScrollMetrics, syncWasAtBottomFromElement],
   );
 
-  const isLastUnreadNearViewportBottom = useCallback(
-    (root: HTMLElement): boolean => {
-      if (lastUnreadId == null) {
-        return true;
-      }
-      const target = root.querySelector<HTMLElement>(`[data-message-id="${lastUnreadId}"]`);
-      if (target == null) {
-        return true;
-      }
-      const rootRect = root.getBoundingClientRect();
-      const targetRect = target.getBoundingClientRect();
-      return isElementNearViewportBottom({
-        rootTop: rootRect.top,
-        rootBottom: rootRect.bottom,
-        elementBottom: targetRect.bottom,
-        bottomThreshold: SCROLL_AT_BOTTOM_THRESHOLD,
-      });
-    },
-    [lastUnreadId],
-  );
+  const isLastUnreadNearViewportBottom = useCallback((_root: HTMLElement): boolean => true, []);
 
   useEffect(() => {
     if (!hasMarkdownEmojiShortcodes && !hasRealmEmojiReactions) {
@@ -392,16 +354,10 @@ export const MessageListInner: React.FC<MessageListProps> = ({
   }, [messageTailLen, messageFirstId, messageLastId, isLoadingMore, scrollToBottomKey]);
 
   useEffect(() => {
-    const next = new Set(
-      messages
-        .filter((m) => m.read !== true && !isMessageFromCurrentUser(m, currentUserId ?? null))
-        .map((m) => m.id),
-    );
-    unreadCandidatesRef.current = next;
-    if (next.size === 0) {
-      viewportUnreadIdsRef.current.clear();
-    }
-  }, [messages, currentUserId]);
+    unreadCandidatesRef.current = new Set();
+    viewportUnreadIdsRef.current.clear();
+    observedUnreadNodesRef.current.clear();
+  }, [messages]);
 
   useEffect(() => {
     viewportUnreadIdsRef.current.clear();
@@ -524,11 +480,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
       }
     }
 
-    const ids = filterViewportUnreadIdsForReadDispatch(
-      viewportUnreadIdsRef.current,
-      messageById,
-      currentUserId ?? null,
-    );
+    const ids: MessageId[] = [];
     if (ids.length === 0) return;
 
     const sorted = [...ids].sort();
@@ -551,8 +503,6 @@ export const MessageListInner: React.FC<MessageListProps> = ({
   }, [
     onUnreadMessagesVisible,
     onUnreadMessagesAtBottom,
-    messageById,
-    currentUserId,
     scrollToBottomKey,
     hasNewerMessages,
     isLoadingNewer,
@@ -738,11 +688,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
       viewportUnreadIdsRef.current.add(id);
     }
 
-    const ids = filterViewportUnreadIdsForReadDispatch(
-      viewportUnreadIdsRef.current,
-      messageById,
-      currentUserId ?? null,
-    );
+    const ids: MessageId[] = [];
     if (ids.length === 0) return;
 
     const sorted = [...ids].sort();
@@ -763,8 +709,6 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     isLoadingNewer,
     unreadCount,
     isLastUnreadNearViewportBottom,
-    messageById,
-    currentUserId,
     scrollToBottomKey,
     onUnreadMessagesAtBottom,
   ]);
@@ -1338,7 +1282,9 @@ export const MessageListInner: React.FC<MessageListProps> = ({
                 senderMessages.some((m) => m.id === unreadAnchorId);
               const first = senderMessages[0]!;
               const isStream = first.stream_uuid != null;
-              const topicKey = normalizeStreamTopicForMessageCache(first.subject ?? "");
+              const topicKey = normalizeStreamTopicForMessageCache(
+                first.topic_uuid ?? first.subject ?? "",
+              );
               const topicDisplay = resolveTopicDisplayInfo(topicKey);
               const showTopicSeparator =
                 isStream && lastStreamTopicKey !== undefined && lastStreamTopicKey !== topicKey;

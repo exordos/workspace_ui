@@ -115,6 +115,7 @@ export function useLayoutRightPanelShell(
       name: topic.subject,
       ...(topic.topicUuid != null ? { topicUuid: topic.topicUuid } : {}),
       unreadCount: topic.unreadCount,
+      ...(topic.isDone === true ? { isDone: true } : {}),
     }));
   }, [activeStreamId, streamsMap]);
 

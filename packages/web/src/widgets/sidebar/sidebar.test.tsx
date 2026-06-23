@@ -13,6 +13,7 @@ import { usePinStore } from "~/features/pin-chat/pin-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
 import type * as MessengerReadStateModule from "~/shared/api/messenger-read-state";
+import type * as MessengerStreamsModule from "~/shared/api/messenger-streams";
 import type * as WorkspaceApiModule from "~/shared/api/workspace-client";
 import { setCurrentOrgRouteIdResolver } from "~/shared/lib/org-route";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
@@ -34,6 +35,7 @@ const muteTopicMock = vi.fn();
 const unmuteTopicMock = vi.fn();
 const unmuteTopicInMutedStreamMock = vi.fn();
 const setTopicVisibilityLevelMock = vi.fn();
+const createStreamTopicMock = vi.fn();
 const pinChatInFolderMock = vi.fn();
 const unpinChatInFolderMock = vi.fn();
 const getFoldersMock = vi.fn().mockResolvedValue([]);
@@ -47,6 +49,17 @@ const PRIVATE_STREAM_UUID = "6738f91a-4fd1-416e-807f-cb4ae00ec1d3";
 const PRIVATE_STREAM_SECOND_UUID = "815890be-9819-46b1-9291-880602e62b96";
 const STREAM_UUID = "11111111-1111-4111-8111-111111111111";
 const STREAM_SECOND_UUID = "22222222-2222-4222-8222-222222222222";
+const TOPIC_UUID = "33333333-3333-4333-8333-333333333333";
+
+function topicEntity(name: string, streamUuid = STREAM_UUID) {
+  return {
+    uuid: TOPIC_UUID,
+    stream_uuid: streamUuid,
+    name,
+    unread_count: 0,
+    is_default: false,
+  };
+}
 
 vi.mock("~/features/create-chat/create-chat.api", async (importOriginal) => {
   const actual = await importOriginal<typeof CreateChatApiModule>();
@@ -79,6 +92,14 @@ vi.mock("~/features/mute-chat/mute-chat.api", async (importOriginal) => {
     unmuteTopic: (...args: unknown[]) => unmuteTopicMock(...args),
     unmuteTopicInMutedStream: (...args: unknown[]) => unmuteTopicInMutedStreamMock(...args),
     setTopicVisibilityLevel: (...args: unknown[]) => setTopicVisibilityLevelMock(...args),
+  };
+});
+
+vi.mock("~/shared/api/messenger-streams", async (importOriginal) => {
+  const actual = await importOriginal<typeof MessengerStreamsModule>();
+  return {
+    ...actual,
+    createStreamTopic: (...args: unknown[]) => createStreamTopicMock(...args),
   };
 });
 
@@ -182,8 +203,8 @@ describe("Sidebar", () => {
     markTopicAsReadMock.mockReset();
     setTopicResolvedStateMock.mockReset();
     renameStreamTopicMock.mockReset();
-    setTopicResolvedStateMock.mockResolvedValue(true);
-    renameStreamTopicMock.mockResolvedValue(true);
+    setTopicResolvedStateMock.mockResolvedValue(topicEntity("\u2714 incident"));
+    renameStreamTopicMock.mockResolvedValue(topicEntity("postmortem"));
     muteStreamMock.mockReset();
     unmuteStreamMock.mockReset();
     setStreamNotificationLevelMock.mockReset();
@@ -191,6 +212,7 @@ describe("Sidebar", () => {
     unmuteTopicMock.mockReset();
     unmuteTopicInMutedStreamMock.mockReset();
     setTopicVisibilityLevelMock.mockReset();
+    createStreamTopicMock.mockReset();
     muteStreamMock.mockResolvedValue(true);
     unmuteStreamMock.mockResolvedValue(true);
     setStreamNotificationLevelMock.mockResolvedValue(true);
@@ -238,7 +260,9 @@ describe("Sidebar", () => {
     useChatListStore.getState().clear();
     useChatListStore
       .getState()
-      .upsertStreamMetadataRows([{ streamId: 501, name: "Legacy", isArchived: true }]);
+      .upsertStreamMetadataRows([
+        { streamUuid: "00000000-0000-4000-8000-000000000501", name: "Legacy", isArchived: true },
+      ]);
     useSidebarConfigStore.getState().setCreateChatOpen(true);
 
     renderWithProviders(
@@ -263,7 +287,9 @@ describe("Sidebar", () => {
       expect(useSidebarConfigStore.getState().createChatOpen).toBe(false);
     });
 
-    expect(screen.getByTestId("route-path")).toHaveTextContent("/stream/501-legacy");
+    expect(screen.getByTestId("route-path")).toHaveTextContent(
+      "/stream/00000000-0000-4000-8000-000000000501",
+    );
   });
 
   it("renders loading state for folder chat list", () => {
@@ -654,7 +680,7 @@ describe("Sidebar", () => {
   });
 
   it("passes channel options and selected subscribers to createChannel", async () => {
-    createChannelMock.mockResolvedValue({ streamId: 99 });
+    createChannelMock.mockResolvedValue({ streamId: "00000000-0000-4000-8000-000000000099" });
     useChatListStore.setState({ currentUserId: 1001 });
     useUsersStore
       .getState()
@@ -788,14 +814,16 @@ describe("Sidebar", () => {
   });
 
   it("marks topic as done from topic context menu", async () => {
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 11, name: "Engineering" }]);
+    useChatListStore
+      .getState()
+      .upsertStreamMetadataRows([{ streamUuid: STREAM_UUID, name: "Engineering" }]);
     useChatListStore.getState().setCurrentUserId(42);
     useSidebarConfigStore
       .getState()
       .setConfig({ expandedStreamSlugs: ["11111111-1111-4111-8111-111111111111"] });
     const streamWithTopics = {
       ...STREAM_CHAT,
-      topics: [{ subject: "incident", badge: 0, lastMessage: "Need fix" }],
+      topics: [{ topicUuid: TOPIC_UUID, subject: "incident", badge: 0, lastMessage: "Need fix" }],
     };
 
     renderWithProviders(
@@ -812,6 +840,7 @@ describe("Sidebar", () => {
 
     await waitFor(() => {
       expect(setTopicResolvedStateMock).toHaveBeenCalledWith(
+        TOPIC_UUID,
         "11111111-1111-4111-8111-111111111111",
         "incident",
         true,
@@ -820,14 +849,16 @@ describe("Sidebar", () => {
   });
 
   it("renames topic from topic context menu", async () => {
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 11, name: "Engineering" }]);
+    useChatListStore
+      .getState()
+      .upsertStreamMetadataRows([{ streamUuid: STREAM_UUID, name: "Engineering" }]);
     useChatListStore.getState().setCurrentUserId(42);
     useSidebarConfigStore
       .getState()
       .setConfig({ expandedStreamSlugs: ["11111111-1111-4111-8111-111111111111"] });
     const streamWithTopics = {
       ...STREAM_CHAT,
-      topics: [{ subject: "incident", badge: 0, lastMessage: "Need fix" }],
+      topics: [{ topicUuid: TOPIC_UUID, subject: "incident", badge: 0, lastMessage: "Need fix" }],
     };
 
     renderWithProviders(
@@ -848,6 +879,7 @@ describe("Sidebar", () => {
 
     await waitFor(() => {
       expect(renameStreamTopicMock).toHaveBeenCalledWith(
+        TOPIC_UUID,
         "11111111-1111-4111-8111-111111111111",
         "incident",
         "postmortem",
@@ -856,6 +888,17 @@ describe("Sidebar", () => {
   });
 
   it("does not show pin action in personal system folder stream context menu", async () => {
+    useFolderSyncStore.setState({
+      folders: [
+        {
+          id: PERSONAL_FOLDER_UUID,
+          label: "Personal",
+          backgroundColor: 0,
+          systemType: "personal",
+        },
+      ],
+    });
+
     renderWithProviders(
       <Sidebar
         streams={[]}
@@ -872,10 +915,10 @@ describe("Sidebar", () => {
   });
 
   it("shows pin action in private stream context menu and pins chat in selected folder", async () => {
-    useFolderSyncStore.setState({ allFolderApiUuid: "all" });
+    useFolderSyncStore.setState({ allFolderApiUuid: ALL_FOLDER_UUID });
     getFoldersMock.mockResolvedValue([
       {
-        uuid: "all",
+        uuid: ALL_FOLDER_UUID,
         title: "All",
         created_at: "",
         updated_at: "",
@@ -887,7 +930,7 @@ describe("Sidebar", () => {
             uuid: "item-42",
             stream_uuid: "6738f91a-4fd1-416e-807f-cb4ae00ec1d3",
             chat_type: "stream",
-            folder: "all",
+            folder: ALL_FOLDER_UUID,
             order_index: 0,
             pinned_at: null,
             created_at: "",
@@ -913,11 +956,11 @@ describe("Sidebar", () => {
 
     await waitFor(() => {
       expect(getFoldersMock).toHaveBeenCalled();
-      expect(pinChatInFolderMock).toHaveBeenCalledWith("all", "item-42");
+      expect(pinChatInFolderMock).toHaveBeenCalledWith(ALL_FOLDER_UUID, "item-42");
       expect(
         usePinStore
           .getState()
-          .isPinned("all", "stream:6738f91a-4fd1-416e-807f-cb4ae00ec1d3:general"),
+          .isPinned(ALL_FOLDER_UUID, "stream:6738f91a-4fd1-416e-807f-cb4ae00ec1d3:general"),
       ).toBe(true);
     });
   });
@@ -963,10 +1006,12 @@ describe("Sidebar", () => {
   });
 
   it("shows unpin action in private stream context menu when chat is already pinned", async () => {
-    useFolderSyncStore.setState({ allFolderApiUuid: "all" });
-    usePinStore.getState().pinChat("all", "stream:6738f91a-4fd1-416e-807f-cb4ae00ec1d3:general", {
-      folderItemUuid: "item-42",
-    });
+    useFolderSyncStore.setState({ allFolderApiUuid: ALL_FOLDER_UUID });
+    usePinStore
+      .getState()
+      .pinChat(ALL_FOLDER_UUID, "stream:6738f91a-4fd1-416e-807f-cb4ae00ec1d3:general", {
+        folderItemUuid: "item-42",
+      });
     unpinChatInFolderMock.mockResolvedValue(true);
 
     renderWithProviders(
@@ -983,21 +1028,23 @@ describe("Sidebar", () => {
     fireEvent.click(unpinItem);
 
     await waitFor(() => {
-      expect(unpinChatInFolderMock).toHaveBeenCalledWith("all", "item-42");
+      expect(unpinChatInFolderMock).toHaveBeenCalledWith(ALL_FOLDER_UUID, "item-42");
       expect(
         usePinStore
           .getState()
-          .isPinned("all", "stream:6738f91a-4fd1-416e-807f-cb4ae00ec1d3:general"),
+          .isPinned(ALL_FOLDER_UUID, "stream:6738f91a-4fd1-416e-807f-cb4ae00ec1d3:general"),
       ).toBe(false);
     });
   });
 
   it("navigates to pinned private stream without leaving org scope on click", () => {
     setCurrentOrgRouteIdResolver(() => "chat.example.com");
-    usePinStore.getState().pinChat("all", "stream:6738f91a-4fd1-416e-807f-cb4ae00ec1d3:general", {
-      folderItemUuid: "item-42",
-      pinnedAt: "2026-03-14T12:00:00Z",
-    });
+    usePinStore
+      .getState()
+      .pinChat(ALL_FOLDER_UUID, "stream:6738f91a-4fd1-416e-807f-cb4ae00ec1d3:general", {
+        folderItemUuid: "item-42",
+        pinnedAt: "2026-03-14T12:00:00Z",
+      });
 
     renderWithProviders(
       <>
@@ -1036,11 +1083,13 @@ describe("Sidebar", () => {
   });
 
   it("renders pinned private stream chats before unpinned ones", () => {
-    useFolderSyncStore.setState({ allFolderApiUuid: "all" });
-    usePinStore.getState().pinChat("all", "stream:815890be-9819-46b1-9291-880602e62b96:general", {
-      folderItemUuid: "item-77",
-      pinnedAt: "2026-03-14T12:00:00Z",
-    });
+    useFolderSyncStore.setState({ allFolderApiUuid: ALL_FOLDER_UUID });
+    usePinStore
+      .getState()
+      .pinChat(ALL_FOLDER_UUID, "stream:815890be-9819-46b1-9291-880602e62b96:general", {
+        folderItemUuid: "item-77",
+        pinnedAt: "2026-03-14T12:00:00Z",
+      });
 
     renderWithProviders(
       <Sidebar
@@ -1058,12 +1107,12 @@ describe("Sidebar", () => {
   });
 
   it("renders pinned stream chats before unpinned ones when folder item uses stream_uuid", () => {
-    useFolderSyncStore.setState({ allFolderApiUuid: "all" });
+    useFolderSyncStore.setState({ allFolderApiUuid: ALL_FOLDER_UUID });
     usePinStore.getState().setFromServer([
       {
-        folderUuid: "all",
+        folderUuid: ALL_FOLDER_UUID,
         folderItemUuid: "item-12",
-        chatId: "12",
+        chatId: `stream:${STREAM_SECOND_UUID}:general`,
         orderIndex: 0,
         pinnedAt: "2026-03-14T12:00:00Z",
       },
@@ -1087,9 +1136,9 @@ describe("Sidebar", () => {
   it("uses pinFolderId to order chats in system folders", () => {
     usePinStore.getState().setFromServer([
       {
-        folderUuid: "all",
+        folderUuid: ALL_FOLDER_UUID,
         folderItemUuid: "item-12",
-        chatId: "12",
+        chatId: `stream:${STREAM_SECOND_UUID}:general`,
         orderIndex: 0,
         pinnedAt: "2026-03-14T12:00:00Z",
       },
@@ -1099,7 +1148,7 @@ describe("Sidebar", () => {
       <Sidebar
         streams={[]}
         selectedFolderId={CHANNELS_FOLDER_UUID}
-        pinFolderId="all"
+        pinFolderId={ALL_FOLDER_UUID}
         sidebarChats={[STREAM_CHAT, STREAM_CHAT_SECOND]}
       />,
     );
@@ -1113,7 +1162,7 @@ describe("Sidebar", () => {
   it("uses pinFolderId for pin action in system folders", async () => {
     getFoldersMock.mockResolvedValue([
       {
-        uuid: "all",
+        uuid: ALL_FOLDER_UUID,
         title: "All",
         created_at: "2026-01-01T00:00:00Z",
         updated_at: "2026-01-01T00:00:00Z",
@@ -1125,7 +1174,7 @@ describe("Sidebar", () => {
             uuid: "item-11",
             stream_uuid: "11111111-1111-4111-8111-111111111111",
             chat_type: "stream",
-            folder: "all",
+            folder: ALL_FOLDER_UUID,
             order_index: 0,
             pinned_at: null,
             created_at: "2026-01-01T00:00:00Z",
@@ -1140,7 +1189,7 @@ describe("Sidebar", () => {
       <Sidebar
         streams={[]}
         selectedFolderId={CHANNELS_FOLDER_UUID}
-        pinFolderId="all"
+        pinFolderId={ALL_FOLDER_UUID}
         sidebarChats={[STREAM_CHAT]}
       />,
     );
@@ -1152,11 +1201,11 @@ describe("Sidebar", () => {
 
     await waitFor(() => {
       expect(getFoldersMock).toHaveBeenCalled();
-      expect(pinChatInFolderMock).toHaveBeenCalledWith("all", "item-11");
+      expect(pinChatInFolderMock).toHaveBeenCalledWith(ALL_FOLDER_UUID, "item-11");
     });
   });
 
-  it("opens stream new-topic dialog with messenger topic settings from context menu action", async () => {
+  it("opens inline new-topic input from stream context menu action", async () => {
     renderWithProviders(
       <Sidebar streams={[]} selectedFolderId={ALL_FOLDER_UUID} sidebarChats={[STREAM_CHAT]} />,
     );
@@ -1166,60 +1215,42 @@ describe("Sidebar", () => {
     const createTopicItem = await screen.findByRole("menuitem", { name: /new topic/i });
     fireEvent.click(createTopicItem);
 
-    const topicDialog = await screen.findByRole("dialog", { name: /create topic/i });
-    const topicNameInput = within(topicDialog).getByRole("textbox", { name: /topic name/i });
-    const mutedNotificationOption = within(topicDialog).getByRole("radio", {
-      name: t("channel.topicVisibilityMuted"),
-    });
-    const createButton = within(topicDialog).getByRole("button", { name: /create/i });
-
-    await waitFor(() => {
-      expect(topicNameInput).toBeInTheDocument();
-      expect(mutedNotificationOption).toBeInTheDocument();
-      expect(createButton).toBeDisabled();
-    });
-
-    fireEvent.change(topicNameInput, { target: { value: "platform updates" } });
-    fireEvent.click(mutedNotificationOption);
-    expect(mutedNotificationOption).toHaveAttribute("aria-checked", "true");
-    expect(createButton).toBeEnabled();
+    expect(await screen.findByRole("textbox", { name: /topic name/i })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /create topic/i })).not.toBeInTheDocument();
   });
 
-  it("rolls back optimistic mute when creating topic with mute enabled fails and retries", async () => {
-    setTopicVisibilityLevelMock.mockResolvedValue(false);
+  it("creates stream topic through server API from inline context-menu input", async () => {
+    createStreamTopicMock.mockResolvedValue({
+      uuid: "33333333-3333-4333-8333-333333333333",
+      name: "release",
+      stream_uuid: STREAM_UUID,
+      unread_count: 0,
+      is_default: false,
+    });
 
     renderWithProviders(
-      <Sidebar streams={[]} selectedFolderId={ALL_FOLDER_UUID} sidebarChats={[STREAM_CHAT]} />,
+      <>
+        <Sidebar streams={[]} selectedFolderId={ALL_FOLDER_UUID} sidebarChats={[STREAM_CHAT]} />
+        <RoutePathProbe />
+      </>,
     );
 
     fireEvent.contextMenu(screen.getByText("#Engineering"));
     fireEvent.click(await screen.findByRole("menuitem", { name: /new topic/i }));
 
-    const topicDialog = await screen.findByRole("dialog", { name: /create topic/i });
-    const topicNameInput = within(topicDialog).getByRole("textbox", { name: /topic name/i });
-    const mutedNotificationOption = within(topicDialog).getByRole("radio", {
-      name: t("channel.topicVisibilityMuted"),
-    });
-    const createButton = within(topicDialog).getByRole("button", { name: /create/i });
-
+    const topicNameInput = await screen.findByRole("textbox", { name: /topic name/i });
     fireEvent.change(topicNameInput, { target: { value: "release" } });
-    fireEvent.click(mutedNotificationOption);
-    fireEvent.click(createButton);
+    fireEvent.keyDown(topicNameInput, { key: "Enter" });
 
     await waitFor(() => {
-      expect(setTopicVisibilityLevelMock).toHaveBeenCalledWith(
-        "11111111-1111-4111-8111-111111111111",
-        "release",
-        "muted",
+      expect(createStreamTopicMock).toHaveBeenCalledWith({
+        streamUuid: STREAM_UUID,
+        name: "release",
+      });
+      expect(setTopicVisibilityLevelMock).not.toHaveBeenCalled();
+      expect(screen.getByTestId("route-path")).toHaveTextContent(
+        "/stream/11111111-1111-4111-8111-111111111111/topic/33333333-3333-4333-8333-333333333333",
       );
-      expect(useMuteStore.getState().isTopicMuted(11, "release")).toBe(false);
-      expect(screen.getByText(t("app.error"))).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
-
-    await waitFor(() => {
-      expect(setTopicVisibilityLevelMock).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -1253,7 +1284,7 @@ describe("Sidebar", () => {
         "11111111-1111-4111-8111-111111111111",
         "muted",
       );
-      expect(useMuteStore.getState().getStreamNotificationLevel(11)).toBe("default");
+      expect(useMuteStore.getState().getStreamNotificationLevel(STREAM_UUID)).toBe("default");
       expect(screen.getByText(t("app.error"))).toBeInTheDocument();
     });
 
@@ -1370,13 +1401,10 @@ describe("Sidebar", () => {
     expect(screen.getByText("incident")).toBeInTheDocument();
   });
 
-  it("renders the system general-chat topic separately and highlights only it in italic", () => {
+  it("renders server-provided general-chat topic as a literal topic", () => {
     const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
       ...STREAM_CHAT,
-      topics: [
-        { subject: "", badge: 1, lastMessage: "System topic" },
-        { subject: t("chat.generalChat"), badge: 0, lastMessage: "User topic" },
-      ],
+      topics: [{ subject: t("chat.generalChat"), badge: 0, lastMessage: "User topic" }],
     };
     useSidebarConfigStore
       .getState()
@@ -1391,15 +1419,11 @@ describe("Sidebar", () => {
       />,
     );
 
-    const topicLabels = screen.getAllByText(t("chat.generalChat"));
-    const systemTopicLabel = topicLabels[0]!;
-    const userTopicLabel = topicLabels[1]!;
-    expect(topicLabels).toHaveLength(2);
-    expect(systemTopicLabel).toHaveClass("italic");
+    const userTopicLabel = screen.getByText(t("chat.generalChat"));
     expect(userTopicLabel).not.toHaveClass("italic");
-    expect(systemTopicLabel.closest("a")).toHaveAttribute(
+    expect(userTopicLabel.closest("a")).toHaveAttribute(
       "href",
-      expect.stringContaining("/topic/__empty__"),
+      expect.stringContaining(`/topic/${encodeURIComponent(t("chat.generalChat"))}`),
     );
   });
 
@@ -1767,9 +1791,9 @@ describe("Sidebar", () => {
     expect(streamMetaRow!).toHaveClass("items-center");
     expect(streamMetaRow!).not.toHaveClass("flex-col");
 
-    expect(chatMenuButton).toHaveClass("right-1");
+    expect(chatMenuButton).toHaveClass("right-7");
     expect(chatMenuButton).not.toHaveClass("right-2");
-    expect(chatMenuButton).toHaveClass("top-8");
+    expect(chatMenuButton).toHaveClass("top-2.5");
     expect(chatMenuButton).not.toHaveClass("top-1");
     expect(chatMenuButton).not.toHaveClass("right-10");
 
@@ -1815,7 +1839,7 @@ describe("Sidebar", () => {
   });
 
   it("shows inherit (default) visibility for topic when stream is muted", () => {
-    useMuteStore.getState().muteStream(11);
+    useMuteStore.getState().muteStream(STREAM_UUID);
     const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
       ...STREAM_CHAT,
       topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
@@ -1841,7 +1865,7 @@ describe("Sidebar", () => {
   });
 
   it("sets unmuted visibility when cycling topic in muted stream", async () => {
-    useMuteStore.getState().muteStream(11);
+    useMuteStore.getState().muteStream(STREAM_UUID);
     const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
       ...STREAM_CHAT,
       topics: [{ subject: "incident", badge: 0, lastMessage: "Topic update" }],
@@ -1871,7 +1895,7 @@ describe("Sidebar", () => {
         "incident",
         "unmuted",
       );
-      expect(useMuteStore.getState().isTopicUnmuted(11, "incident")).toBe(true);
+      expect(useMuteStore.getState().isTopicUnmuted(STREAM_UUID, "incident")).toBe(true);
     });
   });
 
@@ -1906,7 +1930,9 @@ describe("Sidebar", () => {
         "incident",
         "followed",
       );
-      expect(useMuteStore.getState().getTopicVisibilityLevel(11, "incident")).toBe("inherit");
+      expect(useMuteStore.getState().getTopicVisibilityLevel(STREAM_UUID, "incident")).toBe(
+        "inherit",
+      );
     });
     expect(screen.getByText(t("app.error"))).toBeInTheDocument();
 

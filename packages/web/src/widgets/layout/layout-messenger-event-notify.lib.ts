@@ -29,7 +29,7 @@ export function resolveStreamMessageMuteState(
   if (raw.type !== "stream" || raw.stream_uuid == null) {
     return { isMuted: false, isTopicFollowed: false };
   }
-  const topic = normalizeTopicForIdentity(raw.subject ?? "");
+  const topic = normalizeTopicForIdentity(raw.topic_uuid ?? raw.subject ?? "");
   const isStreamMuted = mute.isStreamMuted(raw.stream_uuid);
   return {
     isMuted: isStreamMuted || mute.isEffectivelyMuted(raw.stream_uuid, topic),

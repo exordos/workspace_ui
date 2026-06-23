@@ -3,12 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { getCurrentInstance } from "~/shared/api/client";
+import type { MessengerStreamTopic } from "~/shared/api/messenger.types";
 import { deleteChatListSnapshotRow } from "~/shared/lib/chat-list-snapshot-db";
 import { moveTopicToStreamInCache } from "~/shared/lib/message-cache-db";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { buildStreamSlug } from "~/shared/lib/stream-slug.lib";
 import { encodeTopicForRoute, normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
-import { toUnresolvedTopicName } from "~/shared/lib/topic-resolve";
 import { moveTopicToChannel } from "./move-topic-to-stream.api";
 import {
   buildMoveTopicTargetStreamOptions,
@@ -19,11 +19,12 @@ import {
 export interface UseMoveTopicToStreamOptions {
   streamId: string;
   topic: string;
+  topicUuid?: string;
   streamName: string;
 }
 
 export function useMoveTopicToStream(options: UseMoveTopicToStreamOptions) {
-  const { streamId, topic, streamName } = options;
+  const { streamId, topic, topicUuid, streamName } = options;
   const navigate = useNavigate();
   const streamsMap = useChatListStore((s) => s.streamsMap);
   const currentUserId = useChatListStore((s) => s.currentUserId);
@@ -36,11 +37,17 @@ export function useMoveTopicToStream(options: UseMoveTopicToStreamOptions) {
   const [moveError, setMoveError] = useState<string | null>(null);
 
   const topicTrimmed = topic.trim();
+  const normalizedTopicUuid = topicUuid?.trim().toLowerCase();
   const effectiveStreamName = streamName.trim() || (streamEntry?.name ?? "").trim();
   const streamSlug = effectiveStreamName.length > 0 ? buildStreamSlug(streamId) : null;
 
   // Permission groups deferred — Messenger API remains the final arbiter on submit.
-  const canMove = topicTrimmed.length > 0 && streamSlug != null && currentUserId != null;
+  const canMove =
+    topicTrimmed.length > 0 &&
+    normalizedTopicUuid != null &&
+    normalizedTopicUuid.length > 0 &&
+    streamSlug != null &&
+    currentUserId != null;
 
   const targetStreamOptions = useMemo(
     () =>
@@ -55,21 +62,42 @@ export function useMoveTopicToStream(options: UseMoveTopicToStreamOptions) {
   );
 
   const syncTopicMoveLocally = useCallback(
-    (targetStreamId: string, targetStreamName: string, oldTopic: string, newTopic: string) => {
+    (
+      targetStreamId: string,
+      targetStreamName: string,
+      oldTopic: string,
+      newTopic: string,
+      updatedTopic: MessengerStreamTopic,
+    ) => {
       const oldTopicKey = normalizeTopicForIdentity(oldTopic);
+      const updatedTopicUuid = updatedTopic.uuid.trim().toLowerCase();
+      useChatListStore.getState().removeStreamTopic(streamId, oldTopic);
+      useChatListStore.getState().upsertStreamTopicShells(updatedTopic.stream_uuid, [
+        {
+          topicUuid: updatedTopic.uuid,
+          streamUuid: updatedTopic.stream_uuid,
+          name: updatedTopic.name,
+          unreadCount: updatedTopic.unread_count,
+          isDefault: updatedTopic.is_default,
+          isDone: updatedTopic.is_done,
+        },
+      ]);
       const messageIds = useCurrentChatMessagesStore
         .getState()
-        .messages.filter(
-          (message) =>
-            message.stream_uuid === streamId &&
-            normalizeTopicForIdentity(message.subject ?? "") === oldTopicKey,
-        )
+        .messages.filter((message) => {
+          if (message.stream_uuid !== streamId) return false;
+          const messageTopicUuid = message.topic_uuid?.trim().toLowerCase();
+          if (messageTopicUuid != null && messageTopicUuid.length > 0) {
+            return messageTopicUuid === updatedTopicUuid;
+          }
+          return normalizeTopicForIdentity(message.subject ?? "") === oldTopicKey;
+        })
         .map((message) => message.id);
       const anchorMessageId = messageIds[0];
       const moveParams = {
         sourceStreamId: streamId,
         targetStreamId,
-        oldTopic,
+        oldTopic: updatedTopicUuid,
         newTopic,
         ...(messageIds.length > 0 ? { messageIds } : {}),
         ...(anchorMessageId != null ? { anchorMessageId } : {}),
@@ -96,13 +124,21 @@ export function useMoveTopicToStream(options: UseMoveTopicToStreamOptions) {
         openContext?.type === "stream" &&
         openContext.streamWideView !== true &&
         openContext.streamId === streamId &&
-        normalizeTopicForIdentity(openContext.topic) === oldTopicKey;
+        (openContext.topicUuid?.trim().toLowerCase() === updatedTopicUuid ||
+          normalizeTopicForIdentity(openContext.topic) === oldTopicKey);
       if (!isOpenTopic) {
         return;
       }
+      useCurrentChatMessagesStore.getState().setContext({
+        ...openContext,
+        streamId: targetStreamId,
+        streamName: targetStreamName,
+        topic: newTopic,
+        topicUuid: updatedTopicUuid,
+      });
       void navigate(
         withCurrentOrgRoute(
-          `/stream/${targetSlug}/topic/${encodeURIComponent(encodeTopicForRoute(newTopic))}`,
+          `/stream/${targetSlug}/topic/${encodeURIComponent(encodeTopicForRoute(updatedTopicUuid))}`,
         ),
         { replace: true },
       );
@@ -111,12 +147,12 @@ export function useMoveTopicToStream(options: UseMoveTopicToStreamOptions) {
   );
 
   const openMoveDialog = useCallback(() => {
-    if (!canMove || movePending) {
+    if (!canMove || normalizedTopicUuid == null || movePending) {
       return;
     }
     setMoveError(null);
     setTargetStreamIdRaw("");
-    setMoveTopicDraft(toUnresolvedTopicName(topic));
+    setMoveTopicDraft(topic);
     setMoveDialogOpen(true);
   }, [canMove, movePending, topic]);
 
@@ -140,13 +176,19 @@ export function useMoveTopicToStream(options: UseMoveTopicToStreamOptions) {
 
     setMovePending(true);
     setMoveError(null);
-    void moveTopicToChannel(streamId, topic, targetStreamId, targetTopic)
-      .then((ok) => {
-        if (!ok) {
+    void moveTopicToChannel(normalizedTopicUuid, streamId, topic, targetStreamId, targetTopic)
+      .then((updatedTopic) => {
+        if (updatedTopic == null) {
           setMoveError("channel.moveTopicToChannelError");
           return;
         }
-        syncTopicMoveLocally(targetStreamId, targetStreamName, topic, targetTopic);
+        syncTopicMoveLocally(
+          targetStreamId,
+          targetStreamName,
+          topic,
+          updatedTopic.name,
+          updatedTopic,
+        );
         setMoveDialogOpen(false);
       })
       .finally(() => {
@@ -156,6 +198,7 @@ export function useMoveTopicToStream(options: UseMoveTopicToStreamOptions) {
     canMove,
     movePending,
     moveTopicDraft,
+    normalizedTopicUuid,
     streamId,
     syncTopicMoveLocally,
     targetStreamIdRaw,

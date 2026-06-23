@@ -28,6 +28,10 @@ vi.mock("~/shared/api/messenger-users", () => ({
   fetchUsers: vi.fn(() => Promise.resolve([])),
 }));
 
+const STREAM_UUID_5 = "00000000-0000-4000-8000-000000000005";
+const STREAM_UUID_6 = "00000000-0000-4000-8000-000000000006";
+const STREAM_UUID_7 = "00000000-0000-4000-8000-000000000007";
+
 function defaultHookOptions(overrides: Partial<Parameters<typeof useCreateChatDialog>[0]> = {}) {
   return {
     open: true,
@@ -81,7 +85,9 @@ describe("useCreateChatDialog", () => {
   it("adds current user to subscribers and deduplicates IDs when creating channel", async () => {
     seedUsers();
     useChatListStore.setState({ currentUserId: 10 });
-    vi.mocked(createChannel).mockResolvedValue({ streamId: 55 });
+    vi.mocked(createChannel).mockResolvedValue({
+      streamUuid: "00000000-0000-4000-8000-000000000055",
+    });
     const onChannelCreated = vi.fn();
 
     const { result } = renderHook(() =>
@@ -189,10 +195,10 @@ describe("useCreateChatDialog", () => {
     const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
 
     await act(async () => {
-      await result.current.onUnarchiveArchivedChannel(5);
+      await result.current.onUnarchiveArchivedChannel(STREAM_UUID_5);
     });
 
-    expect(unarchiveChannel).toHaveBeenCalledWith(5);
+    expect(unarchiveChannel).toHaveBeenCalledWith(STREAM_UUID_5);
     expect(result.current.unarchiveInlineError).toEqual({ kind: "unsupported" });
   });
 
@@ -200,20 +206,20 @@ describe("useCreateChatDialog", () => {
     seedUsers();
     vi.mocked(fetchStreams).mockResolvedValue([
       {
-        stream_id: 5,
+        stream_uuid: STREAM_UUID_5,
         name: "engineering",
         description: "Eng",
         is_announcement_only: false,
       },
       {
-        stream_id: 6,
+        stream_uuid: STREAM_UUID_6,
         name: "design",
         description: "Design",
         is_announcement_only: false,
       },
     ]);
     vi.mocked(fetchSubscriptions).mockResolvedValue([
-      { stream_id: 5, name: "engineering", is_muted: false },
+      { stream_uuid: STREAM_UUID_5, name: "engineering", is_muted: false },
     ]);
 
     const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
@@ -230,7 +236,7 @@ describe("useCreateChatDialog", () => {
     expect(fetchSubscriptions).toHaveBeenCalledTimes(1);
     expect(result.current.browseChannels).toEqual([
       {
-        streamId: 6,
+        streamUuid: STREAM_UUID_6,
         name: "design",
         description: "Design",
         isSubscribed: false,
@@ -252,7 +258,7 @@ describe("useCreateChatDialog", () => {
         audibleNotifications: null,
       },
     ]);
-    expect(result.current.selectedBrowseChannelId).toBe(6);
+    expect(result.current.selectedBrowseChannelUuid).toBe(STREAM_UUID_6);
     expect(result.current.channelsSubscriptionFilter).toBe("unsubscribed");
   });
 
@@ -261,7 +267,7 @@ describe("useCreateChatDialog", () => {
     useChatListStore.setState({ currentUserId: 10 });
     vi.mocked(fetchStreams).mockResolvedValue([
       {
-        stream_id: 7,
+        stream_uuid: STREAM_UUID_7,
         name: "design",
         description: "",
         is_announcement_only: false,
@@ -284,12 +290,12 @@ describe("useCreateChatDialog", () => {
     });
 
     await act(async () => {
-      await result.current.onSubscribeToChannel(7, "design");
+      await result.current.onSubscribeToChannel(STREAM_UUID_7, "design");
     });
 
     expect(subscribeCurrentUserToStream).toHaveBeenCalledWith("design", 10);
     expect(onNavigateStream).not.toHaveBeenCalled();
-    expect(useChatListStore.getState().streamsMap.get(7)?.name).toBe("design");
+    expect(useChatListStore.getState().streamsMap.get(STREAM_UUID_7)?.name).toBe("design");
 
     act(() => {
       result.current.setChannelsSubscriptionFilter("subscribed");
@@ -302,17 +308,19 @@ describe("useCreateChatDialog", () => {
 
   it("unsubscribes from a channel and removes it from the sidebar store", async () => {
     seedUsers();
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 7, name: "design" }]);
+    useChatListStore
+      .getState()
+      .upsertStreamMetadataRows([{ streamUuid: STREAM_UUID_7, name: "design" }]);
     vi.mocked(fetchStreams).mockResolvedValue([
       {
-        stream_id: 7,
+        stream_uuid: STREAM_UUID_7,
         name: "design",
         description: "Design team",
         is_announcement_only: false,
       },
     ]);
     vi.mocked(fetchSubscriptions).mockResolvedValue([
-      { stream_id: 7, name: "design", is_muted: false, invite_only: false },
+      { stream_uuid: STREAM_UUID_7, name: "design", is_muted: false, invite_only: false },
     ]);
     vi.mocked(unsubscribeChannel).mockResolvedValue(true);
 
@@ -335,11 +343,11 @@ describe("useCreateChatDialog", () => {
     });
 
     await act(async () => {
-      await result.current.onUnsubscribeFromChannel(7, "design");
+      await result.current.onUnsubscribeFromChannel(STREAM_UUID_7, "design");
     });
 
     expect(unsubscribeChannel).toHaveBeenCalledWith("design");
-    expect(useChatListStore.getState().streamsMap.has(7)).toBe(false);
+    expect(useChatListStore.getState().streamsMap.has(STREAM_UUID_7)).toBe(false);
     expect(result.current.browseChannels).toHaveLength(0);
   });
 

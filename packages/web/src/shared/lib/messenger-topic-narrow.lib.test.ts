@@ -10,7 +10,7 @@ describe("messengerTopicNarrowOperandForApi", () => {
     expect(messengerTopicNarrowOperandForApi("   ")).toBe("");
     expect(messengerTopicNarrowOperandForApi("general")).toBe("general");
     expect(messengerTopicNarrowOperandForApi("General")).toBe("General");
-    expect(messengerTopicNarrowOperandForApi("general chat")).toBe("");
+    expect(messengerTopicNarrowOperandForApi("general chat")).toBe("general chat");
   });
 
   it("preserves other topic names", () => {
@@ -18,8 +18,8 @@ describe("messengerTopicNarrowOperandForApi", () => {
     expect(messengerTopicNarrowOperandForApi("my-general-bug")).toBe("my-general-bug");
   });
 
-  it("maps resolved default-style topic to empty operand", () => {
-    expect(messengerTopicNarrowOperandForApi("\u2714")).toBe("");
+  it("preserves resolved topic names from the server", () => {
+    expect(messengerTopicNarrowOperandForApi("\u2714")).toBe("\u2714");
     expect(messengerTopicNarrowOperandForApi("\u2714 general")).toBe("\u2714 general");
   });
 });

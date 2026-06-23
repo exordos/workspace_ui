@@ -39,7 +39,7 @@ function mockMsg(overrides: MockMessageOverrides = {}): MockMessage {
     id: testMessageId(id ?? 1),
     sender_id: 10,
     sender_full_name: "Test User",
-    stream_id: 5,
+    stream_uuid: "00000000-0000-4000-8000-000000000005",
     subject: "general",
     content: "<p>hello</p>",
     timestamp: 1000,
@@ -71,14 +71,17 @@ describe("currentChatMessagesStore", () => {
     it("sets stream context and clears messages", () => {
       useCurrentChatMessagesStore.getState().setMessages([mockMsg()]);
 
-      useCurrentChatMessagesStore
-        .getState()
-        .setContext({ type: "stream", streamId: 5, streamName: "general", topic: "topic1" });
+      useCurrentChatMessagesStore.getState().setContext({
+        type: "stream",
+        streamId: "00000000-0000-4000-8000-000000000005",
+        streamName: "general",
+        topic: "topic1",
+      });
 
       const state = useCurrentChatMessagesStore.getState();
       expect(state.context).toEqual({
         type: "stream",
-        streamId: 5,
+        streamId: "00000000-0000-4000-8000-000000000005",
         streamName: "general",
         topic: "topic1",
       });
@@ -97,9 +100,12 @@ describe("currentChatMessagesStore", () => {
 
     // Null context means no chat is open — used during loading or logout.
     it("clears context when set to null", () => {
-      useCurrentChatMessagesStore
-        .getState()
-        .setContext({ type: "stream", streamId: 5, streamName: "gen", topic: "t" });
+      useCurrentChatMessagesStore.getState().setContext({
+        type: "stream",
+        streamId: "00000000-0000-4000-8000-000000000005",
+        streamName: "gen",
+        topic: "t",
+      });
       useCurrentChatMessagesStore.getState().setContext(null);
 
       expect(useCurrentChatMessagesStore.getState().context).toBeNull();
@@ -108,23 +114,25 @@ describe("currentChatMessagesStore", () => {
     it("does not restore messages from disk when returning to the same context", () => {
       const streamA: CurrentChatContext = {
         type: "stream",
-        streamId: 5,
+        streamId: "00000000-0000-4000-8000-000000000005",
         streamName: "general",
         topic: "topic-a",
       };
       const streamB: CurrentChatContext = {
         type: "stream",
-        streamId: 7,
+        streamId: "00000000-0000-4000-8000-000000000007",
         streamName: "engineering",
         topic: "topic-b",
       };
 
       useCurrentChatMessagesStore.getState().setContext(streamA);
-      useCurrentChatMessagesStore
-        .getState()
-        .setMessages([
-          mockMsg({ id: "00000000-0000-4000-8000-000000000101", stream_id: 5, subject: "topic-a" }),
-        ]);
+      useCurrentChatMessagesStore.getState().setMessages([
+        mockMsg({
+          id: "00000000-0000-4000-8000-000000000101",
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
+          subject: "topic-a",
+        }),
+      ]);
 
       useCurrentChatMessagesStore.getState().setContext(streamB);
       expect(useCurrentChatMessagesStore.getState().messages).toHaveLength(0);
@@ -137,13 +145,13 @@ describe("currentChatMessagesStore", () => {
     it("updates topic when navigating between stream locations (merge keeps route topic)", () => {
       const first: CurrentChatContext = {
         type: "stream",
-        streamId: 5,
+        streamId: "00000000-0000-4000-8000-000000000005",
         streamName: "general",
         topic: "release",
       };
       const second: CurrentChatContext = {
         type: "stream",
-        streamId: 5,
+        streamId: "00000000-0000-4000-8000-000000000005",
         streamName: "general",
         topic: "bugs",
       };
@@ -156,17 +164,19 @@ describe("currentChatMessagesStore", () => {
     it("does not clear messages when setContext targets the same stream-wide location", () => {
       const ctx: CurrentChatContext = {
         type: "stream",
-        streamId: 5,
+        streamId: "00000000-0000-4000-8000-000000000005",
         streamName: "general",
         topic: "",
         streamWideView: true,
       };
       useCurrentChatMessagesStore.getState().setContext(ctx);
-      useCurrentChatMessagesStore
-        .getState()
-        .setMessages([
-          mockMsg({ id: "00000000-0000-4000-8000-000000000001", stream_id: 5, subject: "bugs" }),
-        ]);
+      useCurrentChatMessagesStore.getState().setMessages([
+        mockMsg({
+          id: "00000000-0000-4000-8000-000000000001",
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
+          subject: "bugs",
+        }),
+      ]);
 
       useCurrentChatMessagesStore.getState().setContext({ ...ctx });
 
@@ -176,17 +186,19 @@ describe("currentChatMessagesStore", () => {
     it("updates streamName on same location without clearing messages", () => {
       const ctx: CurrentChatContext = {
         type: "stream",
-        streamId: 5,
+        streamId: "00000000-0000-4000-8000-000000000005",
         streamName: "old-name",
         topic: "",
         streamWideView: true,
       };
       useCurrentChatMessagesStore.getState().setContext(ctx);
-      useCurrentChatMessagesStore
-        .getState()
-        .setMessages([
-          mockMsg({ id: "00000000-0000-4000-8000-000000000001", stream_id: 5, subject: "bugs" }),
-        ]);
+      useCurrentChatMessagesStore.getState().setMessages([
+        mockMsg({
+          id: "00000000-0000-4000-8000-000000000001",
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
+          subject: "bugs",
+        }),
+      ]);
 
       useCurrentChatMessagesStore.getState().setContext({
         ...ctx,
@@ -201,13 +213,46 @@ describe("currentChatMessagesStore", () => {
       }
     });
 
+    it("updates topic display name for same topic UUID without clearing messages", () => {
+      const topicUuid = "00000000-0000-4000-8000-0000000000d0";
+      const ctx: CurrentChatContext = {
+        type: "stream",
+        streamId: "00000000-0000-4000-8000-000000000005",
+        streamName: "general",
+        topic: "incident",
+        topicUuid,
+      };
+      useCurrentChatMessagesStore.getState().setContext(ctx);
+      useCurrentChatMessagesStore.getState().setMessages([
+        mockMsg({
+          id: "00000000-0000-4000-8000-000000000001",
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
+          subject: "incident",
+          topic_uuid: topicUuid,
+        }),
+      ]);
+
+      useCurrentChatMessagesStore.getState().setContext({
+        ...ctx,
+        topic: "postmortem",
+      });
+
+      const state = useCurrentChatMessagesStore.getState();
+      expect(state.messages).toHaveLength(1);
+      expect(state.context?.type).toBe("stream");
+      if (state.context?.type === "stream") {
+        expect(state.context.topic).toBe("postmortem");
+        expect(state.context.topicUuid).toBe(topicUuid);
+      }
+    });
+
     it("does not restore a trimmed slice when revisiting a DM context", () => {
       const dmContext: CurrentChatContext = { type: "dm", dmKey: "10,20" };
       const anotherDmContext: CurrentChatContext = { type: "dm", dmKey: "10,30" };
       const manyMessages = Array.from({ length: 240 }, (_, index) =>
         mockMsg({
           id: index + 1,
-          stream_id: null,
+          stream_uuid: null,
           subject: "",
           display_recipient: [
             { id: 10, full_name: "User 10" },
@@ -232,7 +277,7 @@ describe("currentChatMessagesStore", () => {
       useCurrentChatMessagesStore.getState().setMessages([
         mockMsg({
           id: "00000000-0000-4000-8000-0000000000n1",
-          stream_id: null,
+          stream_uuid: null,
           subject: "",
           display_recipient: [
             { id: 10, full_name: "User 10" },
@@ -284,7 +329,7 @@ describe("currentChatMessagesStore", () => {
           id: "00000000-0000-4000-8000-000000000001",
           sender_id: 0,
           sender_full_name: "You",
-          stream_id: null,
+          stream_uuid: null,
           content: "optimistic",
         }),
       ]);
@@ -294,7 +339,7 @@ describe("currentChatMessagesStore", () => {
           id: "00000000-0000-4000-8000-000000000001",
           sender_id: 42,
           sender_full_name: "Alice",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
           subject: "general",
           content: "authoritative",
           flags: ["read"],
@@ -304,7 +349,7 @@ describe("currentChatMessagesStore", () => {
       const msg = useCurrentChatMessagesStore.getState().messages[0]!;
       expect(useCurrentChatMessagesStore.getState().messages).toHaveLength(1);
       expect(msg.sender_id).toBe(42);
-      expect(msg.stream_id).toBe(5);
+      expect(msg.stream_uuid).toBe("00000000-0000-4000-8000-000000000005");
       expect(msg.content).toBe("authoritative");
       expect(msg.flags).toEqual(["read"]);
     });
@@ -314,7 +359,12 @@ describe("currentChatMessagesStore", () => {
     it("commitOutgoingMessage replaces optimistic and clears echo queue", () => {
       const me = 42;
       useCurrentChatMessagesStore.getState().appendMessage({
-        ...mockMsg({ id: LOCAL_ECHO_1, sender_id: me, stream_id: 5, content: "hi" }),
+        ...mockMsg({
+          id: LOCAL_ECHO_1,
+          sender_id: me,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
+          content: "hi",
+        }),
         delivery_status: "sending",
         local_echo_key: LOCAL_ECHO_1,
       });
@@ -326,7 +376,7 @@ describe("currentChatMessagesStore", () => {
         ...mockMsg({
           id: "00000000-0000-4000-8000-000000000100",
           sender_id: me,
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
           content: "<p>hi</p>",
         }),
       });
@@ -345,7 +395,7 @@ describe("currentChatMessagesStore", () => {
         ...mockMsg({
           id: LOCAL_ECHO_1,
           sender_id: me,
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
           content: "https://example.com",
           link_preview: { targetUrl: "https://example.com", title: "Example" },
         }),
@@ -357,7 +407,7 @@ describe("currentChatMessagesStore", () => {
         ...mockMsg({
           id: "00000000-0000-4000-8000-000000000100",
           sender_id: me,
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
           content: "https://example.com",
         }),
       });
@@ -373,7 +423,12 @@ describe("currentChatMessagesStore", () => {
     it("commitOutgoingMessage updates server row when real-time echo merged first", () => {
       const me = 42;
       useCurrentChatMessagesStore.getState().appendMessage({
-        ...mockMsg({ id: LOCAL_ECHO_1, sender_id: me, content: "x", stream_id: 5 }),
+        ...mockMsg({
+          id: LOCAL_ECHO_1,
+          sender_id: me,
+          content: "x",
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
+        }),
         delivery_status: "sending",
         local_echo_key: LOCAL_ECHO_1,
       });
@@ -382,7 +437,7 @@ describe("currentChatMessagesStore", () => {
           id: "00000000-0000-4000-8000-000000000200",
           sender_id: me,
           content: "<p>x</p>",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
         }),
       });
 
@@ -394,7 +449,7 @@ describe("currentChatMessagesStore", () => {
           id: "00000000-0000-4000-8000-000000000200",
           sender_id: me,
           content: "<p>x</p>",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
         }),
       });
 
@@ -412,7 +467,7 @@ describe("currentChatMessagesStore", () => {
           id: LOCAL_ECHO_1,
           sender_id: me,
           content: "emoji :party_parrot: /user_uploads/1/private.png",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
         }),
         delivery_status: "sending",
         local_echo_key: LOCAL_ECHO_1,
@@ -423,7 +478,7 @@ describe("currentChatMessagesStore", () => {
           sender_id: me,
           content:
             '<p>emoji <img class="emoji" alt=":party_parrot:" src="/static/generated/emoji/parrot.png"></p><div class="message_inline_image"><img src="/spinner.png"></div>',
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
         }),
       });
 
@@ -437,7 +492,7 @@ describe("currentChatMessagesStore", () => {
           id: "00000000-0000-4000-8000-000000000777",
           sender_id: me,
           content: "<p>emoji delivered</p>",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
         }),
       });
 
@@ -456,7 +511,7 @@ describe("currentChatMessagesStore", () => {
           id: LOCAL_ECHO_1,
           sender_id: me,
           content: "emoji :party_parrot:",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
         }),
         delivery_status: "sending",
         local_echo_key: LOCAL_ECHO_1,
@@ -466,7 +521,7 @@ describe("currentChatMessagesStore", () => {
           id: "00000000-0000-4000-8000-000000000778",
           sender_id: me,
           content: '<p>emoji <img class="emoji" alt=":party_parrot:" src="/emoji.png"></p>',
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
         }),
       });
 
@@ -475,7 +530,7 @@ describe("currentChatMessagesStore", () => {
           id: "00000000-0000-4000-8000-000000000778",
           sender_id: me,
           content: "<p>first canonical</p>",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
         }),
       });
       useCurrentChatMessagesStore.getState().commitOutgoingMessage(LOCAL_ECHO_1, {
@@ -483,7 +538,7 @@ describe("currentChatMessagesStore", () => {
           id: "00000000-0000-4000-8000-000000000778",
           sender_id: me,
           content: "<p>second canonical update</p>",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
           flags: ["read"],
         }),
       });
@@ -500,12 +555,22 @@ describe("currentChatMessagesStore", () => {
     it("appendMessage merges distinct pendings using queue order and content", () => {
       const me = 99;
       useCurrentChatMessagesStore.getState().appendMessage({
-        ...mockMsg({ id: LOCAL_ECHO_1, sender_id: me, content: "a", stream_id: 5 }),
+        ...mockMsg({
+          id: LOCAL_ECHO_1,
+          sender_id: me,
+          content: "a",
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
+        }),
         delivery_status: "sending",
         local_echo_key: LOCAL_ECHO_1,
       });
       useCurrentChatMessagesStore.getState().appendMessage({
-        ...mockMsg({ id: LOCAL_ECHO_2, sender_id: me, content: "b", stream_id: 5 }),
+        ...mockMsg({
+          id: LOCAL_ECHO_2,
+          sender_id: me,
+          content: "b",
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
+        }),
         delivery_status: "sending",
         local_echo_key: LOCAL_ECHO_2,
       });
@@ -515,7 +580,7 @@ describe("currentChatMessagesStore", () => {
           id: "00000000-0000-4000-8000-000000000301",
           sender_id: me,
           content: "<p>a</p>",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
         }),
       });
       useCurrentChatMessagesStore.getState().appendMessage({
@@ -523,7 +588,7 @@ describe("currentChatMessagesStore", () => {
           id: "00000000-0000-4000-8000-000000000302",
           sender_id: me,
           content: "<p>b</p>",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
         }),
       });
 
@@ -537,12 +602,22 @@ describe("currentChatMessagesStore", () => {
     it("appendMessage pairs identical bodies in FIFO order when echoes arrive in send order", () => {
       const me = 7;
       useCurrentChatMessagesStore.getState().appendMessage({
-        ...mockMsg({ id: LOCAL_ECHO_1, sender_id: me, content: "ok", stream_id: 5 }),
+        ...mockMsg({
+          id: LOCAL_ECHO_1,
+          sender_id: me,
+          content: "ok",
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
+        }),
         delivery_status: "sending",
         local_echo_key: LOCAL_ECHO_1,
       });
       useCurrentChatMessagesStore.getState().appendMessage({
-        ...mockMsg({ id: LOCAL_ECHO_2, sender_id: me, content: "ok", stream_id: 5 }),
+        ...mockMsg({
+          id: LOCAL_ECHO_2,
+          sender_id: me,
+          content: "ok",
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
+        }),
         delivery_status: "sending",
         local_echo_key: LOCAL_ECHO_2,
       });
@@ -552,7 +627,7 @@ describe("currentChatMessagesStore", () => {
           id: "00000000-0000-4000-8000-000000000401",
           sender_id: me,
           content: "<p>ok</p>",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
         }),
       });
       useCurrentChatMessagesStore.getState().appendMessage({
@@ -560,7 +635,7 @@ describe("currentChatMessagesStore", () => {
           id: "00000000-0000-4000-8000-000000000402",
           sender_id: me,
           content: "<p>ok</p>",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
         }),
       });
 
@@ -573,12 +648,22 @@ describe("currentChatMessagesStore", () => {
 
     it("failed appendMessage removes echo key from queue", () => {
       useCurrentChatMessagesStore.getState().appendMessage({
-        ...mockMsg({ id: LOCAL_ECHO_1, sender_id: 1, stream_id: 5, content: "n" }),
+        ...mockMsg({
+          id: LOCAL_ECHO_1,
+          sender_id: 1,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
+          content: "n",
+        }),
         delivery_status: "sending",
         local_echo_key: LOCAL_ECHO_1,
       });
       useCurrentChatMessagesStore.getState().appendMessage({
-        ...mockMsg({ id: LOCAL_ECHO_1, sender_id: 1, stream_id: 5, content: "n" }),
+        ...mockMsg({
+          id: LOCAL_ECHO_1,
+          sender_id: 1,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
+          content: "n",
+        }),
         delivery_status: "failed",
         local_echo_key: LOCAL_ECHO_1,
       });
@@ -983,19 +1068,23 @@ describe("currentChatMessagesStore", () => {
       useCurrentChatMessagesStore.getState().setMessages([
         mockMsg({
           id: "00000000-0000-4000-8000-000000000001",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
           subject: "incident",
         }),
         mockMsg({
           id: "00000000-0000-4000-8000-000000000002",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
           subject: "incident",
         }),
-        mockMsg({ id: "00000000-0000-4000-8000-000000000003", stream_id: 5, subject: "other" }),
+        mockMsg({
+          id: "00000000-0000-4000-8000-000000000003",
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
+          subject: "other",
+        }),
       ]);
 
       useCurrentChatMessagesStore.getState().moveStreamTopicMessages({
-        streamId: 5,
+        streamId: "00000000-0000-4000-8000-000000000005",
         oldTopic: "incident",
         newTopic: "\u2714 incident",
         messageIds: [
@@ -1013,20 +1102,20 @@ describe("currentChatMessagesStore", () => {
     it("atomically switches active narrow stream topic context", () => {
       useCurrentChatMessagesStore.getState().setContext({
         type: "stream",
-        streamId: 5,
+        streamId: "00000000-0000-4000-8000-000000000005",
         streamName: "engineering",
         topic: "incident",
       });
       useCurrentChatMessagesStore.getState().setMessages([
         mockMsg({
           id: "00000000-0000-4000-8000-000000000001",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
           subject: "incident",
         }),
       ]);
 
       useCurrentChatMessagesStore.getState().moveStreamTopicMessages({
-        streamId: 5,
+        streamId: "00000000-0000-4000-8000-000000000005",
         oldTopic: "incident",
         newTopic: "\u2714 incident",
         messageIds: ["00000000-0000-4000-8000-000000000001"],
@@ -1043,7 +1132,7 @@ describe("currentChatMessagesStore", () => {
     it("does not switch context for stream-wide mode", () => {
       useCurrentChatMessagesStore.getState().setContext({
         type: "stream",
-        streamId: 5,
+        streamId: "00000000-0000-4000-8000-000000000005",
         streamName: "engineering",
         topic: "incident",
         streamWideView: true,
@@ -1051,13 +1140,13 @@ describe("currentChatMessagesStore", () => {
       useCurrentChatMessagesStore.getState().setMessages([
         mockMsg({
           id: "00000000-0000-4000-8000-000000000001",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
           subject: "incident",
         }),
       ]);
 
       useCurrentChatMessagesStore.getState().moveStreamTopicMessages({
-        streamId: 5,
+        streamId: "00000000-0000-4000-8000-000000000005",
         oldTopic: "incident",
         newTopic: "\u2714 incident",
         messageIds: ["00000000-0000-4000-8000-000000000001"],
@@ -1076,18 +1165,18 @@ describe("currentChatMessagesStore", () => {
       useCurrentChatMessagesStore.getState().setMessages([
         mockMsg({
           id: "00000000-0000-4000-8000-000000000101",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
           subject: "incident",
         }),
         mockMsg({
           id: "00000000-0000-4000-8000-000000000102",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
           subject: "incident",
         }),
       ]);
 
       useCurrentChatMessagesStore.getState().moveStreamTopicMessages({
-        streamId: 5,
+        streamId: "00000000-0000-4000-8000-000000000005",
         oldTopic: "incident",
         newTopic: "\u2714 incident",
         messageIds: ["00000000-0000-4000-8000-000000999999"],
@@ -1101,23 +1190,23 @@ describe("currentChatMessagesStore", () => {
       useCurrentChatMessagesStore.getState().setMessages([
         mockMsg({
           id: "00000000-0000-4000-8000-000000000001",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
           subject: "incident",
         }),
         mockMsg({
           id: "00000000-0000-4000-8000-000000000002",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
           subject: "incident",
         }),
         mockMsg({
           id: "00000000-0000-4000-8000-000000000003",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
           subject: "incident",
         }),
       ]);
 
       useCurrentChatMessagesStore.getState().moveStreamTopicMessages({
-        streamId: 5,
+        streamId: "00000000-0000-4000-8000-000000000005",
         oldTopic: "incident",
         newTopic: "\u2714 incident",
         messageIds: [
@@ -1142,21 +1231,21 @@ describe("currentChatMessagesStore", () => {
       useCurrentChatMessagesStore.getState().setMessages([
         mockMsg({
           id: "00000000-0000-4000-8000-000000000001",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
           subject: "incident",
           channel: "eng",
         }),
         mockMsg({
           id: "00000000-0000-4000-8000-000000000002",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
           subject: "incident",
           channel: "eng",
         }),
       ]);
 
       useCurrentChatMessagesStore.getState().moveTopicToStreamMessages({
-        sourceStreamId: 5,
-        targetStreamId: 9,
+        sourceStreamId: "00000000-0000-4000-8000-000000000005",
+        targetStreamId: "00000000-0000-4000-8000-000000000009",
         targetStreamName: "dev",
         oldTopic: "incident",
         newTopic: "incident",
@@ -1168,7 +1257,9 @@ describe("currentChatMessagesStore", () => {
       });
 
       const messages = useCurrentChatMessagesStore.getState().messages;
-      expect(messages.every((message) => message.stream_id === 9)).toBe(true);
+      expect(
+        messages.every((message) => message.stream_uuid === "00000000-0000-4000-8000-000000000009"),
+      ).toBe(true);
       expect(messages.every((message) => message.channel === "dev")).toBe(true);
     });
   });
@@ -1183,7 +1274,7 @@ describe("currentChatMessagesStore", () => {
 describe("isMessageForContext", () => {
   const streamCtx: CurrentChatContext = {
     type: "stream",
-    streamId: 5,
+    streamId: "00000000-0000-4000-8000-000000000005",
     streamName: "general",
     topic: "topic1",
   };
@@ -1192,21 +1283,33 @@ describe("isMessageForContext", () => {
   // Exact match on stream_id + topic must route the message to the open chat.
   it("returns true for matching stream message", () => {
     expect(
-      isMessageForContext({ type: "stream", stream_id: 5, subject: "topic1" }, streamCtx, null),
+      isMessageForContext(
+        { type: "stream", stream_uuid: "00000000-0000-4000-8000-000000000005", subject: "topic1" },
+        streamCtx,
+        null,
+      ),
     ).toBe(true);
   });
 
   // Wrong topic must be rejected — messages go to a different conversation.
   it("returns false for stream message with wrong topic", () => {
     expect(
-      isMessageForContext({ type: "stream", stream_id: 5, subject: "other" }, streamCtx, null),
+      isMessageForContext(
+        { type: "stream", stream_uuid: "00000000-0000-4000-8000-000000000005", subject: "other" },
+        streamCtx,
+        null,
+      ),
     ).toBe(false);
   });
 
   // Wrong stream_id must be rejected even if topic matches.
   it("returns false for stream message with wrong stream_id", () => {
     expect(
-      isMessageForContext({ type: "stream", stream_id: 99, subject: "topic1" }, streamCtx, null),
+      isMessageForContext(
+        { type: "stream", stream_uuid: "00000000-0000-4000-8000-000000000099", subject: "topic1" },
+        streamCtx,
+        null,
+      ),
     ).toBe(false);
   });
 
@@ -1214,13 +1317,17 @@ describe("isMessageForContext", () => {
   it("does not match literal 'general' context when subject is empty", () => {
     const ctx: CurrentChatContext = {
       type: "stream",
-      streamId: 5,
+      streamId: "00000000-0000-4000-8000-000000000005",
       streamName: "gen",
       topic: "general",
     };
-    expect(isMessageForContext({ type: "stream", stream_id: 5, subject: "" }, ctx, null)).toBe(
-      false,
-    );
+    expect(
+      isMessageForContext(
+        { type: "stream", stream_uuid: "00000000-0000-4000-8000-000000000005", subject: "" },
+        ctx,
+        null,
+      ),
+    ).toBe(false);
   });
 
   // DM matching uses a sorted key of participant IDs.
@@ -1247,28 +1354,44 @@ describe("isMessageForContext", () => {
 
   // Stream messages must never match a DM context — type mismatch.
   it("returns false for non-private message against DM context", () => {
-    expect(isMessageForContext({ type: "stream", stream_id: 5, subject: "t" }, dmCtx, null)).toBe(
-      false,
-    );
+    expect(
+      isMessageForContext(
+        { type: "stream", stream_uuid: "00000000-0000-4000-8000-000000000005", subject: "t" },
+        dmCtx,
+        null,
+      ),
+    ).toBe(false);
   });
 
   // Null context means no chat is open — all messages must be rejected.
   it("returns false when context is null", () => {
-    expect(isMessageForContext({ type: "stream", stream_id: 5, subject: "t" }, null, null)).toBe(
-      false,
-    );
+    expect(
+      isMessageForContext(
+        { type: "stream", stream_uuid: "00000000-0000-4000-8000-000000000005", subject: "t" },
+        null,
+        null,
+      ),
+    ).toBe(false);
   });
 
   it("returns true for any topic in stream when streamWideView is set", () => {
     const wideCtx: CurrentChatContext = {
       type: "stream",
-      streamId: 5,
+      streamId: "00000000-0000-4000-8000-000000000005",
       streamName: "eng",
       topic: "general",
       streamWideView: true,
     };
     expect(
-      isMessageForContext({ type: "stream", stream_id: 5, subject: "anything" }, wideCtx, null),
+      isMessageForContext(
+        {
+          type: "stream",
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
+          subject: "anything",
+        },
+        wideCtx,
+        null,
+      ),
     ).toBe(true);
   });
 });
@@ -1284,7 +1407,7 @@ describe("contextFromMessage", () => {
       content: "test",
       timestamp: 1000,
       type: "stream",
-      stream_id: 5,
+      stream_uuid: "00000000-0000-4000-8000-000000000005",
       display_recipient: "general",
       subject: "topic1",
     };
@@ -1292,29 +1415,31 @@ describe("contextFromMessage", () => {
     const ctx = contextFromMessage(msg, null);
     expect(ctx).toEqual({
       type: "stream",
-      streamId: 5,
+      streamId: "00000000-0000-4000-8000-000000000005",
       streamName: "general",
       topic: "topic1",
     });
   });
 
-  // Empty subject must remain empty in route context identity.
-  it("keeps empty topic for stream messages with empty subject", () => {
+  it("uses topic uuid for stream messages without topic subject", () => {
+    const topicUuid = "00000000-0000-4000-8000-0000000000d0";
     const msg: WorkspaceRawMessage = {
       id: "00000000-0000-4000-8000-000000000001",
       sender_id: 10,
       content: "test",
       timestamp: 1000,
       type: "stream",
-      stream_id: 5,
+      stream_uuid: "00000000-0000-4000-8000-000000000005",
       display_recipient: "chan",
       subject: "",
+      topic_uuid: topicUuid,
     };
 
     const ctx = contextFromMessage(msg, null);
     expect(ctx).not.toBeNull();
     if (ctx?.type === "stream") {
-      expect(ctx.topic).toBe("");
+      expect(ctx.topic).toBe(topicUuid);
+      expect(ctx.topicUuid).toBe(topicUuid);
     }
   });
 
@@ -1357,7 +1482,7 @@ describe("contextFromMessage", () => {
       content: "?",
       timestamp: 1000,
       type: "stream",
-      stream_id: null,
+      stream_uuid: null,
     };
 
     expect(contextFromMessage(msg, null)).toBeNull();

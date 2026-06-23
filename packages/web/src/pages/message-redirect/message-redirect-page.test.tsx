@@ -98,7 +98,7 @@ describe("MessageRedirectPage", () => {
       id: testMessageId(123),
       sender_id: 42,
       sender_full_name: "Alice",
-      stream_id: 10,
+      stream_uuid: "00000000-0000-4000-8000-000000000010",
       channel: "engineering",
       display_recipient: "engineering",
       subject: "bugs",
@@ -122,7 +122,7 @@ describe("MessageRedirectPage", () => {
     });
     await waitFor(() => {
       expect(navigateSpy).toHaveBeenCalledWith(
-        `/stream/10-engineering/topic/bugs?msg=${testMessageId(123)}`,
+        `/stream/00000000-0000-4000-8000-000000000010/topic/bugs?msg=${testMessageId(123)}`,
         {
           replace: true,
         },
@@ -148,7 +148,7 @@ describe("MessageRedirectPage", () => {
       id: 123,
       sender_id: 42,
       sender_full_name: "Alice",
-      stream_id: 10,
+      stream_uuid: "00000000-0000-4000-8000-000000000010",
       channel: "engineering",
       display_recipient: "engineering",
       subject: "bugs",
@@ -218,7 +218,7 @@ describe("MessageRedirectPage", () => {
       id: testMessageId(123),
       sender_id: 42,
       sender_full_name: "Alice",
-      stream_id: 10,
+      stream_uuid: "00000000-0000-4000-8000-000000000010",
       channel: "engineering",
       display_recipient: "engineering",
       subject: "bugs",
@@ -236,7 +236,7 @@ describe("MessageRedirectPage", () => {
 
     await waitFor(() => {
       expect(navigateSpy).toHaveBeenCalledWith(
-        `/stream/10-engineering/topic/bugs?msg=${testMessageId(123)}`,
+        `/stream/00000000-0000-4000-8000-000000000010/topic/bugs?msg=${testMessageId(123)}`,
         {
           replace: true,
         },

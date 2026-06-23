@@ -1,49 +1,9 @@
-import {
-  computeInstanceDmUnreadCount,
-  computeInstanceUnreadCount,
-  hasPersonalDmUnreadForActiveInstance,
-  hasPersonalUnreadIndicator,
-  toSafeUnreadCount,
-} from "~/entities/unread-sync/unread-instance-count.lib";
 import type { LayoutBuildActiveChatWindowTitleInput } from "./layout-instance-unread.types";
 
-export {
-  computeInstanceDmUnreadCount,
-  computeInstanceUnreadCount,
-  hasPersonalDmUnreadForActiveInstance,
-  hasPersonalUnreadIndicator,
-};
-
-function sumUnreadCountsByInstance(
-  countsByInstance: Record<string, number>,
-  liveCurrent?: { instanceId: string; unreadCount: number } | null,
-): number {
-  const merged =
-    liveCurrent != null
-      ? { ...countsByInstance, [liveCurrent.instanceId]: liveCurrent.unreadCount }
-      : countsByInstance;
-
-  let total = 0;
-  for (const count of Object.values(merged)) {
-    total += toSafeUnreadCount(count);
-  }
-  return total;
-}
-
-/** Sums per-instance unread counts (streams + DMs) for org switcher and window title. */
-export function computeTotalUnreadAcrossInstances(
-  unreadCountsByInstance: Record<string, number>,
-  liveCurrent?: { instanceId: string; unreadCount: number } | null,
-): number {
-  return sumUnreadCountsByInstance(unreadCountsByInstance, liveCurrent);
-}
-
-/** Sums per-instance DM unread for app icon badges (dock, tray, favicon). */
-export function computeTotalDmUnreadAcrossInstances(
-  dmUnreadCountsByInstance: Record<string, number>,
-  liveCurrent?: { instanceId: string; unreadCount: number } | null,
-): number {
-  return sumUnreadCountsByInstance(dmUnreadCountsByInstance, liveCurrent);
+function toSafeUnreadCount(value: number | null | undefined): number {
+  if (!Number.isFinite(value)) return 0;
+  if (value == null) return 0;
+  return Math.max(0, Math.floor(value));
 }
 
 function toSafeTitleSegment(value: string | null | undefined): string | null {

@@ -13,6 +13,7 @@ import { useInstancesStore } from "../entities/instance/instance.model";
 import { useCurrentChatMessagesStore } from "../entities/message/message.model";
 import { useThemeStore } from "../entities/theme/theme.model";
 import { useUsersStore } from "../entities/user/user.model";
+import { useFolderSyncStore } from "../features/folder-sync/folder-sync.model";
 import {
   installAiContext,
   notifyAiNewMessage,
@@ -34,6 +35,9 @@ vi.mock("../entities/instance/instance.model", () => ({
 }));
 vi.mock("../entities/theme/theme.model", () => ({
   useThemeStore: { getState: vi.fn() },
+}));
+vi.mock("../features/folder-sync/folder-sync.model", () => ({
+  useFolderSyncStore: { getState: vi.fn() },
 }));
 vi.mock("../i18n/i18n", () => ({
   getLocale: vi.fn(() => "ru"),
@@ -70,6 +74,9 @@ function setupDefaultStoreMocks() {
   vi.mocked(useThemeStore.getState).mockReturnValue({
     paletteId: "orange-warm",
     mode: "dark",
+  } as never);
+  vi.mocked(useFolderSyncStore.getState).mockReturnValue({
+    folders: [],
   } as never);
 }
 
@@ -275,12 +282,13 @@ describe("ai-context", () => {
       expect(result.version).toBeDefined();
     });
 
-    // Unread count helps AI prioritize which conversations to suggest
-    it("computes unreadCount from streams and dms badges", () => {
-      vi.mocked(useChatListStore.getState).mockReturnValue({
-        currentUserId: null,
-        streams: () => [{ badge: 5 }, { badge: 3 }, { badge: 0 }],
-        dms: () => [{ badge: 2 }, { badge: undefined }],
+    // Unread count is server-owned and comes from the all system folder badge
+    it("uses unreadCount from the all system folder badge", () => {
+      vi.mocked(useFolderSyncStore.getState).mockReturnValue({
+        folders: [
+          { id: "all", name: "All", systemType: "all", badge: 10 },
+          { id: "personal", name: "Personal", systemType: "personal", badge: 2 },
+        ],
       } as never);
 
       installAiContext();

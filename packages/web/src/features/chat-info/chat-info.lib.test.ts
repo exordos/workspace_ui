@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createUser } from "~/test/factories";
-import { buildDmChatInfoData, buildStreamChatInfoData, hasChatInfoContext } from "./chat-info.lib";
+import {
+  buildDmChatInfoData,
+  buildStreamChatInfoData,
+  hasChatInfoContext,
+  isSameChatInfoData,
+} from "./chat-info.lib";
 
 describe("hasChatInfoContext", () => {
   it("returns true for an active dm context", () => {
@@ -30,7 +35,7 @@ describe("hasChatInfoContext", () => {
       hasChatInfoContext({
         kind: "stream",
         instanceId: "inst-1",
-        streamId: 42,
+        streamUuid: "00000000-0000-4000-8000-000000000042",
         streamName: "engineering",
         isMuted: false,
         topics: [],
@@ -106,15 +111,28 @@ describe("buildStreamChatInfoData", () => {
     const data = buildStreamChatInfoData("engineering", [1], users, false, {
       description: "Engineering discussions",
       topics: [
-        { name: "release", unreadCount: 2 },
+        { name: "release", unreadCount: 2, topicUuid: "topic-release", isDone: true },
         { name: "infra", unreadCount: 0 },
       ],
     });
 
     expect(data.description).toBe("Engineering discussions");
     expect(data.topics).toEqual([
-      { name: "release", unreadCount: 2 },
+      { name: "release", unreadCount: 2, topicUuid: "topic-release", isDone: true },
       { name: "infra", unreadCount: 0 },
     ]);
+  });
+});
+
+describe("isSameChatInfoData", () => {
+  it("treats topic done-state changes as data changes", () => {
+    const current = buildStreamChatInfoData("engineering", [], [], false, {
+      topics: [{ name: "release", topicUuid: "topic-release", unreadCount: 0 }],
+    });
+    const next = buildStreamChatInfoData("engineering", [], [], false, {
+      topics: [{ name: "release", topicUuid: "topic-release", unreadCount: 0, isDone: true }],
+    });
+
+    expect(isSameChatInfoData(current, next)).toBe(false);
   });
 });

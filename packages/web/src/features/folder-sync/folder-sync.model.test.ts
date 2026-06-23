@@ -216,7 +216,7 @@ describe("folder-sync model orchestration", () => {
     expect(useFolderSyncStore.getState().loading).toBe(false);
   });
 
-  it("normalizes numeric folder chat ids for sidebar matching", async () => {
+  it("keeps legacy numeric folder chat ids opaque for sidebar matching", async () => {
     useFolderSyncStore.setState({
       instanceId: "inst-a",
       labels: { allChats: "All", personal: "Personal", channels: "Channels" },
@@ -231,7 +231,7 @@ describe("folder-sync model orchestration", () => {
 
     const selectedIds = useFolderSyncStore.getState().selectedFolderChatIds;
     expect(selectedIds?.has("11")).toBe(true);
-    expect(selectedIds?.has("stream:11:general")).toBe(true);
+    expect(selectedIds?.has("stream:11:general")).toBe(false);
   });
 
   it("selectFolder uses cached folder items and triggers no refresh", async () => {
@@ -1033,7 +1033,7 @@ describe("syncDerived", () => {
         },
         {
           type: "stream",
-          stream_id: 1,
+          streamUuid: "00000000-0000-4000-8000-000000000001",
           name: "General",
           badge: 3,
         },

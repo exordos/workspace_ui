@@ -9,6 +9,8 @@ import {
   parseMessengerNarrowPermalink,
 } from "./messenger-narrow-permalink.lib";
 
+const STREAM_UUID_33 = "00000000-0000-4000-8000-000000000033";
+
 describe("decodeWorkspaceHashComponent", () => {
   it("decodes Workspace hash tokens and percent-encoded spaces", () => {
     expect(decodeWorkspaceHashComponent("general.20chat")).toBe("general chat");
@@ -47,12 +49,12 @@ describe("parseMessengerNarrowPermalink", () => {
     const messageId = testMessageId(5743236);
     expect(
       parseMessengerNarrowPermalink(
-        `https://chat.example.com/#narrow/channel/33-InternalServicesDev/topic/Workspace/near/${messageId}`,
+        `https://chat.example.com/#narrow/channel/${STREAM_UUID_33}/topic/Workspace/near/${messageId}`,
       ),
     ).toEqual({
       messageId,
       kind: "stream",
-      streamId: 33,
+      streamId: STREAM_UUID_33,
       topic: "Workspace",
       realmOrigin: "https://chat.example.com",
     });
@@ -93,7 +95,8 @@ describe("buildRouteFromMessengerNarrowPermalink", () => {
       buildRouteFromMessengerNarrowPermalink({
         parsed: parsed!,
         currentUserId: 7,
-        resolveStreamName: (streamId) => (streamId === 10 ? "Engineering" : undefined),
+        resolveStreamName: (streamId) =>
+          streamId === "10-engineering" ? "Engineering" : undefined,
       }),
     ).toBe(`/stream/10-engineering/topic/Bugs?msg=${messageId}`);
   });
@@ -127,7 +130,7 @@ describe("isSameChatAsNarrowPermalink", () => {
         isDmView: false,
         currentUserId: 7,
         dmRecipientIds: [],
-        resolvedStreamId: 10,
+        resolvedStreamId: "10-engineering",
         topicName: "Bugs",
         streamRouteTopic: "Bugs",
       }),
@@ -145,7 +148,7 @@ describe("isSameChatAsNarrowPermalink", () => {
         isDmView: false,
         currentUserId: 7,
         dmRecipientIds: [],
-        resolvedStreamId: 10,
+        resolvedStreamId: "10-engineering",
         topicName: "general",
         streamRouteTopic: "general",
       }),

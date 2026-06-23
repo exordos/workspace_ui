@@ -3,6 +3,8 @@ import { clearLogHistory, getLogHistory, setMinLevel } from "~/shared/lib/logger
 import { loggingMiddleware } from "./client";
 import type { ApiRequest, ApiResponse, NextFn } from "./client";
 
+const STREAM_UUID_10 = "00000000-0000-4000-8000-000000000010";
+
 function createMockResponse(overrides: Partial<ApiResponse> = {}): ApiResponse {
   return {
     status: 200,
@@ -27,7 +29,7 @@ describe("loggingMiddleware", () => {
       method: "POST",
       url: "https://chat.example.com/api/messenger/v1/messages",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: "type=stream&stream_id=10",
+      body: `type=stream&stream_uuid=${STREAM_UUID_10}`,
       meta: {},
     };
 
@@ -38,7 +40,7 @@ describe("loggingMiddleware", () => {
     expect(entry!.message).toBe("POST /api/messenger/v1/messages");
     const data = entry!.data as Record<string, unknown>;
     expect(data.status).toBe(201);
-    expect((data.params as Record<string, string>).stream_id).toBe("10");
+    expect((data.params as Record<string, string>).stream_uuid).toBe(STREAM_UUID_10);
   });
 
   it("does not log aborted requests as API failures", async () => {

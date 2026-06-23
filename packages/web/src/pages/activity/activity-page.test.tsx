@@ -18,6 +18,7 @@ const updateDraftOnServer = vi.hoisted(() => vi.fn());
 const fetchActivityMessagesPageWithPersist = vi.hoisted(() => vi.fn());
 const hydrateActivityMessagesFromCache = vi.hoisted(() => vi.fn().mockResolvedValue([]));
 const removeMessageFlag = vi.hoisted(() => vi.fn());
+const ENGINEERING_STREAM_UUID = "00000000-0000-4000-8000-000000000010";
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual<typeof ReactRouterDom>("react-router-dom");
@@ -119,9 +120,9 @@ describe("ActivityPage drafts routing", () => {
     useChatListStore.setState({
       streamsMap: new Map([
         [
-          10,
+          ENGINEERING_STREAM_UUID,
           {
-            stream_id: 10,
+            streamUuid: ENGINEERING_STREAM_UUID,
             name: "engineering",
             lastMessage: "",
             time: "",
@@ -136,7 +137,7 @@ describe("ActivityPage drafts routing", () => {
       {
         id: testMessageId(1),
         type: "stream",
-        to: [10],
+        to: [ENGINEERING_STREAM_UUID],
         topic: "general",
         content: "Draft content",
         timestamp: 1710000000,
@@ -160,16 +161,16 @@ describe("ActivityPage drafts routing", () => {
 
     fireEvent.click(screen.getByText("Draft content"));
 
-    expect(navigateSpy).toHaveBeenCalledWith("/stream/10-engineering/topic/general");
+    expect(navigateSpy).toHaveBeenCalledWith(`/stream/${ENGINEERING_STREAM_UUID}/topic/general`);
   });
 
-  it("renders empty-topic drafts as the system general chat and routes them to __empty__", async () => {
+  it("does not build a topic route for stream drafts without a server topic", async () => {
     useChatListStore.setState({
       streamsMap: new Map([
         [
-          10,
+          ENGINEERING_STREAM_UUID,
           {
-            stream_id: 10,
+            streamUuid: ENGINEERING_STREAM_UUID,
             name: "engineering",
             lastMessage: "",
             time: "",
@@ -184,7 +185,7 @@ describe("ActivityPage drafts routing", () => {
       {
         id: testMessageId(1),
         type: "stream",
-        to: [10],
+        to: [ENGINEERING_STREAM_UUID],
         topic: "",
         content: "Draft content",
         timestamp: 1710000000,
@@ -201,12 +202,12 @@ describe("ActivityPage drafts routing", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Draft content")).toBeInTheDocument();
-      expect(screen.getByText("General Chat")).toHaveClass("italic");
+      expect(screen.getByText("General Chat")).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByText("Draft content"));
 
-    expect(navigateSpy).toHaveBeenCalledWith("/stream/10-engineering/topic/__empty__");
+    expect(navigateSpy).not.toHaveBeenCalled();
   });
 
   it("shows DM partner name on private draft rows", async () => {
@@ -244,7 +245,7 @@ describe("ActivityPage drafts routing", () => {
         id: 33,
         sender_id: 42,
         sender_full_name: "Alice",
-        stream_id: 10,
+        stream_uuid: ENGINEERING_STREAM_UUID,
         subject: "bugs",
         content: "Open me",
         timestamp: 1,
@@ -273,7 +274,7 @@ describe("ActivityPage drafts routing", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open in chat" }));
 
     expect(navigateSpy).toHaveBeenCalledWith(
-      `/stream/10-engineering/topic/bugs?msg=${testMessageId(33)}`,
+      `/stream/${ENGINEERING_STREAM_UUID}/topic/bugs?msg=${testMessageId(33)}`,
     );
   });
 
@@ -283,7 +284,7 @@ describe("ActivityPage drafts routing", () => {
         id: 44,
         sender_id: 42,
         sender_full_name: "Alice",
-        stream_id: 10,
+        stream_uuid: ENGINEERING_STREAM_UUID,
         subject: "bugs",
         content: "Forward me",
         timestamp: 1,
@@ -312,7 +313,7 @@ describe("ActivityPage drafts routing", () => {
     fireEvent.click(screen.getByRole("button", { name: "Forward" }));
 
     expect(navigateSpy).toHaveBeenCalledWith(
-      `/stream/10-engineering/topic/bugs?msg=${testMessageId(44)}&forward=${testMessageId(44)}`,
+      `/stream/${ENGINEERING_STREAM_UUID}/topic/bugs?msg=${testMessageId(44)}&forward=${testMessageId(44)}`,
     );
   });
 
@@ -321,7 +322,7 @@ describe("ActivityPage drafts routing", () => {
       id: 88,
       sender_id: 42,
       sender_full_name: "Alice",
-      stream_id: 10,
+      stream_uuid: "00000000-0000-4000-8000-000000000010",
       subject: "bugs",
       content: "Cached mention",
       timestamp: 1,
@@ -350,7 +351,7 @@ describe("ActivityPage drafts routing", () => {
       id: 30,
       sender_id: 42,
       sender_full_name: "Alice",
-      stream_id: 10,
+      stream_uuid: "00000000-0000-4000-8000-000000000010",
       subject: "bugs",
       content: "Fresh reaction",
       timestamp: 300,
@@ -361,7 +362,7 @@ describe("ActivityPage drafts routing", () => {
       id: 10,
       sender_id: 42,
       sender_full_name: "Alice",
-      stream_id: 10,
+      stream_uuid: "00000000-0000-4000-8000-000000000010",
       subject: "bugs",
       content: "Old reaction",
       timestamp: 100,
@@ -404,7 +405,7 @@ describe("ActivityPage drafts routing", () => {
       id: 10,
       sender_id: 42,
       sender_full_name: "Alice",
-      stream_id: 10,
+      stream_uuid: "00000000-0000-4000-8000-000000000010",
       subject: "bugs",
       content: "Old reaction",
       timestamp: 100,
@@ -415,7 +416,7 @@ describe("ActivityPage drafts routing", () => {
       id: 30,
       sender_id: 42,
       sender_full_name: "Alice",
-      stream_id: 10,
+      stream_uuid: "00000000-0000-4000-8000-000000000010",
       subject: "bugs",
       content: "Fresh reaction",
       timestamp: 300,
@@ -458,7 +459,7 @@ describe("ActivityPage drafts routing", () => {
         id: 55,
         sender_id: 42,
         sender_full_name: "Alice",
-        stream_id: 10,
+        stream_uuid: "00000000-0000-4000-8000-000000000010",
         subject: "bugs",
         content: "Starred message",
         timestamp: 1,
@@ -499,7 +500,7 @@ describe("ActivityPage drafts routing", () => {
         id: 56,
         sender_id: 42,
         sender_full_name: "Alice",
-        stream_id: 10,
+        stream_uuid: "00000000-0000-4000-8000-000000000010",
         subject: "bugs",
         content: "Starred message persists",
         timestamp: 1,
@@ -548,7 +549,7 @@ describe("ActivityPage drafts routing", () => {
           id: 55,
           sender_id: 42,
           sender_full_name: "Alice",
-          stream_id: 10,
+          stream_uuid: "00000000-0000-4000-8000-000000000010",
           subject: "bugs",
           content: "Org A starred message",
           timestamp: 1,
@@ -610,7 +611,7 @@ describe("ActivityPage drafts routing", () => {
                 id: 55,
                 sender_id: 99,
                 sender_full_name: "Bob",
-                stream_id: 20,
+                stream_uuid: "00000000-0000-4000-8000-000000000020",
                 subject: "support",
                 content: "Org B starred message",
                 timestamp: 2,
@@ -761,7 +762,7 @@ describe("ActivityPage drafts routing", () => {
             id: 10,
             sender_id: 42,
             sender_full_name: "Alice",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             subject: "bugs",
             content: `${filter} first`,
             timestamp: 1,
@@ -772,7 +773,7 @@ describe("ActivityPage drafts routing", () => {
             id: 20,
             sender_id: 42,
             sender_full_name: "Alice",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             subject: "bugs",
             content: `${filter} latest`,
             timestamp: 2,
@@ -1176,7 +1177,7 @@ describe("ActivityPage drafts routing", () => {
             id: 1,
             sender_id: 42,
             sender_full_name: "Alice",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             subject: "bugs",
             content: "Initial mention",
             timestamp: 1,
@@ -1192,7 +1193,7 @@ describe("ActivityPage drafts routing", () => {
             id: 2,
             sender_id: 42,
             sender_full_name: "Alice",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             subject: "bugs",
             content: "Updated mention",
             timestamp: 2,
@@ -1289,7 +1290,7 @@ describe("ActivityPage drafts routing", () => {
           id: 901,
           sender_id: 42,
           sender_full_name: "Alice",
-          stream_id: 10,
+          stream_uuid: "00000000-0000-4000-8000-000000000010",
           subject: "bugs",
           content: "Old org cached mention",
           timestamp: 1,
@@ -1309,7 +1310,7 @@ describe("ActivityPage drafts routing", () => {
             id: 902,
             sender_id: 99,
             sender_full_name: "Bob",
-            stream_id: 20,
+            stream_uuid: "00000000-0000-4000-8000-000000000020",
             subject: "support",
             content: "Current org mention",
             timestamp: 2,
@@ -1404,7 +1405,7 @@ describe("ActivityPage drafts routing", () => {
             id: 903,
             sender_id: 42,
             sender_full_name: "Alice",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             subject: "bugs",
             content: "Old org refreshed mention",
             timestamp: 1,
@@ -1426,7 +1427,7 @@ describe("ActivityPage drafts routing", () => {
             id: 904,
             sender_id: 99,
             sender_full_name: "Bob",
-            stream_id: 20,
+            stream_uuid: "00000000-0000-4000-8000-000000000020",
             subject: "support",
             content: "Current org refreshed mention",
             timestamp: 2,

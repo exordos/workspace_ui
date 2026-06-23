@@ -18,9 +18,9 @@ export type { ChatSortingOptions } from "./chat-sorting-compare.lib";
 import type { ChatSortingOptions, ResolvedChatSortingOptions } from "./chat-sorting-compare.lib";
 
 export function sortChatsByLastMessage(
-  streamsMap: Map<number, StreamEntryInternal>,
+  streamsMap: Map<string, StreamEntryInternal>,
   dmsMap: Map<string, DmEntryInternal>,
-  muteSet: Set<number>,
+  muteSet: Set<string>,
   options: ChatSortingOptions = {},
 ): SidebarChat[] {
   const prioritizePersonalUnread = options.prioritizePersonalUnread ?? false;

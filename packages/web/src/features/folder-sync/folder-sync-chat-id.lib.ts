@@ -21,18 +21,6 @@ export function getFolderSyncUser(
   return (usersMap as ReadonlyMap<number, FolderSyncUserLike>).get(userId);
 }
 
-export function parseNumericChatId(chatId: string): number | null {
-  const trimmed = chatId.trim();
-  if (!/^\d+$/.test(trimmed)) {
-    return null;
-  }
-  const parsed = Number(trimmed);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    return null;
-  }
-  return parsed;
-}
-
 function parseStreamChatId(chatId: string): { streamId: string; topic: string | null } | null {
   const [kind, streamIdRaw, ...topicParts] = chatId.split(":");
   const streamId = streamIdRaw?.trim().toLowerCase() ?? "";
@@ -163,25 +151,12 @@ export function resolveFallbackUserName(
 
 /**
  * Stable map/set key for a folder or pin chat identifier.
- * Bare numeric ids are stream ids (`stream:N:general`); DM ids are sorted `dm:a,b`.
+ * Stream ids use `stream:<uuid>:<topic>`, DM ids are sorted `dm:a,b`.
  */
 export function canonicalizeChatId(chatId: string): string {
   const trimmed = chatId.trim();
   if (trimmed.length === 0) {
     return trimmed;
-  }
-
-  const numericChatId = parseNumericChatId(trimmed);
-  if (numericChatId != null) {
-    return `stream:${numericChatId}:general`;
-  }
-
-  const streamDashMatch = /^stream-(\d+)$/i.exec(trimmed);
-  if (streamDashMatch?.[1]) {
-    const parsed = Number(streamDashMatch[1]);
-    if (Number.isSafeInteger(parsed) && parsed > 0) {
-      return `stream:${parsed}:general`;
-    }
   }
 
   const streamChat = parseStreamChatId(trimmed);
@@ -245,18 +220,10 @@ export function addChatIdAliases(target: Set<string>, chatId: string): void {
   }
   target.add(trimmedChatId);
 
-  const numericChatId = parseNumericChatId(trimmedChatId);
-  if (numericChatId != null) {
-    target.add(String(numericChatId));
-    target.add(`stream:${numericChatId}:general`);
-    return;
-  }
-
   const streamChat = parseStreamChatId(trimmedChatId);
   if (streamChat != null) {
     target.add(`stream:${streamChat.streamId}:general`);
     target.add(`stream:${streamChat.streamId}:${normalizeStreamTopic(streamChat.topic)}`);
-    target.add(String(streamChat.streamId));
     return;
   }
 

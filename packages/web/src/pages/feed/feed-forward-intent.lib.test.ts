@@ -6,11 +6,11 @@ describe("appendForwardIntentQuery", () => {
   it("appends forward query when route has no search params", () => {
     expect(
       appendForwardIntentQuery(
-        `/stream/10-engineering/topic/bugs?msg=${testMessageId(44)}`,
+        `/stream/00000000-0000-4000-8000-000000000010/topic/bugs?msg=${testMessageId(44)}`,
         testMessageId(44),
       ),
     ).toBe(
-      `/stream/10-engineering/topic/bugs?msg=${testMessageId(44)}&forward=${testMessageId(44)}`,
+      `/stream/00000000-0000-4000-8000-000000000010/topic/bugs?msg=${testMessageId(44)}&forward=${testMessageId(44)}`,
     );
   });
 

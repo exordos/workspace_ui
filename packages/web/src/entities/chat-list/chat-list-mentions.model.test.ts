@@ -4,20 +4,17 @@ import { useChatListStore } from "./chat-list.model";
 
 const CURRENT_USER_ID = 10;
 const OTHER_SENDER_ID = 20;
+const STREAM_UUID = "00000000-0000-4000-8000-000000000005";
 
-function mentionMsg(
-  id: number | string,
-  flags: string[] = ["mentioned"],
-  senderId = OTHER_SENDER_ID,
-) {
+function mentionMsg(id: number | string, flags: string[] = ["mentioned"]) {
   return {
     id: testMessageId(id),
-    sender_id: senderId,
+    sender_id: OTHER_SENDER_ID,
     sender_full_name: "Peer",
     content: `@user ${id}`,
     timestamp: testMessageOrdinal(id),
     type: "stream" as const,
-    stream_id: 5,
+    stream_uuid: STREAM_UUID,
     display_recipient: "general",
     subject: "topic",
     flags,
@@ -29,111 +26,26 @@ describe("chat-list mentions counter", () => {
     useChatListStore.getState().clear();
   });
 
-  it("addMessage increments mentionsUnreadCount for unread mention from others", () => {
+  it("keeps server-backed mention counters empty until the backend exposes them", () => {
     useChatListStore.setState({ currentUserId: CURRENT_USER_ID });
-    useChatListStore.getState().addMessage(mentionMsg("00000000-0000-4000-8000-000000000100"));
-
-    expect(useChatListStore.getState().mentionsUnreadCount).toBe(1);
-    expect([...useChatListStore.getState().mentionedUnreadMessageIds]).toEqual([
-      testMessageId(100),
-    ]);
-  });
-
-  it("addMessage dedupes mention increment by message id", () => {
-    useChatListStore.setState({ currentUserId: CURRENT_USER_ID });
-    const msg = mentionMsg(100);
-    useChatListStore.getState().addMessage(msg);
-    useChatListStore.getState().addMessage(msg);
-
-    expect(useChatListStore.getState().mentionsUnreadCount).toBe(1);
-  });
-
-  it("addMessage ignores self-mentions and read mentions", () => {
-    useChatListStore.setState({ currentUserId: CURRENT_USER_ID });
-    useChatListStore
-      .getState()
-      .addMessage(
-        mentionMsg("00000000-0000-4000-8000-000000000001", ["mentioned"], CURRENT_USER_ID),
-      );
-    useChatListStore
-      .getState()
-      .addMessage(mentionMsg("00000000-0000-4000-8000-000000000002", ["mentioned", "read"]));
+    useChatListStore.getState().addMessage(mentionMsg(100));
 
     expect(useChatListStore.getState().mentionsUnreadCount).toBe(0);
-  });
-
-  it("reconcileMentionsFromServer replaces set and count authoritatively", () => {
-    useChatListStore.setState({
-      currentUserId: CURRENT_USER_ID,
-      mentionedUnreadMessageIds: new Set([
-        "00000000-0000-4000-8000-000000000001",
-        "00000000-0000-4000-8000-000000000002",
-        "00000000-0000-4000-8000-000000000003",
-      ]),
-      mentionsUnreadCount: 3,
-    });
-
-    useChatListStore
-      .getState()
-      .reconcileMentionsFromServer(
-        [
-          mentionMsg("00000000-0000-4000-8000-000000000005", ["mentioned"]),
-          mentionMsg("00000000-0000-4000-8000-000000000006", ["mentioned"], CURRENT_USER_ID),
-        ],
-        { capped: true },
-      );
-
-    const state = useChatListStore.getState();
-    expect(state.mentionsUnreadCount).toBe(1);
-    expect([...state.mentionedUnreadMessageIds]).toEqual([testMessageId(5)]);
-    expect(state.mentionsUnreadCapped).toBe(true);
-    expect(state.mentionsUnreadApiSynced).toBe(true);
-  });
-
-  it("reconcileMentionsFromRegisterIds applies register fallback until API sync", () => {
-    useChatListStore
-      .getState()
-      .reconcileMentionsFromRegisterIds([
-        "00000000-0000-4000-8000-000000000007",
-        "00000000-0000-4000-8000-000000000008",
-      ]);
-    expect(useChatListStore.getState().mentionsUnreadCount).toBe(2);
-
-    useChatListStore.setState({ mentionsUnreadApiSynced: true });
-    useChatListStore
-      .getState()
-      .reconcileMentionsFromRegisterIds(["00000000-0000-4000-8000-000000000009"]);
-    expect(useChatListStore.getState().mentionsUnreadCount).toBe(2);
-  });
-
-  it("decrementMentionsForReadMessages removes ids from set", () => {
-    useChatListStore.setState({
-      mentionedUnreadMessageIds: new Set([
-        "00000000-0000-4000-8000-000000000001",
-        "00000000-0000-4000-8000-000000000002",
-      ]),
-      mentionsUnreadCount: 2,
-    });
-    useChatListStore
-      .getState()
-      .decrementMentionsForReadMessages(["00000000-0000-4000-8000-000000000001"]);
-
-    expect(useChatListStore.getState().mentionsUnreadCount).toBe(1);
-    expect([...useChatListStore.getState().mentionedUnreadMessageIds]).toEqual([testMessageId(2)]);
+    expect([...useChatListStore.getState().mentionedUnreadMessageIds]).toEqual([]);
   });
 
   it("streams() exposes hasMention on stream and topic rows with indexed locations", () => {
     useChatListStore.setState({
       currentUserId: CURRENT_USER_ID,
-      mentionedUnreadMessageIds: new Set(["00000000-0000-4000-8000-000000000100"]),
+      mentionedUnreadMessageIds: new Set([testMessageId(100)]),
       messageIdToLocation: new Map([
-        ["00000000-0000-4000-8000-000000000100", { type: "stream", stream_id: 5, topic: "topic" }],
+        [testMessageId(100), { type: "stream", streamUuid: STREAM_UUID, topic: "topic" }],
       ]),
       streamsMap: new Map([
         [
-          5,
+          STREAM_UUID,
           {
-            stream_id: 5,
+            streamUuid: STREAM_UUID,
             name: "general",
             lastMessage: "hi",
             time: "",
@@ -163,10 +75,8 @@ describe("chat-list mentions counter", () => {
   it("dms() omits hasMention on personal 1:1 rows", () => {
     useChatListStore.setState({
       currentUserId: CURRENT_USER_ID,
-      mentionedUnreadMessageIds: new Set(["00000000-0000-4000-8000-000000000200"]),
-      messageIdToLocation: new Map([
-        ["00000000-0000-4000-8000-000000000200", { type: "dm", dmKey: "10,20" }],
-      ]),
+      mentionedUnreadMessageIds: new Set([testMessageId(200)]),
+      messageIdToLocation: new Map([[testMessageId(200), { type: "dm", dmKey: "10,20" }]]),
       dmsMap: new Map([
         [
           "10,20",
@@ -178,12 +88,12 @@ describe("chat-list mentions counter", () => {
             time: "",
             ts: 1,
             unreadCount: 0,
-            userIds: [10, 20],
           },
         ],
       ]),
     });
 
-    expect(useChatListStore.getState().dms()[0]?.hasMention).toBeUndefined();
+    const dm = useChatListStore.getState().dms()[0];
+    expect(dm?.hasMention).toBeUndefined();
   });
 });

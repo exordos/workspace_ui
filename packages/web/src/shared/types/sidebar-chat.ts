@@ -11,6 +11,8 @@ export interface TopicWithLast {
   badge?: number;
   /** True when this topic has at least one unread @mention. */
   hasMention?: boolean;
+  /** Server-owned done state. UI may render a checkmark, but the topic name stays unchanged. */
+  isDone?: boolean;
 }
 
 export type SidebarChat =
@@ -101,6 +103,7 @@ export interface StreamEntryInternal {
       time: string;
       ts: number;
       unreadCount: number;
+      isDone?: boolean;
       lastMessageId?: MessageId;
     }
   >;

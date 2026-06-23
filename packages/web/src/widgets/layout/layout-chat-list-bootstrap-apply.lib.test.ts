@@ -50,7 +50,7 @@ describe("applyChatListBootstrapResult", () => {
         id: "00000000-0000-4000-8000-000000000030",
         sender_id: 1,
         type: "stream",
-        stream_id: 9,
+        stream_uuid: "00000000-0000-4000-8000-000000000009",
         content: "ch",
         timestamp: 3,
       },

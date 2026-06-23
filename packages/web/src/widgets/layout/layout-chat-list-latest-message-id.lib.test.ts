@@ -4,9 +4,11 @@ import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import { testMessageId } from "~/test/factories";
 import { getInMemoryLatestMessageId, maxMessageId } from "./layout-chat-list-latest-message-id.lib";
 
-function createStreamEntry(streamId: number, topicLastMessageId: string): StreamEntryInternal {
+const STREAM_UUID = "00000000-0000-4000-8000-000000000001";
+
+function createStreamEntry(streamUuid: string, topicLastMessageId: string): StreamEntryInternal {
   return {
-    stream_id: streamId,
+    streamUuid,
     name: "general",
     lastMessage: "hello",
     time: "12:00",
@@ -39,9 +41,9 @@ describe("layout-chat-list-latest-message-id", () => {
 
   it("getInMemoryLatestMessageId scans streams, dms, and location index", () => {
     useChatListStore.setState({
-      streamsMap: new Map([[1, createStreamEntry(1, testMessageId(42))]]),
+      streamsMap: new Map([[STREAM_UUID, createStreamEntry(STREAM_UUID, testMessageId(42))]]),
       messageIdToLocation: new Map([
-        [testMessageId(99), { type: "stream", stream_id: 1, topic: "t" }],
+        [testMessageId(99), { type: "stream", streamUuid: STREAM_UUID, topic: "t" }],
       ]),
     });
 

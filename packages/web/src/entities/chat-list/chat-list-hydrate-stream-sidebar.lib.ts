@@ -266,6 +266,7 @@ export function requestStreamSidebarTopicListHydrate(streamId: string): Promise<
           streamUuid: topic.stream_uuid,
           name: topic.name,
           isDefault: topic.is_default,
+          isDone: topic.is_done,
         })),
       );
       hydratedStreamTopicLists.add(scoped.key);

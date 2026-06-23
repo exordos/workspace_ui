@@ -24,8 +24,7 @@ describe("useLayoutAppIconBadge", () => {
   it("clears OS badge on unmount", () => {
     const { unmount } = renderHook(() =>
       useLayoutAppIconBadge({
-        personalDmUnread: 1,
-        mentionsUnread: 0,
+        personalUnreadCount: 1,
       }),
     );
 
@@ -34,28 +33,23 @@ describe("useLayoutAppIconBadge", () => {
     expect(osIntegration.setBadgeCount).toHaveBeenLastCalledWith(0);
   });
 
-  it("syncs OS badge from personal DM or mentions unread", () => {
+  it("syncs OS badge from server personal unread count", () => {
     const { rerender } = renderHook(
-      ({
-        personalDmUnread,
-        mentionsUnread,
-      }: {
-        personalDmUnread: number;
-        mentionsUnread: number;
-      }) => useLayoutAppIconBadge({ personalDmUnread, mentionsUnread }),
+      ({ personalUnreadCount }: { personalUnreadCount: number }) =>
+        useLayoutAppIconBadge({ personalUnreadCount }),
       {
-        initialProps: { personalDmUnread: 2, mentionsUnread: 0 },
+        initialProps: { personalUnreadCount: 2 },
       },
     );
 
     expect(osIntegration.setBadgeCount).toHaveBeenCalledWith(1);
     expect(syncFaviconWithUnreadIndicator).toHaveBeenCalledWith({ hasUnread: true });
 
-    rerender({ personalDmUnread: 0, mentionsUnread: 0 });
+    rerender({ personalUnreadCount: 0 });
     expect(osIntegration.setBadgeCount).toHaveBeenLastCalledWith(0);
     expect(syncFaviconWithUnreadIndicator).toHaveBeenLastCalledWith({ hasUnread: false });
 
-    rerender({ personalDmUnread: 0, mentionsUnread: 3 });
+    rerender({ personalUnreadCount: 3 });
     expect(osIntegration.setBadgeCount).toHaveBeenLastCalledWith(1);
     expect(syncFaviconWithUnreadIndicator).toHaveBeenLastCalledWith({ hasUnread: true });
   });
@@ -63,8 +57,7 @@ describe("useLayoutAppIconBadge", () => {
   it("does not show badge when no personal DM or mentions unread", () => {
     renderHook(() =>
       useLayoutAppIconBadge({
-        personalDmUnread: 0,
-        mentionsUnread: 0,
+        personalUnreadCount: 0,
       }),
     );
 

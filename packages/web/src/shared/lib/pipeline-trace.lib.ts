@@ -189,7 +189,7 @@ export interface SidebarUnreadLogStateSlice {
   sidebarStreamsUnread: number;
   sidebarDmsUnread: number;
   messageIdToLocation: ReadonlyMap<MessageId, MessageLocation>;
-  streamsMap: ReadonlyMap<number, StreamEntryInternal>;
+  streamsMap: ReadonlyMap<string, StreamEntryInternal>;
   dmsMap: ReadonlyMap<string, DmEntryInternal>;
 }
 
@@ -240,20 +240,10 @@ export function summarizeRegisterUnreadSnapshot(snapshot: {
   totalCount: number;
   oldUnreadsMissing?: boolean;
 }): Record<string, unknown> {
-  let streamUnreadIds = 0;
-  for (const bucket of snapshot.streams) {
-    streamUnreadIds += bucket.unreadMessageIds.length;
-  }
-  let dmUnreadIds = 0;
-  for (const bucket of snapshot.dms) {
-    dmUnreadIds += bucket.unreadMessageIds.length;
-  }
   return {
     totalCount: snapshot.totalCount,
     streamBuckets: snapshot.streams.length,
     dmBuckets: snapshot.dms.length,
-    streamUnreadIds,
-    dmUnreadIds,
     oldUnreadsMissing: snapshot.oldUnreadsMissing === true,
   };
 }
@@ -281,7 +271,6 @@ export function summarizeRecentPrivateConversationsForTrace(
   }
   const entries = Object.entries(conversations);
   let withMaxMessageId = 0;
-  let withUnreadIds = 0;
   const maxMessageIdSample: MessageId[] = [];
   for (const [, conversation] of entries) {
     const maxId = conversation.max_message_id;
@@ -291,16 +280,12 @@ export function summarizeRecentPrivateConversationsForTrace(
         maxMessageIdSample.push(maxId);
       }
     }
-    if ((conversation.unread_message_ids?.length ?? 0) > 0) {
-      withUnreadIds += 1;
-    }
   }
   return {
     present: true,
     format: "map",
     conversationCount: entries.length,
     withMaxMessageId,
-    withUnreadIds,
     maxMessageIdSample,
   };
 }

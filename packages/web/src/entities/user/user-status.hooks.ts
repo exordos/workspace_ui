@@ -8,7 +8,6 @@ import { useEffect, useMemo, useState } from "react";
 import { createLogger } from "~/shared/lib/logger";
 import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
 import type { UserId } from "~/shared/lib/user-id.lib";
-import type { RequestUserStatusOptions } from "./api/user.api";
 import {
   formatUserStatusLabel,
   getUserStatusEmojiDisplay,
@@ -20,6 +19,7 @@ import {
   type UserStatus,
   type UserStatusFetchState,
 } from "./user.model";
+import type { RequestUserStatusOptions } from "./api/user.api";
 
 const log = createLogger("user:status");
 
@@ -29,10 +29,7 @@ export interface UserStatusSnapshot {
   hasStatus: boolean;
 }
 
-export interface UseUserStatusOptions extends Pick<
-  RequestUserStatusOptions,
-  "reason" | "priority"
-> {}
+export type UseUserStatusOptions = Pick<RequestUserStatusOptions, "reason" | "priority">;
 
 export function selectUserStatusSnapshot(user: UserRecord | undefined): UserStatusSnapshot {
   const statusLabel = formatUserStatusLabel(user?.status) ?? undefined;
@@ -45,7 +42,7 @@ export function selectUserStatusSnapshot(user: UserRecord | undefined): UserStat
 
 export function useUserStatus(
   userId: UserId | undefined | null,
-  options?: UseUserStatusOptions,
+  _options?: UseUserStatusOptions,
 ): UserStatusSnapshot {
   const user = useUsersStore((state) => (userId != null ? state.getUser(userId) : undefined));
   const snapshot = useMemo(() => selectUserStatusSnapshot(user), [user]);

@@ -150,10 +150,10 @@ export function useChatMessageListCallbacks(
         const topic = msg.subject.trim();
         if (topic.length === 0) return;
         const streamName =
-          streams.find((stream) => stream.stream_uuid === msg.stream_uuid)?.name ??
+          streams.find((stream) => stream.streamUuid === msg.stream_uuid)?.name ??
           (typeof msg.display_recipient === "string" ? msg.display_recipient : undefined);
         if (!streamName) return;
-        const route = `/stream/${slugForStream({ streamUuid: msg.stream_uuid, name: streamName })}/topic/${encodeURIComponent(
+        const route = `/stream/${slugForStream({ streamUuid: msg.stream_uuid })}/topic/${encodeURIComponent(
           encodeTopicForRoute(topic),
         )}`;
         if (route === locationPathname) return;

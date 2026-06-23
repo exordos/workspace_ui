@@ -6,6 +6,8 @@ import {
   stripOrgSegmentFromPathname,
 } from "./layout-sync-chat-context.lib";
 
+const STREAM_UUID = "00000000-0000-4000-8000-000000000005";
+
 describe("stripOrgSegmentFromPathname", () => {
   it("strips /org/:id prefix before dm", () => {
     expect(stripOrgSegmentFromPathname("/org/realm.example.com/dm/358-507")).toBe("/dm/358-507");
@@ -32,7 +34,7 @@ describe("stripOrgSegmentFromPathname", () => {
 
 describe("parseChatContextFromPathname", () => {
   it("parses DM under /org/:orgId/dm/:dmId", () => {
-    const streamsMap = new Map<number, { name: string }>();
+    const streamsMap = new Map<string, { name: string }>();
     const parsed = parseChatContextFromPathname({
       pathname: "/org/chat.example.com/dm/358-507",
       streamsMap,
@@ -47,7 +49,7 @@ describe("parseChatContextFromPathname", () => {
   });
 
   it("parses DM at /dm/:dmId", () => {
-    const streamsMap = new Map<number, { name: string }>();
+    const streamsMap = new Map<string, { name: string }>();
     const a = parseChatContextFromPathname({
       pathname: "/dm/358-507",
       streamsMap,
@@ -66,25 +68,25 @@ describe("parseChatContextFromPathname", () => {
   });
 
   it("marks streamWideView and explicit topic for /stream/:slug/topic/:topic", () => {
-    const streamsMap = new Map<number, { name: string }>([[5, { name: "engineering" }]]);
+    const streamsMap = new Map<string, { name: string }>([[STREAM_UUID, { name: "engineering" }]]);
     const parsed = parseChatContextFromPathname({
-      pathname: "/stream/5-engineering/topic/bugs",
+      pathname: `/stream/${STREAM_UUID}/topic/bugs`,
       streamsMap,
       currentUserId: 1,
     });
     expect(parsed.streamTopicExplicitInUrl).toBe(true);
     expect(parsed.context?.type).toBe("stream");
     if (parsed.context?.type === "stream") {
-      expect(parsed.context.streamId).toBe(5);
+      expect(parsed.context.streamId).toBe(STREAM_UUID);
       expect(parsed.context.topic).toBe("bugs");
       expect(parsed.context.streamWideView).toBe(false);
     }
   });
 
   it("marks stream overview without explicit topic segment", () => {
-    const streamsMap = new Map<number, { name: string }>([[5, { name: "engineering" }]]);
+    const streamsMap = new Map<string, { name: string }>([[STREAM_UUID, { name: "engineering" }]]);
     const parsed = parseChatContextFromPathname({
-      pathname: "/stream/5-engineering",
+      pathname: `/stream/${STREAM_UUID}`,
       streamsMap,
       currentUserId: 1,
     });
@@ -96,46 +98,46 @@ describe("parseChatContextFromPathname", () => {
     }
   });
 
-  it("decodes __empty__ token to empty topic for explicit topic route", () => {
-    const streamsMap = new Map<number, { name: string }>([[5, { name: "engineering" }]]);
+  it("treats __empty__ as a literal server topic", () => {
+    const streamsMap = new Map<string, { name: string }>([[STREAM_UUID, { name: "engineering" }]]);
     const parsed = parseChatContextFromPathname({
-      pathname: "/stream/5-engineering/topic/__empty__",
+      pathname: `/stream/${STREAM_UUID}/topic/__empty__`,
       streamsMap,
       currentUserId: 1,
     });
     expect(parsed.streamTopicExplicitInUrl).toBe(true);
     expect(parsed.context?.type).toBe("stream");
     if (parsed.context?.type === "stream") {
-      expect(parsed.context.topic).toBe("");
+      expect(parsed.context.topic).toBe("__empty__");
       expect(parsed.context.streamWideView).toBe(false);
     }
   });
 
-  it("decodes escaped token as literal topic value", () => {
-    const streamsMap = new Map<number, { name: string }>([[5, { name: "engineering" }]]);
+  it("treats escaped empty token syntax as a literal topic value", () => {
+    const streamsMap = new Map<string, { name: string }>([[STREAM_UUID, { name: "engineering" }]]);
     const parsed = parseChatContextFromPathname({
-      pathname: "/stream/5-engineering/topic/~__empty__",
+      pathname: `/stream/${STREAM_UUID}/topic/~__empty__`,
       streamsMap,
       currentUserId: 1,
     });
     expect(parsed.context?.type).toBe("stream");
     if (parsed.context?.type === "stream") {
-      expect(parsed.context.topic).toBe("__empty__");
+      expect(parsed.context.topic).toBe("~__empty__");
     }
   });
 });
 
 describe("isStoreContextAlignedWithParsedRoute", () => {
   it("treats store topic as aligned with URL overview when streamId matches", () => {
-    const streamsMap = new Map<number, { name: string }>([[5, { name: "engineering" }]]);
+    const streamsMap = new Map<string, { name: string }>([[STREAM_UUID, { name: "engineering" }]]);
     const parsed = parseChatContextFromPathname({
-      pathname: "/stream/5-engineering",
+      pathname: `/stream/${STREAM_UUID}`,
       streamsMap,
       currentUserId: 1,
     });
     const store: CurrentChatContext = {
       type: "stream",
-      streamId: 5,
+      streamId: STREAM_UUID,
       streamName: "engineering",
       topic: "incidents",
       streamWideView: true,
@@ -144,21 +146,21 @@ describe("isStoreContextAlignedWithParsedRoute", () => {
   });
 
   it("requires topic match when URL has explicit topic", () => {
-    const streamsMap = new Map<number, { name: string }>([[5, { name: "engineering" }]]);
+    const streamsMap = new Map<string, { name: string }>([[STREAM_UUID, { name: "engineering" }]]);
     const parsed = parseChatContextFromPathname({
-      pathname: "/stream/5-engineering/topic/bugs",
+      pathname: `/stream/${STREAM_UUID}/topic/bugs`,
       streamsMap,
       currentUserId: 1,
     });
     const aligned: CurrentChatContext = {
       type: "stream",
-      streamId: 5,
+      streamId: STREAM_UUID,
       streamName: "engineering",
       topic: "bugs",
     };
     const wrongTopic: CurrentChatContext = {
       type: "stream",
-      streamId: 5,
+      streamId: STREAM_UUID,
       streamName: "engineering",
       topic: "other",
     };

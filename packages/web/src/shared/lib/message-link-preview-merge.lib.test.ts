@@ -13,7 +13,7 @@ function baseMessage(overrides: MockMessageOverrides = {}): MockMessage {
     id: testMessageId(id ?? 1),
     sender_id: 1,
     sender_full_name: "Alice",
-    stream_id: 10,
+    stream_uuid: "00000000-0000-4000-8000-000000000010",
     subject: "general",
     content: "https://example.com",
     timestamp: 1,

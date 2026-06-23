@@ -19,6 +19,8 @@ vi.mock("~/shared/api/messenger-streams", () => ({
 
 import { fetchStreams, fetchSubscriptions } from "~/shared/api/messenger-streams";
 
+const STREAM_UUID_77 = "00000000-0000-4000-8000-000000000077";
+
 describe("CreateChatDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -66,7 +68,7 @@ describe("CreateChatDialog", () => {
     useChatListStore.setState({ currentUserId: 10 });
     vi.mocked(fetchStreams).mockResolvedValue([
       {
-        stream_id: 42,
+        stream_uuid: "00000000-0000-4000-8000-000000000042",
         name: "engineering",
         description: "Team channel",
         is_announcement_only: false,
@@ -100,7 +102,7 @@ describe("CreateChatDialog", () => {
     useChatListStore.setState({ currentUserId: 10 });
     vi.mocked(fetchStreams).mockResolvedValue([
       {
-        stream_id: 42,
+        stream_uuid: "00000000-0000-4000-8000-000000000042",
         name: "engineering",
         description: "Team channel",
         is_announcement_only: false,
@@ -111,7 +113,12 @@ describe("CreateChatDialog", () => {
       },
     ]);
     vi.mocked(fetchSubscriptions).mockResolvedValue([
-      { stream_id: 42, name: "engineering", is_muted: false, invite_only: true },
+      {
+        stream_uuid: "00000000-0000-4000-8000-000000000042",
+        name: "engineering",
+        is_muted: false,
+        invite_only: true,
+      },
     ]);
 
     render(
@@ -133,9 +140,13 @@ describe("CreateChatDialog", () => {
   });
 
   it("renders archived channels tab and linked tabpanel", () => {
-    useChatListStore
-      .getState()
-      .upsertStreamMetadataRows([{ streamId: 77, name: "engineering", isArchived: true }]);
+    useChatListStore.getState().upsertStreamMetadataRows([
+      {
+        streamUuid: "00000000-0000-4000-8000-000000000077",
+        name: "engineering",
+        isArchived: true,
+      },
+    ]);
 
     render(
       <CreateChatDialog
@@ -182,8 +193,8 @@ describe("CreateChatDialog", () => {
 
   it("filters archived channels by search and renders unarchive action", () => {
     useChatListStore.getState().upsertStreamMetadataRows([
-      { streamId: 77, name: "engineering", isArchived: true },
-      { streamId: 78, name: "design", isArchived: true },
+      { streamUuid: "00000000-0000-4000-8000-000000000077", name: "engineering", isArchived: true },
+      { streamUuid: "00000000-0000-4000-8000-000000000078", name: "design", isArchived: true },
     ]);
 
     render(
@@ -206,9 +217,13 @@ describe("CreateChatDialog", () => {
   });
 
   it("открывает архивный канал по клику на строку и вызывает onNavigateStream", () => {
-    useChatListStore
-      .getState()
-      .upsertStreamMetadataRows([{ streamId: 77, name: "engineering", isArchived: true }]);
+    useChatListStore.getState().upsertStreamMetadataRows([
+      {
+        streamUuid: "00000000-0000-4000-8000-000000000077",
+        name: "engineering",
+        isArchived: true,
+      },
+    ]);
     const onNavigateStream = vi.fn();
 
     render(
@@ -224,13 +239,17 @@ describe("CreateChatDialog", () => {
     const title = screen.getByText("#engineering");
     fireEvent.click(title.closest("button")!);
 
-    expect(onNavigateStream).toHaveBeenCalledWith(77, "engineering");
+    expect(onNavigateStream).toHaveBeenCalledWith(STREAM_UUID_77, "engineering");
   });
 
   it("кнопка разархивирования дергаёт API и не вызывает onNavigateStream", async () => {
-    useChatListStore
-      .getState()
-      .upsertStreamMetadataRows([{ streamId: 77, name: "engineering", isArchived: true }]);
+    useChatListStore.getState().upsertStreamMetadataRows([
+      {
+        streamUuid: "00000000-0000-4000-8000-000000000077",
+        name: "engineering",
+        isArchived: true,
+      },
+    ]);
     vi.mocked(unarchiveChannel).mockResolvedValue({ ok: true });
     const onNavigateStream = vi.fn();
 
@@ -247,15 +266,19 @@ describe("CreateChatDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: /Unarchive: engineering/i }));
 
     await waitFor(() => {
-      expect(unarchiveChannel).toHaveBeenCalledWith(77);
+      expect(unarchiveChannel).toHaveBeenCalledWith(STREAM_UUID_77);
     });
     expect(onNavigateStream).not.toHaveBeenCalled();
   });
 
   it("убирает канал со вкладки после успеха и обновления isArchived в store", async () => {
-    useChatListStore
-      .getState()
-      .upsertStreamMetadataRows([{ streamId: 77, name: "engineering", isArchived: true }]);
+    useChatListStore.getState().upsertStreamMetadataRows([
+      {
+        streamUuid: "00000000-0000-4000-8000-000000000077",
+        name: "engineering",
+        isArchived: true,
+      },
+    ]);
     vi.mocked(unarchiveChannel).mockResolvedValue({ ok: true });
 
     render(
@@ -274,9 +297,13 @@ describe("CreateChatDialog", () => {
       expect(unarchiveChannel).toHaveBeenCalled();
     });
 
-    useChatListStore
-      .getState()
-      .upsertStreamMetadataRows([{ streamId: 77, name: "engineering", isArchived: false }]);
+    useChatListStore.getState().upsertStreamMetadataRows([
+      {
+        streamUuid: "00000000-0000-4000-8000-000000000077",
+        name: "engineering",
+        isArchived: false,
+      },
+    ]);
 
     await waitFor(() => {
       expect(screen.queryByText("#engineering")).not.toBeInTheDocument();
@@ -284,9 +311,13 @@ describe("CreateChatDialog", () => {
   });
 
   it("рендерит inline-ошибку при неудачном unarchive", async () => {
-    useChatListStore
-      .getState()
-      .upsertStreamMetadataRows([{ streamId: 77, name: "engineering", isArchived: true }]);
+    useChatListStore.getState().upsertStreamMetadataRows([
+      {
+        streamUuid: "00000000-0000-4000-8000-000000000077",
+        name: "engineering",
+        isArchived: true,
+      },
+    ]);
     vi.mocked(unarchiveChannel).mockResolvedValue({
       ok: false,
       kind: "transient",
@@ -312,9 +343,13 @@ describe("CreateChatDialog", () => {
   });
 
   it("блокирует кнопку unarchive пока запрос выполняется", async () => {
-    useChatListStore
-      .getState()
-      .upsertStreamMetadataRows([{ streamId: 77, name: "engineering", isArchived: true }]);
+    useChatListStore.getState().upsertStreamMetadataRows([
+      {
+        streamUuid: "00000000-0000-4000-8000-000000000077",
+        name: "engineering",
+        isArchived: true,
+      },
+    ]);
     let release!: () => void;
     const deferred = new Promise<{ ok: true }>((resolve) => {
       release = () => resolve({ ok: true });

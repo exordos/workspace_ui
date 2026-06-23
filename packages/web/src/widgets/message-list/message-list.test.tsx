@@ -456,7 +456,7 @@ describe("MessageList focused message behavior", () => {
     expect(screen.getByRole("status", { name: /online/i })).toBeInTheDocument();
   });
 
-  it("reports unread visible messages at 50% threshold", () => {
+  it("does not report unread visible messages from local message flags", () => {
     const onUnreadMessagesVisible = vi.fn();
     render(
       <MessageList
@@ -489,11 +489,10 @@ describe("MessageList focused message behavior", () => {
       ] as unknown as IntersectionObserverEntry[],
       {} as IntersectionObserver,
     );
-    expect(onUnreadMessagesVisible).toHaveBeenCalledTimes(1);
-    expect(onUnreadMessagesVisible).toHaveBeenCalledWith([MESSAGE_ID_1]);
+    expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
   });
 
-  it("reports viewport unread messages when user scrolls to chat bottom", () => {
+  it("does not report viewport unread messages when user scrolls to chat bottom", () => {
     const onUnreadMessagesVisible = vi.fn();
     render(
       <MessageList
@@ -525,10 +524,10 @@ describe("MessageList focused message behavior", () => {
 
     fireEvent.scroll(feed);
 
-    expect(onUnreadMessagesVisible).toHaveBeenCalledWith([MESSAGE_ID_1, MESSAGE_ID_2]);
+    expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
   });
 
-  it("reports unread messages through bottom callback when user reaches chat bottom", () => {
+  it("does not report unread messages through bottom callback when user reaches chat bottom", () => {
     const onUnreadMessagesAtBottom = vi.fn();
     render(
       <MessageList
@@ -559,7 +558,7 @@ describe("MessageList focused message behavior", () => {
 
     fireEvent.scroll(feed);
 
-    expect(onUnreadMessagesAtBottom).toHaveBeenCalledWith([MESSAGE_ID_1, MESSAGE_ID_2]);
+    expect(onUnreadMessagesAtBottom).not.toHaveBeenCalled();
   });
 
   it("does not bulk-mark unread at bottom while hasNewerMessages even when scrolled to tail", () => {
@@ -602,7 +601,7 @@ describe("MessageList focused message behavior", () => {
     expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
   });
 
-  it("bottom read path only includes viewport unread ids", () => {
+  it("does not derive bottom read ids from viewport message flags", () => {
     const onUnreadMessagesVisible = vi.fn();
     render(
       <MessageList
@@ -632,10 +631,10 @@ describe("MessageList focused message behavior", () => {
 
     fireEvent.scroll(feed);
 
-    expect(onUnreadMessagesVisible).toHaveBeenCalledWith([MESSAGE_ID_2]);
+    expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
   });
 
-  it("reports unread messages when list stays at bottom after rerender", async () => {
+  it("does not report unread messages when list stays at bottom after rerender", () => {
     const onUnreadMessagesVisible = vi.fn();
     const { rerender } = render(
       <MessageList
@@ -666,9 +665,7 @@ describe("MessageList focused message behavior", () => {
       {} as IntersectionObserver,
     );
 
-    await waitFor(() => {
-      expect(onUnreadMessagesVisible).toHaveBeenCalledWith([MESSAGE_ID_2]);
-    });
+    expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
   });
 
   it("scrolls to bottom when scrollToBottomAfterSendNonce increments while user is scrolled up", () => {

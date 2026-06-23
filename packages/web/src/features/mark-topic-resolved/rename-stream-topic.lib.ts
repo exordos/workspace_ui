@@ -1,7 +1,6 @@
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
-import { isTopicResolved, toResolvedTopicName } from "~/shared/lib/topic-resolve";
 
-/** Maps user input to the Workspace topic string, preserving resolved checkmark when applicable. */
+/** Maps user input to the Workspace topic name. Done state is server metadata, not part of the name. */
 export function resolveRenamedTopicName(
   currentTopic: string,
   nextNameInput: string,
@@ -10,9 +9,7 @@ export function resolveRenamedTopicName(
   if (nextBase.length === 0) {
     return null;
   }
-  if (isTopicResolved(currentTopic)) {
-    return toResolvedTopicName(nextBase);
-  }
+  void currentTopic;
   return nextBase;
 }
 

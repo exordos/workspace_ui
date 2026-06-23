@@ -47,7 +47,7 @@ function msg(overrides: Partial<MockMessage> = {}): MockMessage {
     id: "00000000-0000-4000-8000-000000000001",
     sender_id: 77,
     sender_full_name: "Alice",
-    stream_id: 10,
+    stream_uuid: "00000000-0000-4000-8000-000000000010",
     subject: "general",
     content: '<p><a href="/user_uploads/1/report.pdf">report.pdf</a></p>',
     timestamp: 1710000000,
@@ -55,7 +55,7 @@ function msg(overrides: Partial<MockMessage> = {}): MockMessage {
   return {
     ...base,
     ...overrides,
-    stream_id: overrides.stream_id ?? base.stream_id,
+    stream_uuid: overrides.stream_uuid ?? base.stream_uuid,
     subject: overrides.subject ?? base.subject,
   };
 }

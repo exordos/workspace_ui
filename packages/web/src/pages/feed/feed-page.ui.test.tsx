@@ -1,8 +1,10 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useFeedStore } from "~/entities/feed/feed.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
+import { useUsersStore } from "~/entities/user/user.model";
 import type { MockMessage } from "~/shared/api/messenger.types";
 import { createMessage, testMessageId } from "~/test/factories";
 import { FeedPage } from "./feed-page.ui";
@@ -78,6 +80,8 @@ describe("FeedPage forward action", () => {
     hydrateFeedMessagesFromCache.mockReset();
     hydrateFeedMessagesFromCache.mockResolvedValue([]);
     useFeedStore.getState().clear();
+    useUsersStore.getState().clear();
+    useChatListStore.getState().clear();
     useInstancesStore.setState({
       instances: [],
       currentInstanceId: null,
@@ -105,7 +109,7 @@ describe("FeedPage forward action", () => {
       id: "00000000-0000-4000-8000-000000000055",
       sender_id: 42,
       sender_full_name: "Alice",
-      stream_id: 10,
+      stream_uuid: "00000000-0000-4000-8000-000000000010",
       subject: "bugs",
       content: "Forward from feed",
       timestamp: 1,
@@ -134,11 +138,11 @@ describe("FeedPage forward action", () => {
     fireEvent.click(screen.getByRole("button", { name: "Forward" }));
 
     expect(navigateSpy).toHaveBeenCalledWith(
-      `/stream/10-engineering/topic/bugs?msg=${testMessageId(55)}&forward=${testMessageId(55)}`,
+      `/stream/00000000-0000-4000-8000-000000000010/topic/bugs?msg=${testMessageId(55)}&forward=${testMessageId(55)}`,
     );
   });
 
-  it("opens explicit empty-topic forward flow when feed message topic is empty", async () => {
+  it("falls back to stream forward flow when feed message topic metadata is missing", async () => {
     useInstancesStore.setState({
       instances: [
         {
@@ -157,7 +161,7 @@ describe("FeedPage forward action", () => {
       id: "00000000-0000-4000-8000-000000000057",
       sender_id: 42,
       sender_full_name: "Alice",
-      stream_id: 10,
+      stream_uuid: "00000000-0000-4000-8000-000000000010",
       subject: "",
       content: "Forward from feed without topic",
       timestamp: 1,
@@ -186,7 +190,7 @@ describe("FeedPage forward action", () => {
     fireEvent.click(screen.getByRole("button", { name: "Forward" }));
 
     expect(navigateSpy).toHaveBeenCalledWith(
-      `/stream/10-engineering/topic/__empty__?msg=${testMessageId(57)}&forward=${testMessageId(57)}`,
+      `/stream/00000000-0000-4000-8000-000000000010?msg=${testMessageId(57)}&forward=${testMessageId(57)}`,
     );
   });
 
@@ -195,7 +199,7 @@ describe("FeedPage forward action", () => {
       id: "00000000-0000-4000-8000-000000000056",
       sender_id: 42,
       sender_full_name: "Alice",
-      stream_id: 10,
+      stream_uuid: "00000000-0000-4000-8000-000000000010",
       subject: "bugs",
       content: "Deferred feed load",
       timestamp: 1,
@@ -252,6 +256,131 @@ describe("FeedPage forward action", () => {
     });
   });
 
+  it("renders native API author names from UUID user records", async () => {
+    const authorUuid = "11111111-1111-4111-8111-111111111111";
+    useInstancesStore.setState({
+      instances: [
+        {
+          id: "instance-1",
+          realm: "https://chat.example.com",
+          login: "user@example.com",
+          authType: "iam",
+          iamAccessToken: "api-key",
+        },
+      ],
+      currentInstanceId: "instance-1",
+      unreadCountsByInstance: {},
+    });
+    useUsersStore.getState().mergeUser({
+      user_id: authorUuid,
+      full_name: "Native Author",
+    });
+
+    fetchFeedMessages.mockResolvedValue({
+      messages: [
+        createMessage({
+          id: "00000000-0000-4000-8000-000000000059",
+          sender_id: 0,
+          author_uuid: authorUuid,
+          sender_uuid: authorUuid,
+          sender_full_name: "",
+          stream_uuid: "00000000-0000-4000-8000-000000000010",
+          subject: "native",
+          content: "Native API feed item",
+          timestamp: 1,
+          type: "stream",
+          display_recipient: "engineering",
+          channel: "engineering",
+        }),
+      ],
+      foundOldest: true,
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/feed"]}>
+        <Routes>
+          <Route path="/feed" element={<FeedPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Native API feed item")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Native Author")).toBeInTheDocument();
+  });
+
+  it("renders and opens native API stream topics from server metadata", async () => {
+    const streamUuid = "00000000-0000-4000-8000-000000000010";
+    const topicUuid = "00000000-0000-4000-8000-000000000011";
+    useInstancesStore.setState({
+      instances: [
+        {
+          id: "instance-1",
+          realm: "https://chat.example.com",
+          login: "user@example.com",
+          authType: "iam",
+          iamAccessToken: "api-key",
+        },
+      ],
+      currentInstanceId: "instance-1",
+      unreadCountsByInstance: {},
+    });
+    useChatListStore.getState().upsertStreamMetadataRows([
+      {
+        streamUuid,
+        name: "Engineering",
+      },
+    ]);
+    useChatListStore.getState().upsertStreamTopicShells(streamUuid, [
+      {
+        topicUuid,
+        streamUuid,
+        name: "General Chat",
+      },
+    ]);
+
+    fetchFeedMessages.mockResolvedValue({
+      messages: [
+        {
+          ...createMessage({
+            id: "00000000-0000-4000-8000-000000000060",
+            sender_id: 0,
+            sender_full_name: "",
+            stream_uuid: streamUuid,
+            subject: "",
+            content: "Native API context item",
+            timestamp: 1,
+            type: "stream",
+            display_recipient: "",
+            channel: "",
+          }),
+          topic_uuid: topicUuid,
+        } as MockMessage,
+      ],
+      foundOldest: true,
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/feed"]}>
+        <Routes>
+          <Route path="/feed" element={<FeedPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Native API context item")).toBeInTheDocument();
+    });
+    expect(screen.getByText("#Engineering · General Chat")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Native API context item"));
+
+    expect(navigateSpy).toHaveBeenCalledWith(
+      `/stream/${streamUuid}/topic/${topicUuid}?msg=${testMessageId(60)}`,
+    );
+  });
+
   it("uses card-style feed row classes for themed readability", async () => {
     useInstancesStore.setState({
       instances: [
@@ -271,7 +400,7 @@ describe("FeedPage forward action", () => {
       id: "00000000-0000-4000-8000-000000000058",
       sender_id: 42,
       sender_full_name: "Alice",
-      stream_id: 10,
+      stream_uuid: "00000000-0000-4000-8000-000000000010",
       subject: "style",
       content: "Feed style contract",
       timestamp: 1,
@@ -326,7 +455,7 @@ describe("FeedPage forward action", () => {
           id: "00000000-0000-4000-8000-000000000099",
           sender_id: 42,
           sender_full_name: "Alice",
-          stream_id: 10,
+          stream_uuid: "00000000-0000-4000-8000-000000000010",
           subject: "cache",
           content: "Cached feed item",
           timestamp: 1,
@@ -351,7 +480,7 @@ describe("FeedPage forward action", () => {
           id: "00000000-0000-4000-8000-000000000099",
           sender_id: 42,
           sender_full_name: "Alice",
-          stream_id: 10,
+          stream_uuid: "00000000-0000-4000-8000-000000000010",
           subject: "cache",
           content: "Cached feed item",
           timestamp: 1,
@@ -405,7 +534,7 @@ describe("FeedPage forward action", () => {
             id: "00000000-0000-4000-8000-000000000060",
             sender_id: 42,
             sender_full_name: "Alice",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             subject: "scroll",
             content: "Feed first item",
             timestamp: 1,
@@ -417,7 +546,7 @@ describe("FeedPage forward action", () => {
             id: "00000000-0000-4000-8000-000000000061",
             sender_id: 42,
             sender_full_name: "Alice",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             subject: "scroll",
             content: "Feed latest item",
             timestamp: 2,
@@ -479,7 +608,7 @@ describe("FeedPage forward action", () => {
         id: "00000000-0000-4000-8000-000000000059",
         sender_id: 42,
         sender_full_name: "Alice",
-        stream_id: 10,
+        stream_uuid: "00000000-0000-4000-8000-000000000010",
         subject: "scroll",
         content: "Scroll button target",
         timestamp: 1,
@@ -582,7 +711,7 @@ describe("FeedPage forward action", () => {
           id: "00000000-0000-4000-8000-000000000500",
           sender_id: 42,
           sender_full_name: "Alice",
-          stream_id: 10,
+          stream_uuid: "00000000-0000-4000-8000-000000000010",
           subject: "cache",
           content: "Old org cached feed item",
           timestamp: 1,
@@ -603,7 +732,7 @@ describe("FeedPage forward action", () => {
             id: "00000000-0000-4000-8000-000000000600",
             sender_id: 99,
             sender_full_name: "Bob",
-            stream_id: 20,
+            stream_uuid: "00000000-0000-4000-8000-000000000020",
             subject: "fresh",
             content: "Current org feed item",
             timestamp: 2,
@@ -686,7 +815,7 @@ describe("FeedPage forward action", () => {
             id: "00000000-0000-4000-8000-000000000700",
             sender_id: 42,
             sender_full_name: "Alice",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             subject: "old",
             content: "Old org newest feed item",
             timestamp: 1,
@@ -709,7 +838,7 @@ describe("FeedPage forward action", () => {
             id: "00000000-0000-4000-8000-000000000800",
             sender_id: 99,
             sender_full_name: "Bob",
-            stream_id: 20,
+            stream_uuid: "00000000-0000-4000-8000-000000000020",
             subject: "new",
             content: "Current org newest feed item",
             timestamp: 2,
@@ -767,7 +896,7 @@ describe("FeedPage forward action", () => {
           id: "00000000-0000-4000-8000-000000000100",
           sender_id: 42,
           sender_full_name: "Alice",
-          stream_id: 10,
+          stream_uuid: "00000000-0000-4000-8000-000000000010",
           subject: "base",
           content: "Base feed item",
           timestamp: 10,
@@ -818,7 +947,7 @@ describe("FeedPage forward action", () => {
             id: "00000000-0000-4000-8000-000000000090",
             sender_id: 42,
             sender_full_name: "Alice",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             subject: "old",
             content: "Old org older page item",
             timestamp: 5,
@@ -830,7 +959,7 @@ describe("FeedPage forward action", () => {
             id: "00000000-0000-4000-8000-000000000100",
             sender_id: 42,
             sender_full_name: "Alice",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             subject: "base",
             content: "Base feed item",
             timestamp: 10,

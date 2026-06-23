@@ -32,7 +32,6 @@ export async function fetchChatMessagesPage(
   if (streamUuid != null) {
     return fetchStreamMessagesPage({
       streamUuid,
-      streamId: args.context.type === "stream" ? args.context.streamId : streamUuid,
       ...(args.context.type === "stream" && args.context.topicUuid != null
         ? { topicUuid: args.context.topicUuid }
         : {}),

@@ -5,12 +5,14 @@ import {
   shouldSkipFocusedAnchorInitialLoad,
 } from "./chat-anchor-load.lib";
 
+const STREAM_UUID = "00000000-0000-4000-8000-000000000010";
+
 function message(overrides: Partial<MockMessage>): MockMessage {
   return {
     id: "00000000-0000-4000-8000-000000000001",
     sender_id: 7,
     sender_full_name: "Alice",
-    stream_id: 10,
+    stream_uuid: STREAM_UUID,
     subject: "general",
     content: "hello",
     timestamp: 1700000000,
@@ -24,14 +26,42 @@ describe("isFocusedMessageLoadedInRoute", () => {
       isFocusedMessageLoadedInRoute({
         focusedMessageId: "00000000-0000-4000-8000-000000000055",
         messages: [
-          message({ id: "00000000-0000-4000-8000-000000000055", stream_id: 10, subject: "bugs" }),
+          message({
+            id: "00000000-0000-4000-8000-000000000055",
+            stream_uuid: STREAM_UUID,
+            subject: "bugs",
+          }),
         ],
         isDmView: false,
         currentUserId: 7,
         dmRecipientIds: [],
-        resolvedStreamId: 10,
+        resolvedStreamId: STREAM_UUID,
         topicName: "bugs",
         streamRouteTopic: "bugs",
+      }),
+    ).toBe(true);
+  });
+
+  it("matches focused stream message by topic UUID after the topic display name changes", () => {
+    const topicUuid = "00000000-0000-4000-8000-0000000000d0";
+    expect(
+      isFocusedMessageLoadedInRoute({
+        focusedMessageId: "00000000-0000-4000-8000-000000000055",
+        messages: [
+          message({
+            id: "00000000-0000-4000-8000-000000000055",
+            stream_uuid: STREAM_UUID,
+            subject: "old incident",
+            topic_uuid: topicUuid,
+          }),
+        ],
+        isDmView: false,
+        currentUserId: 7,
+        dmRecipientIds: [],
+        resolvedStreamId: STREAM_UUID,
+        topicName: topicUuid,
+        streamRouteTopic: "new incident",
+        activeTopicUuid: topicUuid,
       }),
     ).toBe(true);
   });
@@ -41,12 +71,16 @@ describe("isFocusedMessageLoadedInRoute", () => {
       isFocusedMessageLoadedInRoute({
         focusedMessageId: "00000000-0000-4000-8000-000000000055",
         messages: [
-          message({ id: "00000000-0000-4000-8000-000000000055", stream_id: 10, subject: "bugs" }),
+          message({
+            id: "00000000-0000-4000-8000-000000000055",
+            stream_uuid: STREAM_UUID,
+            subject: "bugs",
+          }),
         ],
         isDmView: false,
         currentUserId: 7,
         dmRecipientIds: [],
-        resolvedStreamId: 10,
+        resolvedStreamId: STREAM_UUID,
         topicName: "general",
         streamRouteTopic: "general",
       }),
@@ -60,7 +94,7 @@ describe("isFocusedMessageLoadedInRoute", () => {
         messages: [
           message({
             id: "00000000-0000-4000-8000-000000000099",
-            stream_id: null,
+            stream_uuid: null,
             display_recipient: [
               { id: 7, full_name: "You" },
               { id: 42, full_name: "Bob" },

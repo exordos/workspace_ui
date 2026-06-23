@@ -11,7 +11,7 @@ describe("SidebarStreamListTopics", () => {
         <SidebarStreamListTopics
           stream={{
             type: "stream",
-            stream_id: 10,
+            streamUuid: "00000000-0000-4000-8000-000000000010",
             name: "engineering",
             lastMessage: "",
             time: "",
@@ -37,13 +37,13 @@ describe("SidebarStreamListTopics", () => {
     expect(screen.getByText(t("chat.generalChat"))).toBeInTheDocument();
   });
 
-  it("renders default topic label for legacy general chat alias", () => {
+  it("renders server-provided general chat names as literal topics", () => {
     render(
       <MemoryRouter>
         <SidebarStreamListTopics
           stream={{
             type: "stream",
-            stream_id: 10,
+            streamUuid: "00000000-0000-4000-8000-000000000010",
             name: "engineering",
             lastMessage: "",
             time: "",
@@ -66,8 +66,7 @@ describe("SidebarStreamListTopics", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText(t("chat.generalChat"))).toBeInTheDocument();
-    expect(screen.queryByText("general chat")).not.toBeInTheDocument();
+    expect(screen.getByText("general chat")).toBeInTheDocument();
   });
 
   it("renders literal topic name when subject is non-empty", () => {
@@ -76,7 +75,7 @@ describe("SidebarStreamListTopics", () => {
         <SidebarStreamListTopics
           stream={{
             type: "stream",
-            stream_id: 10,
+            streamUuid: "00000000-0000-4000-8000-000000000010",
             name: "engineering",
             lastMessage: "",
             time: "",

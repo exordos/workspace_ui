@@ -72,8 +72,12 @@ export function contextFromMessage(
   if (msg.type === "stream" && msg.stream_uuid != null) {
     const name =
       typeof msg.display_recipient === "string" ? msg.display_recipient : String(msg.stream_uuid);
-    const topic = normalizeTopicForIdentity(msg.subject ?? "");
     const topicUuid = typeof msg.topic_uuid === "string" ? msg.topic_uuid : undefined;
+    const subject = normalizeTopicForIdentity(msg.subject ?? "");
+    const topic = subject.length > 0 ? subject : normalizeTopicForIdentity(topicUuid ?? "");
+    if (topic.length === 0) {
+      return null;
+    }
     return {
       type: "stream",
       streamId: msg.stream_uuid,

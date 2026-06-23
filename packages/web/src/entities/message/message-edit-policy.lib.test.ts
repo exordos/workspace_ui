@@ -8,7 +8,7 @@ function createMessage(overrides: Partial<MockMessage> = {}): MockMessage {
     id: "00000000-0000-4000-8000-000000000001",
     sender_id: 42,
     sender_full_name: "Alice",
-    stream_id: 1,
+    stream_uuid: "00000000-0000-4000-8000-000000000001",
     subject: "general",
     content: "hello",
     timestamp: 1000,

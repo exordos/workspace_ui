@@ -272,7 +272,7 @@ function resolvePersistChatKeyForMessage(
     return chatKeyFromContext({
       type: "stream",
       streamId: context.streamId,
-      topic: normalizeTopicForIdentity(message.subject ?? ""),
+      topic: normalizeTopicForIdentity(message.topic_uuid ?? message.subject ?? ""),
     });
   }
   return chatKeyFromContext(context);
@@ -310,6 +310,11 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         topic: context.topic,
         streamWideView: context.streamWideView ?? prev.streamWideView,
       };
+      if (context.topicUuid != null) {
+        nextContext.topicUuid = context.topicUuid;
+      } else {
+        delete nextContext.topicUuid;
+      }
     }
 
     if (isSameChatLocation(prev, nextContext)) {
@@ -318,9 +323,25 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         nextContext != null &&
         prev.type === "stream" &&
         nextContext.type === "stream" &&
-        prev.streamName !== nextContext.streamName
+        (prev.streamName !== nextContext.streamName ||
+          prev.topic !== nextContext.topic ||
+          prev.topicUuid !== nextContext.topicUuid ||
+          prev.streamWideView !== nextContext.streamWideView)
       ) {
-        set({ context: { ...prev, streamName: nextContext.streamName } });
+        const updatedContext = {
+          ...prev,
+          streamName: nextContext.streamName,
+          topic: nextContext.topic,
+          streamWideView: nextContext.streamWideView,
+        };
+        if (nextContext.topicUuid != null) {
+          updatedContext.topicUuid = nextContext.topicUuid;
+        } else {
+          delete updatedContext.topicUuid;
+        }
+        set({
+          context: updatedContext,
+        });
       }
       return;
     }
@@ -675,7 +696,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         const message = nextMessages[i]!;
         if (!targetedIds.has(message.id)) continue;
         if (message.stream_uuid !== streamId) continue;
-        const topic = normalizeTopicForIdentity(message.subject ?? "");
+        const topic = normalizeTopicForIdentity(message.topic_uuid ?? message.subject ?? "");
         if (topic !== oldTopicKey) continue;
         if (message.subject === newTopicKey) continue;
         nextMessages[i] = { ...message, subject: newTopicKey };
@@ -728,7 +749,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         const message = nextMessages[i]!;
         if (!targetedIds.has(message.id)) continue;
         if (message.stream_uuid !== sourceStreamId) continue;
-        const topic = normalizeTopicForIdentity(message.subject ?? "");
+        const topic = normalizeTopicForIdentity(message.topic_uuid ?? message.subject ?? "");
         if (topic !== oldTopicKey) continue;
         nextMessages[i] = {
           ...message,

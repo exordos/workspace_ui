@@ -778,6 +778,56 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     resetIamRefreshSessionForTests();
   });
 
+  it("refreshes IAM access token and retries messenger gateway requests on 401", async () => {
+    const { resetIamRefreshSessionForTests, setIamTokenUpdater } =
+      await import("./iam-refresh-session.lib");
+    const { setInstanceProvider, messengerApi, setAuthErrorHandler } = await import("./client");
+    const onAuthError = vi.fn();
+    const onTokenUpdate = vi.fn();
+
+    resetIamRefreshSessionForTests();
+    setIamTokenUpdater(onTokenUpdate);
+    setInstanceProvider(() => ({
+      id: "i-gateway",
+      realm: "https://messenger.test",
+      login: "u@example.com",
+      authType: "iam",
+      iamAccessToken: "expired-access-token",
+      iamRefreshToken: "refresh-token",
+    }));
+    setAuthErrorHandler(onAuthError);
+
+    mockFetch
+      .mockResolvedValueOnce(mockJsonResponse({ detail: "Unauthorized" }, 401))
+      .mockResolvedValueOnce(
+        mockJsonResponse({
+          access_token: "fresh-access-token",
+          refresh_token: "fresh-refresh-token",
+        }),
+      )
+      .mockResolvedValueOnce(mockJsonResponse({ messages: [] }));
+
+    const res = await messengerApi.getWithBase("/api/messenger/v1", "/messages/");
+
+    expect(res.status).toBe(200);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(onTokenUpdate).toHaveBeenCalledWith({
+      instanceId: "i-gateway",
+      accessToken: "fresh-access-token",
+      refreshToken: "fresh-refresh-token",
+    });
+    const retryInit = mockFetch.mock.calls[2]?.[1] as RequestInit | undefined;
+    expect(retryInit?.headers).toMatchObject({
+      Authorization: "Bearer fresh-access-token",
+    });
+    expect(vi.mocked(wipeCredentials)).not.toHaveBeenCalled();
+    expect(onAuthError).not.toHaveBeenCalled();
+
+    setAuthErrorHandler(null);
+    setIamTokenUpdater(null);
+    resetIamRefreshSessionForTests();
+  });
+
   it("does not trigger auth-error handling for IAM token endpoint", async () => {
     const { setInstanceProvider, messengerApi, refreshMessengerApiBase, setAuthErrorHandler } =
       await import("./client");

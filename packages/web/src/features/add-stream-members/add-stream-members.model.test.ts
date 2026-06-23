@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { addStreamMembers } from "./add-stream-members.api";
 import { useAddStreamMembersStore } from "./add-stream-members.model";
 
+const STREAM_UUID_10 = "00000000-0000-4000-8000-000000000010";
+
 vi.mock("./add-stream-members.api", () => ({
   addStreamMembers: vi.fn(),
 }));
@@ -32,7 +34,11 @@ describe("useAddStreamMembersStore", () => {
 
   it("tracks open/query/selection state and excludes already subscribed users", () => {
     const store = useAddStreamMembersStore.getState();
-    store.openForStream({ streamId: 10, streamName: "engineering", existingMemberIds: [77] });
+    store.openForStream({
+      streamId: "00000000-0000-4000-8000-000000000010",
+      streamName: "engineering",
+      existingMemberIds: [77],
+    });
 
     store.toggleSelected(88);
     store.toggleSelected(77);
@@ -54,7 +60,11 @@ describe("useAddStreamMembersStore", () => {
 
     const onSuccess = vi.fn();
     const store = useAddStreamMembersStore.getState();
-    store.openForStream({ streamId: 10, streamName: "engineering", existingMemberIds: [77] });
+    store.openForStream({
+      streamId: STREAM_UUID_10,
+      streamName: "engineering",
+      existingMemberIds: [77],
+    });
     store.toggleSelected(88);
 
     await store.submit({ onSuccess });
@@ -63,7 +73,7 @@ describe("useAddStreamMembersStore", () => {
       streamName: "engineering",
       userIds: [88],
     });
-    expect(onSuccess).toHaveBeenCalledWith(10);
+    expect(onSuccess).toHaveBeenCalledWith(STREAM_UUID_10);
     const nextState = useAddStreamMembersStore.getState();
     expect(nextState.open).toBe(false);
     expect(nextState.selectedIds).toEqual([]);
@@ -80,7 +90,11 @@ describe("useAddStreamMembersStore", () => {
     });
 
     const store = useAddStreamMembersStore.getState();
-    store.openForStream({ streamId: 10, streamName: "engineering", existingMemberIds: [] });
+    store.openForStream({
+      streamId: "00000000-0000-4000-8000-000000000010",
+      streamName: "engineering",
+      existingMemberIds: [],
+    });
     store.toggleSelected(88);
 
     await store.submit({});
@@ -100,7 +114,11 @@ describe("useAddStreamMembersStore", () => {
     });
 
     const store = useAddStreamMembersStore.getState();
-    store.openForStream({ streamId: 10, streamName: "engineering", existingMemberIds: [] });
+    store.openForStream({
+      streamId: "00000000-0000-4000-8000-000000000010",
+      streamName: "engineering",
+      existingMemberIds: [],
+    });
     store.toggleSelected(42);
 
     await store.submit({});

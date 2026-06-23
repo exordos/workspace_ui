@@ -56,6 +56,7 @@ function topicRow(
     name,
     unread_count: 0,
     is_default: false,
+    is_done: false,
     ...overrides,
   };
 }
@@ -242,7 +243,7 @@ describe("requestStreamSidebarTopicListHydrate", () => {
     expect(fetchStreamTopicsMock).toHaveBeenCalledTimes(1);
   });
 
-  it("inserts empty default topic shell and hydrates preview from messages", async () => {
+  it("inserts server default topic shell and hydrates preview by topic uuid", async () => {
     useChatListStore
       .getState()
       .upsertStreamMetadataRows([{ streamUuid: STREAM_UUID, name: "engineering" }]);
@@ -251,14 +252,19 @@ describe("requestStreamSidebarTopicListHydrate", () => {
       topicRow("alpha", TOPIC_ALPHA_UUID),
     ]);
     fetchStreamChannelMock.mockResolvedValue([
-      streamMsg({ stream_uuid: STREAM_UUID, subject: "", content: "no topic preview" }),
+      streamMsg({
+        stream_uuid: STREAM_UUID,
+        subject: "",
+        topic_uuid: TOPIC_DEFAULT_UUID,
+        content: "default topic preview",
+      }),
     ]);
 
     await requestStreamSidebarTopicListHydrate(STREAM_UUID);
 
     const stream = useChatListStore.getState().streamsMap.get(STREAM_UUID);
-    expect(stream?.topics.has("")).toBe(true);
-    expect(stream?.topics.get("")?.lastMessage).toContain("no topic preview");
+    expect(stream?.topics.has("General Chat")).toBe(true);
+    expect(stream?.topics.get("General Chat")?.lastMessage).toContain("default topic preview");
     expect(fetchStreamChannelMock).toHaveBeenCalledWith(
       STREAM_UUID,
       undefined,

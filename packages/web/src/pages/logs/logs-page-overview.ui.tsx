@@ -78,7 +78,7 @@ export const LogsPageOverview: React.FC<LogsPageOverviewProps> = ({
 
         <DiagnosticCard title={t("settings.diagnosticsRealtime")}>
           <p className="font-medium text-text-primary">
-            {snapshot.realtime.stats.totalEvents} events
+            {snapshot.realtime.stats.eventsReceivedCount} events
           </p>
           <p className="text-text-muted">
             {snapshot.realtime.online ? t("presence.online") : t("settings.diagnosticsOffline")}

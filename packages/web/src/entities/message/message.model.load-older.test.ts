@@ -49,7 +49,7 @@ function mockMsg(overrides: MockMessageOverrides = {}): MockMessage {
     id: testMessageId(id ?? 1),
     sender_id: 10,
     sender_full_name: "Test User",
-    stream_id: 5,
+    stream_uuid: "00000000-0000-4000-8000-000000000005",
     subject: "topic1",
     content: "<p>hello</p>",
     timestamp: 1000,
@@ -61,7 +61,7 @@ const STREAM_UUID = "22222222-2222-4222-8222-222222222222";
 
 const streamCtx: CurrentChatContext = {
   type: "stream",
-  streamId: 5,
+  streamId: STREAM_UUID,
   streamName: "general",
   topic: "topic1",
 };
@@ -91,7 +91,7 @@ describe("loadOlderBoundaryPage", () => {
     useChatListStore.getState().clear();
     useChatListStore
       .getState()
-      .upsertStreamMetadataRows([{ streamId: 5, name: "general", streamUuid: STREAM_UUID }]);
+      .upsertStreamMetadataRows([{ streamUuid: STREAM_UUID, name: "general" }]);
   });
 
   afterEach(() => {
@@ -145,7 +145,6 @@ describe("loadOlderBoundaryPage", () => {
     expect(mockFetchStreamMessagesPage).toHaveBeenCalledWith(
       expect.objectContaining({
         streamUuid: STREAM_UUID,
-        streamId: 5,
         anchor: anchorId,
         numBefore: pageSize,
         numAfter: 0,
@@ -204,7 +203,6 @@ describe("loadOlderBoundaryPage", () => {
     expect(mockFetchStreamMessagesPage).toHaveBeenCalledWith(
       expect.objectContaining({
         streamUuid: STREAM_UUID,
-        streamId: 5,
         anchor: testMessageId(105),
         numBefore: pageSize,
         numAfter: 0,

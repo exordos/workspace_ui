@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { resolvePinScopeFolderUuid } from "~/features/folder-sync/folder-sync.lib";
+import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { resolveFolderItemUuidForMenu, runFolderPinToggle } from "~/features/pin-chat/pin-chat.lib";
 import { usePinStore } from "~/features/pin-chat/pin-chat.model";
 
@@ -9,11 +10,18 @@ export function useSidebarFolderPinMenu(folderId: string | undefined, chatId: st
     () => (folderId != null ? resolvePinScopeFolderUuid(folderId) : null),
     [folderId],
   );
+  const folderSystemType = useFolderSyncStore((s) =>
+    folderId != null ? s.folders.find((folder) => folder.id === folderId)?.systemType : undefined,
+  );
   const isPinnedInFolder = usePinStore((s) =>
     pinApiFolderUuid != null ? s.isPinned(pinApiFolderUuid, chatId) : false,
   );
   const isPinned = pinApiFolderUuid != null && isPinnedInFolder;
-  const showFolderPinAction = folderId != null && folderId.length > 0 && pinApiFolderUuid != null;
+  const showFolderPinAction =
+    folderId != null &&
+    folderId.length > 0 &&
+    pinApiFolderUuid != null &&
+    folderSystemType !== "personal";
 
   const runPin = useCallback(() => {
     if (pinApiFolderUuid == null) return;

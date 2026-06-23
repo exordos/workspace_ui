@@ -54,7 +54,7 @@ function createStreamMessage(overrides: WorkspaceRawMessageOverrides = {}): Work
     content: "<p>Hello</p>",
     timestamp: 1,
     type: "stream",
-    stream_id: 10,
+    stream_uuid: "00000000-0000-4000-8000-000000000010",
     display_recipient: "General Discussion",
     subject: "Bugs",
     flags: [],
@@ -123,7 +123,7 @@ describe("closeReadMessageNotifications", () => {
       expect(notifications.show).toHaveBeenCalledWith({
         title: "Alice · General Discussion · Bugs",
         body: "Hello",
-        tag: "bucket:inst-1::stream:10:Bugs:sender:42",
+        tag: "bucket:inst-1::stream:00000000-0000-4000-8000-000000000010:Bugs:sender:42",
         silent: true,
         clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=55",
       });
@@ -151,7 +151,7 @@ describe("closeReadMessageNotifications", () => {
 
     expect(notifications.closeByTag).toHaveBeenCalledTimes(1);
     expect(notifications.closeByTag).toHaveBeenCalledWith(
-      "bucket:inst-1::stream:10:Bugs:sender:42",
+      "bucket:inst-1::stream:00000000-0000-4000-8000-000000000010:Bugs:sender:42",
     );
     expect(notifications.show).not.toHaveBeenCalled();
   });
@@ -187,10 +187,10 @@ describe("closeReadMessageNotifications", () => {
 
     expect(notifications.closeByTag).toHaveBeenCalledTimes(2);
     expect(notifications.closeByTag).toHaveBeenCalledWith(
-      "bucket:inst-1::stream:10:Bugs:sender:42",
+      "bucket:inst-1::stream:00000000-0000-4000-8000-000000000010:Bugs:sender:42",
     );
     expect(notifications.closeByTag).toHaveBeenCalledWith(
-      "bucket:inst-1::stream:10:Bugs:sender:99",
+      "bucket:inst-1::stream:00000000-0000-4000-8000-000000000010:Bugs:sender:99",
     );
   });
 

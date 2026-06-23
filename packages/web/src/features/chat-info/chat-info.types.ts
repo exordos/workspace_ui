@@ -22,6 +22,7 @@ export interface ChatInfoTopic {
   name: string;
   topicUuid?: string;
   unreadCount: number;
+  isDone?: boolean;
 }
 
 export type ChatInfoContext =

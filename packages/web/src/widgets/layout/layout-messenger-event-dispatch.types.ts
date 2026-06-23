@@ -125,7 +125,6 @@ export interface LayoutActivityActions {
 
 export interface LayoutInboxActions {
   markStale: () => void;
-  markAsRead: (messageIds: MessageId[]) => void;
   clearEntries: () => void;
 }
 

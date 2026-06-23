@@ -6,6 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { startMuteSnapshotSync } from "./layout-mute-snapshot-sync.lib";
 
+const STREAM_UUID_10 = "00000000-0000-4000-8000-000000000010";
+const STREAM_UUID_20 = "00000000-0000-4000-8000-000000000020";
+const STREAM_UUID_42 = "00000000-0000-4000-8000-000000000042";
+
 describe("startMuteSnapshotSync", () => {
   // Prepare a clean store and fake timers for debounce logic.
   beforeEach(() => {
@@ -28,10 +32,10 @@ describe("startMuteSnapshotSync", () => {
       persistSnapshotRow,
     });
 
-    useMuteStore.getState().muteStream(10);
-    useMuteStore.getState().muteTopic(10, "news");
-    useMuteStore.getState().unmuteTopic(20, "important");
-    useMuteStore.getState().followTopic(20, "incidents");
+    useMuteStore.getState().muteStream(STREAM_UUID_10);
+    useMuteStore.getState().muteTopic(STREAM_UUID_10, "news");
+    useMuteStore.getState().unmuteTopic(STREAM_UUID_20, "important");
+    useMuteStore.getState().followTopic(STREAM_UUID_20, "incidents");
 
     await vi.advanceTimersByTimeAsync(749);
     expect(persistSnapshotRow).toHaveBeenCalledTimes(0);
@@ -46,10 +50,10 @@ describe("startMuteSnapshotSync", () => {
         streamDesktopNotifyDisabledIds: [],
         streamAudibleNotifyEnabledIds: [],
         streamAudibleNotifyDisabledIds: [],
-        mutedStreamIds: [10],
-        mutedTopics: [{ streamId: 10, topic: "news" }],
-        unmutedTopics: [{ streamId: 20, topic: "important" }],
-        followedTopics: [{ streamId: 20, topic: "incidents" }],
+        mutedStreamIds: [STREAM_UUID_10],
+        mutedTopics: [{ streamId: STREAM_UUID_10, topic: "news" }],
+        unmutedTopics: [{ streamId: STREAM_UUID_20, topic: "important" }],
+        followedTopics: [{ streamId: STREAM_UUID_20, topic: "incidents" }],
       }),
     );
 
@@ -65,7 +69,7 @@ describe("startMuteSnapshotSync", () => {
       persistSnapshotRow,
     });
 
-    useMuteStore.getState().muteStream(42);
+    useMuteStore.getState().muteStream(STREAM_UUID_42);
     stop();
 
     expect(persistSnapshotRow).toHaveBeenCalledTimes(1);

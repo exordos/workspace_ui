@@ -142,7 +142,7 @@ vi.mock("./chat-page-typing-line.ui", () => ({
 }));
 
 const CURRENT_USER_ID = 7;
-const STREAM_ID = 12;
+const STREAM_ID = "00000000-0000-4000-8000-000000000012";
 const STREAM_NAME = "engineering";
 const TOPIC = "события канала";
 const MESSAGE_ID = "00000000-0000-4000-8000-000000001988";
@@ -151,7 +151,7 @@ function streamTopicMessage(overrides: Partial<MockMessage> = {}): MockMessage {
   return {
     ...createMessage({
       id: MESSAGE_ID,
-      stream_id: STREAM_ID,
+      stream_uuid: STREAM_ID,
       display_recipient: STREAM_NAME,
       subject: TOPIC,
       sender_id: 42,
@@ -164,9 +164,7 @@ function streamTopicMessage(overrides: Partial<MockMessage> = {}): MockMessage {
 
 function renderTopicChat(): void {
   render(
-    <MemoryRouter
-      initialEntries={[`/stream/${STREAM_ID}-${STREAM_NAME}/topic/${encodeURIComponent(TOPIC)}`]}
-    >
+    <MemoryRouter initialEntries={[`/stream/${STREAM_ID}/topic/${encodeURIComponent(TOPIC)}`]}>
       <Routes>
         <Route path="/stream/:streamSlug/topic/:topicName" element={<ChatPage />} />
       </Routes>
@@ -176,7 +174,7 @@ function renderTopicChat(): void {
 
 function renderSystemTopicChat(): void {
   render(
-    <MemoryRouter initialEntries={[`/stream/${STREAM_ID}-${STREAM_NAME}/topic/__empty__`]}>
+    <MemoryRouter initialEntries={[`/stream/${STREAM_ID}/topic/__empty__`]}>
       <Routes>
         <Route path="/stream/:streamSlug/topic/:topicName" element={<ChatPage />} />
       </Routes>
@@ -210,9 +208,8 @@ describe("ChatPage mark-as-read batching", () => {
     vi.useRealTimers();
   });
 
-  it("flushes visible unread ids even if messages refresh before debounce fires", async () => {
+  it("does not pass viewport unread callbacks to message list", async () => {
     const initialMessage = streamTopicMessage({ content: "created channel" });
-    const refreshedMessage = streamTopicMessage({ content: "created channel refreshed" });
     const context: CurrentChatContext = {
       type: "stream",
       streamId: STREAM_ID,
@@ -240,34 +237,23 @@ describe("ChatPage mark-as-read batching", () => {
       expect(captured.messageListProps?.messages[0]?.id).toBe(MESSAGE_ID);
     });
 
-    vi.useFakeTimers();
-    act(() => {
-      captured.messageListProps?.onUnreadMessagesVisible([MESSAGE_ID]);
-    });
-    expect(useCurrentChatMessagesStore.getState().messages[0]?.flags).toContain("read");
+    expect("onUnreadMessagesVisible" in captured.messageListProps!).toBe(false);
+    expect("onUnreadMessagesAtBottom" in captured.messageListProps!).toBe(false);
+    expect(useCurrentChatMessagesStore.getState().messages[0]?.flags).not.toContain("read");
     expect(
       useChatListStore.getState().streamsMap.get(STREAM_ID)?.topics.get(TOPIC)?.unreadCount,
     ).toBe(0);
-
-    act(() => {
-      useCurrentChatMessagesStore.setState({ messages: [refreshedMessage] });
-    });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(250);
-    });
-
-    expect(markMessagesAsRead).toHaveBeenCalledTimes(1);
-    expect(markMessagesAsRead).toHaveBeenCalledWith([MESSAGE_ID]);
+    expect(markMessagesAsRead).not.toHaveBeenCalled();
   });
 
-  it("treats /topic/__empty__ as an explicit topic view and keeps the composer enabled", async () => {
+  it("treats /topic/__empty__ as a literal topic view and keeps the composer enabled", async () => {
     const loadInitialMessagesForContext = vi.fn(() => Promise.resolve());
 
     useChatListStore.getState().setFromMessages(
       [
         streamTopicMessage({
-          subject: "",
-          content: "system general chat",
+          subject: "__empty__",
+          content: "literal empty-token topic",
         }),
       ],
       CURRENT_USER_ID,
@@ -282,13 +268,13 @@ describe("ChatPage mark-as-read batching", () => {
           context: expect.objectContaining({
             type: "stream",
             streamId: STREAM_ID,
-            topic: "",
+            topic: "__empty__",
             streamWideView: false,
           }),
         }),
       );
     });
-    expect(captured.composerProps?.activeTopic).toBe("");
+    expect(captured.composerProps?.activeTopic).toBe("__empty__");
     expect(captured.composerProps?.showTopicPrompt).toBe(false);
   });
 

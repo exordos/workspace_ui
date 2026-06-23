@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { MockMessage } from "~/shared/api/messenger.types";
 import { testMessageId } from "~/test/factories";
 import {
-  collectUnreadLoadedMessageIds,
+  collectLoadedMessageIds,
   parseUpdateMessageFlagsEvent,
 } from "./layout-messenger-event-read-flags.lib";
 
@@ -79,14 +79,14 @@ describe("parseUpdateMessageFlagsEvent", () => {
   });
 });
 
-describe("collectUnreadLoadedMessageIds", () => {
-  it("returns ids where read is not true", () => {
+describe("collectLoadedMessageIds", () => {
+  it("returns all loaded ids for authoritative mark-all-read events", () => {
     const messages: MockMessage[] = [
       {
         id: "00000000-0000-4000-8000-000000000001",
         sender_id: 2,
         sender_full_name: "Bob",
-        stream_id: 5,
+        stream_uuid: "00000000-0000-4000-8000-000000000005",
         subject: "general",
         content: "",
         timestamp: 0,
@@ -96,7 +96,7 @@ describe("collectUnreadLoadedMessageIds", () => {
         id: "00000000-0000-4000-8000-000000000002",
         sender_id: 2,
         sender_full_name: "Bob",
-        stream_id: 5,
+        stream_uuid: "00000000-0000-4000-8000-000000000005",
         subject: "general",
         content: "",
         timestamp: 0,
@@ -106,12 +106,16 @@ describe("collectUnreadLoadedMessageIds", () => {
         id: "00000000-0000-4000-8000-000000000003",
         sender_id: 2,
         sender_full_name: "Bob",
-        stream_id: 5,
+        stream_uuid: "00000000-0000-4000-8000-000000000005",
         subject: "general",
         content: "",
         timestamp: 0,
       },
     ];
-    expect(collectUnreadLoadedMessageIds(messages)).toEqual([testMessageId(2), testMessageId(3)]);
+    expect(collectLoadedMessageIds(messages)).toEqual([
+      testMessageId(1),
+      testMessageId(2),
+      testMessageId(3),
+    ]);
   });
 });

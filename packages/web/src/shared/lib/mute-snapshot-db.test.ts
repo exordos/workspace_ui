@@ -15,12 +15,16 @@ import {
 } from "~/shared/lib/mute-snapshot-db";
 
 const INSTANCE = "inst-mute";
+const STREAM_UUID_1 = "00000000-0000-4000-8000-000000000001";
+const STREAM_UUID_10 = "00000000-0000-4000-8000-000000000010";
+const STREAM_UUID_20 = "00000000-0000-4000-8000-000000000020";
+const STREAM_UUID_30 = "00000000-0000-4000-8000-000000000030";
 
 const EMPTY_STREAM_NOTIFICATION_FIELDS = {
-  streamDesktopNotifyEnabledIds: [] as number[],
-  streamDesktopNotifyDisabledIds: [] as number[],
-  streamAudibleNotifyEnabledIds: [] as number[],
-  streamAudibleNotifyDisabledIds: [] as number[],
+  streamDesktopNotifyEnabledIds: [] as string[],
+  streamDesktopNotifyDisabledIds: [] as string[],
+  streamAudibleNotifyEnabledIds: [] as string[],
+  streamAudibleNotifyDisabledIds: [] as string[],
 };
 
 afterEach(async () => {
@@ -45,13 +49,13 @@ describe("mute-snapshot-db", () => {
       instanceId: INSTANCE,
       version: 2,
       savedAt: 1710000000000,
-      mutedStreamIds: [10, 20],
-      mutedTopics: [{ streamId: 10, topic: "news" }],
-      unmutedTopics: [{ streamId: 20, topic: "important" }],
-      followedTopics: [{ streamId: 20, topic: "incidents" }],
-      streamDesktopNotifyEnabledIds: [30],
+      mutedStreamIds: [STREAM_UUID_10, STREAM_UUID_20],
+      mutedTopics: [{ streamId: STREAM_UUID_10, topic: "news" }],
+      unmutedTopics: [{ streamId: STREAM_UUID_20, topic: "important" }],
+      followedTopics: [{ streamId: STREAM_UUID_20, topic: "incidents" }],
+      streamDesktopNotifyEnabledIds: [STREAM_UUID_30],
       streamDesktopNotifyDisabledIds: [],
-      streamAudibleNotifyEnabledIds: [30],
+      streamAudibleNotifyEnabledIds: [STREAM_UUID_30],
       streamAudibleNotifyDisabledIds: [],
     });
 
@@ -61,13 +65,13 @@ describe("mute-snapshot-db", () => {
       instanceId: INSTANCE,
       version: 2,
       savedAt: 1710000000000,
-      mutedStreamIds: [10, 20],
-      mutedTopics: [{ streamId: 10, topic: "news" }],
-      unmutedTopics: [{ streamId: 20, topic: "important" }],
-      followedTopics: [{ streamId: 20, topic: "incidents" }],
-      streamDesktopNotifyEnabledIds: [30],
+      mutedStreamIds: [STREAM_UUID_10, STREAM_UUID_20],
+      mutedTopics: [{ streamId: STREAM_UUID_10, topic: "news" }],
+      unmutedTopics: [{ streamId: STREAM_UUID_20, topic: "important" }],
+      followedTopics: [{ streamId: STREAM_UUID_20, topic: "incidents" }],
+      streamDesktopNotifyEnabledIds: [STREAM_UUID_30],
       streamDesktopNotifyDisabledIds: [],
-      streamAudibleNotifyEnabledIds: [30],
+      streamAudibleNotifyEnabledIds: [STREAM_UUID_30],
       streamAudibleNotifyDisabledIds: [],
     });
   });
@@ -83,7 +87,7 @@ describe("mute-snapshot-db", () => {
         instanceId: INSTANCE,
         version: 1,
         savedAt: 1,
-        mutedStreamIds: [1],
+        mutedStreamIds: [STREAM_UUID_1],
         mutedTopics: [],
         unmutedTopics: [],
         followedTopics: [],
@@ -95,7 +99,7 @@ describe("mute-snapshot-db", () => {
       instanceId: INSTANCE,
       version: 2,
       savedAt: 1,
-      mutedStreamIds: [1],
+      mutedStreamIds: [STREAM_UUID_1],
       mutedTopics: [],
       unmutedTopics: [],
       followedTopics: [],
@@ -109,7 +113,7 @@ describe("mute-snapshot-db", () => {
       instanceId: INSTANCE,
       version: 2,
       savedAt: 1,
-      mutedStreamIds: [1],
+      mutedStreamIds: [STREAM_UUID_1],
       mutedTopics: [],
       unmutedTopics: [],
       followedTopics: [],

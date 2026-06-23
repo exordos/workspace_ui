@@ -21,7 +21,7 @@ function dmMessage(overrides: MockMessageOverrides = {}): MockMessage {
     sender_full_name: "Bob",
     content: "hello",
     timestamp: 2000,
-    stream_id: null,
+    stream_uuid: null,
     subject: "",
     display_recipient: [
       { id: 10, full_name: "Alice", email: "a@x.test" },

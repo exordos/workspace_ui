@@ -8,49 +8,52 @@ import {
   buildRouteFromPushNotificationClick,
 } from "./push-click";
 
+const STREAM_UUID_10 = "00000000-0000-4000-8000-000000000010";
+const STREAM_UUID_15 = "00000000-0000-4000-8000-000000000015";
+
 describe("buildPushClickUrl", () => {
   it("builds a canonical stream topic URL when stream id is present", () => {
     const url = buildPushClickUrl({
       type: "stream",
-      streamId: 15,
+      streamId: STREAM_UUID_15,
       streamName: "General Discussion",
       topic: "Release Notes",
     });
 
-    expect(url).toBe("/stream/15-general-discussion/topic/Release%20Notes");
+    expect(url).toBe(`/stream/${STREAM_UUID_15}/topic/Release%20Notes`);
   });
 
   it("appends ?msg= when message id is provided", () => {
     const messageId = testMessageId(123);
     const url = buildPushClickUrl({
       type: "stream",
-      streamId: 15,
+      streamId: STREAM_UUID_15,
       streamName: "General Discussion",
       topic: "Release Notes",
       messageId,
     });
 
-    expect(url).toBe(`/stream/15-general-discussion/topic/Release%20Notes?msg=${messageId}`);
+    expect(url).toBe(`/stream/${STREAM_UUID_15}/topic/Release%20Notes?msg=${messageId}`);
   });
 
-  it("falls back to legacy stream-name URL when stream id is missing", () => {
+  it("falls back to root when stream UUID is missing", () => {
     const url = buildPushClickUrl({
       type: "stream",
       streamName: "general",
       topic: "bugs",
     });
 
-    expect(url).toBe("/stream/general/topic/bugs");
+    expect(url).toBe("/");
   });
 
-  it("encodes legacy stream-name segment to avoid route/query pollution", () => {
+  it("does not build stream route from name-only payload", () => {
     const url = buildPushClickUrl({
       type: "stream",
       streamName: "eng/ops?tab=all",
       topic: "bugs",
     });
 
-    expect(url).toBe("/stream/eng%2Fops%3Ftab%3Dall/topic/bugs");
+    expect(url).toBe("/");
   });
 
   it("uses explicit empty-topic route token when topic is whitespace-only", () => {
@@ -62,7 +65,7 @@ describe("buildPushClickUrl", () => {
       messageId,
     });
 
-    expect(url).toBe(`/stream/general/topic/__empty__?msg=${messageId}`);
+    expect(url).toBe("/");
   });
 
   it("builds a private DM URL from sender id", () => {
@@ -125,29 +128,29 @@ describe("buildRouteFromMessage", () => {
     const route = buildRouteFromMessage(
       {
         id: messageId,
-        stream_id: 10,
+        stream_uuid: STREAM_UUID_10,
         channel: "General Discussion",
         subject: "Bugs",
       },
       7,
     );
 
-    expect(route).toBe(`/stream/10-general-discussion/topic/Bugs?msg=${messageId}`);
+    expect(route).toBe(`/stream/${STREAM_UUID_10}/topic/Bugs?msg=${messageId}`);
   });
 
-  it("builds explicit empty-topic route when topic is empty", () => {
+  it("builds a stream-level focused route when topic is missing", () => {
     const messageId = testMessageId(56);
     const route = buildRouteFromMessage(
       {
         id: messageId,
-        stream_id: 10,
+        stream_uuid: STREAM_UUID_10,
         channel: "General Discussion",
         subject: "   ",
       },
       7,
     );
 
-    expect(route).toBe(`/stream/10-general-discussion/topic/__empty__?msg=${messageId}`);
+    expect(route).toBe(`/stream/${STREAM_UUID_10}?msg=${messageId}`);
   });
 
   it("builds a DM route using recipients other than current user", () => {
@@ -155,7 +158,7 @@ describe("buildRouteFromMessage", () => {
     const route = buildRouteFromMessage(
       {
         id: messageId,
-        stream_id: null,
+        stream_uuid: null,
         display_recipient: [
           { id: 7, full_name: "You" },
           { id: 42, full_name: "Alice" },
@@ -173,7 +176,7 @@ describe("buildRouteFromMessage", () => {
     const route = buildRouteFromMessage(
       {
         id: messageId,
-        stream_id: null,
+        stream_uuid: null,
         display_recipient: [
           { id: 7, full_name: "You" },
           { id: 42, full_name: "Alice" },
@@ -238,31 +241,31 @@ describe("buildNavigableRouteFromMessage", () => {
       buildNavigableRouteFromMessage(
         {
           id: messageId,
-          stream_id: 10,
+          stream_uuid: STREAM_UUID_10,
           channel: "Engineering",
           subject: "Bugs",
           sender_id: 7,
         },
         7,
       ),
-    ).toBe(`/stream/10-engineering/topic/Bugs?msg=${messageId}`);
+    ).toBe(`/stream/${STREAM_UUID_10}/topic/Bugs?msg=${messageId}`);
   });
 
-  it("builds explicit empty-topic route for empty stream topic", async () => {
+  it("builds a stream-level focused route for stream messages without a topic", async () => {
     const { buildNavigableRouteFromMessage } = await import("./push-click");
     const messageId = testMessageId(16);
     expect(
       buildNavigableRouteFromMessage(
         {
           id: messageId,
-          stream_id: 10,
+          stream_uuid: STREAM_UUID_10,
           channel: "Engineering",
           subject: "",
           sender_id: 7,
         },
         7,
       ),
-    ).toBe(`/stream/10-engineering/topic/__empty__?msg=${messageId}`);
+    ).toBe(`/stream/${STREAM_UUID_10}?msg=${messageId}`);
   });
 
   it("falls back to sender-based DM routing when recipients are unavailable", async () => {
@@ -272,7 +275,7 @@ describe("buildNavigableRouteFromMessage", () => {
       buildNavigableRouteFromMessage(
         {
           id: messageId,
-          stream_id: null,
+          stream_uuid: null,
           subject: "",
           sender_id: 42,
         },
@@ -287,7 +290,7 @@ describe("buildNavigableRouteFromMessage", () => {
       buildNavigableRouteFromMessage(
         {
           id: "00000000-0000-4000-8000-000000000088",
-          stream_id: null,
+          stream_uuid: null,
           subject: "",
           sender_id: 7,
         },
@@ -318,18 +321,18 @@ describe("buildRouteFromPushNotificationClick", () => {
         streamName: "General Discussion",
         topic: "Release Notes",
       }),
-    ).toBe("/stream/15-general-discussion/topic/Release%20Notes");
+    ).toBe("/");
   });
 
-  it("derives stream fallback route without reading raw url", () => {
+  it("derives stream fallback route from stream UUID without reading raw url", () => {
     expect(
       buildRouteFromPushNotificationClick({
         messageType: "stream",
-        streamId: "15",
+        streamId: STREAM_UUID_15,
         streamName: "General Discussion",
         topic: "Release Notes",
       }),
-    ).toBe("/stream/15-general-discussion/topic/Release%20Notes");
+    ).toBe(`/stream/${STREAM_UUID_15}/topic/Release%20Notes`);
   });
 
   it("rejects non-decimal senderId for private fallback routing", () => {

@@ -24,6 +24,7 @@ import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { useUsersStore } from "~/entities/user/user.model";
+import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { getLocale } from "~/i18n/i18n";
 import { createLogger } from "~/shared/lib/logger";
 import type { MessageId } from "~/shared/lib/message-id.lib";
@@ -118,18 +119,14 @@ function getCurrentUser(): AiUserContext {
 
 function getAppState(): AiAppState {
   const theme = useThemeStore.getState();
-  const chatList = useChatListStore.getState();
-  const streams = chatList.streams();
-  const dms = chatList.dms();
-
-  const unreadCount =
-    streams.reduce((sum, s) => sum + (s.badge ?? 0), 0) +
-    dms.reduce((sum, d) => sum + (d.badge ?? 0), 0);
+  const allFolder = useFolderSyncStore
+    .getState()
+    .folders.find((folder) => folder.systemType === "all");
 
   return {
     locale: getLocale(),
     theme: { palette: theme.paletteId, mode: theme.mode },
-    unreadCount,
+    unreadCount: allFolder?.badge ?? 0,
     online: typeof navigator !== "undefined" ? navigator.onLine : true,
     runtime: typeof window !== "undefined" && window.electronAPI ? "electron" : "browser",
     version: import.meta.env.VITE_APP_VERSION ?? "0.0.0",

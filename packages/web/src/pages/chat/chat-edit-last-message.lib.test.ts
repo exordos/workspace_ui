@@ -8,7 +8,7 @@ function createMessage(id: number | string, senderId: number, content = `m${id}`
     id: testMessageId(id),
     sender_id: senderId,
     sender_full_name: `User ${senderId}`,
-    stream_id: 1,
+    stream_uuid: "00000000-0000-4000-8000-000000000001",
     subject: "general",
     content,
     timestamp: testMessageOrdinal(id),

@@ -76,11 +76,10 @@ function mergeParams(
 }
 
 export function extractLoggableRequestParams(req: ApiRequest): Record<string, unknown> | undefined {
-  let pathname: string;
   try {
-    pathname = new URL(req.url).pathname;
+    new URL(req.url);
   } catch {
-    pathname = req.url;
+    // Relative or non-standard URLs are still handled by the later parsing fallbacks.
   }
 
   const fromExplicitParams = req.params ? { ...req.params } : undefined;

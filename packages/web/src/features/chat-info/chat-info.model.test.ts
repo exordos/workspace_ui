@@ -26,6 +26,10 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+function streamUuid(value: number): string {
+  return `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
+}
+
 function streamContext(
   streamId: number,
   name: string,
@@ -34,7 +38,7 @@ function streamContext(
   return {
     kind: "stream",
     instanceId: "inst-a",
-    streamId,
+    streamUuid: streamUuid(streamId),
     streamName: name,
     isMuted: false,
     topics: [],
@@ -57,14 +61,14 @@ describe("chat-info model orchestration", () => {
 
     const slowMembers = deferred<number[]>();
     const slowMetadata = deferred<{ name: string | null; description: string | null }>();
-    vi.mocked(loadStreamMembers).mockImplementation(async (_instanceId, streamId) => {
-      if (streamId === 1) {
+    vi.mocked(loadStreamMembers).mockImplementation(async (_instanceId, currentStreamUuid) => {
+      if (currentStreamUuid === streamUuid(1)) {
         return slowMembers.promise;
       }
       return [2];
     });
-    vi.mocked(loadStreamMetadata).mockImplementation(async (_instanceId, streamId) => {
-      if (streamId === 1) {
+    vi.mocked(loadStreamMetadata).mockImplementation(async (_instanceId, currentStreamUuid) => {
+      if (currentStreamUuid === streamUuid(1)) {
         return slowMetadata.promise;
       }
       return { name: "second", description: "Second stream" };
@@ -126,11 +130,11 @@ describe("chat-info model orchestration", () => {
 
     const context = streamContext(42, "engineering");
     await useChatInfoStore.getState().hydrate(context);
-    useChatInfoStore.getState().invalidateStream("inst-a", 42);
+    useChatInfoStore.getState().invalidateStream("inst-a", streamUuid(42));
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(invalidateStreamCache).toHaveBeenCalledWith("inst-a", 42);
+    expect(invalidateStreamCache).toHaveBeenCalledWith("inst-a", streamUuid(42));
     expect(loadStreamMembers).toHaveBeenCalledTimes(2);
     expect(loadStreamMetadata).toHaveBeenCalledTimes(2);
   });

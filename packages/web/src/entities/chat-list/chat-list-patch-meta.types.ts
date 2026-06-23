@@ -4,7 +4,7 @@
  * Drives derived field updates that should not be inferred from a patch alone.
  */
 export interface ChatListPatchMeta {
-  /** Full O(streams×topics + dms) unread sum from maps in the patch. */
+  /** Deprecated no-op: unread totals are server-owned and never derived from local maps. */
   recomputeSidebarTotals?: boolean;
   /** Keep current sidebar unread scalars when maps change but unread did not. */
   preserveSidebarTotals?: boolean;

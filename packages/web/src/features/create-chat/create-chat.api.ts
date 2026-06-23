@@ -50,7 +50,7 @@ export async function startDirectMessage(
 /**
  * Create a new channel (stream) when supported by the backend.
  */
-export async function createChannel(params: {
+export function createChannel(params: {
   name: string;
   description?: string;
   subscribers: UserId[];
@@ -65,7 +65,7 @@ export async function createChannel(params: {
     nameLength: params.name.trim().length,
     subscriberCount: subscribers.length,
   });
-  return null;
+  return Promise.resolve(null);
 }
 
 /** Unarchive channel result (thin wrapper over Workspace PATCH). */
@@ -88,7 +88,7 @@ export interface SubscribedChannel {
   name: string;
   description: string;
   inviteOnly: boolean;
-  subscribers: number[];
+  subscribers: UserId[];
 }
 
 function normalizePrincipalUserIds(userIds: readonly UserId[]): UserId[] {
@@ -108,8 +108,8 @@ export async function fetchSubscribedChannels(): Promise<SubscribedChannel[]> {
   return subscriptions.map((s) => ({
     streamUuid: s.stream_uuid,
     name: s.name,
-    description: s.description,
-    inviteOnly: s.invite_only,
+    description: "",
+    inviteOnly: s.invite_only ?? false,
     subscribers: [],
   }));
 }
@@ -126,7 +126,7 @@ export interface SubscribeCurrentUserToStreamResult {
 /**
  * Subscribes the current user to an existing channel when supported by the backend.
  */
-export async function subscribeCurrentUserToStream(
+export function subscribeCurrentUserToStream(
   streamName: string,
   userId: UserId,
 ): Promise<SubscribeCurrentUserToStreamResult> {
@@ -134,13 +134,13 @@ export async function subscribeCurrentUserToStream(
     .nonEmpty(streamName, "subscribeCurrentUserToStream.streamName")
     .trim();
   if (!isUserIdentityReady(userId)) {
-    return { ok: false, errorCode: "invalid_user" };
+    return Promise.resolve({ ok: false, errorCode: "invalid_user" });
   }
 
   log.warn("Channel subscription is unsupported by the current backend", {
     streamNameLength: normalizedName.length,
   });
-  return { ok: false, errorCode: "unsupported" };
+  return Promise.resolve({ ok: false, errorCode: "unsupported" });
 }
 
 // ---------------------------------------------------------------------------
@@ -150,10 +150,10 @@ export async function subscribeCurrentUserToStream(
 /**
  * Unsubscribe the current user from a channel when supported by the backend.
  */
-export async function unsubscribeChannel(streamName: string): Promise<boolean> {
+export function unsubscribeChannel(streamName: string): Promise<boolean> {
   const normalizedName = guard.nonEmpty(streamName, "stream name").trim();
   log.warn("Channel unsubscribe is unsupported by the current backend", {
     streamNameLength: normalizedName.length,
   });
-  return false;
+  return Promise.resolve(false);
 }

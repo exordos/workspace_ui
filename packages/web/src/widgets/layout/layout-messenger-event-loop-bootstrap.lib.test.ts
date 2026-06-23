@@ -7,7 +7,6 @@ describe("onStreamPreviewBootstrapSettled", () => {
     let cancelled = false;
     const stageMetadataStreamPreviewsBootstrap = vi.fn();
     const applyChatListBootstrapResult = vi.fn();
-    const startSidebarUnreadReconcile = vi.fn();
     const streamBootstrap: ChatListBootstrapResult = {
       mode: "none",
       latestMessageIdHint: null,
@@ -21,9 +20,6 @@ describe("onStreamPreviewBootstrapSettled", () => {
         stageMetadataStreamPreviewsBootstrap,
         applyChatListBootstrapResult,
         bootstrapApplyOptions: {},
-        startSidebarUnreadReconcile,
-        currentUserId: 1,
-        registerSnapshot: null,
         log: { error: vi.fn() } as never,
         streamBootstrap,
         summarizeStreamBootstrapMessages: () => [],
@@ -35,10 +31,8 @@ describe("onStreamPreviewBootstrapSettled", () => {
     cancelled = true;
     applyChatListBootstrapResult.mockClear();
     stageMetadataStreamPreviewsBootstrap.mockClear();
-    startSidebarUnreadReconcile.mockClear();
     runSettled();
     expect(applyChatListBootstrapResult).not.toHaveBeenCalled();
     expect(stageMetadataStreamPreviewsBootstrap).not.toHaveBeenCalled();
-    expect(startSidebarUnreadReconcile).not.toHaveBeenCalled();
   });
 });

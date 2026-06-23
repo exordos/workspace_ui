@@ -26,6 +26,27 @@ export function buildTopicMentionKey(streamId: string, topic: string): string {
   return `${streamId}:${normalizeTopicForIdentity(topic)}`;
 }
 
+function streamTopicLocationFromMessage(message: {
+  stream_uuid?: string | null;
+  subject?: string;
+  topic_uuid?: string;
+}): MessageLocation | null {
+  if (message.stream_uuid == null) return null;
+  const subject = normalizeTopicForIdentity(message.subject ?? "");
+  const topicUuid =
+    typeof message.topic_uuid === "string" && message.topic_uuid.trim().length > 0
+      ? message.topic_uuid.trim().toLowerCase()
+      : undefined;
+  const topic = topicUuid ?? subject;
+  if (topic.length === 0) return null;
+  return {
+    type: "stream",
+    streamUuid: message.stream_uuid,
+    topic,
+    ...(topicUuid != null ? { topicUuid } : {}),
+  };
+}
+
 export function buildMentionLocationFlags(
   mentionedUnreadMessageIds: ReadonlySet<MessageId>,
   messageIdToLocation: ReadonlyMap<MessageId, MessageLocation>,
@@ -55,15 +76,11 @@ export function buildMentionLocationFlags(
 }
 
 export function messageLocationFromMockMessage(
-  message: Pick<MockMessage, "stream_uuid" | "subject" | "display_recipient">,
+  message: Pick<MockMessage, "stream_uuid" | "subject" | "topic_uuid" | "display_recipient">,
   currentUserId: UserId | null,
 ): MessageLocation | null {
   if (message.stream_uuid != null) {
-    return {
-      type: "stream",
-      streamUuid: message.stream_uuid,
-      topic: normalizeTopicForIdentity(message.subject ?? ""),
-    };
+    return streamTopicLocationFromMessage(message);
   }
   if (Array.isArray(message.display_recipient)) {
     const dmKey = dmConversationKey(message.display_recipient, currentUserId);
@@ -74,15 +91,14 @@ export function messageLocationFromMockMessage(
 }
 
 export function messageLocationFromRawMessage(
-  message: Pick<WorkspaceRawMessage, "id" | "type" | "stream_uuid" | "subject" | "display_recipient">,
+  message: Pick<
+    WorkspaceRawMessage,
+    "id" | "type" | "stream_uuid" | "subject" | "topic_uuid" | "display_recipient"
+  >,
   currentUserId: UserId | null,
 ): MessageLocation | null {
   if (message.type === "stream" && message.stream_uuid != null) {
-    return {
-      type: "stream",
-      streamUuid: message.stream_uuid,
-      topic: normalizeTopicForIdentity(message.subject ?? ""),
-    };
+    return streamTopicLocationFromMessage(message);
   }
   if (message.type === "private" && Array.isArray(message.display_recipient)) {
     const dmKey = dmConversationKey(message.display_recipient, currentUserId);
@@ -90,11 +106,7 @@ export function messageLocationFromRawMessage(
     return { type: "dm", dmKey };
   }
   if (message.stream_uuid != null) {
-    return {
-      type: "stream",
-      streamUuid: message.stream_uuid,
-      topic: normalizeTopicForIdentity(message.subject ?? ""),
-    };
+    return streamTopicLocationFromMessage(message);
   }
   return null;
 }

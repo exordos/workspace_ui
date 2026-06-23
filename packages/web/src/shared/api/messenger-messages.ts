@@ -4,9 +4,9 @@
 import { t } from "~/i18n/i18n";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
-import { messageBodyToUnsanitizedDisplayHtml } from "~/shared/lib/message-markdown-display.lib";
 import { createMessageId, normalizeMessageId } from "~/shared/lib/message-id.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
+import { messageBodyToUnsanitizedDisplayHtml } from "~/shared/lib/message-markdown-display.lib";
 import {
   MESSENGER_DM_CHAT_NUM_AFTER,
   MESSENGER_DM_ANCHOR_NUM_BEFORE,
@@ -21,6 +21,7 @@ import {
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 import { buildMessagesQueryParams } from "./messenger-client.internal";
+import { fetchMyMessagesPage, meMessageToMockMessage } from "./messenger-me-messages";
 import {
   mockMessageFromGetMessageApiData,
   rawMessageToMockMessage,
@@ -480,57 +481,31 @@ export async function fetchAllMessagesPage(
 ): Promise<MessagesPageResult> {
   const validatedAnchor = validateMessagesApiAnchor(anchor, "fetchAllMessagesPage");
   const validatedNumBefore = validateNonNegativeInteger(numBefore, "numBefore");
-  const applyMarkdown = options?.applyMarkdown ?? false;
+  if (validatedAnchor === "oldest" || validatedAnchor === "first_unread") {
+    throw new Error("fetchAllMessagesPage only supports newest or message uuid anchors");
+  }
   if (options?.signal?.aborted) {
     throw new DOMException("Aborted", "AbortError");
   }
-  try {
-    const res = await messengerPipelineGet(
-      "/messages",
-      {
-        anchor: String(validatedAnchor),
-        num_before: String(validatedNumBefore),
-        num_after: "0",
-        narrow: "[]",
-        allow_empty_topic_name: "true",
-        apply_markdown: applyMarkdown ? "true" : "false",
-      },
-      options?.signal,
-    );
-    throwIfWorkspacePipelineGetNull(res, options?.signal);
-
-    if (!res.ok) {
-      return { messages: [], foundOldest: false, foundNewest: false };
-    }
-
-    const data = res.data as {
-      result?: string;
-      msg?: string;
-      messages?: WorkspaceRawMessage[];
-      found_oldest?: boolean;
-      foundOldest?: boolean;
-      found_newest?: boolean;
-      foundNewest?: boolean;
-    };
-
-    if (options?.signal?.aborted) {
-      throw new DOMException("Aborted", "AbortError");
-    }
-    if (!data || data.result === "error") {
-      return { messages: [], foundOldest: false, foundNewest: false };
-    }
-
+  if (validatedNumBefore === 0) {
     return {
-      messages: (data.messages ?? []).map((message) =>
-        options?.applyMarkdown
-          ? rawMessageToMockMessage(message)
-          : rawMessageToMockMessage({
-              ...message,
-              markdown_source: message.markdown_source ?? message.content,
-            }),
-      ),
-      foundOldest: data.found_oldest ?? data.foundOldest ?? false,
-      foundNewest: data.found_newest ?? data.foundNewest ?? false,
+      messages: [],
+      foundOldest: false,
+      foundNewest: validatedAnchor === "newest",
+    };
+  }
+  try {
+    const page = await fetchMyMessagesPage({
+      limit: validatedNumBefore,
+      marker: validatedAnchor === "newest" ? null : validatedAnchor,
+      sortKey: "created_at",
+      sortDir: "desc",
+      signal: options?.signal,
+    });
+    return {
+      messages: [...page.messages].reverse().map((message) => meMessageToMockMessage(message)),
+      foundOldest: page.nextMarker == null,
+      foundNewest: validatedAnchor === "newest",
     };
   } catch (error) {
     if (isAbortError(error) || options?.signal?.aborted) {
@@ -714,14 +689,14 @@ export async function fetchMessageRenderedHtmlById(
   return trimmed.length > 0 ? trimmed : null;
 }
 
-export async function fetchSavedSnippets(): Promise<SavedSnippet[]> {
-  return [];
+export function fetchSavedSnippets(): Promise<SavedSnippet[]> {
+  return Promise.resolve([]);
 }
 
-export async function createSavedSnippet(params: CreateSavedSnippetParams): Promise<number> {
+export function createSavedSnippet(params: CreateSavedSnippetParams): Promise<number> {
   guard.nonEmpty(params.title.trim(), "createSavedSnippet.title");
   guard.nonEmpty(params.content.trim(), "createSavedSnippet.content");
-  throw new Error("Saved snippets are unsupported by the current backend");
+  return Promise.reject(new Error("Saved snippets are unsupported by the current backend"));
 }
 
 export async function sendMessage(params: SendMessageParams): Promise<MockMessage> {
@@ -767,9 +742,11 @@ export async function sendMessage(params: SendMessageParams): Promise<MockMessag
 }
 
 /** Renders markdown locally for composer preview. */
-export async function renderMessageContent(content: string): Promise<string> {
+export function renderMessageContent(content: string): Promise<string> {
   const normalizedContent = guard.nonEmpty(content, "renderMessageContent.content");
-  return messageBodyToUnsanitizedDisplayHtml(normalizedContent, { treatAsMarkdown: true });
+  return Promise.resolve(
+    messageBodyToUnsanitizedDisplayHtml(normalizedContent, { treatAsMarkdown: true }),
+  );
 }
 
 export async function updateMessage(

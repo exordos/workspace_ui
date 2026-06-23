@@ -12,6 +12,10 @@ import { testMessageId } from "~/test/factories";
 import { deeplink } from "./deeplinks";
 import { setCurrentOrgRouteIdResolver } from "./org-route";
 
+const STREAM_UUID = "00000000-0000-4000-8000-000000000005";
+const UPPERCASE_STREAM_UUID = "00000000-0000-4000-8000-00000000000A";
+const NORMALIZED_UPPERCASE_STREAM_UUID = "00000000-0000-4000-8000-00000000000a";
+
 afterEach(() => {
   window.history.replaceState({}, "", "/");
   setCurrentOrgRouteIdResolver(null);
@@ -19,40 +23,43 @@ afterEach(() => {
 
 // Builder functions generate URL paths from entity IDs — used for programmatic navigation
 describe("deeplink builders", () => {
-  // Stream URL encodes stream ID and slug (e.g. /stream/5-general)
+  // Stream URL encodes the Workspace stream UUID.
   it("toStream", () => {
-    expect(deeplink.toStream(5, "general")).toBe("/stream/5-general");
+    expect(deeplink.toStream(STREAM_UUID)).toBe(`/stream/${STREAM_UUID}`);
   });
 
-  // Special characters in stream names must be slugified to URL-safe form
-  it("toStream with special chars", () => {
-    expect(deeplink.toStream(10, "My Channel!")).toBe("/stream/10-my-channel");
+  it("toStream normalizes UUID casing", () => {
+    expect(deeplink.toStream(UPPERCASE_STREAM_UUID)).toBe(
+      `/stream/${NORMALIZED_UPPERCASE_STREAM_UUID}`,
+    );
   });
 
   // Topic URL adds a /topic/ segment for navigating within a stream
   it("toTopic", () => {
-    expect(deeplink.toTopic(5, "general", "bugs")).toBe("/stream/5-general/topic/bugs");
+    expect(deeplink.toTopic(STREAM_UUID, "bugs")).toBe(`/stream/${STREAM_UUID}/topic/bugs`);
   });
 
   // Spaces in topic names must be percent-encoded to produce valid URLs
   it("toTopic with spaces", () => {
-    const result = deeplink.toTopic(5, "general", "my topic");
+    const result = deeplink.toTopic(STREAM_UUID, "my topic");
     expect(result).toContain("/topic/my%20topic");
   });
 
-  it("toTopic encodes empty topic with reserved token", () => {
-    expect(deeplink.toTopic(5, "general", "")).toBe("/stream/5-general/topic/__empty__");
+  it("toTopic falls back to stream route when topic is missing", () => {
+    expect(deeplink.toTopic(STREAM_UUID, "")).toBe(`/stream/${STREAM_UUID}`);
   });
 
-  it("toTopic escapes literal empty-topic token", () => {
-    expect(deeplink.toTopic(5, "general", "__empty__")).toBe("/stream/5-general/topic/~__empty__");
+  it("toTopic treats __empty__ as a literal server topic", () => {
+    expect(deeplink.toTopic(STREAM_UUID, "__empty__")).toBe(
+      `/stream/${STREAM_UUID}/topic/__empty__`,
+    );
   });
 
   // Message URLs include a ?msg= query param for scroll-to-message navigation
   it("toMessage", () => {
     const messageId = testMessageId(12345);
-    const result = deeplink.toMessage(5, "general", "bugs", messageId);
-    expect(result).toBe(`/stream/5-general/topic/bugs?msg=${messageId}`);
+    const result = deeplink.toMessage(STREAM_UUID, "bugs", messageId);
+    expect(result).toBe(`/stream/${STREAM_UUID}/topic/bugs?msg=${messageId}`);
   });
 
   // DM deep link uses the user's ID for one-on-one conversations
@@ -77,7 +84,7 @@ describe("deeplink builders", () => {
   it("prefixes routes with current org scope", () => {
     setCurrentOrgRouteIdResolver(() => "chat.example.com");
     expect(deeplink.toDm(42)).toBe("/org/chat.example.com/dm/42");
-    expect(deeplink.toStream(5, "general")).toBe("/org/chat.example.com/stream/5-general");
+    expect(deeplink.toStream(STREAM_UUID)).toBe(`/org/chat.example.com/stream/${STREAM_UUID}`);
   });
 });
 
@@ -98,16 +105,16 @@ describe("deeplink parser", () => {
     expect(result.topicName).toBe("bugs");
   });
 
-  it("parses reserved token as empty topic name", () => {
+  it("parses __empty__ as a literal topic name", () => {
     const result = deeplink.parse("/stream/5-general/topic/__empty__");
     expect(result.type).toBe("topic");
-    expect(result.topicName).toBe("");
+    expect(result.topicName).toBe("__empty__");
   });
 
-  it("parses escaped token as literal topic value", () => {
+  it("parses escaped empty-token syntax as a literal topic value", () => {
     const result = deeplink.parse("/stream/5-general/topic/~__empty__");
     expect(result.type).toBe("topic");
-    expect(result.topicName).toBe("__empty__");
+    expect(result.topicName).toBe("~__empty__");
   });
 
   it("does not throw on malformed encoded topic segments", () => {
@@ -295,10 +302,9 @@ describe("share", () => {
   });
 });
 
-// Edge case: stream names that are entirely special characters
+// Edge case: stream UUID input with surrounding whitespace
 describe("slugForStream edge cases", () => {
-  // When all chars are stripped, a fallback slug "channel" must be used
-  it("falls back to 'channel' when name is all special characters", () => {
-    expect(deeplink.toStream(1, "!!!")).toBe("/stream/1-channel");
+  it("trims stream UUIDs", () => {
+    expect(deeplink.toStream(` ${STREAM_UUID} `)).toBe(`/stream/${STREAM_UUID}`);
   });
 });

@@ -93,7 +93,9 @@ export function buildStreamChatInfoData(
   const topics =
     metadata?.topics?.map((topic) => ({
       name: topic.name,
+      ...(topic.topicUuid != null ? { topicUuid: topic.topicUuid } : {}),
       unreadCount: topic.unreadCount > 0 ? topic.unreadCount : 0,
+      ...(topic.isDone === true ? { isDone: true } : {}),
     })) ?? [];
   return {
     type: "stream",
@@ -135,7 +137,12 @@ function areTopicsEqual(a: ChatInfoTopic[] | undefined, b: ChatInfoTopic[] | und
   for (let i = 0; i < left.length; i++) {
     const l = left[i]!;
     const r = right[i]!;
-    if (l.name !== r.name || l.topicUuid !== r.topicUuid || l.unreadCount !== r.unreadCount) {
+    if (
+      l.name !== r.name ||
+      l.topicUuid !== r.topicUuid ||
+      l.unreadCount !== r.unreadCount ||
+      l.isDone !== r.isDone
+    ) {
       return false;
     }
   }

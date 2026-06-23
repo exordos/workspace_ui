@@ -1,14 +1,14 @@
 import type { MessageId } from "~/shared/lib/message-id.lib";
-import type { Draft, DraftInput, DraftType } from "./draft.types";
+import type { Draft, DraftInput, DraftTargetId, DraftType } from "./draft.types";
 
 interface SyncExistingDraftDeleteOnCleanupOptions {
   draft: Draft | undefined;
   existingId: MessageId | null;
   draftType: DraftType;
-  draftTo: number[];
+  draftTo: DraftTargetId[];
   draftTopic: string;
   deleteDraftOnServer: (id: MessageId) => Promise<boolean>;
-  removeDraftForChat: (type: DraftType, to: number[], topic?: string) => void;
+  removeDraftForChat: (type: DraftType, to: DraftTargetId[], topic?: string) => void;
   restoreDraft: (draft: Draft) => void;
   setActiveDraftId: (id: MessageId | null) => void;
 }
@@ -21,7 +21,7 @@ interface SyncExistingDraftUpdateOnCleanupOptions {
   draft: Draft | undefined;
   existingId: MessageId;
   draftType: DraftType;
-  draftTo: number[];
+  draftTo: DraftTargetId[];
   draftTopic: string;
   nextContent: string;
   updateDraft: (id: MessageId, patch: Partial<Pick<Draft, "content" | "topic" | "to">>) => void;
@@ -32,10 +32,15 @@ interface SyncExistingDraftUpdateOnCleanupOptions {
 interface ReconcileCreatedDraftServerIdOptions {
   serverId: MessageId | null;
   draftType: DraftType;
-  draftTo: number[];
+  draftTo: DraftTargetId[];
   draftTopic: string;
-  getDraftForChat: (type: DraftType, to: number[], topic?: string) => Draft | undefined;
-  linkDraftToServerId: (type: DraftType, to: number[], topic: string, newId: MessageId) => void;
+  getDraftForChat: (type: DraftType, to: DraftTargetId[], topic?: string) => Draft | undefined;
+  linkDraftToServerId: (
+    type: DraftType,
+    to: DraftTargetId[],
+    topic: string,
+    newId: MessageId,
+  ) => void;
   deleteDraftOnServer: (id: MessageId) => Promise<boolean>;
 }
 

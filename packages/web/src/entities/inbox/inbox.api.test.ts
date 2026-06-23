@@ -90,9 +90,10 @@ describe("fetchInboxEntries", () => {
     expect(entries.map((entry) => entry.topic)).toEqual(["bugs", "general"]);
     expect(entries.map((entry) => entry.unreadCount)).toEqual([1, 2]);
     expect(entries[0]).toMatchObject({
-      key: `stream:${STREAM_ENGINEERING_UUID}:bugs`,
+      key: `stream:${STREAM_ENGINEERING_UUID}:${TOPIC_BUGS_UUID}`,
       streamId: STREAM_ENGINEERING_UUID,
       streamName: "engineering",
+      topicUuid: TOPIC_BUGS_UUID,
       messageIds: [],
     });
   });

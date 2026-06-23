@@ -16,7 +16,11 @@ describe("startChatListSnapshotSync", () => {
 
   it("coalesces frequent tracked changes into one debounced persist call", async () => {
     const persistSnapshot = vi.fn(async () => {});
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 1, name: "general" }]);
+    useChatListStore
+      .getState()
+      .upsertStreamMetadataRows([
+        { streamUuid: "00000000-0000-4000-8000-000000000001", name: "general" },
+      ]);
     const stop = startChatListSnapshotSync({
       instanceId: "inst-1",
       debounceMs: 750,
@@ -40,7 +44,11 @@ describe("startChatListSnapshotSync", () => {
 
   it("flushes pending changes on stop/cleanup", () => {
     const persistSnapshot = vi.fn(async () => {});
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 1, name: "general" }]);
+    useChatListStore
+      .getState()
+      .upsertStreamMetadataRows([
+        { streamUuid: "00000000-0000-4000-8000-000000000001", name: "general" },
+      ]);
     const stop = startChatListSnapshotSync({
       instanceId: "inst-1",
       debounceMs: 750,

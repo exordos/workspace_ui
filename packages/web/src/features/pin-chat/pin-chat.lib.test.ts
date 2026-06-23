@@ -7,6 +7,7 @@ const unpinChatInFolderMock = vi.fn();
 const pinChatInFolderMock = vi.fn();
 const getFoldersMock = vi.fn();
 const addChatToFolderMock = vi.fn();
+const STREAM_UUID = "11111111-1111-4111-8111-111111111111";
 
 vi.mock("~/features/pin-chat/pin-chat.api", () => ({
   pinChatInFolder: (...args: unknown[]) => pinChatInFolderMock(...args),
@@ -36,7 +37,7 @@ describe("runFolderPinToggle", () => {
           [
             {
               uuid: "item-1",
-              chatId: "11",
+              chatId: `stream:${STREAM_UUID}:general`,
               folderUuid: "folder-api",
               orderIndex: 0,
               pinnedAt: "2026-03-14T10:00:00Z",
@@ -59,7 +60,7 @@ describe("runFolderPinToggle", () => {
       {
         folderUuid: "folder-api",
         folderItemUuid: "item-1",
-        chatId: "11",
+        chatId: `stream:${STREAM_UUID}:general`,
         orderIndex: 0,
         pinnedAt: "2026-03-14T10:00:00Z",
       },
@@ -70,12 +71,14 @@ describe("runFolderPinToggle", () => {
     const { runFolderPinToggle } = await import("./pin-chat.lib");
     await runFolderPinToggle({
       apiFolderUuid: "folder-api",
-      chatId: "stream:11:general",
+      chatId: `stream:${STREAM_UUID}:general`,
       isPinned: true,
     });
 
     expect(unpinChatInFolderMock).toHaveBeenCalledWith("folder-api", "item-1");
-    expect(usePinStore.getState().isPinned("folder-api", "stream:11:general")).toBe(false);
+    expect(usePinStore.getState().isPinned("folder-api", `stream:${STREAM_UUID}:general`)).toBe(
+      false,
+    );
     expect(
       useFolderSyncStore.getState().folderItemsByFolderId.get("folder-api")?.[0]?.pinnedAt,
     ).toBe(null);

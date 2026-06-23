@@ -56,11 +56,16 @@ export function resolveChatHeaderRightPanelLabel(isDmView: boolean): string | un
 export function resolveMessageListScrollKey(options: {
   isDmView: boolean;
   activeDmUserIds: UserId[] | null;
+  activeStreamId?: string | null;
   activeStream: string | null | undefined;
+  activeTopicUuid?: string | null;
   activeTopic: string | null | undefined;
 }): string | undefined {
   if (options.isDmView) {
     return options.activeDmUserIds !== null ? `dm-${options.activeDmUserIds.join(",")}` : undefined;
   }
-  return [options.activeStream ?? "", options.activeTopic ?? ""].join("|");
+  return [
+    options.activeStreamId ?? options.activeStream ?? "",
+    options.activeTopicUuid ?? options.activeTopic ?? "",
+  ].join("|");
 }

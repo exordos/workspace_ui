@@ -48,7 +48,7 @@ describe("normalizeRealmSiteOriginForUploads", () => {
 describe("normalizeRealm + uploads strip (integration)", () => {
   it("produces site root after API and workspace strip", () => {
     const apiStripped = normalizeRealm("https://sys.example.com/api/messenger/v1");
-    expect(apiStripped).toBe("https://sys.example.com/workspace/v1");
+    expect(apiStripped).toBe("https://sys.example.com");
     expect(normalizeRealmSiteOriginForUploads(apiStripped)).toBe("https://sys.example.com");
   });
 });

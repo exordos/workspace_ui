@@ -6,16 +6,19 @@ import {
 } from "./move-topic-to-stream.lib";
 
 describe("move-topic-to-stream.lib", () => {
+  const SOURCE_STREAM_UUID = "00000000-0000-4000-8000-000000000010";
+  const TARGET_STREAM_UUID = "00000000-0000-4000-8000-000000000020";
+
   it("buildMoveTopicTargetStreamOptions excludes source stream", () => {
     expect(
       buildMoveTopicTargetStreamOptions(
         [
-          { streamId: 10, name: "general" },
-          { streamId: 20, name: "dev" },
+          { streamId: SOURCE_STREAM_UUID, name: "general" },
+          { streamId: TARGET_STREAM_UUID, name: "dev" },
         ],
-        10,
+        SOURCE_STREAM_UUID,
       ),
-    ).toEqual([{ streamId: 20, name: "dev" }]);
+    ).toEqual([{ streamId: TARGET_STREAM_UUID, name: "dev" }]);
   });
 
   it("resolveMoveTopicTargetName preserves resolved checkmark", () => {
@@ -23,8 +26,8 @@ describe("move-topic-to-stream.lib", () => {
   });
 
   it("resolveSelectedTargetStreamId returns id only for valid option", () => {
-    const options = [{ streamId: 20, name: "dev" }];
-    expect(resolveSelectedTargetStreamId("20", options)).toBe(20);
+    const options = [{ streamId: TARGET_STREAM_UUID, name: "dev" }];
+    expect(resolveSelectedTargetStreamId(TARGET_STREAM_UUID, options)).toBe(TARGET_STREAM_UUID);
     expect(resolveSelectedTargetStreamId("99", options)).toBeNull();
   });
 });

@@ -7,7 +7,6 @@
 import { create } from "zustand";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
-import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import type { ChatListSnapshotSerialized } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { logStoreAction } from "~/shared/lib/logger";
@@ -20,7 +19,6 @@ import { areGroupSettingValuesEqual } from "~/shared/lib/messenger-group-setting
 import { saveRecentDmPartners } from "~/shared/lib/recent-dms";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { resolveTopicMoveTargetMessageIds } from "~/shared/lib/update-message-topic-move.lib";
-import type { UserId } from "~/shared/lib/user-id.lib";
 import { isNumericUserId } from "~/shared/lib/user-id.lib";
 import type {
   SidebarChat,
@@ -57,7 +55,6 @@ import {
   messageLocationFromRawMessage,
   type MentionLocationFlags,
 } from "./chat-list-mention-locations.lib";
-import { computeSidebarUnreadTotals } from "./chat-list-sidebar-totals.lib";
 import {
   getNewestTopicEntry,
   mergeStreamEntry,
@@ -78,7 +75,11 @@ import {
   removeStreamTopicKeyFromIndex,
   streamTopicCompositeKey,
 } from "./chat-list-stream-topic-index.lib";
-import { messageToStreamEntry, messageToDmEntry } from "./chat-list.lib";
+import {
+  messageToDmEntry,
+  messageToStreamEntry,
+  streamTopicIdentityFromMessage,
+} from "./chat-list.lib";
 import type { ChatListPatchMeta } from "./chat-list-patch-meta.types";
 import type { ChatListState, MessageLocation } from "./chat-list.model.types";
 
@@ -105,21 +106,9 @@ function finalizeChatListPatch(
   const mapsTouched = patch.streamsMap !== undefined || patch.dmsMap !== undefined;
   const totalsProvidedInPatch =
     patch.sidebarStreamsUnread !== undefined || patch.sidebarDmsUnread !== undefined;
-  if (!totalsProvidedInPatch) {
-    const shouldRecomputeSidebarTotals =
-      meta.recomputeSidebarTotals || (mapsTouched && !meta.preserveSidebarTotals);
-    if (shouldRecomputeSidebarTotals) {
-      Object.assign(
-        result,
-        computeSidebarUnreadTotals(
-          patch.streamsMap ?? state.streamsMap,
-          patch.dmsMap ?? state.dmsMap,
-        ),
-      );
-    } else if (meta.preserveSidebarTotals) {
-      result.sidebarStreamsUnread = state.sidebarStreamsUnread;
-      result.sidebarDmsUnread = state.sidebarDmsUnread;
-    }
+  if (!totalsProvidedInPatch && (mapsTouched || meta.preserveSidebarTotals)) {
+    result.sidebarStreamsUnread = state.sidebarStreamsUnread;
+    result.sidebarDmsUnread = state.sidebarDmsUnread;
   }
 
   if (patch.streamTopicMessageIds !== undefined) {
@@ -155,11 +144,12 @@ function streamsMapToSortedStreams(
           lastMessageSenderName: t.lastMessageSenderName,
           time: t.time,
           badge: t.unreadCount > 0 ? t.unreadCount : undefined,
+          isDone: t.isDone === true ? true : undefined,
           hasMention: mentionFlags.topicKeys.has(buildTopicMentionKey(s.streamUuid, t.subject))
             ? true
             : undefined,
         }));
-      const badge = topics.reduce((sum, t) => sum + (t.badge ?? 0), 0);
+      const badge = s.unreadCount ?? 0;
       return {
         streamUuid: s.streamUuid,
         private: s.private,
@@ -327,6 +317,18 @@ function hasStreamMetadataAccessChanged(
   return false;
 }
 
+function findTopicKeyByUuid(
+  topics: Map<string, StreamTopicEntryInternal>,
+  topicUuid: string,
+): string | null {
+  for (const [key, topic] of topics) {
+    if (topic.topicUuid?.trim().toLowerCase() === topicUuid) {
+      return key;
+    }
+  }
+  return null;
+}
+
 export const useChatListStore = create<ChatListState>((set, get) => {
   let previewResolveGeneration = 0;
   const previewResolveAbortControllers = new Set<AbortController>();
@@ -468,6 +470,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
             topic.time,
             topic.ts,
             message.id,
+            topic.topicUuid,
           );
           next.set(streamUuid, merged);
           return {
@@ -543,8 +546,14 @@ export const useChatListStore = create<ChatListState>((set, get) => {
             if (nextLoc.has(m.id)) continue;
 
             if (m.type === "stream" && m.stream_uuid != null) {
-              const topic = normalizeTopicForIdentity(m.subject ?? "");
-              nextLoc.set(m.id, { type: "stream", streamUuid: m.stream_uuid, topic });
+              const topicIdentity = streamTopicIdentityFromMessage(m);
+              if (topicIdentity == null) continue;
+              nextLoc.set(m.id, {
+                type: "stream",
+                streamUuid: m.stream_uuid,
+                topic: topicIdentity.topicUuid ?? topicIdentity.subject,
+                ...(topicIdentity.topicUuid != null ? { topicUuid: topicIdentity.topicUuid } : {}),
+              });
               changed = true;
             } else if (m.type === "private" && Array.isArray(m.display_recipient)) {
               const dmKey = dmConversationKey(m.display_recipient, currentUserId);
@@ -580,7 +589,17 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           for (const m of streamMessages) {
             if (m.stream_uuid == null) continue;
             const topic = resolveStreamSidebarTopicSubject(state.streamsMap.get(m.stream_uuid), m);
-            nextLoc.set(m.id, { type: "stream", streamUuid: m.stream_uuid, topic });
+            if (topic == null) continue;
+            const topicUuid =
+              typeof m.topic_uuid === "string" && m.topic_uuid.trim().length > 0
+                ? m.topic_uuid.trim().toLowerCase()
+                : undefined;
+            nextLoc.set(m.id, {
+              type: "stream",
+              streamUuid: m.stream_uuid,
+              topic: topicUuid ?? topic,
+              ...(topicUuid != null ? { topicUuid } : {}),
+            });
           }
           return {
             streamsMap: nextStreams,
@@ -604,16 +623,24 @@ export const useChatListStore = create<ChatListState>((set, get) => {
         let changed = false;
         for (const row of topics) {
           const topicUuid = row.topicUuid.trim().toLowerCase();
-          const topicName = row.isDefault === true ? "" : row.name.trim();
-          if (topicUuid.length === 0 || (row.isDefault !== true && topicName.length === 0)) {
+          const topicName = row.name.trim();
+          if (topicUuid.length === 0 || topicName.length === 0) {
             continue;
           }
-          const existing = nextTopics.get(topicName);
+          const existingByName = nextTopics.get(topicName);
+          const existingUuidKey =
+            existingByName == null ? findTopicKeyByUuid(nextTopics, topicUuid) : null;
+          const existingKey = existingUuidKey ?? topicName;
+          const existing =
+            existingByName ??
+            (existingUuidKey != null ? nextTopics.get(existingUuidKey) : undefined);
           const unreadCount = row.unreadCount ?? existing?.unreadCount ?? 0;
+          const isDone = row.isDone ?? existing?.isDone ?? false;
           if (
             existing?.topicUuid === topicUuid &&
             existing.subject === topicName &&
-            existing.unreadCount === unreadCount
+            existing.unreadCount === unreadCount &&
+            (existing.isDone ?? false) === isDone
           ) {
             continue;
           }
@@ -621,7 +648,10 @@ export const useChatListStore = create<ChatListState>((set, get) => {
             nextTopics = new Map(nextTopics);
             changed = true;
           }
-          nextTopics.set(topicName, {
+          if (existingKey !== topicName) {
+            nextTopics.delete(existingKey);
+          }
+          const nextTopic: StreamTopicEntryInternal = {
             ...(existing ?? {
               lastMessage: "",
               lastMessageSenderName: undefined,
@@ -632,7 +662,13 @@ export const useChatListStore = create<ChatListState>((set, get) => {
             topicUuid,
             subject: topicName,
             unreadCount,
-          });
+          };
+          if (isDone) {
+            nextTopic.isDone = true;
+          } else {
+            delete nextTopic.isDone;
+          }
+          nextTopics.set(topicName, nextTopic);
         }
         if (!changed) return state;
         const nextStreams = new Map(state.streamsMap);
@@ -742,11 +778,13 @@ export const useChatListStore = create<ChatListState>((set, get) => {
     },
 
     renameStream(streamId, nextName) {
+      const normalizedStreamId = streamId.trim().toLowerCase();
+      if (normalizedStreamId.length === 0) return;
       const trimmedName = nextName.trim();
       if (trimmedName.length === 0) return;
       patchSet(
         (state) => {
-          const existing = state.streamsMap.get(streamId);
+          const existing = state.streamsMap.get(normalizedStreamId);
           if (!existing) return state;
           const nextStreams = new Map(state.streamsMap);
           nextStreams.set(normalizedStreamId, { ...existing, name: trimmedName });

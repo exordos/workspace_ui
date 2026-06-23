@@ -243,17 +243,17 @@ describe("resolveForwardTargetRoute", () => {
   it("returns stream topic route for stream target", () => {
     expect(
       resolveForwardTargetRoute("engineering", "bugs", undefined, [
-        { stream_uuid: "22222222-2222-4222-8222-222222222222", name: "engineering" },
+        { streamUuid: "22222222-2222-4222-8222-222222222222", name: "engineering" },
       ]),
     ).toBe("/stream/22222222-2222-4222-8222-222222222222/topic/bugs");
   });
 
-  it("uses explicit empty-topic token when topic is empty", () => {
+  it("does not build a stream forward route when topic is missing", () => {
     expect(
       resolveForwardTargetRoute("engineering", "   ", undefined, [
-        { stream_uuid: "22222222-2222-4222-8222-222222222222", name: "engineering" },
+        { streamUuid: "22222222-2222-4222-8222-222222222222", name: "engineering" },
       ]),
-    ).toBe("/stream/22222222-2222-4222-8222-222222222222/topic/__empty__");
+    ).toBeNull();
   });
 
   it("returns null when stream cannot be resolved", () => {
@@ -288,7 +288,7 @@ describe("resolveForwardDraftTarget", () => {
   it("builds stream draft target for stream forwarding", () => {
     expect(
       resolveForwardDraftTarget("engineering", "bugs", undefined, [
-        { stream_uuid: "22222222-2222-4222-8222-222222222222", name: "engineering" },
+        { streamUuid: "22222222-2222-4222-8222-222222222222", name: "engineering" },
       ]),
     ).toEqual({
       route: "/stream/22222222-2222-4222-8222-222222222222/topic/bugs",

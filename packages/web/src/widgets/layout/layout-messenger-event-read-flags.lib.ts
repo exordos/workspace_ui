@@ -45,12 +45,7 @@ export function parseUpdateMessageFlagsEvent(
   return { op, flag, messageIds, markAllRead };
 }
 
-/** Loaded open-chat rows that still lack the read flag. */
-export function collectUnreadLoadedMessageIds(messages: readonly MockMessage[]): MessageId[] {
-  const out: MessageId[] = [];
-  for (const message of messages) {
-    if (message.read === true) continue;
-    out.push(message.id);
-  }
-  return out;
+/** Loaded open-chat rows to update after an authoritative mark-all-read event. */
+export function collectLoadedMessageIds(messages: readonly MockMessage[]): MessageId[] {
+  return messages.map((message) => message.id);
 }

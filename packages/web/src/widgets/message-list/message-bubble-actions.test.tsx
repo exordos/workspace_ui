@@ -71,7 +71,7 @@ function createMessage(overrides: MockMessageOverrides = {}): MockMessage {
     id: testMessageId(id ?? 101),
     sender_id: 77,
     sender_full_name: "Alice",
-    stream_id: 10,
+    stream_uuid: "00000000-0000-4000-8000-000000000010",
     subject: "general",
     content: "<p>Hello</p>",
     timestamp: 1710000000,
@@ -131,6 +131,7 @@ describe("MessageBubble edit/delete actions parity", () => {
       <MessageBubble
         message={createMessage()}
         isOwn
+        currentUserId={77}
         callbacks={{
           onEdit,
           onDelete,

@@ -94,9 +94,14 @@ export function pickReplacementForStreamTopic<T extends ChatListPreviewSourceMes
 ): T | null {
   return pickNewestMessage(
     messages,
-    (message) =>
-      message.stream_uuid === streamId &&
-      normalizeTopicForIdentity(message.subject ?? "") === topicKey,
+    (message) => {
+      const topicUuid =
+        typeof message.topic_uuid === "string" && message.topic_uuid.trim().length > 0
+          ? message.topic_uuid.trim().toLowerCase()
+          : undefined;
+      const topic = topicUuid ?? normalizeTopicForIdentity(message.subject ?? "");
+      return message.stream_uuid === streamId && topic === topicKey;
+    },
     excludedMessageIds,
   );
 }

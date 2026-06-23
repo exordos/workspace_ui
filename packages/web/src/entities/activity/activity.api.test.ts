@@ -7,6 +7,7 @@ import { fetchActivityMessagesPageWithPersist } from "./activity.api";
 const upsertChatMessages = vi.hoisted(() => vi.fn());
 const getCurrentInstance = vi.hoisted(() => vi.fn());
 const persistChatMessagesToIndexedDb = vi.hoisted(() => vi.fn());
+const STREAM_UUID_10 = "00000000-0000-4000-8000-000000000010";
 
 vi.mock("~/shared/api/messenger-messages", async () => {
   const actual = await vi.importActual<typeof import("~/shared/api/messenger-messages")>(
@@ -61,7 +62,7 @@ function streamMessage(overrides: Parameters<typeof createMessage>[0] = {}): Wor
 
 function dmMessage(overrides: Parameters<typeof createMessage>[0] = {}): WorkspaceRawMessage {
   const message = createMessage(overrides) as WorkspaceRawMessage;
-  message.stream_id = null;
+  message.stream_uuid = null;
   message.display_recipient = overrides.display_recipient ?? [
     { id: 7, full_name: "Me" },
     { id: 42, full_name: "Alice" },
@@ -85,14 +86,14 @@ describe("fetchActivityMessagesPageWithPersist", () => {
       messages: [
         streamMessage({
           id: 1,
-          stream_id: 10,
+          stream_uuid: "00000000-0000-4000-8000-000000000010",
           subject: "general",
           display_recipient: "engineering",
           timestamp: 100,
         }),
         streamMessage({
           id: 2,
-          stream_id: 10,
+          stream_uuid: "00000000-0000-4000-8000-000000000010",
           subject: "general",
           display_recipient: "engineering",
           timestamp: 200,
@@ -114,7 +115,7 @@ describe("fetchActivityMessagesPageWithPersist", () => {
     expect(upsertChatMessages).toHaveBeenCalledWith(
       expect.objectContaining({
         instanceId: "instance-1",
-        chatKey: "stream:10:general",
+        chatKey: `stream:${STREAM_UUID_10}:general`,
         messages: expect.arrayContaining([
           expect.objectContaining({ id: testMessageId(1) }),
           expect.objectContaining({ id: testMessageId(2) }),
@@ -144,7 +145,7 @@ describe("fetchActivityMessagesPageWithPersist", () => {
       messages: [
         streamMessage({
           id: 1,
-          stream_id: 10,
+          stream_uuid: "00000000-0000-4000-8000-000000000010",
           subject: "general",
           display_recipient: "engineering",
           timestamp: 100,

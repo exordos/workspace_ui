@@ -40,11 +40,15 @@ describe("extractLoggableRequestParams", () => {
         method: "POST",
         url: "https://chat.example.com/api/messenger/v1/messages",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: "type=stream&stream_id=10&topic=general",
+        body: "type=stream&stream_uuid=00000000-0000-4000-8000-000000000010&topic=general",
       }),
     );
 
-    expect(params).toEqual({ type: "stream", stream_id: "10", topic: "general" });
+    expect(params).toEqual({
+      type: "stream",
+      stream_uuid: "00000000-0000-4000-8000-000000000010",
+      topic: "general",
+    });
   });
 
   it("redacts sensitive fields and truncates long content", () => {

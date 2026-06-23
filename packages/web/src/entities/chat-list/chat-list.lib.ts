@@ -38,11 +38,31 @@ interface StreamTopicEntry {
   lastMessageId?: MessageId;
 }
 
+export function streamTopicIdentityFromMessage(
+  m: Pick<WorkspaceRawMessage, "subject" | "topic_uuid">,
+): { subject: string; topicUuid?: string } | null {
+  const subject = normalizeTopicForIdentity(m.subject ?? "");
+  const topicUuid =
+    typeof m.topic_uuid === "string" && m.topic_uuid.trim().length > 0
+      ? m.topic_uuid.trim().toLowerCase()
+      : undefined;
+  const resolvedSubject = subject.length > 0 ? subject : topicUuid;
+  if (resolvedSubject == null || resolvedSubject.length === 0) {
+    return null;
+  }
+  return {
+    subject: resolvedSubject,
+    ...(topicUuid != null ? { topicUuid } : {}),
+  };
+}
+
 export function messageToStreamEntry(m: WorkspaceRawMessage): {
   stream: Omit<StreamEntryInternal, "topics"> & { topics: Map<string, StreamTopicEntry> };
   topic: StreamTopicEntry;
 } | null {
   if (m.type !== "stream" || m.stream_uuid == null) return null;
+  const topicIdentity = streamTopicIdentityFromMessage(m);
+  if (topicIdentity == null) return null;
   const lastMsg = truncatePreview(m.content);
   const trimmedSenderName = m.sender_full_name?.trim();
   const lastMessageSenderName =
@@ -50,11 +70,9 @@ export function messageToStreamEntry(m: WorkspaceRawMessage): {
   const time = formatMessageTime(m.timestamp);
   const name =
     typeof m.display_recipient === "string" ? m.display_recipient : String(m.stream_uuid);
-  const subject = normalizeTopicForIdentity(m.subject ?? "");
-  const topicUuid = typeof m.topic_uuid === "string" ? m.topic_uuid : undefined;
   const topicEntry: StreamTopicEntry = {
-    ...(topicUuid != null ? { topicUuid } : {}),
-    subject,
+    ...(topicIdentity.topicUuid != null ? { topicUuid: topicIdentity.topicUuid } : {}),
+    subject: topicIdentity.subject,
     lastMessage: lastMsg,
     lastMessageSenderName,
     time,
@@ -71,7 +89,7 @@ export function messageToStreamEntry(m: WorkspaceRawMessage): {
       time,
       ts: m.timestamp,
       unreadCount: 0,
-      topics: new Map([[subject, topicEntry]]),
+      topics: new Map([[topicIdentity.subject, topicEntry]]),
     },
     topic: topicEntry,
   };

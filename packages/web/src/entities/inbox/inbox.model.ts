@@ -4,8 +4,6 @@
 
 import { create } from "zustand";
 import { logStoreAction } from "~/shared/lib/logger";
-import type { MessageId } from "~/shared/lib/message-id.lib";
-import { applyMarkAsReadToInboxEntries } from "./inbox-mark-read.lib";
 import { removeInboxEntriesForMarkReadTarget } from "./inbox.lib";
 import type { InboxEntry, InboxMarkReadTarget } from "./inbox.types";
 
@@ -25,7 +23,6 @@ interface InboxState {
   staleVersion: number;
 
   setEntries: (entries: InboxEntry[], requestVersion?: number) => void;
-  markAsRead: (messageIds: MessageId[]) => void;
   removeEntriesForTarget: (target: InboxMarkReadTarget, currentUserId: number | null) => void;
   clearEntries: () => void;
   markStale: () => void;
@@ -34,7 +31,6 @@ interface InboxState {
   setError: (error: string, requestVersion?: number) => void;
   startRequest: (hasCachedData: boolean) => number;
 
-  totalUnreadCount: () => number;
   sortedEntries: () => InboxEntry[];
 }
 
@@ -62,13 +58,6 @@ export const useInboxStore = create<InboxState>((set, get) => ({
         error: null,
       };
     });
-  },
-
-  markAsRead(messageIds) {
-    logStoreAction("inbox", "markAsRead", { count: messageIds.length });
-    set((state) => ({
-      entries: applyMarkAsReadToInboxEntries(state.entries, messageIds),
-    }));
   },
 
   removeEntriesForTarget(target, currentUserId) {
@@ -124,10 +113,6 @@ export const useInboxStore = create<InboxState>((set, get) => ({
       isRefreshing: hasCachedData,
     });
     return requestVersion;
-  },
-
-  totalUnreadCount() {
-    return get().entries.reduce((sum, e) => sum + e.unreadCount, 0);
   },
 
   sortedEntries() {

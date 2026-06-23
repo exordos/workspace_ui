@@ -2,123 +2,46 @@ import { act, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import { useActivityStore } from "~/entities/activity/activity.model";
-import { countMentionsUnread } from "~/entities/chat-list/chat-list-sidebar-totals.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useDraftStore } from "~/entities/draft/draft.model";
+import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { testMessageId } from "~/test/factories";
 import { SidebarActivity } from "./sidebar-activity.ui";
 import { MY_ACTIVITY } from "./sidebar.lib";
 
-const INBOX_COUNT_ONE_MESSAGES = [
-  {
-    id: "00000000-0000-4000-8000-000000000031",
-    sender_id: 42,
-    sender_full_name: "Alice",
-    content: "dm unread",
-    timestamp: 31,
-    type: "private" as const,
-    display_recipient: [
-      { id: 7, full_name: "Me", email: "me@example.com" },
-      { id: 42, full_name: "Alice", email: "alice@example.com" },
-    ],
-    flags: [],
-  },
-];
+const STREAM_UUID = "00000000-0000-4000-8000-000000000010";
 
-const INBOX_COUNT_THREE_MESSAGES = [
-  {
-    id: "00000000-0000-4000-8000-000000000011",
-    sender_id: 42,
-    sender_full_name: "Alice",
-    stream_id: 10,
-    subject: "bugs",
-    content: "stream unread 1",
-    timestamp: 11,
-    type: "stream" as const,
-    display_recipient: "engineering",
-    flags: [],
-  },
-  {
-    id: "00000000-0000-4000-8000-000000000012",
-    sender_id: 43,
-    sender_full_name: "Bob",
-    stream_id: 10,
-    subject: "bugs",
-    content: "stream unread 2",
-    timestamp: 12,
-    type: "stream" as const,
-    display_recipient: "engineering",
-    flags: [],
-  },
-  {
-    id: "00000000-0000-4000-8000-000000000013",
-    sender_id: 42,
-    sender_full_name: "Alice",
-    content: "dm unread",
-    timestamp: 13,
-    type: "private" as const,
-    display_recipient: [
-      { id: 7, full_name: "Me", email: "me@example.com" },
-      { id: 42, full_name: "Alice", email: "alice@example.com" },
+function setAllFolderBadge(badge?: number): void {
+  useFolderSyncStore.setState({
+    folders: [
+      {
+        id: "all-folder",
+        label: "All",
+        backgroundColor: 0,
+        systemType: "all",
+        badge,
+      },
     ],
-    flags: [],
-  },
-];
+  });
+}
 
 describe("SidebarActivity", () => {
   afterEach(() => {
     useActivityStore.getState().clear();
     useChatListStore.getState().clear();
     useDraftStore.getState().clear();
+    useFolderSyncStore.setState({ folders: [] });
     useMuteStore.getState().clear();
     useSettingsStore.getState().resetToDefaults();
   });
 
   it("shows mention and draft badges from current store state", () => {
-    const lastAppliedMessages = [
-      {
-        id: "00000000-0000-4000-8000-000000000001",
-        sender_id: 42,
-        sender_full_name: "Alice",
-        stream_id: 10,
-        subject: "bugs",
-        content: "hello",
-        timestamp: 1,
-        type: "stream" as const,
-        display_recipient: "engineering",
-        flags: ["mentioned"],
-      },
-      {
-        id: "00000000-0000-4000-8000-000000000002",
-        sender_id: 43,
-        sender_full_name: "Bob",
-        stream_id: 10,
-        subject: "bugs",
-        content: "hello",
-        timestamp: 2,
-        type: "stream" as const,
-        display_recipient: "engineering",
-        flags: ["mentioned", "read"],
-      },
-      {
-        id: "00000000-0000-4000-8000-000000000003",
-        sender_id: 7,
-        sender_full_name: "Me",
-        stream_id: 10,
-        subject: "bugs",
-        content: "self mention",
-        timestamp: 3,
-        type: "stream" as const,
-        display_recipient: "engineering",
-        flags: ["mentioned"],
-      },
-    ];
     useChatListStore.setState({
       currentUserId: 7,
-      lastAppliedMessages,
-      mentionsUnreadCount: countMentionsUnread(lastAppliedMessages, 7),
+      lastAppliedMessages: [],
+      mentionsUnreadCount: 1,
     });
     useDraftStore.getState().setDrafts([
       {
@@ -148,8 +71,8 @@ describe("SidebarActivity", () => {
     expect(within(draftsRow!).getByText("2")).toBeInTheDocument();
   });
 
-  it("shows inbox badge from summed unread stream and dm counts in expanded view", () => {
-    useChatListStore.getState().setFromMessages(INBOX_COUNT_THREE_MESSAGES, 7);
+  it("shows inbox badge from server all-folder unread count in expanded view", () => {
+    setAllFolderBadge(3);
 
     render(
       <MemoryRouter>
@@ -161,9 +84,9 @@ describe("SidebarActivity", () => {
     expect(within(inboxRow).getByText("3")).toBeInTheDocument();
   });
 
-  it("excludes muted stream unread from expanded inbox badge", () => {
-    useChatListStore.getState().setFromMessages(INBOX_COUNT_THREE_MESSAGES, 7);
-    useMuteStore.getState().muteStream(10);
+  it("keeps server inbox badge when stream mute state changes", () => {
+    setAllFolderBadge(3);
+    useMuteStore.getState().muteStream(STREAM_UUID);
 
     render(
       <MemoryRouter>
@@ -172,8 +95,8 @@ describe("SidebarActivity", () => {
     );
 
     const inboxRow = screen.getByRole("link", { name: /inbox/i });
-    expect(within(inboxRow).getByText("1")).toBeInTheDocument();
-    expect(within(inboxRow).queryByText("3")).not.toBeInTheDocument();
+    expect(within(inboxRow).getByText("3")).toBeInTheDocument();
+    expect(within(inboxRow).queryByText("1")).not.toBeInTheDocument();
   });
 
   it("shows favorites badge in expanded view from starred summary", () => {
@@ -198,24 +121,10 @@ describe("SidebarActivity", () => {
   });
 
   it("renders compact activity shortcuts with badges when collapsed", () => {
-    const lastAppliedMessages = [
-      {
-        id: "00000000-0000-4000-8000-000000000001",
-        sender_id: 42,
-        sender_full_name: "Alice",
-        stream_id: 10,
-        subject: "bugs",
-        content: "hello",
-        timestamp: 1,
-        type: "stream" as const,
-        display_recipient: "engineering",
-        flags: ["mentioned"],
-      },
-    ];
     useChatListStore.setState({
       currentUserId: 7,
-      lastAppliedMessages,
-      mentionsUnreadCount: countMentionsUnread(lastAppliedMessages, 7),
+      lastAppliedMessages: [],
+      mentionsUnreadCount: 1,
     });
     useDraftStore.getState().setDrafts([
       {
@@ -259,8 +168,8 @@ describe("SidebarActivity", () => {
     expect(within(draftsCompactLink).getByText("2")).toHaveClass("text-text-primary", "h-4");
   });
 
-  it("shows compact inbox badge from summed unread stream and dm counts", () => {
-    useChatListStore.getState().setFromMessages(INBOX_COUNT_THREE_MESSAGES, 7);
+  it("shows compact inbox badge from server all-folder unread count", () => {
+    setAllFolderBadge(3);
 
     render(
       <MemoryRouter>
@@ -273,7 +182,7 @@ describe("SidebarActivity", () => {
   });
 
   it("keeps compact activity badges above adjacent button hovers", () => {
-    useChatListStore.getState().setFromMessages(INBOX_COUNT_THREE_MESSAGES, 7);
+    setAllFolderBadge(3);
     useChatListStore.setState({ mentionsUnreadCount: 180 });
 
     render(
@@ -313,7 +222,7 @@ describe("SidebarActivity", () => {
   });
 
   it("hides inbox badge when unread total is zero", () => {
-    useChatListStore.getState().setFromMessages([], 7);
+    setAllFolderBadge(0);
 
     render(
       <MemoryRouter>
@@ -325,8 +234,8 @@ describe("SidebarActivity", () => {
     expect(inboxRow.querySelector(".bg-sidebar-unread")).toBeNull();
   });
 
-  it("updates inbox badge when chat-list unread totals change", () => {
-    useChatListStore.getState().setFromMessages([], 7);
+  it("updates inbox badge when server folder unread count changes", () => {
+    setAllFolderBadge(0);
 
     render(
       <MemoryRouter>
@@ -339,12 +248,12 @@ describe("SidebarActivity", () => {
     ).toBeNull();
 
     act(() => {
-      useChatListStore.getState().setFromMessages(INBOX_COUNT_ONE_MESSAGES, 7);
+      setAllFolderBadge(1);
     });
     expect(within(screen.getByRole("link", { name: /inbox/i })).getByText("1")).toBeInTheDocument();
 
     act(() => {
-      useChatListStore.getState().setFromMessages(INBOX_COUNT_THREE_MESSAGES, 7);
+      setAllFolderBadge(3);
     });
     const inboxRow = screen.getByRole("link", { name: /inbox/i });
     expect(within(inboxRow).getByText("3")).toBeInTheDocument();
@@ -363,14 +272,14 @@ describe("SidebarActivity", () => {
     const compactList = screen.getByRole("list", { name: /my activity/i });
     expect(compactList).toHaveClass("flex-nowrap");
 
-    const privateNotesLink = screen.getByRole("link", { name: /private notes/i });
-    expect(privateNotesLink).toHaveClass("h-8");
-    expect(privateNotesLink).toHaveClass("w-8");
+    const feedLink = screen.getByRole("link", { name: /feed/i });
+    expect(feedLink).toHaveClass("h-8");
+    expect(feedLink).toHaveClass("w-8");
 
-    const privateNotesIcon = privateNotesLink.querySelector("svg");
-    expect(privateNotesIcon).not.toBeNull();
-    expect(privateNotesIcon).toHaveClass("text-current");
-    expect(privateNotesLink.querySelector(".bg-accent")).toBeNull();
+    const feedIcon = feedLink.querySelector("svg");
+    expect(feedIcon).not.toBeNull();
+    expect(feedIcon).toHaveClass("text-current");
+    expect(feedLink.querySelector(".bg-accent")).toBeNull();
   });
 
   it("renders denser expanded activity rows when compact density is enabled", () => {
@@ -431,7 +340,7 @@ describe("SidebarActivity", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByTestId("activity-icon-bg-home")).toHaveClass("bg-accent");
+    expect(screen.getByTestId("activity-icon-bg-inbox")).toHaveClass("bg-accent");
     expect(screen.getByTestId("activity-icon-bg-mentions")).toHaveClass("bg-indicator-yellow");
     expect(screen.getByTestId("activity-icon-bg-reactions")).toHaveClass("bg-indicator-green");
     expect(screen.getByTestId("activity-icon-bg-drafts")).toHaveClass("bg-indicator-purple");
@@ -513,7 +422,7 @@ describe("SidebarActivity", () => {
     expect(starredLink).toHaveAttribute("aria-current", "page");
   });
 
-  it("renders private-notes entry as self DM route", () => {
+  it("renders feed entry as feed route", () => {
     useChatListStore.setState({ currentUserId: 7, lastAppliedMessages: [] });
 
     render(
@@ -522,7 +431,7 @@ describe("SidebarActivity", () => {
       </MemoryRouter>,
     );
 
-    const privateNotesLink = screen.getByRole("link", { name: /private notes/i });
-    expect(privateNotesLink).toHaveAttribute("href", "/dm/7");
+    const feedLink = screen.getByRole("link", { name: /feed/i });
+    expect(feedLink).toHaveAttribute("href", "/feed");
   });
 });

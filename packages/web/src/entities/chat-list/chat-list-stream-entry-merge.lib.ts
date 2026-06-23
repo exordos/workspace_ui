@@ -7,6 +7,27 @@ import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
 type StreamTopicEntryInternal =
   StreamEntryInternal["topics"] extends Map<string, infer TopicEntry> ? TopicEntry : never;
 
+function findExistingTopic(
+  topics: Map<string, StreamTopicEntryInternal> | undefined,
+  topicSubject: string,
+  topicUuid: string | undefined,
+): { key: string; topic: StreamTopicEntryInternal } | undefined {
+  const bySubject = topics?.get(topicSubject);
+  if (bySubject != null) {
+    return { key: topicSubject, topic: bySubject };
+  }
+  const normalizedTopicUuid = topicUuid?.trim().toLowerCase();
+  if (topics == null || normalizedTopicUuid == null || normalizedTopicUuid.length === 0) {
+    return undefined;
+  }
+  for (const [key, topic] of topics) {
+    if (topic.topicUuid?.trim().toLowerCase() === normalizedTopicUuid) {
+      return { key, topic };
+    }
+  }
+  return undefined;
+}
+
 export function mergeStreamEntry(
   existing: StreamEntryInternal | undefined,
   streamId: string,
@@ -21,20 +42,26 @@ export function mergeStreamEntry(
   topicTime: string,
   topicTs: number,
   lastMessageId?: MessageId,
+  topicUuid?: string,
 ): StreamEntryInternal {
-  const existingTopic = existing?.topics.get(topicSubject);
+  const existingTopicMatch = findExistingTopic(existing?.topics, topicSubject, topicUuid);
+  const existingTopic = existingTopicMatch?.topic;
+  const resolvedTopicSubject = existingTopic?.subject ?? topicSubject;
+  const resolvedTopicUuid = topicUuid ?? existingTopic?.topicUuid;
   const unreadCount = existingTopic?.unreadCount ?? 0;
   const topicEntry = {
-    subject: topicSubject,
+    ...(resolvedTopicUuid != null ? { topicUuid: resolvedTopicUuid } : {}),
+    subject: resolvedTopicSubject,
     lastMessage: topicLastMessage,
     lastMessageSenderName: topicLastMessageSenderName,
     time: topicTime,
     ts: topicTs,
     unreadCount,
+    ...(existingTopic?.isDone === true ? { isDone: true } : {}),
     lastMessageId,
   };
   if (!existing) {
-    const topics = new Map<string, StreamTopicEntryInternal>([[topicSubject, topicEntry]]);
+    const topics = new Map<string, StreamTopicEntryInternal>([[resolvedTopicSubject, topicEntry]]);
     return {
       streamUuid: streamId,
       name,
@@ -47,10 +74,13 @@ export function mergeStreamEntry(
     };
   }
   const nextTopics = new Map(existing.topics);
+  if (existingTopicMatch != null && existingTopicMatch.key !== resolvedTopicSubject) {
+    nextTopics.delete(existingTopicMatch.key);
+  }
   if (!existingTopic || topicTs >= existingTopic.ts) {
-    nextTopics.set(topicSubject, topicEntry);
+    nextTopics.set(resolvedTopicSubject, topicEntry);
   } else {
-    nextTopics.set(topicSubject, { ...existingTopic, unreadCount });
+    nextTopics.set(resolvedTopicSubject, { ...existingTopic, unreadCount });
   }
   const newerStream = ts >= existing.ts;
   return {

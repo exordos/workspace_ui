@@ -14,7 +14,9 @@ const baseProps = {
   hasInitialPayload: true,
   isDmView: false,
   activeDmUserIds: null as number[] | null,
+  activeStreamId: "00000000-0000-4000-8000-000000000010",
   activeStream: "general",
+  activeTopicUuid: "00000000-0000-4000-8000-0000000000d0",
   activeTopic: "topic",
   currentUserId: 1,
   callbacks: {},
@@ -89,6 +91,20 @@ describe("ChatPageMessageListSection", () => {
     expect(screen.getByText(t("chat.messagesRefreshError"))).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: t("chat.retryLoadMessages") }));
     expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps existing messages visible while a refresh is pending", () => {
+    const msg = createMessage({ id: 1 }) as MockMessage;
+    render(
+      <ChatPageMessageListSection
+        {...baseProps}
+        messages={[msg]}
+        messagesLoading
+        hasInitialPayload={false}
+      />,
+    );
+    expect(screen.queryByLabelText(t("chat.loadingMessages"))).not.toBeInTheDocument();
+    expect(screen.getByTestId("message-00000000-0000-4000-8000-000000000001")).toBeInTheDocument();
   });
 
   it("shows boundary pagination error with dismiss", async () => {

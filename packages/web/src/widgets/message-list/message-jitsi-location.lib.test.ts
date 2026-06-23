@@ -7,7 +7,7 @@ function createMessage(overrides: Partial<MockMessage>): MockMessage {
     id: "00000000-0000-4000-8000-000000000001",
     sender_id: 10,
     sender_full_name: "Alice",
-    stream_id: null,
+    stream_uuid: null,
     subject: "",
     content: "",
     timestamp: 1,
@@ -34,7 +34,7 @@ describe("message-jitsi-location", () => {
 
   it("uses stream name for stream messages", () => {
     const message = createMessage({
-      stream_id: 7,
+      stream_uuid: "00000000-0000-4000-8000-000000000007",
       display_recipient: "engineering",
       subject: "general",
     });
@@ -43,7 +43,7 @@ describe("message-jitsi-location", () => {
 
   it("joins recipient names for DM messages", () => {
     const message = createMessage({
-      stream_id: null,
+      stream_uuid: null,
       display_recipient: [
         { id: 11, full_name: "Alice" },
         { id: 12, full_name: "Bob" },
@@ -54,7 +54,7 @@ describe("message-jitsi-location", () => {
 
   it("returns empty string for unknown recipient shape", () => {
     const message = createMessage({
-      stream_id: null,
+      stream_uuid: null,
       display_recipient: undefined,
     });
     expect(resolveJitsiLocationName(message)).toBe("");

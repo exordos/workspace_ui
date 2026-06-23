@@ -1,12 +1,5 @@
-import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import type { MessageLocation } from "~/entities/chat-list/chat-list.model.types";
-import { markMessagesAsRead } from "~/shared/api/messenger-read-state";
-import { dmRouteKey } from "~/shared/lib/dm-key";
-import { buildMessageIdMap } from "~/shared/lib/message-id-index.lib";
-import type { MessageId } from "~/shared/lib/message-id.lib";
-import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import { markDmAsRead, markTopicAsRead } from "~/shared/api/messenger-read-state";
 import type { UserId } from "~/shared/lib/user-id.lib";
-import type { ReadFallbackContext } from "./chat-page.lib";
 
 interface ResolveMarkAllAsReadTargetOptions {
   isDmView: boolean;
@@ -44,121 +37,17 @@ export function resolveMarkAllAsReadTarget({
   return { type: "topic", streamId: activeStreamId, topic: activeTopic };
 }
 
-// Finds unread ids that are visible in the loaded message window.
-export function collectUnreadMessageIds(
-  messages: readonly {
-    id: MessageId;
-    read?: boolean;
-  }[],
-): MessageId[] {
-  return messages.filter((message) => message.read !== true).map((message) => message.id);
-}
-
-// Checks if an indexed unread message belongs to the current open chat.
-function messageLocationMatchesMarkAllTarget(
-  location: MessageLocation,
-  target: MarkAllAsReadTarget,
-  currentUserId: UserId | null,
-): boolean {
-  if (target.type === "dm") {
-    if (location.type !== "dm") return false;
-    return location.dmKey === dmRouteKey(target.userIds, currentUserId);
-  }
-  if (location.type !== "stream") return false;
-  if (location.streamUuid !== target.streamId) return false;
-  return normalizeTopicForIdentity(location.topic) === normalizeTopicForIdentity(target.topic);
-}
-
-/** Loaded-window unread ids plus index ids for the current narrow (server unreads outside the window). */
-export function collectMarkAllAsReadMessageIds(
-  loadedMessages: readonly { id: MessageId; read?: boolean }[],
-  messageIdToLocation: ReadonlyMap<MessageId, MessageLocation>,
-  target: MarkAllAsReadTarget,
-  currentUserId: UserId | null,
-): MessageId[] {
-  const ids = new Set(collectUnreadMessageIds(loadedMessages));
-  for (const [messageId, location] of messageIdToLocation) {
-    if (messageLocationMatchesMarkAllTarget(location, target, currentUserId)) {
-      ids.add(messageId);
-    }
-  }
-  return Array.from(ids);
-}
-
-// Used when some unread messages are not present in the local id index.
-export function markAllAsReadFallbackContext(
-  target: MarkAllAsReadTarget,
-  currentUserId: UserId | null,
-): ReadFallbackContext {
-  if (target.type === "dm") {
-    return { type: "dm", dmKey: dmRouteKey(target.userIds, currentUserId) };
-  }
-  return {
-    type: "stream",
-    streamId: target.streamId,
-    topic: normalizeTopicForIdentity(target.topic),
-  };
-}
-
 export interface ApplyOpenChatMarkAllAsReadOptions {
   target: MarkAllAsReadTarget;
-  loadedMessages: readonly { id: MessageId; read?: boolean }[];
   currentUserId: UserId | null;
-  applyOptimistic: (messageIds: MessageId[], fallbackContext: ReadFallbackContext) => void;
 }
 
-/** Marks all unread in the open chat via per-id flags API (never narrow). */
+/** Marks the open chat read through the server-owned target API. */
 export async function applyOpenChatMarkAllAsRead(
   options: ApplyOpenChatMarkAllAsReadOptions,
 ): Promise<boolean> {
-  const chatListState = useChatListStore.getState();
-  const messageIds = collectMarkAllAsReadMessageIds(
-    options.loadedMessages,
-    chatListState.messageIdToLocation,
-    options.target,
-    options.currentUserId,
-  );
-  const fallbackContext = markAllAsReadFallbackContext(options.target, options.currentUserId);
-
-  if (messageIds.length > 0) {
-    await markMessagesAsRead(messageIds);
+  if (options.target.type === "dm") {
+    return markDmAsRead(options.target.userIds);
   }
-
-  if (messageIds.length > 0) {
-    options.applyOptimistic(messageIds, fallbackContext);
-  }
-  return true;
-}
-
-/** Message shape needed to decide if an id still counts as unread for optimistic read application. */
-export interface MessageReadFlagSlice {
-  id: MessageId;
-  read?: boolean;
-}
-
-/**
- * Resolves each message id against the in-memory store first, then the effective on-screen list
- * (e.g. IndexedDB hook merge). Skips ids that are already marked read.
- *
- * Store-only lookup fails when the visible list is ahead of or wider than `store.messages` — then
- * optimistic flag updates and chat-list decrements were skipped even after a successful API call.
- */
-export function filterMessageIdsStillUnreadForOptimisticApply(
-  messageIds: readonly MessageId[],
-  options: {
-    storeMessages: readonly MessageReadFlagSlice[];
-    effectiveMessages: readonly MessageReadFlagSlice[];
-  },
-): MessageId[] {
-  const { storeMessages, effectiveMessages } = options;
-  const storeById = buildMessageIdMap(storeMessages);
-  const effectiveById = buildMessageIdMap(effectiveMessages);
-  const out: MessageId[] = [];
-  for (const messageId of messageIds) {
-    const message = storeById.get(messageId) ?? effectiveById.get(messageId);
-    if (message != null && message.read !== true) {
-      out.push(messageId);
-    }
-  }
-  return out;
+  return markTopicAsRead(options.target.streamId, options.target.topic);
 }

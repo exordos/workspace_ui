@@ -109,7 +109,7 @@ describe("performApplicationColdStart", () => {
       id: "00000000-0000-4000-8000-000000000001",
       sender_id: 10,
       sender_full_name: "A",
-      stream_id: 1,
+      stream_uuid: "00000000-0000-4000-8000-000000000001",
       subject: "general",
       content: "<p>1</p>",
       timestamp: 1000,

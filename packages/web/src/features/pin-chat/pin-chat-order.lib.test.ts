@@ -8,7 +8,7 @@ import {
 
 const STREAM_A: Extract<SidebarChat, { type: "stream" }> = {
   type: "stream",
-  stream_id: 11,
+  streamUuid: "00000000-0000-4000-8000-000000000011",
   name: "Engineering",
   lastMessage: "",
   topics: [],
@@ -16,7 +16,7 @@ const STREAM_A: Extract<SidebarChat, { type: "stream" }> = {
 
 const STREAM_B: Extract<SidebarChat, { type: "stream" }> = {
   type: "stream",
-  stream_id: 12,
+  streamUuid: "00000000-0000-4000-8000-000000000012",
   name: "Marketing",
   lastMessage: "",
   topics: [],
@@ -32,9 +32,9 @@ const DM_CHAT: Extract<SidebarChat, { type: "dm" }> = {
 };
 
 describe("buildPinnedChatSortIndexLookup", () => {
-  it("maps stream sidebar id to pinned index for numeric folder chat_id", () => {
-    const lookup = buildPinnedChatSortIndexLookup(["11"]);
-    expect(lookupPinnedSortIndex(lookup, "stream:11:general")).toBe(0);
+  it("maps stream sidebar id to pinned index for folder chat_id", () => {
+    const lookup = buildPinnedChatSortIndexLookup([`stream:${STREAM_A.streamUuid}:general`]);
+    expect(lookupPinnedSortIndex(lookup, `stream:${STREAM_A.streamUuid}:general`)).toBe(0);
     expect(lookupPinnedSortIndex(lookup, "dm:99")).toBe(-1);
   });
 });
@@ -42,9 +42,16 @@ describe("buildPinnedChatSortIndexLookup", () => {
 describe("orderChatsWithPinnedFirst", () => {
   it("places pinned chats first in pinned_at order", () => {
     const chats = [STREAM_B, DM_CHAT, STREAM_A];
-    const ordered = orderChatsWithPinnedFirst(chats, ["12", "11"]);
+    const ordered = orderChatsWithPinnedFirst(chats, [
+      `stream:${STREAM_B.streamUuid}:general`,
+      `stream:${STREAM_A.streamUuid}:general`,
+    ]);
 
-    expect(ordered.map((c) => (c.type === "stream" ? c.stream_id : c.id))).toEqual([12, 11, 42]);
+    expect(ordered.map((c) => (c.type === "stream" ? c.streamUuid : c.id))).toEqual([
+      STREAM_B.streamUuid,
+      STREAM_A.streamUuid,
+      42,
+    ]);
   });
 
   it("returns input order when nothing is pinned", () => {
@@ -54,10 +61,14 @@ describe("orderChatsWithPinnedFirst", () => {
 
   it("keeps pinned muted chats below unmuted chats", () => {
     const chats = [STREAM_B, DM_CHAT, STREAM_A];
-    const ordered = orderChatsWithPinnedFirst(chats, ["12"], {
-      isMuted: (chat) => chat.type === "stream" && chat.stream_id === 12,
+    const ordered = orderChatsWithPinnedFirst(chats, [`stream:${STREAM_B.streamUuid}:general`], {
+      isMuted: (chat) => chat.type === "stream" && chat.streamUuid === STREAM_B.streamUuid,
     });
 
-    expect(ordered.map((c) => (c.type === "stream" ? c.stream_id : c.id))).toEqual([42, 11, 12]);
+    expect(ordered.map((c) => (c.type === "stream" ? c.streamUuid : c.id))).toEqual([
+      42,
+      STREAM_A.streamUuid,
+      STREAM_B.streamUuid,
+    ]);
   });
 });

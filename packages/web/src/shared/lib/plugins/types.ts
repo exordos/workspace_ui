@@ -140,7 +140,7 @@ export interface PluginAPI {
   // -- Read-only data (if permissions granted) ------------------------------
   data: {
     getCurrentUserId(): UserId | null;
-    getStreams(): { id: number; name: string }[];
+    getStreams(): { id: string; name: string }[];
     getUnreadCount(): number;
     getTheme(): string;
     getLocale(): string;

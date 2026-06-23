@@ -10,7 +10,7 @@ function baseMessage(overrides: Partial<MockMessage> = {}): MockMessage {
     id: "00000000-0000-4000-8000-000000000001",
     sender_id: 1,
     sender_full_name: "Alice",
-    stream_id: 10,
+    stream_uuid: "00000000-0000-4000-8000-000000000010",
     subject: "general",
     content: "",
     timestamp: 1,

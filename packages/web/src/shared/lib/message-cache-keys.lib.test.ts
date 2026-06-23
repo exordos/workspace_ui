@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { chatKeyFromContext, normalizeStreamTopicForMessageCache } from "./message-cache-keys.lib";
 
+const STREAM_UUID_42 = "00000000-0000-4000-8000-000000000042";
+
 describe("message-cache-keys.lib", () => {
   describe("normalizeStreamTopicForMessageCache", () => {
     it("keeps empty and whitespace as empty identity topic", () => {
@@ -19,17 +21,17 @@ describe("message-cache-keys.lib", () => {
       expect(
         chatKeyFromContext({
           type: "stream",
-          streamId: 42,
+          streamId: STREAM_UUID_42,
           topic: "",
         }),
-      ).toBe("stream:42:");
+      ).toBe(`stream:${STREAM_UUID_42}:`);
       expect(
         chatKeyFromContext({
           type: "stream",
-          streamId: 42,
+          streamId: STREAM_UUID_42,
           topic: "general",
         }),
-      ).toBe("stream:42:general");
+      ).toBe(`stream:${STREAM_UUID_42}:general`);
     });
 
     it("builds dm key unchanged", () => {

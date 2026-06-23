@@ -103,6 +103,7 @@ describe("resolveDraftDmDisplayName", () => {
 });
 
 describe("formatDraftMessageContext", () => {
+  const STREAM_UUID = "00000000-0000-4000-8000-000000000010";
   const labels = {
     generalChatLabel: "General Chat",
     privateLabel: "DM",
@@ -111,10 +112,10 @@ describe("formatDraftMessageContext", () => {
   it("formats stream drafts as channel and topic", () => {
     const draft: Pick<Draft, "type" | "to" | "topic"> = {
       type: "stream",
-      to: [10],
+      to: [STREAM_UUID],
       topic: "bugs",
     };
-    const streamsMap = new Map<number, { name: string }>([[10, { name: "engineering" }]]);
+    const streamsMap = new Map<string, { name: string }>([[STREAM_UUID, { name: "engineering" }]]);
 
     expect(
       formatDraftMessageContext({

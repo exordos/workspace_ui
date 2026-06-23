@@ -12,6 +12,7 @@ const mockMessengerApi = vi.hoisted(() => ({
   getWithBase: vi.fn(),
   post: vi.fn(),
   postJsonWithBase: vi.fn(),
+  putJsonWithBase: vi.fn(),
   postFormData: vi.fn(),
   patch: vi.fn(),
   delete: vi.fn(),
@@ -86,6 +87,7 @@ beforeEach(() => {
   mockMessengerApi.getWithBase.mockReset();
   mockMessengerApi.post.mockReset();
   mockMessengerApi.postJsonWithBase.mockReset();
+  mockMessengerApi.putJsonWithBase.mockReset();
   mockMessengerApi.postFormData.mockReset();
   mockMessengerApi.patch.mockReset();
   mockMessengerApi.delete.mockReset();

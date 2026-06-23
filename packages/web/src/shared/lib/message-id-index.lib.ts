@@ -1,13 +1,11 @@
 /**
- * O(1) message lookup by id for hot paths (read receipts, optimistic mark-read).
+ * O(1) message lookup by id for hot paths.
  *
  * Usage:
- *   import { buildMessageIdMap, createMessageIdSet } from "~/shared/lib/message-id-index.lib";
+ *   import { buildMessageIdMap } from "~/shared/lib/message-id-index.lib";
  */
 
-import { isMessageFromCurrentUser } from "./message-author.lib";
 import type { MessageId } from "./message-id.lib";
-import type { UserId } from "./user-id.lib";
 
 export function buildMessageIdMap<T extends { id: MessageId }>(
   messages: readonly T[],
@@ -25,28 +23,6 @@ export function createMessageIdSet(messages: readonly { id: MessageId }[]): Set<
     ids.add(message.id);
   }
   return ids;
-}
-
-export interface ViewportUnreadMessageSlice {
-  sender_id: number;
-  is_own?: boolean;
-  read?: boolean;
-}
-
-/** Filters viewport unread ids using a pre-built id index — O(V) not O(V×M). */
-export function filterViewportUnreadIdsForReadDispatch(
-  viewportIds: Iterable<MessageId>,
-  messageById: ReadonlyMap<MessageId, ViewportUnreadMessageSlice>,
-  currentUserId: UserId | null,
-): MessageId[] {
-  const out: MessageId[] = [];
-  for (const id of viewportIds) {
-    const msg = messageById.get(id);
-    if (msg != null && msg.read !== true && !isMessageFromCurrentUser(msg, currentUserId)) {
-      out.push(id);
-    }
-  }
-  return out;
 }
 
 /** Ids absent from both store and effective lists — O(K). */

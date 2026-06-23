@@ -62,7 +62,7 @@ describe("resolveQuotePermalinkNavigation", () => {
         locationPathname: "/dm/23",
         isDmView: true,
         href: `https://chat.example.com/#narrow/channel/10-Engineering/topic/Bugs/near/${testMessageId(15)}`,
-        resolveStreamName: (streamId) => (streamId === 10 ? "Engineering" : undefined),
+        resolveStreamName: (streamId) => (streamId === "10" ? "Engineering" : undefined),
       }),
     ).toEqual({
       kind: "path",

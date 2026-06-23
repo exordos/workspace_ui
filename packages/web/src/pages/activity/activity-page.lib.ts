@@ -44,9 +44,9 @@ export function formatActivityMessageContext(options: {
 
 /** Resolves DM title for a draft from recipient user IDs (excludes current user when known). */
 export function resolveDraftDmDisplayName(options: {
-  recipientIds: number[];
+  recipientIds: UserId[];
   currentUserId: UserId | null;
-  getUserDisplayName: (userId: number) => string;
+  getUserDisplayName: (userId: UserId) => string;
 }): string | null {
   const { recipientIds, currentUserId, getUserDisplayName } = options;
   if (recipientIds.length === 0) return null;
@@ -68,9 +68,9 @@ export function resolveDraftDmDisplayName(options: {
 
 export function formatDraftMessageContext(options: {
   draft: Pick<Draft, "type" | "to" | "topic">;
-  streamsMap: ReadonlyMap<number, { name: string }>;
+  streamsMap: ReadonlyMap<string, { name: string }>;
   currentUserId: UserId | null;
-  getUserDisplayName: (userId: number) => string;
+  getUserDisplayName: (userId: UserId) => string;
   generalChatLabel: string;
   privateLabel: string;
 }): string {
@@ -78,7 +78,7 @@ export function formatDraftMessageContext(options: {
     options;
 
   if (draft.type === "stream" && draft.to.length > 0) {
-    const streamId = draft.to[0]!;
+    const streamId = String(draft.to[0]!);
     const streamName = streamsMap.get(streamId)?.name ?? String(streamId);
     return formatActivityMessageContext({
       isStream: true,

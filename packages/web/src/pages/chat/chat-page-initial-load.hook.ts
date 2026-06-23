@@ -88,6 +88,38 @@ export function useChatPageInitialLoad(
   );
   const [messagesReloadNonce, setMessagesReloadNonce] = useState(0);
   const cacheHydratedBeforeApiRef = useRef(false);
+  const hasStreamRoute = streamSlug != null && streamSlug !== "";
+  const hasActiveStreamName = activeStreamCanonicalName != null && activeStreamCanonicalName !== "";
+  const streamLoadTopicKey = topicName == null ? "" : (activeTopicUuid ?? streamRouteTopic);
+  const streamLoadRouteKey = [
+    resolvedStreamId ?? (hasStreamRoute ? "__pending_stream__" : "__no_stream__"),
+    topicName == null ? "__stream_wide__" : streamLoadTopicKey,
+  ].join("|");
+  const streamLoadContext = useMemo<CurrentChatContext | null>(() => {
+    if (!hasStreamRoute || activeStreamCanonicalName == null || resolvedStreamId == null) {
+      return null;
+    }
+    return {
+      type: "stream",
+      streamId: resolvedStreamId,
+      streamName: activeStreamCanonicalName,
+      topic: streamRouteTopic,
+      ...(activeTopicUuid != null ? { topicUuid: activeTopicUuid } : {}),
+      streamWideView: topicName == null,
+    };
+  }, [
+    activeStreamCanonicalName,
+    activeTopicUuid,
+    hasStreamRoute,
+    resolvedStreamId,
+    streamRouteTopic,
+    topicName,
+  ]);
+  const streamLoadContextRef = useRef<CurrentChatContext | null>(streamLoadContext);
+
+  useEffect(() => {
+    streamLoadContextRef.current = streamLoadContext;
+  }, [streamLoadContext]);
 
   useEffect(() => {
     if (!streamSlug) {
@@ -114,6 +146,7 @@ export function useChatPageInitialLoad(
       streamWideView,
     };
     if (isSameChatLocation(useCurrentChatMessagesStore.getState().context, nextContext)) {
+      setContext(nextContext);
       return;
     }
     logMessageFlow("ui:stream route effect → setContext(stream)", {
@@ -135,12 +168,13 @@ export function useChatPageInitialLoad(
   ]);
 
   useEffect(() => {
-    if (!streamSlug) {
+    if (!hasStreamRoute) {
       setHasInitialMessagesPayload(false);
       setMessagesLoading(false);
       return;
     }
-    if (!activeStreamCanonicalName || resolvedStreamId == null) {
+    const streamContext = streamLoadContextRef.current;
+    if (!hasActiveStreamName || streamContext == null) {
       setHasInitialMessagesPayload(false);
       setMessagesLoading(false);
       return;
@@ -168,14 +202,7 @@ export function useChatPageInitialLoad(
     setMessagesLoading(true);
     const initialLoadController = new AbortController();
     loadInitialMessagesForContext({
-      context: {
-        type: "stream",
-        streamId: resolvedStreamId,
-        streamName: activeStreamCanonicalName,
-        topic: streamRouteTopic,
-        ...(activeTopicUuid != null ? { topicUuid: activeTopicUuid } : {}),
-        streamWideView: topicName == null,
-      },
+      context: streamContext,
       focusedMessageId,
       currentUserId,
       signal: initialLoadController.signal,
@@ -216,12 +243,9 @@ export function useChatPageInitialLoad(
       initialLoadController.abort();
     };
   }, [
-    streamSlug,
-    activeStreamCanonicalName,
-    resolvedStreamId,
-    streamRouteTopic,
-    activeTopicUuid,
-    topicName,
+    hasStreamRoute,
+    hasActiveStreamName,
+    streamLoadRouteKey,
     focusedMessageId,
     currentUserId,
     loadInitialMessagesForContext,

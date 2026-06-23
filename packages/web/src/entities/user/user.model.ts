@@ -118,6 +118,25 @@ function normalizeUser(payload: Partial<UserRecord> & { user_id: UserId }): User
   };
 }
 
+function meaningfulString(value: string | null | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed != null && trimmed.length > 0 ? trimmed : undefined;
+}
+
+function mergeName(
+  incoming: string | null | undefined,
+  existing: string | null | undefined,
+): string {
+  return meaningfulString(incoming) ?? meaningfulString(existing) ?? "";
+}
+
+function mergeOptionalString(
+  incoming: string | null | undefined,
+  existing: string | null | undefined,
+): string | undefined {
+  return meaningfulString(incoming) ?? meaningfulString(existing);
+}
+
 function userKey(userId: UserId): string {
   return userIdStorageKey(userId);
 }
@@ -139,9 +158,9 @@ export const useUsersStore = create<UsersState>((set, get) => ({
         ...normalizeUser(existing ?? payload),
         ...normalizeUser(payload),
         user_id,
-        full_name: payload.full_name ?? existing?.full_name ?? "",
-        email: payload.email ?? existing?.email,
-        avatar_url: payload.avatar_url ?? existing?.avatar_url,
+        full_name: mergeName(payload.full_name, existing?.full_name),
+        email: mergeOptionalString(payload.email, existing?.email),
+        avatar_url: mergeOptionalString(payload.avatar_url, existing?.avatar_url),
         role: payload.role ?? existing?.role,
         presence: payload.presence ?? existing?.presence,
         status: payload.status ?? existing?.status,
@@ -174,9 +193,9 @@ export const useUsersStore = create<UsersState>((set, get) => ({
           ...normalizeUser(existing ?? u),
           ...normalizeUser(u),
           user_id: u.user_id,
-          full_name: u.full_name ?? existing?.full_name ?? "",
-          email: u.email ?? existing?.email,
-          avatar_url: u.avatar_url ?? existing?.avatar_url,
+          full_name: mergeName(u.full_name, existing?.full_name),
+          email: mergeOptionalString(u.email, existing?.email),
+          avatar_url: mergeOptionalString(u.avatar_url, existing?.avatar_url),
           role: u.role ?? existing?.role,
           presence: u.presence ?? existing?.presence,
           status: u.status ?? existing?.status,

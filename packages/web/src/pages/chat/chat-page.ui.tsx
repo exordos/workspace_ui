@@ -49,6 +49,7 @@ import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { useShortcut } from "~/shared/lib/shortcuts";
 import { resolveCanonicalStreamName } from "~/shared/lib/stream-name.lib";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
+import { formatTopicDoneLabel } from "~/shared/lib/topic-resolve";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import {
   numericUserIdOrNull,
@@ -61,7 +62,6 @@ import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import { useSidebarConfigStore } from "~/widgets/sidebar/sidebar-config.model";
 import { isFocusedMessageLoadedInRoute } from "./chat-anchor-load.lib";
 import { resolveLastOwnMessageForEdit } from "./chat-edit-last-message.lib";
-import { countUnreadMessages, resolveFirstUnreadBoundaryMessageId } from "./chat-first-unread.lib";
 import {
   buildForwardQuote,
   mergeForwardDraftContent,
@@ -174,11 +174,8 @@ export const ChatPage: React.FC = () => {
     if (activeTopicUuid != null) {
       return activeTopicUuid;
     }
-    if (!isPrivateStreamView || activeTopic != null) {
-      return undefined;
-    }
-    return activeStreamEntry?.topics.get("")?.topicUuid;
-  }, [activeStreamEntry?.topics, activeTopic, activeTopicUuid, isPrivateStreamView]);
+    return undefined;
+  }, [activeTopicUuid]);
   const partnerUser = useUsersStore((s) =>
     partnerUserId != null ? s.getUser(partnerUserId) : undefined,
   );
@@ -201,6 +198,7 @@ export const ChatPage: React.FC = () => {
       resolvedStreamId,
       topicName,
       streamRouteTopic,
+      activeTopicUuid: effectiveActiveTopicUuid,
     });
   }, [
     focusedMessageId,
@@ -211,6 +209,7 @@ export const ChatPage: React.FC = () => {
     resolvedStreamId,
     topicName,
     streamRouteTopic,
+    effectiveActiveTopicUuid,
   ]);
 
   useEffect(() => {
@@ -227,15 +226,25 @@ export const ChatPage: React.FC = () => {
   const streams = useChatListStore((s) => s.streams());
   const handleDeleteMessagesInChatList = useChatListStore((s) => s.handleDeleteMessages);
   const realmBaseUrl = getRealmBaseUrl();
-  const firstUnreadId = useMemo(
-    () => resolveFirstUnreadBoundaryMessageId(messages, currentUserId),
-    [messages, currentUserId],
-  );
-  const unreadCount = useMemo(
-    () => countUnreadMessages(messages, currentUserId),
-    [messages, currentUserId],
-  );
+  const firstUnreadId = undefined;
+  const unreadCount = 0;
+  const activeTopicIsDone = useMemo(() => {
+    if (activeTopic == null || activeStreamEntry == null) return false;
+    if (effectiveActiveTopicUuid != null) {
+      const normalizedTopicUuid = effectiveActiveTopicUuid.trim().toLowerCase();
+      for (const topicEntry of activeStreamEntry.topics.values()) {
+        if (topicEntry.topicUuid?.trim().toLowerCase() === normalizedTopicUuid) {
+          return topicEntry.isDone === true;
+        }
+      }
+    }
+    return activeStreamEntry.topics.get(activeTopic)?.isDone === true;
+  }, [activeStreamEntry, activeTopic, effectiveActiveTopicUuid]);
   const activeTopicDisplay = activeTopic != null ? resolveTopicDisplayInfo(activeTopic) : null;
+  const activeTopicLabel =
+    activeTopicDisplay != null
+      ? formatTopicDoneLabel(activeTopicDisplay.label, activeTopicIsDone)
+      : undefined;
 
   useEffect(() => {
     logScrollReadFlow("read:firstUnreadChange", {
@@ -361,15 +370,15 @@ export const ChatPage: React.FC = () => {
   const pendingForwardPrefillRef = useRef<string | null>(null);
 
   const draftType: DraftType | null = resolveDraftType(isDmView, activeStream);
-  const draftTo: (number | string)[] = useMemo(() => {
+  const draftTo = useMemo(() => {
     const ctx = useCurrentChatMessagesStore.getState().context;
     return resolveDraftTargetIds({
       isDmView,
-      activeDmUserIds: numericActiveDmUserIds,
+      activeDmUserIds,
       activeStreamId: resolvedStreamId,
       fallbackStreamId: ctx?.type === "stream" ? ctx.streamId : null,
     });
-  }, [isDmView, numericActiveDmUserIds, resolvedStreamId]);
+  }, [isDmView, activeDmUserIds, resolvedStreamId]);
   const draftTopic = activeTopic ?? "";
 
   useEffect(() => {
@@ -487,8 +496,7 @@ export const ChatPage: React.FC = () => {
       idleStopDelayMs: 3000,
     });
 
-  const { handleUnreadMessagesVisible, handleUnreadMessagesAtBottom } = useChatPageMarkRead({
-    messages,
+  useChatPageMarkRead({
     currentUserId,
     isDmView,
     activeDmUserIds,
@@ -497,7 +505,6 @@ export const ChatPage: React.FC = () => {
     streamSlug,
     topicName,
     dmIdParam,
-    updateMessageFlagsInStore,
   });
 
   const isTextInputFocused = useCallback((): boolean => {
@@ -510,11 +517,10 @@ export const ChatPage: React.FC = () => {
 
   const handleOpenNextUnreadTopic = useCallback(() => {
     if (isTextInputFocused() || isDmView || activeStreamId == null) return;
-    const currentStream = streams.find((stream) => stream.stream_uuid === activeStreamId);
+    const currentStream = streams.find((stream) => stream.streamUuid === activeStreamId);
     if (!currentStream) return;
     const route = resolveNextUnreadTopicRoute({
-      streamId: currentStream.stream_uuid,
-      streamName: currentStream.name,
+      streamId: currentStream.streamUuid,
       currentTopic: activeTopic,
       topics: currentStream.topics,
     });
@@ -869,7 +875,7 @@ export const ChatPage: React.FC = () => {
         realmBaseUrl,
         wroteLabel: t("message.replyQuoteWrote"),
         resolveStreamName: (streamId, message) =>
-          streams.find((candidate) => candidate.stream_uuid === streamId)?.name ??
+          streams.find((candidate) => candidate.streamUuid === streamId)?.name ??
           message.channel ??
           (typeof message.display_recipient === "string" ? message.display_recipient : undefined),
       });
@@ -1110,7 +1116,7 @@ export const ChatPage: React.FC = () => {
 
       <ChatHeader
         channelName={activeStream ? `#${activeStream}` : t("channel.channelName")}
-        topic={activeTopicDisplay?.label}
+        topic={activeTopicLabel}
         systemTopic={activeTopicDisplay?.isSystem ?? false}
         hideTopic={activeTopic == null}
         participantsCount={chatInfo?.memberCount ?? 0}
@@ -1131,7 +1137,9 @@ export const ChatPage: React.FC = () => {
           hasInitialPayload={hasInitialMessagesPayload}
           isDmView={isDmView}
           activeDmUserIds={activeDmUserIds}
+          activeStreamId={activeStreamId}
           activeStream={activeStream}
+          activeTopicUuid={effectiveActiveTopicUuid}
           activeTopic={activeTopic}
           messages={messages}
           currentUserId={currentUserId ?? undefined}
@@ -1146,8 +1154,6 @@ export const ChatPage: React.FC = () => {
           firstUnreadId={firstUnreadId}
           unreadCount={unreadCount}
           focusedMessageId={focusedMessageId}
-          onUnreadMessagesVisible={handleUnreadMessagesVisible}
-          onUnreadMessagesAtBottom={handleUnreadMessagesAtBottom}
           messagesLoadError={messagesLoadError}
           onRetryMessagesLoad={handleRetryMessagesLoad}
           boundaryLoadFailed={boundaryLoadFailed}

@@ -4,7 +4,6 @@
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { isMessageForContext, useCurrentChatMessagesStore } from "~/entities/message/message.model";
-import { syncUnreadSurfacesFromEventDelta } from "~/entities/unread-sync/unread-surfaces-sync.lib";
 import { resolveIncomingDmCallInvite } from "~/features/jitsi-call/jitsi-call-invite.lib";
 import { getCurrentInstance } from "~/shared/api/client";
 import { rawMessageToMockMessage } from "~/shared/api/messenger-messages";
@@ -23,7 +22,7 @@ import {
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import { maybeNotifyNewMessage } from "./layout-messenger-event-notify.lib";
 import {
-  collectUnreadLoadedMessageIds,
+  collectLoadedMessageIds,
   parseUpdateMessageFlagsEvent,
 } from "./layout-messenger-event-read-flags.lib";
 import {
@@ -73,15 +72,7 @@ export function handleIncomingMessage(
     currentChat.context != null &&
     !currentChat.hasNewerMessages &&
     isMessageForContext(raw, currentChat.context, currentUserId);
-  syncUnreadSurfacesFromEventDelta({
-    source: "event-message",
-    instanceId: ctx.currentInstanceId,
-    isStreamMuted: ctx.mute.isStreamMuted,
-    isEffectivelyMuted: ctx.mute.isEffectivelyMuted,
-    applyDelta: () => {
-      chatList.addMessage(raw);
-    },
-  });
+  chatList.addMessage(raw);
   // Fallback when channel rename arrives via message display_recipient instead of a stream event.
   if (
     raw.type === "stream" &&
@@ -125,11 +116,9 @@ function applyMarkAllReadFromQueueEvent(
   const { currentChat } = ctx;
   const chatListStore = useChatListStore.getState();
 
-  const unreadLoadedIds = collectUnreadLoadedMessageIds(
-    useCurrentChatMessagesStore.getState().messages,
-  );
-  if (unreadLoadedIds.length > 0) {
-    currentChat.updateMessageFlags(unreadLoadedIds, "read", "add");
+  const loadedIds = collectLoadedMessageIds(useCurrentChatMessagesStore.getState().messages);
+  if (loadedIds.length > 0) {
+    currentChat.updateMessageFlags(loadedIds, "read", "add");
   }
 
   const indexedIds = [...chatListStore.messageIdToLocation.keys()];
@@ -137,7 +126,7 @@ function applyMarkAllReadFromQueueEvent(
 
   logSidebarUnreadFlow("event:update_message_flags:read:markAll", {
     markAllRead: true,
-    unreadLoadedCount: unreadLoadedIds.length,
+    loadedCount: loadedIds.length,
     indexedNotificationCount: indexedIds.length,
     openChatContext: currentChat.context,
     totalsAfter: {
@@ -168,16 +157,8 @@ export function handleUpdateMessageFlags(
   if (flag !== "read") return;
 
   if (markAllRead) {
-    syncUnreadSurfacesFromEventDelta({
-      source: "event-mark-all-read",
-      instanceId: ctx.currentInstanceId,
-      isStreamMuted: ctx.mute.isStreamMuted,
-      isEffectivelyMuted: ctx.mute.isEffectivelyMuted,
-      applyDelta: () => {
-        inbox.clearEntries();
-        applyMarkAllReadFromQueueEvent(ctx, notifications);
-      },
-    });
+    inbox.clearEntries();
+    applyMarkAllReadFromQueueEvent(ctx, notifications);
     return;
   }
 
@@ -190,34 +171,18 @@ export function handleUpdateMessageFlags(
   });
 
   if (op === "add") {
-    syncUnreadSurfacesFromEventDelta({
-      source: "event-read-add",
-      instanceId: ctx.currentInstanceId,
-      isStreamMuted: ctx.mute.isStreamMuted,
-      isEffectivelyMuted: ctx.mute.isEffectivelyMuted,
-      applyDelta: () => {
-        inbox.markAsRead(messageIds);
-        closeReadMessageNotifications(notifications, messageIds, ctx.currentInstanceId);
-        currentChat.updateMessageFlags(messageIds, "read", "add");
-      },
-    });
+    inbox.markStale();
+    closeReadMessageNotifications(notifications, messageIds, ctx.currentInstanceId);
+    currentChat.updateMessageFlags(messageIds, "read", "add");
     return;
   }
 
-  syncUnreadSurfacesFromEventDelta({
-    source: "event-read-remove",
-    instanceId: ctx.currentInstanceId,
-    isStreamMuted: ctx.mute.isStreamMuted,
-    isEffectivelyMuted: ctx.mute.isEffectivelyMuted,
-    applyDelta: () => {
-      inbox.markStale();
+  inbox.markStale();
 
-      logSidebarUnreadFlow("event:update_message_flags:read:remove", {
-        ...summarizeMessageIdsForFlowDebug(messageIds),
-      });
-      currentChat.updateMessageFlags(messageIds, "read", "remove");
-    },
+  logSidebarUnreadFlow("event:update_message_flags:read:remove", {
+    ...summarizeMessageIdsForFlowDebug(messageIds),
   });
+  currentChat.updateMessageFlags(messageIds, "read", "remove");
 }
 
 export function handleReaction(

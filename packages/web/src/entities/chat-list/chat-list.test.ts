@@ -33,6 +33,19 @@ vi.mock("~/shared/api/messenger-messages", async (importOriginal) => {
 
 const fetchMessagesWithNarrowMock = vi.mocked(fetchMessagesWithNarrow);
 
+function streamUuid(value: number): string {
+  return `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
+}
+
+function topicShell(streamId: number, topicUuid: number, name: string, isDefault = false) {
+  return {
+    topicUuid: streamUuid(topicUuid),
+    streamUuid: streamUuid(streamId),
+    name,
+    isDefault,
+  };
+}
+
 function deferred<T>() {
   let resolveFn!: (value: T) => void;
   let rejectFn!: (reason?: unknown) => void;
@@ -67,7 +80,7 @@ function streamMsg(overrides: WorkspaceRawMessageOverrides = {}): WorkspaceRawMe
     content: "hello",
     timestamp: 1000,
     type: "stream",
-    stream_id: 5,
+    stream_uuid: "00000000-0000-4000-8000-000000000005",
     display_recipient: "general",
     subject: "topic1",
     flags: [],
@@ -134,21 +147,29 @@ describe("chatListStore", () => {
         messageIdToLocation: new Map([
           [
             "00000000-0000-4000-8000-000000000001",
-            { type: "stream", stream_id: 5, topic: "topic1" },
+            { type: "stream", streamUuid: "00000000-0000-4000-8000-000000000005", topic: "topic1" },
           ],
           [
             "00000000-0000-4000-8000-000000000002",
-            { type: "stream", stream_id: 5, topic: "topic1" },
+            { type: "stream", streamUuid: "00000000-0000-4000-8000-000000000005", topic: "topic1" },
           ],
         ]),
         streamTopicMessageIds: new Map(),
       });
       expect(
-        getStreamTopicMessageIds(useChatListStore.getState().streamTopicMessageIds, 5, "topic1"),
+        getStreamTopicMessageIds(
+          useChatListStore.getState().streamTopicMessageIds,
+          streamUuid(5),
+          "topic1",
+        ),
       ).toEqual([]);
       useChatListStore.getState().syncDerivedScalars();
       expect(
-        getStreamTopicMessageIds(useChatListStore.getState().streamTopicMessageIds, 5, "topic1"),
+        getStreamTopicMessageIds(
+          useChatListStore.getState().streamTopicMessageIds,
+          streamUuid(5),
+          "topic1",
+        ),
       ).toEqual([testMessageId(1), testMessageId(2)]);
     });
   });
@@ -235,13 +256,13 @@ describe("chatListStore", () => {
         [
           streamMsg({
             id: "00000000-0000-4000-8000-000000000001",
-            stream_id: 5,
+            stream_uuid: "00000000-0000-4000-8000-000000000005",
             subject: "topic1",
             timestamp: 1000,
           }),
           streamMsg({
             id: "00000000-0000-4000-8000-000000000002",
-            stream_id: 5,
+            stream_uuid: "00000000-0000-4000-8000-000000000005",
             subject: "topic2",
             timestamp: 2000,
           }),
@@ -251,7 +272,7 @@ describe("chatListStore", () => {
 
       const streams = useChatListStore.getState().streams();
       expect(streams).toHaveLength(1);
-      expect(streams[0]!.stream_id).toBe(5);
+      expect(streams[0]!.streamUuid).toBe(streamUuid(5));
       expect(streams[0]!.topics).toBeDefined();
       expect(streams[0]!.topics!.length).toBe(2);
     });
@@ -261,14 +282,14 @@ describe("chatListStore", () => {
         [
           streamMsg({
             id: "00000000-0000-4000-8000-000000000001",
-            stream_id: 5,
+            stream_uuid: "00000000-0000-4000-8000-000000000005",
             subject: "topic1",
             timestamp: 1000,
             sender_full_name: "Alice",
           }),
           streamMsg({
             id: "00000000-0000-4000-8000-000000000002",
-            stream_id: 5,
+            stream_uuid: "00000000-0000-4000-8000-000000000005",
             subject: "topic2",
             timestamp: 2000,
             sender_full_name: "Bob",
@@ -315,7 +336,7 @@ describe("chatListStore", () => {
         [
           streamMsg({
             id: "00000000-0000-4000-8000-000000000100",
-            stream_id: 7,
+            stream_uuid: "00000000-0000-4000-8000-000000000007",
             subject: "topicA",
           }),
         ],
@@ -328,7 +349,7 @@ describe("chatListStore", () => {
       expect(loc).toBeDefined();
       expect(loc!.type).toBe("stream");
       if (loc!.type === "stream") {
-        expect(loc!.stream_id).toBe(7);
+        expect(loc!.streamUuid).toBe(streamUuid(7));
         expect(loc!.topic).toBe("topicA");
       }
     });
@@ -345,18 +366,18 @@ describe("chatListStore", () => {
     });
 
     // Messages from different streams must not be merged into one entry.
-    it("separates multiple streams by stream_id", () => {
+    it("separates multiple streams by stream UUID", () => {
       useChatListStore.getState().setFromMessages(
         [
           streamMsg({
             id: "00000000-0000-4000-8000-000000000001",
-            stream_id: 5,
+            stream_uuid: "00000000-0000-4000-8000-000000000005",
             display_recipient: "stream-a",
             timestamp: 1000,
           }),
           streamMsg({
             id: "00000000-0000-4000-8000-000000000002",
-            stream_id: 8,
+            stream_uuid: "00000000-0000-4000-8000-000000000008",
             display_recipient: "stream-b",
             timestamp: 2000,
           }),
@@ -366,12 +387,12 @@ describe("chatListStore", () => {
 
       const streams = useChatListStore.getState().streams();
       expect(streams).toHaveLength(2);
-      const ids = streams.map((s) => s.stream_id).sort();
-      expect(ids).toEqual([5, 8]);
+      const ids = streams.map((s) => s.streamUuid).sort();
+      expect(ids).toEqual([streamUuid(5), streamUuid(8)]);
     });
 
-    // Badge count drives the unread indicator — only messages without "read" flag count.
-    it("counts unread messages (messages without 'read' flag)", () => {
+    // New backend unread_count is authoritative; message flags only hydrate previews/locations.
+    it("does not derive unread badges from message flags", () => {
       useChatListStore.getState().setFromMessages(
         [
           streamMsg({
@@ -394,7 +415,8 @@ describe("chatListStore", () => {
       );
 
       const streams = useChatListStore.getState().streams();
-      expect(streams[0]!.badge).toBe(2);
+      expect(streams[0]!.badge).toBeUndefined();
+      expect(useChatListStore.getState().sidebarStreamsUnread).toBe(0);
     });
   });
 
@@ -405,7 +427,7 @@ describe("chatListStore", () => {
       useChatListStore.getState().addMessage(
         streamMsg({
           id: "00000000-0000-4000-8000-000000000010",
-          stream_id: 99,
+          stream_uuid: "00000000-0000-4000-8000-000000000099",
           display_recipient: "new-stream",
           subject: "intro",
           timestamp: 5000,
@@ -413,7 +435,7 @@ describe("chatListStore", () => {
       );
 
       const streams = useChatListStore.getState().streams();
-      expect(streams.some((s) => s.stream_id === 99)).toBe(true);
+      expect(streams.some((s) => s.streamUuid === streamUuid(99))).toBe(true);
     });
 
     // Existing entries must update their last message preview on new activity.
@@ -422,7 +444,7 @@ describe("chatListStore", () => {
         [
           streamMsg({
             id: "00000000-0000-4000-8000-000000000001",
-            stream_id: 5,
+            stream_uuid: "00000000-0000-4000-8000-000000000005",
             subject: "t",
             timestamp: 1000,
             content: "old",
@@ -434,7 +456,7 @@ describe("chatListStore", () => {
       useChatListStore.getState().addMessage(
         streamMsg({
           id: "00000000-0000-4000-8000-000000000002",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
           subject: "t",
           timestamp: 2000,
           content: "new",
@@ -442,12 +464,12 @@ describe("chatListStore", () => {
       );
 
       const streams = useChatListStore.getState().streams();
-      const stream = streams.find((s) => s.stream_id === 5)!;
+      const stream = streams.find((s) => s.streamUuid === streamUuid(5))!;
       expect(stream.topics![0]!.lastMessage).toContain("new");
     });
 
-    // New unread messages must bump the badge so the user sees new activity.
-    it("increments unread count for unread stream messages", () => {
+    // Live message payloads update previews; unread totals come from server metadata/read state.
+    it("does not increment unread count for unread stream messages", () => {
       useChatListStore
         .getState()
         .setFromMessages(
@@ -465,7 +487,8 @@ describe("chatListStore", () => {
       );
 
       const streams = useChatListStore.getState().streams();
-      expect(streams[0]!.badge).toBe(1);
+      expect(streams[0]!.badge).toBeUndefined();
+      expect(useChatListStore.getState().sidebarStreamsUnread).toBe(0);
     });
 
     it("does not increment unread count for own stream messages", () => {
@@ -494,7 +517,7 @@ describe("chatListStore", () => {
       useChatListStore.getState().addMessage(
         streamMsg({
           id: "00000000-0000-4000-8000-000000000077",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
           subject: "topicX",
           timestamp: 3000,
         }),
@@ -521,7 +544,7 @@ describe("chatListStore", () => {
     });
 
     // Multiple unread DMs must accumulate badges, not overwrite.
-    it("increments unread count for unread DM messages", () => {
+    it("does not increment unread count for unread DM messages", () => {
       useChatListStore.setState({ currentUserId: 10 });
 
       useChatListStore.getState().addMessage(
@@ -543,7 +566,8 @@ describe("chatListStore", () => {
 
       const dms = useChatListStore.getState().dms();
       const dm = dms.find((d) => d.type === "dm");
-      expect(dm?.badge).toBeGreaterThanOrEqual(1);
+      expect(dm?.badge).toBeUndefined();
+      expect(useChatListStore.getState().sidebarDmsUnread).toBe(0);
     });
 
     it("does not increment unread count for own DM messages", () => {
@@ -582,7 +606,7 @@ describe("chatListStore", () => {
       expect(loc!.type).toBe("dm");
     });
 
-    it("bumps sidebar unread when indexing stale-timestamp unread DM", () => {
+    it("indexes stale-timestamp unread DM without deriving unread count", () => {
       useChatListStore.setState({ currentUserId: 10 });
       const dmKey = "10,20";
 
@@ -603,7 +627,7 @@ describe("chatListStore", () => {
         }),
       );
 
-      expect(useChatListStore.getState().dmsMap.get(dmKey)?.unreadCount).toBe(2);
+      expect(useChatListStore.getState().dmsMap.get(dmKey)?.unreadCount).toBe(0);
       expect(
         useChatListStore.getState().messageIdToLocation.has("00000000-0000-4000-8000-000000003082"),
       ).toBe(true);
@@ -619,7 +643,7 @@ describe("chatListStore", () => {
       useChatListStore.getState().addMessages([
         streamMsg({
           id: "00000000-0000-4000-8000-000000000010",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
           subject: "alpha",
           timestamp: 1000,
           flags: [],
@@ -627,7 +651,7 @@ describe("chatListStore", () => {
         }),
         streamMsg({
           id: "00000000-0000-4000-8000-000000000011",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
           subject: "beta",
           timestamp: 2000,
           flags: [],
@@ -635,7 +659,7 @@ describe("chatListStore", () => {
         }),
         streamMsg({
           id: "00000000-0000-4000-8000-000000000012",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
           subject: "alpha",
           timestamp: 3000,
           flags: [],
@@ -643,7 +667,7 @@ describe("chatListStore", () => {
         }),
         streamMsg({
           id: "00000000-0000-4000-8000-000000000013",
-          stream_id: 5,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
           subject: "alpha",
           timestamp: 4000,
           flags: [],
@@ -665,9 +689,9 @@ describe("chatListStore", () => {
         "stream",
       );
 
-      const stream = state.streamsMap.get(5);
-      expect(stream?.topics.get("alpha")?.unreadCount).toBe(3);
-      expect(stream?.topics.get("beta")?.unreadCount).toBe(1);
+      const stream = state.streamsMap.get(streamUuid(5));
+      expect(stream?.topics.get("alpha")?.unreadCount).toBe(0);
+      expect(stream?.topics.get("beta")?.unreadCount).toBe(0);
       expect(stream?.topics.get("alpha")?.lastMessage).toContain("hello");
       expect(stream?.topics.get("beta")?.ts).toBe(2000);
     });
@@ -694,7 +718,7 @@ describe("chatListStore", () => {
         }),
       ]);
 
-      expect(useChatListStore.getState().streams()[0]!.badge).toBe(3);
+      expect(useChatListStore.getState().streams()[0]!.badge).toBeUndefined();
       expect(
         useChatListStore.getState().messageIdToLocation.has("00000000-0000-4000-8000-000000000020"),
       ).toBe(true);
@@ -730,23 +754,23 @@ describe("chatListStore", () => {
 
       const dms = useChatListStore.getState().dms();
       const dm = dms.find((d) => d.type === "dm");
-      expect(dm?.badge).toBe(3);
+      expect(dm?.badge).toBeUndefined();
     });
 
     it("does not double-count unread when batch includes already-indexed message ids", () => {
       const msg = streamMsg({
         id: "00000000-0000-4000-8000-000000000050",
-        stream_id: 5,
+        stream_uuid: "00000000-0000-4000-8000-000000000005",
         subject: "alpha",
         timestamp: 1000,
         flags: [],
         sender_id: OTHER_SENDER_ID,
       });
       useChatListStore.getState().addMessage(msg);
-      expect(useChatListStore.getState().sidebarStreamsUnread).toBe(1);
+      expect(useChatListStore.getState().sidebarStreamsUnread).toBe(0);
 
       useChatListStore.getState().addMessages([msg]);
-      expect(useChatListStore.getState().sidebarStreamsUnread).toBe(1);
+      expect(useChatListStore.getState().sidebarStreamsUnread).toBe(0);
     });
 
     it("fills empty DM preview from addMessages when metadata ts is newer", () => {
@@ -777,24 +801,80 @@ describe("chatListStore", () => {
       expect(dm?.ts).toBe(1_700_000_000);
     });
 
-    it("upsertStreamTopicShells inserts empty default topic shell", () => {
-      useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "engineering" }]);
-      useChatListStore.getState().upsertStreamTopicShells(5, ["", "release"]);
+    it("upsertStreamTopicShells preserves the server default topic name", () => {
+      useChatListStore
+        .getState()
+        .upsertStreamMetadataRows([
+          { streamUuid: "00000000-0000-4000-8000-000000000005", name: "engineering" },
+        ]);
+      useChatListStore
+        .getState()
+        .upsertStreamTopicShells(streamUuid(5), [
+          topicShell(5, 501, "General Topic", true),
+          topicShell(5, 502, "release"),
+        ]);
 
-      const stream = useChatListStore.getState().streamsMap.get(5);
-      expect(stream?.topics.has("")).toBe(true);
+      const stream = useChatListStore.getState().streamsMap.get(streamUuid(5));
+      expect(stream?.topics.has("General Topic")).toBe(true);
       expect(stream?.topics.has("release")).toBe(true);
-      expect(stream?.topics.get("")?.lastMessage).toBe("");
+      expect(stream?.topics.get("General Topic")?.lastMessage).toBe("");
     });
 
-    it("upsertStreamTopicShells normalizes legacy general chat alias to empty topic", () => {
-      useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "engineering" }]);
-      useChatListStore.getState().upsertStreamTopicShells(5, ["general chat", "release"]);
+    it("upsertStreamTopicShells renames existing topic shells by topic uuid", () => {
+      useChatListStore
+        .getState()
+        .upsertStreamMetadataRows([
+          { streamUuid: "00000000-0000-4000-8000-000000000005", name: "engineering" },
+        ]);
+      useChatListStore.getState().addMessages([
+        streamMsg({
+          id: 501,
+          topic_uuid: streamUuid(503),
+          subject: "",
+          content: "preview before topic metadata",
+        }),
+      ]);
 
-      const stream = useChatListStore.getState().streamsMap.get(5);
-      expect(stream?.topics.has("")).toBe(true);
-      expect(stream?.topics.has("general chat")).toBe(false);
+      useChatListStore
+        .getState()
+        .upsertStreamTopicShells(streamUuid(5), [
+          topicShell(5, 503, "General Chat", true),
+          topicShell(5, 504, "release"),
+        ]);
+
+      const stream = useChatListStore.getState().streamsMap.get(streamUuid(5));
+      expect(stream?.topics.has("")).toBe(false);
+      expect(stream?.topics.has("General Chat")).toBe(true);
+      expect(stream?.topics.get("General Chat")?.lastMessage).toContain(
+        "preview before topic metadata",
+      );
       expect(stream?.topics.has("release")).toBe(true);
+    });
+
+    it("upsertStreamTopicShells stores and clears server topic done state", () => {
+      useChatListStore
+        .getState()
+        .upsertStreamMetadataRows([
+          { streamUuid: "00000000-0000-4000-8000-000000000005", name: "engineering" },
+        ]);
+
+      useChatListStore
+        .getState()
+        .upsertStreamTopicShells(streamUuid(5), [
+          { ...topicShell(5, 503, "incident"), isDone: true },
+        ]);
+      expect(
+        useChatListStore.getState().streamsMap.get(streamUuid(5))?.topics.get("incident"),
+      ).toEqual(expect.objectContaining({ isDone: true }));
+
+      useChatListStore
+        .getState()
+        .upsertStreamTopicShells(streamUuid(5), [
+          { ...topicShell(5, 503, "incident"), isDone: false },
+        ]);
+      expect(
+        useChatListStore.getState().streamsMap.get(streamUuid(5))?.topics.get("incident")?.isDone,
+      ).toBeUndefined();
     });
 
     it("applyStreamSidebarPreviewsFromMessages updates streams only, not DM metadata preview", () => {
@@ -803,7 +883,9 @@ describe("chatListStore", () => {
 
       useChatListStore
         .getState()
-        .upsertStreamMetadataRows([{ streamId: 99, name: "meta-channel" }]);
+        .upsertStreamMetadataRows([
+          { streamUuid: "00000000-0000-4000-8000-000000000099", name: "meta-channel" },
+        ]);
       useChatListStore.getState().upsertDmMetadataRows([
         {
           userIds: [10, 20],
@@ -825,7 +907,7 @@ describe("chatListStore", () => {
       useChatListStore.getState().applyStreamSidebarPreviewsFromMessages([
         streamMsg({
           id: "00000000-0000-4000-8000-000000001000",
-          stream_id: 99,
+          stream_uuid: "00000000-0000-4000-8000-000000000099",
           subject: "topic-a",
           content: "stream preview body",
           timestamp: 1_750_000_000,
@@ -839,7 +921,7 @@ describe("chatListStore", () => {
         }),
       ]);
 
-      const stream = useChatListStore.getState().streamsMap.get(99);
+      const stream = useChatListStore.getState().streamsMap.get(streamUuid(99));
       expect(stream?.lastMessage).toContain("stream preview body");
       expect(stream?.topics.get("topic-a")?.lastMessage).toContain("stream preview body");
 
@@ -858,13 +940,13 @@ describe("chatListStore", () => {
         [
           streamMsg({
             id: "00000000-0000-4000-8000-000000000001",
-            stream_id: 1,
+            stream_uuid: "00000000-0000-4000-8000-000000000001",
             display_recipient: "older",
             timestamp: 1000,
           }),
           streamMsg({
             id: "00000000-0000-4000-8000-000000000002",
-            stream_id: 2,
+            stream_uuid: "00000000-0000-4000-8000-000000000002",
             display_recipient: "newer",
             timestamp: 5000,
           }),
@@ -873,8 +955,8 @@ describe("chatListStore", () => {
       );
 
       const streams = useChatListStore.getState().streams();
-      expect(streams[0]!.stream_id).toBe(2);
-      expect(streams[1]!.stream_id).toBe(1);
+      expect(streams[0]!.streamUuid).toBe(streamUuid(2));
+      expect(streams[1]!.streamUuid).toBe(streamUuid(1));
     });
   });
 
@@ -918,13 +1000,13 @@ describe("chatListStore", () => {
         [
           streamMsg({
             id: "00000000-0000-4000-8000-000000000001",
-            stream_id: 5,
+            stream_uuid: "00000000-0000-4000-8000-000000000005",
             subject: "topicA",
             timestamp: 1000,
           }),
           streamMsg({
             id: "00000000-0000-4000-8000-000000000002",
-            stream_id: 5,
+            stream_uuid: "00000000-0000-4000-8000-000000000005",
             subject: "topicB",
             timestamp: 2000,
           }),
@@ -937,17 +1019,19 @@ describe("chatListStore", () => {
       const stream = useChatListStore
         .getState()
         .streams()
-        .find((s) => s.stream_id === 5);
+        .find((s) => s.streamUuid === streamUuid(5));
       expect(stream).toBeDefined();
       const topicNames = stream!.topics!.map((t) => t.subject);
       expect(topicNames).toContain("topicA");
       expect(topicNames).toContain("topicB");
       expect(
-        useChatListStore.getState().streamsMap.get(5)?.topics.get("topicA")?.lastMessageId,
+        useChatListStore.getState().streamsMap.get(streamUuid(5))?.topics.get("topicA")
+          ?.lastMessageId,
       ).toBe(undefined);
-      expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("topicA")?.lastMessage).toBe(
-        "",
-      );
+      expect(
+        useChatListStore.getState().streamsMap.get(streamUuid(5))?.topics.get("topicA")
+          ?.lastMessage,
+      ).toBe("");
     });
 
     it("recomputes stream preview from remaining newest topic after deleting tracked last message id", () => {
@@ -955,14 +1039,14 @@ describe("chatListStore", () => {
         [
           streamMsg({
             id: "00000000-0000-4000-8000-000000000001",
-            stream_id: 5,
+            stream_uuid: "00000000-0000-4000-8000-000000000005",
             subject: "topicA",
             timestamp: 1000,
             sender_full_name: "Alice",
           }),
           streamMsg({
             id: "00000000-0000-4000-8000-000000000002",
-            stream_id: 5,
+            stream_uuid: "00000000-0000-4000-8000-000000000005",
             subject: "topicB",
             timestamp: 2000,
             sender_full_name: "Bob",
@@ -976,7 +1060,7 @@ describe("chatListStore", () => {
       const stream = useChatListStore
         .getState()
         .streams()
-        .find((item) => item.stream_id === 5);
+        .find((item) => item.streamUuid === streamUuid(5));
       expect(stream).toBeDefined();
       expect(stream?.lastMessageSenderName).toBe("Alice");
     });
@@ -987,7 +1071,7 @@ describe("chatListStore", () => {
         [
           streamMsg({
             id: "00000000-0000-4000-8000-000000000001",
-            stream_id: 5,
+            stream_uuid: "00000000-0000-4000-8000-000000000005",
             subject: "only",
             timestamp: 1000,
           }),
@@ -1000,12 +1084,13 @@ describe("chatListStore", () => {
       const stream = useChatListStore
         .getState()
         .streams()
-        .find((item) => item.stream_id === 5);
+        .find((item) => item.streamUuid === streamUuid(5));
       expect(stream).toBeDefined();
       expect(stream?.topics?.map((topic) => topic.subject)).toEqual(["only"]);
-      expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("only")?.lastMessageId).toBe(
-        undefined,
-      );
+      expect(
+        useChatListStore.getState().streamsMap.get(streamUuid(5))?.topics.get("only")
+          ?.lastMessageId,
+      ).toBe(undefined);
     });
 
     // DM rows follow the same conservative policy: keep row, clear tracked lastMessageId.
@@ -1023,7 +1108,7 @@ describe("chatListStore", () => {
     it("uses local replacementMessages to update stream/topic preview without waiting for network", () => {
       const older = streamMsg({
         id: "00000000-0000-4000-8000-000000000001",
-        stream_id: 5,
+        stream_uuid: "00000000-0000-4000-8000-000000000005",
         subject: "topicA",
         timestamp: 1000,
         content: "older preview",
@@ -1031,7 +1116,7 @@ describe("chatListStore", () => {
       });
       const newer = streamMsg({
         id: "00000000-0000-4000-8000-000000000002",
-        stream_id: 5,
+        stream_uuid: "00000000-0000-4000-8000-000000000005",
         subject: "topicA",
         timestamp: 2000,
         content: "newer preview",
@@ -1044,7 +1129,7 @@ describe("chatListStore", () => {
         resolveMissingPreview: false,
       });
 
-      const topic = useChatListStore.getState().streamsMap.get(5)?.topics.get("topicA");
+      const topic = useChatListStore.getState().streamsMap.get(streamUuid(5))?.topics.get("topicA");
       expect(topic?.lastMessageId).toBe(testMessageId(1));
       expect(topic?.lastMessage).toContain("older preview");
       expect(topic?.lastMessageSenderName).toBe("Alice");
@@ -1203,7 +1288,7 @@ describe("chatListStore", () => {
         [
           streamMsg({
             id: "00000000-0000-4000-8000-000000000001",
-            stream_id: 5,
+            stream_uuid: "00000000-0000-4000-8000-000000000005",
             subject: "incident",
             timestamp: 1000,
           }),
@@ -1211,7 +1296,7 @@ describe("chatListStore", () => {
         10,
       );
       useChatListStore.getState().moveStreamTopic({
-        streamId: 5,
+        streamId: "00000000-0000-4000-8000-000000000005",
         oldTopic: "incident",
         newTopic: "\u2714 incident",
         messageIds: ["00000000-0000-4000-8000-000000000001"],
@@ -1220,7 +1305,7 @@ describe("chatListStore", () => {
 
       useChatListStore.getState().handleDeleteMessages(["00000000-0000-4000-8000-000000000001"]);
 
-      const stream = useChatListStore.getState().streamsMap.get(5);
+      const stream = useChatListStore.getState().streamsMap.get(streamUuid(5));
       expect(stream?.topics.has("\u2714 incident")).toBe(true);
       expect(stream?.topics.get("\u2714 incident")?.lastMessageId).toBe(undefined);
     });
@@ -1263,14 +1348,14 @@ describe("chatListStore", () => {
         [
           streamMsg({
             id: "00000000-0000-4000-8000-000000000001",
-            stream_id: 5,
+            stream_uuid: "00000000-0000-4000-8000-000000000005",
             display_recipient: "chan",
             timestamp: 1000,
           }),
           dmMsg({ id: 50, timestamp: 3000 }),
           streamMsg({
             id: "00000000-0000-4000-8000-000000000003",
-            stream_id: 8,
+            stream_uuid: "00000000-0000-4000-8000-000000000008",
             display_recipient: "chan2",
             timestamp: 5000,
           }),
@@ -1284,7 +1369,7 @@ describe("chatListStore", () => {
       const first = sorted[0]!;
       expect(first.type).toBe("stream");
       if (first.type === "stream") {
-        expect(first.stream_id).toBe(8);
+        expect(first.streamUuid).toBe(streamUuid(8));
       }
     });
 
@@ -1333,20 +1418,20 @@ describe("chatListStore", () => {
   describe("metadata upserts", () => {
     it("adds missing stream rows from metadata", () => {
       useChatListStore.getState().upsertStreamMetadataRows([
-        { streamId: 11, name: "engineering" },
-        { streamId: 12, name: "design" },
+        { streamUuid: "00000000-0000-4000-8000-000000000011", name: "engineering" },
+        { streamUuid: "00000000-0000-4000-8000-000000000012", name: "design" },
       ]);
 
       const streams = useChatListStore.getState().streamsMap;
-      expect(streams.has(11)).toBe(true);
-      expect(streams.has(12)).toBe(true);
-      expect(streams.get(11)?.topics.size).toBe(0);
+      expect(streams.has(streamUuid(11))).toBe(true);
+      expect(streams.has(streamUuid(12))).toBe(true);
+      expect(streams.get(streamUuid(11))?.topics.size).toBe(0);
     });
 
     it("stores channel-level add-members permissions from metadata", () => {
       useChatListStore.getState().upsertStreamMetadataRows([
         {
-          streamId: 11,
+          streamUuid: "00000000-0000-4000-8000-000000000011",
           name: "engineering",
           isArchived: true,
           creatorId: 77,
@@ -1357,7 +1442,7 @@ describe("chatListStore", () => {
         },
       ]);
 
-      const stream = useChatListStore.getState().streamsMap.get(11);
+      const stream = useChatListStore.getState().streamsMap.get(streamUuid(11));
       expect(stream?.isArchived).toBe(true);
       expect(stream?.creatorId).toBe(77);
       expect(stream?.inviteOnly).toBe(true);
@@ -1370,27 +1455,39 @@ describe("chatListStore", () => {
     });
 
     it("updates archived flag from metadata updates", () => {
-      useChatListStore
-        .getState()
-        .upsertStreamMetadataRows([{ streamId: 11, name: "engineering", isArchived: false }]);
-      expect(useChatListStore.getState().streamsMap.get(11)?.isArchived).toBe(false);
+      useChatListStore.getState().upsertStreamMetadataRows([
+        {
+          streamUuid: "00000000-0000-4000-8000-000000000011",
+          name: "engineering",
+          isArchived: false,
+        },
+      ]);
+      expect(useChatListStore.getState().streamsMap.get(streamUuid(11))?.isArchived).toBe(false);
 
-      useChatListStore
-        .getState()
-        .upsertStreamMetadataRows([{ streamId: 11, name: "engineering", isArchived: true }]);
-      expect(useChatListStore.getState().streamsMap.get(11)?.isArchived).toBe(true);
+      useChatListStore.getState().upsertStreamMetadataRows([
+        {
+          streamUuid: "00000000-0000-4000-8000-000000000011",
+          name: "engineering",
+          isArchived: true,
+        },
+      ]);
+      expect(useChatListStore.getState().streamsMap.get(streamUuid(11))?.isArchived).toBe(true);
     });
 
     it("keeps archived flag after setFromMessages rebuild", () => {
-      useChatListStore
-        .getState()
-        .upsertStreamMetadataRows([{ streamId: 11, name: "engineering", isArchived: true }]);
+      useChatListStore.getState().upsertStreamMetadataRows([
+        {
+          streamUuid: "00000000-0000-4000-8000-000000000011",
+          name: "engineering",
+          isArchived: true,
+        },
+      ]);
 
       useChatListStore.getState().setFromMessages(
         [
           streamMsg({
             id: "00000000-0000-4000-8000-000000000001",
-            stream_id: 11,
+            stream_uuid: "00000000-0000-4000-8000-000000000011",
             display_recipient: "engineering",
             timestamp: 1000,
           }),
@@ -1398,24 +1495,28 @@ describe("chatListStore", () => {
         10,
       );
 
-      expect(useChatListStore.getState().streamsMap.get(11)?.isArchived).toBe(true);
+      expect(useChatListStore.getState().streamsMap.get(streamUuid(11))?.isArchived).toBe(true);
     });
 
     it("keeps archived flag after addMessages merge", () => {
-      useChatListStore
-        .getState()
-        .upsertStreamMetadataRows([{ streamId: 11, name: "engineering", isArchived: true }]);
+      useChatListStore.getState().upsertStreamMetadataRows([
+        {
+          streamUuid: "00000000-0000-4000-8000-000000000011",
+          name: "engineering",
+          isArchived: true,
+        },
+      ]);
 
       useChatListStore.getState().addMessages([
         streamMsg({
           id: "00000000-0000-4000-8000-000000000002",
-          stream_id: 11,
+          stream_uuid: "00000000-0000-4000-8000-000000000011",
           display_recipient: "engineering",
           timestamp: 2000,
         }),
       ]);
 
-      expect(useChatListStore.getState().streamsMap.get(11)?.isArchived).toBe(true);
+      expect(useChatListStore.getState().streamsMap.get(streamUuid(11))?.isArchived).toBe(true);
     });
 
     it("adds personal DM rows from metadata with unread count", () => {
@@ -1446,7 +1547,7 @@ describe("chatListStore", () => {
         [
           streamMsg({
             id: "00000000-0000-4000-8000-000000000001",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             display_recipient: "engineering",
             timestamp: 1000,
           }),
@@ -1454,9 +1555,9 @@ describe("chatListStore", () => {
         10,
       );
 
-      useChatListStore.getState().renameStream(10, "platform");
+      useChatListStore.getState().renameStream(streamUuid(10), "platform");
 
-      const stream = useChatListStore.getState().streamsMap.get(10);
+      const stream = useChatListStore.getState().streamsMap.get(streamUuid(10));
       expect(stream?.name).toBe("platform");
     });
 
@@ -1465,13 +1566,13 @@ describe("chatListStore", () => {
         [
           streamMsg({
             id: "00000000-0000-4000-8000-000000000001",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             display_recipient: "engineering",
             subject: "general",
           }),
           streamMsg({
             id: "00000000-0000-4000-8000-000000000002",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             display_recipient: "engineering",
             subject: "release",
           }),
@@ -1480,10 +1581,10 @@ describe("chatListStore", () => {
         10,
       );
 
-      useChatListStore.getState().removeStream(10);
+      useChatListStore.getState().removeStream(streamUuid(10));
 
       const state = useChatListStore.getState();
-      expect(state.streamsMap.has(10)).toBe(false);
+      expect(state.streamsMap.has(streamUuid(10))).toBe(false);
       expect(state.messageIdToLocation.get("00000000-0000-4000-8000-000000000001")).toBeUndefined();
       expect(state.messageIdToLocation.get("00000000-0000-4000-8000-000000000002")).toBeUndefined();
       expect(state.messageIdToLocation.get("00000000-0000-4000-8000-000000000050")?.type).toBe(
@@ -1492,24 +1593,34 @@ describe("chatListStore", () => {
     });
 
     it("optimistically sets and rolls back stream archived flag", () => {
-      useChatListStore
-        .getState()
-        .upsertStreamMetadataRows([{ streamId: 10, name: "engineering", isArchived: false }]);
+      useChatListStore.getState().upsertStreamMetadataRows([
+        {
+          streamUuid: "00000000-0000-4000-8000-000000000010",
+          name: "engineering",
+          isArchived: false,
+        },
+      ]);
 
-      useChatListStore.getState().setStreamArchived(10, true);
-      expect(useChatListStore.getState().streamsMap.get(10)?.isArchived).toBe(true);
+      useChatListStore.getState().setStreamArchived(streamUuid(10), true);
+      expect(useChatListStore.getState().streamsMap.get(streamUuid(10))?.isArchived).toBe(true);
 
-      useChatListStore.getState().setStreamArchived(10, false);
-      expect(useChatListStore.getState().streamsMap.get(10)?.isArchived).toBe(false);
+      useChatListStore.getState().setStreamArchived(streamUuid(10), false);
+      expect(useChatListStore.getState().streamsMap.get(streamUuid(10))?.isArchived).toBe(false);
     });
 
     it("can rollback archived flag to undefined", () => {
-      useChatListStore
-        .getState()
-        .upsertStreamMetadataRows([{ streamId: 10, name: "engineering", isArchived: true }]);
+      useChatListStore.getState().upsertStreamMetadataRows([
+        {
+          streamUuid: "00000000-0000-4000-8000-000000000010",
+          name: "engineering",
+          isArchived: true,
+        },
+      ]);
 
-      useChatListStore.getState().setStreamArchived(10, undefined);
-      expect(useChatListStore.getState().streamsMap.get(10)?.isArchived).toBeUndefined();
+      useChatListStore.getState().setStreamArchived(streamUuid(10), undefined);
+      expect(
+        useChatListStore.getState().streamsMap.get(streamUuid(10))?.isArchived,
+      ).toBeUndefined();
     });
 
     it("moves stream topic and removes old topic key", () => {
@@ -1517,7 +1628,7 @@ describe("chatListStore", () => {
         [
           streamMsg({
             id: "00000000-0000-4000-8000-000000000001",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             display_recipient: "engineering",
             subject: "incident",
             timestamp: 1000,
@@ -1525,7 +1636,7 @@ describe("chatListStore", () => {
           }),
           streamMsg({
             id: "00000000-0000-4000-8000-000000000002",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             display_recipient: "engineering",
             subject: "release",
             timestamp: 2000,
@@ -1536,14 +1647,14 @@ describe("chatListStore", () => {
       );
 
       useChatListStore.getState().moveStreamTopic({
-        streamId: 10,
+        streamId: "00000000-0000-4000-8000-000000000010",
         oldTopic: "incident",
         newTopic: "\u2714 incident",
         messageIds: ["00000000-0000-4000-8000-000000000001"],
         anchorMessageId: "00000000-0000-4000-8000-000000000001",
       });
 
-      const stream = useChatListStore.getState().streamsMap.get(10);
+      const stream = useChatListStore.getState().streamsMap.get(streamUuid(10));
       expect(stream?.topics.has("incident")).toBe(false);
       expect(stream?.topics.has("\u2714 incident")).toBe(true);
     });
@@ -1553,14 +1664,14 @@ describe("chatListStore", () => {
         [
           streamMsg({
             id: "00000000-0000-4000-8000-000000000001",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             display_recipient: "engineering",
             subject: "incident",
             timestamp: 1000,
           }),
           streamMsg({
             id: "00000000-0000-4000-8000-000000000002",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             display_recipient: "engineering",
             subject: "release",
             timestamp: 2000,
@@ -1570,10 +1681,10 @@ describe("chatListStore", () => {
         10,
       );
 
-      useChatListStore.getState().removeStreamTopic(10, "incident");
+      useChatListStore.getState().removeStreamTopic(streamUuid(10), "incident");
 
       const state = useChatListStore.getState();
-      const stream = state.streamsMap.get(10);
+      const stream = state.streamsMap.get(streamUuid(10));
       expect(stream?.topics.has("incident")).toBe(false);
       expect(stream?.topics.has("release")).toBe(true);
       expect(state.messageIdToLocation.get("00000000-0000-4000-8000-000000000001")).toBeUndefined();
@@ -1590,7 +1701,7 @@ describe("chatListStore", () => {
         [
           streamMsg({
             id: "00000000-0000-4000-8000-000000000001",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             display_recipient: "engineering",
             subject: "incident",
             timestamp: 1000,
@@ -1598,7 +1709,7 @@ describe("chatListStore", () => {
           }),
           streamMsg({
             id: "00000000-0000-4000-8000-000000000002",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             display_recipient: "engineering",
             subject: "release",
             timestamp: 2000,
@@ -1608,9 +1719,9 @@ describe("chatListStore", () => {
         10,
       );
 
-      useChatListStore.getState().removeStreamTopic(10, "release");
+      useChatListStore.getState().removeStreamTopic(streamUuid(10), "release");
 
-      const stream = useChatListStore.getState().streamsMap.get(10);
+      const stream = useChatListStore.getState().streamsMap.get(streamUuid(10));
       expect(stream?.ts).toBe(1000);
       expect(stream?.lastMessageSenderName).toBe("Alice");
       expect(stream?.lastMessage).toBe("hello");
@@ -1621,7 +1732,7 @@ describe("chatListStore", () => {
         [
           streamMsg({
             id: "00000000-0000-4000-8000-000000000001",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             display_recipient: "engineering",
             subject: "incident",
             timestamp: 1000,
@@ -1630,9 +1741,9 @@ describe("chatListStore", () => {
         10,
       );
 
-      useChatListStore.getState().removeStreamTopic(10, "incident");
+      useChatListStore.getState().removeStreamTopic(streamUuid(10), "incident");
 
-      const stream = useChatListStore.getState().streamsMap.get(10);
+      const stream = useChatListStore.getState().streamsMap.get(streamUuid(10));
       expect(stream).toBeDefined();
       expect(stream?.topics.size).toBe(0);
       expect(stream?.lastMessage).toBe("");
@@ -1645,7 +1756,7 @@ describe("chatListStore", () => {
         [
           streamMsg({
             id: "00000000-0000-4000-8000-000000000001",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             display_recipient: "engineering",
             subject: "incident",
             timestamp: 1000,
@@ -1655,7 +1766,7 @@ describe("chatListStore", () => {
           }),
           streamMsg({
             id: "00000000-0000-4000-8000-000000000002",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             display_recipient: "engineering",
             subject: "\u2714 incident",
             timestamp: 2000,
@@ -1668,18 +1779,18 @@ describe("chatListStore", () => {
       );
 
       useChatListStore.getState().moveStreamTopic({
-        streamId: 10,
+        streamId: "00000000-0000-4000-8000-000000000010",
         oldTopic: "incident",
         newTopic: "\u2714 incident",
         messageIds: ["00000000-0000-4000-8000-000000000001"],
         anchorMessageId: "00000000-0000-4000-8000-000000000001",
       });
 
-      const stream = useChatListStore.getState().streamsMap.get(10);
+      const stream = useChatListStore.getState().streamsMap.get(streamUuid(10));
       const mergedTopic = stream?.topics.get("\u2714 incident");
       expect(mergedTopic).toBeDefined();
       expect(stream?.topics.size).toBe(1);
-      expect(mergedTopic?.unreadCount).toBe(1);
+      expect(mergedTopic?.unreadCount).toBe(0);
       expect(mergedTopic?.lastMessageSenderName).toBe("Bob");
       expect(stream?.lastMessageSenderName).toBe("Bob");
     });
@@ -1689,7 +1800,7 @@ describe("chatListStore", () => {
         [
           streamMsg({
             id: "00000000-0000-4000-8000-000000000001",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             display_recipient: "engineering",
             subject: "incident",
           }),
@@ -1698,7 +1809,7 @@ describe("chatListStore", () => {
       );
 
       useChatListStore.getState().moveStreamTopic({
-        streamId: 10,
+        streamId: "00000000-0000-4000-8000-000000000010",
         oldTopic: "incident",
         newTopic: "\u2714 incident",
         messageIds: ["00000000-0000-4000-8000-000000000001"],
@@ -1717,14 +1828,14 @@ describe("chatListStore", () => {
         [
           streamMsg({
             id: "00000000-0000-4000-8000-000000000001",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             display_recipient: "engineering",
             subject: "incident",
             timestamp: 1000,
           }),
           streamMsg({
             id: "00000000-0000-4000-8000-000000000002",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             display_recipient: "engineering",
             subject: "incident",
             timestamp: 1001,
@@ -1734,14 +1845,14 @@ describe("chatListStore", () => {
       );
 
       useChatListStore.getState().moveStreamTopic({
-        streamId: 10,
+        streamId: "00000000-0000-4000-8000-000000000010",
         oldTopic: "incident",
         newTopic: "\u2714 incident",
         messageIds: ["00000000-0000-4000-8000-000000000001"],
         anchorMessageId: "00000000-0000-4000-8000-000000000001",
       });
 
-      const stream = useChatListStore.getState().streamsMap.get(10);
+      const stream = useChatListStore.getState().streamsMap.get(streamUuid(10));
       expect(stream?.topics.has("incident")).toBe(true);
       expect(stream?.topics.has("\u2714 incident")).toBe(false);
       const movedLocation = useChatListStore
@@ -1763,7 +1874,7 @@ describe("chatListStore", () => {
         [
           streamMsg({
             id: "00000000-0000-4000-8000-000000000001",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             display_recipient: "engineering",
             subject: "incident",
             timestamp: 1000,
@@ -1776,7 +1887,7 @@ describe("chatListStore", () => {
       useChatListStore.getState().hydrateFromIndexedDbSnapshot(snapshot);
 
       useChatListStore.getState().moveStreamTopic({
-        streamId: 10,
+        streamId: "00000000-0000-4000-8000-000000000010",
         oldTopic: "incident",
         newTopic: "\u2714 incident",
         messageIds: ["00000000-0000-4000-8000-000000000001"],
@@ -1784,14 +1895,14 @@ describe("chatListStore", () => {
       useChatListStore.getState().addMessages([
         streamMsg({
           id: "00000000-0000-4000-8000-000000000002",
-          stream_id: 10,
+          stream_uuid: "00000000-0000-4000-8000-000000000010",
           display_recipient: "engineering",
           subject: "\u2714 incident",
           timestamp: 2000,
         }),
       ]);
 
-      const stream = useChatListStore.getState().streamsMap.get(10);
+      const stream = useChatListStore.getState().streamsMap.get(streamUuid(10));
       expect(stream?.topics.has("incident")).toBe(false);
       expect(stream?.topics.has("\u2714 incident")).toBe(true);
       expect(stream?.topics.size).toBe(1);
@@ -1799,14 +1910,14 @@ describe("chatListStore", () => {
 
     it("moves topic to another stream and removes old topic key", () => {
       useChatListStore.getState().upsertStreamMetadataRows([
-        { streamId: 10, name: "engineering" },
-        { streamId: 20, name: "dev" },
+        { streamUuid: "00000000-0000-4000-8000-000000000010", name: "engineering" },
+        { streamUuid: "00000000-0000-4000-8000-000000000020", name: "dev" },
       ]);
       useChatListStore.getState().setFromMessages(
         [
           streamMsg({
             id: "00000000-0000-4000-8000-000000000001",
-            stream_id: 10,
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
             display_recipient: "engineering",
             subject: "incident",
             timestamp: 1000,
@@ -1814,7 +1925,7 @@ describe("chatListStore", () => {
           }),
           streamMsg({
             id: "00000000-0000-4000-8000-000000000002",
-            stream_id: 20,
+            stream_uuid: "00000000-0000-4000-8000-000000000020",
             display_recipient: "dev",
             subject: "release",
             timestamp: 2000,
@@ -1825,16 +1936,16 @@ describe("chatListStore", () => {
       );
 
       useChatListStore.getState().moveTopicToStream({
-        sourceStreamId: 10,
-        targetStreamId: 20,
+        sourceStreamId: "00000000-0000-4000-8000-000000000010",
+        targetStreamId: "00000000-0000-4000-8000-000000000020",
         oldTopic: "incident",
         newTopic: "incident",
         messageIds: ["00000000-0000-4000-8000-000000000001"],
         anchorMessageId: "00000000-0000-4000-8000-000000000001",
       });
 
-      const source = useChatListStore.getState().streamsMap.get(10);
-      const target = useChatListStore.getState().streamsMap.get(20);
+      const source = useChatListStore.getState().streamsMap.get(streamUuid(10));
+      const target = useChatListStore.getState().streamsMap.get(streamUuid(20));
       expect(source).toBeDefined();
       expect(source?.topics.has("incident")).toBe(false);
       expect(target?.topics.has("incident")).toBe(true);
@@ -1842,7 +1953,7 @@ describe("chatListStore", () => {
         useChatListStore.getState().messageIdToLocation.get("00000000-0000-4000-8000-000000000001"),
       ).toEqual({
         type: "stream",
-        stream_id: 20,
+        streamUuid: "00000000-0000-4000-8000-000000000020",
         topic: "incident",
       });
     });

@@ -1,8 +1,7 @@
 /**
  * Tests for Messenger API (messenger-streams module).
  */
-import { describe, expect, it, vi } from "vitest";
-import { getMockMessengerApi } from "./messenger.test.setup";
+import { describe, expect, it } from "vitest";
 import {
   addMembersToStream,
   createPrivateMessageStream,
@@ -17,8 +16,11 @@ import {
   removeMembersFromStream,
   resolveOrCreateDirectMessageStream,
   unarchiveStream,
+  toggleStreamTopicDone,
   updateStream,
+  updateStreamTopic,
 } from "./messenger-streams";
+import { getMockMessengerApi } from "./messenger.test.setup";
 const mockMessengerApi = getMockMessengerApi();
 
 function mockMyStreamsResponse(rows: unknown[]): void {
@@ -130,6 +132,7 @@ describe("createPrivateMessageStream", () => {
           invite_only: false,
           announce: false,
           private: true,
+          unread_count: 0,
         },
         raw: { statusText: "Created" },
       })
@@ -292,6 +295,7 @@ describe("findPrivateStreamForUserUuid", () => {
           invite_only: false,
           announce: false,
           private: true,
+          unread_count: 0,
         },
       ],
       PEER_UUID,
@@ -781,6 +785,118 @@ describe("deleteTopic", () => {
       attempts: 1,
       errorCode: "network_error",
     });
+  });
+});
+
+describe("updateStreamTopic", () => {
+  it("updates only changed topic fields through workspace API", async () => {
+    const responseTopic = {
+      uuid: TOPIC_UUID,
+      stream_uuid: STREAM_UUID,
+      name: "postmortem",
+      unread_count: 3,
+      is_default: false,
+      is_done: false,
+    };
+    mockMessengerApi.putJsonWithBase.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: responseTopic,
+      raw: { statusText: "OK" },
+    });
+
+    await expect(updateStreamTopic({ topicUuid: TOPIC_UUID, name: "postmortem" })).resolves.toEqual(
+      { ok: true, topic: responseTopic },
+    );
+    expect(mockMessengerApi.putJsonWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      `/stream_topics/${TOPIC_UUID}`,
+      { name: "postmortem" },
+    );
+  });
+
+  it("updates stream assignment without sending unchanged name", async () => {
+    const responseTopic = {
+      uuid: TOPIC_UUID,
+      stream_uuid: OTHER_STREAM_UUID,
+      name: "incident",
+      unread_count: 3,
+      is_default: false,
+      is_done: false,
+    };
+    mockMessengerApi.putJsonWithBase.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: responseTopic,
+      raw: { statusText: "OK" },
+    });
+
+    await expect(
+      updateStreamTopic({ topicUuid: TOPIC_UUID, streamUuid: OTHER_STREAM_UUID }),
+    ).resolves.toEqual({ ok: true, topic: responseTopic });
+    expect(mockMessengerApi.putJsonWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      `/stream_topics/${TOPIC_UUID}`,
+      { stream_uuid: OTHER_STREAM_UUID },
+    );
+  });
+
+  it("returns invalid_topic_uuid before calling the API", async () => {
+    await expect(
+      updateStreamTopic({ topicUuid: "not-a-uuid", streamUuid: STREAM_UUID, name: "postmortem" }),
+    ).resolves.toEqual({ ok: false, topic: null, errorCode: "invalid_topic_uuid" });
+    expect(mockMessengerApi.putJsonWithBase).not.toHaveBeenCalled();
+  });
+
+  it("returns http error for non-ok response", async () => {
+    mockMessengerApi.putJsonWithBase.mockResolvedValue({
+      ok: false,
+      status: 400,
+      data: { msg: "Bad Request" },
+      raw: { statusText: "Bad Request" },
+    });
+
+    await expect(updateStreamTopic({ topicUuid: TOPIC_UUID, name: "postmortem" })).resolves.toEqual(
+      { ok: false, topic: null, errorCode: "http_400" },
+    );
+  });
+});
+
+describe("toggleStreamTopicDone", () => {
+  it("toggles server-owned topic done state through workspace action API", async () => {
+    const responseTopic = {
+      uuid: TOPIC_UUID,
+      stream_uuid: STREAM_UUID,
+      name: "incident",
+      unread_count: 3,
+      is_default: false,
+      is_done: true,
+    };
+    mockMessengerApi.postJsonWithBase.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: responseTopic,
+      raw: { statusText: "OK" },
+    });
+
+    await expect(toggleStreamTopicDone(TOPIC_UUID)).resolves.toEqual({
+      ok: true,
+      topic: responseTopic,
+    });
+    expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      `/stream_topics/${TOPIC_UUID}/actions/toggle_done/invoke`,
+      {},
+    );
+  });
+
+  it("returns invalid_topic_uuid before calling the action API", async () => {
+    await expect(toggleStreamTopicDone("not-a-uuid")).resolves.toEqual({
+      ok: false,
+      topic: null,
+      errorCode: "invalid_topic_uuid",
+    });
+    expect(mockMessengerApi.postJsonWithBase).not.toHaveBeenCalled();
   });
 });
 

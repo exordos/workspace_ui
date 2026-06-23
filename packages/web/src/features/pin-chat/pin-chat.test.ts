@@ -18,6 +18,8 @@ vi.mock("~/shared/api/client", () => {
 });
 
 describe("usePinStore", () => {
+  const STREAM_UUID = "11111111-1111-4111-8111-111111111111";
+
   afterEach(() => {
     usePinStore.getState().clear();
   });
@@ -91,13 +93,13 @@ describe("usePinStore", () => {
       {
         folderUuid: "f1",
         folderItemUuid: "item-11",
-        chatId: "11",
+        chatId: `stream:${STREAM_UUID}:general`,
         orderIndex: 0,
         pinnedAt: "2026-03-14T00:00:00Z",
       },
     ]);
-    expect(usePinStore.getState().isPinned("f1", "stream:11:general")).toBe(true);
-    expect(usePinStore.getState().getPinnedSortIndex("f1", "stream:11:general")).toBe(0);
+    expect(usePinStore.getState().isPinned("f1", `stream:${STREAM_UUID}`)).toBe(true);
+    expect(usePinStore.getState().getPinnedSortIndex("f1", `stream:${STREAM_UUID}`)).toBe(0);
   });
 
   it("setFromServer keeps folder item mapping and ignores non-pinned rows", () => {
@@ -163,12 +165,12 @@ describe("usePinStore", () => {
       {
         folderUuid: "folder-1",
         folderItemUuid: "item-11",
-        chatId: "11",
+        chatId: `stream:${STREAM_UUID}:general`,
         orderIndex: 0,
         pinnedAt: null,
       },
     ]);
-    expect(usePinStore.getState().getFolderItemUuid("folder-1", "stream:11:general")).toBe(
+    expect(usePinStore.getState().getFolderItemUuid("folder-1", `stream:${STREAM_UUID}`)).toBe(
       "item-11",
     );
   });

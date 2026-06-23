@@ -110,17 +110,19 @@ describe("messageToStreamEntry", () => {
     expect(entry?.topic.lastMessageSenderName).toBeUndefined();
   });
 
-  it("keeps empty subject distinct from literal general", () => {
-    const emptyTopic = messageToStreamEntry({
+  it("uses topic uuid for native stream messages without topic subject", () => {
+    const topicUuid = "00000000-0000-4000-8000-0000000000d0";
+    const nativeTopic = messageToStreamEntry({
       id: "00000000-0000-4000-8000-000000000011",
       sender_id: 20,
       sender_full_name: "Bob",
-      content: "empty topic",
+      content: "native topic",
       timestamp: 1_700_000_002,
       type: "stream",
       stream_uuid: STREAM_UUID,
       display_recipient: "engineering",
       subject: "",
+      topic_uuid: topicUuid,
       flags: [],
     });
     const generalTopic = messageToStreamEntry({
@@ -136,7 +138,8 @@ describe("messageToStreamEntry", () => {
       flags: [],
     });
 
-    expect(emptyTopic?.topic.subject).toBe("");
+    expect(nativeTopic?.topic.subject).toBe(topicUuid);
+    expect(nativeTopic?.topic.topicUuid).toBe(topicUuid);
     expect(generalTopic?.topic.subject).toBe("general");
   });
 });

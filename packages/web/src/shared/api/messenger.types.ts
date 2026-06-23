@@ -97,6 +97,7 @@ export interface MessengerStreamTopic {
   stream_uuid: string;
   unread_count: number;
   is_default: boolean;
+  is_done: boolean;
   project_id?: string;
   created_at?: string;
   updated_at?: string;

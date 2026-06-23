@@ -13,9 +13,10 @@ interface IsFocusedMessageLoadedInRouteParams {
   isDmView: boolean;
   currentUserId: UserId | null;
   dmRecipientIds: UserId[];
-  resolvedStreamId: number | null;
+  resolvedStreamId: string | null;
   topicName: string | undefined;
   streamRouteTopic: string;
+  activeTopicUuid?: string | undefined;
 }
 
 export function isFocusedMessageLoadedInRoute(
@@ -30,6 +31,7 @@ export function isFocusedMessageLoadedInRoute(
     resolvedStreamId,
     topicName,
     streamRouteTopic,
+    activeTopicUuid,
   } = params;
   if (focusedMessageId == null) return false;
   const focusedMessage = messages.find((message) => message.id === focusedMessageId);
@@ -46,7 +48,16 @@ export function isFocusedMessageLoadedInRoute(
     return false;
   }
   if (topicName == null) return true;
-  return normalizeStreamTopicForMessageCache(focusedMessage.subject ?? "") === streamRouteTopic;
+  const routeTopicUuid = activeTopicUuid?.trim().toLowerCase();
+  const messageTopicUuid = focusedMessage.topic_uuid?.trim().toLowerCase();
+  if (routeTopicUuid != null && routeTopicUuid.length > 0) {
+    return messageTopicUuid === routeTopicUuid;
+  }
+  const messageTopic = focusedMessage.subject ?? focusedMessage.topic_uuid ?? "";
+  return (
+    normalizeStreamTopicForMessageCache(messageTopic) ===
+    normalizeStreamTopicForMessageCache(streamRouteTopic)
+  );
 }
 
 /** Skip anchor API reload when the focused id is in-route and already present in the store. */

@@ -12,7 +12,7 @@ export function useLayoutChatInfoSync(options: {
   dmParticipantIds: UserId[];
   activeStreamId: string | null;
   activeStreamName: string | null;
-  topics: { name: string; topicUuid?: string; unreadCount: number }[];
+  topics: { name: string; topicUuid?: string; unreadCount: number; isDone?: boolean }[];
   usersMapForChatInfo: Map<string, UserRecord>;
 }) {
   const {

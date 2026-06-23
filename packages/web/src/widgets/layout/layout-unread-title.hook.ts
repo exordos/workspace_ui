@@ -3,29 +3,72 @@ import { resolvePersonalDmSidebarTitle } from "~/entities/chat-list/chat-list-fo
 import type { WorkspaceInstance } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
+import { decodeTopicFromRoute } from "~/shared/lib/topic-identity.lib";
+import { formatTopicDoneLabel } from "~/shared/lib/topic-resolve";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
 import { getDmById, parseDmSlugToUserIds, parseStreamSlug } from "~/widgets/sidebar/sidebar.lib";
-import type { StreamWithLast } from "~/widgets/sidebar/sidebar.types";
-import {
-  computeInstanceUnreadCount,
-  buildActiveChatWindowTitle,
-} from "./layout-instance-unread.lib";
+import { buildActiveChatWindowTitle } from "./layout-instance-unread.lib";
 
 type DmSidebarChat = Extract<SidebarChat, { type: "dm" }>;
+
+interface TitleTopicEntry {
+  subject: string;
+  topicUuid?: string;
+  isDone?: boolean;
+}
+
+interface TitleStreamEntry {
+  name: string;
+  topics?: Map<string, TitleTopicEntry>;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function normalizeRouteUuid(value: string): string | null {
+  const trimmed = value.trim().toLowerCase();
+  return UUID_RE.test(trimmed) ? trimmed : null;
+}
+
+function decodeTitleTopicFromRoute(topicSegment: string): string {
+  try {
+    return decodeTopicFromRoute(decodeURIComponent(topicSegment));
+  } catch {
+    return decodeTopicFromRoute(topicSegment);
+  }
+}
+
+export function resolveActiveTopicTitle(
+  activeTopic: string | null,
+  streamEntry: TitleStreamEntry | undefined,
+): string | null {
+  if (activeTopic == null) return null;
+  const decoded = decodeTitleTopicFromRoute(activeTopic);
+  const routeTopicUuid = normalizeRouteUuid(decoded);
+  if (streamEntry?.topics != null) {
+    for (const topic of streamEntry.topics.values()) {
+      const topicUuid = topic.topicUuid != null ? normalizeRouteUuid(topic.topicUuid) : null;
+      if (routeTopicUuid != null && topicUuid === routeTopicUuid) {
+        return formatTopicDoneLabel(topic.subject, topic.isDone === true);
+      }
+      if (topic.subject === decoded) {
+        return formatTopicDoneLabel(topic.subject, topic.isDone === true);
+      }
+    }
+  }
+  return decoded;
+}
 
 export function useLayoutUnreadAndTitle(options: {
   instances: WorkspaceInstance[];
   currentInstanceId: string | null;
-  streams: StreamWithLast[];
+  unreadCount: number;
   dms: SidebarChat[];
-  streamsMap: Map<number, { name: string }>;
+  streamsMap: ReadonlyMap<string, TitleStreamEntry>;
   activeStreamSlug: string | undefined;
   activeTopic: string | null;
   dmIdParam: string | undefined;
   currentUserId: UserId | null;
-  isStreamMuted?: (streamId: string) => boolean;
-  isEffectivelyMuted?: (streamId: string, topic: string) => boolean;
 }): {
   realmIcon: string | undefined;
   unreadCount: number;
@@ -34,15 +77,13 @@ export function useLayoutUnreadAndTitle(options: {
   const {
     instances,
     currentInstanceId,
-    streams,
+    unreadCount,
     dms,
     streamsMap,
     activeStreamSlug,
     activeTopic,
     dmIdParam,
     currentUserId,
-    isStreamMuted,
-    isEffectivelyMuted,
   } = options;
 
   const realmIcon = useMemo(
@@ -50,23 +91,23 @@ export function useLayoutUnreadAndTitle(options: {
     [instances, currentInstanceId],
   );
 
-  const unreadCount = useMemo(
-    () =>
-      computeInstanceUnreadCount({
-        streams,
-        dms,
-        isStreamMuted,
-        isEffectivelyMuted,
-      }),
-    [streams, dms, isStreamMuted, isEffectivelyMuted],
-  );
-
-  const activeStreamNameForTitle = useMemo(() => {
+  const activeStreamEntryForTitle = useMemo(() => {
     if (!activeStreamSlug) return null;
     const parsedActiveStream = parseStreamSlug(activeStreamSlug);
     if (!parsedActiveStream) return null;
-    return streamsMap.get(parsedActiveStream.stream_uuid)?.name ?? parsedActiveStream.stream_name;
+    return {
+      streamUuid: parsedActiveStream.streamUuid,
+      entry: streamsMap.get(parsedActiveStream.streamUuid),
+    };
   }, [activeStreamSlug, streamsMap]);
+
+  const activeStreamNameForTitle =
+    activeStreamEntryForTitle?.entry?.name ?? activeStreamEntryForTitle?.streamUuid ?? null;
+
+  const activeTopicNameForTitle = useMemo(
+    () => resolveActiveTopicTitle(activeTopic, activeStreamEntryForTitle?.entry),
+    [activeTopic, activeStreamEntryForTitle?.entry],
+  );
 
   const activeDmChatForTitle = useMemo((): DmSidebarChat | undefined => {
     if (dmIdParam == null || dmIdParam === "") return undefined;
@@ -126,9 +167,9 @@ export function useLayoutUnreadAndTitle(options: {
       buildActiveChatWindowTitle({
         dmName: resolvedDmNameForTitle,
         streamName: activeStreamNameForTitle,
-        topicName: activeTopic,
+        topicName: activeTopicNameForTitle,
       }),
-    [resolvedDmNameForTitle, activeStreamNameForTitle, activeTopic],
+    [resolvedDmNameForTitle, activeStreamNameForTitle, activeTopicNameForTitle],
   );
 
   return { realmIcon, unreadCount, activeChatWindowTitle };

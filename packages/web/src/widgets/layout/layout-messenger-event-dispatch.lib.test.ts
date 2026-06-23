@@ -14,6 +14,12 @@ import type {
   LayoutMessengerEventDispatchContext,
 } from "./layout-messenger-event-dispatch.types";
 
+const STREAM_UUID_10 = "00000000-0000-4000-8000-000000000010";
+const STREAM_UUID_11 = "00000000-0000-4000-8000-000000000011";
+const STREAM_UUID_16 = "00000000-0000-4000-8000-000000000016";
+const STREAM_UUID_20 = "00000000-0000-4000-8000-000000000020";
+const STREAM_UUID_42 = "00000000-0000-4000-8000-000000000042";
+
 function buildCtx(
   overrides: {
     updateMessageContentMock?: ReturnType<typeof vi.fn>;
@@ -88,7 +94,7 @@ function buildCtx(
       markStarredSummaryStale: noop,
       applyStarredSummaryFlagEvent: noop,
     },
-    inbox: { markStale: noop, markAsRead: noop, clearEntries: noop },
+    inbox: { markStale: noop, clearEntries: noop },
     notifications: {
       show: vi.fn().mockResolvedValue(undefined),
       closeByTag: noop,
@@ -160,7 +166,7 @@ function mockMsg(id: number | string, overrides: Partial<MockMessage> = {}): Moc
     id: testMessageId(id),
     sender_id: 99,
     sender_full_name: "Alice",
-    stream_id: null,
+    stream_uuid: null,
     subject: "",
     content: "hi",
     timestamp: testMessageOrdinal(testMessageOrdinal(id)),
@@ -377,7 +383,7 @@ describe("dispatchMessengerEvent", () => {
         id: "00000000-0000-4000-8000-000000000009",
         sender_id: 1,
         sender_full_name: "Alice",
-        stream_id: 5,
+        stream_uuid: "00000000-0000-4000-8000-000000000005",
         subject: "general",
         content: "https://example.com",
         timestamp: 1,
@@ -393,7 +399,7 @@ describe("dispatchMessengerEvent", () => {
         id: "00000000-0000-4000-8000-000000000009",
         sender_id: 1,
         sender_full_name: "Alice",
-        stream_id: 5,
+        stream_uuid: "00000000-0000-4000-8000-000000000005",
         subject: "general",
         content: "https://example.com",
         timestamp: 1,
@@ -435,7 +441,7 @@ describe("dispatchMessengerEvent", () => {
           id: 3,
           type: "update_message",
           message_id: "00000000-0000-4000-8000-000000000099",
-          stream_id: 42,
+          stream_uuid: "00000000-0000-4000-8000-000000000042",
           orig_subject: "incident",
           subject: "\u2714 incident",
           message_ids: [
@@ -447,7 +453,7 @@ describe("dispatchMessengerEvent", () => {
         ctx,
       );
       expect(moveStreamTopicMock).toHaveBeenCalledWith({
-        streamId: 42,
+        streamId: "00000000-0000-4000-8000-000000000042",
         oldTopic: "incident",
         newTopic: "\u2714 incident",
         messageIds: [
@@ -458,7 +464,7 @@ describe("dispatchMessengerEvent", () => {
         anchorMessageId: "00000000-0000-4000-8000-000000000099",
       });
       expect(moveStreamTopicMessagesMock).toHaveBeenCalledWith({
-        streamId: 42,
+        streamId: "00000000-0000-4000-8000-000000000042",
         oldTopic: "incident",
         newTopic: "\u2714 incident",
         messageIds: [
@@ -470,7 +476,7 @@ describe("dispatchMessengerEvent", () => {
       });
     });
 
-    it("moves stream topic to another channel when new_stream_id is present", () => {
+    it("moves stream topic to another channel when new_stream_uuid is present", () => {
       const {
         ctx,
         moveStreamTopicMock,
@@ -483,9 +489,9 @@ describe("dispatchMessengerEvent", () => {
       });
       ctx.chatList.streamsMap = new Map([
         [
-          20,
+          STREAM_UUID_20,
           {
-            stream_id: 20,
+            streamUuid: STREAM_UUID_20,
             name: "dev",
             lastMessage: "",
             time: "",
@@ -499,8 +505,8 @@ describe("dispatchMessengerEvent", () => {
           id: 4,
           type: "update_message",
           message_id: "00000000-0000-4000-8000-000000000099",
-          stream_id: 10,
-          new_stream_id: 20,
+          stream_uuid: "00000000-0000-4000-8000-000000000010",
+          new_stream_uuid: STREAM_UUID_20,
           orig_subject: "incident",
           subject: "incident",
           message_ids: [
@@ -511,8 +517,8 @@ describe("dispatchMessengerEvent", () => {
         ctx,
       );
       expect(moveTopicToStreamMock).toHaveBeenCalledWith({
-        sourceStreamId: 10,
-        targetStreamId: 20,
+        sourceStreamId: "00000000-0000-4000-8000-000000000010",
+        targetStreamId: "00000000-0000-4000-8000-000000000020",
         oldTopic: "incident",
         newTopic: "incident",
         messageIds: [
@@ -522,8 +528,8 @@ describe("dispatchMessengerEvent", () => {
         anchorMessageId: "00000000-0000-4000-8000-000000000099",
       });
       expect(moveTopicToStreamMessagesMock).toHaveBeenCalledWith({
-        sourceStreamId: 10,
-        targetStreamId: 20,
+        sourceStreamId: "00000000-0000-4000-8000-000000000010",
+        targetStreamId: "00000000-0000-4000-8000-000000000020",
         oldTopic: "incident",
         newTopic: "incident",
         messageIds: [
@@ -544,7 +550,7 @@ describe("dispatchMessengerEvent", () => {
           id: 4,
           type: "update_message",
           message_id: "00000000-0000-4000-8000-000000000007",
-          stream_id: 42,
+          stream_uuid: "00000000-0000-4000-8000-000000000042",
           subject: "incident",
         },
         ctx,
@@ -563,7 +569,7 @@ describe("dispatchMessengerEvent", () => {
             content: "first",
             timestamp: 1000,
             type: "stream",
-            stream_id: 42,
+            stream_uuid: "00000000-0000-4000-8000-000000000042",
             display_recipient: "engineering",
             subject: "incident",
             flags: [],
@@ -589,7 +595,7 @@ describe("dispatchMessengerEvent", () => {
           id: 10,
           type: "update_message",
           message_id: "00000000-0000-4000-8000-000000000001",
-          stream_id: 42,
+          stream_uuid: "00000000-0000-4000-8000-000000000042",
           orig_subject: "incident",
           subject: "\u2714 incident",
           message_ids: ["00000000-0000-4000-8000-000000000001"],
@@ -605,7 +611,7 @@ describe("dispatchMessengerEvent", () => {
         integrationCtx,
       );
 
-      const stream = useChatListStore.getState().streamsMap.get(42);
+      const stream = useChatListStore.getState().streamsMap.get(STREAM_UUID_42);
       expect(stream?.topics.has("\u2714 incident")).toBe(true);
       expect(stream?.topics.get("\u2714 incident")?.lastMessageId).toBe(undefined);
     });
@@ -620,14 +626,14 @@ describe("dispatchMessengerEvent", () => {
         {
           id: 3,
           type: "user_topic",
-          stream_id: 42,
+          stream_uuid: "00000000-0000-4000-8000-000000000042",
           topic_name: "incidents",
           visibility_policy: 0,
         },
         ctx,
       );
 
-      expect(clearSpy).toHaveBeenCalledWith(42, "incidents");
+      expect(clearSpy).toHaveBeenCalledWith(STREAM_UUID_42, "incidents");
     });
 
     it("maps policy=3 (followed) to separate followed topic state", () => {
@@ -638,14 +644,14 @@ describe("dispatchMessengerEvent", () => {
         {
           id: 4,
           type: "user_topic",
-          stream_id: 42,
+          stream_uuid: "00000000-0000-4000-8000-000000000042",
           topic_name: "incidents",
           visibility_policy: 3,
         },
         ctx,
       );
 
-      expect(followSpy).toHaveBeenCalledWith(42, "incidents");
+      expect(followSpy).toHaveBeenCalledWith(STREAM_UUID_42, "incidents");
     });
 
     it("normalizes user_topic names before updating mute store", () => {
@@ -656,14 +662,14 @@ describe("dispatchMessengerEvent", () => {
         {
           id: 5,
           type: "user_topic",
-          stream_id: 42,
+          stream_uuid: "00000000-0000-4000-8000-000000000042",
           topic_name: "  incidents  ",
           visibility_policy: 3,
         },
         ctx,
       );
 
-      expect(followSpy).toHaveBeenCalledWith(42, "incidents");
+      expect(followSpy).toHaveBeenCalledWith(STREAM_UUID_42, "incidents");
     });
   });
 
@@ -677,14 +683,14 @@ describe("dispatchMessengerEvent", () => {
           id: 90,
           type: "subscription",
           op: "update",
-          stream_id: 42,
+          stream_uuid: "00000000-0000-4000-8000-000000000042",
           property: "desktop_notifications",
           value: true,
         },
         ctx,
       );
 
-      expect(desktopSpy).toHaveBeenCalledWith(42, true);
+      expect(desktopSpy).toHaveBeenCalledWith(STREAM_UUID_42, true);
     });
 
     it("updates audible_notifications on subscription update", () => {
@@ -696,14 +702,14 @@ describe("dispatchMessengerEvent", () => {
           id: 91,
           type: "subscription",
           op: "update",
-          stream_id: 42,
+          stream_uuid: "00000000-0000-4000-8000-000000000042",
           property: "audible_notifications",
           value: false,
         },
         ctx,
       );
 
-      expect(audibleSpy).toHaveBeenCalledWith(42, false);
+      expect(audibleSpy).toHaveBeenCalledWith(STREAM_UUID_42, false);
     });
   });
 
@@ -719,14 +725,20 @@ describe("dispatchMessengerEvent", () => {
           id: 18,
           type: "stream",
           op: "create",
-          streams: [{ stream_id: 42, name: "engineering", creator_id: 77 }],
+          streams: [
+            {
+              stream_uuid: "00000000-0000-4000-8000-000000000042",
+              name: "engineering",
+              creator_id: 77,
+            },
+          ],
         },
         ctx,
       );
 
       expect(upsertSpy).toHaveBeenCalledWith([
         {
-          streamId: 42,
+          streamUuid: "00000000-0000-4000-8000-000000000042",
           name: "engineering",
           creatorId: 77,
         },
@@ -742,14 +754,20 @@ describe("dispatchMessengerEvent", () => {
           id: 181,
           type: "stream",
           op: "create",
-          streams: [{ stream_id: 42, name: "engineering", is_archived: true }],
+          streams: [
+            {
+              stream_uuid: "00000000-0000-4000-8000-000000000042",
+              name: "engineering",
+              is_archived: true,
+            },
+          ],
         },
         ctx,
       );
 
       expect(upsertSpy).toHaveBeenCalledWith([
         {
-          streamId: 42,
+          streamUuid: "00000000-0000-4000-8000-000000000042",
           name: "engineering",
           isArchived: true,
         },
@@ -767,21 +785,21 @@ describe("dispatchMessengerEvent", () => {
           id: 19,
           type: "stream",
           op: "update",
-          stream_id: 42,
+          stream_uuid: "00000000-0000-4000-8000-000000000042",
           property: "name",
           value: "engineering v2",
         },
         ctx,
       );
 
-      expect(renameSpy).toHaveBeenCalledWith(42, "engineering v2");
+      expect(renameSpy).toHaveBeenCalledWith(STREAM_UUID_42, "engineering v2");
     });
 
     it("updates archived flag on stream update(is_archived)", () => {
       const { ctx } = buildCtx();
       const upsertSpy = vi.spyOn(ctx.chatList, "upsertStreamMetadataRows");
-      ctx.chatList.streamsMap.set(42, {
-        stream_id: 42,
+      ctx.chatList.streamsMap.set(STREAM_UUID_42, {
+        streamUuid: "00000000-0000-4000-8000-000000000042",
         name: "engineering",
         lastMessage: "",
         time: "",
@@ -794,7 +812,7 @@ describe("dispatchMessengerEvent", () => {
           id: 191,
           type: "stream",
           op: "update",
-          stream_id: 42,
+          stream_uuid: "00000000-0000-4000-8000-000000000042",
           property: "is_archived",
           value: true,
         },
@@ -803,7 +821,7 @@ describe("dispatchMessengerEvent", () => {
 
       expect(upsertSpy).toHaveBeenCalledWith([
         {
-          streamId: 42,
+          streamUuid: "00000000-0000-4000-8000-000000000042",
           name: "engineering",
           isArchived: true,
         },
@@ -821,12 +839,12 @@ describe("dispatchMessengerEvent", () => {
           id: 20,
           type: "stream",
           op: "delete",
-          stream_id: 42,
+          stream_uuid: "00000000-0000-4000-8000-000000000042",
         },
         ctx,
       );
 
-      expect(removeSpy).toHaveBeenCalledWith(42);
+      expect(removeSpy).toHaveBeenCalledWith(STREAM_UUID_42);
     });
   });
 
@@ -848,7 +866,7 @@ describe("dispatchMessengerEvent", () => {
             content: "rename notice",
             timestamp: 1777960620,
             type: "stream",
-            stream_id: 16,
+            stream_uuid: "00000000-0000-4000-8000-000000000016",
             display_recipient: "##КокоБомбони V2",
             subject: "события канала",
           },
@@ -856,10 +874,10 @@ describe("dispatchMessengerEvent", () => {
         ctx,
       );
 
-      expect(renameSpy).toHaveBeenCalledWith(16, "##КокоБомбони V2");
+      expect(renameSpy).toHaveBeenCalledWith(STREAM_UUID_16, "##КокоБомбони V2");
     });
 
-    it("syncs organization unread count after incoming unread message", () => {
+    it("does not derive organization unread count from incoming unread message", () => {
       setCurrentInstanceForUnreadTests();
       useChatListStore.getState().setCurrentUserId(1);
 
@@ -875,7 +893,7 @@ describe("dispatchMessengerEvent", () => {
             content: "new unread",
             timestamp: 1777960630,
             type: "stream",
-            stream_id: 16,
+            stream_uuid: "00000000-0000-4000-8000-000000000016",
             display_recipient: "engineering",
             subject: "events",
             flags: [],
@@ -884,16 +902,16 @@ describe("dispatchMessengerEvent", () => {
         buildIntegrationCtx(),
       );
 
-      expect(useChatListStore.getState().sidebarStreamsUnread).toBe(1);
-      expect(useInstancesStore.getState().getInstanceUnreadCount("inst-1")).toBe(1);
+      expect(useChatListStore.getState().sidebarStreamsUnread).toBe(0);
+      expect(useInstancesStore.getState().getInstanceUnreadCount("inst-1")).toBe(0);
     });
 
-    it("keeps organization count muted-aware after incoming unread message", () => {
+    it("leaves organization count server-owned after muted incoming unread message", () => {
       setCurrentInstanceForUnreadTests();
       useChatListStore.getState().setCurrentUserId(1);
       const ctx = buildIntegrationCtx();
-      ctx.mute.isStreamMuted = (streamId) => streamId === 16;
-      ctx.mute.isEffectivelyMuted = (streamId) => streamId === 16;
+      ctx.mute.isStreamMuted = (streamId) => streamId === STREAM_UUID_16;
+      ctx.mute.isEffectivelyMuted = (streamId) => streamId === STREAM_UUID_16;
 
       dispatchMessengerEvent(
         {
@@ -907,7 +925,7 @@ describe("dispatchMessengerEvent", () => {
             content: "muted unread",
             timestamp: 1777960640,
             type: "stream",
-            stream_id: 16,
+            stream_uuid: "00000000-0000-4000-8000-000000000016",
             display_recipient: "engineering",
             subject: "muted",
             flags: [],
@@ -916,7 +934,7 @@ describe("dispatchMessengerEvent", () => {
         ctx,
       );
 
-      expect(useChatListStore.getState().sidebarStreamsUnread).toBe(1);
+      expect(useChatListStore.getState().sidebarStreamsUnread).toBe(0);
       expect(useInstancesStore.getState().getInstanceUnreadCount("inst-1")).toBe(0);
     });
   });
@@ -931,7 +949,7 @@ describe("dispatchMessengerEvent", () => {
           id: 5,
           type: "subscription",
           op: "peer_add",
-          stream_ids: [10, 11],
+          stream_uuids: [STREAM_UUID_10, STREAM_UUID_11],
         },
         {
           ...ctx,
@@ -939,7 +957,7 @@ describe("dispatchMessengerEvent", () => {
         },
       );
 
-      expect(onStreamPeerMembersChanged).toHaveBeenCalledWith([10, 11]);
+      expect(onStreamPeerMembersChanged).toHaveBeenCalledWith([STREAM_UUID_10, STREAM_UUID_11]);
     });
 
     it("notifies peer_remove stream ids from subscriptions payload", () => {
@@ -951,7 +969,9 @@ describe("dispatchMessengerEvent", () => {
           id: 6,
           type: "subscription",
           op: "peer_remove",
-          subscriptions: [{ stream_id: 42, name: "engineering" }],
+          subscriptions: [
+            { stream_uuid: "00000000-0000-4000-8000-000000000042", name: "engineering" },
+          ],
         },
         {
           ...ctx,
@@ -959,14 +979,14 @@ describe("dispatchMessengerEvent", () => {
         },
       );
 
-      expect(onStreamPeerMembersChanged).toHaveBeenCalledWith([42]);
+      expect(onStreamPeerMembersChanged).toHaveBeenCalledWith([STREAM_UUID_42]);
     });
 
     it("updates channel add-subscribers metadata on subscription update event", () => {
       const { ctx } = buildCtx();
       const upsertSpy = vi.spyOn(ctx.chatList, "upsertStreamMetadataRows");
-      ctx.chatList.streamsMap.set(42, {
-        stream_id: 42,
+      ctx.chatList.streamsMap.set(STREAM_UUID_42, {
+        streamUuid: "00000000-0000-4000-8000-000000000042",
         name: "engineering",
         lastMessage: "",
         time: "",
@@ -979,7 +999,7 @@ describe("dispatchMessengerEvent", () => {
           id: 7,
           type: "subscription",
           op: "update",
-          stream_id: 42,
+          stream_uuid: "00000000-0000-4000-8000-000000000042",
           property: "can_add_subscribers_group",
           value: { direct_members: [1, 2], direct_subgroups: [] },
         },
@@ -988,7 +1008,7 @@ describe("dispatchMessengerEvent", () => {
 
       expect(upsertSpy).toHaveBeenCalledWith([
         {
-          streamId: 42,
+          streamUuid: "00000000-0000-4000-8000-000000000042",
           name: "engineering",
           canAddSubscribersGroup: { direct_members: [1, 2], direct_subgroups: [] },
         },
@@ -1004,14 +1024,20 @@ describe("dispatchMessengerEvent", () => {
           id: 17,
           type: "subscription",
           op: "add",
-          subscriptions: [{ stream_id: 42, name: "engineering", creator_id: 77 }],
+          subscriptions: [
+            {
+              stream_uuid: "00000000-0000-4000-8000-000000000042",
+              name: "engineering",
+              creator_id: 77,
+            },
+          ],
         },
         ctx,
       );
 
       expect(upsertSpy).toHaveBeenCalledWith([
         {
-          streamId: 42,
+          streamUuid: "00000000-0000-4000-8000-000000000042",
           name: "engineering",
           creatorId: 77,
         },
@@ -1021,8 +1047,8 @@ describe("dispatchMessengerEvent", () => {
     it("updates channel remove-subscribers metadata on subscription update event", () => {
       const { ctx } = buildCtx();
       const upsertSpy = vi.spyOn(ctx.chatList, "upsertStreamMetadataRows");
-      ctx.chatList.streamsMap.set(42, {
-        stream_id: 42,
+      ctx.chatList.streamsMap.set(STREAM_UUID_42, {
+        streamUuid: "00000000-0000-4000-8000-000000000042",
         name: "engineering",
         lastMessage: "",
         time: "",
@@ -1035,7 +1061,7 @@ describe("dispatchMessengerEvent", () => {
           id: 8,
           type: "subscription",
           op: "update",
-          stream_id: 42,
+          stream_uuid: "00000000-0000-4000-8000-000000000042",
           property: "can_remove_subscribers_group",
           value: { direct_members: [7], direct_subgroups: [] },
         },
@@ -1044,7 +1070,7 @@ describe("dispatchMessengerEvent", () => {
 
       expect(upsertSpy).toHaveBeenCalledWith([
         {
-          streamId: 42,
+          streamUuid: "00000000-0000-4000-8000-000000000042",
           name: "engineering",
           canRemoveSubscribersGroup: { direct_members: [7], direct_subgroups: [] },
         },
@@ -1054,8 +1080,8 @@ describe("dispatchMessengerEvent", () => {
     it("updates archived flag on subscription update event", () => {
       const { ctx } = buildCtx();
       const upsertSpy = vi.spyOn(ctx.chatList, "upsertStreamMetadataRows");
-      ctx.chatList.streamsMap.set(42, {
-        stream_id: 42,
+      ctx.chatList.streamsMap.set(STREAM_UUID_42, {
+        streamUuid: "00000000-0000-4000-8000-000000000042",
         name: "engineering",
         lastMessage: "",
         time: "",
@@ -1068,7 +1094,7 @@ describe("dispatchMessengerEvent", () => {
           id: 9,
           type: "subscription",
           op: "update",
-          stream_id: 42,
+          stream_uuid: "00000000-0000-4000-8000-000000000042",
           property: "is_archived",
           value: true,
         },
@@ -1077,7 +1103,7 @@ describe("dispatchMessengerEvent", () => {
 
       expect(upsertSpy).toHaveBeenCalledWith([
         {
-          streamId: 42,
+          streamUuid: "00000000-0000-4000-8000-000000000042",
           name: "engineering",
           isArchived: true,
         },
@@ -1089,7 +1115,7 @@ describe("dispatchMessengerEvent", () => {
     it("adds read flag to open chat messages when queue reports read ids", () => {
       useCurrentChatMessagesStore.getState().setContext({
         type: "stream",
-        streamId: 5,
+        streamId: "00000000-0000-4000-8000-000000000005",
         streamName: "general",
         topic: "topic1",
         streamWideView: false,
@@ -1114,7 +1140,7 @@ describe("dispatchMessengerEvent", () => {
       expect(messages.find((m) => m.id === testMessageId(11))?.flags).toContain("read");
     });
 
-    it("removes inbox entries after read:add", () => {
+    it("marks inbox stale after read:add without locally removing entries", () => {
       useInboxStore.getState().setEntries([
         {
           key: "stream:11111111-1111-4111-8111-111111111111:topic1",
@@ -1129,6 +1155,8 @@ describe("dispatchMessengerEvent", () => {
           messageIds: ["00000000-0000-4000-8000-000000000012"],
         },
       ]);
+      const markStaleSpy = vi.spyOn(useInboxStore.getState(), "markStale");
+      markStaleSpy.mockClear();
 
       dispatchMessengerEvent(
         {
@@ -1141,13 +1169,15 @@ describe("dispatchMessengerEvent", () => {
         buildIntegrationCtx(),
       );
 
-      expect(useInboxStore.getState().entries).toHaveLength(0);
+      expect(useInboxStore.getState().entries).toHaveLength(1);
+      expect(markStaleSpy).toHaveBeenCalledTimes(1);
+      markStaleSpy.mockRestore();
     });
 
     it("does not mutate open chat messages when read event targets another context", () => {
       useCurrentChatMessagesStore.getState().setContext({
         type: "stream",
-        streamId: 5,
+        streamId: "00000000-0000-4000-8000-000000000005",
         streamName: "general",
         topic: "topicA",
         streamWideView: false,
@@ -1207,10 +1237,10 @@ describe("dispatchMessengerEvent", () => {
       expect(useCurrentChatMessagesStore.getState().messages[0]!.flags ?? []).not.toContain("read");
     });
 
-    it("incrementally updates inbox entries on read:add without markStale refetch", () => {
+    it("keeps inbox entries unchanged on read:add and waits for server refresh", () => {
       const inboxEntry: InboxEntry = {
         key: "stream:5:topic1",
-        streamId: 5,
+        streamId: "00000000-0000-4000-8000-000000000005",
         streamName: "general",
         topic: "topic1",
         senderId: null,
@@ -1226,6 +1256,7 @@ describe("dispatchMessengerEvent", () => {
       };
       useInboxStore.getState().setEntries([inboxEntry]);
       const markStaleSpy = vi.spyOn(useInboxStore.getState(), "markStale");
+      markStaleSpy.mockClear();
 
       dispatchMessengerEvent(
         {
@@ -1240,9 +1271,8 @@ describe("dispatchMessengerEvent", () => {
 
       const entries = useInboxStore.getState().entries;
       expect(entries).toHaveLength(1);
-      expect(entries[0]!.unreadCount).toBe(1);
-      expect(entries[0]!.messageIds).toEqual([testMessageId(3)]);
-      expect(markStaleSpy).not.toHaveBeenCalled();
+      expect(entries[0]).toEqual(inboxEntry);
+      expect(markStaleSpy).toHaveBeenCalledTimes(1);
       markStaleSpy.mockRestore();
     });
 

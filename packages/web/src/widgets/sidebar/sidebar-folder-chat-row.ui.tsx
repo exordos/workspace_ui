@@ -10,6 +10,7 @@ export interface SidebarFolderChatRowProps {
   chat: SidebarStreamChat;
   pinApiFolderUuid: string | null;
   selectedFolderId?: string;
+  pinFolderId?: string;
   isCompactDensity: boolean;
   canExpandStreams: boolean;
   expandedStreamSlugs: string[];
@@ -23,6 +24,7 @@ export const SidebarFolderChatRow = React.memo(function SidebarFolderChatRow({
   chat,
   pinApiFolderUuid,
   selectedFolderId,
+  pinFolderId,
   isCompactDensity,
   canExpandStreams,
   expandedStreamSlugs,
@@ -40,6 +42,7 @@ export const SidebarFolderChatRow = React.memo(function SidebarFolderChatRow({
       chat={chat}
       isPinnedChat={isPinnedChat}
       selectedFolderId={selectedFolderId}
+      pinFolderId={pinFolderId}
       isCompactDensity={isCompactDensity}
       canExpandStreams={canExpandStreams}
       expandedStreamSlugs={expandedStreamSlugs}
