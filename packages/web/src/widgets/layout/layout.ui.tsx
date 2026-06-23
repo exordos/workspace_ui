@@ -24,6 +24,7 @@ import { runChatListBootstrap } from "./layout-chat-list-bootstrap.lib";
 import { useLayoutChatListSnapshotSync } from "./layout-chat-list-snapshot-sync.hook";
 import { parseFocusedMessageIdFromSearch } from "./layout-chat-route.lib";
 import { shouldRenderChatShell } from "./layout-chat-shell.lib";
+import { resolveLayoutConnectionBannerMessage } from "./layout-connection-banner.lib";
 import { LayoutConnectionBanner } from "./layout-connection-banner.ui";
 import { useConnectionHealthSnapshot } from "./layout-connection-health.hook";
 import { useLayoutConnectionRecovery } from "./layout-connection-recovery.hook";
@@ -51,6 +52,7 @@ import { useLayoutResetRightDrawerOnInstanceChange } from "./layout-reset-right-
 import { useLayoutRightPanelShell } from "./layout-right-panel-shell.hook";
 import { useLayoutShortcuts } from "./layout-shortcuts.hook";
 import { useSyncChatContextFromLocation } from "./layout-sync-chat-context.hook";
+import { resolveLayoutTopBannerKind } from "./layout-top-banner.lib";
 import { useLayoutUnreadAndTitle } from "./layout-unread-title.hook";
 import { isLayoutUserConnectionReady } from "./layout-user-connection-status.types";
 import { useLayoutWindowBranding } from "./layout-window-branding.hook";
@@ -204,6 +206,10 @@ export const Layout: React.FC = () => {
   const online = useLayoutOnlineStatus();
   const rateLimitSeconds = useZulipRateLimitCountdownSeconds(online);
   const connectionHealth = useConnectionHealthSnapshot();
+  const connectionBannerMessage = useMemo(
+    () => resolveLayoutConnectionBannerMessage(online, connectionHealth, rateLimitSeconds),
+    [connectionHealth, online, rateLimitSeconds],
+  );
   useHydrateDrafts(currentInstanceId, currentUserStatus);
 
   // Safety net: keeps the org badge correct when mute state changes outside event/local flows.
@@ -397,16 +403,22 @@ export const Layout: React.FC = () => {
     clearBootstrapError();
     refreshStaleRef.current?.();
   }, [clearBootstrapError]);
+  const topBannerKind = useMemo(
+    () => resolveLayoutTopBannerKind(connectionBannerMessage, notificationPermission.visible),
+    [connectionBannerMessage, notificationPermission.visible],
+  );
 
   return (
     <div className="relative flex h-screen max-h-[100dvh] min-h-app-shell w-full min-w-app-shell-min flex-col overflow-hidden bg-bg text-text-primary">
-      <LayoutConnectionBanner
-        online={online}
-        health={connectionHealth}
-        rateLimitSeconds={rateLimitSeconds}
-      />
+      {topBannerKind === "connection" ? (
+        <LayoutConnectionBanner
+          online={online}
+          health={connectionHealth}
+          rateLimitSeconds={rateLimitSeconds}
+        />
+      ) : null}
       <LayoutBootstrapErrorBanner error={bootstrapError} onRetry={handleRetryBootstrap} />
-      {notificationPermission.visible ? (
+      {topBannerKind === "notification-permission" ? (
         <LayoutNotificationPermissionBanner
           enabling={notificationPermission.enabling}
           onEnable={notificationPermission.enable}

@@ -8,15 +8,12 @@ import type { LayoutTopBannerItem, LayoutTopBannerSeverity } from "./layout-top-
 interface LayoutTopBannerProps {
   item: LayoutTopBannerItem | null;
   expanded: boolean;
-  persistentExpanded: boolean;
   onExpand: () => void;
-  onCollapsedFocus?: () => void;
   onCollapse: () => void;
-  onTogglePersistentExpanded: () => void;
-  onPreviewLeave?: () => void;
   collapsedTriggerRef?: React.RefObject<HTMLButtonElement | null>;
   collapseButtonRef?: React.RefObject<HTMLButtonElement | null>;
   primaryActionRef?: React.RefObject<HTMLButtonElement | null>;
+  secondaryActionRef?: React.RefObject<HTMLButtonElement | null>;
 }
 
 function resolveStripClassName(severity: LayoutTopBannerSeverity): string {
@@ -25,7 +22,7 @@ function resolveStripClassName(severity: LayoutTopBannerSeverity): string {
 
 function resolveExpandedClassName(severity: LayoutTopBannerSeverity): string {
   if (severity === "critical") {
-    return "border-notice-base/50 bg-bg-elevated text-notice-base";
+    return "border-notice-base/50 bg-bg-elevated text-text-primary";
   }
   return "border-accent/40 bg-bg-elevated text-text-primary";
 }
@@ -43,15 +40,12 @@ function resolveLiveRegionProps(severity: LayoutTopBannerSeverity): {
 export const LayoutTopBanner = React.memo<LayoutTopBannerProps>(function LayoutTopBanner({
   item,
   expanded,
-  persistentExpanded,
   onExpand,
-  onCollapsedFocus,
   onCollapse,
-  onTogglePersistentExpanded,
-  onPreviewLeave,
   collapsedTriggerRef,
   collapseButtonRef,
   primaryActionRef,
+  secondaryActionRef,
 }) {
   const electronChrome = isElectron();
   const macElectronChrome = isElectronDarwin();
@@ -63,11 +57,12 @@ export const LayoutTopBanner = React.memo<LayoutTopBannerProps>(function LayoutT
   const stripClassName = resolveStripClassName(item.severity);
   const expandedClassName = resolveExpandedClassName(item.severity);
   const liveRegionProps = resolveLiveRegionProps(item.severity);
-  const contentInsetClassName = macElectronChrome
-    ? "pl-24 pr-6 sm:pl-28 sm:pr-8"
-    : electronChrome
-      ? "px-8 sm:px-10"
-      : "px-4 sm:px-6";
+  const title = item.title ?? item.message;
+  const contentInsetClassName = electronChrome ? "px-8 sm:px-10" : "px-4 sm:px-6";
+  const macTitlebarStripClassName =
+    expanded || !macElectronChrome
+      ? `electron-drag pointer-events-none ${ELECTRON_MAC_TITLEBAR_STRIP_CLASS}`
+      : `electron-drag pointer-events-none ${ELECTRON_MAC_TITLEBAR_STRIP_CLASS} ${stripClassName}`;
 
   return (
     <div
@@ -76,7 +71,8 @@ export const LayoutTopBanner = React.memo<LayoutTopBannerProps>(function LayoutT
     >
       {macElectronChrome ? (
         <div
-          className={`electron-drag pointer-events-none ${ELECTRON_MAC_TITLEBAR_STRIP_CLASS}`}
+          data-testid="layout-top-banner-mac-titlebar-strip"
+          className={macTitlebarStripClassName}
           aria-hidden
         />
       ) : null}
@@ -87,22 +83,6 @@ export const LayoutTopBanner = React.memo<LayoutTopBannerProps>(function LayoutT
           role={liveRegionProps.role}
           aria-live={liveRegionProps.ariaLive}
           aria-atomic="true"
-          onMouseLeave={() => {
-            if (persistentExpanded) {
-              return;
-            }
-            onPreviewLeave?.();
-          }}
-          onBlur={(event) => {
-            if (persistentExpanded) {
-              return;
-            }
-            const nextTarget = event.relatedTarget;
-            if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
-              return;
-            }
-            onPreviewLeave?.();
-          }}
           onKeyDown={(event) => {
             if (event.key !== "Escape" || !item.canCollapse) {
               return;
@@ -111,17 +91,32 @@ export const LayoutTopBanner = React.memo<LayoutTopBannerProps>(function LayoutT
             onCollapse();
           }}
         >
-          <div className="mx-auto flex w-full max-w-main-workspace items-center gap-3">
-            <p className="min-w-0 flex-1 text-center text-sm font-semibold leading-snug sm:text-base">
-              {item.message}
-            </p>
-            <div className="flex shrink-0 items-center gap-2">
+          <div className="mx-auto flex w-full max-w-main-workspace items-start gap-3">
+            <div className="min-w-0 flex-1 text-left">
+              <p className="text-sm font-semibold leading-snug sm:text-base">{title}</p>
+              {item.description != null ? (
+                <p className="mt-1 text-xs text-text-muted sm:text-sm">{item.description}</p>
+              ) : null}
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+              {item.onSecondaryAction != null && item.secondaryActionLabel != null ? (
+                <button
+                  ref={secondaryActionRef}
+                  type="button"
+                  onClick={item.onSecondaryAction}
+                  disabled={item.secondaryActionDisabled}
+                  className="rounded-lg border border-border-subtle bg-card-bg px-4 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-bg-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft disabled:opacity-50"
+                >
+                  {item.secondaryActionLabel}
+                </button>
+              ) : null}
               {item.onPrimaryAction != null && item.primaryActionLabel != null ? (
                 <button
                   ref={primaryActionRef}
                   type="button"
                   onClick={item.onPrimaryAction}
-                  className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
+                  disabled={item.primaryActionDisabled}
+                  className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-on-accent transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft disabled:opacity-50"
                 >
                   {item.primaryActionLabel}
                 </button>
@@ -130,19 +125,11 @@ export const LayoutTopBanner = React.memo<LayoutTopBannerProps>(function LayoutT
                 <button
                   ref={collapseButtonRef}
                   type="button"
-                  aria-label={
-                    persistentExpanded
-                      ? t("a11y.hideConnectionStatus")
-                      : t("a11y.keepConnectionStatusExpanded")
-                  }
-                  onClick={onTogglePersistentExpanded}
+                  aria-label={t("a11y.hideTopBanner")}
+                  onClick={onCollapse}
                   className="inline-flex h-7 w-7 items-center justify-center text-text-primary transition-opacity hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
                 >
-                  <Icon
-                    name={persistentExpanded ? "chevron-up" : "chevron-down"}
-                    size={16}
-                    className="text-current"
-                  />
+                  <Icon name="chevron-up" size={16} className="text-current" />
                 </button>
               ) : null}
             </div>
@@ -153,14 +140,15 @@ export const LayoutTopBanner = React.memo<LayoutTopBannerProps>(function LayoutT
           ref={collapsedTriggerRef}
           data-testid="layout-top-banner-collapsed"
           type="button"
-          aria-label={t("a11y.showConnectionStatus")}
-          onMouseEnter={onExpand}
-          onFocus={onCollapsedFocus ?? onExpand}
+          aria-label={t("a11y.showTopBanner")}
           onClick={onExpand}
-          className="pointer-events-auto block w-full pb-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
+          className="group pointer-events-auto block w-full cursor-pointer pb-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
         >
-          <span aria-hidden className={`block h-1.5 w-full ${stripClassName}`} />
-          <span className="sr-only">{item.message}</span>
+          <span
+            aria-hidden
+            className={`block h-1.5 w-full opacity-95 transition-[height,opacity] duration-150 group-hover:h-2.5 group-hover:opacity-100 group-focus-visible:h-2.5 group-focus-visible:opacity-100 ${stripClassName}`}
+          />
+          <span className="sr-only">{title}</span>
         </button>
       )}
     </div>

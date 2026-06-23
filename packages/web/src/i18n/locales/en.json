@@ -848,6 +848,8 @@
     "showConnectionStatus": "Show connection status",
     "hideConnectionStatus": "Hide connection status",
     "keepConnectionStatusExpanded": "Keep connection status expanded",
+    "showTopBanner": "Show banner",
+    "hideTopBanner": "Hide banner",
     "addFolder": "Add folder",
     "scrollToBottom": "Scroll to bottom",
     "scrollToBottomWithUnread_one": "Scroll to bottom, {{count}} unread message",
