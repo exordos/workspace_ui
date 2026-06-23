@@ -2,12 +2,13 @@
  * Create chat API — Workspace endpoints for starting new conversations.
  *
  * Personal chat: resolve or create a private stream via gateway POST /streams/, then navigate to /stream.
- * Channel creation is not exposed by the current Workspace gateway backend.
+ * Channel creation: POST /streams/ + POST /stream_bindings/ for selected members.
  * Unarchive: PATCH /streams/{stream_uuid} with is_archived=false (delegates to shared unarchiveStream).
  * Also: channel listing and unsubscribe for management flows.
  */
 
 import {
+  createWorkspaceStream,
   fetchSubscriptions,
   resolveOrCreateDirectMessageStream,
   type DirectMessageStreamRef,
@@ -50,7 +51,7 @@ export async function startDirectMessage(
 /**
  * Create a new channel (stream) when supported by the backend.
  */
-export function createChannel(params: {
+export async function createChannel(params: {
   name: string;
   description?: string;
   subscribers: UserId[];
@@ -61,11 +62,15 @@ export function createChannel(params: {
   guard.nonEmpty(params.name, "channel name");
   const subscribers = normalizePrincipalUserIds(params.subscribers);
 
-  log.warn("Channel creation is unsupported by the current backend", {
-    nameLength: params.name.trim().length,
-    subscriberCount: subscribers.length,
+  const result = await createWorkspaceStream({
+    name: params.name,
+    description: params.description,
+    inviteOnly: params.inviteOnly,
+    announce: params.announce,
+    private: false,
+    memberUserIds: subscribers,
   });
-  return Promise.resolve(null);
+  return result == null ? null : { streamUuid: result.streamUuid };
 }
 
 /** Unarchive channel result (thin wrapper over Workspace PATCH). */

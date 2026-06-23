@@ -5,6 +5,7 @@ import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 import {
   compareUserIds,
+  isIamUserUuid,
   isUserIdentityReady,
   type UserId,
   userIdStorageKey,
@@ -18,6 +19,8 @@ import { messengerPipelineDelete, messengerPipelinePatch } from "./messenger-pip
 import {
   buildCreatePrivateMessageStreamBody,
   buildCreateStreamBindingBody,
+  MESSENGER_STREAM_BINDING_ROLE_MEMBER,
+  MESSENGER_STREAM_SOURCE_NAME_NATIVE,
   parseCreatedWorkspaceStream,
 } from "./messenger-private-stream-create.lib";
 import type {
@@ -30,7 +33,8 @@ import type {
 const log = createLogger("messenger-streams");
 
 export interface AddStreamMembersParams {
-  streamName: string;
+  streamUuid: string;
+  streamName?: string;
   userIds: UserId[];
   authorizationErrorsFatal?: boolean;
 }
@@ -57,6 +61,21 @@ export interface RemoveStreamMembersResult {
   errorCode?: string;
 }
 
+export interface CreateWorkspaceStreamParams {
+  name: string;
+  description?: string;
+  inviteOnly?: boolean;
+  announce?: boolean;
+  private?: boolean;
+  memberUserIds?: readonly UserId[];
+}
+
+export interface CreateWorkspaceStreamResult {
+  streamUuid: string;
+  name: string;
+  boundUserIds: UserId[];
+}
+
 function normalizePrincipalUserIds(userIds: readonly UserId[]): UserId[] {
   const byKey = new Map<string, UserId>();
   for (const userId of userIds) {
@@ -64,6 +83,75 @@ function normalizePrincipalUserIds(userIds: readonly UserId[]): UserId[] {
     byKey.set(userIdStorageKey(userId), userId);
   }
   return Array.from(byKey.values()).sort(compareUserIds);
+}
+
+function normalizeIamUserUuids(userIds: readonly UserId[]): string[] {
+  return normalizePrincipalUserIds(userIds)
+    .filter((userId): userId is string => isIamUserUuid(userId))
+    .map((userId) => userId.trim().toLowerCase());
+}
+
+function excludeUserUuid(
+  userIds: readonly UserId[],
+  excludedUserUuid: string | undefined,
+): UserId[] {
+  if (excludedUserUuid == null) {
+    return [...userIds];
+  }
+  const normalizedExcluded = excludedUserUuid.trim().toLowerCase();
+  return userIds.filter(
+    (userId) => !(typeof userId === "string" && userId.trim().toLowerCase() === normalizedExcluded),
+  );
+}
+
+function buildCreateWorkspaceStreamBody(params: CreateWorkspaceStreamParams): {
+  name: string;
+  description: string;
+  source_name: typeof MESSENGER_STREAM_SOURCE_NAME_NATIVE;
+  source: { kind: typeof MESSENGER_STREAM_SOURCE_NAME_NATIVE };
+  invite_only: boolean;
+  announce: boolean;
+  private: boolean;
+} {
+  return {
+    name: guard.nonEmpty(params.name, "createWorkspaceStream.name").trim(),
+    description: params.description?.trim() ?? "",
+    source_name: MESSENGER_STREAM_SOURCE_NAME_NATIVE,
+    source: { kind: MESSENGER_STREAM_SOURCE_NAME_NATIVE },
+    invite_only: params.inviteOnly === true,
+    announce: params.announce === true,
+    private: params.private === true,
+  };
+}
+
+async function bindUsersToStream(params: {
+  base: string;
+  streamUuid: string;
+  userIds: readonly UserId[];
+  role: typeof MESSENGER_STREAM_BINDING_ROLE_MEMBER;
+}): Promise<UserId[] | null> {
+  const streamUuid = guard.streamUuid(params.streamUuid, "bindUsersToStream.streamUuid");
+  const userUuids = normalizeIamUserUuids(params.userIds);
+  const boundUserIds: UserId[] = [];
+
+  for (const userUuid of userUuids) {
+    const response = await messengerApi.postJsonWithBase(
+      params.base,
+      "/stream_bindings/",
+      buildCreateStreamBindingBody({
+        streamUuid,
+        peerUserUuid: userUuid,
+        role: params.role,
+      }),
+    );
+    if (!response.ok) {
+      log.warn("Stream binding failed", { status: response.status, streamUuid });
+      return null;
+    }
+    boundUserIds.push(userUuid);
+  }
+
+  return boundUserIds;
 }
 
 export interface DeleteTopicResult {
@@ -574,6 +662,48 @@ export async function resolveOrCreateDirectMessageStream(
   return createPrivateMessageStream({ userUuid: peerUuid, displayName: peerDisplayName });
 }
 
+/** Creates a native Workspace stream and member bindings through the new Messenger API. */
+export async function createWorkspaceStream(
+  params: CreateWorkspaceStreamParams,
+): Promise<CreateWorkspaceStreamResult | null> {
+  const body = buildCreateWorkspaceStreamBody(params);
+  const memberUserIds = params.memberUserIds ?? [];
+
+  try {
+    const base = getMessengerWorkspaceApiBaseForCurrentInstance();
+    const response = await messengerApi.postJsonWithBase(base, "/streams/", body);
+    if (!response.ok) {
+      log.warn("Workspace stream creation failed", { status: response.status });
+      return null;
+    }
+
+    const created = parseCreatedWorkspaceStream(response.data);
+    if (created == null) {
+      log.warn("Workspace stream creation returned invalid payload");
+      return null;
+    }
+
+    const boundUserIds = await bindUsersToStream({
+      base,
+      streamUuid: created.streamUuid,
+      userIds: excludeUserUuid(memberUserIds, created.ownerUserUuid),
+      role: MESSENGER_STREAM_BINDING_ROLE_MEMBER,
+    });
+    if (boundUserIds == null) {
+      return null;
+    }
+
+    return {
+      streamUuid: created.streamUuid,
+      name: created.name,
+      boundUserIds,
+    };
+  } catch (error) {
+    log.error("Workspace stream creation error", { error: String(error) });
+    return null;
+  }
+}
+
 function subscriptionFromMeStream(stream: MessengerMeStream): MessengerSubscription | null {
   return {
     stream_uuid: stream.stream_uuid,
@@ -607,32 +737,64 @@ export async function fetchStreams(): Promise<MockStream[]> {
 }
 
 /** Adds users to an existing stream when the backend supports member mutations. */
-export function addMembersToStream(
+export async function addMembersToStream(
   params: AddStreamMembersParams,
 ): Promise<AddStreamMembersResult> {
-  const streamName = guard.nonEmpty(params.streamName, "addMembersToStream.streamName").trim();
+  const streamUuid = guard.streamUuid(params.streamUuid, "addMembersToStream.streamUuid");
   const requestedUserIds = normalizePrincipalUserIds(params.userIds);
+  const requestedUserUuids = normalizeIamUserUuids(requestedUserIds);
 
   if (requestedUserIds.length === 0) {
-    return Promise.resolve({
+    return {
       ok: true,
       addedUserIds: [],
       alreadySubscribedUserIds: [],
       unauthorizedStreams: [],
-    });
+    };
   }
 
-  log.warn("Stream member mutation is unsupported by the current backend", {
-    streamNameLength: streamName.length,
-    requestedCount: requestedUserIds.length,
-  });
-  return Promise.resolve({
-    ok: false,
-    addedUserIds: [],
-    alreadySubscribedUserIds: [],
-    unauthorizedStreams: [],
-    errorCode: "unsupported",
-  });
+  if (requestedUserUuids.length === 0) {
+    return {
+      ok: false,
+      addedUserIds: [],
+      alreadySubscribedUserIds: [],
+      unauthorizedStreams: [],
+      errorCode: "invalid_user",
+    };
+  }
+
+  try {
+    const boundUserIds = await bindUsersToStream({
+      base: getMessengerWorkspaceApiBaseForCurrentInstance(),
+      streamUuid,
+      userIds: requestedUserUuids,
+      role: MESSENGER_STREAM_BINDING_ROLE_MEMBER,
+    });
+    if (boundUserIds == null) {
+      return {
+        ok: false,
+        addedUserIds: [],
+        alreadySubscribedUserIds: [],
+        unauthorizedStreams: [],
+        errorCode: "binding_failed",
+      };
+    }
+    return {
+      ok: true,
+      addedUserIds: boundUserIds,
+      alreadySubscribedUserIds: [],
+      unauthorizedStreams: [],
+    };
+  } catch (error) {
+    log.warn("Stream member mutation failed", { streamUuid, error: String(error) });
+    return {
+      ok: false,
+      addedUserIds: [],
+      alreadySubscribedUserIds: [],
+      unauthorizedStreams: [],
+      errorCode: "network_error",
+    };
+  }
 }
 
 /** Removes members from a stream when the backend supports member mutations. */

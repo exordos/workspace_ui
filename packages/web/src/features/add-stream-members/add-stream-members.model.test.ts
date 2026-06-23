@@ -3,6 +3,8 @@ import { addStreamMembers } from "./add-stream-members.api";
 import { useAddStreamMembersStore } from "./add-stream-members.model";
 
 const STREAM_UUID_10 = "00000000-0000-4000-8000-000000000010";
+const EXISTING_USER_UUID = "00000000-0000-0000-0000-000000000077";
+const NEW_USER_UUID = "00000000-0000-0000-0000-000000000088";
 
 vi.mock("./add-stream-members.api", () => ({
   addStreamMembers: vi.fn(),
@@ -37,23 +39,23 @@ describe("useAddStreamMembersStore", () => {
     store.openForStream({
       streamId: "00000000-0000-4000-8000-000000000010",
       streamName: "engineering",
-      existingMemberIds: [77],
+      existingMemberIds: [EXISTING_USER_UUID],
     });
 
-    store.toggleSelected(88);
-    store.toggleSelected(77);
+    store.toggleSelected(NEW_USER_UUID);
+    store.toggleSelected(EXISTING_USER_UUID);
     store.setQuery("bob");
 
     const nextState = useAddStreamMembersStore.getState();
     expect(nextState.open).toBe(true);
     expect(nextState.query).toBe("bob");
-    expect(nextState.selectedIds).toEqual([88]);
+    expect(nextState.selectedIds).toEqual([NEW_USER_UUID]);
   });
 
   it("submits selected users and closes dialog on success", async () => {
     vi.mocked(addStreamMembers).mockResolvedValue({
       ok: true,
-      addedUserIds: [88],
+      addedUserIds: [NEW_USER_UUID],
       alreadySubscribedUserIds: [],
       unauthorizedStreams: [],
     });
@@ -63,15 +65,16 @@ describe("useAddStreamMembersStore", () => {
     store.openForStream({
       streamId: STREAM_UUID_10,
       streamName: "engineering",
-      existingMemberIds: [77],
+      existingMemberIds: [EXISTING_USER_UUID],
     });
-    store.toggleSelected(88);
+    store.toggleSelected(NEW_USER_UUID);
 
     await store.submit({ onSuccess });
 
     expect(addStreamMembers).toHaveBeenCalledWith({
+      streamUuid: STREAM_UUID_10,
       streamName: "engineering",
-      userIds: [88],
+      userIds: [NEW_USER_UUID],
     });
     expect(onSuccess).toHaveBeenCalledWith(STREAM_UUID_10);
     const nextState = useAddStreamMembersStore.getState();
@@ -95,7 +98,7 @@ describe("useAddStreamMembersStore", () => {
       streamName: "engineering",
       existingMemberIds: [],
     });
-    store.toggleSelected(88);
+    store.toggleSelected(NEW_USER_UUID);
 
     await store.submit({});
 
@@ -108,7 +111,7 @@ describe("useAddStreamMembersStore", () => {
   it("allows submitting current user id when selected", async () => {
     vi.mocked(addStreamMembers).mockResolvedValue({
       ok: true,
-      addedUserIds: [42],
+      addedUserIds: [NEW_USER_UUID],
       alreadySubscribedUserIds: [],
       unauthorizedStreams: [],
     });
@@ -119,13 +122,14 @@ describe("useAddStreamMembersStore", () => {
       streamName: "engineering",
       existingMemberIds: [],
     });
-    store.toggleSelected(42);
+    store.toggleSelected(NEW_USER_UUID);
 
     await store.submit({});
 
     expect(addStreamMembers).toHaveBeenCalledWith({
+      streamUuid: STREAM_UUID_10,
       streamName: "engineering",
-      userIds: [42],
+      userIds: [NEW_USER_UUID],
     });
   });
 });

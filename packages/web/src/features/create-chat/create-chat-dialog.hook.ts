@@ -9,7 +9,7 @@ import type { MockStream, MessengerSubscription } from "~/shared/api/messenger.t
 import { createLogger } from "~/shared/lib/logger";
 import { buildAnnouncementOnlyCanSendGroup } from "~/shared/lib/user-group-policy";
 import type { UserId } from "~/shared/lib/user-id.lib";
-import { compareUserIds, isUserIdentityReady } from "~/shared/lib/user-id.lib";
+import { compareUserIds, isUserIdentityReady, userIdsEqual } from "~/shared/lib/user-id.lib";
 import {
   buildUserPickerOptions,
   resolveUserPickerEmptyLabelKey,
@@ -173,11 +173,8 @@ export function useCreateChatDialog(options: {
   const userGroups = useUserGroupsStore((s) => s.groups);
   const currentUserId = useChatListStore((s) => s.currentUserId ?? null);
   const streamsMap = useChatListStore((s) => s.streamsMap);
-  // Block channel create until author profile is loaded.
-  const channelCreateBlocked = !isUserIdentityReady(currentUserId);
-  const channelCreateBlockedReasonKey = channelCreateBlocked
-    ? "channel.creatorProfileLoading"
-    : null;
+  const channelCreateBlocked = false;
+  const channelCreateBlockedReasonKey = null;
   // Default posting policy for announcement-only channels.
   const announcementOnlyCanSendMessageGroup = useMemo(
     () => buildAnnouncementOnlyCanSendGroup({ userGroups, currentUserId }),
@@ -420,11 +417,10 @@ export function useCreateChatDialog(options: {
   );
 
   const createChannelAction = useCallback(() => {
-    if (!channelName.trim() || creating || !isUserIdentityReady(currentUserId)) return;
-    // Always include channel author in subscribers even if not manually selected.
-    const subscribers = Array.from(new Set([...channelSelectedUserIds, currentUserId!])).sort(
-      compareUserIds,
-    );
+    if (!channelName.trim() || creating) return;
+    const subscribers = Array.from(channelSelectedUserIds)
+      .filter((userId) => currentUserId == null || !userIdsEqual(userId, currentUserId))
+      .sort(compareUserIds);
     setCreating(true);
     const runCreateChannel = async (): Promise<void> => {
       try {

@@ -49,6 +49,20 @@ describe("buildCreateStreamBindingBody", () => {
       role: "owner",
     });
   });
+
+  it("can bind a regular stream member without project_id", () => {
+    expect(
+      buildCreateStreamBindingBody({
+        streamUuid: STREAM_UUID,
+        peerUserUuid: PEER_UUID,
+        role: "member",
+      }),
+    ).toEqual({
+      stream_uuid: STREAM_UUID,
+      user_uuid: PEER_UUID,
+      role: "member",
+    });
+  });
 });
 
 describe("parseCreatedWorkspaceStream", () => {
@@ -75,6 +89,20 @@ describe("parseCreatedWorkspaceStream", () => {
     ).toEqual({
       streamUuid: STREAM_UUID,
       name: "Alice Smith",
+    });
+  });
+
+  it("reads owner uuid from stream response when present", () => {
+    expect(
+      parseCreatedWorkspaceStream({
+        uuid: STREAM_UUID,
+        name: "Engineering",
+        user_uuid: PEER_UUID,
+      }),
+    ).toEqual({
+      streamUuid: STREAM_UUID,
+      name: "Engineering",
+      ownerUserUuid: PEER_UUID,
     });
   });
 });

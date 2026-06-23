@@ -8,6 +8,11 @@
 
 export const MESSENGER_STREAM_SOURCE_NAME_NATIVE = "native" as const;
 export const MESSENGER_STREAM_BINDING_ROLE_OWNER = "owner" as const;
+export const MESSENGER_STREAM_BINDING_ROLE_MEMBER = "member" as const;
+
+export type MessengerStreamBindingRole =
+  | typeof MESSENGER_STREAM_BINDING_ROLE_OWNER
+  | typeof MESSENGER_STREAM_BINDING_ROLE_MEMBER;
 
 export interface MessengerStreamNativeSource {
   kind: typeof MESSENGER_STREAM_SOURCE_NAME_NATIVE;
@@ -24,7 +29,7 @@ export interface CreatePrivateMessageStreamBody {
 export interface CreateStreamBindingBody {
   stream_uuid: string;
   user_uuid: string;
-  role: typeof MESSENGER_STREAM_BINDING_ROLE_OWNER;
+  role: MessengerStreamBindingRole;
 }
 
 /** Resolves a non-empty stream title for ModelWithRequiredNameDesc.name. */
@@ -58,11 +63,12 @@ export function buildCreatePrivateMessageStreamBody(options: {
 export function buildCreateStreamBindingBody(options: {
   streamUuid: string;
   peerUserUuid: string;
+  role?: MessengerStreamBindingRole;
 }): CreateStreamBindingBody {
   return {
     stream_uuid: options.streamUuid.trim(),
     user_uuid: options.peerUserUuid.trim(),
-    role: MESSENGER_STREAM_BINDING_ROLE_OWNER,
+    role: options.role ?? MESSENGER_STREAM_BINDING_ROLE_OWNER,
   };
 }
 
@@ -75,9 +81,11 @@ function readTrimmedUuid(value: unknown): string | null {
 }
 
 /** Parses `POST /streams/` WorkspaceStream response. */
-export function parseCreatedWorkspaceStream(
-  row: unknown,
-): { streamUuid: string; name: string } | null {
+export function parseCreatedWorkspaceStream(row: unknown): {
+  streamUuid: string;
+  name: string;
+  ownerUserUuid?: string;
+} | null {
   if (typeof row !== "object" || row == null) {
     return null;
   }
@@ -88,5 +96,10 @@ export function parseCreatedWorkspaceStream(
   if (streamUuid == null || name == null) {
     return null;
   }
-  return { streamUuid, name };
+  const ownerUserUuid = readTrimmedUuid(record.owner) ?? readTrimmedUuid(record.user_uuid);
+  return {
+    streamUuid,
+    name,
+    ...(ownerUserUuid != null ? { ownerUserUuid: ownerUserUuid.toLowerCase() } : {}),
+  };
 }

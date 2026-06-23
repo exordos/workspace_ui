@@ -150,6 +150,7 @@ export const useAddStreamMembersStore = create<AddStreamMembersState>((set, get)
     set({ submitting: true, error: null, lastResult: null });
 
     const result = await addStreamMembers({
+      streamUuid: state.streamId,
       streamName: state.streamName,
       userIds: filteredIds,
     });

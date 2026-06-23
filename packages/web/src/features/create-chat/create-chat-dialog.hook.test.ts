@@ -31,6 +31,9 @@ vi.mock("~/shared/api/messenger-users", () => ({
 const STREAM_UUID_5 = "00000000-0000-4000-8000-000000000005";
 const STREAM_UUID_6 = "00000000-0000-4000-8000-000000000006";
 const STREAM_UUID_7 = "00000000-0000-4000-8000-000000000007";
+const CURRENT_USER_UUID = "00000000-0000-0000-0000-000000000010";
+const ALICE_UUID = "00000000-0000-0000-0000-000000000001";
+const BOB_UUID = "00000000-0000-0000-0000-000000000003";
 
 function defaultHookOptions(overrides: Partial<Parameters<typeof useCreateChatDialog>[0]> = {}) {
   return {
@@ -43,9 +46,9 @@ function defaultHookOptions(overrides: Partial<Parameters<typeof useCreateChatDi
 
 function seedUsers(): void {
   useUsersStore.getState().mergeUsers([
-    { user_id: 10, full_name: "Current User", email: "me@example.com" },
-    { user_id: 1, full_name: "Alice", email: "alice@example.com" },
-    { user_id: 3, full_name: "Bob", email: "bob@example.com" },
+    { user_id: CURRENT_USER_UUID, full_name: "Current User", email: "me@example.com" },
+    { user_id: ALICE_UUID, full_name: "Alice", email: "alice@example.com" },
+    { user_id: BOB_UUID, full_name: "Bob", email: "bob@example.com" },
   ]);
 }
 
@@ -82,9 +85,9 @@ describe("useCreateChatDialog", () => {
     useUserGroupsStore.getState().clear();
   });
 
-  it("adds current user to subscribers and deduplicates IDs when creating channel", async () => {
+  it("passes selected users only when creating channel", async () => {
     seedUsers();
-    useChatListStore.setState({ currentUserId: 10 });
+    useChatListStore.setState({ currentUserId: CURRENT_USER_UUID });
     vi.mocked(createChannel).mockResolvedValue({
       streamUuid: "00000000-0000-4000-8000-000000000055",
     });
@@ -96,9 +99,9 @@ describe("useCreateChatDialog", () => {
 
     act(() => {
       result.current.setChannelName("  engineering  ");
-      result.current.toggleChannelUser(3);
-      result.current.toggleChannelUser(1);
-      result.current.toggleChannelUser(10);
+      result.current.toggleChannelUser(BOB_UUID);
+      result.current.toggleChannelUser(ALICE_UUID);
+      result.current.toggleChannelUser(CURRENT_USER_UUID);
     });
 
     act(() => {
@@ -109,11 +112,11 @@ describe("useCreateChatDialog", () => {
       expect(createChannel).toHaveBeenCalledTimes(1);
     });
 
-    // Assert: request includes author and selected users without duplicates.
+    // Creator binding is server-owned; client sends only selected non-creator members.
     expect(createChannel).toHaveBeenCalledWith(
       expect.objectContaining({
         name: "engineering",
-        subscribers: [1, 3, 10],
+        subscribers: [ALICE_UUID, BOB_UUID],
       }),
     );
 
@@ -122,22 +125,29 @@ describe("useCreateChatDialog", () => {
     });
   });
 
-  it("blocks channel creation when current user ID is unavailable", () => {
+  it("allows channel creation when current user ID is unavailable", async () => {
     seedUsers();
     useChatListStore.setState({ currentUserId: null });
+    vi.mocked(createChannel).mockResolvedValue({
+      streamUuid: "00000000-0000-4000-8000-000000000055",
+    });
 
     const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
 
     act(() => {
       result.current.setChannelName("engineering");
-      result.current.toggleChannelUser(1);
+      result.current.toggleChannelUser(ALICE_UUID);
+    });
+
+    act(() => {
       result.current.createChannel();
     });
 
-    // Assert: without currentUserId, creation must not start.
-    expect(result.current.channelCreateBlocked).toBe(true);
-    expect(result.current.channelCreateBlockedReasonKey).toBe("channel.creatorProfileLoading");
-    expect(createChannel).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(createChannel).toHaveBeenCalledTimes(1);
+    });
+    expect(result.current.channelCreateBlocked).toBe(false);
+    expect(result.current.channelCreateBlockedReasonKey).toBeNull();
   });
 
   it("passes canSendMessageGroup when announcement-only channel is enabled", async () => {

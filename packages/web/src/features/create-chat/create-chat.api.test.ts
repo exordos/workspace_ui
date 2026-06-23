@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { messengerApi } from "~/shared/api/client";
-import { resolveOrCreateDirectMessageStream } from "~/shared/api/messenger-streams";
+import {
+  createWorkspaceStream,
+  resolveOrCreateDirectMessageStream,
+} from "~/shared/api/messenger-streams";
 import { createChannel, startDirectMessage, subscribeCurrentUserToStream } from "./create-chat.api";
 
 vi.mock("~/shared/api/client", () => ({
@@ -10,6 +13,7 @@ vi.mock("~/shared/api/client", () => ({
 }));
 
 vi.mock("~/shared/api/messenger-streams", () => ({
+  createWorkspaceStream: vi.fn(),
   fetchSubscriptions: vi.fn(() => Promise.resolve([])),
   resolveOrCreateDirectMessageStream: vi.fn(),
   unarchiveStream: vi.fn(),
@@ -73,16 +77,37 @@ describe("createChannel", () => {
     vi.clearAllMocks();
   });
 
-  it("returns null without calling the removed channel creation endpoint", async () => {
-    await expect(
-      createChannel({ name: "engineering", subscribers: [PEER_UUID], inviteOnly: true }),
-    ).resolves.toBeNull();
+  it("creates a native stream and member bindings through the new stream API", async () => {
+    vi.mocked(createWorkspaceStream).mockResolvedValue({
+      streamUuid: STREAM_UUID,
+      name: "engineering",
+      boundUserIds: [PEER_UUID],
+    });
 
+    await expect(
+      createChannel({
+        name: "engineering",
+        description: "Engineering",
+        subscribers: [PEER_UUID],
+        inviteOnly: true,
+        announce: true,
+      }),
+    ).resolves.toEqual({ streamUuid: STREAM_UUID });
+
+    expect(createWorkspaceStream).toHaveBeenCalledWith({
+      name: "engineering",
+      description: "Engineering",
+      inviteOnly: true,
+      announce: true,
+      private: false,
+      memberUserIds: [PEER_UUID],
+    });
     expect(messengerApi.post).not.toHaveBeenCalled();
   });
 
-  it("still validates channel name before returning unsupported", async () => {
+  it("validates channel name before creating a stream", async () => {
     await expect(createChannel({ name: "   ", subscribers: [] })).rejects.toThrow(/channel name/);
+    expect(createWorkspaceStream).not.toHaveBeenCalled();
     expect(messengerApi.post).not.toHaveBeenCalled();
   });
 });
