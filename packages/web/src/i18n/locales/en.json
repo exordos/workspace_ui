@@ -845,6 +845,9 @@
   "a11y": {
     "collapseTopics": "Collapse topics",
     "expandTopics": "Expand topics",
+    "showConnectionStatus": "Show connection status",
+    "hideConnectionStatus": "Hide connection status",
+    "keepConnectionStatusExpanded": "Keep connection status expanded",
     "addFolder": "Add folder",
     "scrollToBottom": "Scroll to bottom",
     "scrollToBottomWithUnread_one": "Scroll to bottom, {{count}} unread message",

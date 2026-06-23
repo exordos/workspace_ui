@@ -26,7 +26,7 @@ describe("LayoutLoadingGate", () => {
     };
 
     render(
-      <div className="flex h-screen flex-col">
+      <div className="relative flex h-screen flex-col">
         <LayoutConnectionBanner online={false} health={offlineHealth} rateLimitSeconds={0} />
         <LayoutLoadingGate showFullscreenLoader showConnectionBlocked={false}>
           <div>shell-content</div>
@@ -34,7 +34,7 @@ describe("LayoutLoadingGate", () => {
       </div>,
     );
 
-    expect(screen.getByTestId("connection-banner")).toBeInTheDocument();
+    expect(screen.getByTestId("layout-top-banner-host")).toHaveClass("absolute");
     expect(screen.getByText(t("app.offline"))).toBeInTheDocument();
     expect(screen.getByText(t("app.loading"))).toBeInTheDocument();
     expect(screen.queryByText("shell-content")).not.toBeInTheDocument();

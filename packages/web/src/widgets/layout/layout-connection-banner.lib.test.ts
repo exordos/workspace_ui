@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ConnectionHealthSnapshot } from "~/shared/lib/connection-health";
-import { resolveLayoutConnectionBannerMessage } from "./layout-connection-banner.lib";
+import {
+  resolveLayoutConnectionBannerMessage,
+  resolveLayoutConnectionBannerSeverity,
+} from "./layout-connection-banner.lib";
 
 vi.mock("~/i18n/i18n", () => ({
   t: (key: string) => key,
@@ -34,5 +37,25 @@ describe("resolveLayoutConnectionBannerMessage", () => {
         0,
       ),
     ).toBe("app.connectionDegraded");
+  });
+
+  it("marks offline and blocked states as critical severity", () => {
+    expect(resolveLayoutConnectionBannerSeverity(false, readyHealth)).toBe("critical");
+    expect(resolveLayoutConnectionBannerSeverity(true, { ...readyHealth, phase: "blocked" })).toBe(
+      "critical",
+    );
+  });
+
+  it("marks reconnecting and degraded states as warning severity", () => {
+    expect(
+      resolveLayoutConnectionBannerSeverity(true, {
+        ...readyHealth,
+        phase: "degraded",
+        failureReason: "network",
+      }),
+    ).toBe("warning");
+    expect(
+      resolveLayoutConnectionBannerSeverity(true, { ...readyHealth, isReconnecting: true }),
+    ).toBe("warning");
   });
 });

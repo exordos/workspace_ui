@@ -399,7 +399,7 @@ export const Layout: React.FC = () => {
   }, [clearBootstrapError]);
 
   return (
-    <div className="flex h-screen max-h-[100dvh] min-h-app-shell w-full min-w-app-shell-min flex-col overflow-hidden bg-bg text-text-primary">
+    <div className="relative flex h-screen max-h-[100dvh] min-h-app-shell w-full min-w-app-shell-min flex-col overflow-hidden bg-bg text-text-primary">
       <LayoutConnectionBanner
         online={online}
         health={connectionHealth}

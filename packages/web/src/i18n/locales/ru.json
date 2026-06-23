@@ -854,6 +854,9 @@
   "a11y": {
     "collapseTopics": "Свернуть темы",
     "expandTopics": "Развернуть темы",
+    "showConnectionStatus": "Показать статус соединения",
+    "hideConnectionStatus": "Скрыть статус соединения",
+    "keepConnectionStatusExpanded": "Оставить статус соединения раскрытым",
     "addFolder": "Добавить папку",
     "scrollToBottom": "Прокрутить вниз",
     "scrollToBottomWithUnread_one": "Прокрутить вниз, {{count}} непрочитанное сообщение",

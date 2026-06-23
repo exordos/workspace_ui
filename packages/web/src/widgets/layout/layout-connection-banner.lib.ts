@@ -1,5 +1,6 @@
 import { t } from "~/i18n/i18n";
 import type { ConnectionHealthSnapshot } from "~/shared/lib/connection-health";
+import type { LayoutTopBannerSeverity } from "./layout-top-banner.types";
 
 export function resolveLayoutConnectionBannerMessage(
   online: boolean,
@@ -27,4 +28,14 @@ export function resolveLayoutConnectionBannerMessage(
     return t("app.connectionDegraded");
   }
   return null;
+}
+
+export function resolveLayoutConnectionBannerSeverity(
+  online: boolean,
+  health: ConnectionHealthSnapshot,
+): LayoutTopBannerSeverity {
+  if (!online || health.phase === "offline" || health.phase === "blocked") {
+    return "critical";
+  }
+  return "warning";
 }
