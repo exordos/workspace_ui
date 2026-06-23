@@ -87,6 +87,7 @@ import {
   resolveDmGroupParticipantIds,
   resolveDraftType,
 } from "./chat-page.lib";
+import { useChatStreamRouteResolution } from "./chat-stream-route-resolution.hook";
 import type { ComposerUploadProgressState } from "./chat-upload.lib";
 
 const log = createLogger("chat-page");
@@ -130,6 +131,9 @@ export const ChatPage: React.FC = () => {
     activeStream,
     canonicalStreamName,
     resolvedStreamId,
+    isUnresolvedStreamRoute,
+    unresolvedStreamName,
+    unresolvedLocalStreamMatch,
     dmRecipientIds,
     isDmView,
     dmChat,
@@ -592,6 +596,15 @@ export const ChatPage: React.FC = () => {
   const handleDismissSendError = useCallback(() => {
     setSendError(null);
   }, []);
+
+  const { routeResolveError, dismissRouteResolveError } = useChatStreamRouteResolution({
+    unresolvedStreamName: isUnresolvedStreamRoute ? unresolvedStreamName : null,
+    unresolvedLocalStreamMatch,
+    hasExplicitTopicRoute: topicName != null,
+    activeTopic,
+    locationSearch: location.search,
+    navigate,
+  });
 
   const { canStartCall, buildCurrentCallLink, handleCallClick } = useChatPageCall({
     isDmView,
@@ -1160,8 +1173,10 @@ export const ChatPage: React.FC = () => {
           />
         )}
         <ChatPageInlineAlerts
+          routeResolveError={routeResolveError}
           actionError={actionError}
           sendError={sendError}
+          onDismissRouteResolveError={dismissRouteResolveError}
           onDismissActionError={handleDismissActionError}
           onDismissSendError={handleDismissSendError}
         />

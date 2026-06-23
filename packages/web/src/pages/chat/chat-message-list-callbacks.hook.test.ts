@@ -15,6 +15,30 @@ const baseParams = {
 };
 
 describe("resolveQuotePermalinkNavigation", () => {
+  it("passes internal stream topic routes through in-app navigation", () => {
+    expect(
+      resolveQuotePermalinkNavigation({
+        ...baseParams,
+        href: "/stream/10-engineering/topic/Bugs?msg=15",
+      }),
+    ).toEqual({
+      kind: "path",
+      path: "/stream/10-engineering/topic/Bugs?msg=15",
+    });
+  });
+
+  it("passes internal message redirect routes through in-app navigation", () => {
+    expect(
+      resolveQuotePermalinkNavigation({
+        ...baseParams,
+        href: "/message/12345",
+      }),
+    ).toEqual({
+      kind: "path",
+      path: "/message/12345",
+    });
+  });
+
   it("uses in-place search update for same-chat DM permalink", () => {
     expect(
       resolveQuotePermalinkNavigation({

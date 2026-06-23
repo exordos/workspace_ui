@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { canStartMessageContentEdit } from "~/entities/message/message-edit-policy.lib";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -7,6 +8,7 @@ import { getJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 import { messageBodyToUnsanitizedDisplayHtml } from "~/shared/lib/message-markdown-display.lib";
 import { prepareProtectedMessageHtml } from "~/shared/lib/protected-message-media";
 import { useProtectedMessageHtml } from "~/shared/lib/protected-message-media.hook";
+import { resolveStreamByDisplayName } from "~/shared/lib/stream-name.lib";
 import { filterVisibleContextSections } from "./message-bubble-actions.lib";
 import {
   MessageBubbleStandardBody,
@@ -62,11 +64,18 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       [jitsiMeetBaseUrl],
     );
     const getUser = useUsersStore((s) => s.getUser);
+    const streamsMap = useChatListStore((s) => s.streamsMap);
     const user = getUser(message.sender_id);
     const findUserIdByDisplayName = useUsersStore((s) => s.findUserIdByDisplayName);
     const resolveUserMention = useCallback(
       (displayName: string): number | null => findUserIdByDisplayName(displayName),
       [findUserIdByDisplayName],
+    );
+    const resolveStreamByName = useCallback(
+      (streamName: string): { streamId: number; streamName: string } | null => {
+        return resolveStreamByDisplayName(streamName, streamsMap);
+      },
+      [streamsMap],
     );
     const trimmedUserName = user?.full_name?.trim();
     const displayName =
@@ -101,6 +110,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       const displaySourceBody = message.markdown_source ?? message.content;
       const rawHtml = messageBodyToUnsanitizedDisplayHtml(displaySourceBody, {
         resolveUserMention,
+        resolveStreamByName,
         treatAsMarkdown: message.markdown_source != null,
         renderedContent: message.content,
       });
@@ -115,6 +125,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       message.markdown_source,
       imagesBase,
       resolveUserMention,
+      resolveStreamByName,
       resolveCustomEmojiShortcodeImageUrl,
     ]);
 

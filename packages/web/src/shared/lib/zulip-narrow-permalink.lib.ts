@@ -111,7 +111,7 @@ function parseStreamNarrowPermalink(
   normalizedHash: string,
   messageId: number,
 ): ParsedZulipNarrowPermalink | null {
-  const streamMatch = /^narrow\/channel\/([^/]+)\/topic\/([^/]+)\/near\//i.exec(normalizedHash);
+  const streamMatch = /^narrow\/channel\/([^/]+)\/topic\/([^/]*)\/near\//i.exec(normalizedHash);
   if (streamMatch == null) return null;
   const streamSlugEnc = streamMatch[1];
   const topicEnc = streamMatch[2];

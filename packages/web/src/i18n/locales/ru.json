@@ -148,6 +148,8 @@
     "saveError": "Ошибка сохранения",
     "forwardError": "Ошибка пересылки",
     "anchorAccessDenied": "Нет доступа к исходному сообщению или чату",
+    "channelResolveUnavailable": "Канал не найден или недоступен",
+    "channelResolveTransient": "Сейчас не удалось открыть канал",
     "sendFailed": "Не удалось отправить сообщение",
     "sending": "Отправляется…",
     "retrySend": "Повторить отправку",

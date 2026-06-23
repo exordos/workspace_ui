@@ -1,6 +1,7 @@
 import { fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCallParticipantsStore } from "~/entities/call/call.model";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import type { MockMessage } from "~/shared/api/zulip.types";
@@ -35,6 +36,7 @@ function createMessage(overrides: Partial<MockMessage> = {}): MockMessage {
 describe("MessageBubble markdown body", () => {
   afterEach(() => {
     window.getSelection()?.removeAllRanges();
+    useChatListStore.getState().clear();
     useUsersStore.getState().clear();
     useCallParticipantsStore.setState({ participantsByUrl: {} });
     useMediaViewerStore.getState().close();
@@ -187,6 +189,49 @@ describe("MessageBubble markdown body", () => {
     expect(emojiImage).toHaveAttribute("src", "https://cdn.example.com/parrot.png");
     expect(emojiImage).toHaveAttribute("alt", ":party_parrot:");
     expect(emojiImage).toHaveAttribute("title", ":party_parrot:");
+  });
+
+  it("renders resolved zulip topic reference as clickable in-app link", () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 10, name: "Engineering" }]);
+
+    const { container } = render(
+      <MessageBubble message={createMessage({ content: "#**Engineering>Bugs**" })} isOwn={false} />,
+    );
+
+    const link = container.querySelector<HTMLAnchorElement>(".message-body a.stream-topic");
+    expect(link).toBeTruthy();
+    expect(link?.getAttribute("href")).toBe("/stream/10-engineering/topic/Bugs");
+    expect(link?.textContent).toBe("#Engineering>Bugs");
+  });
+
+  it("renders unresolved zulip message reference as internal message redirect link", () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+
+    const { container } = render(
+      <MessageBubble
+        message={createMessage({ content: "#**Unknown>Bugs@12345**" })}
+        isOwn={false}
+      />,
+    );
+
+    const link = container.querySelector<HTMLAnchorElement>(".message-body a.message-link");
+    expect(link).toBeTruthy();
+    expect(link?.getAttribute("href")).toBe("/message/12345");
+    expect(link?.textContent).toBe("#Unknown>Bugs@12345");
+  });
+
+  it("renders unresolved zulip topic reference as name-route link", () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+
+    const { container } = render(
+      <MessageBubble message={createMessage({ content: "#**Unknown>Bugs**" })} isOwn={false} />,
+    );
+
+    const link = container.querySelector<HTMLAnchorElement>(".message-body a.stream-topic");
+    expect(link).toBeTruthy();
+    expect(link?.getAttribute("href")).toBe("/stream/Unknown/topic/Bugs");
+    expect(link?.textContent).toBe("#Unknown>Bugs");
   });
 
   it("does not open media viewer on a regular inline video click", () => {

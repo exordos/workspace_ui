@@ -20,6 +20,10 @@ import {
   restoreZulipMentionPlaceholders,
 } from "~/shared/lib/message-zulip-mentions.lib";
 import { renderZulipQuoteBlocksInMarkdown } from "~/shared/lib/message-zulip-quote.lib";
+import {
+  createZulipStreamReferenceExtension,
+  type ResolvedStreamReference,
+} from "~/shared/lib/message-zulip-stream-ref.lib";
 
 interface InlineSpoilerToken extends Tokens.Generic {
   type: "inline_spoiler";
@@ -118,14 +122,22 @@ const ZULIP_BLOCK_SPOILER_EXTENSION: TokenizerAndRendererExtension = {
   renderer: renderZulipBlockSpoilerToken,
 };
 
-const markdownRenderer = new Marked({
-  extensions: [ZULIP_BLOCK_SPOILER_EXTENSION, INLINE_SPOILER_EXTENSION],
-  renderer: {
-    html({ text }) {
-      return escapeInlineHtmlText(text);
+function createMarkdownRenderer(
+  options?: Pick<MessageBodyDisplayOptions, "resolveStreamByName">,
+): Marked {
+  return new Marked({
+    extensions: [
+      ZULIP_BLOCK_SPOILER_EXTENSION,
+      INLINE_SPOILER_EXTENSION,
+      createZulipStreamReferenceExtension(options?.resolveStreamByName),
+    ],
+    renderer: {
+      html({ text }) {
+        return escapeInlineHtmlText(text);
+      },
     },
-  },
-});
+  });
+}
 
 /** True when the string looks like HTML from Zulip, not raw `<https://…>` autolink markdown. */
 export function isLikelyRenderedMessageHtml(s: string): boolean {
@@ -136,7 +148,11 @@ export function isLikelyRenderedMessageHtml(s: string): boolean {
   return /^<[a-z!?]/i.test(t);
 }
 
-export function renderMarkdownFallbackHtml(markdown: string): string {
+export function renderMarkdownFallbackHtml(
+  markdown: string,
+  options?: Pick<MessageBodyDisplayOptions, "resolveStreamByName">,
+): string {
+  const markdownRenderer = createMarkdownRenderer(options);
   const rendered = markdownRenderer.parse(markdown, {
     async: false,
     breaks: true,
@@ -168,6 +184,8 @@ function restoreQuotePlaceholders(html: string, renderedQuotes: readonly string[
 export interface MessageBodyDisplayOptions {
   /** Resolves `@**DisplayName**` to a user id for client-side mention spans. Wildcards (`@**all**`, …) do not use this. */
   resolveUserMention?: (displayName: string) => number | null;
+  /** Resolves `#**Channel**` syntax to canonical stream metadata for in-app links. */
+  resolveStreamByName?: (streamName: string) => ResolvedStreamReference | null;
   /** True when the body definitely came from Zulip markdown mode (`apply_markdown=false`). */
   treatAsMarkdown?: boolean;
   /**
@@ -212,7 +230,13 @@ export function messageBodyToUnsanitizedDisplayHtml(
   };
 
   const renderQuoteHeader = (headerLine: string): string =>
-    restoreMentions(unwrapSingleParagraph(renderMarkdownFallbackHtml(headerLine)));
+    restoreMentions(
+      unwrapSingleParagraph(
+        renderMarkdownFallbackHtml(headerLine, {
+          resolveStreamByName: options?.resolveStreamByName,
+        }),
+      ),
+    );
 
   const renderQuoteInner = (inner: string): string => {
     const withNestedQuotes = renderZulipQuoteBlocksInMarkdown(
@@ -231,7 +255,11 @@ export function messageBodyToUnsanitizedDisplayHtml(
       },
     );
     return restoreQuotePlaceholders(
-      restoreMentions(renderMarkdownFallbackHtml(withNestedQuotes)),
+      restoreMentions(
+        renderMarkdownFallbackHtml(withNestedQuotes, {
+          resolveStreamByName: options?.resolveStreamByName,
+        }),
+      ),
       renderedQuotes,
     );
   };
@@ -251,7 +279,9 @@ export function messageBodyToUnsanitizedDisplayHtml(
       return placeholder;
     },
   );
-  const mdHtml = renderMarkdownFallbackHtml(withQuotes);
+  const mdHtml = renderMarkdownFallbackHtml(withQuotes, {
+    resolveStreamByName: options?.resolveStreamByName,
+  });
   return restoreQuotePlaceholders(restoreMentions(mdHtml), renderedQuotes);
 }
 

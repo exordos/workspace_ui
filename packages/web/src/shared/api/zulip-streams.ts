@@ -50,6 +50,10 @@ export interface DeleteTopicResult {
   errorCode?: string;
 }
 
+export type ResolveStreamIdByNameResult =
+  | { ok: true; streamId: number }
+  | { ok: false; kind: "not_found" | "forbidden" | "transient" };
+
 /** PATCH /streams/{id} response fields relevant to unarchive and server compatibility. */
 interface StreamPatchResponsePayload {
   result?: string;
@@ -357,6 +361,50 @@ export async function fetchStreams(): Promise<MockStream[]> {
   return list.map(parseRawStream);
 }
 
+export async function resolveStreamIdByName(
+  streamName: string,
+): Promise<ResolveStreamIdByNameResult> {
+  const normalizedName = guard.nonEmpty(streamName, "resolveStreamIdByName.streamName").trim();
+  const res = await zulipPipelineGet("/get_stream_id", { stream: normalizedName });
+  if (res == null) {
+    return { ok: false, kind: "transient" };
+  }
+  if (!res.ok) {
+    if (res.status === 403) {
+      return { ok: false, kind: "forbidden" };
+    }
+    if (res.status === 400 || res.status === 404) {
+      return { ok: false, kind: "not_found" };
+    }
+    return { ok: false, kind: "transient" };
+  }
+
+  const data = res.data as {
+    result?: string;
+    stream_id?: unknown;
+    code?: string;
+  };
+  if (data.result === "error") {
+    if (data.code === "BAD_REQUEST" || data.code === "STREAM_DOES_NOT_EXIST") {
+      return { ok: false, kind: "not_found" };
+    }
+    if (data.code === "UNAUTHORIZED_PRINCIPAL" || data.code === "UNAUTHORIZED") {
+      return { ok: false, kind: "forbidden" };
+    }
+    return { ok: false, kind: "transient" };
+  }
+
+  const streamId =
+    typeof data.stream_id === "number" && Number.isInteger(data.stream_id) && data.stream_id > 0
+      ? data.stream_id
+      : null;
+  if (streamId == null) {
+    return { ok: false, kind: "transient" };
+  }
+
+  return { ok: true, streamId };
+}
+
 /** Adds users to an existing stream (POST /users/me/subscriptions with principals). */
 export async function addMembersToStream(
   params: AddStreamMembersParams,
@@ -576,9 +624,13 @@ export async function fetchStreamTopicNames(
   if (signal?.aborted) {
     throw new DOMException("Aborted", "AbortError");
   }
-  const res = await zulipPipelineGet(`/users/me/${streamId}/topics`, {
-    allow_empty_topic_name: "true",
-  }, signal);
+  const res = await zulipPipelineGet(
+    `/users/me/${streamId}/topics`,
+    {
+      allow_empty_topic_name: "true",
+    },
+    signal,
+  );
   if (signal?.aborted) {
     throw new DOMException("Aborted", "AbortError");
   }

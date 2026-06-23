@@ -148,6 +148,8 @@
     "saveError": "Failed to save",
     "forwardError": "Failed to forward",
     "anchorAccessDenied": "No access to the original message or chat",
+    "channelResolveUnavailable": "Channel not found or unavailable",
+    "channelResolveTransient": "Could not open channel right now",
     "sendFailed": "Failed to send message",
     "sending": "Sending…",
     "retrySend": "Retry send",

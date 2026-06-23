@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCallParticipantsStore } from "~/entities/call/call.model";
+import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import type { MockMessage } from "~/shared/api/zulip.types";
@@ -101,6 +102,7 @@ function createRect({
 describe("MessageBubble edit/delete actions parity", () => {
   afterEach(() => {
     window.getSelection()?.removeAllRanges();
+    useChatListStore.getState().clear();
     useUsersStore.getState().clear();
     useCallParticipantsStore.setState({ participantsByUrl: {} });
     buildAuthHeaderMock.mockReset();
@@ -1277,5 +1279,63 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(onPermalinkClick).toHaveBeenCalledWith(
       "https://zulip.example.com/#narrow/dm/42-dm/near/987",
     );
+  });
+
+  it("delegates rendered zulip topic references to callback navigation handler", async () => {
+    const onPermalinkClick = vi.fn(() => true);
+    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 10, name: "Engineering" }]);
+
+    render(
+      <MessageBubble
+        message={createMessage({
+          id: 109,
+          content: "#**Engineering>Bugs**",
+        })}
+        isOwn={false}
+        callbacks={{ onPermalinkClick }}
+      />,
+    );
+
+    const link = await screen.findByRole("link", { name: "#Engineering>Bugs" });
+    fireEvent.click(link);
+    expect(onPermalinkClick).toHaveBeenCalledWith("/stream/10-engineering/topic/Bugs");
+  });
+
+  it("delegates unresolved zulip message references to internal message redirect", async () => {
+    const onPermalinkClick = vi.fn(() => true);
+
+    render(
+      <MessageBubble
+        message={createMessage({
+          id: 110,
+          content: "#**Unknown>Bugs@12345**",
+        })}
+        isOwn={false}
+        callbacks={{ onPermalinkClick }}
+      />,
+    );
+
+    const link = await screen.findByRole("link", { name: "#Unknown>Bugs@12345" });
+    fireEvent.click(link);
+    expect(onPermalinkClick).toHaveBeenCalledWith("/message/12345");
+  });
+
+  it("delegates unresolved zulip topic references to internal name-route navigation", async () => {
+    const onPermalinkClick = vi.fn(() => true);
+
+    render(
+      <MessageBubble
+        message={createMessage({
+          id: 111,
+          content: "#**Unknown>Bugs**",
+        })}
+        isOwn={false}
+        callbacks={{ onPermalinkClick }}
+      />,
+    );
+
+    const link = await screen.findByRole("link", { name: "#Unknown>Bugs" });
+    fireEvent.click(link);
+    expect(onPermalinkClick).toHaveBeenCalledWith("/stream/Unknown/topic/Bugs");
   });
 });

@@ -28,10 +28,26 @@ export interface ResolveQuotePermalinkNavigationParams {
   resolveStreamName: (streamId: number) => string | undefined;
 }
 
+function resolveInternalMessengerPathNavigation(
+  href: string,
+): QuotePermalinkNavigationTarget | null {
+  const trimmedHref = href.trim();
+  if (trimmedHref.length === 0 || !trimmedHref.startsWith("/")) {
+    return null;
+  }
+  const internalRoutePattern =
+    /^\/(?:org\/[^/]+\/)?(?:stream\/[^/]+(?:\/topic\/[^/]+)?|dm\/[^/]+|message\/\d+)(?:\?[^#]*)?$/i;
+  return internalRoutePattern.test(trimmedHref) ? { kind: "path", path: trimmedHref } : null;
+}
+
 /** Resolves quote permalink click into an in-app navigation target. Returns null when not handled. */
 export function resolveQuotePermalinkNavigation(
   params: ResolveQuotePermalinkNavigationParams,
 ): QuotePermalinkNavigationTarget | null {
+  const internalTarget = resolveInternalMessengerPathNavigation(params.href);
+  if (internalTarget != null) {
+    return internalTarget;
+  }
   const parsed = parseZulipNarrowPermalink(params.href);
   if (parsed == null) {
     const redirectRoute = buildMessageRedirectRouteFromZulipPermalink(params.href);

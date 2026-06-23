@@ -16,6 +16,7 @@ import {
   fetchSubscriptions,
   fetchTopics,
   removeMembersFromStream,
+  resolveStreamIdByName,
   unarchiveStream,
   updateStream,
 } from "./zulip-streams";
@@ -117,6 +118,55 @@ describe("fetchStreamMembers", () => {
 
     await expect(fetchStreamMembers(10)).resolves.toEqual([1, 2, 3]);
     expect(mockZulipApi.get).toHaveBeenCalledWith("/streams/10/members", undefined, undefined);
+  });
+});
+
+describe("resolveStreamIdByName", () => {
+  it("returns stream id on success", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { result: "success", stream_id: 77 },
+      raw: { statusText: "OK" },
+    });
+
+    await expect(resolveStreamIdByName("engineering")).resolves.toEqual({
+      ok: true,
+      streamId: 77,
+    });
+    expect(mockZulipApi.get).toHaveBeenCalledWith(
+      "/get_stream_id",
+      { stream: "engineering" },
+      undefined,
+    );
+  });
+
+  it("maps forbidden response", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: false,
+      status: 403,
+      data: { result: "error" },
+      raw: { statusText: "Forbidden" },
+    });
+
+    await expect(resolveStreamIdByName("engineering")).resolves.toEqual({
+      ok: false,
+      kind: "forbidden",
+    });
+  });
+
+  it("maps not found response", async () => {
+    mockZulipApi.get.mockResolvedValue({
+      ok: false,
+      status: 400,
+      data: { result: "error", code: "BAD_REQUEST" },
+      raw: { statusText: "Bad Request" },
+    });
+
+    await expect(resolveStreamIdByName("missing")).resolves.toEqual({
+      ok: false,
+      kind: "not_found",
+    });
   });
 });
 

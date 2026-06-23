@@ -127,18 +127,73 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
     expect(html).toContain(">@Doublek<");
     expect(html).not.toContain("**");
   });
+
+  it("renders resolved zulip stream reference as internal stream link", () => {
+    const html = messageBodyToUnsanitizedDisplayHtml("#**Engineering**", {
+      resolveStreamByName: (streamName) =>
+        streamName === "Engineering" ? { streamId: 10, streamName } : null,
+    });
+    expect(html).toContain('<a class="stream" href="/stream/10-engineering">#Engineering</a>');
+  });
+
+  it("renders resolved zulip stream topic reference as internal topic link", () => {
+    const html = messageBodyToUnsanitizedDisplayHtml("#**Engineering>Bugs**", {
+      resolveStreamByName: (streamName) =>
+        streamName === "Engineering" ? { streamId: 10, streamName } : null,
+    });
+    expect(html).toContain(
+      '<a class="stream-topic" href="/stream/10-engineering/topic/Bugs">#Engineering&gt;Bugs</a>',
+    );
+  });
+
+  it("renders resolved zulip stream topic message reference as narrow message link", () => {
+    const html = messageBodyToUnsanitizedDisplayHtml("#**Engineering>Bugs@12345**", {
+      resolveStreamByName: (streamName) =>
+        streamName === "Engineering" ? { streamId: 10, streamName } : null,
+    });
+    expect(html).toContain(
+      '<a class="message-link" href="#narrow/channel/10-Engineering/topic/Bugs/near/12345">#Engineering&gt;Bugs@12345</a>',
+    );
+  });
+
+  it("falls back to internal message redirect when stream is unresolved", () => {
+    const html = messageBodyToUnsanitizedDisplayHtml("#**Unknown>Bugs@12345**", {
+      resolveStreamByName: () => null,
+    });
+    expect(html).toContain(
+      '<a class="message-link" href="/message/12345">#Unknown&gt;Bugs@12345</a>',
+    );
+  });
+
+  it("renders unresolved zulip stream reference as name-route link", () => {
+    const html = messageBodyToUnsanitizedDisplayHtml("#**Unknown**", {
+      resolveStreamByName: () => null,
+    });
+    expect(html).toContain('<a class="stream" href="/stream/Unknown">#Unknown</a>');
+  });
+
+  it("renders unresolved zulip stream topic reference as name-route link", () => {
+    const html = messageBodyToUnsanitizedDisplayHtml("#**Unknown>Bugs**", {
+      resolveStreamByName: () => null,
+    });
+    expect(html).toContain(
+      '<a class="stream-topic" href="/stream/Unknown/topic/Bugs">#Unknown&gt;Bugs</a>',
+    );
+  });
 });
 
 function renderPreparedMessageHtml(
   body: string,
   options?: {
     resolveUserMention?: (displayName: string) => number | null;
+    resolveStreamByName?: (streamName: string) => { streamId: number; streamName: string } | null;
     resolveCustomEmojiShortcodeImageUrl?: (shortcode: string) => string | undefined;
     treatAsMarkdown?: boolean;
   },
 ): string {
   const raw = messageBodyToUnsanitizedDisplayHtml(body, {
     resolveUserMention: options?.resolveUserMention,
+    resolveStreamByName: options?.resolveStreamByName,
     treatAsMarkdown: options?.treatAsMarkdown,
   });
   return prepareProtectedMessageHtml(raw, "https://sys.example.com/workspace/v1", {
@@ -203,6 +258,19 @@ describe("prepareProtectedMessageHtml message rendering pipeline", () => {
     expect(html).toMatch(/<pre><code[^>]*>\|\|stay\|\|\n<\/code><\/pre>/);
     expect(html).toContain('class="inline-spoiler"');
     expect(html).toContain(">reveal<");
+  });
+
+  it("does not parse zulip stream references inside inline code or fenced code", () => {
+    const html = renderPreparedMessageHtml(
+      "Inline `#**Engineering>Bugs**` and block:\n```txt\n#**Engineering>Bugs@12345**\n```\nOutside #**Engineering>Bugs**",
+      {
+        resolveStreamByName: (streamName) =>
+          streamName === "Engineering" ? { streamId: 10, streamName } : null,
+      },
+    );
+    expect(html).toContain("<code>#**Engineering&gt;Bugs**</code>");
+    expect(html).toMatch(/<pre><code[^>]*>#\*\*Engineering&gt;Bugs@12345\*\*\n<\/code><\/pre>/);
+    expect(html).toContain('class="stream-topic"');
   });
 
   it("renders mentions and emoji shortcodes together", () => {

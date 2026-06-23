@@ -41,26 +41,36 @@ const InlineAlertBar = React.memo(function InlineAlertBar({
 });
 
 export const ChatPageInlineAlerts = React.memo(function ChatPageInlineAlerts({
+  routeResolveError,
   actionError,
   sendError,
+  onDismissRouteResolveError,
   onDismissActionError,
   onDismissSendError,
 }: ChatPageInlineAlertsProps) {
   return (
     <>
+      {routeResolveError && (
+        <InlineAlertBar
+          message={routeResolveError}
+          onDismiss={onDismissRouteResolveError}
+          round={actionError || sendError ? "top" : "all"}
+        />
+      )}
       {actionError && (
         <InlineAlertBar
           message={actionError}
           onDismiss={onDismissActionError}
-          round={sendError ? "top" : "all"}
+          divided={routeResolveError != null}
+          round={sendError ? "top" : routeResolveError ? "bottom" : "all"}
         />
       )}
       {sendError && (
         <InlineAlertBar
           message={sendError}
           onDismiss={onDismissSendError}
-          divided={actionError != null}
-          round={actionError ? "bottom" : "all"}
+          divided={actionError != null || routeResolveError != null}
+          round={actionError || routeResolveError ? "bottom" : "all"}
         />
       )}
     </>

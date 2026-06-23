@@ -51,4 +51,58 @@ describe("useChatRouteContext", () => {
     expect(result.current.forwardMessageId).toBe(888);
     expect(result.current.isDmView).toBe(true);
   });
+
+  it("preserves unresolved stream name for name-only routes", () => {
+    const { result } = renderHook(() =>
+      useChatRouteContext({
+        streamSlug: "Engineering",
+        topicName: encodeURIComponent("bugs"),
+        dmIdParam: undefined,
+        location: {
+          pathname: "/org/example.com/stream/Engineering/topic/bugs",
+          search: "",
+          hash: "",
+          state: null,
+          key: "test",
+        },
+        streamsMap: new Map(),
+        dmsFromStore: [],
+        currentUserId: 42,
+      }),
+    );
+
+    expect(result.current.resolvedStreamId).toBeNull();
+    expect(result.current.isUnresolvedStreamRoute).toBe(true);
+    expect(result.current.unresolvedStreamName).toBe("Engineering");
+    expect(result.current.unresolvedLocalStreamMatch).toBeNull();
+    expect(result.current.activeStream).toBe("Engineering");
+    expect(result.current.activeTopic).toBe("bugs");
+  });
+
+  it("reuses one local unresolved stream match for header and resolution", () => {
+    const { result } = renderHook(() =>
+      useChatRouteContext({
+        streamSlug: "Engineering",
+        topicName: undefined,
+        dmIdParam: undefined,
+        location: {
+          pathname: "/org/example.com/stream/Engineering",
+          search: "",
+          hash: "",
+          state: null,
+          key: "test",
+        },
+        streamsMap: new Map([[10, { name: "Engineering" }]]),
+        dmsFromStore: [],
+        currentUserId: 42,
+      }),
+    );
+
+    expect(result.current.resolvedStreamId).toBeNull();
+    expect(result.current.unresolvedLocalStreamMatch).toEqual({
+      streamId: 10,
+      streamName: "Engineering",
+    });
+    expect(result.current.activeStream).toBe("Engineering");
+  });
 });

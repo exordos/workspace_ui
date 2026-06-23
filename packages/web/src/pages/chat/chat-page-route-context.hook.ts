@@ -1,6 +1,10 @@
 import { useMemo } from "react";
 import { dmRouteKey } from "~/shared/lib/dm-key";
 import { computeIsGroupDmView, normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
+import {
+  resolveStreamByDisplayName,
+  type ResolvedStreamByDisplayName,
+} from "~/shared/lib/stream-name.lib";
 import { decodeTopicFromRoute } from "~/shared/lib/topic-identity.lib";
 import {
   getDmById,
@@ -32,6 +36,9 @@ export function useChatRouteContext(options: {
   resolvedStreamName: string;
   canonicalStreamName: string | null;
   resolvedStreamId: number | null;
+  isUnresolvedStreamRoute: boolean;
+  unresolvedStreamName: string | null;
+  unresolvedLocalStreamMatch: ResolvedStreamByDisplayName | null;
   dmRecipientIds: number[];
   isDmView: boolean;
   dmChat: ReturnType<typeof getDmById> | undefined;
@@ -49,14 +56,29 @@ export function useChatRouteContext(options: {
     () => (streamSlug ? parseStreamSlug(streamSlug) : null),
     [streamSlug],
   );
+  const unresolvedStreamName = useMemo(() => {
+    if (streamSlug == null || streamSlug.length === 0 || parsedStream != null) {
+      return null;
+    }
+    return streamSlug;
+  }, [parsedStream, streamSlug]);
 
   const { resolvedStreamName, resolvedCanonicalStreamName, resolvedStreamId } = useMemo(
     () => resolveStreamRouteFromSlug(parsedStream, streamsMap),
     [parsedStream, streamsMap],
   );
+  const unresolvedStreamMatch = useMemo(
+    () =>
+      unresolvedStreamName != null
+        ? resolveStreamByDisplayName(unresolvedStreamName, streamsMap)
+        : null,
+    [streamsMap, unresolvedStreamName],
+  );
 
   const streamRouteTopic = topicName != null ? decodeTopicFromRoute(topicName) : "";
-  const activeStream = parsedStream ? resolvedStreamName : undefined;
+  const activeStream = parsedStream
+    ? resolvedStreamName
+    : (unresolvedStreamMatch?.streamName ?? unresolvedStreamName ?? undefined);
 
   const rawDmUserIds = useMemo(() => {
     if (dmIdParam == null || dmIdParam === "") return null;
@@ -101,6 +123,9 @@ export function useChatRouteContext(options: {
     resolvedStreamName,
     canonicalStreamName: resolvedCanonicalStreamName,
     resolvedStreamId,
+    isUnresolvedStreamRoute: unresolvedStreamName != null,
+    unresolvedStreamName,
+    unresolvedLocalStreamMatch: unresolvedStreamMatch,
     dmRecipientIds,
     isDmView,
     dmChat,

@@ -11,8 +11,10 @@ describe("ChatPageInlineAlerts", () => {
 
     render(
       <ChatPageInlineAlerts
+        routeResolveError={null}
         actionError="Failed to fetch"
         sendError={null}
+        onDismissRouteResolveError={vi.fn()}
         onDismissActionError={onDismissActionError}
         onDismissSendError={onDismissSendError}
       />,
@@ -33,8 +35,10 @@ describe("ChatPageInlineAlerts", () => {
 
     render(
       <ChatPageInlineAlerts
+        routeResolveError={null}
         actionError={null}
         sendError="Message not sent"
+        onDismissRouteResolveError={vi.fn()}
         onDismissActionError={onDismissActionError}
         onDismissSendError={onDismissSendError}
       />,
@@ -55,8 +59,10 @@ describe("ChatPageInlineAlerts", () => {
 
     render(
       <ChatPageInlineAlerts
+        routeResolveError={null}
         actionError="Action failed"
         sendError="Send failed"
+        onDismissRouteResolveError={vi.fn()}
         onDismissActionError={onDismissActionError}
         onDismissSendError={onDismissSendError}
       />,
@@ -76,5 +82,27 @@ describe("ChatPageInlineAlerts", () => {
 
     await user.click(closeButtons[1]!);
     expect(onDismissSendError).toHaveBeenCalledTimes(1);
+  });
+
+  it("показывает routeResolveError отдельной строкой", async () => {
+    const user = userEvent.setup();
+    const onDismissRouteResolveError = vi.fn();
+
+    render(
+      <ChatPageInlineAlerts
+        routeResolveError="Channel not found or unavailable"
+        actionError={null}
+        sendError={null}
+        onDismissRouteResolveError={onDismissRouteResolveError}
+        onDismissActionError={vi.fn()}
+        onDismissSendError={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Channel not found or unavailable");
+
+    await user.click(screen.getByRole("button", { name: "Close" }));
+
+    expect(onDismissRouteResolveError).toHaveBeenCalledTimes(1);
   });
 });

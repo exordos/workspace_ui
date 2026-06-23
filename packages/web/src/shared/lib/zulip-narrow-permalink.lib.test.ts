@@ -53,6 +53,15 @@ describe("parseZulipNarrowPermalink", () => {
     });
   });
 
+  it("parses stream permalink with empty topic", () => {
+    expect(parseZulipNarrowPermalink("#narrow/channel/10-Engineering/topic//near/15")).toEqual({
+      messageId: 15,
+      kind: "stream",
+      streamId: 10,
+      topic: "",
+    });
+  });
+
   it("returns null for permalink without participant slug", () => {
     expect(parseZulipNarrowPermalink("#narrow/dm/near/1")).toBeNull();
   });
@@ -87,6 +96,18 @@ describe("buildRouteFromZulipNarrowPermalink", () => {
         resolveStreamName: (streamId) => (streamId === 10 ? "Engineering" : undefined),
       }),
     ).toBe("/stream/10-engineering/topic/Bugs?msg=15");
+  });
+
+  it("builds stream route with empty topic sentinel", () => {
+    const parsed = parseZulipNarrowPermalink("#narrow/channel/10-Engineering/topic//near/15");
+    expect(parsed).not.toBeNull();
+    expect(
+      buildRouteFromZulipNarrowPermalink({
+        parsed: parsed!,
+        currentUserId: 7,
+        resolveStreamName: (streamId) => (streamId === 10 ? "Engineering" : undefined),
+      }),
+    ).toBe("/stream/10-engineering/topic/__empty__?msg=15");
   });
 });
 
