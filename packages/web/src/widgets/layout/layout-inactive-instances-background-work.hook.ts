@@ -26,8 +26,7 @@ export function useInactiveInstancesBackgroundWork(options: {
           (row) => row.realm === credentials.realm && row.login === credentials.login,
         );
         startMessengerEventLoopForCredentials({
-          // The Workspace gateway backend does not expose old event queues.
-          enabled: false,
+          enabled: true,
           credentials,
           instanceId: instance?.id,
           signal: controller.signal,

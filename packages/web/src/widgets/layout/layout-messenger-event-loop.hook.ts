@@ -496,8 +496,7 @@ export function useLayoutMessengerEventLoop(options: {
           eventLoopStartedRef.current = true;
 
           startMessengerEventLoop({
-            // The Workspace gateway backend does not expose old event queues.
-            enabled: false,
+            enabled: true,
             signal: loopAbort.signal,
             instanceId: currentInstanceId ?? undefined,
             onTabStaleResume: refreshStaleData,

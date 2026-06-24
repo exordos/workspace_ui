@@ -203,7 +203,7 @@ describe("useLayoutMessengerEventLoop", () => {
     const firstCallArg = startMessengerEventLoopMock.mock.calls[0]?.[0] as
       | { enabled?: boolean; fetchEventTypes?: string[]; onQueueRegistered?: unknown }
       | undefined;
-    expect(firstCallArg?.enabled).toBe(false);
+    expect(firstCallArg?.enabled).toBe(true);
     expect(firstCallArg?.fetchEventTypes).toBeUndefined();
     expect(firstCallArg?.onQueueRegistered).toBeUndefined();
   });

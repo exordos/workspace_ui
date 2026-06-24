@@ -401,7 +401,7 @@ function shouldSkipAuth401Logout(req: ApiRequest): boolean {
     }
     // Workspace messenger gateway APIs use IAM Bearer; refresh is allowed, logout is not.
     if (
-      /\/api\/messenger(?:\/v1)?\/(?:folders|streams|stream_bindings|stream_topics|messages)(?:\/|$)/.test(
+      /\/api\/messenger(?:\/v1)?\/(?:folders|streams|stream_bindings|stream_topics|messages|events|epoch)(?:\/|$)/.test(
         path,
       )
     ) {

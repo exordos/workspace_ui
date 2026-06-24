@@ -49,6 +49,7 @@ function isViteDevProxyDebugEnabled(rawEnv: Record<string, string>): boolean {
 type ViteProxyEntry = {
   target: string;
   changeOrigin: boolean;
+  ws?: boolean;
   rewrite?: (pathValue: string) => string;
   configure?: (proxy: unknown, options: unknown) => void;
 };
@@ -174,6 +175,7 @@ export default defineConfig(({ mode }) => {
       "/api/messenger": withDevProxyRequestLog("messenger-api", workspaceOrigin, proxyDebug, {
         target: workspaceOrigin,
         changeOrigin: true,
+        ws: true,
       }),
       "/api/core": withDevProxyRequestLog("iam-core", workspaceOrigin, proxyDebug, {
         target: workspaceOrigin,
