@@ -16,6 +16,7 @@ import {
   isAllowedDevWorkspaceProxyTargetOrigin,
   workspaceRestApiPathSuffix,
 } from "~/shared/config/dev-workspace-org-proxy";
+import { isAbortError } from "~/shared/lib/abort-error";
 import { getBasicAuthValue, wipeCredentials } from "~/shared/lib/auth-guard";
 import {
   noteApiTransportFailure,
@@ -324,9 +325,12 @@ const loggingMiddleware: Middleware = async (req, next) => {
     return res;
   } catch (err) {
     const durationMs = Math.round(performance.now() - start);
+    const aborted = isAbortError(err) || req.signal?.aborted === true;
     logApiCall(req.method, logPath, {
       durationMs,
-      error: err instanceof Error ? err.message : "Unknown error",
+      ...(aborted
+        ? { aborted: true }
+        : { error: err instanceof Error ? err.message : "Unknown error" }),
       ...(params ? { params } : {}),
     });
     throw err;
@@ -350,13 +354,6 @@ function resolveRetryDelayMs(retryAfterHeader: string | null, attempt: number): 
   }
 
   return Math.min(parsedSeconds * 1000, 10000);
-}
-
-function isAbortError(err: unknown): boolean {
-  return (
-    (err instanceof DOMException && err.name === "AbortError") ||
-    (err instanceof Error && err.name === "AbortError")
-  );
 }
 
 const connectionHealthMiddleware: Middleware = async (req, next) => {

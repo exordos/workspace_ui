@@ -4,6 +4,7 @@
 
 import { fetchAllMessagesPage } from "~/shared/api/zulip-messages";
 import type { MessagesPageResult, MockMessage } from "~/shared/api/zulip.types";
+import { isAbortError } from "~/shared/lib/abort-error";
 import { createLogger, logApiCall } from "~/shared/lib/logger";
 import { getInstanceMessagesAscending } from "~/shared/lib/message-cache-db";
 
@@ -25,11 +26,14 @@ export async function fetchFeedMessages(
     return page;
   } catch (err) {
     const durationMs = Math.round(performance.now() - start);
+    const aborted = isAbortError(err) || options?.signal?.aborted === true;
     logApiCall("GET", "/messages?narrow=all", {
-      error: String(err),
       durationMs,
+      ...(aborted ? { aborted: true } : { error: String(err) }),
     });
-    log.error("Failed to fetch feed messages", { error: String(err) });
+    if (!aborted) {
+      log.error("Failed to fetch feed messages", { error: String(err) });
+    }
     throw err;
   }
 }

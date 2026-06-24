@@ -14,6 +14,8 @@ import { fetchInboxEntries, fetchInboxEntriesWithSnapshot } from "./inbox.api";
 const upsertChatMessages = vi.hoisted(() => vi.fn());
 const getCurrentInstance = vi.hoisted(() => vi.fn());
 const persistChatMessagesToIndexedDb = vi.hoisted(() => vi.fn());
+const logApiCall = vi.hoisted(() => vi.fn());
+const logError = vi.hoisted(() => vi.fn());
 
 vi.mock("~/shared/api/zulip-messages", () => ({
   fetchMessagesWithNarrowPage: vi.fn(),
@@ -41,10 +43,10 @@ vi.mock("~/shared/lib/logger", () => ({
   createLogger: () => ({
     info: vi.fn(),
     warn: vi.fn(),
-    error: vi.fn(),
+    error: logError,
     debug: vi.fn(),
   }),
-  logApiCall: vi.fn(),
+  logApiCall,
 }));
 
 afterEach(() => {
@@ -52,12 +54,14 @@ afterEach(() => {
   upsertChatMessages.mockReset();
   getCurrentInstance.mockReset();
   persistChatMessagesToIndexedDb.mockReset();
+  logApiCall.mockReset();
+  logError.mockReset();
   getCurrentInstance.mockReturnValue(null);
   persistChatMessagesToIndexedDb.mockReturnValue(false);
 });
 
 function msg(overrides: Parameters<typeof createMessage>[0] = {}): MockMessage {
-  return createMessage(overrides) as MockMessage;
+  return createMessage(overrides);
 }
 
 function dmMsg(overrides: Parameters<typeof createMessage>[0] = {}): MockMessage {
@@ -172,6 +176,22 @@ describe("fetchInboxEntries", () => {
   it("propagates errors from fetchMessagesWithNarrowPage", async () => {
     vi.mocked(fetchMessagesWithNarrowPage).mockRejectedValue(new Error("API failure"));
     await expect(fetchInboxEntries()).rejects.toThrow("API failure");
+  });
+
+  it("does not log abort as an error", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    vi.mocked(fetchMessagesWithNarrowPage).mockRejectedValue(
+      new DOMException("Aborted", "AbortError"),
+    );
+
+    await expect(fetchInboxEntries(null, {}, { signal: controller.signal })).rejects.toThrow();
+
+    expect(logApiCall).toHaveBeenCalledWith("GET", "/messages?narrow=is:unread", {
+      durationMs: expect.any(Number),
+      aborted: true,
+    });
+    expect(logError).not.toHaveBeenCalled();
   });
 
   it("sets correct key format for stream entries", async () => {

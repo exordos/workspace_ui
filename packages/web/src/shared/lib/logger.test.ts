@@ -322,6 +322,16 @@ describe("logApiCall", () => {
     expect((entry!.data as Record<string, unknown>).error).toBe("Network error");
   });
 
+  it("logs debug when request is aborted", () => {
+    logApiCall("GET", "/messages", { aborted: true, durationMs: 25 });
+
+    const entry = getLogHistory().find((e) => e.scope === "api");
+    expect(entry).toBeDefined();
+    expect(entry!.level).toBe("debug");
+    expect(entry!.message).toBe("GET /messages aborted");
+    expect((entry!.data as Record<string, unknown>).aborted).toBe(true);
+  });
+
   // Slow responses (>3s) are logged as warnings — helps identify backend bottlenecks
   it("logs warn for slow responses (>3000ms)", () => {
     logApiCall("GET", "/users", { durationMs: 5000 });

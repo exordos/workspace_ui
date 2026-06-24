@@ -306,6 +306,7 @@ export function logApiCall(
     status?: number;
     durationMs?: number;
     error?: string;
+    aborted?: boolean;
     params?: Record<string, unknown>;
   },
 ): void {
@@ -317,6 +318,12 @@ export function logApiCall(
     data.params = options.params;
   }
 
+  if (options?.aborted) {
+    data.aborted = true;
+    apiLog.debug(`${method} ${path} aborted`, data);
+    return;
+  }
+
   if (options?.error) {
     data.error = options.error;
     apiLog.error(`${method} ${path} failed`, data);
@@ -326,6 +333,8 @@ export function logApiCall(
     apiLog.debug(`${method} ${path}`, data);
   }
 }
+
+export { isAbortError } from "./abort-error";
 
 export function logEvent(type: string, data?: Record<string, unknown>): void {
   createLogger("realtime").debug(`event: ${type}`, data);

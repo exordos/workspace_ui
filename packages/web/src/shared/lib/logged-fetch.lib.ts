@@ -2,6 +2,7 @@
  * fetch wrapper that records method, path, status, and sanitized params via logApiCall.
  */
 
+import { isAbortError } from "./abort-error";
 import { extractFetchParamsFromBody, resolveFetchBodyContentType } from "./logged-fetch-body.lib";
 import { logApiCall } from "./logger";
 
@@ -46,9 +47,12 @@ export async function loggedFetch(input: RequestInfo | URL, init?: RequestInit):
     return response;
   } catch (err) {
     const durationMs = Math.round(performance.now() - start);
+    const aborted = isAbortError(err) || init?.signal?.aborted === true;
     logApiCall(method, logPath, {
       durationMs,
-      error: err instanceof Error ? err.message : "Unknown error",
+      ...(aborted
+        ? { aborted: true }
+        : { error: err instanceof Error ? err.message : "Unknown error" }),
       ...(params ? { params } : {}),
     });
     throw err;

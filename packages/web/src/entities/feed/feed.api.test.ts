@@ -10,6 +10,9 @@ import type { MockMessage } from "~/shared/api/zulip.types";
 import { createMessage, createMessages } from "~/test/factories";
 import { fetchFeedMessages } from "./feed.api";
 
+const logApiCall = vi.hoisted(() => vi.fn());
+const logError = vi.hoisted(() => vi.fn());
+
 vi.mock("~/shared/api/zulip-messages", () => ({
   fetchAllMessagesPage: vi.fn(),
 }));
@@ -18,14 +21,16 @@ vi.mock("~/shared/lib/logger", () => ({
   createLogger: () => ({
     info: vi.fn(),
     warn: vi.fn(),
-    error: vi.fn(),
+    error: logError,
     debug: vi.fn(),
   }),
-  logApiCall: vi.fn(),
+  logApiCall,
 }));
 
 afterEach(() => {
   vi.restoreAllMocks();
+  logApiCall.mockReset();
+  logError.mockReset();
 });
 
 // ---------------------------------------------------------------------------
@@ -68,6 +73,20 @@ describe("fetchFeedMessages", () => {
   it("propagates errors from the page fetch", async () => {
     vi.mocked(fetchAllMessagesPage).mockRejectedValue(new Error("API failure"));
     await expect(fetchFeedMessages()).rejects.toThrow("API failure");
+  });
+
+  it("does not log abort as an error", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    vi.mocked(fetchAllMessagesPage).mockRejectedValue(new DOMException("Aborted", "AbortError"));
+
+    await expect(fetchFeedMessages("newest", 50, { signal: controller.signal })).rejects.toThrow();
+
+    expect(logApiCall).toHaveBeenCalledWith("GET", "/messages?narrow=all", {
+      durationMs: expect.any(Number),
+      aborted: true,
+    });
+    expect(logError).not.toHaveBeenCalled();
   });
 
   it("returns empty array when API returns no messages", async () => {

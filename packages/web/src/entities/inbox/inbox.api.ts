@@ -10,6 +10,7 @@ import {
   type ZulipUnreadMessagesSnapshot,
 } from "~/shared/api/zulip-unread.lib";
 import type { MockMessage, ZulipRawMessage } from "~/shared/api/zulip.types";
+import { isAbortError } from "~/shared/lib/abort-error";
 import { createLogger, logApiCall } from "~/shared/lib/logger";
 import { getInstanceMessagesAscending, upsertChatMessages } from "~/shared/lib/message-cache-db";
 import { chatKeyFromMockMessage } from "~/shared/lib/message-cache-keys.lib";
@@ -147,11 +148,14 @@ export async function fetchInboxEntriesWithSnapshot(
     };
   } catch (err) {
     const durationMs = Math.round(performance.now() - start);
+    const aborted = isAbortError(err) || requestOptions?.signal?.aborted === true;
     logApiCall("GET", "/messages?narrow=is:unread", {
-      error: String(err),
       durationMs,
+      ...(aborted ? { aborted: true } : { error: String(err) }),
     });
-    log.error("Failed to fetch inbox entries", { error: String(err) });
+    if (!aborted) {
+      log.error("Failed to fetch inbox entries", { error: String(err) });
+    }
     throw err;
   }
 }
