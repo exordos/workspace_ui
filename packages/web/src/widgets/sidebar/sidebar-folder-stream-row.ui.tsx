@@ -6,13 +6,14 @@ import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
-import { SidebarChatBadges } from "./sidebar-chat-badges.ui";
 import { StreamContextMenu, TopicContextMenu } from "./sidebar-chat-context-menu.ui";
 import { sidebarStreamRoute, sidebarStreamTopicRoute } from "./sidebar-chat-routes.lib";
-import { TopicMuteButton } from "./sidebar-folder-topic-buttons.ui";
+import { sidebarChatRowBodyClass, sidebarChatRowLinkClass } from "./sidebar-chat-row-layout.lib";
+import { SidebarChatRowMeta } from "./sidebar-chat-row-meta.ui";
 import { SidebarMessagePreview } from "./sidebar-message-preview.ui";
 import { SidebarStreamHydrateWrapper } from "./sidebar-stream-hydrate-wrapper.ui";
 import { useSidebarTopicCollapse } from "./sidebar-topic-collapse.hook";
+import { SidebarTopicRowMeta } from "./sidebar-topic-row-meta.ui";
 import { SidebarTopicShowMoreButton } from "./sidebar-topic-show-more.ui";
 import { slugForStream, TOPIC_BAR_COLORS } from "./sidebar.lib";
 import type { NewTopicDialogState } from "./sidebar-folder-chat-list.types";
@@ -28,6 +29,9 @@ type StreamRowLinkContentProps = Readonly<{
   isPinnedChat: boolean;
   streamAvatarSize: "sm" | "md";
   showLastMessageSender: boolean;
+  expanded?: boolean;
+  onToggleStream?: (slug: string) => void;
+  streamSlug?: string;
 }>;
 
 export interface SidebarFolderStreamRowProps {
@@ -58,11 +62,16 @@ function StreamRowLinkContent({
   isPinnedChat,
   streamAvatarSize,
   showLastMessageSender,
+  expanded,
+  onToggleStream,
+  streamSlug,
 }: StreamRowLinkContentProps): React.ReactElement {
+  const hasExpandChevron = onToggleStream != null && streamSlug != null;
+
   return (
     <>
       <Avatar size={streamAvatarSize}>#</Avatar>
-      <div className="min-w-0 flex-1">
+      <div className={sidebarChatRowBodyClass(isCompactDensity)}>
         <div
           className={`truncate text-sm font-medium ${
             streamMuted ? "text-text-muted" : "text-text-primary"
@@ -77,15 +86,24 @@ function StreamRowLinkContent({
           />
         )}
       </div>
-      <div className="flex flex-shrink-0 flex-col items-end gap-1">
-        <div className="flex items-center gap-1">
-          {isPinnedChat && <Icon name="pin" size={12} className="text-text-muted" />}
-          {showLastMessageSender && (
-            <span className="text-xs text-text-muted">{chat.time ?? ""}</span>
-          )}
-          <SidebarChatBadges unreadCount={chat.badge} hasMention={chat.hasMention} />
-        </div>
-      </div>
+      <SidebarChatRowMeta
+        compact={isCompactDensity}
+        isPinned={isPinnedChat}
+        unreadCount={chat.badge}
+        hasMention={chat.hasMention}
+        time={showLastMessageSender ? chat.time : undefined}
+        expandChevron={
+          hasExpandChevron
+            ? {
+                expanded: expanded === true,
+                onToggle: () => {
+                  onToggleStream(streamSlug);
+                },
+                ariaLabel: expanded ? t("a11y.collapseTopics") : t("a11y.expandTopics"),
+              }
+            : undefined
+        }
+      />
     </>
   );
 }
@@ -160,17 +178,10 @@ const SidebarFolderStreamTopicsList = React.memo(function SidebarFolderStreamTop
                 topic={topic.subject}
                 rowClassName={`group/topic relative w-full rounded-r-lg border-l-4 transition-colors ${sidebarRowClass(isTopicActive)}`}
                 rowStyle={{ borderLeftColor: topicColor }}
-                sideActions={
-                  <TopicMuteButton
-                    streamId={chat.stream_id}
-                    topic={topic.subject}
-                    onMuteError={onMuteError}
-                  />
-                }
               >
                 <Link
                   to={sidebarStreamTopicRoute(streamSlug, topic.subject)}
-                  className="flex w-full min-w-0 items-start gap-3 py-2 pl-3 pr-12"
+                  className="flex w-full min-w-0 items-stretch gap-3 py-2 pl-3 pr-2"
                 >
                   <div className="min-w-0 flex-1">
                     <div
@@ -184,10 +195,19 @@ const SidebarFolderStreamTopicsList = React.memo(function SidebarFolderStreamTop
                       <SidebarMessagePreview
                         senderName={topic.lastMessageSenderName}
                         message={topic.lastMessage}
+                        className="mt-0.5"
                       />
                     )}
                   </div>
-                  <SidebarChatBadges unreadCount={topic.badge} hasMention={topic.hasMention} />
+                  <SidebarTopicRowMeta
+                    streamId={chat.stream_id}
+                    topic={topic.subject}
+                    compact={isCompactDensity}
+                    unreadCount={topic.badge}
+                    hasMention={topic.hasMention}
+                    time={topic.time}
+                    onMuteError={onMuteError}
+                  />
                 </Link>
               </TopicContextMenu>
             );
@@ -230,15 +250,8 @@ export const SidebarFolderStreamRow = React.memo(function SidebarFolderStreamRow
   const expanded = canExpandStreams && expandedStreamSlugs.includes(streamSlug);
   const displayName = resolveStreamDisplayName(chat.name);
   const topics = chat.topics ?? [];
-  const streamRowClass = isCompactDensity
-    ? "group/stream flex items-start gap-2 rounded-md px-2 py-1.5 transition-colors"
-    : "group/stream flex items-start gap-3 rounded-lg px-2.5 py-2.5 transition-colors";
+  const streamRowClass = sidebarChatRowLinkClass(isCompactDensity, "stream");
   const streamAvatarSize = isCompactDensity ? "sm" : "md";
-  const streamTriggerOffsetClassName = isCompactDensity ? "right-1 top-6" : "right-1 top-8";
-  const streamExpandTriggerClassName = isCompactDensity
-    ? "right-1.5 top-1 h-5 w-5"
-    : "right-1.5 top-2.5 h-5 w-5";
-  const streamLinkPaddingClass = isCompactDensity ? "pr-10" : "pr-11";
 
   const onCreateTopic =
     onNewTopic != null
@@ -257,12 +270,11 @@ export const SidebarFolderStreamRow = React.memo(function SidebarFolderStreamRow
         chat={chat}
         folderId={pinScopeFolderId}
         onMuteError={onMuteError}
-        triggerOffsetClassName={streamTriggerOffsetClassName}
         onCreateTopic={onCreateTopic}
       >
         <Link
           to={sidebarStreamRoute(streamSlug)}
-          className={`${streamRowClass} ${sidebarRowClass(isActive)}`}
+          className={`${streamRowClass} ${sidebarRowClass(isActive)} w-full`}
         >
           <StreamRowLinkContent
             chat={chat}
@@ -284,7 +296,6 @@ export const SidebarFolderStreamRow = React.memo(function SidebarFolderStreamRow
       chat={chat}
       folderId={pinScopeFolderId}
       onMuteError={onMuteError}
-      triggerOffsetClassName={streamTriggerOffsetClassName}
       onCreateTopic={onCreateTopic}
     >
       <SidebarStreamHydrateWrapper
@@ -294,10 +305,10 @@ export const SidebarFolderStreamRow = React.memo(function SidebarFolderStreamRow
       >
         {({ topicsLoading }) => (
           <>
-            <div className="group/stream relative">
+            <div className="relative">
               <Link
                 to={sidebarStreamRoute(streamSlug)}
-                className={`${streamRowClass} ${streamLinkPaddingClass} w-full ${
+                className={`${streamRowClass} w-full ${
                   expanded || isActive ? "bg-sidebar-hover" : "hover:bg-sidebar-hover"
                 }`}
                 onClick={() => {
@@ -314,24 +325,11 @@ export const SidebarFolderStreamRow = React.memo(function SidebarFolderStreamRow
                   isPinnedChat={isPinnedChat}
                   streamAvatarSize={streamAvatarSize}
                   showLastMessageSender
+                  expanded={expanded}
+                  onToggleStream={onToggleStream}
+                  streamSlug={streamSlug}
                 />
               </Link>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onToggleStream(streamSlug);
-                }}
-                className={`bg-bg/60 hover:bg-bg-elevated/80 absolute z-10 flex items-center justify-center rounded-lg text-text-muted transition-colors hover:text-text-primary focus-visible:text-text-primary ${streamExpandTriggerClassName}`}
-                aria-label={expanded ? t("a11y.collapseTopics") : t("a11y.expandTopics")}
-              >
-                {expanded ? (
-                  <Icon name="chevron-up" size={16} />
-                ) : (
-                  <Icon name="chevron-down" size={16} />
-                )}
-              </button>
             </div>
             {expanded && (
               <SidebarFolderStreamTopicsList

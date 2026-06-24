@@ -5,12 +5,11 @@ import { sidebarRowClass } from "~/shared/lib/format";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
 import { Icon } from "~/shared/ui/icon";
-import { SidebarChatBadges } from "./sidebar-chat-badges.ui";
 import { TopicContextMenu } from "./sidebar-chat-context-menu.ui";
 import { sidebarStreamTopicRoute } from "./sidebar-chat-routes.lib";
-import { TopicMuteButton } from "./sidebar-folder-topic-buttons.ui";
 import { SidebarMessagePreview } from "./sidebar-message-preview.ui";
 import { useSidebarTopicCollapse } from "./sidebar-topic-collapse.hook";
+import { SidebarTopicRowMeta } from "./sidebar-topic-row-meta.ui";
 import { SidebarTopicShowMoreButton } from "./sidebar-topic-show-more.ui";
 import { TOPIC_BAR_COLORS } from "./sidebar.lib";
 import type { SidebarChat } from "./sidebar.types";
@@ -123,17 +122,10 @@ export const SidebarStreamListTopics = React.memo<SidebarStreamListTopicsProps>(
                   topic={topic.subject}
                   rowClassName={`group/topic relative w-full rounded-r-lg border-l-4 transition-colors ${sidebarRowClass(isTopicActive)}`}
                   rowStyle={{ borderLeftColor: topicColor }}
-                  sideActions={
-                    <TopicMuteButton
-                      streamId={stream.stream_id}
-                      topic={topic.subject}
-                      onMuteError={onMuteError}
-                    />
-                  }
                 >
                   <Link
                     to={sidebarStreamTopicRoute(streamSlug, topic.subject)}
-                    className="flex w-full min-w-0 items-start gap-3 py-2 pl-3 pr-12"
+                    className="flex w-full min-w-0 items-stretch gap-3 py-2 pl-3 pr-2"
                   >
                     <div className="min-w-0 flex-1">
                       <div
@@ -147,10 +139,19 @@ export const SidebarStreamListTopics = React.memo<SidebarStreamListTopicsProps>(
                         <SidebarMessagePreview
                           senderName={topic.lastMessageSenderName}
                           message={topic.lastMessage}
+                          className="mt-0.5"
                         />
                       )}
                     </div>
-                    <SidebarChatBadges unreadCount={topic.badge} hasMention={topic.hasMention} />
+                    <SidebarTopicRowMeta
+                      streamId={stream.stream_id}
+                      topic={topic.subject}
+                      compact={isCompactDensity}
+                      unreadCount={topic.badge}
+                      hasMention={topic.hasMention}
+                      time={topic.time}
+                      onMuteError={onMuteError}
+                    />
                   </Link>
                 </TopicContextMenu>
               );

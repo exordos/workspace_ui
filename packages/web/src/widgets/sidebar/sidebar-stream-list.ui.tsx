@@ -4,8 +4,8 @@ import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
 import { Avatar } from "~/shared/ui/avatar";
-import { Icon } from "~/shared/ui/icon";
-import { SidebarChatBadges } from "./sidebar-chat-badges.ui";
+import { sidebarChatRowBodyClass, sidebarChatRowLinkClass } from "./sidebar-chat-row-layout.lib";
+import { SidebarChatRowMeta } from "./sidebar-chat-row-meta.ui";
 import { SidebarMessagePreview } from "./sidebar-message-preview.ui";
 import { useSidebarNewTopicInputFocus } from "./sidebar-new-topic-input-focus.hook";
 import { SidebarStreamHydrateWrapper } from "./sidebar-stream-hydrate-wrapper.ui";
@@ -77,9 +77,7 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
           const displayName = isGeneral ? t("chat.generalChat") : stream.name;
           const streamMuted = isStreamMuted(stream.stream_id);
           const topics = stream.topics ?? [];
-          const streamRowClass = isCompactDensity
-            ? "flex items-start gap-2 rounded-md px-2 py-1.5 transition-colors"
-            : "flex items-start gap-3 rounded-lg px-2.5 py-2.5 transition-colors";
+          const streamRowClass = sidebarChatRowLinkClass(isCompactDensity, "stream");
 
           return (
             <SidebarStreamHydrateWrapper
@@ -90,12 +88,12 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
             >
               {({ topicsLoading }) => (
                 <>
-                  <div className="group/stream relative">
+                  <div className="relative">
                     <Link
                       to={`/stream/${streamSlug}`}
                       className={`${streamRowClass} w-full ${
                         expanded || isActive ? "bg-sidebar-hover" : "hover:bg-sidebar-hover"
-                      } ${isCompactDensity ? "pr-10" : "pr-11"}`}
+                      }`}
                       onClick={() => {
                         if (!expanded) {
                           onToggleStream(streamSlug);
@@ -103,7 +101,7 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
                       }}
                     >
                       <Avatar size={isCompactDensity ? "sm" : "md"}>#</Avatar>
-                      <div className="min-w-0 flex-1">
+                      <div className={sidebarChatRowBodyClass(isCompactDensity)}>
                         <div
                           className={`truncate text-sm font-medium ${
                             streamMuted ? "text-text-muted" : "text-text-primary"
@@ -118,31 +116,20 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
                           />
                         )}
                       </div>
-                      <div className="flex flex-shrink-0 flex-col items-end gap-1">
-                        <SidebarChatBadges
-                          unreadCount={stream.badge}
-                          hasMention={stream.hasMention}
-                        />
-                      </div>
+                      <SidebarChatRowMeta
+                        compact={isCompactDensity}
+                        unreadCount={stream.badge}
+                        hasMention={stream.hasMention}
+                        time={stream.time}
+                        expandChevron={{
+                          expanded,
+                          onToggle: () => {
+                            onToggleStream(streamSlug);
+                          },
+                          ariaLabel: expanded ? t("a11y.collapseTopics") : t("a11y.expandTopics"),
+                        }}
+                      />
                     </Link>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        onToggleStream(streamSlug);
-                      }}
-                      className={`absolute flex items-center justify-center rounded-lg text-text-muted hover:bg-sidebar-hover hover:text-text-primary ${
-                        isCompactDensity ? "right-1 top-1 h-7 w-7" : "right-1 top-1 h-8 w-8"
-                      }`}
-                      aria-label={expanded ? t("a11y.collapseTopics") : t("a11y.expandTopics")}
-                    >
-                      {expanded ? (
-                        <Icon name="chevron-up" size={16} />
-                      ) : (
-                        <Icon name="chevron-down" size={16} />
-                      )}
-                    </button>
                   </div>
 
                   {expanded && (

@@ -45,7 +45,6 @@ export const SidebarFolderChatRow = React.memo(function SidebarFolderChatRow({
   const chatWsId = chatToWorkspaceChatId(chat);
   const isPinnedChat =
     pinApiFolderUuid != null && usePinStore.getState().isPinned(pinApiFolderUuid, chatWsId);
-  const dmTriggerOffsetClassName = isCompactDensity ? "right-1 top-6" : "right-1 top-8";
 
   if (chat.type === "stream") {
     return (
@@ -68,11 +67,7 @@ export const SidebarFolderChatRow = React.memo(function SidebarFolderChatRow({
   }
 
   return (
-    <DmContextMenu
-      chat={chat}
-      folderId={pinScopeFolderId}
-      triggerOffsetClassName={dmTriggerOffsetClassName}
-    >
+    <DmContextMenu chat={chat} folderId={pinScopeFolderId}>
       <DmChatRow
         chat={chat}
         isActive={isDmRouteSlugActive(chat.slug, activeDmIdParam, currentUserId)}

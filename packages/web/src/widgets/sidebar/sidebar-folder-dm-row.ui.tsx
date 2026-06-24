@@ -12,9 +12,11 @@ import { sidebarRowClass, getPresenceState } from "~/shared/lib/format";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
-import { SidebarChatBadges } from "./sidebar-chat-badges.ui";
 import { sidebarDmRoute } from "./sidebar-chat-routes.lib";
+import { sidebarChatRowBodyClass, sidebarChatRowLinkClass } from "./sidebar-chat-row-layout.lib";
+import { SidebarChatRowMeta } from "./sidebar-chat-row-meta.ui";
 import { isDmPartnerTyping } from "./sidebar-dm-list.lib";
+import { SidebarMessagePreview } from "./sidebar-message-preview.ui";
 import { SidebarUserStatusEmoji } from "./sidebar-user-status-emoji.ui";
 import { parseDmSlugToUserIds } from "./sidebar.lib";
 import type { SidebarChat } from "./sidebar.types";
@@ -74,9 +76,7 @@ export const DmChatRow = React.memo(function DmChatRow({
   const avatarSrc = !isGroupDm
     ? (getAvatarUrl(user?.avatar_url ?? undefined) ?? getAvatarUrl(chat.avatar_url))
     : null;
-  const rowClass = compact
-    ? "flex items-start gap-2 rounded-md px-2 py-1.5 transition-colors"
-    : "flex items-start gap-3 rounded-lg px-2.5 py-2.5 transition-colors";
+  const rowClass = sidebarChatRowLinkClass(compact);
   const dmRoute = useMemo(() => sidebarDmRoute(chat.slug), [chat.slug]);
 
   return (
@@ -105,28 +105,25 @@ export const DmChatRow = React.memo(function DmChatRow({
           />
         )}
       </div>
-      <div className="flex min-w-0 flex-1 flex-col justify-center">
+      <div className={sidebarChatRowBodyClass(compact)}>
         <div className="flex min-w-0 items-center gap-1.5">
           <span className="min-w-0 truncate text-sm font-medium text-text-primary">{rowTitle}</span>
           {!isGroupDm && <SidebarUserStatusEmoji status={user?.status} />}
         </div>
         {!compact && (
-          <span
-            className={`mt-0.5 block truncate text-[11px] ${
-              partnerIsTyping ? "italic text-text-primary" : "text-text-secondary"
-            }`}
-          >
-            {secondaryText}
-          </span>
+          <SidebarMessagePreview
+            message={secondaryText}
+            messageClassName={partnerIsTyping ? "italic text-text-primary" : undefined}
+          />
         )}
       </div>
-      <div className={`flex flex-shrink-0 flex-col items-end ${compact ? "gap-0.5" : "gap-1"}`}>
-        <div className="flex items-center gap-1">
-          {isPinned && <Icon name="pin" size={12} className="text-text-muted" />}
-          <span className="text-xs text-text-muted">{chat.time ?? "10:13"}</span>
-          <SidebarChatBadges unreadCount={chat.badge} hasMention={chat.hasMention} />
-        </div>
-      </div>
+      <SidebarChatRowMeta
+        compact={compact}
+        isPinned={isPinned}
+        unreadCount={chat.badge}
+        hasMention={chat.hasMention}
+        time={chat.time}
+      />
     </Link>
   );
 });

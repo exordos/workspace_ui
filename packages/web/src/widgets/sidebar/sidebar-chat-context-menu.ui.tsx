@@ -20,9 +20,8 @@ import type { StreamNotificationLevel } from "~/features/mute-chat/stream-notifi
 import { TopicNotificationLevelMenuPicker } from "~/features/mute-chat/topic-notification-level-switch.ui";
 import { t } from "~/i18n/i18n";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
-import { Icon } from "~/shared/ui/icon";
 import {
-  isContextMenuKeyboardEvent,
+  useSidebarChatContextMenuAnchor,
   wrapChildWithContextMenuHandlers,
 } from "./sidebar-chat-context-menu-clone.lib";
 import { useSidebarFolderPinMenu } from "./sidebar-folder-pin-menu.lib";
@@ -202,7 +201,6 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
   folderId,
   onCreateTopic,
   onMuteError,
-  triggerOffsetClassName = "right-1 top-8",
   children,
 }: {
   streamId: number;
@@ -210,10 +208,15 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
   folderId?: string;
   onCreateTopic?: () => void;
   onMuteError?: (retry: () => void) => void;
-  triggerOffsetClassName?: string;
   children: React.ReactNode;
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
+  const {
+    menuOpen,
+    contextAnchor,
+    handleContextMenuCapture,
+    handleKeyboardContextMenu,
+    handleMenuOpenChange,
+  } = useSidebarChatContextMenuAnchor();
   const [notificationPending, setNotificationPending] = useState(false);
   const notificationLevel = useMuteStore((s) => s.getStreamNotificationLevel(streamId));
   const chatId = chatToWorkspaceChatId(chat);
@@ -223,32 +226,10 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
   );
   const folderAssignmentsSubmenuItem = useFolderAssignmentsSubmenu(chatId, menuOpen);
 
-  const openMenu = useCallback(() => {
-    setMenuOpen(true);
-  }, []);
-
-  const handleContextMenuCapture = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      openMenu();
-    },
-    [openMenu],
-  );
-
-  const handleOpenMenuClick = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      openMenu();
-    },
-    [openMenu],
-  );
-
   const handleSetNotificationLevel = useCallback(
     (level: StreamNotificationLevel): void => {
       if (notificationPending || notificationLevel === level) return;
-      setMenuOpen(false);
+      handleMenuOpenChange(false);
 
       async function attemptSetLevel(): Promise<void> {
         setNotificationPending(true);
@@ -269,28 +250,28 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
 
       void attemptSetLevel();
     },
-    [notificationLevel, notificationPending, onMuteError, streamId],
+    [notificationLevel, notificationPending, onMuteError, handleMenuOpenChange, streamId],
   );
 
   const handleMarkAsRead = useCallback(() => {
-    setMenuOpen(false);
+    handleMenuOpenChange(false);
     void applySidebarMarkChatAsReadAndSync({ type: "stream", streamId });
-  }, [streamId]);
+  }, [handleMenuOpenChange, streamId]);
 
   const handlePinChat = useCallback(() => {
-    setMenuOpen(false);
+    handleMenuOpenChange(false);
     runPin();
-  }, [runPin]);
+  }, [handleMenuOpenChange, runPin]);
 
   const handleUnpinChat = useCallback(() => {
-    setMenuOpen(false);
+    handleMenuOpenChange(false);
     runUnpin();
-  }, [runUnpin]);
+  }, [handleMenuOpenChange, runUnpin]);
 
   const handleCreateTopic = useCallback(() => {
     onCreateTopic?.();
-    setMenuOpen(false);
-  }, [onCreateTopic]);
+    handleMenuOpenChange(false);
+  }, [handleMenuOpenChange, onCreateTopic]);
 
   const notificationPickerItem = useMemo<DropdownMenuItem>(
     () => ({
@@ -359,60 +340,29 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
     showFolderPinAction,
   ]);
 
-  const contentWithContextMenu = useMemo(() => {
-    const childrenArray = React.Children.toArray(children);
-    if (childrenArray.length === 0) return childrenArray;
-
-    const firstChild = childrenArray[0];
-    if (!React.isValidElement(firstChild)) return childrenArray;
-
-    const firstChildElement = firstChild as React.ReactElement<{
-      onContextMenu?: React.MouseEventHandler;
-      onKeyDown?: React.KeyboardEventHandler;
-    }>;
-    const existingOnContextMenu = firstChildElement.props.onContextMenu;
-    const existingOnKeyDown = firstChildElement.props.onKeyDown;
-
-    const firstChildWithContextMenu = React.cloneElement(firstChildElement, {
-      onContextMenu: (e: React.MouseEvent) => {
-        existingOnContextMenu?.(e);
-        handleContextMenuCapture(e);
-      },
-      onKeyDown: (e: React.KeyboardEvent) => {
-        existingOnKeyDown?.(e);
-        if (e.defaultPrevented) return;
-        if (isContextMenuKeyboardEvent(e)) {
-          e.preventDefault();
-          openMenu();
-        }
-      },
-    });
-
-    return [firstChildWithContextMenu, ...childrenArray.slice(1)];
-  }, [children, handleContextMenuCapture, openMenu]);
+  const contentWithContextMenu = useMemo(
+    (): React.ReactElement =>
+      wrapChildWithContextMenuHandlers(children, {
+        handleContextMenuCapture,
+        handleKeyboardContextMenu,
+      }),
+    [children, handleContextMenuCapture, handleKeyboardContextMenu],
+  );
 
   return (
     <div className="relative">
       {contentWithContextMenu}
       <DropdownMenu
         open={menuOpen}
-        onOpenChange={setMenuOpen}
-        trigger={
-          <button
-            type="button"
-            className={`absolute flex h-6 w-6 items-center justify-center rounded text-text-muted opacity-60 transition-opacity hover:bg-sidebar-hover hover:text-text-primary focus-visible:opacity-100 group-focus-within/stream:opacity-100 group-hover/stream:opacity-100 ${triggerOffsetClassName}`}
-            aria-label={t("a11y.chatMenu")}
-            onClick={handleOpenMenuClick}
-          >
-            <Icon name="more" size={14} />
-          </button>
-        }
+        onOpenChange={handleMenuOpenChange}
+        source="context"
+        contextAnchor={contextAnchor}
         items={menuItems}
         contentVariant="narrow"
         itemClassName={SIDEBAR_MENU_ITEM_CLASS}
         submenuTriggerClassName={SIDEBAR_MENU_ITEM_CLASS}
         checkboxItemClassName={SIDEBAR_MENU_ITEM_CLASS}
-        contentProps={{
+        contextContentProps={{
           sideOffset: 4,
           align: "start",
         }}
@@ -424,15 +374,19 @@ export const StreamContextMenu = React.memo(function StreamContextMenu({
 export const DmContextMenu = React.memo(function DmContextMenu({
   chat,
   folderId,
-  triggerOffsetClassName = "right-1 top-8",
   children,
 }: {
   chat: Extract<SidebarChat, { type: "dm" }>;
   folderId?: string;
-  triggerOffsetClassName?: string;
   children: React.ReactNode;
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
+  const {
+    menuOpen,
+    contextAnchor,
+    handleContextMenuCapture,
+    handleKeyboardContextMenu,
+    handleMenuOpenChange,
+  } = useSidebarChatContextMenuAnchor();
   const chatId = chatToWorkspaceChatId(chat);
   const { isPinned, showFolderPinAction, runPin, runUnpin } = useSidebarFolderPinMenu(
     folderId,
@@ -446,41 +400,19 @@ export const DmContextMenu = React.memo(function DmContextMenu({
         ? chat.userIds
         : parseDmSlugToUserIds(chat.slug);
     if (userIds.length === 0) return;
-    setMenuOpen(false);
+    handleMenuOpenChange(false);
     void applySidebarMarkChatAsReadAndSync({ type: "dm", userIds });
-  }, [chat.slug, chat.userIds]);
+  }, [chat.slug, chat.userIds, handleMenuOpenChange]);
 
   const handlePinChat = useCallback(() => {
-    setMenuOpen(false);
+    handleMenuOpenChange(false);
     runPin();
-  }, [runPin]);
+  }, [handleMenuOpenChange, runPin]);
 
   const handleUnpinChat = useCallback(() => {
-    setMenuOpen(false);
+    handleMenuOpenChange(false);
     runUnpin();
-  }, [runUnpin]);
-
-  const openMenu = useCallback(() => {
-    setMenuOpen(true);
-  }, []);
-
-  const handleContextMenuCapture = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      openMenu();
-    },
-    [openMenu],
-  );
-
-  const handleOpenMenuClick = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      openMenu();
-    },
-    [openMenu],
-  );
+  }, [handleMenuOpenChange, runUnpin]);
 
   const menuItems = useMemo<DropdownMenuItem[]>(() => {
     const items: DropdownMenuItem[] = [
@@ -516,9 +448,9 @@ export const DmContextMenu = React.memo(function DmContextMenu({
     (): React.ReactElement =>
       wrapChildWithContextMenuHandlers(children, {
         handleContextMenuCapture,
-        openMenu,
+        handleKeyboardContextMenu,
       }),
-    [children, handleContextMenuCapture, openMenu],
+    [children, handleContextMenuCapture, handleKeyboardContextMenu],
   );
 
   return (
@@ -526,23 +458,15 @@ export const DmContextMenu = React.memo(function DmContextMenu({
       {contentWithContextMenu}
       <DropdownMenu
         open={menuOpen}
-        onOpenChange={setMenuOpen}
-        trigger={
-          <button
-            type="button"
-            className={`absolute flex h-6 w-6 items-center justify-center rounded text-text-muted opacity-60 transition-opacity hover:bg-sidebar-hover hover:text-text-primary focus-visible:opacity-100 group-focus-within/dm:opacity-100 group-hover/dm:opacity-100 ${triggerOffsetClassName}`}
-            aria-label={t("a11y.chatMenu")}
-            onClick={handleOpenMenuClick}
-          >
-            <Icon name="more" size={14} />
-          </button>
-        }
+        onOpenChange={handleMenuOpenChange}
+        source="context"
+        contextAnchor={contextAnchor}
         items={menuItems}
         contentVariant="narrow"
         itemClassName={SIDEBAR_MENU_ITEM_CLASS}
         submenuTriggerClassName={SIDEBAR_MENU_ITEM_CLASS}
         checkboxItemClassName={SIDEBAR_MENU_ITEM_CLASS}
-        contentProps={{
+        contextContentProps={{
           sideOffset: 4,
           align: "start",
         }}
@@ -551,16 +475,12 @@ export const DmContextMenu = React.memo(function DmContextMenu({
   );
 });
 
-const TOPIC_MENU_TRIGGER_CLASS =
-  "flex h-5 w-5 items-center justify-center rounded text-text-muted opacity-0 transition-opacity hover:bg-sidebar-hover hover:text-text-primary focus-visible:opacity-100 group-focus-within/topic:opacity-100 group-hover/topic:opacity-100";
-
 export const TopicContextMenu = React.memo(function TopicContextMenu({
   streamId,
   streamName,
   topic,
   rowClassName,
   rowStyle,
-  sideActions,
   children,
 }: {
   streamId: number;
@@ -568,11 +488,15 @@ export const TopicContextMenu = React.memo(function TopicContextMenu({
   topic: string;
   rowClassName: string;
   rowStyle?: React.CSSProperties;
-  /** Mute and other controls rendered below the menu trigger in the right column. */
-  sideActions?: React.ReactNode;
   children: React.ReactNode;
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
+  const {
+    menuOpen,
+    contextAnchor,
+    handleContextMenuCapture,
+    handleKeyboardContextMenu,
+    handleMenuOpenChange,
+  } = useSidebarChatContextMenuAnchor();
   const {
     canToggle: canManageTopic,
     isResolved,
@@ -608,45 +532,23 @@ export const TopicContextMenu = React.memo(function TopicContextMenu({
 
   const handleMoveSelect = useCallback(() => {
     openMoveDialog();
-    setMenuOpen(false);
-  }, [openMoveDialog]);
+    handleMenuOpenChange(false);
+  }, [handleMenuOpenChange, openMoveDialog]);
 
   const handleMarkAsRead = useCallback(() => {
-    setMenuOpen(false);
+    handleMenuOpenChange(false);
     void applySidebarMarkChatAsReadAndSync({ type: "topic", streamId, topic });
-  }, [streamId, topic]);
+  }, [handleMenuOpenChange, streamId, topic]);
 
   const handleResolveSelect = useCallback(() => {
     toggleTopicResolved();
-    setMenuOpen(false);
-  }, [toggleTopicResolved]);
+    handleMenuOpenChange(false);
+  }, [handleMenuOpenChange, toggleTopicResolved]);
 
   const handleRenameSelect = useCallback(() => {
     openRenameDialog();
-    setMenuOpen(false);
-  }, [openRenameDialog]);
-
-  const openMenu = useCallback(() => {
-    setMenuOpen(true);
-  }, []);
-
-  const handleContextMenuCapture = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      openMenu();
-    },
-    [openMenu],
-  );
-
-  const handleOpenMenuClick = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      openMenu();
-    },
-    [openMenu],
-  );
+    handleMenuOpenChange(false);
+  }, [handleMenuOpenChange, openRenameDialog]);
 
   const topicNotificationPickerItem = useMemo<DropdownMenuItem>(
     () => ({
@@ -715,40 +617,29 @@ export const TopicContextMenu = React.memo(function TopicContextMenu({
     (): React.ReactElement =>
       wrapChildWithContextMenuHandlers(children, {
         handleContextMenuCapture,
-        openMenu,
+        handleKeyboardContextMenu,
       }),
-    [children, handleContextMenuCapture, openMenu],
+    [children, handleContextMenuCapture, handleKeyboardContextMenu],
   );
 
   return (
     <div className={rowClassName} style={rowStyle}>
       {contentWithContextMenu}
-      <div className="absolute inset-y-1 right-1 flex flex-col items-end justify-center gap-0.5">
-        {sideActions}
-        <DropdownMenu
-          open={menuOpen}
-          onOpenChange={setMenuOpen}
-          trigger={
-            <button
-              type="button"
-              className={TOPIC_MENU_TRIGGER_CLASS}
-              aria-label={t("a11y.chatMenu")}
-              onClick={handleOpenMenuClick}
-            >
-              <Icon name="more" size={12} />
-            </button>
-          }
-          items={menuItems}
-          contentVariant="narrow"
-          itemClassName={SIDEBAR_MENU_ITEM_CLASS}
-          submenuTriggerClassName={SIDEBAR_MENU_ITEM_CLASS}
-          checkboxItemClassName={SIDEBAR_MENU_ITEM_CLASS}
-          contentProps={{
-            sideOffset: 4,
-            align: "end",
-          }}
-        />
-      </div>
+      <DropdownMenu
+        open={menuOpen}
+        onOpenChange={handleMenuOpenChange}
+        source="context"
+        contextAnchor={contextAnchor}
+        items={menuItems}
+        contentVariant="narrow"
+        itemClassName={SIDEBAR_MENU_ITEM_CLASS}
+        submenuTriggerClassName={SIDEBAR_MENU_ITEM_CLASS}
+        checkboxItemClassName={SIDEBAR_MENU_ITEM_CLASS}
+        contextContentProps={{
+          sideOffset: 4,
+          align: "start",
+        }}
+      />
       {canManageTopic && (
         <RenameStreamTopicDialog
           open={renameDialogOpen}

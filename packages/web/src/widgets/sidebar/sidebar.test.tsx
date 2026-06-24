@@ -1952,10 +1952,11 @@ describe("Sidebar", () => {
     });
   });
 
-  it("places stream chat-menu trigger under counters and keeps avatar overlay toggle", () => {
+  it("places stream message time in meta column and shares unread badge slot with expand chevron", () => {
     const streamWithUnread: Extract<SidebarChat, { type: "stream" }> = {
       ...STREAM_CHAT,
       badge: 3,
+      time: "10:13",
     };
 
     renderWithProviders(
@@ -1967,35 +1968,78 @@ describe("Sidebar", () => {
       />,
     );
 
-    const chatMenuButton = screen.getByRole("button", { name: /chat menu/i });
+    const streamLink = screen.getByRole("link", { name: /engineering/i });
+    const streamTime = within(streamLink).getByText("10:13");
     const expandButton = screen.getByRole("button", { name: /expand topics/i });
     const streamUnreadBadge = screen.getByText("3");
-    const streamMetaRow = streamUnreadBadge.parentElement;
+    const actionSlot = screen.getByTestId("sidebar-chat-row-action-slot");
+    const streamPreview = within(streamLink).getByText(/deploy today/i).parentElement;
 
-    expect(streamMetaRow).not.toBeNull();
-    expect(streamMetaRow!).toContainElement(streamUnreadBadge);
-    expect(streamMetaRow!).toHaveClass("items-center");
-    expect(streamMetaRow!).not.toHaveClass("flex-col");
+    expect(actionSlot).toContainElement(streamUnreadBadge);
+    expect(actionSlot).toContainElement(expandButton);
+    expect(streamTime.parentElement).toContainElement(actionSlot);
+    expect(streamPreview).not.toBeNull();
+    expect(streamPreview!).toHaveClass("min-w-0");
+    expect(streamPreview!).toHaveClass("truncate");
 
-    expect(chatMenuButton).toHaveClass("right-1");
-    expect(chatMenuButton).not.toHaveClass("right-2");
-    expect(chatMenuButton).toHaveClass("top-8");
-    expect(chatMenuButton).not.toHaveClass("top-1");
-    expect(chatMenuButton).not.toHaveClass("right-10");
+    expect(streamTime).not.toHaveClass("absolute");
+    expect(streamTime).toHaveClass("text-xs");
+
+    expect(screen.queryByRole("button", { name: /chat menu/i })).not.toBeInTheDocument();
 
     expect(expandButton).toHaveClass("absolute");
-    expect(expandButton).toHaveClass("right-1.5");
-    expect(expandButton).toHaveClass("top-2.5");
-    expect(expandButton).toHaveClass("h-5");
-    expect(expandButton).toHaveClass("w-5");
+    expect(expandButton).toHaveClass("inset-0");
     expect(expandButton).toHaveClass("bg-bg/60");
-    expect(expandButton).not.toHaveClass("opacity-0");
+    expect(expandButton).toHaveClass("hidden");
+    expect(expandButton).toHaveClass("group-hover/stream:flex");
+
+    const unreadBadgeLayer = screen.getByTestId("sidebar-chat-row-unread-badge");
+    expect(unreadBadgeLayer).toHaveClass("group-hover/stream:hidden");
   });
 
-  it("aligns dm chat-menu trigger horizontally with unread and keeps time left of unread", () => {
+  it("aligns dm and stream message previews to the same width budget", () => {
+    const streamWithUnread: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT,
+      badge: 3,
+      time: "12:10",
+      lastMessageSenderName: "Slavoniy",
+    };
     const dmWithUnread: Extract<SidebarChat, { type: "dm" }> = {
       ...DM_CHAT,
       badge: 3,
+      time: "10:13",
+      lastMessage: "Hello from DM",
+    };
+
+    renderWithProviders(
+      <Sidebar
+        streams={[]}
+        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        sidebarChats={[streamWithUnread, dmWithUnread]}
+        sidebarDms={[dmWithUnread]}
+      />,
+    );
+
+    const streamLink = screen.getByRole("link", { name: /engineering/i });
+    const dmLink = screen.getByRole("link", { name: /alice/i });
+    const streamPreview = within(streamLink).getByText(/deploy today/i).parentElement;
+    const dmPreview = within(dmLink).getByText(/hello from dm/i).parentElement;
+
+    expect(streamPreview).not.toBeNull();
+    expect(dmPreview).not.toBeNull();
+    expect(streamPreview).toHaveClass("min-w-0");
+    expect(dmPreview).toHaveClass("min-w-0");
+    expect(streamPreview!.parentElement).toHaveClass("min-w-0");
+    expect(dmPreview!.parentElement).toHaveClass("min-w-0");
+    expect(streamPreview!.parentElement).toHaveClass("flex-1");
+    expect(dmPreview!.parentElement).toHaveClass("flex-1");
+  });
+
+  it("places dm message time in meta column and removes chat-menu trigger", () => {
+    const dmWithUnread: Extract<SidebarChat, { type: "dm" }> = {
+      ...DM_CHAT,
+      badge: 3,
+      time: "10:13",
     };
 
     renderWithProviders(
@@ -2010,19 +2054,64 @@ describe("Sidebar", () => {
     const dmLink = screen.getByRole("link", { name: /alice/i });
     const dmTime = within(dmLink).getByText("10:13");
     const dmUnreadBadge = within(dmLink).getByText("3");
-    const dmMetaRow = dmTime.parentElement;
+    const dmMetaRow = dmUnreadBadge.parentElement;
+    const dmPreview = within(dmLink).getByText(/hello/i);
 
     expect(dmMetaRow).not.toBeNull();
     expect(dmMetaRow!).toContainElement(dmUnreadBadge);
     expect(dmMetaRow!).toHaveClass("items-center");
     expect(dmMetaRow!).not.toHaveClass("flex-col");
+    expect(dmTime.parentElement).toContainElement(dmUnreadBadge);
+    expect(dmPreview.parentElement).toHaveClass("min-w-0");
+    expect(dmPreview.parentElement).toHaveClass("truncate");
 
-    const chatMenuButton = screen.getByRole("button", { name: /chat menu/i });
-    expect(chatMenuButton).toHaveClass("top-8");
-    expect(chatMenuButton).not.toHaveClass("top-1");
+    expect(dmTime).not.toHaveClass("absolute");
+    expect(dmTime).toHaveClass("text-xs");
+
+    expect(screen.queryByRole("button", { name: /chat menu/i })).not.toBeInTheDocument();
   });
 
-  it("places topic notification cycle button under topic unread badge", () => {
+  it("places topic message time in meta column below unread badge", () => {
+    const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
+      ...STREAM_CHAT,
+      topics: [
+        {
+          subject: "incident",
+          badge: 2,
+          lastMessage: "Topic update",
+          time: "09:41",
+        },
+      ],
+    };
+    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: ["11-engineering"] });
+
+    renderWithProviders(
+      <Sidebar
+        streams={[]}
+        selectedFolderId={SYSTEM_ALL_FOLDER_ID}
+        activeStreamSlug="11-engineering"
+        sidebarChats={[streamWithTopics]}
+        sidebarDms={[]}
+      />,
+    );
+
+    const topicLink = screen.getByRole("link", { name: /incident/i });
+    const topicTime = within(topicLink).getByTestId("sidebar-topic-row-time");
+    const topicMeta = within(topicLink).getByTestId("sidebar-topic-row-meta");
+    const topicPreview = within(topicLink).getByText(/topic update/i).parentElement;
+
+    expect(topicTime).toHaveTextContent("09:41");
+    expect(topicMeta).toContainElement(topicTime);
+    expect(topicMeta).toContainElement(
+      within(topicLink).getByTestId("sidebar-topic-row-unread-badge"),
+    );
+    expect(topicPreview).not.toBeNull();
+    expect(topicPreview!).toHaveClass("min-w-0");
+    expect(topicTime).toHaveClass("text-xs");
+    expect(topicTime).not.toHaveClass("absolute");
+  });
+
+  it("places topic notification cycle button to the left of topic unread badge", () => {
     const streamWithTopics: Extract<SidebarChat, { type: "stream" }> = {
       ...STREAM_CHAT,
       topics: [{ subject: "incident", badge: 2, lastMessage: "Topic update" }],
@@ -2040,17 +2129,22 @@ describe("Sidebar", () => {
     );
 
     const topicLink = screen.getByRole("link", { name: /incident/i });
-    const topicRow = topicLink.parentElement!.parentElement as HTMLElement;
-    const notificationButton = within(topicRow).getByRole("button", {
+    const metaRow = within(topicLink).getByTestId("sidebar-topic-row-meta-actions");
+    const notificationButton = within(metaRow).getByRole("button", {
       name: t("channel.topicVisibilityDefault"),
     });
-    const actionsContainer = notificationButton.closest(".flex-col");
+    const unreadBadge = within(metaRow).getByTestId("sidebar-topic-row-unread-badge");
 
-    expect(actionsContainer).toBeTruthy();
-    expect(actionsContainer).toHaveClass("flex-col");
-    expect(actionsContainer).toHaveClass("items-end");
+    expect(metaRow).toHaveClass("flex");
+    expect(metaRow).toHaveClass("items-center");
+    expect(metaRow).toHaveClass("gap-1");
+    expect(metaRow).not.toHaveClass("flex-col");
     expect(within(topicLink).getByText("2")).toBeInTheDocument();
-    expect(within(actionsContainer as HTMLElement).queryByText("2")).toBeNull();
+
+    const actionChildren = Array.from(metaRow.children);
+    expect(actionChildren.indexOf(notificationButton)).toBeLessThan(
+      actionChildren.indexOf(unreadBadge),
+    );
   });
 
   it("shows inherit (default) visibility for topic when stream is muted", () => {
