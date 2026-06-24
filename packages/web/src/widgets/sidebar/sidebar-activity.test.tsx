@@ -220,21 +220,27 @@ describe("SidebarActivity", () => {
     expect(screen.queryByText(/^My Activity$/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Mentions$/i)).not.toBeInTheDocument();
     const compactList = screen.getByRole("list", { name: /my activity/i });
-    const compactContainer = compactList.parentElement;
+    const compactContainer = compactList.closest(".pt-0");
     expect(compactContainer).not.toBeNull();
-    expect(compactContainer!).toHaveClass("pt-0");
-    const lastCompactItem = compactList.lastElementChild as HTMLElement | null;
-    expect(lastCompactItem).not.toBeNull();
-    expect(
-      within(lastCompactItem!).getByRole("button", { name: /my activity/i }),
-    ).toBeInTheDocument();
+    const compactScroll = screen.getByTestId("sidebar-activity-compact-scroll");
+    expect(compactScroll).toHaveClass("overflow-x-auto", "min-w-0", "scrollbar-none");
+    expect(compactScroll).toContainElement(compactList);
+    const compactToggle = screen.getByTestId("sidebar-activity-compact-toggle");
+    expect(compactContainer).toContainElement(compactToggle);
+    expect(compactScroll).not.toContainElement(compactToggle);
     expect(screen.getByText("1")).toBeInTheDocument();
     expect(screen.getByText("2")).toBeInTheDocument();
 
     const mentionsCompactLink = screen.getByRole("link", { name: /mentions/i });
     const draftsCompactLink = screen.getByRole("link", { name: /drafts/i });
-    expect(within(mentionsCompactLink).getByText("1")).toHaveClass("text-text-primary", "h-4");
-    expect(within(draftsCompactLink).getByText("2")).toHaveClass("text-text-primary", "h-4");
+    expect(within(mentionsCompactLink.closest("li") as HTMLElement).getByText("1")).toHaveClass(
+      "text-text-primary",
+      "h-4",
+    );
+    expect(within(draftsCompactLink.closest("li") as HTMLElement).getByText("2")).toHaveClass(
+      "text-text-primary",
+      "h-4",
+    );
   });
 
   it("shows compact inbox badge from summed unread stream and dm counts", () => {
@@ -247,7 +253,10 @@ describe("SidebarActivity", () => {
     );
 
     const inboxLink = screen.getByRole("link", { name: /inbox/i });
-    expect(within(inboxLink).getByText("3")).toHaveClass("text-text-primary", "h-4");
+    expect(within(inboxLink.closest("li") as HTMLElement).getByText("3")).toHaveClass(
+      "text-text-primary",
+      "h-4",
+    );
   });
 
   it("keeps compact activity badges above adjacent button hovers", () => {
@@ -261,9 +270,11 @@ describe("SidebarActivity", () => {
     );
 
     const inboxLink = screen.getByRole("link", { name: /inbox/i });
-    const inboxBadgeWrapper = within(inboxLink).getByText("3").parentElement;
-    expect(inboxBadgeWrapper).toHaveClass("z-sticky", "pointer-events-none");
-    expect(inboxLink.closest("li")).toHaveClass("z-sticky");
+    const inboxListItem = inboxLink.closest("li");
+    expect(inboxListItem).not.toBeNull();
+    const inboxBadgeWrapper = within(inboxListItem as HTMLElement).getByText("3").parentElement;
+    expect(inboxBadgeWrapper).toHaveClass("pointer-events-none", "right-0", "top-0");
+    expect(inboxListItem).toHaveClass("h-8", "w-8", "z-sticky");
   });
 
   it("shows compact favorites badge from starred summary", () => {
@@ -277,7 +288,9 @@ describe("SidebarActivity", () => {
     );
 
     const favoritesLink = screen.getByRole("link", { name: /starred/i });
-    expect(within(favoritesLink).getByText("7")).not.toHaveClass("opacity-70");
+    expect(within(favoritesLink.closest("li") as HTMLElement).getByText("7")).not.toHaveClass(
+      "opacity-70",
+    );
   });
 
   it("hides inbox badge when unread total is zero", () => {
@@ -329,7 +342,7 @@ describe("SidebarActivity", () => {
     );
 
     const compactList = screen.getByRole("list", { name: /my activity/i });
-    expect(compactList).toHaveClass("flex-nowrap");
+    expect(compactList).toHaveClass("flex-nowrap", "w-max");
 
     const privateNotesLink = screen.getByRole("link", { name: /private notes/i });
     expect(privateNotesLink).toHaveClass("h-8");

@@ -7,7 +7,15 @@ import { FolderRail } from "~/widgets/folder-rail/folder-rail.ui";
 import { useSidebarConfigStore } from "./sidebar-config.model";
 import { Sidebar } from "./sidebar.ui";
 
-export const SidebarShell: React.FC = () => {
+interface SidebarShellProps {
+  sidebarStyle?: React.CSSProperties;
+  sidebarResizeControl?: React.ReactNode;
+}
+
+export const SidebarShell: React.FC<SidebarShellProps> = ({
+  sidebarStyle,
+  sidebarResizeControl,
+}) => {
   const folderRailLayout = useSettingsStore((s) => s.folderRailLayout);
   const folders = useFolderSyncStore((s) => s.folders);
   const sidebarChats = useFolderSyncStore((s) => s.selectedFolderSidebarChats);
@@ -43,6 +51,13 @@ export const SidebarShell: React.FC = () => {
     [applyLocallyCreatedFolder, applyLocallyDeletedFolder, refreshFolderSync, setSelectedFolderId],
   );
 
+  const sidebarFrame = (children: React.ReactNode) => (
+    <div className="relative flex min-h-0 flex-shrink-0 self-stretch" style={sidebarStyle}>
+      {children}
+      {sidebarResizeControl}
+    </div>
+  );
+
   if (folderRailLayout === "vertical") {
     return (
       <>
@@ -55,12 +70,14 @@ export const SidebarShell: React.FC = () => {
             layout="vertical"
           />
         </div>
-        <Sidebar sidebarChats={sidebarChats} sidebarChatsLoading={sidebarChatsLoading} />
+        {sidebarFrame(
+          <Sidebar sidebarChats={sidebarChats} sidebarChatsLoading={sidebarChatsLoading} />,
+        )}
       </>
     );
   }
 
-  return (
+  return sidebarFrame(
     <Sidebar
       sidebarChats={sidebarChats}
       sidebarChatsLoading={sidebarChatsLoading}
@@ -75,6 +92,6 @@ export const SidebarShell: React.FC = () => {
           />
         </>
       }
-    />
+    />,
   );
 };

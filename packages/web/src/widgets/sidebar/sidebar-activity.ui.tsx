@@ -14,12 +14,14 @@ import { MY_ACTIVITY } from "./sidebar.lib";
 import type { SidebarActivityProps } from "./sidebar-activity.types";
 
 const compactRowClass =
-  "relative flex h-8 w-8 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-sidebar-hover hover:text-text-primary";
+  "flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-sidebar-hover hover:text-text-primary";
 const compactRowActiveClass = "border border-border-subtle bg-card-bg-active text-text-primary";
-/** Corner overlay: stays above adjacent compact buttons on hover (see folder-rail pattern). */
-const compactBadgeClass = "pointer-events-none absolute -right-1 -top-1 z-sticky";
-/** Parent list item must stack above siblings so overflowing badges are not clipped by hover. */
-const compactListItemWithBadgeClass = "relative z-sticky";
+const compactBadgeClass = "pointer-events-none absolute right-0 top-0";
+const compactListItemClass = "relative h-8 w-8 shrink-0";
+/** Compact shell: icons scroll horizontally; chevron stays pinned outside the scroll viewport. */
+const compactRowShellClass = "mt-1 flex min-w-0 w-full items-center gap-0.5";
+const compactIconsScrollClass = "min-w-0 flex-1 overflow-x-auto scrollbar-none";
+const compactIconsListClass = "flex w-max flex-nowrap items-center gap-0.5";
 const expandedRowBaseClass =
   "group flex w-full items-center gap-2 rounded-lg bg-bg-elevated/60 px-2.5 py-2 text-left text-sm text-text-primary transition-colors hover:bg-card-bg";
 const expandedRowCompactClass =
@@ -81,7 +83,7 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
   const expandedLabel = isCompactDensity ? expandedLabelCompactClass : expandedLabelClass;
 
   return (
-    <div className="px-3 pb-2 pt-0">
+    <div className="min-w-0 px-3 pb-2 pt-0">
       {open && (
         <button
           type="button"
@@ -97,102 +99,119 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
         </button>
       )}
       {!open && (
-        <ul
-          id={activityListId}
-          className="mt-1 flex flex-nowrap items-center gap-0.5"
-          aria-label={t("nav.activity")}
-        >
-          {currentUserId != null && (
-            <li>
-              <Link
-                to={withCurrentOrgRoute(`/dm/${currentUserId}`)}
-                aria-label={t("activity.home")}
-                aria-current={isPrivateNotesActive ? "page" : undefined}
-                className={`${compactRowClass} ${
-                  isPrivateNotesActive ? compactRowActiveClass : ""
-                }`}
-              >
-                <Icon name="accountCircle" size={18} className="shrink-0 text-current" />
-              </Link>
-            </li>
-          )}
-          {MY_ACTIVITY.map((item) => {
-            const route = "route" in item ? item.route : undefined;
-            const isActive = route !== undefined && scopedPathname === route;
-            const label = t(item.labelKey);
-            const hasCompactBadge =
-              (item.key === "inbox" && inboxCount > 0) ||
-              (item.key === "mentions" && mentionsCount > 0) ||
-              (item.key === "drafts" && draftsCount > 0) ||
-              (item.key === "favorites" && favoritesError == null && favoritesCount > 0);
-            return (
-              <li
-                key={`compact-${item.key}`}
-                className={hasCompactBadge ? compactListItemWithBadgeClass : undefined}
-              >
-                {route ? (
-                  <Link
-                    to={withCurrentOrgRoute(route)}
-                    aria-label={label}
-                    aria-current={isActive ? "page" : undefined}
-                    className={`${compactRowClass} ${isActive ? compactRowActiveClass : ""}`}
-                  >
-                    <Icon
-                      name={item.icon}
-                      size={getCompactActivityIconSize(item.key)}
-                      className="shrink-0 text-current"
-                    />
-                    {item.key === "inbox" && inboxCount > 0 && (
-                      <span className={compactBadgeClass}>
-                        <Badge count={inboxCount} variant="unread" size="sm" textTone="primary" />
-                      </span>
-                    )}
-                    {item.key === "mentions" && mentionsCount > 0 && (
-                      <span className={compactBadgeClass}>
-                        <Badge
-                          count={mentionsCount}
-                          variant="unread"
-                          size="sm"
-                          textTone="primary"
-                        />
-                      </span>
-                    )}
-                    {item.key === "drafts" && draftsCount > 0 && (
-                      <span className={compactBadgeClass}>
-                        <Badge count={draftsCount} variant="muted" size="sm" textTone="primary" />
-                      </span>
-                    )}
-                    {item.key === "favorites" && favoritesError == null && favoritesCount > 0 && (
-                      <span className={compactBadgeClass}>
-                        <Badge
-                          count={favoritesCount}
-                          variant="muted"
-                          size="sm"
-                          textTone="primary"
-                        />
-                      </span>
-                    )}
-                  </Link>
-                ) : (
-                  <button type="button" aria-label={label} className={compactRowClass}>
-                    <Icon name={item.icon} size={18} className="shrink-0 text-current" />
-                  </button>
-                )}
-              </li>
-            );
-          })}
-          <li>
-            <button
-              type="button"
-              onClick={onToggle}
-              aria-expanded={false}
+        <div className={compactRowShellClass}>
+          <div className={compactIconsScrollClass} data-testid="sidebar-activity-compact-scroll">
+            <ul
+              id={activityListId}
+              className={compactIconsListClass}
               aria-label={t("nav.activity")}
-              className={compactRowClass}
             >
-              <Icon name="chevron-down" size={14} className="text-current" />
-            </button>
-          </li>
-        </ul>
+              {currentUserId != null && (
+                <li className={compactListItemClass}>
+                  <Link
+                    to={withCurrentOrgRoute(`/dm/${currentUserId}`)}
+                    aria-label={t("activity.home")}
+                    aria-current={isPrivateNotesActive ? "page" : undefined}
+                    className={`${compactRowClass} ${
+                      isPrivateNotesActive ? compactRowActiveClass : ""
+                    }`}
+                  >
+                    <Icon name="accountCircle" size={18} className="shrink-0 text-current" />
+                  </Link>
+                </li>
+              )}
+              {MY_ACTIVITY.map((item) => {
+                const route = "route" in item ? item.route : undefined;
+                const isActive = route !== undefined && scopedPathname === route;
+                const label = t(item.labelKey);
+                const hasCompactBadge =
+                  (item.key === "inbox" && inboxCount > 0) ||
+                  (item.key === "mentions" && mentionsCount > 0) ||
+                  (item.key === "drafts" && draftsCount > 0) ||
+                  (item.key === "favorites" && favoritesError == null && favoritesCount > 0);
+                return (
+                  <li
+                    key={`compact-${item.key}`}
+                    className={`${compactListItemClass}${hasCompactBadge ? "z-sticky" : ""}`}
+                  >
+                    {route ? (
+                      <>
+                        <Link
+                          to={withCurrentOrgRoute(route)}
+                          aria-label={label}
+                          aria-current={isActive ? "page" : undefined}
+                          className={`${compactRowClass} ${isActive ? compactRowActiveClass : ""}`}
+                        >
+                          <Icon
+                            name={item.icon}
+                            size={getCompactActivityIconSize(item.key)}
+                            className="shrink-0 text-current"
+                          />
+                        </Link>
+                        {item.key === "inbox" && inboxCount > 0 && (
+                          <span className={compactBadgeClass}>
+                            <Badge
+                              count={inboxCount}
+                              variant="unread"
+                              size="sm"
+                              textTone="primary"
+                            />
+                          </span>
+                        )}
+                        {item.key === "mentions" && mentionsCount > 0 && (
+                          <span className={compactBadgeClass}>
+                            <Badge
+                              count={mentionsCount}
+                              variant="unread"
+                              size="sm"
+                              textTone="primary"
+                            />
+                          </span>
+                        )}
+                        {item.key === "drafts" && draftsCount > 0 && (
+                          <span className={compactBadgeClass}>
+                            <Badge
+                              count={draftsCount}
+                              variant="muted"
+                              size="sm"
+                              textTone="primary"
+                            />
+                          </span>
+                        )}
+                        {item.key === "favorites" &&
+                          favoritesError == null &&
+                          favoritesCount > 0 && (
+                            <span className={compactBadgeClass}>
+                              <Badge
+                                count={favoritesCount}
+                                variant="muted"
+                                size="sm"
+                                textTone="primary"
+                              />
+                            </span>
+                          )}
+                      </>
+                    ) : (
+                      <button type="button" aria-label={label} className={compactRowClass}>
+                        <Icon name={item.icon} size={18} className="shrink-0 text-current" />
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={false}
+            aria-label={t("nav.activity")}
+            className={compactRowClass}
+            data-testid="sidebar-activity-compact-toggle"
+          >
+            <Icon name="chevron-down" size={14} className="text-current" />
+          </button>
+        </div>
       )}
       {open && (
         <ul id={activityListId} className={expandedListClass}>

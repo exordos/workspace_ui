@@ -94,6 +94,9 @@
     "inbox": "Inbox",
     "feed": "Feed"
   },
+  "layout": {
+    "resizeSidebar": "Resize chat list"
+  },
   "activity": {
     "home": "Private notes",
     "starred": "Starred",

@@ -375,7 +375,8 @@ describe("Sidebar", () => {
     const sidebar = screen.getByRole("navigation", { name: /chat list/i });
     const createButton = screen.getByRole("button", { name: /new chat/i });
 
-    expect(sidebar).toHaveClass("w-sidebar");
+    expect(sidebar).toHaveClass("w-full");
+    expect(sidebar).toHaveClass("min-w-0");
     expect(sidebar).toHaveClass("rounded-xl");
     expect(createButton).toHaveClass("h-8");
     expect(createButton).toHaveClass("w-8");
@@ -1989,7 +1990,8 @@ describe("Sidebar", () => {
 
     expect(expandButton).toHaveClass("absolute");
     expect(expandButton).toHaveClass("inset-0");
-    expect(expandButton).toHaveClass("bg-bg/60");
+    expect(expandButton).toHaveClass("hover:bg-bg-elevated/80");
+    expect(expandButton).not.toHaveClass("bg-bg/60");
     expect(expandButton).toHaveClass("hidden");
     expect(expandButton).toHaveClass("group-hover/stream:flex");
 

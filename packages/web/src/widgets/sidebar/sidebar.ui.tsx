@@ -166,7 +166,7 @@ export const SidebarInner: React.FC<SidebarUiProps> = ({
   );
   return (
     <aside
-      className="flex min-h-0 w-sidebar min-w-sidebar max-w-sidebar flex-shrink-0 overflow-hidden rounded-xl bg-sidebar-bg"
+      className="flex min-h-0 w-full min-w-0 flex-shrink-0 overflow-hidden rounded-xl bg-sidebar-bg"
       data-focus-zone="sidebar"
       role="navigation"
       aria-label="Chat list"
