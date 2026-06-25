@@ -486,6 +486,37 @@ describe("MessageBubble markdown body", () => {
     expect(body?.textContent).toContain("Quoted text");
     expect(body?.textContent).toContain("My reply");
     expect(body?.innerHTML).not.toContain("language-quote");
+    expect(body?.querySelector("p:empty")).toBeNull();
+    expect(body?.querySelector(".zulip-quote-block + p")?.textContent).toContain("My reply");
+  });
+
+  it("keeps reply paragraph adjacent to quote block without orphan inline image sibling", () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 1, full_name: "Sleep" }));
+
+    const uploadPath = "/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png";
+    const zulipHtml = [
+      '<p><span class="user-mention" data-user-id="1">@Sleep</span>',
+      ' <a href="https://zulip.example.com/near/1">писал/а</a>:</p>',
+      "<blockquote><p>Сообщение с картинкой</p></blockquote>",
+      '<div class="message_inline_image">',
+      `<a href="${uploadPath}">`,
+      `<img src="/user_uploads/thumbnail/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png/840x560.webp" alt="image.png">`,
+      "</a></div>",
+      "<p>Ухахахаха длинный ответ с ентером</p>",
+    ].join("");
+
+    const { container } = render(
+      <MessageBubble message={createMessage({ content: zulipHtml })} isOwn />,
+    );
+
+    const body = container.querySelector(".message-body");
+    expect(body).toBeTruthy();
+    const quoteBlock = body?.querySelector(".zulip-quote-block");
+    const replyParagraph = body?.querySelector(".zulip-quote-block + p");
+    expect(quoteBlock).toBeTruthy();
+    expect(replyParagraph?.textContent).toContain("Ухахахаха");
+    expect(quoteBlock?.querySelector(":scope > .message_inline_image")).toBeNull();
+    expect(quoteBlock?.querySelector(".zulip-quote-body img")).toBeTruthy();
   });
 
   it("renders user_upload image inside server-rendered quote block instead of URL text", () => {

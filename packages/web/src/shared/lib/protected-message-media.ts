@@ -612,7 +612,20 @@ function normalizeZulipQuoteBlocksInContainer(container: ParentNode): void {
     while (next instanceof HTMLElement && next.classList.contains("message_inline_image")) {
       const toMove = next;
       next = next.nextElementSibling;
-      quoteBlock.appendChild(toMove);
+      // Keep quoted images inside the quote body so reply text does not sit below a large gap.
+      blockquote.appendChild(toMove);
+    }
+  }
+}
+
+/** Moves orphan Zulip inline-image blocks from quote shell into `.zulip-quote-body`. */
+function hoistQuoteSiblingInlineImagesIntoBody(container: ParentNode): void {
+  for (const quoteBlock of container.querySelectorAll<HTMLElement>(".zulip-quote-block")) {
+    const quoteBody = quoteBlock.querySelector<HTMLElement>(".zulip-quote-body");
+    if (quoteBody == null) continue;
+
+    for (const inlineImage of quoteBlock.querySelectorAll(":scope > .message_inline_image")) {
+      quoteBody.appendChild(inlineImage);
     }
   }
 }
@@ -706,6 +719,7 @@ function enrichSanitizedMessageHtml(
   });
   normalizeZulipSpoilerBlocksInContainer(container);
   normalizeZulipQuoteBlocksInContainer(container);
+  hoistQuoteSiblingInlineImagesIntoBody(container);
   inlineUserUploadImageLinksInContainer(container);
   upgradeUserUploadVideoLinksInContainer(container);
 }

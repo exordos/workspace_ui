@@ -171,7 +171,7 @@ export const MessageBubbleGroupedShell = React.memo<MessageBubbleShellProps>(
             />
           ) : null}
           <div
-            className={`relative min-w-0 max-w-[85%] text-sm leading-relaxed ${bubbleSurfaceClass} ${
+            className={`relative w-fit min-w-0 max-w-[85%] text-sm leading-relaxed ${bubbleSurfaceClass} ${
               showSenderName ? "mt-1" : "mt-0.5"
             } ${isOwn ? "flex flex-col items-end" : ""}`}
           >
@@ -252,7 +252,7 @@ export const MessageBubbleStandaloneShell = React.memo<MessageBubbleShellProps>(
             />
           ) : null}
           <div
-            className={`relative min-w-0 max-w-[85%] text-sm leading-relaxed ${bubbleSurfaceClass} ${
+            className={`relative w-fit min-w-0 max-w-[85%] text-sm leading-relaxed ${bubbleSurfaceClass} ${
               showSenderName ? "mt-1" : "mt-0.5"
             } ${isOwn ? "flex flex-col items-end" : ""}`}
           >

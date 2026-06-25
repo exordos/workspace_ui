@@ -60,6 +60,13 @@ interface PendingPrependScrollSnapshot extends ScrollPrependSnapshot {
   anchor: ScrollPrependAnchor | null;
 }
 
+interface PendingSameMessagesScrollAnchor {
+  messageIdsKey: string;
+  scrollToBottomKey: string | undefined;
+  anchor: ScrollPrependAnchor | null;
+  wasAtBottom: boolean;
+}
+
 function getDateKey(ts: number): string {
   const d = new Date(ts * 1000);
   const today = new Date();
@@ -140,6 +147,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
   );
   const scrollRef = useRef<HTMLDivElement>(null);
   const pendingPrependScrollRef = useRef<PendingPrependScrollSnapshot | null>(null);
+  const pendingSameMessagesScrollAnchorRef = useRef<PendingSameMessagesScrollAnchor | null>(null);
   const wasAtBottomRef = useRef(true);
   const userScrolledAwayFromBottomRef = useRef(false);
   const userScrollSeenRef = useRef(false);
@@ -370,6 +378,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
   const messageTailLen = messages.length;
   const messageFirstId = messages[0]?.id;
   const messageLastId = messageTailLen > 0 ? messages[messageTailLen - 1]?.id : undefined;
+  const messageIdsKey = useMemo(() => messages.map((message) => message.id).join(","), [messages]);
   const capturePrependScrollSnapshot = useCallback(
     (el: HTMLElement): PendingPrependScrollSnapshot => ({
       scrollTop: el.scrollTop,
@@ -380,6 +389,54 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     }),
     [messageFirstId, messageTailLen],
   );
+
+  useLayoutEffect(() => {
+    const pending = pendingSameMessagesScrollAnchorRef.current;
+    pendingSameMessagesScrollAnchorRef.current = null;
+
+    if (
+      pending?.messageIdsKey === messageIdsKey &&
+      pending.scrollToBottomKey === scrollToBottomKey &&
+      !pending.wasAtBottom &&
+      pending.anchor != null &&
+      pendingPrependScrollRef.current == null
+    ) {
+      const el = scrollRef.current;
+      const nextTop = el == null ? null : computeScrollTopFromAnchor(el, pending.anchor);
+      if (el != null && nextTop != null && Math.abs(el.scrollTop - nextTop) >= 1) {
+        messageListLog.debug("same-message update scroll anchor restore", {
+          messageIdsKey,
+          anchorMessageId: pending.anchor.messageId,
+          prevOffsetTop: pending.anchor.offsetTop,
+          prevScrollTop: el.scrollTop,
+          nextScrollTop: nextTop,
+        });
+        runProgrammaticScroll(() => {
+          el.scrollTop = nextTop;
+          syncWasAtBottomFromElement(el);
+        });
+      }
+    }
+
+    return () => {
+      const el = scrollRef.current;
+      pendingSameMessagesScrollAnchorRef.current =
+        el == null
+          ? null
+          : {
+              messageIdsKey,
+              scrollToBottomKey,
+              anchor: resolveVisibleMessageAnchor(el),
+              wasAtBottom: wasAtBottomRef.current,
+            };
+    };
+  }, [
+    messages,
+    messageIdsKey,
+    scrollToBottomKey,
+    runProgrammaticScroll,
+    syncWasAtBottomFromElement,
+  ]);
 
   useEffect(() => {
     logMessageFlow("ui:MessageList snapshot", {

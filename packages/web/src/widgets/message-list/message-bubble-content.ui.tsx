@@ -1,9 +1,11 @@
-import React from "react";
+import React, { useLayoutEffect, useRef } from "react";
 import { t } from "~/i18n/i18n";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { MESSAGE_BUBBLE_BODY_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
 import { Icon } from "~/shared/ui/icon";
 import { Spinner } from "~/shared/ui/spinner.ui";
+import { resolveMessageBubbleMetaPlacement } from "./message-bubble-meta-placement.lib";
+import { MessageBubbleMeta } from "./message-bubble-meta.ui";
 import { MessageBubbleOwnDeliveryIndicator } from "./message-bubble-own-delivery-indicator.ui";
 import { MessageBubbleReactionsRow } from "./message-bubble-reactions-row.ui";
 import { MessageLinkPreview } from "./message-link-preview.ui";
@@ -54,6 +56,58 @@ export const MessageBubbleStandardBody = React.memo<MessageBubbleStandardBodyPro
     linkPreviewVisibilityRef,
     linkPreviews,
   }) {
+    const metaRef = useRef<HTMLDivElement>(null);
+    const metaPlacement = resolveMessageBubbleMetaPlacement({
+      message,
+      hasReactions,
+      hasLinkPreviews: linkPreviews.length > 0,
+    });
+    const useInlineMeta = metaPlacement === "inline";
+    const bodyClassName = `${MESSAGE_BUBBLE_BODY_CLASS_NAME}${
+      useInlineMeta ? " message-bubble-body-inline-meta" : ""
+    }`;
+
+    useLayoutEffect(() => {
+      if (!useInlineMeta) {
+        return;
+      }
+
+      const metaElement = metaRef.current;
+      const bodyElement = messageBodyRef.current;
+      if (metaElement == null || bodyElement == null) {
+        return;
+      }
+
+      const updateMetaReserve = () => {
+        const rect = metaElement.getBoundingClientRect();
+        bodyElement.style.setProperty("--message-bubble-meta-width", `${Math.ceil(rect.width)}px`);
+        bodyElement.style.setProperty(
+          "--message-bubble-meta-height",
+          `${Math.ceil(rect.height)}px`,
+        );
+      };
+
+      updateMetaReserve();
+
+      if (typeof ResizeObserver === "undefined") {
+        window.addEventListener("resize", updateMetaReserve);
+        return () => {
+          window.removeEventListener("resize", updateMetaReserve);
+          bodyElement.style.removeProperty("--message-bubble-meta-width");
+          bodyElement.style.removeProperty("--message-bubble-meta-height");
+        };
+      }
+
+      const resizeObserver = new ResizeObserver(updateMetaReserve);
+      resizeObserver.observe(metaElement);
+
+      return () => {
+        resizeObserver.disconnect();
+        bodyElement.style.removeProperty("--message-bubble-meta-width");
+        bodyElement.style.removeProperty("--message-bubble-meta-height");
+      };
+    }, [messageBodyRef, ownDeliveryIndicator, time, useInlineMeta]);
+
     return (
       <div
         ref={linkPreviewVisibilityRef}
@@ -63,7 +117,7 @@ export const MessageBubbleStandardBody = React.memo<MessageBubbleStandardBodyPro
             : `${peerBubbleTailClass} ${peerBubbleBackgroundClass} text-text-primary`
         }`}
       >
-        <div ref={messageBodyRef} className={MESSAGE_BUBBLE_BODY_CLASS_NAME} />
+        <div ref={messageBodyRef} className={bodyClassName} />
         {linkPreviews.length > 0 ? (
           <div className="mt-2 flex flex-col gap-2">
             {linkPreviews.map((item) => (
@@ -77,24 +131,34 @@ export const MessageBubbleStandardBody = React.memo<MessageBubbleStandardBodyPro
             ))}
           </div>
         ) : null}
-        <div className={`mt-2 flex min-w-0 items-end gap-2 ${hasReactions ? "" : "justify-end"}`}>
-          {hasReactions ? (
-            <div className="min-w-0 flex-1">
-              <MessageBubbleReactionsRow
-                message={message}
-                isOwn={isOwn}
-                currentUserId={currentUserId}
-                reactionGroups={reactionGroups}
-                resolveReactionAuthorLabel={resolveReactionAuthorLabel}
-                callbacks={callbacks}
-              />
-            </div>
-          ) : null}
-          <div className="flex flex-shrink-0 items-center gap-1 text-[11px] text-text-muted">
-            <span>{time}</span>
-            {ownDeliveryIndicator}
+        {useInlineMeta ? (
+          <MessageBubbleMeta
+            ref={metaRef}
+            time={time}
+            ownDeliveryIndicator={ownDeliveryIndicator}
+            placement="inline"
+          />
+        ) : (
+          <div className={`mt-2 flex min-w-0 items-end gap-2 ${hasReactions ? "" : "justify-end"}`}>
+            {hasReactions ? (
+              <div className="min-w-0 flex-1">
+                <MessageBubbleReactionsRow
+                  message={message}
+                  isOwn={isOwn}
+                  currentUserId={currentUserId}
+                  reactionGroups={reactionGroups}
+                  resolveReactionAuthorLabel={resolveReactionAuthorLabel}
+                  callbacks={callbacks}
+                />
+              </div>
+            ) : null}
+            <MessageBubbleMeta
+              time={time}
+              ownDeliveryIndicator={ownDeliveryIndicator}
+              className="flex-shrink-0"
+            />
           </div>
-        </div>
+        )}
       </div>
     );
   },

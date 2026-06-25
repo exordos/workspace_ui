@@ -825,6 +825,103 @@ describe("MessageList unread anchor scroll", () => {
     expect(scrollToBottomMock).not.toHaveBeenCalled();
   });
 
+  it("preserves visible anchor when reactions update an existing message", async () => {
+    const base = [
+      msg(1, { sender_id: 99, flags: ["read"] }),
+      msg(2, { sender_id: 43, flags: ["read"] }),
+      msg(3, { sender_id: 43, flags: ["read"] }),
+    ];
+
+    const { rerender } = render(
+      <MessageList messages={base} currentUserId={7} scrollToBottomKey="reaction-anchor" />,
+    );
+
+    const feed = document.querySelector('[role="feed"]') as HTMLDivElement;
+    Object.defineProperty(feed, "scrollHeight", { configurable: true, value: 2000 });
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 400 });
+    Object.defineProperty(feed, "scrollTop", { configurable: true, writable: true, value: 200 });
+    vi.spyOn(feed, "getBoundingClientRect").mockReturnValue({
+      top: 0,
+      bottom: 400,
+      left: 0,
+      right: 300,
+      width: 300,
+      height: 400,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    const messageOne = feed.querySelector<HTMLElement>('[data-message-id="1"]');
+    const messageTwo = feed.querySelector<HTMLElement>('[data-message-id="2"]');
+    if (messageOne == null || messageTwo == null) {
+      throw new Error("Expected rendered message nodes");
+    }
+    vi.spyOn(messageOne, "getBoundingClientRect").mockReturnValue({
+      top: -200,
+      bottom: -100,
+      left: 0,
+      right: 300,
+      width: 300,
+      height: 100,
+      x: 0,
+      y: -200,
+      toJSON: () => ({}),
+    });
+    let messageTwoRectCallCount = 0;
+    vi.spyOn(messageTwo, "getBoundingClientRect").mockImplementation(() => {
+      messageTwoRectCallCount += 1;
+      const top = messageTwoRectCallCount === 1 ? 100 : 320;
+      return {
+        top,
+        bottom: top + 80,
+        left: 0,
+        right: 300,
+        width: 300,
+        height: 80,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      };
+    });
+
+    fireEvent.scroll(feed);
+    await act(async () => {
+      await flushProgrammaticScrollFrames();
+    });
+
+    scrollToBottomMock.mockClear();
+
+    rerender(
+      <MessageList
+        messages={[
+          base[0]!,
+          {
+            ...base[1]!,
+            reactions: [
+              {
+                emoji_name: "thumbs_up",
+                emoji_code: "1f44d",
+                reaction_type: "unicode_emoji",
+                user_id: 7,
+              },
+            ],
+          },
+          base[2]!,
+        ]}
+        currentUserId={7}
+        scrollToBottomKey="reaction-anchor"
+      />,
+    );
+
+    await act(async () => {
+      await flushProgrammaticScrollFrames();
+    });
+
+    expect(scrollToBottomMock).not.toHaveBeenCalled();
+    expect(feed.scrollTop).toBe(420);
+  });
+
   it("does not auto-scroll on wheel-up before incoming message", async () => {
     const base = [
       msg(1, { sender_id: 99, flags: ["read"] }),

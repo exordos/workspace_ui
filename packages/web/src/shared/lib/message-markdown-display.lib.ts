@@ -170,15 +170,79 @@ function buildQuotePlaceholder(index: number): string {
   return `${QUOTE_PLACEHOLDER_START}${index}${QUOTE_PLACEHOLDER_END}`;
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function restoreQuotePlaceholders(html: string, renderedQuotes: readonly string[]): string {
   let result = html;
   renderedQuotes.forEach((quoteHtml, index) => {
     const placeholder = buildQuotePlaceholder(index);
+    const escaped = escapeRegExp(placeholder);
+
+    // Marked + breaks:true can merge quote placeholder and reply tail into one paragraph.
+    result = result.replace(
+      new RegExp(`<p>\\s*${escaped}\\s*(?:<br\\s*/?>)\\s*([\\s\\S]*?)</p>`, "gi"),
+      (_match, tail: string) => {
+        const trimmed = tail.trim();
+        return trimmed.length > 0 ? `${quoteHtml}<p>${trimmed}</p>` : quoteHtml;
+      },
+    );
     result = result
-      .replace(new RegExp(`<p>${placeholder}</p>`, "g"), () => quoteHtml)
-      .replace(new RegExp(placeholder, "g"), () => quoteHtml);
+      .replace(new RegExp(`<p>\\s*${escaped}\\s*</p>`, "g"), () => quoteHtml)
+      .replace(new RegExp(escaped, "g"), () => quoteHtml);
   });
   return result;
+}
+
+/**
+ * Marked + `breaks: true` can emit `<p><div class="zulip-quote-block">…</div><br>reply</p>`.
+ * Browsers split that into an empty `<p>` before the quote, which reads as a large vertical gap.
+ */
+export function unwrapZulipQuoteBlocksFromParagraphs(html: string): string {
+  if (typeof document === "undefined" || html.trim().length === 0) {
+    return html;
+  }
+
+  const template = document.createElement("template");
+  template.innerHTML = html;
+
+  for (const paragraph of template.content.querySelectorAll("p")) {
+    const directQuote = [...paragraph.children].find((child) =>
+      child.classList.contains("zulip-quote-block"),
+    );
+    if (directQuote == null) continue;
+
+    const fragment = document.createDocumentFragment();
+    fragment.appendChild(directQuote);
+
+    const tailParagraph = document.createElement("p");
+    let afterQuote = false;
+    for (const child of paragraph.childNodes) {
+      if (child === directQuote) {
+        afterQuote = true;
+        continue;
+      }
+      if (!afterQuote) continue;
+      if (child instanceof HTMLBRElement) continue;
+      tailParagraph.appendChild(child);
+    }
+
+    if ((tailParagraph.textContent ?? "").trim().length > 0) {
+      fragment.appendChild(tailParagraph);
+    }
+
+    paragraph.replaceWith(fragment);
+  }
+
+  return template.innerHTML;
+}
+
+function finalizeRenderedQuoteMarkdownHtml(
+  html: string,
+  renderedQuotes: readonly string[],
+): string {
+  return unwrapZulipQuoteBlocksFromParagraphs(restoreQuotePlaceholders(html, renderedQuotes));
 }
 
 export interface MessageBodyDisplayOptions {
@@ -254,7 +318,7 @@ export function messageBodyToUnsanitizedDisplayHtml(
         return placeholder;
       },
     );
-    return restoreQuotePlaceholders(
+    return finalizeRenderedQuoteMarkdownHtml(
       restoreMentions(
         renderMarkdownFallbackHtml(withNestedQuotes, {
           resolveStreamByName: options?.resolveStreamByName,
@@ -282,7 +346,7 @@ export function messageBodyToUnsanitizedDisplayHtml(
   const mdHtml = renderMarkdownFallbackHtml(withQuotes, {
     resolveStreamByName: options?.resolveStreamByName,
   });
-  return restoreQuotePlaceholders(restoreMentions(mdHtml), renderedQuotes);
+  return finalizeRenderedQuoteMarkdownHtml(restoreMentions(mdHtml), renderedQuotes);
 }
 
 /** One-line / list previews: strip tags; Markdown is converted via marked first. */

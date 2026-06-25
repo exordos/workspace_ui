@@ -3,6 +3,7 @@ import { type CallParticipant, useCallParticipantsStore } from "~/entities/call/
 import { t } from "~/i18n/i18n";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
+import { MessageBubbleMeta } from "./message-bubble-meta.ui";
 import { formatJitsiRoomDisplayName, resolveJitsiLocationName } from "./message-jitsi-location.lib";
 import type { MessageBubbleJitsiCardProps } from "./message-bubble-jitsi-card.types";
 
@@ -121,10 +122,11 @@ export const MessageBubbleJitsiCard = React.memo(function MessageBubbleJitsiCard
             )}
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1 text-[11px] text-text-muted">
-          <span>{time}</span>
-          {ownDeliveryIndicator}
-        </div>
+        <MessageBubbleMeta
+          time={time}
+          ownDeliveryIndicator={ownDeliveryIndicator}
+          className="shrink-0"
+        />
       </div>
     </div>
   );

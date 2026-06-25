@@ -5,12 +5,12 @@ import { t } from "~/i18n/i18n";
 import { formatMessageTimeRelative } from "~/shared/lib/datetime.lib";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 
-const MAX_PREVIEW_LEN = 60;
-
+/**
+ * Plain-text sidebar preview from Zulip message body.
+ * Visual ellipsis is applied in UI via CSS `truncate` so the snippet fills the resizable sidebar width.
+ */
 export function truncatePreview(text: string): string {
-  const plain = plainTextPreviewFromMessageBody(text).trim();
-  if (plain.length <= MAX_PREVIEW_LEN) return plain;
-  return plain.slice(0, MAX_PREVIEW_LEN) + "…";
+  return plainTextPreviewFromMessageBody(text).trim();
 }
 
 /** Sidebar preview time — re-export for chat-list entity consumers. */

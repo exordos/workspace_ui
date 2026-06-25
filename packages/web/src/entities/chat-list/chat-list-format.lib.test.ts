@@ -1,6 +1,22 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { setLocale } from "~/i18n/i18n";
-import { getDmPartnerName, resolvePersonalDmSidebarTitle } from "./chat-list-format.lib";
+import {
+  getDmPartnerName,
+  resolvePersonalDmSidebarTitle,
+  truncatePreview,
+} from "./chat-list-format.lib";
+
+describe("truncatePreview", () => {
+  it("returns plain text without a fixed character cap", () => {
+    const longBody = "A".repeat(200);
+    expect(truncatePreview(longBody)).toBe(longBody);
+  });
+
+  it("strips markdown/html to plain text", () => {
+    expect(truncatePreview("Hello **world**")).toContain("Hello");
+    expect(truncatePreview("Hello **world**")).toContain("world");
+  });
+});
 
 describe("getDmPartnerName", () => {
   beforeEach(() => {

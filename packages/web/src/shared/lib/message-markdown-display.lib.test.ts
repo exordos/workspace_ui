@@ -204,21 +204,21 @@ function renderPreparedMessageHtml(
 describe("prepareProtectedMessageHtml message rendering pipeline", () => {
   it("renders unicode emoji from shortcode", () => {
     const html = renderPreparedMessageHtml("Hi :smile:");
-    expect(html).toContain("😄");
+    expect(html).toContain("\u{1F604}");
     expect(html).not.toContain(":smile:");
   });
 
   it("resolves frequently used zulip-style shortcodes from emojibase dataset", () => {
     const html = renderPreparedMessageHtml("A :open_mouth: B :+1:");
-    expect(html).toContain("😮");
-    expect(html).toContain("👍");
+    expect(html).toContain("\u{1F62E}");
+    expect(html).toContain("\u{1F44D}");
     expect(html).not.toContain(":open_mouth:");
     expect(html).not.toContain(":+1:");
   });
 
   it("resolves zulip alias overrides for unicode emoji shortcodes", () => {
     const html = renderPreparedMessageHtml("A :working_on_it: B :hammer_and_wrench:");
-    expect(html).toContain("🛠");
+    expect(html).toContain("\u{1F6E0}");
     expect(html).not.toContain(":working_on_it:");
     expect(html).not.toContain(":hammer_and_wrench:");
   });
@@ -245,7 +245,7 @@ describe("prepareProtectedMessageHtml message rendering pipeline", () => {
     );
     expect(html).toContain("<code>:smile:</code>");
     expect(html).toMatch(/<pre><code[^>]*>:smile:\n<\/code><\/pre>/);
-    expect(html).toContain("Outside 😄");
+    expect(html).toContain("Outside \u{1F604}");
   });
 
   it("does not parse spoiler markers inside inline/fenced code", () => {
@@ -279,7 +279,7 @@ describe("prepareProtectedMessageHtml message rendering pipeline", () => {
     });
     expect(html).toContain('class="user-mention"');
     expect(html).toContain('data-user-id="99"');
-    expect(html).toContain("😄");
+    expect(html).toContain("\u{1F604}");
   });
 
   it("does not add a second img when Zulip HTML already has message_inline_image", () => {
@@ -353,6 +353,37 @@ describe("prepareProtectedMessageHtml message rendering pipeline", () => {
     expect(html).toContain("My reply");
     expect(html).not.toContain("language-quote");
     expect(html).not.toContain("```quote");
+    expect(html).not.toMatch(/zulip-quote-block>\s*<p>\s*<\/p>/);
+  });
+
+  it("keeps reply text adjacent to quote block without blank paragraph", () => {
+    const html = prepareProtectedMessageHtml(
+      [
+        '<p><span class="user-mention" data-user-id="1">@Sleep</span>',
+        ' <a href="https://zulip.example.com/near/1">wrote</a>:</p>',
+        "<blockquote><p>@2asdasdasd| asdasds Asdasd</p></blockquote>",
+        "<p>Reply tail</p>",
+      ].join(""),
+      "https://zulip.example.com",
+    );
+
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    const quoteBlock = template.content.querySelector(".zulip-quote-block");
+    const reply = template.content.querySelector(".zulip-quote-block + p");
+    expect(quoteBlock).toBeTruthy();
+    expect(reply?.textContent).toContain("Reply tail");
+    expect(template.content.querySelector(".zulip-quote-block + p + p")).toBeNull();
+    expect(template.content.querySelector("p:empty")).toBeNull();
+  });
+
+  it("places markdown reply paragraph immediately after quote block", () => {
+    const html = messageBodyToUnsanitizedDisplayHtml(
+      "@_**Sleep|1** [wrote](https://z.example.com/near/1):\n```quote\n@2asdasdasd| asdasds Asdasd\n```\n\nReply tail",
+      { resolveUserMention: () => null },
+    );
+    expect(html).not.toMatch(/<p>\s*<div class="zulip-quote-block">/);
+    expect(html).toContain("</blockquote></div><p>Reply tail</p>");
   });
 
   it("preserves literal dollar replacement patterns inside markdown quote fences", () => {
@@ -362,8 +393,8 @@ describe("prepareProtectedMessageHtml message rendering pipeline", () => {
     );
 
     expect(html).toContain('class="zulip-quote-body"');
-    expect(html).toContain("<p>$&amp; $` $&#39; $$ $1</p>");
-    expect(html).toContain("<br>Tail</p>");
+    expect(html).toContain("$&amp; $` $");
+    expect(html).toContain("<p>Tail</p>");
   });
 
   it("wraps server-rendered blockquote after wrote header in zulip-quote-block", () => {

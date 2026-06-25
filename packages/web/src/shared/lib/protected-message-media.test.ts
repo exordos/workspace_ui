@@ -396,3 +396,33 @@ describe("resolveProtectedUploadFetchOptions", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe("prepareProtectedMessageHtml quote replies", () => {
+  it("hoists message_inline_image into zulip-quote-body instead of leaving it below blockquote", () => {
+    const uploadPath = "/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png";
+    const html = prepareProtectedMessageHtml(
+      [
+        '<p><span class="user-mention" data-user-id="1">@Sleep</span>',
+        ' <a href="https://zulip.example.com/near/1">писал/а</a>:</p>',
+        "<blockquote><p>Сообщение с картинкой</p></blockquote>",
+        '<div class="message_inline_image">',
+        `<a href="${uploadPath}">`,
+        `<img src="/user_uploads/thumbnail/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png/840x560.webp" alt="image.png">`,
+        "</a></div>",
+        "<p>Ухахахаха длинный ответ с ентером</p>",
+      ].join(""),
+      "https://zulip.example.com",
+    );
+
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    const quoteBlock = template.content.querySelector(".zulip-quote-block");
+    const quoteBody = template.content.querySelector(".zulip-quote-body");
+
+    expect(quoteBlock?.querySelector(":scope > .message_inline_image")).toBeNull();
+    expect(quoteBody?.querySelector(".message_inline_image, img")).toBeTruthy();
+    expect(template.content.querySelector(".zulip-quote-block + p")?.textContent).toContain(
+      "Ухахахаха",
+    );
+  });
+});

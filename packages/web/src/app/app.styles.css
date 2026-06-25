@@ -84,11 +84,20 @@ body {
 /* ── Zulip quote blocks (reply / forward) ─────────────── */
 
 .message-body .zulip-quote-block {
-  margin: 4px 0;
+  margin-top: 2px;
+  margin-bottom: 0;
+}
+
+.message-body .zulip-quote-block + p {
+  margin-top: 0;
+}
+
+.message-body .zulip-quote-body > :last-child {
+  margin-bottom: 0;
 }
 
 .message-body .zulip-quote-header {
-  color: var(--color-text-muted);
+  color: var(--color-text-primary);
   font-size: 0.75rem;
   font-style: normal;
   line-height: 1.25rem;
@@ -100,8 +109,9 @@ body {
 }
 
 .message-body .zulip-quote-body {
-  border-left: 2px solid var(--color-border-subtle);
-  color: var(--color-text-muted);
+  border-left: 3px solid
+    color-mix(in srgb, var(--color-border-subtle) 35%, var(--color-text-secondary) 65%);
+  color: var(--color-text-primary);
   font-style: normal;
   margin: 0;
   padding-left: 8px;
@@ -111,10 +121,11 @@ body {
   margin-left: 8px;
 }
 
-/* Markdown `>` blockquotes only — Zulip quote bodies keep text-primary above */
+/* Markdown `>` blockquotes only — border-left marks quoted content */
 .message-body blockquote:not(.zulip-quote-body) {
-  border-left: 2px solid var(--color-border-subtle);
-  color: var(--color-text-muted);
+  border-left: 3px solid
+    color-mix(in srgb, var(--color-border-subtle) 35%, var(--color-text-secondary) 65%);
+  color: var(--color-text-primary);
   font-style: italic;
   margin: 4px 0;
   padding-left: 8px;
@@ -311,6 +322,9 @@ body {
   border-radius: 8px;
   background: color-mix(in srgb, var(--color-text-primary) 8%, var(--color-bg-elevated) 92%);
   overflow: hidden;
+  /* Padding lives on code.hljs — reset utility classes on the parent pre */
+  margin: 2px 0;
+  padding: 0;
 }
 
 .message-body pre code.hljs {
@@ -324,8 +338,8 @@ body {
   overflow-x: auto;
   border: 0;
   border-radius: 0;
-  padding: 10px 14px;
-  line-height: 1.45;
+  padding: 6px 10px;
+  line-height: 1.35;
   font-style: normal;
   font-weight: 500;
   color: var(--color-text-primary);
@@ -334,9 +348,32 @@ body {
 
 .message-body .message-code-copy-btn {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: 4px;
+  right: 4px;
   z-index: 1;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 150ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.message-body pre:has(> .message-code-copy-btn):hover .message-code-copy-btn,
+.message-body pre:has(> .message-code-copy-btn):focus-within .message-code-copy-btn,
+.message-body .message-code-copy-btn:focus-visible,
+.message-body .message-code-copy-btn[data-copy-state="success"],
+.message-body .message-code-copy-btn[data-copy-state="error"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: none) {
+  .message-body .message-code-copy-btn {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 .message-body .message-code-copy-btn[data-copy-state="success"] {
