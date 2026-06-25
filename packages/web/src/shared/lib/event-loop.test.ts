@@ -161,6 +161,42 @@ describe("Workspace realtime event normalization", () => {
     });
   });
 
+  it("maps backend WS message frames with nested markdown payload", () => {
+    const normalized = normalizeWorkspaceRealtimeEvent(
+      {
+        epoch_version: 15,
+        type: "message",
+        message: {
+          uuid: MESSAGE_UUID,
+          author_uuid: OTHER_UUID,
+          stream_uuid: STREAM_UUID,
+          topic_uuid: TOPIC_UUID,
+          payload: { kind: "markdown", content: "nested live hello" },
+          created_at: "2026-06-24T10:20:30Z",
+          is_own: false,
+          read: false,
+          pinned: true,
+          starred: true,
+        },
+      },
+      USER_UUID,
+    );
+
+    expect(normalized?.event?.message).toMatchObject({
+      id: MESSAGE_UUID,
+      source_message_uuid: MESSAGE_UUID,
+      content: "nested live hello",
+      markdown_source: "nested live hello",
+      timestamp: 1782296430,
+      is_own: false,
+      read: false,
+      pinned: true,
+      starred: true,
+      subject: TOPIC_UUID,
+      flags: [],
+    });
+  });
+
   it("skips unknown REST event kinds without dropping their epoch", () => {
     const normalized = normalizeWorkspaceEventModel({
       epoch_version: 14,
@@ -224,7 +260,7 @@ describe("startMessengerEventLoop", () => {
     expect(onEvent).toHaveBeenCalledWith(expect.objectContaining({ id: 12, type: "message" }));
 
     const ws = FakeWebSocket.instances[0]!;
-    expect(ws.url).toContain("/api/messenger/ws?last_epoch_version=12");
+    expect(ws.url).toBe("wss://workspace.example.test/api/messenger/ws?last_epoch_version=12");
     expect(ws.protocols).toEqual(["workspace.events.v1", "bearer.access-token"]);
 
     ws.emit({ type: "hello", user_uuid: USER_UUID, project_id: "project", epoch_version: 12 });

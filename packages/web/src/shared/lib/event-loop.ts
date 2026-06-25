@@ -51,6 +51,7 @@ interface RuntimeConfig {
   fetchMode: "active-client" | "direct";
   messengerApiBaseUrl: string;
   storageKey: string;
+  websocketApiBaseUrl: string;
 }
 
 interface LoopState {
@@ -239,6 +240,7 @@ function resolveRuntimeConfig(options: StartMessengerEventLoopOptions): RuntimeC
       fetchMode: "direct",
       messengerApiBaseUrl: `${origin}${MESSENGER_API_PATH}`,
       storageKey: buildStorageKey(identity),
+      websocketApiBaseUrl: `${origin}${MESSENGER_API_PATH}`,
     };
   }
 
@@ -251,11 +253,15 @@ function resolveRuntimeConfig(options: StartMessengerEventLoopOptions): RuntimeC
     return null;
   }
   const identity = options.instanceId ?? instance.id ?? `${instance.realm}|${instance.login}`;
+  const websocketOrigin = resolveIamApiOrigin(instance).replace(/\/+$/, "");
+  const messengerApiBaseUrl = getMessengerGatewayApiBaseForCurrentInstance();
   return {
     accessToken,
     fetchMode: "active-client",
-    messengerApiBaseUrl: getMessengerGatewayApiBaseForCurrentInstance(),
+    messengerApiBaseUrl,
     storageKey: buildStorageKey(identity),
+    websocketApiBaseUrl:
+      websocketOrigin.length > 0 ? `${websocketOrigin}${MESSENGER_API_PATH}` : messengerApiBaseUrl,
   };
 }
 
@@ -405,6 +411,7 @@ function messageFromRealtimeFrame(
   if (!isRecord(messageValue)) {
     return null;
   }
+  const markdownPayload = isRecord(messageValue.payload) ? messageValue.payload : null;
   const messageUuid =
     normalizeUuid(messageValue.id) ??
     normalizeUuid(messageValue.uuid) ??
@@ -413,7 +420,9 @@ function messageFromRealtimeFrame(
   const authorUuid =
     normalizeUuid(messageValue.author_uuid) ?? normalizeUuid(messageValue.sender_uuid);
   const content =
-    readOptionalString(messageValue.content) ?? readOptionalString(messageValue.markdown_source);
+    readOptionalString(messageValue.content) ??
+    readOptionalString(messageValue.markdown_source) ??
+    readOptionalString(markdownPayload?.content);
   if (messageUuid == null || streamUuid == null || authorUuid == null || content == null) {
     return null;
   }
@@ -435,7 +444,9 @@ function messageFromRealtimeFrame(
     sender_full_name: readOptionalString(messageValue.sender_full_name) ?? "",
     content,
     markdown_source: readOptionalString(messageValue.markdown_source) ?? content,
-    timestamp: timestampFromValue(messageValue.timestamp),
+    timestamp: timestampFromValue(
+      messageValue.timestamp ?? messageValue.created_at ?? messageValue.updated_at,
+    ),
     ...(typeof messageValue.display_recipient === "string"
       ? { display_recipient: messageValue.display_recipient }
       : {}),
@@ -666,7 +677,7 @@ function openRealtimeSocket(
   }
 
   return new Promise((resolve, reject) => {
-    const url = buildRealtimeWebSocketUrl(runtime.messengerApiBaseUrl, state.lastEpochVersion);
+    const url = buildRealtimeWebSocketUrl(runtime.websocketApiBaseUrl, state.lastEpochVersion);
     let socket: WebSocket;
     let settled = false;
 
