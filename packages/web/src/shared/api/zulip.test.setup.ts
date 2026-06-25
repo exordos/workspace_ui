@@ -25,6 +25,7 @@ const mockGetCurrentInstance = vi.hoisted(() => vi.fn());
 
 const mockZulipApi = vi.hoisted(() => ({
   get: vi.fn(),
+  getWithBase: vi.fn(),
   post: vi.fn(),
   postFormData: vi.fn(),
   patch: vi.fn(),
@@ -107,6 +108,7 @@ beforeEach(() => {
   mockZulipClient.messages.retrieve.mockReset();
   mockZulipClient.messages.send.mockReset();
   mockZulipApi.get.mockReset();
+  mockZulipApi.getWithBase.mockReset();
   mockZulipApi.post.mockReset();
   mockZulipApi.postFormData.mockReset();
   mockZulipApi.patch.mockReset();

@@ -1,6 +1,10 @@
 import { SkinTones } from "emoji-picker-react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { Reaction } from "~/shared/api/zulip.types";
+import {
+  resetZulipEmojiCatalogForTests,
+  setZulipEmojiCatalogForTests,
+} from "~/shared/lib/zulip-emoji-catalog.lib";
 import {
   getReactionDisplayChar,
   isOneToOneDirectMessage,
@@ -81,7 +85,17 @@ describe("isOneToOneDirectMessage", () => {
 });
 
 describe("reactionPayloadFromEmojiClickData", () => {
+  beforeEach(() => {
+    resetZulipEmojiCatalogForTests();
+  });
+
   it("maps unicode emoji click payload", () => {
+    setZulipEmojiCatalogForTests({
+      code_to_names: {
+        "1f44d": ["thumbs_up"],
+      },
+    });
+
     const payload = reactionPayloadFromEmojiClickData({
       activeSkinTone: SkinTones.NEUTRAL,
       unified: "1f44d",
@@ -99,7 +113,13 @@ describe("reactionPayloadFromEmojiClickData", () => {
     });
   });
 
-  it("derives canonical zulip shortcode from unified unicode, not picker keywords", () => {
+  it("uses server catalog name from unified unicode, not picker keywords", () => {
+    setZulipEmojiCatalogForTests({
+      code_to_names: {
+        "1f6e0-fe0f": ["working_on_it"],
+      },
+    });
+
     const payload = reactionPayloadFromEmojiClickData({
       activeSkinTone: SkinTones.NEUTRAL,
       unified: "1f6e0-fe0f",
@@ -115,6 +135,21 @@ describe("reactionPayloadFromEmojiClickData", () => {
       reactionType: "unicode_emoji",
       emojiCode: "1f6e0-fe0f",
     });
+  });
+
+  it("does not create guessed unicode reaction payload without server catalog match", () => {
+    const payload = reactionPayloadFromEmojiClickData({
+      activeSkinTone: SkinTones.NEUTRAL,
+      unified: "1f9ea",
+      unifiedWithoutSkinTone: "1f9ea",
+      emoji: "🧪",
+      names: ["test_tube"],
+      imageUrl: "https://example.com/test_tube.png",
+      getImageUrl: () => "https://example.com/test_tube.png",
+      isCustom: false,
+    });
+
+    expect(payload).toBeNull();
   });
 
   it("maps custom emoji click payload", () => {

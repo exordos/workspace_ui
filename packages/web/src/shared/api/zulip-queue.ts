@@ -4,6 +4,10 @@
 import { t } from "~/i18n/i18n";
 import { getBasicAuthValue } from "~/shared/lib/auth-guard";
 import { env } from "~/shared/lib/env";
+import {
+  configureZulipEmojiCatalog,
+  ensureZulipEmojiCatalogLoaded,
+} from "~/shared/lib/zulip-emoji-catalog.lib";
 import { isBadEventQueueIdResponse } from "~/shared/lib/zulip-event-queue-errors.lib";
 import { getCurrentInstance, zulipApi } from "./client";
 import {
@@ -71,11 +75,16 @@ export function getCachedOwnAvatarCapabilities(): ZulipOwnAvatarCapabilities {
   return cachedOwnAvatarCapabilities;
 }
 
+export interface RegisterQueueOptions {
+  signal?: AbortSignal;
+  shouldApplyActiveMetadata?: () => boolean;
+}
+
 /** Registers an event queue and returns `queue_id` for long-polling. */
 export async function registerQueue(
   eventTypes: string[],
   fetchEventTypes: string[] = [...DEFAULT_REGISTER_FETCH_EVENT_TYPES],
-  options?: { signal?: AbortSignal },
+  options?: RegisterQueueOptions,
 ): Promise<RegisterQueueResult> {
   const body: Record<string, string> = {
     event_types: JSON.stringify(eventTypes),
@@ -110,6 +119,7 @@ export async function registerQueue(
     user_status?: unknown;
     unread_msgs?: unknown;
     starred_messages?: unknown;
+    server_emoji_data_url?: unknown;
   } | null;
   if (data == null || typeof data !== "object") {
     throw new Error(t("app.invalidResponse"));
@@ -122,10 +132,16 @@ export async function registerQueue(
   }
 
   const metadata = parseRegisterQueueMetadata(data);
-  setCachedOwnAvatarCapabilities(toOwnAvatarCapabilities(metadata));
-  const cacheKey = getCurrentUserTopicsCacheKey();
-  if (cacheKey && metadata.userTopics) {
-    setCachedUserTopicsForKey(cacheKey, metadata.userTopics);
+  const shouldApplyActiveMetadata =
+    options?.signal?.aborted !== true && (options?.shouldApplyActiveMetadata?.() ?? true);
+  if (shouldApplyActiveMetadata) {
+    setCachedOwnAvatarCapabilities(toOwnAvatarCapabilities(metadata));
+    configureZulipEmojiCatalog(metadata.serverEmojiDataUrl, getCurrentInstance()?.realm);
+    void ensureZulipEmojiCatalogLoaded();
+    const cacheKey = getCurrentUserTopicsCacheKey();
+    if (cacheKey && metadata.userTopics) {
+      setCachedUserTopicsForKey(cacheKey, metadata.userTopics);
+    }
   }
 
   return buildRegisterQueueResult(

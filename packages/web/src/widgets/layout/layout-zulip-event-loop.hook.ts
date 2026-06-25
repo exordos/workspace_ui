@@ -345,6 +345,11 @@ export function useLayoutZulipEventLoop(options: {
     const bootstrapEpoch = ++chatListBootstrapEffectEpoch;
     const isBootstrapStale = () => bootstrapEpoch !== chatListBootstrapEffectEpoch;
     const registerApplyContext = captureActiveOrgRequestContext();
+    const shouldApplyActiveMetadata = (): boolean =>
+      !cancelled &&
+      !isBootstrapStale() &&
+      isActiveOrgRequestContextCurrent(registerApplyContext) &&
+      registerApplyContext.instanceId === currentInstanceId;
     const setBootstrapStatus = (status: LayoutUserConnectionStatus): void => {
       if (cancelled || isBootstrapStale()) {
         return;
@@ -772,6 +777,7 @@ export function useLayoutZulipEventLoop(options: {
             onTabStaleResume: refreshStaleData,
             onBadQueue: refreshStaleData,
             fetchEventTypes: [...LAYOUT_REGISTER_FETCH_EVENT_TYPES],
+            shouldApplyActiveMetadata,
             onQueueRegistered: onQueueRegisteredHandler,
             onEvent: onEventHandler,
           });

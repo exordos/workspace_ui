@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { useDownloadStore } from "~/entities/download/download.model";
 import type { MessageReactionPayload, MockMessage } from "~/shared/api/zulip.types";
+import { createLogger } from "~/shared/lib/logger";
 import { extractUserUploadPath } from "./message-attachment-download.lib";
 import {
   captureReplySelectionForContextMenu,
@@ -30,6 +31,7 @@ import type { EmojiClickData } from "emoji-picker-react";
 
 const MESSAGE_CONTEXT_MENU_CURSOR_GAP_PX = 6;
 const LONG_PRESS_MS = 500;
+const log = createLogger("message-bubble-interactions");
 
 export interface UseMessageBubbleInteractionsParams {
   message: MockMessage;
@@ -249,6 +251,7 @@ export function useMessageBubbleInteractions({
     (data: EmojiClickData) => {
       const payload = reactionPayloadFromEmojiClickData(data);
       if (payload == null) {
+        log.warn("Reaction emoji picker could not resolve selected emoji via Zulip catalog");
         return;
       }
       handleReaction(payload);

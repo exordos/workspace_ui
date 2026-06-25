@@ -107,6 +107,8 @@ export interface RegisterQueueResult {
   queue_id: string;
   last_event_id: number;
   event_queue_longpoll_timeout_seconds?: number;
+  /** Zulip server Unicode emoji catalog URL from register. */
+  server_emoji_data_url?: string;
   subscriptions?: ZulipSubscription[];
   user_topics?: ZulipUserTopic[];
   /** Recent DM metadata for initial sidebar dialog list. */

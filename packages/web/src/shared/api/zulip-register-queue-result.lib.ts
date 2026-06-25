@@ -149,6 +149,7 @@ export interface RegisterQueueRawData {
   user_status?: unknown;
   unread_msgs?: unknown;
   starred_messages?: unknown;
+  server_emoji_data_url?: unknown;
 }
 
 export interface RegisterQueueParsedMetadata {
@@ -170,6 +171,7 @@ export interface RegisterQueueParsedMetadata {
   jitsiServerUrlEffective: ReturnType<typeof parseRegisterResponseJitsiServerUrl>;
   userStatusSnapshot: ReturnType<typeof parseUserStatusSnapshot>;
   starredMessageIds: number[] | null;
+  serverEmojiDataUrl: string | null;
 }
 
 function parseRegisterStarredMessageIds(data: RegisterQueueRawData): number[] | null {
@@ -195,6 +197,11 @@ function parseRegisterStarredMessageIds(data: RegisterQueueRawData): number[] | 
 export function parseRegisterQueueMetadata(
   data: RegisterQueueRawData,
 ): RegisterQueueParsedMetadata {
+  const serverEmojiDataUrl =
+    typeof data.server_emoji_data_url === "string" && data.server_emoji_data_url.trim().length > 0
+      ? data.server_emoji_data_url.trim()
+      : null;
+
   return {
     unreadSnapshot: parseRegisterUnreadSnapshot(data),
     userSettings: extractUserSettingsFromRegisterData(data as Record<string, unknown>),
@@ -220,6 +227,7 @@ export function parseRegisterQueueMetadata(
     jitsiServerUrlEffective: parseRegisterResponseJitsiServerUrl(data),
     userStatusSnapshot: parseUserStatusSnapshot(data),
     starredMessageIds: parseRegisterStarredMessageIds(data),
+    serverEmojiDataUrl,
   };
 }
 
@@ -292,5 +300,6 @@ export function buildRegisterQueueResult(
       : {}),
     ...(metadata.unreadSnapshot ? { unread_snapshot: metadata.unreadSnapshot } : {}),
     ...(metadata.starredMessageIds ? { starred_message_ids: metadata.starredMessageIds } : {}),
+    ...(metadata.serverEmojiDataUrl ? { server_emoji_data_url: metadata.serverEmojiDataUrl } : {}),
   };
 }

@@ -20,6 +20,10 @@ import { RightDrawerContext } from "~/shared/contexts/right-drawer";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
 import { resetToastStateForTests, useToastStore } from "~/shared/lib/toast/toast.model";
+import {
+  resetZulipEmojiCatalogForTests,
+  setZulipEmojiCatalogForTests,
+} from "~/shared/lib/zulip-emoji-catalog.lib";
 import { renderWithProviders } from "~/test/render";
 import { RightPanelShell } from "./right-panel-shell.ui";
 import type * as ReactRouterDom from "react-router-dom";
@@ -80,7 +84,14 @@ vi.mock("emoji-picker-react", () => ({
         <button
           type="button"
           className={props.className}
-          onClick={() => props.onEmojiClick?.({ emoji: "🧪", names: ["test_tube"] })}
+          onClick={() =>
+            props.onEmojiClick?.({
+              emoji: "🧪",
+              names: ["test_tube"],
+              unified: "1f9ea",
+              unifiedWithoutSkinTone: "1f9ea",
+            })
+          }
         >
           Pick status emoji
         </button>
@@ -115,6 +126,7 @@ vi.mock("emoji-picker-react", () => ({
 describe("RightPanel truthfulness", () => {
   beforeEach(() => {
     resetRealmEmojisCacheForTests();
+    resetZulipEmojiCatalogForTests();
   });
 
   afterEach(() => {
@@ -306,6 +318,11 @@ describe("RightPanel truthfulness", () => {
   });
 
   it("lets users pick any emoji in status dialog", async () => {
+    setZulipEmojiCatalogForTests({
+      code_to_names: {
+        "1f9ea": ["test_tube"],
+      },
+    });
     const realmEmoji = {
       id: "42",
       names: ["party_parrot"],
@@ -332,6 +349,50 @@ describe("RightPanel truthfulness", () => {
     fireEvent.click(within(statusDialog).getByRole("button", { name: /pick status emoji/i }));
 
     expect(within(statusDialog).getByText("🧪")).toBeInTheDocument();
+  });
+
+  it("saves selected unicode status emoji metadata from Zulip catalog", async () => {
+    setZulipEmojiCatalogForTests({
+      code_to_names: {
+        "1f9ea": ["test_tube"],
+      },
+    });
+    useChatListStore.setState({ currentUserId: 42 });
+    useUsersStore.getState().mergeUser({
+      user_id: 42,
+      full_name: "Alice Doe",
+    });
+    updateOwnStatusMock.mockResolvedValue({
+      ok: true,
+      status: {
+        text: "Lab",
+        emojiName: "test_tube",
+        emojiCode: "1f9ea",
+        reactionType: "unicode_emoji",
+        away: false,
+      },
+    });
+
+    renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^status/i }));
+    const statusDialog = screen.getByRole("dialog", { name: /^status$/i });
+    fireEvent.click(within(statusDialog).getByRole("button", { name: /choose emoji/i }));
+    fireEvent.click(within(statusDialog).getByRole("button", { name: /pick status emoji/i }));
+    fireEvent.change(within(statusDialog).getByRole("textbox", { name: /^status$/i }), {
+      target: { value: "Lab" },
+    });
+    fireEvent.click(within(statusDialog).getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(updateOwnStatusMock).toHaveBeenCalledWith({
+        text: "Lab",
+        away: false,
+        emojiName: "test_tube",
+        emojiCode: "1f9ea",
+        reactionType: "unicode_emoji",
+      });
+    });
   });
 
   it("saves selected realm status emoji metadata without decoding its id as unicode", async () => {

@@ -41,6 +41,7 @@ import {
 import { logSidebarUnreadFlow } from "~/shared/lib/sidebar-unread-debug.lib";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { isTabVisible, onVisibilityChange } from "~/shared/lib/visibility";
+import { ensureZulipEmojiCatalogLoaded } from "~/shared/lib/zulip-emoji-catalog.lib";
 import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
 import { FloatingScrollToBottomButton } from "~/shared/ui/floating-scroll-to-bottom-button";
 import { WidgetErrorBoundary } from "~/shared/ui/widget-error-boundary.ui";
@@ -168,6 +169,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
   const [customEmojis, setCustomEmojis] = useState<RealmEmoji[]>(() => getCachedRealmEmojis());
 
   const ensureCustomEmojisLoaded = useCallback(() => {
+    void ensureZulipEmojiCatalogLoaded();
     void ensureRealmEmojisLoaded()
       .then((list) => {
         setCustomEmojis(list);

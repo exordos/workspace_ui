@@ -5,8 +5,8 @@ import type { MessageReactionPayload, MockMessage, Reaction } from "~/shared/api
 import {
   normalizeEmojiShortcodeName,
   resolveShortcodeToUnicode,
-  resolveUnicodeToCanonicalShortcode,
 } from "~/shared/lib/emoji-shortcodes.lib";
+import { zulipEmojiPayloadFromPickerData } from "~/shared/lib/zulip-emoji-payload.lib";
 import type { EmojiClickData } from "emoji-picker-react";
 
 export const QUICK_REACTIONS = [
@@ -68,33 +68,7 @@ export function isOneToOneDirectMessage(message: MockMessage): boolean {
 export function reactionPayloadFromEmojiClickData(
   data: EmojiClickData,
 ): MessageReactionPayload | null {
-  const normalizedPickerName = normalizeEmojiShortcodeName(data.names?.[0] ?? data.emoji ?? "");
-  const unifiedCode = (data.unifiedWithoutSkinTone || data.unified || "").trim().toLowerCase();
-  if (data.isCustom) {
-    if (normalizedPickerName.length === 0) {
-      return null;
-    }
-    const emojiCode = data.unifiedWithoutSkinTone || data.unified || data.emoji || "";
-    if (emojiCode.trim().length === 0) {
-      return null;
-    }
-    return {
-      emojiName: normalizedPickerName,
-      reactionType: "realm_emoji",
-      emojiCode,
-      imageUrl: data.imageUrl || undefined,
-    };
-  }
-  const emojiName = resolveUnicodeToCanonicalShortcode(unifiedCode) ?? normalizedPickerName;
-  if (emojiName.length === 0) {
-    return null;
-  }
-  const unicodeCode = data.unifiedWithoutSkinTone || data.unified || "";
-  return {
-    emojiName,
-    reactionType: "unicode_emoji",
-    ...(unicodeCode ? { emojiCode: unicodeCode } : {}),
-  };
+  return zulipEmojiPayloadFromPickerData(data, { mode: "strict" });
 }
 
 export function getReactionDisplayChar(reaction: Reaction): string {

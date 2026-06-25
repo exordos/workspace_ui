@@ -71,6 +71,7 @@ export interface StartZulipEventLoopOptions {
   /** Instance that owns this loop — used to expose `queue_id` for message send on that org. */
   instanceId?: string;
   signal?: AbortSignal;
+  shouldApplyActiveMetadata?: () => boolean;
   eventTypes?: string[];
   fetchEventTypes?: string[];
 }
@@ -83,7 +84,7 @@ interface EventLoopTransport {
   registerQueue: (
     eventTypes: string[],
     fetchEventTypes?: string[],
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal; shouldApplyActiveMetadata?: () => boolean },
   ) => ReturnType<typeof registerQueue>;
   getEvents: (
     queueId: string,
@@ -104,6 +105,7 @@ function startZulipEventLoopWithTransport(
     onQueueRegistered,
     instanceId,
     signal,
+    shouldApplyActiveMetadata,
     eventTypes = [...DEFAULT_EVENT_TYPES],
     fetchEventTypes,
   } = options;
@@ -227,7 +229,10 @@ function startZulipEventLoopWithTransport(
     try {
       log.info("Registering event queue");
       // Register returns sidebar bootstrap metadata together with queue_id.
-      const reg = await transport.registerQueue(eventTypes, fetchEventTypes, { signal });
+      const reg = await transport.registerQueue(eventTypes, fetchEventTypes, {
+        signal,
+        shouldApplyActiveMetadata,
+      });
       if (signal?.aborted || cleanedUp) {
         log.info("Skipping stale queue registration apply", {
           reason: signal?.aborted === true ? "aborted" : "cleaned_up",

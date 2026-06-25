@@ -2,7 +2,8 @@
  * Tests for Zulip API (zulip-queue module).
  */
 import "./zulip.test.setup";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resetZulipEmojiCatalogForTests } from "~/shared/lib/zulip-emoji-catalog.lib";
 import { getCurrentInstance } from "./client";
 import {
   DEFAULT_REGISTER_FETCH_EVENT_TYPES,
@@ -25,6 +26,10 @@ const mockZulipApi = getMockZulipApi();
 const mockRefreshZulipApiBase = getMockRefreshZulipApiBase();
 
 describe("registerQueue", () => {
+  beforeEach(() => {
+    resetZulipEmojiCatalogForTests();
+  });
+
   it("returns queue_id and last_event_id on success", async () => {
     mockZulipApi.post.mockResolvedValue({
       ok: true,
@@ -103,6 +108,67 @@ describe("registerQueue", () => {
     const result = await registerQueue(["message", "update_message_flags"]);
 
     expect(result.starred_message_ids).toEqual([55, 56, 57]);
+  });
+
+  it("parses server emoji data url and starts active catalog preload", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        queue_id: "q-emoji",
+        last_event_id: 1,
+        server_emoji_data_url: "https://zulip.example.com/static/generated/emoji/emoji.json",
+      },
+      raw: { statusText: "OK" },
+    });
+    mockFetch.mockResolvedValue(
+      jsonResponse({
+        code_to_names: {
+          "1f44d": ["thumbs_up"],
+        },
+      }),
+    );
+
+    const result = await registerQueue(["message"]);
+
+    expect(result.server_emoji_data_url).toBe(
+      "https://zulip.example.com/static/generated/emoji/emoji.json",
+    );
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://zulip.example.com/static/generated/emoji/emoji.json",
+      expect.objectContaining({
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+        },
+        credentials: "omit",
+        signal: expect.any(AbortSignal),
+      }),
+    );
+  });
+
+  it("skips active metadata side effects when the guard rejects the register result", async () => {
+    mockZulipApi.post.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: {
+        result: "success",
+        queue_id: "q-stale-emoji",
+        last_event_id: 1,
+        server_emoji_data_url: "https://zulip.example.com/static/generated/emoji/emoji.json",
+      },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await registerQueue(["message"], undefined, {
+      shouldApplyActiveMetadata: () => false,
+    });
+
+    expect(result.server_emoji_data_url).toBe(
+      "https://zulip.example.com/static/generated/emoji/emoji.json",
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it("throws on error result", async () => {
@@ -559,6 +625,31 @@ describe("registerQueueForCredentials", () => {
         ),
       }),
     );
+  });
+
+  it("does not preload active emoji catalog for explicit background credentials", async () => {
+    mockFetch.mockResolvedValue(
+      jsonResponse({
+        result: "success",
+        queue_id: "q-explicit-emoji",
+        last_event_id: 46,
+        server_emoji_data_url: "https://other.example.com/static/generated/emoji/emoji.json",
+      }),
+    );
+
+    const result = await registerQueueForCredentials(
+      {
+        realm: "https://other.example.com",
+        email: "other@test.com",
+        apiKey: "key",
+      },
+      ["message"],
+    );
+
+    expect(result.server_emoji_data_url).toBe(
+      "https://other.example.com/static/generated/emoji/emoji.json",
+    );
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   it("passes AbortSignal through explicit-credentials register requests", async () => {

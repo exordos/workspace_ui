@@ -8,12 +8,7 @@ import { applyUserStatusSnapshot } from "~/entities/user/api/user-status-write.l
 import { updateOwnStatus } from "~/entities/user/api/user.api";
 import { UserStatusLabel } from "~/entities/user/user-status-label.ui";
 import { useUserStatus } from "~/entities/user/user-status.hooks";
-import {
-  encodeEmojiToCode,
-  formatUserStatusLabel,
-  getUserStatusEmojiDisplay,
-  normalizeStatusEmojiName,
-} from "~/entities/user/user-status.lib";
+import { formatUserStatusLabel, getUserStatusEmojiDisplay } from "~/entities/user/user-status.lib";
 import { useUsersStore, type UserStatusReactionType } from "~/entities/user/user.model";
 import { AUTH_IDLE_TIMEOUT_PRESETS } from "~/features/settings/auth-idle-timeout.lib";
 import { useSettingsStore } from "~/features/settings/settings.model";
@@ -26,7 +21,6 @@ import {
 import { useTranslation } from "~/i18n/i18n";
 import { IS_CONNECTION_DIAGNOSTICS_ENABLED } from "~/shared/config/constants";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
-import { resolveUnicodeToCanonicalShortcode } from "~/shared/lib/emoji-shortcodes.lib";
 import { performApplicationColdStart } from "~/shared/lib/local-reset";
 import { createLogger } from "~/shared/lib/logger";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
@@ -34,6 +28,8 @@ import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { resolveOrganizationLogoUrl } from "~/shared/lib/organization-branding";
 import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
 import { toast } from "~/shared/lib/toast/toast";
+import { ensureZulipEmojiCatalogLoaded } from "~/shared/lib/zulip-emoji-catalog.lib";
+import { zulipEmojiPayloadFromPickerData } from "~/shared/lib/zulip-emoji-payload.lib";
 import { Icon } from "~/shared/ui/icon";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { SectionLabel } from "~/shared/ui/section-label.ui";
@@ -159,6 +155,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   );
 
   const ensureCustomEmojisLoaded = useCallback(() => {
+    void ensureZulipEmojiCatalogLoaded();
     void ensureRealmEmojisLoaded()
       .then((list) => {
         setCustomEmojis(list);
@@ -377,35 +374,14 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   }, [closeDrawer, currentInstance, currentServerLabel, removeInstance, t]);
 
   const handleStatusEmojiPick = useCallback((data: EmojiClickData) => {
-    const normalizedPickerName = normalizeStatusEmojiName(data.names?.[0] ?? "");
-    if (data.isCustom) {
-      if (!normalizedPickerName) {
-        return;
-      }
-      const emojiCode = (data.unified || data.unifiedWithoutSkinTone || "").trim().toLowerCase();
-      setStatusEmojiNameDraft(normalizedPickerName);
-      setStatusEmojiCodeDraft(emojiCode);
-      setStatusEmojiReactionTypeDraft("realm_emoji");
-      setStatusEmojiPickerOpen(false);
+    const payload = zulipEmojiPayloadFromPickerData(data, { mode: "strict" });
+    if (payload == null) {
+      log.warn("Status emoji picker could not resolve selected emoji via Zulip catalog");
       return;
     }
-    const emojiCode = (
-      data.unifiedWithoutSkinTone ||
-      data.unified ||
-      encodeEmojiToCode(data.emoji ?? "")
-    )
-      .trim()
-      .toLowerCase();
-    if (!emojiCode) {
-      return;
-    }
-    const emojiName = resolveUnicodeToCanonicalShortcode(emojiCode) ?? normalizedPickerName;
-    if (!emojiName) {
-      return;
-    }
-    setStatusEmojiNameDraft(emojiName);
-    setStatusEmojiCodeDraft(emojiCode);
-    setStatusEmojiReactionTypeDraft("unicode_emoji");
+    setStatusEmojiNameDraft(payload.emojiName);
+    setStatusEmojiCodeDraft(payload.emojiCode);
+    setStatusEmojiReactionTypeDraft(payload.reactionType);
     setStatusEmojiPickerOpen(false);
   }, []);
 
