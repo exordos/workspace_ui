@@ -514,6 +514,41 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     expect(headers.Authorization).toBe("Bearer iam-access-token");
   });
 
+  it("adds active organization target header to dev Messenger API requests", async () => {
+    const {
+      getMessengerGatewayApiBaseForCurrentInstance,
+      setInstanceProvider,
+      messengerApi,
+      refreshMessengerApiBase,
+    } = await import("./client");
+    setInstanceProvider(() => ({
+      id: "i-dev-org",
+      realm: "https://messenger.exordos.com",
+      login: "admin",
+      authType: "iam",
+      iamAccessToken: "iam-access-token",
+      workspaceOrgOrigin: "https://workspace.exordos.com",
+    }));
+    refreshMessengerApiBase();
+
+    mockFetch.mockResolvedValueOnce(mockJsonResponse({ users: [] }));
+
+    try {
+      await messengerApi.getWithBase(getMessengerGatewayApiBaseForCurrentInstance(), "/users/");
+
+      const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+      const headers = init.headers as Record<string, string>;
+      expect(url).toContain("/api/messenger/v1/users/");
+      if (!import.meta.env.DEV) {
+        expect(headers["X-Workspace-Dev-Target-Origin"]).toBeUndefined();
+        return;
+      }
+      expect(headers["X-Workspace-Dev-Target-Origin"]).toBe("https://workspace.exordos.com");
+    } finally {
+      setInstanceProvider(() => null);
+    }
+  });
+
   // No active instance — no auth header, to avoid sending credentials to the wrong target.
   it("authMiddleware does not inject header when no instance selected", async () => {
     const { setInstanceProvider, workspaceApi } = await import("./client");

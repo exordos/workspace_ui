@@ -228,7 +228,25 @@ function workspaceDevHeaderTargetPathPrefixes(): readonly string[] {
   return /^https?:\/\//i.test(env.WORKSPACE_API_BASE) ? [escaped] : [mount];
 }
 
-/** DEV: tells Vite dev proxy which org host should receive Workspace REST. */
+function messengerDevHeaderTargetPathPrefixes(): readonly string[] {
+  return Array.from(
+    new Set(
+      [MESSENGER_API_PATH, MESSENGER_WORKSPACE_API_PATH].map((path) => path.replace(/\/+$/, "")),
+    ),
+  );
+}
+
+function shouldAttachDevOrgTargetHeader(pathname: string): boolean {
+  const workspacePrefixes = workspaceDevHeaderTargetPathPrefixes();
+  if (workspacePrefixes.some((p) => pathnameUnderWorkspaceDevPrefix(pathname, p))) {
+    return true;
+  }
+
+  const messengerPrefixes = messengerDevHeaderTargetPathPrefixes();
+  return messengerPrefixes.some((p) => pathnameUnderWorkspaceDevPrefix(pathname, p));
+}
+
+/** DEV: tells Vite dev proxy which org host should receive Workspace and Messenger REST. */
 const devWorkspaceOrgTargetHeaderMiddleware: Middleware = async (req, next) => {
   if (!import.meta.env.DEV) {
     return next(req);
@@ -239,8 +257,7 @@ const devWorkspaceOrgTargetHeaderMiddleware: Middleware = async (req, next) => {
   } catch {
     return next(req);
   }
-  const prefixes = workspaceDevHeaderTargetPathPrefixes();
-  if (!prefixes.some((p) => pathnameUnderWorkspaceDevPrefix(pathname, p))) {
+  if (!shouldAttachDevOrgTargetHeader(pathname)) {
     return next(req);
   }
   const instance = getCurrentInstance();
@@ -841,6 +858,7 @@ function getMessengerBaseUrl(): string {
 }
 
 export const messengerApi = new ApiClient("");
+messengerApi.useBefore(loggingMiddleware, devWorkspaceOrgTargetHeaderMiddleware);
 messengerApi.use(loggingMiddleware);
 messengerApi.useBefore(retryMiddleware, messengerRateLimitGateMiddleware);
 messengerApi.useBefore(authErrorMiddleware, messengerRequestTimeoutMiddleware);

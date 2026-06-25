@@ -10,6 +10,10 @@ import {
   isAllowedDevWorkspaceProxyTargetOrigin,
   workspaceDevProxyUpstreamPathname,
 } from "./src/shared/config/dev-workspace-org-proxy";
+import {
+  MESSENGER_API_PATH,
+  MESSENGER_WORKSPACE_API_PATH,
+} from "./src/shared/config/workspace-api-layout";
 
 const HEADER_LC = X_WORKSPACE_DEV_TARGET_ORIGIN.toLowerCase();
 
@@ -24,13 +28,36 @@ function readHeader(req: IncomingMessage): string | undefined {
   return undefined;
 }
 
+function pathnameUnderPathPrefix(pathname: string, prefix: string): boolean {
+  const p = prefix.replace(/\/+$/, "");
+  return pathname === p || pathname.startsWith(`${p}/`);
+}
+
+function messengerApiProxyPathPrefixes(): readonly string[] {
+  return Array.from(
+    new Set(
+      [MESSENGER_API_PATH, MESSENGER_WORKSPACE_API_PATH].map((pathValue) =>
+        pathValue.replace(/\/+$/, ""),
+      ),
+    ),
+  );
+}
+
+function isMessengerApiProxyPath(pathname: string): boolean {
+  return messengerApiProxyPathPrefixes().some((prefix) =>
+    pathnameUnderPathPrefix(pathname, prefix),
+  );
+}
+
 function sendText(res: ServerResponse, status: number, body: string): void {
   res.statusCode = status;
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
   res.end(body);
 }
 
-type ConnectUse = (fn: (req: IncomingMessage, res: ServerResponse, next: () => void) => void) => void;
+type ConnectUse = (
+  fn: (req: IncomingMessage, res: ServerResponse, next: () => void) => void,
+) => void;
 
 export function installDevWorkspaceOrgProxyMiddleware(
   middlewares: { use: ConnectUse },
@@ -41,8 +68,7 @@ export function installDevWorkspaceOrgProxyMiddleware(
   },
 ): void {
   const mount = options.workspaceMountPath.replace(/\/+$/, "");
-  const devEscapedMount =
-    `${DEV_WORKSPACE_ORG_PROXY_PATH_PREFIX}${mount}`.replace(/\/+$/, "");
+  const devEscapedMount = `${DEV_WORKSPACE_ORG_PROXY_PATH_PREFIX}${mount}`.replace(/\/+$/, "");
 
   const proxy = httpProxy.createProxyServer({
     changeOrigin: true,
@@ -120,9 +146,44 @@ export function installDevWorkspaceOrgProxyMiddleware(
       return;
     }
 
+    if (isMessengerApiProxyPath(pathname)) {
+      const targetRaw = readHeader(req);
+      const trimmedTarget = targetRaw?.trim() ?? "";
+
+      if (trimmedTarget === "") {
+        next();
+        return;
+      }
+
+      if (!isAllowedDevWorkspaceProxyTargetOrigin(trimmedTarget)) {
+        sendText(res, 403, "Target origin not allowed for dev Messenger proxy");
+        return;
+      }
+
+      let targetOrigin: string;
+      try {
+        targetOrigin = new URL(trimmedTarget).origin;
+      } catch {
+        sendText(res, 400, "Invalid target origin URL");
+        return;
+      }
+
+      delete req.headers[HEADER_LC];
+
+      const pathWithQuery = `${parsed.pathname}${parsed.search}`;
+      req.url = `${pathWithQuery}${parsed.hash}`;
+
+      if (options.proxyDebug) {
+        const upstream = new URL(req.url ?? "/", `${targetOrigin}/`).href;
+        console.info(`[vite-proxy:messenger-api-org] ${req.method ?? "?"} ${url} → ${upstream}`);
+      }
+
+      proxy.web(req, res, { target: targetOrigin });
+      return;
+    }
+
     const onMount = pathname === mount || pathname.startsWith(`${mount}/`);
-    const onDevEscaped =
-      pathname === devEscapedMount || pathname.startsWith(`${devEscapedMount}/`);
+    const onDevEscaped = pathname === devEscapedMount || pathname.startsWith(`${devEscapedMount}/`);
 
     if (!onMount && !onDevEscaped) {
       next();

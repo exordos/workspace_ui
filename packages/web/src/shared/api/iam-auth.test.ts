@@ -78,7 +78,7 @@ describe("loginWithIamCredentials", () => {
     expect(params.get("password")).toBe("pw");
     expect(params.get("scope")).toContain("openid");
     expect(params.get("scope")).toContain("email");
-    expect(params.get("scope")).toContain("project:f04648e8-2bdf-4e93-b7bb-aac9850133fe");
+    expect(params.get("scope")).toContain("project:fe02e55d-4548-4b3e-a175-fcae928f41b2");
   });
 
   it("forwards OTP code via X-OTP header", async () => {
