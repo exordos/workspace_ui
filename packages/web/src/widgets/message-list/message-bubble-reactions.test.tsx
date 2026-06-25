@@ -103,6 +103,57 @@ describe("MessageBubble quick reactions", () => {
     });
   });
 
+  it("uses the same fixed glyph cell for unicode and custom reaction emoji", () => {
+    const { container } = render(
+      <MessageBubble
+        message={createMessage({
+          reactions: [
+            {
+              emoji_name: "thumbs_up",
+              emoji_code: "1f44d",
+              reaction_type: "unicode_emoji",
+              user_id: 77,
+            },
+            {
+              emoji_name: "party_node",
+              emoji_code: "43",
+              reaction_type: "realm_emoji",
+              user_id: 88,
+            },
+          ],
+        })}
+        resolveCustomEmojiImageUrl={(reaction) =>
+          reaction.reaction_type === "realm_emoji"
+            ? "https://cdn.example.com/party_node.png"
+            : undefined
+        }
+      />,
+    );
+
+    const customEmojiImage = container.querySelector('img[alt=":party_node:"]');
+    expect(customEmojiImage).toHaveClass("h-4", "w-4", "max-w-full", "object-contain");
+    const customReactionCell = customEmojiImage?.parentElement;
+    expect(customReactionCell).toHaveClass(
+      "inline-flex",
+      "h-5",
+      "w-5",
+      "items-center",
+      "justify-center",
+    );
+
+    const unicodeReactionButton = screen
+      .getAllByRole("button")
+      .find((button) => button.getAttribute("title")?.startsWith("👍 "));
+    const unicodeReactionCell = unicodeReactionButton?.firstElementChild;
+    expect(unicodeReactionCell).toHaveClass(
+      "inline-flex",
+      "h-5",
+      "w-5",
+      "items-center",
+      "justify-center",
+    );
+  });
+
   it("shows open-in-chat action only when callback is provided", async () => {
     const onOpenInChat = vi.fn();
     render(

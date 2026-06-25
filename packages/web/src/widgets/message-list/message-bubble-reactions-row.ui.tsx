@@ -27,6 +27,43 @@ function getReactionChipMetaText(
   return count > 1 ? String(count) : null;
 }
 
+interface MessageBubbleReactionGlyphProps {
+  displayChar: string;
+  emojiName: string;
+  imageUrl?: string;
+}
+
+const REACTION_GLYPH_CELL_CLASS_NAME =
+  "inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden leading-none";
+
+const REACTION_GLYPH_IMAGE_CLASS_NAME = "block h-4 w-4 max-w-full object-contain";
+
+/** Stable 20px cell for both native font emoji and custom emoji images. */
+const MessageBubbleReactionGlyph: React.FC<MessageBubbleReactionGlyphProps> = ({
+  displayChar,
+  emojiName,
+  imageUrl,
+}) => {
+  if (imageUrl != null) {
+    return (
+      <span className={REACTION_GLYPH_CELL_CLASS_NAME}>
+        <img
+          src={imageUrl}
+          alt={`:${emojiName}:`}
+          className={REACTION_GLYPH_IMAGE_CLASS_NAME}
+          loading="lazy"
+        />
+      </span>
+    );
+  }
+
+  return (
+    <span className={REACTION_GLYPH_CELL_CLASS_NAME}>
+      <span className="block text-base leading-none">{displayChar}</span>
+    </span>
+  );
+};
+
 /** Grouped reaction chips shown at the bottom of the message bubble. */
 export const MessageBubbleReactionsRow = React.memo(function MessageBubbleReactionsRow({
   message,
@@ -81,16 +118,11 @@ export const MessageBubbleReactionsRow = React.memo(function MessageBubbleReacti
                 }
               }}
             >
-              {imageUrl != null ? (
-                <img
-                  src={imageUrl}
-                  alt={`:${emojiName}:`}
-                  className="h-4 w-4 shrink-0 object-contain"
-                  loading="lazy"
-                />
-              ) : (
-                <span className="shrink-0">{displayChar}</span>
-              )}
+              <MessageBubbleReactionGlyph
+                displayChar={displayChar}
+                emojiName={emojiName}
+                imageUrl={imageUrl}
+              />
               {chipMetaText != null && (
                 <span className="min-w-0 truncate text-[11px] text-text-muted">{chipMetaText}</span>
               )}
