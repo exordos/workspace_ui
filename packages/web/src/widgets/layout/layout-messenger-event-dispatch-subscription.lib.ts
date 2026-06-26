@@ -11,6 +11,10 @@ export function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
 
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
 export function parseStreamUuid(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const streamUuid = value.trim().toLowerCase();
@@ -94,6 +98,27 @@ export function parseSubscriptionStreamUuids(value: unknown): string[] {
     ids.push(streamUuid);
   }
   return ids;
+}
+
+export function parseWorkspaceStreamCreatedRow(value: unknown): {
+  streamUuid: string;
+  name: string;
+  unreadCount?: number;
+  private?: boolean;
+  inviteOnly?: boolean;
+} | null {
+  if (value == null || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const streamUuid = parseStreamUuid(record.uuid);
+  const name = typeof record.name === "string" ? record.name.trim() : "";
+  if (streamUuid == null || name.length === 0) return null;
+  return {
+    streamUuid,
+    name,
+    ...(isNonNegativeInteger(record.unread_count) ? { unreadCount: record.unread_count } : {}),
+    ...(typeof record.private === "boolean" ? { private: record.private } : {}),
+    ...(typeof record.invite_only === "boolean" ? { inviteOnly: record.invite_only } : {}),
+  };
 }
 export function handleSubscriptionAdd(
   event: MessengerEvent,
@@ -314,86 +339,14 @@ export function handleSubscription(
   handleSubscriptionPropertyUpdate(event, ctx, streamUuid, property);
 }
 
-export function handleStreamPropertyUpdate(
-  event: MessengerEvent,
-  ctx: LayoutMessengerEventDispatchContext,
-  streamUuid: string,
-  property: string,
-): void {
-  // Apply targeted stream field updates from stream:update — some servers send rename/ACL via stream event, not subscription.
-  const { chatList } = ctx;
-  if (property === "name") {
-    // Support name in value or name field — Workspace payload shape varies by version.
-    const nameFromValue = typeof event.value === "string" ? event.value : null;
-    const nameFromField = typeof event.name === "string" ? event.name : null;
-    const nextName = nameFromValue ?? nameFromField;
-    if (nextName != null && nextName.trim().length > 0) {
-      chatList.renameStream(streamUuid, nextName);
-    }
-    return;
-  }
-  if (
-    property !== "is_archived" &&
-    property !== "can_add_subscribers_group" &&
-    property !== "can_remove_subscribers_group" &&
-    property !== "can_administer_channel_group" &&
-    property !== "can_resolve_topics_group" &&
-    property !== "can_move_messages_out_of_channel_group" &&
-    property !== "invite_only"
-  ) {
-    return;
-  }
-
-  // Reuse shared metadata applier to avoid duplicating update logic.
-  const existing = chatList.streamsMap.get(streamUuid);
-  const row = buildStreamMetadataRowFromExisting(streamUuid, existing);
-  if (row == null) return;
-  applySubscriptionMetadataField(row, property, event);
-  chatList.upsertStreamMetadataRows([row]);
-}
-
 export function handleStream(
   event: MessengerEvent,
   ctx: LayoutMessengerEventDispatchContext,
 ): void {
-  if (event.type !== "stream") return;
-  // Central stream create/update/delete — without this, sidebar state misses channel changes from the network.
-  const op = event.op as "create" | "delete" | "update" | undefined;
-  if (op === "create") {
-    // stream:create — show channel in sidebar even when message-window has no messages yet.
-    const rows = parseSubscriptionRows(event.streams);
-    if (rows.length > 0) {
-      ctx.chatList.upsertStreamMetadataRows(rows);
-    }
-    return;
-  }
-  if (op === "delete") {
-    // stream:delete — cover streams, stream_uuids, and stream_uuid payload variants.
-    const fromRows = parseSubscriptionRows(event.streams).map((row) => row.streamUuid);
-    const fromIds = parseSubscriptionStreamUuids(event.stream_uuids);
-    const fromSingle = parseStreamUuid(event.stream_uuid);
-    const ids = Array.from(
-      new Set([...fromRows, ...fromIds, ...(fromSingle != null ? [fromSingle] : [])]),
-    );
-    for (const streamUuid of ids) {
-      ctx.chatList.removeStream(streamUuid);
-    }
-    return;
-  }
-  if (op !== "update") return;
-  const streamUuid = parseStreamUuid(event.stream_uuid);
-  if (streamUuid == null) return;
-  const property = typeof event.property === "string" ? event.property : null;
-  if (property != null) {
-    // Property-based updates (name, invite_only, can_*_group) — keep format branching in one place.
-    handleStreamPropertyUpdate(event, ctx, streamUuid, property);
-    return;
-  }
-  // Fallback: flat rename payload without property field.
-  const nextName = typeof event.name === "string" ? event.name : null;
-  if (nextName != null && nextName.trim().length > 0) {
-    ctx.chatList.renameStream(streamUuid, nextName);
-  }
+  if (event.type !== "stream" || event.kind !== "stream.created") return;
+  const row = parseWorkspaceStreamCreatedRow(event.stream);
+  if (row == null) return;
+  ctx.chatList.upsertStreamMetadataRows([row]);
 }
 
 export function handleUserTopic(

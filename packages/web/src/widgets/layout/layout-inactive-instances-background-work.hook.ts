@@ -35,6 +35,7 @@ export function useInactiveInstancesBackgroundWork(options: {
           onQueueReady,
           eventTypes: [
             "message",
+            "stream",
             "update_message_flags",
             "delete_message",
             "subscription",

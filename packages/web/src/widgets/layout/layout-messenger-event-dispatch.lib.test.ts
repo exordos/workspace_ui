@@ -714,9 +714,9 @@ describe("dispatchMessengerEvent", () => {
   });
 
   describe("stream", () => {
-    // Assert: stream:create must add channel metadata to the sidebar store.
+    // Assert: backend stream.created must add channel metadata to the sidebar store.
     // Why: new channels must appear immediately even without new messages.
-    it("upserts stream metadata on stream create", () => {
+    it("upserts stream metadata on backend stream.created", () => {
       const { ctx } = buildCtx();
       const upsertSpy = vi.spyOn(ctx.chatList, "upsertStreamMetadataRows");
 
@@ -724,14 +724,14 @@ describe("dispatchMessengerEvent", () => {
         {
           id: 18,
           type: "stream",
-          op: "create",
-          streams: [
-            {
-              stream_uuid: "00000000-0000-4000-8000-000000000042",
-              name: "engineering",
-              creator_id: 77,
-            },
-          ],
+          kind: "stream.created",
+          stream: {
+            uuid: "00000000-0000-4000-8000-000000000042",
+            name: "engineering",
+            unread_count: 3,
+            invite_only: true,
+            private: false,
+          },
         },
         ctx,
       );
@@ -740,117 +740,17 @@ describe("dispatchMessengerEvent", () => {
         {
           streamUuid: "00000000-0000-4000-8000-000000000042",
           name: "engineering",
-          creatorId: 77,
+          unreadCount: 3,
+          inviteOnly: true,
+          private: false,
         },
       ]);
-    });
-
-    it("maps is_archived on stream create metadata row", () => {
-      const { ctx } = buildCtx();
-      const upsertSpy = vi.spyOn(ctx.chatList, "upsertStreamMetadataRows");
-
-      dispatchMessengerEvent(
-        {
-          id: 181,
-          type: "stream",
-          op: "create",
-          streams: [
-            {
-              stream_uuid: "00000000-0000-4000-8000-000000000042",
-              name: "engineering",
-              is_archived: true,
-            },
-          ],
-        },
-        ctx,
-      );
-
-      expect(upsertSpy).toHaveBeenCalledWith([
-        {
-          streamUuid: "00000000-0000-4000-8000-000000000042",
-          name: "engineering",
-          isArchived: true,
-        },
-      ]);
-    });
-
-    // Assert: stream:update with property=name renames the channel.
-    // Why: regression when rename arrives as a stream event.
-    it("renames stream on stream update(name)", () => {
-      const { ctx } = buildCtx();
-      const renameSpy = vi.spyOn(ctx.chatList, "renameStream");
-
-      dispatchMessengerEvent(
-        {
-          id: 19,
-          type: "stream",
-          op: "update",
-          stream_uuid: "00000000-0000-4000-8000-000000000042",
-          property: "name",
-          value: "engineering v2",
-        },
-        ctx,
-      );
-
-      expect(renameSpy).toHaveBeenCalledWith(STREAM_UUID_42, "engineering v2");
-    });
-
-    it("updates archived flag on stream update(is_archived)", () => {
-      const { ctx } = buildCtx();
-      const upsertSpy = vi.spyOn(ctx.chatList, "upsertStreamMetadataRows");
-      ctx.chatList.streamsMap.set(STREAM_UUID_42, {
-        streamUuid: "00000000-0000-4000-8000-000000000042",
-        name: "engineering",
-        lastMessage: "",
-        time: "",
-        ts: 0,
-        topics: new Map(),
-      });
-
-      dispatchMessengerEvent(
-        {
-          id: 191,
-          type: "stream",
-          op: "update",
-          stream_uuid: "00000000-0000-4000-8000-000000000042",
-          property: "is_archived",
-          value: true,
-        },
-        ctx,
-      );
-
-      expect(upsertSpy).toHaveBeenCalledWith([
-        {
-          streamUuid: "00000000-0000-4000-8000-000000000042",
-          name: "engineering",
-          isArchived: true,
-        },
-      ]);
-    });
-
-    // Assert: stream:delete removes the channel from chat-list.
-    // Why: UI must not show a stale entry after channel deletion.
-    it("removes stream on stream delete", () => {
-      const { ctx } = buildCtx();
-      const removeSpy = vi.spyOn(ctx.chatList, "removeStream");
-
-      dispatchMessengerEvent(
-        {
-          id: 20,
-          type: "stream",
-          op: "delete",
-          stream_uuid: "00000000-0000-4000-8000-000000000042",
-        },
-        ctx,
-      );
-
-      expect(removeSpy).toHaveBeenCalledWith(STREAM_UUID_42);
     });
   });
 
   describe("message stream rename fallback", () => {
     // Assert: fallback renames channel from message.display_recipient.
-    // Why: server may omit stream:update while message already has the new name.
+    // Why: message metadata can carry the newest stream name before sidebar metadata refresh.
     it("renames stream from message display_recipient when stream event is absent", () => {
       const { ctx } = buildCtx();
       const renameSpy = vi.spyOn(ctx.chatList, "renameStream");

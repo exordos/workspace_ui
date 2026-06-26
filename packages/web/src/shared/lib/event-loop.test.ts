@@ -80,6 +80,7 @@ class FakeWebSocket {
 }
 
 function workspaceEvent(epochVersion: number, authorUuid = OTHER_UUID): unknown {
+  const isOwn = authorUuid === USER_UUID;
   return {
     epoch_version: epochVersion,
     uuid: `00000000-0000-4000-8000-${String(epochVersion).padStart(12, "0")}`,
@@ -92,7 +93,38 @@ function workspaceEvent(epochVersion: number, authorUuid = OTHER_UUID): unknown 
       topic_uuid: TOPIC_UUID,
       author_uuid: authorUuid,
       payload: { kind: "markdown", content: "hello over epochs" },
+      read: isOwn,
+      pinned: false,
+      starred: false,
+      is_own: isOwn,
       created_at: "2026-06-24T10:20:30Z",
+    },
+  };
+}
+
+function streamCreatedWorkspaceEvent(epochVersion: number): unknown {
+  return {
+    epoch_version: epochVersion,
+    uuid: `00000000-0000-4000-8000-${String(epochVersion).padStart(12, "0")}`,
+    project_id: "00000000-0000-4000-8000-000000000901",
+    user_uuid: USER_UUID,
+    payload: {
+      kind: "stream.created",
+      uuid: STREAM_UUID,
+      project_id: "00000000-0000-4000-8000-000000000901",
+      user_uuid: USER_UUID,
+      owner: USER_UUID,
+      role: "owner",
+      name: "Engineering",
+      description: "Engineering workspace",
+      unread_count: 0,
+      source_name: "native",
+      source: { kind: "native" },
+      invite_only: false,
+      announce: false,
+      private: false,
+      created_at: "2026-06-24T10:00:00.000000Z",
+      updated_at: "2026-06-24T10:00:00.000000Z",
     },
   };
 }
@@ -134,6 +166,25 @@ describe("Workspace realtime event normalization", () => {
     });
   });
 
+  it("maps REST stream.created events to backend stream events", () => {
+    const normalized = normalizeWorkspaceEventModel(streamCreatedWorkspaceEvent(16));
+
+    expect(normalized?.epochVersion).toBe(16);
+    expect(normalized?.event).toMatchObject({
+      id: 16,
+      type: "stream",
+      kind: "stream.created",
+      epoch_version: 16,
+      stream: {
+        uuid: STREAM_UUID,
+        name: "Engineering",
+        unread_count: 0,
+        invite_only: false,
+        private: false,
+      },
+    });
+  });
+
   it("maps WS message frames and derives own/read from hello user uuid", () => {
     const normalized = normalizeWorkspaceRealtimeEvent(
       {
@@ -158,6 +209,41 @@ describe("Workspace realtime event normalization", () => {
       read: true,
       subject: TOPIC_UUID,
       flags: ["read"],
+    });
+  });
+
+  it("maps backend WS stream.created frames", () => {
+    const normalized = normalizeWorkspaceRealtimeEvent(
+      {
+        epoch_version: 17,
+        type: "stream",
+        kind: "stream.created",
+        stream: {
+          uuid: STREAM_UUID,
+          project_id: "00000000-0000-4000-8000-000000000901",
+          user_uuid: USER_UUID,
+          owner: USER_UUID,
+          role: "owner",
+          name: "Engineering",
+          description: "Engineering workspace",
+          unread_count: 0,
+          source_name: "native",
+          source: { kind: "native" },
+          invite_only: false,
+          announce: false,
+          private: false,
+          created_at: "2026-06-24T10:00:00.000000Z",
+          updated_at: "2026-06-24T10:00:00.000000Z",
+        },
+      },
+      USER_UUID,
+    );
+
+    expect(normalized?.event).toMatchObject({
+      id: 17,
+      type: "stream",
+      kind: "stream.created",
+      stream: { uuid: STREAM_UUID, name: "Engineering" },
     });
   });
 

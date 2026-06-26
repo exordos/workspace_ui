@@ -125,6 +125,13 @@ function readBoolean(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
 
+function readNonNegativeInteger(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    return undefined;
+  }
+  return value;
+}
+
 function normalizeUuid(value: unknown): string | null {
   const raw = readString(value);
   if (raw == null || !UUID_RE.test(raw)) {
@@ -343,7 +350,8 @@ function messageFromWorkspaceEventPayload(
     return null;
   }
   const topicUuid = normalizeUuid(payload.topic_uuid);
-  const isOwn = userUuidsEqual(authorUuid, currentUserUuid);
+  const isOwn = readBoolean(payload.is_own, userUuidsEqual(authorUuid, currentUserUuid));
+  const read = readBoolean(payload.read, isOwn);
   return {
     id: messageUuid,
     source_message_uuid: messageUuid,
@@ -351,9 +359,9 @@ function messageFromWorkspaceEventPayload(
     author_uuid: authorUuid,
     sender_uuid: authorUuid,
     is_own: isOwn,
-    read: isOwn,
-    pinned: false,
-    starred: false,
+    read,
+    pinned: readBoolean(payload.pinned, false),
+    starred: readBoolean(payload.starred, false),
     content,
     markdown_source: content,
     timestamp: timestampFromValue(payload.created_at),
@@ -361,8 +369,37 @@ function messageFromWorkspaceEventPayload(
     ...(topicUuid != null ? { topic_uuid: topicUuid } : {}),
     type: "stream",
     stream_uuid: streamUuid,
-    flags: isOwn ? ["read"] : [],
+    flags: read ? ["read"] : [],
     reactions: [],
+  };
+}
+
+function streamEventFromWorkspaceStream(
+  epochVersion: number,
+  streamValue: unknown,
+): MessengerEvent | null {
+  if (!isRecord(streamValue)) {
+    return null;
+  }
+  const streamUuid = normalizeUuid(streamValue.uuid);
+  const name = readString(streamValue.name);
+  if (streamUuid == null || name == null) {
+    return null;
+  }
+  const unreadCount = readNonNegativeInteger(streamValue.unread_count);
+  const stream: Record<string, unknown> = { ...streamValue, uuid: streamUuid, name };
+  delete stream.kind;
+  if (unreadCount == null) {
+    delete stream.unread_count;
+  } else {
+    stream.unread_count = unreadCount;
+  }
+  return {
+    id: epochVersion,
+    type: "stream",
+    epoch_version: epochVersion,
+    kind: "stream.created",
+    stream,
   };
 }
 
@@ -381,26 +418,32 @@ export function normalizeWorkspaceEventModel(
     return { epochVersion, event: null, skipReason: "missing payload" };
   }
   const kind = readString(payload.kind);
-  if (kind !== "message.created") {
+  if (kind === "message.created") {
+    const currentUserUuid = normalizeUuid(row.user_uuid);
+    const message = messageFromWorkspaceEventPayload(payload, currentUserUuid);
+    if (message == null) {
+      return { epochVersion, event: null, skipReason: "invalid message.created payload" };
+    }
     return {
       epochVersion,
-      event: null,
-      skipReason: `unsupported payload kind: ${kind ?? "unknown"}`,
+      event: {
+        id: epochVersion,
+        type: "message",
+        epoch_version: epochVersion,
+        message,
+      },
     };
   }
-  const currentUserUuid = normalizeUuid(row.user_uuid);
-  const message = messageFromWorkspaceEventPayload(payload, currentUserUuid);
-  if (message == null) {
-    return { epochVersion, event: null, skipReason: "invalid message.created payload" };
+  if (kind === "stream.created") {
+    const event = streamEventFromWorkspaceStream(epochVersion, payload);
+    return event == null
+      ? { epochVersion, event: null, skipReason: "invalid stream.created payload" }
+      : { epochVersion, event };
   }
   return {
     epochVersion,
-    event: {
-      id: epochVersion,
-      type: "message",
-      epoch_version: epochVersion,
-      message,
-    },
+    event: null,
+    skipReason: `unsupported payload kind: ${kind ?? "unknown"}`,
   };
 }
 
@@ -471,6 +514,20 @@ export function normalizeWorkspaceRealtimeEvent(
     return null;
   }
   const type = readString(rawEvent.type);
+  if (type === "stream") {
+    const kind = readString(rawEvent.kind);
+    if (kind !== "stream.created") {
+      return {
+        epochVersion,
+        event: null,
+        skipReason: `unsupported stream event kind: ${kind ?? "unknown"}`,
+      };
+    }
+    const event = streamEventFromWorkspaceStream(epochVersion, rawEvent.stream);
+    return event == null
+      ? { epochVersion, event: null, skipReason: "invalid stream.created frame" }
+      : { epochVersion, event };
+  }
   if (type !== "message") {
     return {
       epochVersion,
