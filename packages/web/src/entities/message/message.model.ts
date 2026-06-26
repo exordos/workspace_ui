@@ -8,6 +8,7 @@ import { create } from "zustand";
 import {
   captureActiveOrgRequestContext,
   isActiveOrgRequestContextCurrent,
+  isActiveOrgRequestInvalidated,
 } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { getCurrentInstance } from "~/shared/api/client";
@@ -780,6 +781,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     onDmMessagesApplied,
     onStreamMessagesApplied,
     signal,
+    orgContext,
   }) {
     // Bump generation so stale responses from a prior chat cannot apply after fast route switches.
     initialLoadGeneration += 1;
@@ -789,6 +791,10 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     initialLoadAbortController = currentController;
     const cleanupExternalAbort = bindExternalAbortSignal(currentController, signal);
     const effectiveSignal = currentController.signal;
+    const isInitialLoadStale = (): boolean =>
+      effectiveSignal.aborted ||
+      generation !== initialLoadGeneration ||
+      (orgContext != null && isActiveOrgRequestInvalidated(orgContext, effectiveSignal));
 
     logMessageFlow("store:loadInitial start", {
       context: summarizeChatContextForLog(context),
@@ -808,7 +814,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         instanceId: getCurrentInstance()?.id ?? null,
         signal: effectiveSignal,
         onCacheHydrated: ({ messages, hasOlderMessages, hasNewerMessages }) => {
-          if (effectiveSignal.aborted || generation !== initialLoadGeneration) {
+          if (isInitialLoadStale()) {
             return;
           }
           mergeUsersFromMessages(messages);
@@ -847,7 +853,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         },
       });
     } catch (e) {
-      if (isAbortLikeError(e) || effectiveSignal.aborted || generation !== initialLoadGeneration) {
+      if (isAbortLikeError(e) || isInitialLoadStale()) {
         logMessageFlow("store:loadInitial aborted", {
           context: summarizeChatContextForLog(context),
           generation,
@@ -867,7 +873,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       }
     }
 
-    if (effectiveSignal.aborted || generation !== initialLoadGeneration) {
+    if (isInitialLoadStale()) {
       return;
     }
 
@@ -877,6 +883,9 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       mode: loadResult.mode,
     });
 
+    if (isInitialLoadStale()) {
+      return;
+    }
     const snapshotBeforeApiApply = get();
     mergeUsersFromMessages(loadResult.messages);
 
@@ -894,6 +903,9 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
         context: summarizeChatContextForLog(loadResult.nextContext),
         keptCount: snapshotBeforeApiApply.messages.length,
       });
+      if (isInitialLoadStale()) {
+        return;
+      }
       set({
         context: loadResult.nextContext,
         messages: snapshotBeforeApiApply.messages,
@@ -930,6 +942,9 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
       return;
     }
 
+    if (isInitialLoadStale()) {
+      return;
+    }
     set({
       context: loadResult.nextContext,
       messages: loadResult.messages,

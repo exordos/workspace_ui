@@ -99,6 +99,10 @@ export function useLayoutFolderSyncOrchestration(
   useLayoutPinFolderItemsSync(folderItemsByFolderId);
 
   useEffect(() => {
+    const folderSyncInstanceId = useFolderSyncStore.getState().instanceId;
+    if (currentInstanceId == null || folderSyncInstanceId !== currentInstanceId) {
+      return;
+    }
     layoutFolderSyncLog.debug("sidebarProjectionEffect", {
       chatsSortedLength: chatsSortedByLastMessage.length,
       streamsMapSize: streamsMap.size,
@@ -117,6 +121,7 @@ export function useLayoutFolderSyncOrchestration(
   }, [
     chatsSortedByLastMessage,
     currentUserId,
+    currentInstanceId,
     hideUnknownArchivedStreams,
     isStreamMuted,
     folderItemsByFolderId,

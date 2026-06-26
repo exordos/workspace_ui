@@ -7,6 +7,13 @@ const onVisibilityChangeMock = vi.fn();
 const onReconnectMock = vi.fn();
 const requestReconnectMock = vi.fn();
 const scheduleReconnectMock = vi.fn();
+const captureActiveOrgRequestContextMock = vi.hoisted(() =>
+  vi.fn(() => ({ instanceId: "inst-1", epoch: 3 })),
+);
+
+vi.mock("~/entities/instance/instance.model", () => ({
+  captureActiveOrgRequestContext: captureActiveOrgRequestContextMock,
+}));
 
 vi.mock("~/shared/lib/visibility", () => ({
   onTabResume: (...args: unknown[]) => onTabResumeMock(...args),
@@ -74,7 +81,10 @@ describe("useLayoutConnectionRecovery", () => {
 
     resumeCb?.(60_000);
     expect(scheduleReconnectMock).toHaveBeenCalledWith(
-      expect.objectContaining({ instanceId: "inst-1" }),
+      expect.objectContaining({
+        instanceId: "inst-1",
+        orgContext: { instanceId: "inst-1", epoch: 3 },
+      }),
       "light",
     );
     expect(requestReconnectMock).toHaveBeenCalled();
@@ -93,7 +103,10 @@ describe("useLayoutConnectionRecovery", () => {
 
     reconnectCb?.();
     expect(scheduleReconnectMock).toHaveBeenCalledWith(
-      expect.objectContaining({ instanceId: "inst-1" }),
+      expect.objectContaining({
+        instanceId: "inst-1",
+        orgContext: { instanceId: "inst-1", epoch: 3 },
+      }),
       "full",
     );
   });

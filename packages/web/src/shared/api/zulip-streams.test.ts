@@ -73,6 +73,24 @@ describe("fetchSubscriptions", () => {
       },
     ]);
   });
+
+  it("passes abort signal to subscriptions request", async () => {
+    const controller = new AbortController();
+    mockZulipApi.get.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { subscriptions: [] },
+      raw: { statusText: "OK" },
+    });
+
+    await expect(fetchSubscriptions(controller.signal)).resolves.toEqual([]);
+
+    expect(mockZulipApi.get).toHaveBeenCalledWith(
+      "/users/me/subscriptions",
+      undefined,
+      controller.signal,
+    );
+  });
 });
 
 describe("fetchUserTopics", () => {

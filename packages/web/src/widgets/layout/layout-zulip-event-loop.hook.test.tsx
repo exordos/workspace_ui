@@ -14,12 +14,17 @@ import { useUserProfileStore } from "~/features/user-profile/user-profile.model"
 import { DEFAULT_REGISTER_FETCH_EVENT_TYPES } from "~/shared/api/zulip-queue";
 import { loadUsersDirectoryRow } from "~/shared/lib/users-directory-snapshot-db";
 import { createInstance, createMessage } from "~/test/factories";
-import { useLayoutZulipEventLoop } from "./layout-zulip-event-loop.hook";
+import {
+  shouldIgnoreMetadataDmBackfillError,
+  useLayoutZulipEventLoop,
+} from "./layout-zulip-event-loop.hook";
 import type { ChatListBootstrapResult } from "./layout-chat-list-bootstrap.lib";
 
 const startZulipEventLoopMock = vi.hoisted(() => vi.fn());
 const fetchUsersMock = vi.hoisted(() => vi.fn(() => Promise.resolve([])));
-const fetchSubscriptionsMock = vi.hoisted(() => vi.fn(() => Promise.resolve([])));
+const fetchSubscriptionsMock = vi.hoisted(() =>
+  vi.fn<() => Promise<{ stream_id: number; name: string }[]>>(() => Promise.resolve([])),
+);
 const getCurrentUserMock = vi.hoisted(() => vi.fn(() => Promise.resolve({ user_id: 7 })));
 const deleteQueueMock = vi.hoisted(() => vi.fn(() => Promise.resolve(undefined)));
 const fetchDirectMessagesPageMock = vi.hoisted(() =>
@@ -358,6 +363,7 @@ describe("useLayoutZulipEventLoop", () => {
       expect(startZulipEventLoopMock).toHaveBeenCalledTimes(1);
     });
     expect(fetchSubscriptionsMock).toHaveBeenCalledTimes(1);
+    expect(fetchSubscriptionsMock).toHaveBeenCalledWith(expect.any(AbortSignal));
 
     const firstCallArg = startZulipEventLoopMock.mock.calls[0]?.[0] as
       | { fetchEventTypes?: string[] }
@@ -370,6 +376,14 @@ describe("useLayoutZulipEventLoop", () => {
     expect(firstCallArg?.fetchEventTypes).toContain("starred_messages");
   });
 
+  it("treats metadata DM backfill abort and stale active org as expected stops", () => {
+    expect(
+      shouldIgnoreMetadataDmBackfillError(new DOMException("Aborted", "AbortError"), () => true),
+    ).toBe(true);
+    expect(shouldIgnoreMetadataDmBackfillError(new Error("failed"), () => false)).toBe(true);
+    expect(shouldIgnoreMetadataDmBackfillError(new Error("failed"), () => true)).toBe(false);
+  });
+
   it("marks stream metadata as hydrated after bootstrap subscriptions success, even if empty", async () => {
     render(<Harness currentInstanceId="inst-1" />);
 
@@ -378,6 +392,40 @@ describe("useLayoutZulipEventLoop", () => {
     });
 
     expect(useChatListStore.getState().streamMetadataHydrated).toBe(true);
+  });
+
+  it("does not apply stale subscription rows after active instance switch", async () => {
+    let resolveSubscriptions: (value: { stream_id: number; name: string }[]) => void = () => {};
+    fetchSubscriptionsMock.mockReturnValueOnce(
+      new Promise<{ stream_id: number; name: string }[]>((resolve) => {
+        resolveSubscriptions = resolve;
+      }),
+    );
+    useInstancesStore.setState((state) => ({
+      ...state,
+      instances: [
+        ...state.instances,
+        createInstance({
+          id: "inst-2",
+          realm: "https://zulip-2.example.com",
+          email: "test-2@example.com",
+        }),
+      ],
+    }));
+
+    const { rerender } = render(<Harness currentInstanceId="inst-1" />);
+
+    act(() => {
+      useInstancesStore.getState().setCurrentInstanceId("inst-2");
+    });
+    rerender(<Harness currentInstanceId="inst-2" />);
+
+    await act(async () => {
+      resolveSubscriptions([{ stream_id: 99, name: "stale-channel" }]);
+      await Promise.resolve();
+    });
+
+    expect(useChatListStore.getState().streamsMap.has(99)).toBe(false);
   });
 
   it("does not mark stream metadata as hydrated when subscriptions bootstrap fails", async () => {

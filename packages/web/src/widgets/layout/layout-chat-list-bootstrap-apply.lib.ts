@@ -2,6 +2,10 @@ import { useActivityStore } from "~/entities/activity/activity.model";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import type { ChatListDmMetadataRow } from "~/entities/chat-list/chat-list.model.types";
 import { useInboxStore } from "~/entities/inbox/inbox.model";
+import {
+  isActiveOrgRequestInvalidated,
+  type ActiveOrgRequestContext,
+} from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { loadDmIndexEntries, type DmIndexEntry } from "~/shared/lib/dm-index";
@@ -25,6 +29,8 @@ export interface ApplyChatListBootstrapResultOptions {
   currentInstanceId: string | null;
   setFromMessages: (messages: ZulipRawMessage[], currentUserId: number | null) => void;
   latestMessageIdRef?: { current: number | null };
+  orgContext?: ActiveOrgRequestContext;
+  signal?: AbortSignal;
   /** When true, skips DM index restore (caller already hydrated once). */
   skipDmIndexHydrate?: boolean;
 }
@@ -46,6 +52,16 @@ export function applyChatListBootstrapResult(
   options: ApplyChatListBootstrapResultOptions,
 ): void {
   const { currentInstanceId, latestMessageIdRef } = options;
+  if (
+    options.orgContext != null &&
+    isActiveOrgRequestInvalidated(options.orgContext, options.signal)
+  ) {
+    logChatListFlow("bootstrapApply: skipped stale active org", {
+      instanceId: currentInstanceId,
+      bootstrapMode: result.mode,
+    });
+    return;
+  }
 
   logChatListFlow("bootstrapApply: start", {
     instanceId: currentInstanceId,

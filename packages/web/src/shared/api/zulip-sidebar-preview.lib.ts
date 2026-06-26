@@ -264,6 +264,7 @@ export async function fetchMessagesAfterAnchor(
 export async function fetchDirectMessagesPage(
   anchor: number | "newest" = "newest",
   numBefore = 5000,
+  signal?: AbortSignal,
 ): Promise<DirectMessagesPageResult> {
   const normalizedAnchor =
     anchor === "newest" ? anchor : guard.messageId(anchor, "fetchDirectMessagesPage.anchor");
@@ -273,17 +274,24 @@ export async function fetchDirectMessagesPage(
     numBefore: safeNumBefore,
     narrow: "is:dm",
   });
-  const res = await zulipPipelineGet("/messages", {
-    anchor: String(normalizedAnchor),
-    include_anchor: "false",
-    num_before: String(safeNumBefore),
-    num_after: "0",
-    narrow: JSON.stringify([{ operator: "is", operand: "dm" }]),
-    client_gravatar: "true",
-    allow_empty_topic_name: "true",
-    apply_markdown: "false",
-  });
-  throwIfZulipPipelineGetNull(res);
+  const res = await zulipPipelineGet(
+    "/messages",
+    {
+      anchor: String(normalizedAnchor),
+      include_anchor: "false",
+      num_before: String(safeNumBefore),
+      num_after: "0",
+      narrow: JSON.stringify([{ operator: "is", operand: "dm" }]),
+      client_gravatar: "true",
+      allow_empty_topic_name: "true",
+      apply_markdown: "false",
+    },
+    signal,
+  );
+  throwIfZulipPipelineGetNull(res, signal);
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
   if (!res.ok) {
     logChatListFlow("api: GET /messages → fetchDirectMessagesPage (non-ok)", { ok: false });
     return { messages: [], foundOldest: false };

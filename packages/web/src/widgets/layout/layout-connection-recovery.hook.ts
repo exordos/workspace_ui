@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { captureActiveOrgRequestContext } from "~/entities/instance/instance.model";
 import {
   getConnectionHealthSnapshot,
   requestReconnect,
@@ -39,6 +40,7 @@ export function useLayoutConnectionRecovery(options: UseLayoutConnectionRecovery
     instanceId: currentInstanceId,
     latestMessageIdRef,
     focusedMessageId: focusedMessageId ?? null,
+    orgContext: captureActiveOrgRequestContext(),
   });
 
   useEffect(() => {
@@ -47,6 +49,7 @@ export function useLayoutConnectionRecovery(options: UseLayoutConnectionRecovery
       instanceId: currentInstanceId,
       latestMessageIdRef,
       focusedMessageId: focusedMessageId ?? null,
+      orgContext: captureActiveOrgRequestContext(),
     };
     if (isLayoutUserConnectionReady(currentUserStatus)) {
       hasBootstrapSettledRef.current = true;

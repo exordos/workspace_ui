@@ -20,6 +20,7 @@ const {
   mockGetChatMeta,
   mockUpdateChatMetaPatch,
   mockUpsertChatMessages,
+  mockIsActiveOrgRequestInvalidated,
 } = vi.hoisted(() => ({
   mockGetChatMessagesAscending: vi.fn(),
   mockGetStreamMessagesAscending: vi.fn(),
@@ -29,7 +30,16 @@ const {
   mockGetChatMeta: vi.fn(),
   mockUpdateChatMetaPatch: vi.fn(),
   mockUpsertChatMessages: vi.fn(),
+  mockIsActiveOrgRequestInvalidated: vi.fn(() => false),
 }));
+
+vi.mock("~/entities/instance/instance.model", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/entities/instance/instance.model")>();
+  return {
+    ...actual,
+    isActiveOrgRequestInvalidated: mockIsActiveOrgRequestInvalidated,
+  };
+});
 
 vi.mock("~/shared/lib/env", async (importOriginal) => {
   const mod = await importOriginal<typeof import("~/shared/lib/env")>();
@@ -96,6 +106,7 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
       hasNewerMessages: false,
     });
     vi.clearAllMocks();
+    mockIsActiveOrgRequestInvalidated.mockReturnValue(false);
     mockGetChatMeta.mockResolvedValue({ reachedOldest: false, reachedNewest: false });
     mockUpdateChatMetaPatch.mockResolvedValue(undefined);
     mockUpsertChatMessages.mockResolvedValue(undefined);
@@ -204,6 +215,41 @@ describe("loadInitialMessagesForContext (IndexedDB hydrate + full API)", () => {
 
     deferred.resolve([mockMsg({ id: 200, stream_id: 5, subject: "topic1" })]);
     await loadPromise;
+  });
+
+  it("keeps cache-hydrated messages when active org becomes stale before API apply", async () => {
+    const ctx: CurrentChatContext = {
+      type: "stream",
+      streamId: 5,
+      streamName: "general",
+      topic: "topic1",
+    };
+    const cached = [mockMsg({ id: 86, stream_id: 5, subject: "topic1", content: "<p>cached</p>" })];
+    const apiMessages = [
+      mockMsg({ id: 200, stream_id: 5, subject: "topic1", content: "<p>api</p>" }),
+    ];
+    const deferred = Promise.withResolvers<MockMessage[]>();
+    mockGetChatMessagesAscending.mockResolvedValue(cached);
+    mockGetChatMeta.mockResolvedValue({ reachedOldest: false, reachedNewest: false });
+    mockFetchMessages.mockReturnValue(deferred.promise);
+
+    useCurrentChatMessagesStore.getState().setContext(ctx);
+    const loadPromise = useCurrentChatMessagesStore.getState().loadInitialMessagesForContext({
+      context: ctx,
+      focusedMessageId: null,
+      currentUserId: 1,
+      orgContext: { instanceId: "inst-1", epoch: 1 },
+    });
+
+    await vi.waitFor(() => {
+      expect(useCurrentChatMessagesStore.getState().messages).toEqual(cached);
+    });
+    mockIsActiveOrgRequestInvalidated.mockReturnValue(true);
+
+    deferred.resolve(apiMessages);
+    await loadPromise;
+
+    expect(useCurrentChatMessagesStore.getState().messages).toEqual(cached);
   });
 
   it("keeps cache-hydrated live tail unblocked when network refresh fails", async () => {

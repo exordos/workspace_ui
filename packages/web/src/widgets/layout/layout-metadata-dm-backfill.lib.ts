@@ -1,4 +1,8 @@
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import {
+  isActiveOrgRequestInvalidated,
+  type ActiveOrgRequestContext,
+} from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { fetchDirectMessagesPage } from "~/shared/api/zulip-sidebar-preview.lib";
 import { upsertDmIndexFromMessages } from "~/shared/lib/dm-index";
@@ -33,15 +37,26 @@ export async function runMetadataDmBackfillLoop(options: {
   pageSize: number;
   stagnationLimit: number;
   isCancelled: () => boolean;
+  orgContext?: ActiveOrgRequestContext;
+  signal?: AbortSignal;
 }): Promise<void> {
   let anchor: number | "newest" = "newest";
   let stagnantBatches = 0;
   for (let batchIndex = 0; batchIndex < options.maxBatches; batchIndex += 1) {
-    if (options.isCancelled()) {
+    if (
+      options.isCancelled() ||
+      (options.orgContext != null &&
+        isActiveOrgRequestInvalidated(options.orgContext, options.signal))
+    ) {
       return;
     }
-    const page = await fetchDirectMessagesPage(anchor, options.pageSize);
-    if (options.isCancelled() || page.messages.length === 0) {
+    const page = await fetchDirectMessagesPage(anchor, options.pageSize, options.signal);
+    if (
+      options.isCancelled() ||
+      (options.orgContext != null &&
+        isActiveOrgRequestInvalidated(options.orgContext, options.signal)) ||
+      page.messages.length === 0
+    ) {
       return;
     }
 

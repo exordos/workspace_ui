@@ -1,3 +1,4 @@
+import type { ActiveOrgRequestContext } from "~/entities/instance/instance.model";
 import type { MockMessage, Reaction } from "~/shared/api/zulip.types";
 import type { LinkPreviewData } from "~/shared/lib/message-link-preview.types";
 
@@ -97,6 +98,8 @@ export interface CurrentChatMessagesState {
     onCacheHydrated?: () => void;
     /** Aborts in-flight initial load on fast route switches so stale requests do not compete. */
     signal?: AbortSignal;
+    /** Drops cache/API apply when active organization changed since caller started. */
+    orgContext?: ActiveOrgRequestContext;
     /** After cache/API apply for a DM — sync sidebar preview from loaded messages (pages/widgets wire this). */
     onDmMessagesApplied?: (payload: OnDmMessagesAppliedPayload) => void;
     /** After cache/API apply for a stream — sync sidebar topic previews from loaded messages. */

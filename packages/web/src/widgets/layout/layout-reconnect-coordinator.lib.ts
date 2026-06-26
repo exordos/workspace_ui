@@ -3,7 +3,11 @@
  */
 import { ensureMentionsUnreadSynced } from "~/entities/chat-list/chat-list-mentions-sync.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import { useInstancesStore } from "~/entities/instance/instance.model";
+import {
+  isActiveOrgRequestInvalidated,
+  useInstancesStore,
+  type ActiveOrgRequestContext,
+} from "~/entities/instance/instance.model";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { createLogger } from "~/shared/lib/logger";
 import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
@@ -26,6 +30,7 @@ export interface LayoutReconnectRefreshParams {
   latestMessageIdRef?: { current: number | null };
   focusedMessageId?: number | null;
   isCancelled?: () => boolean;
+  orgContext?: ActiveOrgRequestContext;
 }
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -85,6 +90,7 @@ function mergePendingParams(
     latestMessageIdRef: next.latestMessageIdRef ?? prev.latestMessageIdRef,
     focusedMessageId: next.focusedMessageId ?? prev.focusedMessageId,
     isCancelled: next.isCancelled ?? prev.isCancelled,
+    orgContext: next.orgContext ?? prev.orgContext,
   };
 }
 
@@ -92,7 +98,12 @@ async function executeLayoutReconnectRefresh(
   params: LayoutReconnectRefreshParams,
   mode: LayoutReconnectRefreshMode,
 ): Promise<void> {
-  if (params.isCancelled?.()) return;
+  if (
+    params.isCancelled?.() ||
+    (params.orgContext != null && isActiveOrgRequestInvalidated(params.orgContext))
+  ) {
+    return;
+  }
 
   const currentInstanceId = useInstancesStore.getState().currentInstanceId;
   if (params.instanceId !== currentInstanceId) {
@@ -135,6 +146,7 @@ function refreshLayoutReconnectLightPass(params: LayoutReconnectRefreshParams): 
     instanceId: params.instanceId,
     latestMessageIdRef: params.latestMessageIdRef,
     isCancelled: params.isCancelled,
+    orgContext: params.orgContext,
   });
 }
 
@@ -147,7 +159,11 @@ async function refreshLayoutReconnectFull(params: LayoutReconnectRefreshParams):
 /** Full reconnect: refresh Workspace folder rail + all folder items (multi-device drift). */
 function refreshFolderSyncOnReconnect(params: LayoutReconnectRefreshParams): void {
   const { instanceId, isCancelled } = params;
-  if (instanceId == null || isCancelled?.()) {
+  if (
+    instanceId == null ||
+    isCancelled?.() ||
+    (params.orgContext != null && isActiveOrgRequestInvalidated(params.orgContext))
+  ) {
     return;
   }
   const folderSync = useFolderSyncStore.getState();
@@ -161,12 +177,18 @@ function refreshSharedLayers(
   params: LayoutReconnectRefreshParams,
   mode: LayoutReconnectRefreshMode,
 ): void {
-  if (params.isCancelled?.()) return;
+  if (
+    params.isCancelled?.() ||
+    (params.orgContext != null && isActiveOrgRequestInvalidated(params.orgContext))
+  ) {
+    return;
+  }
 
   refreshRealmPresenceFromApi({ isCancelled: params.isCancelled });
   refreshActiveChatMessagesFromApi({
     focusedMessageId: params.focusedMessageId ?? null,
     isCancelled: params.isCancelled,
+    orgContext: params.orgContext,
   });
 
   // Full reconnect re-registers the queue — unread comes from fresh onQueueRegistered, not stale cache.
@@ -206,7 +228,10 @@ async function refreshChatListReconnectBootstrap(
   params: LayoutReconnectRefreshParams,
 ): Promise<void> {
   const { instanceId, latestMessageIdRef, isCancelled } = params;
-  if (instanceId == null) {
+  if (
+    instanceId == null ||
+    (params.orgContext != null && isActiveOrgRequestInvalidated(params.orgContext))
+  ) {
     logChatListFlow("reconnectBootstrap: skip (no instanceId)", {});
     return;
   }
@@ -215,10 +240,15 @@ async function refreshChatListReconnectBootstrap(
 
   try {
     const result = await runChatListBootstrap(instanceId, {
-      isStale: isCancelled,
+      isStale: () =>
+        isCancelled?.() === true ||
+        (params.orgContext != null && isActiveOrgRequestInvalidated(params.orgContext)),
       kind: "reconnect",
     });
-    if (isCancelled?.()) {
+    if (
+      isCancelled?.() ||
+      (params.orgContext != null && isActiveOrgRequestInvalidated(params.orgContext))
+    ) {
       logChatListFlow("reconnectBootstrap: superseded after bootstrap", { instanceId });
       return;
     }
@@ -229,6 +259,7 @@ async function refreshChatListReconnectBootstrap(
         setFromMessages: useChatListStore.getState().setFromMessages,
         latestMessageIdRef,
         skipDmIndexHydrate: true,
+        orgContext: params.orgContext,
       });
     }
     syncMentionsUnreadAfterReconnect(instanceId, isCancelled);

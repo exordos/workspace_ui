@@ -1,5 +1,9 @@
 import { filterStreamMessagesForSidebar } from "~/entities/chat-list/chat-list-stream-preview-from-messages.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import {
+  isActiveOrgRequestInvalidated,
+  type ActiveOrgRequestContext,
+} from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
 import { getNewestMessageId } from "./layout-chat-history-sync.lib";
@@ -11,6 +15,7 @@ export interface RefreshLayoutReconnectLightOptions {
   instanceId?: string | null;
   latestMessageIdRef?: { current: number | null };
   isCancelled?: () => boolean;
+  orgContext?: ActiveOrgRequestContext;
 }
 
 /**
@@ -20,14 +25,18 @@ export interface RefreshLayoutReconnectLightOptions {
 export async function refreshLayoutReconnectLight(
   options: RefreshLayoutReconnectLightOptions,
 ): Promise<void> {
-  if (options.isCancelled?.()) return;
+  const isStale = (): boolean =>
+    options.isCancelled?.() === true ||
+    (options.orgContext != null && isActiveOrgRequestInvalidated(options.orgContext));
+
+  if (isStale()) return;
 
   const instanceId = options.instanceId ?? null;
   const uid = useChatListStore.getState().currentUserId ?? null;
   const registerSnapshot =
     instanceId != null ? getCachedRegisterUnreadSnapshot(instanceId) : undefined;
   reconcileSidebarUnreadAfterBootstrap({
-    cancelled: () => options.isCancelled?.() ?? false,
+    cancelled: isStale,
     instanceId,
     currentUserId: uid,
     registerSnapshot,
@@ -43,10 +52,10 @@ export async function refreshLayoutReconnectLight(
 
   try {
     const result = await runChatListBootstrap(instanceId, {
-      isStale: options.isCancelled,
+      isStale,
       kind: "reconnect",
     });
-    if (options.isCancelled?.()) return;
+    if (isStale()) return;
     if (result.mode !== "streamPreviews" || result.messages.length === 0) {
       logChatListFlow("reconnectLight: no stream preview delta", {
         mode: result.mode,
@@ -55,7 +64,7 @@ export async function refreshLayoutReconnectLight(
     }
 
     const streamOnly = filterStreamMessagesForSidebar(result.messages);
-    if (streamOnly.length === 0) return;
+    if (streamOnly.length === 0 || isStale()) return;
 
     for (const message of streamOnly) {
       useUsersStore.getState().mergeFromMessage(message);
@@ -71,7 +80,7 @@ export async function refreshLayoutReconnectLight(
       messageCount: streamOnly.length,
     });
   } catch (error) {
-    if (options.isCancelled?.()) return;
+    if (isStale()) return;
     logChatListFlow("reconnectLight: stream delta failed", {
       error: error instanceof Error ? error.message : String(error),
     });

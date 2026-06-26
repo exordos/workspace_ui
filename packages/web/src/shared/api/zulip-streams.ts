@@ -145,8 +145,8 @@ function hasPrincipalMap(value: unknown): value is Record<string, unknown> {
 }
 
 /** Fetches the user's subscriptions (GET /users/me/subscriptions) including is_muted per stream. */
-export async function fetchSubscriptions(): Promise<ZulipSubscription[]> {
-  const res = await zulipPipelineGet("/users/me/subscriptions");
+export async function fetchSubscriptions(signal?: AbortSignal): Promise<ZulipSubscription[]> {
+  const res = await zulipPipelineGet("/users/me/subscriptions", undefined, signal);
   if (!res?.ok) {
     return [];
   }

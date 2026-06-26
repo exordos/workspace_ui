@@ -21,6 +21,7 @@ import { useNotificationSettingsStore } from "~/entities/notification-settings/n
 import { persistUsersDirectoryToIndexedDb } from "~/entities/user/user-directory-snapshot-persist.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
+import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { useMessageReadersStore } from "~/features/message-readers/message-readers.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
@@ -97,6 +98,16 @@ const LAYOUT_REGISTER_FETCH_EVENT_TYPES = [
   "starred_messages",
 ];
 const log = createLogger("layout-zulip-event-loop");
+
+export function shouldIgnoreMetadataDmBackfillError(
+  error: unknown,
+  shouldApplyActiveShell: () => boolean,
+): boolean {
+  const isAbortLikeError =
+    (error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError");
+  return isAbortLikeError || !shouldApplyActiveShell();
+}
 
 interface LatestMessageIdRef {
   current: number | null;
@@ -313,6 +324,7 @@ export function useLayoutZulipEventLoop(options: {
     useActivityStore.getState().clear();
     useInboxStore.getState().clear();
     useChatListStore.getState().clear();
+    useFolderSyncStore.getState().clear();
     clearStreamSidebarHydrateState();
     resetReconnectStreamPreviewStaging();
     useCurrentChatMessagesStore.getState().setContext(null);
@@ -348,8 +360,10 @@ export function useLayoutZulipEventLoop(options: {
     const shouldApplyActiveMetadata = (): boolean =>
       !cancelled &&
       !isBootstrapStale() &&
+      !bootstrapAbort.signal.aborted &&
       isActiveOrgRequestContextCurrent(registerApplyContext) &&
       registerApplyContext.instanceId === currentInstanceId;
+    const shouldApplyActiveShell = shouldApplyActiveMetadata;
     const setBootstrapStatus = (status: LayoutUserConnectionStatus): void => {
       if (cancelled || isBootstrapStale()) {
         return;
@@ -388,6 +402,7 @@ export function useLayoutZulipEventLoop(options: {
         cachedMuteSnapshotPromise != null
           ? cachedMuteSnapshotPromise.then((cachedMuteSnapshot) => {
               if (cancelled) return;
+              if (!shouldApplyActiveShell()) return;
               if (
                 cachedMuteSnapshot &&
                 !registerMuteSnapshotAppliedRef.registerMuteSnapshotApplied
@@ -401,6 +416,7 @@ export function useLayoutZulipEventLoop(options: {
         ? loadUsersDirectoryRow(currentInstanceId)
             .then((row) => {
               if (cancelled) return;
+              if (!shouldApplyActiveShell()) return;
               if (row?.members?.length) {
                 useUsersStore.getState().mergeUsers(row.members);
               }
@@ -421,6 +437,8 @@ export function useLayoutZulipEventLoop(options: {
 
       const bootstrapApplyOptions = {
         currentInstanceId,
+        orgContext: registerApplyContext,
+        signal: bootstrapAbort.signal,
         setFromMessages: setFromMessagesRef.current,
         latestMessageIdRef: resolveLatestMessageIdRef(
           latestMessageIdRefProp,
@@ -472,6 +490,10 @@ export function useLayoutZulipEventLoop(options: {
           metadataRowsArgCount: metadataRows?.length ?? null,
         });
 
+        if (!shouldApplyActiveShell()) {
+          traceDmPreviewHydrate("schedule:skip", { reason: "stale_active_org", source });
+          return;
+        }
         if (!metadataDmPreviewHydrationEnabled) {
           logChatListFlow("eventLoop: skip DM preview hydrate (feature disabled)", {
             metadataDmBackfillEnabled,
@@ -500,7 +522,7 @@ export function useLayoutZulipEventLoop(options: {
         });
 
         const dmHydrateSettledHandler = createDmPreviewHydrateSettledHandler({
-          getCancelled: () => cancelled,
+          getCancelled: () => !shouldApplyActiveShell(),
           instanceId: currentInstanceId,
           source,
           persistDmIndexFromStore,
@@ -511,7 +533,7 @@ export function useLayoutZulipEventLoop(options: {
           metadataRows: rows,
           currentUserId,
           instanceId: currentInstanceId ?? undefined,
-          cancelled: () => cancelled,
+          cancelled: () => !shouldApplyActiveShell(),
         })
           .then(dmHydrateSettledHandler)
           .catch(dmHydrateRejectedHandler);
@@ -519,7 +541,7 @@ export function useLayoutZulipEventLoop(options: {
       const attemptResolveCurrentUser = async (): Promise<number | null> => {
         try {
           const user = await getCurrentUser();
-          if (cancelled || isBootstrapStale()) return null;
+          if (!shouldApplyActiveShell()) return null;
           if (user?.user_id != null) {
             bootstrapUserId = user.user_id;
             useUsersStore.getState().mergeUser(user);
@@ -534,7 +556,7 @@ export function useLayoutZulipEventLoop(options: {
           }
           return null;
         } catch {
-          if (cancelled || isBootstrapStale()) return null;
+          if (!shouldApplyActiveShell()) return null;
           return null;
         }
       };
@@ -543,7 +565,7 @@ export function useLayoutZulipEventLoop(options: {
         members: readonly ZulipUserMember[],
         fromGetCurrentUser: number | null,
       ): void => {
-        if (cancelled || isBootstrapStale()) return;
+        if (!shouldApplyActiveShell()) return;
 
         let uid = fromGetCurrentUser ?? useChatListStore.getState().currentUserId;
         if (uid == null) {
@@ -589,16 +611,16 @@ export function useLayoutZulipEventLoop(options: {
 
       unsubManualReconnect = registerManualReconnectListener(
         createManualReconnectBootstrapHandler({
-          getCancelled: () => cancelled,
+          getCancelled: () => !shouldApplyActiveShell(),
           attemptResolveCurrentUser,
         }),
       );
 
       const pUsers = fetchUsers();
-      const pSubscriptions = fetchSubscriptions();
+      const pSubscriptions = fetchSubscriptions(bootstrapAbort.signal);
       const pStreamPreviews = loadBootstrapMessagesRef.current(
         bootstrapAbort.signal,
-        isBootstrapStale,
+        () => !shouldApplyActiveShell(),
       );
       const pCurrentUserId = attemptResolveCurrentUser();
 
@@ -610,7 +632,7 @@ export function useLayoutZulipEventLoop(options: {
           pSubscriptions,
           pCurrentUserId,
         ]);
-        if (cancelled) return;
+        if (!shouldApplyActiveShell()) return;
         const members = bootstrapCore[2];
         const subscriptions = bootstrapCore[3];
         const resolvedCurrentUserId = bootstrapCore[4];
@@ -623,8 +645,10 @@ export function useLayoutZulipEventLoop(options: {
 
         const streamRowsFromSubscriptions = toStreamMetadataRows(subscriptions ?? []);
         if (streamRowsFromSubscriptions.length > 0) {
+          if (!shouldApplyActiveShell()) return;
           useChatListStore.getState().upsertStreamMetadataRows(streamRowsFromSubscriptions);
         }
+        if (!shouldApplyActiveShell()) return;
         useChatListStore.getState().setStreamMetadataHydrated(true);
 
         const uid = resolvedCurrentUserId ?? useChatListStore.getState().currentUserId ?? null;
@@ -640,6 +664,7 @@ export function useLayoutZulipEventLoop(options: {
           currentUserId: uid,
         });
 
+        if (!shouldApplyActiveShell()) return;
         hydrateChatListDmIndexForInstance(currentInstanceId);
 
         const applyBootstrapFromEventLoop = (
@@ -650,7 +675,7 @@ export function useLayoutZulipEventLoop(options: {
         };
 
         const streamPreviewSettledHandler = createStreamPreviewBootstrapSettledHandler({
-          getCancelled: () => cancelled,
+          getCancelled: () => !shouldApplyActiveShell(),
           isBootstrapStale,
           instanceId: currentInstanceId,
           stageMetadataStreamPreviewsBootstrap: (result) => {
@@ -669,7 +694,7 @@ export function useLayoutZulipEventLoop(options: {
           log,
         });
         const streamPreviewRejectedHandler = createStreamPreviewBootstrapRejectedHandler({
-          getCancelled: () => cancelled,
+          getCancelled: () => !shouldApplyActiveShell(),
           isBootstrapStale,
           instanceId: currentInstanceId,
           log,
@@ -688,19 +713,24 @@ export function useLayoutZulipEventLoop(options: {
             pageSize: METADATA_DM_BACKFILL_PAGE_SIZE,
             stagnationLimit: METADATA_DM_BACKFILL_STAGNATION_LIMIT,
             isCancelled: () => cancelled,
-          }).catch((err) =>
+            orgContext: registerApplyContext,
+            signal: bootstrapAbort.signal,
+          }).catch((err) => {
+            if (shouldIgnoreMetadataDmBackfillError(err, shouldApplyActiveShell)) {
+              return;
+            }
             reportUnexpectedError("layout:metadataDmBackfill", err, {
               instanceId: currentInstanceId,
-            }),
-          );
+            });
+          });
         }
 
         const instanceIdPersist = useInstancesStore.getState().currentInstanceId;
-        if (instanceIdPersist != null) {
+        if (instanceIdPersist != null && shouldApplyActiveShell()) {
           void persistUsersDirectoryToIndexedDb(instanceIdPersist, apiMembers);
         }
 
-        if (cancelled || isBootstrapStale()) return;
+        if (!shouldApplyActiveShell()) return;
 
         eventLoopAbortRef.current?.abort();
         eventLoopAbortRef.current = new AbortController();
@@ -719,6 +749,7 @@ export function useLayoutZulipEventLoop(options: {
               internalLatestMessageIdRef,
             ),
             focusedMessageId: focusedMessageId ?? null,
+            orgContext: registerApplyContext,
           });
         };
 
@@ -783,9 +814,10 @@ export function useLayoutZulipEventLoop(options: {
           });
         };
 
-        if (cancelled || isBootstrapStale()) return;
+        if (!shouldApplyActiveShell()) return;
         startEventLoopFn();
       } catch (error) {
+        if (!shouldApplyActiveShell()) return;
         log.error("Bootstrap/users initialization failed before starting event loop", {
           instanceId: currentInstanceId,
           error: error instanceof Error ? error.message : String(error),
@@ -796,7 +828,7 @@ export function useLayoutZulipEventLoop(options: {
         });
       }
     })().catch((error) => {
-      if (cancelled || isBootstrapStale()) return;
+      if (!shouldApplyActiveShell()) return;
       const hasCache = chatListHasCachedRowsInStore();
       useChatListStore
         .getState()
