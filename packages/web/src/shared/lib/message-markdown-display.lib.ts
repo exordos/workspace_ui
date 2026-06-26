@@ -213,17 +213,15 @@ export function unwrapZulipQuoteBlocksFromParagraphs(html: string): string {
     );
     if (directQuote == null) continue;
 
+    const childNodes = Array.from(paragraph.childNodes);
+    const quoteIndex = childNodes.indexOf(directQuote);
+    if (quoteIndex < 0) continue;
+
     const fragment = document.createDocumentFragment();
     fragment.appendChild(directQuote);
 
     const tailParagraph = document.createElement("p");
-    let afterQuote = false;
-    for (const child of paragraph.childNodes) {
-      if (child === directQuote) {
-        afterQuote = true;
-        continue;
-      }
-      if (!afterQuote) continue;
+    for (const child of childNodes.slice(quoteIndex + 1)) {
       if (child instanceof HTMLBRElement) continue;
       tailParagraph.appendChild(child);
     }

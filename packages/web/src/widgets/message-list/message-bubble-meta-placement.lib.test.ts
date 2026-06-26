@@ -183,6 +183,15 @@ describe("resolveMessageBubbleMetaPlacement", () => {
     ).toBe("inline");
   });
 
+  it("does not treat content without markdown_source as Zulip quote markdown", () => {
+    expect(
+      resolvePlacement({
+        content:
+          "@_**Alice|42** [wrote](https://zulip.example.com/near/1):\n```quote\nQuoted text\n```\n\nMy <strong>reply</strong>",
+      }),
+    ).toBe("row");
+  });
+
   it("keeps row placement for quote-only Zulip replies", () => {
     const markdown =
       "@_**Alice|42** [wrote](https://zulip.example.com/near/1):\n```quote\nQuoted text\n```";

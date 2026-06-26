@@ -208,7 +208,7 @@ function isSimpleTextMessage(message: Pick<MockMessage, "content" | "markdown_so
     return isSimpleMarkdownText(source) || isSimpleReplyAfterZulipQuoteMarkdown(source);
   }
 
-  if (isSimpleReplyAfterZulipQuoteMarkdown(source) || isSimpleReplyAfterRenderedQuoteHtml(source)) {
+  if (isSimpleReplyAfterRenderedQuoteHtml(source)) {
     return true;
   }
 

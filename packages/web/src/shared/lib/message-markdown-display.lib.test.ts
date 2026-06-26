@@ -4,6 +4,7 @@ import {
   messageBodyToUnsanitizedDisplayHtml,
   plainTextPreviewFromMessageBody,
   renderMarkdownFallbackHtml,
+  unwrapZulipQuoteBlocksFromParagraphs,
 } from "./message-markdown-display.lib";
 import { prepareProtectedMessageHtml } from "./protected-message-media";
 
@@ -384,6 +385,31 @@ describe("prepareProtectedMessageHtml message rendering pipeline", () => {
     );
     expect(html).not.toMatch(/<p>\s*<div class="zulip-quote-block">/);
     expect(html).toContain("</blockquote></div><p>Reply tail</p>");
+  });
+
+  it("keeps all tail nodes after unwrapping a quote block from a paragraph", () => {
+    const html = unwrapZulipQuoteBlocksFromParagraphs(
+      [
+        "<p>",
+        '<span data-before="true">before</span>',
+        '<span class="zulip-quote-block">Quoted</span>',
+        "<br>",
+        "Reply ",
+        '<a href="https://example.com/docs">docs</a>',
+        " and ",
+        '<span class="user-mention" data-user-id="42">@Alice</span>',
+        "</p>",
+      ].join(""),
+    );
+
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    const quoteBlock = template.content.querySelector(".zulip-quote-block");
+    const reply = template.content.querySelector(".zulip-quote-block + p");
+    expect(quoteBlock).toBeTruthy();
+    expect(reply?.textContent).toBe("Reply docs and @Alice");
+    expect(reply?.querySelector("a")?.textContent).toBe("docs");
+    expect(reply?.querySelector(".user-mention")?.textContent).toBe("@Alice");
   });
 
   it("preserves literal dollar replacement patterns inside markdown quote fences", () => {
