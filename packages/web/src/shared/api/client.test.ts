@@ -434,7 +434,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
 
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true }));
 
-    await workspaceApi.putJson("/v1/folders/f1/items/i1", { order_index: 3 });
+    await workspaceApi.putJson("/v1/folder_items/i1", { order_index: 3 });
 
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
     expect(init.method).toBe("PUT");
@@ -922,7 +922,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
   });
 
   // Some endpoints return plain text (e.g. `/health`) — must not break on JSON parse.
-  it("does not wipe credentials on GET workspace folder items 401", async () => {
+  it("does not wipe credentials on GET workspace folder item 401", async () => {
     const { setInstanceProvider, workspaceApi, setAuthErrorHandler } = await import("./client");
     const onAuthError = vi.fn();
 
@@ -942,10 +942,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
       }),
     );
 
-    const res = await workspaceApi.getWithBase(
-      "https://messenger.test",
-      "/v1/folders/folder-1/items/",
-    );
+    const res = await workspaceApi.getWithBase("https://messenger.test", "/v1/folder_items/i1");
 
     expect(res.status).toBe(401);
     expect(vi.mocked(wipeCredentials)).not.toHaveBeenCalled();

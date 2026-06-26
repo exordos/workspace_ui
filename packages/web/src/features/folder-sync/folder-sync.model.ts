@@ -263,7 +263,7 @@ interface FolderSyncState {
     title: string;
     backgroundColor: number;
   }) => void;
-  /** Removes a folder after DELETE /folders/{uuid} without reloading all folders/items. */
+  /** Removes a folder after DELETE /folders/{uuid} without reloading folders and folder items. */
   applyLocallyDeletedFolder: (folderId: string) => void;
   syncSidebarProjection: (input: {
     chatsSortedByLastMessage: SidebarChat[];

@@ -30,7 +30,7 @@ export async function pinChatInFolder(
   }
 
   try {
-    await messengerFoldersPostInvoke(messengerFolderItemPinPath(folderUuid, folderItemUuid));
+    await messengerFoldersPostInvoke(messengerFolderItemPinPath(folderItemUuid));
     return true;
   } catch (err) {
     log.error("Pin error", { error: String(err) });
@@ -53,7 +53,7 @@ export async function unpinChatInFolder(
   }
 
   try {
-    await messengerFoldersPostInvoke(messengerFolderItemUnpinPath(folderUuid, folderItemUuid));
+    await messengerFoldersPostInvoke(messengerFolderItemUnpinPath(folderItemUuid));
     return true;
   } catch (err) {
     log.error("Unpin error", { error: String(err) });

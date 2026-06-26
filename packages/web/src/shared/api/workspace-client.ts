@@ -15,8 +15,8 @@ import { guard, invariant } from "~/shared/lib/guards";
 import { isValidUrl } from "~/shared/lib/validation";
 import { getCurrentInstance } from "./client";
 import {
+  messengerFolderItemsCollectionPath,
   messengerFolderItemPath,
-  messengerFolderItemsPath,
   messengerFoldersDelete,
   messengerFoldersGet,
   messengerFoldersPostJson,
@@ -31,6 +31,7 @@ const MESSENGER_FOLDERS_LIST_PATH = "/folders/";
 type GeneratedWorkspaceFolderItem = NonNullable<FilterV1Folders200Item["items"]>[number];
 type WorkspaceFolderItem = GeneratedWorkspaceFolderItem & {
   folder?: string;
+  folder_uuid?: string;
   stream_uuid?: string;
   unread_count?: number | null;
 };
@@ -257,7 +258,12 @@ function mapFolderListItemToClient(
     return null;
   }
   const uuid = typeof raw.uuid === "string" ? raw.uuid.trim() : "";
-  const folderFromItem = typeof raw.folder === "string" ? raw.folder.trim() : "";
+  const folderFromItem =
+    typeof raw.folder_uuid === "string"
+      ? raw.folder_uuid.trim()
+      : typeof raw.folder === "string"
+        ? raw.folder.trim()
+        : "";
   const folderUuid = folderFromItem.length > 0 ? folderFromItem : requestFolderUuid.trim();
   const streamUuid = parseFolderItemStreamUuid(raw.stream_uuid);
   if (uuid.length === 0 || folderUuid.length === 0 || streamUuid == null) {
@@ -334,14 +340,11 @@ function parseFolderStreamUuidForCreate(chatId: string): string | null {
   return null;
 }
 
-function folderItemCreateBody(streamUuid: string): Record<string, string | null> {
-  const now = new Date().toISOString();
+function folderItemCreateBody(folderUuid: string, streamUuid: string): Record<string, string> {
   return {
-    created_at: now,
-    updated_at: now,
+    folder_uuid: folderUuid,
     stream_uuid: streamUuid,
     chat_type: "stream",
-    pinned_at: null,
   };
 }
 
@@ -355,8 +358,8 @@ export async function addChatToFolder(folderUuid: string, chatId: string): Promi
       return false;
     }
     await messengerFoldersPostJson(
-      messengerFolderItemsPath(safeFolderUuid),
-      folderItemCreateBody(streamUuid),
+      messengerFolderItemsCollectionPath(),
+      folderItemCreateBody(safeFolderUuid, streamUuid),
     );
     return true;
   } catch {
@@ -367,9 +370,9 @@ export async function addChatToFolder(folderUuid: string, chatId: string): Promi
 /** Removes a chat assignment from a folder. Returns true on success. */
 export async function removeChatFromFolder(folderUuid: string, itemUuid: string): Promise<boolean> {
   try {
-    const safeFolderUuid = validateFolderUuid(folderUuid);
+    validateFolderUuid(folderUuid);
     const safeItemUuid = validateFolderItemUuid(itemUuid);
-    await messengerFoldersDelete(messengerFolderItemPath(safeFolderUuid, safeItemUuid));
+    await messengerFoldersDelete(messengerFolderItemPath(safeItemUuid));
     return true;
   } catch {
     return false;
@@ -383,14 +386,14 @@ export async function updateFolderItemOrder(
   orderIndex: number,
 ): Promise<boolean> {
   try {
-    const safeFolderUuid = validateFolderUuid(folderUuid);
+    validateFolderUuid(folderUuid);
     const safeItemUuid = validateFolderItemUuid(itemUuid);
     const safeOrderIndex = validateOrderIndex(orderIndex);
     const current = await messengerFoldersGet<WorkspaceFolderItem>(
-      messengerFolderItemPath(safeFolderUuid, safeItemUuid),
+      messengerFolderItemPath(safeItemUuid),
     );
     const updatedAt = new Date().toISOString();
-    await messengerFoldersPutJson(messengerFolderItemPath(safeFolderUuid, safeItemUuid), {
+    await messengerFoldersPutJson(messengerFolderItemPath(safeItemUuid), {
       ...current,
       order_index: safeOrderIndex,
       updated_at: updatedAt,

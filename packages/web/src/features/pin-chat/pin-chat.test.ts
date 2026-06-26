@@ -224,7 +224,7 @@ describe("pin-chat API", () => {
       expect(result).toBe(true);
       expect(messengerApi.postWithBase).toHaveBeenCalledWith(
         "/api/messenger/v1",
-        "/folders/folder-abc/items/item-xyz/actions/pin/invoke",
+        "/folder_items/item-xyz/actions/pin/invoke",
         {},
         undefined,
       );
@@ -273,7 +273,7 @@ describe("pin-chat API", () => {
       expect(result).toBe(true);
       expect(messengerApi.postWithBase).toHaveBeenCalledWith(
         "/api/messenger/v1",
-        "/folders/folder-abc/items/item-xyz/actions/unpin/invoke",
+        "/folder_items/item-xyz/actions/unpin/invoke",
         {},
         undefined,
       );

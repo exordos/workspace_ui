@@ -26,9 +26,7 @@ function hasFolderId(folders: readonly FolderLike[], folderId: string): boolean 
   return folders.some((folder) => folder.id === folderId);
 }
 
-/**
- * Maps sidebar/rail folder id to Workspace API folder uuid for `GET /folders/{uuid}/items/`.
- */
+/** Maps sidebar/rail folder id to the Workspace API folder uuid used by folder-item filters. */
 export function resolveFolderItemsRequestUuid(folderId: string): string | null {
   const trimmed = folderId.trim();
   if (trimmed.length === 0) {

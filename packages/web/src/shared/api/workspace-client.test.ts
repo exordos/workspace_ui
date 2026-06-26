@@ -351,11 +351,12 @@ describe("workspace-client", () => {
 
     expect(messengerApi.postJsonWithBase).toHaveBeenCalledWith(
       "/api/messenger/v1",
-      "/folders/folder-1/items/",
-      expect.objectContaining({
+      "/folder_items/",
+      {
+        folder_uuid: "folder-1",
         stream_uuid: "6738f91a-4fd1-416e-807f-cb4ae00ec1d3",
         chat_type: "stream",
-      }),
+      },
     );
   });
 
@@ -374,11 +375,12 @@ describe("workspace-client", () => {
     expect(messengerApi.postJsonWithBase).toHaveBeenCalledTimes(1);
     expect(messengerApi.postJsonWithBase).toHaveBeenCalledWith(
       "/api/messenger/v1",
-      "/folders/folder-1/items/",
-      expect.objectContaining({
+      "/folder_items/",
+      {
+        folder_uuid: "folder-1",
         stream_uuid: "6738f91a-4fd1-416e-807f-cb4ae00ec1d3",
         chat_type: "stream",
-      }),
+      },
     );
   });
 
@@ -396,7 +398,7 @@ describe("workspace-client", () => {
 
     expect(messengerApi.deleteWithBase).toHaveBeenCalledWith(
       "/api/messenger/v1",
-      "/folders/folder-1/items/item-1",
+      "/folder_items/item-1",
     );
   });
 
@@ -423,13 +425,13 @@ describe("workspace-client", () => {
 
     expect(messengerApi.getWithBase).toHaveBeenCalledWith(
       "/api/messenger/v1",
-      "/folders/folder-1/items/item-1",
+      "/folder_items/item-1",
       undefined,
       undefined,
     );
     expect(messengerApi.putJsonWithBase).toHaveBeenCalledWith(
       "/api/messenger/v1",
-      "/folders/folder-1/items/item-1",
+      "/folder_items/item-1",
       expect.objectContaining({
         order_index: 3,
         stream_uuid: "6738f91a-4fd1-416e-807f-cb4ae00ec1d3",

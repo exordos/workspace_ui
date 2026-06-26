@@ -1,5 +1,5 @@
 /**
- * Messenger gateway folder REST helpers (`/api/messenger/v1/folders/...`).
+ * Messenger gateway folder REST helpers (`/api/messenger/v1/...`).
  *
  * Folder CRUD and item assignment moved from Workspace REST (`/workspace/v1/folders/`)
  * to the messenger gateway. Uses `messengerApi` with IAM Bearer auth middleware.
@@ -62,18 +62,18 @@ export function messengerFolderPath(folderUuid: string): string {
   return `/folders/${encodeURIComponent(folderUuid)}`;
 }
 
-export function messengerFolderItemsPath(folderUuid: string): string {
-  return `${messengerFolderPath(folderUuid)}/items/`;
+export function messengerFolderItemsCollectionPath(): string {
+  return "/folder_items/";
 }
 
-export function messengerFolderItemPath(folderUuid: string, folderItemUuid: string): string {
-  return `${messengerFolderPath(folderUuid)}/items/${encodeURIComponent(folderItemUuid)}`;
+export function messengerFolderItemPath(folderItemUuid: string): string {
+  return `${messengerFolderItemsCollectionPath()}${encodeURIComponent(folderItemUuid)}`;
 }
 
-export function messengerFolderItemPinPath(folderUuid: string, folderItemUuid: string): string {
-  return `${messengerFolderItemPath(folderUuid, folderItemUuid)}/actions/pin/invoke`;
+export function messengerFolderItemPinPath(folderItemUuid: string): string {
+  return `${messengerFolderItemPath(folderItemUuid)}/actions/pin/invoke`;
 }
 
-export function messengerFolderItemUnpinPath(folderUuid: string, folderItemUuid: string): string {
-  return `${messengerFolderItemPath(folderUuid, folderItemUuid)}/actions/unpin/invoke`;
+export function messengerFolderItemUnpinPath(folderItemUuid: string): string {
+  return `${messengerFolderItemPath(folderItemUuid)}/actions/unpin/invoke`;
 }

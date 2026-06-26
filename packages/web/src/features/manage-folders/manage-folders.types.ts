@@ -23,7 +23,7 @@ export interface FolderItem {
   updatedAt: string;
 }
 
-/** A chat assigned to a workspace folder (returned by GET /folders/:uuid/items/). */
+/** A chat assigned to a workspace folder (returned by folder item resources). */
 export interface FolderChatAssignment {
   uuid: string;
   chatId: string;
