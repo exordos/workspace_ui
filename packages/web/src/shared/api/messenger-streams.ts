@@ -582,7 +582,7 @@ export function findPrivateStreamForUserUuid(
   return streams.find((stream) => stream.private && peerStreamUuids.has(stream.stream_uuid));
 }
 
-/** Creates a 1:1 private stream via native Workspace messenger `POST /streams/`. */
+/** Creates or resolves a 1:1 private stream via native Workspace messenger `POST /streams/`. */
 export async function createPrivateMessageStream(options: {
   userUuid: UserId;
   displayName: string;
@@ -609,22 +609,6 @@ export async function createPrivateMessageStream(options: {
     const created = parseCreatedWorkspaceStream(res.data);
     if (created == null) {
       log.warn("Private stream creation returned invalid payload");
-      return null;
-    }
-
-    const bindingRes = await messengerApi.postJsonWithBase(
-      base,
-      "/stream_bindings/",
-      buildCreateStreamBindingBody({
-        streamUuid: created.streamUuid,
-        peerUserUuid: peerUuid,
-      }),
-    );
-    if (!bindingRes.ok) {
-      log.warn("Private stream peer binding failed", {
-        status: bindingRes.status,
-        streamUuid: created.streamUuid,
-      });
       return null;
     }
 

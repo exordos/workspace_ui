@@ -122,33 +122,21 @@ const TOPIC_UUID = "7a83bf8f-3ad0-4d68-b5e6-f3bf637bd650";
 const OTHER_TOPIC_UUID = "f44274ce-6b70-4e8c-a0d9-d56951d6f3b1";
 
 describe("createPrivateMessageStream", () => {
-  it("posts stream then peer binding without user_uuid on stream create", async () => {
-    mockMessengerApi.postJsonWithBase
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 201,
-        data: {
-          uuid: STREAM_UUID,
-          name: "Alice Smith",
-          description: "",
-          invite_only: false,
-          announce: false,
-          private: true,
-          unread_count: 0,
-        },
-        raw: { statusText: "Created" },
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 201,
-        data: {
-          uuid: "2dce03ca-d6d9-4fdb-82cb-7ec05fa7a8e9",
-          stream_uuid: STREAM_UUID,
-          user_uuid: PEER_UUID,
-          role: "owner",
-        },
-        raw: { statusText: "Created" },
-      });
+  it("posts direct_user_uuid and lets backend create private bindings", async () => {
+    mockMessengerApi.postJsonWithBase.mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      data: {
+        uuid: STREAM_UUID,
+        name: "Alice Smith",
+        description: "",
+        invite_only: false,
+        announce: false,
+        private: true,
+        unread_count: 0,
+      },
+      raw: { statusText: "Created" },
+    });
 
     await expect(
       createPrivateMessageStream({ userUuid: PEER_UUID, displayName: "Alice Smith" }),
@@ -163,48 +151,28 @@ describe("createPrivateMessageStream", () => {
       "/api/messenger/v1",
       "/streams/",
       {
-        private: true,
         name: "Alice Smith",
         description: "",
         source_name: "native",
         source: { kind: "native" },
+        direct_user_uuid: PEER_UUID,
       },
     );
-    expect(mockMessengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
-      2,
-      "/api/messenger/v1",
-      "/stream_bindings/",
-      {
-        stream_uuid: STREAM_UUID,
-        user_uuid: PEER_UUID,
-        role: "owner",
-      },
-    );
+    expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledTimes(1);
   });
 
-  it("returns null when peer binding fails after stream create", async () => {
-    mockMessengerApi.postJsonWithBase
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 201,
-        data: {
-          uuid: STREAM_UUID,
-          name: "Alice Smith",
-          description: "",
-          private: true,
-        },
-        raw: { statusText: "Created" },
-      })
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 400,
-        data: { msg: "binding failed" },
-        raw: { statusText: "Bad Request" },
-      });
+  it("returns null when direct stream creation fails", async () => {
+    mockMessengerApi.postJsonWithBase.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      data: { msg: "direct user invalid" },
+      raw: { statusText: "Bad Request" },
+    });
 
     await expect(
       createPrivateMessageStream({ userUuid: PEER_UUID, displayName: "Alice Smith" }),
     ).resolves.toBeNull();
+    expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -374,36 +342,35 @@ describe("resolveOrCreateDirectMessageStream", () => {
 
   it("creates private stream when none exists for peer", async () => {
     mockMyStreamsResponse([]);
-    mockMessengerApi.postJsonWithBase
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 201,
-        data: {
-          uuid: STREAM_UUID,
-          name: "Alice Smith",
-          description: "",
-          private: true,
-        },
-        raw: { statusText: "Created" },
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 201,
-        data: {
-          uuid: "2dce03ca-d6d9-4fdb-82cb-7ec05fa7a8e9",
-          stream_uuid: STREAM_UUID,
-          user_uuid: PEER_UUID,
-          role: "owner",
-        },
-        raw: { statusText: "Created" },
-      });
+    mockMessengerApi.postJsonWithBase.mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      data: {
+        uuid: STREAM_UUID,
+        name: "Alice Smith",
+        description: "",
+        private: true,
+      },
+      raw: { statusText: "Created" },
+    });
 
     await expect(resolveOrCreateDirectMessageStream(PEER_UUID, "Alice Smith")).resolves.toEqual({
       streamUuid: STREAM_UUID,
       userUuid: PEER_UUID,
       name: "Alice Smith",
     });
-    expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledTimes(2);
+    expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledTimes(1);
+    expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      "/streams/",
+      {
+        name: "Alice Smith",
+        description: "",
+        source_name: "native",
+        source: { kind: "native" },
+        direct_user_uuid: PEER_UUID,
+      },
+    );
   });
 });
 

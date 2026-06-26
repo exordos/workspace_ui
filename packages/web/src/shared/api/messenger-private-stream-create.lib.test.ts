@@ -20,18 +20,18 @@ describe("resolvePrivateMessageStreamName", () => {
 });
 
 describe("buildCreatePrivateMessageStreamBody", () => {
-  it("includes required WorkspaceStream fields without user_uuid", () => {
+  it("includes direct_user_uuid for backend-owned private bindings", () => {
     expect(
       buildCreatePrivateMessageStreamBody({
         peerUserUuid: PEER_UUID,
         peerDisplayName: "Alice Smith",
       }),
     ).toEqual({
-      private: true,
       name: "Alice Smith",
       description: "",
       source_name: "native",
       source: { kind: "native" },
+      direct_user_uuid: PEER_UUID,
     });
   });
 });

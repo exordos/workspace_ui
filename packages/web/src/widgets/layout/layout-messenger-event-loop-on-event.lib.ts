@@ -5,6 +5,7 @@ import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { useNotificationSettingsStore } from "~/entities/notification-settings/notification-settings.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
+import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
@@ -75,6 +76,7 @@ export function handleLayoutMessengerEventLoopQueueEvent(
   const activity = useActivityStore.getState();
   const inbox = useInboxStore.getState();
   const jitsiCall = useJitsiCallStore.getState();
+  const folderSync = useFolderSyncStore.getState();
 
   dispatchMessengerEvent(event, {
     currentInstanceId: options.currentInstanceId,
@@ -86,6 +88,7 @@ export function handleLayoutMessengerEventLoopQueueEvent(
     activity,
     inbox,
     jitsiCall,
+    folderSync,
     notifications: buildLayoutNotificationsActions({
       show: notificationService.show,
       closeByTag: closeLayoutNotificationByTag,

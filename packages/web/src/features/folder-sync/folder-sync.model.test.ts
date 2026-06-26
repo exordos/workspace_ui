@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { WorkspaceFolder } from "~/shared/api/workspace-client";
 import { loadFolderSyncSnapshot } from "./folder-sync.api";
 import { useFolderSyncStore } from "./folder-sync.model";
 
@@ -1047,5 +1048,126 @@ describe("syncDerived", () => {
     const { folders } = useFolderSyncStore.getState();
     expect(folders.find((f) => f.id === ALL_FOLDER_UUID)?.badge).toBe(7);
     expect(folders.find((f) => f.id === PERSONAL_FOLDER_UUID)?.badge).toBe(4);
+  });
+
+  it("applies realtime folder snapshot and rereads selected folder items from server", async () => {
+    const streamUuid = "00000000-0000-4000-8000-000000000099";
+    const chatId = `stream:${streamUuid}:general`;
+    const eventItem = {
+      uuid: "item-stream-99",
+      chatId,
+      folderUuid: ALL_FOLDER_UUID,
+      streamUuid,
+      orderIndex: 0,
+      pinnedAt: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    };
+    const serverItem = {
+      ...eventItem,
+      uuid: "item-stream-99-server",
+      updatedAt: "2026-01-01T00:01:00Z",
+    };
+    const serverRefresh = deferred<WorkspaceFolder[]>();
+    getFoldersMock.mockImplementationOnce(() => serverRefresh.promise);
+    useFolderSyncStore.setState({
+      instanceId: "inst-1",
+      labels,
+      showSystemFolders: true,
+      folders: [{ id: ALL_FOLDER_UUID, label: "All", backgroundColor: 0, systemType: "all" }],
+      selectedFolderId: ALL_FOLDER_UUID,
+      selectedFolderChatIds: new Set<string>(),
+      folderItemsByFolderId: new Map([[ALL_FOLDER_UUID, []]]),
+    });
+
+    useFolderSyncStore.getState().applyRealtimeFolderSnapshot({
+      uuid: ALL_FOLDER_UUID,
+      title: "All",
+      background_color_value: 0,
+      system_type: "all",
+      folder_items: [eventItem],
+    } as unknown as WorkspaceFolder);
+
+    expect(getFoldersMock).toHaveBeenCalledTimes(1);
+    expect(useFolderSyncStore.getState().selectedFolderChatIds?.has(chatId)).toBe(true);
+
+    useFolderSyncStore.getState().syncSidebarProjection({
+      chatsSortedByLastMessage: [
+        {
+          type: "stream",
+          streamUuid,
+          name: "Engineering",
+          lastMessage: "",
+          time: "",
+          topics: [],
+        },
+      ],
+      streamsMap: new Map(),
+      usersMapForChatInfo: new Map(),
+      currentUserId: 10,
+      hideUnknownArchivedStreams: false,
+    });
+
+    expect(useFolderSyncStore.getState().selectedFolderSidebarChats).toEqual([
+      {
+        type: "stream",
+        streamUuid,
+        name: "Engineering",
+        lastMessage: "",
+        time: "",
+        topics: [],
+      },
+    ]);
+
+    serverRefresh.resolve([
+      {
+        uuid: ALL_FOLDER_UUID,
+        title: "All",
+        background_color_value: 0,
+        system_type: "all",
+        folder_items: [serverItem],
+      } as unknown as WorkspaceFolder,
+    ]);
+    await serverRefresh.promise;
+    await Promise.resolve();
+
+    expect(useFolderSyncStore.getState().folderItemsByFolderId.get(ALL_FOLDER_UUID)).toEqual([
+      serverItem,
+    ]);
+  });
+
+  it("removes deleted realtime folder item from selected folder membership", () => {
+    const streamUuid = "00000000-0000-4000-8000-000000000099";
+    const chatId = `stream:${streamUuid}:general`;
+    useFolderSyncStore.setState({
+      instanceId: "inst-1",
+      labels,
+      showSystemFolders: true,
+      folders: [{ id: ALL_FOLDER_UUID, label: "All", backgroundColor: 0, systemType: "all" }],
+      selectedFolderId: ALL_FOLDER_UUID,
+      selectedFolderChatIds: new Set<string>([chatId]),
+      folderItemsByFolderId: new Map([
+        [
+          ALL_FOLDER_UUID,
+          [
+            {
+              uuid: "item-stream-99",
+              chatId,
+              folderUuid: ALL_FOLDER_UUID,
+              streamUuid,
+              orderIndex: 0,
+              pinnedAt: null,
+              createdAt: "2026-01-01T00:00:00Z",
+              updatedAt: "2026-01-01T00:00:00Z",
+            },
+          ],
+        ],
+      ]),
+    });
+
+    useFolderSyncStore.getState().applyRealtimeFolderItemDeleted("item-stream-99");
+
+    expect(useFolderSyncStore.getState().folderItemsByFolderId.get(ALL_FOLDER_UUID)).toEqual([]);
+    expect(useFolderSyncStore.getState().selectedFolderChatIds?.has(chatId)).toBe(false);
   });
 });

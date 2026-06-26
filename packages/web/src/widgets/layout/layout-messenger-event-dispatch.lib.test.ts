@@ -748,6 +748,69 @@ describe("dispatchMessengerEvent", () => {
     });
   });
 
+  describe("folder realtime", () => {
+    it("applies folder.updated snapshots to folder sync", () => {
+      const { ctx } = buildCtx();
+      const applyRealtimeFolderSnapshot = vi.fn();
+      ctx.folderSync = {
+        applyRealtimeFolderSnapshot,
+        applyRealtimeFolderDeleted: vi.fn(),
+        applyRealtimeFolderItemDeleted: vi.fn(),
+      };
+      const folder = {
+        uuid: "50ecadd0-9823-4d97-b54c-806cc672c210",
+        title: "All",
+        background_color_value: 0,
+        system_type: "all",
+        folder_items: [
+          {
+            uuid: "9f41b1a7-77f9-4c12-bdc6-d3cebc5dbf50",
+            folder_uuid: "50ecadd0-9823-4d97-b54c-806cc672c210",
+            stream_uuid: STREAM_UUID_42,
+            chat_type: "stream",
+            order_index: 0,
+          },
+        ],
+      };
+
+      dispatchMessengerEvent(
+        {
+          id: 92,
+          type: "folder",
+          kind: "folder.updated",
+          folder,
+        },
+        ctx,
+      );
+
+      expect(applyRealtimeFolderSnapshot).toHaveBeenCalledWith(folder);
+    });
+
+    it("applies folder_item.deleted to folder sync", () => {
+      const { ctx } = buildCtx();
+      const applyRealtimeFolderItemDeleted = vi.fn();
+      ctx.folderSync = {
+        applyRealtimeFolderSnapshot: vi.fn(),
+        applyRealtimeFolderDeleted: vi.fn(),
+        applyRealtimeFolderItemDeleted,
+      };
+
+      dispatchMessengerEvent(
+        {
+          id: 93,
+          type: "folder_item",
+          kind: "folder_item.deleted",
+          folder_item: { uuid: "9f41b1a7-77f9-4c12-bdc6-d3cebc5dbf50" },
+        },
+        ctx,
+      );
+
+      expect(applyRealtimeFolderItemDeleted).toHaveBeenCalledWith(
+        "9f41b1a7-77f9-4c12-bdc6-d3cebc5dbf50",
+      );
+    });
+  });
+
   describe("message stream rename fallback", () => {
     // Assert: fallback renames channel from message.display_recipient.
     // Why: message metadata can carry the newest stream name before sidebar metadata refresh.

@@ -2,6 +2,7 @@ import type { ChatListStreamMetadataRow } from "~/entities/chat-list/chat-list.m
 import type { CurrentChatContext } from "~/entities/message/message.model";
 import type { IncomingDmCallInvite } from "~/features/jitsi-call/jitsi-call.model";
 import type { MockMessage, WorkspaceRawMessage } from "~/shared/api/messenger.types";
+import type { WorkspaceFolder } from "~/shared/api/workspace-client";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { LinkPreviewData } from "~/shared/lib/message-link-preview.types";
 import type { UserId } from "~/shared/lib/user-id.lib";
@@ -146,6 +147,12 @@ export interface LayoutJitsiCallActions {
   ingestIncomingInvite: (invite: IncomingDmCallInvite) => void;
 }
 
+export interface LayoutFolderSyncActions {
+  applyRealtimeFolderSnapshot: (folder: WorkspaceFolder) => void;
+  applyRealtimeFolderDeleted: (folderId: string) => void;
+  applyRealtimeFolderItemDeleted: (folderItemId: string) => void;
+}
+
 export interface LayoutMessengerEventDispatchContext {
   currentInstanceId: string | null;
   chatList: LayoutChatListActions;
@@ -157,6 +164,7 @@ export interface LayoutMessengerEventDispatchContext {
   inbox: LayoutInboxActions;
   notifications: LayoutNotificationsActions;
   jitsiCall: LayoutJitsiCallActions;
+  folderSync?: LayoutFolderSyncActions;
   updateLatestMessageId: (id: MessageId) => void;
   // Notifies stream member changes from peer_add/peer_remove for external index updates.
   onStreamPeerMembersChanged?: (streamIds: string[]) => void;

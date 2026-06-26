@@ -1,9 +1,9 @@
 /**
- * Builds POST bodies for gateway private (1:1) message streams and peer bindings.
+ * Builds POST bodies for gateway private (1:1) message streams and stream bindings.
  *
  * Flow:
- * 1. POST /streams/ — `WorkspaceStream` (`ModelWithRequiredNameDesc` + native source)
- * 2. POST /stream_bindings/ — peer binding with role `owner` (initiator binding is auto-created)
+ * 1. POST /streams/ — `WorkspaceStream` (`ModelWithRequiredNameDesc` + native source + direct peer)
+ * 2. The backend creates private participant bindings for direct streams.
  */
 
 export const MESSENGER_STREAM_SOURCE_NAME_NATIVE = "native" as const;
@@ -19,11 +19,11 @@ export interface MessengerStreamNativeSource {
 }
 
 export interface CreatePrivateMessageStreamBody {
-  private: true;
   name: string;
   description: string;
   source_name: typeof MESSENGER_STREAM_SOURCE_NAME_NATIVE;
   source: MessengerStreamNativeSource;
+  direct_user_uuid: string;
 }
 
 export interface CreateStreamBindingBody {
@@ -51,15 +51,15 @@ export function buildCreatePrivateMessageStreamBody(options: {
 }): CreatePrivateMessageStreamBody {
   const peerUserUuid = options.peerUserUuid.trim();
   return {
-    private: true,
     name: resolvePrivateMessageStreamName(options.peerDisplayName, peerUserUuid),
     description: "",
     source_name: MESSENGER_STREAM_SOURCE_NAME_NATIVE,
     source: { kind: MESSENGER_STREAM_SOURCE_NAME_NATIVE },
+    direct_user_uuid: peerUserUuid,
   };
 }
 
-/** POST /api/messenger/v1/stream_bindings/ payload for the DM peer. */
+/** POST /api/messenger/v1/stream_bindings/ payload for regular stream membership. */
 export function buildCreateStreamBindingBody(options: {
   streamUuid: string;
   peerUserUuid: string;

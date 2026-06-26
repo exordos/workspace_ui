@@ -403,6 +403,69 @@ function streamEventFromWorkspaceStream(
   };
 }
 
+function folderEventFromWorkspaceFolder(
+  epochVersion: number,
+  kind: "folder.created" | "folder.updated",
+  folderValue: unknown,
+): MessengerEvent | null {
+  if (!isRecord(folderValue)) {
+    return null;
+  }
+  const folderUuid = readString(folderValue.uuid);
+  if (folderUuid == null) {
+    return null;
+  }
+  const folder: Record<string, unknown> = { ...folderValue, uuid: folderUuid };
+  delete folder.kind;
+  return {
+    id: epochVersion,
+    type: "folder",
+    epoch_version: epochVersion,
+    kind,
+    folder,
+  };
+}
+
+function folderDeletedEventFromWorkspaceFolder(
+  epochVersion: number,
+  folderValue: unknown,
+): MessengerEvent | null {
+  if (!isRecord(folderValue)) {
+    return null;
+  }
+  const folderUuid = readString(folderValue.uuid);
+  if (folderUuid == null) {
+    return null;
+  }
+  return {
+    id: epochVersion,
+    type: "folder",
+    epoch_version: epochVersion,
+    kind: "folder.deleted",
+    folder: { uuid: folderUuid },
+  };
+}
+
+function folderItemDeletedEventFromWorkspaceItem(
+  epochVersion: number,
+  folderItemValue: unknown,
+): MessengerEvent | null {
+  if (!isRecord(folderItemValue)) {
+    return null;
+  }
+  const folderItemUuid = readString(folderItemValue.uuid);
+  if (folderItemUuid == null) {
+    return null;
+  }
+  return {
+    id: epochVersion,
+    type: "folder_item",
+    epoch_version: epochVersion,
+    kind: "folder_item.deleted",
+    folder_item: { uuid: folderItemUuid },
+  };
+}
+
 export function normalizeWorkspaceEventModel(
   row: unknown,
 ): NormalizedWorkspaceRealtimeEvent | null {
@@ -438,6 +501,24 @@ export function normalizeWorkspaceEventModel(
     const event = streamEventFromWorkspaceStream(epochVersion, payload);
     return event == null
       ? { epochVersion, event: null, skipReason: "invalid stream.created payload" }
+      : { epochVersion, event };
+  }
+  if (kind === "folder.created" || kind === "folder.updated") {
+    const event = folderEventFromWorkspaceFolder(epochVersion, kind, payload);
+    return event == null
+      ? { epochVersion, event: null, skipReason: `invalid ${kind} payload` }
+      : { epochVersion, event };
+  }
+  if (kind === "folder.deleted") {
+    const event = folderDeletedEventFromWorkspaceFolder(epochVersion, payload);
+    return event == null
+      ? { epochVersion, event: null, skipReason: "invalid folder.deleted payload" }
+      : { epochVersion, event };
+  }
+  if (kind === "folder_item.deleted") {
+    const event = folderItemDeletedEventFromWorkspaceItem(epochVersion, payload);
+    return event == null
+      ? { epochVersion, event: null, skipReason: "invalid folder_item.deleted payload" }
       : { epochVersion, event };
   }
   return {
@@ -526,6 +607,40 @@ export function normalizeWorkspaceRealtimeEvent(
     const event = streamEventFromWorkspaceStream(epochVersion, rawEvent.stream);
     return event == null
       ? { epochVersion, event: null, skipReason: "invalid stream.created frame" }
+      : { epochVersion, event };
+  }
+  if (type === "folder") {
+    const kind = readString(rawEvent.kind);
+    if (kind === "folder.created" || kind === "folder.updated") {
+      const event = folderEventFromWorkspaceFolder(epochVersion, kind, rawEvent.folder);
+      return event == null
+        ? { epochVersion, event: null, skipReason: `invalid ${kind} frame` }
+        : { epochVersion, event };
+    }
+    if (kind === "folder.deleted") {
+      const event = folderDeletedEventFromWorkspaceFolder(epochVersion, rawEvent.folder);
+      return event == null
+        ? { epochVersion, event: null, skipReason: "invalid folder.deleted frame" }
+        : { epochVersion, event };
+    }
+    return {
+      epochVersion,
+      event: null,
+      skipReason: `unsupported folder event kind: ${kind ?? "unknown"}`,
+    };
+  }
+  if (type === "folder_item") {
+    const kind = readString(rawEvent.kind);
+    if (kind !== "folder_item.deleted") {
+      return {
+        epochVersion,
+        event: null,
+        skipReason: `unsupported folder_item event kind: ${kind ?? "unknown"}`,
+      };
+    }
+    const event = folderItemDeletedEventFromWorkspaceItem(epochVersion, rawEvent.folder_item);
+    return event == null
+      ? { epochVersion, event: null, skipReason: "invalid folder_item.deleted frame" }
       : { epochVersion, event };
   }
   if (type !== "message") {

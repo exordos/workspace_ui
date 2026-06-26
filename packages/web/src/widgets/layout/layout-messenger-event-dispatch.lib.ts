@@ -4,6 +4,7 @@
 import type { MessengerEvent } from "~/shared/api/messenger.types";
 import { getElectronAPI } from "~/shared/lib/electron";
 import { safeCatch } from "~/shared/lib/guards";
+import { handleFolder, handleFolderItem } from "./layout-messenger-event-dispatch-folder.lib";
 import {
   applyMessageCacheIndexedDb,
   handleDeleteMessage,
@@ -71,6 +72,16 @@ export function dispatchMessengerEvent(
 
   if (event.type === "stream") {
     runDispatchHandler("dispatch:stream", () => handleStream(event, ctx));
+    return;
+  }
+
+  if (event.type === "folder") {
+    runDispatchHandler("dispatch:folder", () => handleFolder(event, ctx));
+    return;
+  }
+
+  if (event.type === "folder_item") {
+    runDispatchHandler("dispatch:folder_item", () => handleFolderItem(event, ctx));
     return;
   }
 

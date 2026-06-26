@@ -265,6 +265,12 @@ interface FolderSyncState {
   }) => void;
   /** Removes a folder after DELETE /folders/{uuid} without reloading folders and folder items. */
   applyLocallyDeletedFolder: (folderId: string) => void;
+  /** Applies a realtime folder.created/folder.updated snapshot and refreshes server items. */
+  applyRealtimeFolderSnapshot: (folder: WorkspaceFolder) => void;
+  /** Removes a folder from realtime folder.deleted. */
+  applyRealtimeFolderDeleted: (folderId: string) => void;
+  /** Removes one cached folder item from realtime folder_item.deleted. */
+  applyRealtimeFolderItemDeleted: (folderItemId: string) => void;
   syncSidebarProjection: (input: {
     chatsSortedByLastMessage: SidebarChat[];
     streamsMap: Map<string, StreamEntryInternal>;
@@ -1074,6 +1080,83 @@ export const useFolderSyncStore = create<FolderSyncState>((set, get) => {
           staleFolderIds: nextStaleFolderIds,
           selectedFolderId: nextSelectedId,
           selectedFolderChatIds,
+        };
+      });
+    },
+
+    applyRealtimeFolderSnapshot(folder) {
+      const instanceId = get().instanceId;
+      if (instanceId == null) {
+        return;
+      }
+      const folderId = folder.uuid?.trim();
+      if (folderId == null || folderId.length === 0) {
+        return;
+      }
+      logStoreAction("folderSync", "applyRealtimeFolderSnapshot", { folderId });
+      const railFolder = mapWorkspaceFoldersToRail([folder])[0];
+      if (railFolder == null || railFolder.id.trim().length === 0) {
+        return;
+      }
+      const items = mapWorkspaceFolderItems(folder);
+      set((state) => {
+        const existingIndex = state.folders.findIndex((entry) => entry.id === folderId);
+        const nextFolders =
+          existingIndex >= 0
+            ? state.folders.map((entry, index) => (index === existingIndex ? railFolder : entry))
+            : [...state.folders, railFolder];
+        const nextMap = new Map(state.folderItemsByFolderId);
+        nextMap.set(folderId, items);
+        const nextStaleFolderIds = new Set(state.staleFolderIds);
+        nextStaleFolderIds.delete(folderId);
+        const selectedFolderChatIds =
+          state.selectedFolderId === folderId ? toChatIdSet(items) : state.selectedFolderChatIds;
+
+        schedulePersistFolders(instanceId, nextFolders);
+
+        return {
+          folders: nextFolders,
+          folderItemsByFolderId: nextMap,
+          staleFolderIds: nextStaleFolderIds,
+          selectedFolderChatIds,
+          ...(railFolder.systemType === "all" ? { allFolderApiUuid: folderId } : {}),
+        };
+      });
+      void get().refreshFolderItemsCache(folderId);
+    },
+
+    applyRealtimeFolderDeleted(folderId) {
+      get().applyLocallyDeletedFolder(folderId);
+    },
+
+    applyRealtimeFolderItemDeleted(folderItemId) {
+      const trimmed = folderItemId.trim();
+      if (trimmed.length === 0) {
+        return;
+      }
+      logStoreAction("folderSync", "applyRealtimeFolderItemDeleted", { folderItemId: trimmed });
+      set((state) => {
+        let changed = false;
+        let selectedItems: FolderItemForClient[] | null = null;
+        const nextMap = new Map(state.folderItemsByFolderId);
+
+        for (const [folderId, items] of state.folderItemsByFolderId) {
+          const nextItems = items.filter((item) => item.uuid !== trimmed);
+          if (nextItems.length === items.length) {
+            continue;
+          }
+          changed = true;
+          nextMap.set(folderId, nextItems);
+          if (state.selectedFolderId === folderId) {
+            selectedItems = nextItems;
+          }
+        }
+
+        if (!changed) return {};
+
+        return {
+          folderItemsByFolderId: nextMap,
+          ...(selectedItems != null ? { selectedFolderChatIds: toChatIdSet(selectedItems) } : {}),
         };
       });
     },

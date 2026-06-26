@@ -50,6 +50,8 @@ const OTHER_UUID = "00000000-0000-4000-8000-000000000002";
 const MESSAGE_UUID = "00000000-0000-4000-8000-000000000101";
 const STREAM_UUID = "00000000-0000-4000-8000-000000000201";
 const TOPIC_UUID = "00000000-0000-4000-8000-000000000301";
+const FOLDER_UUID = "00000000-0000-0000-0000-000000000002";
+const FOLDER_ITEM_UUID = "00000000-0000-4000-8000-000000000401";
 
 class FakeWebSocket {
   static readonly instances: FakeWebSocket[] = [];
@@ -129,6 +131,40 @@ function streamCreatedWorkspaceEvent(epochVersion: number): unknown {
   };
 }
 
+function folderUpdatedWorkspaceEvent(epochVersion: number): unknown {
+  return {
+    epoch_version: epochVersion,
+    uuid: `00000000-0000-4000-8000-${String(epochVersion).padStart(12, "0")}`,
+    project_id: "00000000-0000-4000-8000-000000000901",
+    user_uuid: USER_UUID,
+    payload: {
+      kind: "folder.updated",
+      uuid: FOLDER_UUID,
+      project_id: "00000000-0000-4000-8000-000000000901",
+      user_uuid: USER_UUID,
+      title: "Channels",
+      background_color_value: 0,
+      unread_count: 0,
+      system_type: "channels",
+      folder_items: [
+        {
+          uuid: FOLDER_ITEM_UUID,
+          folder_uuid: FOLDER_UUID,
+          stream_uuid: STREAM_UUID,
+          chat_type: "stream",
+          order_index: 0,
+          pinned_at: null,
+          unread_count: 0,
+          created_at: "2026-06-24T10:00:00.000000Z",
+          updated_at: "2026-06-24T10:00:00.000000Z",
+        },
+      ],
+      created_at: "2026-06-24T10:00:00.000000Z",
+      updated_at: "2026-06-24T10:00:00.000000Z",
+    },
+  };
+}
+
 function apiResponse(data: unknown): unknown {
   return {
     ok: true,
@@ -182,6 +218,47 @@ describe("Workspace realtime event normalization", () => {
         invite_only: false,
         private: false,
       },
+    });
+  });
+
+  it("maps REST folder.updated events to backend folder events", () => {
+    const normalized = normalizeWorkspaceEventModel(folderUpdatedWorkspaceEvent(18));
+
+    expect(normalized?.epochVersion).toBe(18);
+    expect(normalized?.event).toMatchObject({
+      id: 18,
+      type: "folder",
+      kind: "folder.updated",
+      epoch_version: 18,
+      folder: {
+        uuid: FOLDER_UUID,
+        title: "Channels",
+        system_type: "channels",
+        folder_items: [
+          {
+            uuid: FOLDER_ITEM_UUID,
+            folder_uuid: FOLDER_UUID,
+            stream_uuid: STREAM_UUID,
+          },
+        ],
+      },
+    });
+  });
+
+  it("maps REST folder_item.deleted events to backend folder item events", () => {
+    const normalized = normalizeWorkspaceEventModel({
+      epoch_version: 19,
+      payload: {
+        kind: "folder_item.deleted",
+        uuid: FOLDER_ITEM_UUID,
+      },
+    });
+
+    expect(normalized?.event).toMatchObject({
+      id: 19,
+      type: "folder_item",
+      kind: "folder_item.deleted",
+      folder_item: { uuid: FOLDER_ITEM_UUID },
     });
   });
 
@@ -244,6 +321,43 @@ describe("Workspace realtime event normalization", () => {
       type: "stream",
       kind: "stream.created",
       stream: { uuid: STREAM_UUID, name: "Engineering" },
+    });
+  });
+
+  it("maps backend WS folder.updated frames", () => {
+    const normalized = normalizeWorkspaceRealtimeEvent(
+      {
+        epoch_version: 20,
+        type: "folder",
+        kind: "folder.updated",
+        folder: {
+          uuid: FOLDER_UUID,
+          title: "Channels",
+          background_color_value: 0,
+          unread_count: 0,
+          system_type: "channels",
+          folder_items: [
+            {
+              uuid: FOLDER_ITEM_UUID,
+              folder_uuid: FOLDER_UUID,
+              stream_uuid: STREAM_UUID,
+              chat_type: "stream",
+              order_index: 0,
+            },
+          ],
+        },
+      },
+      USER_UUID,
+    );
+
+    expect(normalized?.event).toMatchObject({
+      id: 20,
+      type: "folder",
+      kind: "folder.updated",
+      folder: {
+        uuid: FOLDER_UUID,
+        folder_items: [{ uuid: FOLDER_ITEM_UUID, stream_uuid: STREAM_UUID }],
+      },
     });
   });
 
