@@ -132,7 +132,7 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
                 return (
                   <li
                     key={`compact-${item.key}`}
-                    className={`${compactListItemClass}${hasCompactBadge ? "z-sticky" : ""}`}
+                    className={`${compactListItemClass} ${hasCompactBadge ? "z-sticky" : ""}`}
                   >
                     {route ? (
                       <>

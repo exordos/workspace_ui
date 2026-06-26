@@ -9,6 +9,10 @@ import {
   MESSAGE_BUBBLE_BODY_CLASS_NAME,
   MESSAGE_MEDIA_PREVIEW_CLASS_NAME,
 } from "~/shared/lib/message-body-rich-text-classes";
+import {
+  resetZulipEmojiCatalogForTests,
+  setZulipEmojiCatalogForTests,
+} from "~/shared/lib/zulip-emoji-catalog.lib";
 import { createUser } from "~/test/factories";
 import { MessageBubble } from "./message-bubble.ui";
 import { buildMessageMediaGallery } from "./message-list-media.lib";
@@ -107,6 +111,7 @@ describe("MessageBubble edit/delete actions parity", () => {
     useCallParticipantsStore.setState({ participantsByUrl: {} });
     buildAuthHeaderMock.mockReset();
     emojiPickerMock.mockReset();
+    resetZulipEmojiCatalogForTests();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -352,6 +357,12 @@ describe("MessageBubble edit/delete actions parity", () => {
 
   it("keeps the extended reaction picker interactive", async () => {
     const onAddReaction = vi.fn();
+    setZulipEmojiCatalogForTests({
+      code_to_names: {
+        "1f600": ["grinning"],
+      },
+    });
+
     render(
       <MessageBubble
         message={createMessage()}
