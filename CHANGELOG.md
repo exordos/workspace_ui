@@ -6,6 +6,23 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.13] — 2026-06-26
+
+### Added
+
+- Resizable chat list in the sidebar (#197)
+
+### Changed
+
+- Sidebar chat card layout and shared action slot (#197)
+
+### Fixed
+
+- Aborted requests no longer logged as errors (#197)
+- Zulip emoji catalog resolution for picker reactions (#197)
+- Message bubble visualization and reaction emoji sizing (#197)
+- Org-scoped async sidebar writes guard (#197)
+
 ## [0.1.12] — 2026-06-23
 
 ### Added
