@@ -71,6 +71,7 @@ export function startInactiveInstanceEventStreams(
     const stop = startEventLoop({
       credentials: {
         realm: instance.realm,
+        workspaceOrgOrigin: instance.workspaceOrgOrigin,
         login: instance.login,
         accessToken,
       },

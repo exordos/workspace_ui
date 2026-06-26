@@ -66,6 +66,37 @@ describe("startInactiveInstanceEventStreams", () => {
     expect(stopTwo).toHaveBeenCalledTimes(1);
   });
 
+  it("passes saved workspace org origin to inactive instance credentials", () => {
+    const startLoop = vi.fn<StartCredentialEventLoopFn>().mockReturnValue(() => {});
+    const instances: WorkspaceInstance[] = [
+      INSTANCES[0]!,
+      {
+        ...INSTANCES[1]!,
+        realm: "https://canonical.example.com",
+        workspaceOrgOrigin: "https://gateway.example.com",
+      },
+    ];
+
+    const stop = startInactiveInstanceEventStreams({
+      instances,
+      currentInstanceId: "inst-1",
+      enabled: true,
+      online: true,
+      refreshUnreadForInstance: vi.fn(),
+      startEventLoop: startLoop,
+    });
+
+    expect(startLoop).toHaveBeenCalledTimes(1);
+    expect(startLoop.mock.calls[0]?.[0].credentials).toMatchObject({
+      realm: "https://canonical.example.com",
+      workspaceOrgOrigin: "https://gateway.example.com",
+      login: "b@example.com",
+      accessToken: "token-2",
+    });
+
+    stop();
+  });
+
   it("debounces unread refresh for event bursts", async () => {
     const startLoop = vi.fn<StartCredentialEventLoopFn>();
     const refreshUnreadForInstance = vi.fn().mockResolvedValue(undefined);

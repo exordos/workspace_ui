@@ -167,6 +167,8 @@ export interface GetEventsResult {
 
 export interface MessengerCredentials {
   realm: string;
+  /** Workspace REST/API origin saved from the URL entered at login. */
+  workspaceOrgOrigin?: string;
   login: string;
   accessToken: string;
 }

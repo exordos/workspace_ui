@@ -352,4 +352,39 @@ describe("startMessengerEventLoop", () => {
 
     controller.abort();
   });
+
+  it("uses saved workspace org origin for credential-based background transport", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+
+    startMessengerEventLoopForCredentials({
+      credentials: {
+        realm: "https://canonical.example.test",
+        workspaceOrgOrigin: "https://gateway.example.test",
+        login: "admin",
+        accessToken: "background-token",
+      },
+      instanceId: "inst-bg",
+      signal: controller.signal,
+      onEvent: vi.fn(),
+    });
+
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://gateway.example.test/api/messenger/v1/events/?epoch_version%3E=0&page_limit=500",
+      expect.objectContaining({ headers: { Authorization: "Bearer background-token" } }),
+    );
+    expect(FakeWebSocket.instances[0]!.url).toBe(
+      "wss://gateway.example.test/api/messenger/ws?last_epoch_version=0",
+    );
+
+    controller.abort();
+  });
 });

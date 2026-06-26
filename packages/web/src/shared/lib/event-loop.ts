@@ -229,7 +229,7 @@ function buildRealtimeWebSocketUrl(messengerApiBaseUrl: string, lastEpochVersion
 function resolveRuntimeConfig(options: StartMessengerEventLoopOptions): RuntimeConfig | null {
   if (hasCredentials(options)) {
     const accessToken = options.credentials.accessToken.trim();
-    const origin = resolveIamApiOrigin({ realm: options.credentials.realm }).replace(/\/+$/, "");
+    const origin = resolveIamApiOrigin(options.credentials).replace(/\/+$/, "");
     if (accessToken.length === 0 || origin.length === 0) {
       return null;
     }
