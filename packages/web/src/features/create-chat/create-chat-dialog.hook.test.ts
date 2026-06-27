@@ -193,13 +193,13 @@ describe("useCreateChatDialog", () => {
     );
   });
 
-  it("maps unsupported unarchive responses to the unsupported inline error", async () => {
+  it("maps failed unarchive responses to an inline error", async () => {
     seedUsers();
     vi.mocked(unarchiveChannel).mockResolvedValue({
       ok: false,
-      kind: "unsupported",
-      message: "ignored",
-      status: 200,
+      kind: "transient",
+      message: "Rate limited",
+      status: 429,
     });
 
     const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
@@ -209,7 +209,10 @@ describe("useCreateChatDialog", () => {
     });
 
     expect(unarchiveChannel).toHaveBeenCalledWith(STREAM_UUID_5);
-    expect(result.current.unarchiveInlineError).toEqual({ kind: "unsupported" });
+    expect(result.current.unarchiveInlineError).toEqual({
+      kind: "failed",
+      message: "Rate limited",
+    });
   });
 
   it("loads browse channels when the channels tab is opened", async () => {

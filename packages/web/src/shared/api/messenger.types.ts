@@ -56,6 +56,7 @@ export interface MessengerMeStream {
   invite_only: boolean;
   announce: boolean;
   private: boolean;
+  is_archived: boolean;
   unread_count: number;
 }
 

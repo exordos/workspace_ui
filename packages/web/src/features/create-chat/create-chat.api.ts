@@ -3,7 +3,7 @@
  *
  * Personal chat: resolve or create a private stream via gateway POST /streams/, then navigate to /stream.
  * Channel creation: POST /streams/ + POST /streams/{uuid}/actions/add_users/invoke.
- * Unarchive: PATCH /streams/{stream_uuid} with is_archived=false (delegates to shared unarchiveStream).
+ * Unarchive: POST /streams/{stream_uuid}/actions/unarchive/invoke (delegates to shared unarchiveStream).
  * Also: channel listing and unsubscribe for management flows.
  */
 
@@ -73,11 +73,11 @@ export async function createChannel(params: {
   return result == null ? null : { streamUuid: result.streamUuid };
 }
 
-/** Unarchive channel result (thin wrapper over Workspace PATCH). */
+/** Unarchive channel result (thin wrapper over Workspace action). */
 export type UnarchiveChannelResult = UnarchiveStreamResult;
 
 /**
- * Unarchive channel: PATCH /streams/{stream_uuid} with is_archived=false.
+ * Unarchive channel: POST /streams/{stream_uuid}/actions/unarchive/invoke.
  */
 export async function unarchiveChannel(streamUuid: string): Promise<UnarchiveChannelResult> {
   guard.streamUuid(streamUuid, "unarchiveChannel.streamUuid");

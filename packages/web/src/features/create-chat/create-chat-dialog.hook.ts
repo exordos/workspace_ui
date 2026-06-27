@@ -40,9 +40,10 @@ interface ArchivedChannelOption {
 }
 
 /** Inline unarchive error state on the Archived tab. */
-export type UnarchiveInlineErrorState =
-  | { kind: "unsupported" }
-  | { kind: "failed"; message: string };
+export interface UnarchiveInlineErrorState {
+  kind: "failed";
+  message: string;
+}
 
 export interface UseCreateChatDialogResult {
   tab: CreateChatTab;
@@ -503,11 +504,7 @@ export function useCreateChatDialog(options: {
       if (result.ok) {
         return;
       }
-      if (result.kind === "unsupported") {
-        setUnarchiveInlineError({ kind: "unsupported" });
-      } else {
-        setUnarchiveInlineError({ kind: "failed", message: result.message });
-      }
+      setUnarchiveInlineError({ kind: "failed", message: result.message });
       log.warn("unarchive channel rejected", {
         streamUuid,
         kind: result.kind,

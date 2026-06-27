@@ -403,11 +403,9 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                   role="alert"
                   className="rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-notice-base"
                 >
-                  {vm.unarchiveInlineError.kind === "unsupported"
-                    ? t("channel.unarchiveUnsupported")
-                    : t("channel.unarchiveFailed", {
-                        message: vm.unarchiveInlineError.message,
-                      })}
+                  {t("channel.unarchiveFailed", {
+                    message: vm.unarchiveInlineError.message,
+                  })}
                 </div>
               )}
               <div className={CREATE_CHAT_USER_LIST_CLASS}>
@@ -774,13 +772,16 @@ const ArchivedChannelRow = React.memo<ArchivedChannelRowProps>(function Archived
               ? `${t("channel.unarchiveInProgress")}: ${name}`
               : `${t("channel.unarchiveChannel")}: ${name}`
           }
-          className="flex h-7 w-7 items-center justify-center rounded-md bg-indicator-green text-bg transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex min-h-8 items-center gap-1.5 rounded-md bg-indicator-green px-2.5 py-1.5 text-xs font-medium text-bg transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Icon
-            name="logout"
+            name="folder_open"
             size={14}
             className={`text-bg ${isUnarchivePending ? "animate-spin" : ""}`}
           />
+          <span>
+            {isUnarchivePending ? t("channel.unarchiveInProgress") : t("channel.unarchiveChannel")}
+          </span>
         </button>
       </div>
     </div>

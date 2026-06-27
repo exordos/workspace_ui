@@ -153,6 +153,15 @@ export interface LayoutFolderSyncActions {
   applyRealtimeFolderItemDeleted: (folderItemId: string) => void;
 }
 
+export interface LayoutChatInfoActions {
+  applyStreamMetadataUpdate: (params: {
+    instanceId: string | null;
+    streamUuid: string;
+    name?: string;
+    description?: string | null;
+  }) => void;
+}
+
 export interface LayoutMessengerEventDispatchContext {
   currentInstanceId: string | null;
   chatList: LayoutChatListActions;
@@ -165,6 +174,7 @@ export interface LayoutMessengerEventDispatchContext {
   notifications: LayoutNotificationsActions;
   jitsiCall: LayoutJitsiCallActions;
   folderSync?: LayoutFolderSyncActions;
+  chatInfo?: LayoutChatInfoActions;
   updateLatestMessageId: (id: MessageId) => void;
   // Notifies stream member changes from peer_add/peer_remove for external index updates.
   onStreamPeerMembersChanged?: (streamIds: string[]) => void;

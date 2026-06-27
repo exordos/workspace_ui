@@ -15,7 +15,6 @@ import {
   getMessengerWorkspaceApiBaseForCurrentInstance,
   messengerApi,
 } from "./client";
-import { messengerPipelineDelete, messengerPipelinePatch } from "./messenger-pipeline.internal";
 import {
   buildAddStreamUsersBody,
   buildCreatePrivateMessageStreamBody,
@@ -170,15 +169,14 @@ export interface UpdateStreamTopicResult {
   errorCode?: string;
 }
 
-/** PATCH /streams/{id} response fields relevant to unarchive and server compatibility. */
-interface StreamPatchResponsePayload {
+/** PUT /streams/{id} response fields relevant to stream updates. */
+interface StreamUpdateResponsePayload {
   result?: string;
   msg?: string;
   code?: string;
-  ignored_parameters_unsupported?: unknown;
 }
 
-export type StreamUnarchiveErrorKind = "unsupported" | "transient" | "forbidden" | "invalid";
+export type StreamUnarchiveErrorKind = "transient" | "forbidden" | "invalid";
 
 export type UnarchiveStreamResult =
   | { ok: true }
@@ -190,15 +188,14 @@ export type UnarchiveStreamResult =
       code?: string;
     };
 
-function mapStreamPatchErrorKind(status: number): StreamUnarchiveErrorKind {
+function mapStreamUpdateErrorKind(status: number): StreamUnarchiveErrorKind {
   if (status === 403) return "forbidden";
   if (status === 400) return "invalid";
-  if (status === 404 || status === 405) return "unsupported";
   return "transient";
 }
 
-function readStreamPatchErrorMessage(
-  data: StreamPatchResponsePayload,
+function readStreamUpdateErrorMessage(
+  data: StreamUpdateResponsePayload,
   status: number,
   fallback: string,
 ): string {
@@ -212,11 +209,6 @@ function readStreamPatchErrorMessage(
     return `${fallback} (HTTP ${status})`;
   }
   return fallback;
-}
-
-function includesUnsupportedIsArchivedParameter(value: unknown): boolean {
-  if (!Array.isArray(value)) return false;
-  return value.some((entry) => entry === "is_archived");
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -300,6 +292,7 @@ function parseMeStream(row: unknown): MessengerMeStream | null {
     invite_only: row.invite_only === true,
     announce: row.announce === true,
     private: row.private === true,
+    is_archived: row.is_archived === true,
     unread_count: readSafeCount(row.unread_count),
   };
 }
@@ -720,6 +713,7 @@ function subscriptionFromMeStream(stream: MessengerMeStream): MessengerSubscript
     is_muted: false,
     invite_only: stream.invite_only,
     private: stream.private,
+    is_archived: stream.is_archived,
     unread_count: stream.unread_count,
   };
 }
@@ -859,67 +853,70 @@ export async function fetchStreamTopicNames(
   );
 }
 
-/** Updates stream metadata (PATCH /api/messenger/v1/streams/{stream_uuid}). */
+/** Updates stream metadata through Workspace `PUT /streams/{stream_uuid}`. */
 export async function updateStream(
   streamId: string,
-  params: { name?: string; description?: string; isArchived?: boolean },
+  params: { name?: string; description?: string },
 ): Promise<boolean> {
-  guard.streamUuid(streamId, "updateStream.streamId");
+  const streamUuid = guard.streamUuid(streamId, "updateStream.streamId");
   const body: Record<string, string> = {};
-  const trimmedName = params.name?.trim();
-  if (trimmedName != null && trimmedName.length > 0) {
-    body.new_name = trimmedName;
+
+  if (params.name !== undefined) {
+    const trimmedName = params.name.trim();
+    if (trimmedName.length === 0) {
+      return false;
+    }
+    body.name = trimmedName;
   }
-  if (params.description != null) {
+  if (params.description !== undefined) {
     body.description = params.description.trim();
-  }
-  if (params.isArchived !== undefined) {
-    // Workspace expects boolean PATCH fields as strings in form-encoded bodies.
-    body.is_archived = params.isArchived ? "true" : "false";
   }
   if (Object.keys(body).length === 0) {
     return true;
   }
 
   try {
-    const res = await messengerPipelinePatch(`streams/${streamId}`, body);
+    const res = await messengerApi.putJsonWithBase(
+      getMessengerWorkspaceApiBaseForCurrentInstance(),
+      `/streams/${streamUuid}`,
+      body,
+    );
     if (!res.ok) return false;
-    const data = res.data as StreamPatchResponsePayload;
+    const data = (isRecord(res.data) ? res.data : {}) as StreamUpdateResponsePayload;
     return data.result !== "error";
   } catch {
     return false;
   }
 }
 
-/** Unarchives a channel: PATCH streams/{stream_uuid} with is_archived=false. */
-export async function unarchiveStream(streamId: string): Promise<UnarchiveStreamResult> {
-  guard.streamUuid(streamId, "unarchiveStream.streamId");
+type StreamArchiveAction = "archive" | "unarchive";
+
+async function invokeStreamArchiveAction(
+  streamId: string,
+  action: StreamArchiveAction,
+): Promise<UnarchiveStreamResult> {
+  const streamUuid = guard.streamUuid(streamId, `${action}Stream.streamId`);
   try {
-    const res = await messengerPipelinePatch(`streams/${streamId}`, { is_archived: "false" });
-    const data = (res.data ?? {}) as StreamPatchResponsePayload;
+    const res = await messengerApi.postJsonWithBase(
+      getMessengerWorkspaceApiBaseForCurrentInstance(),
+      `/streams/${streamUuid}/actions/${action}/invoke`,
+      {},
+    );
+    const data = (isRecord(res.data) ? res.data : {}) as StreamUpdateResponsePayload;
 
     if (!res.ok || data.result === "error") {
       return {
         ok: false,
         status: res.status,
-        kind: mapStreamPatchErrorKind(res.status),
-        message: readStreamPatchErrorMessage(data, res.status, "Failed to unarchive channel"),
+        kind: mapStreamUpdateErrorKind(res.status),
+        message: readStreamUpdateErrorMessage(data, res.status, `Failed to ${action} channel`),
         ...(typeof data.code === "string" ? { code: data.code } : {}),
-      };
-    }
-
-    if (includesUnsupportedIsArchivedParameter(data.ignored_parameters_unsupported)) {
-      return {
-        ok: false,
-        status: res.status,
-        kind: "unsupported",
-        message: "is_archived is not supported on this server",
       };
     }
 
     return { ok: true };
   } catch (err) {
-    log.warn("unarchiveStream request failed", { streamId, error: String(err) });
+    log.warn(`${action}Stream request failed`, { streamId: streamUuid, error: String(err) });
     return {
       ok: false,
       status: 0,
@@ -929,17 +926,15 @@ export async function unarchiveStream(streamId: string): Promise<UnarchiveStream
   }
 }
 
-/** Deletes a stream (DELETE /api/messenger/v1/streams/{stream_uuid}). */
-export async function deleteStream(streamId: string): Promise<boolean> {
-  guard.streamUuid(streamId, "deleteStream.streamId");
-  try {
-    const res = await messengerPipelineDelete(`streams/${streamId}`);
-    if (!res.ok) return false;
-    const data = res.data as { result?: string };
-    return data.result !== "error";
-  } catch {
-    return false;
-  }
+/** Archives a channel through Workspace stream archive action. */
+export async function archiveStream(streamId: string): Promise<boolean> {
+  const result = await invokeStreamArchiveAction(streamId, "archive");
+  return result.ok;
+}
+
+/** Unarchives a channel through Workspace stream unarchive action. */
+export async function unarchiveStream(streamId: string): Promise<UnarchiveStreamResult> {
+  return invokeStreamArchiveAction(streamId, "unarchive");
 }
 
 /** Deletes a stream topic row through Workspace `DELETE /stream_topics/{topic_uuid}`. */

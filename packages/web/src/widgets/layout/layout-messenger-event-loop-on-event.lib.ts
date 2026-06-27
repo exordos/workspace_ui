@@ -89,6 +89,18 @@ export function handleLayoutMessengerEventLoopQueueEvent(
     inbox,
     jitsiCall,
     folderSync,
+    chatInfo: {
+      applyStreamMetadataUpdate: ({ instanceId, streamUuid, name, description }) => {
+        const metadata: { name?: string; description?: string | null } = {};
+        if (name !== undefined) {
+          metadata.name = name;
+        }
+        if (description !== undefined) {
+          metadata.description = description;
+        }
+        useChatInfoStore.getState().applyStreamMetadataUpdate(instanceId, streamUuid, metadata);
+      },
+    },
     notifications: buildLayoutNotificationsActions({
       show: notificationService.show,
       closeByTag: closeLayoutNotificationByTag,

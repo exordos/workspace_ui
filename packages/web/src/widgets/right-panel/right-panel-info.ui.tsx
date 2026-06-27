@@ -15,7 +15,12 @@ import { StreamNotificationLevelSwitch } from "~/features/mute-chat/stream-notif
 import type { StreamNotificationLevel } from "~/features/mute-chat/stream-notification-level.lib";
 import { useRemoveStreamMembersStore } from "~/features/remove-stream-members/remove-stream-members.model";
 import { t } from "~/i18n/i18n";
-import { deleteTopic, updateStream } from "~/shared/api/messenger-streams";
+import {
+  archiveStream,
+  deleteTopic,
+  unarchiveStream,
+  updateStream,
+} from "~/shared/api/messenger-streams";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { createLogger } from "~/shared/lib/logger";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
@@ -87,10 +92,11 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     [currentUserStreamRole, streamId],
   );
   const canEditChannel = streamId != null && channelActionCapabilities.canEditChannelMetadata;
-  const canDeleteChannel = streamId != null && channelActionCapabilities.canArchiveChannel;
+  const canArchiveChannel = streamId != null && channelActionCapabilities.canArchiveChannel;
   const canDeleteTopic = channelActionCapabilities.canEditChannelMetadata;
   const canAddMembers = streamId != null && channelActionCapabilities.canAddSubscribers;
   const canRemoveMembers = streamId != null && channelActionCapabilities.canRemoveSubscribers;
+  const isCurrentStreamArchived = streamEntry?.isArchived === true;
   const notificationLevel = useMuteStore((s) =>
     streamId != null ? s.getStreamNotificationLevel(streamId) : "default",
   );
@@ -366,7 +372,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     }
 
     try {
-      const ok = await updateStream(streamId, { isArchived: true });
+      const ok = await archiveStream(streamId);
       if (!ok) {
         chatList.setStreamArchived(streamId, previousArchivedState);
         setChannelActionError(t("app.error"));
@@ -374,6 +380,28 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     } catch {
       chatList.setStreamArchived(streamId, previousArchivedState);
       setChannelActionError(t("app.error"));
+    } finally {
+      setChannelActionPending(false);
+    }
+  };
+  const handleUnarchiveChannel = async () => {
+    if (streamId == null || channelActionPending) return;
+
+    setChannelActionPending(true);
+    setChannelActionError(null);
+    const chatList = useChatListStore.getState();
+    const previousArchivedState = chatList.streamsMap.get(streamId)?.isArchived;
+    chatList.setStreamArchived(streamId, false);
+
+    try {
+      const result = await unarchiveStream(streamId);
+      if (!result.ok) {
+        chatList.setStreamArchived(streamId, previousArchivedState);
+        setChannelActionError(t("channel.unarchiveFailed", { message: result.message }));
+      }
+    } catch (error) {
+      chatList.setStreamArchived(streamId, previousArchivedState);
+      setChannelActionError(t("channel.unarchiveFailed", { message: String(error) }));
     } finally {
       setChannelActionPending(false);
     }
@@ -473,7 +501,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
                 </button>
               </div>
             )}
-            {(canEditChannel || canDeleteChannel) && (
+            {(canEditChannel || canArchiveChannel) && (
               <div className="mt-2 space-y-1.5">
                 {canEditChannel && (
                   <button
@@ -486,7 +514,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
                     <span>{t("channel.editChannel")}</span>
                   </button>
                 )}
-                {canDeleteChannel && (
+                {canArchiveChannel && !isCurrentStreamArchived && (
                   <button
                     type="button"
                     onClick={handleDeleteChannel}
@@ -495,6 +523,19 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
                   >
                     <Icon name="close" size={20} className="shrink-0 text-current" />
                     <span>{t("channel.deleteChannel")}</span>
+                  </button>
+                )}
+                {canArchiveChannel && isCurrentStreamArchived && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleUnarchiveChannel();
+                    }}
+                    disabled={channelActionPending}
+                    className="hover:bg-indicator-green/10 flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left text-sm text-indicator-green hover:text-indicator-green"
+                  >
+                    <Icon name="folder_open" size={20} className="shrink-0 text-current" />
+                    <span>{t("channel.unarchiveChannel")}</span>
                   </button>
                 )}
                 {channelActionError && (

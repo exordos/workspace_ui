@@ -287,7 +287,6 @@
     "searchArchivedChannels": "Поиск архивированных каналов…",
     "noArchivedChannels": "Архивированные каналы не найдены",
     "unarchiveChannel": "Разархивировать",
-    "unarchiveUnsupported": "На этом сервере разархивирование канала через API не поддерживается.",
     "unarchiveFailed": "Не удалось разархивировать канал. {{message}}",
     "unarchiveInProgress": "Разархивирование",
     "editChannel": "Редактировать канал",

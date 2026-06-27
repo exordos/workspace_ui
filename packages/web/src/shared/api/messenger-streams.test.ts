@@ -3,13 +3,12 @@
  */
 import { describe, expect, it } from "vitest";
 // messenger.test.setup must load before the module under test so its vi.mock hooks register first.
-
 import {
   addMembersToStream,
+  archiveStream,
   createPrivateMessageStream,
   createWorkspaceStream,
   deleteTopic,
-  deleteStream,
   fetchStreamMembers,
   fetchStreamTopicNames,
   fetchStreams,
@@ -24,6 +23,7 @@ import {
   updateStreamTopic,
 } from "./messenger-streams";
 import { getMockMessengerApi } from "./messenger.test.setup";
+
 const mockMessengerApi = getMockMessengerApi();
 
 function mockMyStreamsResponse(rows: unknown[]): void {
@@ -48,6 +48,7 @@ describe("fetchSubscriptions", () => {
           invite_only: false,
           announce: false,
           private: false,
+          is_archived: true,
           unread_count: 5,
         },
         {
@@ -71,6 +72,7 @@ describe("fetchSubscriptions", () => {
         is_muted: false,
         invite_only: false,
         private: false,
+        is_archived: true,
         unread_count: 5,
       },
       {
@@ -79,6 +81,7 @@ describe("fetchSubscriptions", () => {
         is_muted: false,
         invite_only: false,
         private: true,
+        is_archived: false,
         unread_count: 2,
       },
     ]);
@@ -97,6 +100,7 @@ describe("fetchSubscriptions", () => {
           invite_only: false,
           announce: false,
           private: false,
+          is_archived: false,
         },
       ],
       raw: { statusText: "OK" },
@@ -109,6 +113,7 @@ describe("fetchSubscriptions", () => {
         is_muted: false,
         invite_only: false,
         private: false,
+        is_archived: false,
         unread_count: 0,
       },
     ]);
@@ -375,6 +380,7 @@ describe("findPrivateStreamForUserUuid", () => {
           invite_only: false,
           announce: false,
           private: true,
+          is_archived: false,
           unread_count: 0,
         },
       ],
@@ -715,47 +721,38 @@ describe("fetchStreams", () => {
 });
 
 // ---------------------------------------------------------------------------
-// updateStream — uses Messenger REST client
+// updateStream — uses Workspace stream resource updates
 // ---------------------------------------------------------------------------
 describe("updateStream", () => {
-  it("patches stream name and description", async () => {
-    mockMessengerApi.patch.mockResolvedValue({
+  it("puts stream name and description through the Workspace API", async () => {
+    mockMessengerApi.putJsonWithBase.mockResolvedValue({
       ok: true,
       status: 200,
-      data: { result: "success" },
+      data: { uuid: STREAM_UUID, name: "platform", description: "Platform discussions" },
       raw: { statusText: "OK" },
     });
 
     await expect(
       updateStream(STREAM_UUID, { name: "platform", description: "Platform discussions" }),
     ).resolves.toBe(true);
-    expect(mockMessengerApi.patch).toHaveBeenCalledWith(`/streams/${STREAM_UUID}`, {
-      new_name: "platform",
-      description: "Platform discussions",
-    });
-  });
-
-  it("serializes is_archived=false when updating archive flag", async () => {
-    mockMessengerApi.patch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: { result: "success" },
-      raw: { statusText: "OK" },
-    });
-
-    await expect(updateStream(STREAM_UUID, { isArchived: false })).resolves.toBe(true);
-    expect(mockMessengerApi.patch).toHaveBeenCalledWith(`/streams/${STREAM_UUID}`, {
-      is_archived: "false",
-    });
-  });
-
-  it("short-circuits when PATCH body would be empty", async () => {
-    await expect(updateStream(STREAM_UUID, {})).resolves.toBe(true);
+    expect(mockMessengerApi.putJsonWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      `/streams/${STREAM_UUID}`,
+      {
+        name: "platform",
+        description: "Platform discussions",
+      },
+    );
     expect(mockMessengerApi.patch).not.toHaveBeenCalled();
   });
 
+  it("short-circuits when PUT body would be empty", async () => {
+    await expect(updateStream(STREAM_UUID, {})).resolves.toBe(true);
+    expect(mockMessengerApi.putJsonWithBase).not.toHaveBeenCalled();
+  });
+
   it("returns false when stream update API is not ok", async () => {
-    mockMessengerApi.patch.mockResolvedValue({
+    mockMessengerApi.putJsonWithBase.mockResolvedValue({
       ok: false,
       status: 403,
       data: { msg: "Forbidden" },
@@ -766,42 +763,47 @@ describe("updateStream", () => {
   });
 });
 
-describe("unarchiveStream", () => {
-  it("PATCHes is_archived=false and succeeds on healthy response", async () => {
-    mockMessengerApi.patch.mockResolvedValue({
+describe("archiveStream", () => {
+  it("invokes the Workspace archive action", async () => {
+    mockMessengerApi.postJsonWithBase.mockResolvedValue({
       ok: true,
       status: 200,
-      data: { result: "success" },
+      data: { uuid: STREAM_UUID, is_archived: true },
+      raw: { statusText: "OK" },
+    });
+
+    await expect(archiveStream(STREAM_UUID)).resolves.toBe(true);
+    expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      `/streams/${STREAM_UUID}/actions/archive/invoke`,
+      {},
+    );
+    expect(mockMessengerApi.putJsonWithBase).not.toHaveBeenCalled();
+    expect(mockMessengerApi.patch).not.toHaveBeenCalled();
+  });
+});
+
+describe("unarchiveStream", () => {
+  it("invokes the Workspace unarchive action", async () => {
+    mockMessengerApi.postJsonWithBase.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { uuid: STREAM_UUID, is_archived: false },
       raw: { statusText: "OK" },
     });
 
     await expect(unarchiveStream(STREAM_UUID)).resolves.toEqual({ ok: true });
-    expect(mockMessengerApi.patch).toHaveBeenCalledWith(`/streams/${STREAM_UUID}`, {
-      is_archived: "false",
-    });
-  });
-
-  it("returns unsupported when server ignores is_archived parameter", async () => {
-    mockMessengerApi.patch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: {
-        result: "success",
-        ignored_parameters_unsupported: ["is_archived"],
-      },
-      raw: { statusText: "OK" },
-    });
-
-    await expect(unarchiveStream(STREAM_UUID)).resolves.toEqual(
-      expect.objectContaining({
-        ok: false,
-        kind: "unsupported",
-      }),
+    expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      `/streams/${STREAM_UUID}/actions/unarchive/invoke`,
+      {},
     );
+    expect(mockMessengerApi.putJsonWithBase).not.toHaveBeenCalled();
+    expect(mockMessengerApi.patch).not.toHaveBeenCalled();
   });
 
   it("maps HTTP failures to transient/forbidden kinds", async () => {
-    mockMessengerApi.patch.mockResolvedValue({
+    mockMessengerApi.postJsonWithBase.mockResolvedValue({
       ok: false,
       status: 403,
       data: { result: "error", msg: "Not allowed", code: "FORBIDDEN" },
@@ -815,31 +817,6 @@ describe("unarchiveStream", () => {
       message: "Not allowed",
       code: "FORBIDDEN",
     });
-  });
-});
-
-describe("deleteStream", () => {
-  it("deletes stream by UUID", async () => {
-    mockMessengerApi.delete.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: { result: "success" },
-      raw: { statusText: "OK" },
-    });
-
-    await expect(deleteStream(STREAM_UUID)).resolves.toBe(true);
-    expect(mockMessengerApi.delete).toHaveBeenCalledWith(`/streams/${STREAM_UUID}`, undefined);
-  });
-
-  it("returns false on delete failure", async () => {
-    mockMessengerApi.delete.mockResolvedValue({
-      ok: false,
-      status: 400,
-      data: { msg: "Bad request" },
-      raw: { statusText: "Bad Request" },
-    });
-
-    await expect(deleteStream(STREAM_UUID)).resolves.toBe(false);
   });
 });
 

@@ -100,24 +100,52 @@ export function parseSubscriptionStreamUuids(value: unknown): string[] {
   return ids;
 }
 
-export function parseWorkspaceStreamCreatedRow(value: unknown): {
+export interface WorkspaceStreamEventRow {
   streamUuid: string;
-  name: string;
+  name?: string;
+  description?: string | null;
   unreadCount?: number;
   private?: boolean;
   inviteOnly?: boolean;
-} | null {
+  isArchived?: boolean;
+}
+
+export function parseWorkspaceStreamEventRow(value: unknown): WorkspaceStreamEventRow | null {
   if (value == null || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   const streamUuid = parseStreamUuid(record.uuid);
+  if (streamUuid == null) return null;
   const name = typeof record.name === "string" ? record.name.trim() : "";
-  if (streamUuid == null || name.length === 0) return null;
+  const description =
+    typeof record.description === "string"
+      ? record.description
+      : record.description === null
+        ? null
+        : undefined;
   return {
     streamUuid,
-    name,
+    ...(name.length > 0 ? { name } : {}),
+    ...(description !== undefined ? { description } : {}),
     ...(isNonNegativeInteger(record.unread_count) ? { unreadCount: record.unread_count } : {}),
     ...(typeof record.private === "boolean" ? { private: record.private } : {}),
     ...(typeof record.invite_only === "boolean" ? { inviteOnly: record.invite_only } : {}),
+    ...(typeof record.is_archived === "boolean" ? { isArchived: record.is_archived } : {}),
+  };
+}
+
+function buildChatListStreamMetadataRow(
+  row: WorkspaceStreamEventRow,
+  existing: ReturnType<LayoutMessengerEventDispatchContext["chatList"]["streamsMap"]["get"]>,
+) {
+  const name = row.name ?? existing?.name;
+  if (name == null || name.trim().length === 0) return null;
+  return {
+    streamUuid: row.streamUuid,
+    name,
+    ...(row.unreadCount != null ? { unreadCount: row.unreadCount } : {}),
+    ...(row.private != null ? { private: row.private } : {}),
+    ...(row.inviteOnly != null ? { inviteOnly: row.inviteOnly } : {}),
+    ...(row.isArchived != null ? { isArchived: row.isArchived } : {}),
   };
 }
 export function handleSubscriptionAdd(
@@ -343,10 +371,24 @@ export function handleStream(
   event: MessengerEvent,
   ctx: LayoutMessengerEventDispatchContext,
 ): void {
-  if (event.type !== "stream" || event.kind !== "stream.created") return;
-  const row = parseWorkspaceStreamCreatedRow(event.stream);
+  if (event.type !== "stream") return;
+  if (event.kind !== "stream.created" && event.kind !== "stream.updated") return;
+  const row = parseWorkspaceStreamEventRow(event.stream);
   if (row == null) return;
-  ctx.chatList.upsertStreamMetadataRows([row]);
+  const chatListRow = buildChatListStreamMetadataRow(
+    row,
+    ctx.chatList.streamsMap.get(row.streamUuid),
+  );
+  if (chatListRow != null) {
+    ctx.chatList.upsertStreamMetadataRows([chatListRow]);
+  }
+  if (event.kind !== "stream.updated") return;
+  ctx.chatInfo?.applyStreamMetadataUpdate({
+    instanceId: ctx.currentInstanceId,
+    streamUuid: row.streamUuid,
+    ...(row.name != null ? { name: row.name } : {}),
+    ...("description" in row ? { description: row.description ?? null } : {}),
+  });
 }
 
 export function handleStreamBinding(

@@ -734,6 +734,7 @@ describe("dispatchMessengerEvent", () => {
             unread_count: 3,
             invite_only: true,
             private: false,
+            is_archived: false,
           },
         },
         ctx,
@@ -746,8 +747,78 @@ describe("dispatchMessengerEvent", () => {
           unreadCount: 3,
           inviteOnly: true,
           private: false,
+          isArchived: false,
         },
       ]);
+    });
+
+    it("applies description-only backend stream.updated to chat info", () => {
+      const { ctx } = buildCtx();
+      const upsertSpy = vi.spyOn(ctx.chatList, "upsertStreamMetadataRows");
+      const applyStreamMetadataUpdate = vi.fn();
+      ctx.chatInfo = { applyStreamMetadataUpdate };
+
+      dispatchMessengerEvent(
+        {
+          id: 20,
+          type: "stream",
+          kind: "stream.updated",
+          stream: {
+            uuid: "00000000-0000-4000-8000-000000000042",
+            description: "Only description changed",
+          },
+        },
+        ctx,
+      );
+
+      expect(upsertSpy).not.toHaveBeenCalled();
+      expect(applyStreamMetadataUpdate).toHaveBeenCalledWith({
+        instanceId: "inst-1",
+        streamUuid: "00000000-0000-4000-8000-000000000042",
+        description: "Only description changed",
+      });
+    });
+
+    it("upserts stream metadata on backend stream.updated", () => {
+      const { ctx } = buildCtx();
+      const upsertSpy = vi.spyOn(ctx.chatList, "upsertStreamMetadataRows");
+      const applyStreamMetadataUpdate = vi.fn();
+      ctx.chatInfo = { applyStreamMetadataUpdate };
+
+      dispatchMessengerEvent(
+        {
+          id: 19,
+          type: "stream",
+          kind: "stream.updated",
+          stream: {
+            uuid: "00000000-0000-4000-8000-000000000042",
+            name: "platform",
+            description: "Platform discussions",
+            unread_count: 3,
+            invite_only: true,
+            private: false,
+            is_archived: true,
+          },
+        },
+        ctx,
+      );
+
+      expect(upsertSpy).toHaveBeenCalledWith([
+        {
+          streamUuid: "00000000-0000-4000-8000-000000000042",
+          name: "platform",
+          unreadCount: 3,
+          inviteOnly: true,
+          private: false,
+          isArchived: true,
+        },
+      ]);
+      expect(applyStreamMetadataUpdate).toHaveBeenCalledWith({
+        instanceId: "inst-1",
+        streamUuid: "00000000-0000-4000-8000-000000000042",
+        name: "platform",
+        description: "Platform discussions",
+      });
     });
   });
 

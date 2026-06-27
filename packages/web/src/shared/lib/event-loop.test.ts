@@ -105,14 +105,18 @@ function workspaceEvent(epochVersion: number, authorUuid = OTHER_UUID): unknown 
   };
 }
 
-function streamCreatedWorkspaceEvent(epochVersion: number): unknown {
+function streamWorkspaceEvent(
+  epochVersion: number,
+  kind = "stream.created",
+  isArchived = false,
+): unknown {
   return {
     epoch_version: epochVersion,
     uuid: `00000000-0000-4000-8000-${String(epochVersion).padStart(12, "0")}`,
     project_id: "00000000-0000-4000-8000-000000000901",
     user_uuid: USER_UUID,
     payload: {
-      kind: "stream.created",
+      kind,
       uuid: STREAM_UUID,
       project_id: "00000000-0000-4000-8000-000000000901",
       user_uuid: USER_UUID,
@@ -126,6 +130,7 @@ function streamCreatedWorkspaceEvent(epochVersion: number): unknown {
       invite_only: false,
       announce: false,
       private: false,
+      is_archived: isArchived,
       created_at: "2026-06-24T10:00:00.000000Z",
       updated_at: "2026-06-24T10:00:00.000000Z",
     },
@@ -230,7 +235,7 @@ describe("Workspace realtime event normalization", () => {
   });
 
   it("maps REST stream.created events to backend stream events", () => {
-    const normalized = normalizeWorkspaceEventModel(streamCreatedWorkspaceEvent(16));
+    const normalized = normalizeWorkspaceEventModel(streamWorkspaceEvent(16));
 
     expect(normalized?.epochVersion).toBe(16);
     expect(normalized?.event).toMatchObject({
@@ -244,6 +249,50 @@ describe("Workspace realtime event normalization", () => {
         unread_count: 0,
         invite_only: false,
         private: false,
+      },
+    });
+  });
+
+  it("maps REST stream.updated events to backend stream events", () => {
+    const normalized = normalizeWorkspaceEventModel(
+      streamWorkspaceEvent(19, "stream.updated", true),
+    );
+
+    expect(normalized?.epochVersion).toBe(19);
+    expect(normalized?.event).toMatchObject({
+      id: 19,
+      type: "stream",
+      kind: "stream.updated",
+      epoch_version: 19,
+      stream: {
+        uuid: STREAM_UUID,
+        name: "Engineering",
+        is_archived: true,
+      },
+    });
+  });
+
+  it("maps REST stream.updated metadata-only events", () => {
+    const normalized = normalizeWorkspaceEventModel({
+      epoch_version: 20,
+      uuid: "00000000-0000-4000-8000-000000000020",
+      project_id: "00000000-0000-4000-8000-000000000901",
+      user_uuid: USER_UUID,
+      payload: {
+        kind: "stream.updated",
+        uuid: STREAM_UUID,
+        description: "Only description changed",
+      },
+    });
+
+    expect(normalized?.epochVersion).toBe(20);
+    expect(normalized?.event).toMatchObject({
+      id: 20,
+      type: "stream",
+      kind: "stream.updated",
+      stream: {
+        uuid: STREAM_UUID,
+        description: "Only description changed",
       },
     });
   });
@@ -370,6 +419,54 @@ describe("Workspace realtime event normalization", () => {
       type: "stream",
       kind: "stream.created",
       stream: { uuid: STREAM_UUID, name: "Engineering" },
+    });
+  });
+
+  it("maps backend WS stream.updated frames", () => {
+    const normalized = normalizeWorkspaceRealtimeEvent(
+      {
+        epoch_version: 22,
+        type: "stream",
+        kind: "stream.updated",
+        stream: {
+          uuid: STREAM_UUID,
+          name: "Engineering",
+          unread_count: 0,
+          invite_only: false,
+          private: false,
+          is_archived: true,
+        },
+      },
+      USER_UUID,
+    );
+
+    expect(normalized?.event).toMatchObject({
+      id: 22,
+      type: "stream",
+      kind: "stream.updated",
+      stream: { uuid: STREAM_UUID, name: "Engineering", is_archived: true },
+    });
+  });
+
+  it("maps backend WS stream.updated metadata-only frames", () => {
+    const normalized = normalizeWorkspaceRealtimeEvent(
+      {
+        epoch_version: 23,
+        type: "stream",
+        kind: "stream.updated",
+        stream: {
+          uuid: STREAM_UUID,
+          description: "Only description changed",
+        },
+      },
+      USER_UUID,
+    );
+
+    expect(normalized?.event).toMatchObject({
+      id: 23,
+      type: "stream",
+      kind: "stream.updated",
+      stream: { uuid: STREAM_UUID, description: "Only description changed" },
     });
   });
 

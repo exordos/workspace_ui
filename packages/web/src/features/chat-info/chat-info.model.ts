@@ -29,6 +29,11 @@ import type { ChatInfoContext, ChatInfoData } from "./chat-info.types";
 // State
 // ---------------------------------------------------------------------------
 
+interface StreamMetadataUpdate {
+  name?: string;
+  description?: string | null;
+}
+
 interface ChatInfoState {
   data: ChatInfoData | null;
   loading: boolean;
@@ -47,6 +52,11 @@ interface ChatInfoState {
   setContext: (context: ChatInfoContext) => void;
   hydrate: (context: ChatInfoContext) => Promise<void>;
   syncDerived: (context: ChatInfoContext) => void;
+  applyStreamMetadataUpdate: (
+    instanceId: string | null,
+    streamUuid: string,
+    metadata: StreamMetadataUpdate,
+  ) => void;
   invalidateStream: (instanceId: string, streamUuid: string) => void;
   clear: () => void;
 }
@@ -72,6 +82,20 @@ function isCurrentHydration(
     state.requestVersion === version &&
     getChatInfoNetworkKey(state.context) === getChatInfoNetworkKey(context)
   );
+}
+
+function normalizeStreamUuid(streamUuid: string): string {
+  return streamUuid.trim().toLowerCase();
+}
+
+function normalizeStreamName(name: string | undefined, fallback: string): string {
+  const trimmed = name?.trim();
+  return trimmed != null && trimmed.length > 0 ? trimmed : fallback;
+}
+
+function normalizeStreamDescription(description: string | null): string | null {
+  const trimmed = description?.trim();
+  return trimmed != null && trimmed.length > 0 ? trimmed : null;
 }
 
 export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
@@ -271,6 +295,53 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
       return;
     }
     set({ data: nextData, loading: false, error: null });
+  },
+
+  applyStreamMetadataUpdate(instanceId, streamUuid, metadata) {
+    const normalizedStreamUuid = normalizeStreamUuid(streamUuid);
+    if (instanceId != null) {
+      invalidateStreamCache(instanceId, normalizedStreamUuid);
+    }
+
+    const state = get();
+    if (
+      state.context.kind !== "stream" ||
+      normalizeStreamUuid(state.context.streamUuid) !== normalizedStreamUuid ||
+      (instanceId != null && state.context.instanceId !== instanceId)
+    ) {
+      return;
+    }
+
+    const nextName = normalizeStreamName(metadata.name, state.context.streamName);
+    const nextContext =
+      nextName === state.context.streamName
+        ? state.context
+        : { ...state.context, streamName: nextName };
+    if (state.data?.type !== "stream") {
+      if (nextContext !== state.context) {
+        set({ context: nextContext });
+      }
+      return;
+    }
+
+    const nextDescription =
+      metadata.description === undefined
+        ? state.data.description
+        : normalizeStreamDescription(metadata.description);
+    const nextData: ChatInfoData = {
+      ...state.data,
+      name: nextName,
+      description: nextDescription,
+    };
+    if (isSameChatInfoData(state.data, nextData) && nextContext === state.context) {
+      return;
+    }
+
+    logStoreAction("chatInfo", "applyStreamMetadataUpdate", {
+      instanceId: instanceId ?? undefined,
+      streamUuid: normalizedStreamUuid,
+    });
+    set({ data: nextData, context: nextContext, loading: false, error: null });
   },
 
   invalidateStream(instanceId, streamUuid) {

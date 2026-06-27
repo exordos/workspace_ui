@@ -126,6 +126,39 @@ describe("chat-info model orchestration", () => {
     expect(loadStreamMetadata).toHaveBeenCalledTimes(1);
   });
 
+  it("applies active stream metadata updates without re-hydration", async () => {
+    useUsersStore.getState().mergeUser({ user_id: 1, full_name: "Alice" });
+    vi.mocked(loadStreamMembersSnapshot).mockResolvedValue({
+      memberIds: [1],
+      rolesByUserId: { "1": "owner" },
+    });
+    vi.mocked(loadStreamMetadata).mockResolvedValue({
+      name: "engineering",
+      description: "Initial description",
+    });
+
+    const context = streamContext(42, "engineering");
+    await useChatInfoStore.getState().hydrate(context);
+    vi.clearAllMocks();
+
+    useChatInfoStore.getState().applyStreamMetadataUpdate("inst-a", streamUuid(42), {
+      name: "platform",
+      description: "  Platform discussions  ",
+    });
+
+    const state = useChatInfoStore.getState();
+    expect(invalidateStreamCache).toHaveBeenCalledWith("inst-a", streamUuid(42));
+    expect(loadStreamMembersSnapshot).not.toHaveBeenCalled();
+    expect(loadStreamMetadata).not.toHaveBeenCalled();
+    expect(state.context).toEqual({
+      ...context,
+      streamName: "platform",
+    });
+    expect(state.data?.type).toBe("stream");
+    expect(state.data?.name).toBe("platform");
+    expect(state.data?.description).toBe("Platform discussions");
+  });
+
   it("invalidates active stream cache and forces re-hydration", async () => {
     useUsersStore.getState().mergeUser({ user_id: 1, full_name: "Alice" });
     vi.mocked(loadStreamMembersSnapshot).mockResolvedValue({

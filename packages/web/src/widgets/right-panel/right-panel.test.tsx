@@ -2409,9 +2409,64 @@ describe("RightPanel truthfulness", () => {
     expect(screen.getByRole("button", { name: /archive channel/i })).toBeInTheDocument();
   });
 
+  it("shows unarchive action for archived channels in the right panel", async () => {
+    const unarchiveStreamSpy = vi.spyOn(messengerStreams, "unarchiveStream").mockResolvedValue({
+      ok: true,
+    });
+
+    act(() => {
+      useChatListStore.getState().setCurrentUserId(42);
+      setCurrentStreamRole(42, "owner");
+      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin" });
+      useChatListStore.getState().upsertStreamMetadataRows([
+        {
+          streamUuid: "00000000-0000-4000-8000-000000000010",
+          name: "engineering",
+          isArchived: true,
+        },
+      ]);
+      useCurrentChatMessagesStore.setState({
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "general",
+        },
+        messages: [],
+        isLoadingMore: false,
+        hasOlderMessages: true,
+        hasNewerMessages: false,
+      });
+      useChatInfoStore.getState().setData({
+        type: "stream",
+        name: "engineering",
+        memberCount: 3,
+        onlineCount: 1,
+        members: [],
+        description: "Engineering stream",
+        isMuted: false,
+        topics: [],
+      });
+    });
+
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={3} onlineCount={1} />,
+    );
+
+    expect(screen.queryByRole("button", { name: /archive channel/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^unarchive$/i }));
+
+    expect(useChatListStore.getState().streamsMap.get(ENGINEERING_STREAM_UUID)?.isArchived).toBe(
+      false,
+    );
+    await waitFor(() => {
+      expect(unarchiveStreamSpy).toHaveBeenCalledWith(ENGINEERING_STREAM_UUID);
+    });
+  });
+
   it("optimistically archives channel and redirects immediately on archive action", async () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
-    const updateStreamSpy = vi.spyOn(messengerStreams, "updateStream").mockResolvedValue(true);
+    const archiveStreamSpy = vi.spyOn(messengerStreams, "archiveStream").mockResolvedValue(true);
 
     act(() => {
       useChatListStore.getState().setCurrentUserId(42);
@@ -2501,13 +2556,13 @@ describe("RightPanel truthfulness", () => {
     );
 
     await waitFor(() => {
-      expect(updateStreamSpy).toHaveBeenCalledWith(ENGINEERING_STREAM_UUID, { isArchived: true });
+      expect(archiveStreamSpy).toHaveBeenCalledWith(ENGINEERING_STREAM_UUID);
     });
   });
 
   it("rolls back optimistic archive on request failure", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
-    vi.spyOn(messengerStreams, "updateStream").mockResolvedValue(false);
+    vi.spyOn(messengerStreams, "archiveStream").mockResolvedValue(false);
 
     act(() => {
       useChatListStore.getState().setCurrentUserId(42);

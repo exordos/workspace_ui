@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { MessengerEvent, MessengerGroupSettingValue } from "~/shared/api/messenger.types";
-import { applySubscriptionMetadataField } from "./layout-messenger-event-dispatch-subscription.lib";
+import {
+  applySubscriptionMetadataField,
+  parseWorkspaceStreamEventRow,
+} from "./layout-messenger-event-dispatch-subscription.lib";
 
 const CURRENT_USER_UUID = "00000000-0000-4000-8000-000000000042";
 
@@ -68,5 +71,19 @@ describe("applySubscriptionMetadataField", () => {
     applySubscriptionMetadataField(row, "can_add_subscribers_group", createEvent("invalid"));
 
     expect(row).toEqual(createRow());
+  });
+});
+
+describe("parseWorkspaceStreamEventRow", () => {
+  it("keeps description-only stream update payloads", () => {
+    expect(
+      parseWorkspaceStreamEventRow({
+        uuid: "00000000-0000-4000-8000-000000000001",
+        description: "Updated description",
+      }),
+    ).toEqual({
+      streamUuid: "00000000-0000-4000-8000-000000000001",
+      description: "Updated description",
+    });
   });
 });
