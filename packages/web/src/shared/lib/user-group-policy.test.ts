@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { buildAnnouncementOnlyCanSendGroup } from "./user-group-policy";
 
+const CURRENT_USER_UUID = "00000000-0000-4000-8000-000000000010";
+
 function createGroupMap(
   groups: { id: number; name: string; isSystemGroup: boolean }[],
 ): Map<number, { id: number; name: string; isSystemGroup: boolean }> {
@@ -14,11 +16,11 @@ describe("buildAnnouncementOnlyCanSendGroup", () => {
         { id: 12, name: "role:moderators", isSystemGroup: true },
         { id: 11, name: "role:administrators", isSystemGroup: true },
       ]),
-      currentUserId: 10,
+      currentUserId: CURRENT_USER_UUID,
     });
 
     expect(result).toEqual({
-      direct_members: [10],
+      direct_members: [CURRENT_USER_UUID],
       direct_subgroups: [11, 12],
     });
   });
@@ -26,7 +28,7 @@ describe("buildAnnouncementOnlyCanSendGroup", () => {
   it("returns null when target system groups are missing", () => {
     const result = buildAnnouncementOnlyCanSendGroup({
       userGroups: createGroupMap([{ id: 15, name: "role:owners", isSystemGroup: true }]),
-      currentUserId: 10,
+      currentUserId: CURRENT_USER_UUID,
     });
 
     expect(result).toBeNull();
@@ -35,11 +37,11 @@ describe("buildAnnouncementOnlyCanSendGroup", () => {
   it("matches target names case-insensitively and with trimming", () => {
     const result = buildAnnouncementOnlyCanSendGroup({
       userGroups: createGroupMap([{ id: 8, name: "  ROLE:Moderators  ", isSystemGroup: true }]),
-      currentUserId: 10,
+      currentUserId: CURRENT_USER_UUID,
     });
 
     expect(result).toEqual({
-      direct_members: [10],
+      direct_members: [CURRENT_USER_UUID],
       direct_subgroups: [8],
     });
   });
@@ -52,11 +54,11 @@ describe("buildAnnouncementOnlyCanSendGroup", () => {
         { id: -1, name: "role:moderators", isSystemGroup: true },
         { id: 0, name: "role:administrators", isSystemGroup: true },
       ]),
-      currentUserId: 10,
+      currentUserId: CURRENT_USER_UUID,
     });
 
     expect(result).toEqual({
-      direct_members: [10],
+      direct_members: [CURRENT_USER_UUID],
       direct_subgroups: [4, 12],
     });
   });
@@ -67,7 +69,7 @@ describe("buildAnnouncementOnlyCanSendGroup", () => {
         { id: 11, name: "role:administrators", isSystemGroup: false },
         { id: 12, name: "role:moderators", isSystemGroup: false },
       ]),
-      currentUserId: 10,
+      currentUserId: CURRENT_USER_UUID,
     });
 
     expect(result).toBeNull();

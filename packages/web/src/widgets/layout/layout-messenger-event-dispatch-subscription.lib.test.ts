@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { MessengerEvent, MessengerGroupSettingValue } from "~/shared/api/messenger.types";
 import { applySubscriptionMetadataField } from "./layout-messenger-event-dispatch-subscription.lib";
 
+const CURRENT_USER_UUID = "00000000-0000-4000-8000-000000000042";
+
 interface TestMetadataRow {
   streamUuid: string;
   name: string;
@@ -42,7 +44,7 @@ describe("applySubscriptionMetadataField", () => {
 
   it("updates group setting metadata fields", () => {
     const row = createRow();
-    const groupValue = { direct_members: [42], direct_subgroups: [] };
+    const groupValue = { direct_members: [CURRENT_USER_UUID], direct_subgroups: [] };
 
     const properties = [
       ["can_add_subscribers_group", "canAddSubscribersGroup"],

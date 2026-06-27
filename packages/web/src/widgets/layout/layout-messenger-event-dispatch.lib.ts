@@ -17,6 +17,7 @@ import { handleTyping, handleUserSettings } from "./layout-messenger-event-dispa
 import { handleRealm } from "./layout-messenger-event-dispatch-realm.lib";
 import {
   handleStream,
+  handleStreamBinding,
   handleSubscription,
   handleUserTopic,
 } from "./layout-messenger-event-dispatch-subscription.lib";
@@ -72,6 +73,11 @@ export function dispatchMessengerEvent(
 
   if (event.type === "stream") {
     runDispatchHandler("dispatch:stream", () => handleStream(event, ctx));
+    return;
+  }
+
+  if (event.type === "stream_binding") {
+    runDispatchHandler("dispatch:stream_binding", () => handleStreamBinding(event, ctx));
     return;
   }
 

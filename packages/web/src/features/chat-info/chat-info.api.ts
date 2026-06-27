@@ -1,6 +1,7 @@
-import { fetchStreamMembers, fetchStreams } from "~/shared/api/messenger-streams";
-import type { MockStream } from "~/shared/api/messenger.types";
+import { fetchStreamMemberBindings, fetchStreams } from "~/shared/api/messenger-streams";
+import type { MockStream, WorkspaceStreamRole } from "~/shared/api/messenger.types";
 import type { UserId } from "~/shared/lib/user-id.lib";
+import { userIdStorageKey } from "~/shared/lib/user-id.lib";
 
 // chat-info data layer: eager members/metadata load, TTL cache, in-flight dedupe, invalidation.
 interface CacheEntry<T> {
@@ -11,10 +12,15 @@ interface CacheEntry<T> {
 const MEMBERS_TTL_MS = 60_000;
 const STREAMS_TTL_MS = 5 * 60_000;
 
-const streamMembersCache = new Map<string, CacheEntry<UserId[]>>();
+export interface StreamMembersSnapshot {
+  memberIds: UserId[];
+  rolesByUserId: Record<string, WorkspaceStreamRole>;
+}
+
+const streamMembersCache = new Map<string, CacheEntry<StreamMembersSnapshot>>();
 const streamsSnapshotCache = new Map<string, CacheEntry<MockStream[]>>();
 
-const streamMembersInFlight = new Map<string, Promise<UserId[]>>();
+const streamMembersInFlight = new Map<string, Promise<StreamMembersSnapshot>>();
 const streamsSnapshotInFlight = new Map<string, Promise<MockStream[]>>();
 
 function normalizeStreamUuid(streamUuid: string): string {
@@ -34,13 +40,25 @@ export async function loadStreamMembers(
   streamUuid: string,
   options?: { force?: boolean },
 ): Promise<UserId[]> {
+  const snapshot = await loadStreamMembersSnapshot(instanceId, streamUuid, options);
+  return [...snapshot.memberIds];
+}
+
+export async function loadStreamMembersSnapshot(
+  instanceId: string,
+  streamUuid: string,
+  options?: { force?: boolean },
+): Promise<StreamMembersSnapshot> {
   // cache -> in-flight -> network -> cache
   const key = streamMembersCacheKey(instanceId, streamUuid);
   const now = Date.now();
   if (!options?.force) {
     const cached = streamMembersCache.get(key);
     if (isEntryFresh(cached, now)) {
-      return [...cached.value];
+      return {
+        memberIds: [...cached.value.memberIds],
+        rolesByUserId: { ...cached.value.rolesByUserId },
+      };
     }
   }
 
@@ -49,14 +67,25 @@ export async function loadStreamMembers(
     return inFlight;
   }
 
-  const request = fetchStreamMembers(streamUuid)
-    .then((memberIds) => {
-      const next = [...memberIds];
+  const request = fetchStreamMemberBindings(streamUuid)
+    .then((bindings) => {
+      const memberIds = bindings.map((binding) => binding.user_uuid);
+      const rolesByUserId: Record<string, WorkspaceStreamRole> = {};
+      for (const binding of bindings) {
+        rolesByUserId[userIdStorageKey(binding.user_uuid)] = binding.role;
+      }
+      const next: StreamMembersSnapshot = {
+        memberIds,
+        rolesByUserId,
+      };
       streamMembersCache.set(key, {
         value: next,
         expiresAt: Date.now() + MEMBERS_TTL_MS,
       });
-      return next;
+      return {
+        memberIds: [...next.memberIds],
+        rolesByUserId: { ...next.rolesByUserId },
+      };
     })
     .finally(() => {
       streamMembersInFlight.delete(key);

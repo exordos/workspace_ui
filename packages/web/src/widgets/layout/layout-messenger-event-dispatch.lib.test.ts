@@ -19,6 +19,9 @@ const STREAM_UUID_11 = "00000000-0000-4000-8000-000000000011";
 const STREAM_UUID_16 = "00000000-0000-4000-8000-000000000016";
 const STREAM_UUID_20 = "00000000-0000-4000-8000-000000000020";
 const STREAM_UUID_42 = "00000000-0000-4000-8000-000000000042";
+const USER_UUID_1 = "00000000-0000-4000-8000-000000000001";
+const USER_UUID_2 = "00000000-0000-4000-8000-000000000002";
+const USER_UUID_7 = "00000000-0000-4000-8000-000000000007";
 
 function buildCtx(
   overrides: {
@@ -945,6 +948,34 @@ describe("dispatchMessengerEvent", () => {
       expect(onStreamPeerMembersChanged).toHaveBeenCalledWith([STREAM_UUID_42]);
     });
 
+    it("notifies stream ids from stream_bindings.created payload", () => {
+      const { ctx } = buildCtx();
+      const onStreamPeerMembersChanged = vi.fn();
+
+      dispatchMessengerEvent(
+        {
+          id: 7,
+          type: "stream_binding",
+          kind: "stream_bindings.created",
+          stream_uuid: STREAM_UUID_42,
+          stream_bindings: [
+            {
+              uuid: "00000000-0000-4000-8000-000000000099",
+              stream_uuid: STREAM_UUID_42,
+              user_uuid: "00000000-0000-4000-8000-000000000100",
+              role: "member",
+            },
+          ],
+        },
+        {
+          ...ctx,
+          onStreamPeerMembersChanged,
+        },
+      );
+
+      expect(onStreamPeerMembersChanged).toHaveBeenCalledWith([STREAM_UUID_42]);
+    });
+
     it("updates channel add-subscribers metadata on subscription update event", () => {
       const { ctx } = buildCtx();
       const upsertSpy = vi.spyOn(ctx.chatList, "upsertStreamMetadataRows");
@@ -964,7 +995,7 @@ describe("dispatchMessengerEvent", () => {
           op: "update",
           stream_uuid: "00000000-0000-4000-8000-000000000042",
           property: "can_add_subscribers_group",
-          value: { direct_members: [1, 2], direct_subgroups: [] },
+          value: { direct_members: [USER_UUID_1, USER_UUID_2], direct_subgroups: [] },
         },
         ctx,
       );
@@ -973,7 +1004,10 @@ describe("dispatchMessengerEvent", () => {
         {
           streamUuid: "00000000-0000-4000-8000-000000000042",
           name: "engineering",
-          canAddSubscribersGroup: { direct_members: [1, 2], direct_subgroups: [] },
+          canAddSubscribersGroup: {
+            direct_members: [USER_UUID_1, USER_UUID_2],
+            direct_subgroups: [],
+          },
         },
       ]);
     });
@@ -1026,7 +1060,7 @@ describe("dispatchMessengerEvent", () => {
           op: "update",
           stream_uuid: "00000000-0000-4000-8000-000000000042",
           property: "can_remove_subscribers_group",
-          value: { direct_members: [7], direct_subgroups: [] },
+          value: { direct_members: [USER_UUID_7], direct_subgroups: [] },
         },
         ctx,
       );
@@ -1035,7 +1069,7 @@ describe("dispatchMessengerEvent", () => {
         {
           streamUuid: "00000000-0000-4000-8000-000000000042",
           name: "engineering",
-          canRemoveSubscribersGroup: { direct_members: [7], direct_subgroups: [] },
+          canRemoveSubscribersGroup: { direct_members: [USER_UUID_7], direct_subgroups: [] },
         },
       ]);
     });

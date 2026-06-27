@@ -3,14 +3,15 @@ import { useUsersStore } from "~/entities/user/user.model";
 import {
   invalidateInstance,
   invalidateStream as invalidateStreamCache,
-  loadStreamMembers,
+  loadStreamMembersSnapshot,
   loadStreamMetadata,
+  type StreamMembersSnapshot,
 } from "./chat-info.api";
 import { useChatInfoStore } from "./chat-info.model";
 import type { ChatInfoContext } from "./chat-info.types";
 
 vi.mock("./chat-info.api", () => ({
-  loadStreamMembers: vi.fn(),
+  loadStreamMembersSnapshot: vi.fn(),
   loadStreamMetadata: vi.fn(),
   invalidateStream: vi.fn(),
   invalidateInstance: vi.fn(),
@@ -59,14 +60,16 @@ describe("chat-info model orchestration", () => {
       { user_id: 2, full_name: "Bob" },
     ]);
 
-    const slowMembers = deferred<number[]>();
+    const slowMembers = deferred<StreamMembersSnapshot>();
     const slowMetadata = deferred<{ name: string | null; description: string | null }>();
-    vi.mocked(loadStreamMembers).mockImplementation(async (_instanceId, currentStreamUuid) => {
-      if (currentStreamUuid === streamUuid(1)) {
-        return slowMembers.promise;
-      }
-      return [2];
-    });
+    vi.mocked(loadStreamMembersSnapshot).mockImplementation(
+      async (_instanceId, currentStreamUuid) => {
+        if (currentStreamUuid === streamUuid(1)) {
+          return slowMembers.promise;
+        }
+        return { memberIds: [2], rolesByUserId: { "2": "owner" } };
+      },
+    );
     vi.mocked(loadStreamMetadata).mockImplementation(async (_instanceId, currentStreamUuid) => {
       if (currentStreamUuid === streamUuid(1)) {
         return slowMetadata.promise;
@@ -81,7 +84,7 @@ describe("chat-info model orchestration", () => {
     await Promise.resolve();
     await useChatInfoStore.getState().hydrate(secondContext);
 
-    slowMembers.resolve([1]);
+    slowMembers.resolve({ memberIds: [1], rolesByUserId: { "1": "owner" } });
     slowMetadata.resolve({ name: "first", description: "First stream" });
     await firstHydrate;
 
@@ -97,7 +100,10 @@ describe("chat-info model orchestration", () => {
       { user_id: 1, full_name: "Alice", presence: { status: "active", timestamp: 1 } },
       { user_id: 2, full_name: "Bob", presence: { status: "idle", timestamp: 2 } },
     ]);
-    vi.mocked(loadStreamMembers).mockResolvedValue([1, 2]);
+    vi.mocked(loadStreamMembersSnapshot).mockResolvedValue({
+      memberIds: [1, 2],
+      rolesByUserId: { "1": "owner", "2": "member" },
+    });
     vi.mocked(loadStreamMetadata).mockResolvedValue({
       name: "engineering",
       description: "Initial description",
@@ -116,13 +122,16 @@ describe("chat-info model orchestration", () => {
     expect(state.data?.type).toBe("stream");
     expect(state.data?.isMuted).toBe(true);
     expect(state.data?.topics).toEqual([{ name: "release", unreadCount: 3 }]);
-    expect(loadStreamMembers).toHaveBeenCalledTimes(1);
+    expect(loadStreamMembersSnapshot).toHaveBeenCalledTimes(1);
     expect(loadStreamMetadata).toHaveBeenCalledTimes(1);
   });
 
   it("invalidates active stream cache and forces re-hydration", async () => {
     useUsersStore.getState().mergeUser({ user_id: 1, full_name: "Alice" });
-    vi.mocked(loadStreamMembers).mockResolvedValue([1]);
+    vi.mocked(loadStreamMembersSnapshot).mockResolvedValue({
+      memberIds: [1],
+      rolesByUserId: { "1": "owner" },
+    });
     vi.mocked(loadStreamMetadata).mockResolvedValue({
       name: "engineering",
       description: "Engineering",
@@ -135,7 +144,7 @@ describe("chat-info model orchestration", () => {
     await Promise.resolve();
 
     expect(invalidateStreamCache).toHaveBeenCalledWith("inst-a", streamUuid(42));
-    expect(loadStreamMembers).toHaveBeenCalledTimes(2);
+    expect(loadStreamMembersSnapshot).toHaveBeenCalledTimes(2);
     expect(loadStreamMetadata).toHaveBeenCalledTimes(2);
   });
 

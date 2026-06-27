@@ -153,7 +153,7 @@ describe("useCreateChatDialog", () => {
   it("passes canSendMessageGroup when announcement-only channel is enabled", async () => {
     seedUsers();
     seedSystemGroups();
-    useChatListStore.setState({ currentUserId: 10 });
+    useChatListStore.setState({ currentUserId: CURRENT_USER_UUID });
     vi.mocked(createChannel).mockResolvedValue(null);
 
     const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
@@ -174,7 +174,7 @@ describe("useCreateChatDialog", () => {
     expect(createChannel).toHaveBeenCalledWith(
       expect.objectContaining({
         canSendMessageGroup: {
-          direct_members: [10],
+          direct_members: [CURRENT_USER_UUID],
           direct_subgroups: [11, 12],
         },
       }),

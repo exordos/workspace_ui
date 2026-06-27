@@ -17,8 +17,8 @@ import {
 } from "./client";
 import { messengerPipelineDelete, messengerPipelinePatch } from "./messenger-pipeline.internal";
 import {
+  buildAddStreamUsersBody,
   buildCreatePrivateMessageStreamBody,
-  buildCreateStreamBindingBody,
   MESSENGER_STREAM_BINDING_ROLE_MEMBER,
   MESSENGER_STREAM_SOURCE_NAME_NATIVE,
   parseCreatedWorkspaceStream,
@@ -28,6 +28,8 @@ import type {
   MessengerMeStream,
   MessengerStreamTopic,
   MessengerSubscription,
+  WorkspaceStreamBinding,
+  WorkspaceStreamRole,
 } from "./messenger.types";
 
 const log = createLogger("messenger-streams");
@@ -134,23 +136,24 @@ async function bindUsersToStream(params: {
   const userUuids = normalizeIamUserUuids(params.userIds);
   const boundUserIds: UserId[] = [];
 
-  for (const userUuid of userUuids) {
-    const response = await messengerApi.postJsonWithBase(
-      params.base,
-      "/stream_bindings/",
-      buildCreateStreamBindingBody({
-        streamUuid,
-        peerUserUuid: userUuid,
-        role: params.role,
-      }),
-    );
-    if (!response.ok) {
-      log.warn("Stream binding failed", { status: response.status, streamUuid });
-      return null;
-    }
-    boundUserIds.push(userUuid);
+  if (userUuids.length === 0) {
+    return boundUserIds;
   }
 
+  const response = await messengerApi.postJsonWithBase(
+    params.base,
+    `/streams/${streamUuid}/actions/add_users/invoke`,
+    buildAddStreamUsersBody({
+      userUuids,
+      role: params.role,
+    }),
+  );
+  if (!response.ok) {
+    log.warn("Stream binding action failed", { status: response.status, streamUuid });
+    return null;
+  }
+
+  boundUserIds.push(...userUuids);
   return boundUserIds;
 }
 
@@ -320,10 +323,13 @@ export interface DirectMessageStreamRef {
   name: string;
 }
 
-interface WorkspaceStreamBindingRef {
-  stream_uuid: string;
-  user_uuid: string;
-}
+const WORKSPACE_STREAM_ROLES: ReadonlySet<WorkspaceStreamRole> = new Set([
+  "guest",
+  "member",
+  "moderator",
+  "administrator",
+  "owner",
+]);
 
 function extractStreamBindingItems(data: unknown): unknown[] {
   if (Array.isArray(data)) {
@@ -338,7 +344,17 @@ function extractStreamBindingItems(data: unknown): unknown[] {
   return [];
 }
 
-function parseStreamBinding(row: unknown): WorkspaceStreamBindingRef | null {
+function readWorkspaceStreamRole(value: unknown): WorkspaceStreamRole | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const role = value.trim().toLowerCase();
+  return WORKSPACE_STREAM_ROLES.has(role as WorkspaceStreamRole)
+    ? (role as WorkspaceStreamRole)
+    : null;
+}
+
+function parseStreamBinding(row: unknown): WorkspaceStreamBinding | null {
   if (!isRecord(row)) {
     return null;
   }
@@ -347,10 +363,14 @@ function parseStreamBinding(row: unknown): WorkspaceStreamBindingRef | null {
   if (streamUuid == null || userUuid == null) {
     return null;
   }
-  return { stream_uuid: streamUuid, user_uuid: userUuid };
+  return {
+    stream_uuid: streamUuid,
+    user_uuid: userUuid,
+    role: readWorkspaceStreamRole(row.role) ?? "member",
+  };
 }
 
-async function fetchStreamBindings(): Promise<WorkspaceStreamBindingRef[]> {
+async function fetchStreamBindings(): Promise<WorkspaceStreamBinding[]> {
   const response = await messengerApi.getWithBase(
     getMessengerWorkspaceApiBaseForCurrentInstance(),
     "/stream_bindings/",
@@ -361,18 +381,23 @@ async function fetchStreamBindings(): Promise<WorkspaceStreamBindingRef[]> {
   }
   return extractStreamBindingItems(response.data)
     .map(parseStreamBinding)
-    .filter((binding): binding is WorkspaceStreamBindingRef => binding != null);
+    .filter((binding): binding is WorkspaceStreamBinding => binding != null);
 }
 
-export async function fetchStreamMembers(streamUuid: string): Promise<UserId[]> {
+export async function fetchStreamMemberBindings(
+  streamUuid: string,
+): Promise<WorkspaceStreamBinding[]> {
   const normalizedStreamUuid = readUuid(streamUuid);
   if (normalizedStreamUuid == null) {
     return [];
   }
   const bindings = await fetchStreamBindings();
-  return bindings
-    .filter((binding) => binding.stream_uuid === normalizedStreamUuid)
-    .map((binding) => binding.user_uuid);
+  return bindings.filter((binding) => binding.stream_uuid === normalizedStreamUuid);
+}
+
+export async function fetchStreamMembers(streamUuid: string): Promise<UserId[]> {
+  const bindings = await fetchStreamMemberBindings(streamUuid);
+  return bindings.map((binding) => binding.user_uuid);
 }
 
 function extractStreamTopicItems(data: unknown): unknown[] {
@@ -571,7 +596,7 @@ export async function toggleStreamTopicDone(topicUuid: string): Promise<UpdateSt
 export function findPrivateStreamForUserUuid(
   streams: readonly MessengerMeStream[],
   peerUserUuid: string,
-  bindings: readonly WorkspaceStreamBindingRef[],
+  bindings: readonly WorkspaceStreamBinding[],
 ): MessengerMeStream | undefined {
   const normalizedPeer = peerUserUuid.trim().toLowerCase();
   const peerStreamUuids = new Set(

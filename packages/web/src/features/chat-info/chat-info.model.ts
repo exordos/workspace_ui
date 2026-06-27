@@ -8,12 +8,13 @@
 
 import { create } from "zustand";
 import { useUsersStore } from "~/entities/user/user.model";
+import type { WorkspaceStreamRole } from "~/shared/api/messenger.types";
 import { logStoreAction } from "~/shared/lib/logger";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import {
   invalidateInstance,
   invalidateStream as invalidateStreamCache,
-  loadStreamMembers,
+  loadStreamMembersSnapshot,
   loadStreamMetadata,
 } from "./chat-info.api";
 import {
@@ -36,6 +37,7 @@ interface ChatInfoState {
   context: ChatInfoContext;
   // Last server-fetched member ids for stream context.
   streamMemberIds: UserId[];
+  streamMemberRolesByUserId: Record<string, WorkspaceStreamRole>;
   // Request version for stale-response protection.
   requestVersion: number;
 
@@ -78,6 +80,7 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
   error: null,
   context: NONE_CONTEXT,
   streamMemberIds: [],
+  streamMemberRolesByUserId: {},
   requestVersion: 0,
 
   setData(data) {
@@ -128,6 +131,7 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
         loading: false,
         error: null,
         streamMemberIds: [],
+        streamMemberRolesByUserId: {},
       });
       return;
     }
@@ -140,7 +144,12 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
       // Context changed mid-hydration — drop result.
       if (!isCurrentHydration(state, nextVersion, context)) return;
       if (isSameChatInfoData(state.data, nextData)) {
-        set({ loading: false, error: null, streamMemberIds: [] });
+        set({
+          loading: false,
+          error: null,
+          streamMemberIds: [],
+          streamMemberRolesByUserId: {},
+        });
         return;
       }
       set({
@@ -148,16 +157,18 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
         loading: false,
         error: null,
         streamMemberIds: [],
+        streamMemberRolesByUserId: {},
       });
       return;
     }
 
     try {
       // Stream: fetch members and metadata in parallel.
-      const [memberIds, metadata] = await Promise.all([
-        loadStreamMembers(context.instanceId, context.streamUuid),
+      const [memberSnapshot, metadata] = await Promise.all([
+        loadStreamMembersSnapshot(context.instanceId, context.streamUuid),
         loadStreamMetadata(context.instanceId, context.streamUuid),
       ]);
+      const memberIds = memberSnapshot.memberIds;
       const state = get();
       // Stale response must not overwrite current context.
       if (!isCurrentHydration(state, nextVersion, context)) return;
@@ -173,7 +184,12 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
         },
       );
       if (isSameChatInfoData(state.data, nextData)) {
-        set({ loading: false, error: null, streamMemberIds: memberIds });
+        set({
+          loading: false,
+          error: null,
+          streamMemberIds: memberIds,
+          streamMemberRolesByUserId: memberSnapshot.rolesByUserId,
+        });
         return;
       }
       set({
@@ -181,6 +197,7 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
         loading: false,
         error: null,
         streamMemberIds: memberIds,
+        streamMemberRolesByUserId: memberSnapshot.rolesByUserId,
       });
     } catch {
       const state = get();
@@ -203,7 +220,13 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
     // Sync reset for empty context — no network.
     if (context.kind === "none") {
       if (state.data == null) return;
-      set({ data: null, loading: false, error: null, streamMemberIds: [] });
+      set({
+        data: null,
+        loading: false,
+        error: null,
+        streamMemberIds: [],
+        streamMemberRolesByUserId: {},
+      });
       return;
     }
 
@@ -212,9 +235,16 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
       const members = resolveUsersById(context.participantIds);
       const nextData = buildDmChatInfoData(context.dmName, members, context.participantIds.length);
       if (isSameChatInfoData(state.data, nextData)) {
+        set({ streamMemberRolesByUserId: {} });
         return;
       }
-      set({ data: nextData, loading: false, error: null, streamMemberIds: [] });
+      set({
+        data: nextData,
+        loading: false,
+        error: null,
+        streamMemberIds: [],
+        streamMemberRolesByUserId: {},
+      });
       return;
     }
 
@@ -266,6 +296,7 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
       error: null,
       context: NONE_CONTEXT,
       streamMemberIds: [],
+      streamMemberRolesByUserId: {},
       requestVersion: state.requestVersion + 1,
     }));
   },

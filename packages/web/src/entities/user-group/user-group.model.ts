@@ -7,11 +7,12 @@ import type {
   MessengerRealmUserGroup,
 } from "~/shared/api/messenger.types";
 import { logStoreAction } from "~/shared/lib/logger";
+import { isIamUserUuid, userIdStorageKey, type UserId } from "~/shared/lib/user-id.lib";
 
 export interface UserGroupRecord {
   id: number;
   name: string;
-  members: number[];
+  members: string[];
   directSubgroupIds: number[];
   isSystemGroup: boolean;
 }
@@ -20,16 +21,22 @@ interface UserGroupsState {
   groups: Map<number, UserGroupRecord>;
   setGroups: (groups: MessengerRealmUserGroup[]) => void;
   clear: () => void;
-  isUserInGroup: (groupId: number, userId: number) => boolean;
+  isUserInGroup: (groupId: number, userId: UserId) => boolean;
   isUserInGroupSetting: (
     setting: MessengerGroupSettingValue | undefined,
-    userId: number,
+    userId: UserId,
   ) => boolean;
 }
 
 function normalizeIds(ids: readonly number[]): number[] {
   return Array.from(new Set(ids.filter((id) => Number.isInteger(id) && id > 0))).sort(
     (left, right) => left - right,
+  );
+}
+
+function normalizeMemberIds(ids: readonly UserId[]): string[] {
+  return Array.from(new Set(ids.filter(isIamUserUuid).map((id) => id.trim().toLowerCase()))).sort(
+    (left, right) => left.localeCompare(right),
   );
 }
 
@@ -40,7 +47,7 @@ function emptyGroupsMap(): Map<number, UserGroupRecord> {
 function isUserInGroupRecursive(
   groups: Map<number, UserGroupRecord>,
   groupId: number,
-  userId: number,
+  userId: UserId,
   visited: Set<number>,
 ): boolean {
   if (visited.has(groupId)) {
@@ -51,7 +58,7 @@ function isUserInGroupRecursive(
   if (group == null) {
     return false;
   }
-  if (group.members.includes(userId)) {
+  if (group.members.includes(userIdStorageKey(userId))) {
     return true;
   }
   for (const subgroupId of group.directSubgroupIds) {
@@ -74,7 +81,7 @@ export const useUserGroupsStore = create<UserGroupsState>((set, get) => ({
       nextGroups.set(group.id, {
         id: group.id,
         name: group.name,
-        members: normalizeIds(group.members),
+        members: normalizeMemberIds(group.members),
         directSubgroupIds: normalizeIds(group.direct_subgroup_ids),
         isSystemGroup: group.is_system_group === true,
       });
@@ -96,20 +103,20 @@ export const useUserGroupsStore = create<UserGroupsState>((set, get) => ({
     if (!Number.isInteger(groupId) || groupId <= 0) {
       return false;
     }
-    if (!Number.isInteger(userId) || userId <= 0) {
+    if (!isIamUserUuid(userId)) {
       return false;
     }
     return isUserInGroupRecursive(get().groups, groupId, userId, new Set<number>());
   },
 
   isUserInGroupSetting(setting, userId) {
-    if (!Number.isInteger(userId) || userId <= 0 || setting == null) {
+    if (!isIamUserUuid(userId) || setting == null) {
       return false;
     }
     if (typeof setting === "number") {
       return get().isUserInGroup(setting, userId);
     }
-    if (setting.direct_members.includes(userId)) {
+    if (setting.direct_members.map(userIdStorageKey).includes(userIdStorageKey(userId))) {
       return true;
     }
     for (const subgroupId of setting.direct_subgroups) {

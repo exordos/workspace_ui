@@ -52,6 +52,7 @@ const STREAM_UUID = "00000000-0000-4000-8000-000000000201";
 const TOPIC_UUID = "00000000-0000-4000-8000-000000000301";
 const FOLDER_UUID = "00000000-0000-0000-0000-000000000002";
 const FOLDER_ITEM_UUID = "00000000-0000-4000-8000-000000000401";
+const STREAM_BINDING_UUID = "00000000-0000-4000-8000-000000000501";
 
 class FakeWebSocket {
   static readonly instances: FakeWebSocket[] = [];
@@ -165,6 +166,32 @@ function folderUpdatedWorkspaceEvent(epochVersion: number): unknown {
   };
 }
 
+function streamBindingsCreatedWorkspaceEvent(epochVersion: number): unknown {
+  return {
+    epoch_version: epochVersion,
+    uuid: `00000000-0000-4000-8000-${String(epochVersion).padStart(12, "0")}`,
+    project_id: "00000000-0000-4000-8000-000000000901",
+    user_uuid: USER_UUID,
+    payload: {
+      kind: "stream_bindings.created",
+      project_id: "00000000-0000-4000-8000-000000000901",
+      stream_uuid: STREAM_UUID,
+      stream_bindings: [
+        {
+          uuid: STREAM_BINDING_UUID,
+          project_id: "00000000-0000-4000-8000-000000000901",
+          stream_uuid: STREAM_UUID,
+          user_uuid: OTHER_UUID,
+          who_uuid: USER_UUID,
+          role: "member",
+          created_at: "2026-06-24T10:00:00.000000Z",
+          updated_at: "2026-06-24T10:00:00.000000Z",
+        },
+      ],
+    },
+  };
+}
+
 function apiResponse(data: unknown): unknown {
   return {
     ok: true,
@@ -218,6 +245,28 @@ describe("Workspace realtime event normalization", () => {
         invite_only: false,
         private: false,
       },
+    });
+  });
+
+  it("maps REST stream_bindings.created events to backend stream binding events", () => {
+    const normalized = normalizeWorkspaceEventModel(streamBindingsCreatedWorkspaceEvent(17));
+
+    expect(normalized?.epochVersion).toBe(17);
+    expect(normalized?.event).toMatchObject({
+      id: 17,
+      type: "stream_binding",
+      kind: "stream_bindings.created",
+      epoch_version: 17,
+      stream_uuid: STREAM_UUID,
+      stream_bindings: [
+        {
+          uuid: STREAM_BINDING_UUID,
+          stream_uuid: STREAM_UUID,
+          user_uuid: OTHER_UUID,
+          who_uuid: USER_UUID,
+          role: "member",
+        },
+      ],
     });
   });
 
@@ -321,6 +370,36 @@ describe("Workspace realtime event normalization", () => {
       type: "stream",
       kind: "stream.created",
       stream: { uuid: STREAM_UUID, name: "Engineering" },
+    });
+  });
+
+  it("maps backend WS stream_bindings.created frames", () => {
+    const normalized = normalizeWorkspaceRealtimeEvent(
+      {
+        epoch_version: 21,
+        type: "stream_binding",
+        kind: "stream_bindings.created",
+        stream_uuid: STREAM_UUID,
+        stream_bindings: [
+          {
+            uuid: STREAM_BINDING_UUID,
+            project_id: "00000000-0000-4000-8000-000000000901",
+            stream_uuid: STREAM_UUID,
+            user_uuid: OTHER_UUID,
+            who_uuid: USER_UUID,
+            role: "member",
+          },
+        ],
+      },
+      USER_UUID,
+    );
+
+    expect(normalized?.event).toMatchObject({
+      id: 21,
+      type: "stream_binding",
+      kind: "stream_bindings.created",
+      stream_uuid: STREAM_UUID,
+      stream_bindings: [{ uuid: STREAM_BINDING_UUID, user_uuid: OTHER_UUID }],
     });
   });
 

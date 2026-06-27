@@ -3,7 +3,7 @@ import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
 
 interface StreamMetadataAccessFields {
   isArchived?: boolean;
-  creatorId?: number;
+  creatorId?: StreamEntryInternal["creatorId"];
   inviteOnly?: boolean;
   private?: boolean;
   canAddSubscribersGroup?: StreamEntryInternal["canAddSubscribersGroup"];

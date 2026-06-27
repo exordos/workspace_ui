@@ -2,6 +2,8 @@
  * Tests for Messenger API (messenger-streams module).
  */
 import { describe, expect, it } from "vitest";
+// messenger.test.setup must load before the module under test so its vi.mock hooks register first.
+
 import {
   addMembersToStream,
   createPrivateMessageStream,
@@ -177,7 +179,7 @@ describe("createPrivateMessageStream", () => {
 });
 
 describe("createWorkspaceStream", () => {
-  it("posts a native stream and binds selected members without project_id", async () => {
+  it("posts a native stream and adds selected members through stream action", async () => {
     mockMessengerApi.postJsonWithBase
       .mockResolvedValueOnce({
         ok: true,
@@ -197,23 +199,20 @@ describe("createWorkspaceStream", () => {
       .mockResolvedValueOnce({
         ok: true,
         status: 201,
-        data: {
-          uuid: "2dce03ca-d6d9-4fdb-82cb-7ec05fa7a8e9",
-          stream_uuid: STREAM_UUID,
-          user_uuid: PEER_UUID,
-          role: "member",
-        },
-        raw: { statusText: "Created" },
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 201,
-        data: {
-          uuid: "3dce03ca-d6d9-4fdb-82cb-7ec05fa7a8e9",
-          stream_uuid: STREAM_UUID,
-          user_uuid: MEMBER_UUID,
-          role: "member",
-        },
+        data: [
+          {
+            uuid: "2dce03ca-d6d9-4fdb-82cb-7ec05fa7a8e9",
+            stream_uuid: STREAM_UUID,
+            user_uuid: PEER_UUID,
+            role: "member",
+          },
+          {
+            uuid: "3dce03ca-d6d9-4fdb-82cb-7ec05fa7a8e9",
+            stream_uuid: STREAM_UUID,
+            user_uuid: MEMBER_UUID,
+            role: "member",
+          },
+        ],
         raw: { statusText: "Created" },
       });
 
@@ -249,23 +248,12 @@ describe("createWorkspaceStream", () => {
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
       2,
       "/api/messenger/v1",
-      "/stream_bindings/",
+      `/streams/${STREAM_UUID}/actions/add_users/invoke`,
       {
-        stream_uuid: STREAM_UUID,
-        user_uuid: PEER_UUID,
-        role: "member",
+        member: [PEER_UUID, MEMBER_UUID],
       },
     );
-    expect(mockMessengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
-      3,
-      "/api/messenger/v1",
-      "/stream_bindings/",
-      {
-        stream_uuid: STREAM_UUID,
-        user_uuid: MEMBER_UUID,
-        role: "member",
-      },
-    );
+    expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledTimes(2);
     expect(mockMessengerApi.getWithBase).not.toHaveBeenCalled();
     expect(mockMessengerApi.post).not.toHaveBeenCalled();
   });
@@ -391,7 +379,7 @@ describe("findPrivateStreamForUserUuid", () => {
         },
       ],
       PEER_UUID,
-      [{ stream_uuid: STREAM_UUID, user_uuid: PEER_UUID }],
+      [{ stream_uuid: STREAM_UUID, user_uuid: PEER_UUID, role: "member" }],
     );
     expect(match?.stream_uuid).toBe(STREAM_UUID);
   });
@@ -418,30 +406,26 @@ describe("fetchStreamMembers", () => {
 });
 
 describe("addMembersToStream", () => {
-  it("binds members to an existing stream", async () => {
-    mockMessengerApi.postJsonWithBase
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 201,
-        data: {
+  it("binds members to an existing stream through stream action", async () => {
+    mockMessengerApi.postJsonWithBase.mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      data: [
+        {
           uuid: "2dce03ca-d6d9-4fdb-82cb-7ec05fa7a8e9",
           stream_uuid: STREAM_UUID,
           user_uuid: PEER_UUID,
           role: "member",
         },
-        raw: { statusText: "Created" },
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 201,
-        data: {
+        {
           uuid: "3dce03ca-d6d9-4fdb-82cb-7ec05fa7a8e9",
           stream_uuid: STREAM_UUID,
           user_uuid: MEMBER_UUID,
           role: "member",
         },
-        raw: { statusText: "Created" },
-      });
+      ],
+      raw: { statusText: "Created" },
+    });
 
     await expect(
       addMembersToStream({
@@ -459,23 +443,12 @@ describe("addMembersToStream", () => {
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
       1,
       "/api/messenger/v1",
-      "/stream_bindings/",
+      `/streams/${STREAM_UUID}/actions/add_users/invoke`,
       {
-        stream_uuid: STREAM_UUID,
-        user_uuid: PEER_UUID,
-        role: "member",
+        member: [PEER_UUID, MEMBER_UUID],
       },
     );
-    expect(mockMessengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
-      2,
-      "/api/messenger/v1",
-      "/stream_bindings/",
-      {
-        stream_uuid: STREAM_UUID,
-        user_uuid: MEMBER_UUID,
-        role: "member",
-      },
-    );
+    expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledTimes(1);
   });
 
   it("returns success for an empty principal list", async () => {
@@ -493,6 +466,7 @@ describe("addMembersToStream", () => {
     });
 
     expect(mockMessengerApi.post).not.toHaveBeenCalled();
+    expect(mockMessengerApi.postJsonWithBase).not.toHaveBeenCalled();
   });
 
   it("throws on invalid stream uuid (guard)", async () => {

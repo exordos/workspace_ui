@@ -1,15 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchStreamMembers, fetchStreams } from "~/shared/api/messenger-streams";
+import { fetchStreamMemberBindings, fetchStreams } from "~/shared/api/messenger-streams";
 import {
   invalidateStream,
   loadStreamMembers,
+  loadStreamMembersSnapshot,
   loadStreamMetadata,
   loadStreamsSnapshot,
   resetChatInfoApiCacheForTests,
 } from "./chat-info.api";
 
 vi.mock("~/shared/api/messenger-streams", () => ({
-  fetchStreamMembers: vi.fn(),
+  fetchStreamMemberBindings: vi.fn(),
   fetchStreams: vi.fn(),
 }));
 
@@ -27,7 +28,11 @@ describe("chat-info.api", () => {
   });
 
   it("deduplicates in-flight member requests for the same stream", async () => {
-    vi.mocked(fetchStreamMembers).mockResolvedValue([USER_A_UUID, USER_B_UUID, USER_C_UUID]);
+    vi.mocked(fetchStreamMemberBindings).mockResolvedValue([
+      { stream_uuid: STREAM_A_UUID, user_uuid: USER_A_UUID, role: "owner" },
+      { stream_uuid: STREAM_A_UUID, user_uuid: USER_B_UUID, role: "member" },
+      { stream_uuid: STREAM_A_UUID, user_uuid: USER_C_UUID, role: "member" },
+    ]);
 
     const [left, right] = await Promise.all([
       loadStreamMembers("inst-a", STREAM_A_UUID),
@@ -36,23 +41,41 @@ describe("chat-info.api", () => {
 
     expect(left).toEqual([USER_A_UUID, USER_B_UUID, USER_C_UUID]);
     expect(right).toEqual([USER_A_UUID, USER_B_UUID, USER_C_UUID]);
-    expect(fetchStreamMembers).toHaveBeenCalledTimes(1);
+    expect(fetchStreamMemberBindings).toHaveBeenCalledTimes(1);
   });
 
   it("reuses members cache until TTL expires", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-26T09:00:00.000Z"));
-    vi.mocked(fetchStreamMembers).mockResolvedValue([USER_A_UUID, USER_B_UUID]);
+    vi.mocked(fetchStreamMemberBindings).mockResolvedValue([
+      { stream_uuid: STREAM_A_UUID, user_uuid: USER_A_UUID, role: "owner" },
+      { stream_uuid: STREAM_A_UUID, user_uuid: USER_B_UUID, role: "member" },
+    ]);
 
     await loadStreamMembers("inst-a", STREAM_A_UUID);
     await loadStreamMembers("inst-a", STREAM_A_UUID);
 
-    expect(fetchStreamMembers).toHaveBeenCalledTimes(1);
+    expect(fetchStreamMemberBindings).toHaveBeenCalledTimes(1);
 
     vi.setSystemTime(new Date("2026-03-26T09:01:01.000Z"));
     await loadStreamMembers("inst-a", STREAM_A_UUID);
 
-    expect(fetchStreamMembers).toHaveBeenCalledTimes(2);
+    expect(fetchStreamMemberBindings).toHaveBeenCalledTimes(2);
+  });
+
+  it("loads stream member roles from bindings", async () => {
+    vi.mocked(fetchStreamMemberBindings).mockResolvedValue([
+      { stream_uuid: STREAM_A_UUID, user_uuid: USER_A_UUID, role: "owner" },
+      { stream_uuid: STREAM_A_UUID, user_uuid: USER_B_UUID, role: "member" },
+    ]);
+
+    const snapshot = await loadStreamMembersSnapshot("inst-a", STREAM_A_UUID);
+
+    expect(snapshot.memberIds).toEqual([USER_A_UUID, USER_B_UUID]);
+    expect(snapshot.rolesByUserId).toEqual({
+      [USER_A_UUID]: "owner",
+      [USER_B_UUID]: "member",
+    });
   });
 
   it("isolates streams snapshot cache by instance id", async () => {

@@ -1,5 +1,5 @@
 import type { MessengerGroupSettingValue } from "~/shared/api/messenger.types";
-import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
+import { isIamUserUuid, type UserId } from "~/shared/lib/user-id.lib";
 
 interface AnnouncementOnlyGroupRecord {
   id: number;
@@ -43,8 +43,8 @@ export function buildAnnouncementOnlyCanSendGroup(
 
   return {
     direct_members:
-      numericUserIdOrNull(input.currentUserId) != null
-        ? [numericUserIdOrNull(input.currentUserId)!]
+      input.currentUserId != null && isIamUserUuid(input.currentUserId)
+        ? [input.currentUserId.trim().toLowerCase()]
         : [],
     direct_subgroups: subgroupIds,
   };

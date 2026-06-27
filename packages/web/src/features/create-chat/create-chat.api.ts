@@ -2,7 +2,7 @@
  * Create chat API — Workspace endpoints for starting new conversations.
  *
  * Personal chat: resolve or create a private stream via gateway POST /streams/, then navigate to /stream.
- * Channel creation: POST /streams/ + POST /stream_bindings/ for selected members.
+ * Channel creation: POST /streams/ + POST /streams/{uuid}/actions/add_users/invoke.
  * Unarchive: PATCH /streams/{stream_uuid} with is_archived=false (delegates to shared unarchiveStream).
  * Also: channel listing and unsubscribe for management flows.
  */

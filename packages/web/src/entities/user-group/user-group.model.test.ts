@@ -3,6 +3,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { useUserGroupsStore } from "./user-group.model";
 
+const USER_A_UUID = "00000000-0000-4000-8000-000000000100";
+const USER_B_UUID = "00000000-0000-4000-8000-000000000200";
+
 describe("useUserGroupsStore", () => {
   // Reset global Zustand store after each test to prevent state leaks.
   afterEach(() => {
@@ -20,14 +23,14 @@ describe("useUserGroupsStore", () => {
       {
         id: 2,
         name: "child",
-        members: [42],
+        members: [USER_A_UUID],
         direct_subgroup_ids: [],
       },
     ]);
 
-    expect(useUserGroupsStore.getState().isUserInGroup(1, 42)).toBe(true);
-    expect(useUserGroupsStore.getState().isUserInGroup(2, 42)).toBe(true);
-    expect(useUserGroupsStore.getState().isUserInGroup(1, 77)).toBe(false);
+    expect(useUserGroupsStore.getState().isUserInGroup(1, USER_A_UUID)).toBe(true);
+    expect(useUserGroupsStore.getState().isUserInGroup(2, USER_A_UUID)).toBe(true);
+    expect(useUserGroupsStore.getState().isUserInGroup(1, USER_B_UUID)).toBe(false);
   });
 
   it("checks group-setting values for both integer and object forms", () => {
@@ -35,18 +38,24 @@ describe("useUserGroupsStore", () => {
       {
         id: 10,
         name: "members",
-        members: [100],
+        members: [USER_A_UUID],
         direct_subgroup_ids: [],
       },
     ]);
 
     const store = useUserGroupsStore.getState();
-    expect(store.isUserInGroupSetting(10, 100)).toBe(true);
-    expect(store.isUserInGroupSetting({ direct_members: [200], direct_subgroups: [10] }, 100)).toBe(
-      true,
-    );
-    expect(store.isUserInGroupSetting({ direct_members: [200], direct_subgroups: [] }, 100)).toBe(
-      false,
-    );
+    expect(store.isUserInGroupSetting(10, USER_A_UUID)).toBe(true);
+    expect(
+      store.isUserInGroupSetting(
+        { direct_members: [USER_B_UUID], direct_subgroups: [10] },
+        USER_A_UUID,
+      ),
+    ).toBe(true);
+    expect(
+      store.isUserInGroupSetting(
+        { direct_members: [USER_B_UUID], direct_subgroups: [] },
+        USER_A_UUID,
+      ),
+    ).toBe(false);
   });
 });

@@ -1,21 +1,31 @@
 /**
  * Normalization and equality for the messenger API channel group-setting values.
- * Keeps API and store on one `{ number | direct_members/subgroups }` shape.
+ * Keeps API and store on one `{ groupId | direct_members/subgroups }` shape.
  */
 import type {
   MessengerGroupSettingValue,
   MessengerGroupSettingValueObject,
 } from "~/shared/api/messenger.types";
+import { isIamUserUuid } from "~/shared/lib/user-id.lib";
 
 function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
 
-function normalizeIds(value: unknown): number[] {
+function normalizeGroupIds(value: unknown): number[] {
   if (!Array.isArray(value)) {
     return [];
   }
   return Array.from(new Set(value.filter(isPositiveInteger))).sort((left, right) => left - right);
+}
+
+function normalizeDirectMemberIds(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return Array.from(new Set(value.filter(isIamUserUuid).map((id) => id.trim().toLowerCase()))).sort(
+    (left, right) => left.localeCompare(right),
+  );
 }
 
 function normalizeGroupSettingObject(value: unknown): MessengerGroupSettingValueObject | undefined {
@@ -24,8 +34,8 @@ function normalizeGroupSettingObject(value: unknown): MessengerGroupSettingValue
   }
   const record = value as Record<string, unknown>;
   return {
-    direct_members: normalizeIds(record.direct_members),
-    direct_subgroups: normalizeIds(record.direct_subgroups),
+    direct_members: normalizeDirectMemberIds(record.direct_members),
+    direct_subgroups: normalizeGroupIds(record.direct_subgroups),
   };
 }
 

@@ -17,7 +17,7 @@ export interface ChatListStreamMetadataRow {
   unreadCount?: number;
   private?: boolean;
   isArchived?: boolean;
-  creatorId?: number;
+  creatorId?: UserId;
   inviteOnly?: boolean;
   canAddSubscribersGroup?: MessengerGroupSettingValue;
   canRemoveSubscribersGroup?: MessengerGroupSettingValue;

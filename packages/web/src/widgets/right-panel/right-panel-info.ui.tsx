@@ -5,7 +5,6 @@ import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { ensureUserStatusLoaded } from "~/entities/user/api/user.api";
 import { useUsersStore } from "~/entities/user/user.model";
-import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
 import { AddStreamMembersDialog } from "~/features/add-stream-members/add-stream-members-dialog.ui";
 import { useAddStreamMembersStore } from "~/features/add-stream-members/add-stream-members.model";
 import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
@@ -20,7 +19,6 @@ import { deleteTopic, updateStream } from "~/shared/api/messenger-streams";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { createLogger } from "~/shared/lib/logger";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
-import { parseRole, UserRole } from "~/shared/lib/roles";
 import { resolveCurrentUserChannelCapabilities } from "~/shared/lib/stream-member-management-permissions.lib";
 import { resolveCanonicalStreamName } from "~/shared/lib/stream-name.lib";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
@@ -61,35 +59,24 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   const rightDrawer = useRightDrawer();
   const chatInfoData = useChatInfoStore((s) => s.data);
   const streamMemberIds = useChatInfoStore((s) => s.streamMemberIds);
+  const streamMemberRolesByUserId = useChatInfoStore((s) => s.streamMemberRolesByUserId);
   const context = useCurrentChatMessagesStore((s) => s.context);
   const streamId = context?.type === "stream" ? context.streamId : null;
   const currentUserId = useChatListStore((s) => s.currentUserId);
-  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
   const streamMetadataHydrated = useChatListStore((s) => s.streamMetadataHydrated);
   const streamEntry = useChatListStore((s) =>
     streamId != null ? s.streamsMap.get(streamId) : undefined,
   );
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
-  const currentUserRoleCode = useUsersStore((s) =>
-    currentUserId != null ? s.getUser(currentUserId)?.role : undefined,
-  );
   const inputMode = useInputMode();
-  const isUserInGroupSetting = useUserGroupsStore((s) => s.isUserInGroupSetting);
   const users = useUsersStore((s) => s.users);
-  const currentUserChannelCapabilities = useUsersStore((s) => s.currentUserChannelCapabilities);
-  const currentUserRole = parseRole(currentUserRoleCode);
+  const currentUserStreamRole =
+    currentUserId != null ? streamMemberRolesByUserId[userIdStorageKey(currentUserId)] : null;
   const channelActionCapabilities = useMemo(
     () =>
       streamId != null
         ? resolveCurrentUserChannelCapabilities({
-            currentUserId: numericCurrentUserId,
-            orgRole: currentUserRole,
-            currentUserChannelCapabilities,
-            inviteOnly: streamEntry?.inviteOnly,
-            canAddSubscribersGroup: streamEntry?.canAddSubscribersGroup,
-            canRemoveSubscribersGroup: streamEntry?.canRemoveSubscribersGroup,
-            canAdministerChannelGroup: streamEntry?.canAdministerChannelGroup,
-            isUserInGroupSetting,
+            currentUserStreamRole,
           })
         : {
             canAddSubscribers: false,
@@ -97,21 +84,11 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
             canEditChannelMetadata: false,
             canArchiveChannel: false,
           },
-    [
-      currentUserChannelCapabilities,
-      numericCurrentUserId,
-      currentUserRole,
-      isUserInGroupSetting,
-      streamEntry?.canAddSubscribersGroup,
-      streamEntry?.canAdministerChannelGroup,
-      streamEntry?.canRemoveSubscribersGroup,
-      streamEntry?.inviteOnly,
-      streamId,
-    ],
+    [currentUserStreamRole, streamId],
   );
   const canEditChannel = streamId != null && channelActionCapabilities.canEditChannelMetadata;
   const canDeleteChannel = streamId != null && channelActionCapabilities.canArchiveChannel;
-  const canDeleteTopic = currentUserRole === UserRole.Owner || currentUserRole === UserRole.Admin;
+  const canDeleteTopic = channelActionCapabilities.canEditChannelMetadata;
   const canAddMembers = streamId != null && channelActionCapabilities.canAddSubscribers;
   const canRemoveMembers = streamId != null && channelActionCapabilities.canRemoveSubscribers;
   const notificationLevel = useMuteStore((s) =>
@@ -256,8 +233,6 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   );
   const streamMembers = streamInfoData?.members;
   const hasRealMembers = streamMembers != null && streamMembers.length > 0;
-  const streamCreatorId = streamEntry?.creatorId;
-  const canAdministerChannelGroup = streamEntry?.canAdministerChannelGroup;
   const memberFallbackLabel = t("roles.member");
   const onlineLabel = t("presence.online");
   const offlineLabel = t("presence.offline");
@@ -273,23 +248,19 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
         ? buildRightPanelStreamMembers({
             members: streamMembers,
             users,
-            streamCreatorId,
-            canAdministerChannelGroup,
-            isUserInGroupSetting,
+            streamMemberRolesByUserId,
             memberFallbackLabel,
             onlineLabel,
             offlineLabel,
           })
         : [],
     [
-      canAdministerChannelGroup,
       hasRealMembers,
-      isUserInGroupSetting,
       memberFallbackLabel,
       offlineLabel,
       onlineLabel,
-      streamCreatorId,
       streamMembers,
+      streamMemberRolesByUserId,
       users,
     ],
   );
@@ -722,7 +693,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
                         numericMemberId != null &&
                         !isCurrentUserMember &&
                         !p.isCreator &&
-                        !p.isOrgOwner && (
+                        !p.isStreamOwner && (
                           <button
                             type="button"
                             aria-label={t("a11y.removeMemberFromChannel", { name: p.name })}

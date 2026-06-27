@@ -349,6 +349,32 @@ export function handleStream(
   ctx.chatList.upsertStreamMetadataRows([row]);
 }
 
+export function handleStreamBinding(
+  event: MessengerEvent,
+  ctx: LayoutMessengerEventDispatchContext,
+): void {
+  if (event.type !== "stream_binding" || event.kind !== "stream_bindings.created") return;
+  const streamUuids = new Set<string>();
+  const eventStreamUuid = parseStreamUuid(event.stream_uuid);
+  if (eventStreamUuid != null) {
+    streamUuids.add(eventStreamUuid);
+  }
+  if (Array.isArray(event.stream_bindings)) {
+    for (const binding of event.stream_bindings) {
+      if (binding == null || typeof binding !== "object" || Array.isArray(binding)) {
+        continue;
+      }
+      const bindingStreamUuid = parseStreamUuid((binding as Record<string, unknown>).stream_uuid);
+      if (bindingStreamUuid != null) {
+        streamUuids.add(bindingStreamUuid);
+      }
+    }
+  }
+  if (streamUuids.size > 0) {
+    ctx.onStreamPeerMembersChanged?.(Array.from(streamUuids));
+  }
+}
+
 export function handleUserTopic(
   event: MessengerEvent,
   ctx: LayoutMessengerEventDispatchContext,

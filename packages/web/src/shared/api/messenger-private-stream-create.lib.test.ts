@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildAddStreamUsersBody,
   buildCreatePrivateMessageStreamBody,
-  buildCreateStreamBindingBody,
   parseCreatedWorkspaceStream,
   resolvePrivateMessageStreamName,
 } from "./messenger-private-stream-create.lib";
 
 const PEER_UUID = "00000000-0000-0000-0000-000000000002";
+const MEMBER_UUID = "00000000-0000-0000-0000-000000000003";
 const STREAM_UUID = "b4460c02-d693-4564-8804-98059613b86e";
 
 describe("resolvePrivateMessageStreamName", () => {
@@ -36,31 +37,25 @@ describe("buildCreatePrivateMessageStreamBody", () => {
   });
 });
 
-describe("buildCreateStreamBindingBody", () => {
-  it("binds peer user as owner on the created stream", () => {
+describe("buildAddStreamUsersBody", () => {
+  it("groups peer users by owner role", () => {
     expect(
-      buildCreateStreamBindingBody({
-        streamUuid: STREAM_UUID,
-        peerUserUuid: PEER_UUID,
+      buildAddStreamUsersBody({
+        userUuids: [PEER_UUID],
       }),
     ).toEqual({
-      stream_uuid: STREAM_UUID,
-      user_uuid: PEER_UUID,
-      role: "owner",
+      owner: [PEER_UUID],
     });
   });
 
-  it("can bind a regular stream member without project_id", () => {
+  it("can group regular stream members without project_id or stream_uuid", () => {
     expect(
-      buildCreateStreamBindingBody({
-        streamUuid: STREAM_UUID,
-        peerUserUuid: PEER_UUID,
+      buildAddStreamUsersBody({
+        userUuids: [PEER_UUID, MEMBER_UUID, PEER_UUID.toUpperCase()],
         role: "member",
       }),
     ).toEqual({
-      stream_uuid: STREAM_UUID,
-      user_uuid: PEER_UUID,
-      role: "member",
+      member: [PEER_UUID, MEMBER_UUID],
     });
   });
 });

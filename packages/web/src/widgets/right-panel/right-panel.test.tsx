@@ -16,10 +16,12 @@ import { useRemoveStreamMembersStore } from "~/features/remove-stream-members/re
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { setLocale, t } from "~/i18n/i18n";
 import * as messengerStreams from "~/shared/api/messenger-streams";
+import type { WorkspaceStreamRole } from "~/shared/api/messenger.types";
 import { RightDrawerContext } from "~/shared/contexts/right-drawer";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
 import { resetToastStateForTests, useToastStore } from "~/shared/lib/toast/toast.model";
+import { userIdStorageKey, type UserId } from "~/shared/lib/user-id.lib";
 import { renderWithProviders } from "~/test/render";
 import { RightPanelShell } from "./right-panel-shell.ui";
 import type * as ReactRouterDom from "react-router-dom";
@@ -33,6 +35,18 @@ const updateOwnStatusMock = vi.hoisted(() => vi.fn());
 const ENGINEERING_STREAM_UUID = "00000000-0000-4000-8000-000000000010";
 const DESIGN_STREAM_UUID = "00000000-0000-4000-8000-000000000011";
 const RELEASE_TOPIC_UUID = "00000000-0000-4000-8000-000000000210";
+const ADMIN_USER_UUID = "00000000-0000-4000-8000-000000000042";
+const ALICE_USER_UUID = "00000000-0000-4000-8000-000000000077";
+const BOB_USER_UUID = "00000000-0000-4000-8000-000000000088";
+
+function setCurrentStreamRole(userId: UserId, role: WorkspaceStreamRole = "owner"): void {
+  useChatInfoStore.setState((state) => ({
+    streamMemberRolesByUserId: {
+      ...state.streamMemberRolesByUserId,
+      [userIdStorageKey(userId)]: role,
+    },
+  }));
+}
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual<typeof ReactRouterDom>("react-router-dom");
@@ -1041,7 +1055,8 @@ describe("RightPanel truthfulness", () => {
         topics: [{ name: "release", topicUuid: RELEASE_TOPIC_UUID, unreadCount: 2 }],
       });
       useChatListStore.getState().setCurrentUserId(42);
-      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin", role: 200 });
+      setCurrentStreamRole(42, "owner");
+      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin" });
     });
 
     renderWithProviders(
@@ -1093,13 +1108,14 @@ describe("RightPanel truthfulness", () => {
           canAdministerChannelGroup: 9126,
         },
       ]);
-      useChatListStore.getState().setCurrentUserId(42);
-      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Member", role: 400 });
+      useChatListStore.getState().setCurrentUserId(ADMIN_USER_UUID);
+      setCurrentStreamRole(ADMIN_USER_UUID, "member");
+      useUsersStore.getState().mergeUser({ user_id: ADMIN_USER_UUID, full_name: "Member" });
       useUserGroupsStore.getState().setGroups([
         {
           id: 9126,
           name: "channel-admins",
-          members: [42],
+          members: [ADMIN_USER_UUID],
           direct_subgroup_ids: [],
         },
       ]);
@@ -1209,7 +1225,7 @@ describe("RightPanel truthfulness", () => {
     expect(screen.getByText("💬 In focus")).toBeInTheDocument();
   });
 
-  it("shows add members action for admin role", () => {
+  it("shows add members action for stream owner role", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
         context: {
@@ -1231,7 +1247,7 @@ describe("RightPanel truthfulness", () => {
           onlineCount: 1,
           members: [
             {
-              userId: 77,
+              userId: ALICE_USER_UUID,
               fullName: "Alice",
               email: "alice@example.com",
               avatarUrl: null,
@@ -1242,10 +1258,11 @@ describe("RightPanel truthfulness", () => {
           isMuted: false,
           topics: [],
         },
-        streamMemberIds: [77],
+        streamMemberIds: [ALICE_USER_UUID],
       });
       useChatListStore.getState().setCurrentUserId(42);
-      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin", role: 200 });
+      setCurrentStreamRole(42, "owner");
+      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin" });
     });
 
     renderWithProviders(
@@ -1255,7 +1272,7 @@ describe("RightPanel truthfulness", () => {
     expect(screen.getByRole("button", { name: /add members/i })).toBeInTheDocument();
   });
 
-  it("does not show add members action for members without channel-level permission", () => {
+  it("shows add members action for stream owner role with IAM UUID identity", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
         context: {
@@ -1277,7 +1294,54 @@ describe("RightPanel truthfulness", () => {
           onlineCount: 1,
           members: [
             {
-              userId: 77,
+              userId: ADMIN_USER_UUID,
+              fullName: "Admin User",
+              email: "admin@example.com",
+              avatarUrl: null,
+              isOnline: true,
+            },
+          ],
+          description: null,
+          isMuted: false,
+          topics: [],
+        },
+        streamMemberIds: [ADMIN_USER_UUID],
+      });
+      useChatListStore.getState().setCurrentUserId(ADMIN_USER_UUID);
+      setCurrentStreamRole(ADMIN_USER_UUID, "owner");
+      useUsersStore.getState().mergeUser({ user_id: ADMIN_USER_UUID, full_name: "Admin User" });
+    });
+
+    renderWithProviders(
+      <RightPanelShell title="engineering" participantsCount={1} onlineCount={1} />,
+    );
+
+    expect(screen.getByRole("button", { name: /add members/i })).toBeInTheDocument();
+  });
+
+  it("does not show add members action for regular stream members", () => {
+    act(() => {
+      useCurrentChatMessagesStore.setState({
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "engineering",
+          topic: "general",
+        },
+        messages: [],
+        isLoadingMore: false,
+        hasOlderMessages: true,
+        hasNewerMessages: false,
+      });
+      useChatInfoStore.setState({
+        data: {
+          type: "stream",
+          name: "engineering",
+          memberCount: 1,
+          onlineCount: 1,
+          members: [
+            {
+              userId: ALICE_USER_UUID,
               fullName: "Alice",
               email: "alice@example.com",
               avatarUrl: null,
@@ -1288,10 +1352,11 @@ describe("RightPanel truthfulness", () => {
           isMuted: false,
           topics: [],
         },
-        streamMemberIds: [77],
+        streamMemberIds: [ALICE_USER_UUID],
       });
       useChatListStore.getState().setCurrentUserId(42);
-      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Member", role: 400 });
+      setCurrentStreamRole(42, "member");
+      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Member" });
     });
 
     renderWithProviders(
@@ -1301,7 +1366,7 @@ describe("RightPanel truthfulness", () => {
     expect(screen.queryByRole("button", { name: /add members/i })).not.toBeInTheDocument();
   });
 
-  it("shows add members action for channel-level add-subscribers group member", () => {
+  it("shows add members action for stream administrator role", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
         context: {
@@ -1323,7 +1388,7 @@ describe("RightPanel truthfulness", () => {
           onlineCount: 1,
           members: [
             {
-              userId: 77,
+              userId: ALICE_USER_UUID,
               fullName: "Alice",
               email: "alice@example.com",
               avatarUrl: null,
@@ -1343,13 +1408,14 @@ describe("RightPanel truthfulness", () => {
           canAddSubscribersGroup: 9123,
         },
       ]);
-      useChatListStore.getState().setCurrentUserId(42);
-      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Member", role: 400 });
+      useChatListStore.getState().setCurrentUserId(ADMIN_USER_UUID);
+      setCurrentStreamRole(ADMIN_USER_UUID, "administrator");
+      useUsersStore.getState().mergeUser({ user_id: ADMIN_USER_UUID, full_name: "Member" });
       useUserGroupsStore.getState().setGroups([
         {
           id: 9123,
           name: "channel-adders",
-          members: [42],
+          members: [ADMIN_USER_UUID],
           direct_subgroup_ids: [],
         },
       ]);
@@ -1362,7 +1428,7 @@ describe("RightPanel truthfulness", () => {
     expect(screen.getByRole("button", { name: /add members/i })).toBeInTheDocument();
   });
 
-  it("shows add members action for modern org add-subscribers group in public channel", () => {
+  it("ignores old org add-subscribers group without stream administrator role", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
         context: {
@@ -1384,7 +1450,7 @@ describe("RightPanel truthfulness", () => {
           onlineCount: 1,
           members: [
             {
-              userId: 77,
+              userId: ALICE_USER_UUID,
               fullName: "Alice",
               email: "alice@example.com",
               avatarUrl: null,
@@ -1405,8 +1471,9 @@ describe("RightPanel truthfulness", () => {
           canAddSubscribersGroup: 9,
         },
       ]);
-      useChatListStore.getState().setCurrentUserId(42);
-      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Member", role: 400 });
+      useChatListStore.getState().setCurrentUserId(ADMIN_USER_UUID);
+      setCurrentStreamRole(ADMIN_USER_UUID, "member");
+      useUsersStore.getState().mergeUser({ user_id: ADMIN_USER_UUID, full_name: "Member" });
       useUsersStore.getState().setCurrentUserChannelCapabilities({
         realmCanAddSubscribersGroup: 14,
       });
@@ -1414,7 +1481,7 @@ describe("RightPanel truthfulness", () => {
         {
           id: 14,
           name: "role:members",
-          members: [42],
+          members: [ADMIN_USER_UUID],
           direct_subgroup_ids: [],
         },
       ]);
@@ -1424,10 +1491,10 @@ describe("RightPanel truthfulness", () => {
       <RightPanelShell title="engineering" participantsCount={1} onlineCount={1} />,
     );
 
-    expect(screen.getByRole("button", { name: /add members/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /add members/i })).not.toBeInTheDocument();
   });
 
-  it("shows add members action for channel admin in public channel", () => {
+  it("shows add members action for stream administrator in public channel", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
         context: {
@@ -1470,13 +1537,14 @@ describe("RightPanel truthfulness", () => {
           canAdministerChannelGroup: 9126,
         },
       ]);
-      useChatListStore.getState().setCurrentUserId(42);
-      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Member", role: 400 });
+      useChatListStore.getState().setCurrentUserId(ADMIN_USER_UUID);
+      setCurrentStreamRole(ADMIN_USER_UUID, "administrator");
+      useUsersStore.getState().mergeUser({ user_id: ADMIN_USER_UUID, full_name: "Member" });
       useUserGroupsStore.getState().setGroups([
         {
           id: 9126,
           name: "channel-admins",
-          members: [42],
+          members: [ADMIN_USER_UUID],
           direct_subgroup_ids: [],
         },
       ]);
@@ -1489,7 +1557,7 @@ describe("RightPanel truthfulness", () => {
     expect(screen.getByRole("button", { name: /add members/i })).toBeInTheDocument();
   });
 
-  it("hides add members action for channel admin in private channel without add-group permission", () => {
+  it("hides add members action for regular member even when old channel metadata exists", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
         context: {
@@ -1532,13 +1600,14 @@ describe("RightPanel truthfulness", () => {
           canAdministerChannelGroup: 9126,
         },
       ]);
-      useChatListStore.getState().setCurrentUserId(42);
-      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Member", role: 400 });
+      useChatListStore.getState().setCurrentUserId(ADMIN_USER_UUID);
+      setCurrentStreamRole(ADMIN_USER_UUID, "member");
+      useUsersStore.getState().mergeUser({ user_id: ADMIN_USER_UUID, full_name: "Member" });
       useUserGroupsStore.getState().setGroups([
         {
           id: 9126,
           name: "channel-admins",
-          members: [42],
+          members: [ADMIN_USER_UUID],
           direct_subgroup_ids: [],
         },
       ]);
@@ -1551,7 +1620,7 @@ describe("RightPanel truthfulness", () => {
     expect(screen.queryByRole("button", { name: /add members/i })).not.toBeInTheDocument();
   });
 
-  it("shows remove-member action for channel-level remove-subscribers group member", () => {
+  it("shows remove-member action for stream administrator role", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
         context: {
@@ -1593,16 +1662,17 @@ describe("RightPanel truthfulness", () => {
           canRemoveSubscribersGroup: 9124,
         },
       ]);
-      useChatListStore.getState().setCurrentUserId(42);
+      useChatListStore.getState().setCurrentUserId(ADMIN_USER_UUID);
+      setCurrentStreamRole(ADMIN_USER_UUID, "administrator");
       useUsersStore.getState().mergeUsers([
-        { user_id: 42, full_name: "Member", role: 400 },
-        { user_id: 77, full_name: "Alice", role: 400 },
+        { user_id: ADMIN_USER_UUID, full_name: "Member" },
+        { user_id: 77, full_name: "Alice" },
       ]);
       useUserGroupsStore.getState().setGroups([
         {
           id: 9124,
           name: "channel-removers",
-          members: [42],
+          members: [ADMIN_USER_UUID],
           direct_subgroup_ids: [],
         },
       ]);
@@ -1615,7 +1685,7 @@ describe("RightPanel truthfulness", () => {
     expect(screen.getByRole("button", { name: /remove from channel: alice/i })).toBeInTheDocument();
   });
 
-  it("shows remove-member action for channel admin even without remove-subscribers group membership", () => {
+  it("shows remove-member action for stream owner without remove-subscribers group membership", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
         context: {
@@ -1658,16 +1728,17 @@ describe("RightPanel truthfulness", () => {
           canRemoveSubscribersGroup: 9124,
         },
       ]);
-      useChatListStore.getState().setCurrentUserId(42);
+      useChatListStore.getState().setCurrentUserId(ADMIN_USER_UUID);
+      setCurrentStreamRole(ADMIN_USER_UUID, "owner");
       useUsersStore.getState().mergeUsers([
-        { user_id: 42, full_name: "Member", role: 400 },
-        { user_id: 77, full_name: "Alice", role: 400 },
+        { user_id: ADMIN_USER_UUID, full_name: "Member" },
+        { user_id: 77, full_name: "Alice" },
       ]);
       useUserGroupsStore.getState().setGroups([
         {
           id: 9126,
           name: "channel-admins",
-          members: [42],
+          members: [ADMIN_USER_UUID],
           direct_subgroup_ids: [],
         },
       ]);
@@ -1709,7 +1780,7 @@ describe("RightPanel truthfulness", () => {
           onlineCount: 1,
           members: [
             {
-              userId: 77,
+              userId: ALICE_USER_UUID,
               fullName: "Alice",
               email: "alice@example.com",
               avatarUrl: null,
@@ -1720,18 +1791,19 @@ describe("RightPanel truthfulness", () => {
           isMuted: false,
           topics: [],
         },
-        streamMemberIds: [77],
+        streamMemberIds: [ALICE_USER_UUID],
       });
       useChatListStore
         .getState()
         .upsertStreamMetadataRows([
           { streamUuid: "00000000-0000-4000-8000-000000000010", name: "Test clon" },
         ]);
-      useChatListStore.getState().setCurrentUserId(42);
+      useChatListStore.getState().setCurrentUserId(ADMIN_USER_UUID);
+      setCurrentStreamRole(ADMIN_USER_UUID, "owner");
       useUsersStore.getState().mergeUsers([
-        { user_id: 42, full_name: "Admin", email: "admin@example.com", role: 200 },
-        { user_id: 77, full_name: "Alice", email: "alice@example.com" },
-        { user_id: 88, full_name: "Bob", email: "bob@example.com" },
+        { user_id: ADMIN_USER_UUID, full_name: "Admin", email: "admin@example.com" },
+        { user_id: ALICE_USER_UUID, full_name: "Alice", email: "alice@example.com" },
+        { user_id: BOB_USER_UUID, full_name: "Bob", email: "bob@example.com" },
       ]);
     });
 
@@ -1746,7 +1818,8 @@ describe("RightPanel truthfulness", () => {
     await waitFor(() => {
       expect(addMembersSpy).toHaveBeenCalledWith({
         streamName: "Test clon",
-        userIds: [88],
+        streamUuid: "00000000-0000-4000-8000-000000000010",
+        userIds: [BOB_USER_UUID],
       });
     });
   });
@@ -1794,8 +1867,9 @@ describe("RightPanel truthfulness", () => {
         streamMemberIds: [77],
       });
       useChatListStore.getState().setCurrentUserId(42);
+      setCurrentStreamRole(42, "owner");
       useUsersStore.getState().mergeUsers([
-        { user_id: 42, full_name: "Admin", email: "admin@example.com", role: 200 },
+        { user_id: 42, full_name: "Admin", email: "admin@example.com" },
         { user_id: 77, full_name: "Alice", email: "alice@example.com" },
         { user_id: 88, full_name: "Bob", email: "bob@example.com" },
       ]);
@@ -1811,7 +1885,7 @@ describe("RightPanel truthfulness", () => {
     expect(useAddStreamMembersStore.getState().open).toBe(false);
   });
 
-  it("shows remove-member action for removable members and hides for self/creator/org-owner", () => {
+  it("shows remove-member action for removable members and hides for self/stream owners", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
         context: {
@@ -1848,7 +1922,7 @@ describe("RightPanel truthfulness", () => {
             },
             {
               userId: 100,
-              fullName: "Org Owner",
+              fullName: "Stream Owner",
               email: "owner@example.com",
               avatarUrl: null,
               isOnline: false,
@@ -1875,11 +1949,15 @@ describe("RightPanel truthfulness", () => {
         },
       ]);
       useChatListStore.getState().setCurrentUserId(42);
+      setCurrentStreamRole(42, "owner");
+      setCurrentStreamRole(77, "member");
+      setCurrentStreamRole(88, "owner");
+      setCurrentStreamRole(100, "owner");
       useUsersStore.getState().mergeUsers([
-        { user_id: 42, full_name: "Current User", role: 200 },
-        { user_id: 77, full_name: "Alice", role: 400 },
-        { user_id: 100, full_name: "Org Owner", role: 100 },
-        { user_id: 88, full_name: "Stream Creator", role: 400 },
+        { user_id: 42, full_name: "Current User" },
+        { user_id: 77, full_name: "Alice" },
+        { user_id: 100, full_name: "Stream Owner" },
+        { user_id: 88, full_name: "Stream Creator" },
       ]);
     });
 
@@ -1895,11 +1973,11 @@ describe("RightPanel truthfulness", () => {
       screen.queryByRole("button", { name: /remove from channel: stream creator/i }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /remove from channel: org owner/i }),
+      screen.queryByRole("button", { name: /remove from channel: stream owner/i }),
     ).not.toBeInTheDocument();
   });
 
-  it("renders Creator and Channel admin badges from channel metadata", () => {
+  it("renders Creator and Channel admin badges from stream roles", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
         context: {
@@ -1928,7 +2006,7 @@ describe("RightPanel truthfulness", () => {
               isOnline: true,
             },
             {
-              userId: 88,
+              userId: BOB_USER_UUID,
               fullName: "Channel Admin",
               email: "admin@example.com",
               avatarUrl: null,
@@ -1939,29 +2017,21 @@ describe("RightPanel truthfulness", () => {
           isMuted: false,
           topics: [],
         },
-        streamMemberIds: [77, 88],
+        streamMemberIds: [77, BOB_USER_UUID],
       });
       useChatListStore.getState().upsertStreamMetadataRows([
         {
           streamUuid: "00000000-0000-4000-8000-000000000010",
           name: "engineering",
-          creatorId: 77,
-          canAdministerChannelGroup: 9126,
         },
       ]);
       useChatListStore.getState().setCurrentUserId(42);
+      setCurrentStreamRole(77, "owner");
+      setCurrentStreamRole(BOB_USER_UUID, "administrator");
       useUsersStore.getState().mergeUsers([
-        { user_id: 42, full_name: "Current User", role: 200 },
-        { user_id: 77, full_name: "Stream Creator", role: 400 },
-        { user_id: 88, full_name: "Channel Admin", role: 400 },
-      ]);
-      useUserGroupsStore.getState().setGroups([
-        {
-          id: 9126,
-          name: "channel-admins",
-          members: [88],
-          direct_subgroup_ids: [],
-        },
+        { user_id: 42, full_name: "Current User" },
+        { user_id: 77, full_name: "Stream Creator" },
+        { user_id: BOB_USER_UUID, full_name: "Channel Admin" },
       ]);
     });
 
@@ -1995,7 +2065,7 @@ describe("RightPanel truthfulness", () => {
           onlineCount: 1,
           members: [
             {
-              userId: 77,
+              userId: ALICE_USER_UUID,
               fullName: "Creator Admin",
               email: "creator-admin@example.com",
               avatarUrl: null,
@@ -2006,28 +2076,20 @@ describe("RightPanel truthfulness", () => {
           isMuted: false,
           topics: [],
         },
-        streamMemberIds: [77],
+        streamMemberIds: [ALICE_USER_UUID],
       });
       useChatListStore.getState().upsertStreamMetadataRows([
         {
           streamUuid: "00000000-0000-4000-8000-000000000010",
           name: "engineering",
-          creatorId: 77,
-          canAdministerChannelGroup: 9126,
+          creatorId: ALICE_USER_UUID,
         },
       ]);
       useChatListStore.getState().setCurrentUserId(42);
+      setCurrentStreamRole(ALICE_USER_UUID, "owner");
       useUsersStore.getState().mergeUsers([
-        { user_id: 42, full_name: "Current User", role: 200 },
-        { user_id: 77, full_name: "Creator Admin", role: 400 },
-      ]);
-      useUserGroupsStore.getState().setGroups([
-        {
-          id: 9126,
-          name: "channel-admins",
-          members: [77],
-          direct_subgroup_ids: [],
-        },
+        { user_id: 42, full_name: "Current User" },
+        { user_id: ALICE_USER_UUID, full_name: "Creator Admin" },
       ]);
     });
 
@@ -2090,9 +2152,10 @@ describe("RightPanel truthfulness", () => {
           { streamUuid: "00000000-0000-4000-8000-000000000010", name: "Test clon" },
         ]);
       useChatListStore.getState().setCurrentUserId(42);
+      setCurrentStreamRole(42, "owner");
       useUsersStore.getState().mergeUsers([
-        { user_id: 42, full_name: "Admin", email: "admin@example.com", role: 200 },
-        { user_id: 77, full_name: "Alice", email: "alice@example.com", role: 400 },
+        { user_id: 42, full_name: "Admin", email: "admin@example.com" },
+        { user_id: 77, full_name: "Alice", email: "alice@example.com" },
       ]);
     });
 
@@ -2138,7 +2201,8 @@ describe("RightPanel truthfulness", () => {
         topics: [],
       });
       useChatListStore.getState().setCurrentUserId(42);
-      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Member", role: 400 });
+      setCurrentStreamRole(42, "member");
+      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Member" });
     });
 
     renderWithProviders(
@@ -2149,7 +2213,7 @@ describe("RightPanel truthfulness", () => {
     expect(screen.queryByRole("button", { name: /archive channel/i })).not.toBeInTheDocument();
   });
 
-  it("shows channel edit/delete actions for admin role and submits edit changes", async () => {
+  it("shows channel edit/delete actions for stream owner role and submits edit changes", async () => {
     const updateStreamSpy = vi.spyOn(messengerStreams, "updateStream").mockResolvedValue(true);
 
     act(() => {
@@ -2176,7 +2240,8 @@ describe("RightPanel truthfulness", () => {
         topics: [],
       });
       useChatListStore.getState().setCurrentUserId(42);
-      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin", role: 200 });
+      setCurrentStreamRole(42, "owner");
+      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin" });
     });
 
     renderWithProviders(
@@ -2231,7 +2296,8 @@ describe("RightPanel truthfulness", () => {
         topics: [],
       });
       useChatListStore.getState().setCurrentUserId(42);
-      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin", role: 200 });
+      setCurrentStreamRole(42, "owner");
+      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin" });
     });
 
     renderWithProviders(
@@ -2278,7 +2344,8 @@ describe("RightPanel truthfulness", () => {
         topics: [],
       });
       useChatListStore.getState().setCurrentUserId(42);
-      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin", role: 200 });
+      setCurrentStreamRole(42, "owner");
+      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin" });
     });
 
     renderWithProviders(
@@ -2290,7 +2357,7 @@ describe("RightPanel truthfulness", () => {
     expect(screen.getByLabelText(/channel name/i)).toHaveValue("#engineering");
   });
 
-  it("shows channel edit/delete actions for channel admin", () => {
+  it("shows channel edit/delete actions for stream administrator", () => {
     act(() => {
       useCurrentChatMessagesStore.setState({
         context: {
@@ -2321,13 +2388,14 @@ describe("RightPanel truthfulness", () => {
           canAdministerChannelGroup: 9126,
         },
       ]);
-      useChatListStore.getState().setCurrentUserId(42);
-      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Member", role: 400 });
+      useChatListStore.getState().setCurrentUserId(ADMIN_USER_UUID);
+      setCurrentStreamRole(ADMIN_USER_UUID, "administrator");
+      useUsersStore.getState().mergeUser({ user_id: ADMIN_USER_UUID, full_name: "Member" });
       useUserGroupsStore.getState().setGroups([
         {
           id: 9126,
           name: "channel-admins",
-          members: [42],
+          members: [ADMIN_USER_UUID],
           direct_subgroup_ids: [],
         },
       ]);
@@ -2347,7 +2415,8 @@ describe("RightPanel truthfulness", () => {
 
     act(() => {
       useChatListStore.getState().setCurrentUserId(42);
-      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin", role: 200 });
+      setCurrentStreamRole(42, "owner");
+      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin" });
       useChatListStore.getState().setStreamMetadataHydrated(true);
       useChatListStore.getState().setFromMessages(
         [
@@ -2442,7 +2511,8 @@ describe("RightPanel truthfulness", () => {
 
     act(() => {
       useChatListStore.getState().setCurrentUserId(42);
-      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin", role: 200 });
+      setCurrentStreamRole(42, "owner");
+      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Admin" });
       useChatListStore.getState().setStreamMetadataHydrated(true);
       useChatListStore.getState().upsertStreamMetadataRows([
         {

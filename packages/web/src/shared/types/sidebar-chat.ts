@@ -86,7 +86,7 @@ export interface StreamEntryInternal {
   ts: number;
   unreadCount?: number;
   isArchived?: boolean;
-  creatorId?: number;
+  creatorId?: UserId;
   inviteOnly?: boolean;
   canAddSubscribersGroup?: MessengerGroupSettingValue;
   canRemoveSubscribersGroup?: MessengerGroupSettingValue;

@@ -1,22 +1,10 @@
 /**
- * Runtime channel action capabilities aligned with messenger group-setting semantics.
+ * Runtime stream action capabilities aligned with Workspace stream-binding roles.
  */
-import type { CurrentUserChannelCapabilities } from "~/entities/user/user.model";
-import type { MessengerGroupSettingValue } from "~/shared/api/messenger.types";
-import { UserRole } from "~/shared/lib/roles";
+import type { WorkspaceStreamRole } from "~/shared/api/messenger.types";
 
 export interface ResolveCurrentUserChannelCapabilitiesInput {
-  currentUserId: number | null;
-  orgRole: UserRole;
-  currentUserChannelCapabilities?: CurrentUserChannelCapabilities;
-  inviteOnly?: boolean;
-  canAddSubscribersGroup?: MessengerGroupSettingValue;
-  canRemoveSubscribersGroup?: MessengerGroupSettingValue;
-  canAdministerChannelGroup?: MessengerGroupSettingValue;
-  isUserInGroupSetting: (
-    setting: MessengerGroupSettingValue | undefined,
-    userId: number,
-  ) => boolean;
+  currentUserStreamRole?: WorkspaceStreamRole | null;
 }
 
 export interface ChannelActionCapabilities {
@@ -26,46 +14,18 @@ export interface ChannelActionCapabilities {
   canArchiveChannel: boolean;
 }
 
-function isOrgAdminRole(role: UserRole): boolean {
-  return role === UserRole.Owner || role === UserRole.Admin;
+function canManageStream(role: WorkspaceStreamRole | null | undefined): boolean {
+  return role === "owner" || role === "administrator";
 }
 
 export function resolveCurrentUserChannelCapabilities(
   input: ResolveCurrentUserChannelCapabilitiesInput,
 ): ChannelActionCapabilities {
-  const { currentUserId, orgRole, currentUserChannelCapabilities, canAdministerChannelGroup } =
-    input;
-  if (currentUserId == null || orgRole === UserRole.Guest) {
-    return {
-      canAddSubscribers: false,
-      canRemoveSubscribers: false,
-      canEditChannelMetadata: false,
-      canArchiveChannel: false,
-    };
-  }
-
-  const isOrgAdmin = isOrgAdminRole(orgRole);
-  const isChannelAdmin = input.isUserInGroupSetting(canAdministerChannelGroup, currentUserId);
-  const inAddSubscribersGroup = input.isUserInGroupSetting(
-    input.canAddSubscribersGroup,
-    currentUserId,
-  );
-  const inRealmAddSubscribersGroup = input.isUserInGroupSetting(
-    currentUserChannelCapabilities?.realmCanAddSubscribersGroup,
-    currentUserId,
-  );
-  const inRemoveSubscribersGroup = input.isUserInGroupSetting(
-    input.canRemoveSubscribersGroup,
-    currentUserId,
-  );
+  const canManage = canManageStream(input.currentUserStreamRole);
   return {
-    canAddSubscribers:
-      isOrgAdmin ||
-      inAddSubscribersGroup ||
-      inRealmAddSubscribersGroup ||
-      (isChannelAdmin && input.inviteOnly !== true),
-    canRemoveSubscribers: isOrgAdmin || isChannelAdmin || inRemoveSubscribersGroup,
-    canEditChannelMetadata: isOrgAdmin || isChannelAdmin,
-    canArchiveChannel: isOrgAdmin || isChannelAdmin,
+    canAddSubscribers: canManage,
+    canRemoveSubscribers: canManage,
+    canEditChannelMetadata: canManage,
+    canArchiveChannel: canManage,
   };
 }

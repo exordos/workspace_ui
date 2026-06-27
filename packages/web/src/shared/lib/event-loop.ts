@@ -403,6 +403,30 @@ function streamEventFromWorkspaceStream(
   };
 }
 
+function streamBindingsEventFromWorkspacePayload(
+  epochVersion: number,
+  payloadValue: unknown,
+): MessengerEvent | null {
+  if (!isRecord(payloadValue)) {
+    return null;
+  }
+  const streamUuid = normalizeUuid(payloadValue.stream_uuid);
+  if (streamUuid == null || !Array.isArray(payloadValue.stream_bindings)) {
+    return null;
+  }
+  const streamBindings = payloadValue.stream_bindings
+    .filter(isRecord)
+    .map((binding) => ({ ...binding }));
+  return {
+    id: epochVersion,
+    type: "stream_binding",
+    epoch_version: epochVersion,
+    kind: "stream_bindings.created",
+    stream_uuid: streamUuid,
+    stream_bindings: streamBindings,
+  };
+}
+
 function folderEventFromWorkspaceFolder(
   epochVersion: number,
   kind: "folder.created" | "folder.updated",
@@ -501,6 +525,12 @@ export function normalizeWorkspaceEventModel(
     const event = streamEventFromWorkspaceStream(epochVersion, payload);
     return event == null
       ? { epochVersion, event: null, skipReason: "invalid stream.created payload" }
+      : { epochVersion, event };
+  }
+  if (kind === "stream_bindings.created") {
+    const event = streamBindingsEventFromWorkspacePayload(epochVersion, payload);
+    return event == null
+      ? { epochVersion, event: null, skipReason: "invalid stream_bindings.created payload" }
       : { epochVersion, event };
   }
   if (kind === "folder.created" || kind === "folder.updated") {
@@ -607,6 +637,20 @@ export function normalizeWorkspaceRealtimeEvent(
     const event = streamEventFromWorkspaceStream(epochVersion, rawEvent.stream);
     return event == null
       ? { epochVersion, event: null, skipReason: "invalid stream.created frame" }
+      : { epochVersion, event };
+  }
+  if (type === "stream_binding") {
+    const kind = readString(rawEvent.kind);
+    if (kind !== "stream_bindings.created") {
+      return {
+        epochVersion,
+        event: null,
+        skipReason: `unsupported stream_binding event kind: ${kind ?? "unknown"}`,
+      };
+    }
+    const event = streamBindingsEventFromWorkspacePayload(epochVersion, rawEvent);
+    return event == null
+      ? { epochVersion, event: null, skipReason: "invalid stream_bindings.created frame" }
       : { epochVersion, event };
   }
   if (type === "folder") {

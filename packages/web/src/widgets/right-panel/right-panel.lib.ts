@@ -2,15 +2,9 @@ import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import type { UserRecord } from "~/entities/user/user.model";
 import type { ChatInfoMember } from "~/features/chat-info/chat-info.types";
 import { getRealmBaseUrl } from "~/shared/api/messenger-client.internal";
-import type { MessengerGroupSettingValue } from "~/shared/api/messenger.types";
+import type { WorkspaceStreamRole } from "~/shared/api/messenger.types";
 import { resolveAvatarUrl } from "~/shared/lib/avatar";
-import { parseRole, UserRole } from "~/shared/lib/roles";
-import {
-  numericUserIdOrNull,
-  userIdsEqual,
-  userIdStorageKey,
-  type UserId,
-} from "~/shared/lib/user-id.lib";
+import { userIdStorageKey, type UserId } from "~/shared/lib/user-id.lib";
 import { isValidEmail } from "~/shared/lib/validation";
 import type { RightPanelUserInfo } from "./right-panel.types";
 
@@ -19,50 +13,40 @@ export interface RightPanelStreamMemberViewModel {
   userId: UserId;
   name: string;
   status: string;
-  isOrgOwner: boolean;
   isCreator: boolean;
   isChannelAdmin: boolean;
+  isStreamOwner: boolean;
   isOnline: boolean;
   avatarUrl: string | null;
 }
 
-// Inputs: chat-info members, users directory, channel permission metadata.
+// Inputs: chat-info members, users directory, and stream-binding roles.
 interface BuildRightPanelStreamMembersInput {
   members: readonly ChatInfoMember[];
   users: Map<string, UserRecord>;
-  streamCreatorId: number | undefined;
-  canAdministerChannelGroup: MessengerGroupSettingValue | undefined;
-  isUserInGroupSetting: (
-    setting: MessengerGroupSettingValue | undefined,
-    userId: number,
-  ) => boolean;
+  streamMemberRolesByUserId: Readonly<Record<string, WorkspaceStreamRole>>;
   memberFallbackLabel: string;
   onlineLabel: string;
   offlineLabel: string;
 }
 
-// Build right-panel member rows with Creator/Channel admin badges from users store.
+// Build right-panel member rows with Creator/Channel admin badges from stream-binding roles.
 export function buildRightPanelStreamMembers(
   input: BuildRightPanelStreamMembersInput,
 ): RightPanelStreamMemberViewModel[] {
   return input.members.map((member) => {
     const userRecord = input.users.get(userIdStorageKey(member.userId));
-    const memberRole = parseRole(userRecord?.role);
-    const numericMemberId = numericUserIdOrNull(member.userId);
+    const memberRole = input.streamMemberRolesByUserId[userIdStorageKey(member.userId)];
+    const isStreamOwner = memberRole === "owner";
     return {
       userId: member.userId,
       name: member.fullName || input.memberFallbackLabel,
       status:
         formatUserStatusLabel(userRecord?.status) ??
         (member.isOnline ? input.onlineLabel : input.offlineLabel),
-      isOrgOwner: memberRole === UserRole.Owner,
-      isCreator:
-        input.streamCreatorId != null && userIdsEqual(member.userId, input.streamCreatorId),
-      isChannelAdmin:
-        memberRole === UserRole.Owner ||
-        memberRole === UserRole.Admin ||
-        (numericMemberId != null &&
-          input.isUserInGroupSetting(input.canAdministerChannelGroup, numericMemberId)),
+      isCreator: isStreamOwner,
+      isChannelAdmin: memberRole === "administrator",
+      isStreamOwner,
       isOnline: member.isOnline,
       avatarUrl: member.avatarUrl,
     };

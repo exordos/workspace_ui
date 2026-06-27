@@ -1,5 +1,5 @@
 /**
- * Builds POST bodies for gateway private (1:1) message streams and stream bindings.
+ * Builds POST bodies for gateway private (1:1) message streams and stream member actions.
  *
  * Flow:
  * 1. POST /streams/ — `WorkspaceStream` (`ModelWithRequiredNameDesc` + native source + direct peer)
@@ -26,10 +26,9 @@ export interface CreatePrivateMessageStreamBody {
   direct_user_uuid: string;
 }
 
-export interface CreateStreamBindingBody {
-  stream_uuid: string;
-  user_uuid: string;
-  role: MessengerStreamBindingRole;
+export interface AddStreamUsersBody {
+  [MESSENGER_STREAM_BINDING_ROLE_OWNER]?: string[];
+  [MESSENGER_STREAM_BINDING_ROLE_MEMBER]?: string[];
 }
 
 /** Resolves a non-empty stream title for ModelWithRequiredNameDesc.name. */
@@ -59,16 +58,21 @@ export function buildCreatePrivateMessageStreamBody(options: {
   };
 }
 
-/** POST /api/messenger/v1/stream_bindings/ payload for regular stream membership. */
-export function buildCreateStreamBindingBody(options: {
-  streamUuid: string;
-  peerUserUuid: string;
+/** POST /api/messenger/v1/streams/{uuid}/actions/add_users/invoke payload. */
+export function buildAddStreamUsersBody(options: {
+  userUuids: readonly string[];
   role?: MessengerStreamBindingRole;
-}): CreateStreamBindingBody {
+}): AddStreamUsersBody {
+  const userUuids = Array.from(
+    new Set(
+      options.userUuids
+        .map((userUuid) => userUuid.trim().toLowerCase())
+        .filter((userUuid) => userUuid.length > 0),
+    ),
+  );
+  const role = options.role ?? MESSENGER_STREAM_BINDING_ROLE_OWNER;
   return {
-    stream_uuid: options.streamUuid.trim(),
-    user_uuid: options.peerUserUuid.trim(),
-    role: options.role ?? MESSENGER_STREAM_BINDING_ROLE_OWNER,
+    [role]: userUuids,
   };
 }
 

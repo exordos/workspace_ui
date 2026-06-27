@@ -111,17 +111,25 @@ export interface MessengerMeMessagesPage {
 }
 
 export interface MessengerGroupSettingValueObject {
-  direct_members: number[];
+  direct_members: UserId[];
   direct_subgroups: number[];
 }
 
 /** messenger group-setting value: single group id or `{ direct_members, direct_subgroups }`. */
 export type MessengerGroupSettingValue = number | MessengerGroupSettingValueObject;
 
+export type WorkspaceStreamRole = "guest" | "member" | "moderator" | "administrator" | "owner";
+
+export interface WorkspaceStreamBinding {
+  stream_uuid: string;
+  user_uuid: string;
+  role: WorkspaceStreamRole;
+}
+
 export interface MessengerRealmUserGroup {
   id: number;
   name: string;
-  members: number[];
+  members: UserId[];
   direct_subgroup_ids: number[];
   is_system_group?: boolean;
 }
