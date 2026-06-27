@@ -1083,9 +1083,10 @@ describe("dispatchMessengerEvent", () => {
       ]);
     });
 
-    it("maps creator_id on subscription add metadata row", () => {
+    it("maps owner UUID on subscription add metadata row", () => {
       const { ctx } = buildCtx();
       const upsertSpy = vi.spyOn(ctx.chatList, "upsertStreamMetadataRows");
+      const ownerUuid = "00000000-0000-4000-8000-000000000077";
 
       dispatchMessengerEvent(
         {
@@ -1096,7 +1097,7 @@ describe("dispatchMessengerEvent", () => {
             {
               stream_uuid: "00000000-0000-4000-8000-000000000042",
               name: "engineering",
-              creator_id: 77,
+              owner: ownerUuid,
             },
           ],
         },
@@ -1107,7 +1108,7 @@ describe("dispatchMessengerEvent", () => {
         {
           streamUuid: "00000000-0000-4000-8000-000000000042",
           name: "engineering",
-          creatorId: 77,
+          creatorId: ownerUuid,
         },
       ]);
     });

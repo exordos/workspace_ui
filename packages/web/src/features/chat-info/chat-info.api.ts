@@ -15,6 +15,7 @@ const STREAMS_TTL_MS = 5 * 60_000;
 export interface StreamMembersSnapshot {
   memberIds: UserId[];
   rolesByUserId: Record<string, WorkspaceStreamRole>;
+  bindingUuidsByUserId: Record<string, string>;
 }
 
 const streamMembersCache = new Map<string, CacheEntry<StreamMembersSnapshot>>();
@@ -58,6 +59,7 @@ export async function loadStreamMembersSnapshot(
       return {
         memberIds: [...cached.value.memberIds],
         rolesByUserId: { ...cached.value.rolesByUserId },
+        bindingUuidsByUserId: { ...cached.value.bindingUuidsByUserId },
       };
     }
   }
@@ -71,12 +73,16 @@ export async function loadStreamMembersSnapshot(
     .then((bindings) => {
       const memberIds = bindings.map((binding) => binding.user_uuid);
       const rolesByUserId: Record<string, WorkspaceStreamRole> = {};
+      const bindingUuidsByUserId: Record<string, string> = {};
       for (const binding of bindings) {
-        rolesByUserId[userIdStorageKey(binding.user_uuid)] = binding.role;
+        const userKey = userIdStorageKey(binding.user_uuid);
+        rolesByUserId[userKey] = binding.role;
+        bindingUuidsByUserId[userKey] = binding.uuid;
       }
       const next: StreamMembersSnapshot = {
         memberIds,
         rolesByUserId,
+        bindingUuidsByUserId,
       };
       streamMembersCache.set(key, {
         value: next,
@@ -85,6 +91,7 @@ export async function loadStreamMembersSnapshot(
       return {
         memberIds: [...next.memberIds],
         rolesByUserId: { ...next.rolesByUserId },
+        bindingUuidsByUserId: { ...next.bindingUuidsByUserId },
       };
     })
     .finally(() => {

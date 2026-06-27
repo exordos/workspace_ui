@@ -12,7 +12,6 @@ import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import * as muteChat from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
-import { useRemoveStreamMembersStore } from "~/features/remove-stream-members/remove-stream-members.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { setLocale, t } from "~/i18n/i18n";
 import * as messengerStreams from "~/shared/api/messenger-streams";
@@ -38,6 +37,7 @@ const RELEASE_TOPIC_UUID = "00000000-0000-4000-8000-000000000210";
 const ADMIN_USER_UUID = "00000000-0000-4000-8000-000000000042";
 const ALICE_USER_UUID = "00000000-0000-4000-8000-000000000077";
 const BOB_USER_UUID = "00000000-0000-4000-8000-000000000088";
+const ALICE_BINDING_UUID = "10000000-0000-4000-8000-000000000077";
 
 function setCurrentStreamRole(userId: UserId, role: WorkspaceStreamRole = "owner"): void {
   useChatInfoStore.setState((state) => ({
@@ -46,6 +46,21 @@ function setCurrentStreamRole(userId: UserId, role: WorkspaceStreamRole = "owner
       [userIdStorageKey(userId)]: role,
     },
   }));
+}
+
+function setStreamMemberBinding(userId: UserId, bindingUuid: string): void {
+  useChatInfoStore.setState((state) => ({
+    streamMemberBindingUuidsByUserId: {
+      ...state.streamMemberBindingUuidsByUserId,
+      [userIdStorageKey(userId)]: bindingUuid,
+    },
+  }));
+}
+
+function openMemberContextMenu(name: string): void {
+  fireEvent.contextMenu(
+    screen.getByRole("button", { name: new RegExp(`open profile: ${name}`, "i") }),
+  );
 }
 
 vi.mock("react-router-dom", async () => {
@@ -165,7 +180,6 @@ describe("RightPanel truthfulness", () => {
       error: null,
       lastResult: null,
     });
-    useRemoveStreamMembersStore.getState().clear();
     useThemeStore.getState().setMode("dark");
     useThemeStore.getState().setPalette("orange-warm");
     useSettingsStore.getState().resetToDefaults();
@@ -1177,7 +1191,7 @@ describe("RightPanel truthfulness", () => {
   it("shows custom user statuses in stream members list", () => {
     act(() => {
       useUsersStore.getState().mergeUser({
-        user_id: 77,
+        user_id: ALICE_USER_UUID,
         full_name: "Alice Cooper",
         status: {
           text: "In focus",
@@ -1205,7 +1219,7 @@ describe("RightPanel truthfulness", () => {
         onlineCount: 1,
         members: [
           {
-            userId: 77,
+            userId: ALICE_USER_UUID,
             fullName: "Alice Cooper",
             email: "alice@example.com",
             avatarUrl: null,
@@ -1222,7 +1236,7 @@ describe("RightPanel truthfulness", () => {
       <RightPanelShell title="engineering" participantsCount={1} onlineCount={1} />,
     );
 
-    expect(screen.getByText("💬 In focus")).toBeInTheDocument();
+    expect(screen.getByText("Member - 💬 In focus")).toBeInTheDocument();
   });
 
   it("shows add members action for stream owner role", () => {
@@ -1664,6 +1678,7 @@ describe("RightPanel truthfulness", () => {
       ]);
       useChatListStore.getState().setCurrentUserId(ADMIN_USER_UUID);
       setCurrentStreamRole(ADMIN_USER_UUID, "administrator");
+      setStreamMemberBinding(77, ALICE_BINDING_UUID);
       useUsersStore.getState().mergeUsers([
         { user_id: ADMIN_USER_UUID, full_name: "Member" },
         { user_id: 77, full_name: "Alice" },
@@ -1682,7 +1697,8 @@ describe("RightPanel truthfulness", () => {
       <RightPanelShell title="engineering" participantsCount={1} onlineCount={1} />,
     );
 
-    expect(screen.getByRole("button", { name: /remove from channel: alice/i })).toBeInTheDocument();
+    openMemberContextMenu("Alice");
+    expect(screen.getByRole("menuitem", { name: /remove from channel/i })).toBeInTheDocument();
   });
 
   it("shows remove-member action for stream owner without remove-subscribers group membership", () => {
@@ -1730,6 +1746,7 @@ describe("RightPanel truthfulness", () => {
       ]);
       useChatListStore.getState().setCurrentUserId(ADMIN_USER_UUID);
       setCurrentStreamRole(ADMIN_USER_UUID, "owner");
+      setStreamMemberBinding(77, ALICE_BINDING_UUID);
       useUsersStore.getState().mergeUsers([
         { user_id: ADMIN_USER_UUID, full_name: "Member" },
         { user_id: 77, full_name: "Alice" },
@@ -1748,7 +1765,8 @@ describe("RightPanel truthfulness", () => {
       <RightPanelShell title="engineering" participantsCount={1} onlineCount={1} />,
     );
 
-    expect(screen.getByRole("button", { name: /remove from channel: alice/i })).toBeInTheDocument();
+    openMemberContextMenu("Alice");
+    expect(screen.getByRole("menuitem", { name: /remove from channel/i })).toBeInTheDocument();
   });
 
   it("submits add-members dialog and calls stream members api", async () => {
@@ -1800,6 +1818,7 @@ describe("RightPanel truthfulness", () => {
         ]);
       useChatListStore.getState().setCurrentUserId(ADMIN_USER_UUID);
       setCurrentStreamRole(ADMIN_USER_UUID, "owner");
+      setStreamMemberBinding(77, ALICE_BINDING_UUID);
       useUsersStore.getState().mergeUsers([
         { user_id: ADMIN_USER_UUID, full_name: "Admin", email: "admin@example.com" },
         { user_id: ALICE_USER_UUID, full_name: "Alice", email: "alice@example.com" },
@@ -1945,12 +1964,13 @@ describe("RightPanel truthfulness", () => {
         {
           streamUuid: "00000000-0000-4000-8000-000000000010",
           name: "engineering",
-          creatorId: 88,
+          creatorId: BOB_USER_UUID,
         },
       ]);
       useChatListStore.getState().setCurrentUserId(42);
       setCurrentStreamRole(42, "owner");
       setCurrentStreamRole(77, "member");
+      setStreamMemberBinding(77, ALICE_BINDING_UUID);
       setCurrentStreamRole(88, "owner");
       setCurrentStreamRole(100, "owner");
       useUsersStore.getState().mergeUsers([
@@ -1965,16 +1985,8 @@ describe("RightPanel truthfulness", () => {
       <RightPanelShell title="engineering" participantsCount={4} onlineCount={1} />,
     );
 
-    expect(screen.getByRole("button", { name: /remove from channel: alice/i })).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /remove from channel: current user/i }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /remove from channel: stream creator/i }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /remove from channel: stream owner/i }),
-    ).not.toBeInTheDocument();
+    openMemberContextMenu("Alice");
+    expect(screen.getByRole("menuitem", { name: /remove from channel/i })).toBeInTheDocument();
   });
 
   it("renders Creator and Channel admin badges from stream roles", () => {
@@ -2101,15 +2113,76 @@ describe("RightPanel truthfulness", () => {
     expect(screen.queryByText("Channel admin")).not.toBeInTheDocument();
   });
 
-  it("removes stream member via hover cross and does not open profile on click", async () => {
-    const removeMembersSpy = vi
-      .spyOn(messengerStreams, "removeMembersFromStream")
-      .mockResolvedValue({
-        ok: true,
-        removedUserIds: [77],
-        alreadyUnsubscribedUserIds: [],
-        unauthorizedStreams: [],
+  it("changes stream member role from context menu", async () => {
+    const updateRoleSpy = vi
+      .spyOn(messengerStreams, "updateStreamBindingRole")
+      .mockResolvedValue(true);
+
+    act(() => {
+      useCurrentChatMessagesStore.setState({
+        context: {
+          type: "stream",
+          streamId: "00000000-0000-4000-8000-000000000010",
+          streamName: "test-clon",
+          topic: "general",
+        },
+        messages: [],
+        isLoadingMore: false,
+        hasOlderMessages: true,
+        hasNewerMessages: false,
       });
+      useChatInfoStore.setState({
+        data: {
+          type: "stream",
+          name: "test-clon",
+          memberCount: 1,
+          onlineCount: 1,
+          members: [
+            {
+              userId: ALICE_USER_UUID,
+              fullName: "Alice",
+              email: "alice@example.com",
+              avatarUrl: null,
+              isOnline: true,
+            },
+          ],
+          description: null,
+          isMuted: false,
+          topics: [],
+        },
+        streamMemberIds: [ALICE_USER_UUID],
+      });
+      useChatListStore.getState().setCurrentUserId(ADMIN_USER_UUID);
+      setCurrentStreamRole(ADMIN_USER_UUID, "owner");
+      setCurrentStreamRole(ALICE_USER_UUID, "member");
+      setStreamMemberBinding(ALICE_USER_UUID, ALICE_BINDING_UUID);
+      useUsersStore.getState().mergeUsers([
+        { user_id: ADMIN_USER_UUID, full_name: "Admin", email: "admin@example.com" },
+        { user_id: ALICE_USER_UUID, full_name: "Alice", email: "alice@example.com" },
+      ]);
+    });
+
+    renderWithProviders(
+      <RightPanelShell title="test-clon" participantsCount={1} onlineCount={1} />,
+    );
+
+    expect(screen.getByText(/member - online/i)).toBeInTheDocument();
+    openMemberContextMenu("Alice");
+    expect(screen.getByText(/change role/i)).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: /moderator/i }));
+
+    await waitFor(() => {
+      expect(updateRoleSpy).toHaveBeenCalledWith(ALICE_BINDING_UUID, "moderator");
+    });
+    expect(useChatInfoStore.getState().streamMemberRolesByUserId[ALICE_USER_UUID]).toBe(
+      "moderator",
+    );
+  });
+
+  it("removes stream member from context menu without opening profile", async () => {
+    const deleteBindingSpy = vi
+      .spyOn(messengerStreams, "deleteStreamBinding")
+      .mockResolvedValue(true);
     const openUserProfile = vi.fn();
 
     act(() => {
@@ -2133,7 +2206,7 @@ describe("RightPanel truthfulness", () => {
           onlineCount: 1,
           members: [
             {
-              userId: 77,
+              userId: ALICE_USER_UUID,
               fullName: "Alice",
               email: "alice@example.com",
               avatarUrl: null,
@@ -2144,18 +2217,19 @@ describe("RightPanel truthfulness", () => {
           isMuted: false,
           topics: [],
         },
-        streamMemberIds: [77],
+        streamMemberIds: [ALICE_USER_UUID],
       });
       useChatListStore
         .getState()
         .upsertStreamMetadataRows([
           { streamUuid: "00000000-0000-4000-8000-000000000010", name: "Test clon" },
         ]);
-      useChatListStore.getState().setCurrentUserId(42);
-      setCurrentStreamRole(42, "owner");
+      useChatListStore.getState().setCurrentUserId(ADMIN_USER_UUID);
+      setCurrentStreamRole(ADMIN_USER_UUID, "owner");
+      setStreamMemberBinding(ALICE_USER_UUID, ALICE_BINDING_UUID);
       useUsersStore.getState().mergeUsers([
-        { user_id: 42, full_name: "Admin", email: "admin@example.com" },
-        { user_id: 77, full_name: "Alice", email: "alice@example.com" },
+        { user_id: ADMIN_USER_UUID, full_name: "Admin", email: "admin@example.com" },
+        { user_id: ALICE_USER_UUID, full_name: "Alice", email: "alice@example.com" },
       ]);
     });
 
@@ -2165,15 +2239,14 @@ describe("RightPanel truthfulness", () => {
       </RightDrawerContext.Provider>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /remove from channel: alice/i }));
+    openMemberContextMenu("Alice");
+    fireEvent.click(screen.getByRole("menuitem", { name: /remove from channel/i }));
 
     await waitFor(() => {
-      expect(removeMembersSpy).toHaveBeenCalledWith({
-        streamName: "Test clon",
-        userIds: [77],
-      });
+      expect(deleteBindingSpy).toHaveBeenCalledWith(ALICE_BINDING_UUID);
     });
     expect(openUserProfile).not.toHaveBeenCalled();
+    expect(useChatInfoStore.getState().streamMemberIds).toEqual([]);
   });
 
   it("hides channel edit/delete actions for member role", () => {

@@ -48,6 +48,7 @@ export interface MessengerMeStream {
   created_at?: string;
   updated_at?: string;
   user_uuid?: string;
+  owner?: string;
   /** UI/API alias for the stream UUID. */
   stream_uuid: string;
   last_synced_at?: string;
@@ -122,6 +123,7 @@ export type MessengerGroupSettingValue = number | MessengerGroupSettingValueObje
 export type WorkspaceStreamRole = "guest" | "member" | "moderator" | "administrator" | "owner";
 
 export interface WorkspaceStreamBinding {
+  uuid: string;
   stream_uuid: string;
   user_uuid: string;
   role: WorkspaceStreamRole;
@@ -287,7 +289,7 @@ export interface MockStream {
   subscriber_count?: number | null;
   stream_weekly_traffic?: number | null;
   stream_post_policy?: number | null;
-  creator_id?: number | null;
+  owner?: string | null;
   date_created?: number | null;
   folder_id?: number | null;
   is_default?: boolean;
@@ -395,7 +397,7 @@ export interface MessengerSubscription {
   desktop_notifications?: boolean | null;
   audible_notifications?: boolean | null;
   is_archived?: boolean;
-  creator_id?: number;
+  owner?: string;
   invite_only?: boolean;
   private?: boolean;
   can_add_subscribers_group?: MessengerGroupSettingValue;

@@ -13,14 +13,17 @@ import { setStreamNotificationLevel } from "~/features/mute-chat/mute-chat.api";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { StreamNotificationLevelSwitch } from "~/features/mute-chat/stream-notification-level-switch.ui";
 import type { StreamNotificationLevel } from "~/features/mute-chat/stream-notification-level.lib";
-import { useRemoveStreamMembersStore } from "~/features/remove-stream-members/remove-stream-members.model";
 import { t } from "~/i18n/i18n";
 import {
   archiveStream,
+  deleteStream,
+  deleteStreamBinding,
   deleteTopic,
   unarchiveStream,
   updateStream,
+  updateStreamBindingRole,
 } from "~/shared/api/messenger-streams";
+import type { WorkspaceStreamRole } from "~/shared/api/messenger.types";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { createLogger } from "~/shared/lib/logger";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
@@ -29,19 +32,23 @@ import { resolveCanonicalStreamName } from "~/shared/lib/stream-name.lib";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { encodeTopicForRoute, normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { formatTopicDoneLabel } from "~/shared/lib/topic-resolve";
-import { useInputMode } from "~/shared/lib/touch";
-import {
-  numericUserIdOrNull,
-  userIdsEqual,
-  userIdStorageKey,
-  type UserId,
-} from "~/shared/lib/user-id.lib";
+import { userIdsEqual, userIdStorageKey, type UserId } from "~/shared/lib/user-id.lib";
 import { Avatar } from "~/shared/ui/avatar";
+import {
+  DropdownMenu,
+  type DropdownMenuContextAnchor,
+  type DropdownMenuItem,
+} from "~/shared/ui/dropdown-menu";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { RightPanelUser } from "./right-panel-user.ui";
-import { buildRightPanelStreamMembers, buildStreamSlug, resolveAvatarSrc } from "./right-panel.lib";
+import {
+  buildRightPanelStreamMembers,
+  buildStreamSlug,
+  resolveAvatarSrc,
+  type RightPanelStreamMemberViewModel,
+} from "./right-panel.lib";
 import type { RightPanelInfoProps } from "./right-panel.types";
 
 const log = createLogger("right-panel");
@@ -51,6 +58,27 @@ function stripSingleUiHashPrefix(value: string): string {
   const trimmed = value.trim();
   if (!trimmed.startsWith("#")) return trimmed;
   return trimmed.slice(1).trimStart();
+}
+
+const STREAM_MEMBER_EDITABLE_ROLES: readonly WorkspaceStreamRole[] = [
+  "guest",
+  "member",
+  "moderator",
+  "administrator",
+];
+
+function isContextMenuKeyboardEvent(event: React.KeyboardEvent): boolean {
+  return event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey);
+}
+
+function buildStreamRoleLabels(): Record<WorkspaceStreamRole, string> {
+  return {
+    owner: t("roles.owner"),
+    administrator: t("roles.admin"),
+    moderator: t("roles.moderator"),
+    member: t("roles.member"),
+    guest: t("roles.guest"),
+  };
 }
 
 export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
@@ -65,6 +93,9 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   const chatInfoData = useChatInfoStore((s) => s.data);
   const streamMemberIds = useChatInfoStore((s) => s.streamMemberIds);
   const streamMemberRolesByUserId = useChatInfoStore((s) => s.streamMemberRolesByUserId);
+  const streamMemberBindingUuidsByUserId = useChatInfoStore(
+    (s) => s.streamMemberBindingUuidsByUserId,
+  );
   const context = useCurrentChatMessagesStore((s) => s.context);
   const streamId = context?.type === "stream" ? context.streamId : null;
   const currentUserId = useChatListStore((s) => s.currentUserId);
@@ -73,7 +104,6 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     streamId != null ? s.streamsMap.get(streamId) : undefined,
   );
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
-  const inputMode = useInputMode();
   const users = useUsersStore((s) => s.users);
   const currentUserStreamRole =
     currentUserId != null ? streamMemberRolesByUserId[userIdStorageKey(currentUserId)] : null;
@@ -97,6 +127,11 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   const canAddMembers = streamId != null && channelActionCapabilities.canAddSubscribers;
   const canRemoveMembers = streamId != null && channelActionCapabilities.canRemoveSubscribers;
   const isCurrentStreamArchived = streamEntry?.isArchived === true;
+  const canDeleteStream =
+    streamId != null &&
+    currentUserId != null &&
+    streamEntry?.creatorId != null &&
+    userIdsEqual(currentUserId, streamEntry.creatorId);
   const notificationLevel = useMuteStore((s) =>
     streamId != null ? s.getStreamNotificationLevel(streamId) : "default",
   );
@@ -109,12 +144,14 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   const [editOpen, setEditOpen] = useState(false);
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
+  const [memberMenuOpen, setMemberMenuOpen] = useState(false);
+  const [memberMenuAnchor, setMemberMenuAnchor] = useState<DropdownMenuContextAnchor | null>(null);
+  const [memberMenuUserKey, setMemberMenuUserKey] = useState<string | null>(null);
+  const [memberMenuStreamId, setMemberMenuStreamId] = useState<string | null>(null);
+  const [memberActionPendingKey, setMemberActionPendingKey] = useState<string | null>(null);
+  const [memberActionError, setMemberActionError] = useState<string | null>(null);
   const openAddMembers = useAddStreamMembersStore((s) => s.openForStream);
   const syncExistingMembers = useAddStreamMembersStore((s) => s.setExistingMemberIds);
-  const removeMember = useRemoveStreamMembersStore((s) => s.submit);
-  const removeMemberPendingUserIds = useRemoveStreamMembersStore((s) => s.pendingUserIds);
-  const removeMemberLastError = useRemoveStreamMembersStore((s) => s.lastError);
-  const clearRemoveMembersState = useRemoveStreamMembersStore((s) => s.clear);
 
   const handleSetNotificationLevel = useCallback(
     async (level: StreamNotificationLevel) => {
@@ -176,7 +213,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
         streamId,
         streamMapName: streamEntry?.name,
       }),
-    [streamEntry?.name, streamId, title],
+    [streamEntry?.name, streamId],
   );
   const handleOpenTopic = useCallback(
     (topic: { name: string; topicUuid?: string }) => {
@@ -215,38 +252,65 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     },
     [currentInstanceId],
   );
+  const canManageMember = useCallback(
+    (member: RightPanelStreamMemberViewModel): boolean =>
+      canRemoveMembers &&
+      currentUserId != null &&
+      member.bindingUuid != null &&
+      !userIdsEqual(member.userId, currentUserId) &&
+      !member.isStreamOwner,
+    [canRemoveMembers, currentUserId],
+  );
+
   const handleRemoveMember = useCallback(
-    (userId: UserId) => {
-      if (streamId == null) return;
-      const numericUserId = numericUserIdOrNull(userId);
-      if (numericUserId == null) {
-        setChannelActionError(t("app.error"));
+    async (member: RightPanelStreamMemberViewModel) => {
+      if (streamId == null || member.bindingUuid == null || !canManageMember(member)) return;
+      const userKey = userIdStorageKey(member.userId);
+      setMemberActionPendingKey(userKey);
+      setMemberActionError(null);
+      const ok = await deleteStreamBinding(member.bindingUuid);
+      if (!ok) {
+        setMemberActionError(t("channel.memberActionFailed"));
+        setMemberActionPendingKey(null);
         return;
       }
-      if (canonicalStreamName == null) {
-        log.warn("Blocked remove-member without canonical stream name", { streamId, userId });
-        setChannelActionError(t("app.error"));
-        return;
-      }
-      void removeMember({
-        streamId,
-        streamName: canonicalStreamName,
-        userId: numericUserId,
-        onSuccess: handleStreamMembersChangedSuccess,
-      });
+      useChatInfoStore.getState().applyStreamMemberRemoval(member.userId);
+      handleStreamMembersChangedSuccess(streamId);
+      setMemberMenuOpen(false);
+      setMemberActionPendingKey(null);
     },
-    [canonicalStreamName, handleStreamMembersChangedSuccess, removeMember, streamId],
+    [canManageMember, handleStreamMembersChangedSuccess, streamId],
+  );
+
+  const handleChangeMemberRole = useCallback(
+    async (member: RightPanelStreamMemberViewModel, role: WorkspaceStreamRole) => {
+      if (streamId == null || member.bindingUuid == null || !canManageMember(member)) return;
+      if (member.role === role) {
+        setMemberMenuOpen(false);
+        return;
+      }
+      const userKey = userIdStorageKey(member.userId);
+      setMemberActionPendingKey(userKey);
+      setMemberActionError(null);
+      const ok = await updateStreamBindingRole(member.bindingUuid, role);
+      if (!ok) {
+        setMemberActionError(t("channel.memberActionFailed"));
+        setMemberActionPendingKey(null);
+        return;
+      }
+      useChatInfoStore.getState().applyStreamMemberRoleUpdate(member.userId, role);
+      handleStreamMembersChangedSuccess(streamId);
+      setMemberMenuOpen(false);
+      setMemberActionPendingKey(null);
+    },
+    [canManageMember, handleStreamMembersChangedSuccess, streamId],
   );
   const streamMembers = streamInfoData?.members;
   const hasRealMembers = streamMembers != null && streamMembers.length > 0;
+  const streamRoleLabels = useMemo(() => buildStreamRoleLabels(), []);
   const memberFallbackLabel = t("roles.member");
   const onlineLabel = t("presence.online");
   const offlineLabel = t("presence.offline");
-  // Touch: actions always visible; pointer: hover/focus reveal.
-  const removeMemberActionClassName =
-    inputMode === "touch"
-      ? "hover:bg-notice-base/10 flex h-6 w-6 shrink-0 items-center justify-center rounded text-notice-base opacity-100 transition-opacity focus-visible:opacity-100 disabled:opacity-40"
-      : "hover:bg-notice-base/10 flex h-6 w-6 shrink-0 items-center justify-center rounded text-notice-base opacity-0 transition-opacity group-focus-within/member:opacity-100 group-hover/member:opacity-100 focus-visible:opacity-100 disabled:opacity-40";
   // Memoize member view-model to avoid remapping on UI-only rerenders.
   const members = useMemo(
     () =>
@@ -255,6 +319,8 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
             members: streamMembers,
             users,
             streamMemberRolesByUserId,
+            streamMemberBindingUuidsByUserId,
+            roleLabels: streamRoleLabels,
             memberFallbackLabel,
             onlineLabel,
             offlineLabel,
@@ -266,19 +332,109 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
       offlineLabel,
       onlineLabel,
       streamMembers,
+      streamMemberBindingUuidsByUserId,
       streamMemberRolesByUserId,
+      streamRoleLabels,
       users,
     ],
   );
+
+  const memberMenuMatchesStream = memberMenuStreamId === streamId;
+  const selectedMember = useMemo(
+    () =>
+      memberMenuUserKey == null || !memberMenuMatchesStream
+        ? null
+        : (members.find((member) => userIdStorageKey(member.userId) === memberMenuUserKey) ?? null),
+    [memberMenuMatchesStream, memberMenuUserKey, members],
+  );
+  const isMemberMenuOpen = memberMenuOpen && selectedMember != null;
+  const handleMemberMenuOpenChange = useCallback((open: boolean) => {
+    setMemberMenuOpen(open);
+    if (!open) {
+      setMemberMenuAnchor(null);
+      setMemberMenuUserKey(null);
+      setMemberMenuStreamId(null);
+    }
+  }, []);
+
+  const openMemberContextMenu = useCallback(
+    (event: React.MouseEvent<HTMLElement>, member: RightPanelStreamMemberViewModel) => {
+      if (streamId == null || !canManageMember(member)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setMemberActionError(null);
+      setMemberMenuUserKey(userIdStorageKey(member.userId));
+      setMemberMenuStreamId(streamId);
+      setMemberMenuAnchor({ left: event.clientX, top: event.clientY });
+      setMemberMenuOpen(true);
+    },
+    [canManageMember, streamId],
+  );
+
+  const openMemberKeyboardMenu = useCallback(
+    (event: React.KeyboardEvent<HTMLElement>, member: RightPanelStreamMemberViewModel) => {
+      if (streamId == null || !isContextMenuKeyboardEvent(event) || !canManageMember(member))
+        return;
+      event.preventDefault();
+      event.stopPropagation();
+      const rect = event.currentTarget.getBoundingClientRect();
+      setMemberActionError(null);
+      setMemberMenuUserKey(userIdStorageKey(member.userId));
+      setMemberMenuStreamId(streamId);
+      setMemberMenuAnchor({ left: rect.left + 16, top: rect.top + 16 });
+      setMemberMenuOpen(true);
+    },
+    [canManageMember, streamId],
+  );
+
+  const memberMenuItems = useMemo<DropdownMenuItem[]>(() => {
+    if (selectedMember == null) return [];
+    const disabled = memberActionPendingKey != null;
+    return [
+      {
+        type: "custom",
+        key: "change-role-label",
+        render: () => (
+          <div className="px-2 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-wide text-text-muted">
+            {t("channel.changeMemberRole")}
+          </div>
+        ),
+      },
+      ...STREAM_MEMBER_EDITABLE_ROLES.map<DropdownMenuItem>((role) => ({
+        type: "checkbox",
+        key: `role-${role}`,
+        label: streamRoleLabels[role],
+        checked: selectedMember.role === role,
+        disabled,
+        onSelect: () => {
+          void handleChangeMemberRole(selectedMember, role);
+        },
+      })),
+      { type: "separator", key: "member-actions-separator" },
+      {
+        type: "action",
+        key: "remove-member",
+        icon: "close",
+        danger: true,
+        label: t("channel.removeMember"),
+        disabled,
+        onSelect: () => {
+          void handleRemoveMember(selectedMember);
+        },
+      },
+    ];
+  }, [
+    handleChangeMemberRole,
+    handleRemoveMember,
+    memberActionPendingKey,
+    selectedMember,
+    streamRoleLabels,
+  ]);
 
   useEffect(() => {
     if (streamInfoData == null) return;
     syncExistingMembers(streamMemberIds);
   }, [streamInfoData, streamMemberIds, syncExistingMembers]);
-
-  useEffect(() => {
-    clearRemoveMembersState();
-  }, [clearRemoveMembersState, streamId]);
 
   if (user) {
     return <RightPanelUser user={user} onOpenDirectMessage={handleOpenDirectMessage} />;
@@ -406,6 +562,44 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
       setChannelActionPending(false);
     }
   };
+  const handleDeleteStream = async () => {
+    if (streamId == null || channelActionPending || !canDeleteStream) return;
+    const channelName = canonicalStreamName ?? title;
+    if (!window.confirm(t("channel.deleteStreamConfirm", { channel: channelName }))) return;
+
+    setChannelActionPending(true);
+    setChannelActionError(null);
+    const ok = await deleteStream(streamId);
+    if (!ok) {
+      setChannelActionError(t("channel.deleteStreamFailed"));
+      setChannelActionPending(false);
+      return;
+    }
+
+    const chatList = useChatListStore.getState();
+    const nextVisibleStream = chatList.streams().find((candidate) => {
+      if (candidate.streamUuid === streamId) return false;
+      const metadata = chatList.streamsMap.get(candidate.streamUuid);
+      if (metadata?.isArchived === true) return false;
+      if (!streamMetadataHydrated && metadata?.isArchived == null) return false;
+      return true;
+    });
+
+    chatList.removeStream(streamId);
+    useChatInfoStore.getState().clear();
+    useCurrentChatMessagesStore.getState().setContext(null);
+    useCurrentChatMessagesStore.getState().setMessages([]);
+
+    if (nextVisibleStream) {
+      void navigate(
+        withCurrentOrgRoute(`/stream/${buildStreamSlug(nextVisibleStream.streamUuid)}`),
+        { replace: true },
+      );
+    } else {
+      void navigate("/", { replace: true });
+    }
+    setChannelActionPending(false);
+  };
   const handleDeleteTopic = async (topic: { name: string; topicUuid?: string }) => {
     if (streamId == null || topicDeletePendingName != null) return;
     if (topic.topicUuid == null) {
@@ -501,7 +695,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
                 </button>
               </div>
             )}
-            {(canEditChannel || canArchiveChannel) && (
+            {(canEditChannel || canArchiveChannel || canDeleteStream) && (
               <div className="mt-2 space-y-1.5">
                 {canEditChannel && (
                   <button
@@ -536,6 +730,19 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
                   >
                     <Icon name="folder_open" size={20} className="shrink-0 text-current" />
                     <span>{t("channel.unarchiveChannel")}</span>
+                  </button>
+                )}
+                {canDeleteStream && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleDeleteStream();
+                    }}
+                    disabled={channelActionPending}
+                    className="hover:bg-notice-base/10 flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left text-sm text-notice-base hover:text-notice-base"
+                  >
+                    <Icon name="delete" size={20} className="shrink-0 text-current" />
+                    <span>{t("channel.deleteStream")}</span>
                   </button>
                 )}
                 {channelActionError && (
@@ -682,81 +889,68 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
             </p>
           ) : (
             <ul className="space-y-2">
-              {members.map((p) => {
-                const numericMemberId = numericUserIdOrNull(p.userId);
-                const isCurrentUserMember =
-                  currentUserId != null && userIdsEqual(p.userId, currentUserId);
-                return (
-                  <li key={userIdStorageKey(p.userId)} className="group/member">
-                    <div className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-bg-elevated">
-                      <button
-                        type="button"
-                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                        onClick={() => handleOpenUserProfile(p.userId)}
-                        aria-label={t("a11y.openUserProfile", { name: p.name })}
-                      >
-                        <div className="relative shrink-0">
-                          <Avatar
-                            size="sm"
-                            className="bg-bg-elevated text-text-primary"
-                            src={resolveAvatarSrc(p.avatarUrl) ?? undefined}
-                          >
-                            {p.name.slice(0, 1)}
-                          </Avatar>
-                          <span className="absolute -bottom-0.5 -right-0.5">
-                            <PresenceIndicator
-                              status={p.isOnline ? "active" : "offline"}
-                              size="sm"
-                            />
-                          </span>
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="flex items-center gap-1.5 truncate text-sm text-text-primary">
-                            {p.name}
-                            {p.isCreator && (
-                              <span className="text-[10px] font-normal text-text-secondary">
-                                {t("channel.memberBadgeCreator")}
-                              </span>
-                            )}
-                            {!p.isCreator && p.isChannelAdmin && (
-                              <span className="text-[10px] font-normal text-text-secondary">
-                                {t("channel.memberBadgeChannelAdmin")}
-                              </span>
-                            )}
-                          </p>
-                          {p.status && (
-                            <p className="truncate text-[11px] text-text-secondary">{p.status}</p>
+              {members.map((p) => (
+                <li key={userIdStorageKey(p.userId)} className="group/member">
+                  <div className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors focus-within:bg-bg-elevated hover:bg-bg-elevated">
+                    <button
+                      type="button"
+                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                      onClick={() => handleOpenUserProfile(p.userId)}
+                      onContextMenu={(event) => openMemberContextMenu(event, p)}
+                      onKeyDown={(event) => openMemberKeyboardMenu(event, p)}
+                      aria-label={t("a11y.openUserProfile", { name: p.name })}
+                    >
+                      <div className="relative shrink-0">
+                        <Avatar
+                          size="sm"
+                          className="bg-bg-elevated text-text-primary"
+                          src={resolveAvatarSrc(p.avatarUrl) ?? undefined}
+                        >
+                          {p.name.slice(0, 1)}
+                        </Avatar>
+                        <span className="absolute -bottom-0.5 -right-0.5">
+                          <PresenceIndicator status={p.isOnline ? "active" : "offline"} size="sm" />
+                        </span>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="flex items-center gap-1.5 truncate text-sm text-text-primary">
+                          {p.name}
+                          {p.isCreator && (
+                            <span className="text-[10px] font-normal text-text-secondary">
+                              {t("channel.memberBadgeCreator")}
+                            </span>
                           )}
-                        </div>
-                      </button>
-                      {canRemoveMembers &&
-                        currentUserId != null &&
-                        numericMemberId != null &&
-                        !isCurrentUserMember &&
-                        !p.isCreator &&
-                        !p.isStreamOwner && (
-                          <button
-                            type="button"
-                            aria-label={t("a11y.removeMemberFromChannel", { name: p.name })}
-                            disabled={removeMemberPendingUserIds.includes(numericMemberId)}
-                            onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              handleRemoveMember(p.userId);
-                            }}
-                            className={removeMemberActionClassName}
-                          >
-                            <Icon name="close" size={14} className="text-current" />
-                          </button>
-                        )}
-                    </div>
-                  </li>
-                );
-              })}
+                          {!p.isCreator && p.isChannelAdmin && (
+                            <span className="text-[10px] font-normal text-text-secondary">
+                              {t("channel.memberBadgeChannelAdmin")}
+                            </span>
+                          )}
+                        </p>
+                        <p className="truncate text-[11px] text-text-secondary">
+                          {p.roleLabel} - {p.status}
+                        </p>
+                      </div>
+                    </button>
+                    {memberMenuMatchesStream &&
+                      memberActionPendingKey === userIdStorageKey(p.userId) && (
+                        <span className="shrink-0 text-xs text-text-muted">...</span>
+                      )}
+                  </div>
+                </li>
+              ))}
             </ul>
           )}
-          {removeMemberLastError && (
-            <p className="mt-2 px-2 text-xs text-notice-base">{t(removeMemberLastError)}</p>
+          <DropdownMenu
+            open={isMemberMenuOpen}
+            onOpenChange={handleMemberMenuOpenChange}
+            contextAnchor={memberMenuAnchor}
+            source="context"
+            items={memberMenuItems}
+            contentVariant="narrow"
+            contentProps={{ sideOffset: 4 }}
+          />
+          {memberMenuMatchesStream && memberActionError && (
+            <p className="mt-2 px-2 text-xs text-notice-base">{memberActionError}</p>
           )}
         </div>
       </ScrollArea>

@@ -18,7 +18,7 @@ export interface BrowseChannelRow {
   streamPostPolicy: number | null;
   subscriberCount: number | null;
   weeklyMessageCount: number | null;
-  creatorId: number | null;
+  creatorUuid: string | null;
   dateCreated: number | null;
   folderId: number | null;
   isDefault: boolean | null;
@@ -45,7 +45,7 @@ export interface BrowseChannelStreamLike {
   subscriber_count?: number | null;
   stream_weekly_traffic?: number | null;
   stream_post_policy?: number | null;
-  creator_id?: number | null;
+  owner?: string | null;
   date_created?: number | null;
   folder_id?: number | null;
   is_default?: boolean;
@@ -64,7 +64,7 @@ export interface BrowseChannelSubscriptionLike {
   is_archived?: boolean;
   invite_only?: boolean;
   is_muted?: boolean;
-  creator_id?: number;
+  owner?: string;
   desktop_notifications?: boolean | null;
   audible_notifications?: boolean | null;
   can_add_subscribers_group?: MessengerGroupSettingValue;
@@ -105,21 +105,16 @@ function mergeOptionalBoolean(
   return null;
 }
 
-function mergeCreatorId(
+function normalizeUserUuid(value: string | null | undefined): string | null {
+  const normalized = value?.trim().toLowerCase();
+  return normalized != null && normalized.length > 0 ? normalized : null;
+}
+
+function mergeCreatorUuid(
   subscription: BrowseChannelSubscriptionLike | undefined,
-  streamCreatorId: number | null | undefined,
-): number | null {
-  if (
-    subscription?.creator_id != null &&
-    Number.isInteger(subscription.creator_id) &&
-    subscription.creator_id > 0
-  ) {
-    return subscription.creator_id;
-  }
-  if (streamCreatorId != null && streamCreatorId > 0) {
-    return streamCreatorId;
-  }
-  return null;
+  streamOwner: string | null | undefined,
+): string | null {
+  return normalizeUserUuid(subscription?.owner) ?? normalizeUserUuid(streamOwner);
 }
 
 function pickGroupField(
@@ -211,7 +206,7 @@ function buildBrowseChannelRowCore(
       typeof stream.stream_post_policy === "number" ? stream.stream_post_policy : null,
     subscriberCount: normalizeCount(stream.subscriber_count),
     weeklyMessageCount: normalizeCount(stream.stream_weekly_traffic),
-    creatorId: mergeCreatorId(subscription, stream.creator_id),
+    creatorUuid: mergeCreatorUuid(subscription, stream.owner),
     dateCreated:
       typeof stream.date_created === "number" && stream.date_created > 0
         ? stream.date_created

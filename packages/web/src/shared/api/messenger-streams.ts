@@ -48,20 +48,6 @@ export interface AddStreamMembersResult {
   errorCode?: string;
 }
 
-export interface RemoveStreamMembersParams {
-  streamName: string;
-  userIds: number[];
-  authorizationErrorsFatal?: boolean;
-}
-
-export interface RemoveStreamMembersResult {
-  ok: boolean;
-  removedUserIds: number[];
-  alreadyUnsubscribedUserIds: number[];
-  unauthorizedStreams: string[];
-  errorCode?: string;
-}
-
 export interface CreateWorkspaceStreamParams {
   name: string;
   description?: string;
@@ -272,6 +258,7 @@ function parseMeStream(row: unknown): MessengerMeStream | null {
   const streamUuid = uuid;
   const projectId = readUuid(row.project_id);
   const userUuid = readUuid(row.user_uuid);
+  const owner = readUuid(row.owner);
   const source = isRecord(row.source) ? row.source : undefined;
   const createdAt = readOptionalString(row.created_at);
   const updatedAt = readOptionalString(row.updated_at);
@@ -285,6 +272,7 @@ function parseMeStream(row: unknown): MessengerMeStream | null {
     ...(createdAt != null ? { created_at: createdAt } : {}),
     ...(updatedAt != null ? { updated_at: updatedAt } : {}),
     ...(userUuid != null ? { user_uuid: userUuid } : {}),
+    ...(owner != null ? { owner } : {}),
     stream_uuid: streamUuid,
     ...(lastSyncedAt != null ? { last_synced_at: lastSyncedAt } : {}),
     ...(sourceName != null ? { source_name: sourceName } : {}),
@@ -351,12 +339,14 @@ function parseStreamBinding(row: unknown): WorkspaceStreamBinding | null {
   if (!isRecord(row)) {
     return null;
   }
+  const uuid = readUuid(row.uuid);
   const streamUuid = readUuid(row.stream_uuid);
   const userUuid = readUuid(row.user_uuid);
-  if (streamUuid == null || userUuid == null) {
+  if (uuid == null || streamUuid == null || userUuid == null) {
     return null;
   }
   return {
+    uuid,
     stream_uuid: streamUuid,
     user_uuid: userUuid,
     role: readWorkspaceStreamRole(row.role) ?? "member",
@@ -386,6 +376,55 @@ export async function fetchStreamMemberBindings(
   }
   const bindings = await fetchStreamBindings();
   return bindings.filter((binding) => binding.stream_uuid === normalizedStreamUuid);
+}
+
+export async function deleteStreamBinding(bindingUuid: string): Promise<boolean> {
+  const normalizedBindingUuid = guard.streamUuid(bindingUuid, "deleteStreamBinding.bindingUuid");
+  try {
+    const response = await messengerApi.deleteWithBase(
+      getMessengerWorkspaceApiBaseForCurrentInstance(),
+      `/stream_bindings/${normalizedBindingUuid}`,
+    );
+    if (!response.ok) return false;
+    const data = isRecord(response.data) ? (response.data as StreamUpdateResponsePayload) : {};
+    return data.result !== "error";
+  } catch (error) {
+    log.warn("Stream binding delete request failed", {
+      bindingUuid: normalizedBindingUuid,
+      error: String(error),
+    });
+    return false;
+  }
+}
+
+export async function updateStreamBindingRole(
+  bindingUuid: string,
+  role: WorkspaceStreamRole,
+): Promise<boolean> {
+  const normalizedBindingUuid = guard.streamUuid(
+    bindingUuid,
+    "updateStreamBindingRole.bindingUuid",
+  );
+  if (!WORKSPACE_STREAM_ROLES.has(role)) {
+    return false;
+  }
+  try {
+    const response = await messengerApi.putJsonWithBase(
+      getMessengerWorkspaceApiBaseForCurrentInstance(),
+      `/stream_bindings/${normalizedBindingUuid}`,
+      { role },
+    );
+    if (!response.ok) return false;
+    const data = isRecord(response.data) ? (response.data as StreamUpdateResponsePayload) : {};
+    return data.result !== "error";
+  } catch (error) {
+    log.warn("Stream binding role update request failed", {
+      bindingUuid: normalizedBindingUuid,
+      role,
+      error: String(error),
+    });
+    return false;
+  }
 }
 
 export async function fetchStreamMembers(streamUuid: string): Promise<UserId[]> {
@@ -714,6 +753,7 @@ function subscriptionFromMeStream(stream: MessengerMeStream): MessengerSubscript
     invite_only: stream.invite_only,
     private: stream.private,
     is_archived: stream.is_archived,
+    ...(stream.owner != null ? { owner: stream.owner } : {}),
     unread_count: stream.unread_count,
   };
 }
@@ -736,6 +776,7 @@ export async function fetchStreams(): Promise<MockStream[]> {
       description: stream.description,
       is_announcement_only: stream.announce,
       invite_only: stream.invite_only,
+      ...(stream.owner != null ? { owner: stream.owner } : {}),
     }));
 }
 
@@ -798,39 +839,6 @@ export async function addMembersToStream(
       errorCode: "network_error",
     };
   }
-}
-
-/** Removes members from a stream when the backend supports member mutations. */
-export function removeMembersFromStream(
-  params: RemoveStreamMembersParams,
-): Promise<RemoveStreamMembersResult> {
-  const streamName = guard.nonEmpty(params.streamName, "removeMembersFromStream.streamName").trim();
-  const requestedUserIds = Array.from(
-    new Set(
-      params.userIds.map((userId) => guard.userId(userId, "removeMembersFromStream.userIds")),
-    ),
-  ).sort((a, b) => a - b);
-
-  if (requestedUserIds.length === 0) {
-    return Promise.resolve({
-      ok: true,
-      removedUserIds: [],
-      alreadyUnsubscribedUserIds: [],
-      unauthorizedStreams: [],
-    });
-  }
-
-  log.warn("Stream member removal is unsupported by the current backend", {
-    streamNameLength: streamName.length,
-    requestedCount: requestedUserIds.length,
-  });
-  return Promise.resolve({
-    ok: false,
-    removedUserIds: [],
-    alreadyUnsubscribedUserIds: [],
-    unauthorizedStreams: [],
-    errorCode: "unsupported",
-  });
 }
 
 export async function fetchTopics(streamUuid: string): Promise<string[]> {
@@ -935,6 +943,23 @@ export async function archiveStream(streamId: string): Promise<boolean> {
 /** Unarchives a channel through Workspace stream unarchive action. */
 export async function unarchiveStream(streamId: string): Promise<UnarchiveStreamResult> {
   return invokeStreamArchiveAction(streamId, "unarchive");
+}
+
+/** Deletes a stream through Workspace `DELETE /streams/{stream_uuid}`. */
+export async function deleteStream(streamId: string): Promise<boolean> {
+  const streamUuid = guard.streamUuid(streamId, "deleteStream.streamId");
+  try {
+    const res = await messengerApi.deleteWithBase(
+      getMessengerWorkspaceApiBaseForCurrentInstance(),
+      `/streams/${streamUuid}`,
+    );
+    if (!res.ok) return false;
+    const data = isRecord(res.data) ? (res.data as StreamUpdateResponsePayload) : {};
+    return data.result !== "error";
+  } catch (error) {
+    log.warn("deleteStream request failed", { streamId: streamUuid, error: String(error) });
+    return false;
+  }
 }
 
 /** Deletes a stream topic row through Workspace `DELETE /stream_topics/{topic_uuid}`. */

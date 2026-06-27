@@ -374,10 +374,10 @@ function messageFromWorkspaceEventPayload(
   };
 }
 
-type WorkspaceStreamEventKind = "stream.created" | "stream.updated";
+type WorkspaceStreamEventKind = "stream.created" | "stream.updated" | "stream.deleted";
 
 function isWorkspaceStreamEventKind(kind: string | null): kind is WorkspaceStreamEventKind {
-  return kind === "stream.created" || kind === "stream.updated";
+  return kind === "stream.created" || kind === "stream.updated" || kind === "stream.deleted";
 }
 
 function streamEventFromWorkspaceStream(

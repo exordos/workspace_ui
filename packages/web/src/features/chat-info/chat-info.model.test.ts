@@ -31,6 +31,10 @@ function streamUuid(value: number): string {
   return `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
 }
 
+function bindingUuid(value: number): string {
+  return `10000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
+}
+
 function streamContext(
   streamId: number,
   name: string,
@@ -67,7 +71,11 @@ describe("chat-info model orchestration", () => {
         if (currentStreamUuid === streamUuid(1)) {
           return slowMembers.promise;
         }
-        return { memberIds: [2], rolesByUserId: { "2": "owner" } };
+        return {
+          memberIds: [2],
+          rolesByUserId: { "2": "owner" },
+          bindingUuidsByUserId: { "2": bindingUuid(2) },
+        };
       },
     );
     vi.mocked(loadStreamMetadata).mockImplementation(async (_instanceId, currentStreamUuid) => {
@@ -84,7 +92,11 @@ describe("chat-info model orchestration", () => {
     await Promise.resolve();
     await useChatInfoStore.getState().hydrate(secondContext);
 
-    slowMembers.resolve({ memberIds: [1], rolesByUserId: { "1": "owner" } });
+    slowMembers.resolve({
+      memberIds: [1],
+      rolesByUserId: { "1": "owner" },
+      bindingUuidsByUserId: { "1": bindingUuid(1) },
+    });
     slowMetadata.resolve({ name: "first", description: "First stream" });
     await firstHydrate;
 
@@ -103,6 +115,7 @@ describe("chat-info model orchestration", () => {
     vi.mocked(loadStreamMembersSnapshot).mockResolvedValue({
       memberIds: [1, 2],
       rolesByUserId: { "1": "owner", "2": "member" },
+      bindingUuidsByUserId: { "1": bindingUuid(1), "2": bindingUuid(2) },
     });
     vi.mocked(loadStreamMetadata).mockResolvedValue({
       name: "engineering",
@@ -131,6 +144,7 @@ describe("chat-info model orchestration", () => {
     vi.mocked(loadStreamMembersSnapshot).mockResolvedValue({
       memberIds: [1],
       rolesByUserId: { "1": "owner" },
+      bindingUuidsByUserId: { "1": bindingUuid(1) },
     });
     vi.mocked(loadStreamMetadata).mockResolvedValue({
       name: "engineering",
@@ -164,6 +178,7 @@ describe("chat-info model orchestration", () => {
     vi.mocked(loadStreamMembersSnapshot).mockResolvedValue({
       memberIds: [1],
       rolesByUserId: { "1": "owner" },
+      bindingUuidsByUserId: { "1": bindingUuid(1) },
     });
     vi.mocked(loadStreamMetadata).mockResolvedValue({
       name: "engineering",

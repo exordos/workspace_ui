@@ -8,6 +8,8 @@ import {
   archiveStream,
   createPrivateMessageStream,
   createWorkspaceStream,
+  deleteStream,
+  deleteStreamBinding,
   deleteTopic,
   fetchStreamMembers,
   fetchStreamTopicNames,
@@ -15,11 +17,11 @@ import {
   fetchSubscriptions,
   fetchTopics,
   findPrivateStreamForUserUuid,
-  removeMembersFromStream,
   resolveOrCreateDirectMessageStream,
   unarchiveStream,
   toggleStreamTopicDone,
   updateStream,
+  updateStreamBindingRole,
   updateStreamTopic,
 } from "./messenger-streams";
 import { getMockMessengerApi } from "./messenger.test.setup";
@@ -385,7 +387,14 @@ describe("findPrivateStreamForUserUuid", () => {
         },
       ],
       PEER_UUID,
-      [{ stream_uuid: STREAM_UUID, user_uuid: PEER_UUID, role: "member" }],
+      [
+        {
+          uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          stream_uuid: STREAM_UUID,
+          user_uuid: PEER_UUID,
+          role: "member",
+        },
+      ],
     );
     expect(match?.stream_uuid).toBe(STREAM_UUID);
   });
@@ -397,8 +406,16 @@ describe("fetchStreamMembers", () => {
       ok: true,
       status: 200,
       data: [
-        { stream_uuid: STREAM_UUID, user_uuid: PEER_UUID },
-        { stream_uuid: OTHER_STREAM_UUID, user_uuid: CURRENT_PEER_UUID },
+        {
+          uuid: "11111111-1111-4111-8111-111111111111",
+          stream_uuid: STREAM_UUID,
+          user_uuid: PEER_UUID,
+        },
+        {
+          uuid: "22222222-2222-4222-8222-222222222222",
+          stream_uuid: OTHER_STREAM_UUID,
+          user_uuid: CURRENT_PEER_UUID,
+        },
       ],
       raw: { statusText: "OK" },
     });
@@ -407,6 +424,41 @@ describe("fetchStreamMembers", () => {
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
       "/api/messenger/v1",
       "/stream_bindings/",
+    );
+  });
+});
+
+describe("stream binding mutations", () => {
+  const BINDING_UUID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
+  it("deletes a stream binding through workspace API", async () => {
+    mockMessengerApi.deleteWithBase.mockResolvedValue({
+      ok: true,
+      status: 204,
+      data: {},
+      raw: { statusText: "No Content" },
+    });
+
+    await expect(deleteStreamBinding(BINDING_UUID)).resolves.toBe(true);
+    expect(mockMessengerApi.deleteWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      `/stream_bindings/${BINDING_UUID}`,
+    );
+  });
+
+  it("updates a stream binding role through workspace API", async () => {
+    mockMessengerApi.putJsonWithBase.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { uuid: BINDING_UUID, role: "moderator" },
+      raw: { statusText: "OK" },
+    });
+
+    await expect(updateStreamBindingRole(BINDING_UUID, "moderator")).resolves.toBe(true);
+    expect(mockMessengerApi.putJsonWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      `/stream_bindings/${BINDING_UUID}`,
+      { role: "moderator" },
     );
   });
 });
@@ -483,68 +535,6 @@ describe("addMembersToStream", () => {
         userIds: [PEER_UUID],
       }),
     ).rejects.toThrow(/Invalid streamUuid/);
-  });
-
-  it("returns invalid_user for legacy numeric member ids", async () => {
-    await expect(
-      addMembersToStream({
-        streamUuid: STREAM_UUID,
-        streamName: "   ",
-        userIds: [42],
-      }),
-    ).resolves.toEqual({
-      ok: false,
-      addedUserIds: [],
-      alreadySubscribedUserIds: [],
-      unauthorizedStreams: [],
-      errorCode: "invalid_user",
-    });
-
-    expect(mockMessengerApi.postJsonWithBase).not.toHaveBeenCalled();
-  });
-});
-
-describe("removeMembersFromStream", () => {
-  it("returns unsupported without calling removed current-user subscriptions endpoint", async () => {
-    await expect(
-      removeMembersFromStream({
-        streamName: "engineering",
-        userIds: [1, 2, 1],
-      }),
-    ).resolves.toEqual({
-      ok: false,
-      removedUserIds: [],
-      alreadyUnsubscribedUserIds: [],
-      unauthorizedStreams: [],
-      errorCode: "unsupported",
-    });
-
-    expect(mockMessengerApi.delete).not.toHaveBeenCalled();
-  });
-
-  it("returns success for an empty principal list", async () => {
-    await expect(
-      removeMembersFromStream({
-        streamName: "engineering",
-        userIds: [],
-      }),
-    ).resolves.toEqual({
-      ok: true,
-      removedUserIds: [],
-      alreadyUnsubscribedUserIds: [],
-      unauthorizedStreams: [],
-    });
-
-    expect(mockMessengerApi.delete).not.toHaveBeenCalled();
-  });
-
-  it("throws on blank stream name (guard)", () => {
-    expect(() =>
-      removeMembersFromStream({
-        streamName: "   ",
-        userIds: [1],
-      }),
-    ).toThrow(/removeMembersFromStream\.streamName must be a non-empty string/);
   });
 });
 
@@ -760,6 +750,23 @@ describe("updateStream", () => {
     });
 
     await expect(updateStream(STREAM_UUID, { name: "platform" })).resolves.toBe(false);
+  });
+});
+
+describe("deleteStream", () => {
+  it("deletes a stream through workspace API", async () => {
+    mockMessengerApi.deleteWithBase.mockResolvedValue({
+      ok: true,
+      status: 204,
+      data: {},
+      raw: { statusText: "No Content" },
+    });
+
+    await expect(deleteStream(STREAM_UUID)).resolves.toBe(true);
+    expect(mockMessengerApi.deleteWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      `/streams/${STREAM_UUID}`,
+    );
   });
 });
 

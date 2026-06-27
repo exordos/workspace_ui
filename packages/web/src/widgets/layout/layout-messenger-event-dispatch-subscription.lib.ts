@@ -7,10 +7,6 @@ import { normalizeGroupSettingValue } from "~/shared/lib/messenger-group-setting
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { LayoutMessengerEventDispatchContext } from "./layout-messenger-event-dispatch.types";
 
-export function isPositiveInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value > 0;
-}
-
 function isNonNegativeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
@@ -21,11 +17,15 @@ export function parseStreamUuid(value: unknown): string | null {
   return streamUuid.length > 0 ? streamUuid : null;
 }
 
+function parseOwnerUuid(record: Record<string, unknown>): string | undefined {
+  return parseStreamUuid(record.owner) ?? undefined;
+}
+
 export function parseSubscriptionRows(value: unknown): {
   streamUuid: string;
   name: string;
   isArchived?: boolean;
-  creatorId?: number;
+  creatorId?: string;
   inviteOnly?: boolean;
   canAddSubscribersGroup?: MessengerGroupSettingValue;
   canRemoveSubscribersGroup?: MessengerGroupSettingValue;
@@ -36,7 +36,7 @@ export function parseSubscriptionRows(value: unknown): {
     streamUuid: string;
     name: string;
     isArchived?: boolean;
-    creatorId?: number;
+    creatorId?: string;
     inviteOnly?: boolean;
     canAddSubscribersGroup?: MessengerGroupSettingValue;
     canRemoveSubscribersGroup?: MessengerGroupSettingValue;
@@ -56,7 +56,7 @@ export function parseOneSubscriptionRow(record: Record<string, unknown>): {
   streamUuid: string;
   name: string;
   isArchived?: boolean;
-  creatorId?: number;
+  creatorId?: string;
   inviteOnly?: boolean;
   canAddSubscribersGroup?: MessengerGroupSettingValue;
   canRemoveSubscribersGroup?: MessengerGroupSettingValue;
@@ -67,7 +67,7 @@ export function parseOneSubscriptionRow(record: Record<string, unknown>): {
   const streamUuidRaw = parseStreamUuid(record.stream_uuid);
   const name = record.name;
   if (streamUuidRaw == null || typeof name !== "string") return null;
-  const creatorId = isPositiveInteger(record.creator_id) ? record.creator_id : undefined;
+  const creatorId = parseOwnerUuid(record);
   const canAddSubscribersGroup = normalizeGroupSettingValue(record.can_add_subscribers_group);
   const canRemoveSubscribersGroup = normalizeGroupSettingValue(record.can_remove_subscribers_group);
   const canAdministerChannelGroup = normalizeGroupSettingValue(record.can_administer_channel_group);
@@ -108,6 +108,7 @@ export interface WorkspaceStreamEventRow {
   private?: boolean;
   inviteOnly?: boolean;
   isArchived?: boolean;
+  creatorId?: string;
 }
 
 export function parseWorkspaceStreamEventRow(value: unknown): WorkspaceStreamEventRow | null {
@@ -122,6 +123,7 @@ export function parseWorkspaceStreamEventRow(value: unknown): WorkspaceStreamEve
       : record.description === null
         ? null
         : undefined;
+  const creatorId = parseOwnerUuid(record);
   return {
     streamUuid,
     ...(name.length > 0 ? { name } : {}),
@@ -130,6 +132,7 @@ export function parseWorkspaceStreamEventRow(value: unknown): WorkspaceStreamEve
     ...(typeof record.private === "boolean" ? { private: record.private } : {}),
     ...(typeof record.invite_only === "boolean" ? { inviteOnly: record.invite_only } : {}),
     ...(typeof record.is_archived === "boolean" ? { isArchived: record.is_archived } : {}),
+    ...(creatorId != null ? { creatorId } : {}),
   };
 }
 
@@ -146,6 +149,7 @@ function buildChatListStreamMetadataRow(
     ...(row.private != null ? { private: row.private } : {}),
     ...(row.inviteOnly != null ? { inviteOnly: row.inviteOnly } : {}),
     ...(row.isArchived != null ? { isArchived: row.isArchived } : {}),
+    ...(row.creatorId != null ? { creatorId: row.creatorId } : {}),
   };
 }
 export function handleSubscriptionAdd(
@@ -372,9 +376,19 @@ export function handleStream(
   ctx: LayoutMessengerEventDispatchContext,
 ): void {
   if (event.type !== "stream") return;
-  if (event.kind !== "stream.created" && event.kind !== "stream.updated") return;
+  if (
+    event.kind !== "stream.created" &&
+    event.kind !== "stream.updated" &&
+    event.kind !== "stream.deleted"
+  ) {
+    return;
+  }
   const row = parseWorkspaceStreamEventRow(event.stream);
   if (row == null) return;
+  if (event.kind === "stream.deleted") {
+    ctx.chatList.removeStream(row.streamUuid);
+    return;
+  }
   const chatListRow = buildChatListStreamMetadataRow(
     row,
     ctx.chatList.streamsMap.get(row.streamUuid),

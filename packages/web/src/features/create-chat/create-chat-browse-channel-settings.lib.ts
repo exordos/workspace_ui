@@ -15,7 +15,7 @@ export interface BrowseChannelDetailInput {
   isMuted: boolean;
   subscriberCount: number | null;
   weeklyMessageCount: number | null;
-  creatorId: number | null;
+  creatorUuid: string | null;
   dateCreated: number | null;
   folderId: number | null;
   isDefault: boolean | null;
@@ -49,7 +49,7 @@ export interface BrowseChannelDetailLabels {
     isAnnouncementOnly: boolean,
   ) => string | null;
   resolveBoolean: (value: boolean) => string;
-  resolveCreator: (creatorId: number | null) => string | null;
+  resolveCreator: (creatorUuid: string | null) => string | null;
   resolveDate: (unixSeconds: number) => string;
   resolveFolder: (folderId: number | null) => string | null;
   resolveRetention: (days: number | null) => string | null;
@@ -132,7 +132,7 @@ export function buildBrowseChannelDetailSections(
     generalFields,
     "creator",
     "channel.browseCreator",
-    labels.resolveCreator(input.creatorId),
+    labels.resolveCreator(input.creatorUuid),
   );
   if (input.dateCreated != null) {
     pushField(
@@ -276,7 +276,7 @@ export function resolveBrowseChannelTypeKey(input: {
 export function createBrowseChannelDetailLabels(options: {
   t: (key: string, params?: Record<string, string | number>) => string;
   resolveGroupName: (groupId: number) => string | undefined;
-  resolveUserName: (userId: number) => string | undefined;
+  resolveUserName: (userId: string) => string | undefined;
   locale: string;
 }): BrowseChannelDetailLabels {
   const { t, resolveGroupName, resolveUserName, locale } = options;
@@ -310,11 +310,11 @@ export function createBrowseChannelDetailLabels(options: {
       }
     },
     resolveBoolean: (value) => (value ? t("channel.browseYes") : t("channel.browseNo")),
-    resolveCreator: (creatorId) => {
-      if (creatorId == null) {
+    resolveCreator: (creatorUuid) => {
+      if (creatorUuid == null) {
         return t("channel.browseStatUnknown");
       }
-      return resolveUserName(creatorId) ?? t("channel.browseUserId", { id: creatorId });
+      return resolveUserName(creatorUuid) ?? creatorUuid;
     },
     resolveDate: (unixSeconds) =>
       new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(new Date(unixSeconds * 1000)),

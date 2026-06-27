@@ -19,6 +19,9 @@ const STREAM_B_UUID = "22222222-2222-4222-8222-222222222222";
 const USER_A_UUID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const USER_B_UUID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const USER_C_UUID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const BINDING_A_UUID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+const BINDING_B_UUID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+const BINDING_C_UUID = "ffffffff-ffff-4fff-8fff-ffffffffffff";
 
 describe("chat-info.api", () => {
   afterEach(() => {
@@ -29,9 +32,9 @@ describe("chat-info.api", () => {
 
   it("deduplicates in-flight member requests for the same stream", async () => {
     vi.mocked(fetchStreamMemberBindings).mockResolvedValue([
-      { stream_uuid: STREAM_A_UUID, user_uuid: USER_A_UUID, role: "owner" },
-      { stream_uuid: STREAM_A_UUID, user_uuid: USER_B_UUID, role: "member" },
-      { stream_uuid: STREAM_A_UUID, user_uuid: USER_C_UUID, role: "member" },
+      { uuid: BINDING_A_UUID, stream_uuid: STREAM_A_UUID, user_uuid: USER_A_UUID, role: "owner" },
+      { uuid: BINDING_B_UUID, stream_uuid: STREAM_A_UUID, user_uuid: USER_B_UUID, role: "member" },
+      { uuid: BINDING_C_UUID, stream_uuid: STREAM_A_UUID, user_uuid: USER_C_UUID, role: "member" },
     ]);
 
     const [left, right] = await Promise.all([
@@ -48,8 +51,8 @@ describe("chat-info.api", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-26T09:00:00.000Z"));
     vi.mocked(fetchStreamMemberBindings).mockResolvedValue([
-      { stream_uuid: STREAM_A_UUID, user_uuid: USER_A_UUID, role: "owner" },
-      { stream_uuid: STREAM_A_UUID, user_uuid: USER_B_UUID, role: "member" },
+      { uuid: BINDING_A_UUID, stream_uuid: STREAM_A_UUID, user_uuid: USER_A_UUID, role: "owner" },
+      { uuid: BINDING_B_UUID, stream_uuid: STREAM_A_UUID, user_uuid: USER_B_UUID, role: "member" },
     ]);
 
     await loadStreamMembers("inst-a", STREAM_A_UUID);
@@ -65,8 +68,8 @@ describe("chat-info.api", () => {
 
   it("loads stream member roles from bindings", async () => {
     vi.mocked(fetchStreamMemberBindings).mockResolvedValue([
-      { stream_uuid: STREAM_A_UUID, user_uuid: USER_A_UUID, role: "owner" },
-      { stream_uuid: STREAM_A_UUID, user_uuid: USER_B_UUID, role: "member" },
+      { uuid: BINDING_A_UUID, stream_uuid: STREAM_A_UUID, user_uuid: USER_A_UUID, role: "owner" },
+      { uuid: BINDING_B_UUID, stream_uuid: STREAM_A_UUID, user_uuid: USER_B_UUID, role: "member" },
     ]);
 
     const snapshot = await loadStreamMembersSnapshot("inst-a", STREAM_A_UUID);
@@ -75,6 +78,10 @@ describe("chat-info.api", () => {
     expect(snapshot.rolesByUserId).toEqual({
       [USER_A_UUID]: "owner",
       [USER_B_UUID]: "member",
+    });
+    expect(snapshot.bindingUuidsByUserId).toEqual({
+      [USER_A_UUID]: BINDING_A_UUID,
+      [USER_B_UUID]: BINDING_B_UUID,
     });
   });
 

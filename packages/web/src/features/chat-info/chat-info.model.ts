@@ -10,7 +10,7 @@ import { create } from "zustand";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { WorkspaceStreamRole } from "~/shared/api/messenger.types";
 import { logStoreAction } from "~/shared/lib/logger";
-import type { UserId } from "~/shared/lib/user-id.lib";
+import { userIdStorageKey, type UserId } from "~/shared/lib/user-id.lib";
 import {
   invalidateInstance,
   invalidateStream as invalidateStreamCache,
@@ -43,6 +43,7 @@ interface ChatInfoState {
   // Last server-fetched member ids for stream context.
   streamMemberIds: UserId[];
   streamMemberRolesByUserId: Record<string, WorkspaceStreamRole>;
+  streamMemberBindingUuidsByUserId: Record<string, string>;
   // Request version for stale-response protection.
   requestVersion: number;
 
@@ -57,6 +58,8 @@ interface ChatInfoState {
     streamUuid: string,
     metadata: StreamMetadataUpdate,
   ) => void;
+  applyStreamMemberRoleUpdate: (userId: UserId, role: WorkspaceStreamRole) => void;
+  applyStreamMemberRemoval: (userId: UserId) => void;
   invalidateStream: (instanceId: string, streamUuid: string) => void;
   clear: () => void;
 }
@@ -105,6 +108,7 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
   context: NONE_CONTEXT,
   streamMemberIds: [],
   streamMemberRolesByUserId: {},
+  streamMemberBindingUuidsByUserId: {},
   requestVersion: 0,
 
   setData(data) {
@@ -156,6 +160,7 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
         error: null,
         streamMemberIds: [],
         streamMemberRolesByUserId: {},
+        streamMemberBindingUuidsByUserId: {},
       });
       return;
     }
@@ -173,6 +178,7 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
           error: null,
           streamMemberIds: [],
           streamMemberRolesByUserId: {},
+          streamMemberBindingUuidsByUserId: {},
         });
         return;
       }
@@ -182,6 +188,7 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
         error: null,
         streamMemberIds: [],
         streamMemberRolesByUserId: {},
+        streamMemberBindingUuidsByUserId: {},
       });
       return;
     }
@@ -213,6 +220,7 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
           error: null,
           streamMemberIds: memberIds,
           streamMemberRolesByUserId: memberSnapshot.rolesByUserId,
+          streamMemberBindingUuidsByUserId: memberSnapshot.bindingUuidsByUserId,
         });
         return;
       }
@@ -222,6 +230,7 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
         error: null,
         streamMemberIds: memberIds,
         streamMemberRolesByUserId: memberSnapshot.rolesByUserId,
+        streamMemberBindingUuidsByUserId: memberSnapshot.bindingUuidsByUserId,
       });
     } catch {
       const state = get();
@@ -250,6 +259,7 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
         error: null,
         streamMemberIds: [],
         streamMemberRolesByUserId: {},
+        streamMemberBindingUuidsByUserId: {},
       });
       return;
     }
@@ -259,7 +269,7 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
       const members = resolveUsersById(context.participantIds);
       const nextData = buildDmChatInfoData(context.dmName, members, context.participantIds.length);
       if (isSameChatInfoData(state.data, nextData)) {
-        set({ streamMemberRolesByUserId: {} });
+        set({ streamMemberRolesByUserId: {}, streamMemberBindingUuidsByUserId: {} });
         return;
       }
       set({
@@ -268,6 +278,7 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
         error: null,
         streamMemberIds: [],
         streamMemberRolesByUserId: {},
+        streamMemberBindingUuidsByUserId: {},
       });
       return;
     }
@@ -344,6 +355,61 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
     set({ data: nextData, context: nextContext, loading: false, error: null });
   },
 
+  applyStreamMemberRoleUpdate(userId, role) {
+    const userKey = userIdStorageKey(userId);
+    const state = get();
+    if (state.streamMemberRolesByUserId[userKey] === role) {
+      return;
+    }
+    logStoreAction("chatInfo", "applyStreamMemberRoleUpdate", { userKey, role });
+    set({
+      streamMemberRolesByUserId: {
+        ...state.streamMemberRolesByUserId,
+        [userKey]: role,
+      },
+    });
+  },
+
+  applyStreamMemberRemoval(userId) {
+    const userKey = userIdStorageKey(userId);
+    const state = get();
+    const nextMemberIds = state.streamMemberIds.filter(
+      (memberId) => userIdStorageKey(memberId) !== userKey,
+    );
+    const nextRoles = { ...state.streamMemberRolesByUserId };
+    const nextBindingUuids = { ...state.streamMemberBindingUuidsByUserId };
+    delete nextRoles[userKey];
+    delete nextBindingUuids[userKey];
+    const existingMember =
+      state.data?.type === "stream"
+        ? state.data.members.find((member) => userIdStorageKey(member.userId) === userKey)
+        : undefined;
+    const wasKnownMember =
+      existingMember != null || nextMemberIds.length !== state.streamMemberIds.length;
+    const nextData =
+      state.data?.type === "stream"
+        ? {
+            ...state.data,
+            memberCount: wasKnownMember
+              ? Math.max(0, state.data.memberCount - 1)
+              : state.data.memberCount,
+            onlineCount: existingMember?.isOnline
+              ? Math.max(0, state.data.onlineCount - 1)
+              : state.data.onlineCount,
+            members: state.data.members.filter(
+              (member) => userIdStorageKey(member.userId) !== userKey,
+            ),
+          }
+        : state.data;
+    logStoreAction("chatInfo", "applyStreamMemberRemoval", { userKey });
+    set({
+      data: nextData,
+      streamMemberIds: nextMemberIds,
+      streamMemberRolesByUserId: nextRoles,
+      streamMemberBindingUuidsByUserId: nextBindingUuids,
+    });
+  },
+
   invalidateStream(instanceId, streamUuid) {
     logStoreAction("chatInfo", "invalidateStream", { instanceId, streamUuid });
     // Clear stream API cache and instance snapshot.
@@ -368,6 +434,7 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
       context: NONE_CONTEXT,
       streamMemberIds: [],
       streamMemberRolesByUserId: {},
+      streamMemberBindingUuidsByUserId: {},
       requestVersion: state.requestVersion + 1,
     }));
   },

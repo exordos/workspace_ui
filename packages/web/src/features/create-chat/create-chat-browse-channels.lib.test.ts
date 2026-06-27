@@ -175,7 +175,7 @@ describe("buildBrowseChannelRows", () => {
       streamPostPolicy: null,
       subscriberCount: null,
       weeklyMessageCount: null,
-      creatorId: null,
+      creatorUuid: null,
       dateCreated: null,
       folderId: null,
       isDefault: null,

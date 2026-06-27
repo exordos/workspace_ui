@@ -1434,7 +1434,7 @@ describe("chatListStore", () => {
           streamUuid: "00000000-0000-4000-8000-000000000011",
           name: "engineering",
           isArchived: true,
-          creatorId: 77,
+          creatorId: "00000000-0000-4000-8000-000000000077",
           inviteOnly: true,
           canAddSubscribersGroup: { direct_members: [42], direct_subgroups: [] },
           canRemoveSubscribersGroup: 7002,
@@ -1444,7 +1444,7 @@ describe("chatListStore", () => {
 
       const stream = useChatListStore.getState().streamsMap.get(streamUuid(11));
       expect(stream?.isArchived).toBe(true);
-      expect(stream?.creatorId).toBe(77);
+      expect(stream?.creatorId).toBe("00000000-0000-4000-8000-000000000077");
       expect(stream?.inviteOnly).toBe(true);
       expect(stream?.canAddSubscribersGroup).toEqual({
         direct_members: [42],

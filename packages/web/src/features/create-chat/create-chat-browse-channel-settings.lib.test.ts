@@ -6,14 +6,12 @@ import {
 } from "./create-chat-browse-channel-settings.lib";
 
 const STREAM_UUID_42 = "00000000-0000-4000-8000-000000000042";
+const CREATOR_UUID = "00000000-0000-4000-8000-000000000077";
 
 const labels = createBrowseChannelDetailLabels({
   t: (key, params) => {
     if (key === "channel.browseDirectMembers" && params?.count != null) {
       return `${params.count} users`;
-    }
-    if (key === "channel.browseUserId" && params?.id != null) {
-      return `User #${params.id}`;
     }
     if (key === "channel.browseRetentionDays" && params?.count != null) {
       return `${params.count} days`;
@@ -42,7 +40,7 @@ const labels = createBrowseChannelDetailLabels({
     return map[key] ?? key;
   },
   locale: "en",
-  resolveUserName: (id) => (id === 7 ? "Alice" : undefined),
+  resolveUserName: (id) => (id === CREATOR_UUID ? "Alice" : undefined),
   resolveGroupName: (id) => (id === 9 ? "Administrators" : undefined),
 });
 
@@ -69,7 +67,7 @@ describe("create-chat-browse-channel-settings.lib", () => {
         isMuted: false,
         subscriberCount: 15,
         weeklyMessageCount: 30,
-        creatorId: 7,
+        creatorUuid: CREATOR_UUID,
         dateCreated: 1_710_000_000,
         folderId: null,
         isDefault: false,

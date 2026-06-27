@@ -13,6 +13,9 @@ export interface RightPanelStreamMemberViewModel {
   userId: UserId;
   name: string;
   status: string;
+  role: WorkspaceStreamRole;
+  roleLabel: string;
+  bindingUuid: string | null;
   isCreator: boolean;
   isChannelAdmin: boolean;
   isStreamOwner: boolean;
@@ -25,6 +28,8 @@ interface BuildRightPanelStreamMembersInput {
   members: readonly ChatInfoMember[];
   users: Map<string, UserRecord>;
   streamMemberRolesByUserId: Readonly<Record<string, WorkspaceStreamRole>>;
+  streamMemberBindingUuidsByUserId: Readonly<Record<string, string>>;
+  roleLabels: Readonly<Record<WorkspaceStreamRole, string>>;
   memberFallbackLabel: string;
   onlineLabel: string;
   offlineLabel: string;
@@ -36,10 +41,14 @@ export function buildRightPanelStreamMembers(
 ): RightPanelStreamMemberViewModel[] {
   return input.members.map((member) => {
     const userRecord = input.users.get(userIdStorageKey(member.userId));
-    const memberRole = input.streamMemberRolesByUserId[userIdStorageKey(member.userId)];
+    const userKey = userIdStorageKey(member.userId);
+    const memberRole = input.streamMemberRolesByUserId[userKey] ?? "member";
     const isStreamOwner = memberRole === "owner";
     return {
       userId: member.userId,
+      role: memberRole,
+      roleLabel: input.roleLabels[memberRole],
+      bindingUuid: input.streamMemberBindingUuidsByUserId[userKey] ?? null,
       name: member.fullName || input.memberFallbackLabel,
       status:
         formatUserStatusLabel(userRecord?.status) ??
