@@ -1,0 +1,348 @@
+import { describe, expect, it } from "vitest";
+import {
+  isWorkspaceMessengerEpochDto,
+  isWorkspaceMessengerEventDto,
+  isWorkspaceMessengerFolderDto,
+  isWorkspaceMessengerMessageDto,
+  isWorkspaceMessengerServerSettingsDto,
+  isWorkspaceMessengerStreamBindingDto,
+  isWorkspaceMessengerStreamDto,
+  isWorkspaceMessengerTopicDto,
+  isWorkspaceMessengerUserDto,
+  isWorkspaceMessengerWebSocketFrameDto,
+  isWorkspaceRealtimeEvent,
+} from "./messenger.types";
+
+// DTO guard tests keep the frontend aligned with the backend messenger contract.
+const PROJECT_UUID = "22222222-2222-4222-8222-222222222222";
+const USER_UUID = "11111111-1111-4111-8111-111111111111";
+const STREAM_UUID = "75309057-419c-4b12-a7c1-3932429ec4a6";
+const TOPIC_UUID = "4ec0b996-b778-45f8-8ef4-ef863be0c047";
+const MESSAGE_UUID = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
+const FOLDER_UUID = "50ecadd0-9823-4d97-b54c-806cc672c210";
+const FOLDER_ITEM_UUID = "9f41b1a7-77f9-4c12-bdc6-d3cebc5dbf50";
+const BINDING_UUID = "81ffbd82-1f6f-4d85-b44b-b0cd8b4190fb";
+const EVENT_UUID = "0cb14b5a-6bf0-4de2-bdb5-4e98df4044e0";
+const DATE = "2026-06-22T10:10:00Z";
+
+const streamDto = {
+  uuid: STREAM_UUID,
+  name: "Engineering",
+  description: "Engineering workspace",
+  project_id: PROJECT_UUID,
+  owner: USER_UUID,
+  user_uuid: USER_UUID,
+  role: "owner",
+  notification_mode: "all_messages",
+  unread_count: 3,
+  source_name: "native",
+  source: { kind: "native" },
+  invite_only: false,
+  announce: false,
+  private: false,
+  is_archived: false,
+  direct_user_uuid: null,
+  created_at: DATE,
+  updated_at: DATE,
+};
+
+const streamBindingDto = {
+  uuid: BINDING_UUID,
+  project_id: PROJECT_UUID,
+  stream_uuid: STREAM_UUID,
+  user_uuid: USER_UUID,
+  who_uuid: USER_UUID,
+  role: "member",
+  notification_mode: "mentions_only",
+  created_at: DATE,
+  updated_at: DATE,
+};
+
+const topicDto = {
+  uuid: TOPIC_UUID,
+  project_id: PROJECT_UUID,
+  name: "Releases",
+  stream_uuid: STREAM_UUID,
+  user_uuid: USER_UUID,
+  unread_count: 2,
+  is_default: false,
+  is_done: false,
+  notification_mode: "follow",
+  created_at: DATE,
+  updated_at: DATE,
+};
+
+const messageDto = {
+  uuid: MESSAGE_UUID,
+  project_id: PROJECT_UUID,
+  stream_uuid: STREAM_UUID,
+  topic_uuid: TOPIC_UUID,
+  author_uuid: USER_UUID,
+  payload: {
+    kind: "markdown",
+    content: "Hello, workspace",
+  },
+  user_uuid: USER_UUID,
+  read: true,
+  pinned: false,
+  starred: false,
+  is_own: true,
+  created_at: DATE,
+  updated_at: DATE,
+};
+
+const folderItemDto = {
+  uuid: FOLDER_ITEM_UUID,
+  project_id: PROJECT_UUID,
+  folder_uuid: FOLDER_UUID,
+  user_uuid: USER_UUID,
+  stream_uuid: STREAM_UUID,
+  chat_type: "stream",
+  order_index: 10,
+  pinned_at: null,
+  unread_count: 3,
+  created_at: DATE,
+  updated_at: DATE,
+};
+
+const folderDto = {
+  uuid: FOLDER_UUID,
+  project_id: PROJECT_UUID,
+  user_uuid: USER_UUID,
+  title: "Inbox",
+  background_color_value: 4280391411,
+  unread_count: 3,
+  system_type: "created",
+  folder_items: [folderItemDto],
+  created_at: DATE,
+  updated_at: DATE,
+};
+
+const serverSettingsDto = {
+  result: "success",
+  msg: "Welcome to Exordos Workspace",
+  authentication_methods: {
+    password: true,
+    dev: false,
+    email: true,
+    ldap: false,
+    remoteuser: false,
+    github: false,
+    azuread: false,
+    gitlab: false,
+    google: false,
+    apple: false,
+    saml: false,
+    "openid connect": false,
+  },
+  push_notifications_enabled: true,
+  email_auth_enabled: true,
+  require_email_format_usernames: true,
+  realm_url: "https://zulip.genesis-core.tech",
+  realm_name: "Genesis Corporation",
+  realm_icon: "/user_avatars/2/realm/icon.png?version=2",
+  realm_description: "<p>The coolest place in the universe.</p>",
+  realm_web_public_access_enabled: false,
+  external_authentication_methods: [],
+  realm_uri: "https://zulip.genesis-core.tech",
+  ignored_parameters_unsupported: ["foo"],
+};
+
+function eventDto(payload: unknown) {
+  return {
+    epoch_version: 124,
+    uuid: EVENT_UUID,
+    project_id: PROJECT_UUID,
+    user_uuid: USER_UUID,
+    payload,
+    created_at: DATE,
+    updated_at: DATE,
+  };
+}
+
+describe("Workspace messenger DTO guards", () => {
+  it("accepts resource DTOs from the backend contract", () => {
+    expect(isWorkspaceMessengerStreamDto(streamDto)).toBe(true);
+    expect(isWorkspaceMessengerStreamBindingDto(streamBindingDto)).toBe(true);
+    expect(isWorkspaceMessengerTopicDto(topicDto)).toBe(true);
+    expect(isWorkspaceMessengerMessageDto(messageDto)).toBe(true);
+    expect(isWorkspaceMessengerFolderDto(folderDto)).toBe(true);
+    expect(
+      isWorkspaceMessengerUserDto({
+        uuid: USER_UUID,
+        username: "admin",
+        source: "iam",
+        status: "active",
+        first_name: null,
+        last_name: null,
+        email: "admin@example.com",
+        last_ping_at: null,
+        created_at: DATE,
+        updated_at: DATE,
+      }),
+    ).toBe(true);
+    expect(isWorkspaceMessengerServerSettingsDto(serverSettingsDto)).toBe(true);
+    expect(isWorkspaceMessengerEpochDto({ epoch_version: 124 })).toBe(true);
+  });
+
+  it("requires stream notification mode, archive flag, and source shape", () => {
+    expect(isWorkspaceMessengerStreamDto({ ...streamDto, notification_mode: undefined })).toBe(
+      false,
+    );
+    expect(isWorkspaceMessengerStreamDto({ ...streamDto, is_archived: undefined })).toBe(false);
+    expect(
+      isWorkspaceMessengerStreamDto({
+        ...streamDto,
+        source_name: "zulip",
+        source: { kind: "zulip", stream_id: 123 },
+      }),
+    ).toBe(true);
+    expect(
+      isWorkspaceMessengerStreamDto({
+        ...streamDto,
+        source_name: "zulip",
+        source: { kind: "zulip", stream_id: "123" },
+      }),
+    ).toBe(false);
+  });
+
+  it("accepts all documented raw REST outbox payload kinds", () => {
+    expect(isWorkspaceMessengerEventDto(eventDto({ kind: "stream.created", ...streamDto }))).toBe(
+      true,
+    );
+    expect(isWorkspaceMessengerEventDto(eventDto({ kind: "stream.updated", ...streamDto }))).toBe(
+      true,
+    );
+    expect(
+      isWorkspaceMessengerEventDto(eventDto({ kind: "stream.deleted", uuid: STREAM_UUID })),
+    ).toBe(true);
+    expect(
+      isWorkspaceMessengerEventDto(
+        eventDto({
+          kind: "stream_bindings.created",
+          stream_uuid: STREAM_UUID,
+          stream_bindings: [streamBindingDto],
+        }),
+      ),
+    ).toBe(true);
+    expect(isWorkspaceMessengerEventDto(eventDto({ kind: "topic.created", ...topicDto }))).toBe(
+      true,
+    );
+    expect(isWorkspaceMessengerEventDto(eventDto({ kind: "topic.updated", ...topicDto }))).toBe(
+      true,
+    );
+    expect(
+      isWorkspaceMessengerEventDto(
+        eventDto({ kind: "topic.deleted", uuid: TOPIC_UUID, stream_uuid: STREAM_UUID }),
+      ),
+    ).toBe(true);
+    expect(isWorkspaceMessengerEventDto(eventDto({ kind: "message.created", ...messageDto }))).toBe(
+      true,
+    );
+    expect(isWorkspaceMessengerEventDto(eventDto({ kind: "message.updated", ...messageDto }))).toBe(
+      true,
+    );
+    expect(
+      isWorkspaceMessengerEventDto(
+        eventDto({
+          kind: "message.deleted",
+          uuid: MESSAGE_UUID,
+          stream_uuid: STREAM_UUID,
+          topic_uuid: TOPIC_UUID,
+        }),
+      ),
+    ).toBe(true);
+    expect(isWorkspaceMessengerEventDto(eventDto({ kind: "folder.created", ...folderDto }))).toBe(
+      true,
+    );
+    expect(isWorkspaceMessengerEventDto(eventDto({ kind: "folder.updated", ...folderDto }))).toBe(
+      true,
+    );
+    expect(
+      isWorkspaceMessengerEventDto(eventDto({ kind: "folder.deleted", uuid: FOLDER_UUID })),
+    ).toBe(true);
+    expect(
+      isWorkspaceMessengerEventDto(
+        eventDto({ kind: "folder_item.deleted", uuid: FOLDER_ITEM_UUID }),
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects incomplete delete payloads and unknown message payloads", () => {
+    expect(
+      isWorkspaceMessengerEventDto(
+        eventDto({ kind: "message.deleted", uuid: MESSAGE_UUID, stream_uuid: STREAM_UUID }),
+      ),
+    ).toBe(false);
+    expect(
+      isWorkspaceMessengerEventDto(eventDto({ kind: "topic.deleted", uuid: TOPIC_UUID })),
+    ).toBe(false);
+    expect(
+      isWorkspaceMessengerMessageDto({
+        ...messageDto,
+        payload: { kind: "html", content: "<strong>no</strong>" },
+      }),
+    ).toBe(false);
+  });
+
+  it("accepts dispatch-ready realtime events and websocket frames", () => {
+    const messageCreatedEvent = {
+      epoch_version: 125,
+      type: "message",
+      message: messageDto,
+    };
+    const folderDeletedEvent = {
+      epoch_version: 126,
+      type: "folder",
+      kind: "folder.deleted",
+      folder: { uuid: FOLDER_UUID },
+    };
+
+    expect(isWorkspaceRealtimeEvent(messageCreatedEvent)).toBe(true);
+    expect(isWorkspaceRealtimeEvent(folderDeletedEvent)).toBe(true);
+    expect(
+      isWorkspaceMessengerWebSocketFrameDto({
+        type: "hello",
+        user_uuid: USER_UUID,
+        project_id: PROJECT_UUID,
+        epoch_version: 124,
+      }),
+    ).toBe(true);
+    expect(isWorkspaceMessengerWebSocketFrameDto({ type: "ping", ts: DATE })).toBe(true);
+    expect(
+      isWorkspaceMessengerWebSocketFrameDto({
+        type: "error",
+        code: "bad_request",
+        message: "Invalid websocket frame",
+      }),
+    ).toBe(true);
+    expect(
+      isWorkspaceMessengerWebSocketFrameDto({
+        type: "event",
+        event: folderDeletedEvent,
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects unsupported event kinds and websocket frames", () => {
+    expect(
+      isWorkspaceMessengerEventDto(
+        eventDto({
+          kind: "reaction.created",
+          uuid: MESSAGE_UUID,
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      isWorkspaceMessengerWebSocketFrameDto({
+        type: "event",
+        event: {
+          epoch_version: 127,
+          type: "message",
+          kind: "message.deleted",
+          message: { uuid: MESSAGE_UUID, stream_uuid: STREAM_UUID },
+        },
+      }),
+    ).toBe(false);
+  });
+});

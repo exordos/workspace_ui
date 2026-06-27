@@ -56,6 +56,7 @@ import { resolveLayoutTopBannerKind } from "./layout-top-banner.lib";
 import { useLayoutUnreadAndTitle } from "./layout-unread-title.hook";
 import { isLayoutUserConnectionReady } from "./layout-user-connection-status.types";
 import { useLayoutWindowBranding } from "./layout-window-branding.hook";
+import { useLayoutWorkspaceMessengerBootstrap } from "./layout-workspace-messenger-bootstrap.hook";
 import { useLayoutZulipEventLoop } from "./layout-zulip-event-loop.hook";
 import { useZulipRateLimitCountdownSeconds } from "./layout-zulip-rate-limit-banner.hook";
 import type { LayoutUserConnectionStatus } from "./layout-user-connection-status.types";
@@ -211,6 +212,8 @@ export const Layout: React.FC = () => {
     [connectionHealth, online, rateLimitSeconds],
   );
   useHydrateDrafts(currentInstanceId, currentUserStatus);
+  // Start the Workspace messenger snapshot beside the old chat shell during migration.
+  useLayoutWorkspaceMessengerBootstrap();
 
   // Safety net: keeps the org badge correct when mute state changes outside event/local flows.
   useEffect(() => {

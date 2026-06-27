@@ -1,0 +1,658 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import type {
+  WorkspaceMessengerFolderDto,
+  WorkspaceMessengerMessageDto,
+  WorkspaceMessengerStreamBindingDto,
+  WorkspaceMessengerStreamDto,
+  WorkspaceMessengerTopicDto,
+  WorkspaceMessengerUserDto,
+} from "~/shared/api/messenger.types";
+import { adaptMessengerBootstrapPayload, adaptMessengerMessage } from "./messenger-adapters.lib";
+import { bootstrapMessengerStore } from "./messenger-bootstrap.lib";
+import {
+  selectMessengerFolders,
+  selectMessengerMessagesForConversation,
+  selectMessengerSidebarConversations,
+  useMessengerStore,
+} from "./messenger.model";
+import type { MessengerBootstrapClientDeps } from "./messenger-bootstrap.lib";
+
+// Bootstrap tests protect the first project snapshot and stale-owner behavior.
+const ACCOUNT_A = "account-a";
+const ACCOUNT_B = "account-b";
+const INSTANCE_A = "instance-a";
+const INSTANCE_B = "instance-b";
+const ORGANIZATION_A = "organization-a";
+const ORGANIZATION_B = "organization-b";
+const PROJECT_A = "22222222-2222-4222-8222-222222222222";
+const PROJECT_B = "33333333-3333-4333-8333-333333333333";
+const USER_A = "11111111-1111-4111-8111-111111111111";
+const USER_B = "44444444-4444-4444-8444-444444444444";
+const STREAM_A = "75309057-419c-4b12-a7c1-3932429ec4a6";
+const STREAM_B = "37a28696-153d-431e-a5fb-36f0c0209765";
+const STREAM_BINDING_A = "ea4364f4-96e3-4b33-b80d-fd53e5697151";
+const TOPIC_A = "4ec0b996-b778-45f8-8ef4-ef863be0c047";
+const TOPIC_B = "ed25f944-8106-4386-b2f9-65e9db32d465";
+const FOLDER_A = "50ecadd0-9823-4d97-b54c-806cc672c210";
+const FOLDER_B = "0fcdf284-7197-4d83-ae34-1134129bc064";
+const FOLDER_ITEM_A = "9f41b1a7-77f9-4c12-bdc6-d3cebc5dbf50";
+const MESSAGE_A = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
+const MESSAGE_B = "78105b9e-f1ac-41f1-baf5-2975486cc7dc";
+const DATE = "2026-06-22T10:10:00Z";
+
+function createRuntimeContext(
+  overrides: Partial<WorkspaceRuntimeContext> = {},
+): WorkspaceRuntimeContext {
+  return {
+    accountId: ACCOUNT_A,
+    instanceId: INSTANCE_A,
+    organizationId: ORGANIZATION_A,
+    projectId: PROJECT_A,
+    userUuid: USER_A,
+    accessToken: "access-token-a",
+    runtimeGeneration: 1,
+    ...overrides,
+  };
+}
+
+function createStreamDto(
+  overrides: Partial<WorkspaceMessengerStreamDto> = {},
+): WorkspaceMessengerStreamDto {
+  return {
+    uuid: STREAM_A,
+    name: "Engineering",
+    description: "Engineering workspace",
+    project_id: PROJECT_A,
+    owner: USER_A,
+    user_uuid: USER_A,
+    role: "owner",
+    notification_mode: "all_messages",
+    unread_count: 3,
+    source_name: "native",
+    source: { kind: "native" },
+    invite_only: false,
+    announce: false,
+    private: false,
+    is_archived: false,
+    direct_user_uuid: null,
+    created_at: DATE,
+    updated_at: DATE,
+    ...overrides,
+  };
+}
+
+function createStreamBindingDto(
+  overrides: Partial<WorkspaceMessengerStreamBindingDto> = {},
+): WorkspaceMessengerStreamBindingDto {
+  return {
+    uuid: STREAM_BINDING_A,
+    project_id: PROJECT_A,
+    stream_uuid: STREAM_A,
+    user_uuid: USER_A,
+    who_uuid: USER_A,
+    role: "owner",
+    notification_mode: "all_messages",
+    created_at: DATE,
+    updated_at: DATE,
+    ...overrides,
+  };
+}
+
+function createTopicDto(
+  overrides: Partial<WorkspaceMessengerTopicDto> = {},
+): WorkspaceMessengerTopicDto {
+  return {
+    uuid: TOPIC_A,
+    project_id: PROJECT_A,
+    name: "Releases",
+    stream_uuid: STREAM_A,
+    user_uuid: USER_A,
+    unread_count: 2,
+    is_default: false,
+    is_done: false,
+    notification_mode: "default",
+    created_at: DATE,
+    updated_at: DATE,
+    ...overrides,
+  };
+}
+
+function createMessageDto(
+  overrides: Partial<WorkspaceMessengerMessageDto> = {},
+): WorkspaceMessengerMessageDto {
+  return {
+    uuid: MESSAGE_A,
+    project_id: PROJECT_A,
+    stream_uuid: STREAM_A,
+    topic_uuid: TOPIC_A,
+    author_uuid: USER_A,
+    payload: {
+      kind: "markdown",
+      content: "Hello, workspace",
+    },
+    user_uuid: USER_A,
+    read: true,
+    pinned: false,
+    starred: false,
+    is_own: true,
+    created_at: DATE,
+    updated_at: DATE,
+    ...overrides,
+  };
+}
+
+function createFolderDto(
+  overrides: Partial<WorkspaceMessengerFolderDto> = {},
+): WorkspaceMessengerFolderDto {
+  return {
+    uuid: FOLDER_A,
+    title: "Inbox",
+    background_color_value: null,
+    unread_count: 3,
+    system_type: "created",
+    folder_items: [
+      {
+        uuid: FOLDER_ITEM_A,
+        project_id: PROJECT_A,
+        folder_uuid: FOLDER_A,
+        user_uuid: USER_A,
+        stream_uuid: STREAM_A,
+        chat_type: "private",
+        order_index: 10,
+        pinned_at: null,
+        unread_count: 3,
+        created_at: DATE,
+        updated_at: DATE,
+      },
+    ],
+    created_at: DATE,
+    updated_at: DATE,
+    ...overrides,
+  };
+}
+
+function createUserDto(
+  overrides: Partial<WorkspaceMessengerUserDto> = {},
+): WorkspaceMessengerUserDto {
+  return {
+    uuid: USER_A,
+    username: "alice",
+    source: "iam",
+    status: "active",
+    first_name: "Alice",
+    last_name: "Tester",
+    email: "alice@example.test",
+    last_ping_at: DATE,
+    created_at: DATE,
+    updated_at: DATE,
+    ...overrides,
+  };
+}
+
+function createClient(
+  overrides: Partial<MessengerBootstrapClientDeps> = {},
+): MessengerBootstrapClientDeps {
+  return {
+    getStreams: () => Promise.resolve([createStreamDto()]),
+    getTopics: () => Promise.resolve([createTopicDto()]),
+    getFolders: () => Promise.resolve([createFolderDto()]),
+    getUsers: () => Promise.resolve([createUserDto()]),
+    ...overrides,
+  };
+}
+
+function createDeferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+} {
+  let resolve: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
+}
+
+describe("messenger bootstrap store", () => {
+  beforeEach(() => {
+    useMessengerStore.getState().clear();
+  });
+
+  it("applies a successful Workspace payload to domain state", async () => {
+    const runtimeContext = createRuntimeContext();
+
+    const result = await bootstrapMessengerStore({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      client: createClient(),
+    });
+
+    const state = useMessengerStore.getState();
+    expect(result).toEqual({
+      status: "applied",
+      ownerKey: workspaceRuntimeOwnerKey(runtimeContext),
+    });
+    expect(state.ownerKey).toBe(workspaceRuntimeOwnerKey(runtimeContext));
+    expect(state.isLoading).toBe(false);
+    expect(state.error).toBeNull();
+    expect(state.streamsById[STREAM_A]?.name).toBe("Engineering");
+    expect(state.streamBindingIds).toEqual([]);
+    expect(state.streamBindingsById).toEqual({});
+    expect(state.streamBindingIdsByStreamId).toEqual({});
+    expect(state.topicsById[TOPIC_A]?.name).toBe("Releases");
+    expect(state.messagesById).toEqual({});
+    expect(state.messageIdsByConversationId).toEqual({});
+    expect(state.foldersById[FOLDER_A]?.title).toBe("Inbox");
+    expect(state.usersById[USER_A]?.username).toBe("alice");
+  });
+
+  it("indexes stream bindings when the bootstrap payload provides them", () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+    useMessengerStore.getState().startBootstrap(ownerKey);
+
+    useMessengerStore.getState().replaceBootstrapState(
+      ownerKey,
+      adaptMessengerBootstrapPayload({
+        streams: [createStreamDto()],
+        streamBindings: [createStreamBindingDto()],
+        topics: [createTopicDto()],
+        folders: [createFolderDto()],
+        users: [createUserDto()],
+      }),
+    );
+
+    const state = useMessengerStore.getState();
+    expect(state.streamBindingIds).toEqual([STREAM_BINDING_A]);
+    expect(state.streamBindingIdsByStreamId[STREAM_A]).toEqual([STREAM_BINDING_A]);
+    expect(state.streamBindingsById[STREAM_BINDING_A]).toMatchObject({
+      streamUuid: STREAM_A,
+      notificationMode: "all_messages",
+    });
+  });
+
+  it("keeps old bootstrap payloads without stream bindings compatible", () => {
+    const payload = adaptMessengerBootstrapPayload({
+      streams: [createStreamDto()],
+      topics: [createTopicDto()],
+      folders: [],
+      users: [createUserDto()],
+    });
+
+    expect(payload.streamBindings).toEqual([]);
+  });
+
+  it("does not call the messages endpoint during project bootstrap", async () => {
+    const runtimeContext = createRuntimeContext();
+    const client = createClient();
+
+    await bootstrapMessengerStore({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      client,
+    });
+
+    expect("getMessages" in client).toBe(false);
+  });
+
+  it("keeps private stream conversations as stream and topic ids", async () => {
+    const runtimeContext = createRuntimeContext();
+
+    await bootstrapMessengerStore({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      client: createClient({
+        getStreams: () => Promise.resolve([createStreamDto({ name: "Alice", private: true })]),
+      }),
+    });
+
+    const conversations = selectMessengerSidebarConversations(useMessengerStore.getState());
+
+    expect(conversations).toEqual([
+      expect.objectContaining({
+        id: `stream:${STREAM_A}`,
+        audience: "private",
+        isPrivate: true,
+      }),
+      expect.objectContaining({
+        id: `topic:${STREAM_A}:${TOPIC_A}`,
+        audience: "private",
+        isPrivate: true,
+      }),
+    ]);
+    expect(conversations.every((conversation) => !conversation.id.startsWith("dm:"))).toBe(true);
+  });
+
+  it("skips store writes when owner becomes stale after awaiting client data", async () => {
+    let currentContext = createRuntimeContext();
+    const streamRequest = createDeferred<WorkspaceMessengerStreamDto[]>();
+
+    const bootstrap = bootstrapMessengerStore({
+      runtimeContext: currentContext,
+      getRuntimeContext: () => currentContext,
+      client: createClient({
+        getStreams: () => streamRequest.promise,
+      }),
+    });
+
+    currentContext = createRuntimeContext({
+      accountId: ACCOUNT_B,
+      instanceId: INSTANCE_B,
+      organizationId: ORGANIZATION_B,
+      projectId: PROJECT_B,
+      userUuid: USER_B,
+      accessToken: "access-token-b",
+      runtimeGeneration: 1,
+    });
+    streamRequest.resolve([createStreamDto()]);
+
+    await expect(bootstrap).resolves.toEqual({
+      status: "skipped",
+      ownerKey: workspaceRuntimeOwnerKey(createRuntimeContext()),
+      reason: "stale-owner",
+    });
+    expect(useMessengerStore.getState().streamIds).toHaveLength(0);
+    expect(useMessengerStore.getState().conversationIds).toHaveLength(0);
+  });
+
+  it("clears old owner data before replacing it with the next owner payload", async () => {
+    const runtimeA = createRuntimeContext();
+    const runtimeB = createRuntimeContext({
+      accountId: ACCOUNT_B,
+      instanceId: INSTANCE_B,
+      organizationId: ORGANIZATION_B,
+      projectId: PROJECT_B,
+      userUuid: USER_B,
+      accessToken: "access-token-b",
+      runtimeGeneration: 1,
+    });
+    let currentContext = runtimeA;
+
+    await bootstrapMessengerStore({
+      runtimeContext: runtimeA,
+      getRuntimeContext: () => currentContext,
+      client: createClient(),
+    });
+    expect(useMessengerStore.getState().streamIds).toEqual([STREAM_A]);
+
+    currentContext = runtimeB;
+    const streamRequest = createDeferred<WorkspaceMessengerStreamDto[]>();
+    const bootstrapB = bootstrapMessengerStore({
+      runtimeContext: runtimeB,
+      getRuntimeContext: () => currentContext,
+      client: createClient({
+        getStreams: () => streamRequest.promise,
+        getTopics: () =>
+          Promise.resolve([
+            createTopicDto({
+              uuid: TOPIC_B,
+              project_id: PROJECT_B,
+              stream_uuid: STREAM_B,
+              user_uuid: USER_B,
+            }),
+          ]),
+        getFolders: () => Promise.resolve([]),
+        getUsers: () => Promise.resolve([createUserDto({ uuid: USER_B, username: "bob" })]),
+      }),
+    });
+
+    expect(useMessengerStore.getState().ownerKey).toBe(workspaceRuntimeOwnerKey(runtimeB));
+    expect(useMessengerStore.getState().streamIds).toHaveLength(0);
+
+    streamRequest.resolve([
+      createStreamDto({
+        uuid: STREAM_B,
+        name: "Support",
+        project_id: PROJECT_B,
+        owner: USER_B,
+        user_uuid: USER_B,
+      }),
+    ]);
+    await expect(bootstrapB).resolves.toEqual({
+      status: "applied",
+      ownerKey: workspaceRuntimeOwnerKey(runtimeB),
+    });
+
+    const state = useMessengerStore.getState();
+    expect(state.streamIds).toEqual([STREAM_B]);
+    expect(state.streamsById[STREAM_A]).toBeUndefined();
+    expect(state.streamsById[STREAM_B]?.name).toBe("Support");
+    expect(state.usersById[USER_B]?.username).toBe("bob");
+  });
+
+  it("returns stable selector arrays while store references do not change", async () => {
+    const runtimeContext = createRuntimeContext();
+
+    await bootstrapMessengerStore({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      client: createClient(),
+    });
+
+    const state = useMessengerStore.getState();
+    const sidebarConversations = selectMessengerSidebarConversations(state);
+    const sameSidebarConversations = selectMessengerSidebarConversations(state);
+    const conversationMessages = selectMessengerMessagesForConversation(
+      state,
+      `topic:${STREAM_A}:${TOPIC_A}`,
+    );
+    const sameConversationMessages = selectMessengerMessagesForConversation(
+      state,
+      `topic:${STREAM_A}:${TOPIC_A}`,
+    );
+    const folders = selectMessengerFolders(state);
+    const sameFolders = selectMessengerFolders(state);
+    const emptyMessages = selectMessengerMessagesForConversation(state, `stream:${STREAM_A}`);
+    const sameEmptyMessages = selectMessengerMessagesForConversation(state, `stream:${STREAM_A}`);
+
+    expect(sameSidebarConversations).toBe(sidebarConversations);
+    expect(sameConversationMessages).toBe(conversationMessages);
+    expect(sameFolders).toBe(folders);
+    expect(sameEmptyMessages).toBe(emptyMessages);
+  });
+
+  it("keeps new store actions scoped to the active owner", () => {
+    const runtimeA = createRuntimeContext();
+    const runtimeB = createRuntimeContext({
+      accountId: ACCOUNT_B,
+      instanceId: INSTANCE_B,
+      organizationId: ORGANIZATION_B,
+      projectId: PROJECT_B,
+      userUuid: USER_B,
+      accessToken: "access-token-b",
+      runtimeGeneration: 1,
+    });
+    const ownerA = workspaceRuntimeOwnerKey(runtimeA);
+    const ownerB = workspaceRuntimeOwnerKey(runtimeB);
+    useMessengerStore.getState().startBootstrap(ownerA);
+
+    useMessengerStore.getState().upsertStream(
+      ownerB,
+      adaptMessengerBootstrapPayload({
+        streams: [createStreamDto()],
+        topics: [],
+        folders: [],
+        users: [],
+      }).streams[0]!,
+    );
+    useMessengerStore.getState().markRealtimeEventSkipped(ownerB, 10, "stale-owner-test");
+
+    expect(useMessengerStore.getState().streamIds).toEqual([]);
+    expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
+  });
+
+  it("upserts and removes streams with conversations, bindings, topics, and messages", () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createRuntimeContext());
+    const payload = adaptMessengerBootstrapPayload({
+      streams: [createStreamDto()],
+      streamBindings: [createStreamBindingDto()],
+      topics: [createTopicDto()],
+      folders: [],
+      users: [],
+    });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, payload);
+    useMessengerStore.getState().upsertMessage(ownerKey, adaptMessengerMessage(createMessageDto()));
+
+    expect(useMessengerStore.getState().conversationIds).toContain(`stream:${STREAM_A}`);
+    expect(useMessengerStore.getState().conversationIds).toContain(`topic:${STREAM_A}:${TOPIC_A}`);
+
+    useMessengerStore.getState().removeStream(ownerKey, { uuid: STREAM_A });
+
+    const state = useMessengerStore.getState();
+    expect(state.streamsById[STREAM_A]).toBeUndefined();
+    expect(state.topicsById[TOPIC_A]).toBeUndefined();
+    expect(state.conversationIds).toEqual([]);
+    expect(state.streamBindingIds).toEqual([]);
+    expect(state.messagesById[MESSAGE_A]).toBeUndefined();
+  });
+
+  it("upserts stream bindings without duplicating binding indexes", () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createRuntimeContext());
+    const [binding] = adaptMessengerBootstrapPayload({
+      streams: [],
+      streamBindings: [createStreamBindingDto()],
+      topics: [],
+      folders: [],
+      users: [],
+    }).streamBindings;
+    useMessengerStore.getState().startBootstrap(ownerKey);
+
+    useMessengerStore.getState().upsertStreamBindings(ownerKey, [binding!, binding!]);
+
+    expect(useMessengerStore.getState().streamBindingIds).toEqual([STREAM_BINDING_A]);
+    expect(useMessengerStore.getState().streamBindingIdsByStreamId[STREAM_A]).toEqual([
+      STREAM_BINDING_A,
+    ]);
+  });
+
+  it("upserts topics and removes topic conversations with messages", () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createRuntimeContext());
+    const [stream] = adaptMessengerBootstrapPayload({
+      streams: [createStreamDto()],
+      topics: [],
+      folders: [],
+      users: [],
+    }).streams;
+    const [topic] = adaptMessengerBootstrapPayload({
+      streams: [],
+      topics: [createTopicDto({ is_done: true, notification_mode: "follow" })],
+      folders: [],
+      users: [],
+    }).topics;
+    const message = adaptMessengerMessage(createMessageDto());
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().upsertStream(ownerKey, stream!);
+    useMessengerStore.getState().upsertTopic(ownerKey, topic!);
+    useMessengerStore.getState().upsertMessage(ownerKey, message);
+
+    expect(useMessengerStore.getState().conversationsById[`topic:${STREAM_A}:${TOPIC_A}`]).toEqual(
+      expect.objectContaining({
+        notificationMode: "follow",
+        isDone: true,
+        isDefaultTopic: false,
+      }),
+    );
+
+    useMessengerStore.getState().removeTopic(ownerKey, { uuid: TOPIC_A, streamUuid: STREAM_A });
+
+    const state = useMessengerStore.getState();
+    expect(state.topicsById[TOPIC_A]).toBeUndefined();
+    expect(state.conversationsById[`topic:${STREAM_A}:${TOPIC_A}`]).toBeUndefined();
+    expect(state.messagesById[MESSAGE_A]).toBeUndefined();
+  });
+
+  it("merges message pages without duplicates and removes messages by delete payload", () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createRuntimeContext());
+    const messageA = adaptMessengerMessage(createMessageDto());
+    const messageB = adaptMessengerMessage(createMessageDto({ uuid: MESSAGE_B }));
+    useMessengerStore.getState().startBootstrap(ownerKey);
+
+    useMessengerStore
+      .getState()
+      .mergeConversationMessagesPage(ownerKey, `topic:${STREAM_A}:${TOPIC_A}`, [
+        messageA,
+        messageB,
+        { ...messageA, markdown: "Edited" },
+      ]);
+
+    expect(
+      selectMessengerMessagesForConversation(
+        useMessengerStore.getState(),
+        `topic:${STREAM_A}:${TOPIC_A}`,
+      ),
+    ).toEqual([
+      expect.objectContaining({ uuid: MESSAGE_A, markdown: "Edited" }),
+      expect.objectContaining({ uuid: MESSAGE_B }),
+    ]);
+
+    useMessengerStore.getState().removeMessage(ownerKey, {
+      uuid: MESSAGE_A,
+      streamUuid: STREAM_A,
+      topicUuid: TOPIC_A,
+    });
+
+    expect(
+      selectMessengerMessagesForConversation(
+        useMessengerStore.getState(),
+        `topic:${STREAM_A}:${TOPIC_A}`,
+      ),
+    ).toEqual([expect.objectContaining({ uuid: MESSAGE_B })]);
+  });
+
+  it("applies folder snapshots and removes folder items from every folder", () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createRuntimeContext());
+    const [folderA] = adaptMessengerBootstrapPayload({
+      streams: [],
+      topics: [],
+      folders: [createFolderDto()],
+      users: [],
+    }).folders;
+    const [folderB] = adaptMessengerBootstrapPayload({
+      streams: [],
+      topics: [],
+      folders: [
+        createFolderDto({
+          uuid: FOLDER_B,
+          title: "Pinned",
+          folder_items: createFolderDto().folder_items.map((item) => ({
+            ...item,
+            folder_uuid: FOLDER_B,
+          })),
+        }),
+      ],
+      users: [],
+    }).folders;
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore.getState().applyFolderSnapshot(ownerKey, folderA!);
+    useMessengerStore.getState().applyFolderSnapshot(ownerKey, folderB!);
+
+    useMessengerStore.getState().removeFolderItem(ownerKey, { uuid: FOLDER_ITEM_A });
+
+    expect(selectMessengerFolders(useMessengerStore.getState())).toEqual([
+      expect.objectContaining({ uuid: FOLDER_A, items: [] }),
+      expect.objectContaining({ uuid: FOLDER_B, items: [] }),
+    ]);
+
+    useMessengerStore.getState().removeFolder(ownerKey, { uuid: FOLDER_A });
+
+    expect(useMessengerStore.getState().folderIds).toEqual([FOLDER_B]);
+  });
+
+  it("keeps realtime cursor monotonic and records skipped events", () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createRuntimeContext());
+    useMessengerStore.getState().startBootstrap(ownerKey);
+
+    useMessengerStore.getState().setRealtimeCursor(ownerKey, 5);
+    useMessengerStore.getState().setRealtimeCursor(ownerKey, 3);
+    useMessengerStore.getState().markRealtimeEventSkipped(ownerKey, 7, "unknown-event");
+    useMessengerStore.getState().markRealtimeEventSkipped(ownerKey, 6, "duplicate-event");
+
+    expect(useMessengerStore.getState().lastEpochVersion).toBe(7);
+    expect(useMessengerStore.getState().skippedRealtimeEvents).toEqual([
+      { epochVersion: 7, reason: "unknown-event" },
+      { epochVersion: 6, reason: "duplicate-event" },
+    ]);
+  });
+});
