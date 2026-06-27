@@ -15,8 +15,15 @@ const DM_PATH_SEGMENT = /^\/dm\/([^/]+)(?:\/|$)/;
 const STREAM_PATH_SEGMENT = /^\/stream\/([^/]+)(?:\/topic\/([^/]+))?/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-type RouteStreamTopicEntry = { subject: string; topicUuid?: string };
-type RouteStreamEntry = { name: string; topics?: Map<string, RouteStreamTopicEntry> };
+interface RouteStreamTopicEntry {
+  subject: string;
+  topicUuid?: string;
+}
+
+interface RouteStreamEntry {
+  name: string;
+  topics?: Map<string, RouteStreamTopicEntry>;
+}
 
 function normalizeRouteUuid(value: string): string | null {
   const trimmed = value.trim().toLowerCase();
@@ -87,9 +94,15 @@ export function isStoreContextAlignedWithParsedRoute(
   const uu = urlCtx;
   if (su.streamId !== uu.streamId) return false;
   if (parsed.streamTopicExplicitInUrl) {
-    return (
+    const sameTopicIdentity =
       normalizeTopicForIdentity(su.topicUuid ?? su.topic) ===
-      normalizeTopicForIdentity(uu.topicUuid ?? uu.topic)
+      normalizeTopicForIdentity(uu.topicUuid ?? uu.topic);
+    return (
+      sameTopicIdentity &&
+      su.streamName === uu.streamName &&
+      su.topic === uu.topic &&
+      su.topicUuid === uu.topicUuid &&
+      (su.streamWideView ?? false) === (uu.streamWideView ?? false)
     );
   }
   return true;

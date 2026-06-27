@@ -13,6 +13,7 @@ import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
 import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { useMessageReadersStore } from "~/features/message-readers/message-readers.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
+import type { StreamNotificationMode } from "~/features/mute-chat/notification-level.lib";
 import { useUserProfileStore } from "~/features/user-profile/user-profile.model";
 import { t } from "~/i18n/i18n";
 import { fetchMyStreams, fetchStreamTopics } from "~/shared/api/messenger-streams";
@@ -102,29 +103,20 @@ function toLayoutMuteSnapshotFromRow(row: {
   mutedTopics: { streamId: string; topic: string }[];
   unmutedTopics: { streamId: string; topic: string }[];
   followedTopics?: { streamId: string; topic: string }[];
-  streamDesktopNotifyEnabledIds?: string[];
-  streamDesktopNotifyDisabledIds?: string[];
-  streamAudibleNotifyEnabledIds?: string[];
-  streamAudibleNotifyDisabledIds?: string[];
+  streamNotificationModes?: { streamId: string; mode: StreamNotificationMode }[];
 }): {
   mutedStreamIds: string[];
   mutedTopics: { streamId: string; topic: string }[];
   unmutedTopics: { streamId: string; topic: string }[];
   followedTopics: { streamId: string; topic: string }[];
-  streamDesktopNotifyEnabledIds: string[];
-  streamDesktopNotifyDisabledIds: string[];
-  streamAudibleNotifyEnabledIds: string[];
-  streamAudibleNotifyDisabledIds: string[];
+  streamNotificationModes: { streamId: string; mode: StreamNotificationMode }[];
 } {
   return {
     mutedStreamIds: row.mutedStreamIds,
     mutedTopics: row.mutedTopics,
     unmutedTopics: row.unmutedTopics,
     followedTopics: row.followedTopics ?? [],
-    streamDesktopNotifyEnabledIds: row.streamDesktopNotifyEnabledIds ?? [],
-    streamDesktopNotifyDisabledIds: row.streamDesktopNotifyDisabledIds ?? [],
-    streamAudibleNotifyEnabledIds: row.streamAudibleNotifyEnabledIds ?? [],
-    streamAudibleNotifyDisabledIds: row.streamAudibleNotifyDisabledIds ?? [],
+    streamNotificationModes: row.streamNotificationModes ?? [],
   };
 }
 

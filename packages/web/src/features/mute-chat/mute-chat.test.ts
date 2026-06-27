@@ -14,8 +14,10 @@ import {
 } from "./mute-chat.optimistic.lib";
 
 vi.mock("~/shared/api/client", () => ({
+  getMessengerWorkspaceApiBaseForCurrentInstance: () => "/api/messenger/v1",
   messengerApi: {
     post: vi.fn(),
+    postJsonWithBase: vi.fn(),
   },
 }));
 
@@ -25,6 +27,24 @@ const STREAM_UUID_7 = "00000000-0000-4000-8000-000000000007";
 const STREAM_UUID_20 = "00000000-0000-4000-8000-000000000020";
 const STREAM_UUID_42 = "00000000-0000-4000-8000-000000000042";
 const UNKNOWN_STREAM_UUID = "00000000-0000-4000-8000-000000000999";
+
+function okApiResponse(): {
+  ok: true;
+  status: number;
+  headers: Headers;
+  data: Record<string, never>;
+  raw: Response;
+  durationMs: number;
+} {
+  return {
+    ok: true,
+    status: 200,
+    headers: new Headers(),
+    data: {},
+    raw: new Response("{}"),
+    durationMs: 1,
+  };
+}
 
 describe("useMuteStore", () => {
   afterEach(() => {
@@ -149,21 +169,23 @@ describe("useMuteStore", () => {
       expect(useMuteStore.getState().isTopicFollowed(STREAM_UUID_20, "incidents")).toBe(true);
     });
 
-    it("sets per-channel desktop notification overrides", () => {
+    it("sets stream notification modes", () => {
       useMuteStore.getState().setFromServer({
         mutedStreamIds: [],
         mutedTopics: [],
         unmutedTopics: [],
         followedTopics: [],
-        streamDesktopNotifyEnabledIds: [STREAM_UUID_42],
-        streamDesktopNotifyDisabledIds: [STREAM_UUID_7],
+        streamNotificationModes: [
+          { streamId: STREAM_UUID_42, mode: "all_messages" },
+          { streamId: STREAM_UUID_7, mode: "mentions_only" },
+        ],
       });
 
-      expect(useMuteStore.getState().getStreamDesktopNotificationsOverride(STREAM_UUID_42)).toBe(
-        true,
+      expect(useMuteStore.getState().getStreamNotificationMode(STREAM_UUID_42)).toBe(
+        "all_messages",
       );
-      expect(useMuteStore.getState().getStreamDesktopNotificationsOverride(STREAM_UUID_7)).toBe(
-        false,
+      expect(useMuteStore.getState().getStreamNotificationMode(STREAM_UUID_7)).toBe(
+        "mentions_only",
       );
       expect(useMuteStore.getState().getStreamNotificationLevel(STREAM_UUID_42)).toBe("subscribed");
       expect(useMuteStore.getState().getStreamNotificationLevel(STREAM_UUID_7)).toBe("default");
@@ -176,7 +198,7 @@ describe("useMuteStore", () => {
       expect(useMuteStore.getState().getStreamNotificationLevel(STREAM_UUID_1)).toBe("muted");
 
       useMuteStore.getState().unmuteStream(STREAM_UUID_1);
-      useMuteStore.getState().setStreamDesktopNotifications(STREAM_UUID_1, true);
+      useMuteStore.getState().setStreamNotificationMode(STREAM_UUID_1, "all_messages");
       expect(useMuteStore.getState().getStreamNotificationLevel(STREAM_UUID_1)).toBe("subscribed");
     });
   });
@@ -341,22 +363,32 @@ describe("mute-chat API", () => {
   });
 
   describe("setStreamMuted", () => {
-    it("returns false without calling removed subscription properties endpoint", async () => {
+    it("posts muted notification mode", async () => {
       const { messengerApi } = await import("~/shared/api/client");
       const { setStreamMuted } = await import("./mute-chat.api");
+      vi.mocked(messengerApi.postJsonWithBase).mockResolvedValueOnce(okApiResponse());
 
-      await expect(setStreamMuted(TEST_STREAM_UUID, true)).resolves.toBe(false);
+      await expect(setStreamMuted(TEST_STREAM_UUID, true)).resolves.toBe(true);
 
-      expect(messengerApi.post).not.toHaveBeenCalled();
+      expect(messengerApi.postJsonWithBase).toHaveBeenCalledWith(
+        "/api/messenger/v1",
+        `/streams/${TEST_STREAM_UUID}/actions/notifications/invoke`,
+        { notification_mode: "muted" },
+      );
     });
 
-    it("also skips the removed endpoint for unmute", async () => {
+    it("posts mentions_only notification mode when unmuting", async () => {
       const { messengerApi } = await import("~/shared/api/client");
       const { setStreamMuted } = await import("./mute-chat.api");
+      vi.mocked(messengerApi.postJsonWithBase).mockResolvedValueOnce(okApiResponse());
 
-      await expect(setStreamMuted(TEST_STREAM_UUID, false)).resolves.toBe(false);
+      await expect(setStreamMuted(TEST_STREAM_UUID, false)).resolves.toBe(true);
 
-      expect(messengerApi.post).not.toHaveBeenCalled();
+      expect(messengerApi.postJsonWithBase).toHaveBeenCalledWith(
+        "/api/messenger/v1",
+        `/streams/${TEST_STREAM_UUID}/actions/notifications/invoke`,
+        { notification_mode: "mentions_only" },
+      );
     });
   });
 
@@ -381,36 +413,65 @@ describe("mute-chat API", () => {
     });
   });
 
-  // Convenience wrappers delegate to the unsupported facade without network calls.
+  // Convenience wrappers delegate to the stream notification facade.
   describe("muteStream / unmuteStream", () => {
-    it("muteStream returns false without removed subscription call", async () => {
+    it("muteStream posts muted notification mode", async () => {
       const { messengerApi } = await import("~/shared/api/client");
       const { muteStream } = await import("./mute-chat.api");
+      vi.mocked(messengerApi.postJsonWithBase).mockResolvedValueOnce(okApiResponse());
 
-      await expect(muteStream(TEST_STREAM_UUID)).resolves.toBe(false);
+      await expect(muteStream(TEST_STREAM_UUID)).resolves.toBe(true);
 
-      expect(messengerApi.post).not.toHaveBeenCalled();
+      expect(messengerApi.postJsonWithBase).toHaveBeenCalledWith(
+        "/api/messenger/v1",
+        `/streams/${TEST_STREAM_UUID}/actions/notifications/invoke`,
+        { notification_mode: "muted" },
+      );
     });
 
-    it("unmuteStream returns false without removed subscription call", async () => {
+    it("unmuteStream posts mentions_only notification mode", async () => {
       const { messengerApi } = await import("~/shared/api/client");
       const { unmuteStream } = await import("./mute-chat.api");
+      vi.mocked(messengerApi.postJsonWithBase).mockResolvedValueOnce(okApiResponse());
 
-      await expect(unmuteStream(TEST_STREAM_UUID)).resolves.toBe(false);
+      await expect(unmuteStream(TEST_STREAM_UUID)).resolves.toBe(true);
 
-      expect(messengerApi.post).not.toHaveBeenCalled();
+      expect(messengerApi.postJsonWithBase).toHaveBeenCalledWith(
+        "/api/messenger/v1",
+        `/streams/${TEST_STREAM_UUID}/actions/notifications/invoke`,
+        { notification_mode: "mentions_only" },
+      );
     });
   });
 
   describe("setStreamNotificationLevel", () => {
-    it("returns false without calling removed subscription properties endpoint", async () => {
+    it("posts notification mode for each UI level", async () => {
       const { messengerApi } = await import("~/shared/api/client");
       const { setStreamNotificationLevel } = await import("./mute-chat.api");
+      vi.mocked(messengerApi.postJsonWithBase).mockResolvedValue(okApiResponse());
 
-      await expect(setStreamNotificationLevel(TEST_STREAM_UUID, "subscribed")).resolves.toBe(false);
-      await expect(setStreamNotificationLevel(TEST_STREAM_UUID, "muted")).resolves.toBe(false);
+      await expect(setStreamNotificationLevel(TEST_STREAM_UUID, "subscribed")).resolves.toBe(true);
+      await expect(setStreamNotificationLevel(TEST_STREAM_UUID, "default")).resolves.toBe(true);
+      await expect(setStreamNotificationLevel(TEST_STREAM_UUID, "muted")).resolves.toBe(true);
 
-      expect(messengerApi.post).not.toHaveBeenCalled();
+      expect(messengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
+        1,
+        "/api/messenger/v1",
+        `/streams/${TEST_STREAM_UUID}/actions/notifications/invoke`,
+        { notification_mode: "all_messages" },
+      );
+      expect(messengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
+        2,
+        "/api/messenger/v1",
+        `/streams/${TEST_STREAM_UUID}/actions/notifications/invoke`,
+        { notification_mode: "mentions_only" },
+      );
+      expect(messengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
+        3,
+        "/api/messenger/v1",
+        `/streams/${TEST_STREAM_UUID}/actions/notifications/invoke`,
+        { notification_mode: "muted" },
+      );
     });
   });
 

@@ -53,10 +53,7 @@ function setMuteSnapshot(overrides: Partial<MuteSnapshotInput> = {}): void {
     mutedTopics: [],
     unmutedTopics: [],
     followedTopics: [],
-    streamDesktopNotifyEnabledIds: [],
-    streamDesktopNotifyDisabledIds: [],
-    streamAudibleNotifyEnabledIds: [],
-    streamAudibleNotifyDisabledIds: [],
+    streamNotificationModes: [],
     ...overrides,
   });
 }
@@ -68,10 +65,12 @@ function createContext(notifications = createNotifications()): LayoutMessengerEv
       currentUserId: 7,
       streamsMap: new Map(),
       addMessage: vi.fn(),
+      upsertStreamTopicShells: vi.fn(),
       upsertStreamMetadataRows: vi.fn(),
       renameStream: vi.fn(),
       moveStreamTopic: vi.fn(),
       moveTopicToStream: vi.fn(),
+      removeStreamTopic: vi.fn(),
       removeStream: vi.fn(),
       handleDeleteMessages: vi.fn(),
     },
@@ -196,7 +195,7 @@ describe("deliverDesktopNotificationForMessage", () => {
 
 describe("maybeNotifyNewMessage", () => {
   it("suppresses a normal stream message in a muted channel", () => {
-    setMuteSnapshot({ mutedStreamIds: [STREAM_UUID] });
+    setMuteSnapshot({ streamNotificationModes: [{ streamId: STREAM_UUID, mode: "muted" }] });
     const notifications = createNotifications();
 
     maybeNotifyNewMessage(createContext(notifications), createRawMessage(), 7, false, false);
@@ -205,7 +204,7 @@ describe("maybeNotifyNewMessage", () => {
   });
 
   it("suppresses a stream mention in a muted channel", () => {
-    setMuteSnapshot({ mutedStreamIds: [STREAM_UUID] });
+    setMuteSnapshot({ streamNotificationModes: [{ streamId: STREAM_UUID, mode: "muted" }] });
     const notifications = createNotifications();
 
     maybeNotifyNewMessage(
@@ -221,7 +220,7 @@ describe("maybeNotifyNewMessage", () => {
 
   it("suppresses a followed topic in a muted channel", () => {
     setMuteSnapshot({
-      mutedStreamIds: [STREAM_UUID],
+      streamNotificationModes: [{ streamId: STREAM_UUID, mode: "muted" }],
       followedTopics: [{ streamId: STREAM_UUID, topic: "Bugs" }],
     });
     const notifications = createNotifications();
@@ -234,9 +233,8 @@ describe("maybeNotifyNewMessage", () => {
 
   it("suppresses an unmuted topic in a muted channel", () => {
     setMuteSnapshot({
-      mutedStreamIds: [STREAM_UUID],
+      streamNotificationModes: [{ streamId: STREAM_UUID, mode: "muted" }],
       unmutedTopics: [{ streamId: STREAM_UUID, topic: "Bugs" }],
-      streamDesktopNotifyEnabledIds: [STREAM_UUID],
     });
     const notifications = createNotifications();
     const ctx = createContext(notifications);
@@ -254,6 +252,9 @@ describe("maybeNotifyNewMessage", () => {
   });
 
   it("suppresses a normal stream message in a default channel", () => {
+    setMuteSnapshot({
+      streamNotificationModes: [{ streamId: STREAM_UUID, mode: "mentions_only" }],
+    });
     const notifications = createNotifications();
 
     maybeNotifyNewMessage(createContext(notifications), createRawMessage(), 7, false, false);
@@ -262,6 +263,9 @@ describe("maybeNotifyNewMessage", () => {
   });
 
   it("allows a direct mention in a default channel", () => {
+    setMuteSnapshot({
+      streamNotificationModes: [{ streamId: STREAM_UUID, mode: "mentions_only" }],
+    });
     const notifications = createNotifications();
 
     maybeNotifyNewMessage(
@@ -283,8 +287,7 @@ describe("maybeNotifyNewMessage", () => {
 
   it("allows a normal stream message in a subscribed channel", () => {
     setMuteSnapshot({
-      streamDesktopNotifyEnabledIds: [STREAM_UUID],
-      streamAudibleNotifyEnabledIds: [STREAM_UUID],
+      streamNotificationModes: [{ streamId: STREAM_UUID, mode: "all_messages" }],
     });
     const notifications = createNotifications();
 
@@ -303,7 +306,7 @@ describe("maybeNotifyNewMessage", () => {
   it("suppresses a muted topic even in a subscribed channel", () => {
     setMuteSnapshot({
       mutedTopics: [{ streamId: STREAM_UUID, topic: "Bugs" }],
-      streamDesktopNotifyEnabledIds: [STREAM_UUID],
+      streamNotificationModes: [{ streamId: STREAM_UUID, mode: "all_messages" }],
     });
     const notifications = createNotifications();
 
@@ -328,8 +331,7 @@ describe("maybeNotifyNewMessage", () => {
 
   it("aggregates repeated stream notifications from the same sender in one bucket", () => {
     setMuteSnapshot({
-      streamDesktopNotifyEnabledIds: [STREAM_UUID],
-      streamAudibleNotifyEnabledIds: [STREAM_UUID],
+      streamNotificationModes: [{ streamId: STREAM_UUID, mode: "all_messages" }],
     });
     const notifications = createNotifications();
     const ctx = createContext(notifications);
@@ -365,8 +367,7 @@ describe("maybeNotifyNewMessage", () => {
 
   it("keeps separate stream notification buckets for different senders", () => {
     setMuteSnapshot({
-      streamDesktopNotifyEnabledIds: [STREAM_UUID],
-      streamAudibleNotifyEnabledIds: [STREAM_UUID],
+      streamNotificationModes: [{ streamId: STREAM_UUID, mode: "all_messages" }],
     });
     const notifications = createNotifications();
     const ctx = createContext(notifications);
@@ -452,8 +453,7 @@ describe("maybeNotifyNewMessage", () => {
 
   it("keeps identical notifications isolated across instances", () => {
     setMuteSnapshot({
-      streamDesktopNotifyEnabledIds: [STREAM_UUID],
-      streamAudibleNotifyEnabledIds: [STREAM_UUID],
+      streamNotificationModes: [{ streamId: STREAM_UUID, mode: "all_messages" }],
     });
     const notificationsA = createNotifications();
     const notificationsB = createNotifications();

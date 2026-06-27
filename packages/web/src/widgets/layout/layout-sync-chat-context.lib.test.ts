@@ -7,6 +7,7 @@ import {
 } from "./layout-sync-chat-context.lib";
 
 const STREAM_UUID = "00000000-0000-4000-8000-000000000005";
+const TOPIC_UUID = "00000000-0000-4000-8000-000000000006";
 
 describe("stripOrgSegmentFromPathname", () => {
   it("strips /org/:id prefix before dm", () => {
@@ -166,5 +167,32 @@ describe("isStoreContextAlignedWithParsedRoute", () => {
     };
     expect(isStoreContextAlignedWithParsedRoute(aligned, parsed)).toBe(true);
     expect(isStoreContextAlignedWithParsedRoute(wrongTopic, parsed)).toBe(false);
+  });
+
+  it("requires current topic display metadata to match when URL topic resolves by uuid", () => {
+    const streamsMap = new Map([
+      [
+        STREAM_UUID,
+        {
+          name: "engineering",
+          topics: new Map([[TOPIC_UUID, { subject: "retros", topicUuid: TOPIC_UUID }]]),
+        },
+      ],
+    ]);
+    const parsed = parseChatContextFromPathname({
+      pathname: `/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+      streamsMap,
+      currentUserId: 1,
+    });
+    const staleContext: CurrentChatContext = {
+      type: "stream",
+      streamId: STREAM_UUID,
+      streamName: "engineering",
+      topic: "standups",
+      topicUuid: TOPIC_UUID,
+      streamWideView: false,
+    };
+
+    expect(isStoreContextAlignedWithParsedRoute(staleContext, parsed)).toBe(false);
   });
 });

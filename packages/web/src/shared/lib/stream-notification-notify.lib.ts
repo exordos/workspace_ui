@@ -2,16 +2,16 @@
  * Builds resolved stream notification flags for desktop/push policy.
  */
 
+import type { WorkspaceStreamNotificationMode } from "~/shared/api/messenger.types";
 import {
+  WORKSPACE_DEFAULT_STREAM_NOTIFICATION_MODE,
   resolveStreamAllMessagesAudibleEnabled,
   resolveStreamAllMessagesNotifyEnabled,
 } from "./stream-notification-resolve.lib";
 import type { WorkspaceNotificationSettings } from "./messenger-notification-settings.lib";
 
 export interface StreamNotificationOverrideReader {
-  isStreamMuted?: (streamId: string) => boolean;
-  getStreamDesktopNotificationsOverride: (streamId: string) => boolean | null;
-  getStreamAudibleNotificationsOverride: (streamId: string) => boolean | null;
+  getStreamNotificationMode: (streamId: string) => WorkspaceStreamNotificationMode;
 }
 
 export function buildStreamMessageNotificationFlags(
@@ -22,19 +22,16 @@ export function buildStreamMessageNotificationFlags(
   streamAllMessagesNotifyEnabled: boolean;
   streamAllMessagesAudibleEnabled: boolean;
 } {
-  const streamMuted = overrides.isStreamMuted?.(streamId) ?? false;
+  const notificationMode =
+    overrides.getStreamNotificationMode(streamId) ?? WORKSPACE_DEFAULT_STREAM_NOTIFICATION_MODE;
   return {
-    streamAllMessagesNotifyEnabled: streamMuted
-      ? false
-      : resolveStreamAllMessagesNotifyEnabled(
-          overrides.getStreamDesktopNotificationsOverride(streamId),
-          settings.enableStreamDesktopNotifications,
-        ),
-    streamAllMessagesAudibleEnabled: streamMuted
-      ? false
-      : resolveStreamAllMessagesAudibleEnabled(
-          overrides.getStreamAudibleNotificationsOverride(streamId),
-          settings.enableStreamAudibleNotifications,
-        ),
+    streamAllMessagesNotifyEnabled: resolveStreamAllMessagesNotifyEnabled(
+      notificationMode,
+      settings.enableStreamDesktopNotifications,
+    ),
+    streamAllMessagesAudibleEnabled: resolveStreamAllMessagesAudibleEnabled(
+      notificationMode,
+      settings.enableStreamAudibleNotifications,
+    ),
   };
 }

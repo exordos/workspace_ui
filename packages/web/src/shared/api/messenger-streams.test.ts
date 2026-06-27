@@ -52,6 +52,7 @@ describe("fetchSubscriptions", () => {
           private: false,
           is_archived: true,
           unread_count: 5,
+          notification_mode: "mentions_only",
         },
         {
           uuid: "33333333-3333-4333-8333-333333333333",
@@ -62,6 +63,7 @@ describe("fetchSubscriptions", () => {
           announce: false,
           private: true,
           unread_count: 2,
+          notification_mode: "muted",
         },
       ],
       raw: { statusText: "OK" },
@@ -71,7 +73,7 @@ describe("fetchSubscriptions", () => {
       {
         stream_uuid: "11111111-1111-4111-8111-111111111111",
         name: "general",
-        is_muted: false,
+        notification_mode: "mentions_only",
         invite_only: false,
         private: false,
         is_archived: true,
@@ -80,7 +82,7 @@ describe("fetchSubscriptions", () => {
       {
         stream_uuid: "33333333-3333-4333-8333-333333333333",
         name: "Alice",
-        is_muted: false,
+        notification_mode: "muted",
         invite_only: false,
         private: true,
         is_archived: false,
@@ -112,7 +114,7 @@ describe("fetchSubscriptions", () => {
       {
         stream_uuid: "11111111-1111-4111-8111-111111111111",
         name: "general",
-        is_muted: false,
+        notification_mode: "all_messages",
         invite_only: false,
         private: false,
         is_archived: false,
@@ -384,6 +386,7 @@ describe("findPrivateStreamForUserUuid", () => {
           private: true,
           is_archived: false,
           unread_count: 0,
+          notification_mode: "all_messages",
         },
       ],
       PEER_UUID,

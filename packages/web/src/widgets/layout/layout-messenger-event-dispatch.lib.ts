@@ -19,6 +19,7 @@ import {
   handleStream,
   handleStreamBinding,
   handleSubscription,
+  handleTopic,
   handleUserTopic,
 } from "./layout-messenger-event-dispatch-subscription.lib";
 import type {
@@ -78,6 +79,11 @@ export function dispatchMessengerEvent(
 
   if (event.type === "stream_binding") {
     runDispatchHandler("dispatch:stream_binding", () => handleStreamBinding(event, ctx));
+    return;
+  }
+
+  if (event.type === "topic") {
+    runDispatchHandler("dispatch:topic", () => handleTopic(event, ctx));
     return;
   }
 

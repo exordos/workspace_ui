@@ -130,7 +130,12 @@ describe("buildBrowseChannelRows", () => {
         },
       ],
       subscriptions: [
-        { stream_uuid: STREAM_UUID_1, is_archived: false, invite_only: true, is_muted: true },
+        {
+          stream_uuid: STREAM_UUID_1,
+          is_archived: false,
+          invite_only: true,
+          notification_mode: "muted",
+        },
       ],
       searchQuery: "",
       subscriptionFilter: "subscribed",
@@ -168,6 +173,7 @@ describe("buildBrowseChannelRows", () => {
       description: "",
       isSubscribed: true,
       isMuted: false,
+      notificationMode: "all_messages" as const,
       inviteOnly: null,
       historyPublicToSubscribers: null,
       isAnnouncementOnly: false,
@@ -181,10 +187,13 @@ describe("buildBrowseChannelRows", () => {
       isDefault: null,
       isRecentlyActive: null,
       messageRetentionDays: null,
-      desktopNotifications: null,
-      audibleNotifications: null,
     };
-    const unsubscribed = { ...subscribed, streamUuid: STREAM_UUID_2, isSubscribed: false };
+    const unsubscribed = {
+      ...subscribed,
+      streamUuid: STREAM_UUID_2,
+      isSubscribed: false,
+      notificationMode: null,
+    };
 
     expect(matchesBrowseChannelSubscriptionFilter(subscribed, "subscribed")).toBe(true);
     expect(matchesBrowseChannelSubscriptionFilter(subscribed, "unsubscribed")).toBe(false);

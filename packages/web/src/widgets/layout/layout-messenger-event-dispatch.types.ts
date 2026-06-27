@@ -1,7 +1,11 @@
 import type { ChatListStreamMetadataRow } from "~/entities/chat-list/chat-list.model.types";
 import type { CurrentChatContext } from "~/entities/message/message.model";
 import type { IncomingDmCallInvite } from "~/features/jitsi-call/jitsi-call.model";
-import type { MockMessage, WorkspaceRawMessage } from "~/shared/api/messenger.types";
+import type {
+  MockMessage,
+  WorkspaceRawMessage,
+  WorkspaceStreamNotificationMode,
+} from "~/shared/api/messenger.types";
 import type { WorkspaceFolder } from "~/shared/api/workspace-client";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { LinkPreviewData } from "~/shared/lib/message-link-preview.types";
@@ -15,6 +19,17 @@ export interface LayoutChatListActions {
   // Current stream metadata map (partial channel-level permission updates).
   streamsMap: Map<string, StreamEntryInternal>;
   addMessage: (message: WorkspaceRawMessage) => void;
+  // Ensures topic rows exist or refreshes their metadata after backend topic events.
+  upsertStreamTopicShells: (
+    streamUuid: string,
+    topics: readonly {
+      topicUuid: string;
+      streamUuid: string;
+      name: string;
+      unreadCount?: number;
+      isDone?: boolean;
+    }[],
+  ) => void;
   // Upsert channels from metadata and subscription events.
   upsertStreamMetadataRows: (rows: ChatListStreamMetadataRow[]) => void;
   // Rename channel on subscription update(name).
@@ -36,6 +51,8 @@ export interface LayoutChatListActions {
     messageIds?: MessageId[];
     anchorMessageId?: MessageId;
   }) => void;
+  // Remove a topic row from the sidebar after backend topic.deleted events.
+  removeStreamTopic: (streamId: string, topic: string) => void;
   // Remove channel from sidebar on unsubscribe/remove.
   removeStream: (streamId: string) => void;
   handleDeleteMessages: (messageIds: MessageId[]) => void;
@@ -106,16 +123,17 @@ export interface LayoutMuteActions {
   isStreamMuted: (streamId: string) => boolean;
   isEffectivelyMuted: (streamId: string, topic: string) => boolean;
   isTopicFollowed: (streamId: string, topic: string) => boolean;
-  getStreamDesktopNotificationsOverride: (streamId: string) => boolean | null;
-  getStreamAudibleNotificationsOverride: (streamId: string) => boolean | null;
+  getStreamNotificationMode: (streamId: string) => WorkspaceStreamNotificationMode;
   muteStream: (streamId: string) => void;
   unmuteStream: (streamId: string) => void;
   muteTopic: (streamId: string, topic: string) => void;
   unmuteTopic: (streamId: string, topic: string) => void;
   followTopic: (streamId: string, topic: string) => void;
   clearTopicVisibilityOverride: (streamId: string, topic: string) => void;
-  setStreamDesktopNotifications: (streamId: string, enabled: boolean) => void;
-  setStreamAudibleNotifications: (streamId: string, enabled: boolean) => void;
+  setStreamNotificationMode: (
+    streamId: string,
+    notificationMode: WorkspaceStreamNotificationMode,
+  ) => void;
 }
 
 export interface LayoutActivityActions {

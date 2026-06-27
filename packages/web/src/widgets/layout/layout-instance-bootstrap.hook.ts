@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { buildMuteSnapshotFromBootstrap } from "~/features/mute-chat/mute-chat.model";
+import type { StreamNotificationMode } from "~/features/mute-chat/notification-level.lib";
 import type { MessengerSubscription, MessengerUserTopic } from "~/shared/api/messenger.types";
 
 export interface LayoutMuteSnapshot {
@@ -7,10 +8,7 @@ export interface LayoutMuteSnapshot {
   mutedTopics: { streamId: string; topic: string }[];
   unmutedTopics: { streamId: string; topic: string }[];
   followedTopics: { streamId: string; topic: string }[];
-  streamDesktopNotifyEnabledIds: string[];
-  streamDesktopNotifyDisabledIds: string[];
-  streamAudibleNotifyEnabledIds: string[];
-  streamAudibleNotifyDisabledIds: string[];
+  streamNotificationModes: { streamId: string; mode: StreamNotificationMode }[];
 }
 
 export interface LayoutMuteBootstrapData {

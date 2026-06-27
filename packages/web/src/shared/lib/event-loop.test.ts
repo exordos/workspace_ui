@@ -137,6 +137,42 @@ function streamWorkspaceEvent(
   };
 }
 
+function topicWorkspaceEvent(epochVersion: number, kind = "topic.created"): unknown {
+  return {
+    epoch_version: epochVersion,
+    uuid: `00000000-0000-4000-8000-${String(epochVersion).padStart(12, "0")}`,
+    project_id: "00000000-0000-4000-8000-000000000901",
+    user_uuid: USER_UUID,
+    payload: {
+      kind,
+      uuid: TOPIC_UUID,
+      project_id: "00000000-0000-4000-8000-000000000901",
+      user_uuid: USER_UUID,
+      name: "planning",
+      stream_uuid: STREAM_UUID,
+      unread_count: 2,
+      is_default: false,
+      is_done: true,
+      created_at: "2026-06-24T10:00:00.000000Z",
+      updated_at: "2026-06-24T10:00:00.000000Z",
+    },
+  };
+}
+
+function topicDeletedWorkspaceEvent(epochVersion: number): unknown {
+  return {
+    epoch_version: epochVersion,
+    uuid: `00000000-0000-4000-8000-${String(epochVersion).padStart(12, "0")}`,
+    project_id: "00000000-0000-4000-8000-000000000901",
+    user_uuid: USER_UUID,
+    payload: {
+      kind: "topic.deleted",
+      uuid: TOPIC_UUID,
+      stream_uuid: STREAM_UUID,
+    },
+  };
+}
+
 function folderUpdatedWorkspaceEvent(epochVersion: number): unknown {
   return {
     epoch_version: epochVersion,
@@ -293,6 +329,40 @@ describe("Workspace realtime event normalization", () => {
       stream: {
         uuid: STREAM_UUID,
         description: "Only description changed",
+      },
+    });
+  });
+
+  it("maps REST topic.created events to backend topic events", () => {
+    const normalized = normalizeWorkspaceEventModel(topicWorkspaceEvent(24));
+
+    expect(normalized?.epochVersion).toBe(24);
+    expect(normalized?.event).toMatchObject({
+      id: 24,
+      type: "topic",
+      kind: "topic.created",
+      epoch_version: 24,
+      topic: {
+        uuid: TOPIC_UUID,
+        stream_uuid: STREAM_UUID,
+        name: "planning",
+        unread_count: 2,
+        is_default: false,
+        is_done: true,
+      },
+    });
+  });
+
+  it("maps REST topic.deleted events to backend topic events", () => {
+    const normalized = normalizeWorkspaceEventModel(topicDeletedWorkspaceEvent(25));
+
+    expect(normalized?.event).toMatchObject({
+      id: 25,
+      type: "topic",
+      kind: "topic.deleted",
+      topic: {
+        uuid: TOPIC_UUID,
+        stream_uuid: STREAM_UUID,
       },
     });
   });
@@ -467,6 +537,38 @@ describe("Workspace realtime event normalization", () => {
       type: "stream",
       kind: "stream.updated",
       stream: { uuid: STREAM_UUID, description: "Only description changed" },
+    });
+  });
+
+  it("maps backend WS topic.updated frames", () => {
+    const normalized = normalizeWorkspaceRealtimeEvent(
+      {
+        epoch_version: 26,
+        type: "topic",
+        kind: "topic.updated",
+        topic: {
+          uuid: TOPIC_UUID,
+          stream_uuid: STREAM_UUID,
+          name: "planning",
+          unread_count: 1,
+          is_default: false,
+          is_done: false,
+        },
+      },
+      USER_UUID,
+    );
+
+    expect(normalized?.event).toMatchObject({
+      id: 26,
+      type: "topic",
+      kind: "topic.updated",
+      topic: {
+        uuid: TOPIC_UUID,
+        stream_uuid: STREAM_UUID,
+        name: "planning",
+        unread_count: 1,
+        is_done: false,
+      },
     });
   });
 

@@ -1,24 +1,20 @@
 import { guard } from "~/shared/lib/guards";
 import { optimisticMutation } from "~/shared/lib/optimistic-mutation.lib";
 import { useMuteStore } from "./mute-chat.model";
-import type { NotificationLevel } from "./notification-level.lib";
+import {
+  streamNotificationLevelToMode,
+  type NotificationLevel,
+  type StreamNotificationMode,
+} from "./notification-level.lib";
 
 interface StreamNotificationSnapshot {
-  isMuted: boolean;
-  desktopEnabled: boolean;
-  desktopDisabled: boolean;
-  audibleEnabled: boolean;
-  audibleDisabled: boolean;
+  mode: StreamNotificationMode;
 }
 
 function captureStreamNotificationSnapshot(streamId: string): StreamNotificationSnapshot {
   const muteStore = useMuteStore.getState();
   return {
-    isMuted: muteStore.isStreamMuted(streamId),
-    desktopEnabled: muteStore.streamDesktopNotifyEnabledIds.has(streamId),
-    desktopDisabled: muteStore.streamDesktopNotifyDisabledIds.has(streamId),
-    audibleEnabled: muteStore.streamAudibleNotifyEnabledIds.has(streamId),
-    audibleDisabled: muteStore.streamAudibleNotifyDisabledIds.has(streamId),
+    mode: muteStore.getStreamNotificationMode(streamId),
   };
 }
 
@@ -26,44 +22,11 @@ function restoreStreamNotificationSnapshot(
   streamId: string,
   snapshot: StreamNotificationSnapshot,
 ): void {
-  const muteStore = useMuteStore.getState();
-  if (snapshot.isMuted) {
-    muteStore.muteStream(streamId);
-  } else {
-    muteStore.unmuteStream(streamId);
-  }
-
-  if (snapshot.desktopEnabled) {
-    muteStore.setStreamDesktopNotifications(streamId, true);
-  } else if (snapshot.desktopDisabled) {
-    muteStore.setStreamDesktopNotifications(streamId, false);
-  } else {
-    muteStore.clearStreamDesktopNotificationsOverride(streamId);
-  }
-
-  if (snapshot.audibleEnabled) {
-    muteStore.setStreamAudibleNotifications(streamId, true);
-  } else if (snapshot.audibleDisabled) {
-    muteStore.setStreamAudibleNotifications(streamId, false);
-  } else {
-    muteStore.clearStreamAudibleNotificationsOverride(streamId);
-  }
+  useMuteStore.getState().setStreamNotificationMode(streamId, snapshot.mode);
 }
 
 function applyStreamNotificationLevelOptimistic(streamId: string, level: NotificationLevel): void {
-  const muteStore = useMuteStore.getState();
-  if (level === "muted") {
-    muteStore.muteStream(streamId);
-    return;
-  }
-  muteStore.unmuteStream(streamId);
-  if (level === "subscribed") {
-    muteStore.setStreamDesktopNotifications(streamId, true);
-    muteStore.setStreamAudibleNotifications(streamId, true);
-    return;
-  }
-  muteStore.setStreamDesktopNotifications(streamId, false);
-  muteStore.setStreamAudibleNotifications(streamId, false);
+  useMuteStore.getState().setStreamNotificationMode(streamId, streamNotificationLevelToMode(level));
 }
 
 interface RunOptimisticStreamNotificationLevelUpdateParams {

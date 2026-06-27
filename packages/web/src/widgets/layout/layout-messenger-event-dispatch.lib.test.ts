@@ -19,6 +19,7 @@ const STREAM_UUID_11 = "00000000-0000-4000-8000-000000000011";
 const STREAM_UUID_16 = "00000000-0000-4000-8000-000000000016";
 const STREAM_UUID_20 = "00000000-0000-4000-8000-000000000020";
 const STREAM_UUID_42 = "00000000-0000-4000-8000-000000000042";
+const TOPIC_UUID_7 = "00000000-0000-4000-8000-000000000007";
 const USER_UUID_1 = "00000000-0000-4000-8000-000000000001";
 const USER_UUID_2 = "00000000-0000-4000-8000-000000000002";
 const USER_UUID_7 = "00000000-0000-4000-8000-000000000007";
@@ -46,12 +47,14 @@ function buildCtx(
       currentUserId: 1,
       streamsMap: new Map(),
       addMessage: noop,
+      upsertStreamTopicShells: noop,
       upsertStreamMetadataRows: noop,
       renameStream: noop,
       moveStreamTopic:
         moveStreamTopicMock as LayoutMessengerEventDispatchContext["chatList"]["moveStreamTopic"],
       moveTopicToStream:
         moveTopicToStreamMock as LayoutMessengerEventDispatchContext["chatList"]["moveTopicToStream"],
+      removeStreamTopic: noop,
       removeStream: noop,
       handleDeleteMessages: noop,
     },
@@ -81,16 +84,14 @@ function buildCtx(
       isStreamMuted: () => false,
       isEffectivelyMuted: () => false,
       isTopicFollowed: () => false,
-      getStreamDesktopNotificationsOverride: () => null,
-      getStreamAudibleNotificationsOverride: () => null,
+      getStreamNotificationMode: () => "all_messages",
       muteStream: noop,
       unmuteStream: noop,
       muteTopic: noop,
       unmuteTopic: noop,
       followTopic: noop,
       clearTopicVisibilityOverride: noop,
-      setStreamDesktopNotifications: noop,
-      setStreamAudibleNotifications: noop,
+      setStreamNotificationMode: noop,
     },
     activity: {
       markStale: noop,
@@ -135,16 +136,14 @@ function buildIntegrationCtx(): LayoutMessengerEventDispatchContext {
       isStreamMuted: () => false,
       isEffectivelyMuted: () => false,
       isTopicFollowed: () => false,
-      getStreamDesktopNotificationsOverride: () => null,
-      getStreamAudibleNotificationsOverride: () => null,
+      getStreamNotificationMode: () => "all_messages",
       muteStream: noop,
       unmuteStream: noop,
       muteTopic: noop,
       unmuteTopic: noop,
       followTopic: noop,
       clearTopicVisibilityOverride: noop,
-      setStreamDesktopNotifications: noop,
-      setStreamAudibleNotifications: noop,
+      setStreamNotificationMode: noop,
     },
     activity: {
       markStale: noop,
@@ -676,10 +675,63 @@ describe("dispatchMessengerEvent", () => {
     });
   });
 
-  describe("subscription notification properties", () => {
-    it("updates desktop_notifications on subscription update", () => {
+  describe("topic", () => {
+    it("upserts sidebar topic metadata on backend topic.updated", () => {
       const { ctx } = buildCtx();
-      const desktopSpy = vi.spyOn(ctx.mute, "setStreamDesktopNotifications");
+      const upsertSpy = vi.spyOn(ctx.chatList, "upsertStreamTopicShells");
+
+      dispatchMessengerEvent(
+        {
+          id: 30,
+          type: "topic",
+          kind: "topic.updated",
+          topic: {
+            uuid: TOPIC_UUID_7,
+            stream_uuid: STREAM_UUID_42,
+            name: "retros",
+            unread_count: 4,
+            is_done: true,
+          },
+        },
+        ctx,
+      );
+
+      expect(upsertSpy).toHaveBeenCalledWith(STREAM_UUID_42, [
+        {
+          topicUuid: TOPIC_UUID_7,
+          streamUuid: STREAM_UUID_42,
+          name: "retros",
+          unreadCount: 4,
+          isDone: true,
+        },
+      ]);
+    });
+
+    it("removes sidebar topic metadata on backend topic.deleted", () => {
+      const { ctx } = buildCtx();
+      const removeSpy = vi.spyOn(ctx.chatList, "removeStreamTopic");
+
+      dispatchMessengerEvent(
+        {
+          id: 31,
+          type: "topic",
+          kind: "topic.deleted",
+          topic: {
+            uuid: TOPIC_UUID_7,
+            stream_uuid: STREAM_UUID_42,
+          },
+        },
+        ctx,
+      );
+
+      expect(removeSpy).toHaveBeenCalledWith(STREAM_UUID_42, TOPIC_UUID_7);
+    });
+  });
+
+  describe("subscription notification properties", () => {
+    it("updates notification_mode on subscription update", () => {
+      const { ctx } = buildCtx();
+      const modeSpy = vi.spyOn(ctx.mute, "setStreamNotificationMode");
 
       dispatchMessengerEvent(
         {
@@ -687,32 +739,13 @@ describe("dispatchMessengerEvent", () => {
           type: "subscription",
           op: "update",
           stream_uuid: "00000000-0000-4000-8000-000000000042",
-          property: "desktop_notifications",
-          value: true,
+          property: "notification_mode",
+          value: "mentions_only",
         },
         ctx,
       );
 
-      expect(desktopSpy).toHaveBeenCalledWith(STREAM_UUID_42, true);
-    });
-
-    it("updates audible_notifications on subscription update", () => {
-      const { ctx } = buildCtx();
-      const audibleSpy = vi.spyOn(ctx.mute, "setStreamAudibleNotifications");
-
-      dispatchMessengerEvent(
-        {
-          id: 91,
-          type: "subscription",
-          op: "update",
-          stream_uuid: "00000000-0000-4000-8000-000000000042",
-          property: "audible_notifications",
-          value: false,
-        },
-        ctx,
-      );
-
-      expect(audibleSpy).toHaveBeenCalledWith(STREAM_UUID_42, false);
+      expect(modeSpy).toHaveBeenCalledWith(STREAM_UUID_42, "mentions_only");
     });
   });
 
@@ -819,6 +852,26 @@ describe("dispatchMessengerEvent", () => {
         name: "platform",
         description: "Platform discussions",
       });
+    });
+
+    it("updates notification mode on backend stream.updated", () => {
+      const { ctx } = buildCtx();
+      const modeSpy = vi.spyOn(ctx.mute, "setStreamNotificationMode");
+
+      dispatchMessengerEvent(
+        {
+          id: 21,
+          type: "stream",
+          kind: "stream.updated",
+          stream: {
+            uuid: "00000000-0000-4000-8000-000000000042",
+            notification_mode: "muted",
+          },
+        },
+        ctx,
+      );
+
+      expect(modeSpy).toHaveBeenCalledWith(STREAM_UUID_42, "muted");
     });
   });
 

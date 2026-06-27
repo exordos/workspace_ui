@@ -380,6 +380,12 @@ function isWorkspaceStreamEventKind(kind: string | null): kind is WorkspaceStrea
   return kind === "stream.created" || kind === "stream.updated" || kind === "stream.deleted";
 }
 
+type WorkspaceTopicEventKind = "topic.created" | "topic.updated" | "topic.deleted";
+
+function isWorkspaceTopicEventKind(kind: string | null): kind is WorkspaceTopicEventKind {
+  return kind === "topic.created" || kind === "topic.updated" || kind === "topic.deleted";
+}
+
 function streamEventFromWorkspaceStream(
   epochVersion: number,
   kind: WorkspaceStreamEventKind,
@@ -412,6 +418,55 @@ function streamEventFromWorkspaceStream(
     epoch_version: epochVersion,
     kind,
     stream,
+  };
+}
+
+function topicEventFromWorkspaceTopic(
+  epochVersion: number,
+  kind: WorkspaceTopicEventKind,
+  topicValue: unknown,
+): MessengerEvent | null {
+  if (!isRecord(topicValue)) {
+    return null;
+  }
+  const topicUuid = normalizeUuid(topicValue.uuid);
+  const streamUuid = normalizeUuid(topicValue.stream_uuid);
+  if (topicUuid == null || streamUuid == null) {
+    return null;
+  }
+  const name = readString(topicValue.name);
+  if (kind !== "topic.deleted" && name == null) {
+    return null;
+  }
+  const unreadCount = readNonNegativeInteger(topicValue.unread_count);
+  const topic: Record<string, unknown> = {
+    ...topicValue,
+    uuid: topicUuid,
+    stream_uuid: streamUuid,
+  };
+  delete topic.kind;
+  if (name == null) {
+    delete topic.name;
+  } else {
+    topic.name = name;
+  }
+  if (unreadCount == null) {
+    delete topic.unread_count;
+  } else {
+    topic.unread_count = unreadCount;
+  }
+  if (typeof topicValue.is_default !== "boolean") {
+    delete topic.is_default;
+  }
+  if (typeof topicValue.is_done !== "boolean") {
+    delete topic.is_done;
+  }
+  return {
+    id: epochVersion,
+    type: "topic",
+    epoch_version: epochVersion,
+    kind,
+    topic,
   };
 }
 
@@ -539,6 +594,12 @@ export function normalizeWorkspaceEventModel(
       ? { epochVersion, event: null, skipReason: `invalid ${kind} payload` }
       : { epochVersion, event };
   }
+  if (isWorkspaceTopicEventKind(kind)) {
+    const event = topicEventFromWorkspaceTopic(epochVersion, kind, payload);
+    return event == null
+      ? { epochVersion, event: null, skipReason: `invalid ${kind} payload` }
+      : { epochVersion, event };
+  }
   if (kind === "stream_bindings.created") {
     const event = streamBindingsEventFromWorkspacePayload(epochVersion, payload);
     return event == null
@@ -647,6 +708,20 @@ export function normalizeWorkspaceRealtimeEvent(
       };
     }
     const event = streamEventFromWorkspaceStream(epochVersion, kind, rawEvent.stream);
+    return event == null
+      ? { epochVersion, event: null, skipReason: `invalid ${kind} frame` }
+      : { epochVersion, event };
+  }
+  if (type === "topic") {
+    const kind = readString(rawEvent.kind);
+    if (!isWorkspaceTopicEventKind(kind)) {
+      return {
+        epochVersion,
+        event: null,
+        skipReason: `unsupported topic event kind: ${kind ?? "unknown"}`,
+      };
+    }
+    const event = topicEventFromWorkspaceTopic(epochVersion, kind, rawEvent.topic);
     return event == null
       ? { epochVersion, event: null, skipReason: `invalid ${kind} frame` }
       : { epochVersion, event };

@@ -7,17 +7,17 @@ import {
 
 describe("notification-level", () => {
   describe("deriveStreamNotificationLevel", () => {
-    it("returns muted when stream is muted", () => {
-      expect(deriveStreamNotificationLevel(true, true)).toBe("muted");
+    it("maps muted notification mode", () => {
+      expect(deriveStreamNotificationLevel("muted")).toBe("muted");
     });
 
-    it("returns subscribed when desktop override is true", () => {
-      expect(deriveStreamNotificationLevel(false, true)).toBe("subscribed");
+    it("maps all_messages notification mode", () => {
+      expect(deriveStreamNotificationLevel("all_messages")).toBe("subscribed");
     });
 
-    it("returns default otherwise", () => {
-      expect(deriveStreamNotificationLevel(false, false)).toBe("default");
-      expect(deriveStreamNotificationLevel(false, null)).toBe("default");
+    it("maps mentions_only to default and missing mode to backend default", () => {
+      expect(deriveStreamNotificationLevel("mentions_only")).toBe("default");
+      expect(deriveStreamNotificationLevel()).toBe("subscribed");
     });
   });
 

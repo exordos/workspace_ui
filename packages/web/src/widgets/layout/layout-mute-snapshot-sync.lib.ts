@@ -3,7 +3,7 @@
  * Coalesces frequent mute changes into one snapshot without overloading IDB.
  */
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
-import type { MuteSnapshotRowV2 } from "~/shared/lib/mute-snapshot-db";
+import type { MuteSnapshotRowV3 } from "~/shared/lib/mute-snapshot-db";
 import { persistMuteSnapshotRow } from "~/shared/lib/mute-snapshot-db";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 
@@ -12,7 +12,7 @@ const MUTE_SNAPSHOT_SYNC_DEBOUNCE_MS = 750;
 interface StartMuteSnapshotSyncOptions {
   instanceId: string;
   debounceMs?: number;
-  persistSnapshotRow?: (row: MuteSnapshotRowV2) => Promise<void>;
+  persistSnapshotRow?: (row: MuteSnapshotRowV3) => Promise<void>;
 }
 
 interface MuteRefs {
@@ -20,18 +20,7 @@ interface MuteRefs {
   mutedTopicKeys: ReturnType<typeof useMuteStore.getState>["mutedTopicKeys"];
   unmutedTopicKeys: ReturnType<typeof useMuteStore.getState>["unmutedTopicKeys"];
   followedTopicKeys: ReturnType<typeof useMuteStore.getState>["followedTopicKeys"];
-  streamDesktopNotifyEnabledIds: ReturnType<
-    typeof useMuteStore.getState
-  >["streamDesktopNotifyEnabledIds"];
-  streamDesktopNotifyDisabledIds: ReturnType<
-    typeof useMuteStore.getState
-  >["streamDesktopNotifyDisabledIds"];
-  streamAudibleNotifyEnabledIds: ReturnType<
-    typeof useMuteStore.getState
-  >["streamAudibleNotifyEnabledIds"];
-  streamAudibleNotifyDisabledIds: ReturnType<
-    typeof useMuteStore.getState
-  >["streamAudibleNotifyDisabledIds"];
+  streamNotificationModes: ReturnType<typeof useMuteStore.getState>["streamNotificationModes"];
 }
 
 function hasTrackedMuteRefsChanged(prev: MuteRefs, next: MuteRefs): boolean {
@@ -40,10 +29,7 @@ function hasTrackedMuteRefsChanged(prev: MuteRefs, next: MuteRefs): boolean {
     prev.mutedTopicKeys !== next.mutedTopicKeys ||
     prev.unmutedTopicKeys !== next.unmutedTopicKeys ||
     prev.followedTopicKeys !== next.followedTopicKeys ||
-    prev.streamDesktopNotifyEnabledIds !== next.streamDesktopNotifyEnabledIds ||
-    prev.streamDesktopNotifyDisabledIds !== next.streamDesktopNotifyDisabledIds ||
-    prev.streamAudibleNotifyEnabledIds !== next.streamAudibleNotifyEnabledIds ||
-    prev.streamAudibleNotifyDisabledIds !== next.streamAudibleNotifyDisabledIds
+    prev.streamNotificationModes !== next.streamNotificationModes
   );
 }
 
@@ -61,31 +47,22 @@ function toSnapshotTopicRows(keys: ReadonlySet<string>): { streamId: string; top
   return rows;
 }
 
-function buildMuteSnapshotRow(instanceId: string): MuteSnapshotRowV2 {
+function buildMuteSnapshotRow(instanceId: string): MuteSnapshotRowV3 {
   const state = useMuteStore.getState();
   const mutedStreamIds = Array.from(state.mutedStreamIds).filter(
     (streamId) => streamId.trim().length > 0,
   );
   return {
     instanceId,
-    version: 2,
+    version: 3,
     savedAt: Date.now(),
     mutedStreamIds,
     mutedTopics: toSnapshotTopicRows(state.mutedTopicKeys),
     unmutedTopics: toSnapshotTopicRows(state.unmutedTopicKeys),
     followedTopics: toSnapshotTopicRows(state.followedTopicKeys),
-    streamDesktopNotifyEnabledIds: Array.from(state.streamDesktopNotifyEnabledIds).filter(
-      (streamId) => streamId.trim().length > 0,
-    ),
-    streamDesktopNotifyDisabledIds: Array.from(state.streamDesktopNotifyDisabledIds).filter(
-      (streamId) => streamId.trim().length > 0,
-    ),
-    streamAudibleNotifyEnabledIds: Array.from(state.streamAudibleNotifyEnabledIds).filter(
-      (streamId) => streamId.trim().length > 0,
-    ),
-    streamAudibleNotifyDisabledIds: Array.from(state.streamAudibleNotifyDisabledIds).filter(
-      (streamId) => streamId.trim().length > 0,
-    ),
+    streamNotificationModes: Array.from(state.streamNotificationModes)
+      .filter(([streamId]) => streamId.trim().length > 0)
+      .map(([streamId, mode]) => ({ streamId, mode })),
   };
 }
 
@@ -107,10 +84,7 @@ export function startMuteSnapshotSync(options: StartMuteSnapshotSyncOptions): ()
       mutedTopicKeys: state.mutedTopicKeys,
       unmutedTopicKeys: state.unmutedTopicKeys,
       followedTopicKeys: state.followedTopicKeys,
-      streamDesktopNotifyEnabledIds: state.streamDesktopNotifyEnabledIds,
-      streamDesktopNotifyDisabledIds: state.streamDesktopNotifyDisabledIds,
-      streamAudibleNotifyEnabledIds: state.streamAudibleNotifyEnabledIds,
-      streamAudibleNotifyDisabledIds: state.streamAudibleNotifyDisabledIds,
+      streamNotificationModes: state.streamNotificationModes,
     };
   })();
 
@@ -148,10 +122,7 @@ export function startMuteSnapshotSync(options: StartMuteSnapshotSyncOptions): ()
       mutedTopicKeys: nextState.mutedTopicKeys,
       unmutedTopicKeys: nextState.unmutedTopicKeys,
       followedTopicKeys: nextState.followedTopicKeys,
-      streamDesktopNotifyEnabledIds: nextState.streamDesktopNotifyEnabledIds,
-      streamDesktopNotifyDisabledIds: nextState.streamDesktopNotifyDisabledIds,
-      streamAudibleNotifyEnabledIds: nextState.streamAudibleNotifyEnabledIds,
-      streamAudibleNotifyDisabledIds: nextState.streamAudibleNotifyDisabledIds,
+      streamNotificationModes: nextState.streamNotificationModes,
     };
     if (!hasTrackedMuteRefsChanged(trackedRefs, nextRefs)) {
       return;

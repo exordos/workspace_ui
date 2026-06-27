@@ -5,6 +5,8 @@ import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { LinkPreviewData } from "~/shared/lib/message-link-preview.types";
 import type { UserId } from "~/shared/lib/user-id.lib";
 
+export type WorkspaceStreamNotificationMode = "all_messages" | "mentions_only" | "muted";
+
 export class MessengerAuthError extends Error {
   constructor(
     message: string,
@@ -59,6 +61,7 @@ export interface MessengerMeStream {
   private: boolean;
   is_archived: boolean;
   unread_count: number;
+  notification_mode: WorkspaceStreamNotificationMode;
 }
 
 /** Markdown message body from the Workspace gateway `/messages/` payload. */
@@ -392,10 +395,7 @@ export interface MessengerSubscription {
   /** Workspace stream UUID used as the stream identity. */
   stream_uuid: string;
   name: string;
-  is_muted: boolean;
-  /** Per-channel override; null/undefined inherits global stream notification settings. */
-  desktop_notifications?: boolean | null;
-  audible_notifications?: boolean | null;
+  notification_mode: WorkspaceStreamNotificationMode;
   is_archived?: boolean;
   owner?: string;
   invite_only?: boolean;

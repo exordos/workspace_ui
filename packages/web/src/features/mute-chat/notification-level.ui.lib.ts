@@ -29,7 +29,7 @@ export interface TopicVisibilityLevelOption {
   labelKey: TopicVisibilityLabelKey;
 }
 
-/** Channel subscription: desktop_notifications + is_muted. */
+/** Stream subscription: Workspace notification_mode. */
 export const STREAM_NOTIFICATION_LEVEL_OPTIONS: readonly NotificationLevelOption[] = [
   { level: "default", icon: "at", labelKey: "channel.notificationDefault" },
   { level: "muted", icon: "bell_off", labelKey: "channel.notificationMuted" },

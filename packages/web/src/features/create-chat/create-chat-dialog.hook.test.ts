@@ -232,7 +232,7 @@ describe("useCreateChatDialog", () => {
       },
     ]);
     vi.mocked(fetchSubscriptions).mockResolvedValue([
-      { stream_uuid: STREAM_UUID_5, name: "engineering", is_muted: false },
+      { stream_uuid: STREAM_UUID_5, name: "engineering", notification_mode: "all_messages" },
     ]);
 
     const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
@@ -254,6 +254,7 @@ describe("useCreateChatDialog", () => {
         description: "Design",
         isSubscribed: false,
         isMuted: false,
+        notificationMode: null,
         inviteOnly: null,
         historyPublicToSubscribers: null,
         isAnnouncementOnly: false,
@@ -261,14 +262,12 @@ describe("useCreateChatDialog", () => {
         streamPostPolicy: null,
         subscriberCount: null,
         weeklyMessageCount: null,
-        creatorId: null,
+        creatorUuid: null,
         dateCreated: null,
         folderId: null,
         isDefault: null,
         isRecentlyActive: null,
         messageRetentionDays: null,
-        desktopNotifications: null,
-        audibleNotifications: null,
       },
     ]);
     expect(result.current.selectedBrowseChannelUuid).toBe(STREAM_UUID_6);
@@ -333,7 +332,12 @@ describe("useCreateChatDialog", () => {
       },
     ]);
     vi.mocked(fetchSubscriptions).mockResolvedValue([
-      { stream_uuid: STREAM_UUID_7, name: "design", is_muted: false, invite_only: false },
+      {
+        stream_uuid: STREAM_UUID_7,
+        name: "design",
+        notification_mode: "all_messages",
+        invite_only: false,
+      },
     ]);
     vi.mocked(unsubscribeChannel).mockResolvedValue(true);
 

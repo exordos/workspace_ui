@@ -1,7 +1,10 @@
 /**
  * Channel metadata sections for the browse-channels detail panel.
  */
-import type { MessengerGroupSettingValue } from "~/shared/api/messenger.types";
+import type {
+  MessengerGroupSettingValue,
+  WorkspaceStreamNotificationMode,
+} from "~/shared/api/messenger.types";
 import { formatGroupSettingDisplay } from "~/shared/lib/messenger-group-setting-display.lib";
 
 export interface BrowseChannelDetailInput {
@@ -13,6 +16,7 @@ export interface BrowseChannelDetailInput {
   streamPostPolicy: number | null;
   isSubscribed: boolean;
   isMuted: boolean;
+  notificationMode: WorkspaceStreamNotificationMode | null;
   subscriberCount: number | null;
   weeklyMessageCount: number | null;
   creatorUuid: string | null;
@@ -21,8 +25,6 @@ export interface BrowseChannelDetailInput {
   isDefault: boolean | null;
   isRecentlyActive: boolean | null;
   messageRetentionDays: number | null;
-  desktopNotifications: boolean | null;
-  audibleNotifications: boolean | null;
   canSubscribeGroup?: MessengerGroupSettingValue;
   canAddSubscribersGroup?: MessengerGroupSettingValue;
   canRemoveSubscribersGroup?: MessengerGroupSettingValue;
@@ -54,8 +56,7 @@ export interface BrowseChannelDetailLabels {
   resolveFolder: (folderId: number | null) => string | null;
   resolveRetention: (days: number | null) => string | null;
   resolveSubscription: (isSubscribed: boolean) => string;
-  resolveNotifications: (isMuted: boolean) => string;
-  resolveNotificationOverride: (value: boolean | null) => string | null;
+  resolveNotifications: (mode: WorkspaceStreamNotificationMode | null) => string;
   resolveCount: (count: number | null, unknownLabel: string) => string;
   resolveGroupSetting: (value: MessengerGroupSettingValue | undefined) => string | null;
   resolveWebPublic: () => string;
@@ -237,19 +238,7 @@ export function buildBrowseChannelDetailSections(
       personalFields,
       "notifications",
       "channel.notifications",
-      labels.resolveNotifications(input.isMuted),
-    );
-    pushField(
-      personalFields,
-      "desktop-notifications",
-      "channel.browseDesktopNotifications",
-      labels.resolveNotificationOverride(input.desktopNotifications),
-    );
-    pushField(
-      personalFields,
-      "audible-notifications",
-      "channel.browseAudibleNotifications",
-      labels.resolveNotificationOverride(input.audibleNotifications),
+      labels.resolveNotifications(input.notificationMode),
     );
   }
   if (personalFields.length > 0) {
@@ -332,13 +321,14 @@ export function createBrowseChannelDetailLabels(options: {
     },
     resolveSubscription: (isSubscribed) =>
       isSubscribed ? t("channel.subscribed") : t("channel.browseNotSubscribed"),
-    resolveNotifications: (isMuted) =>
-      isMuted ? t("channel.notificationMuted") : t("channel.notificationDefault"),
-    resolveNotificationOverride: (value) => {
-      if (value == null) {
-        return t("channel.browseNotificationInherit");
+    resolveNotifications: (mode) => {
+      if (mode === "muted") {
+        return t("channel.notificationMuted");
       }
-      return value ? t("channel.browseNotificationOn") : t("channel.browseNotificationOff");
+      if (mode === "all_messages") {
+        return t("channel.notificationSubscribed");
+      }
+      return t("channel.notificationDefault");
     },
     resolveCount: (count, unknownLabel) => (count != null ? String(count) : unknownLabel),
     resolveGroupSetting: formatGroup,

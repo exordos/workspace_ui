@@ -1,102 +1,79 @@
 /**
  * Mute/unmute API facade.
  *
- * Stream-level subscription properties and topic visibility writes are not
- * exposed by the Workspace gateway backend. These functions validate inputs and return
- * unsupported without network calls.
+ * Stream notification writes use the Workspace stream notifications action.
+ * Topic visibility writes are not exposed by the Workspace gateway backend yet.
  */
 
+import { getMessengerWorkspaceApiBaseForCurrentInstance, messengerApi } from "~/shared/api/client";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { useMuteStore } from "./mute-chat.model";
 import { VISIBILITY_POLICY, type VisibilityPolicy } from "./mute-chat.types";
-import type { NotificationLevel, TopicVisibilityLevel } from "./notification-level.lib";
+import {
+  streamNotificationLevelToMode,
+  type NotificationLevel,
+  type StreamNotificationMode,
+  type TopicVisibilityLevel,
+} from "./notification-level.lib";
 
 const log = createLogger("mute:api");
 
-interface SubscriptionPropertyRow {
-  stream_uuid: string;
-  property: string;
-  value: boolean;
-}
-
-async function postSubscriptionProperties(rows: SubscriptionPropertyRow[]): Promise<boolean> {
-  if (rows.length === 0) return true;
-  log.warn("Subscription properties are unsupported by the current backend", {
-    count: rows.length,
-  });
-  return false;
+async function postStreamNotificationMode(
+  streamUuid: string,
+  notificationMode: StreamNotificationMode,
+): Promise<boolean> {
+  try {
+    const response = await messengerApi.postJsonWithBase(
+      getMessengerWorkspaceApiBaseForCurrentInstance(),
+      `/streams/${streamUuid}/actions/notifications/invoke`,
+      { notification_mode: notificationMode },
+    );
+    if (!response.ok) {
+      log.warn("Stream notification action failed", {
+        streamId: streamUuid,
+        notificationMode,
+        status: response.status,
+      });
+      return false;
+    }
+    const data = response.data as { result?: string } | undefined;
+    if (data?.result === "error") {
+      log.warn("Stream notification action returned error", { streamId: streamUuid });
+      return false;
+    }
+    return true;
+  } catch (error) {
+    log.warn("Stream notification action request failed", {
+      streamId: streamUuid,
+      notificationMode,
+      error: String(error),
+    });
+    return false;
+  }
 }
 
 /**
- * Mute or unmute a stream (channel).
- * Sets the `is_muted` property on the user's subscription.
+ * Mute or unmute a stream.
+ * Uses Workspace stream `notification_mode`.
  */
 export async function setStreamMuted(streamId: string, muted: boolean): Promise<boolean> {
   const streamUuid = guard.streamUuid(streamId, "setStreamMuted");
-  const ok = await postSubscriptionProperties([
-    { stream_uuid: streamUuid, property: "is_muted", value: muted },
-  ]);
+  const ok = await postStreamNotificationMode(streamUuid, muted ? "muted" : "mentions_only");
   if (ok) {
     log.info(`Stream ${muted ? "muted" : "unmuted"}`, { streamId: streamUuid });
   }
   return ok;
 }
 
-export async function setStreamDesktopNotifications(
-  streamId: string,
-  enabled: boolean,
-): Promise<boolean> {
-  const streamUuid = guard.streamUuid(streamId, "setStreamDesktopNotifications");
-  const ok = await postSubscriptionProperties([
-    { stream_uuid: streamUuid, property: "desktop_notifications", value: enabled },
-  ]);
-  if (ok) {
-    log.info("Stream desktop notifications set", { streamId: streamUuid, enabled });
-  }
-  return ok;
-}
-
-export async function setStreamAudibleNotifications(
-  streamId: string,
-  enabled: boolean,
-): Promise<boolean> {
-  const streamUuid = guard.streamUuid(streamId, "setStreamAudibleNotifications");
-  const ok = await postSubscriptionProperties([
-    { stream_uuid: streamUuid, property: "audible_notifications", value: enabled },
-  ]);
-  if (ok) {
-    log.info("Stream audible notifications set", { streamId: streamUuid, enabled });
-  }
-  return ok;
-}
-
-/** Applies Workspace channel notification level in one request (mute + desktop). */
+/** Applies Workspace stream notification mode in one request. */
 export async function setStreamNotificationLevel(
   streamId: string,
   level: NotificationLevel,
 ): Promise<boolean> {
   const streamUuid = guard.streamUuid(streamId, "setStreamNotificationLevel");
-
-  const rows: SubscriptionPropertyRow[] = [];
-  if (level === "muted") {
-    rows.push({ stream_uuid: streamUuid, property: "is_muted", value: true });
-  } else {
-    rows.push({ stream_uuid: streamUuid, property: "is_muted", value: false });
-    rows.push({
-      stream_uuid: streamUuid,
-      property: "desktop_notifications",
-      value: level === "subscribed",
-    });
-    rows.push({
-      stream_uuid: streamUuid,
-      property: "audible_notifications",
-      value: level === "subscribed",
-    });
-  }
-
-  const ok = await postSubscriptionProperties(rows);
+  const ok = await postStreamNotificationMode(streamUuid, streamNotificationLevelToMode(level));
   if (ok) {
     log.info("Stream notification level set", { streamId: streamUuid, level });
   }
@@ -112,7 +89,7 @@ export async function setStreamNotificationLevel(
  *   2 = unmuted (overrides stream-level mute)
  *   3 = followed
  */
-export async function setTopicVisibility(
+export function setTopicVisibility(
   streamId: string,
   topic: string,
   policy: VisibilityPolicy,
@@ -125,7 +102,7 @@ export async function setTopicVisibility(
     topic: normalizedTopic,
     policy,
   });
-  return false;
+  return Promise.resolve(false);
 }
 
 export async function muteStream(streamId: string): Promise<boolean> {

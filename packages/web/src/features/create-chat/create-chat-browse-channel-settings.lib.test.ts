@@ -26,6 +26,7 @@ const labels = createBrowseChannelDetailLabels({
       "channel.browseNotSubscribed": "Not subscribed",
       "channel.notificationMuted": "Muted",
       "channel.notificationDefault": "Mentions only",
+      "channel.notificationSubscribed": "All messages",
       "channel.postingPolicyEveryone": "Everyone can post",
       "channel.browseStatUnknown": "Unknown",
       "channel.browseNoFolder": "No folder",
@@ -33,9 +34,6 @@ const labels = createBrowseChannelDetailLabels({
       "channel.browseYes": "Yes",
       "channel.browseNo": "No",
       "channel.browseUnknownGroup": "Group",
-      "channel.browseNotificationOn": "On",
-      "channel.browseNotificationOff": "Off",
-      "channel.browseNotificationInherit": "Inherit",
     };
     return map[key] ?? key;
   },
@@ -65,6 +63,7 @@ describe("create-chat-browse-channel-settings.lib", () => {
         streamPostPolicy: 1,
         isSubscribed: true,
         isMuted: false,
+        notificationMode: "all_messages",
         subscriberCount: 15,
         weeklyMessageCount: 30,
         creatorUuid: CREATOR_UUID,
@@ -73,8 +72,6 @@ describe("create-chat-browse-channel-settings.lib", () => {
         isDefault: false,
         isRecentlyActive: true,
         messageRetentionDays: null,
-        desktopNotifications: null,
-        audibleNotifications: true,
         canSubscribeGroup: 9,
         canAddSubscribersGroup: 9,
       },
@@ -103,7 +100,7 @@ describe("create-chat-browse-channel-settings.lib", () => {
     );
     expect(personal?.fields).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ id: "audible-notifications", value: "On" }),
+        expect.objectContaining({ id: "notifications", value: "All messages" }),
       ]),
     );
   });

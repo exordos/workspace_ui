@@ -4,6 +4,10 @@
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 import {
+  parseWorkspaceStreamNotificationMode,
+  WORKSPACE_DEFAULT_STREAM_NOTIFICATION_MODE,
+} from "~/shared/lib/stream-notification-resolve.lib";
+import {
   compareUserIds,
   isIamUserUuid,
   isUserIdentityReady,
@@ -27,6 +31,7 @@ import type {
   MessengerMeStream,
   MessengerStreamTopic,
   MessengerSubscription,
+  WorkspaceStreamNotificationMode,
   WorkspaceStreamBinding,
   WorkspaceStreamRole,
 } from "./messenger.types";
@@ -230,6 +235,10 @@ function readSafeCount(value: unknown): number {
   return Math.max(0, Math.trunc(value));
 }
 
+function readStreamNotificationMode(value: unknown): WorkspaceStreamNotificationMode | undefined {
+  return parseWorkspaceStreamNotificationMode(value) ?? undefined;
+}
+
 function extractMeStreamItems(data: unknown): unknown[] {
   if (Array.isArray(data)) {
     return data;
@@ -264,6 +273,7 @@ function parseMeStream(row: unknown): MessengerMeStream | null {
   const updatedAt = readOptionalString(row.updated_at);
   const lastSyncedAt = readOptionalString(row.last_synced_at);
   const sourceName = readOptionalString(row.source_name);
+  const notificationMode = readStreamNotificationMode(row.notification_mode);
   return {
     uuid,
     name,
@@ -282,6 +292,7 @@ function parseMeStream(row: unknown): MessengerMeStream | null {
     private: row.private === true,
     is_archived: row.is_archived === true,
     unread_count: readSafeCount(row.unread_count),
+    notification_mode: notificationMode ?? WORKSPACE_DEFAULT_STREAM_NOTIFICATION_MODE,
   };
 }
 
@@ -749,7 +760,7 @@ function subscriptionFromMeStream(stream: MessengerMeStream): MessengerSubscript
   return {
     stream_uuid: stream.stream_uuid,
     name: stream.name,
-    is_muted: false,
+    notification_mode: stream.notification_mode,
     invite_only: stream.invite_only,
     private: stream.private,
     is_archived: stream.is_archived,

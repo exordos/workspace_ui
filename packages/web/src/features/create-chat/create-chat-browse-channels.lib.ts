@@ -1,7 +1,11 @@
 /**
  * Merges realm stream list with user subscriptions for the browse-channels tab.
  */
-import type { MessengerGroupSettingValue } from "~/shared/api/messenger.types";
+import type {
+  MessengerGroupSettingValue,
+  WorkspaceStreamNotificationMode,
+} from "~/shared/api/messenger.types";
+import { parseWorkspaceStreamNotificationMode } from "~/shared/lib/stream-notification-resolve.lib";
 
 export type BrowseChannelSubscriptionFilter = "unsubscribed" | "subscribed" | "all";
 
@@ -11,6 +15,7 @@ export interface BrowseChannelRow {
   description: string;
   isSubscribed: boolean;
   isMuted: boolean;
+  notificationMode: WorkspaceStreamNotificationMode | null;
   inviteOnly: boolean | null;
   historyPublicToSubscribers: boolean | null;
   isAnnouncementOnly: boolean;
@@ -24,8 +29,6 @@ export interface BrowseChannelRow {
   isDefault: boolean | null;
   isRecentlyActive: boolean | null;
   messageRetentionDays: number | null;
-  desktopNotifications: boolean | null;
-  audibleNotifications: boolean | null;
   canSubscribeGroup?: MessengerGroupSettingValue;
   canAddSubscribersGroup?: MessengerGroupSettingValue;
   canRemoveSubscribersGroup?: MessengerGroupSettingValue;
@@ -63,10 +66,8 @@ export interface BrowseChannelSubscriptionLike {
   stream_uuid: string;
   is_archived?: boolean;
   invite_only?: boolean;
-  is_muted?: boolean;
   owner?: string;
-  desktop_notifications?: boolean | null;
-  audible_notifications?: boolean | null;
+  notification_mode?: WorkspaceStreamNotificationMode;
   can_add_subscribers_group?: MessengerGroupSettingValue;
   can_remove_subscribers_group?: MessengerGroupSettingValue;
   can_administer_channel_group?: MessengerGroupSettingValue;
@@ -189,12 +190,17 @@ function buildBrowseChannelRowCore(
   subscription: BrowseChannelSubscriptionLike | undefined,
 ): BrowseChannelRow {
   const isSubscribed = subscription != null;
+  const notificationMode =
+    subscription != null
+      ? parseWorkspaceStreamNotificationMode(subscription.notification_mode)
+      : null;
   return {
     streamUuid: stream.stream_uuid,
     name: stream.name,
     description: stream.description,
     isSubscribed,
-    isMuted: subscription?.is_muted === true,
+    isMuted: notificationMode === "muted",
+    notificationMode,
     inviteOnly: mergeOptionalBoolean(subscription?.invite_only, stream.invite_only),
     historyPublicToSubscribers: mergeOptionalBoolean(
       undefined,
@@ -215,24 +221,11 @@ function buildBrowseChannelRowCore(
     isDefault: mergeOptionalBoolean(undefined, stream.is_default),
     isRecentlyActive: mergeOptionalBoolean(undefined, stream.is_recently_active),
     messageRetentionDays: normalizeCount(stream.message_retention_days),
-    desktopNotifications: isSubscribed
-      ? mergeNotificationOverride(subscription?.desktop_notifications)
-      : null,
-    audibleNotifications: isSubscribed
-      ? mergeNotificationOverride(subscription?.audible_notifications)
-      : null,
   };
 }
 
 function compareByName(left: BrowseChannelRow, right: BrowseChannelRow): number {
   return left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
-}
-
-function mergeNotificationOverride(subscriptionValue: boolean | null | undefined): boolean | null {
-  if (subscriptionValue === true || subscriptionValue === false) {
-    return subscriptionValue;
-  }
-  return null;
 }
 
 export function matchesBrowseChannelSubscriptionFilter(

@@ -5,14 +5,12 @@ import { buildStreamMessageNotificationFlags } from "./stream-notification-notif
 const STREAM_UUID = "00000000-0000-4000-8000-000000000010";
 
 describe("buildStreamMessageNotificationFlags", () => {
-  it("disables all-message stream notifications when the stream is muted", () => {
+  it("disables all-message stream notifications for muted mode", () => {
     const result = buildStreamMessageNotificationFlags(
       STREAM_UUID,
       DEFAULT_MESSENGER_NOTIFICATION_SETTINGS,
       {
-        isStreamMuted: () => true,
-        getStreamDesktopNotificationsOverride: () => true,
-        getStreamAudibleNotificationsOverride: () => true,
+        getStreamNotificationMode: () => "muted",
       },
     );
 
@@ -22,14 +20,12 @@ describe("buildStreamMessageNotificationFlags", () => {
     });
   });
 
-  it("uses stream notification overrides when the stream is not muted", () => {
+  it("enables all-message stream notifications for all_messages mode", () => {
     const result = buildStreamMessageNotificationFlags(
       STREAM_UUID,
       DEFAULT_MESSENGER_NOTIFICATION_SETTINGS,
       {
-        isStreamMuted: () => false,
-        getStreamDesktopNotificationsOverride: () => true,
-        getStreamAudibleNotificationsOverride: () => true,
+        getStreamNotificationMode: () => "all_messages",
       },
     );
 

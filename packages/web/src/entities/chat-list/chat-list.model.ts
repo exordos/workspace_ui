@@ -1030,15 +1030,19 @@ export const useChatListStore = create<ChatListState>((set, get) => {
       patchSet((state) => {
         const stream = state.streamsMap.get(streamUuid);
         if (!stream) return state;
+        const topicEntryKey = stream.topics.has(topicKey)
+          ? topicKey
+          : findTopicKeyByUuid(stream.topics, topicKey);
 
         let nextLocations = state.messageIdToLocation;
         let locationsChanged = false;
-        const messageIdsInTopic = getStreamTopicMessageIds(
-          state.streamTopicMessageIds,
-          streamId,
-          topicKey,
-        );
-        if (messageIdsInTopic.length > 0) {
+        const messageIdsInTopic = new Set([
+          ...getStreamTopicMessageIds(state.streamTopicMessageIds, streamUuid, topicKey),
+          ...(topicEntryKey != null && topicEntryKey !== topicKey
+            ? getStreamTopicMessageIds(state.streamTopicMessageIds, streamUuid, topicEntryKey)
+            : []),
+        ]);
+        if (messageIdsInTopic.size > 0) {
           nextLocations = new Map(nextLocations);
           locationsChanged = true;
           for (const messageId of messageIdsInTopic) {
@@ -1046,13 +1050,13 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           }
         }
 
-        if (!stream.topics.has(topicKey)) {
+        if (topicEntryKey == null) {
           if (!locationsChanged) return state;
           return { messageIdToLocation: nextLocations };
         }
 
         const nextTopics = new Map(stream.topics);
-        nextTopics.delete(topicKey);
+        nextTopics.delete(topicEntryKey);
         const newestTopic = getNewestTopicEntry(nextTopics);
         const nextStreams = new Map(state.streamsMap);
         nextStreams.set(streamUuid, {
@@ -1073,24 +1077,32 @@ export const useChatListStore = create<ChatListState>((set, get) => {
               }),
         });
 
+        let nextStreamTopicMessageIds: Map<string, MessageId[]>;
+        if (locationsChanged) {
+          nextStreamTopicMessageIds = patchStreamTopicMessageIndex(
+            state.streamTopicMessageIds,
+            state.messageIdToLocation,
+            nextLocations,
+          );
+        } else {
+          nextStreamTopicMessageIds = removeStreamTopicKeyFromIndex(
+            state.streamTopicMessageIds,
+            streamUuid,
+            topicKey,
+          );
+          if (topicEntryKey !== topicKey) {
+            nextStreamTopicMessageIds = removeStreamTopicKeyFromIndex(
+              nextStreamTopicMessageIds,
+              streamUuid,
+              topicEntryKey,
+            );
+          }
+        }
+
         return {
           streamsMap: nextStreams,
           ...(locationsChanged ? { messageIdToLocation: nextLocations } : {}),
-          ...(locationsChanged
-            ? {
-                streamTopicMessageIds: patchStreamTopicMessageIndex(
-                  state.streamTopicMessageIds,
-                  state.messageIdToLocation,
-                  nextLocations,
-                ),
-              }
-            : {
-                streamTopicMessageIds: removeStreamTopicKeyFromIndex(
-                  state.streamTopicMessageIds,
-                  streamId,
-                  topicKey,
-                ),
-              }),
+          streamTopicMessageIds: nextStreamTopicMessageIds,
         };
       });
     },

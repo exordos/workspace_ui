@@ -545,7 +545,7 @@ export function useCreateChatDialog(options: {
             {
               stream_uuid: streamUuid,
               name: streamName,
-              is_muted: false,
+              notification_mode: "all_messages",
               is_archived: false,
               invite_only: false,
             },

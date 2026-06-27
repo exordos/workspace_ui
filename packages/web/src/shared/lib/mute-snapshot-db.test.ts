@@ -21,10 +21,10 @@ const STREAM_UUID_20 = "00000000-0000-4000-8000-000000000020";
 const STREAM_UUID_30 = "00000000-0000-4000-8000-000000000030";
 
 const EMPTY_STREAM_NOTIFICATION_FIELDS = {
-  streamDesktopNotifyEnabledIds: [] as string[],
-  streamDesktopNotifyDisabledIds: [] as string[],
-  streamAudibleNotifyEnabledIds: [] as string[],
-  streamAudibleNotifyDisabledIds: [] as string[],
+  streamNotificationModes: [] as {
+    streamId: string;
+    mode: "all_messages" | "mentions_only" | "muted";
+  }[],
 };
 
 afterEach(async () => {
@@ -47,36 +47,30 @@ describe("mute-snapshot-db", () => {
     await openMessageCacheDb();
     await persistMuteSnapshotRow({
       instanceId: INSTANCE,
-      version: 2,
+      version: 3,
       savedAt: 1710000000000,
       mutedStreamIds: [STREAM_UUID_10, STREAM_UUID_20],
       mutedTopics: [{ streamId: STREAM_UUID_10, topic: "news" }],
       unmutedTopics: [{ streamId: STREAM_UUID_20, topic: "important" }],
       followedTopics: [{ streamId: STREAM_UUID_20, topic: "incidents" }],
-      streamDesktopNotifyEnabledIds: [STREAM_UUID_30],
-      streamDesktopNotifyDisabledIds: [],
-      streamAudibleNotifyEnabledIds: [STREAM_UUID_30],
-      streamAudibleNotifyDisabledIds: [],
+      streamNotificationModes: [{ streamId: STREAM_UUID_30, mode: "all_messages" }],
     });
 
     const row = await loadMuteSnapshotRow(INSTANCE);
     expect(row).not.toBeNull();
     expect(row).toEqual({
       instanceId: INSTANCE,
-      version: 2,
+      version: 3,
       savedAt: 1710000000000,
       mutedStreamIds: [STREAM_UUID_10, STREAM_UUID_20],
       mutedTopics: [{ streamId: STREAM_UUID_10, topic: "news" }],
       unmutedTopics: [{ streamId: STREAM_UUID_20, topic: "important" }],
       followedTopics: [{ streamId: STREAM_UUID_20, topic: "incidents" }],
-      streamDesktopNotifyEnabledIds: [STREAM_UUID_30],
-      streamDesktopNotifyDisabledIds: [],
-      streamAudibleNotifyEnabledIds: [STREAM_UUID_30],
-      streamAudibleNotifyDisabledIds: [],
+      streamNotificationModes: [{ streamId: STREAM_UUID_30, mode: "all_messages" }],
     });
   });
 
-  it("upgrades v1 rows on load with empty stream notification overrides", async () => {
+  it("upgrades v1 rows on load with empty stream notification modes", async () => {
     await openMessageCacheDb();
     const db = await openMessageCacheDb();
     await new Promise<void>((resolve, reject) => {
@@ -97,7 +91,7 @@ describe("mute-snapshot-db", () => {
     const row = await loadMuteSnapshotRow(INSTANCE);
     expect(row).toEqual({
       instanceId: INSTANCE,
-      version: 2,
+      version: 3,
       savedAt: 1,
       mutedStreamIds: [STREAM_UUID_1],
       mutedTopics: [],
@@ -111,7 +105,7 @@ describe("mute-snapshot-db", () => {
     await openMessageCacheDb();
     await persistMuteSnapshotRow({
       instanceId: INSTANCE,
-      version: 2,
+      version: 3,
       savedAt: 1,
       mutedStreamIds: [STREAM_UUID_1],
       mutedTopics: [],

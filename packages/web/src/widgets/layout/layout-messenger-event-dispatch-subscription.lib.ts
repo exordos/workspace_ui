@@ -1,9 +1,9 @@
 /**
  * Workspace realtime handlers: subscriptions, streams, user_topic.
  */
-import type { MessengerEvent } from "~/shared/api/messenger.types";
-import type { MessengerGroupSettingValue } from "~/shared/api/messenger.types";
+import type { MessengerEvent, MessengerGroupSettingValue } from "~/shared/api/messenger.types";
 import { normalizeGroupSettingValue } from "~/shared/lib/messenger-group-setting.lib";
+import { parseWorkspaceStreamNotificationMode } from "~/shared/lib/stream-notification-resolve.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { LayoutMessengerEventDispatchContext } from "./layout-messenger-event-dispatch.types";
 
@@ -30,6 +30,7 @@ export function parseSubscriptionRows(value: unknown): {
   canAddSubscribersGroup?: MessengerGroupSettingValue;
   canRemoveSubscribersGroup?: MessengerGroupSettingValue;
   canAdministerChannelGroup?: MessengerGroupSettingValue;
+  notificationMode?: ReturnType<typeof parseWorkspaceStreamNotificationMode>;
 }[] {
   if (!Array.isArray(value)) return [];
   const rows: {
@@ -43,6 +44,7 @@ export function parseSubscriptionRows(value: unknown): {
     canAdministerChannelGroup?: MessengerGroupSettingValue;
     canResolveTopicsGroup?: MessengerGroupSettingValue;
     canMoveMessagesOutOfChannelGroup?: MessengerGroupSettingValue;
+    notificationMode?: ReturnType<typeof parseWorkspaceStreamNotificationMode>;
   }[] = [];
   for (const row of value) {
     if (row == null || typeof row !== "object" || Array.isArray(row)) continue;
@@ -63,6 +65,7 @@ export function parseOneSubscriptionRow(record: Record<string, unknown>): {
   canAdministerChannelGroup?: MessengerGroupSettingValue;
   canResolveTopicsGroup?: MessengerGroupSettingValue;
   canMoveMessagesOutOfChannelGroup?: MessengerGroupSettingValue;
+  notificationMode?: ReturnType<typeof parseWorkspaceStreamNotificationMode>;
 } | null {
   const streamUuidRaw = parseStreamUuid(record.stream_uuid);
   const name = record.name;
@@ -75,6 +78,7 @@ export function parseOneSubscriptionRow(record: Record<string, unknown>): {
   const canMoveMessagesOutOfChannelGroup = normalizeGroupSettingValue(
     record.can_move_messages_out_of_channel_group,
   );
+  const notificationMode = parseWorkspaceStreamNotificationMode(record.notification_mode);
   return {
     streamUuid: streamUuidRaw,
     name: name.trim(),
@@ -86,6 +90,7 @@ export function parseOneSubscriptionRow(record: Record<string, unknown>): {
     ...(canAdministerChannelGroup != null ? { canAdministerChannelGroup } : {}),
     ...(canResolveTopicsGroup != null ? { canResolveTopicsGroup } : {}),
     ...(canMoveMessagesOutOfChannelGroup != null ? { canMoveMessagesOutOfChannelGroup } : {}),
+    ...(notificationMode != null ? { notificationMode } : {}),
   };
 }
 
@@ -109,6 +114,7 @@ export interface WorkspaceStreamEventRow {
   inviteOnly?: boolean;
   isArchived?: boolean;
   creatorId?: string;
+  notificationMode?: ReturnType<typeof parseWorkspaceStreamNotificationMode>;
 }
 
 export function parseWorkspaceStreamEventRow(value: unknown): WorkspaceStreamEventRow | null {
@@ -124,6 +130,7 @@ export function parseWorkspaceStreamEventRow(value: unknown): WorkspaceStreamEve
         ? null
         : undefined;
   const creatorId = parseOwnerUuid(record);
+  const notificationMode = parseWorkspaceStreamNotificationMode(record.notification_mode);
   return {
     streamUuid,
     ...(name.length > 0 ? { name } : {}),
@@ -133,6 +140,7 @@ export function parseWorkspaceStreamEventRow(value: unknown): WorkspaceStreamEve
     ...(typeof record.invite_only === "boolean" ? { inviteOnly: record.invite_only } : {}),
     ...(typeof record.is_archived === "boolean" ? { isArchived: record.is_archived } : {}),
     ...(creatorId != null ? { creatorId } : {}),
+    ...(notificationMode != null ? { notificationMode } : {}),
   };
 }
 
@@ -159,6 +167,11 @@ export function handleSubscriptionAdd(
   const rows = parseSubscriptionRows(event.subscriptions);
   if (rows.length > 0) {
     ctx.chatList.upsertStreamMetadataRows(rows);
+  }
+  for (const row of rows) {
+    if (row.notificationMode != null) {
+      ctx.mute.setStreamNotificationMode(row.streamUuid, row.notificationMode);
+    }
   }
 }
 
@@ -295,26 +308,10 @@ export function handleSubscriptionPropertyUpdate(
   property: string,
 ): void {
   const { chatList, mute } = ctx;
-  if (property === "is_muted") {
-    const value = event.value as boolean | undefined;
-    if (value == null) return;
-    if (value) {
-      mute.muteStream(streamUuid);
-    } else {
-      mute.unmuteStream(streamUuid);
-    }
-    return;
-  }
-  if (property === "desktop_notifications") {
-    const value = event.value as boolean | undefined;
-    if (typeof value !== "boolean") return;
-    mute.setStreamDesktopNotifications(streamUuid, value);
-    return;
-  }
-  if (property === "audible_notifications") {
-    const value = event.value as boolean | undefined;
-    if (typeof value !== "boolean") return;
-    mute.setStreamAudibleNotifications(streamUuid, value);
+  if (property === "notification_mode") {
+    const notificationMode = parseWorkspaceStreamNotificationMode(event.value);
+    if (notificationMode == null) return;
+    mute.setStreamNotificationMode(streamUuid, notificationMode);
     return;
   }
   if (property === "name") {
@@ -396,6 +393,9 @@ export function handleStream(
   if (chatListRow != null) {
     ctx.chatList.upsertStreamMetadataRows([chatListRow]);
   }
+  if (row.notificationMode != null) {
+    ctx.mute.setStreamNotificationMode(row.streamUuid, row.notificationMode);
+  }
   if (event.kind !== "stream.updated") return;
   ctx.chatInfo?.applyStreamMetadataUpdate({
     instanceId: ctx.currentInstanceId,
@@ -403,6 +403,58 @@ export function handleStream(
     ...(row.name != null ? { name: row.name } : {}),
     ...("description" in row ? { description: row.description ?? null } : {}),
   });
+}
+
+type WorkspaceTopicEventKind = "topic.created" | "topic.updated" | "topic.deleted";
+
+interface WorkspaceTopicEventRow {
+  topicUuid: string;
+  streamUuid: string;
+  name?: string;
+  unreadCount?: number;
+  isDone?: boolean;
+}
+
+function isWorkspaceTopicEventKind(kind: unknown): kind is WorkspaceTopicEventKind {
+  return kind === "topic.created" || kind === "topic.updated" || kind === "topic.deleted";
+}
+
+function parseWorkspaceTopicEventRow(value: unknown): WorkspaceTopicEventRow | null {
+  if (value == null || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const topicUuid = parseStreamUuid(record.uuid);
+  const streamUuid = parseStreamUuid(record.stream_uuid);
+  if (topicUuid == null || streamUuid == null) return null;
+  const name = typeof record.name === "string" ? record.name.trim() : "";
+  return {
+    topicUuid,
+    streamUuid,
+    ...(name.length > 0 ? { name } : {}),
+    ...(isNonNegativeInteger(record.unread_count) ? { unreadCount: record.unread_count } : {}),
+    ...(typeof record.is_done === "boolean" ? { isDone: record.is_done } : {}),
+  };
+}
+
+export function handleTopic(event: MessengerEvent, ctx: LayoutMessengerEventDispatchContext): void {
+  if (event.type !== "topic" || !isWorkspaceTopicEventKind(event.kind)) return;
+  const row = parseWorkspaceTopicEventRow(event.topic);
+  if (row == null) return;
+
+  if (event.kind === "topic.deleted") {
+    ctx.chatList.removeStreamTopic(row.streamUuid, row.topicUuid);
+    return;
+  }
+
+  if (row.name == null) return;
+  ctx.chatList.upsertStreamTopicShells(row.streamUuid, [
+    {
+      topicUuid: row.topicUuid,
+      streamUuid: row.streamUuid,
+      name: row.name,
+      ...(row.unreadCount != null ? { unreadCount: row.unreadCount } : {}),
+      ...(row.isDone != null ? { isDone: row.isDone } : {}),
+    },
+  ]);
 }
 
 export function handleStreamBinding(

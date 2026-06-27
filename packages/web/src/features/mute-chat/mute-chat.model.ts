@@ -1,19 +1,22 @@
 /**
- * Mute store — tracks which streams and topics the user has muted.
+ * Mute store — tracks stream notification modes and topic visibility overrides.
  *
- * Populated from channel and topic visibility metadata. Updated optimistically when the user
- * toggles mute in the UI.
+ * Streams are populated from Workspace `notification_mode`. Topics are populated from
+ * user topic visibility metadata and updated optimistically when the user toggles them.
  */
 
 import { create } from "zustand";
 import type { MessengerSubscription } from "~/shared/api/messenger.types";
 import { logStoreAction } from "~/shared/lib/logger";
+import { WORKSPACE_DEFAULT_STREAM_NOTIFICATION_MODE } from "~/shared/lib/stream-notification-resolve.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import {
   deriveStreamNotificationLevel,
   deriveTopicNotificationLevel,
   deriveTopicVisibilityLevel,
+  parseStreamNotificationMode,
   type NotificationLevel,
+  type StreamNotificationMode,
   type TopicVisibilityLevel,
 } from "./notification-level.lib";
 
@@ -22,35 +25,29 @@ export function topicKey(streamId: string, topic: string): string {
   return `${streamId}:${normalizedTopic}`;
 }
 
-function applySubscriptionNotificationOverrides(
-  streamDesktopNotifyEnabledIds: Set<string>,
-  streamDesktopNotifyDisabledIds: Set<string>,
-  streamAudibleNotifyEnabledIds: Set<string>,
-  streamAudibleNotifyDisabledIds: Set<string>,
-  subscription: MessengerSubscription,
-): void {
-  const streamId = subscription.stream_uuid;
-  if (subscription.desktop_notifications === true) {
-    streamDesktopNotifyEnabledIds.add(streamId);
-    streamDesktopNotifyDisabledIds.delete(streamId);
-  } else if (subscription.desktop_notifications === false) {
-    streamDesktopNotifyDisabledIds.add(streamId);
-    streamDesktopNotifyEnabledIds.delete(streamId);
-  } else {
-    streamDesktopNotifyEnabledIds.delete(streamId);
-    streamDesktopNotifyDisabledIds.delete(streamId);
+function buildMutedStreamIdsFromModes(
+  streamNotificationModes: ReadonlyMap<string, StreamNotificationMode>,
+): Set<string> {
+  const mutedStreamIds = new Set<string>();
+  for (const [streamId, mode] of streamNotificationModes) {
+    if (mode === "muted") {
+      mutedStreamIds.add(streamId);
+    }
   }
+  return mutedStreamIds;
+}
 
-  if (subscription.audible_notifications === true) {
-    streamAudibleNotifyEnabledIds.add(streamId);
-    streamAudibleNotifyDisabledIds.delete(streamId);
-  } else if (subscription.audible_notifications === false) {
-    streamAudibleNotifyDisabledIds.add(streamId);
-    streamAudibleNotifyEnabledIds.delete(streamId);
-  } else {
-    streamAudibleNotifyEnabledIds.delete(streamId);
-    streamAudibleNotifyDisabledIds.delete(streamId);
-  }
+function applyStreamNotificationMode(
+  state: Pick<MuteStoreState, "streamNotificationModes">,
+  streamId: string,
+  mode: StreamNotificationMode,
+): Pick<MuteStoreState, "mutedStreamIds" | "streamNotificationModes"> {
+  const nextModes = new Map(state.streamNotificationModes);
+  nextModes.set(streamId, mode);
+  return {
+    mutedStreamIds: buildMutedStreamIdsFromModes(nextModes),
+    streamNotificationModes: nextModes,
+  };
 }
 
 interface MuteStoreState {
@@ -58,10 +55,7 @@ interface MuteStoreState {
   mutedTopicKeys: Set<string>;
   unmutedTopicKeys: Set<string>;
   followedTopicKeys: Set<string>;
-  streamDesktopNotifyEnabledIds: Set<string>;
-  streamDesktopNotifyDisabledIds: Set<string>;
-  streamAudibleNotifyEnabledIds: Set<string>;
-  streamAudibleNotifyDisabledIds: Set<string>;
+  streamNotificationModes: Map<string, StreamNotificationMode>;
 
   muteStream: (streamId: string) => void;
   unmuteStream: (streamId: string) => void;
@@ -69,31 +63,24 @@ interface MuteStoreState {
   unmuteTopic: (streamId: string, topic: string) => void;
   followTopic: (streamId: string, topic: string) => void;
   clearTopicVisibilityOverride: (streamId: string, topic: string) => void;
-  setStreamDesktopNotifications: (streamId: string, enabled: boolean) => void;
-  clearStreamDesktopNotificationsOverride: (streamId: string) => void;
-  setStreamAudibleNotifications: (streamId: string, enabled: boolean) => void;
-  clearStreamAudibleNotificationsOverride: (streamId: string) => void;
+  setStreamNotificationMode: (streamId: string, mode: StreamNotificationMode) => void;
 
   isStreamMuted: (streamId: string) => boolean;
   isTopicMuted: (streamId: string, topic: string) => boolean;
   isTopicUnmuted: (streamId: string, topic: string) => boolean;
   isTopicFollowed: (streamId: string, topic: string) => boolean;
   isEffectivelyMuted: (streamId: string, topic: string) => boolean;
-  getStreamDesktopNotificationsOverride: (streamId: string) => boolean | null;
-  getStreamAudibleNotificationsOverride: (streamId: string) => boolean | null;
+  getStreamNotificationMode: (streamId: string) => StreamNotificationMode;
   getStreamNotificationLevel: (streamId: string) => NotificationLevel;
   getTopicVisibilityLevel: (streamId: string, topic: string) => TopicVisibilityLevel;
   getTopicNotificationLevel: (streamId: string, topic: string) => NotificationLevel;
 
   setFromServer: (data: {
-    mutedStreamIds: string[];
+    mutedStreamIds?: string[];
     mutedTopics: { streamId: string; topic: string }[];
     unmutedTopics: { streamId: string; topic: string }[];
     followedTopics: { streamId: string; topic: string }[];
-    streamDesktopNotifyEnabledIds?: string[];
-    streamDesktopNotifyDisabledIds?: string[];
-    streamAudibleNotifyEnabledIds?: string[];
-    streamAudibleNotifyDisabledIds?: string[];
+    streamNotificationModes?: { streamId: string; mode: StreamNotificationMode }[];
   }) => void;
 
   clear: () => void;
@@ -104,27 +91,16 @@ export const useMuteStore = create<MuteStoreState>((set, get) => ({
   mutedTopicKeys: new Set(),
   unmutedTopicKeys: new Set(),
   followedTopicKeys: new Set(),
-  streamDesktopNotifyEnabledIds: new Set(),
-  streamDesktopNotifyDisabledIds: new Set(),
-  streamAudibleNotifyEnabledIds: new Set(),
-  streamAudibleNotifyDisabledIds: new Set(),
+  streamNotificationModes: new Map(),
 
   muteStream(streamId) {
     logStoreAction("mute", "muteStream", { streamId });
-    set((s) => {
-      const next = new Set(s.mutedStreamIds);
-      next.add(streamId);
-      return { mutedStreamIds: next };
-    });
+    set((s) => applyStreamNotificationMode(s, streamId, "muted"));
   },
 
   unmuteStream(streamId) {
     logStoreAction("mute", "unmuteStream", { streamId });
-    set((s) => {
-      const next = new Set(s.mutedStreamIds);
-      next.delete(streamId);
-      return { mutedStreamIds: next };
-    });
+    set((s) => applyStreamNotificationMode(s, streamId, "mentions_only"));
   },
 
   muteTopic(streamId, topic) {
@@ -199,74 +175,13 @@ export const useMuteStore = create<MuteStoreState>((set, get) => ({
     });
   },
 
-  setStreamDesktopNotifications(streamId, enabled) {
-    logStoreAction("mute", "setStreamDesktopNotifications", { streamId, enabled });
-    set((s) => {
-      const nextEnabled = new Set(s.streamDesktopNotifyEnabledIds);
-      const nextDisabled = new Set(s.streamDesktopNotifyDisabledIds);
-      if (enabled) {
-        nextEnabled.add(streamId);
-        nextDisabled.delete(streamId);
-      } else {
-        nextDisabled.add(streamId);
-        nextEnabled.delete(streamId);
-      }
-      return {
-        streamDesktopNotifyEnabledIds: nextEnabled,
-        streamDesktopNotifyDisabledIds: nextDisabled,
-      };
-    });
-  },
-
-  clearStreamDesktopNotificationsOverride(streamId) {
-    logStoreAction("mute", "clearStreamDesktopNotificationsOverride", { streamId });
-    set((s) => {
-      const nextEnabled = new Set(s.streamDesktopNotifyEnabledIds);
-      const nextDisabled = new Set(s.streamDesktopNotifyDisabledIds);
-      nextEnabled.delete(streamId);
-      nextDisabled.delete(streamId);
-      return {
-        streamDesktopNotifyEnabledIds: nextEnabled,
-        streamDesktopNotifyDisabledIds: nextDisabled,
-      };
-    });
-  },
-
-  setStreamAudibleNotifications(streamId, enabled) {
-    logStoreAction("mute", "setStreamAudibleNotifications", { streamId, enabled });
-    set((s) => {
-      const nextEnabled = new Set(s.streamAudibleNotifyEnabledIds);
-      const nextDisabled = new Set(s.streamAudibleNotifyDisabledIds);
-      if (enabled) {
-        nextEnabled.add(streamId);
-        nextDisabled.delete(streamId);
-      } else {
-        nextDisabled.add(streamId);
-        nextEnabled.delete(streamId);
-      }
-      return {
-        streamAudibleNotifyEnabledIds: nextEnabled,
-        streamAudibleNotifyDisabledIds: nextDisabled,
-      };
-    });
-  },
-
-  clearStreamAudibleNotificationsOverride(streamId) {
-    logStoreAction("mute", "clearStreamAudibleNotificationsOverride", { streamId });
-    set((s) => {
-      const nextEnabled = new Set(s.streamAudibleNotifyEnabledIds);
-      const nextDisabled = new Set(s.streamAudibleNotifyDisabledIds);
-      nextEnabled.delete(streamId);
-      nextDisabled.delete(streamId);
-      return {
-        streamAudibleNotifyEnabledIds: nextEnabled,
-        streamAudibleNotifyDisabledIds: nextDisabled,
-      };
-    });
+  setStreamNotificationMode(streamId, mode) {
+    logStoreAction("mute", "setStreamNotificationMode", { streamId, mode });
+    set((s) => applyStreamNotificationMode(s, streamId, mode));
   },
 
   isStreamMuted(streamId) {
-    return get().mutedStreamIds.has(streamId);
+    return get().getStreamNotificationMode(streamId) === "muted";
   },
 
   isTopicMuted(streamId, topic) {
@@ -288,30 +203,19 @@ export const useMuteStore = create<MuteStoreState>((set, get) => ({
     if (state.unmutedTopicKeys.has(key)) return false;
     if (state.followedTopicKeys.has(key)) return false;
     if (state.mutedTopicKeys.has(key)) return true;
-    if (state.mutedStreamIds.has(streamId)) return true;
+    if (state.getStreamNotificationMode(streamId) === "muted") return true;
 
     return false;
   },
 
-  getStreamDesktopNotificationsOverride(streamId) {
-    const state = get();
-    if (state.streamDesktopNotifyEnabledIds.has(streamId)) return true;
-    if (state.streamDesktopNotifyDisabledIds.has(streamId)) return false;
-    return null;
-  },
-
-  getStreamAudibleNotificationsOverride(streamId) {
-    const state = get();
-    if (state.streamAudibleNotifyEnabledIds.has(streamId)) return true;
-    if (state.streamAudibleNotifyDisabledIds.has(streamId)) return false;
-    return null;
+  getStreamNotificationMode(streamId) {
+    return (
+      get().streamNotificationModes.get(streamId) ?? WORKSPACE_DEFAULT_STREAM_NOTIFICATION_MODE
+    );
   },
 
   getStreamNotificationLevel(streamId) {
-    return deriveStreamNotificationLevel(
-      get().mutedStreamIds.has(streamId),
-      get().getStreamDesktopNotificationsOverride(streamId),
-    );
+    return deriveStreamNotificationLevel(get().getStreamNotificationMode(streamId));
   },
 
   getTopicVisibilityLevel(streamId, topic) {
@@ -336,32 +240,34 @@ export const useMuteStore = create<MuteStoreState>((set, get) => ({
   },
 
   setFromServer({
-    mutedStreamIds,
+    mutedStreamIds = [],
     mutedTopics,
     unmutedTopics,
     followedTopics,
-    streamDesktopNotifyEnabledIds = [],
-    streamDesktopNotifyDisabledIds = [],
-    streamAudibleNotifyEnabledIds = [],
-    streamAudibleNotifyDisabledIds = [],
+    streamNotificationModes = [],
   }) {
     logStoreAction("mute", "setFromServer", {
-      streams: mutedStreamIds.length,
+      streams: streamNotificationModes.length,
       topics: mutedTopics.length,
       unmuted: unmutedTopics.length,
       followed: followedTopics.length,
-      desktopEnabled: streamDesktopNotifyEnabledIds.length,
-      desktopDisabled: streamDesktopNotifyDisabledIds.length,
     });
+    const nextModes = new Map<string, StreamNotificationMode>();
+    for (const { streamId, mode } of streamNotificationModes) {
+      nextModes.set(streamId, mode);
+    }
+    for (const streamId of mutedStreamIds) {
+      if (!nextModes.has(streamId)) {
+        nextModes.set(streamId, "muted");
+      }
+    }
+
     set({
-      mutedStreamIds: new Set(mutedStreamIds),
+      mutedStreamIds: buildMutedStreamIdsFromModes(nextModes),
       mutedTopicKeys: new Set(mutedTopics.map((t) => topicKey(t.streamId, t.topic))),
       unmutedTopicKeys: new Set(unmutedTopics.map((t) => topicKey(t.streamId, t.topic))),
       followedTopicKeys: new Set(followedTopics.map((t) => topicKey(t.streamId, t.topic))),
-      streamDesktopNotifyEnabledIds: new Set(streamDesktopNotifyEnabledIds),
-      streamDesktopNotifyDisabledIds: new Set(streamDesktopNotifyDisabledIds),
-      streamAudibleNotifyEnabledIds: new Set(streamAudibleNotifyEnabledIds),
-      streamAudibleNotifyDisabledIds: new Set(streamAudibleNotifyDisabledIds),
+      streamNotificationModes: nextModes,
     });
   },
 
@@ -372,10 +278,7 @@ export const useMuteStore = create<MuteStoreState>((set, get) => ({
       mutedTopicKeys: new Set(),
       unmutedTopicKeys: new Set(),
       followedTopicKeys: new Set(),
-      streamDesktopNotifyEnabledIds: new Set(),
-      streamDesktopNotifyDisabledIds: new Set(),
-      streamAudibleNotifyEnabledIds: new Set(),
-      streamAudibleNotifyDisabledIds: new Set(),
+      streamNotificationModes: new Map(),
     });
   },
 }));
@@ -389,39 +292,24 @@ export function buildMuteSnapshotFromBootstrap(options: {
   mutedTopics: { streamId: string; topic: string }[];
   unmutedTopics: { streamId: string; topic: string }[];
   followedTopics: { streamId: string; topic: string }[];
-  streamDesktopNotifyEnabledIds: string[];
-  streamDesktopNotifyDisabledIds: string[];
-  streamAudibleNotifyEnabledIds: string[];
-  streamAudibleNotifyDisabledIds: string[];
+  streamNotificationModes: { streamId: string; mode: StreamNotificationMode }[];
 } {
   const subscriptions = options.subscriptions ?? [];
   const userTopics = options.userTopics ?? [];
-  const mutedStreamIds = subscriptions.filter((s) => s.is_muted).map((s) => s.stream_uuid);
   const mutedTopics: { streamId: string; topic: string }[] = [];
   const unmutedTopics: { streamId: string; topic: string }[] = [];
   const followedTopics: { streamId: string; topic: string }[] = [];
-  const streamDesktopNotifyEnabledIds: string[] = [];
-  const streamDesktopNotifyDisabledIds: string[] = [];
-  const streamAudibleNotifyEnabledIds: string[] = [];
-  const streamAudibleNotifyDisabledIds: string[] = [];
+  const streamNotificationModes: { streamId: string; mode: StreamNotificationMode }[] = [];
 
-  const desktopEnabled = new Set<string>();
-  const desktopDisabled = new Set<string>();
-  const audibleEnabled = new Set<string>();
-  const audibleDisabled = new Set<string>();
   for (const subscription of subscriptions) {
-    applySubscriptionNotificationOverrides(
-      desktopEnabled,
-      desktopDisabled,
-      audibleEnabled,
-      audibleDisabled,
-      subscription,
-    );
+    const mode =
+      parseStreamNotificationMode(subscription.notification_mode) ??
+      WORKSPACE_DEFAULT_STREAM_NOTIFICATION_MODE;
+    streamNotificationModes.push({ streamId: subscription.stream_uuid, mode });
   }
-  streamDesktopNotifyEnabledIds.push(...desktopEnabled);
-  streamDesktopNotifyDisabledIds.push(...desktopDisabled);
-  streamAudibleNotifyEnabledIds.push(...audibleEnabled);
-  streamAudibleNotifyDisabledIds.push(...audibleDisabled);
+  const mutedStreamIds = streamNotificationModes
+    .filter((row) => row.mode === "muted")
+    .map((row) => row.streamId);
 
   for (const ut of userTopics) {
     if (ut.visibility_policy === 1) {
@@ -438,9 +326,6 @@ export function buildMuteSnapshotFromBootstrap(options: {
     mutedTopics,
     unmutedTopics,
     followedTopics,
-    streamDesktopNotifyEnabledIds,
-    streamDesktopNotifyDisabledIds,
-    streamAudibleNotifyEnabledIds,
-    streamAudibleNotifyDisabledIds,
+    streamNotificationModes,
   };
 }

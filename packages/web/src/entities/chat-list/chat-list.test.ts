@@ -1696,6 +1696,38 @@ describe("chatListStore", () => {
       );
     });
 
+    it("removes stream topic row by topic uuid from realtime topic.deleted events", () => {
+      const topicUuid = streamUuid(111);
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000001",
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
+            display_recipient: "engineering",
+            subject: "incident",
+            topic_uuid: topicUuid,
+            timestamp: 1000,
+          }),
+          streamMsg({
+            id: "00000000-0000-4000-8000-000000000002",
+            stream_uuid: "00000000-0000-4000-8000-000000000010",
+            display_recipient: "engineering",
+            subject: "release",
+            timestamp: 2000,
+          }),
+        ],
+        10,
+      );
+
+      useChatListStore.getState().removeStreamTopic(streamUuid(10), topicUuid);
+
+      const state = useChatListStore.getState();
+      const stream = state.streamsMap.get(streamUuid(10));
+      expect(stream?.topics.has("incident")).toBe(false);
+      expect(stream?.topics.has("release")).toBe(true);
+      expect(state.messageIdToLocation.get("00000000-0000-4000-8000-000000000001")).toBeUndefined();
+    });
+
     it("recomputes stream preview fields from remaining topics", () => {
       useChatListStore.getState().setFromMessages(
         [

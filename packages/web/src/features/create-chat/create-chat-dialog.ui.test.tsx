@@ -116,7 +116,7 @@ describe("CreateChatDialog", () => {
       {
         stream_uuid: "00000000-0000-4000-8000-000000000042",
         name: "engineering",
-        is_muted: false,
+        notification_mode: "all_messages",
         invite_only: true,
       },
     ]);
