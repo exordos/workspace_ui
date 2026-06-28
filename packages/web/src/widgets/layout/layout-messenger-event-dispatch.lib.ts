@@ -20,7 +20,6 @@ import {
   handleStreamBinding,
   handleSubscription,
   handleTopic,
-  handleUserTopic,
 } from "./layout-messenger-event-dispatch-subscription.lib";
 import type {
   LayoutNotificationsActions,
@@ -94,11 +93,6 @@ export function dispatchMessengerEvent(
 
   if (event.type === "folder_item") {
     runDispatchHandler("dispatch:folder_item", () => handleFolderItem(event, ctx));
-    return;
-  }
-
-  if (event.type === "user_topic") {
-    runDispatchHandler("dispatch:user_topic", () => handleUserTopic(event, ctx));
     return;
   }
 

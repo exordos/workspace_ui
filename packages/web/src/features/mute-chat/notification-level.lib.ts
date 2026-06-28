@@ -2,19 +2,27 @@
  * Workspace notification levels for streams and topics.
  *
  * Streams use Workspace `notification_mode` values from the gateway backend.
- * Topics use TopicVisibilityLevel (4 Workspace visibility_policy values).
+ * Topics use Workspace topic `notification_mode` values from the gateway backend.
  */
 
-import type { WorkspaceStreamNotificationMode } from "~/shared/api/messenger.types";
+import type {
+  WorkspaceStreamNotificationMode,
+  WorkspaceTopicNotificationMode,
+} from "~/shared/api/messenger.types";
 import {
   parseWorkspaceStreamNotificationMode,
   WORKSPACE_DEFAULT_STREAM_NOTIFICATION_MODE,
 } from "~/shared/lib/stream-notification-resolve.lib";
+import {
+  parseWorkspaceTopicNotificationMode,
+  WORKSPACE_DEFAULT_TOPIC_NOTIFICATION_MODE,
+} from "~/shared/lib/topic-notification-resolve.lib";
 
 export type NotificationLevel = "default" | "muted" | "subscribed";
 export type StreamNotificationMode = WorkspaceStreamNotificationMode;
+export type TopicNotificationMode = WorkspaceTopicNotificationMode;
 
-/** Topic visibility policy exposed by the UI. */
+/** Topic notification mode exposed by the UI. */
 export type TopicVisibilityLevel = "inherit" | "muted" | "unmuted" | "followed";
 
 /** @deprecated Use NotificationLevel — kept for channel call sites. */
@@ -44,28 +52,60 @@ export function parseStreamNotificationMode(value: unknown): StreamNotificationM
   return parseWorkspaceStreamNotificationMode(value);
 }
 
-/** Explicit topic override only (matches Workspace visibility_policy, not effective mute). */
-export function deriveTopicVisibilityLevel(
-  isTopicFollowed: boolean,
-  isTopicMuted: boolean,
-  isTopicUnmutedInMutedStream: boolean,
+export function parseTopicNotificationMode(value: unknown): TopicNotificationMode | null {
+  return parseWorkspaceTopicNotificationMode(value);
+}
+
+export function topicVisibilityLevelToMode(level: TopicVisibilityLevel): TopicNotificationMode {
+  switch (level) {
+    case "muted":
+      return "mute";
+    case "unmuted":
+      return "unmute";
+    case "followed":
+      return "follow";
+    case "inherit":
+      return WORKSPACE_DEFAULT_TOPIC_NOTIFICATION_MODE;
+    default: {
+      const _exhaustive: never = level;
+      return _exhaustive;
+    }
+  }
+}
+
+export function topicNotificationModeToVisibilityLevel(
+  notificationMode: TopicNotificationMode = WORKSPACE_DEFAULT_TOPIC_NOTIFICATION_MODE,
 ): TopicVisibilityLevel {
-  if (isTopicFollowed) return "followed";
-  if (isTopicMuted) return "muted";
-  if (isTopicUnmutedInMutedStream) return "unmuted";
+  if (notificationMode === "follow") return "followed";
+  if (notificationMode === "mute") return "muted";
+  if (notificationMode === "unmute") return "unmuted";
   return "inherit";
+}
+
+export function topicNotificationLevelToMode(
+  level: NotificationLevel,
+  isStreamMuted: boolean,
+): TopicNotificationMode {
+  if (level === "muted") return "mute";
+  if (level === "subscribed") return "follow";
+  return isStreamMuted ? "unmute" : WORKSPACE_DEFAULT_TOPIC_NOTIFICATION_MODE;
+}
+
+/** Explicit topic notification mode only, not effective mute. */
+export function deriveTopicVisibilityLevel(
+  notificationMode: TopicNotificationMode = WORKSPACE_DEFAULT_TOPIC_NOTIFICATION_MODE,
+): TopicVisibilityLevel {
+  return topicNotificationModeToVisibilityLevel(notificationMode);
 }
 
 /** Effective notification behavior (inherit + muted stream → muted). */
 export function deriveTopicNotificationLevel(
-  isTopicFollowed: boolean,
-  isTopicMuted: boolean,
-  isTopicUnmutedInMutedStream: boolean,
+  notificationMode: TopicNotificationMode = WORKSPACE_DEFAULT_TOPIC_NOTIFICATION_MODE,
   isEffectivelyMuted: boolean,
 ): NotificationLevel {
-  if (isTopicFollowed) return "subscribed";
-  if (isTopicMuted) return "muted";
-  if (isTopicUnmutedInMutedStream) return "default";
+  if (notificationMode === "follow") return "subscribed";
+  if (notificationMode === "mute") return "muted";
+  if (notificationMode === "unmute") return "default";
   if (isEffectivelyMuted) return "muted";
   return "default";
 }

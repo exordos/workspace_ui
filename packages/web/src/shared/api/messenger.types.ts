@@ -6,6 +6,7 @@ import type { LinkPreviewData } from "~/shared/lib/message-link-preview.types";
 import type { UserId } from "~/shared/lib/user-id.lib";
 
 export type WorkspaceStreamNotificationMode = "all_messages" | "mentions_only" | "muted";
+export type WorkspaceTopicNotificationMode = "default" | "mute" | "follow" | "unmute";
 
 export class MessengerAuthError extends Error {
   constructor(
@@ -25,13 +26,6 @@ export interface MessengerServerSettings {
   realm_uri: string;
   /** Canonical organization URL (server 9+). Alias of realm_uri in older docs. */
   realm_url: string;
-}
-
-export interface MessengerUserTopic {
-  stream_uuid: string;
-  topic_uuid?: string;
-  topic_name: string;
-  visibility_policy: number;
 }
 
 export interface MessengerRecentPrivateConversation {
@@ -103,6 +97,7 @@ export interface MessengerStreamTopic {
   unread_count: number;
   is_default: boolean;
   is_done: boolean;
+  notification_mode: WorkspaceTopicNotificationMode;
   project_id?: string;
   created_at?: string;
   updated_at?: string;

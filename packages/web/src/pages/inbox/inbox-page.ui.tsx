@@ -13,7 +13,7 @@ import {
   isActiveOrgRequestContextCurrent,
   useInstancesStore,
 } from "~/entities/instance/instance.model";
-import { topicKey, useMuteStore } from "~/features/mute-chat/mute-chat.model";
+import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { t } from "~/i18n/i18n";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { formatMessageTimeShort } from "~/shared/lib/datetime.lib";
@@ -80,9 +80,12 @@ export const InboxPage: React.FC = () => {
   const setError = useInboxStore((s) => s.setError);
   const entries = useInboxStore((s) => s.sortedEntries());
   const mutedStreamIds = useMuteStore((s) => s.mutedStreamIds);
-  const mutedTopicKeys = useMuteStore((s) => s.mutedTopicKeys);
-  const unmutedTopicKeys = useMuteStore((s) => s.unmutedTopicKeys);
-  const followedTopicKeys = useMuteStore((s) => s.followedTopicKeys);
+  const streamNotificationModes = useMuteStore((s) => s.streamNotificationModes);
+  const topicNotificationModes = useMuteStore((s) => s.topicNotificationModes);
+  const isStreamMuted = useMuteStore((s) => s.isStreamMuted);
+  const isTopicMuted = useMuteStore((s) => s.isTopicMuted);
+  const isTopicUnmuted = useMuteStore((s) => s.isTopicUnmuted);
+  const isTopicFollowed = useMuteStore((s) => s.isTopicFollowed);
   const inboxMetadataKey = useMemo(() => {
     const parts: string[] = [];
     for (const stream of streamsMap.values()) {
@@ -102,14 +105,27 @@ export const InboxPage: React.FC = () => {
     () =>
       entries.filter((entry) => {
         if (entry.streamId == null) return true;
-        if (mutedStreamIds.has(entry.streamId)) return false;
-        if (entry.topic == null) return true;
-        const key = topicKey(entry.streamId, entry.topic);
-        if (unmutedTopicKeys.has(key) || followedTopicKeys.has(key)) return true;
-        if (mutedTopicKeys.has(key)) return false;
+        if (entry.topic == null) return !isStreamMuted(entry.streamId);
+        if (
+          isTopicUnmuted(entry.streamId, entry.topic) ||
+          isTopicFollowed(entry.streamId, entry.topic)
+        ) {
+          return true;
+        }
+        if (isTopicMuted(entry.streamId, entry.topic)) return false;
+        if (isStreamMuted(entry.streamId)) return false;
         return true;
       }),
-    [entries, followedTopicKeys, mutedStreamIds, mutedTopicKeys, unmutedTopicKeys],
+    [
+      entries,
+      isStreamMuted,
+      isTopicFollowed,
+      isTopicMuted,
+      isTopicUnmuted,
+      mutedStreamIds,
+      streamNotificationModes,
+      topicNotificationModes,
+    ],
   );
   const grouped = useMemo(() => groupInboxEntries(visibleEntries), [visibleEntries]);
   const lastInstanceIdRef = useRef<string | null>(null);

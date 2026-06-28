@@ -1,57 +1,72 @@
 /**
  * Mute/unmute API facade.
  *
- * Stream notification writes use the Workspace stream notifications action.
- * Topic visibility writes are not exposed by the Workspace gateway backend yet.
+ * Stream and topic notification writes use Workspace notification actions.
  */
 
 import { getMessengerWorkspaceApiBaseForCurrentInstance, messengerApi } from "~/shared/api/client";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
-import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { useMuteStore } from "./mute-chat.model";
-import { VISIBILITY_POLICY, type VisibilityPolicy } from "./mute-chat.types";
 import {
   streamNotificationLevelToMode,
+  topicNotificationLevelToMode,
+  topicVisibilityLevelToMode,
   type NotificationLevel,
   type StreamNotificationMode,
+  type TopicNotificationMode,
   type TopicVisibilityLevel,
 } from "./notification-level.lib";
 
 const log = createLogger("mute:api");
 
-async function postStreamNotificationMode(
-  streamUuid: string,
-  notificationMode: StreamNotificationMode,
+async function postNotificationModeAction(
+  url: string,
+  payload: { notification_mode: StreamNotificationMode | TopicNotificationMode },
+  logContext: Record<string, unknown>,
 ): Promise<boolean> {
   try {
     const response = await messengerApi.postJsonWithBase(
       getMessengerWorkspaceApiBaseForCurrentInstance(),
-      `/streams/${streamUuid}/actions/notifications/invoke`,
-      { notification_mode: notificationMode },
+      url,
+      payload,
     );
     if (!response.ok) {
-      log.warn("Stream notification action failed", {
-        streamId: streamUuid,
-        notificationMode,
-        status: response.status,
-      });
+      log.warn("Notification action failed", { ...logContext, status: response.status });
       return false;
     }
     const data = response.data as { result?: string } | undefined;
     if (data?.result === "error") {
-      log.warn("Stream notification action returned error", { streamId: streamUuid });
+      log.warn("Notification action returned error", logContext);
       return false;
     }
     return true;
   } catch (error) {
-    log.warn("Stream notification action request failed", {
-      streamId: streamUuid,
-      notificationMode,
-      error: String(error),
-    });
+    log.warn("Notification action request failed", { ...logContext, error: String(error) });
     return false;
   }
+}
+
+async function postStreamNotificationMode(
+  streamUuid: string,
+  notificationMode: StreamNotificationMode,
+): Promise<boolean> {
+  return postNotificationModeAction(
+    `/streams/${streamUuid}/actions/notifications/invoke`,
+    { notification_mode: notificationMode },
+    { target: "stream", streamId: streamUuid, notificationMode },
+  );
+}
+
+async function postTopicNotificationMode(
+  topicUuid: string,
+  notificationMode: TopicNotificationMode,
+): Promise<boolean> {
+  return postNotificationModeAction(
+    `/stream_topics/${topicUuid}/actions/notifications/invoke`,
+    { notification_mode: notificationMode },
+    { target: "topic", topicId: topicUuid, notificationMode },
+  );
 }
 
 /**
@@ -80,29 +95,19 @@ export async function setStreamNotificationLevel(
   return ok;
 }
 
-/**
- * Set topic visibility policy (mute/unmute/follow).
- *
- * Policies:
- *   0 = inherit (remove explicit override)
- *   1 = muted
- *   2 = unmuted (overrides stream-level mute)
- *   3 = followed
- */
-export function setTopicVisibility(
+/** Applies Workspace topic notification mode by topic UUID. */
+export async function setTopicNotificationMode(
   streamId: string,
   topic: string,
-  policy: VisibilityPolicy,
+  notificationMode: TopicNotificationMode,
 ): Promise<boolean> {
-  const streamUuid = guard.streamUuid(streamId, "setTopicVisibility");
-  const normalizedTopic = normalizeTopicForIdentity(topic);
-
-  log.warn("Topic visibility is unsupported by the current backend", {
-    streamId: streamUuid,
-    topic: normalizedTopic,
-    policy,
-  });
-  return Promise.resolve(false);
+  guard.streamUuid(streamId, "setTopicNotificationMode.streamId");
+  const topicUuid = guard.streamUuid(topic, "setTopicNotificationMode.topicUuid");
+  const ok = await postTopicNotificationMode(topicUuid, notificationMode);
+  if (ok) {
+    log.info("Topic notification mode set", { streamId, topicId: topicUuid, notificationMode });
+  }
+  return ok;
 }
 
 export async function muteStream(streamId: string): Promise<boolean> {
@@ -113,60 +118,34 @@ export async function unmuteStream(streamId: string): Promise<boolean> {
   return setStreamMuted(streamId, false);
 }
 
-function topicVisibilityLevelToPolicy(level: TopicVisibilityLevel): VisibilityPolicy {
-  switch (level) {
-    case "muted":
-      return VISIBILITY_POLICY.MUTED;
-    case "unmuted":
-      return VISIBILITY_POLICY.UNMUTED;
-    case "followed":
-      return VISIBILITY_POLICY.FOLLOWED;
-    case "inherit":
-      return VISIBILITY_POLICY.INHERIT;
-    default: {
-      const _exhaustive: never = level;
-      return _exhaustive;
-    }
-  }
-}
-
-/** Validates topic visibility policy values (0-3). */
+/** Validates and applies the topic notification mode exposed by the 4-level topic UI. */
 export async function setTopicVisibilityLevel(
   streamId: string,
   topic: string,
   level: TopicVisibilityLevel,
 ): Promise<boolean> {
-  guard.streamUuid(streamId, "setTopicVisibilityLevel");
-  return setTopicVisibility(streamId, topic, topicVisibilityLevelToPolicy(level));
+  return setTopicNotificationMode(streamId, topic, topicVisibilityLevelToMode(level));
 }
 
-/** Maps the 3-level UI to local topic visibility semantics. */
+/** Maps the 3-level UI to Workspace topic notification modes. */
 export async function setTopicNotificationLevel(
   streamId: string,
   topic: string,
   level: NotificationLevel,
 ): Promise<boolean> {
   guard.streamUuid(streamId, "setTopicNotificationLevel");
-  if (level === "muted") {
-    return setTopicVisibilityLevel(streamId, topic, "muted");
-  }
-  if (level === "subscribed") {
-    return setTopicVisibilityLevel(streamId, topic, "followed");
-  }
-  if (useMuteStore.getState().isStreamMuted(streamId)) {
-    return setTopicVisibilityLevel(streamId, topic, "unmuted");
-  }
-  return setTopicVisibilityLevel(streamId, topic, "inherit");
+  const mode = topicNotificationLevelToMode(level, useMuteStore.getState().isStreamMuted(streamId));
+  return setTopicNotificationMode(streamId, topic, mode);
 }
 
 export async function muteTopic(streamId: string, topic: string): Promise<boolean> {
-  return setTopicVisibility(streamId, topic, VISIBILITY_POLICY.MUTED);
+  return setTopicNotificationMode(streamId, topic, "mute");
 }
 
 export async function unmuteTopic(streamId: string, topic: string): Promise<boolean> {
-  return setTopicVisibility(streamId, topic, VISIBILITY_POLICY.INHERIT);
+  return setTopicNotificationMode(streamId, topic, "default");
 }
 
 export async function unmuteTopicInMutedStream(streamId: string, topic: string): Promise<boolean> {
-  return setTopicVisibility(streamId, topic, VISIBILITY_POLICY.UNMUTED);
+  return setTopicNotificationMode(streamId, topic, "unmute");
 }

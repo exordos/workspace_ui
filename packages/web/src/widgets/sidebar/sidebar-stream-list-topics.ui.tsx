@@ -115,7 +115,7 @@ export const SidebarStreamListTopics = React.memo<SidebarStreamListTopicsProps>(
                   sideActions={
                     <TopicMuteButton
                       streamId={stream.streamUuid}
-                      topic={topic.subject}
+                      topic={topic.topicUuid ?? topic.subject}
                       onMuteError={onMuteError}
                     />
                   }

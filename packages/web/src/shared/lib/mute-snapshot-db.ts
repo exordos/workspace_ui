@@ -2,12 +2,15 @@
  * IndexedDB persistence for mute-state snapshots.
  * Gives the UI instant mute state on cold start before register completes.
  */
-import type { WorkspaceStreamNotificationMode } from "~/shared/api/messenger.types";
+import type {
+  WorkspaceStreamNotificationMode,
+  WorkspaceTopicNotificationMode,
+} from "~/shared/api/messenger.types";
 import { openMessageCacheDb } from "~/shared/lib/message-cache-db";
 
 const STORE_MUTE_SNAPSHOT = "muteSnapshot";
 
-export type MuteSnapshotRowVersion = 1 | 2 | 3;
+export type MuteSnapshotRowVersion = 1 | 2 | 3 | 4;
 
 export interface MuteSnapshotTopicRow {
   streamId: string;
@@ -38,21 +41,38 @@ export interface MuteSnapshotRowV3 extends Omit<MuteSnapshotRowV1, "version"> {
   streamNotificationModes: MuteSnapshotStreamNotificationModeRow[];
 }
 
-export type MuteSnapshotRow = MuteSnapshotRowV1 | MuteSnapshotRowV2 | MuteSnapshotRowV3;
+export interface MuteSnapshotTopicNotificationModeRow {
+  streamId: string;
+  topic: string;
+  mode: WorkspaceTopicNotificationMode;
+}
 
-function normalizeMuteSnapshotRow(row: MuteSnapshotRow): MuteSnapshotRowV3 {
-  if (row.version === 3) {
+export interface MuteSnapshotRowV4 {
+  instanceId: string;
+  version: 4;
+  savedAt: number;
+  mutedStreamIds: string[];
+  streamNotificationModes: MuteSnapshotStreamNotificationModeRow[];
+  topicNotificationModes: MuteSnapshotTopicNotificationModeRow[];
+}
+
+export type MuteSnapshotRow =
+  | MuteSnapshotRowV1
+  | MuteSnapshotRowV2
+  | MuteSnapshotRowV3
+  | MuteSnapshotRowV4;
+
+function normalizeMuteSnapshotRow(row: MuteSnapshotRow): MuteSnapshotRowV4 {
+  if (row.version === 4) {
     return row;
   }
   return {
     instanceId: row.instanceId,
-    version: 3,
+    version: 4,
     savedAt: row.savedAt,
     mutedStreamIds: row.mutedStreamIds,
-    mutedTopics: row.mutedTopics,
-    unmutedTopics: row.unmutedTopics,
-    followedTopics: row.followedTopics,
-    streamNotificationModes: [],
+    streamNotificationModes: row.version === 3 ? row.streamNotificationModes : [],
+    topicNotificationModes: [],
   };
 }
 
@@ -61,7 +81,7 @@ function idbError(reason: unknown): Error {
 }
 
 /** Write-through after local changes or successful register; best-effort (must not crash UI). */
-export async function persistMuteSnapshotRow(row: MuteSnapshotRowV3): Promise<void> {
+export async function persistMuteSnapshotRow(row: MuteSnapshotRowV4): Promise<void> {
   if (typeof indexedDB === "undefined") return;
   try {
     const db = await openMessageCacheDb();
@@ -76,11 +96,11 @@ export async function persistMuteSnapshotRow(row: MuteSnapshotRowV3): Promise<vo
   }
 }
 
-export async function loadMuteSnapshotRow(instanceId: string): Promise<MuteSnapshotRowV3 | null> {
+export async function loadMuteSnapshotRow(instanceId: string): Promise<MuteSnapshotRowV4 | null> {
   if (typeof indexedDB === "undefined") return null;
   try {
     const db = await openMessageCacheDb();
-    return await new Promise<MuteSnapshotRowV3 | null>((resolve, reject) => {
+    return await new Promise<MuteSnapshotRowV4 | null>((resolve, reject) => {
       const tx = db.transaction(STORE_MUTE_SNAPSHOT, "readonly");
       const req = tx.objectStore(STORE_MUTE_SNAPSHOT).get(instanceId);
       req.onerror = () => reject(idbError(req.error));

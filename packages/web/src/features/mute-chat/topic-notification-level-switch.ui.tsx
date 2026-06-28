@@ -13,7 +13,7 @@ export interface TopicNotificationLevelCycleButtonProps {
   className?: string;
 }
 
-/** Cycles topic visibility_policy on click — for sidebar topic rows. */
+/** Cycles topic notification mode on click — for sidebar topic rows. */
 export const TopicNotificationLevelCycleButton = React.memo<TopicNotificationLevelCycleButtonProps>(
   ({ streamId, topic, onError, onMuteError, className }) => {
     const handleError = onError ?? onMuteError;
@@ -49,7 +49,7 @@ export interface TopicNotificationLevelMenuPickerProps {
   onError?: (retry: () => void) => void;
 }
 
-/** visibility_policy picker — context menu only (3 or 4 segments like Workspace). */
+/** Topic notification mode picker — context menu only (3 or 4 segments like Workspace). */
 export const TopicNotificationLevelMenuPicker = React.memo<TopicNotificationLevelMenuPickerProps>(
   ({ streamId, topic, onError }) => {
     const { visibilityLevel, streamMuted, topicExplicitlyUnmuted, pending, applyLevel } =

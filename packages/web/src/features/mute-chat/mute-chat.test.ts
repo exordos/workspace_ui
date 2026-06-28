@@ -27,6 +27,7 @@ const STREAM_UUID_7 = "00000000-0000-4000-8000-000000000007";
 const STREAM_UUID_20 = "00000000-0000-4000-8000-000000000020";
 const STREAM_UUID_42 = "00000000-0000-4000-8000-000000000042";
 const UNKNOWN_STREAM_UUID = "00000000-0000-4000-8000-000000000999";
+const TEST_TOPIC_UUID = "00000000-0000-4000-8000-0000000000aa";
 
 function okApiResponse(): {
   ok: true;
@@ -157,9 +158,23 @@ describe("useMuteStore", () => {
     it("sets muted streams and topics from server data", () => {
       useMuteStore.getState().setFromServer({
         mutedStreamIds: [TEST_STREAM_UUID, STREAM_UUID_20],
-        mutedTopics: [{ streamId: "00000000-0000-4000-8000-000000000010", topic: "spam" }],
-        unmutedTopics: [{ streamId: "00000000-0000-4000-8000-000000000020", topic: "important" }],
-        followedTopics: [{ streamId: "00000000-0000-4000-8000-000000000020", topic: "incidents" }],
+        topicNotificationModes: [
+          {
+            streamId: "00000000-0000-4000-8000-000000000010",
+            topic: "spam",
+            mode: "mute",
+          },
+          {
+            streamId: "00000000-0000-4000-8000-000000000020",
+            topic: "important",
+            mode: "unmute",
+          },
+          {
+            streamId: "00000000-0000-4000-8000-000000000020",
+            topic: "incidents",
+            mode: "follow",
+          },
+        ],
       });
 
       expect(useMuteStore.getState().isStreamMuted(TEST_STREAM_UUID)).toBe(true);
@@ -172,9 +187,6 @@ describe("useMuteStore", () => {
     it("sets stream notification modes", () => {
       useMuteStore.getState().setFromServer({
         mutedStreamIds: [],
-        mutedTopics: [],
-        unmutedTopics: [],
-        followedTopics: [],
         streamNotificationModes: [
           { streamId: STREAM_UUID_42, mode: "all_messages" },
           { streamId: STREAM_UUID_7, mode: "mentions_only" },
@@ -235,7 +247,7 @@ describe("mute-chat optimistic helpers", () => {
 
   it("captures topic visibility snapshot from store", () => {
     useMuteStore.getState().followTopic(TEST_STREAM_UUID, "incidents");
-    expect(captureTopicVisibilityOverrideSnapshot(TEST_STREAM_UUID, "incidents")).toBe("followed");
+    expect(captureTopicVisibilityOverrideSnapshot(TEST_STREAM_UUID, "incidents")).toBe("follow");
   });
 
   it("keeps optimistic topic state on successful request", async () => {
@@ -392,24 +404,31 @@ describe("mute-chat API", () => {
     });
   });
 
-  describe("setTopicVisibility", () => {
-    it("returns false without calling the removed topic visibility endpoint", async () => {
+  describe("setTopicNotificationMode", () => {
+    it("posts topic notification mode by topic UUID", async () => {
       const { messengerApi } = await import("~/shared/api/client");
-      const { setTopicVisibility } = await import("./mute-chat.api");
+      const { setTopicNotificationMode } = await import("./mute-chat.api");
+      vi.mocked(messengerApi.postJsonWithBase).mockResolvedValueOnce(okApiResponse());
 
-      await expect(setTopicVisibility(TEST_STREAM_UUID, "announcements", 1)).resolves.toBe(false);
+      await expect(
+        setTopicNotificationMode(TEST_STREAM_UUID, TEST_TOPIC_UUID, "follow"),
+      ).resolves.toBe(true);
 
-      expect(messengerApi.post).not.toHaveBeenCalled();
+      expect(messengerApi.postJsonWithBase).toHaveBeenCalledWith(
+        "/api/messenger/v1",
+        `/stream_topics/${TEST_TOPIC_UUID}/actions/notifications/invoke`,
+        { notification_mode: "follow" },
+      );
     });
 
-    it("still validates stream UUIDs before returning unsupported", async () => {
+    it("validates topic UUIDs before posting", async () => {
       const { messengerApi } = await import("~/shared/api/client");
-      const { setTopicVisibility } = await import("./mute-chat.api");
+      const { setTopicNotificationMode } = await import("./mute-chat.api");
 
-      await expect(setTopicVisibility("not-a-uuid", "announcements", 1)).rejects.toThrow(
-        /Invalid streamUuid/,
-      );
-      expect(messengerApi.post).not.toHaveBeenCalled();
+      await expect(
+        setTopicNotificationMode(TEST_STREAM_UUID, "announcements", "mute"),
+      ).rejects.toThrow(/Invalid streamUuid/);
+      expect(messengerApi.postJsonWithBase).not.toHaveBeenCalled();
     });
   });
 
@@ -475,44 +494,86 @@ describe("mute-chat API", () => {
     });
   });
 
-  describe("topic visibility wrappers", () => {
-    it("return false without calling the removed topic visibility endpoint", async () => {
+  describe("topic notification wrappers", () => {
+    it("post topic notification modes", async () => {
       const { messengerApi } = await import("~/shared/api/client");
       const { muteTopic, unmuteTopic, unmuteTopicInMutedStream } = await import("./mute-chat.api");
+      vi.mocked(messengerApi.postJsonWithBase).mockResolvedValue(okApiResponse());
 
-      await expect(muteTopic(TEST_STREAM_UUID, "off-topic")).resolves.toBe(false);
-      await expect(unmuteTopic(TEST_STREAM_UUID, "off-topic")).resolves.toBe(false);
-      await expect(unmuteTopicInMutedStream(TEST_STREAM_UUID, "off-topic")).resolves.toBe(false);
+      await expect(muteTopic(TEST_STREAM_UUID, TEST_TOPIC_UUID)).resolves.toBe(true);
+      await expect(unmuteTopic(TEST_STREAM_UUID, TEST_TOPIC_UUID)).resolves.toBe(true);
+      await expect(unmuteTopicInMutedStream(TEST_STREAM_UUID, TEST_TOPIC_UUID)).resolves.toBe(true);
 
-      expect(messengerApi.post).not.toHaveBeenCalled();
+      expect(messengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
+        1,
+        "/api/messenger/v1",
+        `/stream_topics/${TEST_TOPIC_UUID}/actions/notifications/invoke`,
+        { notification_mode: "mute" },
+      );
+      expect(messengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
+        2,
+        "/api/messenger/v1",
+        `/stream_topics/${TEST_TOPIC_UUID}/actions/notifications/invoke`,
+        { notification_mode: "default" },
+      );
+      expect(messengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
+        3,
+        "/api/messenger/v1",
+        `/stream_topics/${TEST_TOPIC_UUID}/actions/notifications/invoke`,
+        { notification_mode: "unmute" },
+      );
     });
   });
 
   describe("topic notification level helpers", () => {
-    it("return false without calling the removed topic visibility endpoint", async () => {
+    it("post topic notification modes for topic UI levels", async () => {
       const { messengerApi } = await import("~/shared/api/client");
       const { setTopicNotificationLevel, setTopicVisibilityLevel } =
         await import("./mute-chat.api");
+      vi.mocked(messengerApi.postJsonWithBase).mockResolvedValue(okApiResponse());
 
-      await expect(setTopicNotificationLevel(TEST_STREAM_UUID, "general", "muted")).resolves.toBe(
-        false,
-      );
       await expect(
-        setTopicNotificationLevel(TEST_STREAM_UUID, "general", "subscribed"),
-      ).resolves.toBe(false);
-      await expect(setTopicNotificationLevel(TEST_STREAM_UUID, "general", "default")).resolves.toBe(
-        false,
-      );
-      await expect(setTopicVisibilityLevel(TEST_STREAM_UUID, "general", "followed")).resolves.toBe(
-        false,
-      );
+        setTopicNotificationLevel(TEST_STREAM_UUID, TEST_TOPIC_UUID, "muted"),
+      ).resolves.toBe(true);
+      await expect(
+        setTopicNotificationLevel(TEST_STREAM_UUID, TEST_TOPIC_UUID, "subscribed"),
+      ).resolves.toBe(true);
+      await expect(
+        setTopicNotificationLevel(TEST_STREAM_UUID, TEST_TOPIC_UUID, "default"),
+      ).resolves.toBe(true);
+      await expect(
+        setTopicVisibilityLevel(TEST_STREAM_UUID, TEST_TOPIC_UUID, "followed"),
+      ).resolves.toBe(true);
 
-      expect(messengerApi.post).not.toHaveBeenCalled();
+      expect(messengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
+        1,
+        "/api/messenger/v1",
+        `/stream_topics/${TEST_TOPIC_UUID}/actions/notifications/invoke`,
+        { notification_mode: "mute" },
+      );
+      expect(messengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
+        2,
+        "/api/messenger/v1",
+        `/stream_topics/${TEST_TOPIC_UUID}/actions/notifications/invoke`,
+        { notification_mode: "follow" },
+      );
+      expect(messengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
+        3,
+        "/api/messenger/v1",
+        `/stream_topics/${TEST_TOPIC_UUID}/actions/notifications/invoke`,
+        { notification_mode: "default" },
+      );
+      expect(messengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
+        4,
+        "/api/messenger/v1",
+        `/stream_topics/${TEST_TOPIC_UUID}/actions/notifications/invoke`,
+        { notification_mode: "follow" },
+      );
     });
   });
 
   describe("getTopicVisibilityLevel", () => {
-    it("reflects explicit visibility_policy overrides only", () => {
+    it("reflects explicit topic notification modes only", () => {
       useMuteStore.getState().followTopic(TEST_STREAM_UUID, "alerts");
       expect(useMuteStore.getState().getTopicVisibilityLevel(TEST_STREAM_UUID, "alerts")).toBe(
         "followed",

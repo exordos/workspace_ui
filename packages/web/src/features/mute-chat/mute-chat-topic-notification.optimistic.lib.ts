@@ -2,32 +2,16 @@ import { guard } from "~/shared/lib/guards";
 import { optimisticMutation } from "~/shared/lib/optimistic-mutation.lib";
 import { useMuteStore } from "./mute-chat.model";
 import { captureTopicVisibilityOverrideSnapshot } from "./mute-chat.optimistic.lib";
-import type { TopicVisibilityLevel } from "./notification-level.lib";
+import { topicVisibilityLevelToMode, type TopicVisibilityLevel } from "./notification-level.lib";
 
 function applyTopicVisibilityLevelOptimistic(
   streamId: string,
   topic: string,
   level: TopicVisibilityLevel,
 ): void {
-  const muteStore = useMuteStore.getState();
-  switch (level) {
-    case "muted":
-      muteStore.muteTopic(streamId, topic);
-      break;
-    case "unmuted":
-      muteStore.unmuteTopic(streamId, topic);
-      break;
-    case "followed":
-      muteStore.followTopic(streamId, topic);
-      break;
-    case "inherit":
-      muteStore.clearTopicVisibilityOverride(streamId, topic);
-      break;
-    default: {
-      const _exhaustive: never = level;
-      void _exhaustive;
-    }
-  }
+  useMuteStore
+    .getState()
+    .setTopicNotificationMode(streamId, topic, topicVisibilityLevelToMode(level));
 }
 
 interface RunOptimisticTopicVisibilityLevelUpdateParams {
@@ -50,20 +34,7 @@ export async function runOptimisticTopicVisibilityLevelUpdate({
     request,
     reconcile: () => {},
     rollback: () => {
-      const muteStore = useMuteStore.getState();
-      if (snapshot === "muted") {
-        muteStore.muteTopic(streamId, topic);
-        return;
-      }
-      if (snapshot === "followed") {
-        muteStore.followTopic(streamId, topic);
-        return;
-      }
-      if (snapshot === "unmuted") {
-        muteStore.unmuteTopic(streamId, topic);
-        return;
-      }
-      muteStore.clearTopicVisibilityOverride(streamId, topic);
+      useMuteStore.getState().setTopicNotificationMode(streamId, topic, snapshot);
     },
     rollbackOnFalsy: true,
     label: "topic-visibility-level",

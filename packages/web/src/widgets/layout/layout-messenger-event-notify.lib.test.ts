@@ -50,10 +50,8 @@ function createRawMessage(overrides: WorkspaceRawMessageOverrides = {}): Workspa
 function setMuteSnapshot(overrides: Partial<MuteSnapshotInput> = {}): void {
   useMuteStore.getState().setFromServer({
     mutedStreamIds: [],
-    mutedTopics: [],
-    unmutedTopics: [],
-    followedTopics: [],
     streamNotificationModes: [],
+    topicNotificationModes: [],
     ...overrides,
   });
 }
@@ -221,7 +219,7 @@ describe("maybeNotifyNewMessage", () => {
   it("suppresses a followed topic in a muted channel", () => {
     setMuteSnapshot({
       streamNotificationModes: [{ streamId: STREAM_UUID, mode: "muted" }],
-      followedTopics: [{ streamId: STREAM_UUID, topic: "Bugs" }],
+      topicNotificationModes: [{ streamId: STREAM_UUID, topic: "Bugs", mode: "follow" }],
     });
     const notifications = createNotifications();
 
@@ -234,7 +232,7 @@ describe("maybeNotifyNewMessage", () => {
   it("suppresses an unmuted topic in a muted channel", () => {
     setMuteSnapshot({
       streamNotificationModes: [{ streamId: STREAM_UUID, mode: "muted" }],
-      unmutedTopics: [{ streamId: STREAM_UUID, topic: "Bugs" }],
+      topicNotificationModes: [{ streamId: STREAM_UUID, topic: "Bugs", mode: "unmute" }],
     });
     const notifications = createNotifications();
     const ctx = createContext(notifications);
@@ -305,8 +303,8 @@ describe("maybeNotifyNewMessage", () => {
 
   it("suppresses a muted topic even in a subscribed channel", () => {
     setMuteSnapshot({
-      mutedTopics: [{ streamId: STREAM_UUID, topic: "Bugs" }],
       streamNotificationModes: [{ streamId: STREAM_UUID, mode: "all_messages" }],
+      topicNotificationModes: [{ streamId: STREAM_UUID, topic: "Bugs", mode: "mute" }],
     });
     const notifications = createNotifications();
 
@@ -316,7 +314,9 @@ describe("maybeNotifyNewMessage", () => {
   });
 
   it("allows a followed topic when followed-topic desktop notifications are enabled", () => {
-    setMuteSnapshot({ followedTopics: [{ streamId: STREAM_UUID, topic: "Bugs" }] });
+    setMuteSnapshot({
+      topicNotificationModes: [{ streamId: STREAM_UUID, topic: "Bugs", mode: "follow" }],
+    });
     const notifications = createNotifications();
 
     maybeNotifyNewMessage(createContext(notifications), createRawMessage(), 7, false, false);

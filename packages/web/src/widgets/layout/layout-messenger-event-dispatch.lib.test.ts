@@ -92,6 +92,7 @@ function buildCtx(
       followTopic: noop,
       clearTopicVisibilityOverride: noop,
       setStreamNotificationMode: noop,
+      setTopicNotificationMode: noop,
     },
     activity: {
       markStale: noop,
@@ -144,6 +145,7 @@ function buildIntegrationCtx(): LayoutMessengerEventDispatchContext {
       followTopic: noop,
       clearTopicVisibilityOverride: noop,
       setStreamNotificationMode: noop,
+      setTopicNotificationMode: noop,
     },
     activity: {
       markStale: noop,
@@ -619,62 +621,6 @@ describe("dispatchMessengerEvent", () => {
     });
   });
 
-  describe("user_topic", () => {
-    it("maps policy=0 to clearing topic visibility override", () => {
-      const { ctx } = buildCtx();
-      const clearSpy = vi.spyOn(ctx.mute, "clearTopicVisibilityOverride");
-
-      dispatchMessengerEvent(
-        {
-          id: 3,
-          type: "user_topic",
-          stream_uuid: "00000000-0000-4000-8000-000000000042",
-          topic_name: "incidents",
-          visibility_policy: 0,
-        },
-        ctx,
-      );
-
-      expect(clearSpy).toHaveBeenCalledWith(STREAM_UUID_42, "incidents");
-    });
-
-    it("maps policy=3 (followed) to separate followed topic state", () => {
-      const { ctx } = buildCtx();
-      const followSpy = vi.spyOn(ctx.mute, "followTopic");
-
-      dispatchMessengerEvent(
-        {
-          id: 4,
-          type: "user_topic",
-          stream_uuid: "00000000-0000-4000-8000-000000000042",
-          topic_name: "incidents",
-          visibility_policy: 3,
-        },
-        ctx,
-      );
-
-      expect(followSpy).toHaveBeenCalledWith(STREAM_UUID_42, "incidents");
-    });
-
-    it("normalizes user_topic names before updating mute store", () => {
-      const { ctx } = buildCtx();
-      const followSpy = vi.spyOn(ctx.mute, "followTopic");
-
-      dispatchMessengerEvent(
-        {
-          id: 5,
-          type: "user_topic",
-          stream_uuid: "00000000-0000-4000-8000-000000000042",
-          topic_name: "  incidents  ",
-          visibility_policy: 3,
-        },
-        ctx,
-      );
-
-      expect(followSpy).toHaveBeenCalledWith(STREAM_UUID_42, "incidents");
-    });
-  });
-
   describe("topic", () => {
     it("upserts sidebar topic metadata on backend topic.updated", () => {
       const { ctx } = buildCtx();
@@ -710,6 +656,7 @@ describe("dispatchMessengerEvent", () => {
     it("removes sidebar topic metadata on backend topic.deleted", () => {
       const { ctx } = buildCtx();
       const removeSpy = vi.spyOn(ctx.chatList, "removeStreamTopic");
+      const clearSpy = vi.spyOn(ctx.mute, "clearTopicVisibilityOverride");
 
       dispatchMessengerEvent(
         {
@@ -725,6 +672,28 @@ describe("dispatchMessengerEvent", () => {
       );
 
       expect(removeSpy).toHaveBeenCalledWith(STREAM_UUID_42, TOPIC_UUID_7);
+      expect(clearSpy).toHaveBeenCalledWith(STREAM_UUID_42, TOPIC_UUID_7);
+    });
+
+    it("updates topic notification mode on backend topic.updated", () => {
+      const { ctx } = buildCtx();
+      const modeSpy = vi.spyOn(ctx.mute, "setTopicNotificationMode");
+
+      dispatchMessengerEvent(
+        {
+          id: 32,
+          type: "topic",
+          kind: "topic.updated",
+          topic: {
+            uuid: TOPIC_UUID_7,
+            stream_uuid: STREAM_UUID_42,
+            notification_mode: "follow",
+          },
+        },
+        ctx,
+      );
+
+      expect(modeSpy).toHaveBeenCalledWith(STREAM_UUID_42, TOPIC_UUID_7, "follow");
     });
   });
 

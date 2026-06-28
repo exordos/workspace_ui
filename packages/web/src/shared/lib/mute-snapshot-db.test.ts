@@ -26,6 +26,13 @@ const EMPTY_STREAM_NOTIFICATION_FIELDS = {
     mode: "all_messages" | "mentions_only" | "muted";
   }[],
 };
+const EMPTY_TOPIC_NOTIFICATION_FIELDS = {
+  topicNotificationModes: [] as {
+    streamId: string;
+    topic: string;
+    mode: "default" | "mute" | "follow" | "unmute";
+  }[],
+};
 
 afterEach(async () => {
   try {
@@ -47,26 +54,30 @@ describe("mute-snapshot-db", () => {
     await openMessageCacheDb();
     await persistMuteSnapshotRow({
       instanceId: INSTANCE,
-      version: 3,
+      version: 4,
       savedAt: 1710000000000,
       mutedStreamIds: [STREAM_UUID_10, STREAM_UUID_20],
-      mutedTopics: [{ streamId: STREAM_UUID_10, topic: "news" }],
-      unmutedTopics: [{ streamId: STREAM_UUID_20, topic: "important" }],
-      followedTopics: [{ streamId: STREAM_UUID_20, topic: "incidents" }],
       streamNotificationModes: [{ streamId: STREAM_UUID_30, mode: "all_messages" }],
+      topicNotificationModes: [
+        { streamId: STREAM_UUID_10, topic: "news", mode: "mute" },
+        { streamId: STREAM_UUID_20, topic: "important", mode: "unmute" },
+        { streamId: STREAM_UUID_20, topic: "incidents", mode: "follow" },
+      ],
     });
 
     const row = await loadMuteSnapshotRow(INSTANCE);
     expect(row).not.toBeNull();
     expect(row).toEqual({
       instanceId: INSTANCE,
-      version: 3,
+      version: 4,
       savedAt: 1710000000000,
       mutedStreamIds: [STREAM_UUID_10, STREAM_UUID_20],
-      mutedTopics: [{ streamId: STREAM_UUID_10, topic: "news" }],
-      unmutedTopics: [{ streamId: STREAM_UUID_20, topic: "important" }],
-      followedTopics: [{ streamId: STREAM_UUID_20, topic: "incidents" }],
       streamNotificationModes: [{ streamId: STREAM_UUID_30, mode: "all_messages" }],
+      topicNotificationModes: [
+        { streamId: STREAM_UUID_10, topic: "news", mode: "mute" },
+        { streamId: STREAM_UUID_20, topic: "important", mode: "unmute" },
+        { streamId: STREAM_UUID_20, topic: "incidents", mode: "follow" },
+      ],
     });
   });
 
@@ -91,13 +102,11 @@ describe("mute-snapshot-db", () => {
     const row = await loadMuteSnapshotRow(INSTANCE);
     expect(row).toEqual({
       instanceId: INSTANCE,
-      version: 3,
+      version: 4,
       savedAt: 1,
       mutedStreamIds: [STREAM_UUID_1],
-      mutedTopics: [],
-      unmutedTopics: [],
-      followedTopics: [],
       ...EMPTY_STREAM_NOTIFICATION_FIELDS,
+      ...EMPTY_TOPIC_NOTIFICATION_FIELDS,
     });
   });
 
@@ -105,13 +114,11 @@ describe("mute-snapshot-db", () => {
     await openMessageCacheDb();
     await persistMuteSnapshotRow({
       instanceId: INSTANCE,
-      version: 3,
+      version: 4,
       savedAt: 1,
       mutedStreamIds: [STREAM_UUID_1],
-      mutedTopics: [],
-      unmutedTopics: [],
-      followedTopics: [],
       ...EMPTY_STREAM_NOTIFICATION_FIELDS,
+      ...EMPTY_TOPIC_NOTIFICATION_FIELDS,
     });
 
     await deleteMuteSnapshotRow(INSTANCE);

@@ -98,10 +98,8 @@ function createHarnessProps() {
     loadMuteSnapshot: vi.fn(() =>
       Promise.resolve({
         mutedStreamIds: [],
-        mutedTopics: [],
-        unmutedTopics: [],
-        followedTopics: [],
         streamNotificationModes: [],
+        topicNotificationModes: [],
       }),
     ),
     setFromMessages: vi.fn(),

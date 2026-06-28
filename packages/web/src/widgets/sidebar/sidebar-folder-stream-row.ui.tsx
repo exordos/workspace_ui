@@ -184,7 +184,7 @@ const SidebarFolderStreamTopicsList = React.memo(function SidebarFolderStreamTop
                 sideActions={
                   <TopicMuteButton
                     streamId={streamId}
-                    topic={topic.subject}
+                    topic={topic.topicUuid ?? topic.subject}
                     onMuteError={onMuteError}
                   />
                 }

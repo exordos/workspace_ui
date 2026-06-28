@@ -1,19 +1,20 @@
 import { useCallback } from "react";
 import { buildMuteSnapshotFromBootstrap } from "~/features/mute-chat/mute-chat.model";
-import type { StreamNotificationMode } from "~/features/mute-chat/notification-level.lib";
-import type { MessengerSubscription, MessengerUserTopic } from "~/shared/api/messenger.types";
+import type {
+  StreamNotificationMode,
+  TopicNotificationMode,
+} from "~/features/mute-chat/notification-level.lib";
+import type { MessengerMeStream, MessengerStreamTopic } from "~/shared/api/messenger.types";
 
 export interface LayoutMuteSnapshot {
   mutedStreamIds: string[];
-  mutedTopics: { streamId: string; topic: string }[];
-  unmutedTopics: { streamId: string; topic: string }[];
-  followedTopics: { streamId: string; topic: string }[];
   streamNotificationModes: { streamId: string; mode: StreamNotificationMode }[];
+  topicNotificationModes: { streamId: string; topic: string; mode: TopicNotificationMode }[];
 }
 
 export interface LayoutMuteBootstrapData {
-  subscriptions?: MessengerSubscription[];
-  userTopics?: MessengerUserTopic[];
+  subscriptions?: MessengerMeStream[];
+  streamTopics?: MessengerStreamTopic[];
 }
 
 export function useLayoutInstanceBootstrap(_options: {
@@ -28,7 +29,7 @@ export function useLayoutInstanceBootstrap(_options: {
       return Promise.resolve(
         buildMuteSnapshotFromBootstrap({
           subscriptions: bootstrap?.subscriptions,
-          userTopics: bootstrap?.userTopics,
+          streamTopics: bootstrap?.streamTopics,
         }),
       );
     },

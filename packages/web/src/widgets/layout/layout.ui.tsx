@@ -96,9 +96,7 @@ export const Layout: React.FC = () => {
   const language = useSettingsStore((s) => s.language);
   const showSystemFolders = useSettingsStore((s) => s.showSystemFolders);
   const mutedStreamIds = useMuteStore((s) => s.mutedStreamIds);
-  const mutedTopicKeys = useMuteStore((s) => s.mutedTopicKeys);
-  const unmutedTopicKeys = useMuteStore((s) => s.unmutedTopicKeys);
-  const followedTopicKeys = useMuteStore((s) => s.followedTopicKeys);
+  const topicNotificationModes = useMuteStore((s) => s.topicNotificationModes);
   const isStreamMuted = useMuteStore((s) => s.isStreamMuted);
   const isEffectivelyMuted = useMuteStore((s) => s.isEffectivelyMuted);
   const chatsSortedByLastMessage = useMemo(
@@ -119,9 +117,7 @@ export const Layout: React.FC = () => {
       mentionedUnreadMessageIds,
       messageIdToLocation,
       mutedStreamIds,
-      mutedTopicKeys,
-      unmutedTopicKeys,
-      followedTopicKeys,
+      topicNotificationModes,
       prioritizePersonalUnread,
       prioritizeUnmutedUnreadChannels,
       streamMetadataHydrated,

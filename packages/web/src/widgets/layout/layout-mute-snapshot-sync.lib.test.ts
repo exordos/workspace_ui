@@ -45,12 +45,14 @@ describe("startMuteSnapshotSync", () => {
     expect(persistSnapshotRow).toHaveBeenCalledWith(
       expect.objectContaining({
         instanceId: "inst-1",
-        version: 3,
+        version: 4,
         mutedStreamIds: [STREAM_UUID_10],
-        mutedTopics: [{ streamId: STREAM_UUID_10, topic: "news" }],
-        unmutedTopics: [{ streamId: STREAM_UUID_20, topic: "important" }],
-        followedTopics: [{ streamId: STREAM_UUID_20, topic: "incidents" }],
         streamNotificationModes: [{ streamId: STREAM_UUID_10, mode: "muted" }],
+        topicNotificationModes: [
+          { streamId: STREAM_UUID_10, topic: "news", mode: "mute" },
+          { streamId: STREAM_UUID_20, topic: "important", mode: "unmute" },
+          { streamId: STREAM_UUID_20, topic: "incidents", mode: "follow" },
+        ],
       }),
     );
 
@@ -82,9 +84,12 @@ describe("startMuteSnapshotSync", () => {
     });
 
     useMuteStore.setState((state) => ({ mutedStreamIds: state.mutedStreamIds }));
-    useMuteStore.setState((state) => ({ mutedTopicKeys: state.mutedTopicKeys }));
-    useMuteStore.setState((state) => ({ unmutedTopicKeys: state.unmutedTopicKeys }));
-    useMuteStore.setState((state) => ({ followedTopicKeys: state.followedTopicKeys }));
+    useMuteStore.setState((state) => ({
+      streamNotificationModes: state.streamNotificationModes,
+    }));
+    useMuteStore.setState((state) => ({
+      topicNotificationModes: state.topicNotificationModes,
+    }));
 
     await vi.advanceTimersByTimeAsync(1000);
     expect(persistSnapshotRow).toHaveBeenCalledTimes(0);

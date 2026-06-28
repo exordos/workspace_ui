@@ -1,28 +1,16 @@
 import { guard } from "~/shared/lib/guards";
 import { optimisticMutation } from "~/shared/lib/optimistic-mutation.lib";
 import { useMuteStore } from "./mute-chat.model";
+import type { TopicNotificationMode } from "./notification-level.lib";
 
-export type TopicVisibilityOverrideSnapshot = "muted" | "unmuted" | "followed" | "none";
+export type TopicVisibilityOverrideSnapshot = TopicNotificationMode;
 
 function restoreTopicVisibilityOverrideFromSnapshot(
   streamId: string,
   topic: string,
   snapshot: TopicVisibilityOverrideSnapshot,
 ): void {
-  const muteStore = useMuteStore.getState();
-  if (snapshot === "muted") {
-    muteStore.muteTopic(streamId, topic);
-    return;
-  }
-  if (snapshot === "unmuted") {
-    muteStore.unmuteTopic(streamId, topic);
-    return;
-  }
-  if (snapshot === "followed") {
-    muteStore.followTopic(streamId, topic);
-    return;
-  }
-  muteStore.clearTopicVisibilityOverride(streamId, topic);
+  useMuteStore.getState().setTopicNotificationMode(streamId, topic, snapshot);
 }
 
 export function captureTopicVisibilityOverrideSnapshot(
@@ -32,10 +20,7 @@ export function captureTopicVisibilityOverrideSnapshot(
   guard.streamUuid(streamId, "captureTopicVisibilityOverrideSnapshot");
 
   const muteStore = useMuteStore.getState();
-  if (muteStore.isTopicMuted(streamId, topic)) return "muted";
-  if (muteStore.isTopicUnmuted(streamId, topic)) return "unmuted";
-  if (muteStore.isTopicFollowed(streamId, topic)) return "followed";
-  return "none";
+  return muteStore.getTopicNotificationMode(streamId, topic);
 }
 
 interface RunOptimisticTopicVisibilityUpdateParams {

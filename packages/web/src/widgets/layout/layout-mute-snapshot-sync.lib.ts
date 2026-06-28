@@ -3,7 +3,8 @@
  * Coalesces frequent mute changes into one snapshot without overloading IDB.
  */
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
-import type { MuteSnapshotRowV3 } from "~/shared/lib/mute-snapshot-db";
+import type { TopicNotificationMode } from "~/features/mute-chat/notification-level.lib";
+import type { MuteSnapshotRowV4 } from "~/shared/lib/mute-snapshot-db";
 import { persistMuteSnapshotRow } from "~/shared/lib/mute-snapshot-db";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 
@@ -12,57 +13,53 @@ const MUTE_SNAPSHOT_SYNC_DEBOUNCE_MS = 750;
 interface StartMuteSnapshotSyncOptions {
   instanceId: string;
   debounceMs?: number;
-  persistSnapshotRow?: (row: MuteSnapshotRowV3) => Promise<void>;
+  persistSnapshotRow?: (row: MuteSnapshotRowV4) => Promise<void>;
 }
 
 interface MuteRefs {
   mutedStreamIds: ReturnType<typeof useMuteStore.getState>["mutedStreamIds"];
-  mutedTopicKeys: ReturnType<typeof useMuteStore.getState>["mutedTopicKeys"];
-  unmutedTopicKeys: ReturnType<typeof useMuteStore.getState>["unmutedTopicKeys"];
-  followedTopicKeys: ReturnType<typeof useMuteStore.getState>["followedTopicKeys"];
   streamNotificationModes: ReturnType<typeof useMuteStore.getState>["streamNotificationModes"];
+  topicNotificationModes: ReturnType<typeof useMuteStore.getState>["topicNotificationModes"];
 }
 
 function hasTrackedMuteRefsChanged(prev: MuteRefs, next: MuteRefs): boolean {
   return (
     prev.mutedStreamIds !== next.mutedStreamIds ||
-    prev.mutedTopicKeys !== next.mutedTopicKeys ||
-    prev.unmutedTopicKeys !== next.unmutedTopicKeys ||
-    prev.followedTopicKeys !== next.followedTopicKeys ||
-    prev.streamNotificationModes !== next.streamNotificationModes
+    prev.streamNotificationModes !== next.streamNotificationModes ||
+    prev.topicNotificationModes !== next.topicNotificationModes
   );
 }
 
-function toSnapshotTopicRows(keys: ReadonlySet<string>): { streamId: string; topic: string }[] {
-  const rows: { streamId: string; topic: string }[] = [];
-  for (const key of keys) {
+function toSnapshotTopicModeRows(
+  modes: ReadonlyMap<string, TopicNotificationMode>,
+): { streamId: string; topic: string; mode: TopicNotificationMode }[] {
+  const rows: { streamId: string; topic: string; mode: TopicNotificationMode }[] = [];
+  for (const [key, mode] of modes) {
     const separatorIndex = key.indexOf(":");
     if (separatorIndex <= 0) continue;
     const streamId = key.slice(0, separatorIndex).trim().toLowerCase();
     if (streamId.length === 0) continue;
     const topic = key.slice(separatorIndex + 1);
     if (topic.length === 0) continue;
-    rows.push({ streamId, topic });
+    rows.push({ streamId, topic, mode });
   }
   return rows;
 }
 
-function buildMuteSnapshotRow(instanceId: string): MuteSnapshotRowV3 {
+function buildMuteSnapshotRow(instanceId: string): MuteSnapshotRowV4 {
   const state = useMuteStore.getState();
   const mutedStreamIds = Array.from(state.mutedStreamIds).filter(
     (streamId) => streamId.trim().length > 0,
   );
   return {
     instanceId,
-    version: 3,
+    version: 4,
     savedAt: Date.now(),
     mutedStreamIds,
-    mutedTopics: toSnapshotTopicRows(state.mutedTopicKeys),
-    unmutedTopics: toSnapshotTopicRows(state.unmutedTopicKeys),
-    followedTopics: toSnapshotTopicRows(state.followedTopicKeys),
     streamNotificationModes: Array.from(state.streamNotificationModes)
       .filter(([streamId]) => streamId.trim().length > 0)
       .map(([streamId, mode]) => ({ streamId, mode })),
+    topicNotificationModes: toSnapshotTopicModeRows(state.topicNotificationModes),
   };
 }
 
@@ -81,10 +78,8 @@ export function startMuteSnapshotSync(options: StartMuteSnapshotSyncOptions): ()
     const state = useMuteStore.getState();
     return {
       mutedStreamIds: state.mutedStreamIds,
-      mutedTopicKeys: state.mutedTopicKeys,
-      unmutedTopicKeys: state.unmutedTopicKeys,
-      followedTopicKeys: state.followedTopicKeys,
       streamNotificationModes: state.streamNotificationModes,
+      topicNotificationModes: state.topicNotificationModes,
     };
   })();
 
@@ -119,10 +114,8 @@ export function startMuteSnapshotSync(options: StartMuteSnapshotSyncOptions): ()
   const unsubscribe = useMuteStore.subscribe((nextState) => {
     const nextRefs: MuteRefs = {
       mutedStreamIds: nextState.mutedStreamIds,
-      mutedTopicKeys: nextState.mutedTopicKeys,
-      unmutedTopicKeys: nextState.unmutedTopicKeys,
-      followedTopicKeys: nextState.followedTopicKeys,
       streamNotificationModes: nextState.streamNotificationModes,
+      topicNotificationModes: nextState.topicNotificationModes,
     };
     if (!hasTrackedMuteRefsChanged(trackedRefs, nextRefs)) {
       return;

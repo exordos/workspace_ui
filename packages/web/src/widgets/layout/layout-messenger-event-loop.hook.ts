@@ -45,6 +45,7 @@ import {
   createStreamPreviewBootstrapRejectedHandler,
   createStreamPreviewBootstrapSettledHandler,
 } from "./layout-messenger-event-loop-bootstrap.lib";
+import { applyLayoutRegisterMuteSnapshot } from "./layout-messenger-event-loop-mute-register.lib";
 import { createLayoutMessengerEventLoopOnEventHandler } from "./layout-messenger-event-loop-on-event.lib";
 import {
   toStreamMetadataRowsFromMeStreams,
@@ -100,23 +101,21 @@ function clearRefreshStaleCallback(ref: RefreshStaleCallbackRef | undefined): vo
 // Normalize IDB row shape to the mute-store contract (storage vs application layer).
 function toLayoutMuteSnapshotFromRow(row: {
   mutedStreamIds: string[];
-  mutedTopics: { streamId: string; topic: string }[];
-  unmutedTopics: { streamId: string; topic: string }[];
-  followedTopics?: { streamId: string; topic: string }[];
   streamNotificationModes?: { streamId: string; mode: StreamNotificationMode }[];
+  topicNotificationModes?: {
+    streamId: string;
+    topic: string;
+    mode: LayoutMuteSnapshot["topicNotificationModes"][number]["mode"];
+  }[];
 }): {
   mutedStreamIds: string[];
-  mutedTopics: { streamId: string; topic: string }[];
-  unmutedTopics: { streamId: string; topic: string }[];
-  followedTopics: { streamId: string; topic: string }[];
   streamNotificationModes: { streamId: string; mode: StreamNotificationMode }[];
+  topicNotificationModes: LayoutMuteSnapshot["topicNotificationModes"];
 } {
   return {
     mutedStreamIds: row.mutedStreamIds,
-    mutedTopics: row.mutedTopics,
-    unmutedTopics: row.unmutedTopics,
-    followedTopics: row.followedTopics ?? [],
     streamNotificationModes: row.streamNotificationModes ?? [],
+    topicNotificationModes: row.topicNotificationModes ?? [],
   };
 }
 
@@ -410,6 +409,19 @@ export function useLayoutMessengerEventLoop(options: {
           useChatListStore.getState().upsertStreamTopicShells(streamUuid, topicRows);
         }
         useChatListStore.getState().setStreamMetadataHydrated(true);
+
+        const authoritativeMuteSnapshot = await loadMuteSnapshotRef.current({
+          subscriptions: myStreams ?? [],
+          streamTopics: streamTopics ?? [],
+        });
+        applyLayoutRegisterMuteSnapshot({
+          cancelled,
+          currentInstanceId,
+          snapshot: authoritativeMuteSnapshot,
+          markRegisterMuteSnapshotApplied: () => {
+            registerMuteSnapshotAppliedRef.registerMuteSnapshotApplied = true;
+          },
+        });
 
         const uid = resolvedCurrentUserId ?? useChatListStore.getState().currentUserId ?? null;
 

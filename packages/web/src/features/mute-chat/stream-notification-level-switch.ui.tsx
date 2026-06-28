@@ -16,7 +16,7 @@ export interface StreamNotificationLevelSwitchProps {
   className?: string;
   /** i18n key for radiogroup label. */
   groupLabelKey?: "channel.notifications" | "channel.topicNotifications";
-  /** Stream vs topic visibility_policy icon set. */
+  /** Stream vs topic notification icon set. */
   options?: readonly NotificationLevelOption[];
 }
 

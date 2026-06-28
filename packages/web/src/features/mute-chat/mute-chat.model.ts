@@ -1,22 +1,25 @@
 /**
- * Mute store — tracks stream notification modes and topic visibility overrides.
+ * Mute store — tracks stream and topic notification modes.
  *
- * Streams are populated from Workspace `notification_mode`. Topics are populated from
- * user topic visibility metadata and updated optimistically when the user toggles them.
+ * Streams and topics are populated from Workspace `notification_mode` fields and updated
+ * optimistically when the user toggles them.
  */
 
 import { create } from "zustand";
-import type { MessengerSubscription } from "~/shared/api/messenger.types";
+import type { MessengerMeStream, MessengerStreamTopic } from "~/shared/api/messenger.types";
 import { logStoreAction } from "~/shared/lib/logger";
 import { WORKSPACE_DEFAULT_STREAM_NOTIFICATION_MODE } from "~/shared/lib/stream-notification-resolve.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import { WORKSPACE_DEFAULT_TOPIC_NOTIFICATION_MODE } from "~/shared/lib/topic-notification-resolve.lib";
 import {
   deriveStreamNotificationLevel,
   deriveTopicNotificationLevel,
   deriveTopicVisibilityLevel,
   parseStreamNotificationMode,
+  parseTopicNotificationMode,
   type NotificationLevel,
   type StreamNotificationMode,
+  type TopicNotificationMode,
   type TopicVisibilityLevel,
 } from "./notification-level.lib";
 
@@ -50,12 +53,26 @@ function applyStreamNotificationMode(
   };
 }
 
+function applyTopicNotificationMode(
+  state: Pick<MuteStoreState, "topicNotificationModes">,
+  streamId: string,
+  topic: string,
+  mode: TopicNotificationMode,
+): Pick<MuteStoreState, "topicNotificationModes"> {
+  const key = topicKey(streamId, topic);
+  const nextModes = new Map(state.topicNotificationModes);
+  if (mode === WORKSPACE_DEFAULT_TOPIC_NOTIFICATION_MODE) {
+    nextModes.delete(key);
+  } else {
+    nextModes.set(key, mode);
+  }
+  return { topicNotificationModes: nextModes };
+}
+
 interface MuteStoreState {
   mutedStreamIds: Set<string>;
-  mutedTopicKeys: Set<string>;
-  unmutedTopicKeys: Set<string>;
-  followedTopicKeys: Set<string>;
   streamNotificationModes: Map<string, StreamNotificationMode>;
+  topicNotificationModes: Map<string, TopicNotificationMode>;
 
   muteStream: (streamId: string) => void;
   unmuteStream: (streamId: string) => void;
@@ -64,6 +81,7 @@ interface MuteStoreState {
   followTopic: (streamId: string, topic: string) => void;
   clearTopicVisibilityOverride: (streamId: string, topic: string) => void;
   setStreamNotificationMode: (streamId: string, mode: StreamNotificationMode) => void;
+  setTopicNotificationMode: (streamId: string, topic: string, mode: TopicNotificationMode) => void;
 
   isStreamMuted: (streamId: string) => boolean;
   isTopicMuted: (streamId: string, topic: string) => boolean;
@@ -72,15 +90,14 @@ interface MuteStoreState {
   isEffectivelyMuted: (streamId: string, topic: string) => boolean;
   getStreamNotificationMode: (streamId: string) => StreamNotificationMode;
   getStreamNotificationLevel: (streamId: string) => NotificationLevel;
+  getTopicNotificationMode: (streamId: string, topic: string) => TopicNotificationMode;
   getTopicVisibilityLevel: (streamId: string, topic: string) => TopicVisibilityLevel;
   getTopicNotificationLevel: (streamId: string, topic: string) => NotificationLevel;
 
   setFromServer: (data: {
     mutedStreamIds?: string[];
-    mutedTopics: { streamId: string; topic: string }[];
-    unmutedTopics: { streamId: string; topic: string }[];
-    followedTopics: { streamId: string; topic: string }[];
     streamNotificationModes?: { streamId: string; mode: StreamNotificationMode }[];
+    topicNotificationModes?: { streamId: string; topic: string; mode: TopicNotificationMode }[];
   }) => void;
 
   clear: () => void;
@@ -88,10 +105,8 @@ interface MuteStoreState {
 
 export const useMuteStore = create<MuteStoreState>((set, get) => ({
   mutedStreamIds: new Set(),
-  mutedTopicKeys: new Set(),
-  unmutedTopicKeys: new Set(),
-  followedTopicKeys: new Set(),
   streamNotificationModes: new Map(),
+  topicNotificationModes: new Map(),
 
   muteStream(streamId) {
     logStoreAction("mute", "muteStream", { streamId });
@@ -105,74 +120,24 @@ export const useMuteStore = create<MuteStoreState>((set, get) => ({
 
   muteTopic(streamId, topic) {
     logStoreAction("mute", "muteTopic", { streamId, topic });
-    set((s) => {
-      const key = topicKey(streamId, topic);
-      const nextMuted = new Set(s.mutedTopicKeys);
-      const nextUnmuted = new Set(s.unmutedTopicKeys);
-      const nextFollowed = new Set(s.followedTopicKeys);
-      nextMuted.add(key);
-      nextUnmuted.delete(key);
-      nextFollowed.delete(key);
-      return {
-        mutedTopicKeys: nextMuted,
-        unmutedTopicKeys: nextUnmuted,
-        followedTopicKeys: nextFollowed,
-      };
-    });
+    set((s) => applyTopicNotificationMode(s, streamId, topic, "mute"));
   },
 
   unmuteTopic(streamId, topic) {
     logStoreAction("mute", "unmuteTopic", { streamId, topic });
-    set((s) => {
-      const key = topicKey(streamId, topic);
-      const nextMuted = new Set(s.mutedTopicKeys);
-      const nextUnmuted = new Set(s.unmutedTopicKeys);
-      const nextFollowed = new Set(s.followedTopicKeys);
-      nextMuted.delete(key);
-      nextUnmuted.add(key);
-      nextFollowed.delete(key);
-      return {
-        mutedTopicKeys: nextMuted,
-        unmutedTopicKeys: nextUnmuted,
-        followedTopicKeys: nextFollowed,
-      };
-    });
+    set((s) => applyTopicNotificationMode(s, streamId, topic, "unmute"));
   },
 
   followTopic(streamId, topic) {
     logStoreAction("mute", "followTopic", { streamId, topic });
-    set((s) => {
-      const key = topicKey(streamId, topic);
-      const nextMuted = new Set(s.mutedTopicKeys);
-      const nextUnmuted = new Set(s.unmutedTopicKeys);
-      const nextFollowed = new Set(s.followedTopicKeys);
-      nextMuted.delete(key);
-      nextUnmuted.delete(key);
-      nextFollowed.add(key);
-      return {
-        mutedTopicKeys: nextMuted,
-        unmutedTopicKeys: nextUnmuted,
-        followedTopicKeys: nextFollowed,
-      };
-    });
+    set((s) => applyTopicNotificationMode(s, streamId, topic, "follow"));
   },
 
   clearTopicVisibilityOverride(streamId, topic) {
     logStoreAction("mute", "clearTopicVisibilityOverride", { streamId, topic });
-    set((s) => {
-      const key = topicKey(streamId, topic);
-      const nextMuted = new Set(s.mutedTopicKeys);
-      const nextUnmuted = new Set(s.unmutedTopicKeys);
-      const nextFollowed = new Set(s.followedTopicKeys);
-      nextMuted.delete(key);
-      nextUnmuted.delete(key);
-      nextFollowed.delete(key);
-      return {
-        mutedTopicKeys: nextMuted,
-        unmutedTopicKeys: nextUnmuted,
-        followedTopicKeys: nextFollowed,
-      };
-    });
+    set((s) =>
+      applyTopicNotificationMode(s, streamId, topic, WORKSPACE_DEFAULT_TOPIC_NOTIFICATION_MODE),
+    );
   },
 
   setStreamNotificationMode(streamId, mode) {
@@ -180,29 +145,33 @@ export const useMuteStore = create<MuteStoreState>((set, get) => ({
     set((s) => applyStreamNotificationMode(s, streamId, mode));
   },
 
+  setTopicNotificationMode(streamId, topic, mode) {
+    logStoreAction("mute", "setTopicNotificationMode", { streamId, topic, mode });
+    set((s) => applyTopicNotificationMode(s, streamId, topic, mode));
+  },
+
   isStreamMuted(streamId) {
     return get().getStreamNotificationMode(streamId) === "muted";
   },
 
   isTopicMuted(streamId, topic) {
-    return get().mutedTopicKeys.has(topicKey(streamId, topic));
+    return get().getTopicNotificationMode(streamId, topic) === "mute";
   },
 
   isTopicUnmuted(streamId, topic) {
-    return get().unmutedTopicKeys.has(topicKey(streamId, topic));
+    return get().getTopicNotificationMode(streamId, topic) === "unmute";
   },
 
   isTopicFollowed(streamId, topic) {
-    return get().followedTopicKeys.has(topicKey(streamId, topic));
+    return get().getTopicNotificationMode(streamId, topic) === "follow";
   },
 
   isEffectivelyMuted(streamId, topic) {
     const state = get();
-    const key = topicKey(streamId, topic);
+    const mode = state.getTopicNotificationMode(streamId, topic);
 
-    if (state.unmutedTopicKeys.has(key)) return false;
-    if (state.followedTopicKeys.has(key)) return false;
-    if (state.mutedTopicKeys.has(key)) return true;
+    if (mode === "unmute" || mode === "follow") return false;
+    if (mode === "mute") return true;
     if (state.getStreamNotificationMode(streamId) === "muted") return true;
 
     return false;
@@ -218,56 +187,54 @@ export const useMuteStore = create<MuteStoreState>((set, get) => ({
     return deriveStreamNotificationLevel(get().getStreamNotificationMode(streamId));
   },
 
-  getTopicVisibilityLevel(streamId, topic) {
-    const state = get();
-    const key = topicKey(streamId, topic);
-    return deriveTopicVisibilityLevel(
-      state.followedTopicKeys.has(key),
-      state.mutedTopicKeys.has(key),
-      state.unmutedTopicKeys.has(key),
+  getTopicNotificationMode(streamId, topic) {
+    return (
+      get().topicNotificationModes.get(topicKey(streamId, topic)) ??
+      WORKSPACE_DEFAULT_TOPIC_NOTIFICATION_MODE
     );
+  },
+
+  getTopicVisibilityLevel(streamId, topic) {
+    return deriveTopicVisibilityLevel(get().getTopicNotificationMode(streamId, topic));
   },
 
   getTopicNotificationLevel(streamId, topic) {
     const state = get();
-    const key = topicKey(streamId, topic);
     return deriveTopicNotificationLevel(
-      state.followedTopicKeys.has(key),
-      state.mutedTopicKeys.has(key),
-      state.unmutedTopicKeys.has(key),
+      state.getTopicNotificationMode(streamId, topic),
       state.isEffectivelyMuted(streamId, topic),
     );
   },
 
   setFromServer({
     mutedStreamIds = [],
-    mutedTopics,
-    unmutedTopics,
-    followedTopics,
     streamNotificationModes = [],
+    topicNotificationModes = [],
   }) {
     logStoreAction("mute", "setFromServer", {
       streams: streamNotificationModes.length,
-      topics: mutedTopics.length,
-      unmuted: unmutedTopics.length,
-      followed: followedTopics.length,
+      topics: topicNotificationModes.length,
     });
-    const nextModes = new Map<string, StreamNotificationMode>();
+    const nextStreamModes = new Map<string, StreamNotificationMode>();
     for (const { streamId, mode } of streamNotificationModes) {
-      nextModes.set(streamId, mode);
+      nextStreamModes.set(streamId, mode);
     }
     for (const streamId of mutedStreamIds) {
-      if (!nextModes.has(streamId)) {
-        nextModes.set(streamId, "muted");
+      if (!nextStreamModes.has(streamId)) {
+        nextStreamModes.set(streamId, "muted");
       }
     }
 
+    const nextTopicModes = new Map<string, TopicNotificationMode>();
+    for (const { streamId, topic, mode } of topicNotificationModes) {
+      if (mode === WORKSPACE_DEFAULT_TOPIC_NOTIFICATION_MODE) continue;
+      nextTopicModes.set(topicKey(streamId, topic), mode);
+    }
+
     set({
-      mutedStreamIds: buildMutedStreamIdsFromModes(nextModes),
-      mutedTopicKeys: new Set(mutedTopics.map((t) => topicKey(t.streamId, t.topic))),
-      unmutedTopicKeys: new Set(unmutedTopics.map((t) => topicKey(t.streamId, t.topic))),
-      followedTopicKeys: new Set(followedTopics.map((t) => topicKey(t.streamId, t.topic))),
-      streamNotificationModes: nextModes,
+      mutedStreamIds: buildMutedStreamIdsFromModes(nextStreamModes),
+      streamNotificationModes: nextStreamModes,
+      topicNotificationModes: nextTopicModes,
     });
   },
 
@@ -275,31 +242,29 @@ export const useMuteStore = create<MuteStoreState>((set, get) => ({
     logStoreAction("mute", "clear", {});
     set({
       mutedStreamIds: new Set(),
-      mutedTopicKeys: new Set(),
-      unmutedTopicKeys: new Set(),
-      followedTopicKeys: new Set(),
       streamNotificationModes: new Map(),
+      topicNotificationModes: new Map(),
     });
   },
 }));
 
-/** Builds mute-store snapshot fields from the messenger API subscriptions and user topics. */
+/** Builds mute-store snapshot fields from the messenger API streams and topics. */
 export function buildMuteSnapshotFromBootstrap(options: {
-  subscriptions?: readonly MessengerSubscription[];
-  userTopics?: readonly { stream_uuid: string; topic_name: string; visibility_policy: number }[];
+  subscriptions?: readonly MessengerMeStream[];
+  streamTopics?: readonly MessengerStreamTopic[];
 }): {
   mutedStreamIds: string[];
-  mutedTopics: { streamId: string; topic: string }[];
-  unmutedTopics: { streamId: string; topic: string }[];
-  followedTopics: { streamId: string; topic: string }[];
   streamNotificationModes: { streamId: string; mode: StreamNotificationMode }[];
+  topicNotificationModes: { streamId: string; topic: string; mode: TopicNotificationMode }[];
 } {
   const subscriptions = options.subscriptions ?? [];
-  const userTopics = options.userTopics ?? [];
-  const mutedTopics: { streamId: string; topic: string }[] = [];
-  const unmutedTopics: { streamId: string; topic: string }[] = [];
-  const followedTopics: { streamId: string; topic: string }[] = [];
+  const streamTopics = options.streamTopics ?? [];
   const streamNotificationModes: { streamId: string; mode: StreamNotificationMode }[] = [];
+  const topicNotificationModes: {
+    streamId: string;
+    topic: string;
+    mode: TopicNotificationMode;
+  }[] = [];
 
   for (const subscription of subscriptions) {
     const mode =
@@ -311,21 +276,16 @@ export function buildMuteSnapshotFromBootstrap(options: {
     .filter((row) => row.mode === "muted")
     .map((row) => row.streamId);
 
-  for (const ut of userTopics) {
-    if (ut.visibility_policy === 1) {
-      mutedTopics.push({ streamId: ut.stream_uuid, topic: ut.topic_name });
-    } else if (ut.visibility_policy === 2) {
-      unmutedTopics.push({ streamId: ut.stream_uuid, topic: ut.topic_name });
-    } else if (ut.visibility_policy === 3) {
-      followedTopics.push({ streamId: ut.stream_uuid, topic: ut.topic_name });
-    }
+  for (const topic of streamTopics) {
+    const mode =
+      parseTopicNotificationMode(topic.notification_mode) ??
+      WORKSPACE_DEFAULT_TOPIC_NOTIFICATION_MODE;
+    topicNotificationModes.push({ streamId: topic.stream_uuid, topic: topic.uuid, mode });
   }
 
   return {
     mutedStreamIds,
-    mutedTopics,
-    unmutedTopics,
-    followedTopics,
     streamNotificationModes,
+    topicNotificationModes,
   };
 }

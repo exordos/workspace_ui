@@ -5,6 +5,7 @@ import type {
   MockMessage,
   WorkspaceRawMessage,
   WorkspaceStreamNotificationMode,
+  WorkspaceTopicNotificationMode,
 } from "~/shared/api/messenger.types";
 import type { WorkspaceFolder } from "~/shared/api/workspace-client";
 import type { MessageId } from "~/shared/lib/message-id.lib";
@@ -133,6 +134,11 @@ export interface LayoutMuteActions {
   setStreamNotificationMode: (
     streamId: string,
     notificationMode: WorkspaceStreamNotificationMode,
+  ) => void;
+  setTopicNotificationMode: (
+    streamId: string,
+    topic: string,
+    notificationMode: WorkspaceTopicNotificationMode,
   ) => void;
 }
 

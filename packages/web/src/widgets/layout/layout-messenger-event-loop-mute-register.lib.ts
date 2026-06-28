@@ -18,12 +18,10 @@ export function applyLayoutRegisterMuteSnapshot(options: {
   }
   void persistMuteSnapshotRow({
     instanceId: options.currentInstanceId,
-    version: 3,
+    version: 4,
     savedAt: Date.now(),
     mutedStreamIds: options.snapshot.mutedStreamIds,
-    mutedTopics: options.snapshot.mutedTopics,
-    unmutedTopics: options.snapshot.unmutedTopics,
-    followedTopics: options.snapshot.followedTopics,
     streamNotificationModes: options.snapshot.streamNotificationModes,
+    topicNotificationModes: options.snapshot.topicNotificationModes,
   });
 }

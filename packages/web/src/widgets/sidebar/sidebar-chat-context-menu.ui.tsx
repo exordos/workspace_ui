@@ -652,9 +652,11 @@ export const TopicContextMenu = React.memo(function TopicContextMenu({
     () => ({
       type: "custom",
       key: "topic-notifications",
-      render: () => <TopicNotificationLevelMenuPicker streamId={streamId} topic={topic} />,
+      render: () => (
+        <TopicNotificationLevelMenuPicker streamId={streamId} topic={topicUuid ?? topic} />
+      ),
     }),
-    [streamId, topic],
+    [streamId, topic, topicUuid],
   );
 
   const menuItems = useMemo<DropdownMenuItem[]>(() => {

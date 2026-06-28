@@ -57,6 +57,7 @@ function topicRow(
     unread_count: 0,
     is_default: false,
     is_done: false,
+    notification_mode: "default",
     ...overrides,
   };
 }

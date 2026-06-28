@@ -8,6 +8,10 @@ import {
   WORKSPACE_DEFAULT_STREAM_NOTIFICATION_MODE,
 } from "~/shared/lib/stream-notification-resolve.lib";
 import {
+  parseWorkspaceTopicNotificationMode,
+  WORKSPACE_DEFAULT_TOPIC_NOTIFICATION_MODE,
+} from "~/shared/lib/topic-notification-resolve.lib";
+import {
   compareUserIds,
   isIamUserUuid,
   isUserIdentityReady,
@@ -482,6 +486,9 @@ function parseStreamTopic(row: unknown): MessengerStreamTopic | null {
     unread_count: readSafeCount(row.unread_count),
     is_default: row.is_default === true,
     is_done: row.is_done === true,
+    notification_mode:
+      parseWorkspaceTopicNotificationMode(row.notification_mode) ??
+      WORKSPACE_DEFAULT_TOPIC_NOTIFICATION_MODE,
     ...(projectId != null ? { project_id: projectId } : {}),
     ...(createdAt != null ? { created_at: createdAt } : {}),
     ...(updatedAt != null ? { updated_at: updatedAt } : {}),

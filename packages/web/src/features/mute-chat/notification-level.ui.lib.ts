@@ -2,8 +2,8 @@ import type { IconName } from "~/shared/ui/icon";
 import type { NotificationLevel, TopicVisibilityLevel } from "./notification-level.lib";
 
 /**
- * Workspace topic visibility policy (topic row / popover order):
- * 1 muted → 0 inherit → 2 unmuted (only if stream muted or topic unmuted) → 3 followed
+ * Workspace topic notification mode order:
+ * mute → default → unmute (only if stream muted or topic unmuted) → follow
  */
 
 type StreamNotificationLabelKey =

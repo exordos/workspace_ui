@@ -4,7 +4,7 @@
 import type { MessengerEvent, MessengerGroupSettingValue } from "~/shared/api/messenger.types";
 import { normalizeGroupSettingValue } from "~/shared/lib/messenger-group-setting.lib";
 import { parseWorkspaceStreamNotificationMode } from "~/shared/lib/stream-notification-resolve.lib";
-import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import { parseWorkspaceTopicNotificationMode } from "~/shared/lib/topic-notification-resolve.lib";
 import type { LayoutMessengerEventDispatchContext } from "./layout-messenger-event-dispatch.types";
 
 function isNonNegativeInteger(value: unknown): value is number {
@@ -413,6 +413,7 @@ interface WorkspaceTopicEventRow {
   name?: string;
   unreadCount?: number;
   isDone?: boolean;
+  notificationMode?: ReturnType<typeof parseWorkspaceTopicNotificationMode>;
 }
 
 function isWorkspaceTopicEventKind(kind: unknown): kind is WorkspaceTopicEventKind {
@@ -426,12 +427,14 @@ function parseWorkspaceTopicEventRow(value: unknown): WorkspaceTopicEventRow | n
   const streamUuid = parseStreamUuid(record.stream_uuid);
   if (topicUuid == null || streamUuid == null) return null;
   const name = typeof record.name === "string" ? record.name.trim() : "";
+  const notificationMode = parseWorkspaceTopicNotificationMode(record.notification_mode);
   return {
     topicUuid,
     streamUuid,
     ...(name.length > 0 ? { name } : {}),
     ...(isNonNegativeInteger(record.unread_count) ? { unreadCount: record.unread_count } : {}),
     ...(typeof record.is_done === "boolean" ? { isDone: record.is_done } : {}),
+    ...(notificationMode != null ? { notificationMode } : {}),
   };
 }
 
@@ -442,7 +445,12 @@ export function handleTopic(event: MessengerEvent, ctx: LayoutMessengerEventDisp
 
   if (event.kind === "topic.deleted") {
     ctx.chatList.removeStreamTopic(row.streamUuid, row.topicUuid);
+    ctx.mute.clearTopicVisibilityOverride(row.streamUuid, row.topicUuid);
     return;
+  }
+
+  if (row.notificationMode != null) {
+    ctx.mute.setTopicNotificationMode(row.streamUuid, row.topicUuid, row.notificationMode);
   }
 
   if (row.name == null) return;
@@ -480,27 +488,5 @@ export function handleStreamBinding(
   }
   if (streamUuids.size > 0) {
     ctx.onStreamPeerMembersChanged?.(Array.from(streamUuids));
-  }
-}
-
-export function handleUserTopic(
-  event: MessengerEvent,
-  ctx: LayoutMessengerEventDispatchContext,
-): void {
-  if (event.type !== "user_topic") return;
-  const { mute } = ctx;
-  const streamUuid = parseStreamUuid(event.stream_uuid);
-  const topicName = event.topic_name as string | undefined;
-  const visibilityPolicy = event.visibility_policy as number | undefined;
-  if (streamUuid == null || topicName == null || visibilityPolicy == null) return;
-  const normalizedTopic = normalizeTopicForIdentity(topicName);
-  if (visibilityPolicy === 1) {
-    mute.muteTopic(streamUuid, normalizedTopic);
-  } else if (visibilityPolicy === 2) {
-    mute.unmuteTopic(streamUuid, normalizedTopic);
-  } else if (visibilityPolicy === 3) {
-    mute.followTopic(streamUuid, normalizedTopic);
-  } else {
-    mute.clearTopicVisibilityOverride(streamUuid, normalizedTopic);
   }
 }
