@@ -249,7 +249,11 @@ describe("Workspace realtime event normalization", () => {
     const normalized = normalizeWorkspaceEventModel(workspaceEvent(12, USER_UUID));
 
     expect(normalized?.epochVersion).toBe(12);
-    expect(normalized?.event).toMatchObject({ id: 12, type: "message" });
+    expect(normalized?.event).toMatchObject({
+      id: 12,
+      type: "message",
+      kind: "message.created",
+    });
     expect(normalized?.event?.message).toMatchObject({
       id: MESSAGE_UUID,
       source_message_uuid: MESSAGE_UUID,
@@ -267,6 +271,64 @@ describe("Workspace realtime event normalization", () => {
       starred: false,
       flags: ["read"],
       reactions: [],
+    });
+  });
+
+  it("maps REST message.updated events and preserves the event kind", () => {
+    const normalized = normalizeWorkspaceEventModel({
+      epoch_version: 14,
+      user_uuid: USER_UUID,
+      payload: {
+        kind: "message.updated",
+        uuid: MESSAGE_UUID,
+        stream_uuid: STREAM_UUID,
+        topic_uuid: TOPIC_UUID,
+        author_uuid: OTHER_UUID,
+        payload: { kind: "markdown", content: "edited over epochs" },
+        read: true,
+        pinned: false,
+        starred: true,
+        is_own: false,
+        created_at: "2026-06-24T10:20:30Z",
+      },
+    });
+
+    expect(normalized?.event).toMatchObject({
+      id: 14,
+      type: "message",
+      kind: "message.updated",
+      message: {
+        id: MESSAGE_UUID,
+        content: "edited over epochs",
+        read: true,
+        starred: true,
+      },
+    });
+  });
+
+  it("maps REST message.deleted events without requiring a message snapshot", () => {
+    const normalized = normalizeWorkspaceEventModel({
+      epoch_version: 15,
+      user_uuid: USER_UUID,
+      payload: {
+        kind: "message.deleted",
+        uuid: MESSAGE_UUID,
+        stream_uuid: STREAM_UUID,
+        topic_uuid: TOPIC_UUID,
+      },
+    });
+
+    expect(normalized?.event).toMatchObject({
+      id: 15,
+      type: "message",
+      kind: "message.deleted",
+      message_id: MESSAGE_UUID,
+      message_ids: [MESSAGE_UUID],
+      message: {
+        id: MESSAGE_UUID,
+        stream_uuid: STREAM_UUID,
+        topic_uuid: TOPIC_UUID,
+      },
     });
   });
 
@@ -454,6 +516,64 @@ describe("Workspace realtime event normalization", () => {
       read: true,
       subject: TOPIC_UUID,
       flags: ["read"],
+    });
+  });
+
+  it("maps WS message.updated frames and preserves the event kind", () => {
+    const normalized = normalizeWorkspaceRealtimeEvent(
+      {
+        epoch_version: 14,
+        type: "message",
+        kind: "message.updated",
+        message: {
+          uuid: MESSAGE_UUID,
+          author_uuid: OTHER_UUID,
+          stream_uuid: STREAM_UUID,
+          topic_uuid: TOPIC_UUID,
+          payload: { kind: "markdown", content: "edited live" },
+          read: true,
+          pinned: false,
+          starred: false,
+          is_own: false,
+          created_at: "2026-06-24T10:20:30Z",
+        },
+      },
+      USER_UUID,
+    );
+
+    expect(normalized?.event).toMatchObject({
+      id: 14,
+      type: "message",
+      kind: "message.updated",
+      message: {
+        id: MESSAGE_UUID,
+        content: "edited live",
+        read: true,
+      },
+    });
+  });
+
+  it("maps WS message.deleted frames by id only", () => {
+    const normalized = normalizeWorkspaceRealtimeEvent(
+      {
+        epoch_version: 15,
+        type: "message",
+        kind: "message.deleted",
+        message: {
+          uuid: MESSAGE_UUID,
+          stream_uuid: STREAM_UUID,
+          topic_uuid: TOPIC_UUID,
+        },
+      },
+      USER_UUID,
+    );
+
+    expect(normalized?.event).toMatchObject({
+      id: 15,
+      type: "message",
+      kind: "message.deleted",
+      message_id: MESSAGE_UUID,
+      message_ids: [MESSAGE_UUID],
     });
   });
 

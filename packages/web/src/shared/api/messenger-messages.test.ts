@@ -499,20 +499,20 @@ describe("fetchMessagesByIds", () => {
 
 describe("fetchMessageById", () => {
   it("returns mapped message data", async () => {
-    mockMessengerApi.get.mockResolvedValue({
+    mockMessengerApi.getWithBase.mockResolvedValue({
       ok: true,
       status: 200,
       data: {
-        id: "00000000-0000-4000-8000-000000000100",
-        sender_id: 42,
-        sender_full_name: "Alice",
-        content: "<p>hello</p>",
-        timestamp: 1710000000,
-        display_recipient: "general",
-        subject: "test",
-        type: "stream",
+        uuid: "00000000-0000-4000-8000-000000000100",
         stream_uuid: "00000000-0000-4000-8000-000000000010",
-        raw_content: "hello",
+        topic_uuid: "00000000-0000-4000-8000-000000000011",
+        author_uuid: "00000000-0000-4000-8000-000000000012",
+        payload: { kind: "markdown", content: "hello" },
+        is_own: false,
+        read: true,
+        pinned: false,
+        starred: false,
+        created_at: "2026-06-24T10:00:00Z",
       },
       raw: { statusText: "OK" },
     });
@@ -520,15 +520,12 @@ describe("fetchMessageById", () => {
     const result = await fetchMessageById("00000000-0000-4000-8000-000000000100");
 
     expect(result?.id).toBe(testMessageId(100));
-    expect(result?.channel).toBe("general");
+    expect(result?.content).toBe("hello");
     expect(result?.markdown_source).toBe("hello");
-    expect(mockMessengerApi.get).toHaveBeenCalledWith(
+    expect(result?.read).toBe(true);
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
       `/messages/${testMessageId(100)}`,
-      {
-        allow_empty_topic_name: "true",
-        apply_markdown: "false",
-      },
-      undefined,
     );
   });
 });
@@ -1155,8 +1152,8 @@ describe("renderMessageContent", () => {
     expect(mockMessengerApi.post).not.toHaveBeenCalled();
   });
 
-  it("throws for blank content", async () => {
-    await expect(renderMessageContent("   ")).rejects.toThrow(
+  it("throws for blank content", () => {
+    expect(() => renderMessageContent("   ")).toThrow(
       /renderMessageContent\.content must be a non-empty string/,
     );
     expect(mockMessengerApi.post).not.toHaveBeenCalled();
@@ -1164,24 +1161,45 @@ describe("renderMessageContent", () => {
 });
 
 // ---------------------------------------------------------------------------
-// updateMessage — authenticated PATCH with guard
+// updateMessage — authenticated PUT with guard
 // ---------------------------------------------------------------------------
 
 describe("updateMessage", () => {
   it("updates message content", async () => {
-    mockMessengerApi.patch.mockResolvedValue({
+    mockMessengerApi.putJsonWithBase.mockResolvedValue({
       ok: true,
       status: 200,
-      data: { result: "success" },
+      data: {
+        uuid: testMessageId(42),
+        stream_uuid: "00000000-0000-4000-8000-000000000010",
+        payload: { kind: "markdown", content: "updated" },
+        is_own: true,
+        read: true,
+        pinned: false,
+        starred: false,
+        created_at: "2026-06-24T10:00:00Z",
+      },
       raw: { statusText: "OK" },
     });
     await expect(
       updateMessage("00000000-0000-4000-8000-000000000042", { content: "updated" }),
-    ).resolves.toBeUndefined();
-    expect(mockRefreshMessengerApiBase).toHaveBeenCalled();
-    expect(mockMessengerApi.patch).toHaveBeenCalledWith(`/messages/${testMessageId(42)}`, {
-      content: "updated",
-    });
+    ).resolves.toEqual(
+      expect.objectContaining({
+        id: testMessageId(42),
+        content: "updated",
+        markdown_source: "updated",
+      }),
+    );
+    expect(mockMessengerApi.putJsonWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      `/messages/${testMessageId(42)}`,
+      {
+        payload: {
+          kind: "markdown",
+          content: "updated",
+        },
+      },
+    );
   });
 
   it("throws for invalid messageId", async () => {
@@ -1194,11 +1212,11 @@ describe("updateMessage", () => {
     await expect(
       updateMessage("00000000-0000-4000-8000-000000000042", { content: "   " }),
     ).rejects.toThrow(/updateMessage\.content must be a non-empty string/);
-    expect(mockMessengerApi.patch).not.toHaveBeenCalled();
+    expect(mockMessengerApi.putJsonWithBase).not.toHaveBeenCalled();
   });
 
   it("throws on non-ok response with error message", async () => {
-    mockMessengerApi.patch.mockResolvedValue({
+    mockMessengerApi.putJsonWithBase.mockResolvedValue({
       ok: false,
       status: 403,
       data: { msg: "Not allowed" },
@@ -1216,17 +1234,16 @@ describe("updateMessage", () => {
 
 describe("deleteMessage", () => {
   it("deletes a message", async () => {
-    mockMessengerApi.delete.mockResolvedValue({
+    mockMessengerApi.deleteWithBase.mockResolvedValue({
       ok: true,
       status: 200,
       data: { result: "success" },
       raw: { statusText: "OK" },
     });
     await expect(deleteMessage("00000000-0000-4000-8000-000000000042")).resolves.toBeUndefined();
-    expect(mockRefreshMessengerApiBase).toHaveBeenCalled();
-    expect(mockMessengerApi.delete).toHaveBeenCalledWith(
+    expect(mockMessengerApi.deleteWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
       `/messages/${testMessageId(42)}`,
-      undefined,
     );
   });
 
@@ -1235,7 +1252,7 @@ describe("deleteMessage", () => {
   });
 
   it("throws on non-ok response", async () => {
-    mockMessengerApi.delete.mockResolvedValue({
+    mockMessengerApi.deleteWithBase.mockResolvedValue({
       ok: false,
       status: 403,
       data: { msg: "Forbidden" },

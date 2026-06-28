@@ -7,6 +7,7 @@ import { logScrollReadFlow } from "~/shared/lib/message-flow-debug.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
+import { getMessengerWorkspaceApiBaseForCurrentInstance, messengerApi } from "./client";
 import { toggleStreamTopicDone, updateStreamTopic } from "./messenger-streams";
 import { validateMessageIds } from "./messenger-validation.internal";
 import type { MessengerStreamTopic } from "./messenger.types";
@@ -93,23 +94,32 @@ export async function moveStreamTopicToChannel(
 export async function setTopicResolvedState(
   topicUuid: string,
   streamId: string,
-  topic: string,
-  resolved: boolean,
+  _topic: string,
+  _resolved: boolean,
 ): Promise<MessengerStreamTopic | null> {
   guard.streamUuid(topicUuid, "setTopicResolvedState.topicUuid");
   guard.streamUuid(streamId, "setTopicResolvedState.streamId");
-  void topic;
-  void resolved;
 
   const result = await toggleStreamTopicDone(topicUuid);
   return result.ok ? result.topic : null;
 }
 
-/** Marks messages as read. Disabled until the new backend exposes a read-state write API. */
-export function markMessagesAsRead(messageIds: MessageId[]): Promise<void> {
-  if (messageIds.length === 0) return Promise.resolve();
+async function markSingleMessageAsRead(messageId: MessageId): Promise<void> {
+  const res = await messengerApi.postJsonWithBase(
+    getMessengerWorkspaceApiBaseForCurrentInstance(),
+    `/messages/${messageId}/actions/read/invoke`,
+    {},
+  );
+  if (!res.ok) {
+    const data = res.data as { msg?: string };
+    throw new Error(data.msg ?? `Failed to mark message as read (${res.status})`);
+  }
+}
+
+/** Marks messages as read through the per-message Workspace action endpoint. */
+export async function markMessagesAsRead(messageIds: MessageId[]): Promise<void> {
+  if (messageIds.length === 0) return;
   const validatedMessageIds = validateMessageIds(messageIds, "markMessagesAsRead.messageIds");
   logScrollReadFlow("api:markMessagesAsRead", { count: validatedMessageIds.length });
-  logReadStateUnsupported("markMessagesAsRead");
-  return Promise.reject(new Error("Read-state write API is not available in the new backend"));
+  await Promise.all(validatedMessageIds.map((messageId) => markSingleMessageAsRead(messageId)));
 }

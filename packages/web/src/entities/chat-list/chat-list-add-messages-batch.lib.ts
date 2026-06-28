@@ -82,7 +82,11 @@ function mergeStreamTopicPreviewsFromLatest(
     const existing = nextStreams.get(streamUuid);
     if (existing && m.timestamp <= existing.ts) {
       const existingTopic = existing.topics.get(topic.subject);
-      if (existingTopic && m.timestamp <= existingTopic.ts) {
+      if (
+        existingTopic &&
+        m.timestamp <= existingTopic.ts &&
+        existingTopic.lastMessageId !== m.id
+      ) {
         continue;
       }
     }

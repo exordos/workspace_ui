@@ -9,6 +9,7 @@ import {
   applyMessageCacheIndexedDb,
   handleDeleteMessage,
   handleIncomingMessage,
+  handleMessageUpdated,
   handleReaction,
   handleUpdateMessage,
   handleUpdateMessageFlags,
@@ -37,6 +38,14 @@ export function dispatchMessengerEvent(
   applyMessageCacheIndexedDb(event, ctx);
 
   if (event.type === "message" && event.message) {
+    if (event.kind === "message.updated") {
+      runDispatchHandler("dispatch:message.updated", () => handleMessageUpdated(event, ctx));
+      return;
+    }
+    if (event.kind === "message.deleted") {
+      runDispatchHandler("dispatch:message.deleted", () => handleDeleteMessage(event, ctx));
+      return;
+    }
     runDispatchHandler("dispatch:message", () => handleIncomingMessage(event, ctx));
     return;
   }

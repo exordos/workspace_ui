@@ -106,6 +106,55 @@ export function handleIncomingMessage(
   }
 }
 
+function readMessageEventKind(event: MessengerEvent): string | null {
+  return typeof event.kind === "string" ? event.kind : null;
+}
+
+function applyBooleanMessageFlagSnapshot(
+  ctx: LayoutMessengerEventDispatchContext,
+  messageId: MessageId,
+  flag: "read" | "pinned" | "starred",
+  value: unknown,
+): void {
+  if (typeof value !== "boolean") return;
+  ctx.currentChat.updateMessageFlags([messageId], flag, value ? "add" : "remove");
+}
+
+export function handleMessageUpdated(
+  event: MessengerEvent,
+  ctx: LayoutMessengerEventDispatchContext,
+): void {
+  if (event.type !== "message" || readMessageEventKind(event) !== "message.updated") return;
+  if (!event.message) return;
+  const { chatList, currentChat, users, activity, inbox, notifications } = ctx;
+  const raw = event.message as unknown as WorkspaceRawMessage;
+  const messageId = normalizeMessageId(raw.id);
+  if (messageId == null) return;
+
+  ctx.onMessage?.(raw);
+  users.mergeFromMessage(raw);
+  chatList.addMessage(raw);
+  activity.markStale();
+  activity.markStarredSummaryStale();
+  inbox.markStale();
+
+  const currentUserId = chatList.currentUserId;
+  const isForCurrentChat =
+    currentChat.context != null && isMessageForContext(raw, currentChat.context, currentUserId);
+  if (!isForCurrentChat) {
+    return;
+  }
+
+  const message = rawMessageToMockMessage(raw);
+  currentChat.updateMessageContent(messageId, message.content, message.markdown_source);
+  applyBooleanMessageFlagSnapshot(ctx, messageId, "read", raw.read);
+  applyBooleanMessageFlagSnapshot(ctx, messageId, "pinned", raw.pinned);
+  applyBooleanMessageFlagSnapshot(ctx, messageId, "starred", raw.starred);
+  if (raw.read === true) {
+    closeReadMessageNotifications(notifications, [messageId], ctx.currentInstanceId);
+  }
+}
+
 export { readViewportState } from "./layout-messenger-event-viewport.lib";
 export { maybeNotifyNewMessage } from "./layout-messenger-event-notify.lib";
 
@@ -210,12 +259,19 @@ export function handleReaction(
 }
 
 export function deleteMessageIdsFromEvent(event: MessengerEvent): MessageId[] {
-  if (event.type !== "delete_message") return [];
+  if (event.type !== "delete_message" && readMessageEventKind(event) !== "message.deleted") {
+    return [];
+  }
   if (Array.isArray(event.message_ids)) {
     return event.message_ids.map(normalizeMessageId).filter((id) => id != null);
   }
   const messageId = normalizeMessageId(event.message_id);
   if (messageId != null) return [messageId];
+  if (event.message != null && typeof event.message === "object") {
+    const row = event.message as { id?: unknown; uuid?: unknown };
+    const nestedMessageId = normalizeMessageId(row.id) ?? normalizeMessageId(row.uuid);
+    if (nestedMessageId != null) return [nestedMessageId];
+  }
   return [];
 }
 
@@ -223,14 +279,16 @@ export function handleDeleteMessage(
   event: MessengerEvent,
   ctx: LayoutMessengerEventDispatchContext,
 ): void {
-  if (event.type !== "delete_message") return;
-  const { chatList, currentChat, activity } = ctx;
+  if (event.type !== "delete_message" && readMessageEventKind(event) !== "message.deleted") return;
+  const { chatList, currentChat, activity, inbox, notifications } = ctx;
   activity.markStale();
   activity.markStarredSummaryStale();
   const messageIds = deleteMessageIdsFromEvent(event);
   if (messageIds.length === 0) return;
   chatList.handleDeleteMessages(messageIds);
   currentChat.removeMessages(messageIds);
+  inbox.markStale();
+  closeReadMessageNotifications(notifications, messageIds, ctx.currentInstanceId);
 }
 
 export function handleUpdateMessage(

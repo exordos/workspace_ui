@@ -374,6 +374,28 @@ function messageFromWorkspaceEventPayload(
   };
 }
 
+type WorkspaceMessageEventKind = "message.created" | "message.updated" | "message.deleted";
+
+function isWorkspaceMessageEventKind(kind: string | null): kind is WorkspaceMessageEventKind {
+  return kind === "message.created" || kind === "message.updated" || kind === "message.deleted";
+}
+
+function deletedMessageFromWorkspaceEventPayload(
+  payload: Record<string, unknown>,
+): { id: string; stream_uuid: string; topic_uuid: string } | null {
+  const messageUuid = normalizeUuid(payload.uuid);
+  const streamUuid = normalizeUuid(payload.stream_uuid);
+  const topicUuid = normalizeUuid(payload.topic_uuid);
+  if (messageUuid == null || streamUuid == null || topicUuid == null) {
+    return null;
+  }
+  return {
+    id: messageUuid,
+    stream_uuid: streamUuid,
+    topic_uuid: topicUuid,
+  };
+}
+
 type WorkspaceStreamEventKind = "stream.created" | "stream.updated" | "stream.deleted";
 
 function isWorkspaceStreamEventKind(kind: string | null): kind is WorkspaceStreamEventKind {
@@ -572,19 +594,38 @@ export function normalizeWorkspaceEventModel(
     return { epochVersion, event: null, skipReason: "missing payload" };
   }
   const kind = readString(payload.kind);
-  if (kind === "message.created") {
+  if (kind === "message.created" || kind === "message.updated") {
     const currentUserUuid = normalizeUuid(row.user_uuid);
     const message = messageFromWorkspaceEventPayload(payload, currentUserUuid);
     if (message == null) {
-      return { epochVersion, event: null, skipReason: "invalid message.created payload" };
+      return { epochVersion, event: null, skipReason: `invalid ${kind} payload` };
     }
     return {
       epochVersion,
       event: {
         id: epochVersion,
         type: "message",
+        kind,
         epoch_version: epochVersion,
         message,
+      },
+    };
+  }
+  if (kind === "message.deleted") {
+    const message = deletedMessageFromWorkspaceEventPayload(payload);
+    if (message == null) {
+      return { epochVersion, event: null, skipReason: "invalid message.deleted payload" };
+    }
+    return {
+      epochVersion,
+      event: {
+        id: epochVersion,
+        type: "message",
+        kind,
+        epoch_version: epochVersion,
+        message,
+        message_id: message.id,
+        message_ids: [message.id],
       },
     };
   }
@@ -781,6 +822,36 @@ export function normalizeWorkspaceRealtimeEvent(
       skipReason: `unsupported event type: ${type ?? "unknown"}`,
     };
   }
+  const kind = readString(rawEvent.kind);
+  if (kind != null && !isWorkspaceMessageEventKind(kind)) {
+    return {
+      epochVersion,
+      event: null,
+      skipReason: `unsupported message event kind: ${kind}`,
+    };
+  }
+  if (kind === "message.deleted") {
+    const messageValue = isRecord(rawEvent.message) ? rawEvent.message : null;
+    if (messageValue == null) {
+      return { epochVersion, event: null, skipReason: "invalid message.deleted frame" };
+    }
+    const message = deletedMessageFromWorkspaceEventPayload(messageValue);
+    if (message == null) {
+      return { epochVersion, event: null, skipReason: "invalid message.deleted frame" };
+    }
+    return {
+      epochVersion,
+      event: {
+        id: epochVersion,
+        type: "message",
+        kind,
+        epoch_version: epochVersion,
+        message,
+        message_id: message.id,
+        message_ids: [message.id],
+      },
+    };
+  }
   const message = messageFromRealtimeFrame(rawEvent.message, currentUserUuid);
   if (message == null) {
     return { epochVersion, event: null, skipReason: "invalid message frame" };
@@ -790,6 +861,7 @@ export function normalizeWorkspaceRealtimeEvent(
     event: {
       id: epochVersion,
       type: "message",
+      ...(kind != null ? { kind } : {}),
       epoch_version: epochVersion,
       message,
     },

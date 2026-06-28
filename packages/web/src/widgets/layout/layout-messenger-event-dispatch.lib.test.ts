@@ -998,6 +998,101 @@ describe("dispatchMessengerEvent", () => {
     });
   });
 
+  describe("workspace message lifecycle events", () => {
+    it("applies message.updated snapshots to the open chat and sidebar preview", () => {
+      const { ctx, updateMessageContentMock } = buildCtx();
+      ctx.chatList.addMessage = vi.fn();
+      ctx.currentChat.appendMessage = vi.fn();
+      ctx.notifications.closeByTag = vi.fn();
+      ctx.currentChat.context = {
+        type: "stream",
+        streamId: STREAM_UUID_10,
+        streamName: "engineering",
+        topic: TOPIC_UUID_7,
+        topicUuid: TOPIC_UUID_7,
+        streamWideView: false,
+      };
+      const updateFlagsSpy = vi.spyOn(ctx.currentChat, "updateMessageFlags");
+
+      dispatchMessengerEvent(
+        {
+          id: 31,
+          type: "message",
+          kind: "message.updated",
+          message: {
+            id: "00000000-0000-4000-8000-000000000031",
+            sender_id: 0,
+            author_uuid: USER_UUID_2,
+            sender_uuid: USER_UUID_2,
+            sender_full_name: "Alice",
+            content: "edited body",
+            markdown_source: "edited body",
+            timestamp: 1777960650,
+            type: "stream",
+            stream_uuid: STREAM_UUID_10,
+            topic_uuid: TOPIC_UUID_7,
+            subject: TOPIC_UUID_7,
+            read: true,
+            pinned: false,
+            starred: true,
+            flags: ["read", "starred"],
+          },
+        },
+        ctx,
+      );
+
+      expect(ctx.chatList.addMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "00000000-0000-4000-8000-000000000031" }),
+      );
+      expect(updateMessageContentMock).toHaveBeenCalledWith(
+        "00000000-0000-4000-8000-000000000031",
+        "edited body",
+        "edited body",
+      );
+      expect(updateFlagsSpy).toHaveBeenCalledWith(
+        ["00000000-0000-4000-8000-000000000031"],
+        "read",
+        "add",
+      );
+      expect(updateFlagsSpy).toHaveBeenCalledWith(
+        ["00000000-0000-4000-8000-000000000031"],
+        "starred",
+        "add",
+      );
+      expect(ctx.currentChat.appendMessage).not.toHaveBeenCalled();
+    });
+
+    it("deletes messages from new message.deleted events", () => {
+      const { ctx } = buildCtx();
+      ctx.chatList.handleDeleteMessages = vi.fn();
+      ctx.currentChat.appendMessage = vi.fn();
+      ctx.currentChat.removeMessages = vi.fn();
+      ctx.notifications.closeByTag = vi.fn();
+
+      dispatchMessengerEvent(
+        {
+          id: 32,
+          type: "message",
+          kind: "message.deleted",
+          message: {
+            id: "00000000-0000-4000-8000-000000000032",
+            stream_uuid: STREAM_UUID_10,
+            topic_uuid: TOPIC_UUID_7,
+          },
+        },
+        ctx,
+      );
+
+      expect(ctx.chatList.handleDeleteMessages).toHaveBeenCalledWith([
+        "00000000-0000-4000-8000-000000000032",
+      ]);
+      expect(ctx.currentChat.removeMessages).toHaveBeenCalledWith([
+        "00000000-0000-4000-8000-000000000032",
+      ]);
+      expect(ctx.currentChat.appendMessage).not.toHaveBeenCalled();
+    });
+  });
+
   describe("subscription peer events", () => {
     it("notifies peer_add stream ids from stream_ids payload", () => {
       const { ctx } = buildCtx();

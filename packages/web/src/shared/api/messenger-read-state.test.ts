@@ -1,7 +1,9 @@
 /**
  * Tests for Messenger API (messenger-read-state module).
  */
-import "./messenger.test.setup";
+// messenger.test.setup must load before the module under test so its vi.mock hooks register first.
+// eslint-disable-next-line import-x/order -- keep setup import above first for vi.mock registration
+import { getMockMessengerApi } from "./messenger.test.setup";
 import { describe, expect, it } from "vitest";
 import { updateMessageFlags } from "./messenger-messages";
 import {
@@ -13,7 +15,6 @@ import {
   moveStreamTopicToChannel,
   setTopicResolvedState,
 } from "./messenger-read-state";
-import { getMockMessengerApi } from "./messenger.test.setup";
 
 const mockMessengerApi = getMockMessengerApi();
 const MESSAGE_ID_1 = "00000000-0000-4000-8000-000000000001";
@@ -31,27 +32,65 @@ function streamTopicResponse(name: string, streamUuid = STREAM_UUID) {
     unread_count: 0,
     is_default: false,
     is_done: false,
+    notification_mode: "default",
   };
 }
 
 describe("markMessagesAsRead", () => {
-  it("does not call removed flags API for message IDs", async () => {
-    await expect(markMessagesAsRead([MESSAGE_ID_1, MESSAGE_ID_2, MESSAGE_ID_3])).rejects.toThrow(
-      /Read-state write API is not available/,
+  it("marks each message through the native read action", async () => {
+    mockMessengerApi.postJsonWithBase.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { read: true },
+      raw: { statusText: "OK" },
+    });
+
+    await expect(markMessagesAsRead([MESSAGE_ID_1, MESSAGE_ID_2, MESSAGE_ID_3])).resolves.toBe(
+      undefined,
     );
-    expect(mockMessengerApi.post).not.toHaveBeenCalled();
+
+    expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledTimes(3);
+    expect(mockMessengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
+      1,
+      "/api/messenger/v1",
+      `/messages/${MESSAGE_ID_1}/actions/read/invoke`,
+      {},
+    );
+    expect(mockMessengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
+      2,
+      "/api/messenger/v1",
+      `/messages/${MESSAGE_ID_2}/actions/read/invoke`,
+      {},
+    );
+    expect(mockMessengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
+      3,
+      "/api/messenger/v1",
+      `/messages/${MESSAGE_ID_3}/actions/read/invoke`,
+      {},
+    );
   });
 
   it("does nothing for empty array", async () => {
     await markMessagesAsRead([]);
-    expect(mockMessengerApi.post).not.toHaveBeenCalled();
+    expect(mockMessengerApi.postJsonWithBase).not.toHaveBeenCalled();
   });
 
-  it("throws for invalid message id", () => {
-    expect(() => markMessagesAsRead([MESSAGE_ID_1, "not-a-message-id"])).toThrow(
+  it("throws for invalid message id", async () => {
+    await expect(markMessagesAsRead([MESSAGE_ID_1, "not-a-message-id"])).rejects.toThrow(
       /Invalid messageId/,
     );
-    expect(mockMessengerApi.post).not.toHaveBeenCalled();
+    expect(mockMessengerApi.postJsonWithBase).not.toHaveBeenCalled();
+  });
+
+  it("throws on read action failure", async () => {
+    mockMessengerApi.postJsonWithBase.mockResolvedValue({
+      ok: false,
+      status: 403,
+      data: { msg: "Forbidden" },
+      raw: { statusText: "Forbidden" },
+    });
+
+    await expect(markMessagesAsRead([MESSAGE_ID_1])).rejects.toThrow("Forbidden");
   });
 });
 

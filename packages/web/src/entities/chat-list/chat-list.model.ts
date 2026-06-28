@@ -451,7 +451,11 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           const existing = state.streamsMap.get(streamUuid);
           if (existing && message.timestamp <= existing.ts) {
             const existingTopic = existing.topics.get(topic.subject);
-            if (existingTopic && message.timestamp <= existingTopic.ts) {
+            if (
+              existingTopic &&
+              message.timestamp <= existingTopic.ts &&
+              existingTopic.lastMessageId !== message.id
+            ) {
               return state;
             }
           }

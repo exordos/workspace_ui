@@ -731,13 +731,19 @@ export const ChatPage: React.FC = () => {
 
   const persistOptimisticMessageEdit = useCallback(
     async (messageId: MessageId, markdown: string) => {
+      let updatedMessage: MockMessage | null;
       try {
-        await updateMessage(messageId, { content: markdown });
+        updatedMessage = await updateMessage(messageId, { content: markdown });
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : t("message.saveError");
         failOptimisticMessageEditInStore(messageId, errorMessage);
         setActionError(errorMessage);
         throw err;
+      }
+
+      if (updatedMessage != null) {
+        commitOptimisticMessageEditInStore(messageId, updatedMessage);
+        return;
       }
 
       try {

@@ -76,6 +76,11 @@ export function resolveDeleteMessageIdsFromMessengerEvent(event: MessengerEvent)
   }
   const messageId = normalizeMessageId(event.message_id);
   if (messageId != null) return [messageId];
+  if (event.message != null && typeof event.message === "object") {
+    const row = event.message as { id?: unknown; uuid?: unknown };
+    const nestedMessageId = normalizeMessageId(row.id) ?? normalizeMessageId(row.uuid);
+    if (nestedMessageId != null) return [nestedMessageId];
+  }
   return [];
 }
 

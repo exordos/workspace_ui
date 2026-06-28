@@ -468,6 +468,36 @@ describe("chatListStore", () => {
       expect(stream.topics![0]!.lastMessage).toContain("new");
     });
 
+    it("updates the latest stream preview when the same message id is edited", () => {
+      const messageId = "00000000-0000-4000-8000-000000000001";
+      useChatListStore.getState().setFromMessages(
+        [
+          streamMsg({
+            id: messageId,
+            stream_uuid: "00000000-0000-4000-8000-000000000005",
+            subject: "t",
+            timestamp: 1000,
+            content: "before edit",
+          }),
+        ],
+        10,
+      );
+
+      useChatListStore.getState().addMessage(
+        streamMsg({
+          id: messageId,
+          stream_uuid: "00000000-0000-4000-8000-000000000005",
+          subject: "t",
+          timestamp: 1000,
+          content: "after edit",
+        }),
+      );
+
+      const streams = useChatListStore.getState().streams();
+      const stream = streams.find((s) => s.streamUuid === streamUuid(5))!;
+      expect(stream.topics![0]!.lastMessage).toContain("after edit");
+    });
+
     // Live message payloads update previews; unread totals come from server metadata/read state.
     it("does not increment unread count for unread stream messages", () => {
       useChatListStore

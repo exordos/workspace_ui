@@ -30,6 +30,10 @@ export async function applyMessengerEventToMessageIndexedDb(options: {
   const { instanceId, currentUserId, event } = options;
 
   if (event.type === "message" && event.message) {
+    if (event.kind === "message.deleted") {
+      await mirrorMessengerDeleteMessageToIndexedDb({ instanceId, event });
+      return;
+    }
     await mirrorMessengerMessageEventToIndexedDb({
       instanceId,
       currentUserId,

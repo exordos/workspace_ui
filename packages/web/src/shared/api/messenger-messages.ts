@@ -20,18 +20,19 @@ import {
 } from "~/shared/lib/messenger-topic-narrow.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
+import { getMessengerWorkspaceApiBaseForCurrentInstance, messengerApi } from "./client";
 import { buildMessagesQueryParams } from "./messenger-client.internal";
-import { fetchMyMessagesPage, meMessageToMockMessage } from "./messenger-me-messages";
 import {
-  mockMessageFromGetMessageApiData,
-  rawMessageToMockMessage,
-} from "./messenger-message-map.lib";
+  fetchMyMessagesPage,
+  meMessageToMockMessage,
+  parseMeMessage,
+} from "./messenger-me-messages";
+import { rawMessageToMockMessage } from "./messenger-message-map.lib";
 import { postWorkspaceSendMessage } from "./messenger-message-send.internal";
 import { mapMessagesPageFromApiData } from "./messenger-messages-page.lib";
 import {
   messengerPipelineDelete,
   messengerPipelineGet,
-  messengerPipelinePatch,
   messengerPipelinePost,
 } from "./messenger-pipeline.internal";
 import {
@@ -95,6 +96,13 @@ function messengerRawMessageFromGetMessageApiData(data: unknown): WorkspaceRawMe
     return row as unknown as WorkspaceRawMessage;
   }
   return null;
+}
+
+function workspaceMessageResponseToMockMessage(data: unknown): MockMessage | null {
+  const envelope = data != null && typeof data === "object" ? data : null;
+  const nestedMessage = envelope != null && "message" in envelope ? envelope.message : undefined;
+  const row = parseMeMessage(data) ?? parseMeMessage(nestedMessage);
+  return row == null ? null : meMessageToMockMessage(row);
 }
 
 async function fetchMessagesByIdsChunk(messageIds: MessageId[]): Promise<{
@@ -644,14 +652,14 @@ export async function fetchMessagesByIds(messageIds: MessageId[]): Promise<Works
 /** Loads one message by id; returns null on error or non-ok response. */
 export async function fetchMessageById(messageId: MessageId): Promise<MockMessage | null> {
   guard.messageId(messageId, "fetchMessageById");
-  const res = await messengerPipelineGet(`/messages/${messageId}`, {
-    allow_empty_topic_name: "true",
-    apply_markdown: "false",
-  });
+  const res = await messengerApi.getWithBase(
+    getMessengerWorkspaceApiBaseForCurrentInstance(),
+    `/messages/${messageId}`,
+  );
   if (!res?.ok) {
     return null;
   }
-  return mockMessageFromGetMessageApiData(res.data);
+  return workspaceMessageResponseToMockMessage(res.data);
 }
 
 /** Server-rendered HTML for one message (includes `.message_embed` when link previews are enabled). */
@@ -752,21 +760,32 @@ export function renderMessageContent(content: string): Promise<string> {
 export async function updateMessage(
   messageId: MessageId,
   params: { content: string },
-): Promise<void> {
+): Promise<MockMessage | null> {
   guard.messageId(messageId, "updateMessage");
   const content = guard.nonEmpty(params.content, "updateMessage.content");
-  const res = await messengerPipelinePatch(`messages/${messageId}`, {
-    content,
-  });
+  const res = await messengerApi.putJsonWithBase(
+    getMessengerWorkspaceApiBaseForCurrentInstance(),
+    `/messages/${messageId}`,
+    {
+      payload: {
+        kind: "markdown",
+        content,
+      },
+    },
+  );
   if (!res.ok) {
     const data = res.data as { msg?: string };
     throw new Error(data.msg ?? t("app.errorStatus", { status: String(res.status) }));
   }
+  return workspaceMessageResponseToMockMessage(res.data);
 }
 
 export async function deleteMessage(messageId: MessageId): Promise<void> {
   guard.messageId(messageId, "deleteMessage");
-  const res = await messengerPipelineDelete(`messages/${messageId}`);
+  const res = await messengerApi.deleteWithBase(
+    getMessengerWorkspaceApiBaseForCurrentInstance(),
+    `/messages/${messageId}`,
+  );
   if (!res.ok) {
     const data = res.data as { msg?: string };
     throw new Error(data.msg ?? t("app.errorStatus", { status: String(res.status) }));
