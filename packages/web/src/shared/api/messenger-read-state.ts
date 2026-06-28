@@ -4,7 +4,7 @@
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 import { logScrollReadFlow } from "~/shared/lib/message-flow-debug.lib";
-import type { MessageId } from "~/shared/lib/message-id.lib";
+import { normalizeMessageId, type MessageId } from "~/shared/lib/message-id.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import { getMessengerWorkspaceApiBaseForCurrentInstance, messengerApi } from "./client";
@@ -13,31 +13,86 @@ import { validateMessageIds } from "./messenger-validation.internal";
 import type { MessengerStreamTopic } from "./messenger.types";
 
 const log = createLogger("messenger-read-state");
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function logReadStateUnsupported(action: string): void {
-  log.warn("read-state write is not available in the new backend yet", { action });
+  log.warn("read-state write target cannot be resolved", { action });
 }
 
-/** Bulk mark-read is disabled until the new backend exposes a read-state write API. */
-export function markDmAsRead(userIds: UserId[]): Promise<boolean> {
-  if (userIds.length === 0) return Promise.resolve(false);
-  logReadStateUnsupported("markDmAsRead");
-  return Promise.resolve(false);
+function readErrorMessage(data: unknown, status: number, fallback: string): string {
+  if (data != null && typeof data === "object" && "msg" in data) {
+    const msg = (data as { msg?: unknown }).msg;
+    if (typeof msg === "string" && msg.trim().length > 0) {
+      return msg;
+    }
+  }
+  return `${fallback} (${status})`;
 }
 
-/** Bulk mark-read is disabled until the new backend exposes a read-state write API. */
-export function markStreamAsRead(streamId: string): Promise<boolean> {
-  guard.streamUuid(streamId, "markStreamAsRead");
-  logReadStateUnsupported("markStreamAsRead");
-  return Promise.resolve(false);
+function normalizeOptionalUuid(value: string | undefined): string | null {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return UUID_RE.test(normalized) ? normalized : null;
 }
 
-/** Bulk mark-read is disabled until the new backend exposes a read-state write API. */
-export function markTopicAsRead(streamId: string, topic: string): Promise<boolean> {
+async function postReadAction(path: string, action: string): Promise<boolean> {
+  const res = await messengerApi.postJsonWithBase(
+    getMessengerWorkspaceApiBaseForCurrentInstance(),
+    path,
+    {},
+  );
+  if (res.ok) {
+    return true;
+  }
+  log.warn("read-state action failed", { action, status: res.status });
+  return false;
+}
+
+function readConfirmedMessageId(data: unknown): MessageId | null {
+  const candidate =
+    data != null && typeof data === "object" && "message" in data
+      ? (data as { message?: unknown }).message
+      : data;
+  if (candidate == null || typeof candidate !== "object") return null;
+  const row = candidate as { id?: unknown; uuid?: unknown; read?: unknown };
+  if (row.read !== true) return null;
+  return normalizeMessageId(row.id) ?? normalizeMessageId(row.uuid);
+}
+
+/** Marks a direct-message stream as read when its Workspace stream UUID is known. */
+export function markDmAsRead(userIds: UserId[], streamId?: string | null): Promise<boolean> {
+  if (streamId == null || streamId.trim().length === 0) {
+    if (userIds.length > 0) {
+      logReadStateUnsupported("markDmAsRead");
+    }
+    return Promise.resolve(false);
+  }
+  return markStreamAsRead(streamId);
+}
+
+/** Marks all unread messages in a Workspace stream as read. */
+export async function markStreamAsRead(streamId: string): Promise<boolean> {
+  const streamUuid = guard.streamUuid(streamId, "markStreamAsRead.streamId");
+  return postReadAction(`/streams/${streamUuid}/actions/read/invoke`, "markStreamAsRead");
+}
+
+/** Marks all unread messages in a Workspace topic as read. */
+export function markTopicAsRead(
+  streamId: string,
+  topic: string,
+  topicUuid?: string | null,
+): Promise<boolean> {
   guard.streamUuid(streamId, "markTopicAsRead");
-  if (topic.trim().length === 0) return Promise.resolve(false);
-  logReadStateUnsupported("markTopicAsRead");
-  return Promise.resolve(false);
+  const resolvedTopicUuid = normalizeOptionalUuid(topicUuid ?? topic);
+  if (resolvedTopicUuid == null) {
+    if (topic.trim().length > 0) {
+      logReadStateUnsupported("markTopicAsRead");
+    }
+    return Promise.resolve(false);
+  }
+  return postReadAction(
+    `/stream_topics/${resolvedTopicUuid}/actions/read/invoke`,
+    "markTopicAsRead",
+  );
 }
 
 /** Renames a stream topic through the server-owned topic entity. */
@@ -104,22 +159,25 @@ export async function setTopicResolvedState(
   return result.ok ? result.topic : null;
 }
 
-async function markSingleMessageAsRead(messageId: MessageId): Promise<void> {
+async function markTopicMessagesAsReadUpTo(messageId: MessageId): Promise<MessageId[]> {
   const res = await messengerApi.postJsonWithBase(
     getMessengerWorkspaceApiBaseForCurrentInstance(),
-    `/messages/${messageId}/actions/read/invoke`,
+    `/messages/${messageId}/actions/read_up_to/invoke`,
     {},
   );
   if (!res.ok) {
-    const data = res.data as { msg?: string };
-    throw new Error(data.msg ?? `Failed to mark message as read (${res.status})`);
+    throw new Error(readErrorMessage(res.data, res.status, "Failed to mark messages as read"));
   }
+  const confirmedMessageId = readConfirmedMessageId(res.data);
+  return confirmedMessageId == null ? [] : [confirmedMessageId];
 }
 
-/** Marks messages as read through the per-message Workspace action endpoint. */
-export async function markMessagesAsRead(messageIds: MessageId[]): Promise<void> {
-  if (messageIds.length === 0) return;
+/** Marks unread messages up to the newest provided message through the Workspace topic action. */
+export async function markMessagesAsRead(messageIds: MessageId[]): Promise<MessageId[]> {
+  if (messageIds.length === 0) return [];
   const validatedMessageIds = validateMessageIds(messageIds, "markMessagesAsRead.messageIds");
   logScrollReadFlow("api:markMessagesAsRead", { count: validatedMessageIds.length });
-  await Promise.all(validatedMessageIds.map((messageId) => markSingleMessageAsRead(messageId)));
+  const lastMessageId = validatedMessageIds[validatedMessageIds.length - 1];
+  if (lastMessageId == null) return [];
+  return markTopicMessagesAsReadUpTo(lastMessageId);
 }

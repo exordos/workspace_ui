@@ -443,10 +443,14 @@ export const DmContextMenu = React.memo(function DmContextMenu({
     const numericUserIds = userIds
       .map((userId) => numericUserIdOrNull(userId))
       .filter((userId): userId is number => userId != null);
-    if (numericUserIds.length === 0) return;
+    if (numericUserIds.length === 0 && chat.streamUuid == null) return;
     setMenuOpen(false);
-    void applySidebarMarkChatAsReadAndSync({ type: "dm", userIds: numericUserIds });
-  }, [chat.slug, chat.userIds]);
+    void applySidebarMarkChatAsReadAndSync({
+      type: "dm",
+      userIds: numericUserIds,
+      ...(chat.streamUuid != null ? { streamId: chat.streamUuid } : {}),
+    });
+  }, [chat.slug, chat.streamUuid, chat.userIds]);
 
   const handlePinChat = useCallback(() => {
     setMenuOpen(false);
@@ -613,8 +617,13 @@ export const TopicContextMenu = React.memo(function TopicContextMenu({
 
   const handleMarkAsRead = useCallback(() => {
     setMenuOpen(false);
-    void applySidebarMarkChatAsReadAndSync({ type: "topic", streamId, topic });
-  }, [streamId, topic]);
+    void applySidebarMarkChatAsReadAndSync({
+      type: "topic",
+      streamId,
+      topic,
+      ...(topicUuid != null ? { topicUuid } : {}),
+    });
+  }, [streamId, topic, topicUuid]);
 
   const handleResolveSelect = useCallback(() => {
     toggleTopicResolved();

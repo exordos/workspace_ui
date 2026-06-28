@@ -120,6 +120,7 @@ describe("MessageList unread anchor scroll", () => {
     scrollToBottomMock.mockReset();
     fetchRealmEmojisMock.mockReset();
     fetchRealmEmojisMock.mockResolvedValue([]);
+    vi.spyOn(document, "hasFocus").mockReturnValue(true);
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       value: scrollIntoView,
@@ -906,6 +907,7 @@ describe("MessageList chat open scroll to bottom", () => {
     scrollToBottomMock.mockReset();
     fetchRealmEmojisMock.mockReset();
     fetchRealmEmojisMock.mockResolvedValue([]);
+    vi.spyOn(document, "hasFocus").mockReturnValue(true);
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       value: scrollIntoView,

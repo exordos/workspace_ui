@@ -1,5 +1,5 @@
 /**
- * Pure helpers for the messenger API `update_message_flags` realtime events.
+ * Pure helpers for messenger read-flag realtime events.
  */
 import type { MockMessage, MessengerEvent } from "~/shared/api/messenger.types";
 import { normalizeMessageId } from "~/shared/lib/message-id.lib";
@@ -11,6 +11,10 @@ export interface ParsedUpdateMessageFlagsEvent {
   flag: string;
   messageIds: MessageId[];
   markAllRead: boolean;
+}
+
+export interface ParsedMessagesReadEvent {
+  messageIds: MessageId[];
 }
 
 function dedupeValidMessageIds(raw: unknown): MessageId[] {
@@ -43,6 +47,14 @@ export function parseUpdateMessageFlagsEvent(
   const messageIds = dedupeValidMessageIds(event.messages);
   const markAllRead = flag === "read" && op === "add" && event.all === true;
   return { op, flag, messageIds, markAllRead };
+}
+
+/** Parses Workspace `messages.read` events. */
+export function parseMessagesReadEvent(event: MessengerEvent): ParsedMessagesReadEvent | null {
+  if (event.type !== "message" || event.kind !== "messages.read") return null;
+  const messageIds = dedupeValidMessageIds(event.message_uuids ?? event.messages);
+  if (messageIds.length === 0) return null;
+  return { messageIds };
 }
 
 /** Loaded open-chat rows to update after an authoritative mark-all-read event. */

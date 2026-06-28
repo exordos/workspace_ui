@@ -49,6 +49,22 @@ export async function mirrorMessengerUpdateMessageFlagsToIndexedDb(options: {
   await patchMessageFlagsInCache({ instanceId: options.instanceId, messageIds, flag, op });
 }
 
+export async function mirrorMessengerMessagesReadToIndexedDb(options: {
+  instanceId: string;
+  event: MessengerEvent;
+}): Promise<void> {
+  const messageIds = Array.isArray(options.event.message_uuids)
+    ? options.event.message_uuids.map(normalizeMessageId).filter((id) => id != null)
+    : [];
+  if (messageIds.length === 0) return;
+  await patchMessageFlagsInCache({
+    instanceId: options.instanceId,
+    messageIds,
+    flag: "read",
+    op: "add",
+  });
+}
+
 export async function mirrorMessengerReactionToIndexedDb(options: {
   instanceId: string;
   event: MessengerEvent;

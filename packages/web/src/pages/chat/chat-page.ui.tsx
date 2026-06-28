@@ -226,8 +226,15 @@ export const ChatPage: React.FC = () => {
   const streams = useChatListStore((s) => s.streams());
   const handleDeleteMessagesInChatList = useChatListStore((s) => s.handleDeleteMessages);
   const realmBaseUrl = getRealmBaseUrl();
-  const firstUnreadId = undefined;
-  const unreadCount = 0;
+  const unreadMessages = useMemo(
+    () =>
+      messages.filter(
+        (message) => message.read === false && !isMessageFromCurrentUser(message, currentUserId),
+      ),
+    [messages, currentUserId],
+  );
+  const firstUnreadId = unreadMessages[0]?.id;
+  const unreadCount = unreadMessages.length;
   const activeTopicIsDone = useMemo(() => {
     if (activeTopic == null || activeStreamEntry == null) return false;
     if (effectiveActiveTopicUuid != null) {
@@ -496,15 +503,19 @@ export const ChatPage: React.FC = () => {
       idleStopDelayMs: 3000,
     });
 
-  useChatPageMarkRead({
+  const { handleUnreadMessagesVisible, handleUnreadMessagesAtBottom } = useChatPageMarkRead({
     currentUserId,
     isDmView,
     activeDmUserIds,
+    activeDmStreamId: isDmView ? activeStreamUuid : null,
     activeStreamId,
     activeTopic,
+    activeTopicUuid: effectiveActiveTopicUuid ?? null,
     streamSlug,
     topicName,
     dmIdParam,
+    messages,
+    updateMessageFlagsInStore,
   });
 
   const isTextInputFocused = useCallback((): boolean => {
@@ -1160,6 +1171,8 @@ export const ChatPage: React.FC = () => {
           firstUnreadId={firstUnreadId}
           unreadCount={unreadCount}
           focusedMessageId={focusedMessageId}
+          onUnreadMessagesVisible={handleUnreadMessagesVisible}
+          onUnreadMessagesAtBottom={handleUnreadMessagesAtBottom}
           messagesLoadError={messagesLoadError}
           onRetryMessagesLoad={handleRetryMessagesLoad}
           boundaryLoadFailed={boundaryLoadFailed}

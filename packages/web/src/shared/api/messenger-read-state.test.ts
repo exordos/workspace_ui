@@ -37,42 +37,40 @@ function streamTopicResponse(name: string, streamUuid = STREAM_UUID) {
 }
 
 describe("markMessagesAsRead", () => {
-  it("marks each message through the native read action", async () => {
+  it("marks topic messages read up to the newest provided message", async () => {
     mockMessengerApi.postJsonWithBase.mockResolvedValue({
       ok: true,
       status: 200,
-      data: { read: true },
+      data: { uuid: MESSAGE_ID_3, read: true },
       raw: { statusText: "OK" },
     });
 
-    await expect(markMessagesAsRead([MESSAGE_ID_1, MESSAGE_ID_2, MESSAGE_ID_3])).resolves.toBe(
-      undefined,
-    );
+    await expect(markMessagesAsRead([MESSAGE_ID_1, MESSAGE_ID_2, MESSAGE_ID_3])).resolves.toEqual([
+      MESSAGE_ID_3,
+    ]);
 
-    expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledTimes(3);
-    expect(mockMessengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
-      1,
+    expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledTimes(1);
+    expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
       "/api/messenger/v1",
-      `/messages/${MESSAGE_ID_1}/actions/read/invoke`,
-      {},
-    );
-    expect(mockMessengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
-      2,
-      "/api/messenger/v1",
-      `/messages/${MESSAGE_ID_2}/actions/read/invoke`,
-      {},
-    );
-    expect(mockMessengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
-      3,
-      "/api/messenger/v1",
-      `/messages/${MESSAGE_ID_3}/actions/read/invoke`,
+      `/messages/${MESSAGE_ID_3}/actions/read_up_to/invoke`,
       {},
     );
   });
 
   it("does nothing for empty array", async () => {
-    await markMessagesAsRead([]);
+    await expect(markMessagesAsRead([])).resolves.toEqual([]);
     expect(mockMessengerApi.postJsonWithBase).not.toHaveBeenCalled();
+  });
+
+  it("returns no confirmed ids when response does not say the message is read", async () => {
+    mockMessengerApi.postJsonWithBase.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { uuid: MESSAGE_ID_1, read: false },
+      raw: { statusText: "OK" },
+    });
+
+    await expect(markMessagesAsRead([MESSAGE_ID_1])).resolves.toEqual([]);
   });
 
   it("throws for invalid message id", async () => {
@@ -99,22 +97,34 @@ describe("markMessagesAsRead", () => {
 // ---------------------------------------------------------------------------
 
 describe("markDmAsRead", () => {
-  it("returns false without calling removed flags/narrow API", async () => {
+  it("marks the private Workspace stream as read when stream UUID is known", async () => {
+    mockMessengerApi.postJsonWithBase.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { unread_count: 0 },
+      raw: { statusText: "OK" },
+    });
+
+    const result = await markDmAsRead([42], STREAM_UUID);
+
+    expect(result).toBe(true);
+    expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      `/streams/${STREAM_UUID}/actions/read/invoke`,
+      {},
+    );
+  });
+
+  it("returns false for legacy numeric user ids without a stream UUID", async () => {
     const result = await markDmAsRead([42]);
     expect(result).toBe(false);
-    expect(mockMessengerApi.post).not.toHaveBeenCalled();
+    expect(mockMessengerApi.postJsonWithBase).not.toHaveBeenCalled();
   });
 
-  it("returns false for empty ids list", async () => {
+  it("returns false for empty ids list without a stream UUID", async () => {
     const result = await markDmAsRead([]);
     expect(result).toBe(false);
-    expect(mockMessengerApi.post).not.toHaveBeenCalled();
-  });
-
-  it("returns false for legacy numeric user ids without validation round-trip", async () => {
-    const result = await markDmAsRead([0]);
-    expect(result).toBe(false);
-    expect(mockMessengerApi.post).not.toHaveBeenCalled();
+    expect(mockMessengerApi.postJsonWithBase).not.toHaveBeenCalled();
   });
 });
 
@@ -123,14 +133,37 @@ describe("markDmAsRead", () => {
 // ---------------------------------------------------------------------------
 
 describe("markStreamAsRead", () => {
-  it("returns false without calling removed flags/narrow API", async () => {
+  it("marks a Workspace stream as read", async () => {
+    mockMessengerApi.postJsonWithBase.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { unread_count: 0 },
+      raw: { statusText: "OK" },
+    });
+
     const result = await markStreamAsRead(STREAM_UUID);
-    expect(result).toBe(false);
-    expect(mockMessengerApi.post).not.toHaveBeenCalled();
+
+    expect(result).toBe(true);
+    expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      `/streams/${STREAM_UUID}/actions/read/invoke`,
+      {},
+    );
   });
 
-  it("throws for invalid streamId", () => {
-    expect(() => markStreamAsRead("not-a-uuid")).toThrow(/Invalid streamUuid/);
+  it("returns false on stream read failure", async () => {
+    mockMessengerApi.postJsonWithBase.mockResolvedValue({
+      ok: false,
+      status: 403,
+      data: { msg: "Forbidden" },
+      raw: { statusText: "Forbidden" },
+    });
+
+    await expect(markStreamAsRead(STREAM_UUID)).resolves.toBe(false);
+  });
+
+  it("throws for invalid streamId", async () => {
+    await expect(markStreamAsRead("not-a-uuid")).rejects.toThrow(/Invalid streamUuid/);
   });
 });
 
@@ -139,26 +172,54 @@ describe("markStreamAsRead", () => {
 // ---------------------------------------------------------------------------
 
 describe("markTopicAsRead", () => {
-  it("returns false without calling removed flags/narrow API", async () => {
-    const result = await markTopicAsRead(STREAM_UUID, "bugs");
-    expect(result).toBe(false);
-    expect(mockMessengerApi.post).not.toHaveBeenCalled();
+  it("marks a Workspace topic as read by topic UUID", async () => {
+    mockMessengerApi.postJsonWithBase.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: streamTopicResponse("bugs"),
+      raw: { statusText: "OK" },
+    });
+
+    const result = await markTopicAsRead(STREAM_UUID, "bugs", TOPIC_UUID);
+
+    expect(result).toBe(true);
+    expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      `/stream_topics/${TOPIC_UUID}/actions/read/invoke`,
+      {},
+    );
+  });
+
+  it("uses a UUID route topic value when no separate topic UUID is passed", async () => {
+    mockMessengerApi.postJsonWithBase.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: streamTopicResponse("bugs"),
+      raw: { statusText: "OK" },
+    });
+
+    await expect(markTopicAsRead(STREAM_UUID, TOPIC_UUID)).resolves.toBe(true);
+    expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      `/stream_topics/${TOPIC_UUID}/actions/read/invoke`,
+      {},
+    );
   });
 
   it("throws for invalid streamId", () => {
-    expect(() => markTopicAsRead("not-a-uuid", "bugs")).toThrow(/Invalid streamUuid/);
+    expect(() => markTopicAsRead("not-a-uuid", "bugs", TOPIC_UUID)).toThrow(/Invalid streamUuid/);
   });
 
-  it("returns false for empty topic without calling removed flags/narrow API", async () => {
+  it("returns false for unresolved topic names", async () => {
+    const result = await markTopicAsRead(STREAM_UUID, "bugs");
+    expect(result).toBe(false);
+    expect(mockMessengerApi.postJsonWithBase).not.toHaveBeenCalled();
+  });
+
+  it("returns false for empty topic without calling the API", async () => {
     const result = await markTopicAsRead(STREAM_UUID, "");
     expect(result).toBe(false);
-    expect(mockMessengerApi.post).not.toHaveBeenCalled();
-  });
-
-  it("returns false for literal general topic without calling removed flags/narrow API", async () => {
-    const result = await markTopicAsRead(STREAM_UUID, "general");
-    expect(result).toBe(false);
-    expect(mockMessengerApi.post).not.toHaveBeenCalled();
+    expect(mockMessengerApi.postJsonWithBase).not.toHaveBeenCalled();
   });
 });
 

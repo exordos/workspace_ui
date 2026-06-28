@@ -1,7 +1,17 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { markMessagesAsRead } from "~/shared/api/messenger-read-state";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { applyOpenChatMarkAllAsRead } from "./chat-mark-all-read.lib";
 import { useChatPageMarkRead } from "./chat-page-mark-read.hook";
+
+vi.mock("~/shared/api/messenger-read-state", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/shared/api/messenger-read-state")>();
+  return {
+    ...actual,
+    markMessagesAsRead: vi.fn().mockResolvedValue([]),
+  };
+});
 
 vi.mock("./chat-mark-all-read.lib", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./chat-mark-all-read.lib")>();
@@ -18,39 +28,126 @@ vi.mock("~/shared/lib/shortcuts", () => ({
 
 const CURRENT_USER_ID = 7;
 const STREAM_ID = "00000000-0000-4000-8000-000000000012";
+const TOPIC_UUID = "00000000-0000-4000-8000-000000000099";
 const TOPIC = "general";
 const MESSAGE_ID = "00000000-0000-4000-8000-000000000501";
 
-function defaultParams(overrides: Partial<Parameters<typeof useChatPageMarkRead>[0]> = {}) {
+function message(overrides: Partial<MockMessage> = {}): MockMessage {
+  return {
+    id: MESSAGE_ID,
+    sender_id: 42,
+    sender_full_name: "Alice",
+    stream_uuid: STREAM_ID,
+    topic_uuid: TOPIC_UUID,
+    subject: TOPIC,
+    content: "hello",
+    timestamp: 1,
+    read: false,
+    ...overrides,
+  };
+}
+
+function defaultParams(
+  overrides: Partial<Parameters<typeof useChatPageMarkRead>[0]> = {},
+): Parameters<typeof useChatPageMarkRead>[0] {
   return {
     currentUserId: CURRENT_USER_ID,
     isDmView: false,
-    activeDmUserIds: null as number[] | null,
+    activeDmUserIds: null,
     activeStreamId: STREAM_ID,
     activeTopic: TOPIC,
+    activeTopicUuid: TOPIC_UUID,
     streamSlug: STREAM_ID,
     topicName: encodeURIComponent(TOPIC),
-    dmIdParam: undefined as string | undefined,
+    dmIdParam: undefined,
+    messages: [],
+    updateMessageFlagsInStore: vi.fn(),
     ...overrides,
   };
 }
 
 describe("useChatPageMarkRead", () => {
   beforeEach(() => {
+    vi.spyOn(document, "hasFocus").mockReturnValue(true);
+    Object.defineProperty(document, "visibilityState", {
+      value: "visible",
+      configurable: true,
+    });
     vi.mocked(applyOpenChatMarkAllAsRead).mockClear();
     vi.mocked(applyOpenChatMarkAllAsRead).mockResolvedValue(true);
+    vi.mocked(markMessagesAsRead).mockClear();
+    vi.mocked(markMessagesAsRead).mockResolvedValue([]);
     useShortcutMock.mockClear();
   });
 
-  it("ignores viewport unread callbacks", () => {
-    const { result } = renderHook(() => useChatPageMarkRead(defaultParams()));
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("requests visible unread messages and applies API-confirmed read ids", async () => {
+    const updateMessageFlagsInStore = vi.fn();
+    vi.mocked(markMessagesAsRead).mockResolvedValue([MESSAGE_ID]);
+    const { result } = renderHook(() =>
+      useChatPageMarkRead(
+        defaultParams({
+          messages: [message()],
+          updateMessageFlagsInStore,
+        }),
+      ),
+    );
 
     act(() => {
       result.current.handleUnreadMessagesVisible([MESSAGE_ID]);
+    });
+
+    await waitFor(() => {
+      expect(markMessagesAsRead).toHaveBeenCalledWith([MESSAGE_ID]);
+    });
+    await waitFor(() => {
+      expect(updateMessageFlagsInStore).toHaveBeenCalledWith([MESSAGE_ID], "read", "add");
+    });
+    expect(applyOpenChatMarkAllAsRead).not.toHaveBeenCalled();
+  });
+
+  it("does not request visible unread messages when the window is inactive", () => {
+    vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    const updateMessageFlagsInStore = vi.fn();
+    const { result } = renderHook(() =>
+      useChatPageMarkRead(
+        defaultParams({
+          messages: [message()],
+          updateMessageFlagsInStore,
+        }),
+      ),
+    );
+
+    act(() => {
+      result.current.handleUnreadMessagesVisible([MESSAGE_ID]);
+    });
+
+    expect(markMessagesAsRead).not.toHaveBeenCalled();
+    expect(updateMessageFlagsInStore).not.toHaveBeenCalled();
+  });
+
+  it("does not mark visible messages locally without API-confirmed ids", async () => {
+    const updateMessageFlagsInStore = vi.fn();
+    const { result } = renderHook(() =>
+      useChatPageMarkRead(
+        defaultParams({
+          messages: [message()],
+          updateMessageFlagsInStore,
+        }),
+      ),
+    );
+
+    act(() => {
       result.current.handleUnreadMessagesAtBottom([MESSAGE_ID]);
     });
 
-    expect(applyOpenChatMarkAllAsRead).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(markMessagesAsRead).toHaveBeenCalledWith([MESSAGE_ID]);
+    });
+    expect(updateMessageFlagsInStore).not.toHaveBeenCalled();
   });
 
   it("handleMarkAllAsRead delegates topic target to applyOpenChatMarkAllAsRead", async () => {
@@ -64,7 +161,7 @@ describe("useChatPageMarkRead", () => {
       expect(applyOpenChatMarkAllAsRead).toHaveBeenCalledTimes(1);
     });
     expect(applyOpenChatMarkAllAsRead).toHaveBeenCalledWith({
-      target: { type: "topic", streamId: STREAM_ID, topic: TOPIC },
+      target: { type: "topic", streamId: STREAM_ID, topic: TOPIC, topicUuid: TOPIC_UUID },
       currentUserId: CURRENT_USER_ID,
     });
   });
@@ -75,6 +172,7 @@ describe("useChatPageMarkRead", () => {
         defaultParams({
           isDmView: true,
           activeDmUserIds: [CURRENT_USER_ID, 42],
+          activeDmStreamId: STREAM_ID,
           activeStreamId: null,
           activeTopic: undefined,
         }),
@@ -87,7 +185,7 @@ describe("useChatPageMarkRead", () => {
 
     await waitFor(() => {
       expect(applyOpenChatMarkAllAsRead).toHaveBeenCalledWith({
-        target: { type: "dm", userIds: [CURRENT_USER_ID, 42] },
+        target: { type: "dm", userIds: [CURRENT_USER_ID, 42], streamId: STREAM_ID },
         currentUserId: CURRENT_USER_ID,
       });
     });

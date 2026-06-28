@@ -713,7 +713,7 @@ describe("Sidebar", () => {
     });
   });
 
-  it("marks topic as read from topic context menu via narrow API", async () => {
+  it("marks topic as read from topic context menu via Workspace topic action", async () => {
     markTopicAsReadMock.mockResolvedValue(true);
     useInstancesStore.setState({
       instances: [
@@ -736,7 +736,7 @@ describe("Sidebar", () => {
     const streamWithTopics = {
       ...STREAM_CHAT,
       badge: 2,
-      topics: [{ subject: "incident", badge: 2, lastMessage: "Need fix" }],
+      topics: [{ topicUuid: TOPIC_UUID, subject: "incident", badge: 2, lastMessage: "Need fix" }],
     };
 
     renderWithProviders(
@@ -756,6 +756,7 @@ describe("Sidebar", () => {
       expect(markTopicAsReadMock).toHaveBeenCalledWith(
         "11111111-1111-4111-8111-111111111111",
         "incident",
+        TOPIC_UUID,
       );
     });
   });
@@ -783,7 +784,7 @@ describe("Sidebar", () => {
     const streamWithTopics = {
       ...STREAM_CHAT,
       badge: 2,
-      topics: [{ subject: "incident", badge: 2, lastMessage: "Need fix" }],
+      topics: [{ topicUuid: TOPIC_UUID, subject: "incident", badge: 2, lastMessage: "Need fix" }],
     };
 
     renderWithProviders(
@@ -795,7 +796,9 @@ describe("Sidebar", () => {
           {
             ...STREAM_CHAT,
             badge: 2,
-            topics: [{ subject: "incident", badge: 2, lastMessage: "Need fix" }],
+            topics: [
+              { topicUuid: TOPIC_UUID, subject: "incident", badge: 2, lastMessage: "Need fix" },
+            ],
           },
         ]}
       />,
@@ -808,6 +811,7 @@ describe("Sidebar", () => {
       expect(markTopicAsReadMock).toHaveBeenCalledWith(
         "11111111-1111-4111-8111-111111111111",
         "incident",
+        TOPIC_UUID,
       );
     });
     expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(2);

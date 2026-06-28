@@ -7,6 +7,7 @@ const markDmAsReadMock = vi.fn();
 const markStreamAsReadMock = vi.fn();
 const markTopicAsReadMock = vi.fn();
 const STREAM_UUID = "11111111-1111-4111-8111-111111111111";
+const TOPIC_UUID = "22222222-2222-4222-8222-222222222222";
 
 vi.mock("~/shared/api/messenger-read-state", () => ({
   markDmAsRead: (...args: unknown[]) => markDmAsReadMock(...args),
@@ -27,10 +28,14 @@ describe("applySidebarMarkChatAsRead", () => {
     useChatListStore.getState().setCurrentUserId(10);
     markDmAsReadMock.mockResolvedValue(true);
 
-    const ok = await applySidebarMarkChatAsRead({ type: "dm", userIds: [10, 20] });
+    const ok = await applySidebarMarkChatAsRead({
+      type: "dm",
+      userIds: [10, 20],
+      streamId: STREAM_UUID,
+    });
 
     expect(ok).toBe(true);
-    expect(markDmAsReadMock).toHaveBeenCalledWith([10, 20]);
+    expect(markDmAsReadMock).toHaveBeenCalledWith([10, 20], STREAM_UUID);
   });
 
   it("marks topic as read through API", async () => {
@@ -40,10 +45,11 @@ describe("applySidebarMarkChatAsRead", () => {
       type: "topic",
       streamId: STREAM_UUID,
       topic: "alpha",
+      topicUuid: TOPIC_UUID,
     });
 
     expect(ok).toBe(true);
-    expect(markTopicAsReadMock).toHaveBeenCalledWith(STREAM_UUID, "alpha");
+    expect(markTopicAsReadMock).toHaveBeenCalledWith(STREAM_UUID, "alpha", TOPIC_UUID);
   });
 
   it("removes matching inbox entry after topic mark-as-read", async () => {
@@ -53,6 +59,7 @@ describe("applySidebarMarkChatAsRead", () => {
         streamId: STREAM_UUID,
         streamName: "general",
         topic: "alpha",
+        topicUuid: TOPIC_UUID,
         senderId: null,
         senderName: null,
         dmSlug: null,
@@ -82,6 +89,7 @@ describe("applySidebarMarkChatAsRead", () => {
       type: "topic",
       streamId: STREAM_UUID,
       topic: "alpha",
+      topicUuid: TOPIC_UUID,
     });
 
     expect(useInboxStore.getState().entries.map((e) => e.key)).toEqual([

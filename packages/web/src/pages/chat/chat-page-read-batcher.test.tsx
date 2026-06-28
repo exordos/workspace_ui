@@ -187,10 +187,15 @@ describe("ChatPage mark-as-read batching", () => {
     useCurrentChatMessagesStore.getState().loadInitialMessagesForContext;
 
   beforeEach(() => {
+    vi.spyOn(document, "hasFocus").mockReturnValue(true);
+    Object.defineProperty(document, "visibilityState", {
+      value: "visible",
+      configurable: true,
+    });
     captured.composerProps = null;
     captured.inlineAlertsProps = null;
     captured.messageListProps = null;
-    vi.mocked(markMessagesAsRead).mockResolvedValue(undefined);
+    vi.mocked(markMessagesAsRead).mockResolvedValue([]);
     useChatListStore.getState().clear();
     useUsersStore.getState().clear();
     useCurrentChatMessagesStore.getState().setContext(null);
@@ -208,8 +213,8 @@ describe("ChatPage mark-as-read batching", () => {
     vi.useRealTimers();
   });
 
-  it("does not pass viewport unread callbacks to message list", async () => {
-    const initialMessage = streamTopicMessage({ content: "created channel" });
+  it("passes viewport unread callbacks and applies only API-confirmed read ids", async () => {
+    const initialMessage = streamTopicMessage({ content: "created channel", read: false });
     const context: CurrentChatContext = {
       type: "stream",
       streamId: STREAM_ID,
@@ -228,6 +233,7 @@ describe("ChatPage mark-as-read batching", () => {
       return Promise.resolve();
     });
 
+    vi.mocked(markMessagesAsRead).mockResolvedValue([MESSAGE_ID]);
     useChatListStore.getState().setFromMessages([initialMessage], CURRENT_USER_ID);
     useCurrentChatMessagesStore.setState({ loadInitialMessagesForContext });
 
@@ -237,13 +243,25 @@ describe("ChatPage mark-as-read batching", () => {
       expect(captured.messageListProps?.messages[0]?.id).toBe(MESSAGE_ID);
     });
 
-    expect("onUnreadMessagesVisible" in captured.messageListProps!).toBe(false);
-    expect("onUnreadMessagesAtBottom" in captured.messageListProps!).toBe(false);
-    expect(useCurrentChatMessagesStore.getState().messages[0]?.flags).not.toContain("read");
+    expect(captured.messageListProps?.firstUnreadId).toBe(MESSAGE_ID);
+    expect(captured.messageListProps?.unreadCount).toBe(1);
+    expect(captured.messageListProps?.onUnreadMessagesVisible).toEqual(expect.any(Function));
+    expect(captured.messageListProps?.onUnreadMessagesAtBottom).toEqual(expect.any(Function));
+
+    act(() => {
+      captured.messageListProps!.onUnreadMessagesVisible([MESSAGE_ID]);
+    });
+
+    await waitFor(() => {
+      expect(markMessagesAsRead).toHaveBeenCalledWith([MESSAGE_ID]);
+    });
+    await waitFor(() => {
+      expect(useCurrentChatMessagesStore.getState().messages[0]?.read).toBe(true);
+    });
+    expect(useCurrentChatMessagesStore.getState().messages[0]?.flags).toContain("read");
     expect(
       useChatListStore.getState().streamsMap.get(STREAM_ID)?.topics.get(TOPIC)?.unreadCount,
     ).toBe(0);
-    expect(markMessagesAsRead).not.toHaveBeenCalled();
   });
 
   it("treats /topic/__empty__ as a literal topic view and keeps the composer enabled", async () => {

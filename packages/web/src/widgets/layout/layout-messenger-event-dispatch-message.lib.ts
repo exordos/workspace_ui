@@ -23,6 +23,7 @@ import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import { maybeNotifyNewMessage } from "./layout-messenger-event-notify.lib";
 import {
   collectLoadedMessageIds,
+  parseMessagesReadEvent,
   parseUpdateMessageFlagsEvent,
 } from "./layout-messenger-event-read-flags.lib";
 import {
@@ -157,6 +158,26 @@ export function handleMessageUpdated(
 
 export { readViewportState } from "./layout-messenger-event-viewport.lib";
 export { maybeNotifyNewMessage } from "./layout-messenger-event-notify.lib";
+
+export function handleMessagesRead(
+  event: MessengerEvent,
+  ctx: LayoutMessengerEventDispatchContext,
+): void {
+  const parsed = parseMessagesReadEvent(event);
+  if (parsed == null) return;
+
+  const { currentChat, activity, inbox, notifications } = ctx;
+  activity.markStale();
+  inbox.markStale();
+
+  logSidebarUnreadFlow("event:messages.read", {
+    ...summarizeMessageIdsForFlowDebug(parsed.messageIds),
+    openChatContext: currentChat.context,
+  });
+
+  closeReadMessageNotifications(notifications, parsed.messageIds, ctx.currentInstanceId);
+  currentChat.updateMessageFlags(parsed.messageIds, "read", "add");
+}
 
 function applyMarkAllReadFromQueueEvent(
   ctx: LayoutMessengerEventDispatchContext,

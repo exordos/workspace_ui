@@ -3,6 +3,7 @@ import type { MockMessage } from "~/shared/api/messenger.types";
 import { testMessageId } from "~/test/factories";
 import {
   collectLoadedMessageIds,
+  parseMessagesReadEvent,
   parseUpdateMessageFlagsEvent,
 } from "./layout-messenger-event-read-flags.lib";
 
@@ -76,6 +77,30 @@ describe("parseUpdateMessageFlagsEvent", () => {
 
   it("returns null for non update_message_flags events", () => {
     expect(parseUpdateMessageFlagsEvent({ id: 1, type: "message" })).toBeNull();
+  });
+});
+
+describe("parseMessagesReadEvent", () => {
+  it("parses read message UUIDs from Workspace messages.read events", () => {
+    const parsed = parseMessagesReadEvent({
+      id: 2,
+      type: "message",
+      kind: "messages.read",
+      message_uuids: [testMessageId(7), testMessageId(7), "invalid", testMessageId(8)],
+    });
+
+    expect(parsed).toEqual({ messageIds: [testMessageId(7), testMessageId(8)] });
+  });
+
+  it("returns null when messages.read has no valid ids", () => {
+    expect(
+      parseMessagesReadEvent({
+        id: 2,
+        type: "message",
+        kind: "messages.read",
+        message_uuids: ["invalid"],
+      }),
+    ).toBeNull();
   });
 });
 

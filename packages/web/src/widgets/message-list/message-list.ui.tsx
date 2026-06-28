@@ -35,7 +35,8 @@ import {
 } from "~/shared/lib/scroll-prepend-anchor.lib";
 import { logSidebarUnreadFlow } from "~/shared/lib/sidebar-unread-debug.lib";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
-import { isTabVisible, onVisibilityChange } from "~/shared/lib/visibility";
+import type { UserId } from "~/shared/lib/user-id.lib";
+import { isWindowActive, onVisibilityChange } from "~/shared/lib/visibility";
 import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
 import { FloatingScrollToBottomButton } from "~/shared/ui/floating-scroll-to-bottom-button";
 import { WidgetErrorBoundary } from "~/shared/ui/widget-error-boundary.ui";
@@ -82,6 +83,23 @@ const SCROLL_LOG_THROTTLE_MS = 100;
 const INITIAL_READ_SUPPRESS_MS = 400;
 
 const messageListLog = createLogger("ui:message-list");
+
+function isUnreadIncomingMessage(message: MockMessage, currentUserId: UserId | null): boolean {
+  return message.read === false && !isMessageFromCurrentUser(message, currentUserId);
+}
+
+function collectMessageIdsInOrder(
+  messages: readonly MockMessage[],
+  ids: ReadonlySet<MessageId>,
+): MessageId[] {
+  const result: MessageId[] = [];
+  for (const message of messages) {
+    if (ids.has(message.id)) {
+      result.push(message.id);
+    }
+  }
+  return result;
+}
 
 export const MessageListInner: React.FC<MessageListProps> = ({
   messages,
@@ -215,7 +233,25 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     [messages],
   );
 
-  const lastUnreadId = undefined;
+  const unreadCandidateIds = useMemo(() => {
+    const ids = new Set<MessageId>();
+    for (const message of messages) {
+      if (isUnreadIncomingMessage(message, currentUserId ?? null)) {
+        ids.add(message.id);
+      }
+    }
+    return ids;
+  }, [messages, currentUserId]);
+
+  const lastUnreadId = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message != null && unreadCandidateIds.has(message.id)) {
+        return message.id;
+      }
+    }
+    return undefined;
+  }, [messages, unreadCandidateIds]);
 
   const syncBelowViewportUnreadCount = useCallback((_atBottom: boolean) => {
     setBelowViewportUnreadCount(0);
@@ -354,10 +390,19 @@ export const MessageListInner: React.FC<MessageListProps> = ({
   }, [messageTailLen, messageFirstId, messageLastId, isLoadingMore, scrollToBottomKey]);
 
   useEffect(() => {
-    unreadCandidatesRef.current = new Set();
-    viewportUnreadIdsRef.current.clear();
-    observedUnreadNodesRef.current.clear();
-  }, [messages]);
+    unreadCandidatesRef.current = new Set(unreadCandidateIds);
+    for (const id of viewportUnreadIdsRef.current) {
+      if (!unreadCandidateIds.has(id)) {
+        viewportUnreadIdsRef.current.delete(id);
+      }
+    }
+    for (const id of observedUnreadNodesRef.current.keys()) {
+      if (!unreadCandidateIds.has(id)) {
+        observedUnreadNodesRef.current.delete(id);
+      }
+    }
+    bottomReadDispatchKeyRef.current = null;
+  }, [unreadCandidateIds]);
 
   useEffect(() => {
     viewportUnreadIdsRef.current.clear();
@@ -417,7 +462,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
           viewportUnreadIdsRef.current.delete(messageId);
         }
       }
-      if (visibleThisFrame.length > 0 && isTabVisible()) {
+      if (visibleThisFrame.length > 0 && isWindowActive()) {
         if (
           typeof performance !== "undefined" &&
           performance.now() < suppressReadUntilMsRef.current
@@ -431,9 +476,38 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     [onUnreadMessagesVisible, deferAutoMarkUnreadUntilUserScroll],
   );
 
+  const dispatchVisibleUnreadInViewport = useCallback(
+    (reason: string) => {
+      if (!onUnreadMessagesVisible) return;
+      if (!isWindowActive()) return;
+      if (
+        typeof performance !== "undefined" &&
+        performance.now() < suppressReadUntilMsRef.current
+      ) {
+        return;
+      }
+      if (deferAutoMarkUnreadUntilUserScroll()) return;
+
+      const root = scrollRef.current;
+      if (root == null) return;
+      const candidates = unreadCandidatesRef.current;
+      if (candidates.size === 0) return;
+
+      const visible = collectViewportVisibleUnreadIds(root, candidates);
+      if (visible.length === 0) return;
+
+      for (const id of visible) {
+        viewportUnreadIdsRef.current.add(id);
+      }
+      logScrollReadFlow(reason, summarizeMessageIdsForFlowDebug(visible));
+      onUnreadMessagesVisible(visible);
+    },
+    [onUnreadMessagesVisible, deferAutoMarkUnreadUntilUserScroll],
+  );
+
   const dispatchUnreadAtBottom = useCallback(() => {
     if (!onUnreadMessagesVisible && !onUnreadMessagesAtBottom) return;
-    if (!isTabVisible()) return;
+    if (!isWindowActive()) return;
     if (typeof performance !== "undefined" && performance.now() < suppressReadUntilMsRef.current) {
       return;
     }
@@ -480,7 +554,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
       }
     }
 
-    const ids: MessageId[] = [];
+    const ids = collectMessageIdsInOrder(messages, candidateUnread);
     if (ids.length === 0) return;
 
     const sorted = [...ids].sort();
@@ -511,6 +585,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     unreadCount,
     isLastUnreadNearViewportBottom,
     lastUnreadId,
+    messages,
   ]);
 
   // On chat/topic switch, remember to scroll down after messages load (?msg= uses anchor scroll instead)
@@ -649,7 +724,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     const anchorId = unreadAnchorId ?? firstUnreadId;
     if (anchorId == null) return;
     if (!onUnreadMessagesVisible) return;
-    if (!isTabVisible()) return;
+    if (!isWindowActive()) return;
     const root = scrollRef.current;
     if (root == null) return;
     if (!unreadCandidatesRef.current.has(anchorId)) return;
@@ -668,7 +743,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
   const flushVisibleUnreadTailIfComplete = useCallback(() => {
     if (!deferAutoMarkUnreadUntilUserScroll()) return;
     if (!onUnreadMessagesVisible) return;
-    if (!isTabVisible()) return;
+    if (!isWindowActive()) return;
     if (hasNewerMessages || isLoadingNewer) return;
 
     const candidates = unreadCandidatesRef.current;
@@ -688,7 +763,8 @@ export const MessageListInner: React.FC<MessageListProps> = ({
       viewportUnreadIdsRef.current.add(id);
     }
 
-    const ids: MessageId[] = [];
+    const visibleSet = new Set<MessageId>(visible);
+    const ids = collectMessageIdsInOrder(messages, visibleSet);
     if (ids.length === 0) return;
 
     const sorted = [...ids].sort();
@@ -711,6 +787,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     isLastUnreadNearViewportBottom,
     scrollToBottomKey,
     onUnreadMessagesAtBottom,
+    messages,
   ]);
 
   const scheduleFlushSingleAnchorUnreadIfVisible = useCallback(() => {
@@ -1089,8 +1166,9 @@ export const MessageListInner: React.FC<MessageListProps> = ({
 
   useEffect(() => {
     let throttleId: ReturnType<typeof setTimeout> | null = null;
-    const unsub = onVisibilityChange((visible) => {
-      if (!visible) return;
+
+    const scheduleActiveWindowReadRecheck = () => {
+      if (!isWindowActive()) return;
       if (throttleId != null) {
         clearTimeout(throttleId);
       }
@@ -1103,18 +1181,31 @@ export const MessageListInner: React.FC<MessageListProps> = ({
             processIntersectionEntries(pending);
           }
         }
+        dispatchVisibleUnreadInViewport("read:activeWindowRecheck");
         if (wasAtBottomRef.current) {
           dispatchUnreadAtBottom();
         }
       }, VISIBILITY_READ_RECHECK_MS);
+    };
+
+    const unsub = onVisibilityChange((visible) => {
+      if (visible) {
+        scheduleActiveWindowReadRecheck();
+      }
     });
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", scheduleActiveWindowReadRecheck);
+    }
     return () => {
       unsub();
+      if (typeof window !== "undefined") {
+        window.removeEventListener("focus", scheduleActiveWindowReadRecheck);
+      }
       if (throttleId != null) {
         clearTimeout(throttleId);
       }
     };
-  }, [processIntersectionEntries, dispatchUnreadAtBottom]);
+  }, [processIntersectionEntries, dispatchVisibleUnreadInViewport, dispatchUnreadAtBottom]);
 
   const scrollFocusedMessageIntoView = useCallback(() => {
     if (focusedMessageId == null) return;

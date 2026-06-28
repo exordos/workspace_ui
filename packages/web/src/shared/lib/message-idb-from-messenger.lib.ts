@@ -11,6 +11,7 @@ import { env } from "~/shared/lib/env";
 import {
   mirrorMessengerDeleteMessageToIndexedDb,
   mirrorMessengerMessageEventToIndexedDb,
+  mirrorMessengerMessagesReadToIndexedDb,
   mirrorMessengerReactionToIndexedDb,
   mirrorMessengerUpdateMessageFlagsToIndexedDb,
   mirrorMessengerUpdateMessageToIndexedDb,
@@ -29,17 +30,23 @@ export async function applyMessengerEventToMessageIndexedDb(options: {
   if (!isChatMessagesPersistToIndexedDbEnabled()) return;
   const { instanceId, currentUserId, event } = options;
 
-  if (event.type === "message" && event.message) {
-    if (event.kind === "message.deleted") {
-      await mirrorMessengerDeleteMessageToIndexedDb({ instanceId, event });
+  if (event.type === "message") {
+    if (event.kind === "messages.read") {
+      await mirrorMessengerMessagesReadToIndexedDb({ instanceId, event });
       return;
     }
-    await mirrorMessengerMessageEventToIndexedDb({
-      instanceId,
-      currentUserId,
-      raw: event.message as unknown as WorkspaceRawMessage,
-    });
-    return;
+    if (event.message) {
+      if (event.kind === "message.deleted") {
+        await mirrorMessengerDeleteMessageToIndexedDb({ instanceId, event });
+        return;
+      }
+      await mirrorMessengerMessageEventToIndexedDb({
+        instanceId,
+        currentUserId,
+        raw: event.message as unknown as WorkspaceRawMessage,
+      });
+      return;
+    }
   }
 
   if (event.type === "update_message_flags") {

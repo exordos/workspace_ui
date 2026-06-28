@@ -10,6 +10,7 @@ import {
   handleDeleteMessage,
   handleIncomingMessage,
   handleMessageUpdated,
+  handleMessagesRead,
   handleReaction,
   handleUpdateMessage,
   handleUpdateMessageFlags,
@@ -37,17 +38,23 @@ export function dispatchMessengerEvent(
 ): void {
   applyMessageCacheIndexedDb(event, ctx);
 
-  if (event.type === "message" && event.message) {
-    if (event.kind === "message.updated") {
-      runDispatchHandler("dispatch:message.updated", () => handleMessageUpdated(event, ctx));
+  if (event.type === "message") {
+    if (event.kind === "messages.read") {
+      runDispatchHandler("dispatch:messages.read", () => handleMessagesRead(event, ctx));
       return;
     }
-    if (event.kind === "message.deleted") {
-      runDispatchHandler("dispatch:message.deleted", () => handleDeleteMessage(event, ctx));
+    if (event.message) {
+      if (event.kind === "message.updated") {
+        runDispatchHandler("dispatch:message.updated", () => handleMessageUpdated(event, ctx));
+        return;
+      }
+      if (event.kind === "message.deleted") {
+        runDispatchHandler("dispatch:message.deleted", () => handleDeleteMessage(event, ctx));
+        return;
+      }
+      runDispatchHandler("dispatch:message", () => handleIncomingMessage(event, ctx));
       return;
     }
-    runDispatchHandler("dispatch:message", () => handleIncomingMessage(event, ctx));
-    return;
   }
 
   if (event.type === "update_message_flags") {

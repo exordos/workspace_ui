@@ -211,6 +211,9 @@ function inboxEntryMatchesMarkReadTarget(
     return entry.streamId === target.streamId;
   }
   if (entry.streamId !== target.streamId || entry.topic == null) return false;
+  if (target.topicUuid != null && entry.topicUuid != null) {
+    return entry.topicUuid.trim().toLowerCase() === target.topicUuid.trim().toLowerCase();
+  }
   return normalizeTopicForIdentity(entry.topic) === normalizeTopicForIdentity(target.topic);
 }
 

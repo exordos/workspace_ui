@@ -80,6 +80,7 @@ describe("MessageList focused message behavior", () => {
     fetchRealmEmojisMock.mockReset();
     ensureUserStatusLoadedMock.mockReset();
     fetchRealmEmojisMock.mockResolvedValue([]);
+    vi.spyOn(document, "hasFocus").mockReturnValue(true);
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       value: scrollIntoView,
@@ -456,7 +457,7 @@ describe("MessageList focused message behavior", () => {
     expect(screen.getByRole("status", { name: /online/i })).toBeInTheDocument();
   });
 
-  it("does not report unread visible messages from local message flags", () => {
+  it("reports visible unread messages from the server read field", () => {
     const onUnreadMessagesVisible = vi.fn();
     render(
       <MessageList
@@ -489,6 +490,29 @@ describe("MessageList focused message behavior", () => {
       ] as unknown as IntersectionObserverEntry[],
       {} as IntersectionObserver,
     );
+    expect(onUnreadMessagesVisible).toHaveBeenCalledTimes(1);
+    expect(onUnreadMessagesVisible).toHaveBeenCalledWith([MESSAGE_ID_1]);
+  });
+
+  it("does not report visible unread messages when the window is inactive", () => {
+    vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    const onUnreadMessagesVisible = vi.fn();
+    render(
+      <MessageList
+        messages={[msg(1, { sender_id: 42, read: false })]}
+        currentUserId={7}
+        onUnreadMessagesVisible={onUnreadMessagesVisible}
+      />,
+    );
+
+    const targetUnread = screen.getByTestId(`message-${MESSAGE_ID_1}`);
+    intersectionCallback?.(
+      [
+        { target: targetUnread, isIntersecting: true, intersectionRatio: 0.7 },
+      ] as unknown as IntersectionObserverEntry[],
+      {} as IntersectionObserver,
+    );
+
     expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
   });
 

@@ -105,4 +105,22 @@ describe("handleLayoutMessengerEventLoopQueueEvent", () => {
 
     expect(useCurrentChatMessagesStore.getState().messages[0]!.flags).toContain("read");
   });
+
+  it("syncs read flags to message store from Workspace messages.read events", () => {
+    useCurrentChatMessagesStore.getState().setMessages([mockMsg(56, { flags: [], read: false })]);
+
+    handleLayoutMessengerEventLoopQueueEvent(
+      {
+        id: 2,
+        type: "message",
+        kind: "messages.read",
+        message_uuids: [testMessageId(56)],
+      },
+      { currentInstanceId: "inst-1", latestMessageIdRef: { current: null } },
+    );
+
+    const message = useCurrentChatMessagesStore.getState().messages[0]!;
+    expect(message.flags).toContain("read");
+    expect(message.read).toBe(true);
+  });
 });

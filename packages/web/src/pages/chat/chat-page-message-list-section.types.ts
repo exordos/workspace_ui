@@ -28,6 +28,8 @@ export interface ChatPageMessageListSectionProps {
   firstUnreadId: MessageId | undefined;
   unreadCount: number;
   focusedMessageId: MessageId | null | undefined;
+  onUnreadMessagesVisible: (messageIds: MessageId[]) => void;
+  onUnreadMessagesAtBottom: (messageIds: MessageId[]) => void;
   /** Failed initial load (no cache) vs network refresh failed after IndexedDB hydrate. */
   messagesLoadError: ChatMessagesLoadErrorKind | null;
   onRetryMessagesLoad: () => void;

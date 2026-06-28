@@ -41,4 +41,4 @@ export type InboxGroupType = "stream" | "dm";
 export type InboxMarkReadTarget =
   | { type: "dm"; userIds: number[] }
   | { type: "stream"; streamId: string }
-  | { type: "topic"; streamId: string; topic: string };
+  | { type: "topic"; streamId: string; topic: string; topicUuid?: string };

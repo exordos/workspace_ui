@@ -8,18 +8,18 @@ import { logSidebarUnreadFlow } from "~/shared/lib/sidebar-unread-debug.lib";
 import { numericUserIdOrNull } from "~/shared/lib/user-id.lib";
 
 export type SidebarMarkReadTarget =
-  | { type: "dm"; userIds: number[] }
+  | { type: "dm"; userIds: number[]; streamId?: string }
   | { type: "stream"; streamId: string }
-  | { type: "topic"; streamId: string; topic: string };
+  | { type: "topic"; streamId: string; topic: string; topicUuid?: string };
 
 async function requestSidebarMarkReadApi(target: SidebarMarkReadTarget): Promise<boolean> {
   if (target.type === "dm") {
-    return markDmAsRead(target.userIds);
+    return markDmAsRead(target.userIds, target.streamId);
   }
   if (target.type === "stream") {
     return markStreamAsRead(target.streamId);
   }
-  return markTopicAsRead(target.streamId, target.topic);
+  return markTopicAsRead(target.streamId, target.topic, target.topicUuid);
 }
 
 /** Marks a sidebar chat/topic read and updates the open chat + inbox surfaces. */

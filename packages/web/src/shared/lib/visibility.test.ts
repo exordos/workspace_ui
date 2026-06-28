@@ -10,6 +10,7 @@
 import { describe, expect, it, vi, beforeAll, afterEach } from "vitest";
 import {
   isTabVisible,
+  isWindowActive,
   onVisibilityChange,
   onTabResume,
   initVisibilityTracking,
@@ -27,6 +28,7 @@ describe("visibility", () => {
     cleanups.forEach((fn) => fn());
     cleanups = [];
     vi.useRealTimers();
+    vi.restoreAllMocks();
     Object.defineProperty(document, "visibilityState", {
       value: "visible",
       configurable: true,
@@ -51,6 +53,38 @@ describe("visibility", () => {
         configurable: true,
       });
       expect(isTabVisible()).toBe(false);
+    });
+  });
+
+  describe("isWindowActive", () => {
+    it("returns true when the tab is visible and the document has focus", () => {
+      Object.defineProperty(document, "visibilityState", {
+        value: "visible",
+        configurable: true,
+      });
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+
+      expect(isWindowActive()).toBe(true);
+    });
+
+    it("returns false when the tab is visible but the window is not focused", () => {
+      Object.defineProperty(document, "visibilityState", {
+        value: "visible",
+        configurable: true,
+      });
+      vi.spyOn(document, "hasFocus").mockReturnValue(false);
+
+      expect(isWindowActive()).toBe(false);
+    });
+
+    it("returns false when the tab is hidden", () => {
+      Object.defineProperty(document, "visibilityState", {
+        value: "hidden",
+        configurable: true,
+      });
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+
+      expect(isWindowActive()).toBe(false);
     });
   });
 
