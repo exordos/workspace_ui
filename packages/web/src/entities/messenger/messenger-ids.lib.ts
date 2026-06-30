@@ -1,3 +1,4 @@
+import type { WorkspaceMessengerRouteMatch } from "~/shared/lib/workspace-messenger-route.lib";
 import type { MessengerConversationId, MessengerUuid } from "./messenger.types";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -6,6 +7,24 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 export type ParsedMessengerConversationId =
   | { kind: "stream"; streamUuid: MessengerUuid }
   | { kind: "topic"; streamUuid: MessengerUuid; topicUuid: MessengerUuid };
+
+export type MessengerRouteConversationSelection =
+  | {
+      status: "conversation";
+      kind: "stream";
+      conversationId: MessengerConversationId;
+      streamUuid: MessengerUuid;
+    }
+  | {
+      status: "conversation";
+      kind: "topic";
+      conversationId: MessengerConversationId;
+      streamUuid: MessengerUuid;
+      topicUuid: MessengerUuid;
+    }
+  | { status: "unsupported-message"; messageUuid: string }
+  | { status: "none"; reason: "root" | "inbox" | "activity" | "feed" | "missing-route" }
+  | { status: "invalid-route" };
 
 export function isMessengerUuid(value: unknown): value is MessengerUuid {
   return typeof value === "string" && UUID_PATTERN.test(value);
@@ -50,3 +69,40 @@ export function parseMessengerConversationId(
   }
   return null;
 }
+
+export function selectMessengerConversationFromWorkspaceRoute(
+  route: WorkspaceMessengerRouteMatch | null,
+): MessengerRouteConversationSelection {
+  if (route == null) return { status: "none", reason: "missing-route" };
+
+  if (route.kind === "stream") {
+    if (!isMessengerUuid(route.streamUuid)) return { status: "invalid-route" };
+    return {
+      status: "conversation",
+      kind: "stream",
+      conversationId: conversationIdForStream(route.streamUuid),
+      streamUuid: route.streamUuid,
+    };
+  }
+
+  if (route.kind === "topic") {
+    if (!isMessengerUuid(route.streamUuid) || !isMessengerUuid(route.topicUuid)) {
+      return { status: "invalid-route" };
+    }
+    return {
+      status: "conversation",
+      kind: "topic",
+      conversationId: conversationIdForTopic(route.streamUuid, route.topicUuid),
+      streamUuid: route.streamUuid,
+      topicUuid: route.topicUuid,
+    };
+  }
+
+  if (route.kind === "message") {
+    return { status: "unsupported-message", messageUuid: route.messageUuid };
+  }
+
+  return { status: "none", reason: route.kind };
+}
+
+export const selectMessengerConversationFromRoute = selectMessengerConversationFromWorkspaceRoute;

@@ -133,6 +133,14 @@
     "yesterday": "Yesterday",
     "loadNewer": "Load newer messages"
   },
+  "workspaceMessenger": {
+    "emptyConversation": "No messages here yet.",
+    "invalidRoute": "This chat link is invalid",
+    "invalidRouteHint": "Open a chat from the list to continue.",
+    "messageRouteUnsupported": "Message links are not available yet",
+    "messageRouteUnsupportedHint": "Open the stream or topic from the chat list.",
+    "readOnlyComposer": "Workspace messaging is read-only in this migration slice. Sending will be enabled in a separate step."
+  },
   "message": {
     "sendRequiresStreamOrTo": "Stream or recipients (to) required for sending",
     "views": "Views",

@@ -13,10 +13,8 @@ import { WebViewShell } from "./webview-shell";
 const LoginPage = React.lazy(() =>
   import("~/pages/login/login-page.ui").then((m) => ({ default: m.LoginPage })),
 );
-const WorkspaceMessengerPage = React.lazy(() =>
-  import("~/pages/workspace-messenger/workspace-messenger-page.ui").then((m) => ({
-    default: m.WorkspaceMessengerPage,
-  })),
+const ChatPage = React.lazy(() =>
+  import("~/pages/chat/chat-page.ui").then((m) => ({ default: m.ChatPage })),
 );
 const ActivityPage = React.lazy(() =>
   import("~/pages/activity/activity-page.ui").then((m) => ({ default: m.ActivityPage })),
@@ -153,15 +151,15 @@ export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
         <Route path="project/:projectId/feed" element={<FeedPage />} />
         <Route
           path="project/:projectId/stream/:streamUuid"
-          element={<WorkspaceMessengerPage key={location.pathname} />}
+          element={<ChatPage key={location.pathname} />}
         />
         <Route
           path="project/:projectId/stream/:streamUuid/topic/:topicUuid"
-          element={<WorkspaceMessengerPage key={location.pathname} />}
+          element={<ChatPage key={location.pathname} />}
         />
         <Route
           path="project/:projectId/message/:messageUuid"
-          element={<WorkspaceMessengerPage key={location.pathname} />}
+          element={<ChatPage key={location.pathname} />}
         />
         <Route path="calendar" element={<CalendarPage />} />
         <Route path="mail" element={<MailPage />} />

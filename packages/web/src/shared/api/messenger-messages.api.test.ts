@@ -211,10 +211,10 @@ describe("messenger messages API", () => {
 
   it("rejects unsupported actions without fetch", async () => {
     const fetchMock = vi.fn<typeof fetch>();
-    const unsupportedCases: Array<{
+    const unsupportedCases: {
       action: UnsupportedMessengerApiAction;
       call: () => Promise<never>;
-    }> = [
+    }[] = [
       { action: "mark_message_unread", call: markMessageUnreadUnsupported },
       { action: "mark_conversation_read", call: markConversationReadUnsupported },
       { action: "add_reaction", call: addReactionUnsupported },

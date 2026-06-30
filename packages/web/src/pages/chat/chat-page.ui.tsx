@@ -48,6 +48,7 @@ import { useShortcut } from "~/shared/lib/shortcuts";
 import { resolveCanonicalStreamName } from "~/shared/lib/stream-name.lib";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
+import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { AppDialogShell, APP_DIALOG_CONTENT_BASE_CLASS } from "~/shared/ui/app-dialog.ui";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import { useSidebarConfigStore } from "~/widgets/sidebar/sidebar-config.model";
@@ -82,6 +83,7 @@ import { ChatPageSelectionBar } from "./chat-page-selection-bar.ui";
 import { useChatPageSendMessage } from "./chat-page-send-message.hook";
 import { useChatToastAutoClear } from "./chat-page-toast.hook";
 import { ChatPageTypingLine } from "./chat-page-typing-line.ui";
+import { WorkspaceChatPage } from "./chat-page-workspace.ui";
 import {
   resolveChatHeaderRightPanelLabel,
   resolveDmGroupParticipantIds,
@@ -99,6 +101,22 @@ interface ComposerEditSessionState {
 }
 
 export const ChatPage: React.FC = () => {
+  const location = useLocation();
+  const workspaceRoute = useMemo(
+    () => parseWorkspaceMessengerRoute(location.pathname),
+    [location.pathname],
+  );
+
+  if (workspaceRoute != null) {
+    return <WorkspaceChatPage route={workspaceRoute} />;
+  }
+
+  return <LegacyChatPage />;
+};
+
+// Delete this Zulip branch after all chat routes, composer actions, realtime, read state,
+// and message actions use the Workspace messenger data flow.
+const LegacyChatPage: React.FC = () => {
   const navigate = useNavigate();
   const openSearch = useOpenSearch();
   const location = useLocation();

@@ -27,6 +27,11 @@ const EMPTY_TOPICS_BY_ID: Record<MessengerUuid, MessengerTopic> = {};
 const EMPTY_CONVERSATIONS_BY_ID: Record<MessengerConversationId, MessengerConversation> = {};
 const EMPTY_MESSAGES_BY_ID: Record<MessengerUuid, MessengerMessage> = {};
 const EMPTY_MESSAGE_IDS_BY_CONVERSATION_ID: Record<MessengerConversationId, MessengerUuid[]> = {};
+const EMPTY_MESSAGES_LOADING_BY_CONVERSATION_ID: Record<MessengerConversationId, boolean> = {};
+const EMPTY_MESSAGES_ERROR_BY_CONVERSATION_ID: Record<MessengerConversationId, string> = {};
+const EMPTY_NEXT_PAGE_MARKER_BY_CONVERSATION_ID: Record<MessengerConversationId, string | null> =
+  {};
+const EMPTY_HAS_MORE_BY_CONVERSATION_ID: Record<MessengerConversationId, boolean> = {};
 const EMPTY_FOLDERS_BY_ID: Record<MessengerUuid, MessengerFolder> = {};
 const EMPTY_USERS_BY_ID: Record<MessengerUuid, MessengerUser> = {};
 const EMPTY_IDS: string[] = [];
@@ -48,6 +53,10 @@ export interface MessengerDomainData {
   conversationIds: MessengerConversationId[];
   messagesById: Record<MessengerUuid, MessengerMessage>;
   messageIdsByConversationId: Record<MessengerConversationId, MessengerUuid[]>;
+  messagesLoadingByConversationId: Record<MessengerConversationId, boolean>;
+  messagesErrorByConversationId: Record<MessengerConversationId, string>;
+  nextPageMarkerByConversationId: Record<MessengerConversationId, string | null>;
+  hasMoreByConversationId: Record<MessengerConversationId, boolean>;
   foldersById: Record<MessengerUuid, MessengerFolder>;
   folderIds: MessengerUuid[];
   usersById: Record<MessengerUuid, MessengerUser>;
@@ -68,6 +77,34 @@ export interface MessengerStoreState extends MessengerDomainData {
     ownerKey: string,
     conversationId: MessengerConversationId,
     messages: MessengerMessage[],
+  ) => void;
+  startConversationMessagesLoad: (
+    ownerKey: string,
+    conversationId: MessengerConversationId,
+  ) => void;
+  applyConversationMessagesLoadSuccess: (
+    ownerKey: string,
+    conversationId: MessengerConversationId,
+    messages: MessengerMessage[],
+    options: {
+      mode: "replace" | "merge";
+      nextPageMarker: string | null;
+      hasMore: boolean;
+    },
+  ) => void;
+  finishConversationMessagesLoad: (
+    ownerKey: string,
+    conversationId: MessengerConversationId,
+    nextPageMarker: string | null,
+  ) => void;
+  failConversationMessagesLoad: (
+    ownerKey: string,
+    conversationId: MessengerConversationId,
+    error: string,
+  ) => void;
+  cancelConversationMessagesLoad: (
+    ownerKey: string,
+    conversationId: MessengerConversationId,
   ) => void;
   upsertStream: (ownerKey: string, stream: MessengerStream) => void;
   removeStream: (ownerKey: string, stream: MessengerDeletedStream) => void;
@@ -103,6 +140,10 @@ function createEmptyMessengerData(): MessengerDomainData {
     conversationIds: EMPTY_IDS,
     messagesById: EMPTY_MESSAGES_BY_ID,
     messageIdsByConversationId: EMPTY_MESSAGE_IDS_BY_CONVERSATION_ID,
+    messagesLoadingByConversationId: EMPTY_MESSAGES_LOADING_BY_CONVERSATION_ID,
+    messagesErrorByConversationId: EMPTY_MESSAGES_ERROR_BY_CONVERSATION_ID,
+    nextPageMarkerByConversationId: EMPTY_NEXT_PAGE_MARKER_BY_CONVERSATION_ID,
+    hasMoreByConversationId: EMPTY_HAS_MORE_BY_CONVERSATION_ID,
     foldersById: EMPTY_FOLDERS_BY_ID,
     folderIds: EMPTY_IDS,
     usersById: EMPTY_USERS_BY_ID,
@@ -117,6 +158,11 @@ function createInitialState(): Omit<
   | "startBootstrap"
   | "replaceBootstrapState"
   | "replaceConversationMessages"
+  | "startConversationMessagesLoad"
+  | "applyConversationMessagesLoadSuccess"
+  | "finishConversationMessagesLoad"
+  | "failConversationMessagesLoad"
+  | "cancelConversationMessagesLoad"
   | "upsertStream"
   | "removeStream"
   | "upsertStreamBindings"
@@ -148,6 +194,96 @@ function appendUniqueId<TId extends string>(ids: TId[], id: TId): TId[] {
 
 function removeId<TId extends string>(ids: TId[], id: TId): TId[] {
   return ids.filter((item) => item !== id);
+}
+
+function isMessageReferencedOutsideConversations(
+  messageIdsByConversationId: Record<MessengerConversationId, MessengerUuid[]>,
+  excludedConversationIds: ReadonlySet<MessengerConversationId>,
+  messageId: MessengerUuid,
+): boolean {
+  for (const [conversationId, messageIds] of Object.entries(messageIdsByConversationId)) {
+    if (excludedConversationIds.has(conversationId)) continue;
+    if (messageIds.includes(messageId)) return true;
+  }
+  return false;
+}
+
+function applyConversationMessagesBucket(
+  state: Pick<MessengerDomainData, "messagesById" | "messageIdsByConversationId">,
+  conversationId: MessengerConversationId,
+  messages: MessengerMessage[],
+  mode: "replace" | "merge",
+): Pick<MessengerDomainData, "messagesById" | "messageIdsByConversationId"> {
+  const nextMessagesById = { ...state.messagesById };
+  const excludedConversationIds = new Set<MessengerConversationId>([conversationId]);
+  let nextMessageIds =
+    mode === "merge" ? (state.messageIdsByConversationId[conversationId] ?? EMPTY_IDS) : EMPTY_IDS;
+
+  if (mode === "replace") {
+    const nextMessageIdSet = new Set(messages.map((message) => message.uuid));
+    const previousMessageIds = state.messageIdsByConversationId[conversationId] ?? EMPTY_IDS;
+    for (const messageId of previousMessageIds) {
+      if (
+        !nextMessageIdSet.has(messageId) &&
+        !isMessageReferencedOutsideConversations(
+          state.messageIdsByConversationId,
+          excludedConversationIds,
+          messageId,
+        )
+      ) {
+        delete nextMessagesById[messageId];
+      }
+    }
+  }
+
+  for (const message of messages) {
+    nextMessagesById[message.uuid] = message;
+    nextMessageIds = appendUniqueId(nextMessageIds, message.uuid);
+  }
+
+  return {
+    messagesById: nextMessagesById,
+    messageIdsByConversationId: {
+      ...state.messageIdsByConversationId,
+      [conversationId]: nextMessageIds,
+    },
+  };
+}
+
+function removeConversationPageState(
+  state: Pick<
+    MessengerDomainData,
+    | "messagesLoadingByConversationId"
+    | "messagesErrorByConversationId"
+    | "nextPageMarkerByConversationId"
+    | "hasMoreByConversationId"
+  >,
+  conversationIds: MessengerConversationId[],
+): Pick<
+  MessengerDomainData,
+  | "messagesLoadingByConversationId"
+  | "messagesErrorByConversationId"
+  | "nextPageMarkerByConversationId"
+  | "hasMoreByConversationId"
+> {
+  const nextLoading = { ...state.messagesLoadingByConversationId };
+  const nextErrors = { ...state.messagesErrorByConversationId };
+  const nextPageMarkers = { ...state.nextPageMarkerByConversationId };
+  const nextHasMore = { ...state.hasMoreByConversationId };
+
+  for (const conversationId of conversationIds) {
+    delete nextLoading[conversationId];
+    delete nextErrors[conversationId];
+    delete nextPageMarkers[conversationId];
+    delete nextHasMore[conversationId];
+  }
+
+  return {
+    messagesLoadingByConversationId: nextLoading,
+    messagesErrorByConversationId: nextErrors,
+    nextPageMarkerByConversationId: nextPageMarkers,
+    hasMoreByConversationId: nextHasMore,
+  };
 }
 
 function conversationFromStream(stream: MessengerStream): MessengerConversation {
@@ -208,11 +344,20 @@ function removeConversationMessages(
 } {
   const nextMessagesById = { ...messagesById };
   const nextMessageIdsByConversationId = { ...messageIdsByConversationId };
+  const removedConversationIds = new Set(conversationIds);
 
   for (const conversationId of conversationIds) {
     const messageIds = nextMessageIdsByConversationId[conversationId] ?? EMPTY_IDS;
     for (const messageId of messageIds) {
-      delete nextMessagesById[messageId];
+      if (
+        !isMessageReferencedOutsideConversations(
+          messageIdsByConversationId,
+          removedConversationIds,
+          messageId,
+        )
+      ) {
+        delete nextMessagesById[messageId];
+      }
     }
     delete nextMessageIdsByConversationId[conversationId];
   }
@@ -285,6 +430,10 @@ function buildMessengerDomainData(payload: MessengerBootstrapPayload): Messenger
     conversationIds,
     messagesById: EMPTY_MESSAGES_BY_ID,
     messageIdsByConversationId: EMPTY_MESSAGE_IDS_BY_CONVERSATION_ID,
+    messagesLoadingByConversationId: EMPTY_MESSAGES_LOADING_BY_CONVERSATION_ID,
+    messagesErrorByConversationId: EMPTY_MESSAGES_ERROR_BY_CONVERSATION_ID,
+    nextPageMarkerByConversationId: EMPTY_NEXT_PAGE_MARKER_BY_CONVERSATION_ID,
+    hasMoreByConversationId: EMPTY_HAS_MORE_BY_CONVERSATION_ID,
     foldersById,
     folderIds,
     usersById,
@@ -348,23 +497,128 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
 
-      const nextMessagesById = { ...state.messagesById };
-      const previousMessageIds = state.messageIdsByConversationId[conversationId] ?? EMPTY_IDS;
-      for (const messageId of previousMessageIds) {
-        delete nextMessagesById[messageId];
-      }
+      return applyConversationMessagesBucket(state, conversationId, messages, "replace");
+    });
+  },
 
-      const nextMessageIds = messages.map((message) => {
-        nextMessagesById[message.uuid] = message;
-        return message.uuid;
-      });
+  startConversationMessagesLoad(ownerKey, conversationId) {
+    logStoreAction("messenger", "startConversationMessagesLoad", { ownerKey, conversationId });
+    set((state) => {
+      if (state.ownerKey !== ownerKey) return state;
+
+      const nextErrors = { ...state.messagesErrorByConversationId };
+      delete nextErrors[conversationId];
 
       return {
-        messagesById: nextMessagesById,
-        messageIdsByConversationId: {
-          ...state.messageIdsByConversationId,
-          [conversationId]: nextMessageIds,
+        messagesLoadingByConversationId: {
+          ...state.messagesLoadingByConversationId,
+          [conversationId]: true,
         },
+        messagesErrorByConversationId: nextErrors,
+      };
+    });
+  },
+
+  applyConversationMessagesLoadSuccess(ownerKey, conversationId, messages, options) {
+    logStoreAction("messenger", "applyConversationMessagesLoadSuccess", {
+      ownerKey,
+      conversationId,
+      messages: messages.length,
+      mode: options.mode,
+      nextPageMarker: options.nextPageMarker,
+      hasMore: options.hasMore,
+    });
+    set((state) => {
+      if (state.ownerKey !== ownerKey) return state;
+
+      const nextLoading = { ...state.messagesLoadingByConversationId };
+      delete nextLoading[conversationId];
+      const nextErrors = { ...state.messagesErrorByConversationId };
+      delete nextErrors[conversationId];
+      const messageState = applyConversationMessagesBucket(
+        state,
+        conversationId,
+        messages,
+        options.mode,
+      );
+
+      return {
+        ...messageState,
+        messagesLoadingByConversationId: nextLoading,
+        messagesErrorByConversationId: nextErrors,
+        nextPageMarkerByConversationId: {
+          ...state.nextPageMarkerByConversationId,
+          [conversationId]: options.nextPageMarker,
+        },
+        hasMoreByConversationId: {
+          ...state.hasMoreByConversationId,
+          [conversationId]: options.hasMore,
+        },
+      };
+    });
+  },
+
+  finishConversationMessagesLoad(ownerKey, conversationId, nextPageMarker) {
+    logStoreAction("messenger", "finishConversationMessagesLoad", {
+      ownerKey,
+      conversationId,
+      nextPageMarker,
+    });
+    set((state) => {
+      if (state.ownerKey !== ownerKey) return state;
+
+      const nextLoading = { ...state.messagesLoadingByConversationId };
+      delete nextLoading[conversationId];
+      const nextErrors = { ...state.messagesErrorByConversationId };
+      delete nextErrors[conversationId];
+
+      return {
+        messagesLoadingByConversationId: nextLoading,
+        messagesErrorByConversationId: nextErrors,
+        nextPageMarkerByConversationId: {
+          ...state.nextPageMarkerByConversationId,
+          [conversationId]: nextPageMarker,
+        },
+        hasMoreByConversationId: {
+          ...state.hasMoreByConversationId,
+          [conversationId]: nextPageMarker != null,
+        },
+      };
+    });
+  },
+
+  failConversationMessagesLoad(ownerKey, conversationId, error) {
+    logStoreAction("messenger", "failConversationMessagesLoad", {
+      ownerKey,
+      conversationId,
+      error,
+    });
+    set((state) => {
+      if (state.ownerKey !== ownerKey) return state;
+
+      const nextLoading = { ...state.messagesLoadingByConversationId };
+      delete nextLoading[conversationId];
+
+      return {
+        messagesLoadingByConversationId: nextLoading,
+        messagesErrorByConversationId: {
+          ...state.messagesErrorByConversationId,
+          [conversationId]: error,
+        },
+      };
+    });
+  },
+
+  cancelConversationMessagesLoad(ownerKey, conversationId) {
+    logStoreAction("messenger", "cancelConversationMessagesLoad", { ownerKey, conversationId });
+    set((state) => {
+      if (state.ownerKey !== ownerKey) return state;
+
+      const nextLoading = { ...state.messagesLoadingByConversationId };
+      delete nextLoading[conversationId];
+
+      return {
+        messagesLoadingByConversationId: nextLoading,
       };
     });
   },
@@ -377,7 +631,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
       let conversationState = upsertConversation(state, conversationFromStream(stream));
       for (const topicId of state.topicIds) {
         const topic = state.topicsById[topicId];
-        if (topic == null || topic.streamUuid !== stream.uuid) continue;
+        if (topic?.streamUuid !== stream.uuid) continue;
         conversationState = upsertConversation(
           conversationState,
           conversationFromTopic(topic, stream),
@@ -432,6 +686,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
         state.messageIdsByConversationId,
         removedConversationIds,
       );
+      const pageState = removeConversationPageState(state, removedConversationIds);
 
       return {
         streamsById: nextStreamsById,
@@ -448,6 +703,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
         ),
         streamBindingIdsByStreamId: nextStreamBindingIdsByStreamId,
         ...messageState,
+        ...pageState,
       };
     });
   },
@@ -542,6 +798,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
         state.messageIdsByConversationId,
         [conversationId],
       );
+      const pageState = removeConversationPageState(state, [conversationId]);
 
       return {
         topicsById: nextTopicsById,
@@ -549,6 +806,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
         conversationsById: nextConversationsById,
         conversationIds: removeId(state.conversationIds, conversationId),
         ...messageState,
+        ...pageState,
       };
     });
   },
@@ -587,14 +845,9 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
       if (state.ownerKey !== ownerKey) return state;
 
       const nextMessagesById = { ...state.messagesById };
-      const previous = nextMessagesById[message.uuid];
       delete nextMessagesById[message.uuid];
-      const conversationIds = [
-        conversationIdForTopic(message.streamUuid, message.topicUuid),
-        ...(previous != null ? [previous.conversationId] : []),
-      ];
       const nextMessageIdsByConversationId = { ...state.messageIdsByConversationId };
-      for (const conversationId of conversationIds) {
+      for (const conversationId of Object.keys(nextMessageIdsByConversationId)) {
         nextMessageIdsByConversationId[conversationId] = removeId(
           nextMessageIdsByConversationId[conversationId] ?? EMPTY_IDS,
           message.uuid,
@@ -617,20 +870,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
 
-      const nextMessagesById = { ...state.messagesById };
-      let nextMessageIds = state.messageIdsByConversationId[conversationId] ?? EMPTY_IDS;
-      for (const message of messages) {
-        nextMessagesById[message.uuid] = message;
-        nextMessageIds = appendUniqueId(nextMessageIds, message.uuid);
-      }
-
-      return {
-        messagesById: nextMessagesById,
-        messageIdsByConversationId: {
-          ...state.messageIdsByConversationId,
-          [conversationId]: nextMessageIds,
-        },
-      };
+      return applyConversationMessagesBucket(state, conversationId, messages, "merge");
     });
   },
 
@@ -822,4 +1062,23 @@ export function selectMessengerMessagesForConversation(
     result: messages,
   });
   return messages;
+}
+
+export interface MessengerConversationMessagesStatus {
+  loading: boolean;
+  error: string | null;
+  nextPageMarker: string | null;
+  hasMore: boolean;
+}
+
+export function selectMessengerConversationMessagesStatus(
+  state: MessengerStoreState,
+  conversationId: MessengerConversationId,
+): MessengerConversationMessagesStatus {
+  return {
+    loading: state.messagesLoadingByConversationId[conversationId] === true,
+    error: state.messagesErrorByConversationId[conversationId] ?? null,
+    nextPageMarker: state.nextPageMarkerByConversationId[conversationId] ?? null,
+    hasMore: state.hasMoreByConversationId[conversationId] === true,
+  };
 }

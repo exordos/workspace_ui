@@ -117,7 +117,7 @@ export function adaptTopicToMessengerConversation(
     isPrivate: stream.private,
     unreadCount: topic.unread_count,
     isArchived: stream.is_archived,
-    directUserUuid: stream.direct_user_uuid,
+    directUserUuid: stream.direct_user_uuid ?? null,
     notificationMode: topic.notification_mode,
     isDone: topic.is_done,
     isDefaultTopic: topic.is_default,

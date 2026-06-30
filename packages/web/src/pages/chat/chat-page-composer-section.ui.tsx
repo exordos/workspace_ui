@@ -32,7 +32,32 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
   onCancelEdit,
   aiMessagesContext,
   aiChatContext,
+  readOnlyReason,
 }: ChatPageComposerSectionProps) {
+  if (readOnlyReason != null) {
+    return (
+      <MessageComposer
+        onSend={onSend}
+        onCreateCallLink={undefined}
+        onCancelUpload={onCancelUpload}
+        disabled
+        uploadProgress={uploadProgress}
+        placeholder={readOnlyReason}
+        activeTopic={activeTopic ?? undefined}
+        replyQuote={null}
+        onClearReply={onClearReply}
+        initialValue={undefined}
+        onValueChange={onComposerValueChange}
+        onEditLastMessage={onEditLastMessage}
+        editSession={null}
+        onSubmitEdit={onSubmitEdit}
+        onCancelEdit={onCancelEdit}
+        aiMessagesContext={[]}
+        aiChatContext={undefined}
+      />
+    );
+  }
+
   if (showTopicPrompt) {
     return (
       <button

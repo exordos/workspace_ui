@@ -20,6 +20,10 @@ vi.mock("~/pages/settings/settings-personal-info-page.ui", () => ({
   SettingsPersonalInfoPage: () => <div>settings-personal-info-page</div>,
 }));
 
+vi.mock("~/pages/chat/chat-page.ui", () => ({
+  ChatPage: () => <div data-testid="chat-page">chat-page</div>,
+}));
+
 vi.mock("~/widgets/layout/layout.ui", () => {
   return {
     Layout: () => (
@@ -164,14 +168,14 @@ describe("App default routing", () => {
     expect(await screen.findByText("inbox-page")).toBeInTheDocument();
   });
 
-  it("renders workspace stream routes with WorkspaceMessengerPage", async () => {
+  it("renders workspace stream routes with ChatPage", async () => {
     setAuthorizedSession();
 
     renderWithProviders(<App />, {
       route: "/org/zulip.example.com/project/project-a/stream/stream-uuid",
     });
 
-    expect(await screen.findByTestId("workspace-messenger-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("chat-page")).toBeInTheDocument();
   });
 
   it("redirects unknown webview org routes to project Inbox", async () => {
@@ -184,13 +188,13 @@ describe("App default routing", () => {
     expect(await screen.findByText("inbox-page")).toBeInTheDocument();
   });
 
-  it("renders workspace webview routes with WorkspaceMessengerPage", async () => {
+  it("renders workspace webview routes with ChatPage", async () => {
     setAuthorizedSession();
 
     renderWithProviders(<WebViewShell />, {
       route: "/org/zulip.example.com/project/project-a/message/message-uuid",
     });
 
-    expect(await screen.findByTestId("workspace-messenger-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("chat-page")).toBeInTheDocument();
   });
 });

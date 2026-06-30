@@ -61,9 +61,10 @@ props/adapters.
 - Заглушка лучше скрытого поведения: UI может временно отключить действие или
   получить контролируемую ошибку `unsupported`, но не должен незаметно идти в
   Zulip.
-- Основной chat-shell и старый визуальный UX остаются целевой поверхностью
-  миграции. Отдельная Workspace page может быть временной диагностической
-  площадкой, но не целевым продуктовым UI.
+- Основной chat-shell и старый визуальный UX остаются единственной целевой
+  поверхностью миграции. Отдельную Workspace page не держим даже как временный
+  продуктовый route: Workspace routes подключаются к старой странице через
+  отдельный data bridge.
 - На Workspace messenger routes старый Zulip data flow отключается: event loop,
   folder-sync, unread/read sync и записи в Zulip-shaped stores не должны быть
   источником данных для этой поверхности.
@@ -181,8 +182,8 @@ Zulip auth -> Zulip API/queue -> Zulip-shaped stores/adapters -> current UI
   `shared/api/zulip-*`;
 - основной chat-shell подключается к Workspace-потоку секциями: login/runtime,
   routes, sidebar, message-list, composer, realtime;
-- отдельная Workspace page не считается целевой UI-поверхностью; если она
-  остается, то только как временный debug/transition route;
+- отдельная Workspace page не считается допустимой UI-поверхностью; Workspace
+  routes должны открывать старый chat-shell и старые визуальные секции;
 - Workspace routes могут временно ломать основной экран во время миграции, если
   это помогает быстрее отрезать старый source-of-truth;
 - когда для сценария нет Workspace ручки, добавляется явная unsupported-заглушка
@@ -639,24 +640,24 @@ Cut line:
 
 ### Workspace API coverage table
 
-| Backend surface | Workspace endpoint/event | Frontend use case | Status |
-| --- | --- | --- | --- |
-| Server discovery | `GET /server_settings` | realm/bootstrap settings | есть |
-| IAM token | `POST /api/core/v1/iam/clients/default/actions/get_token/invoke` | login/password and refresh | есть |
-| Folders | `GET/POST/PUT/DELETE /folders/` | folders rail, create/rename/delete folder | есть |
-| Folder items | `GET/POST/DELETE /folder_items/`, `pin/unpin` actions | add stream to folder, pin/unpin, remove | есть |
-| Streams | `GET/POST/PUT/DELETE /streams/`, archive/unarchive/notifications actions | channels, private streams, archive, mute mode | есть |
-| Stream bindings | `GET/PUT/DELETE /stream_bindings/`, `add_users` action | participants and access removal | есть |
-| Topics | `GET/POST/PUT/DELETE /stream_topics/`, `toggle_done`, notifications actions | topic list, rename/delete, done, mute/follow | есть |
-| Messages | `GET/POST/PUT/DELETE /messages/`, `read` action | history, send, edit, delete, mark read | есть |
-| Events | `GET /events/`, `GET /epoch/`, `WS /api/messenger/ws` | catch-up, live updates, reconnect | есть |
-| Users | `GET /users/`, `GET /users/{user_uuid}` | people list, sender/profile projection | есть |
-| Mark unread / bulk read | none in current docs | unread management shortcuts | заглушка |
-| Reactions | none in current docs | emoji reactions | заглушка |
-| Message star/pin actions | none in current docs | starred/pinned message actions | заглушка |
-| Uploads/attachments | none in current docs | files and media | заглушка |
-| Typing | none in current docs | typing indicators | заглушка |
-| Search/activity/previews | none or not specific enough | search, activity, link previews | заглушка |
+| Backend surface          | Workspace endpoint/event                                                    | Frontend use case                             | Status   |
+| ------------------------ | --------------------------------------------------------------------------- | --------------------------------------------- | -------- |
+| Server discovery         | `GET /server_settings`                                                      | realm/bootstrap settings                      | есть     |
+| IAM token                | `POST /api/core/v1/iam/clients/default/actions/get_token/invoke`            | login/password and refresh                    | есть     |
+| Folders                  | `GET/POST/PUT/DELETE /folders/`                                             | folders rail, create/rename/delete folder     | есть     |
+| Folder items             | `GET/POST/DELETE /folder_items/`, `pin/unpin` actions                       | add stream to folder, pin/unpin, remove       | есть     |
+| Streams                  | `GET/POST/PUT/DELETE /streams/`, archive/unarchive/notifications actions    | channels, private streams, archive, mute mode | есть     |
+| Stream bindings          | `GET/PUT/DELETE /stream_bindings/`, `add_users` action                      | participants and access removal               | есть     |
+| Topics                   | `GET/POST/PUT/DELETE /stream_topics/`, `toggle_done`, notifications actions | topic list, rename/delete, done, mute/follow  | есть     |
+| Messages                 | `GET/POST/PUT/DELETE /messages/`, `read` action                             | history, send, edit, delete, mark read        | есть     |
+| Events                   | `GET /events/`, `GET /epoch/`, `WS /api/messenger/ws`                       | catch-up, live updates, reconnect             | есть     |
+| Users                    | `GET /users/`, `GET /users/{user_uuid}`                                     | people list, sender/profile projection        | есть     |
+| Mark unread / bulk read  | none in current docs                                                        | unread management shortcuts                   | заглушка |
+| Reactions                | none in current docs                                                        | emoji reactions                               | заглушка |
+| Message star/pin actions | none in current docs                                                        | starred/pinned message actions                | заглушка |
+| Uploads/attachments      | none in current docs                                                        | files and media                               | заглушка |
+| Typing                   | none in current docs                                                        | typing indicators                             | заглушка |
+| Search/activity/previews | none or not specific enough                                                 | search, activity, link previews               | заглушка |
 
 ## Решение по личкам
 

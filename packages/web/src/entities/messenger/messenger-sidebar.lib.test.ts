@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { workspaceMessengerRootRoute } from "~/shared/lib/workspace-messenger-route.lib";
-import { selectMessengerSidebarFolders, selectMessengerSidebarStreams } from "./messenger-sidebar.lib";
+import {
+  selectMessengerSidebarFolders,
+  selectMessengerSidebarStreams,
+} from "./messenger-sidebar.lib";
 import type { MessengerStoreState } from "./messenger.model";
-import type {
-  MessengerFolder,
-  MessengerStream,
-  MessengerTopic,
-} from "./messenger.types";
+import type { MessengerFolder, MessengerStream, MessengerTopic } from "./messenger.types";
 
 const ORGANIZATION_ID = "workspace.example.com";
 const PROJECT_ID = "22222222-2222-4222-8222-222222222222";
@@ -142,6 +141,10 @@ function state(overrides: Partial<MessengerStoreState> = {}): MessengerStoreStat
     conversationIds: [],
     messagesById: {},
     messageIdsByConversationId: {},
+    messagesLoadingByConversationId: {},
+    messagesErrorByConversationId: {},
+    nextPageMarkerByConversationId: {},
+    hasMoreByConversationId: {},
     foldersById: { [FOLDER_A]: folderA },
     folderIds: [FOLDER_A],
     usersById: {},
@@ -151,6 +154,11 @@ function state(overrides: Partial<MessengerStoreState> = {}): MessengerStoreStat
     startBootstrap: () => undefined,
     replaceBootstrapState: () => undefined,
     replaceConversationMessages: () => undefined,
+    startConversationMessagesLoad: () => undefined,
+    applyConversationMessagesLoadSuccess: () => undefined,
+    finishConversationMessagesLoad: () => undefined,
+    failConversationMessagesLoad: () => undefined,
+    cancelConversationMessagesLoad: () => undefined,
     upsertStream: () => undefined,
     removeStream: () => undefined,
     upsertStreamBindings: () => undefined,

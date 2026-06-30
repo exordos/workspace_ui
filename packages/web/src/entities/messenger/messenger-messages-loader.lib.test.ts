@@ -7,7 +7,11 @@ import type {
 } from "~/shared/api/messenger-client";
 import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
 import { loadMessengerConversationMessages } from "./messenger-messages-loader.lib";
-import { selectMessengerMessagesForConversation, useMessengerStore } from "./messenger.model";
+import {
+  selectMessengerConversationMessagesStatus,
+  selectMessengerMessagesForConversation,
+  useMessengerStore,
+} from "./messenger.model";
 
 // Message loader tests keep pagination scoped to the active conversation owner.
 const ACCOUNT_A = "account-a";
@@ -102,8 +106,8 @@ describe("messenger conversation messages loader", () => {
   it("loads stream messages with an explicit default page limit", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = prepareStoreOwner(runtimeContext);
-    const getMessagesPage = vi.fn(async (_options: MessengerClientOptions, _query: unknown) =>
-      createMessagesPage([createMessageDto()]),
+    const getMessagesPage = vi.fn((_options: MessengerClientOptions, _query: unknown) =>
+      Promise.resolve(createMessagesPage([createMessageDto()])),
     );
 
     await expect(
@@ -118,6 +122,7 @@ describe("messenger conversation messages loader", () => {
       ownerKey,
       conversationId: `stream:${STREAM_A}`,
       nextPageMarker: "next-page",
+      hasMore: true,
       pageLimit: 50,
     });
 
@@ -132,13 +137,21 @@ describe("messenger conversation messages loader", () => {
     expect(
       selectMessengerMessagesForConversation(useMessengerStore.getState(), `stream:${STREAM_A}`),
     ).toEqual([expect.objectContaining({ uuid: MESSAGE_A })]);
+    expect(
+      selectMessengerConversationMessagesStatus(useMessengerStore.getState(), `stream:${STREAM_A}`),
+    ).toEqual({
+      loading: false,
+      error: null,
+      nextPageMarker: "next-page",
+      hasMore: true,
+    });
   });
 
   it("loads topic messages with stream and topic filters", async () => {
     const runtimeContext = createRuntimeContext();
     prepareStoreOwner(runtimeContext);
-    const getMessagesPage = vi.fn(async (_options: MessengerClientOptions, _query: unknown) =>
-      createMessagesPage([createMessageDto()]),
+    const getMessagesPage = vi.fn((_options: MessengerClientOptions, _query: unknown) =>
+      Promise.resolve(createMessagesPage([createMessageDto()])),
     );
 
     await loadMessengerConversationMessages({
@@ -165,6 +178,88 @@ describe("messenger conversation messages loader", () => {
         `topic:${STREAM_A}:${TOPIC_A}`,
       ),
     ).toEqual([expect.objectContaining({ uuid: MESSAGE_A })]);
+    expect(
+      selectMessengerConversationMessagesStatus(
+        useMessengerStore.getState(),
+        `topic:${STREAM_A}:${TOPIC_A}`,
+      ),
+    ).toEqual({
+      loading: false,
+      error: null,
+      nextPageMarker: "next-page",
+      hasMore: true,
+    });
+  });
+
+  it("merges later message pages into the same conversation bucket", async () => {
+    const runtimeContext = createRuntimeContext();
+    prepareStoreOwner(runtimeContext);
+    const getMessagesPage = vi
+      .fn()
+      .mockResolvedValueOnce(createMessagesPage([createMessageDto({ uuid: MESSAGE_A })]))
+      .mockResolvedValueOnce({
+        items: [createMessageDto({ uuid: MESSAGE_B })],
+        nextPageMarker: null,
+        pageLimit: 50,
+      } satisfies MessengerCollectionPage<WorkspaceMessengerMessageDto>);
+
+    await loadMessengerConversationMessages({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
+      client: { getMessagesPage },
+    });
+    await loadMessengerConversationMessages({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
+      pageMarker: "next-page",
+      client: { getMessagesPage },
+    });
+
+    expect(
+      selectMessengerMessagesForConversation(
+        useMessengerStore.getState(),
+        `topic:${STREAM_A}:${TOPIC_A}`,
+      ).map((message) => message.uuid),
+    ).toEqual([MESSAGE_A, MESSAGE_B]);
+    expect(
+      selectMessengerConversationMessagesStatus(
+        useMessengerStore.getState(),
+        `topic:${STREAM_A}:${TOPIC_A}`,
+      ),
+    ).toEqual({
+      loading: false,
+      error: null,
+      nextPageMarker: null,
+      hasMore: false,
+    });
+  });
+
+  it("keeps stream-wide and topic message buckets separate while sharing message objects", async () => {
+    const runtimeContext = createRuntimeContext();
+    prepareStoreOwner(runtimeContext);
+
+    await loadMessengerConversationMessages({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      conversationId: `stream:${STREAM_A}`,
+      client: { getMessagesPage: () => Promise.resolve(createMessagesPage([createMessageDto()])) },
+    });
+    await loadMessengerConversationMessages({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
+      client: { getMessagesPage: () => Promise.resolve(createMessagesPage([createMessageDto()])) },
+    });
+
+    const state = useMessengerStore.getState();
+    expect(selectMessengerMessagesForConversation(state, `stream:${STREAM_A}`)).toEqual([
+      state.messagesById[MESSAGE_A],
+    ]);
+    expect(selectMessengerMessagesForConversation(state, `topic:${STREAM_A}:${TOPIC_A}`)).toEqual([
+      state.messagesById[MESSAGE_A],
+    ]);
   });
 
   it("does not clear messages for other conversations", async () => {
@@ -175,21 +270,23 @@ describe("messenger conversation messages loader", () => {
       runtimeContext,
       getRuntimeContext: () => runtimeContext,
       conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
-      client: { getMessagesPage: async () => createMessagesPage([createMessageDto()]) },
+      client: { getMessagesPage: () => Promise.resolve(createMessagesPage([createMessageDto()])) },
     });
     await loadMessengerConversationMessages({
       runtimeContext,
       getRuntimeContext: () => runtimeContext,
       conversationId: `topic:${STREAM_B}:${TOPIC_B}`,
       client: {
-        getMessagesPage: async () =>
-          createMessagesPage([
-            createMessageDto({
-              uuid: MESSAGE_B,
-              stream_uuid: STREAM_B,
-              topic_uuid: TOPIC_B,
-            }),
-          ]),
+        getMessagesPage: () =>
+          Promise.resolve(
+            createMessagesPage([
+              createMessageDto({
+                uuid: MESSAGE_B,
+                stream_uuid: STREAM_B,
+                topic_uuid: TOPIC_B,
+              }),
+            ]),
+          ),
       },
     });
 
@@ -216,7 +313,7 @@ describe("messenger conversation messages loader", () => {
       runtimeContext: currentContext,
       getRuntimeContext: () => currentContext,
       conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
-      client: { getMessagesPage: async () => messagesRequest.promise },
+      client: { getMessagesPage: () => messagesRequest.promise },
     });
 
     currentContext = createRuntimeContext({
@@ -241,6 +338,12 @@ describe("messenger conversation messages loader", () => {
         `topic:${STREAM_A}:${TOPIC_A}`,
       ),
     ).toEqual([]);
+    expect(
+      selectMessengerConversationMessagesStatus(
+        useMessengerStore.getState(),
+        `topic:${STREAM_A}:${TOPIC_A}`,
+      ).loading,
+    ).toBe(false);
   });
 
   it("skips aborted requests without writing messages", async () => {
@@ -248,8 +351,8 @@ describe("messenger conversation messages loader", () => {
     const ownerKey = prepareStoreOwner(runtimeContext);
     const abortController = new AbortController();
     abortController.abort();
-    const getMessagesPage = vi.fn(async (_options: MessengerClientOptions, _query: unknown) =>
-      createMessagesPage([createMessageDto()]),
+    const getMessagesPage = vi.fn((_options: MessengerClientOptions, _query: unknown) =>
+      Promise.resolve(createMessagesPage([createMessageDto()])),
     );
 
     await expect(
@@ -273,8 +376,8 @@ describe("messenger conversation messages loader", () => {
   it("skips invalid conversation ids without writing messages", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = prepareStoreOwner(runtimeContext);
-    const getMessagesPage = vi.fn(async (_options: MessengerClientOptions, _query: unknown) =>
-      createMessagesPage([createMessageDto()]),
+    const getMessagesPage = vi.fn((_options: MessengerClientOptions, _query: unknown) =>
+      Promise.resolve(createMessagesPage([createMessageDto()])),
     );
 
     await expect(
@@ -304,9 +407,10 @@ describe("messenger conversation messages loader", () => {
         getRuntimeContext: () => runtimeContext,
         conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
         client: {
-          getMessagesPage: async () => {
-            throw new TypeError("Expected valid messenger messages response item at index 1");
-          },
+          getMessagesPage: () =>
+            Promise.reject(
+              new TypeError("Expected valid messenger messages response item at index 1"),
+            ),
         },
       }),
     ).resolves.toEqual({
@@ -314,6 +418,17 @@ describe("messenger conversation messages loader", () => {
       ownerKey,
       conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
       error: "Expected valid messenger messages response item at index 1",
+    });
+    expect(
+      selectMessengerConversationMessagesStatus(
+        useMessengerStore.getState(),
+        `topic:${STREAM_A}:${TOPIC_A}`,
+      ),
+    ).toEqual({
+      loading: false,
+      error: "Expected valid messenger messages response item at index 1",
+      nextPageMarker: null,
+      hasMore: false,
     });
   });
 });

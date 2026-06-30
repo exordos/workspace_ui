@@ -3,6 +3,7 @@ import {
   conversationIdForStream,
   conversationIdForTopic,
   parseMessengerConversationId,
+  selectMessengerConversationFromWorkspaceRoute,
 } from "./messenger-ids.lib";
 
 // Conversation ids must reject old Zulip-style ids during the migration.
@@ -37,5 +38,66 @@ describe("messenger conversation ids", () => {
     expect(parseMessengerConversationId(`topic:${STREAM_UUID}`)).toBeNull();
     expect(() => conversationIdForStream("123")).toThrow("Invalid stream uuid");
     expect(() => conversationIdForTopic(STREAM_UUID, "123")).toThrow("Invalid topic uuid");
+  });
+
+  it("selects stream and topic conversations from Workspace routes", () => {
+    expect(
+      selectMessengerConversationFromWorkspaceRoute({
+        kind: "stream",
+        orgId: "org-a",
+        projectId: "project-a",
+        streamUuid: STREAM_UUID,
+      }),
+    ).toEqual({
+      status: "conversation",
+      kind: "stream",
+      conversationId: `stream:${STREAM_UUID}`,
+      streamUuid: STREAM_UUID,
+    });
+
+    expect(
+      selectMessengerConversationFromWorkspaceRoute({
+        kind: "topic",
+        orgId: "org-a",
+        projectId: "project-a",
+        streamUuid: STREAM_UUID,
+        topicUuid: TOPIC_UUID,
+      }),
+    ).toEqual({
+      status: "conversation",
+      kind: "topic",
+      conversationId: `topic:${STREAM_UUID}:${TOPIC_UUID}`,
+      streamUuid: STREAM_UUID,
+      topicUuid: TOPIC_UUID,
+    });
+  });
+
+  it("keeps message routes unsupported until message UUID resolution exists", () => {
+    expect(
+      selectMessengerConversationFromWorkspaceRoute({
+        kind: "message",
+        orgId: "org-a",
+        projectId: "project-a",
+        messageUuid: TOPIC_UUID,
+      }),
+    ).toEqual({ status: "unsupported-message", messageUuid: TOPIC_UUID });
+  });
+
+  it("rejects invalid Workspace conversation route UUIDs", () => {
+    expect(
+      selectMessengerConversationFromWorkspaceRoute({
+        kind: "stream",
+        orgId: "org-a",
+        projectId: "project-a",
+        streamUuid: "general",
+      }),
+    ).toEqual({ status: "invalid-route" });
+    expect(
+      selectMessengerConversationFromWorkspaceRoute({
+        kind: "root",
+        orgId: "org-a",
+        projectId: "project-a",
+      }),
+    ).toEqual({ status: "none", reason: "root" });
   });
 });

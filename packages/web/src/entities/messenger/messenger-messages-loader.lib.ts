@@ -38,7 +38,13 @@ export interface MessengerMessagesClientDeps {
 }
 
 export interface MessengerMessagesStoreApi {
-  getState: () => Pick<MessengerStoreState, "replaceConversationMessages">;
+  getState: () => Pick<
+    MessengerStoreState,
+    | "startConversationMessagesLoad"
+    | "applyConversationMessagesLoadSuccess"
+    | "failConversationMessagesLoad"
+    | "cancelConversationMessagesLoad"
+  >;
 }
 
 export type MessengerConversationMessagesResult =
@@ -47,6 +53,7 @@ export type MessengerConversationMessagesResult =
       ownerKey: string;
       conversationId: MessengerConversationId;
       nextPageMarker: string | null;
+      hasMore: boolean;
       pageLimit: number | null;
     }
   | {
@@ -107,6 +114,8 @@ export async function loadMessengerConversationMessages({
     return { status: "skipped", ownerKey, reason: "stale-owner" };
   }
 
+  store.getState().startConversationMessagesLoad(ownerKey, conversationId);
+
   const requestOptions: MessengerClientOptions = {
     ...clientOptions,
     accessToken: runtimeContext.accessToken,
@@ -131,29 +140,39 @@ export async function loadMessengerConversationMessages({
     const page = await (client.getMessagesPage ?? defaultGetMessagesPage)(requestOptions, query);
 
     if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
+      store.getState().cancelConversationMessagesLoad(ownerKey, conversationId);
       return { status: "skipped", ownerKey, reason: "stale-owner" };
     }
 
-    store
-      .getState()
-      .replaceConversationMessages(ownerKey, conversationId, page.items.map(adaptMessengerMessage));
+    const nextPageMarker = page.nextPageMarker;
+    const hasMore = nextPageMarker != null;
+    const messages = page.items.map(adaptMessengerMessage);
+    store.getState().applyConversationMessagesLoadSuccess(ownerKey, conversationId, messages, {
+      mode: pageMarker == null ? "replace" : "merge",
+      nextPageMarker,
+      hasMore,
+    });
     return {
       status: "applied",
       ownerKey,
       conversationId,
-      nextPageMarker: page.nextPageMarker,
+      nextPageMarker,
+      hasMore,
       pageLimit: page.pageLimit,
     };
   } catch (error) {
     if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
+      store.getState().cancelConversationMessagesLoad(ownerKey, conversationId);
       return { status: "skipped", ownerKey, reason: "stale-owner" };
     }
 
+    const message = normalizeMessagesError(error);
+    store.getState().failConversationMessagesLoad(ownerKey, conversationId, message);
     return {
       status: "failed",
       ownerKey,
       conversationId,
-      error: normalizeMessagesError(error),
+      error: message,
     };
   }
 }

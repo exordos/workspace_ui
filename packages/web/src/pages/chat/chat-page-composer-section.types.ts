@@ -32,4 +32,5 @@ export interface ChatPageComposerSectionProps {
   onCancelEdit: () => void;
   aiMessagesContext: AiMessageContext[];
   aiChatContext: AiReplyRequest["chatContext"] | undefined;
+  readOnlyReason?: string;
 }

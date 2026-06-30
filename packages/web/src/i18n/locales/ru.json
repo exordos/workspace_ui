@@ -133,6 +133,14 @@
     "today": "Сегодня",
     "yesterday": "Вчера"
   },
+  "workspaceMessenger": {
+    "emptyConversation": "Здесь пока нет сообщений.",
+    "invalidRoute": "Ссылка на чат некорректна",
+    "invalidRouteHint": "Откройте чат из списка, чтобы продолжить.",
+    "messageRouteUnsupported": "Ссылки на отдельные сообщения пока недоступны",
+    "messageRouteUnsupportedHint": "Откройте канал или тему из списка чатов.",
+    "readOnlyComposer": "Workspace-мессенджер в этом срезе доступен только для чтения. Отправку включим отдельным шагом."
+  },
   "message": {
     "sendRequiresStreamOrTo": "Нужен канал (stream) или получатели (to) для отправки",
     "views": "Просмотры",
