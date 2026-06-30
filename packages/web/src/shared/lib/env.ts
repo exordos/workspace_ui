@@ -55,6 +55,7 @@ function parseBooleanEnvFlag(value: string, fallback: boolean): boolean {
 }
 
 const WORKSPACE_API_ORIGIN_RAW = optional("VITE_WORKSPACE_API_ORIGIN", "");
+const DEFAULT_WORKSPACE_PROJECT_ID = "fe02e55d-4548-4b3e-a175-fcae928f41b2";
 
 /** Rare: Zulip webroot is bare origin but uploads are only under {@link WORKSPACE_GATEWAY_V1_PATH}. */
 const USER_UPLOADS_PREFIX_ON_ZULIP_REALM = parseBooleanEnvFlag(
@@ -188,6 +189,14 @@ export const env = {
    */
   get DEFAULT_LOGIN_ORGANIZATION_NAME(): string {
     return optional("VITE_DEFAULT_LOGIN_ORGANIZATION_NAME");
+  },
+
+  /**
+   * Default Workspace project UUID used to prefill IAM password login until project discovery exists.
+   * Can be overridden by `VITE_DEFAULT_WORKSPACE_PROJECT_ID`.
+   */
+  get DEFAULT_WORKSPACE_PROJECT_ID(): string {
+    return optional("VITE_DEFAULT_WORKSPACE_PROJECT_ID", DEFAULT_WORKSPACE_PROJECT_ID);
   },
 
   /**

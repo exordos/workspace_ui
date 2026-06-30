@@ -8,6 +8,7 @@ import {
   parseDto,
   parsePaginationHeaders,
   parseStrictDtoList,
+  projectScopedPaginationParams,
 } from "./messenger-transport.internal";
 import type {
   MessengerClientOptions,
@@ -93,7 +94,7 @@ export async function getFolderItems(
   query: GetFolderItemsQuery = {},
 ): Promise<WorkspaceMessengerFolderItemDto[]> {
   const data = await messengerGetJson("/folder_items/", options, {
-    ...paginationParams(query),
+    ...projectScopedPaginationParams(options, query),
     folder_uuid: query.folderUuid,
   });
   return parseStrictDtoList(
@@ -108,7 +109,7 @@ export async function getFolderItemsPage(
   query: GetFolderItemsQuery = {},
 ): Promise<MessengerCollectionPage<WorkspaceMessengerFolderItemDto>> {
   const { data, headers } = await messengerRequestJsonResult("GET", "/folder_items/", options, {
-    ...paginationParams(query),
+    ...projectScopedPaginationParams(options, query),
     folder_uuid: query.folderUuid,
   });
   return {

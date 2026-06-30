@@ -7,6 +7,10 @@ import { fetchOwnStatus, updateOwnStatus } from "~/entities/user/api/user.api";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore, type UserStatus } from "~/entities/user/user.model";
 import {
+  useWorkspaceAuthStore,
+  type WorkspaceAuthProfile,
+} from "~/entities/workspace-auth/workspace-auth.model";
+import {
   fetchUserProfile,
   getOwnAvatarCapabilities,
   removeOwnAvatar,
@@ -72,6 +76,12 @@ function buildProfileStatusLabel(status: UserStatus | null | undefined): string 
   return status?.away ? t("presence.away") : t("presence.online");
 }
 
+function buildWorkspaceProfileStatusLabel(status: WorkspaceAuthProfile["status"]): string {
+  if (status === "offline") return t("presence.offline");
+  if (status === "idle" || status === "do_not_disturb") return t("presence.away");
+  return t("presence.online");
+}
+
 export const SettingsPersonalInfoPage: React.FC = () => {
   const navigate = useNavigate();
   const [profile, setProfile] = useState<UserProfileData | null>(null);
@@ -92,6 +102,13 @@ export const SettingsPersonalInfoPage: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const currentUserId = useChatListStore((s) => s.currentUserId);
   const user = useUsersStore((s) => (currentUserId != null ? s.getUser(currentUserId) : undefined));
+  const currentWorkspaceSession = useWorkspaceAuthStore((s) => {
+    const accountId = s.currentAccountId;
+    return accountId != null
+      ? s.sessions.find((session) => session.accountId === accountId)
+      : undefined;
+  });
+  const workspaceProfile = currentWorkspaceSession?.profile;
   const mergeUser = useUsersStore((s) => s.mergeUser);
   const currentInstance = useInstancesStore((s) => s.getCurrentInstance());
   const avatarCapabilities = getOwnAvatarCapabilities();
@@ -142,8 +159,24 @@ export const SettingsPersonalInfoPage: React.FC = () => {
     const profileName = profile?.fullName?.trim();
     if (profileName != null && profileName.length > 0) return profileName;
     const userName = user?.full_name?.trim();
-    return userName != null && userName.length > 0 ? userName : "-";
-  }, [profile?.fullName, user?.full_name]);
+    if (userName != null && userName.length > 0) return userName;
+    const workspaceName = [workspaceProfile?.firstName, workspaceProfile?.lastName]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    if (workspaceName.length > 0) return workspaceName;
+    const workspaceUsername = workspaceProfile?.username?.trim();
+    if (workspaceUsername != null && workspaceUsername.length > 0) return workspaceUsername;
+    const workspaceEmail = workspaceProfile?.email?.trim();
+    return workspaceEmail != null && workspaceEmail.length > 0 ? workspaceEmail : "-";
+  }, [
+    profile?.fullName,
+    user?.full_name,
+    workspaceProfile?.email,
+    workspaceProfile?.firstName,
+    workspaceProfile?.lastName,
+    workspaceProfile?.username,
+  ]);
 
   useEffect(() => {
     if (isEditing) return;
@@ -157,13 +190,17 @@ export const SettingsPersonalInfoPage: React.FC = () => {
     const profileEmail = profile?.email?.trim();
     if (profileEmail != null && profileEmail.length > 0) return profileEmail;
     const userEmail = user?.email?.trim();
-    return userEmail != null && userEmail.length > 0 ? userEmail : "-";
-  }, [profile?.email, user?.email]);
+    if (userEmail != null && userEmail.length > 0) return userEmail;
+    const workspaceEmail = workspaceProfile?.email?.trim();
+    if (workspaceEmail != null && workspaceEmail.length > 0) return workspaceEmail;
+    const login = currentWorkspaceSession?.login.trim();
+    return login != null && login.includes("@") ? login : "-";
+  }, [currentWorkspaceSession?.login, profile?.email, user?.email, workspaceProfile?.email]);
 
   const userId = useMemo(() => {
-    const value = profile?.userId ?? currentUserId;
+    const value = profile?.userId ?? currentUserId ?? currentWorkspaceSession?.userUuid;
     return value != null ? String(value) : "-";
-  }, [profile?.userId, currentUserId]);
+  }, [profile?.userId, currentUserId, currentWorkspaceSession?.userUuid]);
 
   const timezone = useMemo(() => {
     const value = profile?.timezone?.trim();
@@ -215,10 +252,10 @@ export const SettingsPersonalInfoPage: React.FC = () => {
   }, [profile?.isActive]);
 
   const profileLink = useMemo(() => {
-    const realm = currentInstance?.realm?.trim();
+    const realm = currentInstance?.realm?.trim() ?? currentWorkspaceSession?.organizationOrigin;
     if (!realm || !isValidRealmUrl(realm) || userId === "-") return undefined;
     return `${realm.replace(/\/+$/, "")}/#user/${userId}`;
-  }, [currentInstance?.realm, userId]);
+  }, [currentInstance?.realm, currentWorkspaceSession?.organizationOrigin, userId]);
 
   const handleShareProfile = useCallback(() => {
     if (!profileLink) return;
@@ -251,7 +288,13 @@ export const SettingsPersonalInfoPage: React.FC = () => {
     setIsEditing(false);
   }, [fullName, ownStatus?.away, ownStatus?.text, profile?.timezone]);
 
-  const profileStatus = useMemo(() => buildProfileStatusLabel(ownStatus), [ownStatus]);
+  const profileStatus = useMemo(
+    () =>
+      ownStatus != null
+        ? buildProfileStatusLabel(ownStatus)
+        : buildWorkspaceProfileStatusLabel(workspaceProfile?.status),
+    [ownStatus, workspaceProfile?.status],
+  );
 
   const mapAvatarErrorMessage = useCallback(
     (kind: "forbidden" | "invalid" | "unsupported" | "transient", fallbackMessage?: string) => {

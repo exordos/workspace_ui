@@ -42,6 +42,8 @@ interface ImportMetaEnv {
   readonly VITE_DEFAULT_LOGIN_ORGANIZATION_URL?: string;
   /** Default organization display name for the login page quick-fill button. Optional. */
   readonly VITE_DEFAULT_LOGIN_ORGANIZATION_NAME?: string;
+  /** Default Workspace project UUID for IAM password login. Required until project discovery exists. */
+  readonly VITE_DEFAULT_WORKSPACE_PROJECT_ID?: string;
   /** Persist chat messages to IndexedDB (write-through). Optional; legacy VITE_CHAT_MESSAGES_SOURCE_INDEXEDDB. */
   readonly VITE_CHAT_MESSAGES_PERSIST_INDEXEDDB?: string;
   /** @deprecated Prefer VITE_CHAT_MESSAGES_PERSIST_INDEXEDDB. */

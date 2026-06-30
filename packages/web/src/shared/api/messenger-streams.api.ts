@@ -5,6 +5,7 @@ import {
   parseDto,
   parsePaginationHeaders,
   parseStrictDtoList,
+  projectScopedPaginationParams,
 } from "./messenger-transport.internal";
 import type {
   MessengerClientOptions,
@@ -32,7 +33,6 @@ export interface GetStreamBindingsQuery extends MessengerPaginationQuery {
 
 function streamBindingParams(query: GetStreamBindingsQuery | undefined) {
   return {
-    ...paginationParams(query),
     stream_uuid: query?.streamUuid,
   };
 }
@@ -154,7 +154,10 @@ export async function getStreamBindings(
   options: MessengerClientOptions,
   query: GetStreamBindingsQuery = {},
 ): Promise<WorkspaceMessengerStreamBindingDto[]> {
-  const data = await messengerGetJson("/stream_bindings/", options, streamBindingParams(query));
+  const data = await messengerGetJson("/stream_bindings/", options, {
+    ...projectScopedPaginationParams(options, query),
+    ...streamBindingParams(query),
+  });
   return parseStrictDtoList(
     data,
     isWorkspaceMessengerStreamBindingDto,
@@ -166,12 +169,10 @@ export async function getStreamBindingsPage(
   options: MessengerClientOptions,
   query: GetStreamBindingsQuery = {},
 ): Promise<MessengerCollectionPage<WorkspaceMessengerStreamBindingDto>> {
-  const { data, headers } = await messengerRequestJsonResult(
-    "GET",
-    "/stream_bindings/",
-    options,
-    streamBindingParams(query),
-  );
+  const { data, headers } = await messengerRequestJsonResult("GET", "/stream_bindings/", options, {
+    ...projectScopedPaginationParams(options, query),
+    ...streamBindingParams(query),
+  });
   return {
     items: parseStrictDtoList(
       data,

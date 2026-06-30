@@ -46,6 +46,8 @@
     "email": "Email",
     "zulipServerUrlHint": "https://chat.example.com",
     "emailHint": "email@example.com",
+    "workspaceProject": "Проект Workspace",
+    "workspaceProjectHint": "UUID проекта",
     "password": "Пароль",
     "passwordPlaceholder": "••••••••",
     "passwordHint": "Введите пароль",

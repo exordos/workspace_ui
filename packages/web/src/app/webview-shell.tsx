@@ -62,9 +62,6 @@ const UpdatePage = React.lazy(() =>
 const LoginPage = React.lazy(() =>
   import("~/pages/login/login-page.ui").then((m) => ({ default: m.LoginPage })),
 );
-const PasteTokenPage = React.lazy(() =>
-  import("~/pages/login/paste-token-page.ui").then((m) => ({ default: m.PasteTokenPage })),
-);
 const SettingsPersonalInfoPage = React.lazy(() =>
   import("~/pages/settings/settings-personal-info-page.ui").then((m) => ({
     default: m.SettingsPersonalInfoPage,
@@ -155,7 +152,6 @@ export const WebViewShell: React.FC = () => {
           <main className="touch-scroll flex-1 overflow-auto">
             <Routes>
               <Route path="/login" element={<LoginPage />} />
-              <Route path="/paste-token" element={<PasteTokenPage />} />
               <Route path="/" element={<Navigate to={withCurrentOrgRoute("/inbox")} replace />} />
               <Route path="/org/:orgId" element={<WebviewOrgInboxRedirect />} />
               <Route path="/stream/:streamSlug" element={<ChatPage />} />

@@ -8,6 +8,7 @@ import {
   parseDtoList,
   parsePaginationHeaders,
   parseStrictDtoList,
+  projectScopedPaginationParams,
 } from "./messenger-transport.internal";
 import type {
   MessengerClientOptions,
@@ -95,7 +96,7 @@ export async function getMessages(
   query: GetMessagesQuery = {},
 ): Promise<WorkspaceMessengerMessageDto[]> {
   const data = await messengerGetJson("/messages/", options, {
-    ...paginationParams(query),
+    ...projectScopedPaginationParams(options, query),
     stream_uuid: query.streamUuid,
     topic_uuid: query.topicUuid,
   });
@@ -107,7 +108,7 @@ export async function getMessagesPage(
   query: GetMessagesQuery = {},
 ): Promise<MessengerCollectionPage<WorkspaceMessengerMessageDto>> {
   const { data, headers } = await messengerRequestJsonResult("GET", "/messages/", options, {
-    ...paginationParams(query),
+    ...projectScopedPaginationParams(options, query),
     stream_uuid: query.streamUuid,
     topic_uuid: query.topicUuid,
   });
@@ -130,7 +131,7 @@ export async function getFolderItems(
   query: GetFolderItemsQuery = {},
 ): Promise<WorkspaceMessengerFolderItemDto[]> {
   const data = await messengerGetJson("/folder_items/", options, {
-    ...paginationParams(query),
+    ...projectScopedPaginationParams(options, query),
     folder_uuid: query.folderUuid,
   });
   return parseDtoList(data, isWorkspaceMessengerFolderItemDto, "messenger folder items response");
@@ -149,7 +150,7 @@ export async function getEvents(
   query: GetEventsQuery = {},
 ): Promise<WorkspaceMessengerEventDto[]> {
   const data = await messengerGetJson("/events/", options, {
-    ...paginationParams(query),
+    ...projectScopedPaginationParams(options, query),
     "epoch_version>": query.afterEpochVersion,
   });
   return parseStrictDtoList(data, isWorkspaceMessengerEventDto, "messenger events response");

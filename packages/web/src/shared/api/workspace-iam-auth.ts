@@ -1,4 +1,4 @@
-const DEFAULT_IAM_TOKEN_URL = "/api/core/v1/iam/clients/default/actions/get_token/invoke";
+export const DEFAULT_IAM_TOKEN_URL = "/api/core/v1/iam/clients/default/actions/get_token/invoke";
 
 // IAM is the source of the project-scoped bearer token for messenger calls.
 export interface WorkspaceIamTokenResponse {

@@ -1,25 +1,22 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useInstancesStore } from "~/entities/instance/instance.model";
-import { t } from "~/i18n/i18n";
-import { fetchApiKey, fetchServerSettings } from "~/shared/api/zulip-auth";
-import { normalizeRealm } from "~/shared/api/zulip-realm.internal";
-import { ZulipAuthError } from "~/shared/api/zulip.types";
-import { env } from "~/shared/lib/env";
 import {
-  buildDesktopFlowLoginUrl,
-  generateDesktopFlowOtp,
-  saveDesktopFlowState,
-} from "~/shared/lib/oidc-desktop";
+  fetchWorkspaceServerSettingsForOrganization,
+  getDefaultWorkspaceProjectId,
+  loginWorkspaceWithPassword,
+  WorkspaceAuthFlowError,
+} from "~/entities/workspace-auth/workspace-auth.lib";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { t } from "~/i18n/i18n";
+import { normalizeRealm } from "~/shared/api/zulip-realm.internal";
+import { env } from "~/shared/lib/env";
 import { extractOrgRouteFromPathname } from "~/shared/lib/org-route";
 import { getOrganizationFallbackLogoUrl } from "~/shared/lib/organization-branding";
-import { isValidRealmUrl, isValidUrl } from "~/shared/lib/validation";
-import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspace-org-origin.lib";
+import { isValidRealmUrl } from "~/shared/lib/validation";
 import { Button } from "~/shared/ui/button";
 import { FormField } from "~/shared/ui/form-field.ui";
 import { Icon } from "~/shared/ui/icon";
 import { LoginPageCredentialsForm } from "./login-page-credentials-form.ui";
-import { LoginPageExternalAuth } from "./login-page-external-auth.ui";
 import { resolveLoginIconUrl } from "./login-page-icon-url.lib";
 import { LoginPageRealmPreview } from "./login-page-realm-preview.ui";
 import { sanitizeInternalRedirectTarget } from "./login-redirect.lib";
@@ -46,15 +43,15 @@ interface LoginServerSettings {
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const instances = useInstancesStore((s) => s.instances);
-  const addInstance = useInstancesStore((s) => s.addInstance);
-  const isAddServer = instances.length > 0;
+  const sessions = useWorkspaceAuthStore((s) => s.sessions);
+  const isAddServer = sessions.length > 0;
   const realmPrefill = useMemo(() => {
     const raw = new URLSearchParams(location.search).get("realm");
     return raw?.trim() ? raw : null;
   }, [location.search]);
 
   const [realm, setRealm] = useState(() => realmPrefill ?? "");
+  const [projectId, setProjectId] = useState(() => getDefaultWorkspaceProjectId());
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -97,24 +94,21 @@ export const LoginPage: React.FC = () => {
     setSettingsLoading(true);
 
     try {
-      const data = await fetchServerSettings(nextRealm);
+      const data = await fetchWorkspaceServerSettingsForOrganization(nextRealm);
       if (id !== fetchIdRef.current) {
         return false;
       }
       const realmBase = normalizeRealm(nextRealm);
 
-      const nextSettings =
-        data == null
-          ? null
-          : {
-              realm_base: realmBase,
-              realm_name: data.realm_name,
-              realm_icon: resolveLoginIconUrl(realmBase, data.realm_icon),
-              realm_icon_raw: (data.realm_icon ?? "").trim(),
-              realm_uri: data.realm_uri,
-              realm_url: data.realm_url,
-              external_authentication_methods: data.external_authentication_methods,
-            };
+      const nextSettings = {
+        realm_base: realmBase,
+        realm_name: data.realm_name,
+        realm_icon: resolveLoginIconUrl(realmBase, data.realm_icon),
+        realm_icon_raw: (data.realm_icon ?? "").trim(),
+        realm_uri: data.realm_uri,
+        realm_url: data.realm_url,
+        external_authentication_methods: [],
+      };
 
       setServerSettings(nextSettings);
       setCheckedRealm(nextRealm);
@@ -246,8 +240,9 @@ export const LoginPage: React.FC = () => {
   const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
+    const projectIdTrim = projectId.trim();
     const usernameTrim = username.trim();
-    if (!realmTrim || !usernameTrim || !password) {
+    if (!realmTrim || !projectIdTrim || !usernameTrim || !password) {
       setError(t("auth.fillAllFields"));
       return;
     }
@@ -257,86 +252,19 @@ export const LoginPage: React.FC = () => {
     }
     setLoading(true);
     try {
-      const result = await fetchApiKey(realmTrim, usernameTrim, password);
-      const normalizedFromInput = normalizeRealm(realmTrim);
-      const canonicalFromServer =
-        [serverSettings?.realm_url?.trim(), serverSettings?.realm_uri?.trim()].find(
-          (part) => (part?.length ?? 0) > 0,
-        ) ?? "";
-      const realmToStore =
-        canonicalFromServer.length > 0 && isValidRealmUrl(canonicalFromServer)
-          ? normalizeRealm(canonicalFromServer)
-          : normalizedFromInput;
-      const rawRealmIcon = serverSettings?.realm_icon_raw?.trim() ?? "";
-      const realmIcon =
-        serverSettings?.realm_base === normalizedFromInput && rawRealmIcon.length > 0
-          ? rawRealmIcon
-          : undefined;
-      const workspaceOrgOrigin = workspaceOrgOriginFromLoginServerUrlInput(realmTrim);
-      const addInstanceResult = addInstance({
-        realm: realmToStore,
-        email: result.email,
-        apiKey: result.api_key,
-        ...(result.user_id > 0 ? { userId: result.user_id } : {}),
-        realmIcon,
-        ...(workspaceOrgOrigin !== "" ? { workspaceOrgOrigin } : {}),
+      await loginWorkspaceWithPassword({
+        organizationUrl: realmTrim,
+        login: usernameTrim,
+        password,
+        projectId: projectIdTrim,
       });
-      if (addInstanceResult.status === "duplicate") {
-        setError(t("auth.duplicateAccount"));
-        return;
-      }
       void navigate(redirectTarget ?? "/", { replace: true });
     } catch (err) {
-      setError(err instanceof ZulipAuthError ? err.message : t("auth.loginError"));
+      setError(err instanceof WorkspaceAuthFlowError ? err.message : t("auth.loginError"));
     } finally {
       setLoading(false);
     }
   };
-
-  const handleStartOidcFlow = useCallback(
-    (loginPath: string) => {
-      try {
-        const normalizedRealm = normalizeRealm(serverSettings?.realm_base ?? realmTrim);
-        if (!isValidRealmUrl(normalizedRealm)) {
-          setError(t("auth.invalidServerUrl"));
-          return;
-        }
-
-        const otp = generateDesktopFlowOtp();
-        let loginUrl: string;
-        try {
-          loginUrl = buildDesktopFlowLoginUrl({
-            realmBaseUrl: normalizedRealm,
-            loginPath,
-            next: "/",
-            desktopFlowOtp: otp,
-          });
-        } catch {
-          setError(t("auth.loginError"));
-          return;
-        }
-        if (!isValidUrl(loginUrl)) {
-          setError(t("auth.loginError"));
-          return;
-        }
-
-        saveDesktopFlowState({
-          realm: normalizedRealm,
-          otp,
-          createdAt: Date.now(),
-        });
-        window.open(loginUrl, "_blank", "noopener,noreferrer");
-        const params = new URLSearchParams({ realm: normalizedRealm });
-        if (redirectTarget != null) {
-          params.set("redirectTo", redirectTarget);
-        }
-        void navigate(`/paste-token?${params.toString()}`);
-      } catch {
-        setError(t("auth.loginError"));
-      }
-    },
-    [navigate, realmTrim, redirectTarget, serverSettings?.realm_base],
-  );
 
   const toggleShowPassword = useCallback(() => {
     setShowPassword((p) => !p);
@@ -421,21 +349,14 @@ export const LoginPage: React.FC = () => {
           </form>
         ) : (
           <div className="flex flex-col gap-4">
-            {serverSettings != null &&
-              serverSettings.external_authentication_methods.length > 0 && (
-                <LoginPageExternalAuth
-                  realmBase={serverSettings.realm_base}
-                  methods={serverSettings.external_authentication_methods}
-                  onSelectLoginPath={handleStartOidcFlow}
-                />
-              )}
-
             <LoginPageCredentialsForm
+              projectId={projectId}
               username={username}
               password={password}
               showPassword={showPassword}
               loading={loading}
               error={error}
+              onProjectIdChange={setProjectId}
               onUsernameChange={setUsername}
               onPasswordChange={setPassword}
               onToggleShowPassword={toggleShowPassword}

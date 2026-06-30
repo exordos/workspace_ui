@@ -1,6 +1,9 @@
 import { screen } from "@testing-library/react";
+import { Outlet } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useInstancesStore } from "~/entities/instance/instance.model";
+import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import type * as ShortcutsModule from "~/shared/lib/shortcuts";
 import { renderWithProviders } from "~/test/render";
 import App from "./app";
 
@@ -20,12 +23,11 @@ vi.mock("~/pages/settings/settings-personal-info-page.ui", () => ({
   SettingsPersonalInfoPage: () => <div>settings-personal-info-page</div>,
 }));
 
-vi.mock("~/widgets/layout/layout.ui", async () => {
-  const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom");
+vi.mock("~/widgets/layout/layout.ui", () => {
   return {
     Layout: () => (
       <div data-testid="layout-shell">
-        <actual.Outlet />
+        <Outlet />
       </div>
     ),
   };
@@ -65,7 +67,7 @@ vi.mock("~/shared/lib/plugins", () => ({
 }));
 
 vi.mock("~/shared/lib/shortcuts", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/lib/shortcuts")>();
+  const actual = await importOriginal<typeof ShortcutsModule>();
   return {
     ...actual,
     useShortcut: () => undefined,
@@ -78,26 +80,42 @@ vi.mock("~/shared/lib/webview", () => ({
 
 describe("App default routing", () => {
   afterEach(() => {
-    useInstancesStore.setState({
-      instances: [],
-      currentInstanceId: null,
-      unreadCountsByInstance: {},
-    });
+    useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
   });
 
-  it("opens inbox when route is not specified", async () => {
-    useInstancesStore.setState({
-      instances: [
-        {
-          id: "inst-1",
-          realm: "https://zulip.example.com",
-          email: "user@example.com",
-          apiKey: "api-key",
-        },
-      ],
-      currentInstanceId: "inst-1",
-      unreadCountsByInstance: {},
+  function createSession(): WorkspaceAuthSession {
+    return {
+      accountId: "zulip.example.com:project-a:user-a",
+      instanceId: "inst-1",
+      organizationId: "zulip.example.com",
+      organizationOrigin: "https://zulip.example.com",
+      projectId: "project-a",
+      userUuid: "user-a",
+      login: "user@example.com",
+      accessToken: "access-token",
+      refreshToken: "refresh-token",
+      runtimeGeneration: 1,
+      profile: {
+        uuid: "user-a",
+        username: "user",
+        firstName: "User",
+        lastName: null,
+        email: "user@example.com",
+      },
+    };
+  }
+
+  function setAuthorizedSession(): void {
+    const session = createSession();
+    useWorkspaceAuthStore.setState({
+      sessions: [session],
+      currentAccountId: session.accountId,
+      runtimeGeneration: 1,
     });
+  }
+
+  it("opens inbox when route is not specified", async () => {
+    setAuthorizedSession();
 
     renderWithProviders(<App />, { route: "/" });
 
@@ -106,18 +124,7 @@ describe("App default routing", () => {
   });
 
   it("renders licenses route outside layout shell", async () => {
-    useInstancesStore.setState({
-      instances: [
-        {
-          id: "inst-1",
-          realm: "https://zulip.example.com",
-          email: "user@example.com",
-          apiKey: "api-key",
-        },
-      ],
-      currentInstanceId: "inst-1",
-      unreadCountsByInstance: {},
-    });
+    setAuthorizedSession();
 
     renderWithProviders(<App />, { route: "/licenses" });
 
@@ -126,18 +133,7 @@ describe("App default routing", () => {
   });
 
   it("opens personal info settings route instead of redirecting to inbox", async () => {
-    useInstancesStore.setState({
-      instances: [
-        {
-          id: "inst-1",
-          realm: "https://zulip.example.com",
-          email: "user@example.com",
-          apiKey: "api-key",
-        },
-      ],
-      currentInstanceId: "inst-1",
-      unreadCountsByInstance: {},
-    });
+    setAuthorizedSession();
 
     renderWithProviders(<App />, {
       route: "/org/zulip.example.com/settings/personal-info",

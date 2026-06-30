@@ -1,7 +1,7 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { t } from "~/i18n/i18n";
 import { DEFAULT_MESSENGER_STREAM_SLUG } from "~/shared/config/constants";
 import { usePageView } from "~/shared/lib/analytics/usePageView";
@@ -10,7 +10,6 @@ import { initFocusManagement, focusMainContent } from "~/shared/lib/focus";
 import { useSwipe } from "~/shared/lib/gestures";
 import { useNavigationHistory, initMouseNavigation } from "~/shared/lib/navigation-history";
 import {
-  buildOrgRouteIdForZulipInstance,
   extractOrgRouteFromPathname,
   isOrgRoutePublicPath,
   replaceOrgRouteInPath,
@@ -32,22 +31,19 @@ import { resolveGlobalNavigationRoute, resolveGlobalShortcutAction } from "./app
 
 const App: React.FC = () => {
   const location = useLocation();
-  const instances = useInstancesStore((s) => s.instances);
-  const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
-  const setCurrentInstanceId = useInstancesStore((s) => s.setCurrentInstanceId);
+  const sessions = useWorkspaceAuthStore((s) => s.sessions);
+  const currentAccountId = useWorkspaceAuthStore((s) => s.currentAccountId);
+  const setCurrentAccountId = useWorkspaceAuthStore((s) => s.setCurrentAccountId);
   const navigate = useNavigate();
   const { goBack, goForward } = useNavigationHistory();
   const rootRef = useRef<HTMLDivElement>(null);
   const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false);
-  const hasInstances = instances.length > 0;
-  const currentInstance = useMemo(
-    () => instances.find((instance) => instance.id === currentInstanceId) ?? null,
-    [instances, currentInstanceId],
+  const hasSessions = sessions.length > 0;
+  const currentSession = useMemo(
+    () => sessions.find((session) => session.accountId === currentAccountId) ?? null,
+    [sessions, currentAccountId],
   );
-  const currentOrgRouteId = useMemo(
-    () => (currentInstance ? buildOrgRouteIdForZulipInstance(currentInstance) : null),
-    [currentInstance],
-  );
+  const currentOrgRouteId = currentSession?.organizationId ?? null;
   const defaultInboxRoute = useMemo(
     () => (currentOrgRouteId ? withOrgRoutePrefix("/inbox", currentOrgRouteId) : "/inbox"),
     [currentOrgRouteId],
@@ -66,7 +62,7 @@ const App: React.FC = () => {
   );
 
   const navigateToMessenger = useCallback(() => {
-    const instanceId = useInstancesStore.getState().currentInstanceId;
+    const instanceId = useWorkspaceAuthStore.getState().getCurrentSession()?.instanceId ?? null;
     void navigate(resolveGlobalNavigationRoute("mod+1", DEFAULT_MESSENGER_STREAM_SLUG, instanceId));
   }, [navigate]);
 
@@ -107,8 +103,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     setCurrentOrgRouteIdResolver(() => {
-      const current = useInstancesStore.getState().getCurrentInstance();
-      return current ? buildOrgRouteIdForZulipInstance(current) : null;
+      return useWorkspaceAuthStore.getState().getCurrentSession()?.organizationId ?? null;
     });
 
     return () => {
@@ -119,24 +114,24 @@ const App: React.FC = () => {
   usePageView();
   useShortcut("alt+arrowleft", goBack, { context: "global" });
   useShortcut("alt+arrowright", goForward, { context: "global" });
-  useShortcut("mod+1", navigateToMessenger, { context: "global", enabled: hasInstances });
-  useShortcut("mod+2", navigateToCalendar, { context: "global", enabled: hasInstances });
-  useShortcut("mod+3", navigateToMail, { context: "global", enabled: hasInstances });
-  useShortcut("mod+4", navigateToCalls, { context: "global", enabled: hasInstances });
-  useShortcut("mod+shift+a", navigateToActivity, { context: "global", enabled: hasInstances });
-  useShortcut("mod+shift+t", toggleThemeShortcut, { context: "global", enabled: hasInstances });
-  useShortcut("mod+/", toggleShortcutsHelp, { context: "global", enabled: hasInstances });
+  useShortcut("mod+1", navigateToMessenger, { context: "global", enabled: hasSessions });
+  useShortcut("mod+2", navigateToCalendar, { context: "global", enabled: hasSessions });
+  useShortcut("mod+3", navigateToMail, { context: "global", enabled: hasSessions });
+  useShortcut("mod+4", navigateToCalls, { context: "global", enabled: hasSessions });
+  useShortcut("mod+shift+a", navigateToActivity, { context: "global", enabled: hasSessions });
+  useShortcut("mod+shift+t", toggleThemeShortcut, { context: "global", enabled: hasSessions });
+  useShortcut("mod+/", toggleShortcutsHelp, { context: "global", enabled: hasSessions });
   useShortcut("escape", closeShortcutsHelp, { context: "modal", enabled: shortcutsHelpOpen });
 
   useEffect(() => initMouseNavigation(goBack, goForward), [goBack, goForward]);
 
   useEffect(() => {
-    if (!hasInstances || updateStatus !== "idle") return;
+    if (!hasSessions || updateStatus !== "idle") return;
     checkUpdates();
-  }, [hasInstances, updateStatus, checkUpdates]);
+  }, [hasSessions, updateStatus, checkUpdates]);
 
   useEffect(() => {
-    if (!hasInstances || currentOrgRouteId == null) return;
+    if (!hasSessions || currentOrgRouteId == null) return;
 
     const fullPath = `${location.pathname}${location.search}${location.hash}`;
     const { orgId } = extractOrgRouteFromPathname(location.pathname);
@@ -150,10 +145,8 @@ const App: React.FC = () => {
       return;
     }
 
-    const matchedInstance = instances.find(
-      (instance) => buildOrgRouteIdForZulipInstance(instance) === orgId,
-    );
-    if (matchedInstance == null) {
+    const matchedSession = sessions.find((session) => session.organizationId === orgId);
+    if (matchedSession == null) {
       const fallbackPath = replaceOrgRouteInPath(fullPath, currentOrgRouteId);
       if (fallbackPath !== fullPath) {
         void navigate(fallbackPath, { replace: true });
@@ -161,25 +154,25 @@ const App: React.FC = () => {
       return;
     }
 
-    if (matchedInstance.id !== currentInstanceId) {
-      setCurrentInstanceId(matchedInstance.id);
+    if (matchedSession.accountId !== currentAccountId) {
+      setCurrentAccountId(matchedSession.accountId);
     }
   }, [
-    hasInstances,
+    hasSessions,
     currentOrgRouteId,
     location.pathname,
     location.search,
     location.hash,
     navigate,
-    instances,
-    currentInstanceId,
-    setCurrentInstanceId,
+    sessions,
+    currentAccountId,
+    setCurrentAccountId,
   ]);
 
   useEffect(() => {
     if (
       !shouldRedirectToForceUpdate({
-        hasInstances,
+        hasInstances: hasSessions,
         isForceUpdateRequired,
         pathname: location.pathname,
         forceUpdateEnabled,
@@ -190,7 +183,7 @@ const App: React.FC = () => {
     void navigate(forceUpdateRoute, { replace: true });
   }, [
     forceUpdateEnabled,
-    hasInstances,
+    hasSessions,
     isForceUpdateRequired,
     location.pathname,
     navigate,
@@ -202,7 +195,7 @@ const App: React.FC = () => {
       const target = resolveElectronTrayNavigation(route);
       if (!target) return;
       if (target.type === "open-messenger") {
-        const instanceId = useInstancesStore.getState().currentInstanceId;
+        const instanceId = useWorkspaceAuthStore.getState().getCurrentSession()?.instanceId ?? null;
         void navigate(
           resolveGlobalNavigationRoute("mod+1", DEFAULT_MESSENGER_STREAM_SLUG, instanceId),
         );
@@ -227,7 +220,7 @@ const App: React.FC = () => {
     return <WebViewAppRoutes />;
   }
 
-  if (instances.length === 0) {
+  if (sessions.length === 0) {
     return (
       <div ref={rootRef} className="h-full">
         <ErrorBoundary fallback={(api) => <PageErrorFallback onRetry={api.resetErrorBoundary} />}>

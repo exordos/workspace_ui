@@ -5,8 +5,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import httpProxy from "http-proxy";
 import {
+  DEV_WORKSPACE_MESSENGER_API_PATH_PREFIX,
   DEV_WORKSPACE_ORG_PROXY_PATH_PREFIX,
   X_WORKSPACE_DEV_TARGET_ORIGIN,
+  isDevWorkspaceMessengerApiPathname,
   isAllowedDevWorkspaceProxyTargetOrigin,
   workspaceDevProxyUpstreamPathname,
 } from "./src/shared/config/dev-workspace-org-proxy";
@@ -120,11 +122,12 @@ export function installDevWorkspaceOrgProxyMiddleware(
       return;
     }
 
+    const onMessengerApi = isDevWorkspaceMessengerApiPathname(pathname);
     const onMount = pathname === mount || pathname.startsWith(`${mount}/`);
     const onDevEscaped =
       pathname === devEscapedMount || pathname.startsWith(`${devEscapedMount}/`);
 
-    if (!onMount && !onDevEscaped) {
+    if (!onMessengerApi && !onMount && !onDevEscaped) {
       next();
       return;
     }
@@ -133,7 +136,7 @@ export function installDevWorkspaceOrgProxyMiddleware(
     const trimmedTarget = targetRaw?.trim() ?? "";
 
     if (trimmedTarget === "") {
-      if (onDevEscaped) {
+      if (onDevEscaped || onMessengerApi) {
         sendText(res, 400, `Missing ${X_WORKSPACE_DEV_TARGET_ORIGIN} header`);
         return;
       }
@@ -158,12 +161,14 @@ export function installDevWorkspaceOrgProxyMiddleware(
 
     let forwardPath: string;
     try {
-      forwardPath = workspaceDevProxyUpstreamPathname({
-        pathname,
-        mount,
-        onDevEscaped,
-        workspaceRestPathRaw: options.workspaceRestPathRaw,
-      });
+      forwardPath = onMessengerApi
+        ? pathname
+        : workspaceDevProxyUpstreamPathname({
+            pathname,
+            mount,
+            onDevEscaped,
+            workspaceRestPathRaw: options.workspaceRestPathRaw,
+          });
     } catch {
       sendText(res, 500, "Workspace dev proxy path mismatch");
       return;
@@ -173,7 +178,10 @@ export function installDevWorkspaceOrgProxyMiddleware(
 
     if (options.proxyDebug) {
       const upstream = new URL(req.url ?? "/", `${targetOrigin}/`).href;
-      console.info(`[vite-proxy:workspace-org] ${req.method ?? "?"} ${url} → ${upstream}`);
+      const label = onMessengerApi
+        ? DEV_WORKSPACE_MESSENGER_API_PATH_PREFIX.replace(/^\//, "")
+        : "workspace-org";
+      console.info(`[vite-proxy:${label}] ${req.method ?? "?"} ${url} → ${upstream}`);
     }
 
     proxy.web(req, res, { target: targetOrigin });

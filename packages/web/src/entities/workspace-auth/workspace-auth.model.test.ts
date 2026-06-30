@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type * as LoggerModule from "~/shared/lib/logger";
 import { useWorkspaceAuthStore } from "./workspace-auth.model";
 import type { WorkspaceAuthSession } from "./workspace-auth.model";
 
@@ -6,11 +7,13 @@ import type { WorkspaceAuthSession } from "./workspace-auth.model";
 vi.mock("~/shared/lib/logger", async (importOriginal) => {
   const { createPartialLoggerMock } = await import("~/test/logger-vitest-mock");
   return createPartialLoggerMock(
-    importOriginal as () => Promise<typeof import("~/shared/lib/logger")>,
+    importOriginal as () => Promise<typeof LoggerModule>,
   );
 });
 
 function resetStore(): void {
+  localStorage.removeItem("workspace-auth-sessions");
+  localStorage.removeItem("workspace-auth-current-account");
   useWorkspaceAuthStore.setState({
     sessions: [],
     currentAccountId: null,
@@ -25,11 +28,21 @@ function createSession(
     accountId: "account-a",
     instanceId: "instance-a",
     organizationId: "org-a",
+    organizationOrigin: "https://org-a.example.com",
     projectId: "project-a",
     userUuid: "user-a",
+    login: "user-a@example.com",
     accessToken: "access-token-a",
     refreshToken: "refresh-token-a",
     expiresAtMs: 1000,
+    profile: {
+      uuid: "user-a",
+      username: "user-a",
+      firstName: "User",
+      lastName: "A",
+      email: "user-a@example.com",
+      status: "active",
+    },
     ...overrides,
   };
 }
@@ -58,6 +71,7 @@ describe("workspace-auth store", () => {
         accountId: "account-b",
         instanceId: "instance-b",
         organizationId: "org-b",
+        organizationOrigin: "https://org-b.example.com",
         projectId: "project-b",
         userUuid: "user-b",
       }),
@@ -105,6 +119,23 @@ describe("workspace-auth store", () => {
     });
   });
 
+  it("updates duplicate account while preserving the original instance id", () => {
+    useWorkspaceAuthStore.getState().setSession(createSession({ instanceId: "instance-a" }));
+
+    useWorkspaceAuthStore.getState().setSession(
+      createSession({
+        instanceId: "new-instance",
+        accessToken: "new-access-token",
+      }),
+    );
+
+    expect(useWorkspaceAuthStore.getState().sessions).toHaveLength(1);
+    expect(useWorkspaceAuthStore.getState().sessions[0]).toMatchObject({
+      instanceId: "instance-a",
+      accessToken: "new-access-token",
+    });
+  });
+
   it("removes the current account and selects the next available account", () => {
     useWorkspaceAuthStore.getState().setSession(createSession({ accountId: "account-a" }));
     useWorkspaceAuthStore.getState().setSession(createSession({ accountId: "account-b" }));
@@ -124,5 +155,23 @@ describe("workspace-auth store", () => {
 
     expect(useWorkspaceAuthStore.getState().currentAccountId).toBe("account-a");
     expect(useWorkspaceAuthStore.getState().runtimeGeneration).toBe(before);
+  });
+
+  it("hydrates valid stored sessions and drops malformed rows", async () => {
+    localStorage.setItem(
+      "workspace-auth-sessions",
+      JSON.stringify([createSession(), { accountId: "broken" }]),
+    );
+    localStorage.setItem("workspace-auth-current-account", "account-a");
+
+    vi.resetModules();
+    const { useWorkspaceAuthStore: freshStore } = await import("./workspace-auth.model");
+
+    expect(freshStore.getState().sessions).toHaveLength(1);
+    expect(freshStore.getState().currentAccountId).toBe("account-a");
+    expect(freshStore.getState().getCurrentRuntimeContext()).toMatchObject({
+      accountId: "account-a",
+      userUuid: "user-a",
+    });
   });
 });

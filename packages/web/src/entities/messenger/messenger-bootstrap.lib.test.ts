@@ -221,11 +221,12 @@ describe("messenger bootstrap store", () => {
 
   it("applies a successful Workspace payload to domain state", async () => {
     const runtimeContext = createRuntimeContext();
+    const getStreams = vi.fn(() => Promise.resolve([createStreamDto()]));
 
     const result = await bootstrapMessengerStore({
       runtimeContext,
       getRuntimeContext: () => runtimeContext,
-      client: createClient(),
+      client: createClient({ getStreams }),
     });
 
     const state = useMessengerStore.getState();
@@ -245,6 +246,12 @@ describe("messenger bootstrap store", () => {
     expect(state.messageIdsByConversationId).toEqual({});
     expect(state.foldersById[FOLDER_A]?.title).toBe("Inbox");
     expect(state.usersById[USER_A]?.username).toBe("alice");
+    expect(getStreams).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accessToken: "access-token-a",
+        projectId: PROJECT_A,
+      }),
+    );
   });
 
   it("indexes stream bindings when the bootstrap payload provides them", () => {

@@ -1,3 +1,8 @@
+import {
+  X_WORKSPACE_DEV_TARGET_ORIGIN,
+  isDevWorkspaceMessengerApiPathname,
+  isAllowedDevWorkspaceProxyTargetOrigin,
+} from "~/shared/config/dev-workspace-org-proxy";
 import { buildMessengerBearerAuthHeader } from "./messenger-auth";
 
 // Shared low-level HTTP helpers for the Workspace Messenger REST API.
@@ -10,12 +15,15 @@ export type MessengerQueryParams = Record<string, string | number | undefined>;
 export interface MessengerClientOptions {
   accessToken: string | null | undefined;
   baseUrl?: string;
+  devTargetOrigin?: string;
+  projectId?: string;
   fetchImpl?: typeof fetch;
   signal?: AbortSignal;
 }
 
 export interface MessengerPublicClientOptions {
   baseUrl?: string;
+  devTargetOrigin?: string;
   fetchImpl?: typeof fetch;
   signal?: AbortSignal;
 }
@@ -65,6 +73,13 @@ export function buildMessengerUrl(
   return `${base}${path}${suffix}`;
 }
 
+function pathWithoutTrailingSlash(path: string): string | null {
+  if (!path.endsWith("/") || path === "/") {
+    return null;
+  }
+  return path.replace(/\/+$/, "");
+}
+
 // RESTAlchemy uses the same cursor query names on every collection endpoint.
 export function paginationParams(
   query: MessengerPaginationQuery | undefined,
@@ -72,6 +87,16 @@ export function paginationParams(
   return {
     page_limit: query?.pageLimit,
     page_marker: query?.pageMarker,
+  };
+}
+
+export function projectScopedPaginationParams(
+  options: Pick<MessengerClientOptions, "projectId">,
+  query: MessengerPaginationQuery | undefined,
+): MessengerQueryParams {
+  return {
+    ...paginationParams(query),
+    project_id: options.projectId,
   };
 }
 
@@ -93,12 +118,35 @@ function buildHeaders(
   accessToken: string | null | undefined,
   body: unknown,
   isPublic: boolean,
+  devTargetOrigin: string | undefined,
+  shouldAppendDevTargetOrigin: boolean,
 ): Record<string, string> {
+  const trimmedDevTargetOrigin = devTargetOrigin?.trim() ?? "";
   return {
     Accept: "application/json",
     ...(body === undefined ? {} : { "Content-Type": "application/json" }),
     ...(isPublic ? {} : buildMessengerBearerAuthHeader(accessToken)),
+    ...(import.meta.env.DEV &&
+    shouldAppendDevTargetOrigin &&
+    isAllowedDevWorkspaceProxyTargetOrigin(trimmedDevTargetOrigin)
+      ? { [X_WORKSPACE_DEV_TARGET_ORIGIN]: new URL(trimmedDevTargetOrigin).origin }
+      : {}),
   };
+}
+
+function shouldAppendDevProxyTargetHeader(url: string): boolean {
+  if (!import.meta.env.DEV || typeof window === "undefined") {
+    return false;
+  }
+  try {
+    const parsed = new URL(url, window.location.origin);
+    return (
+      parsed.origin === window.location.origin &&
+      isDevWorkspaceMessengerApiPathname(parsed.pathname)
+    );
+  } catch {
+    return false;
+  }
 }
 
 // This is the only helper that performs authenticated network writes.
@@ -110,15 +158,33 @@ export async function sendJsonResult(
   body?: unknown,
 ): Promise<MessengerJsonResult> {
   const fetchImpl = options.fetchImpl ?? fetch;
-  const response = await fetchImpl(buildMessengerUrl(options.baseUrl, path, params), {
+  const url = buildMessengerUrl(options.baseUrl, path, params);
+  const init: RequestInit = {
     method,
-    headers: buildHeaders(options.accessToken, body, false),
+    headers: buildHeaders(
+      options.accessToken,
+      body,
+      false,
+      options.devTargetOrigin,
+      shouldAppendDevProxyTargetHeader(url),
+    ),
     body: body === undefined ? undefined : JSON.stringify(body),
     signal: options.signal,
-  });
+  };
+  let response = await fetchImpl(url, init);
+  let responsePath = path;
+  const fallbackPath = pathWithoutTrailingSlash(path);
+  if (response.status === 404 && fallbackPath != null) {
+    responsePath = fallbackPath;
+    response = await fetchImpl(buildMessengerUrl(options.baseUrl, fallbackPath, params), init);
+  }
   const data = await parseJsonResponse(response);
   if (!response.ok) {
-    throw new MessengerApiError(`Messenger API ${method} ${path} failed`, response.status, data);
+    throw new MessengerApiError(
+      `Messenger API ${method} ${responsePath} failed`,
+      response.status,
+      data,
+    );
   }
   return { data, headers: response.headers };
 }
@@ -137,14 +203,28 @@ export async function publicGetJsonResult(
   params: MessengerQueryParams = {},
 ): Promise<MessengerJsonResult> {
   const fetchImpl = options.fetchImpl ?? fetch;
-  const response = await fetchImpl(buildMessengerUrl(options.baseUrl, path, params), {
+  const url = buildMessengerUrl(options.baseUrl, path, params);
+  const init: RequestInit = {
     method: "GET",
-    headers: buildHeaders(null, undefined, true),
+    headers: buildHeaders(
+      null,
+      undefined,
+      true,
+      options.devTargetOrigin,
+      shouldAppendDevProxyTargetHeader(url),
+    ),
     signal: options.signal,
-  });
+  };
+  let response = await fetchImpl(url, init);
+  let responsePath = path;
+  const fallbackPath = pathWithoutTrailingSlash(path);
+  if (response.status === 404 && fallbackPath != null) {
+    responsePath = fallbackPath;
+    response = await fetchImpl(buildMessengerUrl(options.baseUrl, fallbackPath, params), init);
+  }
   const data = await parseJsonResponse(response);
   if (!response.ok) {
-    throw new MessengerApiError(`Messenger API GET ${path} failed`, response.status, data);
+    throw new MessengerApiError(`Messenger API GET ${responsePath} failed`, response.status, data);
   }
   return { data, headers: response.headers };
 }

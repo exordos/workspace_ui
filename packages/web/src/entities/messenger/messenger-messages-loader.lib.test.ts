@@ -122,7 +122,7 @@ describe("messenger conversation messages loader", () => {
     });
 
     expect(getMessagesPage).toHaveBeenCalledWith(
-      expect.objectContaining({ accessToken: "access-token-a" }),
+      expect.objectContaining({ accessToken: "access-token-a", projectId: PROJECT_A }),
       {
         streamUuid: STREAM_A,
         pageLimit: 50,

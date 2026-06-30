@@ -8,6 +8,7 @@ import {
   parseDto,
   parsePaginationHeaders,
   parseStrictDtoList,
+  projectScopedPaginationParams,
 } from "./messenger-transport.internal";
 import type {
   MessengerClientOptions,
@@ -30,7 +31,6 @@ export interface GetStreamTopicsQuery extends MessengerPaginationQuery {
 
 function streamTopicsParams(query: GetStreamTopicsQuery) {
   return {
-    ...paginationParams(query),
     stream_uuid: query.streamUuid,
   };
 }
@@ -44,24 +44,21 @@ export async function getStreamTopics(
   options: MessengerClientOptions,
   query: GetStreamTopicsQuery = {},
 ): Promise<WorkspaceMessengerTopicDto[]> {
-  const data = await messengerGetJson("/stream_topics/", options, streamTopicsParams(query));
-  return parseStrictDtoList(
-    data,
-    isWorkspaceMessengerTopicDto,
-    "messenger stream topics response",
-  );
+  const data = await messengerGetJson("/stream_topics/", options, {
+    ...paginationParams(query),
+    ...streamTopicsParams(query),
+  });
+  return parseStrictDtoList(data, isWorkspaceMessengerTopicDto, "messenger stream topics response");
 }
 
 export async function getStreamTopicsPage(
   options: MessengerClientOptions,
   query: GetStreamTopicsQuery = {},
 ): Promise<MessengerCollectionPage<WorkspaceMessengerTopicDto>> {
-  const { data, headers } = await messengerRequestJsonResult(
-    "GET",
-    "/stream_topics/",
-    options,
-    streamTopicsParams(query),
-  );
+  const { data, headers } = await messengerRequestJsonResult("GET", "/stream_topics/", options, {
+    ...paginationParams(query),
+    ...streamTopicsParams(query),
+  });
   return {
     items: parseStrictDtoList(
       data,

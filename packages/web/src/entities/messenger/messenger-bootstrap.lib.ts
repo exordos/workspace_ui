@@ -22,7 +22,10 @@ import { adaptMessengerBootstrapPayload } from "./messenger-adapters.lib";
 import { useMessengerStore } from "./messenger.model";
 import type { MessengerStoreState } from "./messenger.model";
 
-type MessengerBootstrapClientOptions = Pick<MessengerClientOptions, "baseUrl" | "fetchImpl">;
+type MessengerBootstrapClientOptions = Pick<
+  MessengerClientOptions,
+  "baseUrl" | "devTargetOrigin" | "fetchImpl" | "projectId"
+>;
 type MessengerBootstrapClientCall<T> = (options: MessengerClientOptions) => Promise<T[]>;
 
 // Bootstrap loads the project snapshot needed to draw the first chat shell.
@@ -85,6 +88,7 @@ export async function bootstrapMessengerStore({
   const requestOptions: MessengerClientOptions = {
     ...clientOptions,
     accessToken: runtimeContext.accessToken,
+    projectId: clientOptions?.projectId ?? runtimeContext.projectId,
     signal,
   };
 

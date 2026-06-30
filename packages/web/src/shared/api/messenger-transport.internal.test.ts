@@ -67,6 +67,79 @@ describe("messenger transport helper", () => {
     });
   });
 
+  it("adds the dev target origin header for same-origin proxied requests", async () => {
+    const fetchMock = createFetchMock([{ uuid: "stream" }]);
+
+    await getJsonResult("/streams/", {
+      accessToken: "token",
+      devTargetOrigin: "https://workspace.example.com",
+      fetchImpl: fetchMock,
+    });
+
+    const [, init] = firstFetchCall(fetchMock);
+    expect(init?.headers).toEqual({
+      Accept: "application/json",
+      Authorization: "Bearer token",
+      "X-Workspace-Dev-Target-Origin": "https://workspace.example.com",
+    });
+  });
+
+  it("does not add the dev target origin header for absolute requests", async () => {
+    const fetchMock = createFetchMock([{ uuid: "stream" }]);
+
+    await getJsonResult("/streams/", {
+      accessToken: "token",
+      baseUrl: "https://workspace.example.com/api/messenger/v1",
+      devTargetOrigin: "https://workspace.example.com",
+      fetchImpl: fetchMock,
+    });
+
+    const [, init] = firstFetchCall(fetchMock);
+    expect(init?.headers).toEqual({
+      Accept: "application/json",
+      Authorization: "Bearer token",
+    });
+  });
+
+  it("retries trailing-slash requests without slash after 404", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ detail: "Not found" }, 404))
+      .mockResolvedValueOnce(jsonResponse([{ uuid: "stream" }]));
+
+    await expect(
+      getJsonResult(
+        "/streams/",
+        { accessToken: "token", baseUrl: "/api/messenger/v1", fetchImpl: fetchMock },
+        { page_limit: 50 },
+      ),
+    ).resolves.toMatchObject({
+      data: [{ uuid: "stream" }],
+    });
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/messenger/v1/streams/?page_limit=50",
+      "/api/messenger/v1/streams?page_limit=50",
+    ]);
+  });
+
+  it("reports the fallback path when both trailing-slash variants fail", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ detail: "Not found" }, 404))
+      .mockResolvedValueOnce(jsonResponse({ code: 404 }, 404));
+
+    await expect(
+      getJsonResult("/streams/", { accessToken: "token", fetchImpl: fetchMock }),
+    ).rejects.toEqual(
+      expect.objectContaining({
+        message: "Messenger API GET /streams failed",
+        status: 404,
+        data: { code: 404 },
+      }),
+    );
+  });
+
   it("sends JSON bodies through POST and PUT with bearer auth", async () => {
     const postFetchMock = createFetchMock({ uuid: "created" });
     await expect(

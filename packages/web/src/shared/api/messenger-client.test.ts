@@ -90,7 +90,7 @@ describe("messenger-client", () => {
     const fetchMock = createFetchMock([streamDto, { ...streamDto, uuid: "bad" }]);
 
     await expect(
-      getStreams({ accessToken: " access-token ", fetchImpl: fetchMock }),
+      getStreams({ accessToken: " access-token ", projectId: PROJECT_UUID, fetchImpl: fetchMock }),
     ).resolves.toEqual([streamDto]);
 
     const [url, init] = firstFetchCall(fetchMock);
@@ -119,13 +119,20 @@ describe("messenger-client", () => {
 
     await expect(
       getEvents(
-        { accessToken: "access-token", baseUrl: "/api/messenger/v1", fetchImpl: fetchMock },
+        {
+          accessToken: "access-token",
+          baseUrl: "/api/messenger/v1",
+          projectId: PROJECT_UUID,
+          fetchImpl: fetchMock,
+        },
         { afterEpochVersion: 123, pageLimit: 500 },
       ),
     ).resolves.toHaveLength(1);
 
     const [url] = firstFetchCall(fetchMock);
-    expect(url).toBe("/api/messenger/v1/events/?page_limit=500&epoch_version%3E=123");
+    expect(url).toBe(
+      `/api/messenger/v1/events/?page_limit=500&project_id=${PROJECT_UUID}&epoch_version%3E=123`,
+    );
   });
 
   it("strictly rejects invalid REST event rows", async () => {
@@ -181,7 +188,7 @@ describe("messenger-client", () => {
 
     await expect(
       getMessagesPage(
-        { accessToken: "access-token", fetchImpl: fetchMock },
+        { accessToken: "access-token", projectId: PROJECT_UUID, fetchImpl: fetchMock },
         { streamUuid: STREAM_UUID, topicUuid: TOPIC_UUID, pageLimit: 50 },
       ),
     ).resolves.toEqual({
@@ -192,7 +199,7 @@ describe("messenger-client", () => {
 
     const [url] = firstFetchCall(fetchMock);
     expect(url).toBe(
-      `/api/messenger/v1/messages/?page_limit=50&stream_uuid=${STREAM_UUID}&topic_uuid=${TOPIC_UUID}`,
+      `/api/messenger/v1/messages/?page_limit=50&project_id=${PROJECT_UUID}&stream_uuid=${STREAM_UUID}&topic_uuid=${TOPIC_UUID}`,
     );
 
     const invalidFetchMock = createFetchMock([

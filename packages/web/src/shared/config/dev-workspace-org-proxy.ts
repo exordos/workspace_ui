@@ -11,6 +11,12 @@
  */
 
 export const DEV_WORKSPACE_ORG_PROXY_PATH_PREFIX = "/__dev_workspace_org";
+export const DEV_WORKSPACE_MESSENGER_API_PATH_PREFIX = "/api/messenger";
+
+export function isDevWorkspaceMessengerApiPathname(pathname: string): boolean {
+  const prefix = DEV_WORKSPACE_MESSENGER_API_PATH_PREFIX;
+  return pathname === prefix || pathname.startsWith(`${prefix}/`);
+}
 
 /**
  * Same rule as `env.WORKSPACE_API_BASE` in dev when not overridden by an absolute URL.

@@ -6,6 +6,7 @@ import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { useAddStreamMembersStore } from "~/features/add-stream-members/add-stream-members.model";
 import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
@@ -146,6 +147,11 @@ describe("RightPanel truthfulness", () => {
       instances: [],
       currentInstanceId: null,
       unreadCountsByInstance: {},
+    });
+    useWorkspaceAuthStore.setState({
+      sessions: [],
+      currentAccountId: null,
+      runtimeGeneration: 0,
     });
     useUsersStore.getState().clear();
     useUserGroupsStore.getState().clear();
@@ -572,6 +578,39 @@ describe("RightPanel truthfulness", () => {
     expect(currentServerItem).not.toHaveClass("rounded-lg");
     expect(currentServerItem).not.toHaveClass("p-2.5");
     expect(currentServerItem.closest(".overflow-y-auto")).not.toBeNull();
+  });
+
+  it("renders current Workspace session in user menu without legacy instances", () => {
+    useWorkspaceAuthStore.setState({
+      currentAccountId: "account-a",
+      runtimeGeneration: 1,
+      sessions: [
+        {
+          accountId: "account-a",
+          instanceId: "instance-a",
+          organizationId: "workspace.example.com",
+          organizationOrigin: "https://workspace.example.com",
+          projectId: "project-a",
+          userUuid: "a225223c-637c-4afa-918f-5f2798b9305f",
+          login: "alice@example.com",
+          accessToken: "access-token",
+          runtimeGeneration: 1,
+          profile: {
+            uuid: "a225223c-637c-4afa-918f-5f2798b9305f",
+            username: "alice",
+            firstName: "Alice",
+            lastName: "Workspace",
+            email: "alice@example.com",
+          },
+        },
+      ],
+    });
+
+    renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);
+
+    const currentServerItem = screen.getByTestId("user-menu-current-server-item");
+    expect(within(currentServerItem).getByText(/workspace.example.com/i)).toBeInTheDocument();
+    expect(within(currentServerItem).getByText("alice@example.com")).toBeInTheDocument();
   });
 
   it("renders select-build mode as a right sidebar with downloadable versions list", async () => {

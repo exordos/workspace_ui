@@ -20,7 +20,10 @@ import type { MessengerConversationId } from "./messenger.types";
 // The first message page is loaded only after the user opens a conversation.
 const DEFAULT_MESSAGES_PAGE_LIMIT = 50;
 
-type MessengerMessagesClientOptions = Pick<MessengerClientOptions, "baseUrl" | "fetchImpl">;
+type MessengerMessagesClientOptions = Pick<
+  MessengerClientOptions,
+  "baseUrl" | "devTargetOrigin" | "fetchImpl" | "projectId"
+>;
 
 export interface MessengerMessagesClientDeps {
   getMessagesPage?: (
@@ -107,6 +110,7 @@ export async function loadMessengerConversationMessages({
   const requestOptions: MessengerClientOptions = {
     ...clientOptions,
     accessToken: runtimeContext.accessToken,
+    projectId: clientOptions?.projectId ?? runtimeContext.projectId,
     signal,
   };
   const query =

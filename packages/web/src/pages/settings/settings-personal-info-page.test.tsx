@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { setLocale } from "~/i18n/i18n";
 import { renderWithProviders } from "~/test/render";
 import { SettingsPersonalInfoPage } from "./settings-personal-info-page.ui";
@@ -98,6 +99,11 @@ describe("SettingsPersonalInfoPage", () => {
       currentInstanceId: null,
       unreadCountsByInstance: {},
     });
+    useWorkspaceAuthStore.setState({
+      sessions: [],
+      currentAccountId: null,
+      runtimeGeneration: 0,
+    });
     act(() => {
       setLocale("en");
     });
@@ -177,6 +183,41 @@ describe("SettingsPersonalInfoPage", () => {
     renderWithProviders(<SettingsPersonalInfoPage />);
 
     expect(screen.getAllByText("-").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("renders Workspace auth identity when legacy user profile is unavailable", async () => {
+    useWorkspaceAuthStore.setState({
+      currentAccountId: "account-a",
+      runtimeGeneration: 1,
+      sessions: [
+        {
+          accountId: "account-a",
+          instanceId: "instance-a",
+          organizationId: "workspace.example.com",
+          organizationOrigin: "https://workspace.example.com",
+          projectId: "project-a",
+          userUuid: "a225223c-637c-4afa-918f-5f2798b9305f",
+          login: "alice@example.com",
+          accessToken: "access-token",
+          runtimeGeneration: 1,
+          profile: {
+            uuid: "a225223c-637c-4afa-918f-5f2798b9305f",
+            username: "alice",
+            firstName: "Alice",
+            lastName: "Workspace",
+            email: "alice@example.com",
+            status: "active",
+          },
+        },
+      ],
+    });
+
+    renderWithProviders(<SettingsPersonalInfoPage />);
+
+    expect((await screen.findAllByText("Alice Workspace")).length).toBeGreaterThan(0);
+    expect(screen.getByText("alice@example.com")).toBeInTheDocument();
+    expect(screen.getByText("a225223c-637c-4afa-918f-5f2798b9305f")).toBeInTheDocument();
+    expect(fetchUserProfileMock).not.toHaveBeenCalled();
   });
 
   it("copies profile link using current instance realm", async () => {

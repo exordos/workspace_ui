@@ -10,6 +10,8 @@ import { UserStatusLabel } from "~/entities/user/user-status-label.ui";
 import { useUserStatus } from "~/entities/user/user-status.hooks";
 import { formatUserStatusLabel, getUserStatusEmojiDisplay } from "~/entities/user/user-status.lib";
 import { useUsersStore, type UserStatusReactionType } from "~/entities/user/user.model";
+import { removeWorkspaceSession } from "~/entities/workspace-auth/workspace-auth.lib";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { AUTH_IDLE_TIMEOUT_PRESETS } from "~/features/settings/auth-idle-timeout.lib";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import type { AuthIdleTimeout, NotificationSound } from "~/features/settings/settings.types";
@@ -70,6 +72,12 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   const instances = useInstancesStore((s) => s.instances);
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const removeInstance = useInstancesStore((s) => s.removeInstance);
+  const currentWorkspaceSession = useWorkspaceAuthStore((s) => {
+    const accountId = s.currentAccountId;
+    return accountId != null
+      ? s.sessions.find((session) => session.accountId === accountId)
+      : undefined;
+  });
   // const prioritizePersonalUnread = useSettingsStore((s) => s.prioritizePersonalUnread);
   // const prioritizeUnmutedUnreadChannels = useSettingsStore(
   //   (s) => s.prioritizeUnmutedUnreadChannels,
@@ -117,12 +125,21 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
     [instances, currentInstanceId],
   );
   const currentServerLabel = useMemo(
-    () => (currentInstance ? getInstanceLabel(currentInstance.realm, currentInstance.email) : ""),
-    [currentInstance],
+    () =>
+      currentWorkspaceSession != null
+        ? getInstanceLabel(currentWorkspaceSession.organizationOrigin, currentWorkspaceSession.login)
+        : currentInstance
+          ? getInstanceLabel(currentInstance.realm, currentInstance.email)
+          : "",
+    [currentInstance, currentWorkspaceSession],
   );
+  const currentServerAccountLabel = currentWorkspaceSession?.login ?? currentInstance?.email ?? "";
   const currentServerIconUrl = useMemo(
-    () => resolveOrganizationLogoUrl(currentInstance?.realmIcon, currentInstance?.realm),
-    [currentInstance?.realmIcon, currentInstance?.realm],
+    () =>
+      currentWorkspaceSession != null
+        ? null
+        : resolveOrganizationLogoUrl(currentInstance?.realmIcon, currentInstance?.realm),
+    [currentInstance?.realmIcon, currentInstance?.realm, currentWorkspaceSession],
   );
   const currentStatus = useUserStatus(currentUserId);
   const currentStatusLabel = useMemo(
@@ -364,6 +381,15 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   }, [t]);
 
   const handleLogoutFromCurrentOrg = useCallback(() => {
+    if (currentWorkspaceSession != null) {
+      const confirmed = window.confirm(
+        t("auth.logoutFromOrgConfirm", { server: currentServerLabel }),
+      );
+      if (!confirmed) return;
+      removeWorkspaceSession(currentWorkspaceSession.accountId);
+      closeDrawer();
+      return;
+    }
     if (currentInstance == null) return;
     const confirmed = window.confirm(
       t("auth.logoutFromOrgConfirm", { server: currentServerLabel }),
@@ -371,7 +397,14 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
     if (!confirmed) return;
     removeInstance(currentInstance.id);
     closeDrawer();
-  }, [closeDrawer, currentInstance, currentServerLabel, removeInstance, t]);
+  }, [
+    closeDrawer,
+    currentInstance,
+    currentServerLabel,
+    currentWorkspaceSession,
+    removeInstance,
+    t,
+  ]);
 
   const handleStatusEmojiPick = useCallback((data: EmojiClickData) => {
     const payload = zulipEmojiPayloadFromPickerData(data, { mode: "strict" });
@@ -400,7 +433,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
               {t("nav.profile")}
             </SectionLabel>
             <div className="divide-y divide-border-subtle overflow-hidden rounded-lg border border-border-subtle bg-card-bg">
-              {currentInstance != null && (
+              {(currentWorkspaceSession != null || currentInstance != null) && (
                 <div
                   data-testid="user-menu-current-server-item"
                   className="flex items-center justify-between gap-3 px-2.5 py-2.5"
@@ -425,7 +458,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                         {currentServerLabel}
                       </span>
                       <span className="truncate text-[11px] text-text-muted">
-                        {currentInstance.email}
+                        {currentServerAccountLabel}
                       </span>
                     </span>
                   </span>
