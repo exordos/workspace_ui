@@ -69,10 +69,7 @@ function isSupportedRealtimeEvent(event: WorkspaceRealtimeEvent): boolean {
 }
 
 function isBackgroundLightweightEvent(event: WorkspaceRealtimeEvent): boolean {
-  if (event.type === "folder" && event.kind !== "folder.deleted") return true;
-  return (
-    event.type === "message" && event.kind !== "message.updated" && event.kind !== "message.deleted"
-  );
+  return event.type !== "stream_binding";
 }
 
 function skippedEpoch(event: WorkspaceRealtimeEvent | WorkspaceRealtimeSkippedEvent): number {
@@ -194,8 +191,8 @@ export function createMessengerRealtimeBackgroundApplier(
         return;
       }
 
-      // Background projection хранит только легкие данные: счетчики и поля для будущих уведомлений.
-      // Полное состояние чата остается в active messengerStore, чтобы не смешивать ownership.
+      // Background projection хранит только легкие id-снимки и счетчики.
+      // Тут нет notification side effects и записи в messengerStore, чтобы background не стал вторым active path.
       if (isBackgroundLightweightEvent(event)) {
         store.recordAppliedEvent(context.ownerKey, event, context);
         return;

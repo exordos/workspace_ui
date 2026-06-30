@@ -1,15 +1,21 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type {
   WorkspaceMessengerFolderDto,
   WorkspaceMessengerMessageDto,
+  WorkspaceMessengerStreamDto,
+  WorkspaceMessengerTopicDto,
   WorkspaceRealtimeEvent,
 } from "~/shared/api/messenger.types";
 import type {
   WorkspaceRealtimeEventContext,
   WorkspaceRealtimeRuntimeOwner,
 } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
-import { useMessengerBackgroundProjectionStore } from "./messenger-background-projection.model";
+import {
+  getMessengerBackgroundProjectionSnapshot,
+  selectMessengerBackgroundProjectionSnapshot,
+  useMessengerBackgroundProjectionStore,
+} from "./messenger-background-projection.model";
 import { createMessengerRealtimeBackgroundApplier } from "./messenger-realtime-applier.lib";
 import { useMessengerStore } from "./messenger.model";
 
@@ -19,12 +25,14 @@ const ORGANIZATION_A = "organization-a";
 const PROJECT_A = "22222222-2222-4222-8222-222222222222";
 const USER_A = "11111111-1111-4111-8111-111111111111";
 const STREAM_A = "75309057-419c-4b12-a7c1-3932429ec4a6";
+const STREAM_B = "c1ec1406-f498-409d-a513-5b0e53ee4049";
 const TOPIC_A = "4ec0b996-b778-45f8-8ef4-ef863be0c047";
 const FOLDER_A = "50ecadd0-9823-4d97-b54c-806cc672c210";
 const FOLDER_ITEM_A = "9f41b1a7-77f9-4c12-bdc6-d3cebc5dbf50";
 const FOLDER_ITEM_B = "5f5b9a9d-0e57-4775-849b-c8308f95a809";
 const MESSAGE_A = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
 const DATE = "2026-06-22T10:10:00Z";
+const DATE_LATER = "2026-06-22T10:15:00Z";
 
 function createOwner(overrides: Partial<WorkspaceRealtimeRuntimeOwner> = {}) {
   return {
@@ -69,6 +77,53 @@ function createMessageDto(
     pinned: false,
     starred: false,
     is_own: false,
+    created_at: DATE,
+    updated_at: DATE,
+    ...overrides,
+  };
+}
+
+function createStreamDto(
+  overrides: Partial<WorkspaceMessengerStreamDto> = {},
+): WorkspaceMessengerStreamDto {
+  return {
+    uuid: STREAM_A,
+    name: "Private stream name must not be cached",
+    description: "Private stream description must not be cached",
+    project_id: PROJECT_A,
+    owner: USER_A,
+    user_uuid: USER_A,
+    role: "member",
+    notification_mode: "all_messages",
+    unread_count: 5,
+    source_name: "native",
+    source: { kind: "native" },
+    invite_only: false,
+    announce: false,
+    private: false,
+    is_archived: false,
+    direct_user_uuid: null,
+    last_message_uuid: MESSAGE_A,
+    created_at: DATE,
+    updated_at: DATE,
+    ...overrides,
+  };
+}
+
+function createTopicDto(
+  overrides: Partial<WorkspaceMessengerTopicDto> = {},
+): WorkspaceMessengerTopicDto {
+  return {
+    uuid: TOPIC_A,
+    project_id: PROJECT_A,
+    name: "Private topic name must not be cached",
+    stream_uuid: STREAM_A,
+    user_uuid: USER_A,
+    unread_count: 6,
+    is_default: false,
+    is_done: false,
+    notification_mode: "default",
+    last_message_uuid: MESSAGE_A,
     created_at: DATE,
     updated_at: DATE,
     ...overrides,
@@ -126,6 +181,10 @@ describe("messenger background projection", () => {
     useMessengerStore.getState().clear();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("records message.created notification candidate without touching messengerStore", () => {
     const context = createContext();
     const applier = createMessengerRealtimeBackgroundApplier();
@@ -143,7 +202,7 @@ describe("messenger background projection", () => {
     const projection =
       useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey];
     expect(projection?.notificationCandidates).toEqual([
-      {
+      expect.objectContaining({
         ownerKey: context.ownerKey,
         epochVersion: 11,
         messageUuid: MESSAGE_A,
@@ -152,8 +211,17 @@ describe("messenger background projection", () => {
         authorUuid: USER_A,
         isOwn: false,
         createdAt: DATE,
-      },
+      }),
     ]);
+    expect(projection?.messageIdSnapshotsById[MESSAGE_A]).toEqual(
+      expect.objectContaining({
+        messageUuid: MESSAGE_A,
+        streamUuid: STREAM_A,
+        topicUuid: TOPIC_A,
+        read: false,
+        deletedAt: null,
+      }),
+    );
     expect(JSON.stringify(projection)).not.toContain("Do not copy this text");
     expect(useMessengerStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
     expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
@@ -181,6 +249,96 @@ describe("messenger background projection", () => {
       [FOLDER_ITEM_A]: 3,
       [FOLDER_ITEM_B]: 4,
     });
+    expect(projection?.folderSnapshotsById[FOLDER_A]).toEqual(
+      expect.objectContaining({
+        folderUuid: FOLDER_A,
+        unreadCount: 7,
+        folderItemIds: [FOLDER_ITEM_A, FOLDER_ITEM_B],
+      }),
+    );
+    expect(projection?.folderItemSnapshotsById[FOLDER_ITEM_A]).toEqual(
+      expect.objectContaining({
+        folderItemUuid: FOLDER_ITEM_A,
+        folderUuid: FOLDER_A,
+        streamUuid: STREAM_A,
+        unreadCount: 3,
+      }),
+    );
+  });
+
+  it("stores lightweight stream topic folder and message snapshots without PII fields", () => {
+    const context = createContext();
+    const applier = createMessengerRealtimeBackgroundApplier();
+
+    applier.applyEvent(
+      {
+        epoch_version: 31,
+        type: "stream",
+        kind: "stream.created",
+        stream: createStreamDto(),
+      },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 32,
+        type: "topic",
+        kind: "topic.created",
+        topic: createTopicDto(),
+      },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 33,
+        type: "folder",
+        kind: "folder.created",
+        folder: createFolderDto({ title: "Private folder title must not be cached" }),
+      },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 34,
+        type: "message",
+        message: createMessageDto(),
+      },
+      context,
+    );
+
+    const projection = selectMessengerBackgroundProjectionSnapshot(
+      useMessengerBackgroundProjectionStore.getState(),
+      context.ownerKey,
+    );
+
+    expect(projection?.streamSnapshotsById[STREAM_A]).toEqual(
+      expect.objectContaining({
+        streamUuid: STREAM_A,
+        unreadCount: 5,
+        lastMessageUuid: MESSAGE_A,
+      }),
+    );
+    expect(projection?.topicSnapshotsById[TOPIC_A]).toEqual(
+      expect.objectContaining({
+        topicUuid: TOPIC_A,
+        streamUuid: STREAM_A,
+        unreadCount: 6,
+      }),
+    );
+    expect(projection?.folderSnapshotsById[FOLDER_A]).toEqual(
+      expect.objectContaining({
+        folderUuid: FOLDER_A,
+        unreadCount: 7,
+      }),
+    );
+    expect(getMessengerBackgroundProjectionSnapshot(context.ownerKey)).toBe(projection);
+
+    const serializedProjection = JSON.stringify(projection);
+    expect(serializedProjection).not.toContain("Do not copy this text");
+    expect(serializedProjection).not.toContain("Private stream name");
+    expect(serializedProjection).not.toContain("Private stream description");
+    expect(serializedProjection).not.toContain("Private topic name");
+    expect(serializedProjection).not.toContain("Private folder title");
   });
 
   it("records unsupported and skipped diagnostics as a bounded list", () => {
@@ -204,6 +362,165 @@ describe("messenger background projection", () => {
     expect(projection?.skippedEvents.at(-1)).toEqual(
       expect.objectContaining({ epochVersion: 7, reason: "unsupported_event" }),
     );
+  });
+
+  it("keeps recent events candidates skipped events and snapshot ids bounded", () => {
+    const context = createContext();
+    const applier = createMessengerRealtimeBackgroundApplier();
+
+    for (let index = 0; index < 260; index++) {
+      const suffix = index.toString(16).padStart(12, "0");
+      applier.applyEvent(
+        {
+          epoch_version: index + 1,
+          type: "message",
+          message: createMessageDto({
+            uuid: `00000000-0000-4000-8000-${suffix}`,
+            payload: { kind: "markdown", content: `private-body-${index}` },
+          }),
+        },
+        context,
+      );
+    }
+
+    for (let epochVersion = 261; epochVersion <= 330; epochVersion++) {
+      applier.skipEvent({ epoch_version: epochVersion }, "unsupported_event", context);
+    }
+
+    const projection =
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey];
+    expect(projection?.recentEvents).toHaveLength(50);
+    expect(projection?.notificationCandidates).toHaveLength(50);
+    expect(projection?.skippedEvents).toHaveLength(50);
+    expect(Object.keys(projection?.messageIdSnapshotsById ?? {})).toHaveLength(200);
+    expect(JSON.stringify(projection)).not.toContain("private-body-0");
+    expect(JSON.stringify(projection)).not.toContain("private-body-259");
+  });
+
+  it("expires stale lightweight snapshots on the next background event", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-22T10:00:00Z"));
+
+    const context = createContext();
+    const applier = createMessengerRealtimeBackgroundApplier();
+
+    applier.applyEvent(
+      {
+        epoch_version: 41,
+        type: "stream",
+        kind: "stream.created",
+        stream: createStreamDto({ uuid: STREAM_A }),
+      },
+      context,
+    );
+
+    vi.setSystemTime(new Date("2026-06-22T10:31:00Z"));
+    applier.applyEvent(
+      {
+        epoch_version: 42,
+        type: "stream",
+        kind: "stream.created",
+        stream: createStreamDto({ uuid: STREAM_B, updated_at: DATE_LATER }),
+      },
+      context,
+    );
+
+    const projection =
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey];
+    expect(projection?.streamSnapshotsById[STREAM_A]).toBeUndefined();
+    expect(projection?.streamSnapshotsById[STREAM_B]).toEqual(
+      expect.objectContaining({ streamUuid: STREAM_B }),
+    );
+  });
+
+  it("removes deleted folder stream topic and folder item snapshots", () => {
+    const context = createContext();
+    const applier = createMessengerRealtimeBackgroundApplier();
+
+    applier.applyEvent(
+      {
+        epoch_version: 51,
+        type: "stream",
+        kind: "stream.created",
+        stream: createStreamDto(),
+      },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 52,
+        type: "topic",
+        kind: "topic.created",
+        topic: createTopicDto(),
+      },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 53,
+        type: "folder",
+        kind: "folder.created",
+        folder: createFolderDto(),
+      },
+      context,
+    );
+
+    applier.applyEvent(
+      {
+        epoch_version: 54,
+        type: "folder_item",
+        kind: "folder_item.deleted",
+        folder_item: { uuid: FOLDER_ITEM_A },
+      },
+      context,
+    );
+    let projection =
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey];
+    expect(projection?.folderItemSnapshotsById[FOLDER_ITEM_A]).toBeUndefined();
+    expect(projection?.unreadByFolderItemId[FOLDER_ITEM_A]).toBeUndefined();
+    expect(projection?.folderSnapshotsById[FOLDER_A]?.folderItemIds).toEqual([FOLDER_ITEM_B]);
+
+    applier.applyEvent(
+      {
+        epoch_version: 55,
+        type: "topic",
+        kind: "topic.deleted",
+        topic: { uuid: TOPIC_A, stream_uuid: STREAM_A },
+      },
+      context,
+    );
+    projection =
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey];
+    expect(projection?.topicSnapshotsById[TOPIC_A]).toBeUndefined();
+
+    applier.applyEvent(
+      {
+        epoch_version: 56,
+        type: "stream",
+        kind: "stream.deleted",
+        stream: { uuid: STREAM_A },
+      },
+      context,
+    );
+    projection =
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey];
+    expect(projection?.streamSnapshotsById[STREAM_A]).toBeUndefined();
+    expect(projection?.folderSnapshotsById[FOLDER_A]?.folderItemIds).toEqual([]);
+    expect(projection?.folderItemSnapshotsById[FOLDER_ITEM_B]).toBeUndefined();
+
+    applier.applyEvent(
+      {
+        epoch_version: 57,
+        type: "folder",
+        kind: "folder.deleted",
+        folder: { uuid: FOLDER_A },
+      },
+      context,
+    );
+    projection =
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey];
+    expect(projection?.folderSnapshotsById[FOLDER_A]).toBeUndefined();
+    expect(projection?.unreadByFolderId[FOLDER_A]).toBeUndefined();
   });
 
   it("ignores active-surface events so active apply path stays separate", () => {
