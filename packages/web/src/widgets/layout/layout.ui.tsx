@@ -53,6 +53,7 @@ import { useLayoutUnreadAndTitle } from "./layout-unread-title.hook";
 import { isLayoutUserConnectionReady } from "./layout-user-connection-status.types";
 import { useLayoutWindowBranding } from "./layout-window-branding.hook";
 import { useLayoutWorkspaceMessengerBootstrap } from "./layout-workspace-messenger-bootstrap.hook";
+import { useLayoutWorkspaceRealtime } from "./layout-workspace-realtime.hook";
 import { useLayoutZulipEventLoop } from "./layout-zulip-event-loop.hook";
 import { useZulipRateLimitCountdownSeconds } from "./layout-zulip-rate-limit-banner.hook";
 import type { LayoutUserConnectionStatus } from "./layout-user-connection-status.types";
@@ -168,6 +169,10 @@ export const Layout: React.FC = () => {
   const workspaceMessengerActive = isWorkspaceMessengerRoute(location.pathname);
   useHydrateDrafts(currentInstanceId, currentUserStatus);
   useLayoutWorkspaceMessengerBootstrap({ enabled: true });
+  useLayoutWorkspaceRealtime({
+    enabled: workspaceMessengerActive,
+    pathname: location.pathname,
+  });
 
   // На Workspace-маршруте не запускаем пересчёт старых Zulip бейджей.
   // Иначе старый unread-flow может перезаписать состояние, которое пришло из Workspace API.
