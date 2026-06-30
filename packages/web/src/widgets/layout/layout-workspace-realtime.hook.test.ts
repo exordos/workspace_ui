@@ -1,5 +1,6 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { createWorkspaceRealtimeCursorStorage } from "~/shared/lib/workspace-realtime/workspace-realtime-cursor.lib";
@@ -17,6 +18,12 @@ import type { LayoutWorkspaceRealtimeRuntimeFactory } from "./layout-workspace-r
 
 const WORKSPACE_AUTH_STORAGE_KEY = "workspace-auth-sessions";
 const WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY = "workspace-auth-current-account";
+const PROJECT_UUID = "22222222-2222-4222-8222-222222222222";
+const USER_UUID = "11111111-1111-4111-8111-111111111111";
+const STREAM_UUID = "75309057-419c-4b12-a7c1-3932429ec4a6";
+const TOPIC_UUID = "4ec0b996-b778-45f8-8ef4-ef863be0c047";
+const MESSAGE_UUID = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
+const DATE = "2026-06-22T10:10:00Z";
 
 class MemoryStorage implements WorkspaceRealtimeCursorStorageLike {
   readonly values = new Map<string, string>();
@@ -68,7 +75,9 @@ function setWorkspaceSession(session = createSession()): void {
 function createRuntimeFactory() {
   const startedContexts: WorkspaceRealtimeRuntimeContext[] = [];
   const runtimes: WorkspaceRealtimeTransportCore[] = [];
-  const runtimeFactory: LayoutWorkspaceRealtimeRuntimeFactory = () => {
+  const factoryOptions: Parameters<LayoutWorkspaceRealtimeRuntimeFactory>[0][] = [];
+  const runtimeFactory: LayoutWorkspaceRealtimeRuntimeFactory = (options) => {
+    factoryOptions.push(options);
     const runtime: WorkspaceRealtimeTransportCore = {
       start: vi.fn((context: WorkspaceRealtimeRuntimeContext) => {
         startedContexts.push(context);
@@ -85,7 +94,7 @@ function createRuntimeFactory() {
     return runtime;
   };
 
-  return { runtimeFactory, runtimes, startedContexts };
+  return { runtimeFactory, runtimes, startedContexts, factoryOptions };
 }
 
 describe("useLayoutWorkspaceRealtime", () => {
@@ -93,11 +102,13 @@ describe("useLayoutWorkspaceRealtime", () => {
     localStorage.removeItem(WORKSPACE_AUTH_STORAGE_KEY);
     localStorage.removeItem(WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY);
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
+    useMessengerStore.getState().clear();
   });
 
   afterEach(() => {
     vi.clearAllMocks();
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
+    useMessengerStore.getState().clear();
     localStorage.removeItem(WORKSPACE_AUTH_STORAGE_KEY);
     localStorage.removeItem(WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY);
   });
@@ -132,6 +143,54 @@ describe("useLayoutWorkspaceRealtime", () => {
       },
       surface: "active",
     });
+  });
+
+  it("uses active messenger applier by default", async () => {
+    setWorkspaceSession(createSession({ projectId: PROJECT_UUID, userUuid: USER_UUID }));
+    const { runtimeFactory, runtimes, startedContexts, factoryOptions } = createRuntimeFactory();
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+
+    renderHook(() =>
+      useLayoutWorkspaceRealtime({
+        enabled: true,
+        pathname: `/org/org-a/project/${PROJECT_UUID}/messenger`,
+        runtimeFactory,
+        cursorStorageFactory: () => cursorStorage,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(runtimes[0]?.start).toHaveBeenCalledTimes(1);
+    });
+    const context = startedContexts[0]!;
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+
+    factoryOptions[0]!.applier.applyEvent(
+      {
+        epoch_version: 8,
+        type: "message",
+        message: {
+          uuid: MESSAGE_UUID,
+          project_id: PROJECT_UUID,
+          stream_uuid: STREAM_UUID,
+          topic_uuid: TOPIC_UUID,
+          author_uuid: USER_UUID,
+          payload: { kind: "markdown", content: "Live workspace message" },
+          user_uuid: USER_UUID,
+          read: false,
+          pinned: false,
+          starred: false,
+          is_own: false,
+          created_at: DATE,
+          updated_at: DATE,
+        },
+      },
+      { ...context, source: "websocket" },
+    );
+
+    expect(useMessengerStore.getState().messagesById[MESSAGE_UUID]).toEqual(
+      expect.objectContaining({ markdown: "Live workspace message" }),
+    );
   });
 
   it("does not start runtime outside current Workspace project route", () => {

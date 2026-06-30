@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from "react";
+import { createMessengerRealtimeActiveApplier } from "~/entities/messenger/messenger-realtime-applier.lib";
 import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
 import {
   selectCurrentWorkspaceRuntimeContext,
@@ -13,7 +14,6 @@ import {
   type WorkspaceRealtimeDurableCursorStorage,
 } from "~/shared/lib/workspace-realtime/workspace-realtime-cursor.lib";
 import {
-  createWorkspaceRealtimeNoopApplier,
   createWorkspaceRealtimeTransportCore,
   type WorkspaceRealtimeEventApplier,
   type WorkspaceRealtimeRuntimeOwner,
@@ -30,8 +30,6 @@ export interface LayoutWorkspaceRealtimeRuntimeFactoryOptions {
 export type LayoutWorkspaceRealtimeRuntimeFactory = (
   options: LayoutWorkspaceRealtimeRuntimeFactoryOptions,
 ) => WorkspaceRealtimeTransportCore;
-
-const DEFAULT_WORKSPACE_REALTIME_APPLIER = createWorkspaceRealtimeNoopApplier();
 
 export interface UseLayoutWorkspaceRealtimeOptions {
   enabled: boolean;
@@ -103,7 +101,7 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
     pathname,
     runtimeFactory = defaultRuntimeFactory,
     cursorStorageFactory = createWorkspaceRealtimeBrowserCursorStorage,
-    applier = DEFAULT_WORKSPACE_REALTIME_APPLIER,
+    applier,
   } = options;
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
@@ -127,10 +125,11 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
       isLayoutWorkspaceRealtimeOwnerCurrent(candidate, () =>
         useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
       );
+    const runtimeApplier = applier ?? createMessengerRealtimeActiveApplier({ isOwnerCurrent });
     const runtime = runtimeFactory({
       runtimeContext,
       cursorStorage,
-      applier,
+      applier: runtimeApplier,
       isOwnerCurrent,
     });
 
