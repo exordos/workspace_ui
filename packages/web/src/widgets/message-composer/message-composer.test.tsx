@@ -277,6 +277,27 @@ describe("MessageComposer scheduled send", () => {
 });
 
 describe("MessageComposer saved snippets", () => {
+  it("keeps saved snippets visible but blocks the Zulip-backed action when unsupported", () => {
+    renderWithProviders(
+      <MessageComposer
+        onSend={vi.fn()}
+        capabilities={{
+          savedSnippets: {
+            mode: "unsupported",
+            unsupportedText: "Saved snippets are not connected.",
+          },
+        }}
+      />,
+    );
+
+    focusComposerInput();
+    fireEvent.click(screen.getByRole("button", { name: "Saved snippets are not connected." }));
+
+    expect(screen.getByRole("status")).toHaveTextContent("Saved snippets are not connected.");
+    expect(fetchSavedSnippetsMock).not.toHaveBeenCalled();
+    expect(screen.queryByRole("textbox", { name: /filter snippets/i })).not.toBeInTheDocument();
+  });
+
   it("loads saved snippets and inserts selected content into composer", async () => {
     fetchSavedSnippetsMock.mockResolvedValue([
       {
@@ -741,6 +762,29 @@ describe("MessageComposer formatting shortcuts", () => {
 });
 
 describe("MessageComposer preview mode", () => {
+  it("keeps preview tab visible but does not call the Zulip render API when unsupported", async () => {
+    renderWithProviders(
+      <MessageComposer
+        onSend={vi.fn()}
+        capabilities={{
+          preview: {
+            mode: "unsupported",
+            unsupportedText: "Preview is not connected.",
+          },
+        }}
+      />,
+    );
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "**Hello** world" } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+
+    await waitFor(() => {
+      expect(renderMessageContentMock).not.toHaveBeenCalled();
+      expect(screen.getAllByText("Preview is not connected.")).toHaveLength(2);
+    });
+  });
+
   it("renders markdown preview via Zulip render API and keeps draft intact", async () => {
     renderMessageContentMock.mockResolvedValue("<p><strong>Hello</strong> world</p>");
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
@@ -1506,6 +1550,17 @@ describe("MessageComposer emoji picker behavior", () => {
       expect(props?.customEmojis).toEqual([realmEmoji]);
       expect(props?.emojiStyle).toBe("native");
     });
+  });
+
+  it("keeps emoji picker local when custom emojis are unsupported", async () => {
+    renderWithProviders(
+      <MessageComposer onSend={vi.fn()} capabilities={{ customEmojis: { mode: "unsupported" } }} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /emoji/i }));
+    await screen.findByRole("button", { name: /pick emoji/i });
+
+    expect(fetchRealmEmojisMock).not.toHaveBeenCalled();
   });
 });
 

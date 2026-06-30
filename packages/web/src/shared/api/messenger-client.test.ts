@@ -4,6 +4,7 @@ import {
   getEpoch,
   getEvents,
   getMessages,
+  getMessagesByUuids,
   getMessagesPage,
   getServerSettings,
   getStreams,
@@ -43,6 +44,21 @@ function firstFetchCall(fetchMock: ReturnType<typeof vi.fn<typeof fetch>>) {
     throw new Error("Expected fetch to be called");
   }
   return call;
+}
+
+function createDeferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+} {
+  let resolve: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
+}
+
+function createMessageUuid(index: number): string {
+  return `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
 }
 
 const streamDto = {
@@ -178,6 +194,90 @@ describe("messenger-client", () => {
     await expect(
       getMessages({ accessToken: "access-token", fetchImpl: fetchMock }),
     ).resolves.toEqual([messageDto]);
+  });
+
+  it("returns an empty message UUID batch without fetch", async () => {
+    const fetchMock = createFetchMock([messageDto]);
+
+    await expect(
+      getMessagesByUuids({ accessToken: "access-token", fetchImpl: fetchMock }, [" ", ""]),
+    ).resolves.toEqual([]);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("normalizes duplicate and blank message UUID batch input", async () => {
+    const fetchMock = createFetchMock([messageDto]);
+
+    await expect(
+      getMessagesByUuids({ accessToken: "access-token", fetchImpl: fetchMock }, [
+        ` ${MESSAGE_UUID} `,
+        "",
+        MESSAGE_UUID,
+        ` ${EVENT_UUID} `,
+      ]),
+    ).resolves.toEqual([messageDto]);
+
+    const [url] = firstFetchCall(fetchMock);
+    expect(url).toBe(`/api/messenger/v1/messages/?uuid=${MESSAGE_UUID}&uuid=${EVENT_UUID}`);
+  });
+
+  it("fetches a two-message UUID batch with repeated query params", async () => {
+    const fetchMock = createFetchMock([messageDto]);
+
+    await expect(
+      getMessagesByUuids({ accessToken: "access-token", fetchImpl: fetchMock }, [
+        MESSAGE_UUID,
+        EVENT_UUID,
+      ]),
+    ).resolves.toEqual([messageDto]);
+
+    const [url] = firstFetchCall(fetchMock);
+    expect(url).toBe(`/api/messenger/v1/messages/?uuid=${MESSAGE_UUID}&uuid=${EVENT_UUID}`);
+  });
+
+  it("splits message UUID batches by 100 and flattens parallel responses", async () => {
+    const uuids = Array.from({ length: 201 }, (_, index) => createMessageUuid(index + 1));
+    const firstRequest = createDeferred<Response>();
+    const secondRequest = createDeferred<Response>();
+    const thirdRequest = createDeferred<Response>();
+    const fetchMock = vi.fn<typeof fetch>();
+    fetchMock
+      .mockReturnValueOnce(firstRequest.promise)
+      .mockReturnValueOnce(secondRequest.promise)
+      .mockReturnValueOnce(thirdRequest.promise);
+
+    const loading = getMessagesByUuids(
+      { accessToken: "access-token", fetchImpl: fetchMock },
+      uuids,
+    );
+
+    await Promise.resolve();
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const urls = fetchMock.mock.calls.map(([url]) => String(url));
+    expect(new URL(urls[0]!, "https://example.test").searchParams.getAll("uuid")).toEqual(
+      uuids.slice(0, 100),
+    );
+    expect(new URL(urls[1]!, "https://example.test").searchParams.getAll("uuid")).toEqual(
+      uuids.slice(100, 200),
+    );
+    expect(new URL(urls[2]!, "https://example.test").searchParams.getAll("uuid")).toEqual(
+      uuids.slice(200),
+    );
+
+    const firstUuid = uuids[0]!;
+    const secondUuid = uuids[100]!;
+    const thirdUuid = uuids[200]!;
+    thirdRequest.resolve(jsonResponse([{ ...messageDto, uuid: thirdUuid }]));
+    firstRequest.resolve(jsonResponse([{ ...messageDto, uuid: firstUuid }]));
+    secondRequest.resolve(jsonResponse([{ ...messageDto, uuid: secondUuid }]));
+
+    await expect(loading).resolves.toEqual([
+      { ...messageDto, uuid: firstUuid },
+      { ...messageDto, uuid: secondUuid },
+      { ...messageDto, uuid: thirdUuid },
+    ]);
   });
 
   it("returns message pagination headers and fails on invalid page rows", async () => {

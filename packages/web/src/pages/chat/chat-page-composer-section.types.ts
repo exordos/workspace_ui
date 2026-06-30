@@ -1,5 +1,8 @@
 import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply/ai-reply.types";
-import type { ComposerEditSession } from "~/widgets/message-composer/message-composer.types";
+import type {
+  ComposerEditSession,
+  MessageComposerCapabilities,
+} from "~/widgets/message-composer/message-composer.types";
 import type { ComposerUploadProgressState } from "./chat-upload.lib";
 
 export interface ChatPageComposerSectionProps {
@@ -30,6 +33,8 @@ export interface ChatPageComposerSectionProps {
   editSession: ComposerEditSession | null;
   onSubmitEdit: (messageId: number, content: string) => void | Promise<void>;
   onCancelEdit: () => void;
+  // Capabilities позволяют оставить старый composer видимым, но отключить действия без Workspace backend.
+  composerCapabilities?: MessageComposerCapabilities;
   aiMessagesContext: AiMessageContext[];
   aiChatContext: AiReplyRequest["chatContext"] | undefined;
   readOnlyReason?: string;

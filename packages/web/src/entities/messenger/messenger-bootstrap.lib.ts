@@ -13,10 +13,12 @@ import {
 import type { MessengerClientOptions } from "~/shared/api/messenger-client";
 import type {
   WorkspaceMessengerFolderDto,
+  WorkspaceMessengerMessageDto,
   WorkspaceMessengerStreamDto,
   WorkspaceMessengerTopicDto,
 } from "~/shared/api/messenger.types";
 import { adaptMessengerBootstrapPayload, adaptMessengerFolder } from "./messenger-adapters.lib";
+import { loadMessengerLastMessagesForSidebar } from "./messenger-last-messages-loader.lib";
 import { useMessengerStore } from "./messenger.model";
 import type { MessengerStoreState } from "./messenger.model";
 
@@ -32,12 +34,27 @@ export interface MessengerBootstrapClientDeps {
   getStreams?: MessengerBootstrapClientCall<WorkspaceMessengerStreamDto>;
   getTopics?: MessengerBootstrapClientCall<WorkspaceMessengerTopicDto>;
   getFolders?: MessengerBootstrapClientCall<WorkspaceMessengerFolderDto>;
+  getMessagesByUuids?: (
+    options: MessengerClientOptions,
+    messageUuids: string[],
+  ) => Promise<WorkspaceMessengerMessageDto[]>;
 }
 
 export interface MessengerStoreApi {
   getState: () => Pick<
     MessengerStoreState,
-    "startBootstrap" | "replaceBootstrapState" | "applyFolderSnapshot" | "setBootstrapError"
+    | "startBootstrap"
+    | "replaceBootstrapState"
+    | "applyFolderSnapshot"
+    | "setBootstrapError"
+    | "streamIds"
+    | "streamsById"
+    | "topicIds"
+    | "topicsById"
+    | "conversationIds"
+    | "conversationsById"
+    | "messagesById"
+    | "upsertMessage"
   >;
 }
 
@@ -110,6 +127,14 @@ export async function bootstrapMessengerStore({
       users: [],
     });
     store.getState().replaceBootstrapState(ownerKey, payload);
+    void loadMessengerLastMessagesForSidebar({
+      runtimeContext,
+      getRuntimeContext,
+      client: { getMessagesByUuids: client.getMessagesByUuids },
+      clientOptions,
+      signal,
+      store,
+    });
 
     try {
       // Папки приходят как отдельный пользовательский слой поверх потоков.

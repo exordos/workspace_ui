@@ -50,6 +50,14 @@ describe("messenger transport helper", () => {
     );
   });
 
+  it("builds repeated query params for array values", () => {
+    expect(
+      buildMessengerUrl(undefined, "/messages/", {
+        uuid: ["a", null, "b", undefined],
+      }),
+    ).toBe("/api/messenger/v1/messages/?uuid=a&uuid=b");
+  });
+
   it("sends GET requests with bearer auth", async () => {
     const fetchMock = createFetchMock([{ uuid: "stream" }]);
 

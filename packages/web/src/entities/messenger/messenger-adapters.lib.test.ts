@@ -156,6 +156,7 @@ describe("messenger adapters", () => {
       unreadCount: 3,
       isArchived: false,
       directUserUuid: USER_UUID,
+      lastMessageUuid: null,
       notificationMode: "all_messages",
     });
     expect(adaptTopicToMessengerConversation(topicDto, privateStream)).toEqual({
@@ -168,10 +169,41 @@ describe("messenger adapters", () => {
       unreadCount: 2,
       isArchived: false,
       directUserUuid: USER_UUID,
+      lastMessageUuid: null,
       notificationMode: "follow",
       isDone: false,
       isDefaultTopic: false,
     });
+  });
+
+  it("maps last message uuid from streams and topics", () => {
+    expect(
+      adaptMessengerStream({
+        ...streamDto,
+        last_message_uuid: MESSAGE_UUID,
+      }),
+    ).toEqual(expect.objectContaining({ lastMessageUuid: MESSAGE_UUID }));
+    expect(
+      adaptMessengerTopic({
+        ...topicDto,
+        last_message_uuid: MESSAGE_UUID,
+      }),
+    ).toEqual(expect.objectContaining({ lastMessageUuid: MESSAGE_UUID }));
+    expect(
+      adaptStreamToMessengerConversation({
+        ...streamDto,
+        last_message_uuid: MESSAGE_UUID,
+      }),
+    ).toEqual(expect.objectContaining({ lastMessageUuid: MESSAGE_UUID }));
+    expect(
+      adaptTopicToMessengerConversation(
+        {
+          ...topicDto,
+          last_message_uuid: MESSAGE_UUID,
+        },
+        streamDto,
+      ),
+    ).toEqual(expect.objectContaining({ lastMessageUuid: MESSAGE_UUID }));
   });
 
   it("maps messages to topic conversations and markdown content", () => {

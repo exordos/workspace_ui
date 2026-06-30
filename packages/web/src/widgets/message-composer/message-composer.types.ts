@@ -32,6 +32,24 @@ export interface ComposerEditSession {
   initialMarkdown: string;
 }
 
+export type MessageComposerActionMode = "enabled" | "unsupported";
+
+export interface MessageComposerActionCapability {
+  mode: MessageComposerActionMode;
+  unsupportedText?: string;
+}
+
+// Capabilities нужны для миграции: одна и та же старая верстка composer работает с разными backend.
+// Для Workspace неподдержанные действия не скрываем, а переводим в понятную заглушку без Zulip API.
+export interface MessageComposerCapabilities {
+  upload?: MessageComposerActionCapability;
+  savedSnippets?: MessageComposerActionCapability;
+  preview?: MessageComposerActionCapability;
+  mentions?: MessageComposerActionCapability;
+  scheduledSend?: MessageComposerActionCapability;
+  customEmojis?: MessageComposerActionCapability;
+}
+
 export interface MessageComposerProps {
   onSend?: (content: string, subject?: string, files?: File[]) => void | Promise<void>;
   onSubmitEdit?: (messageId: number, content: string) => void | Promise<void>;
@@ -54,6 +72,7 @@ export interface MessageComposerProps {
   onEditLastMessage?: () => void;
   /** Active message edit session routed from chat page. */
   editSession?: ComposerEditSession | null;
+  capabilities?: MessageComposerCapabilities;
   /** Recent chat messages used as AI context. */
   aiMessagesContext?: AiMessageContext[];
   /** Current chat metadata used by AI provider. */
@@ -81,6 +100,7 @@ export type ComposerMode = "write" | "preview";
 export interface ComposerModeTabsProps {
   mode: ComposerMode;
   onChange: (mode: ComposerMode) => void;
+  showPreviewTab?: boolean;
 }
 
 export type MediaPickerTab = "emoji" | "sticker";

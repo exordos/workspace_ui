@@ -13,7 +13,9 @@ import type { ComposerModeTabsProps } from "./message-composer.types";
 export const ComposerModeTabs = React.memo<ComposerModeTabsProps>(function ComposerModeTabs({
   mode,
   onChange,
+  showPreviewTab = true,
 }) {
+  // Workspace может оставить вкладку preview видимой или скрыть её через capabilities выше по дереву.
   return (
     <div className="inline-flex flex-shrink-0 items-center gap-1 rounded-lg bg-card-bg p-0.5">
       <button
@@ -29,15 +31,17 @@ export const ComposerModeTabs = React.memo<ComposerModeTabsProps>(function Compo
           className={`text-current ${TOOLBAR_ICON_EMPHASIS_CLASS}`}
         />
       </button>
-      <button
-        type="button"
-        className={`${MODE_TAB_BTN} ${mode === "preview" ? MODE_TAB_ACTIVE : MODE_TAB_INACTIVE}`}
-        onClick={() => onChange("preview")}
-        aria-label={t("composer.preview")}
-        title={t("composer.preview")}
-      >
-        <Icon name="visibility" size={TOOLBAR_ICON_SIZE} className="text-current" />
-      </button>
+      {showPreviewTab && (
+        <button
+          type="button"
+          className={`${MODE_TAB_BTN} ${mode === "preview" ? MODE_TAB_ACTIVE : MODE_TAB_INACTIVE}`}
+          onClick={() => onChange("preview")}
+          aria-label={t("composer.preview")}
+          title={t("composer.preview")}
+        >
+          <Icon name="visibility" size={TOOLBAR_ICON_SIZE} className="text-current" />
+        </button>
+      )}
     </div>
   );
 });

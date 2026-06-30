@@ -139,7 +139,22 @@
     "invalidRouteHint": "Откройте чат из списка, чтобы продолжить.",
     "messageRouteUnsupported": "Ссылки на отдельные сообщения пока недоступны",
     "messageRouteUnsupportedHint": "Откройте канал или тему из списка чатов.",
-    "readOnlyComposer": "Workspace-мессенджер в этом срезе доступен только для чтения. Отправку включим отдельным шагом."
+    "readOnlyComposer": "Workspace-мессенджер в этом срезе доступен только для чтения. Отправку включим отдельным шагом.",
+    "runtimeUnavailable": "Сессия Workspace пока не готова.",
+    "defaultTopicMissing": "Базовая тема еще не загружена. Откройте тему или повторите позже.",
+    "routeUnsupportedForSend": "Из этой ссылки на чат отправка пока недоступна.",
+    "messageActionTargetMissing": "Сообщение уже не загружено.",
+    "uploadsUnsupported": "Загрузка файлов пока не подключена к Workspace-мессенджеру.",
+    "savedSnippetsUnsupported": "Сохраненные сниппеты пока не подключены к Workspace-мессенджеру.",
+    "previewUnsupported": "Предпросмотр временно отключен для Workspace-мессенджера.",
+    "mentionsUnsupported": "Упоминания пока не подключены к Workspace-мессенджеру.",
+    "scheduledSendUnsupported": "Отложенная отправка пока не подключена к Workspace-мессенджеру.",
+    "customEmojisUnsupported": "Загрузка кастомных emoji пока не подключена к Workspace-мессенджеру.",
+    "reactionsUnsupported": "Реакции пока не подключены к Workspace-мессенджеру.",
+    "forwardUnsupported": "Пересылка пока не подключена к Workspace-мессенджеру.",
+    "readReceiptsUnsupported": "Просмотры пока не подключены к Workspace-мессенджеру.",
+    "permalinkUnsupported": "Старые ссылки на сообщения пока не подключены к Workspace-мессенджеру.",
+    "retryUnsupported": "Повтор этого Workspace-действия пока не подключен."
   },
   "message": {
     "sendRequiresStreamOrTo": "Нужен канал (stream) или получатели (to) для отправки",
@@ -862,6 +877,7 @@
     "savedSnippetContent": "Содержимое сниппета",
     "savedSnippetsLoadError": "Не удалось загрузить сохраненные сниппеты",
     "savedSnippetsCreateError": "Не удалось создать сохраненный сниппет",
+    "actionUnsupported": "Это действие пока недоступно в этом чате.",
     "aiTemporarilyUnavailable": "AI-функции в вашей организации не подключены."
   },
   "a11y": {

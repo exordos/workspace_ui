@@ -1,8 +1,18 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { selectMessengerConversationFromWorkspaceRoute } from "~/entities/messenger/messenger-ids.lib";
+import {
+  deleteMessengerMessage,
+  editMessengerMessage,
+  markMessengerMessageRead,
+  sendMessengerMessage,
+} from "~/entities/messenger/messenger-message-actions.lib";
 import { loadMessengerConversationMessages } from "~/entities/messenger/messenger-messages-loader.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type { MessengerMessage, MessengerUser } from "~/entities/messenger/messenger.types";
+import type {
+  MessengerMessage,
+  MessengerTopic,
+  MessengerUser,
+} from "~/entities/messenger/messenger.types";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
@@ -11,9 +21,18 @@ import { t } from "~/i18n/i18n";
 import type { WorkspaceMessengerRouteMatch } from "~/shared/lib/workspace-messenger-route.lib";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import type { MessageListCallbacks } from "~/widgets/message-list/message-list.types";
+import type {
+  ComposerEditSession,
+  MessageComposerCapabilities,
+} from "~/widgets/message-composer/message-composer.types";
 import { ChatPageComposerSection } from "./chat-page-composer-section.ui";
+import { ChatPageInlineAlerts } from "./chat-page-inline-alerts.ui";
 import { ChatPageMessageListSection } from "./chat-page-message-list-section.ui";
-import { buildWorkspaceChatMessageListViewModel } from "./chat-page-workspace-message.adapter";
+import {
+  buildWorkspaceChatMessageListViewModel,
+  findWorkspaceMessageUuidByVisualId,
+  workspaceChatVisualMessageId,
+} from "./chat-page-workspace-message.adapter";
 import type { ChatMessagesLoadErrorKind } from "./chat-page-message-list-section.types";
 
 interface WorkspaceChatPageProps {
@@ -22,8 +41,8 @@ interface WorkspaceChatPageProps {
 
 const EMPTY_MESSAGES: MessengerMessage[] = [];
 const EMPTY_USERS_BY_ID: Record<string, MessengerUser> = {};
-const EMPTY_MESSAGE_CALLBACKS: MessageListCallbacks = {};
 const EMPTY_SELECTED_MESSAGE_IDS = new Set<number>();
+const READ_BATCH_DELAY_MS = 250;
 
 const noop = () => undefined;
 
@@ -33,6 +52,23 @@ const EMPTY_STATUS = {
   nextPageMarker: null,
   hasMore: false,
 };
+
+function normalizeWorkspaceActionError(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message.trim().length > 0 ? error.message : fallback;
+}
+
+function findDefaultTopic(
+  topicsById: Readonly<Record<string, MessengerTopic>>,
+  streamUuid: string,
+): MessengerTopic | null {
+  // Stream route не содержит topicUuid, но backend требует тему для создания сообщения.
+  // Поэтому отправляем только в явно помеченную default topic и не угадываем тему сами.
+  return (
+    Object.values(topicsById).find((candidate) => {
+      return candidate.streamUuid === streamUuid && candidate.isDefault;
+    }) ?? null
+  );
+}
 
 function WorkspaceChatState({
   title,
@@ -50,7 +86,16 @@ function WorkspaceChatState({
 }
 
 export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) => {
+  // Эта страница не новая верстка чата: она собирает старые секции и подменяет только источник данных.
   const [retryNonce, setRetryNonce] = useState(0);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [composerEditSession, setComposerEditSession] = useState<ComposerEditSession | null>(null);
+  const [scrollToBottomAfterSendNonce, setScrollToBottomAfterSendNonce] = useState(0);
+  const pendingReadVisualIdsRef = useRef<Set<number>>(new Set());
+  const readRequestedMessageUuidsRef = useRef<Set<string>>(new Set());
+  const readBatchTimerRef = useRef<number | null>(null);
+  const actionAbortControllersRef = useRef<Set<AbortController>>(new Set());
   const selection = useMemo(() => selectMessengerConversationFromWorkspaceRoute(route), [route]);
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
@@ -92,10 +137,46 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   );
   const topicsById = useMessengerStore((state) => state.topicsById);
   const retry = useCallback(() => setRetryNonce((value) => value + 1), []);
+  const workspaceClientOptions = useMemo(
+    () => ({ devTargetOrigin: currentSession?.organizationOrigin }),
+    [currentSession?.organizationOrigin],
+  );
+  const workspaceComposerCapabilities = useMemo<MessageComposerCapabilities>(
+    () => ({
+      // Workspace backend в текущем срезе умеет send/edit/delete/read, но не эти дополнительные действия.
+      // Кнопки остаются в старом UI, однако вместо Zulip-запросов показывают контролируемую заглушку.
+      upload: {
+        mode: "unsupported",
+        unsupportedText: t("workspaceMessenger.uploadsUnsupported"),
+      },
+      savedSnippets: {
+        mode: "unsupported",
+        unsupportedText: t("workspaceMessenger.savedSnippetsUnsupported"),
+      },
+      preview: {
+        mode: "unsupported",
+        unsupportedText: t("workspaceMessenger.previewUnsupported"),
+      },
+      mentions: {
+        mode: "unsupported",
+        unsupportedText: t("workspaceMessenger.mentionsUnsupported"),
+      },
+      scheduledSend: {
+        mode: "unsupported",
+        unsupportedText: t("workspaceMessenger.scheduledSendUnsupported"),
+      },
+      customEmojis: {
+        mode: "unsupported",
+        unsupportedText: t("workspaceMessenger.customEmojisUnsupported"),
+      },
+    }),
+    [],
+  );
 
   useEffect(() => {
     if (selection.status !== "conversation" || runtimeContext == null) return;
 
+    // История сообщений грузится из Workspace API и применяется только пока runtime owner не устарел.
     const controller = new AbortController();
     void loadMessengerConversationMessages({
       runtimeContext,
@@ -109,6 +190,19 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       controller.abort();
     };
   }, [currentSession?.organizationOrigin, retryNonce, runtimeContext, selection]);
+
+  useEffect(() => {
+    return () => {
+      for (const controller of actionAbortControllersRef.current) {
+        controller.abort();
+      }
+      actionAbortControllersRef.current.clear();
+      if (readBatchTimerRef.current != null) {
+        window.clearTimeout(readBatchTimerRef.current);
+        readBatchTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const routeMessages = useMemo(() => {
     if (conversationId == null) return EMPTY_MESSAGES;
@@ -149,6 +243,271 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   const messagesLoadError: ChatMessagesLoadErrorKind | null =
     messagesStatus.error == null ? null : viewModel.messages.length === 0 ? "initial" : "refresh";
 
+  const runWorkspaceAction = useCallback(
+    async <T,>(action: (signal: AbortSignal) => Promise<T>): Promise<T> => {
+      // Все write-действия получают свой AbortController, чтобы смена org/project не применяла старый ответ.
+      const controller = new AbortController();
+      actionAbortControllersRef.current.add(controller);
+      try {
+        return await action(controller.signal);
+      } finally {
+        actionAbortControllersRef.current.delete(controller);
+      }
+    },
+    [],
+  );
+
+  const resolveMessageByVisualId = useCallback(
+    (visualMessageId: number): MessengerMessage | null => {
+      const messageUuid = findWorkspaceMessageUuidByVisualId(routeMessages, visualMessageId);
+      return messageUuid == null ? null : (messagesById[messageUuid] ?? null);
+    },
+    [messagesById, routeMessages],
+  );
+
+  const resolveSendTarget = useCallback(():
+    | { status: "ready"; streamUuid: string; topicUuid: string; includeStreamConversation: boolean }
+    | { status: "blocked"; error: string } => {
+    // Topic route отправляет в выбранную тему, stream route — только в default topic.
+    if (selection.status !== "conversation") {
+      return { status: "blocked", error: t("workspaceMessenger.routeUnsupportedForSend") };
+    }
+    if (selection.kind === "topic") {
+      return {
+        status: "ready",
+        streamUuid: selection.streamUuid,
+        topicUuid: selection.topicUuid,
+        includeStreamConversation: false,
+      };
+    }
+
+    const defaultTopic = findDefaultTopic(topicsById, selection.streamUuid);
+    if (defaultTopic == null) {
+      return { status: "blocked", error: t("workspaceMessenger.defaultTopicMissing") };
+    }
+
+    return {
+      status: "ready",
+      streamUuid: selection.streamUuid,
+      topicUuid: defaultTopic.uuid,
+      includeStreamConversation: true,
+    };
+  }, [selection, topicsById]);
+
+  const handleSend = useCallback(
+    async (content: string, _subjectOverride?: string, files?: File[]) => {
+      // Composer остаётся старым, но отправка идёт только через Workspace POST /messages/.
+      setSendError(null);
+      if (runtimeContext == null) {
+        const error = t("workspaceMessenger.runtimeUnavailable");
+        setSendError(error);
+        throw new Error(error);
+      }
+      if (files != null && files.length > 0) {
+        const error = t("workspaceMessenger.uploadsUnsupported");
+        setSendError(error);
+        throw new Error(error);
+      }
+
+      const markdown = content.trim();
+      if (markdown.length === 0) return;
+
+      const target = resolveSendTarget();
+      if (target.status === "blocked") {
+        setSendError(target.error);
+        throw new Error(target.error);
+      }
+
+      try {
+        const result = await runWorkspaceAction((signal) =>
+          sendMessengerMessage({
+            runtimeContext,
+            getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+            clientOptions: workspaceClientOptions,
+            signal,
+            streamUuid: target.streamUuid,
+            topicUuid: target.topicUuid,
+            markdown,
+            includeStreamConversation: target.includeStreamConversation,
+          }),
+        );
+        if (result.status === "applied") {
+          setScrollToBottomAfterSendNonce((value) => value + 1);
+        }
+      } catch (error) {
+        const message = normalizeWorkspaceActionError(error, t("message.sendFailed"));
+        setSendError(message);
+        throw error instanceof Error ? error : new Error(message);
+      }
+    },
+    [resolveSendTarget, runWorkspaceAction, runtimeContext, workspaceClientOptions],
+  );
+
+  const requestMessageEdit = useCallback(
+    (messageId: number) => {
+      // Старый список отдаёт числовой id, поэтому сначала ищем Workspace message uuid через adapter.
+      const message = resolveMessageByVisualId(messageId);
+      if (message == null || !message.isOwn) {
+        setActionError(t("message.editUnavailable"));
+        return;
+      }
+
+      setActionError(null);
+      setComposerEditSession({
+        messageId: workspaceChatVisualMessageId(message.uuid),
+        initialMarkdown: message.markdown,
+      });
+    },
+    [resolveMessageByVisualId],
+  );
+
+  const handleSubmitEdit = useCallback(
+    async (visualMessageId: number, markdown: string) => {
+      setActionError(null);
+      if (runtimeContext == null) {
+        const error = t("workspaceMessenger.runtimeUnavailable");
+        setActionError(error);
+        throw new Error(error);
+      }
+      const message = resolveMessageByVisualId(visualMessageId);
+      if (message == null || !message.isOwn) {
+        const error = t("message.editUnavailable");
+        setActionError(error);
+        throw new Error(error);
+      }
+
+      try {
+        await runWorkspaceAction((signal) =>
+          editMessengerMessage({
+            runtimeContext,
+            getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+            clientOptions: workspaceClientOptions,
+            signal,
+            messageUuid: message.uuid,
+            markdown,
+          }),
+        );
+        setComposerEditSession(null);
+      } catch (error) {
+        const messageText = normalizeWorkspaceActionError(error, t("message.editFailed"));
+        setActionError(messageText);
+        throw error instanceof Error ? error : new Error(messageText);
+      }
+    },
+    [resolveMessageByVisualId, runWorkspaceAction, runtimeContext, workspaceClientOptions],
+  );
+
+  const handleDeleteMessage = useCallback(
+    (visualMessageId: number) => {
+      // Удаление идёт сразу в Workspace API; старые Zulip delete handlers на этом route не вызываются.
+      setActionError(null);
+      if (runtimeContext == null) {
+        setActionError(t("workspaceMessenger.runtimeUnavailable"));
+        return;
+      }
+      const message = resolveMessageByVisualId(visualMessageId);
+      if (message == null) {
+        setActionError(t("workspaceMessenger.messageActionTargetMissing"));
+        return;
+      }
+
+      void runWorkspaceAction((signal) =>
+        deleteMessengerMessage({
+          runtimeContext,
+          getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+          clientOptions: workspaceClientOptions,
+          signal,
+          messageUuid: message.uuid,
+          streamUuid: message.streamUuid,
+          topicUuid: message.topicUuid,
+        }),
+      ).catch((error) => {
+        setActionError(normalizeWorkspaceActionError(error, t("message.deleteError")));
+      });
+    },
+    [resolveMessageByVisualId, runWorkspaceAction, runtimeContext, workspaceClientOptions],
+  );
+
+  const flushReadBatch = useCallback(() => {
+    // MessageList сообщает о видимых непрочитанных сообщениях пачкой, backend принимает их по одному.
+    readBatchTimerRef.current = null;
+    if (runtimeContext == null || conversationId == null) {
+      pendingReadVisualIdsRef.current.clear();
+      return;
+    }
+
+    const visualIds = [...pendingReadVisualIdsRef.current];
+    pendingReadVisualIdsRef.current.clear();
+    for (const visualMessageId of visualIds) {
+      const message = resolveMessageByVisualId(visualMessageId);
+      if (message == null || message.isOwn || message.read) continue;
+      if (readRequestedMessageUuidsRef.current.has(message.uuid)) continue;
+      readRequestedMessageUuidsRef.current.add(message.uuid);
+
+      void runWorkspaceAction((signal) =>
+        markMessengerMessageRead({
+          runtimeContext,
+          getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+          clientOptions: workspaceClientOptions,
+          signal,
+          messageUuid: message.uuid,
+          conversationIds: [conversationId],
+        }),
+      ).catch(() => {
+        readRequestedMessageUuidsRef.current.delete(message.uuid);
+      });
+    }
+  }, [
+    conversationId,
+    resolveMessageByVisualId,
+    runWorkspaceAction,
+    runtimeContext,
+    workspaceClientOptions,
+  ]);
+
+  const scheduleReadBatch = useCallback(
+    (messageIds: number[]) => {
+      if (messageIds.length === 0) return;
+      for (const messageId of messageIds) {
+        pendingReadVisualIdsRef.current.add(messageId);
+      }
+      if (readBatchTimerRef.current != null) return;
+      readBatchTimerRef.current = window.setTimeout(flushReadBatch, READ_BATCH_DELAY_MS);
+    },
+    [flushReadBatch],
+  );
+
+  const messageCallbacks = useMemo<MessageListCallbacks>(
+    () => ({
+      // Поддержанные действия подключены к Workspace API, неподдержанные остаются видимыми как заглушки.
+      onMessageEdit: (message) => requestMessageEdit(message.id),
+      onMessageDelete: (message) => handleDeleteMessage(message.id),
+      onMessageAddReaction: () => setActionError(t("workspaceMessenger.reactionsUnsupported")),
+      onMessageRemoveReaction: () => setActionError(t("workspaceMessenger.reactionsUnsupported")),
+      onMessageForward: () => setActionError(t("workspaceMessenger.forwardUnsupported")),
+      onMessageViews: () => setActionError(t("workspaceMessenger.readReceiptsUnsupported")),
+      onMessagePermalinkClick: () => {
+        setActionError(t("workspaceMessenger.permalinkUnsupported"));
+        return true;
+      },
+      onRetryFailedOutgoing: () => setActionError(t("workspaceMessenger.retryUnsupported")),
+      onRemoveFailedOutgoing: () => setActionError(t("workspaceMessenger.retryUnsupported")),
+      onRetryFailedEdit: () => setActionError(t("workspaceMessenger.retryUnsupported")),
+      onCancelFailedEdit: () => setActionError(t("workspaceMessenger.retryUnsupported")),
+    }),
+    [handleDeleteMessage, requestMessageEdit],
+  );
+
+  const handleEditLastMessage = useCallback(() => {
+    for (let index = routeMessages.length - 1; index >= 0; index -= 1) {
+      const message = routeMessages[index];
+      if (message?.isOwn === true) {
+        requestMessageEdit(workspaceChatVisualMessageId(message.uuid));
+        return;
+      }
+    }
+  }, [requestMessageEdit, routeMessages]);
+
   let body: React.ReactNode;
   if (selection.status === "invalid-route") {
     body = (
@@ -177,7 +536,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         }
         messages={viewModel.messages}
         currentUserId={viewModel.currentUserId}
-        callbacks={EMPTY_MESSAGE_CALLBACKS}
+        callbacks={messageCallbacks}
         selectionMode={false}
         selectedMessageIds={EMPTY_SELECTED_MESSAGE_IDS}
         onLoadMore={noop}
@@ -188,13 +547,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         firstUnreadId={viewModel.firstUnreadId}
         unreadCount={viewModel.unreadCount}
         focusedMessageId={null}
-        onUnreadMessagesVisible={noop}
-        onUnreadMessagesAtBottom={noop}
+        onUnreadMessagesVisible={scheduleReadBatch}
+        onUnreadMessagesAtBottom={scheduleReadBatch}
         messagesLoadError={messagesLoadError}
         onRetryMessagesLoad={retry}
         boundaryLoadFailed={false}
         onDismissBoundaryLoadFailed={noop}
-        scrollToBottomAfterSendNonce={0}
+        scrollToBottomAfterSendNonce={scrollToBottomAfterSendNonce}
       />
     );
   }
@@ -215,6 +574,14 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       />
       <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {body}
+        <ChatPageInlineAlerts
+          routeResolveError={null}
+          actionError={actionError}
+          sendError={sendError}
+          onDismissRouteResolveError={noop}
+          onDismissActionError={() => setActionError(null)}
+          onDismissSendError={() => setSendError(null)}
+        />
         <ChatPageComposerSection
           isDmView={false}
           activeDmUserIds={null}
@@ -223,7 +590,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
           streamSlug={undefined}
           onExpandStreamTopics={noop}
           uploadProgress={null}
-          onSend={noop}
+          onSend={handleSend}
           onCreateCallLink={undefined}
           onCancelUpload={noop}
           activeTopic={
@@ -233,13 +600,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
           onClearReply={noop}
           draftInitialValue={undefined}
           onComposerValueChange={noop}
-          onEditLastMessage={noop}
-          editSession={null}
-          onSubmitEdit={noop}
-          onCancelEdit={noop}
+          onEditLastMessage={handleEditLastMessage}
+          editSession={composerEditSession}
+          onSubmitEdit={handleSubmitEdit}
+          onCancelEdit={() => setComposerEditSession(null)}
+          composerCapabilities={workspaceComposerCapabilities}
           aiMessagesContext={[]}
           aiChatContext={undefined}
-          readOnlyReason={t("workspaceMessenger.readOnlyComposer")}
         />
       </section>
     </div>

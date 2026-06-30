@@ -6,14 +6,23 @@ import { messageBodyToUnsanitizedDisplayHtml } from "~/shared/lib/message-markdo
 export function useMessageComposerPreview(options: {
   mode: "write" | "preview";
   outgoingBody: string;
+  enabled?: boolean;
+  unsupportedText?: string;
 }): { html: string; loading: boolean; error: string | null } {
-  const { mode, outgoingBody } = options;
+  const { mode, outgoingBody, enabled = true, unsupportedText } = options;
   const [html, setHtml] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (mode !== "preview") return;
+    // На Workspace route preview пока не рендерим через Zulip endpoint, а показываем понятную заглушку.
+    if (!enabled) {
+      setHtml("");
+      setLoading(false);
+      setError(unsupportedText ?? t("composer.actionUnsupported"));
+      return;
+    }
     if (outgoingBody.trim().length === 0) {
       setHtml("");
       setError(null);
@@ -48,7 +57,7 @@ export function useMessageComposerPreview(options: {
     return () => {
       cancelled = true;
     };
-  }, [mode, outgoingBody]);
+  }, [enabled, mode, outgoingBody, unsupportedText]);
 
   return { html, loading, error };
 }

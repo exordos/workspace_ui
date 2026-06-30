@@ -71,7 +71,7 @@ vi.mock("./chat-page-message-list-section.ui", () => ({
 vi.mock("./chat-page-composer-section.ui", () => ({
   ChatPageComposerSection: (props: ChatPageComposerSectionProps) => {
     captured.composerProps = props;
-    return <div data-testid="old-composer-section">{props.readOnlyReason}</div>;
+    return <div data-testid="old-composer-section" />;
   },
 }));
 
@@ -118,6 +118,7 @@ function createBootstrapPayload(): MessengerBootstrapPayload {
         announce: false,
         isArchived: false,
         directUserUuid: null,
+        lastMessageUuid: null,
         createdAt: "2026-06-30T09:00:00.000Z",
         updatedAt: "2026-06-30T09:00:00.000Z",
       },
@@ -134,6 +135,7 @@ function createBootstrapPayload(): MessengerBootstrapPayload {
         isDefault: false,
         isDone: false,
         notificationMode: "default",
+        lastMessageUuid: null,
         createdAt: "2026-06-30T09:00:00.000Z",
         updatedAt: "2026-06-30T09:00:00.000Z",
       },
@@ -214,14 +216,15 @@ describe("ChatPage Workspace route", () => {
       "flex-1",
       "overflow-hidden",
     );
-    expect(screen.getByTestId("old-composer-section")).toHaveTextContent(
-      "Workspace messaging is read-only in this migration slice.",
-    );
+    expect(screen.getByTestId("old-composer-section")).toBeInTheDocument();
     expect(screen.getByText("workspace message")).toBeInTheDocument();
     expect(screen.getByText("#general")).toBeInTheDocument();
     expect(screen.getByText("Roadmap")).toBeInTheDocument();
     expect(captured.messageListProps?.activeTopic).toBe("Roadmap");
-    expect(captured.composerProps?.readOnlyReason).toBeTruthy();
+    expect(captured.composerProps?.readOnlyReason).toBeUndefined();
+    expect(captured.composerProps?.composerCapabilities?.upload?.mode).toBe("unsupported");
+    expect(captured.composerProps?.onSend).toEqual(expect.any(Function));
+    expect(captured.composerProps?.onSubmitEdit).toEqual(expect.any(Function));
     expect(captured.oldChatListStore).not.toHaveBeenCalled();
     expect(captured.oldMessageStore).not.toHaveBeenCalled();
     await waitFor(() => expect(captured.loadWorkspaceMessages).toHaveBeenCalledTimes(1));

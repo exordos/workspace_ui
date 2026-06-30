@@ -8,12 +8,7 @@ export type WorkspaceMessengerRole = "guest" | "member" | "moderator" | "adminis
 export type WorkspaceMessengerSourceName = "native" | "zulip";
 export type WorkspaceMessengerStreamNotificationMode = "mentions_only" | "muted" | "all_messages";
 export type WorkspaceMessengerTopicNotificationMode = "mute" | "default" | "unmute" | "follow";
-export type WorkspaceMessengerFolderSystemType =
-  | "all"
-  | "created"
-  | "personal"
-  | "channels"
-  | null;
+export type WorkspaceMessengerFolderSystemType = "all" | "created" | "personal" | "channels" | null;
 export type WorkspaceMessengerFolderItemChatType = "stream" | "group" | "private";
 export type WorkspaceMessengerUserStatus = "active" | "idle" | "offline" | "do_not_disturb";
 
@@ -47,6 +42,7 @@ export interface WorkspaceMessengerStreamDto {
   private: boolean;
   is_archived: boolean;
   direct_user_uuid?: WorkspaceMessengerUuid | null;
+  last_message_uuid?: WorkspaceMessengerUuid | null;
   created_at: WorkspaceMessengerDateTime;
   updated_at: WorkspaceMessengerDateTime;
 }
@@ -74,6 +70,7 @@ export interface WorkspaceMessengerTopicDto {
   is_default: boolean;
   is_done: boolean;
   notification_mode: WorkspaceMessengerTopicNotificationMode;
+  last_message_uuid?: WorkspaceMessengerUuid | null;
   created_at: WorkspaceMessengerDateTime;
   updated_at: WorkspaceMessengerDateTime;
 }
@@ -543,6 +540,7 @@ export function isWorkspaceMessengerStreamDto(
     typeof value.private === "boolean" &&
     typeof value.is_archived === "boolean" &&
     (value.direct_user_uuid === undefined || isNullableUuid(value.direct_user_uuid)) &&
+    (value.last_message_uuid === undefined || isNullableUuid(value.last_message_uuid)) &&
     isDateTime(value.created_at) &&
     isDateTime(value.updated_at)
   );
@@ -577,6 +575,7 @@ export function isWorkspaceMessengerTopicDto(value: unknown): value is Workspace
     typeof value.is_default === "boolean" &&
     typeof value.is_done === "boolean" &&
     isTopicNotificationMode(value.notification_mode) &&
+    (value.last_message_uuid === undefined || isNullableUuid(value.last_message_uuid)) &&
     isDateTime(value.created_at) &&
     isDateTime(value.updated_at)
   );

@@ -9,6 +9,8 @@ import type { MockMessage } from "~/shared/api/zulip.types";
 
 export const WORKSPACE_CHAT_VISUAL_CURRENT_USER_ID = 1;
 
+// Старый MessageList пока принимает числовые id из Zulip-мира.
+// Для Workspace делаем стабильные визуальные id только на границе страницы, не записывая их в store.
 const VISUAL_ID_MIN = 1_000;
 const VISUAL_ID_RANGE = 1_000_000_000;
 const UNKNOWN_SENDER_NAME = "Unknown user";
@@ -39,6 +41,19 @@ function stableVisualId(value: string): number {
 
 export function workspaceChatVisualMessageId(messageUuid: MessengerUuid): number {
   return stableVisualId(`message:${messageUuid}`);
+}
+
+export function findWorkspaceMessageUuidByVisualId(
+  messages: readonly MessengerMessage[],
+  visualMessageId: number,
+): MessengerUuid | null {
+  // Edit/delete приходят из старого списка по visual id, поэтому перед запросом возвращаемся к backend uuid.
+  for (const message of messages) {
+    if (workspaceChatVisualMessageId(message.uuid) === visualMessageId) {
+      return message.uuid;
+    }
+  }
+  return null;
 }
 
 export function workspaceChatVisualSenderId(userUuid: MessengerUuid, isOwn: boolean): number {
@@ -85,6 +100,7 @@ function adaptMessageToVisualMessage(
   message: MessengerMessage,
   input: WorkspaceChatMessageListInput,
 ): MockMessage {
+  // Это временный adapter под старую верстку: он не становится новым доменным контрактом.
   const sender = input.usersById[message.authorUuid];
   const subject = resolveTopicLabel(message, input.conversation, input.topicsById);
   const streamName = input.streamName ?? "";

@@ -5,6 +5,8 @@ import {
 import type { MessengerStoreState } from "./messenger.model";
 import type {
   MessengerFolder,
+  MessengerMessage,
+  MessengerSidebarMessagePreview,
   MessengerSidebarFolderView,
   MessengerSidebarStreamItem,
   MessengerSidebarTopicItem,
@@ -30,6 +32,7 @@ interface SidebarStreamsCacheEntry {
   streamsById: MessengerStoreState["streamsById"];
   topicIds: MessengerUuid[];
   topicsById: MessengerStoreState["topicsById"];
+  messagesById: MessengerStoreState["messagesById"];
   foldersById: MessengerStoreState["foldersById"];
   organizationId: string;
   projectId: string;
@@ -69,10 +72,26 @@ function compareSidebarStreams(
   return compareNullableStrings(b.updatedAt, a.updatedAt) || a.title.localeCompare(b.title);
 }
 
+function previewFromMessage(
+  messageUuid: MessengerUuid | null,
+  messagesById: Record<MessengerUuid, MessengerMessage>,
+): MessengerSidebarMessagePreview | null {
+  if (messageUuid == null) return null;
+
+  const message = messagesById[messageUuid];
+  if (message == null) return null;
+
+  return {
+    messageUuid: message.uuid,
+    text: message.markdown,
+  };
+}
+
 function topicItemFromTopic(input: {
   organizationId: string;
   projectId: string;
   topic: MessengerTopic;
+  messagesById: MessengerStoreState["messagesById"];
 }): MessengerSidebarTopicItem {
   // topic:<streamUuid>:<topicUuid> - временный ключ фронтенда для выбора строки.
   // В API нет отдельной сущности "conversation"; настоящие id остаются streamUuid и topicUuid.
@@ -89,7 +108,7 @@ function topicItemFromTopic(input: {
       streamUuid: input.topic.streamUuid,
       topicUuid: input.topic.uuid,
     }),
-    preview: null,
+    preview: previewFromMessage(input.topic.lastMessageUuid, input.messagesById),
     updatedAt: input.topic.updatedAt,
   };
 }
@@ -99,6 +118,7 @@ function streamItemFromStream(input: {
   projectId: string;
   stream: MessengerStream;
   topics: MessengerSidebarTopicItem[];
+  messagesById: MessengerStoreState["messagesById"];
   unreadCount?: number;
   pinnedAt?: string | null;
   orderIndex?: number | null;
@@ -120,7 +140,7 @@ function streamItemFromStream(input: {
       streamUuid: input.stream.uuid,
     }),
     topics: input.topics,
-    preview: null,
+    preview: previewFromMessage(input.stream.lastMessageUuid, input.messagesById),
     updatedAt: input.stream.updatedAt,
   };
 }
@@ -140,6 +160,7 @@ function topicsForStream(input: {
         organizationId: input.organizationId,
         projectId: input.projectId,
         topic,
+        messagesById: input.state.messagesById,
       }),
     );
 
@@ -157,6 +178,7 @@ export function selectMessengerSidebarStreams(
     sidebarStreamsCache.streamsById === state.streamsById &&
     sidebarStreamsCache.topicIds === state.topicIds &&
     sidebarStreamsCache.topicsById === state.topicsById &&
+    sidebarStreamsCache.messagesById === state.messagesById &&
     sidebarStreamsCache.foldersById === state.foldersById &&
     sidebarStreamsCache.organizationId === options.organizationId &&
     sidebarStreamsCache.projectId === options.projectId &&
@@ -177,6 +199,7 @@ export function selectMessengerSidebarStreams(
             organizationId: options.organizationId,
             projectId: options.projectId,
             stream,
+            messagesById: state.messagesById,
             unreadCount: item.unreadCount,
             pinnedAt: item.pinnedAt,
             orderIndex: item.orderIndex,
@@ -198,6 +221,7 @@ export function selectMessengerSidebarStreams(
             organizationId: options.organizationId,
             projectId: options.projectId,
             stream,
+            messagesById: state.messagesById,
             topics: topicsForStream({
               organizationId: options.organizationId,
               projectId: options.projectId,
@@ -213,6 +237,7 @@ export function selectMessengerSidebarStreams(
     streamsById: state.streamsById,
     topicIds: state.topicIds,
     topicsById: state.topicsById,
+    messagesById: state.messagesById,
     foldersById: state.foldersById,
     organizationId: options.organizationId,
     projectId: options.projectId,

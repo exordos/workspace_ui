@@ -30,6 +30,7 @@ export interface MessengerStream {
   announce: boolean;
   isArchived: boolean;
   directUserUuid: MessengerUuid | null;
+  lastMessageUuid: MessengerUuid | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -57,6 +58,7 @@ export interface MessengerTopic {
   isDefault: boolean;
   isDone: boolean;
   notificationMode: WorkspaceMessengerTopicNotificationMode;
+  lastMessageUuid: MessengerUuid | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -71,6 +73,7 @@ export interface MessengerConversation {
   unreadCount: number;
   isArchived?: boolean;
   directUserUuid?: MessengerUuid | null;
+  lastMessageUuid?: MessengerUuid | null;
   notificationMode?:
     | WorkspaceMessengerStreamNotificationMode
     | WorkspaceMessengerTopicNotificationMode;
@@ -171,6 +174,12 @@ export interface MessengerSkippedRealtimeEvent {
   reason: string;
 }
 
+export interface MessengerSidebarMessagePreview {
+  messageUuid: MessengerUuid;
+  text: string;
+  senderName?: string;
+}
+
 // Эти типы описывают не backend-данные, а готовый вид сайдбара:
 // title для строки, route для перехода, unreadCount для бейджа.
 export interface MessengerSidebarTopicItem {
@@ -181,7 +190,7 @@ export interface MessengerSidebarTopicItem {
   unreadCount: number;
   isDone: boolean;
   route: string;
-  preview: null;
+  preview: MessengerSidebarMessagePreview | null;
   updatedAt: string;
 }
 
@@ -196,7 +205,7 @@ export interface MessengerSidebarStreamItem {
   orderIndex: number | null;
   route: string;
   topics: MessengerSidebarTopicItem[];
-  preview: null;
+  preview: MessengerSidebarMessagePreview | null;
   updatedAt: string;
 }
 

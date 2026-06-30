@@ -75,7 +75,12 @@ function WorkspaceSidebarTopicRow({
         >
           {topic.title}
         </div>
-        {!compact && <SidebarMessagePreview />}
+        {!compact && (
+          <SidebarMessagePreview
+            senderName={topic.preview?.senderName}
+            message={topic.preview?.text}
+          />
+        )}
       </div>
       <SidebarChatRowMeta
         compact={compact}
@@ -169,7 +174,12 @@ function WorkspaceSidebarStreamRow({
           <Avatar size={avatarSize}>{avatarLabel}</Avatar>
           <div className={sidebarChatRowBodyClass(compact)}>
             <div className="truncate text-sm font-medium text-text-primary">{title}</div>
-            {!compact && <SidebarMessagePreview />}
+            {!compact && (
+              <SidebarMessagePreview
+                senderName={stream.preview?.senderName}
+                message={stream.preview?.text}
+              />
+            )}
           </div>
           <SidebarChatRowMeta
             compact={compact}
@@ -222,10 +232,7 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
   const activeStreamUuid =
     routeMatch?.kind === "stream" || routeMatch?.kind === "topic" ? routeMatch.streamUuid : null;
   const activeTopicUuid = routeMatch?.kind === "topic" ? routeMatch.topicUuid : null;
-  const normalizedQuery = useMemo(
-    () => normalizeSidebarSearchQuery(searchQuery),
-    [searchQuery],
-  );
+  const normalizedQuery = useMemo(() => normalizeSidebarSearchQuery(searchQuery), [searchQuery]);
   const filteredStreams = useMemo(
     // Поиск здесь локальный: он фильтрует уже загруженный список и не ходит в API.
     () => streams.filter((stream) => workspaceStreamMatchesQuery(stream, normalizedQuery)),

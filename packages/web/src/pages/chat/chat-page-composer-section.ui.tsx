@@ -30,10 +30,26 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
   editSession,
   onSubmitEdit,
   onCancelEdit,
+  composerCapabilities,
   aiMessagesContext,
   aiChatContext,
   readOnlyReason,
 }: ChatPageComposerSectionProps) {
+  // Старый read-only режим оставлен для legacy-сценариев.
+  // Workspace-путь вместо него передаёт capabilities: UI тот же, но запрещённые действия получают заглушку.
+  const effectiveComposerCapabilities =
+    composerCapabilities ??
+    (readOnlyReason == null
+      ? undefined
+      : {
+          upload: { mode: "unsupported" as const, unsupportedText: readOnlyReason },
+          savedSnippets: { mode: "unsupported" as const, unsupportedText: readOnlyReason },
+          preview: { mode: "unsupported" as const, unsupportedText: readOnlyReason },
+          mentions: { mode: "unsupported" as const, unsupportedText: readOnlyReason },
+          scheduledSend: { mode: "unsupported" as const, unsupportedText: readOnlyReason },
+          customEmojis: { mode: "unsupported" as const, unsupportedText: readOnlyReason },
+        });
+
   if (readOnlyReason != null) {
     return (
       <MessageComposer
@@ -52,6 +68,7 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
         editSession={null}
         onSubmitEdit={onSubmitEdit}
         onCancelEdit={onCancelEdit}
+        capabilities={effectiveComposerCapabilities}
         aiMessagesContext={[]}
         aiChatContext={undefined}
       />
@@ -105,6 +122,7 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
       editSession={editSession}
       onSubmitEdit={onSubmitEdit}
       onCancelEdit={onCancelEdit}
+      capabilities={effectiveComposerCapabilities}
       aiMessagesContext={aiMessagesContext}
       aiChatContext={aiChatContext}
     />

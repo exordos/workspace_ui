@@ -14,6 +14,7 @@ import type {
   MessengerCollectionPage,
   MessengerPaginationQuery,
   MessengerPublicClientOptions,
+  MessengerQueryParams,
 } from "./messenger-transport.internal";
 import {
   isWorkspaceMessengerEpochDto,
@@ -60,6 +61,63 @@ export interface GetEventsQuery extends MessengerPaginationQuery {
   afterEpochVersion?: number;
 }
 
+const MESSAGES_BY_UUIDS_CHUNK_SIZE = 100;
+const PAGINATION_QUERY_KEYS = new Set(["page_limit", "page_marker"]);
+
+function normalizeMessageUuids(messageUuids: readonly string[]): string[] {
+  // Backend bulk endpoint принимает uuid сообщений; здесь убираем пустые и дубли до запроса.
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+
+  for (const messageUuid of messageUuids) {
+    const trimmed = messageUuid.trim();
+    if (trimmed.length === 0 || seen.has(trimmed)) {
+      continue;
+    }
+
+    seen.add(trimmed);
+    normalized.push(trimmed);
+  }
+
+  return normalized;
+}
+
+function chunkMessageUuids(messageUuids: readonly string[]): string[][] {
+  const chunks: string[][] = [];
+  for (let index = 0; index < messageUuids.length; index += MESSAGES_BY_UUIDS_CHUNK_SIZE) {
+    chunks.push(messageUuids.slice(index, index + MESSAGES_BY_UUIDS_CHUNK_SIZE));
+  }
+  return chunks;
+}
+
+function projectScopedParams(
+  options: MessengerClientOptions,
+  params: MessengerQueryParams,
+): MessengerQueryParams {
+  // Workspace gateway может обслуживать несколько проектов, поэтому project_id добавляем централизованно.
+  const projectId = options.projectId?.trim();
+  if (!projectId) {
+    return params;
+  }
+
+  const scopedParams: MessengerQueryParams = {};
+  if ("page_limit" in params) {
+    scopedParams.page_limit = params.page_limit;
+  }
+  if ("page_marker" in params) {
+    scopedParams.page_marker = params.page_marker;
+  }
+  scopedParams.project_id = projectId;
+
+  for (const [key, value] of Object.entries(params)) {
+    if (!PAGINATION_QUERY_KEYS.has(key) && key !== "project_id") {
+      scopedParams[key] = value;
+    }
+  }
+
+  return scopedParams;
+}
+
 export async function getServerSettings(
   options: MessengerPublicClientOptions = {},
 ): Promise<WorkspaceMessengerServerSettingsDto> {
@@ -96,23 +154,55 @@ export async function getMessages(
   options: MessengerClientOptions,
   query: GetMessagesQuery = {},
 ): Promise<WorkspaceMessengerMessageDto[]> {
-  const data = await messengerGetJson("/messages/", options, {
-    ...paginationParams(query),
-    stream_uuid: query.streamUuid,
-    topic_uuid: query.topicUuid,
-  });
+  const data = await messengerGetJson(
+    "/messages/",
+    options,
+    projectScopedParams(options, {
+      ...paginationParams(query),
+      stream_uuid: query.streamUuid,
+      topic_uuid: query.topicUuid,
+    }),
+  );
   return parseDtoList(data, isWorkspaceMessengerMessageDto, "messenger messages response");
+}
+
+export async function getMessagesByUuids(
+  options: MessengerClientOptions,
+  messageUuids: readonly string[],
+): Promise<WorkspaceMessengerMessageDto[]> {
+  const normalizedUuids = normalizeMessageUuids(messageUuids);
+  if (normalizedUuids.length === 0) {
+    return [];
+  }
+
+  const pages = await Promise.all(
+    chunkMessageUuids(normalizedUuids).map(async (chunk) => {
+      const data = await messengerGetJson(
+        "/messages/",
+        options,
+        projectScopedParams(options, { uuid: chunk }),
+      );
+      return parseDtoList(data, isWorkspaceMessengerMessageDto, "messenger messages response");
+    }),
+  );
+
+  return pages.flat();
 }
 
 export async function getMessagesPage(
   options: MessengerClientOptions,
   query: GetMessagesQuery = {},
 ): Promise<MessengerCollectionPage<WorkspaceMessengerMessageDto>> {
-  const { data, headers } = await messengerRequestJsonResult("GET", "/messages/", options, {
-    ...paginationParams(query),
-    stream_uuid: query.streamUuid,
-    topic_uuid: query.topicUuid,
-  });
+  const { data, headers } = await messengerRequestJsonResult(
+    "GET",
+    "/messages/",
+    options,
+    projectScopedParams(options, {
+      ...paginationParams(query),
+      stream_uuid: query.streamUuid,
+      topic_uuid: query.topicUuid,
+    }),
+  );
   return {
     items: parseStrictDtoList(data, isWorkspaceMessengerMessageDto, "messenger messages response"),
     ...parsePaginationHeaders(headers),
@@ -150,10 +240,14 @@ export async function getEvents(
   options: MessengerClientOptions,
   query: GetEventsQuery = {},
 ): Promise<WorkspaceMessengerEventDto[]> {
-  const data = await messengerGetJson("/events/", options, {
-    ...paginationParams(query),
-    "epoch_version>": query.afterEpochVersion,
-  });
+  const data = await messengerGetJson(
+    "/events/",
+    options,
+    projectScopedParams(options, {
+      ...paginationParams(query),
+      "epoch_version>": query.afterEpochVersion,
+    }),
+  );
   return parseStrictDtoList(data, isWorkspaceMessengerEventDto, "messenger events response");
 }
 

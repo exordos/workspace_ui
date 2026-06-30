@@ -20,6 +20,8 @@ import type {
   MessengerUser,
 } from "./messenger.types";
 
+// Здесь backend DTO превращаются в доменные объекты Workspace-мессенджера.
+// Это сделано специально, чтобы старый UI не начал напрямую зависеть от snake_case и формы API.
 // UI uses a simple audience label while backend source of truth is stream.private.
 function streamAudience(
   stream: Pick<WorkspaceMessengerStreamDto, "private">,
@@ -46,6 +48,7 @@ export function adaptMessengerStream(dto: WorkspaceMessengerStreamDto): Messenge
     announce: dto.announce,
     isArchived: dto.is_archived,
     directUserUuid: dto.direct_user_uuid ?? null,
+    lastMessageUuid: dto.last_message_uuid ?? null,
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
   };
@@ -79,6 +82,7 @@ export function adaptMessengerTopic(dto: WorkspaceMessengerTopicDto): MessengerT
     isDefault: dto.is_default,
     isDone: dto.is_done,
     notificationMode: dto.notification_mode,
+    lastMessageUuid: dto.last_message_uuid ?? null,
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
   };
@@ -96,6 +100,7 @@ export function adaptStreamToMessengerConversation(
     unreadCount: stream.unread_count,
     isArchived: stream.is_archived,
     directUserUuid: stream.direct_user_uuid ?? null,
+    lastMessageUuid: stream.last_message_uuid ?? null,
     notificationMode: stream.notification_mode,
   };
 }
@@ -118,12 +123,15 @@ export function adaptTopicToMessengerConversation(
     unreadCount: topic.unread_count,
     isArchived: stream.is_archived,
     directUserUuid: stream.direct_user_uuid ?? null,
+    lastMessageUuid: topic.last_message_uuid ?? null,
     notificationMode: topic.notification_mode,
     isDone: topic.is_done,
     isDefaultTopic: topic.is_default,
   };
 }
 
+// Сообщение хранится один раз по uuid, а в разные списки чата попадает через отдельные bucket ids.
+// Поэтому здесь сразу считаем topic conversation id, а stream-wide индекс добавляется позже в store.
 export function adaptMessengerMessage(dto: WorkspaceMessengerMessageDto): MessengerMessage {
   return {
     uuid: dto.uuid,

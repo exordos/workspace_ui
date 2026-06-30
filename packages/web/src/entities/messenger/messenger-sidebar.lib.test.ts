@@ -5,7 +5,12 @@ import {
   selectMessengerSidebarStreams,
 } from "./messenger-sidebar.lib";
 import type { MessengerStoreState } from "./messenger.model";
-import type { MessengerFolder, MessengerStream, MessengerTopic } from "./messenger.types";
+import type {
+  MessengerFolder,
+  MessengerMessage,
+  MessengerStream,
+  MessengerTopic,
+} from "./messenger.types";
 
 const ORGANIZATION_ID = "workspace.example.com";
 const PROJECT_ID = "22222222-2222-4222-8222-222222222222";
@@ -16,6 +21,8 @@ const TOPIC_B = "ed25f944-8106-4386-b2f9-65e9db32d465";
 const FOLDER_A = "50ecadd0-9823-4d97-b54c-806cc672c210";
 const FOLDER_ITEM_A = "9f41b1a7-77f9-4c12-bdc6-d3cebc5dbf50";
 const FOLDER_ITEM_B = "5f5b9a9d-0e57-4775-849b-c8308f95a809";
+const MESSAGE_A = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
+const MESSAGE_B = "78105b9e-f1ac-41f1-baf5-2975486cc7dc";
 const DATE_A = "2026-06-22T10:10:00Z";
 const DATE_B = "2026-06-22T11:10:00Z";
 
@@ -38,6 +45,7 @@ function stream(overrides: Partial<MessengerStream> = {}): MessengerStream {
     announce: false,
     isArchived: false,
     directUserUuid: null,
+    lastMessageUuid: null,
     createdAt: DATE_A,
     updatedAt: DATE_A,
     ...overrides,
@@ -55,6 +63,7 @@ function topic(overrides: Partial<MessengerTopic> = {}): MessengerTopic {
     isDefault: false,
     isDone: false,
     notificationMode: "default",
+    lastMessageUuid: null,
     createdAt: DATE_A,
     updatedAt: DATE_A,
     ...overrides,
@@ -98,6 +107,26 @@ function folder(overrides: Partial<MessengerFolder> = {}): MessengerFolder {
         updatedAt: DATE_A,
       },
     ],
+    createdAt: DATE_A,
+    updatedAt: DATE_A,
+    ...overrides,
+  };
+}
+
+function message(overrides: Partial<MessengerMessage> = {}): MessengerMessage {
+  return {
+    uuid: MESSAGE_A,
+    conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
+    projectId: PROJECT_ID,
+    streamUuid: STREAM_A,
+    topicUuid: TOPIC_A,
+    authorUuid: "author",
+    userUuid: "user",
+    markdown: "Latest workspace message",
+    read: true,
+    pinned: false,
+    starred: false,
+    isOwn: false,
     createdAt: DATE_A,
     updatedAt: DATE_A,
     ...overrides,
@@ -165,6 +194,9 @@ function state(overrides: Partial<MessengerStoreState> = {}): MessengerStoreStat
     upsertTopic: () => undefined,
     removeTopic: () => undefined,
     upsertMessage: () => undefined,
+    indexMessageIntoConversationBuckets: () => undefined,
+    applyMessageEdit: () => undefined,
+    markMessageRead: () => undefined,
     removeMessage: () => undefined,
     mergeConversationMessagesPage: () => undefined,
     applyFolderSnapshot: () => undefined,
@@ -228,6 +260,52 @@ describe("messenger sidebar selectors", () => {
       pinnedAt: null,
       orderIndex: 20,
       unreadCount: 5,
+    });
+  });
+
+  it("builds previews from loaded last messages", () => {
+    const rows = selectMessengerSidebarStreams(
+      state({
+        streamsById: {
+          [STREAM_A]: stream({ lastMessageUuid: MESSAGE_A }),
+          [STREAM_B]: stream({
+            uuid: STREAM_B,
+            name: "Alice",
+            audience: "private",
+            isPrivate: true,
+            directUserUuid: "alice",
+            unreadCount: 4,
+            updatedAt: DATE_B,
+          }),
+        },
+        topicsById: {
+          [TOPIC_A]: topic({ lastMessageUuid: MESSAGE_B }),
+          [TOPIC_B]: topic({
+            uuid: TOPIC_B,
+            streamUuid: STREAM_B,
+            name: "General",
+            unreadCount: 6,
+            isDone: true,
+          }),
+        },
+        messagesById: {
+          [MESSAGE_A]: message({ uuid: MESSAGE_A, markdown: "Stream preview" }),
+          [MESSAGE_B]: message({ uuid: MESSAGE_B, markdown: "Topic preview" }),
+        },
+      }),
+      {
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+      },
+    );
+
+    expect(rows[0]?.preview).toEqual({
+      messageUuid: MESSAGE_A,
+      text: "Stream preview",
+    });
+    expect(rows[0]?.topics[0]?.preview).toEqual({
+      messageUuid: MESSAGE_B,
+      text: "Topic preview",
     });
   });
 

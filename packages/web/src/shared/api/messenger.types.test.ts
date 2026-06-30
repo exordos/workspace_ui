@@ -246,6 +246,14 @@ describe("Workspace messenger DTO guards", () => {
     );
     expect(isWorkspaceMessengerStreamDto({ ...streamDto, is_archived: undefined })).toBe(false);
     expect(isWorkspaceMessengerStreamDto({ ...streamDto, direct_user_uuid: undefined })).toBe(true);
+    expect(isWorkspaceMessengerStreamDto({ ...streamDto, last_message_uuid: undefined })).toBe(
+      true,
+    );
+    expect(isWorkspaceMessengerStreamDto({ ...streamDto, last_message_uuid: null })).toBe(true);
+    expect(isWorkspaceMessengerStreamDto({ ...streamDto, last_message_uuid: MESSAGE_UUID })).toBe(
+      true,
+    );
+    expect(isWorkspaceMessengerStreamDto({ ...streamDto, last_message_uuid: "bad" })).toBe(false);
     expect(
       isWorkspaceMessengerStreamDto({
         ...streamDto,
@@ -260,6 +268,15 @@ describe("Workspace messenger DTO guards", () => {
         source: { kind: "zulip", stream_id: "123" },
       }),
     ).toBe(false);
+  });
+
+  it("accepts optional topic last message uuid", () => {
+    expect(isWorkspaceMessengerTopicDto({ ...topicDto, last_message_uuid: undefined })).toBe(true);
+    expect(isWorkspaceMessengerTopicDto({ ...topicDto, last_message_uuid: null })).toBe(true);
+    expect(isWorkspaceMessengerTopicDto({ ...topicDto, last_message_uuid: MESSAGE_UUID })).toBe(
+      true,
+    );
+    expect(isWorkspaceMessengerTopicDto({ ...topicDto, last_message_uuid: "bad" })).toBe(false);
   });
 
   it("accepts all documented raw REST outbox payload kinds", () => {

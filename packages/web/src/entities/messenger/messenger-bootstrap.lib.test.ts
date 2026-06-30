@@ -213,6 +213,11 @@ function createDeferred<T>(): {
   return { promise, resolve };
 }
 
+async function flushPromises(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 describe("messenger bootstrap store", () => {
   beforeEach(() => {
     useMessengerStore.getState().clear();
@@ -289,7 +294,7 @@ describe("messenger bootstrap store", () => {
     expect(payload.streamBindings).toEqual([]);
   });
 
-  it("does not call the messages endpoint during project bootstrap", async () => {
+  it("does not call the legacy messages endpoint during project bootstrap", async () => {
     const runtimeContext = createRuntimeContext();
     const client = createClient();
 
@@ -300,6 +305,35 @@ describe("messenger bootstrap store", () => {
     });
 
     expect("getMessages" in client).toBe(false);
+  });
+
+  it("applies the base sidebar snapshot before last messages finish loading", async () => {
+    const runtimeContext = createRuntimeContext();
+    const messageRequest = createDeferred<WorkspaceMessengerMessageDto[]>();
+    const getMessagesByUuids = vi.fn(() => messageRequest.promise);
+
+    const bootstrap = bootstrapMessengerStore({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      client: createClient({
+        getStreams: () => Promise.resolve([createStreamDto({ last_message_uuid: MESSAGE_A })]),
+        getTopics: () => Promise.resolve([createTopicDto({ last_message_uuid: MESSAGE_A })]),
+        getFolders: () => Promise.resolve([]),
+        getMessagesByUuids,
+      }),
+    });
+    await flushPromises();
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.name).toBe("Engineering");
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]?.name).toBe("Releases");
+    expect(useMessengerStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
+    expect(getMessagesByUuids).toHaveBeenCalledWith(expect.any(Object), [MESSAGE_A]);
+
+    messageRequest.resolve([createMessageDto()]);
+    await bootstrap;
+    await flushPromises();
+
+    expect(useMessengerStore.getState().messagesById[MESSAGE_A]?.markdown).toBe("Hello, workspace");
   });
 
   it("keeps private stream conversations as stream and topic ids", async () => {
@@ -604,6 +638,60 @@ describe("messenger bootstrap store", () => {
         `topic:${STREAM_A}:${TOPIC_A}`,
       ),
     ).toEqual([expect.objectContaining({ uuid: MESSAGE_B })]);
+  });
+
+  it("indexes messages into stream and topic buckets and applies message mutations", () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createRuntimeContext());
+    const message = adaptMessengerMessage(createMessageDto());
+    useMessengerStore.getState().startBootstrap(ownerKey);
+
+    useMessengerStore.getState().indexMessageIntoConversationBuckets(ownerKey, message, {
+      includeStreamConversation: true,
+    });
+
+    expect(
+      selectMessengerMessagesForConversation(useMessengerStore.getState(), `stream:${STREAM_A}`),
+    ).toEqual([expect.objectContaining({ uuid: MESSAGE_A })]);
+    expect(
+      selectMessengerMessagesForConversation(
+        useMessengerStore.getState(),
+        `topic:${STREAM_A}:${TOPIC_A}`,
+      ),
+    ).toEqual([expect.objectContaining({ uuid: MESSAGE_A })]);
+    expect(Object.keys(useMessengerStore.getState().messagesById)).toEqual([MESSAGE_A]);
+
+    useMessengerStore.getState().applyMessageEdit(ownerKey, MESSAGE_A, {
+      markdown: "Edited workspace message",
+      updatedAt: "2026-06-22T10:20:00Z",
+    });
+    useMessengerStore.getState().markMessageRead(ownerKey, MESSAGE_A, {
+      conversationIds: [`stream:${STREAM_A}`],
+    });
+
+    expect(useMessengerStore.getState().messagesById[MESSAGE_A]).toEqual(
+      expect.objectContaining({
+        markdown: "Edited workspace message",
+        read: true,
+        updatedAt: "2026-06-22T10:20:00Z",
+      }),
+    );
+
+    useMessengerStore.getState().removeMessage(ownerKey, {
+      uuid: MESSAGE_A,
+      streamUuid: STREAM_A,
+      topicUuid: TOPIC_A,
+    });
+
+    expect(useMessengerStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
+    expect(
+      selectMessengerMessagesForConversation(useMessengerStore.getState(), `stream:${STREAM_A}`),
+    ).toEqual([]);
+    expect(
+      selectMessengerMessagesForConversation(
+        useMessengerStore.getState(),
+        `topic:${STREAM_A}:${TOPIC_A}`,
+      ),
+    ).toEqual([]);
   });
 
   it("applies folder snapshots and removes folder items from every folder", () => {

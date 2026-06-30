@@ -1,6 +1,6 @@
 # Workspace Messenger Migration Plan
 
-Дата среза: 2026-06-29.
+Дата среза: 2026-06-30.
 
 Этот документ фиксирует технический план жесткого переезда мессенджера с Zulip
 API на новый Workspace Messenger API. Новый курс: сначала одним проходом
@@ -65,6 +65,11 @@ props/adapters.
   поверхностью миграции. Отдельную Workspace page не держим даже как временный
   продуктовый route: Workspace routes подключаются к старой странице через
   отдельный data bridge.
+- Workspace composer подключается через старую нижнюю зону и старый
+  `MessageComposer`. Для Workspace routes старый composer получает явный
+  capabilities contract: Workspace-backed действия включаются через новые
+  handlers, а неподдержанные Zulip-backed действия остаются видимыми, но
+  возвращают контролируемую заглушку без Zulip API вызова.
 - На Workspace messenger routes старый Zulip data flow отключается: event loop,
   folder-sync, unread/read sync и записи в Zulip-shaped stores не должны быть
   источником данных для этой поверхности.
@@ -188,6 +193,10 @@ Zulip auth -> Zulip API/queue -> Zulip-shaped stores/adapters -> current UI
   это помогает быстрее отрезать старый source-of-truth;
 - когда для сценария нет Workspace ручки, добавляется явная unsupported-заглушка
   и пункт в backend gaps; не добавляем скрытый резервный Zulip-путь;
+- composer send/edit/delete/mark-read в Workspace path идут через
+  `entities/messenger` actions и Workspace message UUID. Старый `MockMessage`
+  допускается только как view-adapter для старой `MessageList`; Workspace данные
+  не записываются в старые Zulip message/chat-list stores.
 - запрещено делать гибридный source of truth, где один store одновременно
   считает основой `ZulipRawMessage` и Workspace `stream_uuid/topic_uuid`;
 - временная совместимость допустима только на границе секции и должна иметь

@@ -40,6 +40,8 @@ const EMPTY_MESSAGES: MessengerMessage[] = [];
 const EMPTY_FOLDERS: MessengerFolder[] = [];
 const EMPTY_SKIPPED_REALTIME_EVENTS: MessengerSkippedRealtimeEvent[] = [];
 
+// Store хранит Workspace-данные отдельно от старых Zulip stores.
+// Это важно для миграции: новый backend не должен подстраиваться под старый source-of-truth.
 // This store is scoped by ownerKey so several accounts/projects can coexist safely.
 export interface MessengerDomainData {
   streamsById: Record<MessengerUuid, MessengerStream>;
@@ -112,7 +114,26 @@ export interface MessengerStoreState extends MessengerDomainData {
   upsertTopic: (ownerKey: string, topic: MessengerTopic) => void;
   removeTopic: (ownerKey: string, topic: MessengerDeletedTopic) => void;
   upsertMessage: (ownerKey: string, message: MessengerMessage) => void;
-  removeMessage: (ownerKey: string, message: MessengerDeletedMessage) => void;
+  indexMessageIntoConversationBuckets: (
+    ownerKey: string,
+    message: MessengerMessage,
+    options?: MessengerMessageBucketIndexOptions,
+  ) => void;
+  applyMessageEdit: (
+    ownerKey: string,
+    messageUuid: MessengerUuid,
+    patch: MessengerMessageEditPatch,
+  ) => void;
+  markMessageRead: (
+    ownerKey: string,
+    messageUuid: MessengerUuid,
+    options?: MessengerScopedMessageMutationOptions,
+  ) => void;
+  removeMessage: (
+    ownerKey: string,
+    message: MessengerDeletedMessage,
+    options?: MessengerScopedMessageMutationOptions,
+  ) => void;
   mergeConversationMessagesPage: (
     ownerKey: string,
     conversationId: MessengerConversationId,
@@ -125,6 +146,21 @@ export interface MessengerStoreState extends MessengerDomainData {
   markRealtimeEventSkipped: (ownerKey: string, epochVersion: number, reason: string) => void;
   setBootstrapError: (ownerKey: string, error: string) => void;
   clear: () => void;
+}
+
+export interface MessengerMessageBucketIndexOptions {
+  // Одно сообщение может одновременно быть видно в topic timeline и в общем stream timeline.
+  includeStreamConversation?: boolean;
+  conversationIds?: readonly MessengerConversationId[];
+}
+
+export interface MessengerScopedMessageMutationOptions {
+  conversationIds?: readonly MessengerConversationId[];
+}
+
+export interface MessengerMessageEditPatch {
+  markdown: string;
+  updatedAt?: string;
 }
 
 function createEmptyMessengerData(): MessengerDomainData {
@@ -169,6 +205,9 @@ function createInitialState(): Omit<
   | "upsertTopic"
   | "removeTopic"
   | "upsertMessage"
+  | "indexMessageIntoConversationBuckets"
+  | "applyMessageEdit"
+  | "markMessageRead"
   | "removeMessage"
   | "mergeConversationMessagesPage"
   | "applyFolderSnapshot"
@@ -214,6 +253,7 @@ function applyConversationMessagesBucket(
   messages: MessengerMessage[],
   mode: "replace" | "merge",
 ): Pick<MessengerDomainData, "messagesById" | "messageIdsByConversationId"> {
+  // Объект сообщения не дублируем: messagesById хранит тело, а bucket хранит только порядок uuid.
   const nextMessagesById = { ...state.messagesById };
   const excludedConversationIds = new Set<MessengerConversationId>([conversationId]);
   let nextMessageIds =
@@ -247,6 +287,43 @@ function applyConversationMessagesBucket(
       ...state.messageIdsByConversationId,
       [conversationId]: nextMessageIds,
     },
+  };
+}
+
+function conversationBucketsForMessage(
+  message: MessengerMessage,
+  options?: MessengerMessageBucketIndexOptions,
+): MessengerConversationId[] {
+  // По умолчанию сообщение попадает в topic; stream-wide bucket добавляем только когда это явно нужно.
+  let conversationIds: MessengerConversationId[] =
+    options?.conversationIds != null ? [...options.conversationIds] : [message.conversationId];
+
+  if (options?.includeStreamConversation === true) {
+    conversationIds = appendUniqueId(conversationIds, conversationIdForStream(message.streamUuid));
+  }
+
+  return conversationIds;
+}
+
+function indexMessageIntoBuckets(
+  state: Pick<MessengerDomainData, "messagesById" | "messageIdsByConversationId">,
+  message: MessengerMessage,
+  conversationIds: readonly MessengerConversationId[],
+): Pick<MessengerDomainData, "messagesById" | "messageIdsByConversationId"> {
+  const nextMessageIdsByConversationId = { ...state.messageIdsByConversationId };
+  for (const conversationId of conversationIds) {
+    nextMessageIdsByConversationId[conversationId] = appendUniqueId(
+      nextMessageIdsByConversationId[conversationId] ?? EMPTY_IDS,
+      message.uuid,
+    );
+  }
+
+  return {
+    messagesById: {
+      ...state.messagesById,
+      [message.uuid]: message,
+    },
+    messageIdsByConversationId: nextMessageIdsByConversationId,
   };
 }
 
@@ -296,6 +373,7 @@ function conversationFromStream(stream: MessengerStream): MessengerConversation 
     unreadCount: stream.unreadCount,
     isArchived: stream.isArchived,
     directUserUuid: stream.directUserUuid,
+    lastMessageUuid: stream.lastMessageUuid,
     notificationMode: stream.notificationMode,
   };
 }
@@ -315,6 +393,7 @@ function conversationFromTopic(
     unreadCount: topic.unreadCount,
     isArchived: stream.isArchived,
     directUserUuid: stream.directUserUuid,
+    lastMessageUuid: topic.lastMessageUuid,
     notificationMode: topic.notificationMode,
     isDone: topic.isDone,
     isDefaultTopic: topic.isDefault,
@@ -342,6 +421,7 @@ function removeConversationMessages(
   messagesById: Record<MessengerUuid, MessengerMessage>;
   messageIdsByConversationId: Record<MessengerConversationId, MessengerUuid[]>;
 } {
+  // Когда удаляем conversation, чистим только те сообщения, которые больше не видны в других buckets.
   const nextMessagesById = { ...messagesById };
   const nextMessageIdsByConversationId = { ...messageIdsByConversationId };
   const removedConversationIds = new Set(conversationIds);
@@ -839,19 +919,94 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     });
   },
 
-  removeMessage(ownerKey, message) {
+  indexMessageIntoConversationBuckets(ownerKey, message, options) {
+    const conversationIds = conversationBucketsForMessage(message, options);
+    logStoreAction("messenger", "indexMessageIntoConversationBuckets", {
+      ownerKey,
+      messageUuid: message.uuid,
+      conversations: conversationIds.length,
+    });
+    set((state) => {
+      if (state.ownerKey !== ownerKey) return state;
+
+      return indexMessageIntoBuckets(state, message, conversationIds);
+    });
+  },
+
+  applyMessageEdit(ownerKey, messageUuid, patch) {
+    logStoreAction("messenger", "applyMessageEdit", { ownerKey, messageUuid });
+    set((state) => {
+      if (state.ownerKey !== ownerKey) return state;
+
+      const message = state.messagesById[messageUuid];
+      if (message == null) return state;
+
+      return {
+        messagesById: {
+          ...state.messagesById,
+          [messageUuid]: {
+            ...message,
+            markdown: patch.markdown,
+            updatedAt: patch.updatedAt ?? message.updatedAt,
+          },
+        },
+      };
+    });
+  },
+
+  markMessageRead(ownerKey, messageUuid, options) {
+    logStoreAction("messenger", "markMessageRead", { ownerKey, messageUuid });
+    set((state) => {
+      if (state.ownerKey !== ownerKey) return state;
+
+      const message = state.messagesById[messageUuid];
+      if (message == null) return state;
+      if (options?.conversationIds != null) {
+        const messageIsVisible = options.conversationIds.some((conversationId) =>
+          (state.messageIdsByConversationId[conversationId] ?? EMPTY_IDS).includes(messageUuid),
+        );
+        if (!messageIsVisible) return state;
+      }
+
+      return {
+        messagesById: {
+          ...state.messagesById,
+          [messageUuid]: {
+            ...message,
+            read: true,
+          },
+        },
+      };
+    });
+  },
+
+  removeMessage(ownerKey, message, options) {
     logStoreAction("messenger", "removeMessage", { ownerKey, messageUuid: message.uuid });
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
 
-      const nextMessagesById = { ...state.messagesById };
-      delete nextMessagesById[message.uuid];
+      // Delete API знает uuid сообщения, а UI может показывать его в stream и topic одновременно.
+      // Поэтому сначала убираем uuid из нужных списков, и только потом решаем, можно ли удалить тело.
       const nextMessageIdsByConversationId = { ...state.messageIdsByConversationId };
-      for (const conversationId of Object.keys(nextMessageIdsByConversationId)) {
+      const conversationIdsToRemove =
+        options?.conversationIds ?? Object.keys(nextMessageIdsByConversationId);
+      for (const conversationId of conversationIdsToRemove) {
         nextMessageIdsByConversationId[conversationId] = removeId(
           nextMessageIdsByConversationId[conversationId] ?? EMPTY_IDS,
           message.uuid,
         );
+      }
+
+      const shouldDeleteMessage =
+        options?.conversationIds == null ||
+        !isMessageReferencedOutsideConversations(
+          nextMessageIdsByConversationId,
+          new Set(conversationIdsToRemove),
+          message.uuid,
+        );
+      const nextMessagesById = shouldDeleteMessage ? { ...state.messagesById } : state.messagesById;
+      if (shouldDeleteMessage) {
+        delete nextMessagesById[message.uuid];
       }
 
       return {

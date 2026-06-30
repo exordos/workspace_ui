@@ -59,6 +59,7 @@ import { MessageComposerWriteBody } from "./message-composer-write-body.ui";
 import type { ComposerSendNewlineMode } from "./message-composer-input-commands.lib";
 import type { ScheduleMenuOption } from "./message-composer-schedule-popover.types";
 import type {
+  MessageComposerActionCapability,
   ComposerMode,
   MediaPickerTab,
   MessageComposerProps,
@@ -70,6 +71,18 @@ export type { ReplyQuote } from "./message-composer.types";
 
 // TODO: Re-enable after scheduled send uses Zulip's server API and persists the target chat.
 const ENABLE_SCHEDULED_SEND_UI = false;
+
+const DEFAULT_ACTION_CAPABILITY: MessageComposerActionCapability = { mode: "enabled" };
+
+function resolveActionCapability(
+  capability: MessageComposerActionCapability | undefined,
+): MessageComposerActionCapability {
+  return capability ?? DEFAULT_ACTION_CAPABILITY;
+}
+
+function isActionSupported(capability: MessageComposerActionCapability): boolean {
+  return capability.mode === "enabled";
+}
 
 export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   onSend,
@@ -87,9 +100,11 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   onValueChange,
   onEditLastMessage,
   editSession,
+  capabilities,
   aiMessagesContext,
   aiChatContext,
 }) => {
+  // Capabilities не меняют внешний вид composer: они только решают, можно ли действию идти в backend.
   const sendNewlineMode: ComposerSendNewlineMode = "enter-sends";
   const [mode, setMode] = useState<ComposerMode>("write");
   const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
@@ -105,6 +120,21 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   const [savedSnippetTitle, setSavedSnippetTitle] = useState("");
   const [savedSnippetContent, setSavedSnippetContent] = useState("");
   const [savedSnippetSaving, setSavedSnippetSaving] = useState(false);
+  const [unsupportedActionText, setUnsupportedActionText] = useState<string | null>(null);
+  const [aiMenuNotificationText, setAiMenuNotificationText] = useState<string | null>(null);
+  const uploadCapability = resolveActionCapability(capabilities?.upload);
+  const savedSnippetsCapability = resolveActionCapability(capabilities?.savedSnippets);
+  const previewCapability = resolveActionCapability(capabilities?.preview);
+  const mentionsCapability = resolveActionCapability(capabilities?.mentions);
+  const scheduledSendCapability = resolveActionCapability(capabilities?.scheduledSend);
+  const customEmojisCapability = resolveActionCapability(capabilities?.customEmojis);
+  const uploadSupported = isActionSupported(uploadCapability);
+  const savedSnippetsSupported = isActionSupported(savedSnippetsCapability);
+  const previewSupported = isActionSupported(previewCapability);
+  const mentionsSupported = isActionSupported(mentionsCapability);
+  const scheduledSendSupported = isActionSupported(scheduledSendCapability);
+  const customEmojisSupported = isActionSupported(customEmojisCapability);
+  // Saved snippets store остаётся старым, поэтому Workspace route открывает только заглушку и не синхронизирует его.
   const savedSnippets = useComposerSavedSnippetsStore((s) => s.snippets);
   const savedSnippetsLoading = useComposerSavedSnippetsStore((s) => s.loadingInitial);
   const savedSnippetsErrorCode = useComposerSavedSnippetsStore((s) => s.error);
@@ -136,7 +166,8 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     setActiveMentionIndex,
     mentionStartPos,
     setMentionStartPos,
-  } = useComposerMentions();
+  } = useComposerMentions({ enabled: mentionsSupported });
+  // На Workspace route mentions выключены, чтобы composer не брал пользователей из старого Zulip store.
   const effectiveReplyQuote = isEditing ? null : replyQuote;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const prevDisabledRef = useRef(disabled);
@@ -185,13 +216,22 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     removeFileByIndex: removeFile,
     uploadProgressPercent,
     isUploadInProgress,
-  } = useMessageComposerUpload({ disabled: disabled || isEditing, uploadProgress });
+  } = useMessageComposerUpload({
+    disabled: disabled || isEditing || !uploadSupported,
+    uploadProgress,
+  });
   const [isComposerFocusWithin, setIsComposerFocusWithin] = useState(false);
   const outgoingBody = useMemo(
     () => buildOutgoingMessageBody(value, effectiveReplyQuote),
     [value, effectiveReplyQuote],
   );
-  const preview = useMessageComposerPreview({ mode, outgoingBody });
+  const preview = useMessageComposerPreview({
+    mode,
+    outgoingBody,
+    enabled: previewSupported,
+    unsupportedText: previewCapability.unsupportedText,
+  });
+  // Preview пока Zulip-backed, поэтому Workspace route получает сообщение "не поддержано" вместо render API.
   const scheduleOptions = useMemo<ScheduleMenuOption[]>(
     () => [
       {
@@ -246,7 +286,19 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     }
     return null;
   }, [savedSnippetsErrorCode]);
+  const showUnsupportedAction = useCallback((capability: MessageComposerActionCapability) => {
+    setUnsupportedActionText(capability.unsupportedText ?? t("composer.actionUnsupported"));
+  }, []);
+  const showAiMenuNotice = useCallback((capability: MessageComposerActionCapability) => {
+    setAiMenuNotificationText(capability.unsupportedText ?? t("composer.actionUnsupported"));
+    setAiMenuOpen(false);
+    setMediaPickerOpen(false);
+    setScheduleMenuOpen(false);
+    setSavedSnippetsMenuOpen(false);
+    setAiMenuOpen(true);
+  }, []);
   const ensureCustomEmojisLoaded = useCallback(() => {
+    if (!customEmojisSupported) return;
     void ensureRealmEmojisLoaded()
       .then((list) => {
         setCustomEmojis(list);
@@ -254,7 +306,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
       .catch(() => {
         // Custom emoji load failure is non-fatal; picker still uses Unicode.
       });
-  }, []);
+  }, [customEmojisSupported]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const applyFormattingShortcut = useCallback(
     (marker: string) => {
@@ -271,6 +323,10 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
 
   const detectMention = useCallback(
     (text: string, cursorPos: number) => {
+      if (!mentionsSupported) {
+        hideMentionDropdown();
+        return;
+      }
       const before = text.slice(0, cursorPos);
       const match = /(?:^|[\s([{,.:;!?])@(\S*)$/.exec(before);
       if (match) {
@@ -283,7 +339,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
         hideMentionDropdown();
       }
     },
-    [hideMentionDropdown, setMentionQuery, showMentionDropdown],
+    [hideMentionDropdown, mentionsSupported, setMentionQuery, showMentionDropdown],
   );
 
   const handleMentionSelect = useCallback(
@@ -314,6 +370,10 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
 
   const scheduleMessage = useCallback(
     (sendAt: number) => {
+      if (!scheduledSendSupported) {
+        showUnsupportedAction(scheduledSendCapability);
+        return;
+      }
       const hasText = value.trim().length > 0;
       const hasFiles = files.length > 0;
       if ((!hasText && !hasFiles) || disabled || onSend == null) return;
@@ -331,7 +391,18 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
       setScheduleMenuOpen(false);
       clearComposerInput();
     },
-    [activeTopic, clearComposerInput, disabled, files, onSend, outgoingBody, value],
+    [
+      activeTopic,
+      clearComposerInput,
+      disabled,
+      files,
+      onSend,
+      outgoingBody,
+      scheduledSendCapability,
+      scheduledSendSupported,
+      showUnsupportedAction,
+      value,
+    ],
   );
 
   const cancelScheduledMessage = useCallback((id: string) => {
@@ -435,7 +506,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
 
   const handlePaste = useCallback(
     (e: React.ClipboardEvent) => {
-      if (isEditing) return;
+      if (isEditing || !uploadSupported) return;
       const items = e.clipboardData?.items;
       if (!items) return;
 
@@ -455,11 +526,16 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
         setFiles((prev) => [...prev, ...imageFiles]);
       }
     },
-    [isEditing, setFiles],
+    [isEditing, setFiles, uploadSupported],
   );
 
   const handleAttachClick = () => {
     if (disabled || isEditing) return;
+    // Upload UI остаётся на месте, но без Workspace upload contract не открываем системный выбор файла.
+    if (!uploadSupported) {
+      showAiMenuNotice(uploadCapability);
+      return;
+    }
     const fileInput = fileInputRef.current;
     if (fileInput == null) return;
     beginFileSelectionSession();
@@ -477,9 +553,13 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
 
   const handleFileInputEvent = useCallback(
     (event: React.ChangeEvent<HTMLInputElement> | React.FormEvent<HTMLInputElement>) => {
+      if (!uploadSupported) {
+        showAiMenuNotice(uploadCapability);
+        return;
+      }
       handleFileChangeFromHook(event as React.ChangeEvent<HTMLInputElement>);
     },
-    [handleFileChangeFromHook],
+    [handleFileChangeFromHook, showAiMenuNotice, uploadCapability, uploadSupported],
   );
 
   const handleCreateCallLink = useCallback(() => {
@@ -580,6 +660,11 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   }, [scheduleMenuOpen, updateScheduleMenuPosition]);
 
   const toggleScheduleMenu = useCallback(() => {
+    // Scheduled send ещё не имеет Workspace endpoint, значит не создаём локальную отложенную отправку.
+    if (!scheduledSendSupported) {
+      showUnsupportedAction(scheduledSendCapability);
+      return;
+    }
     setScheduleMenuOpen((prevOpen) => {
       const nextOpen = !prevOpen;
       if (nextOpen) {
@@ -590,7 +675,12 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
       }
       return nextOpen;
     });
-  }, [updateScheduleMenuPosition]);
+  }, [
+    scheduledSendCapability,
+    scheduledSendSupported,
+    showUnsupportedAction,
+    updateScheduleMenuPosition,
+  ]);
 
   const insertSavedSnippet = useCallback(
     (snippet: SavedSnippet) => {
@@ -662,10 +752,17 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     };
   }, [aiMenuOpen, updateAiMenuPosition]);
 
+  React.useEffect(() => {
+    if (!aiMenuOpen) {
+      setAiMenuNotificationText(null);
+    }
+  }, [aiMenuOpen]);
+
   const toggleAiUnavailablePopover = useCallback(() => {
     setMediaPickerOpen(false);
     setScheduleMenuOpen(false);
     setSavedSnippetsMenuOpen(false);
+    setAiMenuNotificationText(null);
     setAiMenuOpen((prevOpen) => {
       const nextOpen = !prevOpen;
       if (nextOpen) {
@@ -676,6 +773,12 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   }, [updateAiMenuPosition]);
 
   const toggleSavedSnippetsMenu = useCallback(() => {
+    // Сниппеты завязаны на старую синхронизацию, поэтому на Workspace route показываем controlled stub.
+    if (!savedSnippetsSupported) {
+      showAiMenuNotice(savedSnippetsCapability);
+      setSavedSnippetsMenuOpen(false);
+      return;
+    }
     setSavedSnippetsMenuOpen((prevOpen) => {
       const nextOpen = !prevOpen;
       if (nextOpen) {
@@ -690,7 +793,14 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
       }
       return nextOpen;
     });
-  }, [clearSavedSnippetsError, openSavedSnippets, updateSavedSnippetsMenuPosition]);
+  }, [
+    clearSavedSnippetsError,
+    openSavedSnippets,
+    savedSnippetsCapability,
+    savedSnippetsSupported,
+    showAiMenuNotice,
+    updateSavedSnippetsMenuPosition,
+  ]);
 
   const startCreateSavedSnippet = useCallback(() => {
     setSavedSnippetCreateMode(true);
@@ -757,6 +867,24 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     setIsComposerFocusWithin(false);
   }, []);
 
+  const handleModeChange = useCallback(
+    (nextMode: ComposerMode) => {
+      if (nextMode === "preview" && !previewSupported) {
+        showAiMenuNotice(previewCapability);
+        setMode("write");
+        return;
+      }
+      setMode(nextMode);
+    },
+    [previewCapability, previewSupported, showAiMenuNotice],
+  );
+
+  React.useEffect(() => {
+    if (mode !== "preview" || previewSupported) return;
+    setMode("write");
+    showAiMenuNotice(previewCapability);
+  }, [mode, previewCapability, previewSupported, showAiMenuNotice]);
+
   return (
     <div
       className={`flex-shrink-0 rounded-xl bg-composer-outer ${isEditing ? "" : "border-t border-border-subtle"} ${isDragOver ? "ring-2 ring-inset ring-accent" : ""}`}
@@ -801,7 +929,11 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
       >
         {isToolbarVisible && (
           <div className="flex items-center gap-2">
-            <ComposerModeTabs mode={mode} onChange={setMode} />
+            <ComposerModeTabs
+              mode={mode}
+              onChange={handleModeChange}
+              showPreviewTab={previewSupported}
+            />
 
             {/* Formatting toolbar */}
             {mode === "write" && (
@@ -815,8 +947,16 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
                       className={TOOLBAR_BTN}
                       onClick={handleAttachClick}
                       disabled={disabled}
-                      aria-label={t("a11y.attachFile")}
-                      title={t("a11y.attachFile")}
+                      aria-label={
+                        uploadSupported
+                          ? t("a11y.attachFile")
+                          : (uploadCapability.unsupportedText ?? t("composer.actionUnsupported"))
+                      }
+                      title={
+                        uploadSupported
+                          ? t("a11y.attachFile")
+                          : (uploadCapability.unsupportedText ?? t("composer.actionUnsupported"))
+                      }
                     >
                       <Icon
                         name="attach"
@@ -851,16 +991,26 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
                       type="button"
                       className={TOOLBAR_BTN}
                       onClick={toggleScheduleMenu}
-                      disabled={disabled || onSend == null}
-                      aria-label={t("a11y.messageMenu")}
-                      title={t("a11y.messageMenu")}
+                      disabled={disabled}
+                      aria-label={
+                        scheduledSendSupported
+                          ? t("a11y.messageMenu")
+                          : (scheduledSendCapability.unsupportedText ??
+                            t("composer.actionUnsupported"))
+                      }
+                      title={
+                        scheduledSendSupported
+                          ? t("a11y.messageMenu")
+                          : (scheduledSendCapability.unsupportedText ??
+                            t("composer.actionUnsupported"))
+                      }
                     >
                       <Icon name="calendar" size={TOOLBAR_ICON_SIZE} />
                     </button>
                   ) : undefined
                 }
                 snippetsTrigger={
-                  !isEditing ? (
+                  !isEditing && savedSnippetsSupported ? (
                     <button
                       ref={savedSnippetsButtonRef}
                       type="button"
@@ -893,12 +1043,18 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
 
       {/* Input row */}
       <div className="relative p-3">
+        {unsupportedActionText != null && (
+          <div className="mb-2 px-1 text-xs text-notice-base" role="status">
+            {unsupportedActionText}
+          </div>
+        )}
         {!isEditing && (
           <MessageComposerAiActionMenuLayer
             open={aiMenuOpen}
             draft={value}
             onInsert={setValue}
             onOpenChange={setAiMenuOpen}
+            notificationMessage={aiMenuNotificationText ?? undefined}
             messagesContext={aiMessagesContext ?? []}
             chatContext={aiChatContext}
             popoverStyle={aiMenuStyle}

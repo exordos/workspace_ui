@@ -15,7 +15,9 @@ export const MessageComposerSmartReplyStrip = React.memo(function MessageCompose
 
 export const MessageComposerAiActionMenuLayer = React.memo(
   function MessageComposerAiActionMenuLayer(props: MessageComposerAiActionMenuLayerProps) {
-    const { open, onOpenChange, popoverStyle } = props;
+    const { open, onOpenChange, popoverStyle, notificationMessage } = props;
+    // Пока AI action menu не подключён к Workspace workflow, старая кнопка показывает объясняющую заглушку.
+    const popoverMessage = notificationMessage ?? t("composer.aiTemporarilyUnavailable");
     if (!open) return null;
 
     return (
@@ -26,9 +28,9 @@ export const MessageComposerAiActionMenuLayer = React.memo(
         panelClassName="p-3 shadow-lg"
         backdropTestId="composer-ai-menu-backdrop"
         testId="composer-ai-unavailable-popover"
-        ariaLabel={t("composer.aiTemporarilyUnavailable")}
+        ariaLabel={popoverMessage}
       >
-        <p className="text-xs text-text-primary">{t("composer.aiTemporarilyUnavailable")}</p>
+        <p className="text-xs text-text-primary">{popoverMessage}</p>
       </AnchoredPopover>
     );
   },

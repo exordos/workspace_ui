@@ -139,7 +139,22 @@
     "invalidRouteHint": "Open a chat from the list to continue.",
     "messageRouteUnsupported": "Message links are not available yet",
     "messageRouteUnsupportedHint": "Open the stream or topic from the chat list.",
-    "readOnlyComposer": "Workspace messaging is read-only in this migration slice. Sending will be enabled in a separate step."
+    "readOnlyComposer": "Workspace messaging is read-only in this migration slice. Sending will be enabled in a separate step.",
+    "runtimeUnavailable": "Workspace session is not ready yet.",
+    "defaultTopicMissing": "Default topic is not loaded yet. Open a topic or try again later.",
+    "routeUnsupportedForSend": "Sending is not available from this chat link yet.",
+    "messageActionTargetMissing": "Message is not loaded anymore.",
+    "uploadsUnsupported": "File uploads are not connected to Workspace messaging yet.",
+    "savedSnippetsUnsupported": "Saved snippets are not connected to Workspace messaging yet.",
+    "previewUnsupported": "Preview is temporarily disabled for Workspace messaging.",
+    "mentionsUnsupported": "Mentions are not connected to Workspace messaging yet.",
+    "scheduledSendUnsupported": "Scheduled sending is not connected to Workspace messaging yet.",
+    "customEmojisUnsupported": "Custom emoji loading is not connected to Workspace messaging yet.",
+    "reactionsUnsupported": "Reactions are not connected to Workspace messaging yet.",
+    "forwardUnsupported": "Forwarding is not connected to Workspace messaging yet.",
+    "readReceiptsUnsupported": "Read receipts are not connected to Workspace messaging yet.",
+    "permalinkUnsupported": "Old message links are not connected to Workspace messaging yet.",
+    "retryUnsupported": "Retry for this Workspace action is not connected yet."
   },
   "message": {
     "sendRequiresStreamOrTo": "Stream or recipients (to) required for sending",
@@ -853,6 +868,7 @@
     "savedSnippetContent": "Snippet content",
     "savedSnippetsLoadError": "Failed to load saved snippets",
     "savedSnippetsCreateError": "Failed to create saved snippet",
+    "actionUnsupported": "This action is not available in this conversation yet.",
     "aiTemporarilyUnavailable": "AI features are temporarily unavailable in your organization."
   },
   "a11y": {

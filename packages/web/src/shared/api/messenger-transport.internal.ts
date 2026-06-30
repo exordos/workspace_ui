@@ -11,7 +11,14 @@ export const DEFAULT_MESSENGER_API_BASE = "/api/messenger/v1";
 
 export type MessengerHttpMethod = "GET" | "POST" | "PUT" | "DELETE";
 export type MessengerDtoGuard<T> = (value: unknown) => value is T;
-export type MessengerQueryParams = Record<string, string | number | undefined>;
+export type MessengerQueryParamValue = string | number;
+export type MessengerQueryParams = Record<
+  string,
+  | MessengerQueryParamValue
+  | readonly (MessengerQueryParamValue | null | undefined)[]
+  | null
+  | undefined
+>;
 
 export interface MessengerClientOptions {
   accessToken: string | null | undefined;
@@ -65,7 +72,13 @@ export function buildMessengerUrl(
   const base = (baseUrl ?? DEFAULT_MESSENGER_API_BASE).replace(/\/+$/, "");
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
-    if (value != null) {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (item != null) {
+          search.append(key, String(item));
+        }
+      }
+    } else if (value != null) {
       search.set(key, String(value));
     }
   }
@@ -148,6 +161,7 @@ export async function sendJsonResult(
   params: MessengerQueryParams = {},
   body?: unknown,
 ): Promise<MessengerJsonResult> {
+  // Здесь собирается реальный HTTP-запрос к Workspace API: auth, dev proxy header, body и abort signal.
   const fetchImpl = options.fetchImpl ?? fetch;
   const url = buildMessengerUrl(options.baseUrl, path, params);
   const init: RequestInit = {
@@ -271,6 +285,7 @@ export async function messengerPublicGetJson(
 }
 
 export function parseDtoList<T>(data: unknown, guard: MessengerDtoGuard<T>, label: string): T[] {
+  // Списковые ответы можно мягко фильтровать, чтобы один битый элемент не ронял весь sidebar.
   if (!Array.isArray(data)) {
     throw new TypeError(`Expected ${label} to be an array`);
   }
@@ -283,6 +298,7 @@ export function parseStrictDtoList<T>(
   guard: MessengerDtoGuard<T>,
   label: string,
 ): T[] {
+  // Strict-режим используем там, где пропуск элемента опаснее явной ошибки контракта.
   if (!Array.isArray(data)) {
     throw new TypeError(`Expected ${label} to be an array`);
   }
