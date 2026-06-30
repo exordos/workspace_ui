@@ -8,7 +8,6 @@ import {
   parseDtoList,
   parsePaginationHeaders,
   parseStrictDtoList,
-  projectScopedPaginationParams,
 } from "./messenger-transport.internal";
 import type {
   MessengerClientOptions,
@@ -42,7 +41,8 @@ import type {
 export { MessengerApiError };
 export type { MessengerClientOptions, MessengerCollectionPage, MessengerPaginationQuery };
 
-// This legacy facade kept phase 1 bootstrap callers on one small API surface.
+// Это тонкая обёртка над Workspace Messenger API.
+// Здесь ещё сырой backend-формат: snake_case, page_marker и UUID из ответа сервера.
 export interface GetStreamTopicsQuery extends MessengerPaginationQuery {
   streamUuid?: string;
 }
@@ -71,7 +71,8 @@ export async function getServerSettings(
   );
 }
 
-// Phase 1 list calls feed the first messenger bootstrap snapshot.
+// Эти вызовы кормят первый снимок нового messenger store.
+// UI сюда напрямую не ходит: сначала DTO проходят через adapters.
 export async function getStreams(
   options: MessengerClientOptions,
   query: MessengerPaginationQuery = {},
@@ -96,7 +97,7 @@ export async function getMessages(
   query: GetMessagesQuery = {},
 ): Promise<WorkspaceMessengerMessageDto[]> {
   const data = await messengerGetJson("/messages/", options, {
-    ...projectScopedPaginationParams(options, query),
+    ...paginationParams(query),
     stream_uuid: query.streamUuid,
     topic_uuid: query.topicUuid,
   });
@@ -108,7 +109,7 @@ export async function getMessagesPage(
   query: GetMessagesQuery = {},
 ): Promise<MessengerCollectionPage<WorkspaceMessengerMessageDto>> {
   const { data, headers } = await messengerRequestJsonResult("GET", "/messages/", options, {
-    ...projectScopedPaginationParams(options, query),
+    ...paginationParams(query),
     stream_uuid: query.streamUuid,
     topic_uuid: query.topicUuid,
   });
@@ -131,7 +132,7 @@ export async function getFolderItems(
   query: GetFolderItemsQuery = {},
 ): Promise<WorkspaceMessengerFolderItemDto[]> {
   const data = await messengerGetJson("/folder_items/", options, {
-    ...projectScopedPaginationParams(options, query),
+    ...paginationParams(query),
     folder_uuid: query.folderUuid,
   });
   return parseDtoList(data, isWorkspaceMessengerFolderItemDto, "messenger folder items response");
@@ -150,7 +151,7 @@ export async function getEvents(
   query: GetEventsQuery = {},
 ): Promise<WorkspaceMessengerEventDto[]> {
   const data = await messengerGetJson("/events/", options, {
-    ...projectScopedPaginationParams(options, query),
+    ...paginationParams(query),
     "epoch_version>": query.afterEpochVersion,
   });
   return parseStrictDtoList(data, isWorkspaceMessengerEventDto, "messenger events response");

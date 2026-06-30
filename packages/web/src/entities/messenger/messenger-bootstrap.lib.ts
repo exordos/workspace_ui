@@ -9,16 +9,14 @@ import {
   getFolders as defaultGetFolders,
   getStreams as defaultGetStreams,
   getStreamTopics as defaultGetTopics,
-  getUsers as defaultGetUsers,
 } from "~/shared/api/messenger-client";
 import type { MessengerClientOptions } from "~/shared/api/messenger-client";
 import type {
   WorkspaceMessengerFolderDto,
   WorkspaceMessengerStreamDto,
   WorkspaceMessengerTopicDto,
-  WorkspaceMessengerUserDto,
 } from "~/shared/api/messenger.types";
-import { adaptMessengerBootstrapPayload } from "./messenger-adapters.lib";
+import { adaptMessengerBootstrapPayload, adaptMessengerFolder } from "./messenger-adapters.lib";
 import { useMessengerStore } from "./messenger.model";
 import type { MessengerStoreState } from "./messenger.model";
 
@@ -28,18 +26,18 @@ type MessengerBootstrapClientOptions = Pick<
 >;
 type MessengerBootstrapClientCall<T> = (options: MessengerClientOptions) => Promise<T[]>;
 
-// Bootstrap loads the project snapshot needed to draw the first chat shell.
+// Загружаем минимальный снимок проекта для новой ветки Workspace-мессенджера.
+// Это не старый Zulip-список чатов: данные сразу кладутся в отдельный messenger store.
 export interface MessengerBootstrapClientDeps {
   getStreams?: MessengerBootstrapClientCall<WorkspaceMessengerStreamDto>;
   getTopics?: MessengerBootstrapClientCall<WorkspaceMessengerTopicDto>;
   getFolders?: MessengerBootstrapClientCall<WorkspaceMessengerFolderDto>;
-  getUsers?: MessengerBootstrapClientCall<WorkspaceMessengerUserDto>;
 }
 
 export interface MessengerStoreApi {
   getState: () => Pick<
     MessengerStoreState,
-    "startBootstrap" | "replaceBootstrapState" | "setBootstrapError"
+    "startBootstrap" | "replaceBootstrapState" | "applyFolderSnapshot" | "setBootstrapError"
   >;
 }
 
@@ -64,7 +62,8 @@ function normalizeBootstrapError(error: unknown): string {
   return "Messenger bootstrap failed";
 }
 
-// Runtime checks stop old project responses from replacing the active project.
+// Проверки runtime нужны из-за переключения организаций и проектов.
+// Если пользователь уже ушёл в другой проект, старый ответ API нельзя применять в store.
 export async function bootstrapMessengerStore({
   runtimeContext,
   getRuntimeContext = () => runtimeContext,
@@ -93,11 +92,11 @@ export async function bootstrapMessengerStore({
   };
 
   try {
-    const [streams, topics, folders, users] = await Promise.all([
+    // Потоки и темы нужны первыми: из них можно быстро собрать базовый список чатов.
+    // Папки догружаем ниже отдельно, чтобы ошибка папок не ломала весь сайдбар.
+    const [streams, topics] = await Promise.all([
       (client.getStreams ?? defaultGetStreams)(requestOptions),
       (client.getTopics ?? defaultGetTopics)(requestOptions),
-      (client.getFolders ?? defaultGetFolders)(requestOptions),
-      (client.getUsers ?? defaultGetUsers)(requestOptions),
     ]);
 
     if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
@@ -107,10 +106,30 @@ export async function bootstrapMessengerStore({
     const payload = adaptMessengerBootstrapPayload({
       streams,
       topics,
-      folders,
-      users,
+      folders: [],
+      users: [],
     });
     store.getState().replaceBootstrapState(ownerKey, payload);
+
+    try {
+      // Папки приходят как отдельный пользовательский слой поверх потоков.
+      // Поэтому применяем их снимками: пришла папка - обновили только её часть.
+      const folders = await (client.getFolders ?? defaultGetFolders)(requestOptions);
+      if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
+        return { status: "applied", ownerKey };
+      }
+
+      for (const folder of folders.map(adaptMessengerFolder)) {
+        store.getState().applyFolderSnapshot(ownerKey, folder);
+      }
+    } catch (folderError) {
+      if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
+        return { status: "applied", ownerKey };
+      }
+      const message = normalizeBootstrapError(folderError);
+      store.getState().setBootstrapError(ownerKey, message);
+    }
+
     return { status: "applied", ownerKey };
   } catch (error) {
     if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {

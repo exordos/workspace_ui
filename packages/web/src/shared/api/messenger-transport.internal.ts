@@ -5,7 +5,8 @@ import {
 } from "~/shared/config/dev-workspace-org-proxy";
 import { buildMessengerBearerAuthHeader } from "./messenger-auth";
 
-// Shared low-level HTTP helpers for the Workspace Messenger REST API.
+// Нижний HTTP-слой для Workspace Messenger API.
+// Всё, что выше, должно работать уже с DTO или доменными объектами, а не собирать URL руками.
 export const DEFAULT_MESSENGER_API_BASE = "/api/messenger/v1";
 
 export type MessengerHttpMethod = "GET" | "POST" | "PUT" | "DELETE";
@@ -80,23 +81,13 @@ function pathWithoutTrailingSlash(path: string): string | null {
   return path.replace(/\/+$/, "");
 }
 
-// RESTAlchemy uses the same cursor query names on every collection endpoint.
+// Workspace API использует одинаковые имена курсора на списковых эндпоинтах.
 export function paginationParams(
   query: MessengerPaginationQuery | undefined,
 ): MessengerQueryParams {
   return {
     page_limit: query?.pageLimit,
     page_marker: query?.pageMarker,
-  };
-}
-
-export function projectScopedPaginationParams(
-  options: Pick<MessengerClientOptions, "projectId">,
-  query: MessengerPaginationQuery | undefined,
-): MessengerQueryParams {
-  return {
-    ...paginationParams(query),
-    project_id: options.projectId,
   };
 }
 
@@ -113,7 +104,7 @@ async function parseJsonResponse(response: Response): Promise<unknown> {
   return JSON.parse(text) as unknown;
 }
 
-// Public endpoints, like server_settings, must not receive bearer auth.
+// Публичные эндпоинты, например server_settings, не должны получать bearer auth.
 function buildHeaders(
   accessToken: string | null | undefined,
   body: unknown,

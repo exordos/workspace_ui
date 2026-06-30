@@ -6,7 +6,8 @@ import type {
   WorkspaceMessengerTopicNotificationMode,
 } from "~/shared/api/messenger.types";
 
-// Domain ids are still UUID strings, but UI never depends on backend field names.
+// Это уже доменные типы новой ветки, не сырой ответ Workspace API.
+// Backend-поля вроде stream_uuid здесь превращаются в понятные поля вроде streamUuid.
 export type MessengerUuid = string;
 export type MessengerConversationId = string;
 export type MessengerAudience = "channel" | "private";
@@ -114,7 +115,7 @@ export interface MessengerFolder {
   title: string;
   backgroundColorValue: number | null;
   unreadCount: number;
-  systemType: "all" | "created" | null;
+  systemType: "all" | "created" | "personal" | "channels" | null;
   items: MessengerFolderItem[];
   createdAt: string;
   updatedAt: string;
@@ -168,4 +169,42 @@ export interface MessengerDeletedFolderItem {
 export interface MessengerSkippedRealtimeEvent {
   epochVersion: number;
   reason: string;
+}
+
+// Эти типы описывают не backend-данные, а готовый вид сайдбара:
+// title для строки, route для перехода, unreadCount для бейджа.
+export interface MessengerSidebarTopicItem {
+  id: MessengerConversationId;
+  streamUuid: MessengerUuid;
+  topicUuid: MessengerUuid;
+  title: string;
+  unreadCount: number;
+  isDone: boolean;
+  route: string;
+  preview: null;
+  updatedAt: string;
+}
+
+export interface MessengerSidebarStreamItem {
+  id: MessengerConversationId;
+  streamUuid: MessengerUuid;
+  title: string;
+  audience: MessengerAudience;
+  isPrivate: boolean;
+  unreadCount: number;
+  pinnedAt: string | null;
+  orderIndex: number | null;
+  route: string;
+  topics: MessengerSidebarTopicItem[];
+  preview: null;
+  updatedAt: string;
+}
+
+export interface MessengerSidebarFolderView {
+  folderUuid: MessengerUuid;
+  title: string;
+  backgroundColorValue: number | null;
+  unreadCount: number;
+  systemType: MessengerFolder["systemType"];
+  items: MessengerFolderItem[];
 }

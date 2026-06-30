@@ -3,11 +3,17 @@ export type WorkspaceMessengerDateTime = string;
 export type WorkspaceMessengerEpochVersion = number;
 export type WorkspaceMessengerRole = "guest" | "member" | "moderator" | "administrator" | "owner";
 
-// DTOs in this file mirror backend JSON names and stay out of UI state.
+// DTO в этом файле повторяют JSON от backend как есть.
+// В UI их не тащим: сначала переводим в доменные типы из entities/messenger.
 export type WorkspaceMessengerSourceName = "native" | "zulip";
 export type WorkspaceMessengerStreamNotificationMode = "mentions_only" | "muted" | "all_messages";
 export type WorkspaceMessengerTopicNotificationMode = "mute" | "default" | "unmute" | "follow";
-export type WorkspaceMessengerFolderSystemType = "all" | "created" | null;
+export type WorkspaceMessengerFolderSystemType =
+  | "all"
+  | "created"
+  | "personal"
+  | "channels"
+  | null;
 export type WorkspaceMessengerFolderItemChatType = "stream" | "group" | "private";
 export type WorkspaceMessengerUserStatus = "active" | "idle" | "offline" | "do_not_disturb";
 
@@ -457,7 +463,13 @@ function isTopicNotificationMode(value: unknown): value is WorkspaceMessengerTop
 }
 
 function isFolderSystemType(value: unknown): value is WorkspaceMessengerFolderSystemType {
-  return value === "all" || value === "created" || value === null;
+  return (
+    value === "all" ||
+    value === "created" ||
+    value === "personal" ||
+    value === "channels" ||
+    value === null
+  );
 }
 
 function isFolderItemChatType(value: unknown): value is WorkspaceMessengerFolderItemChatType {

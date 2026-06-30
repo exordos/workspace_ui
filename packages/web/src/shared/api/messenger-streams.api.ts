@@ -5,7 +5,6 @@ import {
   parseDto,
   parsePaginationHeaders,
   parseStrictDtoList,
-  projectScopedPaginationParams,
 } from "./messenger-transport.internal";
 import type {
   MessengerClientOptions,
@@ -26,7 +25,7 @@ import type {
   WorkspaceMessengerUpdateStreamRequestBody,
 } from "./messenger.types";
 
-// Streams are the backend-native chat containers, including private direct streams.
+// Поток - основная backend-сущность чата в Workspace, включая личные private streams.
 export interface GetStreamBindingsQuery extends MessengerPaginationQuery {
   streamUuid?: string;
 }
@@ -155,7 +154,7 @@ export async function getStreamBindings(
   query: GetStreamBindingsQuery = {},
 ): Promise<WorkspaceMessengerStreamBindingDto[]> {
   const data = await messengerGetJson("/stream_bindings/", options, {
-    ...projectScopedPaginationParams(options, query),
+    ...paginationParams(query),
     ...streamBindingParams(query),
   });
   return parseStrictDtoList(
@@ -170,7 +169,7 @@ export async function getStreamBindingsPage(
   query: GetStreamBindingsQuery = {},
 ): Promise<MessengerCollectionPage<WorkspaceMessengerStreamBindingDto>> {
   const { data, headers } = await messengerRequestJsonResult("GET", "/stream_bindings/", options, {
-    ...projectScopedPaginationParams(options, query),
+    ...paginationParams(query),
     ...streamBindingParams(query),
   });
   return {

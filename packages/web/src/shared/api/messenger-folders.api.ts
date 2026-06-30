@@ -8,7 +8,6 @@ import {
   parseDto,
   parsePaginationHeaders,
   parseStrictDtoList,
-  projectScopedPaginationParams,
 } from "./messenger-transport.internal";
 import type {
   MessengerClientOptions,
@@ -27,7 +26,7 @@ import type {
   WorkspaceMessengerUpdateFolderRequestBody,
 } from "./messenger.types";
 
-// Folders group stream conversations for the current user.
+// Папки группируют потоки для текущего пользователя в новом Workspace-сайдбаре.
 export interface GetFolderItemsQuery extends MessengerPaginationQuery {
   folderUuid?: string;
 }
@@ -88,13 +87,13 @@ export async function deleteFolder(
   await messengerDeleteJson(`/folders/${folderUuid}`, options);
 }
 
-// Folder items point from a folder to a stream conversation.
+// Элемент папки связывает папку с конкретным потоком и хранит порядок/закрепление.
 export async function getFolderItems(
   options: MessengerClientOptions,
   query: GetFolderItemsQuery = {},
 ): Promise<WorkspaceMessengerFolderItemDto[]> {
   const data = await messengerGetJson("/folder_items/", options, {
-    ...projectScopedPaginationParams(options, query),
+    ...paginationParams(query),
     folder_uuid: query.folderUuid,
   });
   return parseStrictDtoList(
@@ -109,7 +108,7 @@ export async function getFolderItemsPage(
   query: GetFolderItemsQuery = {},
 ): Promise<MessengerCollectionPage<WorkspaceMessengerFolderItemDto>> {
   const { data, headers } = await messengerRequestJsonResult("GET", "/folder_items/", options, {
-    ...projectScopedPaginationParams(options, query),
+    ...paginationParams(query),
     folder_uuid: query.folderUuid,
   });
   return {

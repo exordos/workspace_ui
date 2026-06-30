@@ -12,6 +12,7 @@ import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { sortChatsByLastMessage } from "~/shared/lib/chat-sorting";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
+import { isWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { useRightDrawerStore } from "~/widgets/right-panel/right-drawer.model";
 import { useSearchModalStore } from "~/widgets/search-modal/search-modal.model";
 import { getSectionFromPathname } from "~/widgets/top-bar/top-bar.lib";
@@ -212,12 +213,15 @@ export const Layout: React.FC = () => {
     [connectionHealth, online, rateLimitSeconds],
   );
   useHydrateDrafts(currentInstanceId, currentUserStatus);
-  // Start the Workspace messenger snapshot beside the old chat shell during migration.
+  // Workspace-мессенджер загружается параллельно старому чату.
+  // Старые Zulip stores новыми данными не кормим: для Workspace есть отдельный messenger store.
   useLayoutWorkspaceMessengerBootstrap();
+  const workspaceMessengerActive = isWorkspaceMessengerRoute(location.pathname);
 
-  // Safety net: keeps the org badge correct when mute state changes outside event/local flows.
+  // На Workspace-маршруте не запускаем пересчёт старых Zulip бейджей.
+  // Иначе старый unread-flow может перезаписать состояние, которое пришло из Workspace API.
   useEffect(() => {
-    if (!currentInstanceId) return;
+    if (!currentInstanceId || workspaceMessengerActive) return;
     syncUnreadSurfacesFromDelta({
       source: "layout-derived",
       instanceId: currentInstanceId,
@@ -235,6 +239,7 @@ export const Layout: React.FC = () => {
     followedTopicKeys,
     isStreamMuted,
     isEffectivelyMuted,
+    workspaceMessengerActive,
   ]);
 
   useLayoutWindowBranding({
@@ -248,7 +253,7 @@ export const Layout: React.FC = () => {
   });
 
   useLayoutMentionsSyncPolling({
-    enabled: isLayoutUserConnectionReady(currentUserStatus),
+    enabled: !workspaceMessengerActive && isLayoutUserConnectionReady(currentUserStatus),
     currentInstanceId,
   });
 
@@ -262,6 +267,9 @@ export const Layout: React.FC = () => {
   });
 
   useLayoutFolderSyncOrchestration({
+    // Старые папки построены вокруг Zulip chat ids.
+    // На Workspace-маршрутах папки уже приходят из Workspace API и живут в messenger store.
+    enabled: !workspaceMessengerActive,
     currentInstanceId,
     currentUserStatus,
     showSystemFolders,
@@ -301,6 +309,9 @@ export const Layout: React.FC = () => {
   });
 
   useLayoutZulipEventLoop({
+    // Это главный разрыв между ветками: старый long-polling не должен работать,
+    // когда экран открыт через Workspace project/stream/topic маршруты.
+    enabled: !workspaceMessengerActive,
     currentInstanceId,
     latestMessageIdRef,
     focusedMessageId,
@@ -312,10 +323,10 @@ export const Layout: React.FC = () => {
     setCurrentUserStatus,
   });
 
-  // Subscribe to persist only after clear/hydrate for the new instanceId —
-  // otherwise an empty snapshot overwrites the org key in IDB (see layout-chat-list-snapshot-sync.lib).
-  useLayoutChatListSnapshotSync(currentInstanceId);
-  useLayoutMuteSnapshotSync(currentInstanceId);
+  // Старые снимки чатов и mute-настроек пишутся в IDB только для Zulip-flow.
+  // Workspace-сайдбар не должен сохраняться через эти старые ключи.
+  useLayoutChatListSnapshotSync(currentInstanceId, !workspaceMessengerActive);
+  useLayoutMuteSnapshotSync(currentInstanceId, !workspaceMessengerActive);
   useLayoutResetRightDrawerOnInstanceChange({ currentInstanceId, closeRightDrawer });
 
   // Allow main shell while auth/history sync runs if sidebar was hydrated from IndexedDB.
@@ -371,7 +382,9 @@ export const Layout: React.FC = () => {
     rightDrawerOpen,
     setRightDrawerOpen,
     setSidebarOpen,
-    sidebarChats: selectedFolderSidebarChats,
+    // Быстрые клавиши старого списка чатов знают только Zulip chat ids.
+    // Для Workspace временно отдаём пустой список, чтобы не смешать два формата id.
+    sidebarChats: workspaceMessengerActive ? [] : selectedFolderSidebarChats,
     activeStreamSlug: activeStreamSlug ?? null,
     activeDmIdParam: dmIdParam ?? null,
     navigate,
@@ -440,6 +453,8 @@ export const Layout: React.FC = () => {
             openRightDrawerInfo={openRightDrawerInfo}
             openRightDrawerUserProfile={openRightDrawerUserProfile}
             shouldShowChatShell={shouldShowChatShell}
+            workspaceMessengerActive={workspaceMessengerActive}
+            pathname={location.pathname}
             sidebarOpen={sidebarOpen}
             rightDrawerMode={rightDrawerMode}
             onCloseRightDrawer={handleCloseRightDrawer}

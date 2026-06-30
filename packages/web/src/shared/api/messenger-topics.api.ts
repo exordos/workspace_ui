@@ -8,7 +8,6 @@ import {
   parseDto,
   parsePaginationHeaders,
   parseStrictDtoList,
-  projectScopedPaginationParams,
 } from "./messenger-transport.internal";
 import type {
   MessengerClientOptions,

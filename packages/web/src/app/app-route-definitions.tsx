@@ -124,6 +124,17 @@ export const AuthenticatedAppRoutes: React.FC<AuthenticatedAppRoutesProps> = ({
         <Route path="/updates" element={<UpdatePage />} />
       </Route>
       <Route path="/org/:orgId" element={<Layout />}>
+        {/* Ветка Workspace-мессенджера: orgId/projectId берём из route, а список чатов идёт через Workspace API. */}
+        <Route path="project/:projectId/messenger" element={<ChatPage key={location.pathname} />} />
+        <Route
+          path="project/:projectId/stream/:streamUuid"
+          element={<ChatPage key={location.pathname} />}
+        />
+        <Route
+          path="project/:projectId/stream/:streamUuid/topic/:topicUuid"
+          element={<ChatPage key={location.pathname} />}
+        />
+        <Route path="project/:projectId/message/:messageUuid" element={<MessageRedirectPage />} />
         <Route path="stream/:streamSlug" element={<ChatPage key={location.pathname} />} />
         <Route
           path="stream/:streamSlug/topic/:topicName"

@@ -14,6 +14,8 @@ import type { LayoutMainWorkspaceProps } from "./layout-main-workspace.types";
 
 export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
   shouldShowChatShell,
+  workspaceMessengerActive,
+  pathname,
   sidebarOpen,
   rightDrawerOpen,
   rightDrawerMode,
@@ -141,6 +143,8 @@ export const LayoutMainWorkspace = React.memo(function LayoutMainWorkspace({
         {shouldShowChatShell && sidebarOpen && (
           <SidebarShell
             sidebarStyle={sidebarStyle}
+            workspaceMessengerActive={workspaceMessengerActive}
+            pathname={pathname}
             sidebarResizeControl={
               <div
                 aria-label={t("layout.resizeSidebar")}

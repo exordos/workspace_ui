@@ -27,6 +27,7 @@ function getFolderSyncLabelsFromI18n(): FolderSyncSystemLabels {
 }
 
 export interface UseLayoutFolderSyncOrchestrationParams {
+  enabled?: boolean;
   currentInstanceId: string | null;
   currentUserStatus: "idle" | "loading" | "ready" | "degraded" | "blocked";
   showSystemFolders: boolean;
@@ -63,6 +64,7 @@ export function useLayoutFolderSyncOrchestration(
   params: UseLayoutFolderSyncOrchestrationParams,
 ): void {
   const {
+    enabled = true,
     currentInstanceId,
     currentUserStatus,
     showSystemFolders,
@@ -84,6 +86,7 @@ export function useLayoutFolderSyncOrchestration(
     online,
   } = params;
 
+  // enabled нужен для миграции: на Workspace-маршрутах старый folder-sync не должен трогать сайдбар.
   const folderSyncConfigRef = useRef({
     showSystemFolders,
     labels: getFolderSyncLabelsFromI18n(),
@@ -96,9 +99,10 @@ export function useLayoutFolderSyncOrchestration(
     };
   }, [showSystemFolders, language]);
 
-  useLayoutPinFolderItemsSync(folderItemsByFolderId);
+  useLayoutPinFolderItemsSync(folderItemsByFolderId, enabled);
 
   useEffect(() => {
+    if (!enabled) return;
     const folderSyncInstanceId = useFolderSyncStore.getState().instanceId;
     if (currentInstanceId == null || folderSyncInstanceId !== currentInstanceId) {
       return;
@@ -119,6 +123,7 @@ export function useLayoutFolderSyncOrchestration(
       isStreamMuted,
     });
   }, [
+    enabled,
     chatsSortedByLastMessage,
     currentUserId,
     currentInstanceId,
@@ -134,6 +139,7 @@ export function useLayoutFolderSyncOrchestration(
   ]);
 
   useEffect(() => {
+    if (!enabled) return;
     if (currentInstanceId == null) {
       return;
     }
@@ -152,13 +158,15 @@ export function useLayoutFolderSyncOrchestration(
       showSystemFolders: showSys,
       labels,
     });
-  }, [currentInstanceId, currentUserStatus, bootstrapFolderSync]);
+  }, [enabled, currentInstanceId, currentUserStatus, bootstrapFolderSync]);
 
   useEffect(() => {
+    if (!enabled) return;
     syncFolderSyncDerived(showSystemFolders, getFolderSyncLabelsFromI18n());
-  }, [language, showSystemFolders, syncFolderSyncDerived]);
+  }, [enabled, language, showSystemFolders, syncFolderSyncDerived]);
 
   useEffect(() => {
+    if (!enabled) return;
     return startFolderPolling({
       enabled:
         currentInstanceId != null &&
@@ -168,5 +176,5 @@ export function useLayoutFolderSyncOrchestration(
       refreshFolders: () => refreshFolderSync("polling"),
       runImmediately: false,
     });
-  }, [currentInstanceId, currentUserStatus, online, refreshFolderSync]);
+  }, [enabled, currentInstanceId, currentUserStatus, online, refreshFolderSync]);
 }

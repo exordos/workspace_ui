@@ -18,14 +18,16 @@ export const SidebarSearchHeader: React.FC<SidebarSearchHeaderProps> = ({
         ariaLabel={t("search.search")}
         className="flex-1"
       />
-      <button
-        type="button"
-        onClick={onOpenCreateChat}
-        className="hover:bg-bg/60 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:text-text-primary"
-        aria-label={t("nav.newChat")}
-      >
-        <Icon name="newWindow" size={20} />
-      </button>
+      {onOpenCreateChat != null ? (
+        <button
+          type="button"
+          onClick={onOpenCreateChat}
+          className="hover:bg-bg/60 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:text-text-primary"
+          aria-label={t("nav.newChat")}
+        >
+          <Icon name="newWindow" size={20} />
+        </button>
+      ) : null}
     </div>
   );
 };

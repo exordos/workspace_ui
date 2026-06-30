@@ -40,6 +40,8 @@ vi.mock("~/widgets/right-panel/right-panel-shell.ui", () => ({
 function buildProps(overrides: Partial<LayoutMainWorkspaceProps> = {}): LayoutMainWorkspaceProps {
   return {
     shouldShowChatShell: true,
+    workspaceMessengerActive: false,
+    pathname: "/",
     sidebarOpen: true,
     rightDrawerOpen: false,
     rightDrawerMode: "info",

@@ -5,8 +5,12 @@ import type { FolderItemForClient } from "~/shared/api/workspace-client";
 /** Mirrors folder API items into the pin store for ordering UI. */
 export function useLayoutPinFolderItemsSync(
   folderItemsByFolderId: ReadonlyMap<string, FolderItemForClient[]>,
+  enabled = true,
 ): void {
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
     // While folder items are still loading, the map is often empty — skip sync to avoid
     // setFromServer([]) wiping folderItemIds needed for pin/unpin API calls.
     if (folderItemsByFolderId.size === 0) {
@@ -35,5 +39,5 @@ export function useLayoutPinFolderItemsSync(
       return;
     }
     usePinStore.getState().setFromServer(rows);
-  }, [folderItemsByFolderId]);
+  }, [enabled, folderItemsByFolderId]);
 }

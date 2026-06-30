@@ -251,6 +251,7 @@ function resolveSelfUserIdFromMembers(
 }
 
 export function useLayoutZulipEventLoop(options: {
+  enabled?: boolean;
   currentInstanceId: string | null;
   /** Shared with reconnect refresh so sidebar delta anchor stays in sync. */
   latestMessageIdRef?: LatestMessageIdRef;
@@ -266,6 +267,7 @@ export function useLayoutZulipEventLoop(options: {
   setCurrentUserStatus: (status: LayoutUserConnectionStatus) => void;
 }): void {
   const {
+    enabled = true,
     currentInstanceId,
     latestMessageIdRef: latestMessageIdRefProp,
     focusedMessageId,
@@ -340,6 +342,14 @@ export function useLayoutZulipEventLoop(options: {
   };
 
   useEffect(() => {
+    if (!enabled) {
+      // Workspace-маршрут не использует Zulip long-polling.
+      // При входе в него чистим отложенный reconnect, чтобы старый ответ не проснулся позже.
+      prevInstanceForBootstrapRef.current = null;
+      cancelScheduledReconnect();
+      clearRefreshStaleCallback(onRefreshStaleRef);
+      return;
+    }
     if (!currentInstanceId) {
       prevInstanceForBootstrapRef.current = null;
       clearMessengerShellState("active instance cleared");
@@ -868,5 +878,5 @@ export function useLayoutZulipEventLoop(options: {
         resolveLatestMessageIdRef(latestMessageIdRefProp, internalLatestMessageIdRef),
       );
     };
-  }, [currentInstanceId, latestMessageIdRefProp, onRefreshStaleRef]);
+  }, [enabled, currentInstanceId, latestMessageIdRefProp, onRefreshStaleRef]);
 }

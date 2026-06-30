@@ -1,0 +1,313 @@
+import React, { useCallback, useMemo } from "react";
+import { Link, useLocation } from "react-router-dom";
+import type {
+  MessengerSidebarStreamItem,
+  MessengerSidebarTopicItem,
+} from "~/entities/messenger/messenger.types";
+import { useSettingsStore } from "~/features/settings/settings.model";
+import { t } from "~/i18n/i18n";
+import { sidebarRowClass } from "~/shared/lib/format";
+import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
+import { Avatar } from "~/shared/ui/avatar";
+import { Icon } from "~/shared/ui/icon";
+import { ScrollArea } from "~/shared/ui/scroll-area";
+import { Spinner } from "~/shared/ui/spinner.ui";
+import { SidebarActivity } from "./sidebar-activity.ui";
+import { sidebarChatRowBodyClass, sidebarChatRowLinkClass } from "./sidebar-chat-row-layout.lib";
+import { SidebarChatRowMeta } from "./sidebar-chat-row-meta.ui";
+import { useSidebarConfigStore } from "./sidebar-config.model";
+import { normalizeSidebarSearchQuery } from "./sidebar-filtering.lib";
+import { SidebarMessagePreview } from "./sidebar-message-preview.ui";
+import { SidebarSearchHeader } from "./sidebar-search-header.ui";
+import { useSidebarTopicCollapse } from "./sidebar-topic-collapse.hook";
+import { SidebarTopicShowMoreButton } from "./sidebar-topic-show-more.ui";
+
+export interface WorkspaceSidebarProps {
+  streams: MessengerSidebarStreamItem[];
+  loading: boolean;
+  error: string | null;
+  activityPanelBottomSlot?: React.ReactNode;
+}
+
+// Этот компонент только рисует новый список чатов.
+// Данные, ссылки и счётчики уже подготовлены селекторами messenger-sidebar.lib.ts.
+function workspaceStreamMatchesQuery(
+  stream: MessengerSidebarStreamItem,
+  normalizedQuery: string,
+): boolean {
+  if (normalizedQuery.length === 0) return true;
+  return (
+    stream.title.toLowerCase().includes(normalizedQuery) ||
+    stream.topics.some((topic) => topic.title.toLowerCase().includes(normalizedQuery))
+  );
+}
+
+function workspaceTopicMatchesQuery(
+  topic: MessengerSidebarTopicItem,
+  normalizedQuery: string,
+): boolean {
+  return normalizedQuery.length === 0 || topic.title.toLowerCase().includes(normalizedQuery);
+}
+
+function WorkspaceSidebarTopicRow({
+  topic,
+  activeTopicUuid,
+  compact,
+}: Readonly<{
+  topic: MessengerSidebarTopicItem;
+  activeTopicUuid: string | null;
+  compact: boolean;
+}>): React.ReactElement {
+  const isActive = activeTopicUuid === topic.topicUuid;
+
+  return (
+    <Link
+      to={topic.route}
+      className={`flex w-full min-w-0 items-stretch gap-3 rounded-r-lg border-l-4 border-indicator-yellow py-2 pl-3 pr-2 transition-colors ${sidebarRowClass(
+        isActive,
+      )}`}
+    >
+      <div className="min-w-0 flex-1">
+        <div
+          className={`truncate text-sm font-medium text-text-primary ${
+            topic.isDone ? "line-through opacity-70" : ""
+          }`}
+        >
+          {topic.title}
+        </div>
+        {!compact && <SidebarMessagePreview />}
+      </div>
+      <SidebarChatRowMeta
+        compact={compact}
+        isPinned={false}
+        unreadCount={topic.unreadCount}
+        hasMention={false}
+      />
+    </Link>
+  );
+}
+
+const WorkspaceSidebarTopics = React.memo(function WorkspaceSidebarTopics({
+  stream,
+  activeTopicUuid,
+  normalizedQuery,
+  compact,
+}: {
+  stream: MessengerSidebarStreamItem;
+  activeTopicUuid: string | null;
+  normalizedQuery: string;
+  compact: boolean;
+}): React.ReactElement | null {
+  const topics = useMemo(
+    () => stream.topics.filter((topic) => workspaceTopicMatchesQuery(topic, normalizedQuery)),
+    [normalizedQuery, stream.topics],
+  );
+  const { allTopicsVisible, hiddenCount, showToggle, visibleCount, toggleAllTopics } =
+    useSidebarTopicCollapse(topics.length);
+  const visibleTopics = topics.slice(0, visibleCount);
+
+  if (topics.length === 0) return null;
+
+  return (
+    <>
+      <div className="ml-4 mt-0.5 space-y-0.5 border-l-2 border-transparent pl-2">
+        {visibleTopics.map((topic) => (
+          <WorkspaceSidebarTopicRow
+            key={topic.id}
+            topic={topic}
+            activeTopicUuid={activeTopicUuid}
+            compact={compact}
+          />
+        ))}
+      </div>
+      {showToggle && (
+        <SidebarTopicShowMoreButton
+          expanded={allTopicsVisible}
+          hiddenCount={hiddenCount}
+          onToggle={toggleAllTopics}
+        />
+      )}
+    </>
+  );
+});
+
+function WorkspaceSidebarStreamRow({
+  stream,
+  expanded,
+  activeStreamUuid,
+  activeTopicUuid,
+  normalizedQuery,
+  compact,
+  onToggleStream,
+}: Readonly<{
+  stream: MessengerSidebarStreamItem;
+  expanded: boolean;
+  activeStreamUuid: string | null;
+  activeTopicUuid: string | null;
+  normalizedQuery: string;
+  compact: boolean;
+  onToggleStream: (streamUuid: string) => void;
+}>): React.ReactElement {
+  const isActive = activeStreamUuid === stream.streamUuid && activeTopicUuid == null;
+  const rowClass = sidebarChatRowLinkClass(compact, "stream");
+  const avatarSize = compact ? "sm" : "md";
+  const avatarLabel = stream.isPrivate ? stream.title.slice(0, 1) : "#";
+  const title = stream.isPrivate ? stream.title : `#${stream.title}`;
+
+  return (
+    <>
+      <div className="relative">
+        <Link
+          to={stream.route}
+          className={`${rowClass} w-full ${
+            expanded || isActive ? "bg-sidebar-hover" : "hover:bg-sidebar-hover"
+          }`}
+          onClick={() => {
+            if (!expanded) onToggleStream(stream.streamUuid);
+          }}
+        >
+          <Avatar size={avatarSize}>{avatarLabel}</Avatar>
+          <div className={sidebarChatRowBodyClass(compact)}>
+            <div className="truncate text-sm font-medium text-text-primary">{title}</div>
+            {!compact && <SidebarMessagePreview />}
+          </div>
+          <SidebarChatRowMeta
+            compact={compact}
+            isPinned={stream.pinnedAt != null}
+            unreadCount={stream.unreadCount}
+            hasMention={false}
+            expandChevron={
+              stream.topics.length > 0
+                ? {
+                    expanded,
+                    onToggle: () => onToggleStream(stream.streamUuid),
+                    ariaLabel: expanded ? t("a11y.collapseTopics") : t("a11y.expandTopics"),
+                  }
+                : undefined
+            }
+          />
+        </Link>
+      </div>
+      {expanded && (
+        <WorkspaceSidebarTopics
+          stream={stream}
+          activeTopicUuid={activeTopicUuid}
+          normalizedQuery={normalizedQuery}
+          compact={compact}
+        />
+      )}
+    </>
+  );
+}
+
+export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
+  streams,
+  loading,
+  error,
+  activityPanelBottomSlot,
+}) => {
+  const location = useLocation();
+  const activityOpen = useSidebarConfigStore((s) => s.activityOpen);
+  const setActivityOpen = useSidebarConfigStore((s) => s.setActivityOpen);
+  const expandedStreamSlugs = useSidebarConfigStore((s) => s.expandedStreamSlugs);
+  const toggleExpandedStreamSlug = useSidebarConfigStore((s) => s.toggleExpandedStreamSlug);
+  const searchQuery = useSidebarConfigStore((s) => s.searchQuery);
+  const setSearchQuery = useSidebarConfigStore((s) => s.setSearchQuery);
+  const compact = useSettingsStore((s) => s.chatListDensity === "compact");
+  const routeMatch = useMemo(
+    () => parseWorkspaceMessengerRoute(location.pathname),
+    [location.pathname],
+  );
+  // Активную строку определяем по Workspace UUID из адреса, а не по старым Zulip slug/id.
+  const activeStreamUuid =
+    routeMatch?.kind === "stream" || routeMatch?.kind === "topic" ? routeMatch.streamUuid : null;
+  const activeTopicUuid = routeMatch?.kind === "topic" ? routeMatch.topicUuid : null;
+  const normalizedQuery = useMemo(
+    () => normalizeSidebarSearchQuery(searchQuery),
+    [searchQuery],
+  );
+  const filteredStreams = useMemo(
+    // Поиск здесь локальный: он фильтрует уже загруженный список и не ходит в API.
+    () => streams.filter((stream) => workspaceStreamMatchesQuery(stream, normalizedQuery)),
+    [normalizedQuery, streams],
+  );
+  const handleToggleActivity = useCallback(
+    () => setActivityOpen(!activityOpen),
+    [activityOpen, setActivityOpen],
+  );
+
+  return (
+    <aside
+      className="flex min-h-0 w-full min-w-0 flex-shrink-0 overflow-hidden rounded-xl bg-sidebar-bg"
+      data-focus-zone="sidebar"
+      role="navigation"
+      aria-label="Chat list"
+    >
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <ScrollArea className="flex-1 scrollbar-track-sidebar-bg" data-sidebar-scroll>
+          <SidebarSearchHeader searchQuery={searchQuery} onSearchQueryChange={setSearchQuery} />
+          <SidebarActivity open={activityOpen} onToggle={handleToggleActivity} />
+          {activityPanelBottomSlot != null && (
+            <>
+              {activityPanelBottomSlot}
+              <div className="my-2">
+                <div className="bg-border-subtle/70 h-px" />
+              </div>
+            </>
+          )}
+          {loading && filteredStreams.length === 0 ? (
+            <div className="px-3 py-4">
+              <div
+                className="bg-bg-elevated/40 flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border-subtle px-3 py-6 text-center"
+                role="status"
+                aria-live="polite"
+                aria-busy="true"
+              >
+                <Spinner size="lg" className="shrink-0" />
+                <p className="text-sm text-text-muted">{t("app.loading")}</p>
+              </div>
+            </div>
+          ) : null}
+          {error != null && filteredStreams.length === 0 ? (
+            <div className="px-3 py-4">
+              <div className="bg-bg-elevated/40 flex flex-col items-center gap-2 rounded-lg border border-dashed border-border-subtle px-3 py-5 text-center">
+                <Icon name="info" size={18} className="text-notice-base" />
+                <p className="text-sm font-medium text-text-primary">{t("app.error")}</p>
+                <p className="max-w-[220px] text-xs text-text-muted">{error}</p>
+              </div>
+            </div>
+          ) : null}
+          {!loading && error == null && filteredStreams.length === 0 ? (
+            <div className="px-3 py-4">
+              <div className="bg-bg-elevated/40 flex flex-col items-center gap-2 rounded-lg border border-dashed border-border-subtle px-3 py-5 text-center">
+                <Icon name="chatBubble" size={18} className="text-text-muted" />
+                <p className="text-sm font-medium text-text-primary">
+                  {t("folder.emptyAllChats")}
+                </p>
+                <p className="max-w-[220px] text-xs text-text-muted">
+                  {t("folder.emptyAllChatsHint")}
+                </p>
+              </div>
+            </div>
+          ) : null}
+          {filteredStreams.length > 0 ? (
+            <div className="space-y-0.5 px-2">
+              {filteredStreams.map((stream) => (
+                <WorkspaceSidebarStreamRow
+                  key={stream.id}
+                  stream={stream}
+                  expanded={expandedStreamSlugs.includes(stream.streamUuid)}
+                  activeStreamUuid={activeStreamUuid}
+                  activeTopicUuid={activeTopicUuid}
+                  normalizedQuery={normalizedQuery}
+                  compact={compact}
+                  onToggleStream={toggleExpandedStreamSlug}
+                />
+              ))}
+            </div>
+          ) : null}
+        </ScrollArea>
+      </div>
+    </aside>
+  );
+};
