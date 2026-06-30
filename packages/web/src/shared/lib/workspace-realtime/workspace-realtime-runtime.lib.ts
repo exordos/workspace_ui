@@ -437,6 +437,7 @@ export function createWorkspaceRealtimeTransportCore(
     const url = buildMessengerWebSocketUrl({
       baseUrl: options.webSocketBaseUrl,
       lastEpochVersion: currentCursor,
+      projectId: activeContext.owner.projectId,
     });
     const protocols = buildMessengerWebSocketProtocols(options.clientOptions.accessToken ?? "");
     socket = webSocketFactory(url, protocols);

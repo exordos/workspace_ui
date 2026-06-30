@@ -203,7 +203,9 @@ describe("workspace-realtime transport runtime", () => {
     await runtime.start(context);
 
     expect(order).toEqual(["epoch", "catch-up", "connect"]);
-    expect(sockets[0]?.url).toBe("/api/messenger/ws?last_epoch_version=10");
+    expect(sockets[0]?.url).toBe(
+      `/api/messenger/ws?last_epoch_version=10&project_id=${PROJECT_UUID}`,
+    );
     expect(sockets[0]?.protocols).toEqual(["workspace.events.v1", "bearer.access-token"]);
   });
 

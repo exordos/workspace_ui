@@ -43,6 +43,7 @@ export interface GetEventsQuery extends MessengerPaginationQuery {
 export interface BuildMessengerWebSocketUrlOptions {
   baseUrl?: string;
   lastEpochVersion: number;
+  projectId?: string;
 }
 
 function projectScopedRealtimeParams(
@@ -147,11 +148,16 @@ export async function getEpoch(
 export function buildMessengerWebSocketUrl({
   baseUrl,
   lastEpochVersion,
+  projectId,
 }: BuildMessengerWebSocketUrlOptions): string {
   const root = baseUrl == null ? "" : baseUrl.replace(/\/+$/, "");
   const search = new URLSearchParams({
     last_epoch_version: String(lastEpochVersion),
   });
+  const scopedProjectId = projectId?.trim();
+  if (scopedProjectId != null && scopedProjectId.length > 0) {
+    search.set("project_id", scopedProjectId);
+  }
   return `${root}${DEFAULT_MESSENGER_WEBSOCKET_PATH}?${search.toString()}`;
 }
 

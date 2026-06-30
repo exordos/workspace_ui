@@ -335,8 +335,11 @@ describe("messenger-realtime.api", () => {
       buildMessengerWebSocketUrl({
         baseUrl: "https://chat.example.com/",
         lastEpochVersion: 125,
+        projectId: PROJECT_UUID,
       }),
-    ).toBe("https://chat.example.com/api/messenger/ws?last_epoch_version=125");
+    ).toBe(
+      `https://chat.example.com/api/messenger/ws?last_epoch_version=125&project_id=${PROJECT_UUID}`,
+    );
     expect(buildMessengerWebSocketProtocols("  access-token  ")).toEqual([
       "workspace.events.v1",
       "bearer.access-token",
