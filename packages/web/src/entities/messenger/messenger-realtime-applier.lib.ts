@@ -127,7 +127,11 @@ export function createMessengerRealtimeActiveApplier(
           break;
         }
         case "folder_item":
-          store.removeFolderItem(context.ownerKey, { uuid: event.folder_item.uuid });
+          store.removeFolderItem(
+            context.ownerKey,
+            { uuid: event.folder_item.uuid },
+            { preserveFolderUnreadCount: true },
+          );
           break;
       }
 

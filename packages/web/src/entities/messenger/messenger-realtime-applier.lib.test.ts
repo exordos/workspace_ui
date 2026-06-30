@@ -13,10 +13,14 @@ import type {
   WorkspaceRealtimeRuntimeOwner,
 } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
 import { createMessengerRealtimeActiveApplier } from "./messenger-realtime-applier.lib";
-import { selectMessengerSidebarStreams } from "./messenger-sidebar.lib";
+import {
+  selectMessengerSidebarFolders,
+  selectMessengerSidebarStreams,
+} from "./messenger-sidebar.lib";
 import {
   selectMessengerFolders,
   selectMessengerMessagesForConversation,
+  selectMessengerSidebarConversations,
   useMessengerStore,
 } from "./messenger.model";
 
@@ -734,5 +738,245 @@ describe("messenger realtime active applier", () => {
     expect(useMessengerStore.getState().streamsById[STREAM_A]).toBeUndefined();
     expect(useMessengerStore.getState().streamBindingsById[STREAM_BINDING_A]).toBeUndefined();
     expect(useMessengerStore.getState().lastEpochVersion).toBe(61);
+  });
+
+  it("uses folder realtime snapshots as the source of truth for title, counters, and items", () => {
+    const context = createContext();
+    const applier = createMessengerRealtimeActiveApplier();
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+
+    applier.applyEvent(
+      {
+        epoch_version: 71,
+        type: "folder",
+        kind: "folder.created",
+        folder: createFolderDto({
+          title: "Inbox",
+          unread_count: 12,
+          folder_items: [
+            {
+              uuid: FOLDER_ITEM_A,
+              project_id: PROJECT_A,
+              folder_uuid: FOLDER_A,
+              user_uuid: USER_A,
+              stream_uuid: STREAM_A,
+              chat_type: "stream",
+              order_index: 10,
+              pinned_at: null,
+              unread_count: 2,
+              created_at: DATE,
+              updated_at: DATE,
+            },
+          ],
+        }),
+      },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 72,
+        type: "folder",
+        kind: "folder.updated",
+        folder: createFolderDto({
+          title: "Backend inbox",
+          unread_count: 9,
+          folder_items: [],
+          updated_at: DATE_LATER,
+        }),
+      },
+      context,
+    );
+
+    expect(selectMessengerFolders(useMessengerStore.getState())).toEqual([
+      expect.objectContaining({
+        uuid: FOLDER_A,
+        title: "Backend inbox",
+        unreadCount: 9,
+        items: [],
+        updatedAt: DATE_LATER,
+      }),
+    ]);
+  });
+
+  it("removes realtime folder item membership while preserving the backend folder counter", () => {
+    const context = createContext();
+    const applier = createMessengerRealtimeActiveApplier();
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+    applier.applyEvent(
+      {
+        epoch_version: 81,
+        type: "folder",
+        kind: "folder.created",
+        folder: createFolderDto({
+          unread_count: 9,
+          folder_items: [
+            {
+              uuid: FOLDER_ITEM_A,
+              project_id: PROJECT_A,
+              folder_uuid: FOLDER_A,
+              user_uuid: USER_A,
+              stream_uuid: STREAM_A,
+              chat_type: "stream",
+              order_index: 10,
+              pinned_at: null,
+              unread_count: 2,
+              created_at: DATE,
+              updated_at: DATE,
+            },
+          ],
+        }),
+      },
+      context,
+    );
+
+    applier.applyEvent(
+      {
+        epoch_version: 82,
+        type: "folder_item",
+        kind: "folder_item.deleted",
+        folder_item: { uuid: FOLDER_ITEM_A },
+      },
+      context,
+    );
+
+    expect(useMessengerStore.getState().foldersById[FOLDER_A]).toEqual(
+      expect.objectContaining({
+        unreadCount: 9,
+        items: [],
+      }),
+    );
+  });
+
+  it("adds realtime created streams to sidebar and conversation surfaces", () => {
+    const context = createContext();
+    const applier = createMessengerRealtimeActiveApplier();
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+
+    applier.applyEvent(
+      {
+        epoch_version: 91,
+        type: "stream",
+        kind: "stream.created",
+        stream: createStreamDto({ name: "Realtime engineering" }),
+      },
+      context,
+    );
+
+    expect(
+      selectMessengerSidebarStreams(useMessengerStore.getState(), {
+        organizationId: ORGANIZATION_A,
+        projectId: PROJECT_A,
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        id: `stream:${STREAM_A}`,
+        streamUuid: STREAM_A,
+        title: "Realtime engineering",
+      }),
+    ]);
+    expect(selectMessengerSidebarConversations(useMessengerStore.getState())).toEqual([
+      expect.objectContaining({
+        id: `stream:${STREAM_A}`,
+        streamUuid: STREAM_A,
+        title: "Realtime engineering",
+      }),
+    ]);
+  });
+
+  it("uses stream binding realtime events to refresh binding indexes and derived conversations", () => {
+    const context = createContext();
+    const applier = createMessengerRealtimeActiveApplier();
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+    applier.applyEvent(
+      {
+        epoch_version: 101,
+        type: "stream",
+        kind: "stream.created",
+        stream: createStreamDto(),
+      },
+      context,
+    );
+    useMessengerStore.setState({
+      conversationsById: {},
+      conversationIds: [],
+    });
+
+    applier.applyEvent(
+      {
+        epoch_version: 102,
+        type: "stream_binding",
+        kind: "stream_bindings.created",
+        stream_uuid: STREAM_A,
+        stream_bindings: [createStreamBindingDto()],
+      },
+      context,
+    );
+
+    const state = useMessengerStore.getState();
+    expect(state.streamBindingIds).toEqual([STREAM_BINDING_A]);
+    expect(state.streamBindingIdsByStreamId[STREAM_A]).toEqual([STREAM_BINDING_A]);
+    expect(selectMessengerSidebarConversations(state)).toEqual([
+      expect.objectContaining({ id: `stream:${STREAM_A}`, streamUuid: STREAM_A }),
+    ]);
+  });
+
+  it("keeps system folders stable after realtime folder updates", () => {
+    const context = createContext();
+    const applier = createMessengerRealtimeActiveApplier();
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+
+    applier.applyEvent(
+      {
+        epoch_version: 111,
+        type: "folder",
+        kind: "folder.created",
+        folder: createFolderDto({
+          title: "All chats",
+          unread_count: 12,
+          system_type: "all",
+          folder_items: [],
+        }),
+      },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 112,
+        type: "folder",
+        kind: "folder.updated",
+        folder: createFolderDto({
+          title: "All chats",
+          unread_count: 7,
+          system_type: "all",
+          folder_items: [
+            {
+              uuid: FOLDER_ITEM_A,
+              project_id: PROJECT_A,
+              folder_uuid: FOLDER_A,
+              user_uuid: USER_A,
+              stream_uuid: STREAM_A,
+              chat_type: "stream",
+              order_index: 10,
+              pinned_at: null,
+              unread_count: 1,
+              created_at: DATE,
+              updated_at: DATE_LATER,
+            },
+          ],
+          updated_at: DATE_LATER,
+        }),
+      },
+      context,
+    );
+
+    expect(selectMessengerSidebarFolders(useMessengerStore.getState())).toEqual([
+      expect.objectContaining({
+        folderUuid: FOLDER_A,
+        title: "All chats",
+        unreadCount: 7,
+        systemType: "all",
+        items: [expect.objectContaining({ uuid: FOLDER_ITEM_A, unreadCount: 1 })],
+      }),
+    ]);
   });
 });

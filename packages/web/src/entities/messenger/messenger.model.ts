@@ -143,7 +143,11 @@ export interface MessengerStoreState extends MessengerDomainData {
   applyFolderSnapshot: (ownerKey: string, folder: MessengerFolder) => void;
   removeFolder: (ownerKey: string, folder: MessengerDeletedFolder) => void;
   upsertFolderItem: (ownerKey: string, folderItem: MessengerFolderItem) => void;
-  removeFolderItem: (ownerKey: string, folderItem: MessengerDeletedFolderItem) => void;
+  removeFolderItem: (
+    ownerKey: string,
+    folderItem: MessengerDeletedFolderItem,
+    options?: MessengerFolderItemRemovalOptions,
+  ) => void;
   setRealtimeCursor: (ownerKey: string, epochVersion: number) => void;
   markRealtimeEventSkipped: (ownerKey: string, epochVersion: number, reason: string) => void;
   setBootstrapError: (ownerKey: string, error: string) => void;
@@ -163,6 +167,10 @@ export interface MessengerScopedMessageMutationOptions {
 export interface MessengerMessageEditPatch {
   markdown: string;
   updatedAt?: string;
+}
+
+export interface MessengerFolderItemRemovalOptions {
+  preserveFolderUnreadCount?: boolean;
 }
 
 function createEmptyMessengerData(): MessengerDomainData {
@@ -534,11 +542,17 @@ function removeConversationPageState(
 function rebuildFolderWithItems(
   folder: MessengerFolder,
   items: MessengerFolderItem[],
+  options?: { preserveUnreadCount?: boolean },
 ): MessengerFolder {
   return {
     ...folder,
     items,
-    unreadCount: items.reduce((total, item) => total + item.unreadCount, 0),
+    // Для realtime folder_item.deleted backend не присылает новый счётчик папки.
+    // Поэтому оставляем Folder DTO source of truth до следующего folder.updated snapshot.
+    unreadCount:
+      options?.preserveUnreadCount === true
+        ? folder.unreadCount
+        : items.reduce((total, item) => total + item.unreadCount, 0),
   };
 }
 
@@ -1015,6 +1029,8 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
       const nextStreamBindingsById = { ...state.streamBindingsById };
       let nextStreamBindingIds = state.streamBindingIds;
       const nextStreamBindingIdsByStreamId = { ...state.streamBindingIdsByStreamId };
+      let nextConversationsById = state.conversationsById;
+      let nextConversationIds = state.conversationIds;
 
       for (const binding of bindings) {
         const previous = nextStreamBindingsById[binding.uuid];
@@ -1031,12 +1047,37 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
           nextStreamBindingIdsByStreamId[binding.streamUuid] ?? EMPTY_IDS,
           binding.uuid,
         );
+
+        const stream = state.streamsById[binding.streamUuid];
+        if (stream == null) continue;
+
+        // stream_binding показывает, что текущий пользователь видит stream.
+        // Поэтому binding event должен оживить chat surface, даже если stream snapshot уже был в store.
+        let conversationState = upsertConversation(
+          {
+            conversationsById: nextConversationsById,
+            conversationIds: nextConversationIds,
+          },
+          conversationFromStream(stream),
+        );
+        for (const topicId of state.topicIds) {
+          const topic = state.topicsById[topicId];
+          if (topic?.streamUuid !== stream.uuid) continue;
+          conversationState = upsertConversation(
+            conversationState,
+            conversationFromTopic(topic, stream),
+          );
+        }
+        nextConversationsById = conversationState.conversationsById;
+        nextConversationIds = conversationState.conversationIds;
       }
 
       return {
         streamBindingsById: nextStreamBindingsById,
         streamBindingIds: nextStreamBindingIds,
         streamBindingIdsByStreamId: nextStreamBindingIdsByStreamId,
+        conversationsById: nextConversationsById,
+        conversationIds: nextConversationIds,
       };
     });
   },
@@ -1342,7 +1383,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     });
   },
 
-  removeFolderItem(ownerKey, folderItem) {
+  removeFolderItem(ownerKey, folderItem, options) {
     logStoreAction("messenger", "removeFolderItem", {
       ownerKey,
       folderItemUuid: folderItem.uuid,
@@ -1359,7 +1400,9 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
         const nextItems = folder.items.filter((item) => item.uuid !== folderItem.uuid);
         if (nextItems.length === folder.items.length) continue;
 
-        nextFoldersById[folderId] = rebuildFolderWithItems(folder, nextItems);
+        nextFoldersById[folderId] = rebuildFolderWithItems(folder, nextItems, {
+          preserveUnreadCount: options?.preserveFolderUnreadCount,
+        });
         didChange = true;
       }
 
