@@ -13,7 +13,12 @@ import type {
   WorkspaceRealtimeRuntimeOwner,
 } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
 import { createMessengerRealtimeActiveApplier } from "./messenger-realtime-applier.lib";
-import { selectMessengerFolders, useMessengerStore } from "./messenger.model";
+import { selectMessengerSidebarStreams } from "./messenger-sidebar.lib";
+import {
+  selectMessengerFolders,
+  selectMessengerMessagesForConversation,
+  useMessengerStore,
+} from "./messenger.model";
 
 const ACCOUNT_A = "account-a";
 const INSTANCE_A = "instance-a";
@@ -21,12 +26,17 @@ const ORGANIZATION_A = "organization-a";
 const PROJECT_A = "22222222-2222-4222-8222-222222222222";
 const USER_A = "11111111-1111-4111-8111-111111111111";
 const STREAM_A = "75309057-419c-4b12-a7c1-3932429ec4a6";
+const STREAM_B = "37a28696-153d-431e-a5fb-36f0c0209765";
 const STREAM_BINDING_A = "ea4364f4-96e3-4b33-b80d-fd53e5697151";
 const TOPIC_A = "4ec0b996-b778-45f8-8ef4-ef863be0c047";
+const TOPIC_B = "ed25f944-8106-4386-b2f9-65e9db32d465";
 const FOLDER_A = "50ecadd0-9823-4d97-b54c-806cc672c210";
 const FOLDER_ITEM_A = "9f41b1a7-77f9-4c12-bdc6-d3cebc5dbf50";
+const FOLDER_ITEM_B = "5f5b9a9d-0e57-4775-849b-c8308f95a809";
 const MESSAGE_A = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
+const MESSAGE_B = "78105b9e-f1ac-41f1-baf5-2975486cc7dc";
 const DATE = "2026-06-22T10:10:00Z";
+const DATE_LATER = "2026-06-22T10:20:00Z";
 
 function createOwner(overrides: Partial<WorkspaceRealtimeRuntimeOwner> = {}) {
   return {
@@ -171,6 +181,36 @@ function createFolderDto(
   };
 }
 
+function applyStreamAndTopicSnapshot(
+  applier: ReturnType<typeof createMessengerRealtimeActiveApplier>,
+  context: WorkspaceRealtimeEventContext,
+  options: {
+    stream?: Partial<WorkspaceMessengerStreamDto>;
+    topic?: Partial<WorkspaceMessengerTopicDto>;
+    streamEpoch?: number;
+    topicEpoch?: number;
+  } = {},
+): void {
+  applier.applyEvent(
+    {
+      epoch_version: options.streamEpoch ?? 1,
+      type: "stream",
+      kind: "stream.created",
+      stream: createStreamDto(options.stream),
+    },
+    context,
+  );
+  applier.applyEvent(
+    {
+      epoch_version: options.topicEpoch ?? 2,
+      type: "topic",
+      kind: "topic.created",
+      topic: createTopicDto(options.topic),
+    },
+    context,
+  );
+}
+
 describe("messenger realtime active applier", () => {
   beforeEach(() => {
     useMessengerStore.getState().clear();
@@ -227,6 +267,263 @@ describe("messenger realtime active applier", () => {
 
     expect(useMessengerStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
     expect(useMessengerStore.getState().lastEpochVersion).toBe(13);
+  });
+
+  it("deduplicates repeated message events by uuid across topic and stream buckets", () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const applier = createMessengerRealtimeActiveApplier();
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    applyStreamAndTopicSnapshot(applier, context);
+
+    const event = {
+      epoch_version: 11,
+      type: "message",
+      message: createMessageDto(),
+    } satisfies WorkspaceRealtimeEvent;
+    applier.applyEvent(event, { ...context, source: "catch_up" });
+    applier.applyEvent({ ...event, epoch_version: 12 }, context);
+
+    const state = useMessengerStore.getState();
+    expect(Object.keys(state.messagesById)).toEqual([MESSAGE_A]);
+    expect(state.messageIdsByConversationId[`stream:${STREAM_A}`]).toEqual([MESSAGE_A]);
+    expect(state.messageIdsByConversationId[`topic:${STREAM_A}:${TOPIC_A}`]).toEqual([MESSAGE_A]);
+    expect(state.streamsById[STREAM_A]?.lastMessageUuid).toBe(MESSAGE_A);
+    expect(state.topicsById[TOPIC_A]?.lastMessageUuid).toBe(MESSAGE_A);
+  });
+
+  it("indexes an incoming message into the active stream and topic conversation buckets", () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const applier = createMessengerRealtimeActiveApplier();
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    applyStreamAndTopicSnapshot(applier, context);
+
+    applier.applyEvent(
+      {
+        epoch_version: 11,
+        type: "message",
+        message: createMessageDto({ is_own: false }),
+      },
+      context,
+    );
+
+    const state = useMessengerStore.getState();
+    expect(selectMessengerMessagesForConversation(state, `stream:${STREAM_A}`)).toEqual([
+      expect.objectContaining({ uuid: MESSAGE_A, markdown: "Hello, workspace" }),
+    ]);
+    expect(selectMessengerMessagesForConversation(state, `topic:${STREAM_A}:${TOPIC_A}`)).toEqual([
+      expect.objectContaining({ uuid: MESSAGE_A, markdown: "Hello, workspace" }),
+    ]);
+  });
+
+  it("updates inactive conversation sidebar preview and ordering from a fresh message event", () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const applier = createMessengerRealtimeActiveApplier();
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    applyStreamAndTopicSnapshot(applier, context, {
+      stream: { updated_at: DATE },
+      topic: { updated_at: DATE },
+    });
+    applyStreamAndTopicSnapshot(applier, context, {
+      stream: {
+        uuid: STREAM_B,
+        name: "Support",
+        updated_at: DATE,
+      },
+      topic: {
+        uuid: TOPIC_B,
+        stream_uuid: STREAM_B,
+        name: "Ops",
+        updated_at: DATE,
+      },
+      streamEpoch: 3,
+      topicEpoch: 4,
+    });
+    applier.applyEvent(
+      {
+        epoch_version: 5,
+        type: "folder",
+        kind: "folder.created",
+        folder: createFolderDto({
+          folder_items: [
+            {
+              uuid: FOLDER_ITEM_A,
+              project_id: PROJECT_A,
+              folder_uuid: FOLDER_A,
+              user_uuid: USER_A,
+              stream_uuid: STREAM_A,
+              chat_type: "stream",
+              order_index: null,
+              pinned_at: null,
+              unread_count: 0,
+              created_at: DATE,
+              updated_at: DATE,
+            },
+            {
+              uuid: FOLDER_ITEM_B,
+              project_id: PROJECT_A,
+              folder_uuid: FOLDER_A,
+              user_uuid: USER_A,
+              stream_uuid: STREAM_B,
+              chat_type: "stream",
+              order_index: null,
+              pinned_at: null,
+              unread_count: 1,
+              created_at: DATE,
+              updated_at: DATE,
+            },
+          ],
+        }),
+      },
+      context,
+    );
+
+    applier.applyEvent(
+      {
+        epoch_version: 11,
+        type: "message",
+        message: createMessageDto({
+          uuid: MESSAGE_B,
+          stream_uuid: STREAM_B,
+          topic_uuid: TOPIC_B,
+          payload: { kind: "markdown", content: "Fresh inactive chat" },
+          is_own: false,
+          created_at: DATE_LATER,
+          updated_at: DATE_LATER,
+        }),
+      },
+      context,
+    );
+
+    const state = useMessengerStore.getState();
+    expect(selectMessengerMessagesForConversation(state, `topic:${STREAM_B}:${TOPIC_B}`)).toEqual([
+      expect.objectContaining({ uuid: MESSAGE_B, markdown: "Fresh inactive chat" }),
+    ]);
+    const rows = selectMessengerSidebarStreams(state, {
+      organizationId: ORGANIZATION_A,
+      projectId: PROJECT_A,
+      selectedFolderUuid: FOLDER_A,
+    });
+    expect(rows.map((row) => row.streamUuid)).toEqual([STREAM_B, STREAM_A]);
+    expect(rows[0]).toMatchObject({
+      streamUuid: STREAM_B,
+      preview: {
+        messageUuid: MESSAGE_B,
+        text: "Fresh inactive chat",
+      },
+      updatedAt: DATE_LATER,
+    });
+  });
+
+  it("updates and deletes bootstrapped messages without changing bucket order", () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const applier = createMessengerRealtimeActiveApplier();
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    applyStreamAndTopicSnapshot(applier, context);
+    applier.applyEvent(
+      {
+        epoch_version: 11,
+        type: "message",
+        message: createMessageDto({ uuid: MESSAGE_A }),
+      },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 12,
+        type: "message",
+        message: createMessageDto({
+          uuid: MESSAGE_B,
+          payload: { kind: "markdown", content: "Second message" },
+          created_at: DATE_LATER,
+          updated_at: DATE_LATER,
+        }),
+      },
+      context,
+    );
+
+    applier.applyEvent(
+      {
+        epoch_version: 13,
+        type: "message",
+        kind: "message.updated",
+        message: createMessageDto({
+          uuid: MESSAGE_A,
+          payload: { kind: "markdown", content: "Edited first message" },
+          updated_at: "2026-06-22T10:30:00Z",
+        }),
+      },
+      context,
+    );
+
+    expect(
+      selectMessengerMessagesForConversation(
+        useMessengerStore.getState(),
+        `topic:${STREAM_A}:${TOPIC_A}`,
+      ).map((message) => [message.uuid, message.markdown]),
+    ).toEqual([
+      [MESSAGE_A, "Edited first message"],
+      [MESSAGE_B, "Second message"],
+    ]);
+
+    applier.applyEvent(
+      {
+        epoch_version: 14,
+        type: "message",
+        kind: "message.deleted",
+        message: {
+          uuid: MESSAGE_A,
+          stream_uuid: STREAM_A,
+          topic_uuid: TOPIC_A,
+        },
+      },
+      context,
+    );
+
+    const state = useMessengerStore.getState();
+    expect(selectMessengerMessagesForConversation(state, `stream:${STREAM_A}`)).toEqual([
+      expect.objectContaining({ uuid: MESSAGE_B }),
+    ]);
+    expect(selectMessengerMessagesForConversation(state, `topic:${STREAM_A}:${TOPIC_A}`)).toEqual([
+      expect.objectContaining({ uuid: MESSAGE_B }),
+    ]);
+    expect(state.messagesById[MESSAGE_A]).toBeUndefined();
+  });
+
+  it("removes topic messages from the stream bucket when a topic is deleted", () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const applier = createMessengerRealtimeActiveApplier();
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    applyStreamAndTopicSnapshot(applier, context);
+    applier.applyEvent(
+      {
+        epoch_version: 11,
+        type: "message",
+        message: createMessageDto(),
+      },
+      context,
+    );
+
+    applier.applyEvent(
+      {
+        epoch_version: 12,
+        type: "topic",
+        kind: "topic.deleted",
+        topic: { uuid: TOPIC_A, stream_uuid: STREAM_A },
+      },
+      context,
+    );
+
+    const state = useMessengerStore.getState();
+    expect(selectMessengerMessagesForConversation(state, `stream:${STREAM_A}`)).toEqual([]);
+    expect(selectMessengerMessagesForConversation(state, `topic:${STREAM_A}:${TOPIC_A}`)).toEqual(
+      [],
+    );
+    expect(state.messagesById[MESSAGE_A]).toBeUndefined();
   });
 
   it("skips unsupported active events without throwing", () => {

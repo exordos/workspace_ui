@@ -330,6 +330,171 @@ function indexMessageIntoBuckets(
   };
 }
 
+function compareIsoDateStrings(a: string | null | undefined, b: string | null | undefined): number {
+  if (a == null && b == null) return 0;
+  if (a == null) return -1;
+  if (b == null) return 1;
+  return a.localeCompare(b);
+}
+
+function isMessageFreshForContainer(
+  message: MessengerMessage,
+  currentLastMessageUuid: MessengerUuid | null | undefined,
+  messagesById: Record<MessengerUuid, MessengerMessage>,
+): boolean {
+  if (currentLastMessageUuid == null) return true;
+  if (currentLastMessageUuid === message.uuid) return true;
+
+  const currentMessage = messagesById[currentLastMessageUuid];
+  if (currentMessage == null) return true;
+
+  return compareIsoDateStrings(message.createdAt, currentMessage.createdAt) >= 0;
+}
+
+function applyMessageFreshness(
+  state: Pick<
+    MessengerDomainData,
+    "streamsById" | "topicsById" | "conversationsById" | "messagesById"
+  >,
+  message: MessengerMessage,
+): Pick<MessengerDomainData, "streamsById" | "topicsById" | "conversationsById"> {
+  let nextStreamsById = state.streamsById;
+  let nextTopicsById = state.topicsById;
+  let nextConversationsById = state.conversationsById;
+
+  const stream = state.streamsById[message.streamUuid];
+  if (
+    stream != null &&
+    isMessageFreshForContainer(message, stream.lastMessageUuid, state.messagesById)
+  ) {
+    nextStreamsById = {
+      ...nextStreamsById,
+      [stream.uuid]: {
+        ...stream,
+        lastMessageUuid: message.uuid,
+        updatedAt:
+          compareIsoDateStrings(message.createdAt, stream.updatedAt) > 0
+            ? message.createdAt
+            : stream.updatedAt,
+      },
+    };
+  }
+
+  const topic = state.topicsById[message.topicUuid];
+  if (
+    topic != null &&
+    isMessageFreshForContainer(message, topic.lastMessageUuid, state.messagesById)
+  ) {
+    nextTopicsById = {
+      ...nextTopicsById,
+      [topic.uuid]: {
+        ...topic,
+        lastMessageUuid: message.uuid,
+        updatedAt:
+          compareIsoDateStrings(message.createdAt, topic.updatedAt) > 0
+            ? message.createdAt
+            : topic.updatedAt,
+      },
+    };
+  }
+
+  const streamConversationId = conversationIdForStream(message.streamUuid);
+  const streamConversation = state.conversationsById[streamConversationId];
+  if (
+    streamConversation != null &&
+    isMessageFreshForContainer(message, streamConversation.lastMessageUuid, state.messagesById)
+  ) {
+    nextConversationsById = {
+      ...nextConversationsById,
+      [streamConversationId]: {
+        ...streamConversation,
+        lastMessageUuid: message.uuid,
+      },
+    };
+  }
+
+  const topicConversation = state.conversationsById[message.conversationId];
+  if (
+    topicConversation != null &&
+    isMessageFreshForContainer(message, topicConversation.lastMessageUuid, state.messagesById)
+  ) {
+    nextConversationsById = {
+      ...nextConversationsById,
+      [message.conversationId]: {
+        ...topicConversation,
+        lastMessageUuid: message.uuid,
+      },
+    };
+  }
+
+  return {
+    streamsById: nextStreamsById,
+    topicsById: nextTopicsById,
+    conversationsById: nextConversationsById,
+  };
+}
+
+function clearDeletedMessageFreshness(
+  state: Pick<MessengerDomainData, "streamsById" | "topicsById" | "conversationsById">,
+  message: MessengerDeletedMessage,
+): Pick<MessengerDomainData, "streamsById" | "topicsById" | "conversationsById"> {
+  let nextStreamsById = state.streamsById;
+  let nextTopicsById = state.topicsById;
+  let nextConversationsById = state.conversationsById;
+
+  const stream = state.streamsById[message.streamUuid];
+  if (stream?.lastMessageUuid === message.uuid) {
+    nextStreamsById = {
+      ...nextStreamsById,
+      [stream.uuid]: {
+        ...stream,
+        lastMessageUuid: null,
+      },
+    };
+  }
+
+  const topic = state.topicsById[message.topicUuid];
+  if (topic?.lastMessageUuid === message.uuid) {
+    nextTopicsById = {
+      ...nextTopicsById,
+      [topic.uuid]: {
+        ...topic,
+        lastMessageUuid: null,
+      },
+    };
+  }
+
+  const streamConversationId = conversationIdForStream(message.streamUuid);
+  const streamConversation = state.conversationsById[streamConversationId];
+  if (streamConversation?.lastMessageUuid === message.uuid) {
+    nextConversationsById = {
+      ...nextConversationsById,
+      [streamConversationId]: {
+        ...streamConversation,
+        lastMessageUuid: null,
+      },
+    };
+  }
+
+  const topicConversationId = conversationIdForTopic(message.streamUuid, message.topicUuid);
+  const topicConversation = state.conversationsById[topicConversationId];
+  if (topicConversation?.lastMessageUuid === message.uuid) {
+    nextConversationsById = {
+      ...nextConversationsById,
+      [topicConversationId]: {
+        ...topicConversation,
+        lastMessageUuid: null,
+      },
+    };
+  }
+
+  return {
+    streamsById: nextStreamsById,
+    topicsById: nextTopicsById,
+    conversationsById: nextConversationsById,
+  };
+}
+
 function removeConversationPageState(
   state: Pick<
     MessengerDomainData,
@@ -454,6 +619,46 @@ function removeConversationMessages(
       }
     }
     delete nextMessageIdsByConversationId[conversationId];
+  }
+
+  return {
+    messagesById: nextMessagesById,
+    messageIdsByConversationId: nextMessageIdsByConversationId,
+  };
+}
+
+function removeTopicMessages(
+  messagesById: Record<MessengerUuid, MessengerMessage>,
+  messageIdsByConversationId: Record<MessengerConversationId, MessengerUuid[]>,
+  topic: MessengerDeletedTopic,
+): {
+  messagesById: Record<MessengerUuid, MessengerMessage>;
+  messageIdsByConversationId: Record<MessengerConversationId, MessengerUuid[]>;
+} {
+  const topicConversationId = conversationIdForTopic(topic.streamUuid, topic.uuid);
+  const streamConversationId = conversationIdForStream(topic.streamUuid);
+  const topicMessageIds = new Set(messageIdsByConversationId[topicConversationId] ?? EMPTY_IDS);
+
+  for (const messageId of messageIdsByConversationId[streamConversationId] ?? EMPTY_IDS) {
+    const message = messagesById[messageId];
+    if (message?.topicUuid === topic.uuid) {
+      topicMessageIds.add(messageId);
+    }
+  }
+
+  const nextMessagesById = { ...messagesById };
+  const nextMessageIdsByConversationId = { ...messageIdsByConversationId };
+  delete nextMessageIdsByConversationId[topicConversationId];
+  nextMessageIdsByConversationId[streamConversationId] = (
+    nextMessageIdsByConversationId[streamConversationId] ?? EMPTY_IDS
+  ).filter((messageId) => !topicMessageIds.has(messageId));
+
+  for (const messageId of topicMessageIds) {
+    if (
+      !isMessageReferencedOutsideConversations(nextMessageIdsByConversationId, new Set(), messageId)
+    ) {
+      delete nextMessagesById[messageId];
+    }
   }
 
   return {
@@ -887,10 +1092,10 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
       const conversationId = conversationIdForTopic(topic.streamUuid, topic.uuid);
       const nextConversationsById = { ...state.conversationsById };
       delete nextConversationsById[conversationId];
-      const messageState = removeConversationMessages(
+      const messageState = removeTopicMessages(
         state.messagesById,
         state.messageIdsByConversationId,
-        [conversationId],
+        topic,
       );
       const pageState = removeConversationPageState(state, [conversationId]);
 
@@ -912,18 +1117,37 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
 
       const previous = state.messagesById[message.uuid];
       const nextMessageIdsByConversationId = { ...state.messageIdsByConversationId };
-      if (previous != null && previous.conversationId !== message.conversationId) {
-        nextMessageIdsByConversationId[previous.conversationId] = removeId(
-          nextMessageIdsByConversationId[previous.conversationId] ?? EMPTY_IDS,
+      if (previous != null) {
+        for (const previousConversationId of conversationBucketsForMessage(previous, {
+          includeStreamConversation: true,
+        })) {
+          if (
+            previousConversationId === message.conversationId ||
+            previousConversationId === conversationIdForStream(message.streamUuid)
+          ) {
+            continue;
+          }
+
+          nextMessageIdsByConversationId[previousConversationId] = removeId(
+            nextMessageIdsByConversationId[previousConversationId] ?? EMPTY_IDS,
+            message.uuid,
+          );
+        }
+      }
+      for (const conversationId of conversationBucketsForMessage(message, {
+        includeStreamConversation: true,
+      })) {
+        nextMessageIdsByConversationId[conversationId] = appendUniqueId(
+          nextMessageIdsByConversationId[conversationId] ?? EMPTY_IDS,
           message.uuid,
         );
       }
-      nextMessageIdsByConversationId[message.conversationId] = appendUniqueId(
-        nextMessageIdsByConversationId[message.conversationId] ?? EMPTY_IDS,
-        message.uuid,
-      );
+      // Workspace realtime может прислать тот же uuid после reload/catch-up или как echo.
+      // Старый Zulip optimistic path здесь не используем: тело одно по uuid, buckets только дедупят порядок.
+      const freshnessState = applyMessageFreshness(state, message);
 
       return {
+        ...freshnessState,
         messagesById: {
           ...state.messagesById,
           [message.uuid]: message,
@@ -943,7 +1167,10 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
 
-      return indexMessageIntoBuckets(state, message, conversationIds);
+      return {
+        ...applyMessageFreshness(state, message),
+        ...indexMessageIntoBuckets(state, message, conversationIds),
+      };
     });
   },
 
@@ -1022,8 +1249,10 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
       if (shouldDeleteMessage) {
         delete nextMessagesById[message.uuid];
       }
+      const freshnessState = clearDeletedMessageFreshness(state, message);
 
       return {
+        ...freshnessState,
         messagesById: nextMessagesById,
         messageIdsByConversationId: nextMessageIdsByConversationId,
       };
