@@ -35,12 +35,15 @@ import { buildNavigableRouteFromMessage } from "~/shared/lib/push-click";
 import { runInFlightDeduped } from "~/shared/lib/request-lifecycle.lib";
 import { scrollToBottom } from "~/shared/lib/scroll-position.lib";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
-import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
+import {
+  workspaceActivityRoute,
+  workspaceInboxRoute,
+} from "~/shared/lib/workspace-messenger-route.lib";
 import { AppDialog, DialogCancelButton, DialogPrimaryButton } from "~/shared/ui/app-dialog.ui";
 import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
 import { Icon } from "~/shared/ui/icon";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
-import { MY_ACTIVITY, messageToDmEntry, slugForStream } from "~/widgets/sidebar/sidebar.lib";
+import { MY_ACTIVITY, messageToDmEntry } from "~/widgets/sidebar/sidebar.lib";
 import { ActivityPeerReactionsRow } from "./activity-page-peer-reactions.ui";
 import {
   buildMessageNavigateRoute,
@@ -122,12 +125,15 @@ DraftChatContextLabel.displayName = "DraftChatContextLabel";
 const ACTIVITY_PAGE_SIZE = STARRED_SUMMARY_PAGE_SIZE;
 
 export const ActivityPage: React.FC = () => {
-  const { filter } = useParams<{ filter: string }>();
+  const { filter, orgId, projectId } = useParams<{
+    filter: string;
+    orgId?: string;
+    projectId?: string;
+  }>();
   const navigate = useNavigate();
   const openSearch = useOpenSearch();
   const currentUserId = useChatListStore((s) => s.currentUserId ?? null);
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
-  const streamsMap = useChatListStore((s) => s.streamsMap);
   const [pendingDraftId, setPendingDraftId] = useState<number | null>(null);
   const [pendingUnstarIds, setPendingUnstarIds] = useState<Set<number>>(() => new Set());
   const [editingDraft, setEditingDraft] = useState<Draft | null>(null);
@@ -164,7 +170,11 @@ export const ActivityPage: React.FC = () => {
 
   useEffect(() => {
     if (!validFilter) {
-      void navigate("/activity/mentions", { replace: true });
+      const fallback =
+        orgId != null && projectId != null
+          ? workspaceActivityRoute({ orgId, projectId, filter: "mentions" })
+          : withCurrentOrgRoute("/activity/mentions");
+      void navigate(fallback, { replace: true });
       return;
     }
     if (validFilter === "drafts") return;
@@ -276,6 +286,8 @@ export const ActivityPage: React.FC = () => {
     setFilterErrorIfActual,
     setFilterPageIfActual,
     startFilterRequest,
+    orgId,
+    projectId,
     validFilter,
   ]);
 
@@ -356,21 +368,18 @@ export const ActivityPage: React.FC = () => {
 
   const handleDraftClick = useCallback(
     (draft: Draft) => {
-      if (draft.type === "stream" && draft.to.length > 0) {
-        const streamId = draft.to[0]!;
-        const streamName = streamsMap.get(streamId)?.name ?? String(streamId);
-        const slug = slugForStream({ stream_id: streamId, name: streamName });
-        const topic = draft.topic ?? "";
-        void navigate(
-          withCurrentOrgRoute(
-            `/stream/${slug}/topic/${encodeURIComponent(encodeTopicForRoute(topic))}`,
-          ),
-        );
-      } else if (draft.type === "private" && draft.to.length > 0) {
-        void navigate(withCurrentOrgRoute(`/dm/${draft.to.join(",")}`));
+      if (
+        (draft.type === "stream" || draft.type === "private") &&
+        draft.to.length > 0
+      ) {
+        const fallback =
+          orgId != null && projectId != null
+            ? workspaceInboxRoute(orgId, projectId)
+            : withCurrentOrgRoute("/inbox");
+        void navigate(fallback);
       }
     },
-    [navigate, streamsMap],
+    [navigate, orgId, projectId],
   );
 
   const handleDeleteDraft = useCallback(async (e: React.MouseEvent, draft: Draft) => {

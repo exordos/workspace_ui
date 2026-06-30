@@ -12,7 +12,8 @@ import {
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 
 // Layout owns the temporary messenger bootstrap until a dedicated process layer exists.
-export function useLayoutWorkspaceMessengerBootstrap(): void {
+export function useLayoutWorkspaceMessengerBootstrap(options: { enabled: boolean }): void {
+  const { enabled } = options;
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
   const runtimeContext = useMemo(
@@ -22,6 +23,11 @@ export function useLayoutWorkspaceMessengerBootstrap(): void {
   const clearMessengerStore = useMessengerStore((state) => state.clear);
 
   useEffect(() => {
+    if (!enabled) {
+      clearMessengerStore();
+      return;
+    }
+
     if (runtimeContext == null) {
       clearMessengerStore();
       return;
@@ -53,5 +59,5 @@ export function useLayoutWorkspaceMessengerBootstrap(): void {
     return () => {
       controller.abort();
     };
-  }, [clearMessengerStore, runtimeContext]);
+  }, [clearMessengerStore, enabled, runtimeContext]);
 }

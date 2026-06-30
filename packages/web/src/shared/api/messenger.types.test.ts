@@ -185,11 +185,67 @@ describe("Workspace messenger DTO guards", () => {
     expect(isWorkspaceMessengerEpochDto({ epoch_version: 124 })).toBe(true);
   });
 
+  it("accepts system folder payloads with folder item parent alias", () => {
+    expect(
+      isWorkspaceMessengerFolderDto({
+        uuid: "00000000-0000-0000-0000-000000000000",
+        created_at: "2000-01-01T00:00:00.000000Z",
+        updated_at: "2000-01-01T00:00:00.000000Z",
+        title: "All chats",
+        background_color_value: 11184810,
+        system_type: "all",
+        unread_count: 3,
+        folder_items: [
+          {
+            uuid: FOLDER_ITEM_UUID,
+            folder: "00000000-0000-0000-0000-000000000000",
+            project_id: PROJECT_UUID,
+            user_uuid: USER_UUID,
+            stream_uuid: STREAM_UUID,
+            order_index: null,
+            pinned_at: null,
+            chat_type: "stream",
+            unread_count: 3,
+            created_at: "2000-01-01T00:00:00",
+            updated_at: "2000-01-01T00:00:00",
+          },
+        ],
+      }),
+    ).toBe(true);
+
+    expect(
+      isWorkspaceMessengerFolderDto({
+        uuid: "00000000-0000-0000-0000-000000000002",
+        created_at: "2000-01-01T00:00:02.000000Z",
+        updated_at: "2000-01-01T00:00:02.000000Z",
+        title: "Channels",
+        system_type: "all",
+        unread_count: 3,
+        folder_items: [
+          {
+            uuid: FOLDER_ITEM_UUID,
+            folder: "00000000-0000-0000-0000-000000000002",
+            project_id: PROJECT_UUID,
+            user_uuid: USER_UUID,
+            stream_uuid: STREAM_UUID,
+            order_index: null,
+            pinned_at: null,
+            chat_type: "stream",
+            unread_count: 3,
+            created_at: "2000-01-01T00:00:02",
+            updated_at: "2000-01-01T00:00:02",
+          },
+        ],
+      }),
+    ).toBe(true);
+  });
+
   it("requires stream notification mode, archive flag, and source shape", () => {
     expect(isWorkspaceMessengerStreamDto({ ...streamDto, notification_mode: undefined })).toBe(
       false,
     );
     expect(isWorkspaceMessengerStreamDto({ ...streamDto, is_archived: undefined })).toBe(false);
+    expect(isWorkspaceMessengerStreamDto({ ...streamDto, direct_user_uuid: undefined })).toBe(true);
     expect(
       isWorkspaceMessengerStreamDto({
         ...streamDto,

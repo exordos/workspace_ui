@@ -1,3 +1,4 @@
+import { createLogger } from "~/shared/lib/logger";
 import {
   workspaceMessengerStreamRoute,
   workspaceMessengerTopicRoute,
@@ -16,6 +17,7 @@ import type {
 const EMPTY_SIDEBAR_STREAMS: MessengerSidebarStreamItem[] = [];
 const EMPTY_SIDEBAR_FOLDERS: MessengerSidebarFolderView[] = [];
 const EMPTY_SIDEBAR_TOPICS: MessengerSidebarTopicItem[] = [];
+const log = createLogger("store:messenger-sidebar");
 
 // Этот файл ничего не загружает из API.
 // Он берёт уже сохранённые Workspace-данные из messenger store и собирает из них вид для сайдбара.
@@ -150,6 +152,54 @@ function topicsForStream(input: {
   return topics;
 }
 
+function streamsForSelectedFolder(input: {
+  organizationId: string;
+  projectId: string;
+  state: MessengerStoreState;
+  folder: MessengerFolder;
+}): MessengerSidebarStreamItem[] {
+  const streams: MessengerSidebarStreamItem[] = [];
+  const missingStreamUuids: MessengerUuid[] = [];
+
+  for (const item of input.folder.items) {
+    const stream = input.state.streamsById[item.streamUuid];
+    if (stream == null) {
+      missingStreamUuids.push(item.streamUuid);
+      continue;
+    }
+
+    streams.push(
+      streamItemFromStream({
+        organizationId: input.organizationId,
+        projectId: input.projectId,
+        stream,
+        unreadCount: item.unreadCount,
+        pinnedAt: item.pinnedAt,
+        orderIndex: item.orderIndex,
+        topics: topicsForStream({
+          organizationId: input.organizationId,
+          projectId: input.projectId,
+          state: input.state,
+          streamUuid: stream.uuid,
+        }),
+      }),
+    );
+  }
+
+  if (missingStreamUuids.length > 0) {
+    log.warn("Folder items reference streams missing from messenger store", {
+      folderUuid: input.folder.uuid,
+      folderItems: input.folder.items.length,
+      storeStreams: input.state.streamIds.length,
+      matchedStreams: streams.length,
+      missingStreams: missingStreamUuids.length,
+      sampleMissingStreamUuids: missingStreamUuids.slice(0, 10),
+    });
+  }
+
+  return streams.sort(compareSidebarStreams);
+}
+
 export function selectMessengerSidebarStreams(
   state: MessengerStoreState,
   options: MessengerSidebarSelectorOptions,
@@ -172,27 +222,12 @@ export function selectMessengerSidebarStreams(
   // Если выбрана папка, порядок и счётчики берём из folder.items.
   // Если папки нет, показываем все потоки как общий список.
   const streams = selectedFolder
-    ? selectedFolder.items
-        .map((item) => {
-          const stream = state.streamsById[item.streamUuid];
-          if (stream == null) return null;
-          return streamItemFromStream({
-            organizationId: options.organizationId,
-            projectId: options.projectId,
-            stream,
-            unreadCount: item.unreadCount,
-            pinnedAt: item.pinnedAt,
-            orderIndex: item.orderIndex,
-            topics: topicsForStream({
-              organizationId: options.organizationId,
-              projectId: options.projectId,
-              state,
-              streamUuid: stream.uuid,
-            }),
-          });
-        })
-        .filter((item): item is MessengerSidebarStreamItem => item != null)
-        .sort(compareSidebarStreams)
+    ? streamsForSelectedFolder({
+        organizationId: options.organizationId,
+        projectId: options.projectId,
+        state,
+        folder: selectedFolder,
+      })
     : state.streamIds
         .map((streamId) => state.streamsById[streamId])
         .filter((stream): stream is MessengerStream => stream != null)

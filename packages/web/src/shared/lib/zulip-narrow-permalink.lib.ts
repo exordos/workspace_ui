@@ -6,7 +6,7 @@
 import { dmRouteKey } from "~/shared/lib/dm-key";
 import { parseDmRouteParticipantIds } from "~/shared/lib/dm-route-slug.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
-import { encodeTopicForRoute, normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 
 export type ZulipNarrowPermalinkKind = "dm" | "stream";
 
@@ -30,14 +30,6 @@ const ZULIP_HASH_DECODE_REPLACEMENTS: Readonly<Record<string, string>> = {
   ".2A": "*",
   ".2E": ".",
 };
-
-function slugForStreamRoute(streamId: number, streamName: string): string {
-  const slug = streamName
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/-+$/, "");
-  return `${streamId}-${slug || "channel"}`;
-}
 
 function parsePositiveInt(value: string | undefined): number | undefined {
   if (value == null || value.length === 0) return undefined;
@@ -229,34 +221,15 @@ export interface BuildRouteFromZulipNarrowPermalinkParams {
 export function buildRouteFromZulipNarrowPermalink(
   params: BuildRouteFromZulipNarrowPermalinkParams,
 ): string | null {
-  const { parsed, currentUserId, resolveStreamName } = params;
+  const { parsed } = params;
   const withMessageId = (base: string): string => `${base}?msg=${parsed.messageId}`;
 
   if (parsed.kind === "dm") {
-    if (parsed.dmParticipantIds == null || parsed.dmParticipantIds.length === 0) return null;
-    const routeKey = dmRouteKey(parsed.dmParticipantIds, currentUserId);
-    const routeUserIds = routeKey.split(",").map((raw) => Number(raw));
-    if (routeUserIds.some((id) => !Number.isSafeInteger(id) || id <= 0)) return null;
-    const others =
-      currentUserId != null
-        ? routeUserIds.filter((userId) => userId !== currentUserId)
-        : routeUserIds;
-    const dmSlugSegment =
-      others.length > 0
-        ? others.map((userId) => String(userId)).join(",")
-        : routeUserIds.map((userId) => String(userId)).join(",");
-    return withMessageId(withCurrentOrgRoute(`/dm/${dmSlugSegment}`));
+    return withMessageId(withCurrentOrgRoute("/inbox"));
   }
 
   if (parsed.streamId == null) return null;
-  const streamName = resolveStreamName(parsed.streamId) ?? "channel";
-  const streamSlug = slugForStreamRoute(parsed.streamId, streamName);
-  const topic = parsed.topic ?? "";
-  return withMessageId(
-    withCurrentOrgRoute(
-      `/stream/${streamSlug}/topic/${encodeURIComponent(encodeTopicForRoute(topic))}`,
-    ),
-  );
+  return withMessageId(withCurrentOrgRoute("/inbox"));
 }
 
 /** Replaces or sets `msg` query param while preserving other search params. */

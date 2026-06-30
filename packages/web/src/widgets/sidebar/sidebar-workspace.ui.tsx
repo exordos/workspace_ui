@@ -282,10 +282,10 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
               <div className="bg-bg-elevated/40 flex flex-col items-center gap-2 rounded-lg border border-dashed border-border-subtle px-3 py-5 text-center">
                 <Icon name="chatBubble" size={18} className="text-text-muted" />
                 <p className="text-sm font-medium text-text-primary">
-                  {t("folder.emptyAllChats")}
+                  {t("sidebar.emptyAllChats")}
                 </p>
                 <p className="max-w-[220px] text-xs text-text-muted">
-                  {t("folder.emptyAllChatsHint")}
+                  {t("sidebar.emptyAllChatsHint")}
                 </p>
               </div>
             </div>

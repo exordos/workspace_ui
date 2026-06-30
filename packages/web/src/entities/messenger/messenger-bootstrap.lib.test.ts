@@ -198,7 +198,6 @@ function createClient(
     getStreams: () => Promise.resolve([createStreamDto()]),
     getTopics: () => Promise.resolve([createTopicDto()]),
     getFolders: () => Promise.resolve([createFolderDto()]),
-    getUsers: () => Promise.resolve([createUserDto()]),
     ...overrides,
   };
 }
@@ -245,7 +244,7 @@ describe("messenger bootstrap store", () => {
     expect(state.messagesById).toEqual({});
     expect(state.messageIdsByConversationId).toEqual({});
     expect(state.foldersById[FOLDER_A]?.title).toBe("Inbox");
-    expect(state.usersById[USER_A]?.username).toBe("alice");
+    expect(state.usersById).toEqual({});
     expect(getStreams).toHaveBeenCalledWith(
       expect.objectContaining({
         accessToken: "access-token-a",
@@ -400,7 +399,6 @@ describe("messenger bootstrap store", () => {
             }),
           ]),
         getFolders: () => Promise.resolve([]),
-        getUsers: () => Promise.resolve([createUserDto({ uuid: USER_B, username: "bob" })]),
       }),
     });
 
@@ -425,7 +423,7 @@ describe("messenger bootstrap store", () => {
     expect(state.streamIds).toEqual([STREAM_B]);
     expect(state.streamsById[STREAM_A]).toBeUndefined();
     expect(state.streamsById[STREAM_B]?.name).toBe("Support");
-    expect(state.usersById[USER_B]?.username).toBe("bob");
+    expect(state.usersById).toEqual({});
   });
 
   it("returns stable selector arrays while store references do not change", async () => {

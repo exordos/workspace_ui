@@ -18,44 +18,67 @@ afterEach(() => {
 
 // Builder functions generate URL paths from entity IDs — used for programmatic navigation
 describe("deeplink builders", () => {
-  // Stream URL encodes stream ID and slug (e.g. /stream/5-general)
-  it("toStream", () => {
-    expect(deeplink.toStream(5, "general")).toBe("/stream/5-general");
+  it("toStream falls back to Inbox without Workspace UUIDs", () => {
+    expect(deeplink.toStream(5, "general")).toBe("/inbox");
   });
 
-  // Special characters in stream names must be slugified to URL-safe form
-  it("toStream with special chars", () => {
-    expect(deeplink.toStream(10, "My Channel!")).toBe("/stream/10-my-channel");
+  it("toStream builds Workspace route when UUID and project are present", () => {
+    expect(
+      deeplink.toStream(5, "general", {
+        orgId: "chat.example.com",
+        projectId: "project-uuid",
+        streamUuid: "stream-uuid",
+      }),
+    ).toBe("/org/chat.example.com/project/project-uuid/stream/stream-uuid");
   });
 
-  // Topic URL adds a /topic/ segment for navigating within a stream
-  it("toTopic", () => {
-    expect(deeplink.toTopic(5, "general", "bugs")).toBe("/stream/5-general/topic/bugs");
+  it("toStream with special chars still falls back to Inbox without Workspace UUIDs", () => {
+    expect(deeplink.toStream(10, "My Channel!")).toBe("/inbox");
   });
 
-  // Spaces in topic names must be percent-encoded to produce valid URLs
-  it("toTopic with spaces", () => {
-    const result = deeplink.toTopic(5, "general", "my topic");
-    expect(result).toContain("/topic/my%20topic");
+  it("toTopic falls back to Inbox without Workspace topic UUID", () => {
+    expect(deeplink.toTopic(5, "general", "bugs")).toBe("/inbox");
   });
 
-  it("toTopic encodes empty topic with reserved token", () => {
-    expect(deeplink.toTopic(5, "general", "")).toBe("/stream/5-general/topic/__empty__");
+  it("toTopic builds Workspace topic route when UUIDs and project are present", () => {
+    expect(
+      deeplink.toTopic(5, "general", "bugs", {
+        orgId: "chat.example.com",
+        projectId: "project-uuid",
+        streamUuid: "stream-uuid",
+        topicUuid: "topic-uuid",
+      }),
+    ).toBe("/org/chat.example.com/project/project-uuid/stream/stream-uuid/topic/topic-uuid");
   });
 
-  it("toTopic escapes literal empty-topic token", () => {
-    expect(deeplink.toTopic(5, "general", "__empty__")).toBe("/stream/5-general/topic/~__empty__");
+  it("toTopic with spaces falls back to Inbox without Workspace UUIDs", () => {
+    expect(deeplink.toTopic(5, "general", "my topic")).toBe("/inbox");
   });
 
-  // Message URLs include a ?msg= query param for scroll-to-message navigation
-  it("toMessage", () => {
-    const result = deeplink.toMessage(5, "general", "bugs", 12345);
-    expect(result).toBe("/stream/5-general/topic/bugs?msg=12345");
+  it("toTopic with empty topic falls back to Inbox without Workspace UUIDs", () => {
+    expect(deeplink.toTopic(5, "general", "")).toBe("/inbox");
   });
 
-  // DM deep link uses the user's ID for one-on-one conversations
-  it("toDm", () => {
-    expect(deeplink.toDm(42)).toBe("/dm/42");
+  it("toTopic with literal empty-topic token falls back to Inbox without Workspace UUIDs", () => {
+    expect(deeplink.toTopic(5, "general", "__empty__")).toBe("/inbox");
+  });
+
+  it("toMessage falls back to Inbox without Workspace message UUID", () => {
+    expect(deeplink.toMessage(5, "general", "bugs", 12345)).toBe("/inbox");
+  });
+
+  it("toMessage builds Workspace message route when UUID and project are present", () => {
+    expect(
+      deeplink.toMessage(5, "general", "bugs", 12345, {
+        orgId: "chat.example.com",
+        projectId: "project-uuid",
+        messageUuid: "message-uuid",
+      }),
+    ).toBe("/org/chat.example.com/project/project-uuid/message/message-uuid");
+  });
+
+  it("toDm falls back to Inbox from numeric user id", () => {
+    expect(deeplink.toDm(42)).toBe("/inbox");
   });
 
   // Activity filters (starred, mentions) navigate to filtered activity views
@@ -74,8 +97,8 @@ describe("deeplink builders", () => {
 
   it("prefixes routes with current org scope", () => {
     setCurrentOrgRouteIdResolver(() => "chat.example.com");
-    expect(deeplink.toDm(42)).toBe("/org/chat.example.com/dm/42");
-    expect(deeplink.toStream(5, "general")).toBe("/org/chat.example.com/stream/5-general");
+    expect(deeplink.toDm(42)).toBe("/org/chat.example.com/inbox");
+    expect(deeplink.toStream(5, "general")).toBe("/org/chat.example.com/inbox");
   });
 });
 
@@ -286,10 +309,8 @@ describe("share", () => {
   });
 });
 
-// Edge case: stream names that are entirely special characters
-describe("slugForStream edge cases", () => {
-  // When all chars are stripped, a fallback slug "channel" must be used
-  it("falls back to 'channel' when name is all special characters", () => {
-    expect(deeplink.toStream(1, "!!!")).toBe("/stream/1-channel");
+describe("toStream edge cases", () => {
+  it("falls back to Inbox when name is all special characters and UUID is missing", () => {
+    expect(deeplink.toStream(1, "!!!")).toBe("/inbox");
   });
 });

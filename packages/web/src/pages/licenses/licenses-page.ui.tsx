@@ -1,9 +1,9 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useInstancesStore } from "~/entities/instance/instance.model";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import licensesData from "~/generated/licenses.json";
 import { t } from "~/i18n/i18n";
-import { DEFAULT_MESSENGER_STREAM_SLUG } from "~/shared/config/constants";
 import { brand } from "~/shared/lib/brand";
 import { resolveMessengerNavigationPath } from "~/shared/lib/last-messenger-route.lib";
 import { useNavigationHistory } from "~/shared/lib/navigation-history";
@@ -17,6 +17,18 @@ export const LicensesPage: React.FC = () => {
   const navigate = useNavigate();
   const { goBack, canGoBack } = useNavigationHistory();
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
+  const currentWorkspaceInstanceId = useWorkspaceAuthStore((s) => {
+    const accountId = s.currentAccountId;
+    return accountId != null
+      ? (s.sessions.find((session) => session.accountId === accountId)?.instanceId ?? null)
+      : null;
+  });
+  const currentWorkspaceProjectId = useWorkspaceAuthStore((s) => {
+    const accountId = s.currentAccountId;
+    return accountId != null
+      ? (s.sessions.find((session) => session.accountId === accountId)?.projectId ?? null)
+      : null;
+  });
   const [search, setSearch] = useState("");
   const [filterLicense, setFilterLicense] = useState("");
 
@@ -26,10 +38,20 @@ export const LicensesPage: React.FC = () => {
       return;
     }
     const fallbackPath = withCurrentOrgRoute(
-      resolveMessengerNavigationPath(currentInstanceId, DEFAULT_MESSENGER_STREAM_SLUG),
+      resolveMessengerNavigationPath({
+        instanceId: currentWorkspaceInstanceId ?? currentInstanceId,
+        projectId: currentWorkspaceProjectId,
+      }),
     );
     void navigate(fallbackPath);
-  }, [canGoBack, currentInstanceId, goBack, navigate]);
+  }, [
+    canGoBack,
+    currentInstanceId,
+    currentWorkspaceInstanceId,
+    currentWorkspaceProjectId,
+    goBack,
+    navigate,
+  ]);
 
   const licenseTypes = useMemo(() => {
     const counts = new Map<string, number>();

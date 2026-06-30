@@ -1,7 +1,12 @@
 import React, { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  selectCurrentWorkspaceRuntimeContext,
+  useWorkspaceAuthStore,
+} from "~/entities/workspace-auth/workspace-auth.model";
 import { t } from "~/i18n/i18n";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
+import { workspaceMessengerRootRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { Icon } from "~/shared/ui/icon";
 import type { PlannedServiceCard, ServiceStubCardProps } from "./services-page.types";
 
@@ -65,9 +70,15 @@ const ServiceStubCard = React.memo<ServiceStubCardProps>(({ card }) => {
 
 export const ServicesPage: React.FC = () => {
   const navigate = useNavigate();
+  const runtimeContext = useWorkspaceAuthStore(selectCurrentWorkspaceRuntimeContext);
   const openMessenger = useCallback(
-    () => navigate(withCurrentOrgRoute("/stream/general")),
-    [navigate],
+    () =>
+      navigate(
+        runtimeContext != null
+          ? workspaceMessengerRootRoute(runtimeContext.organizationId, runtimeContext.projectId)
+          : withCurrentOrgRoute("/"),
+      ),
+    [navigate, runtimeContext],
   );
 
   return (

@@ -4,6 +4,7 @@ import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
 import { Avatar } from "~/shared/ui/avatar";
+import { sidebarStreamRoute } from "./sidebar-chat-routes.lib";
 import { sidebarChatRowBodyClass, sidebarChatRowLinkClass } from "./sidebar-chat-row-layout.lib";
 import { SidebarChatRowMeta } from "./sidebar-chat-row-meta.ui";
 import { SidebarMessagePreview } from "./sidebar-message-preview.ui";
@@ -90,7 +91,7 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
                 <>
                   <div className="relative">
                     <Link
-                      to={`/stream/${streamSlug}`}
+                      to={sidebarStreamRoute(streamSlug)}
                       className={`${streamRowClass} w-full ${
                         expanded || isActive ? "bg-sidebar-hover" : "hover:bg-sidebar-hover"
                       }`}

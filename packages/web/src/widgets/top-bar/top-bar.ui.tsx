@@ -1,9 +1,10 @@
 import React, { useCallback, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useInstancesStore } from "~/entities/instance/instance.model";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { InstanceSwitcher } from "~/features/instance-switch/instance-switch.ui";
 import { t } from "~/i18n/i18n";
-import { DEFAULT_MESSENGER_STREAM_SLUG, SCROLL_AREA_CLASS } from "~/shared/config/constants";
+import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import { isElectronDarwin } from "~/shared/lib/electron";
 import { ELECTRON_MAC_TITLEBAR_STRIP_CLASS } from "~/shared/lib/electron-title-bar.lib";
 import { env } from "~/shared/lib/env";
@@ -36,6 +37,18 @@ export const TopBar: React.FC = () => {
     onSelectUser: handleSearchSelectUser,
   } = useTopBarSearchModal({ navigate });
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
+  const currentWorkspaceInstanceId = useWorkspaceAuthStore((s) => {
+    const accountId = s.currentAccountId;
+    return accountId != null
+      ? (s.sessions.find((session) => session.accountId === accountId)?.instanceId ?? null)
+      : null;
+  });
+  const currentWorkspaceProjectId = useWorkspaceAuthStore((s) => {
+    const accountId = s.currentAccountId;
+    return accountId != null
+      ? (s.sessions.find((session) => session.accountId === accountId)?.projectId ?? null)
+      : null;
+  });
   const sections = useMemo(
     () =>
       getTopBarSectionNavItems({
@@ -55,14 +68,17 @@ export const TopBar: React.FC = () => {
       if (section === "chat") {
         void navigate(
           withCurrentOrgRoute(
-            resolveMessengerNavigationPath(currentInstanceId, DEFAULT_MESSENGER_STREAM_SLUG),
+            resolveMessengerNavigationPath({
+              instanceId: currentWorkspaceInstanceId ?? currentInstanceId,
+              projectId: currentWorkspaceProjectId,
+            }),
           ),
         );
       } else {
         void navigate(withCurrentOrgRoute(`/${section}`));
       }
     },
-    [currentInstanceId, navigate],
+    [currentInstanceId, currentWorkspaceInstanceId, currentWorkspaceProjectId, navigate],
   );
 
   return (

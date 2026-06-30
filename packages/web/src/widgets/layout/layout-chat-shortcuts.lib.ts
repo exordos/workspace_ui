@@ -1,13 +1,9 @@
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
-import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
 import type { ResolveChatShortcutRouteOptions } from "./layout-chat-shortcuts.types";
 
-function toChatRoute(chat: SidebarChat): string {
-  if (chat.type === "dm") {
-    return withCurrentOrgRoute(`/dm/${chat.slug}`);
-  }
-  return withCurrentOrgRoute(`/stream/${slugForStream(chat)}`);
+function toChatRoute(_chat: SidebarChat): string {
+  return withCurrentOrgRoute("/inbox");
 }
 
 function getActiveChatRoute(
@@ -15,10 +11,10 @@ function getActiveChatRoute(
   activeDmIdParam: string | null | undefined,
 ): string | null {
   if (activeDmIdParam != null && activeDmIdParam.length > 0) {
-    return withCurrentOrgRoute(`/dm/${activeDmIdParam}`);
+    return withCurrentOrgRoute("/inbox");
   }
   if (activeStreamSlug != null && activeStreamSlug.length > 0) {
-    return withCurrentOrgRoute(`/stream/${activeStreamSlug}`);
+    return withCurrentOrgRoute("/inbox");
   }
   return null;
 }

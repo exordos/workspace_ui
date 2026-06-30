@@ -28,11 +28,11 @@ describe("buildInboxEntryRoute", () => {
     setCurrentOrgRouteIdResolver(() => "chat.example.com");
 
     expect(buildInboxEntryRoute(baseEntry({ dmSlug: "42,99", senderId: null }))).toBe(
-      "/org/chat.example.com/dm/42,99?msg=25",
+      "/org/chat.example.com/inbox",
     );
   });
 
-  it("builds stream route with message focus", () => {
+  it("returns inbox for stream entries without Workspace UUID route data", () => {
     expect(
       buildInboxEntryRoute(
         baseEntry({
@@ -46,10 +46,10 @@ describe("buildInboxEntryRoute", () => {
           messageIds: [101, 90, 111],
         }),
       ),
-    ).toBe("/stream/10-engineering/topic/general?msg=111");
+    ).toBe("/inbox");
   });
 
-  it("builds explicit empty-topic route for empty topic", () => {
+  it("returns inbox for empty-topic stream entries without Workspace UUID route data", () => {
     expect(
       buildInboxEntryRoute(
         baseEntry({
@@ -63,22 +63,20 @@ describe("buildInboxEntryRoute", () => {
           messageIds: [101, 90, 111],
         }),
       ),
-    ).toBe("/stream/10-engineering/topic/__empty__?msg=111");
+    ).toBe("/inbox");
   });
 
-  it("builds dm route with message focus", () => {
-    expect(buildInboxEntryRoute(baseEntry({ dmSlug: "42,99", senderId: null }))).toBe(
-      "/dm/42,99?msg=25",
-    );
+  it("returns inbox for dm entries without Workspace UUID route data", () => {
+    expect(buildInboxEntryRoute(baseEntry({ dmSlug: "42,99", senderId: null }))).toBe("/inbox");
   });
 
-  it("falls back to senderId route when dmSlug is missing", () => {
-    expect(buildInboxEntryRoute(baseEntry({ dmSlug: null, senderId: 55 }))).toBe("/dm/55?msg=25");
+  it("returns inbox for sender-only entries without Workspace UUID route data", () => {
+    expect(buildInboxEntryRoute(baseEntry({ dmSlug: null, senderId: 55 }))).toBe("/inbox");
   });
 
-  it("omits msg query when there is no valid message id", () => {
-    expect(buildInboxEntryRoute(baseEntry({ messageIds: [0, -1], dmSlug: "42,99" }))).toBe(
-      "/dm/42,99",
-    );
+  it("returns null when entry has no routeable source", () => {
+    expect(
+      buildInboxEntryRoute(baseEntry({ streamId: null, dmSlug: null, senderId: null })),
+    ).toBeNull();
   });
 });

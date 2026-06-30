@@ -14,6 +14,7 @@ import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { SidebarChatBadges } from "./sidebar-chat-badges.ui";
+import { sidebarDmRoute } from "./sidebar-chat-routes.lib";
 import { isDmPartnerTyping, sortDmAllUsersForDisplay } from "./sidebar-dm-list.lib";
 import { SidebarUserStatusEmoji } from "./sidebar-user-status-emoji.ui";
 import { MOCK_DMS, parseDmSlugToUserIds } from "./sidebar.lib";
@@ -116,7 +117,7 @@ export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmId, dms })
             return (
               <Link
                 key={`dm-${chat.id}`}
-                to={`/dm/${chat.slug}`}
+                to={sidebarDmRoute(chat.slug)}
                 className={`flex items-start ${
                   isCompactDensity
                     ? "gap-2 rounded-md px-2 py-1.5"
@@ -178,7 +179,9 @@ export const SidebarDmList: React.FC<SidebarDmListProps> = ({ activeDmId, dms })
             return (
               <Link
                 key={`user-${user.user_id}`}
-                to={`/dm/${user.user_id}-${user.full_name.toLowerCase().replace(/\s+/g, "-")}`}
+                to={sidebarDmRoute(
+                  `${user.user_id}-${user.full_name.toLowerCase().replace(/\s+/g, "-")}`,
+                )}
                 className={`flex items-center ${
                   isCompactDensity ? "gap-2 rounded-md px-2 py-1.5" : "gap-3 rounded-lg px-2.5 py-2"
                 } transition-colors ${sidebarRowClass(false)}`}

@@ -1,6 +1,7 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { renderWithProviders } from "~/test/render";
 import { LicensesPage } from "./licenses-page.ui";
 
@@ -38,14 +39,52 @@ vi.mock("~/generated/licenses.json", () => ({
 }));
 
 describe("LicensesPage", () => {
-  it("navigates to messenger when close is pressed without history", async () => {
-    const user = userEvent.setup();
+  afterEach(() => {
     navigateMock.mockClear();
+    useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
+  });
+
+  it("navigates to Inbox when close is pressed without history and Workspace project", async () => {
+    const user = userEvent.setup();
     renderWithProviders(<LicensesPage />, { route: "/licenses" });
 
     await user.click(screen.getByRole("button", { name: /close/i }));
 
-    expect(navigateMock).toHaveBeenCalledWith("/stream/general");
+    expect(navigateMock).toHaveBeenCalledWith("/inbox");
+  });
+
+  it("navigates to Workspace messenger root when close is pressed with Workspace project", async () => {
+    const user = userEvent.setup();
+    useWorkspaceAuthStore.setState({
+      currentAccountId: "account-a",
+      runtimeGeneration: 1,
+      sessions: [
+        {
+          accountId: "account-a",
+          instanceId: "instance-a",
+          organizationId: "workspace.example.com",
+          organizationOrigin: "https://workspace.example.com",
+          projectId: "project-a",
+          userUuid: "a225223c-637c-4afa-918f-5f2798b9305f",
+          login: "alice@example.com",
+          accessToken: "access-token",
+          runtimeGeneration: 1,
+          profile: {
+            uuid: "a225223c-637c-4afa-918f-5f2798b9305f",
+            username: "alice",
+            firstName: "Alice",
+            lastName: "Workspace",
+            email: "alice@example.com",
+          },
+        },
+      ],
+    });
+
+    renderWithProviders(<LicensesPage />, { route: "/licenses" });
+
+    await user.click(screen.getByRole("button", { name: /close/i }));
+
+    expect(navigateMock).toHaveBeenCalledWith("/project/project-a/messenger");
   });
 
   it("uses full-width layout container for licenses content", () => {

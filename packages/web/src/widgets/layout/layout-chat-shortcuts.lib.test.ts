@@ -30,7 +30,7 @@ describe("layout-chat-shortcuts", () => {
         activeStreamSlug: "10-engineering",
         activeDmIdParam: null,
       }),
-    ).toBe("/dm/42-alice");
+    ).toBe("/inbox");
 
     expect(
       resolveChatShortcutRoute({
@@ -39,7 +39,7 @@ describe("layout-chat-shortcuts", () => {
         activeStreamSlug: "11-design",
         activeDmIdParam: null,
       }),
-    ).toBe("/stream/10-engineering");
+    ).toBe("/inbox");
   });
 
   it("moves to previous chat with wrap-around", () => {
@@ -50,7 +50,7 @@ describe("layout-chat-shortcuts", () => {
         activeStreamSlug: "10-engineering",
         activeDmIdParam: null,
       }),
-    ).toBe("/stream/11-design");
+    ).toBe("/inbox");
 
     expect(
       resolveChatShortcutRoute({
@@ -59,7 +59,7 @@ describe("layout-chat-shortcuts", () => {
         activeStreamSlug: null,
         activeDmIdParam: "42-alice",
       }),
-    ).toBe("/stream/10-engineering");
+    ).toBe("/inbox");
   });
 
   it("falls back to first or last chat when active chat is missing", () => {
@@ -70,7 +70,7 @@ describe("layout-chat-shortcuts", () => {
         activeStreamSlug: null,
         activeDmIdParam: null,
       }),
-    ).toBe("/stream/10-engineering");
+    ).toBe("/inbox");
 
     expect(
       resolveChatShortcutRoute({
@@ -79,7 +79,7 @@ describe("layout-chat-shortcuts", () => {
         activeStreamSlug: null,
         activeDmIdParam: null,
       }),
-    ).toBe("/stream/11-design");
+    ).toBe("/inbox");
   });
 
   it("returns null for empty chat list", () => {

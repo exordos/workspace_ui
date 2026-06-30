@@ -4,10 +4,17 @@ import { useActivityStore } from "~/entities/activity/activity.model";
 import { computeSidebarUnreadTotalsWithMute } from "~/entities/chat-list/chat-list-sidebar-totals.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useDraftStore } from "~/entities/draft/draft.model";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
 import { extractOrgRouteFromPathname, withCurrentOrgRoute } from "~/shared/lib/org-route";
+import {
+  parseWorkspaceMessengerRoute,
+  workspaceActivityRoute,
+  workspaceFeedRoute,
+  workspaceInboxRoute,
+} from "~/shared/lib/workspace-messenger-route.lib";
 import { Badge } from "~/shared/ui/badge";
 import { Icon } from "~/shared/ui/icon";
 import { MY_ACTIVITY } from "./sidebar.lib";
@@ -42,9 +49,24 @@ function getExpandedActivityIconSize(key: string): number {
   return key === "favorites" || key === "feed" ? 16 : 18;
 }
 
+function activityFilterFromRoute(route: string): string | null {
+  const match = /^\/activity\/([^/]+)$/.exec(route);
+  return match?.[1] ?? null;
+}
+
 export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle }) => {
   const { pathname } = useLocation();
   const { scopedPathname } = extractOrgRouteFromPathname(pathname);
+  const workspaceRoute = React.useMemo(() => parseWorkspaceMessengerRoute(pathname), [pathname]);
+  const currentWorkspaceSession = useWorkspaceAuthStore((s) => {
+    const accountId = s.currentAccountId;
+    return accountId != null
+      ? (s.sessions.find((session) => session.accountId === accountId) ?? null)
+      : null;
+  });
+  const workspaceOrgId = workspaceRoute?.orgId ?? currentWorkspaceSession?.organizationId ?? null;
+  const workspaceProjectId =
+    workspaceRoute?.projectId ?? currentWorkspaceSession?.projectId ?? null;
   const currentUserId = useChatListStore((s) => s.currentUserId);
   const streamsMap = useChatListStore((s) => s.streamsMap);
   const dmsMap = useChatListStore((s) => s.dmsMap);
@@ -76,11 +98,54 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
   const isCompactDensity = useSettingsStore((s) => s.chatListDensity === "compact");
   const favoritesCount = useActivityStore((s) => s.starredSummary.count);
   const favoritesError = useActivityStore((s) => s.starredSummary.error);
-  const isPrivateNotesActive = currentUserId != null && scopedPathname === `/dm/${currentUserId}`;
+  const isPrivateNotesActive = false;
   const expandedListClass = "mt-2 space-y-1";
   const expandedRowClass = isCompactDensity ? expandedRowCompactClass : expandedRowBaseClass;
   const expandedIconClass = isCompactDensity ? expandedIconChipCompactClass : expandedIconChipClass;
   const expandedLabel = isCompactDensity ? expandedLabelCompactClass : expandedLabelClass;
+  const inboxRoute =
+    workspaceOrgId != null && workspaceProjectId != null
+      ? workspaceInboxRoute(workspaceOrgId, workspaceProjectId)
+      : withCurrentOrgRoute("/inbox");
+  const resolveActivityRoute = React.useCallback(
+    (route: string): string => {
+      if (workspaceOrgId == null || workspaceProjectId == null) {
+        return withCurrentOrgRoute(route);
+      }
+      if (route === "/inbox") {
+        return workspaceInboxRoute(workspaceOrgId, workspaceProjectId);
+      }
+      if (route === "/feed") {
+        return workspaceFeedRoute(workspaceOrgId, workspaceProjectId);
+      }
+      const filter = activityFilterFromRoute(route);
+      if (filter != null) {
+        return workspaceActivityRoute({
+          orgId: workspaceOrgId,
+          projectId: workspaceProjectId,
+          filter,
+        });
+      }
+      return withCurrentOrgRoute(route);
+    },
+    [workspaceOrgId, workspaceProjectId],
+  );
+  const isActivityRouteActive = React.useCallback(
+    (key: string, route: string): boolean => {
+      if (workspaceRoute != null) {
+        if (key === "inbox") return workspaceRoute.kind === "inbox";
+        if (key === "feed") return workspaceRoute.kind === "feed";
+        const filter = activityFilterFromRoute(route);
+        return (
+          filter != null &&
+          workspaceRoute.kind === "activity" &&
+          workspaceRoute.filter === filter
+        );
+      }
+      return scopedPathname === route;
+    },
+    [scopedPathname, workspaceRoute],
+  );
 
   return (
     <div className="min-w-0 px-3 pb-2 pt-0">
@@ -109,7 +174,7 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
               {currentUserId != null && (
                 <li className={compactListItemClass}>
                   <Link
-                    to={withCurrentOrgRoute(`/dm/${currentUserId}`)}
+                    to={inboxRoute}
                     aria-label={t("activity.home")}
                     aria-current={isPrivateNotesActive ? "page" : undefined}
                     className={`${compactRowClass} ${
@@ -122,7 +187,9 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
               )}
               {MY_ACTIVITY.map((item) => {
                 const route = "route" in item ? item.route : undefined;
-                const isActive = route !== undefined && scopedPathname === route;
+                const resolvedRoute = route !== undefined ? resolveActivityRoute(route) : undefined;
+                const isActive =
+                  route !== undefined && isActivityRouteActive(item.key, route);
                 const label = t(item.labelKey);
                 const hasCompactBadge =
                   (item.key === "inbox" && inboxCount > 0) ||
@@ -137,7 +204,7 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
                     {route ? (
                       <>
                         <Link
-                          to={withCurrentOrgRoute(route)}
+                          to={resolvedRoute ?? withCurrentOrgRoute(route)}
                           aria-label={label}
                           aria-current={isActive ? "page" : undefined}
                           className={`${compactRowClass} ${isActive ? compactRowActiveClass : ""}`}
@@ -218,11 +285,9 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
           {currentUserId != null && (
             <li>
               <Link
-                to={withCurrentOrgRoute(`/dm/${currentUserId}`)}
-                className={`${expandedRowClass} ${
-                  scopedPathname === `/dm/${currentUserId}` ? expandedRowActiveClass : ""
-                }`}
-                aria-current={scopedPathname === `/dm/${currentUserId}` ? "page" : undefined}
+                to={inboxRoute}
+                className={`${expandedRowClass} ${isPrivateNotesActive ? expandedRowActiveClass : ""}`}
+                aria-current={isPrivateNotesActive ? "page" : undefined}
               >
                 <span
                   className={`${expandedIconClass} bg-accent`}
@@ -236,7 +301,8 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
           )}
           {MY_ACTIVITY.map((item) => {
             const route = "route" in item ? item.route : undefined;
-            const isActive = route !== undefined && scopedPathname === route;
+            const resolvedRoute = route !== undefined ? resolveActivityRoute(route) : undefined;
+            const isActive = route !== undefined && isActivityRouteActive(item.key, route);
             const content = (
               <>
                 <span
@@ -276,7 +342,7 @@ export const SidebarActivity: React.FC<SidebarActivityProps> = ({ open, onToggle
               <li key={item.key}>
                 {route ? (
                   <Link
-                    to={withCurrentOrgRoute(route)}
+                    to={resolvedRoute ?? withCurrentOrgRoute(route)}
                     className={`${expandedRowClass} ${isActive ? expandedRowActiveClass : ""}`}
                     aria-current={isActive ? "page" : undefined}
                   >

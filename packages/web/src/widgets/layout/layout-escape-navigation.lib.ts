@@ -4,6 +4,7 @@
  */
 
 import { extractOrgRouteFromPathname } from "~/shared/lib/org-route";
+import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { isMessengerChatPathname } from "./layout-sync-chat-context.lib";
 
 export const COMPOSER_FOCUS_ZONE_SELECTOR = '[data-focus-zone="composer"]';
@@ -42,6 +43,10 @@ export function isInteractiveElementFocused(
 }
 
 export function isInboxMessengerPathname(pathname: string): boolean {
+  const workspaceRoute = parseWorkspaceMessengerRoute(pathname);
+  if (workspaceRoute != null) {
+    return workspaceRoute.kind === "inbox";
+  }
   const { scopedPathname } = extractOrgRouteFromPathname(pathname);
   return scopedPathname === "/inbox";
 }
@@ -59,7 +64,12 @@ export function resolveLayoutEscapeKeyDown(options: {
   if (options.defaultPrevented) return "none";
   if (options.modalOpen) return "none";
   if (options.interactiveElementFocused) return "none";
-  if (!isMessengerChatPathname(options.pathname)) return "none";
+  const workspaceRoute = parseWorkspaceMessengerRoute(options.pathname);
+  const isWorkspaceChat =
+    workspaceRoute?.kind === "stream" ||
+    workspaceRoute?.kind === "topic" ||
+    workspaceRoute?.kind === "message";
+  if (!isWorkspaceChat && !isMessengerChatPathname(options.pathname)) return "none";
   if (isInboxMessengerPathname(options.pathname)) return "none";
   return "navigate-inbox";
 }

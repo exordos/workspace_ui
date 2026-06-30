@@ -62,6 +62,11 @@ import { useLayoutZulipEventLoop } from "./layout-zulip-event-loop.hook";
 import { useZulipRateLimitCountdownSeconds } from "./layout-zulip-rate-limit-banner.hook";
 import type { LayoutUserConnectionStatus } from "./layout-user-connection-status.types";
 
+const LegacyChatContextSync: React.FC = () => {
+  useSyncChatContextFromLocation();
+  return null;
+};
+
 export const Layout: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -212,11 +217,9 @@ export const Layout: React.FC = () => {
     () => resolveLayoutConnectionBannerMessage(online, connectionHealth, rateLimitSeconds),
     [connectionHealth, online, rateLimitSeconds],
   );
-  useHydrateDrafts(currentInstanceId, currentUserStatus);
-  // Workspace-мессенджер загружается параллельно старому чату.
-  // Старые Zulip stores новыми данными не кормим: для Workspace есть отдельный messenger store.
-  useLayoutWorkspaceMessengerBootstrap();
   const workspaceMessengerActive = isWorkspaceMessengerRoute(location.pathname);
+  useHydrateDrafts(currentInstanceId, currentUserStatus);
+  useLayoutWorkspaceMessengerBootstrap({ enabled: workspaceMessengerActive });
 
   // На Workspace-маршруте не запускаем пересчёт старых Zulip бейджей.
   // Иначе старый unread-flow может перезаписать состояние, которое пришло из Workspace API.
@@ -331,15 +334,18 @@ export const Layout: React.FC = () => {
 
   // Allow main shell while auth/history sync runs if sidebar was hydrated from IndexedDB.
   const showFullscreenLoader =
+    !workspaceMessengerActive &&
     currentInstanceId != null &&
     (currentUserStatus === "loading" || currentUserStatus === "idle") &&
     !chatListHasCachedRows;
   const showConnectionBlocked =
-    currentInstanceId != null && currentUserStatus === "blocked" && !chatListHasCachedRows;
+    !workspaceMessengerActive &&
+    currentInstanceId != null &&
+    currentUserStatus === "blocked" &&
+    !chatListHasCachedRows;
 
   useLayoutAuthGuard({ currentInstanceId, currentUserStatus, navigate });
   useLayoutAuthErrorHandler({ currentInstanceId, currentUserStatus, navigate });
-  useSyncChatContextFromLocation();
 
   useLayoutPushPermission({ enabled: isLayoutUserConnectionReady(currentUserStatus) });
   useLayoutPushNotifications({ enabled: isLayoutUserConnectionReady(currentUserStatus) });
@@ -362,12 +368,8 @@ export const Layout: React.FC = () => {
   useLayoutPresencePolling({ enabled: layoutConnectionReady });
 
   const handleSelectDm = useCallback(
-    (slug: string | null) => {
-      if (slug) {
-        void navigate(withCurrentOrgRoute(`/dm/${slug}`));
-      } else {
-        void navigate(withCurrentOrgRoute("/"));
-      }
+    (_slug: string | null) => {
+      void navigate(withCurrentOrgRoute("/inbox"));
     },
     [navigate],
   );
@@ -426,6 +428,7 @@ export const Layout: React.FC = () => {
 
   return (
     <div className="relative flex h-screen max-h-[100dvh] min-h-app-shell w-full min-w-app-shell-min flex-col overflow-hidden bg-bg text-text-primary">
+      {workspaceMessengerActive ? null : <LegacyChatContextSync />}
       {topBannerKind === "connection" ? (
         <LayoutConnectionBanner
           online={online}

@@ -1,7 +1,5 @@
 import { type Token, type TokenizerAndRendererExtension, type Tokens } from "marked";
 import { buildMessageRedirectRoute, buildPushClickUrl } from "~/shared/lib/push-click";
-import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
-import { encodeZulipHashComponent } from "~/shared/lib/zulip-web-permalink.lib";
 
 interface ZulipStreamReferenceToken extends Tokens.Generic {
   type: "zulip_stream_reference";
@@ -31,22 +29,6 @@ function escapeHtmlAttributeText(text: string): string {
   return escapeInlineHtmlText(text).replace(/"/g, "&quot;");
 }
 
-function buildZulipStreamNarrowSlug(streamId: number, streamName: string): string {
-  const name = streamName.trim().replaceAll(" ", "-");
-  return encodeZulipHashComponent(`${streamId}-${name}`);
-}
-
-function buildZulipStreamTopicMessageHref(
-  stream: ResolvedStreamReference,
-  topic: string,
-  messageId: number,
-): string {
-  const streamSlug = buildZulipStreamNarrowSlug(stream.streamId, stream.streamName);
-  const topicHash = encodeZulipHashComponent(normalizeTopicForIdentity(topic));
-  const nearHash = encodeZulipHashComponent(String(messageId));
-  return `#narrow/channel/${streamSlug}/topic/${topicHash}/near/${nearHash}`;
-}
-
 function renderZulipStreamReferenceToken(token: Token): string {
   const streamReferenceToken = token as ZulipStreamReferenceToken;
   const text = escapeInlineHtmlText(streamReferenceToken.text);
@@ -74,12 +56,8 @@ export function resolveZulipStreamReference(
     if (!Number.isSafeInteger(messageId) || messageId <= 0) {
       return null;
     }
-    const resolvedStream = resolveStreamByName?.(streamName) ?? null;
     return {
-      href:
-        resolvedStream != null
-          ? buildZulipStreamTopicMessageHref(resolvedStream, topic, messageId)
-          : buildMessageRedirectRoute(messageId),
+      href: buildMessageRedirectRoute(messageId),
       htmlClass: "message-link",
       text: `#${streamName}>${topic}@${String(messageId)}`,
     };

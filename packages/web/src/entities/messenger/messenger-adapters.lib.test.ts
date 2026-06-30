@@ -1,4 +1,11 @@
 import { describe, expect, it } from "vitest";
+import type {
+  WorkspaceMessengerFolderDto,
+  WorkspaceMessengerMessageDto,
+  WorkspaceMessengerStreamBindingDto,
+  WorkspaceMessengerStreamDto,
+  WorkspaceMessengerTopicDto,
+} from "~/shared/api/messenger.types";
 import {
   adaptMessengerFolder,
   adaptMessengerMessage,
@@ -8,13 +15,6 @@ import {
   adaptStreamToMessengerConversation,
   adaptTopicToMessengerConversation,
 } from "./messenger-adapters.lib";
-import type {
-  WorkspaceMessengerFolderDto,
-  WorkspaceMessengerMessageDto,
-  WorkspaceMessengerStreamBindingDto,
-  WorkspaceMessengerStreamDto,
-  WorkspaceMessengerTopicDto,
-} from "~/shared/api/messenger.types";
 
 // Adapter tests show how raw backend DTOs become stable UI domain objects.
 const PROJECT_UUID = "22222222-2222-4222-8222-222222222222";
@@ -116,6 +116,13 @@ describe("messenger adapters", () => {
       unreadCount: 2,
       notificationMode: "follow",
     });
+  });
+
+  it("normalizes missing direct user id on channel streams", () => {
+    const channelStream = { ...streamDto, direct_user_uuid: undefined };
+
+    expect(adaptMessengerStream(channelStream).directUserUuid).toBeNull();
+    expect(adaptStreamToMessengerConversation(channelStream).directUserUuid).toBeNull();
   });
 
   it("maps stream bindings to domain objects", () => {
@@ -236,6 +243,43 @@ describe("messenger adapters", () => {
       ],
       createdAt: DATE,
       updatedAt: DATE,
+    });
+  });
+
+  it("maps backend folder parent alias to domain folder uuid", () => {
+    const folderDto: WorkspaceMessengerFolderDto = {
+      uuid: "00000000-0000-0000-0000-000000000000",
+      title: "All chats",
+      unread_count: 3,
+      system_type: "all",
+      folder_items: [
+        {
+          uuid: FOLDER_ITEM_UUID,
+          project_id: PROJECT_UUID,
+          folder: "00000000-0000-0000-0000-000000000000",
+          user_uuid: USER_UUID,
+          stream_uuid: STREAM_UUID,
+          chat_type: "stream",
+          order_index: null,
+          pinned_at: null,
+          unread_count: 3,
+          created_at: DATE,
+          updated_at: DATE,
+        },
+      ],
+      created_at: DATE,
+      updated_at: DATE,
+    };
+
+    expect(adaptMessengerFolder(folderDto)).toMatchObject({
+      uuid: "00000000-0000-0000-0000-000000000000",
+      backgroundColorValue: null,
+      items: [
+        {
+          folderUuid: "00000000-0000-0000-0000-000000000000",
+          streamUuid: STREAM_UUID,
+        },
+      ],
     });
   });
 

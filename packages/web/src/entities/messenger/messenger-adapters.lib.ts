@@ -45,7 +45,7 @@ export function adaptMessengerStream(dto: WorkspaceMessengerStreamDto): Messenge
     inviteOnly: dto.invite_only,
     announce: dto.announce,
     isArchived: dto.is_archived,
-    directUserUuid: dto.direct_user_uuid,
+    directUserUuid: dto.direct_user_uuid ?? null,
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
   };
@@ -95,7 +95,7 @@ export function adaptStreamToMessengerConversation(
     isPrivate: stream.private,
     unreadCount: stream.unread_count,
     isArchived: stream.is_archived,
-    directUserUuid: stream.direct_user_uuid,
+    directUserUuid: stream.direct_user_uuid ?? null,
     notificationMode: stream.notification_mode,
   };
 }
@@ -146,10 +146,15 @@ export function adaptMessengerMessage(dto: WorkspaceMessengerMessageDto): Messen
 export function adaptMessengerFolderItem(
   dto: WorkspaceMessengerFolderItemDto,
 ): MessengerFolderItem {
+  const folderUuid = dto.folder_uuid ?? dto.folder;
+  if (folderUuid == null) {
+    throw new TypeError("Folder item does not reference a folder");
+  }
+
   return {
     uuid: dto.uuid,
     projectId: dto.project_id,
-    folderUuid: dto.folder_uuid,
+    folderUuid,
     userUuid: dto.user_uuid,
     streamUuid: dto.stream_uuid,
     conversationId: conversationIdForStream(dto.stream_uuid),
@@ -166,7 +171,7 @@ export function adaptMessengerFolder(dto: WorkspaceMessengerFolderDto): Messenge
   return {
     uuid: dto.uuid,
     title: dto.title,
-    backgroundColorValue: dto.background_color_value,
+    backgroundColorValue: dto.background_color_value ?? null,
     unreadCount: dto.unread_count,
     systemType: dto.system_type,
     items: dto.folder_items.map(adaptMessengerFolderItem),

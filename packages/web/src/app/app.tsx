@@ -21,6 +21,7 @@ import { setPluginNavigate } from "~/shared/lib/plugins/api";
 import { useShortcut } from "~/shared/lib/shortcuts";
 import { useAppUpdate } from "~/shared/lib/updater";
 import { isWebView } from "~/shared/lib/webview";
+import { workspaceMessengerRootRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { ErrorBoundary, PageErrorFallback, PageLoader } from "~/shared/ui/error-boundary";
 import { resolveElectronTrayNavigation } from "./app-electron-navigation.lib";
 import { isForceUpdateRequiredStatus, shouldRedirectToForceUpdate } from "./app-force-update.lib";
@@ -44,9 +45,12 @@ const App: React.FC = () => {
     [sessions, currentAccountId],
   );
   const currentOrgRouteId = currentSession?.organizationId ?? null;
-  const defaultInboxRoute = useMemo(
-    () => (currentOrgRouteId ? withOrgRoutePrefix("/inbox", currentOrgRouteId) : "/inbox"),
-    [currentOrgRouteId],
+  const defaultMessengerRoute = useMemo(
+    () =>
+      currentSession != null
+        ? workspaceMessengerRootRoute(currentSession.organizationId, currentSession.projectId)
+        : "/",
+    [currentSession],
   );
   const forceUpdateRoute = useMemo(
     () =>
@@ -249,7 +253,7 @@ const App: React.FC = () => {
       )}
       <ErrorBoundary fallback={(api) => <PageErrorFallback onRetry={api.resetErrorBoundary} />}>
         <Suspense fallback={<PageLoader />}>
-          <AuthenticatedAppRoutes defaultInboxRoute={defaultInboxRoute} />
+          <AuthenticatedAppRoutes defaultMessengerRoute={defaultMessengerRoute} />
         </Suspense>
       </ErrorBoundary>
     </div>

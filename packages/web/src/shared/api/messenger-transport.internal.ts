@@ -3,11 +3,13 @@ import {
   isDevWorkspaceMessengerApiPathname,
   isAllowedDevWorkspaceProxyTargetOrigin,
 } from "~/shared/config/dev-workspace-org-proxy";
+import { createLogger } from "~/shared/lib/logger";
 import { buildMessengerBearerAuthHeader } from "./messenger-auth";
 
 // Нижний HTTP-слой для Workspace Messenger API.
 // Всё, что выше, должно работать уже с DTO или доменными объектами, а не собирать URL руками.
 export const DEFAULT_MESSENGER_API_BASE = "/api/messenger/v1";
+const log = createLogger("api:messenger-transport");
 
 export type MessengerHttpMethod = "GET" | "POST" | "PUT" | "DELETE";
 export type MessengerDtoGuard<T> = (value: unknown) => value is T;
@@ -274,7 +276,21 @@ export function parseDtoList<T>(data: unknown, guard: MessengerDtoGuard<T>, labe
   if (!Array.isArray(data)) {
     throw new TypeError(`Expected ${label} to be an array`);
   }
-  return data.filter(guard);
+  const items = data.filter(guard);
+  if (items.length !== data.length) {
+    const invalidIndexes = data
+      .map((item, index) => (guard(item) ? null : index))
+      .filter((index): index is number => index != null)
+      .slice(0, 10);
+    log.warn("Dropped invalid messenger DTO rows", {
+      label,
+      total: data.length,
+      accepted: items.length,
+      dropped: data.length - items.length,
+      invalidIndexes,
+    });
+  }
+  return items;
 }
 
 // Strict parsing is used where dropping invalid rows would lose backend state.

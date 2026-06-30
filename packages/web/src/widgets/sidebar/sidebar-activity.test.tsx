@@ -504,6 +504,6 @@ describe("SidebarActivity", () => {
     );
 
     const privateNotesLink = screen.getByRole("link", { name: /private notes/i });
-    expect(privateNotesLink).toHaveAttribute("href", "/dm/7");
+    expect(privateNotesLink).toHaveAttribute("href", "/inbox");
   });
 });

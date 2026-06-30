@@ -1,5 +1,5 @@
 /**
- * Persists the last opened messenger chat (stream/DM route) per Zulip instance.
+ * Persists the last opened Workspace messenger route per instance.
  *
  * Used when returning to the messenger section from the tray, top bar, or shortcuts.
  */
@@ -9,7 +9,13 @@ import { extractOrgRouteFromPathname } from "~/shared/lib/org-route";
 const log = createLogger("last-messenger-route");
 
 const STORAGE_KEY = "workspace-last-messenger-route";
-const MESSENGER_CHAT_PATH = /^\/(?:stream\/[^/]+(?:\/topic\/[^/]+)?|dm\/[^/]+)\/?$/;
+const WORKSPACE_MESSENGER_PATH =
+  /^\/project\/([^/]+)\/(?:messenger|stream\/[^/]+(?:\/topic\/[^/]+)?|message\/[^/]+)\/?$/;
+
+export interface MessengerNavigationContext {
+  instanceId: string | null;
+  projectId: string | null;
+}
 
 /** Internal route sent from Electron tray to open the last messenger chat. */
 export const TRAY_MESSENGER_OPEN_ROUTE = "/open/messenger";
@@ -19,16 +25,40 @@ export function isTrayMessengerOpenRoute(route: string): boolean {
 }
 
 export function isPersistableMessengerChatPath(scopedPathname: string): boolean {
-  return MESSENGER_CHAT_PATH.test(scopedPathname);
+  return WORKSPACE_MESSENGER_PATH.test(scopedPathname);
 }
 
-/** Returns org-stripped `/stream/...` or `/dm/...` when the pathname is a messenger chat. */
+/** Returns org-stripped `/project/:projectId/...` when the pathname is a Workspace messenger route. */
 export function extractPersistableMessengerChatPath(pathname: string): string | null {
   const { scopedPathname } = extractOrgRouteFromPathname(pathname);
   if (!isPersistableMessengerChatPath(scopedPathname)) {
     return null;
   }
   return scopedPathname;
+}
+
+function routeProjectId(scopedPathname: string): string | null {
+  const match = WORKSPACE_MESSENGER_PATH.exec(scopedPathname);
+  if (!match?.[1]) {
+    return null;
+  }
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
+}
+
+function normalizeProjectId(projectId: string | null): string | null {
+  if (projectId == null) {
+    return null;
+  }
+  const trimmed = projectId.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function defaultWorkspaceMessengerPath(projectId: string): string {
+  return `/project/${encodeURIComponent(projectId)}/messenger`;
 }
 
 function loadAll(): Record<string, string> {
@@ -99,16 +129,18 @@ export function clearLastMessengerRoutes(): void {
   }
 }
 
-/** Org-stripped messenger path: last opened chat or default stream slug fallback. */
-export function resolveMessengerNavigationPath(
-  instanceId: string | null,
-  defaultStreamSlug: string,
-): string {
-  if (instanceId != null) {
-    const saved = loadLastMessengerRoute(instanceId);
-    if (saved != null) {
+/** Org-stripped messenger path: last opened Workspace route, project root, or app root. */
+export function resolveMessengerNavigationPath(context: MessengerNavigationContext): string {
+  const projectId = normalizeProjectId(context.projectId);
+  if (projectId == null) {
+    return "/";
+  }
+
+  if (context.instanceId != null) {
+    const saved = loadLastMessengerRoute(context.instanceId);
+    if (saved != null && routeProjectId(saved) === projectId) {
       return saved;
     }
   }
-  return `/stream/${defaultStreamSlug}`;
+  return defaultWorkspaceMessengerPath(projectId);
 }

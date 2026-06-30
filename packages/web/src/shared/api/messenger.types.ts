@@ -46,7 +46,7 @@ export interface WorkspaceMessengerStreamDto {
   announce: boolean;
   private: boolean;
   is_archived: boolean;
-  direct_user_uuid: WorkspaceMessengerUuid | null;
+  direct_user_uuid?: WorkspaceMessengerUuid | null;
   created_at: WorkspaceMessengerDateTime;
   updated_at: WorkspaceMessengerDateTime;
 }
@@ -102,7 +102,8 @@ export interface WorkspaceMessengerMessageDto {
 export interface WorkspaceMessengerFolderItemDto {
   uuid: WorkspaceMessengerUuid;
   project_id: WorkspaceMessengerUuid;
-  folder_uuid: WorkspaceMessengerUuid;
+  folder_uuid?: WorkspaceMessengerUuid;
+  folder?: WorkspaceMessengerUuid;
   user_uuid: WorkspaceMessengerUuid;
   stream_uuid: WorkspaceMessengerUuid;
   chat_type: WorkspaceMessengerFolderItemChatType;
@@ -118,7 +119,7 @@ export interface WorkspaceMessengerFolderDto {
   project_id?: WorkspaceMessengerUuid;
   user_uuid?: WorkspaceMessengerUuid;
   title: string;
-  background_color_value: number | null;
+  background_color_value?: number | null;
   unread_count: number;
   system_type: WorkspaceMessengerFolderSystemType;
   folder_items: WorkspaceMessengerFolderItemDto[];
@@ -408,7 +409,7 @@ export type WorkspaceMessengerWebSocketFrameDto =
   | WorkspaceMessengerWebSocketErrorFrameDto
   | WorkspaceMessengerWebSocketEventFrameDto;
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -541,7 +542,7 @@ export function isWorkspaceMessengerStreamDto(
     typeof value.announce === "boolean" &&
     typeof value.private === "boolean" &&
     typeof value.is_archived === "boolean" &&
-    isNullableUuid(value.direct_user_uuid) &&
+    (value.direct_user_uuid === undefined || isNullableUuid(value.direct_user_uuid)) &&
     isDateTime(value.created_at) &&
     isDateTime(value.updated_at)
   );
@@ -609,7 +610,7 @@ export function isWorkspaceMessengerFolderItemDto(
     isRecord(value) &&
     isUuid(value.uuid) &&
     isUuid(value.project_id) &&
-    isUuid(value.folder_uuid) &&
+    (isUuid(value.folder_uuid) || isUuid(value.folder)) &&
     isUuid(value.user_uuid) &&
     isUuid(value.stream_uuid) &&
     isFolderItemChatType(value.chat_type) &&
@@ -630,7 +631,9 @@ export function isWorkspaceMessengerFolderDto(
     (value.project_id === undefined || isUuid(value.project_id)) &&
     (value.user_uuid === undefined || isUuid(value.user_uuid)) &&
     typeof value.title === "string" &&
-    (value.background_color_value === null || isNonNegativeInteger(value.background_color_value)) &&
+    (value.background_color_value === undefined ||
+      value.background_color_value === null ||
+      isNonNegativeInteger(value.background_color_value)) &&
     isNonNegativeInteger(value.unread_count) &&
     isFolderSystemType(value.system_type) &&
     Array.isArray(value.folder_items) &&

@@ -10,11 +10,11 @@
  * Usage:
  *   import { deeplink } from "~/lib/deeplinks";
  *
- *   deeplink.toStream(5, "general");          // "/stream/5-general"
- *   deeplink.toTopic(5, "general", "bugs");   // "/stream/5-general/topic/bugs"
- *   deeplink.toDm(42);                        // "/dm/42"
+ *   deeplink.toStream(5, "general");          // "/inbox"
+ *   deeplink.toTopic(5, "general", "bugs");   // "/inbox"
+ *   deeplink.toDm(42);                        // "/inbox"
  *   deeplink.toActivity("starred");           // "/activity/starred"
- *   deeplink.toMessage(5, "general", 12345);  // "/stream/5-general/topic/general?msg=12345"
+ *   deeplink.toMessage(5, "general", 12345);  // "/inbox"
  *
  *   deeplink.toShareableUrl("/stream/5-general");  // "https://app.example.com/stream/5-general"
  *   deeplink.parse("workspace://open/dm/42");      // { type: "dm", dmId: "42" }
@@ -25,8 +25,13 @@
 import { writeText } from "./clipboard";
 import { isElectron } from "./electron";
 import { createLogger } from "./logger";
-import { extractOrgRouteFromPathname, withCurrentOrgRoute } from "./org-route";
-import { decodeTopicFromRoute, encodeTopicForRoute } from "./topic-identity.lib";
+import { extractOrgRouteFromPathname, withCurrentOrgRoute, withOrgRoutePrefix } from "./org-route";
+import { decodeTopicFromRoute } from "./topic-identity.lib";
+import {
+  workspaceMessengerMessageRoute,
+  workspaceMessengerStreamRoute,
+  workspaceMessengerTopicRoute,
+} from "./workspace-messenger-route.lib";
 
 const log = createLogger("deeplinks");
 
@@ -34,36 +39,85 @@ const log = createLogger("deeplinks");
 // Route builders (internal paths)
 // ---------------------------------------------------------------------------
 
-function slugForStream(streamId: number, streamName: string): string {
-  const slug = streamName
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/-+$/, "");
-  return `${streamId}-${slug || "channel"}`;
+interface WorkspaceRouteScope {
+  orgId?: string;
+  projectId?: string;
 }
 
-export function toStream(streamId: number, streamName: string): string {
-  return withCurrentOrgRoute(`/stream/${slugForStream(streamId, streamName)}`);
+interface WorkspaceStreamRouteScope extends WorkspaceRouteScope {
+  streamUuid?: string;
 }
 
-export function toTopic(streamId: number, streamName: string, topic: string): string {
-  const topicSegment = encodeTopicForRoute(topic);
-  return withCurrentOrgRoute(
-    `/stream/${slugForStream(streamId, streamName)}/topic/${encodeURIComponent(topicSegment)}`,
-  );
+interface WorkspaceTopicRouteScope extends WorkspaceStreamRouteScope {
+  topicUuid?: string;
+}
+
+interface WorkspaceMessageRouteScope extends WorkspaceRouteScope {
+  messageUuid?: string;
+}
+
+function normalizeNonEmpty(value: string | undefined): string | undefined {
+  if (value == null) return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function inboxRoute(scope?: WorkspaceRouteScope): string {
+  const orgId = normalizeNonEmpty(scope?.orgId);
+  if (orgId != null) {
+    return withOrgRoutePrefix("/inbox", orgId);
+  }
+  return withCurrentOrgRoute("/inbox");
+}
+
+export function toStream(
+  _streamId: number,
+  _streamName: string,
+  workspace?: WorkspaceStreamRouteScope,
+): string {
+  const orgId = normalizeNonEmpty(workspace?.orgId);
+  const projectId = normalizeNonEmpty(workspace?.projectId);
+  const streamUuid = normalizeNonEmpty(workspace?.streamUuid);
+  if (orgId == null || projectId == null || streamUuid == null) {
+    return inboxRoute(workspace);
+  }
+  return workspaceMessengerStreamRoute({ orgId, projectId, streamUuid });
+}
+
+export function toTopic(
+  _streamId: number,
+  _streamName: string,
+  _topic: string,
+  workspace?: WorkspaceTopicRouteScope,
+): string {
+  const orgId = normalizeNonEmpty(workspace?.orgId);
+  const projectId = normalizeNonEmpty(workspace?.projectId);
+  const streamUuid = normalizeNonEmpty(workspace?.streamUuid);
+  const topicUuid = normalizeNonEmpty(workspace?.topicUuid);
+  if (orgId == null || projectId == null || streamUuid == null || topicUuid == null) {
+    return inboxRoute(workspace);
+  }
+  return workspaceMessengerTopicRoute({ orgId, projectId, streamUuid, topicUuid });
 }
 
 export function toMessage(
-  streamId: number,
-  streamName: string,
-  topic: string,
-  messageId: number,
+  _streamId: number,
+  _streamName: string,
+  _topic: string,
+  _messageId: number,
+  workspace?: WorkspaceMessageRouteScope,
 ): string {
-  return `${toTopic(streamId, streamName, topic)}?msg=${messageId}`;
+  const orgId = normalizeNonEmpty(workspace?.orgId);
+  const projectId = normalizeNonEmpty(workspace?.projectId);
+  const messageUuid = normalizeNonEmpty(workspace?.messageUuid);
+  if (orgId == null || projectId == null || messageUuid == null) {
+    return inboxRoute(workspace);
+  }
+  return workspaceMessengerMessageRoute({ orgId, projectId, messageUuid });
 }
 
-export function toDm(dmId: number | string): string {
-  return withCurrentOrgRoute(`/dm/${dmId}`);
+export function toDm(_dmId: number | string): string {
+  return withCurrentOrgRoute("/inbox");
 }
 
 export function toActivity(filter: "starred" | "mentions" | "reactions"): string {

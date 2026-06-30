@@ -1,10 +1,26 @@
 import type { MockMessage } from "~/shared/api/zulip.types";
-import { buildDmRouteSlugFromRecipients } from "~/shared/lib/dm-route-slug.lib";
-import { withCurrentOrgRoute } from "~/shared/lib/org-route";
-import { encodeTopicForRoute, normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import { withCurrentOrgRoute, withOrgRoutePrefix } from "~/shared/lib/org-route";
+import {
+  workspaceMessengerMessageRoute,
+  workspaceMessengerStreamRoute,
+  workspaceMessengerTopicRoute,
+} from "~/shared/lib/workspace-messenger-route.lib";
 import type { PushClickTargetInput, PushNotificationClickPayload } from "./push-click.types";
 
 export type { PushClickTargetInput, PushNotificationClickPayload };
+
+type WorkspacePushRouteFields = Partial<{
+  messageUuid: string;
+  streamUuid: string;
+  topicUuid: string;
+  orgId: string;
+  projectId: string;
+}>;
+
+type WorkspacePushClickTargetInput = PushClickTargetInput & WorkspacePushRouteFields;
+
+type WorkspacePushNotificationClickPayload = PushNotificationClickPayload &
+  WorkspacePushRouteFields;
 
 function normalizeRealmForComparison(realm: string): string {
   return realm
@@ -13,14 +29,6 @@ function normalizeRealmForComparison(realm: string): string {
     .replace(/\/api\/v1$/, "")
     .replace(/\/api$/, "")
     .toLowerCase();
-}
-
-function slugifyStreamName(streamName: string): string {
-  return streamName
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/-+$/, "")
-    .replace(/^-+/, "");
 }
 
 function parsePositiveInt(value: number | string | undefined): number | undefined {
@@ -46,6 +54,43 @@ function normalizeNonEmpty(value: string | undefined): string | undefined {
   return normalized.length > 0 ? normalized : undefined;
 }
 
+function buildInboxRoute(orgId?: string): string {
+  const normalizedOrgId = normalizeNonEmpty(orgId);
+  if (normalizedOrgId != null) {
+    return withOrgRoutePrefix("/inbox", normalizedOrgId);
+  }
+  return withCurrentOrgRoute("/inbox");
+}
+
+function buildWorkspaceMessageRoute(input: WorkspacePushClickTargetInput): string | null {
+  const orgId = normalizeNonEmpty(input.orgId);
+  const projectId = normalizeNonEmpty(input.projectId);
+  const messageUuid = normalizeNonEmpty(input.messageUuid);
+  if (orgId == null || projectId == null || messageUuid == null) {
+    return null;
+  }
+  return workspaceMessengerMessageRoute({ orgId, projectId, messageUuid });
+}
+
+function buildWorkspaceStreamRoute(input: WorkspacePushClickTargetInput): string | null {
+  const orgId = normalizeNonEmpty(input.orgId);
+  const projectId = normalizeNonEmpty(input.projectId);
+  const streamUuid = normalizeNonEmpty(input.streamUuid);
+  if (orgId == null || projectId == null || streamUuid == null) {
+    return null;
+  }
+
+  if (input.topic != null) {
+    const topicUuid = normalizeNonEmpty(input.topicUuid);
+    if (topicUuid == null) {
+      return null;
+    }
+    return workspaceMessengerTopicRoute({ orgId, projectId, streamUuid, topicUuid });
+  }
+
+  return workspaceMessengerStreamRoute({ orgId, projectId, streamUuid });
+}
+
 function parseNearMessageIdFromZulipHash(hash: string): number | undefined {
   const normalizedHash = hash.startsWith("#") ? hash.slice(1) : hash;
   if (!normalizedHash.startsWith("narrow/")) {
@@ -66,35 +111,29 @@ function parseNearMessageIdFromZulipHash(hash: string): number | undefined {
   }
 }
 
-export function buildPushClickUrl(input: PushClickTargetInput): string {
-  const withMessageId = (base: string): string =>
-    input.messageId != null ? `${base}?msg=${input.messageId}` : base;
-  const streamName = normalizeNonEmpty(input.streamName);
-  const hasTopic = input.topic != null;
-  const topic = hasTopic ? normalizeTopicForIdentity(input.topic ?? "") : undefined;
-
-  if (input.type === "stream" && streamName) {
-    const base =
-      input.streamId != null
-        ? withCurrentOrgRoute(
-            `/stream/${input.streamId}-${slugifyStreamName(streamName) || "channel"}`,
-          )
-        : withCurrentOrgRoute(`/stream/${encodeURIComponent(streamName)}`);
-    return hasTopic
-      ? withMessageId(`${base}/topic/${encodeURIComponent(encodeTopicForRoute(topic ?? ""))}`)
-      : withMessageId(base);
-  }
-
-  if (input.type === "private" && input.senderId != null) {
-    return withMessageId(withCurrentOrgRoute(`/dm/${input.senderId}`));
-  }
-
-  return withCurrentOrgRoute("/");
+export function buildPushClickUrl(input: WorkspacePushClickTargetInput): string {
+  return (
+    buildWorkspaceMessageRoute(input) ??
+    buildWorkspaceStreamRoute(input) ??
+    buildInboxRoute(input.orgId)
+  );
 }
 
-export function buildMessageRedirectRoute(messageId: number, realmUri?: string): string {
-  const base = withCurrentOrgRoute(`/message/${messageId}`);
-  return realmUri ? `${base}?realm=${encodeURIComponent(realmUri)}` : base;
+export function buildMessageRedirectRoute(
+  messageId: number,
+  _realmUri?: string,
+  workspace?: Pick<WorkspacePushRouteFields, "orgId" | "projectId" | "messageUuid">,
+): string {
+  const workspaceRoute = buildWorkspaceMessageRoute({
+    messageId,
+    messageUuid: workspace?.messageUuid,
+    orgId: workspace?.orgId,
+    projectId: workspace?.projectId,
+  });
+  if (workspaceRoute != null) {
+    return workspaceRoute;
+  }
+  return buildInboxRoute(workspace?.orgId);
 }
 
 export function buildMessageRedirectRouteFromZulipPermalink(permalink: string): string | null {
@@ -119,10 +158,16 @@ export function buildMessageRedirectRouteFromZulipPermalink(permalink: string): 
   return buildMessageRedirectRoute(nearMessageId, realmUri);
 }
 
-export function buildRouteFromPushNotificationClick(payload: PushNotificationClickPayload): string {
+export function buildRouteFromPushNotificationClick(
+  payload: WorkspacePushNotificationClickPayload,
+): string {
   const messageId = parsePositiveInt(payload.messageId);
-  if (messageId != null) {
-    return buildMessageRedirectRoute(messageId, payload.realmUri);
+  if (messageId != null || normalizeNonEmpty(payload.messageUuid) != null) {
+    return buildMessageRedirectRoute(messageId ?? 0, payload.realmUri, {
+      messageUuid: payload.messageUuid,
+      orgId: payload.orgId,
+      projectId: payload.projectId,
+    });
   }
 
   const messageType =
@@ -133,39 +178,44 @@ export function buildRouteFromPushNotificationClick(payload: PushNotificationCli
   return buildPushClickUrl({
     type: messageType,
     streamId: parsePositiveInt(payload.streamId),
+    streamUuid: payload.streamUuid,
     streamName: typeof payload.streamName === "string" ? payload.streamName : undefined,
     topic: typeof payload.topic === "string" ? payload.topic : undefined,
+    topicUuid: payload.topicUuid,
     senderId: parsePositiveInt(payload.senderId),
+    orgId: payload.orgId,
+    projectId: payload.projectId,
   });
 }
 
+type WorkspaceMessageRouteFields = Partial<{
+  uuid: string;
+  messageUuid: string;
+  project_id: string;
+  projectId: string;
+  stream_uuid: string;
+  streamUuid: string;
+  topic_uuid: string;
+  topicUuid: string;
+  org_id: string;
+  orgId: string;
+}>;
+
 export function buildRouteFromMessage(
-  message: Pick<MockMessage, "id" | "stream_id" | "channel" | "display_recipient" | "subject">,
-  currentUserId: number | null,
-): string | null {
-  if (message.stream_id != null) {
-    const streamName =
-      message.channel ??
-      (typeof message.display_recipient === "string" ? message.display_recipient : "general");
-    const topic = (message.subject ?? "").trim();
-    return buildPushClickUrl({
-      type: "stream",
-      streamId: message.stream_id,
-      streamName,
-      topic,
-      messageId: message.id,
-    });
-  }
-
-  if (Array.isArray(message.display_recipient)) {
-    const dmSlug = buildDmRouteSlugFromRecipients(message.display_recipient, currentUserId);
-    if (dmSlug != null) {
-      const base = withCurrentOrgRoute(`/dm/${dmSlug}`);
-      return `${base}?msg=${message.id}`;
-    }
-  }
-
-  return null;
+  message: Pick<MockMessage, "id" | "stream_id" | "channel" | "display_recipient" | "subject"> &
+    WorkspaceMessageRouteFields,
+  _currentUserId: number | null,
+): string {
+  return buildPushClickUrl({
+    messageId: message.id,
+    messageUuid: message.messageUuid ?? message.uuid,
+    streamId: message.stream_id ?? undefined,
+    streamUuid: message.streamUuid ?? message.stream_uuid,
+    topic: message.subject,
+    topicUuid: message.topicUuid ?? message.topic_uuid,
+    orgId: message.orgId ?? message.org_id,
+    projectId: message.projectId ?? message.project_id,
+  });
 }
 
 export function buildNavigableRouteFromMessage(
@@ -176,7 +226,7 @@ export function buildNavigableRouteFromMessage(
     display_recipient?: MockMessage["display_recipient"];
     subject?: string;
     sender_id?: number;
-  },
+  } & WorkspaceMessageRouteFields,
   currentUserId: number | null,
 ): string | null {
   const exactRoute = buildRouteFromMessage(
@@ -186,21 +236,20 @@ export function buildNavigableRouteFromMessage(
       channel: message.channel,
       display_recipient: message.display_recipient,
       subject: message.subject ?? "",
+      uuid: message.uuid,
+      messageUuid: message.messageUuid,
+      stream_uuid: message.stream_uuid,
+      streamUuid: message.streamUuid,
+      topic_uuid: message.topic_uuid,
+      topicUuid: message.topicUuid,
+      org_id: message.org_id,
+      orgId: message.orgId,
+      project_id: message.project_id,
+      projectId: message.projectId,
     },
     currentUserId,
   );
-  if (exactRoute) {
-    return exactRoute;
-  }
-
-  if (message.sender_id != null) {
-    if (currentUserId != null && message.sender_id === currentUserId) {
-      return null;
-    }
-    return `${withCurrentOrgRoute(`/dm/${message.sender_id}`)}?msg=${message.id}`;
-  }
-
-  return null;
+  return exactRoute;
 }
 
 export function findInstanceIdByRealmUri(

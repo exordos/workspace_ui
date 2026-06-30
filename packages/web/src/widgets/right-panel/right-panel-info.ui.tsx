@@ -151,12 +151,12 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   );
 
   const handleOpenDirectMessage = useCallback(
-    (userId: number) => {
+    (_userId: number) => {
       if (onOpenDirectMessage) {
-        onOpenDirectMessage(userId);
+        onOpenDirectMessage(_userId);
         return;
       }
-      void navigate(withCurrentOrgRoute(`/dm/${userId}`));
+      void navigate(withCurrentOrgRoute("/inbox"));
     },
     [navigate, onOpenDirectMessage],
   );
@@ -356,9 +356,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
           description: editDescription.trim().length > 0 ? editDescription.trim() : null,
         });
       }
-      void navigate(withCurrentOrgRoute(`/stream/${buildStreamSlug(streamId, trimmedName)}`), {
-        replace: true,
-      });
+      void navigate(withCurrentOrgRoute("/inbox"), { replace: true });
       setEditOpen(false);
     } else {
       setChannelActionError(t("app.error"));

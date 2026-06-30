@@ -9,6 +9,22 @@ export type WorkspaceMessengerRouteMatch =
       projectId: string;
     }
   | {
+      kind: "inbox";
+      orgId: string;
+      projectId: string;
+    }
+  | {
+      kind: "activity";
+      orgId: string;
+      projectId: string;
+      filter: string;
+    }
+  | {
+      kind: "feed";
+      orgId: string;
+      projectId: string;
+    }
+  | {
       kind: "stream";
       orgId: string;
       projectId: string;
@@ -42,6 +58,25 @@ function safeDecodeRouteSegment(value: string): string {
 
 export function workspaceMessengerRootRoute(orgId: string, projectId: string): string {
   return withOrgRoutePrefix(`/project/${encodeRouteSegment(projectId)}/messenger`, orgId);
+}
+
+export function workspaceInboxRoute(orgId: string, projectId: string): string {
+  return withOrgRoutePrefix(`/project/${encodeRouteSegment(projectId)}/inbox`, orgId);
+}
+
+export function workspaceActivityRoute(input: {
+  orgId: string;
+  projectId: string;
+  filter: string;
+}): string {
+  return withOrgRoutePrefix(
+    `/project/${encodeRouteSegment(input.projectId)}/activity/${encodeRouteSegment(input.filter)}`,
+    input.orgId,
+  );
+}
+
+export function workspaceFeedRoute(orgId: string, projectId: string): string {
+  return withOrgRoutePrefix(`/project/${encodeRouteSegment(projectId)}/feed`, orgId);
 }
 
 export function workspaceMessengerStreamRoute(input: {
@@ -97,6 +132,34 @@ export function parseWorkspaceMessengerRoute(
       kind: "root",
       orgId,
       projectId: safeDecodeRouteSegment(rootMatch[1]),
+    };
+  }
+
+  const inboxMatch = /^\/project\/([^/]+)\/inbox\/?$/.exec(scopedPathname);
+  if (inboxMatch?.[1]) {
+    return {
+      kind: "inbox",
+      orgId,
+      projectId: safeDecodeRouteSegment(inboxMatch[1]),
+    };
+  }
+
+  const activityMatch = /^\/project\/([^/]+)\/activity\/([^/]+)\/?$/.exec(scopedPathname);
+  if (activityMatch?.[1] && activityMatch[2]) {
+    return {
+      kind: "activity",
+      orgId,
+      projectId: safeDecodeRouteSegment(activityMatch[1]),
+      filter: safeDecodeRouteSegment(activityMatch[2]),
+    };
+  }
+
+  const feedMatch = /^\/project\/([^/]+)\/feed\/?$/.exec(scopedPathname);
+  if (feedMatch?.[1]) {
+    return {
+      kind: "feed",
+      orgId,
+      projectId: safeDecodeRouteSegment(feedMatch[1]),
     };
   }
 

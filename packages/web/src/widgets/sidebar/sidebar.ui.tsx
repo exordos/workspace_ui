@@ -6,8 +6,6 @@ import { CreateChatDialog } from "~/features/create-chat/create-chat-dialog.ui";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { t } from "~/i18n/i18n";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
-import { buildStreamSlug } from "~/shared/lib/stream-slug.lib";
-import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { WidgetErrorBoundary } from "~/shared/ui/widget-error-boundary.ui";
 import { SidebarActivity } from "./sidebar-activity.ui";
@@ -150,12 +148,8 @@ export const SidebarInner: React.FC<SidebarUiProps> = ({
   );
 
   const handleNewTopic = useCallback(
-    (streamSlug: string, topicName: string) => {
-      void navigate(
-        withCurrentOrgRoute(
-          `/stream/${streamSlug}/topic/${encodeURIComponent(encodeTopicForRoute(topicName))}`,
-        ),
-      );
+    (_streamSlug: string, _topicName: string) => {
+      void navigate(withCurrentOrgRoute("/inbox"));
     },
     [navigate],
   );
@@ -233,13 +227,13 @@ export const SidebarInner: React.FC<SidebarUiProps> = ({
       <CreateChatDialog
         open={createChatOpen}
         onOpenChange={setCreateChatOpen}
-        onNavigateDm={(slug) => {
+        onNavigateDm={(_slug) => {
           setCreateChatOpen(false);
-          void navigate(withCurrentOrgRoute(`/dm/${slug}`));
+          void navigate(withCurrentOrgRoute("/inbox"));
         }}
-        onNavigateStream={(streamId, streamName) => {
+        onNavigateStream={(_streamId, _streamName) => {
           setCreateChatOpen(false);
-          void navigate(withCurrentOrgRoute(`/stream/${buildStreamSlug(streamId, streamName)}`));
+          void navigate(withCurrentOrgRoute("/inbox"));
         }}
         onChannelCreated={() => {
           setCreateChatOpen(false);

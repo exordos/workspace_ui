@@ -6,13 +6,10 @@ import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.
 import type * as ShortcutsModule from "~/shared/lib/shortcuts";
 import { renderWithProviders } from "~/test/render";
 import App from "./app";
+import { WebViewShell } from "./webview-shell";
 
 vi.mock("~/pages/inbox/inbox-page.ui", () => ({
   InboxPage: () => <div>inbox-page</div>,
-}));
-
-vi.mock("~/pages/chat/chat-page.ui", () => ({
-  ChatPage: () => <div>chat-page</div>,
 }));
 
 vi.mock("~/pages/licenses/licenses-page.ui", () => ({
@@ -76,6 +73,11 @@ vi.mock("~/shared/lib/shortcuts", async (importOriginal) => {
 
 vi.mock("~/shared/lib/webview", () => ({
   isWebView: () => false,
+  getNativeBridge: () => ({
+    setTitle: vi.fn(),
+  }),
+  onAuthFromNative: () => vi.fn(),
+  onNativeMessage: () => vi.fn(),
 }));
 
 describe("App default routing", () => {
@@ -114,13 +116,12 @@ describe("App default routing", () => {
     });
   }
 
-  it("opens inbox when route is not specified", async () => {
+  it("opens project Inbox when route is not specified", async () => {
     setAuthorizedSession();
 
     renderWithProviders(<App />, { route: "/" });
 
     expect(await screen.findByText("inbox-page")).toBeInTheDocument();
-    expect(screen.queryByText("chat-page")).not.toBeInTheDocument();
   });
 
   it("renders licenses route outside layout shell", async () => {
@@ -141,5 +142,55 @@ describe("App default routing", () => {
 
     expect(await screen.findByText("settings-personal-info-page")).toBeInTheDocument();
     expect(screen.queryByText("inbox-page")).not.toBeInTheDocument();
+  });
+
+  it("redirects unknown org routes to project Inbox", async () => {
+    setAuthorizedSession();
+
+    renderWithProviders(<App />, {
+      route: "/org/zulip.example.com/stream/general",
+    });
+
+    expect(await screen.findByText("inbox-page")).toBeInTheDocument();
+  });
+
+  it("redirects workspace messenger root to project Inbox", async () => {
+    setAuthorizedSession();
+
+    renderWithProviders(<App />, {
+      route: "/org/zulip.example.com/project/project-a/messenger",
+    });
+
+    expect(await screen.findByText("inbox-page")).toBeInTheDocument();
+  });
+
+  it("renders workspace stream routes with WorkspaceMessengerPage", async () => {
+    setAuthorizedSession();
+
+    renderWithProviders(<App />, {
+      route: "/org/zulip.example.com/project/project-a/stream/stream-uuid",
+    });
+
+    expect(await screen.findByTestId("workspace-messenger-page")).toBeInTheDocument();
+  });
+
+  it("redirects unknown webview org routes to project Inbox", async () => {
+    setAuthorizedSession();
+
+    renderWithProviders(<WebViewShell />, {
+      route: "/org/zulip.example.com/message/legacy-message",
+    });
+
+    expect(await screen.findByText("inbox-page")).toBeInTheDocument();
+  });
+
+  it("renders workspace webview routes with WorkspaceMessengerPage", async () => {
+    setAuthorizedSession();
+
+    renderWithProviders(<WebViewShell />, {
+      route: "/org/zulip.example.com/project/project-a/message/message-uuid",
+    });
+
+    expect(await screen.findByTestId("workspace-messenger-page")).toBeInTheDocument();
   });
 });
