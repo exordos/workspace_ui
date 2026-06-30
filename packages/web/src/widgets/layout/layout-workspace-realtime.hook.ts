@@ -1,10 +1,8 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { createMessengerRealtimeActiveApplier } from "~/entities/messenger/messenger-realtime-applier.lib";
 import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
-import {
-  selectCurrentWorkspaceRuntimeContext,
-  useWorkspaceAuthStore,
-} from "~/entities/workspace-auth/workspace-auth.model";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
@@ -13,6 +11,11 @@ import {
   createWorkspaceRealtimeBrowserCursorStorage,
   type WorkspaceRealtimeDurableCursorStorage,
 } from "~/shared/lib/workspace-realtime/workspace-realtime-cursor.lib";
+import {
+  createWorkspaceRealtimeRuntimeManager,
+  type WorkspaceRealtimeManagerRuntimeContext,
+  type WorkspaceRealtimeRuntimeManager,
+} from "~/shared/lib/workspace-realtime/workspace-realtime-manager.lib";
 import {
   createWorkspaceRealtimeTransportCore,
   type WorkspaceRealtimeEventApplier,
@@ -25,6 +28,7 @@ export interface LayoutWorkspaceRealtimeRuntimeFactoryOptions {
   cursorStorage: WorkspaceRealtimeDurableCursorStorage;
   applier: WorkspaceRealtimeEventApplier;
   isOwnerCurrent: (owner: WorkspaceRealtimeRuntimeOwner) => boolean;
+  onDiagnostic: Parameters<typeof createWorkspaceRealtimeTransportCore>[0]["onDiagnostic"];
 }
 
 export type LayoutWorkspaceRealtimeRuntimeFactory = (
@@ -39,6 +43,10 @@ export interface UseLayoutWorkspaceRealtimeOptions {
   applier?: WorkspaceRealtimeEventApplier;
 }
 
+interface LayoutWorkspaceRealtimeManagerContext extends WorkspaceRealtimeManagerRuntimeContext {
+  runtimeContext: WorkspaceRuntimeContext;
+}
+
 function toWorkspaceRealtimeOwner(
   runtimeContext: WorkspaceRuntimeContext,
 ): WorkspaceRealtimeRuntimeOwner {
@@ -49,6 +57,34 @@ function toWorkspaceRealtimeOwner(
     projectId: runtimeContext.projectId,
     userUuid: runtimeContext.userUuid,
     runtimeGeneration: runtimeContext.runtimeGeneration,
+  };
+}
+
+function toWorkspaceRuntimeContext(session: WorkspaceAuthSession): WorkspaceRuntimeContext {
+  return {
+    accountId: session.accountId,
+    instanceId: session.instanceId,
+    organizationId: session.organizationId,
+    organizationOrigin: session.organizationOrigin,
+    projectId: session.projectId,
+    userUuid: session.userUuid,
+    accessToken: session.accessToken,
+    refreshToken: session.refreshToken,
+    runtimeGeneration: session.runtimeGeneration,
+  };
+}
+
+function toLayoutRealtimeManagerContext(
+  session: WorkspaceAuthSession,
+): LayoutWorkspaceRealtimeManagerContext {
+  const runtimeContext = toWorkspaceRuntimeContext(session);
+  const owner = toWorkspaceRealtimeOwner(runtimeContext);
+  return {
+    owner,
+    ownerKey: workspaceRuntimeOwnerKey(owner),
+    // Access token лежит только в памяти manager-а: transport core создается с clientOptions один раз.
+    runtimeKey: [runtimeContext.organizationOrigin, runtimeContext.accessToken].join("\u0000"),
+    runtimeContext,
   };
 }
 
@@ -70,12 +106,12 @@ export function isLayoutWorkspaceRealtimeOwnerCurrent(
 function shouldStartWorkspaceRealtimeForRoute(
   enabled: boolean,
   pathname: string,
-  runtimeContext: WorkspaceRuntimeContext | null,
-): runtimeContext is WorkspaceRuntimeContext {
-  if (!enabled || runtimeContext == null) return false;
+  activeRuntimeContext: WorkspaceRuntimeContext | null,
+): activeRuntimeContext is WorkspaceRuntimeContext {
+  if (!enabled || activeRuntimeContext == null) return false;
   const routeMatch = parseWorkspaceMessengerRoute(pathname);
   if (routeMatch == null) return false;
-  return routeMatch.projectId === runtimeContext.projectId;
+  return routeMatch.projectId === activeRuntimeContext.projectId;
 }
 
 function defaultRuntimeFactory({
@@ -83,6 +119,7 @@ function defaultRuntimeFactory({
   cursorStorage,
   applier,
   isOwnerCurrent,
+  onDiagnostic,
 }: LayoutWorkspaceRealtimeRuntimeFactoryOptions): WorkspaceRealtimeTransportCore {
   return createWorkspaceRealtimeTransportCore({
     clientOptions: buildMessengerRequestOptions(runtimeContext),
@@ -90,6 +127,7 @@ function defaultRuntimeFactory({
     applier,
     isOwnerCurrent,
     onDiagnostic: (diagnostic) => {
+      onDiagnostic?.(diagnostic);
       reportUnexpectedError("workspace-realtime:transport", diagnostic.error ?? diagnostic.reason);
     },
   });
@@ -105,52 +143,95 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
   } = options;
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
-  const runtimeContext = useMemo(
-    () => selectCurrentWorkspaceRuntimeContext({ sessions, currentAccountId }),
-    [sessions, currentAccountId],
+  const activeRuntimeContext = useMemo(() => {
+    const activeSession =
+      sessions.find((session) => session.accountId === currentAccountId) ?? null;
+    return activeSession == null ? null : toWorkspaceRuntimeContext(activeSession);
+  }, [sessions, currentAccountId]);
+  const managerContexts = useMemo(
+    () => sessions.map((session) => toLayoutRealtimeManagerContext(session)),
+    [sessions],
   );
+  const managerContextsRef = useRef(managerContexts);
+  const managerRef =
+    useRef<WorkspaceRealtimeRuntimeManager<LayoutWorkspaceRealtimeManagerContext> | null>(null);
 
   useEffect(() => {
-    if (!shouldStartWorkspaceRealtimeForRoute(enabled, pathname, runtimeContext)) {
-      return;
-    }
-
-    const cursorStorage = cursorStorageFactory();
-    if (cursorStorage == null) return;
-
-    const controller = new AbortController();
-    const owner = toWorkspaceRealtimeOwner(runtimeContext);
-    const ownerKey = workspaceRuntimeOwnerKey(owner);
-    const isOwnerCurrent = (candidate: WorkspaceRealtimeRuntimeOwner): boolean =>
-      isLayoutWorkspaceRealtimeOwnerCurrent(candidate, () =>
-        useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-      );
-    const runtimeApplier = applier ?? createMessengerRealtimeActiveApplier({ isOwnerCurrent });
-    const runtime = runtimeFactory({
-      runtimeContext,
-      cursorStorage,
-      applier: runtimeApplier,
-      isOwnerCurrent,
-    });
-
-    void runtime
-      .start({
-        owner,
-        ownerKey,
-        surface: "active",
-        signal: controller.signal,
-      })
-      .catch((error) => {
-        if (!controller.signal.aborted) {
-          reportUnexpectedError("workspace-realtime:start", error);
-        }
-      });
-
     return () => {
-      controller.abort();
-      void runtime.stop("layout_cleanup").catch((error) => {
+      const manager = managerRef.current;
+      managerRef.current = null;
+      void manager?.stopAll("layout_cleanup").catch((error) => {
         reportUnexpectedError("workspace-realtime:stop", error);
       });
     };
-  }, [applier, cursorStorageFactory, enabled, pathname, runtimeContext, runtimeFactory]);
+  }, [applier, cursorStorageFactory, runtimeFactory]);
+
+  useEffect(() => {
+    managerContextsRef.current = managerContexts;
+  }, [managerContexts]);
+
+  useEffect(() => {
+    function ensureManager(): WorkspaceRealtimeRuntimeManager<LayoutWorkspaceRealtimeManagerContext> | null {
+      if (managerRef.current != null) return managerRef.current;
+
+      const cursorStorage = cursorStorageFactory();
+      if (cursorStorage == null) return null;
+
+      const manager = createWorkspaceRealtimeRuntimeManager<LayoutWorkspaceRealtimeManagerContext>({
+        runtimeFactory: ({
+          runtimeContext,
+          applier: runtimeApplier,
+          isOwnerCurrent,
+          onDiagnostic,
+        }) =>
+          runtimeFactory({
+            runtimeContext: runtimeContext.runtimeContext,
+            cursorStorage,
+            applier: runtimeApplier,
+            isOwnerCurrent,
+            onDiagnostic,
+          }),
+        activeApplierFactory: ({ isOwnerCurrent }) =>
+          applier ?? createMessengerRealtimeActiveApplier({ isOwnerCurrent }),
+        isOwnerCurrent: (candidate) =>
+          managerContextsRef.current.some(
+            (context) =>
+              context.ownerKey === workspaceRuntimeOwnerKey(candidate) &&
+              context.owner.runtimeGeneration === candidate.runtimeGeneration,
+          ),
+        onDiagnostic: (diagnostic) => {
+          reportUnexpectedError(
+            "workspace-realtime:manager",
+            diagnostic.error ?? diagnostic.reason,
+          );
+        },
+      });
+      managerRef.current = manager;
+      return manager;
+    }
+
+    if (!shouldStartWorkspaceRealtimeForRoute(enabled, pathname, activeRuntimeContext)) {
+      void managerRef.current?.stopAll("layout_inactive").catch((error) => {
+        reportUnexpectedError("workspace-realtime:stop", error);
+      });
+      return;
+    }
+
+    const manager = ensureManager();
+    if (manager == null) return;
+
+    const activeOwnerKey = workspaceRuntimeOwnerKey(activeRuntimeContext);
+
+    void manager.update(managerContexts, activeOwnerKey).catch((error) => {
+      reportUnexpectedError("workspace-realtime:start", error);
+    });
+  }, [
+    activeRuntimeContext,
+    applier,
+    cursorStorageFactory,
+    enabled,
+    managerContexts,
+    pathname,
+    runtimeFactory,
+  ]);
 }

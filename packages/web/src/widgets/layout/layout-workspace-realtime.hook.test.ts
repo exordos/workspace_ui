@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
@@ -145,6 +145,53 @@ describe("useLayoutWorkspaceRealtime", () => {
     });
   });
 
+  it("starts inactive auth sessions as background runtimes", async () => {
+    const activeSession = createSession();
+    const backgroundSession = createSession({
+      accountId: "org-b:project-b:user-b",
+      instanceId: "instance-b",
+      organizationId: "org-b",
+      projectId: "project-b",
+      userUuid: "user-b",
+      login: "user-b@example.com",
+      accessToken: "access-token-b",
+      refreshToken: "refresh-token-b",
+      runtimeGeneration: 3,
+      profile: {
+        uuid: "user-b",
+        username: "user-b",
+        firstName: "User",
+        lastName: "B",
+        email: "user-b@example.com",
+      },
+    });
+    useWorkspaceAuthStore.setState({
+      sessions: [activeSession, backgroundSession],
+      currentAccountId: activeSession.accountId,
+      runtimeGeneration: activeSession.runtimeGeneration,
+    });
+    const { runtimeFactory, runtimes, startedContexts } = createRuntimeFactory();
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+
+    renderHook(() =>
+      useLayoutWorkspaceRealtime({
+        enabled: true,
+        pathname: "/org/org-a/project/project-a/messenger",
+        runtimeFactory,
+        cursorStorageFactory: () => cursorStorage,
+        applier: createWorkspaceRealtimeNoopApplier(),
+      }),
+    );
+
+    await waitFor(() => {
+      expect(runtimes).toHaveLength(2);
+    });
+    expect(startedContexts.map((context) => [context.owner.projectId, context.surface])).toEqual([
+      [activeSession.projectId, "active"],
+      [backgroundSession.projectId, "background"],
+    ]);
+  });
+
   it("uses active messenger applier by default", async () => {
     setWorkspaceSession(createSession({ projectId: PROJECT_UUID, userUuid: USER_UUID }));
     const { runtimeFactory, runtimes, startedContexts, factoryOptions } = createRuntimeFactory();
@@ -193,6 +240,77 @@ describe("useLayoutWorkspaceRealtime", () => {
     );
   });
 
+  it("does not write background realtime events to messengerStore", async () => {
+    const activeSession = createSession({ projectId: PROJECT_UUID, userUuid: USER_UUID });
+    const backgroundSession = createSession({
+      accountId: "org-b:project-b:user-b",
+      instanceId: "instance-b",
+      organizationId: "org-b",
+      projectId: "project-b",
+      userUuid: "user-b",
+      login: "user-b@example.com",
+      accessToken: "access-token-b",
+      runtimeGeneration: 3,
+      profile: {
+        uuid: "user-b",
+        username: "user-b",
+        firstName: "User",
+        lastName: "B",
+        email: "user-b@example.com",
+      },
+    });
+    useWorkspaceAuthStore.setState({
+      sessions: [activeSession, backgroundSession],
+      currentAccountId: activeSession.accountId,
+      runtimeGeneration: activeSession.runtimeGeneration,
+    });
+    const { runtimeFactory, runtimes, startedContexts, factoryOptions } = createRuntimeFactory();
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+
+    renderHook(() =>
+      useLayoutWorkspaceRealtime({
+        enabled: true,
+        pathname: `/org/org-a/project/${PROJECT_UUID}/messenger`,
+        runtimeFactory,
+        cursorStorageFactory: () => cursorStorage,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(runtimes).toHaveLength(2);
+    });
+    const backgroundIndex = startedContexts.findIndex(
+      (context) => context.surface === "background",
+    );
+    const backgroundContext = startedContexts[backgroundIndex]!;
+    useMessengerStore.getState().startBootstrap(backgroundContext.ownerKey);
+
+    factoryOptions[backgroundIndex]!.applier.applyEvent(
+      {
+        epoch_version: 8,
+        type: "message",
+        message: {
+          uuid: MESSAGE_UUID,
+          project_id: PROJECT_UUID,
+          stream_uuid: STREAM_UUID,
+          topic_uuid: TOPIC_UUID,
+          author_uuid: USER_UUID,
+          payload: { kind: "markdown", content: "Background workspace message" },
+          user_uuid: USER_UUID,
+          read: false,
+          pinned: false,
+          starred: false,
+          is_own: false,
+          created_at: DATE,
+          updated_at: DATE,
+        },
+      },
+      { ...backgroundContext, source: "websocket" },
+    );
+
+    expect(useMessengerStore.getState().messagesById[MESSAGE_UUID]).toBeUndefined();
+  });
+
   it("does not start runtime outside current Workspace project route", () => {
     setWorkspaceSession(createSession());
     const { runtimeFactory, runtimes } = createRuntimeFactory();
@@ -216,6 +334,7 @@ describe("useLayoutWorkspaceRealtime", () => {
     setWorkspaceSession(session);
     const { runtimeFactory, runtimes } = createRuntimeFactory();
     const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    const cursorStorageFactory = () => cursorStorage;
     const applier = createWorkspaceRealtimeNoopApplier();
 
     const { rerender } = renderHook(
@@ -224,7 +343,7 @@ describe("useLayoutWorkspaceRealtime", () => {
           enabled: true,
           pathname,
           runtimeFactory,
-          cursorStorageFactory: () => cursorStorage,
+          cursorStorageFactory,
           applier,
         }),
       {
@@ -235,10 +354,12 @@ describe("useLayoutWorkspaceRealtime", () => {
     await waitFor(() => {
       expect(runtimes[0]?.start).toHaveBeenCalledTimes(1);
     });
-    rerender({ pathname: "/inbox" });
+    act(() => {
+      rerender({ pathname: "/inbox" });
+    });
 
     await waitFor(() => {
-      expect(runtimes[0]?.stop).toHaveBeenCalledWith("layout_cleanup");
+      expect(runtimes[0]?.stop).toHaveBeenCalledWith("layout_inactive");
     });
   });
 
