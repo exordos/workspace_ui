@@ -18,6 +18,7 @@ import type {
   MessengerClientOptions,
   MessengerCollectionPage,
   MessengerPaginationQuery,
+  MessengerQueryParams,
   MessengerPublicClientOptions,
 } from "./messenger-transport.internal";
 import type {
@@ -42,6 +43,21 @@ export interface GetEventsQuery extends MessengerPaginationQuery {
 export interface BuildMessengerWebSocketUrlOptions {
   baseUrl?: string;
   lastEpochVersion: number;
+}
+
+function projectScopedRealtimeParams(
+  options: MessengerClientOptions,
+  params: MessengerQueryParams,
+): MessengerQueryParams {
+  const projectId = options.projectId?.trim();
+  if (!projectId) {
+    return params;
+  }
+
+  return {
+    ...params,
+    project_id: projectId,
+  };
 }
 
 export async function getServerSettings(
@@ -91,10 +107,14 @@ export async function getEvents(
   options: MessengerClientOptions,
   query: GetEventsQuery = {},
 ): Promise<WorkspaceMessengerEventDto[]> {
-  const data = await messengerGetJson("/events/", options, {
-    ...paginationParams(query),
-    "epoch_version>": query.afterEpochVersion,
-  });
+  const data = await messengerGetJson(
+    "/events/",
+    options,
+    projectScopedRealtimeParams(options, {
+      ...paginationParams(query),
+      "epoch_version>": query.afterEpochVersion,
+    }),
+  );
   return parseStrictDtoList(data, isWorkspaceMessengerEventDto, "messenger events response");
 }
 
@@ -102,10 +122,15 @@ export async function getEventsPage(
   options: MessengerClientOptions,
   query: GetEventsQuery = {},
 ): Promise<MessengerCollectionPage<WorkspaceMessengerEventDto>> {
-  const { data, headers } = await messengerRequestJsonResult("GET", "/events/", options, {
-    ...paginationParams(query),
-    "epoch_version>": query.afterEpochVersion,
-  });
+  const { data, headers } = await messengerRequestJsonResult(
+    "GET",
+    "/events/",
+    options,
+    projectScopedRealtimeParams(options, {
+      ...paginationParams(query),
+      "epoch_version>": query.afterEpochVersion,
+    }),
+  );
   return {
     items: parseStrictDtoList(data, isWorkspaceMessengerEventDto, "messenger events response"),
     ...parsePaginationHeaders(headers),
@@ -156,8 +181,9 @@ export function parseWorkspaceWebSocketFrame(raw: unknown): WorkspaceMessengerWe
 }
 
 function withoutPayloadKind<TValue extends { kind: string }>(value: TValue): Omit<TValue, "kind"> {
-  const { kind: _kind, ...result } = value;
-  return result;
+  const result: Partial<TValue> = { ...value };
+  delete result.kind;
+  return result as Omit<TValue, "kind">;
 }
 
 // REST catch-up events are normalized to the same shape as websocket event frames.

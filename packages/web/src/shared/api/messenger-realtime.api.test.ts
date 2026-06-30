@@ -246,12 +246,17 @@ describe("messenger-realtime.api", () => {
     const eventsFetchMock = createFetchMock([eventDto]);
     await expect(
       getEvents(
-        { accessToken: "access-token", baseUrl: "/api/messenger/v1", fetchImpl: eventsFetchMock },
+        {
+          accessToken: "access-token",
+          baseUrl: "/api/messenger/v1",
+          fetchImpl: eventsFetchMock,
+          projectId: PROJECT_UUID,
+        },
         { afterEpochVersion: 123 },
       ),
     ).resolves.toEqual([eventDto]);
     expect(firstFetchCall(eventsFetchMock)[0]).toBe(
-      "/api/messenger/v1/events/?epoch_version%3E=123",
+      `/api/messenger/v1/events/?epoch_version%3E=123&project_id=${PROJECT_UUID}`,
     );
 
     const epochFetchMock = createFetchMock({ epoch_version: 124 });
@@ -287,7 +292,7 @@ describe("messenger-realtime.api", () => {
     });
     await expect(
       getEventsPage(
-        { accessToken: "access-token", fetchImpl: eventsFetchMock },
+        { accessToken: "access-token", fetchImpl: eventsFetchMock, projectId: PROJECT_UUID },
         { afterEpochVersion: 123, pageLimit: 500 },
       ),
     ).resolves.toEqual({
@@ -296,7 +301,7 @@ describe("messenger-realtime.api", () => {
       pageLimit: 500,
     });
     expect(firstFetchCall(eventsFetchMock)[0]).toBe(
-      "/api/messenger/v1/events/?page_limit=500&epoch_version%3E=123",
+      `/api/messenger/v1/events/?page_limit=500&epoch_version%3E=123&project_id=${PROJECT_UUID}`,
     );
   });
 
