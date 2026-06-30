@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef } from "react";
-import { createMessengerRealtimeActiveApplier } from "~/entities/messenger/messenger-realtime-applier.lib";
+import {
+  createMessengerRealtimeActiveApplier,
+  createMessengerRealtimeBackgroundApplier,
+} from "~/entities/messenger/messenger-realtime-applier.lib";
 import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
@@ -193,6 +196,8 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
           }),
         activeApplierFactory: ({ isOwnerCurrent }) =>
           applier ?? createMessengerRealtimeActiveApplier({ isOwnerCurrent }),
+        backgroundApplierFactory: ({ isOwnerCurrent }) =>
+          createMessengerRealtimeBackgroundApplier({ isOwnerCurrent }),
         isOwnerCurrent: (candidate) =>
           managerContextsRef.current.some(
             (context) =>

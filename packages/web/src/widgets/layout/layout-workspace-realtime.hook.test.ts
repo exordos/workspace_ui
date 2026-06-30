@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useMessengerBackgroundProjectionStore } from "~/entities/messenger/messenger-background-projection.model";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
@@ -103,12 +104,14 @@ describe("useLayoutWorkspaceRealtime", () => {
     localStorage.removeItem(WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY);
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
     useMessengerStore.getState().clear();
+    useMessengerBackgroundProjectionStore.getState().clear();
   });
 
   afterEach(() => {
     vi.clearAllMocks();
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
     useMessengerStore.getState().clear();
+    useMessengerBackgroundProjectionStore.getState().clear();
     localStorage.removeItem(WORKSPACE_AUTH_STORAGE_KEY);
     localStorage.removeItem(WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY);
   });
@@ -240,7 +243,7 @@ describe("useLayoutWorkspaceRealtime", () => {
     );
   });
 
-  it("does not write background realtime events to messengerStore", async () => {
+  it("routes background realtime events to projection without writing messengerStore", async () => {
     const activeSession = createSession({ projectId: PROJECT_UUID, userUuid: USER_UUID });
     const backgroundSession = createSession({
       accountId: "org-b:project-b:user-b",
@@ -309,6 +312,19 @@ describe("useLayoutWorkspaceRealtime", () => {
     );
 
     expect(useMessengerStore.getState().messagesById[MESSAGE_UUID]).toBeUndefined();
+    expect(
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[
+        backgroundContext.ownerKey
+      ]?.notificationCandidates,
+    ).toEqual([
+      expect.objectContaining({
+        ownerKey: backgroundContext.ownerKey,
+        epochVersion: 8,
+        messageUuid: MESSAGE_UUID,
+        streamUuid: STREAM_UUID,
+        topicUuid: TOPIC_UUID,
+      }),
+    ]);
   });
 
   it("does not start runtime outside current Workspace project route", () => {
