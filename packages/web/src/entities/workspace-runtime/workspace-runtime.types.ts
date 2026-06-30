@@ -14,6 +14,7 @@ export interface WorkspaceRuntimeOwner {
 }
 
 export interface WorkspaceRuntimeContext extends WorkspaceRuntimeOwner {
+  organizationOrigin: string;
   accessToken: string;
   refreshToken?: string;
   runtimeGeneration: number;

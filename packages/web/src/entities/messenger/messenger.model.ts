@@ -11,6 +11,7 @@ import type {
   MessengerDeletedStream,
   MessengerDeletedTopic,
   MessengerFolder,
+  MessengerFolderItem,
   MessengerMessage,
   MessengerSkippedRealtimeEvent,
   MessengerStream,
@@ -141,6 +142,7 @@ export interface MessengerStoreState extends MessengerDomainData {
   ) => void;
   applyFolderSnapshot: (ownerKey: string, folder: MessengerFolder) => void;
   removeFolder: (ownerKey: string, folder: MessengerDeletedFolder) => void;
+  upsertFolderItem: (ownerKey: string, folderItem: MessengerFolderItem) => void;
   removeFolderItem: (ownerKey: string, folderItem: MessengerDeletedFolderItem) => void;
   setRealtimeCursor: (ownerKey: string, epochVersion: number) => void;
   markRealtimeEventSkipped: (ownerKey: string, epochVersion: number, reason: string) => void;
@@ -212,6 +214,7 @@ function createInitialState(): Omit<
   | "mergeConversationMessagesPage"
   | "applyFolderSnapshot"
   | "removeFolder"
+  | "upsertFolderItem"
   | "removeFolderItem"
   | "setRealtimeCursor"
   | "markRealtimeEventSkipped"
@@ -360,6 +363,17 @@ function removeConversationPageState(
     messagesErrorByConversationId: nextErrors,
     nextPageMarkerByConversationId: nextPageMarkers,
     hasMoreByConversationId: nextHasMore,
+  };
+}
+
+function rebuildFolderWithItems(
+  folder: MessengerFolder,
+  items: MessengerFolderItem[],
+): MessengerFolder {
+  return {
+    ...folder,
+    items,
+    unreadCount: items.reduce((total, item) => total + item.unreadCount, 0),
   };
 }
 
@@ -1059,6 +1073,46 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     });
   },
 
+  upsertFolderItem(ownerKey, folderItem) {
+    logStoreAction("messenger", "upsertFolderItem", {
+      ownerKey,
+      folderItemUuid: folderItem.uuid,
+      folderUuid: folderItem.folderUuid,
+    });
+    set((state) => {
+      if (state.ownerKey !== ownerKey) return state;
+      if (state.foldersById[folderItem.folderUuid] == null) return state;
+
+      const nextFoldersById = { ...state.foldersById };
+      let didChange = false;
+
+      for (const folderId of state.folderIds) {
+        const folder = state.foldersById[folderId];
+        if (folder == null) continue;
+
+        if (folder.uuid === folderItem.folderUuid) {
+          const existingIndex = folder.items.findIndex((item) => item.uuid === folderItem.uuid);
+          const nextItems =
+            existingIndex === -1
+              ? [...folder.items, folderItem]
+              : folder.items.map((item) => (item.uuid === folderItem.uuid ? folderItem : item));
+
+          nextFoldersById[folderId] = rebuildFolderWithItems(folder, nextItems);
+          didChange = true;
+          continue;
+        }
+
+        const nextItems = folder.items.filter((item) => item.uuid !== folderItem.uuid);
+        if (nextItems.length === folder.items.length) continue;
+
+        nextFoldersById[folderId] = rebuildFolderWithItems(folder, nextItems);
+        didChange = true;
+      }
+
+      return didChange ? { foldersById: nextFoldersById } : state;
+    });
+  },
+
   removeFolderItem(ownerKey, folderItem) {
     logStoreAction("messenger", "removeFolderItem", {
       ownerKey,
@@ -1076,10 +1130,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
         const nextItems = folder.items.filter((item) => item.uuid !== folderItem.uuid);
         if (nextItems.length === folder.items.length) continue;
 
-        nextFoldersById[folderId] = {
-          ...folder,
-          items: nextItems,
-        };
+        nextFoldersById[folderId] = rebuildFolderWithItems(folder, nextItems);
         didChange = true;
       }
 

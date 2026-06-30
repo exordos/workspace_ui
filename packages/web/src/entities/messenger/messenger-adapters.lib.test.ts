@@ -315,6 +315,40 @@ describe("messenger adapters", () => {
     });
   });
 
+  it("normalizes missing folder item nullable fields to null", () => {
+    const folderDto: WorkspaceMessengerFolderDto = {
+      uuid: FOLDER_UUID,
+      title: "Inbox",
+      unread_count: 3,
+      system_type: "created",
+      folder_items: [
+        {
+          uuid: FOLDER_ITEM_UUID,
+          project_id: PROJECT_UUID,
+          folder_uuid: FOLDER_UUID,
+          user_uuid: USER_UUID,
+          stream_uuid: STREAM_UUID,
+          chat_type: "private",
+          unread_count: 3,
+          created_at: DATE,
+          updated_at: DATE,
+        },
+      ],
+      created_at: DATE,
+      updated_at: DATE,
+    };
+
+    expect(adaptMessengerFolder(folderDto)).toMatchObject({
+      items: [
+        {
+          uuid: FOLDER_ITEM_UUID,
+          orderIndex: null,
+          pinnedAt: null,
+        },
+      ],
+    });
+  });
+
   it("throws when topic and stream DTOs do not belong together", () => {
     expect(() =>
       adaptTopicToMessengerConversation(

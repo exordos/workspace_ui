@@ -1,11 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { workspaceMessengerRootRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import {
   selectMessengerSidebarFolders,
   selectMessengerSidebarStreams,
 } from "./messenger-sidebar.lib";
-import type { MessengerStoreState } from "./messenger.model";
+import { useMessengerStore, type MessengerStoreState } from "./messenger.model";
 import type {
+  MessengerConversation,
   MessengerFolder,
   MessengerMessage,
   MessengerStream,
@@ -133,6 +134,21 @@ function message(overrides: Partial<MessengerMessage> = {}): MessengerMessage {
   };
 }
 
+function conversation(overrides: Partial<MessengerConversation> = {}): MessengerConversation {
+  return {
+    id: `stream:${STREAM_B}`,
+    streamUuid: STREAM_B,
+    title: "Alice",
+    audience: "private",
+    isPrivate: true,
+    unreadCount: 4,
+    directUserUuid: "alice",
+    lastMessageUuid: MESSAGE_A,
+    notificationMode: "mentions_only",
+    ...overrides,
+  };
+}
+
 function state(overrides: Partial<MessengerStoreState> = {}): MessengerStoreState {
   const streamA = stream();
   const streamB = stream({
@@ -201,6 +217,7 @@ function state(overrides: Partial<MessengerStoreState> = {}): MessengerStoreStat
     mergeConversationMessagesPage: () => undefined,
     applyFolderSnapshot: () => undefined,
     removeFolder: () => undefined,
+    upsertFolderItem: () => undefined,
     removeFolderItem: () => undefined,
     setRealtimeCursor: () => undefined,
     markRealtimeEventSkipped: () => undefined,
@@ -211,6 +228,10 @@ function state(overrides: Partial<MessengerStoreState> = {}): MessengerStoreStat
 }
 
 describe("messenger sidebar selectors", () => {
+  afterEach(() => {
+    useMessengerStore.getState().clear();
+  });
+
   it("builds nested stream topic rows without DM identities", () => {
     const rows = selectMessengerSidebarStreams(state(), {
       organizationId: ORGANIZATION_ID,
@@ -309,7 +330,48 @@ describe("messenger sidebar selectors", () => {
     });
   });
 
-  it("skips folder items when the stream snapshot is missing", () => {
+  it("falls back to the conversation snapshot when a folder item stream is missing", () => {
+    const base = state({
+      streamsById: {
+        [STREAM_A]: stream(),
+      },
+      streamIds: [STREAM_A],
+      conversationsById: {
+        [conversation().id]: conversation(),
+      },
+      conversationIds: [conversation().id],
+      messagesById: {
+        [MESSAGE_A]: message({
+          uuid: MESSAGE_A,
+          conversationId: conversation().id,
+          streamUuid: STREAM_B,
+          topicUuid: TOPIC_B,
+          markdown: "Private preview",
+        }),
+      },
+    });
+
+    const rows = selectMessengerSidebarStreams(base, {
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      selectedFolderUuid: FOLDER_A,
+    });
+
+    expect(rows.map((row) => row.streamUuid)).toEqual([STREAM_B, STREAM_A]);
+    expect(rows[0]).toMatchObject({
+      id: `stream:${STREAM_B}`,
+      streamUuid: STREAM_B,
+      title: "Alice",
+      isPrivate: true,
+      unreadCount: 1,
+      preview: {
+        messageUuid: MESSAGE_A,
+        text: "Private preview",
+      },
+    });
+  });
+
+  it("skips folder items when both stream and conversation snapshots are missing", () => {
     const base = state({
       streamsById: {
         [STREAM_A]: stream(),
@@ -356,6 +418,43 @@ describe("messenger sidebar selectors", () => {
         items: expect.any(Array),
       },
     ]);
+  });
+
+  it("returns a fresh folder badge after a local folder item store update", () => {
+    useMessengerStore.getState().startBootstrap("owner:sidebar-selectors");
+    useMessengerStore.getState().applyFolderSnapshot("owner:sidebar-selectors", {
+      ...folder({
+        unreadCount: 0,
+        items: [],
+      }),
+      unreadCount: 0,
+      items: [],
+    });
+
+    const firstFolders = selectMessengerSidebarFolders(useMessengerStore.getState());
+    useMessengerStore.getState().upsertFolderItem("owner:sidebar-selectors", {
+      uuid: FOLDER_ITEM_A,
+      projectId: PROJECT_ID,
+      folderUuid: FOLDER_A,
+      userUuid: "user",
+      streamUuid: STREAM_A,
+      conversationId: `stream:${STREAM_A}`,
+      chatType: "stream",
+      orderIndex: 20,
+      pinnedAt: null,
+      unreadCount: 6,
+      createdAt: DATE_A,
+      updatedAt: DATE_B,
+    });
+    const secondFolders = selectMessengerSidebarFolders(useMessengerStore.getState());
+
+    expect(firstFolders).toEqual([
+      expect.objectContaining({ folderUuid: FOLDER_A, unreadCount: 0 }),
+    ]);
+    expect(secondFolders).toEqual([
+      expect.objectContaining({ folderUuid: FOLDER_A, unreadCount: 6 }),
+    ]);
+    expect(secondFolders).not.toBe(firstFolders);
   });
 
   it("builds workspace root routes with org and project ids", () => {

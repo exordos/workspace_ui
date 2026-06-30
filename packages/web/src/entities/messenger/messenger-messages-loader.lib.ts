@@ -7,23 +7,22 @@ import type { WorkspaceRuntimeContextGetter } from "~/entities/workspace-runtime
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import {
   getMessagesPage as defaultGetMessagesPage,
-  type MessengerClientOptions,
   type MessengerCollectionPage,
+  type MessengerClientOptions,
 } from "~/shared/api/messenger-client";
 import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
 import { adaptMessengerMessage } from "./messenger-adapters.lib";
 import { parseMessengerConversationId } from "./messenger-ids.lib";
 import { useMessengerStore } from "./messenger.model";
 import type { MessengerStoreState } from "./messenger.model";
+import {
+  buildMessengerRequestOptions,
+  type MessengerRequestOptionsOverrides,
+} from "./messenger-request-options.lib";
 import type { MessengerConversationId } from "./messenger.types";
 
 // The first message page is loaded only after the user opens a conversation.
 const DEFAULT_MESSAGES_PAGE_LIMIT = 50;
-
-type MessengerMessagesClientOptions = Pick<
-  MessengerClientOptions,
-  "baseUrl" | "devTargetOrigin" | "fetchImpl" | "projectId"
->;
 
 export interface MessengerMessagesClientDeps {
   getMessagesPage?: (
@@ -75,7 +74,7 @@ export interface LoadMessengerConversationMessagesOptions {
   pageMarker?: string | number;
   getRuntimeContext?: WorkspaceRuntimeContextGetter;
   client?: MessengerMessagesClientDeps;
-  clientOptions?: MessengerMessagesClientOptions;
+  clientOptions?: MessengerRequestOptionsOverrides;
   signal?: AbortSignal;
   store?: MessengerMessagesStoreApi;
 }
@@ -116,12 +115,7 @@ export async function loadMessengerConversationMessages({
 
   store.getState().startConversationMessagesLoad(ownerKey, conversationId);
 
-  const requestOptions: MessengerClientOptions = {
-    ...clientOptions,
-    accessToken: runtimeContext.accessToken,
-    projectId: clientOptions?.projectId ?? runtimeContext.projectId,
-    signal,
-  };
+  const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
   const query =
     parsedConversationId.kind === "stream"
       ? {

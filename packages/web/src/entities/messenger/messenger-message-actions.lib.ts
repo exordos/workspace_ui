@@ -21,14 +21,11 @@ import { adaptMessengerMessage } from "./messenger-adapters.lib";
 import { conversationIdForStream } from "./messenger-ids.lib";
 import { useMessengerStore } from "./messenger.model";
 import type { MessengerStoreState } from "./messenger.model";
+import {
+  buildMessengerRequestOptions,
+  type MessengerRequestOptionsOverrides,
+} from "./messenger-request-options.lib";
 import type { MessengerConversationId, MessengerMessage, MessengerUuid } from "./messenger.types";
-
-// Этот файл — единая точка write-действий Workspace-мессенджера.
-// Старый Zulip composer сюда не попадает: UI вызывает эти функции только на Workspace routes.
-type MessengerMessageActionClientOptions = Pick<
-  MessengerClientOptions,
-  "baseUrl" | "devTargetOrigin" | "fetchImpl" | "projectId"
->;
 
 export interface MessengerMessageActionClientDeps {
   createMessage?: (
@@ -57,7 +54,7 @@ export interface MessengerMessageActionStoreApi {
 export interface MessengerMessageActionBaseOptions {
   runtimeContext: WorkspaceRuntimeContext;
   getRuntimeContext?: WorkspaceRuntimeContextGetter;
-  clientOptions?: MessengerMessageActionClientOptions;
+  clientOptions?: MessengerRequestOptionsOverrides;
   client?: MessengerMessageActionClientDeps;
   signal?: AbortSignal;
   store?: MessengerMessageActionStoreApi;
@@ -88,20 +85,6 @@ export interface DeleteMessengerMessageOptions extends MessengerMessageActionBas
 export interface MarkMessengerMessageReadOptions extends MessengerMessageActionBaseOptions {
   messageUuid: MessengerUuid;
   conversationIds?: readonly MessengerConversationId[];
-}
-
-function buildRequestOptions(
-  runtimeContext: WorkspaceRuntimeContext,
-  clientOptions: MessengerMessageActionClientOptions | undefined,
-  signal: AbortSignal | undefined,
-): MessengerClientOptions {
-  // Запрос всегда привязан к текущему Workspace projectId и accessToken, а не к старой Zulip-сессии.
-  return {
-    ...clientOptions,
-    accessToken: runtimeContext.accessToken,
-    projectId: clientOptions?.projectId ?? runtimeContext.projectId,
-    signal,
-  };
 }
 
 function captureMessageAction(
@@ -141,7 +124,7 @@ export async function sendMessengerMessage({
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
   const dto = await (client.createMessage ?? defaultCreateMessage)(
-    buildRequestOptions(runtimeContext, clientOptions, signal),
+    buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
     {
       stream_uuid: streamUuid,
       topic_uuid: topicUuid,
@@ -176,7 +159,7 @@ export async function editMessengerMessage({
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
   const dto = await (client.editMessage ?? defaultEditMessage)(
-    buildRequestOptions(runtimeContext, clientOptions, signal),
+    buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
     messageUuid,
     { payload: { kind: "markdown", content: markdown } },
   );
@@ -210,7 +193,7 @@ export async function deleteMessengerMessage({
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
   await (client.deleteMessage ?? defaultDeleteMessage)(
-    buildRequestOptions(runtimeContext, clientOptions, signal),
+    buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
     messageUuid,
   );
   if (action.isStale())
@@ -242,7 +225,7 @@ export async function markMessengerMessageRead({
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
   const dto = await (client.markMessageRead ?? defaultMarkMessageRead)(
-    buildRequestOptions(runtimeContext, clientOptions, signal),
+    buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
     messageUuid,
   );
   if (action.isStale())

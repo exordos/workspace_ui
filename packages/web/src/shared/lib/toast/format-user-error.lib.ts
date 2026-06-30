@@ -3,10 +3,10 @@
  */
 
 import { t } from "~/i18n/i18n";
-import { WorkspaceApiHttpError } from "~/shared/api/workspace-orval-mutator";
+import { WorkspaceApiHttpError } from "~/shared/api/workspace-api-error";
 import { isLikelyNetworkError } from "~/shared/lib/connection-health";
 
-const INTERNAL_ERROR_PREFIXES = ["Workspace API error:", "workspaceOrvalMutator:"];
+const INTERNAL_ERROR_PREFIXES = ["Workspace API error:"];
 
 function isLikelyUserFacingMessage(message: string): boolean {
   const trimmed = message.trim();

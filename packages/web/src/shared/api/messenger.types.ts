@@ -104,8 +104,8 @@ export interface WorkspaceMessengerFolderItemDto {
   user_uuid: WorkspaceMessengerUuid;
   stream_uuid: WorkspaceMessengerUuid;
   chat_type: WorkspaceMessengerFolderItemChatType;
-  order_index: number | null;
-  pinned_at: WorkspaceMessengerDateTime | null;
+  order_index?: number | null;
+  pinned_at?: WorkspaceMessengerDateTime | null;
   unread_count: number;
   created_at: WorkspaceMessengerDateTime;
   updated_at: WorkspaceMessengerDateTime;
@@ -613,8 +613,10 @@ export function isWorkspaceMessengerFolderItemDto(
     isUuid(value.user_uuid) &&
     isUuid(value.stream_uuid) &&
     isFolderItemChatType(value.chat_type) &&
-    (value.order_index === null || isNonNegativeInteger(value.order_index)) &&
-    isNullableDateTime(value.pinned_at) &&
+    (value.order_index === undefined ||
+      value.order_index === null ||
+      isNonNegativeInteger(value.order_index)) &&
+    (value.pinned_at === undefined || isNullableDateTime(value.pinned_at)) &&
     isNonNegativeInteger(value.unread_count) &&
     isDateTime(value.created_at) &&
     isDateTime(value.updated_at)

@@ -3,7 +3,6 @@ import type { RightPanelUserInfo } from "~/widgets/right-panel/right-panel.types
 
 export interface LayoutMainWorkspaceProps {
   shouldShowChatShell: boolean;
-  workspaceMessengerActive: boolean;
   pathname: string;
   sidebarOpen: boolean;
   rightDrawerOpen: boolean;

@@ -309,6 +309,7 @@ export function selectCurrentWorkspaceRuntimeContext(
     accountId: session.accountId,
     instanceId: session.instanceId,
     organizationId: session.organizationId,
+    organizationOrigin: session.organizationOrigin,
     projectId: session.projectId,
     userUuid: session.userUuid,
     accessToken: session.accessToken,

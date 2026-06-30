@@ -3,7 +3,6 @@
  */
 
 import { loadChatListSnapshotRow } from "~/shared/lib/chat-list-snapshot-db";
-import { loadFoldersSnapshotRow } from "~/shared/lib/folders-snapshot-db";
 import { openMessageCacheDb } from "~/shared/lib/message-cache-db";
 
 export interface DiagnosticIdbSnapshot {
@@ -36,15 +35,12 @@ export async function estimateDiagnosticsIdbFootprint(
       instanceId != null && instanceId.length > 0
         ? await loadChatListSnapshotRow(instanceId)
         : null;
-    const foldersRow =
-      instanceId != null && instanceId.length > 0 ? await loadFoldersSnapshotRow(instanceId) : null;
-
     return {
       messagePartitionCount,
       hasChatListSnapshot: chatListRow != null,
       chatListSnapshotUpdatedAt: chatListRow?.updatedAt ?? null,
-      hasFoldersSnapshot: foldersRow != null,
-      foldersCount: foldersRow?.folders.length ?? null,
+      hasFoldersSnapshot: false,
+      foldersCount: null,
     };
   } catch {
     return null;

@@ -240,6 +240,27 @@ describe("Workspace messenger DTO guards", () => {
     ).toBe(true);
   });
 
+  it("accepts folder items when mutation responses omit nullable fields", () => {
+    expect(
+      isWorkspaceMessengerFolderDto({
+        ...folderDto,
+        folder_items: [
+          {
+            uuid: FOLDER_ITEM_UUID,
+            project_id: PROJECT_UUID,
+            folder_uuid: FOLDER_UUID,
+            user_uuid: USER_UUID,
+            stream_uuid: STREAM_UUID,
+            chat_type: "stream",
+            unread_count: 0,
+            created_at: DATE,
+            updated_at: DATE,
+          },
+        ],
+      }),
+    ).toBe(true);
+  });
+
   it("requires stream notification mode, archive flag, and source shape", () => {
     expect(isWorkspaceMessengerStreamDto({ ...streamDto, notification_mode: undefined })).toBe(
       false,

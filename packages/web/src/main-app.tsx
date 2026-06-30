@@ -11,8 +11,6 @@ import {
   refreshZulipApiBase,
   setInstanceProvider,
 } from "~/shared/api/client";
-import { clearInFlightWorkspaceFolderRequests } from "~/shared/api/workspace-client";
-import { registerWorkspaceOrvalMutator } from "~/shared/api/workspace-orval-mutator";
 import { initAnalytics } from "~/shared/lib/analytics/setup";
 import { setStoreWiper, setAuthInstanceGetter } from "~/shared/lib/auth-guard";
 import { brand } from "~/shared/lib/brand";
@@ -39,8 +37,6 @@ import "./app/focus-outline.styles.css";
 // FSD provider wiring (shared layer cannot import entities; we inject here)
 // ---------------------------------------------------------------------------
 
-registerWorkspaceOrvalMutator();
-
 setInstanceProvider(() => {
   const inst = useInstancesStore.getState().getCurrentInstance();
   if (!inst) return null;
@@ -62,7 +58,6 @@ function syncApiBasesAfterInstanceChange(): void {
 useInstancesStore.subscribe((state, prev) => {
   if (state.currentInstanceId !== prev.currentInstanceId) {
     syncApiBasesAfterInstanceChange();
-    clearInFlightWorkspaceFolderRequests();
   }
 });
 

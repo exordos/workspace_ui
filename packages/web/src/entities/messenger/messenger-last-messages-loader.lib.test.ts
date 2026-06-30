@@ -36,6 +36,7 @@ function createRuntimeContext(
     accountId: ACCOUNT_A,
     instanceId: INSTANCE_A,
     organizationId: ORGANIZATION_A,
+    organizationOrigin: "https://org-a.example.com",
     projectId: PROJECT_A,
     userUuid: USER_A,
     accessToken: "access-token-a",
@@ -172,6 +173,7 @@ describe("messenger last messages loader", () => {
     expect(getMessagesByUuids).toHaveBeenCalledWith(
       expect.objectContaining({
         accessToken: "access-token-a",
+        devTargetOrigin: "https://org-a.example.com",
         projectId: PROJECT_A,
       }),
       [MESSAGE_A, MESSAGE_B],

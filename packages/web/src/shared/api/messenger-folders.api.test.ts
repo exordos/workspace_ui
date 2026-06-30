@@ -218,6 +218,64 @@ describe("messenger folders API", () => {
     expect(init?.body).toBe(JSON.stringify(body));
   });
 
+  it("accepts a partial folder item response when creating a folder item", async () => {
+    const body = {
+      folder_uuid: FOLDER_UUID,
+      stream_uuid: STREAM_UUID,
+      chat_type: "stream" as const,
+    };
+    const fetchMock = createFetchMock({
+      uuid: FOLDER_ITEM_UUID,
+      project_id: PROJECT_UUID,
+      folder_uuid: FOLDER_UUID,
+      user_uuid: USER_UUID,
+      stream_uuid: STREAM_UUID,
+      chat_type: "stream",
+      unread_count: 0,
+      created_at: DATE,
+      updated_at: DATE,
+    });
+
+    await expect(
+      createFolderItem(
+        { accessToken: "access-token", baseUrl: "/api/messenger/v1", fetchImpl: fetchMock },
+        body,
+      ),
+    ).resolves.toEqual({
+      uuid: FOLDER_ITEM_UUID,
+      project_id: PROJECT_UUID,
+      folder_uuid: FOLDER_UUID,
+      user_uuid: USER_UUID,
+      stream_uuid: STREAM_UUID,
+      chat_type: "stream",
+      unread_count: 0,
+      order_index: undefined,
+      pinned_at: undefined,
+      created_at: DATE,
+      updated_at: DATE,
+    });
+  });
+
+  it("accepts a folder snapshot response when creating a folder item", async () => {
+    const body = {
+      folder_uuid: FOLDER_UUID,
+      stream_uuid: STREAM_UUID,
+      chat_type: "stream" as const,
+      order_index: 10,
+    };
+    const fetchMock = createFetchMock({
+      ...folderDto,
+      folder_items: [folderItemDto],
+    });
+
+    await expect(
+      createFolderItem(
+        { accessToken: "access-token", baseUrl: "/api/messenger/v1", fetchImpl: fetchMock },
+        body,
+      ),
+    ).resolves.toEqual(folderItemDto);
+  });
+
   it("calls pin and unpin action paths without request body", async () => {
     const pinnedItem = {
       ...folderItemDto,
@@ -254,6 +312,31 @@ describe("messenger folders API", () => {
     );
     expect(unpinInit?.method).toBe("POST");
     expect(unpinInit?.body).toBeUndefined();
+  });
+
+  it("accepts a folder snapshot response for pin and unpin mutations", async () => {
+    const pinnedItem = {
+      ...folderItemDto,
+      pinned_at: PINNED_DATE,
+      updated_at: PINNED_DATE,
+    };
+    const fetchMock = createFetchQueue([
+      jsonResponse({ ...folderDto, folder_items: [pinnedItem] }),
+      jsonResponse({ ...folderDto, folder_items: [folderItemDto] }),
+    ]);
+
+    await expect(
+      pinFolderItem(
+        { accessToken: "access-token", baseUrl: "/api/messenger/v1", fetchImpl: fetchMock },
+        FOLDER_ITEM_UUID,
+      ),
+    ).resolves.toEqual(pinnedItem);
+    await expect(
+      unpinFolderItem(
+        { accessToken: "access-token", baseUrl: "/api/messenger/v1", fetchImpl: fetchMock },
+        FOLDER_ITEM_UUID,
+      ),
+    ).resolves.toEqual(folderItemDto);
   });
 
   it("throws on invalid singleton response", async () => {

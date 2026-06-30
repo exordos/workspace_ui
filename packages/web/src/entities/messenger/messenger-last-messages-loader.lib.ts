@@ -11,15 +11,14 @@ import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types"
 import { adaptMessengerMessage } from "./messenger-adapters.lib";
 import { useMessengerStore } from "./messenger.model";
 import type { MessengerStoreState } from "./messenger.model";
+import {
+  buildMessengerRequestOptions,
+  type MessengerRequestOptionsOverrides,
+} from "./messenger-request-options.lib";
 import type { MessengerUuid } from "./messenger.types";
 
 // Этот loader нужен только для превью в сайдбаре.
 // Bootstrap приносит uuid последнего сообщения, а текст сообщения догружается отдельным лёгким запросом.
-type MessengerLastMessagesClientOptions = Pick<
-  MessengerClientOptions,
-  "baseUrl" | "devTargetOrigin" | "fetchImpl" | "projectId"
->;
-
 export type MessengerLastMessagesClientCall = (
   options: MessengerClientOptions,
   messageUuids: MessengerUuid[],
@@ -65,7 +64,7 @@ export interface LoadMessengerLastMessagesForSidebarOptions {
   runtimeContext: WorkspaceRuntimeContext;
   getRuntimeContext?: WorkspaceRuntimeContextGetter;
   client?: MessengerLastMessagesClientDeps;
-  clientOptions?: MessengerLastMessagesClientOptions;
+  clientOptions?: MessengerRequestOptionsOverrides;
   signal?: AbortSignal;
   store?: MessengerLastMessagesStoreApi;
 }
@@ -142,12 +141,7 @@ export async function loadMessengerLastMessagesForSidebar({
     return { status: "loaded", ownerKey, requested: 0, applied: 0 };
   }
 
-  const requestOptions: MessengerClientOptions = {
-    ...clientOptions,
-    accessToken: runtimeContext.accessToken,
-    projectId: clientOptions?.projectId ?? runtimeContext.projectId,
-    signal,
-  };
+  const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
 
   try {
     const messages = await (client.getMessagesByUuids ?? defaultGetMessagesByUuids)(

@@ -98,11 +98,11 @@ describe("useLayoutWorkspaceMessengerBootstrap", () => {
           accountId: session.accountId,
           instanceId: session.instanceId,
           organizationId: session.organizationId,
+          organizationOrigin: session.organizationOrigin,
           projectId: session.projectId,
           userUuid: session.userUuid,
           runtimeGeneration: session.runtimeGeneration,
         }),
-        clientOptions: { devTargetOrigin: session.organizationOrigin },
       }),
     );
     expect(shouldRefreshWorkspaceSessionMock).toHaveBeenCalledWith(session);

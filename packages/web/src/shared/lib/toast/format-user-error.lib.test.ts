@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { t } from "~/i18n/i18n";
-import { WorkspaceApiHttpError } from "~/shared/api/workspace-orval-mutator";
+import { WorkspaceApiHttpError } from "~/shared/api/workspace-api-error";
 import { formatUserFacingError } from "./format-user-error.lib";
 
 describe("formatUserFacingError", () => {

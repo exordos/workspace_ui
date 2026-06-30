@@ -38,6 +38,7 @@ function createRuntimeContext(
     accountId: ACCOUNT_A,
     instanceId: INSTANCE_A,
     organizationId: ORGANIZATION_A,
+    organizationOrigin: "https://org-a.example.com",
     projectId: PROJECT_A,
     userUuid: USER_A,
     accessToken: "access-token-a",
@@ -119,7 +120,11 @@ describe("messenger message actions", () => {
     });
 
     expect(createMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ accessToken: "access-token-a", projectId: PROJECT_A }),
+      expect.objectContaining({
+        accessToken: "access-token-a",
+        devTargetOrigin: "https://org-a.example.com",
+        projectId: PROJECT_A,
+      }),
       {
         stream_uuid: STREAM_A,
         topic_uuid: TOPIC_A,

@@ -31,6 +31,60 @@ export interface GetFolderItemsQuery extends MessengerPaginationQuery {
   folderUuid?: string;
 }
 
+function resolveFolderItemFromFolderSnapshot(
+  folder: WorkspaceMessengerFolderDto,
+  match:
+    | {
+        folderItemUuid: string;
+      }
+    | {
+        folderUuid: string;
+        streamUuid: string;
+        chatType: WorkspaceMessengerCreateFolderItemRequestBody["chat_type"];
+      },
+): WorkspaceMessengerFolderItemDto | null {
+  if ("folderItemUuid" in match) {
+    return folder.folder_items.find((item) => item.uuid === match.folderItemUuid) ?? null;
+  }
+
+  const candidates = folder.folder_items.filter((item) => {
+    const itemFolderUuid = item.folder_uuid ?? item.folder;
+    return (
+      itemFolderUuid === match.folderUuid &&
+      item.stream_uuid === match.streamUuid &&
+      item.chat_type === match.chatType
+    );
+  });
+
+  return candidates.at(-1) ?? null;
+}
+
+function parseFolderItemMutationResponse(
+  data: unknown,
+  match:
+    | {
+        folderItemUuid: string;
+      }
+    | {
+        folderUuid: string;
+        streamUuid: string;
+        chatType: WorkspaceMessengerCreateFolderItemRequestBody["chat_type"];
+      },
+): WorkspaceMessengerFolderItemDto {
+  if (isWorkspaceMessengerFolderItemDto(data)) {
+    return data;
+  }
+
+  if (isWorkspaceMessengerFolderDto(data)) {
+    const item = resolveFolderItemFromFolderSnapshot(data, match);
+    if (item != null) {
+      return item;
+    }
+  }
+
+  throw new TypeError("Expected valid messenger folder item response");
+}
+
 export async function getFolders(
   options: MessengerClientOptions,
   query: MessengerPaginationQuery = {},
@@ -134,7 +188,11 @@ export async function createFolderItem(
   body: WorkspaceMessengerCreateFolderItemRequestBody,
 ): Promise<WorkspaceMessengerFolderItemDto> {
   const data = await messengerPostJson("/folder_items/", options, body);
-  return parseDto(data, isWorkspaceMessengerFolderItemDto, "messenger folder item response");
+  return parseFolderItemMutationResponse(data, {
+    folderUuid: body.folder_uuid,
+    streamUuid: body.stream_uuid,
+    chatType: body.chat_type,
+  });
 }
 
 export async function deleteFolderItem(
@@ -152,7 +210,7 @@ export async function pinFolderItem(
     `/folder_items/${folderItemUuid}/actions/pin/invoke`,
     options,
   );
-  return parseDto(data, isWorkspaceMessengerFolderItemDto, "messenger folder item response");
+  return parseFolderItemMutationResponse(data, { folderItemUuid });
 }
 
 export async function unpinFolderItem(
@@ -163,5 +221,5 @@ export async function unpinFolderItem(
     `/folder_items/${folderItemUuid}/actions/unpin/invoke`,
     options,
   );
-  return parseDto(data, isWorkspaceMessengerFolderItemDto, "messenger folder item response");
+  return parseFolderItemMutationResponse(data, { folderItemUuid });
 }

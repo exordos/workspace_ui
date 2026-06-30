@@ -16,7 +16,6 @@ export interface LayoutAppShellProps {
   openRightDrawerInfo: () => void;
   openRightDrawerUserProfile: (userId: number) => void;
   shouldShowChatShell: boolean;
-  workspaceMessengerActive: boolean;
   pathname: string;
   sidebarOpen: boolean;
   rightDrawerMode: RightDrawerMode;
@@ -37,7 +36,6 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
   openRightDrawerInfo,
   openRightDrawerUserProfile,
   shouldShowChatShell,
-  workspaceMessengerActive,
   pathname,
   sidebarOpen,
   rightDrawerMode,
@@ -70,7 +68,6 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
           <TopBar />
           <LayoutMainWorkspace
             shouldShowChatShell={shouldShowChatShell}
-            workspaceMessengerActive={workspaceMessengerActive}
             pathname={pathname}
             sidebarOpen={sidebarOpen}
             rightDrawerOpen={rightDrawerOpen}

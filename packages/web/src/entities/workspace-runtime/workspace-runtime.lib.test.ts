@@ -14,6 +14,7 @@ function createContext(overrides: Partial<WorkspaceRuntimeContext> = {}): Worksp
     accountId: "account-a",
     instanceId: "instance-a",
     organizationId: "org-a",
+    organizationOrigin: "https://org-a.example.com",
     projectId: "project-a",
     userUuid: "user-a",
     accessToken: "access-token-a",

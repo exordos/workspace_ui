@@ -1,16 +1,12 @@
 // Root app layout: shell, store orchestration, background syncs for the active instance.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { enrichSidebarChatsWithMentionFlags } from "~/entities/chat-list/chat-list-sidebar-mention-enrich.lib";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useHydrateDrafts } from "~/entities/draft/draft-hydration";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { syncUnreadSurfacesFromDelta } from "~/entities/unread-sync/unread-surfaces-sync.lib";
 import { useUsersStore } from "~/entities/user/user.model";
-import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
-import { useSettingsStore } from "~/features/settings/settings.model";
-import { sortChatsByLastMessage } from "~/shared/lib/chat-sorting";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { isWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { useRightDrawerStore } from "~/widgets/right-panel/right-drawer.model";
@@ -31,7 +27,6 @@ import { useConnectionHealthSnapshot } from "./layout-connection-health.hook";
 import { useLayoutConnectionRecovery } from "./layout-connection-recovery.hook";
 import { syncCurrentUserIdFromActiveInstance } from "./layout-current-user-bootstrap.lib";
 import { useLayoutEscapeNavigation } from "./layout-escape-navigation.hook";
-import { useLayoutFolderSyncOrchestration } from "./layout-folder-sync-orchestration.hook";
 import { useInactiveInstancesBackgroundWork } from "./layout-inactive-instances-background-work.hook";
 import { useLayoutInstanceBootstrap } from "./layout-instance-bootstrap.hook";
 import {
@@ -92,59 +87,21 @@ export const Layout: React.FC = () => {
   const clearBootstrapError = useChatListStore((s) => s.clearBootstrapError);
   const setCurrentUserId = useChatListStore((s) => s.setCurrentUserId);
   const currentUserId = useChatListStore((s) => s.currentUserId);
-  const streamMetadataHydrated = useChatListStore((s) => s.streamMetadataHydrated);
   const streamsFromStore = useChatListStore((s) => s.streams());
   const dmsFromStore = useChatListStore((s) => s.dms());
   const streamsMap = useChatListStore((s) => s.streamsMap);
   const dmsMap = useChatListStore((s) => s.dmsMap);
-  const mentionedUnreadMessageIds = useChatListStore((s) => s.mentionedUnreadMessageIds);
-  const messageIdToLocation = useChatListStore((s) => s.messageIdToLocation);
   const chatListHasCachedRows = useMemo(
     () => streamsMap.size > 0 || dmsMap.size > 0,
     [streamsMap, dmsMap],
   );
   const usersMapForChatInfo = useUsersStore((s) => s.users);
-  const prioritizePersonalUnread = useSettingsStore((s) => s.prioritizePersonalUnread);
-  const prioritizeUnmutedUnreadChannels = useSettingsStore(
-    (s) => s.prioritizeUnmutedUnreadChannels,
-  );
-  const language = useSettingsStore((s) => s.language);
-  const showSystemFolders = useSettingsStore((s) => s.showSystemFolders);
   const mutedStreamIds = useMuteStore((s) => s.mutedStreamIds);
   const mutedTopicKeys = useMuteStore((s) => s.mutedTopicKeys);
   const unmutedTopicKeys = useMuteStore((s) => s.unmutedTopicKeys);
   const followedTopicKeys = useMuteStore((s) => s.followedTopicKeys);
   const isStreamMuted = useMuteStore((s) => s.isStreamMuted);
   const isEffectivelyMuted = useMuteStore((s) => s.isEffectivelyMuted);
-  const chatsSortedByLastMessage = useMemo(
-    () =>
-      enrichSidebarChatsWithMentionFlags(
-        sortChatsByLastMessage(streamsMap, dmsMap, mutedStreamIds, {
-          prioritizePersonalUnread,
-          prioritizeUnmutedUnreadChannels,
-          hideUnknownArchivedStreams: !streamMetadataHydrated,
-          isEffectivelyMuted,
-        }),
-        mentionedUnreadMessageIds,
-        messageIdToLocation,
-        currentUserId,
-      ),
-    [
-      streamsMap,
-      dmsMap,
-      mentionedUnreadMessageIds,
-      messageIdToLocation,
-      currentUserId,
-      mutedStreamIds,
-      mutedTopicKeys,
-      unmutedTopicKeys,
-      followedTopicKeys,
-      prioritizePersonalUnread,
-      prioritizeUnmutedUnreadChannels,
-      streamMetadataHydrated,
-      isEffectivelyMuted,
-    ],
-  );
   const { unreadCount: unreadCountForCurrentInstance, activeChatWindowTitle } =
     useLayoutUnreadAndTitle({
       instances,
@@ -169,15 +126,6 @@ export const Layout: React.FC = () => {
     () => hasPersonalUnreadIndicator(dmUnreadCountForCurrentInstance, mentionsUnreadCount),
     [dmUnreadCountForCurrentInstance, mentionsUnreadCount],
   );
-
-  const selectedFolderId = useFolderSyncStore((s) => s.selectedFolderId);
-  const selectedFolderChatIds = useFolderSyncStore((s) => s.selectedFolderChatIds);
-  const folderItemsByFolderId = useFolderSyncStore((s) => s.folderItemsByFolderId);
-  const selectedFolderSidebarChats = useFolderSyncStore((s) => s.selectedFolderSidebarChats);
-  const bootstrapFolderSync = useFolderSyncStore((s) => s.bootstrap);
-  const refreshFolderSync = useFolderSyncStore((s) => s.refresh);
-  const syncFolderSyncSidebarProjection = useFolderSyncStore((s) => s.syncSidebarProjection);
-  const syncFolderSyncDerived = useFolderSyncStore((s) => s.syncDerived);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const rightDrawerOpen = useRightDrawerStore((s) => s.open);
   const setRightDrawerOpen = useRightDrawerStore((s) => s.setOpen);
@@ -219,7 +167,7 @@ export const Layout: React.FC = () => {
   );
   const workspaceMessengerActive = isWorkspaceMessengerRoute(location.pathname);
   useHydrateDrafts(currentInstanceId, currentUserStatus);
-  useLayoutWorkspaceMessengerBootstrap({ enabled: workspaceMessengerActive });
+  useLayoutWorkspaceMessengerBootstrap({ enabled: true });
 
   // На Workspace-маршруте не запускаем пересчёт старых Zulip бейджей.
   // Иначе старый unread-flow может перезаписать состояние, которое пришло из Workspace API.
@@ -267,31 +215,6 @@ export const Layout: React.FC = () => {
     online,
     setUnreadCount: setInstanceUnreadCount,
     setDmUnreadCount: setInstanceDmUnreadCount,
-  });
-
-  useLayoutFolderSyncOrchestration({
-    // Старые папки построены вокруг Zulip chat ids.
-    // На Workspace-маршрутах папки уже приходят из Workspace API и живут в messenger store.
-    enabled: !workspaceMessengerActive,
-    currentInstanceId,
-    currentUserStatus,
-    showSystemFolders,
-    language,
-    folderItemsByFolderId,
-    chatsSortedByLastMessage,
-    streamsMap,
-    dmsMapSize: dmsMap.size,
-    usersMapForChatInfo,
-    currentUserId,
-    hideUnknownArchivedStreams: !streamMetadataHydrated,
-    selectedFolderId,
-    selectedFolderChatIds,
-    bootstrapFolderSync,
-    syncFolderSyncSidebarProjection,
-    syncFolderSyncDerived,
-    refreshFolderSync,
-    online,
-    isStreamMuted,
   });
 
   const openSearch = useSearchModalStore((s) => s.openModal);
@@ -384,9 +307,7 @@ export const Layout: React.FC = () => {
     rightDrawerOpen,
     setRightDrawerOpen,
     setSidebarOpen,
-    // Быстрые клавиши старого списка чатов знают только Zulip chat ids.
-    // Для Workspace временно отдаём пустой список, чтобы не смешать два формата id.
-    sidebarChats: workspaceMessengerActive ? [] : selectedFolderSidebarChats,
+    sidebarChats: [],
     activeStreamSlug: activeStreamSlug ?? null,
     activeDmIdParam: dmIdParam ?? null,
     navigate,
@@ -456,7 +377,6 @@ export const Layout: React.FC = () => {
             openRightDrawerInfo={openRightDrawerInfo}
             openRightDrawerUserProfile={openRightDrawerUserProfile}
             shouldShowChatShell={shouldShowChatShell}
-            workspaceMessengerActive={workspaceMessengerActive}
             pathname={location.pathname}
             sidebarOpen={sidebarOpen}
             rightDrawerMode={rightDrawerMode}

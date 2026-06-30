@@ -21,11 +21,10 @@ import { adaptMessengerBootstrapPayload, adaptMessengerFolder } from "./messenge
 import { loadMessengerLastMessagesForSidebar } from "./messenger-last-messages-loader.lib";
 import { useMessengerStore } from "./messenger.model";
 import type { MessengerStoreState } from "./messenger.model";
-
-type MessengerBootstrapClientOptions = Pick<
-  MessengerClientOptions,
-  "baseUrl" | "devTargetOrigin" | "fetchImpl" | "projectId"
->;
+import {
+  buildMessengerRequestOptions,
+  type MessengerRequestOptionsOverrides,
+} from "./messenger-request-options.lib";
 type MessengerBootstrapClientCall<T> = (options: MessengerClientOptions) => Promise<T[]>;
 
 // Загружаем минимальный снимок проекта для новой ветки Workspace-мессенджера.
@@ -67,7 +66,7 @@ export interface BootstrapMessengerStoreOptions {
   runtimeContext: WorkspaceRuntimeContext;
   getRuntimeContext?: WorkspaceRuntimeContextGetter;
   client?: MessengerBootstrapClientDeps;
-  clientOptions?: MessengerBootstrapClientOptions;
+  clientOptions?: MessengerRequestOptionsOverrides;
   signal?: AbortSignal;
   store?: MessengerStoreApi;
 }
@@ -101,12 +100,7 @@ export async function bootstrapMessengerStore({
 
   store.getState().startBootstrap(ownerKey);
 
-  const requestOptions: MessengerClientOptions = {
-    ...clientOptions,
-    accessToken: runtimeContext.accessToken,
-    projectId: clientOptions?.projectId ?? runtimeContext.projectId,
-    signal,
-  };
+  const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
 
   try {
     // Потоки и темы нужны первыми: из них можно быстро собрать базовый список чатов.

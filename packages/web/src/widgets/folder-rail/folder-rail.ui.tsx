@@ -1,18 +1,21 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { SYSTEM_ALL_FOLDER_ID } from "~/features/folder-sync/folder-sync-constants.lib";
+import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { CreateFolderModal } from "~/features/manage-folders/create-folder-modal.ui";
 import {
-  createFolder,
-  deleteFolder,
-  updateFolder,
-} from "~/features/manage-folders/manage-folders.api";
+  createFolder as createMessengerFolder,
+  deleteFolder as deleteMessengerFolder,
+  updateFolder as updateMessengerFolder,
+} from "~/shared/api/messenger-folders.api";
 import { UpdateFolderModal } from "~/features/manage-folders/update-folder-modal.ui";
 import { useSettingsStore } from "~/features/settings/settings.model";
+import { guard } from "~/shared/lib/guards";
 import { t } from "~/i18n/i18n";
 import { formatUserFacingError } from "~/shared/lib/toast/format-user-error.lib";
 import { toast } from "~/shared/lib/toast/toast";
 import { AppDialog, DialogCancelButton } from "~/shared/ui/app-dialog.ui";
 import { Spinner } from "~/shared/ui/spinner.ui";
+import { SIDEBAR_SYSTEM_ALL_FOLDER_ID } from "~/widgets/sidebar/sidebar-folder.constants";
 import { FolderRailHorizontalView } from "./folder-rail-horizontal-view.ui";
 import { FolderRailVerticalView } from "./folder-rail-vertical-view.ui";
 import type { IndexedFolderEntry } from "./folder-rail.lib";
@@ -24,6 +27,16 @@ export type {
   FolderRailLayout,
 } from "./folder-rail.types";
 
+function currentMessengerFolderClientOptions():
+  | ReturnType<typeof buildMessengerRequestOptions>
+  | null {
+  const runtimeContext = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+  if (runtimeContext == null) {
+    return null;
+  }
+  return buildMessengerRequestOptions(runtimeContext);
+}
+
 export const FolderRail: React.FC<FolderRailProps> = ({
   folders,
   selectedFolderId,
@@ -34,11 +47,11 @@ export const FolderRail: React.FC<FolderRailProps> = ({
 }) => {
   const normalizedFolders = useMemo(() => {
     return folders.map((folder) =>
-      folder.id === "all" ? { ...folder, id: SYSTEM_ALL_FOLDER_ID } : folder,
+      folder.id === "all" ? { ...folder, id: SIDEBAR_SYSTEM_ALL_FOLDER_ID } : folder,
     );
   }, [folders]);
   const resolvedSelectedFolderId =
-    selectedFolderId === "all" ? SYSTEM_ALL_FOLDER_ID : selectedFolderId;
+    selectedFolderId === "all" ? SIDEBAR_SYSTEM_ALL_FOLDER_ID : selectedFolderId;
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renamingFolder, setRenamingFolder] = useState<FolderRailFolder | null>(null);
@@ -51,16 +64,21 @@ export const FolderRail: React.FC<FolderRailProps> = ({
   const handleCreate = useCallback(
     async ({ name, backgroundColor }: { name: string; backgroundColor: number }) => {
       try {
-        const result = await createFolder({ title: name, backgroundColor });
-        if (!result) {
+        guard.nonEmpty(name, "folder title");
+        const clientOptions = currentMessengerFolderClientOptions();
+        if (clientOptions == null) {
           toast.error(t("folder.createFailed"));
           return false;
         }
+        const result = await createMessengerFolder(clientOptions, {
+          title: name,
+          background_color_value: backgroundColor,
+        });
         onFoldersChanged?.({
           created: {
-            id: result.id,
+            id: result.uuid ?? "",
             title: result.title,
-            backgroundColor: result.backgroundColor,
+            backgroundColor: result.background_color_value ?? 0,
           },
         });
         return true;
@@ -76,11 +94,16 @@ export const FolderRail: React.FC<FolderRailProps> = ({
     async ({ name, backgroundColor }: { name: string; backgroundColor: number }) => {
       if (!renamingFolder) return false;
       try {
-        const result = await updateFolder(renamingFolder.id, { title: name, backgroundColor });
-        if (!result) {
+        guard.nonEmpty(renamingFolder.id, "folder id");
+        const clientOptions = currentMessengerFolderClientOptions();
+        if (clientOptions == null) {
           toast.error(t("folder.updateFailed"));
           return false;
         }
+        await updateMessengerFolder(clientOptions, renamingFolder.id, {
+          title: name,
+          background_color_value: backgroundColor,
+        });
         onFoldersChanged?.();
         return true;
       } catch (err) {
@@ -104,11 +127,13 @@ export const FolderRail: React.FC<FolderRailProps> = ({
     if (!deletingFolder || isDeletingFolder) return;
     setIsDeletingFolder(true);
     try {
-      const deleted = await deleteFolder(deletingFolder.id);
-      if (!deleted) {
+      guard.nonEmpty(deletingFolder.id, "folder id");
+      const clientOptions = currentMessengerFolderClientOptions();
+      if (clientOptions == null) {
         toast.error(t("folder.deleteFailed"));
         return;
       }
+      await deleteMessengerFolder(clientOptions, deletingFolder.id);
       onFoldersChanged?.({ deletedFolderId: deletingFolder.id });
       setDeletingFolder(null);
     } catch (err) {

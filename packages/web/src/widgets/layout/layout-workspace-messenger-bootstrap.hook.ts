@@ -50,7 +50,6 @@ export function useLayoutWorkspaceMessengerBootstrap(options: { enabled: boolean
     void bootstrapMessengerStore({
       runtimeContext,
       getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-      clientOptions: { devTargetOrigin: session?.organizationOrigin },
       signal: controller.signal,
     }).catch((error) => {
       reportUnexpectedError("workspace-messenger:bootstrap", error);

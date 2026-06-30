@@ -79,7 +79,6 @@ workspace_ui/
 ├── packages/
 │   ├── web/              React SPA
 │   ├── electron/         Electron shell
-│   └── workspace-api/    Orval-generated @workspace/api client
 ├── docs/             Technical docs + ADRs
 ├── e2e/              Playwright tests
 ├── scripts/          Tooling utilities

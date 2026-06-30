@@ -21,6 +21,10 @@ import { SidebarMessagePreview } from "./sidebar-message-preview.ui";
 import { SidebarSearchHeader } from "./sidebar-search-header.ui";
 import { useSidebarTopicCollapse } from "./sidebar-topic-collapse.hook";
 import { SidebarTopicShowMoreButton } from "./sidebar-topic-show-more.ui";
+import {
+  WorkspaceStreamContextMenu,
+  WorkspaceTopicContextMenu,
+} from "./sidebar-workspace-context-menu.ui";
 
 export interface WorkspaceSidebarProps {
   streams: MessengerSidebarStreamItem[];
@@ -51,44 +55,48 @@ function workspaceTopicMatchesQuery(
 
 function WorkspaceSidebarTopicRow({
   topic,
+  streamTitle,
   activeTopicUuid,
   compact,
 }: Readonly<{
   topic: MessengerSidebarTopicItem;
+  streamTitle: string;
   activeTopicUuid: string | null;
   compact: boolean;
 }>): React.ReactElement {
   const isActive = activeTopicUuid === topic.topicUuid;
 
   return (
-    <Link
-      to={topic.route}
-      className={`flex w-full min-w-0 items-stretch gap-3 rounded-r-lg border-l-4 border-indicator-yellow py-2 pl-3 pr-2 transition-colors ${sidebarRowClass(
-        isActive,
-      )}`}
-    >
-      <div className="min-w-0 flex-1">
-        <div
-          className={`truncate text-sm font-medium text-text-primary ${
-            topic.isDone ? "line-through opacity-70" : ""
-          }`}
-        >
-          {topic.title}
+    <WorkspaceTopicContextMenu topic={topic} streamTitle={streamTitle}>
+      <Link
+        to={topic.route}
+        className={`flex w-full min-w-0 items-stretch gap-3 rounded-r-lg border-l-4 border-indicator-yellow py-2 pl-3 pr-2 transition-colors ${sidebarRowClass(
+          isActive,
+        )}`}
+      >
+        <div className="min-w-0 flex-1">
+          <div
+            className={`truncate text-sm font-medium text-text-primary ${
+              topic.isDone ? "line-through opacity-70" : ""
+            }`}
+          >
+            {topic.title}
+          </div>
+          {!compact && (
+            <SidebarMessagePreview
+              senderName={topic.preview?.senderName}
+              message={topic.preview?.text}
+            />
+          )}
         </div>
-        {!compact && (
-          <SidebarMessagePreview
-            senderName={topic.preview?.senderName}
-            message={topic.preview?.text}
-          />
-        )}
-      </div>
-      <SidebarChatRowMeta
-        compact={compact}
-        isPinned={false}
-        unreadCount={topic.unreadCount}
-        hasMention={false}
-      />
-    </Link>
+        <SidebarChatRowMeta
+          compact={compact}
+          isPinned={false}
+          unreadCount={topic.unreadCount}
+          hasMention={false}
+        />
+      </Link>
+    </WorkspaceTopicContextMenu>
   );
 }
 
@@ -120,6 +128,7 @@ const WorkspaceSidebarTopics = React.memo(function WorkspaceSidebarTopics({
           <WorkspaceSidebarTopicRow
             key={topic.id}
             topic={topic}
+            streamTitle={stream.title}
             activeTopicUuid={activeTopicUuid}
             compact={compact}
           />
@@ -161,7 +170,7 @@ function WorkspaceSidebarStreamRow({
 
   return (
     <>
-      <div className="relative">
+      <WorkspaceStreamContextMenu stream={stream}>
         <Link
           to={stream.route}
           className={`${rowClass} w-full ${
@@ -197,7 +206,7 @@ function WorkspaceSidebarStreamRow({
             }
           />
         </Link>
-      </div>
+      </WorkspaceStreamContextMenu>
       {expanded && (
         <WorkspaceSidebarTopics
           stream={stream}

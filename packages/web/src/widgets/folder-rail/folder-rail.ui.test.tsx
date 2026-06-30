@@ -5,14 +5,22 @@ import {
   folderColorValueToCssHex,
   folderColorValueToCssRgba,
 } from "~/features/manage-folders/folder-colors";
-import * as manageFolders from "~/features/manage-folders/manage-folders.api";
 import { useSettingsStore } from "~/features/settings/settings.model";
-import { t } from "~/i18n/i18n";
+import * as messengerFolders from "~/shared/api/messenger-folders.api";
 import { applyTheme } from "~/shared/lib/themes/engine";
 import { FOLDER_QUICK_LIST_SHORTCUT } from "./folder-rail.lib";
 import { FolderRail } from "./folder-rail.ui";
 
 const toastErrorMock = vi.hoisted(() => vi.fn());
+const getCurrentRuntimeContextMock = vi.hoisted(() => vi.fn());
+
+vi.mock("~/entities/workspace-auth/workspace-auth.model", () => ({
+  useWorkspaceAuthStore: {
+    getState: () => ({
+      getCurrentRuntimeContext: getCurrentRuntimeContextMock,
+    }),
+  },
+}));
 
 vi.mock("~/shared/lib/toast/toast", () => ({
   toast: {
@@ -102,11 +110,22 @@ describe("FolderRail visual parity", () => {
     latestFolderRailResizeCallback = null;
     latestFolderRailResizeTargets = [];
     globalThis.ResizeObserver = FolderRailResizeObserverMock;
+    getCurrentRuntimeContextMock.mockReturnValue({
+      accountId: "account-1",
+      instanceId: "instance-1",
+      organizationId: "org-1",
+      organizationOrigin: "https://org.example.com",
+      projectId: "project-1",
+      userUuid: "user-1",
+      accessToken: "access-token",
+      runtimeGeneration: 1,
+    });
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
     toastErrorMock.mockClear();
+    getCurrentRuntimeContextMock.mockReset();
     globalThis.ResizeObserver = originalResizeObserver;
     useSettingsStore.getState().resetToDefaults();
   });
@@ -1303,7 +1322,7 @@ describe("FolderRail visual parity", () => {
   });
 
   it("keeps delete dialog open when folder deletion fails", async () => {
-    vi.spyOn(manageFolders, "deleteFolder").mockResolvedValue(false);
+    vi.spyOn(messengerFolders, "deleteFolder").mockRejectedValue(new Error("Offline"));
 
     render(
       <FolderRail
@@ -1327,15 +1346,15 @@ describe("FolderRail visual parity", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
 
     await waitFor(() => {
-      expect(manageFolders.deleteFolder).toHaveBeenCalledWith("custom");
+      expect(messengerFolders.deleteFolder).toHaveBeenCalledWith(expect.any(Object), "custom");
     });
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(toastErrorMock).toHaveBeenCalledWith(t("folder.deleteFailed"));
+    expect(toastErrorMock).toHaveBeenCalledWith("Offline");
   });
 
   it("shows toast when folder creation fails", async () => {
     const user = userEvent.setup();
-    vi.spyOn(manageFolders, "createFolder").mockResolvedValue(null);
+    vi.spyOn(messengerFolders, "createFolder").mockRejectedValue(new Error("Offline"));
 
     render(
       <FolderRail
@@ -1351,9 +1370,9 @@ describe("FolderRail visual parity", () => {
     await user.click(screen.getByRole("button", { name: "Create" }));
 
     await waitFor(() => {
-      expect(manageFolders.createFolder).toHaveBeenCalled();
+      expect(messengerFolders.createFolder).toHaveBeenCalled();
     });
-    expect(toastErrorMock).toHaveBeenCalledWith(t("folder.createFailed"));
+    expect(toastErrorMock).toHaveBeenCalledWith("Offline");
     expect(screen.getByText("Create folder")).toBeInTheDocument();
   });
 });

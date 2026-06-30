@@ -49,6 +49,7 @@ function createRuntimeContext(
     accountId: ACCOUNT_A,
     instanceId: INSTANCE_A,
     organizationId: ORGANIZATION_A,
+    organizationOrigin: "https://org-a.example.com",
     projectId: PROJECT_A,
     userUuid: USER_A,
     accessToken: "access-token-a",
@@ -173,6 +174,24 @@ function createFolderDto(
   };
 }
 
+function applyFolderSnapshots(
+  ownerKey: string,
+  folders: WorkspaceMessengerFolderDto[],
+): ReturnType<typeof adaptMessengerBootstrapPayload>["folders"] {
+  const adaptedFolders = adaptMessengerBootstrapPayload({
+    streams: [],
+    topics: [],
+    folders,
+    users: [],
+  }).folders;
+
+  for (const folder of adaptedFolders) {
+    useMessengerStore.getState().applyFolderSnapshot(ownerKey, folder);
+  }
+
+  return adaptedFolders;
+}
+
 function createUserDto(
   overrides: Partial<WorkspaceMessengerUserDto> = {},
 ): WorkspaceMessengerUserDto {
@@ -253,6 +272,7 @@ describe("messenger bootstrap store", () => {
     expect(getStreams).toHaveBeenCalledWith(
       expect.objectContaining({
         accessToken: "access-token-a",
+        devTargetOrigin: "https://org-a.example.com",
         projectId: PROJECT_A,
       }),
     );
@@ -731,6 +751,153 @@ describe("messenger bootstrap store", () => {
     useMessengerStore.getState().removeFolder(ownerKey, { uuid: FOLDER_A });
 
     expect(useMessengerStore.getState().folderIds).toEqual([FOLDER_B]);
+  });
+
+  it("upserts a single folder item without rebuilding folder snapshots", () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createRuntimeContext());
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    const [, folderB] = applyFolderSnapshots(ownerKey, [
+      createFolderDto({ folder_items: [] }),
+      createFolderDto({
+        uuid: FOLDER_B,
+        title: "Pinned",
+        folder_items: createFolderDto().folder_items.map((item) => ({
+          ...item,
+          folder_uuid: FOLDER_B,
+        })),
+      }),
+    ]);
+
+    const folderIds = useMessengerStore.getState().folderIds;
+    const [folderItem] = folderB!.items;
+    useMessengerStore.getState().upsertFolderItem(ownerKey, {
+      ...folderItem!,
+      folderUuid: FOLDER_A,
+      orderIndex: 1,
+    });
+    useMessengerStore.getState().upsertFolderItem("stale-owner", {
+      ...folderItem!,
+      uuid: "ignored-item",
+      folderUuid: FOLDER_A,
+    });
+    useMessengerStore.getState().upsertFolderItem(ownerKey, {
+      ...folderItem!,
+      uuid: "missing-folder-item",
+      folderUuid: "missing-folder",
+    });
+
+    expect(useMessengerStore.getState().folderIds).toBe(folderIds);
+    expect(selectMessengerFolders(useMessengerStore.getState())).toEqual([
+      expect.objectContaining({
+        uuid: FOLDER_A,
+        items: [expect.objectContaining({ uuid: FOLDER_ITEM_A, orderIndex: 1 })],
+      }),
+      expect.objectContaining({ uuid: FOLDER_B, items: [] }),
+    ]);
+  });
+
+  it("raises folder unread count when a local folder item is added", () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createRuntimeContext());
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    applyFolderSnapshots(ownerKey, [createFolderDto({ unread_count: 0, folder_items: [] })]);
+
+    useMessengerStore.getState().upsertFolderItem(
+      ownerKey,
+      {
+        uuid: FOLDER_ITEM_A,
+        projectId: PROJECT_A,
+        folderUuid: FOLDER_A,
+        userUuid: USER_A,
+        streamUuid: STREAM_A,
+        conversationId: `stream:${STREAM_A}`,
+        chatType: "private",
+        orderIndex: 10,
+        pinnedAt: null,
+        unreadCount: 4,
+        createdAt: DATE,
+        updatedAt: "2026-06-22T10:20:00Z",
+      },
+    );
+
+    expect(useMessengerStore.getState().foldersById[FOLDER_A]).toEqual(
+      expect.objectContaining({
+        unreadCount: 4,
+        items: [expect.objectContaining({ uuid: FOLDER_ITEM_A, unreadCount: 4 })],
+      }),
+    );
+  });
+
+  it("recomputes folder unread count when an existing folder item changes locally", () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createRuntimeContext());
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    const [folder] = applyFolderSnapshots(ownerKey, [createFolderDto()]);
+    const [folderItem] = folder!.items;
+
+    useMessengerStore.getState().upsertFolderItem(ownerKey, {
+      ...folderItem!,
+      unreadCount: 7,
+      updatedAt: "2026-06-22T10:30:00Z",
+    });
+
+    expect(useMessengerStore.getState().foldersById[FOLDER_A]).toEqual(
+      expect.objectContaining({
+        unreadCount: 7,
+        items: [expect.objectContaining({ uuid: FOLDER_ITEM_A, unreadCount: 7 })],
+      }),
+    );
+  });
+
+  it("lowers folder unread count when a local folder item is removed", () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createRuntimeContext());
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    applyFolderSnapshots(ownerKey, [createFolderDto()]);
+
+    useMessengerStore.getState().removeFolderItem(ownerKey, { uuid: FOLDER_ITEM_A });
+
+    expect(useMessengerStore.getState().foldersById[FOLDER_A]).toEqual(
+      expect.objectContaining({
+        unreadCount: 0,
+        items: [],
+      }),
+    );
+  });
+
+  it("recomputes unread counts for both folders when a folder item moves locally", () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createRuntimeContext());
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    const [, folderB] = applyFolderSnapshots(ownerKey, [
+      createFolderDto({ unread_count: 0, folder_items: [] }),
+      createFolderDto({
+        uuid: FOLDER_B,
+        title: "Pinned",
+        unread_count: 3,
+        folder_items: createFolderDto().folder_items.map((item) => ({
+          ...item,
+          folder_uuid: FOLDER_B,
+          unread_count: 3,
+        })),
+      }),
+    ]);
+
+    useMessengerStore.getState().upsertFolderItem(ownerKey, {
+      ...folderB!.items[0]!,
+      folderUuid: FOLDER_A,
+      unreadCount: 6,
+      updatedAt: "2026-06-22T10:40:00Z",
+    });
+
+    expect(useMessengerStore.getState().foldersById[FOLDER_A]).toEqual(
+      expect.objectContaining({
+        unreadCount: 6,
+        items: [expect.objectContaining({ uuid: FOLDER_ITEM_A, folderUuid: FOLDER_A })],
+      }),
+    );
+    expect(useMessengerStore.getState().foldersById[FOLDER_B]).toEqual(
+      expect.objectContaining({
+        unreadCount: 0,
+        items: [],
+      }),
+    );
   });
 
   it("keeps realtime cursor monotonic and records skipped events", () => {

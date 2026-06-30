@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { useInstancesStore } from "~/entities/instance/instance.model";
-import { SYSTEM_ALL_FOLDER_ID } from "~/features/folder-sync/folder-sync-constants.lib";
 import { buildOrgScopedStorageKey } from "~/shared/lib/org-scoped-storage";
+import { SIDEBAR_SYSTEM_ALL_FOLDER_ID } from "./sidebar-folder.constants";
 import type { SidebarConfig, SidebarConfigState, SidebarUiState } from "./sidebar-config.types";
 
 const SIDEBAR_CONFIG_STORAGE_KEY = "zulip-web-sidebar-config";
@@ -12,7 +12,7 @@ const DEFAULT_CONFIG: SidebarConfig = {
 };
 
 const DEFAULT_UI_STATE: SidebarUiState = {
-  selectedFolderId: SYSTEM_ALL_FOLDER_ID,
+  selectedFolderId: SIDEBAR_SYSTEM_ALL_FOLDER_ID,
   searchQuery: "",
   createChatOpen: false,
 };

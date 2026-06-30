@@ -21,7 +21,6 @@ import { useNotificationSettingsStore } from "~/entities/notification-settings/n
 import { persistUsersDirectoryToIndexedDb } from "~/entities/user/user-directory-snapshot-persist.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
-import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { useMessageReadersStore } from "~/features/message-readers/message-readers.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
@@ -326,7 +325,6 @@ export function useLayoutZulipEventLoop(options: {
     useActivityStore.getState().clear();
     useInboxStore.getState().clear();
     useChatListStore.getState().clear();
-    useFolderSyncStore.getState().clear();
     clearStreamSidebarHydrateState();
     resetReconnectStreamPreviewStaging();
     useCurrentChatMessagesStore.getState().setContext(null);

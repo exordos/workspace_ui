@@ -1,6 +1,6 @@
-import { isSystemRailFolderId } from "~/features/folder-sync/folder-sync-constants.lib";
 import { resolveCanonicalStreamName } from "~/shared/lib/stream-name.lib";
 import type { SidebarChat, StreamWithLast } from "~/shared/types/sidebar-chat";
+import { isSidebarSystemFolderId } from "./sidebar-folder.constants";
 
 export { dmConversationKey } from "~/shared/lib/dm-key";
 import {
@@ -20,7 +20,7 @@ export {
 /** System rail folders plus legacy `selectedFolderId="all"` used in tests and older routes. */
 export function isSidebarSystemFolderScope(folderId: string | undefined): boolean {
   if (folderId == null || folderId === "") return false;
-  return isSystemRailFolderId(folderId);
+  return isSidebarSystemFolderId(folderId);
 }
 
 /**

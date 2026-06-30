@@ -5,6 +5,7 @@ import {
 import type { MessengerStoreState } from "./messenger.model";
 import type {
   MessengerFolder,
+  MessengerConversation,
   MessengerMessage,
   MessengerSidebarMessagePreview,
   MessengerSidebarFolderView,
@@ -145,6 +146,36 @@ function streamItemFromStream(input: {
   };
 }
 
+function streamItemFromConversation(input: {
+  organizationId: string;
+  projectId: string;
+  conversation: MessengerConversation;
+  messagesById: MessengerStoreState["messagesById"];
+  unreadCount?: number;
+  pinnedAt?: string | null;
+  orderIndex?: number | null;
+  updatedAt?: string | null;
+}): MessengerSidebarStreamItem {
+  return {
+    id: input.conversation.id,
+    streamUuid: input.conversation.streamUuid,
+    title: input.conversation.title,
+    audience: input.conversation.audience,
+    isPrivate: input.conversation.isPrivate,
+    unreadCount: input.unreadCount ?? input.conversation.unreadCount,
+    pinnedAt: input.pinnedAt ?? null,
+    orderIndex: input.orderIndex ?? null,
+    route: workspaceMessengerStreamRoute({
+      orgId: input.organizationId,
+      projectId: input.projectId,
+      streamUuid: input.conversation.streamUuid,
+    }),
+    topics: EMPTY_SIDEBAR_TOPICS,
+    preview: previewFromMessage(input.conversation.lastMessageUuid ?? null, input.messagesById),
+    updatedAt: input.updatedAt ?? "",
+  };
+}
+
 function topicsForStream(input: {
   organizationId: string;
   projectId: string;
@@ -194,21 +225,35 @@ export function selectMessengerSidebarStreams(
     ? selectedFolder.items
         .map((item) => {
           const stream = state.streamsById[item.streamUuid];
-          if (stream == null) return null;
-          return streamItemFromStream({
+          if (stream != null) {
+            return streamItemFromStream({
+              organizationId: options.organizationId,
+              projectId: options.projectId,
+              stream,
+              messagesById: state.messagesById,
+              unreadCount: item.unreadCount,
+              pinnedAt: item.pinnedAt,
+              orderIndex: item.orderIndex,
+              topics: topicsForStream({
+                organizationId: options.organizationId,
+                projectId: options.projectId,
+                state,
+                streamUuid: stream.uuid,
+              }),
+            });
+          }
+
+          const conversation = state.conversationsById[item.conversationId];
+          if (conversation == null) return null;
+          return streamItemFromConversation({
             organizationId: options.organizationId,
             projectId: options.projectId,
-            stream,
+            conversation,
             messagesById: state.messagesById,
             unreadCount: item.unreadCount,
             pinnedAt: item.pinnedAt,
             orderIndex: item.orderIndex,
-            topics: topicsForStream({
-              organizationId: options.organizationId,
-              projectId: options.projectId,
-              state,
-              streamUuid: stream.uuid,
-            }),
+            updatedAt: item.updatedAt,
           });
         })
         .filter((item): item is MessengerSidebarStreamItem => item != null)

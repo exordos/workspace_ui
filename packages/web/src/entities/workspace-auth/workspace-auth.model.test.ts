@@ -57,6 +57,7 @@ describe("workspace-auth store", () => {
     expect(useWorkspaceAuthStore.getState().getCurrentRuntimeContext()).toMatchObject({
       accountId: "account-a",
       organizationId: "org-a",
+      organizationOrigin: "https://org-a.example.com",
       projectId: "project-a",
       userUuid: "user-a",
       accessToken: "access-token-a",

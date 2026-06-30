@@ -103,10 +103,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     () => selectCurrentWorkspaceRuntimeContext({ sessions, currentAccountId }),
     [sessions, currentAccountId],
   );
-  const currentSession = useMemo(
-    () => sessions.find((session) => session.accountId === currentAccountId) ?? null,
-    [currentAccountId, sessions],
-  );
   const conversationId = selection.status === "conversation" ? selection.conversationId : null;
   const streamUuid = selection.status === "conversation" ? selection.streamUuid : null;
   const topicUuid =
@@ -137,10 +133,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   );
   const topicsById = useMessengerStore((state) => state.topicsById);
   const retry = useCallback(() => setRetryNonce((value) => value + 1), []);
-  const workspaceClientOptions = useMemo(
-    () => ({ devTargetOrigin: currentSession?.organizationOrigin }),
-    [currentSession?.organizationOrigin],
-  );
   const workspaceComposerCapabilities = useMemo<MessageComposerCapabilities>(
     () => ({
       // Workspace backend в текущем срезе умеет send/edit/delete/read, но не эти дополнительные действия.
@@ -182,14 +174,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       runtimeContext,
       conversationId: selection.conversationId,
       getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-      clientOptions: { devTargetOrigin: currentSession?.organizationOrigin },
       signal: controller.signal,
     });
 
     return () => {
       controller.abort();
     };
-  }, [currentSession?.organizationOrigin, retryNonce, runtimeContext, selection]);
+  }, [retryNonce, runtimeContext, selection]);
 
   useEffect(() => {
     return () => {
@@ -323,7 +314,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
           sendMessengerMessage({
             runtimeContext,
             getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-            clientOptions: workspaceClientOptions,
             signal,
             streamUuid: target.streamUuid,
             topicUuid: target.topicUuid,
@@ -340,7 +330,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         throw error instanceof Error ? error : new Error(message);
       }
     },
-    [resolveSendTarget, runWorkspaceAction, runtimeContext, workspaceClientOptions],
+    [resolveSendTarget, runWorkspaceAction, runtimeContext],
   );
 
   const requestMessageEdit = useCallback(
@@ -381,7 +371,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
           editMessengerMessage({
             runtimeContext,
             getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-            clientOptions: workspaceClientOptions,
             signal,
             messageUuid: message.uuid,
             markdown,
@@ -394,7 +383,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         throw error instanceof Error ? error : new Error(messageText);
       }
     },
-    [resolveMessageByVisualId, runWorkspaceAction, runtimeContext, workspaceClientOptions],
+    [resolveMessageByVisualId, runWorkspaceAction, runtimeContext],
   );
 
   const handleDeleteMessage = useCallback(
@@ -415,7 +404,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         deleteMessengerMessage({
           runtimeContext,
           getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-          clientOptions: workspaceClientOptions,
           signal,
           messageUuid: message.uuid,
           streamUuid: message.streamUuid,
@@ -425,7 +413,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         setActionError(normalizeWorkspaceActionError(error, t("message.deleteError")));
       });
     },
-    [resolveMessageByVisualId, runWorkspaceAction, runtimeContext, workspaceClientOptions],
+    [resolveMessageByVisualId, runWorkspaceAction, runtimeContext],
   );
 
   const flushReadBatch = useCallback(() => {
@@ -448,7 +436,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         markMessengerMessageRead({
           runtimeContext,
           getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-          clientOptions: workspaceClientOptions,
           signal,
           messageUuid: message.uuid,
           conversationIds: [conversationId],
@@ -462,7 +449,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     resolveMessageByVisualId,
     runWorkspaceAction,
     runtimeContext,
-    workspaceClientOptions,
   ]);
 
   const scheduleReadBatch = useCallback(

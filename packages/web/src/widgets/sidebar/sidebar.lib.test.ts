@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  SYSTEM_ALL_FOLDER_ID,
-  SYSTEM_CHANNELS_FOLDER_ID,
-  SYSTEM_PERSONAL_FOLDER_ID,
-} from "~/features/folder-sync/folder-sync-constants.lib";
+  SIDEBAR_SYSTEM_ALL_FOLDER_ID,
+  SIDEBAR_SYSTEM_CHANNELS_FOLDER_ID,
+  SIDEBAR_SYSTEM_PERSONAL_FOLDER_ID,
+} from "./sidebar-folder.constants";
 import {
   isSidebarSystemFolderScope,
   parseStreamSlug,
@@ -12,9 +12,9 @@ import {
 
 describe("isSidebarSystemFolderScope", () => {
   it("includes system rail ids", () => {
-    expect(isSidebarSystemFolderScope(SYSTEM_ALL_FOLDER_ID)).toBe(true);
-    expect(isSidebarSystemFolderScope(SYSTEM_PERSONAL_FOLDER_ID)).toBe(true);
-    expect(isSidebarSystemFolderScope(SYSTEM_CHANNELS_FOLDER_ID)).toBe(true);
+    expect(isSidebarSystemFolderScope(SIDEBAR_SYSTEM_ALL_FOLDER_ID)).toBe(true);
+    expect(isSidebarSystemFolderScope(SIDEBAR_SYSTEM_PERSONAL_FOLDER_ID)).toBe(true);
+    expect(isSidebarSystemFolderScope(SIDEBAR_SYSTEM_CHANNELS_FOLDER_ID)).toBe(true);
   });
 
   it("returns false for created folders", () => {
