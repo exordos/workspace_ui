@@ -1,4 +1,4 @@
-export type PresenceVisual = "active" | "idle" | "offline" | null;
+export type PresenceVisual = "active" | "idle" | "offline" | "do_not_disturb" | null;
 
 export interface PresenceIndicatorProps {
   status: PresenceVisual;

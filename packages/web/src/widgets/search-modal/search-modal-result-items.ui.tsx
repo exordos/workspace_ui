@@ -6,7 +6,7 @@ import type { MockMessage } from "~/shared/api/messenger.types";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import { Icon } from "~/shared/ui/icon";
-import { PresenceIndicator } from "~/shared/ui/presence-indicator";
+import { PresenceIndicator, type PresenceVisual } from "~/shared/ui/presence-indicator";
 import { SelectableRow } from "~/shared/ui/selectable-row.ui";
 
 export const MAX_USER_RESULTS = 20;
@@ -63,7 +63,7 @@ export const UserResultItem = React.memo(function UserResultItem({
   email?: string;
   status?: UserStatus;
   statusLabel?: string;
-  presenceState: "active" | "idle" | "offline" | null;
+  presenceState: PresenceVisual;
   onSelect: () => void;
 }) {
   const secondaryText = statusLabel ?? email ?? "";

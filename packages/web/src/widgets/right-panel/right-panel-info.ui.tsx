@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
-import { ensureUserStatusLoaded } from "~/entities/user/api/user.api";
 import { useUsersStore } from "~/entities/user/user.model";
 import { AddStreamMembersDialog } from "~/features/add-stream-members/add-stream-members-dialog.ui";
 import { useAddStreamMembersStore } from "~/features/add-stream-members/add-stream-members.model";
@@ -192,20 +191,6 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     },
     [rightDrawer],
   );
-  const memberStatusIds = useMemo(() => {
-    if (chatInfoData?.type !== "dm" && chatInfoData?.type !== "stream") {
-      return [];
-    }
-    const ids = chatInfoData.members.map((member) => member.userId);
-    return Array.from(new Set(ids));
-  }, [chatInfoData]);
-
-  useEffect(() => {
-    for (const userId of memberStatusIds) {
-      void ensureUserStatusLoaded(userId);
-    }
-  }, [memberStatusIds]);
-
   const streamInfoData = chatInfoData?.type === "stream" ? chatInfoData : null;
   const canonicalStreamName = useMemo(
     () =>

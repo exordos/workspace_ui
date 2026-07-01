@@ -10,11 +10,19 @@ export function resolveDmPresenceText(
   if (dmPartner.presenceState === "idle") {
     return t("presence.away");
   }
+  if (dmPartner.presenceState === "do_not_disturb") {
+    return t("presence.doNotDisturb");
+  }
   if (dmPartner.lastSeen == null) {
     return t("presence.offline");
   }
-  if (dmPartner.lastSeen === t("presence.online")) {
-    return t("presence.online");
+  if (
+    dmPartner.lastSeen === t("presence.online") ||
+    dmPartner.lastSeen === t("presence.away") ||
+    dmPartner.lastSeen === t("presence.offline") ||
+    dmPartner.lastSeen === t("presence.doNotDisturb")
+  ) {
+    return dmPartner.lastSeen;
   }
   return t("presence.lastSeen", { time: dmPartner.lastSeen });
 }

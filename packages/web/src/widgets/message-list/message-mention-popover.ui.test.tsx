@@ -1,13 +1,7 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
 import { MessageMentionPopover } from "./message-mention-popover.ui";
-
-const ensureUserStatusLoadedMock = vi.hoisted(() => vi.fn());
-
-vi.mock("~/entities/user/api/user.api", () => ({
-  ensureUserStatusLoaded: (...args: unknown[]) => ensureUserStatusLoadedMock(...args),
-}));
 
 vi.mock("~/shared/lib/realm-emojis-cache", () => ({
   getCachedRealmEmojis: () => [
@@ -29,11 +23,10 @@ vi.mock("~/shared/lib/realm-emojis-cache", () => ({
 
 describe("MessageMentionPopover", () => {
   afterEach(() => {
-    ensureUserStatusLoadedMock.mockReset();
     useUsersStore.getState().clear();
   });
 
-  it("renders emoji-only realm custom status without falling back to presence text", async () => {
+  it("renders emoji-only realm custom status without falling back to presence text", () => {
     const now = Math.floor(Date.now() / 1000);
     useUsersStore.getState().mergeUser({
       user_id: 7,
@@ -59,9 +52,6 @@ describe("MessageMentionPopover", () => {
       />,
     );
 
-    await waitFor(() => {
-      expect(ensureUserStatusLoadedMock).toHaveBeenCalledWith(7);
-    });
     expect(screen.getByRole("img", { name: ":scam:" })).toHaveAttribute(
       "src",
       "https://chat.example.test/user_avatars/realm/42.png",

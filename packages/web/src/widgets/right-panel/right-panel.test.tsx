@@ -4,6 +4,11 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
+import type * as UserApi from "~/entities/user/api/user.api";
+import {
+  removeUserStatusAwayPreference,
+  writeUserStatusAwayPreference,
+} from "~/entities/user/user-status-away-preference.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
 import { useAddStreamMembersStore } from "~/features/add-stream-members/add-stream-members.model";
@@ -85,7 +90,7 @@ vi.mock("~/shared/api/messenger-users", async () => {
 });
 
 vi.mock("~/entities/user/api/user.api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/entities/user/api/user.api")>();
+  const actual = await importOriginal<typeof UserApi>();
   return {
     ...actual,
     updateOwnStatus: (...args: unknown[]) => updateOwnStatusMock(...args),
@@ -146,10 +151,14 @@ vi.mock("emoji-picker-react", () => ({
 
 describe("RightPanel truthfulness", () => {
   beforeEach(() => {
+    removeUserStatusAwayPreference(ADMIN_USER_UUID);
     resetRealmEmojisCacheForTests();
   });
 
   afterEach(() => {
+    const currentInstanceId = useInstancesStore.getState().currentInstanceId;
+    removeUserStatusAwayPreference(ADMIN_USER_UUID, currentInstanceId);
+    removeUserStatusAwayPreference(ADMIN_USER_UUID);
     useCurrentChatMessagesStore.setState({
       context: null,
       messages: [],
@@ -339,6 +348,30 @@ describe("RightPanel truthfulness", () => {
     expect(statusDialog).toBeInTheDocument();
     expect(within(statusDialog).getByRole("textbox", { name: /^status$/i })).toBeInTheDocument();
     expect(within(statusDialog).getByRole("checkbox", { name: /away/i })).toBeInTheDocument();
+  });
+
+  it("uses locally saved away preference when opening user-status dialog", () => {
+    const instanceId = useInstancesStore.getState().addInstance({
+      realm: "https://chat.example.test",
+      login: "qa-user@example.test",
+      authType: "iam",
+      iamAccessToken: "access-token",
+    }).id;
+    useInstancesStore.getState().setCurrentInstanceId(instanceId);
+    useChatListStore.setState({ currentUserId: ADMIN_USER_UUID });
+    useUsersStore.getState().mergeUser({
+      user_id: ADMIN_USER_UUID,
+      full_name: "Alice Doe",
+      status: { text: "Focusing", emojiName: "coffee", away: false },
+    });
+    writeUserStatusAwayPreference(ADMIN_USER_UUID, instanceId, true);
+
+    renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^status/i }));
+
+    const statusDialog = screen.getByRole("dialog", { name: /^status$/i });
+    expect(within(statusDialog).getByRole("checkbox", { name: /away/i })).toBeChecked();
   });
 
   it("lets users pick any emoji in status dialog", async () => {

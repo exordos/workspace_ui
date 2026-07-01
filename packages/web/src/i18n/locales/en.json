@@ -416,6 +416,7 @@
   "presence": {
     "online": "online",
     "away": "away",
+    "doNotDisturb": "do not disturb",
     "offline": "offline",
     "justNow": "just now",
     "minutesAgo": "{{count}} min ago",

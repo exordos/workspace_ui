@@ -8,6 +8,7 @@ const EMOJI_NAME_FALLBACKS: Record<string, string> = {
   house: "🏠",
   palm_tree: "🌴",
   plate_with_cutlery: "🍽️",
+  coffee: "☕",
   no_entry_sign: "🚫",
   helmet_with_white_cross: "⛑️",
   spiral_calendar_pad: "🗓️",

@@ -85,6 +85,7 @@ function createContext(notifications = createNotifications()): LayoutMessengerEv
       moveTopicToStreamMessages: vi.fn(),
     },
     users: {
+      mergeUser: vi.fn(),
       mergeFromMessage: vi.fn(),
       setPresenceByEmail: vi.fn(),
       setStatus: vi.fn(),

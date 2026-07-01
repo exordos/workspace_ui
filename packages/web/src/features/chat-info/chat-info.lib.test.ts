@@ -68,6 +68,19 @@ describe("buildDmChatInfoData", () => {
     expect(data.members[0]?.fullName).toBe("Alice");
   });
 
+  it("counts do-not-disturb dm partner as online", () => {
+    const partner = createUser({
+      user_id: 7,
+      full_name: "Alice",
+      presence: { status: "do_not_disturb", timestamp: 1_711_111_111 },
+    });
+
+    const data = buildDmChatInfoData("Alice", [partner]);
+
+    expect(data.onlineCount).toBe(1);
+    expect(data.members[0]?.isOnline).toBe(true);
+  });
+
   it("keeps total count for group dm even when member details are not loaded yet", () => {
     const data = buildDmChatInfoData("Team DM", [], 3);
 
@@ -88,14 +101,14 @@ describe("buildStreamChatInfoData", () => {
       createUser({
         user_id: 2,
         full_name: "Carol",
-        presence: { status: "idle", timestamp: 1_711_111_112 },
+        presence: { status: "do_not_disturb", timestamp: 1_711_111_112 },
       }),
     ];
 
     const data = buildStreamChatInfoData("engineering", [1, 2, 3], users, true);
 
     expect(data.memberCount).toBe(3);
-    expect(data.onlineCount).toBe(1);
+    expect(data.onlineCount).toBe(2);
     expect(data.isMuted).toBe(true);
     expect(data.members).toHaveLength(2);
   });

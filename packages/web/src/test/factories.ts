@@ -1,4 +1,4 @@
-import type { MessageReactions } from "~/shared/api/messenger.types";
+import type { MessageReactions, WorkspaceUserPresenceStatus } from "~/shared/api/messenger.types";
 import { normalizeMessageId, type MessageId } from "~/shared/lib/message-id.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 
@@ -125,7 +125,7 @@ interface UserOverrides {
   full_name?: string;
   email?: string;
   avatar_url?: string | null;
-  presence?: { status: "active" | "idle"; timestamp: number };
+  presence?: { status: WorkspaceUserPresenceStatus; timestamp: number };
 }
 
 export function createUser(overrides: UserOverrides = {}) {

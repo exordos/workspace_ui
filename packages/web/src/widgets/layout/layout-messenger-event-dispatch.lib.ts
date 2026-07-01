@@ -22,6 +22,7 @@ import {
   handleSubscription,
   handleTopic,
 } from "./layout-messenger-event-dispatch-subscription.lib";
+import { handleUserUpdated } from "./layout-messenger-event-dispatch-user.lib";
 import type {
   LayoutNotificationsActions,
   LayoutMessengerEventDispatchContext,
@@ -108,6 +109,11 @@ export function dispatchMessengerEvent(
 
   if (event.type === "user_settings") {
     runDispatchHandler("dispatch:user_settings", () => handleUserSettings(event));
+    return;
+  }
+
+  if (event.type === "user") {
+    runDispatchHandler("dispatch:user", () => handleUserUpdated(event, ctx));
     return;
   }
 

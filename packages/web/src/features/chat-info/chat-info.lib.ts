@@ -14,6 +14,10 @@ import type {
 } from "./chat-info.types";
 
 // chat-info helpers: context keys, payload build, equality checks.
+function isOnlinePresence(user: UserRecord): boolean {
+  return user.presence?.status === "active" || user.presence?.status === "do_not_disturb";
+}
+
 export function hasChatInfoContext(context: ChatInfoContext): boolean {
   return context.kind !== "none";
 }
@@ -39,7 +43,7 @@ function mapMember(user: UserRecord): ChatInfoMember {
     fullName: user.full_name?.trim() || "",
     email: user.email ?? "",
     avatarUrl: user.avatar_url ?? null,
-    isOnline: user.presence?.status === "active",
+    isOnline: isOnlinePresence(user),
     profileData: user.profile_data,
   };
 }
@@ -51,7 +55,7 @@ function mapStreamMember(user: UserRecord): ChatInfoMember {
     fullName: user.full_name?.trim() || "",
     email: user.email ?? "",
     avatarUrl: user.avatar_url ?? null,
-    isOnline: user.presence?.status === "active",
+    isOnline: isOnlinePresence(user),
   };
 }
 

@@ -5,6 +5,7 @@ import { create } from "zustand";
 import type {
   AvatarUrlByUserId,
   MessengerGroupSettingValue,
+  WorkspaceUserPresenceStatus,
   WorkspaceRawMessage,
 } from "~/shared/api/messenger.types";
 import { bumpAvatarVersion } from "~/shared/lib/avatar";
@@ -16,7 +17,7 @@ import type { CurrentUserMessageEditPolicy } from "~/shared/types/message-edit-p
 
 export type { UserId };
 
-export type PresenceStatus = "active" | "idle";
+export type PresenceStatus = WorkspaceUserPresenceStatus;
 
 export interface UserPresence {
   status: PresenceStatus;
@@ -62,6 +63,11 @@ export interface UserStatusFetchMeta {
   fetchedAt?: number;
 }
 
+type UserMergePayload = Omit<Partial<UserRecord>, "status"> & {
+  user_id: UserId;
+  status?: UserStatus | null;
+};
+
 export interface CurrentUserChannelCapabilities {
   realmCanAddSubscribersGroup?: MessengerGroupSettingValue;
   realmCanResolveTopicsGroup?: MessengerGroupSettingValue;
@@ -74,8 +80,8 @@ interface UsersState {
   currentUserChannelCapabilities: CurrentUserChannelCapabilities;
   currentUserMessageEditPolicy: CurrentUserMessageEditPolicy;
 
-  mergeUser: (payload: Partial<UserRecord> & { user_id: UserId }) => void;
-  mergeUsers: (list: (Partial<UserRecord> & { user_id: UserId })[]) => void;
+  mergeUser: (payload: UserMergePayload) => void;
+  mergeUsers: (list: UserMergePayload[]) => void;
   mergeFromMessage: (msg: WorkspaceRawMessage) => void;
   setCurrentUserChannelCapabilities: (capabilities: CurrentUserChannelCapabilities) => void;
   setCurrentUserMessageEditPolicy: (policy: CurrentUserMessageEditPolicy) => void;
@@ -100,7 +106,7 @@ const defaultCurrentUserMessageEditPolicy = (): CurrentUserMessageEditPolicy => 
 let _cachedAvatarMap: AvatarUrlByUserId | null = null;
 let _cachedAvatarMapUsersRef: Map<string, UserRecord> | null = null;
 
-function normalizeUser(payload: Partial<UserRecord> & { user_id: UserId }): UserRecord {
+function normalizeUser(payload: UserMergePayload): UserRecord {
   return {
     user_id: payload.user_id,
     full_name: payload.full_name ?? "",
@@ -108,7 +114,7 @@ function normalizeUser(payload: Partial<UserRecord> & { user_id: UserId }): User
     avatar_url: payload.avatar_url,
     role: payload.role,
     presence: payload.presence,
-    status: payload.status,
+    status: payload.status ?? undefined,
     statusFetchedAt: payload.statusFetchedAt,
     statusFetchState: payload.statusFetchState,
     statusNextRetryAt: payload.statusNextRetryAt,
@@ -163,7 +169,7 @@ export const useUsersStore = create<UsersState>((set, get) => ({
         avatar_url: mergeOptionalString(payload.avatar_url, existing?.avatar_url),
         role: payload.role ?? existing?.role,
         presence: payload.presence ?? existing?.presence,
-        status: payload.status ?? existing?.status,
+        status: "status" in payload ? (payload.status ?? undefined) : existing?.status,
         statusFetchedAt: payload.statusFetchedAt ?? existing?.statusFetchedAt,
         statusFetchState: payload.statusFetchState ?? existing?.statusFetchState,
         statusNextRetryAt: payload.statusNextRetryAt ?? existing?.statusNextRetryAt,
@@ -198,7 +204,7 @@ export const useUsersStore = create<UsersState>((set, get) => ({
           avatar_url: mergeOptionalString(u.avatar_url, existing?.avatar_url),
           role: u.role ?? existing?.role,
           presence: u.presence ?? existing?.presence,
-          status: u.status ?? existing?.status,
+          status: "status" in u ? (u.status ?? undefined) : existing?.status,
           statusFetchedAt: u.statusFetchedAt ?? existing?.statusFetchedAt,
           statusFetchState: u.statusFetchState ?? existing?.statusFetchState,
           statusNextRetryAt: u.statusNextRetryAt ?? existing?.statusNextRetryAt,

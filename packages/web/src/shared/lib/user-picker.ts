@@ -1,9 +1,10 @@
+import type { WorkspaceUserPresenceStatus } from "~/shared/api/messenger.types";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import { compareUserIds, userIdStorageKey } from "~/shared/lib/user-id.lib";
 
-type PresenceStatus = "active" | "idle";
+type PresenceStatus = WorkspaceUserPresenceStatus;
 
-export type UserPickerPresence = "active" | "idle" | "offline" | null;
+export type UserPickerPresence = WorkspaceUserPresenceStatus | null;
 
 const ACTIVE_PRESENCE_WINDOW_SECONDS = 2 * 60;
 const IDLE_PRESENCE_WINDOW_SECONDS = 10 * 60;
@@ -56,6 +57,12 @@ function toPresence(
 ): UserPickerPresence {
   if (status == null || timestamp == null) return null;
   const diff = nowUnixSeconds - timestamp;
+  if (status === "offline") {
+    return "offline";
+  }
+  if (status === "do_not_disturb" && diff <= ACTIVE_PRESENCE_WINDOW_SECONDS) {
+    return "do_not_disturb";
+  }
   if (status === "active" && diff <= ACTIVE_PRESENCE_WINDOW_SECONDS) {
     return "active";
   }

@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import { ensureUserStatusLoaded } from "~/entities/user/api/user.api";
 import { ProfileCustomFieldsBlock } from "~/entities/user/profile-custom-fields-block.ui";
 import { UserStatusLabel } from "~/entities/user/user-status-label.ui";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
@@ -78,11 +77,6 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
   const cardRef = useRef<HTMLDivElement>(null);
   const [popoverHeight, setPopoverHeight] = useState(MENTION_POPOVER_EST_HEIGHT);
   const numericUserId = numericUserIdOrNull(userId);
-
-  useEffect(() => {
-    if (numericUserId == null) return;
-    void ensureUserStatusLoaded(numericUserId);
-  }, [numericUserId]);
 
   useEffect(() => {
     if (useUsersStore.getState().getUser(userId) != null) {
@@ -239,6 +233,12 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
               <span
                 className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-border-subtle bg-indicator-orange"
                 aria-label={t("a11y.away")}
+              />
+            )}
+            {presenceState === "do_not_disturb" && (
+              <span
+                className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-border-subtle bg-call-red"
+                aria-label={t("presence.doNotDisturb")}
               />
             )}
           </div>

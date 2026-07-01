@@ -296,6 +296,18 @@ describe("usersStore", () => {
       expect(useUsersStore.getState().getUser(1)?.statusFetchedAt).toBe(999);
     });
 
+    it("mergeUsers clears status when null is passed", () => {
+      useUsersStore.getState().mergeUser({
+        user_id: 1,
+        full_name: "Alice",
+        status: { text: "Lunch", away: false },
+      });
+
+      useUsersStore.getState().mergeUsers([{ user_id: 1, full_name: "Alice", status: null }]);
+
+      expect(useUsersStore.getState().getUser(1)?.status).toBeUndefined();
+    });
+
     it("setStatus is a no-op for unknown users", () => {
       useUsersStore.getState().setStatus(999, { text: "Ghost", away: false });
       expect(useUsersStore.getState().users.size).toBe(0);

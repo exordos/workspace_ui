@@ -4,6 +4,10 @@ import { useInboxStore } from "~/entities/inbox/inbox.model";
 import type { InboxEntry } from "~/entities/inbox/inbox.types";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
+import {
+  removeUserStatusAwayPreference,
+  writeUserStatusAwayPreference,
+} from "~/entities/user/user-status-away-preference.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import * as client from "~/shared/api/client";
 import type { MockMessage } from "~/shared/api/messenger.types";
@@ -75,6 +79,7 @@ function buildCtx(
         moveTopicToStreamMessagesMock as LayoutCurrentChatActions["moveTopicToStreamMessages"],
     },
     users: {
+      mergeUser: noop,
       mergeFromMessage: noop,
       setPresenceByEmail: noop,
       setStatus: noop,
@@ -128,6 +133,7 @@ function buildIntegrationCtx(): LayoutMessengerEventDispatchContext {
     chatList: useChatListStore.getState(),
     currentChat: useCurrentChatMessagesStore.getState(),
     users: {
+      mergeUser: noop,
       mergeFromMessage: noop,
       setPresenceByEmail: noop,
       setStatus: noop,
@@ -201,10 +207,12 @@ describe("dispatchMessengerEvent", () => {
   let getInstanceSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    removeUserStatusAwayPreference(USER_UUID_1, "inst-1");
     getInstanceSpy = vi.spyOn(client, "getCurrentInstance").mockReturnValue(null);
   });
 
   afterEach(() => {
+    removeUserStatusAwayPreference(USER_UUID_1, "inst-1");
     getInstanceSpy.mockRestore();
     useChatListStore.getState().clear();
     useInboxStore.getState().clear();
@@ -221,6 +229,62 @@ describe("dispatchMessengerEvent", () => {
       unreadCountsByInstance: {},
       dmUnreadCountsByInstance: {},
       activeOrgEpoch: 0,
+    });
+  });
+
+  describe("user", () => {
+    it("merges Workspace user.updated profile events into users store actions", () => {
+      const { ctx } = buildCtx();
+      const mergeUserMock = vi.fn();
+      ctx.users.mergeUser = mergeUserMock;
+      const user = {
+        user_id: USER_UUID_1,
+        full_name: "Alice Admin",
+        email: "alice@example.com",
+        presence: { status: "do_not_disturb" as const, timestamp: 1_788_000_000 },
+      };
+
+      dispatchMessengerEvent(
+        {
+          id: 1,
+          type: "user",
+          kind: "user.updated",
+          user,
+        },
+        ctx,
+      );
+
+      expect(mergeUserMock).toHaveBeenCalledWith(user);
+    });
+
+    it("keeps current user's local away intent over Workspace user.updated presence", () => {
+      const { ctx } = buildCtx();
+      const mergeUserMock = vi.fn();
+      ctx.chatList.currentUserId = USER_UUID_1;
+      ctx.users.mergeUser = mergeUserMock;
+      writeUserStatusAwayPreference(USER_UUID_1, "inst-1", true);
+      const user = {
+        user_id: USER_UUID_1,
+        full_name: "Alice Admin",
+        email: "alice@example.com",
+        status: { text: "Focusing", emojiName: "coffee", away: false },
+        presence: { status: "offline" as const, timestamp: 1_788_000_000 },
+      };
+
+      dispatchMessengerEvent(
+        {
+          id: 1,
+          type: "user",
+          kind: "user.updated",
+          user,
+        },
+        ctx,
+      );
+
+      expect(mergeUserMock).toHaveBeenCalledWith({
+        ...user,
+        status: { text: "Focusing", emojiName: "coffee", away: true },
+      });
     });
   });
 

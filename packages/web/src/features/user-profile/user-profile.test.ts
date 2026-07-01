@@ -9,17 +9,12 @@ import { useUserProfileStore } from "./user-profile.model";
 const USER_UUID = "11111111-1111-4111-8111-111111111111";
 const OTHER_USER_UUID = "22222222-2222-4222-8222-222222222222";
 
-const { fetchUserMock, requestUserStatusMock } = vi.hoisted(() => ({
+const { fetchUserMock } = vi.hoisted(() => ({
   fetchUserMock: vi.fn(),
-  requestUserStatusMock: vi.fn((_userId?: unknown, _options?: unknown) => Promise.resolve()),
 }));
 
 vi.mock("~/shared/api/messenger-users", () => ({
   fetchUser: (userId: unknown, options?: unknown) => fetchUserMock(userId, options),
-}));
-
-vi.mock("~/entities/user/api/user.api", () => ({
-  requestUserStatus: (userId: unknown, options?: unknown) => requestUserStatusMock(userId, options),
 }));
 
 const MOCK_USER = {
@@ -37,7 +32,6 @@ describe("useUserProfileStore", () => {
     useUsersStore.getState().clear();
     useInstancesStore.setState({ instances: [], currentInstanceId: null, activeOrgEpoch: 0 });
     fetchUserMock.mockReset();
-    requestUserStatusMock.mockReset();
     vi.restoreAllMocks();
   });
 
@@ -75,10 +69,6 @@ describe("useUserProfileStore", () => {
       expect(merged?.avatar_url).toBe("https://example.com/avatar.png");
       expect(merged?.role).toBe(400);
       expect(merged?.is_active).toBe(true);
-      expect(requestUserStatusMock).toHaveBeenCalledWith(USER_UUID, {
-        reason: "right_panel",
-        priority: "high",
-      });
     });
 
     it("handles optional fields omitted by the new backend", async () => {
@@ -110,7 +100,6 @@ describe("useUserProfileStore", () => {
       expect(state.status).toBe("error");
       expect(state.error).toContain("Failed");
       expect(state.profile).toBeNull();
-      expect(requestUserStatusMock).not.toHaveBeenCalled();
     });
 
     it("sets error on network exception", async () => {
@@ -166,7 +155,6 @@ describe("useUserProfileStore", () => {
       expect(state.profile).toBeNull();
       expect(state.error).toBeNull();
       expect(useUsersStore.getState().getUser(USER_UUID)).toBeUndefined();
-      expect(requestUserStatusMock).not.toHaveBeenCalled();
     });
   });
 

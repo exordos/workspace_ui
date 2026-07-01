@@ -1,8 +1,7 @@
 /**
  * Hook for reading user custom status in UI.
  *
- * Exposes `{ statusLabel, fetchState, hasStatus }` and routes optional missing-status
- * requests through the backend-only user API facade.
+ * Exposes `{ statusLabel, fetchState, hasStatus }` for locally cached custom status.
  */
 import { useEffect, useMemo, useState } from "react";
 import { createLogger } from "~/shared/lib/logger";
@@ -19,7 +18,6 @@ import {
   type UserStatus,
   type UserStatusFetchState,
 } from "./user.model";
-import type { RequestUserStatusOptions } from "./api/user.api";
 
 const log = createLogger("user:status");
 
@@ -29,7 +27,10 @@ export interface UserStatusSnapshot {
   hasStatus: boolean;
 }
 
-export type UseUserStatusOptions = Pick<RequestUserStatusOptions, "reason" | "priority">;
+export interface UseUserStatusOptions {
+  reason?: "bootstrap" | "dm_header" | "right_panel" | "top_bar";
+  priority?: "high" | "low";
+}
 
 export function selectUserStatusSnapshot(user: UserRecord | undefined): UserStatusSnapshot {
   const statusLabel = formatUserStatusLabel(user?.status) ?? undefined;

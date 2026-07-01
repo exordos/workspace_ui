@@ -10,7 +10,6 @@ import { createUser, testMessageId, testMessageOrdinal } from "~/test/factories"
 import { MessageList } from "./message-list.ui";
 
 const fetchRealmEmojisMock = vi.hoisted(() => vi.fn());
-const ensureUserStatusLoadedMock = vi.hoisted(() => vi.fn());
 
 vi.mock("~/shared/api/messenger-users", async (importOriginal) => {
   const actual = await importOriginal<typeof MessengerUsersApi>();
@@ -19,10 +18,6 @@ vi.mock("~/shared/api/messenger-users", async (importOriginal) => {
     fetchRealmEmojis: (...args: unknown[]) => fetchRealmEmojisMock(...args),
   };
 });
-
-vi.mock("~/entities/user/api/user.api", () => ({
-  ensureUserStatusLoaded: (...args: unknown[]) => ensureUserStatusLoadedMock(...args),
-}));
 
 const MESSAGE_ID_1 = testMessageId(1);
 const MESSAGE_ID_2 = testMessageId(2);
@@ -78,7 +73,6 @@ describe("MessageList focused message behavior", () => {
     scrollIntoView.mockReset();
     intersectionCallback = null;
     fetchRealmEmojisMock.mockReset();
-    ensureUserStatusLoadedMock.mockReset();
     fetchRealmEmojisMock.mockResolvedValue([]);
     vi.spyOn(document, "hasFocus").mockReturnValue(true);
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
@@ -263,7 +257,6 @@ describe("MessageList focused message behavior", () => {
 
     fireEvent.click(screen.getByText("@Bob"));
     expect(await screen.findByRole("dialog", { name: /user mention/i })).toBeInTheDocument();
-    expect(ensureUserStatusLoadedMock).toHaveBeenCalledWith(99);
 
     fireEvent.click(screen.getByRole("button", { name: /^message$/i }));
     expect(onOpenDirectMessage).toHaveBeenCalledTimes(1);

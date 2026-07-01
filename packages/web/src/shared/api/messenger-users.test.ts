@@ -1,7 +1,6 @@
 /**
  * Tests for Workspace gateway users API.
  */
-import "./messenger.test.setup";
 import { describe, expect, it } from "vitest";
 import { fetchUser, fetchUsers, fetchUsersAvatarMap, getCurrentUser } from "./messenger-users";
 import {
@@ -97,18 +96,22 @@ describe("fetchUsers", () => {
           uuid: CURRENT_USER_UUID,
           username: "admin",
           status: "active",
+          status_emoji: "coffee",
+          status_text: "Focusing",
           first_name: "Admin",
           last_name: "User",
           email: "admin@example.com",
+          last_ping_at: "2026-06-24T10:21:00Z",
         },
         {
           uuid: PARTNER_UUID,
           username: "charlie",
-          status: "inactive",
+          status: "do_not_disturb",
           first_name: "Charlie",
           last_name: "Brown",
           email: "charlie@example.com",
           avatar_url: "/avatar/charlie.png",
+          last_ping_at: "2026-06-24T10:22:00Z",
         },
       ],
       raw: { statusText: "OK" },
@@ -121,6 +124,15 @@ describe("fetchUsers", () => {
         user_id: CURRENT_USER_UUID,
         full_name: "Admin User",
         email: "admin@example.com",
+        presence: {
+          status: "active",
+          timestamp: 1782296460,
+        },
+        status: {
+          text: "Focusing",
+          emojiName: "coffee",
+          away: false,
+        },
         is_active: true,
       },
       {
@@ -128,7 +140,11 @@ describe("fetchUsers", () => {
         full_name: "Charlie Brown",
         email: "charlie@example.com",
         avatar_url: "/avatar/charlie.png",
-        is_active: false,
+        presence: {
+          status: "do_not_disturb",
+          timestamp: 1782296520,
+        },
+        is_active: true,
       },
     ]);
     expect(mockMessengerApi.get).not.toHaveBeenCalled();
@@ -187,6 +203,9 @@ describe("fetchUser", () => {
         username: "charlie",
         email: "charlie@example.com",
         status: "active",
+        status_emoji: "coffee",
+        status_text: "Focusing",
+        last_ping_at: "2026-06-24T10:21:00Z",
       },
       raw: { statusText: "OK" },
     });
@@ -197,6 +216,15 @@ describe("fetchUser", () => {
       user_id: PARTNER_UUID,
       full_name: "charlie",
       email: "charlie@example.com",
+      presence: {
+        status: "active",
+        timestamp: 1782296460,
+      },
+      status: {
+        text: "Focusing",
+        emojiName: "coffee",
+        away: false,
+      },
       is_active: true,
     });
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(

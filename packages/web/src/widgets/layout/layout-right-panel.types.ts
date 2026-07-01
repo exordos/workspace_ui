@@ -1,8 +1,9 @@
+import type { WorkspaceUserPresenceStatus } from "~/shared/api/messenger.types";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import type { RightPanelUserInfo } from "~/widgets/right-panel/right-panel.types";
 
 export interface RightPanelPresenceLike {
-  status?: "active" | "idle";
+  status?: WorkspaceUserPresenceStatus;
   timestamp: number;
 }
 

@@ -1,11 +1,12 @@
 import type { UserStatus } from "~/entities/user/user.model";
+import type { PresenceVisual } from "~/shared/ui/presence-indicator";
 
 /** DM partner data for the chat header: avatar, name, online status */
 export interface ChatHeaderDmPartner {
   avatarUrl?: string | null;
   name: string;
-  /** active = online, idle = away, offline = offline, null = no data */
-  presenceState: "active" | "idle" | "offline" | null;
+  /** active = online, idle = away, do_not_disturb = DND, offline = offline, null = no data */
+  presenceState: PresenceVisual;
   /** "last seen N ago" text when offline */
   lastSeen?: string;
   /** Custom Workspace status (emoji + text). */

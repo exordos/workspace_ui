@@ -30,6 +30,10 @@ describe("formatLastSeen", () => {
     expect(result.length).toBeGreaterThan(0);
   });
 
+  it("returns do-not-disturb for recent DND presence", () => {
+    expect(formatLastSeen(now() - 30, "do_not_disturb")).toBe("do not disturb");
+  });
+
   // Each time bucket (<60s, <1h, <1d, >=1d) must produce a non-empty output
   it("returns non-empty string for <60s ago", () => {
     expect(formatLastSeen(now() - 30)).toBeTruthy();
@@ -76,6 +80,10 @@ describe("isPresenceOnline", () => {
     expect(isPresenceOnline(now() - 60, "active")).toBe(true);
   });
 
+  it("returns true when DND and recent", () => {
+    expect(isPresenceOnline(now() - 60, "do_not_disturb")).toBe(true);
+  });
+
   // Idle users should not show as "online" — they may have stepped away
   it("returns false when idle", () => {
     expect(isPresenceOnline(now() - 60, "idle")).toBe(false);
@@ -87,7 +95,7 @@ describe("isPresenceOnline", () => {
   });
 });
 
-// getPresenceState returns a three-state enum ("active" | "idle" | "offline")
+// getPresenceState returns a presence visual state ("active" | "idle" | "do_not_disturb" | "offline")
 // used by the sidebar to color-code user presence indicators
 describe("getPresenceState", () => {
   beforeEach(() => {
@@ -107,6 +115,10 @@ describe("getPresenceState", () => {
 
   it('returns "idle" for recent idle presence', () => {
     expect(getPresenceState(now() - 30, "idle")).toBe("idle");
+  });
+
+  it('returns "do_not_disturb" for recent DND presence', () => {
+    expect(getPresenceState(now() - 30, "do_not_disturb")).toBe("do_not_disturb");
   });
 
   // After 2 min without a fresh heartbeat, "active" degrades to "idle"

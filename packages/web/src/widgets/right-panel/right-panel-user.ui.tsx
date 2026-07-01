@@ -1,13 +1,12 @@
-import React, { useCallback, useEffect } from "react";
+import React, { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import { ensureUserStatusLoaded } from "~/entities/user/api/user.api";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
-import { numericUserIdOrNull, userIdsEqual } from "~/shared/lib/user-id.lib";
+import { userIdsEqual } from "~/shared/lib/user-id.lib";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { useRightDrawerStore } from "./right-drawer.model";
 import { buildRightPanelUserContactRows } from "./right-panel-user-contact.lib";
@@ -64,14 +63,6 @@ export const RightPanelUser = React.memo(function RightPanelUser({
     }
     handleOpenAvatarPreview();
   }, [handleOpenAvatarPreview, handleOpenOwnPersonalInfoSettings, isOwnProfile]);
-
-  useEffect(() => {
-    const numericUserId = numericUserIdOrNull(user.userId);
-    if (numericUserId == null) {
-      return;
-    }
-    void ensureUserStatusLoaded(numericUserId);
-  }, [user.userId]);
 
   const userIdOverride = useRightDrawerStore((s) => s.userIdOverride);
   const clearUserProfileOverride = useRightDrawerStore((s) => s.clearUserProfileOverride);

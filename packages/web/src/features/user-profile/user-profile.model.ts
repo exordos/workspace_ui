@@ -7,7 +7,6 @@ import {
   captureActiveOrgRequestContext,
   isActiveOrgRequestInvalidated,
 } from "~/entities/instance/instance.model";
-import { requestUserStatus } from "~/entities/user/api/user.api";
 import { useUsersStore } from "~/entities/user/user.model";
 import { logStoreAction } from "~/shared/lib/logger";
 import type { UserId } from "~/shared/lib/user-id.lib";
@@ -66,7 +65,6 @@ export const useUserProfileStore = create<UserProfileState>((set, get) => ({
           role: result.role,
           is_active: result.isActive,
         });
-        void requestUserStatus(result.userId, { reason: "right_panel", priority: "high" });
         set({ profile: result, status: "done" });
         return;
       }

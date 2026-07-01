@@ -6,6 +6,7 @@ import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { applyUserStatusSnapshot } from "~/entities/user/api/user-status-write.lib";
 import { updateOwnStatus } from "~/entities/user/api/user.api";
+import { readUserStatusAwayPreference } from "~/entities/user/user-status-away-preference.lib";
 import { UserStatusLabel } from "~/entities/user/user-status-label.ui";
 import { useUserStatus } from "~/entities/user/user-status.hooks";
 import {
@@ -174,8 +175,10 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
 
   const openStatusDialog = useCallback(() => {
     const status = currentUser?.status;
+    const awayPreference =
+      currentUserId != null ? readUserStatusAwayPreference(currentUserId, currentInstanceId) : null;
     setStatusTextDraft(status?.text ?? "");
-    setStatusAwayDraft(status?.away ?? false);
+    setStatusAwayDraft(awayPreference ?? status?.away ?? false);
     setStatusEmojiNameDraft(status?.emojiName ?? "");
     setStatusEmojiCodeDraft(status?.emojiCode ?? "");
     setStatusEmojiReactionTypeDraft(
@@ -183,7 +186,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
     );
     setStatusEmojiPickerOpen(false);
     setStatusDialogOpen(true);
-  }, [currentUser?.status]);
+  }, [currentInstanceId, currentUser?.status, currentUserId]);
 
   const closeStatusDialog = useCallback(() => {
     if (statusSubmitting) {

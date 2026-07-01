@@ -1,8 +1,8 @@
 /**
- * PresenceIndicator — online/idle/offline dot, or a deactivated-account block badge.
+ * PresenceIndicator — online/idle/offline/DND dot, or a deactivated-account block badge.
  *
  * Sizes: sm (8px), md (10px), lg (12px) for dots; block icon scales with the same breakpoint.
- * Colors: green (active), yellow (idle), gray (offline).
+ * Colors: green (active), yellow (idle), red (DND), gray (offline).
  * Active state has a subtle pulse animation.
  */
 import React from "react";
@@ -21,12 +21,14 @@ const SIZE_MAP = {
 const COLOR_MAP: Record<NonNullable<PresenceVisual>, string> = {
   active: "bg-call-green",
   idle: "bg-indicator-yellow",
+  do_not_disturb: "bg-call-red",
   offline: "bg-text-muted",
 };
 
 const HEADER_COLOR_MAP: Record<NonNullable<PresenceVisual>, string> = {
   active: "bg-indicator-green",
   idle: "bg-indicator-orange",
+  do_not_disturb: "bg-call-red",
   offline: "bg-text-muted",
 };
 
@@ -70,6 +72,8 @@ export const PresenceIndicator: React.FC<PresenceIndicatorProps> = ({
     ariaLabel = t("presence.online");
   } else if (status === "idle") {
     ariaLabel = t("presence.away");
+  } else if (status === "do_not_disturb") {
+    ariaLabel = t("presence.doNotDisturb");
   } else {
     ariaLabel = t("presence.offline");
   }

@@ -4,6 +4,8 @@ import type { IncomingDmCallInvite } from "~/features/jitsi-call/jitsi-call.mode
 import type {
   MessageReactions,
   MockMessage,
+  MessengerUserMember,
+  WorkspaceUserPresenceStatus,
   WorkspaceRawMessage,
   WorkspaceStreamNotificationMode,
   WorkspaceTopicNotificationMode,
@@ -88,10 +90,11 @@ export interface LayoutCurrentChatActions {
 }
 
 export interface LayoutUsersActions {
+  mergeUser: (user: MessengerUserMember) => void;
   mergeFromMessage: (message: WorkspaceRawMessage) => void;
   setPresenceByEmail: (
     email: string,
-    presence: { status: "active" | "idle"; timestamp: number },
+    presence: { status: WorkspaceUserPresenceStatus; timestamp: number },
   ) => void;
   setStatus: (
     userId: UserId,

@@ -1,11 +1,11 @@
-import type { UserRecord } from "~/entities/user/user.model";
+import type { PresenceStatus, UserRecord } from "~/entities/user/user.model";
 import type { TypingUser } from "~/features/typing-indicator/typing-indicator.types";
 import { buildDmTypingChatKey } from "~/features/typing-indicator/typing-key";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import { numericUserIdOrNull, userIdStorageKey, userIdsEqual } from "~/shared/lib/user-id.lib";
 
-function presenceRank(status: "active" | "idle" | undefined): number {
-  if (status === "active") return 0;
+function presenceRank(status: PresenceStatus | undefined): number {
+  if (status === "active" || status === "do_not_disturb") return 0;
   if (status === "idle") return 1;
   return 2;
 }

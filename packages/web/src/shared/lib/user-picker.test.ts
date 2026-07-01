@@ -64,6 +64,22 @@ describe("buildUserPickerOptions", () => {
 
     expect(result.map((row) => row.userId)).toEqual([3, 1, 2]);
   });
+
+  it("preserves recent do-not-disturb presence", () => {
+    const result = buildUserPickerOptions({
+      candidates: [
+        {
+          userId: 1,
+          fullName: "Alice",
+          presenceStatus: "do_not_disturb",
+          presenceTimestamp: Math.floor(Date.now() / 1000),
+        },
+      ],
+      selectedUserIds: [],
+    });
+
+    expect(result[0]?.presence).toBe("do_not_disturb");
+  });
 });
 
 describe("resolveUserPickerEmptyLabelKey", () => {

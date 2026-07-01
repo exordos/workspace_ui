@@ -234,6 +234,25 @@ function streamBindingsCreatedWorkspaceEvent(epochVersion: number): unknown {
   };
 }
 
+function userUpdatedWorkspaceEvent(epochVersion: number): unknown {
+  return {
+    epoch_version: epochVersion,
+    uuid: `00000000-0000-4000-8000-${String(epochVersion).padStart(12, "0")}`,
+    project_id: "00000000-0000-4000-8000-000000000901",
+    user_uuid: USER_UUID,
+    payload: {
+      kind: "user.updated",
+      uuid: OTHER_UUID,
+      username: "alice",
+      status: "do_not_disturb",
+      first_name: "Alice",
+      last_name: "Admin",
+      email: "alice@example.com",
+      last_ping_at: "2026-06-24T10:21:00Z",
+    },
+  };
+}
+
 function apiResponse(data: unknown): unknown {
   return {
     ok: true,
@@ -331,6 +350,45 @@ describe("Workspace realtime event normalization", () => {
         id: MESSAGE_UUID,
         stream_uuid: STREAM_UUID,
         topic_uuid: TOPIC_UUID,
+      },
+    });
+  });
+
+  it("maps REST messages.read events without requiring a message snapshot", () => {
+    const normalized = normalizeWorkspaceEventModel({
+      epoch_version: 16,
+      user_uuid: USER_UUID,
+      payload: {
+        kind: "messages.read",
+        message_uuids: [MESSAGE_UUID],
+      },
+    });
+
+    expect(normalized?.event).toMatchObject({
+      id: 16,
+      type: "message",
+      kind: "messages.read",
+      message_uuids: [MESSAGE_UUID],
+      message_ids: [MESSAGE_UUID],
+    });
+  });
+
+  it("maps REST user.updated events to normalized user profile events", () => {
+    const normalized = normalizeWorkspaceEventModel(userUpdatedWorkspaceEvent(27));
+
+    expect(normalized?.event).toMatchObject({
+      id: 27,
+      type: "user",
+      kind: "user.updated",
+      user: {
+        user_id: OTHER_UUID,
+        full_name: "Alice Admin",
+        email: "alice@example.com",
+        presence: {
+          status: "do_not_disturb",
+          timestamp: 1782296460,
+        },
+        is_active: true,
       },
     });
   });
@@ -579,6 +637,60 @@ describe("Workspace realtime event normalization", () => {
       kind: "message.deleted",
       message_id: MESSAGE_UUID,
       message_ids: [MESSAGE_UUID],
+    });
+  });
+
+  it("maps WS messages.read frames", () => {
+    const normalized = normalizeWorkspaceRealtimeEvent(
+      {
+        epoch_version: 16,
+        type: "message",
+        kind: "messages.read",
+        message_uuids: [MESSAGE_UUID],
+      },
+      USER_UUID,
+    );
+
+    expect(normalized?.event).toMatchObject({
+      id: 16,
+      type: "message",
+      kind: "messages.read",
+      message_uuids: [MESSAGE_UUID],
+      message_ids: [MESSAGE_UUID],
+    });
+  });
+
+  it("maps WS user.updated frames to normalized user profile events", () => {
+    const normalized = normalizeWorkspaceRealtimeEvent(
+      {
+        epoch_version: 28,
+        type: "user",
+        kind: "user.updated",
+        user: {
+          uuid: OTHER_UUID,
+          username: "alice",
+          status: "active",
+          first_name: "Alice",
+          last_name: "Admin",
+          email: "alice@example.com",
+          last_ping_at: "2026-06-24T10:21:00Z",
+        },
+      },
+      USER_UUID,
+    );
+
+    expect(normalized?.event).toMatchObject({
+      id: 28,
+      type: "user",
+      kind: "user.updated",
+      user: {
+        user_id: OTHER_UUID,
+        full_name: "Alice Admin",
+        presence: {
+          status: "active",
+          timestamp: 1782296460,
+        },
+      },
     });
   });
 

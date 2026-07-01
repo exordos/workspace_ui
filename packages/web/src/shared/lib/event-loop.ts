@@ -4,6 +4,7 @@ import {
   getMessengerGatewayApiBaseForCurrentInstance,
   messengerApi,
 } from "~/shared/api/client";
+import { parseMessengerGatewayUser } from "~/shared/api/messenger-users.lib";
 import type {
   MessengerCredentials,
   MessengerEvent,
@@ -410,6 +411,44 @@ function deletedMessageFromWorkspaceEventPayload(
   };
 }
 
+function messagesReadEventFromWorkspacePayload(
+  epochVersion: number,
+  payloadValue: unknown,
+): MessengerEvent | null {
+  if (!isRecord(payloadValue)) {
+    return null;
+  }
+  const messageUuids = readStringArray(payloadValue.message_uuids ?? payloadValue.messages);
+  if (messageUuids == null) {
+    return null;
+  }
+  return {
+    id: epochVersion,
+    type: "message",
+    epoch_version: epochVersion,
+    kind: "messages.read",
+    message_uuids: messageUuids,
+    message_ids: messageUuids,
+  };
+}
+
+function userEventFromWorkspaceUser(
+  epochVersion: number,
+  userValue: unknown,
+): MessengerEvent | null {
+  const user = parseMessengerGatewayUser(userValue);
+  if (user == null) {
+    return null;
+  }
+  return {
+    id: epochVersion,
+    type: "user",
+    epoch_version: epochVersion,
+    kind: "user.updated",
+    user,
+  };
+}
+
 type WorkspaceStreamEventKind = "stream.created" | "stream.updated" | "stream.deleted";
 
 function isWorkspaceStreamEventKind(kind: string | null): kind is WorkspaceStreamEventKind {
@@ -608,6 +647,18 @@ export function normalizeWorkspaceEventModel(
     return { epochVersion, event: null, skipReason: "missing payload" };
   }
   const kind = readString(payload.kind);
+  if (kind === "user.updated") {
+    const event = userEventFromWorkspaceUser(epochVersion, payload);
+    return event == null
+      ? { epochVersion, event: null, skipReason: "invalid user.updated payload" }
+      : { epochVersion, event };
+  }
+  if (kind === "messages.read") {
+    const event = messagesReadEventFromWorkspacePayload(epochVersion, payload);
+    return event == null
+      ? { epochVersion, event: null, skipReason: "invalid messages.read payload" }
+      : { epochVersion, event };
+  }
   if (kind === "message.created" || kind === "message.updated") {
     const currentUserUuid = normalizeUuid(row.user_uuid);
     const message = messageFromWorkspaceEventPayload(payload, currentUserUuid);
@@ -829,6 +880,20 @@ export function normalizeWorkspaceRealtimeEvent(
       ? { epochVersion, event: null, skipReason: "invalid folder_item.deleted frame" }
       : { epochVersion, event };
   }
+  if (type === "user") {
+    const kind = readString(rawEvent.kind);
+    if (kind !== "user.updated") {
+      return {
+        epochVersion,
+        event: null,
+        skipReason: `unsupported user event kind: ${kind ?? "unknown"}`,
+      };
+    }
+    const event = userEventFromWorkspaceUser(epochVersion, rawEvent.user);
+    return event == null
+      ? { epochVersion, event: null, skipReason: "invalid user.updated frame" }
+      : { epochVersion, event };
+  }
   if (type !== "message") {
     return {
       epochVersion,
@@ -837,6 +902,12 @@ export function normalizeWorkspaceRealtimeEvent(
     };
   }
   const kind = readString(rawEvent.kind);
+  if (kind === "messages.read") {
+    const event = messagesReadEventFromWorkspacePayload(epochVersion, rawEvent);
+    return event == null
+      ? { epochVersion, event: null, skipReason: "invalid messages.read frame" }
+      : { epochVersion, event };
+  }
   if (kind != null && !isWorkspaceMessageEventKind(kind)) {
     return {
       epochVersion,

@@ -5,12 +5,6 @@ import { useUsersStore } from "~/entities/user/user.model";
 import { createUser } from "~/test/factories";
 import { ForwardMessageModalBody } from "./chat-page-forward-modal.ui";
 
-const ensureUserStatusLoadedMock = vi.hoisted(() => vi.fn());
-
-vi.mock("~/entities/user/api/user.api", () => ({
-  ensureUserStatusLoaded: (...args: unknown[]) => ensureUserStatusLoadedMock(...args),
-}));
-
 vi.mock("~/shared/lib/realm-emojis-cache", () => ({
   getCachedRealmEmojis: () => [
     {
@@ -31,7 +25,6 @@ vi.mock("~/shared/lib/realm-emojis-cache", () => ({
 
 describe("ForwardMessageModalBody", () => {
   afterEach(() => {
-    ensureUserStatusLoadedMock.mockReset();
     useUsersStore.getState().clear();
   });
 
@@ -57,7 +50,6 @@ describe("ForwardMessageModalBody", () => {
 
     expect(screen.getByText("Alice")).toBeInTheDocument();
     expect(screen.getByText("Bob")).toBeInTheDocument();
-    expect(ensureUserStatusLoadedMock).not.toHaveBeenCalled();
   });
 
   it("renders emoji-only realm custom status in DM recipients without falling back to email", () => {

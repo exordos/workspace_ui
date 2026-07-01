@@ -7,6 +7,7 @@ import type { UserId } from "~/shared/lib/user-id.lib";
 
 export type WorkspaceStreamNotificationMode = "all_messages" | "mentions_only" | "muted";
 export type WorkspaceTopicNotificationMode = "default" | "mute" | "follow" | "unmute";
+export type WorkspaceUserPresenceStatus = "active" | "idle" | "offline" | "do_not_disturb";
 
 export class MessengerAuthError extends Error {
   constructor(
@@ -205,6 +206,17 @@ export interface MessengerUserMember {
   email?: string;
   avatar_url?: string | null;
   role?: number;
+  /** Custom status profile fields from Workspace `status_emoji` / `status_text`. */
+  status?: {
+    text: string;
+    emojiName?: string;
+    away: boolean;
+  } | null;
+  /** Workspace user presence from `/users/` and `user.updated` events. */
+  presence?: {
+    status: WorkspaceUserPresenceStatus;
+    timestamp: number;
+  };
   /** Workspace: `false` when the account is deactivated. */
   is_active?: boolean;
   /** Optional custom profile fields when the backend provides them. */

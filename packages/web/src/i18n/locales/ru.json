@@ -425,6 +425,7 @@
   "presence": {
     "online": "онлайн",
     "away": "отошёл",
+    "doNotDisturb": "не беспокоить",
     "offline": "не в сети",
     "justNow": "только что",
     "minutesAgo": "{{count}} мин назад",
