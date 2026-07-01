@@ -34,6 +34,14 @@ function readWorkspaceFileUploadResponse(data: unknown): WorkspaceFileUploadResp
   return { uuid: uuid.trim().toLowerCase() };
 }
 
+function readUploadErrorMessage(data: unknown): string | null {
+  if (data == null || typeof data !== "object") {
+    return null;
+  }
+  const message = (data as { msg?: unknown }).msg;
+  return typeof message === "string" && message.trim() !== "" ? message : null;
+}
+
 export function buildWorkspaceFileDownloadUri(fileUuid: string): string {
   const normalized = fileUuid.trim().toLowerCase();
   if (!UUID_RE.test(normalized)) {
@@ -58,8 +66,9 @@ async function uploadWorkspaceFileMultipart(
     options?.signal,
   );
   if (!res.ok) {
-    const data = res.data as { msg?: string };
-    throw new Error(data.msg ?? t("app.errorStatus", { status: String(res.status) }));
+    throw new Error(
+      readUploadErrorMessage(res.data) ?? t("app.errorStatus", { status: String(res.status) }),
+    );
   }
 
   return buildWorkspaceFileDownloadUri(readWorkspaceFileUploadResponse(res.data).uuid);

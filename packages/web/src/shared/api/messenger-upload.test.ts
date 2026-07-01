@@ -87,6 +87,18 @@ describe("uploadFile", () => {
     await expect(uploadFile(file, { streamUuid: STREAM_UUID })).rejects.toThrow("Too large");
   });
 
+  it("falls back to status message for non-json upload errors", async () => {
+    mockMessengerApi.postFormDataWithBase.mockResolvedValue({
+      ok: false,
+      status: 413,
+      data: null,
+      raw: { statusText: "Payload Too Large" },
+    });
+    const file = new File(["data"], "big.zip");
+
+    await expect(uploadFile(file, { streamUuid: STREAM_UUID })).rejects.toThrow("app.errorStatus");
+  });
+
   it("throws when upload response has no file uuid", async () => {
     mockMessengerApi.postFormDataWithBase.mockResolvedValue({
       ok: true,
