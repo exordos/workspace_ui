@@ -77,7 +77,7 @@ function createContext(notifications = createNotifications()): LayoutMessengerEv
       hasNewerMessages: false,
       appendMessage: vi.fn(),
       updateMessageFlags: vi.fn(),
-      updateMessageReaction: vi.fn(),
+      replaceMessageReactions: vi.fn(),
       removeMessages: vi.fn(),
       updateMessageContent: vi.fn(),
       updateMessageLinkPreview: vi.fn(),

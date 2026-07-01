@@ -93,8 +93,6 @@ describe("reactionPayloadFromEmojiClickData", () => {
     });
     expect(payload).toEqual({
       emojiName: "thumbs_up",
-      reactionType: "unicode_emoji",
-      emojiCode: "1f44d",
     });
   });
 
@@ -111,8 +109,6 @@ describe("reactionPayloadFromEmojiClickData", () => {
     });
     expect(payload).toEqual({
       emojiName: "working_on_it",
-      reactionType: "unicode_emoji",
-      emojiCode: "1f6e0-fe0f",
     });
   });
 
@@ -129,8 +125,6 @@ describe("reactionPayloadFromEmojiClickData", () => {
     });
     expect(payload).toEqual({
       emojiName: "party_node",
-      reactionType: "realm_emoji",
-      emojiCode: "43",
       imageUrl: "https://cdn.example.com/party_node.png",
     });
   });

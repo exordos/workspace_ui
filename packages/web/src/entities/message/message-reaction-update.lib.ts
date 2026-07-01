@@ -1,26 +1,37 @@
-import type { MockMessage } from "~/shared/api/messenger.types";
+import type { MessageReactions, MockMessage } from "~/shared/api/messenger.types";
 
 function normalizedReactionCount(value: number | undefined): number {
   return Number.isFinite(value) && value != null && value > 0 ? Math.floor(value) : 0;
 }
 
-export function applyMessageReactionUpdate(
-  message: MockMessage,
-  emojiName: string,
-  op: "add" | "remove",
-): MockMessage {
-  const current = message.reactions ?? {};
-  const currentCount = normalizedReactionCount(current[emojiName]);
-  const nextCount = op === "add" ? currentCount + 1 : Math.max(0, currentCount - 1);
-  if (nextCount === currentCount) {
-    return message;
+export function normalizedMessageReactionsSnapshot(
+  reactions: MessageReactions | undefined,
+): MessageReactions {
+  const next: MessageReactions = {};
+  for (const [emojiName, rawCount] of Object.entries(reactions ?? {})) {
+    const count = normalizedReactionCount(rawCount);
+    if (emojiName.trim().length > 0 && count > 0) {
+      next[emojiName] = count;
+    }
   }
+  return next;
+}
 
-  const nextReactions = { ...current };
-  if (nextCount === 0) {
-    delete nextReactions[emojiName];
-  } else {
-    nextReactions[emojiName] = nextCount;
+function reactionsEqual(left: MessageReactions | undefined, right: MessageReactions): boolean {
+  const normalizedLeft = normalizedMessageReactionsSnapshot(left);
+  const leftEntries = Object.entries(normalizedLeft);
+  const rightEntries = Object.entries(right);
+  if (leftEntries.length !== rightEntries.length) return false;
+  return leftEntries.every(([emojiName, count]) => right[emojiName] === count);
+}
+
+export function applyMessageReactionSnapshot(
+  message: MockMessage,
+  reactions: MessageReactions,
+): MockMessage {
+  const nextReactions = normalizedMessageReactionsSnapshot(reactions);
+  if (reactionsEqual(message.reactions, nextReactions)) {
+    return message;
   }
   return { ...message, reactions: nextReactions };
 }

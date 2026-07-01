@@ -101,6 +101,7 @@ function workspaceEvent(epochVersion: number, authorUuid = OTHER_UUID): unknown 
       starred: false,
       is_own: isOwn,
       created_at: "2026-06-24T10:20:30Z",
+      reactions: {},
     },
   };
 }
@@ -270,7 +271,7 @@ describe("Workspace realtime event normalization", () => {
       pinned: false,
       starred: false,
       flags: ["read"],
-      reactions: [],
+      reactions: {},
     });
   });
 
@@ -290,6 +291,7 @@ describe("Workspace realtime event normalization", () => {
         starred: true,
         is_own: false,
         created_at: "2026-06-24T10:20:30Z",
+        reactions: { thumbs_up: 2 },
       },
     });
 
@@ -302,6 +304,7 @@ describe("Workspace realtime event normalization", () => {
         content: "edited over epochs",
         read: true,
         starred: true,
+        reactions: { thumbs_up: 2 },
       },
     });
   });
@@ -536,6 +539,7 @@ describe("Workspace realtime event normalization", () => {
           starred: false,
           is_own: false,
           created_at: "2026-06-24T10:20:30Z",
+          reactions: { heart: 1, ignored: 0 },
         },
       },
       USER_UUID,
@@ -549,6 +553,7 @@ describe("Workspace realtime event normalization", () => {
         id: MESSAGE_UUID,
         content: "edited live",
         read: true,
+        reactions: { heart: 1 },
       },
     });
   });

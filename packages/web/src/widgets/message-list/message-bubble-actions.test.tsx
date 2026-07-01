@@ -388,8 +388,6 @@ describe("MessageBubble edit/delete actions parity", () => {
     fireEvent.click(await screen.findByRole("button", { name: /pick emoji/i }));
     expect(onAddReaction).toHaveBeenCalledWith(testMessageId(101), {
       emojiName: "grinning",
-      emojiCode: "1f600",
-      reactionType: "unicode_emoji",
     });
   });
 

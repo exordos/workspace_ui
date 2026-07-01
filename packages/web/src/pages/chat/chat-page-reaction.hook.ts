@@ -15,11 +15,6 @@ import { isIamUserUuid, userIdsEqual, type UserId } from "~/shared/lib/user-id.l
 export interface UseChatPageReactionParams {
   currentUserId: UserId | null;
   setActionError: (message: string | null) => void;
-  updateMessageReactionInStore: (
-    messageId: MessageId,
-    emojiName: string,
-    op: "add" | "remove",
-  ) => void;
 }
 
 export interface UseChatPageReactionResult {
@@ -32,7 +27,7 @@ function reactionCacheKey(messageId: MessageId, emojiName: string): string {
 }
 
 export function useChatPageReaction(params: UseChatPageReactionParams): UseChatPageReactionResult {
-  const { currentUserId, setActionError, updateMessageReactionInStore } = params;
+  const { currentUserId, setActionError } = params;
   const ownUserUuid = isIamUserUuid(currentUserId) ? currentUserId : null;
   const ownReactionsRef = useRef(new Map<string, Reaction>());
 
@@ -73,17 +68,14 @@ export function useChatPageReaction(params: UseChatPageReactionParams): UseChatP
       addReaction(messageId, payload.emojiName, {
         ...(ownUserUuid != null ? { currentUserUuid: ownUserUuid } : {}),
       })
-        .then(({ reaction, created }) => {
+        .then(({ reaction }) => {
           ownReactionsRef.current.set(reactionCacheKey(messageId, reaction.emoji_name), reaction);
-          if (created) {
-            updateMessageReactionInStore(messageId, reaction.emoji_name, "add");
-          }
         })
         .catch((err) =>
           setActionError(err instanceof Error ? err.message : t("message.reactionError")),
         );
     },
-    [ownUserUuid, setActionError, updateMessageReactionInStore],
+    [ownUserUuid, setActionError],
   );
 
   const onMessageRemoveReaction = useCallback(
@@ -96,13 +88,12 @@ export function useChatPageReaction(params: UseChatPageReactionParams): UseChatP
           }
           await removeReaction(reaction.uuid);
           ownReactionsRef.current.delete(reactionCacheKey(messageId, reaction.emoji_name));
-          updateMessageReactionInStore(messageId, reaction.emoji_name, "remove");
         })
         .catch((err) =>
           setActionError(err instanceof Error ? err.message : t("message.reactionError")),
         );
     },
-    [getOwnReaction, setActionError, updateMessageReactionInStore],
+    [getOwnReaction, setActionError],
   );
 
   return { onMessageAddReaction, onMessageRemoveReaction };

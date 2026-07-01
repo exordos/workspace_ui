@@ -2,6 +2,7 @@ import type { ChatListStreamMetadataRow } from "~/entities/chat-list/chat-list.m
 import type { CurrentChatContext } from "~/entities/message/message.model";
 import type { IncomingDmCallInvite } from "~/features/jitsi-call/jitsi-call.model";
 import type {
+  MessageReactions,
   MockMessage,
   WorkspaceRawMessage,
   WorkspaceStreamNotificationMode,
@@ -64,7 +65,7 @@ export interface LayoutCurrentChatActions {
   hasNewerMessages: boolean;
   appendMessage: (message: MockMessage) => void;
   updateMessageFlags: (messageIds: MessageId[], flag: string, op: LayoutMessageFlagOp) => void;
-  updateMessageReaction: (messageId: MessageId, emojiName: string, op: LayoutMessageFlagOp) => void;
+  replaceMessageReactions: (messageId: MessageId, reactions: MessageReactions) => void;
   removeMessages: (messageIds: MessageId[]) => void;
   updateMessageContent: (messageId: MessageId, content: string, markdownSource?: string) => void;
   updateMessageLinkPreview: (messageId: MessageId, linkPreview: LinkPreviewData | null) => void;

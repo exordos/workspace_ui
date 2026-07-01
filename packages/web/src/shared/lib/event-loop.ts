@@ -113,6 +113,20 @@ function readOptionalString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+function readMessageReactions(value: unknown): Record<string, number> {
+  if (!isRecord(value)) {
+    return {};
+  }
+  const reactions: Record<string, number> = {};
+  for (const [emojiName, rawCount] of Object.entries(value)) {
+    const count = typeof rawCount === "number" ? rawCount : Number(rawCount);
+    if (emojiName.trim().length > 0 && Number.isFinite(count) && count > 0) {
+      reactions[emojiName] = Math.floor(count);
+    }
+  }
+  return reactions;
+}
+
 function readStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) {
     return undefined;
@@ -370,7 +384,7 @@ function messageFromWorkspaceEventPayload(
     type: "stream",
     stream_uuid: streamUuid,
     flags: read ? ["read"] : [],
-    reactions: {},
+    reactions: readMessageReactions(payload.reactions),
   };
 }
 
@@ -723,7 +737,7 @@ function messageFromRealtimeFrame(
     type: readOptionalString(messageValue.type) ?? "stream",
     stream_uuid: streamUuid,
     flags: readStringArray(messageValue.flags) ?? (read ? ["read"] : []),
-    reactions: {},
+    reactions: readMessageReactions(messageValue.reactions),
   };
 }
 

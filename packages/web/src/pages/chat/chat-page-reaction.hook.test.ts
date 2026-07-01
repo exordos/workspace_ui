@@ -42,14 +42,12 @@ describe("useChatPageReaction", () => {
     vi.mocked(removeReaction).mockResolvedValue(undefined);
   });
 
-  it("adds reaction via API and updates aggregate store", async () => {
+  it("adds reaction via API and waits for the server event snapshot", async () => {
     const setActionError = vi.fn();
-    const updateMessageReactionInStore = vi.fn();
     const { result } = renderHook(() =>
       useChatPageReaction({
         currentUserId: CURRENT_USER_UUID,
         setActionError,
-        updateMessageReactionInStore,
       }),
     );
 
@@ -61,24 +59,17 @@ describe("useChatPageReaction", () => {
       expect(addReaction).toHaveBeenCalledWith(testMessageId(10), "thumbs_up", {
         currentUserUuid: CURRENT_USER_UUID,
       });
-      expect(updateMessageReactionInStore).toHaveBeenCalledWith(
-        testMessageId(10),
-        "thumbs_up",
-        "add",
-      );
     });
     expect(setActionError).toHaveBeenCalledWith(null);
   });
 
-  it("does not update aggregate store when backend reports an existing reaction", async () => {
+  it("does not patch aggregate counters when backend reports an existing reaction", async () => {
     vi.mocked(addReaction).mockResolvedValueOnce({ reaction: ownReaction, created: false });
     const setActionError = vi.fn();
-    const updateMessageReactionInStore = vi.fn();
     const { result } = renderHook(() =>
       useChatPageReaction({
         currentUserId: CURRENT_USER_UUID,
         setActionError,
-        updateMessageReactionInStore,
       }),
     );
 
@@ -91,17 +82,14 @@ describe("useChatPageReaction", () => {
         currentUserUuid: CURRENT_USER_UUID,
       });
     });
-    expect(updateMessageReactionInStore).not.toHaveBeenCalled();
   });
 
-  it("fetches own reaction uuid, removes it via API, and updates aggregate store", async () => {
+  it("fetches own reaction uuid and removes it via API without patching aggregate counters", async () => {
     const setActionError = vi.fn();
-    const updateMessageReactionInStore = vi.fn();
     const { result } = renderHook(() =>
       useChatPageReaction({
         currentUserId: CURRENT_USER_UUID,
         setActionError,
-        updateMessageReactionInStore,
       }),
     );
 
@@ -114,11 +102,6 @@ describe("useChatPageReaction", () => {
         userUuid: CURRENT_USER_UUID,
       });
       expect(removeReaction).toHaveBeenCalledWith("33333333-3333-4333-8333-333333333333");
-      expect(updateMessageReactionInStore).toHaveBeenCalledWith(
-        testMessageId(11),
-        "thumbs_up",
-        "remove",
-      );
     });
   });
 
@@ -129,7 +112,6 @@ describe("useChatPageReaction", () => {
       useChatPageReaction({
         currentUserId: CURRENT_USER_UUID,
         setActionError,
-        updateMessageReactionInStore: vi.fn(),
       }),
     );
 

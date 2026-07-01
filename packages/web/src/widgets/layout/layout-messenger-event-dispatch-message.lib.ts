@@ -118,6 +118,15 @@ function applyBooleanMessageFlagSnapshot(
   ctx.currentChat.updateMessageFlags([messageId], flag, value ? "add" : "remove");
 }
 
+function applyMessageReactionSnapshot(
+  ctx: LayoutMessengerEventDispatchContext,
+  messageId: MessageId,
+  raw: WorkspaceRawMessage,
+): void {
+  if (raw.reactions == null) return;
+  ctx.currentChat.replaceMessageReactions(messageId, raw.reactions);
+}
+
 export function handleMessageUpdated(
   event: MessengerEvent,
   ctx: LayoutMessengerEventDispatchContext,
@@ -148,6 +157,7 @@ export function handleMessageUpdated(
   applyBooleanMessageFlagSnapshot(ctx, messageId, "read", raw.read);
   applyBooleanMessageFlagSnapshot(ctx, messageId, "pinned", raw.pinned);
   applyBooleanMessageFlagSnapshot(ctx, messageId, "starred", raw.starred);
+  applyMessageReactionSnapshot(ctx, messageId, raw);
   if (raw.read === true) {
     closeReadMessageNotifications(notifications, [messageId], ctx.currentInstanceId);
   }

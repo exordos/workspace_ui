@@ -34,16 +34,6 @@ export function resolveEmojiShortcodeDisplayGlyph(emojiName: string): string {
   return emojiName;
 }
 
-export function emojiCodeToChar(emojiCode: string): string {
-  try {
-    const codePoints = emojiCode.split("-").map((hex) => parseInt(hex, 16));
-    if (codePoints.some((n) => Number.isNaN(n))) return "";
-    return String.fromCodePoint(...codePoints);
-  } catch {
-    return "";
-  }
-}
-
 /**
  * True for a Workspace 1:1 DM (`private` with exactly two recipients).
  * Aligned with `messageToDmEntry` in `entities/chat-list/chat-list.lib.ts`.

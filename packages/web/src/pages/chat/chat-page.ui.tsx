@@ -253,7 +253,6 @@ export const ChatPage: React.FC = () => {
   const removeMessageFromStore = useCurrentChatMessagesStore((s) => s.removeMessage);
   const removeMessagesFromStore = useCurrentChatMessagesStore((s) => s.removeMessages);
   const updateMessageFlagsInStore = useCurrentChatMessagesStore((s) => s.updateMessageFlags);
-  const updateMessageReactionInStore = useCurrentChatMessagesStore((s) => s.updateMessageReaction);
   const applyOptimisticMessageEditInStore = useCurrentChatMessagesStore(
     (s) => s.applyOptimisticMessageEdit,
   );
@@ -663,7 +662,6 @@ export const ChatPage: React.FC = () => {
   const { onMessageAddReaction, onMessageRemoveReaction } = useChatPageReaction({
     currentUserId,
     setActionError,
-    updateMessageReactionInStore,
   });
 
   const resolveEditableMessageMarkdown = useCallback(

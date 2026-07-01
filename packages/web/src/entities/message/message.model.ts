@@ -11,14 +11,14 @@ import {
 } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { getCurrentInstance } from "~/shared/api/client";
-import type { MockMessage } from "~/shared/api/messenger.types";
+import type { MessageReactions, MockMessage } from "~/shared/api/messenger.types";
 import { createLogger, logStoreAction } from "~/shared/lib/logger";
 import { messageAuthorId } from "~/shared/lib/message-author.lib";
 import {
   deleteMessagesByIds,
   patchMessageContentInCache,
   patchMessageFlagsInCache,
-  patchMessageReactionInCache,
+  replaceMessageReactionsInCache,
   putSingleMessage,
   updateChatMetaPatch,
   upsertChatMessages,
@@ -53,7 +53,10 @@ import { fetchChatMessagesPage } from "./message-fetch.lib";
 import { loadInitialMessagesRouteDriven } from "./message-initial-loader.lib";
 import { persistChatMessagesToIndexedDb } from "./message-local-cache.lib";
 import { patchMessageAtId, patchMessagesFlags } from "./message-patch.lib";
-import { applyMessageReactionUpdate } from "./message-reaction-update.lib";
+import {
+  applyMessageReactionSnapshot,
+  normalizedMessageReactionsSnapshot,
+} from "./message-reaction-update.lib";
 import type { CurrentChatContext, CurrentChatMessagesState } from "./message.model.types";
 
 export type { CurrentChatContext } from "./message.model.types";
@@ -574,17 +577,24 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     }
   },
 
-  updateMessageReaction(messageId, emojiName, op) {
+  replaceMessageReactions(messageId: MessageId, reactions: MessageReactions) {
+    const nextReactions = normalizedMessageReactionsSnapshot(reactions);
     set((state) => ({
       messages: patchMessageAtId(state.messages, messageId, (m) =>
-        applyMessageReactionUpdate(m, emojiName, op),
+        applyMessageReactionSnapshot(m, nextReactions),
       ),
     }));
     const state = get();
     if (!state.context) return;
     if (persistChatMessagesToIndexedDb()) {
       const inst = getCurrentInstance()?.id;
-      if (inst) void patchMessageReactionInCache({ instanceId: inst, messageId, emojiName, op });
+      if (inst) {
+        void replaceMessageReactionsInCache({
+          instanceId: inst,
+          messageId,
+          reactions: nextReactions,
+        });
+      }
     }
   },
 

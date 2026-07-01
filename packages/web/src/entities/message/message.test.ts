@@ -792,40 +792,26 @@ describe("currentChatMessagesStore", () => {
     });
   });
 
-  // Reactions are aggregate emoji counters from the Workspace API.
-  describe("updateMessageReaction", () => {
-    it("increments a reaction counter on a message", () => {
-      useCurrentChatMessagesStore
-        .getState()
-        .setMessages([mockMsg({ id: "00000000-0000-4000-8000-000000000001", reactions: {} })]);
-
-      useCurrentChatMessagesStore
-        .getState()
-        .updateMessageReaction("00000000-0000-4000-8000-000000000001", "thumbs_up", "add");
-
-      expect(useCurrentChatMessagesStore.getState().messages[0]!.reactions).toEqual({
-        thumbs_up: 1,
-      });
-    });
-
-    it("increments an existing reaction counter", () => {
+  // Reactions are authoritative aggregate emoji counters from the Workspace API.
+  describe("replaceMessageReactions", () => {
+    it("replaces reaction counters from a server snapshot", () => {
       useCurrentChatMessagesStore.getState().setMessages([
         mockMsg({
           id: "00000000-0000-4000-8000-000000000001",
-          reactions: { thumbs_up: 1 },
+          reactions: { thumbs_up: 1, heart: 1 },
         }),
       ]);
 
       useCurrentChatMessagesStore
         .getState()
-        .updateMessageReaction("00000000-0000-4000-8000-000000000001", "thumbs_up", "add");
+        .replaceMessageReactions("00000000-0000-4000-8000-000000000001", { thumbs_up: 2 });
 
       expect(useCurrentChatMessagesStore.getState().messages[0]!.reactions).toEqual({
         thumbs_up: 2,
       });
     });
 
-    it("removes the counter when it reaches zero", () => {
+    it("drops zero and negative counters from a server snapshot", () => {
       useCurrentChatMessagesStore.getState().setMessages([
         mockMsg({
           id: "00000000-0000-4000-8000-000000000001",
@@ -835,21 +821,15 @@ describe("currentChatMessagesStore", () => {
 
       useCurrentChatMessagesStore
         .getState()
-        .updateMessageReaction("00000000-0000-4000-8000-000000000001", "thumbs_up", "remove");
+        .replaceMessageReactions("00000000-0000-4000-8000-000000000001", {
+          thumbs_up: 2,
+          heart: 0,
+          tada: -1,
+        });
 
-      expect(useCurrentChatMessagesStore.getState().messages[0]!.reactions).toEqual({});
-    });
-
-    it("keeps removing an absent reaction as a no-op", () => {
-      useCurrentChatMessagesStore
-        .getState()
-        .setMessages([mockMsg({ id: "00000000-0000-4000-8000-000000000001", reactions: {} })]);
-
-      useCurrentChatMessagesStore
-        .getState()
-        .updateMessageReaction("00000000-0000-4000-8000-000000000001", "thumbs_up", "remove");
-
-      expect(useCurrentChatMessagesStore.getState().messages[0]!.reactions).toEqual({});
+      expect(useCurrentChatMessagesStore.getState().messages[0]!.reactions).toEqual({
+        thumbs_up: 2,
+      });
     });
   });
 

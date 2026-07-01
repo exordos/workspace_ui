@@ -923,6 +923,9 @@ describe("MessageComposer file attachments", () => {
       throw new Error("Expected hidden file input");
     }
     const textbox = screen.getByRole("textbox");
+    if (!(textbox instanceof HTMLTextAreaElement)) {
+      throw new Error("Expected message textbox");
+    }
     fireEvent.change(textbox, { target: { value: "before\nafter" } });
     textbox.setSelectionRange("before\n".length, "before\n".length);
 

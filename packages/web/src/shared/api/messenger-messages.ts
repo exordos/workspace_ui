@@ -811,18 +811,10 @@ function parseMessageReaction(data: unknown): Reaction {
 }
 
 function parseMessageReactionList(data: unknown): Reaction[] {
-  if (Array.isArray(data)) {
-    return data.map(parseMessageReaction);
+  if (!Array.isArray(data)) {
+    throw new Error("Invalid message reactions response");
   }
-  if (isRecord(data)) {
-    for (const key of ["message_reactions", "items", "results"]) {
-      const value = data[key];
-      if (Array.isArray(value)) {
-        return value.map(parseMessageReaction);
-      }
-    }
-  }
-  throw new Error("Invalid message reactions response");
+  return data.map(parseMessageReaction);
 }
 
 export interface FetchMessageReactionsOptions {

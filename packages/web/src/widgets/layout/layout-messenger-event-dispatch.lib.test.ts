@@ -63,7 +63,7 @@ function buildCtx(
       hasNewerMessages: false,
       appendMessage: noop,
       updateMessageFlags: noop,
-      updateMessageReaction: noop,
+      replaceMessageReactions: noop,
       removeMessages: noop,
       updateMessageContent:
         updateMessageContentMock as LayoutCurrentChatActions["updateMessageContent"],
@@ -1067,6 +1067,7 @@ describe("dispatchMessengerEvent", () => {
         streamWideView: false,
       };
       const updateFlagsSpy = vi.spyOn(ctx.currentChat, "updateMessageFlags");
+      const replaceReactionsSpy = vi.spyOn(ctx.currentChat, "replaceMessageReactions");
 
       dispatchMessengerEvent(
         {
@@ -1090,6 +1091,7 @@ describe("dispatchMessengerEvent", () => {
             pinned: false,
             starred: true,
             flags: ["read", "starred"],
+            reactions: { thumbs_up: 2 },
           },
         },
         ctx,
@@ -1113,6 +1115,9 @@ describe("dispatchMessengerEvent", () => {
         "starred",
         "add",
       );
+      expect(replaceReactionsSpy).toHaveBeenCalledWith("00000000-0000-4000-8000-000000000031", {
+        thumbs_up: 2,
+      });
       expect(ctx.currentChat.appendMessage).not.toHaveBeenCalled();
     });
 
