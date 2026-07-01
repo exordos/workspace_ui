@@ -3,6 +3,7 @@ import {
   isWorkspaceRuntimeRequestInvalidated,
   workspaceRuntimeOwnerKey,
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import type { WorkspaceRuntimeContextGetter } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import type { MessengerClientOptions } from "~/shared/api/messenger-client";
@@ -20,7 +21,6 @@ import type {
 import { adaptMessengerMessage } from "./messenger-adapters.lib";
 import { conversationIdForStream } from "./messenger-ids.lib";
 import { useMessengerStore } from "./messenger.model";
-import type { MessengerStoreState } from "./messenger.model";
 import {
   buildMessengerRequestOptions,
   type MessengerRequestOptionsOverrides,
@@ -46,8 +46,12 @@ export interface MessengerMessageActionClientDeps {
 
 export interface MessengerMessageActionStoreApi {
   getState: () => Pick<
-    MessengerStoreState,
-    "indexMessageIntoConversationBuckets" | "applyMessageEdit" | "markMessageRead" | "removeMessage"
+    ReturnType<typeof useWorkspaceMessageStore.getState>,
+    | "indexMessageIntoConversationBuckets"
+    | "upsertMessage"
+    | "applyMessageEdit"
+    | "markMessageRead"
+    | "removeMessage"
   >;
 }
 
@@ -92,7 +96,7 @@ function captureMessageAction(
   getRuntimeContext: WorkspaceRuntimeContextGetter,
   signal: AbortSignal | undefined,
 ): { ownerKey: string; isStale: () => boolean } | { ownerKey: null; isStale: () => boolean } {
-  // Owner guard нужен для переключения org/project: поздний ответ не должен попасть в новый чат.
+  // Owner guard prevents late responses from a previous org/project from reaching the new chat.
   const requestContext = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
   if (requestContext == null) {
     return { ownerKey: null, isStale: () => true };
@@ -110,13 +114,13 @@ export async function sendMessengerMessage({
   clientOptions,
   client = {},
   signal,
-  store = useMessengerStore,
+  store = useWorkspaceMessageStore,
   streamUuid,
   topicUuid,
   markdown,
   includeStreamConversation = false,
 }: SendMessengerMessageOptions): Promise<MessengerMessageActionResult> {
-  // Отправка создаёт markdown payload в Workspace API и индексирует ответ в нужные списки сообщений.
+  // Sending creates a markdown payload in the Workspace API and indexes the response into message lists.
   const action = captureMessageAction(runtimeContext, getRuntimeContext, signal);
   if (action.ownerKey == null)
     return { status: "skipped", ownerKey: null, reason: "missing-context" };
@@ -135,9 +139,10 @@ export async function sendMessengerMessage({
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
   const message = adaptMessengerMessage(dto);
-  store.getState().indexMessageIntoConversationBuckets(action.ownerKey, message, {
+  store.getState().indexMessageIntoConversationBuckets(message, {
     includeStreamConversation,
   });
+  useMessengerStore.getState().applyMessagePointer(action.ownerKey, message);
   return { status: "applied", ownerKey: action.ownerKey, message };
 }
 
@@ -147,11 +152,11 @@ export async function editMessengerMessage({
   clientOptions,
   client = {},
   signal,
-  store = useMessengerStore,
+  store = useWorkspaceMessageStore,
   messageUuid,
   markdown,
 }: EditMessengerMessageOptions): Promise<MessengerMessageActionResult> {
-  // Редактируем только payload сообщения; визуальный список обновится из нового messenger store.
+  // Only the message payload is edited; the visual list updates from the new messenger store.
   const action = captureMessageAction(runtimeContext, getRuntimeContext, signal);
   if (action.ownerKey == null)
     return { status: "skipped", ownerKey: null, reason: "missing-context" };
@@ -167,7 +172,9 @@ export async function editMessengerMessage({
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
   const message = adaptMessengerMessage(dto);
-  store.getState().applyMessageEdit(action.ownerKey, message.uuid, {
+  store.getState().upsertMessage(message);
+  useMessengerStore.getState().applyMessagePointer(action.ownerKey, message);
+  store.getState().applyMessageEdit(message.uuid, {
     markdown: message.markdown,
     updatedAt: message.updatedAt,
   });
@@ -180,12 +187,12 @@ export async function deleteMessengerMessage({
   clientOptions,
   client = {},
   signal,
-  store = useMessengerStore,
+  store = useWorkspaceMessageStore,
   messageUuid,
   streamUuid,
   topicUuid,
 }: DeleteMessengerMessageOptions): Promise<MessengerMessageActionResult> {
-  // Удаление убирает uuid из всех Workspace buckets, но не трогает старые Zulip stores.
+  // Deletion removes the uuid from Workspace buckets and does not touch old Zulip stores.
   const action = captureMessageAction(runtimeContext, getRuntimeContext, signal);
   if (action.ownerKey == null)
     return { status: "skipped", ownerKey: null, reason: "missing-context" };
@@ -199,7 +206,8 @@ export async function deleteMessengerMessage({
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
-  store.getState().removeMessage(action.ownerKey, {
+  store.getState().removeMessage(messageUuid);
+  useMessengerStore.getState().clearMessagePointer(action.ownerKey, {
     uuid: messageUuid,
     streamUuid,
     topicUuid,
@@ -213,11 +221,11 @@ export async function markMessengerMessageRead({
   clientOptions,
   client = {},
   signal,
-  store = useMessengerStore,
+  store = useWorkspaceMessageStore,
   messageUuid,
   conversationIds,
 }: MarkMessengerMessageReadOptions): Promise<MessengerMessageActionResult> {
-  // Backend пока умеет отмечать прочитанным одно сообщение, поэтому batch делается выше, на странице.
+  // The backend currently marks one message as read, so batching happens above at page level.
   const action = captureMessageAction(runtimeContext, getRuntimeContext, signal);
   if (action.ownerKey == null)
     return { status: "skipped", ownerKey: null, reason: "missing-context" };
@@ -232,7 +240,9 @@ export async function markMessengerMessageRead({
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
   const message = adaptMessengerMessage(dto);
-  store.getState().markMessageRead(action.ownerKey, message.uuid, {
+  store.getState().upsertMessage(message);
+  useMessengerStore.getState().applyMessagePointer(action.ownerKey, message);
+  store.getState().markMessageRead(message.uuid, {
     conversationIds: conversationIds ?? [
       message.conversationId,
       conversationIdForStream(message.streamUuid),

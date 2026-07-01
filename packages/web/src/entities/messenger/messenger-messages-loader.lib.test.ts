@@ -1,4 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  selectWorkspaceMessagesForConversation,
+  selectWorkspaceMessageStatusForConversation,
+  useWorkspaceMessageStore,
+} from "~/entities/message/message.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import type {
@@ -8,11 +13,7 @@ import type {
 import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
 import { adaptMessengerMessage } from "./messenger-adapters.lib";
 import { loadMessengerConversationMessages } from "./messenger-messages-loader.lib";
-import {
-  selectMessengerConversationMessagesStatus,
-  selectMessengerMessagesForConversation,
-  useMessengerStore,
-} from "./messenger.model";
+import { useMessengerStore } from "./messenger.model";
 
 // Message loader tests keep pagination scoped to the active conversation owner.
 const ACCOUNT_A = "account-a";
@@ -104,6 +105,7 @@ function prepareStoreOwner(runtimeContext: WorkspaceRuntimeContext): string {
 describe("messenger conversation messages loader", () => {
   beforeEach(() => {
     useMessengerStore.getState().clear();
+    useWorkspaceMessageStore.getState().clear();
   });
 
   it("loads stream messages with an explicit default page limit", async () => {
@@ -142,10 +144,16 @@ describe("messenger conversation messages loader", () => {
       },
     );
     expect(
-      selectMessengerMessagesForConversation(useMessengerStore.getState(), `stream:${STREAM_A}`),
+      selectWorkspaceMessagesForConversation(
+        useWorkspaceMessageStore.getState(),
+        `stream:${STREAM_A}`,
+      ),
     ).toEqual([expect.objectContaining({ uuid: MESSAGE_A })]);
     expect(
-      selectMessengerConversationMessagesStatus(useMessengerStore.getState(), `stream:${STREAM_A}`),
+      selectWorkspaceMessageStatusForConversation(
+        useWorkspaceMessageStore.getState(),
+        `stream:${STREAM_A}`,
+      ),
     ).toEqual({
       loading: false,
       error: null,
@@ -180,14 +188,14 @@ describe("messenger conversation messages loader", () => {
       },
     );
     expect(
-      selectMessengerMessagesForConversation(
-        useMessengerStore.getState(),
+      selectWorkspaceMessagesForConversation(
+        useWorkspaceMessageStore.getState(),
         `topic:${STREAM_A}:${TOPIC_A}`,
       ),
     ).toEqual([expect.objectContaining({ uuid: MESSAGE_A })]);
     expect(
-      selectMessengerConversationMessagesStatus(
-        useMessengerStore.getState(),
+      selectWorkspaceMessageStatusForConversation(
+        useWorkspaceMessageStore.getState(),
         `topic:${STREAM_A}:${TOPIC_A}`,
       ),
     ).toEqual({
@@ -227,14 +235,14 @@ describe("messenger conversation messages loader", () => {
     });
 
     expect(
-      selectMessengerMessagesForConversation(
-        useMessengerStore.getState(),
+      selectWorkspaceMessagesForConversation(
+        useWorkspaceMessageStore.getState(),
         `topic:${STREAM_A}:${TOPIC_A}`,
       ).map((message) => message.uuid),
     ).toEqual([MESSAGE_A, MESSAGE_B]);
     expect(
-      selectMessengerConversationMessagesStatus(
-        useMessengerStore.getState(),
+      selectWorkspaceMessageStatusForConversation(
+        useWorkspaceMessageStore.getState(),
         `topic:${STREAM_A}:${TOPIC_A}`,
       ),
     ).toEqual({
@@ -289,8 +297,8 @@ describe("messenger conversation messages loader", () => {
     });
 
     expect(
-      selectMessengerMessagesForConversation(
-        useMessengerStore.getState(),
+      selectWorkspaceMessagesForConversation(
+        useWorkspaceMessageStore.getState(),
         `topic:${STREAM_A}:${TOPIC_A}`,
       ).map((message) => [message.uuid, message.markdown]),
     ).toEqual([
@@ -310,10 +318,9 @@ describe("messenger conversation messages loader", () => {
       client: { getMessagesPage: () => messagesRequest.promise },
     });
 
-    useMessengerStore
+    useWorkspaceMessageStore
       .getState()
       .upsertMessage(
-        ownerKey,
         adaptMessengerMessage(
           createMessageDto({ uuid: MESSAGE_B, created_at: DATE_LATER, updated_at: DATE_LATER }),
         ),
@@ -326,8 +333,8 @@ describe("messenger conversation messages loader", () => {
       conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
     });
     expect(
-      selectMessengerMessagesForConversation(
-        useMessengerStore.getState(),
+      selectWorkspaceMessagesForConversation(
+        useWorkspaceMessageStore.getState(),
         `topic:${STREAM_A}:${TOPIC_A}`,
       ).map((message) => message.uuid),
     ).toEqual([MESSAGE_A, MESSAGE_B]);
@@ -350,11 +357,11 @@ describe("messenger conversation messages loader", () => {
       client: { getMessagesPage: () => Promise.resolve(createMessagesPage([createMessageDto()])) },
     });
 
-    const state = useMessengerStore.getState();
-    expect(selectMessengerMessagesForConversation(state, `stream:${STREAM_A}`)).toEqual([
+    const state = useWorkspaceMessageStore.getState();
+    expect(selectWorkspaceMessagesForConversation(state, `stream:${STREAM_A}`)).toEqual([
       state.messagesById[MESSAGE_A],
     ]);
-    expect(selectMessengerMessagesForConversation(state, `topic:${STREAM_A}:${TOPIC_A}`)).toEqual([
+    expect(selectWorkspaceMessagesForConversation(state, `topic:${STREAM_A}:${TOPIC_A}`)).toEqual([
       state.messagesById[MESSAGE_A],
     ]);
   });
@@ -388,14 +395,14 @@ describe("messenger conversation messages loader", () => {
     });
 
     expect(
-      selectMessengerMessagesForConversation(
-        useMessengerStore.getState(),
+      selectWorkspaceMessagesForConversation(
+        useWorkspaceMessageStore.getState(),
         `topic:${STREAM_A}:${TOPIC_A}`,
       ),
     ).toEqual([expect.objectContaining({ uuid: MESSAGE_A })]);
     expect(
-      selectMessengerMessagesForConversation(
-        useMessengerStore.getState(),
+      selectWorkspaceMessagesForConversation(
+        useWorkspaceMessageStore.getState(),
         `topic:${STREAM_B}:${TOPIC_B}`,
       ),
     ).toEqual([expect.objectContaining({ uuid: MESSAGE_B })]);
@@ -430,14 +437,14 @@ describe("messenger conversation messages loader", () => {
       reason: "stale-owner",
     });
     expect(
-      selectMessengerMessagesForConversation(
-        useMessengerStore.getState(),
+      selectWorkspaceMessagesForConversation(
+        useWorkspaceMessageStore.getState(),
         `topic:${STREAM_A}:${TOPIC_A}`,
       ),
     ).toEqual([]);
     expect(
-      selectMessengerConversationMessagesStatus(
-        useMessengerStore.getState(),
+      selectWorkspaceMessageStatusForConversation(
+        useWorkspaceMessageStore.getState(),
         `topic:${STREAM_A}:${TOPIC_A}`,
       ).loading,
     ).toBe(false);
@@ -467,7 +474,7 @@ describe("messenger conversation messages loader", () => {
     });
 
     expect(getMessagesPage).not.toHaveBeenCalled();
-    expect(useMessengerStore.getState().messagesById).toEqual({});
+    expect(useWorkspaceMessageStore.getState().messagesById).toEqual({});
   });
 
   it("skips invalid conversation ids without writing messages", async () => {
@@ -491,7 +498,7 @@ describe("messenger conversation messages loader", () => {
     });
 
     expect(getMessagesPage).not.toHaveBeenCalled();
-    expect(useMessengerStore.getState().messagesById).toEqual({});
+    expect(useWorkspaceMessageStore.getState().messagesById).toEqual({});
   });
 
   it("returns a failed result when message parsing fails", async () => {
@@ -517,8 +524,8 @@ describe("messenger conversation messages loader", () => {
       error: "Expected valid messenger messages response item at index 1",
     });
     expect(
-      selectMessengerConversationMessagesStatus(
-        useMessengerStore.getState(),
+      selectWorkspaceMessageStatusForConversation(
+        useWorkspaceMessageStore.getState(),
         `topic:${STREAM_A}:${TOPIC_A}`,
       ),
     ).toEqual({

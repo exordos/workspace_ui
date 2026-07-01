@@ -20,8 +20,8 @@ import type {
   MessengerUser,
 } from "./messenger.types";
 
-// Здесь backend DTO превращаются в доменные объекты Workspace-мессенджера.
-// Это сделано специально, чтобы старый UI не начал напрямую зависеть от snake_case и формы API.
+// Backend DTOs become Workspace messenger domain objects here.
+// This keeps the old UI from depending directly on snake_case and API response shape.
 // UI uses a simple audience label while backend source of truth is stream.private.
 function streamAudience(
   stream: Pick<WorkspaceMessengerStreamDto, "private">,
@@ -130,8 +130,8 @@ export function adaptTopicToMessengerConversation(
   };
 }
 
-// Сообщение хранится один раз по uuid, а в разные списки чата попадает через отдельные bucket ids.
-// Поэтому здесь сразу считаем topic conversation id, а stream-wide индекс добавляется позже в store.
+// A message is stored once by uuid and enters chat lists through separate bucket ids.
+// Compute the topic conversation id here; the stream-wide index is added later in the store.
 export function adaptMessengerMessage(dto: WorkspaceMessengerMessageDto): MessengerMessage {
   return {
     uuid: dto.uuid,

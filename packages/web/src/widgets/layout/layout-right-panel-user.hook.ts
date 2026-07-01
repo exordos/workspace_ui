@@ -1,12 +1,14 @@
 import { useMemo } from "react";
-import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { selectUserStatusSnapshot } from "~/entities/user/user-status.hooks";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserProfileStore } from "~/features/user-profile/user-profile.model";
+import type { MockMessage } from "~/shared/api/zulip.types";
 import type { RightPanelUserInfo } from "~/widgets/right-panel/right-panel.types";
 import type { SidebarChat } from "~/widgets/sidebar/sidebar.types";
 import { buildRightPanelMedia } from "./layout-media.lib";
 import { buildRightPanelCommonGroups, buildRightPanelUserInfo } from "./layout-right-panel.lib";
+
+const EMPTY_RIGHT_PANEL_MEDIA_MESSAGES: MockMessage[] = [];
 
 export function useLayoutRightPanelUser(options: {
   rightDrawerTargetUserId: number | undefined;
@@ -20,13 +22,15 @@ export function useLayoutRightPanelUser(options: {
     rightDrawerTargetUserId != null ? s.getUser(rightDrawerTargetUserId) : undefined,
   );
   const detailedProfile = useUserProfileStore((s) => s.profile);
-  const currentChatMessages = useCurrentChatMessagesStore((s) => s.messages);
 
   const userStatusLabel = selectUserStatusSnapshot(userFromStore).statusLabel;
 
   const rightPanelMedia = useMemo(
-    () => (rightDrawerTargetUserId != null ? buildRightPanelMedia(currentChatMessages) : undefined),
-    [rightDrawerTargetUserId, currentChatMessages],
+    () =>
+      rightDrawerTargetUserId != null
+        ? buildRightPanelMedia(EMPTY_RIGHT_PANEL_MEDIA_MESSAGES)
+        : undefined,
+    [rightDrawerTargetUserId],
   );
 
   const rightPanelCommonGroups = useMemo(() => {

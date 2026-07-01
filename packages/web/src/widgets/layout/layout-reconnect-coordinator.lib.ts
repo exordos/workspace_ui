@@ -10,7 +10,6 @@ import {
 } from "~/entities/instance/instance.model";
 import { createLogger } from "~/shared/lib/logger";
 import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
-import { refreshActiveChatMessagesFromApi } from "./layout-active-chat-refresh.lib";
 import { runChatListBootstrap } from "./layout-chat-list-bootstrap.lib";
 import { getCachedRegisterUnreadSnapshot } from "./layout-instance-register-unread.lib";
 import { refreshRealmPresenceFromApi } from "./layout-realm-presence-refresh.lib";
@@ -166,11 +165,6 @@ function refreshSharedLayers(
   }
 
   refreshRealmPresenceFromApi({ isCancelled: params.isCancelled });
-  refreshActiveChatMessagesFromApi({
-    focusedMessageId: params.focusedMessageId ?? null,
-    isCancelled: params.isCancelled,
-    orgContext: params.orgContext,
-  });
 
   // Full reconnect re-registers the queue — unread comes from fresh onQueueRegistered, not stale cache.
   if (mode === "full") {

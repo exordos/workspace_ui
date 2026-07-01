@@ -21,14 +21,16 @@ import type {
 const EMPTY_SIDEBAR_STREAMS: MessengerSidebarStreamItem[] = [];
 const EMPTY_SIDEBAR_FOLDERS: MessengerSidebarFolderView[] = [];
 const EMPTY_SIDEBAR_TOPICS: MessengerSidebarTopicItem[] = [];
+const EMPTY_SIDEBAR_MESSAGES_BY_ID: Record<MessengerUuid, MessengerMessage> = {};
 
-// Этот файл ничего не загружает из API.
-// Он берёт уже сохранённые Workspace-данные из messenger store и собирает из них вид для сайдбара.
+// This file does not load anything from the API.
+// It reads stored Workspace data from the messenger store and builds the sidebar view.
 export interface MessengerSidebarSelectorOptions {
   organizationId: string;
   projectId: string;
   currentUserUuid?: MessengerUuid | null;
   selectedFolderUuid?: string | null;
+  messagesById?: Record<MessengerUuid, MessengerMessage>;
 }
 
 interface SidebarStreamsCacheEntry {
@@ -36,7 +38,7 @@ interface SidebarStreamsCacheEntry {
   streamsById: MessengerStoreState["streamsById"];
   topicIds: MessengerUuid[];
   topicsById: MessengerStoreState["topicsById"];
-  messagesById: MessengerStoreState["messagesById"];
+  messagesById: Record<MessengerUuid, MessengerMessage>;
   usersById: MessengerStoreState["usersById"];
   currentUserUuid: MessengerUuid | null;
   foldersById: MessengerStoreState["foldersById"];
@@ -55,8 +57,8 @@ interface SidebarFoldersCacheEntry {
 let sidebarStreamsCache: SidebarStreamsCacheEntry | null = null;
 let sidebarFoldersCache: SidebarFoldersCacheEntry | null = null;
 
-// Сайдбар пересчитывается часто, поэтому держим простой кэш по ссылкам из store.
-// Если streams/topics/folders не менялись, React получает тот же массив и не перерисовывает список зря.
+// The sidebar recalculates often, so keep a simple cache keyed by store references.
+// If streams/topics/folders did not change, React receives the same array and avoids redundant rerenders.
 function compareNullableStrings(a: string | null, b: string | null): number {
   if (a == null && b == null) return 0;
   if (a == null) return 1;
@@ -118,12 +120,12 @@ function topicItemFromTopic(input: {
   organizationId: string;
   projectId: string;
   topic: MessengerTopic;
-  messagesById: MessengerStoreState["messagesById"];
+  messagesById: Record<MessengerUuid, MessengerMessage>;
   usersById: MessengerStoreState["usersById"];
   currentUserUuid: MessengerUuid | null;
 }): MessengerSidebarTopicItem {
-  // topic:<streamUuid>:<topicUuid> - временный ключ фронтенда для выбора строки.
-  // В API нет отдельной сущности "conversation"; настоящие id остаются streamUuid и topicUuid.
+  // topic:<streamUuid>:<topicUuid> is a temporary frontend key for row selection.
+  // The API has no separate "conversation" entity; real ids remain streamUuid and topicUuid.
   return {
     id: `topic:${input.topic.streamUuid}:${input.topic.uuid}`,
     streamUuid: input.topic.streamUuid,
@@ -152,15 +154,15 @@ function streamItemFromStream(input: {
   projectId: string;
   stream: MessengerStream;
   topics: MessengerSidebarTopicItem[];
-  messagesById: MessengerStoreState["messagesById"];
+  messagesById: Record<MessengerUuid, MessengerMessage>;
   usersById: MessengerStoreState["usersById"];
   currentUserUuid: MessengerUuid | null;
   unreadCount?: number;
   pinnedAt?: string | null;
   orderIndex?: number | null;
 }): MessengerSidebarStreamItem {
-  // stream:<uuid> - такой же ключ только для строки потока в сайдбаре.
-  // В route и в будущие запросы всё равно передаём настоящий backend uuid потока.
+  // stream:<uuid> is the same kind of key for a stream row in the sidebar.
+  // Routes and future requests still use the real backend stream uuid.
   return {
     id: `stream:${input.stream.uuid}`,
     streamUuid: input.stream.uuid,
@@ -190,7 +192,7 @@ function streamItemFromConversation(input: {
   organizationId: string;
   projectId: string;
   conversation: MessengerConversation;
-  messagesById: MessengerStoreState["messagesById"];
+  messagesById: Record<MessengerUuid, MessengerMessage>;
   usersById: MessengerStoreState["usersById"];
   currentUserUuid: MessengerUuid | null;
   unreadCount?: number;
@@ -228,9 +230,10 @@ function topicsForStream(input: {
   projectId: string;
   state: MessengerStoreState;
   streamUuid: MessengerUuid;
+  messagesById: Record<MessengerUuid, MessengerMessage>;
   currentUserUuid: MessengerUuid | null;
 }): MessengerSidebarTopicItem[] {
-  // Темы пока живут плоским списком в store, поэтому здесь привязываем их к нужному потоку.
+  // Topics currently live in a flat store list, so this links them to the relevant stream.
   const topics = input.state.topicIds
     .map((topicId) => input.state.topicsById[topicId])
     .filter((topic): topic is MessengerTopic => topic?.streamUuid === input.streamUuid)
@@ -239,7 +242,7 @@ function topicsForStream(input: {
         organizationId: input.organizationId,
         projectId: input.projectId,
         topic,
-        messagesById: input.state.messagesById,
+        messagesById: input.messagesById,
         usersById: input.state.usersById,
         currentUserUuid: input.currentUserUuid,
       }),
@@ -255,12 +258,13 @@ export function selectMessengerSidebarStreams(
 ): MessengerSidebarStreamItem[] {
   const selectedFolderUuid = options.selectedFolderUuid ?? null;
   const currentUserUuid = options.currentUserUuid ?? null;
+  const messagesById = options.messagesById ?? EMPTY_SIDEBAR_MESSAGES_BY_ID;
   if (
     sidebarStreamsCache?.streamIds === state.streamIds &&
     sidebarStreamsCache.streamsById === state.streamsById &&
     sidebarStreamsCache.topicIds === state.topicIds &&
     sidebarStreamsCache.topicsById === state.topicsById &&
-    sidebarStreamsCache.messagesById === state.messagesById &&
+    sidebarStreamsCache.messagesById === messagesById &&
     sidebarStreamsCache.usersById === state.usersById &&
     sidebarStreamsCache.currentUserUuid === currentUserUuid &&
     sidebarStreamsCache.foldersById === state.foldersById &&
@@ -272,8 +276,8 @@ export function selectMessengerSidebarStreams(
   }
 
   const selectedFolder = selectedFolderUuid != null ? state.foldersById[selectedFolderUuid] : null;
-  // Если выбрана папка, порядок и счётчики берём из folder.items.
-  // Если папки нет, показываем все потоки как общий список.
+  // If a folder is selected, order and counters come from folder.items.
+  // If no folder is selected, all streams are shown as a general list.
   const streams = selectedFolder
     ? selectedFolder.items
         .map((item) => {
@@ -283,7 +287,7 @@ export function selectMessengerSidebarStreams(
               organizationId: options.organizationId,
               projectId: options.projectId,
               stream,
-              messagesById: state.messagesById,
+              messagesById,
               usersById: state.usersById,
               currentUserUuid,
               unreadCount: item.unreadCount,
@@ -294,6 +298,7 @@ export function selectMessengerSidebarStreams(
                 projectId: options.projectId,
                 state,
                 streamUuid: stream.uuid,
+                messagesById,
                 currentUserUuid,
               }),
             });
@@ -305,7 +310,7 @@ export function selectMessengerSidebarStreams(
             organizationId: options.organizationId,
             projectId: options.projectId,
             conversation,
-            messagesById: state.messagesById,
+            messagesById,
             usersById: state.usersById,
             currentUserUuid,
             unreadCount: item.unreadCount,
@@ -324,7 +329,7 @@ export function selectMessengerSidebarStreams(
             organizationId: options.organizationId,
             projectId: options.projectId,
             stream,
-            messagesById: state.messagesById,
+            messagesById,
             usersById: state.usersById,
             currentUserUuid,
             topics: topicsForStream({
@@ -332,6 +337,7 @@ export function selectMessengerSidebarStreams(
               projectId: options.projectId,
               state,
               streamUuid: stream.uuid,
+              messagesById,
               currentUserUuid,
             }),
           }),
@@ -343,7 +349,7 @@ export function selectMessengerSidebarStreams(
     streamsById: state.streamsById,
     topicIds: state.topicIds,
     topicsById: state.topicsById,
-    messagesById: state.messagesById,
+    messagesById,
     usersById: state.usersById,
     currentUserUuid,
     foldersById: state.foldersById,

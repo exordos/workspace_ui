@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  selectWorkspaceMessagesForConversation,
+  useWorkspaceMessageStore,
+} from "~/entities/message/message.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import type {
@@ -13,7 +17,6 @@ import { adaptMessengerBootstrapPayload, adaptMessengerMessage } from "./messeng
 import { bootstrapMessengerStore } from "./messenger-bootstrap.lib";
 import {
   selectMessengerFolders,
-  selectMessengerMessagesForConversation,
   selectMessengerSidebarConversations,
   useMessengerStore,
 } from "./messenger.model";
@@ -242,6 +245,7 @@ async function flushPromises(): Promise<void> {
 describe("messenger bootstrap store", () => {
   beforeEach(() => {
     useMessengerStore.getState().clear();
+    useWorkspaceMessageStore.getState().clear();
   });
 
   it("applies a successful Workspace payload to domain state", async () => {
@@ -267,8 +271,8 @@ describe("messenger bootstrap store", () => {
     expect(state.streamBindingsById).toEqual({});
     expect(state.streamBindingIdsByStreamId).toEqual({});
     expect(state.topicsById[TOPIC_A]?.name).toBe("Releases");
-    expect(state.messagesById).toEqual({});
-    expect(state.messageIdsByConversationId).toEqual({});
+    expect(useWorkspaceMessageStore.getState().messagesById).toEqual({});
+    expect(useWorkspaceMessageStore.getState().messageIdsByConversationId).toEqual({});
     expect(state.foldersById[FOLDER_A]?.title).toBe("Inbox");
     expect(state.usersById[USER_A]).toEqual(
       expect.objectContaining({
@@ -353,14 +357,16 @@ describe("messenger bootstrap store", () => {
 
     expect(useMessengerStore.getState().streamsById[STREAM_A]?.name).toBe("Engineering");
     expect(useMessengerStore.getState().topicsById[TOPIC_A]?.name).toBe("Releases");
-    expect(useMessengerStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
     expect(getMessagesByUuids).toHaveBeenCalledWith(expect.any(Object), [MESSAGE_A]);
 
     messageRequest.resolve([createMessageDto()]);
     await bootstrap;
     await flushPromises();
 
-    expect(useMessengerStore.getState().messagesById[MESSAGE_A]?.markdown).toBe("Hello, workspace");
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.markdown).toBe(
+      "Hello, workspace",
+    );
   });
 
   it("keeps private stream conversations as stream and topic ids", async () => {
@@ -508,18 +514,22 @@ describe("messenger bootstrap store", () => {
     const state = useMessengerStore.getState();
     const sidebarConversations = selectMessengerSidebarConversations(state);
     const sameSidebarConversations = selectMessengerSidebarConversations(state);
-    const conversationMessages = selectMessengerMessagesForConversation(
-      state,
+    const messageState = useWorkspaceMessageStore.getState();
+    const conversationMessages = selectWorkspaceMessagesForConversation(
+      messageState,
       `topic:${STREAM_A}:${TOPIC_A}`,
     );
-    const sameConversationMessages = selectMessengerMessagesForConversation(
-      state,
+    const sameConversationMessages = selectWorkspaceMessagesForConversation(
+      messageState,
       `topic:${STREAM_A}:${TOPIC_A}`,
     );
     const folders = selectMessengerFolders(state);
     const sameFolders = selectMessengerFolders(state);
-    const emptyMessages = selectMessengerMessagesForConversation(state, `stream:${STREAM_A}`);
-    const sameEmptyMessages = selectMessengerMessagesForConversation(state, `stream:${STREAM_A}`);
+    const emptyMessages = selectWorkspaceMessagesForConversation(messageState, `stream:${STREAM_A}`);
+    const sameEmptyMessages = selectWorkspaceMessagesForConversation(
+      messageState,
+      `stream:${STREAM_A}`,
+    );
 
     expect(sameSidebarConversations).toBe(sidebarConversations);
     expect(sameConversationMessages).toBe(conversationMessages);
@@ -557,7 +567,7 @@ describe("messenger bootstrap store", () => {
     expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
   });
 
-  it("upserts and removes streams with conversations, bindings, topics, and messages", () => {
+  it("upserts and removes streams with conversations, bindings, and topics", () => {
     const ownerKey = workspaceRuntimeOwnerKey(createRuntimeContext());
     const payload = adaptMessengerBootstrapPayload({
       streams: [createStreamDto()],
@@ -568,7 +578,6 @@ describe("messenger bootstrap store", () => {
     });
     useMessengerStore.getState().startBootstrap(ownerKey);
     useMessengerStore.getState().replaceBootstrapState(ownerKey, payload);
-    useMessengerStore.getState().upsertMessage(ownerKey, adaptMessengerMessage(createMessageDto()));
 
     expect(useMessengerStore.getState().conversationIds).toContain(`stream:${STREAM_A}`);
     expect(useMessengerStore.getState().conversationIds).toContain(`topic:${STREAM_A}:${TOPIC_A}`);
@@ -580,7 +589,6 @@ describe("messenger bootstrap store", () => {
     expect(state.topicsById[TOPIC_A]).toBeUndefined();
     expect(state.conversationIds).toEqual([]);
     expect(state.streamBindingIds).toEqual([]);
-    expect(state.messagesById[MESSAGE_A]).toBeUndefined();
   });
 
   it("upserts stream bindings without duplicating binding indexes", () => {
@@ -602,7 +610,7 @@ describe("messenger bootstrap store", () => {
     ]);
   });
 
-  it("upserts topics and removes topic conversations with messages", () => {
+  it("upserts topics and removes topic conversations", () => {
     const ownerKey = workspaceRuntimeOwnerKey(createRuntimeContext());
     const [stream] = adaptMessengerBootstrapPayload({
       streams: [createStreamDto()],
@@ -616,11 +624,9 @@ describe("messenger bootstrap store", () => {
       folders: [],
       users: [],
     }).topics;
-    const message = adaptMessengerMessage(createMessageDto());
     useMessengerStore.getState().startBootstrap(ownerKey);
     useMessengerStore.getState().upsertStream(ownerKey, stream!);
     useMessengerStore.getState().upsertTopic(ownerKey, topic!);
-    useMessengerStore.getState().upsertMessage(ownerKey, message);
 
     expect(useMessengerStore.getState().conversationsById[`topic:${STREAM_A}:${TOPIC_A}`]).toEqual(
       expect.objectContaining({
@@ -635,7 +641,6 @@ describe("messenger bootstrap store", () => {
     const state = useMessengerStore.getState();
     expect(state.topicsById[TOPIC_A]).toBeUndefined();
     expect(state.conversationsById[`topic:${STREAM_A}:${TOPIC_A}`]).toBeUndefined();
-    expect(state.messagesById[MESSAGE_A]).toBeUndefined();
   });
 
   it("merges message pages without duplicates and removes messages by delete payload", () => {
@@ -646,17 +651,17 @@ describe("messenger bootstrap store", () => {
     );
     useMessengerStore.getState().startBootstrap(ownerKey);
 
-    useMessengerStore
+    useWorkspaceMessageStore
       .getState()
-      .mergeConversationMessagesPage(ownerKey, `topic:${STREAM_A}:${TOPIC_A}`, [
+      .mergeConversationMessagesPage(`topic:${STREAM_A}:${TOPIC_A}`, [
         messageB,
         messageA,
         { ...messageA, markdown: "Edited" },
       ]);
 
     expect(
-      selectMessengerMessagesForConversation(
-        useMessengerStore.getState(),
+      selectWorkspaceMessagesForConversation(
+        useWorkspaceMessageStore.getState(),
         `topic:${STREAM_A}:${TOPIC_A}`,
       ),
     ).toEqual([
@@ -664,15 +669,11 @@ describe("messenger bootstrap store", () => {
       expect.objectContaining({ uuid: MESSAGE_B }),
     ]);
 
-    useMessengerStore.getState().removeMessage(ownerKey, {
-      uuid: MESSAGE_A,
-      streamUuid: STREAM_A,
-      topicUuid: TOPIC_A,
-    });
+    useWorkspaceMessageStore.getState().removeMessage(MESSAGE_A);
 
     expect(
-      selectMessengerMessagesForConversation(
-        useMessengerStore.getState(),
+      selectWorkspaceMessagesForConversation(
+        useWorkspaceMessageStore.getState(),
         `topic:${STREAM_A}:${TOPIC_A}`,
       ),
     ).toEqual([expect.objectContaining({ uuid: MESSAGE_B })]);
@@ -683,30 +684,33 @@ describe("messenger bootstrap store", () => {
     const message = adaptMessengerMessage(createMessageDto());
     useMessengerStore.getState().startBootstrap(ownerKey);
 
-    useMessengerStore.getState().indexMessageIntoConversationBuckets(ownerKey, message, {
+    useWorkspaceMessageStore.getState().indexMessageIntoConversationBuckets(message, {
       includeStreamConversation: true,
     });
 
     expect(
-      selectMessengerMessagesForConversation(useMessengerStore.getState(), `stream:${STREAM_A}`),
+      selectWorkspaceMessagesForConversation(
+        useWorkspaceMessageStore.getState(),
+        `stream:${STREAM_A}`,
+      ),
     ).toEqual([expect.objectContaining({ uuid: MESSAGE_A })]);
     expect(
-      selectMessengerMessagesForConversation(
-        useMessengerStore.getState(),
+      selectWorkspaceMessagesForConversation(
+        useWorkspaceMessageStore.getState(),
         `topic:${STREAM_A}:${TOPIC_A}`,
       ),
     ).toEqual([expect.objectContaining({ uuid: MESSAGE_A })]);
-    expect(Object.keys(useMessengerStore.getState().messagesById)).toEqual([MESSAGE_A]);
+    expect(Object.keys(useWorkspaceMessageStore.getState().messagesById)).toEqual([MESSAGE_A]);
 
-    useMessengerStore.getState().applyMessageEdit(ownerKey, MESSAGE_A, {
+    useWorkspaceMessageStore.getState().applyMessageEdit(MESSAGE_A, {
       markdown: "Edited workspace message",
       updatedAt: "2026-06-22T10:20:00Z",
     });
-    useMessengerStore.getState().markMessageRead(ownerKey, MESSAGE_A, {
+    useWorkspaceMessageStore.getState().markMessageRead(MESSAGE_A, {
       conversationIds: [`stream:${STREAM_A}`],
     });
 
-    expect(useMessengerStore.getState().messagesById[MESSAGE_A]).toEqual(
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toEqual(
       expect.objectContaining({
         markdown: "Edited workspace message",
         read: true,
@@ -714,19 +718,18 @@ describe("messenger bootstrap store", () => {
       }),
     );
 
-    useMessengerStore.getState().removeMessage(ownerKey, {
-      uuid: MESSAGE_A,
-      streamUuid: STREAM_A,
-      topicUuid: TOPIC_A,
-    });
+    useWorkspaceMessageStore.getState().removeMessage(MESSAGE_A);
 
-    expect(useMessengerStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
     expect(
-      selectMessengerMessagesForConversation(useMessengerStore.getState(), `stream:${STREAM_A}`),
+      selectWorkspaceMessagesForConversation(
+        useWorkspaceMessageStore.getState(),
+        `stream:${STREAM_A}`,
+      ),
     ).toEqual([]);
     expect(
-      selectMessengerMessagesForConversation(
-        useMessengerStore.getState(),
+      selectWorkspaceMessagesForConversation(
+        useWorkspaceMessageStore.getState(),
         `topic:${STREAM_A}:${TOPIC_A}`,
       ),
     ).toEqual([]);

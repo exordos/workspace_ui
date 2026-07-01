@@ -1,3 +1,4 @@
+import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import type { WorkspaceRealtimeEvent } from "~/shared/api/messenger.types";
 import { createLogger } from "~/shared/lib/logger";
 import type {
@@ -15,6 +16,7 @@ import {
   adaptMessengerTopic,
 } from "./messenger-adapters.lib";
 import { useMessengerBackgroundProjectionStore } from "./messenger-background-projection.model";
+import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
 import { useMessengerStore } from "./messenger.model";
 
 export interface MessengerRealtimeActiveApplierOptions {
@@ -34,7 +36,7 @@ function isActiveCurrentOwner(
   if (context.surface !== "active") return false;
   if (context.signal?.aborted === true) return false;
 
-  // ownerKey не содержит runtimeGeneration, поэтому stale socket проверяем до любой записи в store.
+  // ownerKey does not include runtimeGeneration, so check stale sockets before any store write.
   return options.isOwnerCurrent?.(context.owner) ?? true;
 }
 
@@ -45,7 +47,7 @@ function isBackgroundCurrentOwner(
   if (context.surface !== "background") return false;
   if (context.signal?.aborted === true) return false;
 
-  // Background runtime может жить для нескольких org/project, поэтому проверка owner такая же строгая.
+  // Background runtime can live for several org/projects, so owner checks stay equally strict.
   return options.isOwnerCurrent?.(context.owner) ?? true;
 }
 
@@ -70,12 +72,24 @@ function isSupportedRealtimeEvent(event: WorkspaceRealtimeEvent): boolean {
 }
 
 function isBackgroundLightweightEvent(event: WorkspaceRealtimeEvent): boolean {
-  // stream_binding пока не сохраняем в фоне: там membership-данные, а не лёгкий id/counter snapshot.
+  // stream_binding is not stored in background yet: it contains membership data, not a lightweight id/counter snapshot.
   return event.type !== "stream_binding";
 }
 
 function skippedEpoch(event: WorkspaceRealtimeEvent | WorkspaceRealtimeSkippedEvent): number {
   return event.epoch_version;
+}
+
+function removeTopicMessagesFromWorkspaceStore(streamUuid: string, topicUuid: string): void {
+  const messageStore = useWorkspaceMessageStore.getState();
+  const conversationIds = [
+    conversationIdForStream(streamUuid),
+    conversationIdForTopic(streamUuid, topicUuid),
+  ];
+  for (const message of Object.values(messageStore.messagesById)) {
+    if (message.streamUuid !== streamUuid || message.topicUuid !== topicUuid) continue;
+    messageStore.removeMessage(message.uuid, { conversationIds });
+  }
 }
 
 export function createMessengerRealtimeActiveApplier(
@@ -86,13 +100,14 @@ export function createMessengerRealtimeActiveApplier(
       if (!isActiveCurrentOwner(context, options)) return;
 
       const store = useMessengerStore.getState();
+      const messageStore = useWorkspaceMessageStore.getState();
       if (!isSupportedRealtimeEvent(event)) {
         log.warn("Skipped unsupported workspace realtime event", {
           ownerKey: context.ownerKey,
           kind: eventKind(event),
           epochVersion: event.epoch_version,
         });
-        // Неизвестное событие тоже двигает видимый realtime cursor, а durable cursor двигает transport.
+        // Unknown events also move the visible realtime cursor; the durable cursor is moved by transport.
         store.markRealtimeEventSkipped(context.ownerKey, event.epoch_version, "unsupported_event");
         return;
       }
@@ -100,7 +115,8 @@ export function createMessengerRealtimeActiveApplier(
       switch (event.type) {
         case "message": {
           if (event.kind === "message.deleted") {
-            store.removeMessage(context.ownerKey, {
+            messageStore.removeMessage(event.message.uuid);
+            store.clearMessagePointer(context.ownerKey, {
               uuid: event.message.uuid,
               streamUuid: event.message.stream_uuid,
               topicUuid: event.message.topic_uuid,
@@ -108,7 +124,11 @@ export function createMessengerRealtimeActiveApplier(
             break;
           }
 
-          store.upsertMessage(context.ownerKey, adaptMessengerMessage(event.message));
+          {
+            const message = adaptMessengerMessage(event.message);
+            messageStore.upsertMessage(message);
+            store.applyMessagePointer(context.ownerKey, message);
+          }
           break;
         }
         case "stream": {
@@ -128,6 +148,7 @@ export function createMessengerRealtimeActiveApplier(
           break;
         case "topic": {
           if (event.kind === "topic.deleted") {
+            removeTopicMessagesFromWorkspaceStore(event.topic.stream_uuid, event.topic.uuid);
             store.removeTopic(context.ownerKey, {
               uuid: event.topic.uuid,
               streamUuid: event.topic.stream_uuid,
@@ -175,7 +196,7 @@ export function createMessengerRealtimeActiveApplier(
     },
 
     onTransportStateChange() {
-      // Активный путь применения пока не хранит диагностику в messengerStore.
+      // The active apply path does not store diagnostics in messengerStore yet.
     },
   };
 }
@@ -193,8 +214,8 @@ export function createMessengerRealtimeBackgroundApplier(
         return;
       }
 
-      // Background projection хранит только легкие id-снимки и счетчики.
-      // Тут нет notification side effects и записи в messengerStore, чтобы background не стал вторым active path.
+      // Background projection stores only lightweight id snapshots and counters.
+      // It has no notification side effects or messengerStore writes, so background does not become a second active path.
       if (isBackgroundLightweightEvent(event)) {
         store.recordAppliedEvent(context.ownerKey, event, context);
         return;

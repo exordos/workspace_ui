@@ -3,6 +3,7 @@ import {
   selectMessengerSidebarFolders,
   selectMessengerSidebarStreams,
 } from "~/entities/messenger/messenger-sidebar.lib";
+import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerSidebarStreamItem } from "~/entities/messenger/messenger.types";
 import {
@@ -48,6 +49,7 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
           }
         : null;
   const workspaceFolders = useMessengerStore(selectMessengerSidebarFolders);
+  const workspaceMessagesById = useWorkspaceMessageStore((state) => state.messagesById);
   const workspaceSelectedFolderId = useSidebarConfigStore((s) => s.selectedFolderId);
   const workspaceEffectiveFolderId = workspaceFolders.some(
     (folder) => folder.folderUuid === workspaceSelectedFolderId,
@@ -63,6 +65,7 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
           projectId: sidebarWorkspaceIdentity.projectId,
           currentUserUuid,
           selectedFolderUuid: workspaceEffectiveFolderId,
+          messagesById: workspaceMessagesById,
         })
       : EMPTY_WORKSPACE_STREAMS,
   );

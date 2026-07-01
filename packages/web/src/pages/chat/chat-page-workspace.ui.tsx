@@ -1,4 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  selectWorkspaceMessagesForConversation,
+  selectWorkspaceMessageById,
+  selectWorkspaceMessageStatusForConversation,
+  useWorkspaceMessageStore,
+} from "~/entities/message/message.model";
 import { selectMessengerConversationFromWorkspaceRoute } from "~/entities/messenger/messenger-ids.lib";
 import {
   deleteMessengerMessage,
@@ -36,7 +42,7 @@ import {
 import type { ChatMessagesLoadErrorKind } from "./chat-page-message-list-section.types";
 
 interface WorkspaceChatPageProps {
-  route: WorkspaceMessengerRouteMatch;
+  route: WorkspaceMessengerRouteMatch | null;
 }
 
 const EMPTY_MESSAGES: MessengerMessage[] = [];
@@ -46,13 +52,6 @@ const READ_BATCH_DELAY_MS = 250;
 
 const noop = () => undefined;
 
-const EMPTY_STATUS = {
-  loading: false,
-  error: null,
-  nextPageMarker: null,
-  hasMore: false,
-};
-
 function normalizeWorkspaceActionError(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim().length > 0 ? error.message : fallback;
 }
@@ -61,8 +60,8 @@ function findDefaultTopic(
   topicsById: Readonly<Record<string, MessengerTopic>>,
   streamUuid: string,
 ): MessengerTopic | null {
-  // Stream route не содержит topicUuid, но backend требует тему для создания сообщения.
-  // Поэтому отправляем только в явно помеченную default topic и не угадываем тему сами.
+  // Stream route has no topicUuid, but the backend requires a topic to create a message.
+  // Send only to an explicitly marked default topic and do not guess it here.
   return (
     Object.values(topicsById).find((candidate) => {
       return candidate.streamUuid === streamUuid && candidate.isDefault;
@@ -86,7 +85,7 @@ function WorkspaceChatState({
 }
 
 export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) => {
-  // Эта страница не новая верстка чата: она собирает старые секции и подменяет только источник данных.
+  // This page is not a new chat layout: it assembles old sections and swaps only the data source.
   const [retryNonce, setRetryNonce] = useState(0);
   const [sendError, setSendError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -116,18 +115,16 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   const topic = useMessengerStore((state) =>
     topicUuid != null ? state.topicsById[topicUuid] : undefined,
   );
-  const messagesById = useMessengerStore((state) => state.messagesById);
-  const messageIdsByConversationId = useMessengerStore((state) => state.messageIdsByConversationId);
-  const messagesLoadingByConversationId = useMessengerStore(
-    (state) => state.messagesLoadingByConversationId,
+  const routeMessages = useWorkspaceMessageStore((state) =>
+    conversationId == null
+      ? EMPTY_MESSAGES
+      : selectWorkspaceMessagesForConversation(state, conversationId),
   );
-  const messagesErrorByConversationId = useMessengerStore(
-    (state) => state.messagesErrorByConversationId,
+  const messagesStatus = useWorkspaceMessageStore((state) =>
+    conversationId == null
+      ? selectWorkspaceMessageStatusForConversation(state, "")
+      : selectWorkspaceMessageStatusForConversation(state, conversationId),
   );
-  const nextPageMarkerByConversationId = useMessengerStore(
-    (state) => state.nextPageMarkerByConversationId,
-  );
-  const hasMoreByConversationId = useMessengerStore((state) => state.hasMoreByConversationId);
   const usersById = useMessengerStore((state) =>
     Object.keys(state.usersById).length > 0 ? state.usersById : EMPTY_USERS_BY_ID,
   );
@@ -135,8 +132,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   const retry = useCallback(() => setRetryNonce((value) => value + 1), []);
   const workspaceComposerCapabilities = useMemo<MessageComposerCapabilities>(
     () => ({
-      // Workspace backend в текущем срезе умеет send/edit/delete/read, но не эти дополнительные действия.
-      // Кнопки остаются в старом UI, однако вместо Zulip-запросов показывают контролируемую заглушку.
+      // The Workspace backend currently supports send/edit/delete/read, but not these extra actions.
+      // Buttons remain in the old UI, but show controlled placeholders instead of Zulip requests.
       upload: {
         mode: "unsupported",
         unsupportedText: t("workspaceMessenger.uploadsUnsupported"),
@@ -168,7 +165,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   useEffect(() => {
     if (selection.status !== "conversation" || runtimeContext == null) return;
 
-    // История сообщений грузится из Workspace API и применяется только пока runtime owner не устарел.
+    // Message history loads from the Workspace API and applies only while the runtime owner is current.
     const controller = new AbortController();
     void loadMessengerConversationMessages({
       runtimeContext,
@@ -195,31 +192,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     };
   }, []);
 
-  const routeMessages = useMemo(() => {
-    if (conversationId == null) return EMPTY_MESSAGES;
-    const ids = messageIdsByConversationId[conversationId] ?? [];
-    return ids
-      .map((messageId) => messagesById[messageId])
-      .filter((message): message is MessengerMessage => message != null);
-  }, [conversationId, messageIdsByConversationId, messagesById]);
-  const messagesStatus = useMemo(() => {
-    if (conversationId == null) return EMPTY_STATUS;
-    return {
-      loading: messagesLoadingByConversationId[conversationId] === true,
-      error: messagesErrorByConversationId[conversationId] ?? null,
-      nextPageMarker: nextPageMarkerByConversationId[conversationId] ?? null,
-      hasMore: hasMoreByConversationId[conversationId] === true,
-    };
-  }, [
-    conversationId,
-    hasMoreByConversationId,
-    messagesErrorByConversationId,
-    messagesLoadingByConversationId,
-    nextPageMarkerByConversationId,
-  ]);
   const title = stream?.name ?? conversation?.title ?? t("nav.messenger");
   const topicTitle =
     topic?.name ?? (selection.status === "conversation" ? conversation?.title : undefined);
+  const composerReadOnlyReason =
+    selection.status === "conversation"
+      ? undefined
+      : t("workspaceMessenger.routeUnsupportedForSend");
   const viewModel = useMemo(
     () =>
       buildWorkspaceChatMessageListViewModel({
@@ -236,7 +215,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
 
   const runWorkspaceAction = useCallback(
     async <T,>(action: (signal: AbortSignal) => Promise<T>): Promise<T> => {
-      // Все write-действия получают свой AbortController, чтобы смена org/project не применяла старый ответ.
+      // Every write action gets its own AbortController so org/project switches do not apply old responses.
       const controller = new AbortController();
       actionAbortControllersRef.current.add(controller);
       try {
@@ -251,15 +230,17 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   const resolveMessageByVisualId = useCallback(
     (visualMessageId: number): MessengerMessage | null => {
       const messageUuid = findWorkspaceMessageUuidByVisualId(routeMessages, visualMessageId);
-      return messageUuid == null ? null : (messagesById[messageUuid] ?? null);
+      return messageUuid == null
+        ? null
+        : selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
     },
-    [messagesById, routeMessages],
+    [routeMessages],
   );
 
   const resolveSendTarget = useCallback(():
     | { status: "ready"; streamUuid: string; topicUuid: string; includeStreamConversation: boolean }
     | { status: "blocked"; error: string } => {
-    // Topic route отправляет в выбранную тему, stream route — только в default topic.
+    // Topic routes send to the selected topic; stream routes send only to the default topic.
     if (selection.status !== "conversation") {
       return { status: "blocked", error: t("workspaceMessenger.routeUnsupportedForSend") };
     }
@@ -287,7 +268,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
 
   const handleSend = useCallback(
     async (content: string, _subjectOverride?: string, files?: File[]) => {
-      // Composer остаётся старым, но отправка идёт только через Workspace POST /messages/.
+      // Composer remains old, but sending goes only through Workspace POST /messages/.
       setSendError(null);
       if (runtimeContext == null) {
         const error = t("workspaceMessenger.runtimeUnavailable");
@@ -335,7 +316,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
 
   const requestMessageEdit = useCallback(
     (messageId: number) => {
-      // Старый список отдаёт числовой id, поэтому сначала ищем Workspace message uuid через adapter.
+      // The old list gives a numeric id, so first resolve the Workspace message uuid through the adapter.
       const message = resolveMessageByVisualId(messageId);
       if (message == null || !message.isOwn) {
         setActionError(t("message.editUnavailable"));
@@ -388,7 +369,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
 
   const handleDeleteMessage = useCallback(
     (visualMessageId: number) => {
-      // Удаление идёт сразу в Workspace API; старые Zulip delete handlers на этом route не вызываются.
+      // Deletion goes directly to the Workspace API; old Zulip delete handlers are not called on this route.
       setActionError(null);
       if (runtimeContext == null) {
         setActionError(t("workspaceMessenger.runtimeUnavailable"));
@@ -417,7 +398,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   );
 
   const flushReadBatch = useCallback(() => {
-    // MessageList сообщает о видимых непрочитанных сообщениях пачкой, backend принимает их по одному.
+    // MessageList reports visible unread messages in batches; the backend accepts them one by one.
     readBatchTimerRef.current = null;
     if (runtimeContext == null || conversationId == null) {
       pendingReadVisualIdsRef.current.clear();
@@ -444,12 +425,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         readRequestedMessageUuidsRef.current.delete(message.uuid);
       });
     }
-  }, [
-    conversationId,
-    resolveMessageByVisualId,
-    runWorkspaceAction,
-    runtimeContext,
-  ]);
+  }, [conversationId, resolveMessageByVisualId, runWorkspaceAction, runtimeContext]);
 
   const scheduleReadBatch = useCallback(
     (messageIds: number[]) => {
@@ -465,7 +441,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
 
   const messageCallbacks = useMemo<MessageListCallbacks>(
     () => ({
-      // Поддержанные действия подключены к Workspace API, неподдержанные остаются видимыми как заглушки.
+      // Supported actions are connected to the Workspace API; unsupported actions stay visible as placeholders.
       onMessageEdit: (message) => requestMessageEdit(message.id),
       onMessageDelete: (message) => handleDeleteMessage(message.id),
       onMessageAddReaction: () => setActionError(t("workspaceMessenger.reactionsUnsupported")),
@@ -507,6 +483,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       <WorkspaceChatState
         title={t("workspaceMessenger.messageRouteUnsupported")}
         detail={t("workspaceMessenger.messageRouteUnsupportedHint")}
+      />
+    );
+  } else if (selection.status === "none") {
+    body = (
+      <WorkspaceChatState
+        title={t("workspaceMessenger.invalidRoute")}
+        detail={t("workspaceMessenger.invalidRouteHint")}
       />
     );
   } else {
@@ -593,6 +576,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
           composerCapabilities={workspaceComposerCapabilities}
           aiMessagesContext={[]}
           aiChatContext={undefined}
+          readOnlyReason={composerReadOnlyReason}
         />
       </section>
     </div>

@@ -1,5 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type {
   MessengerBootstrapPayload,
@@ -23,18 +24,11 @@ const captured = vi.hoisted(() => ({
   oldChatListStore: vi.fn(() => {
     throw new Error("legacy chat-list store must not be used");
   }),
-  oldMessageStore: vi.fn(() => {
-    throw new Error("legacy message store must not be used");
-  }),
   loadWorkspaceMessages: vi.fn().mockResolvedValue({ status: "applied" }),
 }));
 
 vi.mock("~/entities/chat-list/chat-list.model", () => ({
   useChatListStore: captured.oldChatListStore,
-}));
-
-vi.mock("~/entities/message/message.model", () => ({
-  useCurrentChatMessagesStore: captured.oldMessageStore,
 }));
 
 vi.mock("~/entities/messenger/messenger-messages-loader.lib", async (importOriginal) => {
@@ -188,21 +182,21 @@ describe("ChatPage Workspace route", () => {
     const ownerKey = workspaceRuntimeOwnerKey(session);
     useMessengerStore.getState().startBootstrap(ownerKey);
     useMessengerStore.getState().replaceBootstrapState(ownerKey, createBootstrapPayload());
-    useMessengerStore
+    useWorkspaceMessageStore
       .getState()
-      .replaceConversationMessages(ownerKey, `topic:${STREAM_UUID}:${TOPIC_UUID}`, [
+      .replaceOrMergeConversationMessagesPage(`topic:${STREAM_UUID}:${TOPIC_UUID}`, [
         createMessage(),
       ]);
     captured.composerProps = null;
     captured.messageListProps = null;
     captured.oldChatListStore.mockClear();
-    captured.oldMessageStore.mockClear();
     captured.loadWorkspaceMessages.mockClear();
   });
 
   afterEach(() => {
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
     useMessengerStore.getState().clear();
+    useWorkspaceMessageStore.getState().clear();
   });
 
   it("renders Workspace topic data through the old chat sections", async () => {
@@ -226,7 +220,20 @@ describe("ChatPage Workspace route", () => {
     expect(captured.composerProps?.onSend).toEqual(expect.any(Function));
     expect(captured.composerProps?.onSubmitEdit).toEqual(expect.any(Function));
     expect(captured.oldChatListStore).not.toHaveBeenCalled();
-    expect(captured.oldMessageStore).not.toHaveBeenCalled();
     await waitFor(() => expect(captured.loadWorkspaceMessages).toHaveBeenCalledTimes(1));
+  });
+
+  it("keeps old chat routes in a controlled Workspace state", () => {
+    renderWithProviders(<ChatPage />, {
+      route: "/stream/general/topic/roadmap",
+    });
+
+    expect(screen.getByText("This chat link is invalid")).toBeInTheDocument();
+    expect(captured.composerProps?.readOnlyReason).toBe(
+      "Sending is not available from this chat link yet.",
+    );
+    expect(captured.messageListProps).toBeNull();
+    expect(captured.oldChatListStore).not.toHaveBeenCalled();
+    expect(captured.loadWorkspaceMessages).not.toHaveBeenCalled();
   });
 });

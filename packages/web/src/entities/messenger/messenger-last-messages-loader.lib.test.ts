@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import type {
@@ -141,14 +142,20 @@ function createDeferred<T>(): {
 describe("messenger last messages loader", () => {
   beforeEach(() => {
     useMessengerStore.getState().clear();
+    useWorkspaceMessageStore.getState().clear();
   });
 
   it("collects unique last message uuids and skips already loaded messages", () => {
     const ownerKey = workspaceRuntimeOwnerKey(createRuntimeContext());
     seedBootstrap(ownerKey);
-    useMessengerStore.getState().upsertMessage(ownerKey, adaptMessengerMessage(createMessageDto()));
+    useWorkspaceMessageStore.getState().upsertMessageBody(adaptMessengerMessage(createMessageDto()));
 
-    expect(collectMessengerLastMessageUuids(useMessengerStore.getState())).toEqual([MESSAGE_B]);
+    expect(
+      collectMessengerLastMessageUuids(
+        useMessengerStore.getState(),
+        useWorkspaceMessageStore.getState().messagesById,
+      ),
+    ).toEqual([MESSAGE_B]);
   });
 
   it("loads missing last messages through the injected bulk client", async () => {
@@ -178,17 +185,19 @@ describe("messenger last messages loader", () => {
       }),
       [MESSAGE_A, MESSAGE_B],
     );
-    expect(useMessengerStore.getState().messagesById[MESSAGE_A]?.markdown).toBe("Hello, workspace");
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.markdown).toBe(
+      "Hello, workspace",
+    );
   });
 
   it("does not call the client when every last message is already loaded", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
     seedBootstrap(ownerKey);
-    useMessengerStore.getState().upsertMessage(ownerKey, adaptMessengerMessage(createMessageDto()));
-    useMessengerStore
+    useWorkspaceMessageStore.getState().upsertMessageBody(adaptMessengerMessage(createMessageDto()));
+    useWorkspaceMessageStore
       .getState()
-      .upsertMessage(ownerKey, adaptMessengerMessage(createMessageDto({ uuid: MESSAGE_B })));
+      .upsertMessageBody(adaptMessengerMessage(createMessageDto({ uuid: MESSAGE_B })));
     const getMessagesByUuids = vi.fn(() => Promise.resolve([]));
 
     await expect(
@@ -234,7 +243,7 @@ describe("messenger last messages loader", () => {
       ownerKey,
       reason: "stale-owner",
     });
-    expect(useMessengerStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
   });
 
   it("keeps the sidebar snapshot when last message loading fails", async () => {

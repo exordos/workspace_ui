@@ -11,7 +11,7 @@
 import { useCallParticipantsStore } from "~/entities/call/call.model";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
-import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
+import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t, setLocale, getLocale, getSupportedLocales } from "~/i18n/i18n";
@@ -35,7 +35,7 @@ import { useSidebarConfigStore } from "~/widgets/sidebar/sidebar-config.model";
 interface DevTools {
   stores: {
     chatList: typeof useChatListStore;
-    messages: typeof useCurrentChatMessagesStore;
+    messages: typeof useWorkspaceMessageStore;
     users: typeof useUsersStore;
     instances: typeof useInstancesStore;
     theme: typeof useThemeStore;
@@ -78,7 +78,7 @@ export function installDevTools(): void {
   const devtools: DevTools = {
     stores: {
       chatList: useChatListStore,
-      messages: useCurrentChatMessagesStore,
+      messages: useWorkspaceMessageStore,
       users: useUsersStore,
       instances: useInstancesStore,
       theme: useThemeStore,

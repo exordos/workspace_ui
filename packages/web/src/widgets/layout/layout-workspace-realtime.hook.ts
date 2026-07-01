@@ -85,8 +85,8 @@ function toLayoutRealtimeManagerContext(
   return {
     owner,
     ownerKey: workspaceRuntimeOwnerKey(owner),
-    // Access token лежит только в памяти manager-а: transport core создается с clientOptions один раз.
-    // Когда token/origin меняется, runtimeKey заставляет manager пересоздать socket.
+    // Access token lives only in manager memory: transport core is created with clientOptions once.
+    // When token/origin changes, runtimeKey makes the manager recreate the socket.
     runtimeKey: [runtimeContext.organizationOrigin, runtimeContext.accessToken].join("\u0000"),
     runtimeContext,
   };
@@ -99,8 +99,8 @@ export function isLayoutWorkspaceRealtimeOwnerCurrent(
   const current = getRuntimeContext();
   if (current == null) return false;
 
-  // runtimeGeneration проверяем на active boundary: старый сокет может закрыться позже,
-  // но его callbacks уже не должны считаться текущим project-runtime.
+  // runtimeGeneration is checked at the active boundary: an old socket can close later,
+  // but its callbacks must no longer count as the current project runtime.
   return (
     workspaceRuntimeOwnerKey(current) === workspaceRuntimeOwnerKey(owner) &&
     current.runtimeGeneration === owner.runtimeGeneration
@@ -218,7 +218,7 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
     }
 
     if (!shouldStartWorkspaceRealtimeForRoute(enabled, pathname, activeRuntimeContext)) {
-      // Вне workspace messenger route realtime не держим: это host текущего маршрута, не глобальный daemon.
+      // Outside the workspace messenger route, do not keep realtime alive: this is the current route host, not a global daemon.
       void managerRef.current?.stopAll("layout_inactive").catch((error) => {
         reportUnexpectedError("workspace-realtime:stop", error);
       });

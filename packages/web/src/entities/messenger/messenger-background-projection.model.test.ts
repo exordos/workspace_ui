@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type {
   WorkspaceMessengerFolderDto,
@@ -179,6 +180,7 @@ describe("messenger background projection", () => {
   beforeEach(() => {
     useMessengerBackgroundProjectionStore.getState().clear();
     useMessengerStore.getState().clear();
+    useWorkspaceMessageStore.getState().clear();
   });
 
   afterEach(() => {
@@ -223,7 +225,7 @@ describe("messenger background projection", () => {
       }),
     );
     expect(JSON.stringify(projection)).not.toContain("Do not copy this text");
-    expect(useMessengerStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
     expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
   });
 

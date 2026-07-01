@@ -26,29 +26,19 @@ const EMPTY_STREAM_BINDINGS_BY_ID: Record<MessengerUuid, MessengerStreamBinding>
 const EMPTY_STREAM_BINDING_IDS_BY_STREAM_ID: Record<MessengerUuid, MessengerUuid[]> = {};
 const EMPTY_TOPICS_BY_ID: Record<MessengerUuid, MessengerTopic> = {};
 const EMPTY_CONVERSATIONS_BY_ID: Record<MessengerConversationId, MessengerConversation> = {};
-const EMPTY_MESSAGES_BY_ID: Record<MessengerUuid, MessengerMessage> = {};
-const EMPTY_MESSAGE_IDS_BY_CONVERSATION_ID: Record<MessengerConversationId, MessengerUuid[]> = {};
-const EMPTY_MESSAGES_LOADING_BY_CONVERSATION_ID: Record<MessengerConversationId, boolean> = {};
-const EMPTY_MESSAGES_ERROR_BY_CONVERSATION_ID: Record<MessengerConversationId, string> = {};
-const EMPTY_NEXT_PAGE_MARKER_BY_CONVERSATION_ID: Record<MessengerConversationId, string | null> =
-  {};
-const EMPTY_HAS_MORE_BY_CONVERSATION_ID: Record<MessengerConversationId, boolean> = {};
 const EMPTY_FOLDERS_BY_ID: Record<MessengerUuid, MessengerFolder> = {};
 const EMPTY_USERS_BY_ID: Record<MessengerUuid, MessengerUser> = {};
 const EMPTY_IDS: string[] = [];
 const EMPTY_CONVERSATIONS: MessengerConversation[] = [];
-const EMPTY_MESSAGES: MessengerMessage[] = [];
 const EMPTY_FOLDERS: MessengerFolder[] = [];
 const EMPTY_SKIPPED_REALTIME_EVENTS: MessengerSkippedRealtimeEvent[] = [];
 type MessengerFreshnessState = Pick<
   MessengerDomainData,
   "streamsById" | "topicsById" | "conversationsById"
 >;
-type MessengerFreshnessInputState = MessengerFreshnessState &
-  Pick<MessengerDomainData, "messagesById">;
 
-// Store хранит Workspace-данные отдельно от старых Zulip stores.
-// Это важно для миграции: новый backend не должен подстраиваться под старый source-of-truth.
+// Store keeps Workspace data separate from old Zulip stores.
+// This matters for migration: the new backend must not adapt to the old source of truth.
 // This store is scoped by ownerKey so several accounts/projects can coexist safely.
 export interface MessengerDomainData {
   streamsById: Record<MessengerUuid, MessengerStream>;
@@ -60,12 +50,6 @@ export interface MessengerDomainData {
   topicIds: MessengerUuid[];
   conversationsById: Record<MessengerConversationId, MessengerConversation>;
   conversationIds: MessengerConversationId[];
-  messagesById: Record<MessengerUuid, MessengerMessage>;
-  messageIdsByConversationId: Record<MessengerConversationId, MessengerUuid[]>;
-  messagesLoadingByConversationId: Record<MessengerConversationId, boolean>;
-  messagesErrorByConversationId: Record<MessengerConversationId, string>;
-  nextPageMarkerByConversationId: Record<MessengerConversationId, string | null>;
-  hasMoreByConversationId: Record<MessengerConversationId, boolean>;
   foldersById: Record<MessengerUuid, MessengerFolder>;
   folderIds: MessengerUuid[];
   usersById: Record<MessengerUuid, MessengerUser>;
@@ -82,70 +66,13 @@ export interface MessengerStoreState extends MessengerDomainData {
 
   startBootstrap: (ownerKey: string) => void;
   replaceBootstrapState: (ownerKey: string, payload: MessengerBootstrapPayload) => void;
-  replaceConversationMessages: (
-    ownerKey: string,
-    conversationId: MessengerConversationId,
-    messages: MessengerMessage[],
-  ) => void;
-  startConversationMessagesLoad: (
-    ownerKey: string,
-    conversationId: MessengerConversationId,
-  ) => void;
-  applyConversationMessagesLoadSuccess: (
-    ownerKey: string,
-    conversationId: MessengerConversationId,
-    messages: MessengerMessage[],
-    options: {
-      mode: "replace" | "merge";
-      nextPageMarker: string | null;
-      hasMore: boolean;
-    },
-  ) => void;
-  finishConversationMessagesLoad: (
-    ownerKey: string,
-    conversationId: MessengerConversationId,
-    nextPageMarker: string | null,
-  ) => void;
-  failConversationMessagesLoad: (
-    ownerKey: string,
-    conversationId: MessengerConversationId,
-    error: string,
-  ) => void;
-  cancelConversationMessagesLoad: (
-    ownerKey: string,
-    conversationId: MessengerConversationId,
-  ) => void;
   upsertStream: (ownerKey: string, stream: MessengerStream) => void;
   removeStream: (ownerKey: string, stream: MessengerDeletedStream) => void;
   upsertStreamBindings: (ownerKey: string, bindings: MessengerStreamBinding[]) => void;
   upsertTopic: (ownerKey: string, topic: MessengerTopic) => void;
   removeTopic: (ownerKey: string, topic: MessengerDeletedTopic) => void;
-  upsertMessage: (ownerKey: string, message: MessengerMessage) => void;
-  indexMessageIntoConversationBuckets: (
-    ownerKey: string,
-    message: MessengerMessage,
-    options?: MessengerMessageBucketIndexOptions,
-  ) => void;
-  applyMessageEdit: (
-    ownerKey: string,
-    messageUuid: MessengerUuid,
-    patch: MessengerMessageEditPatch,
-  ) => void;
-  markMessageRead: (
-    ownerKey: string,
-    messageUuid: MessengerUuid,
-    options?: MessengerScopedMessageMutationOptions,
-  ) => void;
-  removeMessage: (
-    ownerKey: string,
-    message: MessengerDeletedMessage,
-    options?: MessengerScopedMessageMutationOptions,
-  ) => void;
-  mergeConversationMessagesPage: (
-    ownerKey: string,
-    conversationId: MessengerConversationId,
-    messages: MessengerMessage[],
-  ) => void;
+  applyMessagePointer: (ownerKey: string, message: MessengerMessage) => void;
+  clearMessagePointer: (ownerKey: string, message: MessengerDeletedMessage) => void;
   applyFolderSnapshot: (ownerKey: string, folder: MessengerFolder) => void;
   removeFolder: (ownerKey: string, folder: MessengerDeletedFolder) => void;
   upsertFolderItem: (ownerKey: string, folderItem: MessengerFolderItem) => void;
@@ -158,21 +85,6 @@ export interface MessengerStoreState extends MessengerDomainData {
   markRealtimeEventSkipped: (ownerKey: string, epochVersion: number, reason: string) => void;
   setBootstrapError: (ownerKey: string, error: string) => void;
   clear: () => void;
-}
-
-export interface MessengerMessageBucketIndexOptions {
-  // Одно сообщение может одновременно быть видно в topic timeline и в общем stream timeline.
-  includeStreamConversation?: boolean;
-  conversationIds?: readonly MessengerConversationId[];
-}
-
-export interface MessengerScopedMessageMutationOptions {
-  conversationIds?: readonly MessengerConversationId[];
-}
-
-export interface MessengerMessageEditPatch {
-  markdown: string;
-  updatedAt?: string;
 }
 
 export interface MessengerFolderItemRemovalOptions {
@@ -190,12 +102,6 @@ function createEmptyMessengerData(): MessengerDomainData {
     topicIds: EMPTY_IDS,
     conversationsById: EMPTY_CONVERSATIONS_BY_ID,
     conversationIds: EMPTY_IDS,
-    messagesById: EMPTY_MESSAGES_BY_ID,
-    messageIdsByConversationId: EMPTY_MESSAGE_IDS_BY_CONVERSATION_ID,
-    messagesLoadingByConversationId: EMPTY_MESSAGES_LOADING_BY_CONVERSATION_ID,
-    messagesErrorByConversationId: EMPTY_MESSAGES_ERROR_BY_CONVERSATION_ID,
-    nextPageMarkerByConversationId: EMPTY_NEXT_PAGE_MARKER_BY_CONVERSATION_ID,
-    hasMoreByConversationId: EMPTY_HAS_MORE_BY_CONVERSATION_ID,
     foldersById: EMPTY_FOLDERS_BY_ID,
     folderIds: EMPTY_IDS,
     usersById: EMPTY_USERS_BY_ID,
@@ -209,23 +115,13 @@ function createInitialState(): Omit<
   MessengerStoreState,
   | "startBootstrap"
   | "replaceBootstrapState"
-  | "replaceConversationMessages"
-  | "startConversationMessagesLoad"
-  | "applyConversationMessagesLoadSuccess"
-  | "finishConversationMessagesLoad"
-  | "failConversationMessagesLoad"
-  | "cancelConversationMessagesLoad"
   | "upsertStream"
   | "removeStream"
   | "upsertStreamBindings"
   | "upsertTopic"
   | "removeTopic"
-  | "upsertMessage"
-  | "indexMessageIntoConversationBuckets"
-  | "applyMessageEdit"
-  | "markMessageRead"
-  | "removeMessage"
-  | "mergeConversationMessagesPage"
+  | "applyMessagePointer"
+  | "clearMessagePointer"
   | "applyFolderSnapshot"
   | "removeFolder"
   | "upsertFolderItem"
@@ -252,206 +148,6 @@ function removeId<TId extends string>(ids: TId[], id: TId): TId[] {
   return ids.filter((item) => item !== id);
 }
 
-function sameIds(left: readonly MessengerUuid[], right: readonly MessengerUuid[]): boolean {
-  if (left.length !== right.length) return false;
-  return left.every((id, index) => id === right[index]);
-}
-
-function compareMessengerMessages(left: MessengerMessage, right: MessengerMessage): number {
-  const createdAtOrder = compareIsoDateStrings(left.createdAt, right.createdAt);
-  if (createdAtOrder !== 0) return createdAtOrder;
-  return left.uuid.localeCompare(right.uuid);
-}
-
-function compareMessageIdWithMessage(
-  messageId: MessengerUuid,
-  message: MessengerMessage,
-  messagesById: Record<MessengerUuid, MessengerMessage>,
-): number {
-  const existingMessage = messagesById[messageId];
-  if (existingMessage == null) return messageId.localeCompare(message.uuid);
-  return compareMessengerMessages(existingMessage, message);
-}
-
-function insertSortedMessageId(
-  ids: MessengerUuid[],
-  message: MessengerMessage,
-  messagesById: Record<MessengerUuid, MessengerMessage>,
-  previousMessage: MessengerMessage | undefined,
-): MessengerUuid[] {
-  const existingIndex = ids.indexOf(message.uuid);
-  if (existingIndex >= 0 && previousMessage?.createdAt === message.createdAt) {
-    return ids;
-  }
-
-  const baseIds = existingIndex >= 0 ? removeId(ids, message.uuid) : ids;
-  const lastId = baseIds.at(-1);
-  if (lastId == null) return [message.uuid];
-  if (compareMessageIdWithMessage(lastId, message, messagesById) <= 0) {
-    return [...baseIds, message.uuid];
-  }
-
-  const firstId = baseIds[0];
-  if (firstId == null || compareMessageIdWithMessage(firstId, message, messagesById) >= 0) {
-    return [message.uuid, ...baseIds];
-  }
-
-  let low = 0;
-  let high = baseIds.length;
-  while (low < high) {
-    const middle = Math.floor((low + high) / 2);
-    const middleId = baseIds[middle];
-    if (middleId == null || compareMessageIdWithMessage(middleId, message, messagesById) <= 0) {
-      low = middle + 1;
-    } else {
-      high = middle;
-    }
-  }
-
-  return [...baseIds.slice(0, low), message.uuid, ...baseIds.slice(low)];
-}
-
-function sortUniqueMessages(messages: MessengerMessage[]): MessengerMessage[] {
-  if (messages.length <= 1) return messages;
-  const messagesByUuid = new Map<MessengerUuid, MessengerMessage>();
-  for (const message of messages) {
-    messagesByUuid.set(message.uuid, message);
-  }
-  return [...messagesByUuid.values()].sort(compareMessengerMessages);
-}
-
-function collectMergeableExistingMessageIds(
-  existingIds: MessengerUuid[],
-  incomingIds: ReadonlySet<MessengerUuid>,
-  messagesById: Record<MessengerUuid, MessengerMessage>,
-): MessengerUuid[] {
-  const seenExistingIds = new Set<MessengerUuid>();
-  const existing: MessengerUuid[] = [];
-  for (const messageId of existingIds) {
-    if (incomingIds.has(messageId)) continue;
-    if (seenExistingIds.has(messageId)) continue;
-    if (messagesById[messageId] == null) continue;
-    seenExistingIds.add(messageId);
-    existing.push(messageId);
-  }
-  return existing;
-}
-
-function mergeSortedMessageIds(
-  existingIds: MessengerUuid[],
-  incomingMessages: MessengerMessage[],
-  messagesById: Record<MessengerUuid, MessengerMessage>,
-): MessengerUuid[] {
-  if (incomingMessages.length === 0) return existingIds;
-
-  const incoming = sortUniqueMessages(incomingMessages);
-  const incomingIds = new Set(incoming.map((message) => message.uuid));
-  const existing = collectMergeableExistingMessageIds(existingIds, incomingIds, messagesById);
-  const result: MessengerUuid[] = [];
-  let existingIndex = 0;
-  let incomingIndex = 0;
-
-  while (existingIndex < existing.length && incomingIndex < incoming.length) {
-    const existingId = existing[existingIndex]!;
-    const incomingMessage = incoming[incomingIndex]!;
-    const existingMessage = messagesById[existingId]!;
-
-    if (compareMessengerMessages(existingMessage, incomingMessage) <= 0) {
-      result.push(existingId);
-      existingIndex += 1;
-    } else {
-      result.push(incomingMessage.uuid);
-      incomingIndex += 1;
-    }
-  }
-
-  for (; existingIndex < existing.length; existingIndex += 1) {
-    result.push(existing[existingIndex]!);
-  }
-  for (; incomingIndex < incoming.length; incomingIndex += 1) {
-    result.push(incoming[incomingIndex]!.uuid);
-  }
-
-  return sameIds(existingIds, result) ? existingIds : result;
-}
-
-function isMessageReferencedOutsideConversations(
-  messageIdsByConversationId: Record<MessengerConversationId, MessengerUuid[]>,
-  excludedConversationIds: ReadonlySet<MessengerConversationId>,
-  messageId: MessengerUuid,
-): boolean {
-  for (const [conversationId, messageIds] of Object.entries(messageIdsByConversationId)) {
-    if (excludedConversationIds.has(conversationId)) continue;
-    if (messageIds.includes(messageId)) return true;
-  }
-  return false;
-}
-
-function applyConversationMessagesBucket(
-  state: Pick<MessengerDomainData, "messagesById" | "messageIdsByConversationId">,
-  conversationId: MessengerConversationId,
-  messages: MessengerMessage[],
-): Pick<MessengerDomainData, "messagesById" | "messageIdsByConversationId"> {
-  const nextMessagesById = { ...state.messagesById };
-  for (const message of messages) {
-    nextMessagesById[message.uuid] = message;
-  }
-  const nextMessageIds = mergeSortedMessageIds(
-    state.messageIdsByConversationId[conversationId] ?? EMPTY_IDS,
-    messages,
-    nextMessagesById,
-  );
-
-  return {
-    messagesById: nextMessagesById,
-    messageIdsByConversationId: {
-      ...state.messageIdsByConversationId,
-      [conversationId]: nextMessageIds,
-    },
-  };
-}
-
-function conversationBucketsForMessage(
-  message: MessengerMessage,
-  options?: MessengerMessageBucketIndexOptions,
-): MessengerConversationId[] {
-  // По умолчанию сообщение попадает в topic; stream-wide bucket добавляем только когда это явно нужно.
-  let conversationIds: MessengerConversationId[] =
-    options?.conversationIds != null ? [...options.conversationIds] : [message.conversationId];
-
-  if (options?.includeStreamConversation === true) {
-    conversationIds = appendUniqueId(conversationIds, conversationIdForStream(message.streamUuid));
-  }
-
-  return conversationIds;
-}
-
-function indexMessageIntoBuckets(
-  state: Pick<MessengerDomainData, "messagesById" | "messageIdsByConversationId">,
-  message: MessengerMessage,
-  conversationIds: readonly MessengerConversationId[],
-): Pick<MessengerDomainData, "messagesById" | "messageIdsByConversationId"> {
-  const previousMessage = state.messagesById[message.uuid];
-  const nextMessagesById = {
-    ...state.messagesById,
-    [message.uuid]: message,
-  };
-  const nextMessageIdsByConversationId = { ...state.messageIdsByConversationId };
-  for (const conversationId of conversationIds) {
-    nextMessageIdsByConversationId[conversationId] = insertSortedMessageId(
-      nextMessageIdsByConversationId[conversationId] ?? EMPTY_IDS,
-      message,
-      nextMessagesById,
-      previousMessage,
-    );
-  }
-
-  return {
-    messagesById: nextMessagesById,
-    messageIdsByConversationId: nextMessageIdsByConversationId,
-  };
-}
-
 function compareIsoDateStrings(a: string | null | undefined, b: string | null | undefined): number {
   if (a == null && b == null) return 0;
   if (a == null) return -1;
@@ -462,24 +158,15 @@ function compareIsoDateStrings(a: string | null | undefined, b: string | null | 
 function isMessageFreshForContainer(
   message: MessengerMessage,
   currentLastMessageUuid: MessengerUuid | null | undefined,
-  messagesById: Record<MessengerUuid, MessengerMessage>,
   containerUpdatedAt?: string,
 ): boolean {
   if (currentLastMessageUuid == null) return true;
   if (currentLastMessageUuid === message.uuid) return true;
-
-  const currentMessage = messagesById[currentLastMessageUuid];
-  if (currentMessage == null) {
-    return (
-      containerUpdatedAt == null || compareIsoDateStrings(message.createdAt, containerUpdatedAt) > 0
-    );
-  }
-
-  return compareMessengerMessages(message, currentMessage) >= 0;
+  return containerUpdatedAt == null || compareIsoDateStrings(message.createdAt, containerUpdatedAt) >= 0;
 }
 
 function applyMessageFreshness(
-  state: MessengerFreshnessInputState,
+  state: MessengerFreshnessState,
   message: MessengerMessage,
 ): MessengerFreshnessState {
   let nextStreamsById = state.streamsById;
@@ -489,12 +176,7 @@ function applyMessageFreshness(
   const stream = state.streamsById[message.streamUuid];
   if (
     stream != null &&
-    isMessageFreshForContainer(
-      message,
-      stream.lastMessageUuid,
-      state.messagesById,
-      stream.updatedAt,
-    )
+    isMessageFreshForContainer(message, stream.lastMessageUuid, stream.updatedAt)
   ) {
     nextStreamsById = {
       ...nextStreamsById,
@@ -512,7 +194,7 @@ function applyMessageFreshness(
   const topic = state.topicsById[message.topicUuid];
   if (
     topic != null &&
-    isMessageFreshForContainer(message, topic.lastMessageUuid, state.messagesById, topic.updatedAt)
+    isMessageFreshForContainer(message, topic.lastMessageUuid, topic.updatedAt)
   ) {
     nextTopicsById = {
       ...nextTopicsById,
@@ -531,7 +213,7 @@ function applyMessageFreshness(
   const streamConversation = state.conversationsById[streamConversationId];
   if (
     streamConversation != null &&
-    isMessageFreshForContainer(message, streamConversation.lastMessageUuid, state.messagesById)
+    isMessageFreshForContainer(message, streamConversation.lastMessageUuid)
   ) {
     nextConversationsById = {
       ...nextConversationsById,
@@ -545,7 +227,7 @@ function applyMessageFreshness(
   const topicConversation = state.conversationsById[message.conversationId];
   if (
     topicConversation != null &&
-    isMessageFreshForContainer(message, topicConversation.lastMessageUuid, state.messagesById)
+    isMessageFreshForContainer(message, topicConversation.lastMessageUuid)
   ) {
     nextConversationsById = {
       ...nextConversationsById,
@@ -624,42 +306,6 @@ function clearDeletedMessageFreshness(
   };
 }
 
-function removeConversationPageState(
-  state: Pick<
-    MessengerDomainData,
-    | "messagesLoadingByConversationId"
-    | "messagesErrorByConversationId"
-    | "nextPageMarkerByConversationId"
-    | "hasMoreByConversationId"
-  >,
-  conversationIds: MessengerConversationId[],
-): Pick<
-  MessengerDomainData,
-  | "messagesLoadingByConversationId"
-  | "messagesErrorByConversationId"
-  | "nextPageMarkerByConversationId"
-  | "hasMoreByConversationId"
-> {
-  const nextLoading = { ...state.messagesLoadingByConversationId };
-  const nextErrors = { ...state.messagesErrorByConversationId };
-  const nextPageMarkers = { ...state.nextPageMarkerByConversationId };
-  const nextHasMore = { ...state.hasMoreByConversationId };
-
-  for (const conversationId of conversationIds) {
-    delete nextLoading[conversationId];
-    delete nextErrors[conversationId];
-    delete nextPageMarkers[conversationId];
-    delete nextHasMore[conversationId];
-  }
-
-  return {
-    messagesLoadingByConversationId: nextLoading,
-    messagesErrorByConversationId: nextErrors,
-    nextPageMarkerByConversationId: nextPageMarkers,
-    hasMoreByConversationId: nextHasMore,
-  };
-}
-
 function rebuildFolderWithItems(
   folder: MessengerFolder,
   items: MessengerFolderItem[],
@@ -668,8 +314,8 @@ function rebuildFolderWithItems(
   return {
     ...folder,
     items,
-    // Для realtime folder_item.deleted backend не присылает новый счётчик папки.
-    // Поэтому оставляем Folder DTO source of truth до следующего folder.updated snapshot.
+    // For realtime folder_item.deleted, the backend does not send a new folder counter.
+    // Keep the Folder DTO as source of truth until the next folder.updated snapshot.
     unreadCount:
       options?.preserveUnreadCount === true
         ? folder.unreadCount
@@ -724,81 +370,6 @@ function upsertConversation(
       [conversation.id]: conversation,
     },
     conversationIds: appendUniqueId(state.conversationIds, conversation.id),
-  };
-}
-
-function removeConversationMessages(
-  messagesById: Record<MessengerUuid, MessengerMessage>,
-  messageIdsByConversationId: Record<MessengerConversationId, MessengerUuid[]>,
-  conversationIds: MessengerConversationId[],
-): {
-  messagesById: Record<MessengerUuid, MessengerMessage>;
-  messageIdsByConversationId: Record<MessengerConversationId, MessengerUuid[]>;
-} {
-  // Когда удаляем conversation, чистим только те сообщения, которые больше не видны в других buckets.
-  const nextMessagesById = { ...messagesById };
-  const nextMessageIdsByConversationId = { ...messageIdsByConversationId };
-  const removedConversationIds = new Set(conversationIds);
-
-  for (const conversationId of conversationIds) {
-    const messageIds = nextMessageIdsByConversationId[conversationId] ?? EMPTY_IDS;
-    for (const messageId of messageIds) {
-      if (
-        !isMessageReferencedOutsideConversations(
-          messageIdsByConversationId,
-          removedConversationIds,
-          messageId,
-        )
-      ) {
-        delete nextMessagesById[messageId];
-      }
-    }
-    delete nextMessageIdsByConversationId[conversationId];
-  }
-
-  return {
-    messagesById: nextMessagesById,
-    messageIdsByConversationId: nextMessageIdsByConversationId,
-  };
-}
-
-function removeTopicMessages(
-  messagesById: Record<MessengerUuid, MessengerMessage>,
-  messageIdsByConversationId: Record<MessengerConversationId, MessengerUuid[]>,
-  topic: MessengerDeletedTopic,
-): {
-  messagesById: Record<MessengerUuid, MessengerMessage>;
-  messageIdsByConversationId: Record<MessengerConversationId, MessengerUuid[]>;
-} {
-  const topicConversationId = conversationIdForTopic(topic.streamUuid, topic.uuid);
-  const streamConversationId = conversationIdForStream(topic.streamUuid);
-  const topicMessageIds = new Set(messageIdsByConversationId[topicConversationId] ?? EMPTY_IDS);
-
-  for (const messageId of messageIdsByConversationId[streamConversationId] ?? EMPTY_IDS) {
-    const message = messagesById[messageId];
-    if (message?.topicUuid === topic.uuid) {
-      topicMessageIds.add(messageId);
-    }
-  }
-
-  const nextMessagesById = { ...messagesById };
-  const nextMessageIdsByConversationId = { ...messageIdsByConversationId };
-  delete nextMessageIdsByConversationId[topicConversationId];
-  nextMessageIdsByConversationId[streamConversationId] = (
-    nextMessageIdsByConversationId[streamConversationId] ?? EMPTY_IDS
-  ).filter((messageId) => !topicMessageIds.has(messageId));
-
-  for (const messageId of topicMessageIds) {
-    if (
-      !isMessageReferencedOutsideConversations(nextMessageIdsByConversationId, new Set(), messageId)
-    ) {
-      delete nextMessagesById[messageId];
-    }
-  }
-
-  return {
-    messagesById: nextMessagesById,
-    messageIdsByConversationId: nextMessageIdsByConversationId,
   };
 }
 
@@ -862,12 +433,6 @@ function buildMessengerDomainData(payload: MessengerBootstrapPayload): Messenger
     topicIds,
     conversationsById,
     conversationIds,
-    messagesById: EMPTY_MESSAGES_BY_ID,
-    messageIdsByConversationId: EMPTY_MESSAGE_IDS_BY_CONVERSATION_ID,
-    messagesLoadingByConversationId: EMPTY_MESSAGES_LOADING_BY_CONVERSATION_ID,
-    messagesErrorByConversationId: EMPTY_MESSAGES_ERROR_BY_CONVERSATION_ID,
-    nextPageMarkerByConversationId: EMPTY_NEXT_PAGE_MARKER_BY_CONVERSATION_ID,
-    hasMoreByConversationId: EMPTY_HAS_MORE_BY_CONVERSATION_ID,
     foldersById,
     folderIds,
     usersById,
@@ -918,136 +483,6 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
         isLoading: false,
         error: null,
         lastLoadedAt: Date.now(),
-      };
-    });
-  },
-
-  replaceConversationMessages(ownerKey, conversationId, messages) {
-    logStoreAction("messenger", "replaceConversationMessages", {
-      ownerKey,
-      conversationId,
-      messages: messages.length,
-    });
-    set((state) => {
-      if (state.ownerKey !== ownerKey) return state;
-
-      return applyConversationMessagesBucket(state, conversationId, messages);
-    });
-  },
-
-  startConversationMessagesLoad(ownerKey, conversationId) {
-    logStoreAction("messenger", "startConversationMessagesLoad", { ownerKey, conversationId });
-    set((state) => {
-      if (state.ownerKey !== ownerKey) return state;
-
-      const nextErrors = { ...state.messagesErrorByConversationId };
-      delete nextErrors[conversationId];
-
-      return {
-        messagesLoadingByConversationId: {
-          ...state.messagesLoadingByConversationId,
-          [conversationId]: true,
-        },
-        messagesErrorByConversationId: nextErrors,
-      };
-    });
-  },
-
-  applyConversationMessagesLoadSuccess(ownerKey, conversationId, messages, options) {
-    logStoreAction("messenger", "applyConversationMessagesLoadSuccess", {
-      ownerKey,
-      conversationId,
-      messages: messages.length,
-      mode: options.mode,
-      nextPageMarker: options.nextPageMarker,
-      hasMore: options.hasMore,
-    });
-    set((state) => {
-      if (state.ownerKey !== ownerKey) return state;
-
-      const nextLoading = { ...state.messagesLoadingByConversationId };
-      delete nextLoading[conversationId];
-      const nextErrors = { ...state.messagesErrorByConversationId };
-      delete nextErrors[conversationId];
-      const messageState = applyConversationMessagesBucket(state, conversationId, messages);
-
-      return {
-        ...messageState,
-        messagesLoadingByConversationId: nextLoading,
-        messagesErrorByConversationId: nextErrors,
-        nextPageMarkerByConversationId: {
-          ...state.nextPageMarkerByConversationId,
-          [conversationId]: options.nextPageMarker,
-        },
-        hasMoreByConversationId: {
-          ...state.hasMoreByConversationId,
-          [conversationId]: options.hasMore,
-        },
-      };
-    });
-  },
-
-  finishConversationMessagesLoad(ownerKey, conversationId, nextPageMarker) {
-    logStoreAction("messenger", "finishConversationMessagesLoad", {
-      ownerKey,
-      conversationId,
-      nextPageMarker,
-    });
-    set((state) => {
-      if (state.ownerKey !== ownerKey) return state;
-
-      const nextLoading = { ...state.messagesLoadingByConversationId };
-      delete nextLoading[conversationId];
-      const nextErrors = { ...state.messagesErrorByConversationId };
-      delete nextErrors[conversationId];
-
-      return {
-        messagesLoadingByConversationId: nextLoading,
-        messagesErrorByConversationId: nextErrors,
-        nextPageMarkerByConversationId: {
-          ...state.nextPageMarkerByConversationId,
-          [conversationId]: nextPageMarker,
-        },
-        hasMoreByConversationId: {
-          ...state.hasMoreByConversationId,
-          [conversationId]: nextPageMarker != null,
-        },
-      };
-    });
-  },
-
-  failConversationMessagesLoad(ownerKey, conversationId, error) {
-    logStoreAction("messenger", "failConversationMessagesLoad", {
-      ownerKey,
-      conversationId,
-      error,
-    });
-    set((state) => {
-      if (state.ownerKey !== ownerKey) return state;
-
-      const nextLoading = { ...state.messagesLoadingByConversationId };
-      delete nextLoading[conversationId];
-
-      return {
-        messagesLoadingByConversationId: nextLoading,
-        messagesErrorByConversationId: {
-          ...state.messagesErrorByConversationId,
-          [conversationId]: error,
-        },
-      };
-    });
-  },
-
-  cancelConversationMessagesLoad(ownerKey, conversationId) {
-    logStoreAction("messenger", "cancelConversationMessagesLoad", { ownerKey, conversationId });
-    set((state) => {
-      if (state.ownerKey !== ownerKey) return state;
-
-      const nextLoading = { ...state.messagesLoadingByConversationId };
-      delete nextLoading[conversationId];
-
-      return {
-        messagesLoadingByConversationId: nextLoading,
       };
     });
   },
@@ -1110,13 +545,6 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
       }
       const nextStreamBindingIdsByStreamId = { ...state.streamBindingIdsByStreamId };
       delete nextStreamBindingIdsByStreamId[stream.uuid];
-      const messageState = removeConversationMessages(
-        state.messagesById,
-        state.messageIdsByConversationId,
-        removedConversationIds,
-      );
-      const pageState = removeConversationPageState(state, removedConversationIds);
-
       return {
         streamsById: nextStreamsById,
         streamIds: removeId(state.streamIds, stream.uuid),
@@ -1131,8 +559,6 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
           (bindingId) => !removedBindingIds.includes(bindingId),
         ),
         streamBindingIdsByStreamId: nextStreamBindingIdsByStreamId,
-        ...messageState,
-        ...pageState,
       };
     });
   },
@@ -1167,8 +593,8 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
         const stream = state.streamsById[binding.streamUuid];
         if (stream == null) continue;
 
-        // stream_binding показывает, что текущий пользователь видит stream.
-        // Поэтому binding event должен оживить chat surface, даже если stream snapshot уже был в store.
+        // stream_binding shows that the current user can see the stream.
+        // The binding event must revive the chat surface even if the stream snapshot was already in store.
         let conversationState = upsertConversation(
           {
             conversationsById: nextConversationsById,
@@ -1249,186 +675,28 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
       const conversationId = conversationIdForTopic(topic.streamUuid, topic.uuid);
       const nextConversationsById = { ...state.conversationsById };
       delete nextConversationsById[conversationId];
-      const messageState = removeTopicMessages(
-        state.messagesById,
-        state.messageIdsByConversationId,
-        topic,
-      );
-      const pageState = removeConversationPageState(state, [conversationId]);
-
       return {
         topicsById: nextTopicsById,
         topicIds: removeId(state.topicIds, topic.uuid),
         conversationsById: nextConversationsById,
         conversationIds: removeId(state.conversationIds, conversationId),
-        ...messageState,
-        ...pageState,
       };
     });
   },
 
-  upsertMessage(ownerKey, message) {
-    logStoreAction("messenger", "upsertMessage", { ownerKey, messageUuid: message.uuid });
+  applyMessagePointer(ownerKey, message) {
+    logStoreAction("messenger", "applyMessagePointer", { ownerKey, messageUuid: message.uuid });
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
-
-      const previous = state.messagesById[message.uuid];
-      const nextMessagesById = {
-        ...state.messagesById,
-        [message.uuid]: message,
-      };
-      const nextMessageIdsByConversationId = { ...state.messageIdsByConversationId };
-      if (previous != null) {
-        for (const previousConversationId of conversationBucketsForMessage(previous, {
-          includeStreamConversation: true,
-        })) {
-          if (
-            previousConversationId === message.conversationId ||
-            previousConversationId === conversationIdForStream(message.streamUuid)
-          ) {
-            continue;
-          }
-
-          nextMessageIdsByConversationId[previousConversationId] = removeId(
-            nextMessageIdsByConversationId[previousConversationId] ?? EMPTY_IDS,
-            message.uuid,
-          );
-        }
-      }
-      for (const conversationId of conversationBucketsForMessage(message, {
-        includeStreamConversation: true,
-      })) {
-        nextMessageIdsByConversationId[conversationId] = insertSortedMessageId(
-          nextMessageIdsByConversationId[conversationId] ?? EMPTY_IDS,
-          message,
-          nextMessagesById,
-          previous,
-        );
-      }
-      // Workspace realtime может прислать тот же uuid после reload/catch-up или как echo.
-      // Старый Zulip optimistic path здесь не используем: тело одно по uuid, buckets только дедупят порядок.
-      const freshnessState = applyMessageFreshness(state, message);
-
-      return {
-        ...freshnessState,
-        messagesById: nextMessagesById,
-        messageIdsByConversationId: nextMessageIdsByConversationId,
-      };
+      return applyMessageFreshness(state, message);
     });
   },
 
-  indexMessageIntoConversationBuckets(ownerKey, message, options) {
-    const conversationIds = conversationBucketsForMessage(message, options);
-    logStoreAction("messenger", "indexMessageIntoConversationBuckets", {
-      ownerKey,
-      messageUuid: message.uuid,
-      conversations: conversationIds.length,
-    });
+  clearMessagePointer(ownerKey, message) {
+    logStoreAction("messenger", "clearMessagePointer", { ownerKey, messageUuid: message.uuid });
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
-
-      return {
-        ...applyMessageFreshness(state, message),
-        ...indexMessageIntoBuckets(state, message, conversationIds),
-      };
-    });
-  },
-
-  applyMessageEdit(ownerKey, messageUuid, patch) {
-    logStoreAction("messenger", "applyMessageEdit", { ownerKey, messageUuid });
-    set((state) => {
-      if (state.ownerKey !== ownerKey) return state;
-
-      const message = state.messagesById[messageUuid];
-      if (message == null) return state;
-
-      return {
-        messagesById: {
-          ...state.messagesById,
-          [messageUuid]: {
-            ...message,
-            markdown: patch.markdown,
-            updatedAt: patch.updatedAt ?? message.updatedAt,
-          },
-        },
-      };
-    });
-  },
-
-  markMessageRead(ownerKey, messageUuid, options) {
-    logStoreAction("messenger", "markMessageRead", { ownerKey, messageUuid });
-    set((state) => {
-      if (state.ownerKey !== ownerKey) return state;
-
-      const message = state.messagesById[messageUuid];
-      if (message == null) return state;
-      if (options?.conversationIds != null) {
-        const messageIsVisible = options.conversationIds.some((conversationId) =>
-          (state.messageIdsByConversationId[conversationId] ?? EMPTY_IDS).includes(messageUuid),
-        );
-        if (!messageIsVisible) return state;
-      }
-
-      return {
-        messagesById: {
-          ...state.messagesById,
-          [messageUuid]: {
-            ...message,
-            read: true,
-          },
-        },
-      };
-    });
-  },
-
-  removeMessage(ownerKey, message, options) {
-    logStoreAction("messenger", "removeMessage", { ownerKey, messageUuid: message.uuid });
-    set((state) => {
-      if (state.ownerKey !== ownerKey) return state;
-
-      // Delete API знает uuid сообщения, а UI может показывать его в stream и topic одновременно.
-      // Поэтому сначала убираем uuid из нужных списков, и только потом решаем, можно ли удалить тело.
-      const nextMessageIdsByConversationId = { ...state.messageIdsByConversationId };
-      const conversationIdsToRemove =
-        options?.conversationIds ?? Object.keys(nextMessageIdsByConversationId);
-      for (const conversationId of conversationIdsToRemove) {
-        nextMessageIdsByConversationId[conversationId] = removeId(
-          nextMessageIdsByConversationId[conversationId] ?? EMPTY_IDS,
-          message.uuid,
-        );
-      }
-
-      const shouldDeleteMessage =
-        options?.conversationIds == null ||
-        !isMessageReferencedOutsideConversations(
-          nextMessageIdsByConversationId,
-          new Set(conversationIdsToRemove),
-          message.uuid,
-        );
-      const nextMessagesById = shouldDeleteMessage ? { ...state.messagesById } : state.messagesById;
-      if (shouldDeleteMessage) {
-        delete nextMessagesById[message.uuid];
-      }
-      const freshnessState = clearDeletedMessageFreshness(state, message);
-
-      return {
-        ...freshnessState,
-        messagesById: nextMessagesById,
-        messageIdsByConversationId: nextMessageIdsByConversationId,
-      };
-    });
-  },
-
-  mergeConversationMessagesPage(ownerKey, conversationId, messages) {
-    logStoreAction("messenger", "mergeConversationMessagesPage", {
-      ownerKey,
-      conversationId,
-      messages: messages.length,
-    });
-    set((state) => {
-      if (state.ownerKey !== ownerKey) return state;
-
-      return applyConversationMessagesBucket(state, conversationId, messages);
+      return clearDeletedMessageFreshness(state, message);
     });
   },
 
@@ -1624,58 +892,4 @@ export function selectMessengerFolders(state: MessengerStoreState): MessengerFol
   foldersCacheMap = state.foldersById;
   foldersCacheResult = folders;
   return folders;
-}
-
-interface ConversationMessagesCacheEntry {
-  ids: MessengerUuid[];
-  messagesById: Record<MessengerUuid, MessengerMessage>;
-  result: MessengerMessage[];
-}
-
-const conversationMessagesCache = new Map<
-  MessengerConversationId,
-  ConversationMessagesCacheEntry
->();
-
-export function selectMessengerMessagesForConversation(
-  state: MessengerStoreState,
-  conversationId: MessengerConversationId,
-): MessengerMessage[] {
-  const messageIds = state.messageIdsByConversationId[conversationId] ?? EMPTY_IDS;
-  if (messageIds.length === 0) return EMPTY_MESSAGES;
-
-  const cached = conversationMessagesCache.get(conversationId);
-  if (cached?.ids === messageIds && cached.messagesById === state.messagesById) {
-    return cached.result;
-  }
-
-  const messages = messageIds
-    .map((messageId) => state.messagesById[messageId])
-    .filter((message): message is MessengerMessage => message != null);
-
-  conversationMessagesCache.set(conversationId, {
-    ids: messageIds,
-    messagesById: state.messagesById,
-    result: messages,
-  });
-  return messages;
-}
-
-export interface MessengerConversationMessagesStatus {
-  loading: boolean;
-  error: string | null;
-  nextPageMarker: string | null;
-  hasMore: boolean;
-}
-
-export function selectMessengerConversationMessagesStatus(
-  state: MessengerStoreState,
-  conversationId: MessengerConversationId,
-): MessengerConversationMessagesStatus {
-  return {
-    loading: state.messagesLoadingByConversationId[conversationId] === true,
-    error: state.messagesErrorByConversationId[conversationId] ?? null,
-    nextPageMarker: state.nextPageMarkerByConversationId[conversationId] ?? null,
-    hasMore: state.hasMoreByConversationId[conversationId] === true,
-  };
 }

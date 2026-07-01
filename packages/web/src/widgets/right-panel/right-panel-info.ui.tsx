@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
-import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { ensureUserStatusLoaded } from "~/entities/user/api/user.api";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
@@ -16,7 +15,6 @@ import { StreamNotificationLevelSwitch } from "~/features/mute-chat/stream-notif
 import type { StreamNotificationLevel } from "~/features/mute-chat/stream-notification-level.lib";
 import { useRemoveStreamMembersStore } from "~/features/remove-stream-members/remove-stream-members.model";
 import { t } from "~/i18n/i18n";
-import { deleteTopic, updateStream } from "~/shared/api/zulip-streams";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { createLogger } from "~/shared/lib/logger";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
@@ -24,7 +22,7 @@ import { parseRole, UserRole } from "~/shared/lib/roles";
 import { resolveCurrentUserChannelCapabilities } from "~/shared/lib/stream-member-management-permissions.lib";
 import { resolveCanonicalStreamName } from "~/shared/lib/stream-name.lib";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
-import { encodeTopicForRoute, normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
 import { useInputMode } from "~/shared/lib/touch";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
@@ -56,10 +54,8 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
   const rightDrawer = useRightDrawer();
   const chatInfoData = useChatInfoStore((s) => s.data);
   const streamMemberIds = useChatInfoStore((s) => s.streamMemberIds);
-  const context = useCurrentChatMessagesStore((s) => s.context);
-  const streamId = context?.type === "stream" ? context.streamId : null;
+  const streamId = null;
   const currentUserId = useChatListStore((s) => s.currentUserId);
-  const streamMetadataHydrated = useChatListStore((s) => s.streamMetadataHydrated);
   const streamEntry = useChatListStore((s) =>
     streamId != null ? s.streamsMap.get(streamId) : undefined,
   );
@@ -342,70 +338,14 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
 
     setChannelActionPending(true);
     setChannelActionError(null);
-    const ok = await updateStream(streamId, {
-      name: trimmedName,
-      description: editDescription.trim(),
-    });
-    if (ok) {
-      useChatListStore.getState().renameStream(streamId, trimmedName);
-      const nextInfo = useChatInfoStore.getState().data;
-      if (nextInfo?.type === "stream") {
-        useChatInfoStore.getState().setData({
-          ...nextInfo,
-          name: trimmedName,
-          description: editDescription.trim().length > 0 ? editDescription.trim() : null,
-        });
-      }
-      void navigate(withCurrentOrgRoute("/inbox"), { replace: true });
-      setEditOpen(false);
-    } else {
-      setChannelActionError(t("app.error"));
-    }
+    setChannelActionError(t("workspaceMessenger.actionUnsupported"));
     setChannelActionPending(false);
   };
   const handleDeleteChannel = async () => {
     if (streamId == null || channelActionPending) return;
     if (!window.confirm(t("channel.deleteChannel"))) return;
 
-    setChannelActionPending(true);
-    setChannelActionError(null);
-    const chatList = useChatListStore.getState();
-    const previousArchivedState = chatList.streamsMap.get(streamId)?.isArchived;
-    chatList.setStreamArchived(streamId, true);
-    useChatInfoStore.getState().clear();
-    useCurrentChatMessagesStore.getState().setContext(null);
-    useCurrentChatMessagesStore.getState().setMessages([]);
-
-    const nextVisibleStream = chatList.streams().find((candidate) => {
-      if (candidate.stream_id === streamId) return false;
-      const metadata = chatList.streamsMap.get(candidate.stream_id);
-      if (metadata?.isArchived === true) return false;
-      if (!streamMetadataHydrated && metadata?.isArchived == null) return false;
-      return true;
-    });
-    if (nextVisibleStream) {
-      void navigate(
-        withCurrentOrgRoute(
-          `/stream/${buildStreamSlug(nextVisibleStream.stream_id, nextVisibleStream.name)}`,
-        ),
-        { replace: true },
-      );
-    } else {
-      void navigate("/", { replace: true });
-    }
-
-    try {
-      const ok = await updateStream(streamId, { isArchived: true });
-      if (!ok) {
-        chatList.setStreamArchived(streamId, previousArchivedState);
-        setChannelActionError(t("app.error"));
-      }
-    } catch {
-      chatList.setStreamArchived(streamId, previousArchivedState);
-      setChannelActionError(t("app.error"));
-    } finally {
-      setChannelActionPending(false);
-    }
+    setChannelActionError(t("workspaceMessenger.actionUnsupported"));
   };
   const handleDeleteTopic = async (topicName: string) => {
     if (streamId == null || topicDeletePendingName != null) return;
@@ -413,38 +353,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     if (!window.confirm(t("channel.deleteTopicConfirm", { topic: topicLabel }))) return;
 
     setTopicDeletePendingName(topicName);
-    setTopicDeleteError(null);
-    const result = await deleteTopic(streamId, topicName);
-    if (result.ok && result.complete) {
-      const chatList = useChatListStore.getState();
-      chatList.removeStreamTopic(streamId, topicName);
-      const nextInfo = useChatInfoStore.getState().data;
-      if (nextInfo?.type === "stream") {
-        useChatInfoStore.getState().setData({
-          ...nextInfo,
-          topics: (nextInfo.topics ?? []).filter(
-            (topic) =>
-              normalizeTopicForIdentity(topic.name) !== normalizeTopicForIdentity(topicName),
-          ),
-        });
-      }
-
-      const isDeletingActiveTopic =
-        context?.type === "stream" &&
-        context.streamId === streamId &&
-        context.streamWideView !== true &&
-        normalizeTopicForIdentity(context.topic) === normalizeTopicForIdentity(topicName);
-      if (isDeletingActiveTopic) {
-        void navigate(
-          withCurrentOrgRoute(
-            `/stream/${buildStreamSlug(streamId, canonicalStreamName ?? displayStreamName)}`,
-          ),
-          { replace: true },
-        );
-      }
-    } else {
-      setTopicDeleteError(t("app.error"));
-    }
+    setTopicDeleteError(t("workspaceMessenger.actionUnsupported"));
     setTopicDeletePendingName(null);
   };
 

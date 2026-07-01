@@ -1,1251 +1,408 @@
-/**
- * Current chat messages store — holds messages for the active chat view.
- *
- * Resets on context (stream/topic or DM) change; updated by real-time events
- * for reactions, flags, content edits, and deletions.
- */
 import { create } from "zustand";
+import type {
+  MessengerConversationId,
+  MessengerMessage,
+  MessengerUuid,
+} from "~/entities/messenger/messenger.types";
+import { logStoreAction } from "~/shared/lib/logger";
 import {
-  captureActiveOrgRequestContext,
-  isActiveOrgRequestContextCurrent,
-  isActiveOrgRequestInvalidated,
-} from "~/entities/instance/instance.model";
-import { useUsersStore } from "~/entities/user/user.model";
-import { getCurrentInstance } from "~/shared/api/client";
-import { fetchMessagesWithNarrowPage } from "~/shared/api/zulip-messages";
-import type { MockMessage } from "~/shared/api/zulip.types";
-import { createLogger, logStoreAction } from "~/shared/lib/logger";
-import {
-  deleteMessagesByIds,
-  patchMessageContentInCache,
-  patchMessageFlagsInCache,
-  patchMessageReactionInCache,
-  putSingleMessage,
-  updateChatMetaPatch,
-  upsertChatMessages,
-} from "~/shared/lib/message-cache-db";
-import { chatKeyFromContext, chatKeyFromMockMessage } from "~/shared/lib/message-cache-keys.lib";
-import { logMessageFlow, summarizeChatContextForLog } from "~/shared/lib/message-flow-debug.lib";
-import { filterMessageLinkPreviewsForMarkdown } from "~/shared/lib/message-link-preview-filter.lib";
-import { upsertLinkPreviewOnMessage } from "~/shared/lib/message-link-preview-list.lib";
-import { mergeMessagePreservingLinkPreview } from "~/shared/lib/message-link-preview-merge.lib";
-import { applyPendingLinkPreviewsToMessage } from "~/shared/lib/message-link-preview-pending.lib";
-import { traceLinkPreview } from "~/shared/lib/message-link-preview-trace.lib";
-import {
-  computeHasNewerAfterLoadNewerIdbPage,
-  resolveHasOlderAfterLoadOlderPage,
-  resolveOldestMessageId,
-} from "~/shared/lib/message-pagination-boundary.lib";
-import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
-import { resolveTopicMoveTargetMessageIds } from "~/shared/lib/update-message-topic-move.lib";
-import { zulipMessageCacheWindowN } from "~/shared/lib/zulip-message-window.lib";
-import {
-  computeAppendMessageStateUpdate,
-  type MessageAppendIdbPlan,
-} from "./message-append-state.lib";
-import {
-  patchPartitionMetaByMessages,
-  upsertMessagesByChatPartitions,
-} from "./message-cache-partition.lib";
-import { buildMessageFetchNarrow, isSameChatLocation } from "./message-chat-context.lib";
-import { loadInitialMessagesRouteDriven } from "./message-initial-loader.lib";
-import { persistChatMessagesToIndexedDb } from "./message-local-cache.lib";
-import { patchMessageAtId, patchMessagesFlags } from "./message-patch.lib";
-import { applyMessageReactionUpdate } from "./message-reaction-update.lib";
-import type { CurrentChatContext, CurrentChatMessagesState } from "./message.model.types";
+  conversationBucketsForWorkspaceMessage,
+  EMPTY_WORKSPACE_MESSAGE_IDS,
+  EMPTY_WORKSPACE_MESSAGES,
+  insertSortedWorkspaceMessageId,
+  isWorkspaceMessageReferencedOutsideConversations,
+  mergeSortedWorkspaceMessageIds,
+  removeWorkspaceMessageId,
+} from "./message-workspace-order.lib";
+import type {
+  WorkspaceConversationMessagesStatus,
+  WorkspaceMessageStoreData,
+  WorkspaceMessageStoreState,
+} from "./message.model.types";
 
-export type { CurrentChatContext } from "./message.model.types";
-export { contextFromMessage, isMessageForContext } from "./message-chat-context.lib";
+export type {
+  WorkspaceConversationMessagesStatus,
+  WorkspaceConversationPagination,
+  WorkspaceMessageBucketIndexOptions,
+  WorkspaceMessageEditPatch,
+  WorkspaceMessageStoreData,
+  WorkspaceMessageStoreState,
+  WorkspaceScopedMessageMutationOptions,
+} from "./message.model.types";
 
-const loadOlderLog = createLogger("messages:loadOlder");
+const EMPTY_MESSAGES_BY_ID: Record<MessengerUuid, MessengerMessage> = {};
+const EMPTY_MESSAGE_IDS_BY_CONVERSATION_ID: Record<MessengerConversationId, MessengerUuid[]> = {};
+const EMPTY_MESSAGES_LOADING_BY_CONVERSATION_ID: Record<MessengerConversationId, boolean> = {};
+const EMPTY_MESSAGES_ERROR_BY_CONVERSATION_ID: Record<MessengerConversationId, string | null> = {};
+const EMPTY_NEXT_PAGE_MARKER_BY_CONVERSATION_ID: Record<MessengerConversationId, string | null> =
+  {};
+const EMPTY_HAS_MORE_BY_CONVERSATION_ID: Record<MessengerConversationId, boolean> = {};
 
-function hydratedMessagesMatchContext(
-  messages: readonly MockMessage[],
-  next: CurrentChatContext,
-  currentUserId: number | null,
-): boolean {
-  if (messages.length === 0) return true;
-  if (next.type === "dm") {
-    const expected = chatKeyFromContext({ type: "dm", dmKey: next.dmKey });
-    return messages.every((m) => chatKeyFromMockMessage(m, currentUserId) === expected);
-  }
-  if (next.streamWideView) {
-    return messages.every((m) => m.stream_id === next.streamId);
-  }
-  const expected = chatKeyFromContext({
-    type: "stream",
-    streamId: next.streamId,
-    topic: next.topic,
-  });
-  return messages.every((m) => chatKeyFromMockMessage(m, currentUserId) === expected);
-}
+const EMPTY_STATUS: WorkspaceConversationMessagesStatus = {
+  loading: false,
+  error: null,
+  nextPageMarker: null,
+  hasMore: false,
+};
 
-// Stale initial-load responses must not mutate store state after a newer chat is selected.
-let initialLoadGeneration = 0;
-
-// Abort the in-flight refresh when the user switches chats before the network round-trip finishes.
-let initialLoadAbortController: AbortController | null = null;
-let boundaryLoadAbortController: AbortController | null = null;
-
-function isAbortLikeError(error: unknown): boolean {
-  return (
-    (error instanceof DOMException && error.name === "AbortError") ||
-    (error instanceof Error && error.name === "AbortError")
-  );
-}
-
-// UI effect cleanup must abort the same in-flight request the store owns.
-function bindExternalAbortSignal(
-  controller: AbortController,
-  externalSignal?: AbortSignal,
-): () => void {
-  if (!externalSignal) {
-    return () => {};
-  }
-  const onExternalAbort = () => {
-    controller.abort();
-  };
-  externalSignal.addEventListener("abort", onExternalAbort);
-  if (externalSignal.aborted) {
-    controller.abort();
-  }
-  return () => {
-    externalSignal.removeEventListener("abort", onExternalAbort);
-  };
-}
-
-function abortBoundaryLoad(): void {
-  boundaryLoadAbortController?.abort();
-  boundaryLoadAbortController = null;
-}
-
-function isCurrentChatRequest(
-  get: () => CurrentChatMessagesState,
-  context: CurrentChatContext,
-): boolean {
-  return isSameChatLocation(get().context, context);
-}
-
-function mergeUsersFromMessages(messages: readonly MockMessage[]): void {
-  const store = useUsersStore.getState();
-  for (const msg of messages) {
-    store.mergeUser({
-      user_id: msg.sender_id,
-      full_name: msg.sender_full_name ?? "",
-    });
-  }
-}
-
-function withOutgoingDeliveryStatus(message: MockMessage): MockMessage {
-  if (message.id > 0) {
-    return { ...message, delivery_status: "sent" };
-  }
-  return { ...message, delivery_status: "failed" };
-}
-
-function withPendingLinkPreviewsIfPersisted(message: MockMessage): MockMessage {
-  return message.id > 0 ? applyPendingLinkPreviewsToMessage(message) : message;
-}
-
-function clearMessageEditState(message: MockMessage): MockMessage {
-  const next = { ...message };
-  delete next.edit_status;
-  delete next.pending_edit_markdown;
-  delete next.previous_content;
-  delete next.previous_markdown_source;
-  delete next.edit_error;
-  return next;
-}
-
-function applyOptimisticEditToMessage(message: MockMessage, markdown: string): MockMessage {
-  const firstOptimisticEdit = message.previous_content === undefined;
-  const next: MockMessage = {
-    ...message,
-    content: markdown,
-    markdown_source: markdown,
-    edit_status: "saving",
-    pending_edit_markdown: markdown,
-    previous_content: firstOptimisticEdit ? message.content : message.previous_content,
-  };
-  if (firstOptimisticEdit) {
-    if (message.markdown_source !== undefined) {
-      next.previous_markdown_source = message.markdown_source;
-    }
-  } else if (message.previous_markdown_source !== undefined) {
-    next.previous_markdown_source = message.previous_markdown_source;
-  }
-  delete next.edit_error;
-  return filterMessageLinkPreviewsForMarkdown(next, markdown);
-}
-
-function failOptimisticEditOnMessage(message: MockMessage, error: string): MockMessage {
+function createEmptyWorkspaceMessageData(): WorkspaceMessageStoreData {
   return {
-    ...message,
-    edit_status: "failed",
-    edit_error: error,
+    messagesById: EMPTY_MESSAGES_BY_ID,
+    messageIdsByConversationId: EMPTY_MESSAGE_IDS_BY_CONVERSATION_ID,
+    messagesLoadingByConversationId: EMPTY_MESSAGES_LOADING_BY_CONVERSATION_ID,
+    messagesErrorByConversationId: EMPTY_MESSAGES_ERROR_BY_CONVERSATION_ID,
+    nextPageMarkerByConversationId: EMPTY_NEXT_PAGE_MARKER_BY_CONVERSATION_ID,
+    hasMoreByConversationId: EMPTY_HAS_MORE_BY_CONVERSATION_ID,
   };
 }
 
-function cancelFailedEditOnMessage(message: MockMessage): MockMessage {
-  if (message.previous_content === undefined) {
-    return clearMessageEditState(message);
+function applyConversationMessagesPage(
+  state: Pick<WorkspaceMessageStoreData, "messagesById" | "messageIdsByConversationId">,
+  conversationId: MessengerConversationId,
+  messages: readonly MessengerMessage[],
+): Pick<WorkspaceMessageStoreData, "messagesById" | "messageIdsByConversationId"> {
+  if (messages.length === 0) return state;
+
+  const nextMessagesById = { ...state.messagesById };
+  for (const message of messages) {
+    nextMessagesById[message.uuid] = message;
   }
-  const restored = clearMessageEditState({
-    ...message,
-    content: message.previous_content,
-    ...(message.previous_markdown_source !== undefined
-      ? { markdown_source: message.previous_markdown_source }
-      : {}),
-  });
-  if (message.previous_markdown_source === undefined) {
-    delete restored.markdown_source;
+
+  const previousIds =
+    state.messageIdsByConversationId[conversationId] ?? EMPTY_WORKSPACE_MESSAGE_IDS;
+  const nextMessageIds = mergeSortedWorkspaceMessageIds(previousIds, messages, nextMessagesById);
+
+  return {
+    messagesById: nextMessagesById,
+    messageIdsByConversationId: {
+      ...state.messageIdsByConversationId,
+      [conversationId]: nextMessageIds,
+    },
+  };
+}
+
+function indexMessageIntoBuckets(
+  state: Pick<WorkspaceMessageStoreData, "messagesById" | "messageIdsByConversationId">,
+  message: MessengerMessage,
+  conversationIds: readonly MessengerConversationId[],
+): Pick<WorkspaceMessageStoreData, "messagesById" | "messageIdsByConversationId"> {
+  const previousMessage = state.messagesById[message.uuid];
+  const nextMessagesById = {
+    ...state.messagesById,
+    [message.uuid]: message,
+  };
+  const nextMessageIdsByConversationId = { ...state.messageIdsByConversationId };
+
+  for (const conversationId of conversationIds) {
+    nextMessageIdsByConversationId[conversationId] = insertSortedWorkspaceMessageId(
+      nextMessageIdsByConversationId[conversationId] ?? EMPTY_WORKSPACE_MESSAGE_IDS,
+      message,
+      nextMessagesById,
+      previousMessage,
+    );
   }
-  return filterMessageLinkPreviewsForMarkdown(
-    restored,
-    restored.markdown_source ?? restored.content,
+
+  return {
+    messagesById: nextMessagesById,
+    messageIdsByConversationId: nextMessageIdsByConversationId,
+  };
+}
+
+function removeMessageFromConversationIds(
+  state: Pick<WorkspaceMessageStoreData, "messagesById" | "messageIdsByConversationId">,
+  messageUuid: MessengerUuid,
+  conversationIds: readonly MessengerConversationId[],
+): Pick<WorkspaceMessageStoreData, "messagesById" | "messageIdsByConversationId"> {
+  const nextMessageIdsByConversationId = { ...state.messageIdsByConversationId };
+  for (const conversationId of conversationIds) {
+    nextMessageIdsByConversationId[conversationId] = removeWorkspaceMessageId(
+      nextMessageIdsByConversationId[conversationId] ?? EMPTY_WORKSPACE_MESSAGE_IDS,
+      messageUuid,
+    );
+  }
+
+  const removedConversationIds = new Set(conversationIds);
+  const shouldDeleteMessage = !isWorkspaceMessageReferencedOutsideConversations(
+    nextMessageIdsByConversationId,
+    removedConversationIds,
+    messageUuid,
   );
-}
 
-function commitOptimisticEditOnMessage(
-  message: MockMessage,
-  serverMessage: MockMessage | null | undefined,
-): MockMessage {
-  const content = serverMessage?.content ?? message.content;
-  const markdownSource = serverMessage?.markdown_source ?? message.markdown_source;
-  const next = clearMessageEditState({
-    ...message,
-    content,
-    ...(markdownSource !== undefined ? { markdown_source: markdownSource } : {}),
-  });
-  return filterMessageLinkPreviewsForMarkdown(next, markdownSource ?? content);
-}
-
-function persistMessageContent(messageId: number, content: string, markdownSource?: string): void {
-  if (!persistChatMessagesToIndexedDb()) return;
-  const inst = getCurrentInstance()?.id;
-  if (!inst) return;
-  void patchMessageContentInCache({
-    instanceId: inst,
-    messageId,
-    content,
-    ...(markdownSource !== undefined ? { markdown_source: markdownSource } : {}),
-  });
-}
-
-function schedulePersistFullChatMessages(get: () => CurrentChatMessagesState): void {
-  if (!persistChatMessagesToIndexedDb()) return;
-  const inst = getCurrentInstance()?.id;
-  const ctx = get().context;
-  const msgs = get().messages;
-  if (!inst || !ctx || msgs.length === 0) return;
-  // Wide stream view must not collapse all topics into one default partition key.
-  if (ctx.type === "stream" && ctx.streamWideView) {
-    void upsertMessagesByChatPartitions({
-      instanceId: inst,
-      currentUserId: null,
-      messages: msgs,
-    });
-    return;
+  if (!shouldDeleteMessage) {
+    return {
+      messagesById: state.messagesById,
+      messageIdsByConversationId: nextMessageIdsByConversationId,
+    };
   }
-  const windowN = zulipMessageCacheWindowN(ctx);
-  void upsertChatMessages({
-    instanceId: inst,
-    chatKey: chatKeyFromContext(ctx),
-    messages: msgs,
-    windowSizeN: windowN,
-  });
+
+  const nextMessagesById = { ...state.messagesById };
+  delete nextMessagesById[messageUuid];
+
+  return {
+    messagesById: nextMessagesById,
+    messageIdsByConversationId: nextMessageIdsByConversationId,
+  };
 }
 
-// Wide context still persists each message under its actual topic partition key.
-function resolvePersistChatKeyForMessage(
-  context: CurrentChatContext,
-  message: MockMessage,
-): string {
-  if (context.type === "stream" && context.streamWideView) {
-    return chatKeyFromContext({
-      type: "stream",
-      streamId: context.streamId,
-      topic: normalizeTopicForIdentity(message.subject ?? ""),
+export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set) => ({
+  ...createEmptyWorkspaceMessageData(),
+
+  replaceOrMergeConversationMessagesPage(conversationId, messages) {
+    logStoreAction("workspaceMessage", "replaceOrMergeConversationMessagesPage", {
+      conversationId,
+      messages: messages.length,
     });
-  }
-  return chatKeyFromContext(context);
-}
-
-export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set, get) => ({
-  context: null,
-  messages: [],
-  pendingOutgoingEchoKeys: [],
-  isLoadingMore: false,
-  isLoadingNewer: false,
-  hasOlderMessages: true,
-  hasNewerMessages: false,
-  boundaryLoadFailed: false,
-  initialLoadError: null,
-
-  clearBoundaryLoadFailed() {
-    set({ boundaryLoadFailed: false });
+    set((state) => applyConversationMessagesPage(state, conversationId, messages));
   },
 
-  clearInitialLoadError() {
-    set({ initialLoadError: null });
-  },
-
-  setContext(context) {
-    const prev = get().context;
-    const cachedMessages: MockMessage[] = [];
-
-    let nextContext: CurrentChatContext | null = context;
-    if (prev != null && context?.type === "stream" && prev.type === "stream") {
-      nextContext = {
-        ...prev,
-        streamName: context.streamName,
-        streamId: context.streamId,
-        topic: context.topic,
-        streamWideView: context.streamWideView ?? prev.streamWideView,
-      };
-    }
-
-    if (isSameChatLocation(prev, nextContext)) {
-      if (
-        prev != null &&
-        nextContext != null &&
-        prev.type === "stream" &&
-        nextContext.type === "stream" &&
-        prev.streamName !== nextContext.streamName
-      ) {
-        set({ context: { ...prev, streamName: nextContext.streamName } });
-      }
-      return;
-    }
-
-    abortBoundaryLoad();
-
-    logMessageFlow("store:setContext", {
-      prev: summarizeChatContextForLog(prev),
-      next: summarizeChatContextForLog(nextContext),
-      persistIdb: persistChatMessagesToIndexedDb(),
-      nextStoreMessagesLen: cachedMessages.length,
+  mergeConversationMessagesPage(conversationId, messages) {
+    logStoreAction("workspaceMessage", "mergeConversationMessagesPage", {
+      conversationId,
+      messages: messages.length,
     });
+    set((state) => applyConversationMessagesPage(state, conversationId, messages));
+  },
 
-    set({
-      context: nextContext,
-      messages: cachedMessages,
-      pendingOutgoingEchoKeys: [],
-      isLoadingMore: false,
-      isLoadingNewer: false,
-      hasOlderMessages: true,
-      hasNewerMessages: false,
-      boundaryLoadFailed: false,
-      initialLoadError: null,
+  indexMessageIntoConversationBuckets(message, options) {
+    const conversationIds = conversationBucketsForWorkspaceMessage(message, options);
+    logStoreAction("workspaceMessage", "indexMessageIntoConversationBuckets", {
+      messageUuid: message.uuid,
+      conversations: conversationIds.length,
     });
+    set((state) => indexMessageIntoBuckets(state, message, conversationIds));
   },
 
-  setContextFromNavigation(context) {
-    get().setContext(context);
-  },
-
-  setMessages(messages) {
-    set({ messages, pendingOutgoingEchoKeys: [] });
-    if (persistChatMessagesToIndexedDb()) {
-      schedulePersistFullChatMessages(get);
-    }
-  },
-
-  prependMessages(msgs) {
+  upsertMessage(message) {
+    logStoreAction("workspaceMessage", "upsertMessage", { messageUuid: message.uuid });
     set((state) => {
-      const existingIds = new Set(state.messages.map((m) => m.id));
-      const fresh = msgs.filter((m) => !existingIds.has(m.id));
-      if (fresh.length === 0) return state;
-      return { messages: [...fresh, ...state.messages] };
-    });
-    if (persistChatMessagesToIndexedDb()) {
-      schedulePersistFullChatMessages(get);
-    }
-  },
+      const previousMessage = state.messagesById[message.uuid];
+      let nextMessageIdsByConversationId = state.messageIdsByConversationId;
 
-  appendMessages(msgs) {
-    set((state) => {
-      const existingIds = new Set(state.messages.map((m) => m.id));
-      const fresh = msgs
-        .filter((m) => !existingIds.has(m.id))
-        .map(withPendingLinkPreviewsIfPersisted);
-      if (fresh.length === 0) return state;
-      return { messages: [...state.messages, ...fresh] };
-    });
-    if (persistChatMessagesToIndexedDb()) {
-      schedulePersistFullChatMessages(get);
-    }
-  },
-
-  appendMessage(msg) {
-    const idbRef: { current: MessageAppendIdbPlan } = { current: { kind: "none" } };
-
-    set((state) => computeAppendMessageStateUpdate(state, msg, idbRef));
-
-    const state = get();
-    if (!state.context || !persistChatMessagesToIndexedDb()) return;
-    const inst = getCurrentInstance()?.id;
-    if (!inst) return;
-    const idbPlan = idbRef.current;
-    if (idbPlan.kind === "put") {
-      void putSingleMessage({
-        instanceId: inst,
-        chatKey: resolvePersistChatKeyForMessage(state.context, idbPlan.message),
-        message: idbPlan.message,
-        windowSizeN: zulipMessageCacheWindowN(state.context),
-      });
-    } else if (idbPlan.kind === "mergeReplace") {
-      if (idbPlan.removeId < 0) {
-        void deleteMessagesByIds(inst, [idbPlan.removeId]);
-      }
-      void putSingleMessage({
-        instanceId: inst,
-        chatKey: resolvePersistChatKeyForMessage(state.context, idbPlan.message),
-        message: idbPlan.message,
-        windowSizeN: zulipMessageCacheWindowN(state.context),
-      });
-    }
-  },
-
-  commitOutgoingMessage(optimisticId, finalMessage) {
-    const idbRef: {
-      current:
-        | { kind: "none" }
-        | { kind: "sync"; deleteNegativeId: number | null; message: MockMessage };
-    } = { current: { kind: "none" } };
-
-    set((state) => {
-      const nextQueue = state.pendingOutgoingEchoKeys.filter((k) => k !== optimisticId);
-      const delivered = withOutgoingDeliveryStatus(finalMessage);
-      const optIdx = state.messages.findIndex(
-        (m) => m.id === optimisticId || m.local_echo_key === optimisticId,
-      );
-      const realIdx = state.messages.findIndex((m) => m.id === finalMessage.id);
-
-      if (optIdx >= 0 && realIdx >= 0 && optIdx !== realIdx) {
-        const optimistic = state.messages[optIdx]!;
-        const echoKey = optimistic.local_echo_key ?? optimistic.id;
-        const updated = [...state.messages];
-        updated.splice(optIdx, 1);
-        const targetIdx = realIdx > optIdx ? realIdx - 1 : realIdx;
-        const existingAtTarget = updated[targetIdx];
-        const merged = withPendingLinkPreviewsIfPersisted(
-          mergeMessagePreservingLinkPreview(
-            mergeMessagePreservingLinkPreview(
-              { ...delivered, local_echo_key: echoKey },
-              optimistic,
-            ),
-            existingAtTarget,
-          ),
-        );
-        updated[targetIdx] = merged;
-        idbRef.current = {
-          kind: "sync",
-          deleteNegativeId: optimistic.id < 0 ? optimistic.id : null,
-          message: merged,
-        };
-        return { messages: updated, pendingOutgoingEchoKeys: nextQueue };
-      }
-
-      if (optIdx >= 0) {
-        const prev = state.messages[optIdx]!;
-        const echoKey = prev.local_echo_key ?? prev.id;
-        const merged = withPendingLinkPreviewsIfPersisted(
-          mergeMessagePreservingLinkPreview({ ...delivered, local_echo_key: echoKey }, prev),
-        );
-        const updated = [...state.messages];
-        updated[optIdx] = merged;
-        idbRef.current = {
-          kind: "sync",
-          deleteNegativeId: prev.id < 0 ? prev.id : null,
-          message: merged,
-        };
-        return { messages: updated, pendingOutgoingEchoKeys: nextQueue };
-      }
-
-      if (realIdx >= 0) {
-        const prev = state.messages[realIdx]!;
-        const echoKey = prev.local_echo_key ?? optimisticId;
-        const merged = withPendingLinkPreviewsIfPersisted(
-          mergeMessagePreservingLinkPreview({ ...delivered, local_echo_key: echoKey }, prev),
-        );
-        const updated = [...state.messages];
-        updated[realIdx] = merged;
-        idbRef.current = { kind: "sync", deleteNegativeId: null, message: merged };
-        return { messages: updated, pendingOutgoingEchoKeys: nextQueue };
-      }
-
-      const merged = withPendingLinkPreviewsIfPersisted({
-        ...delivered,
-        local_echo_key: optimisticId,
-      });
-      idbRef.current = { kind: "sync", deleteNegativeId: null, message: merged };
-      return {
-        messages: [...state.messages, merged],
-        pendingOutgoingEchoKeys: nextQueue,
-      };
-    });
-
-    const idbPlan = idbRef.current;
-    if (idbPlan.kind === "none" || !persistChatMessagesToIndexedDb()) return;
-    const state = get();
-    const inst = getCurrentInstance()?.id;
-    if (!state.context || !inst) return;
-    if (idbPlan.deleteNegativeId != null && idbPlan.deleteNegativeId < 0) {
-      void deleteMessagesByIds(inst, [idbPlan.deleteNegativeId]);
-    }
-    if (idbPlan.message.id > 0) {
-      void putSingleMessage({
-        instanceId: inst,
-        chatKey: resolvePersistChatKeyForMessage(state.context, idbPlan.message),
-        message: idbPlan.message,
-        windowSizeN: zulipMessageCacheWindowN(state.context),
-      });
-    }
-  },
-
-  removeMessage(messageId) {
-    set((state) => {
-      const removed = state.messages.find((m) => m.id === messageId);
-      const echoKey =
-        removed?.local_echo_key ?? (removed != null && removed.id < 0 ? removed.id : null);
-      const nextQueue =
-        echoKey != null
-          ? state.pendingOutgoingEchoKeys.filter((k) => k !== echoKey)
-          : state.pendingOutgoingEchoKeys;
-      return {
-        messages: state.messages.filter((m) => m.id !== messageId),
-        pendingOutgoingEchoKeys: nextQueue,
-      };
-    });
-    if (persistChatMessagesToIndexedDb()) {
-      const inst = getCurrentInstance()?.id;
-      if (inst) void deleteMessagesByIds(inst, [messageId]);
-    }
-  },
-
-  removeMessages(messageIds) {
-    const ids = new Set(messageIds);
-    set((state) => {
-      const echoKeysToDrop = new Set<number>();
-      for (const m of state.messages) {
-        if (!ids.has(m.id)) continue;
-        const k = m.local_echo_key ?? (m.id < 0 ? m.id : undefined);
-        if (k != null) echoKeysToDrop.add(k);
-      }
-      const nextQueue =
-        echoKeysToDrop.size === 0
-          ? state.pendingOutgoingEchoKeys
-          : state.pendingOutgoingEchoKeys.filter((k) => !echoKeysToDrop.has(k));
-      return {
-        messages: state.messages.filter((m) => !ids.has(m.id)),
-        pendingOutgoingEchoKeys: nextQueue,
-      };
-    });
-    if (persistChatMessagesToIndexedDb()) {
-      const inst = getCurrentInstance()?.id;
-      if (inst) void deleteMessagesByIds(inst, messageIds);
-    }
-  },
-
-  updateMessageReaction(messageId, reaction, op) {
-    set((state) => ({
-      messages: patchMessageAtId(state.messages, messageId, (m) =>
-        applyMessageReactionUpdate(m, reaction, op),
-      ),
-    }));
-    const state = get();
-    if (!state.context) return;
-    if (persistChatMessagesToIndexedDb()) {
-      const inst = getCurrentInstance()?.id;
-      if (inst) void patchMessageReactionInCache({ instanceId: inst, messageId, reaction, op });
-    }
-  },
-
-  updateMessageFlags(messageIds, flag, op) {
-    const ids = new Set(messageIds);
-    set((state) => ({
-      messages: patchMessagesFlags(state.messages, ids, flag, op),
-    }));
-    const state = get();
-    if (!state.context) return;
-    if (persistChatMessagesToIndexedDb()) {
-      const inst = getCurrentInstance()?.id;
-      if (inst) void patchMessageFlagsInCache({ instanceId: inst, messageIds, flag, op });
-    }
-  },
-
-  updateMessageContent(messageId, content, markdownSource) {
-    const markdownBody = markdownSource ?? content;
-    set((state) => ({
-      messages: patchMessageAtId(state.messages, messageId, (m) => {
-        const updated = clearMessageEditState({
-          ...m,
-          content,
-          ...(markdownSource !== undefined ? { markdown_source: markdownSource } : {}),
+      if (previousMessage != null) {
+        const previousConversationIds = conversationBucketsForWorkspaceMessage(previousMessage, {
+          includeStreamConversation: true,
         });
-        return filterMessageLinkPreviewsForMarkdown(updated, markdownBody);
-      }),
-    }));
-    const state = get();
-    if (!state.context) return;
-    persistMessageContent(messageId, content, markdownSource);
-  },
+        const nextConversationIds = new Set(
+          conversationBucketsForWorkspaceMessage(message, { includeStreamConversation: true }),
+        );
 
-  applyOptimisticMessageEdit(messageId, markdown) {
-    set((state) => ({
-      messages: patchMessageAtId(state.messages, messageId, (m) =>
-        applyOptimisticEditToMessage(m, markdown),
-      ),
-    }));
-    logStoreAction("message", "applyOptimisticMessageEdit", { messageId });
-  },
-
-  commitOptimisticMessageEdit(messageId, serverMessage) {
-    set((state) => ({
-      messages: patchMessageAtId(state.messages, messageId, (m) =>
-        commitOptimisticEditOnMessage(m, serverMessage),
-      ),
-    }));
-    const message = get().messages.find((candidate) => candidate.id === messageId);
-    if (message != null) {
-      persistMessageContent(messageId, message.content, message.markdown_source);
-    }
-    logStoreAction("message", "commitOptimisticMessageEdit", {
-      messageId,
-      hasServerMessage: serverMessage != null,
-    });
-  },
-
-  failOptimisticMessageEdit(messageId, error) {
-    set((state) => ({
-      messages: patchMessageAtId(state.messages, messageId, (m) =>
-        failOptimisticEditOnMessage(m, error),
-      ),
-    }));
-    logStoreAction("message", "failOptimisticMessageEdit", { messageId });
-  },
-
-  cancelFailedMessageEdit(messageId) {
-    set((state) => ({
-      messages: patchMessageAtId(state.messages, messageId, cancelFailedEditOnMessage),
-    }));
-    logStoreAction("message", "cancelFailedMessageEdit", { messageId });
-  },
-
-  updateMessageLinkPreview(messageId, linkPreview) {
-    if (linkPreview == null) {
-      return;
-    }
-    set((state) => ({
-      messages: patchMessageAtId(state.messages, messageId, (m) =>
-        upsertLinkPreviewOnMessage(m, linkPreview),
-      ),
-    }));
-    logStoreAction("message", "updateMessageLinkPreview", {
-      messageId,
-      hasPreview: linkPreview != null,
-    });
-    traceLinkPreview("message:update-link-preview", {
-      messageId,
-      hasPreview: linkPreview != null,
-      title: linkPreview?.title,
-      targetUrl: linkPreview?.targetUrl,
-    });
-  },
-
-  moveStreamTopicMessages({ streamId, oldTopic, newTopic, messageIds, anchorMessageId }) {
-    if (!Number.isInteger(streamId) || streamId <= 0) return;
-    const oldTopicKey = normalizeTopicForIdentity(oldTopic);
-    const newTopicKey = normalizeTopicForIdentity(newTopic);
-    if (oldTopicKey === newTopicKey) return;
-    const targetMessageIds = resolveTopicMoveTargetMessageIds({ messageIds, anchorMessageId });
-    if (targetMessageIds.length === 0) return;
-    const targetedIds = new Set(targetMessageIds);
-
-    set((state) => {
-      let changed = false;
-      const nextMessages = state.messages.slice();
-      for (let i = 0; i < nextMessages.length; i++) {
-        const message = nextMessages[i]!;
-        if (!targetedIds.has(message.id)) continue;
-        if (message.stream_id !== streamId) continue;
-        const topic = normalizeTopicForIdentity(message.subject ?? "");
-        if (topic !== oldTopicKey) continue;
-        if (message.subject === newTopicKey) continue;
-        nextMessages[i] = { ...message, subject: newTopicKey };
-        changed = true;
-      }
-
-      let nextContext = state.context;
-      let contextChanged = false;
-      if (
-        state.context?.type === "stream" &&
-        state.context.streamId === streamId &&
-        state.context.streamWideView !== true
-      ) {
-        const activeTopic = normalizeTopicForIdentity(state.context.topic);
-        if (activeTopic === oldTopicKey) {
-          nextContext = { ...state.context, topic: newTopicKey };
-          contextChanged = true;
+        for (const previousConversationId of previousConversationIds) {
+          if (nextConversationIds.has(previousConversationId)) continue;
+          if (nextMessageIdsByConversationId === state.messageIdsByConversationId) {
+            nextMessageIdsByConversationId = { ...state.messageIdsByConversationId };
+          }
+          nextMessageIdsByConversationId[previousConversationId] = removeWorkspaceMessageId(
+            nextMessageIdsByConversationId[previousConversationId] ?? EMPTY_WORKSPACE_MESSAGE_IDS,
+            message.uuid,
+          );
         }
       }
 
-      if (!changed && !contextChanged) return state;
-      return {
-        ...(changed ? { messages: nextMessages } : {}),
-        ...(contextChanged ? { context: nextContext } : {}),
-      };
-    });
-  },
-
-  moveTopicToStreamMessages({
-    sourceStreamId,
-    targetStreamId,
-    targetStreamName,
-    oldTopic,
-    newTopic,
-    messageIds,
-    anchorMessageId,
-  }) {
-    if (!Number.isInteger(sourceStreamId) || sourceStreamId <= 0) return;
-    if (!Number.isInteger(targetStreamId) || targetStreamId <= 0) return;
-    const oldTopicKey = normalizeTopicForIdentity(oldTopic);
-    const newTopicKey = normalizeTopicForIdentity(newTopic);
-    const targetMessageIds = resolveTopicMoveTargetMessageIds({ messageIds, anchorMessageId });
-    if (targetMessageIds.length === 0) return;
-    const targetedIds = new Set(targetMessageIds);
-
-    set((state) => {
-      let changed = false;
-      const nextMessages = state.messages.slice();
-      for (let i = 0; i < nextMessages.length; i++) {
-        const message = nextMessages[i]!;
-        if (!targetedIds.has(message.id)) continue;
-        if (message.stream_id !== sourceStreamId) continue;
-        const topic = normalizeTopicForIdentity(message.subject ?? "");
-        if (topic !== oldTopicKey) continue;
-        nextMessages[i] = {
-          ...message,
-          stream_id: targetStreamId,
-          subject: newTopicKey,
-          channel: targetStreamName,
-        };
-        changed = true;
-      }
-
-      let nextContext = state.context;
-      let contextChanged = false;
-      if (
-        state.context?.type === "stream" &&
-        state.context.streamId === sourceStreamId &&
-        state.context.streamWideView !== true
-      ) {
-        const activeTopic = normalizeTopicForIdentity(state.context.topic);
-        if (activeTopic === oldTopicKey) {
-          nextContext = {
-            ...state.context,
-            streamId: targetStreamId,
-            streamName: targetStreamName,
-            topic: newTopicKey,
-          };
-          contextChanged = true;
-        }
-      }
-
-      if (!changed && !contextChanged) return state;
-      return {
-        ...(changed ? { messages: nextMessages } : {}),
-        ...(contextChanged ? { context: nextContext } : {}),
-      };
-    });
-  },
-
-  setIsLoadingMore(loading) {
-    set({ isLoadingMore: loading });
-  },
-
-  setHasOlderMessages(has) {
-    set({ hasOlderMessages: has });
-  },
-
-  setHasNewerMessages(has) {
-    set({ hasNewerMessages: has });
-  },
-
-  async loadInitialMessagesForContext({
-    context,
-    focusedMessageId,
-    currentUserId,
-    onCacheHydrated,
-    onDmMessagesApplied,
-    onStreamMessagesApplied,
-    signal,
-    orgContext,
-  }) {
-    // Bump generation so stale responses from a prior chat cannot apply after fast route switches.
-    initialLoadGeneration += 1;
-    const generation = initialLoadGeneration;
-    initialLoadAbortController?.abort();
-    const currentController = new AbortController();
-    initialLoadAbortController = currentController;
-    const cleanupExternalAbort = bindExternalAbortSignal(currentController, signal);
-    const effectiveSignal = currentController.signal;
-    const isInitialLoadStale = (): boolean =>
-      effectiveSignal.aborted ||
-      generation !== initialLoadGeneration ||
-      (orgContext != null && isActiveOrgRequestInvalidated(orgContext, effectiveSignal));
-
-    logMessageFlow("store:loadInitial start", {
-      context: summarizeChatContextForLog(context),
-      focusedMessageId,
-      hasCurrentUserId: currentUserId != null,
-      persistIdb: persistChatMessagesToIndexedDb(),
-    });
-    set({ initialLoadError: null });
-
-    let loadResult: Awaited<ReturnType<typeof loadInitialMessagesRouteDriven>>;
-    try {
-      loadResult = await loadInitialMessagesRouteDriven({
-        context,
-        focusedMessageId,
-        currentUserId,
-        persistToIndexedDb: persistChatMessagesToIndexedDb(),
-        instanceId: getCurrentInstance()?.id ?? null,
-        signal: effectiveSignal,
-        onCacheHydrated: ({ messages, hasOlderMessages, hasNewerMessages }) => {
-          if (isInitialLoadStale()) {
-            return;
-          }
-          mergeUsersFromMessages(messages);
-          const appliedHasNewerMessages = false;
-          logMessageFlow("store:loadInitial idb hydrate before api", {
-            chatKey: chatKeyFromContext(context),
-            cachedCount: messages.length,
-            cacheHasNewerMessages: hasNewerMessages,
-            appliedHasNewerMessages,
-          });
-          set({
-            messages,
-            pendingOutgoingEchoKeys: [],
-            hasOlderMessages,
-            hasNewerMessages: appliedHasNewerMessages,
-          });
-          onCacheHydrated?.();
-          if (context.type === "dm") {
-            onDmMessagesApplied?.({
-              messages,
-              context,
-              hasNewerMessages,
-              focusedMessageId,
-              source: "cache",
-            });
-          }
-          if (context.type === "stream") {
-            onStreamMessagesApplied?.({
-              messages,
-              context: { type: "stream", streamId: context.streamId },
-              hasNewerMessages,
-              focusedMessageId,
-              source: "cache",
-            });
-          }
+      return indexMessageIntoBuckets(
+        {
+          messagesById: state.messagesById,
+          messageIdsByConversationId: nextMessageIdsByConversationId,
         },
-      });
-    } catch (e) {
-      if (isAbortLikeError(e) || isInitialLoadStale()) {
-        logMessageFlow("store:loadInitial aborted", {
-          context: summarizeChatContextForLog(context),
-          generation,
-        });
-        return;
-      }
-      logMessageFlow("store:loadInitial fetch failed", {
-        context: summarizeChatContextForLog(context),
-        error: String(e),
-      });
-      set({ initialLoadError: String(e) });
-      return;
-    } finally {
-      cleanupExternalAbort();
-      if (initialLoadAbortController?.signal === effectiveSignal) {
-        initialLoadAbortController = null;
-      }
-    }
-
-    if (isInitialLoadStale()) {
-      return;
-    }
-
-    logMessageFlow("store:loadInitial api response", {
-      context: summarizeChatContextForLog(context),
-      messageCount: loadResult.messages.length,
-      mode: loadResult.mode,
-    });
-
-    if (isInitialLoadStale()) {
-      return;
-    }
-    const snapshotBeforeApiApply = get();
-    mergeUsersFromMessages(loadResult.messages);
-
-    const preserveHydratedOnEmptyApi =
-      loadResult.messages.length === 0 &&
-      snapshotBeforeApiApply.messages.length > 0 &&
-      hydratedMessagesMatchContext(
-        snapshotBeforeApiApply.messages,
-        loadResult.nextContext,
-        currentUserId,
+        message,
+        conversationBucketsForWorkspaceMessage(message, { includeStreamConversation: true }),
       );
-
-    if (preserveHydratedOnEmptyApi) {
-      logMessageFlow("store:loadInitial preserve hydrated on empty api", {
-        context: summarizeChatContextForLog(loadResult.nextContext),
-        keptCount: snapshotBeforeApiApply.messages.length,
-      });
-      if (isInitialLoadStale()) {
-        return;
-      }
-      set({
-        context: loadResult.nextContext,
-        messages: snapshotBeforeApiApply.messages,
-        pendingOutgoingEchoKeys: [],
-        hasOlderMessages: snapshotBeforeApiApply.hasOlderMessages,
-        hasNewerMessages: snapshotBeforeApiApply.hasNewerMessages,
-        boundaryLoadFailed: snapshotBeforeApiApply.boundaryLoadFailed,
-      });
-      logMessageFlow("store:loadInitial done", {
-        mode: loadResult.mode,
-        count: snapshotBeforeApiApply.messages.length,
-        hasOlder: snapshotBeforeApiApply.hasOlderMessages,
-        hasNewer: snapshotBeforeApiApply.hasNewerMessages,
-        preserved: true,
-      });
-      if (loadResult.nextContext.type === "dm") {
-        onDmMessagesApplied?.({
-          messages: snapshotBeforeApiApply.messages,
-          context: loadResult.nextContext,
-          hasNewerMessages: snapshotBeforeApiApply.hasNewerMessages,
-          focusedMessageId,
-          source: "api",
-        });
-      }
-      if (loadResult.nextContext.type === "stream") {
-        onStreamMessagesApplied?.({
-          messages: snapshotBeforeApiApply.messages,
-          context: { type: "stream", streamId: loadResult.nextContext.streamId },
-          hasNewerMessages: snapshotBeforeApiApply.hasNewerMessages,
-          focusedMessageId,
-          source: "api",
-        });
-      }
-      return;
-    }
-
-    if (isInitialLoadStale()) {
-      return;
-    }
-    set({
-      context: loadResult.nextContext,
-      messages: loadResult.messages,
-      pendingOutgoingEchoKeys: [],
-      hasOlderMessages: loadResult.hasOlderMessages,
-      hasNewerMessages: loadResult.hasNewerMessages,
-      boundaryLoadFailed: false,
     });
-    logMessageFlow("store:loadInitial done", {
-      mode: loadResult.mode,
-      count: loadResult.messages.length,
-      hasOlder: loadResult.hasOlderMessages,
-      hasNewer: loadResult.hasNewerMessages,
-    });
-    if (loadResult.nextContext.type === "dm") {
-      onDmMessagesApplied?.({
-        messages: loadResult.messages,
-        context: loadResult.nextContext,
-        hasNewerMessages: loadResult.hasNewerMessages,
-        focusedMessageId,
-        source: "api",
-      });
-    }
-    if (loadResult.nextContext.type === "stream") {
-      onStreamMessagesApplied?.({
-        messages: loadResult.messages,
-        context: { type: "stream", streamId: loadResult.nextContext.streamId },
-        hasNewerMessages: loadResult.hasNewerMessages,
-        focusedMessageId,
-        source: "api",
-      });
-    }
   },
 
-  async loadOlderBoundaryPage({ pageSize, currentUserId }) {
-    const state = get();
-    const ctx = state.context;
-    if (state.isLoadingMore || !state.hasOlderMessages || !ctx) {
-      logMessageFlow("store:loadOlder gate skip", {
-        isLoadingMore: state.isLoadingMore,
-        hasOlderMessages: state.hasOlderMessages,
-        hasContext: ctx != null,
-        context: ctx != null ? summarizeChatContextForLog(ctx) : null,
-      });
-      return;
-    }
-
-    if (state.messages.length === 0) {
-      logMessageFlow("store:loadOlder abort empty store", {
-        context: summarizeChatContextForLog(ctx),
-      });
-      loadOlderLog.debug("loadOlder abort: empty store");
-      return;
-    }
-    const anchorOldestId = resolveOldestMessageId(state.messages);
-    if (anchorOldestId == null) return;
-
-    abortBoundaryLoad();
-    const controller = new AbortController();
-    boundaryLoadAbortController = controller;
-    const orgContext = captureActiveOrgRequestContext();
-    const inst = getCurrentInstance()?.id;
-    const chatKey = chatKeyFromContext(ctx);
-    const isStreamWide = ctx.type === "stream" && ctx.streamWideView === true;
-    const isRequestCurrent = () =>
-      boundaryLoadAbortController === controller &&
-      isActiveOrgRequestContextCurrent(orgContext) &&
-      isCurrentChatRequest(get, ctx);
-
-    logMessageFlow("store:loadOlder start", {
-      context: summarizeChatContextForLog(ctx),
-      anchorOldestId,
-      pageSize,
-    });
-    set({ isLoadingMore: true });
-    try {
-      const page = await fetchMessagesWithNarrowPage(
-        buildMessageFetchNarrow(ctx, currentUserId),
-        anchorOldestId,
-        pageSize,
-        0,
-        { applyMarkdown: false, signal: controller.signal },
-      );
-      if (!isRequestCurrent()) {
-        return;
-      }
-      const withoutAnchor = page.messages.filter((m) => m.id !== anchorOldestId);
-      const existingIds = new Set(get().messages.map((m) => m.id));
-      const fresh = withoutAnchor.filter((m) => !existingIds.has(m.id));
-
-      loadOlderLog.debug("loadOlder page", {
-        anchorOldest: anchorOldestId,
-        apiRows: page.messages.length,
-        withoutAnchor: withoutAnchor.length,
-        freshCount: fresh.length,
-      });
-
-      const hasOlderMessages = resolveHasOlderAfterLoadOlderPage({
-        foundOldest: page.foundOldest,
-        withoutAnchorCount: withoutAnchor.length,
-        pageSize,
-        toUpsertCount: fresh.length,
-      });
-      if (!hasOlderMessages && fresh.length === 0 && withoutAnchor.length >= pageSize) {
-        loadOlderLog.warn("loadOlder stopped: full duplicate page with no store progress", {
-          anchorOldestId,
-          pageSize,
-        });
-      }
-
-      if (page.foundOldest && persistChatMessagesToIndexedDb() && inst && isRequestCurrent()) {
-        if (isStreamWide) {
-          await patchPartitionMetaByMessages({
-            instanceId: inst,
-            currentUserId,
-            messages: withoutAnchor,
-            patch: { reachedOldest: true },
-          });
-        } else {
-          await updateChatMetaPatch(inst, chatKey, { reachedOldest: true });
-        }
-      }
-      if (!isRequestCurrent()) {
-        return;
-      }
-
-      set({ hasOlderMessages });
-
-      if (fresh.length > 0) {
-        mergeUsersFromMessages(fresh);
-        set((s) => ({ messages: [...fresh, ...s.messages] }));
-        loadOlderLog.info("loadOlder prepended", {
-          anchorOldest: anchorOldestId,
-          prepended: fresh.length,
-          storeMessagesAfter: get().messages.length,
-        });
-      }
-
-      if (persistChatMessagesToIndexedDb() && inst && fresh.length > 0 && isRequestCurrent()) {
-        if (isStreamWide) {
-          await upsertMessagesByChatPartitions({
-            instanceId: inst,
-            currentUserId,
-            messages: fresh,
-          });
-        } else {
-          const windowN = zulipMessageCacheWindowN(ctx);
-          await upsertChatMessages({
-            instanceId: inst,
-            chatKey,
-            messages: fresh,
-            windowSizeN: windowN,
-          });
-        }
-      }
-      if (!isRequestCurrent()) {
-        return;
-      }
-      logMessageFlow("store:loadOlder done", {
-        context: summarizeChatContextForLog(ctx),
-        freshCount: fresh.length,
-        foundOldest: page.foundOldest,
-        storeLenAfter: get().messages.length,
-      });
-    } catch (e) {
-      if (isAbortLikeError(e) || controller.signal.aborted || !isRequestCurrent()) {
-        return;
-      }
-      logMessageFlow("store:loadOlder failed", { error: String(e) });
-      loadOlderLog.warn("loadOlder failed", { error: String(e) });
-      set({ boundaryLoadFailed: true });
-    } finally {
-      if (boundaryLoadAbortController === controller) {
-        boundaryLoadAbortController = null;
-        set({ isLoadingMore: false });
-      }
-    }
+  upsertMessageBody(message) {
+    logStoreAction("workspaceMessage", "upsertMessageBody", { messageUuid: message.uuid });
+    set((state) => ({
+      messagesById: {
+        ...state.messagesById,
+        [message.uuid]: message,
+      },
+    }));
   },
 
-  async loadNewerBoundaryPage({ pageSize, currentUserId }) {
-    const state = get();
-    const ctx = state.context;
-    if (state.isLoadingMore || !state.hasNewerMessages || !ctx) {
-      logMessageFlow("store:loadNewer gate skip", {
-        isLoadingMore: state.isLoadingMore,
-        hasNewerMessages: state.hasNewerMessages,
-        hasContext: ctx != null,
-        context: ctx != null ? summarizeChatContextForLog(ctx) : null,
-      });
-      return;
-    }
+  applyMessageEdit(messageUuid, patch) {
+    logStoreAction("workspaceMessage", "applyMessageEdit", { messageUuid });
+    set((state) => {
+      const message = state.messagesById[messageUuid];
+      if (message == null) return state;
 
-    if (state.messages.length === 0) {
-      logMessageFlow("store:loadNewer abort empty store", {
-        context: ctx != null ? summarizeChatContextForLog(ctx) : null,
-      });
-      return;
-    }
-    const newest = state.messages[state.messages.length - 1];
-    if (!newest) return;
-
-    abortBoundaryLoad();
-    const controller = new AbortController();
-    boundaryLoadAbortController = controller;
-    const orgContext = captureActiveOrgRequestContext();
-    const inst = getCurrentInstance()?.id;
-    const chatKey = chatKeyFromContext(ctx);
-    const isStreamWide = ctx.type === "stream" && ctx.streamWideView === true;
-    const isRequestCurrent = () =>
-      boundaryLoadAbortController === controller &&
-      isActiveOrgRequestContextCurrent(orgContext) &&
-      isCurrentChatRequest(get, ctx);
-
-    logMessageFlow("store:loadNewer start", {
-      context: summarizeChatContextForLog(ctx),
-      anchorNewestId: newest.id,
-      pageSize,
+      return {
+        messagesById: {
+          ...state.messagesById,
+          [messageUuid]: {
+            ...message,
+            markdown: patch.markdown,
+            updatedAt: patch.updatedAt ?? message.updatedAt,
+          },
+        },
+      };
     });
-    set({ isLoadingMore: true, isLoadingNewer: true });
-    try {
-      const page = await fetchMessagesWithNarrowPage(
-        buildMessageFetchNarrow(ctx, currentUserId),
-        newest.id,
-        0,
-        pageSize,
-        { applyMarkdown: false, signal: controller.signal },
-      );
-      if (!isRequestCurrent()) {
-        return;
-      }
-      const withoutAnchor = page.messages.filter((m) => m.id !== newest.id);
-      const existingIds = new Set(get().messages.map((m) => m.id));
-      const fresh = withoutAnchor.filter((m) => !existingIds.has(m.id));
+  },
 
-      if (page.foundNewest && persistChatMessagesToIndexedDb() && inst && isRequestCurrent()) {
-        if (isStreamWide) {
-          await patchPartitionMetaByMessages({
-            instanceId: inst,
-            currentUserId,
-            messages: withoutAnchor,
-            patch: { reachedNewest: true },
-          });
-        } else {
-          await updateChatMetaPatch(inst, chatKey, { reachedNewest: true });
-        }
-      }
-      if (!isRequestCurrent()) {
-        return;
+  removeMessage(messageUuid, options) {
+    logStoreAction("workspaceMessage", "removeMessage", { messageUuid });
+    set((state) => {
+      const conversationIds =
+        options?.conversationIds ?? Object.keys(state.messageIdsByConversationId);
+      return removeMessageFromConversationIds(state, messageUuid, conversationIds);
+    });
+  },
+
+  markMessageRead(messageUuid, options) {
+    logStoreAction("workspaceMessage", "markMessageRead", { messageUuid });
+    set((state) => {
+      const message = state.messagesById[messageUuid];
+      if (message == null || message.read) return state;
+
+      if (options?.conversationIds != null) {
+        const messageIsVisible = options.conversationIds.some((conversationId) =>
+          (
+            state.messageIdsByConversationId[conversationId] ?? EMPTY_WORKSPACE_MESSAGE_IDS
+          ).includes(messageUuid),
+        );
+        if (!messageIsVisible) return state;
       }
 
-      set({
-        hasNewerMessages: computeHasNewerAfterLoadNewerIdbPage({
-          foundNewest: page.foundNewest,
-          withoutAnchorCount: withoutAnchor.length,
-          pageSize,
-          toUpsertCount: fresh.length,
-        }),
-      });
+      return {
+        messagesById: {
+          ...state.messagesById,
+          [messageUuid]: {
+            ...message,
+            read: true,
+          },
+        },
+      };
+    });
+  },
 
-      if (fresh.length > 0) {
-        mergeUsersFromMessages(fresh);
-        set((s) => ({ messages: [...s.messages, ...fresh] }));
-      }
+  setMessagesLoading(conversationId, loading) {
+    logStoreAction("workspaceMessage", "setMessagesLoading", { conversationId, loading });
+    set((state) => ({
+      messagesLoadingByConversationId: {
+        ...state.messagesLoadingByConversationId,
+        [conversationId]: loading,
+      },
+    }));
+  },
 
-      if (persistChatMessagesToIndexedDb() && inst && fresh.length > 0 && isRequestCurrent()) {
-        if (isStreamWide) {
-          await upsertMessagesByChatPartitions({
-            instanceId: inst,
-            currentUserId,
-            messages: fresh,
-          });
-        } else {
-          const windowN = zulipMessageCacheWindowN(ctx);
-          await upsertChatMessages({
-            instanceId: inst,
-            chatKey,
-            messages: fresh,
-            windowSizeN: windowN,
-          });
-        }
-      }
-      if (!isRequestCurrent()) {
-        return;
-      }
-      logMessageFlow("store:loadNewer done", {
-        context: summarizeChatContextForLog(ctx),
-        freshCount: fresh.length,
-        foundNewest: page.foundNewest,
-        storeLenAfter: get().messages.length,
-      });
-    } catch (e) {
-      if (isAbortLikeError(e) || controller.signal.aborted || !isRequestCurrent()) {
-        return;
-      }
-      logMessageFlow("store:loadNewer failed", { error: String(e) });
-      set({ boundaryLoadFailed: true });
-    } finally {
-      if (boundaryLoadAbortController === controller) {
-        boundaryLoadAbortController = null;
-        set({ isLoadingMore: false, isLoadingNewer: false });
-      }
-    }
+  setMessagesError(conversationId, error) {
+    logStoreAction("workspaceMessage", "setMessagesError", { conversationId, error });
+    set((state) => ({
+      messagesErrorByConversationId: {
+        ...state.messagesErrorByConversationId,
+        [conversationId]: error,
+      },
+    }));
+  },
+
+  setConversationPagination(conversationId, pagination) {
+    logStoreAction("workspaceMessage", "setConversationPagination", {
+      conversationId,
+      nextPageMarker: pagination.nextPageMarker,
+      hasMore: pagination.hasMore,
+    });
+    set((state) => ({
+      nextPageMarkerByConversationId: {
+        ...state.nextPageMarkerByConversationId,
+        [conversationId]: pagination.nextPageMarker,
+      },
+      hasMoreByConversationId: {
+        ...state.hasMoreByConversationId,
+        [conversationId]: pagination.hasMore,
+      },
+    }));
+  },
+
+  clear() {
+    logStoreAction("workspaceMessage", "clear", {});
+    set(createEmptyWorkspaceMessageData());
   },
 }));
+
+interface ConversationMessagesCacheEntry {
+  ids: MessengerUuid[];
+  messagesById: Record<MessengerUuid, MessengerMessage>;
+  result: MessengerMessage[];
+}
+
+const conversationMessagesCache = new Map<
+  MessengerConversationId,
+  ConversationMessagesCacheEntry
+>();
+
+export function selectWorkspaceMessagesForConversation(
+  state: WorkspaceMessageStoreState,
+  conversationId: MessengerConversationId,
+): MessengerMessage[] {
+  const messageIds =
+    state.messageIdsByConversationId[conversationId] ?? EMPTY_WORKSPACE_MESSAGE_IDS;
+  if (messageIds.length === 0) return EMPTY_WORKSPACE_MESSAGES;
+
+  const cached = conversationMessagesCache.get(conversationId);
+  if (cached?.ids === messageIds && cached.messagesById === state.messagesById) {
+    return cached.result;
+  }
+
+  const messages = messageIds
+    .map((messageId) => state.messagesById[messageId])
+    .filter((message): message is MessengerMessage => message != null);
+
+  conversationMessagesCache.set(conversationId, {
+    ids: messageIds,
+    messagesById: state.messagesById,
+    result: messages,
+  });
+  return messages;
+}
+
+interface ConversationStatusCacheEntry {
+  loading: boolean;
+  error: string | null;
+  nextPageMarker: string | null;
+  hasMore: boolean;
+  result: WorkspaceConversationMessagesStatus;
+}
+
+const conversationStatusCache = new Map<MessengerConversationId, ConversationStatusCacheEntry>();
+
+export function selectWorkspaceMessageStatusForConversation(
+  state: WorkspaceMessageStoreState,
+  conversationId: MessengerConversationId,
+): WorkspaceConversationMessagesStatus {
+  const loading = state.messagesLoadingByConversationId[conversationId] === true;
+  const error = state.messagesErrorByConversationId[conversationId] ?? null;
+  const nextPageMarker = state.nextPageMarkerByConversationId[conversationId] ?? null;
+  const hasMore = state.hasMoreByConversationId[conversationId] === true;
+
+  if (!loading && error == null && nextPageMarker == null && !hasMore) {
+    return EMPTY_STATUS;
+  }
+
+  const cached = conversationStatusCache.get(conversationId);
+  if (
+    cached?.loading === loading &&
+    cached.error === error &&
+    cached.nextPageMarker === nextPageMarker &&
+    cached.hasMore === hasMore
+  ) {
+    return cached.result;
+  }
+
+  const status = {
+    loading,
+    error,
+    nextPageMarker,
+    hasMore,
+  };
+  conversationStatusCache.set(conversationId, {
+    ...status,
+    result: status,
+  });
+  return status;
+}
+
+export function selectWorkspaceMessageById(
+  state: WorkspaceMessageStoreState,
+  messageUuid: MessengerUuid,
+): MessengerMessage | null {
+  return state.messagesById[messageUuid] ?? null;
+}

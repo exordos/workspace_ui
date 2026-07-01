@@ -11,7 +11,6 @@ async function flushPromises(): Promise<void> {
 
 const runChatListBootstrapMock = vi.fn();
 const fetchRealmPresenceMock = vi.fn();
-const loadInitialMessagesForContextMock = vi.fn();
 const lightRefreshMock = vi.fn();
 
 vi.mock("./layout-chat-list-bootstrap.lib", () => ({
@@ -26,12 +25,6 @@ vi.mock("./layout-reconnect-stream-preview.lib", () => ({
 
 vi.mock("./layout-realm-presence-refresh.lib", () => ({
   refreshRealmPresenceFromApi: vi.fn(),
-}));
-
-vi.mock("./layout-active-chat-refresh.lib", () => ({
-  refreshActiveChatMessagesFromApi: (...args: unknown[]) => {
-    loadInitialMessagesForContextMock(...args);
-  },
 }));
 
 vi.mock("./layout-reconnect-light.lib", () => ({

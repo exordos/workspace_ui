@@ -33,7 +33,7 @@ export interface ChatPageComposerSectionProps {
   editSession: ComposerEditSession | null;
   onSubmitEdit: (messageId: number, content: string) => void | Promise<void>;
   onCancelEdit: () => void;
-  // Capabilities позволяют оставить старый composer видимым, но отключить действия без Workspace backend.
+  // Capabilities keep the old composer visible while disabling actions without Workspace backend support.
   composerCapabilities?: MessageComposerCapabilities;
   aiMessagesContext: AiMessageContext[];
   aiChatContext: AiReplyRequest["chatContext"] | undefined;

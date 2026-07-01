@@ -20,8 +20,8 @@ import type {
 const MAX_RECENT_EVENTS = 50;
 const MAX_NOTIFICATION_CANDIDATES = 50;
 const MAX_SKIPPED_EVENTS = 50;
-// Background держит только ограниченный in-memory материал для ускорения cold start.
-// Это не второй chat store: текст сообщений, названия и другие PII сюда не складываем.
+// Background keeps only limited in-memory data to speed up cold start.
+// This is not a second chat store: message text, names, and other PII are not stored here.
 const MAX_LIGHTWEIGHT_SNAPSHOTS = 200;
 const LIGHTWEIGHT_SNAPSHOT_TTL_MS = 30 * 60 * 1000;
 
@@ -179,7 +179,7 @@ function createEmptyProjection(ownerKey: string): MessengerBackgroundProjection 
 }
 
 function appendBounded<T>(items: T[], item: T, limit: number): T[] {
-  // Background projection живёт в памяти, поэтому каждую коллекцию держим короткой.
+  // Background projection lives in memory, so each collection stays short.
   const next = [item, ...items];
   return next.length > limit ? next.slice(0, limit) : next;
 }
@@ -222,7 +222,7 @@ function compactProjection(
   projection: MessengerBackgroundProjection,
   now: number,
 ): MessengerBackgroundProjection {
-  // Компакция нужна на каждый event: фоновый runtime может жить часами без открытия UI.
+  // Compaction runs on every event because background runtime can live for hours without UI opening.
   return {
     ...projection,
     recentEvents: pruneRecentItems(projection.recentEvents, MAX_RECENT_EVENTS, now),
@@ -303,7 +303,7 @@ function applyEventProjection(
   );
 
   if (event.type === "message" && event.kind === "message.deleted") {
-    // Для delete оставляем tombstone без текста/автора: этого хватает, чтобы не считать сообщение живым.
+    // Delete keeps a tombstone without text or author; that is enough to stop treating the message as live.
     return compactProjection(
       {
         ...baseProjection,
@@ -352,7 +352,7 @@ function applyEventProjection(
     };
 
     if (!isMessageCreatedEvent(event)) {
-      // Update нужен для id-снимка, но не должен заново становиться кандидатом на уведомление.
+      // Updates are needed for the id snapshot but must not become notification candidates again.
       return compactProjection(nextProjection, observedAt);
     }
 

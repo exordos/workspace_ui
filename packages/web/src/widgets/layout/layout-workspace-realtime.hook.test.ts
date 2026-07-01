@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { useMessengerBackgroundProjectionStore } from "~/entities/messenger/messenger-background-projection.model";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
@@ -104,6 +105,7 @@ describe("useLayoutWorkspaceRealtime", () => {
     localStorage.removeItem(WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY);
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
     useMessengerStore.getState().clear();
+    useWorkspaceMessageStore.getState().clear();
     useMessengerBackgroundProjectionStore.getState().clear();
   });
 
@@ -111,6 +113,7 @@ describe("useLayoutWorkspaceRealtime", () => {
     vi.clearAllMocks();
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
     useMessengerStore.getState().clear();
+    useWorkspaceMessageStore.getState().clear();
     useMessengerBackgroundProjectionStore.getState().clear();
     localStorage.removeItem(WORKSPACE_AUTH_STORAGE_KEY);
     localStorage.removeItem(WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY);
@@ -238,7 +241,7 @@ describe("useLayoutWorkspaceRealtime", () => {
       { ...context, source: "websocket" },
     );
 
-    expect(useMessengerStore.getState().messagesById[MESSAGE_UUID]).toEqual(
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_UUID]).toEqual(
       expect.objectContaining({ markdown: "Live workspace message" }),
     );
   });
@@ -311,7 +314,7 @@ describe("useLayoutWorkspaceRealtime", () => {
       { ...backgroundContext, source: "websocket" },
     );
 
-    expect(useMessengerStore.getState().messagesById[MESSAGE_UUID]).toBeUndefined();
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_UUID]).toBeUndefined();
     expect(
       useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[
         backgroundContext.ownerKey

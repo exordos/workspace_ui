@@ -202,12 +202,6 @@ function state(overrides: Partial<MessengerStoreState> = {}): MessengerStoreStat
     topicIds: [TOPIC_A, TOPIC_B],
     conversationsById: {},
     conversationIds: [],
-    messagesById: {},
-    messageIdsByConversationId: {},
-    messagesLoadingByConversationId: {},
-    messagesErrorByConversationId: {},
-    nextPageMarkerByConversationId: {},
-    hasMoreByConversationId: {},
     foldersById: { [FOLDER_A]: folderA },
     folderIds: [FOLDER_A],
     usersById: { [AUTHOR_UUID]: user() },
@@ -216,23 +210,13 @@ function state(overrides: Partial<MessengerStoreState> = {}): MessengerStoreStat
     skippedRealtimeEvents: [],
     startBootstrap: () => undefined,
     replaceBootstrapState: () => undefined,
-    replaceConversationMessages: () => undefined,
-    startConversationMessagesLoad: () => undefined,
-    applyConversationMessagesLoadSuccess: () => undefined,
-    finishConversationMessagesLoad: () => undefined,
-    failConversationMessagesLoad: () => undefined,
-    cancelConversationMessagesLoad: () => undefined,
     upsertStream: () => undefined,
     removeStream: () => undefined,
     upsertStreamBindings: () => undefined,
     upsertTopic: () => undefined,
     removeTopic: () => undefined,
-    upsertMessage: () => undefined,
-    indexMessageIntoConversationBuckets: () => undefined,
-    applyMessageEdit: () => undefined,
-    markMessageRead: () => undefined,
-    removeMessage: () => undefined,
-    mergeConversationMessagesPage: () => undefined,
+    applyMessagePointer: () => undefined,
+    clearMessagePointer: () => undefined,
     applyFolderSnapshot: () => undefined,
     removeFolder: () => undefined,
     upsertFolderItem: () => undefined,
@@ -327,14 +311,14 @@ describe("messenger sidebar selectors", () => {
             isDone: true,
           }),
         },
-        messagesById: {
-          [MESSAGE_A]: message({ uuid: MESSAGE_A, markdown: "Stream preview" }),
-          [MESSAGE_B]: message({ uuid: MESSAGE_B, markdown: "Topic preview" }),
-        },
       }),
       {
         organizationId: ORGANIZATION_ID,
         projectId: PROJECT_ID,
+        messagesById: {
+          [MESSAGE_A]: message({ uuid: MESSAGE_A, markdown: "Stream preview" }),
+          [MESSAGE_B]: message({ uuid: MESSAGE_B, markdown: "Topic preview" }),
+        },
       },
     );
 
@@ -375,14 +359,14 @@ describe("messenger sidebar selectors", () => {
             isDone: true,
           }),
         },
-        messagesById: {
-          [MESSAGE_A]: message({ uuid: MESSAGE_A, markdown: "Self preview" }),
-        },
       }),
       {
         organizationId: ORGANIZATION_ID,
         projectId: PROJECT_ID,
         currentUserUuid: AUTHOR_UUID,
+        messagesById: {
+          [MESSAGE_A]: message({ uuid: MESSAGE_A, markdown: "Self preview" }),
+        },
       },
     );
 
@@ -403,6 +387,14 @@ describe("messenger sidebar selectors", () => {
         [conversation().id]: conversation(),
       },
       conversationIds: [conversation().id],
+      usersById: { [AUTHOR_UUID]: user() },
+      userIds: [AUTHOR_UUID],
+    });
+
+    const rows = selectMessengerSidebarStreams(base, {
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      selectedFolderUuid: FOLDER_A,
       messagesById: {
         [MESSAGE_A]: message({
           uuid: MESSAGE_A,
@@ -412,14 +404,6 @@ describe("messenger sidebar selectors", () => {
           markdown: "Private preview",
         }),
       },
-      usersById: { [AUTHOR_UUID]: user() },
-      userIds: [AUTHOR_UUID],
-    });
-
-    const rows = selectMessengerSidebarStreams(base, {
-      organizationId: ORGANIZATION_ID,
-      projectId: PROJECT_ID,
-      selectedFolderUuid: FOLDER_A,
     });
 
     expect(rows.map((row) => row.streamUuid)).toEqual([STREAM_B, STREAM_A]);

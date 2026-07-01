@@ -29,8 +29,8 @@ import { useMessengerStore } from "./messenger.model";
 import type { MessengerStoreState } from "./messenger.model";
 type MessengerBootstrapClientCall<T> = (options: MessengerClientOptions) => Promise<T[]>;
 
-// Загружаем минимальный снимок проекта для новой ветки Workspace-мессенджера.
-// Это не старый Zulip-список чатов: данные сразу кладутся в отдельный messenger store.
+// Load a minimal project snapshot for the new Workspace messenger path.
+// This is not the old Zulip chat list: data goes directly into the separate messenger store.
 export interface MessengerBootstrapClientDeps {
   getStreams?: MessengerBootstrapClientCall<WorkspaceMessengerStreamDto>;
   getTopics?: MessengerBootstrapClientCall<WorkspaceMessengerTopicDto>;
@@ -55,8 +55,6 @@ export interface MessengerStoreApi {
     | "topicsById"
     | "conversationIds"
     | "conversationsById"
-    | "messagesById"
-    | "upsertMessage"
   >;
 }
 
@@ -81,8 +79,8 @@ function normalizeBootstrapError(error: unknown): string {
   return "Messenger bootstrap failed";
 }
 
-// Проверки runtime нужны из-за переключения организаций и проектов.
-// Если пользователь уже ушёл в другой проект, старый ответ API нельзя применять в store.
+// Runtime checks are needed because orgs and projects can switch.
+// If the user already moved to another project, the old API response must not be applied to the store.
 export async function bootstrapMessengerStore({
   runtimeContext,
   getRuntimeContext = () => runtimeContext,
@@ -106,8 +104,8 @@ export async function bootstrapMessengerStore({
   const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
 
   try {
-    // Потоки и темы нужны первыми: из них можно быстро собрать базовый список чатов.
-    // Папки догружаем ниже отдельно, чтобы ошибка папок не ломала весь сайдбар.
+    // Streams and topics are needed first: they quickly build the base chat list.
+    // Folders are loaded separately below, so a folder error does not break the whole sidebar.
     const [streams, topics, users] = await Promise.all([
       (client.getStreams ?? defaultGetStreams)(requestOptions),
       (client.getTopics ?? defaultGetTopics)(requestOptions),
@@ -135,8 +133,8 @@ export async function bootstrapMessengerStore({
     });
 
     try {
-      // Папки приходят как отдельный пользовательский слой поверх потоков.
-      // Поэтому применяем их снимками: пришла папка - обновили только её часть.
+      // Folders arrive as a separate user layer above streams.
+      // Apply them as snapshots: when a folder arrives, update only that part.
       const folders = await (client.getFolders ?? defaultGetFolders)(requestOptions);
       if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
         return { status: "applied", ownerKey };

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
-import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
+import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { authIdleTimeoutToMs } from "~/features/settings/auth-idle-timeout.lib";
@@ -62,7 +62,9 @@ export const LogsPage: React.FC = () => {
   const streamsCount = useChatListStore((s) => s.streams().length);
   const dmsCount = useChatListStore((s) => s.dms().length);
   const usersCount = useUsersStore((s) => s.users.size);
-  const currentChatMessagesCount = useCurrentChatMessagesStore((s) => s.messages.length);
+  const currentChatMessagesCount = useWorkspaceMessageStore(
+    (s) => Object.keys(s.messagesById).length,
+  );
   const currentInstance = useInstancesStore((s) => s.getCurrentInstance());
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const instancesCount = useInstancesStore((s) => s.instances.length);

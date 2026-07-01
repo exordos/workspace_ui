@@ -5,6 +5,10 @@ import {
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContextGetter } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import {
+  useWorkspaceMessageStore,
+  type WorkspaceMessageStoreState,
+} from "~/entities/message/message.model";
 import { getMessagesByUuids } from "~/shared/api/messenger-client";
 import type { MessengerClientOptions } from "~/shared/api/messenger-client";
 import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
@@ -17,8 +21,8 @@ import {
 } from "./messenger-request-options.lib";
 import type { MessengerUuid } from "./messenger.types";
 
-// Этот loader нужен только для превью в сайдбаре.
-// Bootstrap приносит uuid последнего сообщения, а текст сообщения догружается отдельным лёгким запросом.
+// This loader is only for sidebar previews.
+// Bootstrap brings the last message uuid, and message text is loaded with a separate lightweight request.
 export type MessengerLastMessagesClientCall = (
   options: MessengerClientOptions,
   messageUuids: MessengerUuid[],
@@ -37,9 +41,11 @@ export interface MessengerLastMessagesStoreApi {
     | "topicsById"
     | "conversationIds"
     | "conversationsById"
-    | "messagesById"
-    | "upsertMessage"
   >;
+}
+
+export interface MessengerLastMessagesMessageStoreApi {
+  getState: () => Pick<WorkspaceMessageStoreState, "messagesById" | "upsertMessageBody">;
 }
 
 export type MessengerLastMessagesResult =
@@ -67,6 +73,7 @@ export interface LoadMessengerLastMessagesForSidebarOptions {
   clientOptions?: MessengerRequestOptionsOverrides;
   signal?: AbortSignal;
   store?: MessengerLastMessagesStoreApi;
+  messageStore?: MessengerLastMessagesMessageStoreApi;
 }
 
 export function collectMessengerLastMessageUuids(
@@ -78,14 +85,14 @@ export function collectMessengerLastMessageUuids(
     | "topicsById"
     | "conversationIds"
     | "conversationsById"
-    | "messagesById"
   >,
+  messagesById: WorkspaceMessageStoreState["messagesById"],
 ): MessengerUuid[] {
-  // Собираем только отсутствующие сообщения, чтобы не перетирать уже открытый чат и не плодить запросы.
+  // Collect only missing messages to avoid overwriting the open chat or multiplying requests.
   const seen = new Set<MessengerUuid>();
   const messageUuids: MessengerUuid[] = [];
   const add = (messageUuid: MessengerUuid | null | undefined) => {
-    if (messageUuid == null || seen.has(messageUuid) || state.messagesById[messageUuid] != null) {
+    if (messageUuid == null || seen.has(messageUuid) || messagesById[messageUuid] != null) {
       return;
     }
 
@@ -124,8 +131,9 @@ export async function loadMessengerLastMessagesForSidebar({
   clientOptions,
   signal,
   store = useMessengerStore,
+  messageStore = useWorkspaceMessageStore,
 }: LoadMessengerLastMessagesForSidebarOptions): Promise<MessengerLastMessagesResult> {
-  // Owner guard защищает от ситуации: пользователь переключил проект, а старый ответ всё ещё пришёл.
+  // Owner guard handles the case where the user switched projects before an old response arrived.
   const requestContext = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
   if (requestContext == null) {
     return { status: "skipped", ownerKey: null, reason: "missing-context" };
@@ -136,7 +144,10 @@ export async function loadMessengerLastMessagesForSidebar({
     return { status: "skipped", ownerKey, reason: "stale-owner" };
   }
 
-  const messageUuids = collectMessengerLastMessageUuids(store.getState());
+  const messageUuids = collectMessengerLastMessageUuids(
+    store.getState(),
+    messageStore.getState().messagesById,
+  );
   if (messageUuids.length === 0) {
     return { status: "loaded", ownerKey, requested: 0, applied: 0 };
   }
@@ -153,9 +164,9 @@ export async function loadMessengerLastMessagesForSidebar({
       return { status: "skipped", ownerKey, reason: "stale-owner" };
     }
 
-    const storeState = store.getState();
+    const messageStoreState = messageStore.getState();
     for (const message of messages.map(adaptMessengerMessage)) {
-      storeState.upsertMessage(ownerKey, message);
+      messageStoreState.upsertMessageBody(message);
     }
 
     return {

@@ -35,8 +35,8 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
   aiChatContext,
   readOnlyReason,
 }: ChatPageComposerSectionProps) {
-  // Старый read-only режим оставлен для legacy-сценариев.
-  // Workspace-путь вместо него передаёт capabilities: UI тот же, но запрещённые действия получают заглушку.
+  // The old read-only mode remains for legacy scenarios.
+  // The Workspace path passes capabilities instead: the UI is the same, but blocked actions get placeholders.
   const effectiveComposerCapabilities =
     composerCapabilities ??
     (readOnlyReason == null

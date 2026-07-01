@@ -6,8 +6,8 @@ import type {
   WorkspaceMessengerTopicNotificationMode,
 } from "~/shared/api/messenger.types";
 
-// Это уже доменные типы новой ветки, не сырой ответ Workspace API.
-// Backend-поля вроде stream_uuid здесь превращаются в понятные поля вроде streamUuid.
+// These are domain types for the new path, not raw Workspace API responses.
+// Backend fields such as stream_uuid are converted here into app fields such as streamUuid.
 export type MessengerUuid = string;
 export type MessengerConversationId = string;
 export type MessengerAudience = "channel" | "private";
@@ -180,8 +180,8 @@ export interface MessengerSidebarMessagePreview {
   senderName?: string;
 }
 
-// Эти типы описывают не backend-данные, а готовый вид сайдбара:
-// title для строки, route для перехода, unreadCount для бейджа.
+// These types describe the ready sidebar view, not backend data:
+// title for the row, route for navigation, and unreadCount for the badge.
 export interface MessengerSidebarTopicItem {
   id: MessengerConversationId;
   streamUuid: MessengerUuid;

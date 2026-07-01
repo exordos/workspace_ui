@@ -10,11 +10,10 @@ import {
   type MessengerCollectionPage,
   type MessengerClientOptions,
 } from "~/shared/api/messenger-client";
+import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
 import { adaptMessengerMessage } from "./messenger-adapters.lib";
 import { parseMessengerConversationId } from "./messenger-ids.lib";
-import { useMessengerStore } from "./messenger.model";
-import type { MessengerStoreState } from "./messenger.model";
 import {
   buildMessengerRequestOptions,
   type MessengerRequestOptionsOverrides,
@@ -38,11 +37,12 @@ export interface MessengerMessagesClientDeps {
 
 export interface MessengerMessagesStoreApi {
   getState: () => Pick<
-    MessengerStoreState,
-    | "startConversationMessagesLoad"
-    | "applyConversationMessagesLoadSuccess"
-    | "failConversationMessagesLoad"
-    | "cancelConversationMessagesLoad"
+    ReturnType<typeof useWorkspaceMessageStore.getState>,
+    | "setMessagesLoading"
+    | "setMessagesError"
+    | "replaceOrMergeConversationMessagesPage"
+    | "mergeConversationMessagesPage"
+    | "setConversationPagination"
   >;
 }
 
@@ -96,7 +96,7 @@ export async function loadMessengerConversationMessages({
   client = {},
   clientOptions,
   signal,
-  store = useMessengerStore,
+  store = useWorkspaceMessageStore,
 }: LoadMessengerConversationMessagesOptions): Promise<MessengerConversationMessagesResult> {
   const requestContext = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
   if (requestContext == null) {
@@ -113,7 +113,8 @@ export async function loadMessengerConversationMessages({
     return { status: "skipped", ownerKey, reason: "stale-owner" };
   }
 
-  store.getState().startConversationMessagesLoad(ownerKey, conversationId);
+  store.getState().setMessagesLoading(conversationId, true);
+  store.getState().setMessagesError(conversationId, null);
 
   const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
   const query =
@@ -134,18 +135,22 @@ export async function loadMessengerConversationMessages({
     const page = await (client.getMessagesPage ?? defaultGetMessagesPage)(requestOptions, query);
 
     if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
-      store.getState().cancelConversationMessagesLoad(ownerKey, conversationId);
+      store.getState().setMessagesLoading(conversationId, false);
       return { status: "skipped", ownerKey, reason: "stale-owner" };
     }
 
     const nextPageMarker = page.nextPageMarker;
     const hasMore = nextPageMarker != null;
     const messages = page.items.map(adaptMessengerMessage);
-    store.getState().applyConversationMessagesLoadSuccess(ownerKey, conversationId, messages, {
-      mode: pageMarker == null ? "replace" : "merge",
-      nextPageMarker,
-      hasMore,
-    });
+    const messageStore = store.getState();
+    if (pageMarker == null) {
+      messageStore.replaceOrMergeConversationMessagesPage(conversationId, messages);
+    } else {
+      messageStore.mergeConversationMessagesPage(conversationId, messages);
+    }
+    messageStore.setMessagesLoading(conversationId, false);
+    messageStore.setMessagesError(conversationId, null);
+    messageStore.setConversationPagination(conversationId, { nextPageMarker, hasMore });
     return {
       status: "applied",
       ownerKey,
@@ -156,12 +161,13 @@ export async function loadMessengerConversationMessages({
     };
   } catch (error) {
     if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
-      store.getState().cancelConversationMessagesLoad(ownerKey, conversationId);
+      store.getState().setMessagesLoading(conversationId, false);
       return { status: "skipped", ownerKey, reason: "stale-owner" };
     }
 
     const message = normalizeMessagesError(error);
-    store.getState().failConversationMessagesLoad(ownerKey, conversationId, message);
+    store.getState().setMessagesLoading(conversationId, false);
+    store.getState().setMessagesError(conversationId, message);
     return {
       status: "failed",
       ownerKey,

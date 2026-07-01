@@ -21,7 +21,6 @@
 
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
-import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { getLocale } from "~/i18n/i18n";
@@ -78,27 +77,7 @@ type StateCallback = (state: AiAppState) => void;
 // ---------------------------------------------------------------------------
 
 function getCurrentChat(): AiChatContext {
-  const ctx = useCurrentChatMessagesStore.getState().context;
-  const msgs = useCurrentChatMessagesStore.getState().messages;
-
-  if (!ctx) return { type: null, messageCount: 0 };
-
-  if (ctx.type === "stream") {
-    return {
-      type: "stream",
-      streamName: ctx.streamName,
-      topic: ctx.topic,
-      messageCount: msgs.length,
-      lastMessageTimestamp: msgs[msgs.length - 1]?.timestamp,
-    };
-  }
-
-  return {
-    type: "dm",
-    dmPartnerIds: ctx.dmKey.split(",").map(Number),
-    messageCount: msgs.length,
-    lastMessageTimestamp: msgs[msgs.length - 1]?.timestamp,
-  };
+  return { type: null, messageCount: 0 };
 }
 
 function getCurrentUser(): AiUserContext {
@@ -137,13 +116,8 @@ function getAppState(): AiAppState {
 function getRecentMessages(
   limit = 20,
 ): { id: number; content: string; sender: string; timestamp: number }[] {
-  const msgs = useCurrentChatMessagesStore.getState().messages;
-  return msgs.slice(-limit).map((m) => ({
-    id: m.id,
-    content: m.content,
-    sender: m.sender_full_name,
-    timestamp: m.timestamp,
-  }));
+  void limit;
+  return [];
 }
 
 // ---------------------------------------------------------------------------

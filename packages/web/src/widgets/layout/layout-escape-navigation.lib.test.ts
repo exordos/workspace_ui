@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  isMessengerChatPathname,
   isInboxMessengerPathname,
   isInteractiveElementFocused,
   resolveLayoutEscapeKeyDown,
 } from "./layout-escape-navigation.lib";
-import { isMessengerChatPathname } from "./layout-sync-chat-context.lib";
 
 describe("isMessengerChatPathname", () => {
   it("matches stream and DM routes", () => {

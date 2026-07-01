@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  selectWorkspaceMessagesForConversation,
+  useWorkspaceMessageStore,
+} from "~/entities/message/message.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import type { MessengerClientOptions } from "~/shared/api/messenger-client";
@@ -14,7 +18,7 @@ import {
   markMessengerMessageRead,
   sendMessengerMessage,
 } from "./messenger-message-actions.lib";
-import { selectMessengerMessagesForConversation, useMessengerStore } from "./messenger.model";
+import { useMessengerStore } from "./messenger.model";
 
 const ACCOUNT_A = "account-a";
 const ACCOUNT_B = "account-b";
@@ -91,6 +95,7 @@ function createDeferred<T>(): {
 describe("messenger message actions", () => {
   beforeEach(() => {
     useMessengerStore.getState().clear();
+    useWorkspaceMessageStore.getState().clear();
   });
 
   it("creates a markdown message and indexes it into topic and stream buckets", async () => {
@@ -132,11 +137,14 @@ describe("messenger message actions", () => {
       },
     );
     expect(
-      selectMessengerMessagesForConversation(useMessengerStore.getState(), `stream:${STREAM_A}`),
+      selectWorkspaceMessagesForConversation(
+        useWorkspaceMessageStore.getState(),
+        `stream:${STREAM_A}`,
+      ),
     ).toEqual([expect.objectContaining({ uuid: MESSAGE_A })]);
     expect(
-      selectMessengerMessagesForConversation(
-        useMessengerStore.getState(),
+      selectWorkspaceMessagesForConversation(
+        useWorkspaceMessageStore.getState(),
         `topic:${STREAM_A}:${TOPIC_A}`,
       ),
     ).toEqual([expect.objectContaining({ uuid: MESSAGE_A })]);
@@ -154,9 +162,9 @@ describe("messenger message actions", () => {
       runtimeGeneration: 2,
     });
     const ownerKey = prepareStoreOwner(runtimeA);
-    useMessengerStore
+    useWorkspaceMessageStore
       .getState()
-      .indexMessageIntoConversationBuckets(ownerKey, adaptMessengerMessage(createMessageDto()));
+      .indexMessageIntoConversationBuckets(adaptMessengerMessage(createMessageDto()));
     const editRequest = createDeferred<WorkspaceMessengerMessageDto>();
     const editMessage = vi.fn(
       (
@@ -180,7 +188,9 @@ describe("messenger message actions", () => {
       ownerKey,
       reason: "stale-owner",
     });
-    expect(useMessengerStore.getState().messagesById[MESSAGE_A]?.markdown).not.toBe("Edited");
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.markdown).not.toBe(
+      "Edited",
+    );
   });
 
   it("deletes and marks messages as read through Workspace actions", async () => {
@@ -204,7 +214,7 @@ describe("messenger message actions", () => {
       client: { markMessageRead: () => Promise.resolve(createMessageDto({ read: true })) },
     });
 
-    expect(useMessengerStore.getState().messagesById[MESSAGE_A]?.read).toBe(true);
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(true);
 
     const deleteMessage = vi.fn(() => Promise.resolve());
     await deleteMessengerMessage({
@@ -218,6 +228,6 @@ describe("messenger message actions", () => {
 
     expect(deleteMessage).toHaveBeenCalledWith(expect.any(Object), MESSAGE_A);
     expect(useMessengerStore.getState().ownerKey).toBe(ownerKey);
-    expect(useMessengerStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
   });
 });

@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import {
+  selectWorkspaceMessagesForConversation,
+  useWorkspaceMessageStore,
+} from "~/entities/message/message.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type {
   WorkspaceMessengerFolderDto,
@@ -19,7 +23,6 @@ import {
 } from "./messenger-sidebar.lib";
 import {
   selectMessengerFolders,
-  selectMessengerMessagesForConversation,
   selectMessengerSidebarConversations,
   useMessengerStore,
 } from "./messenger.model";
@@ -220,6 +223,7 @@ function applyStreamAndTopicSnapshot(
 describe("messenger realtime active applier", () => {
   beforeEach(() => {
     useMessengerStore.getState().clear();
+    useWorkspaceMessageStore.getState().clear();
   });
 
   it("applies message created, updated, and deleted events", () => {
@@ -249,7 +253,7 @@ describe("messenger realtime active applier", () => {
       context,
     );
 
-    expect(useMessengerStore.getState().messagesById[MESSAGE_A]).toEqual(
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toEqual(
       expect.objectContaining({
         markdown: "Edited workspace message",
         updatedAt: "2026-06-22T10:20:00Z",
@@ -271,7 +275,7 @@ describe("messenger realtime active applier", () => {
       context,
     );
 
-    expect(useMessengerStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
     expect(useMessengerStore.getState().lastEpochVersion).toBe(13);
   });
 
@@ -290,12 +294,15 @@ describe("messenger realtime active applier", () => {
     applier.applyEvent(event, { ...context, source: "catch_up" });
     applier.applyEvent({ ...event, epoch_version: 12 }, context);
 
-    const state = useMessengerStore.getState();
-    expect(Object.keys(state.messagesById)).toEqual([MESSAGE_A]);
-    expect(state.messageIdsByConversationId[`stream:${STREAM_A}`]).toEqual([MESSAGE_A]);
-    expect(state.messageIdsByConversationId[`topic:${STREAM_A}:${TOPIC_A}`]).toEqual([MESSAGE_A]);
-    expect(state.streamsById[STREAM_A]?.lastMessageUuid).toBe(MESSAGE_A);
-    expect(state.topicsById[TOPIC_A]?.lastMessageUuid).toBe(MESSAGE_A);
+    const messengerState = useMessengerStore.getState();
+    const messageState = useWorkspaceMessageStore.getState();
+    expect(Object.keys(messageState.messagesById)).toEqual([MESSAGE_A]);
+    expect(messageState.messageIdsByConversationId[`stream:${STREAM_A}`]).toEqual([MESSAGE_A]);
+    expect(messageState.messageIdsByConversationId[`topic:${STREAM_A}:${TOPIC_A}`]).toEqual([
+      MESSAGE_A,
+    ]);
+    expect(messengerState.streamsById[STREAM_A]?.lastMessageUuid).toBe(MESSAGE_A);
+    expect(messengerState.topicsById[TOPIC_A]?.lastMessageUuid).toBe(MESSAGE_A);
   });
 
   it("indexes an incoming message into the active stream and topic conversation buckets", () => {
@@ -314,11 +321,11 @@ describe("messenger realtime active applier", () => {
       context,
     );
 
-    const state = useMessengerStore.getState();
-    expect(selectMessengerMessagesForConversation(state, `stream:${STREAM_A}`)).toEqual([
+    const state = useWorkspaceMessageStore.getState();
+    expect(selectWorkspaceMessagesForConversation(state, `stream:${STREAM_A}`)).toEqual([
       expect.objectContaining({ uuid: MESSAGE_A, markdown: "Hello, workspace" }),
     ]);
-    expect(selectMessengerMessagesForConversation(state, `topic:${STREAM_A}:${TOPIC_A}`)).toEqual([
+    expect(selectWorkspaceMessagesForConversation(state, `topic:${STREAM_A}:${TOPIC_A}`)).toEqual([
       expect.objectContaining({ uuid: MESSAGE_A, markdown: "Hello, workspace" }),
     ]);
   });
@@ -365,14 +372,14 @@ describe("messenger realtime active applier", () => {
       context,
     );
 
-    const state = useMessengerStore.getState();
+    const state = useWorkspaceMessageStore.getState();
     expect(
-      selectMessengerMessagesForConversation(state, `stream:${STREAM_A}`).map(
+      selectWorkspaceMessagesForConversation(state, `stream:${STREAM_A}`).map(
         (message) => message.uuid,
       ),
     ).toEqual([MESSAGE_A, MESSAGE_C, MESSAGE_B]);
     expect(
-      selectMessengerMessagesForConversation(state, `topic:${STREAM_A}:${TOPIC_A}`).map(
+      selectWorkspaceMessagesForConversation(state, `topic:${STREAM_A}:${TOPIC_A}`).map(
         (message) => message.uuid,
       ),
     ).toEqual([MESSAGE_A, MESSAGE_C, MESSAGE_B]);
@@ -458,14 +465,16 @@ describe("messenger realtime active applier", () => {
       context,
     );
 
-    const state = useMessengerStore.getState();
-    expect(selectMessengerMessagesForConversation(state, `topic:${STREAM_B}:${TOPIC_B}`)).toEqual([
-      expect.objectContaining({ uuid: MESSAGE_B, markdown: "Fresh inactive chat" }),
-    ]);
-    const rows = selectMessengerSidebarStreams(state, {
+    const messengerState = useMessengerStore.getState();
+    const messageState = useWorkspaceMessageStore.getState();
+    expect(
+      selectWorkspaceMessagesForConversation(messageState, `topic:${STREAM_B}:${TOPIC_B}`),
+    ).toEqual([expect.objectContaining({ uuid: MESSAGE_B, markdown: "Fresh inactive chat" })]);
+    const rows = selectMessengerSidebarStreams(messengerState, {
       organizationId: ORGANIZATION_A,
       projectId: PROJECT_A,
       selectedFolderUuid: FOLDER_A,
+      messagesById: messageState.messagesById,
     });
     expect(rows.map((row) => row.streamUuid)).toEqual([STREAM_B, STREAM_A]);
     expect(rows[0]).toMatchObject({
@@ -521,8 +530,8 @@ describe("messenger realtime active applier", () => {
     );
 
     expect(
-      selectMessengerMessagesForConversation(
-        useMessengerStore.getState(),
+      selectWorkspaceMessagesForConversation(
+        useWorkspaceMessageStore.getState(),
         `topic:${STREAM_A}:${TOPIC_A}`,
       ).map((message) => [message.uuid, message.markdown]),
     ).toEqual([
@@ -544,11 +553,11 @@ describe("messenger realtime active applier", () => {
       context,
     );
 
-    const state = useMessengerStore.getState();
-    expect(selectMessengerMessagesForConversation(state, `stream:${STREAM_A}`)).toEqual([
+    const state = useWorkspaceMessageStore.getState();
+    expect(selectWorkspaceMessagesForConversation(state, `stream:${STREAM_A}`)).toEqual([
       expect.objectContaining({ uuid: MESSAGE_B }),
     ]);
-    expect(selectMessengerMessagesForConversation(state, `topic:${STREAM_A}:${TOPIC_A}`)).toEqual([
+    expect(selectWorkspaceMessagesForConversation(state, `topic:${STREAM_A}:${TOPIC_A}`)).toEqual([
       expect.objectContaining({ uuid: MESSAGE_B }),
     ]);
     expect(state.messagesById[MESSAGE_A]).toBeUndefined();
@@ -579,9 +588,9 @@ describe("messenger realtime active applier", () => {
       context,
     );
 
-    const state = useMessengerStore.getState();
-    expect(selectMessengerMessagesForConversation(state, `stream:${STREAM_A}`)).toEqual([]);
-    expect(selectMessengerMessagesForConversation(state, `topic:${STREAM_A}:${TOPIC_A}`)).toEqual(
+    const state = useWorkspaceMessageStore.getState();
+    expect(selectWorkspaceMessagesForConversation(state, `stream:${STREAM_A}`)).toEqual([]);
+    expect(selectWorkspaceMessagesForConversation(state, `topic:${STREAM_A}:${TOPIC_A}`)).toEqual(
       [],
     );
     expect(state.messagesById[MESSAGE_A]).toBeUndefined();
@@ -626,7 +635,7 @@ describe("messenger realtime active applier", () => {
     );
     applier.skipEvent({ epoch_version: 32 }, "unsupported_event", context);
 
-    expect(useMessengerStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
     expect(useMessengerStore.getState().skippedRealtimeEvents).toEqual([]);
     expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
   });

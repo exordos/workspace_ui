@@ -1,7 +1,7 @@
 /**
  * Shared sidebar unread decrement when messages are marked read (API, optimistic, or Zulip events).
  */
-import type { CurrentChatContext } from "~/entities/message/message.model";
+import type { CurrentChatContext } from "~/entities/message/message-chat-context.lib";
 import {
   logSidebarUnreadFlow,
   summarizeContextBadge,

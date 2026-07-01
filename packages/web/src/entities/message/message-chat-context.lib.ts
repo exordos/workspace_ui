@@ -6,7 +6,19 @@ import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { normalizeStreamTopicForMessageCache } from "~/shared/lib/message-cache-keys.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
-import type { CurrentChatContext } from "./message.model.types";
+
+export type CurrentChatContext =
+  | {
+      type: "stream";
+      streamId: number;
+      streamName: string;
+      topic: string;
+      streamWideView?: boolean;
+    }
+  | {
+      type: "dm";
+      dmKey: string;
+    };
 
 /** True when route points to the same stream/topic or DM as the current store context (re-sync without navigation). */
 export function isSameChatLocation(

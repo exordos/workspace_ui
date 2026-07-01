@@ -1,4 +1,4 @@
-import type { CurrentChatContext } from "~/entities/message/message.model.types";
+import type { CurrentChatContext } from "~/entities/message/message-chat-context.lib";
 
 export interface TopicResolveTarget {
   streamId: number;

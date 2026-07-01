@@ -17,7 +17,6 @@ import { LayoutAppShell } from "./layout-app-shell.ui";
 import { useLayoutAuthErrorHandler } from "./layout-auth-error-handler.hook";
 import { useLayoutAuthGuard } from "./layout-auth-guard.hook";
 import { LayoutBootstrapErrorBanner } from "./layout-bootstrap-error-banner.ui";
-import { runChatListBootstrap } from "./layout-chat-list-bootstrap.lib";
 import { useLayoutChatListSnapshotSync } from "./layout-chat-list-snapshot-sync.hook";
 import { parseFocusedMessageIdFromSearch } from "./layout-chat-route.lib";
 import { shouldRenderChatShell } from "./layout-chat-shell.lib";
@@ -25,7 +24,6 @@ import { resolveLayoutConnectionBannerMessage } from "./layout-connection-banner
 import { LayoutConnectionBanner } from "./layout-connection-banner.ui";
 import { useConnectionHealthSnapshot } from "./layout-connection-health.hook";
 import { useLayoutConnectionRecovery } from "./layout-connection-recovery.hook";
-import { syncCurrentUserIdFromActiveInstance } from "./layout-current-user-bootstrap.lib";
 import { useLayoutEscapeNavigation } from "./layout-escape-navigation.hook";
 import { useInactiveInstancesBackgroundWork } from "./layout-inactive-instances-background-work.hook";
 import { useLayoutInstanceBootstrap } from "./layout-instance-bootstrap.hook";
@@ -47,21 +45,14 @@ import { useLayoutPushPermission } from "./layout-push-permission.hook";
 import { useLayoutResetRightDrawerOnInstanceChange } from "./layout-reset-right-drawer-on-instance-change.hook";
 import { useLayoutRightPanelShell } from "./layout-right-panel-shell.hook";
 import { useLayoutShortcuts } from "./layout-shortcuts.hook";
-import { useSyncChatContextFromLocation } from "./layout-sync-chat-context.hook";
 import { resolveLayoutTopBannerKind } from "./layout-top-banner.lib";
 import { useLayoutUnreadAndTitle } from "./layout-unread-title.hook";
 import { isLayoutUserConnectionReady } from "./layout-user-connection-status.types";
 import { useLayoutWindowBranding } from "./layout-window-branding.hook";
 import { useLayoutWorkspaceMessengerBootstrap } from "./layout-workspace-messenger-bootstrap.hook";
 import { useLayoutWorkspaceRealtime } from "./layout-workspace-realtime.hook";
-import { useLayoutZulipEventLoop } from "./layout-zulip-event-loop.hook";
 import { useZulipRateLimitCountdownSeconds } from "./layout-zulip-rate-limit-banner.hook";
 import type { LayoutUserConnectionStatus } from "./layout-user-connection-status.types";
-
-const LegacyChatContextSync: React.FC = () => {
-  useSyncChatContextFromLocation();
-  return null;
-};
 
 export const Layout: React.FC = () => {
   const location = useLocation();
@@ -83,10 +74,8 @@ export const Layout: React.FC = () => {
   const activeStreamSlug = streamSlug ?? undefined;
   const activeTopic = topicName ?? null;
 
-  const setFromMessages = useChatListStore((s) => s.setFromMessages);
   const bootstrapError = useChatListStore((s) => s.bootstrapError);
   const clearBootstrapError = useChatListStore((s) => s.clearBootstrapError);
-  const setCurrentUserId = useChatListStore((s) => s.setCurrentUserId);
   const currentUserId = useChatListStore((s) => s.currentUserId);
   const streamsFromStore = useChatListStore((s) => s.streams());
   const dmsFromStore = useChatListStore((s) => s.dms());
@@ -137,27 +126,14 @@ export const Layout: React.FC = () => {
   const openRightDrawerUserProfile = useRightDrawerStore((s) => s.openUserProfile);
   const openRightDrawerSettings = useRightDrawerStore((s) => s.openSettings);
   const openRightDrawerAbout = useRightDrawerStore((s) => s.openAbout);
-  const [currentUserStatus, setCurrentUserStatus] = useState<LayoutUserConnectionStatus>("idle");
+  const [currentUserStatus] = useState<LayoutUserConnectionStatus>("idle");
   const refreshStaleRef = useRef<(() => void) | null>(null);
   const latestMessageIdRef = useRef<number | null>(null);
 
-  const { loadMuteSnapshot } = useLayoutInstanceBootstrap({
+  useLayoutInstanceBootstrap({
     currentInstanceId,
     currentUserStatus,
   });
-
-  const loadBootstrapMessages = useCallback(
-    async (signal: AbortSignal, isStale: () => boolean) => {
-      syncCurrentUserIdFromActiveInstance({
-        instances,
-        currentInstanceId,
-        currentUserId: useChatListStore.getState().currentUserId,
-        setCurrentUserId,
-      });
-      return runChatListBootstrap(currentInstanceId, { signal, isStale });
-    },
-    [currentInstanceId, instances, setCurrentUserId],
-  );
 
   const online = useLayoutOnlineStatus();
   const rateLimitSeconds = useZulipRateLimitCountdownSeconds(online);
@@ -174,8 +150,8 @@ export const Layout: React.FC = () => {
     pathname: location.pathname,
   });
 
-  // На Workspace-маршруте не запускаем пересчёт старых Zulip бейджей.
-  // Иначе старый unread-flow может перезаписать состояние, которое пришло из Workspace API.
+  // Do not run old Zulip badge recalculation on Workspace routes.
+  // Otherwise the old unread flow can overwrite state from the Workspace API.
   useEffect(() => {
     if (!currentInstanceId || workspaceMessengerActive) return;
     syncUnreadSurfacesFromDelta({
@@ -239,23 +215,8 @@ export const Layout: React.FC = () => {
     focusedMessageId,
   });
 
-  useLayoutZulipEventLoop({
-    // Это главный разрыв между ветками: старый long-polling не должен работать,
-    // когда экран открыт через Workspace project/stream/topic маршруты.
-    enabled: !workspaceMessengerActive,
-    currentInstanceId,
-    latestMessageIdRef,
-    focusedMessageId,
-    onRefreshStaleRef: refreshStaleRef,
-    loadBootstrapMessages,
-    loadMuteSnapshot,
-    setFromMessages,
-    setCurrentUserId,
-    setCurrentUserStatus,
-  });
-
-  // Старые снимки чатов и mute-настроек пишутся в IDB только для Zulip-flow.
-  // Workspace-сайдбар не должен сохраняться через эти старые ключи.
+  // Old chat and mute snapshots are written to IDB only for the Zulip flow.
+  // The Workspace sidebar must not be persisted through these old keys.
   useLayoutChatListSnapshotSync(currentInstanceId, !workspaceMessengerActive);
   useLayoutMuteSnapshotSync(currentInstanceId, !workspaceMessengerActive);
   useLayoutResetRightDrawerOnInstanceChange({ currentInstanceId, closeRightDrawer });
@@ -354,7 +315,6 @@ export const Layout: React.FC = () => {
 
   return (
     <div className="relative flex h-screen max-h-[100dvh] min-h-app-shell w-full min-w-app-shell-min flex-col overflow-hidden bg-bg text-text-primary">
-      {workspaceMessengerActive ? null : <LegacyChatContextSync />}
       {topBannerKind === "connection" ? (
         <LayoutConnectionBanner
           online={online}
