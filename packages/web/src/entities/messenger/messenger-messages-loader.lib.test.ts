@@ -6,6 +6,7 @@ import type {
   MessengerClientOptions,
 } from "~/shared/api/messenger-client";
 import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
+import { adaptMessengerMessage } from "./messenger-adapters.lib";
 import { loadMessengerConversationMessages } from "./messenger-messages-loader.lib";
 import {
   selectMessengerConversationMessagesStatus,
@@ -31,6 +32,7 @@ const TOPIC_B = "ed25f944-8106-4386-b2f9-65e9db32d465";
 const MESSAGE_A = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
 const MESSAGE_B = "78105b9e-f1ac-41f1-baf5-2975486cc7dc";
 const DATE = "2026-06-22T10:10:00Z";
+const DATE_LATER = "2026-06-22T10:20:00Z";
 
 function createRuntimeContext(
   overrides: Partial<WorkspaceRuntimeContext> = {},
@@ -203,7 +205,9 @@ describe("messenger conversation messages loader", () => {
       .fn()
       .mockResolvedValueOnce(createMessagesPage([createMessageDto({ uuid: MESSAGE_A })]))
       .mockResolvedValueOnce({
-        items: [createMessageDto({ uuid: MESSAGE_B })],
+        items: [
+          createMessageDto({ uuid: MESSAGE_B, created_at: DATE_LATER, updated_at: DATE_LATER }),
+        ],
         nextPageMarker: null,
         pageLimit: 50,
       } satisfies MessengerCollectionPage<WorkspaceMessengerMessageDto>);
@@ -239,6 +243,94 @@ describe("messenger conversation messages loader", () => {
       nextPageMarker: null,
       hasMore: false,
     });
+  });
+
+  it("merges overlapping history pages without duplicates in created order", async () => {
+    const runtimeContext = createRuntimeContext();
+    prepareStoreOwner(runtimeContext);
+    const getMessagesPage = vi
+      .fn()
+      .mockResolvedValueOnce(
+        createMessagesPage([
+          createMessageDto({
+            uuid: MESSAGE_B,
+            payload: { kind: "markdown", content: "Later first page" },
+            created_at: DATE_LATER,
+            updated_at: DATE_LATER,
+          }),
+        ]),
+      )
+      .mockResolvedValueOnce({
+        items: [
+          createMessageDto({ uuid: MESSAGE_A }),
+          createMessageDto({
+            uuid: MESSAGE_B,
+            payload: { kind: "markdown", content: "Edited overlap" },
+            created_at: DATE_LATER,
+            updated_at: DATE_LATER,
+          }),
+        ],
+        nextPageMarker: null,
+        pageLimit: 50,
+      } satisfies MessengerCollectionPage<WorkspaceMessengerMessageDto>);
+
+    await loadMessengerConversationMessages({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
+      client: { getMessagesPage },
+    });
+    await loadMessengerConversationMessages({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
+      pageMarker: "next-page",
+      client: { getMessagesPage },
+    });
+
+    expect(
+      selectMessengerMessagesForConversation(
+        useMessengerStore.getState(),
+        `topic:${STREAM_A}:${TOPIC_A}`,
+      ).map((message) => [message.uuid, message.markdown]),
+    ).toEqual([
+      [MESSAGE_A, "Hello, workspace"],
+      [MESSAGE_B, "Edited overlap"],
+    ]);
+  });
+
+  it("preserves live messages when the initial history page resolves later", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const messagesRequest = createDeferred<MessengerCollectionPage<WorkspaceMessengerMessageDto>>();
+    const loading = loadMessengerConversationMessages({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
+      client: { getMessagesPage: () => messagesRequest.promise },
+    });
+
+    useMessengerStore
+      .getState()
+      .upsertMessage(
+        ownerKey,
+        adaptMessengerMessage(
+          createMessageDto({ uuid: MESSAGE_B, created_at: DATE_LATER, updated_at: DATE_LATER }),
+        ),
+      );
+    messagesRequest.resolve(createMessagesPage([createMessageDto({ uuid: MESSAGE_A })]));
+
+    await expect(loading).resolves.toMatchObject({
+      status: "applied",
+      ownerKey,
+      conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
+    });
+    expect(
+      selectMessengerMessagesForConversation(
+        useMessengerStore.getState(),
+        `topic:${STREAM_A}:${TOPIC_A}`,
+      ).map((message) => message.uuid),
+    ).toEqual([MESSAGE_A, MESSAGE_B]);
   });
 
   it("keeps stream-wide and topic message buckets separate while sharing message objects", async () => {

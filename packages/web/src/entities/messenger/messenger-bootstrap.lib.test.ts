@@ -41,6 +41,7 @@ const FOLDER_ITEM_A = "9f41b1a7-77f9-4c12-bdc6-d3cebc5dbf50";
 const MESSAGE_A = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
 const MESSAGE_B = "78105b9e-f1ac-41f1-baf5-2975486cc7dc";
 const DATE = "2026-06-22T10:10:00Z";
+const DATE_LATER = "2026-06-22T10:20:00Z";
 
 function createRuntimeContext(
   overrides: Partial<WorkspaceRuntimeContext> = {},
@@ -640,14 +641,16 @@ describe("messenger bootstrap store", () => {
   it("merges message pages without duplicates and removes messages by delete payload", () => {
     const ownerKey = workspaceRuntimeOwnerKey(createRuntimeContext());
     const messageA = adaptMessengerMessage(createMessageDto());
-    const messageB = adaptMessengerMessage(createMessageDto({ uuid: MESSAGE_B }));
+    const messageB = adaptMessengerMessage(
+      createMessageDto({ uuid: MESSAGE_B, created_at: DATE_LATER, updated_at: DATE_LATER }),
+    );
     useMessengerStore.getState().startBootstrap(ownerKey);
 
     useMessengerStore
       .getState()
       .mergeConversationMessagesPage(ownerKey, `topic:${STREAM_A}:${TOPIC_A}`, [
-        messageA,
         messageB,
+        messageA,
         { ...messageA, markdown: "Edited" },
       ]);
 

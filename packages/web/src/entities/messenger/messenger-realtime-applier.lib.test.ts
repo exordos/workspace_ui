@@ -39,7 +39,9 @@ const FOLDER_ITEM_A = "9f41b1a7-77f9-4c12-bdc6-d3cebc5dbf50";
 const FOLDER_ITEM_B = "5f5b9a9d-0e57-4775-849b-c8308f95a809";
 const MESSAGE_A = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
 const MESSAGE_B = "78105b9e-f1ac-41f1-baf5-2975486cc7dc";
+const MESSAGE_C = "cc10bcd3-8d5b-45bc-9960-40f1cf7a04de";
 const DATE = "2026-06-22T10:10:00Z";
+const DATE_MIDDLE = "2026-06-22T10:15:00Z";
 const DATE_LATER = "2026-06-22T10:20:00Z";
 
 function createOwner(overrides: Partial<WorkspaceRealtimeRuntimeOwner> = {}) {
@@ -319,6 +321,61 @@ describe("messenger realtime active applier", () => {
     expect(selectMessengerMessagesForConversation(state, `topic:${STREAM_A}:${TOPIC_A}`)).toEqual([
       expect.objectContaining({ uuid: MESSAGE_A, markdown: "Hello, workspace" }),
     ]);
+  });
+
+  it("inserts delayed live messages by created time in stream and topic buckets", () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const applier = createMessengerRealtimeActiveApplier();
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    applyStreamAndTopicSnapshot(applier, context);
+
+    applier.applyEvent(
+      {
+        epoch_version: 11,
+        type: "message",
+        message: createMessageDto({ uuid: MESSAGE_A, created_at: DATE, updated_at: DATE }),
+      },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 12,
+        type: "message",
+        message: createMessageDto({
+          uuid: MESSAGE_B,
+          payload: { kind: "markdown", content: "Later message" },
+          created_at: DATE_LATER,
+          updated_at: DATE_LATER,
+        }),
+      },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 13,
+        type: "message",
+        message: createMessageDto({
+          uuid: MESSAGE_C,
+          payload: { kind: "markdown", content: "Middle message" },
+          created_at: DATE_MIDDLE,
+          updated_at: DATE_MIDDLE,
+        }),
+      },
+      context,
+    );
+
+    const state = useMessengerStore.getState();
+    expect(
+      selectMessengerMessagesForConversation(state, `stream:${STREAM_A}`).map(
+        (message) => message.uuid,
+      ),
+    ).toEqual([MESSAGE_A, MESSAGE_C, MESSAGE_B]);
+    expect(
+      selectMessengerMessagesForConversation(state, `topic:${STREAM_A}:${TOPIC_A}`).map(
+        (message) => message.uuid,
+      ),
+    ).toEqual([MESSAGE_A, MESSAGE_C, MESSAGE_B]);
   });
 
   it("updates inactive conversation sidebar preview and ordering from a fresh message event", () => {

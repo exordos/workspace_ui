@@ -40,6 +40,12 @@ const EMPTY_CONVERSATIONS: MessengerConversation[] = [];
 const EMPTY_MESSAGES: MessengerMessage[] = [];
 const EMPTY_FOLDERS: MessengerFolder[] = [];
 const EMPTY_SKIPPED_REALTIME_EVENTS: MessengerSkippedRealtimeEvent[] = [];
+type MessengerFreshnessState = Pick<
+  MessengerDomainData,
+  "streamsById" | "topicsById" | "conversationsById"
+>;
+type MessengerFreshnessInputState = MessengerFreshnessState &
+  Pick<MessengerDomainData, "messagesById">;
 
 // Store хранит Workspace-данные отдельно от старых Zulip stores.
 // Это важно для миграции: новый backend не должен подстраиваться под старый source-of-truth.
@@ -246,6 +252,129 @@ function removeId<TId extends string>(ids: TId[], id: TId): TId[] {
   return ids.filter((item) => item !== id);
 }
 
+function sameIds(left: readonly MessengerUuid[], right: readonly MessengerUuid[]): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((id, index) => id === right[index]);
+}
+
+function compareMessengerMessages(left: MessengerMessage, right: MessengerMessage): number {
+  const createdAtOrder = compareIsoDateStrings(left.createdAt, right.createdAt);
+  if (createdAtOrder !== 0) return createdAtOrder;
+  return left.uuid.localeCompare(right.uuid);
+}
+
+function compareMessageIdWithMessage(
+  messageId: MessengerUuid,
+  message: MessengerMessage,
+  messagesById: Record<MessengerUuid, MessengerMessage>,
+): number {
+  const existingMessage = messagesById[messageId];
+  if (existingMessage == null) return messageId.localeCompare(message.uuid);
+  return compareMessengerMessages(existingMessage, message);
+}
+
+function insertSortedMessageId(
+  ids: MessengerUuid[],
+  message: MessengerMessage,
+  messagesById: Record<MessengerUuid, MessengerMessage>,
+  previousMessage: MessengerMessage | undefined,
+): MessengerUuid[] {
+  const existingIndex = ids.indexOf(message.uuid);
+  if (existingIndex >= 0 && previousMessage?.createdAt === message.createdAt) {
+    return ids;
+  }
+
+  const baseIds = existingIndex >= 0 ? removeId(ids, message.uuid) : ids;
+  const lastId = baseIds.at(-1);
+  if (lastId == null) return [message.uuid];
+  if (compareMessageIdWithMessage(lastId, message, messagesById) <= 0) {
+    return [...baseIds, message.uuid];
+  }
+
+  const firstId = baseIds[0];
+  if (firstId == null || compareMessageIdWithMessage(firstId, message, messagesById) >= 0) {
+    return [message.uuid, ...baseIds];
+  }
+
+  let low = 0;
+  let high = baseIds.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    const middleId = baseIds[middle];
+    if (middleId == null || compareMessageIdWithMessage(middleId, message, messagesById) <= 0) {
+      low = middle + 1;
+    } else {
+      high = middle;
+    }
+  }
+
+  return [...baseIds.slice(0, low), message.uuid, ...baseIds.slice(low)];
+}
+
+function sortUniqueMessages(messages: MessengerMessage[]): MessengerMessage[] {
+  if (messages.length <= 1) return messages;
+  const messagesByUuid = new Map<MessengerUuid, MessengerMessage>();
+  for (const message of messages) {
+    messagesByUuid.set(message.uuid, message);
+  }
+  return [...messagesByUuid.values()].sort(compareMessengerMessages);
+}
+
+function collectMergeableExistingMessageIds(
+  existingIds: MessengerUuid[],
+  incomingIds: ReadonlySet<MessengerUuid>,
+  messagesById: Record<MessengerUuid, MessengerMessage>,
+): MessengerUuid[] {
+  const seenExistingIds = new Set<MessengerUuid>();
+  const existing: MessengerUuid[] = [];
+  for (const messageId of existingIds) {
+    if (incomingIds.has(messageId)) continue;
+    if (seenExistingIds.has(messageId)) continue;
+    if (messagesById[messageId] == null) continue;
+    seenExistingIds.add(messageId);
+    existing.push(messageId);
+  }
+  return existing;
+}
+
+function mergeSortedMessageIds(
+  existingIds: MessengerUuid[],
+  incomingMessages: MessengerMessage[],
+  messagesById: Record<MessengerUuid, MessengerMessage>,
+): MessengerUuid[] {
+  if (incomingMessages.length === 0) return existingIds;
+
+  const incoming = sortUniqueMessages(incomingMessages);
+  const incomingIds = new Set(incoming.map((message) => message.uuid));
+  const existing = collectMergeableExistingMessageIds(existingIds, incomingIds, messagesById);
+  const result: MessengerUuid[] = [];
+  let existingIndex = 0;
+  let incomingIndex = 0;
+
+  while (existingIndex < existing.length && incomingIndex < incoming.length) {
+    const existingId = existing[existingIndex]!;
+    const incomingMessage = incoming[incomingIndex]!;
+    const existingMessage = messagesById[existingId]!;
+
+    if (compareMessengerMessages(existingMessage, incomingMessage) <= 0) {
+      result.push(existingId);
+      existingIndex += 1;
+    } else {
+      result.push(incomingMessage.uuid);
+      incomingIndex += 1;
+    }
+  }
+
+  for (; existingIndex < existing.length; existingIndex += 1) {
+    result.push(existing[existingIndex]!);
+  }
+  for (; incomingIndex < incoming.length; incomingIndex += 1) {
+    result.push(incoming[incomingIndex]!.uuid);
+  }
+
+  return sameIds(existingIds, result) ? existingIds : result;
+}
+
 function isMessageReferencedOutsideConversations(
   messageIdsByConversationId: Record<MessengerConversationId, MessengerUuid[]>,
   excludedConversationIds: ReadonlySet<MessengerConversationId>,
@@ -262,35 +391,16 @@ function applyConversationMessagesBucket(
   state: Pick<MessengerDomainData, "messagesById" | "messageIdsByConversationId">,
   conversationId: MessengerConversationId,
   messages: MessengerMessage[],
-  mode: "replace" | "merge",
 ): Pick<MessengerDomainData, "messagesById" | "messageIdsByConversationId"> {
-  // Объект сообщения не дублируем: messagesById хранит тело, а bucket хранит только порядок uuid.
   const nextMessagesById = { ...state.messagesById };
-  const excludedConversationIds = new Set<MessengerConversationId>([conversationId]);
-  let nextMessageIds =
-    mode === "merge" ? (state.messageIdsByConversationId[conversationId] ?? EMPTY_IDS) : EMPTY_IDS;
-
-  if (mode === "replace") {
-    const nextMessageIdSet = new Set(messages.map((message) => message.uuid));
-    const previousMessageIds = state.messageIdsByConversationId[conversationId] ?? EMPTY_IDS;
-    for (const messageId of previousMessageIds) {
-      if (
-        !nextMessageIdSet.has(messageId) &&
-        !isMessageReferencedOutsideConversations(
-          state.messageIdsByConversationId,
-          excludedConversationIds,
-          messageId,
-        )
-      ) {
-        delete nextMessagesById[messageId];
-      }
-    }
-  }
-
   for (const message of messages) {
     nextMessagesById[message.uuid] = message;
-    nextMessageIds = appendUniqueId(nextMessageIds, message.uuid);
   }
+  const nextMessageIds = mergeSortedMessageIds(
+    state.messageIdsByConversationId[conversationId] ?? EMPTY_IDS,
+    messages,
+    nextMessagesById,
+  );
 
   return {
     messagesById: nextMessagesById,
@@ -321,19 +431,23 @@ function indexMessageIntoBuckets(
   message: MessengerMessage,
   conversationIds: readonly MessengerConversationId[],
 ): Pick<MessengerDomainData, "messagesById" | "messageIdsByConversationId"> {
+  const previousMessage = state.messagesById[message.uuid];
+  const nextMessagesById = {
+    ...state.messagesById,
+    [message.uuid]: message,
+  };
   const nextMessageIdsByConversationId = { ...state.messageIdsByConversationId };
   for (const conversationId of conversationIds) {
-    nextMessageIdsByConversationId[conversationId] = appendUniqueId(
+    nextMessageIdsByConversationId[conversationId] = insertSortedMessageId(
       nextMessageIdsByConversationId[conversationId] ?? EMPTY_IDS,
-      message.uuid,
+      message,
+      nextMessagesById,
+      previousMessage,
     );
   }
 
   return {
-    messagesById: {
-      ...state.messagesById,
-      [message.uuid]: message,
-    },
+    messagesById: nextMessagesById,
     messageIdsByConversationId: nextMessageIdsByConversationId,
   };
 }
@@ -349,23 +463,25 @@ function isMessageFreshForContainer(
   message: MessengerMessage,
   currentLastMessageUuid: MessengerUuid | null | undefined,
   messagesById: Record<MessengerUuid, MessengerMessage>,
+  containerUpdatedAt?: string,
 ): boolean {
   if (currentLastMessageUuid == null) return true;
   if (currentLastMessageUuid === message.uuid) return true;
 
   const currentMessage = messagesById[currentLastMessageUuid];
-  if (currentMessage == null) return true;
+  if (currentMessage == null) {
+    return (
+      containerUpdatedAt == null || compareIsoDateStrings(message.createdAt, containerUpdatedAt) > 0
+    );
+  }
 
-  return compareIsoDateStrings(message.createdAt, currentMessage.createdAt) >= 0;
+  return compareMessengerMessages(message, currentMessage) >= 0;
 }
 
 function applyMessageFreshness(
-  state: Pick<
-    MessengerDomainData,
-    "streamsById" | "topicsById" | "conversationsById" | "messagesById"
-  >,
+  state: MessengerFreshnessInputState,
   message: MessengerMessage,
-): Pick<MessengerDomainData, "streamsById" | "topicsById" | "conversationsById"> {
+): MessengerFreshnessState {
   let nextStreamsById = state.streamsById;
   let nextTopicsById = state.topicsById;
   let nextConversationsById = state.conversationsById;
@@ -373,7 +489,12 @@ function applyMessageFreshness(
   const stream = state.streamsById[message.streamUuid];
   if (
     stream != null &&
-    isMessageFreshForContainer(message, stream.lastMessageUuid, state.messagesById)
+    isMessageFreshForContainer(
+      message,
+      stream.lastMessageUuid,
+      state.messagesById,
+      stream.updatedAt,
+    )
   ) {
     nextStreamsById = {
       ...nextStreamsById,
@@ -391,7 +512,7 @@ function applyMessageFreshness(
   const topic = state.topicsById[message.topicUuid];
   if (
     topic != null &&
-    isMessageFreshForContainer(message, topic.lastMessageUuid, state.messagesById)
+    isMessageFreshForContainer(message, topic.lastMessageUuid, state.messagesById, topic.updatedAt)
   ) {
     nextTopicsById = {
       ...nextTopicsById,
@@ -810,7 +931,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
 
-      return applyConversationMessagesBucket(state, conversationId, messages, "replace");
+      return applyConversationMessagesBucket(state, conversationId, messages);
     });
   },
 
@@ -848,12 +969,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
       delete nextLoading[conversationId];
       const nextErrors = { ...state.messagesErrorByConversationId };
       delete nextErrors[conversationId];
-      const messageState = applyConversationMessagesBucket(
-        state,
-        conversationId,
-        messages,
-        options.mode,
-      );
+      const messageState = applyConversationMessagesBucket(state, conversationId, messages);
 
       return {
         ...messageState,
@@ -1157,6 +1273,10 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
       if (state.ownerKey !== ownerKey) return state;
 
       const previous = state.messagesById[message.uuid];
+      const nextMessagesById = {
+        ...state.messagesById,
+        [message.uuid]: message,
+      };
       const nextMessageIdsByConversationId = { ...state.messageIdsByConversationId };
       if (previous != null) {
         for (const previousConversationId of conversationBucketsForMessage(previous, {
@@ -1178,9 +1298,11 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
       for (const conversationId of conversationBucketsForMessage(message, {
         includeStreamConversation: true,
       })) {
-        nextMessageIdsByConversationId[conversationId] = appendUniqueId(
+        nextMessageIdsByConversationId[conversationId] = insertSortedMessageId(
           nextMessageIdsByConversationId[conversationId] ?? EMPTY_IDS,
-          message.uuid,
+          message,
+          nextMessagesById,
+          previous,
         );
       }
       // Workspace realtime может прислать тот же uuid после reload/catch-up или как echo.
@@ -1189,10 +1311,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
 
       return {
         ...freshnessState,
-        messagesById: {
-          ...state.messagesById,
-          [message.uuid]: message,
-        },
+        messagesById: nextMessagesById,
         messageIdsByConversationId: nextMessageIdsByConversationId,
       };
     });
@@ -1309,7 +1428,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
 
-      return applyConversationMessagesBucket(state, conversationId, messages, "merge");
+      return applyConversationMessagesBucket(state, conversationId, messages);
     });
   },
 
