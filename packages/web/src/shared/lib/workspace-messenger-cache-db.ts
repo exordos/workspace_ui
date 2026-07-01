@@ -1,0 +1,1161 @@
+import {
+  runWorkspaceMessengerCacheDbUpgrade,
+  WORKSPACE_MESSENGER_CACHE_STORES,
+} from "./workspace-messenger-cache-db-upgrade.lib";
+
+const DB_NAME = "workspace-messenger-cache-v1";
+const DB_VERSION = 1;
+const IDB_DELETE_BLOCKED_TIMEOUT_MS = 3_000;
+const DEFAULT_MESSAGE_BUCKET_RETENTION = 500;
+const ORDER_KEY_SEPARATOR = "|";
+
+export const WORKSPACE_MESSENGER_CACHE_DB_NAME = DB_NAME;
+export const WORKSPACE_MESSENGER_CACHE_DB_VERSION = DB_VERSION;
+
+export type WorkspaceMessengerConversationKind = "stream" | "topic";
+
+export interface WorkspaceMessengerCacheOwnerMetaRow {
+  ownerKey: string;
+  schemaVersion: number;
+  lastHydratedAt: number | null;
+  lastCompactedAt: number | null;
+}
+
+export interface WorkspaceMessengerCachedStream {
+  uuid: string;
+  updatedAt?: string | null;
+}
+
+export interface WorkspaceMessengerStreamCacheRow {
+  id: string;
+  ownerKey: string;
+  streamUuid: string;
+  stream: WorkspaceMessengerCachedStream;
+  updatedAt: string;
+}
+
+export interface WorkspaceMessengerCachedTopic {
+  uuid: string;
+  streamUuid: string;
+  updatedAt?: string | null;
+}
+
+export interface WorkspaceMessengerTopicCacheRow {
+  id: string;
+  ownerKey: string;
+  topicUuid: string;
+  streamUuid: string;
+  topic: WorkspaceMessengerCachedTopic;
+  updatedAt: string;
+}
+
+export interface WorkspaceMessengerCachedConversation {
+  id: string;
+  streamUuid: string;
+  topicUuid?: string;
+  title?: string;
+  unreadCount?: number;
+  lastMessageUuid?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface WorkspaceMessengerConversationCacheRow {
+  id: string;
+  ownerKey: string;
+  conversationId: string;
+  kind: WorkspaceMessengerConversationKind;
+  streamUuid: string;
+  topicUuid?: string;
+  title: string;
+  unreadCount: number;
+  lastMessageUuid: string | null;
+  conversation: WorkspaceMessengerCachedConversation;
+  updatedAt: string;
+}
+
+export interface WorkspaceMessengerCachedFolder {
+  uuid: string;
+  updatedAt?: string | null;
+}
+
+export interface WorkspaceMessengerFolderCacheRow {
+  id: string;
+  ownerKey: string;
+  folderUuid: string;
+  folder: WorkspaceMessengerCachedFolder;
+  updatedAt: string;
+}
+
+export interface WorkspaceMessengerCachedFolderItem {
+  uuid: string;
+  folderUuid: string;
+  conversationId: string;
+  streamUuid: string;
+  chatType: string;
+  orderIndex?: number | null;
+  pinnedAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface WorkspaceMessengerFolderItemCacheRow {
+  id: string;
+  ownerKey: string;
+  folderItemUuid: string;
+  folderUuid: string;
+  conversationId: string;
+  streamUuid: string;
+  chatType: string;
+  orderIndex: number | null;
+  pinnedAt: string | null;
+  folderItem: WorkspaceMessengerCachedFolderItem;
+  updatedAt: string;
+}
+
+export interface WorkspaceMessengerCachedUser {
+  uuid: string;
+  updatedAt?: string | null;
+}
+
+export interface WorkspaceMessengerUserCacheRow {
+  id: string;
+  ownerKey: string;
+  userUuid: string;
+  user: WorkspaceMessengerCachedUser;
+  updatedAt: string;
+}
+
+export interface WorkspaceMessengerCachedMessage {
+  uuid: string;
+  conversationId: string;
+  streamUuid: string;
+  topicUuid: string;
+  createdAt: string;
+  updatedAt?: string | null;
+}
+
+export interface WorkspaceMessengerMessageCacheRow {
+  id: string;
+  ownerKey: string;
+  messageUuid: string;
+  message: WorkspaceMessengerCachedMessage;
+  createdAt: string;
+  updatedAt: string;
+  version: number;
+}
+
+export interface WorkspaceMessengerMessageBucketRow {
+  id: string;
+  ownerKey: string;
+  conversationId: string;
+  messageUuid: string;
+  createdAt: string;
+  orderKey: string;
+}
+
+export interface WorkspaceMessengerMessageWindowRow {
+  id: string;
+  ownerKey: string;
+  conversationId: string;
+  oldestMessageUuid: string | null;
+  newestMessageUuid: string | null;
+  nextPageMarker: string | null;
+  hasMore: boolean;
+  reachedOldest: boolean;
+  reachedNewest: boolean;
+  hasGaps: boolean;
+  windowSize: number;
+  lastSyncedAt: number | null;
+}
+
+export interface WorkspaceMessengerRealtimeCursorRow {
+  ownerKey: string;
+  epochVersion: number;
+  updatedAt: number;
+}
+
+export interface WorkspaceMessengerSearchResultRow {
+  id: string;
+  ownerKey: string;
+  queryHash: string;
+  query: string;
+  filters: unknown;
+  resultMessageUuids: string[];
+  createdAt: number;
+  expiresAt: number;
+}
+
+export interface WorkspaceMessengerCatalogCacheSnapshot {
+  ownerMeta: WorkspaceMessengerCacheOwnerMetaRow | null;
+  streams: WorkspaceMessengerCachedStream[];
+  topics: WorkspaceMessengerCachedTopic[];
+  conversations: WorkspaceMessengerCachedConversation[];
+  folders: WorkspaceMessengerCachedFolder[];
+  folderItems: WorkspaceMessengerCachedFolderItem[];
+  users: WorkspaceMessengerCachedUser[];
+  realtimeCursor: WorkspaceMessengerRealtimeCursorRow | null;
+}
+
+export interface WorkspaceMessengerCatalogCacheWriteSnapshot {
+  streams?: readonly WorkspaceMessengerCachedStream[];
+  topics?: readonly WorkspaceMessengerCachedTopic[];
+  conversations?: readonly WorkspaceMessengerCachedConversation[];
+  folders?: readonly WorkspaceMessengerCachedFolder[];
+  folderItems?: readonly WorkspaceMessengerCachedFolderItem[];
+  users?: readonly WorkspaceMessengerCachedUser[];
+  lastHydratedAt?: number | null;
+}
+
+export interface WorkspaceMessengerConversationMessagePage {
+  messages: readonly WorkspaceMessengerCachedMessage[];
+  conversationIds?: readonly string[];
+  nextPageMarker?: string | null;
+  hasMore?: boolean;
+  reachedOldest?: boolean;
+  reachedNewest?: boolean;
+  hasGaps?: boolean;
+  windowSize?: number;
+  lastSyncedAt?: number | null;
+  retentionLimit?: number;
+}
+
+export interface WorkspaceMessengerConversationMessageWindow {
+  messages: WorkspaceMessengerCachedMessage[];
+  window: WorkspaceMessengerMessageWindowRow | null;
+}
+
+export interface WorkspaceMessengerSearchResultWrite {
+  queryHash: string;
+  query: string;
+  filters: unknown;
+  resultMessageUuids: readonly string[];
+  createdAt?: number;
+  expiresAt: number;
+}
+
+let dbPromise: Promise<IDBDatabase> | null = null;
+
+function idbError(reason: unknown): Error {
+  return reason instanceof Error ? reason : new Error("indexedDB error", { cause: reason });
+}
+
+function isIndexedDBAvailable(): boolean {
+  return typeof indexedDB !== "undefined";
+}
+
+function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    request.onerror = () => reject(idbError(request.error));
+    request.onsuccess = () => resolve(request.result);
+  });
+}
+
+function transactionDone(transaction: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    transaction.onerror = () => reject(idbError(transaction.error));
+    transaction.onabort = () => reject(idbError(transaction.error));
+    transaction.oncomplete = () => resolve();
+  });
+}
+
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+function cacheRowId(ownerKey: string, id: string): string {
+  return `${ownerKey}:${id}`;
+}
+
+export function workspaceMessengerMessageOrderKey(message: {
+  createdAt: string;
+  uuid: string;
+}): string {
+  return `${message.createdAt}${ORDER_KEY_SEPARATOR}${message.uuid}`;
+}
+
+function messageBucketId(ownerKey: string, conversationId: string, messageUuid: string): string {
+  return `${ownerKey}:${conversationId}:${messageUuid}`;
+}
+
+function streamConversationId(streamUuid: string): string {
+  return `stream:${streamUuid}`;
+}
+
+function topicConversationId(streamUuid: string, topicUuid: string): string {
+  return `topic:${streamUuid}:${topicUuid}`;
+}
+
+function conversationKind(conversationId: string): WorkspaceMessengerConversationKind {
+  return conversationId.startsWith("topic:") ? "topic" : "stream";
+}
+
+function conversationTopicUuid(
+  conversation: WorkspaceMessengerCachedConversation,
+): string | undefined {
+  if (conversation.topicUuid != null) return conversation.topicUuid;
+  const parts = conversation.id.split(":");
+  return parts[0] === "topic" && parts.length === 3 ? parts[2] : undefined;
+}
+
+function updatedAtOrNow(value: string | null | undefined): string {
+  return value ?? nowIso();
+}
+
+function emptyCatalogSnapshot(): WorkspaceMessengerCatalogCacheSnapshot {
+  return {
+    ownerMeta: null,
+    streams: [],
+    topics: [],
+    conversations: [],
+    folders: [],
+    folderItems: [],
+    users: [],
+    realtimeCursor: null,
+  };
+}
+
+export function openWorkspaceMessengerCacheDb(): Promise<IDBDatabase> {
+  if (!isIndexedDBAvailable()) {
+    return Promise.reject(new Error("indexedDB unavailable"));
+  }
+
+  dbPromise ??= new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onerror = () => {
+      dbPromise = null;
+      reject(idbError(request.error));
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onupgradeneeded = () => {
+      runWorkspaceMessengerCacheDbUpgrade(request.result);
+    };
+  });
+
+  return dbPromise;
+}
+
+/** Test helper: resets singleton after database deletion. */
+export function resetWorkspaceMessengerCacheDbSingletonForTests(): void {
+  dbPromise = null;
+}
+
+/** Drops the Workspace messenger cache database and resets the open-connection singleton. */
+export async function deleteWorkspaceMessengerCacheDatabase(): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    if (dbPromise != null) {
+      const db = await dbPromise.catch(() => null);
+      db?.close();
+    }
+  } catch {
+    /* close is best-effort */
+  }
+  dbPromise = null;
+
+  await new Promise<void>((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(DB_NAME);
+    let settled = false;
+    const finishOk = (): void => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    request.onsuccess = () => finishOk();
+    request.onerror = () => {
+      if (settled) return;
+      settled = true;
+      reject(idbError(request.error));
+    };
+    request.onblocked = () => {
+      globalThis.setTimeout(() => finishOk(), IDB_DELETE_BLOCKED_TIMEOUT_MS);
+    };
+  });
+}
+
+export async function deleteWorkspaceMessengerOwnerCache(ownerKey: string): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+    const storeNames = [
+      stores.ownerMeta,
+      stores.streams,
+      stores.topics,
+      stores.conversations,
+      stores.folders,
+      stores.folderItems,
+      stores.users,
+      stores.messages,
+      stores.messageBuckets,
+      stores.messageWindows,
+      stores.realtimeCursor,
+      stores.searchResults,
+    ];
+    const idsByStore = await Promise.all(
+      storeNames.map(async (storeName) => {
+        if (storeName === stores.ownerMeta || storeName === stores.realtimeCursor) {
+          return { storeName, ids: [ownerKey] };
+        }
+        return { storeName, ids: await readRowIdsByOwner(db, ownerKey, storeName) };
+      }),
+    );
+    const transaction = db.transaction(storeNames, "readwrite");
+    for (const { storeName, ids } of idsByStore) {
+      const store = transaction.objectStore(storeName);
+      for (const id of ids) {
+        store.delete(id);
+      }
+    }
+    await transactionDone(transaction);
+  } catch {
+    return;
+  }
+}
+
+async function readRowsByOwner<TRow>(
+  db: IDBDatabase,
+  ownerKey: string,
+  storeName: string,
+): Promise<TRow[]> {
+  const transaction = db.transaction(storeName, "readonly");
+  const index = transaction.objectStore(storeName).index("byOwner");
+  return requestToPromise(index.getAll(IDBKeyRange.only(ownerKey)) as IDBRequest<TRow[]>);
+}
+
+async function readRowIdsByOwner(
+  db: IDBDatabase,
+  ownerKey: string,
+  storeName: string,
+): Promise<string[]> {
+  const rows = await readRowsByOwner<{ id: string }>(db, ownerKey, storeName);
+  return rows.map((row) => row.id);
+}
+
+async function readOwnerMeta(
+  db: IDBDatabase,
+  ownerKey: string,
+): Promise<WorkspaceMessengerCacheOwnerMetaRow | null> {
+  const transaction = db.transaction(WORKSPACE_MESSENGER_CACHE_STORES.ownerMeta, "readonly");
+  const request = transaction.objectStore(WORKSPACE_MESSENGER_CACHE_STORES.ownerMeta).get(ownerKey);
+  return (
+    ((await requestToPromise(request)) as WorkspaceMessengerCacheOwnerMetaRow | undefined) ?? null
+  );
+}
+
+async function readRealtimeCursor(
+  db: IDBDatabase,
+  ownerKey: string,
+): Promise<WorkspaceMessengerRealtimeCursorRow | null> {
+  const transaction = db.transaction(WORKSPACE_MESSENGER_CACHE_STORES.realtimeCursor, "readonly");
+  const request = transaction
+    .objectStore(WORKSPACE_MESSENGER_CACHE_STORES.realtimeCursor)
+    .get(ownerKey);
+  return (
+    ((await requestToPromise(request)) as WorkspaceMessengerRealtimeCursorRow | undefined) ?? null
+  );
+}
+
+function toStreamRow(
+  ownerKey: string,
+  stream: WorkspaceMessengerCachedStream,
+): WorkspaceMessengerStreamCacheRow {
+  return {
+    id: cacheRowId(ownerKey, stream.uuid),
+    ownerKey,
+    streamUuid: stream.uuid,
+    stream,
+    updatedAt: updatedAtOrNow(stream.updatedAt),
+  };
+}
+
+function toTopicRow(
+  ownerKey: string,
+  topic: WorkspaceMessengerCachedTopic,
+): WorkspaceMessengerTopicCacheRow {
+  return {
+    id: cacheRowId(ownerKey, topic.uuid),
+    ownerKey,
+    topicUuid: topic.uuid,
+    streamUuid: topic.streamUuid,
+    topic,
+    updatedAt: updatedAtOrNow(topic.updatedAt),
+  };
+}
+
+function toConversationRow(
+  ownerKey: string,
+  conversation: WorkspaceMessengerCachedConversation,
+): WorkspaceMessengerConversationCacheRow {
+  return {
+    id: cacheRowId(ownerKey, conversation.id),
+    ownerKey,
+    conversationId: conversation.id,
+    kind: conversationKind(conversation.id),
+    streamUuid: conversation.streamUuid,
+    topicUuid: conversationTopicUuid(conversation),
+    title: conversation.title ?? "",
+    unreadCount: conversation.unreadCount ?? 0,
+    lastMessageUuid: conversation.lastMessageUuid ?? null,
+    conversation,
+    updatedAt: updatedAtOrNow(conversation.updatedAt),
+  };
+}
+
+function toFolderRow(
+  ownerKey: string,
+  folder: WorkspaceMessengerCachedFolder,
+): WorkspaceMessengerFolderCacheRow {
+  return {
+    id: cacheRowId(ownerKey, folder.uuid),
+    ownerKey,
+    folderUuid: folder.uuid,
+    folder,
+    updatedAt: updatedAtOrNow(folder.updatedAt),
+  };
+}
+
+function toFolderItemRow(
+  ownerKey: string,
+  folderItem: WorkspaceMessengerCachedFolderItem,
+): WorkspaceMessengerFolderItemCacheRow {
+  return {
+    id: cacheRowId(ownerKey, folderItem.uuid),
+    ownerKey,
+    folderItemUuid: folderItem.uuid,
+    folderUuid: folderItem.folderUuid,
+    conversationId: folderItem.conversationId,
+    streamUuid: folderItem.streamUuid,
+    chatType: folderItem.chatType,
+    orderIndex: folderItem.orderIndex ?? null,
+    pinnedAt: folderItem.pinnedAt ?? null,
+    folderItem,
+    updatedAt: updatedAtOrNow(folderItem.updatedAt),
+  };
+}
+
+function toUserRow(
+  ownerKey: string,
+  user: WorkspaceMessengerCachedUser,
+): WorkspaceMessengerUserCacheRow {
+  return {
+    id: cacheRowId(ownerKey, user.uuid),
+    ownerKey,
+    userUuid: user.uuid,
+    user,
+    updatedAt: updatedAtOrNow(user.updatedAt),
+  };
+}
+
+function toMessageRow(
+  ownerKey: string,
+  message: WorkspaceMessengerCachedMessage,
+  previous?: WorkspaceMessengerMessageCacheRow,
+): WorkspaceMessengerMessageCacheRow {
+  return {
+    id: cacheRowId(ownerKey, message.uuid),
+    ownerKey,
+    messageUuid: message.uuid,
+    message,
+    createdAt: message.createdAt,
+    updatedAt: updatedAtOrNow(message.updatedAt),
+    version: (previous?.version ?? 0) + 1,
+  };
+}
+
+function bucketConversationIdsForMessage(
+  message: WorkspaceMessengerCachedMessage,
+  explicitConversationIds: readonly string[] = [],
+): string[] {
+  const ids = new Set<string>(explicitConversationIds);
+  ids.add(message.conversationId);
+  ids.add(streamConversationId(message.streamUuid));
+  if (message.topicUuid.length > 0) {
+    ids.add(topicConversationId(message.streamUuid, message.topicUuid));
+  }
+  return [...ids];
+}
+
+function toBucketRow(
+  ownerKey: string,
+  conversationId: string,
+  message: WorkspaceMessengerCachedMessage,
+): WorkspaceMessengerMessageBucketRow {
+  return {
+    id: messageBucketId(ownerKey, conversationId, message.uuid),
+    ownerKey,
+    conversationId,
+    messageUuid: message.uuid,
+    createdAt: message.createdAt,
+    orderKey: workspaceMessengerMessageOrderKey(message),
+  };
+}
+
+function sortBucketsAscending(
+  rows: WorkspaceMessengerMessageBucketRow[],
+): WorkspaceMessengerMessageBucketRow[] {
+  return [...rows].sort((a, b) => a.orderKey.localeCompare(b.orderKey));
+}
+
+async function readConversationBuckets(
+  db: IDBDatabase,
+  ownerKey: string,
+  conversationId: string,
+): Promise<WorkspaceMessengerMessageBucketRow[]> {
+  const transaction = db.transaction(WORKSPACE_MESSENGER_CACHE_STORES.messageBuckets, "readonly");
+  const index = transaction
+    .objectStore(WORKSPACE_MESSENGER_CACHE_STORES.messageBuckets)
+    .index("byConversationOrder");
+  const range = IDBKeyRange.bound(
+    [ownerKey, conversationId, ""],
+    [ownerKey, conversationId, "\uffff"],
+  );
+  const rows = (await requestToPromise(
+    index.getAll(range),
+  )) as WorkspaceMessengerMessageBucketRow[];
+  return sortBucketsAscending(rows);
+}
+
+async function readMessageBucketsByMessage(
+  db: IDBDatabase,
+  ownerKey: string,
+  messageUuid: string,
+): Promise<WorkspaceMessengerMessageBucketRow[]> {
+  const transaction = db.transaction(WORKSPACE_MESSENGER_CACHE_STORES.messageBuckets, "readonly");
+  const index = transaction
+    .objectStore(WORKSPACE_MESSENGER_CACHE_STORES.messageBuckets)
+    .index("byMessage");
+  const rows = (await requestToPromise(
+    index.getAll(IDBKeyRange.only([ownerKey, messageUuid])),
+  )) as WorkspaceMessengerMessageBucketRow[];
+  return sortBucketsAscending(rows);
+}
+
+async function readMessageWindowRow(
+  db: IDBDatabase,
+  ownerKey: string,
+  conversationId: string,
+): Promise<WorkspaceMessengerMessageWindowRow | null> {
+  const transaction = db.transaction(WORKSPACE_MESSENGER_CACHE_STORES.messageWindows, "readonly");
+  const request = transaction
+    .objectStore(WORKSPACE_MESSENGER_CACHE_STORES.messageWindows)
+    .get(cacheRowId(ownerKey, conversationId));
+  return (
+    ((await requestToPromise(request)) as WorkspaceMessengerMessageWindowRow | undefined) ?? null
+  );
+}
+
+async function readMessageRowsByUuid(
+  db: IDBDatabase,
+  ownerKey: string,
+  messageUuids: readonly string[],
+): Promise<Map<string, WorkspaceMessengerMessageCacheRow>> {
+  if (messageUuids.length === 0) return new Map();
+
+  const transaction = db.transaction(WORKSPACE_MESSENGER_CACHE_STORES.messages, "readonly");
+  const store = transaction.objectStore(WORKSPACE_MESSENGER_CACHE_STORES.messages);
+  const requests = messageUuids.map((messageUuid) =>
+    requestToPromise(store.get(cacheRowId(ownerKey, messageUuid))),
+  );
+  const rows = (await Promise.all(requests)) as (WorkspaceMessengerMessageCacheRow | undefined)[];
+  const map = new Map<string, WorkspaceMessengerMessageCacheRow>();
+  for (const row of rows) {
+    if (row != null) {
+      map.set(row.messageUuid, row);
+    }
+  }
+  return map;
+}
+
+async function readMessageRow(
+  db: IDBDatabase,
+  ownerKey: string,
+  messageUuid: string,
+): Promise<WorkspaceMessengerMessageCacheRow | undefined> {
+  const rows = await readMessageRowsByUuid(db, ownerKey, [messageUuid]);
+  return rows.get(messageUuid);
+}
+
+function buildWindowRow(
+  ownerKey: string,
+  conversationId: string,
+  rows: readonly WorkspaceMessengerMessageBucketRow[],
+  page: WorkspaceMessengerConversationMessagePage,
+  previous: WorkspaceMessengerMessageWindowRow | null,
+): WorkspaceMessengerMessageWindowRow {
+  const sortedRows = sortBucketsAscending([...rows]);
+  const oldestMessageUuid = sortedRows[0]?.messageUuid ?? previous?.oldestMessageUuid ?? null;
+  const newestMessageUuid =
+    sortedRows[sortedRows.length - 1]?.messageUuid ?? previous?.newestMessageUuid ?? null;
+
+  return {
+    id: cacheRowId(ownerKey, conversationId),
+    ownerKey,
+    conversationId,
+    oldestMessageUuid,
+    newestMessageUuid,
+    nextPageMarker:
+      page.nextPageMarker === undefined ? (previous?.nextPageMarker ?? null) : page.nextPageMarker,
+    hasMore: page.hasMore ?? previous?.hasMore ?? false,
+    reachedOldest: page.reachedOldest ?? previous?.reachedOldest ?? false,
+    reachedNewest: page.reachedNewest ?? previous?.reachedNewest ?? true,
+    hasGaps: page.hasGaps ?? previous?.hasGaps ?? false,
+    windowSize: page.windowSize ?? sortedRows.length,
+    lastSyncedAt: page.lastSyncedAt === undefined ? Date.now() : page.lastSyncedAt,
+  };
+}
+
+export async function readMessengerCatalogCache(
+  ownerKey: string,
+): Promise<WorkspaceMessengerCatalogCacheSnapshot> {
+  if (!isIndexedDBAvailable()) return emptyCatalogSnapshot();
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+    const [
+      ownerMeta,
+      streamRows,
+      topicRows,
+      conversationRows,
+      folderRows,
+      folderItemRows,
+      userRows,
+      realtimeCursor,
+    ] = await Promise.all([
+      readOwnerMeta(db, ownerKey),
+      readRowsByOwner<WorkspaceMessengerStreamCacheRow>(db, ownerKey, stores.streams),
+      readRowsByOwner<WorkspaceMessengerTopicCacheRow>(db, ownerKey, stores.topics),
+      readRowsByOwner<WorkspaceMessengerConversationCacheRow>(db, ownerKey, stores.conversations),
+      readRowsByOwner<WorkspaceMessengerFolderCacheRow>(db, ownerKey, stores.folders),
+      readRowsByOwner<WorkspaceMessengerFolderItemCacheRow>(db, ownerKey, stores.folderItems),
+      readRowsByOwner<WorkspaceMessengerUserCacheRow>(db, ownerKey, stores.users),
+      readRealtimeCursor(db, ownerKey),
+    ]);
+
+    return {
+      ownerMeta,
+      streams: streamRows.map((row) => row.stream),
+      topics: topicRows.map((row) => row.topic),
+      conversations: conversationRows.map((row) => row.conversation),
+      folders: folderRows.map((row) => row.folder),
+      folderItems: folderItemRows.map((row) => row.folderItem),
+      users: userRows.map((row) => row.user),
+      realtimeCursor,
+    };
+  } catch {
+    return emptyCatalogSnapshot();
+  }
+}
+
+export async function writeMessengerCatalogCache(
+  ownerKey: string,
+  snapshot: WorkspaceMessengerCatalogCacheWriteSnapshot,
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+    const [
+      streamIdsToDelete,
+      topicIdsToDelete,
+      conversationIdsToDelete,
+      folderIdsToDelete,
+      folderItemIdsToDelete,
+      userIdsToDelete,
+    ] = await Promise.all([
+      snapshot.streams === undefined ? [] : readRowIdsByOwner(db, ownerKey, stores.streams),
+      snapshot.topics === undefined ? [] : readRowIdsByOwner(db, ownerKey, stores.topics),
+      snapshot.conversations === undefined
+        ? []
+        : readRowIdsByOwner(db, ownerKey, stores.conversations),
+      snapshot.folders === undefined ? [] : readRowIdsByOwner(db, ownerKey, stores.folders),
+      snapshot.folderItems === undefined ? [] : readRowIdsByOwner(db, ownerKey, stores.folderItems),
+      snapshot.users === undefined ? [] : readRowIdsByOwner(db, ownerKey, stores.users),
+    ]);
+    const transaction = db.transaction(
+      [
+        stores.ownerMeta,
+        stores.streams,
+        stores.topics,
+        stores.conversations,
+        stores.folders,
+        stores.folderItems,
+        stores.users,
+      ],
+      "readwrite",
+    );
+
+    transaction.objectStore(stores.ownerMeta).put({
+      ownerKey,
+      schemaVersion: DB_VERSION,
+      lastHydratedAt: snapshot.lastHydratedAt ?? Date.now(),
+      lastCompactedAt: null,
+    } satisfies WorkspaceMessengerCacheOwnerMetaRow);
+
+    const streamStore = transaction.objectStore(stores.streams);
+    for (const id of streamIdsToDelete) {
+      streamStore.delete(id);
+    }
+    for (const stream of snapshot.streams ?? []) {
+      streamStore.put(toStreamRow(ownerKey, stream));
+    }
+
+    const topicStore = transaction.objectStore(stores.topics);
+    for (const id of topicIdsToDelete) {
+      topicStore.delete(id);
+    }
+    for (const topic of snapshot.topics ?? []) {
+      topicStore.put(toTopicRow(ownerKey, topic));
+    }
+
+    const conversationStore = transaction.objectStore(stores.conversations);
+    for (const id of conversationIdsToDelete) {
+      conversationStore.delete(id);
+    }
+    for (const conversation of snapshot.conversations ?? []) {
+      conversationStore.put(toConversationRow(ownerKey, conversation));
+    }
+
+    const folderStore = transaction.objectStore(stores.folders);
+    for (const id of folderIdsToDelete) {
+      folderStore.delete(id);
+    }
+    for (const folder of snapshot.folders ?? []) {
+      folderStore.put(toFolderRow(ownerKey, folder));
+    }
+
+    const folderItemStore = transaction.objectStore(stores.folderItems);
+    for (const id of folderItemIdsToDelete) {
+      folderItemStore.delete(id);
+    }
+    for (const folderItem of snapshot.folderItems ?? []) {
+      folderItemStore.put(toFolderItemRow(ownerKey, folderItem));
+    }
+
+    const userStore = transaction.objectStore(stores.users);
+    for (const id of userIdsToDelete) {
+      userStore.delete(id);
+    }
+    for (const user of snapshot.users ?? []) {
+      userStore.put(toUserRow(ownerKey, user));
+    }
+
+    await transactionDone(transaction);
+  } catch {
+    return;
+  }
+}
+
+export async function readConversationMessageWindow(
+  ownerKey: string,
+  conversationId: string,
+): Promise<WorkspaceMessengerConversationMessageWindow> {
+  if (!isIndexedDBAvailable()) return { messages: [], window: null };
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const [buckets, window] = await Promise.all([
+      readConversationBuckets(db, ownerKey, conversationId),
+      readMessageWindowRow(db, ownerKey, conversationId),
+    ]);
+    const messageRows = await readMessageRowsByUuid(
+      db,
+      ownerKey,
+      buckets.map((bucket) => bucket.messageUuid),
+    );
+    const messages = buckets
+      .map((bucket) => messageRows.get(bucket.messageUuid)?.message)
+      .filter((message): message is WorkspaceMessengerCachedMessage => message != null);
+
+    return { messages, window };
+  } catch {
+    return { messages: [], window: null };
+  }
+}
+
+export async function writeConversationMessagePage(
+  ownerKey: string,
+  conversationId: string,
+  page: WorkspaceMessengerConversationMessagePage,
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const [existingBuckets, previousWindow] = await Promise.all([
+      readConversationBuckets(db, ownerKey, conversationId),
+      readMessageWindowRow(db, ownerKey, conversationId),
+    ]);
+    const previousRows = await readMessageRowsByUuid(
+      db,
+      ownerKey,
+      page.messages.map((message) => message.uuid),
+    );
+    const nextBucketsById = new Map<string, WorkspaceMessengerMessageBucketRow>();
+    for (const bucket of existingBuckets) {
+      nextBucketsById.set(bucket.id, bucket);
+    }
+
+    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+    const transaction = db.transaction(
+      [stores.messages, stores.messageBuckets, stores.messageWindows],
+      "readwrite",
+    );
+    const messageStore = transaction.objectStore(stores.messages);
+    const bucketStore = transaction.objectStore(stores.messageBuckets);
+
+    for (const message of page.messages) {
+      const previousRow = previousRows.get(message.uuid);
+      messageStore.put(toMessageRow(ownerKey, message, previousRow));
+
+      for (const bucketConversationId of bucketConversationIdsForMessage(
+        message,
+        page.conversationIds ?? [conversationId],
+      )) {
+        const bucketRow = toBucketRow(ownerKey, bucketConversationId, message);
+        bucketStore.put(bucketRow);
+        if (bucketConversationId === conversationId) {
+          nextBucketsById.set(bucketRow.id, bucketRow);
+        }
+      }
+    }
+
+    const windowRow = buildWindowRow(
+      ownerKey,
+      conversationId,
+      [...nextBucketsById.values()],
+      page,
+      previousWindow,
+    );
+    transaction.objectStore(stores.messageWindows).put(windowRow);
+    await transactionDone(transaction);
+
+    await applyConversationMessageRetention(
+      ownerKey,
+      conversationId,
+      page.retentionLimit ?? DEFAULT_MESSAGE_BUCKET_RETENTION,
+    );
+  } catch {
+    return;
+  }
+}
+
+export async function patchCachedMessage(
+  ownerKey: string,
+  message: WorkspaceMessengerCachedMessage,
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const [previousRow, existingBuckets] = await Promise.all([
+      readMessageRow(db, ownerKey, message.uuid),
+      readMessageBucketsByMessage(db, ownerKey, message.uuid),
+    ]);
+    const targetConversationIds =
+      existingBuckets.length > 0
+        ? existingBuckets.map((bucket) => bucket.conversationId)
+        : bucketConversationIdsForMessage(message);
+    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+    const transaction = db.transaction([stores.messages, stores.messageBuckets], "readwrite");
+
+    transaction.objectStore(stores.messages).put(toMessageRow(ownerKey, message, previousRow));
+    const bucketStore = transaction.objectStore(stores.messageBuckets);
+    for (const bucketConversationId of targetConversationIds) {
+      bucketStore.put(toBucketRow(ownerKey, bucketConversationId, message));
+    }
+
+    await transactionDone(transaction);
+  } catch {
+    return;
+  }
+}
+
+export async function deleteCachedMessage(
+  ownerKey: string,
+  messageUuid: string,
+  conversationIds: readonly string[],
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const existingBuckets = await readMessageBucketsByMessage(db, ownerKey, messageUuid);
+    const targetConversationIds =
+      conversationIds.length > 0
+        ? new Set(conversationIds)
+        : new Set(existingBuckets.map((bucket) => bucket.conversationId));
+    const bucketsToDelete = existingBuckets.filter((bucket) =>
+      targetConversationIds.has(bucket.conversationId),
+    );
+    const shouldDeleteBody = bucketsToDelete.length === existingBuckets.length;
+    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+    const transaction = db.transaction([stores.messages, stores.messageBuckets], "readwrite");
+    const bucketStore = transaction.objectStore(stores.messageBuckets);
+
+    for (const bucket of bucketsToDelete) {
+      bucketStore.delete(bucket.id);
+    }
+    if (shouldDeleteBody) {
+      transaction.objectStore(stores.messages).delete(cacheRowId(ownerKey, messageUuid));
+    }
+
+    await transactionDone(transaction);
+  } catch {
+    return;
+  }
+}
+
+export async function writeRealtimeCursor(ownerKey: string, epochVersion: number): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const transaction = db.transaction(
+      WORKSPACE_MESSENGER_CACHE_STORES.realtimeCursor,
+      "readwrite",
+    );
+    transaction.objectStore(WORKSPACE_MESSENGER_CACHE_STORES.realtimeCursor).put({
+      ownerKey,
+      epochVersion,
+      updatedAt: Date.now(),
+    } satisfies WorkspaceMessengerRealtimeCursorRow);
+    await transactionDone(transaction);
+  } catch {
+    return;
+  }
+}
+
+export async function writeMessengerSearchResults(
+  ownerKey: string,
+  result: WorkspaceMessengerSearchResultWrite,
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const transaction = db.transaction(WORKSPACE_MESSENGER_CACHE_STORES.searchResults, "readwrite");
+    transaction.objectStore(WORKSPACE_MESSENGER_CACHE_STORES.searchResults).put({
+      id: cacheRowId(ownerKey, result.queryHash),
+      ownerKey,
+      queryHash: result.queryHash,
+      query: result.query,
+      filters: result.filters,
+      resultMessageUuids: [...result.resultMessageUuids],
+      createdAt: result.createdAt ?? Date.now(),
+      expiresAt: result.expiresAt,
+    } satisfies WorkspaceMessengerSearchResultRow);
+    await transactionDone(transaction);
+  } catch {
+    return;
+  }
+}
+
+export async function readMessengerSearchResults(
+  ownerKey: string,
+  queryHash: string,
+  now = Date.now(),
+): Promise<WorkspaceMessengerSearchResultRow | null> {
+  if (!isIndexedDBAvailable()) return null;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const transaction = db.transaction(WORKSPACE_MESSENGER_CACHE_STORES.searchResults, "readonly");
+    const request = transaction
+      .objectStore(WORKSPACE_MESSENGER_CACHE_STORES.searchResults)
+      .get(cacheRowId(ownerKey, queryHash));
+    const row = (await requestToPromise(request)) as WorkspaceMessengerSearchResultRow | undefined;
+    if (row == null || row.expiresAt <= now) {
+      return null;
+    }
+    return row;
+  } catch {
+    return null;
+  }
+}
+
+export async function deleteExpiredMessengerSearchResults(
+  ownerKey: string,
+  now = Date.now(),
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const transaction = db.transaction(WORKSPACE_MESSENGER_CACHE_STORES.searchResults, "readwrite");
+    const store = transaction.objectStore(WORKSPACE_MESSENGER_CACHE_STORES.searchResults);
+    const index = store.index("byOwnerExpiresAt");
+    const request = index.openCursor(IDBKeyRange.bound([ownerKey, 0], [ownerKey, now]));
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (cursor == null) return;
+      cursor.delete();
+      cursor.continue();
+    };
+    await transactionDone(transaction);
+  } catch {
+    return;
+  }
+}
+
+export async function applyConversationMessageRetention(
+  ownerKey: string,
+  conversationId: string,
+  maxMessages: number,
+): Promise<void> {
+  if (!isIndexedDBAvailable() || maxMessages < 1) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const buckets = await readConversationBuckets(db, ownerKey, conversationId);
+    if (buckets.length <= maxMessages) return;
+
+    const bucketsToDelete = buckets.slice(0, buckets.length - maxMessages);
+    const allBucketsByMessage = new Map<string, WorkspaceMessengerMessageBucketRow[]>();
+    await Promise.all(
+      bucketsToDelete.map(async (bucket) => {
+        allBucketsByMessage.set(
+          bucket.messageUuid,
+          await readMessageBucketsByMessage(db, ownerKey, bucket.messageUuid),
+        );
+      }),
+    );
+
+    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+    const transaction = db.transaction(
+      [stores.messages, stores.messageBuckets, stores.messageWindows],
+      "readwrite",
+    );
+    const bucketStore = transaction.objectStore(stores.messageBuckets);
+    const messageStore = transaction.objectStore(stores.messages);
+
+    for (const bucket of bucketsToDelete) {
+      bucketStore.delete(bucket.id);
+      const messageBuckets = allBucketsByMessage.get(bucket.messageUuid) ?? [];
+      if (messageBuckets.length === 1 && messageBuckets[0]?.id === bucket.id) {
+        messageStore.delete(cacheRowId(ownerKey, bucket.messageUuid));
+      }
+    }
+
+    const remainingBuckets = buckets.slice(buckets.length - maxMessages);
+    transaction.objectStore(stores.messageWindows).put({
+      id: cacheRowId(ownerKey, conversationId),
+      ownerKey,
+      conversationId,
+      oldestMessageUuid: remainingBuckets[0]?.messageUuid ?? null,
+      newestMessageUuid: remainingBuckets[remainingBuckets.length - 1]?.messageUuid ?? null,
+      nextPageMarker: null,
+      hasMore: true,
+      reachedOldest: false,
+      reachedNewest: true,
+      hasGaps: true,
+      windowSize: remainingBuckets.length,
+      lastSyncedAt: Date.now(),
+    } satisfies WorkspaceMessengerMessageWindowRow);
+    await transactionDone(transaction);
+  } catch {
+    return;
+  }
+}

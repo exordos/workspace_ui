@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   selectWorkspaceMessagesForConversation,
   useWorkspaceMessageStore,
@@ -229,7 +229,13 @@ describe("messenger realtime active applier", () => {
   it("applies message created, updated, and deleted events", () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
-    const applier = createMessengerRealtimeActiveApplier();
+    const cache = {
+      writeConversationMessagePage: vi.fn(),
+      patchCachedMessage: vi.fn(),
+      deleteCachedMessage: vi.fn(),
+      writeRealtimeCursor: vi.fn(),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
     useMessengerStore.getState().startBootstrap(ownerKey);
 
     applier.applyEvent(
@@ -239,6 +245,26 @@ describe("messenger realtime active applier", () => {
         message: createMessageDto(),
       },
       context,
+    );
+
+    expect(cache.writeConversationMessagePage).toHaveBeenCalledTimes(2);
+    expect(cache.writeConversationMessagePage).toHaveBeenNthCalledWith(
+      1,
+      ownerKey,
+      `topic:${STREAM_A}:${TOPIC_A}`,
+      {
+        messages: [expect.objectContaining({ uuid: MESSAGE_A })],
+        source: "realtime",
+      },
+    );
+    expect(cache.writeConversationMessagePage).toHaveBeenNthCalledWith(
+      2,
+      ownerKey,
+      `stream:${STREAM_A}`,
+      {
+        messages: [expect.objectContaining({ uuid: MESSAGE_A })],
+        source: "realtime",
+      },
     );
     applier.applyEvent(
       {
@@ -253,6 +279,13 @@ describe("messenger realtime active applier", () => {
       context,
     );
 
+    expect(cache.patchCachedMessage).toHaveBeenCalledWith(
+      ownerKey,
+      expect.objectContaining({
+        uuid: MESSAGE_A,
+        markdown: "Edited workspace message",
+      }),
+    );
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toEqual(
       expect.objectContaining({
         markdown: "Edited workspace message",
@@ -277,6 +310,14 @@ describe("messenger realtime active applier", () => {
 
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
     expect(useMessengerStore.getState().lastEpochVersion).toBe(13);
+    expect(cache.deleteCachedMessage).toHaveBeenCalledWith(ownerKey, MESSAGE_A, [
+      `stream:${STREAM_A}`,
+      `topic:${STREAM_A}:${TOPIC_A}`,
+    ]);
+    expect(cache.writeRealtimeCursor).toHaveBeenCalledTimes(3);
+    expect(cache.writeRealtimeCursor).toHaveBeenNthCalledWith(1, ownerKey, 11);
+    expect(cache.writeRealtimeCursor).toHaveBeenNthCalledWith(2, ownerKey, 12);
+    expect(cache.writeRealtimeCursor).toHaveBeenNthCalledWith(3, ownerKey, 13);
   });
 
   it("deduplicates repeated message events by uuid across topic and stream buckets", () => {
@@ -620,8 +661,15 @@ describe("messenger realtime active applier", () => {
 
   it("does not write active skipped events when owner is stale", () => {
     const context = createContext();
+    const cache = {
+      writeConversationMessagePage: vi.fn(),
+      patchCachedMessage: vi.fn(),
+      deleteCachedMessage: vi.fn(),
+      writeRealtimeCursor: vi.fn(),
+    };
     const applier = createMessengerRealtimeActiveApplier({
       isOwnerCurrent: () => false,
+      cache,
     });
     useMessengerStore.getState().startBootstrap(context.ownerKey);
 
@@ -638,6 +686,43 @@ describe("messenger realtime active applier", () => {
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
     expect(useMessengerStore.getState().skippedRealtimeEvents).toEqual([]);
     expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
+    expect(cache.writeConversationMessagePage).not.toHaveBeenCalled();
+    expect(cache.patchCachedMessage).not.toHaveBeenCalled();
+    expect(cache.deleteCachedMessage).not.toHaveBeenCalled();
+    expect(cache.writeRealtimeCursor).not.toHaveBeenCalled();
+  });
+
+  it("keeps applying realtime events when the cache write fails", () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const cache = {
+      writeConversationMessagePage: vi.fn(() => {
+        throw new Error("cache unavailable");
+      }),
+      writeRealtimeCursor: vi.fn(() => {
+        throw new Error("cursor unavailable");
+      }),
+    };
+    const applier = createMessengerRealtimeActiveApplier({ cache });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+
+    expect(() =>
+      applier.applyEvent(
+        {
+          epoch_version: 33,
+          type: "message",
+          message: createMessageDto(),
+        },
+        context,
+      ),
+    ).not.toThrow();
+
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toEqual(
+      expect.objectContaining({ uuid: MESSAGE_A }),
+    );
+    expect(useMessengerStore.getState().lastEpochVersion).toBe(33);
+    expect(cache.writeConversationMessagePage).toHaveBeenCalled();
+    expect(cache.writeRealtimeCursor).toHaveBeenCalledWith(ownerKey, 33);
   });
 
   it("does not write background events to messenger store", () => {

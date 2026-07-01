@@ -1,9 +1,9 @@
+import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import {
   captureWorkspaceRuntimeRequestContext,
   isWorkspaceRuntimeRequestInvalidated,
   workspaceRuntimeOwnerKey,
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
-import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import type { WorkspaceRuntimeContextGetter } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import type { MessengerClientOptions } from "~/shared/api/messenger-client";
@@ -19,12 +19,13 @@ import type {
   WorkspaceMessengerUpdateMessageRequestBody,
 } from "~/shared/api/messenger.types";
 import { adaptMessengerMessage } from "./messenger-adapters.lib";
-import { conversationIdForStream } from "./messenger-ids.lib";
-import { useMessengerStore } from "./messenger.model";
+import { messengerMessageActionCache } from "./messenger-cache.lib";
+import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
 import {
   buildMessengerRequestOptions,
   type MessengerRequestOptionsOverrides,
 } from "./messenger-request-options.lib";
+import { useMessengerStore } from "./messenger.model";
 import type { MessengerConversationId, MessengerMessage, MessengerUuid } from "./messenger.types";
 
 export interface MessengerMessageActionClientDeps {
@@ -44,6 +45,25 @@ export interface MessengerMessageActionClientDeps {
   ) => Promise<WorkspaceMessengerMessageDto>;
 }
 
+export interface MessengerMessageActionCacheConversationPage {
+  messages: readonly MessengerMessage[];
+  source: "message-action";
+}
+
+export interface MessengerMessageActionCacheWriter {
+  patchCachedMessage?: (ownerKey: string, message: MessengerMessage) => Promise<void> | void;
+  deleteCachedMessage?: (
+    ownerKey: string,
+    messageUuid: MessengerUuid,
+    conversationIds: readonly MessengerConversationId[],
+  ) => Promise<void> | void;
+  writeConversationMessagePage?: (
+    ownerKey: string,
+    conversationId: MessengerConversationId,
+    page: MessengerMessageActionCacheConversationPage,
+  ) => Promise<void> | void;
+}
+
 export interface MessengerMessageActionStoreApi {
   getState: () => Pick<
     ReturnType<typeof useWorkspaceMessageStore.getState>,
@@ -60,6 +80,7 @@ export interface MessengerMessageActionBaseOptions {
   getRuntimeContext?: WorkspaceRuntimeContextGetter;
   clientOptions?: MessengerRequestOptionsOverrides;
   client?: MessengerMessageActionClientDeps;
+  cache?: MessengerMessageActionCacheWriter;
   signal?: AbortSignal;
   store?: MessengerMessageActionStoreApi;
 }
@@ -108,11 +129,62 @@ function captureMessageAction(
   };
 }
 
+function conversationIdsForMessageAction(
+  message: MessengerMessage,
+  includeStreamConversation: boolean,
+): MessengerConversationId[] {
+  const conversationIds = [message.conversationId];
+  const streamConversationId = conversationIdForStream(message.streamUuid);
+  if (includeStreamConversation && streamConversationId !== message.conversationId) {
+    conversationIds.push(streamConversationId);
+  }
+  return conversationIds;
+}
+
+function conversationIdsForDeletedMessage(
+  streamUuid: MessengerUuid,
+  topicUuid: MessengerUuid,
+): MessengerConversationId[] {
+  return [conversationIdForStream(streamUuid), conversationIdForTopic(streamUuid, topicUuid)];
+}
+
+async function writeActionCacheBestEffort(write: () => Promise<void> | void): Promise<void> {
+  try {
+    await write();
+  } catch {
+    // Cache write failures must not change the action result.
+  }
+}
+
+async function writeMessagePageCacheBestEffort(
+  cache: MessengerMessageActionCacheWriter | undefined,
+  ownerKey: string,
+  conversationIds: readonly MessengerConversationId[],
+  message: MessengerMessage,
+): Promise<void> {
+  const writeConversationMessagePage = cache?.writeConversationMessagePage;
+  if (writeConversationMessagePage == null) return;
+
+  await writeActionCacheBestEffort(async () => {
+    await Promise.all(
+      conversationIds.map((conversationId) =>
+        Promise.resolve(
+          writeConversationMessagePage(ownerKey, conversationId, {
+            messages: [message],
+            source: "message-action",
+          }),
+        ),
+      ),
+    );
+  });
+}
+
 export async function sendMessengerMessage({
   runtimeContext,
   getRuntimeContext = () => runtimeContext,
   clientOptions,
   client = {},
+  cache = messengerMessageActionCache,
   signal,
   store = useWorkspaceMessageStore,
   streamUuid,
@@ -143,6 +215,12 @@ export async function sendMessengerMessage({
     includeStreamConversation,
   });
   useMessengerStore.getState().applyMessagePointer(action.ownerKey, message);
+  await writeMessagePageCacheBestEffort(
+    cache,
+    action.ownerKey,
+    conversationIdsForMessageAction(message, includeStreamConversation),
+    message,
+  );
   return { status: "applied", ownerKey: action.ownerKey, message };
 }
 
@@ -151,6 +229,7 @@ export async function editMessengerMessage({
   getRuntimeContext = () => runtimeContext,
   clientOptions,
   client = {},
+  cache = messengerMessageActionCache,
   signal,
   store = useWorkspaceMessageStore,
   messageUuid,
@@ -178,6 +257,9 @@ export async function editMessengerMessage({
     markdown: message.markdown,
     updatedAt: message.updatedAt,
   });
+  if (cache?.patchCachedMessage != null) {
+    await writeActionCacheBestEffort(() => cache.patchCachedMessage?.(action.ownerKey, message));
+  }
   return { status: "applied", ownerKey: action.ownerKey, message };
 }
 
@@ -186,6 +268,7 @@ export async function deleteMessengerMessage({
   getRuntimeContext = () => runtimeContext,
   clientOptions,
   client = {},
+  cache = messengerMessageActionCache,
   signal,
   store = useWorkspaceMessageStore,
   messageUuid,
@@ -212,6 +295,15 @@ export async function deleteMessengerMessage({
     streamUuid,
     topicUuid,
   });
+  if (cache?.deleteCachedMessage != null) {
+    await writeActionCacheBestEffort(() =>
+      cache.deleteCachedMessage?.(
+        action.ownerKey,
+        messageUuid,
+        conversationIdsForDeletedMessage(streamUuid, topicUuid),
+      ),
+    );
+  }
   return { status: "applied", ownerKey: action.ownerKey, message: null };
 }
 
@@ -220,6 +312,7 @@ export async function markMessengerMessageRead({
   getRuntimeContext = () => runtimeContext,
   clientOptions,
   client = {},
+  cache = messengerMessageActionCache,
   signal,
   store = useWorkspaceMessageStore,
   messageUuid,
@@ -248,5 +341,10 @@ export async function markMessengerMessageRead({
       conversationIdForStream(message.streamUuid),
     ],
   });
+  if (cache?.patchCachedMessage != null) {
+    await writeActionCacheBestEffort(() =>
+      cache.patchCachedMessage?.(action.ownerKey, { ...message, read: true }),
+    );
+  }
   return { status: "applied", ownerKey: action.ownerKey, message };
 }

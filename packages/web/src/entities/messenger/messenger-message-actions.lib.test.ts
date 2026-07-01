@@ -107,6 +107,9 @@ describe("messenger message actions", () => {
         _body: WorkspaceMessengerCreateMessageRequestBody,
       ): Promise<WorkspaceMessengerMessageDto> => Promise.resolve(createMessageDto()),
     );
+    const cache = {
+      writeConversationMessagePage: vi.fn(() => Promise.resolve()),
+    };
 
     await expect(
       sendMessengerMessage({
@@ -117,6 +120,7 @@ describe("messenger message actions", () => {
         markdown: "Hello, workspace",
         includeStreamConversation: true,
         client: { createMessage },
+        cache,
       }),
     ).resolves.toEqual({
       status: "applied",
@@ -134,6 +138,25 @@ describe("messenger message actions", () => {
         stream_uuid: STREAM_A,
         topic_uuid: TOPIC_A,
         payload: { kind: "markdown", content: "Hello, workspace" },
+      },
+    );
+    expect(cache.writeConversationMessagePage).toHaveBeenCalledTimes(2);
+    expect(cache.writeConversationMessagePage).toHaveBeenNthCalledWith(
+      1,
+      ownerKey,
+      `topic:${STREAM_A}:${TOPIC_A}`,
+      {
+        messages: [expect.objectContaining({ uuid: MESSAGE_A })],
+        source: "message-action",
+      },
+    );
+    expect(cache.writeConversationMessagePage).toHaveBeenNthCalledWith(
+      2,
+      ownerKey,
+      `stream:${STREAM_A}`,
+      {
+        messages: [expect.objectContaining({ uuid: MESSAGE_A })],
+        source: "message-action",
       },
     );
     expect(
@@ -173,12 +196,16 @@ describe("messenger message actions", () => {
         _body: WorkspaceMessengerUpdateMessageRequestBody,
       ) => editRequest.promise,
     );
+    const cache = {
+      patchCachedMessage: vi.fn(() => Promise.resolve()),
+    };
     const actionPromise = editMessengerMessage({
       runtimeContext: runtimeA,
       getRuntimeContext: () => runtimeB,
       messageUuid: MESSAGE_A,
       markdown: "Edited",
       client: { editMessage },
+      cache,
     });
 
     editRequest.resolve(createMessageDto({ payload: { kind: "markdown", content: "Edited" } }));
@@ -191,6 +218,7 @@ describe("messenger message actions", () => {
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.markdown).not.toBe(
       "Edited",
     );
+    expect(cache.patchCachedMessage).not.toHaveBeenCalled();
   });
 
   it("deletes and marks messages as read through Workspace actions", async () => {
@@ -205,6 +233,10 @@ describe("messenger message actions", () => {
       includeStreamConversation: true,
       client: { createMessage: () => Promise.resolve(createMessageDto()) },
     });
+    const cache = {
+      patchCachedMessage: vi.fn(() => Promise.resolve()),
+      deleteCachedMessage: vi.fn(() => Promise.resolve()),
+    };
 
     await markMessengerMessageRead({
       runtimeContext,
@@ -212,9 +244,14 @@ describe("messenger message actions", () => {
       messageUuid: MESSAGE_A,
       conversationIds: [`topic:${STREAM_A}:${TOPIC_A}`],
       client: { markMessageRead: () => Promise.resolve(createMessageDto({ read: true })) },
+      cache,
     });
 
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(true);
+    expect(cache.patchCachedMessage).toHaveBeenCalledWith(
+      ownerKey,
+      expect.objectContaining({ uuid: MESSAGE_A, read: true }),
+    );
 
     const deleteMessage = vi.fn(() => Promise.resolve());
     await deleteMessengerMessage({
@@ -224,10 +261,47 @@ describe("messenger message actions", () => {
       streamUuid: STREAM_A,
       topicUuid: TOPIC_A,
       client: { deleteMessage },
+      cache,
     });
 
     expect(deleteMessage).toHaveBeenCalledWith(expect.any(Object), MESSAGE_A);
+    expect(cache.deleteCachedMessage).toHaveBeenCalledWith(ownerKey, MESSAGE_A, [
+      `stream:${STREAM_A}`,
+      `topic:${STREAM_A}:${TOPIC_A}`,
+    ]);
     expect(useMessengerStore.getState().ownerKey).toBe(ownerKey);
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
+  });
+
+  it("keeps the send result applied when the cache write fails", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const cache = {
+      writeConversationMessagePage: vi.fn(() => {
+        throw new Error("cache unavailable");
+      }),
+    };
+
+    await expect(
+      sendMessengerMessage({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        streamUuid: STREAM_A,
+        topicUuid: TOPIC_A,
+        markdown: "Hello, workspace",
+        includeStreamConversation: true,
+        client: { createMessage: () => Promise.resolve(createMessageDto()) },
+        cache,
+      }),
+    ).resolves.toEqual({
+      status: "applied",
+      ownerKey,
+      message: expect.objectContaining({ uuid: MESSAGE_A }),
+    });
+
+    expect(cache.writeConversationMessagePage).toHaveBeenCalled();
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toEqual(
+      expect.objectContaining({ uuid: MESSAGE_A }),
+    );
   });
 });

@@ -1,3 +1,4 @@
+import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import {
   captureWorkspaceRuntimeRequestContext,
   isWorkspaceRuntimeRequestInvalidated,
@@ -10,9 +11,13 @@ import {
   type MessengerCollectionPage,
   type MessengerClientOptions,
 } from "~/shared/api/messenger-client";
-import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
 import { adaptMessengerMessage } from "./messenger-adapters.lib";
+import {
+  readMessengerConversationWindowCache as defaultReadMessengerConversationWindowCache,
+  writeMessengerConversationWindowCache as defaultWriteMessengerConversationWindowCache,
+  type MessengerConversationCacheWindow,
+} from "./messenger-cache.lib";
 import { parseMessengerConversationId } from "./messenger-ids.lib";
 import {
   buildMessengerRequestOptions,
@@ -33,6 +38,22 @@ export interface MessengerMessagesClientDeps {
       pageMarker?: string | number;
     },
   ) => Promise<MessengerCollectionPage<WorkspaceMessengerMessageDto>>;
+}
+
+export interface MessengerMessagesCacheDeps {
+  readConversationMessageWindow?: (
+    ownerKey: string,
+    conversationId: MessengerConversationId,
+  ) => Promise<MessengerConversationCacheWindow>;
+  writeConversationMessagePage?: (
+    ownerKey: string,
+    conversationId: MessengerConversationId,
+    page: {
+      messages: ReturnType<typeof adaptMessengerMessage>[];
+      nextPageMarker: string | null;
+      hasMore: boolean;
+    },
+  ) => Promise<void> | void;
 }
 
 export interface MessengerMessagesStoreApi {
@@ -74,6 +95,7 @@ export interface LoadMessengerConversationMessagesOptions {
   pageMarker?: string | number;
   getRuntimeContext?: WorkspaceRuntimeContextGetter;
   client?: MessengerMessagesClientDeps;
+  cache?: MessengerMessagesCacheDeps;
   clientOptions?: MessengerRequestOptionsOverrides;
   signal?: AbortSignal;
   store?: MessengerMessagesStoreApi;
@@ -86,6 +108,17 @@ function normalizeMessagesError(error: unknown): string {
   return "Messenger messages loading failed";
 }
 
+function writeMessagesCacheBestEffort(write: () => Promise<void> | void): void {
+  try {
+    const result = write();
+    if (result instanceof Promise) {
+      void result.catch(() => undefined);
+    }
+  } catch {
+    // Cache failures must not block message loading.
+  }
+}
+
 // Stream conversations load by stream UUID; topic conversations add topic UUID.
 export async function loadMessengerConversationMessages({
   runtimeContext,
@@ -94,6 +127,10 @@ export async function loadMessengerConversationMessages({
   pageMarker,
   getRuntimeContext = () => runtimeContext,
   client = {},
+  cache = {
+    readConversationMessageWindow: defaultReadMessengerConversationWindowCache,
+    writeConversationMessagePage: defaultWriteMessengerConversationWindowCache,
+  },
   clientOptions,
   signal,
   store = useWorkspaceMessageStore,
@@ -111,6 +148,21 @@ export async function loadMessengerConversationMessages({
 
   if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
     return { status: "skipped", ownerKey, reason: "stale-owner" };
+  }
+
+  const cachedWindow = await (
+    cache.readConversationMessageWindow ?? defaultReadMessengerConversationWindowCache
+  )(ownerKey, conversationId);
+  if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
+    return { status: "skipped", ownerKey, reason: "stale-owner" };
+  }
+  if (cachedWindow.messages.length > 0) {
+    const cachedStore = store.getState();
+    cachedStore.replaceOrMergeConversationMessagesPage(conversationId, cachedWindow.messages);
+    cachedStore.setConversationPagination(conversationId, {
+      nextPageMarker: cachedWindow.nextPageMarker,
+      hasMore: cachedWindow.hasMore,
+    });
   }
 
   store.getState().setMessagesLoading(conversationId, true);
@@ -151,6 +203,17 @@ export async function loadMessengerConversationMessages({
     messageStore.setMessagesLoading(conversationId, false);
     messageStore.setMessagesError(conversationId, null);
     messageStore.setConversationPagination(conversationId, { nextPageMarker, hasMore });
+    writeMessagesCacheBestEffort(() =>
+      (cache.writeConversationMessagePage ?? defaultWriteMessengerConversationWindowCache)(
+        ownerKey,
+        conversationId,
+        {
+          messages,
+          nextPageMarker,
+          hasMore,
+        },
+      ),
+    );
     return {
       status: "applied",
       ownerKey,

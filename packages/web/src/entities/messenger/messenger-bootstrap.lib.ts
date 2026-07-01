@@ -20,6 +20,12 @@ import type {
   WorkspaceMessengerUserDto,
 } from "~/shared/api/messenger.types";
 import { adaptMessengerBootstrapPayload, adaptMessengerFolder } from "./messenger-adapters.lib";
+import {
+  readMessengerCatalogPayloadCache as defaultReadMessengerCatalogPayloadCache,
+  writeMessengerCatalogPayloadCache as defaultWriteMessengerCatalogPayloadCache,
+  writeMessengerFolderSnapshotCache as defaultWriteMessengerFolderSnapshotCache,
+  type MessengerCatalogCachePayload,
+} from "./messenger-cache.lib";
 import { loadMessengerLastMessagesForSidebar } from "./messenger-last-messages-loader.lib";
 import {
   buildMessengerRequestOptions,
@@ -42,6 +48,20 @@ export interface MessengerBootstrapClientDeps {
   ) => Promise<WorkspaceMessengerMessageDto[]>;
 }
 
+export interface MessengerBootstrapCacheDeps {
+  readMessengerCatalogPayloadCache?: (
+    ownerKey: string,
+  ) => Promise<MessengerCatalogCachePayload | null>;
+  writeMessengerCatalogPayloadCache?: (
+    ownerKey: string,
+    payload: ReturnType<typeof adaptMessengerBootstrapPayload>,
+  ) => Promise<void> | void;
+  writeMessengerFolderSnapshotCache?: (
+    ownerKey: string,
+    folder: ReturnType<typeof adaptMessengerFolder>,
+  ) => Promise<void> | void;
+}
+
 export interface MessengerStoreApi {
   getState: () => Pick<
     MessengerStoreState,
@@ -55,6 +75,9 @@ export interface MessengerStoreApi {
     | "topicsById"
     | "conversationIds"
     | "conversationsById"
+    | "setRealtimeCursor"
+    | "ownerKey"
+    | "isLoading"
   >;
 }
 
@@ -67,6 +90,7 @@ export interface BootstrapMessengerStoreOptions {
   runtimeContext: WorkspaceRuntimeContext;
   getRuntimeContext?: WorkspaceRuntimeContextGetter;
   client?: MessengerBootstrapClientDeps;
+  cache?: MessengerBootstrapCacheDeps;
   clientOptions?: MessengerRequestOptionsOverrides;
   signal?: AbortSignal;
   store?: MessengerStoreApi;
@@ -79,12 +103,28 @@ function normalizeBootstrapError(error: unknown): string {
   return "Messenger bootstrap failed";
 }
 
+function writeBootstrapCacheBestEffort(write: () => Promise<void> | void): void {
+  try {
+    const result = write();
+    if (result instanceof Promise) {
+      void result.catch(() => undefined);
+    }
+  } catch {
+    // Cache failures must not block Workspace bootstrap.
+  }
+}
+
 // Runtime checks are needed because orgs and projects can switch.
 // If the user already moved to another project, the old API response must not be applied to the store.
 export async function bootstrapMessengerStore({
   runtimeContext,
   getRuntimeContext = () => runtimeContext,
   client = {},
+  cache = {
+    readMessengerCatalogPayloadCache: defaultReadMessengerCatalogPayloadCache,
+    writeMessengerCatalogPayloadCache: defaultWriteMessengerCatalogPayloadCache,
+    writeMessengerFolderSnapshotCache: defaultWriteMessengerFolderSnapshotCache,
+  },
   clientOptions,
   signal,
   store = useMessengerStore,
@@ -100,6 +140,22 @@ export async function bootstrapMessengerStore({
   }
 
   store.getState().startBootstrap(ownerKey);
+
+  void (async () => {
+    const cached = await (
+      cache.readMessengerCatalogPayloadCache ?? defaultReadMessengerCatalogPayloadCache
+    )(ownerKey);
+    if (cached == null) return;
+    if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) return;
+
+    const currentState = store.getState();
+    if (currentState.ownerKey !== ownerKey || !currentState.isLoading) return;
+
+    currentState.replaceBootstrapState(ownerKey, cached.payload);
+    if (cached.epochVersion != null) {
+      store.getState().setRealtimeCursor(ownerKey, cached.epochVersion);
+    }
+  })();
 
   const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
 
@@ -123,6 +179,12 @@ export async function bootstrapMessengerStore({
       users,
     });
     store.getState().replaceBootstrapState(ownerKey, payload);
+    writeBootstrapCacheBestEffort(() =>
+      (cache.writeMessengerCatalogPayloadCache ?? defaultWriteMessengerCatalogPayloadCache)(
+        ownerKey,
+        payload,
+      ),
+    );
     void loadMessengerLastMessagesForSidebar({
       runtimeContext,
       getRuntimeContext,
@@ -142,6 +204,12 @@ export async function bootstrapMessengerStore({
 
       for (const folder of folders.map(adaptMessengerFolder)) {
         store.getState().applyFolderSnapshot(ownerKey, folder);
+        writeBootstrapCacheBestEffort(() =>
+          (cache.writeMessengerFolderSnapshotCache ?? defaultWriteMessengerFolderSnapshotCache)(
+            ownerKey,
+            folder,
+          ),
+        );
       }
     } catch (folderError) {
       if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
