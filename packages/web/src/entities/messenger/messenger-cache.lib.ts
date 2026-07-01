@@ -171,7 +171,7 @@ export async function writeMessengerFolderSnapshotCache(
   await upsertMessengerFolderSnapshotsCache(ownerKey, [folder], folder.items);
 }
 
-export async function writeMessengerFolderSnapshotsCache(
+export async function replaceMessengerFolderSnapshotsCache(
   ownerKey: string,
   folders: MessengerFolder[],
 ): Promise<void> {

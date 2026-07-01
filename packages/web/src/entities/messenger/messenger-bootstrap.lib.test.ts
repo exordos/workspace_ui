@@ -456,7 +456,7 @@ describe("messenger bootstrap store", () => {
       folders: [createFolderDto({ title: "Cached folders" })],
       users: [createUserDto()],
     });
-    const writeMessengerFolderSnapshotsCache = vi.fn();
+    const replaceMessengerFolderSnapshotsCache = vi.fn();
 
     const bootstrap = bootstrapMessengerStore({
       runtimeContext,
@@ -468,7 +468,7 @@ describe("messenger bootstrap store", () => {
       cache: {
         readMessengerCatalogPayloadCache: () =>
           Promise.resolve({ payload: cachedPayload, epochVersion: null }),
-        writeMessengerFolderSnapshotsCache,
+        replaceMessengerFolderSnapshotsCache,
       },
     });
     await flushPromises();
@@ -498,7 +498,7 @@ describe("messenger bootstrap store", () => {
     expect(useMessengerStore.getState().folderIds).toEqual([FOLDER_B]);
     expect(useMessengerStore.getState().foldersById[FOLDER_A]).toBeUndefined();
     expect(useMessengerStore.getState().foldersById[FOLDER_B]?.title).toBe("Fresh folders");
-    expect(writeMessengerFolderSnapshotsCache).toHaveBeenCalledWith(ownerKey, [
+    expect(replaceMessengerFolderSnapshotsCache).toHaveBeenCalledWith(ownerKey, [
       expect.objectContaining({ uuid: FOLDER_B, title: "Fresh folders" }),
     ]);
   });

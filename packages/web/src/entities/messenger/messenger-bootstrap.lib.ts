@@ -22,9 +22,9 @@ import type {
 import { adaptMessengerBootstrapPayload, adaptMessengerFolder } from "./messenger-adapters.lib";
 import {
   createMessengerCatalogCacheReconcileFence as defaultCreateMessengerCatalogCacheReconcileFence,
+  replaceMessengerFolderSnapshotsCache as defaultReplaceMessengerFolderSnapshotsCache,
   readMessengerCatalogPayloadCache as defaultReadMessengerCatalogPayloadCache,
   writeMessengerCatalogPayloadCache as defaultWriteMessengerCatalogPayloadCache,
-  writeMessengerFolderSnapshotsCache as defaultWriteMessengerFolderSnapshotsCache,
   type MessengerCatalogPayloadCacheWriteOptions,
   type MessengerCatalogCachePayload,
 } from "./messenger-cache.lib";
@@ -38,6 +38,7 @@ import {
 } from "./messenger-request-options.lib";
 import { useMessengerStore } from "./messenger.model";
 import type { MessengerStoreState } from "./messenger.model";
+import type { MessengerFolder } from "./messenger.types";
 type MessengerBootstrapClientCall<T> = (options: MessengerClientOptions) => Promise<T[]>;
 
 // Load a minimal project snapshot for the new Workspace messenger path.
@@ -62,7 +63,7 @@ export interface MessengerBootstrapCacheDeps {
     payload: ReturnType<typeof adaptMessengerBootstrapPayload>,
     options?: MessengerCatalogPayloadCacheWriteOptions,
   ) => Promise<void> | void;
-  writeMessengerFolderSnapshotsCache?: (
+  replaceMessengerFolderSnapshotsCache?: (
     ownerKey: string,
     folders: ReturnType<typeof adaptMessengerFolder>[],
   ) => Promise<void> | void;
@@ -82,6 +83,8 @@ export interface MessengerStoreApi {
     | "topicsById"
     | "conversationIds"
     | "conversationsById"
+    | "folderIds"
+    | "foldersById"
     | "setRealtimeCursor"
     | "ownerKey"
     | "isLoading"
@@ -122,6 +125,14 @@ function writeBootstrapCacheBestEffort(write: () => Promise<void> | void): void 
   }
 }
 
+function currentFolders(
+  state: Pick<MessengerStoreState, "folderIds" | "foldersById">,
+): MessengerFolder[] {
+  return state.folderIds
+    .map((folderId) => state.foldersById[folderId])
+    .filter((folder): folder is MessengerFolder => folder != null);
+}
+
 // Runtime checks are needed because orgs and projects can switch.
 // If the user already moved to another project, the old API response must not be applied to the store.
 export async function bootstrapMessengerStore({
@@ -130,8 +141,8 @@ export async function bootstrapMessengerStore({
   client = {},
   cache = {
     readMessengerCatalogPayloadCache: defaultReadMessengerCatalogPayloadCache,
+    replaceMessengerFolderSnapshotsCache: defaultReplaceMessengerFolderSnapshotsCache,
     writeMessengerCatalogPayloadCache: defaultWriteMessengerCatalogPayloadCache,
-    writeMessengerFolderSnapshotsCache: defaultWriteMessengerFolderSnapshotsCache,
   },
   lastMessagesCache,
   clientOptions,
@@ -197,17 +208,21 @@ export async function bootstrapMessengerStore({
       return { status: "skipped", ownerKey, reason: "stale-owner" };
     }
 
-    const payload = adaptMessengerBootstrapPayload({
+    const payloadWithoutFolders = adaptMessengerBootstrapPayload({
       streams,
       topics,
       folders: [],
       users,
     });
-    store.getState().replaceBootstrapState(ownerKey, payload, { preserveFolders: true });
+    const preservedFolders = currentFolders(store.getState());
+    store.getState().replaceBootstrapState(ownerKey, {
+      ...payloadWithoutFolders,
+      folders: preservedFolders,
+    });
     writeBootstrapCacheBestEffort(() =>
       (cache.writeMessengerCatalogPayloadCache ?? defaultWriteMessengerCatalogPayloadCache)(
         ownerKey,
-        payload,
+        payloadWithoutFolders,
         {
           mode: "reconcile",
           reconcileFence: catalogReconcileFence,
@@ -228,7 +243,7 @@ export async function bootstrapMessengerStore({
       const adaptedFolders = folders.map(adaptMessengerFolder);
       store.getState().replaceFolderSnapshots(ownerKey, adaptedFolders);
       writeBootstrapCacheBestEffort(() =>
-        (cache.writeMessengerFolderSnapshotsCache ?? defaultWriteMessengerFolderSnapshotsCache)(
+        (cache.replaceMessengerFolderSnapshotsCache ?? defaultReplaceMessengerFolderSnapshotsCache)(
           ownerKey,
           adaptedFolders,
         ),

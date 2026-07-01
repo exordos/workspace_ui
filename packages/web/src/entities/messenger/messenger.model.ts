@@ -65,11 +65,7 @@ export interface MessengerStoreState extends MessengerDomainData {
   lastLoadedAt: number | null;
 
   startBootstrap: (ownerKey: string) => void;
-  replaceBootstrapState: (
-    ownerKey: string,
-    payload: MessengerBootstrapPayload,
-    options?: MessengerBootstrapReplaceOptions,
-  ) => void;
+  replaceBootstrapState: (ownerKey: string, payload: MessengerBootstrapPayload) => void;
   replaceFolderSnapshots: (ownerKey: string, folders: MessengerFolder[]) => void;
   upsertStream: (ownerKey: string, stream: MessengerStream) => void;
   removeStream: (ownerKey: string, stream: MessengerDeletedStream) => void;
@@ -94,10 +90,6 @@ export interface MessengerStoreState extends MessengerDomainData {
 
 export interface MessengerFolderItemRemovalOptions {
   preserveFolderUnreadCount?: boolean;
-}
-
-export interface MessengerBootstrapReplaceOptions {
-  preserveFolders?: boolean;
 }
 
 function createEmptyMessengerData(): MessengerDomainData {
@@ -477,7 +469,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     });
   },
 
-  replaceBootstrapState(ownerKey, payload, options) {
+  replaceBootstrapState(ownerKey, payload) {
     logStoreAction("messenger", "replaceBootstrapState", {
       ownerKey,
       streams: payload.streams.length,
@@ -488,14 +480,9 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     });
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
-      const nextData = buildMessengerDomainData(payload);
-      const shouldPreserveFolders =
-        options?.preserveFolders === true && payload.folders.length === 0;
 
       return {
-        ...nextData,
-        foldersById: shouldPreserveFolders ? state.foldersById : nextData.foldersById,
-        folderIds: shouldPreserveFolders ? state.folderIds : nextData.folderIds,
+        ...buildMessengerDomainData(payload),
         ownerKey,
         isLoading: false,
         error: null,
