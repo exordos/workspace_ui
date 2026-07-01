@@ -39,6 +39,7 @@ function expectNoLiveProtectedAttrs(html: string): void {
       const value = element.getAttribute(attr);
       expect(value?.includes("/user_uploads/") ?? false).toBe(false);
       expect(value?.includes("/external_content/") ?? false).toBe(false);
+      expect(value?.includes("/api/messenger/v1/files/") ?? false).toBe(false);
     }
   }
 }
@@ -88,6 +89,11 @@ describe("protected media URL trust", () => {
     expect(isProtectedMessageMediaUrl("https://chat.example.com/external_content/a.png")).toBe(
       true,
     );
+    expect(
+      isProtectedMessageMediaUrl(
+        "/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download",
+      ),
+    ).toBe(true);
   });
 });
 
@@ -112,6 +118,21 @@ describe("prepareProtectedMessageHtml", () => {
     expect(out).toContain('width="240"');
     expect(out).toContain('height="160"');
     expect(out).toContain(MESSAGE_MEDIA_PREVIEW_CLASS_NAME);
+    expectNoLiveProtectedAttrs(out);
+  });
+
+  it("expands Workspace file image links using the link filename", () => {
+    const href = "/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download";
+    const out = prepareProtectedMessageHtml(`<p><a href="${href}">photo.jpg</a></p>`);
+    const template = document.createElement("template");
+    template.innerHTML = out;
+    const link = template.content.querySelector("a");
+    const image = link?.querySelector("img");
+
+    expect(image).not.toBeNull();
+    expect(image?.getAttribute("data-auth-src")).toBe(href);
+    expect(image?.getAttribute("src")).not.toContain("/api/messenger/v1/files/");
+    expect(image?.classList.contains(MESSAGE_MEDIA_PREVIEW_CLASS_NAME)).toBe(true);
     expectNoLiveProtectedAttrs(out);
   });
 
@@ -210,6 +231,12 @@ describe("buildProtectedUploadFetchUrl", () => {
       "https://sys.platform.test/external_content/preview.png",
     );
     expect(url).toBe("https://chat.example.com/external_content/preview.png");
+  });
+
+  it("keeps Workspace file downloads on the same-origin API path", () => {
+    const path = "/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download";
+
+    expect(buildProtectedUploadFetchUrl(`https://app.example.com${path}`)).toBe(path);
   });
 });
 

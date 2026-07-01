@@ -4,6 +4,10 @@ import type { MentionSuggestion } from "~/features/mention-suggest/mention-sugge
 import { t } from "~/i18n/i18n";
 import type { SavedSnippet } from "~/shared/api/messenger.types";
 import { COMPOSER_FORMATTING_TOOLBAR_ALWAYS_VISIBLE } from "~/shared/config/constants";
+import {
+  buildComposerUploadPlaceholders,
+  removeComposerUploadPlaceholder,
+} from "~/shared/lib/composer-upload-placeholder.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
 import { useViewportKeyboard } from "~/shared/lib/touch";
@@ -127,6 +131,46 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     setMediaPickerOpen,
     setMode,
   });
+  const effectiveReplyQuote = isEditing ? null : replyQuote;
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const insertTextAtSelection = useCallback(
+    (text: string) => {
+      if (text.length === 0) return;
+      const textarea = textareaRef.current;
+      if (textarea == null) {
+        setValue((prev) => {
+          const separator = prev.length > 0 && !prev.endsWith("\n") ? "\n" : "";
+          return `${prev}${separator}${text}`;
+        });
+        return;
+      }
+
+      const selectionStart = textarea.selectionStart ?? value.length;
+      const selectionEnd = textarea.selectionEnd ?? value.length;
+      const before = value.slice(0, selectionStart);
+      const after = value.slice(selectionEnd);
+      const prefix = before.length > 0 && !before.endsWith("\n") ? "\n" : "";
+      const suffix = after.length > 0 && !after.startsWith("\n") ? "\n" : "";
+      const insertion = `${prefix}${text}${suffix}`;
+      const nextValue = `${before}${insertion}${after}`;
+      const nextCursor = before.length + insertion.length;
+      setValue(nextValue);
+      requestAnimationFrame(() => {
+        textarea.focus();
+        textarea.setSelectionRange(nextCursor, nextCursor);
+      });
+    },
+    [setValue, value],
+  );
+
+  const insertUploadPlaceholders = useCallback(
+    (acceptedFiles: File[]) => {
+      const placeholders = buildComposerUploadPlaceholders(acceptedFiles);
+      insertTextAtSelection(placeholders);
+    },
+    [insertTextAtSelection],
+  );
   const {
     mentionSuggestions,
     showMentions,
@@ -138,8 +182,6 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     mentionStartPos,
     setMentionStartPos,
   } = useComposerMentions();
-  const effectiveReplyQuote = isEditing ? null : replyQuote;
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const prevDisabledRef = useRef(disabled);
   const prevReplyQuoteIdRef = useRef<MessageId | null>(null);
   useLayoutEffect(() => {
@@ -183,10 +225,25 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     onDrop: handleDrop,
     beginFileSelectionSession,
     onFileInputChange: handleFileChangeFromHook,
-    removeFileByIndex: removeFile,
+    removeFileByIndex,
     uploadProgressPercent,
     isUploadInProgress,
-  } = useMessageComposerUpload({ disabled: disabled || isEditing, uploadProgress });
+  } = useMessageComposerUpload({
+    disabled: disabled || isEditing,
+    uploadProgress,
+    onFilesAdded: insertUploadPlaceholders,
+  });
+  const removeFile = useCallback(
+    (index: number) => {
+      const file = files[index];
+      if (file != null) {
+        setValue((prev) => removeComposerUploadPlaceholder(prev, file));
+      }
+      removeFileByIndex(index);
+    },
+    [files, removeFileByIndex, setValue],
+  );
+
   const [isComposerFocusWithin, setIsComposerFocusWithin] = useState(false);
   const outgoingBody = useMemo(
     () => buildOutgoingMessageBody(value, effectiveReplyQuote),
@@ -454,9 +511,10 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
       if (imageFiles.length > 0) {
         e.preventDefault();
         setFiles((prev) => [...prev, ...imageFiles]);
+        insertUploadPlaceholders(imageFiles);
       }
     },
-    [isEditing, setFiles],
+    [insertUploadPlaceholders, isEditing, setFiles],
   );
 
   const handleAttachClick = () => {

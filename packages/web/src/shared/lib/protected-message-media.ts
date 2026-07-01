@@ -5,7 +5,10 @@
  * until `fetch → blob/data:` assigns display URLs.
  */
 import hljs from "highlight.js/lib/common";
-import { appendDevRealmMediaProxyHeaders } from "~/shared/api/client";
+import {
+  appendDevRealmMediaProxyHeaders,
+  appendDevWorkspaceApiProxyHeaders,
+} from "~/shared/api/client";
 import { getRealmBaseUrl } from "~/shared/api/messenger-client.internal";
 import {
   appendUserUploadsPathPrefix,
@@ -14,6 +17,7 @@ import {
 } from "~/shared/api/messenger-realm.internal";
 import { env } from "~/shared/lib/env";
 import { sanitizeHtml } from "~/shared/lib/html";
+import { isImageFileName } from "~/shared/lib/media-file-name.lib";
 import { MESSAGE_MEDIA_PREVIEW_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
 import { renderEmojiShortcodesInContainer } from "~/shared/lib/message-emoji-shortcodes.lib";
 import {
@@ -36,6 +40,7 @@ import {
   isExternalContentPath,
   isProtectedMessageMediaPath,
   isUserUploadsPath,
+  isWorkspaceFileDownloadPath,
 } from "~/shared/lib/user-uploads-url.lib";
 
 export { collapseDuplicateWorkspaceV1InUrl };
@@ -200,6 +205,16 @@ export function isProtectedMessageMediaUrl(
   return isTrustedProtectedMessageMediaUrl(url, trustedOrigins);
 }
 
+function isWorkspaceFileDownloadImageLink(link: HTMLAnchorElement, href: string): boolean {
+  const parsed = parseProtectedMessageMediaUrl(href);
+  if (parsed == null || !isWorkspaceFileDownloadPath(parsed.pathname)) return false;
+  return [
+    link.textContent ?? "",
+    link.getAttribute("title") ?? "",
+    link.getAttribute("download") ?? "",
+  ].some(isImageFileName);
+}
+
 export function normalizeProtectedUploadPath(url: string): string | null {
   return extractProtectedMessageMediaPathAndQuery(url);
 }
@@ -263,7 +278,11 @@ function stripInlineStyleAttr(element: Element): void {
 
 function hasProtectedMessageMediaInStyle(styleValue: string | null): boolean {
   if (styleValue == null || styleValue.trim() === "") return false;
-  return styleValue.includes("/user_uploads/") || styleValue.includes("/external_content/");
+  return (
+    styleValue.includes("/user_uploads/") ||
+    styleValue.includes("/external_content/") ||
+    styleValue.includes("/api/messenger/v1/files/")
+  );
 }
 
 function stripResponsiveMediaAttrs(element: Element): void {
@@ -402,6 +421,9 @@ export function buildProtectedUploadFetchUrl(url: string): string {
   if (!normalizedPath) {
     return value;
   }
+  if (isWorkspaceFileDownloadPath(normalizedPath)) {
+    return normalizedPath;
+  }
   const realm = getRealmBaseUrl();
   const site = normalizeRealmSiteOriginForUploads(realm).trim().replace(/\/+$/, "");
   const prefix = env.USER_UPLOADS_PATH_PREFIX;
@@ -437,13 +459,29 @@ function resolveCrossOriginProtectedUploadCredentials(
   return authorization.length > 0 ? "omit" : "include";
 }
 
+function resolveProtectedUploadRequestHeaders(
+  candidate: string,
+  headers: Record<string, string>,
+): Record<string, string> {
+  try {
+    const base = typeof window !== "undefined" ? window.location.origin : "https://localhost";
+    const parsed = new URL(candidate, base);
+    if (isWorkspaceFileDownloadPath(parsed.pathname)) {
+      return appendDevWorkspaceApiProxyHeaders(candidate, headers);
+    }
+  } catch {
+    // Fall back to realm media proxy handling below.
+  }
+  return appendDevRealmMediaProxyHeaders(candidate, headers);
+}
+
 export function resolveProtectedUploadFetchOptions(
   candidate: string,
   headers: Record<string, string>,
 ): RequestInit {
   const isProtectedCandidate = isProtectedMessageMediaUrl(candidate);
   const requestHeaders = isProtectedCandidate
-    ? appendDevRealmMediaProxyHeaders(candidate, headers)
+    ? resolveProtectedUploadRequestHeaders(candidate, headers)
     : {};
   try {
     const base = typeof window !== "undefined" ? window.location.origin : "https://localhost";
@@ -672,16 +710,28 @@ function inlineUserUploadImageLinksInContainer(container: ParentNode): void {
   for (const link of links) {
     const href = link.getAttribute("href")?.trim();
     if (href == null || href.length === 0) continue;
-    if (!isUserUploadImagePath(href)) continue;
+    const isUserUploadImage = isUserUploadImagePath(href);
+    const isWorkspaceFileImage = !isUserUploadImage && isWorkspaceFileDownloadImageLink(link, href);
+    if (!isUserUploadImage && !isWorkspaceFileImage) continue;
     if (link.querySelector("img") != null) continue;
     const inQuoteBody = link.closest(".messenger-quote-body") != null;
-    if (!inQuoteBody && shouldSkipInliningUserUploadImageLink(href, inlineIdentities)) continue;
+    if (
+      isUserUploadImage &&
+      !inQuoteBody &&
+      shouldSkipInliningUserUploadImageLink(href, inlineIdentities)
+    ) {
+      continue;
+    }
 
     const title = (link.textContent ?? "").trim();
     const fallbackLabel = title.length > 0 ? title : "image";
     const image = document.createElement("img");
     // Use an auth placeholder immediately so later DOM insertion cannot trigger unauthenticated loads.
-    prepareProtectedUserUploadImageElement(image, href);
+    if (isUserUploadImage) {
+      prepareProtectedUserUploadImageElement(image, href);
+    } else {
+      prepareProtectedMessageImageElement(image, href);
+    }
     image.setAttribute("alt", fallbackLabel);
     image.setAttribute("title", fallbackLabel);
     link.replaceChildren(image);

@@ -915,6 +915,35 @@ describe("MessageComposer file attachments", () => {
     });
   });
 
+  it("inserts an attachment placeholder at the current cursor position", async () => {
+    const onSend = vi.fn();
+    const { container } = renderWithProviders(<MessageComposer onSend={onSend} />);
+    const input = container.querySelector('input[type="file"]');
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error("Expected hidden file input");
+    }
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "before\nafter" } });
+    textbox.setSelectionRange("before\n".length, "before\n".length);
+
+    const file = new File(["image"], "photo.jpg", { type: "image/jpeg" });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(textbox.value).toMatch(
+        /^before\n\[photo\.jpg\]\(workspace-upload:\/\/[^)]+\)\nafter$/,
+      );
+    });
+
+    fireEvent.keyDown(textbox, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith(expect.stringMatching(/workspace-upload:\/\//), "", [
+        file,
+      ]);
+    });
+  });
+
   it("attaches selected files when picker dispatches input event", async () => {
     const onSend = vi.fn();
     const { container } = renderWithProviders(<MessageComposer onSend={onSend} />);

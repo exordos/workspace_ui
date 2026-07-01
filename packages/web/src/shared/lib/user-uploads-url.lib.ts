@@ -5,7 +5,13 @@
 
 const USER_UPLOADS_SEGMENT = "/user_uploads/";
 const EXTERNAL_CONTENT_SEGMENT = "/external_content/";
-const PROTECTED_MESSAGE_MEDIA_SEGMENTS = [USER_UPLOADS_SEGMENT, EXTERNAL_CONTENT_SEGMENT] as const;
+const WORKSPACE_FILE_DOWNLOAD_PREFIX = "/api/messenger/v1/files/";
+const WORKSPACE_FILE_DOWNLOAD_SUFFIX = "/actions/download";
+const PROTECTED_MESSAGE_MEDIA_SEGMENTS = [
+  WORKSPACE_FILE_DOWNLOAD_PREFIX,
+  USER_UPLOADS_SEGMENT,
+  EXTERNAL_CONTENT_SEGMENT,
+] as const;
 
 export function collapseDuplicateWorkspaceV1InUrl(raw: string): string {
   let s = raw.trim();
@@ -43,8 +49,22 @@ export function isExternalContentPath(pathname: string): boolean {
   return pathname.includes(EXTERNAL_CONTENT_SEGMENT);
 }
 
+export function isWorkspaceFileDownloadPath(pathname: string): boolean {
+  const idx = pathname.indexOf(WORKSPACE_FILE_DOWNLOAD_PREFIX);
+  if (idx === -1) return false;
+  const path = pathname.slice(idx);
+  return (
+    path.endsWith(WORKSPACE_FILE_DOWNLOAD_SUFFIX) ||
+    path.endsWith(`${WORKSPACE_FILE_DOWNLOAD_SUFFIX}/`)
+  );
+}
+
 export function isProtectedMessageMediaPath(pathname: string): boolean {
-  return isUserUploadsPath(pathname) || isExternalContentPath(pathname);
+  return (
+    isUserUploadsPath(pathname) ||
+    isExternalContentPath(pathname) ||
+    isWorkspaceFileDownloadPath(pathname)
+  );
 }
 
 export function extractProtectedMessageMediaPathAndQuery(

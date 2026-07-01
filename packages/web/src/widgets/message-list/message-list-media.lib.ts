@@ -1,5 +1,6 @@
 import type { MediaItem } from "~/features/media-viewer/media-viewer.types";
 import type { MockMessage } from "~/shared/api/messenger.types";
+import { isImageFileName } from "~/shared/lib/media-file-name.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import { normalizeUserUploadImageIdentity } from "~/shared/lib/message-inline-user-upload-image.lib";
 import {
@@ -18,12 +19,15 @@ import { isUserUploadVideoPath, isVideoFileHref } from "~/shared/lib/user-upload
 import {
   collapseDuplicateWorkspaceV1InUrl,
   extractProtectedMessageMediaPathAndQuery,
+  isWorkspaceFileDownloadPath,
 } from "~/shared/lib/user-uploads-url.lib";
 
 const IMG_SRC_REGEX = /<img\b[^>]*\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/gi;
 const VIDEO_SRC_REGEX = /<video\b[^>]*\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/gi;
 const SOURCE_SRC_REGEX = /<source\b[^>]*\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/gi;
 const A_HREF_REGEX = /<a\b[^>]*\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+const A_TAG_HREF_TEXT_REGEX =
+  /<a\b[^>]*\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))[^>]*>([\s\S]*?)<\/a>/gi;
 const AUTH_SRC_REGEX = /data-auth-src\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/gi;
 const MARKDOWN_LINK_REGEX = /!?\[([^\]]*)\]\(([^)\s]+)\)/g;
 const USER_UPLOAD_IMAGE_EXT = /\.(apng|avif|bmp|gif|jpe?g|png|svg|webp)(\?|#|$)/i;
@@ -144,6 +148,19 @@ function isUserUploadImageHref(href: string): boolean {
   return USER_UPLOAD_IMAGE_EXT.test(pathOnly);
 }
 
+function isWorkspaceFileDownloadHref(href: string): boolean {
+  const path = extractProtectedMessageMediaPathAndQuery(href);
+  return path != null && isWorkspaceFileDownloadPath(path);
+}
+
+function isWorkspaceFileImageLink(label: string, href: string): boolean {
+  return isWorkspaceFileDownloadHref(href) && isImageFileName(label);
+}
+
+function stripHtmlTags(value: string): string {
+  return value.replace(/<[^>]*>/g, "").trim();
+}
+
 function extractUrlsFromRegex(
   content: string,
   regex: RegExp,
@@ -179,6 +196,27 @@ function extractUserUploadImageLinkUrls(content: string): string[] {
   return extractUrlsFromRegex(content, A_HREF_REGEX, isUserUploadImageHref);
 }
 
+function extractWorkspaceFileImageLinkUrls(content: string): string[] {
+  const urls: string[] = [];
+  if (!content.includes("/api/messenger/v1/files/")) {
+    return urls;
+  }
+
+  A_TAG_HREF_TEXT_REGEX.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = A_TAG_HREF_TEXT_REGEX.exec(content)) !== null) {
+    const raw = match[1] ?? match[2] ?? match[3] ?? "";
+    const label = stripHtmlTags(match[4] ?? "");
+    if (!isWorkspaceFileImageLink(label, raw)) continue;
+    const normalized = normalizeMediaUrl(raw);
+    if (normalized !== "") {
+      urls.push(normalized);
+    }
+  }
+
+  return urls;
+}
+
 function extractUserUploadVideoLinkUrls(content: string): string[] {
   return extractUrlsFromRegex(content, A_HREF_REGEX, isUserUploadVideoPath);
 }
@@ -189,16 +227,21 @@ function extractAuthSrcUrls(content: string): string[] {
 
 function extractMarkdownMediaUrls(content: string): string[] {
   const urls: string[] = [];
-  if (!content.includes("/user_uploads/")) {
+  if (!content.includes("/user_uploads/") && !content.includes("/api/messenger/v1/files/")) {
     return urls;
   }
 
   MARKDOWN_LINK_REGEX.lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = MARKDOWN_LINK_REGEX.exec(content)) !== null) {
+    const label = match[1] ?? "";
     const raw = match[2] ?? "";
     if (raw === "") continue;
-    if (isUserUploadImageHref(raw) || isUserUploadVideoPath(raw)) {
+    if (
+      isUserUploadImageHref(raw) ||
+      isUserUploadVideoPath(raw) ||
+      isWorkspaceFileImageLink(label, raw)
+    ) {
       urls.push(raw);
     }
   }
@@ -358,6 +401,7 @@ export function buildMessageMediaGallery(messages: MockMessage[]): MessageMediaG
     const imageUrls = [
       ...extractImageUrls(extractionSource),
       ...extractUserUploadImageLinkUrls(extractionSource),
+      ...extractWorkspaceFileImageLinkUrls(extractionSource),
       ...extractAuthSrcUrls(extractionSource),
     ];
     const markdownMediaUrls = extractMarkdownMediaUrls(extractionSource);

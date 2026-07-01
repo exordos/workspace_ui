@@ -4,6 +4,7 @@ import {
   extractProtectedMessageMediaPathAndQuery,
   isExternalContentPath,
   isProtectedMessageMediaPath,
+  isWorkspaceFileDownloadPath,
   extractUserUploadsPathAndQuery,
   rewriteProtectedMessageMediaUrlToCanonical,
   rewriteUserUploadMediaUrlToCanonical,
@@ -66,21 +67,29 @@ describe("extractProtectedMessageMediaPathAndQuery", () => {
     ).toBe("/external_content/thumbnail?url=1");
   });
 
-  it("drops gateway segments before external_content", () => {
+  it("keeps Workspace file download path+query for absolute API URLs", () => {
     expect(
       extractProtectedMessageMediaPathAndQuery(
-        "http://localhost:5173/workspace/v1/external_content/abc.png",
+        "http://localhost:5173/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download?inline=1",
         "http://localhost:5173",
       ),
-    ).toBe("/external_content/abc.png");
+    ).toBe(
+      "/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download?inline=1",
+    );
   });
 });
 
 describe("isProtectedMessageMediaPath", () => {
-  it("detects user_uploads and external_content paths", () => {
+  it("detects user_uploads, external_content, and Workspace file downloads", () => {
+    const filePath =
+      "/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download";
+
     expect(isProtectedMessageMediaPath("/user_uploads/1/a.png")).toBe(true);
     expect(isProtectedMessageMediaPath("/external_content/abc.png")).toBe(true);
+    expect(isProtectedMessageMediaPath(filePath)).toBe(true);
     expect(isExternalContentPath("/external_content/abc.png")).toBe(true);
+    expect(isWorkspaceFileDownloadPath(filePath)).toBe(true);
+    expect(isWorkspaceFileDownloadPath("/api/messenger/v1/files/333/actions/meta")).toBe(false);
     expect(isProtectedMessageMediaPath("/static/logo.png")).toBe(false);
   });
 });

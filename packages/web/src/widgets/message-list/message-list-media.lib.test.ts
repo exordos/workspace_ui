@@ -172,4 +172,14 @@ describe("buildMessageMediaGallery", () => {
     expect(gallery.indexByUrl.get("/user_uploads/1/a.png")).toBe(0);
     expect(gallery.indexByUrl.get("/user_uploads/1/b.png")).toBe(1);
   });
+
+  it("extracts Workspace file image links from markdown by filename", () => {
+    const href = "/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download";
+    const gallery = buildMessageMediaGallery([msg(1, `[photo.jpg](${href})`)]);
+
+    expect(gallery.items).toHaveLength(1);
+    expect(gallery.items[0]?.type).toBe("image");
+    expect(gallery.items[0]?.url).toMatch(/\/api\/messenger\/v1\/files\/.+\/actions\/download$/);
+    expect(gallery.indexByUrl.get(href)).toBe(0);
+  });
 });

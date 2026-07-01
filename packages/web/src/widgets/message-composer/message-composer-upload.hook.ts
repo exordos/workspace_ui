@@ -37,6 +37,7 @@ function createAttachmentPreviewUrl(file: File): string | null {
 export function useMessageComposerUpload(options: {
   disabled: boolean;
   uploadProgress?: ComposerUploadProgressLike | null;
+  onFilesAdded?: (files: File[]) => void;
 }): {
   files: File[];
   setFiles: React.Dispatch<React.SetStateAction<File[]>>;
@@ -54,7 +55,7 @@ export function useMessageComposerUpload(options: {
   uploadProgressPercent: number;
   isUploadInProgress: boolean;
 } {
-  const { disabled, uploadProgress } = options;
+  const { disabled, onFilesAdded, uploadProgress } = options;
 
   const [files, setFiles] = useState<File[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -108,9 +109,10 @@ export function useMessageComposerUpload(options: {
       );
       if (droppedFiles.length > 0) {
         setFiles((prev) => [...prev, ...droppedFiles]);
+        onFilesAdded?.(droppedFiles);
       }
     },
-    [disabled],
+    [disabled, onFilesAdded],
   );
 
   const beginFileSelectionSession = useCallback(() => {
@@ -150,6 +152,7 @@ export function useMessageComposerUpload(options: {
         return false;
       }
       setFiles((prev) => [...prev, ...selectedFiles]);
+      onFilesAdded?.(selectedFiles);
       fileSelectionSessionRef.current = {
         sessionId,
         handled: true,
@@ -157,7 +160,7 @@ export function useMessageComposerUpload(options: {
       };
       return true;
     },
-    [],
+    [onFilesAdded],
   );
 
   const onFileInputChange = useCallback(

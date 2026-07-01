@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { sendMessage } from "~/shared/api/messenger-messages";
 import { uploadFile } from "~/shared/api/messenger-upload";
 import type { MockMessage } from "~/shared/api/messenger.types";
+import { buildComposerUploadPlaceholder } from "~/shared/lib/composer-upload-placeholder.lib";
 import { createMessage, testMessageId } from "~/test/factories";
 import { executeChatPageSend, type ChatPageSendHandlerDeps } from "./chat-page-send-handler.lib";
 
@@ -146,6 +147,30 @@ describe("executeChatPageSend", () => {
         streamUuid: activeStreamUuid,
         content: `hello
 [report.txt](${uploadedFileUri})`,
+      }),
+    );
+  });
+
+  it("replaces composer upload placeholders at their message position", async () => {
+    const deps = createDeps();
+    const file = new File(["image"], "photo.jpg", { type: "text/plain" });
+    const placeholder = buildComposerUploadPlaceholder(file);
+
+    await executeChatPageSend(
+      deps,
+      `before
+${placeholder}
+after`,
+      undefined,
+      [file],
+    );
+
+    expect(sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        streamUuid: activeStreamUuid,
+        content: `before
+[photo.jpg](${uploadedFileUri})
+after`,
       }),
     );
   });

@@ -2,6 +2,7 @@ import { t } from "~/i18n/i18n";
 import { sendMessage } from "~/shared/api/messenger-messages";
 import { uploadFile } from "~/shared/api/messenger-upload";
 import type { MockMessage } from "~/shared/api/messenger.types";
+import { replaceComposerUploadPlaceholders } from "~/shared/lib/composer-upload-placeholder.lib";
 import { createLogger } from "~/shared/lib/logger";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
@@ -71,7 +72,7 @@ async function prepareComposerBodyWithUploads(options: {
       signal: uploadController.signal,
       streamUuid,
     });
-    return content + "\n" + uploadedLinks.join("\n");
+    return replaceComposerUploadPlaceholders(content, files, uploadedLinks);
   } catch (err) {
     const wasCancelled = isAbortLikeError(err) || uploadController.signal.aborted;
     let errorMessage: string;

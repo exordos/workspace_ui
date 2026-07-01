@@ -712,6 +712,30 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(image).toHaveClass(MESSAGE_MEDIA_PREVIEW_CLASS_NAME);
   });
 
+  it("expands markdown Workspace file image links into inline images", () => {
+    const href = "/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download";
+
+    render(
+      <MessageBubble
+        message={createMessage({
+          content: `[upload-test.jpg](${href})`,
+        })}
+        isOwn={false}
+      />,
+    );
+
+    const link = screen.getByRole("link", { name: "upload-test.jpg" });
+    expect(link).toBeInTheDocument();
+    expect(link.getAttribute("href")).toMatch(
+      /\/api\/messenger\/v1\/files\/.+\/actions\/download$/,
+    );
+    const image = link.querySelector("img");
+    expect(image).not.toBeNull();
+    expect(image?.getAttribute("data-auth-src")).toBe(href);
+    expect(image?.getAttribute("src")).not.toContain("/api/messenger/v1/files/");
+    expect(image).toHaveClass(MESSAGE_MEDIA_PREVIEW_CLASS_NAME);
+  });
+
   it("renders a single inline image for messenger HTML with message_inline_image and filename link", () => {
     const { container } = render(
       <MessageBubble
