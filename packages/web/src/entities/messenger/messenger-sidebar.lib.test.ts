@@ -210,6 +210,7 @@ function state(overrides: Partial<MessengerStoreState> = {}): MessengerStoreStat
     skippedRealtimeEvents: [],
     startBootstrap: () => undefined,
     replaceBootstrapState: () => undefined,
+    replaceFolderSnapshots: () => undefined,
     upsertStream: () => undefined,
     removeStream: () => undefined,
     upsertStreamBindings: () => undefined,

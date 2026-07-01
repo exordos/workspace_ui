@@ -171,6 +171,20 @@ export async function writeMessengerFolderSnapshotCache(
   await upsertMessengerFolderSnapshotsCache(ownerKey, [folder], folder.items);
 }
 
+export async function writeMessengerFolderSnapshotsCache(
+  ownerKey: string,
+  folders: MessengerFolder[],
+): Promise<void> {
+  await writeMessengerCatalogCache(
+    ownerKey,
+    {
+      folders,
+      folderItems: folders.flatMap((folder) => folder.items),
+    },
+    { mode: "reconcile" },
+  );
+}
+
 export async function upsertMessengerStreamCache(
   ownerKey: string,
   stream: MessengerStream,

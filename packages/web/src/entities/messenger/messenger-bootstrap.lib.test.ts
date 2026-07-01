@@ -445,6 +445,64 @@ describe("messenger bootstrap store", () => {
     await bootstrap;
   });
 
+  it("keeps cached folders while the background folder request is pending", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+    const streamRequest = createDeferred<WorkspaceMessengerStreamDto[]>();
+    const folderRequest = createDeferred<WorkspaceMessengerFolderDto[]>();
+    const cachedPayload = adaptMessengerBootstrapPayload({
+      streams: [createStreamDto()],
+      topics: [createTopicDto()],
+      folders: [createFolderDto({ title: "Cached folders" })],
+      users: [createUserDto()],
+    });
+    const writeMessengerFolderSnapshotsCache = vi.fn();
+
+    const bootstrap = bootstrapMessengerStore({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      client: createClient({
+        getStreams: () => streamRequest.promise,
+        getFolders: () => folderRequest.promise,
+      }),
+      cache: {
+        readMessengerCatalogPayloadCache: () =>
+          Promise.resolve({ payload: cachedPayload, epochVersion: null }),
+        writeMessengerFolderSnapshotsCache,
+      },
+    });
+    await flushPromises();
+    await flushPromises();
+
+    expect(useMessengerStore.getState().foldersById[FOLDER_A]?.title).toBe("Cached folders");
+
+    streamRequest.resolve([createStreamDto({ name: "Fresh engineering" })]);
+    await flushPromises();
+    await flushPromises();
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.name).toBe("Fresh engineering");
+    expect(useMessengerStore.getState().foldersById[FOLDER_A]?.title).toBe("Cached folders");
+
+    folderRequest.resolve([
+      createFolderDto({
+        uuid: FOLDER_B,
+        title: "Fresh folders",
+        folder_items: createFolderDto().folder_items.map((item) => ({
+          ...item,
+          folder_uuid: FOLDER_B,
+        })),
+      }),
+    ]);
+    await bootstrap;
+
+    expect(useMessengerStore.getState().folderIds).toEqual([FOLDER_B]);
+    expect(useMessengerStore.getState().foldersById[FOLDER_A]).toBeUndefined();
+    expect(useMessengerStore.getState().foldersById[FOLDER_B]?.title).toBe("Fresh folders");
+    expect(writeMessengerFolderSnapshotsCache).toHaveBeenCalledWith(ownerKey, [
+      expect.objectContaining({ uuid: FOLDER_B, title: "Fresh folders" }),
+    ]);
+  });
+
   it("keeps private stream conversations as stream and topic ids", async () => {
     const runtimeContext = createRuntimeContext();
 

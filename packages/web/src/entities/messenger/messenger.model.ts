@@ -65,7 +65,12 @@ export interface MessengerStoreState extends MessengerDomainData {
   lastLoadedAt: number | null;
 
   startBootstrap: (ownerKey: string) => void;
-  replaceBootstrapState: (ownerKey: string, payload: MessengerBootstrapPayload) => void;
+  replaceBootstrapState: (
+    ownerKey: string,
+    payload: MessengerBootstrapPayload,
+    options?: MessengerBootstrapReplaceOptions,
+  ) => void;
+  replaceFolderSnapshots: (ownerKey: string, folders: MessengerFolder[]) => void;
   upsertStream: (ownerKey: string, stream: MessengerStream) => void;
   removeStream: (ownerKey: string, stream: MessengerDeletedStream) => void;
   upsertStreamBindings: (ownerKey: string, bindings: MessengerStreamBinding[]) => void;
@@ -89,6 +94,10 @@ export interface MessengerStoreState extends MessengerDomainData {
 
 export interface MessengerFolderItemRemovalOptions {
   preserveFolderUnreadCount?: boolean;
+}
+
+export interface MessengerBootstrapReplaceOptions {
+  preserveFolders?: boolean;
 }
 
 function createEmptyMessengerData(): MessengerDomainData {
@@ -115,6 +124,7 @@ function createInitialState(): Omit<
   MessengerStoreState,
   | "startBootstrap"
   | "replaceBootstrapState"
+  | "replaceFolderSnapshots"
   | "upsertStream"
   | "removeStream"
   | "upsertStreamBindings"
@@ -162,7 +172,9 @@ function isMessageFreshForContainer(
 ): boolean {
   if (currentLastMessageUuid == null) return true;
   if (currentLastMessageUuid === message.uuid) return true;
-  return containerUpdatedAt == null || compareIsoDateStrings(message.createdAt, containerUpdatedAt) >= 0;
+  return (
+    containerUpdatedAt == null || compareIsoDateStrings(message.createdAt, containerUpdatedAt) >= 0
+  );
 }
 
 function applyMessageFreshness(
@@ -465,7 +477,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     });
   },
 
-  replaceBootstrapState(ownerKey, payload) {
+  replaceBootstrapState(ownerKey, payload, options) {
     logStoreAction("messenger", "replaceBootstrapState", {
       ownerKey,
       streams: payload.streams.length,
@@ -476,13 +488,40 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     });
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
+      const nextData = buildMessengerDomainData(payload);
+      const shouldPreserveFolders =
+        options?.preserveFolders === true && payload.folders.length === 0;
 
       return {
-        ...buildMessengerDomainData(payload),
+        ...nextData,
+        foldersById: shouldPreserveFolders ? state.foldersById : nextData.foldersById,
+        folderIds: shouldPreserveFolders ? state.folderIds : nextData.folderIds,
         ownerKey,
         isLoading: false,
         error: null,
         lastLoadedAt: Date.now(),
+      };
+    });
+  },
+
+  replaceFolderSnapshots(ownerKey, folders) {
+    logStoreAction("messenger", "replaceFolderSnapshots", {
+      ownerKey,
+      folders: folders.length,
+    });
+    set((state) => {
+      if (state.ownerKey !== ownerKey) return state;
+
+      const foldersById: Record<MessengerUuid, MessengerFolder> = {};
+      const folderIds: MessengerUuid[] = [];
+      for (const folder of folders) {
+        foldersById[folder.uuid] = folder;
+        folderIds.push(folder.uuid);
+      }
+
+      return {
+        foldersById,
+        folderIds,
       };
     });
   },

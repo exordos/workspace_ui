@@ -24,7 +24,7 @@ import {
   createMessengerCatalogCacheReconcileFence as defaultCreateMessengerCatalogCacheReconcileFence,
   readMessengerCatalogPayloadCache as defaultReadMessengerCatalogPayloadCache,
   writeMessengerCatalogPayloadCache as defaultWriteMessengerCatalogPayloadCache,
-  writeMessengerFolderSnapshotCache as defaultWriteMessengerFolderSnapshotCache,
+  writeMessengerFolderSnapshotsCache as defaultWriteMessengerFolderSnapshotsCache,
   type MessengerCatalogPayloadCacheWriteOptions,
   type MessengerCatalogCachePayload,
 } from "./messenger-cache.lib";
@@ -62,9 +62,9 @@ export interface MessengerBootstrapCacheDeps {
     payload: ReturnType<typeof adaptMessengerBootstrapPayload>,
     options?: MessengerCatalogPayloadCacheWriteOptions,
   ) => Promise<void> | void;
-  writeMessengerFolderSnapshotCache?: (
+  writeMessengerFolderSnapshotsCache?: (
     ownerKey: string,
-    folder: ReturnType<typeof adaptMessengerFolder>,
+    folders: ReturnType<typeof adaptMessengerFolder>[],
   ) => Promise<void> | void;
   createMessengerCatalogCacheReconcileFence?: () => number;
 }
@@ -74,7 +74,7 @@ export interface MessengerStoreApi {
     MessengerStoreState,
     | "startBootstrap"
     | "replaceBootstrapState"
-    | "applyFolderSnapshot"
+    | "replaceFolderSnapshots"
     | "setBootstrapError"
     | "streamIds"
     | "streamsById"
@@ -131,7 +131,7 @@ export async function bootstrapMessengerStore({
   cache = {
     readMessengerCatalogPayloadCache: defaultReadMessengerCatalogPayloadCache,
     writeMessengerCatalogPayloadCache: defaultWriteMessengerCatalogPayloadCache,
-    writeMessengerFolderSnapshotCache: defaultWriteMessengerFolderSnapshotCache,
+    writeMessengerFolderSnapshotsCache: defaultWriteMessengerFolderSnapshotsCache,
   },
   lastMessagesCache,
   clientOptions,
@@ -203,7 +203,7 @@ export async function bootstrapMessengerStore({
       folders: [],
       users,
     });
-    store.getState().replaceBootstrapState(ownerKey, payload);
+    store.getState().replaceBootstrapState(ownerKey, payload, { preserveFolders: true });
     writeBootstrapCacheBestEffort(() =>
       (cache.writeMessengerCatalogPayloadCache ?? defaultWriteMessengerCatalogPayloadCache)(
         ownerKey,
@@ -225,15 +225,14 @@ export async function bootstrapMessengerStore({
         return { status: "applied", ownerKey };
       }
 
-      for (const folder of folders.map(adaptMessengerFolder)) {
-        store.getState().applyFolderSnapshot(ownerKey, folder);
-        writeBootstrapCacheBestEffort(() =>
-          (cache.writeMessengerFolderSnapshotCache ?? defaultWriteMessengerFolderSnapshotCache)(
-            ownerKey,
-            folder,
-          ),
-        );
-      }
+      const adaptedFolders = folders.map(adaptMessengerFolder);
+      store.getState().replaceFolderSnapshots(ownerKey, adaptedFolders);
+      writeBootstrapCacheBestEffort(() =>
+        (cache.writeMessengerFolderSnapshotsCache ?? defaultWriteMessengerFolderSnapshotsCache)(
+          ownerKey,
+          adaptedFolders,
+        ),
+      );
     } catch (folderError) {
       if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
         return { status: "applied", ownerKey };
