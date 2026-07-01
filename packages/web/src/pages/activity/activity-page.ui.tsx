@@ -653,9 +653,7 @@ export const ActivityPage: React.FC = () => {
                     <p className="mt-1 line-clamp-2 text-sm text-text-primary">
                       {truncateText(plainTextPreviewFromMessageBody(m.content))}
                     </p>
-                    {validFilter === "reactions" && (
-                      <ActivityPeerReactionsRow message={m} currentUserId={currentUserId} />
-                    )}
+                    {validFilter === "reactions" && <ActivityPeerReactionsRow message={m} />}
                   </button>
                   <div className="mt-0.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                     {validFilter === "starred" && (

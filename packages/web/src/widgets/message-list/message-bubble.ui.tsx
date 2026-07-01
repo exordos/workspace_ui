@@ -1,15 +1,16 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { canStartMessageContentEdit } from "~/entities/message/message-edit-policy.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
+import { fetchMessageReactions } from "~/shared/api/messenger-messages";
 import { formatMessageTimeShort } from "~/shared/lib/datetime.lib";
 import { getJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 import { messageAuthorId } from "~/shared/lib/message-author.lib";
 import { messageBodyToUnsanitizedDisplayHtml } from "~/shared/lib/message-markdown-display.lib";
 import { prepareProtectedMessageHtml } from "~/shared/lib/protected-message-media";
 import { useProtectedMessageHtml } from "~/shared/lib/protected-message-media.hook";
-import { numericUserIdOrNull } from "~/shared/lib/user-id.lib";
+import { isIamUserUuid, numericUserIdOrNull, userIdsEqual } from "~/shared/lib/user-id.lib";
 import { filterVisibleContextSections } from "./message-bubble-actions.lib";
 import {
   MessageBubbleStandardBody,
@@ -87,21 +88,61 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
 
     const time = formatMessageTimeShort(message.timestamp);
     const reactionGroups = useMemo(
-      () =>
-        message.reactions?.length
-          ? groupReactions(message.reactions, resolveCustomEmojiImageUrl)
-          : [],
+      () => groupReactions(message.reactions ?? {}, resolveCustomEmojiImageUrl),
       [message.reactions, resolveCustomEmojiImageUrl],
     );
-    const resolveReactionAuthorLabel = useCallback(
-      (userId: number): string => {
-        const reactionUser = getUser(userId);
-        const fullName = reactionUser?.full_name?.trim();
-        return fullName != null && fullName.length > 0 ? fullName : `#${userId}`;
-      },
-      [getUser],
+    const reactionFingerprint = useMemo(
+      () =>
+        Object.entries(message.reactions ?? {})
+          .filter(([, count]) => Number.isFinite(count) && count > 0)
+          .map(([emojiName, count]) => `${emojiName}:${count}`)
+          .sort()
+          .join("|"),
+      [message.reactions],
     );
-    const numericCurrentUserId = numericUserIdOrNull(currentUserId);
+    const [ownReactionEmojiNames, setOwnReactionEmojiNames] = useState<ReadonlySet<string>>(
+      () => new Set(),
+    );
+
+    useEffect(() => {
+      if (!isIamUserUuid(currentUserId) || reactionFingerprint.length === 0) {
+        setOwnReactionEmojiNames(new Set());
+        return;
+      }
+      const availableEmojiNames = new Set(reactionGroups.map((reaction) => reaction.emojiName));
+      const controller = new AbortController();
+      let cancelled = false;
+      void fetchMessageReactions(message.id, {
+        userUuid: currentUserId,
+        signal: controller.signal,
+      })
+        .then((reactions) => {
+          if (cancelled) {
+            return;
+          }
+          const ownEmojiNames = new Set<string>();
+          for (const reaction of reactions) {
+            if (
+              availableEmojiNames.has(reaction.emoji_name) &&
+              userIdsEqual(reaction.user_uuid, currentUserId)
+            ) {
+              ownEmojiNames.add(reaction.emoji_name);
+            }
+          }
+          setOwnReactionEmojiNames(ownEmojiNames);
+        })
+        .catch((error: unknown) => {
+          if (cancelled || (error instanceof DOMException && error.name === "AbortError")) {
+            return;
+          }
+          setOwnReactionEmojiNames(new Set());
+        });
+      return () => {
+        cancelled = true;
+        controller.abort();
+      };
+    }, [currentUserId, message.id, reactionFingerprint, reactionGroups]);
+
     const imagesBase = getMessageImagesBaseUrl();
     const { safeMessageHtml, displayHtmlForJitsi } = useMemo(() => {
       const displaySourceBody = message.markdown_source ?? message.content;
@@ -250,8 +291,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
           time={time}
           hasReactions={hasReactions}
           reactionGroups={reactionGroups}
-          currentUserId={numericCurrentUserId ?? undefined}
-          resolveReactionAuthorLabel={resolveReactionAuthorLabel}
+          ownReactionEmojiNames={ownReactionEmojiNames}
           callbacks={callbacks}
           ownDeliveryIndicator={ownDeliveryIndicator}
           bubbleSurfaceClass={bubbleSurfaceClass}

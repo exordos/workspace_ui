@@ -59,23 +59,12 @@ export interface LayoutChatListActions {
   handleDeleteMessages: (messageIds: MessageId[]) => void;
 }
 
-export interface LayoutCurrentChatReaction {
-  emoji_name: string;
-  emoji_code: string;
-  reaction_type: "unicode_emoji" | "realm_emoji";
-  user_id: number;
-}
-
 export interface LayoutCurrentChatActions {
   context: CurrentChatContext | null;
   hasNewerMessages: boolean;
   appendMessage: (message: MockMessage) => void;
   updateMessageFlags: (messageIds: MessageId[], flag: string, op: LayoutMessageFlagOp) => void;
-  updateMessageReaction: (
-    messageId: MessageId,
-    reaction: LayoutCurrentChatReaction,
-    op: LayoutMessageFlagOp,
-  ) => void;
+  updateMessageReaction: (messageId: MessageId, emojiName: string, op: LayoutMessageFlagOp) => void;
   removeMessages: (messageIds: MessageId[]) => void;
   updateMessageContent: (messageId: MessageId, content: string, markdownSource?: string) => void;
   updateMessageLinkPreview: (messageId: MessageId, linkPreview: LinkPreviewData | null) => void;

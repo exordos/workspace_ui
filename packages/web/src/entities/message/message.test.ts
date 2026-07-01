@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setInstanceProvider } from "~/shared/api/client";
-import type { MockMessage, Reaction, WorkspaceRawMessage } from "~/shared/api/messenger.types";
+import type { MockMessage, WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { testMessageId } from "~/test/factories";
 import {
   useCurrentChatMessagesStore,
@@ -792,74 +792,64 @@ describe("currentChatMessagesStore", () => {
     });
   });
 
-  // Reactions are per-user per-emoji — adding/removing must respect uniqueness.
+  // Reactions are aggregate emoji counters from the Workspace API.
   describe("updateMessageReaction", () => {
-    const reaction: Reaction = {
-      emoji_name: "thumbs_up",
-      emoji_code: "1f44d",
-      reaction_type: "unicode_emoji",
-      user_id: 10,
-    };
-
-    // A new reaction must be appended to the message's reaction list.
-    it("adds a reaction to a message", () => {
+    it("increments a reaction counter on a message", () => {
       useCurrentChatMessagesStore
         .getState()
-        .setMessages([mockMsg({ id: "00000000-0000-4000-8000-000000000001", reactions: [] })]);
+        .setMessages([mockMsg({ id: "00000000-0000-4000-8000-000000000001", reactions: {} })]);
 
       useCurrentChatMessagesStore
         .getState()
-        .updateMessageReaction("00000000-0000-4000-8000-000000000001", reaction, "add");
+        .updateMessageReaction("00000000-0000-4000-8000-000000000001", "thumbs_up", "add");
 
-      const reactions = useCurrentChatMessagesStore.getState().messages[0]!.reactions;
-      expect(reactions).toHaveLength(1);
-      expect(reactions![0]!.emoji_name).toBe("thumbs_up");
+      expect(useCurrentChatMessagesStore.getState().messages[0]!.reactions).toEqual({
+        thumbs_up: 1,
+      });
     });
 
-    // Same user reacting twice with the same emoji must not create a duplicate.
-    it("does not duplicate a reaction from the same user", () => {
-      useCurrentChatMessagesStore
-        .getState()
-        .setMessages([
-          mockMsg({ id: "00000000-0000-4000-8000-000000000001", reactions: [reaction] }),
-        ]);
+    it("increments an existing reaction counter", () => {
+      useCurrentChatMessagesStore.getState().setMessages([
+        mockMsg({
+          id: "00000000-0000-4000-8000-000000000001",
+          reactions: { thumbs_up: 1 },
+        }),
+      ]);
 
       useCurrentChatMessagesStore
         .getState()
-        .updateMessageReaction("00000000-0000-4000-8000-000000000001", reaction, "add");
+        .updateMessageReaction("00000000-0000-4000-8000-000000000001", "thumbs_up", "add");
 
-      expect(useCurrentChatMessagesStore.getState().messages[0]!.reactions).toHaveLength(1);
+      expect(useCurrentChatMessagesStore.getState().messages[0]!.reactions).toEqual({
+        thumbs_up: 2,
+      });
     });
 
-    // Removal matches on both emoji_name and user_id — other users' reactions stay.
-    it("removes a reaction by emoji_name and user_id", () => {
-      useCurrentChatMessagesStore
-        .getState()
-        .setMessages([
-          mockMsg({ id: "00000000-0000-4000-8000-000000000001", reactions: [reaction] }),
-        ]);
+    it("removes the counter when it reaches zero", () => {
+      useCurrentChatMessagesStore.getState().setMessages([
+        mockMsg({
+          id: "00000000-0000-4000-8000-000000000001",
+          reactions: { thumbs_up: 1 },
+        }),
+      ]);
 
       useCurrentChatMessagesStore
         .getState()
-        .updateMessageReaction("00000000-0000-4000-8000-000000000001", reaction, "remove");
+        .updateMessageReaction("00000000-0000-4000-8000-000000000001", "thumbs_up", "remove");
 
-      expect(useCurrentChatMessagesStore.getState().messages[0]!.reactions).toHaveLength(0);
+      expect(useCurrentChatMessagesStore.getState().messages[0]!.reactions).toEqual({});
     });
 
-    // Multiple users reacting with the same emoji must each have their own entry.
-    it("allows different users to react with the same emoji", () => {
-      const reaction2: Reaction = { ...reaction, user_id: 20 };
+    it("keeps removing an absent reaction as a no-op", () => {
       useCurrentChatMessagesStore
         .getState()
-        .setMessages([
-          mockMsg({ id: "00000000-0000-4000-8000-000000000001", reactions: [reaction] }),
-        ]);
+        .setMessages([mockMsg({ id: "00000000-0000-4000-8000-000000000001", reactions: {} })]);
 
       useCurrentChatMessagesStore
         .getState()
-        .updateMessageReaction("00000000-0000-4000-8000-000000000001", reaction2, "add");
+        .updateMessageReaction("00000000-0000-4000-8000-000000000001", "thumbs_up", "remove");
 
-      expect(useCurrentChatMessagesStore.getState().messages[0]!.reactions).toHaveLength(2);
+      expect(useCurrentChatMessagesStore.getState().messages[0]!.reactions).toEqual({});
     });
   });
 

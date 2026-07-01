@@ -84,6 +84,7 @@ export interface MessengerMeMessage {
   read: boolean;
   pinned: boolean;
   starred: boolean;
+  reactions?: MessageReactions;
   user_uuid?: string;
   project_id?: string;
   last_synced_at?: string;
@@ -217,21 +218,23 @@ export interface RealmEmoji {
   imgUrl: string;
 }
 
-/** A single reaction on a message (Messenger API shape). */
-export interface Reaction {
-  emoji_name: string;
-  emoji_code: string;
-  reaction_type: "unicode_emoji" | "realm_emoji";
-  user_id: number;
-}
+/** Aggregate reaction counters returned on Workspace messages: emoji_name -> count. */
+export type MessageReactions = Record<string, number>;
 
-export type ReactionType = Reaction["reaction_type"];
+/** Current-user reaction resource from GET/POST /message_reactions/. */
+export interface Reaction {
+  uuid: string;
+  project_id?: string;
+  user_uuid: string;
+  message_uuid: MessageId;
+  emoji_name: string;
+  created_at?: string;
+  updated_at?: string;
+}
 
 /** Reaction payload used by message-list UI callbacks. */
 export interface MessageReactionPayload {
   emojiName: string;
-  reactionType: ReactionType;
-  emojiCode?: string;
   imageUrl?: string;
 }
 
@@ -258,13 +261,13 @@ export interface WorkspaceRawMessage {
   timestamp: number;
   display_recipient?:
     | string
-    | { id: number; full_name: string; email?: string; avatar_url?: string }[];
+    | { id: UserId; full_name: string; email?: string; avatar_url?: string }[];
   subject?: string;
   topic_uuid?: string;
   type?: string;
   stream_uuid?: string | null;
   flags?: string[];
-  reactions?: Reaction[];
+  reactions?: MessageReactions;
 }
 
 export type ActivityFilter = "starred" | "mentions" | "reactions";
@@ -327,7 +330,7 @@ export interface MockMessage {
   stream_uuid: string | null;
   display_recipient?:
     | string
-    | { id: number; full_name: string; email?: string; avatar_url?: string }[];
+    | { id: UserId; full_name: string; email?: string; avatar_url?: string }[];
   channel?: string;
   subject: string;
   topic_uuid?: string;
@@ -343,7 +346,7 @@ export interface MockMessage {
   timestamp: number;
   /** Event/cache flags (e.g. 'read', 'mentioned') projected from gateway booleans where needed. */
   flags?: string[];
-  reactions?: Reaction[];
+  reactions?: MessageReactions;
   /** Local delivery state for optimistic outgoing messages. */
   delivery_status?: MockMessageDeliveryStatus;
   /** Local state for optimistic edits of existing server messages. */
@@ -389,7 +392,7 @@ export interface RawMessageToMockInput {
   type?: string;
   stream_uuid?: string | null;
   flags?: string[];
-  reactions?: Reaction[];
+  reactions?: MessageReactions;
 }
 
 export interface MessengerSubscription {

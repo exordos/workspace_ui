@@ -35,14 +35,7 @@ describe("matchesActivityFilter", () => {
   it("includes own message with reactions for reactions filter", () => {
     const message = activityMessage({
       sender_id: currentUserId,
-      reactions: [
-        {
-          emoji_name: "thumbs_up",
-          emoji_code: "1f44d",
-          reaction_type: "unicode_emoji",
-          user_id: 7,
-        },
-      ],
+      reactions: { thumbs_up: 1 },
     });
 
     expect(matchesActivityFilter(message, "reactions", currentUserId)).toBe(true);
@@ -51,7 +44,7 @@ describe("matchesActivityFilter", () => {
   it("excludes own messages with no reactions from reactions filter", () => {
     const message = activityMessage({
       sender_id: currentUserId,
-      reactions: [],
+      reactions: {},
     });
 
     expect(matchesActivityFilter(message, "reactions", currentUserId)).toBe(false);
@@ -60,14 +53,7 @@ describe("matchesActivityFilter", () => {
   it("excludes others' messages even when current user reacted", () => {
     const message = activityMessage({
       sender_id: 7,
-      reactions: [
-        {
-          emoji_name: "thumbs_up",
-          emoji_code: "1f44d",
-          reaction_type: "unicode_emoji",
-          user_id: currentUserId,
-        },
-      ],
+      reactions: { thumbs_up: 1 },
     });
 
     expect(matchesActivityFilter(message, "reactions", currentUserId)).toBe(false);
@@ -76,14 +62,7 @@ describe("matchesActivityFilter", () => {
   it("excludes reactions filter matches when current user id is unknown", () => {
     const message = activityMessage({
       sender_id: currentUserId,
-      reactions: [
-        {
-          emoji_name: "heart",
-          emoji_code: "2764",
-          reaction_type: "unicode_emoji",
-          user_id: 7,
-        },
-      ],
+      reactions: { heart: 1 },
     });
 
     expect(matchesActivityFilter(message, "reactions", null)).toBe(false);

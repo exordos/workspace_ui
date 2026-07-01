@@ -30,11 +30,7 @@ import {
 import { rawMessageToMockMessage } from "./messenger-message-map.lib";
 import { postWorkspaceSendMessage } from "./messenger-message-send.internal";
 import { mapMessagesPageFromApiData } from "./messenger-messages-page.lib";
-import {
-  messengerPipelineDelete,
-  messengerPipelineGet,
-  messengerPipelinePost,
-} from "./messenger-pipeline.internal";
+import { ensureMessengerApiReady, messengerPipelineGet } from "./messenger-pipeline.internal";
 import {
   validateMessageIds,
   validateMessagesApiAnchor,
@@ -44,8 +40,8 @@ import type {
   ActivityFilter,
   ActivityMessagesPageResult,
   CreateSavedSnippetParams,
-  ReactionType,
   MockMessage,
+  Reaction,
   MessagesPageResult,
   RawMessageToMockInput,
   SavedSnippet,
@@ -190,26 +186,14 @@ async function fetchMessagesByIdsFallback(messageIds: MessageId[]): Promise<Work
   return results;
 }
 
-function getActivityNarrow(filter: ActivityFilter, currentUserId?: UserId | null): NarrowEntry[] {
+function getActivityNarrow(filter: ActivityFilter): NarrowEntry[] {
   switch (filter) {
     case "starred":
       return [{ negated: false, operator: "is", operand: "starred" }];
     case "mentions":
       return [{ negated: false, operator: "is", operand: "mentioned" }];
-    case "reactions": {
-      const numericCurrentUserId = numericUserIdOrNull(currentUserId);
-      if (numericCurrentUserId == null) {
-        return [];
-      }
-      return [
-        { negated: false, operator: "has", operand: "reaction" },
-        {
-          negated: false,
-          operator: "sender",
-          operand: guard.userId(numericCurrentUserId, "fetchActivityMessagesPage.currentUserId"),
-        },
-      ];
-    }
+    case "reactions":
+      return [{ negated: false, operator: "has", operand: "reaction" }];
     default:
       return [];
   }
@@ -274,28 +258,25 @@ export async function fetchMessagesAfterAnchor(
 /** Activity section narrows: starred, mentions, and reactions. */
 export async function fetchActivityMessages(
   filter: ActivityFilter,
-  currentUserId?: UserId | null,
+  _currentUserId?: UserId | null,
   anchor: MessageId = "newest",
   numBefore = 200,
   options?: { signal?: AbortSignal },
 ): Promise<WorkspaceRawMessage[]> {
-  const page = await fetchActivityMessagesPage(filter, currentUserId, anchor, numBefore, options);
+  const page = await fetchActivityMessagesPage(filter, _currentUserId, anchor, numBefore, options);
   return page.messages;
 }
 
 export async function fetchActivityMessagesPage(
   filter: ActivityFilter,
-  currentUserId?: UserId | null,
+  _currentUserId?: UserId | null,
   anchor: MessageId = "newest",
   numBefore = 200,
   options?: { signal?: AbortSignal },
 ): Promise<ActivityMessagesPageResult> {
   const normalizedAnchor =
     anchor === "newest" ? anchor : guard.messageId(anchor, "fetchActivityMessagesPage.anchor");
-  const narrow = getActivityNarrow(filter, currentUserId);
-  if (filter === "reactions" && narrow.length === 0) {
-    return { messages: [], foundOldest: true };
-  }
+  const narrow = getActivityNarrow(filter);
   if (options?.signal?.aborted) {
     throw new DOMException("Aborted", "AbortError");
   }
@@ -792,42 +773,130 @@ export async function deleteMessage(messageId: MessageId): Promise<void> {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
+function optionalReactionString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function parseMessageReaction(data: unknown): Reaction {
+  if (!isRecord(data)) {
+    throw new Error("Invalid message reaction response");
+  }
+  const uuid = guard.nonEmpty(data.uuid, "messageReaction.uuid");
+  const userUuid = guard.nonEmpty(data.user_uuid, "messageReaction.user_uuid");
+  const messageUuid = guard.messageId(data.message_uuid, "messageReaction.message_uuid");
+  const emojiName = guard.nonEmpty(data.emoji_name, "messageReaction.emoji_name");
+  const reaction: Reaction = {
+    uuid,
+    user_uuid: userUuid,
+    message_uuid: messageUuid,
+    emoji_name: emojiName,
+  };
+  const projectId = optionalReactionString(data.project_id);
+  if (projectId != null) {
+    reaction.project_id = projectId;
+  }
+  const createdAt = optionalReactionString(data.created_at);
+  if (createdAt != null) {
+    reaction.created_at = createdAt;
+  }
+  const updatedAt = optionalReactionString(data.updated_at);
+  if (updatedAt != null) {
+    reaction.updated_at = updatedAt;
+  }
+  return reaction;
+}
+
+function parseMessageReactionList(data: unknown): Reaction[] {
+  if (Array.isArray(data)) {
+    return data.map(parseMessageReaction);
+  }
+  if (isRecord(data)) {
+    for (const key of ["message_reactions", "items", "results"]) {
+      const value = data[key];
+      if (Array.isArray(value)) {
+        return value.map(parseMessageReaction);
+      }
+    }
+  }
+  throw new Error("Invalid message reactions response");
+}
+
+export interface FetchMessageReactionsOptions {
+  signal?: AbortSignal;
+  userUuid?: string;
+}
+
+export async function fetchMessageReactions(
+  messageId: MessageId,
+  options: FetchMessageReactionsOptions = {},
+): Promise<Reaction[]> {
+  const normalizedMessageId = guard.messageId(messageId, "fetchMessageReactions.messageId");
+  const query: Record<string, string> = { message_uuid: normalizedMessageId };
+  if (options.userUuid != null) {
+    query.user_uuid = guard.nonEmpty(options.userUuid, "fetchMessageReactions.userUuid");
+  }
+  ensureMessengerApiReady();
+  const res = await messengerApi.getWithBase(
+    getMessengerWorkspaceApiBaseForCurrentInstance(),
+    "/message_reactions/",
+    query,
+    options.signal,
+  );
+  if (!res.ok) {
+    const data = res.data as { msg?: string };
+    throw new Error(data.msg ?? t("app.errorStatus", { status: String(res.status) }));
+  }
+  return parseMessageReactionList(res.data);
+}
+
+export interface AddReactionOptions {
+  currentUserUuid?: string;
+}
+
 export async function addReaction(
   messageId: MessageId,
   emojiName: string,
-  options?: ReactionType | { emojiCode?: string; reactionType?: ReactionType },
-): Promise<void> {
-  guard.messageId(messageId, "addReaction");
+  options: AddReactionOptions = {},
+): Promise<{ reaction: Reaction; created: boolean }> {
+  const normalizedMessageId = guard.messageId(messageId, "addReaction.messageId");
   const normalizedEmojiName = guard.nonEmpty(emojiName, "addReaction.emojiName");
-  const normalizedOptions =
-    typeof options === "string" ? { reactionType: options } : (options ?? undefined);
-  const reactionType = normalizedOptions?.reactionType ?? "unicode_emoji";
-  const body: Record<string, string> = {
-    emoji_name: normalizedEmojiName,
-    reaction_type: reactionType,
-  };
-  if (normalizedOptions?.emojiCode) {
-    body.emoji_code = normalizedOptions.emojiCode;
+  ensureMessengerApiReady();
+  const res = await messengerApi.postJsonWithBase(
+    getMessengerWorkspaceApiBaseForCurrentInstance(),
+    "/message_reactions/",
+    {
+      message_uuid: normalizedMessageId,
+      emoji_name: normalizedEmojiName,
+    },
+  );
+  if (res.ok) {
+    return { reaction: parseMessageReaction(res.data), created: true };
   }
-  const res = await messengerPipelinePost(`messages/${messageId}/reactions`, body);
-  if (!res.ok) {
-    const data = res.data as { msg?: string; code?: string };
-    if (data.code === "REACTION_ALREADY_EXISTS") return;
-    throw new Error(data.msg ?? t("app.errorStatus", { status: String(res.status) }));
+  if (res.status === 409) {
+    const existing = (
+      await fetchMessageReactions(normalizedMessageId, {
+        ...(options.currentUserUuid != null ? { userUuid: options.currentUserUuid } : {}),
+      })
+    ).find((reaction) => reaction.emoji_name === normalizedEmojiName);
+    if (existing != null) {
+      return { reaction: existing, created: false };
+    }
   }
+  const data = res.data as { msg?: string };
+  throw new Error(data.msg ?? t("app.errorStatus", { status: String(res.status) }));
 }
 
-export async function removeReaction(
-  messageId: MessageId,
-  emojiName: string,
-  options?: { emojiCode?: string; reactionType?: ReactionType },
-): Promise<void> {
-  guard.messageId(messageId, "removeReaction");
-  const normalizedEmojiName = guard.nonEmpty(emojiName, "removeReaction.emojiName");
-  const body: Record<string, string> = { emoji_name: normalizedEmojiName };
-  if (options?.emojiCode) body.emoji_code = options.emojiCode;
-  if (options?.reactionType) body.reaction_type = options.reactionType;
-  const res = await messengerPipelineDelete(`messages/${messageId}/reactions`, body);
+export async function removeReaction(reactionUuid: string): Promise<void> {
+  const normalizedReactionUuid = guard.nonEmpty(reactionUuid, "removeReaction.reactionUuid");
+  ensureMessengerApiReady();
+  const res = await messengerApi.deleteWithBase(
+    getMessengerWorkspaceApiBaseForCurrentInstance(),
+    `/message_reactions/${normalizedReactionUuid}`,
+  );
   if (!res.ok) {
     const data = res.data as { msg?: string };
     throw new Error(data.msg ?? t("app.errorStatus", { status: String(res.status) }));

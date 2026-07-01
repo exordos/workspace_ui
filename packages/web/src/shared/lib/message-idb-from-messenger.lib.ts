@@ -12,7 +12,6 @@ import {
   mirrorMessengerDeleteMessageToIndexedDb,
   mirrorMessengerMessageEventToIndexedDb,
   mirrorMessengerMessagesReadToIndexedDb,
-  mirrorMessengerReactionToIndexedDb,
   mirrorMessengerUpdateMessageFlagsToIndexedDb,
   mirrorMessengerUpdateMessageToIndexedDb,
 } from "~/shared/lib/message-idb-handlers.lib";
@@ -51,11 +50,6 @@ export async function applyMessengerEventToMessageIndexedDb(options: {
 
   if (event.type === "update_message_flags") {
     await mirrorMessengerUpdateMessageFlagsToIndexedDb({ instanceId, event });
-    return;
-  }
-
-  if (event.type === "reaction") {
-    await mirrorMessengerReactionToIndexedDb({ instanceId, event });
     return;
   }
 

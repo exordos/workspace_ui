@@ -1,9 +1,13 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { useUsersStore } from "~/entities/user/user.model";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fetchMessageReactions } from "~/shared/api/messenger-messages";
 import type { MockMessage } from "~/shared/api/messenger.types";
-import { createUser, testMessageId } from "~/test/factories";
+import { testMessageId } from "~/test/factories";
 import { MessageBubble } from "./message-bubble.ui";
+
+vi.mock("~/shared/api/messenger-messages", () => ({
+  fetchMessageReactions: vi.fn().mockResolvedValue([]),
+}));
 
 function createMessage(overrides: Partial<MockMessage> = {}): MockMessage {
   return {
@@ -18,9 +22,25 @@ function createMessage(overrides: Partial<MockMessage> = {}): MockMessage {
   };
 }
 
+function findReactionButton(prefix: string): HTMLButtonElement {
+  const reactionButton = screen
+    .getAllByRole("button")
+    .find((button) => button.getAttribute("aria-label")?.startsWith(prefix));
+  if (reactionButton == null) {
+    throw new Error("Reaction button was not found");
+  }
+  return reactionButton as HTMLButtonElement;
+}
+
+const CURRENT_USER_UUID = "44444444-4444-4444-8444-444444444444";
+
 describe("MessageBubble quick reactions", () => {
+  beforeEach(() => {
+    vi.mocked(fetchMessageReactions).mockResolvedValue([]);
+  });
+
   afterEach(() => {
-    useUsersStore.getState().clear();
+    vi.clearAllMocks();
   });
 
   it("renders Flutter-parity quick reaction buttons in context menu", async () => {
@@ -53,30 +73,28 @@ describe("MessageBubble quick reactions", () => {
     await waitFor(() => {
       expect(onAddReaction).toHaveBeenCalledWith(testMessageId(1), {
         emojiName: "clap",
-        reactionType: "unicode_emoji",
       });
     });
   });
 
-  it("renders custom realm emoji image and removes with typed payload", async () => {
+  it("renders custom emoji image and removes with own reaction uuid resolved by API", async () => {
+    vi.mocked(fetchMessageReactions).mockResolvedValueOnce([
+      {
+        uuid: "33333333-3333-4333-8333-333333333333",
+        user_uuid: CURRENT_USER_UUID,
+        message_uuid: testMessageId(1),
+        emoji_name: "party_node",
+      },
+    ]);
     const onRemoveReaction = vi.fn();
     render(
       <MessageBubble
-        currentUserId={77}
+        currentUserId={CURRENT_USER_UUID}
         message={createMessage({
-          reactions: [
-            {
-              emoji_name: "party_node",
-              emoji_code: "43",
-              reaction_type: "realm_emoji",
-              user_id: 77,
-            },
-          ],
+          reactions: { party_node: 1 },
         })}
-        resolveCustomEmojiImageUrl={(reaction) =>
-          reaction.reaction_type === "realm_emoji"
-            ? "https://cdn.example.com/party_node.png"
-            : undefined
+        resolveCustomEmojiImageUrl={(emojiName) =>
+          emojiName === "party_node" ? "https://cdn.example.com/party_node.png" : undefined
         }
         callbacks={{
           onRemoveReaction,
@@ -85,19 +103,23 @@ describe("MessageBubble quick reactions", () => {
     );
 
     const customEmojiImage = await screen.findByAltText(":party_node:");
-    expect(customEmojiImage).toBeInTheDocument();
+    expect(fetchMessageReactions).toHaveBeenCalledWith(testMessageId(1), {
+      userUuid: CURRENT_USER_UUID,
+      signal: expect.any(AbortSignal),
+    });
     const reactionButton = customEmojiImage.closest("button");
     expect(reactionButton).not.toBeNull();
     if (reactionButton == null) {
       throw new Error("Expected reaction button for custom emoji");
     }
+    await waitFor(() => {
+      expect(reactionButton).toHaveClass("border-accent/40");
+    });
 
     fireEvent.click(reactionButton);
     await waitFor(() => {
       expect(onRemoveReaction).toHaveBeenCalledWith(testMessageId(1), {
         emojiName: "party_node",
-        emojiCode: "43",
-        reactionType: "realm_emoji",
         imageUrl: "https://cdn.example.com/party_node.png",
       });
     });
@@ -122,99 +144,27 @@ describe("MessageBubble quick reactions", () => {
     });
   });
 
-  it("shows reaction author names in reaction tooltip", () => {
-    useUsersStore.getState().mergeUser(
-      createUser({
-        user_id: 77,
-        full_name: "Alice",
-      }),
-    );
-    useUsersStore.getState().mergeUser(
-      createUser({
-        user_id: 88,
-        full_name: "Bob",
-      }),
-    );
+  it("does not load reaction details when the message has no reaction counters", () => {
+    render(<MessageBubble currentUserId={CURRENT_USER_UUID} message={createMessage()} />);
 
+    expect(fetchMessageReactions).not.toHaveBeenCalled();
+  });
+
+  it("shows aggregate reaction count in chip and tooltip", () => {
     render(
       <MessageBubble
         message={createMessage({
-          reactions: [
-            {
-              emoji_name: "thumbs_up",
-              emoji_code: "1f44d",
-              reaction_type: "unicode_emoji",
-              user_id: 77,
-            },
-            {
-              emoji_name: "thumbs_up",
-              emoji_code: "1f44d",
-              reaction_type: "unicode_emoji",
-              user_id: 88,
-            },
-          ],
+          reactions: { thumbs_up: 2 },
         })}
       />,
     );
 
-    const reactionButton = screen
-      .getAllByRole("button")
-      .find((button) => button.getAttribute("title")?.startsWith("👍 "));
-    expect(reactionButton).toBeDefined();
-    expect(reactionButton).toHaveAttribute("title", expect.stringContaining("Alice"));
-    expect(reactionButton).toHaveAttribute("title", expect.stringContaining("Bob"));
+    const reactionButton = findReactionButton("👍 ");
+    expect(reactionButton).toHaveAttribute("title", "👍 2");
+    expect(reactionButton.textContent).toBe("👍2");
   });
 
-  it("reaction tooltip lists author names without custom status", () => {
-    useUsersStore.getState().mergeUser({
-      user_id: 77,
-      full_name: "Alice",
-      status: { text: "Deep work", emojiName: "speech_balloon", away: false },
-    });
-    useUsersStore.getState().mergeUser({
-      user_id: 88,
-      full_name: "Bob",
-      status: { text: "WFH", emojiName: "house", away: false },
-    });
-
-    render(
-      <MessageBubble
-        message={createMessage({
-          reactions: [
-            {
-              emoji_name: "thumbs_up",
-              emoji_code: "1f44d",
-              reaction_type: "unicode_emoji",
-              user_id: 77,
-            },
-            {
-              emoji_name: "thumbs_up",
-              emoji_code: "1f44d",
-              reaction_type: "unicode_emoji",
-              user_id: 88,
-            },
-          ],
-        })}
-      />,
-    );
-
-    const reactionButton = screen
-      .getAllByRole("button")
-      .find((button) => button.getAttribute("title")?.startsWith("👍 "));
-    expect(reactionButton).toBeDefined();
-    const title = reactionButton?.getAttribute("title") ?? "";
-    expect(title).toContain("Alice");
-    expect(title).toContain("Bob");
-    expect(title).not.toContain("Deep work");
-    expect(title).not.toContain("WFH");
-    expect(title).not.toContain("💬");
-    expect(title).not.toContain("🏠");
-  });
-
-  it("hides reaction nicknames and count on chip in 1:1 DM", () => {
-    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
-    useUsersStore.getState().mergeUser(createUser({ user_id: 88, full_name: "Bob" }));
-
+  it("hides reaction count on chip and title in 1:1 DM", () => {
     render(
       <MessageBubble
         message={createMessage({
@@ -224,161 +174,67 @@ describe("MessageBubble quick reactions", () => {
             { id: 77, full_name: "Alice" },
             { id: 88, full_name: "Bob" },
           ],
-          reactions: [
-            {
-              emoji_name: "thumbs_up",
-              emoji_code: "1f44d",
-              reaction_type: "unicode_emoji",
-              user_id: 77,
-            },
-            {
-              emoji_name: "thumbs_up",
-              emoji_code: "1f44d",
-              reaction_type: "unicode_emoji",
-              user_id: 88,
-            },
-          ],
+          reactions: { thumbs_up: 2 },
         })}
       />,
     );
 
-    const btn = screen
-      .getAllByRole("button")
-      .find((b) => b.getAttribute("aria-label")?.startsWith("👍 "));
-    expect(btn?.textContent).toBe("👍");
-    expect(btn?.getAttribute("title")).toBeNull();
-    expect(btn?.getAttribute("aria-label")).toContain("Alice");
-    expect(btn?.getAttribute("aria-label")).toContain("Bob");
+    const btn = findReactionButton("👍 ");
+    expect(btn.textContent).toBe("👍");
+    expect(btn.getAttribute("title")).toBeNull();
+    expect(btn.getAttribute("aria-label")).toBe("👍 2");
   });
 
-  it("shows author nicknames on chip for up to 3 reactors, count digit for 4+", () => {
-    useUsersStore.getState().mergeUser(createUser({ user_id: 1, full_name: "Ann" }));
-    useUsersStore.getState().mergeUser(createUser({ user_id: 2, full_name: "Bob" }));
-    useUsersStore.getState().mergeUser(createUser({ user_id: 3, full_name: "Cara" }));
-    useUsersStore.getState().mergeUser(createUser({ user_id: 4, full_name: "Dan" }));
-
+  it("shows no chip count for one reaction and a count digit for multiple reactions", () => {
     const { rerender } = render(
       <MessageBubble
         message={createMessage({
-          reactions: [
-            {
-              emoji_name: "thumbs_up",
-              emoji_code: "1f44d",
-              reaction_type: "unicode_emoji",
-              user_id: 1,
-            },
-          ],
+          reactions: { thumbs_up: 1 },
         })}
       />,
     );
 
-    let btn = screen.getAllByRole("button").find((b) => b.getAttribute("title")?.startsWith("👍 "));
-    expect(btn?.textContent).toContain("Ann");
-    expect(btn?.textContent).not.toMatch(/^👍\s*1$/);
+    let btn = findReactionButton("👍 ");
+    expect(btn.textContent).toBe("👍");
+    expect(btn.getAttribute("title")).toBe("👍 1");
 
     rerender(
       <MessageBubble
         message={createMessage({
-          reactions: [
-            {
-              emoji_name: "thumbs_up",
-              emoji_code: "1f44d",
-              reaction_type: "unicode_emoji",
-              user_id: 1,
-            },
-            {
-              emoji_name: "thumbs_up",
-              emoji_code: "1f44d",
-              reaction_type: "unicode_emoji",
-              user_id: 2,
-            },
-            {
-              emoji_name: "thumbs_up",
-              emoji_code: "1f44d",
-              reaction_type: "unicode_emoji",
-              user_id: 3,
-            },
-          ],
+          reactions: { thumbs_up: 3 },
         })}
       />,
     );
-    btn = screen.getAllByRole("button").find((b) => b.getAttribute("title")?.startsWith("👍 "));
-    expect(btn?.textContent).toContain("Ann");
-    expect(btn?.textContent).toContain("Bob");
-    expect(btn?.textContent).toContain("Cara");
-    expect(btn?.textContent?.endsWith("3")).toBe(false);
-
-    rerender(
-      <MessageBubble
-        message={createMessage({
-          reactions: [
-            {
-              emoji_name: "thumbs_up",
-              emoji_code: "1f44d",
-              reaction_type: "unicode_emoji",
-              user_id: 1,
-            },
-            {
-              emoji_name: "thumbs_up",
-              emoji_code: "1f44d",
-              reaction_type: "unicode_emoji",
-              user_id: 2,
-            },
-            {
-              emoji_name: "thumbs_up",
-              emoji_code: "1f44d",
-              reaction_type: "unicode_emoji",
-              user_id: 3,
-            },
-            {
-              emoji_name: "thumbs_up",
-              emoji_code: "1f44d",
-              reaction_type: "unicode_emoji",
-              user_id: 4,
-            },
-          ],
-        })}
-      />,
-    );
-    btn = screen.getAllByRole("button").find((b) => b.getAttribute("title")?.startsWith("👍 "));
-    expect(btn?.textContent).toBe("👍4");
-    expect(btn?.getAttribute("title")).toContain("Ann");
-    expect(btn?.getAttribute("title")).toContain("Dan");
+    btn = findReactionButton("👍 ");
+    expect(btn.textContent).toBe("👍3");
+    expect(btn.getAttribute("title")).toBe("👍 3");
   });
 
   it("keeps message metadata pinned to the bottom-right corner when reactions appear", () => {
     render(
       <MessageBubble
         message={createMessage({
-          reactions: [
-            {
-              emoji_name: "thumbs_up",
-              emoji_code: "1f44d",
-              reaction_type: "unicode_emoji",
-              user_id: 77,
-            },
-          ],
+          reactions: { thumbs_up: 1 },
         })}
       />,
     );
 
-    const reactionButton = screen
-      .getAllByRole("button")
-      .find((button) => button.getAttribute("title")?.startsWith("👍 "));
-    expect(reactionButton).toBeDefined();
-    if (!reactionButton) {
-      throw new Error("Reaction button was not found");
-    }
-
+    const reactionButton = findReactionButton("👍 ");
     const reactionRow = reactionButton.parentElement;
     expect(reactionRow).toHaveClass("flex", "flex-1", "flex-wrap", "items-end", "justify-start");
     expect(reactionButton).toHaveClass("border", "border-border-subtle", "rounded-lg");
 
     const bubbleSurface = reactionRow?.parentElement?.parentElement?.parentElement;
     expect(bubbleSurface).toHaveClass("overflow-hidden", "rounded-[18px]");
-    expect(
-      bubbleSurface?.querySelector(".flex.flex-shrink-0.items-center.gap-1.text-\\[11px\\]"),
-    ).not.toBeNull();
+    const metadata = Array.from(bubbleSurface?.querySelectorAll("div") ?? []).find(
+      (node) =>
+        node.classList.contains("flex") &&
+        node.classList.contains("flex-shrink-0") &&
+        node.classList.contains("items-center") &&
+        node.classList.contains("gap-1") &&
+        node.classList.contains("text-[11px]"),
+    );
+    expect(metadata).not.toBeNull();
   });
 
   it("keeps the delivery indicator in the same pinned metadata block for own messages", () => {
@@ -388,41 +244,25 @@ describe("MessageBubble quick reactions", () => {
         message={createMessage({
           id: "00000000-0000-4000-8000-000000000101",
           delivery_status: "sent",
-          reactions: [
-            {
-              emoji_name: "thumbs_up",
-              emoji_code: "1f44d",
-              reaction_type: "unicode_emoji",
-              user_id: 77,
-            },
-            {
-              emoji_name: "party_popper",
-              emoji_code: "1f389",
-              reaction_type: "unicode_emoji",
-              user_id: 88,
-            },
-            {
-              emoji_name: "tada",
-              emoji_code: "1f389",
-              reaction_type: "unicode_emoji",
-              user_id: 89,
-            },
-            {
-              emoji_name: "clap",
-              emoji_code: "1f44f",
-              reaction_type: "unicode_emoji",
-              user_id: 90,
-            },
-          ],
+          reactions: { thumbs_up: 1, party_popper: 1, tada: 1, clap: 1 },
         })}
       />,
     );
 
     const bubbleRoot = screen.getByTestId(`message-${testMessageId(101)}`);
-    const bubbleSurface = bubbleRoot.querySelector(".overflow-hidden.rounded-\\[18px\\]");
+    const bubbleSurface = Array.from(bubbleRoot.querySelectorAll("div")).find(
+      (node) =>
+        node.classList.contains("overflow-hidden") && node.classList.contains("rounded-[18px]"),
+    );
     expect(bubbleSurface).toBeTruthy();
 
-    const metadata = bubbleSurface?.querySelector(".flex.flex-shrink-0.items-center.gap-1");
+    const metadata = Array.from(bubbleSurface?.querySelectorAll("div") ?? []).find(
+      (node) =>
+        node.classList.contains("flex") &&
+        node.classList.contains("flex-shrink-0") &&
+        node.classList.contains("items-center") &&
+        node.classList.contains("gap-1"),
+    );
     expect(metadata).not.toBeNull();
     expect(
       metadata?.querySelector(`[data-testid="message-delivery-${testMessageId(101)}"]`),

@@ -58,7 +58,7 @@ export interface ChatListPreviewSourceMessage {
   stream_uuid?: string | null;
   display_recipient?:
     | string
-    | { id: number; full_name: string; email?: string; avatar_url?: string }[];
+    | { id: UserId; full_name: string; email?: string; avatar_url?: string }[];
   subject?: string;
   topic_uuid?: string;
   content: string;

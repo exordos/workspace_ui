@@ -1,16 +1,17 @@
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
-import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
+import { compareUserIds, userIdStorageKey, type UserId } from "~/shared/lib/user-id.lib";
 
 export function buildDmTypingChatKey(
-  userIds: number[],
+  userIds: readonly UserId[],
   currentUserId: UserId | null,
 ): string | null {
-  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
-  if (userIds.length === 0 || numericCurrentUserId == null) return null;
-  return [...userIds, numericCurrentUserId]
-    .filter((id, index, arr) => arr.indexOf(id) === index)
-    .sort((a, b) => a - b)
-    .join(",");
+  if (userIds.length === 0 || currentUserId == null) return null;
+  const byKey = new Map<string, UserId>();
+  for (const userId of userIds) {
+    byKey.set(userIdStorageKey(userId), userId);
+  }
+  byKey.set(userIdStorageKey(currentUserId), currentUserId);
+  return Array.from(byKey.values()).sort(compareUserIds).map(userIdStorageKey).join(",");
 }
 
 export function buildStreamTypingChatKey(streamId: string, topic: string): string {

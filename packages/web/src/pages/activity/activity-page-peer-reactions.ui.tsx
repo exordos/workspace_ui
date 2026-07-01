@@ -1,55 +1,28 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useUsersStore } from "~/entities/user/user.model";
-import type { Reaction, RealmEmoji, WorkspaceRawMessage } from "~/shared/api/messenger.types";
+import type { RealmEmoji, WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { normalizeEmojiShortcodeName } from "~/shared/lib/emoji-shortcodes.lib";
 import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
-import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
 import { resolveReactionTitle } from "~/widgets/message-list/message-bubble-reactions-row.lib";
-import { getActivityPeerReactionGroups } from "./activity-page.lib";
+import { getActivityPeerReactionGroups, hasReactionCounts } from "./activity-page.lib";
 
 export interface ActivityPeerReactionsRowProps {
   message: WorkspaceRawMessage;
-  currentUserId: UserId | null;
 }
 
 const ActivityPeerReactionsRowComponent: React.FC<ActivityPeerReactionsRowProps> = ({
   message,
-  currentUserId,
 }) => {
-  const getUser = useUsersStore((s) => s.getUser);
   const [customEmojis, setCustomEmojis] = useState<RealmEmoji[]>(() => getCachedRealmEmojis());
-  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
-
-  const hasPeerRealmEmoji = useMemo(
-    () =>
-      (message.reactions ?? []).some(
-        (reaction) =>
-          reaction.reaction_type === "realm_emoji" &&
-          numericCurrentUserId != null &&
-          reaction.user_id !== numericCurrentUserId,
-      ),
-    [numericCurrentUserId, message.reactions],
-  );
+  const hasReactions = hasReactionCounts(message.reactions);
 
   useEffect(() => {
-    if (!hasPeerRealmEmoji) return;
+    if (!hasReactions) return;
     void ensureRealmEmojisLoaded()
       .then((list) => {
         setCustomEmojis(list);
       })
       .catch(() => {});
-  }, [hasPeerRealmEmoji]);
-
-  const customEmojiById = useMemo(() => {
-    const map = new Map<string, RealmEmoji>();
-    for (const emoji of customEmojis) {
-      const id = emoji.id.trim();
-      if (id.length > 0) {
-        map.set(id, emoji);
-      }
-    }
-    return map;
-  }, [customEmojis]);
+  }, [hasReactions]);
 
   const customEmojiByName = useMemo(() => {
     const map = new Map<string, RealmEmoji>();
@@ -65,37 +38,17 @@ const ActivityPeerReactionsRowComponent: React.FC<ActivityPeerReactionsRowProps>
   }, [customEmojis]);
 
   const resolveCustomEmojiImageUrl = useCallback(
-    (reaction: Reaction): string | undefined => {
-      if (reaction.reaction_type !== "realm_emoji") {
-        return undefined;
-      }
-      const byCode = customEmojiById.get(reaction.emoji_code.trim());
-      if (byCode != null) {
-        return byCode.imgUrl;
-      }
-      const byName = customEmojiByName.get(normalizeEmojiShortcodeName(reaction.emoji_name));
-      return byName?.imgUrl;
+    (emojiName: string): string | undefined => {
+      const normalized = normalizeEmojiShortcodeName(emojiName);
+      if (normalized.length === 0) return undefined;
+      return customEmojiByName.get(normalized)?.imgUrl;
     },
-    [customEmojiById, customEmojiByName],
+    [customEmojiByName],
   );
 
   const reactionGroups = useMemo(
-    () =>
-      getActivityPeerReactionGroups(
-        message.reactions ?? [],
-        currentUserId,
-        resolveCustomEmojiImageUrl,
-      ),
-    [currentUserId, message.reactions, resolveCustomEmojiImageUrl],
-  );
-
-  const resolveReactionAuthorLabel = useCallback(
-    (userId: number): string => {
-      const reactionUser = getUser(userId);
-      const fullName = reactionUser?.full_name?.trim();
-      return fullName != null && fullName.length > 0 ? fullName : `#${userId}`;
-    },
-    [getUser],
+    () => getActivityPeerReactionGroups(message.reactions ?? {}, resolveCustomEmojiImageUrl),
+    [message.reactions, resolveCustomEmojiImageUrl],
   );
 
   if (reactionGroups.length === 0) return null;
@@ -105,11 +58,10 @@ const ActivityPeerReactionsRowComponent: React.FC<ActivityPeerReactionsRowProps>
       className="mt-1.5 flex flex-wrap items-center gap-1"
       data-testid={`activity-peer-reactions-${message.id}`}
     >
-      {reactionGroups.map(({ key, count, userIds, displayChar, emojiName, imageUrl }) => {
-        const reactionAuthors = userIds.map(resolveReactionAuthorLabel).join(", ");
+      {reactionGroups.map(({ key, count, displayChar, emojiName, imageUrl }) => {
         const reactionPrefix = imageUrl != null ? `:${emojiName}:` : displayChar;
         const reactionTitle = resolveReactionTitle({
-          reactionAuthors,
+          reactionAuthors: "",
           reactionPrefix,
           count,
         });
@@ -130,10 +82,8 @@ const ActivityPeerReactionsRowComponent: React.FC<ActivityPeerReactionsRowProps>
             ) : (
               <span className="shrink-0">{displayChar}</span>
             )}
-            {reactionAuthors.length > 0 && (
-              <span className="min-w-0 truncate text-[11px] text-text-muted">
-                {reactionAuthors}
-              </span>
+            {count > 1 && (
+              <span className="min-w-0 truncate text-[11px] text-text-muted">{count}</span>
             )}
           </span>
         );

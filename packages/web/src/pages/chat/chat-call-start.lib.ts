@@ -1,9 +1,10 @@
 import type { MockMessage, SendMessageParams } from "~/shared/api/messenger.types";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import { canStartCallFromHeader, type CallMessageTargetParams } from "./chat-call.lib";
 
 export interface StartCallFromHeaderInput {
   target: CallMessageTargetParams | null;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   buildCurrentCallLink: () => string | null;
   isOneToOneDm: boolean;
   callRoomChatLabel: string | null;
@@ -41,7 +42,7 @@ export async function startCallFromHeader(
         ? {
             streamUuid: input.target.streamUuid,
             content: url,
-            sender_id: input.currentUserId,
+            author_id: input.currentUserId,
             sender_full_name: input.currentUserLabel,
           }
         : {
@@ -50,7 +51,7 @@ export async function startCallFromHeader(
             ...(input.target.topicUuid != null ? { topicUuid: input.target.topicUuid } : {}),
             subject: input.target.subject,
             content: url,
-            sender_id: input.currentUserId,
+            author_id: input.currentUserId,
             sender_full_name: input.currentUserLabel,
           };
 

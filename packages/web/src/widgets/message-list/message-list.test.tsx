@@ -373,14 +373,7 @@ describe("MessageList focused message behavior", () => {
         messages={[
           msg(1, {
             content: "Hi there without emoji shortcodes",
-            reactions: [
-              {
-                emoji_name: "party_parrot",
-                emoji_code: "9001",
-                reaction_type: "realm_emoji",
-                user_id: 42,
-              },
-            ],
+            reactions: { party_parrot: 1 },
           }),
         ]}
       />,
@@ -396,14 +389,7 @@ describe("MessageList focused message behavior", () => {
         messages={[
           msg(1, {
             content: "Still no shortcodes",
-            reactions: [
-              {
-                emoji_name: "party_parrot",
-                emoji_code: "9001",
-                reaction_type: "realm_emoji",
-                user_id: 42,
-              },
-            ],
+            reactions: { party_parrot: 1 },
           }),
           msg(2, {
             content: "No shortcode as well",

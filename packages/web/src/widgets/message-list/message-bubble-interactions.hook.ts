@@ -239,7 +239,6 @@ export function useMessageBubbleInteractions({
     (emojiName: string) => {
       handleReaction({
         emojiName,
-        reactionType: "unicode_emoji",
       });
     },
     [handleReaction],

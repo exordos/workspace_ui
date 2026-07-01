@@ -20,7 +20,7 @@ const log = createLogger("chat-page");
 export interface ChatPageSendHandlerDeps {
   currentUserId: UserId | null;
   isDmView: boolean;
-  activeDmUserIds: number[] | null;
+  activeDmUserIds: UserId[] | null;
   activeStream: string | null;
   activeStreamCanonicalName: string | null;
   activeStreamId: string | null | undefined;

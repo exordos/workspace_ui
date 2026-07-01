@@ -1,32 +1,26 @@
-import type { MockMessage, Reaction } from "~/shared/api/messenger.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 
-export function messageReactionMatches(
-  reaction: Reaction,
-  emojiName: string,
-  userId: number,
-): boolean {
-  return reaction.emoji_name === emojiName && reaction.user_id === userId;
+function normalizedReactionCount(value: number | undefined): number {
+  return Number.isFinite(value) && value != null && value > 0 ? Math.floor(value) : 0;
 }
 
 export function applyMessageReactionUpdate(
   message: MockMessage,
-  reaction: Reaction,
+  emojiName: string,
   op: "add" | "remove",
 ): MockMessage {
-  const list = message.reactions ?? [];
-  const exists = list.some((row) =>
-    messageReactionMatches(row, reaction.emoji_name, reaction.user_id),
-  );
-  if (op === "add") {
-    if (exists) {
-      return message;
-    }
-    return { ...message, reactions: [...list, reaction] };
+  const current = message.reactions ?? {};
+  const currentCount = normalizedReactionCount(current[emojiName]);
+  const nextCount = op === "add" ? currentCount + 1 : Math.max(0, currentCount - 1);
+  if (nextCount === currentCount) {
+    return message;
   }
-  return {
-    ...message,
-    reactions: list.filter(
-      (row) => !messageReactionMatches(row, reaction.emoji_name, reaction.user_id),
-    ),
-  };
+
+  const nextReactions = { ...current };
+  if (nextCount === 0) {
+    delete nextReactions[emojiName];
+  } else {
+    nextReactions[emojiName] = nextCount;
+  }
+  return { ...message, reactions: nextReactions };
 }

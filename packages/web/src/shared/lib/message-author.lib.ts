@@ -1,4 +1,4 @@
-import { numericUserIdOrNull, userIdsEqual, type UserId } from "./user-id.lib";
+import { userIdsEqual, type UserId } from "./user-id.lib";
 
 export interface MessageAuthorSlice {
   sender_id: number;
@@ -23,9 +23,9 @@ export function isMessageFromCurrentUser(
     if (authorUuid != null && userIdsEqual(authorUuid, currentUserId)) {
       return true;
     }
+    return userIdsEqual(message.sender_id, currentUserId);
   }
-  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
-  return numericCurrentUserId != null && message.sender_id === numericCurrentUserId;
+  return false;
 }
 
 export function messageSenderGroupKey(message: MessageAuthorSlice): string {

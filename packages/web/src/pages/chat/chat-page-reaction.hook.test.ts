@@ -3,8 +3,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { testMessageId } from "~/test/factories";
 import { useChatPageReaction } from "./chat-page-reaction.hook";
 
+const { ownReaction } = vi.hoisted(() => ({
+  ownReaction: {
+    uuid: "33333333-3333-4333-8333-333333333333",
+    user_uuid: "44444444-4444-4444-8444-444444444444",
+    message_uuid: "00000000-0000-4000-8000-000000000011",
+    emoji_name: "thumbs_up",
+  },
+}));
+
 vi.mock("~/shared/api/messenger-messages", () => ({
-  addReaction: vi.fn().mockResolvedValue(undefined),
+  addReaction: vi.fn().mockResolvedValue({ reaction: ownReaction, created: true }),
+  fetchMessageReactions: vi.fn().mockResolvedValue([ownReaction]),
   removeReaction: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -12,27 +22,32 @@ vi.mock("~/i18n/i18n", () => ({
   t: (key: string) => key,
 }));
 
-import { addReaction, removeReaction } from "~/shared/api/messenger-messages";
+import {
+  addReaction,
+  fetchMessageReactions,
+  removeReaction,
+} from "~/shared/api/messenger-messages";
 
 const payload = {
   emojiName: "thumbs_up",
-  reactionType: "unicode_emoji" as const,
-  emojiCode: "1f44d",
 };
+
+const CURRENT_USER_UUID = "44444444-4444-4444-8444-444444444444";
 
 describe("useChatPageReaction", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(addReaction).mockResolvedValue(undefined);
+    vi.mocked(addReaction).mockResolvedValue({ reaction: ownReaction, created: true });
+    vi.mocked(fetchMessageReactions).mockResolvedValue([ownReaction]);
     vi.mocked(removeReaction).mockResolvedValue(undefined);
   });
 
-  it("adds reaction via API and updates store", async () => {
+  it("adds reaction via API and updates aggregate store", async () => {
     const setActionError = vi.fn();
     const updateMessageReactionInStore = vi.fn();
     const { result } = renderHook(() =>
       useChatPageReaction({
-        currentUserId: 5,
+        currentUserId: CURRENT_USER_UUID,
         setActionError,
         updateMessageReactionInStore,
       }),
@@ -44,29 +59,47 @@ describe("useChatPageReaction", () => {
 
     await waitFor(() => {
       expect(addReaction).toHaveBeenCalledWith(testMessageId(10), "thumbs_up", {
-        reactionType: "unicode_emoji",
-        emojiCode: "1f44d",
+        currentUserUuid: CURRENT_USER_UUID,
       });
       expect(updateMessageReactionInStore).toHaveBeenCalledWith(
         testMessageId(10),
-        {
-          emoji_name: "thumbs_up",
-          emoji_code: "1f44d",
-          reaction_type: "unicode_emoji",
-          user_id: 5,
-        },
+        "thumbs_up",
         "add",
       );
     });
     expect(setActionError).toHaveBeenCalledWith(null);
   });
 
-  it("removes reaction via API and updates store", async () => {
+  it("does not update aggregate store when backend reports an existing reaction", async () => {
+    vi.mocked(addReaction).mockResolvedValueOnce({ reaction: ownReaction, created: false });
     const setActionError = vi.fn();
     const updateMessageReactionInStore = vi.fn();
     const { result } = renderHook(() =>
       useChatPageReaction({
-        currentUserId: 5,
+        currentUserId: CURRENT_USER_UUID,
+        setActionError,
+        updateMessageReactionInStore,
+      }),
+    );
+
+    act(() => {
+      result.current.onMessageAddReaction(testMessageId(10), payload);
+    });
+
+    await waitFor(() => {
+      expect(addReaction).toHaveBeenCalledWith(testMessageId(10), "thumbs_up", {
+        currentUserUuid: CURRENT_USER_UUID,
+      });
+    });
+    expect(updateMessageReactionInStore).not.toHaveBeenCalled();
+  });
+
+  it("fetches own reaction uuid, removes it via API, and updates aggregate store", async () => {
+    const setActionError = vi.fn();
+    const updateMessageReactionInStore = vi.fn();
+    const { result } = renderHook(() =>
+      useChatPageReaction({
+        currentUserId: CURRENT_USER_UUID,
         setActionError,
         updateMessageReactionInStore,
       }),
@@ -77,13 +110,13 @@ describe("useChatPageReaction", () => {
     });
 
     await waitFor(() => {
-      expect(removeReaction).toHaveBeenCalledWith(testMessageId(11), "thumbs_up", {
-        reactionType: "unicode_emoji",
-        emojiCode: "1f44d",
+      expect(fetchMessageReactions).toHaveBeenCalledWith(testMessageId(11), {
+        userUuid: CURRENT_USER_UUID,
       });
+      expect(removeReaction).toHaveBeenCalledWith("33333333-3333-4333-8333-333333333333");
       expect(updateMessageReactionInStore).toHaveBeenCalledWith(
         testMessageId(11),
-        expect.objectContaining({ user_id: 5 }),
+        "thumbs_up",
         "remove",
       );
     });
@@ -94,7 +127,7 @@ describe("useChatPageReaction", () => {
     const setActionError = vi.fn();
     const { result } = renderHook(() =>
       useChatPageReaction({
-        currentUserId: 1,
+        currentUserId: CURRENT_USER_UUID,
         setActionError,
         updateMessageReactionInStore: vi.fn(),
       }),

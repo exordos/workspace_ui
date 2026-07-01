@@ -712,20 +712,7 @@ describe("ActivityPage drafts routing", () => {
           sender_id: 42,
           content: "My reacted message",
           timestamp: 2,
-          reactions: [
-            {
-              emoji_name: "thumbs_up",
-              emoji_code: "1f44d",
-              reaction_type: "unicode_emoji",
-              user_id: 42,
-            },
-            {
-              emoji_name: "thumbs_up",
-              emoji_code: "1f44d",
-              reaction_type: "unicode_emoji",
-              user_id: 7,
-            },
-          ],
+          reactions: { thumbs_up: 2 },
         }),
       ],
       foundOldest: true,

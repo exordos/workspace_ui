@@ -65,11 +65,14 @@ export function matchesActivityFilter(
   if (filter === "mentions") {
     return flags.includes("mentioned");
   }
-  if ((message.reactions?.length ?? 0) === 0) {
+  const hasReactions = Object.values(message.reactions ?? {}).some(
+    (count) => Number.isFinite(count) && count > 0,
+  );
+  if (!hasReactions) {
     return false;
   }
   // Workspace reactions view: own messages that have at least one emoji reaction.
-  return isMessageFromCurrentUser(message, currentUserId) && (message.reactions?.length ?? 0) > 0;
+  return isMessageFromCurrentUser(message, currentUserId);
 }
 
 /** Oldest→newest slice aligned with server pagination shape to avoid UI jumps after hydrate. */

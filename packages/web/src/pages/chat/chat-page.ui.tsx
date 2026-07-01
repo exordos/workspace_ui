@@ -51,12 +51,7 @@ import { resolveCanonicalStreamName } from "~/shared/lib/stream-name.lib";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { formatTopicDoneLabel } from "~/shared/lib/topic-resolve";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
-import {
-  numericUserIdOrNull,
-  userIdStorageKey,
-  userIdsEqual,
-  type UserId,
-} from "~/shared/lib/user-id.lib";
+import { userIdStorageKey, userIdsEqual, type UserId } from "~/shared/lib/user-id.lib";
 import { AppDialogShell, APP_DIALOG_CONTENT_BASE_CLASS } from "~/shared/ui/app-dialog.ui";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import { useSidebarConfigStore } from "~/widgets/sidebar/sidebar-config.model";
@@ -119,7 +114,6 @@ export const ChatPage: React.FC = () => {
   const dmsFromStore = useChatListStore((s) => s.dms());
   const expandStreamSlug = useSidebarConfigStore((s) => s.expandStreamSlug);
   const currentUserId = useChatListStore((s) => s.currentUserId);
-  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
   const currentUserMessageEditPolicy = useUsersStore((s) => s.currentUserMessageEditPolicy);
   const route = useChatRouteContext({
     streamSlug,
@@ -145,13 +139,6 @@ export const ChatPage: React.FC = () => {
     forwardMessageId,
   } = route;
   const activeDmUserIds = isDmView ? dmRecipientIds : null;
-  const numericActiveDmUserIds = useMemo(
-    () =>
-      activeDmUserIds
-        ?.map((userId) => numericUserIdOrNull(userId))
-        .filter((userId): userId is number => userId != null) ?? null,
-    [activeDmUserIds],
-  );
   const activeStreamId = resolvedStreamId;
   const activeStreamEntry = activeStreamId != null ? streamsMap.get(activeStreamId) : undefined;
   const isPrivateStreamView = !isDmView && activeStreamEntry?.private === true;
@@ -484,14 +471,14 @@ export const ChatPage: React.FC = () => {
   }, [draftType, draftTo, draftTopic]);
 
   const typingTarget = useMemo(() => {
-    if (isDmView && numericActiveDmUserIds?.length) {
-      return { kind: "dm" as const, userIds: numericActiveDmUserIds };
+    if (isDmView && activeDmUserIds?.length) {
+      return { kind: "dm" as const, userIds: activeDmUserIds };
     }
     if (activeStreamId != null && activeTopic) {
       return { kind: "stream" as const, streamId: activeStreamId, topic: activeTopic };
     }
     return null;
-  }, [isDmView, numericActiveDmUserIds, activeStreamId, activeTopic]);
+  }, [isDmView, activeDmUserIds, activeStreamId, activeTopic]);
   const { onComposerValueChange: onComposerValueChangeTyping, stopNow: stopTypingNow } =
     useComposerTypingController({
       enabled: true,
@@ -655,9 +642,9 @@ export const ChatPage: React.FC = () => {
 
   const { handleSend, handleRetryFailedOutgoing, handleRemoveFailedOutgoing, handleCancelUpload } =
     useChatPageSendMessage({
-      currentUserId: numericCurrentUserId,
+      currentUserId,
       isDmView,
-      activeDmUserIds: numericActiveDmUserIds,
+      activeDmUserIds,
       activeStream: activeStream ?? null,
       activeStreamCanonicalName: activeStreamCanonicalName ?? null,
       activeStreamId,
@@ -674,7 +661,7 @@ export const ChatPage: React.FC = () => {
     });
 
   const { onMessageAddReaction, onMessageRemoveReaction } = useChatPageReaction({
-    currentUserId: numericCurrentUserId,
+    currentUserId,
     setActionError,
     updateMessageReactionInStore,
   });
@@ -959,14 +946,14 @@ export const ChatPage: React.FC = () => {
   }, [partnerUserId, rightDrawer]);
 
   const typingChatKey = useMemo(() => {
-    if (isDmView && numericActiveDmUserIds?.length && currentUserId != null) {
-      return buildDmTypingChatKey(numericActiveDmUserIds, currentUserId);
+    if (isDmView && activeDmUserIds?.length && currentUserId != null) {
+      return buildDmTypingChatKey(activeDmUserIds, currentUserId);
     }
     if (activeStreamId != null && activeTopic) {
       return buildStreamTypingChatKey(activeStreamId, activeTopic);
     }
     return null;
-  }, [isDmView, numericActiveDmUserIds, currentUserId, activeStreamId, activeTopic]);
+  }, [isDmView, activeDmUserIds, currentUserId, activeStreamId, activeTopic]);
 
   const typingUsers = useTypingIndicatorStore((s) =>
     typingChatKey ? s.getTypingUsers(typingChatKey) : EMPTY_TYPING_USERS,
@@ -982,13 +969,13 @@ export const ChatPage: React.FC = () => {
   const typingText = useMemo(() => {
     if (typingUsers.length === 0) return null;
     const names = typingUsers
-      .filter((tu) => numericCurrentUserId == null || tu.userId !== numericCurrentUserId)
+      .filter((tu) => currentUserId == null || !userIdsEqual(tu.userId, currentUserId))
       .map((tu) => useUsersStore.getState().getDisplayName(tu.userId))
       .filter((n) => n !== "Unknown");
     if (names.length === 0) return null;
     if (names.length === 1) return t("chat.typingUser", { name: names[0]! });
     return t("chat.typingUsers", { names: names.join(", ") });
-  }, [typingUsers, numericCurrentUserId]);
+  }, [typingUsers, currentUserId]);
 
   const deletableSelectedMessageIds = useMemo(
     () =>

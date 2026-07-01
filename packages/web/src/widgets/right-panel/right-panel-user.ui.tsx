@@ -23,7 +23,6 @@ export const RightPanelUser = React.memo(function RightPanelUser({
   const navigate = useNavigate();
   const media = user.media ?? {};
   const directMessageUserId = user.userId;
-  const numericDirectMessageUserId = numericUserIdOrNull(directMessageUserId);
   const contactRows = buildRightPanelUserContactRows(user);
   const avatarSrc = resolveAvatarSrc(user.avatarUrl);
   const openMediaViewer = useMediaViewerStore((s) => s.open);
@@ -52,9 +51,9 @@ export const RightPanelUser = React.memo(function RightPanelUser({
     (s) => s.invokeDmCallFromProfileHandler != null,
   );
   const handleProfileDmCall = useCallback(() => {
-    if (numericDirectMessageUserId == null) return;
-    useChatDmCallBridgeStore.getState().invokeDmCallFromProfile(numericDirectMessageUserId);
-  }, [numericDirectMessageUserId]);
+    if (directMessageUserId == null) return;
+    useChatDmCallBridgeStore.getState().invokeDmCallFromProfile(directMessageUserId);
+  }, [directMessageUserId]);
   const handleOpenOwnPersonalInfoSettings = useCallback(() => {
     void navigate(withCurrentOrgRoute("/settings/personal-info"));
   }, [navigate]);
@@ -84,7 +83,6 @@ export const RightPanelUser = React.memo(function RightPanelUser({
   const showProfileCallButton =
     profileDmCallHandlerReady &&
     currentUserId != null &&
-    numericDirectMessageUserId != null &&
     directMessageUserId != null &&
     !userIdsEqual(directMessageUserId, currentUserId) &&
     user.isActive !== false;

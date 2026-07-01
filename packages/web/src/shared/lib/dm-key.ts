@@ -1,21 +1,12 @@
-import {
-  compareUserIds,
-  numericUserIdOrNull,
-  userIdStorageKey,
-  type UserId,
-} from "~/shared/lib/user-id.lib";
+import { compareUserIds, userIdStorageKey, type UserId } from "~/shared/lib/user-id.lib";
 
 /** Canonical DM conversation key — sorted participant IDs as a comma-separated string. */
 export function dmConversationKey(
-  display_recipient: { id: number }[],
+  display_recipient: { id: UserId }[],
   currentUserId: UserId | null,
 ): string {
   const ids = display_recipient.map((r) => r.id);
-  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
-  if (numericCurrentUserId != null && ids.length === 1 && ids[0] !== numericCurrentUserId) {
-    return [numericCurrentUserId, ids[0]!].sort((a, b) => a - b).join(",");
-  }
-  return [...ids].sort((a, b) => a - b).join(",");
+  return dmRouteKey(ids, currentUserId);
 }
 
 /** Canonical DM route key from URL participant ids. Keeps self-DM as a single user id. */

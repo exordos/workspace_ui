@@ -1,6 +1,7 @@
 /**
  * Comparator helpers for sidebar chat ordering.
  */
+import { userIdsEqual, type UserId } from "~/shared/lib/user-id.lib";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
 export interface ChatSortingOptions {
   prioritizePersonalUnread?: boolean;
@@ -54,17 +55,17 @@ function compareMutedStreamPartition(a: SidebarChat, b: SidebarChat, muteSet: Se
 function dmRecentRank(
   c: SidebarChat,
   ts: number,
-  recentDmIds: readonly number[],
+  recentDmIds: readonly UserId[],
 ): [number, number] {
   if (c.type !== "dm") return [9999, -ts];
-  const idx = recentDmIds.indexOf(c.id);
+  const idx = recentDmIds.findIndex((id) => userIdsEqual(id, c.id));
   return [idx >= 0 ? idx : 9999, -ts];
 }
 
 function compareDmChatsByRecentActivity(
   a: TimestampedChat,
   b: TimestampedChat,
-  recentDmIds: readonly number[],
+  recentDmIds: readonly UserId[],
 ): number {
   const [aR, aT] = dmRecentRank(a.c, a.ts, recentDmIds);
   const [bR, bT] = dmRecentRank(b.c, b.ts, recentDmIds);
@@ -75,7 +76,7 @@ function compareDmChatsByRecentActivity(
 export function compareChatsByActivity(
   a: TimestampedChat,
   b: TimestampedChat,
-  recentDmIds: readonly number[],
+  recentDmIds: readonly UserId[],
   options: ResolvedChatSortingOptions,
   muteSet: Set<string>,
 ): number {

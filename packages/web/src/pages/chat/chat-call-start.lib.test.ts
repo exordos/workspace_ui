@@ -15,7 +15,7 @@ function createMessage(): MockMessage {
     display_recipient: [],
     stream_uuid: null,
     subject: "",
-    reactions: [],
+    reactions: {},
     flags: [],
   };
 }

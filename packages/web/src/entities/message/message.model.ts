@@ -574,17 +574,17 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     }
   },
 
-  updateMessageReaction(messageId, reaction, op) {
+  updateMessageReaction(messageId, emojiName, op) {
     set((state) => ({
       messages: patchMessageAtId(state.messages, messageId, (m) =>
-        applyMessageReactionUpdate(m, reaction, op),
+        applyMessageReactionUpdate(m, emojiName, op),
       ),
     }));
     const state = get();
     if (!state.context) return;
     if (persistChatMessagesToIndexedDb()) {
       const inst = getCurrentInstance()?.id;
-      if (inst) void patchMessageReactionInCache({ instanceId: inst, messageId, reaction, op });
+      if (inst) void patchMessageReactionInCache({ instanceId: inst, messageId, emojiName, op });
     }
   },
 

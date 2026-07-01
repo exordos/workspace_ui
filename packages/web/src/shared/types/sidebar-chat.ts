@@ -34,7 +34,7 @@ export type SidebarChat =
     }
   | {
       type: "dm";
-      id: number;
+      id: UserId;
       name: string;
       slug: string;
       lastMessage?: string;
@@ -122,7 +122,7 @@ export interface StreamEntryInternal {
 }
 
 export interface DmEntryInternal {
-  id: number;
+  id: UserId;
   name: string;
   slug: string;
   lastMessage: string;

@@ -1,4 +1,4 @@
-import type { MockMessage, Reaction } from "~/shared/api/messenger.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { LinkPreviewData } from "~/shared/lib/message-link-preview.types";
 import type { UserId } from "~/shared/lib/user-id.lib";
@@ -63,7 +63,7 @@ export interface CurrentChatMessagesState {
   commitOutgoingMessage: (optimisticId: MessageId, finalMessage: MockMessage) => void;
   removeMessage: (messageId: MessageId) => void;
   removeMessages: (messageIds: MessageId[]) => void;
-  updateMessageReaction: (messageId: MessageId, reaction: Reaction, op: "add" | "remove") => void;
+  updateMessageReaction: (messageId: MessageId, emojiName: string, op: "add" | "remove") => void;
   updateMessageFlags: (messageIds: MessageId[], flag: string, op: "add" | "remove") => void;
   updateMessageContent: (messageId: MessageId, content: string, markdownSource?: string) => void;
   applyOptimisticMessageEdit: (messageId: MessageId, markdown: string) => void;

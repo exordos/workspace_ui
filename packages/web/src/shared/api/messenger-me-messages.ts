@@ -20,6 +20,7 @@ import type {
   MessengerMeMessage,
   MessengerMeMessagePayload,
   MessengerMeMessagesPage,
+  MessageReactions,
   MockMessage,
 } from "./messenger.types";
 
@@ -94,6 +95,22 @@ function parseMeMessagePayload(value: unknown): MessengerMeMessagePayload | null
   return { kind: "markdown", content };
 }
 
+function parseMessageReactions(value: unknown): MessageReactions | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const reactions: MessageReactions = {};
+  for (const [emojiName, rawCount] of Object.entries(value)) {
+    const normalizedEmojiName = emojiName.trim();
+    const count = typeof rawCount === "number" ? rawCount : Number(rawCount);
+    if (normalizedEmojiName.length === 0 || !Number.isFinite(count) || count <= 0) {
+      continue;
+    }
+    reactions[normalizedEmojiName] = Math.floor(count);
+  }
+  return reactions;
+}
+
 /** Maps one raw `/messages/` row to {@link MessengerMeMessage}; returns null when unusable. */
 export function parseMeMessage(row: unknown): MessengerMeMessage | null {
   if (!isRecord(row)) {
@@ -112,6 +129,7 @@ export function parseMeMessage(row: unknown): MessengerMeMessage | null {
   const lastSyncedAt = readOptionalString(row.last_synced_at);
   const createdAt = readOptionalString(row.created_at);
   const updatedAt = readOptionalString(row.updated_at);
+  const reactions = parseMessageReactions(row.reactions);
   return {
     uuid,
     stream_uuid: streamUuid,
@@ -122,6 +140,7 @@ export function parseMeMessage(row: unknown): MessengerMeMessage | null {
     read: row.read === true,
     pinned: row.pinned === true,
     starred: row.starred === true,
+    ...(reactions != null ? { reactions } : {}),
     ...(userUuid != null ? { user_uuid: userUuid } : {}),
     ...(projectId != null ? { project_id: projectId } : {}),
     ...(lastSyncedAt != null ? { last_synced_at: lastSyncedAt } : {}),
@@ -291,6 +310,7 @@ export function meMessageToMockMessage(
     content,
     timestamp: isoToEpochSeconds(message.created_at),
     flags,
+    reactions: message.reactions ?? {},
   };
   if (content.trim().length > 0) {
     base.markdown_source = content;

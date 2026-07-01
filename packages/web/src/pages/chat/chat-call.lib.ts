@@ -1,4 +1,9 @@
-import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
+import {
+  compareUserIds,
+  isUserIdentityReady,
+  userIdStorageKey,
+  type UserId,
+} from "~/shared/lib/user-id.lib";
 
 export interface ResolveCallMessageTargetParamsInput {
   isDmView: boolean;
@@ -12,7 +17,7 @@ export interface ResolveCallMessageTargetParamsInput {
 export type CallMessageTargetParams =
   | {
       mode: "dm";
-      to: number[];
+      to: UserId[];
       streamUuid: string;
     }
   | {
@@ -25,31 +30,31 @@ export type CallMessageTargetParams =
 
 export interface BuildCallRoomNameInput {
   target: CallMessageTargetParams;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
   chatLabel?: string | null;
   nowMs?: number;
 }
 
 export interface CanStartCallFromHeaderInput {
   target: CallMessageTargetParams | null;
-  currentUserId: number | null;
+  currentUserId: UserId | null;
 }
 
 const DEFAULT_TOPIC = "";
 const NON_ROOM_SYMBOLS = /[^\p{L}\p{N}-]+/gu;
 
-function normalizeDmUserIds(userIds: UserId[] | null): number[] {
+function normalizeDmUserIds(userIds: UserId[] | null): UserId[] {
   if (userIds == null || userIds.length === 0) {
     return [];
   }
-  const normalized = [...new Set(userIds.map((userId) => numericUserIdOrNull(userId)))].filter(
-    (userId): userId is number => userId != null,
-  );
-  const hasInvalidId = normalized.some((id) => !Number.isInteger(id) || id <= 0);
-  if (hasInvalidId) {
-    return [];
+  const byKey = new Map<string, UserId>();
+  for (const userId of userIds) {
+    if (!isUserIdentityReady(userId)) {
+      return [];
+    }
+    byKey.set(userIdStorageKey(userId), userId);
   }
-  return normalized.sort((a, b) => a - b);
+  return Array.from(byKey.values()).sort(compareUserIds);
 }
 
 function sanitizeRoomSegment(value: string): string {
@@ -107,20 +112,18 @@ export function buildCallRoomName(input: BuildCallRoomNameInput): string {
       ? sanitizeRoomSegment(trimmedChatLabel)
       : null;
   if (input.target.mode === "dm") {
-    const currentUserId =
-      input.currentUserId != null &&
-      Number.isInteger(input.currentUserId) &&
-      input.currentUserId > 0
-        ? input.currentUserId
-        : null;
-    const sortedParticipantIds = [
-      ...input.target.to,
-      ...(currentUserId != null ? [currentUserId] : []),
-    ]
-      .filter((id, index, arr) => arr.indexOf(id) === index)
-      .sort((a, b) => a - b);
+    const byKey = new Map<string, UserId>();
+    for (const userId of input.target.to) {
+      byKey.set(userIdStorageKey(userId), userId);
+    }
+    if (input.currentUserId != null) {
+      byKey.set(userIdStorageKey(input.currentUserId), input.currentUserId);
+    }
+    const sortedParticipantIds = Array.from(byKey.values()).sort(compareUserIds);
     const participantFallback =
-      sortedParticipantIds.length > 0 ? sortedParticipantIds.join("-") : "chat";
+      sortedParticipantIds.length > 0
+        ? sortedParticipantIds.map(userIdStorageKey).join("-")
+        : "chat";
     const dmRoomPart = chatLabelPart ?? participantFallback;
     return `messenger-dm-${dmRoomPart}-${nowMs}`;
   }
@@ -134,5 +137,5 @@ export function canStartCallFromHeader(input: CanStartCallFromHeaderInput): bool
   if (input.target == null) {
     return false;
   }
-  return Number.isInteger(input.currentUserId) && (input.currentUserId ?? 0) > 0;
+  return isUserIdentityReady(input.currentUserId);
 }

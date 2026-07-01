@@ -13,7 +13,12 @@ import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
-import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
+import {
+  compareUserIds,
+  userIdStorageKey,
+  userIdsEqual,
+  type UserId,
+} from "~/shared/lib/user-id.lib";
 import type {
   SidebarChat,
   StreamWithLast,
@@ -96,7 +101,7 @@ export function messageToStreamEntry(m: WorkspaceRawMessage): {
 }
 
 interface DmRecipientRow {
-  id: number;
+  id: UserId;
   full_name: string;
   email: string;
   avatar_url?: string;
@@ -109,11 +114,11 @@ function resolveDmOtherUsers(
   senderId: number,
 ): DmRecipientRow[] {
   const isOneToOneDm = recipients.length === 2;
-  if (currentUserId != null && typeof currentUserId === "number") {
-    return recipients.filter((r) => r.id !== currentUserId);
+  if (currentUserId != null) {
+    return recipients.filter((r) => !userIdsEqual(r.id, currentUserId));
   }
   if (isOneToOneDm) {
-    const peer = recipients.find((r) => r.id !== senderId);
+    const peer = recipients.find((r) => !userIdsEqual(r.id, senderId));
     return peer != null ? [peer] : [recipients[0]!];
   }
   return recipients;
@@ -121,7 +126,7 @@ function resolveDmOtherUsers(
 
 function buildDmEntryDisplayName(
   otherUsers: DmRecipientRow[],
-  getName: (userId: number) => string,
+  getName: (userId: UserId) => string,
 ): string {
   const rawStoreName = otherUsers[0] != null ? getName(otherUsers[0].id) : undefined;
   const fromStore =
@@ -143,18 +148,17 @@ function resolveDmEntryIdentity(
   otherUsers: DmRecipientRow[],
   currentUserId: UserId | null,
   message: WorkspaceRawMessage,
-  getAvatar: (userId: number) => string | undefined,
-): { id: number; avatar_url?: string } | null {
+  getAvatar: (userId: UserId) => string | undefined,
+): { id: UserId; avatar_url?: string } | null {
   const other = otherUsers[0];
-  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
   const otherUserId =
     other?.id ??
-    (numericCurrentUserId != null
-      ? recipients.find((r) => r.id !== numericCurrentUserId)?.id
+    (currentUserId != null
+      ? recipients.find((r) => !userIdsEqual(r.id, currentUserId))?.id
       : undefined);
   if (otherUserId == null) return null;
   const fromMessage =
-    message.sender_id === otherUserId && message.avatar_url
+    userIdsEqual(message.sender_id, otherUserId) && message.avatar_url
       ? String(message.avatar_url).trim()
       : undefined;
   return {
@@ -163,14 +167,14 @@ function resolveDmEntryIdentity(
   };
 }
 
-function buildDmEntrySlug(id: number, name: string): string {
-  return `${id}-${slugify(name)}`;
+function buildDmEntrySlug(id: UserId, name: string): string {
+  return `${userIdStorageKey(id)}-${slugify(name)}`;
 }
 
 export function messageToDmEntry(
   m: WorkspaceRawMessage,
   currentUserId: UserId | null,
-  avatarUrlByUserId?: Map<number, string>,
+  avatarUrlByUserId?: Map<string, string> | Map<number, string>,
 ): DmEntryInternal | null {
   if (m.type !== "private" || !Array.isArray(m.display_recipient)) return null;
   const usersStore = useUsersStore.getState();
@@ -181,13 +185,15 @@ export function messageToDmEntry(
       email: r.email ?? "",
       avatar_url: r.avatar_url,
     }))
-    .sort((a, b) => a.id - b.id);
+    .sort((a, b) => compareUserIds(a.id, b.id));
   if (recipients.length !== 2) return null;
   const otherUsers = resolveDmOtherUsers(recipients, currentUserId, m.sender_id);
   if (otherUsers.length !== 1) return null;
-  const getName = (userId: number) => usersStore.getDisplayName(userId);
-  const getAvatar = (userId: number) =>
-    usersStore.getAvatarUrl(userId) ?? avatarUrlByUserId?.get(userId);
+  const getName = (userId: UserId) => usersStore.getDisplayName(userId);
+  const getAvatar = (userId: UserId) =>
+    usersStore.getAvatarUrl(userId) ??
+    avatarUrlByUserId?.get(userIdStorageKey(userId) as never) ??
+    avatarUrlByUserId?.get(userId as never);
   const name = buildDmEntryDisplayName(otherUsers, getName);
   const identity = resolveDmEntryIdentity(recipients, otherUsers, currentUserId, m, getAvatar);
   if (identity == null) return null;
@@ -254,7 +260,7 @@ function upsertStreamFromMessage(
 function upsertDmFromMessage(
   m: WorkspaceRawMessage,
   currentUserId: UserId | null,
-  avatarUrlByUserId: Map<number, string> | undefined,
+  avatarUrlByUserId: Map<string, string> | Map<number, string> | undefined,
   dmsByKey: Map<string, DmEntryInternal>,
 ): void {
   if (m.type !== "private" || !Array.isArray(m.display_recipient)) return;
@@ -329,7 +335,7 @@ function mapInternalDmToSidebar(x: DmEntryInternal): Extract<SidebarChat, { type
 export function buildSidebarFromMessages(
   messages: WorkspaceRawMessage[],
   currentUserId: UserId | null,
-  avatarUrlByUserId?: Map<number, string>,
+  avatarUrlByUserId?: Map<string, string> | Map<number, string>,
 ): {
   streams: StreamWithLast[];
   dms: Extract<SidebarChat, { type: "dm" }>[];

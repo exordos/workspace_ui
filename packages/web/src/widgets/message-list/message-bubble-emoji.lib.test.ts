@@ -1,6 +1,5 @@
 import { SkinTones } from "emoji-picker-react";
 import { describe, expect, it } from "vitest";
-import type { Reaction } from "~/shared/api/messenger.types";
 import {
   getReactionDisplayChar,
   isOneToOneDirectMessage,
@@ -154,35 +153,17 @@ describe("resolveEmojiShortcodeDisplayGlyph", () => {
 });
 
 describe("getReactionDisplayChar", () => {
-  it("prefers emoji_code for unicode reactions", () => {
-    const reaction: Reaction = {
-      emoji_name: "heart",
-      emoji_code: "1f44d",
-      reaction_type: "unicode_emoji",
-      user_id: 1,
-    };
-    expect(getReactionDisplayChar(reaction)).toBe("👍");
+  it("resolves known emoji shortcode names", () => {
+    expect(getReactionDisplayChar("thumbs_up")).toBe("👍");
   });
 
-  it("falls back to shortcode resolver when unicode emoji_code is invalid", () => {
-    const reaction: Reaction = {
-      emoji_name: "working_on_it",
-      emoji_code: "not-a-code",
-      reaction_type: "unicode_emoji",
-      user_id: 1,
-    };
-    expect(normalizeEmojiPresentation(getReactionDisplayChar(reaction))).toBe(
+  it("falls back to shortcode resolver for aliases", () => {
+    expect(normalizeEmojiPresentation(getReactionDisplayChar("working_on_it"))).toBe(
       normalizeEmojiPresentation("🛠️"),
     );
   });
 
   it("falls back to raw emoji_name when no resolver can map it", () => {
-    const reaction: Reaction = {
-      emoji_name: "unknown-reaction",
-      emoji_code: "",
-      reaction_type: "realm_emoji",
-      user_id: 1,
-    };
-    expect(getReactionDisplayChar(reaction)).toBe("unknown-reaction");
+    expect(getReactionDisplayChar("unknown-reaction")).toBe("unknown-reaction");
   });
 });

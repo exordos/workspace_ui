@@ -6,6 +6,7 @@
  */
 import type { MockMessage } from "~/shared/api/messenger.types";
 import type { MessageId } from "~/shared/lib/message-id.lib";
+import { compareUserIds, userIdStorageKey, type UserId } from "~/shared/lib/user-id.lib";
 
 // Workspace `internal_url.encodeHashComponent` — browsers decode hash aggressively.
 const HASH_REPLACEMENTS = new Map<string, string>([
@@ -39,7 +40,7 @@ function normalizeRealmOrigin(realmBaseUrl: string): string | null {
 
 function privateRecipientUserIds(
   displayRecipient: MockMessage["display_recipient"],
-): number[] | null {
+): UserId[] | null {
   if (
     displayRecipient == null ||
     typeof displayRecipient === "string" ||
@@ -47,12 +48,12 @@ function privateRecipientUserIds(
   ) {
     return null;
   }
-  return [...displayRecipient.map((r) => r.id)].sort((a, b) => a - b);
+  return [...displayRecipient.map((r) => r.id)].sort(compareUserIds);
 }
 
-function buildPrivateNarrowHash(userIds: number[], messageId: MessageId): string {
+function buildPrivateNarrowHash(userIds: UserId[], messageId: MessageId): string {
   const suffix = userIds.length >= 3 ? "group" : "dm";
-  const slug = `${userIds.join(",")}-${suffix}`;
+  const slug = `${userIds.map(userIdStorageKey).join(",")}-${suffix}`;
   return `#narrow/dm/${slug}/near/${encodeWorkspaceHashComponent(String(messageId))}`;
 }
 

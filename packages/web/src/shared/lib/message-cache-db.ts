@@ -1,7 +1,7 @@
 /**
  * IndexedDB message cache for cold-start bootstrap and per-chat retention.
  */
-import type { MockMessage, Reaction } from "~/shared/api/messenger.types";
+import type { MockMessage } from "~/shared/api/messenger.types";
 import { runMessageCacheDbUpgrade } from "~/shared/lib/message-cache-db-upgrade.lib";
 import { instanceChatKey } from "~/shared/lib/message-cache-keys.lib";
 import { compareMessageTimeline } from "~/shared/lib/message-id.lib";
@@ -534,25 +534,24 @@ function messageFlagBooleanPatch(
 export async function patchMessageReactionInCache(options: {
   instanceId: string;
   messageId: MessageId;
-  reaction: Reaction;
+  emojiName: string;
   op: "add" | "remove";
 }): Promise<void> {
-  const { instanceId, messageId, reaction, op } = options;
+  const { instanceId, messageId, emojiName, op } = options;
   if (!isIndexedDBAvailable()) return;
   const db = await openMessageCacheDb();
   const existing = await getMessageRow(db, instanceId, messageId);
   if (!existing) return;
-  const list = existing.message.reactions ?? [];
-  const exists = list.some(
-    (r) => r.emoji_name === reaction.emoji_name && r.user_id === reaction.user_id,
-  );
-  let nextReactions: Reaction[];
-  if (op === "add") {
-    nextReactions = exists ? list : [...list, reaction];
+  const current = existing.message.reactions ?? {};
+  const currentCount = Math.max(0, Math.floor(current[emojiName] ?? 0));
+  const nextCount = op === "add" ? currentCount + 1 : Math.max(0, currentCount - 1);
+  if (nextCount === currentCount) return;
+
+  const nextReactions = { ...current };
+  if (nextCount === 0) {
+    delete nextReactions[emojiName];
   } else {
-    nextReactions = list.filter(
-      (r) => !(r.emoji_name === reaction.emoji_name && r.user_id === reaction.user_id),
-    );
+    nextReactions[emojiName] = nextCount;
   }
   const nextRow: MessageCacheRow = {
     ...existing,

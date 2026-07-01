@@ -1,5 +1,6 @@
-import type { Reaction } from "~/shared/api/messenger.types";
+import type { MessageReactions } from "~/shared/api/messenger.types";
 import { normalizeMessageId, type MessageId } from "~/shared/lib/message-id.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 
 /**
  * Test data factories — typed builders for domain objects.
@@ -70,9 +71,9 @@ interface MessageOverrides {
   timestamp?: number;
   flags?: string[];
   type?: "stream" | "private";
-  display_recipient?: string | { id: number; full_name: string; email?: string }[];
+  display_recipient?: string | { id: UserId; full_name: string; email?: string }[];
   avatar_url?: string | null;
-  reactions?: Reaction[];
+  reactions?: MessageReactions;
 }
 
 export function createMessage(overrides: MessageOverrides = {}) {
@@ -96,7 +97,7 @@ export function createMessage(overrides: MessageOverrides = {}) {
     type: overrides.type ?? "stream",
     display_recipient: overrides.display_recipient ?? "general",
     avatar_url: overrides.avatar_url ?? null,
-    reactions: overrides.reactions ?? [],
+    reactions: overrides.reactions ?? {},
   };
 }
 

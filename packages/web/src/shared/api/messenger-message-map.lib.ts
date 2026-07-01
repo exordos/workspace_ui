@@ -37,7 +37,7 @@ export function rawMessageToMockMessage(m: RawMessageToMockInput): MockMessage {
     content: m.content,
     timestamp: m.timestamp,
     flags: m.flags,
-    reactions: m.reactions,
+    reactions: m.reactions ?? {},
   };
   if (markdownSource != null && markdownSource.length > 0) {
     base.markdown_source = markdownSource;
@@ -88,7 +88,7 @@ export function mockMessageFromGetMessageApiData(data: unknown): MockMessage | n
     type: row.type,
     stream_uuid: row.stream_uuid ?? null,
     flags: row.flags,
-    reactions: row.reactions,
+    reactions: row.reactions ?? {},
     markdown_source: markdownSource,
   });
 }

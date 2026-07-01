@@ -1,19 +1,19 @@
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { getJitsiMeetingUrl, parseJitsiUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 import { isMessageFromCurrentUser } from "~/shared/lib/message-author.lib";
-import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
+import { isUserIdentityReady, userIdsEqual, type UserId } from "~/shared/lib/user-id.lib";
 import { parseJitsiMeetingUrlLoose } from "./jitsi-call-url.lib";
 import type { IncomingDmCallInvite } from "./jitsi-call.model";
 
 const DM_ROOM_PREFIX = "messenger-dm-";
 
-function isOneToOneDmForCurrentUser(message: WorkspaceRawMessage, currentUserId: number): boolean {
+function isOneToOneDmForCurrentUser(message: WorkspaceRawMessage, currentUserId: UserId): boolean {
   if (!Array.isArray(message.display_recipient)) return false;
   const participantIds = message.display_recipient
     .map((recipient) => recipient.id)
-    .filter((id) => Number.isInteger(id) && id > 0);
+    .filter(isUserIdentityReady);
   if (participantIds.length !== 2) return false;
-  return participantIds.includes(currentUserId);
+  return participantIds.some((id) => userIdsEqual(id, currentUserId));
 }
 
 /**
@@ -25,11 +25,10 @@ export function resolveIncomingDmCallInvite(
   currentUserId: UserId | null,
   jitsiLinkOptions?: JitsiLinkOptions,
 ): IncomingDmCallInvite | null {
-  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
-  if (numericCurrentUserId == null) return null;
+  if (currentUserId == null || !isUserIdentityReady(currentUserId)) return null;
   if (message.type !== "private") return null;
   if (isMessageFromCurrentUser(message, currentUserId)) return null;
-  if (!isOneToOneDmForCurrentUser(message, numericCurrentUserId)) return null;
+  if (!isOneToOneDmForCurrentUser(message, currentUserId)) return null;
 
   const meetingUrl = getJitsiMeetingUrl(message.content, jitsiLinkOptions);
   if (meetingUrl == null) return null;

@@ -11,7 +11,6 @@ import {
   handleIncomingMessage,
   handleMessageUpdated,
   handleMessagesRead,
-  handleReaction,
   handleUpdateMessage,
   handleUpdateMessageFlags,
 } from "./layout-messenger-event-dispatch-message.lib";
@@ -59,11 +58,6 @@ export function dispatchMessengerEvent(
 
   if (event.type === "update_message_flags") {
     runDispatchHandler("dispatch:update_message_flags", () => handleUpdateMessageFlags(event, ctx));
-    return;
-  }
-
-  if (event.type === "reaction") {
-    runDispatchHandler("dispatch:reaction", () => handleReaction(event, ctx));
     return;
   }
 

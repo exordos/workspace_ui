@@ -71,6 +71,16 @@ describe("parseMeMessage", () => {
     });
   });
 
+  it("preserves aggregate reaction counters", () => {
+    expect(
+      parseMeMessage(
+        rawRow({
+          reactions: { thumbs_up: 2, eyes: 1, ignored: 0 },
+        }),
+      )?.reactions,
+    ).toEqual({ thumbs_up: 2, eyes: 1 });
+  });
+
   it("coerces flags to booleans and tolerates missing optional fields", () => {
     const parsed = parseMeMessage({
       uuid: MSG_UUID_1,
@@ -227,7 +237,9 @@ describe("fetchMyMessages", () => {
 describe("meMessageToMockMessage", () => {
   it("maps content, markdown source, flags, and timestamp", () => {
     const mock = meMessageToMockMessage(
-      parseMeMessage(rawRow({ read: true, pinned: true, starred: true }))!,
+      parseMeMessage(
+        rawRow({ read: true, pinned: true, starred: true, reactions: { thumbs_up: 2 } }),
+      )!,
     );
 
     expect(mock).toMatchObject({
@@ -242,6 +254,7 @@ describe("meMessageToMockMessage", () => {
       content: "Hello world",
       markdown_source: "Hello world",
       flags: ["read", "pinned", "starred"],
+      reactions: { thumbs_up: 2 },
       timestamp: Math.floor(Date.parse("2026-06-21T10:20:00Z") / 1000),
     });
   });

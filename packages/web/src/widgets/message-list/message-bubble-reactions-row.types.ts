@@ -5,8 +5,7 @@ import type { MessageBubbleCallbacks } from "./message-bubble.types";
 export interface MessageBubbleReactionsRowProps {
   message: MockMessage;
   isOwn: boolean;
-  currentUserId: number | undefined;
+  ownReactionEmojiNames: ReadonlySet<string>;
   reactionGroups: GroupedReaction[];
-  resolveReactionAuthorLabel: (userId: number) => string;
   callbacks?: MessageBubbleCallbacks;
 }

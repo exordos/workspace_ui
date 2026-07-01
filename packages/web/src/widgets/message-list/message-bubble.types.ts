@@ -2,7 +2,6 @@ import type {
   MessageReactionPayload,
   MockMessage,
   MockMessageDeliveryStatus,
-  Reaction,
   RealmEmoji,
 } from "~/shared/api/messenger.types";
 import type { MessageId } from "~/shared/lib/message-id.lib";
@@ -60,7 +59,7 @@ export interface MessageBubbleProps {
   mediaGallery?: MessageMediaGallery;
   customEmojis?: RealmEmoji[];
   onEmojiPickerOpen?: () => void;
-  resolveCustomEmojiImageUrl?: (reaction: Reaction) => string | undefined;
+  resolveCustomEmojiImageUrl?: (emojiName: string) => string | undefined;
   resolveCustomEmojiShortcodeImageUrl?: (shortcode: string) => string | undefined;
   callbacks?: MessageBubbleCallbacks;
 }

@@ -9,7 +9,7 @@ import { normalizeMessageId } from "~/shared/lib/message-id.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { encodeTopicForRoute, normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
-import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
+import { userIdStorageKey, type UserId } from "~/shared/lib/user-id.lib";
 
 export type MessengerNarrowPermalinkKind = "dm" | "stream";
 
@@ -222,17 +222,17 @@ export function buildRouteFromMessengerNarrowPermalink(
   if (parsed.kind === "dm") {
     if (parsed.dmParticipantIds == null || parsed.dmParticipantIds.length === 0) return null;
     const routeKey = dmRouteKey(parsed.dmParticipantIds, currentUserId);
-    const routeUserIds = routeKey.split(",").map((raw) => Number(raw));
-    if (routeUserIds.some((id) => !Number.isSafeInteger(id) || id <= 0)) return null;
-    const numericCurrentUserId = numericUserIdOrNull(currentUserId);
+    const routeUserIds = routeKey.split(",").filter((userId) => userId.length > 0);
+    if (routeUserIds.length === 0) return null;
+    const currentUserKey = currentUserId != null ? userIdStorageKey(currentUserId) : null;
     const others =
-      numericCurrentUserId != null
-        ? routeUserIds.filter((userId) => userId !== numericCurrentUserId)
+      currentUserKey != null
+        ? routeUserIds.filter((userId) => userId !== currentUserKey)
         : routeUserIds;
     const dmSlugSegment =
       others.length > 0
-        ? others.map((userId) => String(userId)).join(",")
-        : routeUserIds.map((userId) => String(userId)).join(",");
+        ? others.map((userId) => encodeURIComponent(userId)).join(",")
+        : routeUserIds.map((userId) => encodeURIComponent(userId)).join(",");
     return withMessageId(withCurrentOrgRoute(`/dm/${dmSlugSegment}`));
   }
 

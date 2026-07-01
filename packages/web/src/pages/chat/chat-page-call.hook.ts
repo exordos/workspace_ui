@@ -8,7 +8,7 @@ import { t } from "~/i18n/i18n";
 import { sendMessage } from "~/shared/api/messenger-messages";
 import type { MockMessage } from "~/shared/api/messenger.types";
 import { buildJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
-import { numericUserIdOrNull, userIdsEqual, type UserId } from "~/shared/lib/user-id.lib";
+import { userIdsEqual, type UserId } from "~/shared/lib/user-id.lib";
 import { startCallFromHeader } from "./chat-call-start.lib";
 import {
   buildCallRoomName,
@@ -57,8 +57,6 @@ export function useChatPageCall(options: UseChatPageCallOptions): UseChatPageCal
 
   const openJitsiCall = useJitsiCallStore((s) => s.openCall);
   const jitsiHeaderCallInFlightRef = useRef<symbol | null>(null);
-  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
-
   const callTarget = useMemo(
     () =>
       resolveCallMessageTargetParams({
@@ -76,9 +74,9 @@ export function useChatPageCall(options: UseChatPageCallOptions): UseChatPageCal
     () =>
       canStartCallFromHeader({
         target: callTarget,
-        currentUserId: numericCurrentUserId,
+        currentUserId,
       }) && !(isOneToOneDm && partnerDeactivated),
-    [callTarget, numericCurrentUserId, isOneToOneDm, partnerDeactivated],
+    [callTarget, currentUserId, isOneToOneDm, partnerDeactivated],
   );
 
   const callRoomChatLabel = useMemo(() => {
@@ -100,21 +98,18 @@ export function useChatPageCall(options: UseChatPageCallOptions): UseChatPageCal
 
   const buildCurrentCallLink = useCallback(() => {
     if (isOneToOneDm && partnerDeactivated) return null;
-    if (
-      !canStartCallFromHeader({ target: callTarget, currentUserId: numericCurrentUserId }) ||
-      callTarget == null
-    ) {
+    if (!canStartCallFromHeader({ target: callTarget, currentUserId }) || callTarget == null) {
       return null;
     }
     const roomName = buildCallRoomName({
       target: callTarget,
-      currentUserId: numericCurrentUserId,
+      currentUserId,
       chatLabel: callRoomChatLabel,
     });
     return buildJitsiMeetingUrl(roomName, jitsiLinkOptions);
   }, [
     callTarget,
-    numericCurrentUserId,
+    currentUserId,
     callRoomChatLabel,
     jitsiLinkOptions,
     isOneToOneDm,
@@ -133,10 +128,7 @@ export function useChatPageCall(options: UseChatPageCallOptions): UseChatPageCal
 
   const performStartCallFromHeader = useCallback(async () => {
     if (isOneToOneDm && partnerDeactivated) return;
-    if (
-      !canStartCallFromHeader({ target: callTarget, currentUserId: numericCurrentUserId }) ||
-      callTarget == null
-    ) {
+    if (!canStartCallFromHeader({ target: callTarget, currentUserId }) || callTarget == null) {
       return;
     }
     if (jitsiHeaderCallInFlightRef.current != null) {
@@ -148,7 +140,7 @@ export function useChatPageCall(options: UseChatPageCallOptions): UseChatPageCal
     try {
       const result = await startCallFromHeader({
         target: callTarget,
-        currentUserId: numericCurrentUserId,
+        currentUserId,
         buildCurrentCallLink,
         isOneToOneDm,
         callRoomChatLabel,
@@ -183,7 +175,7 @@ export function useChatPageCall(options: UseChatPageCallOptions): UseChatPageCal
   ]);
 
   const invokeDmCallFromProfileHandler = useCallback(
-    (targetUserId: number) => {
+    (targetUserId: UserId) => {
       if (currentUserId == null || userIdsEqual(targetUserId, currentUserId)) return;
       const inOneToOneWithPartner =
         isDmView && partnerUserId != null && userIdsEqual(partnerUserId, targetUserId);

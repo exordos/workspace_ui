@@ -20,8 +20,7 @@ interface MessageBubbleStandardBodyProps {
   time: string;
   hasReactions: boolean;
   reactionGroups: GroupedReaction[];
-  currentUserId: number | undefined;
-  resolveReactionAuthorLabel: (userId: number) => string;
+  ownReactionEmojiNames: ReadonlySet<string>;
   callbacks: MessageBubbleCallbacks | undefined;
   ownDeliveryIndicator: React.ReactNode;
   bubbleSurfaceClass: string;
@@ -41,8 +40,7 @@ export const MessageBubbleStandardBody = React.memo<MessageBubbleStandardBodyPro
     time,
     hasReactions,
     reactionGroups,
-    currentUserId,
-    resolveReactionAuthorLabel,
+    ownReactionEmojiNames,
     callbacks,
     ownDeliveryIndicator,
     bubbleSurfaceClass,
@@ -83,9 +81,8 @@ export const MessageBubbleStandardBody = React.memo<MessageBubbleStandardBodyPro
               <MessageBubbleReactionsRow
                 message={message}
                 isOwn={isOwn}
-                currentUserId={currentUserId}
+                ownReactionEmojiNames={ownReactionEmojiNames}
                 reactionGroups={reactionGroups}
-                resolveReactionAuthorLabel={resolveReactionAuthorLabel}
                 callbacks={callbacks}
               />
             </div>

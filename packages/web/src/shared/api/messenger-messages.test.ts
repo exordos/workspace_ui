@@ -24,6 +24,7 @@ import {
   fetchMessagesWithNarrowPage,
   fetchRecentMessages,
   rawMessageToMockMessage,
+  fetchMessageReactions,
   removeReaction,
   renderMessageContent,
   sendMessage,
@@ -56,7 +57,7 @@ describe("rawMessageToMockMessage", () => {
       type: "stream",
       stream_uuid: streamUuid,
       flags: ["read"],
-      reactions: [],
+      reactions: {},
     });
 
     expect(result).toEqual({
@@ -70,7 +71,7 @@ describe("rawMessageToMockMessage", () => {
       content: "<p>hello</p>",
       timestamp: 1710000000,
       flags: ["read"],
-      reactions: [],
+      reactions: {},
     });
   });
 
@@ -351,22 +352,7 @@ describe("fetchActivityMessagesPage", () => {
     expect(mockMessengerApi.get).not.toHaveBeenCalled();
   });
 
-  it("fails fast when reactions filter receives invalid current user id", async () => {
-    await expect(fetchActivityMessagesPage("reactions", 0)).rejects.toThrow(
-      /fetchActivityMessagesPage\.currentUserId/i,
-    );
-    expect(mockMessengerApi.get).not.toHaveBeenCalled();
-  });
-
-  it("returns an empty reactions page when there is no numeric current user id", async () => {
-    await expect(fetchActivityMessagesPage("reactions", null)).resolves.toEqual({
-      messages: [],
-      foundOldest: true,
-    });
-    expect(mockMessengerApi.get).not.toHaveBeenCalled();
-  });
-
-  it("requests has:reaction and sender narrow for reactions filter", async () => {
+  it("requests has:reaction narrow for reactions filter", async () => {
     mockMessengerApi.get.mockResolvedValue({
       ok: true,
       status: 200,
@@ -380,7 +366,7 @@ describe("fetchActivityMessagesPage", () => {
       raw: { statusText: "OK" },
     });
 
-    await fetchActivityMessagesPage("reactions", 42);
+    await fetchActivityMessagesPage("reactions", null);
 
     expect(mockMessengerApi.get).toHaveBeenCalledWith(
       "/messages",
@@ -388,10 +374,7 @@ describe("fetchActivityMessagesPage", () => {
         anchor: "newest",
         num_before: "200",
         num_after: "0",
-        narrow: JSON.stringify([
-          { negated: false, operator: "has", operand: "reaction" },
-          { negated: false, operator: "sender", operand: 42 },
-        ]),
+        narrow: JSON.stringify([{ negated: false, operator: "has", operand: "reaction" }]),
         allow_empty_topic_name: "true",
         apply_markdown: "false",
       },
@@ -1263,22 +1246,85 @@ describe("deleteMessage", () => {
     );
   });
 });
-describe("addReaction", () => {
-  it("adds a reaction", async () => {
-    mockMessengerApi.post.mockResolvedValue({
+describe("fetchMessageReactions", () => {
+  const reaction = {
+    uuid: "33333333-3333-4333-8333-333333333333",
+    user_uuid: "44444444-4444-4444-8444-444444444444",
+    message_uuid: "00000000-0000-4000-8000-000000000042",
+    emoji_name: "thumbs_up",
+  };
+
+  it("loads current-user reactions for a message", async () => {
+    mockMessengerApi.getWithBase.mockResolvedValue({
       ok: true,
       status: 200,
-      data: { result: "success" },
+      data: [reaction],
       raw: { statusText: "OK" },
     });
-    await expect(
-      addReaction("00000000-0000-4000-8000-000000000042", "thumbs_up"),
-    ).resolves.toBeUndefined();
+
+    await expect(fetchMessageReactions(testMessageId(42))).resolves.toEqual([reaction]);
     expect(mockRefreshMessengerApiBase).toHaveBeenCalled();
-    expect(mockMessengerApi.post).toHaveBeenCalledWith(`/messages/${testMessageId(42)}/reactions`, {
-      emoji_name: "thumbs_up",
-      reaction_type: "unicode_emoji",
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      "/message_reactions/",
+      { message_uuid: testMessageId(42) },
+      undefined,
+    );
+  });
+
+  it("can filter reaction details by current user uuid", async () => {
+    mockMessengerApi.getWithBase.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: [reaction],
+      raw: { statusText: "OK" },
     });
+
+    await fetchMessageReactions(testMessageId(42), {
+      userUuid: "44444444-4444-4444-8444-444444444444",
+    });
+
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      "/message_reactions/",
+      {
+        message_uuid: testMessageId(42),
+        user_uuid: "44444444-4444-4444-8444-444444444444",
+      },
+      undefined,
+    );
+  });
+});
+
+describe("addReaction", () => {
+  const reaction = {
+    uuid: "33333333-3333-4333-8333-333333333333",
+    user_uuid: "44444444-4444-4444-8444-444444444444",
+    message_uuid: "00000000-0000-4000-8000-000000000042",
+    emoji_name: "thumbs_up",
+  };
+
+  it("creates a reaction resource", async () => {
+    mockMessengerApi.postJsonWithBase.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: reaction,
+      raw: { statusText: "OK" },
+    });
+
+    await expect(addReaction(testMessageId(42), "thumbs_up")).resolves.toEqual({
+      reaction,
+      created: true,
+    });
+    expect(mockRefreshMessengerApiBase).toHaveBeenCalled();
+    expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      "/message_reactions/",
+      {
+        message_uuid: testMessageId(42),
+        emoji_name: "thumbs_up",
+      },
+    );
   });
 
   it("throws for invalid messageId", async () => {
@@ -1286,52 +1332,53 @@ describe("addReaction", () => {
   });
 
   it("throws for blank emoji name", async () => {
-    await expect(addReaction("00000000-0000-4000-8000-000000000042", "   ")).rejects.toThrow(
+    await expect(addReaction(testMessageId(42), "   ")).rejects.toThrow(
       /addReaction\.emojiName must be a non-empty string/,
     );
-    expect(mockMessengerApi.post).not.toHaveBeenCalled();
+    expect(mockMessengerApi.postJsonWithBase).not.toHaveBeenCalled();
   });
 
-  it("silently handles REACTION_ALREADY_EXISTS", async () => {
-    mockMessengerApi.post.mockResolvedValue({
+  it("returns an existing current-user reaction on conflict", async () => {
+    mockMessengerApi.postJsonWithBase.mockResolvedValue({
       ok: false,
-      status: 400,
-      data: { msg: "Already exists", code: "REACTION_ALREADY_EXISTS" },
-      raw: { statusText: "Bad Request" },
+      status: 409,
+      data: { msg: "Already exists" },
+      raw: { statusText: "Conflict" },
     });
+    mockMessengerApi.getWithBase.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: [reaction],
+      raw: { statusText: "OK" },
+    });
+
     await expect(
-      addReaction("00000000-0000-4000-8000-000000000042", "thumbs_up"),
-    ).resolves.toBeUndefined();
+      addReaction(testMessageId(42), "thumbs_up", {
+        currentUserUuid: "44444444-4444-4444-8444-444444444444",
+      }),
+    ).resolves.toEqual({
+      reaction,
+      created: false,
+    });
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      "/message_reactions/",
+      {
+        message_uuid: testMessageId(42),
+        user_uuid: "44444444-4444-4444-8444-444444444444",
+      },
+      undefined,
+    );
   });
 
-  it("throws on other non-ok errors", async () => {
-    mockMessengerApi.post.mockResolvedValue({
+  it("throws on non-ok errors", async () => {
+    mockMessengerApi.postJsonWithBase.mockResolvedValue({
       ok: false,
       status: 500,
       data: { msg: "Server error" },
       raw: { statusText: "Server Error" },
     });
-    await expect(addReaction("00000000-0000-4000-8000-000000000042", "thumbs_up")).rejects.toThrow(
-      "Server error",
-    );
-  });
-
-  it("passes optional emojiCode and reactionType", async () => {
-    mockMessengerApi.post.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: { result: "success" },
-      raw: { statusText: "OK" },
-    });
-    await addReaction("00000000-0000-4000-8000-000000000042", "party_node", {
-      emojiCode: "43",
-      reactionType: "realm_emoji",
-    });
-    expect(mockMessengerApi.post).toHaveBeenCalledWith(`/messages/${testMessageId(42)}/reactions`, {
-      emoji_name: "party_node",
-      emoji_code: "43",
-      reaction_type: "realm_emoji",
-    });
+    await expect(addReaction(testMessageId(42), "thumbs_up")).rejects.toThrow("Server error");
   });
 });
 
@@ -1340,62 +1387,38 @@ describe("addReaction", () => {
 // ---------------------------------------------------------------------------
 
 describe("removeReaction", () => {
-  it("removes a reaction", async () => {
-    mockMessengerApi.delete.mockResolvedValue({
+  it("removes a reaction resource by uuid", async () => {
+    mockMessengerApi.deleteWithBase.mockResolvedValue({
       ok: true,
       status: 200,
       data: { result: "success" },
       raw: { statusText: "OK" },
     });
-    await expect(
-      removeReaction("00000000-0000-4000-8000-000000000042", "thumbs_up"),
-    ).resolves.toBeUndefined();
-    expect(mockMessengerApi.delete).toHaveBeenCalledWith(
-      `/messages/${testMessageId(42)}/reactions`,
-      {
-        emoji_name: "thumbs_up",
-      },
+
+    await expect(removeReaction("33333333-3333-4333-8333-333333333333")).resolves.toBeUndefined();
+    expect(mockMessengerApi.deleteWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      "/message_reactions/33333333-3333-4333-8333-333333333333",
     );
   });
 
   it("throws on non-ok response", async () => {
-    mockMessengerApi.delete.mockResolvedValue({
+    mockMessengerApi.deleteWithBase.mockResolvedValue({
       ok: false,
       status: 404,
       data: { msg: "Not found" },
       raw: { statusText: "Not Found" },
     });
-    await expect(
-      removeReaction("00000000-0000-4000-8000-000000000042", "thumbs_up"),
-    ).rejects.toThrow("Not found");
+    await expect(removeReaction("33333333-3333-4333-8333-333333333333")).rejects.toThrow(
+      "Not found",
+    );
   });
 
-  it("throws for blank emoji name", async () => {
-    await expect(removeReaction("00000000-0000-4000-8000-000000000042", "   ")).rejects.toThrow(
-      /removeReaction\.emojiName must be a non-empty string/,
+  it("throws for blank reaction uuid", async () => {
+    await expect(removeReaction("   ")).rejects.toThrow(
+      /removeReaction\.reactionUuid must be a non-empty string/,
     );
-    expect(mockMessengerApi.delete).not.toHaveBeenCalled();
-  });
-
-  it("passes optional emojiCode and reactionType", async () => {
-    mockMessengerApi.delete.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: { result: "success" },
-      raw: { statusText: "OK" },
-    });
-    await removeReaction("00000000-0000-4000-8000-000000000042", "emoji", {
-      emojiCode: "1f44d",
-      reactionType: "unicode_emoji",
-    });
-    expect(mockMessengerApi.delete).toHaveBeenCalledWith(
-      `/messages/${testMessageId(42)}/reactions`,
-      {
-        emoji_name: "emoji",
-        emoji_code: "1f44d",
-        reaction_type: "unicode_emoji",
-      },
-    );
+    expect(mockMessengerApi.deleteWithBase).not.toHaveBeenCalled();
   });
 });
 

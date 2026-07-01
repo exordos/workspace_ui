@@ -3,10 +3,10 @@
  */
 
 import type { Draft } from "~/entities/draft/draft.types";
-import type { Reaction } from "~/shared/api/messenger.types";
+import type { MessageReactions } from "~/shared/api/messenger.types";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import { formatStreamTopicLabel } from "~/shared/lib/topic-display.lib";
-import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
+import { userIdsEqual, type UserId } from "~/shared/lib/user-id.lib";
 import {
   groupReactions,
   type GroupedReaction,
@@ -51,10 +51,9 @@ export function resolveDraftDmDisplayName(options: {
   const { recipientIds, currentUserId, getUserDisplayName } = options;
   if (recipientIds.length === 0) return null;
 
-  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
   const others =
-    numericCurrentUserId != null
-      ? recipientIds.filter((id) => id !== numericCurrentUserId)
+    currentUserId != null
+      ? recipientIds.filter((id) => !userIdsEqual(id, currentUserId))
       : recipientIds;
   if (others.length === 0) return null;
 
@@ -109,22 +108,14 @@ export function formatDraftMessageContext(options: {
   return privateLabel;
 }
 
-/** Reactions from others on the current user's message (excludes self). */
-export function filterPeerReactions(
-  reactions: readonly Reaction[],
-  currentUserId: UserId | null,
-): Reaction[] {
-  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
-  if (numericCurrentUserId == null) return [];
-  return reactions.filter((reaction) => reaction.user_id !== numericCurrentUserId);
+export function hasReactionCounts(reactions: MessageReactions | undefined): boolean {
+  return Object.values(reactions ?? {}).some((count) => Number.isFinite(count) && count > 0);
 }
 
 export function getActivityPeerReactionGroups(
-  reactions: readonly Reaction[],
-  currentUserId: UserId | null,
-  resolveCustomEmojiImageUrl?: (reaction: Reaction) => string | undefined,
+  reactions: MessageReactions,
+  resolveCustomEmojiImageUrl?: (emojiName: string) => string | undefined,
 ): GroupedReaction[] {
-  const peerReactions = filterPeerReactions(reactions, currentUserId);
-  if (peerReactions.length === 0) return [];
-  return groupReactions(peerReactions, resolveCustomEmojiImageUrl);
+  if (!hasReactionCounts(reactions)) return [];
+  return groupReactions(reactions, resolveCustomEmojiImageUrl);
 }

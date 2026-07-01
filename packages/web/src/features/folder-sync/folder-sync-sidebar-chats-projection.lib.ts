@@ -1,5 +1,5 @@
 import type { FolderItemForClient } from "~/shared/api/workspace-client";
-import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
+import { userIdsEqual, type UserId } from "~/shared/lib/user-id.lib";
 import type { SidebarChat, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import {
   chatToWorkspaceChatIds,
@@ -81,10 +81,9 @@ function buildPairDmFallback(
   usersMapForChatInfo: FolderSyncUsersMap,
 ): SidebarChat {
   const sortedPair = [...dmUserIds].sort((left, right) => left - right);
-  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
   const peerId =
-    numericCurrentUserId != null
-      ? (sortedPair.find((id) => id !== numericCurrentUserId) ?? sortedPair[0]!)
+    currentUserId != null
+      ? (sortedPair.find((id) => !userIdsEqual(id, currentUserId)) ?? sortedPair[0]!)
       : sortedPair[0]!;
   const dmUser = getFolderSyncUser(usersMapForChatInfo, peerId);
   const dmName = resolveFallbackUserName(dmUser, `User ${peerId}`);

@@ -1,7 +1,11 @@
 /**
- * Emoji display helpers for message reactions (messenger emoji_name / emoji_code).
+ * Emoji display helpers for message reactions.
  */
-import type { MessageReactionPayload, MockMessage, Reaction } from "~/shared/api/messenger.types";
+import type {
+  MessageReactionPayload,
+  MessageReactions,
+  MockMessage,
+} from "~/shared/api/messenger.types";
 import {
   normalizeEmojiShortcodeName,
   resolveShortcodeToUnicode,
@@ -40,19 +44,6 @@ export function emojiCodeToChar(emojiCode: string): string {
   }
 }
 
-function normalizeEmojiSemanticKey(value: string): string {
-  return Array.from(value.normalize("NFC"))
-    .map((char) => char.codePointAt(0))
-    .filter((codePoint): codePoint is number => codePoint != null && codePoint !== 0xfe0e)
-    .filter((codePoint) => codePoint !== 0xfe0f)
-    .map((codePoint) => codePoint.toString(16))
-    .join("-");
-}
-
-function hasEmojiPresentationSelector(value: string): boolean {
-  return Array.from(value.normalize("NFC")).some((char) => char.codePointAt(0) === 0xfe0f);
-}
-
 /**
  * True for a Workspace 1:1 DM (`private` with exactly two recipients).
  * Aligned with `messageToDmEntry` in `entities/chat-list/chat-list.lib.ts`.
@@ -69,119 +60,58 @@ export function reactionPayloadFromEmojiClickData(
   data: EmojiClickData,
 ): MessageReactionPayload | null {
   const normalizedPickerName = normalizeEmojiShortcodeName(data.names?.[0] ?? data.emoji ?? "");
-  const unifiedCode = (data.unifiedWithoutSkinTone || data.unified || "").trim().toLowerCase();
   if (data.isCustom) {
     if (normalizedPickerName.length === 0) {
       return null;
     }
-    const emojiCode = data.unifiedWithoutSkinTone || data.unified || data.emoji || "";
-    if (emojiCode.trim().length === 0) {
-      return null;
-    }
     return {
       emojiName: normalizedPickerName,
-      reactionType: "realm_emoji",
-      emojiCode,
       imageUrl: data.imageUrl || undefined,
     };
   }
+  const unifiedCode = (data.unifiedWithoutSkinTone || data.unified || "").trim().toLowerCase();
   const emojiName = resolveUnicodeToCanonicalShortcode(unifiedCode) ?? normalizedPickerName;
   if (emojiName.length === 0) {
     return null;
   }
-  const unicodeCode = data.unifiedWithoutSkinTone || data.unified || "";
-  return {
-    emojiName,
-    reactionType: "unicode_emoji",
-    ...(unicodeCode ? { emojiCode: unicodeCode } : {}),
-  };
+  return { emojiName };
 }
 
-export function getReactionDisplayChar(reaction: Reaction): string {
-  const fromShortcode = resolveEmojiShortcodeDisplayGlyph(reaction.emoji_name);
-  if (reaction.reaction_type === "unicode_emoji") {
-    const fromCode = emojiCodeToChar(reaction.emoji_code);
-    if (fromCode) {
-      const codeSemanticKey = normalizeEmojiSemanticKey(fromCode);
-      const shortcodeSemanticKey = normalizeEmojiSemanticKey(fromShortcode);
-      const shouldPreferShortcodeGlyph =
-        codeSemanticKey.length > 0 &&
-        codeSemanticKey === shortcodeSemanticKey &&
-        hasEmojiPresentationSelector(fromShortcode) &&
-        !hasEmojiPresentationSelector(fromCode);
-      if (shouldPreferShortcodeGlyph) {
-        return fromShortcode;
-      }
-      return fromCode;
-    }
-  }
-  return fromShortcode;
+export function getReactionDisplayChar(emojiName: string): string {
+  return resolveEmojiShortcodeDisplayGlyph(emojiName);
 }
 
 export interface GroupedReaction {
   key: string;
   emojiName: string;
-  emojiCode: string;
-  reactionType: Reaction["reaction_type"];
   count: number;
-  userIds: number[];
   displayChar: string;
   imageUrl?: string;
 }
 
-/** Group reactions by (emoji_name, reaction_type): { count, userIds, displayChar }. */
+function normalizedReactionCount(value: number): number {
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+}
+
+/** Group aggregate reactions by emoji_name: { count, displayChar }. */
 export function groupReactions(
-  reactions: Reaction[],
-  resolveCustomEmojiImageUrl?: (reaction: Reaction) => string | undefined,
+  reactions: MessageReactions,
+  resolveCustomEmojiImageUrl?: (emojiName: string) => string | undefined,
 ): GroupedReaction[] {
-  const map = new Map<
-    string,
-    {
-      emojiName: string;
-      emojiCode: string;
-      reactionType: Reaction["reaction_type"];
-      userIds: number[];
-      userIdSet: Set<number>;
-      displayChar: string;
-      imageUrl?: string;
+  const groups: GroupedReaction[] = [];
+  for (const [emojiName, rawCount] of Object.entries(reactions)) {
+    const count = normalizedReactionCount(rawCount);
+    if (emojiName.trim().length === 0 || count === 0) {
+      continue;
     }
-  >();
-  for (const r of reactions) {
-    const key = `${r.reaction_type}:${r.emoji_name}:${r.emoji_code}`;
-    const displayChar = getReactionDisplayChar(r);
-    const imageUrl =
-      r.reaction_type === "realm_emoji" ? resolveCustomEmojiImageUrl?.(r) : undefined;
-    const existing = map.get(key);
-    if (existing) {
-      if (!existing.userIdSet.has(r.user_id)) {
-        existing.userIdSet.add(r.user_id);
-        existing.userIds.push(r.user_id);
-      }
-      if (existing.imageUrl == null && imageUrl != null) {
-        existing.imageUrl = imageUrl;
-      }
-    } else {
-      map.set(key, {
-        emojiName: r.emoji_name,
-        emojiCode: r.emoji_code,
-        reactionType: r.reaction_type,
-        userIds: [r.user_id],
-        userIdSet: new Set([r.user_id]),
-        displayChar,
-        ...(imageUrl != null ? { imageUrl } : {}),
-      });
-    }
-  }
-  return Array.from(map.entries()).map(
-    ([key, { emojiName, emojiCode, reactionType, userIds, displayChar, imageUrl }]) => ({
-      key,
+    const imageUrl = resolveCustomEmojiImageUrl?.(emojiName);
+    groups.push({
+      key: emojiName,
       emojiName,
-      emojiCode,
-      reactionType,
-      count: userIds.length,
-      userIds,
-      displayChar,
+      count,
+      displayChar: getReactionDisplayChar(emojiName),
       ...(imageUrl != null ? { imageUrl } : {}),
-    }),
-  );
+    });
+  }
+  return groups;
 }

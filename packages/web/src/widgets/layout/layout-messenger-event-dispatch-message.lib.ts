@@ -35,10 +35,7 @@ import {
   closeAllActiveMessageNotifications,
   closeReadMessageNotifications,
 } from "./layout-notification-tags.lib";
-import type {
-  LayoutMessageFlagOp,
-  LayoutMessengerEventDispatchContext,
-} from "./layout-messenger-event-dispatch.types";
+import type { LayoutMessengerEventDispatchContext } from "./layout-messenger-event-dispatch.types";
 
 export function applyMessageCacheIndexedDb(
   event: MessengerEvent,
@@ -253,30 +250,6 @@ export function handleUpdateMessageFlags(
     ...summarizeMessageIdsForFlowDebug(messageIds),
   });
   currentChat.updateMessageFlags(messageIds, "read", "remove");
-}
-
-export function handleReaction(
-  event: MessengerEvent,
-  ctx: LayoutMessengerEventDispatchContext,
-): void {
-  if (event.type !== "reaction") return;
-  const { currentChat, activity } = ctx;
-  activity.markStale();
-  const messageId = normalizeMessageId(event.message_id);
-  const reaction =
-    event.emoji_name != null
-      ? {
-          emoji_name: event.emoji_name as string,
-          emoji_code: (event.emoji_code as string) ?? "",
-          reaction_type:
-            (event.reaction_type as "unicode_emoji" | "realm_emoji") ?? "unicode_emoji",
-          user_id: event.user_id as number,
-        }
-      : null;
-  if (!reaction) return;
-  if (messageId == null) return;
-  const op = (event.op as LayoutMessageFlagOp) ?? "add";
-  currentChat.updateMessageReaction(messageId, reaction, op);
 }
 
 export function deleteMessageIdsFromEvent(event: MessengerEvent): MessageId[] {

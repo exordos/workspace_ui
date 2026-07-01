@@ -42,7 +42,7 @@ export function isMessageForContext(
     stream_uuid?: string | null;
     subject?: string;
     topic_uuid?: string;
-    display_recipient?: string | { id: number }[];
+    display_recipient?: string | { id: UserId }[];
   },
   context: CurrentChatContext | null,
   currentUserId: UserId | null,

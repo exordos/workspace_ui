@@ -4,17 +4,18 @@
  */
 import { create } from "zustand";
 import { logStoreAction } from "~/shared/lib/logger";
+import type { UserId } from "~/shared/lib/user-id.lib";
 
-export type InvokeDmCallFromProfileHandler = (partnerUserId: number) => void;
+export type InvokeDmCallFromProfileHandler = (partnerUserId: UserId) => void;
 
 interface ChatDmCallBridgeState {
-  pendingDmCallPartnerUserId: number | null;
+  pendingDmCallPartnerUserId: UserId | null;
   invokeDmCallFromProfileHandler: InvokeDmCallFromProfileHandler | null;
 
-  setPendingDmCallPartnerUserId: (userId: number | null) => void;
+  setPendingDmCallPartnerUserId: (userId: UserId | null) => void;
   clearPendingDmCallPartner: () => void;
   setInvokeDmCallFromProfileHandler: (handler: InvokeDmCallFromProfileHandler | null) => void;
-  invokeDmCallFromProfile: (partnerUserId: number) => void;
+  invokeDmCallFromProfile: (partnerUserId: UserId) => void;
 }
 
 export const useChatDmCallBridgeStore = create<ChatDmCallBridgeState>((set, get) => ({

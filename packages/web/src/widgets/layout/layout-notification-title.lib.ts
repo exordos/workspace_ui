@@ -1,6 +1,6 @@
 import { t } from "~/i18n/i18n";
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
-import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
+import { compareUserIds, userIdsEqual, type UserId } from "~/shared/lib/user-id.lib";
 
 const DEFAULT_NOTIFICATION_SENDER = "New message";
 
@@ -56,15 +56,16 @@ function resolveDmConversationName(
     return senderName;
   }
 
-  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
-  const recipients = [...message.display_recipient].sort((left, right) => left.id - right.id);
+  const recipients = [...message.display_recipient].sort((left, right) =>
+    compareUserIds(left.id, right.id),
+  );
   const currentUserFiltered =
-    numericCurrentUserId != null
-      ? recipients.filter((recipient) => recipient.id !== numericCurrentUserId)
+    currentUserId != null
+      ? recipients.filter((recipient) => !userIdsEqual(recipient.id, currentUserId))
       : null;
   const oneToOneFallback =
     currentUserFiltered == null && recipients.length === 2
-      ? recipients.filter((recipient) => recipient.id !== message.sender_id)
+      ? recipients.filter((recipient) => !userIdsEqual(recipient.id, message.sender_id))
       : null;
   const targets =
     currentUserFiltered != null && currentUserFiltered.length > 0

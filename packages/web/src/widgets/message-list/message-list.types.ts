@@ -1,9 +1,4 @@
-import type {
-  MessageReactionPayload,
-  MockMessage,
-  Reaction,
-  RealmEmoji,
-} from "~/shared/api/messenger.types";
+import type { MessageReactionPayload, MockMessage, RealmEmoji } from "~/shared/api/messenger.types";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 import type { MessageBubbleCallbacks } from "./message-bubble.types";
@@ -43,7 +38,7 @@ export interface MessageListSenderGroupProps {
   mediaGallery: MessageMediaGallery;
   customEmojis?: RealmEmoji[];
   onEmojiPickerOpen?: () => void;
-  resolveCustomEmojiImageUrl?: (reaction: Reaction) => string | undefined;
+  resolveCustomEmojiImageUrl?: (emojiName: string) => string | undefined;
   resolveCustomEmojiShortcodeImageUrl?: (shortcode: string) => string | undefined;
   /** Show topic label next to sender name in stream messages. */
   showTopicInSenderName?: boolean;

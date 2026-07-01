@@ -1,4 +1,4 @@
-import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
+import { userIdsEqual, type UserId } from "~/shared/lib/user-id.lib";
 import { buildDmTypingChatKey, buildStreamTypingChatKey } from "./typing-key";
 
 interface ResolveTypingEventRouteInput {
@@ -26,10 +26,8 @@ export function resolveTypingEventRoute(input: ResolveTypingEventRouteInput): Ty
     return null;
   }
 
-  const numericCurrentUserId = numericUserIdOrNull(input.currentUserId);
-
   // Ignore self-echo typing events to avoid local indicator noise.
-  if (numericCurrentUserId != null && input.senderUserId === numericCurrentUserId) {
+  if (input.currentUserId != null && userIdsEqual(input.senderUserId, input.currentUserId)) {
     return null;
   }
 

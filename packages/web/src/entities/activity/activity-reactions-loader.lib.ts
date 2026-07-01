@@ -1,8 +1,7 @@
 /**
  * Shared reactions bootstrap/refresh for ActivityPage.
  *
- * Waits for currentUserId before fetch — avoids has:reaction-only narrow that returns
- * unrelated messages and is replaced with an empty sender-filtered page.
+ * Waits for currentUserId before fetch so the local cache can keep ownership checks stable.
  */
 import {
   hydrateActivityMessagesFromCache,
@@ -17,7 +16,7 @@ import {
 import { useUsersStore } from "~/entities/user/user.model";
 import { createLogger } from "~/shared/lib/logger";
 import { runInFlightDeduped } from "~/shared/lib/request-lifecycle.lib";
-import { numericUserIdOrNull, userIdStorageKey, type UserId } from "~/shared/lib/user-id.lib";
+import { userIdStorageKey, type UserId } from "~/shared/lib/user-id.lib";
 import { STARRED_SUMMARY_PAGE_SIZE } from "./activity-starred-loader.lib";
 
 const log = createLogger("activity:reactions-loader");
@@ -56,14 +55,13 @@ export async function ensureReactionsLoaded(options: EnsureReactionsLoadedOption
   } = options;
 
   const store = useActivityStore.getState();
-  const numericCurrentUserId = numericUserIdOrNull(currentUserId);
-  if (numericCurrentUserId == null) {
+  if (currentUserId == null) {
     store.startFilterRequest("reactions", false);
     return;
   }
 
   const instanceKey = currentInstanceId ?? "none";
-  const requestKey = `${instanceKey}:activity:reactions:${userIdStorageKey(numericCurrentUserId)}:newest:${pageSize}`;
+  const requestKey = `${instanceKey}:activity:reactions:${userIdStorageKey(currentUserId)}:newest:${pageSize}`;
   const orgContext = captureActiveOrgRequestContext();
   await runInFlightDeduped(requestKey, async () => {
     throwIfAbortedOrStale(signal, orgContext);
@@ -80,7 +78,7 @@ export async function ensureReactionsLoaded(options: EnsureReactionsLoadedOption
       const cached = await hydrateActivityMessagesFromCache(
         currentInstanceId,
         "reactions",
-        numericCurrentUserId,
+        currentUserId,
         pageSize,
       );
       throwIfAbortedOrStale(signal, orgContext);
@@ -101,7 +99,7 @@ export async function ensureReactionsLoaded(options: EnsureReactionsLoadedOption
     try {
       const page = await fetchActivityMessagesPageWithPersist(
         "reactions",
-        numericCurrentUserId,
+        currentUserId,
         "newest",
         pageSize,
         { signal },

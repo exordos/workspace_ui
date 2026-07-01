@@ -370,7 +370,7 @@ function messageFromWorkspaceEventPayload(
     type: "stream",
     stream_uuid: streamUuid,
     flags: read ? ["read"] : [],
-    reactions: [],
+    reactions: {},
   };
 }
 
@@ -723,7 +723,7 @@ function messageFromRealtimeFrame(
     type: readOptionalString(messageValue.type) ?? "stream",
     stream_uuid: streamUuid,
     flags: readStringArray(messageValue.flags) ?? (read ? ["read"] : []),
-    reactions: [],
+    reactions: {},
   };
 }
 

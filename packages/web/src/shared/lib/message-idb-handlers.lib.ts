@@ -9,7 +9,6 @@ import {
   moveTopicToStreamInCache,
   patchMessageContentInCache,
   patchMessageFlagsInCache,
-  patchMessageReactionInCache,
   putSingleMessage,
 } from "~/shared/lib/message-cache-db";
 import { chatKeyFromRawMessage } from "~/shared/lib/message-cache-keys.lib";
@@ -63,27 +62,6 @@ export async function mirrorMessengerMessagesReadToIndexedDb(options: {
     flag: "read",
     op: "add",
   });
-}
-
-export async function mirrorMessengerReactionToIndexedDb(options: {
-  instanceId: string;
-  event: MessengerEvent;
-}): Promise<void> {
-  const messageId = normalizeMessageId(options.event.message_id);
-  const reaction =
-    options.event.emoji_name != null
-      ? {
-          emoji_name: options.event.emoji_name as string,
-          emoji_code: (options.event.emoji_code as string) ?? "",
-          reaction_type:
-            (options.event.reaction_type as "unicode_emoji" | "realm_emoji") ?? "unicode_emoji",
-          user_id: options.event.user_id as number,
-        }
-      : null;
-  if (!reaction) return;
-  if (messageId == null) return;
-  const op = (options.event.op as "add" | "remove") ?? "add";
-  await patchMessageReactionInCache({ instanceId: options.instanceId, messageId, reaction, op });
 }
 
 export function resolveDeleteMessageIdsFromMessengerEvent(event: MessengerEvent): MessageId[] {

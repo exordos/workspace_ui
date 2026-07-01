@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import type { UserId } from "~/shared/lib/user-id.lib";
 import {
   sendStreamTypingStart,
   sendStreamTypingStop,
@@ -8,7 +9,7 @@ import {
 import { resolveComposerTypingTransition, resolveTypingIdleTransition } from "./typing-transition";
 
 type ComposerTypingTarget =
-  | { kind: "dm"; userIds: number[] }
+  | { kind: "dm"; userIds: UserId[] }
   | { kind: "stream"; streamId: string; topic: string };
 
 function startTyping(target: ComposerTypingTarget): void {

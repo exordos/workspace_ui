@@ -1,11 +1,11 @@
 import type { MockMessage } from "~/shared/api/messenger.types";
 import type { MessageId } from "~/shared/lib/message-id.lib";
-import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
+import type { UserId } from "~/shared/lib/user-id.lib";
 
 export type OutgoingMessageTarget =
   | {
       mode: "dm";
-      recipientIds: number[];
+      recipientIds: UserId[];
     }
   | {
       mode: "stream";
@@ -28,7 +28,7 @@ export function buildOptimisticOutgoingMessage(
   input: BuildOptimisticOutgoingMessageInput,
 ): MockMessage {
   const timestamp = input.nowSec ?? Math.floor(Date.now() / 1000);
-  const numericSenderId = numericUserIdOrNull(input.senderId) ?? 0;
+  const legacySenderId = typeof input.senderId === "number" ? input.senderId : 0;
   const senderUuid = typeof input.senderId === "string" ? input.senderId : undefined;
   const authorFields =
     senderUuid != null ? { author_uuid: senderUuid, sender_uuid: senderUuid } : {};
@@ -36,7 +36,7 @@ export function buildOptimisticOutgoingMessage(
   if (input.target.mode === "dm") {
     return {
       id: input.id,
-      sender_id: numericSenderId,
+      sender_id: legacySenderId,
       ...authorFields,
       is_own: true,
       sender_full_name: input.senderFullName,
@@ -53,7 +53,7 @@ export function buildOptimisticOutgoingMessage(
 
   return {
     id: input.id,
-    sender_id: numericSenderId,
+    sender_id: legacySenderId,
     ...authorFields,
     is_own: true,
     sender_full_name: input.senderFullName,

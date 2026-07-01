@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback } from "react";
 import { t } from "~/i18n/i18n";
-import type { MockMessage, Reaction, RealmEmoji } from "~/shared/api/messenger.types";
+import type { MockMessage, RealmEmoji } from "~/shared/api/messenger.types";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import { normalizeEmojiShortcodeName } from "~/shared/lib/emoji-shortcodes.lib";
 import { createLogger } from "~/shared/lib/logger";
@@ -186,17 +186,6 @@ export const MessageListInner: React.FC<MessageListProps> = ({
       });
   }, []);
 
-  const customEmojiById = useMemo(() => {
-    const map = new Map<string, RealmEmoji>();
-    for (const emoji of customEmojis) {
-      const id = emoji.id.trim();
-      if (id.length > 0) {
-        map.set(id, emoji);
-      }
-    }
-    return map;
-  }, [customEmojis]);
-
   const customEmojiByName = useMemo(() => {
     const map = new Map<string, RealmEmoji>();
     for (const emoji of customEmojis) {
@@ -221,10 +210,10 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     [messages],
   );
 
-  const hasRealmEmojiReactions = useMemo(
+  const hasMessageReactions = useMemo(
     () =>
       messages.some((message) =>
-        message.reactions?.some((reaction) => reaction.reaction_type === "realm_emoji"),
+        Object.values(message.reactions ?? {}).some((count) => Number.isFinite(count) && count > 0),
       ),
     [messages],
   );
@@ -306,25 +295,19 @@ export const MessageListInner: React.FC<MessageListProps> = ({
   const isLastUnreadNearViewportBottom = useCallback((_root: HTMLElement): boolean => true, []);
 
   useEffect(() => {
-    if (!hasMarkdownEmojiShortcodes && !hasRealmEmojiReactions) {
+    if (!hasMarkdownEmojiShortcodes && !hasMessageReactions) {
       return;
     }
     ensureCustomEmojisLoaded();
-  }, [ensureCustomEmojisLoaded, hasMarkdownEmojiShortcodes, hasRealmEmojiReactions]);
+  }, [ensureCustomEmojisLoaded, hasMarkdownEmojiShortcodes, hasMessageReactions]);
 
   const resolveCustomEmojiImageUrl = useCallback(
-    (reaction: Reaction): string | undefined => {
-      if (reaction.reaction_type !== "realm_emoji") {
-        return undefined;
-      }
-      const byCode = customEmojiById.get(reaction.emoji_code.trim());
-      if (byCode != null) {
-        return byCode.imgUrl;
-      }
-      const byName = customEmojiByName.get(normalizeEmojiShortcodeName(reaction.emoji_name));
-      return byName?.imgUrl;
+    (emojiName: string): string | undefined => {
+      const normalized = normalizeEmojiShortcodeName(emojiName);
+      if (normalized.length === 0) return undefined;
+      return customEmojiByName.get(normalized)?.imgUrl;
     },
-    [customEmojiById, customEmojiByName],
+    [customEmojiByName],
   );
 
   const resolveCustomEmojiShortcodeImageUrl = useCallback(

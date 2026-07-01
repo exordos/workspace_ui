@@ -5,18 +5,20 @@
  * notifications are therefore local/realtime-consumer-only until a new backend contract exists.
  */
 
-export async function sendTypingStart(_userIds: number[]): Promise<void> {
-  return undefined;
+import type { UserId } from "~/shared/lib/user-id.lib";
+
+export function sendTypingStart(_userIds: UserId[]): Promise<void> {
+  return Promise.resolve();
 }
 
-export async function sendTypingStop(_userIds: number[]): Promise<void> {
-  return undefined;
+export function sendTypingStop(_userIds: UserId[]): Promise<void> {
+  return Promise.resolve();
 }
 
-export async function sendStreamTypingStart(_streamUuid: string, _topic: string): Promise<void> {
-  return undefined;
+export function sendStreamTypingStart(_streamUuid: string, _topic: string): Promise<void> {
+  return Promise.resolve();
 }
 
-export async function sendStreamTypingStop(_streamUuid: string, _topic: string): Promise<void> {
-  return undefined;
+export function sendStreamTypingStop(_streamUuid: string, _topic: string): Promise<void> {
+  return Promise.resolve();
 }
