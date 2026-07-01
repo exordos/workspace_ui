@@ -37,7 +37,7 @@ describe("uploadComposerFiles", () => {
   });
 
   it("rejects oversized files before upload starts", async () => {
-    const oversizedPayload = new Uint8Array(26 * 1024 * 1024);
+    const oversizedPayload = new Uint8Array(51 * 1024 * 1024);
     const files = [new File([oversizedPayload], "large.bin", { type: "application/octet-stream" })];
     const uploadFile = vi.fn<(file: File) => Promise<string>>();
 

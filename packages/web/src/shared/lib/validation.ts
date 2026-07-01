@@ -70,7 +70,7 @@ export function detectImageMime(buffer: ArrayBuffer): string | null {
   return null;
 }
 
-const MAX_FILE_SIZE_MB = 25;
+const MAX_FILE_SIZE_MB = 50;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 export function validateFileUpload(file: File): { valid: boolean; error?: string } {
