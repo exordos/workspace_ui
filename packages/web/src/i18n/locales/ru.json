@@ -675,7 +675,10 @@
     "noResults": "Ничего не найдено",
     "filterStream": "Канал",
     "filterSender": "Отправитель",
-    "filterDate": "Дата"
+    "filterDate": "Дата",
+    "workspaceUnsupportedPlaceholder": "Поиск Workspace недоступен",
+    "workspaceUnsupportedTitle": "Поиск Workspace пока недоступен",
+    "workspaceUnsupportedDescription": "Поиск сообщений включим после готовности серверного поиска."
   },
   "notifications": {
     "notifications": "Уведомления",

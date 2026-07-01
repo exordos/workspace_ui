@@ -127,7 +127,10 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   const currentServerLabel = useMemo(
     () =>
       currentWorkspaceSession != null
-        ? getInstanceLabel(currentWorkspaceSession.organizationOrigin, currentWorkspaceSession.login)
+        ? getInstanceLabel(
+            currentWorkspaceSession.organizationOrigin,
+            currentWorkspaceSession.login,
+          )
         : currentInstance
           ? getInstanceLabel(currentInstance.realm, currentInstance.email)
           : "",
@@ -380,13 +383,13 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
     window.location.reload();
   }, [t]);
 
-  const handleLogoutFromCurrentOrg = useCallback(() => {
+  const handleLogoutFromCurrentOrg = useCallback(async () => {
     if (currentWorkspaceSession != null) {
       const confirmed = window.confirm(
         t("auth.logoutFromOrgConfirm", { server: currentServerLabel }),
       );
       if (!confirmed) return;
-      removeWorkspaceSession(currentWorkspaceSession.accountId);
+      await removeWorkspaceSession(currentWorkspaceSession.accountId);
       closeDrawer();
       return;
     }

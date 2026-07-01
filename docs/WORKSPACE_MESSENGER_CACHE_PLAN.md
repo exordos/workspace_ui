@@ -292,6 +292,12 @@ expiresAt;
 backend contract страницы вокруг сообщения; обычный `page_marker` это не
 заменяет.
 
+Текущий статус Phase 6: реализуемыми считаются только IndexedDB primitives для
+`searchResults` и защита UI от смешивания старого Zulip search с Workspace path.
+Phase 6 нельзя считать полностью закрытой, пока backend не даст server-side
+search contract и отдельный page-around-message contract для открытия окна
+вокруг `messageUuid`.
+
 ## Agent phases
 
 Каждая фаза должна быть отдельной задачей для саб-агента. Оркестратор передает
@@ -450,6 +456,11 @@ Owner: realtime-cache agent.
 ### Phase 6. Search and message anchors
 
 Owner: search-anchor-cache agent.
+
+Статус: partial. В текущей итерации допустимы `searchResults` helpers,
+TTL-очистка и UI-запрет на legacy Zulip search внутри Workspace route. Полное
+подключение поиска и anchors остается deferred до server search и
+page-around-message contract.
 
 Задачи:
 

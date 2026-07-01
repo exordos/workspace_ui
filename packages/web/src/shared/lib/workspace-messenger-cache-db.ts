@@ -4,7 +4,7 @@ import {
 } from "./workspace-messenger-cache-db-upgrade.lib";
 
 const DB_NAME = "workspace-messenger-cache-v1";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const IDB_DELETE_BLOCKED_TIMEOUT_MS = 3_000;
 const DEFAULT_MESSAGE_BUCKET_RETENTION = 500;
 const ORDER_KEY_SEPARATOR = "|";
@@ -23,6 +23,7 @@ export interface WorkspaceMessengerCacheOwnerMetaRow {
 
 export interface WorkspaceMessengerCachedStream {
   uuid: string;
+  lastMessageUuid?: string | null;
   updatedAt?: string | null;
 }
 
@@ -32,11 +33,13 @@ export interface WorkspaceMessengerStreamCacheRow {
   streamUuid: string;
   stream: WorkspaceMessengerCachedStream;
   updatedAt: string;
+  cacheUpdatedAt: number;
 }
 
 export interface WorkspaceMessengerCachedTopic {
   uuid: string;
   streamUuid: string;
+  lastMessageUuid?: string | null;
   updatedAt?: string | null;
 }
 
@@ -47,6 +50,7 @@ export interface WorkspaceMessengerTopicCacheRow {
   streamUuid: string;
   topic: WorkspaceMessengerCachedTopic;
   updatedAt: string;
+  cacheUpdatedAt: number;
 }
 
 export interface WorkspaceMessengerCachedConversation {
@@ -71,10 +75,12 @@ export interface WorkspaceMessengerConversationCacheRow {
   lastMessageUuid: string | null;
   conversation: WorkspaceMessengerCachedConversation;
   updatedAt: string;
+  cacheUpdatedAt: number;
 }
 
 export interface WorkspaceMessengerCachedFolder {
   uuid: string;
+  items?: WorkspaceMessengerCachedFolderItem[];
   updatedAt?: string | null;
 }
 
@@ -84,6 +90,7 @@ export interface WorkspaceMessengerFolderCacheRow {
   folderUuid: string;
   folder: WorkspaceMessengerCachedFolder;
   updatedAt: string;
+  cacheUpdatedAt: number;
 }
 
 export interface WorkspaceMessengerCachedFolderItem {
@@ -109,6 +116,7 @@ export interface WorkspaceMessengerFolderItemCacheRow {
   pinnedAt: string | null;
   folderItem: WorkspaceMessengerCachedFolderItem;
   updatedAt: string;
+  cacheUpdatedAt: number;
 }
 
 export interface WorkspaceMessengerCachedUser {
@@ -122,6 +130,23 @@ export interface WorkspaceMessengerUserCacheRow {
   userUuid: string;
   user: WorkspaceMessengerCachedUser;
   updatedAt: string;
+  cacheUpdatedAt: number;
+}
+
+export interface WorkspaceMessengerCachedStreamBinding {
+  uuid: string;
+  streamUuid: string;
+  updatedAt?: string | null;
+}
+
+export interface WorkspaceMessengerStreamBindingCacheRow {
+  id: string;
+  ownerKey: string;
+  streamBindingUuid: string;
+  streamUuid: string;
+  streamBinding: WorkspaceMessengerCachedStreamBinding;
+  updatedAt: string;
+  cacheUpdatedAt: number;
 }
 
 export interface WorkspaceMessengerCachedMessage {
@@ -192,6 +217,7 @@ export interface WorkspaceMessengerCatalogCacheSnapshot {
   folders: WorkspaceMessengerCachedFolder[];
   folderItems: WorkspaceMessengerCachedFolderItem[];
   users: WorkspaceMessengerCachedUser[];
+  streamBindings: WorkspaceMessengerCachedStreamBinding[];
   realtimeCursor: WorkspaceMessengerRealtimeCursorRow | null;
 }
 
@@ -202,7 +228,13 @@ export interface WorkspaceMessengerCatalogCacheWriteSnapshot {
   folders?: readonly WorkspaceMessengerCachedFolder[];
   folderItems?: readonly WorkspaceMessengerCachedFolderItem[];
   users?: readonly WorkspaceMessengerCachedUser[];
+  streamBindings?: readonly WorkspaceMessengerCachedStreamBinding[];
   lastHydratedAt?: number | null;
+}
+
+export interface WorkspaceMessengerCatalogCacheWriteOptions {
+  mode?: "partial" | "reconcile";
+  reconcileFence?: number;
 }
 
 export interface WorkspaceMessengerConversationMessagePage {
@@ -233,6 +265,7 @@ export interface WorkspaceMessengerSearchResultWrite {
 }
 
 let dbPromise: Promise<IDBDatabase> | null = null;
+let lastCatalogCacheUpdatedAt = 0;
 
 function idbError(reason: unknown): Error {
   return reason instanceof Error ? reason : new Error("indexedDB error", { cause: reason });
@@ -259,6 +292,16 @@ function transactionDone(transaction: IDBTransaction): Promise<void> {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function nextCatalogCacheUpdatedAt(): number {
+  const value = Math.max(Date.now(), lastCatalogCacheUpdatedAt + 1);
+  lastCatalogCacheUpdatedAt = value;
+  return value;
+}
+
+export function createMessengerCatalogCacheReconcileFence(): number {
+  return nextCatalogCacheUpdatedAt();
 }
 
 function cacheRowId(ownerKey: string, id: string): string {
@@ -309,6 +352,7 @@ function emptyCatalogSnapshot(): WorkspaceMessengerCatalogCacheSnapshot {
     folders: [],
     folderItems: [],
     users: [],
+    streamBindings: [],
     realtimeCursor: null,
   };
 }
@@ -336,6 +380,7 @@ export function openWorkspaceMessengerCacheDb(): Promise<IDBDatabase> {
 /** Test helper: resets singleton after database deletion. */
 export function resetWorkspaceMessengerCacheDbSingletonForTests(): void {
   dbPromise = null;
+  lastCatalogCacheUpdatedAt = 0;
 }
 
 /** Drops the Workspace messenger cache database and resets the open-connection singleton. */
@@ -386,6 +431,7 @@ export async function deleteWorkspaceMessengerOwnerCache(ownerKey: string): Prom
       stores.folders,
       stores.folderItems,
       stores.users,
+      stores.streamBindings,
       stores.messages,
       stores.messageBuckets,
       stores.messageWindows,
@@ -432,6 +478,28 @@ async function readRowIdsByOwner(
   return rows.map((row) => row.id);
 }
 
+async function readRowsByIds<TRow extends { id: string }>(
+  db: IDBDatabase,
+  storeName: string,
+  ids: readonly string[],
+): Promise<Map<string, TRow>> {
+  if (ids.length === 0) return new Map();
+
+  const transaction = db.transaction(storeName, "readonly");
+  const store = transaction.objectStore(storeName);
+  const rows = (await Promise.all(ids.map((id) => requestToPromise(store.get(id))))) as (
+    | TRow
+    | undefined
+  )[];
+  const map = new Map<string, TRow>();
+  for (const row of rows) {
+    if (row != null) {
+      map.set(row.id, row);
+    }
+  }
+  return map;
+}
+
 async function readOwnerMeta(
   db: IDBDatabase,
   ownerKey: string,
@@ -459,6 +527,7 @@ async function readRealtimeCursor(
 function toStreamRow(
   ownerKey: string,
   stream: WorkspaceMessengerCachedStream,
+  cacheUpdatedAt: number,
 ): WorkspaceMessengerStreamCacheRow {
   return {
     id: cacheRowId(ownerKey, stream.uuid),
@@ -466,12 +535,14 @@ function toStreamRow(
     streamUuid: stream.uuid,
     stream,
     updatedAt: updatedAtOrNow(stream.updatedAt),
+    cacheUpdatedAt,
   };
 }
 
 function toTopicRow(
   ownerKey: string,
   topic: WorkspaceMessengerCachedTopic,
+  cacheUpdatedAt: number,
 ): WorkspaceMessengerTopicCacheRow {
   return {
     id: cacheRowId(ownerKey, topic.uuid),
@@ -480,12 +551,14 @@ function toTopicRow(
     streamUuid: topic.streamUuid,
     topic,
     updatedAt: updatedAtOrNow(topic.updatedAt),
+    cacheUpdatedAt,
   };
 }
 
 function toConversationRow(
   ownerKey: string,
   conversation: WorkspaceMessengerCachedConversation,
+  cacheUpdatedAt: number,
 ): WorkspaceMessengerConversationCacheRow {
   return {
     id: cacheRowId(ownerKey, conversation.id),
@@ -499,12 +572,14 @@ function toConversationRow(
     lastMessageUuid: conversation.lastMessageUuid ?? null,
     conversation,
     updatedAt: updatedAtOrNow(conversation.updatedAt),
+    cacheUpdatedAt,
   };
 }
 
 function toFolderRow(
   ownerKey: string,
   folder: WorkspaceMessengerCachedFolder,
+  cacheUpdatedAt: number,
 ): WorkspaceMessengerFolderCacheRow {
   return {
     id: cacheRowId(ownerKey, folder.uuid),
@@ -512,12 +587,14 @@ function toFolderRow(
     folderUuid: folder.uuid,
     folder,
     updatedAt: updatedAtOrNow(folder.updatedAt),
+    cacheUpdatedAt,
   };
 }
 
 function toFolderItemRow(
   ownerKey: string,
   folderItem: WorkspaceMessengerCachedFolderItem,
+  cacheUpdatedAt: number,
 ): WorkspaceMessengerFolderItemCacheRow {
   return {
     id: cacheRowId(ownerKey, folderItem.uuid),
@@ -531,12 +608,14 @@ function toFolderItemRow(
     pinnedAt: folderItem.pinnedAt ?? null,
     folderItem,
     updatedAt: updatedAtOrNow(folderItem.updatedAt),
+    cacheUpdatedAt,
   };
 }
 
 function toUserRow(
   ownerKey: string,
   user: WorkspaceMessengerCachedUser,
+  cacheUpdatedAt: number,
 ): WorkspaceMessengerUserCacheRow {
   return {
     id: cacheRowId(ownerKey, user.uuid),
@@ -544,6 +623,23 @@ function toUserRow(
     userUuid: user.uuid,
     user,
     updatedAt: updatedAtOrNow(user.updatedAt),
+    cacheUpdatedAt,
+  };
+}
+
+function toStreamBindingRow(
+  ownerKey: string,
+  streamBinding: WorkspaceMessengerCachedStreamBinding,
+  cacheUpdatedAt: number,
+): WorkspaceMessengerStreamBindingCacheRow {
+  return {
+    id: cacheRowId(ownerKey, streamBinding.uuid),
+    ownerKey,
+    streamBindingUuid: streamBinding.uuid,
+    streamUuid: streamBinding.streamUuid,
+    streamBinding,
+    updatedAt: updatedAtOrNow(streamBinding.updatedAt),
+    cacheUpdatedAt,
   };
 }
 
@@ -705,6 +801,261 @@ function buildWindowRow(
   };
 }
 
+function shouldUpsertCatalogRow(
+  previous: { updatedAt: string } | undefined,
+  incomingUpdatedAt: string | null | undefined,
+  options: { force?: boolean } = {},
+): boolean {
+  if (options.force === true || previous == null) return true;
+  if (incomingUpdatedAt == null) return false;
+  return incomingUpdatedAt >= previous.updatedAt;
+}
+
+async function deleteMissingCatalogRows(
+  db: IDBDatabase,
+  ownerKey: string,
+  storeName: string,
+  incomingIds: ReadonlySet<string>,
+  reconcileFence: number,
+): Promise<void> {
+  const transaction = db.transaction(storeName, "readwrite");
+  const index = transaction.objectStore(storeName).index("byOwner");
+  const request = index.openCursor(IDBKeyRange.only(ownerKey));
+
+  request.onsuccess = () => {
+    const cursor = request.result;
+    if (cursor == null) return;
+
+    const row = cursor.value as { id: string; cacheUpdatedAt?: number };
+    const cacheUpdatedAt = row.cacheUpdatedAt ?? 0;
+    if (!incomingIds.has(row.id) && cacheUpdatedAt <= reconcileFence) {
+      cursor.delete();
+    }
+    cursor.continue();
+  };
+
+  await transactionDone(transaction);
+}
+
+async function upsertStreams(
+  db: IDBDatabase,
+  ownerKey: string,
+  streams: readonly WorkspaceMessengerCachedStream[],
+  options: { force?: boolean } = {},
+): Promise<void> {
+  if (streams.length === 0) return;
+
+  const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+  const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
+  const rows = streams.map((stream) => toStreamRow(ownerKey, stream, cacheUpdatedAt));
+  const previousRows = await readRowsByIds<WorkspaceMessengerStreamCacheRow>(
+    db,
+    stores.streams,
+    rows.map((row) => row.id),
+  );
+  const transaction = db.transaction(stores.streams, "readwrite");
+  const store = transaction.objectStore(stores.streams);
+  for (const row of rows) {
+    const previous = previousRows.get(row.id);
+    if (shouldUpsertCatalogRow(previous, row.stream.updatedAt, options)) {
+      store.put(row);
+    }
+  }
+  await transactionDone(transaction);
+}
+
+async function upsertTopics(
+  db: IDBDatabase,
+  ownerKey: string,
+  topics: readonly WorkspaceMessengerCachedTopic[],
+  options: { force?: boolean } = {},
+): Promise<void> {
+  if (topics.length === 0) return;
+
+  const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+  const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
+  const rows = topics.map((topic) => toTopicRow(ownerKey, topic, cacheUpdatedAt));
+  const previousRows = await readRowsByIds<WorkspaceMessengerTopicCacheRow>(
+    db,
+    stores.topics,
+    rows.map((row) => row.id),
+  );
+  const transaction = db.transaction(stores.topics, "readwrite");
+  const store = transaction.objectStore(stores.topics);
+  for (const row of rows) {
+    const previous = previousRows.get(row.id);
+    if (shouldUpsertCatalogRow(previous, row.topic.updatedAt, options)) {
+      store.put(row);
+    }
+  }
+  await transactionDone(transaction);
+}
+
+async function upsertConversations(
+  db: IDBDatabase,
+  ownerKey: string,
+  conversations: readonly WorkspaceMessengerCachedConversation[],
+  options: { force?: boolean } = {},
+): Promise<void> {
+  if (conversations.length === 0) return;
+
+  const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+  const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
+  const rows = conversations.map((conversation) =>
+    toConversationRow(ownerKey, conversation, cacheUpdatedAt),
+  );
+  const previousRows = await readRowsByIds<WorkspaceMessengerConversationCacheRow>(
+    db,
+    stores.conversations,
+    rows.map((row) => row.id),
+  );
+  const transaction = db.transaction(stores.conversations, "readwrite");
+  const store = transaction.objectStore(stores.conversations);
+  for (const row of rows) {
+    const previous = previousRows.get(row.id);
+    if (shouldUpsertCatalogRow(previous, row.conversation.updatedAt, options)) {
+      store.put(row);
+    }
+  }
+  await transactionDone(transaction);
+}
+
+async function upsertFolders(
+  db: IDBDatabase,
+  ownerKey: string,
+  folders: readonly WorkspaceMessengerCachedFolder[],
+  options: { force?: boolean } = {},
+): Promise<void> {
+  if (folders.length === 0) return;
+
+  const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+  const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
+  const rows = folders.map((folder) => toFolderRow(ownerKey, folder, cacheUpdatedAt));
+  const previousRows = await readRowsByIds<WorkspaceMessengerFolderCacheRow>(
+    db,
+    stores.folders,
+    rows.map((row) => row.id),
+  );
+  const transaction = db.transaction(stores.folders, "readwrite");
+  const store = transaction.objectStore(stores.folders);
+  for (const row of rows) {
+    const previous = previousRows.get(row.id);
+    if (shouldUpsertCatalogRow(previous, row.folder.updatedAt, options)) {
+      store.put(row);
+    }
+  }
+  await transactionDone(transaction);
+}
+
+async function upsertFolderItems(
+  db: IDBDatabase,
+  ownerKey: string,
+  folderItems: readonly WorkspaceMessengerCachedFolderItem[],
+  options: { force?: boolean } = {},
+): Promise<void> {
+  if (folderItems.length === 0) return;
+
+  const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+  const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
+  const rows = folderItems.map((folderItem) =>
+    toFolderItemRow(ownerKey, folderItem, cacheUpdatedAt),
+  );
+  const previousRows = await readRowsByIds<WorkspaceMessengerFolderItemCacheRow>(
+    db,
+    stores.folderItems,
+    rows.map((row) => row.id),
+  );
+  const transaction = db.transaction(stores.folderItems, "readwrite");
+  const store = transaction.objectStore(stores.folderItems);
+  for (const row of rows) {
+    const previous = previousRows.get(row.id);
+    if (shouldUpsertCatalogRow(previous, row.folderItem.updatedAt, options)) {
+      store.put(row);
+    }
+  }
+  await transactionDone(transaction);
+}
+
+async function upsertUsers(
+  db: IDBDatabase,
+  ownerKey: string,
+  users: readonly WorkspaceMessengerCachedUser[],
+  options: { force?: boolean } = {},
+): Promise<void> {
+  if (users.length === 0) return;
+
+  const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+  const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
+  const rows = users.map((user) => toUserRow(ownerKey, user, cacheUpdatedAt));
+  const previousRows = await readRowsByIds<WorkspaceMessengerUserCacheRow>(
+    db,
+    stores.users,
+    rows.map((row) => row.id),
+  );
+  const transaction = db.transaction(stores.users, "readwrite");
+  const store = transaction.objectStore(stores.users);
+  for (const row of rows) {
+    const previous = previousRows.get(row.id);
+    if (shouldUpsertCatalogRow(previous, row.user.updatedAt, options)) {
+      store.put(row);
+    }
+  }
+  await transactionDone(transaction);
+}
+
+async function upsertStreamBindings(
+  db: IDBDatabase,
+  ownerKey: string,
+  streamBindings: readonly WorkspaceMessengerCachedStreamBinding[],
+  options: { force?: boolean } = {},
+): Promise<void> {
+  if (streamBindings.length === 0) return;
+
+  const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+  const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
+  const rows = streamBindings.map((streamBinding) =>
+    toStreamBindingRow(ownerKey, streamBinding, cacheUpdatedAt),
+  );
+  const previousRows = await readRowsByIds<WorkspaceMessengerStreamBindingCacheRow>(
+    db,
+    stores.streamBindings,
+    rows.map((row) => row.id),
+  );
+  const transaction = db.transaction(stores.streamBindings, "readwrite");
+  const store = transaction.objectStore(stores.streamBindings);
+  for (const row of rows) {
+    const previous = previousRows.get(row.id);
+    if (shouldUpsertCatalogRow(previous, row.streamBinding.updatedAt, options)) {
+      store.put(row);
+    }
+  }
+  await transactionDone(transaction);
+}
+
+async function writeCatalogCollection<TItem>(
+  db: IDBDatabase,
+  ownerKey: string,
+  storeName: string,
+  items: readonly TItem[] | undefined,
+  upsert: (db: IDBDatabase, ownerKey: string, items: readonly TItem[]) => Promise<void>,
+  getCacheId: (ownerKey: string, item: TItem) => string,
+  options: WorkspaceMessengerCatalogCacheWriteOptions,
+  reconcileFence: number,
+): Promise<void> {
+  if (items === undefined) return;
+
+  await upsert(db, ownerKey, items);
+  if (options.mode !== "reconcile") return;
+
+  await deleteMissingCatalogRows(
+    db,
+    ownerKey,
+    storeName,
+    new Set(items.map((item) => getCacheId(ownerKey, item))),
+    reconcileFence,
+  );
+}
+
 export async function readMessengerCatalogCache(
   ownerKey: string,
 ): Promise<WorkspaceMessengerCatalogCacheSnapshot> {
@@ -721,6 +1072,7 @@ export async function readMessengerCatalogCache(
       folderRows,
       folderItemRows,
       userRows,
+      streamBindingRows,
       realtimeCursor,
     ] = await Promise.all([
       readOwnerMeta(db, ownerKey),
@@ -730,6 +1082,7 @@ export async function readMessengerCatalogCache(
       readRowsByOwner<WorkspaceMessengerFolderCacheRow>(db, ownerKey, stores.folders),
       readRowsByOwner<WorkspaceMessengerFolderItemCacheRow>(db, ownerKey, stores.folderItems),
       readRowsByOwner<WorkspaceMessengerUserCacheRow>(db, ownerKey, stores.users),
+      readRowsByOwner<WorkspaceMessengerStreamBindingCacheRow>(db, ownerKey, stores.streamBindings),
       readRealtimeCursor(db, ownerKey),
     ]);
 
@@ -741,6 +1094,7 @@ export async function readMessengerCatalogCache(
       folders: folderRows.map((row) => row.folder),
       folderItems: folderItemRows.map((row) => row.folderItem),
       users: userRows.map((row) => row.user),
+      streamBindings: streamBindingRows.map((row) => row.streamBinding),
       realtimeCursor,
     };
   } catch {
@@ -751,41 +1105,18 @@ export async function readMessengerCatalogCache(
 export async function writeMessengerCatalogCache(
   ownerKey: string,
   snapshot: WorkspaceMessengerCatalogCacheWriteSnapshot,
+  options: WorkspaceMessengerCatalogCacheWriteOptions = {},
 ): Promise<void> {
   if (!isIndexedDBAvailable()) return;
 
   try {
     const db = await openWorkspaceMessengerCacheDb();
     const stores = WORKSPACE_MESSENGER_CACHE_STORES;
-    const [
-      streamIdsToDelete,
-      topicIdsToDelete,
-      conversationIdsToDelete,
-      folderIdsToDelete,
-      folderItemIdsToDelete,
-      userIdsToDelete,
-    ] = await Promise.all([
-      snapshot.streams === undefined ? [] : readRowIdsByOwner(db, ownerKey, stores.streams),
-      snapshot.topics === undefined ? [] : readRowIdsByOwner(db, ownerKey, stores.topics),
-      snapshot.conversations === undefined
-        ? []
-        : readRowIdsByOwner(db, ownerKey, stores.conversations),
-      snapshot.folders === undefined ? [] : readRowIdsByOwner(db, ownerKey, stores.folders),
-      snapshot.folderItems === undefined ? [] : readRowIdsByOwner(db, ownerKey, stores.folderItems),
-      snapshot.users === undefined ? [] : readRowIdsByOwner(db, ownerKey, stores.users),
-    ]);
-    const transaction = db.transaction(
-      [
-        stores.ownerMeta,
-        stores.streams,
-        stores.topics,
-        stores.conversations,
-        stores.folders,
-        stores.folderItems,
-        stores.users,
-      ],
-      "readwrite",
-    );
+    const reconcileFence =
+      options.mode === "reconcile"
+        ? (options.reconcileFence ?? createMessengerCatalogCacheReconcileFence())
+        : 0;
+    const transaction = db.transaction(stores.ownerMeta, "readwrite");
 
     transaction.objectStore(stores.ownerMeta).put({
       ownerKey,
@@ -793,55 +1124,648 @@ export async function writeMessengerCatalogCache(
       lastHydratedAt: snapshot.lastHydratedAt ?? Date.now(),
       lastCompactedAt: null,
     } satisfies WorkspaceMessengerCacheOwnerMetaRow);
+    await transactionDone(transaction);
 
-    const streamStore = transaction.objectStore(stores.streams);
-    for (const id of streamIdsToDelete) {
-      streamStore.delete(id);
-    }
-    for (const stream of snapshot.streams ?? []) {
-      streamStore.put(toStreamRow(ownerKey, stream));
-    }
+    await Promise.all([
+      writeCatalogCollection(
+        db,
+        ownerKey,
+        stores.streams,
+        snapshot.streams,
+        upsertStreams,
+        (key, stream) => cacheRowId(key, stream.uuid),
+        options,
+        reconcileFence,
+      ),
+      writeCatalogCollection(
+        db,
+        ownerKey,
+        stores.topics,
+        snapshot.topics,
+        upsertTopics,
+        (key, topic) => cacheRowId(key, topic.uuid),
+        options,
+        reconcileFence,
+      ),
+      writeCatalogCollection(
+        db,
+        ownerKey,
+        stores.conversations,
+        snapshot.conversations,
+        upsertConversations,
+        (key, conversation) => cacheRowId(key, conversation.id),
+        options,
+        reconcileFence,
+      ),
+      writeCatalogCollection(
+        db,
+        ownerKey,
+        stores.folders,
+        snapshot.folders,
+        upsertFolders,
+        (key, folder) => cacheRowId(key, folder.uuid),
+        options,
+        reconcileFence,
+      ),
+      writeCatalogCollection(
+        db,
+        ownerKey,
+        stores.folderItems,
+        snapshot.folderItems,
+        upsertFolderItems,
+        (key, folderItem) => cacheRowId(key, folderItem.uuid),
+        options,
+        reconcileFence,
+      ),
+      writeCatalogCollection(
+        db,
+        ownerKey,
+        stores.users,
+        snapshot.users,
+        upsertUsers,
+        (key, user) => cacheRowId(key, user.uuid),
+        options,
+        reconcileFence,
+      ),
+      writeCatalogCollection(
+        db,
+        ownerKey,
+        stores.streamBindings,
+        snapshot.streamBindings,
+        upsertStreamBindings,
+        (key, streamBinding) => cacheRowId(key, streamBinding.uuid),
+        options,
+        reconcileFence,
+      ),
+    ]);
+  } catch {
+    return;
+  }
+}
 
+export async function upsertMessengerStreamsCache(
+  ownerKey: string,
+  streams: readonly WorkspaceMessengerCachedStream[],
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    await upsertStreams(db, ownerKey, streams);
+  } catch {
+    return;
+  }
+}
+
+export async function upsertMessengerTopicsCache(
+  ownerKey: string,
+  topics: readonly WorkspaceMessengerCachedTopic[],
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    await upsertTopics(db, ownerKey, topics);
+  } catch {
+    return;
+  }
+}
+
+export async function upsertMessengerConversationsCache(
+  ownerKey: string,
+  conversations: readonly WorkspaceMessengerCachedConversation[],
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    await upsertConversations(db, ownerKey, conversations);
+  } catch {
+    return;
+  }
+}
+
+export async function upsertMessengerFolderSnapshotsCache(
+  ownerKey: string,
+  folders: readonly WorkspaceMessengerCachedFolder[],
+  folderItems: readonly WorkspaceMessengerCachedFolderItem[] = [],
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    await Promise.all([
+      upsertFolders(db, ownerKey, folders),
+      upsertFolderItems(db, ownerKey, folderItems),
+    ]);
+  } catch {
+    return;
+  }
+}
+
+export async function upsertMessengerUsersCache(
+  ownerKey: string,
+  users: readonly WorkspaceMessengerCachedUser[],
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    await upsertUsers(db, ownerKey, users);
+  } catch {
+    return;
+  }
+}
+
+export async function upsertMessengerStreamBindingsCache(
+  ownerKey: string,
+  streamBindings: readonly WorkspaceMessengerCachedStreamBinding[],
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    await upsertStreamBindings(db, ownerKey, streamBindings);
+  } catch {
+    return;
+  }
+}
+
+function folderWithRemovedItems(
+  folder: WorkspaceMessengerCachedFolder,
+  shouldRemove: (item: WorkspaceMessengerCachedFolderItem) => boolean,
+): WorkspaceMessengerCachedFolder {
+  const folderWithItems = folder as WorkspaceMessengerCachedFolder & {
+    items?: WorkspaceMessengerCachedFolderItem[];
+  };
+  if (folderWithItems.items == null) return folder;
+  return {
+    ...folderWithItems,
+    items: folderWithItems.items.filter((item) => !shouldRemove(item)),
+  };
+}
+
+export async function deleteMessengerStreamCatalogCache(
+  ownerKey: string,
+  streamUuid: string,
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+    const [topicRows, conversationRows, streamBindingRows, folderItemRows, folderRows] =
+      await Promise.all([
+        readRowsByOwner<WorkspaceMessengerTopicCacheRow>(db, ownerKey, stores.topics),
+        readRowsByOwner<WorkspaceMessengerConversationCacheRow>(db, ownerKey, stores.conversations),
+        readRowsByOwner<WorkspaceMessengerStreamBindingCacheRow>(
+          db,
+          ownerKey,
+          stores.streamBindings,
+        ),
+        readRowsByOwner<WorkspaceMessengerFolderItemCacheRow>(db, ownerKey, stores.folderItems),
+        readRowsByOwner<WorkspaceMessengerFolderCacheRow>(db, ownerKey, stores.folders),
+      ]);
+    const folderItemIdsToDelete = folderItemRows
+      .filter((row) => row.streamUuid === streamUuid)
+      .map((row) => row.id);
+    const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
+    const transaction = db.transaction(
+      [
+        stores.streams,
+        stores.topics,
+        stores.conversations,
+        stores.streamBindings,
+        stores.folderItems,
+        stores.folders,
+      ],
+      "readwrite",
+    );
+    transaction.objectStore(stores.streams).delete(cacheRowId(ownerKey, streamUuid));
     const topicStore = transaction.objectStore(stores.topics);
-    for (const id of topicIdsToDelete) {
-      topicStore.delete(id);
+    for (const row of topicRows) {
+      if (row.streamUuid === streamUuid) {
+        topicStore.delete(row.id);
+      }
     }
-    for (const topic of snapshot.topics ?? []) {
-      topicStore.put(toTopicRow(ownerKey, topic));
-    }
-
     const conversationStore = transaction.objectStore(stores.conversations);
-    for (const id of conversationIdsToDelete) {
-      conversationStore.delete(id);
+    for (const row of conversationRows) {
+      if (row.streamUuid === streamUuid) {
+        conversationStore.delete(row.id);
+      }
     }
-    for (const conversation of snapshot.conversations ?? []) {
-      conversationStore.put(toConversationRow(ownerKey, conversation));
+    const streamBindingStore = transaction.objectStore(stores.streamBindings);
+    for (const row of streamBindingRows) {
+      if (row.streamUuid === streamUuid) {
+        streamBindingStore.delete(row.id);
+      }
     }
-
-    const folderStore = transaction.objectStore(stores.folders);
-    for (const id of folderIdsToDelete) {
-      folderStore.delete(id);
-    }
-    for (const folder of snapshot.folders ?? []) {
-      folderStore.put(toFolderRow(ownerKey, folder));
-    }
-
     const folderItemStore = transaction.objectStore(stores.folderItems);
     for (const id of folderItemIdsToDelete) {
       folderItemStore.delete(id);
     }
-    for (const folderItem of snapshot.folderItems ?? []) {
-      folderItemStore.put(toFolderItemRow(ownerKey, folderItem));
+    const folderStore = transaction.objectStore(stores.folders);
+    for (const row of folderRows) {
+      folderStore.put({
+        ...row,
+        cacheUpdatedAt,
+        folder: folderWithRemovedItems(row.folder, (item) => item.streamUuid === streamUuid),
+      });
+    }
+    await transactionDone(transaction);
+  } catch {
+    return;
+  }
+}
+
+export async function deleteMessengerTopicCatalogCache(
+  ownerKey: string,
+  topicUuid: string,
+  streamUuid: string,
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+    const conversationId = topicConversationId(streamUuid, topicUuid);
+    const transaction = db.transaction([stores.topics, stores.conversations], "readwrite");
+    transaction.objectStore(stores.topics).delete(cacheRowId(ownerKey, topicUuid));
+    transaction.objectStore(stores.conversations).delete(cacheRowId(ownerKey, conversationId));
+    await transactionDone(transaction);
+  } catch {
+    return;
+  }
+}
+
+export async function deleteMessengerFolderCatalogCache(
+  ownerKey: string,
+  folderUuid: string,
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+    const folderItems = await readRowsByOwner<WorkspaceMessengerFolderItemCacheRow>(
+      db,
+      ownerKey,
+      stores.folderItems,
+    );
+    const transaction = db.transaction([stores.folders, stores.folderItems], "readwrite");
+    transaction.objectStore(stores.folders).delete(cacheRowId(ownerKey, folderUuid));
+    const folderItemStore = transaction.objectStore(stores.folderItems);
+    for (const row of folderItems) {
+      if (row.folderUuid === folderUuid) {
+        folderItemStore.delete(row.id);
+      }
+    }
+    await transactionDone(transaction);
+  } catch {
+    return;
+  }
+}
+
+export async function deleteMessengerFolderItemCatalogCache(
+  ownerKey: string,
+  folderItemUuid: string,
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+    const folderRows = await readRowsByOwner<WorkspaceMessengerFolderCacheRow>(
+      db,
+      ownerKey,
+      stores.folders,
+    );
+    const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
+    const transaction = db.transaction([stores.folderItems, stores.folders], "readwrite");
+    transaction.objectStore(stores.folderItems).delete(cacheRowId(ownerKey, folderItemUuid));
+    const folderStore = transaction.objectStore(stores.folders);
+    for (const row of folderRows) {
+      folderStore.put({
+        ...row,
+        cacheUpdatedAt,
+        folder: folderWithRemovedItems(row.folder, (item) => item.uuid === folderItemUuid),
+      });
+    }
+    await transactionDone(transaction);
+  } catch {
+    return;
+  }
+}
+
+function messageWindowAfterBucketDelete(
+  ownerKey: string,
+  conversationId: string,
+  remainingBuckets: readonly WorkspaceMessengerMessageBucketRow[],
+  previous: WorkspaceMessengerMessageWindowRow | null,
+): WorkspaceMessengerMessageWindowRow {
+  const sortedBuckets = sortBucketsAscending([...remainingBuckets]);
+  return {
+    id: cacheRowId(ownerKey, conversationId),
+    ownerKey,
+    conversationId,
+    oldestMessageUuid: sortedBuckets[0]?.messageUuid ?? null,
+    newestMessageUuid: sortedBuckets[sortedBuckets.length - 1]?.messageUuid ?? null,
+    nextPageMarker: previous?.nextPageMarker ?? null,
+    hasMore: previous?.hasMore ?? false,
+    reachedOldest: previous?.reachedOldest ?? false,
+    reachedNewest: previous?.reachedNewest ?? true,
+    hasGaps: previous?.hasGaps ?? false,
+    windowSize: sortedBuckets.length,
+    lastSyncedAt: Date.now(),
+  };
+}
+
+export async function deleteCachedTopicMessageBuckets(
+  ownerKey: string,
+  streamUuid: string,
+  topicUuid: string,
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const topicConversation = topicConversationId(streamUuid, topicUuid);
+    const streamConversation = streamConversationId(streamUuid);
+    const [topicBuckets, streamBuckets, previousStreamWindow] = await Promise.all([
+      readConversationBuckets(db, ownerKey, topicConversation),
+      readConversationBuckets(db, ownerKey, streamConversation),
+      readMessageWindowRow(db, ownerKey, streamConversation),
+    ]);
+    const candidateMessageUuids = [
+      ...new Set([...topicBuckets, ...streamBuckets].map((bucket) => bucket.messageUuid)),
+    ];
+    const messageRows = await readMessageRowsByUuid(db, ownerKey, candidateMessageUuids);
+    const bucketIdsToDelete = new Set<string>();
+    const deletedMessageUuids = new Set<string>();
+    for (const bucket of topicBuckets) {
+      bucketIdsToDelete.add(bucket.id);
+      deletedMessageUuids.add(bucket.messageUuid);
+    }
+    for (const bucket of streamBuckets) {
+      const message = messageRows.get(bucket.messageUuid)?.message;
+      if (message?.streamUuid === streamUuid && message.topicUuid === topicUuid) {
+        bucketIdsToDelete.add(bucket.id);
+        deletedMessageUuids.add(bucket.messageUuid);
+      }
+    }
+    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+    if (bucketIdsToDelete.size === 0) {
+      const transaction = db.transaction(stores.messageWindows, "readwrite");
+      transaction
+        .objectStore(stores.messageWindows)
+        .delete(cacheRowId(ownerKey, topicConversation));
+      await transactionDone(transaction);
+      return;
     }
 
-    const userStore = transaction.objectStore(stores.users);
-    for (const id of userIdsToDelete) {
-      userStore.delete(id);
+    const allBucketsByMessage = new Map<string, WorkspaceMessengerMessageBucketRow[]>();
+    await Promise.all(
+      [...deletedMessageUuids].map(async (messageUuid) => {
+        allBucketsByMessage.set(
+          messageUuid,
+          await readMessageBucketsByMessage(db, ownerKey, messageUuid),
+        );
+      }),
+    );
+    const messageUuidsToDelete = [...deletedMessageUuids].filter((messageUuid) => {
+      const buckets = allBucketsByMessage.get(messageUuid) ?? [];
+      return buckets.length > 0 && buckets.every((bucket) => bucketIdsToDelete.has(bucket.id));
+    });
+    const remainingStreamBuckets = streamBuckets.filter(
+      (bucket) => !bucketIdsToDelete.has(bucket.id),
+    );
+    const transaction = db.transaction(
+      [stores.messages, stores.messageBuckets, stores.messageWindows],
+      "readwrite",
+    );
+    const bucketStore = transaction.objectStore(stores.messageBuckets);
+    for (const bucketId of bucketIdsToDelete) {
+      bucketStore.delete(bucketId);
     }
-    for (const user of snapshot.users ?? []) {
-      userStore.put(toUserRow(ownerKey, user));
+    const messageStore = transaction.objectStore(stores.messages);
+    for (const messageUuid of messageUuidsToDelete) {
+      messageStore.delete(cacheRowId(ownerKey, messageUuid));
+    }
+    const windowStore = transaction.objectStore(stores.messageWindows);
+    windowStore.delete(cacheRowId(ownerKey, topicConversation));
+    windowStore.put(
+      messageWindowAfterBucketDelete(
+        ownerKey,
+        streamConversation,
+        remainingStreamBuckets,
+        previousStreamWindow,
+      ),
+    );
+    await transactionDone(transaction);
+  } catch {
+    return;
+  }
+}
+
+export async function deleteCachedStreamMessageBuckets(
+  ownerKey: string,
+  streamUuid: string,
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+    const [messageRows, bucketRows, topicRows] = await Promise.all([
+      readRowsByOwner<WorkspaceMessengerMessageCacheRow>(db, ownerKey, stores.messages),
+      readRowsByOwner<WorkspaceMessengerMessageBucketRow>(db, ownerKey, stores.messageBuckets),
+      readRowsByOwner<WorkspaceMessengerTopicCacheRow>(db, ownerKey, stores.topics),
+    ]);
+    const messageUuidsToDelete = new Set(
+      messageRows
+        .filter((row) => row.message.streamUuid === streamUuid)
+        .map((row) => row.messageUuid),
+    );
+    const bucketsToDelete = bucketRows.filter((bucket) =>
+      messageUuidsToDelete.has(bucket.messageUuid),
+    );
+    const conversationIdsToDelete = new Set(bucketsToDelete.map((bucket) => bucket.conversationId));
+    conversationIdsToDelete.add(streamConversationId(streamUuid));
+    for (const row of topicRows) {
+      if (row.streamUuid === streamUuid) {
+        conversationIdsToDelete.add(topicConversationId(streamUuid, row.topicUuid));
+      }
+    }
+    for (const row of messageRows) {
+      if (row.message.streamUuid === streamUuid && row.message.topicUuid.length > 0) {
+        conversationIdsToDelete.add(topicConversationId(streamUuid, row.message.topicUuid));
+      }
     }
 
+    const transaction = db.transaction(
+      [stores.messages, stores.messageBuckets, stores.messageWindows],
+      "readwrite",
+    );
+    const bucketStore = transaction.objectStore(stores.messageBuckets);
+    for (const bucket of bucketsToDelete) {
+      bucketStore.delete(bucket.id);
+    }
+    const messageStore = transaction.objectStore(stores.messages);
+    for (const messageUuid of messageUuidsToDelete) {
+      messageStore.delete(cacheRowId(ownerKey, messageUuid));
+    }
+    const windowStore = transaction.objectStore(stores.messageWindows);
+    for (const conversationId of conversationIdsToDelete) {
+      windowStore.delete(cacheRowId(ownerKey, conversationId));
+    }
+    await transactionDone(transaction);
+  } catch {
+    return;
+  }
+}
+
+export async function applyMessengerMessagePointerCache(
+  ownerKey: string,
+  message: WorkspaceMessengerCachedMessage,
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+    const streamId = cacheRowId(ownerKey, message.streamUuid);
+    const topicId = cacheRowId(ownerKey, message.topicUuid);
+    const streamConversation = streamConversationId(message.streamUuid);
+    const conversationIds = [
+      streamConversation,
+      message.conversationId,
+      topicConversationId(message.streamUuid, message.topicUuid),
+    ];
+    const [streamRows, topicRows, conversationRows] = await Promise.all([
+      readRowsByIds<WorkspaceMessengerStreamCacheRow>(db, stores.streams, [streamId]),
+      readRowsByIds<WorkspaceMessengerTopicCacheRow>(db, stores.topics, [topicId]),
+      readRowsByIds<WorkspaceMessengerConversationCacheRow>(
+        db,
+        stores.conversations,
+        [...new Set(conversationIds)].map((conversationId) => cacheRowId(ownerKey, conversationId)),
+      ),
+    ]);
+    const transaction = db.transaction(
+      [stores.streams, stores.topics, stores.conversations],
+      "readwrite",
+    );
+    const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
+    const streamRow = streamRows.get(streamId);
+    if (streamRow != null && shouldUpsertCatalogRow(streamRow, message.createdAt)) {
+      transaction.objectStore(stores.streams).put({
+        ...streamRow,
+        stream: {
+          ...streamRow.stream,
+          lastMessageUuid: message.uuid,
+          updatedAt: message.createdAt,
+        },
+        updatedAt: message.createdAt,
+        cacheUpdatedAt,
+      });
+    }
+    const topicRow = topicRows.get(topicId);
+    if (topicRow != null && shouldUpsertCatalogRow(topicRow, message.createdAt)) {
+      transaction.objectStore(stores.topics).put({
+        ...topicRow,
+        topic: {
+          ...topicRow.topic,
+          lastMessageUuid: message.uuid,
+          updatedAt: message.createdAt,
+        },
+        updatedAt: message.createdAt,
+        cacheUpdatedAt,
+      });
+    }
+    const conversationStore = transaction.objectStore(stores.conversations);
+    for (const conversationId of new Set(conversationIds)) {
+      const row = conversationRows.get(cacheRowId(ownerKey, conversationId));
+      if (row == null || !shouldUpsertCatalogRow(row, message.createdAt)) continue;
+      conversationStore.put({
+        ...row,
+        conversation: {
+          ...row.conversation,
+          lastMessageUuid: message.uuid,
+          updatedAt: message.createdAt,
+        },
+        lastMessageUuid: message.uuid,
+        updatedAt: message.createdAt,
+        cacheUpdatedAt,
+      });
+    }
+    await transactionDone(transaction);
+  } catch {
+    return;
+  }
+}
+
+export async function clearMessengerMessagePointerCache(
+  ownerKey: string,
+  messageUuid: string,
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const stores = WORKSPACE_MESSENGER_CACHE_STORES;
+    const [streamRows, topicRows, conversationRows] = await Promise.all([
+      readRowsByOwner<WorkspaceMessengerStreamCacheRow>(db, ownerKey, stores.streams),
+      readRowsByOwner<WorkspaceMessengerTopicCacheRow>(db, ownerKey, stores.topics),
+      readRowsByOwner<WorkspaceMessengerConversationCacheRow>(db, ownerKey, stores.conversations),
+    ]);
+    const transaction = db.transaction(
+      [stores.streams, stores.topics, stores.conversations],
+      "readwrite",
+    );
+    const now = nowIso();
+    const cacheUpdatedAt = nextCatalogCacheUpdatedAt();
+    const streamStore = transaction.objectStore(stores.streams);
+    for (const row of streamRows) {
+      const stream = row.stream as WorkspaceMessengerCachedStream & {
+        lastMessageUuid?: string | null;
+      };
+      if (stream.lastMessageUuid !== messageUuid) continue;
+      streamStore.put({
+        ...row,
+        stream: { ...stream, lastMessageUuid: null, updatedAt: now },
+        updatedAt: now,
+        cacheUpdatedAt,
+      });
+    }
+    const topicStore = transaction.objectStore(stores.topics);
+    for (const row of topicRows) {
+      const topic = row.topic as WorkspaceMessengerCachedTopic & {
+        lastMessageUuid?: string | null;
+      };
+      if (topic.lastMessageUuid !== messageUuid) continue;
+      topicStore.put({
+        ...row,
+        topic: { ...topic, lastMessageUuid: null, updatedAt: now },
+        updatedAt: now,
+        cacheUpdatedAt,
+      });
+    }
+    const conversationStore = transaction.objectStore(stores.conversations);
+    for (const row of conversationRows) {
+      if (row.lastMessageUuid !== messageUuid && row.conversation.lastMessageUuid !== messageUuid) {
+        continue;
+      }
+      conversationStore.put({
+        ...row,
+        lastMessageUuid: null,
+        conversation: {
+          ...row.conversation,
+          lastMessageUuid: null,
+          updatedAt: now,
+        },
+        updatedAt: now,
+        cacheUpdatedAt,
+      });
+    }
     await transactionDone(transaction);
   } catch {
     return;

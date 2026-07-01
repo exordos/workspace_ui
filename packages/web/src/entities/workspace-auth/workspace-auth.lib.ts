@@ -1,3 +1,4 @@
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { getServerSettings } from "~/shared/api/messenger-client";
 import type { WorkspaceMessengerServerSettingsDto } from "~/shared/api/messenger.types";
 import {
@@ -11,6 +12,7 @@ import { env } from "~/shared/lib/env";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 import { buildOrgRouteIdFromRealm } from "~/shared/lib/org-route";
+import { deleteWorkspaceMessengerOwnerCache } from "~/shared/lib/workspace-messenger-cache-db";
 import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspace-org-origin.lib";
 import { useWorkspaceAuthStore } from "./workspace-auth.model";
 import type { WorkspaceAuthProfile, WorkspaceAuthSession } from "./workspace-auth.model";
@@ -103,6 +105,35 @@ function fallbackProfileFromIdentity(userUuid: string, login: string): Workspace
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
+}
+
+function findWorkspaceSession(accountId: string): WorkspaceAuthSession | undefined {
+  return useWorkspaceAuthStore
+    .getState()
+    .sessions.find((session) => session.accountId === accountId);
+}
+
+async function cleanupWorkspaceMessengerOwnerCache(
+  session: WorkspaceAuthSession | undefined,
+): Promise<void> {
+  if (session == null) return;
+  const ownerKey = workspaceRuntimeOwnerKey(session);
+  try {
+    await deleteWorkspaceMessengerOwnerCache(ownerKey);
+  } catch (error) {
+    authLogger.warn("Workspace messenger cache cleanup failed during session removal", {
+      accountId: session.accountId,
+      errorName: error instanceof Error ? error.name : typeof error,
+    });
+  }
+}
+
+async function removeWorkspaceSessionAfterCacheCleanup(
+  accountId: string,
+  session: WorkspaceAuthSession | undefined = findWorkspaceSession(accountId),
+): Promise<void> {
+  await cleanupWorkspaceMessengerOwnerCache(session);
+  useWorkspaceAuthStore.getState().removeSession(accountId);
 }
 
 async function loadWorkspaceProfileOrFallback(params: {
@@ -281,11 +312,11 @@ export async function refreshWorkspaceSession(accountId: string): Promise<boolea
     const claims = decodeWorkspaceIamClaims(token.accessToken);
     const userUuid = userUuidFromClaims(claims);
     if (userUuid == null || userUuid !== session.userUuid) {
-      useWorkspaceAuthStore.getState().removeSession(accountId);
+      await removeWorkspaceSessionAfterCacheCleanup(accountId, session);
       return false;
     }
     if (claims?.projectId != null && claims.projectId !== session.projectId) {
-      useWorkspaceAuthStore.getState().removeSession(accountId);
+      await removeWorkspaceSessionAfterCacheCleanup(accountId, session);
       return false;
     }
     useWorkspaceAuthStore.getState().updateTokens(accountId, {
@@ -295,11 +326,11 @@ export async function refreshWorkspaceSession(accountId: string): Promise<boolea
     });
     return true;
   } catch {
-    useWorkspaceAuthStore.getState().removeSession(accountId);
+    await removeWorkspaceSessionAfterCacheCleanup(accountId, session);
     return false;
   }
 }
 
-export function removeWorkspaceSession(accountId: string): void {
-  useWorkspaceAuthStore.getState().removeSession(accountId);
+export async function removeWorkspaceSession(accountId: string): Promise<void> {
+  await removeWorkspaceSessionAfterCacheCleanup(accountId);
 }

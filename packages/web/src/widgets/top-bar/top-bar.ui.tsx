@@ -10,6 +10,7 @@ import { ELECTRON_MAC_TITLEBAR_STRIP_CLASS } from "~/shared/lib/electron-title-b
 import { env } from "~/shared/lib/env";
 import { resolveMessengerNavigationPath } from "~/shared/lib/last-messenger-route.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
+import { isWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { useSearchModalStore } from "~/widgets/search-modal/search-modal.model";
 import { SearchModal } from "~/widgets/search-modal/search-modal.ui";
 import { TopBarDownloadCenter } from "./top-bar-download-center.ui";
@@ -30,12 +31,13 @@ export const TopBar: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const openSearchModal = useSearchModalStore((s) => s.openModal);
+  const searchModalMode = isWorkspaceMessengerRoute(location.pathname) ? "workspace" : "zulip";
   const {
     open: searchOpen,
     setOpen: setSearchOpen,
     onSelectMessage: handleSearchSelectMessage,
     onSelectUser: handleSearchSelectUser,
-  } = useTopBarSearchModal({ navigate });
+  } = useTopBarSearchModal({ navigate, mode: searchModalMode });
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const currentWorkspaceInstanceId = useWorkspaceAuthStore((s) => {
     const accountId = s.currentAccountId;
@@ -66,14 +68,14 @@ export const TopBar: React.FC = () => {
   const handleSectionChange = useCallback(
     (section: TopBarSection) => {
       if (section === "chat") {
-        void navigate(
-          withCurrentOrgRoute(
-            resolveMessengerNavigationPath({
-              instanceId: currentWorkspaceInstanceId ?? currentInstanceId,
-              projectId: currentWorkspaceProjectId,
-            }),
-          ),
-        );
+        const messengerPath =
+          currentWorkspaceProjectId != null && currentWorkspaceProjectId.trim().length > 0
+            ? resolveMessengerNavigationPath({
+                instanceId: currentWorkspaceInstanceId ?? currentInstanceId,
+                projectId: currentWorkspaceProjectId,
+              })
+            : "/inbox";
+        void navigate(withCurrentOrgRoute(messengerPath));
       } else {
         void navigate(withCurrentOrgRoute(`/${section}`));
       }
@@ -88,6 +90,7 @@ export const TopBar: React.FC = () => {
         onOpenChange={setSearchOpen}
         onSelectMessage={handleSearchSelectMessage}
         onSelectUser={handleSearchSelectUser}
+        mode={searchModalMode}
       />
       <header
         className="mb-1 flex w-full flex-col rounded-b-xl border-b border-border-subtle bg-bg-elevated"

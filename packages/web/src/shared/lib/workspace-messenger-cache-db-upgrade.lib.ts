@@ -9,6 +9,7 @@ export const WORKSPACE_MESSENGER_CACHE_STORES = {
   folders: "folders",
   folderItems: "folderItems",
   users: "users",
+  streamBindings: "streamBindings",
   messages: "messages",
   messageBuckets: "messageBuckets",
   messageWindows: "messageWindows",
@@ -61,6 +62,12 @@ export function createWorkspaceMessengerCacheDbSchema(db: IDBDatabase): void {
     const store = db.createObjectStore(stores.users, { keyPath: "id" });
     createOwnerIndex(store);
     store.createIndex("byOwnerUpdatedAt", ["ownerKey", "updatedAt"], { unique: false });
+  }
+
+  if (!db.objectStoreNames.contains(stores.streamBindings)) {
+    const store = db.createObjectStore(stores.streamBindings, { keyPath: "id" });
+    createOwnerIndex(store);
+    store.createIndex("byOwnerStream", ["ownerKey", "streamUuid"], { unique: false });
   }
 
   if (!db.objectStoreNames.contains(stores.messages)) {

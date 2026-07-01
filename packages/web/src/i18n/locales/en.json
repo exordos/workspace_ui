@@ -665,7 +665,10 @@
     "noResults": "No results found",
     "filterStream": "Stream",
     "filterSender": "Sender",
-    "filterDate": "Date"
+    "filterDate": "Date",
+    "workspaceUnsupportedPlaceholder": "Workspace search is unavailable",
+    "workspaceUnsupportedTitle": "Workspace search is not available yet",
+    "workspaceUnsupportedDescription": "Message search will be enabled after server search."
   },
   "notifications": {
     "notifications": "Notifications",

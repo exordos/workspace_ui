@@ -20,6 +20,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   onOpenChange,
   onSelectMessage,
   onSelectUser,
+  mode = "zulip",
 }) => {
   const query = useSearchModalStore((s) => s.query);
   const setQuery = useSearchModalStore((s) => s.setQuery);
@@ -36,9 +37,15 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   const resetStore = useSearchModalStore((s) => s.reset);
   const inputRef = useRef<HTMLInputElement>(null);
   const users = useUsersStore((s) => s.users);
+  const workspaceMode = mode === "workspace";
 
   const runSearch = useCallback(
     async (q: string) => {
+      if (workspaceMode) {
+        setResults([]);
+        setLoading(false);
+        return;
+      }
       if (!q.trim()) {
         setResults([]);
         return;
@@ -57,10 +64,11 @@ export const SearchModal: React.FC<SearchModalProps> = ({
         setLoading(false);
       }
     },
-    [setLoading, setResults],
+    [setLoading, setResults, workspaceMode],
   );
 
   const userResults = useMemo(() => {
+    if (workspaceMode) return [];
     const normalizedQuery = query.trim().toLowerCase();
     if (!normalizedQuery) return [];
     return Array.from(users.values())
@@ -80,20 +88,28 @@ export const SearchModal: React.FC<SearchModalProps> = ({
             ? getPresenceState(user.presence.timestamp, user.presence.status)
             : null,
       }));
-  }, [query, users]);
+  }, [query, users, workspaceMode]);
 
   const filteredMessageResults = useMemo(
-    () => filterSearchMessages(results, users, streamFilter, senderFilter, dateFilter),
-    [dateFilter, results, senderFilter, streamFilter, users],
+    () =>
+      workspaceMode
+        ? []
+        : filterSearchMessages(results, users, streamFilter, senderFilter, dateFilter),
+    [dateFilter, results, senderFilter, streamFilter, users, workspaceMode],
   );
 
   useEffect(() => {
     if (!open) return;
+    if (workspaceMode) {
+      setResults([]);
+      setLoading(false);
+      return;
+    }
     const timer = setTimeout(() => {
       void runSearch(query);
     }, SEARCH_INPUT_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [query, open, runSearch]);
+  }, [query, open, runSearch, setLoading, setResults, workspaceMode]);
 
   useEffect(() => {
     if (!open) {
@@ -128,7 +144,11 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   );
 
   const noResults =
-    !loading && query.trim() && filteredMessageResults.length === 0 && userResults.length === 0;
+    !workspaceMode &&
+    !loading &&
+    query.trim() &&
+    filteredMessageResults.length === 0 &&
+    userResults.length === 0;
 
   const contentClassName = `${APP_DIALOG_CONTENT_BASE_CLASS} top-[16%] flex max-h-[68vh] max-w-2xl flex-col overflow-hidden bg-card-bg p-0 shadow-2xl`;
 
@@ -140,37 +160,52 @@ export const SearchModal: React.FC<SearchModalProps> = ({
           ref={inputRef}
           type="text"
           size="md"
-          value={query}
+          value={workspaceMode ? "" : query}
           onChange={setQuery}
-          placeholder={t("search.search")}
+          placeholder={
+            workspaceMode ? t("search.workspaceUnsupportedPlaceholder") : t("search.search")
+          }
           ariaLabel={t("search.search")}
+          disabled={workspaceMode}
           className="border-border-subtle bg-bg transition-colors focus-within:border-accent-soft focus-within:bg-bg-elevated focus-within:outline-none"
         />
       </div>
-      <div className="grid grid-cols-1 gap-2 border-b border-border-subtle px-5 py-3 sm:grid-cols-3">
-        <input
-          type="text"
-          value={streamFilter}
-          onChange={(event) => setStreamFilter(event.target.value)}
-          placeholder={t("search.filterStream")}
-          className="rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none transition-colors placeholder:text-text-muted focus-visible:bg-bg-elevated"
-        />
-        <input
-          type="text"
-          value={senderFilter}
-          onChange={(event) => setSenderFilter(event.target.value)}
-          placeholder={t("search.filterSender")}
-          className="rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none transition-colors placeholder:text-text-muted focus-visible:bg-bg-elevated"
-        />
-        <input
-          aria-label={t("search.filterDate")}
-          type="date"
-          value={dateFilter}
-          onChange={(event) => setDateFilter(event.target.value)}
-          className="rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none transition-colors placeholder:text-text-muted focus-visible:bg-bg-elevated"
-        />
-      </div>
+      {!workspaceMode && (
+        <div className="grid grid-cols-1 gap-2 border-b border-border-subtle px-5 py-3 sm:grid-cols-3">
+          <input
+            type="text"
+            value={streamFilter}
+            onChange={(event) => setStreamFilter(event.target.value)}
+            placeholder={t("search.filterStream")}
+            className="rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none transition-colors placeholder:text-text-muted focus-visible:bg-bg-elevated"
+          />
+          <input
+            type="text"
+            value={senderFilter}
+            onChange={(event) => setSenderFilter(event.target.value)}
+            placeholder={t("search.filterSender")}
+            className="rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none transition-colors placeholder:text-text-muted focus-visible:bg-bg-elevated"
+          />
+          <input
+            aria-label={t("search.filterDate")}
+            type="date"
+            value={dateFilter}
+            onChange={(event) => setDateFilter(event.target.value)}
+            className="rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none transition-colors placeholder:text-text-muted focus-visible:bg-bg-elevated"
+          />
+        </div>
+      )}
       <ScrollArea className="flex-1 px-3 py-2">
+        {workspaceMode && (
+          <div role="status" className="px-3 py-8 text-center">
+            <p className="text-sm font-medium text-text-primary">
+              {t("search.workspaceUnsupportedTitle")}
+            </p>
+            <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
+              {t("search.workspaceUnsupportedDescription")}
+            </p>
+          </div>
+        )}
         {loading && (
           <p className="py-4 text-center text-sm text-text-muted">{t("search.search")}...</p>
         )}

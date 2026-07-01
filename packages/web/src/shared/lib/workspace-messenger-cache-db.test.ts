@@ -1,7 +1,10 @@
 import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  createMessengerCatalogCacheReconcileFence,
+  deleteCachedStreamMessageBuckets,
   deleteCachedMessage,
+  deleteCachedTopicMessageBuckets,
   deleteExpiredMessengerSearchResults,
   deleteWorkspaceMessengerCacheDatabase,
   deleteWorkspaceMessengerOwnerCache,
@@ -65,6 +68,7 @@ describe("workspace-messenger-cache-db", () => {
       "ownerMeta",
       "realtimeCursor",
       "searchResults",
+      "streamBindings",
       "streams",
       "topics",
       "users",
@@ -100,6 +104,13 @@ describe("workspace-messenger-cache-db", () => {
         },
       ],
       users: [{ uuid: "user-a", updatedAt: "2026-07-01T08:05:00.000Z" }],
+      streamBindings: [
+        {
+          uuid: "binding-a",
+          streamUuid: STREAM,
+          updatedAt: "2026-07-01T08:06:00.000Z",
+        },
+      ],
       lastHydratedAt: 42,
     });
     await writeRealtimeCursor(OWNER, 77);
@@ -116,9 +127,188 @@ describe("workspace-messenger-cache-db", () => {
     expect(snapshot.folders.map((folder) => folder.uuid)).toEqual(["folder-a"]);
     expect(snapshot.folderItems.map((item) => item.uuid)).toEqual(["folder-item-a"]);
     expect(snapshot.users.map((user) => user.uuid)).toEqual(["user-a"]);
+    expect(snapshot.streamBindings.map((binding) => binding.uuid)).toEqual(["binding-a"]);
     expect(snapshot.realtimeCursor?.epochVersion).toBe(77);
     expect(otherSnapshot.streams).toEqual([]);
     expect(otherSnapshot.realtimeCursor).toBeNull();
+  });
+
+  it("merges catalog snapshots without deleting omitted or empty collections", async () => {
+    await writeMessengerCatalogCache(OWNER, {
+      folders: [{ uuid: "folder-a", updatedAt: "2026-07-01T08:03:00.000Z" }],
+      folderItems: [
+        {
+          uuid: "folder-item-a",
+          folderUuid: "folder-a",
+          conversationId: STREAM_CONVERSATION,
+          streamUuid: STREAM,
+          chatType: "stream",
+          orderIndex: 1,
+          pinnedAt: null,
+          updatedAt: "2026-07-01T08:04:00.000Z",
+        },
+      ],
+    });
+
+    await writeMessengerCatalogCache(OWNER, {
+      streams: [{ uuid: STREAM, updatedAt: "2026-07-01T08:05:00.000Z" }],
+      folders: [],
+    });
+    await writeMessengerCatalogCache(OWNER, {
+      streams: [{ uuid: "stream-b", updatedAt: "2026-07-01T08:06:00.000Z" }],
+    });
+
+    const snapshot = await readMessengerCatalogCache(OWNER);
+
+    expect(
+      snapshot.streams.map((stream) => stream.uuid).sort((a, b) => a.localeCompare(b)),
+    ).toEqual([STREAM, "stream-b"]);
+    expect(snapshot.folders.map((folder) => folder.uuid)).toEqual(["folder-a"]);
+    expect(snapshot.folderItems.map((item) => item.uuid)).toEqual(["folder-item-a"]);
+  });
+
+  it("reconciles catalog snapshots by deleting missing rows", async () => {
+    await writeMessengerCatalogCache(OWNER, {
+      streams: [
+        { uuid: STREAM, updatedAt: "2026-07-01T08:00:00.000Z" },
+        { uuid: "stream-b", updatedAt: "2026-07-01T08:00:00.000Z" },
+      ],
+    });
+
+    await writeMessengerCatalogCache(
+      OWNER,
+      {
+        streams: [{ uuid: STREAM, updatedAt: "2026-07-01T08:01:00.000Z" }],
+      },
+      {
+        mode: "reconcile",
+        reconcileFence: createMessengerCatalogCacheReconcileFence(),
+      },
+    );
+
+    const snapshot = await readMessengerCatalogCache(OWNER);
+
+    expect(snapshot.streams).toEqual([{ uuid: STREAM, updatedAt: "2026-07-01T08:01:00.000Z" }]);
+  });
+
+  it("keeps undefined collections untouched during full catalog reconcile", async () => {
+    await writeMessengerCatalogCache(OWNER, {
+      streams: [{ uuid: STREAM, updatedAt: "2026-07-01T08:00:00.000Z" }],
+      folders: [{ uuid: "folder-a", updatedAt: "2026-07-01T08:03:00.000Z" }],
+    });
+
+    await writeMessengerCatalogCache(
+      OWNER,
+      {
+        streams: [{ uuid: "stream-b", updatedAt: "2026-07-01T08:01:00.000Z" }],
+      },
+      {
+        mode: "reconcile",
+        reconcileFence: createMessengerCatalogCacheReconcileFence(),
+      },
+    );
+
+    const snapshot = await readMessengerCatalogCache(OWNER);
+
+    expect(snapshot.streams).toEqual([{ uuid: "stream-b", updatedAt: "2026-07-01T08:01:00.000Z" }]);
+    expect(snapshot.folders).toEqual([{ uuid: "folder-a", updatedAt: "2026-07-01T08:03:00.000Z" }]);
+  });
+
+  it("clears old rows for empty collections during full catalog reconcile", async () => {
+    await writeMessengerCatalogCache(OWNER, {
+      users: [
+        { uuid: "user-a", updatedAt: "2026-07-01T08:00:00.000Z" },
+        { uuid: "user-b", updatedAt: "2026-07-01T08:00:00.000Z" },
+      ],
+    });
+
+    await writeMessengerCatalogCache(
+      OWNER,
+      { users: [] },
+      {
+        mode: "reconcile",
+        reconcileFence: createMessengerCatalogCacheReconcileFence(),
+      },
+    );
+
+    const snapshot = await readMessengerCatalogCache(OWNER);
+
+    expect(snapshot.users).toEqual([]);
+  });
+
+  it("keeps rows written after the reconcile fence", async () => {
+    await writeMessengerCatalogCache(OWNER, {
+      streams: [
+        { uuid: STREAM, updatedAt: "2026-07-01T08:00:00.000Z" },
+        { uuid: "stream-old-missing", updatedAt: "2026-07-01T08:00:00.000Z" },
+      ],
+    });
+
+    const reconcileFence = createMessengerCatalogCacheReconcileFence();
+
+    await writeMessengerCatalogCache(OWNER, {
+      streams: [{ uuid: "stream-realtime", updatedAt: "2026-07-01T08:02:00.000Z" }],
+    });
+
+    await writeMessengerCatalogCache(
+      OWNER,
+      {
+        streams: [{ uuid: STREAM, updatedAt: "2026-07-01T08:01:00.000Z" }],
+      },
+      {
+        mode: "reconcile",
+        reconcileFence,
+      },
+    );
+
+    const snapshot = await readMessengerCatalogCache(OWNER);
+
+    expect(
+      snapshot.streams.map((stream) => stream.uuid).sort((a, b) => a.localeCompare(b)),
+    ).toEqual([STREAM, "stream-realtime"]);
+  });
+
+  it("keeps newer realtime catalog rows when an older snapshot arrives later", async () => {
+    await writeMessengerCatalogCache(OWNER, {
+      streams: [
+        {
+          uuid: STREAM,
+          updatedAt: "2026-07-01T08:10:00.000Z",
+          lastMessageUuid: "msg-new",
+        },
+      ],
+      topics: [
+        {
+          uuid: TOPIC,
+          streamUuid: STREAM,
+          updatedAt: "2026-07-01T08:10:00.000Z",
+          lastMessageUuid: "msg-new",
+        },
+      ],
+    });
+
+    await writeMessengerCatalogCache(OWNER, {
+      streams: [
+        {
+          uuid: STREAM,
+          updatedAt: "2026-07-01T08:00:00.000Z",
+          lastMessageUuid: "msg-old",
+        },
+      ],
+      topics: [
+        {
+          uuid: TOPIC,
+          streamUuid: STREAM,
+          updatedAt: "2026-07-01T08:00:00.000Z",
+          lastMessageUuid: "msg-old",
+        },
+      ],
+    });
+
+    const snapshot = await readMessengerCatalogCache(OWNER);
+
+    expect(snapshot.streams[0]).toMatchObject({ uuid: STREAM, lastMessageUuid: "msg-new" });
+    expect(snapshot.topics[0]).toMatchObject({ uuid: TOPIC, lastMessageUuid: "msg-new" });
   });
 
   it("stores conversation pages sorted by createdAt plus uuid and deduplicates buckets", async () => {
@@ -189,6 +379,78 @@ describe("workspace-messenger-cache-db", () => {
 
     const streamWindowAfterDelete = await readConversationMessageWindow(OWNER, STREAM_CONVERSATION);
     expect(streamWindowAfterDelete.messages).toEqual([]);
+  });
+
+  it("deletes cached topic buckets and windows without requiring messages in memory", async () => {
+    await writeConversationMessagePage(OWNER, TOPIC_CONVERSATION, {
+      messages: [
+        message("msg-a", "2026-07-01T08:01:00.000Z"),
+        message("msg-b", "2026-07-01T08:02:00.000Z"),
+      ],
+    });
+    await writeConversationMessagePage(OWNER, `topic:${STREAM}:topic-b`, {
+      messages: [
+        {
+          ...message("msg-c", "2026-07-01T08:03:00.000Z"),
+          conversationId: `topic:${STREAM}:topic-b`,
+          topicUuid: "topic-b",
+        },
+      ],
+    });
+
+    await deleteCachedTopicMessageBuckets(OWNER, STREAM, TOPIC);
+
+    const topicWindow = await readConversationMessageWindow(OWNER, TOPIC_CONVERSATION);
+    const streamWindow = await readConversationMessageWindow(OWNER, STREAM_CONVERSATION);
+    const otherTopicWindow = await readConversationMessageWindow(OWNER, `topic:${STREAM}:topic-b`);
+
+    expect(topicWindow.messages).toEqual([]);
+    expect(streamWindow.messages.map((item) => item.uuid)).toEqual(["msg-c"]);
+    expect(otherTopicWindow.messages.map((item) => item.uuid)).toEqual(["msg-c"]);
+  });
+
+  it("deletes cached stream buckets, windows, and message bodies", async () => {
+    await writeConversationMessagePage(OWNER, TOPIC_CONVERSATION, {
+      messages: [message("msg-a", "2026-07-01T08:01:00.000Z")],
+    });
+    await writeConversationMessagePage(OWNER, "topic:stream-b:topic-b", {
+      messages: [
+        {
+          ...message("msg-b", "2026-07-01T08:02:00.000Z"),
+          conversationId: "topic:stream-b:topic-b",
+          streamUuid: "stream-b",
+          topicUuid: "topic-b",
+        },
+      ],
+    });
+
+    await deleteCachedStreamMessageBuckets(OWNER, STREAM);
+
+    const streamWindow = await readConversationMessageWindow(OWNER, STREAM_CONVERSATION);
+    const topicWindow = await readConversationMessageWindow(OWNER, TOPIC_CONVERSATION);
+    const otherWindow = await readConversationMessageWindow(OWNER, "stream:stream-b");
+
+    expect(streamWindow.messages).toEqual([]);
+    expect(topicWindow.messages).toEqual([]);
+    expect(otherWindow.messages.map((item) => item.uuid)).toEqual(["msg-b"]);
+  });
+
+  it("deletes cached topic and stream windows even when they have no buckets", async () => {
+    await writeMessengerCatalogCache(OWNER, {
+      topics: [{ uuid: TOPIC, streamUuid: STREAM, updatedAt: "2026-07-01T08:00:00.000Z" }],
+    });
+    await writeConversationMessagePage(OWNER, TOPIC_CONVERSATION, { messages: [] });
+    await writeConversationMessagePage(OWNER, STREAM_CONVERSATION, { messages: [] });
+
+    await deleteCachedTopicMessageBuckets(OWNER, STREAM, TOPIC);
+
+    const topicWindowAfterDelete = await readConversationMessageWindow(OWNER, TOPIC_CONVERSATION);
+    expect(topicWindowAfterDelete.window).toBeNull();
+
+    await deleteCachedStreamMessageBuckets(OWNER, STREAM);
+
+    const streamWindowAfterDelete = await readConversationMessageWindow(OWNER, STREAM_CONVERSATION);
+    expect(streamWindowAfterDelete.window).toBeNull();
   });
 
   it("stores search results separately and drops expired rows", async () => {

@@ -5,6 +5,7 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useDownloadStore } from "~/entities/download/download.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { t } from "~/i18n/i18n";
 import { ELECTRON_MAC_TITLEBAR_STRIP_CLASS } from "~/shared/lib/electron-title-bar.lib";
 import { setCurrentOrgRouteIdResolver } from "~/shared/lib/org-route";
 import { renderWithProviders } from "~/test/render";
@@ -138,6 +139,20 @@ describe("TopBar", () => {
       fireEvent.click(searchButton);
     });
     expect(useSearchModalStore.getState().open).toBe(true);
+  });
+
+  it("opens Workspace-safe search state on Workspace messenger routes", () => {
+    renderWithProviders(<TopBar />, {
+      route: "/org/workspace.example.com/project/project-a/messenger",
+    });
+
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: /search/i }));
+    });
+
+    expect(screen.getByPlaceholderText(t("search.workspaceUnsupportedPlaceholder"))).toBeDisabled();
+    expect(screen.getByText(t("search.workspaceUnsupportedTitle"))).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(t("search.filterStream"))).not.toBeInTheDocument();
   });
 
   it("opens user menu in right drawer when profile trigger is clicked", () => {

@@ -1,12 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type * as WorkspaceIamAuthModule from "~/shared/api/workspace-iam-auth";
-import { loginWorkspaceWithPassword, refreshWorkspaceSession } from "./workspace-auth.lib";
+import {
+  loginWorkspaceWithPassword,
+  refreshWorkspaceSession,
+  removeWorkspaceSession,
+} from "./workspace-auth.lib";
 import { useWorkspaceAuthStore } from "./workspace-auth.model";
+import type { WorkspaceAuthSession } from "./workspace-auth.model";
 
 const getServerSettings = vi.hoisted(() => vi.fn());
 const getWorkspaceMessengerAuthProfile = vi.hoisted(() => vi.fn());
 const requestWorkspaceIamLoginPasswordToken = vi.hoisted(() => vi.fn());
 const refreshWorkspaceIamToken = vi.hoisted(() => vi.fn());
+const deleteWorkspaceMessengerOwnerCache = vi.hoisted(() => vi.fn());
 
 const USER_UUID = "11111111-1111-4111-8111-111111111111";
 const PROJECT_ID = "22222222-2222-4222-8222-222222222222";
@@ -28,6 +35,10 @@ vi.mock("~/shared/api/workspace-iam-auth", async (importOriginal) => {
   };
 });
 
+vi.mock("~/shared/lib/workspace-messenger-cache-db", () => ({
+  deleteWorkspaceMessengerOwnerCache,
+}));
+
 function tokenWithClaims(claims: Record<string, unknown>): string {
   const encoded = btoa(JSON.stringify(claims))
     .replace(/\+/g, "-")
@@ -40,6 +51,38 @@ function resetStore(): void {
   localStorage.removeItem("workspace-auth-sessions");
   localStorage.removeItem("workspace-auth-current-account");
   useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
+}
+
+function ownerKeyFromSession(session: WorkspaceAuthSession): string {
+  return workspaceRuntimeOwnerKey(session);
+}
+
+async function loginAndGetCurrentSession(): Promise<WorkspaceAuthSession> {
+  await loginWorkspaceWithPassword({
+    organizationUrl: "https://workspace.example.com",
+    login: "user@example.com",
+    password: "secret",
+    projectId: PROJECT_ID,
+  });
+  const session = useWorkspaceAuthStore.getState().getCurrentSession();
+  if (session == null) {
+    throw new Error("Expected Workspace session after login");
+  }
+  return session;
+}
+
+function createDeferred(): {
+  promise: Promise<void>;
+  resolve: () => void;
+  reject: (error: Error) => void;
+} {
+  let resolvePromise: () => void = () => {};
+  let rejectPromise: (error: Error) => void = () => {};
+  const promise = new Promise<void>((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
+  });
+  return { promise, resolve: resolvePromise, reject: rejectPromise };
 }
 
 describe("workspace-auth flow", () => {
@@ -233,21 +276,91 @@ describe("workspace-auth flow", () => {
   });
 
   it("removes only the failed session when refresh fails", async () => {
-    await loginWorkspaceWithPassword({
-      organizationUrl: "https://workspace.example.com",
-      login: "user@example.com",
-      password: "secret",
-      projectId: PROJECT_ID,
-    });
-    const accountId = useWorkspaceAuthStore.getState().getCurrentSession()?.accountId;
-    expect(accountId).toBeTruthy();
-    if (accountId == null) {
-      throw new Error("Expected Workspace account id after login");
-    }
+    const session = await loginAndGetCurrentSession();
     refreshWorkspaceIamToken.mockRejectedValueOnce(new Error("expired"));
 
-    await expect(refreshWorkspaceSession(accountId)).resolves.toBe(false);
+    await expect(refreshWorkspaceSession(session.accountId)).resolves.toBe(false);
 
+    expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
     expect(useWorkspaceAuthStore.getState().sessions).toHaveLength(0);
+  });
+
+  it("waits for Workspace messenger owner cache cleanup before explicit session removal", async () => {
+    const session = await loginAndGetCurrentSession();
+    const deferred = createDeferred();
+    deleteWorkspaceMessengerOwnerCache.mockReturnValueOnce(deferred.promise);
+
+    const removal = removeWorkspaceSession(session.accountId);
+
+    expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([session]);
+
+    deferred.resolve();
+    await removal;
+
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
+  });
+
+  it("does not clean the Workspace messenger cache for an unknown account id", async () => {
+    const session = await loginAndGetCurrentSession();
+
+    await removeWorkspaceSession("missing-account");
+
+    expect(deleteWorkspaceMessengerOwnerCache).not.toHaveBeenCalled();
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([session]);
+  });
+
+  it("removes an explicit Workspace session even when owner cache cleanup fails", async () => {
+    const session = await loginAndGetCurrentSession();
+    deleteWorkspaceMessengerOwnerCache.mockRejectedValueOnce(new Error("idb failed"));
+
+    await removeWorkspaceSession(session.accountId);
+
+    expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
+  });
+
+  it("cleans the Workspace messenger owner cache when refresh returns another user", async () => {
+    const session = await loginAndGetCurrentSession();
+    refreshWorkspaceIamToken.mockResolvedValueOnce({
+      accessToken: tokenWithClaims({
+        user_uuid: "33333333-3333-4333-8333-333333333333",
+        project_id: PROJECT_ID,
+      }),
+      refreshToken: "refresh-token-next",
+      raw: {},
+    });
+
+    await expect(refreshWorkspaceSession(session.accountId)).resolves.toBe(false);
+
+    expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
+  });
+
+  it("cleans the Workspace messenger owner cache when refresh returns another project", async () => {
+    const session = await loginAndGetCurrentSession();
+    refreshWorkspaceIamToken.mockResolvedValueOnce({
+      accessToken: tokenWithClaims({
+        user_uuid: USER_UUID,
+        project_id: "33333333-3333-4333-8333-333333333333",
+      }),
+      refreshToken: "refresh-token-next",
+      raw: {},
+    });
+
+    await expect(refreshWorkspaceSession(session.accountId)).resolves.toBe(false);
+
+    expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
+  });
+
+  it("removes a Workspace session even when owner cache cleanup fails", async () => {
+    const session = await loginAndGetCurrentSession();
+    refreshWorkspaceIamToken.mockRejectedValueOnce(new Error("expired"));
+    deleteWorkspaceMessengerOwnerCache.mockRejectedValueOnce(new Error("idb failed"));
+
+    await expect(refreshWorkspaceSession(session.accountId)).resolves.toBe(false);
+
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
   });
 });

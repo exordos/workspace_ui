@@ -1,15 +1,16 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
+import { t } from "~/i18n/i18n";
+import type * as ZulipMessagesModule from "~/shared/api/zulip-messages";
+import { SEARCH_INPUT_DEBOUNCE_MS } from "~/shared/config/constants";
 import { createMessage, createUser } from "~/test/factories";
 import { SearchModal } from "./search-modal.ui";
 
 const fetchMessages = vi.hoisted(() => vi.fn());
 
 vi.mock("~/shared/api/zulip-messages", async () => {
-  const actual = await vi.importActual<typeof import("~/shared/api/zulip-messages")>(
-    "~/shared/api/zulip-messages",
-  );
+  const actual = await vi.importActual<typeof ZulipMessagesModule>("~/shared/api/zulip-messages");
   return {
     ...actual,
     fetchMessages,
@@ -36,8 +37,36 @@ vi.mock("~/shared/lib/realm-emojis-cache", () => ({
 
 describe("SearchModal open-in-chat action", () => {
   afterEach(() => {
+    vi.useRealTimers();
     fetchMessages.mockReset();
     useUsersStore.getState().clear();
+  });
+
+  it("disables Workspace search without calling legacy message search", () => {
+    vi.useFakeTimers();
+    const legacyResult = createMessage({
+      id: 55,
+      content: "<p>Search target</p>",
+    });
+    fetchMessages.mockResolvedValue([legacyResult]);
+
+    render(
+      <SearchModal open mode="workspace" onOpenChange={() => {}} onSelectMessage={() => {}} />,
+    );
+
+    const searchInput = screen.getByPlaceholderText(t("search.workspaceUnsupportedPlaceholder"));
+    expect(searchInput).toBeDisabled();
+    expect(screen.getByText(t("search.workspaceUnsupportedTitle"))).toBeInTheDocument();
+    expect(screen.getByText(t("search.workspaceUnsupportedDescription"))).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(t("search.filterStream"))).not.toBeInTheDocument();
+
+    fireEvent.change(searchInput, { target: { value: "target" } });
+    act(() => {
+      vi.advanceTimersByTime(SEARCH_INPUT_DEBOUNCE_MS + 1);
+    });
+
+    expect(fetchMessages).not.toHaveBeenCalled();
+    expect(screen.queryByText("Search target")).not.toBeInTheDocument();
   });
 
   it("opens selected result in chat from context action", async () => {

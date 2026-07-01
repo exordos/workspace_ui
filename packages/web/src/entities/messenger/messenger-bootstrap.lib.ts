@@ -21,9 +21,11 @@ import type {
 } from "~/shared/api/messenger.types";
 import { adaptMessengerBootstrapPayload, adaptMessengerFolder } from "./messenger-adapters.lib";
 import {
+  createMessengerCatalogCacheReconcileFence as defaultCreateMessengerCatalogCacheReconcileFence,
   readMessengerCatalogPayloadCache as defaultReadMessengerCatalogPayloadCache,
   writeMessengerCatalogPayloadCache as defaultWriteMessengerCatalogPayloadCache,
   writeMessengerFolderSnapshotCache as defaultWriteMessengerFolderSnapshotCache,
+  type MessengerCatalogPayloadCacheWriteOptions,
   type MessengerCatalogCachePayload,
 } from "./messenger-cache.lib";
 import { loadMessengerLastMessagesForSidebar } from "./messenger-last-messages-loader.lib";
@@ -55,11 +57,13 @@ export interface MessengerBootstrapCacheDeps {
   writeMessengerCatalogPayloadCache?: (
     ownerKey: string,
     payload: ReturnType<typeof adaptMessengerBootstrapPayload>,
+    options?: MessengerCatalogPayloadCacheWriteOptions,
   ) => Promise<void> | void;
   writeMessengerFolderSnapshotCache?: (
     ownerKey: string,
     folder: ReturnType<typeof adaptMessengerFolder>,
   ) => Promise<void> | void;
+  createMessengerCatalogCacheReconcileFence?: () => number;
 }
 
 export interface MessengerStoreApi {
@@ -158,6 +162,10 @@ export async function bootstrapMessengerStore({
   })();
 
   const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
+  const catalogReconcileFence = (
+    cache.createMessengerCatalogCacheReconcileFence ??
+    defaultCreateMessengerCatalogCacheReconcileFence
+  )();
 
   try {
     // Streams and topics are needed first: they quickly build the base chat list.
@@ -183,6 +191,11 @@ export async function bootstrapMessengerStore({
       (cache.writeMessengerCatalogPayloadCache ?? defaultWriteMessengerCatalogPayloadCache)(
         ownerKey,
         payload,
+        {
+          mode: "reconcile",
+          reconcileFence: catalogReconcileFence,
+          reconcileFolders: false,
+        },
       ),
     );
     void loadMessengerLastMessagesForSidebar({

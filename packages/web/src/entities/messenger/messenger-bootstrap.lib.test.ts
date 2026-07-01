@@ -289,6 +289,36 @@ describe("messenger bootstrap store", () => {
     );
   });
 
+  it("does not reconcile cached folders from the first folderless bootstrap payload", async () => {
+    const runtimeContext = createRuntimeContext();
+    const writeMessengerCatalogPayloadCache = vi.fn();
+
+    await bootstrapMessengerStore({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      client: createClient({ getFolders: () => Promise.resolve([]) }),
+      cache: {
+        writeMessengerCatalogPayloadCache,
+        createMessengerCatalogCacheReconcileFence: () => 42,
+      },
+    });
+
+    expect(writeMessengerCatalogPayloadCache).toHaveBeenCalledWith(
+      workspaceRuntimeOwnerKey(runtimeContext),
+      expect.objectContaining({
+        folders: [],
+        streams: [expect.objectContaining({ uuid: STREAM_A })],
+        topics: [expect.objectContaining({ uuid: TOPIC_A })],
+        users: [expect.objectContaining({ uuid: USER_A })],
+      }),
+      {
+        mode: "reconcile",
+        reconcileFence: 42,
+        reconcileFolders: false,
+      },
+    );
+  });
+
   it("indexes stream bindings when the bootstrap payload provides them", () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
@@ -525,7 +555,10 @@ describe("messenger bootstrap store", () => {
     );
     const folders = selectMessengerFolders(state);
     const sameFolders = selectMessengerFolders(state);
-    const emptyMessages = selectWorkspaceMessagesForConversation(messageState, `stream:${STREAM_A}`);
+    const emptyMessages = selectWorkspaceMessagesForConversation(
+      messageState,
+      `stream:${STREAM_A}`,
+    );
     const sameEmptyMessages = selectWorkspaceMessagesForConversation(
       messageState,
       `stream:${STREAM_A}`,

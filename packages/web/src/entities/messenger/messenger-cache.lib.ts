@@ -1,16 +1,32 @@
 import {
+  applyMessengerMessagePointerCache,
+  clearMessengerMessagePointerCache,
+  createMessengerCatalogCacheReconcileFence,
   deleteCachedMessage,
+  deleteCachedStreamMessageBuckets,
+  deleteCachedTopicMessageBuckets,
+  deleteMessengerFolderCatalogCache,
+  deleteMessengerFolderItemCatalogCache,
+  deleteMessengerStreamCatalogCache,
+  deleteMessengerTopicCatalogCache,
   patchCachedMessage,
   readConversationMessageWindow,
   readMessengerCatalogCache,
+  upsertMessengerConversationsCache,
+  upsertMessengerFolderSnapshotsCache,
+  upsertMessengerStreamBindingsCache as upsertMessengerStreamBindingsCatalogCache,
+  upsertMessengerStreamsCache,
+  upsertMessengerTopicsCache,
   writeConversationMessagePage,
   writeMessengerCatalogCache,
   writeRealtimeCursor,
 } from "~/shared/lib/workspace-messenger-cache-db";
 import type {
   WorkspaceMessengerCatalogCacheSnapshot,
+  WorkspaceMessengerCatalogCacheWriteOptions,
   WorkspaceMessengerCatalogCacheWriteSnapshot,
   WorkspaceMessengerConversationMessagePage,
+  WorkspaceMessengerCachedConversation,
 } from "~/shared/lib/workspace-messenger-cache-db";
 import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
 import type {
@@ -31,6 +47,10 @@ export interface MessengerCatalogCachePayload {
   epochVersion: number | null;
 }
 
+export interface MessengerCatalogPayloadCacheWriteOptions extends WorkspaceMessengerCatalogCacheWriteOptions {
+  reconcileFolders?: boolean;
+}
+
 export interface MessengerConversationCacheWindow {
   messages: MessengerMessage[];
   nextPageMarker: string | null;
@@ -43,19 +63,23 @@ function hasCatalogData(snapshot: WorkspaceMessengerCatalogCacheSnapshot): boole
     snapshot.topics.length > 0 ||
     snapshot.conversations.length > 0 ||
     snapshot.folders.length > 0 ||
-    snapshot.users.length > 0
+    snapshot.users.length > 0 ||
+    snapshot.streamBindings.length > 0
   );
 }
 
 function catalogWriteSnapshot(
   payload: MessengerBootstrapPayload,
+  options: MessengerCatalogPayloadCacheWriteOptions = {},
 ): WorkspaceMessengerCatalogCacheWriteSnapshot {
+  const shouldWriteFolders = options.mode !== "reconcile" || options.reconcileFolders === true;
   return {
     streams: payload.streams,
+    streamBindings: payload.streamBindings,
     topics: payload.topics,
     conversations: payload.conversations,
-    folders: payload.folders,
-    folderItems: payload.folders.flatMap((folder) => folder.items),
+    folders: shouldWriteFolders ? payload.folders : undefined,
+    folderItems: shouldWriteFolders ? payload.folders.flatMap((folder) => folder.items) : undefined,
     users: payload.users,
   };
 }
@@ -65,7 +89,7 @@ function snapshotPayload(
 ): MessengerBootstrapPayload {
   return {
     streams: snapshot.streams as unknown as MessengerStream[],
-    streamBindings: [],
+    streamBindings: snapshot.streamBindings as unknown as MessengerStreamBinding[],
     topics: snapshot.topics as unknown as MessengerTopic[],
     conversations: snapshot.conversations as unknown as MessengerConversation[],
     folders: snapshot.folders as unknown as MessengerFolder[],
@@ -88,25 +112,12 @@ export async function readMessengerCatalogPayloadCache(
 export async function writeMessengerCatalogPayloadCache(
   ownerKey: string,
   payload: MessengerBootstrapPayload,
+  options: MessengerCatalogPayloadCacheWriteOptions = {},
 ): Promise<void> {
-  await writeMessengerCatalogCache(ownerKey, catalogWriteSnapshot(payload));
+  await writeMessengerCatalogCache(ownerKey, catalogWriteSnapshot(payload, options), options);
 }
 
-function replaceByUuid<TItem extends { uuid: string }>(
-  items: readonly TItem[],
-  item: TItem,
-): TItem[] {
-  const next = items.filter((current) => current.uuid !== item.uuid);
-  next.push(item);
-  return next;
-}
-
-function removeByUuid<TItem extends { uuid: string }>(
-  items: readonly TItem[],
-  uuid: string,
-): TItem[] {
-  return items.filter((item) => item.uuid !== uuid);
-}
+export { createMessengerCatalogCacheReconcileFence };
 
 function conversationFromStream(stream: MessengerStream): MessengerConversation {
   return {
@@ -121,6 +132,13 @@ function conversationFromStream(stream: MessengerStream): MessengerConversation 
     lastMessageUuid: stream.lastMessageUuid,
     notificationMode: stream.notificationMode,
   };
+}
+
+function cachedConversation(
+  conversation: MessengerConversation,
+  updatedAt: string | null | undefined,
+): WorkspaceMessengerCachedConversation {
+  return { ...conversation, updatedAt };
 }
 
 function conversationFromTopic(
@@ -144,111 +162,69 @@ function conversationFromTopic(
   };
 }
 
-async function readCatalogPayloadOrEmpty(ownerKey: string): Promise<MessengerBootstrapPayload> {
-  const cached = await readMessengerCatalogPayloadCache(ownerKey);
-  return (
-    cached?.payload ?? {
-      streams: [],
-      streamBindings: [],
-      topics: [],
-      conversations: [],
-      folders: [],
-      users: [],
-    }
-  );
-}
-
-async function writeMergedCatalogPayload(
-  ownerKey: string,
-  mutate: (payload: MessengerBootstrapPayload) => MessengerBootstrapPayload,
-): Promise<void> {
-  const payload = await readCatalogPayloadOrEmpty(ownerKey);
-  await writeMessengerCatalogPayloadCache(ownerKey, mutate(payload));
-}
-
 export async function writeMessengerFolderSnapshotCache(
   ownerKey: string,
   folder: MessengerFolder,
 ): Promise<void> {
-  await writeMergedCatalogPayload(ownerKey, (payload) => ({
-    ...payload,
-    folders: replaceByUuid(payload.folders, folder),
-  }));
+  await upsertMessengerFolderSnapshotsCache(ownerKey, [folder], folder.items);
 }
 
 export async function upsertMessengerStreamCache(
   ownerKey: string,
   stream: MessengerStream,
 ): Promise<void> {
-  await writeMergedCatalogPayload(ownerKey, (payload) => {
-    const topics = payload.topics.filter((topic) => topic.streamUuid === stream.uuid);
-    const affectedConversationIds = new Set<MessengerConversationId>([
-      conversationIdForStream(stream.uuid),
-      ...topics.map((topic) => conversationIdForTopic(stream.uuid, topic.uuid)),
-    ]);
-    const conversations = payload.conversations.filter(
-      (conversation) => !affectedConversationIds.has(conversation.id),
-    );
-    conversations.push(conversationFromStream(stream));
-    for (const topic of topics) {
-      conversations.push(conversationFromTopic(topic, stream));
-    }
-
-    return {
-      ...payload,
-      streams: replaceByUuid(payload.streams, stream),
-      conversations,
-    };
-  });
+  const snapshot = await readMessengerCatalogCache(ownerKey);
+  const topics = snapshot.topics.filter((topic) => topic.streamUuid === stream.uuid);
+  await Promise.all([
+    upsertMessengerStreamsCache(ownerKey, [stream]),
+    upsertMessengerConversationsCache(ownerKey, [
+      cachedConversation(conversationFromStream(stream), stream.updatedAt),
+      ...topics.map((topic) =>
+        cachedConversation(
+          conversationFromTopic(topic as unknown as MessengerTopic, stream),
+          topic.updatedAt ?? stream.updatedAt,
+        ),
+      ),
+    ]),
+  ]);
 }
 
 export async function deleteMessengerStreamCache(
   ownerKey: string,
   streamUuid: MessengerUuid,
 ): Promise<void> {
-  await writeMergedCatalogPayload(ownerKey, (payload) => ({
-    ...payload,
-    streams: removeByUuid(payload.streams, streamUuid),
-    topics: payload.topics.filter((topic) => topic.streamUuid !== streamUuid),
-    conversations: payload.conversations.filter(
-      (conversation) => conversation.streamUuid !== streamUuid,
-    ),
-  }));
+  await Promise.all([
+    deleteMessengerStreamCatalogCache(ownerKey, streamUuid),
+    deleteCachedStreamMessageBuckets(ownerKey, streamUuid),
+  ]);
 }
 
 export async function upsertMessengerStreamBindingsCache(
   ownerKey: string,
   streamBindings: readonly MessengerStreamBinding[],
 ): Promise<void> {
-  await writeMergedCatalogPayload(ownerKey, (payload) => ({
-    ...payload,
-    streamBindings: streamBindings.reduce(
-      (next, binding) => replaceByUuid(next, binding),
-      payload.streamBindings,
-    ),
-  }));
+  await upsertMessengerStreamBindingsCatalogCache(ownerKey, streamBindings);
 }
 
 export async function upsertMessengerTopicCache(
   ownerKey: string,
   topic: MessengerTopic,
 ): Promise<void> {
-  await writeMergedCatalogPayload(ownerKey, (payload) => {
-    const stream = payload.streams.find((item) => item.uuid === topic.streamUuid);
-    const topicConversationId = conversationIdForTopic(topic.streamUuid, topic.uuid);
-    const conversations = payload.conversations.filter(
-      (conversation) => conversation.id !== topicConversationId,
-    );
-    if (stream != null) {
-      conversations.push(conversationFromTopic(topic, stream));
-    }
-
-    return {
-      ...payload,
-      topics: replaceByUuid(payload.topics, topic),
-      conversations,
-    };
-  });
+  const snapshot = await readMessengerCatalogCache(ownerKey);
+  const stream = snapshot.streams.find((item) => item.uuid === topic.streamUuid);
+  const conversations =
+    stream == null
+      ? []
+      : [
+          cachedConversation(
+            conversationFromTopic(topic, stream as unknown as MessengerStream),
+            topic.updatedAt,
+          ),
+        ];
+  await Promise.all([
+    upsertMessengerTopicsCache(ownerKey, [topic]),
+    upsertMessengerConversationsCache(ownerKey, conversations),
+  ]);
 }
 
 export async function deleteMessengerTopicCache(
@@ -256,82 +232,24 @@ export async function deleteMessengerTopicCache(
   topicUuid: MessengerUuid,
   streamUuid: MessengerUuid,
 ): Promise<void> {
-  const conversationId = conversationIdForTopic(streamUuid, topicUuid);
-  await writeMergedCatalogPayload(ownerKey, (payload) => ({
-    ...payload,
-    topics: removeByUuid(payload.topics, topicUuid),
-    conversations: payload.conversations.filter(
-      (conversation) => conversation.id !== conversationId,
-    ),
-  }));
+  await Promise.all([
+    deleteMessengerTopicCatalogCache(ownerKey, topicUuid, streamUuid),
+    deleteCachedTopicMessageBuckets(ownerKey, streamUuid, topicUuid),
+  ]);
 }
 
 export async function deleteMessengerFolderCache(
   ownerKey: string,
   folderUuid: MessengerUuid,
 ): Promise<void> {
-  await writeMergedCatalogPayload(ownerKey, (payload) => ({
-    ...payload,
-    folders: removeByUuid(payload.folders, folderUuid),
-  }));
+  await deleteMessengerFolderCatalogCache(ownerKey, folderUuid);
 }
 
 export async function deleteMessengerFolderItemCache(
   ownerKey: string,
   folderItemUuid: MessengerUuid,
 ): Promise<void> {
-  await writeMergedCatalogPayload(ownerKey, (payload) => ({
-    ...payload,
-    folders: payload.folders.map((folder) => ({
-      ...folder,
-      items: folder.items.filter((item) => item.uuid !== folderItemUuid),
-    })),
-  }));
-}
-
-function withMessagePointers(
-  payload: MessengerBootstrapPayload,
-  message: MessengerMessage,
-): MessengerBootstrapPayload {
-  const streamConversationId = conversationIdForStream(message.streamUuid);
-  return {
-    ...payload,
-    streams: payload.streams.map((stream) =>
-      stream.uuid === message.streamUuid
-        ? { ...stream, lastMessageUuid: message.uuid, updatedAt: message.createdAt }
-        : stream,
-    ),
-    topics: payload.topics.map((topic) =>
-      topic.uuid === message.topicUuid
-        ? { ...topic, lastMessageUuid: message.uuid, updatedAt: message.createdAt }
-        : topic,
-    ),
-    conversations: payload.conversations.map((conversation) =>
-      conversation.id === streamConversationId || conversation.id === message.conversationId
-        ? { ...conversation, lastMessageUuid: message.uuid }
-        : conversation,
-    ),
-  };
-}
-
-function withoutMessagePointers(
-  payload: MessengerBootstrapPayload,
-  messageUuid: MessengerUuid,
-): MessengerBootstrapPayload {
-  return {
-    ...payload,
-    streams: payload.streams.map((stream) =>
-      stream.lastMessageUuid === messageUuid ? { ...stream, lastMessageUuid: null } : stream,
-    ),
-    topics: payload.topics.map((topic) =>
-      topic.lastMessageUuid === messageUuid ? { ...topic, lastMessageUuid: null } : topic,
-    ),
-    conversations: payload.conversations.map((conversation) =>
-      conversation.lastMessageUuid === messageUuid
-        ? { ...conversation, lastMessageUuid: null }
-        : conversation,
-    ),
-  };
+  await deleteMessengerFolderItemCatalogCache(ownerKey, folderItemUuid);
 }
 
 export async function readMessengerConversationWindowCache(
@@ -362,7 +280,7 @@ export async function writeMessengerLiveMessageCache(
   await writeConversationMessagePage(ownerKey, conversationId, page);
   const message = page.messages.at(-1);
   if (message != null) {
-    await writeMergedCatalogPayload(ownerKey, (payload) => withMessagePointers(payload, message));
+    await applyMessengerMessagePointerCache(ownerKey, message);
   }
 }
 
@@ -371,7 +289,7 @@ export async function patchMessengerCachedMessage(
   message: MessengerMessage,
 ): Promise<void> {
   await patchCachedMessage(ownerKey, message);
-  await writeMergedCatalogPayload(ownerKey, (payload) => withMessagePointers(payload, message));
+  await applyMessengerMessagePointerCache(ownerKey, message);
 }
 
 export async function deleteMessengerCachedMessage(
@@ -380,9 +298,7 @@ export async function deleteMessengerCachedMessage(
   conversationIds: readonly MessengerConversationId[],
 ): Promise<void> {
   await deleteCachedMessage(ownerKey, messageUuid, conversationIds);
-  await writeMergedCatalogPayload(ownerKey, (payload) =>
-    withoutMessagePointers(payload, messageUuid),
-  );
+  await clearMessengerMessagePointerCache(ownerKey, messageUuid);
 }
 
 export async function writeMessengerRealtimeCursorCache(
