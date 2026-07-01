@@ -1,3 +1,4 @@
+import { t } from "~/i18n/i18n";
 import {
   workspaceMessengerStreamRoute,
   workspaceMessengerTopicRoute,
@@ -13,6 +14,7 @@ import type {
   MessengerSidebarTopicItem,
   MessengerStream,
   MessengerTopic,
+  MessengerUser,
   MessengerUuid,
 } from "./messenger.types";
 
@@ -25,6 +27,7 @@ const EMPTY_SIDEBAR_TOPICS: MessengerSidebarTopicItem[] = [];
 export interface MessengerSidebarSelectorOptions {
   organizationId: string;
   projectId: string;
+  currentUserUuid?: MessengerUuid | null;
   selectedFolderUuid?: string | null;
 }
 
@@ -34,6 +37,8 @@ interface SidebarStreamsCacheEntry {
   topicIds: MessengerUuid[];
   topicsById: MessengerStoreState["topicsById"];
   messagesById: MessengerStoreState["messagesById"];
+  usersById: MessengerStoreState["usersById"];
+  currentUserUuid: MessengerUuid | null;
   foldersById: MessengerStoreState["foldersById"];
   organizationId: string;
   projectId: string;
@@ -73,18 +78,39 @@ function compareSidebarStreams(
   return compareNullableStrings(b.updatedAt, a.updatedAt) || a.title.localeCompare(b.title);
 }
 
+function resolveMessengerUserDisplayName(user: MessengerUser | undefined): string | undefined {
+  if (user == null) return undefined;
+
+  const fullName = [user.firstName, user.lastName]
+    .map((part) => part?.trim() ?? "")
+    .filter((part) => part.length > 0)
+    .join(" ")
+    .trim();
+  if (fullName.length > 0) return fullName;
+
+  const username = user.username.trim();
+  return username.length > 0 ? username : undefined;
+}
+
 function previewFromMessage(
   messageUuid: MessengerUuid | null,
   messagesById: Record<MessengerUuid, MessengerMessage>,
+  usersById: MessengerStoreState["usersById"],
+  currentUserUuid: MessengerUuid | null,
 ): MessengerSidebarMessagePreview | null {
   if (messageUuid == null) return null;
 
   const message = messagesById[messageUuid];
   if (message == null) return null;
 
+  const senderName =
+    message.authorUuid === currentUserUuid
+      ? t("common.you")
+      : resolveMessengerUserDisplayName(usersById[message.authorUuid]);
   return {
     messageUuid: message.uuid,
     text: message.markdown,
+    ...(senderName != null ? { senderName } : {}),
   };
 }
 
@@ -93,6 +119,8 @@ function topicItemFromTopic(input: {
   projectId: string;
   topic: MessengerTopic;
   messagesById: MessengerStoreState["messagesById"];
+  usersById: MessengerStoreState["usersById"];
+  currentUserUuid: MessengerUuid | null;
 }): MessengerSidebarTopicItem {
   // topic:<streamUuid>:<topicUuid> - временный ключ фронтенда для выбора строки.
   // В API нет отдельной сущности "conversation"; настоящие id остаются streamUuid и topicUuid.
@@ -109,7 +137,12 @@ function topicItemFromTopic(input: {
       streamUuid: input.topic.streamUuid,
       topicUuid: input.topic.uuid,
     }),
-    preview: previewFromMessage(input.topic.lastMessageUuid, input.messagesById),
+    preview: previewFromMessage(
+      input.topic.lastMessageUuid,
+      input.messagesById,
+      input.usersById,
+      input.currentUserUuid,
+    ),
     updatedAt: input.topic.updatedAt,
   };
 }
@@ -120,6 +153,8 @@ function streamItemFromStream(input: {
   stream: MessengerStream;
   topics: MessengerSidebarTopicItem[];
   messagesById: MessengerStoreState["messagesById"];
+  usersById: MessengerStoreState["usersById"];
+  currentUserUuid: MessengerUuid | null;
   unreadCount?: number;
   pinnedAt?: string | null;
   orderIndex?: number | null;
@@ -141,7 +176,12 @@ function streamItemFromStream(input: {
       streamUuid: input.stream.uuid,
     }),
     topics: input.topics,
-    preview: previewFromMessage(input.stream.lastMessageUuid, input.messagesById),
+    preview: previewFromMessage(
+      input.stream.lastMessageUuid,
+      input.messagesById,
+      input.usersById,
+      input.currentUserUuid,
+    ),
     updatedAt: input.stream.updatedAt,
   };
 }
@@ -151,6 +191,8 @@ function streamItemFromConversation(input: {
   projectId: string;
   conversation: MessengerConversation;
   messagesById: MessengerStoreState["messagesById"];
+  usersById: MessengerStoreState["usersById"];
+  currentUserUuid: MessengerUuid | null;
   unreadCount?: number;
   pinnedAt?: string | null;
   orderIndex?: number | null;
@@ -171,7 +213,12 @@ function streamItemFromConversation(input: {
       streamUuid: input.conversation.streamUuid,
     }),
     topics: EMPTY_SIDEBAR_TOPICS,
-    preview: previewFromMessage(input.conversation.lastMessageUuid ?? null, input.messagesById),
+    preview: previewFromMessage(
+      input.conversation.lastMessageUuid ?? null,
+      input.messagesById,
+      input.usersById,
+      input.currentUserUuid,
+    ),
     updatedAt: input.updatedAt ?? "",
   };
 }
@@ -181,6 +228,7 @@ function topicsForStream(input: {
   projectId: string;
   state: MessengerStoreState;
   streamUuid: MessengerUuid;
+  currentUserUuid: MessengerUuid | null;
 }): MessengerSidebarTopicItem[] {
   // Темы пока живут плоским списком в store, поэтому здесь привязываем их к нужному потоку.
   const topics = input.state.topicIds
@@ -192,6 +240,8 @@ function topicsForStream(input: {
         projectId: input.projectId,
         topic,
         messagesById: input.state.messagesById,
+        usersById: input.state.usersById,
+        currentUserUuid: input.currentUserUuid,
       }),
     );
 
@@ -204,12 +254,15 @@ export function selectMessengerSidebarStreams(
   options: MessengerSidebarSelectorOptions,
 ): MessengerSidebarStreamItem[] {
   const selectedFolderUuid = options.selectedFolderUuid ?? null;
+  const currentUserUuid = options.currentUserUuid ?? null;
   if (
     sidebarStreamsCache?.streamIds === state.streamIds &&
     sidebarStreamsCache.streamsById === state.streamsById &&
     sidebarStreamsCache.topicIds === state.topicIds &&
     sidebarStreamsCache.topicsById === state.topicsById &&
     sidebarStreamsCache.messagesById === state.messagesById &&
+    sidebarStreamsCache.usersById === state.usersById &&
+    sidebarStreamsCache.currentUserUuid === currentUserUuid &&
     sidebarStreamsCache.foldersById === state.foldersById &&
     sidebarStreamsCache.organizationId === options.organizationId &&
     sidebarStreamsCache.projectId === options.projectId &&
@@ -231,6 +284,8 @@ export function selectMessengerSidebarStreams(
               projectId: options.projectId,
               stream,
               messagesById: state.messagesById,
+              usersById: state.usersById,
+              currentUserUuid,
               unreadCount: item.unreadCount,
               pinnedAt: item.pinnedAt,
               orderIndex: item.orderIndex,
@@ -239,6 +294,7 @@ export function selectMessengerSidebarStreams(
                 projectId: options.projectId,
                 state,
                 streamUuid: stream.uuid,
+                currentUserUuid,
               }),
             });
           }
@@ -250,6 +306,8 @@ export function selectMessengerSidebarStreams(
             projectId: options.projectId,
             conversation,
             messagesById: state.messagesById,
+            usersById: state.usersById,
+            currentUserUuid,
             unreadCount: item.unreadCount,
             pinnedAt: item.pinnedAt,
             orderIndex: item.orderIndex,
@@ -267,11 +325,14 @@ export function selectMessengerSidebarStreams(
             projectId: options.projectId,
             stream,
             messagesById: state.messagesById,
+            usersById: state.usersById,
+            currentUserUuid,
             topics: topicsForStream({
               organizationId: options.organizationId,
               projectId: options.projectId,
               state,
               streamUuid: stream.uuid,
+              currentUserUuid,
             }),
           }),
         );
@@ -283,6 +344,8 @@ export function selectMessengerSidebarStreams(
     topicIds: state.topicIds,
     topicsById: state.topicsById,
     messagesById: state.messagesById,
+    usersById: state.usersById,
+    currentUserUuid,
     foldersById: state.foldersById,
     organizationId: options.organizationId,
     projectId: options.projectId,

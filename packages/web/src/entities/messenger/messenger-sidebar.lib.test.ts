@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { t } from "~/i18n/i18n";
 import { workspaceMessengerRootRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import {
   selectMessengerSidebarFolders,
@@ -11,6 +12,7 @@ import type {
   MessengerMessage,
   MessengerStream,
   MessengerTopic,
+  MessengerUser,
 } from "./messenger.types";
 
 const ORGANIZATION_ID = "workspace.example.com";
@@ -24,6 +26,7 @@ const FOLDER_ITEM_A = "9f41b1a7-77f9-4c12-bdc6-d3cebc5dbf50";
 const FOLDER_ITEM_B = "5f5b9a9d-0e57-4775-849b-c8308f95a809";
 const MESSAGE_A = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
 const MESSAGE_B = "78105b9e-f1ac-41f1-baf5-2975486cc7dc";
+const AUTHOR_UUID = "author";
 const DATE_A = "2026-06-22T10:10:00Z";
 const DATE_B = "2026-06-22T11:10:00Z";
 
@@ -121,13 +124,28 @@ function message(overrides: Partial<MessengerMessage> = {}): MessengerMessage {
     projectId: PROJECT_ID,
     streamUuid: STREAM_A,
     topicUuid: TOPIC_A,
-    authorUuid: "author",
+    authorUuid: AUTHOR_UUID,
     userUuid: "user",
     markdown: "Latest workspace message",
     read: true,
     pinned: false,
     starred: false,
     isOwn: false,
+    createdAt: DATE_A,
+    updatedAt: DATE_A,
+    ...overrides,
+  };
+}
+
+function user(overrides: Partial<MessengerUser> = {}): MessengerUser {
+  return {
+    uuid: AUTHOR_UUID,
+    username: "alice",
+    status: "active",
+    firstName: "Alice",
+    lastName: "Wonderland",
+    email: "alice@example.com",
+    lastPingAt: DATE_A,
     createdAt: DATE_A,
     updatedAt: DATE_A,
     ...overrides,
@@ -192,8 +210,8 @@ function state(overrides: Partial<MessengerStoreState> = {}): MessengerStoreStat
     hasMoreByConversationId: {},
     foldersById: { [FOLDER_A]: folderA },
     folderIds: [FOLDER_A],
-    usersById: {},
-    userIds: [],
+    usersById: { [AUTHOR_UUID]: user() },
+    userIds: [AUTHOR_UUID],
     lastEpochVersion: null,
     skippedRealtimeEvents: [],
     startBootstrap: () => undefined,
@@ -323,10 +341,55 @@ describe("messenger sidebar selectors", () => {
     expect(rows[0]?.preview).toEqual({
       messageUuid: MESSAGE_A,
       text: "Stream preview",
+      senderName: "Alice Wonderland",
     });
     expect(rows[0]?.topics[0]?.preview).toEqual({
       messageUuid: MESSAGE_B,
       text: "Topic preview",
+      senderName: "Alice Wonderland",
+    });
+  });
+
+  it("shows a localized self label for messages written by the current user", () => {
+    const rows = selectMessengerSidebarStreams(
+      state({
+        streamsById: {
+          [STREAM_A]: stream({ lastMessageUuid: MESSAGE_A }),
+          [STREAM_B]: stream({
+            uuid: STREAM_B,
+            name: "Alice",
+            audience: "private",
+            isPrivate: true,
+            directUserUuid: "alice",
+            unreadCount: 4,
+            updatedAt: DATE_B,
+          }),
+        },
+        topicsById: {
+          [TOPIC_A]: topic({ lastMessageUuid: MESSAGE_A }),
+          [TOPIC_B]: topic({
+            uuid: TOPIC_B,
+            streamUuid: STREAM_B,
+            name: "General",
+            unreadCount: 6,
+            isDone: true,
+          }),
+        },
+        messagesById: {
+          [MESSAGE_A]: message({ uuid: MESSAGE_A, markdown: "Self preview" }),
+        },
+      }),
+      {
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        currentUserUuid: AUTHOR_UUID,
+      },
+    );
+
+    expect(rows[0]?.preview).toEqual({
+      messageUuid: MESSAGE_A,
+      text: "Self preview",
+      senderName: t("common.you"),
     });
   });
 
@@ -349,6 +412,8 @@ describe("messenger sidebar selectors", () => {
           markdown: "Private preview",
         }),
       },
+      usersById: { [AUTHOR_UUID]: user() },
+      userIds: [AUTHOR_UUID],
     });
 
     const rows = selectMessengerSidebarStreams(base, {
@@ -367,6 +432,7 @@ describe("messenger sidebar selectors", () => {
       preview: {
         messageUuid: MESSAGE_A,
         text: "Private preview",
+        senderName: "Alice Wonderland",
       },
     });
   });

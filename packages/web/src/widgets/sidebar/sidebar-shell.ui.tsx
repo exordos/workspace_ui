@@ -37,6 +37,7 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
     () => selectCurrentWorkspaceRuntimeContext({ sessions, currentAccountId }),
     [currentAccountId, sessions],
   );
+  const currentUserUuid = workspaceRuntimeContext?.userUuid ?? null;
   const sidebarWorkspaceIdentity =
     workspaceRoute != null
       ? { organizationId: workspaceRoute.orgId, projectId: workspaceRoute.projectId }
@@ -60,6 +61,7 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
       ? selectMessengerSidebarStreams(state, {
           organizationId: sidebarWorkspaceIdentity.organizationId,
           projectId: sidebarWorkspaceIdentity.projectId,
+          currentUserUuid,
           selectedFolderUuid: workspaceEffectiveFolderId,
         })
       : EMPTY_WORKSPACE_STREAMS,
