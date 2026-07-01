@@ -7,22 +7,11 @@ import { testMessageId } from "~/test/factories";
 import { MessageBubble } from "./message-bubble.ui";
 import type * as AttachmentDownloadModule from "./message-attachment-download.lib";
 
-const downloadUserUploadAttachmentMock = vi.fn();
+const downloadWorkspaceFileAttachmentMock = vi.fn();
 
 vi.mock("~/shared/api/messenger-client.internal", () => ({
   getRealmBaseUrl: () => "https://uploads.example.com",
 }));
-
-vi.mock("~/shared/lib/env", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/lib/env")>();
-  return {
-    ...actual,
-    env: {
-      ...actual.env,
-      USER_UPLOADS_PATH_PREFIX: "",
-    },
-  };
-});
 
 vi.mock("./message-attachment-download.lib", async () => {
   const actual = await vi.importActual<typeof AttachmentDownloadModule>(
@@ -30,7 +19,8 @@ vi.mock("./message-attachment-download.lib", async () => {
   );
   return {
     ...actual,
-    downloadUserUploadAttachment: (...args: unknown[]) => downloadUserUploadAttachmentMock(...args),
+    downloadWorkspaceFileAttachment: (...args: unknown[]) =>
+      downloadWorkspaceFileAttachmentMock(...args),
   };
 });
 
@@ -49,7 +39,8 @@ function msg(overrides: Partial<MockMessage> = {}): MockMessage {
     sender_full_name: "Alice",
     stream_uuid: "00000000-0000-4000-8000-000000000010",
     subject: "general",
-    content: '<p><a href="/user_uploads/1/report.pdf">report.pdf</a></p>',
+    content:
+      '<p><a href="/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download">report.pdf</a></p>',
     timestamp: 1710000000,
   };
   return {
@@ -63,27 +54,24 @@ function msg(overrides: Partial<MockMessage> = {}): MockMessage {
 describe("MessageBubble attachment links", () => {
   beforeEach(() => {
     useDownloadStore.setState({ entries: [], duplicateRequestTick: 0 });
-    downloadUserUploadAttachmentMock.mockReset();
-    downloadUserUploadAttachmentMock.mockResolvedValue(true);
+    downloadWorkspaceFileAttachmentMock.mockReset();
+    downloadWorkspaceFileAttachmentMock.mockResolvedValue(true);
   });
 
-  it("does not decorate inlined user_upload video links as attachments", async () => {
-    const { container } = render(
+  it("does not decorate regular links as attachment actions", async () => {
+    render(
       <MessageBubble
         message={msg({
-          content: "[clip.webm](/user_uploads/1/clip.webm)",
+          content: '<p><a href="https://example.com/clip.webm">clip.webm</a></p>',
         })}
       />,
     );
 
-    await waitFor(() => {
-      expect(container.querySelector("video")).toBeTruthy();
-    });
-    expect(container.querySelector("a[href*='clip.webm']")).toBeNull();
-    expect(container.querySelector("video")).not.toHaveAttribute("data-attachment-link");
+    const link = await screen.findByRole("link", { name: "clip.webm" });
+    expect(link).not.toHaveAttribute("data-attachment-link");
   });
 
-  it("decorates user_upload links as attachment actions", async () => {
+  it("decorates workspace file download links as attachment actions", async () => {
     render(<MessageBubble message={msg()} />);
 
     const link = await screen.findByRole("link", { name: "report.pdf" });
@@ -119,16 +107,16 @@ describe("MessageBubble attachment links", () => {
     expect(await screen.findByRole("menuitem", { name: /reply/i })).toBeInTheDocument();
   });
 
-  it("downloads user_upload attachments via authenticated helper", async () => {
+  it("downloads workspace file attachments via authenticated helper", async () => {
     render(<MessageBubble message={msg()} />);
 
     const link = await screen.findByRole("link", { name: "report.pdf" });
     fireEvent.click(link);
 
     await waitFor(() => {
-      expect(downloadUserUploadAttachmentMock).toHaveBeenCalledWith(
+      expect(downloadWorkspaceFileAttachmentMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          path: "/user_uploads/1/report.pdf",
+          path: "/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download",
           fileName: "report.pdf",
           authHeaders: { Authorization: "Bearer token" },
           onProgress: expect.any(Function),
@@ -138,7 +126,7 @@ describe("MessageBubble attachment links", () => {
 
     await waitFor(() => {
       expect(useDownloadStore.getState().entries[0]).toMatchObject({
-        path: "/user_uploads/1/report.pdf",
+        path: "/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download",
         status: "downloaded",
       });
     });

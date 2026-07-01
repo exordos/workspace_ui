@@ -1,48 +1,44 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   deriveAttachmentFileName,
-  downloadUserUploadAttachment,
-  extractUserUploadPath,
+  downloadWorkspaceFileAttachment,
+  extractWorkspaceFileDownloadPath,
 } from "./message-attachment-download.lib";
 
-describe("extractUserUploadPath", () => {
-  it("returns relative path for absolute user_upload URL", () => {
+const FILE_DOWNLOAD_PATH =
+  "/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download";
+
+describe("extractWorkspaceFileDownloadPath", () => {
+  it("returns relative path for raw workspace file download value", () => {
+    expect(extractWorkspaceFileDownloadPath(FILE_DOWNLOAD_PATH)).toBe(FILE_DOWNLOAD_PATH);
+  });
+
+  it("returns relative path for same-origin absolute workspace file download URL", () => {
     expect(
-      extractUserUploadPath("https://chat.example.com/user_uploads/1/report.pdf?token=a"),
-    ).toBe("/user_uploads/1/report.pdf?token=a");
+      extractWorkspaceFileDownloadPath(`${window.location.origin}${FILE_DOWNLOAD_PATH}?token=a`),
+    ).toBe(`${FILE_DOWNLOAD_PATH}?token=a`);
   });
 
-  it("returns relative path for raw /user_uploads value", () => {
-    expect(extractUserUploadPath("/user_uploads/2/file.txt")).toBe("/user_uploads/2/file.txt");
-  });
-
-  it("returns null for non-upload links", () => {
-    expect(extractUserUploadPath("https://example.com/docs")).toBeNull();
+  it("returns null for legacy and external links", () => {
+    expect(extractWorkspaceFileDownloadPath("/user_uploads/2/file.txt")).toBeNull();
+    expect(extractWorkspaceFileDownloadPath("https://example.com/docs")).toBeNull();
+    expect(
+      extractWorkspaceFileDownloadPath(`https://evil.example.com${FILE_DOWNLOAD_PATH}`),
+    ).toBeNull();
   });
 });
 
 describe("deriveAttachmentFileName", () => {
-  it("prefers sanitized label from markdown link text", () => {
-    expect(deriveAttachmentFileName("Quarterly report?.pdf", "/user_uploads/1/ignored")).toBe(
-      "Quarterly report_.pdf",
-    );
+  it("returns sanitized label from markdown link text", () => {
+    expect(deriveAttachmentFileName("Quarterly report?.pdf")).toBe("Quarterly report_.pdf");
   });
 
-  it("falls back to path segment when label is empty", () => {
-    expect(deriveAttachmentFileName("   ", "/user_uploads/1/archive.tar.gz")).toBe(
-      "archive.tar.gz",
-    );
-  });
-
-  it("falls back to raw segment when encoded fallback is malformed", () => {
-    const derive = () => deriveAttachmentFileName("   ", "/user_uploads/1/%E0%A4%A.txt");
-
-    expect(derive).not.toThrow();
-    expect(derive()).toBe("%E0%A4%A.txt");
+  it("falls back to generic attachment name when label is empty", () => {
+    expect(deriveAttachmentFileName("   ")).toBe("attachment");
   });
 });
 
-describe("downloadUserUploadAttachment", () => {
+describe("downloadWorkspaceFileAttachment", () => {
   const originalCreateObjectURL = URL.createObjectURL;
   const originalRevokeObjectURL = URL.revokeObjectURL;
   const originalCreateElement = document.createElement.bind(document);
@@ -92,15 +88,15 @@ describe("downloadUserUploadAttachment", () => {
       .fn()
       .mockResolvedValue(new Response("ok", { status: 200, headers: { "content-length": "2" } }));
 
-    const success = await downloadUserUploadAttachment({
-      path: "/user_uploads/1/file.txt",
+    const success = await downloadWorkspaceFileAttachment({
+      path: FILE_DOWNLOAD_PATH,
       fileName: "file.txt",
       authHeaders: { Authorization: "Bearer token" },
       fetchImpl: fetchMock as typeof fetch,
     });
 
     expect(success).toBe(true);
-    expect(fetchMock).toHaveBeenCalledWith("/user_uploads/1/file.txt", {
+    expect(fetchMock).toHaveBeenCalledWith(FILE_DOWNLOAD_PATH, {
       headers: { Authorization: "Bearer token" },
       credentials: "include",
     });
@@ -111,8 +107,8 @@ describe("downloadUserUploadAttachment", () => {
   it("returns false when response is not ok", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("fail", { status: 500 }));
 
-    const success = await downloadUserUploadAttachment({
-      path: "/user_uploads/1/file.txt",
+    const success = await downloadWorkspaceFileAttachment({
+      path: FILE_DOWNLOAD_PATH,
       fileName: "file.txt",
       authHeaders: {},
       fetchImpl: fetchMock as typeof fetch,
@@ -155,8 +151,8 @@ describe("downloadUserUploadAttachment", () => {
     );
     const onProgress = vi.fn();
 
-    const success = await downloadUserUploadAttachment({
-      path: "/user_uploads/1/file.txt",
+    const success = await downloadWorkspaceFileAttachment({
+      path: FILE_DOWNLOAD_PATH,
       fileName: "file.txt",
       authHeaders: { Authorization: "Bearer token" },
       onProgress,
@@ -171,7 +167,7 @@ describe("downloadUserUploadAttachment", () => {
     expect(revokeObjectURLMock).toHaveBeenCalledTimes(1);
   });
 
-  it("normalizes absolute upload URL to safe relative path before request", async () => {
+  it("normalizes same-origin absolute download URL to relative path before request", async () => {
     const createObjectURLMock = vi.fn(() => "blob:test-safe");
     const revokeObjectURLMock = vi.fn();
     Object.defineProperty(URL, "createObjectURL", {
@@ -189,25 +185,25 @@ describe("downloadUserUploadAttachment", () => {
       .fn()
       .mockResolvedValue(new Response("ok", { status: 200, headers: { "content-length": "2" } }));
 
-    const success = await downloadUserUploadAttachment({
-      path: "https://evil.example.com/user_uploads/1/file.txt?token=unsafe",
+    const success = await downloadWorkspaceFileAttachment({
+      path: `${window.location.origin}${FILE_DOWNLOAD_PATH}`,
       fileName: "file.txt",
       authHeaders: { Authorization: "Bearer token" },
       fetchImpl: fetchMock as typeof fetch,
     });
 
     expect(success).toBe(true);
-    expect(fetchMock).toHaveBeenCalledWith("/user_uploads/1/file.txt?token=unsafe", {
+    expect(fetchMock).toHaveBeenCalledWith(FILE_DOWNLOAD_PATH, {
       headers: { Authorization: "Bearer token" },
       credentials: "include",
     });
   });
 
-  it("does not issue request for invalid non-upload path", async () => {
+  it("does not issue request for invalid or legacy path", async () => {
     const fetchMock = vi.fn();
 
-    const success = await downloadUserUploadAttachment({
-      path: "https://evil.example.com/public/file.txt",
+    const success = await downloadWorkspaceFileAttachment({
+      path: "/user_uploads/1/file.txt",
       fileName: "file.txt",
       authHeaders: { Authorization: "Bearer token" },
       fetchImpl: fetchMock as typeof fetch,

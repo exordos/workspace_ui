@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { uploadComposerFiles } from "./chat-upload.lib";
 
+const STREAM_UUID = "22222222-2222-4222-8222-222222222222";
+const FILE_A_URI = "/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download";
+const FILE_B_URI = "/api/messenger/v1/files/44444444-4444-4444-8444-444444444444/actions/download";
+
 describe("uploadComposerFiles", () => {
   it("uploads valid files and returns markdown links with sanitized filenames", async () => {
     const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00, 0x00, 0x00, 0x00]);
@@ -10,18 +14,18 @@ describe("uploadComposerFiles", () => {
     ];
     const uploadFile = vi
       .fn<(file: File) => Promise<string>>()
-      .mockResolvedValueOnce("/user_uploads/1/report.txt")
-      .mockResolvedValueOnce("/user_uploads/1/image.png");
+      .mockResolvedValueOnce(FILE_A_URI)
+      .mockResolvedValueOnce(FILE_B_URI);
 
-    const links = await uploadComposerFiles(files, uploadFile);
+    const links = await uploadComposerFiles(files, uploadFile, { streamUuid: STREAM_UUID });
 
     expect(links).toEqual([
-      "[quarterly____report_.txt](/user_uploads/1/report.txt)",
-      "[image.png](/user_uploads/1/image.png)",
+      `[quarterly____report_.txt](${FILE_A_URI})`,
+      `[image.png](${FILE_B_URI})`,
     ]);
     expect(uploadFile).toHaveBeenCalledTimes(2);
-    expect(uploadFile).toHaveBeenNthCalledWith(1, files[0]);
-    expect(uploadFile).toHaveBeenNthCalledWith(2, files[1]);
+    expect(uploadFile).toHaveBeenNthCalledWith(1, files[0], { streamUuid: STREAM_UUID });
+    expect(uploadFile).toHaveBeenNthCalledWith(2, files[1], { streamUuid: STREAM_UUID });
   });
 
   it("rejects empty files before upload starts", async () => {
@@ -57,13 +61,11 @@ describe("uploadComposerFiles", () => {
         type: "image/svg+xml",
       }),
     ];
-    const uploadFile = vi
-      .fn<(file: File) => Promise<string>>()
-      .mockResolvedValue("/user_uploads/1/icon.svg");
+    const uploadFile = vi.fn<(file: File) => Promise<string>>().mockResolvedValue(FILE_A_URI);
 
     const links = await uploadComposerFiles(files, uploadFile);
 
-    expect(links).toEqual(["[icon.svg](/user_uploads/1/icon.svg)"]);
+    expect(links).toEqual([`[icon.svg](${FILE_A_URI})`]);
     expect(uploadFile).toHaveBeenCalledTimes(1);
     expect(uploadFile).toHaveBeenCalledWith(files[0]);
   });
@@ -75,8 +77,8 @@ describe("uploadComposerFiles", () => {
     ];
     const uploadFile = vi
       .fn<(file: File) => Promise<string>>()
-      .mockResolvedValueOnce("/user_uploads/1/one.txt")
-      .mockResolvedValueOnce("/user_uploads/1/two.txt");
+      .mockResolvedValueOnce(FILE_A_URI)
+      .mockResolvedValueOnce(FILE_B_URI);
     const onProgress = vi.fn();
 
     await uploadComposerFiles(files, uploadFile, { onProgress });
@@ -104,13 +106,17 @@ describe("uploadComposerFiles", () => {
     const controller = new AbortController();
     const uploadFile = vi
       .fn<(file: File, options?: { signal?: AbortSignal }) => Promise<string>>()
-      .mockResolvedValue("/user_uploads/1/spec.txt");
+      .mockResolvedValue(FILE_A_URI);
 
     await uploadComposerFiles([file], uploadFile, {
       signal: controller.signal,
+      streamUuid: STREAM_UUID,
     });
 
-    expect(uploadFile).toHaveBeenCalledWith(file, { signal: controller.signal });
+    expect(uploadFile).toHaveBeenCalledWith(file, {
+      signal: controller.signal,
+      streamUuid: STREAM_UUID,
+    });
   });
 
   it("rejects with abort error when upload signal is already aborted", async () => {
@@ -123,7 +129,7 @@ describe("uploadComposerFiles", () => {
         if (options?.signal?.aborted) {
           throw new DOMException("Aborted", "AbortError");
         }
-        return Promise.resolve("/user_uploads/1/aborted.txt");
+        return Promise.resolve(FILE_A_URI);
       });
 
     await expect(

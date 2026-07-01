@@ -481,14 +481,35 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     const form = new FormData();
     form.append("file", new File(["data"], "test.txt"));
 
-    await (
-      messengerApi as typeof messengerApi & {
-        postFormData: (path: string, form: FormData) => Promise<unknown>;
-      }
-    ).postFormData("/user_uploads", form);
+    await messengerApi.postFormData("/files/", form);
 
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
     const headers = init.headers as Record<string, string>;
+    expect(init.body).toBe(form);
+    expect(headers["Content-Type"]).toBeUndefined();
+  });
+
+  it("postFormDataWithBase sends FormData to explicit base without explicit Content-Type", async () => {
+    const { messengerApi, setInstanceProvider } = await import("./client");
+    setInstanceProvider(() => ({
+      id: "i1",
+      realm: "https://messenger.test",
+      login: "u@t.com",
+      authType: "iam",
+      iamAccessToken: "key123",
+    }));
+
+    mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true }));
+
+    const form = new FormData();
+    form.append("file", new File(["data"], "test.txt"));
+
+    await messengerApi.postFormDataWithBase("/api/messenger/v1", "/files/", form);
+
+    const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+    expect(url).toBe(`${origin}/api/messenger/v1/files/`);
     expect(init.body).toBe(form);
     expect(headers["Content-Type"]).toBeUndefined();
   });

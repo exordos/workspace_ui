@@ -1,7 +1,9 @@
-import { appendDevUserUploadsProxyHeaders } from "~/shared/api/client";
+import { appendDevWorkspaceApiProxyHeaders } from "~/shared/api/client";
+import { MESSENGER_WORKSPACE_API_PATH } from "~/shared/config/workspace-api-layout";
 import { sanitizeFilename } from "~/shared/lib/validation";
 
-const USER_UPLOADS_SEGMENT = "/user_uploads/";
+const WORKSPACE_FILE_DOWNLOAD_PREFIX = `${MESSENGER_WORKSPACE_API_PATH}/files/`;
+const WORKSPACE_FILE_DOWNLOAD_SUFFIX = "/actions/download";
 
 function safeParseUrl(value: string): URL | null {
   try {
@@ -11,32 +13,30 @@ function safeParseUrl(value: string): URL | null {
   }
 }
 
-function safeDecodeUriComponent(value: string): string {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
+function isRelativeOrSameOrigin(rawHref: string, parsed: URL): boolean {
+  return rawHref.startsWith("/") || parsed.origin === window.location.origin;
 }
 
-export function extractUserUploadPath(rawHref: string): string | null {
+function isWorkspaceFileDownloadPath(pathname: string): boolean {
+  return (
+    pathname.startsWith(WORKSPACE_FILE_DOWNLOAD_PREFIX) &&
+    pathname.endsWith(WORKSPACE_FILE_DOWNLOAD_SUFFIX) &&
+    pathname.length > WORKSPACE_FILE_DOWNLOAD_PREFIX.length + WORKSPACE_FILE_DOWNLOAD_SUFFIX.length
+  );
+}
+
+export function extractWorkspaceFileDownloadPath(rawHref: string): string | null {
   const href = rawHref.trim();
   if (!href) return null;
-  if (href.startsWith(USER_UPLOADS_SEGMENT)) return href;
-
   const parsed = safeParseUrl(href);
-  if (!parsed?.pathname.includes(USER_UPLOADS_SEGMENT)) return null;
+  if (parsed == null || !isRelativeOrSameOrigin(href, parsed)) return null;
+  if (!isWorkspaceFileDownloadPath(parsed.pathname)) return null;
   return `${parsed.pathname}${parsed.search}`;
 }
 
-export function deriveAttachmentFileName(rawLabel: string, path: string): string {
+export function deriveAttachmentFileName(rawLabel: string): string {
   const label = sanitizeFilename(rawLabel.trim());
-  if (label) return label;
-
-  const fallback = path.split("/").at(-1)?.trim() ?? "";
-  const decodedFallback = fallback ? safeDecodeUriComponent(fallback) : "attachment";
-  const sanitizedFallback = sanitizeFilename(decodedFallback);
-  return sanitizedFallback || "attachment";
+  return label || "attachment";
 }
 
 function triggerBrowserDownload(blob: Blob, fileName: string): void {
@@ -51,7 +51,7 @@ function triggerBrowserDownload(blob: Blob, fileName: string): void {
   }
 }
 
-interface DownloadUserUploadAttachmentOptions {
+interface DownloadWorkspaceFileAttachmentOptions {
   path: string;
   fileName: string;
   authHeaders: Record<string, string>;
@@ -106,8 +106,8 @@ async function readResponseBlob(
   });
 }
 
-export async function downloadUserUploadAttachment(
-  options: DownloadUserUploadAttachmentOptions,
+export async function downloadWorkspaceFileAttachment(
+  options: DownloadWorkspaceFileAttachmentOptions,
 ): Promise<boolean> {
   const {
     path,
@@ -117,18 +117,18 @@ export async function downloadUserUploadAttachment(
     onProgress,
     fetchImpl = fetch,
   } = options;
-  const normalizedPath = extractUserUploadPath(path);
-  if (!normalizedPath?.startsWith(USER_UPLOADS_SEGMENT)) {
+  const normalizedPath = extractWorkspaceFileDownloadPath(path);
+  if (normalizedPath == null) {
     return false;
   }
 
   const response = await fetchImpl(normalizedPath, {
-    headers: appendDevUserUploadsProxyHeaders(normalizedPath, authHeaders),
+    headers: appendDevWorkspaceApiProxyHeaders(normalizedPath, authHeaders),
     credentials,
   });
   if (!response.ok) return false;
 
   const blob = await readResponseBlob(response, onProgress);
-  triggerBrowserDownload(blob, deriveAttachmentFileName(fileName, normalizedPath));
+  triggerBrowserDownload(blob, deriveAttachmentFileName(fileName));
   return true;
 }

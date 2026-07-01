@@ -9,8 +9,8 @@ import {
 } from "~/shared/lib/protected-message-media";
 import {
   deriveAttachmentFileName,
-  downloadUserUploadAttachment,
-  extractUserUploadPath,
+  downloadWorkspaceFileAttachment,
+  extractWorkspaceFileDownloadPath,
 } from "./message-attachment-download.lib";
 import { LABEL_TO_ACTION } from "./message-bubble-context.lib";
 import {
@@ -217,7 +217,7 @@ function handleAttachmentLinkClick(
   deps: MessageBodyClickDeps,
 ): boolean {
   const href = clickedLink.getAttribute("href") ?? "";
-  const attachmentPath = extractUserUploadPath(href);
+  const attachmentPath = extractWorkspaceFileDownloadPath(href);
   const containsImage = clickedLink.querySelector("img") != null;
   const containsVideo = clickedLink.querySelector("video") != null;
   if (attachmentPath == null || containsImage || containsVideo) {
@@ -227,13 +227,13 @@ function handleAttachmentLinkClick(
   event.preventDefault();
   event.stopPropagation();
 
-  const fileName = deriveAttachmentFileName(clickedLink.textContent ?? "", attachmentPath);
+  const fileName = deriveAttachmentFileName(clickedLink.textContent ?? "");
   if (!deps.startDownload(attachmentPath, fileName)) {
     return true;
   }
   deps.setAttachmentStatus(attachmentPath, "downloading");
 
-  void downloadUserUploadAttachment({
+  void downloadWorkspaceFileAttachment({
     path: attachmentPath,
     fileName,
     authHeaders: buildAuthHeader(),

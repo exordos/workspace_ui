@@ -160,6 +160,39 @@ export function appendDevUserUploadsProxyHeaders(
   return appendDevRealmMediaProxyHeaders(candidateUrl, headers);
 }
 
+/** DEV: adds `X-Workspace-Dev-Target-Origin` for same-origin Workspace/Messenger REST paths. */
+export function appendDevWorkspaceApiProxyHeaders(
+  candidateUrl: string,
+  headers: Record<string, string>,
+): Record<string, string> {
+  if (!import.meta.env.DEV || typeof document === "undefined") {
+    return headers;
+  }
+  if (headers[X_WORKSPACE_DEV_TARGET_ORIGIN]) {
+    return headers;
+  }
+  const instance = getCurrentInstance();
+  if (instance == null) {
+    return headers;
+  }
+  try {
+    const parsed = new URL(candidateUrl, window.location.origin);
+    if (parsed.origin !== window.location.origin) {
+      return headers;
+    }
+    if (!shouldAttachDevOrgTargetHeader(parsed.pathname)) {
+      return headers;
+    }
+    const orgOrigin = workspaceOrgApiOriginForWorkspaceRest(instance);
+    if (orgOrigin === "") {
+      return headers;
+    }
+    return { ...headers, [X_WORKSPACE_DEV_TARGET_ORIGIN]: orgOrigin };
+  } catch {
+    return headers;
+  }
+}
+
 // ---
 // Types
 // ---
@@ -783,6 +816,22 @@ class ApiClient {
     return this.execute({
       method: "POST",
       url: this.buildUrl(path),
+      headers: {},
+      body: form,
+      signal,
+      meta: {},
+    });
+  }
+
+  async postFormDataWithBase(
+    baseUrl: string,
+    path: string,
+    form: FormData,
+    signal?: AbortSignal,
+  ): Promise<ApiResponse> {
+    return this.execute({
+      method: "POST",
+      url: buildResolvedApiUrl(baseUrl, path),
       headers: {},
       body: form,
       signal,

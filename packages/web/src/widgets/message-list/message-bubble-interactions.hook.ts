@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { useDownloadStore } from "~/entities/download/download.model";
 import type { MessageReactionPayload, MockMessage } from "~/shared/api/messenger.types";
-import { extractUserUploadPath } from "./message-attachment-download.lib";
+import { extractWorkspaceFileDownloadPath } from "./message-attachment-download.lib";
 import {
   captureReplySelectionForContextMenu,
   executeMessageBubbleMenuAction,
@@ -383,7 +383,7 @@ export function useMessageBubbleInteractions({
 
     const links = div.querySelectorAll<HTMLAnchorElement>("a[href]");
     for (const link of links) {
-      const path = extractUserUploadPath(link.getAttribute("href") ?? "");
+      const path = extractWorkspaceFileDownloadPath(link.getAttribute("href") ?? "");
       const containsImage = link.querySelector("img") != null;
       const containsVideo = link.querySelector("video") != null;
       if (path == null || containsImage || containsVideo) {

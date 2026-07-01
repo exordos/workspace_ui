@@ -2,6 +2,7 @@ import { detectImageMime, sanitizeFilename, validateFileUpload } from "~/shared/
 
 export interface UploadFileRequestOptions {
   signal?: AbortSignal;
+  streamUuid?: string;
 }
 
 export type UploadFileFn = (file: File, options?: UploadFileRequestOptions) => Promise<string>;
@@ -14,6 +15,7 @@ export interface ComposerUploadProgressState {
 export interface UploadComposerFilesOptions {
   onProgress?: (state: ComposerUploadProgressState) => void;
   signal?: AbortSignal;
+  streamUuid?: string;
 }
 
 const MAGIC_BYTE_VALIDATED_IMAGE_TYPES = new Set([
@@ -85,10 +87,15 @@ export async function uploadComposerFiles(
   for (let i = 0; i < files.length; i += 1) {
     throwIfAborted(options.signal);
     const file = files[i]!;
-    const uri =
-      options.signal != null
-        ? await uploadFile(file, { signal: options.signal })
-        : await uploadFile(file);
+    const requestOptions: UploadFileRequestOptions = {};
+    if (options.signal != null) {
+      requestOptions.signal = options.signal;
+    }
+    if (options.streamUuid != null) {
+      requestOptions.streamUuid = options.streamUuid;
+    }
+    const hasRequestOptions = requestOptions.signal != null || requestOptions.streamUuid != null;
+    const uri = hasRequestOptions ? await uploadFile(file, requestOptions) : await uploadFile(file);
     const safeName = sanitizeFilename(file.name) || "file";
     links.push(`[${safeName}](${uri})`);
 

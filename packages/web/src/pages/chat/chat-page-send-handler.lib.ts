@@ -29,7 +29,6 @@ export interface ChatPageSendHandlerDeps {
   allocateOptimisticMessageId: () => MessageId;
   appendMessage: (message: MockMessage) => void;
   commitOutgoingMessage: (optimisticId: MessageId, message: MockMessage) => void;
-  requestScrollToBottom: () => void;
   clearReplyQuote: () => void;
   stopTyping: () => void;
   setSendError: (message: string | null) => void;
@@ -45,6 +44,7 @@ async function prepareComposerBodyWithUploads(options: {
   setUploadAbortController: ChatPageSendHandlerDeps["setUploadAbortController"];
   releaseUploadAbortController: ChatPageSendHandlerDeps["releaseUploadAbortController"];
   setSendError: ChatPageSendHandlerDeps["setSendError"];
+  streamUuid: string;
 }): Promise<string> {
   const {
     content,
@@ -53,6 +53,7 @@ async function prepareComposerBodyWithUploads(options: {
     setUploadAbortController,
     releaseUploadAbortController,
     setSendError,
+    streamUuid,
   } = options;
   if (files == null || files.length === 0) return content;
 
@@ -68,6 +69,7 @@ async function prepareComposerBodyWithUploads(options: {
     const uploadedLinks = await uploadComposerFiles(files, uploadFile, {
       onProgress: setUploadProgress,
       signal: uploadController.signal,
+      streamUuid,
     });
     return content + "\n" + uploadedLinks.join("\n");
   } catch (err) {
@@ -105,7 +107,6 @@ async function sendOutgoingMessageWithOptimisticUi(options: {
   });
 
   deps.appendMessage(optimisticMessage);
-  deps.requestScrollToBottom();
 
   try {
     const newMsg = await sendMessage({
@@ -137,15 +138,6 @@ export async function executeChatPageSend(
   deps.setSendError(null);
   deps.setUploadProgress(null);
 
-  const body = await prepareComposerBodyWithUploads({
-    content,
-    files,
-    setUploadProgress: deps.setUploadProgress,
-    setUploadAbortController: deps.setUploadAbortController,
-    releaseUploadAbortController: deps.releaseUploadAbortController,
-    setSendError: deps.setSendError,
-  });
-
   if (deps.isDmView) {
     if (deps.activeStreamUuid == null) {
       log.warn("Blocked DM send without stream uuid", {
@@ -156,6 +148,15 @@ export async function executeChatPageSend(
       deps.setUploadProgress(null);
       throw new Error(error);
     }
+    const body = await prepareComposerBodyWithUploads({
+      content,
+      files,
+      setUploadProgress: deps.setUploadProgress,
+      setUploadAbortController: deps.setUploadAbortController,
+      releaseUploadAbortController: deps.releaseUploadAbortController,
+      setSendError: deps.setSendError,
+      streamUuid: deps.activeStreamUuid,
+    });
     await sendOutgoingMessageWithOptimisticUi({
       deps,
       body,
@@ -182,6 +183,15 @@ export async function executeChatPageSend(
     throw new Error(error);
   }
 
+  const body = await prepareComposerBodyWithUploads({
+    content,
+    files,
+    setUploadProgress: deps.setUploadProgress,
+    setUploadAbortController: deps.setUploadAbortController,
+    releaseUploadAbortController: deps.releaseUploadAbortController,
+    setSendError: deps.setSendError,
+    streamUuid: deps.activeStreamUuid,
+  });
   const subject = normalizeTopicForIdentity(subjectOverride ?? deps.activeTopic ?? "");
   await sendOutgoingMessageWithOptimisticUi({
     deps,
