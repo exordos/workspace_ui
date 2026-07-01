@@ -3,7 +3,7 @@ export type WorkspaceMessengerDateTime = string;
 export type WorkspaceMessengerEpochVersion = number;
 export type WorkspaceMessengerRole = "guest" | "member" | "moderator" | "administrator" | "owner";
 
-// DTO в этом файле повторяют JSON от backend как есть.
+// DTO в этом файле повторяют JSON от сервера как есть.
 // В UI их не тащим: сначала переводим в доменные типы из entities/messenger.
 export type WorkspaceMessengerSourceName = "native" | "zulip";
 export type WorkspaceMessengerStreamNotificationMode = "mentions_only" | "muted" | "all_messages";
@@ -254,7 +254,7 @@ export interface WorkspaceMessengerUuidDeletedPayloadDto {
   uuid: WorkspaceMessengerUuid;
 }
 
-// REST events are durable backend outbox rows for catch-up and reconnect.
+// REST-события - это долговечные строки серверного outbox для догонки и reconnect.
 export type WorkspaceMessengerEventPayloadDto =
   | ({ kind: "stream.created" | "stream.updated" } & WorkspaceMessengerStreamDto)
   | WorkspaceMessengerStreamDeletedPayloadDto
@@ -308,6 +308,8 @@ export interface WorkspaceMessengerServerSettingsDto {
   ignored_parameters_unsupported?: string[];
 }
 
+// Это уже не REST-модель, а нормализованное realtime-событие.
+// Его получают и из REST-догонки, и из WebSocket, чтобы дальше использовать один applier.
 export type WorkspaceRealtimeEvent =
   | ({
       epoch_version: WorkspaceMessengerEpochVersion;
@@ -384,9 +386,20 @@ export interface WorkspaceMessengerWebSocketHelloFrameDto {
   epoch_version: WorkspaceMessengerEpochVersion;
 }
 
+export interface WorkspaceMessengerWebSocketConnectedFrameDto {
+  // connected - служебное приветствие от шлюза. Оно может дать только epoch_version,
+  // поэтому поля owner-а здесь optional и не должны ломать соединение.
+  type: "connected";
+  user_uuid?: WorkspaceMessengerUuid;
+  project_id?: WorkspaceMessengerUuid;
+  epoch_version?: WorkspaceMessengerEpochVersion;
+}
+
 export interface WorkspaceMessengerWebSocketPingFrameDto {
+  // ts optional: часть серверных сборок присылает просто { type: "ping" }.
+  // Runtime отвечает тем же JSON pong и не пропускает ping в доменный слой.
   type: "ping";
-  ts: WorkspaceMessengerDateTime;
+  ts?: WorkspaceMessengerDateTime;
 }
 
 export interface WorkspaceMessengerWebSocketErrorFrameDto {
@@ -402,6 +415,7 @@ export interface WorkspaceMessengerWebSocketEventFrameDto {
 
 export type WorkspaceMessengerWebSocketFrameDto =
   | WorkspaceMessengerWebSocketHelloFrameDto
+  | WorkspaceMessengerWebSocketConnectedFrameDto
   | WorkspaceMessengerWebSocketPingFrameDto
   | WorkspaceMessengerWebSocketErrorFrameDto
   | WorkspaceMessengerWebSocketEventFrameDto;
@@ -813,8 +827,14 @@ export function isWorkspaceMessengerWebSocketFrameDto(
         isUuid(value.project_id) &&
         isNonNegativeInteger(value.epoch_version)
       );
+    case "connected":
+      return (
+        (value.user_uuid === undefined || isUuid(value.user_uuid)) &&
+        (value.project_id === undefined || isUuid(value.project_id)) &&
+        (value.epoch_version === undefined || isNonNegativeInteger(value.epoch_version))
+      );
     case "ping":
-      return isDateTime(value.ts);
+      return value.ts === undefined || isDateTime(value.ts);
     case "error":
       return typeof value.code === "string" && typeof value.message === "string";
     case "event":

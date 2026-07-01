@@ -86,6 +86,7 @@ function toLayoutRealtimeManagerContext(
     owner,
     ownerKey: workspaceRuntimeOwnerKey(owner),
     // Access token лежит только в памяти manager-а: transport core создается с clientOptions один раз.
+    // Когда token/origin меняется, runtimeKey заставляет manager пересоздать socket.
     runtimeKey: [runtimeContext.organizationOrigin, runtimeContext.accessToken].join("\u0000"),
     runtimeContext,
   };
@@ -129,6 +130,7 @@ function defaultRuntimeFactory({
     cursorStorage,
     applier,
     isOwnerCurrent,
+    webSocketBaseUrl: runtimeContext.organizationOrigin,
     onDiagnostic: (diagnostic) => {
       onDiagnostic?.(diagnostic);
       reportUnexpectedError("workspace-realtime:transport", diagnostic.error ?? diagnostic.reason);
@@ -216,6 +218,7 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
     }
 
     if (!shouldStartWorkspaceRealtimeForRoute(enabled, pathname, activeRuntimeContext)) {
+      // Вне workspace messenger route realtime не держим: это host текущего маршрута, не глобальный daemon.
       void managerRef.current?.stopAll("layout_inactive").catch((error) => {
         reportUnexpectedError("workspace-realtime:stop", error);
       });

@@ -179,6 +179,7 @@ function createEmptyProjection(ownerKey: string): MessengerBackgroundProjection 
 }
 
 function appendBounded<T>(items: T[], item: T, limit: number): T[] {
+  // Background projection живёт в памяти, поэтому каждую коллекцию держим короткой.
   const next = [item, ...items];
   return next.length > limit ? next.slice(0, limit) : next;
 }
@@ -221,6 +222,7 @@ function compactProjection(
   projection: MessengerBackgroundProjection,
   now: number,
 ): MessengerBackgroundProjection {
+  // Компакция нужна на каждый event: фоновый runtime может жить часами без открытия UI.
   return {
     ...projection,
     recentEvents: pruneRecentItems(projection.recentEvents, MAX_RECENT_EVENTS, now),
@@ -301,6 +303,7 @@ function applyEventProjection(
   );
 
   if (event.type === "message" && event.kind === "message.deleted") {
+    // Для delete оставляем tombstone без текста/автора: этого хватает, чтобы не считать сообщение живым.
     return compactProjection(
       {
         ...baseProjection,
@@ -349,6 +352,7 @@ function applyEventProjection(
     };
 
     if (!isMessageCreatedEvent(event)) {
+      // Update нужен для id-снимка, но не должен заново становиться кандидатом на уведомление.
       return compactProjection(nextProjection, observedAt);
     }
 

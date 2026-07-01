@@ -45,6 +45,7 @@ function isBackgroundCurrentOwner(
   if (context.surface !== "background") return false;
   if (context.signal?.aborted === true) return false;
 
+  // Background runtime может жить для нескольких org/project, поэтому проверка owner такая же строгая.
   return options.isOwnerCurrent?.(context.owner) ?? true;
 }
 
@@ -69,6 +70,7 @@ function isSupportedRealtimeEvent(event: WorkspaceRealtimeEvent): boolean {
 }
 
 function isBackgroundLightweightEvent(event: WorkspaceRealtimeEvent): boolean {
+  // stream_binding пока не сохраняем в фоне: там membership-данные, а не лёгкий id/counter snapshot.
   return event.type !== "stream_binding";
 }
 
@@ -90,7 +92,7 @@ export function createMessengerRealtimeActiveApplier(
           kind: eventKind(event),
           epochVersion: event.epoch_version,
         });
-        // Unknown event тоже двигает видимый realtime cursor, а durable cursor двигает transport.
+        // Неизвестное событие тоже двигает видимый realtime cursor, а durable cursor двигает transport.
         store.markRealtimeEventSkipped(context.ownerKey, event.epoch_version, "unsupported_event");
         return;
       }
@@ -173,7 +175,7 @@ export function createMessengerRealtimeActiveApplier(
     },
 
     onTransportStateChange() {
-      // Active apply path пока не хранит diagnostics в messengerStore.
+      // Активный путь применения пока не хранит диагностику в messengerStore.
     },
   };
 }

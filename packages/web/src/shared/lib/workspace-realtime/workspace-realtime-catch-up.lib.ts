@@ -90,6 +90,8 @@ function isSignalAborted(signal: AbortSignal | undefined): boolean {
 }
 
 function isCatchUpOwnerCurrent(options: WorkspaceRealtimeCatchUpOptions): boolean {
+  // Догонка может завершиться уже после смены проекта/поколения runtime.
+  // Перед каждой записью проверяем owner, чтобы старый запрос не кормил новый store.
   if (isSignalAborted(options.clientOptions.signal)) return false;
   return options.isOwnerCurrent?.(options.owner) ?? true;
 }
@@ -102,6 +104,8 @@ async function resolveStartCursor(
     return storedCursor;
   }
 
+  // Если cursor ещё не создан, начинаем с текущей epoch сервера.
+  // Это не загружает всю историю проекта, а только фиксирует точку старта live-событий.
   const getEpoch = options.getEpoch ?? defaultGetEpoch;
   const epoch = await getEpoch(options.clientOptions);
   options.cursorStorage.write(options.owner, epoch.epoch_version);
@@ -137,7 +141,7 @@ export async function catchUpWorkspaceRealtime(
 
   do {
     if (!isCatchUpOwnerCurrent(options)) {
-      // Stale owner не двигает state и durable cursor: это уже другой project-runtime.
+      // Устаревший owner не двигает state и durable cursor: это уже другой project-runtime.
       return {
         startedFrom: startCursor,
         lastEpochVersion,
@@ -154,6 +158,7 @@ export async function catchUpWorkspaceRealtime(
     });
 
     for (const eventDto of [...page.items].sort(compareEventsByEpochVersion)) {
+      // Сервер может вернуть страницу не в нужном порядке, а cursor должен двигаться строго вперёд.
       if (!isCatchUpOwnerCurrent(options)) {
         return {
           startedFrom: startCursor,
@@ -175,6 +180,8 @@ export async function catchUpWorkspaceRealtime(
 
       const event = normalizeRestEvent(eventDto);
       if (event == null) {
+        // Неизвестный тип события не должен блокировать realtime навсегда.
+        // Cursor двигаем, а доменный слой получает skip для диагностики.
         await options.applier.skipEvent(
           { epoch_version: eventDto.epoch_version },
           "unsupported_event",

@@ -1,4 +1,4 @@
-// REST calls use the normal Authorization header.
+// REST-запросы могут нести токен обычным Authorization header.
 export function getMessengerBearerAuthValue(accessToken: string | null | undefined): string | null {
   const token = accessToken?.trim();
   if (!token) return null;
@@ -13,7 +13,8 @@ export function buildMessengerBearerAuthHeader(
   return { Authorization: value };
 }
 
-// WebSocket auth goes through the subprotocol list, not through the URL.
+// WebSocket нельзя авторизовать тем же header из браузера.
+// Поэтому сервер ждёт Bearer-токен в списке subprotocol, а не в URL.
 export function getMessengerWebSocketBearerProtocol(
   accessToken: string | null | undefined,
 ): string | null {

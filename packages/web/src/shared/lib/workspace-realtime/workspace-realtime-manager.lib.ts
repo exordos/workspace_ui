@@ -71,6 +71,7 @@ export interface WorkspaceRealtimeRuntimeManager<
 }
 
 interface RuntimeEntry<TContext extends WorkspaceRealtimeManagerRuntimeContext> {
+  // Entry живёт на ownerKey: один проект может переключаться active/background без второго socket.
   runtime: WorkspaceRealtimeTransportCore;
   managerContext: TContext;
   controller: AbortController;
@@ -85,6 +86,7 @@ function isSameOwner(
   left: WorkspaceRealtimeRuntimeOwner,
   right: WorkspaceRealtimeRuntimeOwner,
 ): boolean {
+  // Сравниваем durable owner без runtimeGeneration: это один и тот же cursor/store scope.
   return (
     left.accountId === right.accountId &&
     left.instanceId === right.instanceId &&
@@ -98,6 +100,7 @@ function isSameRuntimeOwner(
   left: WorkspaceRealtimeRuntimeOwner,
   right: WorkspaceRealtimeRuntimeOwner,
 ): boolean {
+  // А здесь уже проверяем in-memory поколение, чтобы закрыть старый socket после refresh/re-login.
   return isSameOwner(left, right) && left.runtimeGeneration === right.runtimeGeneration;
 }
 
@@ -118,6 +121,8 @@ function delegateBySurface<TContext extends WorkspaceRealtimeManagerRuntimeConte
   entry: RuntimeEntry<TContext>,
   context: WorkspaceRealtimeEventContext | WorkspaceRealtimeRuntimeContext,
 ): WorkspaceRealtimeEventApplier {
+  // Один transport core не знает, активный он сейчас или фоновый.
+  // Manager маршрутизирует apply в нужный applier по surface.
   return context.surface === "active" ? entry.activeApplier : entry.backgroundApplier;
 }
 
@@ -172,7 +177,7 @@ export function createWorkspaceRealtimeRuntimeManager<
     const controller = new AbortController();
     let entry: RuntimeEntry<TContext> | null = null;
     const activeApplier = options.activeApplierFactory({ isOwnerCurrent });
-    // Background сейчас не пишет в messengerStore: он только дает transport-у принять событие и сдвинуть cursor.
+    // Фон сейчас не пишет в messengerStore: он только даёт transport-у принять событие и сдвинуть cursor.
     const backgroundApplier =
       options.backgroundApplierFactory?.({ isOwnerCurrent }) ??
       createWorkspaceRealtimeNoopApplier();
@@ -204,6 +209,7 @@ export function createWorkspaceRealtimeRuntimeManager<
   }
 
   function shouldReplaceRuntime(entry: RuntimeEntry<TContext>, nextContext: TContext): boolean {
+    // runtimeKey меняется, когда обновился token/origin. Такой socket проще пересоздать целиком.
     return entry.managerContext.runtimeKey !== nextContext.runtimeKey;
   }
 
@@ -212,6 +218,7 @@ export function createWorkspaceRealtimeRuntimeManager<
     nextContext: TContext,
     nextSurface: WorkspaceRealtimeSurface,
   ): boolean {
+    // Surface или runtimeGeneration поменялись - перезапускаем тот же entry с новым context.
     return (
       entry.surface !== nextSurface ||
       !isSameRuntimeOwner(entry.managerContext.owner, nextContext.owner)
@@ -277,6 +284,8 @@ export function createWorkspaceRealtimeRuntimeManager<
   }
 
   function enqueue(operation: () => Promise<void>): Promise<void> {
+    // React effects могут прийти подряд: start/stop/update выполняем строго по очереди,
+    // чтобы поздний stop не закрыл только что созданный socket.
     const nextOperation = operationQueue.then(operation, operation);
     operationQueue = nextOperation.catch(() => undefined);
     return nextOperation;

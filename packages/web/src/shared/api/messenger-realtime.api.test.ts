@@ -335,11 +335,8 @@ describe("messenger-realtime.api", () => {
       buildMessengerWebSocketUrl({
         baseUrl: "https://chat.example.com/",
         lastEpochVersion: 125,
-        projectId: PROJECT_UUID,
       }),
-    ).toBe(
-      `https://chat.example.com/api/messenger/ws?last_epoch_version=125&project_id=${PROJECT_UUID}`,
-    );
+    ).toBe(`wss://chat.example.com/api/messenger/ws?last_epoch_version=125`);
     expect(buildMessengerWebSocketProtocols("  access-token  ")).toEqual([
       "workspace.events.v1",
       "bearer.access-token",
@@ -354,6 +351,12 @@ describe("messenger-realtime.api", () => {
       epoch_version: 124,
     };
     expect(parseWorkspaceWebSocketFrame(JSON.stringify(helloFrame))).toEqual(helloFrame);
+    expect(parseWorkspaceWebSocketFrame(JSON.stringify({ type: "connected" }))).toEqual({
+      type: "connected",
+    });
+    expect(parseWorkspaceWebSocketFrame(JSON.stringify({ type: "ping" }))).toEqual({
+      type: "ping",
+    });
 
     const eventFrame = {
       type: "event",

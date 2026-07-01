@@ -1,3 +1,4 @@
+import { getMessengerWebSocketBearerProtocol } from "./messenger-auth";
 import {
   messengerGetJson,
   messengerPublicGetJson,
@@ -30,7 +31,7 @@ import type {
   WorkspaceRealtimeEvent,
 } from "./messenger.types";
 
-// REST uses /v1, but websocket is exposed by nginx at this gateway path.
+// REST живёт под /v1, а WebSocket сервер отдаёт через отдельный путь шлюза.
 const DEFAULT_MESSENGER_WEBSOCKET_PATH = "/api/messenger/ws";
 const MESSENGER_WEBSOCKET_PROTOCOL = "workspace.events.v1";
 
@@ -43,13 +44,14 @@ export interface GetEventsQuery extends MessengerPaginationQuery {
 export interface BuildMessengerWebSocketUrlOptions {
   baseUrl?: string;
   lastEpochVersion: number;
-  projectId?: string;
 }
 
 function projectScopedRealtimeParams(
   options: MessengerClientOptions,
   params: MessengerQueryParams,
 ): MessengerQueryParams {
+  // REST-догонка всё ещё принимает project_id как параметр запроса.
+  // WebSocket берёт границы проекта из токена, поэтому buildMessengerWebSocketUrl его не добавляет.
   const projectId = options.projectId?.trim();
   if (!projectId) {
     return params;
@@ -148,24 +150,30 @@ export async function getEpoch(
 export function buildMessengerWebSocketUrl({
   baseUrl,
   lastEpochVersion,
-  projectId,
 }: BuildMessengerWebSocketUrlOptions): string {
-  const root = baseUrl == null ? "" : baseUrl.replace(/\/+$/, "");
+  // В URL оставляем только cursor. Токен и project scope не кладём в параметры,
+  // чтобы не светить авторизацию в логах proxy и истории браузера.
+  const root = (() => {
+    const trimmed = baseUrl == null ? "" : baseUrl.replace(/\/+$/, "");
+    if (/^https:\/\//i.test(trimmed)) return trimmed.replace(/^https:/i, "wss:");
+    if (/^http:\/\//i.test(trimmed)) return trimmed.replace(/^http:/i, "ws:");
+    return trimmed;
+  })();
   const search = new URLSearchParams({
     last_epoch_version: String(lastEpochVersion),
   });
-  const scopedProjectId = projectId?.trim();
-  if (scopedProjectId != null && scopedProjectId.length > 0) {
-    search.set("project_id", scopedProjectId);
-  }
   return `${root}${DEFAULT_MESSENGER_WEBSOCKET_PATH}?${search.toString()}`;
 }
 
 export function buildMessengerWebSocketProtocols(accessToken: string): string[] {
-  return [MESSENGER_WEBSOCKET_PROTOCOL, `bearer.${accessToken.trim()}`];
+  // Первый protocol выбирает версию realtime-событий, второй несёт Bearer-токен для сервера.
+  const bearerProtocol = getMessengerWebSocketBearerProtocol(accessToken);
+  return bearerProtocol == null
+    ? [MESSENGER_WEBSOCKET_PROTOCOL]
+    : [MESSENGER_WEBSOCKET_PROTOCOL, bearerProtocol];
 }
 
-// Incoming frames can be raw websocket strings or already parsed test objects.
+// В runtime приходят строки из WebSocket, а в тестах удобнее передавать готовые объекты.
 export function parseWorkspaceWebSocketFrame(raw: string): WorkspaceMessengerWebSocketFrameDto;
 export function parseWorkspaceWebSocketFrame(raw: unknown): WorkspaceMessengerWebSocketFrameDto;
 export function parseWorkspaceWebSocketFrame(raw: unknown): WorkspaceMessengerWebSocketFrameDto {
@@ -187,12 +195,15 @@ export function parseWorkspaceWebSocketFrame(raw: unknown): WorkspaceMessengerWe
 }
 
 function withoutPayloadKind<TValue extends { kind: string }>(value: TValue): Omit<TValue, "kind"> {
+  // REST outbox хранит kind внутри payload, а доменный event ожидает kind рядом с сущностью.
   const result: Partial<TValue> = { ...value };
   delete result.kind;
   return result as Omit<TValue, "kind">;
 }
 
-// REST catch-up events are normalized to the same shape as websocket event frames.
+// REST-догонка и WebSocket должны попасть в один путь применения,
+// иначе активный и фоновый режимы начнут жить по разным правилам.
+// Поэтому REST outbox здесь приводится к форме WebSocket event.
 export function normalizeWorkspaceRestEvent(
   model: WorkspaceMessengerEventDto,
 ): WorkspaceRealtimeEvent | null {
@@ -308,6 +319,7 @@ export function normalizeWorkspaceRestEvent(
 export function normalizeWorkspaceWebSocketFrame(
   frame: WorkspaceMessengerWebSocketFrameDto,
 ): WorkspaceRealtimeEvent | null {
+  // hello/connected/ping/error - служебные кадры транспорта, а не события мессенджера.
   if (frame.type !== "event") {
     return null;
   }

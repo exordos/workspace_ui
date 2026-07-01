@@ -402,6 +402,16 @@ describe("Workspace messenger DTO guards", () => {
         epoch_version: 124,
       }),
     ).toBe(true);
+    expect(isWorkspaceMessengerWebSocketFrameDto({ type: "connected" })).toBe(true);
+    expect(
+      isWorkspaceMessengerWebSocketFrameDto({
+        type: "connected",
+        user_uuid: USER_UUID,
+        project_id: PROJECT_UUID,
+        epoch_version: 124,
+      }),
+    ).toBe(true);
+    expect(isWorkspaceMessengerWebSocketFrameDto({ type: "ping" })).toBe(true);
     expect(isWorkspaceMessengerWebSocketFrameDto({ type: "ping", ts: DATE })).toBe(true);
     expect(
       isWorkspaceMessengerWebSocketFrameDto({

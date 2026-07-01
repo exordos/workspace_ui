@@ -22,6 +22,7 @@ import type {
 
 export type WorkspaceRealtimeSurface = "active" | "background";
 
+// Режим runtime нужен не UI, а диагностике: по нему видно, где realtime застрял.
 export type WorkspaceRealtimeRuntimeMode =
   | "idle"
   | "starting"
@@ -35,6 +36,7 @@ export type WorkspaceRealtimeRuntimeMode =
 
 export type WorkspaceRealtimeEventSource = "catch_up" | "websocket";
 
+// Причины skip намеренно общие для догонки и WebSocket, чтобы оба пути писали одинаковую диагностику.
 export type WorkspaceRealtimeSkipReason =
   | "duplicate_epoch"
   | "unsupported_event"
@@ -44,11 +46,14 @@ export type WorkspaceRealtimeSkipReason =
   | "transport_stopped";
 
 export interface WorkspaceRealtimeRuntimeOwner extends WorkspaceRealtimeCursorOwner {
+  // runtimeGeneration отделяет старый socket той же org/project от нового после refresh/re-login.
   runtimeGeneration: number;
 }
 
 export interface WorkspaceRealtimeRuntimeContext {
   owner: WorkspaceRealtimeRuntimeOwner;
+  // ownerKey не содержит runtimeGeneration: он задаёт durable scope cursor/store.
+  // Само поколение проверяется отдельно через owner.
   ownerKey: string;
   surface: WorkspaceRealtimeSurface;
   signal?: AbortSignal;
@@ -74,6 +79,7 @@ export interface WorkspaceRealtimeSkippedEvent {
 }
 
 export interface WorkspaceRealtimeEventApplier {
+  // Transport не знает про Zustand и UI. Applier - единственная точка записи в доменный слой.
   applyEvent(event: WorkspaceRealtimeEvent, context: WorkspaceRealtimeEventContext): unknown;
   skipEvent(
     event: WorkspaceRealtimeEvent | WorkspaceRealtimeSkippedEvent,
@@ -103,6 +109,7 @@ export interface WorkspaceRealtimeWebSocketLike {
   onmessage: ((event: WorkspaceRealtimeWebSocketMessageEvent) => void) | null;
   onerror: ((event: Event) => void) | null;
   onclose: ((event: Event) => void) | null;
+  send(data: string): void;
   close(code?: number, reason?: string): void;
 }
 
@@ -182,6 +189,9 @@ function defaultWebSocketFactory(url: string, protocols: string[]): WorkspaceRea
       closeHandler = handler;
       socket.onclose = handler == null ? null : (event) => handler(event);
     },
+    send(data) {
+      socket.send(data);
+    },
     close(code, reason) {
       socket.close(code, reason);
     },
@@ -192,6 +202,7 @@ function withAbortSignal(
   options: MessengerClientOptions,
   signal: AbortSignal | undefined,
 ): MessengerClientOptions {
+  // REST-запросы догонки должны отменяться вместе с тем же runtime, что держит socket.
   return { ...options, signal };
 }
 
@@ -304,45 +315,60 @@ export function createWorkspaceRealtimeTransportCore(
     await options.applier.skipEvent(event, reason, { ...context, source });
   }
 
-  function advanceCursor(epochVersion: WorkspaceMessengerEpochVersion): void {
-    if (context == null) return;
-    options.cursorStorage.write(context.owner, epochVersion);
-    lastEpochVersion = Math.max(lastEpochVersion ?? epochVersion, epochVersion);
+  function advanceCursor(epochVersion: WorkspaceMessengerEpochVersion): boolean {
+    if (context == null) return false;
+    const previousEpochVersion =
+      lastEpochVersion ??
+      options.cursorStorage.read(context.owner) ??
+      INVALID_FRAME_SYNTHETIC_EPOCH;
+    const nextEpochVersion = Math.max(previousEpochVersion, epochVersion);
+    // Durable cursor двигается в transport после успешного решения: apply или осознанный skip.
+    options.cursorStorage.write(context.owner, nextEpochVersion);
+    lastEpochVersion = nextEpochVersion;
+    return nextEpochVersion > previousEpochVersion;
   }
 
-  async function handleNormalizedEvent(event: WorkspaceRealtimeEvent): Promise<void> {
-    if (context == null) return;
+  function sendAck(epochVersion: WorkspaceMessengerEpochVersion): void {
+    socket?.send(JSON.stringify({ type: "ack", epoch_version: epochVersion }));
+  }
+
+  async function handleNormalizedEvent(event: WorkspaceRealtimeEvent): Promise<boolean> {
+    if (context == null) return false;
     if (!isCurrentRuntime()) {
+      // Событие от старого socket не применяем и cursor не двигаем: новый runtime сам сделает догонку.
       reportDiagnostic("stale_owner", event);
-      return;
+      return false;
     }
 
     const currentCursor = lastEpochVersion ?? options.cursorStorage.read(context.owner);
     if (currentCursor != null && event.epoch_version <= currentCursor) {
       await skipEvent(event, "duplicate_epoch", "websocket");
       advanceCursor(event.epoch_version);
-      return;
+      return false;
     }
 
     await options.applier.applyEvent(event, { ...context, source: "websocket" });
-    advanceCursor(event.epoch_version);
+    return advanceCursor(event.epoch_version);
   }
 
-  async function handleUnsupportedFrame(frame: WorkspaceMessengerWebSocketFrameDto): Promise<void> {
-    if (context == null) return;
-    if ("epoch_version" in frame) {
+  async function handleUnsupportedFrame(
+    frame: WorkspaceMessengerWebSocketFrameDto,
+  ): Promise<boolean> {
+    if (context == null) return false;
+    if ("epoch_version" in frame && typeof frame.epoch_version === "number") {
       const skippedEvent = { epoch_version: frame.epoch_version };
       const currentCursor = lastEpochVersion ?? options.cursorStorage.read(context.owner);
       const reason =
         currentCursor != null && frame.epoch_version <= currentCursor
           ? "duplicate_epoch"
           : "unsupported_event";
+      // Если служебный/неподдержанный кадр несёт epoch, он всё равно участвует в порядке событий.
       await skipEvent(skippedEvent, reason, "websocket");
-      advanceCursor(frame.epoch_version);
-      return;
+      return advanceCursor(frame.epoch_version);
     }
 
     reportDiagnostic("unsupported_event");
+    return false;
   }
 
   async function handleInvalidFrame(error: unknown): Promise<void> {
@@ -358,12 +384,27 @@ export function createWorkspaceRealtimeTransportCore(
   async function handleRawFrame(raw: unknown): Promise<void> {
     try {
       const frame = parseWorkspaceWebSocketFrame(raw);
-      const event = normalizeWorkspaceWebSocketFrame(frame);
-      if (event == null) {
-        await handleUnsupportedFrame(frame);
+      if (frame.type === "connected" || frame.type === "hello") {
         return;
       }
-      await handleNormalizedEvent(event);
+      if (frame.type === "ping") {
+        // Сервер присылает JSON ping как прикладной heartbeat, поэтому отвечаем JSON pong явно.
+        socket?.send(
+          JSON.stringify(frame.ts == null ? { type: "pong" } : { type: "pong", ts: frame.ts }),
+        );
+        return;
+      }
+      const event = normalizeWorkspaceWebSocketFrame(frame);
+      if (event == null) {
+        const advanced = await handleUnsupportedFrame(frame);
+        if (advanced && "epoch_version" in frame && typeof frame.epoch_version === "number") {
+          sendAck(frame.epoch_version);
+        }
+        return;
+      }
+      if (await handleNormalizedEvent(event)) {
+        sendAck(event.epoch_version);
+      }
     } catch (error) {
       await handleInvalidFrame(error);
     }
@@ -373,6 +414,8 @@ export function createWorkspaceRealtimeTransportCore(
     if (!isCurrentRuntime()) return false;
     await emitState("catching_up");
 
+    // Догонка отдаёт события в тот же applier, но помечает source,
+    // чтобы диагностика отличала догоняющую загрузку от live socket.
     const catchUpApplier: WorkspaceRealtimeCatchUpApplier = {
       applyEvent: (event, catchUpContext) =>
         options.applier.applyEvent(event, {
@@ -430,6 +473,8 @@ export function createWorkspaceRealtimeTransportCore(
 
   function openWebSocket(activeContext: WorkspaceRealtimeRuntimeContext): void {
     if (!isCurrentRuntime()) return;
+    // Открываем socket только после догонки от сохранённого cursor.
+    // Иначе live-события могут прийти раньше пропущенных REST-событий.
     const currentCursor =
       lastEpochVersion ??
       options.cursorStorage.read(activeContext.owner) ??
@@ -437,7 +482,6 @@ export function createWorkspaceRealtimeTransportCore(
     const url = buildMessengerWebSocketUrl({
       baseUrl: options.webSocketBaseUrl,
       lastEpochVersion: currentCursor,
-      projectId: activeContext.owner.projectId,
     });
     const protocols = buildMessengerWebSocketProtocols(options.clientOptions.accessToken ?? "");
     socket = webSocketFactory(url, protocols);

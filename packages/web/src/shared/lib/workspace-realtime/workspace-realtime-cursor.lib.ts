@@ -38,6 +38,7 @@ function parseStoredEpochVersion(value: string | null): WorkspaceMessengerEpochV
 
 export function workspaceRealtimeCursorKey(owner: WorkspaceRealtimeCursorOwner): string {
   // runtimeGeneration не входит в key: cursor должен переживать reload и смену in-memory поколения.
+  // Но account/instance/org/project/user входят в key, чтобы фоновые проекты не делили один cursor.
   return [
     CURSOR_KEY_PREFIX,
     "account",
@@ -63,6 +64,7 @@ export function createWorkspaceRealtimeCursorStorage(
     write(owner, epochVersion) {
       const current = parseStoredEpochVersion(storage.getItem(workspaceRealtimeCursorKey(owner)));
       if (current != null && current >= epochVersion) {
+        // Cursor только растёт. Поздний дубль от старого socket не должен откатить catch-up назад.
         return;
       }
       storage.setItem(workspaceRealtimeCursorKey(owner), String(epochVersion));
