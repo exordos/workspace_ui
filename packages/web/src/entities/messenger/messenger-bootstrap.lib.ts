@@ -28,7 +28,10 @@ import {
   type MessengerCatalogPayloadCacheWriteOptions,
   type MessengerCatalogCachePayload,
 } from "./messenger-cache.lib";
-import { loadMessengerLastMessagesForSidebar } from "./messenger-last-messages-loader.lib";
+import {
+  loadMessengerLastMessagesForSidebar,
+  type MessengerLastMessagesCacheDeps,
+} from "./messenger-last-messages-loader.lib";
 import {
   buildMessengerRequestOptions,
   type MessengerRequestOptionsOverrides,
@@ -95,6 +98,7 @@ export interface BootstrapMessengerStoreOptions {
   getRuntimeContext?: WorkspaceRuntimeContextGetter;
   client?: MessengerBootstrapClientDeps;
   cache?: MessengerBootstrapCacheDeps;
+  lastMessagesCache?: MessengerLastMessagesCacheDeps;
   clientOptions?: MessengerRequestOptionsOverrides;
   signal?: AbortSignal;
   store?: MessengerStoreApi;
@@ -129,6 +133,7 @@ export async function bootstrapMessengerStore({
     writeMessengerCatalogPayloadCache: defaultWriteMessengerCatalogPayloadCache,
     writeMessengerFolderSnapshotCache: defaultWriteMessengerFolderSnapshotCache,
   },
+  lastMessagesCache,
   clientOptions,
   signal,
   store = useMessengerStore,
@@ -144,6 +149,17 @@ export async function bootstrapMessengerStore({
   }
 
   store.getState().startBootstrap(ownerKey);
+  const loadLastMessagesForCurrentSidebar = (): void => {
+    void loadMessengerLastMessagesForSidebar({
+      runtimeContext,
+      getRuntimeContext,
+      client: { getMessagesByUuids: client.getMessagesByUuids },
+      cache: lastMessagesCache,
+      clientOptions,
+      signal,
+      store,
+    });
+  };
 
   void (async () => {
     const cached = await (
@@ -159,6 +175,7 @@ export async function bootstrapMessengerStore({
     if (cached.epochVersion != null) {
       store.getState().setRealtimeCursor(ownerKey, cached.epochVersion);
     }
+    loadLastMessagesForCurrentSidebar();
   })();
 
   const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
@@ -198,14 +215,7 @@ export async function bootstrapMessengerStore({
         },
       ),
     );
-    void loadMessengerLastMessagesForSidebar({
-      runtimeContext,
-      getRuntimeContext,
-      client: { getMessagesByUuids: client.getMessagesByUuids },
-      clientOptions,
-      signal,
-      store,
-    });
+    loadLastMessagesForCurrentSidebar();
 
     try {
       // Folders arrive as a separate user layer above streams.

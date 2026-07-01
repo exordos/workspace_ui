@@ -10,8 +10,10 @@ import {
   deleteMessengerStreamCatalogCache,
   deleteMessengerTopicCatalogCache,
   patchCachedMessage,
+  readCachedMessagesByUuids,
   readConversationMessageWindow,
   readMessengerCatalogCache,
+  upsertCachedMessages,
   upsertMessengerConversationsCache,
   upsertMessengerFolderSnapshotsCache,
   upsertMessengerStreamBindingsCache as upsertMessengerStreamBindingsCatalogCache,
@@ -262,6 +264,21 @@ export async function readMessengerConversationWindowCache(
     nextPageMarker: cached.window?.nextPageMarker ?? null,
     hasMore: cached.window?.hasMore ?? false,
   };
+}
+
+export async function readMessengerMessageBodyCache(
+  ownerKey: string,
+  messageUuids: readonly MessengerUuid[],
+): Promise<MessengerMessage[]> {
+  const cached = await readCachedMessagesByUuids(ownerKey, messageUuids);
+  return cached as unknown as MessengerMessage[];
+}
+
+export async function writeMessengerMessageBodyCache(
+  ownerKey: string,
+  messages: readonly MessengerMessage[],
+): Promise<void> {
+  await upsertCachedMessages(ownerKey, messages);
 }
 
 export async function writeMessengerConversationWindowCache(

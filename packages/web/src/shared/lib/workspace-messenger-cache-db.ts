@@ -1799,6 +1799,47 @@ export async function readConversationMessageWindow(
   }
 }
 
+export async function readCachedMessagesByUuids(
+  ownerKey: string,
+  messageUuids: readonly string[],
+): Promise<WorkspaceMessengerCachedMessage[]> {
+  if (!isIndexedDBAvailable() || messageUuids.length === 0) return [];
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const messageRows = await readMessageRowsByUuid(db, ownerKey, messageUuids);
+    return messageUuids
+      .map((messageUuid) => messageRows.get(messageUuid)?.message)
+      .filter((message): message is WorkspaceMessengerCachedMessage => message != null);
+  } catch {
+    return [];
+  }
+}
+
+export async function upsertCachedMessages(
+  ownerKey: string,
+  messages: readonly WorkspaceMessengerCachedMessage[],
+): Promise<void> {
+  if (!isIndexedDBAvailable() || messages.length === 0) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const previousRows = await readMessageRowsByUuid(
+      db,
+      ownerKey,
+      messages.map((message) => message.uuid),
+    );
+    const transaction = db.transaction(WORKSPACE_MESSENGER_CACHE_STORES.messages, "readwrite");
+    const messageStore = transaction.objectStore(WORKSPACE_MESSENGER_CACHE_STORES.messages);
+    for (const message of messages) {
+      messageStore.put(toMessageRow(ownerKey, message, previousRows.get(message.uuid)));
+    }
+    await transactionDone(transaction);
+  } catch {
+    return;
+  }
+}
+
 export async function writeConversationMessagePage(
   ownerKey: string,
   conversationId: string,

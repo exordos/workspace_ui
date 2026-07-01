@@ -10,6 +10,7 @@ import {
   deleteWorkspaceMessengerOwnerCache,
   openWorkspaceMessengerCacheDb,
   patchCachedMessage,
+  readCachedMessagesByUuids,
   readConversationMessageWindow,
   readMessengerCatalogCache,
   readMessengerSearchResults,
@@ -17,6 +18,7 @@ import {
   WORKSPACE_MESSENGER_CACHE_DB_NAME,
   WORKSPACE_MESSENGER_CACHE_DB_VERSION,
   workspaceMessengerMessageOrderKey,
+  upsertCachedMessages,
   writeConversationMessagePage,
   writeMessengerCatalogCache,
   writeMessengerSearchResults,
@@ -131,6 +133,22 @@ describe("workspace-messenger-cache-db", () => {
     expect(snapshot.realtimeCursor?.epochVersion).toBe(77);
     expect(otherSnapshot.streams).toEqual([]);
     expect(otherSnapshot.realtimeCursor).toBeNull();
+  });
+
+  it("writes and reads cached messages by uuid without creating conversation windows", async () => {
+    await upsertCachedMessages(OWNER, [
+      message("msg-a", "2026-07-01T08:00:00.000Z"),
+      message("msg-b", "2026-07-01T08:01:00.000Z"),
+    ]);
+
+    const messages = await readCachedMessagesByUuids(OWNER, ["msg-b", "msg-missing", "msg-a"]);
+    const otherOwnerMessages = await readCachedMessagesByUuids(OTHER_OWNER, ["msg-a"]);
+    const topicWindow = await readConversationMessageWindow(OWNER, TOPIC_CONVERSATION);
+
+    expect(messages.map((item) => item.uuid)).toEqual(["msg-b", "msg-a"]);
+    expect(otherOwnerMessages).toEqual([]);
+    expect(topicWindow.messages).toEqual([]);
+    expect(topicWindow.window).toBeNull();
   });
 
   it("merges catalog snapshots without deleting omitted or empty collections", async () => {

@@ -145,17 +145,17 @@ describe("messenger last messages loader", () => {
     useWorkspaceMessageStore.getState().clear();
   });
 
-  it("collects unique last message uuids and skips already loaded messages", () => {
+  it("collects unique last message uuids from sidebar state", () => {
     const ownerKey = workspaceRuntimeOwnerKey(createRuntimeContext());
     seedBootstrap(ownerKey);
-    useWorkspaceMessageStore.getState().upsertMessageBody(adaptMessengerMessage(createMessageDto()));
+    useWorkspaceMessageStore
+      .getState()
+      .upsertMessageBody(adaptMessengerMessage(createMessageDto()));
 
-    expect(
-      collectMessengerLastMessageUuids(
-        useMessengerStore.getState(),
-        useWorkspaceMessageStore.getState().messagesById,
-      ),
-    ).toEqual([MESSAGE_B]);
+    expect(collectMessengerLastMessageUuids(useMessengerStore.getState())).toEqual([
+      MESSAGE_A,
+      MESSAGE_B,
+    ]);
   });
 
   it("loads missing last messages through the injected bulk client", async () => {
@@ -163,12 +163,14 @@ describe("messenger last messages loader", () => {
     const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
     seedBootstrap(ownerKey);
     const getMessagesByUuids = vi.fn(() => Promise.resolve([createMessageDto()]));
+    const writeMessages = vi.fn(() => Promise.resolve());
 
     await expect(
       loadMessengerLastMessagesForSidebar({
         runtimeContext,
         getRuntimeContext: () => runtimeContext,
         client: { getMessagesByUuids },
+        cache: { writeMessages },
       }),
     ).resolves.toEqual({
       status: "loaded",
@@ -188,32 +190,129 @@ describe("messenger last messages loader", () => {
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.markdown).toBe(
       "Hello, workspace",
     );
+    expect(writeMessages).toHaveBeenCalledWith(ownerKey, [
+      expect.objectContaining({ uuid: MESSAGE_A, markdown: "Hello, workspace" }),
+    ]);
   });
 
-  it("does not call the client when every last message is already loaded", async () => {
+  it("applies cached last messages without calling the client", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
     seedBootstrap(ownerKey);
-    useWorkspaceMessageStore.getState().upsertMessageBody(adaptMessengerMessage(createMessageDto()));
-    useWorkspaceMessageStore
-      .getState()
-      .upsertMessageBody(adaptMessengerMessage(createMessageDto({ uuid: MESSAGE_B })));
+    const cachedMessageA = adaptMessengerMessage(createMessageDto());
+    const cachedMessageB = adaptMessengerMessage(
+      createMessageDto({ uuid: MESSAGE_B, payload: { kind: "markdown", content: "Cached B" } }),
+    );
     const getMessagesByUuids = vi.fn(() => Promise.resolve([]));
+    const writeMessages = vi.fn(() => Promise.resolve());
 
     await expect(
       loadMessengerLastMessagesForSidebar({
         runtimeContext,
         getRuntimeContext: () => runtimeContext,
         client: { getMessagesByUuids },
+        cache: {
+          readMessagesByUuids: () => Promise.resolve([cachedMessageA, cachedMessageB]),
+          writeMessages,
+        },
       }),
     ).resolves.toEqual({
       status: "loaded",
       ownerKey,
       requested: 0,
-      applied: 0,
+      applied: 2,
     });
 
     expect(getMessagesByUuids).not.toHaveBeenCalled();
+    expect(writeMessages).not.toHaveBeenCalled();
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.markdown).toBe(
+      "Hello, workspace",
+    );
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]?.markdown).toBe("Cached B");
+  });
+
+  it("loads only cache misses from the client", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+    seedBootstrap(ownerKey);
+    const cachedMessageA = adaptMessengerMessage(createMessageDto());
+    const getMessagesByUuids = vi.fn(() =>
+      Promise.resolve([
+        createMessageDto({ uuid: MESSAGE_B, payload: { kind: "markdown", content: "Network B" } }),
+      ]),
+    );
+
+    await expect(
+      loadMessengerLastMessagesForSidebar({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        client: { getMessagesByUuids },
+        cache: { readMessagesByUuids: () => Promise.resolve([cachedMessageA]) },
+      }),
+    ).resolves.toEqual({
+      status: "loaded",
+      ownerKey,
+      requested: 1,
+      applied: 2,
+    });
+
+    expect(getMessagesByUuids).toHaveBeenCalledWith(expect.any(Object), [MESSAGE_B]);
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.markdown).toBe(
+      "Hello, workspace",
+    );
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]?.markdown).toBe("Network B");
+  });
+
+  it("writes network responses back to the message cache", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+    seedBootstrap(ownerKey);
+    const writeMessages = vi.fn(() => Promise.resolve());
+
+    await loadMessengerLastMessagesForSidebar({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      client: { getMessagesByUuids: () => Promise.resolve([createMessageDto()]) },
+      cache: {
+        readMessagesByUuids: () => Promise.resolve([]),
+        writeMessages,
+      },
+    });
+
+    expect(writeMessages).toHaveBeenCalledWith(ownerKey, [
+      expect.objectContaining({ uuid: MESSAGE_A, markdown: "Hello, workspace" }),
+    ]);
+  });
+
+  it("checks IndexedDB even when last messages already exist in memory", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+    seedBootstrap(ownerKey);
+    useWorkspaceMessageStore
+      .getState()
+      .upsertMessageBody(adaptMessengerMessage(createMessageDto()));
+    useWorkspaceMessageStore
+      .getState()
+      .upsertMessageBody(adaptMessengerMessage(createMessageDto({ uuid: MESSAGE_B })));
+    const readMessagesByUuids = vi.fn(() => Promise.resolve([]));
+    const getMessagesByUuids = vi.fn(() => Promise.resolve([createMessageDto()]));
+
+    await expect(
+      loadMessengerLastMessagesForSidebar({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        client: { getMessagesByUuids },
+        cache: { readMessagesByUuids },
+      }),
+    ).resolves.toEqual({
+      status: "loaded",
+      ownerKey,
+      requested: 2,
+      applied: 1,
+    });
+
+    expect(readMessagesByUuids).toHaveBeenCalledWith(ownerKey, [MESSAGE_A, MESSAGE_B]);
+    expect(getMessagesByUuids).toHaveBeenCalledWith(expect.any(Object), [MESSAGE_A, MESSAGE_B]);
   });
 
   it("does not write messages when the runtime owner becomes stale", async () => {
@@ -221,11 +320,16 @@ describe("messenger last messages loader", () => {
     const ownerKey = workspaceRuntimeOwnerKey(currentContext);
     seedBootstrap(ownerKey);
     const messageRequest = createDeferred<WorkspaceMessengerMessageDto[]>();
+    const writeMessages = vi.fn(() => Promise.resolve());
 
     const loading = loadMessengerLastMessagesForSidebar({
       runtimeContext: currentContext,
       getRuntimeContext: () => currentContext,
       client: { getMessagesByUuids: () => messageRequest.promise },
+      cache: {
+        readMessagesByUuids: () => Promise.resolve([]),
+        writeMessages,
+      },
     });
 
     currentContext = createRuntimeContext({
@@ -244,6 +348,68 @@ describe("messenger last messages loader", () => {
       reason: "stale-owner",
     });
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
+    expect(writeMessages).not.toHaveBeenCalled();
+  });
+
+  it("does not apply cached messages when the runtime owner becomes stale", async () => {
+    let currentContext = createRuntimeContext();
+    const ownerKey = workspaceRuntimeOwnerKey(currentContext);
+    seedBootstrap(ownerKey);
+    const cacheRequest = createDeferred<ReturnType<typeof adaptMessengerMessage>[]>();
+    const getMessagesByUuids = vi.fn(() => Promise.resolve([]));
+
+    const loading = loadMessengerLastMessagesForSidebar({
+      runtimeContext: currentContext,
+      getRuntimeContext: () => currentContext,
+      client: { getMessagesByUuids },
+      cache: { readMessagesByUuids: () => cacheRequest.promise },
+    });
+
+    currentContext = createRuntimeContext({
+      accountId: ACCOUNT_B,
+      instanceId: INSTANCE_B,
+      organizationId: ORGANIZATION_B,
+      projectId: PROJECT_B,
+      userUuid: USER_B,
+      accessToken: "access-token-b",
+    });
+    cacheRequest.resolve([adaptMessengerMessage(createMessageDto())]);
+
+    await expect(loading).resolves.toEqual({
+      status: "skipped",
+      ownerKey,
+      reason: "stale-owner",
+    });
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
+    expect(getMessagesByUuids).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the client when reading the message cache fails", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+    seedBootstrap(ownerKey);
+    const getMessagesByUuids = vi.fn(() => Promise.resolve([createMessageDto()]));
+
+    await expect(
+      loadMessengerLastMessagesForSidebar({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        client: { getMessagesByUuids },
+        cache: {
+          readMessagesByUuids: () => Promise.reject(new Error("idb failed")),
+        },
+      }),
+    ).resolves.toEqual({
+      status: "loaded",
+      ownerKey,
+      requested: 2,
+      applied: 1,
+    });
+
+    expect(getMessagesByUuids).toHaveBeenCalledWith(expect.any(Object), [MESSAGE_A, MESSAGE_B]);
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.markdown).toBe(
+      "Hello, workspace",
+    );
   });
 
   it("keeps the sidebar snapshot when last message loading fails", async () => {

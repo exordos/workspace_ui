@@ -382,7 +382,9 @@ describe("messenger bootstrap store", () => {
         getFolders: () => Promise.resolve([]),
         getMessagesByUuids,
       }),
+      lastMessagesCache: { readMessagesByUuids: () => Promise.resolve([]) },
     });
+    await flushPromises();
     await flushPromises();
 
     expect(useMessengerStore.getState().streamsById[STREAM_A]?.name).toBe("Engineering");
@@ -397,6 +399,50 @@ describe("messenger bootstrap store", () => {
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.markdown).toBe(
       "Hello, workspace",
     );
+  });
+
+  it("restores cached last messages after cached sidebar snapshot before network bootstrap", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+    const streamRequest = createDeferred<WorkspaceMessengerStreamDto[]>();
+    const cachedPayload = adaptMessengerBootstrapPayload({
+      streams: [createStreamDto({ last_message_uuid: MESSAGE_A })],
+      topics: [createTopicDto({ last_message_uuid: MESSAGE_A })],
+      folders: [],
+      users: [createUserDto()],
+    });
+    const cachedMessage = adaptMessengerMessage(
+      createMessageDto({ payload: { kind: "markdown", content: "Cached preview" } }),
+    );
+    const getMessagesByUuids = vi.fn(() => Promise.resolve([]));
+    const readMessagesByUuids = vi.fn(() => Promise.resolve([cachedMessage]));
+
+    const bootstrap = bootstrapMessengerStore({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      client: createClient({
+        getStreams: () => streamRequest.promise,
+        getFolders: () => Promise.resolve([]),
+        getMessagesByUuids,
+      }),
+      cache: {
+        readMessengerCatalogPayloadCache: () =>
+          Promise.resolve({ payload: cachedPayload, epochVersion: null }),
+      },
+      lastMessagesCache: { readMessagesByUuids },
+    });
+    await flushPromises();
+    await flushPromises();
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.name).toBe("Engineering");
+    expect(readMessagesByUuids).toHaveBeenCalledWith(ownerKey, [MESSAGE_A]);
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.markdown).toBe(
+      "Cached preview",
+    );
+    expect(getMessagesByUuids).not.toHaveBeenCalled();
+
+    streamRequest.resolve([createStreamDto({ last_message_uuid: MESSAGE_A })]);
+    await bootstrap;
   });
 
   it("keeps private stream conversations as stream and topic ids", async () => {
