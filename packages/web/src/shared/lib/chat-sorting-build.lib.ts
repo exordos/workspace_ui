@@ -34,6 +34,7 @@ function streamTopicsToSidebarTopics(
         lastMessage: t.lastMessage,
         lastMessageSenderName: t.lastMessageSenderName,
         time: t.time,
+        ...(t.color != null ? { color: t.color } : {}),
         badge: !topicMuted && t.unreadCount > 0 ? t.unreadCount : undefined,
       };
     });
@@ -53,6 +54,7 @@ function streamEntryToTimestampedChat(
       type: "stream",
       streamUuid: s.streamUuid,
       private: s.private,
+      ...(s.color != null ? { color: s.color } : {}),
       name: s.name,
       lastMessage: s.lastMessage,
       lastMessageSenderName: s.lastMessageSenderName,

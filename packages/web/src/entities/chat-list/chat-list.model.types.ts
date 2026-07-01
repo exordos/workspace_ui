@@ -19,6 +19,8 @@ export interface ChatListStreamMetadataRow {
   isArchived?: boolean;
   creatorId?: string;
   inviteOnly?: boolean;
+  /** Server-owned stream color as 0xRRGGBB. */
+  color?: number;
   canAddSubscribersGroup?: MessengerGroupSettingValue;
   canRemoveSubscribersGroup?: MessengerGroupSettingValue;
   canAdministerChannelGroup?: MessengerGroupSettingValue;
@@ -33,6 +35,8 @@ export interface ChatListStreamTopicMetadataRow {
   unreadCount?: number;
   isDefault?: boolean;
   isDone?: boolean;
+  /** Server-owned topic color as 0xRRGGBB. */
+  color?: number;
 }
 
 export interface ChatListDmMetadataRow {

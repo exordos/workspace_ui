@@ -637,6 +637,7 @@ describe("dispatchMessengerEvent", () => {
             name: "retros",
             unread_count: 4,
             is_done: true,
+            color: 0xabcdef,
           },
         },
         ctx,
@@ -649,6 +650,7 @@ describe("dispatchMessengerEvent", () => {
           name: "retros",
           unreadCount: 4,
           isDone: true,
+          color: 0xabcdef,
         },
       ]);
     });
@@ -695,6 +697,54 @@ describe("dispatchMessengerEvent", () => {
 
       expect(modeSpy).toHaveBeenCalledWith(STREAM_UUID_42, TOPIC_UUID_7, "follow");
     });
+
+    it("upserts topic color-only updates using existing topic name", () => {
+      const { ctx } = buildCtx();
+      const upsertSpy = vi.spyOn(ctx.chatList, "upsertStreamTopicShells");
+      ctx.chatList.streamsMap.set(STREAM_UUID_42, {
+        streamUuid: STREAM_UUID_42,
+        name: "engineering",
+        lastMessage: "",
+        time: "",
+        ts: 0,
+        topics: new Map([
+          [
+            "release",
+            {
+              topicUuid: TOPIC_UUID_7,
+              subject: "release",
+              lastMessage: "",
+              time: "",
+              ts: 0,
+              unreadCount: 0,
+            },
+          ],
+        ]),
+      });
+
+      dispatchMessengerEvent(
+        {
+          id: 33,
+          type: "topic",
+          kind: "topic.updated",
+          topic: {
+            uuid: TOPIC_UUID_7,
+            stream_uuid: STREAM_UUID_42,
+            color: 0x445566,
+          },
+        },
+        ctx,
+      );
+
+      expect(upsertSpy).toHaveBeenCalledWith(STREAM_UUID_42, [
+        {
+          topicUuid: TOPIC_UUID_7,
+          streamUuid: STREAM_UUID_42,
+          name: "release",
+          color: 0x445566,
+        },
+      ]);
+    });
   });
 
   describe("subscription notification properties", () => {
@@ -737,6 +787,7 @@ describe("dispatchMessengerEvent", () => {
             invite_only: true,
             private: false,
             is_archived: false,
+            color: 0x123456,
           },
         },
         ctx,
@@ -750,6 +801,7 @@ describe("dispatchMessengerEvent", () => {
           inviteOnly: true,
           private: false,
           isArchived: false,
+          color: 0x123456,
         },
       ]);
     });
@@ -800,6 +852,7 @@ describe("dispatchMessengerEvent", () => {
             invite_only: true,
             private: false,
             is_archived: true,
+            color: 0x654321,
           },
         },
         ctx,
@@ -813,6 +866,7 @@ describe("dispatchMessengerEvent", () => {
           inviteOnly: true,
           private: false,
           isArchived: true,
+          color: 0x654321,
         },
       ]);
       expect(applyStreamMetadataUpdate).toHaveBeenCalledWith({

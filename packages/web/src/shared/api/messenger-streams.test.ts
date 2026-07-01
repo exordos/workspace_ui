@@ -3,6 +3,8 @@
  */
 import { describe, expect, it } from "vitest";
 // messenger.test.setup must load before the module under test so its vi.mock hooks register first.
+import { getMockMessengerApi } from "./messenger.test.setup";
+// eslint-disable-next-line import-x/order -- keep setup import above module import for vi.mock registration
 import {
   addMembersToStream,
   archiveStream,
@@ -13,6 +15,7 @@ import {
   deleteTopic,
   fetchStreamMembers,
   fetchStreamTopicNames,
+  fetchStreamTopics,
   fetchStreams,
   fetchSubscriptions,
   fetchTopics,
@@ -24,7 +27,6 @@ import {
   updateStreamBindingRole,
   updateStreamTopic,
 } from "./messenger-streams";
-import { getMockMessengerApi } from "./messenger.test.setup";
 
 const mockMessengerApi = getMockMessengerApi();
 
@@ -51,6 +53,7 @@ describe("fetchSubscriptions", () => {
           announce: false,
           private: false,
           is_archived: true,
+          color: 0x123456,
           unread_count: 5,
           notification_mode: "mentions_only",
         },
@@ -77,6 +80,7 @@ describe("fetchSubscriptions", () => {
         invite_only: false,
         private: false,
         is_archived: true,
+        color: 0x123456,
         unread_count: 5,
       },
       {
@@ -593,6 +597,19 @@ describe("fetchTopics", () => {
     await expect(fetchStreamTopicNames(STREAM_UUID)).resolves.toEqual([]);
   });
 
+  it("keeps stream topic color from Workspace rows", async () => {
+    mockMessengerApi.getWithBase.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: [{ uuid: TOPIC_UUID, stream_uuid: STREAM_UUID, name: "planning", color: 0xabcdef }],
+      raw: { statusText: "OK" },
+    });
+
+    await expect(fetchStreamTopics(STREAM_UUID)).resolves.toEqual([
+      expect.objectContaining({ color: 0xabcdef }),
+    ]);
+  });
+
   it("returns empty array when topics endpoint responds with error result", async () => {
     mockMessengerApi.getWithBase.mockResolvedValue({
       ok: true,
@@ -636,6 +653,7 @@ describe("fetchStreams", () => {
           announce: true,
           invite_only: false,
           private: false,
+          color: 0x654321,
         },
         {
           uuid: "33333333-3333-4333-8333-333333333333",
@@ -658,6 +676,7 @@ describe("fetchStreams", () => {
         description: "Main",
         is_announcement_only: true,
         invite_only: false,
+        color: 0x654321,
       },
     ]);
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith("/api/messenger/v1", "/streams/");
@@ -922,7 +941,7 @@ describe("updateStreamTopic", () => {
     });
 
     await expect(updateStreamTopic({ topicUuid: TOPIC_UUID, name: "postmortem" })).resolves.toEqual(
-      { ok: true, topic: responseTopic },
+      { ok: true, topic: { ...responseTopic, notification_mode: "default" } },
     );
     expect(mockMessengerApi.putJsonWithBase).toHaveBeenCalledWith(
       "/api/messenger/v1",
@@ -949,7 +968,7 @@ describe("updateStreamTopic", () => {
 
     await expect(
       updateStreamTopic({ topicUuid: TOPIC_UUID, streamUuid: OTHER_STREAM_UUID }),
-    ).resolves.toEqual({ ok: true, topic: responseTopic });
+    ).resolves.toEqual({ ok: true, topic: { ...responseTopic, notification_mode: "default" } });
     expect(mockMessengerApi.putJsonWithBase).toHaveBeenCalledWith(
       "/api/messenger/v1",
       `/stream_topics/${TOPIC_UUID}`,
@@ -997,7 +1016,7 @@ describe("toggleStreamTopicDone", () => {
 
     await expect(toggleStreamTopicDone(TOPIC_UUID)).resolves.toEqual({
       ok: true,
-      topic: responseTopic,
+      topic: { ...responseTopic, notification_mode: "default" },
     });
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
       "/api/messenger/v1",

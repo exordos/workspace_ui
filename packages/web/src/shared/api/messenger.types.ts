@@ -54,6 +54,8 @@ export interface MessengerMeStream {
   announce: boolean;
   private: boolean;
   is_archived: boolean;
+  /** Server-owned stream color as 0xRRGGBB. */
+  color?: number;
   unread_count: number;
   notification_mode: WorkspaceStreamNotificationMode;
 }
@@ -97,6 +99,8 @@ export interface MessengerStreamTopic {
   unread_count: number;
   is_default: boolean;
   is_done: boolean;
+  /** Server-owned topic color as 0xRRGGBB. */
+  color?: number;
   notification_mode: WorkspaceTopicNotificationMode;
   project_id?: string;
   created_at?: string;
@@ -299,6 +303,8 @@ export interface MockStream {
   can_administer_channel_group?: MessengerGroupSettingValue;
   can_resolve_topics_group?: MessengerGroupSettingValue;
   can_move_messages_out_of_channel_group?: MessengerGroupSettingValue;
+  /** Server-owned stream color as 0xRRGGBB. */
+  color?: number;
 }
 
 export type MockMessageDeliveryStatus = "sending" | "failed" | "sent";
@@ -400,6 +406,8 @@ export interface MessengerSubscription {
   can_administer_channel_group?: MessengerGroupSettingValue;
   can_resolve_topics_group?: MessengerGroupSettingValue;
   can_move_messages_out_of_channel_group?: MessengerGroupSettingValue;
+  /** Server-owned stream color as 0xRRGGBB. */
+  color?: number;
   unread_count?: number;
 }
 

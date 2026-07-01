@@ -212,12 +212,14 @@ function upsertStreamFromMessage(
   const streamResult = messageToStreamEntry(m);
   if (!streamResult) return false;
   const { streamUuid, name, lastMessage, lastMessageSenderName, time, ts } = streamResult.stream;
+  const existing = streamsByKey.get(streamUuid);
+  const existingTopic = existing?.topics.get(streamResult.topic.subject);
   const topicWithMeta: StreamTopicEntry = {
     ...streamResult.topic,
     unreadCount: 0,
+    ...(existingTopic?.color != null ? { color: existingTopic.color } : {}),
     lastMessageId: m.id,
   };
-  const existing = streamsByKey.get(streamUuid);
   if (!existing) {
     const topics = new Map<string, StreamTopicEntry>([[topicWithMeta.subject, topicWithMeta]]);
     streamsByKey.set(streamUuid, {
@@ -231,7 +233,6 @@ function upsertStreamFromMessage(
     });
     return true;
   }
-  const existingTopic = existing.topics.get(topicWithMeta.subject);
   const nextTopics = new Map(existing.topics);
   if (!existingTopic || topicWithMeta.ts >= existingTopic.ts) {
     nextTopics.set(topicWithMeta.subject, topicWithMeta);
@@ -288,10 +289,12 @@ function mapInternalStreamToSidebar(s: StreamEntryInternal): StreamWithLast {
       lastMessageSenderName: t.lastMessageSenderName,
       time: t.time,
       badge: t.unreadCount > 0 ? t.unreadCount : undefined,
+      ...(t.color != null ? { color: t.color } : {}),
     }));
   const badge = s.unreadCount ?? 0;
   return {
     private: s.private,
+    ...(s.color != null ? { color: s.color } : {}),
     streamUuid: s.streamUuid,
     name: s.name,
     lastMessage: s.lastMessage,

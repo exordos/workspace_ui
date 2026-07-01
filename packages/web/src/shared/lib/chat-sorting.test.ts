@@ -63,6 +63,24 @@ describe("sortChatsByLastMessage", () => {
     expect(muted?.type === "stream" ? muted.topics?.[0]?.badge : undefined).toBeUndefined();
   });
 
+  it("keeps server stream and topic colors in sidebar projection", () => {
+    const stream = createStreamEntry(10, "Engineering", 5000, 0);
+    stream.color = 0x123456;
+    const topic = stream.topics.get("general");
+    if (topic != null) {
+      topic.color = 0xabcdef;
+    }
+    const streamsMap = new Map<string, StreamEntryInternal>([[streamUuid(10), stream]]);
+
+    const sorted = sortChatsByLastMessage(streamsMap, new Map(), new Set());
+
+    expect(sorted[0]).toMatchObject({
+      type: "stream",
+      color: 0x123456,
+      topics: [expect.objectContaining({ color: 0xabcdef })],
+    });
+  });
+
   it("uses server stream unread badge without client-side topic recomputation", () => {
     const streamsMap = new Map<string, StreamEntryInternal>([
       [

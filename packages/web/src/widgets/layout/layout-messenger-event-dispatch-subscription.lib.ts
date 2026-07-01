@@ -7,8 +7,14 @@ import { parseWorkspaceStreamNotificationMode } from "~/shared/lib/stream-notifi
 import { parseWorkspaceTopicNotificationMode } from "~/shared/lib/topic-notification-resolve.lib";
 import type { LayoutMessengerEventDispatchContext } from "./layout-messenger-event-dispatch.types";
 
+const WORKSPACE_COLOR_MAX_VALUE = 0xffffff;
+
 function isNonNegativeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function parseWorkspaceColor(value: unknown): number | undefined {
+  return isNonNegativeInteger(value) && value <= WORKSPACE_COLOR_MAX_VALUE ? value : undefined;
 }
 
 export function parseStreamUuid(value: unknown): string | null {
@@ -27,6 +33,7 @@ export function parseSubscriptionRows(value: unknown): {
   isArchived?: boolean;
   creatorId?: string;
   inviteOnly?: boolean;
+  color?: number;
   canAddSubscribersGroup?: MessengerGroupSettingValue;
   canRemoveSubscribersGroup?: MessengerGroupSettingValue;
   canAdministerChannelGroup?: MessengerGroupSettingValue;
@@ -60,6 +67,7 @@ export function parseOneSubscriptionRow(record: Record<string, unknown>): {
   isArchived?: boolean;
   creatorId?: string;
   inviteOnly?: boolean;
+  color?: number;
   canAddSubscribersGroup?: MessengerGroupSettingValue;
   canRemoveSubscribersGroup?: MessengerGroupSettingValue;
   canAdministerChannelGroup?: MessengerGroupSettingValue;
@@ -79,12 +87,14 @@ export function parseOneSubscriptionRow(record: Record<string, unknown>): {
     record.can_move_messages_out_of_channel_group,
   );
   const notificationMode = parseWorkspaceStreamNotificationMode(record.notification_mode);
+  const color = parseWorkspaceColor(record.color);
   return {
     streamUuid: streamUuidRaw,
     name: name.trim(),
     ...(typeof record.is_archived === "boolean" ? { isArchived: record.is_archived } : {}),
     ...(creatorId != null ? { creatorId } : {}),
     ...(typeof record.invite_only === "boolean" ? { inviteOnly: record.invite_only } : {}),
+    ...(color != null ? { color } : {}),
     ...(canAddSubscribersGroup != null ? { canAddSubscribersGroup } : {}),
     ...(canRemoveSubscribersGroup != null ? { canRemoveSubscribersGroup } : {}),
     ...(canAdministerChannelGroup != null ? { canAdministerChannelGroup } : {}),
@@ -114,6 +124,7 @@ export interface WorkspaceStreamEventRow {
   inviteOnly?: boolean;
   isArchived?: boolean;
   creatorId?: string;
+  color?: number;
   notificationMode?: ReturnType<typeof parseWorkspaceStreamNotificationMode>;
 }
 
@@ -123,14 +134,15 @@ export function parseWorkspaceStreamEventRow(value: unknown): WorkspaceStreamEve
   const streamUuid = parseStreamUuid(record.uuid);
   if (streamUuid == null) return null;
   const name = typeof record.name === "string" ? record.name.trim() : "";
-  const description =
-    typeof record.description === "string"
-      ? record.description
-      : record.description === null
-        ? null
-        : undefined;
+  let description: string | null | undefined;
+  if (typeof record.description === "string") {
+    description = record.description;
+  } else if (record.description === null) {
+    description = null;
+  }
   const creatorId = parseOwnerUuid(record);
   const notificationMode = parseWorkspaceStreamNotificationMode(record.notification_mode);
+  const color = parseWorkspaceColor(record.color);
   return {
     streamUuid,
     ...(name.length > 0 ? { name } : {}),
@@ -140,6 +152,7 @@ export function parseWorkspaceStreamEventRow(value: unknown): WorkspaceStreamEve
     ...(typeof record.invite_only === "boolean" ? { inviteOnly: record.invite_only } : {}),
     ...(typeof record.is_archived === "boolean" ? { isArchived: record.is_archived } : {}),
     ...(creatorId != null ? { creatorId } : {}),
+    ...(color != null ? { color } : {}),
     ...(notificationMode != null ? { notificationMode } : {}),
   };
 }
@@ -158,6 +171,7 @@ function buildChatListStreamMetadataRow(
     ...(row.inviteOnly != null ? { inviteOnly: row.inviteOnly } : {}),
     ...(row.isArchived != null ? { isArchived: row.isArchived } : {}),
     ...(row.creatorId != null ? { creatorId: row.creatorId } : {}),
+    ...(row.color != null ? { color: row.color } : {}),
   };
 }
 export function handleSubscriptionAdd(
@@ -208,6 +222,7 @@ export function buildStreamMetadataRowFromExisting(
   name: string;
   isArchived?: boolean;
   inviteOnly?: boolean;
+  color?: number;
   canAddSubscribersGroup?: MessengerGroupSettingValue;
   canRemoveSubscribersGroup?: MessengerGroupSettingValue;
   canAdministerChannelGroup?: MessengerGroupSettingValue;
@@ -219,6 +234,7 @@ export function buildStreamMetadataRowFromExisting(
     name: streamName,
     ...(existing?.isArchived != null ? { isArchived: existing.isArchived } : {}),
     ...(existing?.inviteOnly != null ? { inviteOnly: existing.inviteOnly } : {}),
+    ...(existing?.color != null ? { color: existing.color } : {}),
     ...(existing?.canAddSubscribersGroup != null
       ? { canAddSubscribersGroup: existing.canAddSubscribersGroup }
       : {}),
@@ -242,6 +258,7 @@ interface SubscriptionMetadataRow {
   name: string;
   isArchived?: boolean;
   inviteOnly?: boolean;
+  color?: number;
   canAddSubscribersGroup?: MessengerGroupSettingValue;
   canRemoveSubscribersGroup?: MessengerGroupSettingValue;
   canAdministerChannelGroup?: MessengerGroupSettingValue;
@@ -256,6 +273,16 @@ function applyBooleanSubscriptionMetadataField(
 ): void {
   if (typeof event.value === "boolean") {
     row[field] = event.value;
+  }
+}
+
+function applyColorSubscriptionMetadataField(
+  row: SubscriptionMetadataRow,
+  event: MessengerEvent,
+): void {
+  const color = parseWorkspaceColor(event.value);
+  if (color != null) {
+    row.color = color;
   }
 }
 
@@ -281,6 +308,7 @@ const SUBSCRIPTION_METADATA_FIELD_HANDLERS: Record<
 > = {
   is_archived: (row, event) => applyBooleanSubscriptionMetadataField(row, event, "isArchived"),
   invite_only: (row, event) => applyBooleanSubscriptionMetadataField(row, event, "inviteOnly"),
+  color: (row, event) => applyColorSubscriptionMetadataField(row, event),
   can_add_subscribers_group: (row, event) =>
     applyGroupSubscriptionMetadataField(row, event, "canAddSubscribersGroup"),
   can_remove_subscribers_group: (row, event) =>
@@ -328,7 +356,8 @@ export function handleSubscriptionPropertyUpdate(
     property !== "can_administer_channel_group" &&
     property !== "can_resolve_topics_group" &&
     property !== "can_move_messages_out_of_channel_group" &&
-    property !== "invite_only"
+    property !== "invite_only" &&
+    property !== "color"
   ) {
     return;
   }
@@ -413,6 +442,7 @@ interface WorkspaceTopicEventRow {
   name?: string;
   unreadCount?: number;
   isDone?: boolean;
+  color?: number;
   notificationMode?: ReturnType<typeof parseWorkspaceTopicNotificationMode>;
 }
 
@@ -428,14 +458,32 @@ function parseWorkspaceTopicEventRow(value: unknown): WorkspaceTopicEventRow | n
   if (topicUuid == null || streamUuid == null) return null;
   const name = typeof record.name === "string" ? record.name.trim() : "";
   const notificationMode = parseWorkspaceTopicNotificationMode(record.notification_mode);
+  const color = parseWorkspaceColor(record.color);
   return {
     topicUuid,
     streamUuid,
     ...(name.length > 0 ? { name } : {}),
     ...(isNonNegativeInteger(record.unread_count) ? { unreadCount: record.unread_count } : {}),
     ...(typeof record.is_done === "boolean" ? { isDone: record.is_done } : {}),
+    ...(color != null ? { color } : {}),
     ...(notificationMode != null ? { notificationMode } : {}),
   };
+}
+
+function findExistingTopicSubjectByUuid(
+  ctx: LayoutMessengerEventDispatchContext,
+  streamUuid: string,
+  topicUuid: string,
+): string | undefined {
+  const normalizedTopicUuid = topicUuid.trim().toLowerCase();
+  const stream = ctx.chatList.streamsMap.get(streamUuid);
+  if (stream == null) return undefined;
+  for (const topic of stream.topics.values()) {
+    if (topic.topicUuid?.trim().toLowerCase() === normalizedTopicUuid) {
+      return topic.subject;
+    }
+  }
+  return undefined;
 }
 
 export function handleTopic(event: MessengerEvent, ctx: LayoutMessengerEventDispatchContext): void {
@@ -453,14 +501,16 @@ export function handleTopic(event: MessengerEvent, ctx: LayoutMessengerEventDisp
     ctx.mute.setTopicNotificationMode(row.streamUuid, row.topicUuid, row.notificationMode);
   }
 
-  if (row.name == null) return;
+  const topicName = row.name ?? findExistingTopicSubjectByUuid(ctx, row.streamUuid, row.topicUuid);
+  if (topicName == null) return;
   ctx.chatList.upsertStreamTopicShells(row.streamUuid, [
     {
       topicUuid: row.topicUuid,
       streamUuid: row.streamUuid,
-      name: row.name,
+      name: topicName,
       ...(row.unreadCount != null ? { unreadCount: row.unreadCount } : {}),
       ...(row.isDone != null ? { isDone: row.isDone } : {}),
+      ...(row.color != null ? { color: row.color } : {}),
     },
   ]);
 }

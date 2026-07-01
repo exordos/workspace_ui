@@ -111,6 +111,7 @@ export function getStreamChats(
     type: "stream" as const,
     streamUuid: s.streamUuid,
     private: s.private,
+    ...(s.color != null ? { color: s.color } : {}),
     name: s.name,
     lastMessage: s.lastMessage,
     lastMessageSenderName: s.lastMessageSenderName,

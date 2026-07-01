@@ -1,11 +1,11 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { t } from "~/i18n/i18n";
+import { folderColorValueToCssHex } from "~/shared/lib/folder-colors.lib";
 import { sidebarRowClass } from "~/shared/lib/format";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
 import { formatTopicDoneLabel } from "~/shared/lib/topic-resolve";
-import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { SidebarChatBadges } from "./sidebar-chat-badges.ui";
 import { StreamContextMenu, TopicContextMenu } from "./sidebar-chat-context-menu.ui";
@@ -13,6 +13,7 @@ import { sidebarStreamRoute, sidebarStreamTopicRoute } from "./sidebar-chat-rout
 import { TopicMuteButton } from "./sidebar-folder-topic-buttons.ui";
 import { SidebarMessagePreview } from "./sidebar-message-preview.ui";
 import { useSidebarNewTopicInputFocus } from "./sidebar-new-topic-input-focus.hook";
+import { SidebarStreamColorAvatar } from "./sidebar-stream-color-avatar.ui";
 import { SidebarStreamHydrateWrapper } from "./sidebar-stream-hydrate-wrapper.ui";
 import { useSidebarTopicCollapse } from "./sidebar-topic-collapse.hook";
 import { SidebarTopicShowMoreButton } from "./sidebar-topic-show-more.ui";
@@ -60,7 +61,7 @@ function StreamRowLinkContent({
 }: StreamRowLinkContentProps): React.ReactElement {
   return (
     <>
-      <Avatar size={streamAvatarSize}>#</Avatar>
+      <SidebarStreamColorAvatar size={streamAvatarSize} color={chat.color} />
       <div className="min-w-0 flex-1">
         <div
           className={`truncate text-sm font-medium ${
@@ -164,7 +165,10 @@ const SidebarFolderStreamTopicsList = React.memo(function SidebarFolderStreamTop
           </div>
         ) : (
           visibleTopics.map((topic, idx) => {
-            const topicColor = TOPIC_BAR_COLORS[idx % TOPIC_BAR_COLORS.length];
+            const topicColor =
+              topic.color != null
+                ? folderColorValueToCssHex(topic.color)
+                : TOPIC_BAR_COLORS[idx % TOPIC_BAR_COLORS.length];
             const topicRouteSegment = topic.topicUuid ?? topic.subject;
             const isTopicActive =
               streamSlug === activeStreamSlug &&

@@ -187,6 +187,7 @@ export function buildFallbackStreamChatsFromFolderItems(
       type: "stream",
       streamUuid: streamId,
       name: streamName,
+      ...(streamRecord?.color != null ? { color: streamRecord.color } : {}),
       lastMessage: "",
       time: "",
       topics: [],

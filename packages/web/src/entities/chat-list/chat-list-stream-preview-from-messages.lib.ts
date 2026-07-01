@@ -78,6 +78,7 @@ function mergeStreamPreviewEntry(
   const existingTopic = existing?.topics.get(topicSubject);
   const unreadCount = existingTopic?.unreadCount ?? 0;
   const resolvedTopicUuid = topicUuid ?? existingTopic?.topicUuid;
+  const topicColor = existingTopic?.color;
   const topicEntry = {
     ...(resolvedTopicUuid != null ? { topicUuid: resolvedTopicUuid } : {}),
     subject: topicSubject,
@@ -86,6 +87,7 @@ function mergeStreamPreviewEntry(
     time: topicTime,
     ts: topicTs,
     unreadCount,
+    ...(topicColor != null ? { color: topicColor } : {}),
     lastMessageId,
   };
   if (!existing) {
@@ -102,6 +104,7 @@ function mergeStreamPreviewEntry(
   return {
     streamUuid: existing.streamUuid,
     private: existing.private,
+    ...(existing.color != null ? { color: existing.color } : {}),
     name: existing.name,
     lastMessage: newerStream ? lastMessage : existing.lastMessage,
     lastMessageSenderName: newerStream ? lastMessageSenderName : existing.lastMessageSenderName,

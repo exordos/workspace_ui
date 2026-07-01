@@ -55,7 +55,6 @@ function defaultParams(overrides: Partial<Parameters<typeof useChatPageSendMessa
     appendMessage,
     commitOutgoingMessage,
     removeMessage,
-    requestScrollToBottom: vi.fn(),
     clearReplyQuote: vi.fn(),
     stopTyping: vi.fn(),
     setSendError: vi.fn(),

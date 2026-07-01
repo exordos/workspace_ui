@@ -303,10 +303,6 @@ export const ChatPage: React.FC = () => {
   const [actionError, setActionError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [readReceiptsOpen, setReadReceiptsOpen] = useState(false);
-  const [scrollToBottomAfterSendNonce, setScrollToBottomAfterSendNonce] = useState(0);
-  const requestScrollToBottomAfterSend = useCallback(() => {
-    setScrollToBottomAfterSendNonce((nonce) => nonce + 1);
-  }, []);
   const editRequestTokenRef = useRef(0);
   const [deleteConfirm, setDeleteConfirm] = useState<
     { type: "single"; messageId: MessageId } | { type: "bulk"; messageIds: MessageId[] } | null
@@ -671,7 +667,6 @@ export const ChatPage: React.FC = () => {
       appendMessage: appendMessageToStore,
       commitOutgoingMessage: commitOutgoingMessageToStore,
       removeMessage: removeMessageFromStore,
-      requestScrollToBottom: requestScrollToBottomAfterSend,
       clearReplyQuote: () => setReplyQuote(null),
       stopTyping: stopTypingNow,
       setSendError,
@@ -1177,7 +1172,6 @@ export const ChatPage: React.FC = () => {
           onRetryMessagesLoad={handleRetryMessagesLoad}
           boundaryLoadFailed={boundaryLoadFailed}
           onDismissBoundaryLoadFailed={handleDismissBoundaryLoadFailed}
-          scrollToBottomAfterSendNonce={scrollToBottomAfterSendNonce}
         />
         {selectionMode && selectedMessageIds.size > 0 && (
           <ChatPageSelectionBar

@@ -27,6 +27,9 @@ import {
 import { buildSidebarFromMessages, streamTopicIdentityFromMessage } from "./chat-list.lib";
 import type { ChatListDmMetadataRow, MessageLocation } from "./chat-list.model.types";
 
+type StreamTopicEntryInternal =
+  StreamEntryInternal["topics"] extends Map<string, infer TopicEntry> ? TopicEntry : never;
+
 export interface ChatListDmBootstrapDisplayContext {
   getParticipantDisplayName: (userId: UserId) => string;
   getAvatarUrl: (userId: UserId) => string | undefined;
@@ -62,29 +65,82 @@ export function buildMessageIdToLocation(
   return map;
 }
 
+function findTopicWithColorMetadata(
+  previousTopics: Map<string, StreamTopicEntryInternal>,
+  topic: StreamTopicEntryInternal,
+): StreamTopicEntryInternal | undefined {
+  const bySubject = previousTopics.get(topic.subject);
+  if (bySubject?.color != null) {
+    return bySubject;
+  }
+  const topicUuid = topic.topicUuid?.trim().toLowerCase();
+  if (topicUuid == null || topicUuid.length === 0) {
+    return undefined;
+  }
+  for (const previousTopic of previousTopics.values()) {
+    if (
+      previousTopic.topicUuid?.trim().toLowerCase() === topicUuid &&
+      previousTopic.color != null
+    ) {
+      return previousTopic;
+    }
+  }
+  return undefined;
+}
+
+function mergeTopicColorMetadata(
+  topics: Map<string, StreamTopicEntryInternal>,
+  previousTopics: Map<string, StreamTopicEntryInternal>,
+): Map<string, StreamTopicEntryInternal> {
+  let nextTopics = topics;
+  for (const [key, topic] of topics) {
+    if (topic.color != null) continue;
+    const previousTopic = findTopicWithColorMetadata(previousTopics, topic);
+    if (previousTopic?.color == null) continue;
+    if (nextTopics === topics) {
+      nextTopics = new Map(topics);
+    }
+    nextTopics.set(key, { ...topic, color: previousTopic.color });
+  }
+  return nextTopics;
+}
+
+function hasTopicColorMetadata(topics: Map<string, StreamTopicEntryInternal>): boolean {
+  for (const topic of topics.values()) {
+    if (topic.color != null) return true;
+  }
+  return false;
+}
+
 /** Preserves stream permission metadata when rebuilding sidebar from messages. */
 export function mergeStreamAccessMetadata(
   stream: StreamEntryInternal,
   existing: StreamEntryInternal | undefined,
 ): StreamEntryInternal {
   if (existing == null) return stream;
+  const topics = mergeTopicColorMetadata(stream.topics, existing.topics);
   const hasMetadata =
     existing.unreadCount != null ||
     existing.isArchived != null ||
     existing.creatorId != null ||
     existing.inviteOnly != null ||
+    existing.color != null ||
+    topics !== stream.topics ||
     existing.canAddSubscribersGroup != null ||
     existing.canRemoveSubscribersGroup != null ||
     existing.canAdministerChannelGroup != null ||
     existing.canResolveTopicsGroup != null ||
-    existing.canMoveMessagesOutOfChannelGroup != null;
+    existing.canMoveMessagesOutOfChannelGroup != null ||
+    hasTopicColorMetadata(existing.topics);
   if (!hasMetadata) return stream;
   return {
     ...stream,
+    ...(topics !== stream.topics ? { topics } : {}),
     ...(existing.unreadCount != null ? { unreadCount: existing.unreadCount } : {}),
     ...(existing.isArchived != null ? { isArchived: existing.isArchived } : {}),
     ...(existing.creatorId != null ? { creatorId: existing.creatorId } : {}),
     ...(existing.inviteOnly != null ? { inviteOnly: existing.inviteOnly } : {}),
+    ...(existing.color != null ? { color: existing.color } : {}),
     ...(existing.canAddSubscribersGroup != null
       ? { canAddSubscribersGroup: existing.canAddSubscribersGroup }
       : {}),

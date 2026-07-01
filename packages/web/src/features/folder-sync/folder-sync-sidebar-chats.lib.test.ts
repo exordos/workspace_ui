@@ -37,11 +37,13 @@ function streamEntry(params: {
   streamUuid: string;
   name: string;
   isArchived?: boolean;
+  color?: number;
 }): StreamEntryInternal {
   return {
     streamUuid: params.streamUuid,
     name: params.name,
     isArchived: params.isArchived,
+    ...(params.color != null ? { color: params.color } : {}),
     lastMessage: "",
     time: "",
     ts: 0,
@@ -79,6 +81,22 @@ describe("buildSelectedFolderSidebarChats", () => {
     });
 
     expect(result).toEqual([]);
+  });
+
+  it("keeps fallback stream color from stream metadata", () => {
+    const result = buildSelectedFolderSidebarChats({
+      selectedFolderId: FOLDER_ID,
+      folderChatIds: new Set([`stream:${STREAM_UUID}:general`]),
+      folderItemsByFolderId: new Map([[FOLDER_ID, [folderItem(STREAM_UUID, 0)]]]),
+      chatsSortedByLastMessage: [],
+      streamsMap: new Map([
+        [STREAM_UUID, streamEntry({ streamUuid: STREAM_UUID, name: "First", color: 0x123456 })],
+      ]),
+      usersMapForChatInfo: new Map(),
+      currentUserId: null,
+    });
+
+    expect(result[0]).toMatchObject({ type: "stream", color: 0x123456 });
   });
 
   it("builds fallback stream rows from server folder item order", () => {

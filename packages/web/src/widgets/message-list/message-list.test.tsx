@@ -692,14 +692,10 @@ describe("MessageList focused message behavior", () => {
     expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
   });
 
-  it("scrolls to bottom when scrollToBottomAfterSendNonce increments while user is scrolled up", () => {
+  it("does not scroll to bottom when a new own message appears", () => {
     const scrollTo = vi.fn();
     const { rerender } = render(
-      <MessageList
-        messages={[msg(1), msg(2), msg(3)]}
-        currentUserId={7}
-        scrollToBottomAfterSendNonce={0}
-      />,
+      <MessageList messages={[msg(1), msg(2), msg(3)]} currentUserId={7} />,
     );
 
     const feed = screen.getByRole("feed", { name: /conversation/i });
@@ -715,11 +711,10 @@ describe("MessageList focused message behavior", () => {
       <MessageList
         messages={[msg(1), msg(2), msg(3), msg(4, { sender_id: 7 })]}
         currentUserId={7}
-        scrollToBottomAfterSendNonce={1}
       />,
     );
 
-    expect(scrollTo).toHaveBeenCalledWith({ top: 1200, behavior: "instant" });
+    expect(scrollTo).not.toHaveBeenCalled();
   });
 
   it("uses smooth scrolling when the scroll-to-bottom button is clicked", () => {

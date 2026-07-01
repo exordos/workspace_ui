@@ -13,6 +13,8 @@ export interface TopicWithLast {
   hasMention?: boolean;
   /** Server-owned done state. UI may render a checkmark, but the topic name stays unchanged. */
   isDone?: boolean;
+  /** Server-owned topic color as 0xRRGGBB. */
+  color?: number;
 }
 
 export type SidebarChat =
@@ -20,6 +22,8 @@ export type SidebarChat =
       type: "stream";
       streamUuid: string;
       private?: boolean;
+      /** Server-owned stream color as 0xRRGGBB. */
+      color?: number;
       name: string;
       lastMessage?: string;
       lastMessageSenderName?: string;
@@ -49,6 +53,8 @@ export interface SidebarProps {
   streams: {
     streamUuid: string;
     private?: boolean;
+    /** Server-owned stream color as 0xRRGGBB. */
+    color?: number;
     name: string;
     lastMessage?: string;
     time?: string;
@@ -65,6 +71,8 @@ export interface SidebarProps {
 export interface StreamWithLast {
   streamUuid: string;
   private?: boolean;
+  /** Server-owned stream color as 0xRRGGBB. */
+  color?: number;
   name: string;
   lastMessage?: string;
   lastMessageSenderName?: string;
@@ -79,6 +87,8 @@ export interface StreamEntryInternal {
   streamUuid: string;
   /** Workspace private streams are shown in Personal. */
   private?: boolean;
+  /** Server-owned stream color as 0xRRGGBB. */
+  color?: number;
   name: string;
   lastMessage: string;
   lastMessageSenderName?: string;
@@ -104,6 +114,8 @@ export interface StreamEntryInternal {
       ts: number;
       unreadCount: number;
       isDone?: boolean;
+      /** Server-owned topic color as 0xRRGGBB. */
+      color?: number;
       lastMessageId?: MessageId;
     }
   >;

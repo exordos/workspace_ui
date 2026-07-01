@@ -32,7 +32,6 @@ export interface UseChatPageSendMessageParams {
   appendMessage: (message: MockMessage) => void;
   commitOutgoingMessage: (optimisticId: MessageId, message: MockMessage) => void;
   removeMessage: (messageId: MessageId) => void;
-  requestScrollToBottom: () => void;
   clearReplyQuote: () => void;
   stopTyping: () => void;
   setSendError: (message: string | null) => void;
@@ -62,7 +61,6 @@ export function useChatPageSendMessage(
     appendMessage,
     commitOutgoingMessage,
     removeMessage,
-    requestScrollToBottom,
     clearReplyQuote,
     stopTyping,
     setSendError,
@@ -94,7 +92,6 @@ export function useChatPageSendMessage(
           allocateOptimisticMessageId: createMessageId,
           appendMessage,
           commitOutgoingMessage,
-          requestScrollToBottom,
           clearReplyQuote,
           stopTyping,
           setSendError,
@@ -125,7 +122,6 @@ export function useChatPageSendMessage(
       activeTopicUuid,
       appendMessage,
       commitOutgoingMessage,
-      requestScrollToBottom,
       clearReplyQuote,
       stopTyping,
       setSendError,
@@ -163,7 +159,6 @@ export function useChatPageSendMessage(
           target: { mode: "dm", recipientIds: activeDmUserIds ?? [] },
         });
         appendMessage(optimisticMessage);
-        requestScrollToBottom();
         try {
           const newMsg = await sendMessage({
             messageUuid: optimisticMessageId,
@@ -215,7 +210,6 @@ export function useChatPageSendMessage(
           },
         });
         appendMessage(optimisticMessage);
-        requestScrollToBottom();
         try {
           const newMsg = await sendMessage({
             messageUuid: optimisticMessageId,
@@ -253,7 +247,6 @@ export function useChatPageSendMessage(
       currentUserId,
       isDmView,
       removeMessage,
-      requestScrollToBottom,
       setSendError,
       setUploadProgress,
       stopTyping,

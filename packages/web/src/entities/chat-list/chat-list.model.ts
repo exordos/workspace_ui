@@ -86,6 +86,23 @@ import type { ChatListState, MessageLocation } from "./chat-list.model.types";
 type StreamTopicEntryInternal =
   StreamEntryInternal["topics"] extends Map<string, infer TopicEntry> ? TopicEntry : never;
 
+function isStreamTopicShellSynced(
+  existing: StreamTopicEntryInternal | undefined,
+  topicUuid: string,
+  topicName: string,
+  unreadCount: number,
+  isDone: boolean,
+  color: number | undefined,
+): boolean {
+  return (
+    existing?.topicUuid === topicUuid &&
+    existing.subject === topicName &&
+    existing.unreadCount === unreadCount &&
+    (existing.isDone ?? false) === isDone &&
+    existing.color === color
+  );
+}
+
 /** Writable store fields accepted by patchSet (Zustand v5 setState is stricter than v4). */
 type ChatListStateDataPatch =
   | Partial<ChatListState>
@@ -145,6 +162,7 @@ function streamsMapToSortedStreams(
           time: t.time,
           badge: t.unreadCount > 0 ? t.unreadCount : undefined,
           isDone: t.isDone === true ? true : undefined,
+          ...(t.color != null ? { color: t.color } : {}),
           hasMention: mentionFlags.topicKeys.has(buildTopicMentionKey(s.streamUuid, t.subject))
             ? true
             : undefined,
@@ -153,6 +171,7 @@ function streamsMapToSortedStreams(
       return {
         streamUuid: s.streamUuid,
         private: s.private,
+        ...(s.color != null ? { color: s.color } : {}),
         name: s.name,
         lastMessage: s.lastMessage,
         lastMessageSenderName: s.lastMessageSenderName,
@@ -275,6 +294,9 @@ function hasStreamMetadataAccessChanged(
     return true;
   }
   if (existing.inviteOnly !== nextEntry.inviteOnly) {
+    return true;
+  }
+  if (existing.color !== nextEntry.color) {
     return true;
   }
   if (existing.private !== nextEntry.private) {
@@ -640,11 +662,9 @@ export const useChatListStore = create<ChatListState>((set, get) => {
             (existingUuidKey != null ? nextTopics.get(existingUuidKey) : undefined);
           const unreadCount = row.unreadCount ?? existing?.unreadCount ?? 0;
           const isDone = row.isDone ?? existing?.isDone ?? false;
+          const color = row.color ?? existing?.color;
           if (
-            existing?.topicUuid === topicUuid &&
-            existing.subject === topicName &&
-            existing.unreadCount === unreadCount &&
-            (existing.isDone ?? false) === isDone
+            isStreamTopicShellSynced(existing, topicUuid, topicName, unreadCount, isDone, color)
           ) {
             continue;
           }
@@ -666,6 +686,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
             topicUuid,
             subject: topicName,
             unreadCount,
+            ...(color != null ? { color } : {}),
           };
           if (isDone) {
             nextTopic.isDone = true;

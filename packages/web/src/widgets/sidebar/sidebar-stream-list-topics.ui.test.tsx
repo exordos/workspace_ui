@@ -101,4 +101,37 @@ describe("SidebarStreamListTopics", () => {
     expect(screen.getByText("release")).toBeInTheDocument();
     expect(screen.queryByText(t("chat.generalChat"))).not.toBeInTheDocument();
   });
+
+  it("uses server topic color for the left topic bar", () => {
+    render(
+      <MemoryRouter>
+        <SidebarStreamListTopics
+          stream={{
+            type: "stream",
+            streamUuid: "00000000-0000-4000-8000-000000000010",
+            name: "engineering",
+            lastMessage: "",
+            time: "",
+            topics: [],
+          }}
+          streamSlug="10-engineering"
+          topics={[{ subject: "release", lastMessage: "Ship it", time: "12:00", color: 0xabcdef }]}
+          topicsLoading={false}
+          activeStreamSlug={null}
+          activeTopic={null}
+          isCompactDensity={true}
+          onNewTopic={undefined}
+          creatingTopicForSlug={null}
+          newTopicName=""
+          setCreatingTopicForSlug={() => {}}
+          setNewTopicName={() => {}}
+          newTopicInputRef={{ current: null }}
+          onMuteError={() => {}}
+        />
+      </MemoryRouter>,
+    );
+
+    const topicLink = screen.getByRole("link", { name: /release/i });
+    expect(topicLink.parentElement).toHaveStyle({ borderLeftColor: "#abcdef" });
+  });
 });

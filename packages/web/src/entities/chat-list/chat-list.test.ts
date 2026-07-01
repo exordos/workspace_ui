@@ -387,7 +387,7 @@ describe("chatListStore", () => {
 
       const streams = useChatListStore.getState().streams();
       expect(streams).toHaveLength(2);
-      const ids = streams.map((s) => s.streamUuid).sort();
+      const ids = streams.map((s) => s.streamUuid).sort((a, b) => a.localeCompare(b));
       expect(ids).toEqual([streamUuid(5), streamUuid(8)]);
     });
 
@@ -1482,6 +1482,34 @@ describe("chatListStore", () => {
       });
       expect(stream?.canRemoveSubscribersGroup).toBe(7002);
       expect(stream?.canAdministerChannelGroup).toBe(5001);
+    });
+
+    it("stores stream and topic colors from metadata", () => {
+      useChatListStore.getState().upsertStreamMetadataRows([
+        {
+          streamUuid: "00000000-0000-4000-8000-000000000011",
+          name: "engineering",
+          color: 0x123456,
+        },
+      ]);
+      useChatListStore.getState().upsertStreamTopicShells("00000000-0000-4000-8000-000000000011", [
+        {
+          topicUuid: "00000000-0000-4000-8000-000000000077",
+          streamUuid: "00000000-0000-4000-8000-000000000011",
+          name: "release",
+          color: 0xabcdef,
+        },
+      ]);
+
+      const stream = useChatListStore.getState().streamsMap.get(streamUuid(11));
+      expect(stream?.color).toBe(0x123456);
+      expect(stream?.topics.get("release")?.color).toBe(0xabcdef);
+      expect(useChatListStore.getState().streams()[0]).toEqual(
+        expect.objectContaining({
+          color: 0x123456,
+          topics: [expect.objectContaining({ color: 0xabcdef })],
+        }),
+      );
     });
 
     it("updates archived flag from metadata updates", () => {

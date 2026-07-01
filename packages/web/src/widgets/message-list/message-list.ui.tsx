@@ -105,7 +105,6 @@ export const MessageListInner: React.FC<MessageListProps> = ({
   messages,
   currentUserId,
   scrollToBottomKey,
-  scrollToBottomAfterSendNonce = 0,
   callbacks,
   selectionMode = false,
   selectedMessageIds,
@@ -153,13 +152,10 @@ export const MessageListInner: React.FC<MessageListProps> = ({
   const scrollRef = useRef<HTMLDivElement>(null);
   const pendingPrependScrollRef = useRef<PendingPrependScrollSnapshot | null>(null);
   const wasAtBottomRef = useRef(true);
-  const userScrolledAwayFromBottomRef = useRef(false);
   const userScrollSeenRef = useRef(false);
   const programmaticScrollRef = useRef(false);
   const topPaginationArmedRef = useRef(true);
   const prevFirstMessageIdForTopPaginationRef = useRef<MessageId | undefined>(undefined);
-  const pendingScrollToBottomKeyRef = useRef<string | null>(null);
-  const openAtBottomIntentKeyRef = useRef<string | null>(null);
   const unreadScrollKeyRef = useRef<string | null>(null);
   const suppressReadUntilMsRef = useRef(0);
   const scrollLogLastAtMsRef = useRef(0);
@@ -307,21 +303,6 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     });
   }, []);
 
-  const pinTailToBottom = useCallback(
-    (el: HTMLElement, reason: string) => {
-      logScrollMetrics("scroll:toBottom", { reason });
-      runProgrammaticScroll(() => {
-        scrollToBottom(el);
-        syncWasAtBottomFromElement(el);
-      });
-      requestAnimationFrame(() => {
-        scrollToBottom(el);
-        syncWasAtBottomFromElement(el);
-      });
-    },
-    [runProgrammaticScroll, logScrollMetrics, syncWasAtBottomFromElement],
-  );
-
   const isLastUnreadNearViewportBottom = useCallback((_root: HTMLElement): boolean => true, []);
 
   useEffect(() => {
@@ -409,7 +390,6 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     bottomReadDispatchKeyRef.current = null;
     userScrollSeenRef.current = false;
     wasAtBottomRef.current = true;
-    userScrolledAwayFromBottomRef.current = false;
     programmaticScrollRef.current = false;
     pendingPrependScrollRef.current = null;
     topPaginationArmedRef.current = true;
@@ -419,11 +399,6 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     prevMessagesLengthForReanchorRef.current = null;
     setUnreadAnchorId(null);
     setBelowViewportUnreadCount(0);
-    if (scrollToBottomKey !== undefined && focusedMessageId == null) {
-      openAtBottomIntentKeyRef.current = scrollToBottomKey;
-    } else {
-      openAtBottomIntentKeyRef.current = null;
-    }
   }, [scrollToBottomKey, focusedMessageId]);
 
   useEffect(() => {
@@ -588,133 +563,17 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     messages,
   ]);
 
-  // On chat/topic switch, remember to scroll down after messages load (?msg= uses anchor scroll instead)
-  useEffect(() => {
-    if (scrollToBottomKey === undefined) return;
-    if (focusedMessageId != null) {
-      pendingScrollToBottomKeyRef.current = null;
-      return;
-    }
-    pendingScrollToBottomKeyRef.current = scrollToBottomKey;
-  }, [scrollToBottomKey, focusedMessageId]);
-
-  // After the user sends a message, always reveal the new tail (even with unread anchor or off-bottom scroll).
-  useLayoutEffect(() => {
-    if (scrollToBottomAfterSendNonce === 0) return;
-    const el = scrollRef.current;
-    if (!el) return;
-    userScrollSeenRef.current = true;
-    bottomReadDispatchKeyRef.current = null;
-    logScrollMetrics("scroll:toBottom", { reason: "afterSend" });
-    runProgrammaticScroll(() => {
-      scrollToBottom(el);
-      syncWasAtBottomFromElement(el);
-    });
-    const rafId = requestAnimationFrame(() => {
-      scrollToBottom(el);
-      syncWasAtBottomFromElement(el);
-      dispatchUnreadAtBottom();
-    });
-    return () => cancelAnimationFrame(rafId);
-  }, [
-    scrollToBottomAfterSendNonce,
-    runProgrammaticScroll,
-    logScrollMetrics,
-    syncWasAtBottomFromElement,
-    dispatchUnreadAtBottom,
-  ]);
-
-  // Scroll down: after messages load on chat switch, or if user was already at the bottom (own message)
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const pending = pendingScrollToBottomKeyRef.current;
-    if (pending !== null && scrollToBottomKey !== undefined && pending === scrollToBottomKey) {
-      pendingScrollToBottomKeyRef.current = null;
-      if (focusedMessageId != null) {
-        logScrollMetrics("scroll:openSkipBottom", { reason: "focusedMessage" });
-        return;
-      }
-      if (focusedMessageId == null && firstUnreadId != null && unreadCount > 0) {
-        wasAtBottomRef.current = false;
-        logScrollMetrics("scroll:openSkipBottom");
-        return;
-      }
-      openAtBottomIntentKeyRef.current = null;
-      pinTailToBottom(el, "chatOpen");
-      return;
-    }
-    if (messages.length === 0) return;
-    if (focusedMessageId != null) return;
-    if (pendingPrependScrollRef.current != null) {
-      logScrollMetrics("scroll:skipBottomForPendingPrepend", { reason: "messagesLengthChange" });
-      syncWasAtBottomFromElement(el);
-      return;
-    }
-    if (wasAtBottomRef.current && !userScrolledAwayFromBottomRef.current) {
-      if (deferAutoMarkUnreadUntilUserScroll()) {
-        logScrollMetrics("scroll:skipBottomForUnreadAnchor", { reason: "messagesLengthChange" });
-        syncWasAtBottomFromElement(el);
-        return;
-      }
-      logScrollMetrics("scroll:toBottom", { reason: "wasAtBottom" });
-      runProgrammaticScroll(() => {
-        scrollToBottom(el);
-        syncWasAtBottomFromElement(el);
-      });
-    }
-  }, [
-    scrollToBottomKey,
-    messages.length,
-    messageLastId,
-    focusedMessageId,
-    firstUnreadId,
-    unreadCount,
-    unreadAnchorId,
-    pinTailToBottom,
-    runProgrammaticScroll,
-    logScrollMetrics,
-    syncWasAtBottomFromElement,
-    deferAutoMarkUnreadUntilUserScroll,
-  ]);
-
-  // After cache→API, unread flags may clear; honor open-at-bottom intent without waiting for another key change.
-  useLayoutEffect(() => {
-    if (scrollToBottomKey === undefined) return;
-    if (focusedMessageId != null) return;
-    if (firstUnreadId != null || unreadCount > 0) return;
-    if (userScrollSeenRef.current) return;
-    if (openAtBottomIntentKeyRef.current !== scrollToBottomKey) return;
-    const pending = pendingScrollToBottomKeyRef.current;
-    if (pending !== null && pending === scrollToBottomKey) return;
-    const el = scrollRef.current;
-    if (!el || messages.length === 0) return;
-
-    openAtBottomIntentKeyRef.current = null;
-    pinTailToBottom(el, "openAtBottomRecovery");
-  }, [
-    scrollToBottomKey,
-    focusedMessageId,
-    firstUnreadId,
-    unreadCount,
-    messages.length,
-    messageLastId,
-    pinTailToBottom,
-  ]);
-
   const markUserScrollIntent = useCallback(
     (event: React.WheelEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
       userScrollSeenRef.current = true;
       const el = scrollRef.current;
       if (!el) return;
       if ("deltaY" in event && event.deltaY < 0) {
-        userScrolledAwayFromBottomRef.current = true;
         wasAtBottomRef.current = false;
         setIsAtBottom(false);
         return;
       }
-      const atBottom = syncWasAtBottomFromElement(el);
-      userScrolledAwayFromBottomRef.current = !atBottom;
+      syncWasAtBottomFromElement(el);
     },
     [syncWasAtBottomFromElement],
   );
@@ -879,10 +738,6 @@ export const MessageListInner: React.FC<MessageListProps> = ({
         userScrollSeenRef.current = true;
       }
       const atBottom = syncWasAtBottomFromElement(el);
-      if (event.isTrusted && !programmaticScrollRef.current) {
-        userScrolledAwayFromBottomRef.current = !atBottom;
-      }
-
       if (el.scrollTop >= LOAD_MORE_THRESHOLD) {
         topPaginationArmedRef.current = true;
       }
@@ -1037,7 +892,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     syncWasAtBottomFromElement,
   ]);
 
-  // Keep list pinned to the tail when viewport height changes (e.g. composer toolbar expands).
+  // Keep bottom state current when viewport height changes (e.g. composer toolbar expands).
   useLayoutEffect(() => {
     if (typeof ResizeObserver === "undefined") return;
     const root = scrollRef.current;
@@ -1048,17 +903,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
       const nextClientHeight = root.clientHeight;
       if (nextClientHeight === prevClientHeight) return;
 
-      const wasPinnedBeforeResize = wasAtBottomRef.current;
       prevClientHeight = nextClientHeight;
-      if (wasPinnedBeforeResize && !deferAutoMarkUnreadUntilUserScroll()) {
-        logScrollMetrics("scroll:toBottom", { reason: "viewportResize" });
-        runProgrammaticScroll(() => {
-          scrollToBottom(root);
-          syncWasAtBottomFromElement(root);
-        });
-        return;
-      }
-
       syncWasAtBottomFromElement(root);
     });
 
@@ -1066,12 +911,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     return () => {
       observer.disconnect();
     };
-  }, [
-    runProgrammaticScroll,
-    logScrollMetrics,
-    syncWasAtBottomFromElement,
-    deferAutoMarkUnreadUntilUserScroll,
-  ]);
+  }, [syncWasAtBottomFromElement]);
 
   useEffect(() => {
     if (!isAtBottom) {

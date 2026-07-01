@@ -36,7 +36,6 @@ export const ChatPageMessageListSection = React.memo(function ChatPageMessageLis
   onRetryMessagesLoad,
   boundaryLoadFailed,
   onDismissBoundaryLoadFailed,
-  scrollToBottomAfterSendNonce,
 }: ChatPageMessageListSectionProps) {
   const handleRetryClick = useCallback(() => {
     onRetryMessagesLoad();
@@ -124,7 +123,6 @@ export const ChatPageMessageListSection = React.memo(function ChatPageMessageLis
         messages={messages}
         currentUserId={currentUserId}
         scrollToBottomKey={scrollToBottomKey}
-        scrollToBottomAfterSendNonce={scrollToBottomAfterSendNonce}
         callbacks={callbacks}
         selectionMode={selectionMode}
         selectedMessageIds={selectedMessageIds}

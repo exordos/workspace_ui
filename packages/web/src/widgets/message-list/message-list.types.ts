@@ -52,10 +52,8 @@ export interface MessageListSenderGroupProps {
 export interface MessageListProps {
   messages: MockMessage[];
   currentUserId?: UserId;
-  /** When the key changes (chat/topic/DM), scroll resets to the latest messages */
+  /** Changes when chat/topic/DM changes; resets list-local scroll/read bookkeeping. */
   scrollToBottomKey?: string;
-  /** Increment after the user sends a message to force scroll to the latest row */
-  scrollToBottomAfterSendNonce?: number;
   callbacks?: MessageListCallbacks;
   selectionMode?: boolean;
   selectedMessageIds?: Set<MessageId>;

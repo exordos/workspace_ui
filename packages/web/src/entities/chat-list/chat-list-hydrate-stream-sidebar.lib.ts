@@ -267,6 +267,7 @@ export function requestStreamSidebarTopicListHydrate(streamId: string): Promise<
           name: topic.name,
           isDefault: topic.is_default,
           isDone: topic.is_done,
+          ...(topic.color != null ? { color: topic.color } : {}),
         })),
       );
       hydratedStreamTopicLists.add(scoped.key);

@@ -719,7 +719,7 @@ describe("MessageList unread anchor scroll", () => {
     expect(scrollToBottomMock).not.toHaveBeenCalled();
   });
 
-  it("keeps tail pinned when viewport height shrinks while already at bottom", async () => {
+  it("does not pin tail when viewport height shrinks while already at bottom", async () => {
     let resizeCallback: ResizeObserverCallback = () => {};
 
     class ResizeObserverMock implements ResizeObserver {
@@ -756,10 +756,10 @@ describe("MessageList unread anchor scroll", () => {
       await flushProgrammaticScrollFrames();
     });
 
-    expect(scrollToBottomMock.mock.calls.length).toBeGreaterThanOrEqual(1);
+    expect(scrollToBottomMock).not.toHaveBeenCalled();
   });
 
-  it("auto-scrolls when list was at bottom before message append", async () => {
+  it("does not auto-scroll when list was at bottom before message append", async () => {
     const base = [
       msg(1, { sender_id: 99, flags: ["read"] }),
       msg(2, { sender_id: 43, flags: ["read"] }),
@@ -791,7 +791,7 @@ describe("MessageList unread anchor scroll", () => {
       await flushProgrammaticScrollFrames();
     });
 
-    expect(scrollToBottomMock.mock.calls.length).toBeGreaterThanOrEqual(1);
+    expect(scrollToBottomMock).not.toHaveBeenCalled();
   });
 
   it("does not auto-scroll when user scrolled up before incoming message", async () => {
@@ -878,7 +878,7 @@ describe("MessageList unread anchor scroll", () => {
   });
 });
 
-describe("MessageList chat open scroll to bottom", () => {
+describe("MessageList chat open without scroll to bottom", () => {
   const scrollTargets: string[] = [];
   const scrollIntoView = vi.fn(function (this: HTMLElement) {
     scrollTargets.push(this.getAttribute("data-message-id") ?? "");
@@ -931,7 +931,7 @@ describe("MessageList chat open scroll to bottom", () => {
     });
   }
 
-  it("scrolls to bottom on chat open when there are no unreads", async () => {
+  it("does not scroll to bottom on chat open when there are no unreads", async () => {
     const base = [
       msg(1, { sender_id: 99, flags: ["read"] }),
       msg(2, { sender_id: 43, flags: ["read"] }),
@@ -942,11 +942,11 @@ describe("MessageList chat open scroll to bottom", () => {
 
     await flushOpenScroll();
 
-    expect(scrollToBottomMock).toHaveBeenCalled();
+    expect(scrollToBottomMock).not.toHaveBeenCalled();
     expect(scrollIntoView).not.toHaveBeenCalled();
   });
 
-  it("scrolls to bottom when transient unread clears on chat open", async () => {
+  it("does not scroll to bottom when transient unread clears on chat open", async () => {
     const withTransientUnread = [
       msg(1, { sender_id: 99, flags: ["read"] }),
       msg(2, { sender_id: 43, flags: [] }),
@@ -979,11 +979,11 @@ describe("MessageList chat open scroll to bottom", () => {
 
     await flushOpenScroll();
 
-    expect(scrollToBottomMock).toHaveBeenCalled();
+    expect(scrollToBottomMock).not.toHaveBeenCalled();
     expect(scrollIntoView).not.toHaveBeenCalled();
   });
 
-  it("pins tail with follow-up scroll on chat open", async () => {
+  it("does not pin tail with follow-up scroll on chat open", async () => {
     const base = [
       msg(1, { sender_id: 99, flags: ["read"] }),
       msg(2, { sender_id: 43, flags: ["read"] }),
@@ -993,7 +993,7 @@ describe("MessageList chat open scroll to bottom", () => {
 
     await flushOpenScroll();
 
-    expect(scrollToBottomMock.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(scrollToBottomMock).not.toHaveBeenCalled();
   });
 
   it("scrolls focused message into view on chat open without pinning tail", async () => {

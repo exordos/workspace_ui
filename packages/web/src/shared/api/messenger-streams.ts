@@ -232,11 +232,20 @@ function readOptionalString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+const WORKSPACE_COLOR_MAX_VALUE = 0xffffff;
+
 function readSafeCount(value: unknown): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return 0;
   }
   return Math.max(0, Math.trunc(value));
+}
+
+function readWorkspaceColor(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isInteger(value)) {
+    return undefined;
+  }
+  return value >= 0 && value <= WORKSPACE_COLOR_MAX_VALUE ? value : undefined;
 }
 
 function readStreamNotificationMode(value: unknown): WorkspaceStreamNotificationMode | undefined {
@@ -278,6 +287,7 @@ function parseMeStream(row: unknown): MessengerMeStream | null {
   const lastSyncedAt = readOptionalString(row.last_synced_at);
   const sourceName = readOptionalString(row.source_name);
   const notificationMode = readStreamNotificationMode(row.notification_mode);
+  const color = readWorkspaceColor(row.color);
   return {
     uuid,
     name,
@@ -295,6 +305,7 @@ function parseMeStream(row: unknown): MessengerMeStream | null {
     announce: row.announce === true,
     private: row.private === true,
     is_archived: row.is_archived === true,
+    ...(color != null ? { color } : {}),
     unread_count: readSafeCount(row.unread_count),
     notification_mode: notificationMode ?? WORKSPACE_DEFAULT_STREAM_NOTIFICATION_MODE,
   };
@@ -479,6 +490,7 @@ function parseStreamTopic(row: unknown): MessengerStreamTopic | null {
   const projectId = readUuid(row.project_id);
   const createdAt = readOptionalString(row.created_at);
   const updatedAt = readOptionalString(row.updated_at);
+  const color = readWorkspaceColor(row.color);
   return {
     uuid,
     name,
@@ -486,6 +498,7 @@ function parseStreamTopic(row: unknown): MessengerStreamTopic | null {
     unread_count: readSafeCount(row.unread_count),
     is_default: row.is_default === true,
     is_done: row.is_done === true,
+    ...(color != null ? { color } : {}),
     notification_mode:
       parseWorkspaceTopicNotificationMode(row.notification_mode) ??
       WORKSPACE_DEFAULT_TOPIC_NOTIFICATION_MODE,
@@ -772,6 +785,7 @@ function subscriptionFromMeStream(stream: MessengerMeStream): MessengerSubscript
     private: stream.private,
     is_archived: stream.is_archived,
     ...(stream.owner != null ? { owner: stream.owner } : {}),
+    ...(stream.color != null ? { color: stream.color } : {}),
     unread_count: stream.unread_count,
   };
 }
@@ -795,6 +809,7 @@ export async function fetchStreams(): Promise<MockStream[]> {
       is_announcement_only: stream.announce,
       invite_only: stream.invite_only,
       ...(stream.owner != null ? { owner: stream.owner } : {}),
+      ...(stream.color != null ? { color: stream.color } : {}),
     }));
 }
 

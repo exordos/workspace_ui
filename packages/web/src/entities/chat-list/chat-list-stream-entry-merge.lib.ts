@@ -49,6 +49,7 @@ export function mergeStreamEntry(
   const resolvedTopicSubject = existingTopic?.subject ?? topicSubject;
   const resolvedTopicUuid = topicUuid ?? existingTopic?.topicUuid;
   const unreadCount = existingTopic?.unreadCount ?? 0;
+  const topicColor = existingTopic?.color;
   const topicEntry = {
     ...(resolvedTopicUuid != null ? { topicUuid: resolvedTopicUuid } : {}),
     subject: resolvedTopicSubject,
@@ -57,6 +58,7 @@ export function mergeStreamEntry(
     time: topicTime,
     ts: topicTs,
     unreadCount,
+    ...(topicColor != null ? { color: topicColor } : {}),
     ...(existingTopic?.isDone === true ? { isDone: true } : {}),
     lastMessageId,
   };
@@ -86,6 +88,7 @@ export function mergeStreamEntry(
   return {
     streamUuid: existing.streamUuid,
     private: existing.private,
+    ...(existing.color != null ? { color: existing.color } : {}),
     name: existing.name,
     lastMessage: newerStream ? lastMessage : existing.lastMessage,
     lastMessageSenderName: newerStream ? lastMessageSenderName : existing.lastMessageSenderName,

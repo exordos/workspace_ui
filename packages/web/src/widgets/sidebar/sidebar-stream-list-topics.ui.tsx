@@ -1,6 +1,7 @@
 import React, { type RefObject } from "react";
 import { Link } from "react-router-dom";
 import { t } from "~/i18n/i18n";
+import { folderColorValueToCssHex } from "~/shared/lib/folder-colors.lib";
 import { sidebarRowClass } from "~/shared/lib/format";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
@@ -95,7 +96,10 @@ export const SidebarStreamListTopics = React.memo<SidebarStreamListTopicsProps>(
             </div>
           ) : (
             visibleTopics.map((topic, idx) => {
-              const topicColor = TOPIC_BAR_COLORS[idx % TOPIC_BAR_COLORS.length];
+              const topicColor =
+                topic.color != null
+                  ? folderColorValueToCssHex(topic.color)
+                  : TOPIC_BAR_COLORS[idx % TOPIC_BAR_COLORS.length];
               const topicRouteSegment = topic.topicUuid ?? topic.subject;
               const isTopicActive =
                 streamSlug === activeStreamSlug &&

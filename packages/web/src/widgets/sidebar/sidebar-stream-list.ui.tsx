@@ -3,11 +3,11 @@ import { Link } from "react-router-dom";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
-import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { SidebarChatBadges } from "./sidebar-chat-badges.ui";
 import { SidebarMessagePreview } from "./sidebar-message-preview.ui";
 import { useSidebarNewTopicInputFocus } from "./sidebar-new-topic-input-focus.hook";
+import { SidebarStreamColorAvatar } from "./sidebar-stream-color-avatar.ui";
 import { SidebarStreamHydrateWrapper } from "./sidebar-stream-hydrate-wrapper.ui";
 import { SidebarStreamListTopics } from "./sidebar-stream-list-topics.ui";
 import { slugForStream } from "./sidebar.lib";
@@ -102,7 +102,10 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
                         }
                       }}
                     >
-                      <Avatar size={isCompactDensity ? "sm" : "md"}>#</Avatar>
+                      <SidebarStreamColorAvatar
+                        size={isCompactDensity ? "sm" : "md"}
+                        color={stream.color}
+                      />
                       <div className="min-w-0 flex-1">
                         <div
                           className={`truncate text-sm font-medium ${
