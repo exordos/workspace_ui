@@ -87,9 +87,9 @@ describe("useCreateChatDialog", () => {
 
     act(() => {
       result.current.setChannelName("  engineering  ");
-      result.current.toggleChannelUser(3);
-      result.current.toggleChannelUser(1);
-      result.current.toggleChannelUser(10);
+      result.current.toggleChannelUser("3");
+      result.current.toggleChannelUser("1");
+      result.current.toggleChannelUser("10");
     });
 
     act(() => {
@@ -121,7 +121,7 @@ describe("useCreateChatDialog", () => {
 
     act(() => {
       result.current.setChannelName("engineering");
-      result.current.toggleChannelUser(1);
+      result.current.toggleChannelUser("1");
       result.current.createChannel();
     });
 

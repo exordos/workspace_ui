@@ -118,6 +118,7 @@ describe("WorkspaceSidebar context menu", () => {
   afterEach(() => {
     useMessengerStore.getState().clear();
     useSidebarConfigStore.getState().setSelectedFolderId(SIDEBAR_SYSTEM_ALL_FOLDER_ID);
+    useSidebarConfigStore.getState().setCreateChatOpen(false);
     useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: [] });
     runWorkspaceStreamNotificationUpdateMock.mockReset();
     runWorkspaceTopicNotificationUpdateMock.mockReset();
@@ -136,6 +137,14 @@ describe("WorkspaceSidebar context menu", () => {
     expect(await screen.findByRole("radiogroup", { name: /notifications/i })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /new topic/i })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /mark as read/i })).not.toBeInTheDocument();
+  });
+
+  it("opens the create chat dialog from the search header action", async () => {
+    renderWorkspaceSidebar([createStream()]);
+
+    fireEvent.click(screen.getByRole("button", { name: /new chat/i }));
+
+    expect(await screen.findByRole("dialog", { name: /new chat/i })).toBeInTheDocument();
   });
 
   it("opens the stream context menu from the keyboard context-menu key", async () => {

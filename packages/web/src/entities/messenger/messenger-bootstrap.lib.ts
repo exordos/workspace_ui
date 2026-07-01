@@ -9,6 +9,7 @@ import {
   getFolders as defaultGetFolders,
   getStreams as defaultGetStreams,
   getStreamTopics as defaultGetTopics,
+  getUsers as defaultGetUsers,
 } from "~/shared/api/messenger-client";
 import type { MessengerClientOptions } from "~/shared/api/messenger-client";
 import type {
@@ -16,15 +17,16 @@ import type {
   WorkspaceMessengerMessageDto,
   WorkspaceMessengerStreamDto,
   WorkspaceMessengerTopicDto,
+  WorkspaceMessengerUserDto,
 } from "~/shared/api/messenger.types";
 import { adaptMessengerBootstrapPayload, adaptMessengerFolder } from "./messenger-adapters.lib";
 import { loadMessengerLastMessagesForSidebar } from "./messenger-last-messages-loader.lib";
-import { useMessengerStore } from "./messenger.model";
-import type { MessengerStoreState } from "./messenger.model";
 import {
   buildMessengerRequestOptions,
   type MessengerRequestOptionsOverrides,
 } from "./messenger-request-options.lib";
+import { useMessengerStore } from "./messenger.model";
+import type { MessengerStoreState } from "./messenger.model";
 type MessengerBootstrapClientCall<T> = (options: MessengerClientOptions) => Promise<T[]>;
 
 // Загружаем минимальный снимок проекта для новой ветки Workspace-мессенджера.
@@ -33,6 +35,7 @@ export interface MessengerBootstrapClientDeps {
   getStreams?: MessengerBootstrapClientCall<WorkspaceMessengerStreamDto>;
   getTopics?: MessengerBootstrapClientCall<WorkspaceMessengerTopicDto>;
   getFolders?: MessengerBootstrapClientCall<WorkspaceMessengerFolderDto>;
+  getUsers?: MessengerBootstrapClientCall<WorkspaceMessengerUserDto>;
   getMessagesByUuids?: (
     options: MessengerClientOptions,
     messageUuids: string[],
@@ -105,9 +108,10 @@ export async function bootstrapMessengerStore({
   try {
     // Потоки и темы нужны первыми: из них можно быстро собрать базовый список чатов.
     // Папки догружаем ниже отдельно, чтобы ошибка папок не ломала весь сайдбар.
-    const [streams, topics] = await Promise.all([
+    const [streams, topics, users] = await Promise.all([
       (client.getStreams ?? defaultGetStreams)(requestOptions),
       (client.getTopics ?? defaultGetTopics)(requestOptions),
+      (client.getUsers ?? defaultGetUsers)(requestOptions),
     ]);
 
     if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
@@ -118,7 +122,7 @@ export async function bootstrapMessengerStore({
       streams,
       topics,
       folders: [],
-      users: [],
+      users,
     });
     store.getState().replaceBootstrapState(ownerKey, payload);
     void loadMessengerLastMessagesForSidebar({

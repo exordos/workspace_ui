@@ -217,6 +217,7 @@ function createClient(
     getStreams: () => Promise.resolve([createStreamDto()]),
     getTopics: () => Promise.resolve([createTopicDto()]),
     getFolders: () => Promise.resolve([createFolderDto()]),
+    getUsers: () => Promise.resolve([createUserDto()]),
     ...overrides,
   };
 }
@@ -268,7 +269,12 @@ describe("messenger bootstrap store", () => {
     expect(state.messagesById).toEqual({});
     expect(state.messageIdsByConversationId).toEqual({});
     expect(state.foldersById[FOLDER_A]?.title).toBe("Inbox");
-    expect(state.usersById).toEqual({});
+    expect(state.usersById[USER_A]).toEqual(
+      expect.objectContaining({
+        username: "alice",
+        firstName: "Alice",
+      }),
+    );
     expect(getStreams).toHaveBeenCalledWith(
       expect.objectContaining({
         accessToken: "access-token-a",
@@ -453,6 +459,15 @@ describe("messenger bootstrap store", () => {
             }),
           ]),
         getFolders: () => Promise.resolve([]),
+        getUsers: () =>
+          Promise.resolve([
+            createUserDto({
+              uuid: USER_B,
+              username: "bob",
+              first_name: "Bob",
+              email: "bob@example.test",
+            }),
+          ]),
       }),
     });
 
@@ -477,7 +492,7 @@ describe("messenger bootstrap store", () => {
     expect(state.streamIds).toEqual([STREAM_B]);
     expect(state.streamsById[STREAM_A]).toBeUndefined();
     expect(state.streamsById[STREAM_B]?.name).toBe("Support");
-    expect(state.usersById).toEqual({});
+    expect(state.usersById[USER_B]?.username).toBe("bob");
   });
 
   it("returns stable selector arrays while store references do not change", async () => {
@@ -801,23 +816,20 @@ describe("messenger bootstrap store", () => {
     useMessengerStore.getState().startBootstrap(ownerKey);
     applyFolderSnapshots(ownerKey, [createFolderDto({ unread_count: 0, folder_items: [] })]);
 
-    useMessengerStore.getState().upsertFolderItem(
-      ownerKey,
-      {
-        uuid: FOLDER_ITEM_A,
-        projectId: PROJECT_A,
-        folderUuid: FOLDER_A,
-        userUuid: USER_A,
-        streamUuid: STREAM_A,
-        conversationId: `stream:${STREAM_A}`,
-        chatType: "private",
-        orderIndex: 10,
-        pinnedAt: null,
-        unreadCount: 4,
-        createdAt: DATE,
-        updatedAt: "2026-06-22T10:20:00Z",
-      },
-    );
+    useMessengerStore.getState().upsertFolderItem(ownerKey, {
+      uuid: FOLDER_ITEM_A,
+      projectId: PROJECT_A,
+      folderUuid: FOLDER_A,
+      userUuid: USER_A,
+      streamUuid: STREAM_A,
+      conversationId: `stream:${STREAM_A}`,
+      chatType: "private",
+      orderIndex: 10,
+      pinnedAt: null,
+      unreadCount: 4,
+      createdAt: DATE,
+      updatedAt: "2026-06-22T10:20:00Z",
+    });
 
     expect(useMessengerStore.getState().foldersById[FOLDER_A]).toEqual(
       expect.objectContaining({

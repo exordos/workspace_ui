@@ -1,13 +1,18 @@
 import React, { useCallback, useMemo } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import type {
   MessengerSidebarStreamItem,
   MessengerSidebarTopicItem,
 } from "~/entities/messenger/messenger.types";
+import { CreateChatDialog } from "~/features/create-chat/create-chat-dialog.ui";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
 import { sidebarRowClass } from "~/shared/lib/format";
-import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
+import {
+  parseWorkspaceMessengerRoute,
+  workspaceMessengerStreamRoute,
+  workspaceMessengerTopicRoute,
+} from "~/shared/lib/workspace-messenger-route.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { ScrollArea } from "~/shared/ui/scroll-area";
@@ -31,6 +36,7 @@ export interface WorkspaceSidebarProps {
   loading: boolean;
   error: string | null;
   activityPanelBottomSlot?: React.ReactNode;
+  onOpenCreateChat?: () => void;
 }
 
 // Этот компонент только рисует новый список чатов.
@@ -224,10 +230,14 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
   loading,
   error,
   activityPanelBottomSlot,
+  onOpenCreateChat,
 }) => {
   const location = useLocation();
+  const navigate = useNavigate();
   const activityOpen = useSidebarConfigStore((s) => s.activityOpen);
   const setActivityOpen = useSidebarConfigStore((s) => s.setActivityOpen);
+  const createChatOpen = useSidebarConfigStore((s) => s.createChatOpen);
+  const setCreateChatOpen = useSidebarConfigStore((s) => s.setCreateChatOpen);
   const expandedStreamSlugs = useSidebarConfigStore((s) => s.expandedStreamSlugs);
   const toggleExpandedStreamSlug = useSidebarConfigStore((s) => s.toggleExpandedStreamSlug);
   const searchQuery = useSidebarConfigStore((s) => s.searchQuery);
@@ -251,6 +261,38 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
     () => setActivityOpen(!activityOpen),
     [activityOpen, setActivityOpen],
   );
+  const handleOpenCreateChat = useCallback(() => {
+    setCreateChatOpen(true);
+  }, [setCreateChatOpen]);
+  const handleWorkspaceStreamCreated = useCallback(
+    (streamUuid: string) => {
+      if (routeMatch == null) return;
+      setCreateChatOpen(false);
+      void navigate(
+        workspaceMessengerStreamRoute({
+          orgId: routeMatch.orgId,
+          projectId: routeMatch.projectId,
+          streamUuid,
+        }),
+      );
+    },
+    [navigate, routeMatch, setCreateChatOpen],
+  );
+  const handleWorkspaceTopicCreated = useCallback(
+    (streamUuid: string, topicUuid: string) => {
+      if (routeMatch == null) return;
+      setCreateChatOpen(false);
+      void navigate(
+        workspaceMessengerTopicRoute({
+          orgId: routeMatch.orgId,
+          projectId: routeMatch.projectId,
+          streamUuid,
+          topicUuid,
+        }),
+      );
+    },
+    [navigate, routeMatch, setCreateChatOpen],
+  );
 
   return (
     <aside
@@ -261,7 +303,11 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
     >
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <ScrollArea className="flex-1 scrollbar-track-sidebar-bg" data-sidebar-scroll>
-          <SidebarSearchHeader searchQuery={searchQuery} onSearchQueryChange={setSearchQuery} />
+          <SidebarSearchHeader
+            searchQuery={searchQuery}
+            onSearchQueryChange={setSearchQuery}
+            onOpenCreateChat={onOpenCreateChat ?? handleOpenCreateChat}
+          />
           <SidebarActivity open={activityOpen} onToggle={handleToggleActivity} />
           {activityPanelBottomSlot != null && (
             <>
@@ -323,6 +369,16 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
             </div>
           ) : null}
         </ScrollArea>
+        <CreateChatDialog
+          open={createChatOpen}
+          onOpenChange={setCreateChatOpen}
+          mode="workspace"
+          onNavigateDm={() => undefined}
+          onNavigateStream={() => undefined}
+          onNavigateWorkspaceStream={handleWorkspaceStreamCreated}
+          onNavigateWorkspaceTopic={handleWorkspaceTopicCreated}
+          onChannelCreated={() => setCreateChatOpen(false)}
+        />
       </div>
     </aside>
   );

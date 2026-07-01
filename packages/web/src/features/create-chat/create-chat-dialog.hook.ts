@@ -1,8 +1,19 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import {
+  runWorkspaceChannelCreate,
+  runWorkspaceDirectStreamCreate,
+} from "~/entities/messenger/messenger-create-chat-actions.lib";
+import { runWorkspaceCreateTopicRequest } from "~/entities/messenger/messenger-sidebar-actions.lib";
+import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import type { MessengerStream } from "~/entities/messenger/messenger.types";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
+import {
+  selectCurrentWorkspaceRuntimeContext,
+  useWorkspaceAuthStore,
+} from "~/entities/workspace-auth/workspace-auth.model";
 import { fetchStreams, fetchSubscriptions } from "~/shared/api/zulip-streams";
 import type { MockStream, ZulipSubscription } from "~/shared/api/zulip.types";
 import { createLogger } from "~/shared/lib/logger";
@@ -14,7 +25,13 @@ import {
   type BrowseChannelRow,
   type BrowseChannelSubscriptionFilter,
 } from "./create-chat-browse-channels.lib";
-import { buildDmSlug, resolveNextTabFromKey, type CreateChatTab } from "./create-chat-dialog.lib";
+import {
+  buildDmSlug,
+  LEGACY_CREATE_CHAT_TABS,
+  resolveNextTabFromKey,
+  type CreateChatTab,
+  WORKSPACE_CREATE_CHAT_TABS,
+} from "./create-chat-dialog.lib";
 import {
   createChannel,
   subscribeCurrentUserToStream,
@@ -31,6 +48,21 @@ interface ArchivedChannelOption {
   time: string;
 }
 
+export interface CreateChatUserOption {
+  userKey: string;
+  legacyUserId: number | null;
+  workspaceUserUuid: string | null;
+  fullName: string;
+  email: string;
+  presence: UserPickerOption["presence"];
+  statusLabel: string | null;
+}
+
+export interface CreateChatWorkspaceStreamOption {
+  streamUuid: string;
+  name: string;
+}
+
 /** Inline unarchive error state on the Archived tab. */
 export type UnarchiveInlineErrorState =
   | { kind: "unsupported" }
@@ -39,6 +71,7 @@ export type UnarchiveInlineErrorState =
 export interface UseCreateChatDialogResult {
   tab: CreateChatTab;
   setTab: (tab: CreateChatTab) => void;
+  visibleTabs: readonly CreateChatTab[];
 
   tabIds: Record<CreateChatTab, string>;
   panelIds: Record<CreateChatTab, string>;
@@ -47,15 +80,16 @@ export interface UseCreateChatDialogResult {
 
   userSearch: string;
   setUserSearch: (v: string) => void;
-  filteredUsers: UserPickerOption[];
+  filteredUsers: CreateChatUserOption[];
+  openDirectUser: (user: CreateChatUserOption) => void;
 
-  groupSelectedUserIds: Set<number>;
-  toggleGroupUser: (userId: number) => void;
+  groupSelectedUserKeys: Set<string>;
+  toggleGroupUser: (userKey: string) => void;
   groupUsers: UseCreateChatDialogResult["filteredUsers"];
   createGroup: () => void;
 
-  channelSelectedUserIds: Set<number>;
-  toggleChannelUser: (userId: number) => void;
+  channelSelectedUserKeys: Set<string>;
+  toggleChannelUser: (userKey: string) => void;
   channelUsers: UseCreateChatDialogResult["filteredUsers"];
 
   channelName: string;
@@ -74,6 +108,13 @@ export interface UseCreateChatDialogResult {
   channelCreateBlocked: boolean;
   channelCreateBlockedReasonKey: string | null;
   createChannel: () => void;
+  workspaceTopicStreams: CreateChatWorkspaceStreamOption[];
+  workspaceTopicStreamUuid: string;
+  setWorkspaceTopicStreamUuid: (streamUuid: string) => void;
+  workspaceTopicName: string;
+  setWorkspaceTopicName: (name: string) => void;
+  workspaceTopicCreateBlocked: boolean;
+  createWorkspaceTopic: () => void;
 
   archivedSearch: string;
   setArchivedSearch: (v: string) => void;
@@ -104,11 +145,23 @@ export interface UseCreateChatDialogResult {
 
 export function useCreateChatDialog(options: {
   open: boolean;
+  mode?: "legacy" | "workspace";
   onNavigateDm: (slug: string) => void;
   onNavigateStream: (streamId: number, streamName: string) => void;
+  onNavigateWorkspaceStream?: (streamUuid: string) => void;
+  onNavigateWorkspaceTopic?: (streamUuid: string, topicUuid: string) => void;
   onChannelCreated: () => void;
 }): UseCreateChatDialogResult {
-  const { open, onNavigateDm, onChannelCreated } = options;
+  const {
+    open,
+    mode = "legacy",
+    onNavigateDm,
+    onNavigateWorkspaceStream,
+    onNavigateWorkspaceTopic,
+    onChannelCreated,
+  } = options;
+  const workspaceMode = mode === "workspace";
+  const visibleTabs = workspaceMode ? WORKSPACE_CREATE_CHAT_TABS : LEGACY_CREATE_CHAT_TABS;
 
   const [tab, setTab] = useState<CreateChatTab>("dm");
   const tabBaseId = useId();
@@ -117,6 +170,7 @@ export function useCreateChatDialog(options: {
     group: null,
     channels: null,
     channel: null,
+    topic: null,
     archived: null,
   });
 
@@ -126,6 +180,7 @@ export function useCreateChatDialog(options: {
       group: `${tabBaseId}-tab-group`,
       channels: `${tabBaseId}-tab-channels`,
       channel: `${tabBaseId}-tab-channel`,
+      topic: `${tabBaseId}-tab-topic`,
       archived: `${tabBaseId}-tab-archived`,
     }),
     [tabBaseId],
@@ -136,6 +191,7 @@ export function useCreateChatDialog(options: {
       group: `${tabBaseId}-panel-group`,
       channels: `${tabBaseId}-panel-channels`,
       channel: `${tabBaseId}-panel-channel`,
+      topic: `${tabBaseId}-panel-topic`,
       archived: `${tabBaseId}-panel-archived`,
     }),
     [tabBaseId],
@@ -143,8 +199,8 @@ export function useCreateChatDialog(options: {
 
   const [userSearch, setUserSearch] = useState("");
   const [archivedSearch, setArchivedSearch] = useState("");
-  const [groupSelectedUserIds, setGroupSelectedUserIds] = useState<Set<number>>(new Set());
-  const [channelSelectedUserIds, setChannelSelectedUserIds] = useState<Set<number>>(new Set());
+  const [groupSelectedUserKeys, setGroupSelectedUserKeys] = useState<Set<string>>(new Set());
+  const [channelSelectedUserKeys, setChannelSelectedUserKeys] = useState<Set<string>>(new Set());
   const [channelName, setChannelName] = useState("");
   const [channelDesc, setChannelDesc] = useState("");
   const [channelInviteOnly, setChannelInviteOnly] = useState(false);
@@ -164,14 +220,40 @@ export function useCreateChatDialog(options: {
   const [subscribePendingStreamIds, setSubscribePendingStreamIds] = useState<number[]>([]);
   const [subscribeInlineError, setSubscribeInlineError] = useState<string | null>(null);
   const [selectedBrowseChannelId, setSelectedBrowseChannelIdState] = useState<number | null>(null);
+  const [workspaceTopicStreamUuid, setWorkspaceTopicStreamUuid] = useState("");
+  const [workspaceTopicName, setWorkspaceTopicName] = useState("");
   const channelsFetchedRef = useRef(false);
 
   const allUsers = useUsersStore((s) => s.users);
   const userGroups = useUserGroupsStore((s) => s.groups);
   const currentUserId = useChatListStore((s) => s.currentUserId ?? null);
   const streamsMap = useChatListStore((s) => s.streamsMap);
+  const workspaceSessions = useWorkspaceAuthStore((state) => state.sessions);
+  const workspaceCurrentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
+  const workspaceRuntimeContext = useMemo(
+    () =>
+      workspaceMode
+        ? selectCurrentWorkspaceRuntimeContext({
+            sessions: workspaceSessions,
+            currentAccountId: workspaceCurrentAccountId,
+          })
+        : null,
+    [workspaceCurrentAccountId, workspaceMode, workspaceSessions],
+  );
+  const workspaceUsersById = useMessengerStore((state) => state.usersById);
+  const workspaceStreamIds = useMessengerStore((state) => state.streamIds);
+  const workspaceStreamsById = useMessengerStore((state) => state.streamsById);
+  const workspaceStreams = useMemo(
+    () =>
+      workspaceStreamIds
+        .map((streamId) => workspaceStreamsById[streamId])
+        .filter((stream): stream is MessengerStream => stream != null),
+    [workspaceStreamIds, workspaceStreamsById],
+  );
   // Block channel create until author profile is loaded.
-  const channelCreateBlocked = currentUserId == null || currentUserId <= 0;
+  const channelCreateBlocked = workspaceMode
+    ? workspaceRuntimeContext == null
+    : currentUserId == null || currentUserId <= 0;
   const channelCreateBlockedReasonKey = channelCreateBlocked
     ? "channel.creatorProfileLoading"
     : null;
@@ -201,43 +283,131 @@ export function useCreateChatDialog(options: {
     [allUsers],
   );
 
+  const workspaceUserOptions = useMemo<CreateChatUserOption[]>(() => {
+    const normalizedQuery = userSearch.trim().toLowerCase();
+    const currentUserUuid = workspaceRuntimeContext?.userUuid ?? null;
+    return Object.values(workspaceUsersById)
+      .filter((user) => user.uuid !== currentUserUuid)
+      .map((user) => {
+        const presence: CreateChatUserOption["presence"] =
+          user.status === "active" || user.status === "idle" ? user.status : "offline";
+        const fullName = [user.firstName, user.lastName]
+          .filter((part): part is string => part != null && part.trim().length > 0)
+          .join(" ")
+          .trim();
+        return {
+          userKey: user.uuid,
+          legacyUserId: null,
+          workspaceUserUuid: user.uuid,
+          fullName: fullName.length > 0 ? fullName : user.username,
+          email: user.email ?? "",
+          presence,
+          statusLabel: null,
+        };
+      })
+      .filter((user) => {
+        if (user.fullName.trim().length === 0) return false;
+        if (normalizedQuery.length === 0) return true;
+        return (
+          user.fullName.toLowerCase().includes(normalizedQuery) ||
+          user.email.toLowerCase().includes(normalizedQuery)
+        );
+      })
+      .sort((left, right) => left.fullName.localeCompare(right.fullName));
+  }, [userSearch, workspaceRuntimeContext?.userUuid, workspaceUsersById]);
+
   const excludedUserIds = useMemo(
     () => (currentUserId != null ? [currentUserId] : []),
     [currentUserId],
   );
 
-  const filteredUsers = useMemo(
-    () =>
-      buildUserPickerOptions({
-        candidates: pickerCandidates,
-        selectedUserIds: [],
-        excludedUserIds,
-        query: userSearch,
-      }),
-    [pickerCandidates, excludedUserIds, userSearch],
-  );
+  const filteredUsers = useMemo<CreateChatUserOption[]>(() => {
+    if (workspaceMode) return workspaceUserOptions;
+    return buildUserPickerOptions({
+      candidates: pickerCandidates,
+      selectedUserIds: [],
+      excludedUserIds,
+      query: userSearch,
+    }).map((user) => ({
+      userKey: String(user.userId),
+      legacyUserId: user.userId,
+      workspaceUserUuid: null,
+      fullName: user.fullName,
+      email: user.email,
+      presence: user.presence,
+      statusLabel: user.statusLabel,
+    }));
+  }, [excludedUserIds, pickerCandidates, userSearch, workspaceMode, workspaceUserOptions]);
 
-  const groupUsers = useMemo(
-    () =>
-      buildUserPickerOptions({
-        candidates: pickerCandidates,
-        selectedUserIds: Array.from(groupSelectedUserIds),
-        excludedUserIds,
-        query: userSearch,
-      }),
-    [pickerCandidates, groupSelectedUserIds, excludedUserIds, userSearch],
-  );
+  const groupUsers = useMemo<CreateChatUserOption[]>(() => {
+    if (workspaceMode) {
+      const selected = groupSelectedUserKeys;
+      return [...workspaceUserOptions].sort((left, right) => {
+        const leftSelected = selected.has(left.userKey) ? 0 : 1;
+        const rightSelected = selected.has(right.userKey) ? 0 : 1;
+        if (leftSelected !== rightSelected) return leftSelected - rightSelected;
+        return left.fullName.localeCompare(right.fullName);
+      });
+    }
+    return buildUserPickerOptions({
+      candidates: pickerCandidates,
+      selectedUserIds: Array.from(groupSelectedUserKeys)
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value)),
+      excludedUserIds,
+      query: userSearch,
+    }).map((user) => ({
+      userKey: String(user.userId),
+      legacyUserId: user.userId,
+      workspaceUserUuid: null,
+      fullName: user.fullName,
+      email: user.email,
+      presence: user.presence,
+      statusLabel: user.statusLabel,
+    }));
+  }, [
+    excludedUserIds,
+    groupSelectedUserKeys,
+    pickerCandidates,
+    userSearch,
+    workspaceMode,
+    workspaceUserOptions,
+  ]);
 
-  const channelUsers = useMemo(
-    () =>
-      buildUserPickerOptions({
-        candidates: pickerCandidates,
-        selectedUserIds: Array.from(channelSelectedUserIds),
-        excludedUserIds,
-        query: userSearch,
-      }),
-    [pickerCandidates, channelSelectedUserIds, excludedUserIds, userSearch],
-  );
+  const channelUsers = useMemo<CreateChatUserOption[]>(() => {
+    if (workspaceMode) {
+      const selected = channelSelectedUserKeys;
+      return [...workspaceUserOptions].sort((left, right) => {
+        const leftSelected = selected.has(left.userKey) ? 0 : 1;
+        const rightSelected = selected.has(right.userKey) ? 0 : 1;
+        if (leftSelected !== rightSelected) return leftSelected - rightSelected;
+        return left.fullName.localeCompare(right.fullName);
+      });
+    }
+    return buildUserPickerOptions({
+      candidates: pickerCandidates,
+      selectedUserIds: Array.from(channelSelectedUserKeys)
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value)),
+      excludedUserIds,
+      query: userSearch,
+    }).map((user) => ({
+      userKey: String(user.userId),
+      legacyUserId: user.userId,
+      workspaceUserUuid: null,
+      fullName: user.fullName,
+      email: user.email,
+      presence: user.presence,
+      statusLabel: user.statusLabel,
+    }));
+  }, [
+    channelSelectedUserKeys,
+    excludedUserIds,
+    pickerCandidates,
+    userSearch,
+    workspaceMode,
+    workspaceUserOptions,
+  ]);
 
   const archivedChannels = useMemo<ArchivedChannelOption[]>(() => {
     const normalizedQuery = archivedSearch.trim().toLowerCase();
@@ -276,6 +446,28 @@ export function useCreateChatDialog(options: {
     () => browseChannels.find((channel) => channel.streamId === selectedBrowseChannelId) ?? null,
     [browseChannels, selectedBrowseChannelId],
   );
+
+  const workspaceTopicStreams = useMemo<CreateChatWorkspaceStreamOption[]>(
+    () =>
+      workspaceStreams
+        .filter((stream) => !stream.isArchived)
+        .map((stream) => ({
+          streamUuid: stream.uuid,
+          name: stream.name,
+        }))
+        .sort((left, right) => left.name.localeCompare(right.name)),
+    [workspaceStreams],
+  );
+  const selectedWorkspaceTopicStreamUuid = workspaceTopicStreams.some(
+    (stream) => stream.streamUuid === workspaceTopicStreamUuid,
+  )
+    ? workspaceTopicStreamUuid
+    : (workspaceTopicStreams[0]?.streamUuid ?? "");
+
+  const workspaceTopicCreateBlocked =
+    !workspaceMode ||
+    selectedWorkspaceTopicStreamUuid.trim().length === 0 ||
+    !workspaceTopicName.trim();
 
   const setSelectedBrowseChannelId = useCallback((streamId: number) => {
     setSelectedBrowseChannelIdState(streamId);
@@ -341,8 +533,8 @@ export function useCreateChatDialog(options: {
       setTab("dm");
       setUserSearch("");
       setArchivedSearch("");
-      setGroupSelectedUserIds(new Set());
-      setChannelSelectedUserIds(new Set());
+      setGroupSelectedUserKeys(new Set());
+      setChannelSelectedUserKeys(new Set());
       setChannelName("");
       setChannelDesc("");
       setChannelInviteOnly(false);
@@ -360,33 +552,105 @@ export function useCreateChatDialog(options: {
       setSubscribePendingStreamIds([]);
       setSubscribeInlineError(null);
       setSelectedBrowseChannelIdState(null);
+      setWorkspaceTopicStreamUuid("");
+      setWorkspaceTopicName("");
     });
   }, [open]);
 
-  const toggleGroupUser = useCallback((userId: number) => {
-    setGroupSelectedUserIds((prev) => {
+  const toggleGroupUser = useCallback((userKey: string) => {
+    setGroupSelectedUserKeys((prev) => {
       const next = new Set(prev);
-      if (next.has(userId)) next.delete(userId);
-      else next.add(userId);
+      if (next.has(userKey)) next.delete(userKey);
+      else next.add(userKey);
       return next;
     });
   }, []);
 
-  const toggleChannelUser = useCallback((userId: number) => {
-    setChannelSelectedUserIds((prev) => {
+  const toggleChannelUser = useCallback((userKey: string) => {
+    setChannelSelectedUserKeys((prev) => {
       const next = new Set(prev);
-      if (next.has(userId)) next.delete(userId);
-      else next.add(userId);
+      if (next.has(userKey)) next.delete(userKey);
+      else next.add(userKey);
       return next;
     });
   }, []);
 
   const createGroup = useCallback(() => {
-    if (groupSelectedUserIds.size === 0 || currentUserId == null) return;
-    const ids = [...groupSelectedUserIds, currentUserId].sort((a, b) => a - b);
+    if (workspaceMode) {
+      if (groupSelectedUserKeys.size === 0) return;
+      const selectedUsers = groupUsers.filter((user) => groupSelectedUserKeys.has(user.userKey));
+      const memberUserUuids = selectedUsers
+        .map((user) => user.workspaceUserUuid)
+        .filter((userUuid): userUuid is string => userUuid != null);
+      if (memberUserUuids.length === 0) return;
+      const name = selectedUsers.map((user) => user.fullName).join(", ");
+      setCreating(true);
+      void runWorkspaceChannelCreate({
+        name,
+        description: "",
+        inviteOnly: true,
+        announce: false,
+        memberUserUuids,
+      })
+        .then((result) => {
+          if (result.status !== "applied") return;
+          setGroupSelectedUserKeys(new Set());
+          onNavigateWorkspaceStream?.(result.stream.uuid);
+          onChannelCreated();
+        })
+        .catch((err) => {
+          log.error("workspace group create failed", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        })
+        .finally(() => {
+          setCreating(false);
+        });
+      return;
+    }
+    if (groupSelectedUserKeys.size === 0 || currentUserId == null) return;
+    const selectedLegacyIds = Array.from(groupSelectedUserKeys)
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value));
+    const ids = [...selectedLegacyIds, currentUserId].sort((a, b) => a - b);
     onNavigateDm(ids.join(","));
-    setGroupSelectedUserIds(new Set());
-  }, [groupSelectedUserIds, currentUserId, onNavigateDm]);
+    setGroupSelectedUserKeys(new Set());
+  }, [
+    currentUserId,
+    groupSelectedUserKeys,
+    groupUsers,
+    onChannelCreated,
+    onNavigateDm,
+    onNavigateWorkspaceStream,
+    workspaceMode,
+  ]);
+
+  const openDirectUser = useCallback(
+    (user: CreateChatUserOption) => {
+      if (workspaceMode) {
+        if (user.workspaceUserUuid == null) return;
+        setCreating(true);
+        void runWorkspaceDirectStreamCreate({ directUserUuid: user.workspaceUserUuid })
+          .then((result) => {
+            if (result.status !== "applied") return;
+            onNavigateWorkspaceStream?.(result.stream.uuid);
+            onChannelCreated();
+          })
+          .catch((err) => {
+            log.error("workspace direct stream create failed", {
+              error: err instanceof Error ? err.message : String(err),
+            });
+          })
+          .finally(() => {
+            setCreating(false);
+          });
+        return;
+      }
+      if (user.legacyUserId == null) return;
+      onNavigateDm(buildDmSlug(user.legacyUserId, user.fullName));
+    },
+    [onChannelCreated, onNavigateDm, onNavigateWorkspaceStream, workspaceMode],
+  );
 
   const focusTab = useCallback((nextTab: CreateChatTab) => {
     tabRefs.current[nextTab]?.focus();
@@ -399,19 +663,58 @@ export function useCreateChatDialog(options: {
 
   const onTabKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLButtonElement>, currentTab: CreateChatTab) => {
-      const nextTab = resolveNextTabFromKey({ key: event.key, currentTab });
+      const nextTab = resolveNextTabFromKey({ key: event.key, currentTab, tabs: visibleTabs });
       if (nextTab == null) return;
       event.preventDefault();
       setTab(nextTab);
       focusTab(nextTab);
     },
-    [focusTab],
+    [focusTab, visibleTabs],
   );
 
   const createChannelAction = useCallback(() => {
-    if (!channelName.trim() || creating || currentUserId == null || currentUserId <= 0) return;
+    if (!channelName.trim() || creating) return;
+    if (workspaceMode) {
+      if (workspaceRuntimeContext == null) return;
+      const memberUserUuids = channelUsers
+        .filter((user) => channelSelectedUserKeys.has(user.userKey))
+        .map((user) => user.workspaceUserUuid)
+        .filter((userUuid): userUuid is string => userUuid != null);
+      setCreating(true);
+      void runWorkspaceChannelCreate({
+        name: channelName.trim(),
+        description: channelDesc.trim(),
+        memberUserUuids,
+        inviteOnly: channelInviteOnly,
+        announce: channelAnnounce,
+      })
+        .then((result) => {
+          if (result.status !== "applied") return;
+          setChannelName("");
+          setChannelDesc("");
+          setChannelSelectedUserKeys(new Set());
+          setChannelInviteOnly(false);
+          setChannelAnnounce(false);
+          setChannelAnnouncementOnly(false);
+          onNavigateWorkspaceStream?.(result.stream.uuid);
+          onChannelCreated();
+        })
+        .catch((err) => {
+          log.error("workspace channel create failed", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        })
+        .finally(() => {
+          setCreating(false);
+        });
+      return;
+    }
+    if (currentUserId == null || currentUserId <= 0) return;
     // Always include channel author in subscribers even if not manually selected.
-    const subscribers = Array.from(new Set([...channelSelectedUserIds, currentUserId])).sort(
+    const selectedLegacyIds = Array.from(channelSelectedUserKeys)
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value));
+    const subscribers = Array.from(new Set([...selectedLegacyIds, currentUserId])).sort(
       (a, b) => a - b,
     );
     setCreating(true);
@@ -431,7 +734,7 @@ export function useCreateChatDialog(options: {
         if (!result) return;
         setChannelName("");
         setChannelDesc("");
-        setChannelSelectedUserIds(new Set());
+        setChannelSelectedUserKeys(new Set());
         setChannelInviteOnly(false);
         setChannelAnnounce(false);
         setChannelAnnouncementOnly(false);
@@ -446,7 +749,8 @@ export function useCreateChatDialog(options: {
   }, [
     channelName,
     channelDesc,
-    channelSelectedUserIds,
+    channelSelectedUserKeys,
+    channelUsers,
     channelInviteOnly,
     channelAnnounce,
     effectiveChannelAnnouncementOnly,
@@ -454,6 +758,38 @@ export function useCreateChatDialog(options: {
     creating,
     currentUserId,
     onChannelCreated,
+    onNavigateWorkspaceStream,
+    workspaceMode,
+    workspaceRuntimeContext,
+  ]);
+
+  const createWorkspaceTopic = useCallback(() => {
+    const streamUuid = selectedWorkspaceTopicStreamUuid.trim();
+    const name = workspaceTopicName.trim();
+    if (!workspaceMode || streamUuid.length === 0 || name.length === 0 || creating) return;
+    setCreating(true);
+    void runWorkspaceCreateTopicRequest({ streamUuid, name })
+      .then((result) => {
+        if (result.status !== "applied") return;
+        setWorkspaceTopicName("");
+        onNavigateWorkspaceTopic?.(result.topic.streamUuid, result.topic.uuid);
+        onChannelCreated();
+      })
+      .catch((err) => {
+        log.error("workspace topic create failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      })
+      .finally(() => {
+        setCreating(false);
+      });
+  }, [
+    creating,
+    onChannelCreated,
+    onNavigateWorkspaceTopic,
+    selectedWorkspaceTopicStreamUuid,
+    workspaceMode,
+    workspaceTopicName,
   ]);
 
   const buildDmSlugFn = useCallback((userId: number, fullName: string) => {
@@ -556,6 +892,7 @@ export function useCreateChatDialog(options: {
   return {
     tab,
     setTab,
+    visibleTabs,
     tabIds,
     panelIds,
     setTabRef,
@@ -563,11 +900,12 @@ export function useCreateChatDialog(options: {
     userSearch,
     setUserSearch,
     filteredUsers,
-    groupSelectedUserIds,
+    openDirectUser,
+    groupSelectedUserKeys,
     toggleGroupUser,
     groupUsers,
     createGroup,
-    channelSelectedUserIds,
+    channelSelectedUserKeys,
     toggleChannelUser,
     channelUsers,
     channelName,
@@ -586,6 +924,13 @@ export function useCreateChatDialog(options: {
     channelCreateBlocked,
     channelCreateBlockedReasonKey,
     createChannel: createChannelAction,
+    workspaceTopicStreams,
+    workspaceTopicStreamUuid: selectedWorkspaceTopicStreamUuid,
+    setWorkspaceTopicStreamUuid,
+    workspaceTopicName,
+    setWorkspaceTopicName,
+    workspaceTopicCreateBlocked,
+    createWorkspaceTopic,
     archivedSearch,
     setArchivedSearch,
     archivedChannels,

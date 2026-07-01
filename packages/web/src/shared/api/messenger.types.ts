@@ -668,7 +668,6 @@ export function isWorkspaceMessengerUserDto(value: unknown): value is WorkspaceM
     (value.first_name === null || typeof value.first_name === "string") &&
     (value.last_name === null || typeof value.last_name === "string") &&
     (value.email === null || typeof value.email === "string") &&
-    isNullableDateTime(value.last_ping_at) &&
     isDateTime(value.created_at) &&
     isDateTime(value.updated_at)
   );

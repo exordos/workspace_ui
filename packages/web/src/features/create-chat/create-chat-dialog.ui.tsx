@@ -49,11 +49,22 @@ const CREATE_CHAT_FOOTER_CLASS =
 export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
   open,
   onOpenChange,
+  mode = "legacy",
   onNavigateDm,
   onNavigateStream,
+  onNavigateWorkspaceStream,
+  onNavigateWorkspaceTopic,
   onChannelCreated,
 }) => {
-  const vm = useCreateChatDialog({ open, onNavigateDm, onNavigateStream, onChannelCreated });
+  const vm = useCreateChatDialog({
+    open,
+    mode,
+    onNavigateDm,
+    onNavigateStream,
+    onNavigateWorkspaceStream,
+    onNavigateWorkspaceTopic,
+    onChannelCreated,
+  });
   // Three independent channel checkboxes: inviteOnly, channelAnnounce (bot notification), channelAnnouncementOnly (posting policy).
 
   const handleOpenArchivedChannel = useCallback(
@@ -124,24 +135,26 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
         >
           {t("dm.createGroup")}
         </button>
-        <button
-          type="button"
-          ref={(node) => vm.setTabRef("channels", node)}
-          role="tab"
-          id={vm.tabIds.channels}
-          aria-selected={vm.tab === "channels"}
-          aria-controls={vm.panelIds.channels}
-          tabIndex={vm.tab === "channels" ? 0 : -1}
-          className={`flex-1 whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors ${
-            vm.tab === "channels"
-              ? "border-b-2 border-accent text-accent"
-              : "text-text-muted hover:text-text-primary"
-          }`}
-          onClick={() => vm.setTab("channels")}
-          onKeyDown={(event) => vm.onTabKeyDown(event, "channels")}
-        >
-          {t("channel.browseChannels")}
-        </button>
+        {vm.visibleTabs.includes("channels") && (
+          <button
+            type="button"
+            ref={(node) => vm.setTabRef("channels", node)}
+            role="tab"
+            id={vm.tabIds.channels}
+            aria-selected={vm.tab === "channels"}
+            aria-controls={vm.panelIds.channels}
+            tabIndex={vm.tab === "channels" ? 0 : -1}
+            className={`flex-1 whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors ${
+              vm.tab === "channels"
+                ? "border-b-2 border-accent text-accent"
+                : "text-text-muted hover:text-text-primary"
+            }`}
+            onClick={() => vm.setTab("channels")}
+            onKeyDown={(event) => vm.onTabKeyDown(event, "channels")}
+          >
+            {t("channel.browseChannels")}
+          </button>
+        )}
         <button
           type="button"
           ref={(node) => vm.setTabRef("channel", node)}
@@ -160,24 +173,46 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
         >
           {t("channel.createChannel")}
         </button>
-        <button
-          type="button"
-          ref={(node) => vm.setTabRef("archived", node)}
-          role="tab"
-          id={vm.tabIds.archived}
-          aria-selected={vm.tab === "archived"}
-          aria-controls={vm.panelIds.archived}
-          tabIndex={vm.tab === "archived" ? 0 : -1}
-          className={`flex-1 whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors ${
-            vm.tab === "archived"
-              ? "border-b-2 border-accent text-accent"
-              : "text-text-muted hover:text-text-primary"
-          }`}
-          onClick={() => vm.setTab("archived")}
-          onKeyDown={(event) => vm.onTabKeyDown(event, "archived")}
-        >
-          {t("channel.archivedChannels")}
-        </button>
+        {vm.visibleTabs.includes("topic") && (
+          <button
+            type="button"
+            ref={(node) => vm.setTabRef("topic", node)}
+            role="tab"
+            id={vm.tabIds.topic}
+            aria-selected={vm.tab === "topic"}
+            aria-controls={vm.panelIds.topic}
+            tabIndex={vm.tab === "topic" ? 0 : -1}
+            className={`flex-1 whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors ${
+              vm.tab === "topic"
+                ? "border-b-2 border-accent text-accent"
+                : "text-text-muted hover:text-text-primary"
+            }`}
+            onClick={() => vm.setTab("topic")}
+            onKeyDown={(event) => vm.onTabKeyDown(event, "topic")}
+          >
+            {t("channel.createTopic")}
+          </button>
+        )}
+        {vm.visibleTabs.includes("archived") && (
+          <button
+            type="button"
+            ref={(node) => vm.setTabRef("archived", node)}
+            role="tab"
+            id={vm.tabIds.archived}
+            aria-selected={vm.tab === "archived"}
+            aria-controls={vm.panelIds.archived}
+            tabIndex={vm.tab === "archived" ? 0 : -1}
+            className={`flex-1 whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors ${
+              vm.tab === "archived"
+                ? "border-b-2 border-accent text-accent"
+                : "text-text-muted hover:text-text-primary"
+            }`}
+            onClick={() => vm.setTab("archived")}
+            onKeyDown={(event) => vm.onTabKeyDown(event, "archived")}
+          >
+            {t("channel.archivedChannels")}
+          </button>
+        )}
       </div>
 
       {/* Middle scrolls; action footer pinned below all tabs */}
@@ -209,9 +244,9 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                     return (
                       <button
                         type="button"
-                        key={u.userId}
+                        key={u.userKey}
                         className={CREATE_CHAT_LIST_ROW_CLASS}
-                        onClick={() => onNavigateDm(vm.buildDmSlug(u.userId, u.fullName))}
+                        onClick={() => vm.openDirectUser(u)}
                       >
                         <PresenceIndicator status={u.presence} size="sm" />
                         <span className="min-w-0 flex-1">
@@ -252,11 +287,11 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                 ) : (
                   vm.groupUsers.map((u) => {
                     return (
-                      <label key={u.userId} className={CREATE_CHAT_LIST_ROW_CLASS}>
+                      <label key={u.userKey} className={CREATE_CHAT_LIST_ROW_CLASS}>
                         <input
                           type="checkbox"
-                          checked={vm.groupSelectedUserIds.has(u.userId)}
-                          onChange={() => vm.toggleGroupUser(u.userId)}
+                          checked={vm.groupSelectedUserKeys.has(u.userKey)}
+                          onChange={() => vm.toggleGroupUser(u.userKey)}
                           className="h-4 w-4 rounded border-border-subtle"
                         />
                         <PresenceIndicator status={u.presence} size="sm" />
@@ -418,11 +453,11 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                   ) : (
                     vm.channelUsers.map((u) => {
                       return (
-                        <label key={u.userId} className={CREATE_CHAT_LIST_ROW_CLASS}>
+                        <label key={u.userKey} className={CREATE_CHAT_LIST_ROW_CLASS}>
                           <input
                             type="checkbox"
-                            checked={vm.channelSelectedUserIds.has(u.userId)}
-                            onChange={() => vm.toggleChannelUser(u.userId)}
+                            checked={vm.channelSelectedUserKeys.has(u.userKey)}
+                            onChange={() => vm.toggleChannelUser(u.userKey)}
                             className="h-4 w-4 rounded border-border-subtle"
                           />
                           <PresenceIndicator status={u.presence} size="sm" />
@@ -442,6 +477,39 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
               </div>
               {vm.channelCreateBlockedReasonKey != null && (
                 <p className="text-xs text-text-muted">{t(vm.channelCreateBlockedReasonKey)}</p>
+              )}
+            </div>
+          )}
+
+          {vm.tab === "topic" && (
+            <div
+              role="tabpanel"
+              id={vm.panelIds.topic}
+              aria-labelledby={vm.tabIds.topic}
+              className="flex flex-col gap-3"
+            >
+              <label className="text-sm text-text-muted">{t("channel.selectChannel")}</label>
+              <select
+                value={vm.workspaceTopicStreamUuid}
+                onChange={(event) => vm.setWorkspaceTopicStreamUuid(event.target.value)}
+                className={CREATE_CHAT_TEXT_INPUT_CLASS}
+              >
+                {vm.workspaceTopicStreams.map((stream) => (
+                  <option key={stream.streamUuid} value={stream.streamUuid}>
+                    {stream.name}
+                  </option>
+                ))}
+              </select>
+              <label className="text-sm text-text-muted">{t("channel.topicName")}</label>
+              <input
+                type="text"
+                value={vm.workspaceTopicName}
+                onChange={(e) => vm.setWorkspaceTopicName(e.target.value)}
+                className={CREATE_CHAT_TEXT_INPUT_CLASS}
+                placeholder={t("channel.topicName")}
+              />
+              {vm.workspaceTopicStreams.length === 0 && (
+                <p className="text-xs text-text-muted">{t("channel.noChannels")}</p>
               )}
             </div>
           )}
@@ -509,7 +577,7 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
               </Dialog.Close>
               <button
                 type="button"
-                disabled={vm.groupSelectedUserIds.size === 0}
+                disabled={vm.groupSelectedUserKeys.size === 0 || vm.creating}
                 onClick={vm.createGroup}
                 className="rounded-lg bg-accent px-3 py-1.5 text-sm text-bg hover:opacity-90 disabled:opacity-50"
               >
@@ -531,6 +599,26 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                 type="button"
                 disabled={!vm.channelName.trim() || vm.creating || vm.channelCreateBlocked}
                 onClick={vm.createChannel}
+                className="rounded-lg bg-accent px-3 py-1.5 text-sm text-bg hover:opacity-90 disabled:opacity-50"
+              >
+                {t("common.create")}
+              </button>
+            </>
+          )}
+          {vm.tab === "topic" && (
+            <>
+              <Dialog.Close asChild>
+                <button
+                  type="button"
+                  className="hover:bg-bg/50 rounded-lg px-3 py-1.5 text-sm text-text-muted"
+                >
+                  {t("common.cancel")}
+                </button>
+              </Dialog.Close>
+              <button
+                type="button"
+                disabled={vm.workspaceTopicCreateBlocked || vm.creating}
+                onClick={vm.createWorkspaceTopic}
                 className="rounded-lg bg-accent px-3 py-1.5 text-sm text-bg hover:opacity-90 disabled:opacity-50"
               >
                 {t("common.create")}
