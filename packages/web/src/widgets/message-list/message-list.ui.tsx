@@ -157,6 +157,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
   const topPaginationArmedRef = useRef(true);
   const prevFirstMessageIdForTopPaginationRef = useRef<MessageId | undefined>(undefined);
   const unreadScrollKeyRef = useRef<string | null>(null);
+  const initialBottomScrollKeyRef = useRef<string | null>(null);
   const suppressReadUntilMsRef = useRef(0);
   const scrollLogLastAtMsRef = useRef(0);
   const bottomReadDispatchKeyRef = useRef<string | null>(null);
@@ -1122,6 +1123,35 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     logScrollMetrics,
     scheduleFlushSingleAnchorUnreadIfVisible,
     scheduleFlushVisibleUnreadTailIfComplete,
+  ]);
+
+  useLayoutEffect(() => {
+    if (focusedMessageId != null) return;
+    if (firstUnreadId != null || unreadCount > 0) return;
+    if (messages.length === 0) return;
+
+    const scrollKey = scrollToBottomKey ?? "__default__";
+    if (initialBottomScrollKeyRef.current === scrollKey) return;
+    if (unreadScrollKeyRef.current === scrollKey) return;
+
+    const el = scrollRef.current;
+    if (!el) return;
+
+    logScrollMetrics("scroll:toBottomOnOpen");
+    runProgrammaticScroll(() => {
+      scrollToBottom(el);
+      wasAtBottomRef.current = true;
+      setIsAtBottom(true);
+    });
+    initialBottomScrollKeyRef.current = scrollKey;
+  }, [
+    focusedMessageId,
+    firstUnreadId,
+    unreadCount,
+    messages.length,
+    scrollToBottomKey,
+    runProgrammaticScroll,
+    logScrollMetrics,
   ]);
 
   // User-initiated scroll-to-bottom uses smooth animation — the only intentional animation here.

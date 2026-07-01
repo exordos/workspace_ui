@@ -878,7 +878,7 @@ describe("MessageList unread anchor scroll", () => {
   });
 });
 
-describe("MessageList chat open without scroll to bottom", () => {
+describe("MessageList chat open initial scroll", () => {
   const scrollTargets: string[] = [];
   const scrollIntoView = vi.fn(function (this: HTMLElement) {
     scrollTargets.push(this.getAttribute("data-message-id") ?? "");
@@ -931,7 +931,7 @@ describe("MessageList chat open without scroll to bottom", () => {
     });
   }
 
-  it("does not scroll to bottom on chat open when there are no unreads", async () => {
+  it("scrolls to bottom on chat open when there are no unreads", async () => {
     const base = [
       msg(1, { sender_id: 99, flags: ["read"] }),
       msg(2, { sender_id: 43, flags: ["read"] }),
@@ -939,10 +939,12 @@ describe("MessageList chat open without scroll to bottom", () => {
     ];
 
     render(<MessageList messages={base} currentUserId={7} scrollToBottomKey="open-no-unread" />);
+    const feed = document.querySelector('[role="feed"]') as HTMLDivElement;
 
     await flushOpenScroll();
 
-    expect(scrollToBottomMock).not.toHaveBeenCalled();
+    expect(scrollToBottomMock).toHaveBeenCalledTimes(1);
+    expect(scrollToBottomMock.mock.calls[0]?.[0]).toBe(feed);
     expect(scrollIntoView).not.toHaveBeenCalled();
   });
 
@@ -983,7 +985,7 @@ describe("MessageList chat open without scroll to bottom", () => {
     expect(scrollIntoView).not.toHaveBeenCalled();
   });
 
-  it("does not pin tail with follow-up scroll on chat open", async () => {
+  it("pins tail only once on chat open", async () => {
     const base = [
       msg(1, { sender_id: 99, flags: ["read"] }),
       msg(2, { sender_id: 43, flags: ["read"] }),
@@ -993,7 +995,7 @@ describe("MessageList chat open without scroll to bottom", () => {
 
     await flushOpenScroll();
 
-    expect(scrollToBottomMock).not.toHaveBeenCalled();
+    expect(scrollToBottomMock).toHaveBeenCalledTimes(1);
   });
 
   it("scrolls focused message into view on chat open without pinning tail", async () => {
