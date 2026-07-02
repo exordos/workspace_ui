@@ -96,6 +96,9 @@ Workspace-путь уже в основном отделен от старого
 - Его нельзя кормить Workspace UUID как будто это старые числовые ids.
 - Визуальные компоненты правой панели можно переиспользовать, но данные должны
   приходить из отдельной Workspace-проекции.
+- Срез 2026-07-02: Workspace-ветка правой панели уже берет участников, счетчик
+  online и список участников из `stream_bindings` + `users`, а не из старого
+  `chat-info`.
 
 ### Боковая панель
 
@@ -114,6 +117,9 @@ Workspace-путь уже в основном отделен от старого
 - Превью сообщений берутся через `workspaceMessageStore.messagesById`.
 - `WorkspaceSidebar` в основном только рисует готовую проекцию.
 - Контекстное меню Workspace отделено от старого меню.
+- Срез 2026-07-02: контекстное меню stream получило пункт "Members/Участники",
+  который открывает общую правую панель через `RightDrawerContext.openInfo()` и
+  не ходит в API из sidebar.
 
 Что нужно проверить:
 
@@ -285,6 +291,8 @@ Workspace API
 
 Цель: чтобы store имел bindings для текущего stream.
 
+Статус 2026-07-02: выполнено.
+
 Работы:
 
 - добавить route-scoped loader для `getStreamBindings(streamUuid)`;
@@ -292,6 +300,8 @@ Workspace API
 - писать результат в `useMessengerStore.upsertStreamBindings`;
 - защититься от устаревшего runtime через `runtimeGeneration`;
 - не блокировать первый рендер чата.
+- догружать все страницы `stream_bindings` через `page_marker` и
+  `X-Pagination-Marker`, включая пустой список как завершенную загрузку.
 
 Возможное место:
 
@@ -330,13 +340,18 @@ Workspace API
 
 Цель: правая панель не зависит от старого `chat-info` на Workspace routes.
 
+Статус 2026-07-02: выполнено для stream participants и topics.
+
 Работы:
 
 - добавить Workspace selector для panel props;
 - подключить title/counts/topics;
-- решить, нужен ли отдельный Workspace member view;
+- подключить Workspace member view из stream bindings/users;
 - не использовать `fetchStreamMembers` и `fetchStreams` из Zulip API;
 - сохранить старый `RightPanel` UI, если props позволяют.
+- add/remove участников проводить через entity helpers, а не из UI напрямую.
+- первая итерация добавляет только роль `member`, не вводит матрицу ролей на
+  frontend и не поддерживает self-remove.
 
 Проверки:
 
@@ -350,6 +365,9 @@ Workspace API
 
 Цель: убедиться, что sidebar полностью Workspace-native.
 
+Статус 2026-07-02: частично выполнено для пункта участников в контекстном меню
+stream.
+
 Работы:
 
 - пройти bootstrap state;
@@ -357,6 +375,8 @@ Workspace API
 - пройти stream/topic rows;
 - пройти preview last message;
 - пройти context menu actions;
+- проверить, что пункт "Members/Участники" только открывает right panel и не
+  запускает API из sidebar;
 - пройти unread/pinned/order;
 - проверить empty/loading/error states.
 
@@ -367,6 +387,8 @@ Workspace API
 - после self-send preview обновляется;
 - после folder changes sidebar не читает старые cache keys;
 - контекстное меню вызывает только Workspace actions;
+- пункт participants в контекстном меню открывает тот же right panel, что и
+  кнопка info в шапке;
 - при отсутствии backend support UI показывает controlled unsupported.
 
 ### Фаза 5. Тесты и чистка

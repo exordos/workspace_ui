@@ -46,6 +46,7 @@ export interface MessengerDomainData {
   streamBindingsById: Record<MessengerUuid, MessengerStreamBinding>;
   streamBindingIds: MessengerUuid[];
   streamBindingIdsByStreamId: Record<MessengerUuid, MessengerUuid[]>;
+  streamBindingsLoadedByStreamId: Record<MessengerUuid, true>;
   topicsById: Record<MessengerUuid, MessengerTopic>;
   topicIds: MessengerUuid[];
   conversationsById: Record<MessengerConversationId, MessengerConversation>;
@@ -70,6 +71,16 @@ export interface MessengerStoreState extends MessengerDomainData {
   upsertStream: (ownerKey: string, stream: MessengerStream) => void;
   removeStream: (ownerKey: string, stream: MessengerDeletedStream) => void;
   upsertStreamBindings: (ownerKey: string, bindings: MessengerStreamBinding[]) => void;
+  replaceStreamBindingsForStream: (
+    ownerKey: string,
+    streamUuid: MessengerUuid,
+    bindings: MessengerStreamBinding[],
+  ) => void;
+  markStreamBindingsLoaded: (ownerKey: string, streamUuid: MessengerUuid) => void;
+  removeStreamBinding: (
+    ownerKey: string,
+    binding: Pick<MessengerStreamBinding, "uuid" | "streamUuid">,
+  ) => void;
   upsertTopic: (ownerKey: string, topic: MessengerTopic) => void;
   removeTopic: (ownerKey: string, topic: MessengerDeletedTopic) => void;
   applyMessagePointer: (ownerKey: string, message: MessengerMessage) => void;
@@ -99,6 +110,7 @@ function createEmptyMessengerData(): MessengerDomainData {
     streamBindingsById: EMPTY_STREAM_BINDINGS_BY_ID,
     streamBindingIds: EMPTY_IDS,
     streamBindingIdsByStreamId: EMPTY_STREAM_BINDING_IDS_BY_STREAM_ID,
+    streamBindingsLoadedByStreamId: {},
     topicsById: EMPTY_TOPICS_BY_ID,
     topicIds: EMPTY_IDS,
     conversationsById: EMPTY_CONVERSATIONS_BY_ID,
@@ -120,6 +132,9 @@ function createInitialState(): Omit<
   | "upsertStream"
   | "removeStream"
   | "upsertStreamBindings"
+  | "replaceStreamBindingsForStream"
+  | "markStreamBindingsLoaded"
+  | "removeStreamBinding"
   | "upsertTopic"
   | "removeTopic"
   | "applyMessagePointer"
@@ -377,6 +392,84 @@ function upsertConversation(
   };
 }
 
+type MessengerStreamBindingsUpsertState = Pick<
+  MessengerDomainData,
+  | "streamBindingsById"
+  | "streamBindingIds"
+  | "streamBindingIdsByStreamId"
+  | "streamsById"
+  | "topicIds"
+  | "topicsById"
+  | "conversationsById"
+  | "conversationIds"
+>;
+
+function applyStreamBindingUpserts(
+  state: MessengerStreamBindingsUpsertState,
+  bindings: MessengerStreamBinding[],
+): Pick<
+  MessengerDomainData,
+  | "streamBindingsById"
+  | "streamBindingIds"
+  | "streamBindingIdsByStreamId"
+  | "conversationsById"
+  | "conversationIds"
+> {
+  const nextStreamBindingsById = { ...state.streamBindingsById };
+  let nextStreamBindingIds = state.streamBindingIds;
+  const nextStreamBindingIdsByStreamId = { ...state.streamBindingIdsByStreamId };
+  let nextConversationsById = state.conversationsById;
+  let nextConversationIds = state.conversationIds;
+
+  for (const binding of bindings) {
+    const previous = nextStreamBindingsById[binding.uuid];
+    if (previous != null && previous.streamUuid !== binding.streamUuid) {
+      nextStreamBindingIdsByStreamId[previous.streamUuid] = removeId(
+        nextStreamBindingIdsByStreamId[previous.streamUuid] ?? EMPTY_IDS,
+        binding.uuid,
+      );
+    }
+
+    nextStreamBindingsById[binding.uuid] = binding;
+    nextStreamBindingIds = appendUniqueId(nextStreamBindingIds, binding.uuid);
+    nextStreamBindingIdsByStreamId[binding.streamUuid] = appendUniqueId(
+      nextStreamBindingIdsByStreamId[binding.streamUuid] ?? EMPTY_IDS,
+      binding.uuid,
+    );
+
+    const stream = state.streamsById[binding.streamUuid];
+    if (stream == null) continue;
+
+    // stream_binding shows that the current user can see the stream.
+    // The binding event must revive the chat surface even if the stream snapshot was already in store.
+    let conversationState = upsertConversation(
+      {
+        conversationsById: nextConversationsById,
+        conversationIds: nextConversationIds,
+      },
+      conversationFromStream(stream),
+    );
+    for (const topicId of state.topicIds) {
+      const topic = state.topicsById[topicId];
+      if (topic?.streamUuid !== stream.uuid) continue;
+      conversationState = upsertConversation(
+        conversationState,
+        conversationFromTopic(topic, stream),
+      );
+    }
+    nextConversationsById = conversationState.conversationsById;
+    nextConversationIds = conversationState.conversationIds;
+  }
+
+  return {
+    streamBindingsById: nextStreamBindingsById,
+    streamBindingIds: nextStreamBindingIds,
+    streamBindingIdsByStreamId: nextStreamBindingIdsByStreamId,
+    conversationsById: nextConversationsById,
+    conversationIds: nextConversationIds,
+  };
+}
+
 // Bootstrap builds indexes once, then realtime actions update them incrementally.
 function buildMessengerDomainData(payload: MessengerBootstrapPayload): MessengerDomainData {
   const streamsById: Record<MessengerUuid, MessengerStream> = {};
@@ -433,6 +526,7 @@ function buildMessengerDomainData(payload: MessengerBootstrapPayload): Messenger
     streamBindingsById,
     streamBindingIds,
     streamBindingIdsByStreamId,
+    streamBindingsLoadedByStreamId: {},
     topicsById,
     topicIds,
     conversationsById,
@@ -488,11 +582,13 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
               streamBindingsById: nextDomainData.streamBindingsById,
               streamBindingIds: nextDomainData.streamBindingIds,
               streamBindingIdsByStreamId: nextDomainData.streamBindingIdsByStreamId,
+              streamBindingsLoadedByStreamId: {},
             }
           : {
               streamBindingsById: state.streamBindingsById,
               streamBindingIds: state.streamBindingIds,
               streamBindingIdsByStreamId: state.streamBindingIdsByStreamId,
+              streamBindingsLoadedByStreamId: state.streamBindingsLoadedByStreamId,
             };
 
       return {
@@ -586,6 +682,8 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
       }
       const nextStreamBindingIdsByStreamId = { ...state.streamBindingIdsByStreamId };
       delete nextStreamBindingIdsByStreamId[stream.uuid];
+      const nextStreamBindingsLoadedByStreamId = { ...state.streamBindingsLoadedByStreamId };
+      delete nextStreamBindingsLoadedByStreamId[stream.uuid];
       return {
         streamsById: nextStreamsById,
         streamIds: removeId(state.streamIds, stream.uuid),
@@ -600,6 +698,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
           (bindingId) => !removedBindingIds.includes(bindingId),
         ),
         streamBindingIdsByStreamId: nextStreamBindingIdsByStreamId,
+        streamBindingsLoadedByStreamId: nextStreamBindingsLoadedByStreamId,
       };
     });
   },
@@ -609,58 +708,101 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
 
+      return applyStreamBindingUpserts(state, bindings);
+    });
+  },
+
+  replaceStreamBindingsForStream(ownerKey, streamUuid, bindings) {
+    logStoreAction("messenger", "replaceStreamBindingsForStream", {
+      ownerKey,
+      streamUuid,
+      bindings: bindings.length,
+    });
+    set((state) => {
+      if (state.ownerKey !== ownerKey) return state;
+
+      // Realtime-события добавляют bindings через upsert, а backend full load
+      // приходит как снимок stream-а. Здесь удаляем только устаревшие bindings
+      // этого streamUuid и не трогаем участников других каналов.
+      const snapshotBindingIds = new Set(bindings.map((binding) => binding.uuid));
+      const previousBindingIds = state.streamBindingIdsByStreamId[streamUuid] ?? EMPTY_IDS;
+      const removedBindingIds = previousBindingIds.filter(
+        (bindingId) => !snapshotBindingIds.has(bindingId),
+      );
       const nextStreamBindingsById = { ...state.streamBindingsById };
-      let nextStreamBindingIds = state.streamBindingIds;
-      const nextStreamBindingIdsByStreamId = { ...state.streamBindingIdsByStreamId };
-      let nextConversationsById = state.conversationsById;
-      let nextConversationIds = state.conversationIds;
-
-      for (const binding of bindings) {
-        const previous = nextStreamBindingsById[binding.uuid];
-        if (previous != null && previous.streamUuid !== binding.streamUuid) {
-          nextStreamBindingIdsByStreamId[previous.streamUuid] = removeId(
-            nextStreamBindingIdsByStreamId[previous.streamUuid] ?? EMPTY_IDS,
-            binding.uuid,
-          );
-        }
-
-        nextStreamBindingsById[binding.uuid] = binding;
-        nextStreamBindingIds = appendUniqueId(nextStreamBindingIds, binding.uuid);
-        nextStreamBindingIdsByStreamId[binding.streamUuid] = appendUniqueId(
-          nextStreamBindingIdsByStreamId[binding.streamUuid] ?? EMPTY_IDS,
-          binding.uuid,
-        );
-
-        const stream = state.streamsById[binding.streamUuid];
-        if (stream == null) continue;
-
-        // stream_binding shows that the current user can see the stream.
-        // The binding event must revive the chat surface even if the stream snapshot was already in store.
-        let conversationState = upsertConversation(
-          {
-            conversationsById: nextConversationsById,
-            conversationIds: nextConversationIds,
-          },
-          conversationFromStream(stream),
-        );
-        for (const topicId of state.topicIds) {
-          const topic = state.topicsById[topicId];
-          if (topic?.streamUuid !== stream.uuid) continue;
-          conversationState = upsertConversation(
-            conversationState,
-            conversationFromTopic(topic, stream),
-          );
-        }
-        nextConversationsById = conversationState.conversationsById;
-        nextConversationIds = conversationState.conversationIds;
+      for (const bindingId of removedBindingIds) {
+        delete nextStreamBindingsById[bindingId];
       }
+
+      const nextState = applyStreamBindingUpserts(
+        {
+          ...state,
+          streamBindingsById: nextStreamBindingsById,
+          streamBindingIds: state.streamBindingIds.filter(
+            (bindingId) => !removedBindingIds.includes(bindingId),
+          ),
+          streamBindingIdsByStreamId: {
+            ...state.streamBindingIdsByStreamId,
+            [streamUuid]: previousBindingIds.filter((bindingId) =>
+              snapshotBindingIds.has(bindingId),
+            ),
+          },
+        },
+        bindings,
+      );
+
+      return {
+        ...nextState,
+        streamBindingsLoadedByStreamId: {
+          ...state.streamBindingsLoadedByStreamId,
+          [streamUuid]: true,
+        },
+      };
+    });
+  },
+
+  markStreamBindingsLoaded(ownerKey, streamUuid) {
+    logStoreAction("messenger", "markStreamBindingsLoaded", { ownerKey, streamUuid });
+    set((state) => {
+      if (state.ownerKey !== ownerKey) return state;
+      if (state.streamBindingsLoadedByStreamId[streamUuid] === true) return state;
+
+      return {
+        streamBindingsLoadedByStreamId: {
+          ...state.streamBindingsLoadedByStreamId,
+          [streamUuid]: true,
+        },
+      };
+    });
+  },
+
+  removeStreamBinding(ownerKey, binding) {
+    logStoreAction("messenger", "removeStreamBinding", {
+      ownerKey,
+      bindingUuid: binding.uuid,
+      streamUuid: binding.streamUuid,
+    });
+    set((state) => {
+      if (state.ownerKey !== ownerKey) return state;
+
+      // После DELETE backend не рассылает всем участникам отдельное
+      // stream_bindings.deleted событие, поэтому инициатор чистит свой локальный
+      // список сразу после успешного ответа API.
+      const previous = state.streamBindingsById[binding.uuid];
+      const streamUuid = previous?.streamUuid ?? binding.streamUuid;
+      const streamBindingIds = state.streamBindingIdsByStreamId[streamUuid] ?? EMPTY_IDS;
+      if (previous == null && !streamBindingIds.includes(binding.uuid)) return state;
+
+      const nextStreamBindingsById = { ...state.streamBindingsById };
+      delete nextStreamBindingsById[binding.uuid];
 
       return {
         streamBindingsById: nextStreamBindingsById,
-        streamBindingIds: nextStreamBindingIds,
-        streamBindingIdsByStreamId: nextStreamBindingIdsByStreamId,
-        conversationsById: nextConversationsById,
-        conversationIds: nextConversationIds,
+        streamBindingIds: removeId(state.streamBindingIds, binding.uuid),
+        streamBindingIdsByStreamId: {
+          ...state.streamBindingIdsByStreamId,
+          [streamUuid]: removeId(streamBindingIds, binding.uuid),
+        },
       };
     });
   },

@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
+import React, { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   mapNotificationLevelToWorkspaceStreamMode,
@@ -6,13 +7,29 @@ import {
   type WorkspaceStreamNotificationLevel,
 } from "~/entities/messenger/messenger-notification-mode.lib";
 import { runWorkspaceStreamNotificationUpdate } from "~/entities/messenger/messenger-sidebar-actions.lib";
+import {
+  addWorkspaceStreamMembers,
+  removeWorkspaceStreamMember,
+} from "~/entities/messenger/messenger-stream-member-actions.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import type { MessengerUser, MessengerUuid } from "~/entities/messenger/messenger.types";
+import {
+  selectCurrentWorkspaceRuntimeContext,
+  useWorkspaceAuthStore,
+} from "~/entities/workspace-auth/workspace-auth.model";
 import { StreamNotificationLevelSwitch } from "~/features/mute-chat/stream-notification-level-switch.ui";
 import { t } from "~/i18n/i18n";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
+import {
+  AppDialogShell,
+  APP_DIALOG_CONTENT_BASE_CLASS,
+  DialogCancelButton,
+  DialogPrimaryButton,
+} from "~/shared/ui/app-dialog.ui";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
+import { PresenceIndicator, type PresenceVisual } from "~/shared/ui/presence-indicator";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import type { WorkspaceRightPanelInfoView } from "./right-panel.types";
 
@@ -26,6 +43,35 @@ interface NotificationActionState {
   error: string | null;
 }
 
+interface WorkspaceMemberActionState {
+  streamUuid: string | null;
+  addDialogOpen: boolean;
+  query: string;
+  selectedUserUuids: MessengerUuid[];
+  adding: boolean;
+  addError: string | null;
+  removingUserUuids: MessengerUuid[];
+  removeError: string | null;
+}
+
+interface WorkspaceUserPickerOption {
+  userUuid: MessengerUuid;
+  fullName: string;
+  email: string;
+  presence: PresenceVisual;
+  statusLabel: string | null;
+}
+
+const ADD_STREAM_MEMBERS_INPUT_CLASS =
+  "w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted transition-colors focus:border-accent focus-visible:outline-none focus-visible:ring-0";
+
+const ADD_MEMBERS_CONTENT_CLASS = `${APP_DIALOG_CONTENT_BASE_CLASS} top-1/2 flex max-h-[70vh] max-w-md -translate-y-1/2 flex-col p-0`;
+
+const removeMemberActionClassName =
+  "flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-muted opacity-100 transition-colors hover:bg-bg hover:text-notice-base disabled:opacity-40 sm:opacity-0 sm:group-hover/member:opacity-100";
+
+const EMPTY_WORKSPACE_USER_OPTIONS: WorkspaceUserPickerOption[] = [];
+
 function createNotificationActionState(streamUuid: string | null): NotificationActionState {
   return {
     streamUuid,
@@ -34,17 +80,269 @@ function createNotificationActionState(streamUuid: string | null): NotificationA
   };
 }
 
+function createWorkspaceMemberActionState(streamUuid: string | null): WorkspaceMemberActionState {
+  return {
+    streamUuid,
+    addDialogOpen: false,
+    query: "",
+    selectedUserUuids: [],
+    adding: false,
+    addError: null,
+    removingUserUuids: [],
+    removeError: null,
+  };
+}
+
+function resolveWorkspaceUserDisplayName(user: MessengerUser): string {
+  const fullName = [user.firstName, user.lastName]
+    .map((part) => part?.trim() ?? "")
+    .filter((part) => part.length > 0)
+    .join(" ")
+    .trim();
+  if (fullName.length > 0) return fullName;
+
+  const username = user.username.trim();
+  if (username.length > 0) return username;
+
+  const email = user.email?.trim() ?? "";
+  return email.length > 0 ? email : user.uuid;
+}
+
+function resolveWorkspacePresence(status: MessengerUser["status"] | null): PresenceVisual {
+  return status === "active" || status === "idle" ? status : "offline";
+}
+
+function resolveWorkspaceStatusLabel(status: MessengerUser["status"] | null): string | null {
+  if (status == null) return null;
+  if (status === "active") return t("presence.online");
+  if (status === "idle") return t("presence.away");
+  if (status === "offline") return t("presence.offline");
+  return t("presence.doNotDisturb");
+}
+
+function resolveWorkspaceRoleLabel(role: WorkspaceRightPanelInfoView["members"][number]["role"]) {
+  if (role === "administrator") return t("roles.admin");
+  return t(`roles.${role}`);
+}
+
+function normalizeWorkspaceMemberQuery(query: string): string {
+  return query.trim().toLowerCase();
+}
+
+function filterWorkspaceUserOptions(
+  usersById: Record<MessengerUuid, MessengerUser>,
+  existingMemberUuids: ReadonlySet<MessengerUuid>,
+  selectedUserUuids: readonly MessengerUuid[],
+  query: string,
+): WorkspaceUserPickerOption[] {
+  // Старый picker завязан на числовые Zulip userId, поэтому Workspace держит
+  // такой же по виду список, но строит его из UUID-пользователей messenger store.
+  const normalizedQuery = normalizeWorkspaceMemberQuery(query);
+  const selected = new Set(selectedUserUuids);
+  const options: WorkspaceUserPickerOption[] = [];
+
+  for (const user of Object.values(usersById)) {
+    if (existingMemberUuids.has(user.uuid)) continue;
+
+    const fullName = resolveWorkspaceUserDisplayName(user);
+    const email = user.email?.trim() ?? "";
+    const searchValue = `${fullName} ${email}`.trim().toLowerCase();
+    if (normalizedQuery.length > 0 && !searchValue.includes(normalizedQuery)) continue;
+
+    options.push({
+      userUuid: user.uuid,
+      fullName,
+      email,
+      presence: resolveWorkspacePresence(user.status),
+      statusLabel: resolveWorkspaceStatusLabel(user.status),
+    });
+  }
+
+  options.sort((left, right) => {
+    const leftSelected = selected.has(left.userUuid) ? 0 : 1;
+    const rightSelected = selected.has(right.userUuid) ? 0 : 1;
+    if (leftSelected !== rightSelected) return leftSelected - rightSelected;
+    return left.fullName.localeCompare(right.fullName);
+  });
+
+  return options;
+}
+
+function toggleWorkspaceUserUuidSelection(
+  selectedUserUuids: readonly MessengerUuid[],
+  userUuid: MessengerUuid,
+): MessengerUuid[] {
+  const next = new Set(selectedUserUuids);
+  if (next.has(userUuid)) {
+    next.delete(userUuid);
+  } else {
+    next.add(userUuid);
+  }
+  return Array.from(next).sort((left, right) => left.localeCompare(right));
+}
+
+interface WorkspaceUserPickerListProps {
+  options: readonly WorkspaceUserPickerOption[];
+  selectedUserUuids: ReadonlySet<MessengerUuid>;
+  query: string;
+  onQueryChange: (query: string) => void;
+  onToggle: (userUuid: MessengerUuid) => void;
+}
+
+const WorkspaceUserPickerList: React.FC<WorkspaceUserPickerListProps> = ({
+  options,
+  selectedUserUuids,
+  query,
+  onQueryChange,
+  onToggle,
+}) => {
+  return (
+    <div className="flex flex-1 flex-col gap-3 overflow-hidden">
+      <input
+        type="text"
+        value={query}
+        onChange={(event) => onQueryChange(event.target.value)}
+        className={ADD_STREAM_MEMBERS_INPUT_CLASS}
+        placeholder={t("message.searchUsers")}
+      />
+      <div className="h-96 overflow-y-auto rounded-lg border border-border-subtle">
+        {options.length === 0 ? (
+          <p className="px-3 py-4 text-center text-sm text-text-muted">{t("search.noResults")}</p>
+        ) : (
+          options.map((option) => (
+            <label
+              key={option.userUuid}
+              className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-text-primary transition-colors hover:bg-bg"
+            >
+              <input
+                type="checkbox"
+                checked={selectedUserUuids.has(option.userUuid)}
+                onChange={() => onToggle(option.userUuid)}
+                className="h-4 w-4 rounded border-border-subtle"
+              />
+              <PresenceIndicator status={option.presence} size="sm" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium">{option.fullName}</span>
+                {(option.statusLabel ?? option.email) && (
+                  <span className="block truncate text-[11px] text-text-secondary">
+                    {option.statusLabel ?? option.email}
+                  </span>
+                )}
+              </span>
+            </label>
+          ))
+        )}
+      </div>
+    </div>
+  );
+};
+
+interface WorkspaceAddStreamMembersDialogProps {
+  open: boolean;
+  streamName: string;
+  query: string;
+  options: readonly WorkspaceUserPickerOption[];
+  selectedUserUuids: ReadonlySet<MessengerUuid>;
+  submitting: boolean;
+  error: string | null;
+  onOpenChange: (open: boolean) => void;
+  onQueryChange: (query: string) => void;
+  onToggle: (userUuid: MessengerUuid) => void;
+  onSubmit: () => void;
+}
+
+const WorkspaceAddStreamMembersDialog: React.FC<WorkspaceAddStreamMembersDialogProps> = ({
+  open,
+  streamName,
+  query,
+  options,
+  selectedUserUuids,
+  submitting,
+  error,
+  onOpenChange,
+  onQueryChange,
+  onToggle,
+  onSubmit,
+}) => {
+  return (
+    <AppDialogShell
+      open={open}
+      onOpenChange={onOpenChange}
+      contentClassName={ADD_MEMBERS_CONTENT_CLASS}
+    >
+      <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+        <div className="min-w-0">
+          <Dialog.Title className="truncate text-sm font-semibold text-text-primary">
+            {t("channel.addMembers")}
+          </Dialog.Title>
+          <Dialog.Description className="truncate text-xs text-text-secondary">
+            {streamName}
+          </Dialog.Description>
+        </div>
+        <Dialog.Close asChild>
+          <button
+            type="button"
+            className="hover:bg-bg/50 rounded p-1 text-text-muted"
+            aria-label={t("common.close")}
+          >
+            <Icon name="close" size={18} />
+          </button>
+        </Dialog.Close>
+      </div>
+
+      <div className="flex flex-1 flex-col overflow-hidden p-4">
+        <WorkspaceUserPickerList
+          options={options}
+          selectedUserUuids={selectedUserUuids}
+          query={query}
+          onQueryChange={onQueryChange}
+          onToggle={onToggle}
+        />
+
+        {error && <p className="text-xs text-notice-base">{error}</p>}
+
+        <div className="flex justify-end gap-2 pt-1">
+          <DialogCancelButton disabled={submitting} className="rounded-lg px-3 py-1.5">
+            {t("common.cancel")}
+          </DialogCancelButton>
+          <DialogPrimaryButton
+            onClick={onSubmit}
+            disabled={submitting || selectedUserUuids.size === 0}
+            className="rounded-lg px-3 py-1.5"
+          >
+            {t("common.add")}
+          </DialogPrimaryButton>
+        </div>
+      </div>
+    </AppDialogShell>
+  );
+};
+
 export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = ({ info }) => {
   const navigate = useNavigate();
   const [notificationActionState, setNotificationActionState] = useState<NotificationActionState>(
     () => createNotificationActionState(info.streamUuid),
   );
+  const [memberActionState, setMemberActionState] = useState<WorkspaceMemberActionState>(() =>
+    createWorkspaceMemberActionState(info.streamUuid),
+  );
   const notificationPending =
     notificationActionState.streamUuid === info.streamUuid && notificationActionState.pending;
   const notificationError =
     notificationActionState.streamUuid === info.streamUuid ? notificationActionState.error : null;
+  const memberActionCurrent =
+    memberActionState.streamUuid === info.streamUuid
+      ? memberActionState
+      : createWorkspaceMemberActionState(info.streamUuid);
   const storeNotificationMode = useMessengerStore((state) =>
     info.streamUuid == null ? null : (state.streamsById[info.streamUuid]?.notificationMode ?? null),
+  );
+  const workspaceUsersById = useMessengerStore((state) => state.usersById);
+  const sessions = useWorkspaceAuthStore((state) => state.sessions);
+  const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
+  const runtimeContext = useMemo(
+    () => selectCurrentWorkspaceRuntimeContext({ sessions, currentAccountId }),
+    [currentAccountId, sessions],
   );
   const notificationMode = storeNotificationMode ?? info.notificationMode;
   const notificationLevel = useMemo<WorkspaceStreamNotificationLevel | null>(
@@ -52,18 +350,40 @@ export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = (
       notificationMode == null ? null : mapWorkspaceStreamNotificationModeToLevel(notificationMode),
     [notificationMode],
   );
+  const existingMemberUuids = useMemo(
+    () => new Set(info.members.map((member) => member.userUuid)),
+    [info.members],
+  );
+  const selectedUserUuidSet = useMemo(
+    () => new Set(memberActionCurrent.selectedUserUuids),
+    [memberActionCurrent.selectedUserUuids],
+  );
+  const addMemberOptions = useMemo(
+    () =>
+      // Кандидатов считаем только для открытого диалога: список пользователей
+      // может быть большим, а вне flow добавления эти данные панели не нужны.
+      memberActionCurrent.addDialogOpen
+        ? filterWorkspaceUserOptions(
+            workspaceUsersById,
+            existingMemberUuids,
+            memberActionCurrent.selectedUserUuids,
+            memberActionCurrent.query,
+          )
+        : EMPTY_WORKSPACE_USER_OPTIONS,
+    [
+      existingMemberUuids,
+      memberActionCurrent.addDialogOpen,
+      memberActionCurrent.query,
+      memberActionCurrent.selectedUserUuids,
+      workspaceUsersById,
+    ],
+  );
   const handleOpenTopic = useCallback(
     (route: string) => {
       void navigate(route);
     },
     [navigate],
   );
-
-  useEffect(() => {
-    setNotificationActionState((prev) =>
-      prev.streamUuid === info.streamUuid ? prev : createNotificationActionState(info.streamUuid),
-    );
-  }, [info.streamUuid]);
 
   const handleSetNotificationLevel = useCallback(
     async (level: WorkspaceStreamNotificationLevel): Promise<void> => {
@@ -109,6 +429,162 @@ export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = (
       }
     },
     [info.streamUuid, notificationMode, notificationPending],
+  );
+
+  const handleOpenAddMembers = useCallback(() => {
+    setMemberActionState({
+      ...createWorkspaceMemberActionState(info.streamUuid),
+      streamUuid: info.streamUuid,
+      addDialogOpen: true,
+    });
+  }, [info.streamUuid]);
+
+  const handleAddDialogOpenChange = useCallback((open: boolean) => {
+    setMemberActionState((prev) => ({
+      ...prev,
+      addDialogOpen: open,
+      query: open ? prev.query : "",
+      selectedUserUuids: open ? prev.selectedUserUuids : [],
+      addError: open ? prev.addError : null,
+    }));
+  }, []);
+
+  const handleSetAddMemberQuery = useCallback((query: string) => {
+    setMemberActionState((prev) => ({ ...prev, query }));
+  }, []);
+
+  const handleToggleSelectedMember = useCallback((userUuid: MessengerUuid) => {
+    setMemberActionState((prev) => ({
+      ...prev,
+      selectedUserUuids: toggleWorkspaceUserUuidSelection(prev.selectedUserUuids, userUuid),
+    }));
+  }, []);
+
+  const handleSubmitAddMembers = useCallback(async () => {
+    if (
+      info.streamUuid == null ||
+      runtimeContext == null ||
+      memberActionCurrent.adding ||
+      memberActionCurrent.selectedUserUuids.length === 0
+    ) {
+      return;
+    }
+
+    const streamUuid = info.streamUuid;
+    const userUuids = memberActionCurrent.selectedUserUuids.filter(
+      (userUuid) => !existingMemberUuids.has(userUuid),
+    );
+    // Диалог может хранить выбор чуть дольше, чем обновляется список members.
+    // Перед submit повторно отсекаем уже существующих участников, чтобы не
+    // отправлять backend-у дубли после параллельного обновления bindings.
+    if (userUuids.length === 0) {
+      setMemberActionState((prev) => ({
+        ...prev,
+        addDialogOpen: false,
+        selectedUserUuids: [],
+        addError: null,
+      }));
+      return;
+    }
+
+    setMemberActionState((prev) => ({ ...prev, adding: true, addError: null }));
+    try {
+      await addWorkspaceStreamMembers({
+        runtimeContext,
+        getRuntimeContext: useWorkspaceAuthStore.getState().getCurrentRuntimeContext,
+        streamUuid,
+        userUuids,
+      });
+      setMemberActionState((prev) =>
+        prev.streamUuid === streamUuid
+          ? {
+              ...prev,
+              addDialogOpen: false,
+              query: "",
+              selectedUserUuids: [],
+              adding: false,
+              addError: null,
+            }
+          : prev,
+      );
+    } catch (error) {
+      reportUnexpectedError("workspace-right-panel", error, {
+        action: "add-stream-members",
+      });
+      setMemberActionState((prev) =>
+        prev.streamUuid === streamUuid
+          ? {
+              ...prev,
+              adding: false,
+              addError: t("app.error"),
+            }
+          : prev,
+      );
+    }
+  }, [
+    existingMemberUuids,
+    info.streamUuid,
+    memberActionCurrent.adding,
+    memberActionCurrent.selectedUserUuids,
+    runtimeContext,
+  ]);
+
+  const handleRemoveMember = useCallback(
+    async (member: WorkspaceRightPanelInfoView["members"][number]) => {
+      // UI доверяет готовому `canRemove` из selector-а: сам себя может удалить
+      // любой участник, а чужих участников видит с кнопкой только owner stream-а.
+      if (
+        info.streamUuid == null ||
+        runtimeContext == null ||
+        !member.canRemove ||
+        memberActionCurrent.removingUserUuids.includes(member.userUuid)
+      ) {
+        return;
+      }
+
+      const streamUuid = info.streamUuid;
+      setMemberActionState((prev) => ({
+        ...prev,
+        removeError: null,
+        removingUserUuids: [...prev.removingUserUuids, member.userUuid],
+      }));
+      try {
+        await removeWorkspaceStreamMember({
+          runtimeContext,
+          getRuntimeContext: useWorkspaceAuthStore.getState().getCurrentRuntimeContext,
+          streamUuid,
+          bindingUuid: member.bindingUuid,
+          userUuid: member.userUuid,
+        });
+        setMemberActionState((prev) =>
+          prev.streamUuid === streamUuid
+            ? {
+                ...prev,
+                removingUserUuids: prev.removingUserUuids.filter(
+                  (userUuid) => userUuid !== member.userUuid,
+                ),
+                removeError: null,
+              }
+            : prev,
+        );
+      } catch (error) {
+        reportUnexpectedError("workspace-right-panel", error, {
+          action: "remove-stream-member",
+        });
+        setMemberActionState((prev) =>
+          prev.streamUuid === streamUuid
+            ? {
+                ...prev,
+                removingUserUuids: prev.removingUserUuids.filter(
+                  (userUuid) => userUuid !== member.userUuid,
+                ),
+                removeError: t("app.error"),
+              }
+            : prev,
+        );
+      }
+    },
+    [info.streamUuid, memberActionCurrent.removingUserUuids, runtimeContext],
   );
 
   return (
@@ -210,12 +686,94 @@ export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = (
               <Icon name="profile" size={16} className="shrink-0 text-current" />
               {t("channel.members")}
             </span>
+            {info.streamUuid != null && runtimeContext != null && (
+              <button
+                type="button"
+                aria-label={t("channel.addMembers")}
+                onClick={handleOpenAddMembers}
+                className="flex h-6 w-6 items-center justify-center rounded text-text-secondary transition-colors hover:bg-bg-elevated hover:text-text-primary"
+              >
+                <Icon name="person_add" size={16} className="text-current" />
+              </button>
+            )}
           </h3>
-          <p className="px-2 py-3 text-center text-sm text-text-muted">
-            {t("channel.membersTemporarilyUnavailable")}
-          </p>
+          {info.members.length === 0 ? (
+            <p className="px-2 py-3 text-center text-sm text-text-muted">
+              {t("channel.noMembers")}
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {info.members.map((member) => (
+                <li key={member.bindingUuid} className="group/member">
+                  {/* Строка участника намеренно не кнопка: Workspace profile flow
+                      пока не подключен, поэтому не создаем ложное действие. */}
+                  <div className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-bg-elevated">
+                    <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                      <div className="relative shrink-0">
+                        <Avatar size="sm" className="bg-bg-elevated text-text-primary">
+                          {member.name.slice(0, 1)}
+                        </Avatar>
+                        <span className="absolute -bottom-0.5 -right-0.5">
+                          <PresenceIndicator
+                            status={member.isOnline ? "active" : "offline"}
+                            size="sm"
+                          />
+                        </span>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="flex items-center gap-1.5 truncate text-sm text-text-primary">
+                          {member.name}
+                          <span className="text-[10px] font-normal text-text-secondary">
+                            {resolveWorkspaceRoleLabel(member.role)}
+                          </span>
+                        </p>
+                        {(member.status != null || member.email != null) && (
+                          <p className="truncate text-[11px] text-text-secondary">
+                            {resolveWorkspaceStatusLabel(member.status) ?? member.email}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    {member.canRemove && runtimeContext != null && (
+                      <button
+                        type="button"
+                        aria-label={t("a11y.removeMemberFromChannel", { name: member.name })}
+                        disabled={memberActionCurrent.removingUserUuids.includes(member.userUuid)}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          void handleRemoveMember(member);
+                        }}
+                        className={removeMemberActionClassName}
+                      >
+                        <Icon name="close" size={14} className="text-current" />
+                      </button>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          {memberActionCurrent.removeError && (
+            <p className="mt-2 px-2 text-xs text-notice-base">{memberActionCurrent.removeError}</p>
+          )}
         </div>
       </ScrollArea>
+      <WorkspaceAddStreamMembersDialog
+        open={memberActionCurrent.addDialogOpen}
+        streamName={info.title}
+        query={memberActionCurrent.query}
+        options={addMemberOptions}
+        selectedUserUuids={selectedUserUuidSet}
+        submitting={memberActionCurrent.adding}
+        error={memberActionCurrent.addError}
+        onOpenChange={handleAddDialogOpenChange}
+        onQueryChange={handleSetAddMemberQuery}
+        onToggle={handleToggleSelectedMember}
+        onSubmit={() => {
+          void handleSubmitAddMembers();
+        }}
+      />
     </div>
   );
 };

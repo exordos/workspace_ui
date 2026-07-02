@@ -6,6 +6,8 @@ import type {
   MessengerSidebarStreamItem,
   MessengerSidebarTopicItem,
 } from "~/entities/messenger/messenger.types";
+import { RightDrawerContext } from "~/shared/contexts/right-drawer";
+import type { RightDrawerContextValue } from "~/shared/contexts/right-drawer.types";
 import { renderWithProviders } from "~/test/render";
 import { useSidebarConfigStore } from "./sidebar-config.model";
 import { SIDEBAR_SYSTEM_ALL_FOLDER_ID } from "./sidebar-folder.constants";
@@ -109,15 +111,40 @@ function createFolder(overrides: Partial<MessengerFolder> = {}): MessengerFolder
   };
 }
 
-function renderWorkspaceSidebar(streams: MessengerSidebarStreamItem[]): void {
+function expectNoWorkspaceActionRequests(): void {
+  expect(runWorkspaceStreamNotificationUpdateMock).not.toHaveBeenCalled();
+  expect(runWorkspaceTopicNotificationUpdateMock).not.toHaveBeenCalled();
+  expect(runWorkspaceFolderItemPinToggleMock).not.toHaveBeenCalled();
+  expect(runWorkspaceFolderAssignmentToggleMock).not.toHaveBeenCalled();
+  expect(runWorkspaceCreateTopicRequestMock).not.toHaveBeenCalled();
+  expect(runWorkspaceTopicRenameRequestMock).not.toHaveBeenCalled();
+  expect(runWorkspaceTopicDoneToggleMock).not.toHaveBeenCalled();
+}
+
+function renderWorkspaceSidebar(
+  streams: MessengerSidebarStreamItem[],
+  rightDrawerValue?: RightDrawerContextValue,
+): void {
   renderWithProviders(
-    <WorkspaceSidebar
-      streams={streams}
-      loading={false}
-      error={null}
-      activityCounts={{ inboxCount: null, mentionsCount: null }}
-      workspaceStreamCount={streams.length}
-    />,
+    rightDrawerValue == null ? (
+      <WorkspaceSidebar
+        streams={streams}
+        loading={false}
+        error={null}
+        activityCounts={{ inboxCount: null, mentionsCount: null }}
+        workspaceStreamCount={streams.length}
+      />
+    ) : (
+      <RightDrawerContext.Provider value={rightDrawerValue}>
+        <WorkspaceSidebar
+          streams={streams}
+          loading={false}
+          error={null}
+          activityCounts={{ inboxCount: null, mentionsCount: null }}
+          workspaceStreamCount={streams.length}
+        />
+      </RightDrawerContext.Provider>
+    ),
     {
       route: `/org/acme/project/project-a/messenger/stream/${STREAM_UUID}`,
     },
@@ -145,8 +172,27 @@ describe("WorkspaceSidebar context menu", () => {
     fireEvent.contextMenu(screen.getByRole("link", { name: /engineering/i }));
 
     expect(await screen.findByRole("radiogroup", { name: /notifications/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /members/i })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /new topic/i })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /mark as read/i })).not.toBeInTheDocument();
+  });
+
+  it("opens the shared right panel from the stream members menu item without API actions", async () => {
+    const openInfo = vi.fn();
+    const setOpen = vi.fn();
+
+    renderWorkspaceSidebar([createStream()], {
+      open: false,
+      setOpen,
+      openInfo,
+    });
+
+    fireEvent.contextMenu(screen.getByRole("link", { name: /engineering/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /members/i }));
+
+    expect(openInfo).toHaveBeenCalledTimes(1);
+    expect(setOpen).not.toHaveBeenCalled();
+    expectNoWorkspaceActionRequests();
   });
 
   it("opens the create chat dialog from the search header action", async () => {

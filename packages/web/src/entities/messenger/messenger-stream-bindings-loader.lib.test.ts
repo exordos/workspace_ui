@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
-import type { MessengerClientOptions } from "~/shared/api/messenger-client";
+import type {
+  MessengerClientOptions,
+  MessengerCollectionPage,
+} from "~/shared/api/messenger-client";
 import type { WorkspaceMessengerStreamBindingDto } from "~/shared/api/messenger.types";
 import {
   clearMessengerStreamBindingsLoadRegistry,
@@ -9,6 +12,7 @@ import {
   streamUuidFromWorkspaceMessengerRoute,
 } from "./messenger-stream-bindings-loader.lib";
 import { useMessengerStore } from "./messenger.model";
+import type { MessengerStreamBinding } from "./messenger.types";
 
 const ACCOUNT_A = "account-a";
 const ACCOUNT_B = "account-b";
@@ -24,6 +28,7 @@ const STREAM_A = "75309057-419c-4b12-a7c1-3932429ec4a6";
 const STREAM_B = "37a28696-153d-431e-a5fb-36f0c0209765";
 const BINDING_A = "dff7201e-5120-422d-ac5a-3cbe596dd71b";
 const BINDING_B = "3ba0d6e2-b7cd-4e70-90f8-89b202f8d1e7";
+const BINDING_C = "7c1ce67c-2ec3-4e1b-9380-458bd8c607f2";
 const DATE = "2026-06-22T10:10:00Z";
 
 function createRuntimeContext(
@@ -58,6 +63,43 @@ function createStreamBindingDto(
     ...overrides,
   };
 }
+
+function createStreamBinding(
+  overrides: Partial<MessengerStreamBinding> = {},
+): MessengerStreamBinding {
+  return {
+    uuid: BINDING_A,
+    projectId: PROJECT_A,
+    streamUuid: STREAM_A,
+    userUuid: USER_A,
+    whoUuid: USER_A,
+    role: "member",
+    notificationMode: "all_messages",
+    createdAt: DATE,
+    updatedAt: DATE,
+    ...overrides,
+  };
+}
+
+function createStreamBindingsPage(
+  items: WorkspaceMessengerStreamBindingDto[],
+  nextPageMarker: string | null = null,
+): MessengerCollectionPage<WorkspaceMessengerStreamBindingDto> {
+  return {
+    items,
+    nextPageMarker,
+    pageLimit: 100,
+  };
+}
+
+type MessengerStreamBindingsPageMock = (
+  options: MessengerClientOptions,
+  query: {
+    streamUuid: string;
+    pageLimit?: number;
+    pageMarker?: string | number;
+  },
+) => Promise<MessengerCollectionPage<WorkspaceMessengerStreamBindingDto>>;
 
 function createDeferred<T>(): {
   promise: Promise<T>;
@@ -94,16 +136,18 @@ describe("messenger stream bindings loader", () => {
   it("loads stream bindings through Workspace API and writes adapted bindings to the messenger store", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = prepareStoreOwner(runtimeContext);
-    const getStreamBindings = vi.fn((_options: MessengerClientOptions, _query: unknown) =>
-      Promise.resolve([
-        createStreamBindingDto(),
-        createStreamBindingDto({
-          uuid: BINDING_B,
-          user_uuid: USER_B,
-          who_uuid: USER_B,
-          role: "administrator",
-        }),
-      ]),
+    const getStreamBindingsPage = vi.fn((_options: MessengerClientOptions, _query: unknown) =>
+      Promise.resolve(
+        createStreamBindingsPage([
+          createStreamBindingDto(),
+          createStreamBindingDto({
+            uuid: BINDING_B,
+            user_uuid: USER_B,
+            who_uuid: USER_B,
+            role: "administrator",
+          }),
+        ]),
+      ),
     );
     const upsertStreamBindings = vi.fn();
 
@@ -112,7 +156,7 @@ describe("messenger stream bindings loader", () => {
         runtimeContext,
         streamUuid: STREAM_A,
         getRuntimeContext: () => runtimeContext,
-        client: { getStreamBindings },
+        client: { getStreamBindingsPage },
         cache: { upsertStreamBindings },
       }),
     ).resolves.toEqual({
@@ -122,18 +166,19 @@ describe("messenger stream bindings loader", () => {
       bindings: 2,
     });
 
-    expect(getStreamBindings).toHaveBeenCalledWith(
+    expect(getStreamBindingsPage).toHaveBeenCalledWith(
       expect.objectContaining({
         accessToken: "access-token-a",
         devTargetOrigin: "https://org-a.example.com",
         projectId: PROJECT_A,
       }),
-      { streamUuid: STREAM_A },
+      { streamUuid: STREAM_A, pageLimit: 100, pageMarker: undefined },
     );
     expect(useMessengerStore.getState().streamBindingIdsByStreamId[STREAM_A]).toEqual([
       BINDING_A,
       BINDING_B,
     ]);
+    expect(useMessengerStore.getState().streamBindingsLoadedByStreamId[STREAM_A]).toBe(true);
     expect(useMessengerStore.getState().streamBindingsById[BINDING_B]).toMatchObject({
       uuid: BINDING_B,
       streamUuid: STREAM_A,
@@ -146,7 +191,65 @@ describe("messenger stream bindings loader", () => {
     );
   });
 
-  it("skips the request when bindings for this stream are already in store", async () => {
+  it("loads every page of stream bindings before writing the stream as loaded", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    useMessengerStore.getState().upsertStreamBindings(ownerKey, [
+      createStreamBinding({
+        uuid: BINDING_C,
+        userUuid: USER_B,
+        whoUuid: USER_B,
+      }),
+    ]);
+    const getStreamBindingsPage = vi
+      .fn<MessengerStreamBindingsPageMock>()
+      .mockResolvedValueOnce(createStreamBindingsPage([createStreamBindingDto()], "after-a"))
+      .mockResolvedValueOnce(
+        createStreamBindingsPage([
+          createStreamBindingDto({
+            uuid: BINDING_B,
+            user_uuid: USER_B,
+            who_uuid: USER_B,
+            role: "administrator",
+          }),
+        ]),
+      );
+    const upsertStreamBindings = vi.fn();
+
+    await expect(
+      loadMessengerStreamBindings({
+        runtimeContext,
+        streamUuid: STREAM_A,
+        getRuntimeContext: () => runtimeContext,
+        client: { getStreamBindingsPage },
+        cache: { upsertStreamBindings },
+      }),
+    ).resolves.toEqual({
+      status: "loaded",
+      ownerKey,
+      streamUuid: STREAM_A,
+      bindings: 2,
+    });
+
+    expect(getStreamBindingsPage).toHaveBeenNthCalledWith(1, expect.any(Object), {
+      streamUuid: STREAM_A,
+      pageLimit: 100,
+      pageMarker: undefined,
+    });
+    expect(getStreamBindingsPage).toHaveBeenNthCalledWith(2, expect.any(Object), {
+      streamUuid: STREAM_A,
+      pageLimit: 100,
+      pageMarker: "after-a",
+    });
+    expect(useMessengerStore.getState().streamBindingIdsByStreamId[STREAM_A]).toEqual([
+      BINDING_A,
+      BINDING_B,
+    ]);
+    expect(useMessengerStore.getState().streamBindingsById[BINDING_C]).toBeUndefined();
+    expect(useMessengerStore.getState().streamBindingsLoadedByStreamId[STREAM_A]).toBe(true);
+  });
+
+  it("skips the request when bindings for this stream are already loaded", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = prepareStoreOwner(runtimeContext);
     useMessengerStore.getState().upsertStreamBindings(ownerKey, [
@@ -162,8 +265,9 @@ describe("messenger stream bindings loader", () => {
         updatedAt: DATE,
       },
     ]);
-    const getStreamBindings = vi.fn((_options: MessengerClientOptions, _query: unknown) =>
-      Promise.resolve([createStreamBindingDto()]),
+    useMessengerStore.getState().markStreamBindingsLoaded(ownerKey, STREAM_A);
+    const getStreamBindingsPage = vi.fn((_options: MessengerClientOptions, _query: unknown) =>
+      Promise.resolve(createStreamBindingsPage([createStreamBindingDto()])),
     );
 
     await expect(
@@ -171,7 +275,7 @@ describe("messenger stream bindings loader", () => {
         runtimeContext,
         streamUuid: STREAM_A,
         getRuntimeContext: () => runtimeContext,
-        client: { getStreamBindings },
+        client: { getStreamBindingsPage },
         cache: { upsertStreamBindings: vi.fn() },
       }),
     ).resolves.toEqual({
@@ -181,14 +285,28 @@ describe("messenger stream bindings loader", () => {
       reason: "already-loaded",
     });
 
-    expect(getStreamBindings).not.toHaveBeenCalled();
+    expect(getStreamBindingsPage).not.toHaveBeenCalled();
   });
 
-  it("refetches after an empty backend response because the store has no binding ids", async () => {
+  it("does not refetch after an empty backend response because the stream is marked as loaded", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = prepareStoreOwner(runtimeContext);
-    const getStreamBindings = vi.fn((_options: MessengerClientOptions, _query: unknown) =>
-      Promise.resolve([]),
+    useMessengerStore.getState().upsertStreamBindings(ownerKey, [
+      createStreamBinding(),
+      createStreamBinding({
+        uuid: BINDING_B,
+        userUuid: USER_B,
+        whoUuid: USER_B,
+      }),
+      createStreamBinding({
+        uuid: BINDING_C,
+        streamUuid: STREAM_B,
+        userUuid: USER_B,
+        whoUuid: USER_B,
+      }),
+    ]);
+    const getStreamBindingsPage = vi.fn((_options: MessengerClientOptions, _query: unknown) =>
+      Promise.resolve(createStreamBindingsPage([])),
     );
 
     await expect(
@@ -196,7 +314,7 @@ describe("messenger stream bindings loader", () => {
         runtimeContext,
         streamUuid: STREAM_A,
         getRuntimeContext: () => runtimeContext,
-        client: { getStreamBindings },
+        client: { getStreamBindingsPage },
         cache: { upsertStreamBindings: vi.fn() },
       }),
     ).resolves.toEqual({
@@ -210,24 +328,31 @@ describe("messenger stream bindings loader", () => {
         runtimeContext,
         streamUuid: STREAM_A,
         getRuntimeContext: () => runtimeContext,
-        client: { getStreamBindings },
+        client: { getStreamBindingsPage },
         cache: { upsertStreamBindings: vi.fn() },
       }),
     ).resolves.toEqual({
-      status: "loaded",
+      status: "skipped",
       ownerKey,
       streamUuid: STREAM_A,
-      bindings: 0,
+      reason: "already-loaded",
     });
 
-    expect(getStreamBindings).toHaveBeenCalledTimes(2);
+    const state = useMessengerStore.getState();
+    expect(state.streamBindingsById[BINDING_A]).toBeUndefined();
+    expect(state.streamBindingsById[BINDING_B]).toBeUndefined();
+    expect(state.streamBindingsById[BINDING_C]).toMatchObject({ uuid: BINDING_C });
+    expect(state.streamBindingIdsByStreamId[STREAM_A]).toEqual([]);
+    expect(state.streamBindingIdsByStreamId[STREAM_B]).toEqual([BINDING_C]);
+    expect(state.streamBindingsLoadedByStreamId[STREAM_A]).toBe(true);
+    expect(getStreamBindingsPage).toHaveBeenCalledTimes(1);
   });
 
   it("refetches after the store is wiped instead of trusting the old loaded registry", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = prepareStoreOwner(runtimeContext);
-    const getStreamBindings = vi.fn((_options: MessengerClientOptions, _query: unknown) =>
-      Promise.resolve([createStreamBindingDto()]),
+    const getStreamBindingsPage = vi.fn((_options: MessengerClientOptions, _query: unknown) =>
+      Promise.resolve(createStreamBindingsPage([createStreamBindingDto()])),
     );
 
     await expect(
@@ -235,7 +360,7 @@ describe("messenger stream bindings loader", () => {
         runtimeContext,
         streamUuid: STREAM_A,
         getRuntimeContext: () => runtimeContext,
-        client: { getStreamBindings },
+        client: { getStreamBindingsPage },
         cache: { upsertStreamBindings: vi.fn() },
       }),
     ).resolves.toEqual({
@@ -253,7 +378,7 @@ describe("messenger stream bindings loader", () => {
         runtimeContext,
         streamUuid: STREAM_A,
         getRuntimeContext: () => runtimeContext,
-        client: { getStreamBindings },
+        client: { getStreamBindingsPage },
         cache: { upsertStreamBindings: vi.fn() },
       }),
     ).resolves.toEqual({
@@ -263,18 +388,26 @@ describe("messenger stream bindings loader", () => {
       bindings: 1,
     });
 
-    expect(getStreamBindings).toHaveBeenCalledTimes(2);
+    expect(getStreamBindingsPage).toHaveBeenCalledTimes(2);
   });
 
   it("does not apply an old response after runtime owner changes", async () => {
     let currentContext = createRuntimeContext();
     const ownerKey = prepareStoreOwner(currentContext);
-    const bindingsRequest = createDeferred<WorkspaceMessengerStreamBindingDto[]>();
+    useMessengerStore.getState().upsertStreamBindings(ownerKey, [
+      createStreamBinding({
+        uuid: BINDING_B,
+        userUuid: USER_B,
+        whoUuid: USER_B,
+      }),
+    ]);
+    const bindingsRequest =
+      createDeferred<MessengerCollectionPage<WorkspaceMessengerStreamBindingDto>>();
     const loading = loadMessengerStreamBindings({
       runtimeContext: currentContext,
       streamUuid: STREAM_A,
       getRuntimeContext: () => currentContext,
-      client: { getStreamBindings: () => bindingsRequest.promise },
+      client: { getStreamBindingsPage: () => bindingsRequest.promise },
       cache: { upsertStreamBindings: vi.fn() },
     });
 
@@ -287,7 +420,7 @@ describe("messenger stream bindings loader", () => {
       accessToken: "access-token-b",
       runtimeGeneration: 2,
     });
-    bindingsRequest.resolve([createStreamBindingDto()]);
+    bindingsRequest.resolve(createStreamBindingsPage([createStreamBindingDto()]));
 
     await expect(loading).resolves.toEqual({
       status: "skipped",
@@ -295,14 +428,19 @@ describe("messenger stream bindings loader", () => {
       streamUuid: STREAM_A,
       reason: "stale-owner",
     });
-    expect(useMessengerStore.getState().streamBindingIdsByStreamId[STREAM_A]).toBeUndefined();
+    expect(useMessengerStore.getState().streamBindingIdsByStreamId[STREAM_A]).toEqual([BINDING_B]);
+    expect(useMessengerStore.getState().streamBindingsById[BINDING_B]).toMatchObject({
+      uuid: BINDING_B,
+    });
+    expect(useMessengerStore.getState().streamBindingsLoadedByStreamId[STREAM_A]).toBeUndefined();
   });
 
   it("deduplicates parallel loads for the same runtime stream", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = prepareStoreOwner(runtimeContext);
-    const bindingsRequest = createDeferred<WorkspaceMessengerStreamBindingDto[]>();
-    const getStreamBindings = vi.fn(
+    const bindingsRequest =
+      createDeferred<MessengerCollectionPage<WorkspaceMessengerStreamBindingDto>>();
+    const getStreamBindingsPage = vi.fn(
       (_options: MessengerClientOptions, _query: unknown) => bindingsRequest.promise,
     );
 
@@ -310,18 +448,18 @@ describe("messenger stream bindings loader", () => {
       runtimeContext,
       streamUuid: STREAM_A,
       getRuntimeContext: () => runtimeContext,
-      client: { getStreamBindings },
+      client: { getStreamBindingsPage },
       cache: { upsertStreamBindings: vi.fn() },
     });
     const secondLoad = loadMessengerStreamBindings({
       runtimeContext,
       streamUuid: STREAM_A,
       getRuntimeContext: () => runtimeContext,
-      client: { getStreamBindings },
+      client: { getStreamBindingsPage },
       cache: { upsertStreamBindings: vi.fn() },
     });
 
-    bindingsRequest.resolve([createStreamBindingDto()]);
+    bindingsRequest.resolve(createStreamBindingsPage([createStreamBindingDto()]));
 
     await expect(firstLoad).resolves.toEqual({
       status: "loaded",
@@ -335,7 +473,7 @@ describe("messenger stream bindings loader", () => {
       streamUuid: STREAM_A,
       bindings: 1,
     });
-    expect(getStreamBindings).toHaveBeenCalledTimes(1);
+    expect(getStreamBindingsPage).toHaveBeenCalledTimes(1);
   });
 
   it("extracts stream uuid only from stream and topic routes", () => {

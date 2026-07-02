@@ -150,6 +150,30 @@ describe("selectWorkspaceRightPanelInfoView", () => {
       description: "Team updates",
       participantsCount: 2,
       onlineCount: 1,
+      members: [
+        {
+          bindingUuid: BINDING_A_UUID,
+          userUuid: USER_A_UUID,
+          name: "Alice Stone",
+          email: "alice@example.com",
+          status: "active",
+          role: "member",
+          isOnline: true,
+          isCurrentUser: true,
+          canRemove: true,
+        },
+        {
+          bindingUuid: BINDING_B_UUID,
+          userUuid: USER_B_UUID,
+          name: "Bob Reed",
+          email: "bob@example.com",
+          status: "offline",
+          role: "member",
+          isOnline: false,
+          isCurrentUser: false,
+          canRemove: true,
+        },
+      ],
       topics: [
         {
           id: TOPIC_A_UUID,
@@ -192,5 +216,114 @@ describe("selectWorkspaceRightPanelInfoView", () => {
     expect(view?.participantsCount).toBe(2);
     expect(view?.onlineCount).toBe(1);
     expect(view?.topics.map((topic) => topic.name)).toEqual(["Roadmap", "Support"]);
+  });
+
+  it("maps members from stream bindings and keeps binding order", () => {
+    const view = selectWorkspaceRightPanelInfoView(useMessengerStore.getState(), {
+      route: {
+        kind: "stream",
+        orgId: "org-a",
+        projectId: "project-a",
+        streamUuid: STREAM_UUID,
+      },
+      fallbackTitle: "Messenger",
+      currentUserUuid: USER_B_UUID,
+    });
+
+    expect(view?.members.map((member) => member.bindingUuid)).toEqual([
+      BINDING_A_UUID,
+      BINDING_B_UUID,
+    ]);
+    expect(view?.members).toEqual([
+      expect.objectContaining({
+        bindingUuid: BINDING_A_UUID,
+        userUuid: USER_A_UUID,
+        name: "Alice Stone",
+        email: "alice@example.com",
+        status: "active",
+        role: "member",
+        isOnline: true,
+        isCurrentUser: false,
+        canRemove: false,
+      }),
+      expect.objectContaining({
+        bindingUuid: BINDING_B_UUID,
+        userUuid: USER_B_UUID,
+        name: "Bob Reed",
+        email: "bob@example.com",
+        status: "offline",
+        role: "member",
+        isOnline: false,
+        isCurrentUser: true,
+        canRemove: true,
+      }),
+    ]);
+    expect(view?.participantsCount).toBe(view?.members.length);
+    expect(view?.onlineCount).toBe(view?.members.filter((member) => member.isOnline).length);
+  });
+
+  it("keeps missing users as member rows with stable fallback fields", () => {
+    const payload = createBootstrapPayload();
+    useMessengerStore.getState().replaceBootstrapState(OWNER_KEY, {
+      ...payload,
+      users: payload.users.filter((user) => user.uuid !== USER_B_UUID),
+    });
+
+    const view = selectWorkspaceRightPanelInfoView(useMessengerStore.getState(), {
+      route: {
+        kind: "stream",
+        orgId: "org-a",
+        projectId: "project-a",
+        streamUuid: STREAM_UUID,
+      },
+      fallbackTitle: "Messenger",
+      currentUserUuid: USER_A_UUID,
+    });
+
+    expect(view?.members[1]).toEqual({
+      bindingUuid: BINDING_B_UUID,
+      userUuid: USER_B_UUID,
+      name: USER_B_UUID,
+      email: null,
+      status: null,
+      role: "member",
+      isOnline: false,
+      isCurrentUser: false,
+      canRemove: true,
+    });
+    expect(view?.participantsCount).toBe(2);
+    expect(view?.onlineCount).toBe(1);
+  });
+
+  it("allows the current user to remove self and lets the owner remove other members", () => {
+    const view = selectWorkspaceRightPanelInfoView(useMessengerStore.getState(), {
+      route: {
+        kind: "stream",
+        orgId: "org-a",
+        projectId: "project-a",
+        streamUuid: STREAM_UUID,
+      },
+      fallbackTitle: "Messenger",
+      currentUserUuid: USER_A_UUID,
+    });
+
+    expect(view?.members.find((member) => member.userUuid === USER_A_UUID)?.canRemove).toBe(true);
+    expect(view?.members.find((member) => member.userUuid === USER_B_UUID)?.canRemove).toBe(true);
+  });
+
+  it("does not allow a non-owner to remove another member", () => {
+    const view = selectWorkspaceRightPanelInfoView(useMessengerStore.getState(), {
+      route: {
+        kind: "stream",
+        orgId: "org-a",
+        projectId: "project-a",
+        streamUuid: STREAM_UUID,
+      },
+      fallbackTitle: "Messenger",
+      currentUserUuid: USER_B_UUID,
+    });
+
+    expect(view?.members.find((member) => member.userUuid === USER_A_UUID)?.canRemove).toBe(false);
+    expect(view?.members.find((member) => member.userUuid === USER_B_UUID)?.canRemove).toBe(true);
   });
 });

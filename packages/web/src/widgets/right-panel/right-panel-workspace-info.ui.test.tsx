@@ -1,21 +1,47 @@
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type { MessengerStream } from "~/entities/messenger/messenger.types";
+import type { MessengerStream, MessengerUser } from "~/entities/messenger/messenger.types";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { renderWithProviders } from "~/test/render";
 import { RightPanelWorkspaceInfo } from "./right-panel-workspace-info.ui";
 import type { WorkspaceRightPanelInfoView } from "./right-panel.types";
 
 const runWorkspaceStreamNotificationUpdateMock = vi.hoisted(() => vi.fn());
+const addWorkspaceStreamMembersMock = vi.hoisted(() => vi.fn());
+const removeWorkspaceStreamMemberMock = vi.hoisted(() => vi.fn());
 
 vi.mock("~/entities/messenger/messenger-sidebar-actions.lib", () => ({
   runWorkspaceStreamNotificationUpdate: (...args: unknown[]) =>
     runWorkspaceStreamNotificationUpdateMock(...args),
 }));
 
+vi.mock("~/entities/messenger/messenger-stream-member-actions.lib", () => ({
+  addWorkspaceStreamMembers: (...args: unknown[]) => addWorkspaceStreamMembersMock(...args),
+  removeWorkspaceStreamMember: (...args: unknown[]) => removeWorkspaceStreamMemberMock(...args),
+}));
+
 const STREAM_UUID = "11111111-1111-4111-8111-111111111111";
 const SECOND_STREAM_UUID = "22222222-2222-4222-8222-222222222222";
-const OWNER_KEY = "account:instance:organization:project:user";
+const CURRENT_USER_UUID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const ALICE_USER_UUID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const BOB_USER_UUID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const ALICE_BINDING_UUID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+const SELF_BINDING_UUID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+const RUNTIME_CONTEXT = {
+  accountId: "account",
+  instanceId: "instance",
+  organizationId: "organization",
+  organizationOrigin: "https://workspace.example.com",
+  projectId: "project",
+  userUuid: CURRENT_USER_UUID,
+  accessToken: "access-token",
+  refreshToken: "refresh-token",
+  runtimeGeneration: 1,
+} satisfies Omit<WorkspaceAuthSession, "login" | "profile">;
+const OWNER_KEY = workspaceRuntimeOwnerKey(RUNTIME_CONTEXT);
 const DATE = "2026-06-22T10:10:00Z";
 
 function createInfo(
@@ -28,6 +54,19 @@ function createInfo(
     description: null,
     participantsCount: 2,
     onlineCount: 1,
+    members: [
+      {
+        bindingUuid: ALICE_BINDING_UUID,
+        userUuid: ALICE_USER_UUID,
+        name: "Alice Adams",
+        email: "alice@example.com",
+        status: "active",
+        role: "member",
+        isOnline: true,
+        isCurrentUser: false,
+        canRemove: true,
+      },
+    ],
     topics: [],
     ...overrides,
   };
@@ -59,10 +98,95 @@ function createStream(overrides: Partial<MessengerStream> = {}): MessengerStream
   };
 }
 
+function createUser(overrides: Partial<MessengerUser> & { uuid: string }): MessengerUser {
+  const { uuid, ...rest } = overrides;
+  return {
+    uuid,
+    username: uuid,
+    status: "offline",
+    firstName: null,
+    lastName: null,
+    email: null,
+    lastPingAt: null,
+    createdAt: DATE,
+    updatedAt: DATE,
+    ...rest,
+  };
+}
+
+function createSession(
+  overrides: Partial<Omit<WorkspaceAuthSession, "runtimeGeneration">> = {},
+): Omit<WorkspaceAuthSession, "runtimeGeneration"> {
+  return {
+    accountId: RUNTIME_CONTEXT.accountId,
+    instanceId: RUNTIME_CONTEXT.instanceId,
+    organizationId: RUNTIME_CONTEXT.organizationId,
+    organizationOrigin: RUNTIME_CONTEXT.organizationOrigin,
+    projectId: RUNTIME_CONTEXT.projectId,
+    userUuid: RUNTIME_CONTEXT.userUuid,
+    accessToken: RUNTIME_CONTEXT.accessToken,
+    refreshToken: RUNTIME_CONTEXT.refreshToken,
+    login: "current@example.com",
+    profile: {
+      uuid: CURRENT_USER_UUID,
+      username: "current",
+      firstName: "Current",
+      lastName: "User",
+      email: "current@example.com",
+      status: "active",
+    },
+    ...overrides,
+  };
+}
+
+function seedWorkspaceAuth(): void {
+  useWorkspaceAuthStore.getState().setSession(createSession());
+}
+
+function seedWorkspaceUsers(): void {
+  useMessengerStore.getState().startBootstrap(OWNER_KEY);
+  useMessengerStore.getState().replaceBootstrapState(OWNER_KEY, {
+    streams: [],
+    streamBindings: [],
+    topics: [],
+    conversations: [],
+    folders: [],
+    users: [
+      createUser({
+        uuid: CURRENT_USER_UUID,
+        username: "current",
+        firstName: "Current",
+        lastName: "User",
+        email: "current@example.com",
+        status: "active",
+      }),
+      createUser({
+        uuid: ALICE_USER_UUID,
+        username: "alice",
+        firstName: "Alice",
+        lastName: "Adams",
+        email: "alice@example.com",
+        status: "active",
+      }),
+      createUser({
+        uuid: BOB_USER_UUID,
+        username: "bob",
+        firstName: "Bob",
+        lastName: "Baker",
+        email: "bob@example.com",
+        status: "idle",
+      }),
+    ],
+  });
+}
+
 describe("RightPanelWorkspaceInfo", () => {
   afterEach(() => {
     runWorkspaceStreamNotificationUpdateMock.mockReset();
+    addWorkspaceStreamMembersMock.mockReset();
+    removeWorkspaceStreamMemberMock.mockReset();
     useMessengerStore.getState().clear();
+    useWorkspaceAuthStore.getState().clear();
   });
 
   it("shows current notification mode and sends workspace update", async () => {
@@ -129,5 +253,167 @@ describe("RightPanelWorkspaceInfo", () => {
     });
 
     expect(screen.getByRole("radio", { name: "Muted" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("renders workspace members instead of the unavailable placeholder", () => {
+    seedWorkspaceAuth();
+
+    renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
+
+    expect(screen.getByText("Alice Adams")).toBeInTheDocument();
+    expect(screen.getByText("Member")).toBeInTheDocument();
+    expect(screen.getByText("online")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Alice Adams" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Temporarily unavailable")).not.toBeInTheDocument();
+  });
+
+  it("opens add members dialog and excludes existing members", () => {
+    seedWorkspaceAuth();
+    seedWorkspaceUsers();
+
+    renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add members" }));
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Add members")).toBeInTheDocument();
+    expect(within(dialog).getByText("#general")).toBeInTheDocument();
+    expect(within(dialog).getByText("Bob Baker")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Alice Adams")).not.toBeInTheDocument();
+  });
+
+  it("submits workspace add members action", async () => {
+    seedWorkspaceAuth();
+    seedWorkspaceUsers();
+    addWorkspaceStreamMembersMock.mockResolvedValue({ status: "applied" });
+
+    renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add members" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /Bob Baker/i }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add" }));
+
+    await waitFor(() => {
+      expect(addWorkspaceStreamMembersMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runtimeContext: expect.objectContaining({
+            accessToken: "access-token",
+            organizationOrigin: "https://workspace.example.com",
+            projectId: "project",
+            userUuid: CURRENT_USER_UUID,
+          }),
+          getRuntimeContext: expect.any(Function),
+          streamUuid: STREAM_UUID,
+          userUuids: [BOB_USER_UUID],
+        }),
+      );
+    });
+  });
+
+  it("submits workspace remove member action", async () => {
+    seedWorkspaceAuth();
+    removeWorkspaceStreamMemberMock.mockResolvedValue({ status: "applied" });
+
+    renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove from channel: Alice Adams" }));
+
+    await waitFor(() => {
+      expect(removeWorkspaceStreamMemberMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runtimeContext: expect.objectContaining({
+            accessToken: "access-token",
+            organizationOrigin: "https://workspace.example.com",
+            projectId: "project",
+            userUuid: CURRENT_USER_UUID,
+          }),
+          getRuntimeContext: expect.any(Function),
+          streamUuid: STREAM_UUID,
+          bindingUuid: ALICE_BINDING_UUID,
+          userUuid: ALICE_USER_UUID,
+        }),
+      );
+    });
+  });
+
+  it("submits workspace remove member action for self member", async () => {
+    seedWorkspaceAuth();
+    removeWorkspaceStreamMemberMock.mockResolvedValue({ status: "applied" });
+
+    renderWithProviders(
+      <RightPanelWorkspaceInfo
+        info={createInfo({
+          members: [
+            {
+              bindingUuid: SELF_BINDING_UUID,
+              userUuid: CURRENT_USER_UUID,
+              name: "Current User",
+              email: "current@example.com",
+              status: "active",
+              role: "owner",
+              isOnline: true,
+              isCurrentUser: true,
+              canRemove: true,
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Current User")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Remove from channel: Current User" }));
+
+    await waitFor(() => {
+      expect(removeWorkspaceStreamMemberMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runtimeContext: expect.objectContaining({
+            userUuid: CURRENT_USER_UUID,
+          }),
+          getRuntimeContext: expect.any(Function),
+          streamUuid: STREAM_UUID,
+          bindingUuid: SELF_BINDING_UUID,
+          userUuid: CURRENT_USER_UUID,
+        }),
+      );
+    });
+  });
+
+  it("does not render remove action when projection denies it", () => {
+    seedWorkspaceAuth();
+
+    renderWithProviders(
+      <RightPanelWorkspaceInfo
+        info={createInfo({
+          members: [
+            {
+              bindingUuid: ALICE_BINDING_UUID,
+              userUuid: ALICE_USER_UUID,
+              name: "Alice Adams",
+              email: "alice@example.com",
+              status: "active",
+              role: "member",
+              isOnline: true,
+              isCurrentUser: false,
+              canRemove: false,
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Alice Adams")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Remove from channel: Alice Adams" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not render remove action without runtime context", () => {
+    renderWithProviders(<RightPanelWorkspaceInfo info={createInfo()} />);
+
+    expect(screen.getByText("Alice Adams")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Remove from channel: Alice Adams" }),
+    ).not.toBeInTheDocument();
   });
 });

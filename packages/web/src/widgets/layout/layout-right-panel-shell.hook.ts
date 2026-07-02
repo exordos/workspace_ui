@@ -10,6 +10,10 @@ import {
 } from "~/entities/messenger/messenger-right-panel.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import { useUsersStore } from "~/entities/user/user.model";
+import {
+  selectCurrentWorkspaceRuntimeContext,
+  useWorkspaceAuthStore,
+} from "~/entities/workspace-auth/workspace-auth.model";
 import { t } from "~/i18n/i18n";
 import type { WorkspaceMessengerRouteMatch } from "~/shared/lib/workspace-messenger-route.lib";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
@@ -148,6 +152,20 @@ export function useLayoutRightPanelShell(
     (state) => state.streamBindingIdsByStreamId,
   );
   const workspaceUsersById = useMessengerStore((state) => state.usersById);
+  const workspaceSessions = useWorkspaceAuthStore((state) => state.sessions);
+  const workspaceCurrentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
+  const workspaceRuntimeContext = useMemo(
+    () =>
+      selectCurrentWorkspaceRuntimeContext({
+        sessions: workspaceSessions,
+        currentAccountId: workspaceCurrentAccountId,
+      }),
+    [workspaceCurrentAccountId, workspaceSessions],
+  );
+  const workspaceCurrentUserUuid = workspaceRuntimeContext?.userUuid ?? null;
+  // Workspace right panel строится из нового messenger store, а не из старого
+  // Zulip chatInfo. Так участники, счетчики и права удаления остаются в одном
+  // UUID-based источнике данных.
   const workspaceRightPanelInfo = useMemo(
     () =>
       selectWorkspaceRightPanelInfoView(
@@ -163,6 +181,7 @@ export function useLayoutRightPanelShell(
         {
           route: workspaceRoute,
           fallbackTitle: rightDrawerTitle || t("chat.generalChat"),
+          currentUserUuid: workspaceCurrentUserUuid,
         },
       ),
     [
@@ -174,6 +193,7 @@ export function useLayoutRightPanelShell(
       workspaceStreamsById,
       workspaceTopicIds,
       workspaceTopicsById,
+      workspaceCurrentUserUuid,
       workspaceUsersById,
     ],
   );

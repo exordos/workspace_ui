@@ -10,8 +10,11 @@ import {
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContextGetter } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
-import type { MessengerClientOptions } from "~/shared/api/messenger-client";
-import { getStreamBindings as defaultGetStreamBindings } from "~/shared/api/messenger-streams.api";
+import type {
+  MessengerClientOptions,
+  MessengerCollectionPage,
+} from "~/shared/api/messenger-client";
+import { getStreamBindingsPage as defaultGetStreamBindingsPage } from "~/shared/api/messenger-streams.api";
 import type { WorkspaceMessengerStreamBindingDto } from "~/shared/api/messenger.types";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import type { WorkspaceMessengerRouteMatch } from "~/shared/lib/workspace-messenger-route.lib";
@@ -26,10 +29,14 @@ import type { MessengerStoreState } from "./messenger.model";
 import type { MessengerStreamBinding, MessengerUuid } from "./messenger.types";
 
 export interface MessengerStreamBindingsClientDeps {
-  getStreamBindings?: (
+  getStreamBindingsPage?: (
     options: MessengerClientOptions,
-    query: { streamUuid: MessengerUuid },
-  ) => Promise<WorkspaceMessengerStreamBindingDto[]>;
+    query: {
+      streamUuid: MessengerUuid;
+      pageLimit?: number;
+      pageMarker?: string | number;
+    },
+  ) => Promise<MessengerCollectionPage<WorkspaceMessengerStreamBindingDto>>;
 }
 
 export interface MessengerStreamBindingsCacheDeps {
@@ -42,7 +49,7 @@ export interface MessengerStreamBindingsCacheDeps {
 export interface MessengerStreamBindingsStoreApi {
   getState: () => Pick<
     MessengerStoreState,
-    "ownerKey" | "streamBindingIdsByStreamId" | "upsertStreamBindings"
+    "ownerKey" | "streamBindingsLoadedByStreamId" | "replaceStreamBindingsForStream"
   >;
 }
 
@@ -83,6 +90,7 @@ export interface UseMessengerStreamBindingsForRouteOptions {
 }
 
 const inflightStreamBindingLoads = new Map<string, Promise<MessengerStreamBindingsLoadResult>>();
+const DEFAULT_STREAM_BINDINGS_PAGE_LIMIT = 100;
 
 function streamBindingsLoadKey(input: {
   ownerKey: string;
@@ -117,7 +125,7 @@ function hasStreamBindingsLoaded(
 ): boolean {
   const state = store.getState();
   if (state.ownerKey !== ownerKey) return false;
-  return state.streamBindingIdsByStreamId[streamUuid] != null;
+  return state.streamBindingsLoadedByStreamId[streamUuid] === true;
 }
 
 export function streamUuidFromWorkspaceMessengerRoute(
@@ -172,17 +180,37 @@ export async function loadMessengerStreamBindings({
     const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
 
     try {
-      const bindingDtos = await (client.getStreamBindings ?? defaultGetStreamBindings)(
-        requestOptions,
-        { streamUuid },
-      );
+      const bindingDtos: WorkspaceMessengerStreamBindingDto[] = [];
+      let pageMarker: string | number | undefined;
+
+      do {
+        const page = await (client.getStreamBindingsPage ?? defaultGetStreamBindingsPage)(
+          requestOptions,
+          {
+            streamUuid,
+            pageLimit: DEFAULT_STREAM_BINDINGS_PAGE_LIMIT,
+            pageMarker,
+          },
+        );
+
+        if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
+          return { status: "skipped", ownerKey, streamUuid, reason: "stale-owner" };
+        }
+
+        bindingDtos.push(...page.items);
+        pageMarker = page.nextPageMarker ?? undefined;
+      } while (pageMarker != null);
 
       if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
         return { status: "skipped", ownerKey, streamUuid, reason: "stale-owner" };
       }
 
       const bindings = bindingDtos.map(adaptMessengerStreamBinding);
-      store.getState().upsertStreamBindings(ownerKey, bindings);
+      const currentStore = store.getState();
+      // Это полный снимок участников конкретного stream с backend-а. Поэтому
+      // заменяем список целиком, а не upsert-им: иначе удаленный участник может
+      // остаться в памяти или вернуться из старого кеша до следующего reload.
+      currentStore.replaceStreamBindingsForStream(ownerKey, streamUuid, bindings);
       writeStreamBindingsCacheBestEffort(() =>
         (cache.upsertStreamBindings ?? defaultUpsertMessengerStreamBindingsCache)(
           ownerKey,

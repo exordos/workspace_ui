@@ -630,6 +630,19 @@ Cut line:
   bindings по ролям (`member`, `owner` и т.д.). Добавленный пользователь
   получает `stream.created`, существующие участники получают
   `stream_bindings.created`.
+- Для первой итерации управления участниками frontend отправляет только роль
+  `member`: `POST /v1/streams/{stream_uuid}/actions/add_users/invoke` с телом
+  `{ "member": ["<user_uuid>"] }`. Не вводим матрицу ролей на frontend, пока нет
+  отдельного продуктового решения по ролям.
+- Роли stream binding по backend contract: `guest`, `member`, `moderator`,
+  `administrator`, `owner`; если роль не передана, backend использует
+  `member`.
+- Удаление участника идет через
+  `DELETE /v1/stream_bindings/{binding_uuid}` и снимает доступ к stream. Только
+  удаленный пользователь получает `stream.deleted` и затем `folder.updated` для
+  затронутых системных и пользовательских папок. Остальные участники stream не
+  получают событие удаления binding, поэтому frontend не должен ждать отдельное
+  realtime-событие для удаления чужого binding.
 - `stream.created` всегда приходит как полный user stream snapshot. Создание
   stream также порождает `folder.updated` для системных папок: `All chats` и
   `Personal` для private stream или `Channels` для обычного stream.
@@ -718,8 +731,35 @@ Workspace API facade появляется контролируемая загл�
 - edit/delete message покрыты `PUT/DELETE /messages/{message_uuid}`;
 - создание/редактирование/удаление streams/topics/folders покрыто CRUD/action
   ручками;
+- участники stream покрыты `GET /stream_bindings/` с постраничной загрузкой,
+  `POST /streams/{stream_uuid}/actions/add_users/invoke` для добавления и
+  `DELETE /stream_bindings/{binding_uuid}` для удаления доступа;
 - folder item pin/unpin покрыт action ручками;
 - stream/topic notification mode покрыт action ручками.
+
+## Status: Workspace stream participants
+
+Срез на 2026-07-02:
+
+- `getStreamBindingsPage` читает `stream_bindings` постранично через
+  `page_limit`, `page_marker` и `X-Pagination-Marker`; loader догружает все
+  страницы для stream, включая корректную отметку "загружено" для пустого
+  списка.
+- `useMessengerStore` хранит stream bindings как Workspace-owned данные и
+  умеет удалить один binding через `removeStreamBinding`.
+- Entity helper для участников ходит в Workspace API:
+  `addWorkspaceStreamMembers` вызывает `add_users/invoke` с ролью `member`,
+  `removeWorkspaceStreamMember` удаляет найденный binding по UUID.
+- Правая панель Workspace строит список участников из stream bindings и users;
+  текущий пользователь не получает действие удаления. Самоудаление в первой
+  итерации не поддерживается.
+- Workspace UI правой панели показывает реальный блок участников, добавляет
+  пользователя по UUID и вызывает entity helpers для add/remove.
+- Контекстное меню Workspace stream в sidebar содержит пункт
+  "Members/Участники" и открывает общий right panel через `RightDrawerContext`,
+  без отдельного API-вызова из меню.
+- Ролевая матрица прав и управление ролями намеренно не придуманы на frontend:
+  первая итерация добавляет только `member` и не показывает self-remove.
 
 Не блокирующие больше:
 

@@ -27,6 +27,7 @@ import type {
   WorkspaceMessengerStreamNotificationMode,
   WorkspaceMessengerTopicNotificationMode,
 } from "~/shared/api/messenger.types";
+import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import { AppDialog, AppDialogFormFooter } from "~/shared/ui/app-dialog.ui";
 import { DropdownMenu, type DropdownMenuItem } from "~/shared/ui/dropdown-menu";
@@ -216,6 +217,7 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
   } = useSidebarChatContextMenuAnchor();
   const notificationMode = useWorkspaceStreamNotificationMode(stream.streamUuid);
   const { userCreatedFolders, selectedFolderItem } = useWorkspaceMenuFolders(stream.streamUuid);
+  const rightDrawer = useRightDrawer();
   const [notificationPending, setNotificationPending] = useState(false);
   const [pinPending, setPinPending] = useState(false);
   const [createTopicDialogOpen, setCreateTopicDialogOpen] = useState(false);
@@ -276,7 +278,7 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
           });
         });
     },
-    [pendingFolderUuids, stream.streamUuid],
+    [pendingFolderUuids, stream.isPrivate, stream.streamUuid],
   );
 
   const handleCreateTopic = useCallback((): void => {
@@ -284,6 +286,17 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
     setNewTopicName("");
     setCreateTopicDialogOpen(true);
   }, [handleMenuOpenChange]);
+
+  const handleOpenMembers = useCallback((): void => {
+    handleMenuOpenChange(false);
+    // Меню потока не владеет member flow и не ходит в API: это только вход в
+    // общую правую панель, где уже собраны список, добавление и отписка.
+    if (rightDrawer?.openInfo != null) {
+      rightDrawer.openInfo();
+      return;
+    }
+    rightDrawer?.setOpen(true);
+  }, [handleMenuOpenChange, rightDrawer]);
 
   const handleSubmitCreateTopic = useCallback((): void => {
     const name = newTopicName.trim();
@@ -380,17 +393,30 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
         onSelect: handlePinToggle,
       });
     }
-    items.push(folderAssignmentsItem, {
-      type: "action",
-      key: "new-topic",
-      icon: "plus",
-      label: t("channel.newTopic"),
-      onSelect: handleCreateTopic,
-    });
+    items.push(
+      // Пункт ведет в тот же Workspace member flow, что и кнопка в right panel,
+      // чтобы не появилось два разных сценария управления участниками.
+      {
+        type: "action",
+        key: "members",
+        icon: "group",
+        label: t("channel.members"),
+        onSelect: handleOpenMembers,
+      },
+      folderAssignmentsItem,
+      {
+        type: "action",
+        key: "new-topic",
+        icon: "plus",
+        label: t("channel.newTopic"),
+        onSelect: handleCreateTopic,
+      },
+    );
     return items;
   }, [
     folderAssignmentsItem,
     handleCreateTopic,
+    handleOpenMembers,
     handlePinToggle,
     notificationPickerItem,
     pinPending,

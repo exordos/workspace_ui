@@ -465,6 +465,7 @@
     "online": "онлайн",
     "away": "отошёл",
     "offline": "не в сети",
+    "doNotDisturb": "не беспокоить",
     "justNow": "только что",
     "minutesAgo": "{{count}} мин назад",
     "hoursAgo": "{{count}} ч назад",
