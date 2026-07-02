@@ -1,7 +1,16 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  mapNotificationLevelToWorkspaceStreamMode,
+  mapWorkspaceStreamNotificationModeToLevel,
+  type WorkspaceStreamNotificationLevel,
+} from "~/entities/messenger/messenger-notification-mode.lib";
+import { runWorkspaceStreamNotificationUpdate } from "~/entities/messenger/messenger-sidebar-actions.lib";
+import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import { StreamNotificationLevelSwitch } from "~/features/mute-chat/stream-notification-level-switch.ui";
 import { t } from "~/i18n/i18n";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
+import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { ScrollArea } from "~/shared/ui/scroll-area";
@@ -11,13 +20,95 @@ export interface RightPanelWorkspaceInfoProps {
   info: WorkspaceRightPanelInfoView;
 }
 
+interface NotificationActionState {
+  streamUuid: string | null;
+  pending: boolean;
+  error: string | null;
+}
+
+function createNotificationActionState(streamUuid: string | null): NotificationActionState {
+  return {
+    streamUuid,
+    pending: false,
+    error: null,
+  };
+}
+
 export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = ({ info }) => {
   const navigate = useNavigate();
+  const [notificationActionState, setNotificationActionState] = useState<NotificationActionState>(
+    () => createNotificationActionState(info.streamUuid),
+  );
+  const notificationPending =
+    notificationActionState.streamUuid === info.streamUuid && notificationActionState.pending;
+  const notificationError =
+    notificationActionState.streamUuid === info.streamUuid ? notificationActionState.error : null;
+  const storeNotificationMode = useMessengerStore((state) =>
+    info.streamUuid == null ? null : (state.streamsById[info.streamUuid]?.notificationMode ?? null),
+  );
+  const notificationMode = storeNotificationMode ?? info.notificationMode;
+  const notificationLevel = useMemo<WorkspaceStreamNotificationLevel | null>(
+    () =>
+      notificationMode == null ? null : mapWorkspaceStreamNotificationModeToLevel(notificationMode),
+    [notificationMode],
+  );
   const handleOpenTopic = useCallback(
     (route: string) => {
       void navigate(route);
     },
     [navigate],
+  );
+
+  useEffect(() => {
+    setNotificationActionState((prev) =>
+      prev.streamUuid === info.streamUuid ? prev : createNotificationActionState(info.streamUuid),
+    );
+  }, [info.streamUuid]);
+
+  const handleSetNotificationLevel = useCallback(
+    async (level: WorkspaceStreamNotificationLevel): Promise<void> => {
+      if (info.streamUuid == null || notificationPending) return;
+
+      const streamUuid = info.streamUuid;
+      const nextNotificationMode = mapNotificationLevelToWorkspaceStreamMode(level);
+      if (notificationMode === nextNotificationMode) return;
+
+      setNotificationActionState({
+        streamUuid,
+        pending: true,
+        error: null,
+      });
+      try {
+        await runWorkspaceStreamNotificationUpdate({
+          streamUuid,
+          notificationMode: nextNotificationMode,
+        });
+      } catch (error) {
+        reportUnexpectedError("workspace-right-panel", error, {
+          action: "stream-notifications",
+        });
+        setNotificationActionState((prev) =>
+          prev.streamUuid === streamUuid
+            ? {
+                streamUuid,
+                pending: false,
+                error: t("app.error"),
+              }
+            : prev,
+        );
+      } finally {
+        setNotificationActionState((prev) =>
+          prev.streamUuid === streamUuid
+            ? {
+                streamUuid,
+                pending: false,
+                error: prev.error,
+              }
+            : prev,
+        );
+      }
+    },
+    [info.streamUuid, notificationMode, notificationPending],
   );
 
   return (
@@ -43,9 +134,30 @@ export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = (
           <p className="px-2 pb-2 text-[11px] font-medium uppercase tracking-wide text-text-muted">
             {t("channel.notifications")}
           </p>
-          <p className="mx-2 rounded-lg bg-bg-elevated px-2 py-2 text-sm text-text-muted">
-            {t("workspaceMessenger.actionUnsupported")}
-          </p>
+          {info.streamUuid != null && notificationLevel != null ? (
+            <>
+              <StreamNotificationLevelSwitch
+                value={notificationLevel}
+                disabled={notificationPending}
+                onChange={(level) => {
+                  void handleSetNotificationLevel(level);
+                }}
+                className="mx-2"
+              />
+              <p className="mx-2 mt-2 text-[11px] text-text-muted">
+                {notificationLevel === "default" && t("channel.notificationDefault")}
+                {notificationLevel === "muted" && t("channel.notificationMuted")}
+                {notificationLevel === "subscribed" && t("channel.notificationSubscribed")}
+              </p>
+              {notificationError && (
+                <p className="mx-2 mt-1 text-xs text-notice-base">{notificationError}</p>
+              )}
+            </>
+          ) : (
+            <p className="mx-2 rounded-lg bg-bg-elevated px-2 py-2 text-sm text-text-muted">
+              {t("workspaceMessenger.actionUnsupported")}
+            </p>
+          )}
         </div>
 
         {info.description && (

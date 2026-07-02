@@ -37,12 +37,12 @@ import {
   adaptMessengerStream,
   adaptMessengerTopic,
 } from "./messenger-adapters.lib";
-import { useMessengerStore } from "./messenger.model";
-import type { MessengerStoreState } from "./messenger.model";
 import {
   buildMessengerRequestOptions,
   type MessengerRequestOptionsOverrides,
 } from "./messenger-request-options.lib";
+import { useMessengerStore } from "./messenger.model";
+import type { MessengerStoreState } from "./messenger.model";
 import type {
   MessengerFolderItem,
   MessengerStream,
@@ -92,7 +92,12 @@ export interface MessengerSidebarActionClientDeps {
 export interface MessengerSidebarActionStoreApi {
   getState: () => Pick<
     MessengerStoreState,
-    "upsertStream" | "upsertTopic" | "upsertFolderItem" | "removeFolderItem"
+    | "ownerKey"
+    | "streamsById"
+    | "upsertStream"
+    | "upsertTopic"
+    | "upsertFolderItem"
+    | "removeFolderItem"
   >;
 }
 
@@ -123,8 +128,7 @@ export type MessengerFolderItemActionResult =
   | { status: "applied"; ownerKey: string; folderItem: MessengerFolderItem | null }
   | MessengerSidebarActionSkippedResult;
 
-export interface UpdateMessengerStreamNotificationModeOptions
-  extends MessengerSidebarActionBaseOptions {
+export interface UpdateMessengerStreamNotificationModeOptions extends MessengerSidebarActionBaseOptions {
   streamUuid: MessengerUuid;
   notificationMode: WorkspaceMessengerStreamNotificationMode;
 }
@@ -143,8 +147,7 @@ export interface ToggleMessengerTopicDoneOptions extends MessengerSidebarActionB
   topicUuid: MessengerUuid;
 }
 
-export interface SetMessengerTopicNotificationModeOptions
-  extends MessengerSidebarActionBaseOptions {
+export interface SetMessengerTopicNotificationModeOptions extends MessengerSidebarActionBaseOptions {
   topicUuid: MessengerUuid;
   notificationMode: WorkspaceMessengerTopicNotificationMode;
 }
@@ -248,6 +251,154 @@ function normalizeActionName(name: string | undefined): string | null {
   return trimmed != null && trimmed.length > 0 ? trimmed : null;
 }
 
+interface StreamNotificationOptimisticEntry {
+  confirmedStream: MessengerStream;
+  pendingModesByRequestId: Map<number, WorkspaceMessengerStreamNotificationMode>;
+  latestProjectedStream: MessengerStream | null;
+}
+
+interface StreamNotificationOptimisticRequest {
+  key: string;
+  requestId: number;
+  ownerKey: string;
+  streamUuid: MessengerUuid;
+  entry: StreamNotificationOptimisticEntry;
+}
+
+const streamNotificationOptimisticEntries = new Map<string, StreamNotificationOptimisticEntry>();
+let nextStreamNotificationOptimisticRequestId = 1;
+
+function streamNotificationOptimisticKey(ownerKey: string, streamUuid: MessengerUuid): string {
+  return `${ownerKey}:stream-notifications:${streamUuid}`;
+}
+
+function latestPendingStreamNotificationMode(
+  entry: StreamNotificationOptimisticEntry,
+): WorkspaceMessengerStreamNotificationMode | null {
+  let latestMode: WorkspaceMessengerStreamNotificationMode | null = null;
+  for (const mode of entry.pendingModesByRequestId.values()) {
+    latestMode = mode;
+  }
+  return latestMode;
+}
+
+function upsertStreamNotificationProjection(
+  store: MessengerSidebarActionStoreApi,
+  ownerKey: string,
+  stream: MessengerStream,
+  notificationMode: WorkspaceMessengerStreamNotificationMode,
+): MessengerStream | null {
+  const state = store.getState();
+  if (state.ownerKey !== ownerKey) return null;
+
+  const projectedStream = {
+    ...stream,
+    notificationMode,
+  };
+  state.upsertStream(ownerKey, projectedStream);
+  return projectedStream;
+}
+
+function isLatestStreamNotificationProjectionCurrent(
+  store: MessengerSidebarActionStoreApi,
+  request: StreamNotificationOptimisticRequest,
+  entry: StreamNotificationOptimisticEntry,
+): boolean {
+  const state = store.getState();
+  return (
+    state.ownerKey === request.ownerKey &&
+    entry.latestProjectedStream != null &&
+    state.streamsById[request.streamUuid] === entry.latestProjectedStream
+  );
+}
+
+function beginOptimisticStreamNotificationMode(
+  store: MessengerSidebarActionStoreApi,
+  ownerKey: string,
+  streamUuid: MessengerUuid,
+  notificationMode: WorkspaceMessengerStreamNotificationMode,
+): StreamNotificationOptimisticRequest | null {
+  const state = store.getState();
+  if (state.ownerKey !== ownerKey) return null;
+
+  const currentStream = state.streamsById[streamUuid];
+  if (currentStream == null) return null;
+
+  const key = streamNotificationOptimisticKey(ownerKey, streamUuid);
+  const existingEntry = streamNotificationOptimisticEntries.get(key);
+  const currentEntry =
+    existingEntry?.latestProjectedStream === currentStream ? existingEntry : undefined;
+  if (currentEntry == null) {
+    streamNotificationOptimisticEntries.delete(key);
+  }
+  if (currentEntry == null && currentStream.notificationMode === notificationMode) return null;
+
+  const entry =
+    currentEntry ??
+    ({
+      confirmedStream: currentStream,
+      pendingModesByRequestId: new Map<number, WorkspaceMessengerStreamNotificationMode>(),
+      latestProjectedStream: null,
+    } satisfies StreamNotificationOptimisticEntry);
+  streamNotificationOptimisticEntries.set(key, entry);
+
+  const requestId = nextStreamNotificationOptimisticRequestId;
+  nextStreamNotificationOptimisticRequestId += 1;
+  entry.pendingModesByRequestId.set(requestId, notificationMode);
+
+  entry.latestProjectedStream = upsertStreamNotificationProjection(
+    store,
+    ownerKey,
+    currentStream,
+    notificationMode,
+  );
+  return {
+    key,
+    requestId,
+    ownerKey,
+    streamUuid,
+    entry,
+  };
+}
+
+function finishOptimisticStreamNotificationRequest(
+  store: MessengerSidebarActionStoreApi,
+  request: StreamNotificationOptimisticRequest | null,
+  outcome: "failed" | "stale" | { confirmedStream: MessengerStream },
+): void {
+  if (request == null) return;
+
+  const entry = streamNotificationOptimisticEntries.get(request.key);
+  if (entry == null || entry !== request.entry) return;
+
+  entry.pendingModesByRequestId.delete(request.requestId);
+
+  if (outcome !== "failed" && outcome !== "stale") {
+    entry.confirmedStream = outcome.confirmedStream;
+  }
+
+  if (entry.pendingModesByRequestId.size === 0) {
+    streamNotificationOptimisticEntries.delete(request.key);
+    if (isLatestStreamNotificationProjectionCurrent(store, request, entry)) {
+      store.getState().upsertStream(request.ownerKey, entry.confirmedStream);
+    }
+    return;
+  }
+
+  if (outcome === "stale") return;
+
+  const latestPendingMode = latestPendingStreamNotificationMode(entry);
+  if (latestPendingMode == null) return;
+  if (!isLatestStreamNotificationProjectionCurrent(store, request, entry)) return;
+
+  entry.latestProjectedStream = upsertStreamNotificationProjection(
+    store,
+    request.ownerKey,
+    entry.confirmedStream,
+    latestPendingMode,
+  );
+}
+
 export async function updateMessengerStreamNotificationMode({
   runtimeContext,
   getRuntimeContext = () => runtimeContext,
@@ -264,16 +415,36 @@ export async function updateMessengerStreamNotificationMode({
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
-  const dto = await (client.updateStreamNotifications ?? defaultUpdateStreamNotifications)(
-    buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
+  const optimisticRequest = beginOptimisticStreamNotificationMode(
+    store,
+    action.ownerKey,
     streamUuid,
-    { notification_mode: notificationMode },
+    notificationMode,
   );
-  if (action.isStale())
+  let dto: WorkspaceMessengerStreamDto;
+  try {
+    dto = await (client.updateStreamNotifications ?? defaultUpdateStreamNotifications)(
+      buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
+      streamUuid,
+      { notification_mode: notificationMode },
+    );
+  } catch (error) {
+    finishOptimisticStreamNotificationRequest(store, optimisticRequest, "failed");
+    throw error;
+  }
+  if (action.isStale()) {
+    finishOptimisticStreamNotificationRequest(store, optimisticRequest, "stale");
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+  }
 
   const stream = adaptMessengerStream(dto);
-  store.getState().upsertStream(action.ownerKey, stream);
+  if (optimisticRequest == null) {
+    store.getState().upsertStream(action.ownerKey, stream);
+  } else {
+    finishOptimisticStreamNotificationRequest(store, optimisticRequest, {
+      confirmedStream: stream,
+    });
+  }
   return { status: "applied", ownerKey: action.ownerKey, stream };
 }
 
@@ -377,11 +548,11 @@ export async function setMessengerTopicNotificationMode({
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
-  const dto = await (client.setStreamTopicNotificationMode ?? defaultSetStreamTopicNotificationMode)(
-    buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
-    topicUuid,
-    { notification_mode: notificationMode },
-  );
+  const dto = await (
+    client.setStreamTopicNotificationMode ?? defaultSetStreamTopicNotificationMode
+  )(buildMessengerRequestOptions(runtimeContext, clientOptions, signal), topicUuid, {
+    notification_mode: notificationMode,
+  });
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 

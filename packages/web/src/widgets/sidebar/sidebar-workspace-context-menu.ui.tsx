@@ -1,5 +1,9 @@
 import React, { useCallback, useMemo, useState } from "react";
 import {
+  mapNotificationLevelToWorkspaceStreamMode,
+  mapWorkspaceStreamNotificationModeToLevel,
+} from "~/entities/messenger/messenger-notification-mode.lib";
+import {
   runWorkspaceCreateTopicRequest,
   runWorkspaceFolderAssignmentToggle,
   runWorkspaceFolderItemPinToggle,
@@ -15,10 +19,7 @@ import type {
   MessengerSidebarStreamItem,
   MessengerSidebarTopicItem,
 } from "~/entities/messenger/messenger.types";
-import type {
-  NotificationLevel,
-  TopicVisibilityLevel,
-} from "~/features/mute-chat/notification-level.lib";
+import type { TopicVisibilityLevel } from "~/features/mute-chat/notification-level.lib";
 import { StreamNotificationLevelSwitch } from "~/features/mute-chat/stream-notification-level-switch.ui";
 import { TopicVisibilityLevelSwitch } from "~/features/mute-chat/topic-visibility-level-switch.ui";
 import { t } from "~/i18n/i18n";
@@ -40,32 +41,6 @@ const SIDEBAR_WORKSPACE_MENU_ITEM_CLASS =
 
 function reportWorkspaceMenuActionError(action: string, error: unknown): void {
   reportUnexpectedError("workspace-sidebar-menu", error, { action });
-}
-
-function mapWorkspaceStreamNotificationModeToLevel(
-  mode: WorkspaceMessengerStreamNotificationMode,
-): NotificationLevel {
-  switch (mode) {
-    case "mentions_only":
-      return "default";
-    case "all_messages":
-      return "subscribed";
-    case "muted":
-      return "muted";
-  }
-}
-
-function mapNotificationLevelToWorkspaceStreamMode(
-  level: NotificationLevel,
-): WorkspaceMessengerStreamNotificationMode {
-  switch (level) {
-    case "default":
-      return "mentions_only";
-    case "subscribed":
-      return "all_messages";
-    case "muted":
-      return "muted";
-  }
 }
 
 function mapWorkspaceTopicNotificationModeToLevel(

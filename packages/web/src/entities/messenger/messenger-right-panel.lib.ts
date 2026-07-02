@@ -1,3 +1,4 @@
+import type { WorkspaceMessengerStreamNotificationMode } from "~/shared/api/messenger.types";
 import {
   type WorkspaceMessengerRouteMatch,
   workspaceMessengerTopicRoute,
@@ -24,6 +25,8 @@ export interface WorkspaceRightPanelTopicView {
 }
 
 export interface WorkspaceRightPanelInfoView {
+  streamUuid: string | null;
+  notificationMode: WorkspaceMessengerStreamNotificationMode | null;
   title: string;
   description: string | null;
   participantsCount: number;
@@ -80,6 +83,8 @@ export function selectWorkspaceRightPanelInfoView(
   const rawDescription = stream?.description?.trim();
 
   return {
+    streamUuid: stream?.uuid ?? null,
+    notificationMode: stream?.notificationMode ?? null,
     title: `#${title}`,
     description: rawDescription != null && rawDescription.length > 0 ? rawDescription : null,
     participantsCount,

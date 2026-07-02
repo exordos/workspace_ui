@@ -193,10 +193,10 @@ export function adaptMessengerUser(dto: WorkspaceMessengerUserDto): MessengerUse
     uuid: dto.uuid,
     username: dto.username,
     status: dto.status,
-    firstName: dto.first_name,
-    lastName: dto.last_name,
+    firstName: dto.first_name ?? null,
+    lastName: dto.last_name ?? null,
     email: dto.email,
-    lastPingAt: dto.last_ping_at,
+    lastPingAt: dto.last_ping_at ?? null,
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
   };

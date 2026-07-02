@@ -1,3 +1,4 @@
+import { getStreamTopics } from "./messenger-topics.api";
 import {
   messengerGetJson,
   messengerRequestJsonResult,
@@ -6,21 +7,22 @@ import {
   parsePaginationHeaders,
   parseStrictDtoList,
 } from "./messenger-transport.internal";
+import {
+  isWorkspaceMessengerStreamBindingDto,
+  isWorkspaceMessengerStreamDto,
+} from "./messenger.types";
 import type {
   MessengerClientOptions,
   MessengerCollectionPage,
   MessengerPaginationQuery,
 } from "./messenger-transport.internal";
-import {
-  isWorkspaceMessengerStreamBindingDto,
-  isWorkspaceMessengerStreamDto,
-} from "./messenger.types";
 import type {
   WorkspaceMessengerAddStreamBindingsRequestBody,
   WorkspaceMessengerCreateStreamRequestBody,
   WorkspaceMessengerStreamBindingDto,
   WorkspaceMessengerStreamDto,
   WorkspaceMessengerStreamNotificationRequestBody,
+  WorkspaceMessengerTopicDto,
   WorkspaceMessengerUpdateStreamBindingRequestBody,
   WorkspaceMessengerUpdateStreamRequestBody,
 } from "./messenger.types";
@@ -28,6 +30,11 @@ import type {
 // Поток - основная backend-сущность чата в Workspace, включая личные private streams.
 export interface GetStreamBindingsQuery extends MessengerPaginationQuery {
   streamUuid?: string;
+}
+
+export interface WorkspaceMessengerCreateStreamWithDefaultTopicResult {
+  stream: WorkspaceMessengerStreamDto;
+  defaultTopic: WorkspaceMessengerTopicDto;
 }
 
 function streamBindingParams(query: GetStreamBindingsQuery | undefined) {
@@ -66,6 +73,22 @@ export async function createStream(
 ): Promise<WorkspaceMessengerStreamDto> {
   const { data } = await messengerRequestJsonResult("POST", "/streams/", options, {}, body);
   return parseDto(data, isWorkspaceMessengerStreamDto, "messenger stream response");
+}
+
+export async function createStreamWithDefaultTopic(
+  options: MessengerClientOptions,
+  body: WorkspaceMessengerCreateStreamRequestBody,
+): Promise<WorkspaceMessengerCreateStreamWithDefaultTopicResult> {
+  const stream = await createStream(options, body);
+  // TODO: Remove this fetch when POST /streams/ returns default_topic.
+  const topics = await getStreamTopics(options, { streamUuid: stream.uuid });
+  const defaultTopic = topics.find(
+    (topic) => topic.stream_uuid === stream.uuid && topic.is_default,
+  );
+  if (defaultTopic == null) {
+    throw new TypeError(`Default topic was not returned for stream ${stream.uuid}`);
+  }
+  return { stream, defaultTopic };
 }
 
 export async function updateStream(

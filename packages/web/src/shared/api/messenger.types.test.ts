@@ -240,6 +240,36 @@ describe("Workspace messenger DTO guards", () => {
     ).toBe(true);
   });
 
+  it("accepts user payloads without first and last name when username is present", () => {
+    expect(
+      isWorkspaceMessengerUserDto({
+        uuid: USER_UUID,
+        username: "test3",
+        source: "iam",
+        status: "active",
+        email: "test3@example.com",
+        last_ping_at: null,
+        created_at: DATE,
+        updated_at: DATE,
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects user payloads without a non-empty username", () => {
+    expect(
+      isWorkspaceMessengerUserDto({
+        uuid: USER_UUID,
+        username: "",
+        source: "iam",
+        status: "active",
+        email: "test3@example.com",
+        last_ping_at: null,
+        created_at: DATE,
+        updated_at: DATE,
+      }),
+    ).toBe(false);
+  });
+
   it("accepts folder items when mutation responses omit nullable fields", () => {
     expect(
       isWorkspaceMessengerFolderDto({

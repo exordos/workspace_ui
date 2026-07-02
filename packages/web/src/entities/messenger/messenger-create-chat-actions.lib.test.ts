@@ -7,6 +7,7 @@ import type {
   WorkspaceMessengerCreateStreamRequestBody,
   WorkspaceMessengerStreamBindingDto,
   WorkspaceMessengerStreamDto,
+  WorkspaceMessengerTopicDto,
 } from "~/shared/api/messenger.types";
 import {
   createWorkspaceChannel,
@@ -26,6 +27,7 @@ const USER_A = "11111111-1111-4111-8111-111111111111";
 const USER_B = "44444444-4444-4444-8444-444444444444";
 const USER_C = "55555555-5555-4555-8555-555555555555";
 const STREAM_A = "75309057-419c-4b12-a7c1-3932429ec4a6";
+const TOPIC_A = "afc81ef6-9871-4cb0-b5e5-95765a73be80";
 const STREAM_BINDING_A = "ea4364f4-96e3-4b33-b80d-fd53e5697151";
 const DATE = "2026-06-22T10:10:00Z";
 
@@ -88,6 +90,26 @@ function createStreamBindingDto(
   };
 }
 
+function createTopicDto(
+  overrides: Partial<WorkspaceMessengerTopicDto> = {},
+): WorkspaceMessengerTopicDto {
+  return {
+    uuid: TOPIC_A,
+    project_id: PROJECT_A,
+    name: "General Topic",
+    stream_uuid: STREAM_A,
+    user_uuid: USER_A,
+    unread_count: 0,
+    is_default: true,
+    is_done: false,
+    notification_mode: "default",
+    last_message_uuid: null,
+    created_at: DATE,
+    updated_at: DATE,
+    ...overrides,
+  };
+}
+
 function createDeferred<T>(): {
   promise: Promise<T>;
   resolve: (value: T) => void;
@@ -113,9 +135,12 @@ describe("messenger create chat actions", () => {
   it("creates a native Workspace stream and stores the adapted stream", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = prepareStoreOwner(runtimeContext);
-    const createStream = vi.fn(
+    const createStreamWithDefaultTopic = vi.fn(
       (_options: MessengerClientOptions, _body: WorkspaceMessengerCreateStreamRequestBody) =>
-        Promise.resolve(createStreamDto({ name: "Product" })),
+        Promise.resolve({
+          stream: createStreamDto({ name: "Product" }),
+          defaultTopic: createTopicDto(),
+        }),
     );
 
     await expect(
@@ -126,16 +151,21 @@ describe("messenger create chat actions", () => {
         description: "Roadmap",
         inviteOnly: true,
         announce: false,
-        client: { createStream },
+        client: { createStreamWithDefaultTopic },
       }),
     ).resolves.toEqual({
       status: "applied",
       ownerKey,
       stream: expect.objectContaining({ uuid: STREAM_A, name: "Product" }),
+      defaultTopic: expect.objectContaining({
+        uuid: TOPIC_A,
+        streamUuid: STREAM_A,
+        isDefault: true,
+      }),
       streamBindings: [],
     });
 
-    expect(createStream).toHaveBeenCalledWith(
+    expect(createStreamWithDefaultTopic).toHaveBeenCalledWith(
       expect.objectContaining({
         accessToken: "access-token-a",
         devTargetOrigin: "https://org-a.example.com",
@@ -151,30 +181,37 @@ describe("messenger create chat actions", () => {
       },
     );
     expect(useMessengerStore.getState().streamsById[STREAM_A]?.name).toBe("Product");
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]).toEqual(
+      expect.objectContaining({
+        streamUuid: STREAM_A,
+        isDefault: true,
+      }),
+    );
   });
 
-  it("creates a direct private stream with direct_user_uuid", async () => {
+  it("creates a direct private stream with direct_user_uuid and stores the default topic", async () => {
     const runtimeContext = createRuntimeContext();
     prepareStoreOwner(runtimeContext);
-    const createStream = vi.fn(
+    const createStreamWithDefaultTopic = vi.fn(
       (_options: MessengerClientOptions, _body: WorkspaceMessengerCreateStreamRequestBody) =>
-        Promise.resolve(
-          createStreamDto({
+        Promise.resolve({
+          stream: createStreamDto({
             name: "Direct",
             private: true,
             direct_user_uuid: USER_B,
           }),
-        ),
+          defaultTopic: createTopicDto(),
+        }),
     );
 
     await createWorkspaceDirectStream({
       runtimeContext,
       getRuntimeContext: () => runtimeContext,
       directUserUuid: USER_B,
-      client: { createStream },
+      client: { createStreamWithDefaultTopic },
     });
 
-    expect(createStream).toHaveBeenCalledWith(expect.any(Object), {
+    expect(createStreamWithDefaultTopic).toHaveBeenCalledWith(expect.any(Object), {
       name: "Direct",
       description: "Private workspace",
       source_name: "native",
@@ -187,14 +224,23 @@ describe("messenger create chat actions", () => {
         directUserUuid: USER_B,
       }),
     );
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]).toEqual(
+      expect.objectContaining({
+        streamUuid: STREAM_A,
+        isDefault: true,
+      }),
+    );
   });
 
   it("adds selected channel members as member bindings after stream creation", async () => {
     const runtimeContext = createRuntimeContext();
     prepareStoreOwner(runtimeContext);
-    const createStream = vi.fn(
+    const createStreamWithDefaultTopic = vi.fn(
       (_options: MessengerClientOptions, _body: WorkspaceMessengerCreateStreamRequestBody) =>
-        Promise.resolve(createStreamDto()),
+        Promise.resolve({
+          stream: createStreamDto(),
+          defaultTopic: createTopicDto(),
+        }),
     );
     const addStreamUsers = vi.fn(
       (
@@ -216,7 +262,7 @@ describe("messenger create chat actions", () => {
       getRuntimeContext: () => runtimeContext,
       name: "Engineering",
       memberUserUuids: [USER_B, USER_A, USER_B, USER_C],
-      client: { createStream, addStreamUsers },
+      client: { createStreamWithDefaultTopic, addStreamUsers },
     });
 
     expect(addStreamUsers).toHaveBeenCalledWith(expect.any(Object), STREAM_A, {
@@ -225,6 +271,7 @@ describe("messenger create chat actions", () => {
     expect(result).toEqual(
       expect.objectContaining({
         status: "applied",
+        defaultTopic: expect.objectContaining({ uuid: TOPIC_A, isDefault: true }),
         streamBindings: [
           expect.objectContaining({ userUuid: USER_B }),
           expect.objectContaining({ userUuid: USER_C }),
@@ -234,17 +281,42 @@ describe("messenger create chat actions", () => {
     expect(useMessengerStore.getState().streamBindingIdsByStreamId[STREAM_A]).toHaveLength(2);
   });
 
-  it("skips store writes when owner becomes stale after creating stream", async () => {
+  it("does not fake a default topic when stream creation does not return one", async () => {
+    const runtimeContext = createRuntimeContext();
+    prepareStoreOwner(runtimeContext);
+    const createStreamWithDefaultTopic = vi.fn(() =>
+      Promise.reject(new TypeError(`Default topic was not returned for stream ${STREAM_A}`)),
+    );
+
+    await expect(
+      createWorkspaceChannel({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        name: "Engineering",
+        client: { createStreamWithDefaultTopic },
+      }),
+    ).rejects.toThrow("Default topic was not returned");
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]).toBeUndefined();
+    expect(useMessengerStore.getState().topicsById[TOPIC_A]).toBeUndefined();
+    expect(useMessengerStore.getState().streamIds).toEqual([]);
+    expect(useMessengerStore.getState().topicIds).toEqual([]);
+  });
+
+  it("skips store writes when owner becomes stale after fetching the default topic", async () => {
     let currentContext = createRuntimeContext();
     prepareStoreOwner(currentContext);
-    const createStreamRequest = createDeferred<WorkspaceMessengerStreamDto>();
-    const createStream = vi.fn(() => createStreamRequest.promise);
+    const createStreamRequest = createDeferred<{
+      stream: WorkspaceMessengerStreamDto;
+      defaultTopic: WorkspaceMessengerTopicDto;
+    }>();
+    const createStreamWithDefaultTopic = vi.fn(() => createStreamRequest.promise);
 
     const action = createWorkspaceChannel({
       runtimeContext: currentContext,
       getRuntimeContext: () => currentContext,
       name: "Engineering",
-      client: { createStream },
+      client: { createStreamWithDefaultTopic },
     });
 
     currentContext = createRuntimeContext({
@@ -256,7 +328,10 @@ describe("messenger create chat actions", () => {
       accessToken: "access-token-b",
       runtimeGeneration: 1,
     });
-    createStreamRequest.resolve(createStreamDto());
+    createStreamRequest.resolve({
+      stream: createStreamDto(),
+      defaultTopic: createTopicDto(),
+    });
 
     await expect(action).resolves.toEqual({
       status: "skipped",
@@ -264,5 +339,7 @@ describe("messenger create chat actions", () => {
       reason: "stale-owner",
     });
     expect(useMessengerStore.getState().streamIds).toEqual([]);
+    expect(useMessengerStore.getState().topicIds).toEqual([]);
+    expect(useMessengerStore.getState().streamBindingIds).toEqual([]);
   });
 });

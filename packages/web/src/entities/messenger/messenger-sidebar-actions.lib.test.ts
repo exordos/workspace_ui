@@ -12,7 +12,7 @@ import type {
   WorkspaceMessengerTopicNotificationRequestBody,
   WorkspaceMessengerUpdateTopicRequestBody,
 } from "~/shared/api/messenger.types";
-import { adaptMessengerFolder } from "./messenger-adapters.lib";
+import { adaptMessengerFolder, adaptMessengerStream } from "./messenger-adapters.lib";
 import {
   createMessengerFolderItem,
   createMessengerTopic,
@@ -144,6 +144,10 @@ function seedFolder(ownerKey: string): void {
   );
 }
 
+function seedStream(ownerKey: string, dto: WorkspaceMessengerStreamDto = createStreamDto()): void {
+  useMessengerStore.getState().upsertStream(ownerKey, adaptMessengerStream(dto));
+}
+
 function seedFolderWithItem(ownerKey: string): void {
   useMessengerStore.getState().applyFolderSnapshot(
     ownerKey,
@@ -163,12 +167,15 @@ function seedFolderWithItem(ownerKey: string): void {
 function createDeferred<T>(): {
   promise: Promise<T>;
   resolve: (value: T) => void;
+  reject: (reason: unknown) => void;
 } {
   let resolve: (value: T) => void = () => undefined;
-  const promise = new Promise<T>((nextResolve) => {
+  let reject: (reason: unknown) => void = () => undefined;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
     resolve = nextResolve;
+    reject = nextReject;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 describe("messenger sidebar actions", () => {
@@ -211,6 +218,242 @@ describe("messenger sidebar actions", () => {
       { notification_mode: "muted" },
     );
     expect(useMessengerStore.getState().streamsById[STREAM_A]?.notificationMode).toBe("muted");
+  });
+
+  it("applies stream notification mode optimistically while the request is pending", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    seedStream(ownerKey, createStreamDto({ notification_mode: "all_messages" }));
+    const updateRequest = createDeferred<WorkspaceMessengerStreamDto>();
+    const updateStreamNotifications = vi.fn(
+      (
+        _options: MessengerClientOptions,
+        _streamUuid: string,
+        _body: WorkspaceMessengerStreamNotificationRequestBody,
+      ) => updateRequest.promise,
+    );
+
+    const actionPromise = updateMessengerStreamNotificationMode({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      streamUuid: STREAM_A,
+      notificationMode: "muted",
+      client: { updateStreamNotifications },
+    });
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.notificationMode).toBe("muted");
+
+    updateRequest.resolve(createStreamDto({ notification_mode: "muted" }));
+    await expect(actionPromise).resolves.toEqual({
+      status: "applied",
+      ownerKey,
+      stream: expect.objectContaining({ uuid: STREAM_A, notificationMode: "muted" }),
+    });
+  });
+
+  it("rolls back optimistic stream notification mode when the request fails", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    seedStream(ownerKey, createStreamDto({ notification_mode: "all_messages" }));
+    const updateRequest = createDeferred<WorkspaceMessengerStreamDto>();
+    const updateStreamNotifications = vi.fn(
+      (
+        _options: MessengerClientOptions,
+        _streamUuid: string,
+        _body: WorkspaceMessengerStreamNotificationRequestBody,
+      ) => updateRequest.promise,
+    );
+
+    const actionPromise = updateMessengerStreamNotificationMode({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      streamUuid: STREAM_A,
+      notificationMode: "muted",
+      client: { updateStreamNotifications },
+    });
+
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.notificationMode).toBe("muted");
+
+    updateRequest.reject(new Error("Update failed"));
+    await expect(actionPromise).rejects.toThrow("Update failed");
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.notificationMode).toBe(
+      "all_messages",
+    );
+  });
+
+  it("rolls overlapping failed stream notification updates back to the confirmed mode", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    seedStream(ownerKey, createStreamDto({ notification_mode: "all_messages" }));
+    const firstRequest = createDeferred<WorkspaceMessengerStreamDto>();
+    const secondRequest = createDeferred<WorkspaceMessengerStreamDto>();
+    const updateRequests = [firstRequest, secondRequest];
+    const updateStreamNotifications = vi.fn(
+      (
+        _options: MessengerClientOptions,
+        _streamUuid: string,
+        _body: WorkspaceMessengerStreamNotificationRequestBody,
+      ) => {
+        const request = updateRequests.shift();
+        return request?.promise ?? Promise.reject(new Error("Unexpected request"));
+      },
+    );
+
+    const firstActionPromise = updateMessengerStreamNotificationMode({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      streamUuid: STREAM_A,
+      notificationMode: "muted",
+      client: { updateStreamNotifications },
+    });
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.notificationMode).toBe("muted");
+
+    const secondActionPromise = updateMessengerStreamNotificationMode({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      streamUuid: STREAM_A,
+      notificationMode: "mentions_only",
+      client: { updateStreamNotifications },
+    });
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.notificationMode).toBe(
+      "mentions_only",
+    );
+
+    firstRequest.reject(new Error("First update failed"));
+    await expect(firstActionPromise).rejects.toThrow("First update failed");
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.notificationMode).toBe(
+      "mentions_only",
+    );
+
+    secondRequest.reject(new Error("Second update failed"));
+    await expect(secondActionPromise).rejects.toThrow("Second update failed");
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.notificationMode).toBe(
+      "all_messages",
+    );
+  });
+
+  it("keeps external stream notification updates when later overlapping requests fail", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    seedStream(ownerKey, createStreamDto({ notification_mode: "all_messages" }));
+    const firstRequest = createDeferred<WorkspaceMessengerStreamDto>();
+    const secondRequest = createDeferred<WorkspaceMessengerStreamDto>();
+    const updateRequests = [firstRequest, secondRequest];
+    const updateStreamNotifications = vi.fn(
+      (
+        _options: MessengerClientOptions,
+        _streamUuid: string,
+        _body: WorkspaceMessengerStreamNotificationRequestBody,
+      ) => {
+        const request = updateRequests.shift();
+        return request?.promise ?? Promise.reject(new Error("Unexpected request"));
+      },
+    );
+
+    const firstActionPromise = updateMessengerStreamNotificationMode({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      streamUuid: STREAM_A,
+      notificationMode: "muted",
+      client: { updateStreamNotifications },
+    });
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.notificationMode).toBe("muted");
+
+    seedStream(ownerKey, createStreamDto({ notification_mode: "mentions_only" }));
+
+    const secondActionPromise = updateMessengerStreamNotificationMode({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      streamUuid: STREAM_A,
+      notificationMode: "muted",
+      client: { updateStreamNotifications },
+    });
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.notificationMode).toBe("muted");
+
+    firstRequest.reject(new Error("First update failed"));
+    await expect(firstActionPromise).rejects.toThrow("First update failed");
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.notificationMode).toBe("muted");
+
+    secondRequest.reject(new Error("Second update failed"));
+    await expect(secondActionPromise).rejects.toThrow("Second update failed");
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.notificationMode).toBe(
+      "mentions_only",
+    );
+  });
+
+  it("rolls back a single stale stream notification update without external replacement", async () => {
+    const runtimeContext = createRuntimeContext();
+    const nextRuntimeContext = createRuntimeContext({ runtimeGeneration: 2 });
+    let currentRuntimeContext: WorkspaceRuntimeContext = runtimeContext;
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    seedStream(ownerKey, createStreamDto({ notification_mode: "all_messages" }));
+    const updateRequest = createDeferred<WorkspaceMessengerStreamDto>();
+    const updateStreamNotifications = vi.fn(
+      (
+        _options: MessengerClientOptions,
+        _streamUuid: string,
+        _body: WorkspaceMessengerStreamNotificationRequestBody,
+      ) => updateRequest.promise,
+    );
+
+    const actionPromise = updateMessengerStreamNotificationMode({
+      runtimeContext,
+      getRuntimeContext: () => currentRuntimeContext,
+      streamUuid: STREAM_A,
+      notificationMode: "muted",
+      client: { updateStreamNotifications },
+    });
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.notificationMode).toBe("muted");
+
+    currentRuntimeContext = nextRuntimeContext;
+
+    updateRequest.resolve(createStreamDto({ notification_mode: "muted" }));
+    await expect(actionPromise).resolves.toEqual({
+      status: "skipped",
+      ownerKey,
+      reason: "stale-owner",
+    });
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.notificationMode).toBe(
+      "all_messages",
+    );
+  });
+
+  it("does not rollback over newer state when a same-owner generation becomes stale", async () => {
+    const runtimeContext = createRuntimeContext();
+    const nextRuntimeContext = createRuntimeContext({ runtimeGeneration: 2 });
+    let currentRuntimeContext: WorkspaceRuntimeContext = runtimeContext;
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    seedStream(ownerKey, createStreamDto({ notification_mode: "all_messages" }));
+    const updateRequest = createDeferred<WorkspaceMessengerStreamDto>();
+    const updateStreamNotifications = vi.fn(
+      (
+        _options: MessengerClientOptions,
+        _streamUuid: string,
+        _body: WorkspaceMessengerStreamNotificationRequestBody,
+      ) => updateRequest.promise,
+    );
+
+    const actionPromise = updateMessengerStreamNotificationMode({
+      runtimeContext,
+      getRuntimeContext: () => currentRuntimeContext,
+      streamUuid: STREAM_A,
+      notificationMode: "muted",
+      client: { updateStreamNotifications },
+    });
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.notificationMode).toBe("muted");
+
+    currentRuntimeContext = nextRuntimeContext;
+    seedStream(ownerKey, createStreamDto({ notification_mode: "mentions_only" }));
+
+    updateRequest.resolve(createStreamDto({ notification_mode: "muted" }));
+    await expect(actionPromise).resolves.toEqual({
+      status: "skipped",
+      ownerKey,
+      reason: "stale-owner",
+    });
+    expect(useMessengerStore.getState().streamsById[STREAM_A]?.notificationMode).toBe(
+      "mentions_only",
+    );
   });
 
   it("creates and updates topics through Workspace actions", async () => {

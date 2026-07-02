@@ -144,6 +144,8 @@ describe("selectWorkspaceRightPanelInfoView", () => {
     });
 
     expect(view).toEqual({
+      streamUuid: STREAM_UUID,
+      notificationMode: "all_messages",
       title: "#general",
       description: "Team updates",
       participantsCount: 2,
@@ -183,6 +185,8 @@ describe("selectWorkspaceRightPanelInfoView", () => {
     });
 
     expect(view?.title).toBe("#general");
+    expect(view?.streamUuid).toBe(STREAM_UUID);
+    expect(view?.notificationMode).toBe("all_messages");
     expect(view?.title).toBe(headerView.channelName);
     expect(headerView.topic).toBe("Roadmap");
     expect(view?.participantsCount).toBe(2);

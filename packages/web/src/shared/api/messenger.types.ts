@@ -129,10 +129,10 @@ export interface WorkspaceMessengerUserDto {
   username: string;
   source: "iam";
   status: WorkspaceMessengerUserStatus;
-  first_name: string | null;
-  last_name: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
   email: string | null;
-  last_ping_at: WorkspaceMessengerDateTime | null;
+  last_ping_at?: WorkspaceMessengerDateTime | null;
   created_at: WorkspaceMessengerDateTime;
   updated_at: WorkspaceMessengerDateTime;
 }
@@ -663,10 +663,11 @@ export function isWorkspaceMessengerUserDto(value: unknown): value is WorkspaceM
     isRecord(value) &&
     isUuid(value.uuid) &&
     typeof value.username === "string" &&
+    value.username.trim().length > 0 &&
     value.source === "iam" &&
     isUserStatus(value.status) &&
-    (value.first_name === null || typeof value.first_name === "string") &&
-    (value.last_name === null || typeof value.last_name === "string") &&
+    (value.first_name == null || typeof value.first_name === "string") &&
+    (value.last_name == null || typeof value.last_name === "string") &&
     (value.email === null || typeof value.email === "string") &&
     isDateTime(value.created_at) &&
     isDateTime(value.updated_at)

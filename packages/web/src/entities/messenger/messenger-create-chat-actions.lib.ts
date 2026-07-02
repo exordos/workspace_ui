@@ -9,28 +9,37 @@ import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/works
 import type { MessengerClientOptions } from "~/shared/api/messenger-client";
 import {
   addStreamUsers as defaultAddStreamUsers,
-  createStream as defaultCreateStream,
+  createStreamWithDefaultTopic as defaultCreateStreamWithDefaultTopic,
 } from "~/shared/api/messenger-streams.api";
+import type { WorkspaceMessengerCreateStreamWithDefaultTopicResult } from "~/shared/api/messenger-streams.api";
 import type {
   WorkspaceMessengerAddStreamBindingsRequestBody,
   WorkspaceMessengerCreateStreamRequestBody,
   WorkspaceMessengerStreamBindingDto,
-  WorkspaceMessengerStreamDto,
 } from "~/shared/api/messenger.types";
-import { adaptMessengerStream, adaptMessengerStreamBinding } from "./messenger-adapters.lib";
+import {
+  adaptMessengerStream,
+  adaptMessengerStreamBinding,
+  adaptMessengerTopic,
+} from "./messenger-adapters.lib";
 import {
   buildMessengerRequestOptions,
   type MessengerRequestOptionsOverrides,
 } from "./messenger-request-options.lib";
 import { useMessengerStore } from "./messenger.model";
 import type { MessengerStoreState } from "./messenger.model";
-import type { MessengerStream, MessengerStreamBinding, MessengerUuid } from "./messenger.types";
+import type {
+  MessengerStream,
+  MessengerStreamBinding,
+  MessengerTopic,
+  MessengerUuid,
+} from "./messenger.types";
 
 export interface MessengerCreateChatClientDeps {
-  createStream?: (
+  createStreamWithDefaultTopic?: (
     options: MessengerClientOptions,
     body: WorkspaceMessengerCreateStreamRequestBody,
-  ) => Promise<WorkspaceMessengerStreamDto>;
+  ) => Promise<WorkspaceMessengerCreateStreamWithDefaultTopicResult>;
   addStreamUsers?: (
     options: MessengerClientOptions,
     streamUuid: MessengerUuid,
@@ -39,7 +48,10 @@ export interface MessengerCreateChatClientDeps {
 }
 
 export interface MessengerCreateChatStoreApi {
-  getState: () => Pick<MessengerStoreState, "upsertStream" | "upsertStreamBindings">;
+  getState: () => Pick<
+    MessengerStoreState,
+    "upsertStream" | "upsertTopic" | "upsertStreamBindings"
+  >;
 }
 
 export interface MessengerCreateChatBaseOptions {
@@ -62,6 +74,7 @@ export type MessengerCreateStreamResult =
       status: "applied";
       ownerKey: string;
       stream: MessengerStream;
+      defaultTopic: MessengerTopic;
       streamBindings: MessengerStreamBinding[];
     }
   | MessengerCreateChatSkippedResult;
@@ -184,7 +197,7 @@ export async function createWorkspaceChannel({
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
   const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
-  const dto = await (client.createStream ?? defaultCreateStream)(
+  const bundle = await (client.createStreamWithDefaultTopic ?? defaultCreateStreamWithDefaultTopic)(
     requestOptions,
     nativeStreamBody({
       name,
@@ -196,7 +209,8 @@ export async function createWorkspaceChannel({
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
-  const stream = adaptMessengerStream(dto);
+  const stream = adaptMessengerStream(bundle.stream);
+  const defaultTopic = adaptMessengerTopic(bundle.defaultTopic);
 
   const members = uniqueMemberUserUuids(memberUserUuids).filter(
     (userUuid) => userUuid !== runtimeContext.userUuid,
@@ -214,12 +228,16 @@ export async function createWorkspaceChannel({
     streamBindings = bindingDtos.map(adaptMessengerStreamBinding);
   }
 
+  if (action.isStale())
+    return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+
   store.getState().upsertStream(action.ownerKey, stream);
+  store.getState().upsertTopic(action.ownerKey, defaultTopic);
   if (streamBindings.length > 0) {
     store.getState().upsertStreamBindings(action.ownerKey, streamBindings);
   }
 
-  return { status: "applied", ownerKey: action.ownerKey, stream, streamBindings };
+  return { status: "applied", ownerKey: action.ownerKey, stream, defaultTopic, streamBindings };
 }
 
 export async function createWorkspaceDirectStream({
@@ -238,8 +256,9 @@ export async function createWorkspaceDirectStream({
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
-  const dto = await (client.createStream ?? defaultCreateStream)(
-    buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
+  const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
+  const bundle = await (client.createStreamWithDefaultTopic ?? defaultCreateStreamWithDefaultTopic)(
+    requestOptions,
     nativeStreamBody({
       name,
       description,
@@ -249,9 +268,15 @@ export async function createWorkspaceDirectStream({
   if (action.isStale())
     return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
 
-  const stream = adaptMessengerStream(dto);
+  const stream = adaptMessengerStream(bundle.stream);
+  const defaultTopic = adaptMessengerTopic(bundle.defaultTopic);
+
+  if (action.isStale())
+    return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+
   store.getState().upsertStream(action.ownerKey, stream);
-  return { status: "applied", ownerKey: action.ownerKey, stream, streamBindings: [] };
+  store.getState().upsertTopic(action.ownerKey, defaultTopic);
+  return { status: "applied", ownerKey: action.ownerKey, stream, defaultTopic, streamBindings: [] };
 }
 
 export async function runWorkspaceChannelCreate(
