@@ -76,7 +76,7 @@ describe("LoginPage", () => {
     renderWithProviders(<LoginPage />, { route: "/login" });
 
     expect(screen.getByPlaceholderText("https://chat.example.com")).toBeInTheDocument();
-    expect(screen.queryByPlaceholderText("email@example.com")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("email@example.com or login")).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText("••••••••")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /next/i })).toBeInTheDocument();
   });
@@ -97,7 +97,7 @@ describe("LoginPage", () => {
 
     expect(await screen.findByText("Example Workspace")).toBeInTheDocument();
     expect(await screen.findByLabelText(/workspace project/i)).toHaveValue("project-default");
-    expect(await screen.findByPlaceholderText("email@example.com")).toBeInTheDocument();
+    expect(await screen.findByPlaceholderText("email@example.com or login")).toBeInTheDocument();
   });
 
   it("uses IAM login with the default Workspace project id", async () => {
@@ -144,7 +144,7 @@ describe("LoginPage", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
     const projectInput = await screen.findByLabelText(/workspace project/i);
-    expect(projectInput).toHaveValue("f04648e8-2bdf-4e93-b7bb-aac9850133fe");
+    expect(projectInput).toHaveValue("fe02e55d-4548-4b3e-a175-fcae928f41b2");
 
     fireEvent.change(projectInput, {
       target: { value: "project-manual" },
@@ -163,6 +163,32 @@ describe("LoginPage", () => {
         login: "user@example.com",
         password: "secret",
         projectId: "project-manual",
+      });
+    });
+  });
+
+  it("accepts login without email format", async () => {
+    renderWithProviders(<LoginPage />, { route: "/login?realm=https%3A%2F%2Fchat.example.com" });
+
+    fireEvent.click(await screen.findByRole("button", { name: /next/i }));
+    await screen.findByLabelText(/email or login/i);
+
+    fireEvent.change(screen.getByLabelText(/email or login/i), {
+      target: { value: "plain-login" },
+    });
+    expect(screen.getByLabelText(/^password$/i)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/^password$/i), {
+      target: { value: "secret" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /login/i }));
+
+    await waitFor(() => {
+      expect(loginWorkspaceWithPassword).toHaveBeenCalledWith({
+        organizationUrl: "https://chat.example.com",
+        login: "plain-login",
+        password: "secret",
+        projectId: "project-default",
       });
     });
   });
@@ -204,7 +230,7 @@ describe("LoginPage", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
 
-    await screen.findByPlaceholderText("email@example.com");
+    await screen.findByPlaceholderText("email@example.com or login");
     expect(screen.queryByRole("button", { name: "Google" })).not.toBeInTheDocument();
   });
 });

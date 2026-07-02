@@ -45,6 +45,8 @@
     "zulipServerUrlHint": "https://chat.example.com",
     "email": "Email",
     "emailHint": "email@example.com",
+    "emailOrLogin": "Email or login",
+    "emailOrLoginHint": "email@example.com or login",
     "workspaceProject": "Workspace project",
     "workspaceProjectHint": "Project UUID",
     "password": "Password",
@@ -74,7 +76,7 @@
     "pasteTokenUnsupported": "Unsupported authentication code format.",
     "organizationStepHint": "Enter your organization address first.",
     "organizationStepLoading": "Loading organization settings…",
-    "authStepHint": "Choose a sign-in method or enter your email and password.",
+    "authStepHint": "Choose a sign-in method or enter your email/login and password.",
     "organizationSettingsLoadError": "Could not load organization settings. Check the server address and try again.",
     "defaultOrganizationHint": "Or connect to our public service.",
     "defaultOrganizationName": "Exordos Core Public"

@@ -46,6 +46,8 @@
     "email": "Email",
     "zulipServerUrlHint": "https://chat.example.com",
     "emailHint": "email@example.com",
+    "emailOrLogin": "Email или логин",
+    "emailOrLoginHint": "email@example.com или логин",
     "workspaceProject": "Проект Workspace",
     "workspaceProjectHint": "UUID проекта",
     "password": "Пароль",
@@ -74,7 +76,7 @@
     "pasteTokenUnsupported": "Неподдерживаемый формат кода аутентификации.",
     "organizationStepHint": "Сначала укажите адрес вашей организации.",
     "organizationStepLoading": "Загружаем настройки организации…",
-    "authStepHint": "Выберите способ входа или введите email и пароль.",
+    "authStepHint": "Выберите способ входа или введите email/логин и пароль.",
     "organizationSettingsLoadError": "Не удалось загрузить настройки организации. Проверьте адрес сервера и попробуйте ещё раз.",
     "defaultOrganizationHint": "Или можете подключиться к нашему публичному сервису.",
     "defaultOrganizationName": "Exordos Core Public"
