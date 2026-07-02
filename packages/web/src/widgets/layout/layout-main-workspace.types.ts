@@ -1,5 +1,8 @@
 import type { RightDrawerMode } from "~/widgets/right-panel/right-drawer.model";
-import type { RightPanelUserInfo } from "~/widgets/right-panel/right-panel.types";
+import type {
+  RightPanelUserInfo,
+  WorkspaceRightPanelInfoView,
+} from "~/widgets/right-panel/right-panel.types";
 
 export interface LayoutMainWorkspaceProps {
   shouldShowChatShell: boolean;
@@ -12,6 +15,7 @@ export interface LayoutMainWorkspaceProps {
   participantsCount: number;
   onlineCount: number;
   rightPanelUser: RightPanelUserInfo | undefined;
+  workspaceRightPanelInfo: WorkspaceRightPanelInfoView | null;
   onSelectCommonGroup: (slug: string) => void;
   onOpenSettingsDrawer: () => void;
   onOpenAboutDrawer: () => void;

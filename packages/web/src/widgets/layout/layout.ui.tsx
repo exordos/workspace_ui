@@ -8,7 +8,7 @@ import { syncUnreadSurfacesFromDelta } from "~/entities/unread-sync/unread-surfa
 import { useUsersStore } from "~/entities/user/user.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
-import { isWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
+import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { useRightDrawerStore } from "~/widgets/right-panel/right-drawer.model";
 import { useSearchModalStore } from "~/widgets/search-modal/search-modal.model";
 import { getSectionFromPathname } from "~/widgets/top-bar/top-bar.lib";
@@ -142,7 +142,11 @@ export const Layout: React.FC = () => {
     () => resolveLayoutConnectionBannerMessage(online, connectionHealth, rateLimitSeconds),
     [connectionHealth, online, rateLimitSeconds],
   );
-  const workspaceMessengerActive = isWorkspaceMessengerRoute(location.pathname);
+  const workspaceMessengerRoute = useMemo(
+    () => parseWorkspaceMessengerRoute(location.pathname),
+    [location.pathname],
+  );
+  const workspaceMessengerActive = workspaceMessengerRoute != null;
   useHydrateDrafts(currentInstanceId, currentUserStatus);
   useLayoutWorkspaceMessengerBootstrap({ enabled: true });
   useLayoutWorkspaceRealtime({
@@ -285,24 +289,30 @@ export const Layout: React.FC = () => {
     navigate,
   });
 
-  const { rightPanelTitleResolved, participantsCount, onlineCount, rightPanelUser } =
-    useLayoutRightPanelShell({
-      instances,
-      currentInstanceId,
-      currentUserStatus,
-      streamsFromStore,
-      dmsFromStore,
-      streamsMap,
-      activeStreamSlug,
-      activeTopic,
-      dmIdParam,
-      currentUserId,
-      rightDrawerOpen,
-      rightDrawerMode,
-      rightDrawerUserIdOverride,
-      mutedStreamIds,
-      usersMapForChatInfo,
-    });
+  const {
+    rightPanelTitleResolved,
+    participantsCount,
+    onlineCount,
+    rightPanelUser,
+    workspaceRightPanelInfo,
+  } = useLayoutRightPanelShell({
+    instances,
+    currentInstanceId,
+    currentUserStatus,
+    streamsFromStore,
+    dmsFromStore,
+    streamsMap,
+    activeStreamSlug,
+    activeTopic,
+    dmIdParam,
+    currentUserId,
+    rightDrawerOpen,
+    rightDrawerMode,
+    rightDrawerUserIdOverride,
+    mutedStreamIds,
+    usersMapForChatInfo,
+    workspaceRoute: workspaceMessengerRoute,
+  });
 
   const handleRetryBootstrap = useCallback(() => {
     clearBootstrapError();
@@ -350,6 +360,7 @@ export const Layout: React.FC = () => {
             participantsCount={participantsCount}
             onlineCount={onlineCount}
             rightPanelUser={rightPanelUser}
+            workspaceRightPanelInfo={workspaceRightPanelInfo}
             onSelectCommonGroup={(slug: string) => handleSelectDm(slug)}
             onOpenSettingsDrawer={openRightDrawerSettings}
             onOpenAboutDrawer={openRightDrawerAbout}

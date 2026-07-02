@@ -23,7 +23,7 @@ import {
 } from "./messenger-request-options.lib";
 import { useMessengerStore } from "./messenger.model";
 import type { MessengerStoreState } from "./messenger.model";
-import type { MessengerMessage, MessengerUuid } from "./messenger.types";
+import type { MessengerBootstrapPayload, MessengerMessage, MessengerUuid } from "./messenger.types";
 
 // This loader is only for sidebar previews.
 // Bootstrap brings the last message uuid, and message text is loaded with a separate lightweight request.
@@ -126,6 +126,35 @@ export function collectMessengerLastMessageUuids(
   return messageUuids;
 }
 
+export function collectMessengerLastMessageUuidsFromPayload(
+  payload: Pick<MessengerBootstrapPayload, "streams" | "topics" | "conversations">,
+): MessengerUuid[] {
+  const seen = new Set<MessengerUuid>();
+  const messageUuids: MessengerUuid[] = [];
+  const add = (messageUuid: MessengerUuid | null | undefined) => {
+    if (messageUuid == null || seen.has(messageUuid)) {
+      return;
+    }
+
+    seen.add(messageUuid);
+    messageUuids.push(messageUuid);
+  };
+
+  for (const stream of payload.streams) {
+    add(stream.lastMessageUuid);
+  }
+
+  for (const topic of payload.topics) {
+    add(topic.lastMessageUuid);
+  }
+
+  for (const conversation of payload.conversations) {
+    add(conversation.lastMessageUuid);
+  }
+
+  return messageUuids;
+}
+
 const defaultGetMessagesByUuids: MessengerLastMessagesClientCall = getMessagesByUuids;
 const defaultReadMessagesByUuids = readMessengerMessageBodyCache;
 const defaultWriteMessages = writeMessengerMessageBodyCache;
@@ -135,6 +164,33 @@ function normalizeLastMessagesError(error: unknown): string {
     return error.message;
   }
   return "Messenger last messages loading failed";
+}
+
+export async function primeMessengerLastMessagesFromCache({
+  ownerKey,
+  payload,
+  cache = {},
+  messageStore = useWorkspaceMessageStore,
+}: {
+  ownerKey: string;
+  payload: Pick<MessengerBootstrapPayload, "streams" | "topics" | "conversations">;
+  cache?: MessengerLastMessagesCacheDeps;
+  messageStore?: MessengerLastMessagesMessageStoreApi;
+}): Promise<number> {
+  const messageUuids = collectMessengerLastMessageUuidsFromPayload(payload);
+  if (messageUuids.length === 0) return 0;
+
+  const cachedMessages = await (cache.readMessagesByUuids ?? defaultReadMessagesByUuids)(
+    ownerKey,
+    messageUuids,
+  ).catch((): MessengerMessage[] => []);
+
+  const messageStoreState = messageStore.getState();
+  for (const message of cachedMessages) {
+    messageStoreState.upsertMessageBody(message);
+  }
+
+  return cachedMessages.length;
 }
 
 export async function loadMessengerLastMessagesForSidebar({

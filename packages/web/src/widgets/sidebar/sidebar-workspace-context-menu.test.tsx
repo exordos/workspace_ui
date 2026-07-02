@@ -75,6 +75,7 @@ function createStream(
     topics: [],
     preview: null,
     updatedAt: DATE,
+    lastMessageCreatedAt: null,
     ...overrides,
   };
 }
@@ -109,9 +110,18 @@ function createFolder(overrides: Partial<MessengerFolder> = {}): MessengerFolder
 }
 
 function renderWorkspaceSidebar(streams: MessengerSidebarStreamItem[]): void {
-  renderWithProviders(<WorkspaceSidebar streams={streams} loading={false} error={null} />, {
-    route: `/org/acme/project/project-a/messenger/stream/${STREAM_UUID}`,
-  });
+  renderWithProviders(
+    <WorkspaceSidebar
+      streams={streams}
+      loading={false}
+      error={null}
+      activityCounts={{ inboxCount: null, mentionsCount: null }}
+      workspaceStreamCount={streams.length}
+    />,
+    {
+      route: `/org/acme/project/project-a/messenger/stream/${STREAM_UUID}`,
+    },
+  );
 }
 
 describe("WorkspaceSidebar context menu", () => {

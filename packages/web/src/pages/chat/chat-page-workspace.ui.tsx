@@ -5,6 +5,7 @@ import {
   selectWorkspaceMessageStatusForConversation,
   useWorkspaceMessageStore,
 } from "~/entities/message/message.model";
+import { selectWorkspaceChatHeaderView } from "~/entities/messenger/messenger-chat-header.lib";
 import { selectMessengerConversationFromWorkspaceRoute } from "~/entities/messenger/messenger-ids.lib";
 import {
   deleteMessengerMessage,
@@ -13,6 +14,7 @@ import {
   sendMessengerMessage,
 } from "~/entities/messenger/messenger-message-actions.lib";
 import { loadMessengerConversationMessages } from "~/entities/messenger/messenger-messages-loader.lib";
+import { useMessengerStreamBindingsForRoute } from "~/entities/messenger/messenger-stream-bindings-loader.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type {
   MessengerMessage,
@@ -24,13 +26,15 @@ import {
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { t } from "~/i18n/i18n";
+import { useOpenSearch } from "~/shared/contexts/open-search";
+import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import type { WorkspaceMessengerRouteMatch } from "~/shared/lib/workspace-messenger-route.lib";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
-import type { MessageListCallbacks } from "~/widgets/message-list/message-list.types";
 import type {
   ComposerEditSession,
   MessageComposerCapabilities,
 } from "~/widgets/message-composer/message-composer.types";
+import type { MessageListCallbacks } from "~/widgets/message-list/message-list.types";
 import { ChatPageComposerSection } from "./chat-page-composer-section.ui";
 import { ChatPageInlineAlerts } from "./chat-page-inline-alerts.ui";
 import { ChatPageMessageListSection } from "./chat-page-message-list-section.ui";
@@ -86,6 +90,9 @@ function WorkspaceChatState({
 
 export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) => {
   // This page is not a new chat layout: it assembles old sections and swaps only the data source.
+  useMessengerStreamBindingsForRoute({ route });
+  const openSearch = useOpenSearch();
+  const rightDrawer = useRightDrawer();
   const [retryNonce, setRetryNonce] = useState(0);
   const [sendError, setSendError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -129,6 +136,36 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     Object.keys(state.usersById).length > 0 ? state.usersById : EMPTY_USERS_BY_ID,
   );
   const topicsById = useMessengerStore((state) => state.topicsById);
+  const streamsById = useMessengerStore((state) => state.streamsById);
+  const streamBindingsById = useMessengerStore((state) => state.streamBindingsById);
+  const streamBindingIdsByStreamId = useMessengerStore((state) => state.streamBindingIdsByStreamId);
+  const conversationsById = useMessengerStore((state) => state.conversationsById);
+  const headerView = useMemo(
+    () =>
+      selectWorkspaceChatHeaderView(
+        {
+          conversationsById,
+          streamsById,
+          topicsById,
+          streamBindingsById,
+          streamBindingIdsByStreamId,
+          usersById,
+        },
+        {
+          route,
+          fallbackTitle: t("nav.messenger"),
+        },
+      ),
+    [
+      conversationsById,
+      route,
+      streamBindingIdsByStreamId,
+      streamBindingsById,
+      streamsById,
+      topicsById,
+      usersById,
+    ],
+  );
   const retry = useCallback(() => setRetryNonce((value) => value + 1), []);
   const workspaceComposerCapabilities = useMemo<MessageComposerCapabilities>(
     () => ({
@@ -192,7 +229,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     };
   }, []);
 
-  const title = stream?.name ?? conversation?.title ?? t("nav.messenger");
   const topicTitle =
     topic?.name ?? (selection.status === "conversation" ? conversation?.title : undefined);
   const composerReadOnlyReason =
@@ -318,7 +354,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     (messageId: number) => {
       // The old list gives a numeric id, so first resolve the Workspace message uuid through the adapter.
       const message = resolveMessageByVisualId(messageId);
-      if (message == null || !message.isOwn) {
+      if (!message?.isOwn) {
         setActionError(t("message.editUnavailable"));
         return;
       }
@@ -341,7 +377,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         throw new Error(error);
       }
       const message = resolveMessageByVisualId(visualMessageId);
-      if (message == null || !message.isOwn) {
+      if (!message?.isOwn) {
         const error = t("message.editUnavailable");
         setActionError(error);
         throw new Error(error);
@@ -470,6 +506,18 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     }
   }, [requestMessageEdit, routeMessages]);
 
+  const handleToggleRightPanel = useCallback(() => {
+    rightDrawer?.setOpen(!rightDrawer.open);
+  }, [rightDrawer]);
+
+  const handleOpenRightPanel = useCallback(() => {
+    if (rightDrawer?.openInfo != null) {
+      rightDrawer.openInfo();
+      return;
+    }
+    rightDrawer?.setOpen(true);
+  }, [rightDrawer]);
+
   let body: React.ReactNode;
   if (selection.status === "invalid-route") {
     body = (
@@ -533,13 +581,15 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       data-testid="chat-page"
     >
       <ChatHeader
-        channelName={`#${title}`}
-        topic={
-          selection.status === "conversation" && selection.kind === "topic" ? topicTitle : undefined
-        }
-        hideTopic={selection.status !== "conversation" || selection.kind !== "topic"}
-        participantsCount={0}
-        onlineCount={0}
+        channelName={headerView.channelName}
+        topic={headerView.topic}
+        hideTopic={headerView.hideTopic}
+        participantsCount={headerView.participantsCount}
+        onlineCount={headerView.onlineCount}
+        onOpenSearch={openSearch ?? undefined}
+        onToggleRightPanel={rightDrawer == null ? undefined : handleToggleRightPanel}
+        onOpenRightPanel={rightDrawer == null ? undefined : handleOpenRightPanel}
+        rightPanelOpen={rightDrawer?.open ?? false}
       />
       <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {body}

@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import type { MessengerSidebarActivityCounts } from "~/entities/messenger/messenger-sidebar.lib";
 import type {
   MessengerSidebarStreamItem,
   MessengerSidebarTopicItem,
@@ -17,7 +18,6 @@ import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { Spinner } from "~/shared/ui/spinner.ui";
-import { SidebarActivity } from "./sidebar-activity.ui";
 import { sidebarChatRowBodyClass, sidebarChatRowLinkClass } from "./sidebar-chat-row-layout.lib";
 import { SidebarChatRowMeta } from "./sidebar-chat-row-meta.ui";
 import { useSidebarConfigStore } from "./sidebar-config.model";
@@ -26,6 +26,7 @@ import { SidebarMessagePreview } from "./sidebar-message-preview.ui";
 import { SidebarSearchHeader } from "./sidebar-search-header.ui";
 import { useSidebarTopicCollapse } from "./sidebar-topic-collapse.hook";
 import { SidebarTopicShowMoreButton } from "./sidebar-topic-show-more.ui";
+import { WorkspaceSidebarActivity } from "./sidebar-workspace-activity.ui";
 import {
   WorkspaceStreamContextMenu,
   WorkspaceTopicContextMenu,
@@ -35,12 +36,15 @@ export interface WorkspaceSidebarProps {
   streams: MessengerSidebarStreamItem[];
   loading: boolean;
   error: string | null;
+  activityCounts: MessengerSidebarActivityCounts;
+  workspaceStreamCount: number;
+  selectedFolderSystemType?: "all" | "created" | "personal" | "channels" | null;
   activityPanelBottomSlot?: React.ReactNode;
   onOpenCreateChat?: () => void;
 }
 
-// Этот компонент только рисует новый список чатов.
-// Данные, ссылки и счётчики уже подготовлены селекторами messenger-sidebar.lib.ts.
+// This component only renders the Workspace chat list.
+// Data, links, and counts are prepared by messenger-sidebar.lib.ts selectors.
 function workspaceStreamMatchesQuery(
   stream: MessengerSidebarStreamItem,
   normalizedQuery: string,
@@ -57,6 +61,45 @@ function workspaceTopicMatchesQuery(
   normalizedQuery: string,
 ): boolean {
   return normalizedQuery.length === 0 || topic.title.toLowerCase().includes(normalizedQuery);
+}
+
+function resolveWorkspaceSidebarEmptyState(input: {
+  normalizedQuery: string;
+  workspaceStreamCount: number;
+  selectedFolderSystemType?: "all" | "created" | "personal" | "channels" | null;
+}): { title: string; hint: string } {
+  if (input.normalizedQuery.length > 0) {
+    return {
+      title: t("sidebar.emptySearch"),
+      hint: t("sidebar.emptySearchHint"),
+    };
+  }
+
+  if (input.workspaceStreamCount === 0) {
+    return {
+      title: t("sidebar.emptyWorkspace"),
+      hint: t("sidebar.emptyWorkspaceHint"),
+    };
+  }
+
+  if (input.selectedFolderSystemType === "personal") {
+    return {
+      title: t("sidebar.emptyPersonalChats"),
+      hint: t("sidebar.emptyPersonalChatsHint"),
+    };
+  }
+
+  if (input.selectedFolderSystemType === "channels") {
+    return {
+      title: t("sidebar.emptyChannelList"),
+      hint: t("sidebar.emptyChannelListHint"),
+    };
+  }
+
+  return {
+    title: t("sidebar.emptySelectedFolder"),
+    hint: t("sidebar.emptySelectedFolderHint"),
+  };
 }
 
 function WorkspaceSidebarTopicRow({
@@ -229,6 +272,9 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
   streams,
   loading,
   error,
+  activityCounts,
+  workspaceStreamCount,
+  selectedFolderSystemType = null,
   activityPanelBottomSlot,
   onOpenCreateChat,
 }) => {
@@ -247,16 +293,32 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
     () => parseWorkspaceMessengerRoute(location.pathname),
     [location.pathname],
   );
-  // Активную строку определяем по Workspace UUID из адреса, а не по старым Zulip slug/id.
+  // Active rows are matched by Workspace UUIDs from the URL, not old Zulip slugs or ids.
   const activeStreamUuid =
     routeMatch?.kind === "stream" || routeMatch?.kind === "topic" ? routeMatch.streamUuid : null;
   const activeTopicUuid = routeMatch?.kind === "topic" ? routeMatch.topicUuid : null;
   const normalizedQuery = useMemo(() => normalizeSidebarSearchQuery(searchQuery), [searchQuery]);
   const filteredStreams = useMemo(
-    // Поиск здесь локальный: он фильтрует уже загруженный список и не ходит в API.
+    // Search is local: it filters the loaded list and does not call the API.
     () => streams.filter((stream) => workspaceStreamMatchesQuery(stream, normalizedQuery)),
     [normalizedQuery, streams],
   );
+  const emptyState = useMemo(
+    () =>
+      resolveWorkspaceSidebarEmptyState({
+        normalizedQuery,
+        workspaceStreamCount,
+        selectedFolderSystemType,
+      }),
+    [normalizedQuery, selectedFolderSystemType, workspaceStreamCount],
+  );
+  const hasSpecificEmptyContext = normalizedQuery.length > 0 || workspaceStreamCount > 0;
+  const showNonBlockingError =
+    error != null && (filteredStreams.length > 0 || hasSpecificEmptyContext);
+  const showBlockingError =
+    error != null && filteredStreams.length === 0 && !hasSpecificEmptyContext;
+  const showEmptyState =
+    !loading && filteredStreams.length === 0 && (error == null || hasSpecificEmptyContext);
   const handleToggleActivity = useCallback(
     () => setActivityOpen(!activityOpen),
     [activityOpen, setActivityOpen],
@@ -308,7 +370,11 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
             onSearchQueryChange={setSearchQuery}
             onOpenCreateChat={onOpenCreateChat ?? handleOpenCreateChat}
           />
-          <SidebarActivity open={activityOpen} onToggle={handleToggleActivity} />
+          <WorkspaceSidebarActivity
+            open={activityOpen}
+            onToggle={handleToggleActivity}
+            counts={activityCounts}
+          />
           {activityPanelBottomSlot != null && (
             <>
               {activityPanelBottomSlot}
@@ -330,7 +396,7 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
               </div>
             </div>
           ) : null}
-          {error != null && filteredStreams.length === 0 ? (
+          {showBlockingError ? (
             <div className="px-3 py-4">
               <div className="bg-bg-elevated/40 flex flex-col items-center gap-2 rounded-lg border border-dashed border-border-subtle px-3 py-5 text-center">
                 <Icon name="info" size={18} className="text-notice-base" />
@@ -339,16 +405,25 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
               </div>
             </div>
           ) : null}
-          {!loading && error == null && filteredStreams.length === 0 ? (
+          {showNonBlockingError ? (
+            <div className="px-3 pb-2">
+              <div className="bg-bg-elevated/60 flex items-start gap-2 rounded-lg border border-border-subtle px-3 py-2">
+                <Icon name="info" size={16} className="mt-0.5 shrink-0 text-notice-base" />
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-text-primary">
+                    {t("sidebar.partialLoadError")}
+                  </p>
+                  <p className="truncate text-xs text-text-muted">{error}</p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+          {showEmptyState ? (
             <div className="px-3 py-4">
               <div className="bg-bg-elevated/40 flex flex-col items-center gap-2 rounded-lg border border-dashed border-border-subtle px-3 py-5 text-center">
                 <Icon name="chatBubble" size={18} className="text-text-muted" />
-                <p className="text-sm font-medium text-text-primary">
-                  {t("sidebar.emptyAllChats")}
-                </p>
-                <p className="max-w-[220px] text-xs text-text-muted">
-                  {t("sidebar.emptyAllChatsHint")}
-                </p>
+                <p className="text-sm font-medium text-text-primary">{emptyState.title}</p>
+                <p className="max-w-[220px] text-xs text-text-muted">{emptyState.hint}</p>
               </div>
             </div>
           ) : null}

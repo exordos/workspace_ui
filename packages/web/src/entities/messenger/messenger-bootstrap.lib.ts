@@ -30,6 +30,7 @@ import {
 } from "./messenger-cache.lib";
 import {
   loadMessengerLastMessagesForSidebar,
+  primeMessengerLastMessagesFromCache,
   type MessengerLastMessagesCacheDeps,
 } from "./messenger-last-messages-loader.lib";
 import {
@@ -182,6 +183,13 @@ export async function bootstrapMessengerStore({
     const currentState = store.getState();
     if (currentState.ownerKey !== ownerKey || !currentState.isLoading) return;
 
+    await primeMessengerLastMessagesFromCache({
+      ownerKey,
+      payload: cached.payload,
+      cache: lastMessagesCache,
+    });
+    if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) return;
+
     currentState.replaceBootstrapState(ownerKey, cached.payload);
     if (cached.epochVersion != null) {
       store.getState().setRealtimeCursor(ownerKey, cached.epochVersion);
@@ -214,6 +222,15 @@ export async function bootstrapMessengerStore({
       folders: [],
       users,
     });
+    await primeMessengerLastMessagesFromCache({
+      ownerKey,
+      payload: payloadWithoutFolders,
+      cache: lastMessagesCache,
+    });
+    if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
+      return { status: "skipped", ownerKey, reason: "stale-owner" };
+    }
+
     const preservedFolders = currentFolders(store.getState());
     store.getState().replaceBootstrapState(ownerKey, {
       ...payloadWithoutFolders,

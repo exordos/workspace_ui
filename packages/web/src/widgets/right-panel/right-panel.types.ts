@@ -1,3 +1,7 @@
+import type { WorkspaceRightPanelInfoView as MessengerWorkspaceRightPanelInfoView } from "~/entities/messenger/messenger-right-panel.lib";
+
+export type WorkspaceRightPanelInfoView = MessengerWorkspaceRightPanelInfoView;
+
 /** User data for the DM info panel */
 export interface RightPanelUserInfo {
   name: string;
@@ -41,6 +45,8 @@ export interface RightPanelProps {
   onOpenAboutDrawer?: () => void;
   /** Optional callback used by authenticated user menu mode */
   onOpenBuildsDrawer?: () => void;
+  /** Workspace-native info data; when present, the info panel avoids legacy Zulip stores. */
+  workspaceInfo?: WorkspaceRightPanelInfoView | null;
 }
 
 export type RightPanelInfoProps = Omit<RightPanelProps, "mode">;

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { t } from "~/i18n/i18n";
 import { workspaceMessengerRootRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import {
+  selectMessengerSidebarActivityCounts,
   selectMessengerSidebarFolders,
   selectMessengerSidebarStreams,
 } from "./messenger-sidebar.lib";
@@ -287,6 +288,87 @@ describe("messenger sidebar selectors", () => {
     });
   });
 
+  it("sorts folder rows by cached last message time instead of stream updatedAt", () => {
+    const newerMessageAt = "2026-06-22T12:10:00Z";
+    const rows = selectMessengerSidebarStreams(
+      state({
+        streamsById: {
+          [STREAM_A]: stream({
+            lastMessageUuid: MESSAGE_A,
+            updatedAt: DATE_A,
+          }),
+          [STREAM_B]: stream({
+            uuid: STREAM_B,
+            name: "Alice",
+            audience: "private",
+            isPrivate: true,
+            directUserUuid: "alice",
+            unreadCount: 4,
+            lastMessageUuid: MESSAGE_B,
+            updatedAt: newerMessageAt,
+          }),
+        },
+        foldersById: {
+          [FOLDER_A]: folder({
+            items: [
+              {
+                uuid: FOLDER_ITEM_A,
+                projectId: PROJECT_ID,
+                folderUuid: FOLDER_A,
+                userUuid: "user",
+                streamUuid: STREAM_A,
+                conversationId: `stream:${STREAM_A}`,
+                chatType: "stream",
+                orderIndex: null,
+                pinnedAt: null,
+                unreadCount: 5,
+                createdAt: DATE_A,
+                updatedAt: DATE_A,
+              },
+              {
+                uuid: FOLDER_ITEM_B,
+                projectId: PROJECT_ID,
+                folderUuid: FOLDER_A,
+                userUuid: "user",
+                streamUuid: STREAM_B,
+                conversationId: `stream:${STREAM_B}`,
+                chatType: "private",
+                orderIndex: null,
+                pinnedAt: null,
+                unreadCount: 1,
+                createdAt: DATE_A,
+                updatedAt: newerMessageAt,
+              },
+            ],
+          }),
+        },
+      }),
+      {
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        selectedFolderUuid: FOLDER_A,
+        messagesById: {
+          [MESSAGE_A]: message({
+            uuid: MESSAGE_A,
+            streamUuid: STREAM_A,
+            createdAt: DATE_B,
+          }),
+          [MESSAGE_B]: message({
+            uuid: MESSAGE_B,
+            conversationId: `topic:${STREAM_B}:${TOPIC_B}`,
+            streamUuid: STREAM_B,
+            topicUuid: TOPIC_B,
+            createdAt: DATE_A,
+          }),
+        },
+      },
+    );
+
+    expect(rows.map((row) => row.streamUuid)).toEqual([STREAM_A, STREAM_B]);
+    expect(rows[0]?.lastMessageCreatedAt).toBe(DATE_B);
+    expect(rows[1]?.updatedAt).toBe(newerMessageAt);
+  });
+
   it("builds previews from loaded last messages", () => {
     const rows = selectMessengerSidebarStreams(
       state({
@@ -469,6 +551,42 @@ describe("messenger sidebar selectors", () => {
         items: expect.any(Array),
       },
     ]);
+  });
+
+  it("builds workspace activity counts from the backend all folder only", () => {
+    const counts = selectMessengerSidebarActivityCounts(
+      state({
+        foldersById: {
+          [FOLDER_A]: folder({
+            systemType: "all",
+            unreadCount: 11,
+          }),
+        },
+      }),
+    );
+
+    expect(counts).toEqual({
+      inboxCount: 11,
+      mentionsCount: null,
+    });
+  });
+
+  it("does not synthesize workspace activity counts when the all folder is missing", () => {
+    const counts = selectMessengerSidebarActivityCounts(
+      state({
+        foldersById: {
+          [FOLDER_A]: folder({
+            systemType: "created",
+            unreadCount: 11,
+          }),
+        },
+      }),
+    );
+
+    expect(counts).toEqual({
+      inboxCount: null,
+      mentionsCount: null,
+    });
   });
 
   it("returns a fresh folder badge after a local folder item store update", () => {

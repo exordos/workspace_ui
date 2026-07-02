@@ -5,6 +5,7 @@ import type { ChatInfoContext } from "~/features/chat-info/chat-info.types";
 import type { SidebarChat } from "~/widgets/sidebar/sidebar.types";
 
 export function useLayoutChatInfoSync(options: {
+  enabled?: boolean;
   currentInstanceId: string | null;
   dmChat: Extract<SidebarChat, { type: "dm" }> | undefined;
   dmParticipantIds: number[];
@@ -15,6 +16,7 @@ export function useLayoutChatInfoSync(options: {
   usersMapForChatInfo: Map<number, unknown>;
 }) {
   const {
+    enabled = true,
     currentInstanceId,
     dmChat,
     dmParticipantIds,
@@ -26,6 +28,9 @@ export function useLayoutChatInfoSync(options: {
   } = options;
 
   const chatInfoContext = useMemo<ChatInfoContext>(() => {
+    if (!enabled) {
+      return { kind: "none", instanceId: currentInstanceId };
+    }
     if (!currentInstanceId) {
       return { kind: "none", instanceId: null };
     }
@@ -54,6 +59,7 @@ export function useLayoutChatInfoSync(options: {
     currentInstanceId,
     dmChat,
     dmParticipantIds,
+    enabled,
     mutedStreamIds,
     topics,
   ]);
@@ -65,17 +71,27 @@ export function useLayoutChatInfoSync(options: {
   const hydratedChatInfoKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
     if (hydratedChatInfoKeyRef.current === chatInfoNetworkKey) {
       return;
     }
     hydratedChatInfoKeyRef.current = chatInfoNetworkKey;
     void useChatInfoStore.getState().hydrate(chatInfoContext);
-  }, [chatInfoContext, chatInfoNetworkKey]);
+  }, [chatInfoContext, chatInfoNetworkKey, enabled]);
 
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
     useChatInfoStore.getState().syncDerived(chatInfoContext);
-  }, [chatInfoContext, usersMapForChatInfo]);
+  }, [chatInfoContext, enabled, usersMapForChatInfo]);
 
   const chatInfoData = useChatInfoStore((s) => s.data);
-  return { chatInfoContext, chatInfoNetworkKey, chatInfoData };
+  return {
+    chatInfoContext,
+    chatInfoNetworkKey,
+    chatInfoData: enabled ? chatInfoData : null,
+  };
 }

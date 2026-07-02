@@ -4,6 +4,7 @@ import { RightPanelAbout } from "./right-panel-about.ui";
 import { RightPanelBuilds } from "./right-panel-builds.ui";
 import { RightPanelInfo } from "./right-panel-info.ui";
 import { RightPanelUserMenu } from "./right-panel-user-menu.ui";
+import { RightPanelWorkspaceInfo } from "./right-panel-workspace-info.ui";
 import type { RightPanelProps } from "./right-panel.types";
 
 export const RightPanelShell: React.FC<RightPanelProps> = ({ mode = "info", ...props }) => {
@@ -44,6 +45,10 @@ export const RightPanelShell: React.FC<RightPanelProps> = ({ mode = "info", ...p
 
   if (mode === "about") return <RightPanelAbout />;
   if (mode === "builds") return <RightPanelBuilds />;
+
+  if (props.workspaceInfo != null) {
+    return <RightPanelWorkspaceInfo info={props.workspaceInfo} />;
+  }
 
   return <RightPanelInfo {...props} />;
 };

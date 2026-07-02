@@ -4,8 +4,14 @@
  */
 import { useMemo } from "react";
 import type { ZulipInstance } from "~/entities/instance/instance.model";
+import {
+  selectWorkspaceRightPanelInfoView,
+  type WorkspaceRightPanelInfoView,
+} from "~/entities/messenger/messenger-right-panel.lib";
+import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
+import type { WorkspaceMessengerRouteMatch } from "~/shared/lib/workspace-messenger-route.lib";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import type { RightDrawerMode } from "~/widgets/right-panel/right-drawer.model";
 import type { RightPanelUserInfo } from "~/widgets/right-panel/right-panel.types";
@@ -33,6 +39,7 @@ export interface UseLayoutRightPanelShellParams {
   rightDrawerUserIdOverride: number | null;
   mutedStreamIds: Set<number>;
   usersMapForChatInfo: Map<number, { full_name?: string; email?: string }>;
+  workspaceRoute: WorkspaceMessengerRouteMatch | null;
 }
 
 export interface LayoutRightPanelShellResult {
@@ -40,6 +47,7 @@ export interface LayoutRightPanelShellResult {
   participantsCount: number;
   onlineCount: number;
   rightPanelUser: RightPanelUserInfo | undefined;
+  workspaceRightPanelInfo: WorkspaceRightPanelInfoView | null;
 }
 
 export function useLayoutRightPanelShell(
@@ -61,7 +69,9 @@ export function useLayoutRightPanelShell(
     rightDrawerUserIdOverride,
     mutedStreamIds,
     usersMapForChatInfo,
+    workspaceRoute,
   } = params;
+  const workspaceMessengerActive = workspaceRoute != null;
 
   const rightDrawerOverrideUser = useUsersStore((s) =>
     rightDrawerUserIdOverride != null ? s.getUser(rightDrawerUserIdOverride) : undefined,
@@ -118,6 +128,7 @@ export function useLayoutRightPanelShell(
   }, [activeStreamId, streamsMap]);
 
   const { chatInfoData } = useLayoutChatInfoSync({
+    enabled: !workspaceMessengerActive,
     currentInstanceId,
     dmChat,
     dmParticipantIds,
@@ -127,6 +138,45 @@ export function useLayoutRightPanelShell(
     topics: chatInfoTopics,
     usersMapForChatInfo,
   });
+
+  const workspaceConversationsById = useMessengerStore((state) => state.conversationsById);
+  const workspaceStreamsById = useMessengerStore((state) => state.streamsById);
+  const workspaceTopicsById = useMessengerStore((state) => state.topicsById);
+  const workspaceTopicIds = useMessengerStore((state) => state.topicIds);
+  const workspaceStreamBindingsById = useMessengerStore((state) => state.streamBindingsById);
+  const workspaceStreamBindingIdsByStreamId = useMessengerStore(
+    (state) => state.streamBindingIdsByStreamId,
+  );
+  const workspaceUsersById = useMessengerStore((state) => state.usersById);
+  const workspaceRightPanelInfo = useMemo(
+    () =>
+      selectWorkspaceRightPanelInfoView(
+        {
+          conversationsById: workspaceConversationsById,
+          streamsById: workspaceStreamsById,
+          topicsById: workspaceTopicsById,
+          topicIds: workspaceTopicIds,
+          streamBindingsById: workspaceStreamBindingsById,
+          streamBindingIdsByStreamId: workspaceStreamBindingIdsByStreamId,
+          usersById: workspaceUsersById,
+        },
+        {
+          route: workspaceRoute,
+          fallbackTitle: rightDrawerTitle || t("chat.generalChat"),
+        },
+      ),
+    [
+      rightDrawerTitle,
+      workspaceConversationsById,
+      workspaceRoute,
+      workspaceStreamBindingIdsByStreamId,
+      workspaceStreamBindingsById,
+      workspaceStreamsById,
+      workspaceTopicIds,
+      workspaceTopicsById,
+      workspaceUsersById,
+    ],
+  );
 
   const rightPanelMemberStatusIds = useMemo(() => {
     if (!rightDrawerOpen) return [];
@@ -155,9 +205,10 @@ export function useLayoutRightPanelShell(
   );
 
   return {
-    rightPanelTitleResolved,
-    participantsCount: chatInfoData?.memberCount ?? 0,
-    onlineCount: chatInfoData?.onlineCount ?? 0,
-    rightPanelUser: rightPanelUser ?? undefined,
+    rightPanelTitleResolved: workspaceRightPanelInfo?.title ?? rightPanelTitleResolved,
+    participantsCount: workspaceRightPanelInfo?.participantsCount ?? chatInfoData?.memberCount ?? 0,
+    onlineCount: workspaceRightPanelInfo?.onlineCount ?? chatInfoData?.onlineCount ?? 0,
+    rightPanelUser: workspaceMessengerActive ? undefined : (rightPanelUser ?? undefined),
+    workspaceRightPanelInfo,
   };
 }

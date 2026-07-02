@@ -473,6 +473,7 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     logStoreAction("messenger", "replaceBootstrapState", {
       ownerKey,
       streams: payload.streams.length,
+      streamBindings: payload.streamBindings.length,
       topics: payload.topics.length,
       conversations: payload.conversations.length,
       folders: payload.folders.length,
@@ -480,9 +481,23 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
     });
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;
+      const nextDomainData = buildMessengerDomainData(payload);
+      const streamBindingsState =
+        payload.streamBindings.length > 0
+          ? {
+              streamBindingsById: nextDomainData.streamBindingsById,
+              streamBindingIds: nextDomainData.streamBindingIds,
+              streamBindingIdsByStreamId: nextDomainData.streamBindingIdsByStreamId,
+            }
+          : {
+              streamBindingsById: state.streamBindingsById,
+              streamBindingIds: state.streamBindingIds,
+              streamBindingIdsByStreamId: state.streamBindingIdsByStreamId,
+            };
 
       return {
-        ...buildMessengerDomainData(payload),
+        ...nextDomainData,
+        ...streamBindingsState,
         ownerKey,
         isLoading: false,
         error: null,

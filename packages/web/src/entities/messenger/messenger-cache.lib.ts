@@ -75,9 +75,11 @@ function catalogWriteSnapshot(
   options: MessengerCatalogPayloadCacheWriteOptions = {},
 ): WorkspaceMessengerCatalogCacheWriteSnapshot {
   const shouldWriteFolders = options.mode !== "reconcile" || options.reconcileFolders === true;
+  const shouldWriteStreamBindings =
+    options.mode !== "reconcile" || payload.streamBindings.length > 0;
   return {
     streams: payload.streams,
-    streamBindings: payload.streamBindings,
+    streamBindings: shouldWriteStreamBindings ? payload.streamBindings : undefined,
     topics: payload.topics,
     conversations: payload.conversations,
     folders: shouldWriteFolders ? payload.folders : undefined,

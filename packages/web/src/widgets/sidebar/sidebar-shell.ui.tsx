@@ -1,9 +1,10 @@
 import React, { useCallback, useMemo } from "react";
+import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import {
+  selectMessengerSidebarActivityCounts,
   selectMessengerSidebarFolders,
   selectMessengerSidebarStreams,
 } from "~/entities/messenger/messenger-sidebar.lib";
-import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerSidebarStreamItem } from "~/entities/messenger/messenger.types";
 import {
@@ -49,15 +50,18 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
           }
         : null;
   const workspaceFolders = useMessengerStore(selectMessengerSidebarFolders);
+  const workspaceActivityCounts = useMessengerStore(selectMessengerSidebarActivityCounts);
   const workspaceMessagesById = useWorkspaceMessageStore((state) => state.messagesById);
   const workspaceSelectedFolderId = useSidebarConfigStore((s) => s.selectedFolderId);
-  const workspaceEffectiveFolderId = workspaceFolders.some(
+  const workspaceEffectiveFolder = workspaceFolders.some(
     (folder) => folder.folderUuid === workspaceSelectedFolderId,
   )
-    ? workspaceSelectedFolderId
-    : (workspaceFolders.find((folder) => folder.systemType === "all")?.folderUuid ??
-      workspaceFolders[0]?.folderUuid ??
+    ? (workspaceFolders.find((folder) => folder.folderUuid === workspaceSelectedFolderId) ?? null)
+    : (workspaceFolders.find((folder) => folder.systemType === "all") ??
+      workspaceFolders[0] ??
       null);
+  const workspaceEffectiveFolderId = workspaceEffectiveFolder?.folderUuid ?? null;
+  const workspaceTotalStreamCount = useMessengerStore((state) => state.streamIds.length);
   const workspaceStreams = useMessengerStore((state) =>
     sidebarWorkspaceIdentity != null
       ? selectMessengerSidebarStreams(state, {
@@ -111,6 +115,9 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
             streams={workspaceStreams}
             loading={workspaceLoading}
             error={workspaceError}
+            activityCounts={workspaceActivityCounts}
+            workspaceStreamCount={workspaceTotalStreamCount}
+            selectedFolderSystemType={workspaceEffectiveFolder?.systemType ?? null}
           />,
         )}
       </>
@@ -122,6 +129,9 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
       streams={workspaceStreams}
       loading={workspaceLoading}
       error={workspaceError}
+      activityCounts={workspaceActivityCounts}
+      workspaceStreamCount={workspaceTotalStreamCount}
+      selectedFolderSystemType={workspaceEffectiveFolder?.systemType ?? null}
       activityPanelBottomSlot={workspaceFolderRail}
     />,
   );

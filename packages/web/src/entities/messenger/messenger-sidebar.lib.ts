@@ -22,6 +22,10 @@ const EMPTY_SIDEBAR_STREAMS: MessengerSidebarStreamItem[] = [];
 const EMPTY_SIDEBAR_FOLDERS: MessengerSidebarFolderView[] = [];
 const EMPTY_SIDEBAR_TOPICS: MessengerSidebarTopicItem[] = [];
 const EMPTY_SIDEBAR_MESSAGES_BY_ID: Record<MessengerUuid, MessengerMessage> = {};
+const EMPTY_SIDEBAR_ACTIVITY_COUNTS: MessengerSidebarActivityCounts = {
+  inboxCount: null,
+  mentionsCount: null,
+};
 
 // This file does not load anything from the API.
 // It reads stored Workspace data from the messenger store and builds the sidebar view.
@@ -54,8 +58,20 @@ interface SidebarFoldersCacheEntry {
   result: MessengerSidebarFolderView[];
 }
 
+interface SidebarActivityCountsCacheEntry {
+  folderIds: MessengerUuid[];
+  foldersById: MessengerStoreState["foldersById"];
+  result: MessengerSidebarActivityCounts;
+}
+
+export interface MessengerSidebarActivityCounts {
+  inboxCount: number | null;
+  mentionsCount: number | null;
+}
+
 let sidebarStreamsCache: SidebarStreamsCacheEntry | null = null;
 let sidebarFoldersCache: SidebarFoldersCacheEntry | null = null;
+let sidebarActivityCountsCache: SidebarActivityCountsCacheEntry | null = null;
 
 // The sidebar recalculates often, so keep a simple cache keyed by store references.
 // If streams/topics/folders did not change, React receives the same array and avoids redundant rerenders.
@@ -73,11 +89,14 @@ function compareSidebarStreams(
   if (a.pinnedAt != null && b.pinnedAt == null) return -1;
   if (a.pinnedAt == null && b.pinnedAt != null) return 1;
 
+  const activityCompare = compareNullableStrings(b.lastMessageCreatedAt, a.lastMessageCreatedAt);
+  if (activityCompare !== 0) return activityCompare;
+
   const orderIndexCompare =
     (a.orderIndex ?? Number.MAX_SAFE_INTEGER) - (b.orderIndex ?? Number.MAX_SAFE_INTEGER);
   if (orderIndexCompare !== 0) return orderIndexCompare;
 
-  return compareNullableStrings(b.updatedAt, a.updatedAt) || a.title.localeCompare(b.title);
+  return 0;
 }
 
 function resolveMessengerUserDisplayName(user: MessengerUser | undefined): string | undefined {
@@ -114,6 +133,29 @@ function previewFromMessage(
     text: message.markdown,
     ...(senderName != null ? { senderName } : {}),
   };
+}
+
+function messageCreatedAt(
+  messageUuid: MessengerUuid | null | undefined,
+  messagesById: Record<MessengerUuid, MessengerMessage>,
+): string | null {
+  if (messageUuid == null) return null;
+  return messagesById[messageUuid]?.createdAt ?? null;
+}
+
+function latestMessageCreatedAt(
+  messageUuids: readonly (MessengerUuid | null | undefined)[],
+  messagesById: Record<MessengerUuid, MessengerMessage>,
+): string | null {
+  let latest: string | null = null;
+  for (const messageUuid of messageUuids) {
+    const createdAt = messageCreatedAt(messageUuid, messagesById);
+    if (createdAt == null) continue;
+    if (latest == null || createdAt > latest) {
+      latest = createdAt;
+    }
+  }
+  return latest;
 }
 
 function topicItemFromTopic(input: {
@@ -185,6 +227,10 @@ function streamItemFromStream(input: {
       input.currentUserUuid,
     ),
     updatedAt: input.stream.updatedAt,
+    lastMessageCreatedAt: latestMessageCreatedAt(
+      [input.stream.lastMessageUuid, ...input.topics.map((topic) => topic.preview?.messageUuid)],
+      input.messagesById,
+    ),
   };
 }
 
@@ -222,6 +268,7 @@ function streamItemFromConversation(input: {
       input.currentUserUuid,
     ),
     updatedAt: input.updatedAt ?? "",
+    lastMessageCreatedAt: messageCreatedAt(input.conversation.lastMessageUuid, input.messagesById),
   };
 }
 
@@ -385,6 +432,36 @@ export function selectMessengerSidebarFolders(
 
   const result = folders.length > 0 ? folders : EMPTY_SIDEBAR_FOLDERS;
   sidebarFoldersCache = {
+    folderIds: state.folderIds,
+    foldersById: state.foldersById,
+    result,
+  };
+  return result;
+}
+
+export function selectMessengerSidebarActivityCounts(
+  state: MessengerStoreState,
+): MessengerSidebarActivityCounts {
+  if (
+    sidebarActivityCountsCache?.folderIds === state.folderIds &&
+    sidebarActivityCountsCache.foldersById === state.foldersById
+  ) {
+    return sidebarActivityCountsCache.result;
+  }
+
+  const allFolder = state.folderIds
+    .map((folderId) => state.foldersById[folderId])
+    .find((folder): folder is MessengerFolder => folder?.systemType === "all");
+
+  const result =
+    allFolder != null
+      ? {
+          inboxCount: allFolder.unreadCount,
+          mentionsCount: null,
+        }
+      : EMPTY_SIDEBAR_ACTIVITY_COUNTS;
+
+  sidebarActivityCountsCache = {
     folderIds: state.folderIds,
     foldersById: state.foldersById,
     result,

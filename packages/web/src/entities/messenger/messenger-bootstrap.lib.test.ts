@@ -15,6 +15,7 @@ import type {
 } from "~/shared/api/messenger.types";
 import { adaptMessengerBootstrapPayload, adaptMessengerMessage } from "./messenger-adapters.lib";
 import { bootstrapMessengerStore } from "./messenger-bootstrap.lib";
+import { selectWorkspaceChatHeaderView } from "./messenger-chat-header.lib";
 import {
   selectMessengerFolders,
   selectMessengerSidebarConversations,
@@ -36,6 +37,7 @@ const USER_B = "44444444-4444-4444-8444-444444444444";
 const STREAM_A = "75309057-419c-4b12-a7c1-3932429ec4a6";
 const STREAM_B = "37a28696-153d-431e-a5fb-36f0c0209765";
 const STREAM_BINDING_A = "ea4364f4-96e3-4b33-b80d-fd53e5697151";
+const STREAM_BINDING_B = "c06b5276-5438-40f3-85c0-1ae25ba6811b";
 const TOPIC_A = "4ec0b996-b778-45f8-8ef4-ef863be0c047";
 const TOPIC_B = "ed25f944-8106-4386-b2f9-65e9db32d465";
 const FOLDER_A = "50ecadd0-9823-4d97-b54c-806cc672c210";
@@ -344,6 +346,74 @@ describe("messenger bootstrap store", () => {
     });
   });
 
+  it("keeps side-loaded stream bindings when a fresh bootstrap payload omits the bindings catalog", () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+    useMessengerStore.getState().startBootstrap(ownerKey);
+
+    const initialPayload = adaptMessengerBootstrapPayload({
+      streams: [createStreamDto()],
+      topics: [createTopicDto()],
+      folders: [],
+      users: [
+        createUserDto(),
+        createUserDto({
+          uuid: USER_B,
+          username: "bob",
+          status: "offline",
+          first_name: "Bob",
+          last_name: "Tester",
+          email: "bob@example.test",
+        }),
+      ],
+    });
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, initialPayload);
+    useMessengerStore.getState().upsertStreamBindings(
+      ownerKey,
+      adaptMessengerBootstrapPayload({
+        streams: [],
+        streamBindings: [
+          createStreamBindingDto(),
+          createStreamBindingDto({
+            uuid: STREAM_BINDING_B,
+            user_uuid: USER_B,
+            who_uuid: USER_B,
+            role: "member",
+          }),
+        ],
+        topics: [],
+        folders: [],
+        users: [],
+      }).streamBindings,
+    );
+
+    useMessengerStore.getState().replaceBootstrapState(ownerKey, {
+      ...initialPayload,
+      streamBindings: [],
+    });
+
+    const state = useMessengerStore.getState();
+    expect(state.streamBindingIds).toEqual([STREAM_BINDING_A, STREAM_BINDING_B]);
+    expect(state.streamBindingIdsByStreamId[STREAM_A]).toEqual([
+      STREAM_BINDING_A,
+      STREAM_BINDING_B,
+    ]);
+    expect(
+      selectWorkspaceChatHeaderView(state, {
+        route: {
+          kind: "stream",
+          orgId: ORGANIZATION_A,
+          projectId: PROJECT_A,
+          streamUuid: STREAM_A,
+        },
+        fallbackTitle: "Messenger",
+      }),
+    ).toMatchObject({
+      participantsCount: 2,
+      onlineCount: 1,
+    });
+  });
+
   it("keeps old bootstrap payloads without stream bindings compatible", () => {
     const payload = adaptMessengerBootstrapPayload({
       streams: [createStreamDto()],
@@ -384,6 +454,8 @@ describe("messenger bootstrap store", () => {
       }),
       lastMessagesCache: { readMessagesByUuids: () => Promise.resolve([]) },
     });
+    await flushPromises();
+    await flushPromises();
     await flushPromises();
     await flushPromises();
 

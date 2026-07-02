@@ -207,6 +207,7 @@ export interface MessengerSidebarStreamItem {
   topics: MessengerSidebarTopicItem[];
   preview: MessengerSidebarMessagePreview | null;
   updatedAt: string;
+  lastMessageCreatedAt: string | null;
 }
 
 export interface MessengerSidebarFolderView {

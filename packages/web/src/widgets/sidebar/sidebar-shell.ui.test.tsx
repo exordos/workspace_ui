@@ -1,5 +1,4 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type {
@@ -11,13 +10,14 @@ import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { useSidebarConfigStore } from "./sidebar-config.model";
 import { SidebarShell } from "./sidebar-shell.ui";
+import type { ReactNode } from "react";
 
 const folderRailPropsMock = vi.fn();
 const workspaceSidebarPropsMock = vi.fn();
 
 vi.mock("~/widgets/folder-rail/folder-rail.ui", () => ({
   FolderRail: (props: {
-    folders: Array<{ id: string; label: string; badge?: number }>;
+    folders: { id: string; label: string; badge?: number }[];
     selectedFolderId: string;
     onSelectFolder: (folderId: string) => void;
     layout: string;
@@ -38,7 +38,7 @@ vi.mock("~/widgets/folder-rail/folder-rail.ui", () => ({
 
 vi.mock("./sidebar-workspace.ui", () => ({
   WorkspaceSidebar: (props: {
-    streams: Array<{ title: string }>;
+    streams: { title: string }[];
     loading: boolean;
     error: string | null;
     activityPanelBottomSlot?: ReactNode;
@@ -204,7 +204,7 @@ describe("SidebarShell", () => {
       expect.arrayContaining([expect.objectContaining({ id: ALL_FOLDER_UUID, badge: 4 })]),
     );
 
-    await act(async () => {
+    act(() => {
       useMessengerStore.getState().upsertFolderItem(OWNER_KEY, {
         uuid: "folder-item-engineering",
         projectId: PROJECT_ID,
@@ -251,5 +251,64 @@ describe("SidebarShell", () => {
     render(<SidebarShell />);
 
     expect(screen.getByTestId("workspace-sidebar")).toHaveTextContent("Engineering");
+  });
+
+  it("falls back to a valid folder when the selected folder belongs to a previous workspace", () => {
+    bootstrapMessengerSidebar();
+    useSidebarConfigStore.getState().setSelectedFolderId(TEAM_FOLDER_UUID);
+
+    const { rerender } = render(
+      <SidebarShell pathname={`/org/${ORG_ID}/project/${PROJECT_ID}/stream/${STREAM_UUID}`} />,
+    );
+
+    expect(screen.getByTestId("folder-rail")).toHaveTextContent(TEAM_FOLDER_UUID);
+
+    const nextAllFolderUuid = "folder-all-project-b";
+    const nextStreamUuid = "stream-product";
+    act(() => {
+      useMessengerStore.getState().replaceBootstrapState(OWNER_KEY, {
+        streams: [
+          createStream({
+            uuid: nextStreamUuid,
+            name: "Product",
+            projectId: "project-b",
+          }),
+        ],
+        streamBindings: [],
+        topics: [],
+        conversations: [],
+        folders: [
+          createFolder({
+            uuid: nextAllFolderUuid,
+            title: "All project B",
+            systemType: "all",
+            items: [
+              {
+                uuid: "folder-item-product",
+                projectId: "project-b",
+                folderUuid: nextAllFolderUuid,
+                userUuid: "user-a",
+                streamUuid: nextStreamUuid,
+                conversationId: `stream:${nextStreamUuid}`,
+                chatType: "stream",
+                orderIndex: 10,
+                pinnedAt: null,
+                unreadCount: 0,
+                createdAt: DATE,
+                updatedAt: DATE,
+              },
+            ],
+          }),
+        ],
+        users: [],
+      });
+    });
+
+    rerender(
+      <SidebarShell pathname={`/org/${ORG_ID}/project/project-b/stream/${nextStreamUuid}`} />,
+    );
+
+    expect(screen.getByTestId("folder-rail")).toHaveTextContent(nextAllFolderUuid);
+    expect(screen.getByTestId("workspace-sidebar")).toHaveTextContent("Product");
   });
 });
