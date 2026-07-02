@@ -214,8 +214,9 @@ function WorkspaceSidebarStreamRow({
   const isActive = activeStreamUuid === stream.streamUuid && activeTopicUuid == null;
   const rowClass = sidebarChatRowLinkClass(compact, "stream");
   const avatarSize = compact ? "sm" : "md";
-  const avatarLabel = stream.isPrivate ? stream.title.slice(0, 1) : "#";
-  const title = stream.isPrivate ? stream.title : `#${stream.title}`;
+  const isDirectPrivate = stream.uiKind === "directPrivate";
+  const avatarLabel = isDirectPrivate ? stream.title.slice(0, 1) : "#";
+  const title = isDirectPrivate ? stream.title : `#${stream.title}`;
 
   return (
     <>

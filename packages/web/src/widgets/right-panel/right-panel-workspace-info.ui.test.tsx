@@ -45,9 +45,10 @@ const OWNER_KEY = workspaceRuntimeOwnerKey(RUNTIME_CONTEXT);
 const DATE = "2026-06-22T10:10:00Z";
 
 function createInfo(
-  overrides: Partial<WorkspaceRightPanelInfoView> = {},
-): WorkspaceRightPanelInfoView {
+  overrides: Partial<Extract<WorkspaceRightPanelInfoView, { kind: "channel" }>> = {},
+): Extract<WorkspaceRightPanelInfoView, { kind: "channel" }> {
   return {
+    kind: "channel",
     streamUuid: STREAM_UUID,
     notificationMode: "all_messages",
     title: "#general",
@@ -265,6 +266,39 @@ describe("RightPanelWorkspaceInfo", () => {
     expect(screen.getByText("online")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Alice Adams" })).not.toBeInTheDocument();
     expect(screen.queryByText("Temporarily unavailable")).not.toBeInTheDocument();
+  });
+
+  it("renders workspace direct private profile without channel-only actions", () => {
+    renderWithProviders(
+      <RightPanelWorkspaceInfo
+        info={{
+          kind: "directPrivate",
+          directUserUuid: ALICE_USER_UUID,
+          title: "Alice Adams",
+          avatarUrl: null,
+          status: "active",
+          details: [
+            {
+              id: "email",
+              value: "alice@example.com",
+              isTemporarilyUnavailable: false,
+            },
+            {
+              id: "phone",
+              value: "Temporarily not connected",
+              isTemporarilyUnavailable: true,
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Alice Adams")).toBeInTheDocument();
+    expect(screen.getByText("alice@example.com")).toBeInTheDocument();
+    expect(screen.getAllByText("Temporarily not connected")).toHaveLength(2);
+    expect(screen.queryByText("Channel info")).not.toBeInTheDocument();
+    expect(screen.queryByText("Topics")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add members" })).not.toBeInTheDocument();
   });
 
   it("opens add members dialog and excludes existing members", () => {

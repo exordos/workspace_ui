@@ -3,6 +3,10 @@ import {
   workspaceMessengerStreamRoute,
   workspaceMessengerTopicRoute,
 } from "~/shared/lib/workspace-messenger-route.lib";
+import {
+  selectWorkspaceConversationUiKind,
+  selectWorkspaceStreamConversationUiKind,
+} from "./messenger-conversation-ui-kind.lib";
 import type { MessengerStoreState } from "./messenger.model";
 import type {
   MessengerFolder,
@@ -211,6 +215,7 @@ function streamItemFromStream(input: {
     title: input.stream.name,
     audience: input.stream.audience,
     isPrivate: input.stream.isPrivate,
+    uiKind: selectWorkspaceStreamConversationUiKind(input.stream),
     unreadCount: input.unreadCount ?? input.stream.unreadCount,
     pinnedAt: input.pinnedAt ?? null,
     orderIndex: input.orderIndex ?? null,
@@ -252,6 +257,7 @@ function streamItemFromConversation(input: {
     title: input.conversation.title,
     audience: input.conversation.audience,
     isPrivate: input.conversation.isPrivate,
+    uiKind: selectWorkspaceConversationUiKind(input.conversation),
     unreadCount: input.unreadCount ?? input.conversation.unreadCount,
     pinnedAt: input.pinnedAt ?? null,
     orderIndex: input.orderIndex ?? null,

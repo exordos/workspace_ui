@@ -29,6 +29,7 @@ import { t } from "~/i18n/i18n";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import type { WorkspaceMessengerRouteMatch } from "~/shared/lib/workspace-messenger-route.lib";
+import type { ChatHeaderProps } from "~/widgets/chat-view/chat-header.types";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import type {
   ComposerEditSession,
@@ -154,6 +155,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         {
           route,
           fallbackTitle: t("nav.messenger"),
+          missingDirectUserTitle: t("workspaceMessenger.directPrivateUserUnavailable"),
         },
       ),
     [
@@ -166,6 +168,24 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       usersById,
     ],
   );
+  const chatHeaderContentProps = useMemo<ChatHeaderProps>(() => {
+    if (headerView.kind === "directPrivate") {
+      return {
+        channelName: headerView.dmPartner.name,
+        hideTopic: true,
+        hideParticipants: true,
+        dmPartner: headerView.dmPartner,
+      };
+    }
+
+    return {
+      channelName: headerView.channelName,
+      topic: headerView.topic,
+      hideTopic: headerView.hideTopic,
+      participantsCount: headerView.participantsCount,
+      onlineCount: headerView.onlineCount,
+    };
+  }, [headerView]);
   const retry = useCallback(() => setRetryNonce((value) => value + 1), []);
   const workspaceComposerCapabilities = useMemo<MessageComposerCapabilities>(
     () => ({
@@ -581,11 +601,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       data-testid="chat-page"
     >
       <ChatHeader
-        channelName={headerView.channelName}
-        topic={headerView.topic}
-        hideTopic={headerView.hideTopic}
-        participantsCount={headerView.participantsCount}
-        onlineCount={headerView.onlineCount}
+        {...chatHeaderContentProps}
         onOpenSearch={openSearch ?? undefined}
         onToggleRightPanel={rightDrawer == null ? undefined : handleToggleRightPanel}
         onOpenRightPanel={rightDrawer == null ? undefined : handleOpenRightPanel}

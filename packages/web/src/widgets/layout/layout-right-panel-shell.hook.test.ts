@@ -12,7 +12,9 @@ const OWNER_KEY = "account-a:org-a:project-a";
 const STREAM_UUID = "11111111-1111-4111-8111-111111111111";
 const TOPIC_UUID = "22222222-2222-4222-8222-222222222222";
 const USER_UUID = "33333333-3333-4333-8333-333333333333";
+const DIRECT_USER_UUID = "44444444-4444-4444-8444-444444444444";
 const BINDING_UUID = "55555555-5555-4555-8555-555555555555";
+const DIRECT_STREAM_UUID = "66666666-6666-4666-8666-666666666666";
 
 vi.mock("~/shared/api/zulip-streams", () => ({
   fetchStreamMembers: fetchStreamMembersMock,
@@ -40,6 +42,28 @@ function createBootstrapPayload(): MessengerBootstrapPayload {
         announce: false,
         isArchived: false,
         directUserUuid: null,
+        lastMessageUuid: null,
+        createdAt: "2026-06-30T09:00:00.000Z",
+        updatedAt: "2026-06-30T09:00:00.000Z",
+      },
+      {
+        uuid: DIRECT_STREAM_UUID,
+        projectId: "project-a",
+        ownerUuid: USER_UUID,
+        userUuid: USER_UUID,
+        role: "member",
+        notificationMode: "all_messages",
+        name: "alice-and-cora",
+        description: "",
+        unreadCount: 0,
+        sourceName: "native",
+        source: { kind: "native" },
+        audience: "private",
+        isPrivate: true,
+        inviteOnly: true,
+        announce: false,
+        isArchived: false,
+        directUserUuid: DIRECT_USER_UUID,
         lastMessageUuid: null,
         createdAt: "2026-06-30T09:00:00.000Z",
         updatedAt: "2026-06-30T09:00:00.000Z",
@@ -84,6 +108,17 @@ function createBootstrapPayload(): MessengerBootstrapPayload {
         firstName: "Alice",
         lastName: "Stone",
         email: "alice@example.com",
+        lastPingAt: null,
+        createdAt: "2026-06-30T09:00:00.000Z",
+        updatedAt: "2026-06-30T09:00:00.000Z",
+      },
+      {
+        uuid: DIRECT_USER_UUID,
+        username: "cora",
+        status: "idle",
+        firstName: "Cora",
+        lastName: "Lane",
+        email: "cora@example.com",
         lastPingAt: null,
         createdAt: "2026-06-30T09:00:00.000Z",
         updatedAt: "2026-06-30T09:00:00.000Z",
@@ -152,6 +187,10 @@ describe("useLayoutRightPanelShell", () => {
     expect(result.current.rightPanelTitleResolved).toBe("#general");
     expect(result.current.participantsCount).toBe(1);
     expect(result.current.onlineCount).toBe(1);
+    expect(result.current.workspaceRightPanelInfo?.kind).toBe("channel");
+    if (result.current.workspaceRightPanelInfo?.kind !== "channel") {
+      throw new Error("Expected channel right-panel view");
+    }
     expect(result.current.workspaceRightPanelInfo?.topics).toEqual([
       {
         id: TOPIC_UUID,
@@ -160,6 +199,42 @@ describe("useLayoutRightPanelShell", () => {
         route: `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
       },
     ]);
+    expect(hydrateSpy).not.toHaveBeenCalled();
+    expect(syncDerivedSpy).not.toHaveBeenCalled();
+    expect(fetchStreamMembersMock).not.toHaveBeenCalled();
+    expect(fetchStreamsMock).not.toHaveBeenCalled();
+  });
+
+  it("returns Workspace direct private panel data without legacy right-panel user", () => {
+    const chatInfoState = useChatInfoStore.getState();
+    const hydrateSpy = vi.spyOn(chatInfoState, "hydrate");
+    const syncDerivedSpy = vi.spyOn(chatInfoState, "syncDerived");
+
+    const { result } = renderHook(() =>
+      useLayoutRightPanelShell(
+        buildParams({
+          workspaceRoute: {
+            kind: "stream",
+            orgId: "org-a",
+            projectId: "project-a",
+            streamUuid: DIRECT_STREAM_UUID,
+          },
+        }),
+      ),
+    );
+
+    expect(result.current.rightPanelTitleResolved).toBe("Cora Lane");
+    expect(result.current.participantsCount).toBe(0);
+    expect(result.current.onlineCount).toBe(0);
+    expect(result.current.rightPanelUser).toBeUndefined();
+    expect(result.current.workspaceRightPanelInfo).toEqual(
+      expect.objectContaining({
+        kind: "directPrivate",
+        directUserUuid: DIRECT_USER_UUID,
+        title: "Cora Lane",
+        status: "idle",
+      }),
+    );
     expect(hydrateSpy).not.toHaveBeenCalled();
     expect(syncDerivedSpy).not.toHaveBeenCalled();
     expect(fetchStreamMembersMock).not.toHaveBeenCalled();

@@ -80,6 +80,8 @@ export interface LoadMessengerStreamBindingsOptions {
   client?: MessengerStreamBindingsClientDeps;
   cache?: MessengerStreamBindingsCacheDeps;
   clientOptions?: MessengerRequestOptionsOverrides;
+  // Внешний signal нужен для pre-start/stale проверки подписчика, но после старта
+  // общий HTTP принадлежит loader-у: in-flight загрузка дедуплицируется.
   signal?: AbortSignal;
   store?: MessengerStreamBindingsStoreApi;
 }
@@ -89,7 +91,12 @@ export interface UseMessengerStreamBindingsForRouteOptions {
   enabled?: boolean;
 }
 
-const inflightStreamBindingLoads = new Map<string, Promise<MessengerStreamBindingsLoadResult>>();
+interface MessengerStreamBindingsLoadEntry {
+  promise: Promise<MessengerStreamBindingsLoadResult>;
+  controller: AbortController;
+}
+
+const inflightStreamBindingLoads = new Map<string, MessengerStreamBindingsLoadEntry>();
 const DEFAULT_STREAM_BINDINGS_PAGE_LIMIT = 100;
 
 function streamBindingsLoadKey(input: {
@@ -138,6 +145,9 @@ export function streamUuidFromWorkspaceMessengerRoute(
 }
 
 export function clearMessengerStreamBindingsLoadRegistry(): void {
+  for (const entry of inflightStreamBindingLoads.values()) {
+    entry.controller.abort();
+  }
   inflightStreamBindingLoads.clear();
 }
 
@@ -173,11 +183,17 @@ export async function loadMessengerStreamBindings({
 
   const inflight = inflightStreamBindingLoads.get(loadKey);
   if (inflight != null) {
-    return inflight;
+    return inflight.promise;
   }
 
+  const controller = new AbortController();
+  let entry: MessengerStreamBindingsLoadEntry;
   const load = (async (): Promise<MessengerStreamBindingsLoadResult> => {
-    const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
+    const requestOptions = buildMessengerRequestOptions(
+      runtimeContext,
+      clientOptions,
+      controller.signal,
+    );
 
     try {
       const bindingDtos: WorkspaceMessengerStreamBindingDto[] = [];
@@ -193,7 +209,9 @@ export async function loadMessengerStreamBindings({
           },
         );
 
-        if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
+        if (
+          isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, controller.signal)
+        ) {
           return { status: "skipped", ownerKey, streamUuid, reason: "stale-owner" };
         }
 
@@ -201,7 +219,9 @@ export async function loadMessengerStreamBindings({
         pageMarker = page.nextPageMarker ?? undefined;
       } while (pageMarker != null);
 
-      if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
+      if (
+        isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, controller.signal)
+      ) {
         return { status: "skipped", ownerKey, streamUuid, reason: "stale-owner" };
       }
 
@@ -225,7 +245,9 @@ export async function loadMessengerStreamBindings({
         bindings: bindings.length,
       };
     } catch (error) {
-      if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
+      if (
+        isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, controller.signal)
+      ) {
         return { status: "skipped", ownerKey, streamUuid, reason: "stale-owner" };
       }
 
@@ -238,11 +260,14 @@ export async function loadMessengerStreamBindings({
     }
   })();
 
-  inflightStreamBindingLoads.set(loadKey, load);
+  entry = { promise: load, controller };
+  inflightStreamBindingLoads.set(loadKey, entry);
   try {
     return await load;
   } finally {
-    inflightStreamBindingLoads.delete(loadKey);
+    if (inflightStreamBindingLoads.get(loadKey) === entry) {
+      inflightStreamBindingLoads.delete(loadKey);
+    }
   }
 }
 
@@ -266,18 +291,12 @@ export function useMessengerStreamBindingsForRoute({
     const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
     if (messengerOwnerKey !== ownerKey || messengerIsLoading) return;
 
-    const controller = new AbortController();
     void loadMessengerStreamBindings({
       runtimeContext,
       streamUuid,
       getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-      signal: controller.signal,
     }).catch((error) => {
       reportUnexpectedError("workspace-messenger:stream-bindings", error);
     });
-
-    return () => {
-      controller.abort();
-    };
   }, [enabled, messengerIsLoading, messengerOwnerKey, runtimeContext, streamUuid]);
 }

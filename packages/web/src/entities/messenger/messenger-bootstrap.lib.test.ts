@@ -407,8 +407,10 @@ describe("messenger bootstrap store", () => {
           streamUuid: STREAM_A,
         },
         fallbackTitle: "Messenger",
+        missingDirectUserTitle: "Временно не подключено",
       }),
     ).toMatchObject({
+      kind: "channel",
       participantsCount: 2,
       onlineCount: 1,
     });

@@ -70,6 +70,7 @@ function createStream(
     title: "Engineering",
     audience: "channel",
     isPrivate: false,
+    uiKind: "channel",
     unreadCount: 3,
     pinnedAt: null,
     orderIndex: null,
@@ -177,6 +178,22 @@ describe("WorkspaceSidebar context menu", () => {
     expect(screen.queryByRole("menuitem", { name: /mark as read/i })).not.toBeInTheDocument();
   });
 
+  it("shows contact info instead of members for a direct private chat", async () => {
+    renderWorkspaceSidebar([
+      createStream({
+        title: "Alice",
+        audience: "private",
+        isPrivate: true,
+        uiKind: "directPrivate",
+      }),
+    ]);
+
+    fireEvent.contextMenu(screen.getByRole("link", { name: /alice/i }));
+
+    expect(await screen.findByRole("menuitem", { name: /contact info/i })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /members/i })).not.toBeInTheDocument();
+  });
+
   it("opens the shared right panel from the stream members menu item without API actions", async () => {
     const openInfo = vi.fn();
     const setOpen = vi.fn();
@@ -268,6 +285,7 @@ describe("WorkspaceSidebar context menu", () => {
         title: "Alice",
         audience: "private",
         isPrivate: true,
+        uiKind: "directPrivate",
         unreadCount: 1,
       }),
     ]);
@@ -282,6 +300,38 @@ describe("WorkspaceSidebar context menu", () => {
         folderItemUuid: null,
         streamUuid: STREAM_UUID,
         chatType: "private",
+        assigned: true,
+      });
+    });
+  });
+
+  it("keeps folder assignment chat type as stream when a private stream is not direct ui kind", async () => {
+    runWorkspaceFolderAssignmentToggleMock.mockResolvedValue({ status: "applied" });
+    useMessengerStore.getState().startBootstrap(OWNER_KEY);
+    useMessengerStore
+      .getState()
+      .applyFolderSnapshot(OWNER_KEY, createFolder({ items: [], unreadCount: 0 }));
+
+    renderWorkspaceSidebar([
+      createStream({
+        title: "Private room",
+        audience: "private",
+        isPrivate: true,
+        uiKind: "channel",
+        unreadCount: 1,
+      }),
+    ]);
+
+    fireEvent.contextMenu(screen.getByRole("link", { name: /#private room/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /add to folder/i }));
+    fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: /projects/i }));
+
+    await waitFor(() => {
+      expect(runWorkspaceFolderAssignmentToggleMock).toHaveBeenCalledWith({
+        folderUuid: FOLDER_UUID,
+        folderItemUuid: null,
+        streamUuid: STREAM_UUID,
+        chatType: "stream",
         assigned: true,
       });
     });

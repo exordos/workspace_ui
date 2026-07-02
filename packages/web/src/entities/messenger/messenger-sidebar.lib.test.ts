@@ -252,6 +252,7 @@ describe("messenger sidebar selectors", () => {
       streamUuid: STREAM_A,
       title: "Engineering",
       isPrivate: false,
+      uiKind: "channel",
       unreadCount: 3,
       preview: null,
     });
@@ -265,6 +266,7 @@ describe("messenger sidebar selectors", () => {
       id: `stream:${STREAM_B}`,
       title: "Alice",
       isPrivate: true,
+      uiKind: "directPrivate",
       unreadCount: 4,
     });
     expect(rows.some((row) => row.id.startsWith("dm:"))).toBe(false);
@@ -499,6 +501,7 @@ describe("messenger sidebar selectors", () => {
       streamUuid: STREAM_B,
       title: "Alice",
       isPrivate: true,
+      uiKind: "directPrivate",
       unreadCount: 1,
       preview: {
         messageUuid: MESSAGE_A,

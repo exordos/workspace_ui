@@ -10,6 +10,8 @@ const TOPIC_A_UUID = "22222222-2222-4222-8222-222222222222";
 const TOPIC_B_UUID = "77777777-7777-4777-8777-777777777777";
 const USER_A_UUID = "33333333-3333-4333-8333-333333333333";
 const USER_B_UUID = "44444444-4444-4444-8444-444444444444";
+const DIRECT_USER_UUID = "88888888-8888-4888-8888-888888888888";
+const DIRECT_TOPIC_UUID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const BINDING_A_UUID = "55555555-5555-4555-8555-555555555555";
 const BINDING_B_UUID = "66666666-6666-4666-8666-666666666666";
 
@@ -31,6 +33,50 @@ function createBootstrapPayload(): MessengerBootstrapPayload {
         audience: "channel",
         isPrivate: false,
         inviteOnly: false,
+        announce: false,
+        isArchived: false,
+        directUserUuid: null,
+        lastMessageUuid: null,
+        createdAt: "2026-06-30T09:00:00.000Z",
+        updatedAt: "2026-06-30T09:00:00.000Z",
+      },
+      {
+        uuid: "99999999-9999-4999-8999-999999999999",
+        projectId: "project-a",
+        ownerUuid: USER_A_UUID,
+        userUuid: USER_A_UUID,
+        role: "member",
+        notificationMode: "all_messages",
+        name: "alice-and-cora",
+        description: "",
+        unreadCount: 0,
+        sourceName: "native",
+        source: { kind: "native" },
+        audience: "private",
+        isPrivate: true,
+        inviteOnly: true,
+        announce: false,
+        isArchived: false,
+        directUserUuid: DIRECT_USER_UUID,
+        lastMessageUuid: null,
+        createdAt: "2026-06-30T09:00:00.000Z",
+        updatedAt: "2026-06-30T09:00:00.000Z",
+      },
+      {
+        uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        projectId: "project-a",
+        ownerUuid: USER_A_UUID,
+        userUuid: USER_A_UUID,
+        role: "member",
+        notificationMode: "all_messages",
+        name: "private-channel",
+        description: "",
+        unreadCount: 0,
+        sourceName: "native",
+        source: { kind: "native" },
+        audience: "private",
+        isPrivate: true,
+        inviteOnly: true,
         announce: false,
         isArchived: false,
         directUserUuid: null,
@@ -79,6 +125,20 @@ function createBootstrapPayload(): MessengerBootstrapPayload {
         updatedAt: "2026-06-30T09:00:00.000Z",
       },
       {
+        uuid: DIRECT_TOPIC_UUID,
+        projectId: "project-a",
+        streamUuid: "99999999-9999-4999-8999-999999999999",
+        userUuid: USER_A_UUID,
+        name: "Direct topic",
+        unreadCount: 1,
+        isDefault: false,
+        isDone: false,
+        notificationMode: "default",
+        lastMessageUuid: null,
+        createdAt: "2026-06-30T09:10:00.000Z",
+        updatedAt: "2026-06-30T09:10:00.000Z",
+      },
+      {
         uuid: TOPIC_B_UUID,
         projectId: "project-a",
         streamUuid: STREAM_UUID,
@@ -118,6 +178,17 @@ function createBootstrapPayload(): MessengerBootstrapPayload {
         createdAt: "2026-06-30T09:00:00.000Z",
         updatedAt: "2026-06-30T09:00:00.000Z",
       },
+      {
+        uuid: DIRECT_USER_UUID,
+        username: "cora",
+        status: "idle",
+        firstName: "Cora",
+        lastName: "Lane",
+        email: "cora@example.com",
+        lastPingAt: null,
+        createdAt: "2026-06-30T09:00:00.000Z",
+        updatedAt: "2026-06-30T09:00:00.000Z",
+      },
     ],
   };
 }
@@ -133,17 +204,35 @@ describe("selectWorkspaceRightPanelInfoView", () => {
   });
 
   it("projects stream title, counts, description, and topics from messenger store", () => {
+    const route = {
+      kind: "stream" as const,
+      orgId: "org-a",
+      projectId: "project-a",
+      streamUuid: STREAM_UUID,
+    };
     const view = selectWorkspaceRightPanelInfoView(useMessengerStore.getState(), {
-      route: {
-        kind: "stream",
-        orgId: "org-a",
-        projectId: "project-a",
-        streamUuid: STREAM_UUID,
-      },
+      route,
       fallbackTitle: "Messenger",
+      temporarilyNotConnectedText: "Temporarily not connected",
+    });
+    const headerView = selectWorkspaceChatHeaderView(useMessengerStore.getState(), {
+      route,
+      fallbackTitle: "Messenger",
+      missingDirectUserTitle: "Временно не подключено",
     });
 
+    expect(headerView).toEqual(
+      expect.objectContaining({
+        kind: "channel",
+        channelName: "#general",
+        hideTopic: true,
+        participantsCount: 2,
+        onlineCount: 1,
+      }),
+    );
+
     expect(view).toEqual({
+      kind: "channel",
       streamUuid: STREAM_UUID,
       notificationMode: "all_messages",
       title: "#general",
@@ -202,17 +291,22 @@ describe("selectWorkspaceRightPanelInfoView", () => {
     const view = selectWorkspaceRightPanelInfoView(useMessengerStore.getState(), {
       route,
       fallbackTitle: "Messenger",
+      temporarilyNotConnectedText: "Temporarily not connected",
     });
     const headerView = selectWorkspaceChatHeaderView(useMessengerStore.getState(), {
       route,
       fallbackTitle: "Messenger",
+      missingDirectUserTitle: "Временно не подключено",
     });
 
+    expect(view?.kind).toBe("channel");
+    if (view?.kind !== "channel") throw new Error("Expected channel right-panel view");
     expect(view?.title).toBe("#general");
     expect(view?.streamUuid).toBe(STREAM_UUID);
     expect(view?.notificationMode).toBe("all_messages");
-    expect(view?.title).toBe(headerView.channelName);
-    expect(headerView.topic).toBe("Roadmap");
+    expect(headerView.kind).toBe("channel");
+    expect(view?.title).toBe(headerView.kind === "channel" ? headerView.channelName : null);
+    expect(headerView.kind === "channel" ? headerView.topic : null).toBe("Roadmap");
     expect(view?.participantsCount).toBe(2);
     expect(view?.onlineCount).toBe(1);
     expect(view?.topics.map((topic) => topic.name)).toEqual(["Roadmap", "Support"]);
@@ -228,8 +322,11 @@ describe("selectWorkspaceRightPanelInfoView", () => {
       },
       fallbackTitle: "Messenger",
       currentUserUuid: USER_B_UUID,
+      temporarilyNotConnectedText: "Temporarily not connected",
     });
 
+    expect(view?.kind).toBe("channel");
+    if (view?.kind !== "channel") throw new Error("Expected channel right-panel view");
     expect(view?.members.map((member) => member.bindingUuid)).toEqual([
       BINDING_A_UUID,
       BINDING_B_UUID,
@@ -278,8 +375,11 @@ describe("selectWorkspaceRightPanelInfoView", () => {
       },
       fallbackTitle: "Messenger",
       currentUserUuid: USER_A_UUID,
+      temporarilyNotConnectedText: "Temporarily not connected",
     });
 
+    expect(view?.kind).toBe("channel");
+    if (view?.kind !== "channel") throw new Error("Expected channel right-panel view");
     expect(view?.members[1]).toEqual({
       bindingUuid: BINDING_B_UUID,
       userUuid: USER_B_UUID,
@@ -305,8 +405,11 @@ describe("selectWorkspaceRightPanelInfoView", () => {
       },
       fallbackTitle: "Messenger",
       currentUserUuid: USER_A_UUID,
+      temporarilyNotConnectedText: "Temporarily not connected",
     });
 
+    expect(view?.kind).toBe("channel");
+    if (view?.kind !== "channel") throw new Error("Expected channel right-panel view");
     expect(view?.members.find((member) => member.userUuid === USER_A_UUID)?.canRemove).toBe(true);
     expect(view?.members.find((member) => member.userUuid === USER_B_UUID)?.canRemove).toBe(true);
   });
@@ -321,9 +424,185 @@ describe("selectWorkspaceRightPanelInfoView", () => {
       },
       fallbackTitle: "Messenger",
       currentUserUuid: USER_B_UUID,
+      temporarilyNotConnectedText: "Temporarily not connected",
     });
 
+    expect(view?.kind).toBe("channel");
+    if (view?.kind !== "channel") throw new Error("Expected channel right-panel view");
     expect(view?.members.find((member) => member.userUuid === USER_A_UUID)?.canRemove).toBe(false);
     expect(view?.members.find((member) => member.userUuid === USER_B_UUID)?.canRemove).toBe(true);
+  });
+
+  it("projects a direct private stream as a user profile from usersById", () => {
+    const route = {
+      kind: "stream" as const,
+      orgId: "org-a",
+      projectId: "project-a",
+      streamUuid: "99999999-9999-4999-8999-999999999999",
+    };
+    const view = selectWorkspaceRightPanelInfoView(useMessengerStore.getState(), {
+      route,
+      fallbackTitle: "Messenger",
+      temporarilyNotConnectedText: "Temporarily not connected",
+    });
+    const headerView = selectWorkspaceChatHeaderView(useMessengerStore.getState(), {
+      route,
+      fallbackTitle: "Messenger",
+      missingDirectUserTitle: "Временно не подключено",
+    });
+
+    expect(headerView).toEqual({
+      kind: "directPrivate",
+      directUserUuid: DIRECT_USER_UUID,
+      dmPartner: {
+        name: "Cora Lane",
+        avatarUrl: null,
+        presenceState: "idle",
+      },
+    });
+
+    expect(view).toEqual({
+      kind: "directPrivate",
+      directUserUuid: DIRECT_USER_UUID,
+      title: "Cora Lane",
+      avatarUrl: null,
+      status: "idle",
+      details: [
+        {
+          id: "email",
+          value: "cora@example.com",
+          isTemporarilyUnavailable: false,
+        },
+        {
+          id: "username",
+          value: "cora",
+          isTemporarilyUnavailable: false,
+        },
+        {
+          id: "phone",
+          value: "Temporarily not connected",
+          isTemporarilyUnavailable: true,
+        },
+        {
+          id: "jobTitle",
+          value: "Temporarily not connected",
+          isTemporarilyUnavailable: true,
+        },
+        {
+          id: "manager",
+          value: "Temporarily not connected",
+          isTemporarilyUnavailable: true,
+        },
+        {
+          id: "timezone",
+          value: "Temporarily not connected",
+          isTemporarilyUnavailable: true,
+        },
+        {
+          id: "birthday",
+          value: "Temporarily not connected",
+          isTemporarilyUnavailable: true,
+        },
+      ],
+    });
+  });
+
+  it("keeps a topic inside direct private stream on personal header and profile branches", () => {
+    const route = {
+      kind: "topic" as const,
+      orgId: "org-a",
+      projectId: "project-a",
+      streamUuid: "99999999-9999-4999-8999-999999999999",
+      topicUuid: DIRECT_TOPIC_UUID,
+    };
+    const headerView = selectWorkspaceChatHeaderView(useMessengerStore.getState(), {
+      route,
+      fallbackTitle: "Messenger",
+      missingDirectUserTitle: "Временно не подключено",
+    });
+    const view = selectWorkspaceRightPanelInfoView(useMessengerStore.getState(), {
+      route,
+      fallbackTitle: "Messenger",
+      temporarilyNotConnectedText: "Temporarily not connected",
+    });
+
+    expect(headerView.kind).toBe("directPrivate");
+    expect(headerView.kind === "directPrivate" ? headerView.dmPartner.name : null).toBe(
+      "Cora Lane",
+    );
+    expect(view?.kind).toBe("directPrivate");
+    expect(view?.kind === "directPrivate" ? view.title : null).toBe("Cora Lane");
+    expect(view != null && "topics" in view ? view.topics : null).toBeNull();
+  });
+
+  it("keeps a private stream without directUserUuid as channel info", () => {
+    const route = {
+      kind: "stream" as const,
+      orgId: "org-a",
+      projectId: "project-a",
+      streamUuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    };
+    const headerView = selectWorkspaceChatHeaderView(useMessengerStore.getState(), {
+      route,
+      fallbackTitle: "Messenger",
+      missingDirectUserTitle: "Временно не подключено",
+    });
+    const view = selectWorkspaceRightPanelInfoView(useMessengerStore.getState(), {
+      route,
+      fallbackTitle: "Messenger",
+      temporarilyNotConnectedText: "Temporarily not connected",
+    });
+
+    expect(headerView).toEqual(
+      expect.objectContaining({
+        kind: "channel",
+        channelName: "#private-channel",
+        hideTopic: true,
+      }),
+    );
+    expect(view?.kind).toBe("channel");
+    if (view?.kind !== "channel") throw new Error("Expected channel right-panel view");
+    expect(view?.title).toBe("#private-channel");
+  });
+
+  it("marks missing direct private user fields as temporarily unavailable", () => {
+    const payload = createBootstrapPayload();
+    useMessengerStore.getState().replaceBootstrapState(OWNER_KEY, {
+      ...payload,
+      users: payload.users.filter((user) => user.uuid !== DIRECT_USER_UUID),
+    });
+
+    const view = selectWorkspaceRightPanelInfoView(useMessengerStore.getState(), {
+      route: {
+        kind: "stream",
+        orgId: "org-a",
+        projectId: "project-a",
+        streamUuid: "99999999-9999-4999-8999-999999999999",
+      },
+      fallbackTitle: "Messenger",
+      temporarilyNotConnectedText: "Temporarily not connected",
+    });
+
+    expect(view).toEqual(
+      expect.objectContaining({
+        kind: "directPrivate",
+        title: "Temporarily not connected",
+        status: null,
+      }),
+    );
+    expect(view?.kind === "directPrivate" ? view.details : []).toEqual(
+      expect.arrayContaining([
+        {
+          id: "email",
+          value: "Temporarily not connected",
+          isTemporarilyUnavailable: true,
+        },
+        {
+          id: "username",
+          value: "Temporarily not connected",
+          isTemporarilyUnavailable: true,
+        },
+      ]),
+    );
   });
 });

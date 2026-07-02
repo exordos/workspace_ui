@@ -11,6 +11,7 @@ import type {
 export type MessengerUuid = string;
 export type MessengerConversationId = string;
 export type MessengerAudience = "channel" | "private";
+export type WorkspaceConversationUiKind = "channel" | "directPrivate";
 
 export interface MessengerStream {
   uuid: MessengerUuid;
@@ -200,6 +201,7 @@ export interface MessengerSidebarStreamItem {
   title: string;
   audience: MessengerAudience;
   isPrivate: boolean;
+  uiKind: WorkspaceConversationUiKind;
   unreadCount: number;
   pinnedAt: string | null;
   orderIndex: number | null;

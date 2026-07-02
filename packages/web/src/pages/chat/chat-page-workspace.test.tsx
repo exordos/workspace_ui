@@ -20,6 +20,7 @@ import type { ChatPageMessageListSectionProps } from "./chat-page-message-list-s
 
 const STREAM_UUID = "11111111-1111-4111-8111-111111111111";
 const TOPIC_UUID = "22222222-2222-4222-8222-222222222222";
+const DIRECT_STREAM_UUID = "88888888-8888-4888-8888-888888888888";
 const USER_UUID = "33333333-3333-4333-8333-333333333333";
 const USER_B_UUID = "44444444-4444-4444-8444-444444444444";
 const STREAM_BINDING_A_UUID = "66666666-6666-4666-8666-666666666666";
@@ -202,6 +203,27 @@ function createBootstrapPayload(): MessengerBootstrapPayload {
   };
 }
 
+function createDirectPrivateBootstrapPayload(): MessengerBootstrapPayload {
+  const payload = createBootstrapPayload();
+  const stream = payload.streams[0]!;
+
+  return {
+    ...payload,
+    streams: [
+      {
+        ...stream,
+        uuid: DIRECT_STREAM_UUID,
+        name: "Bob",
+        audience: "private",
+        isPrivate: true,
+        directUserUuid: USER_B_UUID,
+      },
+    ],
+    streamBindings: [],
+    topics: [],
+  };
+}
+
 function createMessage(): MessengerMessage {
   return {
     uuid: "55555555-5555-4555-8555-555555555555",
@@ -312,6 +334,31 @@ describe("ChatPage Workspace route", () => {
       },
     });
     await waitFor(() => expect(captured.loadWorkspaceMessages).toHaveBeenCalledTimes(1));
+  });
+
+  it("maps Workspace direct private header view to old dmPartner header props", async () => {
+    const session = createSession();
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    useMessengerStore.getState().clear();
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore
+      .getState()
+      .replaceBootstrapState(ownerKey, createDirectPrivateBootstrapPayload());
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${DIRECT_STREAM_UUID}`,
+    );
+
+    expect(await screen.findByTestId("chat-header")).toBeInTheDocument();
+    expect(captured.headerProps?.dmPartner).toEqual({
+      name: "Bob Reed",
+      avatarUrl: null,
+      presenceState: "idle",
+    });
+    expect(captured.headerProps?.hideParticipants).toBe(true);
+    expect(captured.headerProps).not.toHaveProperty("participantsCount");
+    expect(captured.headerProps).not.toHaveProperty("onlineCount");
+    expect(captured.oldChatListStore).not.toHaveBeenCalled();
   });
 
   it("keeps old chat routes in a controlled Workspace state", () => {

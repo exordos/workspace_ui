@@ -182,6 +182,7 @@ export function useLayoutRightPanelShell(
           route: workspaceRoute,
           fallbackTitle: rightDrawerTitle || t("chat.generalChat"),
           currentUserUuid: workspaceCurrentUserUuid,
+          temporarilyNotConnectedText: t("workspaceMessenger.temporarilyNotConnected"),
         },
       ),
     [
@@ -223,11 +224,15 @@ export function useLayoutRightPanelShell(
     rightDrawerTitle,
     t,
   );
+  const workspaceParticipantsCount =
+    workspaceRightPanelInfo?.kind === "channel" ? workspaceRightPanelInfo.participantsCount : null;
+  const workspaceOnlineCount =
+    workspaceRightPanelInfo?.kind === "channel" ? workspaceRightPanelInfo.onlineCount : null;
 
   return {
     rightPanelTitleResolved: workspaceRightPanelInfo?.title ?? rightPanelTitleResolved,
-    participantsCount: workspaceRightPanelInfo?.participantsCount ?? chatInfoData?.memberCount ?? 0,
-    onlineCount: workspaceRightPanelInfo?.onlineCount ?? chatInfoData?.onlineCount ?? 0,
+    participantsCount: workspaceParticipantsCount ?? chatInfoData?.memberCount ?? 0,
+    onlineCount: workspaceOnlineCount ?? chatInfoData?.onlineCount ?? 0,
     rightPanelUser: workspaceMessengerActive ? undefined : (rightPanelUser ?? undefined),
     workspaceRightPanelInfo,
   };

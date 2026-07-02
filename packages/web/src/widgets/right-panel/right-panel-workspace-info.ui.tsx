@@ -28,14 +28,22 @@ import {
   DialogPrimaryButton,
 } from "~/shared/ui/app-dialog.ui";
 import { Avatar } from "~/shared/ui/avatar";
-import { Icon } from "~/shared/ui/icon";
+import { Copyable } from "~/shared/ui/copyable";
+import { Icon, type IconName } from "~/shared/ui/icon";
 import { PresenceIndicator, type PresenceVisual } from "~/shared/ui/presence-indicator";
 import { ScrollArea } from "~/shared/ui/scroll-area";
+import { SectionLabel } from "~/shared/ui/section-label.ui";
 import type { WorkspaceRightPanelInfoView } from "./right-panel.types";
 
 export interface RightPanelWorkspaceInfoProps {
   info: WorkspaceRightPanelInfoView;
 }
+
+type WorkspaceRightPanelChannelInfoView = Extract<WorkspaceRightPanelInfoView, { kind: "channel" }>;
+type WorkspaceRightPanelDirectPrivateInfoView = Extract<
+  WorkspaceRightPanelInfoView,
+  { kind: "directPrivate" }
+>;
 
 interface NotificationActionState {
   streamUuid: string | null;
@@ -120,7 +128,9 @@ function resolveWorkspaceStatusLabel(status: MessengerUser["status"] | null): st
   return t("presence.doNotDisturb");
 }
 
-function resolveWorkspaceRoleLabel(role: WorkspaceRightPanelInfoView["members"][number]["role"]) {
+function resolveWorkspaceRoleLabel(
+  role: WorkspaceRightPanelChannelInfoView["members"][number]["role"],
+) {
   if (role === "administrator") return t("roles.admin");
   return t(`roles.${role}`);
 }
@@ -318,7 +328,126 @@ const WorkspaceAddStreamMembersDialog: React.FC<WorkspaceAddStreamMembersDialogP
   );
 };
 
-export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = ({ info }) => {
+const WORKSPACE_DIRECT_PRIVATE_DETAIL_CONFIG: Record<
+  WorkspaceRightPanelDirectPrivateInfoView["details"][number]["id"],
+  {
+    label: () => string;
+    icon: IconName;
+  }
+> = {
+  email: {
+    label: () => t("common.email"),
+    icon: "mail",
+  },
+  username: {
+    label: () => t("info.username"),
+    icon: "profile",
+  },
+  phone: {
+    label: () => t("info.phone"),
+    icon: "phone",
+  },
+  jobTitle: {
+    label: () => t("info.jobTitle"),
+    icon: "businessCenter",
+  },
+  manager: {
+    label: () => t("info.manager"),
+    icon: "handshake",
+  },
+  timezone: {
+    label: () => t("info.timezone"),
+    icon: "calendar",
+  },
+  birthday: {
+    label: () => t("info.birthday"),
+    icon: "calendar",
+  },
+};
+
+const RightPanelWorkspaceDirectPrivateInfo: React.FC<{
+  info: WorkspaceRightPanelDirectPrivateInfoView;
+}> = ({ info }) => {
+  const statusLabel = resolveWorkspaceStatusLabel(info.status);
+  const presence = resolveWorkspacePresence(info.status);
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden text-text-primary">
+      <ScrollArea className="flex-1 px-4 py-3">
+        <header className="border-b border-border-subtle pb-3">
+          <h2 className="mb-3 text-sm font-semibold text-text-primary">{t("info.information")}</h2>
+          <div className="flex items-center gap-3">
+            <div className="relative shrink-0">
+              <Avatar size="lg" className="bg-bg-elevated text-text-secondary">
+                {info.title.slice(0, 1)}
+              </Avatar>
+              {info.status != null && (
+                <span className="absolute -bottom-0.5 -right-0.5">
+                  <PresenceIndicator status={presence} size="sm" />
+                </span>
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <Copyable value={info.title} className="w-full">
+                <p className="truncate text-sm font-medium text-text-primary">{info.title}</p>
+              </Copyable>
+              {statusLabel != null && (
+                <p className="truncate text-[11px] text-text-secondary">{statusLabel}</p>
+              )}
+            </div>
+          </div>
+        </header>
+
+        <div className="space-y-4 pt-3">
+          <ul className="space-y-2">
+            {info.details.map((detail) => {
+              const config = WORKSPACE_DIRECT_PRIVATE_DETAIL_CONFIG[detail.id];
+              const valueNode = (
+                <span
+                  className={`block truncate whitespace-nowrap ${
+                    detail.isTemporarilyUnavailable ? "italic text-text-muted" : "text-text-primary"
+                  }`}
+                >
+                  {detail.value}
+                </span>
+              );
+
+              return (
+                <li
+                  key={detail.id}
+                  className="flex items-start gap-3 rounded-lg px-1 py-1.5 text-sm"
+                >
+                  <Icon name={config.icon} size={20} className="mt-0.5 shrink-0 text-icon-base" />
+                  <div className="min-w-0 flex-1">
+                    <SectionLabel className="mb-0.5">{config.label()}</SectionLabel>
+                    {detail.isTemporarilyUnavailable ? (
+                      valueNode
+                    ) : (
+                      <Copyable value={detail.value} className="max-w-full">
+                        {valueNode}
+                      </Copyable>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+
+          <div>
+            <SectionLabel className="mb-2">{t("info.commonGroups")}</SectionLabel>
+            <p className="rounded-lg bg-bg-elevated px-2 py-2 text-sm italic text-text-muted">
+              {t("workspaceMessenger.temporarilyNotConnected")}
+            </p>
+          </div>
+        </div>
+      </ScrollArea>
+    </div>
+  );
+};
+
+const RightPanelWorkspaceChannelInfo: React.FC<{
+  info: WorkspaceRightPanelChannelInfoView;
+}> = ({ info }) => {
   const navigate = useNavigate();
   const [notificationActionState, setNotificationActionState] = useState<NotificationActionState>(
     () => createNotificationActionState(info.streamUuid),
@@ -530,7 +659,7 @@ export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = (
   ]);
 
   const handleRemoveMember = useCallback(
-    async (member: WorkspaceRightPanelInfoView["members"][number]) => {
+    async (member: WorkspaceRightPanelChannelInfoView["members"][number]) => {
       // UI доверяет готовому `canRemove` из selector-а: сам себя может удалить
       // любой участник, а чужих участников видит с кнопкой только owner stream-а.
       if (
@@ -776,4 +905,12 @@ export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = (
       />
     </div>
   );
+};
+
+export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = ({ info }) => {
+  if (info.kind === "directPrivate") {
+    return <RightPanelWorkspaceDirectPrivateInfo info={info} />;
+  }
+
+  return <RightPanelWorkspaceChannelInfo info={info} />;
 };

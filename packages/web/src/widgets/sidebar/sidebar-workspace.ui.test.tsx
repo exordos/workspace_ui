@@ -26,6 +26,7 @@ function stream(overrides: Partial<MessengerSidebarStreamItem> = {}): MessengerS
     title: "Engineering",
     audience: "channel",
     isPrivate: false,
+    uiKind: "channel",
     unreadCount: 0,
     pinnedAt: null,
     orderIndex: null,
@@ -183,5 +184,22 @@ describe("WorkspaceSidebar", () => {
     expect(screen.getByText(/Engineering/)).toBeInTheDocument();
     expect(screen.getByText(t("sidebar.partialLoadError"))).toBeInTheDocument();
     expect(screen.getByText("Network timeout")).toBeInTheDocument();
+  });
+
+  it("renders a private stream without direct ui kind as a channel row", () => {
+    renderWorkspaceSidebar({
+      streams: [
+        stream({
+          title: "Private room",
+          audience: "private",
+          isPrivate: true,
+          uiKind: "channel",
+        }),
+      ],
+      workspaceStreamCount: 1,
+    });
+
+    expect(screen.getByRole("link", { name: /#private room/i })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^private room$/i })).not.toBeInTheDocument();
   });
 });

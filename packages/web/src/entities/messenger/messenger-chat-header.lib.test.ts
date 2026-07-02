@@ -6,37 +6,47 @@ import type { MessengerBootstrapPayload } from "./messenger.types";
 const OWNER_KEY = "account-a:org-a:project-a";
 const STREAM_UUID = "11111111-1111-4111-8111-111111111111";
 const TOPIC_UUID = "22222222-2222-4222-8222-222222222222";
+const DIRECT_STREAM_UUID = "77777777-7777-4777-8777-777777777777";
+const PRIVATE_STREAM_UUID = "88888888-8888-4888-8888-888888888888";
 const USER_A_UUID = "33333333-3333-4333-8333-333333333333";
 const USER_B_UUID = "44444444-4444-4444-8444-444444444444";
+const MISSING_USER_UUID = "99999999-9999-4999-8999-999999999999";
 const BINDING_A_UUID = "55555555-5555-4555-8555-555555555555";
 const BINDING_B_UUID = "66666666-6666-4666-8666-666666666666";
 
-function createBootstrapPayload(): MessengerBootstrapPayload {
+function createStream(
+  overrides: Partial<MessengerBootstrapPayload["streams"][number]> = {},
+): MessengerBootstrapPayload["streams"][number] {
   return {
-    streams: [
-      {
-        uuid: STREAM_UUID,
-        projectId: "project-a",
-        ownerUuid: USER_A_UUID,
-        userUuid: USER_A_UUID,
-        role: "member",
-        notificationMode: "all_messages",
-        name: "general",
-        description: "",
-        unreadCount: 0,
-        sourceName: "native",
-        source: { kind: "native" },
-        audience: "channel",
-        isPrivate: false,
-        inviteOnly: false,
-        announce: false,
-        isArchived: false,
-        directUserUuid: null,
-        lastMessageUuid: null,
-        createdAt: "2026-06-30T09:00:00.000Z",
-        updatedAt: "2026-06-30T09:00:00.000Z",
-      },
-    ],
+    uuid: STREAM_UUID,
+    projectId: "project-a",
+    ownerUuid: USER_A_UUID,
+    userUuid: USER_A_UUID,
+    role: "member",
+    notificationMode: "all_messages",
+    name: "general",
+    description: "",
+    unreadCount: 0,
+    sourceName: "native",
+    source: { kind: "native" },
+    audience: "channel",
+    isPrivate: false,
+    inviteOnly: false,
+    announce: false,
+    isArchived: false,
+    directUserUuid: null,
+    lastMessageUuid: null,
+    createdAt: "2026-06-30T09:00:00.000Z",
+    updatedAt: "2026-06-30T09:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function createBootstrapPayload(
+  overrides: Partial<Pick<MessengerBootstrapPayload, "streams" | "users">> = {},
+): MessengerBootstrapPayload {
+  return {
+    streams: overrides.streams ?? [createStream()],
     streamBindings: [
       {
         uuid: BINDING_A_UUID,
@@ -79,7 +89,7 @@ function createBootstrapPayload(): MessengerBootstrapPayload {
     ],
     conversations: [],
     folders: [],
-    users: [
+    users: overrides.users ?? [
       {
         uuid: USER_A_UUID,
         username: "alice",
@@ -125,9 +135,11 @@ describe("selectWorkspaceChatHeaderView", () => {
         streamUuid: STREAM_UUID,
       },
       fallbackTitle: "Messenger",
+      missingDirectUserTitle: "Временно не подключено",
     });
 
     expect(view).toEqual({
+      kind: "channel",
       channelName: "#general",
       hideTopic: true,
       participantsCount: 2,
@@ -146,14 +158,138 @@ describe("selectWorkspaceChatHeaderView", () => {
         topicUuid: TOPIC_UUID,
       },
       fallbackTitle: "Messenger",
+      missingDirectUserTitle: "Временно не подключено",
     });
 
     expect(view).toEqual({
+      kind: "channel",
       channelName: "#general",
       hideTopic: false,
       participantsCount: 2,
       onlineCount: 1,
       topic: "Roadmap",
+    });
+  });
+
+  it("projects direct private stream as dm partner without channel counts", () => {
+    useMessengerStore.getState().clear();
+    useMessengerStore.getState().startBootstrap(OWNER_KEY);
+    useMessengerStore.getState().replaceBootstrapState(
+      OWNER_KEY,
+      createBootstrapPayload({
+        streams: [
+          createStream({
+            uuid: DIRECT_STREAM_UUID,
+            name: "Bob",
+            audience: "private",
+            isPrivate: true,
+            directUserUuid: USER_B_UUID,
+          }),
+        ],
+      }),
+    );
+
+    const view = selectWorkspaceChatHeaderView(useMessengerStore.getState(), {
+      route: {
+        kind: "stream",
+        orgId: "org-a",
+        projectId: "project-a",
+        streamUuid: DIRECT_STREAM_UUID,
+      },
+      fallbackTitle: "Messenger",
+      missingDirectUserTitle: "Временно не подключено",
+    });
+
+    expect(view).toEqual({
+      kind: "directPrivate",
+      directUserUuid: USER_B_UUID,
+      dmPartner: {
+        name: "Bob Reed",
+        avatarUrl: null,
+        presenceState: "offline",
+      },
+    });
+    expect("participantsCount" in view).toBe(false);
+    expect("onlineCount" in view).toBe(false);
+  });
+
+  it("keeps private stream without direct user as channel header", () => {
+    useMessengerStore.getState().clear();
+    useMessengerStore.getState().startBootstrap(OWNER_KEY);
+    useMessengerStore.getState().replaceBootstrapState(
+      OWNER_KEY,
+      createBootstrapPayload({
+        streams: [
+          createStream({
+            uuid: PRIVATE_STREAM_UUID,
+            name: "private-room",
+            audience: "private",
+            isPrivate: true,
+            directUserUuid: null,
+          }),
+        ],
+      }),
+    );
+
+    const view = selectWorkspaceChatHeaderView(useMessengerStore.getState(), {
+      route: {
+        kind: "stream",
+        orgId: "org-a",
+        projectId: "project-a",
+        streamUuid: PRIVATE_STREAM_UUID,
+      },
+      fallbackTitle: "Messenger",
+      missingDirectUserTitle: "Временно не подключено",
+    });
+
+    expect(view).toEqual({
+      kind: "channel",
+      channelName: "#private-room",
+      hideTopic: true,
+      participantsCount: 0,
+      onlineCount: 0,
+      topic: undefined,
+    });
+  });
+
+  it("uses explicit temporary fallback when direct private user is not loaded", () => {
+    useMessengerStore.getState().clear();
+    useMessengerStore.getState().startBootstrap(OWNER_KEY);
+    useMessengerStore.getState().replaceBootstrapState(
+      OWNER_KEY,
+      createBootstrapPayload({
+        streams: [
+          createStream({
+            uuid: DIRECT_STREAM_UUID,
+            name: "missing-user-direct",
+            audience: "private",
+            isPrivate: true,
+            directUserUuid: MISSING_USER_UUID,
+          }),
+        ],
+        users: [],
+      }),
+    );
+
+    const view = selectWorkspaceChatHeaderView(useMessengerStore.getState(), {
+      route: {
+        kind: "stream",
+        orgId: "org-a",
+        projectId: "project-a",
+        streamUuid: DIRECT_STREAM_UUID,
+      },
+      fallbackTitle: "Messenger",
+      missingDirectUserTitle: "Временно не подключено",
+    });
+
+    expect(view).toEqual({
+      kind: "directPrivate",
+      directUserUuid: MISSING_USER_UUID,
+      dmPartner: {
+        name: "Временно не подключено",
+        avatarUrl: null,
+        presenceState: null,
+      },
     });
   });
 });

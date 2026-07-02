@@ -266,7 +266,7 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
         folderUuid: folder.uuid,
         folderItemUuid: folderItem?.uuid ?? null,
         streamUuid: stream.streamUuid,
-        chatType: stream.isPrivate ? "private" : "stream",
+        chatType: stream.uiKind === "directPrivate" ? "private" : "stream",
         assigned: folderItem == null,
       })
         .catch((error) => reportWorkspaceMenuActionError("folder-assignment", error))
@@ -278,7 +278,7 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
           });
         });
     },
-    [pendingFolderUuids, stream.isPrivate, stream.streamUuid],
+    [pendingFolderUuids, stream.streamUuid, stream.uiKind],
   );
 
   const handleCreateTopic = useCallback((): void => {
@@ -400,7 +400,7 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
         type: "action",
         key: "members",
         icon: "group",
-        label: t("channel.members"),
+        label: stream.uiKind === "directPrivate" ? t("chatInfo.contactInfo") : t("channel.members"),
         onSelect: handleOpenMembers,
       },
       folderAssignmentsItem,
@@ -421,6 +421,7 @@ export const WorkspaceStreamContextMenu = React.memo(function WorkspaceStreamCon
     notificationPickerItem,
     pinPending,
     selectedFolderItem,
+    stream.uiKind,
   ]);
 
   const contentWithContextMenu = useMemo(
