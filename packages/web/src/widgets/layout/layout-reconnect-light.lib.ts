@@ -4,7 +4,6 @@ import {
   isActiveOrgRequestInvalidated,
   type ActiveOrgRequestContext,
 } from "~/entities/instance/instance.model";
-import { useUsersStore } from "~/entities/user/user.model";
 import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
 import { getNewestMessageId } from "./layout-chat-history-sync.lib";
 import { runChatListBootstrap } from "./layout-chat-list-bootstrap.lib";
@@ -66,9 +65,6 @@ export async function refreshLayoutReconnectLight(
     const streamOnly = filterStreamMessagesForSidebar(result.messages);
     if (streamOnly.length === 0 || isStale()) return;
 
-    for (const message of streamOnly) {
-      useUsersStore.getState().mergeFromMessage(message);
-    }
     useChatListStore.getState().applyStreamSidebarPreviewsFromMessages(streamOnly);
     const newest = getNewestMessageId(streamOnly);
     const prev = result.latestMessageIdHint;

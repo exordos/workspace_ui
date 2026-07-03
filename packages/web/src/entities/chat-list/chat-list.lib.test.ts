@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import { createUser } from "~/test/factories";
 import { buildSidebarFromMessages, messageToDmEntry, messageToStreamEntry } from "./chat-list.lib";
 
 function dmMessage(overrides: Partial<ZulipRawMessage> = {}): ZulipRawMessage {
@@ -41,7 +42,7 @@ describe("messageToDmEntry", () => {
   });
 
   it("uses message recipient name when users store only has Unknown for peer", () => {
-    useUsersStore.getState().mergeUser({ user_id: 20, full_name: "" });
+    useUsersStore.getState().upsertUser(createUser({ user_id: 20, full_name: "" }));
     const entry = messageToDmEntry(
       dmMessage({
         sender_id: 10,

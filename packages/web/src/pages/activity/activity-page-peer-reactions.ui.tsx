@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { Reaction, RealmEmoji, ZulipRawMessage } from "~/shared/api/zulip.types";
 import { normalizeEmojiShortcodeName } from "~/shared/lib/emoji-shortcodes.lib";
@@ -15,8 +16,8 @@ const ActivityPeerReactionsRowComponent: React.FC<ActivityPeerReactionsRowProps>
   message,
   currentUserId,
 }) => {
-  const getUser = useUsersStore((s) => s.getUser);
   const [customEmojis, setCustomEmojis] = useState<RealmEmoji[]>(() => getCachedRealmEmojis());
+  const usersById = useUsersStore((state) => state.usersById);
 
   const hasPeerRealmEmoji = useMemo(
     () =>
@@ -88,12 +89,8 @@ const ActivityPeerReactionsRowComponent: React.FC<ActivityPeerReactionsRowProps>
   );
 
   const resolveReactionAuthorLabel = useCallback(
-    (userId: number): string => {
-      const reactionUser = getUser(userId);
-      const fullName = reactionUser?.full_name?.trim();
-      return fullName != null && fullName.length > 0 ? fullName : `#${userId}`;
-    },
-    [getUser],
+    (userId: number): string => selectUserDisplayName(usersById[String(userId)], `#${userId}`),
+    [usersById],
   );
 
   if (reactionGroups.length === 0) return null;

@@ -14,8 +14,9 @@ describe("workspace-messenger-route", () => {
       "/org/org-a/project/project-a/messenger",
     );
     expect(workspaceInboxRoute("org-a", "project-a")).toBe("/org/org-a/project/project-a/inbox");
-    expect(workspaceActivityRoute({ orgId: "org-a", projectId: "project-a", filter: "starred" }))
-      .toBe("/org/org-a/project/project-a/activity/starred");
+    expect(
+      workspaceActivityRoute({ orgId: "org-a", projectId: "project-a", filter: "starred" }),
+    ).toBe("/org/org-a/project/project-a/activity/starred");
     expect(workspaceFeedRoute("org-a", "project-a")).toBe("/org/org-a/project/project-a/feed");
   });
 
@@ -25,14 +26,12 @@ describe("workspace-messenger-route", () => {
       orgId: "org-a",
       projectId: "project-a",
     });
-    expect(parseWorkspaceMessengerRoute("/org/org-a/project/project-a/activity/mentions")).toEqual(
-      {
-        kind: "activity",
-        orgId: "org-a",
-        projectId: "project-a",
-        filter: "mentions",
-      },
-    );
+    expect(parseWorkspaceMessengerRoute("/org/org-a/project/project-a/activity/mentions")).toEqual({
+      kind: "activity",
+      orgId: "org-a",
+      projectId: "project-a",
+      filter: "mentions",
+    });
     expect(parseWorkspaceMessengerRoute("/org/org-a/project/project-a/feed")).toEqual({
       kind: "feed",
       orgId: "org-a",

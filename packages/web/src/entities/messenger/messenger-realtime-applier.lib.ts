@@ -30,6 +30,17 @@ import type {
   MessengerUuid,
 } from "./messenger.types";
 
+type MessengerRealtimeEvent = Exclude<WorkspaceRealtimeEvent, { type: "user" }>;
+type MessengerMessageRealtimeEvent = Extract<MessengerRealtimeEvent, { type: "message" }>;
+type MessengerStreamRealtimeEvent = Extract<MessengerRealtimeEvent, { type: "stream" }>;
+type MessengerStreamBindingRealtimeEvent = Extract<
+  MessengerRealtimeEvent,
+  { type: "stream_binding" }
+>;
+type MessengerTopicRealtimeEvent = Extract<MessengerRealtimeEvent, { type: "topic" }>;
+type MessengerFolderRealtimeEvent = Extract<MessengerRealtimeEvent, { type: "folder" }>;
+type MessengerFolderItemRealtimeEvent = Extract<MessengerRealtimeEvent, { type: "folder_item" }>;
+
 export interface MessengerRealtimeCacheConversationPage {
   messages: readonly MessengerMessage[];
   source: "realtime";
@@ -109,7 +120,7 @@ function eventKind(event: { type?: unknown; kind?: unknown }): string {
   return typeof event.type === "string" ? event.type : "unknown";
 }
 
-function isSupportedRealtimeEvent(event: WorkspaceRealtimeEvent): boolean {
+function isSupportedRealtimeEvent(event: WorkspaceRealtimeEvent): event is MessengerRealtimeEvent {
   const eventType = (event as { type?: unknown }).type;
   return (
     eventType === "message" ||
@@ -119,6 +130,10 @@ function isSupportedRealtimeEvent(event: WorkspaceRealtimeEvent): boolean {
     eventType === "folder" ||
     eventType === "folder_item"
   );
+}
+
+function isNonMessengerRealtimeEvent(event: WorkspaceRealtimeEvent): boolean {
+  return event.type === "user";
 }
 
 function isBackgroundLightweightEvent(event: WorkspaceRealtimeEvent): boolean {
@@ -188,6 +203,22 @@ function writeRealtimeCursorCache(
   writeRealtimeCacheBestEffort(() => cache.writeRealtimeCursor?.(ownerKey, epochVersion));
 }
 
+function deleteRealtimeCachedMessage(
+  cache: MessengerRealtimeActiveCacheWriter,
+  ownerKey: string,
+  message: MessengerDeletedMessage,
+): void {
+  if (cache.deleteCachedMessage == null) return;
+
+  writeRealtimeCacheBestEffort(() =>
+    cache.deleteCachedMessage?.(
+      ownerKey,
+      message.uuid,
+      conversationIdsForDeletedRealtimeMessage(message),
+    ),
+  );
+}
+
 function removeTopicMessagesFromWorkspaceStore(
   streamUuid: string,
   topicUuid: string,
@@ -210,6 +241,185 @@ function removeTopicMessagesFromWorkspaceStore(
   return removedMessages;
 }
 
+function applyMessageRealtimeEvent(
+  event: MessengerMessageRealtimeEvent,
+  ownerKey: string,
+  activeCache: MessengerRealtimeActiveCacheWriter,
+): void {
+  const store = useMessengerStore.getState();
+  const messageStore = useWorkspaceMessageStore.getState();
+
+  if (event.kind === "message.deleted") {
+    const deletedMessage = {
+      uuid: event.message.uuid,
+      streamUuid: event.message.stream_uuid,
+      topicUuid: event.message.topic_uuid,
+    };
+    messageStore.removeMessage(event.message.uuid);
+    store.clearMessagePointer(ownerKey, {
+      uuid: event.message.uuid,
+      streamUuid: event.message.stream_uuid,
+      topicUuid: event.message.topic_uuid,
+    });
+    deleteRealtimeCachedMessage(activeCache, ownerKey, deletedMessage);
+    return;
+  }
+
+  const message = adaptMessengerMessage(event.message);
+  messageStore.upsertMessage(message);
+  store.applyMessagePointer(ownerKey, message);
+  if (event.kind === "message.updated") {
+    if (activeCache.patchCachedMessage != null) {
+      writeRealtimeCacheBestEffort(() => activeCache.patchCachedMessage?.(ownerKey, message));
+    }
+    return;
+  }
+
+  writeRealtimeMessagePageCache(activeCache, ownerKey, message);
+}
+
+function applyStreamRealtimeEvent(
+  event: MessengerStreamRealtimeEvent,
+  ownerKey: string,
+  activeCache: MessengerRealtimeActiveCacheWriter,
+): void {
+  const store = useMessengerStore.getState();
+
+  if (event.kind === "stream.deleted") {
+    store.removeStream(ownerKey, { uuid: event.stream.uuid });
+    if (activeCache.deleteCachedStream != null) {
+      writeRealtimeCacheBestEffort(() =>
+        activeCache.deleteCachedStream?.(ownerKey, event.stream.uuid),
+      );
+    }
+    return;
+  }
+
+  const stream = adaptMessengerStream(event.stream);
+  store.upsertStream(ownerKey, stream);
+  if (activeCache.upsertCachedStream != null) {
+    writeRealtimeCacheBestEffort(() => activeCache.upsertCachedStream?.(ownerKey, stream));
+  }
+}
+
+function applyStreamBindingRealtimeEvent(
+  event: MessengerStreamBindingRealtimeEvent,
+  ownerKey: string,
+  activeCache: MessengerRealtimeActiveCacheWriter,
+): void {
+  const streamBindings = event.stream_bindings.map(adaptMessengerStreamBinding);
+  useMessengerStore.getState().upsertStreamBindings(ownerKey, streamBindings);
+  if (activeCache.upsertCachedStreamBindings != null) {
+    writeRealtimeCacheBestEffort(() =>
+      activeCache.upsertCachedStreamBindings?.(ownerKey, streamBindings),
+    );
+  }
+}
+
+function applyTopicRealtimeEvent(
+  event: MessengerTopicRealtimeEvent,
+  ownerKey: string,
+  activeCache: MessengerRealtimeActiveCacheWriter,
+): void {
+  const store = useMessengerStore.getState();
+
+  if (event.kind === "topic.deleted") {
+    const deletedMessages = removeTopicMessagesFromWorkspaceStore(
+      event.topic.stream_uuid,
+      event.topic.uuid,
+    );
+    store.removeTopic(ownerKey, {
+      uuid: event.topic.uuid,
+      streamUuid: event.topic.stream_uuid,
+    });
+    for (const deletedMessage of deletedMessages) {
+      deleteRealtimeCachedMessage(activeCache, ownerKey, deletedMessage);
+    }
+    if (activeCache.deleteCachedTopic != null) {
+      writeRealtimeCacheBestEffort(() =>
+        activeCache.deleteCachedTopic?.(ownerKey, event.topic.uuid, event.topic.stream_uuid),
+      );
+    }
+    return;
+  }
+
+  const topic = adaptMessengerTopic(event.topic);
+  store.upsertTopic(ownerKey, topic);
+  if (activeCache.upsertCachedTopic != null) {
+    writeRealtimeCacheBestEffort(() => activeCache.upsertCachedTopic?.(ownerKey, topic));
+  }
+}
+
+function applyFolderRealtimeEvent(
+  event: MessengerFolderRealtimeEvent,
+  ownerKey: string,
+  activeCache: MessengerRealtimeActiveCacheWriter,
+): void {
+  const store = useMessengerStore.getState();
+
+  if (event.kind === "folder.deleted") {
+    store.removeFolder(ownerKey, { uuid: event.folder.uuid });
+    if (activeCache.deleteCachedFolder != null) {
+      writeRealtimeCacheBestEffort(() =>
+        activeCache.deleteCachedFolder?.(ownerKey, event.folder.uuid),
+      );
+    }
+    return;
+  }
+
+  const folder = adaptMessengerFolder(event.folder);
+  store.applyFolderSnapshot(ownerKey, folder);
+  if (activeCache.upsertCachedFolder != null) {
+    writeRealtimeCacheBestEffort(() => activeCache.upsertCachedFolder?.(ownerKey, folder));
+  }
+}
+
+function applyFolderItemRealtimeEvent(
+  event: MessengerFolderItemRealtimeEvent,
+  ownerKey: string,
+  activeCache: MessengerRealtimeActiveCacheWriter,
+): void {
+  useMessengerStore
+    .getState()
+    .removeFolderItem(
+      ownerKey,
+      { uuid: event.folder_item.uuid },
+      { preserveFolderUnreadCount: true },
+    );
+  if (activeCache.deleteCachedFolderItem != null) {
+    writeRealtimeCacheBestEffort(() =>
+      activeCache.deleteCachedFolderItem?.(ownerKey, event.folder_item.uuid),
+    );
+  }
+}
+
+function applySupportedRealtimeEvent(
+  event: MessengerRealtimeEvent,
+  ownerKey: string,
+  activeCache: MessengerRealtimeActiveCacheWriter,
+): void {
+  switch (event.type) {
+    case "message":
+      applyMessageRealtimeEvent(event, ownerKey, activeCache);
+      break;
+    case "stream":
+      applyStreamRealtimeEvent(event, ownerKey, activeCache);
+      break;
+    case "stream_binding":
+      applyStreamBindingRealtimeEvent(event, ownerKey, activeCache);
+      break;
+    case "topic":
+      applyTopicRealtimeEvent(event, ownerKey, activeCache);
+      break;
+    case "folder":
+      applyFolderRealtimeEvent(event, ownerKey, activeCache);
+      break;
+    case "folder_item":
+      applyFolderItemRealtimeEvent(event, ownerKey, activeCache);
+      break;
+  }
+}
+
 export function createMessengerRealtimeActiveApplier(
   options: MessengerRealtimeActiveApplierOptions = {},
 ): WorkspaceRealtimeEventApplier {
@@ -219,7 +429,7 @@ export function createMessengerRealtimeActiveApplier(
       if (!isActiveCurrentOwner(context, options)) return;
 
       const store = useMessengerStore.getState();
-      const messageStore = useWorkspaceMessageStore.getState();
+      if (isNonMessengerRealtimeEvent(event)) return;
       if (!isSupportedRealtimeEvent(event)) {
         log.warn("Skipped unsupported workspace realtime event", {
           ownerKey: context.ownerKey,
@@ -231,159 +441,7 @@ export function createMessengerRealtimeActiveApplier(
         return;
       }
 
-      switch (event.type) {
-        case "message": {
-          if (event.kind === "message.deleted") {
-            const deletedMessage = {
-              uuid: event.message.uuid,
-              streamUuid: event.message.stream_uuid,
-              topicUuid: event.message.topic_uuid,
-            };
-            messageStore.removeMessage(event.message.uuid);
-            store.clearMessagePointer(context.ownerKey, {
-              uuid: event.message.uuid,
-              streamUuid: event.message.stream_uuid,
-              topicUuid: event.message.topic_uuid,
-            });
-            if (activeCache.deleteCachedMessage != null) {
-              writeRealtimeCacheBestEffort(() =>
-                activeCache.deleteCachedMessage?.(
-                  context.ownerKey,
-                  deletedMessage.uuid,
-                  conversationIdsForDeletedRealtimeMessage(deletedMessage),
-                ),
-              );
-            }
-            break;
-          }
-
-          {
-            const message = adaptMessengerMessage(event.message);
-            messageStore.upsertMessage(message);
-            store.applyMessagePointer(context.ownerKey, message);
-            if (event.kind === "message.updated") {
-              if (activeCache.patchCachedMessage != null) {
-                writeRealtimeCacheBestEffort(() =>
-                  activeCache.patchCachedMessage?.(context.ownerKey, message),
-                );
-              }
-            } else {
-              writeRealtimeMessagePageCache(activeCache, context.ownerKey, message);
-            }
-          }
-          break;
-        }
-        case "stream": {
-          if (event.kind === "stream.deleted") {
-            store.removeStream(context.ownerKey, { uuid: event.stream.uuid });
-            if (activeCache.deleteCachedStream != null) {
-              writeRealtimeCacheBestEffort(() =>
-                activeCache.deleteCachedStream?.(context.ownerKey, event.stream.uuid),
-              );
-            }
-            break;
-          }
-
-          {
-            const stream = adaptMessengerStream(event.stream);
-            store.upsertStream(context.ownerKey, stream);
-            if (activeCache.upsertCachedStream != null) {
-              writeRealtimeCacheBestEffort(() =>
-                activeCache.upsertCachedStream?.(context.ownerKey, stream),
-              );
-            }
-          }
-          break;
-        }
-        case "stream_binding": {
-          const streamBindings = event.stream_bindings.map(adaptMessengerStreamBinding);
-          store.upsertStreamBindings(context.ownerKey, streamBindings);
-          if (activeCache.upsertCachedStreamBindings != null) {
-            writeRealtimeCacheBestEffort(() =>
-              activeCache.upsertCachedStreamBindings?.(context.ownerKey, streamBindings),
-            );
-          }
-          break;
-        }
-        case "topic": {
-          if (event.kind === "topic.deleted") {
-            const deletedMessages = removeTopicMessagesFromWorkspaceStore(
-              event.topic.stream_uuid,
-              event.topic.uuid,
-            );
-            store.removeTopic(context.ownerKey, {
-              uuid: event.topic.uuid,
-              streamUuid: event.topic.stream_uuid,
-            });
-            for (const deletedMessage of deletedMessages) {
-              if (activeCache.deleteCachedMessage != null) {
-                writeRealtimeCacheBestEffort(() =>
-                  activeCache.deleteCachedMessage?.(
-                    context.ownerKey,
-                    deletedMessage.uuid,
-                    conversationIdsForDeletedRealtimeMessage(deletedMessage),
-                  ),
-                );
-              }
-            }
-            if (activeCache.deleteCachedTopic != null) {
-              writeRealtimeCacheBestEffort(() =>
-                activeCache.deleteCachedTopic?.(
-                  context.ownerKey,
-                  event.topic.uuid,
-                  event.topic.stream_uuid,
-                ),
-              );
-            }
-            break;
-          }
-
-          {
-            const topic = adaptMessengerTopic(event.topic);
-            store.upsertTopic(context.ownerKey, topic);
-            if (activeCache.upsertCachedTopic != null) {
-              writeRealtimeCacheBestEffort(() =>
-                activeCache.upsertCachedTopic?.(context.ownerKey, topic),
-              );
-            }
-          }
-          break;
-        }
-        case "folder": {
-          if (event.kind === "folder.deleted") {
-            store.removeFolder(context.ownerKey, { uuid: event.folder.uuid });
-            if (activeCache.deleteCachedFolder != null) {
-              writeRealtimeCacheBestEffort(() =>
-                activeCache.deleteCachedFolder?.(context.ownerKey, event.folder.uuid),
-              );
-            }
-            break;
-          }
-
-          {
-            const folder = adaptMessengerFolder(event.folder);
-            store.applyFolderSnapshot(context.ownerKey, folder);
-            if (activeCache.upsertCachedFolder != null) {
-              writeRealtimeCacheBestEffort(() =>
-                activeCache.upsertCachedFolder?.(context.ownerKey, folder),
-              );
-            }
-          }
-          break;
-        }
-        case "folder_item":
-          store.removeFolderItem(
-            context.ownerKey,
-            { uuid: event.folder_item.uuid },
-            { preserveFolderUnreadCount: true },
-          );
-          if (activeCache.deleteCachedFolderItem != null) {
-            writeRealtimeCacheBestEffort(() =>
-              activeCache.deleteCachedFolderItem?.(context.ownerKey, event.folder_item.uuid),
-            );
-          }
-          break;
-      }
+      applySupportedRealtimeEvent(event, context.ownerKey, activeCache);
 
       store.setRealtimeCursor(context.ownerKey, event.epoch_version);
       writeRealtimeCursorCache(activeCache, context.ownerKey, event.epoch_version);
@@ -418,6 +476,7 @@ export function createMessengerRealtimeBackgroundApplier(
       if (!isBackgroundCurrentOwner(context, options)) return;
 
       const store = useMessengerBackgroundProjectionStore.getState();
+      if (isNonMessengerRealtimeEvent(event)) return;
       if (!isSupportedRealtimeEvent(event)) {
         store.recordSkippedEvent(context.ownerKey, event, "unsupported_event", context);
         return;

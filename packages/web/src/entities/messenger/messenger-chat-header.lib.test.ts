@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { User, UsersById } from "~/entities/user/user.types";
 import { selectWorkspaceChatHeaderView } from "./messenger-chat-header.lib";
 import { useMessengerStore } from "./messenger.model";
 import type { MessengerBootstrapPayload } from "./messenger.types";
@@ -43,7 +44,7 @@ function createStream(
 }
 
 function createBootstrapPayload(
-  overrides: Partial<Pick<MessengerBootstrapPayload, "streams" | "users">> = {},
+  overrides: Partial<Pick<MessengerBootstrapPayload, "streams">> = {},
 ): MessengerBootstrapPayload {
   return {
     streams: overrides.streams ?? [createStream()],
@@ -89,30 +90,46 @@ function createBootstrapPayload(
     ],
     conversations: [],
     folders: [],
-    users: overrides.users ?? [
-      {
-        uuid: USER_A_UUID,
-        username: "alice",
-        status: "active",
-        firstName: "Alice",
-        lastName: "Stone",
-        email: "alice@example.com",
-        lastPingAt: null,
-        createdAt: "2026-06-30T09:00:00.000Z",
-        updatedAt: "2026-06-30T09:00:00.000Z",
-      },
-      {
-        uuid: USER_B_UUID,
-        username: "bob",
-        status: "offline",
-        firstName: "Bob",
-        lastName: "Reed",
-        email: "bob@example.com",
-        lastPingAt: null,
-        createdAt: "2026-06-30T09:00:00.000Z",
-        updatedAt: "2026-06-30T09:00:00.000Z",
-      },
-    ],
+  };
+}
+
+function createDisplayUser(overrides: Partial<User> & { uuid: string }): User {
+  return {
+    uuid: overrides.uuid,
+    username: overrides.username ?? overrides.uuid,
+    firstName: overrides.firstName ?? null,
+    lastName: overrides.lastName ?? null,
+    displayName: overrides.displayName ?? overrides.username ?? overrides.uuid,
+    email: overrides.email ?? null,
+    avatarUrl: overrides.avatarUrl ?? null,
+    status: overrides.status ?? "offline",
+    statusEmoji: overrides.statusEmoji ?? null,
+    statusText: overrides.statusText ?? null,
+    lastPingAt: overrides.lastPingAt ?? "2026-06-30T09:00:00.000Z",
+    createdAt: overrides.createdAt ?? "2026-06-30T09:00:00.000Z",
+    updatedAt: overrides.updatedAt ?? "2026-06-30T09:00:00.000Z",
+  };
+}
+
+function createUsersById(overrides: Partial<UsersById> = {}): UsersById {
+  return {
+    [USER_A_UUID]: createDisplayUser({
+      uuid: USER_A_UUID,
+      username: "alice",
+      displayName: "Alice Stone",
+      email: "alice@example.com",
+      status: "active",
+      avatarUrl: "/alice.png",
+    }),
+    [USER_B_UUID]: createDisplayUser({
+      uuid: USER_B_UUID,
+      username: "bob",
+      displayName: "Bob Reed",
+      email: "bob@example.com",
+      status: "offline",
+      avatarUrl: "/bob.png",
+    }),
+    ...overrides,
   };
 }
 
@@ -134,6 +151,7 @@ describe("selectWorkspaceChatHeaderView", () => {
         projectId: "project-a",
         streamUuid: STREAM_UUID,
       },
+      usersById: createUsersById(),
       fallbackTitle: "Messenger",
       missingDirectUserTitle: "Временно не подключено",
     });
@@ -157,6 +175,7 @@ describe("selectWorkspaceChatHeaderView", () => {
         streamUuid: STREAM_UUID,
         topicUuid: TOPIC_UUID,
       },
+      usersById: createUsersById(),
       fallbackTitle: "Messenger",
       missingDirectUserTitle: "Временно не подключено",
     });
@@ -196,6 +215,7 @@ describe("selectWorkspaceChatHeaderView", () => {
         projectId: "project-a",
         streamUuid: DIRECT_STREAM_UUID,
       },
+      usersById: createUsersById(),
       fallbackTitle: "Messenger",
       missingDirectUserTitle: "Временно не подключено",
     });
@@ -205,12 +225,58 @@ describe("selectWorkspaceChatHeaderView", () => {
       directUserUuid: USER_B_UUID,
       dmPartner: {
         name: "Bob Reed",
-        avatarUrl: null,
+        avatarUrl: "/bob.png",
         presenceState: "offline",
       },
     });
     expect("participantsCount" in view).toBe(false);
     expect("onlineCount" in view).toBe(false);
+  });
+
+  it("maps direct private do not disturb status to idle presence", () => {
+    useMessengerStore.getState().clear();
+    useMessengerStore.getState().startBootstrap(OWNER_KEY);
+    useMessengerStore.getState().replaceBootstrapState(
+      OWNER_KEY,
+      createBootstrapPayload({
+        streams: [
+          createStream({
+            uuid: DIRECT_STREAM_UUID,
+            name: "Bob",
+            audience: "private",
+            isPrivate: true,
+            directUserUuid: USER_B_UUID,
+          }),
+        ],
+      }),
+    );
+
+    const view = selectWorkspaceChatHeaderView(useMessengerStore.getState(), {
+      route: {
+        kind: "stream",
+        orgId: "org-a",
+        projectId: "project-a",
+        streamUuid: DIRECT_STREAM_UUID,
+      },
+      usersById: createUsersById({
+        [USER_B_UUID]: createDisplayUser({
+          uuid: USER_B_UUID,
+          username: "bob",
+          displayName: "Bob Reed",
+          status: "do_not_disturb",
+          avatarUrl: "/bob.png",
+        }),
+      }),
+      fallbackTitle: "Messenger",
+      missingDirectUserTitle: "Временно не подключено",
+    });
+
+    expect(view).toMatchObject({
+      kind: "directPrivate",
+      dmPartner: {
+        presenceState: "idle",
+      },
+    });
   });
 
   it("keeps private stream without direct user as channel header", () => {
@@ -238,6 +304,7 @@ describe("selectWorkspaceChatHeaderView", () => {
         projectId: "project-a",
         streamUuid: PRIVATE_STREAM_UUID,
       },
+      usersById: createUsersById(),
       fallbackTitle: "Messenger",
       missingDirectUserTitle: "Временно не подключено",
     });
@@ -252,7 +319,7 @@ describe("selectWorkspaceChatHeaderView", () => {
     });
   });
 
-  it("uses explicit temporary fallback when direct private user is not loaded", () => {
+  it("uses direct private stream title while the user profile is still loading", () => {
     useMessengerStore.getState().clear();
     useMessengerStore.getState().startBootstrap(OWNER_KEY);
     useMessengerStore.getState().replaceBootstrapState(
@@ -267,7 +334,6 @@ describe("selectWorkspaceChatHeaderView", () => {
             directUserUuid: MISSING_USER_UUID,
           }),
         ],
-        users: [],
       }),
     );
 
@@ -278,6 +344,7 @@ describe("selectWorkspaceChatHeaderView", () => {
         projectId: "project-a",
         streamUuid: DIRECT_STREAM_UUID,
       },
+      usersById: {},
       fallbackTitle: "Messenger",
       missingDirectUserTitle: "Временно не подключено",
     });
@@ -286,7 +353,7 @@ describe("selectWorkspaceChatHeaderView", () => {
       kind: "directPrivate",
       directUserUuid: MISSING_USER_UUID,
       dmPartner: {
-        name: "Временно не подключено",
+        name: "missing-user-direct",
         avatarUrl: null,
         presenceState: null,
       },

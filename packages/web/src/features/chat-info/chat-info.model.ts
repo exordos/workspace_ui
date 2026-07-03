@@ -20,6 +20,8 @@ import {
   buildStreamChatInfoData,
   getChatInfoNetworkKey,
   isSameChatInfoData,
+  normalizeChatInfoUserIds,
+  type ChatInfoResolvedUser,
 } from "./chat-info.lib";
 import type { ChatInfoContext, ChatInfoData } from "./chat-info.types";
 
@@ -53,11 +55,14 @@ const NONE_CONTEXT: ChatInfoContext = {
   instanceId: null,
 };
 
-function resolveUsersById(userIds: number[]) {
+function resolveUsersById(userIds: number[]): ChatInfoResolvedUser[] {
   const usersState = useUsersStore.getState();
-  return userIds
-    .map((id) => usersState.getUser(id))
-    .filter((user): user is NonNullable<typeof user> => user != null);
+  return normalizeChatInfoUserIds(userIds)
+    .map((legacyUserId) => {
+      const user = usersState.getUser(String(legacyUserId));
+      return user == null ? null : { legacyUserId, user };
+    })
+    .filter((record): record is ChatInfoResolvedUser => record != null);
 }
 
 function isCurrentHydration(
@@ -133,8 +138,9 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
 
     // DM: no network — build from users store.
     if (context.kind === "dm") {
-      const members = resolveUsersById(context.participantIds);
-      const nextData = buildDmChatInfoData(context.dmName, members, context.participantIds.length);
+      const participantIds = normalizeChatInfoUserIds(context.participantIds);
+      const members = resolveUsersById(participantIds);
+      const nextData = buildDmChatInfoData(context.dmName, members, participantIds.length);
       const state = get();
       // Context changed mid-hydration — drop result.
       if (!isCurrentHydration(state, nextVersion, context)) return;
@@ -160,10 +166,11 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
       const state = get();
       // Stale response must not overwrite current context.
       if (!isCurrentHydration(state, nextVersion, context)) return;
-      const members = resolveUsersById(memberIds);
+      const streamMemberIds = normalizeChatInfoUserIds(memberIds);
+      const members = resolveUsersById(streamMemberIds);
       const nextData = buildStreamChatInfoData(
         metadata.name ?? context.streamName,
-        memberIds,
+        streamMemberIds,
         members,
         context.isMuted,
         {
@@ -172,14 +179,14 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
         },
       );
       if (isSameChatInfoData(state.data, nextData)) {
-        set({ loading: false, error: null, streamMemberIds: memberIds });
+        set({ loading: false, error: null, streamMemberIds });
         return;
       }
       set({
         data: nextData,
         loading: false,
         error: null,
-        streamMemberIds: memberIds,
+        streamMemberIds,
       });
     } catch {
       const state = get();
@@ -208,8 +215,9 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
 
     // DM derived refresh from users store only.
     if (context.kind === "dm") {
-      const members = resolveUsersById(context.participantIds);
-      const nextData = buildDmChatInfoData(context.dmName, members, context.participantIds.length);
+      const participantIds = normalizeChatInfoUserIds(context.participantIds);
+      const members = resolveUsersById(participantIds);
+      const nextData = buildDmChatInfoData(context.dmName, members, participantIds.length);
       if (isSameChatInfoData(state.data, nextData)) {
         return;
       }

@@ -1,23 +1,14 @@
-/**
- * Tests for user profile feature — loading, caching, clearing, and error handling.
- */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { clearRealmProfileFieldsCache } from "~/shared/api/zulip-realm-profile-fields";
 import { useUserProfileStore } from "./user-profile.model";
 
-const requestUserStatusMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
-
 vi.mock("~/shared/api/client", () => ({
   zulipApi: {
     get: vi.fn(),
   },
   getCurrentInstance: vi.fn(() => null),
-}));
-
-vi.mock("~/entities/user/api/user.api", () => ({
-  requestUserStatus: requestUserStatusMock,
 }));
 
 const MOCK_ZULIP_USER = {
@@ -44,7 +35,6 @@ describe("useUserProfileStore", () => {
     useUsersStore.getState().clear();
     useInstancesStore.setState({ instances: [], currentInstanceId: null, activeOrgEpoch: 0 });
     clearRealmProfileFieldsCache();
-    requestUserStatusMock.mockReset();
     vi.restoreAllMocks();
   });
 
@@ -58,7 +48,7 @@ describe("useUserProfileStore", () => {
   });
 
   describe("loadProfile", () => {
-    it("loads profile on success", async () => {
+    it("does not call legacy Zulip profile endpoint during user store cutover", async () => {
       const { zulipApi } = await import("~/shared/api/client");
       vi.mocked(zulipApi.get).mockResolvedValue({
         ok: true,
@@ -71,41 +61,16 @@ describe("useUserProfileStore", () => {
 
       await useUserProfileStore.getState().loadProfile(42);
 
-      expect(zulipApi.get).toHaveBeenCalledWith(
-        "/users/42",
-        {
-          client_gravatar: "false",
-          include_custom_profile_fields: "true",
-        },
-        undefined,
-      );
+      expect(zulipApi.get).not.toHaveBeenCalled();
 
       const state = useUserProfileStore.getState();
       expect(state.status).toBe("done");
-      expect(state.profile).not.toBeNull();
-      expect(state.profile!.userId).toBe(42);
-      expect(state.profile!.fullName).toBe("Alice Wonderland");
-      expect(state.profile!.email).toBe("alice@example.com");
-      expect(state.profile!.timezone).toBe("Europe/Moscow");
-      expect(state.profile!.jobTitle).toBe("Engineer");
-      expect(state.profile!.phone).toBe("+7-999-123-4567");
-      expect(state.profile!.isBot).toBe(false);
-      expect(state.profile!.isActive).toBe(true);
-      expect(state.profile!.dateJoined).toBe("2025-01-10T08:15:00Z");
-
-      const merged = useUsersStore.getState().getUser(42);
-      expect(merged?.full_name).toBe("Alice Wonderland");
-      expect(merged?.email).toBe("alice@example.com");
-      expect(merged?.avatar_url).toBe("https://example.com/avatar.png");
-      expect(merged?.role).toBe(400);
-      expect(merged?.is_active).toBe(true);
-      expect(requestUserStatusMock).toHaveBeenCalledWith(42, {
-        reason: "right_panel",
-        priority: "high",
-      });
+      expect(state.profile).toBeNull();
+      expect(state.error).toBeNull();
+      expect(useUsersStore.getState().getUser("42")).toBeUndefined();
     });
 
-    it("maps profile_data using realm field definitions when instance is active", async () => {
+    it("does not load legacy custom profile fields during user store cutover", async () => {
       const { zulipApi, getCurrentInstance } = await import("~/shared/api/client");
       vi.mocked(getCurrentInstance).mockReturnValue({
         id: "test-inst",
@@ -154,11 +119,12 @@ describe("useUserProfileStore", () => {
       await useUserProfileStore.getState().loadProfile(7);
 
       const state = useUserProfileStore.getState();
-      expect(state.profile?.jobTitle).toBe("AQA Lead");
-      expect(state.profile?.phone).toBe("+7 900 000-00-00");
+      expect(zulipApi.get).not.toHaveBeenCalled();
+      expect(state.status).toBe("done");
+      expect(state.profile).toBeNull();
     });
 
-    it("sets error on failed response", async () => {
+    it("ignores failed legacy response mocks because profile fetch is disabled", async () => {
       const { zulipApi } = await import("~/shared/api/client");
       vi.mocked(zulipApi.get).mockResolvedValue({
         ok: false,
@@ -172,22 +138,24 @@ describe("useUserProfileStore", () => {
       await useUserProfileStore.getState().loadProfile(999);
 
       const state = useUserProfileStore.getState();
-      expect(state.status).toBe("error");
-      expect(state.error).toContain("Failed");
+      expect(zulipApi.get).not.toHaveBeenCalled();
+      expect(state.status).toBe("done");
+      expect(state.error).toBeNull();
       expect(state.profile).toBeNull();
     });
 
-    it("sets error on network exception", async () => {
+    it("sets error when user id validation fails", async () => {
       const { zulipApi } = await import("~/shared/api/client");
       vi.mocked(zulipApi.get).mockRejectedValue(new Error("timeout"));
 
-      await useUserProfileStore.getState().loadProfile(42);
+      await useUserProfileStore.getState().loadProfile(0);
 
       const state = useUserProfileStore.getState();
+      expect(zulipApi.get).not.toHaveBeenCalled();
       expect(state.status).toBe("error");
     });
 
-    it("handles missing optional profile fields", async () => {
+    it("finishes without profile when legacy profile fields are unavailable during cutover", async () => {
       const { zulipApi } = await import("~/shared/api/client");
       vi.mocked(zulipApi.get).mockResolvedValue({
         ok: true,
@@ -210,13 +178,8 @@ describe("useUserProfileStore", () => {
 
       const state = useUserProfileStore.getState();
       expect(state.status).toBe("done");
-      expect(state.profile!.userId).toBe(10);
-      expect(state.profile!.jobTitle).toBeUndefined();
-      expect(state.profile!.phone).toBeUndefined();
-      expect(state.profile!.timezone).toBeUndefined();
-      expect(state.profile!.isBot).toBeUndefined();
-      expect(state.profile!.isActive).toBeUndefined();
-      expect(state.profile!.dateJoined).toBeUndefined();
+      expect(state.profile).toBeNull();
+      expect(state.error).toBeNull();
     });
 
     it("does not apply stale profile after organization switch and clear", async () => {
@@ -231,31 +194,7 @@ describe("useUserProfileStore", () => {
         activeOrgEpoch: 0,
       });
 
-      let resolveResponse:
-        | ((
-            value: {
-              ok: true;
-              status: number;
-              data: typeof MOCK_ZULIP_USER;
-              headers: Headers;
-              raw: Response;
-              durationMs: number;
-            },
-          ) => void)
-        | undefined;
-      vi.mocked(zulipApi.get).mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            resolveResponse = resolve;
-          }),
-      );
-
-      const pending = useUserProfileStore.getState().loadProfile(42);
-      useInstancesStore.getState().setCurrentInstanceId("inst-b");
-      useUserProfileStore.getState().clear();
-
-      expect(resolveResponse).toBeTypeOf("function");
-      resolveResponse!({
+      vi.mocked(zulipApi.get).mockResolvedValue({
         ok: true,
         status: 200,
         data: MOCK_ZULIP_USER,
@@ -264,14 +203,17 @@ describe("useUserProfileStore", () => {
         durationMs: 50,
       });
 
+      const pending = useUserProfileStore.getState().loadProfile(42);
+      useInstancesStore.getState().setCurrentInstanceId("inst-b");
+      useUserProfileStore.getState().clear();
+
       await pending;
 
       const state = useUserProfileStore.getState();
       expect(state.status).toBe("idle");
       expect(state.profile).toBeNull();
       expect(state.error).toBeNull();
-      expect(useUsersStore.getState().getUser(42)).toBeUndefined();
-      expect(requestUserStatusMock).not.toHaveBeenCalled();
+      expect(useUsersStore.getState().getUser("42")).toBeUndefined();
     });
   });
 
@@ -319,7 +261,7 @@ describe("useUserProfileStore", () => {
       expect(statuses).toContain("done");
     });
 
-    it("transitions through loading to error on failure", async () => {
+    it("transitions through loading to done when legacy failure mocks are unused", async () => {
       const { zulipApi } = await import("~/shared/api/client");
       const statuses: string[] = [];
       const unsub = useUserProfileStore.subscribe((s) => statuses.push(s.status));
@@ -337,7 +279,7 @@ describe("useUserProfileStore", () => {
       unsub();
 
       expect(statuses).toContain("loading");
-      expect(statuses).toContain("error");
+      expect(statuses).toContain("done");
     });
   });
 });

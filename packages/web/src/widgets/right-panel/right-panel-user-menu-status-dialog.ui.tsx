@@ -1,8 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import EmojiPicker, { EmojiStyle, type EmojiClickData } from "emoji-picker-react";
 import React from "react";
-import type { UserStatusEmojiDisplay } from "~/entities/user/user-status.lib";
-import type { UserStatusReactionType } from "~/entities/user/user.model";
 import type { RealmEmoji } from "~/shared/api/zulip.types";
 import {
   AppDialogShell,
@@ -12,6 +10,12 @@ import {
 } from "~/shared/ui/app-dialog.ui";
 import { STATUS_EMOJI_PRESETS } from "./right-panel-user-menu-constants.lib";
 import type { ComponentProps } from "react";
+
+export type UserStatusReactionType = "unicode_emoji" | "realm_emoji" | "zulip_extra_emoji";
+
+export type UserStatusEmojiDisplay =
+  | { kind: "text"; text: string }
+  | { kind: "image"; src: string; alt: string };
 
 const CONTENT_CLASS = `${APP_DIALOG_CONTENT_BASE_CLASS} top-1/2 max-w-md -translate-y-1/2 p-0`;
 
@@ -38,7 +42,7 @@ export interface RightPanelUserMenuStatusDialogProps {
   t: (key: string, options?: Record<string, string | number>) => string;
   handleStatusEmojiPick: (data: EmojiClickData) => void;
   clearStatusDraft: () => void;
-  handleSaveStatus: () => Promise<void>;
+  handleSaveStatus: () => void;
 }
 
 export const RightPanelUserMenuStatusDialog: React.FC<RightPanelUserMenuStatusDialogProps> = ({
@@ -184,9 +188,7 @@ export const RightPanelUserMenuStatusDialog: React.FC<RightPanelUserMenuStatusDi
             {t("common.cancel")}
           </DialogCancelButton>
           <DialogPrimaryButton
-            onClick={() => {
-              void handleSaveStatus();
-            }}
+            onClick={handleSaveStatus}
             disabled={statusSubmitting}
             isSubmitting={statusSubmitting}
             className="rounded-md px-3 py-2"

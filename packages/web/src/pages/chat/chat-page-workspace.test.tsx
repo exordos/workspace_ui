@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
@@ -7,11 +7,13 @@ import type {
   MessengerBootstrapPayload,
   MessengerMessage,
 } from "~/entities/messenger/messenger.types";
+import { useUsersStore } from "~/entities/user/user.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { OpenSearchContext } from "~/shared/contexts/open-search";
 import { RightDrawerContext } from "~/shared/contexts/right-drawer";
+import { createUser } from "~/test/factories";
 import { renderWithProviders } from "~/test/render";
 import type { ChatHeaderProps } from "~/widgets/chat-view/chat-header.types";
 import { ChatPage } from "./chat-page.ui";
@@ -33,12 +35,23 @@ const captured = vi.hoisted(() => ({
   oldChatListStore: vi.fn(() => {
     throw new Error("legacy chat-list store must not be used");
   }),
+  createWorkspaceDirectStream: vi.fn().mockResolvedValue({
+    status: "applied",
+    ownerKey: "owner",
+    stream: { uuid: "88888888-8888-4888-8888-888888888888" },
+    defaultTopic: null,
+    streamBindings: [],
+  }),
   loadWorkspaceMessages: vi.fn().mockResolvedValue({ status: "applied" }),
   streamBindingsForRoute: vi.fn(),
 }));
 
 vi.mock("~/entities/chat-list/chat-list.model", () => ({
   useChatListStore: captured.oldChatListStore,
+}));
+
+vi.mock("~/entities/messenger/messenger-create-chat-actions.lib", () => ({
+  createWorkspaceDirectStream: captured.createWorkspaceDirectStream,
 }));
 
 vi.mock("~/entities/messenger/messenger-messages-loader.lib", async (importOriginal) => {
@@ -176,30 +189,6 @@ function createBootstrapPayload(): MessengerBootstrapPayload {
     ],
     conversations: [],
     folders: [],
-    users: [
-      {
-        uuid: USER_UUID,
-        username: "alice",
-        status: "active",
-        firstName: "Alice",
-        lastName: "Stone",
-        email: "alice@example.com",
-        lastPingAt: null,
-        createdAt: "2026-06-30T09:00:00.000Z",
-        updatedAt: "2026-06-30T09:00:00.000Z",
-      },
-      {
-        uuid: USER_B_UUID,
-        username: "bob",
-        status: "idle",
-        firstName: "Bob",
-        lastName: "Reed",
-        email: "bob@example.com",
-        lastPingAt: null,
-        createdAt: "2026-06-30T09:00:00.000Z",
-        updatedAt: "2026-06-30T09:00:00.000Z",
-      },
-    ],
   };
 }
 
@@ -273,6 +262,20 @@ describe("ChatPage Workspace route", () => {
     const ownerKey = workspaceRuntimeOwnerKey(session);
     useMessengerStore.getState().startBootstrap(ownerKey);
     useMessengerStore.getState().replaceBootstrapState(ownerKey, createBootstrapPayload());
+    useUsersStore.getState().replaceUsers([
+      createUser({
+        uuid: USER_UUID,
+        full_name: "Alice Stone",
+        email: "alice@example.com",
+        status: "active",
+      }),
+      createUser({
+        uuid: USER_B_UUID,
+        full_name: "Bob Reed",
+        email: "bob@example.com",
+        status: "idle",
+      }),
+    ]);
     useWorkspaceMessageStore
       .getState()
       .replaceOrMergeConversationMessagesPage(`topic:${STREAM_UUID}:${TOPIC_UUID}`, [
@@ -282,6 +285,7 @@ describe("ChatPage Workspace route", () => {
     captured.headerProps = null;
     captured.messageListProps = null;
     captured.oldChatListStore.mockClear();
+    captured.createWorkspaceDirectStream.mockClear();
     captured.loadWorkspaceMessages.mockClear();
     captured.streamBindingsForRoute.mockClear();
   });
@@ -289,6 +293,7 @@ describe("ChatPage Workspace route", () => {
   afterEach(() => {
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
     useMessengerStore.getState().clear();
+    useUsersStore.getState().clear();
     useWorkspaceMessageStore.getState().clear();
   });
 
@@ -334,6 +339,54 @@ describe("ChatPage Workspace route", () => {
       },
     });
     await waitFor(() => expect(captured.loadWorkspaceMessages).toHaveBeenCalledTimes(1));
+  });
+
+  it("opens Workspace forward modal and prefills the current topic composer", async () => {
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    expect(await screen.findByTestId("old-message-list-section")).toBeInTheDocument();
+    const message = captured.messageListProps?.messages[0];
+    expect(message).toBeDefined();
+    act(() => {
+      captured.messageListProps?.callbacks.onMessageForward?.(message!);
+    });
+
+    fireEvent.change(screen.getByLabelText("Channel"), { target: { value: STREAM_UUID } });
+    fireEvent.change(screen.getByLabelText("Topic name"), { target: { value: TOPIC_UUID } });
+    fireEvent.click(screen.getByRole("button", { name: "Forward" }));
+
+    await waitFor(() => {
+      expect(captured.composerProps?.draftInitialValue).toContain("workspace message");
+    });
+    expect(captured.createWorkspaceDirectStream).not.toHaveBeenCalled();
+  });
+
+  it("creates a Workspace direct stream before forwarding to a private chat", async () => {
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    expect(await screen.findByTestId("old-message-list-section")).toBeInTheDocument();
+    const message = captured.messageListProps?.messages[0];
+    expect(message).toBeDefined();
+    act(() => {
+      captured.messageListProps?.callbacks.onMessageForward?.(message!);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^dm$/i }));
+    fireEvent.click(screen.getByText("Bob Reed"));
+    fireEvent.click(screen.getByRole("button", { name: "Forward" }));
+
+    await waitFor(() => {
+      expect(captured.createWorkspaceDirectStream).toHaveBeenCalledWith(
+        expect.objectContaining({ directUserUuid: USER_B_UUID }),
+      );
+    });
+    await waitFor(() => {
+      expect(captured.composerProps?.draftInitialValue).toContain("workspace message");
+    });
   });
 
   it("maps Workspace direct private header view to old dmPartner header props", async () => {

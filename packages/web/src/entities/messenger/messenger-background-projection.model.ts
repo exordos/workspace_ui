@@ -1,10 +1,13 @@
 import { create } from "zustand";
 import type {
   WorkspaceMessengerEpochVersion,
+  WorkspaceMessengerFolderDto,
   WorkspaceMessengerFolderItemChatType,
   WorkspaceMessengerFolderSystemType,
   WorkspaceMessengerMessageDto,
+  WorkspaceMessengerStreamDto,
   WorkspaceMessengerStreamNotificationMode,
+  WorkspaceMessengerTopicDto,
   WorkspaceMessengerTopicNotificationMode,
   WorkspaceMessengerUuid,
   WorkspaceRealtimeEvent,
@@ -159,6 +162,35 @@ type WorkspaceRealtimeMessageSnapshotEvent = Extract<
   WorkspaceRealtimeEvent,
   { type: "message"; message: WorkspaceMessengerMessageDto }
 >;
+type WorkspaceRealtimeDeletedMessageEvent = Extract<
+  WorkspaceRealtimeEvent,
+  { type: "message"; kind: "message.deleted" }
+>;
+type WorkspaceRealtimeStreamEvent = Extract<
+  WorkspaceRealtimeEvent,
+  { type: "stream"; stream: WorkspaceMessengerStreamDto }
+>;
+type WorkspaceRealtimeDeletedStreamEvent = Extract<
+  WorkspaceRealtimeEvent,
+  { type: "stream"; kind: "stream.deleted" }
+>;
+type WorkspaceRealtimeTopicEvent = Extract<
+  WorkspaceRealtimeEvent,
+  { type: "topic"; topic: WorkspaceMessengerTopicDto }
+>;
+type WorkspaceRealtimeDeletedTopicEvent = Extract<
+  WorkspaceRealtimeEvent,
+  { type: "topic"; kind: "topic.deleted" }
+>;
+type WorkspaceRealtimeFolderEvent = Extract<
+  WorkspaceRealtimeEvent,
+  { type: "folder"; folder: WorkspaceMessengerFolderDto }
+>;
+type WorkspaceRealtimeDeletedFolderEvent = Extract<
+  WorkspaceRealtimeEvent,
+  { type: "folder"; kind: "folder.deleted" }
+>;
+type WorkspaceRealtimeFolderItemEvent = Extract<WorkspaceRealtimeEvent, { type: "folder_item" }>;
 
 function createEmptyProjection(ownerKey: string): MessengerBackgroundProjection {
   return {
@@ -182,6 +214,15 @@ function appendBounded<T>(items: T[], item: T, limit: number): T[] {
   // Background projection lives in memory, so each collection stays short.
   const next = [item, ...items];
   return next.length > limit ? next.slice(0, limit) : next;
+}
+
+function omitRecordKey<T>(
+  record: Record<WorkspaceMessengerUuid, T>,
+  key: WorkspaceMessengerUuid,
+): Record<WorkspaceMessengerUuid, T> {
+  const next = { ...record };
+  delete next[key];
+  return next;
 }
 
 function advanceEpoch(
@@ -303,34 +344,53 @@ function applyEventProjection(
   );
 
   if (event.type === "message" && event.kind === "message.deleted") {
-    // Delete keeps a tombstone without text or author; that is enough to stop treating the message as live.
-    return compactProjection(
-      {
-        ...baseProjection,
-        messageIdSnapshotsById: {
-          ...baseProjection.messageIdSnapshotsById,
-          [event.message.uuid]: {
-            ownerKey: context.ownerKey,
-            messageUuid: event.message.uuid,
-            streamUuid: event.message.stream_uuid,
-            topicUuid: event.message.topic_uuid,
-            authorUuid: null,
-            isOwn: null,
-            read: null,
-            epochVersion: event.epoch_version,
-            createdAt: null,
-            updatedAt: null,
-            observedAt,
-            deletedAt: observedAt,
-          },
-        },
-      },
-      observedAt,
-    );
+    return applyDeletedMessageProjection(baseProjection, event, context, observedAt);
   }
 
   if (event.type === "message") {
-    const nextProjection: MessengerBackgroundProjection = {
+    return applyMessageProjection(baseProjection, event, context, observedAt);
+  }
+
+  if (event.type === "stream" && event.kind === "stream.deleted") {
+    return applyDeletedStreamProjection(baseProjection, event, observedAt);
+  }
+
+  if (event.type === "stream") {
+    return applyStreamProjection(baseProjection, event, context, observedAt);
+  }
+
+  if (event.type === "topic" && event.kind === "topic.deleted") {
+    return applyDeletedTopicProjection(baseProjection, event, observedAt);
+  }
+
+  if (event.type === "topic") {
+    return applyTopicProjection(baseProjection, event, context, observedAt);
+  }
+
+  if (event.type === "folder" && event.kind === "folder.deleted") {
+    return applyDeletedFolderProjection(baseProjection, event, observedAt);
+  }
+
+  if (event.type === "folder") {
+    return applyFolderProjection(baseProjection, event, context, observedAt);
+  }
+
+  if (event.type === "folder_item") {
+    return applyFolderItemProjection(baseProjection, event, observedAt);
+  }
+
+  return baseProjection;
+}
+
+function applyDeletedMessageProjection(
+  baseProjection: MessengerBackgroundProjection,
+  event: WorkspaceRealtimeDeletedMessageEvent,
+  context: WorkspaceRealtimeEventContext,
+  observedAt: number,
+): MessengerBackgroundProjection {
+  // Delete keeps a tombstone without text or author; that is enough to stop treating the message as live.
+  return compactProjection(
+    {
       ...baseProjection,
       messageIdSnapshotsById: {
         ...baseProjection.messageIdSnapshotsById,
@@ -339,259 +399,316 @@ function applyEventProjection(
           messageUuid: event.message.uuid,
           streamUuid: event.message.stream_uuid,
           topicUuid: event.message.topic_uuid,
-          authorUuid: event.message.author_uuid,
-          isOwn: event.message.is_own,
-          read: event.message.read,
+          authorUuid: null,
+          isOwn: null,
+          read: null,
           epochVersion: event.epoch_version,
-          createdAt: event.message.created_at,
-          updatedAt: event.message.updated_at,
+          createdAt: null,
+          updatedAt: null,
           observedAt,
-          deletedAt: null,
+          deletedAt: observedAt,
         },
       },
-    };
+    },
+    observedAt,
+  );
+}
 
-    if (!isMessageCreatedEvent(event)) {
-      // Updates are needed for the id snapshot but must not become notification candidates again.
-      return compactProjection(nextProjection, observedAt);
-    }
-
-    const candidate: MessengerBackgroundNotificationCandidate = {
-      ownerKey: context.ownerKey,
-      epochVersion: event.epoch_version,
-      messageUuid: event.message.uuid,
-      streamUuid: event.message.stream_uuid,
-      topicUuid: event.message.topic_uuid,
-      authorUuid: event.message.author_uuid,
-      isOwn: event.message.is_own,
-      createdAt: event.message.created_at,
-      observedAt,
-    };
-    return compactProjection(
-      {
-        ...nextProjection,
-        notificationCandidates: appendBounded(
-          nextProjection.notificationCandidates,
-          candidate,
-          MAX_NOTIFICATION_CANDIDATES,
-        ),
-      },
-      observedAt,
-    );
-  }
-
-  if (event.type === "stream" && event.kind === "stream.deleted") {
-    const { [event.stream.uuid]: _removedStream, ...streamSnapshotsById } =
-      baseProjection.streamSnapshotsById;
-    const topicSnapshotsById = removeSnapshotsByStreamUuid(
-      baseProjection.topicSnapshotsById,
-      event.stream.uuid,
-    );
-    const folderItemSnapshotsById = removeFolderItemSnapshotsByStreamUuid(
-      baseProjection.folderItemSnapshotsById,
-      event.stream.uuid,
-    );
-    const folderSnapshotsById = filterFolderSnapshotsByExistingItems(
-      baseProjection.folderSnapshotsById,
-      folderItemSnapshotsById,
-    );
-    const messageIdSnapshotsById = removeMessageSnapshotsByStreamUuid(
-      baseProjection.messageIdSnapshotsById,
-      event.stream.uuid,
-    );
-    const unreadByFolderItemId = removeUnreadForMissingFolderItems(
-      baseProjection.unreadByFolderItemId,
-      folderItemSnapshotsById,
-    );
-
-    return compactProjection(
-      {
-        ...baseProjection,
-        unreadByFolderItemId,
-        streamSnapshotsById,
-        topicSnapshotsById,
-        folderSnapshotsById,
-        folderItemSnapshotsById,
-        messageIdSnapshotsById,
-      },
-      observedAt,
-    );
-  }
-
-  if (event.type === "stream") {
-    return compactProjection(
-      {
-        ...baseProjection,
-        streamSnapshotsById: {
-          ...baseProjection.streamSnapshotsById,
-          [event.stream.uuid]: {
-            ownerKey: context.ownerKey,
-            streamUuid: event.stream.uuid,
-            unreadCount: event.stream.unread_count,
-            notificationMode: event.stream.notification_mode,
-            lastMessageUuid: event.stream.last_message_uuid ?? null,
-            isArchived: event.stream.is_archived,
-            epochVersion: event.epoch_version,
-            updatedAt: event.stream.updated_at,
-            observedAt,
-          },
-        },
-      },
-      observedAt,
-    );
-  }
-
-  if (event.type === "topic" && event.kind === "topic.deleted") {
-    const { [event.topic.uuid]: _removedTopic, ...topicSnapshotsById } =
-      baseProjection.topicSnapshotsById;
-    return compactProjection(
-      {
-        ...baseProjection,
-        topicSnapshotsById,
-        messageIdSnapshotsById: removeMessageSnapshotsByTopicUuid(
-          baseProjection.messageIdSnapshotsById,
-          event.topic.uuid,
-        ),
-      },
-      observedAt,
-    );
-  }
-
-  if (event.type === "topic") {
-    return compactProjection(
-      {
-        ...baseProjection,
-        topicSnapshotsById: {
-          ...baseProjection.topicSnapshotsById,
-          [event.topic.uuid]: {
-            ownerKey: context.ownerKey,
-            topicUuid: event.topic.uuid,
-            streamUuid: event.topic.stream_uuid,
-            unreadCount: event.topic.unread_count,
-            notificationMode: event.topic.notification_mode,
-            lastMessageUuid: event.topic.last_message_uuid ?? null,
-            isDefault: event.topic.is_default,
-            isDone: event.topic.is_done,
-            epochVersion: event.epoch_version,
-            updatedAt: event.topic.updated_at,
-            observedAt,
-          },
-        },
-      },
-      observedAt,
-    );
-  }
-
-  if (event.type === "folder" && event.kind === "folder.deleted") {
-    const { [event.folder.uuid]: _removedUnread, ...unreadByFolderId } =
-      baseProjection.unreadByFolderId;
-    const { [event.folder.uuid]: _removedFolder, ...folderSnapshotsById } =
-      baseProjection.folderSnapshotsById;
-    const folderItemSnapshotsById = removeFolderItemSnapshotsByFolderUuid(
-      baseProjection.folderItemSnapshotsById,
-      event.folder.uuid,
-    );
-    return compactProjection(
-      {
-        ...baseProjection,
-        unreadByFolderId,
-        unreadByFolderItemId: removeUnreadForMissingFolderItems(
-          baseProjection.unreadByFolderItemId,
-          folderItemSnapshotsById,
-        ),
-        folderSnapshotsById,
-        folderItemSnapshotsById,
-      },
-      observedAt,
-    );
-  }
-
-  if (event.type === "folder") {
-    const nextUnreadByFolderItemId = { ...baseProjection.unreadByFolderItemId };
-    const nextFolderItemSnapshotsById = { ...baseProjection.folderItemSnapshotsById };
-    const previousFolderItemIds =
-      baseProjection.folderSnapshotsById[event.folder.uuid]?.folderItemIds ?? [];
-    const nextFolderItemIds: WorkspaceMessengerUuid[] = [];
-
-    for (const previousFolderItemId of previousFolderItemIds) {
-      delete nextUnreadByFolderItemId[previousFolderItemId];
-      delete nextFolderItemSnapshotsById[previousFolderItemId];
-    }
-
-    for (const item of event.folder.folder_items) {
-      const folderUuid = item.folder_uuid ?? item.folder ?? null;
-      nextFolderItemIds.push(item.uuid);
-      nextUnreadByFolderItemId[item.uuid] = item.unread_count;
-      nextFolderItemSnapshotsById[item.uuid] = {
+function applyMessageProjection(
+  baseProjection: MessengerBackgroundProjection,
+  event: WorkspaceRealtimeMessageSnapshotEvent,
+  context: WorkspaceRealtimeEventContext,
+  observedAt: number,
+): MessengerBackgroundProjection {
+  const nextProjection: MessengerBackgroundProjection = {
+    ...baseProjection,
+    messageIdSnapshotsById: {
+      ...baseProjection.messageIdSnapshotsById,
+      [event.message.uuid]: {
         ownerKey: context.ownerKey,
-        folderItemUuid: item.uuid,
-        folderUuid,
-        streamUuid: item.stream_uuid,
-        chatType: item.chat_type,
-        orderIndex: item.order_index ?? null,
-        unreadCount: item.unread_count,
+        messageUuid: event.message.uuid,
+        streamUuid: event.message.stream_uuid,
+        topicUuid: event.message.topic_uuid,
+        authorUuid: event.message.author_uuid,
+        isOwn: event.message.is_own,
+        read: event.message.read,
         epochVersion: event.epoch_version,
-        updatedAt: item.updated_at,
+        createdAt: event.message.created_at,
+        updatedAt: event.message.updated_at,
         observedAt,
-      };
-    }
-
-    return compactProjection(
-      {
-        ...baseProjection,
-        unreadByFolderId: {
-          ...baseProjection.unreadByFolderId,
-          [event.folder.uuid]: event.folder.unread_count,
-        },
-        unreadByFolderItemId: nextUnreadByFolderItemId,
-        folderSnapshotsById: {
-          ...baseProjection.folderSnapshotsById,
-          [event.folder.uuid]: {
-            ownerKey: context.ownerKey,
-            folderUuid: event.folder.uuid,
-            unreadCount: event.folder.unread_count,
-            systemType: event.folder.system_type,
-            folderItemIds: nextFolderItemIds,
-            epochVersion: event.epoch_version,
-            updatedAt: event.folder.updated_at,
-            observedAt,
-          },
-        },
-        folderItemSnapshotsById: nextFolderItemSnapshotsById,
+        deletedAt: null,
       },
-      observedAt,
-    );
+    },
+  };
+
+  if (!isMessageCreatedEvent(event)) {
+    // Updates are needed for the id snapshot but must not become notification candidates again.
+    return compactProjection(nextProjection, observedAt);
   }
 
-  if (event.type === "folder_item") {
-    const { [event.folder_item.uuid]: _removedUnread, ...unreadByFolderItemId } =
-      baseProjection.unreadByFolderItemId;
-    const { [event.folder_item.uuid]: _removedFolderItem, ...folderItemSnapshotsById } =
-      baseProjection.folderItemSnapshotsById;
-    const folderSnapshotsById: Record<WorkspaceMessengerUuid, MessengerBackgroundFolderSnapshot> =
-      {};
+  const candidate: MessengerBackgroundNotificationCandidate = {
+    ownerKey: context.ownerKey,
+    epochVersion: event.epoch_version,
+    messageUuid: event.message.uuid,
+    streamUuid: event.message.stream_uuid,
+    topicUuid: event.message.topic_uuid,
+    authorUuid: event.message.author_uuid,
+    isOwn: event.message.is_own,
+    createdAt: event.message.created_at,
+    observedAt,
+  };
+  return compactProjection(
+    {
+      ...nextProjection,
+      notificationCandidates: appendBounded(
+        nextProjection.notificationCandidates,
+        candidate,
+        MAX_NOTIFICATION_CANDIDATES,
+      ),
+    },
+    observedAt,
+  );
+}
 
-    for (const folderSnapshot of Object.values(baseProjection.folderSnapshotsById)) {
-      folderSnapshotsById[folderSnapshot.folderUuid] = {
-        ...folderSnapshot,
-        folderItemIds: folderSnapshot.folderItemIds.filter(
-          (folderItemId) => folderItemId !== event.folder_item.uuid,
-        ),
-      };
-    }
+function applyDeletedStreamProjection(
+  baseProjection: MessengerBackgroundProjection,
+  event: WorkspaceRealtimeDeletedStreamEvent,
+  observedAt: number,
+): MessengerBackgroundProjection {
+  const streamSnapshotsById = omitRecordKey(baseProjection.streamSnapshotsById, event.stream.uuid);
+  const topicSnapshotsById = removeSnapshotsByStreamUuid(
+    baseProjection.topicSnapshotsById,
+    event.stream.uuid,
+  );
+  const folderItemSnapshotsById = removeFolderItemSnapshotsByStreamUuid(
+    baseProjection.folderItemSnapshotsById,
+    event.stream.uuid,
+  );
+  const folderSnapshotsById = filterFolderSnapshotsByExistingItems(
+    baseProjection.folderSnapshotsById,
+    folderItemSnapshotsById,
+  );
+  const messageIdSnapshotsById = removeMessageSnapshotsByStreamUuid(
+    baseProjection.messageIdSnapshotsById,
+    event.stream.uuid,
+  );
+  const unreadByFolderItemId = removeUnreadForMissingFolderItems(
+    baseProjection.unreadByFolderItemId,
+    folderItemSnapshotsById,
+  );
 
-    return compactProjection(
-      {
-        ...baseProjection,
-        unreadByFolderItemId,
-        folderSnapshotsById,
+  return compactProjection(
+    {
+      ...baseProjection,
+      unreadByFolderItemId,
+      streamSnapshotsById,
+      topicSnapshotsById,
+      folderSnapshotsById,
+      folderItemSnapshotsById,
+      messageIdSnapshotsById,
+    },
+    observedAt,
+  );
+}
+
+function applyStreamProjection(
+  baseProjection: MessengerBackgroundProjection,
+  event: WorkspaceRealtimeStreamEvent,
+  context: WorkspaceRealtimeEventContext,
+  observedAt: number,
+): MessengerBackgroundProjection {
+  return compactProjection(
+    {
+      ...baseProjection,
+      streamSnapshotsById: {
+        ...baseProjection.streamSnapshotsById,
+        [event.stream.uuid]: {
+          ownerKey: context.ownerKey,
+          streamUuid: event.stream.uuid,
+          unreadCount: event.stream.unread_count,
+          notificationMode: event.stream.notification_mode,
+          lastMessageUuid: event.stream.last_message_uuid ?? null,
+          isArchived: event.stream.is_archived,
+          epochVersion: event.epoch_version,
+          updatedAt: event.stream.updated_at,
+          observedAt,
+        },
+      },
+    },
+    observedAt,
+  );
+}
+
+function applyDeletedTopicProjection(
+  baseProjection: MessengerBackgroundProjection,
+  event: WorkspaceRealtimeDeletedTopicEvent,
+  observedAt: number,
+): MessengerBackgroundProjection {
+  const topicSnapshotsById = omitRecordKey(baseProjection.topicSnapshotsById, event.topic.uuid);
+  return compactProjection(
+    {
+      ...baseProjection,
+      topicSnapshotsById,
+      messageIdSnapshotsById: removeMessageSnapshotsByTopicUuid(
+        baseProjection.messageIdSnapshotsById,
+        event.topic.uuid,
+      ),
+    },
+    observedAt,
+  );
+}
+
+function applyTopicProjection(
+  baseProjection: MessengerBackgroundProjection,
+  event: WorkspaceRealtimeTopicEvent,
+  context: WorkspaceRealtimeEventContext,
+  observedAt: number,
+): MessengerBackgroundProjection {
+  return compactProjection(
+    {
+      ...baseProjection,
+      topicSnapshotsById: {
+        ...baseProjection.topicSnapshotsById,
+        [event.topic.uuid]: {
+          ownerKey: context.ownerKey,
+          topicUuid: event.topic.uuid,
+          streamUuid: event.topic.stream_uuid,
+          unreadCount: event.topic.unread_count,
+          notificationMode: event.topic.notification_mode,
+          lastMessageUuid: event.topic.last_message_uuid ?? null,
+          isDefault: event.topic.is_default,
+          isDone: event.topic.is_done,
+          epochVersion: event.epoch_version,
+          updatedAt: event.topic.updated_at,
+          observedAt,
+        },
+      },
+    },
+    observedAt,
+  );
+}
+
+function applyDeletedFolderProjection(
+  baseProjection: MessengerBackgroundProjection,
+  event: WorkspaceRealtimeDeletedFolderEvent,
+  observedAt: number,
+): MessengerBackgroundProjection {
+  const unreadByFolderId = omitRecordKey(baseProjection.unreadByFolderId, event.folder.uuid);
+  const folderSnapshotsById = omitRecordKey(baseProjection.folderSnapshotsById, event.folder.uuid);
+  const folderItemSnapshotsById = removeFolderItemSnapshotsByFolderUuid(
+    baseProjection.folderItemSnapshotsById,
+    event.folder.uuid,
+  );
+  return compactProjection(
+    {
+      ...baseProjection,
+      unreadByFolderId,
+      unreadByFolderItemId: removeUnreadForMissingFolderItems(
+        baseProjection.unreadByFolderItemId,
         folderItemSnapshotsById,
-      },
-      observedAt,
-    );
+      ),
+      folderSnapshotsById,
+      folderItemSnapshotsById,
+    },
+    observedAt,
+  );
+}
+
+function applyFolderProjection(
+  baseProjection: MessengerBackgroundProjection,
+  event: WorkspaceRealtimeFolderEvent,
+  context: WorkspaceRealtimeEventContext,
+  observedAt: number,
+): MessengerBackgroundProjection {
+  const nextUnreadByFolderItemId = { ...baseProjection.unreadByFolderItemId };
+  const nextFolderItemSnapshotsById = { ...baseProjection.folderItemSnapshotsById };
+  const previousFolderItemIds =
+    baseProjection.folderSnapshotsById[event.folder.uuid]?.folderItemIds ?? [];
+  const nextFolderItemIds: WorkspaceMessengerUuid[] = [];
+
+  for (const previousFolderItemId of previousFolderItemIds) {
+    delete nextUnreadByFolderItemId[previousFolderItemId];
+    delete nextFolderItemSnapshotsById[previousFolderItemId];
   }
 
-  return baseProjection;
+  for (const item of event.folder.folder_items) {
+    const folderUuid = item.folder_uuid ?? item.folder ?? null;
+    nextFolderItemIds.push(item.uuid);
+    nextUnreadByFolderItemId[item.uuid] = item.unread_count;
+    nextFolderItemSnapshotsById[item.uuid] = {
+      ownerKey: context.ownerKey,
+      folderItemUuid: item.uuid,
+      folderUuid,
+      streamUuid: item.stream_uuid,
+      chatType: item.chat_type,
+      orderIndex: item.order_index ?? null,
+      unreadCount: item.unread_count,
+      epochVersion: event.epoch_version,
+      updatedAt: item.updated_at,
+      observedAt,
+    };
+  }
+
+  return compactProjection(
+    {
+      ...baseProjection,
+      unreadByFolderId: {
+        ...baseProjection.unreadByFolderId,
+        [event.folder.uuid]: event.folder.unread_count,
+      },
+      unreadByFolderItemId: nextUnreadByFolderItemId,
+      folderSnapshotsById: {
+        ...baseProjection.folderSnapshotsById,
+        [event.folder.uuid]: {
+          ownerKey: context.ownerKey,
+          folderUuid: event.folder.uuid,
+          unreadCount: event.folder.unread_count,
+          systemType: event.folder.system_type,
+          folderItemIds: nextFolderItemIds,
+          epochVersion: event.epoch_version,
+          updatedAt: event.folder.updated_at,
+          observedAt,
+        },
+      },
+      folderItemSnapshotsById: nextFolderItemSnapshotsById,
+    },
+    observedAt,
+  );
+}
+
+function applyFolderItemProjection(
+  baseProjection: MessengerBackgroundProjection,
+  event: WorkspaceRealtimeFolderItemEvent,
+  observedAt: number,
+): MessengerBackgroundProjection {
+  const unreadByFolderItemId = omitRecordKey(
+    baseProjection.unreadByFolderItemId,
+    event.folder_item.uuid,
+  );
+  const folderItemSnapshotsById = omitRecordKey(
+    baseProjection.folderItemSnapshotsById,
+    event.folder_item.uuid,
+  );
+  const folderSnapshotsById: Record<WorkspaceMessengerUuid, MessengerBackgroundFolderSnapshot> = {};
+
+  for (const folderSnapshot of Object.values(baseProjection.folderSnapshotsById)) {
+    folderSnapshotsById[folderSnapshot.folderUuid] = {
+      ...folderSnapshot,
+      folderItemIds: folderSnapshot.folderItemIds.filter(
+        (folderItemId) => folderItemId !== event.folder_item.uuid,
+      ),
+    };
+  }
+
+  return compactProjection(
+    {
+      ...baseProjection,
+      unreadByFolderItemId,
+      folderSnapshotsById,
+      folderItemSnapshotsById,
+    },
+    observedAt,
+  );
 }
 
 function removeSnapshotsByStreamUuid(
@@ -797,7 +914,7 @@ export const useMessengerBackgroundProjectionStore =
       logStoreAction("messengerBackgroundProjection", "clearOwner", { ownerKey });
       set((state) => {
         if (state.projectionsByOwnerKey[ownerKey] == null) return state;
-        const { [ownerKey]: _removed, ...nextProjections } = state.projectionsByOwnerKey;
+        const nextProjections = omitRecordKey(state.projectionsByOwnerKey, ownerKey);
         return { projectionsByOwnerKey: nextProjections };
       });
     },

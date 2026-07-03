@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { createUser } from "~/test/factories";
-import { buildDmChatInfoData, buildStreamChatInfoData, hasChatInfoContext } from "./chat-info.lib";
+import {
+  buildDmChatInfoData,
+  buildStreamChatInfoData,
+  hasChatInfoContext,
+  type ChatInfoResolvedUser,
+} from "./chat-info.lib";
+
+function resolvedUser(
+  legacyUserId: number,
+  user: ChatInfoResolvedUser["user"],
+): ChatInfoResolvedUser {
+  return { legacyUserId, user };
+}
 
 describe("hasChatInfoContext", () => {
   it("returns true for an active dm context", () => {
@@ -52,39 +64,70 @@ describe("buildDmChatInfoData", () => {
   it("builds online counts from dm partner presence", () => {
     const partner = createUser({
       user_id: 7,
-      full_name: "Alice",
-      presence: { status: "active", timestamp: 1_711_111_111 },
+      displayName: "Alice",
+      status: "active",
     });
 
-    const data = buildDmChatInfoData("Alice", [partner]);
+    const data = buildDmChatInfoData("Alice", [resolvedUser(7, partner)]);
 
     expect(data.memberCount).toBe(1);
     expect(data.onlineCount).toBe(1);
     expect(data.members[0]?.fullName).toBe("Alice");
   });
 
-  it("keeps total count for group dm even when member details are not loaded yet", () => {
-    const data = buildDmChatInfoData("Team DM", [], 3);
+  it("keeps total count for group dm even when some member details are not loaded yet", () => {
+    const data = buildDmChatInfoData(
+      "Team DM",
+      [resolvedUser(7, createUser({ user_id: 7, displayName: "Alice" }))],
+      3,
+    );
 
     expect(data.memberCount).toBe(3);
     expect(data.onlineCount).toBe(0);
-    expect(data.members).toEqual([]);
+    expect(data.members).toHaveLength(1);
+  });
+
+  it("does not duplicate dm members when participant records repeat", () => {
+    const alice = createUser({ user_id: 7, displayName: "Alice", status: "active" });
+    const bob = createUser({ user_id: 8, displayName: "Bob" });
+
+    const data = buildDmChatInfoData("Team DM", [
+      resolvedUser(7, alice),
+      resolvedUser(7, alice),
+      resolvedUser(8, bob),
+    ]);
+
+    expect(data.memberCount).toBe(2);
+    expect(data.onlineCount).toBe(1);
+    expect(data.members.map((member) => member.userId)).toEqual([7, 8]);
+  });
+
+  it("maps name email and avatar from Workspace users", () => {
+    const user = createUser({
+      user_id: 7,
+      displayName: "Alice Workspace",
+      email: "alice@example.test",
+      avatar_url: "https://example.test/alice.png",
+    });
+
+    const data = buildDmChatInfoData("Alice", [resolvedUser(7, user)]);
+
+    expect(data.members[0]).toMatchObject({
+      userId: 7,
+      fullName: "Alice Workspace",
+      email: "alice@example.test",
+      avatarUrl: "https://example.test/alice.png",
+      isOnline: false,
+    });
+    expect(data.members[0]?.profileData).toBeUndefined();
   });
 });
 
 describe("buildStreamChatInfoData", () => {
   it("uses member id list for total count and loaded users for online count", () => {
     const users = [
-      createUser({
-        user_id: 1,
-        full_name: "Bob",
-        presence: { status: "active", timestamp: 1_711_111_111 },
-      }),
-      createUser({
-        user_id: 2,
-        full_name: "Carol",
-        presence: { status: "idle", timestamp: 1_711_111_112 },
-      }),
+      resolvedUser(1, createUser({ user_id: 1, displayName: "Bob", status: "active" })),
+      resolvedUser(2, createUser({ user_id: 2, displayName: "Carol", status: "idle" })),
     ];
 
     const data = buildStreamChatInfoData("engineering", [1, 2, 3], users, true);
@@ -95,13 +138,20 @@ describe("buildStreamChatInfoData", () => {
     expect(data.members).toHaveLength(2);
   });
 
+  it("counts unique stream member ids and does not duplicate loaded members", () => {
+    const bob = createUser({ user_id: 1, displayName: "Bob", status: "active" });
+    const carol = createUser({ user_id: 2, displayName: "Carol" });
+    const users = [resolvedUser(1, bob), resolvedUser(1, bob), resolvedUser(2, carol)];
+
+    const data = buildStreamChatInfoData("engineering", [1, 1, 2, 3], users, false);
+
+    expect(data.memberCount).toBe(3);
+    expect(data.onlineCount).toBe(1);
+    expect(data.members.map((member) => member.userId)).toEqual([1, 2]);
+  });
+
   it("keeps stream description and topics metadata when provided", () => {
-    const users = [
-      createUser({
-        user_id: 1,
-        full_name: "Bob",
-      }),
-    ];
+    const users = [resolvedUser(1, createUser({ user_id: 1, displayName: "Bob" }))];
 
     const data = buildStreamChatInfoData("engineering", [1], users, false, {
       description: "Engineering discussions",

@@ -5,7 +5,6 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useHydrateDrafts } from "~/entities/draft/draft-hydration";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { syncUnreadSurfacesFromDelta } from "~/entities/unread-sync/unread-surfaces-sync.lib";
-import { useUsersStore } from "~/entities/user/user.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
@@ -54,6 +53,8 @@ import { useLayoutWorkspaceRealtime } from "./layout-workspace-realtime.hook";
 import { useZulipRateLimitCountdownSeconds } from "./layout-zulip-rate-limit-banner.hook";
 import type { LayoutUserConnectionStatus } from "./layout-user-connection-status.types";
 
+const EMPTY_USERS_MAP_FOR_CHAT_INFO = new Map<number, { full_name?: string; email?: string }>();
+
 export const Layout: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -85,7 +86,7 @@ export const Layout: React.FC = () => {
     () => streamsMap.size > 0 || dmsMap.size > 0,
     [streamsMap, dmsMap],
   );
-  const usersMapForChatInfo = useUsersStore((s) => s.users);
+  const usersMapForChatInfo = EMPTY_USERS_MAP_FOR_CHAT_INFO;
   const mutedStreamIds = useMuteStore((s) => s.mutedStreamIds);
   const mutedTopicKeys = useMuteStore((s) => s.mutedTopicKeys);
   const unmutedTopicKeys = useMuteStore((s) => s.unmutedTopicKeys);

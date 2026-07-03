@@ -1,9 +1,12 @@
 /**
  * Runtime channel action capabilities aligned with Zulip group-setting semantics.
  */
-import type { CurrentUserChannelCapabilities } from "~/entities/user/user.model";
 import type { ZulipGroupSettingValue } from "~/shared/api/zulip.types";
 import { UserRole } from "~/shared/lib/roles";
+
+export interface CurrentUserChannelCapabilities {
+  realmCanAddSubscribersGroup?: ZulipGroupSettingValue;
+}
 
 export interface ResolveCurrentUserChannelCapabilitiesInput {
   currentUserId: number | null;

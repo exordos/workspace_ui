@@ -209,8 +209,8 @@ describe("ActivityPage drafts routing", () => {
     expect(navigateSpy).toHaveBeenCalledWith("/stream/10-engineering/topic/__empty__");
   });
 
-  it("shows DM partner name on private draft rows", async () => {
-    useUsersStore.getState().mergeUser(createUser({ user_id: 7, full_name: "Bob" }));
+  it("does not read numeric DM draft ids from the Workspace user store", async () => {
+    useUsersStore.getState().upsertUser(createUser({ user_id: 7, full_name: "Bob" }));
     useChatListStore.setState({ currentUserId: 42 });
 
     useDraftStore.getState().setDrafts([
@@ -234,8 +234,9 @@ describe("ActivityPage drafts routing", () => {
 
     await waitFor(() => {
       expect(screen.getByText("DM draft text")).toBeInTheDocument();
-      expect(screen.getByText(/Bob/)).toBeInTheDocument();
+      expect(screen.getByText("Private ·")).toBeInTheDocument();
     });
+    expect(screen.queryByText(/Bob/)).not.toBeInTheDocument();
   });
 
   it("opens activity message in chat from context action", async () => {
@@ -694,7 +695,7 @@ describe("ActivityPage drafts routing", () => {
     useChatListStore.setState({ currentUserId: 42 });
     useUsersStore
       .getState()
-      .mergeUsers([
+      .upsertUsers([
         createUser({ user_id: 7, full_name: "Bob" }),
         createUser({ user_id: 42, full_name: "Me" }),
       ]);

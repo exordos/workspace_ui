@@ -202,4 +202,26 @@ describe("WorkspaceSidebar", () => {
     expect(screen.getByRole("link", { name: /#private room/i })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /^private room$/i })).not.toBeInTheDocument();
   });
+
+  it("renders direct-private user status emoji when sidebar row has user status data", () => {
+    renderWorkspaceSidebar({
+      streams: [
+        stream({
+          title: "Alice Workspace",
+          audience: "private",
+          isPrivate: true,
+          uiKind: "directPrivate",
+          statusEmoji: "speech_balloon",
+          statusText: "Focus",
+        }),
+      ],
+      workspaceStreamCount: 1,
+    });
+
+    const link = screen.getByRole("link", { name: /Alice Workspace/i });
+    expect(within(link).getByTestId("sidebar-user-status-emoji")).toHaveTextContent(
+      ":speech_balloon:",
+    );
+    expect(within(link).getByText("Focus")).toBeInTheDocument();
+  });
 });

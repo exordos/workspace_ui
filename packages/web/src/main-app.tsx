@@ -5,7 +5,6 @@ import { installDevTools } from "~/app/devtools";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
-import { reportPresence } from "~/entities/user/api/user.api";
 import {
   refreshWorkspaceApiBase,
   refreshZulipApiBase,
@@ -21,7 +20,7 @@ import { attachNotificationAudioUnlock } from "~/shared/lib/notification-sound";
 import { perf } from "~/shared/lib/perf";
 import { setPluginDataProvider } from "~/shared/lib/plugins/api";
 import { initPlugins } from "~/shared/lib/plugins/setup";
-import { initPresenceTracker, setPresenceReporter } from "~/shared/lib/presence";
+import { initPresenceTracker } from "~/shared/lib/presence";
 import { initPush } from "~/shared/lib/push/push.service";
 import { cleanupDevServiceWorkers, initPwaListeners, getRuntime } from "~/shared/lib/pwa";
 import { initSentry } from "~/shared/lib/sentry";
@@ -107,9 +106,6 @@ export function mountApplication(): void {
   initConnectionHealth();
   initTouchTracking();
   initVisibilityTracking();
-  setPresenceReporter((status) => {
-    void reportPresence(status);
-  });
   initPresenceTracker();
   initPush();
   attachNotificationAudioUnlock();

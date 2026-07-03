@@ -3,7 +3,6 @@ import {
   isActiveOrgRequestInvalidated,
   type ActiveOrgRequestContext,
 } from "~/entities/instance/instance.model";
-import { useUsersStore } from "~/entities/user/user.model";
 import { fetchDirectMessagesPage } from "~/shared/api/zulip-sidebar-preview.lib";
 import { upsertDmIndexFromMessages } from "~/shared/lib/dm-index";
 
@@ -13,9 +12,6 @@ function ingestDmBackfillPage(
   messages: Awaited<ReturnType<typeof fetchDirectMessagesPage>>["messages"],
 ): { stagnant: boolean; oldestMessageId: number | null } {
   const currentUserId = useChatListStore.getState().currentUserId ?? initialUserId;
-  for (const message of messages) {
-    useUsersStore.getState().mergeFromMessage(message);
-  }
   const dmsBefore = useChatListStore.getState().dmsMap.size;
   useChatListStore.getState().addMessages(messages);
   upsertDmIndexFromMessages(instanceId, messages, currentUserId);

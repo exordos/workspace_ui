@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCallParticipantsStore } from "~/entities/call/call.model";
-import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
+import {
+  selectCurrentWorkspaceRuntimeContext,
+  useWorkspaceAuthStore,
+} from "~/entities/workspace-auth/workspace-auth.model";
 import { t } from "~/i18n/i18n";
 import { JITSI_PARTICIPANTS_POLL_MS } from "~/shared/config/constants";
 import { callState } from "~/shared/lib/call-state";
@@ -76,14 +80,17 @@ export function useJitsiCallModalShell({
     useJitsiParticipantCount(open);
   const setParticipants = useCallParticipantsStore((s) => s.setParticipants);
   const clearParticipants = useCallParticipantsStore((s) => s.clearParticipants);
-  const currentUserId = useChatListStore((s) => s.currentUserId);
-  const getUser = useUsersStore((s) => s.getUser);
-  const currentUser = currentUserId != null ? getUser(currentUserId) : undefined;
-  const trimmedDisplayName = currentUser?.full_name?.trim();
-  const displayName =
-    trimmedDisplayName != null && trimmedDisplayName.length > 0
-      ? trimmedDisplayName
-      : t("call.participant");
+  const sessions = useWorkspaceAuthStore((s) => s.sessions);
+  const currentAccountId = useWorkspaceAuthStore((s) => s.currentAccountId);
+  const runtimeContext = useMemo(
+    () => selectCurrentWorkspaceRuntimeContext({ sessions, currentAccountId }),
+    [sessions, currentAccountId],
+  );
+  const currentUserUuid = runtimeContext?.userUuid ?? null;
+  const currentUser = useUsersStore((s) =>
+    currentUserUuid == null ? undefined : s.usersById[currentUserUuid],
+  );
+  const displayName = selectUserDisplayName(currentUser, t("call.participant"));
   const callLocationName = locationName?.trim() ?? "";
   const expandedWindowBounds = useMemo(() => getExpandedWindowBounds(viewportSize), [viewportSize]);
   const windowBounds = isMinimized ? pipWindowBounds : expandedWindowBounds;

@@ -61,7 +61,7 @@ export const LogsPage: React.FC = () => {
   const currentUserId = useChatListStore((s) => s.currentUserId);
   const streamsCount = useChatListStore((s) => s.streams().length);
   const dmsCount = useChatListStore((s) => s.dms().length);
-  const usersCount = useUsersStore((s) => s.users.size);
+  const usersCount = useUsersStore((s) => s.userIds.length);
   const currentChatMessagesCount = useWorkspaceMessageStore(
     (s) => Object.keys(s.messagesById).length,
   );

@@ -161,28 +161,22 @@ describe("messenger-streams api", () => {
     const fetchMock = createFetchMock([streamBindingDto]);
 
     await expect(
-      addStreamUsers(
-        { accessToken: "access-token", fetchImpl: fetchMock },
-        STREAM_UUID,
-        { member: [OTHER_USER_UUID] },
-      ),
+      addStreamUsers({ accessToken: "access-token", fetchImpl: fetchMock }, STREAM_UUID, {
+        member: [OTHER_USER_UUID],
+      }),
     ).resolves.toEqual([streamBindingDto]);
 
     const [url, init] = firstFetchCall(fetchMock);
-    expect(url).toBe(
-      `/api/messenger/v1/streams/${STREAM_UUID}/actions/add_users/invoke`,
-    );
+    expect(url).toBe(`/api/messenger/v1/streams/${STREAM_UUID}/actions/add_users/invoke`);
     expect(init?.method).toBe("POST");
     expect(requestBody(init)).toEqual({ member: [OTHER_USER_UUID] });
 
     const invalidFetchMock = createFetchMock([{ ...streamBindingDto, role: "bad-role" }]);
 
     await expect(
-      addStreamUsers(
-        { accessToken: "access-token", fetchImpl: invalidFetchMock },
-        STREAM_UUID,
-        { member: [OTHER_USER_UUID] },
-      ),
+      addStreamUsers({ accessToken: "access-token", fetchImpl: invalidFetchMock }, STREAM_UUID, {
+        member: [OTHER_USER_UUID],
+      }),
     ).rejects.toThrow("Expected valid messenger stream bindings response item at index 0");
   });
 

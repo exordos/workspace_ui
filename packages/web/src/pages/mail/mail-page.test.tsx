@@ -9,6 +9,7 @@ describe("MailPage", () => {
   });
 
   it("renders same-origin placeholder embed when no external URL is configured", async () => {
+    vi.stubEnv("VITE_MAIL_EMBED_URL", "");
     vi.resetModules();
     const { MailPage } = await import("./mail-page.ui");
 

@@ -4,7 +4,13 @@
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React, { useEffect } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useUsersStore } from "~/entities/user/user.model";
+import {
+  useWorkspaceAuthStore,
+  type WorkspaceAuthSession,
+} from "~/entities/workspace-auth/workspace-auth.model";
+import { createUser } from "~/test/factories";
 import { JitsiCallModal } from "./jitsi-call.ui";
 
 vi.mock("./jitsi-call-api-loader.hook", () => ({
@@ -33,6 +39,7 @@ interface MockRndProps {
 let latestRndProps: MockRndProps | null = null;
 let latestJitsiIframe: HTMLIFrameElement | null = null;
 let latestJitsiConfigOverwrite: Record<string, unknown> | undefined;
+let latestJitsiUserInfo: { displayName: string; email: string } | undefined;
 let jitsiMountCount = 0;
 let jitsiApiReadyCount = 0;
 let jitsiIframeReadyCount = 0;
@@ -44,6 +51,7 @@ vi.mock("@jitsi/react-sdk", () => ({
     onApiReady,
     getIFrameRef,
     configOverwrite,
+    userInfo,
   }: {
     onApiReady?: (api: {
       getNumberOfParticipants: () => number;
@@ -52,8 +60,10 @@ vi.mock("@jitsi/react-sdk", () => ({
     }) => void;
     getIFrameRef?: (iframe: HTMLElement | null) => void;
     configOverwrite?: Record<string, unknown>;
+    userInfo?: { displayName: string; email: string };
   }) => {
     latestJitsiConfigOverwrite = configOverwrite;
+    latestJitsiUserInfo = userInfo;
 
     useEffect(() => {
       // Mount effect models creation of a new Jitsi session.
@@ -113,15 +123,55 @@ vi.mock("react-rnd", () => ({
   },
 }));
 
+function resetWorkspaceStores(): void {
+  useUsersStore.getState().clear();
+  useWorkspaceAuthStore.setState({
+    sessions: [],
+    currentAccountId: null,
+    runtimeGeneration: 0,
+  });
+}
+
+function createWorkspaceSession(
+  overrides: Partial<WorkspaceAuthSession> = {},
+): WorkspaceAuthSession {
+  return {
+    accountId: "account-a",
+    instanceId: "instance-a",
+    organizationId: "org-a",
+    organizationOrigin: "https://org-a.example.com",
+    projectId: "project-a",
+    userUuid: "user-a",
+    login: "user-a@example.com",
+    accessToken: "access-token-a",
+    refreshToken: "refresh-token-a",
+    expiresAtMs: 1000,
+    runtimeGeneration: 1,
+    profile: {
+      uuid: "user-a",
+      username: "user-a",
+      firstName: "User",
+      lastName: "A",
+      email: "user-a@example.com",
+      status: "active",
+    },
+    ...overrides,
+  };
+}
+
 describe("JitsiCallModal", () => {
+  beforeEach(resetWorkspaceStores);
+
   afterEach(() => {
     // Reset counters after each test so each case is isolated.
     latestRndProps = null;
     latestJitsiIframe = null;
     latestJitsiConfigOverwrite = undefined;
+    latestJitsiUserInfo = undefined;
     jitsiMountCount = 0;
     jitsiApiReadyCount = 0;
     jitsiIframeReadyCount = 0;
+    resetWorkspaceStores();
   });
 
   it("includes call name in the dialog header title", () => {
@@ -192,6 +242,31 @@ describe("JitsiCallModal", () => {
     await waitFor(() => {
       expect(latestJitsiConfigOverwrite?.startWithVideoMuted).toBe(false);
       expect(latestJitsiConfigOverwrite?.startWithAudioMuted).toBe(true);
+    });
+  });
+
+  it("passes current Workspace user display name to Jitsi", async () => {
+    const session = createWorkspaceSession({ userUuid: "user-a" });
+    useWorkspaceAuthStore.setState({
+      sessions: [session],
+      currentAccountId: session.accountId,
+      runtimeGeneration: session.runtimeGeneration,
+    });
+    useUsersStore
+      .getState()
+      .upsertUser(createUser({ uuid: "user-a", displayName: "Alice Workspace" }));
+
+    render(
+      <JitsiCallModal
+        open
+        meetingUrl="https://meet.genesis-core.tech/room-user-name"
+        locationName="User name"
+        onClose={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(latestJitsiUserInfo?.displayName).toBe("Alice Workspace");
     });
   });
 

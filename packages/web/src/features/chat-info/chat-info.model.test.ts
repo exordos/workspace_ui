@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
+import { createUser } from "~/test/factories";
 import {
   invalidateInstance,
   invalidateStream as invalidateStreamCache,
@@ -50,10 +51,12 @@ describe("chat-info model orchestration", () => {
   });
 
   it("does not overwrite latest context when an older hydrate resolves later", async () => {
-    useUsersStore.getState().mergeUsers([
-      { user_id: 1, full_name: "Alice" },
-      { user_id: 2, full_name: "Bob" },
-    ]);
+    useUsersStore
+      .getState()
+      .upsertUsers([
+        createUser({ user_id: 1, full_name: "Alice" }),
+        createUser({ user_id: 2, full_name: "Bob" }),
+      ]);
 
     const slowMembers = deferred<number[]>();
     const slowMetadata = deferred<{ name: string | null; description: string | null }>();
@@ -89,9 +92,13 @@ describe("chat-info model orchestration", () => {
   });
 
   it("syncDerived updates stream data without additional network calls", async () => {
-    useUsersStore.getState().mergeUsers([
-      { user_id: 1, full_name: "Alice", presence: { status: "active", timestamp: 1 } },
-      { user_id: 2, full_name: "Bob", presence: { status: "idle", timestamp: 2 } },
+    useUsersStore.getState().upsertUsers([
+      createUser({
+        user_id: 1,
+        full_name: "Alice",
+        presence: { status: "active", timestamp: 1 },
+      }),
+      createUser({ user_id: 2, full_name: "Bob", presence: { status: "idle", timestamp: 2 } }),
     ]);
     vi.mocked(loadStreamMembers).mockResolvedValue([1, 2]);
     vi.mocked(loadStreamMetadata).mockResolvedValue({
@@ -116,8 +123,123 @@ describe("chat-info model orchestration", () => {
     expect(loadStreamMetadata).toHaveBeenCalledTimes(1);
   });
 
+  it("hydrates stream members from Workspace users store", async () => {
+    useUsersStore.getState().upsertUsers([
+      createUser({
+        user_id: 1,
+        displayName: "Alice Workspace",
+        email: "alice@example.test",
+        avatar_url: "https://example.test/alice.png",
+        status: "active",
+      }),
+      createUser({
+        user_id: 2,
+        displayName: "Bob Workspace",
+        email: "bob@example.test",
+        avatar_url: "https://example.test/bob.png",
+        status: "idle",
+      }),
+    ]);
+    vi.mocked(loadStreamMembers).mockResolvedValue([1, 2, 3]);
+    vi.mocked(loadStreamMetadata).mockResolvedValue({
+      name: "engineering",
+      description: "Engineering",
+    });
+
+    await useChatInfoStore.getState().hydrate(streamContext(10, "engineering"));
+
+    const state = useChatInfoStore.getState();
+    expect(state.data?.type).toBe("stream");
+    expect(state.data?.memberCount).toBe(3);
+    expect(state.data?.onlineCount).toBe(1);
+    expect(state.data?.members).toHaveLength(2);
+    expect(state.data?.members[0]).toMatchObject({
+      userId: 1,
+      fullName: "Alice Workspace",
+      email: "alice@example.test",
+      avatarUrl: "https://example.test/alice.png",
+      isOnline: true,
+    });
+  });
+
+  it("normalizes duplicate stream member ids before counting and storing members", async () => {
+    useUsersStore
+      .getState()
+      .upsertUsers([
+        createUser({ user_id: 1, displayName: "Alice Workspace", status: "active" }),
+        createUser({ user_id: 2, displayName: "Bob Workspace" }),
+      ]);
+    vi.mocked(loadStreamMembers).mockResolvedValue([1, 1, 2, 3]);
+    vi.mocked(loadStreamMetadata).mockResolvedValue({
+      name: "engineering",
+      description: "Engineering",
+    });
+
+    await useChatInfoStore.getState().hydrate(streamContext(10, "engineering"));
+
+    const state = useChatInfoStore.getState();
+    expect(state.data?.type).toBe("stream");
+    expect(state.data?.memberCount).toBe(3);
+    expect(state.data?.onlineCount).toBe(1);
+    expect(state.data?.members.map((member) => member.userId)).toEqual([1, 2]);
+    expect(state.streamMemberIds).toEqual([1, 2, 3]);
+  });
+
+  it("keeps dm member count when some Workspace users are missing", async () => {
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 1,
+        displayName: "Alice Workspace",
+        status: "active",
+      }),
+    );
+
+    await useChatInfoStore.getState().hydrate({
+      kind: "dm",
+      instanceId: "inst-a",
+      dmName: "Team DM",
+      participantIds: [1, 1, 2, 3],
+    });
+
+    const state = useChatInfoStore.getState();
+    expect(state.data?.type).toBe("dm");
+    expect(state.data?.memberCount).toBe(3);
+    expect(state.data?.onlineCount).toBe(1);
+    expect(state.data?.members).toEqual([
+      expect.objectContaining({
+        userId: 1,
+        fullName: "Alice Workspace",
+        isOnline: true,
+      }),
+    ]);
+  });
+
+  it("normalizes duplicate dm participant ids during derived sync", async () => {
+    useUsersStore
+      .getState()
+      .upsertUsers([
+        createUser({ user_id: 1, displayName: "Alice Workspace", status: "active" }),
+        createUser({ user_id: 2, displayName: "Bob Workspace" }),
+      ]);
+    const context: ChatInfoContext = {
+      kind: "dm",
+      instanceId: "inst-a",
+      dmName: "Team DM",
+      participantIds: [1, 1, 2, 3],
+    };
+
+    await useChatInfoStore.getState().hydrate(context);
+    useChatInfoStore.getState().syncDerived(context);
+
+    const state = useChatInfoStore.getState();
+    expect(state.data?.type).toBe("dm");
+    expect(state.data?.memberCount).toBe(3);
+    expect(state.data?.onlineCount).toBe(1);
+    expect(state.data?.members.map((member) => member.userId)).toEqual([1, 2]);
+  });
+
   it("invalidates active stream cache and forces re-hydration", async () => {
-    useUsersStore.getState().mergeUser({ user_id: 1, full_name: "Alice" });
+    useUsersStore.getState().upsertUser(createUser({ user_id: 1, full_name: "Alice" }));
     vi.mocked(loadStreamMembers).mockResolvedValue([1]);
     vi.mocked(loadStreamMetadata).mockResolvedValue({
       name: "engineering",

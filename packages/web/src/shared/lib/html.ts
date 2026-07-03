@@ -130,14 +130,11 @@ const MESSAGE_ADD_ATTR = [
   "colspan",
   "rowspan",
   "data-user-id",
+  "data-user-uuid",
   "data-user-group-id",
 ];
 
-const MESSAGE_FORBID_ATTR = [
-  "data-auth-src",
-  "data-auth-poster",
-  "data-auth-background-image",
-];
+const MESSAGE_FORBID_ATTR = ["data-auth-src", "data-auth-poster", "data-auth-background-image"];
 
 export function resolveMessageMediaUrl(src: string, baseUrl: string): string {
   const trimmedBase = baseUrl.trim();

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { User, UsersById } from "~/entities/user/user.types";
 import { selectWorkspaceChatHeaderView } from "./messenger-chat-header.lib";
 import { selectWorkspaceRightPanelInfoView } from "./messenger-right-panel.lib";
 import { useMessengerStore } from "./messenger.model";
@@ -155,42 +156,63 @@ function createBootstrapPayload(): MessengerBootstrapPayload {
     ],
     conversations: [],
     folders: [],
-    users: [
-      {
-        uuid: USER_A_UUID,
-        username: "alice",
-        status: "active",
-        firstName: "Alice",
-        lastName: "Stone",
-        email: "alice@example.com",
-        lastPingAt: null,
-        createdAt: "2026-06-30T09:00:00.000Z",
-        updatedAt: "2026-06-30T09:00:00.000Z",
-      },
-      {
-        uuid: USER_B_UUID,
-        username: "bob",
-        status: "offline",
-        firstName: "Bob",
-        lastName: "Reed",
-        email: "bob@example.com",
-        lastPingAt: null,
-        createdAt: "2026-06-30T09:00:00.000Z",
-        updatedAt: "2026-06-30T09:00:00.000Z",
-      },
-      {
-        uuid: DIRECT_USER_UUID,
-        username: "cora",
-        status: "idle",
-        firstName: "Cora",
-        lastName: "Lane",
-        email: "cora@example.com",
-        lastPingAt: null,
-        createdAt: "2026-06-30T09:00:00.000Z",
-        updatedAt: "2026-06-30T09:00:00.000Z",
-      },
-    ],
   };
+}
+
+function createDisplayUser(overrides: Partial<User> & { uuid: string }): User {
+  return {
+    uuid: overrides.uuid,
+    username: overrides.username ?? overrides.uuid,
+    firstName: overrides.firstName ?? null,
+    lastName: overrides.lastName ?? null,
+    displayName: overrides.displayName ?? overrides.username ?? overrides.uuid,
+    email: overrides.email ?? null,
+    avatarUrl: overrides.avatarUrl ?? null,
+    status: overrides.status ?? "offline",
+    statusEmoji: overrides.statusEmoji ?? null,
+    statusText: overrides.statusText ?? null,
+    lastPingAt: overrides.lastPingAt ?? "2026-06-30T09:00:00.000Z",
+    createdAt: overrides.createdAt ?? "2026-06-30T09:00:00.000Z",
+    updatedAt: overrides.updatedAt ?? "2026-06-30T09:00:00.000Z",
+  };
+}
+
+function createUsersById(overrides: Partial<UsersById> = {}): UsersById {
+  return {
+    [USER_A_UUID]: createDisplayUser({
+      uuid: USER_A_UUID,
+      username: "alice",
+      displayName: "Alice Stone",
+      email: "alice@example.com",
+      status: "active",
+      avatarUrl: "/alice.png",
+    }),
+    [USER_B_UUID]: createDisplayUser({
+      uuid: USER_B_UUID,
+      username: "bob",
+      displayName: "Bob Reed",
+      email: "bob@example.com",
+      status: "offline",
+      avatarUrl: "/bob.png",
+    }),
+    [DIRECT_USER_UUID]: createDisplayUser({
+      uuid: DIRECT_USER_UUID,
+      username: "cora",
+      displayName: "Cora Lane",
+      email: "cora@example.com",
+      status: "idle",
+      avatarUrl: "/cora.png",
+    }),
+    ...overrides,
+  };
+}
+
+function createUsersByIdWithout(...userUuids: string[]): UsersById {
+  const usersById = createUsersById();
+  for (const userUuid of userUuids) {
+    delete usersById[userUuid];
+  }
+  return usersById;
 }
 
 describe("selectWorkspaceRightPanelInfoView", () => {
@@ -212,11 +234,13 @@ describe("selectWorkspaceRightPanelInfoView", () => {
     };
     const view = selectWorkspaceRightPanelInfoView(useMessengerStore.getState(), {
       route,
+      usersById: createUsersById(),
       fallbackTitle: "Messenger",
       temporarilyNotConnectedText: "Temporarily not connected",
     });
     const headerView = selectWorkspaceChatHeaderView(useMessengerStore.getState(), {
       route,
+      usersById: createUsersById(),
       fallbackTitle: "Messenger",
       missingDirectUserTitle: "Временно не подключено",
     });
@@ -290,11 +314,13 @@ describe("selectWorkspaceRightPanelInfoView", () => {
     };
     const view = selectWorkspaceRightPanelInfoView(useMessengerStore.getState(), {
       route,
+      usersById: createUsersById(),
       fallbackTitle: "Messenger",
       temporarilyNotConnectedText: "Temporarily not connected",
     });
     const headerView = selectWorkspaceChatHeaderView(useMessengerStore.getState(), {
       route,
+      usersById: createUsersById(),
       fallbackTitle: "Messenger",
       missingDirectUserTitle: "Временно не подключено",
     });
@@ -320,6 +346,7 @@ describe("selectWorkspaceRightPanelInfoView", () => {
         projectId: "project-a",
         streamUuid: STREAM_UUID,
       },
+      usersById: createUsersById(),
       fallbackTitle: "Messenger",
       currentUserUuid: USER_B_UUID,
       temporarilyNotConnectedText: "Temporarily not connected",
@@ -360,12 +387,6 @@ describe("selectWorkspaceRightPanelInfoView", () => {
   });
 
   it("keeps missing users as member rows with stable fallback fields", () => {
-    const payload = createBootstrapPayload();
-    useMessengerStore.getState().replaceBootstrapState(OWNER_KEY, {
-      ...payload,
-      users: payload.users.filter((user) => user.uuid !== USER_B_UUID),
-    });
-
     const view = selectWorkspaceRightPanelInfoView(useMessengerStore.getState(), {
       route: {
         kind: "stream",
@@ -373,6 +394,7 @@ describe("selectWorkspaceRightPanelInfoView", () => {
         projectId: "project-a",
         streamUuid: STREAM_UUID,
       },
+      usersById: createUsersByIdWithout(USER_B_UUID),
       fallbackTitle: "Messenger",
       currentUserUuid: USER_A_UUID,
       temporarilyNotConnectedText: "Temporarily not connected",
@@ -403,6 +425,7 @@ describe("selectWorkspaceRightPanelInfoView", () => {
         projectId: "project-a",
         streamUuid: STREAM_UUID,
       },
+      usersById: createUsersById(),
       fallbackTitle: "Messenger",
       currentUserUuid: USER_A_UUID,
       temporarilyNotConnectedText: "Temporarily not connected",
@@ -422,6 +445,7 @@ describe("selectWorkspaceRightPanelInfoView", () => {
         projectId: "project-a",
         streamUuid: STREAM_UUID,
       },
+      usersById: createUsersById(),
       fallbackTitle: "Messenger",
       currentUserUuid: USER_B_UUID,
       temporarilyNotConnectedText: "Temporarily not connected",
@@ -442,11 +466,13 @@ describe("selectWorkspaceRightPanelInfoView", () => {
     };
     const view = selectWorkspaceRightPanelInfoView(useMessengerStore.getState(), {
       route,
+      usersById: createUsersById(),
       fallbackTitle: "Messenger",
       temporarilyNotConnectedText: "Temporarily not connected",
     });
     const headerView = selectWorkspaceChatHeaderView(useMessengerStore.getState(), {
       route,
+      usersById: createUsersById(),
       fallbackTitle: "Messenger",
       missingDirectUserTitle: "Временно не подключено",
     });
@@ -456,7 +482,7 @@ describe("selectWorkspaceRightPanelInfoView", () => {
       directUserUuid: DIRECT_USER_UUID,
       dmPartner: {
         name: "Cora Lane",
-        avatarUrl: null,
+        avatarUrl: "/cora.png",
         presenceState: "idle",
       },
     });
@@ -465,7 +491,7 @@ describe("selectWorkspaceRightPanelInfoView", () => {
       kind: "directPrivate",
       directUserUuid: DIRECT_USER_UUID,
       title: "Cora Lane",
-      avatarUrl: null,
+      avatarUrl: "/cora.png",
       status: "idle",
       details: [
         {
@@ -517,11 +543,13 @@ describe("selectWorkspaceRightPanelInfoView", () => {
     };
     const headerView = selectWorkspaceChatHeaderView(useMessengerStore.getState(), {
       route,
+      usersById: createUsersById(),
       fallbackTitle: "Messenger",
       missingDirectUserTitle: "Временно не подключено",
     });
     const view = selectWorkspaceRightPanelInfoView(useMessengerStore.getState(), {
       route,
+      usersById: createUsersById(),
       fallbackTitle: "Messenger",
       temporarilyNotConnectedText: "Temporarily not connected",
     });
@@ -544,11 +572,13 @@ describe("selectWorkspaceRightPanelInfoView", () => {
     };
     const headerView = selectWorkspaceChatHeaderView(useMessengerStore.getState(), {
       route,
+      usersById: createUsersById(),
       fallbackTitle: "Messenger",
       missingDirectUserTitle: "Временно не подключено",
     });
     const view = selectWorkspaceRightPanelInfoView(useMessengerStore.getState(), {
       route,
+      usersById: createUsersById(),
       fallbackTitle: "Messenger",
       temporarilyNotConnectedText: "Temporarily not connected",
     });
@@ -565,13 +595,7 @@ describe("selectWorkspaceRightPanelInfoView", () => {
     expect(view?.title).toBe("#private-channel");
   });
 
-  it("marks missing direct private user fields as temporarily unavailable", () => {
-    const payload = createBootstrapPayload();
-    useMessengerStore.getState().replaceBootstrapState(OWNER_KEY, {
-      ...payload,
-      users: payload.users.filter((user) => user.uuid !== DIRECT_USER_UUID),
-    });
-
+  it("uses direct private stream title while user profile fields are still loading", () => {
     const view = selectWorkspaceRightPanelInfoView(useMessengerStore.getState(), {
       route: {
         kind: "stream",
@@ -579,6 +603,7 @@ describe("selectWorkspaceRightPanelInfoView", () => {
         projectId: "project-a",
         streamUuid: "99999999-9999-4999-8999-999999999999",
       },
+      usersById: createUsersByIdWithout(DIRECT_USER_UUID),
       fallbackTitle: "Messenger",
       temporarilyNotConnectedText: "Temporarily not connected",
     });
@@ -586,7 +611,7 @@ describe("selectWorkspaceRightPanelInfoView", () => {
     expect(view).toEqual(
       expect.objectContaining({
         kind: "directPrivate",
-        title: "Temporarily not connected",
+        title: "alice-and-cora",
         status: null,
       }),
     );

@@ -25,6 +25,17 @@ describe("injectZulipMentionPlaceholders", () => {
     expect(markdown).not.toContain("@**");
   });
 
+  it("resolves Workspace user uuid via resolver", () => {
+    const { markdown, tokens } = injectZulipMentionPlaceholders("Ping @**John**", (name) =>
+      name === "John" ? { userUuid: "a225223c-637c-4afa-918f-5f2798b9305f" } : null,
+    );
+    expect(tokens).toHaveLength(1);
+    expect(tokens[0]?.kind).toBe("user");
+    expect(tokens[0]?.userId).toBeUndefined();
+    expect(tokens[0]?.userUuid).toBe("a225223c-637c-4afa-918f-5f2798b9305f");
+    expect(markdown).not.toContain("@**");
+  });
+
   it("marks unknown users as unresolved", () => {
     const { tokens } = injectZulipMentionPlaceholders("@**Nobody**", () => null);
     expect(tokens[0]?.kind).toBe("unresolved");
@@ -81,5 +92,15 @@ describe("restoreZulipMentionPlaceholders", () => {
     expect(html).toContain('data-user-id="7"');
     expect(html).toContain(">@John<");
     expect(html).not.toContain("**");
+  });
+
+  it("adds data-user-uuid to Workspace mention spans", () => {
+    const { markdown, tokens } = injectZulipMentionPlaceholders("@**John** hi", (n) =>
+      n === "John" ? { userUuid: "a225223c-637c-4afa-918f-5f2798b9305f" } : null,
+    );
+    const html = restoreZulipMentionPlaceholders(`<p>${markdown}</p>`, tokens);
+    expect(html).toContain('class="user-mention"');
+    expect(html).toContain('data-user-uuid="a225223c-637c-4afa-918f-5f2798b9305f"');
+    expect(html).not.toContain("data-user-id");
   });
 });

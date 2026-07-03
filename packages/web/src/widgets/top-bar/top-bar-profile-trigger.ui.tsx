@@ -1,11 +1,16 @@
 import React, { useCallback } from "react";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import { UserStatusLabel } from "~/entities/user/user-status-label.ui";
-import { useUserStatus } from "~/entities/user/user-status.hooks";
+import {
+  resolveUserPresenceVisual,
+  selectUserDisplayName,
+} from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
-import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import type { User } from "~/entities/user/user.types";
+import {
+  useWorkspaceAuthStore,
+  type WorkspaceAuthProfile,
+} from "~/entities/workspace-auth/workspace-auth.model";
 import { t } from "~/i18n/i18n";
-import { getPresenceState } from "~/shared/lib/format";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
@@ -16,57 +21,97 @@ import {
   shouldShowTopBarProfileStatusTooltip,
 } from "./top-bar.lib";
 
+function trimToOptional(value: string | null | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed != null && trimmed.length > 0 ? trimmed : undefined;
+}
+
+function resolveWorkspaceDisplayName(
+  profile: WorkspaceAuthProfile | undefined,
+): string | undefined {
+  const fullName = [profile?.firstName, profile?.lastName].filter(Boolean).join(" ").trim();
+  return (
+    trimToOptional(fullName) ?? trimToOptional(profile?.username) ?? trimToOptional(profile?.email)
+  );
+}
+
+function resolveDisplayName(
+  currentUser: User | undefined,
+  workspaceDisplayName: string | undefined,
+): string {
+  if (currentUser == null) {
+    return workspaceDisplayName ?? t("nav.profile");
+  }
+  return (
+    trimToOptional(selectUserDisplayName(currentUser, "")) ??
+    workspaceDisplayName ??
+    t("nav.profile")
+  );
+}
+
+function resolveDisplayEmail(
+  userEmail: string | null | undefined,
+  workspaceEmail: string | null | undefined,
+): string | undefined {
+  return trimToOptional(userEmail) ?? trimToOptional(workspaceEmail);
+}
+
+function resolveWorkspacePresenceState(
+  status: string | undefined,
+): "active" | "idle" | "offline" | null {
+  if (status === "active" || status === "idle" || status === "offline") {
+    return status;
+  }
+  return null;
+}
+
+function resolveStatusLabel(
+  userStatusText: string | null | undefined,
+  presenceState: "active" | "idle" | "offline" | null,
+): string | undefined {
+  const trimmedStatusText = trimToOptional(userStatusText);
+  if (trimmedStatusText != null) {
+    return trimmedStatusText;
+  }
+
+  const labelByPresence = {
+    active: t("presence.online"),
+    idle: t("presence.away"),
+    offline: t("presence.offline"),
+  } satisfies Record<"active" | "idle" | "offline", string>;
+
+  return presenceState == null ? undefined : labelByPresence[presenceState];
+}
+
 export const TopBarProfileTrigger = React.memo(function TopBarProfileTrigger() {
   const isUserMenuOpen = useRightDrawerStore((s) => s.open && s.mode === "user-menu");
   const openUserMenu = useRightDrawerStore((s) => s.openUserMenu);
   const closeDrawer = useRightDrawerStore((s) => s.close);
   const currentUserId = useChatListStore((s) => s.currentUserId);
-  const currentUser = useUsersStore((s) =>
-    currentUserId != null ? s.getUser(currentUserId) : undefined,
-  );
-  const workspaceProfile = useWorkspaceAuthStore((s) => {
+  const workspaceSession = useWorkspaceAuthStore((s) => {
     const accountId = s.currentAccountId;
     return accountId != null
-      ? s.sessions.find((session) => session.accountId === accountId)?.profile
+      ? s.sessions.find((session) => session.accountId === accountId)
       : undefined;
   });
-  const currentStatus = useUserStatus(currentUserId);
+  const workspaceProfile = workspaceSession?.profile;
+  const currentUser = useUsersStore((s) => {
+    if (workspaceSession?.userUuid != null) {
+      return s.usersById[workspaceSession.userUuid];
+    }
+    return currentUserId != null ? s.usersById[String(currentUserId)] : undefined;
+  });
 
-  const trimmedDisplayName = currentUser?.full_name?.trim();
-  const workspaceFullName = [workspaceProfile?.firstName, workspaceProfile?.lastName]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
-  const workspaceDisplayName =
-    workspaceFullName ||
-    workspaceProfile?.username?.trim() ||
-    workspaceProfile?.email?.trim() ||
-    undefined;
-  const displayName =
-    trimmedDisplayName != null && trimmedDisplayName.length > 0
-      ? trimmedDisplayName
-      : (workspaceDisplayName ?? t("nav.profile"));
-  const trimmedEmail = currentUser?.email?.trim();
-  const workspaceEmail = workspaceProfile?.email?.trim();
-  const displayEmail =
-    trimmedEmail != null && trimmedEmail.length > 0
-      ? trimmedEmail
-      : workspaceEmail != null && workspaceEmail.length > 0
-        ? workspaceEmail
-        : undefined;
+  const workspaceDisplayName = resolveWorkspaceDisplayName(workspaceProfile);
+  const displayName = resolveDisplayName(currentUser, workspaceDisplayName);
+  const displayEmail = resolveDisplayEmail(currentUser?.email, workspaceProfile?.email);
   const avatarLetter = displayName[0]?.toUpperCase() ?? "?";
   const statusMaxWidthClass = getTopBarProfileStatusMaxWidthClass();
-  const avatarSrc = resolveTopBarAvatarSrc(currentUser?.avatar_url ?? undefined);
-  const presenceState =
-    currentUser?.presence != null
-      ? getPresenceState(currentUser.presence.timestamp, currentUser.presence.status)
-      : workspaceProfile?.status === "active" ||
-          workspaceProfile?.status === "idle" ||
-          workspaceProfile?.status === "offline"
-        ? workspaceProfile.status
-        : null;
-  const statusLabel = currentStatus.statusLabel;
-  const shouldRenderRichStatus = currentUser?.status?.reactionType === "realm_emoji";
+  const avatarSrc = resolveTopBarAvatarSrc(currentUser?.avatarUrl ?? undefined);
+  const userPresenceState = resolveUserPresenceVisual(currentUser?.status);
+  const workspacePresenceState = resolveWorkspacePresenceState(workspaceProfile?.status);
+  const presenceState = userPresenceState ?? workspacePresenceState;
+  const statusLabel = resolveStatusLabel(currentUser?.statusText, presenceState);
 
   const handleClick = useCallback(() => {
     if (isUserMenuOpen) {
@@ -100,7 +145,7 @@ export const TopBarProfileTrigger = React.memo(function TopBarProfileTrigger() {
         <span className="whitespace-nowrap text-sm font-medium text-text-primary">
           {displayName}
         </span>
-        {(shouldRenderRichStatus || statusLabel) && (
+        {statusLabel && (
           <span
             className={`block truncate text-[11px] text-text-secondary ${statusMaxWidthClass}`}
             title={
@@ -109,11 +154,7 @@ export const TopBarProfileTrigger = React.memo(function TopBarProfileTrigger() {
                 : undefined
             }
           >
-            {shouldRenderRichStatus ? (
-              <UserStatusLabel status={currentUser?.status} />
-            ) : (
-              statusLabel
-            )}
+            {statusLabel}
           </span>
         )}
         {displayEmail && (

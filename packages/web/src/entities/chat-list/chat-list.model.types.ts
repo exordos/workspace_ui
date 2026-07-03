@@ -6,6 +6,7 @@ import type {
   ZulipRawMessage,
 } from "~/shared/api/zulip.types";
 import type { ChatListSnapshotSerialized } from "~/shared/lib/chat-list-snapshot-serialize.lib";
+import type { CurrentUserMessageEditPolicy } from "~/shared/types/message-edit-policy";
 import type {
   SidebarChat,
   StreamWithLast,
@@ -65,6 +66,7 @@ export interface ChatListState {
   /** True after authoritative subscriptions metadata is applied (bootstrap/register). */
   streamMetadataHydrated: boolean;
   currentUserId: number | null;
+  currentUserMessageEditPolicy: CurrentUserMessageEditPolicy | undefined;
   lastAppliedMessages: ZulipRawMessage[] | null;
   messageIdToLocation: Map<number, MessageLocation>;
   /** Inverted index streamId+topic → message ids; patched incrementally on location changes. */
@@ -129,6 +131,7 @@ export interface ChatListState {
   /** Upserts DM rows from metadata and the local DM index (not only from loaded messages). */
   upsertDmMetadataRows: (rows: ChatListDmMetadataRow[]) => void;
   setCurrentUserId: (id: number | null) => void;
+  setCurrentUserMessageEditPolicy: (policy: CurrentUserMessageEditPolicy | undefined) => void;
   renameStream: (streamId: number, nextName: string) => void;
   moveStreamTopic: (params: {
     streamId: number;

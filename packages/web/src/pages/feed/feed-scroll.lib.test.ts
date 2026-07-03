@@ -7,8 +7,8 @@ describe("shouldRequestOlderFeedPage", () => {
       shouldRequestOlderFeedPage({
         scrollTop: 24,
         isLoadingMore: false,
-        isAllLoaded: false,
-        lastMessageId: 120,
+        hasMore: true,
+        nextPageMarker: "cursor-a",
       }),
     ).toBe(true);
   });
@@ -18,8 +18,8 @@ describe("shouldRequestOlderFeedPage", () => {
       shouldRequestOlderFeedPage({
         scrollTop: 140,
         isLoadingMore: false,
-        isAllLoaded: false,
-        lastMessageId: 120,
+        hasMore: true,
+        nextPageMarker: "cursor-a",
       }),
     ).toBe(false);
   });
@@ -29,30 +29,30 @@ describe("shouldRequestOlderFeedPage", () => {
       shouldRequestOlderFeedPage({
         scrollTop: 10,
         isLoadingMore: true,
-        isAllLoaded: false,
-        lastMessageId: 120,
+        hasMore: true,
+        nextPageMarker: "cursor-a",
       }),
     ).toBe(false);
   });
 
-  it("returns false when all messages are loaded", () => {
+  it("returns false when no next page is available", () => {
     expect(
       shouldRequestOlderFeedPage({
         scrollTop: 10,
         isLoadingMore: false,
-        isAllLoaded: true,
-        lastMessageId: 120,
+        hasMore: false,
+        nextPageMarker: null,
       }),
     ).toBe(false);
   });
 
-  it("returns false when oldest anchor is unavailable", () => {
+  it("returns false when page marker is unavailable", () => {
     expect(
       shouldRequestOlderFeedPage({
         scrollTop: 10,
         isLoadingMore: false,
-        isAllLoaded: false,
-        lastMessageId: null,
+        hasMore: true,
+        nextPageMarker: null,
       }),
     ).toBe(false);
   });

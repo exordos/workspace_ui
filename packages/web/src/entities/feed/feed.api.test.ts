@@ -1,21 +1,14 @@
-/**
- * Tests for the Feed API — fetches all messages for the chronological feed view.
- *
- * fetchFeedMessages delegates to an all-messages page fetch with metadata.
- * Tests cover success/error paths and verify correct parameters are forwarded.
- */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchAllMessagesPage } from "~/shared/api/zulip-messages";
-import type { MockMessage } from "~/shared/api/zulip.types";
-import { createMessage, createMessages } from "~/test/factories";
-import { fetchFeedMessages } from "./feed.api";
+import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import type {
+  MessengerCollectionPage,
+  MessengerClientOptions,
+} from "~/shared/api/messenger-client";
+import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
+import { fetchFeedMessages, hydrateFeedMessagesFromCache } from "./feed.api";
 
 const logApiCall = vi.hoisted(() => vi.fn());
 const logError = vi.hoisted(() => vi.fn());
-
-vi.mock("~/shared/api/zulip-messages", () => ({
-  fetchAllMessagesPage: vi.fn(),
-}));
 
 vi.mock("~/shared/lib/logger", () => ({
   createLogger: () => ({
@@ -27,99 +20,145 @@ vi.mock("~/shared/lib/logger", () => ({
   logApiCall,
 }));
 
+const RUNTIME_CONTEXT: WorkspaceRuntimeContext = {
+  accountId: "account-a",
+  instanceId: "instance-a",
+  organizationId: "org-a",
+  organizationOrigin: "https://org.example.com",
+  projectId: "22222222-2222-4222-8222-222222222222",
+  userUuid: "11111111-1111-4111-8111-111111111111",
+  accessToken: "access-token",
+  runtimeGeneration: 1,
+};
+
+function createMessageDto(
+  overrides: Partial<WorkspaceMessengerMessageDto> = {},
+): WorkspaceMessengerMessageDto {
+  return {
+    uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    project_id: RUNTIME_CONTEXT.projectId,
+    stream_uuid: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    topic_uuid: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    author_uuid: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+    user_uuid: RUNTIME_CONTEXT.userUuid,
+    payload: {
+      kind: "markdown",
+      content: "Hello from Workspace",
+    },
+    read: true,
+    pinned: false,
+    starred: false,
+    is_own: false,
+    created_at: "2026-07-02T10:00:00Z",
+    updated_at: "2026-07-02T10:00:00Z",
+    ...overrides,
+  };
+}
+
+function createPage(
+  items: WorkspaceMessengerMessageDto[],
+  nextPageMarker: string | null = "next-page",
+): MessengerCollectionPage<WorkspaceMessengerMessageDto> {
+  return {
+    items,
+    nextPageMarker,
+    pageLimit: 50,
+  };
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
   logApiCall.mockReset();
   logError.mockReset();
 });
 
-// ---------------------------------------------------------------------------
-// fetchFeedMessages
-// ---------------------------------------------------------------------------
-
 describe("fetchFeedMessages", () => {
-  it("returns messages from fetchAllMessagesPage", async () => {
-    const msgs = createMessages(3) as MockMessage[];
-    vi.mocked(fetchAllMessagesPage).mockResolvedValue({
-      messages: msgs,
-      foundOldest: false,
-      foundNewest: false,
+  it("loads Workspace messages through getMessagesPage and adapts DTOs", async () => {
+    const getMessagesPage = vi.fn((_options: MessengerClientOptions, _query: unknown) =>
+      Promise.resolve(createPage([createMessageDto()])),
+    );
+
+    const result = await fetchFeedMessages({
+      runtimeContext: RUNTIME_CONTEXT,
+      client: { getMessagesPage },
     });
 
-    const result = await fetchFeedMessages();
-    expect(result).toEqual({ messages: msgs, foundOldest: false, foundNewest: false });
-  });
-
-  it("passes default anchor and numBefore", async () => {
-    vi.mocked(fetchAllMessagesPage).mockResolvedValue({
-      messages: [],
-      foundOldest: false,
-      foundNewest: false,
+    expect(getMessagesPage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accessToken: "access-token",
+        devTargetOrigin: "https://org.example.com",
+        projectId: RUNTIME_CONTEXT.projectId,
+      }),
+      {
+        pageLimit: 50,
+        pageMarker: undefined,
+      },
+    );
+    expect(result).toEqual({
+      messages: [
+        expect.objectContaining({
+          uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          authorUuid: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+          markdown: "Hello from Workspace",
+        }),
+      ],
+      nextPageMarker: "next-page",
+      hasMore: true,
+      pageLimit: 50,
     });
-    await fetchFeedMessages();
-    expect(fetchAllMessagesPage).toHaveBeenCalledWith("newest", 50, undefined);
   });
 
-  it("forwards custom anchor and numBefore", async () => {
-    vi.mocked(fetchAllMessagesPage).mockResolvedValue({
-      messages: [],
-      foundOldest: false,
-      foundNewest: false,
+  it("passes Workspace pageMarker and pageLimit for pagination", async () => {
+    const getMessagesPage = vi.fn((_options: MessengerClientOptions, _query: unknown) =>
+      Promise.resolve(createPage([], null)),
+    );
+
+    await fetchFeedMessages({
+      runtimeContext: RUNTIME_CONTEXT,
+      pageLimit: 25,
+      pageMarker: "cursor-a",
+      client: { getMessagesPage },
     });
-    await fetchFeedMessages(42, 100);
-    expect(fetchAllMessagesPage).toHaveBeenCalledWith(42, 100, undefined);
+
+    expect(getMessagesPage).toHaveBeenCalledWith(expect.any(Object), {
+      pageLimit: 25,
+      pageMarker: "cursor-a",
+    });
   });
 
-  it("propagates errors from the page fetch", async () => {
-    vi.mocked(fetchAllMessagesPage).mockRejectedValue(new Error("API failure"));
-    await expect(fetchFeedMessages()).rejects.toThrow("API failure");
+  it("propagates errors from Workspace message loading", async () => {
+    const getMessagesPage = vi.fn(() => Promise.reject(new Error("API failure")));
+
+    await expect(
+      fetchFeedMessages({
+        runtimeContext: RUNTIME_CONTEXT,
+        client: { getMessagesPage },
+      }),
+    ).rejects.toThrow("API failure");
+    expect(logError).toHaveBeenCalled();
   });
 
   it("does not log abort as an error", async () => {
     const controller = new AbortController();
     controller.abort();
-    vi.mocked(fetchAllMessagesPage).mockRejectedValue(new DOMException("Aborted", "AbortError"));
+    const getMessagesPage = vi.fn(() => Promise.reject(new DOMException("Aborted", "AbortError")));
 
-    await expect(fetchFeedMessages("newest", 50, { signal: controller.signal })).rejects.toThrow();
+    await expect(
+      fetchFeedMessages({
+        runtimeContext: RUNTIME_CONTEXT,
+        signal: controller.signal,
+        client: { getMessagesPage },
+      }),
+    ).rejects.toThrow();
 
-    expect(logApiCall).toHaveBeenCalledWith("GET", "/messages?narrow=all", {
+    expect(logApiCall).toHaveBeenCalledWith("GET", "/messages/", {
       durationMs: expect.any(Number),
       aborted: true,
     });
     expect(logError).not.toHaveBeenCalled();
   });
 
-  it("returns empty array when API returns no messages", async () => {
-    vi.mocked(fetchAllMessagesPage).mockResolvedValue({
-      messages: [],
-      foundOldest: true,
-      foundNewest: false,
-    });
-    const result = await fetchFeedMessages();
-    expect(result).toEqual({ messages: [], foundOldest: true, foundNewest: false });
-  });
-
-  it("passes numeric anchor for pagination", async () => {
-    const msg = createMessage({ id: 500 }) as MockMessage;
-    vi.mocked(fetchAllMessagesPage).mockResolvedValue({
-      messages: [msg],
-      foundOldest: true,
-      foundNewest: false,
-    });
-    const result = await fetchFeedMessages(500, 25);
-    expect(result).toEqual({ messages: [msg], foundOldest: true, foundNewest: false });
-    expect(fetchAllMessagesPage).toHaveBeenCalledWith(500, 25, undefined);
-  });
-
-  it("preserves the foundOldest metadata from the server", async () => {
-    vi.mocked(fetchAllMessagesPage).mockResolvedValue({
-      messages: [],
-      foundOldest: true,
-      foundNewest: false,
-    });
-
-    const result = await fetchFeedMessages();
-
-    expect(result.foundOldest).toBe(true);
+  it("returns no cached feed messages until a Workspace feed cache exists", async () => {
+    await expect(hydrateFeedMessagesFromCache("owner-a")).resolves.toEqual([]);
   });
 });

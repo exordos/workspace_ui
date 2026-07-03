@@ -1,90 +1,200 @@
-/**
- * Tests for the feed entity — chronological all-messages store with pagination.
- *
- * The feed provides an infinite-scroll view of all messages across streams and DMs.
- * Messages are fetched oldest-first with anchor-based pagination.
- */
 import { afterEach, describe, expect, it } from "vitest";
-import type { MockMessage } from "~/shared/api/zulip.types";
-import { createMessage, createMessages } from "~/test/factories";
+import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import { useFeedStore } from "./feed.model";
 
-function msg(overrides: Parameters<typeof createMessage>[0] = {}): MockMessage {
-  return createMessage(overrides) as MockMessage;
+function msg(overrides: Partial<MessengerMessage> = {}): MessengerMessage {
+  return {
+    uuid: "message-a",
+    conversationId: "topic:stream-a:topic-a",
+    projectId: "project-a",
+    streamUuid: "stream-a",
+    topicUuid: "topic-a",
+    authorUuid: "user-a",
+    userUuid: "user-a",
+    markdown: "Hello",
+    read: true,
+    pinned: false,
+    starred: false,
+    isOwn: false,
+    createdAt: "2026-07-02T10:00:00Z",
+    updatedAt: "2026-07-02T10:00:00Z",
+    ...overrides,
+  };
 }
 
-function msgs(count: number, base: Parameters<typeof createMessage>[0] = {}): MockMessage[] {
-  return createMessages(count, base) as MockMessage[];
+function resetFeedStore(): void {
+  useFeedStore.setState({
+    ownerKey: null,
+    messages: [],
+    isInitialLoading: false,
+    isRefreshing: false,
+    isLoadingMore: false,
+    hasMore: false,
+    nextPageMarker: null,
+    requestVersion: 0,
+    lastLoadedAt: null,
+    error: null,
+  });
 }
-
-// ---------------------------------------------------------------------------
-// Store
-// ---------------------------------------------------------------------------
 
 describe("useFeedStore", () => {
   afterEach(() => {
-    useFeedStore.setState({
-      instanceId: null,
-      messages: [],
-      isInitialLoading: false,
-      isRefreshing: false,
-      isLoadingMore: false,
-      isAllLoaded: false,
-      lastMessageId: null,
-      requestVersion: 0,
-      lastLoadedAt: null,
-      error: null,
+    resetFeedStore();
+  });
+
+  it("starts with empty Workspace messages", () => {
+    expect(useFeedStore.getState().messages).toHaveLength(0);
+  });
+
+  it("setMessages replaces messages and stores Workspace pagination", () => {
+    useFeedStore
+      .getState()
+      .setMessages(
+        [
+          msg({ uuid: "message-b", createdAt: "2026-07-02T10:02:00Z" }),
+          msg({ uuid: "message-a", createdAt: "2026-07-02T10:01:00Z" }),
+        ],
+        { nextPageMarker: "cursor-a", hasMore: true },
+        "owner-a",
+      );
+
+    const state = useFeedStore.getState();
+    expect(state.ownerKey).toBe("owner-a");
+    expect(state.messages.map((message) => message.uuid)).toEqual(["message-a", "message-b"]);
+    expect(state.nextPageMarker).toBe("cursor-a");
+    expect(state.hasMore).toBe(true);
+  });
+
+  it("setMessagesIfActual ignores stale request versions", () => {
+    useFeedStore.getState().setMessages([msg({ uuid: "message-a" })], {
+      nextPageMarker: null,
+      hasMore: false,
+    });
+    useFeedStore.setState({ requestVersion: 2 });
+
+    useFeedStore
+      .getState()
+      .setMessagesIfActual(
+        [msg({ uuid: "message-b" })],
+        { nextPageMarker: "cursor-b", hasMore: true },
+        1,
+      );
+
+    expect(useFeedStore.getState().messages.map((message) => message.uuid)).toEqual(["message-a"]);
+    expect(useFeedStore.getState().nextPageMarker).toBeNull();
+  });
+
+  it("setMessagesIfActual keeps message reference when uuid order is unchanged", () => {
+    const initial = [msg({ uuid: "message-a" }), msg({ uuid: "message-b" })];
+    useFeedStore.getState().setMessages(initial, { nextPageMarker: null, hasMore: false });
+    const beforeRef = useFeedStore.getState().messages;
+    useFeedStore.setState({ requestVersion: 1 });
+
+    useFeedStore
+      .getState()
+      .setMessagesIfActual(
+        [
+          msg({ uuid: "message-a", markdown: "Edited" }),
+          msg({ uuid: "message-b", markdown: "Edited again" }),
+        ],
+        { nextPageMarker: null, hasMore: false },
+        1,
+      );
+
+    expect(useFeedStore.getState().messages).toBe(beforeRef);
+  });
+
+  it("appendOlder merges Workspace messages without duplicate uuids", () => {
+    useFeedStore
+      .getState()
+      .setMessages([msg({ uuid: "message-b", createdAt: "2026-07-02T10:02:00Z" })], {
+        nextPageMarker: "cursor-a",
+        hasMore: true,
+      });
+
+    useFeedStore
+      .getState()
+      .appendOlder(
+        [
+          msg({ uuid: "message-a", createdAt: "2026-07-02T10:01:00Z" }),
+          msg({ uuid: "message-b", createdAt: "2026-07-02T10:02:00Z", markdown: "Overlap" }),
+        ],
+        { nextPageMarker: null, hasMore: false },
+      );
+
+    const state = useFeedStore.getState();
+    expect(state.messages.map((message) => message.uuid)).toEqual(["message-a", "message-b"]);
+    expect(state.nextPageMarker).toBeNull();
+    expect(state.hasMore).toBe(false);
+  });
+
+  it("appendOlder keeps current message fields when older page contains a duplicate", () => {
+    useFeedStore.getState().setMessages(
+      [
+        msg({
+          uuid: "message-b",
+          markdown: "Edited current body",
+          read: true,
+          starred: true,
+          createdAt: "2026-07-02T10:02:00Z",
+          updatedAt: "2026-07-02T10:05:00Z",
+        }),
+      ],
+      { nextPageMarker: "cursor-a", hasMore: true },
+    );
+
+    useFeedStore.getState().appendOlder(
+      [
+        msg({
+          uuid: "message-a",
+          createdAt: "2026-07-02T10:01:00Z",
+          updatedAt: "2026-07-02T10:01:00Z",
+        }),
+        msg({
+          uuid: "message-b",
+          markdown: "Stale older body",
+          read: false,
+          starred: false,
+          createdAt: "2026-07-02T10:02:00Z",
+          updatedAt: "2026-07-02T10:03:00Z",
+        }),
+      ],
+      { nextPageMarker: null, hasMore: false },
+    );
+
+    const current = useFeedStore
+      .getState()
+      .messages.find((message) => message.uuid === "message-b");
+    expect(current).toMatchObject({
+      markdown: "Edited current body",
+      read: true,
+      starred: true,
+      updatedAt: "2026-07-02T10:05:00Z",
     });
   });
 
-  it("starts with empty messages", () => {
-    const { messages } = useFeedStore.getState();
-    expect(messages).toHaveLength(0);
-  });
+  it("appendOlder updates pagination when receiving an empty batch", () => {
+    useFeedStore.getState().setMessages([msg()], { nextPageMarker: "cursor-a", hasMore: true });
+    useFeedStore.getState().appendOlder([], { nextPageMarker: null, hasMore: false });
 
-  it("setMessages replaces all messages and tracks lastMessageId", () => {
-    const list = [msg({ id: 10 }), msg({ id: 20 })];
-    useFeedStore.getState().setMessages(list, false);
-    const state = useFeedStore.getState();
-    expect(state.messages).toHaveLength(2);
-    expect(state.lastMessageId).toBe(10);
-  });
-
-  it("setMessages sets lastMessageId to null for empty array", () => {
-    useFeedStore.getState().setMessages([], false);
-    expect(useFeedStore.getState().lastMessageId).toBeNull();
-  });
-
-  it("appendOlder prepends older messages without duplicates", () => {
-    const initial = [msg({ id: 20, timestamp: 2000 })];
-    useFeedStore.getState().setMessages(initial, false);
-
-    const older = [msg({ id: 10, timestamp: 1000 }), msg({ id: 20, timestamp: 2000 })];
-    useFeedStore.getState().appendOlder(older, false);
-
-    const state = useFeedStore.getState();
-    expect(state.messages).toHaveLength(2);
-    expect(state.messages[0]!.id).toBe(10);
-    expect(state.lastMessageId).toBe(10);
-  });
-
-  it("appendOlder marks isAllLoaded when receiving empty batch", () => {
-    useFeedStore.getState().setMessages([msg({ id: 10 })], false);
-    useFeedStore.getState().appendOlder([], true);
-    expect(useFeedStore.getState().isAllLoaded).toBe(true);
+    expect(useFeedStore.getState().hasMore).toBe(false);
+    expect(useFeedStore.getState().nextPageMarker).toBeNull();
   });
 
   it("clear resets to initial state", () => {
-    useFeedStore.getState().setMessages(msgs(5), false);
+    useFeedStore
+      .getState()
+      .setMessages([msg()], { nextPageMarker: "cursor-a", hasMore: true }, "owner-a");
     useFeedStore.getState().clear();
+
     const state = useFeedStore.getState();
-    expect(state.instanceId).toBeNull();
+    expect(state.ownerKey).toBeNull();
     expect(state.messages).toHaveLength(0);
     expect(state.isInitialLoading).toBe(false);
     expect(state.isRefreshing).toBe(false);
     expect(state.isLoadingMore).toBe(false);
-    expect(state.isAllLoaded).toBe(false);
-    expect(state.lastMessageId).toBeNull();
+    expect(state.hasMore).toBe(false);
+    expect(state.nextPageMarker).toBeNull();
     expect(state.requestVersion).toBe(0);
     expect(state.lastLoadedAt).toBeNull();
     expect(state.error).toBeNull();
@@ -100,45 +210,9 @@ describe("useFeedStore", () => {
   it("setError stores error message and clears loading", () => {
     useFeedStore.setState({ isLoadingMore: true });
     useFeedStore.getState().setError("API failure");
+
     const state = useFeedStore.getState();
     expect(state.error).toBe("API failure");
     expect(state.isLoadingMore).toBe(false);
-  });
-
-  it("appendOlder updates lastMessageId to the oldest message", () => {
-    useFeedStore.getState().setMessages([msg({ id: 30, timestamp: 3000 })], false);
-    useFeedStore
-      .getState()
-      .appendOlder([msg({ id: 5, timestamp: 500 }), msg({ id: 15, timestamp: 1500 })], false);
-    expect(useFeedStore.getState().lastMessageId).toBe(5);
-  });
-
-  it("setMessages clears isAllLoaded flag", () => {
-    useFeedStore.setState({ isAllLoaded: true });
-    useFeedStore.getState().setMessages([msg({ id: 1 })], false);
-    expect(useFeedStore.getState().isAllLoaded).toBe(false);
-  });
-
-  it("setMessages preserves found-oldest metadata from the initial page", () => {
-    useFeedStore.getState().setMessages([msg({ id: 1 })], true);
-    expect(useFeedStore.getState().isAllLoaded).toBe(true);
-  });
-
-  it("setMessagesIfActual keeps message reference when ids/order are unchanged", () => {
-    const initial = [msg({ id: 10, timestamp: 1000 }), msg({ id: 20, timestamp: 2000 })];
-    useFeedStore.getState().setMessages(initial, false);
-    const beforeRef = useFeedStore.getState().messages;
-    useFeedStore.setState({ requestVersion: 1 });
-
-    const sameIds = [msg({ id: 10, timestamp: 1111 }), msg({ id: 20, timestamp: 2222 })];
-    useFeedStore.getState().setMessagesIfActual(sameIds, false, 1);
-
-    expect(useFeedStore.getState().messages).toBe(beforeRef);
-  });
-
-  it("appendOlder preserves found-oldest metadata even with a non-empty final page", () => {
-    useFeedStore.getState().setMessages([msg({ id: 30, timestamp: 3000 })], false);
-    useFeedStore.getState().appendOlder([msg({ id: 10, timestamp: 1000 })], true);
-    expect(useFeedStore.getState().isAllLoaded).toBe(true);
   });
 });

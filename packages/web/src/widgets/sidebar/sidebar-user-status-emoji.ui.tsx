@@ -3,37 +3,52 @@
  * Does not render status text — only the emoji picture/character from Zulip payload.
  */
 import React from "react";
-import { useUserStatusEmojiDisplay } from "~/entities/user/user-status.hooks";
-import type { UserStatus } from "~/entities/user/user.model";
 
 export interface SidebarUserStatusEmojiProps {
-  status: UserStatus | null | undefined;
+  status: unknown;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
+function unicodeEmojiFromCode(value: string): string | null {
+  const codePoints = value
+    .split(/[-_ ]+/)
+    .map((part) => Number.parseInt(part, 16))
+    .filter((part) => Number.isFinite(part) && part > 0);
+  if (codePoints.length === 0) {
+    return null;
+  }
+  try {
+    return String.fromCodePoint(...codePoints);
+  } catch {
+    return null;
+  }
+}
+
+function resolveStatusEmojiLabel(status: unknown): string | null {
+  if (!isRecord(status)) {
+    return null;
+  }
+  const emojiCode = typeof status.emojiCode === "string" ? status.emojiCode.trim() : "";
+  const reactionType = typeof status.reactionType === "string" ? status.reactionType : "";
+  if (reactionType === "unicode_emoji" && emojiCode.length > 0) {
+    return unicodeEmojiFromCode(emojiCode);
+  }
+  const emojiName = typeof status.emojiName === "string" ? status.emojiName.trim() : "";
+  return emojiName.length > 0 ? `:${emojiName}:` : null;
 }
 
 export const SidebarUserStatusEmoji = React.memo<SidebarUserStatusEmojiProps>(
   function SidebarUserStatusEmoji({ status }) {
-    const emojiDisplay = useUserStatusEmojiDisplay(status);
-    if (emojiDisplay == null) {
+    const label = resolveStatusEmojiLabel(status);
+    if (label == null) {
       return null;
     }
-    if (emojiDisplay.kind === "image") {
-      return (
-        <img
-          src={emojiDisplay.src}
-          alt={emojiDisplay.alt}
-          title={emojiDisplay.alt}
-          className="h-4 w-4 shrink-0 rounded-sm object-contain"
-          data-testid="sidebar-user-status-emoji"
-        />
-      );
-    }
     return (
-      <span
-        className="inline-flex shrink-0 items-center justify-center text-[15px] leading-none"
-        aria-hidden
-        data-testid="sidebar-user-status-emoji"
-      >
-        {emojiDisplay.text}
+      <span data-testid="sidebar-user-status-emoji" aria-hidden className="shrink-0 text-xs">
+        {label}
       </span>
     );
   },

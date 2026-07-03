@@ -1,6 +1,4 @@
 import { useMemo } from "react";
-import { selectUserStatusSnapshot } from "~/entities/user/user-status.hooks";
-import { useUsersStore } from "~/entities/user/user.model";
 import { useUserProfileStore } from "~/features/user-profile/user-profile.model";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import type { RightPanelUserInfo } from "~/widgets/right-panel/right-panel.types";
@@ -18,12 +16,7 @@ export function useLayoutRightPanelUser(options: {
 }): RightPanelUserInfo | undefined {
   const { rightDrawerTargetUserId, dmChat, dms, currentInstanceRealm } = options;
 
-  const userFromStore = useUsersStore((s) =>
-    rightDrawerTargetUserId != null ? s.getUser(rightDrawerTargetUserId) : undefined,
-  );
   const detailedProfile = useUserProfileStore((s) => s.profile);
-
-  const userStatusLabel = selectUserStatusSnapshot(userFromStore).statusLabel;
 
   const rightPanelMedia = useMemo(
     () =>
@@ -45,27 +38,19 @@ export function useLayoutRightPanelUser(options: {
 
   return useMemo(() => {
     return buildRightPanelUserInfo({
-      userFromStore:
-        userFromStore == null
-          ? undefined
-          : {
-              ...userFromStore,
-              avatar_url: userFromStore.avatar_url ?? undefined,
-            },
+      userFromStore: undefined,
       detailedProfile: detailedProfile ?? undefined,
       dmChat,
       rightDrawerTargetUserId: rightDrawerTargetUserId ?? null,
-      userStatusLabel,
+      userStatusLabel: undefined,
       currentInstanceRealm,
       media: rightPanelMedia,
       commonGroups: rightPanelCommonGroups,
     });
   }, [
-    userFromStore,
     detailedProfile,
     dmChat,
     rightDrawerTargetUserId,
-    userStatusLabel,
     currentInstanceRealm,
     rightPanelMedia,
     rightPanelCommonGroups,

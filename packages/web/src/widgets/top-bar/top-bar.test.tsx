@@ -3,11 +3,14 @@ import { useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useDownloadStore } from "~/entities/download/download.model";
+import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import type { MessengerStream } from "~/entities/messenger/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { t } from "~/i18n/i18n";
 import { ELECTRON_MAC_TITLEBAR_STRIP_CLASS } from "~/shared/lib/electron-title-bar.lib";
 import { setCurrentOrgRouteIdResolver } from "~/shared/lib/org-route";
+import { createUser } from "~/test/factories";
 import { renderWithProviders } from "~/test/render";
 import { useRightDrawerStore } from "~/widgets/right-panel/right-drawer.model";
 import { useSearchModalStore } from "~/widgets/search-modal/search-modal.model";
@@ -20,12 +23,40 @@ function LocationProbe() {
 
 function resetTopBarRelatedStores(): void {
   useChatListStore.setState({ currentUserId: null });
+  useMessengerStore.getState().clear();
   useUsersStore.getState().clear();
   useDownloadStore.setState({ entries: [], duplicateRequestTick: 0 });
   useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
   setCurrentOrgRouteIdResolver(null);
   useSearchModalStore.getState().closeModal();
   useRightDrawerStore.setState({ open: false, mode: "info", userIdOverride: null });
+}
+
+function createDirectWorkspaceStream(overrides: Partial<MessengerStream> = {}): MessengerStream {
+  const now = "2026-07-02T10:00:00Z";
+  return {
+    uuid: "75309057-419c-4b12-a7c1-3932429ec4a6",
+    projectId: "project-a",
+    ownerUuid: "owner-a",
+    userUuid: "current-user",
+    role: "member",
+    notificationMode: "all_messages",
+    name: "Alice Workspace",
+    description: "",
+    unreadCount: 0,
+    sourceName: "native",
+    source: { kind: "native" },
+    audience: "private",
+    isPrivate: true,
+    inviteOnly: false,
+    announce: false,
+    isArchived: false,
+    directUserUuid: "a225223c-637c-4afa-918f-5f2798b9305f",
+    lastMessageUuid: null,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
 }
 
 describe("TopBar", () => {
@@ -141,7 +172,7 @@ describe("TopBar", () => {
     expect(useSearchModalStore.getState().open).toBe(true);
   });
 
-  it("opens Workspace-safe search state on Workspace messenger routes", () => {
+  it("opens Workspace people search without legacy message filters", () => {
     renderWithProviders(<TopBar />, {
       route: "/org/workspace.example.com/project/project-a/messenger",
     });
@@ -150,9 +181,49 @@ describe("TopBar", () => {
       fireEvent.click(screen.getByRole("button", { name: /search/i }));
     });
 
-    expect(screen.getByPlaceholderText(t("search.workspaceUnsupportedPlaceholder"))).toBeDisabled();
-    expect(screen.getByText(t("search.workspaceUnsupportedTitle"))).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(t("search.search"))).not.toBeDisabled();
     expect(screen.queryByPlaceholderText(t("search.filterStream"))).not.toBeInTheDocument();
+  });
+
+  it("opens selected Workspace user from top-bar search through direct-private stream route", () => {
+    useUsersStore.getState().upsertUser(
+      createUser({
+        uuid: "a225223c-637c-4afa-918f-5f2798b9305f",
+        username: "alice.workspace",
+        displayName: "Alice Workspace",
+        email: "alice.workspace@example.com",
+        status: "active",
+      }),
+    );
+    useMessengerStore.getState().startBootstrap("owner:top-bar");
+    useMessengerStore.getState().replaceBootstrapState("owner:top-bar", {
+      streams: [createDirectWorkspaceStream()],
+      streamBindings: [],
+      topics: [],
+      conversations: [],
+      folders: [],
+    });
+
+    renderWithProviders(
+      <>
+        <LocationProbe />
+        <TopBar />
+      </>,
+      { route: "/org/workspace.example.com/project/project-a/messenger" },
+    );
+
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: /search/i }));
+    });
+    fireEvent.change(screen.getByPlaceholderText(t("search.search")), {
+      target: { value: "alice.workspace" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Alice Workspace/i }));
+
+    expect(screen.getByTestId("location-path")).toHaveTextContent(
+      "/org/workspace.example.com/project/project-a/stream/75309057-419c-4b12-a7c1-3932429ec4a6",
+    );
+    expect(useSearchModalStore.getState().open).toBe(false);
   });
 
   it("opens user menu in right drawer when profile trigger is clicked", () => {
@@ -241,29 +312,39 @@ describe("TopBar", () => {
 
   it("uses semantic token classes for presence indicators", () => {
     useChatListStore.setState({ currentUserId: 7 });
-    useUsersStore.getState().mergeUser({
-      user_id: 7,
-      full_name: "Alice",
-      presence: { status: "active", timestamp: Date.now() },
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 7,
+        full_name: "Alice",
+        presence: { status: "active", timestamp: Date.now() },
+      }),
+    );
 
     renderWithProviders(<TopBar />);
     expect(screen.getByLabelText(/online/i)).toHaveClass("bg-indicator-green");
 
     act(() => {
-      useUsersStore.getState().setPresence(7, { status: "idle", timestamp: Date.now() });
+      useUsersStore.getState().upsertUser(
+        createUser({
+          user_id: 7,
+          full_name: "Alice",
+          presence: { status: "idle", timestamp: Date.now() },
+        }),
+      );
     });
     expect(screen.getByLabelText(/away/i)).toHaveClass("bg-indicator-orange");
   });
 
   it("updates profile trigger avatar src when users store avatar changes", () => {
     useChatListStore.setState({ currentUserId: 7 });
-    useUsersStore.getState().mergeUser({
-      user_id: 7,
-      full_name: "Alice",
-      email: "alice@example.com",
-      avatar_url: "https://cdn.example.com/avatar/old.png",
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 7,
+        full_name: "Alice",
+        email: "alice@example.com",
+        avatar_url: "https://cdn.example.com/avatar/old.png",
+      }),
+    );
 
     renderWithProviders(<TopBar />);
     const profileButton = screen.getByRole("button", { name: /profile/i });
@@ -271,10 +352,12 @@ describe("TopBar", () => {
     expect(profileAvatarBefore?.getAttribute("src")).toContain("cdn.example.com/avatar/old.png");
 
     act(() => {
-      useUsersStore.getState().mergeUser({
-        user_id: 7,
-        avatar_url: "https://cdn.example.com/avatar/new.png",
-      });
+      useUsersStore.getState().upsertUser(
+        createUser({
+          user_id: 7,
+          avatar_url: "https://cdn.example.com/avatar/new.png",
+        }),
+      );
     });
 
     const profileAvatarAfter = profileButton.querySelector("img");
@@ -283,11 +366,13 @@ describe("TopBar", () => {
 
   it("shows current user email under display name in profile trigger", () => {
     useChatListStore.setState({ currentUserId: 11 });
-    useUsersStore.getState().mergeUser({
-      user_id: 11,
-      full_name: "Dmitrii Korobkin",
-      email: "dmitrii@example.com",
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 11,
+        full_name: "Dmitrii Korobkin",
+        email: "dmitrii@example.com",
+      }),
+    );
 
     renderWithProviders(<TopBar />);
 
@@ -340,11 +425,13 @@ describe("TopBar", () => {
 
   it("shows short profile status without a hover title", () => {
     useChatListStore.setState({ currentUserId: 11 });
-    useUsersStore.getState().mergeUser({
-      user_id: 11,
-      full_name: "Dmitrii Korobkin",
-      status: { text: "In a meeting", away: false },
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 11,
+        full_name: "Dmitrii Korobkin",
+        status: { text: "In a meeting", away: false },
+      }),
+    );
 
     renderWithProviders(<TopBar />);
 
@@ -358,11 +445,13 @@ describe("TopBar", () => {
   it("shows full profile status on hover when truncated", () => {
     const longStatus = "a".repeat(TOP_BAR_PROFILE_STATUS_MAX_CH + 5);
     useChatListStore.setState({ currentUserId: 11 });
-    useUsersStore.getState().mergeUser({
-      user_id: 11,
-      full_name: "Dmitrii Korobkin",
-      status: { text: longStatus, away: false },
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 11,
+        full_name: "Dmitrii Korobkin",
+        status: { text: longStatus, away: false },
+      }),
+    );
 
     renderWithProviders(<TopBar />);
 

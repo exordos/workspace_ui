@@ -135,7 +135,6 @@ describe("ai-context", () => {
       const result = getAi().context.getCurrentChat();
       expect(result).toEqual({ type: null, messageCount: 0 });
     });
-
   });
 
   // ---------------------------------------------------------------------------
@@ -161,7 +160,7 @@ describe("ai-context", () => {
         dms: () => [],
       } as never);
       vi.mocked(useUsersStore.getState).mockReturnValue({
-        getUser: vi.fn((id: number) => (id === 42 ? { full_name: "Alice Test" } : undefined)),
+        getUser: vi.fn((id: string) => (id === "42" ? { displayName: "Alice Test" } : undefined)),
       } as never);
       vi.mocked(useInstancesStore.getState).mockReturnValue({
         getCurrentInstance: vi.fn(() => ({

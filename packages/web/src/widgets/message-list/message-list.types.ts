@@ -24,6 +24,7 @@ export interface MessageListCallbacks {
   onTopicSeparatorClick?: (message: MockMessage) => void;
   onMessageAuthorClick?: (userId: number) => void;
   onOpenDirectMessage?: (userId: number) => void;
+  onOpenDirectMessageByUuid?: (userUuid: string) => void;
   onRetryFailedOutgoing?: (message: MockMessage) => void;
   onRemoveFailedOutgoing?: (message: MockMessage) => void;
   onRetryFailedEdit?: (message: MockMessage) => void;

@@ -6,7 +6,8 @@
 import { dmRouteKey } from "~/shared/lib/dm-key";
 import { parseDmRouteParticipantIds } from "~/shared/lib/dm-route-slug.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
-import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import { buildStreamSlug } from "~/shared/lib/stream-slug.lib";
+import { encodeTopicForRoute, normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 
 export type ZulipNarrowPermalinkKind = "dm" | "stream";
 
@@ -225,11 +226,25 @@ export function buildRouteFromZulipNarrowPermalink(
   const withMessageId = (base: string): string => `${base}?msg=${parsed.messageId}`;
 
   if (parsed.kind === "dm") {
-    return withMessageId(withCurrentOrgRoute("/inbox"));
+    const participantIds = parsed.dmParticipantIds ?? [];
+    const routeIds =
+      params.currentUserId != null && participantIds.length > 1
+        ? participantIds.filter((userId) => userId !== params.currentUserId)
+        : participantIds;
+    if (routeIds.length === 0) return null;
+    return withMessageId(withCurrentOrgRoute(`/dm/${routeIds.join(",")}`));
   }
 
   if (parsed.streamId == null) return null;
-  return withMessageId(withCurrentOrgRoute("/inbox"));
+  const streamName = params.resolveStreamName(parsed.streamId);
+  if (streamName == null) return null;
+  return withMessageId(
+    withCurrentOrgRoute(
+      `/stream/${buildStreamSlug(parsed.streamId, streamName)}/topic/${encodeURIComponent(
+        encodeTopicForRoute(parsed.topic ?? ""),
+      )}`,
+    ),
+  );
 }
 
 /** Replaces or sets `msg` query param while preserving other search params. */

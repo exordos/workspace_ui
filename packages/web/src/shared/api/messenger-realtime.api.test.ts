@@ -70,6 +70,8 @@ const userDto: WorkspaceMessengerUserDto = {
   username: "alice",
   source: "iam",
   status: "active",
+  status_emoji: null,
+  status_text: null,
   first_name: "Alice",
   last_name: null,
   email: "alice@example.com",
@@ -502,6 +504,12 @@ describe("messenger-realtime.api", () => {
       type: "folder",
       kind: "folder.deleted",
       folder: { uuid: FOLDER_UUID },
+    });
+    expect(normalizeWorkspaceRestEvent(createEvent({ kind: "user.updated", ...userDto }))).toEqual({
+      epoch_version: 124,
+      type: "user",
+      kind: "user.updated",
+      user: userDto,
     });
   });
 

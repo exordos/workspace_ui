@@ -1,358 +1,676 @@
-/**
- * Tests for usersStore — the user profile and presence cache.
- *
- * Stores user_id → {full_name, email, avatar_url, presence} mappings derived
- * from API responses and message payloads. Also maintains an email→userId index
- * for presence updates that arrive keyed by email (Zulip presence events).
- */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import type { WorkspaceMessengerUserDto } from "~/shared/api/messenger.types";
+import type {
+  WorkspaceRealtimeEventContext,
+  WorkspaceRealtimeRuntimeOwner,
+} from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
+import { adaptWorkspaceMessengerUserDto } from "./user-adapters.lib";
+import { createUserRealtimeApplier } from "./user-realtime-applier.lib";
+import {
+  resolveUserPresenceVisual,
+  selectOnlineUserCount,
+  selectUserDisplayName,
+  selectUsersByIds,
+} from "./user-selectors.lib";
+import { applyBootstrapUsers, loadUserByUuid, refreshUsers } from "./user-sync.lib";
+import { startWorkspacePresenceReporter } from "./user-workspace-presence-reporter.lib";
 import { useUsersStore } from "./user.model";
+import type { User, UserUuid } from "./user.types";
+
+const USER_A_UUID = "11111111-1111-4111-8111-111111111111";
+const USER_B_UUID = "22222222-2222-4222-8222-222222222222";
+const USER_C_UUID = "33333333-3333-4333-8333-333333333333";
+const DATE_1 = "2026-07-01T10:00:00Z";
+const DATE_2 = "2026-07-01T11:00:00Z";
+const DATE_3 = "2026-07-01T12:00:00Z";
+const OWNER_A_KEY = workspaceRuntimeOwnerKey(createRuntimeContext());
+const OWNER_B_KEY = workspaceRuntimeOwnerKey(
+  createRuntimeContext({
+    accountId: "account-b",
+    instanceId: "instance-b",
+    organizationId: "organization-b",
+    projectId: "55555555-5555-4555-8555-555555555555",
+    userUuid: USER_B_UUID,
+    accessToken: "access-token-b",
+  }),
+);
+
+function createRuntimeContext(
+  overrides: Partial<WorkspaceRuntimeContext> = {},
+): WorkspaceRuntimeContext {
+  return {
+    accountId: "account-a",
+    instanceId: "instance-a",
+    organizationId: "organization-a",
+    organizationOrigin: "https://org-a.example.test",
+    projectId: "44444444-4444-4444-8444-444444444444",
+    userUuid: USER_A_UUID,
+    accessToken: "access-token-a",
+    runtimeGeneration: 1,
+    ...overrides,
+  };
+}
+
+function createUser(overrides: Partial<User> & { uuid?: UserUuid } = {}): User {
+  const uuid = overrides.uuid ?? USER_A_UUID;
+  return {
+    uuid,
+    username: "alice",
+    firstName: "Alice",
+    lastName: "Smith",
+    displayName: "Alice Smith",
+    email: "alice@example.com",
+    avatarUrl: null,
+    status: "active",
+    statusEmoji: null,
+    statusText: null,
+    lastPingAt: DATE_1,
+    createdAt: DATE_1,
+    updatedAt: DATE_1,
+    ...overrides,
+  };
+}
+
+function createUserDto(
+  overrides: Partial<WorkspaceMessengerUserDto> & { uuid?: string } = {},
+): WorkspaceMessengerUserDto {
+  return {
+    uuid: overrides.uuid ?? USER_A_UUID,
+    username: "alice",
+    source: "iam",
+    status: "active",
+    status_emoji: "test_tube",
+    status_text: "Testing",
+    first_name: "Alice",
+    last_name: "Smith",
+    email: "alice@example.com",
+    last_ping_at: DATE_2,
+    created_at: DATE_1,
+    updated_at: DATE_2,
+    ...overrides,
+  };
+}
 
 function resetStore() {
   useUsersStore.getState().clear();
 }
 
-// Verifies merge semantics, presence updates, avatar/name helpers, and index integrity.
-describe("usersStore", () => {
+function createDeferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+} {
+  let resolve: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
+}
+
+function createRealtimeOwner(
+  overrides: Partial<WorkspaceRealtimeRuntimeOwner> = {},
+): WorkspaceRealtimeRuntimeOwner {
+  return {
+    accountId: "account-a",
+    instanceId: "instance-a",
+    organizationId: "organization-a",
+    projectId: "44444444-4444-4444-8444-444444444444",
+    userUuid: USER_A_UUID,
+    runtimeGeneration: 1,
+    ...overrides,
+  };
+}
+
+function createRealtimeContext(
+  owner = createRealtimeOwner(),
+  overrides: Partial<WorkspaceRealtimeEventContext> = {},
+): WorkspaceRealtimeEventContext {
+  return {
+    owner,
+    ownerKey: workspaceRuntimeOwnerKey(owner),
+    surface: "active",
+    source: "websocket",
+    ...overrides,
+  };
+}
+
+describe("useUsersStore", () => {
   beforeEach(resetStore);
   afterEach(resetStore);
 
-  // mergeUser is the primary insert/update — used for both initial load and live events.
-  describe("mergeUser", () => {
-    // A new user_id must create a fresh entry with all provided fields.
-    it("adds a new user to the store", () => {
-      useUsersStore.getState().mergeUser({ user_id: 1, full_name: "Alice", email: "alice@t.com" });
+  it("replaceUsers replaces state and stores load metadata", () => {
+    useUsersStore.getState().upsertUser(createUser({ uuid: USER_C_UUID }));
 
-      const user = useUsersStore.getState().getUser(1);
-      expect(user).toBeDefined();
-      expect(user!.full_name).toBe("Alice");
-      expect(user!.email).toBe("alice@t.com");
-    });
+    useUsersStore
+      .getState()
+      .replaceUsers([createUser({ uuid: USER_A_UUID }), createUser({ uuid: USER_B_UUID })], 100);
 
-    // Partial updates must merge, not overwrite — missing fields are preserved.
-    it("updates an existing user preserving fields not in payload", () => {
-      useUsersStore.getState().mergeUser({
-        user_id: 1,
-        full_name: "Alice",
-        email: "alice@t.com",
-        avatar_url: "/avatar.png",
-        role: 200,
-      });
-      useUsersStore.getState().mergeUser({ user_id: 1, full_name: "Alice Updated" });
-
-      const user = useUsersStore.getState().getUser(1);
-      expect(user!.full_name).toBe("Alice Updated");
-      expect(user!.email).toBe("alice@t.com");
-      expect(user!.avatar_url).toBe("/avatar.png");
-      expect(user!.role).toBe(200);
-    });
-
-    // Email index is needed because Zulip presence events arrive keyed by email.
-    it("builds email-to-userId index", () => {
-      useUsersStore.getState().mergeUser({ user_id: 42, full_name: "Bob", email: "bob@t.com" });
-
-      expect(useUsersStore.getState().emailToUserId.get("bob@t.com")).toBe(42);
-    });
-
-    // Defensive: null user_id from malformed API response must not corrupt the Map.
-    it("ignores mergeUser when user_id is null", () => {
-      useUsersStore
-        .getState()
-        .mergeUser({ user_id: null as unknown as number, full_name: "Ghost" });
-
-      expect(useUsersStore.getState().users.size).toBe(0);
-    });
+    const state = useUsersStore.getState();
+    expect(state.userIds).toEqual([USER_A_UUID, USER_B_UUID]);
+    expect(state.usersById[USER_C_UUID]).toBeUndefined();
+    expect(state.loadStatus).toBe("ready");
+    expect(state.lastLoadedAt).toBe(100);
+    expect(state.lastRefreshedAt).toBe(100);
   });
 
-  // mergeUsers handles bulk loads (e.g. initial /users fetch).
-  describe("mergeUsers", () => {
-    // Batch insert must add all valid users in one state update for performance.
-    it("adds multiple users in a single batch", () => {
-      useUsersStore.getState().mergeUsers([
-        { user_id: 1, full_name: "Alice" },
-        { user_id: 2, full_name: "Bob", email: "bob@t.com" },
-      ]);
+  it("upsertUser inserts and updates by uuid", () => {
+    useUsersStore.getState().upsertUser(createUser({ displayName: "Alice Smith" }), 200);
+    useUsersStore
+      .getState()
+      .upsertUser(createUser({ displayName: "Alice Updated", updatedAt: DATE_2 }), 300);
 
-      expect(useUsersStore.getState().users.size).toBe(2);
-      expect(useUsersStore.getState().getUser(2)!.full_name).toBe("Bob");
-    });
-
-    // Invalid entries in a batch must be skipped without affecting valid ones.
-    it("skips entries with null user_id", () => {
-      useUsersStore.getState().mergeUsers([
-        { user_id: null as unknown as number, full_name: "Ghost" },
-        { user_id: 5, full_name: "Valid" },
-      ]);
-
-      expect(useUsersStore.getState().users.size).toBe(1);
-    });
-
-    it("stores is_active from Zulip directory payloads", () => {
-      useUsersStore.getState().mergeUsers([{ user_id: 30, full_name: "Zed", is_active: false }]);
-      expect(useUsersStore.getState().getUser(30)?.is_active).toBe(false);
-    });
-
-    it("preserves is_active when batch entry omits it", () => {
-      useUsersStore.getState().mergeUsers([{ user_id: 31, full_name: "Y", is_active: false }]);
-      useUsersStore.getState().mergeUsers([{ user_id: 31, full_name: "Yol" }]);
-      expect(useUsersStore.getState().getUser(31)?.is_active).toBe(false);
-    });
-
-    it("merges profile_data from directory payloads", () => {
-      useUsersStore.getState().mergeUsers([
-        {
-          user_id: 9,
-          full_name: "Pat",
-          profile_data: { "1": { value: "Lead", rendered_value: "<p>Lead</p>" } },
-        },
-      ]);
-      expect(useUsersStore.getState().getUser(9)?.profile_data?.["1"]?.value).toBe("Lead");
-    });
-
-    it("preserves profile_data when batch entry omits it", () => {
-      useUsersStore.getState().mergeUsers([
-        {
-          user_id: 11,
-          full_name: "Sam",
-          profile_data: { "2": { value: "Mgr" } },
-        },
-      ]);
-      useUsersStore.getState().mergeUsers([{ user_id: 11, full_name: "Samuel" }]);
-      expect(useUsersStore.getState().getUser(11)?.full_name).toBe("Samuel");
-      expect(useUsersStore.getState().getUser(11)?.profile_data?.["2"]?.value).toBe("Mgr");
-    });
+    const state = useUsersStore.getState();
+    expect(state.getUser(USER_A_UUID)?.displayName).toBe("Alice Updated");
+    expect(state.userIds).toEqual([USER_A_UUID]);
+    expect(state.lastRefreshedAt).toBe(300);
   });
 
-  // mergeFromMessage auto-populates the user cache from message payloads.
-  describe("mergeFromMessage", () => {
-    // Stream messages carry sender info — must be extracted to avoid extra API calls.
-    it("extracts sender from a stream message", () => {
-      const msg: ZulipRawMessage = {
-        id: 100,
-        sender_id: 10,
-        sender_full_name: "Charlie",
-        avatar_url: "/charlie.png",
-        content: "hello",
-        timestamp: 1000,
-        type: "stream",
-        stream_id: 5,
-      };
-
-      useUsersStore.getState().mergeFromMessage(msg);
-
-      const user = useUsersStore.getState().getUser(10);
-      expect(user).toBeDefined();
-      expect(user!.full_name).toBe("Charlie");
-      expect(user!.avatar_url).toBe("/charlie.png");
-    });
-
-    // DM messages include all participants in display_recipient — extract them all.
-    it("extracts recipients from a private message", () => {
-      const msg: ZulipRawMessage = {
-        id: 101,
-        sender_id: 10,
-        sender_full_name: "Charlie",
-        content: "hi",
-        timestamp: 1000,
-        type: "private",
-        display_recipient: [
-          { id: 10, full_name: "Charlie", email: "charlie@t.com" },
-          { id: 20, full_name: "Dana", email: "dana@t.com", avatar_url: "/dana.png" },
+  it("upsertUsers inserts a batch and dedupes userIds", () => {
+    useUsersStore
+      .getState()
+      .upsertUsers(
+        [
+          createUser({ uuid: USER_A_UUID, displayName: "Alice" }),
+          createUser({ uuid: USER_B_UUID, displayName: "Bob" }),
+          createUser({ uuid: USER_A_UUID, displayName: "Alice Fresh", updatedAt: DATE_2 }),
         ],
-      };
-
-      useUsersStore.getState().mergeFromMessage(msg);
-
-      expect(useUsersStore.getState().getUser(10)).toBeDefined();
-      expect(useUsersStore.getState().getUser(20)).toBeDefined();
-      expect(useUsersStore.getState().getUser(20)!.email).toBe("dana@t.com");
-    });
-  });
-
-  // Presence (active/idle/offline) drives the green/yellow dot next to avatars.
-  describe("presence", () => {
-    // Direct update by userId — used when presence event includes user_id.
-    it("setPresence updates user presence", () => {
-      useUsersStore.getState().mergeUser({ user_id: 1, full_name: "Alice" });
-      useUsersStore.getState().setPresence(1, { status: "active", timestamp: 5000 });
-
-      expect(useUsersStore.getState().getUser(1)!.presence).toEqual({
-        status: "active",
-        timestamp: 5000,
-      });
-    });
-
-    // Zulip presence events are keyed by email — must resolve via the index.
-    it("setPresenceByEmail updates presence via email index", () => {
-      useUsersStore.getState().mergeUser({ user_id: 1, full_name: "Alice", email: "alice@t.com" });
-      useUsersStore
-        .getState()
-        .setPresenceByEmail("alice@t.com", { status: "idle", timestamp: 6000 });
-
-      expect(useUsersStore.getState().getUser(1)!.presence!.status).toBe("idle");
-    });
-
-    // Unknown emails (e.g. users not yet loaded) must be silently ignored.
-    it("setPresenceByEmail is a no-op for unknown email", () => {
-      useUsersStore.getState().mergeUser({ user_id: 1, full_name: "Alice" });
-      useUsersStore
-        .getState()
-        .setPresenceByEmail("unknown@t.com", { status: "active", timestamp: 7000 });
-
-      expect(useUsersStore.getState().getUser(1)!.presence).toBeUndefined();
-    });
-
-    // Unknown userIds must not create phantom entries in the store.
-    it("setPresence is a no-op for unknown userId", () => {
-      useUsersStore.getState().setPresence(999, { status: "active", timestamp: 8000 });
-      expect(useUsersStore.getState().users.size).toBe(0);
-    });
-  });
-
-  describe("status", () => {
-    it("setStatus stores custom emoji/text and timestamp", () => {
-      useUsersStore.getState().mergeUser({ user_id: 1, full_name: "Alice" });
-      useUsersStore.getState().setStatus(
-        1,
-        {
-          text: "Focusing",
-          emojiName: "speech_balloon",
-          emojiCode: "1f4ac",
-          reactionType: "unicode_emoji",
-          away: false,
-        },
-        12345,
+        400,
       );
 
-      expect(useUsersStore.getState().getUser(1)?.status).toEqual({
-        text: "Focusing",
-        emojiName: "speech_balloon",
-        emojiCode: "1f4ac",
-        reactionType: "unicode_emoji",
-        away: false,
-      });
-      expect(useUsersStore.getState().getUser(1)?.statusFetchedAt).toBe(12345);
-      expect(useUsersStore.getState().getUser(1)?.statusFetchState).toBe("ready");
-      expect(useUsersStore.getState().getUser(1)?.statusErrorKind).toBeUndefined();
-      expect(useUsersStore.getState().getUser(1)?.statusNextRetryAt).toBeUndefined();
-    });
-
-    it("setStatus clears status when null is passed", () => {
-      useUsersStore.getState().mergeUser({
-        user_id: 1,
-        full_name: "Alice",
-        status: { text: "Lunch", away: false },
-      });
-
-      useUsersStore.getState().setStatus(1, null, 999);
-
-      expect(useUsersStore.getState().getUser(1)?.status).toBeUndefined();
-      expect(useUsersStore.getState().getUser(1)?.statusFetchedAt).toBe(999);
-    });
-
-    it("setStatus is a no-op for unknown users", () => {
-      useUsersStore.getState().setStatus(999, { text: "Ghost", away: false });
-      expect(useUsersStore.getState().users.size).toBe(0);
-    });
-
-    it("setStatusFetchMeta updates fetch-state metadata", () => {
-      useUsersStore.getState().mergeUser({ user_id: 1, full_name: "Alice" });
-
-      useUsersStore.getState().setStatusFetchMeta(1, {
-        fetchState: "error",
-        errorKind: "transient",
-        nextRetryAt: 999_000,
-        fetchedAt: 777_000,
-      });
-
-      const user = useUsersStore.getState().getUser(1);
-      expect(user?.statusFetchState).toBe("error");
-      expect(user?.statusErrorKind).toBe("transient");
-      expect(user?.statusNextRetryAt).toBe(999_000);
-      expect(user?.statusFetchedAt).toBe(777_000);
-    });
+    const state = useUsersStore.getState();
+    expect(state.userIds).toEqual([USER_A_UUID, USER_B_UUID]);
+    expect(state.getUser(USER_A_UUID)?.displayName).toBe("Alice Fresh");
+    expect(state.lastRefreshedAt).toBe(400);
   });
 
-  // getAvatarUrl is used by Avatar component — must handle all edge cases.
-  describe("getAvatarUrl", () => {
-    // Normal case: user has a valid avatar URL.
-    it("returns avatar_url for a user with one", () => {
-      useUsersStore
-        .getState()
-        .mergeUser({ user_id: 1, full_name: "Alice", avatar_url: "/avatar.png" });
+  it("does not let older updatedAt overwrite a newer profile", () => {
+    useUsersStore.getState().upsertUser(createUser({ displayName: "Fresh", updatedAt: DATE_3 }));
+    useUsersStore.getState().upsertUser(createUser({ displayName: "Stale", updatedAt: DATE_1 }));
 
-      expect(useUsersStore.getState().getAvatarUrl(1)).toBe("/avatar.png");
-    });
-
-    // Missing avatar triggers the fallback initials avatar in the UI.
-    it("returns undefined for a user without avatar_url", () => {
-      useUsersStore.getState().mergeUser({ user_id: 1, full_name: "Alice" });
-
-      expect(useUsersStore.getState().getAvatarUrl(1)).toBeUndefined();
-    });
-
-    // Whitespace-only URLs must be treated as missing to avoid broken <img> tags.
-    it("returns undefined for empty string avatar_url", () => {
-      useUsersStore.getState().mergeUser({ user_id: 1, full_name: "Alice", avatar_url: "  " });
-
-      expect(useUsersStore.getState().getAvatarUrl(1)).toBeUndefined();
-    });
-
-    // Unknown user must not throw — returns undefined for graceful fallback.
-    it("returns undefined for unknown user", () => {
-      expect(useUsersStore.getState().getAvatarUrl(999)).toBeUndefined();
-    });
+    expect(useUsersStore.getState().getUser(USER_A_UUID)?.displayName).toBe("Fresh");
   });
 
-  // getDisplayName is the single source of truth for rendering user names.
-  describe("getDisplayName", () => {
-    // Normal case: return the user's full_name.
-    it("returns full_name when present", () => {
-      useUsersStore.getState().mergeUser({ user_id: 1, full_name: "Alice Wonderland" });
-
-      expect(useUsersStore.getState().getDisplayName(1)).toBe("Alice Wonderland");
-    });
-
-    // Empty name must fall back to "Unknown" to avoid blank UI elements.
-    it("returns 'Unknown' for user with empty name", () => {
-      useUsersStore.getState().mergeUser({ user_id: 1, full_name: "" });
-
-      expect(useUsersStore.getState().getDisplayName(1)).toBe("Unknown");
-    });
-
-    // Non-existent user returns "Unknown" rather than crashing.
-    it("returns 'Unknown' for nonexistent user", () => {
-      expect(useUsersStore.getState().getDisplayName(999)).toBe("Unknown");
-    });
-  });
-
-  // getAvatarMap provides a bulk lookup for rendering avatar grids.
-  describe("getAvatarMap", () => {
-    // Only users WITH avatars should appear — users without are excluded.
-    it("returns a map of userId to avatar_url for all users with avatars", () => {
-      useUsersStore.getState().mergeUsers([
-        { user_id: 1, full_name: "A", avatar_url: "/a.png" },
-        { user_id: 2, full_name: "B" },
-        { user_id: 3, full_name: "C", avatar_url: "/c.png" },
+  it("dedupes replaceUsers by uuid and keeps the freshest duplicate", () => {
+    useUsersStore
+      .getState()
+      .replaceUsers([
+        createUser({ uuid: USER_A_UUID, displayName: "Fresh", updatedAt: DATE_2 }),
+        createUser({ uuid: USER_A_UUID, displayName: "Stale", updatedAt: DATE_1 }),
       ]);
 
-      const map = useUsersStore.getState().getAvatarMap();
-      expect(map.size).toBe(2);
-      expect(map.get(1)).toBe("/a.png");
-      expect(map.get(3)).toBe("/c.png");
+    const state = useUsersStore.getState();
+    expect(state.userIds).toEqual([USER_A_UUID]);
+    expect(state.getUser(USER_A_UUID)?.displayName).toBe("Fresh");
+  });
+
+  it("does not let an older replaceUsers payload overwrite a newer stored profile", () => {
+    useUsersStore.getState().upsertUser(createUser({ displayName: "Fresh", updatedAt: DATE_3 }));
+    useUsersStore
+      .getState()
+      .replaceUsers([createUser({ displayName: "Stale", updatedAt: DATE_1 })], 500);
+
+    const state = useUsersStore.getState();
+    expect(state.getUser(USER_A_UUID)?.displayName).toBe("Fresh");
+    expect(state.userIds).toEqual([USER_A_UUID]);
+    expect(state.lastLoadedAt).toBe(500);
+    expect(state.lastRefreshedAt).toBe(500);
+  });
+
+  it("markOffline updates only existing users", () => {
+    useUsersStore.getState().upsertUser(createUser({ status: "active", updatedAt: DATE_1 }));
+    useUsersStore.getState().markOffline(USER_A_UUID, Date.parse(DATE_2));
+    useUsersStore.getState().markOffline(USER_B_UUID, Date.parse(DATE_2));
+
+    const state = useUsersStore.getState();
+    expect(state.getUser(USER_A_UUID)?.status).toBe("offline");
+    expect(state.getUser(USER_B_UUID)).toBeUndefined();
+    expect(state.userIds).toEqual([USER_A_UUID]);
+  });
+
+  it("setLoadStatus and clear reset load state", () => {
+    useUsersStore.getState().setLoadStatus("error", "network");
+    expect(useUsersStore.getState().loadStatus).toBe("error");
+    expect(useUsersStore.getState().error).toBe("network");
+
+    useUsersStore.getState().clear();
+    expect(useUsersStore.getState().loadStatus).toBe("idle");
+    expect(useUsersStore.getState().error).toBeNull();
+    expect(useUsersStore.getState().userIds).toEqual([]);
+  });
+
+  it("clears users when owner changes before the next response arrives", () => {
+    useUsersStore.getState().startOwnerSync(OWNER_A_KEY);
+    useUsersStore.getState().replaceUsersForOwner(OWNER_A_KEY, [createUser({ uuid: USER_A_UUID })]);
+
+    useUsersStore.getState().startOwnerSync(OWNER_B_KEY);
+
+    const state = useUsersStore.getState();
+    expect(state.ownerKey).toBe(OWNER_B_KEY);
+    expect(state.userIds).toEqual([]);
+    expect(state.usersById).toEqual({});
+    expect(state.loadStatus).toBe("loading");
+  });
+
+  it("ignores stale owner writes after the store switches owner", () => {
+    useUsersStore.getState().startOwnerSync(OWNER_A_KEY);
+    useUsersStore.getState().startOwnerSync(OWNER_B_KEY);
+
+    const applied = useUsersStore
+      .getState()
+      .replaceUsersForOwner(OWNER_A_KEY, [createUser({ uuid: USER_A_UUID })]);
+
+    expect(applied).toBe(false);
+    expect(useUsersStore.getState().ownerKey).toBe(OWNER_B_KEY);
+    expect(useUsersStore.getState().userIds).toEqual([]);
+  });
+});
+
+describe("user adapters", () => {
+  it("adapts Workspace user DTO fields", () => {
+    const user = adaptWorkspaceMessengerUserDto(createUserDto());
+
+    expect(user).toMatchObject({
+      uuid: USER_A_UUID,
+      username: "alice",
+      firstName: "Alice",
+      lastName: "Smith",
+      displayName: "Alice Smith",
+      email: "alice@example.com",
+      avatarUrl: null,
+      status: "active",
+      statusEmoji: "test_tube",
+      statusText: "Testing",
+      lastPingAt: DATE_2,
+      createdAt: DATE_1,
+      updatedAt: DATE_2,
     });
   });
 
-  // clear() is called on logout / instance switch to avoid data leaks.
-  describe("clear", () => {
-    // Both the user Map and email index must be wiped.
-    it("empties all user data", () => {
-      useUsersStore.getState().mergeUser({ user_id: 1, full_name: "A", email: "a@t.com" });
-      useUsersStore.getState().clear();
+  it("falls back to username when first and last name are missing", () => {
+    const user = adaptWorkspaceMessengerUserDto(
+      createUserDto({
+        username: "fallback-name",
+        first_name: " ",
+        last_name: null,
+      }),
+    );
 
-      expect(useUsersStore.getState().users.size).toBe(0);
-      expect(useUsersStore.getState().emailToUserId.size).toBe(0);
+    expect(user.displayName).toBe("fallback-name");
+  });
+
+  it("keeps nullable Workspace profile fields as null", () => {
+    const user = adaptWorkspaceMessengerUserDto(
+      createUserDto({
+        first_name: null,
+        last_name: null,
+        email: null,
+        status_emoji: null,
+        status_text: null,
+      }),
+    );
+
+    expect(user.firstName).toBeNull();
+    expect(user.lastName).toBeNull();
+    expect(user.email).toBeNull();
+    expect(user.statusEmoji).toBeNull();
+    expect(user.statusText).toBeNull();
+  });
+
+  it("defaults missing custom status fields to null", () => {
+    const dto = createUserDto();
+    delete dto.status_emoji;
+    delete dto.status_text;
+
+    const user = adaptWorkspaceMessengerUserDto(dto);
+
+    expect(user.statusEmoji).toBeNull();
+    expect(user.statusText).toBeNull();
+  });
+});
+
+describe("user sync", () => {
+  beforeEach(resetStore);
+  afterEach(resetStore);
+
+  it("refreshes users through the Workspace users endpoint", async () => {
+    const runtimeContext = createRuntimeContext();
+    const getUsers = vi.fn(() =>
+      Promise.resolve([
+        createUserDto({ uuid: USER_A_UUID }),
+        createUserDto({ uuid: USER_B_UUID, username: "bob", first_name: "Bob" }),
+      ]),
+    );
+
+    await expect(
+      refreshUsers({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        client: { getUsers },
+      }),
+    ).resolves.toEqual({ status: "applied" });
+
+    const state = useUsersStore.getState();
+    expect(state.loadStatus).toBe("ready");
+    expect(state.error).toBeNull();
+    expect(state.userIds).toEqual([USER_A_UUID, USER_B_UUID]);
+    expect(state.getUser(USER_B_UUID)?.displayName).toBe("Bob Smith");
+    expect(getUsers).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accessToken: "access-token-a",
+        devTargetOrigin: "https://org-a.example.test",
+      }),
+    );
+  });
+
+  it("stores refresh errors without changing the current users", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+    useUsersStore.getState().startOwnerSync(ownerKey);
+    useUsersStore.getState().replaceUsersForOwner(ownerKey, [createUser({ uuid: USER_A_UUID })]);
+
+    await expect(
+      refreshUsers({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        client: { getUsers: () => Promise.reject(new Error("users unavailable")) },
+      }),
+    ).resolves.toEqual({ status: "failed", error: "users unavailable" });
+
+    const state = useUsersStore.getState();
+    expect(state.loadStatus).toBe("error");
+    expect(state.error).toBe("users unavailable");
+    expect(state.userIds).toEqual([USER_A_UUID]);
+  });
+
+  it("leaves a new owner empty with an error when users request fails", async () => {
+    const runtimeA = createRuntimeContext();
+    const runtimeB = createRuntimeContext({
+      accountId: "account-b",
+      instanceId: "instance-b",
+      organizationId: "organization-b",
+      projectId: "55555555-5555-4555-8555-555555555555",
+      userUuid: USER_B_UUID,
+      accessToken: "access-token-b",
     });
+    const ownerA = workspaceRuntimeOwnerKey(runtimeA);
+    const ownerB = workspaceRuntimeOwnerKey(runtimeB);
+    useUsersStore.getState().startOwnerSync(ownerA);
+    useUsersStore.getState().replaceUsersForOwner(ownerA, [createUser({ uuid: USER_A_UUID })]);
+
+    await expect(
+      refreshUsers({
+        runtimeContext: runtimeB,
+        getRuntimeContext: () => runtimeB,
+        client: { getUsers: () => Promise.reject(new Error("users unavailable")) },
+      }),
+    ).resolves.toEqual({ status: "failed", error: "users unavailable" });
+
+    const state = useUsersStore.getState();
+    expect(state.ownerKey).toBe(ownerB);
+    expect(state.userIds).toEqual([]);
+    expect(state.usersById[USER_A_UUID]).toBeUndefined();
+    expect(state.loadStatus).toBe("error");
+    expect(state.error).toBe("users unavailable");
+  });
+
+  it("rejects legacy numeric ids before applying bootstrap users", () => {
+    const legacyUserDto = {
+      ...createUserDto(),
+      uuid: 123,
+    } as unknown as WorkspaceMessengerUserDto;
+
+    expect(applyBootstrapUsers([legacyUserDto])).toEqual({
+      status: "failed",
+      error: "Expected valid messenger users response item at index 0",
+    });
+
+    const state = useUsersStore.getState();
+    expect(state.userIds).toEqual([]);
+    expect(state.loadStatus).toBe("error");
+    expect(state.error).toBe("Expected valid messenger users response item at index 0");
+  });
+
+  it("loads one user by uuid and upserts it", async () => {
+    const runtimeContext = createRuntimeContext();
+    const getUser = vi.fn(() =>
+      Promise.resolve(createUserDto({ uuid: USER_B_UUID, username: "bob", first_name: "Bob" })),
+    );
+
+    await expect(
+      loadUserByUuid(
+        {
+          runtimeContext,
+          getRuntimeContext: () => runtimeContext,
+          client: { getUser },
+        },
+        USER_B_UUID,
+      ),
+    ).resolves.toEqual({ status: "applied" });
+
+    expect(useUsersStore.getState().loadStatus).toBe("ready");
+    expect(useUsersStore.getState().getUser(USER_B_UUID)?.username).toBe("bob");
+    expect(getUser).toHaveBeenCalledWith(expect.any(Object), USER_B_UUID);
+  });
+
+  it("does not apply a refresh response after the runtime owner changes", async () => {
+    const runtimeA = createRuntimeContext();
+    const runtimeB = createRuntimeContext({
+      accountId: "account-b",
+      instanceId: "instance-b",
+      organizationId: "organization-b",
+      projectId: "55555555-5555-4555-8555-555555555555",
+      userUuid: USER_B_UUID,
+      accessToken: "access-token-b",
+    });
+    let currentContext = runtimeA;
+    const usersRequest = createDeferred<WorkspaceMessengerUserDto[]>();
+
+    const refresh = refreshUsers({
+      runtimeContext: runtimeA,
+      getRuntimeContext: () => currentContext,
+      client: { getUsers: () => usersRequest.promise },
+    });
+
+    currentContext = runtimeB;
+    usersRequest.resolve([createUserDto({ uuid: USER_A_UUID })]);
+
+    await expect(refresh).resolves.toEqual({ status: "skipped", reason: "stale-owner" });
+    expect(useUsersStore.getState().userIds).toEqual([]);
+  });
+
+  it("does not apply a bootstrap users response for a stale owner", () => {
+    useUsersStore.getState().startOwnerSync(OWNER_A_KEY);
+    useUsersStore.getState().startOwnerSync(OWNER_B_KEY);
+
+    expect(
+      applyBootstrapUsers([createUserDto({ uuid: USER_A_UUID })], { ownerKey: OWNER_A_KEY }),
+    ).toEqual({ status: "skipped", reason: "stale-owner" });
+
+    expect(useUsersStore.getState().ownerKey).toBe(OWNER_B_KEY);
+    expect(useUsersStore.getState().userIds).toEqual([]);
+  });
+});
+
+describe("user realtime applier", () => {
+  beforeEach(resetStore);
+  afterEach(resetStore);
+
+  it("applies user.updated events to users store", () => {
+    const applier = createUserRealtimeApplier();
+    useUsersStore.getState().startOwnerSync(workspaceRuntimeOwnerKey(createRealtimeOwner()));
+    const user = createUserDto({ status: "idle", status_text: "Focus" });
+
+    applier.applyEvent(
+      {
+        epoch_version: 10,
+        type: "user",
+        kind: "user.updated",
+        user,
+      },
+      createRealtimeContext(),
+    );
+
+    expect(useUsersStore.getState().getUser(USER_A_UUID)).toEqual(
+      expect.objectContaining({
+        uuid: USER_A_UUID,
+        displayName: "Alice Smith",
+        status: "idle",
+        statusText: "Focus",
+      }),
+    );
+  });
+
+  it("skips user.updated when owner is stale or signal is aborted", () => {
+    const applier = createUserRealtimeApplier({
+      isOwnerCurrent: (owner) => owner.runtimeGeneration === 2,
+    });
+    const owner = createRealtimeOwner({ runtimeGeneration: 1 });
+
+    applier.applyEvent(
+      {
+        epoch_version: 10,
+        type: "user",
+        kind: "user.updated",
+        user: createUserDto({ username: "stale" }),
+      },
+      createRealtimeContext(owner),
+    );
+
+    const controller = new AbortController();
+    controller.abort();
+    applier.applyEvent(
+      {
+        epoch_version: 11,
+        type: "user",
+        kind: "user.updated",
+        user: createUserDto({ username: "aborted" }),
+      },
+      createRealtimeContext(createRealtimeOwner({ runtimeGeneration: 2 }), {
+        signal: controller.signal,
+      }),
+    );
+
+    expect(useUsersStore.getState().userIds).toEqual([]);
+  });
+
+  it("skips background user.updated events for another owner", () => {
+    const activeOwner = createRealtimeOwner();
+    const backgroundOwner = createRealtimeOwner({
+      accountId: "account-b",
+      instanceId: "instance-b",
+      organizationId: "organization-b",
+      projectId: "55555555-5555-4555-8555-555555555555",
+      userUuid: USER_B_UUID,
+    });
+    const applier = createUserRealtimeApplier();
+    useUsersStore.getState().startOwnerSync(workspaceRuntimeOwnerKey(activeOwner));
+
+    applier.applyEvent(
+      {
+        epoch_version: 12,
+        type: "user",
+        kind: "user.updated",
+        user: createUserDto({ uuid: USER_B_UUID, username: "background" }),
+      },
+      createRealtimeContext(backgroundOwner, { surface: "background" }),
+    );
+
+    expect(useUsersStore.getState().userIds).toEqual([]);
+  });
+
+  it("skips active user.updated events for a stale owner key", () => {
+    const activeOwner = createRealtimeOwner();
+    const staleOwner = createRealtimeOwner({
+      accountId: "account-b",
+      instanceId: "instance-b",
+      organizationId: "organization-b",
+      projectId: "55555555-5555-4555-8555-555555555555",
+      userUuid: USER_B_UUID,
+    });
+    const applier = createUserRealtimeApplier();
+    useUsersStore.getState().startOwnerSync(workspaceRuntimeOwnerKey(activeOwner));
+
+    applier.applyEvent(
+      {
+        epoch_version: 13,
+        type: "user",
+        kind: "user.updated",
+        user: createUserDto({ uuid: USER_B_UUID, username: "stale" }),
+      },
+      createRealtimeContext(staleOwner),
+    );
+
+    expect(useUsersStore.getState().userIds).toEqual([]);
+  });
+});
+
+describe("workspace presence reporter", () => {
+  it("reports active presence on start and interval until cleanup", async () => {
+    vi.useFakeTimers();
+    type InvokePresence = NonNullable<
+      Parameters<typeof startWorkspacePresenceReporter>[0]["invokePresence"]
+    >;
+    const invokePresence = vi.fn<InvokePresence>(() => Promise.resolve());
+
+    try {
+      const cleanup = startWorkspacePresenceReporter({
+        clientOptions: { accessToken: "access-token" },
+        userUuid: USER_A_UUID,
+        reportIntervalMs: 1_000,
+        invokePresence,
+      });
+
+      expect(invokePresence).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(invokePresence).toHaveBeenCalledTimes(4);
+
+      cleanup();
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(invokePresence).toHaveBeenCalledTimes(4);
+      expect(invokePresence.mock.calls[0]![0].signal?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("user selectors", () => {
+  it("resolves display name with username and fallback", () => {
+    expect(selectUserDisplayName(createUser({ displayName: "Alice Smith" }))).toBe("Alice Smith");
+    expect(selectUserDisplayName(createUser({ displayName: " ", username: "alice" }))).toBe(
+      "alice",
+    );
+    expect(selectUserDisplayName(null, "Missing")).toBe("Missing");
+  });
+
+  it("maps presence status to visual state", () => {
+    expect(resolveUserPresenceVisual("active")).toBe("active");
+    expect(resolveUserPresenceVisual("idle")).toBe("idle");
+    expect(resolveUserPresenceVisual("do_not_disturb")).toBe("idle");
+    expect(resolveUserPresenceVisual("offline")).toBe("offline");
+    expect(resolveUserPresenceVisual(null)).toBeNull();
+  });
+
+  it("selects users by ids without creating phantom users", () => {
+    const usersById = {
+      [USER_A_UUID]: createUser({ uuid: USER_A_UUID }),
+      [USER_B_UUID]: createUser({ uuid: USER_B_UUID }),
+    };
+
+    expect(selectUsersByIds(usersById, [USER_B_UUID, USER_C_UUID, USER_A_UUID])).toEqual([
+      usersById[USER_B_UUID],
+      usersById[USER_A_UUID],
+    ]);
+  });
+
+  it("counts only active users as online", () => {
+    const usersById = {
+      [USER_A_UUID]: createUser({ uuid: USER_A_UUID, status: "active" }),
+      [USER_B_UUID]: createUser({ uuid: USER_B_UUID, status: "idle" }),
+      [USER_C_UUID]: createUser({ uuid: USER_C_UUID, status: "do_not_disturb" }),
+    };
+
+    expect(selectOnlineUserCount(usersById, [USER_A_UUID, USER_B_UUID, USER_C_UUID])).toBe(1);
   });
 });

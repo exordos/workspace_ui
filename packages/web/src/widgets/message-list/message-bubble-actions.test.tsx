@@ -149,30 +149,21 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(onDelete).toHaveBeenCalledWith(expect.objectContaining({ id: 101 }));
   });
 
-  it("hides edit action when own message edit time has expired", async () => {
-    useUsersStore.getState().setCurrentUserMessageEditPolicy({
-      allowMessageEditing: true,
-      messageContentEditLimitSeconds: 60,
-    });
-
-    render(<MessageBubble message={createMessage({ timestamp: 1000 })} isOwn />);
-
-    fireEvent.contextMenu(screen.getByTestId("message-101"));
-    expect(await screen.findByRole("menuitem", { name: /(delete|удал)/i })).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: /(edit|редакт)/i })).not.toBeInTheDocument();
-  });
-
-  it("rechecks edit visibility when opening the message menu", async () => {
-    const nowSeconds = 1_781_620_000;
-    const dateNow = vi.spyOn(Date, "now").mockReturnValue(nowSeconds * 1000);
-    useUsersStore.getState().setCurrentUserMessageEditPolicy({
+  it("hides edit action after the legacy message edit window expires", async () => {
+    const nowMs = Date.parse("2026-07-02T12:00:00Z");
+    vi.spyOn(Date, "now").mockReturnValue(nowMs);
+    const nowSeconds = Math.floor(nowMs / 1000);
+    useChatListStore.getState().setCurrentUserMessageEditPolicy({
       allowMessageEditing: true,
       messageContentEditLimitSeconds: 60,
     });
 
     render(
       <MessageBubble
-        message={createMessage({ timestamp: nowSeconds - 59 })}
+        message={createMessage({
+          sender_id: 77,
+          timestamp: nowSeconds - 61,
+        })}
         isOwn
         callbacks={{
           onEdit: vi.fn(),
@@ -181,14 +172,9 @@ describe("MessageBubble edit/delete actions parity", () => {
       />,
     );
 
-    dateNow.mockReturnValue((nowSeconds + 2) * 1000);
-
     fireEvent.contextMenu(screen.getByTestId("message-101"));
-
     expect(await screen.findByRole("menuitem", { name: /(delete|удал)/i })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /(edit|редакт)/i })).not.toBeInTheDocument();
-
-    dateNow.mockRestore();
   });
 
   it("dispatches select action from context menu", async () => {
@@ -478,7 +464,7 @@ describe("MessageBubble edit/delete actions parity", () => {
 
   it("renders presence indicator for author avatar when presence is known", () => {
     const now = Math.floor(Date.now() / 1000);
-    useUsersStore.getState().mergeUser(
+    useUsersStore.getState().upsertUser(
       createUser({
         user_id: 77,
         full_name: "Alice",
@@ -492,11 +478,13 @@ describe("MessageBubble edit/delete actions parity", () => {
   });
 
   it("shows author custom status next to sender name", () => {
-    useUsersStore.getState().mergeUser({
-      user_id: 77,
-      full_name: "Alice",
-      status: { text: "Deep work", emojiName: "speech_balloon", away: false },
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 77,
+        full_name: "Alice",
+        status: { text: "Deep work", emojiName: "speech_balloon", away: false },
+      }),
+    );
 
     render(<MessageBubble message={createMessage()} isOwn={false} />);
 

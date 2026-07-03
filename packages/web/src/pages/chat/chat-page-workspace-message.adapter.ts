@@ -2,9 +2,10 @@ import type {
   MessengerConversation,
   MessengerMessage,
   MessengerTopic,
-  MessengerUser,
   MessengerUuid,
 } from "~/entities/messenger/messenger.types";
+import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
+import type { User, UsersById } from "~/entities/user/user.types";
 import type { MockMessage } from "~/shared/api/zulip.types";
 
 export const WORKSPACE_CHAT_VISUAL_CURRENT_USER_ID = 1;
@@ -15,9 +16,11 @@ const VISUAL_ID_MIN = 1_000;
 const VISUAL_ID_RANGE = 1_000_000_000;
 const UNKNOWN_SENDER_NAME = "Unknown user";
 
+type WorkspaceVisualMessage = MockMessage & { authorUuid: MessengerUuid };
+
 export interface WorkspaceChatMessageListInput {
   messages: readonly MessengerMessage[];
-  usersById: Readonly<Record<MessengerUuid, MessengerUser>>;
+  usersById: Readonly<UsersById>;
   conversation: MessengerConversation | null;
   streamName: string | null;
   topicsById?: Readonly<Record<MessengerUuid, MessengerTopic>>;
@@ -64,21 +67,11 @@ export function workspaceChatVisualSenderId(userUuid: MessengerUuid, isOwn: bool
   return id === WORKSPACE_CHAT_VISUAL_CURRENT_USER_ID ? VISUAL_ID_MIN : id;
 }
 
-function resolveSenderName(user: MessengerUser | undefined): string {
+function resolveSenderName(user: User | undefined): string {
   if (user == null) {
     return UNKNOWN_SENDER_NAME;
   }
-
-  const fullName = [user.firstName, user.lastName]
-    .map((part) => part?.trim() ?? "")
-    .filter((part) => part.length > 0)
-    .join(" ");
-  if (fullName.length > 0) {
-    return fullName;
-  }
-
-  const username = user.username.trim();
-  return username.length > 0 ? username : UNKNOWN_SENDER_NAME;
+  return selectUserDisplayName(user, UNKNOWN_SENDER_NAME);
 }
 
 function resolveTopicLabel(
@@ -99,7 +92,7 @@ function resolveTopicLabel(
 function adaptMessageToVisualMessage(
   message: MessengerMessage,
   input: WorkspaceChatMessageListInput,
-): MockMessage {
+): WorkspaceVisualMessage {
   // This is a temporary adapter for the old layout; it does not become the new domain contract.
   const sender = input.usersById[message.authorUuid];
   const subject = resolveTopicLabel(message, input.conversation, input.topicsById);
@@ -107,6 +100,7 @@ function adaptMessageToVisualMessage(
 
   return {
     id: workspaceChatVisualMessageId(message.uuid),
+    authorUuid: message.authorUuid,
     sender_id: workspaceChatVisualSenderId(message.authorUuid, message.isOwn),
     sender_full_name: resolveSenderName(sender),
     stream_id: stableVisualId(`stream:${message.streamUuid}`),

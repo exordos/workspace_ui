@@ -5,7 +5,6 @@ import type {
   WorkspaceMessengerStreamBindingDto,
   WorkspaceMessengerStreamDto,
   WorkspaceMessengerTopicDto,
-  WorkspaceMessengerUserDto,
 } from "~/shared/api/messenger.types";
 import {
   adaptMessengerFolder,
@@ -13,7 +12,6 @@ import {
   adaptMessengerStream,
   adaptMessengerStreamBinding,
   adaptMessengerTopic,
-  adaptMessengerUser,
   adaptStreamToMessengerConversation,
   adaptTopicToMessengerConversation,
 } from "./messenger-adapters.lib";
@@ -95,31 +93,7 @@ const messageDto: WorkspaceMessengerMessageDto = {
   updated_at: DATE,
 };
 
-const userDto: WorkspaceMessengerUserDto = {
-  uuid: USER_UUID,
-  username: "alice",
-  source: "iam",
-  status: "active",
-  email: "alice@example.test",
-  created_at: DATE,
-  updated_at: DATE,
-};
-
 describe("messenger adapters", () => {
-  it("normalizes missing user name parts to null", () => {
-    expect(adaptMessengerUser(userDto)).toEqual({
-      uuid: USER_UUID,
-      username: "alice",
-      status: "active",
-      firstName: null,
-      lastName: null,
-      email: "alice@example.test",
-      lastPingAt: null,
-      createdAt: DATE,
-      updatedAt: DATE,
-    });
-  });
-
   it("maps streams and topics to domain objects", () => {
     expect(adaptMessengerStream(streamDto)).toMatchObject({
       uuid: STREAM_UUID,

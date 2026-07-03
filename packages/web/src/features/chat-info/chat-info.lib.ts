@@ -1,4 +1,5 @@
-import type { UserRecord } from "~/entities/user/user.model";
+import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
+import type { User } from "~/entities/user/user.types";
 import { areCustomProfileDataEqual } from "~/shared/lib/user-profile-fields.lib";
 import type {
   ChatInfoContext,
@@ -6,6 +7,15 @@ import type {
   ChatInfoMember,
   ChatInfoTopic,
 } from "./chat-info.types";
+
+export interface ChatInfoResolvedUser {
+  legacyUserId: number;
+  user: User;
+}
+
+export function normalizeChatInfoUserIds(userIds: number[]): number[] {
+  return Array.from(new Set(userIds));
+}
 
 // chat-info helpers: context keys, payload build, equality checks.
 export function hasChatInfoContext(context: ChatInfoContext): boolean {
@@ -20,47 +30,38 @@ export function getChatInfoNetworkKey(context: ChatInfoContext): string {
   if (context.kind === "stream") {
     return `stream:${context.instanceId}:${context.streamId}`;
   }
-  const participantKey = [...context.participantIds].sort((a, b) => a - b).join(",");
+  const participantKey = normalizeChatInfoUserIds(context.participantIds)
+    .sort((a, b) => a - b)
+    .join(",");
   return `dm:${context.instanceId}:${participantKey}`;
 }
 
-function mapMember(user: UserRecord): ChatInfoMember {
+function mapMember(record: ChatInfoResolvedUser): ChatInfoMember {
+  const { legacyUserId, user } = record;
   return {
-    userId: user.user_id,
-    fullName: user.full_name?.trim() || "",
+    userId: legacyUserId,
+    fullName: selectUserDisplayName(user, user.uuid),
     email: user.email ?? "",
-    avatarUrl: user.avatar_url ?? null,
-    isOnline: user.presence?.status === "active",
-    profileData: user.profile_data,
-  };
-}
-
-/** Stream channel member list: no custom profile fields (shown only in DM info / full profile). */
-function mapStreamMember(user: UserRecord): ChatInfoMember {
-  return {
-    userId: user.user_id,
-    fullName: user.full_name?.trim() || "",
-    email: user.email ?? "",
-    avatarUrl: user.avatar_url ?? null,
-    isOnline: user.presence?.status === "active",
+    avatarUrl: user.avatarUrl,
+    isOnline: user.status === "active",
   };
 }
 
 export function buildDmChatInfoData(
   dmName: string,
-  participants: UserRecord[],
-  memberCount = participants.length,
+  participants: ChatInfoResolvedUser[],
+  memberCount?: number,
 ): ChatInfoData {
   // Dedupe members; online count only from loaded user records.
-  const uniqueParticipants = new Map<number, UserRecord>();
+  const uniqueParticipants = new Map<number, ChatInfoResolvedUser>();
   for (const participant of participants) {
-    uniqueParticipants.set(participant.user_id, participant);
+    uniqueParticipants.set(participant.legacyUserId, participant);
   }
   const members = Array.from(uniqueParticipants.values()).map(mapMember);
   return {
     type: "dm",
     name: dmName,
-    memberCount: Math.max(memberCount, members.length),
+    memberCount: memberCount ?? members.length,
     onlineCount: members.filter((member) => member.isOnline).length,
     members,
     description: null,
@@ -71,7 +72,7 @@ export function buildDmChatInfoData(
 export function buildStreamChatInfoData(
   streamName: string,
   memberIds: number[],
-  users: UserRecord[],
+  users: ChatInfoResolvedUser[],
   isMuted: boolean,
   metadata?: {
     description?: string | null;
@@ -79,7 +80,12 @@ export function buildStreamChatInfoData(
   },
 ): ChatInfoData {
   // Stream memberCount follows server memberIds, not loaded user subset.
-  const members = users.map(mapStreamMember);
+  const uniqueMemberIds = normalizeChatInfoUserIds(memberIds);
+  const uniqueUsers = new Map<number, ChatInfoResolvedUser>();
+  for (const user of users) {
+    uniqueUsers.set(user.legacyUserId, user);
+  }
+  const members = Array.from(uniqueUsers.values()).map(mapMember);
   const description = metadata?.description?.trim() ? metadata.description.trim() : null;
   const topics =
     metadata?.topics?.map((topic) => ({
@@ -89,7 +95,7 @@ export function buildStreamChatInfoData(
   return {
     type: "stream",
     name: streamName,
-    memberCount: memberIds.length,
+    memberCount: uniqueMemberIds.length,
     onlineCount: members.filter((member) => member.isOnline).length,
     members,
     description,

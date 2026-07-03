@@ -3,6 +3,7 @@ import {
   selectWorkspaceMessagesForConversation,
   useWorkspaceMessageStore,
 } from "~/entities/message/message.model";
+import { useMessengerBackgroundProjectionStore } from "~/entities/messenger/messenger-background-projection.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type {
   WorkspaceMessengerFolderDto,
@@ -16,7 +17,10 @@ import type {
   WorkspaceRealtimeEventContext,
   WorkspaceRealtimeRuntimeOwner,
 } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
-import { createMessengerRealtimeActiveApplier } from "./messenger-realtime-applier.lib";
+import {
+  createMessengerRealtimeActiveApplier,
+  createMessengerRealtimeBackgroundApplier,
+} from "./messenger-realtime-applier.lib";
 import {
   selectMessengerSidebarFolders,
   selectMessengerSidebarStreams,
@@ -46,6 +50,7 @@ const MESSAGE_C = "cc10bcd3-8d5b-45bc-9960-40f1cf7a04de";
 const DATE = "2026-06-22T10:10:00Z";
 const DATE_MIDDLE = "2026-06-22T10:15:00Z";
 const DATE_LATER = "2026-06-22T10:20:00Z";
+type RealtimeUserPayload = Extract<WorkspaceRealtimeEvent, { kind: "user.updated" }>["user"];
 
 function createOwner(overrides: Partial<WorkspaceRealtimeRuntimeOwner> = {}) {
   return {
@@ -158,6 +163,24 @@ function createMessageDto(
   };
 }
 
+function createUserDto(overrides: Partial<RealtimeUserPayload> = {}): RealtimeUserPayload {
+  return {
+    uuid: USER_A,
+    username: "alice",
+    source: "iam",
+    status: "active",
+    status_emoji: null,
+    status_text: null,
+    first_name: "Alice",
+    last_name: "Smith",
+    email: "alice@example.com",
+    last_ping_at: DATE,
+    created_at: DATE,
+    updated_at: DATE,
+    ...overrides,
+  };
+}
+
 function createFolderDto(
   overrides: Partial<WorkspaceMessengerFolderDto> = {},
 ): WorkspaceMessengerFolderDto {
@@ -224,6 +247,7 @@ describe("messenger realtime active applier", () => {
   beforeEach(() => {
     useMessengerStore.getState().clear();
     useWorkspaceMessageStore.getState().clear();
+    useMessengerBackgroundProjectionStore.getState().clear();
   });
 
   it("applies message created, updated, and deleted events", () => {
@@ -657,6 +681,31 @@ describe("messenger realtime active applier", () => {
       { epochVersion: 22, reason: "unsupported_event" },
     ]);
     expect(useMessengerStore.getState().lastEpochVersion).toBe(22);
+  });
+
+  it("does not mark user realtime events as unsupported in messenger appliers", () => {
+    const activeContext = createContext();
+    const backgroundContext = createContext(createOwner(), { surface: "background" });
+    const activeApplier = createMessengerRealtimeActiveApplier();
+    const backgroundApplier = createMessengerRealtimeBackgroundApplier();
+    const event: WorkspaceRealtimeEvent = {
+      epoch_version: 23,
+      type: "user",
+      kind: "user.updated",
+      user: createUserDto(),
+    };
+    useMessengerStore.getState().startBootstrap(activeContext.ownerKey);
+
+    activeApplier.applyEvent(event, activeContext);
+    backgroundApplier.applyEvent(event, backgroundContext);
+
+    expect(useMessengerStore.getState().skippedRealtimeEvents).toEqual([]);
+    expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
+    expect(
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[
+        backgroundContext.ownerKey
+      ]?.skippedEvents,
+    ).toBeUndefined();
   });
 
   it("does not write active skipped events when owner is stale", () => {

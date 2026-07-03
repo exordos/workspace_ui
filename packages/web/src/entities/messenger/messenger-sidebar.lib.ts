@@ -1,3 +1,8 @@
+import {
+  resolveUserPresenceVisual,
+  selectUserDisplayName,
+} from "~/entities/user/user-selectors.lib";
+import type { User, UsersById } from "~/entities/user/user.types";
 import { t } from "~/i18n/i18n";
 import {
   workspaceMessengerStreamRoute,
@@ -18,7 +23,6 @@ import type {
   MessengerSidebarTopicItem,
   MessengerStream,
   MessengerTopic,
-  MessengerUser,
   MessengerUuid,
 } from "./messenger.types";
 
@@ -26,6 +30,7 @@ const EMPTY_SIDEBAR_STREAMS: MessengerSidebarStreamItem[] = [];
 const EMPTY_SIDEBAR_FOLDERS: MessengerSidebarFolderView[] = [];
 const EMPTY_SIDEBAR_TOPICS: MessengerSidebarTopicItem[] = [];
 const EMPTY_SIDEBAR_MESSAGES_BY_ID: Record<MessengerUuid, MessengerMessage> = {};
+const EMPTY_SIDEBAR_USERS_BY_ID: UsersById = {};
 const EMPTY_SIDEBAR_ACTIVITY_COUNTS: MessengerSidebarActivityCounts = {
   inboxCount: null,
   mentionsCount: null,
@@ -39,6 +44,7 @@ export interface MessengerSidebarSelectorOptions {
   currentUserUuid?: MessengerUuid | null;
   selectedFolderUuid?: string | null;
   messagesById?: Record<MessengerUuid, MessengerMessage>;
+  usersById?: UsersById;
 }
 
 interface SidebarStreamsCacheEntry {
@@ -47,7 +53,7 @@ interface SidebarStreamsCacheEntry {
   topicIds: MessengerUuid[];
   topicsById: MessengerStoreState["topicsById"];
   messagesById: Record<MessengerUuid, MessengerMessage>;
-  usersById: MessengerStoreState["usersById"];
+  usersById: UsersById;
   currentUserUuid: MessengerUuid | null;
   foldersById: MessengerStoreState["foldersById"];
   organizationId: string;
@@ -79,11 +85,11 @@ let sidebarActivityCountsCache: SidebarActivityCountsCacheEntry | null = null;
 
 // The sidebar recalculates often, so keep a simple cache keyed by store references.
 // If streams/topics/folders did not change, React receives the same array and avoids redundant rerenders.
-function compareNullableStrings(a: string | null, b: string | null): number {
+function compareNullableStringsDesc(a: string | null, b: string | null): number {
   if (a == null && b == null) return 0;
   if (a == null) return 1;
   if (b == null) return -1;
-  return a.localeCompare(b);
+  return b.localeCompare(a);
 }
 
 function compareSidebarStreams(
@@ -93,7 +99,10 @@ function compareSidebarStreams(
   if (a.pinnedAt != null && b.pinnedAt == null) return -1;
   if (a.pinnedAt == null && b.pinnedAt != null) return 1;
 
-  const activityCompare = compareNullableStrings(b.lastMessageCreatedAt, a.lastMessageCreatedAt);
+  const activityCompare = compareNullableStringsDesc(
+    a.lastMessageCreatedAt,
+    b.lastMessageCreatedAt,
+  );
   if (activityCompare !== 0) return activityCompare;
 
   const orderIndexCompare =
@@ -103,24 +112,15 @@ function compareSidebarStreams(
   return 0;
 }
 
-function resolveMessengerUserDisplayName(user: MessengerUser | undefined): string | undefined {
+function resolveUserDisplayName(user: User | undefined): string | undefined {
   if (user == null) return undefined;
-
-  const fullName = [user.firstName, user.lastName]
-    .map((part) => part?.trim() ?? "")
-    .filter((part) => part.length > 0)
-    .join(" ")
-    .trim();
-  if (fullName.length > 0) return fullName;
-
-  const username = user.username.trim();
-  return username.length > 0 ? username : undefined;
+  return selectUserDisplayName(user);
 }
 
 function previewFromMessage(
   messageUuid: MessengerUuid | null,
   messagesById: Record<MessengerUuid, MessengerMessage>,
-  usersById: MessengerStoreState["usersById"],
+  usersById: UsersById,
   currentUserUuid: MessengerUuid | null,
 ): MessengerSidebarMessagePreview | null {
   if (messageUuid == null) return null;
@@ -131,7 +131,7 @@ function previewFromMessage(
   const senderName =
     message.authorUuid === currentUserUuid
       ? t("common.you")
-      : resolveMessengerUserDisplayName(usersById[message.authorUuid]);
+      : resolveUserDisplayName(usersById[message.authorUuid]);
   return {
     messageUuid: message.uuid,
     text: message.markdown,
@@ -167,7 +167,7 @@ function topicItemFromTopic(input: {
   projectId: string;
   topic: MessengerTopic;
   messagesById: Record<MessengerUuid, MessengerMessage>;
-  usersById: MessengerStoreState["usersById"];
+  usersById: UsersById;
   currentUserUuid: MessengerUuid | null;
 }): MessengerSidebarTopicItem {
   // topic:<streamUuid>:<topicUuid> is a temporary frontend key for row selection.
@@ -201,7 +201,7 @@ function streamItemFromStream(input: {
   stream: MessengerStream;
   topics: MessengerSidebarTopicItem[];
   messagesById: Record<MessengerUuid, MessengerMessage>;
-  usersById: MessengerStoreState["usersById"];
+  usersById: UsersById;
   currentUserUuid: MessengerUuid | null;
   unreadCount?: number;
   pinnedAt?: string | null;
@@ -209,13 +209,23 @@ function streamItemFromStream(input: {
 }): MessengerSidebarStreamItem {
   // stream:<uuid> is the same kind of key for a stream row in the sidebar.
   // Routes and future requests still use the real backend stream uuid.
+  const directUser =
+    selectWorkspaceStreamConversationUiKind(input.stream) === "directPrivate" &&
+    input.stream.directUserUuid != null
+      ? input.usersById[input.stream.directUserUuid]
+      : undefined;
+  const uiKind = selectWorkspaceStreamConversationUiKind(input.stream);
+
   return {
     id: `stream:${input.stream.uuid}`,
     streamUuid: input.stream.uuid,
-    title: input.stream.name,
+    title:
+      uiKind === "directPrivate" && input.stream.directUserUuid != null
+        ? selectUserDisplayName(directUser, input.stream.name)
+        : input.stream.name,
     audience: input.stream.audience,
     isPrivate: input.stream.isPrivate,
-    uiKind: selectWorkspaceStreamConversationUiKind(input.stream),
+    uiKind,
     unreadCount: input.unreadCount ?? input.stream.unreadCount,
     pinnedAt: input.pinnedAt ?? null,
     orderIndex: input.orderIndex ?? null,
@@ -231,6 +241,11 @@ function streamItemFromStream(input: {
       input.usersById,
       input.currentUserUuid,
     ),
+    avatarUrl: uiKind === "directPrivate" ? (directUser?.avatarUrl ?? null) : undefined,
+    presence:
+      uiKind === "directPrivate" ? resolveUserPresenceVisual(directUser?.status) : undefined,
+    statusEmoji: uiKind === "directPrivate" ? (directUser?.statusEmoji ?? null) : undefined,
+    statusText: uiKind === "directPrivate" ? (directUser?.statusText ?? null) : undefined,
     updatedAt: input.stream.updatedAt,
     lastMessageCreatedAt: latestMessageCreatedAt(
       [input.stream.lastMessageUuid, ...input.topics.map((topic) => topic.preview?.messageUuid)],
@@ -244,20 +259,29 @@ function streamItemFromConversation(input: {
   projectId: string;
   conversation: MessengerConversation;
   messagesById: Record<MessengerUuid, MessengerMessage>;
-  usersById: MessengerStoreState["usersById"];
+  usersById: UsersById;
   currentUserUuid: MessengerUuid | null;
   unreadCount?: number;
   pinnedAt?: string | null;
   orderIndex?: number | null;
   updatedAt?: string | null;
 }): MessengerSidebarStreamItem {
+  const uiKind = selectWorkspaceConversationUiKind(input.conversation);
+  const directUser =
+    uiKind === "directPrivate" && input.conversation.directUserUuid != null
+      ? input.usersById[input.conversation.directUserUuid]
+      : undefined;
+
   return {
     id: input.conversation.id,
     streamUuid: input.conversation.streamUuid,
-    title: input.conversation.title,
+    title:
+      uiKind === "directPrivate" && input.conversation.directUserUuid != null
+        ? selectUserDisplayName(directUser, input.conversation.title)
+        : input.conversation.title,
     audience: input.conversation.audience,
     isPrivate: input.conversation.isPrivate,
-    uiKind: selectWorkspaceConversationUiKind(input.conversation),
+    uiKind,
     unreadCount: input.unreadCount ?? input.conversation.unreadCount,
     pinnedAt: input.pinnedAt ?? null,
     orderIndex: input.orderIndex ?? null,
@@ -273,6 +297,11 @@ function streamItemFromConversation(input: {
       input.usersById,
       input.currentUserUuid,
     ),
+    avatarUrl: uiKind === "directPrivate" ? (directUser?.avatarUrl ?? null) : undefined,
+    presence:
+      uiKind === "directPrivate" ? resolveUserPresenceVisual(directUser?.status) : undefined,
+    statusEmoji: uiKind === "directPrivate" ? (directUser?.statusEmoji ?? null) : undefined,
+    statusText: uiKind === "directPrivate" ? (directUser?.statusText ?? null) : undefined,
     updatedAt: input.updatedAt ?? "",
     lastMessageCreatedAt: messageCreatedAt(input.conversation.lastMessageUuid, input.messagesById),
   };
@@ -284,6 +313,7 @@ function topicsForStream(input: {
   state: MessengerStoreState;
   streamUuid: MessengerUuid;
   messagesById: Record<MessengerUuid, MessengerMessage>;
+  usersById: UsersById;
   currentUserUuid: MessengerUuid | null;
 }): MessengerSidebarTopicItem[] {
   // Topics currently live in a flat store list, so this links them to the relevant stream.
@@ -296,7 +326,7 @@ function topicsForStream(input: {
         projectId: input.projectId,
         topic,
         messagesById: input.messagesById,
-        usersById: input.state.usersById,
+        usersById: input.usersById,
         currentUserUuid: input.currentUserUuid,
       }),
     );
@@ -312,13 +342,14 @@ export function selectMessengerSidebarStreams(
   const selectedFolderUuid = options.selectedFolderUuid ?? null;
   const currentUserUuid = options.currentUserUuid ?? null;
   const messagesById = options.messagesById ?? EMPTY_SIDEBAR_MESSAGES_BY_ID;
+  const usersById = options.usersById ?? EMPTY_SIDEBAR_USERS_BY_ID;
   if (
     sidebarStreamsCache?.streamIds === state.streamIds &&
     sidebarStreamsCache.streamsById === state.streamsById &&
     sidebarStreamsCache.topicIds === state.topicIds &&
     sidebarStreamsCache.topicsById === state.topicsById &&
     sidebarStreamsCache.messagesById === messagesById &&
-    sidebarStreamsCache.usersById === state.usersById &&
+    sidebarStreamsCache.usersById === usersById &&
     sidebarStreamsCache.currentUserUuid === currentUserUuid &&
     sidebarStreamsCache.foldersById === state.foldersById &&
     sidebarStreamsCache.organizationId === options.organizationId &&
@@ -341,7 +372,7 @@ export function selectMessengerSidebarStreams(
               projectId: options.projectId,
               stream,
               messagesById,
-              usersById: state.usersById,
+              usersById,
               currentUserUuid,
               unreadCount: item.unreadCount,
               pinnedAt: item.pinnedAt,
@@ -352,6 +383,7 @@ export function selectMessengerSidebarStreams(
                 state,
                 streamUuid: stream.uuid,
                 messagesById,
+                usersById,
                 currentUserUuid,
               }),
             });
@@ -364,7 +396,7 @@ export function selectMessengerSidebarStreams(
             projectId: options.projectId,
             conversation,
             messagesById,
-            usersById: state.usersById,
+            usersById,
             currentUserUuid,
             unreadCount: item.unreadCount,
             pinnedAt: item.pinnedAt,
@@ -383,7 +415,7 @@ export function selectMessengerSidebarStreams(
             projectId: options.projectId,
             stream,
             messagesById,
-            usersById: state.usersById,
+            usersById,
             currentUserUuid,
             topics: topicsForStream({
               organizationId: options.organizationId,
@@ -391,6 +423,7 @@ export function selectMessengerSidebarStreams(
               state,
               streamUuid: stream.uuid,
               messagesById,
+              usersById,
               currentUserUuid,
             }),
           }),
@@ -403,7 +436,7 @@ export function selectMessengerSidebarStreams(
     topicIds: state.topicIds,
     topicsById: state.topicsById,
     messagesById,
-    usersById: state.usersById,
+    usersById,
     currentUserUuid,
     foldersById: state.foldersById,
     organizationId: options.organizationId,

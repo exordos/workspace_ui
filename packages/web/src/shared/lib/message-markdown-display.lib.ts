@@ -18,6 +18,7 @@ import { stripHtml } from "~/shared/lib/html";
 import {
   injectZulipMentionPlaceholders,
   restoreZulipMentionPlaceholders,
+  type ResolveZulipMention,
 } from "~/shared/lib/message-zulip-mentions.lib";
 import { renderZulipQuoteBlocksInMarkdown } from "~/shared/lib/message-zulip-quote.lib";
 import {
@@ -244,8 +245,8 @@ function finalizeRenderedQuoteMarkdownHtml(
 }
 
 export interface MessageBodyDisplayOptions {
-  /** Resolves `@**DisplayName**` to a user id for client-side mention spans. Wildcards (`@**all**`, …) do not use this. */
-  resolveUserMention?: (displayName: string) => number | null;
+  /** Resolves `@**DisplayName**` for client-side mention spans. Wildcards (`@**all**`, …) do not use this. */
+  resolveUserMention?: ResolveZulipMention;
   /** Resolves `#**Channel**` syntax to canonical stream metadata for in-app links. */
   resolveStreamByName?: (streamName: string) => ResolvedStreamReference | null;
   /** True when the body definitely came from Zulip markdown mode (`apply_markdown=false`). */

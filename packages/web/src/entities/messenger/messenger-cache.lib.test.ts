@@ -24,7 +24,6 @@ function createEmptyPayload(): MessengerBootstrapPayload {
     topics: [],
     conversations: [],
     folders: [],
-    users: [],
   };
 }
 

@@ -7,8 +7,6 @@ import {
   captureActiveOrgRequestContext,
   isActiveOrgRequestInvalidated,
 } from "~/entities/instance/instance.model";
-import { requestUserStatus } from "~/entities/user/api/user.api";
-import { useUsersStore } from "~/entities/user/user.model";
 import { logStoreAction } from "~/shared/lib/logger";
 import { fetchUserProfile as apiFetchUserProfile } from "./user-profile.api";
 import type { UserProfileData } from "./user-profile.types";
@@ -57,19 +55,10 @@ export const useUserProfileStore = create<UserProfileState>((set, get) => ({
         return;
       }
       if (result) {
-        useUsersStore.getState().mergeUser({
-          user_id: result.userId,
-          full_name: result.fullName,
-          email: result.email,
-          avatar_url: result.avatarUrl,
-          role: result.role,
-          is_active: result.isActive,
-        });
-        void requestUserStatus(result.userId, { reason: "right_panel", priority: "high" });
         set({ profile: result, status: "done" });
         return;
       }
-      set({ status: "error", error: "Failed to load user profile" });
+      set({ profile: null, status: "done", error: null });
     } catch (error) {
       if (isAbortError(error) || options?.signal?.aborted) {
         return;

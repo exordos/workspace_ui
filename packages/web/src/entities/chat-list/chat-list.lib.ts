@@ -11,7 +11,6 @@ import {
   slugify,
   truncatePreview,
 } from "~/entities/chat-list/chat-list-format.lib";
-import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
@@ -190,7 +189,6 @@ export function messageToDmEntry(
   avatarUrlByUserId?: Map<number, string>,
 ): DmEntryInternal | null {
   if (m.type !== "private" || !Array.isArray(m.display_recipient)) return null;
-  const usersStore = useUsersStore.getState();
   const recipients: DmRecipientRow[] = m.display_recipient
     .map((r) => ({
       id: r.id,
@@ -202,9 +200,8 @@ export function messageToDmEntry(
   const key = recipients.map((r) => r.id).join(",");
   const otherUsers = resolveDmOtherUsers(recipients, currentUserId, m.sender_id);
   const isGroup = recipients.length !== 2 || otherUsers.length !== 1;
-  const getName = (userId: number) => usersStore.getDisplayName(userId);
-  const getAvatar = (userId: number) =>
-    usersStore.getAvatarUrl(userId) ?? avatarUrlByUserId?.get(userId);
+  const getName = () => "";
+  const getAvatar = (userId: number) => avatarUrlByUserId?.get(userId);
   const name = buildDmEntryDisplayName(isGroup, otherUsers, getName);
   const identity = resolveDmEntryIdentity(
     isGroup,

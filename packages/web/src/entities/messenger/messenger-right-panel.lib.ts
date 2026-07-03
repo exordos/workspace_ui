@@ -1,3 +1,8 @@
+import {
+  resolveUserPresenceVisual,
+  selectUserDisplayName,
+} from "~/entities/user/user-selectors.lib";
+import type { User, UsersById } from "~/entities/user/user.types";
 import type { WorkspaceMessengerStreamNotificationMode } from "~/shared/api/messenger.types";
 import {
   type WorkspaceMessengerRouteMatch,
@@ -9,7 +14,7 @@ import {
 } from "./messenger-conversation-ui-kind.lib";
 import { selectMessengerConversationFromWorkspaceRoute } from "./messenger-ids.lib";
 import type { MessengerStoreState } from "./messenger.model";
-import type { MessengerStreamBinding, MessengerUser, MessengerUuid } from "./messenger.types";
+import type { MessengerStreamBinding, MessengerUuid } from "./messenger.types";
 
 type WorkspaceRightPanelState = Pick<
   MessengerStoreState,
@@ -19,7 +24,6 @@ type WorkspaceRightPanelState = Pick<
   | "topicIds"
   | "streamBindingsById"
   | "streamBindingIdsByStreamId"
-  | "usersById"
 >;
 
 export interface WorkspaceRightPanelTopicView {
@@ -34,7 +38,7 @@ export interface WorkspaceRightPanelMemberView {
   userUuid: MessengerUuid;
   name: string;
   email: string | null;
-  status: MessengerUser["status"] | null;
+  status: User["status"] | null;
   role: MessengerStreamBinding["role"];
   isOnline: boolean;
   isCurrentUser: boolean;
@@ -72,8 +76,8 @@ export interface WorkspaceRightPanelDirectPrivateInfoView {
   kind: "directPrivate";
   directUserUuid: MessengerUuid;
   title: string;
-  avatarUrl: null;
-  status: MessengerUser["status"] | null;
+  avatarUrl: string | null;
+  status: User["status"] | null;
   details: WorkspaceRightPanelDirectPrivateDetailView[];
 }
 
@@ -83,37 +87,32 @@ export type WorkspaceRightPanelInfoView =
 
 export interface SelectWorkspaceRightPanelInfoViewOptions {
   route: WorkspaceMessengerRouteMatch | null;
+  usersById: UsersById;
   fallbackTitle: string;
   currentUserUuid?: MessengerUuid | null;
   temporarilyNotConnectedText: string;
 }
 
 function resolveWorkspaceRightPanelMemberName(
-  user: MessengerUser | undefined,
+  user: User | undefined,
   userUuid: MessengerUuid,
 ): string {
-  if (user == null) return userUuid;
-
-  const fullName = [user.firstName, user.lastName]
-    .map((part) => part?.trim() ?? "")
-    .filter((part) => part.length > 0)
-    .join(" ")
-    .trim();
-  if (fullName.length > 0) return fullName;
-
-  const username = user.username.trim();
-  if (username.length > 0) return username;
-
-  const email = user.email?.trim() ?? "";
-  return email.length > 0 ? email : userUuid;
+  return selectUserDisplayName(user, userUuid);
 }
 
 function resolveWorkspaceRightPanelDirectUserName(
-  user: MessengerUser | undefined,
+  user: User | undefined,
   fallback: string,
 ): string {
-  if (user == null) return fallback;
-  return resolveWorkspaceRightPanelMemberName(user, fallback);
+  return selectUserDisplayName(user, fallback);
+}
+
+function resolveDirectPrivateFallbackTitle(
+  title: string | null | undefined,
+  temporarilyNotConnectedText: string,
+): string {
+  const trimmedTitle = title?.trim() ?? "";
+  return trimmedTitle.length > 0 ? trimmedTitle : temporarilyNotConnectedText;
 }
 
 function createWorkspaceRightPanelDetail(
@@ -162,6 +161,7 @@ export function selectWorkspaceRightPanelInfoView(
   state: WorkspaceRightPanelState,
   {
     route,
+    usersById,
     fallbackTitle,
     currentUserUuid = null,
     temporarilyNotConnectedText,
@@ -181,13 +181,17 @@ export function selectWorkspaceRightPanelInfoView(
   const routeDirectUserUuid = stream?.directUserUuid ?? conversation?.directUserUuid ?? null;
 
   if (routeUiKind === "directPrivate" && routeDirectUserUuid != null) {
-    const user = state.usersById[routeDirectUserUuid];
+    const user = usersById[routeDirectUserUuid];
+    const directFallbackTitle = resolveDirectPrivateFallbackTitle(
+      stream?.name ?? conversation?.title,
+      temporarilyNotConnectedText,
+    );
 
     return {
       kind: "directPrivate",
       directUserUuid: routeDirectUserUuid,
-      title: resolveWorkspaceRightPanelDirectUserName(user, temporarilyNotConnectedText),
-      avatarUrl: null,
+      title: resolveWorkspaceRightPanelDirectUserName(user, directFallbackTitle),
+      avatarUrl: user?.avatarUrl ?? null,
       status: user?.status ?? null,
       details: [
         createWorkspaceRightPanelDetail("email", user?.email, temporarilyNotConnectedText),
@@ -213,7 +217,7 @@ export function selectWorkspaceRightPanelInfoView(
     .map((bindingId) => state.streamBindingsById[bindingId])
     .filter((binding): binding is NonNullable<typeof binding> => binding != null)
     .map((binding): WorkspaceRightPanelMemberView => {
-      const user = state.usersById[binding.userUuid];
+      const user = usersById[binding.userUuid];
       const isCurrentUser = binding.userUuid === effectiveCurrentUserUuid;
       return {
         bindingUuid: binding.uuid,
@@ -222,7 +226,7 @@ export function selectWorkspaceRightPanelInfoView(
         email: user?.email?.trim() || null,
         status: user?.status ?? null,
         role: binding.role,
-        isOnline: user?.status === "active",
+        isOnline: resolveUserPresenceVisual(user?.status) === "active",
         isCurrentUser,
         canRemove: canRemoveWorkspaceRightPanelMember({
           isCurrentUser,

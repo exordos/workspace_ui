@@ -1,11 +1,18 @@
+import {
+  resolveUserPresenceVisual,
+  selectOnlineUserCount,
+  selectUserDisplayName,
+} from "~/entities/user/user-selectors.lib";
+import type { UsersById } from "~/entities/user/user.types";
 import type { WorkspaceMessengerRouteMatch } from "~/shared/lib/workspace-messenger-route.lib";
+import type { PresenceVisual } from "~/shared/ui/presence-indicator.types";
 import {
   selectWorkspaceConversationUiKind,
   selectWorkspaceStreamConversationUiKind,
 } from "./messenger-conversation-ui-kind.lib";
 import { selectMessengerConversationFromWorkspaceRoute } from "./messenger-ids.lib";
 import type { MessengerStoreState } from "./messenger.model";
-import type { MessengerUser, MessengerUuid } from "./messenger.types";
+import type { MessengerUuid } from "./messenger.types";
 
 type WorkspaceChatHeaderState = Pick<
   MessengerStoreState,
@@ -14,13 +21,12 @@ type WorkspaceChatHeaderState = Pick<
   | "topicsById"
   | "streamBindingsById"
   | "streamBindingIdsByStreamId"
-  | "usersById"
 >;
 
 export interface WorkspaceChatHeaderDirectPrivatePartnerView {
   name: string;
-  avatarUrl: null;
-  presenceState: "active" | "idle" | "offline" | null;
+  avatarUrl: string | null;
+  presenceState: PresenceVisual;
 }
 
 export interface WorkspaceChatHeaderChannelView {
@@ -44,38 +50,22 @@ export type WorkspaceChatHeaderView =
 
 export interface SelectWorkspaceChatHeaderViewOptions {
   route: WorkspaceMessengerRouteMatch | null;
+  usersById: UsersById;
   fallbackTitle: string;
   missingDirectUserTitle: string;
 }
 
-function resolveWorkspaceHeaderUserName(user: MessengerUser | undefined, fallback: string): string {
-  if (user == null) return fallback;
-
-  const fullName = [user.firstName, user.lastName]
-    .map((part) => part?.trim() ?? "")
-    .filter((part) => part.length > 0)
-    .join(" ")
-    .trim();
-  if (fullName.length > 0) return fullName;
-
-  const username = user.username.trim();
-  if (username.length > 0) return username;
-
-  const email = user.email?.trim() ?? "";
-  return email.length > 0 ? email : fallback;
-}
-
-function resolveWorkspaceHeaderPresenceState(
-  user: MessengerUser | undefined,
-): WorkspaceChatHeaderDirectPrivatePartnerView["presenceState"] {
-  if (user == null) return null;
-  if (user.status === "do_not_disturb") return "idle";
-  return user.status;
+function resolveDirectPrivateFallbackTitle(
+  title: string | null | undefined,
+  missingDirectUserTitle: string,
+): string {
+  const trimmedTitle = title?.trim() ?? "";
+  return trimmedTitle.length > 0 ? trimmedTitle : missingDirectUserTitle;
 }
 
 export function selectWorkspaceChatHeaderView(
   state: WorkspaceChatHeaderState,
-  { route, fallbackTitle, missingDirectUserTitle }: SelectWorkspaceChatHeaderViewOptions,
+  { route, usersById, fallbackTitle, missingDirectUserTitle }: SelectWorkspaceChatHeaderViewOptions,
 ): WorkspaceChatHeaderView {
   const selection = selectMessengerConversationFromWorkspaceRoute(route);
 
@@ -104,18 +94,19 @@ export function selectWorkspaceChatHeaderView(
   if (routeUiKind === "directPrivate") {
     const directUserUuid = routeDirectUserUuid;
     if (directUserUuid != null) {
-      const user = state.usersById[directUserUuid];
+      const user = usersById[directUserUuid];
+      const directFallbackTitle = resolveDirectPrivateFallbackTitle(
+        stream?.name ?? conversation?.title,
+        missingDirectUserTitle,
+      );
 
       return {
         kind: "directPrivate",
         directUserUuid,
         dmPartner: {
-          // Источник правды для заголовка личного диалога — новый Workspace messenger store.
-          // Старый user store относится к Zulip-модели и может быть пустым или указывать на другого
-          // пользователя, пока приложение находится на Workspace-маршруте.
-          name: resolveWorkspaceHeaderUserName(user, missingDirectUserTitle),
-          avatarUrl: null,
-          presenceState: resolveWorkspaceHeaderPresenceState(user),
+          name: selectUserDisplayName(user, directFallbackTitle),
+          avatarUrl: user?.avatarUrl ?? null,
+          presenceState: resolveUserPresenceVisual(user?.status),
         },
       };
     }
@@ -124,17 +115,16 @@ export function selectWorkspaceChatHeaderView(
   const title = stream?.name ?? conversation?.title ?? fallbackTitle;
   const bindingIds = state.streamBindingIdsByStreamId[selection.streamUuid] ?? [];
   let participantsCount = 0;
-  let onlineCount = 0;
+  const memberUserUuids: MessengerUuid[] = [];
 
   for (const bindingId of bindingIds) {
     const binding = state.streamBindingsById[bindingId];
     if (binding == null) continue;
 
     participantsCount += 1;
-    if (state.usersById[binding.userUuid]?.status === "active") {
-      onlineCount += 1;
-    }
+    memberUserUuids.push(binding.userUuid);
   }
+  const onlineCount = selectOnlineUserCount(usersById, memberUserUuids);
 
   return {
     kind: "channel",

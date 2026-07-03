@@ -1,30 +1,24 @@
 /**
- * User profile API — fetches detailed profile data from Zulip.
+ * User profile API facade.
  *
- * Zulip API: GET /users/{user_id}
+ * The old Zulip user/status endpoints are intentionally not called during the
+ * uuid-based user store cutover.
  */
 
-import {
-  fetchOwnStatus as fetchOwnStatusFromUsersApi,
-  updateOwnStatus as updateOwnStatusFromUsersApi,
-} from "~/entities/user/api/user.api";
-import type { OwnStatusMutationResult } from "~/entities/user/api/user.api.types";
-import { zulipApi } from "~/shared/api/client";
 import {
   getOwnAvatarCapabilities as getOwnAvatarCapabilitiesFromApi,
   removeOwnAvatar as removeOwnAvatarFromApi,
   uploadOwnAvatar as uploadOwnAvatarFromApi,
 } from "~/shared/api/zulip-avatar-settings";
 import { updateOwnProfileSettings } from "~/shared/api/zulip-profile-settings";
-import { fetchRealmProfileFieldDefinitionsWithSignal } from "~/shared/api/zulip-realm-profile-fields";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
-import { mapZulipProfileDataToSemanticFields } from "~/shared/lib/zulip-profile-fields-map.lib";
 import type {
   OwnAvatarCapabilities,
   OwnAvatarMutationResult,
   OwnProfileUpdateResult,
   OwnStatusData,
+  OwnStatusMutationResult,
   UserProfileData,
 } from "./user-profile.types";
 
@@ -35,85 +29,20 @@ export {
   fetchRealmProfileFieldDefinitionsWithSignal as fetchRealmProfileFieldDefinitions,
 } from "~/shared/api/zulip-realm-profile-fields";
 
-interface ZulipUserResponse {
-  user: {
-    user_id: number;
-    full_name: string;
-    email: string;
-    avatar_url: string;
-    role: number;
-    is_bot?: boolean;
-    is_active?: boolean; // Zulip JSON
-    date_joined?: string;
-    timezone?: string;
-    profile_data?: Record<string, { value?: string; rendered_value?: string }>;
-  };
-}
-
-function isAbortError(error: unknown): boolean {
-  return (
-    (error instanceof DOMException && error.name === "AbortError") ||
-    (error instanceof Error && error.name === "AbortError")
-  );
-}
-
-export async function fetchUserProfile(
+export function fetchUserProfile(
   userId: number,
   options?: { signal?: AbortSignal },
 ): Promise<UserProfileData | null> {
   guard.userId(userId, "fetchUserProfile");
-
-  try {
-    const [res, realmFields] = await Promise.all([
-      zulipApi.get(`/users/${userId}`, {
-        client_gravatar: "false",
-        include_custom_profile_fields: "true",
-      }, options?.signal),
-      fetchRealmProfileFieldDefinitionsWithSignal(options?.signal),
-    ]);
-
-    if (!res.ok) {
-      log.warn("Failed to fetch user profile", { userId, status: res.status });
-      return null;
-    }
-
-    const data = res.data as ZulipUserResponse;
-    const user = data.user;
-    const profile = user.profile_data;
-
-    const custom = mapZulipProfileDataToSemanticFields(profile, realmFields, {
-      useLegacyFixedFieldIds: realmFields == null,
-    });
-
-    return {
-      userId: user.user_id,
-      fullName: user.full_name,
-      email: user.email,
-      avatarUrl: user.avatar_url,
-      role: user.role,
-      isBot: typeof user.is_bot === "boolean" ? user.is_bot : undefined,
-      isActive: typeof user.is_active === "boolean" ? user.is_active : undefined,
-      dateJoined:
-        typeof user.date_joined === "string" && user.date_joined.trim().length > 0
-          ? user.date_joined
-          : undefined,
-      timezone: user.timezone,
-      jobTitle: custom.jobTitle,
-      phone: custom.phone,
-      manager: custom.manager,
-      birthday: custom.birthday,
-    };
-  } catch (err) {
-    if (isAbortError(err) || options?.signal?.aborted) {
-      throw err;
-    }
-    log.error("Error fetching user profile", { userId, error: String(err) });
-    return null;
+  if (options?.signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
   }
+  log.info("User profile fetch skipped during user store cutover", { userId });
+  return Promise.resolve(null);
 }
 
-export async function fetchOwnStatus(): Promise<OwnStatusData | null> {
-  return fetchOwnStatusFromUsersApi();
+export function fetchOwnStatus(): Promise<OwnStatusData | null> {
+  return Promise.resolve(null);
 }
 
 export interface UpdateOwnProfileParams {
@@ -148,12 +77,11 @@ export interface UpdateOwnStatusParams {
   away: boolean;
 }
 
-export async function updateOwnStatus(
-  params: UpdateOwnStatusParams,
-): Promise<OwnStatusMutationResult> {
-  return updateOwnStatusFromUsersApi({
-    text: params.statusText,
-    away: params.away,
+export function updateOwnStatus(_params: UpdateOwnStatusParams): Promise<OwnStatusMutationResult> {
+  return Promise.resolve({
+    ok: false,
+    kind: "unsupported",
+    message: "status updates are not supported during user store cutover",
   });
 }
 

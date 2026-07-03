@@ -22,19 +22,21 @@ import {
   isActiveOrgRequestContextCurrent,
   useInstancesStore,
 } from "~/entities/instance/instance.model";
-import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import { removeMessageFlag } from "~/shared/api/zulip-messages";
 import type { ActivityFilter, ZulipRawMessage } from "~/shared/api/zulip.types";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { formatActivityItemTime } from "~/shared/lib/datetime.lib";
+import { buildDmRouteSlugFromRecipients } from "~/shared/lib/dm-route-slug.lib";
 import { createLogger } from "~/shared/lib/logger";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { buildNavigableRouteFromMessage } from "~/shared/lib/push-click";
 import { runInFlightDeduped } from "~/shared/lib/request-lifecycle.lib";
 import { scrollToBottom } from "~/shared/lib/scroll-position.lib";
+import { buildStreamSlug } from "~/shared/lib/stream-slug.lib";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
+import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
 import {
   workspaceActivityRoute,
   workspaceInboxRoute,
@@ -85,28 +87,22 @@ function formatItemTime(ts: number): string {
   return formatActivityItemTime(ts);
 }
 
-function ActivitySenderName({ senderId, fallback }: { senderId: number; fallback: string }) {
-  const displayName = useUsersStore((s) => s.getDisplayName(senderId));
-  return <>{displayName !== "Unknown" ? displayName : fallback}</>;
+function ActivitySenderName({ fallback }: { fallback: string }) {
+  return <>{fallback}</>;
 }
 
 const DraftChatContextLabel = React.memo<{ draft: Draft }>(({ draft }) => {
   const streamsMap = useChatListStore((s) => s.streamsMap);
   const currentUserId = useChatListStore((s) => s.currentUserId ?? null);
-  const context = useUsersStore((s) =>
-    formatDraftMessageContext({
-      draft,
-      streamsMap,
-      currentUserId,
-      getUserDisplayName: (userId) => {
-        const name = s.users.get(userId)?.full_name?.trim();
-        return name != null && name.length > 0 ? name : "Unknown";
-      },
-      generalChatLabel: t("chat.generalChat"),
-      privateLabel: t("dm.private"),
-      groupChatLabel: t("dm.groupChat"),
-    }),
-  );
+  const context = formatDraftMessageContext({
+    draft,
+    streamsMap,
+    currentUserId,
+    getUserDisplayName: () => "",
+    generalChatLabel: t("chat.generalChat"),
+    privateLabel: t("dm.private"),
+    groupChatLabel: t("dm.groupChat"),
+  });
   if (draft.type === "stream" && draft.to.length > 0) {
     const streamId = draft.to[0]!;
     const streamName = streamsMap.get(streamId)?.name ?? String(streamId);
@@ -133,6 +129,7 @@ export const ActivityPage: React.FC = () => {
   const navigate = useNavigate();
   const openSearch = useOpenSearch();
   const currentUserId = useChatListStore((s) => s.currentUserId ?? null);
+  const streamsMap = useChatListStore((s) => s.streamsMap);
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const [pendingDraftId, setPendingDraftId] = useState<number | null>(null);
   const [pendingUnstarIds, setPendingUnstarIds] = useState<Set<number>>(() => new Set());
@@ -256,7 +253,6 @@ export const ActivityPage: React.FC = () => {
           ),
         );
         if (controller.signal.aborted || !isActiveOrgRequestContextCurrent(orgContext)) return;
-        for (const message of page.messages) useUsersStore.getState().mergeFromMessage(message);
         setFilterPageIfActual(activityFilter, requestVersion, page.messages, !page.foundOldest);
       } catch (err) {
         if (
@@ -368,18 +364,30 @@ export const ActivityPage: React.FC = () => {
 
   const handleDraftClick = useCallback(
     (draft: Draft) => {
-      if (
-        (draft.type === "stream" || draft.type === "private") &&
-        draft.to.length > 0
-      ) {
+      if (draft.type === "stream" && draft.to.length > 0) {
+        const streamId = draft.to[0]!;
+        const streamName = streamsMap.get(streamId)?.name ?? String(streamId);
+        void navigate(
+          withCurrentOrgRoute(
+            `/stream/${buildStreamSlug(streamId, streamName)}/topic/${encodeURIComponent(
+              encodeTopicForRoute(draft.topic ?? ""),
+            )}`,
+          ),
+        );
+        return;
+      }
+
+      if (draft.type === "private" && draft.to.length > 0) {
+        const recipients = draft.to.map((id) => ({ id }));
+        const slug = buildDmRouteSlugFromRecipients(recipients, currentUserId);
         const fallback =
           orgId != null && projectId != null
             ? workspaceInboxRoute(orgId, projectId)
             : withCurrentOrgRoute("/inbox");
-        void navigate(fallback);
+        void navigate(slug != null ? withCurrentOrgRoute(`/dm/${slug}`) : fallback);
       }
     },
-    [navigate, orgId, projectId],
+    [currentUserId, navigate, orgId, projectId, streamsMap],
   );
 
   const handleDeleteDraft = useCallback(async (e: React.MouseEvent, draft: Draft) => {
@@ -630,10 +638,7 @@ export const ActivityPage: React.FC = () => {
                       </span>
                     </div>
                     <p className="mt-0.5 text-xs text-sidebar-sender">
-                      <ActivitySenderName
-                        senderId={m.sender_id}
-                        fallback={m.sender_full_name ?? ""}
-                      />
+                      <ActivitySenderName fallback={m.sender_full_name ?? ""} />
                     </p>
                     <p className="mt-1 line-clamp-2 text-sm text-text-primary">
                       {truncateText(plainTextPreviewFromMessageBody(m.content))}

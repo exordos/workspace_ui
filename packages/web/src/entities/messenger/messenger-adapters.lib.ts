@@ -5,7 +5,6 @@ import type {
   WorkspaceMessengerStreamBindingDto,
   WorkspaceMessengerStreamDto,
   WorkspaceMessengerTopicDto,
-  WorkspaceMessengerUserDto,
 } from "~/shared/api/messenger.types";
 import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
 import type {
@@ -17,7 +16,6 @@ import type {
   MessengerStream,
   MessengerStreamBinding,
   MessengerTopic,
-  MessengerUser,
 } from "./messenger.types";
 
 // Backend DTOs become Workspace messenger domain objects here.
@@ -188,26 +186,11 @@ export function adaptMessengerFolder(dto: WorkspaceMessengerFolderDto): Messenge
   };
 }
 
-export function adaptMessengerUser(dto: WorkspaceMessengerUserDto): MessengerUser {
-  return {
-    uuid: dto.uuid,
-    username: dto.username,
-    status: dto.status,
-    firstName: dto.first_name ?? null,
-    lastName: dto.last_name ?? null,
-    email: dto.email,
-    lastPingAt: dto.last_ping_at ?? null,
-    createdAt: dto.created_at,
-    updatedAt: dto.updated_at,
-  };
-}
-
 export interface WorkspaceMessengerBootstrapDtoPayload {
   streams: WorkspaceMessengerStreamDto[];
   streamBindings?: WorkspaceMessengerStreamBindingDto[];
   topics: WorkspaceMessengerTopicDto[];
   folders: WorkspaceMessengerFolderDto[];
-  users: WorkspaceMessengerUserDto[];
 }
 
 export function adaptMessengerBootstrapPayload(
@@ -217,7 +200,6 @@ export function adaptMessengerBootstrapPayload(
   const streamBindings = (payload.streamBindings ?? []).map(adaptMessengerStreamBinding);
   const topics = payload.topics.map(adaptMessengerTopic);
   const folders = payload.folders.map(adaptMessengerFolder);
-  const users = payload.users.map(adaptMessengerUser);
   const streamDtosById: Record<string, WorkspaceMessengerStreamDto> = {};
   const conversations: MessengerConversation[] = [];
 
@@ -239,6 +221,5 @@ export function adaptMessengerBootstrapPayload(
     topics,
     conversations,
     folders,
-    users,
   };
 }

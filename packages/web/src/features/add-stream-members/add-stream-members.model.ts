@@ -1,21 +1,21 @@
 import { create } from "zustand";
 import { logStoreAction } from "~/shared/lib/logger";
-import { toggleUserPickerSelection } from "~/shared/lib/user-picker";
+import { toggleUserPickerSelection, type UserPickerId } from "~/shared/lib/user-picker";
 import { addStreamMembers } from "./add-stream-members.api";
 import type {
   AddStreamMembersResult,
   AddStreamMembersSubmitOptions,
 } from "./add-stream-members.types";
 
-const EMPTY_IDS: number[] = [];
+const EMPTY_IDS: UserPickerId[] = [];
 
 interface AddStreamMembersState {
   open: boolean;
   streamId: number | null;
   streamName: string;
-  existingMemberIds: number[];
+  existingMemberIds: UserPickerId[];
   query: string;
-  selectedIds: number[];
+  selectedIds: UserPickerId[];
   submitting: boolean;
   error: string | null;
   lastResult: AddStreamMembersResult | null;
@@ -23,19 +23,38 @@ interface AddStreamMembersState {
   openForStream: (params: {
     streamId: number;
     streamName: string;
-    existingMemberIds: number[];
+    existingMemberIds: UserPickerId[];
   }) => void;
   close: () => void;
   setQuery: (query: string) => void;
-  toggleSelected: (userId: number) => void;
-  setExistingMemberIds: (ids: number[]) => void;
+  toggleSelected: (userId: UserPickerId) => void;
+  setExistingMemberIds: (ids: UserPickerId[]) => void;
   clearSelection: () => void;
   submit: (options: AddStreamMembersSubmitOptions) => Promise<AddStreamMembersResult | null>;
 }
 
-function normalizeUserIds(ids: readonly number[]): number[] {
-  return Array.from(new Set(ids.filter((userId) => Number.isInteger(userId) && userId > 0))).sort(
-    (a, b) => a - b,
+function normalizePickerIds(ids: readonly UserPickerId[]): UserPickerId[] {
+  return Array.from(
+    new Set(
+      ids.filter((userId) => {
+        if (typeof userId === "number") {
+          return Number.isInteger(userId) && userId > 0;
+        }
+        return userId.trim().length > 0;
+      }),
+    ),
+  ).sort((left, right) => {
+    if (typeof left === "number" && typeof right === "number") {
+      return left - right;
+    }
+    return String(left).localeCompare(String(right));
+  });
+}
+
+function numericUserIds(ids: readonly UserPickerId[]): number[] {
+  return ids.filter(
+    (userId): userId is number =>
+      typeof userId === "number" && Number.isInteger(userId) && userId > 0,
   );
 }
 
@@ -51,7 +70,7 @@ export const useAddStreamMembersStore = create<AddStreamMembersState>((set, get)
   lastResult: null,
 
   openForStream({ streamId, streamName, existingMemberIds }) {
-    const normalizedExisting = normalizeUserIds(existingMemberIds);
+    const normalizedExisting = normalizePickerIds(existingMemberIds);
     logStoreAction("addStreamMembers", "openForStream", {
       streamId,
       existingCount: normalizedExisting.length,
@@ -97,7 +116,7 @@ export const useAddStreamMembersStore = create<AddStreamMembersState>((set, get)
   },
 
   setExistingMemberIds(ids) {
-    const nextExisting = normalizeUserIds(ids);
+    const nextExisting = normalizePickerIds(ids);
     const existingSet = new Set(nextExisting);
     const selectedIds = get().selectedIds.filter((userId) => !existingSet.has(userId));
     set({ existingMemberIds: nextExisting, selectedIds });
@@ -117,7 +136,7 @@ export const useAddStreamMembersStore = create<AddStreamMembersState>((set, get)
       return null;
     }
 
-    const selectedIds = normalizeUserIds(state.selectedIds);
+    const selectedIds = numericUserIds(normalizePickerIds(state.selectedIds));
     const existingSet = new Set(state.existingMemberIds);
     // Skip already-subscribed members only; Zulip API allows self-add.
     const filteredIds = selectedIds.filter((userId) => !existingSet.has(userId));

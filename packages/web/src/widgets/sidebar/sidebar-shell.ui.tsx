@@ -7,6 +7,7 @@ import {
 } from "~/entities/messenger/messenger-sidebar.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerSidebarStreamItem } from "~/entities/messenger/messenger.types";
+import { useUsersStore } from "~/entities/user/user.model";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
@@ -52,6 +53,7 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
   const workspaceFolders = useMessengerStore(selectMessengerSidebarFolders);
   const workspaceActivityCounts = useMessengerStore(selectMessengerSidebarActivityCounts);
   const workspaceMessagesById = useWorkspaceMessageStore((state) => state.messagesById);
+  const workspaceUsersById = useUsersStore((state) => state.usersById);
   const workspaceSelectedFolderId = useSidebarConfigStore((s) => s.selectedFolderId);
   const workspaceEffectiveFolder = workspaceFolders.some(
     (folder) => folder.folderUuid === workspaceSelectedFolderId,
@@ -70,6 +72,7 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
           currentUserUuid,
           selectedFolderUuid: workspaceEffectiveFolderId,
           messagesById: workspaceMessagesById,
+          usersById: workspaceUsersById,
         })
       : EMPTY_WORKSPACE_STREAMS,
   );

@@ -1,10 +1,7 @@
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { buildZulipQuoteBlock } from "~/shared/lib/message-zulip-quote.lib";
-import { withCurrentOrgRoute } from "~/shared/lib/org-route";
-import { encodeTopicForRoute, normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
+import { workspaceMessengerTopicRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { buildZulipQuoteHeader } from "~/shared/lib/zulip-quote-header.lib";
-import { buildZulipMessageWebPermalink } from "~/shared/lib/zulip-web-permalink.lib";
-import { slugForStream } from "~/widgets/sidebar/sidebar.lib";
 import { resolveReplyQuoteContent } from "./chat-reply-quote.lib";
 
 export type ForwardableMessage = Pick<
@@ -20,42 +17,20 @@ export type ForwardableMessage = Pick<
   | "channel"
 >;
 
-interface ForwardTargetStream {
-  stream_id: number;
-  name: string;
-}
-
-interface ForwardDraftTarget {
-  route: string;
-  draftType: "stream" | "private";
-  draftTo: number[];
-  draftTopic: string;
+interface ForwardWorkspaceTopicTarget {
+  orgId: string;
+  projectId: string;
+  streamUuid: string;
+  topicUuid: string;
 }
 
 const pendingForwardPrefills = new Map<string, string>();
 
-interface ForwardQuotePermalinkOptions {
-  realmBaseUrl: string;
-  wroteLabel: string;
-  resolveStreamName: (streamId: number, message: ForwardableMessage) => string | undefined;
-}
-
-function buildSingleForwardQuote(
-  message: ForwardableMessage,
-  content: string,
-  permalinkOptions?: ForwardQuotePermalinkOptions,
-): string {
-  const permalinkUrl =
-    permalinkOptions != null && permalinkOptions.realmBaseUrl.trim().length > 0
-      ? buildZulipMessageWebPermalink(permalinkOptions.realmBaseUrl, message, (streamId) =>
-          permalinkOptions.resolveStreamName(streamId, message),
-        )
-      : null;
+function buildSingleForwardQuote(message: ForwardableMessage, content: string): string {
   const header = buildZulipQuoteHeader({
     senderName: message.sender_full_name,
     senderId: message.sender_id,
-    wroteLabel: permalinkOptions?.wroteLabel ?? "wrote",
-    permalinkUrl,
+    wroteLabel: "wrote",
   });
   return buildZulipQuoteBlock(header, content);
 }
@@ -63,7 +38,6 @@ function buildSingleForwardQuote(
 export function buildForwardQuote(
   messages: ForwardableMessage[],
   selectedTextQuote?: string,
-  permalinkOptions?: ForwardQuotePermalinkOptions,
 ): string {
   if (messages.length === 0) return "";
   const normalizedQuote = selectedTextQuote?.trim();
@@ -78,51 +52,9 @@ export function buildForwardQuote(
           message,
           messages.length === 1 && index === 0 ? singleMessageQuote : undefined,
         ),
-        permalinkOptions,
       ),
     )
     .join("\n\n");
-}
-
-export function toggleForwardRecipient(selectedUserIds: number[], userId: number): number[] {
-  if (selectedUserIds.includes(userId)) {
-    return selectedUserIds.filter((id) => id !== userId);
-  }
-  return [...selectedUserIds, userId].sort((a, b) => a - b);
-}
-
-export function resolveForwardDraftTarget(
-  streamName: string,
-  topic: string,
-  to: number[] | undefined,
-  streams: ForwardTargetStream[],
-): ForwardDraftTarget | null {
-  if (to != null && to.length > 0) {
-    const sortedRecipientIds = [...to].sort((a, b) => a - b);
-    return {
-      route: withCurrentOrgRoute(`/dm/${sortedRecipientIds.join(",")}`),
-      draftType: "private",
-      draftTo: sortedRecipientIds,
-      draftTopic: "",
-    };
-  }
-
-  const matchedStream = streams.find((stream) => stream.name === streamName);
-  if (matchedStream == null) {
-    return null;
-  }
-
-  const normalizedTopic = normalizeTopicForIdentity(topic);
-  return {
-    route: withCurrentOrgRoute(
-      `/stream/${slugForStream(matchedStream)}/topic/${encodeURIComponent(
-        encodeTopicForRoute(normalizedTopic),
-      )}`,
-    ),
-    draftType: "stream",
-    draftTo: [matchedStream.stream_id],
-    draftTopic: normalizedTopic,
-  };
 }
 
 export function mergeForwardDraftContent(
@@ -147,11 +79,6 @@ export function consumePendingForwardPrefill(route: string): string | undefined 
   return pending;
 }
 
-export function resolveForwardTargetRoute(
-  streamName: string,
-  topic: string,
-  to: number[] | undefined,
-  streams: ForwardTargetStream[],
-): string | null {
-  return resolveForwardDraftTarget(streamName, topic, to, streams)?.route ?? null;
+export function resolveForwardTargetRoute(target: ForwardWorkspaceTopicTarget): string {
+  return workspaceMessengerTopicRoute(target);
 }

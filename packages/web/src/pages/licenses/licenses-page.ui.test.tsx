@@ -44,13 +44,13 @@ describe("LicensesPage", () => {
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
   });
 
-  it("navigates to Inbox when close is pressed without history and Workspace project", async () => {
+  it("navigates to app root when close is pressed without history and Workspace project", async () => {
     const user = userEvent.setup();
     renderWithProviders(<LicensesPage />, { route: "/licenses" });
 
     await user.click(screen.getByRole("button", { name: /close/i }));
 
-    expect(navigateMock).toHaveBeenCalledWith("/inbox");
+    expect(navigateMock).toHaveBeenCalledWith("/");
   });
 
   it("navigates to Workspace messenger root when close is pressed with Workspace project", async () => {

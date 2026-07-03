@@ -1,5 +1,6 @@
 import { type Token, type TokenizerAndRendererExtension, type Tokens } from "marked";
 import { buildMessageRedirectRoute, buildPushClickUrl } from "~/shared/lib/push-click";
+import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
 
 interface ZulipStreamReferenceToken extends Tokens.Generic {
   type: "zulip_stream_reference";
@@ -56,8 +57,14 @@ export function resolveZulipStreamReference(
     if (!Number.isSafeInteger(messageId) || messageId <= 0) {
       return null;
     }
+    const resolvedStream = resolveStreamByName?.(streamName) ?? null;
     return {
-      href: buildMessageRedirectRoute(messageId),
+      href:
+        resolvedStream != null
+          ? `#narrow/channel/${resolvedStream.streamId}-${resolvedStream.streamName}/topic/${encodeTopicForRoute(
+              topic,
+            )}/near/${messageId}`
+          : buildMessageRedirectRoute(messageId),
       htmlClass: "message-link",
       text: `#${streamName}>${topic}@${String(messageId)}`,
     };

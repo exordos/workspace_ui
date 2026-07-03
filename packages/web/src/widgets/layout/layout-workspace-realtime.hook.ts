@@ -4,12 +4,15 @@ import {
   createMessengerRealtimeBackgroundApplier,
 } from "~/entities/messenger/messenger-realtime-applier.lib";
 import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
+import { createUserRealtimeApplier } from "~/entities/user/user-realtime-applier.lib";
+import { startWorkspacePresenceReporter } from "~/entities/user/user-workspace-presence-reporter.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
+import { composeWorkspaceRealtimeAppliers } from "~/shared/lib/workspace-realtime/workspace-realtime-applier.lib";
 import {
   createWorkspaceRealtimeBrowserCursorStorage,
   type WorkspaceRealtimeDurableCursorStorage,
@@ -38,12 +41,17 @@ export type LayoutWorkspaceRealtimeRuntimeFactory = (
   options: LayoutWorkspaceRealtimeRuntimeFactoryOptions,
 ) => WorkspaceRealtimeTransportCore;
 
+export type LayoutWorkspacePresenceReporterFactory = (
+  runtimeContext: WorkspaceRuntimeContext,
+) => () => void;
+
 export interface UseLayoutWorkspaceRealtimeOptions {
   enabled: boolean;
   pathname: string;
   runtimeFactory?: LayoutWorkspaceRealtimeRuntimeFactory;
   cursorStorageFactory?: () => WorkspaceRealtimeDurableCursorStorage | null;
   applier?: WorkspaceRealtimeEventApplier;
+  presenceReporterFactory?: LayoutWorkspacePresenceReporterFactory;
 }
 
 interface LayoutWorkspaceRealtimeManagerContext extends WorkspaceRealtimeManagerRuntimeContext {
@@ -138,6 +146,16 @@ function defaultRuntimeFactory({
   });
 }
 
+function defaultPresenceReporterFactory(runtimeContext: WorkspaceRuntimeContext): () => void {
+  return startWorkspacePresenceReporter({
+    clientOptions: buildMessengerRequestOptions(runtimeContext),
+    userUuid: runtimeContext.userUuid,
+    onError: (error) => {
+      reportUnexpectedError("workspace-presence:report", error);
+    },
+  });
+}
+
 export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOptions): void {
   const {
     enabled,
@@ -145,6 +163,7 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
     runtimeFactory = defaultRuntimeFactory,
     cursorStorageFactory = createWorkspaceRealtimeBrowserCursorStorage,
     applier,
+    presenceReporterFactory = defaultPresenceReporterFactory,
   } = options;
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
@@ -197,9 +216,16 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
             onDiagnostic,
           }),
         activeApplierFactory: ({ isOwnerCurrent }) =>
-          applier ?? createMessengerRealtimeActiveApplier({ isOwnerCurrent }),
+          applier ??
+          composeWorkspaceRealtimeAppliers([
+            createMessengerRealtimeActiveApplier({ isOwnerCurrent }),
+            createUserRealtimeApplier({ isOwnerCurrent }),
+          ]),
         backgroundApplierFactory: ({ isOwnerCurrent }) =>
-          createMessengerRealtimeBackgroundApplier({ isOwnerCurrent }),
+          composeWorkspaceRealtimeAppliers([
+            createMessengerRealtimeBackgroundApplier({ isOwnerCurrent }),
+            createUserRealtimeApplier({ isOwnerCurrent }),
+          ]),
         isOwnerCurrent: (candidate) =>
           managerContextsRef.current.some(
             (context) =>
@@ -242,4 +268,12 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
     pathname,
     runtimeFactory,
   ]);
+
+  useEffect(() => {
+    if (!shouldStartWorkspaceRealtimeForRoute(enabled, pathname, activeRuntimeContext)) {
+      return undefined;
+    }
+
+    return presenceReporterFactory(activeRuntimeContext);
+  }, [activeRuntimeContext, enabled, pathname, presenceReporterFactory]);
 }

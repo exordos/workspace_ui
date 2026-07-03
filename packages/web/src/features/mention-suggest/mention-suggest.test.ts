@@ -15,20 +15,22 @@ import type { MentionSuggestion } from "./mention-suggest.types";
 
 const USERS: MentionSuggestion[] = [
   {
+    userUuid: "user-1",
     userId: 1,
     fullName: "Alice Johnson",
     email: "alice@example.com",
     avatarUrl: "https://cdn.example.com/a.jpg",
   },
-  { userId: 2, fullName: "Bob Smith", email: "bob@example.com" },
+  { userUuid: "user-2", userId: 2, fullName: "Bob Smith", email: "bob@example.com" },
   {
+    userUuid: "user-3",
     userId: 3,
     fullName: "Charlie Brown",
     email: "charlie.b@example.com",
     avatarUrl: "https://cdn.example.com/c.jpg",
   },
-  { userId: 4, fullName: "Diana Prince", email: "diana@example.com" },
-  { userId: 5, fullName: "Алексей Иванов", email: "alexey@example.com" },
+  { userUuid: "user-4", userId: 4, fullName: "Diana Prince", email: "diana@example.com" },
+  { userUuid: "user-5", userId: 5, fullName: "Алексей Иванов", email: "alexey@example.com" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -183,8 +185,8 @@ describe("filterUsers (edge cases)", () => {
 
   it("prioritizes name matches over email-only matches", () => {
     const users: MentionSuggestion[] = [
-      { userId: 10, fullName: "No Match", email: "alice@test.com" },
-      { userId: 11, fullName: "Alice Real", email: "other@test.com" },
+      { userUuid: "user-10", userId: 10, fullName: "No Match", email: "alice@test.com" },
+      { userUuid: "user-11", userId: 11, fullName: "Alice Real", email: "other@test.com" },
     ];
     const results = filterUsers("alice", users);
     expect(results).toHaveLength(2);
@@ -194,7 +196,7 @@ describe("filterUsers (edge cases)", () => {
 
   it("user matching both name and email appears once (in name group)", () => {
     const users: MentionSuggestion[] = [
-      { userId: 20, fullName: "alice alice", email: "alice@example.com" },
+      { userUuid: "user-20", userId: 20, fullName: "alice alice", email: "alice@example.com" },
     ];
     const results = filterUsers("alice", users);
     expect(results).toHaveLength(1);

@@ -36,7 +36,7 @@ describe("buildPushClickUrl", () => {
     );
   });
 
-  it("falls back to Inbox when only numeric stream id is present", () => {
+  it("builds legacy stream topic route when only numeric stream id is present", () => {
     const url = buildPushClickUrl({
       type: "stream",
       streamId: 15,
@@ -44,10 +44,10 @@ describe("buildPushClickUrl", () => {
       topic: "Release Notes",
     });
 
-    expect(url).toBe("/inbox");
+    expect(url).toBe("/stream/15-general-discussion/topic/Release%20Notes");
   });
 
-  it("does not append numeric message focus without Workspace message UUID", () => {
+  it("appends numeric message focus for legacy stream routes", () => {
     const url = buildPushClickUrl({
       type: "stream",
       streamId: 15,
@@ -56,27 +56,27 @@ describe("buildPushClickUrl", () => {
       messageId: 123,
     });
 
-    expect(url).toBe("/inbox");
+    expect(url).toBe("/stream/15-general-discussion/topic/Release%20Notes?msg=123");
   });
 
-  it("falls back to Inbox when stream id is missing", () => {
+  it("builds legacy name-only stream route when stream id is missing", () => {
     const url = buildPushClickUrl({
       type: "stream",
       streamName: "general",
       topic: "bugs",
     });
 
-    expect(url).toBe("/inbox");
+    expect(url).toBe("/stream/general/topic/bugs");
   });
 
-  it("does not build a legacy stream-name route from unsafe source text", () => {
+  it("encodes legacy stream-name route from unsafe source text", () => {
     const url = buildPushClickUrl({
       type: "stream",
       streamName: "eng/ops?tab=all",
       topic: "bugs",
     });
 
-    expect(url).toBe("/inbox");
+    expect(url).toBe("/stream/eng%2Fops%3Ftab%3Dall/topic/bugs");
   });
 
   it("falls back to Inbox when topic UUID is missing for a topic click", () => {
@@ -92,14 +92,14 @@ describe("buildPushClickUrl", () => {
     expect(url).toBe("/org/chat.example.com/inbox");
   });
 
-  it("falls back to Inbox when only numeric sender id is present", () => {
+  it("builds legacy DM route when only numeric sender id is present", () => {
     const url = buildPushClickUrl({
       type: "private",
       senderId: 42,
       messageId: 99,
     });
 
-    expect(url).toBe("/inbox");
+    expect(url).toBe("/dm/42?msg=99");
   });
 
   it("returns root when payload lacks enough routing data", () => {
@@ -151,7 +151,7 @@ describe("buildRouteFromMessage", () => {
     expect(route).toBe("/org/chat.example.com/project/project-uuid/message/message-uuid");
   });
 
-  it("falls back to Inbox instead of stream route with numeric Zulip ids", () => {
+  it("builds legacy stream route with numeric Zulip ids", () => {
     const route = buildRouteFromMessage(
       {
         id: 55,
@@ -162,10 +162,10 @@ describe("buildRouteFromMessage", () => {
       7,
     );
 
-    expect(route).toBe("/inbox");
+    expect(route).toBe("/stream/10-general-discussion/topic/Bugs?msg=55");
   });
 
-  it("does not build explicit empty-topic legacy route when topic is empty", () => {
+  it("builds explicit empty-topic legacy route when topic is empty", () => {
     const route = buildRouteFromMessage(
       {
         id: 56,
@@ -176,10 +176,10 @@ describe("buildRouteFromMessage", () => {
       7,
     );
 
-    expect(route).toBe("/inbox");
+    expect(route).toBe("/stream/10-general-discussion/topic/__empty__?msg=56");
   });
 
-  it("falls back to Inbox instead of DM route from numeric recipients", () => {
+  it("builds legacy DM route from numeric recipients", () => {
     const route = buildRouteFromMessage(
       {
         id: 77,
@@ -193,10 +193,10 @@ describe("buildRouteFromMessage", () => {
       7,
     );
 
-    expect(route).toBe("/inbox");
+    expect(route).toBe("/dm/42-alice?msg=77");
   });
 
-  it("falls back to Inbox instead of group-DM route from numeric recipients", () => {
+  it("builds legacy group-DM route from numeric recipients", () => {
     const route = buildRouteFromMessage(
       {
         id: 99,
@@ -211,19 +211,21 @@ describe("buildRouteFromMessage", () => {
       7,
     );
 
-    expect(route).toBe("/inbox");
+    expect(route).toBe("/dm/42-alice,51-bob?msg=99");
   });
 });
 
 describe("buildMessageRedirectRoute", () => {
-  it("falls back to Inbox for numeric message id with realm", async () => {
+  it("builds legacy message redirect for numeric message id with realm", async () => {
     const { buildMessageRedirectRoute } = await import("./push-click");
-    expect(buildMessageRedirectRoute(123, "https://zulip.example.com")).toBe("/inbox");
+    expect(buildMessageRedirectRoute(123, "https://zulip.example.com")).toBe(
+      "/message/123?realm=https%3A%2F%2Fzulip.example.com",
+    );
   });
 
-  it("falls back to Inbox for numeric message id without realm", async () => {
+  it("builds legacy message redirect for numeric message id without realm", async () => {
     const { buildMessageRedirectRoute } = await import("./push-click");
-    expect(buildMessageRedirectRoute(123)).toBe("/inbox");
+    expect(buildMessageRedirectRoute(123)).toBe("/message/123");
   });
 
   it("builds Workspace message route when message UUID and project are present", async () => {
@@ -239,16 +241,18 @@ describe("buildMessageRedirectRoute", () => {
 });
 
 describe("buildMessageRedirectRouteFromZulipPermalink", () => {
-  it("maps absolute Zulip narrow permalink to Inbox", () => {
+  it("maps absolute Zulip narrow permalink to legacy message redirect", () => {
     expect(
       buildMessageRedirectRouteFromZulipPermalink(
         "https://zulip.example.com/#narrow/channel/33-InternalServicesDev/topic/Workspace/near/5743236",
       ),
-    ).toBe("/inbox");
+    ).toBe("/message/5743236?realm=https%3A%2F%2Fzulip.example.com");
   });
 
-  it("maps hash-only narrow permalink to Inbox", () => {
-    expect(buildMessageRedirectRouteFromZulipPermalink("#narrow/dm/7,42-dm/near/123")).toBe("/inbox");
+  it("maps hash-only narrow permalink to legacy message redirect", () => {
+    expect(buildMessageRedirectRouteFromZulipPermalink("#narrow/dm/7,42-dm/near/123")).toBe(
+      "/message/123",
+    );
   });
 
   it("returns null for non-message permalinks", () => {
@@ -278,7 +282,7 @@ describe("buildNavigableRouteFromMessage", () => {
     ).toBe("/org/chat.example.com/project/project-uuid/message/message-uuid");
   });
 
-  it("falls back to Inbox instead of exact stream route with numeric ids", async () => {
+  it("builds exact legacy stream route with numeric ids", async () => {
     const { buildNavigableRouteFromMessage } = await import("./push-click");
     expect(
       buildNavigableRouteFromMessage(
@@ -291,10 +295,10 @@ describe("buildNavigableRouteFromMessage", () => {
         },
         7,
       ),
-    ).toBe("/inbox");
+    ).toBe("/stream/10-engineering/topic/Bugs?msg=15");
   });
 
-  it("falls back to Inbox instead of empty-topic legacy route", async () => {
+  it("builds empty-topic legacy route", async () => {
     const { buildNavigableRouteFromMessage } = await import("./push-click");
     expect(
       buildNavigableRouteFromMessage(
@@ -307,7 +311,7 @@ describe("buildNavigableRouteFromMessage", () => {
         },
         7,
       ),
-    ).toBe("/inbox");
+    ).toBe("/stream/10-engineering/topic/__empty__?msg=16");
   });
 
   it("falls back to Inbox instead of sender-based DM routing", async () => {
@@ -355,17 +359,17 @@ describe("buildRouteFromPushNotificationClick", () => {
     ).toBe("/org/chat.example.com/project/project-uuid/message/message-uuid");
   });
 
-  it("falls back to Inbox when only numeric messageId is present", () => {
+  it("builds legacy message redirect when only numeric messageId is present", () => {
     expect(
       buildRouteFromPushNotificationClick({
         messageId: "321",
         realmUri: "https://zulip.example.com",
         messageType: "stream",
       }),
-    ).toBe("/inbox");
+    ).toBe("/message/321?realm=https%3A%2F%2Fzulip.example.com");
   });
 
-  it("ignores non-decimal messageId and does not build numeric stream fallback route", () => {
+  it("ignores non-decimal messageId and builds numeric stream fallback route", () => {
     expect(
       buildRouteFromPushNotificationClick({
         messageId: "1e3",
@@ -374,7 +378,7 @@ describe("buildRouteFromPushNotificationClick", () => {
         streamName: "General Discussion",
         topic: "Release Notes",
       }),
-    ).toBe("/inbox");
+    ).toBe("/stream/15-general-discussion/topic/Release%20Notes");
   });
 
   it("derives Workspace topic fallback route from UUID payload", () => {
@@ -392,7 +396,7 @@ describe("buildRouteFromPushNotificationClick", () => {
     ).toBe("/org/chat.example.com/project/project-uuid/stream/stream-uuid/topic/topic-uuid");
   });
 
-  it("does not derive stream fallback route from numeric stream id", () => {
+  it("derives stream fallback route from numeric stream id", () => {
     expect(
       buildRouteFromPushNotificationClick({
         messageType: "stream",
@@ -400,7 +404,7 @@ describe("buildRouteFromPushNotificationClick", () => {
         streamName: "General Discussion",
         topic: "Release Notes",
       }),
-    ).toBe("/inbox");
+    ).toBe("/stream/15-general-discussion/topic/Release%20Notes");
   });
 
   it("rejects non-decimal senderId for private fallback routing", () => {

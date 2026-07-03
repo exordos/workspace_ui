@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { MockMessage } from "~/shared/api/zulip.types";
+import { createUser } from "~/test/factories";
 import {
   pickNewestDmMessageForKey,
   shouldSyncDmPreviewFromWindow,
@@ -63,8 +64,12 @@ describe("syncDmSidebarFromLoadedMessages", () => {
   beforeEach(() => {
     useChatListStore.getState().clear();
     useUsersStore.getState().clear();
-    useUsersStore.getState().mergeUser({ user_id: 10, full_name: "Alice", email: "a@x.test" });
-    useUsersStore.getState().mergeUser({ user_id: 20, full_name: "Bob", email: "b@x.test" });
+    useUsersStore
+      .getState()
+      .upsertUser(createUser({ user_id: 10, full_name: "Alice", email: "a@x.test" }));
+    useUsersStore
+      .getState()
+      .upsertUser(createUser({ user_id: 20, full_name: "Bob", email: "b@x.test" }));
     useChatListStore.getState().setCurrentUserId(10);
   });
 

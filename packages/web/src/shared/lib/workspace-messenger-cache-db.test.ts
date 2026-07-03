@@ -128,7 +128,7 @@ describe("workspace-messenger-cache-db", () => {
     ]);
     expect(snapshot.folders.map((folder) => folder.uuid)).toEqual(["folder-a"]);
     expect(snapshot.folderItems.map((item) => item.uuid)).toEqual(["folder-item-a"]);
-    expect(snapshot.users.map((user) => user.uuid)).toEqual(["user-a"]);
+    expect(snapshot.users).toEqual([]);
     expect(snapshot.streamBindings.map((binding) => binding.uuid)).toEqual(["binding-a"]);
     expect(snapshot.realtimeCursor?.epochVersion).toBe(77);
     expect(otherSnapshot.streams).toEqual([]);

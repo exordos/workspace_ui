@@ -210,6 +210,14 @@ describe("sanitizeHtml", () => {
     expect(result).toContain('data-user-id="31"');
   });
 
+  it("preserves user-mention data-user-uuid on span", () => {
+    const html =
+      '<p><span class="user-mention" data-user-uuid="a225223c-637c-4afa-918f-5f2798b9305f">@Alice</span></p>';
+    const result = sanitizeHtml(html);
+    expect(result).toContain('class="user-mention"');
+    expect(result).toContain('data-user-uuid="a225223c-637c-4afa-918f-5f2798b9305f"');
+  });
+
   it("strips internal protected-media data attributes from message HTML", () => {
     const html =
       '<div data-auth-src="https://attacker.example/src" data-auth-poster="https://attacker.example/poster" data-auth-background-image="https://attacker.example/bg">x</div>';

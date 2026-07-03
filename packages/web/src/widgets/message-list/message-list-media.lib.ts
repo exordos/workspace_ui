@@ -323,6 +323,29 @@ function nextMessageMediaSequence(seen: Set<string>, url: string): number | null
   return seen.size;
 }
 
+function registerMessageGalleryMediaUrls(
+  items: MediaItem[],
+  indexByUrl: Map<string, number>,
+  urls: readonly string[],
+  messageId: number,
+  total: number,
+  type: MediaItem["type"],
+  seenKeys: Set<string>,
+): void {
+  for (const url of urls) {
+    const sequence = nextMessageMediaSequence(seenKeys, url);
+    registerGalleryMedia(
+      items,
+      indexByUrl,
+      url,
+      type,
+      sequence != null
+        ? buildGalleryDownloadFileName(messageId, sequence, total, type, url)
+        : undefined,
+    );
+  }
+}
+
 /** Resolves canonical media URL from an inline `<video>` (auth attr, then src, then child `<source>`). */
 export function resolveVideoElementMediaUrl(video: HTMLVideoElement): string {
   const authOnVideo = video.getAttribute(AUTH_MEDIA_SRC_DATA_ATTR);
@@ -371,47 +394,32 @@ export function buildMessageMediaGallery(messages: MockMessage[]): MessageMediaG
     const seenImageKeys = new Set<string>();
     const seenVideoKeys = new Set<string>();
 
-    for (const url of imageUrls) {
-      const sequence = nextMessageMediaSequence(seenImageKeys, url);
-      registerGalleryMedia(
-        items,
-        indexByUrl,
-        url,
-        "image",
-        sequence != null
-          ? buildGalleryDownloadFileName(message.id, sequence, imageTotal, "image", url)
-          : undefined,
-      );
-    }
+    registerMessageGalleryMediaUrls(
+      items,
+      indexByUrl,
+      imageUrls,
+      message.id,
+      imageTotal,
+      "image",
+      seenImageKeys,
+    );
 
     for (const url of markdownMediaUrls) {
       const type = isUserUploadVideoPath(url) ? "video" : "image";
       const seenKeys = type === "video" ? seenVideoKeys : seenImageKeys;
       const total = type === "video" ? videoTotal : imageTotal;
-      const sequence = nextMessageMediaSequence(seenKeys, url);
-      registerGalleryMedia(
-        items,
-        indexByUrl,
-        url,
-        type,
-        sequence != null
-          ? buildGalleryDownloadFileName(message.id, sequence, total, type, url)
-          : undefined,
-      );
+      registerMessageGalleryMediaUrls(items, indexByUrl, [url], message.id, total, type, seenKeys);
     }
 
-    for (const url of videoUrls) {
-      const sequence = nextMessageMediaSequence(seenVideoKeys, url);
-      registerGalleryMedia(
-        items,
-        indexByUrl,
-        url,
-        "video",
-        sequence != null
-          ? buildGalleryDownloadFileName(message.id, sequence, videoTotal, "video", url)
-          : undefined,
-      );
-    }
+    registerMessageGalleryMediaUrls(
+      items,
+      indexByUrl,
+      videoUrls,
+      message.id,
+      videoTotal,
+      "video",
+      seenVideoKeys,
+    );
   }
 
   return { items, indexByUrl };

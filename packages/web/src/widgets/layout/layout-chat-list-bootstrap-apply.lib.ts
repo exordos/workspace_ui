@@ -6,7 +6,6 @@ import {
   isActiveOrgRequestInvalidated,
   type ActiveOrgRequestContext,
 } from "~/entities/instance/instance.model";
-import { useUsersStore } from "~/entities/user/user.model";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { loadDmIndexEntries, type DmIndexEntry } from "~/shared/lib/dm-index";
 import {
@@ -78,9 +77,6 @@ export function applyChatListBootstrapResult(
   }
 
   if (result.mode === "streamPreviews") {
-    for (const m of result.messages) {
-      useUsersStore.getState().mergeFromMessage(m);
-    }
     useChatListStore.getState().applyStreamSidebarPreviewsFromMessages(result.messages);
     const newest = getNewestMessageId(result.messages);
     const prev = result.latestMessageIdHint;

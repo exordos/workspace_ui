@@ -136,7 +136,6 @@ function bootstrapMessengerSidebar(
         systemType: "created",
       }),
     ],
-    users: [],
     ...payloadOverrides,
   });
 }
@@ -300,7 +299,6 @@ describe("SidebarShell", () => {
             ],
           }),
         ],
-        users: [],
       });
     });
 

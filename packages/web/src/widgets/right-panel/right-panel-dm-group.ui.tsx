@@ -1,7 +1,5 @@
 import React, { useMemo } from "react";
 import { ProfileCustomFieldsBlock } from "~/entities/user/profile-custom-fields-block.ui";
-import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
-import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import { Avatar } from "~/shared/ui/avatar";
@@ -17,19 +15,18 @@ export const RightPanelDmGroup = React.memo(function RightPanelDmGroup({
   data,
   onOpenUserProfile,
 }: RightPanelDmGroupProps) {
-  const users = useUsersStore((s) => s.users);
   const members = useMemo(
     () =>
       data.members.map((member) => ({
         id: member.userId,
         name: member.fullName || t("roles.member"),
         email: member.email ?? "",
-        statusLabel: formatUserStatusLabel(users.get(member.userId)?.status),
+        statusLabel: undefined,
         isOnline: member.isOnline,
         avatarUrl: member.avatarUrl,
         profileData: member.profileData,
       })),
-    [data.members, users],
+    [data.members],
   );
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden text-text-primary">

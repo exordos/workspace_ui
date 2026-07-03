@@ -9,7 +9,6 @@ import {
 } from "~/shared/lib/user-profile-fields.lib";
 import type { RealmProfileFieldDefinition } from "~/shared/lib/zulip-profile-fields-map.lib";
 import { SectionLabel } from "~/shared/ui/section-label.ui";
-import { useUsersStore } from "./user.model";
 
 export interface ProfileCustomFieldsBlockProps {
   profileData?: ZulipCustomProfileDataMap | null;
@@ -34,11 +33,8 @@ const ManagerProfileLink = React.memo(function ManagerProfileLink({
   textClass: string;
   onOpen: (userId: number) => void;
 }) {
-  const nameFromStore = useUsersStore((s) => s.getUser(userId)?.full_name?.trim());
   let label: string;
-  if (nameFromStore != null && nameFromStore.length > 0) {
-    label = nameFromStore;
-  } else if (fallbackLabel != null && fallbackLabel.trim().length > 0) {
+  if (fallbackLabel != null && fallbackLabel.trim().length > 0) {
     label = fallbackLabel.trim();
   } else {
     label = `#${userId}`;

@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
+import type { User } from "~/entities/user/user.types";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
 import { fetchStreams, fetchSubscriptions } from "~/shared/api/zulip-streams";
 import { useCreateChatDialog } from "./create-chat-dialog.hook";
@@ -34,11 +35,47 @@ function defaultHookOptions(overrides: Partial<Parameters<typeof useCreateChatDi
   };
 }
 
+function createUser(overrides: Partial<User> & { uuid: string }): User {
+  return {
+    uuid: overrides.uuid,
+    username: overrides.username ?? overrides.uuid,
+    firstName: overrides.firstName ?? null,
+    lastName: overrides.lastName ?? null,
+    displayName: overrides.displayName ?? overrides.username ?? overrides.uuid,
+    email: overrides.email ?? null,
+    avatarUrl: overrides.avatarUrl ?? null,
+    status: overrides.status ?? "offline",
+    statusEmoji: overrides.statusEmoji ?? null,
+    statusText: overrides.statusText ?? null,
+    lastPingAt: overrides.lastPingAt ?? "2026-06-30T09:00:00.000Z",
+    createdAt: overrides.createdAt ?? "2026-06-30T09:00:00.000Z",
+    updatedAt: overrides.updatedAt ?? "2026-06-30T09:00:00.000Z",
+  };
+}
+
 function seedUsers(): void {
-  useUsersStore.getState().mergeUsers([
-    { user_id: 10, full_name: "Current User", email: "me@example.com" },
-    { user_id: 1, full_name: "Alice", email: "alice@example.com" },
-    { user_id: 3, full_name: "Bob", email: "bob@example.com" },
+  useUsersStore.getState().replaceUsers([
+    createUser({
+      uuid: "current-user",
+      username: "current",
+      displayName: "Current User",
+      email: "me@example.com",
+      status: "active",
+    }),
+    createUser({
+      uuid: "alice-user",
+      username: "alice",
+      displayName: "Alice",
+      email: "alice@example.com",
+      status: "active",
+    }),
+    createUser({
+      uuid: "bob-user",
+      username: "bob",
+      displayName: "Bob",
+      email: "bob@example.com",
+      status: "idle",
+    }),
   ]);
 }
 

@@ -14,7 +14,6 @@ import {
   captureActiveOrgRequestContext,
   isActiveOrgRequestContextCurrent,
 } from "~/entities/instance/instance.model";
-import { useUsersStore } from "~/entities/user/user.model";
 import { createLogger } from "~/shared/lib/logger";
 import { runInFlightDeduped } from "~/shared/lib/request-lifecycle.lib";
 import { STARRED_SUMMARY_PAGE_SIZE } from "./activity-starred-loader.lib";
@@ -105,9 +104,6 @@ export async function ensureReactionsLoaded(options: EnsureReactionsLoadedOption
         { signal },
       );
       throwIfAbortedOrStale(signal, orgContext);
-      for (const message of page.messages) {
-        useUsersStore.getState().mergeFromMessage(message);
-      }
       useActivityStore
         .getState()
         .setFilterPageIfActual("reactions", filterRequestVersion, page.messages, !page.foundOldest);

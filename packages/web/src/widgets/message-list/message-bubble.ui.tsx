@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useRef, useState } from "react";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { canStartMessageContentEdit } from "~/entities/message/message-edit-policy.lib";
+import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { formatMessageTimeShort } from "~/shared/lib/datetime.lib";
 import { getJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
@@ -28,6 +29,12 @@ import {
 import { getMessageImagesBaseUrl } from "./message-bubble-realm-html.lib";
 import { resolveJitsiLocationName } from "./message-jitsi-location.lib";
 import { useMessageLinkPreview } from "./message-link-preview.hook";
+import {
+  resolveMentionUserId,
+  resolveMentionUserUuid,
+  resolveMessageSenderDisplayName,
+  resolveMessageSenderUser,
+} from "./message-list-user.lib";
 import { MessageMentionPopover } from "./message-mention-popover.ui";
 import type { MessageBubbleProps } from "./message-bubble.types";
 
@@ -59,17 +66,20 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     const [canEditMessageContentForMenu, setCanEditMessageContentForMenu] = useState(false);
 
     const jitsiMeetBaseUrl = useInstancesStore((s) => s.jitsiMeetBaseUrl);
+    const usersById = useUsersStore((s) => s.usersById);
     const jitsiLinkOptions = useMemo<JitsiLinkOptions>(
       () => ({ serverBaseUrl: jitsiMeetBaseUrl }),
       [jitsiMeetBaseUrl],
     );
-    const getUser = useUsersStore((s) => s.getUser);
     const streamsMap = useChatListStore((s) => s.streamsMap);
-    const user = getUser(message.sender_id);
-    const findUserIdByDisplayName = useUsersStore((s) => s.findUserIdByDisplayName);
+    const currentUserMessageEditPolicy = useChatListStore((s) => s.currentUserMessageEditPolicy);
+    const user = resolveMessageSenderUser(usersById, message);
     const resolveUserMention = useCallback(
-      (displayName: string): number | null => findUserIdByDisplayName(displayName),
-      [findUserIdByDisplayName],
+      (mentionDisplayName: string) => ({
+        userId: resolveMentionUserId(usersById, mentionDisplayName),
+        userUuid: resolveMentionUserUuid(usersById, mentionDisplayName),
+      }),
+      [usersById],
     );
     const resolveStreamByName = useCallback(
       (streamName: string): { streamId: number; streamName: string } | null => {
@@ -77,11 +87,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       },
       [streamsMap],
     );
-    const trimmedUserName = user?.full_name?.trim();
-    const displayName =
-      trimmedUserName != null && trimmedUserName.length > 0
-        ? trimmedUserName
-        : (message.sender_full_name ?? "");
+    const displayName = resolveMessageSenderDisplayName(user, message.sender_full_name ?? "");
     const handleAuthorClick = useCallback(() => {
       callbacks?.onAuthorClick?.(message.sender_id);
     }, [callbacks, message.sender_id]);
@@ -99,11 +105,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     );
     const resolveReactionAuthorLabel = useCallback(
       (userId: number): string => {
-        const reactionUser = getUser(userId);
-        const fullName = reactionUser?.full_name?.trim();
-        return fullName != null && fullName.length > 0 ? fullName : `#${userId}`;
+        return selectUserDisplayName(usersById[String(userId)], `#${userId}`);
       },
-      [getUser],
+      [usersById],
     );
     const imagesBase = getMessageImagesBaseUrl();
     const { safeMessageHtml, displayHtmlForJitsi } = useMemo(() => {
@@ -135,7 +139,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     const isJitsiCall = jitsiUrl != null;
     const jitsiLocationName = isJitsiCall ? resolveJitsiLocationName(message) : "";
     const handleBeforeMenuOpen = useCallback(() => {
-      const { currentUserMessageEditPolicy } = useUsersStore.getState();
       setCanEditMessageContentForMenu(
         canStartMessageContentEdit(
           message,
@@ -144,7 +147,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
           Math.floor(Date.now() / 1000),
         ),
       );
-    }, [currentUserId, isOwn, message]);
+    }, [currentUserId, currentUserMessageEditPolicy, isOwn, message]);
 
     const interactions = useMessageBubbleInteractions({
       message,
@@ -220,13 +223,16 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     );
 
     const mentionPopoverPortal =
-      interactions.mentionPopover != null && callbacks?.onOpenDirectMessage != null ? (
+      interactions.mentionPopover != null &&
+      (callbacks?.onOpenDirectMessage != null || callbacks?.onOpenDirectMessageByUuid != null) ? (
         <MessageMentionPopover
           userId={interactions.mentionPopover.userId}
+          userUuid={interactions.mentionPopover.userUuid}
           anchorRect={interactions.mentionPopover.anchorRect}
           fallbackName={interactions.mentionPopover.fallbackName}
           onClose={interactions.closeMentionPopover}
           onOpenDirectMessage={callbacks.onOpenDirectMessage}
+          onOpenDirectMessageByUuid={callbacks.onOpenDirectMessageByUuid}
           onOpenUserProfile={callbacks.onAuthorClick}
         />
       ) : null;

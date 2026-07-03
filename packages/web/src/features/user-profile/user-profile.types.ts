@@ -5,8 +5,6 @@
  * fields for job title, manager, birthday, local time, phone, and timezone.
  */
 
-import type { UserStatus } from "~/entities/user/user.model";
-
 export interface UserProfileData {
   userId: number;
   fullName: string;
@@ -24,7 +22,13 @@ export interface UserProfileData {
   timezone?: string;
 }
 
-export type OwnStatusData = UserStatus;
+export interface OwnStatusData {
+  text?: string;
+  away?: boolean;
+  emojiName?: string;
+  emojiCode?: string;
+  reactionType?: "unicode_emoji" | "realm_emoji" | "zulip_extra_emoji";
+}
 
 export type OwnProfileUpdateErrorKind = "forbidden" | "invalid" | "unsupported" | "transient";
 
@@ -51,5 +55,16 @@ export type OwnAvatarMutationResult =
   | {
       ok: false;
       kind: OwnAvatarMutationErrorKind;
+      message: string;
+    };
+
+export type OwnStatusMutationResult =
+  | {
+      ok: true;
+      status: OwnStatusData | null;
+    }
+  | {
+      ok: false;
+      kind: OwnProfileUpdateErrorKind;
       message: string;
     };

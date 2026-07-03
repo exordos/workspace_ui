@@ -6,9 +6,7 @@ import type { WorkspaceAuthSession } from "./workspace-auth.model";
 // Auth tests protect account switching and runtime generation changes.
 vi.mock("~/shared/lib/logger", async (importOriginal) => {
   const { createPartialLoggerMock } = await import("~/test/logger-vitest-mock");
-  return createPartialLoggerMock(
-    importOriginal as () => Promise<typeof LoggerModule>,
-  );
+  return createPartialLoggerMock(importOriginal as () => Promise<typeof LoggerModule>);
 });
 
 function resetStore(): void {

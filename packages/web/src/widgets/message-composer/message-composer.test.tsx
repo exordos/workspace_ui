@@ -277,7 +277,7 @@ describe("MessageComposer scheduled send", () => {
 });
 
 describe("MessageComposer saved snippets", () => {
-  it("keeps saved snippets visible but blocks the Zulip-backed action when unsupported", () => {
+  it("hides saved snippets when Zulip-backed action is unsupported", () => {
     renderWithProviders(
       <MessageComposer
         onSend={vi.fn()}
@@ -291,9 +291,8 @@ describe("MessageComposer saved snippets", () => {
     );
 
     focusComposerInput();
-    fireEvent.click(screen.getByRole("button", { name: "Saved snippets are not connected." }));
 
-    expect(screen.getByRole("status")).toHaveTextContent("Saved snippets are not connected.");
+    expect(screen.queryByRole("button", { name: /saved snippets/i })).not.toBeInTheDocument();
     expect(fetchSavedSnippetsMock).not.toHaveBeenCalled();
     expect(screen.queryByRole("textbox", { name: /filter snippets/i })).not.toBeInTheDocument();
   });
@@ -403,7 +402,7 @@ describe("MessageComposer mention suggestions", () => {
   it("opens mention popup for a standalone @ after supported delimiters", async () => {
     useUsersStore
       .getState()
-      .mergeUsers([
+      .upsertUsers([
         createUser({ user_id: 1001, full_name: "Alice Johnson", email: "alice@example.com" }),
       ]);
 
@@ -435,7 +434,7 @@ describe("MessageComposer mention suggestions", () => {
   it("does not open mention popup when @ is inside a word or email", () => {
     useUsersStore
       .getState()
-      .mergeUsers([
+      .upsertUsers([
         createUser({ user_id: 1001, full_name: "Alice Johnson", email: "alice@example.com" }),
       ]);
 
@@ -452,7 +451,7 @@ describe("MessageComposer mention suggestions", () => {
   it("uses mention store state and inserts the first suggestion on Enter", async () => {
     useUsersStore
       .getState()
-      .mergeUsers([
+      .upsertUsers([
         createUser({ user_id: 1001, full_name: "Alice Johnson", email: "alice@example.com" }),
         createUser({ user_id: 1002, full_name: "Bob Smith", email: "bob@example.com" }),
       ]);
@@ -478,7 +477,7 @@ describe("MessageComposer mention suggestions", () => {
   it("supports arrow navigation before selecting a mention", async () => {
     useUsersStore
       .getState()
-      .mergeUsers([
+      .upsertUsers([
         createUser({ user_id: 2001, full_name: "Alice Johnson", email: "alice@example.com" }),
         createUser({ user_id: 2002, full_name: "Alex Roe", email: "alex@example.com" }),
       ]);
@@ -502,7 +501,7 @@ describe("MessageComposer mention suggestions", () => {
   it("shows no-results popup when mention query has no matches", async () => {
     useUsersStore
       .getState()
-      .mergeUsers([
+      .upsertUsers([
         createUser({ user_id: 3001, full_name: "Alice Johnson", email: "alice@example.com" }),
       ]);
 
@@ -517,7 +516,7 @@ describe("MessageComposer mention suggestions", () => {
   it("updates mention suggestions as the query changes", async () => {
     useUsersStore
       .getState()
-      .mergeUsers([
+      .upsertUsers([
         createUser({ user_id: 2001, full_name: "Alice Johnson", email: "alice@example.com" }),
         createUser({ user_id: 2002, full_name: "Alex Roe", email: "alex@example.com" }),
       ]);
@@ -542,7 +541,7 @@ describe("MessageComposer mention suggestions", () => {
   it("renders a compact, scrollable mention dropdown", async () => {
     useUsersStore
       .getState()
-      .mergeUsers([
+      .upsertUsers([
         createUser({ user_id: 3001, full_name: "Alice Johnson", email: "alice@example.com" }),
       ]);
 
@@ -564,9 +563,9 @@ describe("MessageComposer mention suggestions", () => {
     expect(inputRow).toHaveClass("overflow-visible");
   });
 
-  it("renders presence indicators in mention suggestions", async () => {
+  it("renders mention suggestions from the new user store without legacy presence badges", async () => {
     const now = Math.floor(Date.now() / 1000);
-    useUsersStore.getState().mergeUsers([
+    useUsersStore.getState().upsertUsers([
       createUser({
         user_id: 5001,
         full_name: "Alice Johnson",
@@ -587,11 +586,14 @@ describe("MessageComposer mention suggestions", () => {
     fireEvent.change(textbox, { target: { value: "@a", selectionStart: 2 } });
 
     await screen.findByText("Alice Johnson");
-    expect(screen.getByRole("status", { name: /online/i })).toBeInTheDocument();
-    expect(screen.getByRole("status", { name: /away/i })).toBeInTheDocument();
+    expect(screen.getByText("Alex Roe")).toBeInTheDocument();
+    expect(screen.getByText("alice@example.com")).toBeInTheDocument();
+    expect(screen.getByText("alex@example.com")).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: /online/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: /away/i })).not.toBeInTheDocument();
   });
 
-  it("renders emoji-only realm custom status in mention suggestions without falling back to email", async () => {
+  it("keeps legacy custom status emoji out of mention suggestions during cutover", async () => {
     fetchRealmEmojisMock.mockResolvedValue([
       {
         id: "42",
@@ -599,16 +601,18 @@ describe("MessageComposer mention suggestions", () => {
         imgUrl: "https://chat.example.test/user_avatars/realm/42.png",
       },
     ]);
-    useUsersStore.getState().mergeUser({
-      ...createUser({ user_id: 5003, full_name: "Scam User", email: "scam@example.com" }),
-      status: {
-        text: "",
-        away: false,
-        emojiName: "scam",
-        emojiCode: "42",
-        reactionType: "realm_emoji",
-      },
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        ...createUser({ user_id: 5003, full_name: "Scam User", email: "scam@example.com" }),
+        status: {
+          text: "",
+          away: false,
+          emojiName: "scam",
+          emojiCode: "42",
+          reactionType: "realm_emoji",
+        },
+      }),
+    );
 
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
@@ -616,16 +620,15 @@ describe("MessageComposer mention suggestions", () => {
     fireEvent.change(textbox, { target: { value: "@scam", selectionStart: 5 } });
 
     await screen.findByText("Scam User");
-    const emoji = await screen.findByRole("img", { name: ":scam:" });
-    expect(emoji).toHaveAttribute("src", "https://chat.example.test/user_avatars/realm/42.png");
-    expect(screen.queryByText("scam@example.com")).not.toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: ":scam:" })).not.toBeInTheDocument();
+    expect(screen.getByText("scam@example.com")).toBeInTheDocument();
     expect(screen.queryByText(":scam:")).not.toBeInTheDocument();
   });
 
   it("sends message on Enter when mention popup is open with no suggestions", async () => {
     useUsersStore
       .getState()
-      .mergeUsers([
+      .upsertUsers([
         createUser({ user_id: 3001, full_name: "Alice Johnson", email: "alice@example.com" }),
       ]);
 
@@ -647,7 +650,7 @@ describe("MessageComposer mention suggestions", () => {
   it("does not wrap mention navigation at the list boundaries", async () => {
     useUsersStore
       .getState()
-      .mergeUsers([
+      .upsertUsers([
         createUser({ user_id: 4001, full_name: "Alice Johnson", email: "alice@example.com" }),
         createUser({ user_id: 4002, full_name: "Alex Roe", email: "alex@example.com" }),
       ]);
@@ -762,7 +765,7 @@ describe("MessageComposer formatting shortcuts", () => {
 });
 
 describe("MessageComposer preview mode", () => {
-  it("keeps preview tab visible but does not call the Zulip render API when unsupported", async () => {
+  it("hides preview tab and does not call the Zulip render API when unsupported", () => {
     renderWithProviders(
       <MessageComposer
         onSend={vi.fn()}
@@ -777,12 +780,9 @@ describe("MessageComposer preview mode", () => {
 
     const textbox = screen.getByRole("textbox");
     fireEvent.change(textbox, { target: { value: "**Hello** world" } });
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
 
-    await waitFor(() => {
-      expect(renderMessageContentMock).not.toHaveBeenCalled();
-      expect(screen.getAllByText("Preview is not connected.")).toHaveLength(2);
-    });
+    expect(screen.queryByRole("button", { name: "Preview" })).not.toBeInTheDocument();
+    expect(renderMessageContentMock).not.toHaveBeenCalled();
   });
 
   it("renders markdown preview via Zulip render API and keeps draft intact", async () => {

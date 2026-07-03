@@ -91,6 +91,21 @@ const messageDto = {
   updated_at: DATE,
 };
 
+const userDto = {
+  uuid: USER_UUID,
+  username: "admin",
+  source: "iam",
+  status: "active",
+  status_emoji: null,
+  status_text: null,
+  first_name: null,
+  last_name: null,
+  email: "admin@example.com",
+  last_ping_at: DATE,
+  created_at: DATE,
+  updated_at: DATE,
+};
+
 const folderItemDto = {
   uuid: FOLDER_ITEM_UUID,
   project_id: PROJECT_UUID,
@@ -167,20 +182,7 @@ describe("Workspace messenger DTO guards", () => {
     expect(isWorkspaceMessengerTopicDto(topicDto)).toBe(true);
     expect(isWorkspaceMessengerMessageDto(messageDto)).toBe(true);
     expect(isWorkspaceMessengerFolderDto(folderDto)).toBe(true);
-    expect(
-      isWorkspaceMessengerUserDto({
-        uuid: USER_UUID,
-        username: "admin",
-        source: "iam",
-        status: "active",
-        first_name: null,
-        last_name: null,
-        email: "admin@example.com",
-        last_ping_at: null,
-        created_at: DATE,
-        updated_at: DATE,
-      }),
-    ).toBe(true);
+    expect(isWorkspaceMessengerUserDto(userDto)).toBe(true);
     expect(isWorkspaceMessengerServerSettingsDto(serverSettingsDto)).toBe(true);
     expect(isWorkspaceMessengerEpochDto({ epoch_version: 124 })).toBe(true);
   });
@@ -247,8 +249,25 @@ describe("Workspace messenger DTO guards", () => {
         username: "test3",
         source: "iam",
         status: "active",
+        status_emoji: null,
+        status_text: "Focus",
         email: "test3@example.com",
-        last_ping_at: null,
+        last_ping_at: DATE,
+        created_at: DATE,
+        updated_at: DATE,
+      }),
+    ).toBe(true);
+  });
+
+  it("accepts user payloads without optional custom status fields", () => {
+    expect(
+      isWorkspaceMessengerUserDto({
+        uuid: USER_UUID,
+        username: "test4",
+        source: "iam",
+        status: "active",
+        email: "test4@example.com",
+        last_ping_at: DATE,
         created_at: DATE,
         updated_at: DATE,
       }),
@@ -262,12 +281,37 @@ describe("Workspace messenger DTO guards", () => {
         username: "",
         source: "iam",
         status: "active",
+        status_emoji: null,
+        status_text: null,
         email: "test3@example.com",
-        last_ping_at: null,
+        last_ping_at: DATE,
         created_at: DATE,
         updated_at: DATE,
       }),
     ).toBe(false);
+  });
+
+  it("requires user presence status and last ping timestamp", () => {
+    const userDto = {
+      uuid: USER_UUID,
+      username: "test3",
+      source: "iam",
+      status: "active",
+      status_emoji: null,
+      status_text: null,
+      email: "test3@example.com",
+      last_ping_at: DATE,
+      created_at: DATE,
+      updated_at: DATE,
+    };
+
+    expect(isWorkspaceMessengerUserDto(userDto)).toBe(true);
+    expect(isWorkspaceMessengerUserDto({ ...userDto, status_emoji: undefined })).toBe(true);
+    expect(isWorkspaceMessengerUserDto({ ...userDto, status_emoji: 123 })).toBe(false);
+    expect(isWorkspaceMessengerUserDto({ ...userDto, status_text: undefined })).toBe(true);
+    expect(isWorkspaceMessengerUserDto({ ...userDto, status_text: { text: "Focus" } })).toBe(false);
+    expect(isWorkspaceMessengerUserDto({ ...userDto, last_ping_at: undefined })).toBe(false);
+    expect(isWorkspaceMessengerUserDto({ ...userDto, last_ping_at: null })).toBe(false);
   });
 
   it("accepts folder items when mutation responses omit nullable fields", () => {
@@ -390,6 +434,7 @@ describe("Workspace messenger DTO guards", () => {
         eventDto({ kind: "folder_item.deleted", uuid: FOLDER_ITEM_UUID }),
       ),
     ).toBe(true);
+    expect(isWorkspaceMessengerEventDto(eventDto({ kind: "user.updated", ...userDto }))).toBe(true);
   });
 
   it("rejects incomplete delete payloads and unknown message payloads", () => {
@@ -421,9 +466,16 @@ describe("Workspace messenger DTO guards", () => {
       kind: "folder.deleted",
       folder: { uuid: FOLDER_UUID },
     };
+    const userUpdatedEvent = {
+      epoch_version: 127,
+      type: "user",
+      kind: "user.updated",
+      user: userDto,
+    };
 
     expect(isWorkspaceRealtimeEvent(messageCreatedEvent)).toBe(true);
     expect(isWorkspaceRealtimeEvent(folderDeletedEvent)).toBe(true);
+    expect(isWorkspaceRealtimeEvent(userUpdatedEvent)).toBe(true);
     expect(
       isWorkspaceMessengerWebSocketFrameDto({
         type: "hello",
@@ -453,7 +505,7 @@ describe("Workspace messenger DTO guards", () => {
     expect(
       isWorkspaceMessengerWebSocketFrameDto({
         type: "event",
-        event: folderDeletedEvent,
+        event: userUpdatedEvent,
       }),
     ).toBe(true);
   });
@@ -475,6 +527,17 @@ describe("Workspace messenger DTO guards", () => {
           type: "message",
           kind: "message.deleted",
           message: { uuid: MESSAGE_UUID, stream_uuid: STREAM_UUID },
+        },
+      }),
+    ).toBe(false);
+    expect(
+      isWorkspaceMessengerWebSocketFrameDto({
+        type: "event",
+        event: {
+          epoch_version: 128,
+          type: "user",
+          kind: "user.updated",
+          user: { ...userDto, status: "busy" },
         },
       }),
     ).toBe(false);

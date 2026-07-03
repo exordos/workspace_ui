@@ -1,3 +1,6 @@
+import { applyBootstrapUsers, markUsersSyncError } from "~/entities/user/user-sync.lib";
+import type { UserSyncClientDeps } from "~/entities/user/user-sync.lib";
+import { useUsersStore } from "~/entities/user/user.model";
 import {
   captureWorkspaceRuntimeRequestContext,
   isWorkspaceRuntimeRequestInvalidated,
@@ -17,7 +20,6 @@ import type {
   WorkspaceMessengerMessageDto,
   WorkspaceMessengerStreamDto,
   WorkspaceMessengerTopicDto,
-  WorkspaceMessengerUserDto,
 } from "~/shared/api/messenger.types";
 import { adaptMessengerBootstrapPayload, adaptMessengerFolder } from "./messenger-adapters.lib";
 import {
@@ -41,6 +43,10 @@ import { useMessengerStore } from "./messenger.model";
 import type { MessengerStoreState } from "./messenger.model";
 import type { MessengerFolder } from "./messenger.types";
 type MessengerBootstrapClientCall<T> = (options: MessengerClientOptions) => Promise<T[]>;
+type BootstrapUsers = Awaited<ReturnType<NonNullable<UserSyncClientDeps["getUsers"]>>>;
+type BootstrapUsersResult =
+  | { status: "fulfilled"; value: BootstrapUsers }
+  | { status: "rejected"; reason: unknown };
 
 // Load a minimal project snapshot for the new Workspace messenger path.
 // This is not the old Zulip chat list: data goes directly into the separate messenger store.
@@ -48,7 +54,7 @@ export interface MessengerBootstrapClientDeps {
   getStreams?: MessengerBootstrapClientCall<WorkspaceMessengerStreamDto>;
   getTopics?: MessengerBootstrapClientCall<WorkspaceMessengerTopicDto>;
   getFolders?: MessengerBootstrapClientCall<WorkspaceMessengerFolderDto>;
-  getUsers?: MessengerBootstrapClientCall<WorkspaceMessengerUserDto>;
+  getUsers?: UserSyncClientDeps["getUsers"];
   getMessagesByUuids?: (
     options: MessengerClientOptions,
     messageUuids: string[],
@@ -161,6 +167,7 @@ export async function bootstrapMessengerStore({
   }
 
   store.getState().startBootstrap(ownerKey);
+  useUsersStore.getState().startOwnerSync(ownerKey);
   const loadLastMessagesForCurrentSidebar = (): void => {
     void loadMessengerLastMessagesForSidebar({
       runtimeContext,
@@ -206,21 +213,45 @@ export async function bootstrapMessengerStore({
   try {
     // Streams and topics are needed first: they quickly build the base chat list.
     // Folders are loaded separately below, so a folder error does not break the whole sidebar.
-    const [streams, topics, users] = await Promise.all([
+    const usersRequest: Promise<BootstrapUsersResult> = (client.getUsers ?? defaultGetUsers)(
+      requestOptions,
+    ).then(
+      (value) => ({ status: "fulfilled", value }),
+      (reason: unknown) => ({ status: "rejected", reason }),
+    );
+    const [streams, topics, usersResult] = await Promise.all([
       (client.getStreams ?? defaultGetStreams)(requestOptions),
       (client.getTopics ?? defaultGetTopics)(requestOptions),
-      (client.getUsers ?? defaultGetUsers)(requestOptions),
+      usersRequest,
     ]);
 
     if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
       return { status: "skipped", ownerKey, reason: "stale-owner" };
     }
 
+    if (usersResult.status === "fulfilled") {
+      const usersSyncResult = applyBootstrapUsers(usersResult.value, {
+        ownerKey,
+        requestContext,
+        getRuntimeContext,
+        signal,
+      });
+      if (usersSyncResult.status === "skipped") {
+        return { status: "skipped", ownerKey, reason: "stale-owner" };
+      }
+    } else {
+      markUsersSyncError(usersResult.reason, {
+        ownerKey,
+        requestContext,
+        getRuntimeContext,
+        signal,
+      });
+    }
+
     const payloadWithoutFolders = adaptMessengerBootstrapPayload({
       streams,
       topics,
       folders: [],
-      users,
     });
     await primeMessengerLastMessagesFromCache({
       ownerKey,

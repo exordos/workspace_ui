@@ -59,24 +59,14 @@ describe("ChatHeader", () => {
           name: "Alice",
           avatarUrl: null,
           presenceState: "active",
-          status: {
-            text: "",
-            away: false,
-            emojiName: "scam",
-            emojiCode: "42",
-            reactionType: "realm_emoji",
-          },
+          customStatus: ":scam:",
         }}
         hideParticipants
         hideTopic
       />,
     );
 
-    expect(screen.getByRole("img", { name: ":scam:" })).toHaveAttribute(
-      "src",
-      "https://chat.example.test/user_avatars/realm/42.png",
-    );
-    expect(screen.queryByText(":scam:")).not.toBeInTheDocument();
+    expect(screen.getByText(":scam:")).toBeInTheDocument();
     expect(screen.queryByText(/online|в сети/i)).not.toBeInTheDocument();
   });
 

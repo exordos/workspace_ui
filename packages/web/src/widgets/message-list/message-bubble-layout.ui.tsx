@@ -1,14 +1,13 @@
 import React from "react";
-import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
-import type { UserRecord } from "~/entities/user/user.model";
+import type { User } from "~/entities/user/user.types";
 import { t } from "~/i18n/i18n";
 import type { MockMessage } from "~/shared/api/zulip.types";
-import { getPresenceState } from "~/shared/lib/format";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { resolveAvatarSrc } from "./message-avatar.lib";
+import { resolveCustomStatusLabel, resolveMessageSenderPresence } from "./message-list-user.lib";
 
 interface MessageBubbleSenderMetaProps {
   displayName: string;
@@ -72,7 +71,7 @@ export const MessageBubbleSelectionControl = React.memo<MessageBubbleSelectionCo
 interface MessageBubblePeerAvatarProps {
   displayName: string;
   avatarSrc: string | undefined;
-  presenceState: ReturnType<typeof getPresenceState>;
+  presenceState: "active" | "idle" | "offline" | null;
   onAuthorClick: () => void;
 }
 
@@ -116,7 +115,7 @@ export interface MessageBubbleShellProps {
   showTopicInSenderName: boolean;
   inSenderGroup: boolean;
   displayName: string;
-  user: UserRecord | undefined;
+  user: User | undefined;
   bubbleSurfaceClass: string;
   onToggleSelect: () => void;
   onAuthorClick: () => void;
@@ -142,7 +141,7 @@ export const MessageBubbleGroupedShell = React.memo<MessageBubbleShellProps>(
     containerRef,
     children,
   }) {
-    const senderStatusLabel = !isOwn ? formatUserStatusLabel(user?.status) : null;
+    const senderStatusLabel = resolveCustomStatusLabel(user);
 
     return (
       <div
@@ -202,12 +201,11 @@ export const MessageBubbleStandaloneShell = React.memo<MessageBubbleShellProps>(
     containerRef,
     children,
   }) {
-    const senderStatusLabel = !isOwn ? formatUserStatusLabel(user?.status) : null;
-    const avatarSrc = resolveAvatarSrc(user?.avatar_url ?? undefined);
-    const presenceState =
-      user?.presence != null
-        ? getPresenceState(user.presence.timestamp, user.presence.status)
-        : null;
+    const senderStatusLabel = resolveCustomStatusLabel(user);
+    const avatarSrc = resolveAvatarSrc(
+      user?.avatarUrl ?? (message as { avatar_url?: string | null }).avatar_url ?? undefined,
+    );
+    const presenceState = resolveMessageSenderPresence(user);
 
     return (
       <div

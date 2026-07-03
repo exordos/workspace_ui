@@ -83,12 +83,12 @@ function getCurrentChat(): AiChatContext {
 function getCurrentUser(): AiUserContext {
   const instance = useInstancesStore.getState().getCurrentInstance();
   const userId = useChatListStore.getState().currentUserId;
-  const user = userId ? useUsersStore.getState().getUser(userId) : undefined;
+  const user = userId != null ? useUsersStore.getState().getUser(String(userId)) : undefined;
 
   return {
     userId,
     email: instance?.email,
-    fullName: user?.full_name,
+    fullName: user?.displayName,
     realm: instance?.realm,
   };
 }

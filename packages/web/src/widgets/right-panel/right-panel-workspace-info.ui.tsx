@@ -12,7 +12,13 @@ import {
   removeWorkspaceStreamMember,
 } from "~/entities/messenger/messenger-stream-member-actions.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type { MessengerUser, MessengerUuid } from "~/entities/messenger/messenger.types";
+import type { MessengerUuid } from "~/entities/messenger/messenger.types";
+import {
+  resolveUserPresenceVisual,
+  selectUserDisplayName,
+} from "~/entities/user/user-selectors.lib";
+import { useUsersStore } from "~/entities/user/user.model";
+import type { User, UsersById } from "~/entities/user/user.types";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
@@ -101,26 +107,15 @@ function createWorkspaceMemberActionState(streamUuid: string | null): WorkspaceM
   };
 }
 
-function resolveWorkspaceUserDisplayName(user: MessengerUser): string {
-  const fullName = [user.firstName, user.lastName]
-    .map((part) => part?.trim() ?? "")
-    .filter((part) => part.length > 0)
-    .join(" ")
-    .trim();
-  if (fullName.length > 0) return fullName;
-
-  const username = user.username.trim();
-  if (username.length > 0) return username;
-
-  const email = user.email?.trim() ?? "";
-  return email.length > 0 ? email : user.uuid;
+function resolveWorkspaceUserDisplayName(user: User): string {
+  return selectUserDisplayName(user, user.uuid);
 }
 
-function resolveWorkspacePresence(status: MessengerUser["status"] | null): PresenceVisual {
-  return status === "active" || status === "idle" ? status : "offline";
+function resolveWorkspacePresence(status: User["status"] | null): PresenceVisual {
+  return resolveUserPresenceVisual(status) ?? "offline";
 }
 
-function resolveWorkspaceStatusLabel(status: MessengerUser["status"] | null): string | null {
+function resolveWorkspaceStatusLabel(status: User["status"] | null): string | null {
   if (status == null) return null;
   if (status === "active") return t("presence.online");
   if (status === "idle") return t("presence.away");
@@ -140,13 +135,13 @@ function normalizeWorkspaceMemberQuery(query: string): string {
 }
 
 function filterWorkspaceUserOptions(
-  usersById: Record<MessengerUuid, MessengerUser>,
+  usersById: UsersById,
   existingMemberUuids: ReadonlySet<MessengerUuid>,
   selectedUserUuids: readonly MessengerUuid[],
   query: string,
 ): WorkspaceUserPickerOption[] {
   // Старый picker завязан на числовые Zulip userId, поэтому Workspace держит
-  // такой же по виду список, но строит его из UUID-пользователей messenger store.
+  // такой же по виду список, но строит его из UUID-пользователей user store.
   const normalizedQuery = normalizeWorkspaceMemberQuery(query);
   const selected = new Set(selectedUserUuids);
   const options: WorkspaceUserPickerOption[] = [];
@@ -378,7 +373,11 @@ const RightPanelWorkspaceDirectPrivateInfo: React.FC<{
           <h2 className="mb-3 text-sm font-semibold text-text-primary">{t("info.information")}</h2>
           <div className="flex items-center gap-3">
             <div className="relative shrink-0">
-              <Avatar size="lg" className="bg-bg-elevated text-text-secondary">
+              <Avatar
+                size="lg"
+                src={info.avatarUrl ?? undefined}
+                className="bg-bg-elevated text-text-secondary"
+              >
                 {info.title.slice(0, 1)}
               </Avatar>
               {info.status != null && (
@@ -466,7 +465,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
   const storeNotificationMode = useMessengerStore((state) =>
     info.streamUuid == null ? null : (state.streamsById[info.streamUuid]?.notificationMode ?? null),
   );
-  const workspaceUsersById = useMessengerStore((state) => state.usersById);
+  const workspaceUsersById = useUsersStore((state) => state.usersById);
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
   const runtimeContext = useMemo(

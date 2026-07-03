@@ -1,122 +1,140 @@
-/**
- * Feed store — message list and SWR-style request/pagination lifecycle for /feed.
- *
- * Messages are newest-first for consistency with the rest of the UI.
- */
-
 import { create } from "zustand";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import { logStoreAction } from "~/shared/lib/logger";
 
 interface FeedState {
-  instanceId: string | null;
-  messages: MockMessage[];
+  ownerKey: string | null;
+  messages: MessengerMessage[];
   isInitialLoading: boolean;
   isRefreshing: boolean;
   isLoadingMore: boolean;
-  isAllLoaded: boolean;
-  lastMessageId: number | null;
+  hasMore: boolean;
+  nextPageMarker: string | null;
   requestVersion: number;
   lastLoadedAt: number | null;
   error: string | null;
 
-  setMessages: (messages: MockMessage[], isAllLoaded: boolean, instanceId?: string | null) => void;
-  setMessagesIfActual: (
-    messages: MockMessage[],
-    isAllLoaded: boolean,
-    requestVersion: number,
-    instanceId?: string | null,
+  setMessages: (
+    messages: MessengerMessage[],
+    pagination: FeedPaginationState,
+    ownerKey?: string | null,
   ) => void;
-  appendOlder: (messages: MockMessage[], isAllLoaded: boolean) => void;
+  setMessagesIfActual: (
+    messages: MessengerMessage[],
+    pagination: FeedPaginationState,
+    requestVersion: number,
+    ownerKey?: string | null,
+  ) => void;
+  appendOlder: (messages: MessengerMessage[], pagination: FeedPaginationState) => void;
   clear: () => void;
   setLoadingMore: (loading: boolean) => void;
   setError: (error: string, requestVersion?: number) => void;
   startRequest: (hasCachedData: boolean) => number;
 }
 
-function findOldestId(messages: MockMessage[]): number | null {
-  if (messages.length === 0) return null;
-  let oldest = messages[0]!;
-  for (let i = 1; i < messages.length; i++) {
-    if (messages[i]!.id < oldest.id) {
-      oldest = messages[i]!;
-    }
-  }
-  return oldest.id;
+export interface FeedPaginationState {
+  nextPageMarker: string | null;
+  hasMore: boolean;
 }
 
-// Preserve array reference when cache→refresh returns the same ids in the same order.
-function hasSameMessageOrder(left: MockMessage[], right: MockMessage[]): boolean {
+function compareFeedMessages(left: MessengerMessage, right: MessengerMessage): number {
+  const createdAtOrder = left.createdAt.localeCompare(right.createdAt);
+  if (createdAtOrder !== 0) return createdAtOrder;
+  return left.uuid.localeCompare(right.uuid);
+}
+
+function sortUniqueMessages(messages: readonly MessengerMessage[]): MessengerMessage[] {
+  const byUuid = new Map<string, MessengerMessage>();
+  for (const message of messages) {
+    byUuid.set(message.uuid, message);
+  }
+  return [...byUuid.values()].sort(compareFeedMessages);
+}
+
+function mergeOlderMessages(
+  currentMessages: readonly MessengerMessage[],
+  olderMessages: readonly MessengerMessage[],
+): MessengerMessage[] {
+  const currentUuids = new Set(currentMessages.map((message) => message.uuid));
+  const newOlderMessages = olderMessages.filter((message) => !currentUuids.has(message.uuid));
+  return sortUniqueMessages([...currentMessages, ...newOlderMessages]);
+}
+
+function hasSameMessageOrder(left: MessengerMessage[], right: MessengerMessage[]): boolean {
   if (left.length !== right.length) return false;
   for (let i = 0; i < left.length; i++) {
-    if (left[i]!.id !== right[i]!.id) return false;
+    if (left[i]!.uuid !== right[i]!.uuid) return false;
   }
   return true;
 }
 
 export const useFeedStore = create<FeedState>((set, get) => ({
-  instanceId: null,
+  ownerKey: null,
   messages: [],
   isInitialLoading: false,
   isRefreshing: false,
   isLoadingMore: false,
-  isAllLoaded: false,
-  lastMessageId: null,
+  hasMore: false,
+  nextPageMarker: null,
   requestVersion: 0,
   lastLoadedAt: null,
   error: null,
 
-  setMessages(messages, isAllLoaded, instanceId) {
+  setMessages(messages, pagination, ownerKey) {
     logStoreAction("feed", "setMessages", { count: messages.length });
+    const nextMessages = sortUniqueMessages(messages);
     set({
-      instanceId: instanceId ?? get().instanceId,
-      messages,
-      lastMessageId: findOldestId(messages),
+      ownerKey: ownerKey ?? get().ownerKey,
+      messages: nextMessages,
       isInitialLoading: false,
       isRefreshing: false,
-      isAllLoaded,
+      nextPageMarker: pagination.nextPageMarker,
+      hasMore: pagination.hasMore,
       lastLoadedAt: Date.now(),
       error: null,
     });
   },
 
-  setMessagesIfActual(messages, isAllLoaded, requestVersion, instanceId) {
+  setMessagesIfActual(messages, pagination, requestVersion, ownerKey) {
     logStoreAction("feed", "setMessagesIfActual", { count: messages.length, requestVersion });
     set((state) => {
       if (state.requestVersion !== requestVersion) return state;
-      const nextMessages = hasSameMessageOrder(state.messages, messages)
+      const sortedMessages = sortUniqueMessages(messages);
+      const nextMessages = hasSameMessageOrder(state.messages, sortedMessages)
         ? state.messages
-        : messages;
+        : sortedMessages;
       return {
-        instanceId: instanceId ?? state.instanceId,
+        ownerKey: ownerKey ?? state.ownerKey,
         messages: nextMessages,
-        lastMessageId: findOldestId(nextMessages),
         isInitialLoading: false,
         isRefreshing: false,
-        isAllLoaded,
+        nextPageMarker: pagination.nextPageMarker,
+        hasMore: pagination.hasMore,
         lastLoadedAt: Date.now(),
         error: null,
       };
     });
   },
 
-  appendOlder(olderMessages, isAllLoaded) {
+  appendOlder(olderMessages, pagination) {
     if (olderMessages.length === 0) {
-      logStoreAction("feed", "appendOlder", { count: 0, allLoaded: isAllLoaded });
-      set({ isAllLoaded: true, isLoadingMore: false });
+      logStoreAction("feed", "appendOlder", { count: 0, hasMore: pagination.hasMore });
+      set({
+        nextPageMarker: pagination.nextPageMarker,
+        hasMore: pagination.hasMore,
+        isLoadingMore: false,
+      });
       return;
     }
 
     logStoreAction("feed", "appendOlder", { count: olderMessages.length });
     set((state) => {
-      const existingIds = new Set(state.messages.map((m) => m.id));
-      const unique = olderMessages.filter((m) => !existingIds.has(m.id));
-      const merged = [...unique, ...state.messages];
+      const merged = mergeOlderMessages(state.messages, olderMessages);
       return {
         messages: merged,
-        lastMessageId: findOldestId(merged),
         isLoadingMore: false,
-        isAllLoaded,
+        nextPageMarker: pagination.nextPageMarker,
+        hasMore: pagination.hasMore,
       };
     });
   },
@@ -124,13 +142,13 @@ export const useFeedStore = create<FeedState>((set, get) => ({
   clear() {
     logStoreAction("feed", "clear");
     set({
-      instanceId: null,
+      ownerKey: null,
       messages: [],
       isInitialLoading: false,
       isRefreshing: false,
       isLoadingMore: false,
-      isAllLoaded: false,
-      lastMessageId: null,
+      hasMore: false,
+      nextPageMarker: null,
       requestVersion: 0,
       lastLoadedAt: null,
       error: null,

@@ -3,8 +3,13 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useFeedStore } from "~/entities/feed/feed.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
-import type { MockMessage } from "~/shared/api/zulip.types";
-import { createMessage } from "~/test/factories";
+import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import type { MessengerMessage } from "~/entities/messenger/messenger.types";
+import { useUsersStore } from "~/entities/user/user.model";
+import type { User } from "~/entities/user/user.types";
+import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { FeedPage } from "./feed-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
 
@@ -31,11 +36,148 @@ vi.mock("~/entities/feed/feed.api", async () => {
   };
 });
 
+const ACCOUNT_ID = "account-a";
+const INSTANCE_ID = "instance-a";
+const ORG_ID = "org-a";
+const PROJECT_ID = "22222222-2222-4222-8222-222222222222";
+const USER_UUID = "11111111-1111-4111-8111-111111111111";
+const AUTHOR_UUID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const STREAM_UUID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const TOPIC_UUID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+
 const scrollHeightDescriptor = Object.getOwnPropertyDescriptor(
   HTMLElement.prototype,
   "scrollHeight",
 );
 const scrollToDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTo");
+
+function createSession(overrides: Partial<WorkspaceAuthSession> = {}): WorkspaceAuthSession {
+  return {
+    accountId: ACCOUNT_ID,
+    instanceId: INSTANCE_ID,
+    organizationId: ORG_ID,
+    organizationOrigin: "https://org.example.com",
+    projectId: PROJECT_ID,
+    userUuid: USER_UUID,
+    accessToken: "access-token",
+    login: "user@example.com",
+    profile: {
+      uuid: USER_UUID,
+      username: "user",
+      firstName: "Current",
+      lastName: "User",
+      email: "user@example.com",
+      status: "active",
+    },
+    runtimeGeneration: 1,
+    ...overrides,
+  };
+}
+
+function createUser(overrides: Partial<User> = {}): User {
+  return {
+    uuid: AUTHOR_UUID,
+    username: "alice",
+    firstName: "Alice",
+    lastName: "Reader",
+    displayName: "Alice Reader",
+    email: "alice@example.com",
+    avatarUrl: null,
+    status: "active",
+    statusEmoji: null,
+    statusText: null,
+    lastPingAt: "2026-07-02T10:00:00Z",
+    createdAt: "2026-07-02T10:00:00Z",
+    updatedAt: "2026-07-02T10:00:00Z",
+    ...overrides,
+  };
+}
+
+function createFeedMessage(overrides: Partial<MessengerMessage> = {}): MessengerMessage {
+  return {
+    uuid: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+    conversationId: `topic:${STREAM_UUID}:${TOPIC_UUID}`,
+    projectId: PROJECT_ID,
+    streamUuid: STREAM_UUID,
+    topicUuid: TOPIC_UUID,
+    authorUuid: AUTHOR_UUID,
+    userUuid: USER_UUID,
+    markdown: "Workspace feed message",
+    read: true,
+    pinned: false,
+    starred: false,
+    isOwn: false,
+    createdAt: "2026-07-02T10:00:00Z",
+    updatedAt: "2026-07-02T10:00:00Z",
+    ...overrides,
+  };
+}
+
+function createPage(
+  messages: MessengerMessage[],
+  nextPageMarker: string | null = null,
+): {
+  messages: MessengerMessage[];
+  nextPageMarker: string | null;
+  hasMore: boolean;
+  pageLimit: number | null;
+} {
+  return {
+    messages,
+    nextPageMarker,
+    hasMore: nextPageMarker != null,
+    pageLimit: 50,
+  };
+}
+
+function setRuntime(session: WorkspaceAuthSession = createSession()): string {
+  useWorkspaceAuthStore.setState({
+    sessions: [session],
+    currentAccountId: session.accountId,
+    runtimeGeneration: session.runtimeGeneration,
+  });
+  useInstancesStore.setState({
+    instances: [
+      {
+        id: session.instanceId,
+        realm: session.organizationOrigin,
+        email: session.login,
+        apiKey: session.accessToken,
+      },
+    ],
+    currentInstanceId: session.instanceId,
+    unreadCountsByInstance: {},
+    activeOrgEpoch: 0,
+  });
+  return workspaceRuntimeOwnerKey(session);
+}
+
+function renderFeedPage() {
+  return render(
+    <MemoryRouter initialEntries={[`/org/${ORG_ID}/project/${PROJECT_ID}/feed`]}>
+      <Routes>
+        <Route path="/org/:orgId/project/:projectId/feed" element={<FeedPage />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
+function resetStores(): void {
+  useFeedStore.getState().clear();
+  useMessengerStore.getState().clear();
+  useUsersStore.getState().clear();
+  useWorkspaceAuthStore.setState({
+    sessions: [],
+    currentAccountId: null,
+    runtimeGeneration: 0,
+  });
+  useInstancesStore.setState({
+    instances: [],
+    currentInstanceId: null,
+    unreadCountsByInstance: {},
+    activeOrgEpoch: 0,
+  });
+}
 
 function mockElementScrollHeight(value: number): () => void {
   Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
@@ -71,300 +213,300 @@ function mockElementScrollTo(
   };
 }
 
-describe("FeedPage forward action", () => {
+describe("FeedPage", () => {
   afterEach(() => {
     navigateSpy.mockReset();
     fetchFeedMessages.mockReset();
     hydrateFeedMessagesFromCache.mockReset();
     hydrateFeedMessagesFromCache.mockResolvedValue([]);
-    useFeedStore.getState().clear();
-    useInstancesStore.setState({
-      instances: [],
-      currentInstanceId: null,
-      unreadCountsByInstance: {},
-      activeOrgEpoch: 0,
-    });
+    resetStores();
   });
 
-  it("opens chat forward flow from feed message action", async () => {
-    useInstancesStore.setState({
-      instances: [
-        {
-          id: "instance-1",
-          realm: "https://zulip.example.com",
-          email: "user@example.com",
-          apiKey: "api-key",
-        },
-      ],
-      currentInstanceId: "instance-1",
-      unreadCountsByInstance: {},
-    });
+  it("loads Workspace feed messages after runtime becomes available", async () => {
+    const message = createFeedMessage({ markdown: "Deferred Workspace feed load" });
+    fetchFeedMessages.mockResolvedValue(createPage([message]));
 
-    const message = createMessage({
-      id: 55,
-      sender_id: 42,
-      sender_full_name: "Alice",
-      stream_id: 10,
-      subject: "bugs",
-      content: "Forward from feed",
-      timestamp: 1,
-      type: "stream",
-      display_recipient: "engineering",
-      channel: "engineering",
-    });
-
-    fetchFeedMessages.mockResolvedValue({
-      messages: [message],
-      foundOldest: true,
-    });
-
-    render(
-      <MemoryRouter initialEntries={["/feed"]}>
-        <Routes>
-          <Route path="/feed" element={<FeedPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("Forward from feed")).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Forward" }));
-
-    expect(navigateSpy).toHaveBeenCalledWith("/stream/10-engineering/topic/bugs?msg=55&forward=55");
-  });
-
-  it("opens explicit empty-topic forward flow when feed message topic is empty", async () => {
-    useInstancesStore.setState({
-      instances: [
-        {
-          id: "instance-1",
-          realm: "https://zulip.example.com",
-          email: "user@example.com",
-          apiKey: "api-key",
-        },
-      ],
-      currentInstanceId: "instance-1",
-      unreadCountsByInstance: {},
-    });
-
-    const message = createMessage({
-      id: 57,
-      sender_id: 42,
-      sender_full_name: "Alice",
-      stream_id: 10,
-      subject: "",
-      content: "Forward from feed without topic",
-      timestamp: 1,
-      type: "stream",
-      display_recipient: "engineering",
-      channel: "engineering",
-    });
-
-    fetchFeedMessages.mockResolvedValue({
-      messages: [message],
-      foundOldest: true,
-    });
-
-    render(
-      <MemoryRouter initialEntries={["/feed"]}>
-        <Routes>
-          <Route path="/feed" element={<FeedPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("Forward from feed without topic")).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Forward" }));
-
-    expect(navigateSpy).toHaveBeenCalledWith(
-      "/stream/10-engineering/topic/__empty__?msg=57&forward=57",
-    );
-  });
-
-  it("loads feed after active instance becomes available", async () => {
-    const message = createMessage({
-      id: 56,
-      sender_id: 42,
-      sender_full_name: "Alice",
-      stream_id: 10,
-      subject: "bugs",
-      content: "Deferred feed load",
-      timestamp: 1,
-      type: "stream",
-      display_recipient: "engineering",
-      channel: "engineering",
-    });
-
-    useInstancesStore.setState({
-      instances: [],
-      currentInstanceId: null,
-      unreadCountsByInstance: {},
-    });
-    fetchFeedMessages.mockResolvedValue({
-      messages: [message],
-      foundOldest: true,
-    });
-
-    render(
-      <MemoryRouter initialEntries={["/feed"]}>
-        <Routes>
-          <Route path="/feed" element={<FeedPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
+    renderFeedPage();
     expect(fetchFeedMessages).not.toHaveBeenCalled();
 
     act(() => {
-      useInstancesStore.setState({
-        instances: [
-          {
-            id: "instance-1",
-            realm: "https://zulip.example.com",
-            email: "user@example.com",
-            apiKey: "api-key",
-          },
-        ],
-        currentInstanceId: "instance-1",
-        unreadCountsByInstance: {},
-      });
+      setRuntime();
     });
 
     await waitFor(() => {
       expect(fetchFeedMessages).toHaveBeenCalledWith(
-        "newest",
-        50,
-        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        expect.objectContaining({
+          runtimeContext: expect.objectContaining({ projectId: PROJECT_ID }),
+          pageLimit: 50,
+          signal: expect.any(AbortSignal),
+        }),
       );
     });
     await waitFor(() => {
-      expect(screen.getByText("Deferred feed load")).toBeInTheDocument();
+      expect(screen.getByText("Deferred Workspace feed load")).toBeInTheDocument();
     });
   });
 
-  it("uses card-style feed row classes for themed readability", async () => {
-    useInstancesStore.setState({
-      instances: [
-        {
-          id: "instance-1",
-          realm: "https://zulip.example.com",
-          email: "user@example.com",
-          apiKey: "api-key",
-        },
-      ],
-      currentInstanceId: "instance-1",
-      unreadCountsByInstance: {},
-    });
+  it("renders Workspace author names from authorUuid only", async () => {
+    setRuntime();
+    useUsersStore.getState().replaceUsers([createUser()]);
+    fetchFeedMessages.mockResolvedValue(createPage([createFeedMessage()]));
 
-    const message = createMessage({
-      id: 58,
-      sender_id: 42,
-      sender_full_name: "Alice",
-      stream_id: 10,
-      subject: "style",
-      content: "Feed style contract",
-      timestamp: 1,
-      type: "stream",
-      display_recipient: "engineering",
-      channel: "engineering",
-    });
-
-    fetchFeedMessages.mockResolvedValue({
-      messages: [message],
-      foundOldest: true,
-    });
-
-    render(
-      <MemoryRouter initialEntries={["/feed"]}>
-        <Routes>
-          <Route path="/feed" element={<FeedPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
+    renderFeedPage();
 
     await waitFor(() => {
-      expect(screen.getByText("Feed style contract")).toBeInTheDocument();
+      expect(screen.getByText("Alice Reader")).toBeInTheDocument();
     });
-
-    const row = screen.getByText("Feed style contract").closest("div");
-    expect(row).toHaveClass("rounded-xl");
-    expect(row).toHaveClass("border");
-    expect(row).toHaveClass("border-border-subtle");
-    expect(row).toHaveClass("bg-bg-elevated/60");
   });
 
-  it("renders cached feed immediately while newest refresh is in flight", () => {
-    useInstancesStore.setState({
-      instances: [
-        {
-          id: "instance-1",
-          realm: "https://zulip.example.com",
-          email: "user@example.com",
-          apiKey: "api-key",
-        },
-      ],
-      currentInstanceId: "instance-1",
-      unreadCountsByInstance: {},
+  it("opens the Workspace topic route from a feed row", async () => {
+    setRuntime();
+    fetchFeedMessages.mockResolvedValue(createPage([createFeedMessage()]));
+
+    renderFeedPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Workspace feed message")).toBeInTheDocument();
     });
 
+    fireEvent.click(screen.getByText("Workspace feed message"));
+
+    expect(navigateSpy).toHaveBeenCalledWith(
+      `/org/${ORG_ID}/project/${PROJECT_ID}/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+  });
+
+  it("does not expose old numeric forward navigation from feed", async () => {
+    setRuntime();
+    fetchFeedMessages.mockResolvedValue(createPage([createFeedMessage()]));
+
+    renderFeedPage();
+
+    const button = await screen.findByRole("button", {
+      name: "Forwarding is not connected to Workspace messaging yet.",
+    });
+
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(navigateSpy).not.toHaveBeenCalled();
+  });
+
+  it("renders cached feed from the Workspace owner while refresh is in flight", () => {
+    const ownerKey = setRuntime();
     useFeedStore.setState({
-      instanceId: "instance-1",
-      messages: [
-        createMessage({
-          id: 99,
-          sender_id: 42,
-          sender_full_name: "Alice",
-          stream_id: 10,
-          subject: "cache",
-          content: "Cached feed item",
-          timestamp: 1,
-          type: "stream",
-          display_recipient: "engineering",
-          channel: "engineering",
-        }) as MockMessage,
-      ],
+      ownerKey,
+      messages: [createFeedMessage({ markdown: "Cached Workspace feed item" })],
       isInitialLoading: false,
       isRefreshing: false,
       isLoadingMore: false,
-      isAllLoaded: false,
-      lastMessageId: 99,
+      hasMore: true,
+      nextPageMarker: "cursor-a",
       requestVersion: 0,
       lastLoadedAt: Date.now(),
       error: null,
     });
+    fetchFeedMessages.mockResolvedValue(createPage([createFeedMessage()]));
 
-    fetchFeedMessages.mockResolvedValue({
-      messages: [
-        createMessage({
-          id: 99,
-          sender_id: 42,
-          sender_full_name: "Alice",
-          stream_id: 10,
-          subject: "cache",
-          content: "Cached feed item",
-          timestamp: 1,
-          type: "stream",
-          display_recipient: "engineering",
-          channel: "engineering",
+    renderFeedPage();
+
+    expect(screen.getByText("Cached Workspace feed item")).toBeInTheDocument();
+  });
+
+  it("clears cached feed when the Workspace owner changes", async () => {
+    const previousOwnerKey = workspaceRuntimeOwnerKey(
+      createSession({ accountId: "old-account", runtimeGeneration: 1 }),
+    );
+    setRuntime(createSession({ accountId: "new-account", runtimeGeneration: 2 }));
+    useFeedStore.setState({
+      ownerKey: previousOwnerKey,
+      messages: [createFeedMessage({ markdown: "Previous owner feed item" })],
+      isInitialLoading: false,
+      isRefreshing: false,
+      isLoadingMore: false,
+      hasMore: false,
+      nextPageMarker: null,
+      requestVersion: 0,
+      lastLoadedAt: Date.now(),
+      error: null,
+    });
+    fetchFeedMessages.mockResolvedValue(createPage([createFeedMessage({ markdown: "New owner" })]));
+
+    renderFeedPage();
+
+    await waitFor(() => {
+      expect(screen.queryByText("Previous owner feed item")).not.toBeInTheDocument();
+    });
+  });
+
+  it("requests more messages with the Workspace page marker", async () => {
+    const ownerKey = setRuntime();
+    const olderMessage = createFeedMessage({
+      uuid: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      markdown: "Older Workspace feed item",
+      createdAt: "2026-07-02T09:00:00Z",
+      updatedAt: "2026-07-02T09:00:00Z",
+    });
+    useFeedStore.setState({
+      ownerKey,
+      messages: [createFeedMessage({ markdown: "Loaded Workspace feed item" })],
+      isInitialLoading: false,
+      isRefreshing: false,
+      isLoadingMore: false,
+      hasMore: true,
+      nextPageMarker: "cursor-a",
+      requestVersion: 0,
+      lastLoadedAt: Date.now(),
+      error: null,
+    });
+    fetchFeedMessages
+      .mockResolvedValueOnce(createPage([createFeedMessage()], "cursor-a"))
+      .mockResolvedValueOnce(createPage([olderMessage]));
+
+    const { container } = renderFeedPage();
+    const list = container.querySelector("ul") as HTMLUListElement;
+    Object.defineProperty(list, "scrollHeight", { configurable: true, value: 1200 });
+    Object.defineProperty(list, "clientHeight", { configurable: true, value: 400 });
+    Object.defineProperty(list, "scrollTop", { configurable: true, writable: true, value: 0 });
+
+    fireEvent.scroll(list);
+
+    await waitFor(() => {
+      expect(fetchFeedMessages).toHaveBeenCalledWith(
+        expect.objectContaining({
+          pageMarker: "cursor-a",
         }),
-      ],
-      foundOldest: true,
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByText("Older Workspace feed item")).toBeInTheDocument();
+    });
+  });
+
+  it("ignores stale older page completion after Workspace owner changes", async () => {
+    const oldOwnerKey = setRuntime();
+    const newSession = createSession({
+      accountId: "account-b",
+      instanceId: "instance-b",
+      organizationId: "org-b",
+      projectId: "33333333-3333-4333-8333-333333333333",
+      runtimeGeneration: 2,
+    });
+    const newOwnerKey = workspaceRuntimeOwnerKey(newSession);
+    let resolveOldPage!: (page: ReturnType<typeof createPage>) => void;
+    const oldPage = new Promise<ReturnType<typeof createPage>>((resolve) => {
+      resolveOldPage = resolve;
+    });
+    let resolveNewPage!: (page: ReturnType<typeof createPage>) => void;
+    const newPage = new Promise<ReturnType<typeof createPage>>((resolve) => {
+      resolveNewPage = resolve;
     });
 
-    render(
-      <MemoryRouter initialEntries={["/feed"]}>
-        <Routes>
-          <Route path="/feed" element={<FeedPage />} />
-        </Routes>
-      </MemoryRouter>,
+    useFeedStore.setState({
+      ownerKey: oldOwnerKey,
+      messages: [createFeedMessage({ markdown: "Old owner loaded item" })],
+      isInitialLoading: false,
+      isRefreshing: false,
+      isLoadingMore: false,
+      hasMore: true,
+      nextPageMarker: "cursor-old",
+      requestVersion: 0,
+      lastLoadedAt: Date.now(),
+      error: null,
+    });
+    fetchFeedMessages.mockImplementation(
+      ({
+        pageMarker,
+        runtimeContext,
+      }: {
+        pageMarker?: string;
+        runtimeContext?: { accountId?: string };
+      }) => {
+        if (pageMarker === "cursor-old") return oldPage;
+        if (pageMarker === "cursor-new") return newPage;
+        return Promise.resolve(
+          createPage(
+            [createFeedMessage()],
+            runtimeContext?.accountId === newSession.accountId ? "cursor-new" : "cursor-old",
+          ),
+        );
+      },
     );
 
-    expect(screen.getByText("Cached feed item")).toBeInTheDocument();
+    const { container } = renderFeedPage();
+    const list = container.querySelector("ul") as HTMLUListElement;
+    Object.defineProperty(list, "scrollHeight", { configurable: true, value: 1200 });
+    Object.defineProperty(list, "clientHeight", { configurable: true, value: 400 });
+    Object.defineProperty(list, "scrollTop", { configurable: true, writable: true, value: 0 });
+
+    fireEvent.scroll(list);
+    await waitFor(() => {
+      expect(fetchFeedMessages).toHaveBeenCalledWith(
+        expect.objectContaining({ pageMarker: "cursor-old" }),
+      );
+    });
+
+    act(() => {
+      setRuntime(newSession);
+      useFeedStore.setState({
+        ownerKey: newOwnerKey,
+        messages: [createFeedMessage({ markdown: "New owner loaded item" })],
+        isInitialLoading: false,
+        isRefreshing: false,
+        isLoadingMore: false,
+        hasMore: true,
+        nextPageMarker: "cursor-new",
+        requestVersion: 0,
+        lastLoadedAt: Date.now(),
+        error: null,
+      });
+    });
+
+    Object.defineProperty(list, "scrollTop", { configurable: true, writable: true, value: 200 });
+    fireEvent.scroll(list);
+    Object.defineProperty(list, "scrollTop", { configurable: true, writable: true, value: 0 });
+    fireEvent.scroll(list);
+
+    await waitFor(() => {
+      expect(fetchFeedMessages).toHaveBeenCalledWith(
+        expect.objectContaining({ pageMarker: "cursor-new" }),
+      );
+    });
+
+    await act(async () => {
+      resolveOldPage(
+        createPage([
+          createFeedMessage({
+            uuid: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+            markdown: "Stale old owner item",
+            createdAt: "2026-07-02T09:00:00Z",
+          }),
+        ]),
+      );
+      await oldPage;
+    });
+
+    expect(screen.queryByText("Stale old owner item")).not.toBeInTheDocument();
+    expect(useFeedStore.getState().ownerKey).toBe(newOwnerKey);
+    expect(useFeedStore.getState().isLoadingMore).toBe(true);
+    expect(useFeedStore.getState().nextPageMarker).toBe("cursor-new");
+
+    await act(async () => {
+      resolveNewPage(
+        createPage([
+          createFeedMessage({
+            uuid: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+            markdown: "Current new owner older item",
+            createdAt: "2026-07-02T09:00:00Z",
+          }),
+        ]),
+      );
+      await newPage;
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Current new owner older item")).toBeInTheDocument();
+    });
+    expect(useFeedStore.getState().isLoadingMore).toBe(false);
   });
 
   it("initializes the feed list at the latest messages", async () => {
@@ -378,56 +520,19 @@ describe("FeedPage forward action", () => {
     });
     const restoreScrollTo = mockElementScrollTo(scrollTo);
     try {
-      useInstancesStore.setState({
-        instances: [
-          {
-            id: "instance-1",
-            realm: "https://zulip.example.com",
-            email: "user@example.com",
-            apiKey: "api-key",
-          },
-        ],
-        currentInstanceId: "instance-1",
-        unreadCountsByInstance: {},
-      });
-
-      fetchFeedMessages.mockResolvedValue({
-        messages: [
-          createMessage({
-            id: 60,
-            sender_id: 42,
-            sender_full_name: "Alice",
-            stream_id: 10,
-            subject: "scroll",
-            content: "Feed first item",
-            timestamp: 1,
-            type: "stream",
-            display_recipient: "engineering",
-            channel: "engineering",
+      setRuntime();
+      fetchFeedMessages.mockResolvedValue(
+        createPage([
+          createFeedMessage({
+            uuid: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+            markdown: "Feed first item",
+            createdAt: "2026-07-02T09:00:00Z",
           }),
-          createMessage({
-            id: 61,
-            sender_id: 42,
-            sender_full_name: "Alice",
-            stream_id: 10,
-            subject: "scroll",
-            content: "Feed latest item",
-            timestamp: 2,
-            type: "stream",
-            display_recipient: "engineering",
-            channel: "engineering",
-          }),
-        ],
-        foundOldest: true,
-      });
-
-      const { container } = render(
-        <MemoryRouter initialEntries={["/feed"]}>
-          <Routes>
-            <Route path="/feed" element={<FeedPage />} />
-          </Routes>
-        </MemoryRouter>,
+          createFeedMessage({ markdown: "Feed latest item" }),
+        ]),
       );
+
+      const { container } = renderFeedPage();
 
       await waitFor(() => {
         expect(screen.getByText("Feed latest item")).toBeInTheDocument();
@@ -441,397 +546,5 @@ describe("FeedPage forward action", () => {
       restoreScrollTo();
       restoreScrollHeight();
     }
-  });
-
-  it("shows scroll-to-bottom button when feed list is away from bottom and scrolls down on click", async () => {
-    const scrollTo = vi.fn(function (this: HTMLElement, options: ScrollToOptions) {
-      Object.defineProperty(this, "scrollTop", {
-        configurable: true,
-        writable: true,
-        value: options.top ?? 0,
-      });
-    });
-    const restoreScrollTo = mockElementScrollTo(scrollTo);
-    try {
-      useInstancesStore.setState({
-        instances: [
-          {
-            id: "instance-1",
-            realm: "https://zulip.example.com",
-            email: "user@example.com",
-            apiKey: "api-key",
-          },
-        ],
-        currentInstanceId: "instance-1",
-        unreadCountsByInstance: {},
-      });
-
-      const message = createMessage({
-        id: 59,
-        sender_id: 42,
-        sender_full_name: "Alice",
-        stream_id: 10,
-        subject: "scroll",
-        content: "Scroll button target",
-        timestamp: 1,
-        type: "stream",
-        display_recipient: "engineering",
-        channel: "engineering",
-      });
-
-      fetchFeedMessages.mockResolvedValue({
-        messages: [message],
-        foundOldest: true,
-      });
-
-      const { container } = render(
-        <MemoryRouter initialEntries={["/feed"]}>
-          <Routes>
-            <Route path="/feed" element={<FeedPage />} />
-          </Routes>
-        </MemoryRouter>,
-      );
-
-      await waitFor(() => {
-        expect(screen.getByText("Scroll button target")).toBeInTheDocument();
-      });
-
-      const list = container.querySelector("ul") as HTMLUListElement;
-      Object.defineProperty(list, "scrollHeight", { configurable: true, value: 1200 });
-      Object.defineProperty(list, "clientHeight", { configurable: true, value: 400 });
-      Object.defineProperty(list, "scrollTop", { configurable: true, writable: true, value: 120 });
-
-      fireEvent.scroll(list);
-
-      const scrollButton = screen.getByRole("button", { name: /scroll to bottom/i });
-      expect(scrollButton).toBeInTheDocument();
-
-      fireEvent.click(scrollButton);
-      expect(list.scrollTop).toBe(1200);
-      expect(scrollTo).toHaveBeenLastCalledWith({ top: 1200, behavior: "smooth" });
-    } finally {
-      restoreScrollTo();
-    }
-  });
-
-  it("does not apply cached feed from the previous organization after switch", async () => {
-    let resolveHydrate!: (messages: MockMessage[]) => void;
-    const staleHydrate = new Promise<MockMessage[]>((resolve) => {
-      resolveHydrate = resolve;
-    });
-
-    hydrateFeedMessagesFromCache
-      .mockReturnValueOnce(staleHydrate)
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([]);
-
-    let resolveNextOrgFetch!: (value: {
-      messages: MockMessage[];
-      foundOldest: boolean;
-    }) => void;
-    const nextOrgFetch = new Promise<{ messages: MockMessage[]; foundOldest: boolean }>(
-      (resolve) => {
-        resolveNextOrgFetch = resolve;
-      },
-    );
-    fetchFeedMessages.mockReturnValue(nextOrgFetch);
-
-    useInstancesStore.setState({
-      instances: [
-        {
-          id: "instance-1",
-          realm: "https://one.example.com",
-          email: "one@example.com",
-          apiKey: "api-key",
-        },
-        {
-          id: "instance-2",
-          realm: "https://two.example.com",
-          email: "two@example.com",
-          apiKey: "api-key",
-        },
-      ],
-      currentInstanceId: "instance-1",
-      unreadCountsByInstance: {},
-      activeOrgEpoch: 0,
-    });
-
-    render(
-      <MemoryRouter initialEntries={["/feed"]}>
-        <Routes>
-          <Route path="/feed" element={<FeedPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    act(() => {
-      useInstancesStore.getState().setCurrentInstanceId("instance-2");
-    });
-
-    await act(async () => {
-      resolveHydrate([
-        createMessage({
-          id: 500,
-          sender_id: 42,
-          sender_full_name: "Alice",
-          stream_id: 10,
-          subject: "cache",
-          content: "Old org cached feed item",
-          timestamp: 1,
-          type: "stream",
-          display_recipient: "engineering",
-          channel: "engineering",
-        }) as MockMessage,
-      ]);
-      await staleHydrate;
-    });
-
-    expect(useFeedStore.getState().messages).toEqual([]);
-
-    await act(async () => {
-      resolveNextOrgFetch({
-        messages: [
-          createMessage({
-            id: 600,
-            sender_id: 99,
-            sender_full_name: "Bob",
-            stream_id: 20,
-            subject: "fresh",
-            content: "Current org feed item",
-            timestamp: 2,
-            type: "stream",
-            display_recipient: "support",
-            channel: "support",
-          }) as MockMessage,
-        ],
-        foundOldest: true,
-      });
-      await nextOrgFetch;
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Current org feed item")).toBeInTheDocument();
-    });
-    expect(screen.queryByText("Old org cached feed item")).not.toBeInTheDocument();
-  });
-
-  it("does not apply stale newest feed refresh after organization switch", async () => {
-    let resolveOldFetch!: (value: { messages: MockMessage[]; foundOldest: boolean }) => void;
-    const oldFetch = new Promise<{ messages: MockMessage[]; foundOldest: boolean }>((resolve) => {
-      resolveOldFetch = resolve;
-    });
-
-    let resolveNewFetch!: (value: { messages: MockMessage[]; foundOldest: boolean }) => void;
-    const newFetch = new Promise<{ messages: MockMessage[]; foundOldest: boolean }>((resolve) => {
-      resolveNewFetch = resolve;
-    });
-
-    hydrateFeedMessagesFromCache.mockResolvedValue([]);
-    fetchFeedMessages.mockReturnValueOnce(oldFetch).mockReturnValueOnce(newFetch);
-
-    useInstancesStore.setState({
-      instances: [
-        {
-          id: "instance-1",
-          realm: "https://one.example.com",
-          email: "one@example.com",
-          apiKey: "api-key",
-        },
-        {
-          id: "instance-2",
-          realm: "https://two.example.com",
-          email: "two@example.com",
-          apiKey: "api-key",
-        },
-      ],
-      currentInstanceId: "instance-1",
-      unreadCountsByInstance: {},
-      activeOrgEpoch: 0,
-    });
-
-    render(
-      <MemoryRouter initialEntries={["/feed"]}>
-        <Routes>
-          <Route path="/feed" element={<FeedPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    await waitFor(() => {
-      expect(fetchFeedMessages).toHaveBeenCalledTimes(1);
-    });
-
-    act(() => {
-      useInstancesStore.getState().setCurrentInstanceId("instance-2");
-    });
-
-    await waitFor(() => {
-      expect(fetchFeedMessages).toHaveBeenCalledTimes(2);
-    });
-
-    await act(async () => {
-      resolveOldFetch({
-        messages: [
-          createMessage({
-            id: 700,
-            sender_id: 42,
-            sender_full_name: "Alice",
-            stream_id: 10,
-            subject: "old",
-            content: "Old org newest feed item",
-            timestamp: 1,
-            type: "stream",
-            display_recipient: "engineering",
-            channel: "engineering",
-          }) as MockMessage,
-        ],
-        foundOldest: true,
-      });
-      await oldFetch;
-    });
-
-    expect(useFeedStore.getState().messages).toEqual([]);
-
-    await act(async () => {
-      resolveNewFetch({
-        messages: [
-          createMessage({
-            id: 800,
-            sender_id: 99,
-            sender_full_name: "Bob",
-            stream_id: 20,
-            subject: "new",
-            content: "Current org newest feed item",
-            timestamp: 2,
-            type: "stream",
-            display_recipient: "support",
-            channel: "support",
-          }) as MockMessage,
-        ],
-        foundOldest: true,
-      });
-      await newFetch;
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Current org newest feed item")).toBeInTheDocument();
-    });
-    expect(screen.queryByText("Old org newest feed item")).not.toBeInTheDocument();
-  });
-
-  it("does not append stale older feed page after organization switch", async () => {
-    let resolveOlderPage!: (value: { messages: MockMessage[]; foundOldest: boolean }) => void;
-    const olderPage = new Promise<{ messages: MockMessage[]; foundOldest: boolean }>((resolve) => {
-      resolveOlderPage = resolve;
-    });
-
-    hydrateFeedMessagesFromCache.mockReturnValue(new Promise(() => {}));
-    fetchFeedMessages.mockReturnValue(olderPage);
-
-    useInstancesStore.setState({
-      instances: [
-        {
-          id: "instance-1",
-          realm: "https://one.example.com",
-          email: "one@example.com",
-          apiKey: "api-key",
-        },
-        {
-          id: "instance-2",
-          realm: "https://two.example.com",
-          email: "two@example.com",
-          apiKey: "api-key",
-        },
-      ],
-      currentInstanceId: "instance-1",
-      unreadCountsByInstance: {},
-      activeOrgEpoch: 0,
-    });
-
-    useFeedStore.setState({
-      instanceId: "instance-1",
-      messages: [
-        createMessage({
-          id: 100,
-          sender_id: 42,
-          sender_full_name: "Alice",
-          stream_id: 10,
-          subject: "base",
-          content: "Base feed item",
-          timestamp: 10,
-          type: "stream",
-          display_recipient: "engineering",
-          channel: "engineering",
-        }) as MockMessage,
-      ],
-      isInitialLoading: false,
-      isRefreshing: false,
-      isLoadingMore: false,
-      isAllLoaded: false,
-      lastMessageId: 100,
-      requestVersion: 0,
-      lastLoadedAt: Date.now(),
-      error: null,
-    });
-
-    const { container } = render(
-      <MemoryRouter initialEntries={["/feed"]}>
-        <Routes>
-          <Route path="/feed" element={<FeedPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("Base feed item")).toBeInTheDocument();
-    });
-
-    const list = container.querySelector("ul") as HTMLUListElement;
-    Object.defineProperty(list, "scrollTop", { configurable: true, writable: true, value: 0 });
-
-    fireEvent.scroll(list);
-
-    await waitFor(() => {
-      expect(fetchFeedMessages).toHaveBeenCalledWith(100, 50);
-    });
-
-    act(() => {
-      useInstancesStore.getState().setCurrentInstanceId("instance-2");
-    });
-
-    await act(async () => {
-      resolveOlderPage({
-        messages: [
-          createMessage({
-            id: 90,
-            sender_id: 42,
-            sender_full_name: "Alice",
-            stream_id: 10,
-            subject: "old",
-            content: "Old org older page item",
-            timestamp: 5,
-            type: "stream",
-            display_recipient: "engineering",
-            channel: "engineering",
-          }) as MockMessage,
-          createMessage({
-            id: 100,
-            sender_id: 42,
-            sender_full_name: "Alice",
-            stream_id: 10,
-            subject: "base",
-            content: "Base feed item",
-            timestamp: 10,
-            type: "stream",
-            display_recipient: "engineering",
-            channel: "engineering",
-          }) as MockMessage,
-        ],
-        foundOldest: true,
-      });
-      await olderPage;
-    });
-
-    expect(useFeedStore.getState().messages).toEqual([]);
   });
 });

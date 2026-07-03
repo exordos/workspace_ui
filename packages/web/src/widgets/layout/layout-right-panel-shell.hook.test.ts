@@ -2,7 +2,9 @@ import { renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerBootstrapPayload } from "~/entities/messenger/messenger.types";
+import { useUsersStore } from "~/entities/user/user.model";
 import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
+import { createUser } from "~/test/factories";
 import { useLayoutRightPanelShell } from "./layout-right-panel-shell.hook";
 import type { UseLayoutRightPanelShellParams } from "./layout-right-panel-shell.hook";
 
@@ -100,30 +102,6 @@ function createBootstrapPayload(): MessengerBootstrapPayload {
     ],
     conversations: [],
     folders: [],
-    users: [
-      {
-        uuid: USER_UUID,
-        username: "alice",
-        status: "active",
-        firstName: "Alice",
-        lastName: "Stone",
-        email: "alice@example.com",
-        lastPingAt: null,
-        createdAt: "2026-06-30T09:00:00.000Z",
-        updatedAt: "2026-06-30T09:00:00.000Z",
-      },
-      {
-        uuid: DIRECT_USER_UUID,
-        username: "cora",
-        status: "idle",
-        firstName: "Cora",
-        lastName: "Lane",
-        email: "cora@example.com",
-        lastPingAt: null,
-        createdAt: "2026-06-30T09:00:00.000Z",
-        updatedAt: "2026-06-30T09:00:00.000Z",
-      },
-    ],
   };
 }
 
@@ -155,12 +133,27 @@ describe("useLayoutRightPanelShell", () => {
   beforeEach(() => {
     useMessengerStore.getState().startBootstrap(OWNER_KEY);
     useMessengerStore.getState().replaceBootstrapState(OWNER_KEY, createBootstrapPayload());
+    useUsersStore.getState().replaceUsers([
+      createUser({
+        uuid: USER_UUID,
+        full_name: "Alice Stone",
+        email: "alice@example.com",
+        status: "active",
+      }),
+      createUser({
+        uuid: DIRECT_USER_UUID,
+        full_name: "Cora Lane",
+        email: "cora@example.com",
+        status: "idle",
+      }),
+    ]);
     useChatInfoStore.getState().clear();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
     useMessengerStore.getState().clear();
+    useUsersStore.getState().clear();
     useChatInfoStore.getState().clear();
   });
 

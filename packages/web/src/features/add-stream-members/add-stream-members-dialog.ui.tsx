@@ -1,9 +1,22 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import React, { useCallback, useMemo } from "react";
-import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
+import React, { useCallback, useMemo, useState } from "react";
+import { addWorkspaceStreamMembers } from "~/entities/messenger/messenger-stream-member-actions.lib";
+import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import type { MessengerUuid } from "~/entities/messenger/messenger.types";
+import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
+import type { User } from "~/entities/user/user.types";
+import {
+  selectCurrentWorkspaceRuntimeContext,
+  useWorkspaceAuthStore,
+} from "~/entities/workspace-auth/workspace-auth.model";
 import { t } from "~/i18n/i18n";
-import { buildUserPickerOptions } from "~/shared/lib/user-picker";
+import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
+import {
+  buildUserPickerOptions,
+  type UserPickerCandidate,
+  type UserPickerId,
+} from "~/shared/lib/user-picker";
 import {
   AppDialogShell,
   APP_DIALOG_CONTENT_BASE_CLASS,
@@ -23,8 +36,29 @@ export interface AddStreamMembersDialogProps {
   onSuccess: (streamId: number) => void;
 }
 
+function resolveWorkspacePickerPresence(
+  status: User["status"],
+): UserPickerCandidate["presenceStatus"] {
+  if (status === "active" || status === "idle") {
+    return status;
+  }
+  return undefined;
+}
+
+function resolveWorkspaceStatusLabel(status: User["status"]): string | null {
+  if (status === "active") return t("presence.online");
+  if (status === "idle") return t("presence.away");
+  if (status === "offline") return t("presence.offline");
+  return t("presence.doNotDisturb");
+}
+
+function isUserUuid(value: UserPickerId): value is MessengerUuid {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 export const AddStreamMembersDialog: React.FC<AddStreamMembersDialogProps> = ({ onSuccess }) => {
   const open = useAddStreamMembersStore((s) => s.open);
+  const streamId = useAddStreamMembersStore((s) => s.streamId);
   const streamName = useAddStreamMembersStore((s) => s.streamName);
   const existingMemberIds = useAddStreamMembersStore((s) => s.existingMemberIds);
   const query = useAddStreamMembersStore((s) => s.query);
@@ -35,22 +69,56 @@ export const AddStreamMembersDialog: React.FC<AddStreamMembersDialogProps> = ({ 
   const toggleSelected = useAddStreamMembersStore((s) => s.toggleSelected);
   const close = useAddStreamMembersStore((s) => s.close);
   const submit = useAddStreamMembersStore((s) => s.submit);
-  const users = useUsersStore((s) => s.users);
+  const usersById = useUsersStore((s) => s.usersById);
+  const streamsById = useMessengerStore((s) => s.streamsById);
+  const streamBindingIdsByStreamId = useMessengerStore((s) => s.streamBindingIdsByStreamId);
+  const streamBindingsById = useMessengerStore((s) => s.streamBindingsById);
+  const runtimeContext = useWorkspaceAuthStore(selectCurrentWorkspaceRuntimeContext);
+  const [workspaceSubmitting, setWorkspaceSubmitting] = useState(false);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
 
-  const candidates = useMemo(
+  const workspaceStream = useMemo(
     () =>
-      Array.from(users.values()).map((user) => ({
-        userId: user.user_id,
-        fullName: user.full_name,
-        email: user.email,
-        presenceStatus: user.presence?.status,
-        presenceTimestamp: user.presence?.timestamp,
-        statusLabel: formatUserStatusLabel(user.status),
-      })),
-    [users],
+      Object.values(streamsById).find(
+        (stream) => stream.audience === "channel" && stream.name === streamName,
+      ) ?? null,
+    [streamName, streamsById],
   );
 
-  const excludedUserIds = useMemo(() => existingMemberIds, [existingMemberIds]);
+  const existingWorkspaceMemberUuids = useMemo(() => {
+    if (workspaceStream == null) {
+      return null;
+    }
+    const bindingIds = streamBindingIdsByStreamId[workspaceStream.uuid] ?? [];
+    return new Set(
+      bindingIds
+        .map((bindingId) => streamBindingsById[bindingId]?.userUuid)
+        .filter((userUuid): userUuid is MessengerUuid => userUuid != null),
+    );
+  }, [streamBindingIdsByStreamId, streamBindingsById, workspaceStream]);
+
+  const workspaceMode = workspaceStream != null && runtimeContext != null;
+
+  const candidates = useMemo<UserPickerCandidate[]>(() => {
+    if (!workspaceMode) {
+      return [];
+    }
+    return Object.values(usersById).map((user) => ({
+      userId: user.uuid,
+      fullName: selectUserDisplayName(user, user.username || user.uuid),
+      email: user.email ?? undefined,
+      presenceStatus: resolveWorkspacePickerPresence(user.status),
+      statusLabel: resolveWorkspaceStatusLabel(user.status),
+    }));
+  }, [usersById, workspaceMode]);
+
+  const excludedUserIds = useMemo(
+    () =>
+      existingWorkspaceMemberUuids == null
+        ? existingMemberIds
+        : Array.from(existingWorkspaceMemberUuids),
+    [existingMemberIds, existingWorkspaceMemberUuids],
+  );
 
   const options = useMemo(
     () =>
@@ -63,15 +131,61 @@ export const AddStreamMembersDialog: React.FC<AddStreamMembersDialogProps> = ({ 
     [candidates, excludedUserIds, query, selectedIds],
   );
 
-  const selectedUserIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const selectedUserIdSet = useMemo(() => new Set<UserPickerId>(selectedIds), [selectedIds]);
 
   const handleSubmit = useCallback(() => {
+    if (workspaceMode && workspaceStream != null && runtimeContext != null) {
+      const existing = existingWorkspaceMemberUuids ?? new Set<MessengerUuid>();
+      const userUuids = selectedIds
+        .filter(isUserUuid)
+        .filter((userUuid) => !existing.has(userUuid));
+      if (userUuids.length === 0) {
+        close();
+        return;
+      }
+
+      setWorkspaceSubmitting(true);
+      setWorkspaceError(null);
+      void addWorkspaceStreamMembers({
+        runtimeContext,
+        getRuntimeContext: useWorkspaceAuthStore.getState().getCurrentRuntimeContext,
+        streamUuid: workspaceStream.uuid,
+        userUuids,
+      })
+        .then(() => {
+          setWorkspaceSubmitting(false);
+          close();
+          if (streamId != null) {
+            onSuccess(streamId);
+          }
+        })
+        .catch((error: unknown) => {
+          reportUnexpectedError("add-stream-members", error, {
+            action: "workspace-add-stream-members",
+          });
+          setWorkspaceSubmitting(false);
+          setWorkspaceError(t("app.error"));
+        });
+      return;
+    }
+
     void submit({ onSuccess });
-  }, [onSuccess, submit]);
+  }, [
+    close,
+    existingWorkspaceMemberUuids,
+    onSuccess,
+    runtimeContext,
+    selectedIds,
+    streamId,
+    submit,
+    workspaceMode,
+    workspaceStream,
+  ]);
 
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
       if (!nextOpen) {
+        setWorkspaceError(null);
         close();
       }
     },
@@ -110,15 +224,20 @@ export const AddStreamMembersDialog: React.FC<AddStreamMembersDialogProps> = ({ 
           inputClassName={ADD_STREAM_MEMBERS_INPUT_CLASS}
         />
 
-        {error && <p className="text-xs text-notice-base">{t(error)}</p>}
+        {(workspaceError ?? error) && (
+          <p className="text-xs text-notice-base">{workspaceError ?? t(error!)}</p>
+        )}
 
         <div className="flex justify-end gap-2 pt-1">
-          <DialogCancelButton disabled={submitting} className="rounded-lg px-3 py-1.5">
+          <DialogCancelButton
+            disabled={submitting || workspaceSubmitting}
+            className="rounded-lg px-3 py-1.5"
+          >
             {t("common.cancel")}
           </DialogCancelButton>
           <DialogPrimaryButton
             onClick={handleSubmit}
-            disabled={submitting || selectedIds.length === 0}
+            disabled={submitting || workspaceSubmitting || selectedIds.length === 0}
             className="rounded-lg px-3 py-1.5"
           >
             {t("common.add")}

@@ -7,5 +7,6 @@ export interface SearchModalProps {
   onOpenChange: (open: boolean) => void;
   onSelectMessage: (msg: MockMessage) => void;
   onSelectUser?: (userId: number) => void;
+  onSelectUserUuid?: (userUuid: string) => boolean | void;
   mode?: SearchModalMode;
 }

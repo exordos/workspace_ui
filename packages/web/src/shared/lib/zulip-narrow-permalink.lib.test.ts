@@ -81,7 +81,7 @@ describe("buildRouteFromZulipNarrowPermalink", () => {
         currentUserId: 7,
         resolveStreamName: () => undefined,
       }),
-    ).toBe("/inbox?msg=3373");
+    ).toBe("/dm/23?msg=3373");
   });
 
   it("builds stream route with focused message query", () => {
@@ -95,7 +95,7 @@ describe("buildRouteFromZulipNarrowPermalink", () => {
         currentUserId: 7,
         resolveStreamName: (streamId) => (streamId === 10 ? "Engineering" : undefined),
       }),
-    ).toBe("/inbox?msg=15");
+    ).toBe("/stream/10-engineering/topic/Bugs?msg=15");
   });
 
   it("builds stream route with empty topic sentinel", () => {
@@ -107,7 +107,7 @@ describe("buildRouteFromZulipNarrowPermalink", () => {
         currentUserId: 7,
         resolveStreamName: (streamId) => (streamId === 10 ? "Engineering" : undefined),
       }),
-    ).toBe("/inbox?msg=15");
+    ).toBe("/stream/10-engineering/topic/__empty__?msg=15");
   });
 });
 

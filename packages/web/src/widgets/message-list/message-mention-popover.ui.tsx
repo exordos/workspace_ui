@@ -1,23 +1,22 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import { ensureUserStatusLoaded } from "~/entities/user/api/user.api";
 import { ProfileCustomFieldsBlock } from "~/entities/user/profile-custom-fields-block.ui";
-import { UserStatusLabel } from "~/entities/user/user-status-label.ui";
-import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
 import { t } from "~/i18n/i18n";
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
-import { fetchUser } from "~/shared/api/zulip-users";
-import { formatLastSeen, getPresenceState } from "~/shared/lib/format";
-import { isValidEmail } from "~/shared/lib/validation";
 import { APP_DIALOG_BACKDROP_STATIC_CLASS } from "~/shared/ui/app-dialog.ui";
 import { Avatar } from "~/shared/ui/avatar";
 import { Copyable } from "~/shared/ui/copyable";
 import { Icon } from "~/shared/ui/icon";
 import { SectionLabel } from "~/shared/ui/section-label.ui";
 import { resolveAvatarSrc } from "./message-avatar.lib";
+import {
+  resolveMessageSenderDisplayName,
+  resolveMessageSenderPresence,
+  resolveMessageSenderUser,
+} from "./message-list-user.lib";
 import {
   computeMentionPopoverPosition,
   MENTION_POPOVER_EST_HEIGHT,
@@ -67,67 +66,41 @@ MentionPopoverInfoRow.displayName = "MentionPopoverInfoRow";
 
 export const MessageMentionPopover = React.memo(function MessageMentionPopover({
   userId,
+  userUuid,
   anchorRect,
   fallbackName,
   onClose,
   onOpenDirectMessage,
+  onOpenDirectMessageByUuid,
   onOpenUserProfile,
 }: MessageMentionPopoverProps) {
-  const user = useUsersStore((s) => s.getUser(userId));
   const cardRef = useRef<HTMLDivElement>(null);
   const [popoverHeight, setPopoverHeight] = useState(MENTION_POPOVER_EST_HEIGHT);
+  const usersById = useUsersStore((s) => s.usersById);
+  const user = resolveMessageSenderUser(usersById, {
+    ...(userId != null ? { sender_id: userId } : {}),
+    ...(userUuid != null ? { authorUuid: userUuid } : {}),
+  });
 
-  useEffect(() => {
-    void ensureUserStatusLoaded(userId);
-  }, [userId]);
+  const fallbackDisplayName = fallbackName.replace(/^@/, "").trim();
+  const displayName = resolveMessageSenderDisplayName(
+    user,
+    fallbackDisplayName.length > 0
+      ? fallbackDisplayName
+      : (userUuid ?? (userId != null ? `#${userId}` : "")),
+  );
 
-  useEffect(() => {
-    if (useUsersStore.getState().getUser(userId) != null) {
-      return;
-    }
-    let cancelled = false;
-    void fetchUser(userId).then((u) => {
-      if (cancelled || u == null) return;
-      useUsersStore.getState().mergeUser({
-        user_id: u.user_id,
-        full_name: u.full_name ?? "",
-        email: u.email,
-        avatar_url: u.avatar_url ?? undefined,
-        role: u.role,
-        profile_data: u.profile_data,
-      });
-      useChatListStore.getState().patchPersonalDmRowLabelsForUser(u.user_id);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [userId]);
-
-  const trimmedName = user?.full_name?.trim();
-  const displayName =
-    trimmedName != null && trimmedName.length > 0
-      ? trimmedName
-      : fallbackName.replace(/^@/, "").trim() || `#${userId}`;
-
-  const presenceState =
-    user?.presence != null ? getPresenceState(user.presence.timestamp, user.presence.status) : null;
-  const lastSeen =
-    user?.presence != null
-      ? formatLastSeen(user.presence.timestamp, user.presence.status)
-      : undefined;
-  const customStatus = formatUserStatusLabel(user?.status);
+  const presenceState = resolveMessageSenderPresence(user);
+  const lastSeen = undefined;
 
   const presenceText = resolveMentionPresenceText({ presenceState, lastSeen });
-  const statusLine = customStatus ?? presenceText;
-  const shouldRenderRichStatus = user?.status?.reactionType === "realm_emoji";
+  const statusLine = presenceText;
 
-  const avatarSrc = resolveAvatarSrc(user?.avatar_url ?? undefined);
+  const avatarSrc = resolveAvatarSrc(user?.avatarUrl ?? undefined);
 
-  const emailTrimmed = user?.email?.trim();
-  const mailtoHref =
-    emailTrimmed != null && emailTrimmed.length > 0 && isValidEmail(emailTrimmed)
-      ? `mailto:${emailTrimmed}`
-      : undefined;
+  const userEmail = user?.email?.trim();
+  const emailTrimmed = userEmail != null && userEmail.length > 0 ? userEmail : undefined;
+  const mailtoHref: string | undefined = undefined;
   const positionStyle = useMemo(() => {
     if (typeof window === "undefined") {
       return { left: 0, top: 0, width: MENTION_POPOVER_WIDTH };
@@ -149,29 +122,32 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
     if (height > 0) {
       setPopoverHeight((prev) => (Math.abs(height - prev) > 1 ? height : prev));
     }
-  }, [
-    displayName,
-    statusLine,
-    user?.status,
-    user?.avatar_url,
-    user?.profile_data,
-    emailTrimmed,
-    onOpenUserProfile,
-  ]);
+  }, [displayName, statusLine, emailTrimmed, onOpenUserProfile]);
 
   const handleOpenDm = useCallback(() => {
-    onOpenDirectMessage(userId);
-    onClose();
-  }, [onClose, onOpenDirectMessage, userId]);
+    if (userUuid != null && onOpenDirectMessageByUuid != null) {
+      onOpenDirectMessageByUuid(userUuid);
+      onClose();
+      return;
+    }
+    if (userId != null && onOpenDirectMessage != null) {
+      onOpenDirectMessage(userId);
+      onClose();
+    }
+  }, [onClose, onOpenDirectMessage, onOpenDirectMessageByUuid, userId, userUuid]);
 
   const currentUserId = useChatListStore((s) => s.currentUserId);
   const profileDmCallHandlerReady = useChatDmCallBridgeStore(
     (s) => s.invokeDmCallFromProfileHandler != null,
   );
   const handleProfileDmCall = useCallback(() => {
+    if (userId == null) return;
     useChatDmCallBridgeStore.getState().invokeDmCallFromProfile(userId);
     onClose();
   }, [onClose, userId]);
+  const canOpenDm =
+    (userUuid != null && onOpenDirectMessageByUuid != null) ||
+    (userId != null && onOpenDirectMessage != null);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -242,34 +218,29 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
             <Copyable value={displayName} className="w-full">
               <p className="truncate text-sm font-semibold text-text-primary">{displayName}</p>
             </Copyable>
-            {shouldRenderRichStatus ? (
-              <UserStatusLabel
-                status={user?.status}
-                className="max-w-full text-xs text-text-muted"
-              />
-            ) : (
-              <p className="truncate text-xs text-text-muted">{statusLine}</p>
-            )}
+            <p className="truncate text-xs text-text-muted">{statusLine}</p>
           </div>
         </div>
         <div className="mt-3 max-h-[calc(100dvh-12rem)] min-h-0 overflow-y-auto overscroll-contain border-t border-border-subtle pt-3">
           <div className="flex flex-col gap-3">
             <ProfileCustomFieldsBlock
-              profileData={user?.profile_data}
+              profileData={undefined}
               baseUrl={getRealmBaseUrl() || undefined}
               density="compact"
               showSectionTitle={false}
               onOpenUserProfile={onOpenUserProfile}
             />
             <ul className="space-y-2 border-t border-border-subtle pt-3 first:border-t-0 first:pt-0">
-              <MentionPopoverInfoRow
-                icon="profile"
-                label={t("info.userId")}
-                copyValue={String(userId)}
-                copyAriaLabel={t("info.copyUserId")}
-              >
-                {String(userId)}
-              </MentionPopoverInfoRow>
+              {userId != null ? (
+                <MentionPopoverInfoRow
+                  icon="profile"
+                  label={t("info.userId")}
+                  copyValue={String(userId)}
+                  copyAriaLabel={t("info.copyUserId")}
+                >
+                  {String(userId)}
+                </MentionPopoverInfoRow>
+              ) : null}
               {mailtoHref != null && emailTrimmed != null ? (
                 <MentionPopoverInfoRow
                   icon="mail"
@@ -290,25 +261,30 @@ export const MessageMentionPopover = React.memo(function MessageMentionPopover({
           </div>
         </div>
         <div className="mt-3 flex gap-2">
-          <button
-            type="button"
-            className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-on-accent hover:opacity-90"
-            onClick={handleOpenDm}
-          >
-            <Icon name="chatBubble" size={16} className="shrink-0 text-current" />
-            <span className="truncate">{t("info.openDirectMessages")}</span>
-          </button>
-          {profileDmCallHandlerReady && currentUserId != null && userId !== currentUserId && (
+          {canOpenDm && (
             <button
               type="button"
-              className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2 text-sm font-medium text-text-primary hover:bg-bg"
-              onClick={handleProfileDmCall}
-              aria-label={t("call.call")}
+              className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-on-accent hover:opacity-90"
+              onClick={handleOpenDm}
             >
-              <Icon name="phone" size={16} className="shrink-0 text-current" />
-              <span className="truncate">{t("call.call")}</span>
+              <Icon name="chatBubble" size={16} className="shrink-0 text-current" />
+              <span className="truncate">{t("info.openDirectMessages")}</span>
             </button>
           )}
+          {profileDmCallHandlerReady &&
+            currentUserId != null &&
+            userId != null &&
+            userId !== currentUserId && (
+              <button
+                type="button"
+                className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2 text-sm font-medium text-text-primary hover:bg-bg"
+                onClick={handleProfileDmCall}
+                aria-label={t("call.call")}
+              >
+                <Icon name="phone" size={16} className="shrink-0 text-current" />
+                <span className="truncate">{t("call.call")}</span>
+              </button>
+            )}
         </div>
       </div>
     </>,

@@ -8,6 +8,10 @@ import {
   getMessagesPage,
   getServerSettings,
   getStreams,
+  getUser,
+  getUsers,
+  getUsersPage,
+  invokeUserPresence,
 } from "./messenger-client";
 
 // Phase 1 client tests cover the small bootstrap API facade.
@@ -97,6 +101,21 @@ const messageDto = {
   pinned: false,
   starred: false,
   is_own: true,
+  created_at: DATE,
+  updated_at: DATE,
+};
+
+const userDto = {
+  uuid: USER_UUID,
+  username: "alice",
+  source: "iam",
+  status: "active",
+  status_emoji: null,
+  status_text: null,
+  first_name: "Alice",
+  last_name: null,
+  email: "alice@example.com",
+  last_ping_at: DATE,
   created_at: DATE,
   updated_at: DATE,
 };
@@ -255,7 +274,9 @@ describe("messenger-client", () => {
     await Promise.resolve();
 
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    const urls = fetchMock.mock.calls.map(([url]) => String(url));
+    const urls = fetchMock.mock.calls.map(([url]) =>
+      url instanceof URL ? url.href : typeof url === "string" ? url : url.url,
+    );
     expect(new URL(urls[0]!, "https://example.test").searchParams.getAll("uuid")).toEqual(
       uuids.slice(0, 100),
     );
@@ -314,6 +335,69 @@ describe("messenger-client", () => {
     await expect(
       getMessagesPage({ accessToken: "access-token", fetchImpl: invalidFetchMock }),
     ).rejects.toThrow("Expected valid messenger messages response item at index 1");
+  });
+
+  it("fetches users, user pages, and one user by uuid", async () => {
+    const usersFetchMock = createFetchMock([userDto]);
+
+    await expect(
+      getUsers({ accessToken: "access-token", fetchImpl: usersFetchMock }),
+    ).resolves.toEqual([userDto]);
+    expect(firstFetchCall(usersFetchMock)[0]).toBe("/api/messenger/v1/users/");
+
+    const usersPageFetchMock = createFetchMock([userDto], 200, {
+      "X-Pagination-Marker": USER_UUID,
+      "X-Pagination-Limit": "50",
+    });
+    await expect(
+      getUsersPage(
+        { accessToken: "access-token", fetchImpl: usersPageFetchMock },
+        { pageLimit: 50, pageMarker: "prev" },
+      ),
+    ).resolves.toEqual({
+      items: [userDto],
+      nextPageMarker: USER_UUID,
+      pageLimit: 50,
+    });
+    expect(firstFetchCall(usersPageFetchMock)[0]).toBe(
+      "/api/messenger/v1/users/?page_limit=50&page_marker=prev",
+    );
+
+    const userFetchMock = createFetchMock(userDto);
+    await expect(
+      getUser({ accessToken: "access-token", fetchImpl: userFetchMock }, USER_UUID),
+    ).resolves.toEqual(userDto);
+    expect(firstFetchCall(userFetchMock)[0]).toBe(`/api/messenger/v1/users/${USER_UUID}`);
+  });
+
+  it("posts Workspace user presence update", async () => {
+    const fetchMock = createFetchMock(null);
+
+    await expect(
+      invokeUserPresence({ accessToken: "access-token", fetchImpl: fetchMock }, USER_UUID, {
+        status: "active",
+        emoji: "wave",
+        text: "Here",
+      }),
+    ).resolves.toBeUndefined();
+
+    const [url, init] = firstFetchCall(fetchMock);
+    expect(url).toBe(`/api/messenger/v1/users/${USER_UUID}/actions/presence/invoke`);
+    expect(init?.method).toBe("POST");
+    expect(init?.headers).toEqual({
+      Accept: "application/json",
+      Authorization: "Bearer access-token",
+      "Content-Type": "application/json",
+    });
+    expect(init?.body).toBe(JSON.stringify({ status: "active", emoji: "wave", text: "Here" }));
+  });
+
+  it("strictly rejects invalid user rows", async () => {
+    const fetchMock = createFetchMock([userDto, { ...userDto, status_emoji: 123 }]);
+
+    await expect(getUsers({ accessToken: "access-token", fetchImpl: fetchMock })).rejects.toThrow(
+      "Expected valid messenger users response item at index 1",
+    );
   });
 
   it("throws on invalid singleton response", async () => {

@@ -10,7 +10,6 @@ import { createUser } from "~/test/factories";
 import { MessageList } from "./message-list.ui";
 
 const fetchRealmEmojisMock = vi.hoisted(() => vi.fn());
-const ensureUserStatusLoadedMock = vi.hoisted(() => vi.fn());
 
 vi.mock("~/shared/api/zulip-users", async (importOriginal) => {
   const actual = await importOriginal<typeof ZulipUsersApi>();
@@ -19,10 +18,6 @@ vi.mock("~/shared/api/zulip-users", async (importOriginal) => {
     fetchRealmEmojis: (...args: unknown[]) => fetchRealmEmojisMock(...args),
   };
 });
-
-vi.mock("~/entities/user/api/user.api", () => ({
-  ensureUserStatusLoaded: (...args: unknown[]) => ensureUserStatusLoadedMock(...args),
-}));
 
 function msg(id: number, overrides: Partial<MockMessage> = {}): MockMessage {
   return {
@@ -72,7 +67,6 @@ describe("MessageList focused message behavior", () => {
     scrollIntoView.mockReset();
     intersectionCallback = null;
     fetchRealmEmojisMock.mockReset();
-    ensureUserStatusLoadedMock.mockReset();
     fetchRealmEmojisMock.mockResolvedValue([]);
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
@@ -213,7 +207,7 @@ describe("MessageList focused message behavior", () => {
 
   it("opens user mention card and calls onOpenDirectMessage", async () => {
     const onOpenDirectMessage = vi.fn();
-    useUsersStore.getState().mergeUser(
+    useUsersStore.getState().upsertUser(
       createUser({
         user_id: 99,
         full_name: "Bob",
@@ -234,11 +228,39 @@ describe("MessageList focused message behavior", () => {
 
     fireEvent.click(screen.getByText("@Bob"));
     expect(await screen.findByRole("dialog", { name: /user mention/i })).toBeInTheDocument();
-    expect(ensureUserStatusLoadedMock).toHaveBeenCalledWith(99);
 
     fireEvent.click(screen.getByRole("button", { name: /^message$/i }));
     expect(onOpenDirectMessage).toHaveBeenCalledTimes(1);
     expect(onOpenDirectMessage).toHaveBeenCalledWith(99);
+  });
+
+  it("opens uuid-only user mention card and calls onOpenDirectMessageByUuid", async () => {
+    const onOpenDirectMessageByUuid = vi.fn();
+    useUsersStore.getState().upsertUser(
+      createUser({
+        uuid: "a225223c-637c-4afa-918f-5f2798b9305f",
+        displayName: "Bob Workspace",
+      }),
+    );
+
+    render(
+      <MessageList
+        messages={[
+          msg(1, {
+            content: `<p><span class="user-mention" data-user-uuid="a225223c-637c-4afa-918f-5f2798b9305f">@Bob Workspace</span> hi</p>`,
+          }),
+        ]}
+        currentUserId={7}
+        callbacks={{ onOpenDirectMessageByUuid }}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("@Bob Workspace"));
+    expect(await screen.findByRole("dialog", { name: /user mention/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^message$/i }));
+    expect(onOpenDirectMessageByUuid).toHaveBeenCalledTimes(1);
+    expect(onOpenDirectMessageByUuid).toHaveBeenCalledWith("a225223c-637c-4afa-918f-5f2798b9305f");
   });
 
   it("shows call in mention popover and invokes dm call bridge", async () => {
@@ -246,7 +268,7 @@ describe("MessageList focused message behavior", () => {
     const invokeDmCall = vi.fn();
     useChatListStore.getState().setCurrentUserId(7);
     useChatDmCallBridgeStore.getState().setInvokeDmCallFromProfileHandler(invokeDmCall);
-    useUsersStore.getState().mergeUser(
+    useUsersStore.getState().upsertUser(
       createUser({
         user_id: 99,
         full_name: "Bob",
@@ -275,7 +297,7 @@ describe("MessageList focused message behavior", () => {
 
   it("opens user mention card when body is Zulip Markdown @**Name**", async () => {
     const onOpenDirectMessage = vi.fn();
-    useUsersStore.getState().mergeUser(
+    useUsersStore.getState().upsertUser(
       createUser({
         user_id: 99,
         full_name: "Bob",
@@ -415,7 +437,7 @@ describe("MessageList focused message behavior", () => {
 
   it("shows grouped sender presence indicator when user presence is available", () => {
     const now = Math.floor(Date.now() / 1000);
-    useUsersStore.getState().mergeUser(
+    useUsersStore.getState().upsertUser(
       createUser({
         user_id: 42,
         full_name: "Alice",

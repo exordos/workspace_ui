@@ -62,9 +62,7 @@ describe("last-messenger-route", () => {
   });
 
   it("falls back to app root without Workspace project", () => {
-    expect(resolveMessengerNavigationPath({ instanceId: "inst-a", projectId: null })).toBe(
-      "/",
-    );
+    expect(resolveMessengerNavigationPath({ instanceId: "inst-a", projectId: null })).toBe("/");
     expect(resolveMessengerNavigationPath({ instanceId: "inst-a", projectId: " " })).toBe("/");
   });
 

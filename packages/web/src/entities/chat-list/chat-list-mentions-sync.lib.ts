@@ -3,7 +3,6 @@
  */
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
-import { useUsersStore } from "~/entities/user/user.model";
 import {
   fetchUnreadMentionsPage,
   MENTIONS_UNREAD_SYNC_PAGE_SIZE,
@@ -46,16 +45,6 @@ export async function ensureMentionsUnreadSynced(
       const page = await fetchUnreadMentionsPage(pageSize);
       if (useInstancesStore.getState().currentInstanceId !== currentInstanceId) {
         return;
-      }
-      for (const message of page.messages) {
-        useUsersStore.getState().mergeFromMessage({
-          id: message.id,
-          sender_id: message.sender_id,
-          sender_full_name: message.sender_full_name,
-          content: message.content,
-          timestamp: message.timestamp,
-          display_recipient: message.display_recipient,
-        });
       }
       const capped = !page.foundOldest && page.messages.length >= pageSize;
       useChatListStore.getState().upsertMentionMessageLocations(page.messages);

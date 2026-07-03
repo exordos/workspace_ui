@@ -16,6 +16,7 @@ import {
 } from "~/shared/lib/workspace-messenger-route.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
+import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { Spinner } from "~/shared/ui/spinner.ui";
 import { sidebarChatRowBodyClass, sidebarChatRowLinkClass } from "./sidebar-chat-row-layout.lib";
@@ -26,6 +27,7 @@ import { SidebarMessagePreview } from "./sidebar-message-preview.ui";
 import { SidebarSearchHeader } from "./sidebar-search-header.ui";
 import { useSidebarTopicCollapse } from "./sidebar-topic-collapse.hook";
 import { SidebarTopicShowMoreButton } from "./sidebar-topic-show-more.ui";
+import { SidebarUserStatusEmoji } from "./sidebar-user-status-emoji.ui";
 import { WorkspaceSidebarActivity } from "./sidebar-workspace-activity.ui";
 import {
   WorkspaceStreamContextMenu,
@@ -217,6 +219,14 @@ function WorkspaceSidebarStreamRow({
   const isDirectPrivate = stream.uiKind === "directPrivate";
   const avatarLabel = isDirectPrivate ? stream.title.slice(0, 1) : "#";
   const title = isDirectPrivate ? stream.title : `#${stream.title}`;
+  const statusEmoji =
+    isDirectPrivate && stream.statusEmoji != null && stream.statusEmoji.trim().length > 0
+      ? { emojiName: stream.statusEmoji }
+      : null;
+  const statusText =
+    isDirectPrivate && stream.statusText != null && stream.statusText.trim().length > 0
+      ? stream.statusText.trim()
+      : null;
 
   return (
     <>
@@ -230,9 +240,30 @@ function WorkspaceSidebarStreamRow({
             if (!expanded) onToggleStream(stream.streamUuid);
           }}
         >
-          <Avatar size={avatarSize}>{avatarLabel}</Avatar>
+          <span className="relative shrink-0">
+            <Avatar
+              size={avatarSize}
+              src={isDirectPrivate ? (stream.avatarUrl ?? undefined) : undefined}
+            >
+              {avatarLabel}
+            </Avatar>
+            {isDirectPrivate && (
+              <PresenceIndicator
+                status={stream.presence ?? null}
+                size="sm"
+                pulse={false}
+                className="absolute bottom-0 right-0 ring-border-subtle"
+              />
+            )}
+          </span>
           <div className={sidebarChatRowBodyClass(compact)}>
-            <div className="truncate text-sm font-medium text-text-primary">{title}</div>
+            <div className="flex min-w-0 items-center gap-1">
+              <div className="truncate text-sm font-medium text-text-primary">{title}</div>
+              {statusEmoji != null ? <SidebarUserStatusEmoji status={statusEmoji} /> : null}
+              {statusText != null ? (
+                <span className="truncate text-xs text-text-muted">{statusText}</span>
+              ) : null}
+            </div>
             {!compact && (
               <SidebarMessagePreview
                 senderName={stream.preview?.senderName}

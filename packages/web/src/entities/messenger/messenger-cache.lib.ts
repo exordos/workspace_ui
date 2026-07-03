@@ -40,7 +40,6 @@ import type {
   MessengerStream,
   MessengerStreamBinding,
   MessengerTopic,
-  MessengerUser,
   MessengerUuid,
 } from "./messenger.types";
 
@@ -65,7 +64,6 @@ function hasCatalogData(snapshot: WorkspaceMessengerCatalogCacheSnapshot): boole
     snapshot.topics.length > 0 ||
     snapshot.conversations.length > 0 ||
     snapshot.folders.length > 0 ||
-    snapshot.users.length > 0 ||
     snapshot.streamBindings.length > 0
   );
 }
@@ -84,7 +82,6 @@ function catalogWriteSnapshot(
     conversations: payload.conversations,
     folders: shouldWriteFolders ? payload.folders : undefined,
     folderItems: shouldWriteFolders ? payload.folders.flatMap((folder) => folder.items) : undefined,
-    users: payload.users,
   };
 }
 
@@ -97,7 +94,6 @@ function snapshotPayload(
     topics: snapshot.topics as unknown as MessengerTopic[],
     conversations: snapshot.conversations as unknown as MessengerConversation[],
     folders: snapshot.folders as unknown as MessengerFolder[],
-    users: snapshot.users as unknown as MessengerUser[],
   };
 }
 

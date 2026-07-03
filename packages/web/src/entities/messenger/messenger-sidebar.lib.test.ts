@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import type { User, UsersById } from "~/entities/user/user.types";
 import { t } from "~/i18n/i18n";
 import { workspaceMessengerRootRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import {
@@ -13,7 +14,6 @@ import type {
   MessengerMessage,
   MessengerStream,
   MessengerTopic,
-  MessengerUser,
 } from "./messenger.types";
 
 const ORGANIZATION_ID = "workspace.example.com";
@@ -138,17 +138,37 @@ function message(overrides: Partial<MessengerMessage> = {}): MessengerMessage {
   };
 }
 
-function user(overrides: Partial<MessengerUser> = {}): MessengerUser {
+function user(overrides: Partial<User> = {}): User {
   return {
     uuid: AUTHOR_UUID,
     username: "alice",
     status: "active",
     firstName: "Alice",
     lastName: "Wonderland",
+    displayName: "Alice Wonderland",
     email: "alice@example.com",
+    avatarUrl: "/alice.png",
+    statusEmoji: null,
+    statusText: null,
     lastPingAt: DATE_A,
     createdAt: DATE_A,
     updatedAt: DATE_A,
+    ...overrides,
+  };
+}
+
+function createUsersById(overrides: Partial<UsersById> = {}): UsersById {
+  return {
+    [AUTHOR_UUID]: user(),
+    alice: user({
+      uuid: "alice",
+      username: "alice",
+      displayName: "Alice",
+      firstName: "Alice",
+      lastName: null,
+      status: "active",
+      avatarUrl: "/direct-alice.png",
+    }),
     ...overrides,
   };
 }
@@ -206,8 +226,6 @@ function state(overrides: Partial<MessengerStoreState> = {}): MessengerStoreStat
     conversationIds: [],
     foldersById: { [FOLDER_A]: folderA },
     folderIds: [FOLDER_A],
-    usersById: { [AUTHOR_UUID]: user() },
-    userIds: [AUTHOR_UUID],
     lastEpochVersion: null,
     skippedRealtimeEvents: [],
     startBootstrap: () => undefined,
@@ -244,6 +262,7 @@ describe("messenger sidebar selectors", () => {
     const rows = selectMessengerSidebarStreams(state(), {
       organizationId: ORGANIZATION_ID,
       projectId: PROJECT_ID,
+      usersById: createUsersById(),
     });
 
     expect(rows).toHaveLength(2);
@@ -268,8 +287,33 @@ describe("messenger sidebar selectors", () => {
       isPrivate: true,
       uiKind: "directPrivate",
       unreadCount: 4,
+      presence: "active",
+      avatarUrl: "/direct-alice.png",
     });
     expect(rows.some((row) => row.id.startsWith("dm:"))).toBe(false);
+  });
+
+  it("maps direct private do not disturb status to idle presence", () => {
+    const rows = selectMessengerSidebarStreams(state(), {
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      usersById: createUsersById({
+        alice: user({
+          uuid: "alice",
+          username: "alice",
+          displayName: "Alice",
+          firstName: "Alice",
+          lastName: null,
+          status: "do_not_disturb",
+          avatarUrl: "/direct-alice.png",
+        }),
+      }),
+    });
+
+    expect(rows.find((row) => row.streamUuid === STREAM_B)).toMatchObject({
+      uiKind: "directPrivate",
+      presence: "idle",
+    });
   });
 
   it("uses folder item unread and pinned order for selected folders", () => {
@@ -277,6 +321,7 @@ describe("messenger sidebar selectors", () => {
       organizationId: ORGANIZATION_ID,
       projectId: PROJECT_ID,
       selectedFolderUuid: FOLDER_A,
+      usersById: createUsersById(),
     });
 
     expect(rows.map((row) => row.streamUuid)).toEqual([STREAM_B, STREAM_A]);
@@ -353,6 +398,7 @@ describe("messenger sidebar selectors", () => {
         organizationId: ORGANIZATION_ID,
         projectId: PROJECT_ID,
         selectedFolderUuid: FOLDER_A,
+        usersById: createUsersById(),
         messagesById: {
           [MESSAGE_A]: message({
             uuid: MESSAGE_A,
@@ -404,6 +450,7 @@ describe("messenger sidebar selectors", () => {
       {
         organizationId: ORGANIZATION_ID,
         projectId: PROJECT_ID,
+        usersById: createUsersById(),
         messagesById: {
           [MESSAGE_A]: message({ uuid: MESSAGE_A, markdown: "Stream preview" }),
           [MESSAGE_B]: message({ uuid: MESSAGE_B, markdown: "Topic preview" }),
@@ -453,6 +500,7 @@ describe("messenger sidebar selectors", () => {
         organizationId: ORGANIZATION_ID,
         projectId: PROJECT_ID,
         currentUserUuid: AUTHOR_UUID,
+        usersById: createUsersById(),
         messagesById: {
           [MESSAGE_A]: message({ uuid: MESSAGE_A, markdown: "Self preview" }),
         },
@@ -476,14 +524,13 @@ describe("messenger sidebar selectors", () => {
         [conversation().id]: conversation(),
       },
       conversationIds: [conversation().id],
-      usersById: { [AUTHOR_UUID]: user() },
-      userIds: [AUTHOR_UUID],
     });
 
     const rows = selectMessengerSidebarStreams(base, {
       organizationId: ORGANIZATION_ID,
       projectId: PROJECT_ID,
       selectedFolderUuid: FOLDER_A,
+      usersById: createUsersById(),
       messagesById: {
         [MESSAGE_A]: message({
           uuid: MESSAGE_A,
@@ -523,6 +570,7 @@ describe("messenger sidebar selectors", () => {
       organizationId: ORGANIZATION_ID,
       projectId: PROJECT_ID,
       selectedFolderUuid: FOLDER_A,
+      usersById: createUsersById(),
     });
 
     expect(rows.map((row) => row.streamUuid)).toEqual([STREAM_A]);
@@ -534,6 +582,7 @@ describe("messenger sidebar selectors", () => {
       organizationId: ORGANIZATION_ID,
       projectId: PROJECT_ID,
       selectedFolderUuid: FOLDER_A,
+      usersById: createUsersById(),
     };
 
     const firstRows = selectMessengerSidebarStreams(base, options);

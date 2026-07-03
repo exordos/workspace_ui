@@ -125,7 +125,6 @@ function prepareStoreOwner(runtimeContext: WorkspaceRuntimeContext): string {
     topics: [],
     conversations: [],
     folders: [],
-    users: [],
   });
   return ownerKey;
 }

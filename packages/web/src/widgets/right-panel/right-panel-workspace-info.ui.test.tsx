@@ -1,7 +1,9 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type { MessengerStream, MessengerUser } from "~/entities/messenger/messenger.types";
+import type { MessengerStream } from "~/entities/messenger/messenger.types";
+import { useUsersStore } from "~/entities/user/user.model";
+import type { User } from "~/entities/user/user.types";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
@@ -99,7 +101,7 @@ function createStream(overrides: Partial<MessengerStream> = {}): MessengerStream
   };
 }
 
-function createUser(overrides: Partial<MessengerUser> & { uuid: string }): MessengerUser {
+function createUser(overrides: Partial<User> & { uuid: string }): User {
   const { uuid, ...rest } = overrides;
   return {
     uuid,
@@ -107,8 +109,12 @@ function createUser(overrides: Partial<MessengerUser> & { uuid: string }): Messe
     status: "offline",
     firstName: null,
     lastName: null,
+    displayName: uuid,
     email: null,
-    lastPingAt: null,
+    avatarUrl: null,
+    statusEmoji: null,
+    statusText: null,
+    lastPingAt: DATE,
     createdAt: DATE,
     updatedAt: DATE,
     ...rest,
@@ -145,40 +151,35 @@ function seedWorkspaceAuth(): void {
 }
 
 function seedWorkspaceUsers(): void {
-  useMessengerStore.getState().startBootstrap(OWNER_KEY);
-  useMessengerStore.getState().replaceBootstrapState(OWNER_KEY, {
-    streams: [],
-    streamBindings: [],
-    topics: [],
-    conversations: [],
-    folders: [],
-    users: [
-      createUser({
-        uuid: CURRENT_USER_UUID,
-        username: "current",
-        firstName: "Current",
-        lastName: "User",
-        email: "current@example.com",
-        status: "active",
-      }),
-      createUser({
-        uuid: ALICE_USER_UUID,
-        username: "alice",
-        firstName: "Alice",
-        lastName: "Adams",
-        email: "alice@example.com",
-        status: "active",
-      }),
-      createUser({
-        uuid: BOB_USER_UUID,
-        username: "bob",
-        firstName: "Bob",
-        lastName: "Baker",
-        email: "bob@example.com",
-        status: "idle",
-      }),
-    ],
-  });
+  useUsersStore.getState().replaceUsers([
+    createUser({
+      uuid: CURRENT_USER_UUID,
+      username: "current",
+      firstName: "Current",
+      lastName: "User",
+      displayName: "Current User",
+      email: "current@example.com",
+      status: "active",
+    }),
+    createUser({
+      uuid: ALICE_USER_UUID,
+      username: "alice",
+      firstName: "Alice",
+      lastName: "Adams",
+      displayName: "Alice Adams",
+      email: "alice@example.com",
+      status: "active",
+    }),
+    createUser({
+      uuid: BOB_USER_UUID,
+      username: "bob",
+      firstName: "Bob",
+      lastName: "Baker",
+      displayName: "Bob Baker",
+      email: "bob@example.com",
+      status: "idle",
+    }),
+  ]);
 }
 
 describe("RightPanelWorkspaceInfo", () => {
@@ -187,6 +188,7 @@ describe("RightPanelWorkspaceInfo", () => {
     addWorkspaceStreamMembersMock.mockReset();
     removeWorkspaceStreamMemberMock.mockReset();
     useMessengerStore.getState().clear();
+    useUsersStore.getState().clear();
     useWorkspaceAuthStore.getState().clear();
   });
 
@@ -269,14 +271,14 @@ describe("RightPanelWorkspaceInfo", () => {
   });
 
   it("renders workspace direct private profile without channel-only actions", () => {
-    renderWithProviders(
+    const { container } = renderWithProviders(
       <RightPanelWorkspaceInfo
         info={{
           kind: "directPrivate",
           directUserUuid: ALICE_USER_UUID,
           title: "Alice Adams",
-          avatarUrl: null,
-          status: "active",
+          avatarUrl: "/alice.png",
+          status: "do_not_disturb",
           details: [
             {
               id: "email",
@@ -295,6 +297,9 @@ describe("RightPanelWorkspaceInfo", () => {
 
     expect(screen.getByText("Alice Adams")).toBeInTheDocument();
     expect(screen.getByText("alice@example.com")).toBeInTheDocument();
+    expect(screen.getByText("do not disturb")).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "away" })).toHaveAttribute("data-presence", "idle");
+    expect(container.querySelector('img[src="/alice.png"]')).not.toBeNull();
     expect(screen.getAllByText("Temporarily not connected")).toHaveLength(2);
     expect(screen.queryByText("Channel info")).not.toBeInTheDocument();
     expect(screen.queryByText("Topics")).not.toBeInTheDocument();

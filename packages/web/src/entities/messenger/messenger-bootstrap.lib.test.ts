@@ -3,6 +3,8 @@ import {
   selectWorkspaceMessagesForConversation,
   useWorkspaceMessageStore,
 } from "~/entities/message/message.model";
+import { useUsersStore } from "~/entities/user/user.model";
+import type { User } from "~/entities/user/user.types";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import type {
@@ -11,7 +13,6 @@ import type {
   WorkspaceMessengerStreamBindingDto,
   WorkspaceMessengerStreamDto,
   WorkspaceMessengerTopicDto,
-  WorkspaceMessengerUserDto,
 } from "~/shared/api/messenger.types";
 import { adaptMessengerBootstrapPayload, adaptMessengerMessage } from "./messenger-adapters.lib";
 import { bootstrapMessengerStore } from "./messenger-bootstrap.lib";
@@ -22,6 +23,9 @@ import {
   useMessengerStore,
 } from "./messenger.model";
 import type { MessengerBootstrapClientDeps } from "./messenger-bootstrap.lib";
+type BootstrapUserDto = Awaited<
+  ReturnType<NonNullable<MessengerBootstrapClientDeps["getUsers"]>>
+>[number];
 
 // Bootstrap tests protect the first project snapshot and stale-owner behavior.
 const ACCOUNT_A = "account-a";
@@ -188,7 +192,6 @@ function applyFolderSnapshots(
     streams: [],
     topics: [],
     folders,
-    users: [],
   }).folders;
 
   for (const folder of adaptedFolders) {
@@ -198,14 +201,14 @@ function applyFolderSnapshots(
   return adaptedFolders;
 }
 
-function createUserDto(
-  overrides: Partial<WorkspaceMessengerUserDto> = {},
-): WorkspaceMessengerUserDto {
+function createUserDto(overrides: Partial<BootstrapUserDto> = {}): BootstrapUserDto {
   return {
     uuid: USER_A,
     username: "alice",
     source: "iam",
     status: "active",
+    status_emoji: null,
+    status_text: null,
     first_name: "Alice",
     last_name: "Tester",
     email: "alice@example.test",
@@ -213,6 +216,25 @@ function createUserDto(
     created_at: DATE,
     updated_at: DATE,
     ...overrides,
+  };
+}
+
+function createUserFromDto(dto: BootstrapUserDto): User {
+  const displayName = [dto.first_name, dto.last_name].filter(Boolean).join(" ").trim();
+  return {
+    uuid: dto.uuid,
+    username: dto.username,
+    firstName: dto.first_name ?? null,
+    lastName: dto.last_name ?? null,
+    displayName: displayName.length > 0 ? displayName : dto.username,
+    email: dto.email,
+    avatarUrl: null,
+    status: dto.status,
+    statusEmoji: dto.status_emoji ?? null,
+    statusText: dto.status_text ?? null,
+    lastPingAt: dto.last_ping_at,
+    createdAt: dto.created_at,
+    updatedAt: dto.updated_at,
   };
 }
 
@@ -248,6 +270,7 @@ describe("messenger bootstrap store", () => {
   beforeEach(() => {
     useMessengerStore.getState().clear();
     useWorkspaceMessageStore.getState().clear();
+    useUsersStore.getState().clear();
   });
 
   it("applies a successful Workspace payload to domain state", async () => {
@@ -276,7 +299,7 @@ describe("messenger bootstrap store", () => {
     expect(useWorkspaceMessageStore.getState().messagesById).toEqual({});
     expect(useWorkspaceMessageStore.getState().messageIdsByConversationId).toEqual({});
     expect(state.foldersById[FOLDER_A]?.title).toBe("Inbox");
-    expect(state.usersById[USER_A]).toEqual(
+    expect(useUsersStore.getState().getUser(USER_A)).toEqual(
       expect.objectContaining({
         username: "alice",
         firstName: "Alice",
@@ -311,7 +334,6 @@ describe("messenger bootstrap store", () => {
         folders: [],
         streams: [expect.objectContaining({ uuid: STREAM_A })],
         topics: [expect.objectContaining({ uuid: TOPIC_A })],
-        users: [expect.objectContaining({ uuid: USER_A })],
       }),
       {
         mode: "reconcile",
@@ -333,7 +355,6 @@ describe("messenger bootstrap store", () => {
         streamBindings: [createStreamBindingDto()],
         topics: [createTopicDto()],
         folders: [createFolderDto()],
-        users: [createUserDto()],
       }),
     );
 
@@ -355,7 +376,9 @@ describe("messenger bootstrap store", () => {
       streams: [createStreamDto()],
       topics: [createTopicDto()],
       folders: [],
-      users: [
+    });
+    useUsersStore.getState().replaceUsers(
+      [
         createUserDto(),
         createUserDto({
           uuid: USER_B,
@@ -365,8 +388,8 @@ describe("messenger bootstrap store", () => {
           last_name: "Tester",
           email: "bob@example.test",
         }),
-      ],
-    });
+      ].map(createUserFromDto),
+    );
     useMessengerStore.getState().replaceBootstrapState(ownerKey, initialPayload);
     useMessengerStore.getState().upsertStreamBindings(
       ownerKey,
@@ -383,7 +406,6 @@ describe("messenger bootstrap store", () => {
         ],
         topics: [],
         folders: [],
-        users: [],
       }).streamBindings,
     );
 
@@ -406,6 +428,7 @@ describe("messenger bootstrap store", () => {
           projectId: PROJECT_A,
           streamUuid: STREAM_A,
         },
+        usersById: useUsersStore.getState().usersById,
         fallbackTitle: "Messenger",
         missingDirectUserTitle: "Временно не подключено",
       }),
@@ -421,7 +444,6 @@ describe("messenger bootstrap store", () => {
       streams: [createStreamDto()],
       topics: [createTopicDto()],
       folders: [],
-      users: [createUserDto()],
     });
 
     expect(payload.streamBindings).toEqual([]);
@@ -483,7 +505,6 @@ describe("messenger bootstrap store", () => {
       streams: [createStreamDto({ last_message_uuid: MESSAGE_A })],
       topics: [createTopicDto({ last_message_uuid: MESSAGE_A })],
       folders: [],
-      users: [createUserDto()],
     });
     const cachedMessage = adaptMessengerMessage(
       createMessageDto({ payload: { kind: "markdown", content: "Cached preview" } }),
@@ -528,7 +549,6 @@ describe("messenger bootstrap store", () => {
       streams: [createStreamDto()],
       topics: [createTopicDto()],
       folders: [createFolderDto({ title: "Cached folders" })],
-      users: [createUserDto()],
     });
     const replaceMessengerFolderSnapshotsCache = vi.fn();
 
@@ -635,6 +655,139 @@ describe("messenger bootstrap store", () => {
     });
     expect(useMessengerStore.getState().streamIds).toHaveLength(0);
     expect(useMessengerStore.getState().conversationIds).toHaveLength(0);
+    expect(useUsersStore.getState().userIds).toEqual([]);
+  });
+
+  it("skips user writes when bootstrap signal is aborted after awaiting client data", async () => {
+    const runtimeContext = createRuntimeContext();
+    const streamRequest = createDeferred<WorkspaceMessengerStreamDto[]>();
+    const controller = new AbortController();
+
+    const bootstrap = bootstrapMessengerStore({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      signal: controller.signal,
+      client: createClient({
+        getStreams: () => streamRequest.promise,
+      }),
+    });
+
+    controller.abort();
+    streamRequest.resolve([createStreamDto()]);
+
+    await expect(bootstrap).resolves.toEqual({
+      status: "skipped",
+      ownerKey: workspaceRuntimeOwnerKey(runtimeContext),
+      reason: "stale-owner",
+    });
+    expect(useMessengerStore.getState().streamIds).toEqual([]);
+    expect(useUsersStore.getState().userIds).toEqual([]);
+  });
+
+  it("keeps streams and topics bootstrap when users request fails", async () => {
+    const runtimeContext = createRuntimeContext();
+
+    await expect(
+      bootstrapMessengerStore({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        client: createClient({
+          getUsers: () => Promise.reject(new Error("users failed")),
+          getFolders: () => Promise.resolve([]),
+        }),
+      }),
+    ).resolves.toEqual({
+      status: "applied",
+      ownerKey: workspaceRuntimeOwnerKey(runtimeContext),
+    });
+
+    const messengerState = useMessengerStore.getState();
+    const usersState = useUsersStore.getState();
+    expect(messengerState.streamsById[STREAM_A]?.name).toBe("Engineering");
+    expect(messengerState.topicsById[TOPIC_A]?.name).toBe("Releases");
+    expect(usersState.loadStatus).toBe("error");
+    expect(usersState.error).toBe("users failed");
+    expect(usersState.userIds).toEqual([]);
+  });
+
+  it("clears previous owner users when the next owner users request fails", async () => {
+    const runtimeA = createRuntimeContext();
+    const runtimeB = createRuntimeContext({
+      accountId: ACCOUNT_B,
+      instanceId: INSTANCE_B,
+      organizationId: ORGANIZATION_B,
+      projectId: PROJECT_B,
+      userUuid: USER_B,
+      accessToken: "access-token-b",
+      runtimeGeneration: 1,
+    });
+
+    await bootstrapMessengerStore({
+      runtimeContext: runtimeA,
+      getRuntimeContext: () => runtimeA,
+      client: createClient(),
+    });
+    expect(useUsersStore.getState().userIds).toEqual([USER_A]);
+
+    await expect(
+      bootstrapMessengerStore({
+        runtimeContext: runtimeB,
+        getRuntimeContext: () => runtimeB,
+        client: createClient({
+          getStreams: () =>
+            Promise.resolve([
+              createStreamDto({
+                uuid: STREAM_B,
+                project_id: PROJECT_B,
+                owner: USER_B,
+                user_uuid: USER_B,
+              }),
+            ]),
+          getTopics: () => Promise.resolve([]),
+          getFolders: () => Promise.resolve([]),
+          getUsers: () => Promise.reject(new Error("users failed")),
+        }),
+      }),
+    ).resolves.toEqual({
+      status: "applied",
+      ownerKey: workspaceRuntimeOwnerKey(runtimeB),
+    });
+
+    const usersState = useUsersStore.getState();
+    expect(usersState.ownerKey).toBe(workspaceRuntimeOwnerKey(runtimeB));
+    expect(usersState.userIds).toEqual([]);
+    expect(usersState.usersById[USER_A]).toBeUndefined();
+    expect(usersState.loadStatus).toBe("error");
+    expect(usersState.error).toBe("users failed");
+  });
+
+  it("keeps bootstrap users out of both stores when user DTO shape is legacy", async () => {
+    const runtimeContext = createRuntimeContext();
+    const legacyUserDto = {
+      ...createUserDto(),
+      uuid: 123,
+    } as unknown as BootstrapUserDto;
+
+    await expect(
+      bootstrapMessengerStore({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        client: createClient({
+          getUsers: () => Promise.resolve([legacyUserDto]),
+          getFolders: () => Promise.resolve([]),
+        }),
+      }),
+    ).resolves.toEqual({
+      status: "applied",
+      ownerKey: workspaceRuntimeOwnerKey(runtimeContext),
+    });
+
+    const messengerState = useMessengerStore.getState();
+    const usersState = useUsersStore.getState();
+    expect(messengerState.streamsById[STREAM_A]?.name).toBe("Engineering");
+    expect(usersState.userIds).toEqual([]);
+    expect(usersState.loadStatus).toBe("error");
+    expect(usersState.error).toBe("Expected valid messenger users response item at index 0");
   });
 
   it("clears old owner data before replacing it with the next owner payload", async () => {
@@ -688,6 +841,9 @@ describe("messenger bootstrap store", () => {
 
     expect(useMessengerStore.getState().ownerKey).toBe(workspaceRuntimeOwnerKey(runtimeB));
     expect(useMessengerStore.getState().streamIds).toHaveLength(0);
+    expect(useUsersStore.getState().ownerKey).toBe(workspaceRuntimeOwnerKey(runtimeB));
+    expect(useUsersStore.getState().userIds).toEqual([]);
+    expect(useUsersStore.getState().loadStatus).toBe("loading");
 
     streamRequest.resolve([
       createStreamDto({
@@ -707,7 +863,7 @@ describe("messenger bootstrap store", () => {
     expect(state.streamIds).toEqual([STREAM_B]);
     expect(state.streamsById[STREAM_A]).toBeUndefined();
     expect(state.streamsById[STREAM_B]?.name).toBe("Support");
-    expect(state.usersById[USER_B]?.username).toBe("bob");
+    expect(useUsersStore.getState().usersById[USER_B]?.username).toBe("bob");
   });
 
   it("returns stable selector arrays while store references do not change", async () => {
@@ -769,7 +925,6 @@ describe("messenger bootstrap store", () => {
         streams: [createStreamDto()],
         topics: [],
         folders: [],
-        users: [],
       }).streams[0]!,
     );
     useMessengerStore.getState().markRealtimeEventSkipped(ownerB, 10, "stale-owner-test");
@@ -785,7 +940,6 @@ describe("messenger bootstrap store", () => {
       streamBindings: [createStreamBindingDto()],
       topics: [createTopicDto()],
       folders: [],
-      users: [],
     });
     useMessengerStore.getState().startBootstrap(ownerKey);
     useMessengerStore.getState().replaceBootstrapState(ownerKey, payload);
@@ -809,7 +963,6 @@ describe("messenger bootstrap store", () => {
       streamBindings: [createStreamBindingDto()],
       topics: [],
       folders: [],
-      users: [],
     }).streamBindings;
     useMessengerStore.getState().startBootstrap(ownerKey);
 
@@ -827,13 +980,11 @@ describe("messenger bootstrap store", () => {
       streams: [createStreamDto()],
       topics: [],
       folders: [],
-      users: [],
     }).streams;
     const [topic] = adaptMessengerBootstrapPayload({
       streams: [],
       topics: [createTopicDto({ is_done: true, notification_mode: "follow" })],
       folders: [],
-      users: [],
     }).topics;
     useMessengerStore.getState().startBootstrap(ownerKey);
     useMessengerStore.getState().upsertStream(ownerKey, stream!);
@@ -952,7 +1103,6 @@ describe("messenger bootstrap store", () => {
       streams: [],
       topics: [],
       folders: [createFolderDto()],
-      users: [],
     }).folders;
     const [folderB] = adaptMessengerBootstrapPayload({
       streams: [],
@@ -967,7 +1117,6 @@ describe("messenger bootstrap store", () => {
           })),
         }),
       ],
-      users: [],
     }).folders;
     useMessengerStore.getState().startBootstrap(ownerKey);
     useMessengerStore.getState().applyFolderSnapshot(ownerKey, folderA!);

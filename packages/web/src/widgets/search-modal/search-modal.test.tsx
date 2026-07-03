@@ -42,31 +42,53 @@ describe("SearchModal open-in-chat action", () => {
     useUsersStore.getState().clear();
   });
 
-  it("disables Workspace search without calling legacy message search", () => {
+  it("searches Workspace users locally without calling legacy message search", () => {
     vi.useFakeTimers();
+    const onSelectUserUuid = vi.fn(() => true);
+    const onOpenChange = vi.fn();
     const legacyResult = createMessage({
       id: 55,
       content: "<p>Search target</p>",
     });
     fetchMessages.mockResolvedValue([legacyResult]);
-
-    render(
-      <SearchModal open mode="workspace" onOpenChange={() => {}} onSelectMessage={() => {}} />,
+    useUsersStore.getState().upsertUser(
+      createUser({
+        uuid: "a225223c-637c-4afa-918f-5f2798b9305f",
+        username: "alice.workspace",
+        displayName: "Alice Workspace",
+        email: "alice.workspace@example.com",
+        status: "active",
+      }),
     );
 
-    const searchInput = screen.getByPlaceholderText(t("search.workspaceUnsupportedPlaceholder"));
-    expect(searchInput).toBeDisabled();
-    expect(screen.getByText(t("search.workspaceUnsupportedTitle"))).toBeInTheDocument();
-    expect(screen.getByText(t("search.workspaceUnsupportedDescription"))).toBeInTheDocument();
+    render(
+      <SearchModal
+        open
+        mode="workspace"
+        onOpenChange={onOpenChange}
+        onSelectMessage={() => {}}
+        onSelectUserUuid={onSelectUserUuid}
+      />,
+    );
+
+    const searchInput = screen.getByPlaceholderText(t("search.search"));
+    expect(searchInput).not.toBeDisabled();
     expect(screen.queryByPlaceholderText(t("search.filterStream"))).not.toBeInTheDocument();
 
-    fireEvent.change(searchInput, { target: { value: "target" } });
+    fireEvent.change(searchInput, { target: { value: "alice.workspace" } });
     act(() => {
       vi.advanceTimersByTime(SEARCH_INPUT_DEBOUNCE_MS + 1);
     });
 
     expect(fetchMessages).not.toHaveBeenCalled();
     expect(screen.queryByText("Search target")).not.toBeInTheDocument();
+    const result = screen.getByRole("button", { name: /Alice Workspace/i });
+    expect(result).toBeInTheDocument();
+
+    fireEvent.click(result);
+
+    expect(onSelectUserUuid).toHaveBeenCalledWith("a225223c-637c-4afa-918f-5f2798b9305f");
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
   it("opens selected result in chat from context action", async () => {
@@ -107,7 +129,7 @@ describe("SearchModal open-in-chat action", () => {
     const onSelectUser = vi.fn();
     const onOpenChange = vi.fn();
     fetchMessages.mockResolvedValue([]);
-    useUsersStore.getState().mergeUser(
+    useUsersStore.getState().upsertUser(
       createUser({
         user_id: 42,
         full_name: "Alice",
@@ -146,20 +168,22 @@ describe("SearchModal open-in-chat action", () => {
 
   it("renders emoji-only realm custom status in user results without falling back to email", async () => {
     fetchMessages.mockResolvedValue([]);
-    useUsersStore.getState().mergeUser({
-      ...createUser({
-        user_id: 43,
-        full_name: "Scam User",
-        email: "scam@example.com",
+    useUsersStore.getState().upsertUser(
+      createUser({
+        ...createUser({
+          user_id: 43,
+          full_name: "Scam User",
+          email: "scam@example.com",
+        }),
+        status: {
+          text: "",
+          away: false,
+          emojiName: "scam",
+          emojiCode: "42",
+          reactionType: "realm_emoji",
+        },
       }),
-      status: {
-        text: "",
-        away: false,
-        emojiName: "scam",
-        emojiCode: "42",
-        reactionType: "realm_emoji",
-      },
-    });
+    );
 
     render(<SearchModal open onOpenChange={() => {}} onSelectMessage={() => {}} />);
 
@@ -256,7 +280,7 @@ describe("SearchModal open-in-chat action", () => {
 
   it("keeps user name fixed and truncates email in user search results", async () => {
     fetchMessages.mockResolvedValue([]);
-    useUsersStore.getState().mergeUser(
+    useUsersStore.getState().upsertUser(
       createUser({
         user_id: 97,
         full_name: "Alexandria Montgomery",

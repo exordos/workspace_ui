@@ -1,33 +1,75 @@
-/**
- * Feed data layer — IDB bootstrap for instant UI and Zulip server refresh for authoritative data.
- */
-
-import { fetchAllMessagesPage } from "~/shared/api/zulip-messages";
-import type { MessagesPageResult, MockMessage } from "~/shared/api/zulip.types";
+import { adaptMessengerMessage } from "~/entities/messenger/messenger-adapters.lib";
+import {
+  buildMessengerRequestOptions,
+  type MessengerRequestOptionsOverrides,
+} from "~/entities/messenger/messenger-request-options.lib";
+import type { MessengerMessage } from "~/entities/messenger/messenger.types";
+import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import {
+  getMessagesPage as defaultGetMessagesPage,
+  type MessengerCollectionPage,
+  type MessengerClientOptions,
+} from "~/shared/api/messenger-client";
+import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
 import { isAbortError } from "~/shared/lib/abort-error";
 import { createLogger, logApiCall } from "~/shared/lib/logger";
-import { getInstanceMessagesAscending } from "~/shared/lib/message-cache-db";
 
 const log = createLogger("feed:api");
 
-export async function fetchFeedMessages(
-  anchor: number | "newest" = "newest",
-  numBefore = 50,
-  options?: { signal?: AbortSignal },
-): Promise<MessagesPageResult> {
+export interface FeedMessagesPageResult {
+  messages: MessengerMessage[];
+  nextPageMarker: string | null;
+  hasMore: boolean;
+  pageLimit: number | null;
+}
+
+export interface FetchFeedMessagesOptions {
+  runtimeContext: WorkspaceRuntimeContext;
+  pageLimit?: number;
+  pageMarker?: string;
+  signal?: AbortSignal;
+  clientOptions?: MessengerRequestOptionsOverrides;
+  client?: {
+    getMessagesPage?: (
+      options: MessengerClientOptions,
+      query: {
+        pageLimit?: number;
+        pageMarker?: string;
+      },
+    ) => Promise<MessengerCollectionPage<WorkspaceMessengerMessageDto>>;
+  };
+}
+
+export async function fetchFeedMessages({
+  runtimeContext,
+  pageLimit = 50,
+  pageMarker,
+  signal,
+  clientOptions,
+  client,
+}: FetchFeedMessagesOptions): Promise<FeedMessagesPageResult> {
   const start = performance.now();
+  const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
   try {
-    const page = await fetchAllMessagesPage(anchor, numBefore, options);
+    const page = await (client?.getMessagesPage ?? defaultGetMessagesPage)(requestOptions, {
+      pageLimit,
+      pageMarker,
+    });
     const durationMs = Math.round(performance.now() - start);
-    logApiCall("GET", "/messages?narrow=all", {
+    logApiCall("GET", "/messages/", {
       status: 200,
       durationMs,
     });
-    return page;
+    return {
+      messages: page.items.map(adaptMessengerMessage),
+      nextPageMarker: page.nextPageMarker,
+      hasMore: page.nextPageMarker != null,
+      pageLimit: page.pageLimit,
+    };
   } catch (err) {
     const durationMs = Math.round(performance.now() - start);
-    const aborted = isAbortError(err) || options?.signal?.aborted === true;
-    logApiCall("GET", "/messages?narrow=all", {
+    const aborted = isAbortError(err) || signal?.aborted === true;
+    logApiCall("GET", "/messages/", {
       durationMs,
       ...(aborted ? { aborted: true } : { error: String(err) }),
     });
@@ -38,13 +80,9 @@ export async function fetchFeedMessages(
   }
 }
 
-/** Best-effort IDB bootstrap; retention limits may make this slice incomplete. */
-export async function hydrateFeedMessagesFromCache(
-  instanceId: string | null,
-  limit = 200,
-): Promise<MockMessage[]> {
-  if (instanceId == null) return [];
-  const all = await getInstanceMessagesAscending(instanceId);
-  if (all.length <= limit) return all;
-  return all.slice(all.length - limit);
+export function hydrateFeedMessagesFromCache(
+  _ownerKey: string | null,
+  _limit = 200,
+): Promise<MessengerMessage[]> {
+  return Promise.resolve([]);
 }

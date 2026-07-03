@@ -1,12 +1,17 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
-import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
+import {
+  resolveUserPresenceVisual,
+  selectUserDisplayName,
+  selectUsersByIds,
+} from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
+import type { User } from "~/entities/user/user.types";
 import { t } from "~/i18n/i18n";
 import { fetchMessages } from "~/shared/api/zulip-messages";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import type { MockMessage, RealmEmoji } from "~/shared/api/zulip.types";
 import { SEARCH_INPUT_DEBOUNCE_MS } from "~/shared/config/constants";
-import { getPresenceState } from "~/shared/lib/format";
+import { getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
 import { AppDialogShell, APP_DIALOG_CONTENT_BASE_CLASS } from "~/shared/ui/app-dialog.ui";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { SearchInput } from "~/shared/ui/search-input";
@@ -15,11 +20,51 @@ import { MAX_USER_RESULTS, SearchResultItem, UserResultItem } from "./search-mod
 import { useSearchModalStore } from "./search-modal.model";
 import type { SearchModalProps } from "./search-modal.types";
 
+function normalizeSearchValue(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function resolveNumericUserId(user: User): number | null {
+  const legacyUserId = (user as { user_id?: unknown }).user_id;
+  return typeof legacyUserId === "number" && Number.isSafeInteger(legacyUserId) && legacyUserId > 0
+    ? legacyUserId
+    : null;
+}
+
+function matchesUserQuery(user: User, query: string): boolean {
+  if (query.length === 0) {
+    return false;
+  }
+  return (
+    normalizeSearchValue(selectUserDisplayName(user)).includes(query) ||
+    normalizeSearchValue(user.username).includes(query) ||
+    normalizeSearchValue(user.email).includes(query) ||
+    normalizeSearchValue(user.statusText).includes(query) ||
+    normalizeSearchValue(user.statusEmoji).includes(query)
+  );
+}
+
+function findRealmEmoji(realmEmojis: readonly RealmEmoji[], statusEmojiName: string) {
+  const normalizedStatusEmojiName = statusEmojiName.toLowerCase();
+  return realmEmojis.find((emoji) => {
+    if (emoji.id === statusEmojiName) {
+      return true;
+    }
+    return emoji.names.some((name) => name.toLowerCase() === normalizedStatusEmojiName);
+  });
+}
+
+function getNonEmptyValue(value: string | null | undefined): string | undefined {
+  const normalizedValue = value?.trim() ?? "";
+  return normalizedValue.length > 0 ? normalizedValue : undefined;
+}
+
 export const SearchModal: React.FC<SearchModalProps> = ({
   open,
   onOpenChange,
   onSelectMessage,
   onSelectUser,
+  onSelectUserUuid,
   mode = "zulip",
 }) => {
   const query = useSearchModalStore((s) => s.query);
@@ -35,9 +80,13 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   const loading = useSearchModalStore((s) => s.loading);
   const setLoading = useSearchModalStore((s) => s.setLoading);
   const resetStore = useSearchModalStore((s) => s.reset);
+  const usersById = useUsersStore((s) => s.usersById);
+  const userIds = useUsersStore((s) => s.userIds);
   const inputRef = useRef<HTMLInputElement>(null);
-  const users = useUsersStore((s) => s.users);
+  const users = useMemo(() => new Map(), []);
   const workspaceMode = mode === "workspace";
+  const allUsers = useMemo(() => selectUsersByIds(usersById, userIds), [userIds, usersById]);
+  const realmEmojis = getCachedRealmEmojis();
 
   const runSearch = useCallback(
     async (q: string) => {
@@ -53,12 +102,6 @@ export const SearchModal: React.FC<SearchModalProps> = ({
       setLoading(true);
       try {
         const list = await fetchMessages(undefined, undefined, q);
-        for (const msg of list) {
-          useUsersStore.getState().mergeUser({
-            user_id: msg.sender_id,
-            full_name: msg.sender_full_name ?? "",
-          });
-        }
         setResults(list);
       } finally {
         setLoading(false);
@@ -67,28 +110,40 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     [setLoading, setResults, workspaceMode],
   );
 
-  const userResults = useMemo(() => {
-    if (workspaceMode) return [];
-    const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) return [];
-    return Array.from(users.values())
-      .filter((user) => {
-        if (user.full_name.toLowerCase().includes(normalizedQuery)) return true;
-        return user.email?.toLowerCase().includes(normalizedQuery) ?? false;
+  const userResults = useMemo<
+    {
+      userUuid: string;
+      userId?: number;
+      fullName: string;
+      email?: string;
+      statusLabel?: string;
+      statusEmoji?: { name: string; imgUrl: string };
+      presenceState: "active" | "idle" | "offline" | null;
+    }[]
+  >(() => {
+    const normalizedQuery = normalizeSearchValue(query);
+    return allUsers
+      .filter((user) => matchesUserQuery(user, normalizedQuery))
+      .map((user) => {
+        const userId = resolveNumericUserId(user);
+        const statusEmojiName = user.statusEmoji?.trim() ?? "";
+        const realmEmoji = findRealmEmoji(realmEmojis, statusEmojiName);
+        return {
+          userUuid: user.uuid,
+          ...(userId != null ? { userId } : {}),
+          fullName: selectUserDisplayName(user),
+          email: user.email ?? undefined,
+          statusLabel: getNonEmptyValue(user.statusText),
+          statusEmoji:
+            realmEmoji != null && statusEmojiName.length > 0
+              ? { name: statusEmojiName, imgUrl: realmEmoji.imgUrl }
+              : undefined,
+          presenceState: resolveUserPresenceVisual(user.status),
+        };
       })
-      .slice(0, MAX_USER_RESULTS)
-      .map((user) => ({
-        userId: user.user_id,
-        fullName: user.full_name,
-        email: user.email,
-        status: user.status,
-        statusLabel: formatUserStatusLabel(user.status) ?? undefined,
-        presenceState:
-          user.presence != null
-            ? getPresenceState(user.presence.timestamp, user.presence.status)
-            : null,
-      }));
-  }, [query, users, workspaceMode]);
+      .filter((user): user is NonNullable<typeof user> => user != null)
+      .slice(0, MAX_USER_RESULTS);
+  }, [allUsers, query, realmEmojis]);
 
   const filteredMessageResults = useMemo(
     () =>
@@ -100,11 +155,6 @@ export const SearchModal: React.FC<SearchModalProps> = ({
 
   useEffect(() => {
     if (!open) return;
-    if (workspaceMode) {
-      setResults([]);
-      setLoading(false);
-      return;
-    }
     const timer = setTimeout(() => {
       void runSearch(query);
     }, SEARCH_INPUT_DEBOUNCE_MS);
@@ -136,19 +186,22 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   );
 
   const handleSelectUser = useCallback(
-    (userId: number) => {
-      onSelectUser?.(userId);
+    (user: { userId?: number; userUuid: string }) => {
+      if (workspaceMode) {
+        if (onSelectUserUuid?.(user.userUuid) === true) {
+          onOpenChange(false);
+        }
+        return;
+      } else if (user.userId != null) {
+        onSelectUser?.(user.userId);
+      }
       onOpenChange(false);
     },
-    [onOpenChange, onSelectUser],
+    [onOpenChange, onSelectUser, onSelectUserUuid, workspaceMode],
   );
 
   const noResults =
-    !workspaceMode &&
-    !loading &&
-    query.trim() &&
-    filteredMessageResults.length === 0 &&
-    userResults.length === 0;
+    !loading && query.trim() && filteredMessageResults.length === 0 && userResults.length === 0;
 
   const contentClassName = `${APP_DIALOG_CONTENT_BASE_CLASS} top-[16%] flex max-h-[68vh] max-w-2xl flex-col overflow-hidden bg-card-bg p-0 shadow-2xl`;
 
@@ -160,13 +213,10 @@ export const SearchModal: React.FC<SearchModalProps> = ({
           ref={inputRef}
           type="text"
           size="md"
-          value={workspaceMode ? "" : query}
+          value={query}
           onChange={setQuery}
-          placeholder={
-            workspaceMode ? t("search.workspaceUnsupportedPlaceholder") : t("search.search")
-          }
+          placeholder={t("search.search")}
           ariaLabel={t("search.search")}
-          disabled={workspaceMode}
           className="border-border-subtle bg-bg transition-colors focus-within:border-accent-soft focus-within:bg-bg-elevated focus-within:outline-none"
         />
       </div>
@@ -196,16 +246,6 @@ export const SearchModal: React.FC<SearchModalProps> = ({
         </div>
       )}
       <ScrollArea className="flex-1 px-3 py-2">
-        {workspaceMode && (
-          <div role="status" className="px-3 py-8 text-center">
-            <p className="text-sm font-medium text-text-primary">
-              {t("search.workspaceUnsupportedTitle")}
-            </p>
-            <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
-              {t("search.workspaceUnsupportedDescription")}
-            </p>
-          </div>
-        )}
         {loading && (
           <p className="py-4 text-center text-sm text-text-muted">{t("search.search")}...</p>
         )}
@@ -220,14 +260,15 @@ export const SearchModal: React.FC<SearchModalProps> = ({
             <ul className="space-y-0.5">
               {userResults.map((user) => (
                 <UserResultItem
-                  key={user.userId}
+                  key={user.userUuid}
+                  userIdentity={user.userUuid}
                   userId={user.userId}
                   fullName={user.fullName}
                   email={user.email}
-                  status={user.status}
                   statusLabel={user.statusLabel}
+                  statusEmoji={user.statusEmoji}
                   presenceState={user.presenceState}
-                  onSelect={() => handleSelectUser(user.userId)}
+                  onSelect={() => handleSelectUser(user)}
                 />
               ))}
             </ul>

@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type {
-  MessengerConversation,
-  MessengerMessage,
-  MessengerUser,
-} from "~/entities/messenger/messenger.types";
+import type { MessengerConversation, MessengerMessage } from "~/entities/messenger/messenger.types";
+import type { User } from "~/entities/user/user.types";
 import { buildWorkspaceChatMessageListViewModel } from "./chat-page-workspace-message.adapter";
 
 const STREAM_UUID = "11111111-1111-4111-8111-111111111111";
@@ -43,15 +40,19 @@ function createMessage(overrides: Partial<MessengerMessage> = {}): MessengerMess
   };
 }
 
-function createUser(overrides: Partial<MessengerUser> = {}): MessengerUser {
+function createUser(overrides: Partial<User> = {}): User {
   return {
     uuid: USER_UUID,
     username: "alice",
     status: "active",
     firstName: "Alice",
     lastName: "Stone",
+    displayName: "Alice Stone",
     email: "alice@example.com",
-    lastPingAt: null,
+    avatarUrl: null,
+    statusEmoji: null,
+    statusText: null,
+    lastPingAt: "2026-06-30T09:00:00.000Z",
     createdAt: "2026-06-30T09:00:00.000Z",
     updatedAt: "2026-06-30T09:00:00.000Z",
     ...overrides,
@@ -69,6 +70,7 @@ describe("buildWorkspaceChatMessageListViewModel", () => {
 
     expect(viewModel.messages).toHaveLength(1);
     expect(viewModel.messages[0]).toMatchObject({
+      authorUuid: USER_UUID,
       sender_full_name: "Alice Stone",
       display_recipient: "general",
       channel: "general",

@@ -1071,7 +1071,6 @@ export async function readMessengerCatalogCache(
       conversationRows,
       folderRows,
       folderItemRows,
-      userRows,
       streamBindingRows,
       realtimeCursor,
     ] = await Promise.all([
@@ -1081,7 +1080,6 @@ export async function readMessengerCatalogCache(
       readRowsByOwner<WorkspaceMessengerConversationCacheRow>(db, ownerKey, stores.conversations),
       readRowsByOwner<WorkspaceMessengerFolderCacheRow>(db, ownerKey, stores.folders),
       readRowsByOwner<WorkspaceMessengerFolderItemCacheRow>(db, ownerKey, stores.folderItems),
-      readRowsByOwner<WorkspaceMessengerUserCacheRow>(db, ownerKey, stores.users),
       readRowsByOwner<WorkspaceMessengerStreamBindingCacheRow>(db, ownerKey, stores.streamBindings),
       readRealtimeCursor(db, ownerKey),
     ]);
@@ -1093,7 +1091,7 @@ export async function readMessengerCatalogCache(
       conversations: conversationRows.map((row) => row.conversation),
       folders: folderRows.map((row) => row.folder),
       folderItems: folderItemRows.map((row) => row.folderItem),
-      users: userRows.map((row) => row.user),
+      users: [],
       streamBindings: streamBindingRows.map((row) => row.streamBinding),
       realtimeCursor,
     };
@@ -1174,16 +1172,6 @@ export async function writeMessengerCatalogCache(
         snapshot.folderItems,
         upsertFolderItems,
         (key, folderItem) => cacheRowId(key, folderItem.uuid),
-        options,
-        reconcileFence,
-      ),
-      writeCatalogCollection(
-        db,
-        ownerKey,
-        stores.users,
-        snapshot.users,
-        upsertUsers,
-        (key, user) => cacheRowId(key, user.uuid),
         options,
         reconcileFence,
       ),

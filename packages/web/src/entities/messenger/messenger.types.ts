@@ -8,6 +8,8 @@ import type {
 
 // These are domain types for the new path, not raw Workspace API responses.
 // Backend fields such as stream_uuid are converted here into app fields such as streamUuid.
+import type { PresenceVisual } from "~/shared/ui/presence-indicator.types";
+
 export type MessengerUuid = string;
 export type MessengerConversationId = string;
 export type MessengerAudience = "channel" | "private";
@@ -125,18 +127,6 @@ export interface MessengerFolder {
   updatedAt: string;
 }
 
-export interface MessengerUser {
-  uuid: MessengerUuid;
-  username: string;
-  status: "active" | "idle" | "offline" | "do_not_disturb";
-  firstName: string | null;
-  lastName: string | null;
-  email: string | null;
-  lastPingAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
 // Bootstrap is the first full snapshot for one runtime owner.
 export interface MessengerBootstrapPayload {
   streams: MessengerStream[];
@@ -144,7 +134,6 @@ export interface MessengerBootstrapPayload {
   topics: MessengerTopic[];
   conversations: MessengerConversation[];
   folders: MessengerFolder[];
-  users: MessengerUser[];
 }
 
 export interface MessengerDeletedStream {
@@ -208,6 +197,10 @@ export interface MessengerSidebarStreamItem {
   route: string;
   topics: MessengerSidebarTopicItem[];
   preview: MessengerSidebarMessagePreview | null;
+  avatarUrl?: string | null;
+  presence?: PresenceVisual;
+  statusEmoji?: string | null;
+  statusText?: string | null;
   updatedAt: string;
   lastMessageCreatedAt: string | null;
 }

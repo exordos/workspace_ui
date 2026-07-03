@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { MockMessage } from "~/shared/api/zulip.types";
+import { createUser } from "~/test/factories";
 
 const isHydrateInFlightMock = vi.hoisted(() => vi.fn((_streamId: number) => false));
 
@@ -81,7 +82,9 @@ describe("syncStreamSidebarFromLoadedMessages", () => {
   beforeEach(() => {
     useChatListStore.getState().clear();
     useUsersStore.getState().clear();
-    useUsersStore.getState().mergeUser({ user_id: 20, full_name: "Bob", email: "b@x.test" });
+    useUsersStore
+      .getState()
+      .upsertUser(createUser({ user_id: 20, full_name: "Bob", email: "b@x.test" }));
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 99, name: "engineering" }]);
     applySpy = vi.spyOn(useChatListStore.getState(), "applyStreamSidebarPreviewsFromMessages");
   });

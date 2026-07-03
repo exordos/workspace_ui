@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { resolvePersonalDmSidebarTitle } from "~/entities/chat-list/chat-list-format.lib";
 import type { ZulipInstance } from "~/entities/instance/instance.model";
-import { useUsersStore } from "~/entities/user/user.model";
 import { computeIsGroupDmView, normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
 import { getDmById, parseDmSlugToUserIds, parseStreamSlug } from "~/widgets/sidebar/sidebar.lib";
@@ -92,13 +91,6 @@ export function useLayoutUnreadAndTitle(options: {
     isDmRouteForTitle && !isGroupDmForTitle
       ? (dmRecipientIdsForTitle[0] ?? activeDmChatForTitle?.id ?? null)
       : null;
-  const dmTitlePartnerUser = useUsersStore((s) =>
-    dmTitlePartnerId != null ? s.getUser(dmTitlePartnerId) : undefined,
-  );
-  const dmTitleStoreDisplayName = useUsersStore((s) =>
-    dmTitlePartnerId != null ? s.getDisplayName(dmTitlePartnerId) : "Unknown",
-  );
-
   const resolvedDmNameForTitle = useMemo(() => {
     if (!isDmRouteForTitle) {
       return undefined;
@@ -111,17 +103,10 @@ export function useLayoutUnreadAndTitle(options: {
     }
     return resolvePersonalDmSidebarTitle({
       chatName: activeDmChatForTitle?.name ?? "",
-      userFullName: dmTitlePartnerUser?.full_name,
-      storeDisplayName: dmTitleStoreDisplayName,
+      userFullName: undefined,
+      storeDisplayName: "",
     });
-  }, [
-    isDmRouteForTitle,
-    isGroupDmForTitle,
-    activeDmChatForTitle,
-    dmTitlePartnerId,
-    dmTitlePartnerUser?.full_name,
-    dmTitleStoreDisplayName,
-  ]);
+  }, [isDmRouteForTitle, isGroupDmForTitle, activeDmChatForTitle, dmTitlePartnerId]);
 
   const activeChatWindowTitle = useMemo(
     () =>

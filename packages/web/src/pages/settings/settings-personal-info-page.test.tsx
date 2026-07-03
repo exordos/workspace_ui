@@ -5,6 +5,7 @@ import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { setLocale } from "~/i18n/i18n";
+import { createUser } from "~/test/factories";
 import { renderWithProviders } from "~/test/render";
 import { SettingsPersonalInfoPage } from "./settings-personal-info-page.ui";
 
@@ -23,14 +24,11 @@ const bumpAvatarVersionMock = vi.hoisted(() => vi.fn());
 vi.mock("~/features/user-profile/user-profile.api", () => ({
   fetchUserProfile: fetchUserProfileMock,
   updateOwnProfile: updateOwnProfileMock,
+  fetchOwnStatus: (...args: unknown[]) => fetchOwnStatusMock(...args),
+  updateOwnStatus: (...args: unknown[]) => updateOwnStatusMock(...args),
   getOwnAvatarCapabilities: getOwnAvatarCapabilitiesMock,
   uploadOwnAvatar: uploadOwnAvatarMock,
   removeOwnAvatar: removeOwnAvatarMock,
-}));
-
-vi.mock("~/entities/user/api/user.api", () => ({
-  fetchOwnStatus: (...args: unknown[]) => fetchOwnStatusMock(...args),
-  updateOwnStatus: (...args: unknown[]) => updateOwnStatusMock(...args),
 }));
 
 vi.mock("~/shared/api/zulip-client.internal", () => ({
@@ -111,11 +109,13 @@ describe("SettingsPersonalInfoPage", () => {
 
   it("shows current user profile details", async () => {
     useChatListStore.setState({ currentUserId: 42 });
-    useUsersStore.getState().mergeUser({
-      user_id: 42,
-      full_name: "Alice Doe",
-      email: "alice@example.com",
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 42,
+        full_name: "Alice Doe",
+        email: "alice@example.com",
+      }),
+    );
     fetchUserProfileMock.mockResolvedValue({
       userId: 42,
       fullName: "Alice Doe",
@@ -146,11 +146,13 @@ describe("SettingsPersonalInfoPage", () => {
 
   it("renders personal info in the same profile metadata format as user profile panel", async () => {
     useChatListStore.setState({ currentUserId: 42 });
-    useUsersStore.getState().mergeUser({
-      user_id: 42,
-      full_name: "Alice Doe",
-      email: "alice@example.com",
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 42,
+        full_name: "Alice Doe",
+        email: "alice@example.com",
+      }),
+    );
     fetchUserProfileMock.mockResolvedValue({
       userId: 42,
       fullName: "Alice Doe",
@@ -230,11 +232,13 @@ describe("SettingsPersonalInfoPage", () => {
     });
 
     useChatListStore.setState({ currentUserId: 42 });
-    useUsersStore.getState().mergeUser({
-      user_id: 42,
-      full_name: "Alice Doe",
-      email: "alice@example.com",
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 42,
+        full_name: "Alice Doe",
+        email: "alice@example.com",
+      }),
+    );
     useInstancesStore.setState({
       instances: [
         {
@@ -268,11 +272,13 @@ describe("SettingsPersonalInfoPage", () => {
     });
 
     useChatListStore.setState({ currentUserId: 42 });
-    useUsersStore.getState().mergeUser({
-      user_id: 42,
-      full_name: "Alice Doe",
-      email: "alice@example.com",
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 42,
+        full_name: "Alice Doe",
+        email: "alice@example.com",
+      }),
+    );
     useInstancesStore.setState({
       instances: [
         {
@@ -298,11 +304,13 @@ describe("SettingsPersonalInfoPage", () => {
 
   it("allows editing own full name and saving profile changes", async () => {
     useChatListStore.setState({ currentUserId: 42 });
-    useUsersStore.getState().mergeUser({
-      user_id: 42,
-      full_name: "Alice Doe",
-      email: "alice@example.com",
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 42,
+        full_name: "Alice Doe",
+        email: "alice@example.com",
+      }),
+    );
     fetchUserProfileMock.mockResolvedValue({
       userId: 42,
       fullName: "Alice Doe",
@@ -331,24 +339,22 @@ describe("SettingsPersonalInfoPage", () => {
         timezone: "Europe/Moscow",
       });
     });
-    expect(updateOwnStatusMock).toHaveBeenCalledWith({
-      text: "",
-      emojiName: undefined,
-      away: false,
-    });
+    expect(updateOwnStatusMock).not.toHaveBeenCalled();
     await waitFor(() => {
       expect(screen.getAllByText("Alice Updated").length).toBeGreaterThan(0);
     });
-    expect(useUsersStore.getState().getUser(42)?.full_name).toBe("Alice Updated");
+    expect(useUsersStore.getState().getUser("42")?.displayName).toBe("Alice Updated");
   });
 
-  it("allows editing own status and away flag in personal profile", async () => {
+  it("keeps own status read-only during user store cutover", async () => {
     useChatListStore.setState({ currentUserId: 42 });
-    useUsersStore.getState().mergeUser({
-      user_id: 42,
-      full_name: "Alice Doe",
-      email: "alice@example.com",
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 42,
+        full_name: "Alice Doe",
+        email: "alice@example.com",
+      }),
+    );
     fetchUserProfileMock.mockResolvedValue({
       userId: 42,
       fullName: "Alice Doe",
@@ -390,36 +396,30 @@ describe("SettingsPersonalInfoPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => {
-      expect(updateOwnStatusMock).toHaveBeenCalledWith({
-        text: "Reviewing PRs",
-        emojiName: "speech_balloon",
-        emojiCode: "1f4ac",
-        reactionType: "unicode_emoji",
-        away: true,
+      expect(updateOwnProfileMock).toHaveBeenCalledWith({
+        fullName: "Alice Doe",
+        timezone: "Europe/Moscow",
       });
     });
-    expect(screen.getAllByText(/Reviewing PRs/).length).toBeGreaterThan(0);
-    expect(useUsersStore.getState().getUser(42)?.status).toEqual({
-      text: "Reviewing PRs",
-      emojiName: "speech_balloon",
-      emojiCode: "1f4ac",
-      reactionType: "unicode_emoji",
-      away: true,
-    });
+    expect(updateOwnStatusMock).not.toHaveBeenCalled();
+    expect(screen.getAllByText(/Heads down/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Reviewing PRs/)).not.toBeInTheDocument();
+    expect(useUsersStore.getState().getUser("42")?.statusText).toBeNull();
   });
 
-  it("keeps existing status and edit mode when clear request fails", async () => {
+  it("ignores status clear while legacy status writes are disabled", async () => {
     useChatListStore.setState({ currentUserId: 42 });
-    useUsersStore.getState().mergeUser({
-      user_id: 42,
-      full_name: "Alice Doe",
-      email: "alice@example.com",
-      status: {
-        text: "Heads down",
-        away: false,
-      },
-      statusFetchedAt: Date.now(),
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 42,
+        full_name: "Alice Doe",
+        email: "alice@example.com",
+        status: {
+          text: "Heads down",
+          away: false,
+        },
+      }),
+    );
     fetchUserProfileMock.mockResolvedValue({
       userId: 42,
       fullName: "Alice Doe",
@@ -453,27 +453,26 @@ describe("SettingsPersonalInfoPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => {
-      expect(updateOwnStatusMock).toHaveBeenCalledWith({
-        text: "",
-        emojiName: undefined,
-        away: false,
+      expect(updateOwnProfileMock).toHaveBeenCalledWith({
+        fullName: "Alice Doe",
+        timezone: "Europe/Moscow",
       });
     });
-    expect(screen.getByText(/failed to update profile/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^save$/i })).toBeInTheDocument();
-    expect(useUsersStore.getState().getUser(42)?.status).toEqual({
-      text: "Heads down",
-      away: false,
-    });
+    expect(updateOwnStatusMock).not.toHaveBeenCalled();
+    expect(screen.queryByText(/failed to update profile/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^save$/i })).not.toBeInTheDocument();
+    expect(useUsersStore.getState().getUser("42")?.statusText).toBe("Heads down");
   });
 
   it("shows timezone input only in edit mode", async () => {
     useChatListStore.setState({ currentUserId: 42 });
-    useUsersStore.getState().mergeUser({
-      user_id: 42,
-      full_name: "Alice Doe",
-      email: "alice@example.com",
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 42,
+        full_name: "Alice Doe",
+        email: "alice@example.com",
+      }),
+    );
     fetchUserProfileMock.mockResolvedValue({
       userId: 42,
       fullName: "Alice Doe",
@@ -493,11 +492,13 @@ describe("SettingsPersonalInfoPage", () => {
 
   it("keeps timezone draft local until save and applies it on save", async () => {
     useChatListStore.setState({ currentUserId: 42 });
-    useUsersStore.getState().mergeUser({
-      user_id: 42,
-      full_name: "Alice Doe",
-      email: "alice@example.com",
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 42,
+        full_name: "Alice Doe",
+        email: "alice@example.com",
+      }),
+    );
     fetchUserProfileMock.mockResolvedValue({
       userId: 42,
       fullName: "Alice Doe",
@@ -529,11 +530,13 @@ describe("SettingsPersonalInfoPage", () => {
 
   it("cancels timezone draft without API calls", async () => {
     useChatListStore.setState({ currentUserId: 42 });
-    useUsersStore.getState().mergeUser({
-      user_id: 42,
-      full_name: "Alice Doe",
-      email: "alice@example.com",
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 42,
+        full_name: "Alice Doe",
+        email: "alice@example.com",
+      }),
+    );
     fetchUserProfileMock.mockResolvedValue({
       userId: 42,
       fullName: "Alice Doe",
@@ -558,11 +561,13 @@ describe("SettingsPersonalInfoPage", () => {
 
   it("shows timezone validation error for invalid value and does not save", async () => {
     useChatListStore.setState({ currentUserId: 42 });
-    useUsersStore.getState().mergeUser({
-      user_id: 42,
-      full_name: "Alice Doe",
-      email: "alice@example.com",
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 42,
+        full_name: "Alice Doe",
+        email: "alice@example.com",
+      }),
+    );
     fetchUserProfileMock.mockResolvedValue({
       userId: 42,
       fullName: "Alice Doe",
@@ -586,11 +591,13 @@ describe("SettingsPersonalInfoPage", () => {
 
   it("shows timezone unsupported error from profile save", async () => {
     useChatListStore.setState({ currentUserId: 42 });
-    useUsersStore.getState().mergeUser({
-      user_id: 42,
-      full_name: "Alice Doe",
-      email: "alice@example.com",
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 42,
+        full_name: "Alice Doe",
+        email: "alice@example.com",
+      }),
+    );
     fetchUserProfileMock.mockResolvedValue({
       userId: 42,
       fullName: "Alice Doe",
@@ -621,12 +628,14 @@ describe("SettingsPersonalInfoPage", () => {
 
   it("hides avatar actions outside edit mode", async () => {
     useChatListStore.setState({ currentUserId: 42 });
-    useUsersStore.getState().mergeUser({
-      user_id: 42,
-      full_name: "Alice Doe",
-      email: "alice@example.com",
-      avatar_url: "/avatar/old.png",
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 42,
+        full_name: "Alice Doe",
+        email: "alice@example.com",
+        avatar_url: "/avatar/old.png",
+      }),
+    );
     fetchUserProfileMock.mockResolvedValue({
       userId: 42,
       fullName: "Alice Doe",
@@ -645,12 +654,14 @@ describe("SettingsPersonalInfoPage", () => {
 
   it("shows avatar actions in edit mode", async () => {
     useChatListStore.setState({ currentUserId: 42 });
-    useUsersStore.getState().mergeUser({
-      user_id: 42,
-      full_name: "Alice Doe",
-      email: "alice@example.com",
-      avatar_url: "/avatar/old.png",
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 42,
+        full_name: "Alice Doe",
+        email: "alice@example.com",
+        avatar_url: "/avatar/old.png",
+      }),
+    );
     fetchUserProfileMock.mockResolvedValue({
       userId: 42,
       fullName: "Alice Doe",
@@ -670,12 +681,14 @@ describe("SettingsPersonalInfoPage", () => {
 
   it("keeps avatar upload pending until save and shows local preview", async () => {
     useChatListStore.setState({ currentUserId: 42 });
-    useUsersStore.getState().mergeUser({
-      user_id: 42,
-      full_name: "Alice Doe",
-      email: "alice@example.com",
-      avatar_url: "/avatar/old.png",
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 42,
+        full_name: "Alice Doe",
+        email: "alice@example.com",
+        avatar_url: "/avatar/old.png",
+      }),
+    );
     fetchUserProfileMock.mockResolvedValue({
       userId: 42,
       fullName: "Alice Doe",
@@ -710,12 +723,14 @@ describe("SettingsPersonalInfoPage", () => {
 
   it("resolves relative avatar URL using realm base", async () => {
     useChatListStore.setState({ currentUserId: 42 });
-    useUsersStore.getState().mergeUser({
-      user_id: 42,
-      full_name: "Alice Doe",
-      email: "alice@example.com",
-      avatar_url: "/avatar/fallback.png",
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 42,
+        full_name: "Alice Doe",
+        email: "alice@example.com",
+        avatar_url: "/avatar/fallback.png",
+      }),
+    );
     fetchUserProfileMock.mockResolvedValue({
       userId: 42,
       fullName: "Alice Doe",
@@ -740,12 +755,14 @@ describe("SettingsPersonalInfoPage", () => {
 
   it("keeps avatar remove pending until save", async () => {
     useChatListStore.setState({ currentUserId: 42 });
-    useUsersStore.getState().mergeUser({
-      user_id: 42,
-      full_name: "Alice Doe",
-      email: "alice@example.com",
-      avatar_url: "/avatar/old.png",
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 42,
+        full_name: "Alice Doe",
+        email: "alice@example.com",
+        avatar_url: "/avatar/old.png",
+      }),
+    );
     fetchUserProfileMock.mockResolvedValue({
       userId: 42,
       fullName: "Alice Doe",
@@ -770,12 +787,14 @@ describe("SettingsPersonalInfoPage", () => {
 
   it("rolls back pending avatar changes on cancel", async () => {
     useChatListStore.setState({ currentUserId: 42 });
-    useUsersStore.getState().mergeUser({
-      user_id: 42,
-      full_name: "Alice Doe",
-      email: "alice@example.com",
-      avatar_url: "/avatar/old.png",
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 42,
+        full_name: "Alice Doe",
+        email: "alice@example.com",
+        avatar_url: "/avatar/old.png",
+      }),
+    );
     fetchUserProfileMock.mockResolvedValue({
       userId: 42,
       fullName: "Alice Doe",
@@ -806,12 +825,14 @@ describe("SettingsPersonalInfoPage", () => {
 
   it("applies pending avatar upload on save before profile/status", async () => {
     useChatListStore.setState({ currentUserId: 42 });
-    useUsersStore.getState().mergeUser({
-      user_id: 42,
-      full_name: "Alice Doe",
-      email: "alice@example.com",
-      avatar_url: "/avatar/old.png",
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 42,
+        full_name: "Alice Doe",
+        email: "alice@example.com",
+        avatar_url: "/avatar/old.png",
+      }),
+    );
     fetchUserProfileMock.mockResolvedValue({
       userId: 42,
       fullName: "Alice Doe",
@@ -844,8 +865,10 @@ describe("SettingsPersonalInfoPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => {
-      expect(useUsersStore.getState().getUser(42)?.avatar_url).toBe("blob:avatar-preview");
+      const avatarImage = document.querySelector("img");
+      expect(avatarImage?.getAttribute("src")).toContain("blob:avatar-preview");
     });
+    expect(useUsersStore.getState().getUser("42")?.avatarUrl).toBe("/avatar/old.png");
     expect(updateOwnProfileMock).not.toHaveBeenCalled();
     expect(updateOwnStatusMock).not.toHaveBeenCalled();
     if (resolveUpload == null) {
@@ -861,29 +884,27 @@ describe("SettingsPersonalInfoPage", () => {
         fullName: "Alice Doe",
         timezone: "Europe/Moscow",
       });
-      expect(updateOwnStatusMock).toHaveBeenCalledWith({
-        text: "",
-        emojiName: undefined,
-        away: false,
-      });
     });
+    expect(updateOwnStatusMock).not.toHaveBeenCalled();
     expect(bumpAvatarVersionMock).toHaveBeenCalledTimes(1);
     const uploadCallOrder = uploadOwnAvatarMock.mock.invocationCallOrder[0];
     const profileCallOrder = updateOwnProfileMock.mock.invocationCallOrder[0];
     expect(uploadCallOrder).toBeDefined();
     expect(profileCallOrder).toBeDefined();
     expect(uploadCallOrder!).toBeLessThan(profileCallOrder!);
-    expect(useUsersStore.getState().getUser(42)?.avatar_url).toBe("/avatar/new.png");
+    expect(useUsersStore.getState().getUser("42")?.avatarUrl).toBe("/avatar/new.png");
   });
 
   it("applies pending avatar remove on save", async () => {
     useChatListStore.setState({ currentUserId: 42 });
-    useUsersStore.getState().mergeUser({
-      user_id: 42,
-      full_name: "Alice Doe",
-      email: "alice@example.com",
-      avatar_url: "/avatar/old.png",
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 42,
+        full_name: "Alice Doe",
+        email: "alice@example.com",
+        avatar_url: "/avatar/old.png",
+      }),
+    );
     fetchUserProfileMock.mockResolvedValue({
       userId: 42,
       fullName: "Alice Doe",
@@ -905,17 +926,19 @@ describe("SettingsPersonalInfoPage", () => {
       expect(removeOwnAvatarMock).toHaveBeenCalled();
     });
     expect(bumpAvatarVersionMock).toHaveBeenCalledTimes(1);
-    expect(useUsersStore.getState().getUser(42)?.avatar_url).toBe("/avatar/default.png");
+    expect(useUsersStore.getState().getUser("42")?.avatarUrl).toBe("/avatar/default.png");
   });
 
   it("keeps edit mode and skips profile save when avatar mutation fails", async () => {
     useChatListStore.setState({ currentUserId: 42 });
-    useUsersStore.getState().mergeUser({
-      user_id: 42,
-      full_name: "Alice Doe",
-      email: "alice@example.com",
-      avatar_url: "/avatar/old.png",
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 42,
+        full_name: "Alice Doe",
+        email: "alice@example.com",
+        avatar_url: "/avatar/old.png",
+      }),
+    );
     fetchUserProfileMock.mockResolvedValue({
       userId: 42,
       fullName: "Alice Doe",
@@ -946,7 +969,7 @@ describe("SettingsPersonalInfoPage", () => {
     await waitFor(() => {
       expect(uploadOwnAvatarMock).toHaveBeenCalledWith(file);
     });
-    expect(useUsersStore.getState().getUser(42)?.avatar_url).toBe("/avatar/old.png");
+    expect(useUsersStore.getState().getUser("42")?.avatarUrl).toBe("/avatar/old.png");
     expect(updateOwnProfileMock).not.toHaveBeenCalled();
     expect(updateOwnStatusMock).not.toHaveBeenCalled();
     expect(screen.getByText(/avatar update is not supported by this server/i)).toBeInTheDocument();
@@ -955,12 +978,14 @@ describe("SettingsPersonalInfoPage", () => {
 
   it("keeps committed avatar when profile save fails after avatar success", async () => {
     useChatListStore.setState({ currentUserId: 42 });
-    useUsersStore.getState().mergeUser({
-      user_id: 42,
-      full_name: "Alice Doe",
-      email: "alice@example.com",
-      avatar_url: "/avatar/old.png",
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 42,
+        full_name: "Alice Doe",
+        email: "alice@example.com",
+        avatar_url: "/avatar/old.png",
+      }),
+    );
     fetchUserProfileMock.mockResolvedValue({
       userId: 42,
       fullName: "Alice Doe",
@@ -996,7 +1021,7 @@ describe("SettingsPersonalInfoPage", () => {
     await waitFor(() => {
       expect(uploadOwnAvatarMock).toHaveBeenCalledWith(file);
     });
-    expect(useUsersStore.getState().getUser(42)?.avatar_url).toBe("/avatar/new.png");
+    expect(useUsersStore.getState().getUser("42")?.avatarUrl).toBe("/avatar/new.png");
     expect(screen.getByText(/failed to update profile/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^save$/i })).toBeInTheDocument();
   });
@@ -1007,11 +1032,13 @@ describe("SettingsPersonalInfoPage", () => {
       avatarChangesDisabled: true,
     });
     useChatListStore.setState({ currentUserId: 42 });
-    useUsersStore.getState().mergeUser({
-      user_id: 42,
-      full_name: "Alice Doe",
-      email: "alice@example.com",
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 42,
+        full_name: "Alice Doe",
+        email: "alice@example.com",
+      }),
+    );
     fetchUserProfileMock.mockResolvedValue({
       userId: 42,
       fullName: "Alice Doe",

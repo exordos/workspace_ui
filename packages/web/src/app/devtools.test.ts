@@ -15,7 +15,7 @@ vi.mock("../entities/chat-list/chat-list.model", () => ({
   useChatListStore: { getState: vi.fn(() => ({})) },
 }));
 vi.mock("../entities/message/message.model", () => ({
-  useCurrentChatMessagesStore: { getState: vi.fn(() => ({})) },
+  useWorkspaceMessageStore: { getState: vi.fn(() => ({})) },
 }));
 vi.mock("../entities/user/user.model", () => ({
   useUsersStore: { getState: vi.fn(() => ({})) },

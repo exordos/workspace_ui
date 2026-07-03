@@ -84,6 +84,173 @@ function isActionSupported(capability: MessageComposerActionCapability): boolean
   return capability.mode === "enabled";
 }
 
+function resolveToolbarActionLabel(
+  supported: boolean,
+  capability: MessageComposerActionCapability,
+  supportedLabel: string,
+): string {
+  return supported
+    ? supportedLabel
+    : (capability.unsupportedText ?? t("composer.actionUnsupported"));
+}
+
+interface MessageComposerToolbarRowProps {
+  isToolbarVisible: boolean;
+  mode: ComposerMode;
+  onModeChange: (nextMode: ComposerMode) => void;
+  showPreviewTab: boolean;
+  isEditing: boolean;
+  disabled: boolean;
+  uploadSupported: boolean;
+  uploadCapability: MessageComposerActionCapability;
+  scheduledSendSupported: boolean;
+  scheduledSendCapability: MessageComposerActionCapability;
+  savedSnippetsSupported: boolean;
+  onCreateCallLink: (() => string | null | undefined) | undefined;
+  onAttachClick: () => void;
+  onCreateCallLinkClick: () => void;
+  onToggleScheduleMenu: () => void;
+  onToggleSavedSnippetsMenu: () => void;
+  onToggleAiUnavailablePopover: () => void;
+  onValueChange: (value: string) => void;
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+  scheduleButtonRef: React.RefObject<HTMLButtonElement | null>;
+  savedSnippetsButtonRef: React.RefObject<HTMLButtonElement | null>;
+  aiButtonAnchorRef: React.RefObject<HTMLSpanElement | null>;
+  aiMenuOpen: boolean;
+}
+
+const MessageComposerToolbarRow = React.memo<MessageComposerToolbarRowProps>(
+  function MessageComposerToolbarRow({
+    isToolbarVisible,
+    mode,
+    onModeChange,
+    showPreviewTab,
+    isEditing,
+    disabled,
+    uploadSupported,
+    uploadCapability,
+    scheduledSendSupported,
+    scheduledSendCapability,
+    savedSnippetsSupported,
+    onCreateCallLink,
+    onAttachClick,
+    onCreateCallLinkClick,
+    onToggleScheduleMenu,
+    onToggleSavedSnippetsMenu,
+    onToggleAiUnavailablePopover,
+    onValueChange,
+    textareaRef,
+    scheduleButtonRef,
+    savedSnippetsButtonRef,
+    aiButtonAnchorRef,
+    aiMenuOpen,
+  }) {
+    const attachLabel = resolveToolbarActionLabel(
+      uploadSupported,
+      uploadCapability,
+      t("a11y.attachFile"),
+    );
+    const scheduleLabel = resolveToolbarActionLabel(
+      scheduledSendSupported,
+      scheduledSendCapability,
+      t("a11y.messageMenu"),
+    );
+    const fileTrigger = !isEditing ? (
+      <button
+        type="button"
+        className={TOOLBAR_BTN}
+        onClick={onAttachClick}
+        disabled={disabled}
+        aria-label={attachLabel}
+        title={attachLabel}
+      >
+        <Icon name="attach" size={TOOLBAR_ICON_SIZE} className={TOOLBAR_ICON_EMPHASIS_CLASS} />
+      </button>
+    ) : undefined;
+    const callLinkTrigger =
+      !isEditing && onCreateCallLink != null ? (
+        <button
+          type="button"
+          className={TOOLBAR_BTN}
+          onClick={onCreateCallLinkClick}
+          disabled={disabled}
+          aria-label={t("call.createCallLink")}
+          title={t("call.createCallLink")}
+        >
+          <Icon name="phone" size={TOOLBAR_ICON_SIZE} className={TOOLBAR_ICON_EMPHASIS_CLASS} />
+        </button>
+      ) : undefined;
+    const scheduleTrigger =
+      !isEditing && ENABLE_SCHEDULED_SEND_UI ? (
+        <button
+          ref={scheduleButtonRef}
+          type="button"
+          className={TOOLBAR_BTN}
+          onClick={onToggleScheduleMenu}
+          disabled={disabled}
+          aria-label={scheduleLabel}
+          title={scheduleLabel}
+        >
+          <Icon name="calendar" size={TOOLBAR_ICON_SIZE} />
+        </button>
+      ) : undefined;
+    const snippetsTrigger =
+      !isEditing && savedSnippetsSupported ? (
+        <button
+          ref={savedSnippetsButtonRef}
+          type="button"
+          className={TOOLBAR_BTN}
+          onClick={onToggleSavedSnippetsMenu}
+          disabled={disabled}
+          aria-label={t("composer.savedSnippets")}
+          title={t("composer.savedSnippets")}
+        >
+          <Icon name="chat_bubble_outline" size={TOOLBAR_ICON_SIZE} />
+        </button>
+      ) : undefined;
+    const aiTrigger = !isEditing ? (
+      <span ref={aiButtonAnchorRef}>
+        <AiComposerButton
+          onClick={onToggleAiUnavailablePopover}
+          active={aiMenuOpen}
+          iconSize={TOOLBAR_AI_ICON_SIZE}
+        />
+      </span>
+    ) : undefined;
+
+    return (
+      <div
+        data-testid="composer-toolbar-row"
+        aria-hidden={!isToolbarVisible}
+        className={`overflow-hidden px-3 transition-[max-height,opacity,transform,padding] duration-200 ease-out ${
+          isToolbarVisible
+            ? "max-h-12 translate-y-0 pb-1 pt-2 opacity-100"
+            : "pointer-events-none max-h-0 -translate-y-1 pb-0 pt-0 opacity-0"
+        }`}
+      >
+        {isToolbarVisible && (
+          <div className="flex items-center gap-2">
+            <ComposerModeTabs mode={mode} onChange={onModeChange} showPreviewTab={showPreviewTab} />
+
+            {mode === "write" && (
+              <FormattingToolbar
+                textareaRef={textareaRef}
+                onValueChange={onValueChange}
+                fileTrigger={fileTrigger}
+                callLinkTrigger={callLinkTrigger}
+                scheduleTrigger={scheduleTrigger}
+                snippetsTrigger={snippetsTrigger}
+                aiTrigger={aiTrigger}
+              />
+            )}
+          </div>
+        )}
+      </div>
+    );
+  },
+);
+
 export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   onSend,
   onSubmitEdit,
@@ -918,128 +1085,31 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
 
       {!isEditing && <MessageComposerSmartReplyStrip onAccept={setValue} />}
 
-      <div
-        data-testid="composer-toolbar-row"
-        aria-hidden={!isToolbarVisible}
-        className={`overflow-hidden px-3 transition-[max-height,opacity,transform,padding] duration-200 ease-out ${
-          isToolbarVisible
-            ? "max-h-12 translate-y-0 pb-1 pt-2 opacity-100"
-            : "pointer-events-none max-h-0 -translate-y-1 pb-0 pt-0 opacity-0"
-        }`}
-      >
-        {isToolbarVisible && (
-          <div className="flex items-center gap-2">
-            <ComposerModeTabs
-              mode={mode}
-              onChange={handleModeChange}
-              showPreviewTab={previewSupported}
-            />
-
-            {/* Formatting toolbar */}
-            {mode === "write" && (
-              <FormattingToolbar
-                textareaRef={textareaRef}
-                onValueChange={setValue}
-                fileTrigger={
-                  !isEditing ? (
-                    <button
-                      type="button"
-                      className={TOOLBAR_BTN}
-                      onClick={handleAttachClick}
-                      disabled={disabled}
-                      aria-label={
-                        uploadSupported
-                          ? t("a11y.attachFile")
-                          : (uploadCapability.unsupportedText ?? t("composer.actionUnsupported"))
-                      }
-                      title={
-                        uploadSupported
-                          ? t("a11y.attachFile")
-                          : (uploadCapability.unsupportedText ?? t("composer.actionUnsupported"))
-                      }
-                    >
-                      <Icon
-                        name="attach"
-                        size={TOOLBAR_ICON_SIZE}
-                        className={TOOLBAR_ICON_EMPHASIS_CLASS}
-                      />
-                    </button>
-                  ) : undefined
-                }
-                callLinkTrigger={
-                  !isEditing && onCreateCallLink != null ? (
-                    <button
-                      type="button"
-                      className={TOOLBAR_BTN}
-                      onClick={handleCreateCallLink}
-                      disabled={disabled}
-                      aria-label={t("call.createCallLink")}
-                      title={t("call.createCallLink")}
-                    >
-                      <Icon
-                        name="phone"
-                        size={TOOLBAR_ICON_SIZE}
-                        className={TOOLBAR_ICON_EMPHASIS_CLASS}
-                      />
-                    </button>
-                  ) : undefined
-                }
-                scheduleTrigger={
-                  !isEditing && ENABLE_SCHEDULED_SEND_UI ? (
-                    <button
-                      ref={scheduleButtonRef}
-                      type="button"
-                      className={TOOLBAR_BTN}
-                      onClick={toggleScheduleMenu}
-                      disabled={disabled}
-                      aria-label={
-                        scheduledSendSupported
-                          ? t("a11y.messageMenu")
-                          : (scheduledSendCapability.unsupportedText ??
-                            t("composer.actionUnsupported"))
-                      }
-                      title={
-                        scheduledSendSupported
-                          ? t("a11y.messageMenu")
-                          : (scheduledSendCapability.unsupportedText ??
-                            t("composer.actionUnsupported"))
-                      }
-                    >
-                      <Icon name="calendar" size={TOOLBAR_ICON_SIZE} />
-                    </button>
-                  ) : undefined
-                }
-                snippetsTrigger={
-                  !isEditing && savedSnippetsSupported ? (
-                    <button
-                      ref={savedSnippetsButtonRef}
-                      type="button"
-                      className={TOOLBAR_BTN}
-                      onClick={toggleSavedSnippetsMenu}
-                      disabled={disabled}
-                      aria-label={t("composer.savedSnippets")}
-                      title={t("composer.savedSnippets")}
-                    >
-                      <Icon name="chat_bubble_outline" size={TOOLBAR_ICON_SIZE} />
-                    </button>
-                  ) : undefined
-                }
-                aiTrigger={
-                  !isEditing ? (
-                    <span ref={aiButtonAnchorRef}>
-                      <AiComposerButton
-                        onClick={toggleAiUnavailablePopover}
-                        active={aiMenuOpen}
-                        iconSize={TOOLBAR_AI_ICON_SIZE}
-                      />
-                    </span>
-                  ) : undefined
-                }
-              />
-            )}
-          </div>
-        )}
-      </div>
+      <MessageComposerToolbarRow
+        isToolbarVisible={isToolbarVisible}
+        mode={mode}
+        onModeChange={handleModeChange}
+        showPreviewTab={previewSupported}
+        isEditing={isEditing}
+        disabled={disabled}
+        uploadSupported={uploadSupported}
+        uploadCapability={uploadCapability}
+        scheduledSendSupported={scheduledSendSupported}
+        scheduledSendCapability={scheduledSendCapability}
+        savedSnippetsSupported={savedSnippetsSupported}
+        onCreateCallLink={onCreateCallLink}
+        onAttachClick={handleAttachClick}
+        onCreateCallLinkClick={handleCreateCallLink}
+        onToggleScheduleMenu={toggleScheduleMenu}
+        onToggleSavedSnippetsMenu={toggleSavedSnippetsMenu}
+        onToggleAiUnavailablePopover={toggleAiUnavailablePopover}
+        onValueChange={setValue}
+        textareaRef={textareaRef}
+        scheduleButtonRef={scheduleButtonRef}
+        savedSnippetsButtonRef={savedSnippetsButtonRef}
+        aiButtonAnchorRef={aiButtonAnchorRef}
+        aiMenuOpen={aiMenuOpen}
+      />
 
       {/* Input row */}
       <div className="relative p-3">

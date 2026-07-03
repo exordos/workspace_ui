@@ -137,6 +137,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
             onPermalinkClick: callbacks.onMessagePermalinkClick,
             onAuthorClick: callbacks.onMessageAuthorClick,
             onOpenDirectMessage: callbacks.onOpenDirectMessage,
+            onOpenDirectMessageByUuid: callbacks.onOpenDirectMessageByUuid,
             onRetryFailedOutgoing: callbacks.onRetryFailedOutgoing,
             onRemoveFailedOutgoing: callbacks.onRemoveFailedOutgoing,
             onRetryFailedEdit: callbacks.onRetryFailedEdit,

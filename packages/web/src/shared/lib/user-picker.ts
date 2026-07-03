@@ -1,12 +1,13 @@
 type PresenceStatus = "active" | "idle";
 
+export type UserPickerId = number | string;
 export type UserPickerPresence = "active" | "idle" | "offline" | null;
 
 const ACTIVE_PRESENCE_WINDOW_SECONDS = 2 * 60;
 const IDLE_PRESENCE_WINDOW_SECONDS = 10 * 60;
 
 export interface UserPickerOption {
-  userId: number;
+  userId: UserPickerId;
   fullName: string;
   email: string;
   presence: UserPickerPresence;
@@ -15,7 +16,7 @@ export interface UserPickerOption {
 }
 
 export interface UserPickerCandidate {
-  userId: number;
+  userId: UserPickerId;
   fullName: string;
   email?: string;
   presenceStatus?: PresenceStatus;
@@ -39,7 +40,8 @@ function toPresence(
   timestamp: number | undefined,
   nowUnixSeconds: number,
 ): UserPickerPresence {
-  if (status == null || timestamp == null) return null;
+  if (status == null) return null;
+  if (timestamp == null) return status;
   const diff = nowUnixSeconds - timestamp;
   if (status === "active" && diff <= ACTIVE_PRESENCE_WINDOW_SECONDS) {
     return "active";
@@ -52,8 +54,8 @@ function toPresence(
 
 export function buildUserPickerOptions(options: {
   candidates: readonly UserPickerCandidate[];
-  selectedUserIds: readonly number[];
-  excludedUserIds?: readonly number[];
+  selectedUserIds: readonly UserPickerId[];
+  excludedUserIds?: readonly UserPickerId[];
   query?: string;
 }): UserPickerOption[] {
   const { candidates, selectedUserIds, excludedUserIds = [], query = "" } = options;
@@ -62,7 +64,7 @@ export function buildUserPickerOptions(options: {
   const excluded = new Set(excludedUserIds);
   const now = Math.floor(Date.now() / 1000);
 
-  const deduped = new Map<number, UserPickerOption>();
+  const deduped = new Map<UserPickerId, UserPickerOption>();
   for (const candidate of candidates) {
     if (deduped.has(candidate.userId)) {
       continue;
@@ -103,14 +105,19 @@ export function buildUserPickerOptions(options: {
 }
 
 export function toggleUserPickerSelection(
-  selectedUserIds: readonly number[],
-  userId: number,
-): number[] {
+  selectedUserIds: readonly UserPickerId[],
+  userId: UserPickerId,
+): UserPickerId[] {
   const next = new Set(selectedUserIds);
   if (next.has(userId)) {
     next.delete(userId);
   } else {
     next.add(userId);
   }
-  return Array.from(next).sort((a, b) => a - b);
+  return Array.from(next).sort((left, right) => {
+    if (typeof left === "number" && typeof right === "number") {
+      return left - right;
+    }
+    return String(left).localeCompare(String(right));
+  });
 }

@@ -17,7 +17,6 @@ import type {
   MessengerStream,
   MessengerStreamBinding,
   MessengerTopic,
-  MessengerUser,
   MessengerUuid,
 } from "./messenger.types";
 
@@ -27,7 +26,6 @@ const EMPTY_STREAM_BINDING_IDS_BY_STREAM_ID: Record<MessengerUuid, MessengerUuid
 const EMPTY_TOPICS_BY_ID: Record<MessengerUuid, MessengerTopic> = {};
 const EMPTY_CONVERSATIONS_BY_ID: Record<MessengerConversationId, MessengerConversation> = {};
 const EMPTY_FOLDERS_BY_ID: Record<MessengerUuid, MessengerFolder> = {};
-const EMPTY_USERS_BY_ID: Record<MessengerUuid, MessengerUser> = {};
 const EMPTY_IDS: string[] = [];
 const EMPTY_CONVERSATIONS: MessengerConversation[] = [];
 const EMPTY_FOLDERS: MessengerFolder[] = [];
@@ -53,8 +51,6 @@ export interface MessengerDomainData {
   conversationIds: MessengerConversationId[];
   foldersById: Record<MessengerUuid, MessengerFolder>;
   folderIds: MessengerUuid[];
-  usersById: Record<MessengerUuid, MessengerUser>;
-  userIds: MessengerUuid[];
   lastEpochVersion: number | null;
   skippedRealtimeEvents: MessengerSkippedRealtimeEvent[];
 }
@@ -117,8 +113,6 @@ function createEmptyMessengerData(): MessengerDomainData {
     conversationIds: EMPTY_IDS,
     foldersById: EMPTY_FOLDERS_BY_ID,
     folderIds: EMPTY_IDS,
-    usersById: EMPTY_USERS_BY_ID,
-    userIds: EMPTY_IDS,
     lastEpochVersion: null,
     skippedRealtimeEvents: EMPTY_SKIPPED_REALTIME_EVENTS,
   };
@@ -483,8 +477,6 @@ function buildMessengerDomainData(payload: MessengerBootstrapPayload): Messenger
   const conversationIds: MessengerConversationId[] = [];
   const foldersById: Record<MessengerUuid, MessengerFolder> = {};
   const folderIds: MessengerUuid[] = [];
-  const usersById: Record<MessengerUuid, MessengerUser> = {};
-  const userIds: MessengerUuid[] = [];
 
   for (const stream of payload.streams) {
     streamsById[stream.uuid] = stream;
@@ -515,11 +507,6 @@ function buildMessengerDomainData(payload: MessengerBootstrapPayload): Messenger
     folderIds.push(folder.uuid);
   }
 
-  for (const user of payload.users) {
-    usersById[user.uuid] = user;
-    userIds.push(user.uuid);
-  }
-
   return {
     streamsById,
     streamIds,
@@ -533,8 +520,6 @@ function buildMessengerDomainData(payload: MessengerBootstrapPayload): Messenger
     conversationIds,
     foldersById,
     folderIds,
-    usersById,
-    userIds,
     lastEpochVersion: null,
     skippedRealtimeEvents: EMPTY_SKIPPED_REALTIME_EVENTS,
   };
@@ -571,7 +556,6 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
       topics: payload.topics.length,
       conversations: payload.conversations.length,
       folders: payload.folders.length,
-      users: payload.users.length,
     });
     set((state) => {
       if (state.ownerKey !== ownerKey) return state;

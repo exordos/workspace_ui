@@ -268,6 +268,7 @@ function mergeTopicsForMove(
 
 const emptyStreamsMap = () => new Map<number, StreamEntryInternal>();
 const emptyDmsMap = () => new Map<string, DmEntryInternal>();
+const EMPTY_AVATAR_MAP = new Map<number, string>();
 
 // Referential-identity caches: recompute only when the underlying Map reference changes.
 let _cachedStreams: StreamWithLast[] | null = null;
@@ -281,7 +282,7 @@ let _cachedDmsMentionIdsRef: ReadonlySet<number> | null = null;
 let _cachedDmsLocationsRef: ReadonlyMap<number, MessageLocation> | null = null;
 
 function getAvatarMap() {
-  return useUsersStore.getState().getAvatarMap();
+  return EMPTY_AVATAR_MAP;
 }
 
 function persistRecentDmPartnersFromMap(map: Map<string, DmEntryInternal>): void {
@@ -294,21 +295,15 @@ function persistRecentDmPartnersFromMap(map: Map<string, DmEntryInternal>): void
 }
 
 function createDmBootstrapDisplayContext(): ChatListDmBootstrapDisplayContext {
-  const usersStore = useUsersStore.getState();
   return {
     getParticipantDisplayName(userId) {
-      const displayName = usersStore.getDisplayName(userId);
-      if (displayName !== "Unknown") {
-        return displayName;
-      }
-      const user = usersStore.getUser(userId);
       return getDmPartnerName({
         id: userId,
-        full_name: user?.full_name,
-        email: user?.email,
+        full_name: "",
+        email: "",
       });
     },
-    getAvatarUrl: (userId) => usersStore.getAvatarUrl(userId),
+    getAvatarUrl: () => undefined,
     groupChatFallbackLabel: t("dm.groupChat"),
   };
 }
@@ -433,6 +428,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
     sidebarDataHydrated: false,
     streamMetadataHydrated: false,
     currentUserId: null,
+    currentUserMessageEditPolicy: undefined,
     lastAppliedMessages: null,
     messageIdToLocation: new Map(),
     streamTopicMessageIds: new Map(),
@@ -1065,6 +1061,13 @@ export const useChatListStore = create<ChatListState>((set, get) => {
       }
     },
 
+    setCurrentUserMessageEditPolicy(policy) {
+      logStoreAction("chatList", "setCurrentUserMessageEditPolicy", {
+        hasPolicy: policy != null,
+      });
+      patchSet({ currentUserMessageEditPolicy: policy });
+    },
+
     renameStream(streamId, nextName) {
       const trimmedName = nextName.trim();
       if (trimmedName.length === 0) return;
@@ -1372,10 +1375,8 @@ export const useChatListStore = create<ChatListState>((set, get) => {
 
     patchPersonalDmRowLabelsForUser(userId) {
       if (!Number.isFinite(userId) || userId <= 0) return;
-      const users = useUsersStore.getState();
-      const storeDisplayName = users.getDisplayName(userId);
-      if (storeDisplayName === "Unknown") return;
-      const userFullName = users.getUser(userId)?.full_name;
+      const user = useUsersStore.getState().getUser(String(userId));
+      const storeDisplayName = user?.displayName ?? "Unknown";
       patchSet(
         (state) => {
           let changed = false;
@@ -1384,7 +1385,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
             if (entry.isGroup || entry.id !== userId) continue;
             const resolved = resolvePersonalDmSidebarTitle({
               chatName: entry.name,
-              userFullName,
+              userFullName: user?.displayName,
               storeDisplayName,
             });
             if (resolved !== entry.name) {
@@ -1467,6 +1468,7 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           sidebarDataHydrated: false,
           streamMetadataHydrated: false,
           currentUserId: null,
+          currentUserMessageEditPolicy: undefined,
           lastAppliedMessages: null,
           messageIdToLocation: new Map(),
           sidebarStreamsUnread: 0,

@@ -46,7 +46,7 @@ describe("MessageBubble markdown body", () => {
   });
 
   it("renders Markdown emphasis as HTML in the bubble body", () => {
-    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 77, full_name: "Alice" }));
 
     const { container } = render(
       <MessageBubble message={createMessage({ content: "**Hello**" })} isOwn={false} />,
@@ -58,7 +58,7 @@ describe("MessageBubble markdown body", () => {
   });
 
   it("still renders pre-rendered HTML bodies", () => {
-    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 77, full_name: "Alice" }));
 
     const { container } = render(
       <MessageBubble message={createMessage({ content: "<p><em>Hi</em></p>" })} isOwn={false} />,
@@ -69,7 +69,7 @@ describe("MessageBubble markdown body", () => {
   });
 
   it("renders markdown html tags as plain text in the bubble", () => {
-    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 77, full_name: "Alice" }));
 
     const { container } = render(
       <MessageBubble
@@ -87,7 +87,7 @@ describe("MessageBubble markdown body", () => {
   });
 
   it("styles pre blocks to wrap long unbroken text inside the bubble", () => {
-    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 77, full_name: "Alice" }));
 
     const longToken = `https://example.com/${"segment".repeat(24)}`;
     const { container } = render(
@@ -105,7 +105,7 @@ describe("MessageBubble markdown body", () => {
   });
 
   it("adds wrap classes for long auto-linked urls in the bubble", () => {
-    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 77, full_name: "Alice" }));
 
     const longUrl =
       "http://localhost:5473/messenger#narrow/channel/345/topic/" +
@@ -125,7 +125,7 @@ describe("MessageBubble markdown body", () => {
   });
 
   it("adds syntax-highlight classes to fenced code blocks in bubble markdown", () => {
-    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 77, full_name: "Alice" }));
 
     const markdown = "```javascript\nconst value = 1;\n```";
     const { container } = render(
@@ -139,7 +139,7 @@ describe("MessageBubble markdown body", () => {
   });
 
   it("renders copy-code button for fenced code blocks and copies source text", async () => {
-    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 77, full_name: "Alice" }));
 
     const markdown = "```javascript\nconst value = 1;\n```";
     const { container } = render(
@@ -158,7 +158,7 @@ describe("MessageBubble markdown body", () => {
   });
 
   it("renders ordered and nested unordered lists with surrounding paragraphs", () => {
-    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 77, full_name: "Alice" }));
 
     const markdown = [
       "Intro paragraph",
@@ -192,7 +192,7 @@ describe("MessageBubble markdown body", () => {
   });
 
   it("renders custom shortcode emoji as inline image with alt/title", () => {
-    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 77, full_name: "Alice" }));
 
     const { container } = render(
       <MessageBubble
@@ -212,7 +212,7 @@ describe("MessageBubble markdown body", () => {
   });
 
   it("renders resolved zulip topic reference as clickable in-app link", () => {
-    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 77, full_name: "Alice" }));
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 10, name: "Engineering" }]);
 
     const { container } = render(
@@ -226,7 +226,7 @@ describe("MessageBubble markdown body", () => {
   });
 
   it("renders unresolved zulip message reference as internal message redirect link", () => {
-    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 77, full_name: "Alice" }));
 
     const { container } = render(
       <MessageBubble
@@ -242,7 +242,7 @@ describe("MessageBubble markdown body", () => {
   });
 
   it("renders unresolved zulip topic reference as name-route link", () => {
-    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 77, full_name: "Alice" }));
 
     const { container } = render(
       <MessageBubble message={createMessage({ content: "#**Unknown>Bugs**" })} isOwn={false} />,
@@ -255,7 +255,7 @@ describe("MessageBubble markdown body", () => {
   });
 
   it("does not open media viewer on a regular inline video click", () => {
-    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 77, full_name: "Alice" }));
     const mediaViewerOpenSpy = vi.spyOn(useMediaViewerStore.getState(), "open");
     const content =
       '<video controls><source src="/user_uploads/1/private.mp4" type="video/mp4" /></video>';
@@ -276,7 +276,7 @@ describe("MessageBubble markdown body", () => {
   });
 
   it("opens media viewer on inline video double click", () => {
-    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 77, full_name: "Alice" }));
     const mediaViewerOpenSpy = vi.spyOn(useMediaViewerStore.getState(), "open");
     const content =
       '<video controls><source src="/user_uploads/1/private.mp4" type="video/mp4" /></video>';
@@ -298,7 +298,7 @@ describe("MessageBubble markdown body", () => {
   });
 
   it("opens full user_upload image URL when clicking thumbnail-based Zulip HTML image", () => {
-    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 77, full_name: "Alice" }));
     const mediaViewerOpenSpy = vi.spyOn(useMediaViewerStore.getState(), "open");
     const content = [
       '<p><a href="/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png">image.png</a></p>',
@@ -332,7 +332,7 @@ describe("MessageBubble markdown body", () => {
   });
 
   it("keeps the current blob preview for viewer while loading full user_upload image", () => {
-    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 77, full_name: "Alice" }));
     const mediaViewerOpenSpy = vi.spyOn(useMediaViewerStore.getState(), "open");
     const content =
       '<p><img src="/user_uploads/thumbnail/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png/840x560.webp" alt="image.png"></p>';
@@ -363,7 +363,7 @@ describe("MessageBubble markdown body", () => {
   });
 
   it("does not open media viewer when clicking inline custom emoji", () => {
-    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 77, full_name: "Alice" }));
     const mediaViewerOpenSpy = vi.spyOn(useMediaViewerStore.getState(), "open");
 
     const { container } = render(
@@ -384,7 +384,7 @@ describe("MessageBubble markdown body", () => {
 
   it("renders markdown strikethrough as del tag in bubble body", () => {
     // Regression: sanitize path used to strip `<del>`, losing strikethrough in the bubble.
-    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 77, full_name: "Alice" }));
 
     const { container } = render(
       <MessageBubble message={createMessage({ content: "~~obsolete~~" })} isOwn={false} />,
@@ -397,7 +397,7 @@ describe("MessageBubble markdown body", () => {
 
   it("toggles inline spoiler open class on click", () => {
     // User behavior: repeated click toggles the same inline spoiler.
-    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 77, full_name: "Alice" }));
 
     const { container } = render(
       <MessageBubble
@@ -418,7 +418,7 @@ describe("MessageBubble markdown body", () => {
   });
 
   it("renders zulip spoiler block as accordion with visible header", () => {
-    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 77, full_name: "Alice" }));
 
     const zulipSpoilerHtml = [
       '<div class="spoiler-block">',
@@ -449,7 +449,7 @@ describe("MessageBubble markdown body", () => {
   });
 
   it("renders zulip markdown fenced spoiler with header and toggles by header click", () => {
-    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 77, full_name: "Alice" }));
 
     const markdown = "```spoiler Hidden Header\nосновной текст спойлера\n```";
     const { container } = render(
@@ -471,7 +471,7 @@ describe("MessageBubble markdown body", () => {
   });
 
   it("renders Zulip reply quote as nested quote block instead of code fence", () => {
-    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 77, full_name: "Alice" }));
 
     const markdown =
       "@_**Alice|77** [wrote](https://zulip.example.com/#narrow/dm/near/1):\n```quote\nQuoted text\n```\n\nMy reply";
@@ -491,7 +491,7 @@ describe("MessageBubble markdown body", () => {
   });
 
   it("keeps reply paragraph adjacent to quote block without orphan inline image sibling", () => {
-    useUsersStore.getState().mergeUser(createUser({ user_id: 1, full_name: "Sleep" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 1, full_name: "Sleep" }));
 
     const uploadPath = "/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png";
     const zulipHtml = [
@@ -520,7 +520,7 @@ describe("MessageBubble markdown body", () => {
   });
 
   it("renders user_upload image inside server-rendered quote block instead of URL text", () => {
-    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 77, full_name: "Alice" }));
 
     const uploadPath = "/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png";
     const uploadUrl = `https://sys.example.com${uploadPath}`;
@@ -547,7 +547,7 @@ describe("MessageBubble markdown body", () => {
   });
 
   it("uses default header for fenced spoiler without explicit heading", () => {
-    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 77, full_name: "Alice" }));
 
     const markdown = "```spoiler\nосновной текст спойлера\n```";
     const { container } = render(

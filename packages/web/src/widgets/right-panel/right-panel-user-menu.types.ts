@@ -13,6 +13,7 @@ export interface MenuButtonProps {
   subtitle?: ReactNode;
   right?: ReactNode;
   onClick: () => void;
+  disabled?: boolean;
 }
 
 export interface OptionButtonProps {

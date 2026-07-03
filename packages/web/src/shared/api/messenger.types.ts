@@ -129,10 +129,12 @@ export interface WorkspaceMessengerUserDto {
   username: string;
   source: "iam";
   status: WorkspaceMessengerUserStatus;
+  status_emoji?: string | null;
+  status_text?: string | null;
   first_name?: string | null;
   last_name?: string | null;
   email: string | null;
-  last_ping_at?: WorkspaceMessengerDateTime | null;
+  last_ping_at: WorkspaceMessengerDateTime;
   created_at: WorkspaceMessengerDateTime;
   updated_at: WorkspaceMessengerDateTime;
 }
@@ -254,6 +256,10 @@ export interface WorkspaceMessengerUuidDeletedPayloadDto {
   uuid: WorkspaceMessengerUuid;
 }
 
+export type WorkspaceMessengerUserUpdatedPayloadDto = {
+  kind: "user.updated";
+} & WorkspaceMessengerUserDto;
+
 // REST-события - это долговечные строки серверного outbox для догонки и reconnect.
 export type WorkspaceMessengerEventPayloadDto =
   | ({ kind: "stream.created" | "stream.updated" } & WorkspaceMessengerStreamDto)
@@ -264,7 +270,8 @@ export type WorkspaceMessengerEventPayloadDto =
   | ({ kind: "message.created" | "message.updated" } & WorkspaceMessengerMessageDto)
   | WorkspaceMessengerMessageDeletedPayloadDto
   | ({ kind: "folder.created" | "folder.updated" } & WorkspaceMessengerFolderDto)
-  | WorkspaceMessengerUuidDeletedPayloadDto;
+  | WorkspaceMessengerUuidDeletedPayloadDto
+  | WorkspaceMessengerUserUpdatedPayloadDto;
 
 export interface WorkspaceMessengerEventDto {
   epoch_version: WorkspaceMessengerEpochVersion;
@@ -371,6 +378,12 @@ export type WorkspaceRealtimeEvent =
       type: "folder_item";
       kind: "folder_item.deleted";
       folder_item: { uuid: WorkspaceMessengerUuid };
+    }
+  | {
+      epoch_version: WorkspaceMessengerEpochVersion;
+      type: "user";
+      kind: "user.updated";
+      user: WorkspaceMessengerUserDto;
     };
 
 export interface WorkspaceMessengerMessageDeletedPayloadDtoWithoutKind {
@@ -666,9 +679,12 @@ export function isWorkspaceMessengerUserDto(value: unknown): value is WorkspaceM
     value.username.trim().length > 0 &&
     value.source === "iam" &&
     isUserStatus(value.status) &&
+    (value.status_emoji == null || typeof value.status_emoji === "string") &&
+    (value.status_text == null || typeof value.status_text === "string") &&
     (value.first_name == null || typeof value.first_name === "string") &&
     (value.last_name == null || typeof value.last_name === "string") &&
     (value.email === null || typeof value.email === "string") &&
+    isDateTime(value.last_ping_at) &&
     isDateTime(value.created_at) &&
     isDateTime(value.updated_at)
   );
@@ -713,6 +729,8 @@ export function isWorkspaceMessengerEventPayloadDto(
     case "folder.deleted":
     case "folder_item.deleted":
       return isUuid(value.uuid);
+    case "user.updated":
+      return isWorkspaceMessengerUserDto(value);
     default:
       return false;
   }
@@ -808,6 +826,8 @@ export function isWorkspaceRealtimeEvent(value: unknown): value is WorkspaceReal
             isWorkspaceMessengerFolderDto(value.folder);
     case "folder_item":
       return value.kind === "folder_item.deleted" && isUuidOnlyDto(value.folder_item);
+    case "user":
+      return value.kind === "user.updated" && isWorkspaceMessengerUserDto(value.user);
     default:
       return false;
   }

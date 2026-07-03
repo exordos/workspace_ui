@@ -37,6 +37,28 @@ describe("buildUserPickerOptions", () => {
 
     expect(result.map((row) => row.userId)).toEqual([3, 1, 2]);
   });
+
+  it("supports workspace uuid candidates", () => {
+    const result = buildUserPickerOptions({
+      candidates: [
+        { userId: "user-b", fullName: "Bob", email: "bob@example.com", presenceStatus: "active" },
+        { userId: "user-a", fullName: "Alice", email: "alice@example.com" },
+      ],
+      selectedUserIds: ["user-b"],
+      excludedUserIds: ["user-a"],
+    });
+
+    expect(result).toEqual([
+      {
+        userId: "user-b",
+        fullName: "Bob",
+        email: "bob@example.com",
+        presence: "active",
+        statusLabel: null,
+        isDisabled: false,
+      },
+    ]);
+  });
 });
 
 describe("toggleUserPickerSelection", () => {

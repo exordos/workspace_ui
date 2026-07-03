@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { useMessengerBackgroundProjectionStore } from "~/entities/messenger/messenger-background-projection.model";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import { useUsersStore } from "~/entities/user/user.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { createWorkspaceRealtimeCursorStorage } from "~/shared/lib/workspace-realtime/workspace-realtime-cursor.lib";
@@ -99,6 +100,10 @@ function createRuntimeFactory() {
   return { runtimeFactory, runtimes, startedContexts, factoryOptions };
 }
 
+function noopPresenceReporterFactory(): () => void {
+  return () => undefined;
+}
+
 describe("useLayoutWorkspaceRealtime", () => {
   beforeEach(() => {
     localStorage.removeItem(WORKSPACE_AUTH_STORAGE_KEY);
@@ -107,6 +112,7 @@ describe("useLayoutWorkspaceRealtime", () => {
     useMessengerStore.getState().clear();
     useWorkspaceMessageStore.getState().clear();
     useMessengerBackgroundProjectionStore.getState().clear();
+    useUsersStore.getState().clear();
   });
 
   afterEach(() => {
@@ -115,6 +121,7 @@ describe("useLayoutWorkspaceRealtime", () => {
     useMessengerStore.getState().clear();
     useWorkspaceMessageStore.getState().clear();
     useMessengerBackgroundProjectionStore.getState().clear();
+    useUsersStore.getState().clear();
     localStorage.removeItem(WORKSPACE_AUTH_STORAGE_KEY);
     localStorage.removeItem(WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY);
   });
@@ -131,6 +138,7 @@ describe("useLayoutWorkspaceRealtime", () => {
         pathname: "/org/org-a/project/project-a/messenger",
         runtimeFactory,
         cursorStorageFactory: () => cursorStorage,
+        presenceReporterFactory: noopPresenceReporterFactory,
         applier: createWorkspaceRealtimeNoopApplier(),
       }),
     );
@@ -149,6 +157,46 @@ describe("useLayoutWorkspaceRealtime", () => {
       },
       surface: "active",
     });
+  });
+
+  it("starts and cleans up Workspace presence reporter on active route", async () => {
+    const session = createSession();
+    setWorkspaceSession(session);
+    const { runtimeFactory, runtimes } = createRuntimeFactory();
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    const cleanupPresence = vi.fn();
+    const presenceReporterFactory = vi.fn(() => cleanupPresence);
+
+    const { rerender } = renderHook(
+      ({ pathname }) =>
+        useLayoutWorkspaceRealtime({
+          enabled: true,
+          pathname,
+          runtimeFactory,
+          cursorStorageFactory: () => cursorStorage,
+          presenceReporterFactory,
+          applier: createWorkspaceRealtimeNoopApplier(),
+        }),
+      {
+        initialProps: { pathname: "/org/org-a/project/project-a/messenger" },
+      },
+    );
+
+    await waitFor(() => {
+      expect(runtimes[0]?.start).toHaveBeenCalledTimes(1);
+    });
+    expect(presenceReporterFactory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: session.projectId,
+        userUuid: session.userUuid,
+      }),
+    );
+
+    act(() => {
+      rerender({ pathname: "/inbox" });
+    });
+
+    expect(cleanupPresence).toHaveBeenCalledTimes(1);
   });
 
   it("starts inactive auth sessions as background runtimes", async () => {
@@ -185,6 +233,7 @@ describe("useLayoutWorkspaceRealtime", () => {
         pathname: "/org/org-a/project/project-a/messenger",
         runtimeFactory,
         cursorStorageFactory: () => cursorStorage,
+        presenceReporterFactory: noopPresenceReporterFactory,
         applier: createWorkspaceRealtimeNoopApplier(),
       }),
     );
@@ -209,6 +258,7 @@ describe("useLayoutWorkspaceRealtime", () => {
         pathname: `/org/org-a/project/${PROJECT_UUID}/messenger`,
         runtimeFactory,
         cursorStorageFactory: () => cursorStorage,
+        presenceReporterFactory: noopPresenceReporterFactory,
       }),
     );
 
@@ -246,6 +296,59 @@ describe("useLayoutWorkspaceRealtime", () => {
     );
   });
 
+  it("uses active user applier by default", async () => {
+    setWorkspaceSession(createSession({ projectId: PROJECT_UUID, userUuid: USER_UUID }));
+    const { runtimeFactory, runtimes, startedContexts, factoryOptions } = createRuntimeFactory();
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+
+    renderHook(() =>
+      useLayoutWorkspaceRealtime({
+        enabled: true,
+        pathname: `/org/org-a/project/${PROJECT_UUID}/messenger`,
+        runtimeFactory,
+        cursorStorageFactory: () => cursorStorage,
+        presenceReporterFactory: noopPresenceReporterFactory,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(runtimes[0]?.start).toHaveBeenCalledTimes(1);
+    });
+    const context = startedContexts[0]!;
+    useUsersStore.getState().startOwnerSync(context.ownerKey);
+
+    factoryOptions[0]!.applier.applyEvent(
+      {
+        epoch_version: 9,
+        type: "user",
+        kind: "user.updated",
+        user: {
+          uuid: USER_UUID,
+          username: "alice",
+          source: "iam",
+          status: "idle",
+          status_emoji: null,
+          status_text: "Focus",
+          first_name: "Alice",
+          last_name: null,
+          email: "alice@example.com",
+          last_ping_at: DATE,
+          created_at: DATE,
+          updated_at: DATE,
+        },
+      },
+      { ...context, source: "websocket" },
+    );
+
+    expect(useUsersStore.getState().getUser(USER_UUID)).toEqual(
+      expect.objectContaining({
+        username: "alice",
+        status: "idle",
+        statusText: "Focus",
+      }),
+    );
+  });
+
   it("routes background realtime events to projection without writing messengerStore", async () => {
     const activeSession = createSession({ projectId: PROJECT_UUID, userUuid: USER_UUID });
     const backgroundSession = createSession({
@@ -279,6 +382,7 @@ describe("useLayoutWorkspaceRealtime", () => {
         pathname: `/org/org-a/project/${PROJECT_UUID}/messenger`,
         runtimeFactory,
         cursorStorageFactory: () => cursorStorage,
+        presenceReporterFactory: noopPresenceReporterFactory,
       }),
     );
 
@@ -341,6 +445,7 @@ describe("useLayoutWorkspaceRealtime", () => {
         pathname: "/org/org-a/project/project-b/messenger",
         runtimeFactory,
         cursorStorageFactory: () => cursorStorage,
+        presenceReporterFactory: noopPresenceReporterFactory,
         applier: createWorkspaceRealtimeNoopApplier(),
       }),
     );
@@ -363,6 +468,7 @@ describe("useLayoutWorkspaceRealtime", () => {
           pathname,
           runtimeFactory,
           cursorStorageFactory,
+          presenceReporterFactory: noopPresenceReporterFactory,
           applier,
         }),
       {

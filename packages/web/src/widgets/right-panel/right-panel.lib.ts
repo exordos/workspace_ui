@@ -1,5 +1,3 @@
-import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
-import type { UserRecord } from "~/entities/user/user.model";
 import type { ChatInfoMember } from "~/features/chat-info/chat-info.types";
 import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import type { ZulipGroupSettingValue } from "~/shared/api/zulip.types";
@@ -23,7 +21,7 @@ export interface RightPanelStreamMemberViewModel {
 // Inputs: chat-info members, users directory, channel permission metadata.
 interface BuildRightPanelStreamMembersInput {
   members: readonly ChatInfoMember[];
-  users: Map<number, UserRecord>;
+  users: Map<number, unknown>;
   streamCreatorId: number | undefined;
   canAdministerChannelGroup: ZulipGroupSettingValue | undefined;
   isUserInGroupSetting: (setting: ZulipGroupSettingValue | undefined, userId: number) => boolean;
@@ -38,13 +36,12 @@ export function buildRightPanelStreamMembers(
 ): RightPanelStreamMemberViewModel[] {
   return input.members.map((member) => {
     const userRecord = input.users.get(member.userId);
-    const memberRole = parseRole(userRecord?.role);
+    void userRecord;
+    const memberRole = parseRole(undefined);
     return {
       userId: member.userId,
       name: member.fullName || input.memberFallbackLabel,
-      status:
-        formatUserStatusLabel(userRecord?.status) ??
-        (member.isOnline ? input.onlineLabel : input.offlineLabel),
+      status: member.isOnline ? input.onlineLabel : input.offlineLabel,
       isOrgOwner: memberRole === UserRole.Owner,
       isCreator: input.streamCreatorId != null && member.userId === input.streamCreatorId,
       isChannelAdmin:

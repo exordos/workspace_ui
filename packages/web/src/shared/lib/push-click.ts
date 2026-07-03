@@ -1,5 +1,8 @@
 import type { MockMessage } from "~/shared/api/zulip.types";
+import { buildDmRouteSlugFromRecipients } from "~/shared/lib/dm-route-slug.lib";
 import { withCurrentOrgRoute, withOrgRoutePrefix } from "~/shared/lib/org-route";
+import { buildStreamSlug } from "~/shared/lib/stream-slug.lib";
+import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
 import {
   workspaceMessengerMessageRoute,
   workspaceMessengerStreamRoute,
@@ -62,6 +65,45 @@ function buildInboxRoute(orgId?: string): string {
   return withCurrentOrgRoute("/inbox");
 }
 
+function appendMessageFocus(route: string, messageId: number | undefined): string {
+  if (messageId == null) return route;
+  const separator = route.includes("?") ? "&" : "?";
+  return `${route}${separator}msg=${messageId}`;
+}
+
+function buildLegacyStreamRoute(input: WorkspacePushClickTargetInput): string | null {
+  const streamId = parsePositiveInt(input.streamId);
+  const streamName = normalizeNonEmpty(input.streamName);
+  if (streamName == null) {
+    return null;
+  }
+
+  const streamRoute =
+    streamId != null
+      ? `/stream/${buildStreamSlug(streamId, streamName)}`
+      : `/stream/${encodeURIComponent(streamName)}`;
+  const topic = input.topic;
+  const base =
+    topic != null
+      ? `${streamRoute}/topic/${encodeURIComponent(encodeTopicForRoute(topic))}`
+      : streamRoute;
+  return appendMessageFocus(withCurrentOrgRoute(base), parsePositiveInt(input.messageId));
+}
+
+function buildLegacyDmRoute(input: WorkspacePushClickTargetInput): string | null {
+  if (input.type !== "private") {
+    return null;
+  }
+  const senderId = parsePositiveInt(input.senderId);
+  if (senderId == null) {
+    return null;
+  }
+  return appendMessageFocus(
+    withCurrentOrgRoute(`/dm/${senderId}`),
+    parsePositiveInt(input.messageId),
+  );
+}
+
 function buildWorkspaceMessageRoute(input: WorkspacePushClickTargetInput): string | null {
   const orgId = normalizeNonEmpty(input.orgId);
   const projectId = normalizeNonEmpty(input.projectId);
@@ -115,13 +157,15 @@ export function buildPushClickUrl(input: WorkspacePushClickTargetInput): string 
   return (
     buildWorkspaceMessageRoute(input) ??
     buildWorkspaceStreamRoute(input) ??
+    buildLegacyStreamRoute(input) ??
+    buildLegacyDmRoute(input) ??
     buildInboxRoute(input.orgId)
   );
 }
 
 export function buildMessageRedirectRoute(
   messageId: number,
-  _realmUri?: string,
+  realmUri?: string,
   workspace?: Pick<WorkspacePushRouteFields, "orgId" | "projectId" | "messageUuid">,
 ): string {
   const workspaceRoute = buildWorkspaceMessageRoute({
@@ -133,7 +177,11 @@ export function buildMessageRedirectRoute(
   if (workspaceRoute != null) {
     return workspaceRoute;
   }
-  return buildInboxRoute(workspace?.orgId);
+  const fallback = withCurrentOrgRoute(`/message/${messageId}`);
+  if (realmUri == null || realmUri.trim().length === 0) {
+    return fallback;
+  }
+  return `${fallback}?realm=${encodeURIComponent(realmUri)}`;
 }
 
 export function buildMessageRedirectRouteFromZulipPermalink(permalink: string): string | null {
@@ -206,16 +254,39 @@ export function buildRouteFromMessage(
     WorkspaceMessageRouteFields,
   _currentUserId: number | null,
 ): string {
-  return buildPushClickUrl({
+  const workspaceRoute = buildWorkspaceMessageRoute({
     messageId: message.id,
     messageUuid: message.messageUuid ?? message.uuid,
-    streamId: message.stream_id ?? undefined,
-    streamUuid: message.streamUuid ?? message.stream_uuid,
-    topic: message.subject,
-    topicUuid: message.topicUuid ?? message.topic_uuid,
     orgId: message.orgId ?? message.org_id,
     projectId: message.projectId ?? message.project_id,
   });
+  if (workspaceRoute != null) {
+    return workspaceRoute;
+  }
+
+  if (message.stream_id != null) {
+    return buildPushClickUrl({
+      type: "stream",
+      messageId: message.id,
+      streamId: message.stream_id,
+      streamName:
+        typeof message.channel === "string" && message.channel.trim().length > 0
+          ? message.channel
+          : typeof message.display_recipient === "string"
+            ? message.display_recipient
+            : undefined,
+      topic: message.subject,
+    });
+  }
+
+  if (Array.isArray(message.display_recipient)) {
+    const slug = buildDmRouteSlugFromRecipients(message.display_recipient, _currentUserId);
+    if (slug != null) {
+      return appendMessageFocus(withCurrentOrgRoute(`/dm/${slug}`), message.id);
+    }
+  }
+
+  return buildInboxRoute(message.orgId ?? message.org_id);
 }
 
 export function buildNavigableRouteFromMessage(

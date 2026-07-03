@@ -4,8 +4,8 @@ import { computeScrollTopAfterPrepend } from "~/shared/lib/scroll-prepend-anchor
 export interface FeedPaginationScrollState {
   scrollTop: number;
   isLoadingMore: boolean;
-  isAllLoaded: boolean;
-  lastMessageId: number | null;
+  hasMore: boolean;
+  nextPageMarker: string | null;
 }
 
 export type FeedScrollSnapshot = ScrollPrependSnapshot;
@@ -17,7 +17,7 @@ export function shouldRequestOlderFeedPage(
   state: FeedPaginationScrollState,
   topThresholdPx = DEFAULT_TOP_THRESHOLD_PX,
 ): boolean {
-  if (state.isLoadingMore || state.isAllLoaded || state.lastMessageId == null) {
+  if (state.isLoadingMore || !state.hasMore || state.nextPageMarker == null) {
     return false;
   }
 

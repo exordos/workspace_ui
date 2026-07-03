@@ -1,11 +1,7 @@
 import { messengerGetJson } from "./messenger-transport.internal";
 import type { MessengerClientOptions } from "./messenger-transport.internal";
 
-export type WorkspaceMessengerAuthProfileStatus =
-  | "active"
-  | "idle"
-  | "offline"
-  | "do_not_disturb";
+export type WorkspaceMessengerAuthProfileStatus = "active" | "idle" | "offline" | "do_not_disturb";
 
 export interface WorkspaceMessengerAuthProfileDto {
   uuid: string;
@@ -25,10 +21,7 @@ function optionalString(value: unknown): string | null {
 }
 
 function optionalStatus(value: unknown): WorkspaceMessengerAuthProfileStatus | null {
-  return value === "active" ||
-    value === "idle" ||
-    value === "offline" ||
-    value === "do_not_disturb"
+  return value === "active" || value === "idle" || value === "offline" || value === "do_not_disturb"
     ? value
     : null;
 }

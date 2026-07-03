@@ -174,13 +174,13 @@ describe("MessageBubble quick reactions", () => {
   });
 
   it("shows reaction author names in reaction tooltip", () => {
-    useUsersStore.getState().mergeUser(
+    useUsersStore.getState().upsertUser(
       createUser({
         user_id: 77,
         full_name: "Alice",
       }),
     );
-    useUsersStore.getState().mergeUser(
+    useUsersStore.getState().upsertUser(
       createUser({
         user_id: 88,
         full_name: "Bob",
@@ -217,16 +217,20 @@ describe("MessageBubble quick reactions", () => {
   });
 
   it("reaction tooltip lists author names without custom status", () => {
-    useUsersStore.getState().mergeUser({
-      user_id: 77,
-      full_name: "Alice",
-      status: { text: "Deep work", emojiName: "speech_balloon", away: false },
-    });
-    useUsersStore.getState().mergeUser({
-      user_id: 88,
-      full_name: "Bob",
-      status: { text: "WFH", emojiName: "house", away: false },
-    });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 77,
+        full_name: "Alice",
+        status: { text: "Deep work", emojiName: "speech_balloon", away: false },
+      }),
+    );
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 88,
+        full_name: "Bob",
+        status: { text: "WFH", emojiName: "house", away: false },
+      }),
+    );
 
     render(
       <MessageBubble
@@ -263,8 +267,8 @@ describe("MessageBubble quick reactions", () => {
   });
 
   it("hides reaction nicknames and count on chip in 1:1 DM", () => {
-    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
-    useUsersStore.getState().mergeUser(createUser({ user_id: 88, full_name: "Bob" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 77, full_name: "Alice" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 88, full_name: "Bob" }));
 
     render(
       <MessageBubble
@@ -303,10 +307,10 @@ describe("MessageBubble quick reactions", () => {
   });
 
   it("shows author nicknames on chip for up to 3 reactors, count digit for 4+", () => {
-    useUsersStore.getState().mergeUser(createUser({ user_id: 1, full_name: "Ann" }));
-    useUsersStore.getState().mergeUser(createUser({ user_id: 2, full_name: "Bob" }));
-    useUsersStore.getState().mergeUser(createUser({ user_id: 3, full_name: "Cara" }));
-    useUsersStore.getState().mergeUser(createUser({ user_id: 4, full_name: "Dan" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 1, full_name: "Ann" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 2, full_name: "Bob" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 3, full_name: "Cara" }));
+    useUsersStore.getState().upsertUser(createUser({ user_id: 4, full_name: "Dan" }));
 
     const { rerender } = render(
       <MessageBubble

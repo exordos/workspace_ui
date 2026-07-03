@@ -13,6 +13,7 @@ import { fetchMessagesWithNarrow, rawMessageToMockMessage } from "~/shared/api/z
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import type { ChatListSnapshotSerialized } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import { sortChatsByLastMessage } from "~/shared/lib/chat-sorting";
+import { createUser } from "~/test/factories";
 import { useUsersStore } from "../user/user.model";
 import { buildChatListSnapshotSerialized } from "./chat-list-snapshot.lib";
 import { getStreamTopicMessageIds } from "./chat-list-stream-topic-index.lib";
@@ -110,11 +111,13 @@ describe("chatListStore", () => {
         next.set(dmKey, { ...entry, name: "Direct message" });
         return { dmsMap: next };
       });
-      useUsersStore.getState().mergeUser({
-        user_id: 20,
-        full_name: "Bob Loaded",
-        email: "bob@t.com",
-      });
+      useUsersStore.getState().upsertUser(
+        createUser({
+          user_id: 20,
+          full_name: "Bob Loaded",
+          email: "bob@t.com",
+        }),
+      );
       useChatListStore.getState().patchPersonalDmRowLabelsForUser(20);
       expect(useChatListStore.getState().dmsMap.get(dmKey)?.name).toBe("Bob Loaded");
     });
@@ -949,8 +952,12 @@ describe("chatListStore", () => {
     });
 
     it("fills empty DM preview from addMessages when metadata ts is newer", () => {
-      useUsersStore.getState().mergeUser({ user_id: 10, full_name: "Alice", email: "a@x.test" });
-      useUsersStore.getState().mergeUser({ user_id: 20, full_name: "Bob", email: "b@x.test" });
+      useUsersStore
+        .getState()
+        .upsertUser(createUser({ user_id: 10, full_name: "Alice", email: "a@x.test" }));
+      useUsersStore
+        .getState()
+        .upsertUser(createUser({ user_id: 20, full_name: "Bob", email: "b@x.test" }));
 
       useChatListStore.getState().upsertDmMetadataRows([
         {
@@ -997,8 +1004,12 @@ describe("chatListStore", () => {
     });
 
     it("applyStreamSidebarPreviewsFromMessages updates streams only, not DM metadata preview", () => {
-      useUsersStore.getState().mergeUser({ user_id: 10, full_name: "Alice", email: "a@x.test" });
-      useUsersStore.getState().mergeUser({ user_id: 20, full_name: "Bob", email: "b@x.test" });
+      useUsersStore
+        .getState()
+        .upsertUser(createUser({ user_id: 10, full_name: "Alice", email: "a@x.test" }));
+      useUsersStore
+        .getState()
+        .upsertUser(createUser({ user_id: 20, full_name: "Bob", email: "b@x.test" }));
 
       useChatListStore
         .getState()
@@ -1718,8 +1729,12 @@ describe("chatListStore", () => {
     });
 
     it("rebuilds metadata-only DM rows when userId arrives late", () => {
-      useUsersStore.getState().mergeUser({ user_id: 10, full_name: "Alice", email: "a@x.test" });
-      useUsersStore.getState().mergeUser({ user_id: 20, full_name: "Bob", email: "b@x.test" });
+      useUsersStore
+        .getState()
+        .upsertUser(createUser({ user_id: 10, full_name: "Alice", email: "a@x.test" }));
+      useUsersStore
+        .getState()
+        .upsertUser(createUser({ user_id: 20, full_name: "Bob", email: "b@x.test" }));
       useChatListStore.getState().upsertDmMetadataRows([{ userIds: [10, 20], unreadCount: 1 }]);
 
       const before = [...useChatListStore.getState().dmsMap.values()][0];
@@ -1733,8 +1748,12 @@ describe("chatListStore", () => {
     });
 
     it("deduplicates stale metadata-only DM keys when userId arrives late", () => {
-      useUsersStore.getState().mergeUser({ user_id: 10, full_name: "Alice", email: "a@x.test" });
-      useUsersStore.getState().mergeUser({ user_id: 20, full_name: "Bob", email: "b@x.test" });
+      useUsersStore
+        .getState()
+        .upsertUser(createUser({ user_id: 10, full_name: "Alice", email: "a@x.test" }));
+      useUsersStore
+        .getState()
+        .upsertUser(createUser({ user_id: 20, full_name: "Bob", email: "b@x.test" }));
       useChatListStore.getState().upsertDmMetadataRows([{ userIds: [20], unreadCount: 1 }]);
       useChatListStore.getState().upsertDmMetadataRows([{ userIds: [10, 20], unreadCount: 1 }]);
 
@@ -1840,8 +1859,12 @@ describe("chatListStore", () => {
     });
 
     it("adds personal DM rows from metadata with unread count", () => {
-      useUsersStore.getState().mergeUser({ user_id: 10, full_name: "Alice", email: "a@x.test" });
-      useUsersStore.getState().mergeUser({ user_id: 20, full_name: "Bob", email: "b@x.test" });
+      useUsersStore
+        .getState()
+        .upsertUser(createUser({ user_id: 10, full_name: "Alice", email: "a@x.test" }));
+      useUsersStore
+        .getState()
+        .upsertUser(createUser({ user_id: 20, full_name: "Bob", email: "b@x.test" }));
       useChatListStore.getState().setCurrentUserId(10);
 
       useChatListStore.getState().upsertDmMetadataRows([

@@ -13,7 +13,6 @@ import {
   captureActiveOrgRequestContext,
   isActiveOrgRequestContextCurrent,
 } from "~/entities/instance/instance.model";
-import { useUsersStore } from "~/entities/user/user.model";
 import { fetchMessagesByIds } from "~/shared/api/zulip-messages";
 import type { ZulipRecentPrivateConversation } from "~/shared/api/zulip.types";
 import { upsertDmIndexFromMessages } from "~/shared/lib/dm-index";
@@ -135,9 +134,6 @@ export async function hydrateDmSidebarPreviewsFromRecentConversations(
     return;
   }
 
-  for (const message of messages) {
-    useUsersStore.getState().mergeFromMessage(message);
-  }
   useChatListStore.getState().addMessages(messages);
   if (options.instanceId != null) {
     upsertDmIndexFromMessages(options.instanceId, messages, options.currentUserId);

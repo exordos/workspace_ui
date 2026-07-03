@@ -311,6 +311,15 @@ export function normalizeWorkspaceRestEvent(
           uuid: model.payload.uuid,
         },
       };
+    case "user.updated": {
+      const { kind, ...user } = model.payload;
+      return {
+        epoch_version: model.epoch_version,
+        type: "user",
+        kind,
+        user,
+      };
+    }
     default:
       return null;
   }

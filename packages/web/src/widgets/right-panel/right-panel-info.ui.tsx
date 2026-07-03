@@ -2,8 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
-import { ensureUserStatusLoaded } from "~/entities/user/api/user.api";
-import { useUsersStore } from "~/entities/user/user.model";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
 import { AddStreamMembersDialog } from "~/features/add-stream-members/add-stream-members-dialog.ui";
 import { useAddStreamMembersStore } from "~/features/add-stream-members/add-stream-members.model";
@@ -60,13 +58,11 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     streamId != null ? s.streamsMap.get(streamId) : undefined,
   );
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
-  const currentUserRoleCode = useUsersStore((s) =>
-    currentUserId != null ? s.getUser(currentUserId)?.role : undefined,
-  );
+  const currentUserRoleCode = undefined;
   const inputMode = useInputMode();
   const isUserInGroupSetting = useUserGroupsStore((s) => s.isUserInGroupSetting);
-  const users = useUsersStore((s) => s.users);
-  const currentUserChannelCapabilities = useUsersStore((s) => s.currentUserChannelCapabilities);
+  const users = useMemo(() => new Map(), []);
+  const currentUserChannelCapabilities = undefined;
   const currentUserRole = parseRole(currentUserRoleCode);
   const channelActionCapabilities = useMemo(
     () =>
@@ -162,22 +158,6 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     },
     [rightDrawer],
   );
-  const memberStatusIds = useMemo(() => {
-    if (chatInfoData?.type !== "dm" && chatInfoData?.type !== "stream") {
-      return [];
-    }
-    const ids = chatInfoData.members
-      .map((member) => member.userId)
-      .filter((userId) => Number.isFinite(userId) && userId > 0);
-    return Array.from(new Set(ids));
-  }, [chatInfoData]);
-
-  useEffect(() => {
-    for (const userId of memberStatusIds) {
-      void ensureUserStatusLoaded(userId);
-    }
-  }, [memberStatusIds]);
-
   const streamInfoData = chatInfoData?.type === "stream" ? chatInfoData : null;
   const displayStreamName = (streamInfoData?.name?.trim() ?? "") || title.trim();
   const canonicalStreamName = useMemo(
@@ -328,7 +308,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     setEditDescription(channelDescription ?? "");
     setEditOpen(true);
   };
-  const handleSaveEdit = async () => {
+  const handleSaveEdit = () => {
     if (streamId == null || channelActionPending) return;
     const trimmedName = editName.trim();
     if (trimmedName.length === 0) {
@@ -341,13 +321,13 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
     setChannelActionError(t("workspaceMessenger.actionUnsupported"));
     setChannelActionPending(false);
   };
-  const handleDeleteChannel = async () => {
+  const handleDeleteChannel = () => {
     if (streamId == null || channelActionPending) return;
     if (!window.confirm(t("channel.deleteChannel"))) return;
 
     setChannelActionError(t("workspaceMessenger.actionUnsupported"));
   };
-  const handleDeleteTopic = async (topicName: string) => {
+  const handleDeleteTopic = (topicName: string) => {
     if (streamId == null || topicDeletePendingName != null) return;
     const topicLabel = resolveTopicDisplayInfo(topicName).label;
     if (!window.confirm(t("channel.deleteTopicConfirm", { topic: topicLabel }))) return;
@@ -528,7 +508,7 @@ export const RightPanelInfo: React.FC<RightPanelInfoProps> = ({
                           type="button"
                           className="hover:bg-notice-base/10 flex h-6 w-6 shrink-0 items-center justify-center rounded text-notice-base transition-colors disabled:opacity-40"
                           onClick={() => {
-                            void handleDeleteTopic(topic.name);
+                            handleDeleteTopic(topic.name);
                           }}
                           disabled={topicDeletePendingName != null}
                           aria-label={t("channel.deleteTopic")}

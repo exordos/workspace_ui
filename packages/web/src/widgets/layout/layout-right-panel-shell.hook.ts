@@ -77,9 +77,8 @@ export function useLayoutRightPanelShell(
   } = params;
   const workspaceMessengerActive = workspaceRoute != null;
 
-  const rightDrawerOverrideUser = useUsersStore((s) =>
-    rightDrawerUserIdOverride != null ? s.getUser(rightDrawerUserIdOverride) : undefined,
-  );
+  const rightDrawerOverrideUser =
+    rightDrawerUserIdOverride != null ? usersMapForChatInfo.get(rightDrawerUserIdOverride) : null;
   const rightDrawerOverrideUserName = rightDrawerOverrideUser?.full_name?.trim();
 
   const {
@@ -151,7 +150,7 @@ export function useLayoutRightPanelShell(
   const workspaceStreamBindingIdsByStreamId = useMessengerStore(
     (state) => state.streamBindingIdsByStreamId,
   );
-  const workspaceUsersById = useMessengerStore((state) => state.usersById);
+  const workspaceUsersById = useUsersStore((state) => state.usersById);
   const workspaceSessions = useWorkspaceAuthStore((state) => state.sessions);
   const workspaceCurrentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
   const workspaceRuntimeContext = useMemo(
@@ -163,9 +162,8 @@ export function useLayoutRightPanelShell(
     [workspaceCurrentAccountId, workspaceSessions],
   );
   const workspaceCurrentUserUuid = workspaceRuntimeContext?.userUuid ?? null;
-  // Workspace right panel строится из нового messenger store, а не из старого
-  // Zulip chatInfo. Так участники, счетчики и права удаления остаются в одном
-  // UUID-based источнике данных.
+  // Workspace right panel берет структуру чата из messenger store, а карточки
+  // пользователей — из нового user store.
   const workspaceRightPanelInfo = useMemo(
     () =>
       selectWorkspaceRightPanelInfoView(
@@ -176,10 +174,10 @@ export function useLayoutRightPanelShell(
           topicIds: workspaceTopicIds,
           streamBindingsById: workspaceStreamBindingsById,
           streamBindingIdsByStreamId: workspaceStreamBindingIdsByStreamId,
-          usersById: workspaceUsersById,
         },
         {
           route: workspaceRoute,
+          usersById: workspaceUsersById,
           fallbackTitle: rightDrawerTitle || t("chat.generalChat"),
           currentUserUuid: workspaceCurrentUserUuid,
           temporarilyNotConnectedText: t("workspaceMessenger.temporarilyNotConnected"),

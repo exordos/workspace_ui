@@ -9,6 +9,7 @@ describe("CalendarPage", () => {
   });
 
   it("renders same-origin placeholder embed when no external URL is configured", async () => {
+    vi.stubEnv("VITE_CALENDAR_EMBED_URL", "");
     vi.resetModules();
     const { CalendarPage } = await import("./calendar-page.ui");
 

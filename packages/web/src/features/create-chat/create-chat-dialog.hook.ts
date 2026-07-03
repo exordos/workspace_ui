@@ -7,8 +7,9 @@ import {
 import { runWorkspaceCreateTopicRequest } from "~/entities/messenger/messenger-sidebar-actions.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerStream } from "~/entities/messenger/messenger.types";
-import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
+import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
+import type { User } from "~/entities/user/user.types";
 import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
 import {
   selectCurrentWorkspaceRuntimeContext,
@@ -40,6 +41,13 @@ import {
 } from "./create-chat.api";
 
 const log = createLogger("create-chat:dialog");
+
+function resolveWorkspacePickerPresence(status: User["status"]): UserPickerOption["presence"] {
+  if (status === "active" || status === "idle") {
+    return status;
+  }
+  return "offline";
+}
 
 interface ArchivedChannelOption {
   streamId: number;
@@ -224,7 +232,8 @@ export function useCreateChatDialog(options: {
   const [workspaceTopicName, setWorkspaceTopicName] = useState("");
   const channelsFetchedRef = useRef(false);
 
-  const allUsers = useUsersStore((s) => s.users);
+  const usersById = useUsersStore((s) => s.usersById);
+  const userIds = useUsersStore((s) => s.userIds);
   const userGroups = useUserGroupsStore((s) => s.groups);
   const currentUserId = useChatListStore((s) => s.currentUserId ?? null);
   const streamsMap = useChatListStore((s) => s.streamsMap);
@@ -240,7 +249,6 @@ export function useCreateChatDialog(options: {
         : null,
     [workspaceCurrentAccountId, workspaceMode, workspaceSessions],
   );
-  const workspaceUsersById = useMessengerStore((state) => state.usersById);
   const workspaceStreamIds = useMessengerStore((state) => state.streamIds);
   const workspaceStreamsById = useMessengerStore((state) => state.streamsById);
   const workspaceStreams = useMemo(
@@ -272,37 +280,40 @@ export function useCreateChatDialog(options: {
 
   const pickerCandidates = useMemo(
     () =>
-      Array.from(allUsers.values()).map((user) => ({
-        userId: user.user_id,
-        fullName: user.full_name,
-        email: user.email,
-        presenceStatus: user.presence?.status,
-        presenceTimestamp: user.presence?.timestamp,
-        statusLabel: formatUserStatusLabel(user.status),
-      })),
-    [allUsers],
+      userIds
+        .map((userId, index) => {
+          const user = usersById[userId];
+          if (user == null) return null;
+          return {
+            userId: index + 1,
+            fullName: selectUserDisplayName(user, user.uuid),
+            email: user.email ?? "",
+            presenceStatus:
+              user.status === "active" || user.status === "idle" ? user.status : undefined,
+            presenceTimestamp: Math.floor(Date.parse(user.lastPingAt) / 1000),
+            statusLabel: user.statusText,
+          };
+        })
+        .filter((user): user is NonNullable<typeof user> => user != null),
+    [userIds, usersById],
   );
 
   const workspaceUserOptions = useMemo<CreateChatUserOption[]>(() => {
     const normalizedQuery = userSearch.trim().toLowerCase();
     const currentUserUuid = workspaceRuntimeContext?.userUuid ?? null;
-    return Object.values(workspaceUsersById)
+    return userIds
+      .map((userId) => usersById[userId])
+      .filter((user): user is User => user != null)
       .filter((user) => user.uuid !== currentUserUuid)
       .map((user) => {
-        const presence: CreateChatUserOption["presence"] =
-          user.status === "active" || user.status === "idle" ? user.status : "offline";
-        const fullName = [user.firstName, user.lastName]
-          .filter((part): part is string => part != null && part.trim().length > 0)
-          .join(" ")
-          .trim();
         return {
           userKey: user.uuid,
           legacyUserId: null,
           workspaceUserUuid: user.uuid,
-          fullName: fullName.length > 0 ? fullName : user.username,
+          fullName: selectUserDisplayName(user, user.uuid),
           email: user.email ?? "",
-          presence,
-          statusLabel: null,
+          presence: resolveWorkspacePickerPresence(user.status),
+          statusLabel: user.statusText,
         };
       })
       .filter((user) => {
@@ -314,7 +325,7 @@ export function useCreateChatDialog(options: {
         );
       })
       .sort((left, right) => left.fullName.localeCompare(right.fullName));
-  }, [userSearch, workspaceRuntimeContext?.userUuid, workspaceUsersById]);
+  }, [userIds, userSearch, usersById, workspaceRuntimeContext?.userUuid]);
 
   const excludedUserIds = useMemo(
     () => (currentUserId != null ? [currentUserId] : []),
@@ -330,7 +341,7 @@ export function useCreateChatDialog(options: {
       query: userSearch,
     }).map((user) => ({
       userKey: String(user.userId),
-      legacyUserId: user.userId,
+      legacyUserId: typeof user.userId === "number" ? user.userId : null,
       workspaceUserUuid: null,
       fullName: user.fullName,
       email: user.email,
@@ -358,7 +369,7 @@ export function useCreateChatDialog(options: {
       query: userSearch,
     }).map((user) => ({
       userKey: String(user.userId),
-      legacyUserId: user.userId,
+      legacyUserId: typeof user.userId === "number" ? user.userId : null,
       workspaceUserUuid: null,
       fullName: user.fullName,
       email: user.email,
@@ -393,7 +404,7 @@ export function useCreateChatDialog(options: {
       query: userSearch,
     }).map((user) => ({
       userKey: String(user.userId),
-      legacyUserId: user.userId,
+      legacyUserId: typeof user.userId === "number" ? user.userId : null,
       workspaceUserUuid: null,
       fullName: user.fullName,
       email: user.email,

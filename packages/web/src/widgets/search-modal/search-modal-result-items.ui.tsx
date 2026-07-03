@@ -1,6 +1,4 @@
 import React from "react";
-import { UserStatusLabel } from "~/entities/user/user-status-label.ui";
-import { useUsersStore, type UserStatus } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
@@ -17,8 +15,7 @@ export const SearchResultItem = React.memo(function SearchResultItem({
   msg: MockMessage;
   onSelect: () => void;
 }) {
-  const senderName = useUsersStore((s) => s.getDisplayName(msg.sender_id));
-  const displayName = senderName !== "Unknown" ? senderName : msg.sender_full_name;
+  const displayName = msg.sender_full_name;
   return (
     <li>
       <SelectableRow className="group items-start">
@@ -49,45 +46,52 @@ export const SearchResultItem = React.memo(function SearchResultItem({
 });
 
 export const UserResultItem = React.memo(function UserResultItem({
+  userIdentity,
   userId,
   fullName,
   email,
-  status,
   statusLabel,
+  statusEmoji,
   presenceState,
   onSelect,
 }: {
-  userId: number;
+  userIdentity: string;
+  userId?: number;
   fullName: string;
   email?: string;
-  status?: UserStatus;
   statusLabel?: string;
+  statusEmoji?: { name: string; imgUrl: string };
   presenceState: "active" | "idle" | "offline" | null;
   onSelect: () => void;
 }) {
-  const secondaryText = statusLabel ?? email ?? "";
-  const shouldRenderRichStatus = status?.reactionType === "realm_emoji";
+  const secondaryText = statusLabel ?? (statusEmoji == null ? (email ?? "") : "");
+  const secondaryContent =
+    statusEmoji != null ? (
+      <span className="flex min-w-0 items-center gap-1 truncate text-[11px] text-text-secondary">
+        <img src={statusEmoji.imgUrl} alt={`:${statusEmoji.name}:`} className="size-3 shrink-0" />
+        {secondaryText.length > 0 ? <span className="truncate">{secondaryText}</span> : null}
+      </span>
+    ) : null;
+
   return (
     <li>
       <SelectableRow
         as="button"
         onClick={onSelect}
         className="w-full"
-        aria-label={`${fullName} (${email ?? userId})`}
+        aria-label={`${fullName} (${email ?? userIdentity})`}
       >
         <PresenceIndicator status={presenceState} size="sm" />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium text-text-primary">{fullName}</span>
-          {shouldRenderRichStatus ? (
-            <UserStatusLabel
-              status={status}
-              className="max-w-full text-[11px] text-text-secondary"
-            />
-          ) : secondaryText.length > 0 ? (
+          {secondaryContent}
+          {statusEmoji == null && secondaryText.length > 0 ? (
             <span className="block truncate text-[11px] text-text-secondary">{secondaryText}</span>
           ) : null}
         </span>
-        <span className="ml-2 shrink-0 text-[11px] text-text-muted">#{userId}</span>
+        {userId != null ? (
+          <span className="ml-2 shrink-0 text-[11px] text-text-muted">#{userId}</span>
+        ) : null}
       </SelectableRow>
     </li>
   );

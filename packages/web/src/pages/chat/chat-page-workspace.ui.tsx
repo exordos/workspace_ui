@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   selectWorkspaceMessagesForConversation,
   selectWorkspaceMessageById,
@@ -6,6 +7,7 @@ import {
   useWorkspaceMessageStore,
 } from "~/entities/message/message.model";
 import { selectWorkspaceChatHeaderView } from "~/entities/messenger/messenger-chat-header.lib";
+import { createWorkspaceDirectStream } from "~/entities/messenger/messenger-create-chat-actions.lib";
 import { selectMessengerConversationFromWorkspaceRoute } from "~/entities/messenger/messenger-ids.lib";
 import {
   deleteMessengerMessage,
@@ -16,19 +18,22 @@ import {
 import { loadMessengerConversationMessages } from "~/entities/messenger/messenger-messages-loader.lib";
 import { useMessengerStreamBindingsForRoute } from "~/entities/messenger/messenger-stream-bindings-loader.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type {
-  MessengerMessage,
-  MessengerTopic,
-  MessengerUser,
-} from "~/entities/messenger/messenger.types";
+import type { MessengerMessage, MessengerTopic } from "~/entities/messenger/messenger.types";
+import { useUsersStore } from "~/entities/user/user.model";
+import type { UsersById } from "~/entities/user/user.types";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { t } from "~/i18n/i18n";
+import type { MockMessage } from "~/shared/api/zulip.types";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
-import type { WorkspaceMessengerRouteMatch } from "~/shared/lib/workspace-messenger-route.lib";
+import {
+  workspaceMessengerStreamRoute,
+  type WorkspaceMessengerRouteMatch,
+} from "~/shared/lib/workspace-messenger-route.lib";
+import { AppDialogShell, APP_DIALOG_CONTENT_BASE_CLASS } from "~/shared/ui/app-dialog.ui";
 import type { ChatHeaderProps } from "~/widgets/chat-view/chat-header.types";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import type {
@@ -36,7 +41,15 @@ import type {
   MessageComposerCapabilities,
 } from "~/widgets/message-composer/message-composer.types";
 import type { MessageListCallbacks } from "~/widgets/message-list/message-list.types";
+import {
+  buildForwardQuote,
+  consumePendingForwardPrefill,
+  mergeForwardDraftContent,
+  resolveForwardTargetRoute,
+  setPendingForwardPrefill,
+} from "./chat-forward.lib";
 import { ChatPageComposerSection } from "./chat-page-composer-section.ui";
+import { ForwardMessageModalBody } from "./chat-page-forward-modal.ui";
 import { ChatPageInlineAlerts } from "./chat-page-inline-alerts.ui";
 import { ChatPageMessageListSection } from "./chat-page-message-list-section.ui";
 import {
@@ -45,15 +58,21 @@ import {
   workspaceChatVisualMessageId,
 } from "./chat-page-workspace-message.adapter";
 import type { ChatMessagesLoadErrorKind } from "./chat-page-message-list-section.types";
+import type {
+  ForwardMessageTarget,
+  ForwardWorkspaceStreamOption,
+  ForwardWorkspaceTopicOption,
+} from "./chat-page.types";
 
 interface WorkspaceChatPageProps {
   route: WorkspaceMessengerRouteMatch | null;
 }
 
 const EMPTY_MESSAGES: MessengerMessage[] = [];
-const EMPTY_USERS_BY_ID: Record<string, MessengerUser> = {};
+const EMPTY_USERS_BY_ID: UsersById = {};
 const EMPTY_SELECTED_MESSAGE_IDS = new Set<number>();
 const READ_BATCH_DELAY_MS = 250;
+const FORWARD_DIALOG_CONTENT_CLASS = `${APP_DIALOG_CONTENT_BASE_CLASS} top-1/2 max-w-lg -translate-y-1/2 overflow-hidden p-0`;
 
 const noop = () => undefined;
 
@@ -92,13 +111,21 @@ function WorkspaceChatState({
 export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) => {
   // This page is not a new chat layout: it assembles old sections and swaps only the data source.
   useMessengerStreamBindingsForRoute({ route });
+  const location = useLocation();
+  const navigate = useNavigate();
   const openSearch = useOpenSearch();
   const rightDrawer = useRightDrawer();
   const [retryNonce, setRetryNonce] = useState(0);
   const [sendError, setSendError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [composerEditSession, setComposerEditSession] = useState<ComposerEditSession | null>(null);
+  const [draftInitialValue, setDraftInitialValue] = useState<string | undefined>(undefined);
+  const [forwardDraft, setForwardDraft] = useState<{
+    messages: MockMessage[];
+    selectedText: string | undefined;
+  } | null>(null);
   const [scrollToBottomAfterSendNonce, setScrollToBottomAfterSendNonce] = useState(0);
+  const composerValueRef = useRef("");
   const pendingReadVisualIdsRef = useRef<Set<number>>(new Set());
   const readRequestedMessageUuidsRef = useRef<Set<string>>(new Set());
   const readBatchTimerRef = useRef<number | null>(null);
@@ -133,14 +160,43 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       ? selectWorkspaceMessageStatusForConversation(state, "")
       : selectWorkspaceMessageStatusForConversation(state, conversationId),
   );
-  const usersById = useMessengerStore((state) =>
+  const usersById = useUsersStore((state) =>
     Object.keys(state.usersById).length > 0 ? state.usersById : EMPTY_USERS_BY_ID,
   );
   const topicsById = useMessengerStore((state) => state.topicsById);
   const streamsById = useMessengerStore((state) => state.streamsById);
+  const streamIds = useMessengerStore((state) => state.streamIds);
+  const topicIds = useMessengerStore((state) => state.topicIds);
   const streamBindingsById = useMessengerStore((state) => state.streamBindingsById);
   const streamBindingIdsByStreamId = useMessengerStore((state) => state.streamBindingIdsByStreamId);
   const conversationsById = useMessengerStore((state) => state.conversationsById);
+  const forwardStreamOptions = useMemo<ForwardWorkspaceStreamOption[]>(
+    () =>
+      streamIds
+        .map((id) => streamsById[id])
+        .filter((candidate): candidate is NonNullable<typeof candidate> => {
+          return candidate?.audience === "channel" && !candidate.isArchived;
+        })
+        .map((candidate) => ({
+          streamUuid: candidate.uuid,
+          name: candidate.name,
+        }))
+        .sort((left, right) => left.name.localeCompare(right.name)),
+    [streamIds, streamsById],
+  );
+  const forwardTopicOptions = useMemo<ForwardWorkspaceTopicOption[]>(
+    () =>
+      topicIds
+        .map((id) => topicsById[id])
+        .filter((candidate): candidate is MessengerTopic => candidate != null && !candidate.isDone)
+        .map((candidate) => ({
+          streamUuid: candidate.streamUuid,
+          topicUuid: candidate.uuid,
+          name: candidate.name,
+        }))
+        .sort((left, right) => left.name.localeCompare(right.name)),
+    [topicIds, topicsById],
+  );
   const headerView = useMemo(
     () =>
       selectWorkspaceChatHeaderView(
@@ -150,10 +206,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
           topicsById,
           streamBindingsById,
           streamBindingIdsByStreamId,
-          usersById,
         },
         {
           route,
+          usersById,
           fallbackTitle: t("nav.messenger"),
           missingDirectUserTitle: t("workspaceMessenger.directPrivateUserUnavailable"),
         },
@@ -249,6 +305,17 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     };
   }, []);
 
+  useEffect(() => {
+    const pendingForwardPrefill = consumePendingForwardPrefill(location.pathname);
+    if (pendingForwardPrefill == null) {
+      setDraftInitialValue(undefined);
+      composerValueRef.current = "";
+      return;
+    }
+    setDraftInitialValue(pendingForwardPrefill);
+    composerValueRef.current = pendingForwardPrefill;
+  }, [location.pathname]);
+
   const topicTitle =
     topic?.name ?? (selection.status === "conversation" ? conversation?.title : undefined);
   const composerReadOnlyReason =
@@ -291,6 +358,104 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         : selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
     },
     [routeMessages],
+  );
+
+  const closeForwardModal = useCallback(() => {
+    setForwardDraft(null);
+  }, []);
+
+  const applyForwardPrefill = useCallback(
+    (targetRoute: string, content: string) => {
+      if (targetRoute === location.pathname) {
+        const nextContent = mergeForwardDraftContent(content, composerValueRef.current);
+        composerValueRef.current = nextContent;
+        setDraftInitialValue(nextContent);
+        return;
+      }
+      setPendingForwardPrefill(targetRoute, content);
+      void navigate(targetRoute);
+    },
+    [location.pathname, navigate],
+  );
+
+  const requestForwardMessage = useCallback(
+    (message: MockMessage, selectedText?: string) => {
+      if (runtimeContext == null) {
+        setActionError(t("workspaceMessenger.runtimeUnavailable"));
+        return;
+      }
+      const normalizedSelectedText = selectedText?.trim();
+      setActionError(null);
+      setForwardDraft({
+        messages: [message],
+        selectedText:
+          normalizedSelectedText != null && normalizedSelectedText.length > 0
+            ? normalizedSelectedText
+            : undefined,
+      });
+    },
+    [runtimeContext],
+  );
+
+  const handleForwardTarget = useCallback(
+    async (target: ForwardMessageTarget) => {
+      if (forwardDraft == null) return;
+      if (route == null) {
+        setActionError(t("workspaceMessenger.invalidRoute"));
+        return;
+      }
+      if (runtimeContext == null) {
+        setActionError(t("workspaceMessenger.runtimeUnavailable"));
+        return;
+      }
+
+      const forwardedContent = buildForwardQuote(forwardDraft.messages, forwardDraft.selectedText);
+      if (forwardedContent.length === 0) return;
+
+      try {
+        if (target.kind === "topic") {
+          const targetRoute = resolveForwardTargetRoute({
+            orgId: route.orgId,
+            projectId: route.projectId,
+            streamUuid: target.streamUuid,
+            topicUuid: target.topicUuid,
+          });
+          applyForwardPrefill(targetRoute, forwardedContent);
+          closeForwardModal();
+          return;
+        }
+
+        const result = await runWorkspaceAction((signal) =>
+          createWorkspaceDirectStream({
+            runtimeContext,
+            getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+            signal,
+            directUserUuid: target.userUuid,
+          }),
+        );
+        if (result.status !== "applied") {
+          setActionError(t("workspaceMessenger.messageActionTargetMissing"));
+          return;
+        }
+        const targetRoute = workspaceMessengerStreamRoute({
+          orgId: route.orgId,
+          projectId: route.projectId,
+          streamUuid: result.stream.uuid,
+        });
+        applyForwardPrefill(targetRoute, forwardedContent);
+        closeForwardModal();
+      } catch (error) {
+        setActionError(normalizeWorkspaceActionError(error, t("message.forwardError")));
+      }
+    },
+    [
+      applyForwardPrefill,
+      closeForwardModal,
+      forwardDraft,
+      route,
+      runWorkspaceAction,
+      runtimeContext,
+    ],
   );
 
   const resolveSendTarget = useCallback(():
@@ -502,7 +667,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       onMessageDelete: (message) => handleDeleteMessage(message.id),
       onMessageAddReaction: () => setActionError(t("workspaceMessenger.reactionsUnsupported")),
       onMessageRemoveReaction: () => setActionError(t("workspaceMessenger.reactionsUnsupported")),
-      onMessageForward: () => setActionError(t("workspaceMessenger.forwardUnsupported")),
+      onMessageForward: requestForwardMessage,
       onMessageViews: () => setActionError(t("workspaceMessenger.readReceiptsUnsupported")),
       onMessagePermalinkClick: () => {
         setActionError(t("workspaceMessenger.permalinkUnsupported"));
@@ -513,7 +678,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       onRetryFailedEdit: () => setActionError(t("workspaceMessenger.retryUnsupported")),
       onCancelFailedEdit: () => setActionError(t("workspaceMessenger.retryUnsupported")),
     }),
-    [handleDeleteMessage, requestMessageEdit],
+    [handleDeleteMessage, requestForwardMessage, requestMessageEdit],
   );
 
   const handleEditLastMessage = useCallback(() => {
@@ -609,6 +774,23 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       />
       <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {body}
+        <AppDialogShell
+          open={forwardDraft != null}
+          onOpenChange={(open) => {
+            if (!open) closeForwardModal();
+          }}
+          contentClassName={FORWARD_DIALOG_CONTENT_CLASS}
+        >
+          <ForwardMessageModalBody
+            streamOptions={forwardStreamOptions}
+            topicOptions={forwardTopicOptions}
+            currentUserUuid={runtimeContext?.userUuid ?? ""}
+            onForward={(target) => {
+              void handleForwardTarget(target);
+            }}
+            onClose={closeForwardModal}
+          />
+        </AppDialogShell>
         <ChatPageInlineAlerts
           routeResolveError={null}
           actionError={actionError}
@@ -633,8 +815,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
           }
           replyQuote={null}
           onClearReply={noop}
-          draftInitialValue={undefined}
-          onComposerValueChange={noop}
+          draftInitialValue={draftInitialValue}
+          onComposerValueChange={(value) => {
+            composerValueRef.current = value;
+          }}
           onEditLastMessage={handleEditLastMessage}
           editSession={composerEditSession}
           onSubmitEdit={handleSubmitEdit}

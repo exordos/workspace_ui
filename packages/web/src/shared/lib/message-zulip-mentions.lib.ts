@@ -31,7 +31,17 @@ export interface ZulipMentionToken {
   displayName: string;
   kind: "user" | "wildcard" | "unresolved";
   userId?: number;
+  userUuid?: string;
 }
+
+export interface ZulipMentionResolution {
+  userId?: number | null;
+  userUuid?: string | null;
+}
+
+export type ResolveZulipMention =
+  | ((displayName: string) => number | null)
+  | ((displayName: string) => ZulipMentionResolution | null);
 
 /**
  * Combined mention matcher: `@_**Name|id**` (reply/silent with id), `@_**Name**` (silent),
@@ -45,15 +55,22 @@ function isStreamWildcard(displayName: string): boolean {
 
 function tokenFromDisplayName(
   displayName: string,
-  resolveUserId: (displayName: string) => number | null,
+  resolveUserMention: ResolveZulipMention,
 ): ZulipMentionToken {
   const trimmed = displayName.trim();
   if (isStreamWildcard(trimmed)) {
     return { displayName: trimmed, kind: "wildcard" };
   }
-  const id = resolveUserId(trimmed);
-  if (id != null && id > 0) {
-    return { displayName: trimmed, kind: "user", userId: id };
+  const resolved = resolveUserMention(trimmed);
+  const id = typeof resolved === "number" ? resolved : resolved?.userId;
+  const uuid = typeof resolved === "number" ? null : resolved?.userUuid;
+  if ((id != null && id > 0) || (uuid != null && uuid.length > 0)) {
+    return {
+      displayName: trimmed,
+      kind: "user",
+      ...(id != null && id > 0 ? { userId: id } : {}),
+      ...(uuid != null && uuid.length > 0 ? { userUuid: uuid } : {}),
+    };
   }
   return { displayName: trimmed, kind: "unresolved" };
 }
@@ -64,8 +81,17 @@ function buildMentionSpanHtml(token: ZulipMentionToken): string {
   if (token.kind === "wildcard") {
     return `<span class="user-mention user-group-mention" data-user-id="*">${label}</span>`;
   }
-  if (token.kind === "user" && token.userId != null && token.userId > 0) {
-    return `<span class="user-mention" data-user-id="${String(token.userId)}">${label}</span>`;
+  if (token.kind === "user") {
+    const attrs: string[] = [];
+    if (token.userId != null && token.userId > 0) {
+      attrs.push(`data-user-id="${String(token.userId)}"`);
+    }
+    if (token.userUuid != null && token.userUuid.length > 0) {
+      attrs.push(`data-user-uuid="${escapeHtmlText(token.userUuid)}"`);
+    }
+    if (attrs.length > 0) {
+      return `<span class="user-mention" ${attrs.join(" ")}>${label}</span>`;
+    }
   }
   return `<span class="user-mention">${label}</span>`;
 }
@@ -75,7 +101,7 @@ function buildMentionSpanHtml(token: ZulipMentionToken): string {
  */
 export function injectZulipMentionPlaceholders(
   markdown: string,
-  resolveUserId: (displayName: string) => number | null,
+  resolveUserMention: ResolveZulipMention,
 ): { markdown: string; tokens: ZulipMentionToken[] } {
   const tokens: ZulipMentionToken[] = [];
   const regex = new RegExp(ZULIP_MENTION_COMBINED.source, "g");
@@ -101,9 +127,9 @@ export function injectZulipMentionPlaceholders(
         token = { displayName: nameWithId, kind: "unresolved" };
       }
     } else if (silentBare != null && silentBare.length > 0) {
-      token = tokenFromDisplayName(silentBare, resolveUserId);
+      token = tokenFromDisplayName(silentBare, resolveUserMention);
     } else if (regular != null && regular.length > 0) {
-      token = tokenFromDisplayName(regular, resolveUserId);
+      token = tokenFromDisplayName(regular, resolveUserMention);
     } else {
       result += fullMatch;
       lastIndex = start + fullMatch.length;

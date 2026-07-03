@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
+import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { filterUsers } from "~/features/mention-suggest/mention-suggest.lib";
 import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
 import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
 
-const EMPTY_USERS_MAP = new Map();
 const EMPTY_MENTION_SUGGESTIONS: MentionSuggestion[] = [];
 
 export function useComposerMentions(options: { enabled?: boolean } = {}) {
-  // Mentions исторически читают старый users store, поэтому Workspace route может полностью выключить этот hook.
   const { enabled = true } = options;
+  const userIds = useUsersStore((s) => s.userIds);
+  const usersById = useUsersStore((s) => s.usersById);
   const mentionQuery = useMentionSuggestStore((s) => s.query);
   const mentionSuggestions = useMentionSuggestStore((s) => s.results);
   const showMentions = useMentionSuggestStore((s) => s.visible);
@@ -21,18 +22,29 @@ export function useComposerMentions(options: { enabled?: boolean } = {}) {
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [mentionStartPos, setMentionStartPos] = useState(0);
 
-  const allUsers = useUsersStore((s) => (enabled ? s.users : EMPTY_USERS_MAP));
-  // При disabled возвращаем пустые данные, чтобы UI не дёргал Zulip-зависимые подсказки пользователей.
-  const mentionUsers: MentionSuggestion[] = useMemo(
-    () =>
-      Array.from(allUsers.values()).map((u) => ({
-        userId: u.user_id,
-        fullName: u.full_name,
-        email: u.email ?? "",
-        avatarUrl: u.avatar_url ?? undefined,
-      })),
-    [allUsers],
-  );
+  const mentionUsers: MentionSuggestion[] = useMemo(() => {
+    const suggestions: MentionSuggestion[] = [];
+
+    userIds.forEach((userUuid) => {
+      const user = usersById[userUuid];
+      if (user == null) return;
+
+      const legacyUserId = (user as { user_id?: unknown }).user_id;
+      const numericUserId =
+        typeof legacyUserId === "number" && Number.isSafeInteger(legacyUserId) && legacyUserId > 0
+          ? legacyUserId
+          : null;
+      suggestions.push({
+        userUuid: user.uuid,
+        userId: numericUserId,
+        fullName: selectUserDisplayName(user, user.uuid),
+        email: user.email ?? "",
+        ...(user.avatarUrl != null ? { avatarUrl: user.avatarUrl } : {}),
+      });
+    });
+
+    return suggestions;
+  }, [userIds, usersById]);
 
   useEffect(() => {
     if (!enabled) {

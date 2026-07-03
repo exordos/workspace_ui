@@ -13,7 +13,6 @@ import {
   captureActiveOrgRequestContext,
   isActiveOrgRequestContextCurrent,
 } from "~/entities/instance/instance.model";
-import { useUsersStore } from "~/entities/user/user.model";
 import { createLogger } from "~/shared/lib/logger";
 import { runInFlightDeduped } from "~/shared/lib/request-lifecycle.lib";
 
@@ -101,9 +100,6 @@ export async function ensureStarredLoaded(options: EnsureStarredLoadedOptions): 
         { signal },
       );
       throwIfAbortedOrStale(signal, orgContext);
-      for (const message of page.messages) {
-        useUsersStore.getState().mergeFromMessage(message);
-      }
       const hasMore = !page.foundOldest;
       useActivityStore
         .getState()

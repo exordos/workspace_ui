@@ -2,15 +2,15 @@ import React, { useCallback, useMemo, useState } from "react";
 import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { CreateFolderModal } from "~/features/manage-folders/create-folder-modal.ui";
+import { UpdateFolderModal } from "~/features/manage-folders/update-folder-modal.ui";
+import { useSettingsStore } from "~/features/settings/settings.model";
+import { t } from "~/i18n/i18n";
 import {
   createFolder as createMessengerFolder,
   deleteFolder as deleteMessengerFolder,
   updateFolder as updateMessengerFolder,
 } from "~/shared/api/messenger-folders.api";
-import { UpdateFolderModal } from "~/features/manage-folders/update-folder-modal.ui";
-import { useSettingsStore } from "~/features/settings/settings.model";
 import { guard } from "~/shared/lib/guards";
-import { t } from "~/i18n/i18n";
 import { formatUserFacingError } from "~/shared/lib/toast/format-user-error.lib";
 import { toast } from "~/shared/lib/toast/toast";
 import { AppDialog, DialogCancelButton } from "~/shared/ui/app-dialog.ui";
@@ -27,9 +27,9 @@ export type {
   FolderRailLayout,
 } from "./folder-rail.types";
 
-function currentMessengerFolderClientOptions():
-  | ReturnType<typeof buildMessengerRequestOptions>
-  | null {
+function currentMessengerFolderClientOptions(): ReturnType<
+  typeof buildMessengerRequestOptions
+> | null {
   const runtimeContext = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
   if (runtimeContext == null) {
     return null;

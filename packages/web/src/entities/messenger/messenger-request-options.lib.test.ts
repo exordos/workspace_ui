@@ -22,14 +22,14 @@ describe("messenger request options", () => {
   it("builds messenger request options from runtime context", () => {
     const controller = new AbortController();
 
-    expect(buildMessengerRequestOptions(createRuntimeContext(), undefined, controller.signal)).toEqual(
-      {
-        accessToken: "access-token-a",
-        devTargetOrigin: "https://org-a.example.com",
-        projectId: "project-a",
-        signal: controller.signal,
-      },
-    );
+    expect(
+      buildMessengerRequestOptions(createRuntimeContext(), undefined, controller.signal),
+    ).toEqual({
+      accessToken: "access-token-a",
+      devTargetOrigin: "https://org-a.example.com",
+      projectId: "project-a",
+      signal: controller.signal,
+    });
   });
 
   it("keeps explicit overrides for project and dev target origin", () => {

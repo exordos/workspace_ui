@@ -123,7 +123,6 @@ function seedBootstrap(ownerKey: string): void {
       streams: [createStreamDto({ last_message_uuid: MESSAGE_A })],
       topics: [createTopicDto({ last_message_uuid: MESSAGE_B })],
       folders: [],
-      users: [],
     }),
   );
 }

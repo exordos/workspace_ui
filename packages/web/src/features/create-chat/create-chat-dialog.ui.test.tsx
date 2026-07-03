@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
+import type { User } from "~/entities/user/user.types";
 import { CreateChatDialog } from "./create-chat-dialog.ui";
 import { createChannel, unarchiveChannel } from "./create-chat.api";
 
@@ -19,12 +20,38 @@ vi.mock("~/shared/api/zulip-streams", () => ({
 
 import { fetchStreams, fetchSubscriptions } from "~/shared/api/zulip-streams";
 
+function createUser(overrides: Partial<User> & { uuid: string }): User {
+  return {
+    uuid: overrides.uuid,
+    username: overrides.username ?? overrides.uuid,
+    firstName: overrides.firstName ?? null,
+    lastName: overrides.lastName ?? null,
+    displayName: overrides.displayName ?? overrides.username ?? overrides.uuid,
+    email: overrides.email ?? null,
+    avatarUrl: overrides.avatarUrl ?? null,
+    status: overrides.status ?? "offline",
+    statusEmoji: overrides.statusEmoji ?? null,
+    statusText: overrides.statusText ?? null,
+    lastPingAt: overrides.lastPingAt ?? "2026-06-30T09:00:00.000Z",
+    createdAt: overrides.createdAt ?? "2026-06-30T09:00:00.000Z",
+    updatedAt: overrides.updatedAt ?? "2026-06-30T09:00:00.000Z",
+  };
+}
+
 describe("CreateChatDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useUsersStore.getState().clear();
     useChatListStore.getState().clear();
-    useUsersStore.getState().mergeUsers([{ user_id: 1, full_name: "Alice", email: "a@a.test" }]);
+    useUsersStore.getState().replaceUsers([
+      createUser({
+        uuid: "alice-user",
+        username: "alice",
+        displayName: "Alice",
+        email: "a@a.test",
+        status: "active",
+      }),
+    ]);
     vi.mocked(fetchStreams).mockResolvedValue([]);
     vi.mocked(fetchSubscriptions).mockResolvedValue([]);
   });

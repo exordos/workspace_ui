@@ -6,7 +6,8 @@
  */
 
 export interface MentionSuggestion {
-  userId: number;
+  userUuid: string;
+  userId: number | null;
   fullName: string;
   email: string;
   avatarUrl?: string;

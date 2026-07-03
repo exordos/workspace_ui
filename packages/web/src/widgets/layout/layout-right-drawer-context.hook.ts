@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import { resolvePersonalDmSidebarTitle } from "~/entities/chat-list/chat-list-format.lib";
-import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
 import { computeIsGroupDmView, normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
 import {
@@ -80,13 +79,6 @@ export function useLayoutRightDrawerContext(
     return dmRecipientIds[0] ?? dmChat?.id;
   }, [isGroupDm, dmRecipientIds, dmChat?.id]);
 
-  const partnerUserRecord = useUsersStore((s) =>
-    partnerUserId != null ? s.getUser(partnerUserId) : undefined,
-  );
-  const partnerStoreDisplayName = useUsersStore((s) =>
-    partnerUserId != null ? s.getDisplayName(partnerUserId) : "Unknown",
-  );
-
   const rightDrawerTargetUserId = rightDrawerUserIdOverride ?? partnerUserId;
 
   const dmParticipantIds = useMemo(() => {
@@ -129,8 +121,8 @@ export function useLayoutRightDrawerContext(
       }
       return resolvePersonalDmSidebarTitle({
         chatName: dmChat?.name ?? "",
-        userFullName: partnerUserRecord?.full_name,
-        storeDisplayName: partnerStoreDisplayName,
+        userFullName: undefined,
+        storeDisplayName: "",
       });
     }
     if (activeStreamName && activeStreamName.trim().length > 0) {
@@ -146,8 +138,6 @@ export function useLayoutRightDrawerContext(
     dmChat?.name,
     dmIdParam,
     isGroupDm,
-    partnerStoreDisplayName,
-    partnerUserRecord?.full_name,
     rightDrawerOpen,
     rightDrawerOverrideUserName,
     rightDrawerUserIdOverride,

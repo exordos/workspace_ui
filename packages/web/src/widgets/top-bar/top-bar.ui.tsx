@@ -37,7 +37,8 @@ export const TopBar: React.FC = () => {
     setOpen: setSearchOpen,
     onSelectMessage: handleSearchSelectMessage,
     onSelectUser: handleSearchSelectUser,
-  } = useTopBarSearchModal({ navigate, mode: searchModalMode });
+    onSelectUserUuid: handleSearchSelectUserUuid,
+  } = useTopBarSearchModal({ navigate, mode: searchModalMode, pathname: location.pathname });
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const currentWorkspaceInstanceId = useWorkspaceAuthStore((s) => {
     const accountId = s.currentAccountId;
@@ -90,6 +91,7 @@ export const TopBar: React.FC = () => {
         onOpenChange={setSearchOpen}
         onSelectMessage={handleSearchSelectMessage}
         onSelectUser={handleSearchSelectUser}
+        onSelectUserUuid={handleSearchSelectUserUuid}
         mode={searchModalMode}
       />
       <header
