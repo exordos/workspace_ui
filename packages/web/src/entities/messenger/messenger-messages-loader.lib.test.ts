@@ -69,6 +69,7 @@ function createMessageDto(
     pinned: false,
     starred: false,
     is_own: true,
+    reactions: {},
     created_at: DATE,
     updated_at: DATE,
     ...overrides,
@@ -204,6 +205,119 @@ describe("messenger conversation messages loader", () => {
       nextPageMarker: "next-page",
       hasMore: true,
     });
+  });
+
+  it("hydrates own reaction projection from cached visible messages and schedules revalidate", async () => {
+    const runtimeContext = createRuntimeContext();
+    prepareStoreOwner(runtimeContext);
+    const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+    const cachedMessage = adaptMessengerMessage(createMessageDto({ uuid: MESSAGE_A }));
+    const hydrateFromCache = vi.fn(() =>
+      Promise.resolve({
+        status: "applied" as const,
+        ownerKey,
+        messageUuids: [MESSAGE_A],
+        reactions: 1,
+      }),
+    );
+    const revalidate = vi.fn(() =>
+      Promise.resolve({
+        status: "applied" as const,
+        ownerKey,
+        messageUuids: [MESSAGE_A],
+        reactions: 1,
+      }),
+    );
+
+    await loadMessengerConversationMessages({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
+      cache: {
+        readConversationMessageWindow: () =>
+          Promise.resolve({
+            messages: [cachedMessage],
+            nextPageMarker: "cached-next",
+            hasMore: true,
+          }),
+        writeConversationMessagePage: () => undefined,
+      },
+      client: { getMessagesPage: () => Promise.resolve(createMessagesPage([])) },
+      ownReactionSync: {
+        hydrateFromCache,
+        revalidate,
+      },
+    });
+
+    expect(hydrateFromCache).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runtimeContext,
+        messageUuids: [MESSAGE_A],
+      }),
+    );
+    expect(revalidate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runtimeContext,
+        messageUuids: [MESSAGE_A],
+      }),
+    );
+  });
+
+  it("hydrates and revalidates own reactions for the server-visible page", async () => {
+    const runtimeContext = createRuntimeContext();
+    prepareStoreOwner(runtimeContext);
+    const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+    const hydrateFromCache = vi.fn(() =>
+      Promise.resolve({
+        status: "applied" as const,
+        ownerKey,
+        messageUuids: [MESSAGE_A, MESSAGE_B],
+        reactions: 0,
+      }),
+    );
+    const revalidate = vi.fn(() =>
+      Promise.resolve({
+        status: "applied" as const,
+        ownerKey,
+        messageUuids: [MESSAGE_A, MESSAGE_B],
+        reactions: 0,
+      }),
+    );
+
+    await loadMessengerConversationMessages({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
+      cache: {
+        readConversationMessageWindow: () =>
+          Promise.resolve({ messages: [], nextPageMarker: null, hasMore: false }),
+        writeConversationMessagePage: () => undefined,
+      },
+      client: {
+        getMessagesPage: () =>
+          Promise.resolve(
+            createMessagesPage([
+              createMessageDto({ uuid: MESSAGE_A }),
+              createMessageDto({ uuid: MESSAGE_B, created_at: DATE_LATER }),
+            ]),
+          ),
+      },
+      ownReactionSync: {
+        hydrateFromCache,
+        revalidate,
+      },
+    });
+
+    expect(hydrateFromCache).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageUuids: [MESSAGE_A, MESSAGE_B],
+      }),
+    );
+    expect(revalidate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageUuids: [MESSAGE_A, MESSAGE_B],
+      }),
+    );
   });
 
   it("merges later message pages into the same conversation bucket", async () => {

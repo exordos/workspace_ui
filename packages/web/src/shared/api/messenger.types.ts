@@ -80,6 +80,25 @@ export interface WorkspaceMessengerMarkdownPayloadDto {
   content: string;
 }
 
+// Aggregate хранит только серверные счетчики по имени emoji.
+// Здесь намеренно нет списка пользователей, reaction_type, emoji_code или numeric user id:
+// Workspace API пока отдает только имя emoji и количество, а недостающие сведения нельзя
+// достраивать на фронтенде без риска получить ложную доменную модель.
+export type WorkspaceMessengerReactionAggregate = Record<string, number>;
+
+// DTO одной строки реакции нужен для операций текущего пользователя.
+// Счетчики приходят в message.reactions, а uuid конкретной реакции нужен только для DELETE,
+// поэтому строка реакции описана отдельно от агрегата сообщения.
+export interface WorkspaceMessengerMessageReactionDto {
+  uuid: WorkspaceMessengerUuid;
+  project_id: WorkspaceMessengerUuid;
+  message_uuid: WorkspaceMessengerUuid;
+  user_uuid: WorkspaceMessengerUuid;
+  emoji_name: string;
+  created_at: WorkspaceMessengerDateTime;
+  updated_at: WorkspaceMessengerDateTime;
+}
+
 export interface WorkspaceMessengerMessageDto {
   uuid: WorkspaceMessengerUuid;
   project_id: WorkspaceMessengerUuid;
@@ -92,6 +111,7 @@ export interface WorkspaceMessengerMessageDto {
   pinned: boolean;
   starred: boolean;
   is_own: boolean;
+  reactions: WorkspaceMessengerReactionAggregate;
   created_at: WorkspaceMessengerDateTime;
   updated_at: WorkspaceMessengerDateTime;
 }
@@ -225,6 +245,13 @@ export interface WorkspaceMessengerCreateMessageRequestBody {
 
 export interface WorkspaceMessengerUpdateMessageRequestBody {
   payload: WorkspaceMessengerMarkdownPayloadDto;
+}
+
+// Создание реакции принимает ровно тот контракт, который поддерживает Workspace backend.
+// Пользователь берется из bearer-сессии на сервере, поэтому user_uuid не передаем в body.
+export interface WorkspaceMessengerCreateMessageReactionRequestBody {
+  message_uuid: WorkspaceMessengerUuid;
+  emoji_name: string;
 }
 
 export interface WorkspaceMessengerStreamDeletedPayloadDto {
@@ -439,6 +466,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
 function isUuid(value: unknown): value is WorkspaceMessengerUuid {
   return typeof value === "string" && UUID_PATTERN.test(value);
 }
@@ -457,6 +493,10 @@ function isInteger(value: unknown): value is number {
 
 function isNonNegativeInteger(value: unknown): value is number {
   return isInteger(value) && value >= 0;
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
 }
 
 function isNullableDateTime(value: unknown): value is WorkspaceMessengerDateTime | null {
@@ -546,6 +586,21 @@ export function isWorkspaceMessengerMarkdownPayloadDto(
   return isRecord(value) && value.kind === "markdown" && typeof value.content === "string";
 }
 
+export function isWorkspaceMessengerReactionAggregate(
+  value: unknown,
+): value is WorkspaceMessengerReactionAggregate {
+  // Агрегат проверяем строже обычного record: массивы, Date, Map и другие объекты
+  // с поведением не должны попадать в DTO, потому что дальше это будет кешироваться
+  // и сравниваться как простой JSON-объект от сервера.
+  if (!isPlainRecord(value)) {
+    return false;
+  }
+
+  return Object.entries(value).every(
+    ([emojiName, count]) => emojiName.trim().length > 0 && isNonNegativeInteger(count),
+  );
+}
+
 export function isWorkspaceMessengerStreamDto(
   value: unknown,
 ): value is WorkspaceMessengerStreamDto {
@@ -624,6 +679,22 @@ export function isWorkspaceMessengerMessageDto(
     typeof value.pinned === "boolean" &&
     typeof value.starred === "boolean" &&
     typeof value.is_own === "boolean" &&
+    isWorkspaceMessengerReactionAggregate(value.reactions) &&
+    isDateTime(value.created_at) &&
+    isDateTime(value.updated_at)
+  );
+}
+
+export function isWorkspaceMessengerMessageReactionDto(
+  value: unknown,
+): value is WorkspaceMessengerMessageReactionDto {
+  return (
+    isRecord(value) &&
+    isUuid(value.uuid) &&
+    isUuid(value.project_id) &&
+    isUuid(value.message_uuid) &&
+    isUuid(value.user_uuid) &&
+    isNonEmptyString(value.emoji_name) &&
     isDateTime(value.created_at) &&
     isDateTime(value.updated_at)
   );

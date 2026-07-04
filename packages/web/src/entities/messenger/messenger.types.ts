@@ -15,6 +15,39 @@ export type MessengerConversationId = string;
 export type MessengerAudience = "channel" | "private";
 export type WorkspaceConversationUiKind = "channel" | "directPrivate";
 
+// Агрегат реакций в Workspace-домене совпадает с backend contract:
+// ключом является стабильное emoji_name, значением - серверный счетчик.
+// Здесь намеренно нет Zulip-полей reaction_type/emoji_code и нет списка
+// пользователей, потому что таких данных backend message snapshot не несет.
+export type MessengerReactionCountsByName = Record<string, number>;
+
+// Локальная проекция собственных реакций нужна только для действий текущего
+// пользователя: по emoji_name быстро понять, есть ли моя реакция, и какой
+// reactionUuid нужно отправить в DELETE. Это не часть серверного aggregate.
+export type MessengerOwnReactionUuidsByName = Record<string, MessengerUuid>;
+
+export type MessengerPendingOwnReactionOperation = "add" | "remove";
+
+export interface MessengerPendingOwnReactionState {
+  requestId: string;
+  operation: MessengerPendingOwnReactionOperation;
+  previousCount: number;
+  previousOwnReactionUuid: MessengerUuid | null;
+}
+
+// Pending-проекция живет только в runtime message store. Она не подменяет
+// reactionUuid, не попадает в IndexedDB и нужна, чтобы UI сразу показывал
+// счетчик/подсветку до ответа Workspace API.
+export type MessengerPendingOwnReactionsByName = Record<string, MessengerPendingOwnReactionState>;
+
+// Минимальная строка собственной реакции для обогащения message store из cache
+// или SWR. Store не зависит от IndexedDB-типа и принимает только доменные поля,
+// которые действительно нужны для projection.
+export interface MessengerOwnReactionProjectionRow {
+  emojiName: string;
+  reactionUuid: MessengerUuid;
+}
+
 export interface MessengerStream {
   uuid: MessengerUuid;
   projectId: MessengerUuid;
@@ -97,6 +130,9 @@ export interface MessengerMessage {
   pinned: boolean;
   starred: boolean;
   isOwn: boolean;
+  reactions: MessengerReactionCountsByName;
+  ownReactionUuidsByEmojiName: MessengerOwnReactionUuidsByName;
+  pendingOwnReactionsByEmojiName?: MessengerPendingOwnReactionsByName;
   createdAt: string;
   updatedAt: string;
 }

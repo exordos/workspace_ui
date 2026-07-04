@@ -1,11 +1,11 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
-import type { MockMessage } from "~/shared/api/zulip.types";
 import { createUser } from "~/test/factories";
 import { MessageBubble } from "./message-bubble.ui";
+import type { MessageBubbleMessage } from "./message-bubble.types";
 
-function createMessage(overrides: Partial<MockMessage> = {}): MockMessage {
+function createMessage(overrides: Partial<MessageBubbleMessage> = {}): MessageBubbleMessage {
   return {
     id: 1,
     sender_id: 77,
@@ -99,6 +99,55 @@ describe("MessageBubble quick reactions", () => {
         emojiCode: "43",
         reactionType: "realm_emoji",
         imageUrl: "https://cdn.example.com/party_node.png",
+      });
+    });
+  });
+
+  it("renders native Workspace grouped reaction counts and own highlight", async () => {
+    const onToggleReaction = vi.fn();
+    render(
+      <MessageBubble
+        message={createMessage({
+          workspaceReactionGroups: [
+            {
+              key: "workspace:thumbs_up",
+              emojiName: "thumbs_up",
+              count: 2,
+              reactedByMe: true,
+              displayChar: "👍",
+            },
+            {
+              key: "workspace:deploy_parrot",
+              emojiName: "deploy_parrot",
+              count: 1,
+              reactedByMe: false,
+              displayChar: ":deploy_parrot:",
+            },
+          ],
+        })}
+        callbacks={{
+          onToggleReaction,
+        }}
+      />,
+    );
+
+    const ownReactionButton = screen.getByRole("button", { name: "👍 2" });
+    expect(ownReactionButton).toHaveClass("bg-accent/15");
+    expect(screen.getByText(":deploy_parrot:")).toBeInTheDocument();
+
+    fireEvent.click(ownReactionButton);
+    await waitFor(() => {
+      expect(onToggleReaction).toHaveBeenCalledWith(1, {
+        emojiName: "thumbs_up",
+        reactionType: "unicode_emoji",
+      });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: ":deploy_parrot: 1" }));
+    await waitFor(() => {
+      expect(onToggleReaction).toHaveBeenCalledWith(1, {
+        emojiName: "deploy_parrot",
+        reactionType: "unicode_emoji",
       });
     });
   });

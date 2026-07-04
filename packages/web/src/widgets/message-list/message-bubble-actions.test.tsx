@@ -377,6 +377,30 @@ describe("MessageBubble edit/delete actions parity", () => {
     });
   });
 
+  it("routes Workspace unicode picker selections by opaque emoji name without custom emoji catalog", async () => {
+    const onAddReaction = vi.fn();
+
+    render(
+      <MessageBubble
+        message={createMessage()}
+        isOwn={false}
+        customEmojisSupported={false}
+        callbacks={{
+          onAddReaction,
+        }}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByTestId("message-101"), { clientX: 320, clientY: 360 });
+    fireEvent.click(await screen.findByRole("button", { name: /more reactions/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /pick emoji/i }));
+
+    expect(onAddReaction).toHaveBeenCalledWith(101, {
+      emojiName: "grinning",
+      reactionType: "unicode_emoji",
+    });
+  });
+
   it("closes the extended reaction picker when the message menu closes", async () => {
     render(<MessageBubble message={createMessage()} isOwn={false} />);
 

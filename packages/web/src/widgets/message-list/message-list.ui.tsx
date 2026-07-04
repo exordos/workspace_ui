@@ -49,7 +49,7 @@ import { MessageBubble, type MessageBubbleCallbacks } from "./message-bubble.ui"
 import { getSenderGroups } from "./message-list-grouping.lib";
 import { buildMessageMediaGallery } from "./message-list-media.lib";
 import { MessageListSenderGroup } from "./message-list-sender-group.ui";
-import type { MessageListProps } from "./message-list.types";
+import type { MessageListMessage, MessageListProps } from "./message-list.types";
 
 const SCROLL_AT_BOTTOM_THRESHOLD = 80;
 const FOCUSED_MESSAGE_HIGHLIGHT_DURATION_MS = 6_000;
@@ -116,6 +116,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
   onUnreadMessagesAtBottom,
   showLoadingOverlay = false,
   showTopicInSenderName = true,
+  customEmojisSupported = true,
 }) => {
   const bubbleCallbacks: MessageBubbleCallbacks | undefined = useMemo(
     () =>
@@ -131,6 +132,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
             onToggleSelect: callbacks.onMessageSelect,
             onAddReaction: callbacks.onMessageAddReaction,
             onRemoveReaction: callbacks.onMessageRemoveReaction,
+            onToggleReaction: callbacks.onMessageToggleReaction,
             onOpenJitsiCall: callbacks.onOpenJitsiCall,
             onViews: callbacks.onMessageViews,
             onOpenInChat: callbacks.onMessageOpenInChat,
@@ -175,9 +177,12 @@ export const MessageListInner: React.FC<MessageListProps> = ({
   );
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [belowViewportUnreadCount, setBelowViewportUnreadCount] = useState(0);
-  const [customEmojis, setCustomEmojis] = useState<RealmEmoji[]>(() => getCachedRealmEmojis());
+  const [customEmojis, setCustomEmojis] = useState<RealmEmoji[]>(() =>
+    customEmojisSupported ? getCachedRealmEmojis() : [],
+  );
 
   const ensureCustomEmojisLoaded = useCallback(() => {
+    if (!customEmojisSupported) return;
     void ensureZulipEmojiCatalogLoaded();
     void ensureRealmEmojisLoaded()
       .then((list) => {
@@ -186,7 +191,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
       .catch(() => {
         messageListLog.warn("Failed to load realm custom emojis for reaction picker");
       });
-  }, []);
+  }, [customEmojisSupported]);
 
   const customEmojiById = useMemo(() => {
     const map = new Map<string, RealmEmoji>();
@@ -336,15 +341,24 @@ export const MessageListInner: React.FC<MessageListProps> = ({
   );
 
   useEffect(() => {
+    if (!customEmojisSupported) {
+      setCustomEmojis([]);
+      return;
+    }
     if (!hasMarkdownEmojiShortcodes && !hasRealmEmojiReactions) {
       return;
     }
     ensureCustomEmojisLoaded();
-  }, [ensureCustomEmojisLoaded, hasMarkdownEmojiShortcodes, hasRealmEmojiReactions]);
+  }, [
+    customEmojisSupported,
+    ensureCustomEmojisLoaded,
+    hasMarkdownEmojiShortcodes,
+    hasRealmEmojiReactions,
+  ]);
 
   const resolveCustomEmojiImageUrl = useCallback(
     (reaction: Reaction): string | undefined => {
-      if (reaction.reaction_type !== "realm_emoji") {
+      if (!customEmojisSupported || reaction.reaction_type !== "realm_emoji") {
         return undefined;
       }
       const byCode = customEmojiById.get(reaction.emoji_code.trim());
@@ -354,16 +368,17 @@ export const MessageListInner: React.FC<MessageListProps> = ({
       const byName = customEmojiByName.get(normalizeEmojiShortcodeName(reaction.emoji_name));
       return byName?.imgUrl;
     },
-    [customEmojiById, customEmojiByName],
+    [customEmojiById, customEmojiByName, customEmojisSupported],
   );
 
   const resolveCustomEmojiShortcodeImageUrl = useCallback(
     (shortcode: string): string | undefined => {
+      if (!customEmojisSupported) return undefined;
       const normalized = normalizeEmojiShortcodeName(shortcode);
       if (normalized.length === 0) return undefined;
       return customEmojiByName.get(normalized)?.imgUrl;
     },
-    [customEmojiByName],
+    [customEmojiByName, customEmojisSupported],
   );
 
   const scheduleFlashFocusedMessageId = useCallback((nextFocusedMessageId: number | null) => {
@@ -1348,7 +1363,7 @@ export const MessageListInner: React.FC<MessageListProps> = ({
   }, [dispatchUnreadAtBottom, syncWasAtBottomFromElement]);
 
   const groups = useMemo(() => {
-    const result: { dateKey: string; senderGroups: MockMessage[][] }[] = [];
+    const result: { dateKey: string; senderGroups: MessageListMessage[][] }[] = [];
     let currentKey = "";
     let currentItems: MockMessage[] = [];
     const flushDay = () => {
@@ -1442,8 +1457,9 @@ export const MessageListInner: React.FC<MessageListProps> = ({
                         isSelected={selectedMessageIds?.has(m.id)}
                         isFocused={flashFocusedMessageId === m.id}
                         mediaGallery={mediaGallery}
-                        customEmojis={customEmojis}
+                        customEmojis={customEmojisSupported ? customEmojis : undefined}
                         onEmojiPickerOpen={ensureCustomEmojisLoaded}
+                        customEmojisSupported={customEmojisSupported}
                         resolveCustomEmojiImageUrl={resolveCustomEmojiImageUrl}
                         resolveCustomEmojiShortcodeImageUrl={resolveCustomEmojiShortcodeImageUrl}
                         showTopicInSenderName={showTopicInSenderName}
@@ -1481,8 +1497,9 @@ export const MessageListInner: React.FC<MessageListProps> = ({
                     selectedMessageIds={selectedMessageIds}
                     focusedMessageId={flashFocusedMessageId}
                     mediaGallery={mediaGallery}
-                    customEmojis={customEmojis}
+                    customEmojis={customEmojisSupported ? customEmojis : undefined}
                     onEmojiPickerOpen={ensureCustomEmojisLoaded}
+                    customEmojisSupported={customEmojisSupported}
                     resolveCustomEmojiImageUrl={resolveCustomEmojiImageUrl}
                     resolveCustomEmojiShortcodeImageUrl={resolveCustomEmojiShortcodeImageUrl}
                     showTopicInSenderName={showTopicInSenderName}

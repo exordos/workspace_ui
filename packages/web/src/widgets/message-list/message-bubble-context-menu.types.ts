@@ -26,4 +26,7 @@ export interface MessageBubbleContextMenuProps {
   onQuickReaction: (emojiName: string) => void;
   onEmojiPick: (data: EmojiClickData) => void;
   customEmojis?: RealmEmoji[];
+  // UI-level gate: Workspace route не подключает realm custom emoji catalog и
+  // не должен показывать/передавать кастомные emoji в reaction picker.
+  customEmojisSupported?: boolean;
 }

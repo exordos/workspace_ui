@@ -2,6 +2,11 @@ import { create } from "zustand";
 import type {
   MessengerConversationId,
   MessengerMessage,
+  MessengerPendingOwnReactionOperation,
+  MessengerPendingOwnReactionsByName,
+  MessengerOwnReactionProjectionRow,
+  MessengerOwnReactionUuidsByName,
+  MessengerReactionCountsByName,
   MessengerUuid,
 } from "~/entities/messenger/messenger.types";
 import { logStoreAction } from "~/shared/lib/logger";
@@ -45,6 +50,83 @@ const EMPTY_STATUS: WorkspaceConversationMessagesStatus = {
   hasMore: false,
 };
 
+// Свежие backend snapshots не знают, какие реакции принадлежат текущему
+// пользователю. Если при upsert просто заменить message целиком, UI потеряет
+// подсветку собственных реакций и reactionUuid для удаления. Поэтому все входы
+// новых message snapshots проходят через один merge-helper.
+function mergeWorkspaceMessageSnapshot(
+  previousMessage: MessengerMessage | undefined,
+  incomingMessage: MessengerMessage,
+): MessengerMessage {
+  if (previousMessage == null) return incomingMessage;
+
+  const incomingOwnProjection = incomingMessage.ownReactionUuidsByEmojiName;
+  if (Object.keys(incomingOwnProjection).length > 0) return incomingMessage;
+
+  return {
+    ...incomingMessage,
+    ownReactionUuidsByEmojiName: previousMessage.ownReactionUuidsByEmojiName,
+    pendingOwnReactionsByEmojiName: previousMessage.pendingOwnReactionsByEmojiName,
+  };
+}
+
+// applyOwnMessageReactions принимает либо готовую projection-map, либо строки
+// вида { emojiName, reactionUuid }. Так следующий слой сможет передавать rows
+// из cache/SWR без знания store-internals, а сам store останется на доменной
+// форме Record<emojiName, reactionUuid>.
+function normalizeOwnReactionProjection(
+  projection: MessengerOwnReactionUuidsByName | readonly MessengerOwnReactionProjectionRow[],
+): MessengerOwnReactionUuidsByName {
+  const rows = Array.isArray(projection)
+    ? (projection as readonly MessengerOwnReactionProjectionRow[])
+    : null;
+  if (rows == null) {
+    return { ...(projection as MessengerOwnReactionUuidsByName) };
+  }
+
+  const normalized: MessengerOwnReactionUuidsByName = {};
+  for (const row of rows) {
+    if (row.emojiName.trim().length === 0) continue;
+    normalized[row.emojiName] = row.reactionUuid;
+  }
+  return normalized;
+}
+
+// Агрегат счетчиков тоже копируется на границе store action, чтобы внешние
+// callers не могли мутировать message.reactions после применения события.
+function cloneReactionAggregate(
+  aggregate: MessengerReactionCountsByName,
+): MessengerReactionCountsByName {
+  return { ...aggregate };
+}
+
+function clonePendingOwnReactions(
+  pending: MessengerPendingOwnReactionsByName | undefined,
+): MessengerPendingOwnReactionsByName {
+  return pending == null ? {} : { ...pending };
+}
+
+function setReactionCount(
+  reactions: MessengerReactionCountsByName,
+  emojiName: string,
+  count: number,
+): MessengerReactionCountsByName {
+  const nextReactions = { ...reactions };
+  if (count <= 0) {
+    delete nextReactions[emojiName];
+  } else {
+    nextReactions[emojiName] = count;
+  }
+  return nextReactions;
+}
+
+function optimisticReactionCount(
+  currentCount: number,
+  operation: MessengerPendingOwnReactionOperation,
+): number {
+  return operation === "add" ? currentCount + 1 : Math.max(0, currentCount - 1);
+}
+
 function createEmptyWorkspaceMessageData(): WorkspaceMessageStoreData {
   return {
     messagesById: EMPTY_MESSAGES_BY_ID,
@@ -65,7 +147,10 @@ function applyConversationMessagesPage(
 
   const nextMessagesById = { ...state.messagesById };
   for (const message of messages) {
-    nextMessagesById[message.uuid] = message;
+    nextMessagesById[message.uuid] = mergeWorkspaceMessageSnapshot(
+      nextMessagesById[message.uuid],
+      message,
+    );
   }
 
   const previousIds =
@@ -87,9 +172,10 @@ function indexMessageIntoBuckets(
   conversationIds: readonly MessengerConversationId[],
 ): Pick<WorkspaceMessageStoreData, "messagesById" | "messageIdsByConversationId"> {
   const previousMessage = state.messagesById[message.uuid];
+  const nextMessage = mergeWorkspaceMessageSnapshot(previousMessage, message);
   const nextMessagesById = {
     ...state.messagesById,
-    [message.uuid]: message,
+    [message.uuid]: nextMessage,
   };
   const nextMessageIdsByConversationId = { ...state.messageIdsByConversationId };
 
@@ -214,7 +300,7 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
     set((state) => ({
       messagesById: {
         ...state.messagesById,
-        [message.uuid]: message,
+        [message.uuid]: mergeWorkspaceMessageSnapshot(state.messagesById[message.uuid], message),
       },
     }));
   },
@@ -232,6 +318,189 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
             ...message,
             markdown: patch.markdown,
             updatedAt: patch.updatedAt ?? message.updatedAt,
+          },
+        },
+      };
+    });
+  },
+
+  applyOwnMessageReactions(messageUuid, projection) {
+    logStoreAction("workspaceMessage", "applyOwnMessageReactions", { messageUuid });
+    set((state) => {
+      const message = state.messagesById[messageUuid];
+      if (message == null) return state;
+
+      return {
+        messagesById: {
+          ...state.messagesById,
+          [messageUuid]: {
+            ...message,
+            ownReactionUuidsByEmojiName: normalizeOwnReactionProjection(projection),
+          },
+        },
+      };
+    });
+  },
+
+  setOwnMessageReaction(messageUuid, emojiName, reactionUuid) {
+    logStoreAction("workspaceMessage", "setOwnMessageReaction", { messageUuid, emojiName });
+    set((state) => {
+      const message = state.messagesById[messageUuid];
+      if (message == null || emojiName.trim().length === 0) return state;
+
+      return {
+        messagesById: {
+          ...state.messagesById,
+          [messageUuid]: {
+            ...message,
+            ownReactionUuidsByEmojiName: {
+              ...message.ownReactionUuidsByEmojiName,
+              [emojiName]: reactionUuid,
+            },
+          },
+        },
+      };
+    });
+  },
+
+  removeOwnMessageReaction(messageUuid, emojiName) {
+    logStoreAction("workspaceMessage", "removeOwnMessageReaction", { messageUuid, emojiName });
+    set((state) => {
+      const message = state.messagesById[messageUuid];
+      if (message?.ownReactionUuidsByEmojiName[emojiName] == null) return state;
+
+      const nextOwnReactionUuidsByEmojiName = { ...message.ownReactionUuidsByEmojiName };
+      delete nextOwnReactionUuidsByEmojiName[emojiName];
+
+      return {
+        messagesById: {
+          ...state.messagesById,
+          [messageUuid]: {
+            ...message,
+            ownReactionUuidsByEmojiName: nextOwnReactionUuidsByEmojiName,
+          },
+        },
+      };
+    });
+  },
+
+  beginOptimisticOwnMessageReaction(messageUuid, emojiName, operation, requestId) {
+    logStoreAction("workspaceMessage", "beginOptimisticOwnMessageReaction", {
+      messageUuid,
+      emojiName,
+      operation,
+    });
+    set((state) => {
+      const message = state.messagesById[messageUuid];
+      if (message == null || emojiName.trim().length === 0) return state;
+
+      const pending = clonePendingOwnReactions(message.pendingOwnReactionsByEmojiName);
+      if (pending[emojiName] != null) return state;
+
+      const previousCount = message.reactions[emojiName] ?? 0;
+      const previousOwnReactionUuid = message.ownReactionUuidsByEmojiName[emojiName] ?? null;
+      if (operation === "add" && previousOwnReactionUuid != null) return state;
+      const nextOwnReactionUuidsByEmojiName = { ...message.ownReactionUuidsByEmojiName };
+      if (operation === "remove") {
+        delete nextOwnReactionUuidsByEmojiName[emojiName];
+      }
+
+      pending[emojiName] = {
+        requestId,
+        operation,
+        previousCount,
+        previousOwnReactionUuid,
+      };
+
+      return {
+        messagesById: {
+          ...state.messagesById,
+          [messageUuid]: {
+            ...message,
+            reactions: setReactionCount(
+              message.reactions,
+              emojiName,
+              optimisticReactionCount(previousCount, operation),
+            ),
+            ownReactionUuidsByEmojiName: nextOwnReactionUuidsByEmojiName,
+            pendingOwnReactionsByEmojiName: pending,
+          },
+        },
+      };
+    });
+  },
+
+  settleOptimisticOwnMessageReaction(messageUuid, emojiName, requestId) {
+    logStoreAction("workspaceMessage", "settleOptimisticOwnMessageReaction", {
+      messageUuid,
+      emojiName,
+    });
+    set((state) => {
+      const message = state.messagesById[messageUuid];
+      const pendingAction = message?.pendingOwnReactionsByEmojiName?.[emojiName];
+      if (message == null || pendingAction?.requestId !== requestId) return state;
+
+      const pending = clonePendingOwnReactions(message.pendingOwnReactionsByEmojiName);
+      delete pending[emojiName];
+
+      return {
+        messagesById: {
+          ...state.messagesById,
+          [messageUuid]: {
+            ...message,
+            pendingOwnReactionsByEmojiName: Object.keys(pending).length > 0 ? pending : undefined,
+          },
+        },
+      };
+    });
+  },
+
+  rollbackOptimisticOwnMessageReaction(messageUuid, emojiName, requestId) {
+    logStoreAction("workspaceMessage", "rollbackOptimisticOwnMessageReaction", {
+      messageUuid,
+      emojiName,
+    });
+    set((state) => {
+      const message = state.messagesById[messageUuid];
+      const pendingAction = message?.pendingOwnReactionsByEmojiName?.[emojiName];
+      if (message == null || pendingAction?.requestId !== requestId) return state;
+
+      const pending = clonePendingOwnReactions(message.pendingOwnReactionsByEmojiName);
+      delete pending[emojiName];
+
+      const nextOwnReactionUuidsByEmojiName = { ...message.ownReactionUuidsByEmojiName };
+      if (pendingAction.previousOwnReactionUuid == null) {
+        delete nextOwnReactionUuidsByEmojiName[emojiName];
+      } else {
+        nextOwnReactionUuidsByEmojiName[emojiName] = pendingAction.previousOwnReactionUuid;
+      }
+
+      return {
+        messagesById: {
+          ...state.messagesById,
+          [messageUuid]: {
+            ...message,
+            reactions: setReactionCount(message.reactions, emojiName, pendingAction.previousCount),
+            ownReactionUuidsByEmojiName: nextOwnReactionUuidsByEmojiName,
+            pendingOwnReactionsByEmojiName: Object.keys(pending).length > 0 ? pending : undefined,
+          },
+        },
+      };
+    });
+  },
+
+  applyMessageReactionAggregate(messageUuid, aggregate) {
+    logStoreAction("workspaceMessage", "applyMessageReactionAggregate", { messageUuid });
+    set((state) => {
+      const message = state.messagesById[messageUuid];
+      if (message == null) return state;
+
+      return {
+        messagesById: {
+          ...state.messagesById,
+          [messageUuid]: {
+            ...message,
+            reactions: cloneReactionAggregate(aggregate),
           },
         },
       };

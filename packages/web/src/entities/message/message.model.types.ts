@@ -1,6 +1,10 @@
 import type {
   MessengerConversationId,
   MessengerMessage,
+  MessengerPendingOwnReactionOperation,
+  MessengerOwnReactionProjectionRow,
+  MessengerOwnReactionUuidsByName,
+  MessengerReactionCountsByName,
   MessengerUuid,
 } from "~/entities/messenger/messenger.types";
 
@@ -55,6 +59,36 @@ export interface WorkspaceMessageStoreState extends WorkspaceMessageStoreData {
   upsertMessage: (message: MessengerMessage) => void;
   upsertMessageBody: (message: MessengerMessage) => void;
   applyMessageEdit: (messageUuid: MessengerUuid, patch: WorkspaceMessageEditPatch) => void;
+  applyOwnMessageReactions: (
+    messageUuid: MessengerUuid,
+    projection: MessengerOwnReactionUuidsByName | readonly MessengerOwnReactionProjectionRow[],
+  ) => void;
+  setOwnMessageReaction: (
+    messageUuid: MessengerUuid,
+    emojiName: string,
+    reactionUuid: MessengerUuid,
+  ) => void;
+  removeOwnMessageReaction: (messageUuid: MessengerUuid, emojiName: string) => void;
+  beginOptimisticOwnMessageReaction: (
+    messageUuid: MessengerUuid,
+    emojiName: string,
+    operation: MessengerPendingOwnReactionOperation,
+    requestId: string,
+  ) => void;
+  settleOptimisticOwnMessageReaction: (
+    messageUuid: MessengerUuid,
+    emojiName: string,
+    requestId: string,
+  ) => void;
+  rollbackOptimisticOwnMessageReaction: (
+    messageUuid: MessengerUuid,
+    emojiName: string,
+    requestId: string,
+  ) => void;
+  applyMessageReactionAggregate: (
+    messageUuid: MessengerUuid,
+    aggregate: MessengerReactionCountsByName,
+  ) => void;
   removeMessage: (
     messageUuid: MessengerUuid,
     options?: WorkspaceScopedMessageMutationOptions,

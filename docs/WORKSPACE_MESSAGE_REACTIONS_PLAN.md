@@ -7,9 +7,30 @@
 саб-агентов.
 
 Главное решение: реакции подключаются через Workspace API и Workspace cache.
-Старый Zulip API, Zulip event loop и Zulip-shaped reaction store не
-используются как запасной путь. Старый `MessageList` можно временно
-использовать только как слой отображения через adapter.
+Старый Zulip API, Zulip event loop, Zulip-shaped reaction store и
+Zulip-shaped reaction adapter не используются как запасной путь. Если старый
+`MessageList` мешает показать агрегированные Workspace-реакции без искажения
+модели, его view model расширяется под нативные Workspace reaction chips.
+Фальшивые `Reaction[]`, фальшивые пользователи и numeric Zulip identifiers для
+Workspace-реакций запрещены.
+
+## Правила текущей реализации
+
+- Главный агент выступает только оркестратором и не пишет продуктовый код.
+- Код пишут только саб-агенты с явно выделенными зонами ответственности.
+- После основной реализации отдельный агент делает review.
+- После review отдельный агент получает найденные проблемы, оценивает их,
+  составляет план исправления и реализует исправления.
+- В продуктовой модели, API-контрактах, store и cache не должно появиться
+  временных заглушек, fallback-ов или Zulip-хвостов.
+- Неподдержанные Workspace-возможности закрываются только на UI-уровне
+  явной заглушкой.
+- Для этой итерации действует исключение из общего правила проекта:
+  новый измененный продуктовый код должен содержать подробные русские
+  поясняющие комментарии для интерфейсов, констант, функций и сложных
+  решений. Комментарии должны объяснять, зачем решение нужно и почему выбран
+  именно такой вариант.
+- Комментарии в тестах можно делать минимальными, если тест читается сам.
 
 ## Цель
 
@@ -423,8 +444,10 @@ Reconcile rules:
 Target file area:
 
 - `packages/web/src/pages/chat/chat-page-workspace.ui.tsx`;
-- `packages/web/src/pages/chat/chat-page-workspace-message.adapter.ts`;
-- `packages/web/src/widgets/message-list/` only where needed.
+- `packages/web/src/pages/chat/chat-page-workspace-message.adapter.ts` только
+  для удаления или сужения старого моста, без добавления reaction-логики;
+- `packages/web/src/widgets/message-list/` там, где нужен нативный grouped
+  Workspace reaction view model.
 
 Page responsibilities:
 
@@ -432,27 +455,27 @@ Page responsibilities:
 - keep unsupported only for custom emoji and still-missing actions;
 - keep page thin: no raw HTTP and no IDB calls in page.
 
-Adapter responsibilities:
+Native UI responsibilities:
 
-- convert Workspace `reactions` aggregate and `ownReactionUuidsByEmojiName` to
-  temporary `MockMessage.reactions` only at the old `MessageList` boundary;
-- use stable visual numeric user id for current user so existing chip
-  highlighting can work;
-- unknown peer reactors are not represented in first iteration unless needed
-  for count display.
+- pass Workspace `reactions` aggregate and `ownReactionUuidsByEmojiName`
+  without converting them to old `Reaction[]`;
+- render grouped reaction chips from `{ emojiName, count, reactedByMe }`;
+- keep highlighting tied to `ownReactionUuidsByEmojiName`, not to numeric
+  Zulip user ids;
+- do not represent unknown peer reactors in first iteration.
 
-Important adapter constraint:
+Important native UI constraint:
 
 - Old `MessageList` computes count from `Reaction[]`. Workspace aggregate may
   contain count without user ids. If the old widget cannot represent aggregate
-  counts faithfully, add a narrow UI prop/model for grouped Workspace reactions
-  rather than inventing fake peer users.
+  counts faithfully, add a narrow UI prop/model for grouped Workspace reactions.
+  Do not invent fake peer users and do not write fake reaction users into any
+  store.
 
 Preferred UI direction:
 
-- If small change is enough, adapt aggregate into grouped chips at boundary.
-- If fake `Reaction[]` would distort data, extend message-list view model to
-  accept already grouped reaction chips.
+- Extend message-list view model to accept already grouped reaction chips.
+- Keep any old compatibility bridge shrinking, not growing.
 - Do not write fake reaction users into user store.
 
 ## Custom emoji path
@@ -575,14 +598,13 @@ Must not touch:
 - low-level API DTO definitions except through Agent A output;
 - raw IndexedDB internals except through Agent B helpers.
 
-### Agent E: UI wiring and adapter
+### Agent E: UI wiring and native message-list rendering
 
 Scope:
 
 - `chat-page-workspace.ui.tsx`;
-- `chat-page-workspace-message.adapter.ts`;
-- narrow `message-list` changes only if aggregate counts cannot be represented
-  correctly.
+- `chat-page-workspace-message.adapter.ts` only if old bridge must be narrowed;
+- `widgets/message-list` native grouped reaction chip support.
 
 Deliverables:
 
@@ -592,6 +614,7 @@ Deliverables:
 - highlight own reactions;
 - keep custom emoji unsupported;
 - no Zulip reaction API calls.
+- no conversion of Workspace aggregate into fake old `Reaction[]`.
 
 Must not touch:
 
@@ -636,7 +659,7 @@ Minimum test set:
 - IDB replacing own rows for one message deletes stale rows only for that
   message.
 - owner cleanup deletes own reaction rows.
-- adapter maps backend aggregate into domain message.
+- domain adapter preserves backend aggregate in native `MessengerMessage`.
 - store preserves own reaction projection across message snapshot upsert.
 - add action caches returned reaction uuid.
 - remove action resolves reaction uuid from store, then cache, then API.
@@ -656,8 +679,8 @@ handoff.
 
 ## Open questions before implementation
 
-1. Should message list be extended to accept grouped reaction chips directly,
-   or is a temporary adapter to old `Reaction[]` acceptable for the first pass?
+1. Which minimal `message-list` view model change gives native grouped
+   Workspace reaction chips without extending the old `Reaction[]` bridge?
 2. Should add/remove use optimistic count changes, or should we only update own
    highlight and wait for `message.updated` for counters?
 3. Should own-reaction SWR run for every visible message with non-empty
@@ -667,8 +690,7 @@ handoff.
 
 Recommended defaults:
 
-- extend grouped reaction rendering rather than fake peer users if old
-  `Reaction[]` cannot preserve aggregate counts;
+- extend grouped reaction rendering and avoid fake peer users;
 - update own highlight optimistically, but let backend own final count;
 - revalidate visible messages with non-empty aggregate after first render, then
   revalidate touched messages on interaction/realtime;

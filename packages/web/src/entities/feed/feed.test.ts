@@ -16,6 +16,8 @@ function msg(overrides: Partial<MessengerMessage> = {}): MessengerMessage {
     pinned: false,
     starred: false,
     isOwn: false,
+    reactions: {},
+    ownReactionUuidsByEmojiName: {},
     createdAt: "2026-07-02T10:00:00Z",
     updatedAt: "2026-07-02T10:00:00Z",
     ...overrides,

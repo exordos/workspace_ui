@@ -4,6 +4,8 @@ import {
   isWorkspaceMessengerEventDto,
   isWorkspaceMessengerFolderDto,
   isWorkspaceMessengerMessageDto,
+  isWorkspaceMessengerMessageReactionDto,
+  isWorkspaceMessengerReactionAggregate,
   isWorkspaceMessengerServerSettingsDto,
   isWorkspaceMessengerStreamBindingDto,
   isWorkspaceMessengerStreamDto,
@@ -19,6 +21,7 @@ const USER_UUID = "11111111-1111-4111-8111-111111111111";
 const STREAM_UUID = "75309057-419c-4b12-a7c1-3932429ec4a6";
 const TOPIC_UUID = "4ec0b996-b778-45f8-8ef4-ef863be0c047";
 const MESSAGE_UUID = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
+const REACTION_UUID = "fae5c55d-9bb2-4646-9c03-f4a6dd65c9f0";
 const FOLDER_UUID = "50ecadd0-9823-4d97-b54c-806cc672c210";
 const FOLDER_ITEM_UUID = "9f41b1a7-77f9-4c12-bdc6-d3cebc5dbf50";
 const BINDING_UUID = "81ffbd82-1f6f-4d85-b44b-b0cd8b4190fb";
@@ -87,6 +90,20 @@ const messageDto = {
   pinned: false,
   starred: false,
   is_own: true,
+  reactions: {
+    thumbs_up: 2,
+    eyes: 1,
+  },
+  created_at: DATE,
+  updated_at: DATE,
+};
+
+const reactionDto = {
+  uuid: REACTION_UUID,
+  project_id: PROJECT_UUID,
+  message_uuid: MESSAGE_UUID,
+  user_uuid: USER_UUID,
+  emoji_name: "thumbs_up",
   created_at: DATE,
   updated_at: DATE,
 };
@@ -181,10 +198,28 @@ describe("Workspace messenger DTO guards", () => {
     expect(isWorkspaceMessengerStreamBindingDto(streamBindingDto)).toBe(true);
     expect(isWorkspaceMessengerTopicDto(topicDto)).toBe(true);
     expect(isWorkspaceMessengerMessageDto(messageDto)).toBe(true);
+    expect(isWorkspaceMessengerMessageReactionDto(reactionDto)).toBe(true);
     expect(isWorkspaceMessengerFolderDto(folderDto)).toBe(true);
     expect(isWorkspaceMessengerUserDto(userDto)).toBe(true);
     expect(isWorkspaceMessengerServerSettingsDto(serverSettingsDto)).toBe(true);
     expect(isWorkspaceMessengerEpochDto({ epoch_version: 124 })).toBe(true);
+  });
+
+  it("validates message reaction aggregates and reaction rows", () => {
+    expect(isWorkspaceMessengerReactionAggregate({ thumbs_up: 2, eyes: 0 })).toBe(true);
+    expect(isWorkspaceMessengerReactionAggregate({ "": 1 })).toBe(false);
+    expect(isWorkspaceMessengerReactionAggregate({ "   ": 1 })).toBe(false);
+    expect(isWorkspaceMessengerReactionAggregate({ thumbs_up: -1 })).toBe(false);
+    expect(isWorkspaceMessengerReactionAggregate({ thumbs_up: 1.2 })).toBe(false);
+    expect(isWorkspaceMessengerReactionAggregate({ thumbs_up: Number.POSITIVE_INFINITY })).toBe(
+      false,
+    );
+    expect(isWorkspaceMessengerReactionAggregate(["thumbs_up"])).toBe(false);
+    expect(isWorkspaceMessengerReactionAggregate(new Map([["thumbs_up", 1]]))).toBe(false);
+
+    expect(isWorkspaceMessengerMessageReactionDto(reactionDto)).toBe(true);
+    expect(isWorkspaceMessengerMessageReactionDto({ ...reactionDto, emoji_name: "" })).toBe(false);
+    expect(isWorkspaceMessengerMessageReactionDto({ ...reactionDto, user_uuid: 42 })).toBe(false);
   });
 
   it("accepts system folder payloads with folder item parent alias", () => {
@@ -450,6 +485,15 @@ describe("Workspace messenger DTO guards", () => {
       isWorkspaceMessengerMessageDto({
         ...messageDto,
         payload: { kind: "html", content: "<strong>no</strong>" },
+      }),
+    ).toBe(false);
+    expect(isWorkspaceMessengerMessageDto({ ...messageDto, reactions: undefined })).toBe(false);
+    expect(
+      isWorkspaceMessengerMessageDto({
+        ...messageDto,
+        reactions: {
+          thumbs_up: -1,
+        },
       }),
     ).toBe(false);
   });

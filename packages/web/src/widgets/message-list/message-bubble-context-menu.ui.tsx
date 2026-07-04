@@ -37,6 +37,7 @@ interface MessageReactionEmojiPickerProps {
   onOpenChange: (open: boolean) => void;
   onEmojiPick: MessageBubbleContextMenuProps["onEmojiPick"];
   customEmojis: MessageBubbleContextMenuProps["customEmojis"];
+  customEmojisSupported: boolean;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -90,6 +91,7 @@ const MessageReactionEmojiPicker = React.memo(function MessageReactionEmojiPicke
   onOpenChange,
   onEmojiPick,
   customEmojis,
+  customEmojisSupported,
 }: MessageReactionEmojiPickerProps) {
   const triggerRef = React.useRef<HTMLButtonElement>(null);
   const [pickerStyle, setPickerStyle] = React.useState<React.CSSProperties>({});
@@ -142,7 +144,7 @@ const MessageReactionEmojiPicker = React.memo(function MessageReactionEmojiPicke
             >
               <EmojiPicker
                 onEmojiClick={onEmojiPick}
-                customEmojis={customEmojis}
+                customEmojis={customEmojisSupported ? customEmojis : []}
                 emojiStyle={EmojiStyle.NATIVE}
                 theme={theme}
                 width="100%"
@@ -166,6 +168,7 @@ function useMessageMenuItems({
   onQuickReaction,
   onEmojiPick,
   customEmojis,
+  customEmojisSupported = true,
 }: Omit<
   MessageBubbleContextMenuProps,
   "open" | "source" | "contextAnchor" | "onOpenChange" | "isOwn" | "onSourceChange"
@@ -194,7 +197,8 @@ function useMessageMenuItems({
               open={emojiPickerOpen}
               onOpenChange={onEmojiPickerOpenChange}
               onEmojiPick={onEmojiPick}
-              customEmojis={customEmojis}
+              customEmojis={customEmojisSupported ? customEmojis : undefined}
+              customEmojisSupported={customEmojisSupported}
             />
           </div>
         ),
@@ -219,6 +223,7 @@ function useMessageMenuItems({
     return items;
   }, [
     customEmojis,
+    customEmojisSupported,
     emojiPickerOpen,
     onEmojiPick,
     onEmojiPickerOpenChange,
@@ -242,6 +247,7 @@ export const MessageBubbleContextMenu = React.memo(function MessageBubbleContext
   onQuickReaction,
   onEmojiPick,
   customEmojis,
+  customEmojisSupported = true,
 }: MessageBubbleContextMenuProps) {
   const menuItems = useMessageMenuItems({
     emojiPickerOpen,
@@ -251,6 +257,7 @@ export const MessageBubbleContextMenu = React.memo(function MessageBubbleContext
     onQuickReaction,
     onEmojiPick,
     customEmojis,
+    customEmojisSupported,
   });
   const triggerContentProps = React.useMemo<DropdownMenuContentProps>(
     () => ({

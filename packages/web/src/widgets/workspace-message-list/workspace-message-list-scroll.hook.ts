@@ -1,0 +1,769 @@
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  computeWorkspaceScrollTopAfterPrepend,
+  computeWorkspaceScrollTopFromAnchor,
+  findWorkspaceMessageNode,
+  isWorkspaceScrollAtBottom,
+  resolveVisibleWorkspaceMessageAnchor,
+  WORKSPACE_MESSAGE_UUID_ATTRIBUTE,
+  WORKSPACE_MESSAGE_UUID_SELECTOR,
+  type WorkspaceScrollAnchor,
+  type WorkspaceScrollSnapshot,
+} from "./workspace-message-list-scroll-anchor.lib";
+import type React from "react";
+
+const SCROLL_AT_BOTTOM_THRESHOLD = 80;
+const LOAD_MORE_THRESHOLD = 100;
+
+interface PendingPrependScrollSnapshot extends WorkspaceScrollSnapshot {
+  messageCount: number;
+  firstMessageKey: string | undefined;
+  anchor: WorkspaceScrollAnchor | null;
+}
+
+interface PendingSameMessagesScrollAnchor {
+  messageKeysKey: string;
+  scrollToBottomKey: string | undefined;
+  anchor: WorkspaceScrollAnchor | null;
+  wasAtBottom: boolean;
+}
+
+interface WorkspaceMessageListScrollOptions<TMessage> {
+  messages: readonly TMessage[];
+  getMessageKey: (message: TMessage) => string;
+  isUnreadFromOther: (message: TMessage) => boolean;
+  scrollToBottomKey?: string;
+  scrollToBottomAfterSendNonce?: number;
+  firstUnreadKey?: string;
+  unreadCount?: number;
+  focusedMessageKey?: string | null;
+  isLoadingOlder?: boolean;
+  isLoadingNewer?: boolean;
+  hasOlderMessages?: boolean;
+  hasNewerMessages?: boolean;
+  onLoadOlder?: () => void;
+  onLoadNewer?: () => void;
+  onUnreadMessagesVisible?: (messageKeys: string[]) => void;
+  onUnreadMessagesAtBottom?: (messageKeys: string[]) => void;
+}
+
+interface WorkspaceMessageListScrollResult {
+  scrollContainerRef: React.RefObject<HTMLDivElement | null>;
+  isAtBottom: boolean;
+  handleScroll: (event: React.UIEvent<HTMLDivElement>) => void;
+  handleWheel: (event: React.WheelEvent<HTMLDivElement>) => void;
+  handleTouchMove: () => void;
+}
+
+function scrollToBottom(root: HTMLElement): void {
+  root.scrollTop = root.scrollHeight;
+}
+
+function getOrderedKeys<TMessage>(
+  messages: readonly TMessage[],
+  getMessageKey: (message: TMessage) => string,
+): string[] {
+  return messages.map(getMessageKey);
+}
+
+function collectVisibleUnreadKeys(root: HTMLElement, unreadKeys: ReadonlySet<string>): string[] {
+  const rootRect = root.getBoundingClientRect();
+  const visibleKeys: string[] = [];
+
+  for (const node of root.querySelectorAll<HTMLElement>(WORKSPACE_MESSAGE_UUID_SELECTOR)) {
+    const messageKey = node.getAttribute(WORKSPACE_MESSAGE_UUID_ATTRIBUTE);
+
+    if (messageKey == null || !unreadKeys.has(messageKey)) {
+      continue;
+    }
+
+    const rect = node.getBoundingClientRect();
+
+    if (rect.bottom <= rootRect.top || rect.top >= rootRect.bottom) {
+      continue;
+    }
+
+    visibleKeys.push(messageKey);
+  }
+
+  return visibleKeys;
+}
+
+export function useWorkspaceMessageListScroll<TMessage>({
+  messages,
+  getMessageKey,
+  isUnreadFromOther,
+  scrollToBottomKey,
+  scrollToBottomAfterSendNonce = 0,
+  firstUnreadKey,
+  unreadCount = 0,
+  focusedMessageKey = null,
+  isLoadingOlder = false,
+  isLoadingNewer = false,
+  hasOlderMessages = false,
+  hasNewerMessages = false,
+  onLoadOlder,
+  onLoadNewer,
+  onUnreadMessagesVisible,
+  onUnreadMessagesAtBottom,
+}: WorkspaceMessageListScrollOptions<TMessage>): WorkspaceMessageListScrollResult {
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const pendingPrependScrollRef = useRef<PendingPrependScrollSnapshot | null>(null);
+  const pendingSameMessagesScrollAnchorRef = useRef<PendingSameMessagesScrollAnchor | null>(null);
+  const wasAtBottomRef = useRef(true);
+  const userScrollSeenRef = useRef(false);
+  const userScrolledAwayFromBottomRef = useRef(false);
+  const programmaticScrollRef = useRef(false);
+  const topPaginationArmedRef = useRef(true);
+  const previousFirstMessageKeyForTopPaginationRef = useRef<string | undefined>(undefined);
+  const pendingScrollToBottomKeyRef = useRef<string | null>(null);
+  const unreadScrollKeyRef = useRef<string | null>(null);
+  const bottomUnreadDispatchKeyRef = useRef<string | null>(null);
+  const observedUnreadNodesRef = useRef<Map<string, HTMLElement>>(new Map());
+  const viewportUnreadKeysRef = useRef<Set<string>>(new Set());
+  const intersectionObserverRef = useRef<IntersectionObserver | null>(null);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+
+  const messageKeys = useMemo(
+    () => getOrderedKeys(messages, getMessageKey),
+    [messages, getMessageKey],
+  );
+  const messageKeysKey = useMemo(() => messageKeys.join("\u0001"), [messageKeys]);
+  const messageCount = messageKeys.length;
+  const firstMessageKey = messageKeys[0];
+  const lastMessageKey = messageKeys[messageKeys.length - 1];
+  const messageOrderIndexByKey = useMemo(() => {
+    const result = new Map<string, number>();
+
+    messageKeys.forEach((messageKey, index) => {
+      result.set(messageKey, index);
+    });
+
+    return result;
+  }, [messageKeys]);
+  const unreadCandidateKeys = useMemo(() => {
+    const result = new Set<string>();
+
+    for (const message of messages) {
+      if (isUnreadFromOther(message)) {
+        result.add(getMessageKey(message));
+      }
+    }
+
+    return result;
+  }, [getMessageKey, isUnreadFromOther, messages]);
+
+  const syncAtBottomFromElement = useCallback((root: HTMLElement): boolean => {
+    const atBottom = isWorkspaceScrollAtBottom(root, SCROLL_AT_BOTTOM_THRESHOLD);
+
+    wasAtBottomRef.current = atBottom;
+    setIsAtBottom(atBottom);
+
+    return atBottom;
+  }, []);
+
+  const runProgrammaticScroll = useCallback((scrollAction: () => void) => {
+    programmaticScrollRef.current = true;
+    scrollAction();
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        programmaticScrollRef.current = false;
+      });
+    });
+  }, []);
+
+  const pinTailToBottom = useCallback(
+    (root: HTMLElement): void => {
+      runProgrammaticScroll(() => {
+        scrollToBottom(root);
+        syncAtBottomFromElement(root);
+      });
+
+      requestAnimationFrame(() => {
+        scrollToBottom(root);
+        syncAtBottomFromElement(root);
+      });
+    },
+    [runProgrammaticScroll, syncAtBottomFromElement],
+  );
+
+  const capturePrependScrollSnapshot = useCallback(
+    (root: HTMLElement): PendingPrependScrollSnapshot => ({
+      scrollTop: root.scrollTop,
+      scrollHeight: root.scrollHeight,
+      messageCount,
+      firstMessageKey,
+      anchor: resolveVisibleWorkspaceMessageAnchor(root),
+    }),
+    [firstMessageKey, messageCount],
+  );
+
+  const sortKeysByMessageOrder = useCallback(
+    (messageKeysToSort: readonly string[]): string[] => {
+      return [...messageKeysToSort].sort((firstKey, secondKey) => {
+        const firstIndex = messageOrderIndexByKey.get(firstKey) ?? Number.MAX_SAFE_INTEGER;
+        const secondIndex = messageOrderIndexByKey.get(secondKey) ?? Number.MAX_SAFE_INTEGER;
+
+        if (firstIndex !== secondIndex) {
+          return firstIndex - secondIndex;
+        }
+
+        return firstKey.localeCompare(secondKey);
+      });
+    },
+    [messageOrderIndexByKey],
+  );
+
+  const dispatchUnreadAtBottom = useCallback(() => {
+    if (!onUnreadMessagesVisible && !onUnreadMessagesAtBottom) {
+      return;
+    }
+
+    if (hasNewerMessages || isLoadingNewer) {
+      return;
+    }
+
+    const root = scrollContainerRef.current;
+
+    if (root == null) {
+      return;
+    }
+
+    const visibleKeys = collectVisibleUnreadKeys(root, unreadCandidateKeys);
+
+    if (visibleKeys.length === 0) {
+      return;
+    }
+
+    const orderedKeys = sortKeysByMessageOrder(visibleKeys);
+    const dispatchKey = `${scrollToBottomKey ?? "__default__"}:${orderedKeys.join(",")}`;
+
+    if (bottomUnreadDispatchKeyRef.current === dispatchKey) {
+      return;
+    }
+
+    bottomUnreadDispatchKeyRef.current = dispatchKey;
+    onUnreadMessagesVisible?.(orderedKeys);
+    onUnreadMessagesAtBottom?.(orderedKeys);
+  }, [
+    hasNewerMessages,
+    isLoadingNewer,
+    onUnreadMessagesAtBottom,
+    onUnreadMessagesVisible,
+    scrollToBottomKey,
+    sortKeysByMessageOrder,
+    unreadCandidateKeys,
+  ]);
+
+  const processIntersectionEntries = useCallback(
+    (entries: readonly IntersectionObserverEntry[]) => {
+      const visibleThisFrame: string[] = [];
+
+      for (const entry of entries) {
+        const element = entry.target as HTMLElement;
+        const messageKey = element.getAttribute(WORKSPACE_MESSAGE_UUID_ATTRIBUTE);
+
+        if (messageKey == null || !unreadCandidateKeys.has(messageKey)) {
+          continue;
+        }
+
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+          viewportUnreadKeysRef.current.add(messageKey);
+          visibleThisFrame.push(messageKey);
+        } else {
+          viewportUnreadKeysRef.current.delete(messageKey);
+        }
+      }
+
+      if (visibleThisFrame.length > 0) {
+        onUnreadMessagesVisible?.(sortKeysByMessageOrder(visibleThisFrame));
+      }
+    },
+    [onUnreadMessagesVisible, sortKeysByMessageOrder, unreadCandidateKeys],
+  );
+
+  useEffect(() => {
+    viewportUnreadKeysRef.current.clear();
+    bottomUnreadDispatchKeyRef.current = null;
+  }, [unreadCandidateKeys]);
+
+  useLayoutEffect(() => {
+    viewportUnreadKeysRef.current.clear();
+    bottomUnreadDispatchKeyRef.current = null;
+    userScrollSeenRef.current = false;
+    wasAtBottomRef.current = true;
+    userScrolledAwayFromBottomRef.current = false;
+    programmaticScrollRef.current = false;
+    pendingPrependScrollRef.current = null;
+    pendingSameMessagesScrollAnchorRef.current = null;
+    topPaginationArmedRef.current = true;
+    previousFirstMessageKeyForTopPaginationRef.current = undefined;
+    unreadScrollKeyRef.current = null;
+    setIsAtBottom(true);
+    pendingScrollToBottomKeyRef.current =
+      scrollToBottomKey != null && focusedMessageKey == null ? scrollToBottomKey : null;
+  }, [focusedMessageKey, scrollToBottomKey]);
+
+  useEffect(() => {
+    const previousFirstMessageKey = previousFirstMessageKeyForTopPaginationRef.current;
+
+    if (previousFirstMessageKey !== undefined && previousFirstMessageKey !== firstMessageKey) {
+      topPaginationArmedRef.current = true;
+    }
+
+    previousFirstMessageKeyForTopPaginationRef.current = firstMessageKey;
+  }, [firstMessageKey]);
+
+  useLayoutEffect(() => {
+    const pending = pendingSameMessagesScrollAnchorRef.current;
+    pendingSameMessagesScrollAnchorRef.current = null;
+
+    if (
+      pending?.messageKeysKey === messageKeysKey &&
+      pending.scrollToBottomKey === scrollToBottomKey &&
+      !pending.wasAtBottom &&
+      pending.anchor != null &&
+      pendingPrependScrollRef.current == null
+    ) {
+      const root = scrollContainerRef.current;
+      const nextScrollTop =
+        root == null ? null : computeWorkspaceScrollTopFromAnchor(root, pending.anchor);
+
+      if (root != null && nextScrollTop != null && Math.abs(root.scrollTop - nextScrollTop) >= 1) {
+        // Когда меняется высота уже видимого сообщения, DOM-узлы остаются теми же.
+        // Поэтому держим старый верхний видимый uuid и возвращаем его на прежнее
+        // расстояние от верха окна, вместо грубого скролла вниз.
+        runProgrammaticScroll(() => {
+          root.scrollTop = nextScrollTop;
+          syncAtBottomFromElement(root);
+        });
+      }
+    }
+
+    return () => {
+      const root = scrollContainerRef.current;
+
+      pendingSameMessagesScrollAnchorRef.current =
+        root == null
+          ? null
+          : {
+              messageKeysKey,
+              scrollToBottomKey,
+              anchor: resolveVisibleWorkspaceMessageAnchor(root),
+              wasAtBottom: wasAtBottomRef.current,
+            };
+    };
+  }, [messageKeysKey, messages, runProgrammaticScroll, scrollToBottomKey, syncAtBottomFromElement]);
+
+  useLayoutEffect(() => {
+    if (scrollToBottomAfterSendNonce === 0) {
+      return;
+    }
+
+    const root = scrollContainerRef.current;
+
+    if (root == null) {
+      return;
+    }
+
+    userScrollSeenRef.current = true;
+    userScrolledAwayFromBottomRef.current = false;
+    bottomUnreadDispatchKeyRef.current = null;
+    pinTailToBottom(root);
+    dispatchUnreadAtBottom();
+  }, [dispatchUnreadAtBottom, pinTailToBottom, scrollToBottomAfterSendNonce]);
+
+  useLayoutEffect(() => {
+    const root = scrollContainerRef.current;
+
+    if (root == null || messageCount === 0) {
+      return;
+    }
+
+    const pendingScrollToBottomKey = pendingScrollToBottomKeyRef.current;
+
+    if (
+      pendingScrollToBottomKey != null &&
+      scrollToBottomKey === pendingScrollToBottomKey &&
+      focusedMessageKey == null
+    ) {
+      pendingScrollToBottomKeyRef.current = null;
+
+      if (firstUnreadKey != null && unreadCount > 0) {
+        wasAtBottomRef.current = false;
+        setIsAtBottom(false);
+        return;
+      }
+
+      pinTailToBottom(root);
+      return;
+    }
+
+    if (focusedMessageKey != null || pendingPrependScrollRef.current != null) {
+      syncAtBottomFromElement(root);
+      return;
+    }
+
+    if (wasAtBottomRef.current && !userScrolledAwayFromBottomRef.current) {
+      // Append внизу должен ощущаться как продолжение живого диалога.
+      // Если пользователь уже ушел читать историю выше, этот флаг будет false
+      // и новые сообщения не отберут у него текущую позицию.
+      pinTailToBottom(root);
+      return;
+    }
+
+    syncAtBottomFromElement(root);
+  }, [
+    firstUnreadKey,
+    focusedMessageKey,
+    lastMessageKey,
+    messageCount,
+    pinTailToBottom,
+    scrollToBottomKey,
+    syncAtBottomFromElement,
+    unreadCount,
+  ]);
+
+  useLayoutEffect(() => {
+    const pending = pendingPrependScrollRef.current;
+
+    if (pending == null) {
+      return;
+    }
+
+    const root = scrollContainerRef.current;
+
+    if (root == null) {
+      return;
+    }
+
+    if (messageCount < pending.messageCount) {
+      pendingPrependScrollRef.current = null;
+      return;
+    }
+
+    if (firstMessageKey === pending.firstMessageKey) {
+      if (isLoadingOlder) {
+        return;
+      }
+
+      pendingPrependScrollRef.current = null;
+      return;
+    }
+
+    const snapshot = {
+      scrollTop: pending.scrollTop,
+      scrollHeight: pending.scrollHeight,
+    };
+    const anchorScrollTop =
+      pending.anchor == null ? null : computeWorkspaceScrollTopFromAnchor(root, pending.anchor);
+    const nextScrollTop =
+      anchorScrollTop ?? computeWorkspaceScrollTopAfterPrepend(snapshot, root.scrollHeight);
+
+    // Это ключевая часть prepend: после вставки истории сверху браузер оставляет
+    // прежний scrollTop, из-за чего видимое сообщение прыгает вниз. Мы возвращаем
+    // тот же uuid на тот же отступ от верха, а если узел исчез - используем дельту
+    // scrollHeight как запасной расчет.
+    runProgrammaticScroll(() => {
+      root.scrollTop = nextScrollTop;
+      syncAtBottomFromElement(root);
+    });
+    pendingPrependScrollRef.current = null;
+  }, [
+    firstMessageKey,
+    isLoadingOlder,
+    messageCount,
+    runProgrammaticScroll,
+    syncAtBottomFromElement,
+  ]);
+
+  useLayoutEffect(() => {
+    if (focusedMessageKey == null) {
+      return;
+    }
+
+    const root = scrollContainerRef.current;
+    const target = root == null ? null : findWorkspaceMessageNode(root, focusedMessageKey);
+
+    if (root == null || target == null || typeof target.scrollIntoView !== "function") {
+      return;
+    }
+
+    runProgrammaticScroll(() => {
+      target.scrollIntoView({ block: "center", behavior: "instant" });
+      syncAtBottomFromElement(root);
+    });
+  }, [focusedMessageKey, messageCount, runProgrammaticScroll, syncAtBottomFromElement]);
+
+  useLayoutEffect(() => {
+    if (focusedMessageKey != null || firstUnreadKey == null || unreadCount === 0) {
+      return;
+    }
+
+    const root = scrollContainerRef.current;
+
+    if (root == null) {
+      return;
+    }
+
+    const unreadScrollKey = scrollToBottomKey ?? "__default__";
+
+    if (unreadScrollKeyRef.current === unreadScrollKey) {
+      return;
+    }
+
+    const target = findWorkspaceMessageNode(root, firstUnreadKey);
+
+    if (target == null || typeof target.scrollIntoView !== "function") {
+      return;
+    }
+
+    runProgrammaticScroll(() => {
+      target.scrollIntoView({ block: "center", behavior: "instant" });
+      wasAtBottomRef.current = false;
+      setIsAtBottom(false);
+    });
+    unreadScrollKeyRef.current = unreadScrollKey;
+  }, [
+    firstUnreadKey,
+    focusedMessageKey,
+    messageCount,
+    runProgrammaticScroll,
+    scrollToBottomKey,
+    unreadCount,
+  ]);
+
+  useLayoutEffect(() => {
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const root = scrollContainerRef.current;
+
+    if (root == null) {
+      return;
+    }
+
+    let previousClientHeight = root.clientHeight;
+    const observer = new ResizeObserver(() => {
+      const nextClientHeight = root.clientHeight;
+
+      if (nextClientHeight === previousClientHeight) {
+        return;
+      }
+
+      previousClientHeight = nextClientHeight;
+
+      if (wasAtBottomRef.current && !userScrolledAwayFromBottomRef.current) {
+        pinTailToBottom(root);
+        return;
+      }
+
+      syncAtBottomFromElement(root);
+    });
+
+    observer.observe(root);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [pinTailToBottom, syncAtBottomFromElement]);
+
+  useEffect(() => {
+    if (typeof IntersectionObserver === "undefined") {
+      return;
+    }
+
+    const root = scrollContainerRef.current;
+
+    if (root == null || unreadCandidateKeys.size === 0) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        processIntersectionEntries(entries);
+      },
+      {
+        root,
+        threshold: [0.5],
+      },
+    );
+    const previousObservedNodes = observedUnreadNodesRef.current;
+    const nextObservedNodes = new Map<string, HTMLElement>();
+
+    for (const node of root.querySelectorAll<HTMLElement>(WORKSPACE_MESSAGE_UUID_SELECTOR)) {
+      const messageKey = node.getAttribute(WORKSPACE_MESSAGE_UUID_ATTRIBUTE);
+
+      if (messageKey == null || !unreadCandidateKeys.has(messageKey)) {
+        continue;
+      }
+
+      nextObservedNodes.set(messageKey, node);
+    }
+
+    for (const [messageKey, node] of previousObservedNodes) {
+      if (!nextObservedNodes.has(messageKey)) {
+        observer.unobserve(node);
+      }
+    }
+
+    for (const [messageKey, node] of nextObservedNodes) {
+      if (!previousObservedNodes.has(messageKey)) {
+        observer.observe(node);
+      }
+    }
+
+    observedUnreadNodesRef.current = nextObservedNodes;
+    intersectionObserverRef.current = observer;
+
+    const frameId = requestAnimationFrame(() => {
+      const pendingEntries = observer.takeRecords();
+
+      if (pendingEntries.length > 0) {
+        processIntersectionEntries(pendingEntries);
+      }
+
+      if (wasAtBottomRef.current) {
+        dispatchUnreadAtBottom();
+      }
+    });
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      observer.disconnect();
+      observedUnreadNodesRef.current.clear();
+
+      if (intersectionObserverRef.current === observer) {
+        intersectionObserverRef.current = null;
+      }
+    };
+  }, [dispatchUnreadAtBottom, processIntersectionEntries, unreadCandidateKeys]);
+
+  useEffect(() => {
+    const root = scrollContainerRef.current;
+
+    if (root == null) {
+      return;
+    }
+
+    const atBottom = syncAtBottomFromElement(root);
+
+    if (atBottom) {
+      dispatchUnreadAtBottom();
+    }
+  }, [dispatchUnreadAtBottom, messageCount, syncAtBottomFromElement]);
+
+  const handleScroll = useCallback(
+    (event: React.UIEvent<HTMLDivElement>) => {
+      const root = scrollContainerRef.current;
+
+      if (root == null) {
+        return;
+      }
+
+      const isTrustedUserScroll = event.nativeEvent.isTrusted && !programmaticScrollRef.current;
+
+      if (isTrustedUserScroll) {
+        userScrollSeenRef.current = true;
+      }
+
+      const atBottom = syncAtBottomFromElement(root);
+
+      if (isTrustedUserScroll) {
+        userScrolledAwayFromBottomRef.current = !atBottom;
+      }
+
+      if (root.scrollTop >= LOAD_MORE_THRESHOLD) {
+        topPaginationArmedRef.current = true;
+      }
+
+      if (
+        userScrollSeenRef.current &&
+        !programmaticScrollRef.current &&
+        isLoadingOlder &&
+        pendingPrependScrollRef.current != null
+      ) {
+        pendingPrependScrollRef.current = capturePrependScrollSnapshot(root);
+      }
+
+      if (
+        userScrollSeenRef.current &&
+        !programmaticScrollRef.current &&
+        hasOlderMessages &&
+        !isLoadingOlder &&
+        onLoadOlder != null &&
+        topPaginationArmedRef.current &&
+        root.scrollTop <= LOAD_MORE_THRESHOLD
+      ) {
+        pendingPrependScrollRef.current = capturePrependScrollSnapshot(root);
+        topPaginationArmedRef.current = false;
+        onLoadOlder();
+      }
+
+      if (
+        userScrollSeenRef.current &&
+        !programmaticScrollRef.current &&
+        atBottom &&
+        hasNewerMessages &&
+        !isLoadingNewer &&
+        onLoadNewer != null
+      ) {
+        onLoadNewer();
+      }
+
+      if (!atBottom) {
+        bottomUnreadDispatchKeyRef.current = null;
+      } else {
+        dispatchUnreadAtBottom();
+      }
+    },
+    [
+      capturePrependScrollSnapshot,
+      dispatchUnreadAtBottom,
+      hasNewerMessages,
+      hasOlderMessages,
+      isLoadingNewer,
+      isLoadingOlder,
+      onLoadNewer,
+      onLoadOlder,
+      syncAtBottomFromElement,
+    ],
+  );
+
+  const handleWheel = useCallback(
+    (event: React.WheelEvent<HTMLDivElement>) => {
+      userScrollSeenRef.current = true;
+
+      if (event.deltaY < 0) {
+        userScrolledAwayFromBottomRef.current = true;
+        wasAtBottomRef.current = false;
+        setIsAtBottom(false);
+        return;
+      }
+
+      const root = scrollContainerRef.current;
+
+      if (root == null) {
+        return;
+      }
+
+      const atBottom = syncAtBottomFromElement(root);
+      userScrolledAwayFromBottomRef.current = !atBottom;
+    },
+    [syncAtBottomFromElement],
+  );
+
+  const handleTouchMove = useCallback(() => {
+    userScrollSeenRef.current = true;
+  }, []);
+
+  return {
+    scrollContainerRef,
+    isAtBottom,
+    handleScroll,
+    handleWheel,
+    handleTouchMove,
+  };
+}

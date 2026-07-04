@@ -5,7 +5,15 @@ import type {
   Reaction,
   RealmEmoji,
 } from "~/shared/api/zulip.types";
+import type { WorkspaceGroupedReaction } from "./message-bubble-emoji.lib";
 import type { MessageMediaGallery } from "./message-list-media.lib";
+
+// Узкое расширение старого сообщения для Workspace route. Поле хранит готовые
+// grouped chips и не меняет Zulip reactions-массив, который остается только для
+// legacy-пути.
+export type MessageBubbleMessage = MockMessage & {
+  workspaceReactionGroups?: WorkspaceGroupedReaction[];
+};
 
 /** Download chip state for user-upload attachment links in the bubble. */
 export type MessageBubbleAttachmentDownloadStatus = "idle" | "downloading" | "downloaded" | "error";
@@ -13,36 +21,39 @@ export type MessageBubbleAttachmentDownloadStatus = "idle" | "downloading" | "do
 export type MessageBubbleOwnDeliveryStatus = MockMessageDeliveryStatus | "sent";
 
 export interface MessageBubbleCallbacks {
-  onReply?: (message: MockMessage, selectedText?: string) => void;
-  onEdit?: (message: MockMessage) => void;
-  onDelete?: (message: MockMessage) => void;
-  onCopy?: (message: MockMessage) => void;
-  onForward?: (message: MockMessage, selectedText?: string) => void;
-  onStar?: (message: MockMessage) => void;
-  onSelect?: (message: MockMessage) => void;
-  onToggleSelect?: (message: MockMessage) => void;
+  onReply?: (message: MessageBubbleMessage, selectedText?: string) => void;
+  onEdit?: (message: MessageBubbleMessage) => void;
+  onDelete?: (message: MessageBubbleMessage) => void;
+  onCopy?: (message: MessageBubbleMessage) => void;
+  onForward?: (message: MessageBubbleMessage, selectedText?: string) => void;
+  onStar?: (message: MessageBubbleMessage) => void;
+  onSelect?: (message: MessageBubbleMessage) => void;
+  onToggleSelect?: (message: MessageBubbleMessage) => void;
   onAddReaction?: (messageId: number, payload: MessageReactionPayload) => void;
   onRemoveReaction?: (messageId: number, payload: MessageReactionPayload) => void;
+  // Safe toggle нужен Workspace chips: UI aggregate может быть свежее или
+  // старее own projection, поэтому решение add/remove принимает action layer.
+  onToggleReaction?: (messageId: number, payload: MessageReactionPayload) => void;
   onOpenJitsiCall?: (url: string, locationName?: string) => void;
-  onViews?: (message: MockMessage) => void;
-  onOpenInChat?: (message: MockMessage) => void;
+  onViews?: (message: MessageBubbleMessage) => void;
+  onOpenInChat?: (message: MessageBubbleMessage) => void;
   /** Intercepts anchor clicks inside message body. Return true when handled by app navigation. */
   onPermalinkClick?: (href: string) => boolean;
   onAuthorClick?: (userId: number) => void;
   onOpenDirectMessage?: (userId: number) => void;
   onOpenDirectMessageByUuid?: (userUuid: string) => void;
   /** Resend a failed optimistic outgoing message (negative id, delivery failed). */
-  onRetryFailedOutgoing?: (message: MockMessage) => void;
+  onRetryFailedOutgoing?: (message: MessageBubbleMessage) => void;
   /** Drop a failed optimistic outgoing message from the list. */
-  onRemoveFailedOutgoing?: (message: MockMessage) => void;
+  onRemoveFailedOutgoing?: (message: MessageBubbleMessage) => void;
   /** Retry a failed optimistic edit for an existing message. */
-  onRetryFailedEdit?: (message: MockMessage) => void;
+  onRetryFailedEdit?: (message: MessageBubbleMessage) => void;
   /** Revert a failed optimistic edit back to the previous message body. */
-  onCancelFailedEdit?: (message: MockMessage) => void;
+  onCancelFailedEdit?: (message: MessageBubbleMessage) => void;
 }
 
 export interface MessageBubbleProps {
-  message: MockMessage;
+  message: MessageBubbleMessage;
   isOwn?: boolean;
   /** Show avatar (for a standalone message; in a group the avatar is rendered by the outer block). */
   showAvatar?: boolean;
@@ -59,6 +70,7 @@ export interface MessageBubbleProps {
   mediaGallery?: MessageMediaGallery;
   customEmojis?: RealmEmoji[];
   onEmojiPickerOpen?: () => void;
+  customEmojisSupported?: boolean;
   resolveCustomEmojiImageUrl?: (reaction: Reaction) => string | undefined;
   resolveCustomEmojiShortcodeImageUrl?: (shortcode: string) => string | undefined;
   callbacks?: MessageBubbleCallbacks;

@@ -34,6 +34,8 @@ function createMessage(overrides: Partial<MessengerMessage> = {}): MessengerMess
     pinned: false,
     starred: false,
     isOwn: false,
+    reactions: {},
+    ownReactionUuidsByEmojiName: {},
     createdAt: "2026-06-30T10:00:00.000Z",
     updatedAt: "2026-06-30T10:00:00.000Z",
     ...overrides,
@@ -107,5 +109,39 @@ describe("buildWorkspaceChatMessageListViewModel", () => {
 
     expect(viewModel.unreadCount).toBe(0);
     expect(viewModel.firstUnreadId).toBeUndefined();
+  });
+
+  it("adds native Workspace reaction groups without fake Zulip reactions", () => {
+    const viewModel = buildWorkspaceChatMessageListViewModel({
+      messages: [
+        createMessage({
+          reactions: { thumbs_up: 2, unknown_team_emoji: 1 },
+          ownReactionUuidsByEmojiName: {
+            thumbs_up: "66666666-6666-4666-8666-666666666666",
+          },
+        }),
+      ],
+      usersById: { [USER_UUID]: createUser() },
+      conversation: createConversation(),
+      streamName: "general",
+    });
+
+    expect(viewModel.messages[0]?.reactions).toBeUndefined();
+    expect(viewModel.messages[0]?.workspaceReactionGroups).toEqual([
+      {
+        key: "workspace:thumbs_up",
+        emojiName: "thumbs_up",
+        count: 2,
+        reactedByMe: true,
+        displayChar: "👍",
+      },
+      {
+        key: "workspace:unknown_team_emoji",
+        emojiName: "unknown_team_emoji",
+        count: 1,
+        reactedByMe: false,
+        displayChar: ":unknown_team_emoji:",
+      },
+    ]);
   });
 });

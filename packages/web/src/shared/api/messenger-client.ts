@@ -1,5 +1,6 @@
 import {
   MessengerApiError,
+  messengerDeleteJson,
   messengerGetJson,
   messengerPostJson,
   messengerPublicGetJson,
@@ -16,6 +17,7 @@ import {
   isWorkspaceMessengerFolderDto,
   isWorkspaceMessengerFolderItemDto,
   isWorkspaceMessengerMessageDto,
+  isWorkspaceMessengerMessageReactionDto,
   isWorkspaceMessengerServerSettingsDto,
   isWorkspaceMessengerStreamDto,
   isWorkspaceMessengerTopicDto,
@@ -33,7 +35,9 @@ import type {
   WorkspaceMessengerEventDto,
   WorkspaceMessengerFolderDto,
   WorkspaceMessengerFolderItemDto,
+  WorkspaceMessengerCreateMessageReactionRequestBody,
   WorkspaceMessengerMessageDto,
+  WorkspaceMessengerMessageReactionDto,
   WorkspaceMessengerServerSettingsDto,
   WorkspaceMessengerStreamDto,
   WorkspaceMessengerTopicDto,
@@ -52,6 +56,14 @@ export interface GetStreamTopicsQuery extends MessengerPaginationQuery {
 export interface GetMessagesQuery extends MessengerPaginationQuery {
   streamUuid?: string;
   topicUuid?: string;
+}
+
+// Фильтр reaction rows оставляет messageUuid обязательным.
+// userUuid нужен для узкой загрузки собственных реакций, чтобы слой выше мог удалить
+// реакцию по ее uuid без подмешивания Zulip-полей или фальшивых пользователей.
+export interface GetMessageReactionsQuery {
+  messageUuid: string;
+  userUuid?: string;
 }
 
 export interface GetFolderItemsQuery extends MessengerPaginationQuery {
@@ -214,6 +226,47 @@ export async function getMessagesPage(
     items: parseStrictDtoList(data, isWorkspaceMessengerMessageDto, "messenger messages response"),
     ...parsePaginationHeaders(headers),
   };
+}
+
+// Reaction wrappers возвращают только Workspace DTO.
+// В них нет UI-заглушек и старых Zulip payload-полей: backend сам определяет пользователя
+// из bearer-сессии, а frontend передает только message_uuid и emoji_name.
+export async function getMessageReactions(
+  options: MessengerClientOptions,
+  query: GetMessageReactionsQuery,
+): Promise<WorkspaceMessengerMessageReactionDto[]> {
+  const data = await messengerGetJson(
+    "/message_reactions/",
+    options,
+    projectScopedParams(options, {
+      message_uuid: query.messageUuid,
+      user_uuid: query.userUuid,
+    }),
+  );
+  return parseStrictDtoList(
+    data,
+    isWorkspaceMessengerMessageReactionDto,
+    "messenger message reactions response",
+  );
+}
+
+export async function createMessageReaction(
+  options: MessengerClientOptions,
+  body: WorkspaceMessengerCreateMessageReactionRequestBody,
+): Promise<WorkspaceMessengerMessageReactionDto> {
+  const data = await messengerPostJson("/message_reactions/", options, body);
+  return parseDto(
+    data,
+    isWorkspaceMessengerMessageReactionDto,
+    "messenger message reaction response",
+  );
+}
+
+export async function deleteMessageReaction(
+  options: MessengerClientOptions,
+  reactionUuid: string,
+): Promise<void> {
+  await messengerDeleteJson(`/message_reactions/${reactionUuid}`, options);
 }
 
 export async function getFolders(

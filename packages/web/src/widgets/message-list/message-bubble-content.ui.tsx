@@ -9,19 +9,21 @@ import { MessageBubbleMeta } from "./message-bubble-meta.ui";
 import { MessageBubbleOwnDeliveryIndicator } from "./message-bubble-own-delivery-indicator.ui";
 import { MessageBubbleReactionsRow } from "./message-bubble-reactions-row.ui";
 import { MessageLinkPreview } from "./message-link-preview.ui";
-import type { GroupedReaction } from "./message-bubble-emoji.lib";
+import type { GroupedReaction, WorkspaceGroupedReaction } from "./message-bubble-emoji.lib";
 import type {
+  MessageBubbleMessage,
   MessageBubbleCallbacks,
   MessageBubbleOwnDeliveryStatus,
 } from "./message-bubble.types";
 import type { MessageLinkPreviewViewItem } from "./message-link-preview.hook";
 
 interface MessageBubbleStandardBodyProps {
-  message: MockMessage;
+  message: MessageBubbleMessage;
   isOwn: boolean;
   time: string;
   hasReactions: boolean;
   reactionGroups: GroupedReaction[];
+  workspaceReactionGroups?: WorkspaceGroupedReaction[];
   currentUserId: number | undefined;
   resolveReactionAuthorLabel: (userId: number) => string;
   callbacks: MessageBubbleCallbacks | undefined;
@@ -43,6 +45,7 @@ export const MessageBubbleStandardBody = React.memo<MessageBubbleStandardBodyPro
     time,
     hasReactions,
     reactionGroups,
+    workspaceReactionGroups,
     currentUserId,
     resolveReactionAuthorLabel,
     callbacks,
@@ -147,6 +150,7 @@ export const MessageBubbleStandardBody = React.memo<MessageBubbleStandardBodyPro
                   isOwn={isOwn}
                   currentUserId={currentUserId}
                   reactionGroups={reactionGroups}
+                  workspaceReactionGroups={workspaceReactionGroups}
                   resolveReactionAuthorLabel={resolveReactionAuthorLabel}
                   callbacks={callbacks}
                 />

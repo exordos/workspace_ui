@@ -82,6 +82,14 @@ export interface MessengerRealtimeActiveCacheWriter {
 export interface MessengerRealtimeActiveApplierOptions {
   isOwnerCurrent?: (owner: WorkspaceRealtimeRuntimeOwner) => boolean;
   cache?: MessengerRealtimeActiveCacheWriter;
+  // message.updated приносит только новый aggregate счетчиков, но не reactionUuid
+  // текущего пользователя. Этот hook оставляет точку подключения для SWR-слоя:
+  // он сможет перечитать own reaction rows без того, чтобы realtime applier знал
+  // про API/cache orchestration.
+  onMessageReactionAggregateUpdated?: (
+    ownerKey: string,
+    message: MessengerMessage,
+  ) => void | Promise<void>;
 }
 
 export interface MessengerRealtimeBackgroundApplierOptions {
@@ -159,6 +167,16 @@ function conversationIdsForDeletedRealtimeMessage(
     conversationIdForStream(message.streamUuid),
     conversationIdForTopic(message.streamUuid, message.topicUuid),
   ];
+}
+
+function areReactionAggregatesEqual(
+  left: MessengerMessage["reactions"],
+  right: MessengerMessage["reactions"],
+): boolean {
+  const leftEntries = Object.entries(left);
+  if (leftEntries.length !== Object.keys(right).length) return false;
+
+  return leftEntries.every(([emojiName, count]) => right[emojiName] === count);
 }
 
 function writeRealtimeCacheBestEffort(write: () => Promise<void> | void): void {
@@ -245,6 +263,7 @@ function applyMessageRealtimeEvent(
   event: MessengerMessageRealtimeEvent,
   ownerKey: string,
   activeCache: MessengerRealtimeActiveCacheWriter,
+  options: MessengerRealtimeActiveApplierOptions,
 ): void {
   const store = useMessengerStore.getState();
   const messageStore = useWorkspaceMessageStore.getState();
@@ -266,11 +285,21 @@ function applyMessageRealtimeEvent(
   }
 
   const message = adaptMessengerMessage(event.message);
+  const previousMessage = messageStore.messagesById[message.uuid];
   messageStore.upsertMessage(message);
   store.applyMessagePointer(ownerKey, message);
   if (event.kind === "message.updated") {
     if (activeCache.patchCachedMessage != null) {
       writeRealtimeCacheBestEffort(() => activeCache.patchCachedMessage?.(ownerKey, message));
+    }
+    if (
+      previousMessage != null &&
+      !areReactionAggregatesEqual(previousMessage.reactions, message.reactions) &&
+      options.onMessageReactionAggregateUpdated != null
+    ) {
+      writeRealtimeCacheBestEffort(() =>
+        options.onMessageReactionAggregateUpdated?.(ownerKey, message),
+      );
     }
     return;
   }
@@ -397,10 +426,11 @@ function applySupportedRealtimeEvent(
   event: MessengerRealtimeEvent,
   ownerKey: string,
   activeCache: MessengerRealtimeActiveCacheWriter,
+  options: MessengerRealtimeActiveApplierOptions,
 ): void {
   switch (event.type) {
     case "message":
-      applyMessageRealtimeEvent(event, ownerKey, activeCache);
+      applyMessageRealtimeEvent(event, ownerKey, activeCache, options);
       break;
     case "stream":
       applyStreamRealtimeEvent(event, ownerKey, activeCache);
@@ -441,7 +471,7 @@ export function createMessengerRealtimeActiveApplier(
         return;
       }
 
-      applySupportedRealtimeEvent(event, context.ownerKey, activeCache);
+      applySupportedRealtimeEvent(event, context.ownerKey, activeCache, options);
 
       store.setRealtimeCursor(context.ownerKey, event.epoch_version);
       writeRealtimeCursorCache(activeCache, context.ownerKey, event.epoch_version);

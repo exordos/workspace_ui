@@ -95,6 +95,9 @@ const messageDto: WorkspaceMessengerMessageDto = {
   pinned: false,
   starred: true,
   is_own: false,
+  reactions: {
+    thumbs_up: 2,
+  },
   created_at: DATE,
   updated_at: DATE,
 };

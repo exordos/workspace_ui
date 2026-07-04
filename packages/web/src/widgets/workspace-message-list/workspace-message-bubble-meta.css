@@ -1,0 +1,7 @@
+.workspace-message-bubble-inline-text::after {
+  content: "";
+  display: inline-block;
+  width: calc(var(--workspace-message-bubble-meta-width, 0px) + 0.5rem);
+  height: var(--workspace-message-bubble-meta-height, 1rem);
+  vertical-align: baseline;
+}

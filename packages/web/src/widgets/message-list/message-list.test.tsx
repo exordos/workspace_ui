@@ -354,6 +354,23 @@ describe("MessageList focused message behavior", () => {
     });
   });
 
+  it("does not load realm custom emojis when custom emoji UI is disabled", async () => {
+    render(
+      <MessageList
+        customEmojisSupported={false}
+        messages={[
+          msg(1, {
+            content: "Hi :party_parrot:",
+          }),
+        ]}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(fetchRealmEmojisMock).not.toHaveBeenCalled();
+    });
+  });
+
   it("loads realm custom emojis and renders reaction image when message has realm_emoji reaction", async () => {
     const realmEmoji = {
       id: "9001",

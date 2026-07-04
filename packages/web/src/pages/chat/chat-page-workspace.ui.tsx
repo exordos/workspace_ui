@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import {
   selectWorkspaceMessagesForConversation,
   selectWorkspaceMessageById,
@@ -7,7 +7,6 @@ import {
   useWorkspaceMessageStore,
 } from "~/entities/message/message.model";
 import { selectWorkspaceChatHeaderView } from "~/entities/messenger/messenger-chat-header.lib";
-import { createWorkspaceDirectStream } from "~/entities/messenger/messenger-create-chat-actions.lib";
 import { selectMessengerConversationFromWorkspaceRoute } from "~/entities/messenger/messenger-ids.lib";
 import {
   deleteMessengerMessage,
@@ -15,10 +14,12 @@ import {
   markMessengerMessageRead,
   sendMessengerMessage,
 } from "~/entities/messenger/messenger-message-actions.lib";
+import { toggleMessengerMessageReaction } from "~/entities/messenger/messenger-message-reactions-actions.lib";
 import { loadMessengerConversationMessages } from "~/entities/messenger/messenger-messages-loader.lib";
 import { useMessengerStreamBindingsForRoute } from "~/entities/messenger/messenger-stream-bindings-loader.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerMessage, MessengerTopic } from "~/entities/messenger/messenger.types";
+import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { UsersById } from "~/entities/user/user.types";
 import {
@@ -26,43 +27,21 @@ import {
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { t } from "~/i18n/i18n";
-import type { MockMessage } from "~/shared/api/zulip.types";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
-import {
-  workspaceMessengerStreamRoute,
-  type WorkspaceMessengerRouteMatch,
-} from "~/shared/lib/workspace-messenger-route.lib";
-import { AppDialogShell, APP_DIALOG_CONTENT_BASE_CLASS } from "~/shared/ui/app-dialog.ui";
+import type { WorkspaceMessengerRouteMatch } from "~/shared/lib/workspace-messenger-route.lib";
 import type { ChatHeaderProps } from "~/widgets/chat-view/chat-header.types";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import type {
   ComposerEditSession,
   MessageComposerCapabilities,
 } from "~/widgets/message-composer/message-composer.types";
-import type { MessageListCallbacks } from "~/widgets/message-list/message-list.types";
-import {
-  buildForwardQuote,
-  consumePendingForwardPrefill,
-  mergeForwardDraftContent,
-  resolveForwardTargetRoute,
-  setPendingForwardPrefill,
-} from "./chat-forward.lib";
+import { consumePendingForwardPrefill } from "./chat-forward.lib";
 import { ChatPageComposerSection } from "./chat-page-composer-section.ui";
-import { ForwardMessageModalBody } from "./chat-page-forward-modal.ui";
+import { ChatPageDeleteConfirmBar } from "./chat-page-delete-confirm-bar.ui";
 import { ChatPageInlineAlerts } from "./chat-page-inline-alerts.ui";
-import { ChatPageMessageListSection } from "./chat-page-message-list-section.ui";
-import {
-  buildWorkspaceChatMessageListViewModel,
-  findWorkspaceMessageUuidByVisualId,
-  workspaceChatVisualMessageId,
-} from "./chat-page-workspace-message.adapter";
-import type { ChatMessagesLoadErrorKind } from "./chat-page-message-list-section.types";
-import type {
-  ForwardMessageTarget,
-  ForwardWorkspaceStreamOption,
-  ForwardWorkspaceTopicOption,
-} from "./chat-page.types";
+import { ChatPageWorkspaceMessageListSection } from "./chat-page-workspace-message-list-section.ui";
+import type { WorkspaceChatMessagesLoadErrorKind } from "./chat-page-workspace-message-list-section.types";
 
 interface WorkspaceChatPageProps {
   route: WorkspaceMessengerRouteMatch | null;
@@ -70,9 +49,8 @@ interface WorkspaceChatPageProps {
 
 const EMPTY_MESSAGES: MessengerMessage[] = [];
 const EMPTY_USERS_BY_ID: UsersById = {};
-const EMPTY_SELECTED_MESSAGE_IDS = new Set<number>();
 const READ_BATCH_DELAY_MS = 250;
-const FORWARD_DIALOG_CONTENT_CLASS = `${APP_DIALOG_CONTENT_BASE_CLASS} top-1/2 max-w-lg -translate-y-1/2 overflow-hidden p-0`;
+const WORKSPACE_COMPOSER_EDIT_SESSION_ID = 1;
 
 const noop = () => undefined;
 
@@ -112,21 +90,18 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   // This page is not a new chat layout: it assembles old sections and swaps only the data source.
   useMessengerStreamBindingsForRoute({ route });
   const location = useLocation();
-  const navigate = useNavigate();
   const openSearch = useOpenSearch();
   const rightDrawer = useRightDrawer();
   const [retryNonce, setRetryNonce] = useState(0);
   const [sendError, setSendError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [composerEditSession, setComposerEditSession] = useState<ComposerEditSession | null>(null);
+  const [composerEditMessageUuid, setComposerEditMessageUuid] = useState<string | null>(null);
+  const [pendingDeleteMessageUuid, setPendingDeleteMessageUuid] = useState<string | null>(null);
   const [draftInitialValue, setDraftInitialValue] = useState<string | undefined>(undefined);
-  const [forwardDraft, setForwardDraft] = useState<{
-    messages: MockMessage[];
-    selectedText: string | undefined;
-  } | null>(null);
   const [scrollToBottomAfterSendNonce, setScrollToBottomAfterSendNonce] = useState(0);
   const composerValueRef = useRef("");
-  const pendingReadVisualIdsRef = useRef<Set<number>>(new Set());
+  const pendingReadMessageUuidsRef = useRef<Set<string>>(new Set());
   const readRequestedMessageUuidsRef = useRef<Set<string>>(new Set());
   const readBatchTimerRef = useRef<number | null>(null);
   const actionAbortControllersRef = useRef<Set<AbortController>>(new Set());
@@ -165,38 +140,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   );
   const topicsById = useMessengerStore((state) => state.topicsById);
   const streamsById = useMessengerStore((state) => state.streamsById);
-  const streamIds = useMessengerStore((state) => state.streamIds);
-  const topicIds = useMessengerStore((state) => state.topicIds);
   const streamBindingsById = useMessengerStore((state) => state.streamBindingsById);
   const streamBindingIdsByStreamId = useMessengerStore((state) => state.streamBindingIdsByStreamId);
   const conversationsById = useMessengerStore((state) => state.conversationsById);
-  const forwardStreamOptions = useMemo<ForwardWorkspaceStreamOption[]>(
-    () =>
-      streamIds
-        .map((id) => streamsById[id])
-        .filter((candidate): candidate is NonNullable<typeof candidate> => {
-          return candidate?.audience === "channel" && !candidate.isArchived;
-        })
-        .map((candidate) => ({
-          streamUuid: candidate.uuid,
-          name: candidate.name,
-        }))
-        .sort((left, right) => left.name.localeCompare(right.name)),
-    [streamIds, streamsById],
-  );
-  const forwardTopicOptions = useMemo<ForwardWorkspaceTopicOption[]>(
-    () =>
-      topicIds
-        .map((id) => topicsById[id])
-        .filter((candidate): candidate is MessengerTopic => candidate != null && !candidate.isDone)
-        .map((candidate) => ({
-          streamUuid: candidate.streamUuid,
-          topicUuid: candidate.uuid,
-          name: candidate.name,
-        }))
-        .sort((left, right) => left.name.localeCompare(right.name)),
-    [topicIds, topicsById],
-  );
   const headerView = useMemo(
     () =>
       selectWorkspaceChatHeaderView(
@@ -243,6 +189,14 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     };
   }, [headerView]);
   const retry = useCallback(() => setRetryNonce((value) => value + 1), []);
+  const resolveAuthorLabel = useCallback(
+    (authorUuid: string): string | null => {
+      const user = usersById[authorUuid];
+
+      return user == null ? null : selectUserDisplayName(user, "");
+    },
+    [usersById],
+  );
   const workspaceComposerCapabilities = useMemo<MessageComposerCapabilities>(
     () => ({
       // The Workspace backend currently supports send/edit/delete/read, but not these extra actions.
@@ -316,25 +270,33 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     composerValueRef.current = pendingForwardPrefill;
   }, [location.pathname]);
 
+  useEffect(() => {
+    setPendingDeleteMessageUuid(null);
+  }, [conversationId]);
+
   const topicTitle =
     topic?.name ?? (selection.status === "conversation" ? conversation?.title : undefined);
   const composerReadOnlyReason =
     selection.status === "conversation"
       ? undefined
       : t("workspaceMessenger.routeUnsupportedForSend");
-  const viewModel = useMemo(
+  const currentUserUuid = runtimeContext?.userUuid ?? "";
+  const firstUnreadMessage = useMemo(
     () =>
-      buildWorkspaceChatMessageListViewModel({
-        messages: routeMessages,
-        usersById,
-        conversation: conversation ?? null,
-        streamName: stream?.name ?? null,
-        topicsById,
+      routeMessages.find((message) => {
+        return !message.read && !message.isOwn && message.authorUuid !== currentUserUuid;
       }),
-    [conversation, routeMessages, stream?.name, topicsById, usersById],
+    [currentUserUuid, routeMessages],
   );
-  const messagesLoadError: ChatMessagesLoadErrorKind | null =
-    messagesStatus.error == null ? null : viewModel.messages.length === 0 ? "initial" : "refresh";
+  const unreadCount = useMemo(
+    () =>
+      routeMessages.filter((message) => {
+        return !message.read && !message.isOwn && message.authorUuid !== currentUserUuid;
+      }).length,
+    [currentUserUuid, routeMessages],
+  );
+  const messagesLoadError: WorkspaceChatMessagesLoadErrorKind | null =
+    messagesStatus.error == null ? null : routeMessages.length === 0 ? "initial" : "refresh";
 
   const runWorkspaceAction = useCallback(
     async <T,>(action: (signal: AbortSignal) => Promise<T>): Promise<T> => {
@@ -348,114 +310,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       }
     },
     [],
-  );
-
-  const resolveMessageByVisualId = useCallback(
-    (visualMessageId: number): MessengerMessage | null => {
-      const messageUuid = findWorkspaceMessageUuidByVisualId(routeMessages, visualMessageId);
-      return messageUuid == null
-        ? null
-        : selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
-    },
-    [routeMessages],
-  );
-
-  const closeForwardModal = useCallback(() => {
-    setForwardDraft(null);
-  }, []);
-
-  const applyForwardPrefill = useCallback(
-    (targetRoute: string, content: string) => {
-      if (targetRoute === location.pathname) {
-        const nextContent = mergeForwardDraftContent(content, composerValueRef.current);
-        composerValueRef.current = nextContent;
-        setDraftInitialValue(nextContent);
-        return;
-      }
-      setPendingForwardPrefill(targetRoute, content);
-      void navigate(targetRoute);
-    },
-    [location.pathname, navigate],
-  );
-
-  const requestForwardMessage = useCallback(
-    (message: MockMessage, selectedText?: string) => {
-      if (runtimeContext == null) {
-        setActionError(t("workspaceMessenger.runtimeUnavailable"));
-        return;
-      }
-      const normalizedSelectedText = selectedText?.trim();
-      setActionError(null);
-      setForwardDraft({
-        messages: [message],
-        selectedText:
-          normalizedSelectedText != null && normalizedSelectedText.length > 0
-            ? normalizedSelectedText
-            : undefined,
-      });
-    },
-    [runtimeContext],
-  );
-
-  const handleForwardTarget = useCallback(
-    async (target: ForwardMessageTarget) => {
-      if (forwardDraft == null) return;
-      if (route == null) {
-        setActionError(t("workspaceMessenger.invalidRoute"));
-        return;
-      }
-      if (runtimeContext == null) {
-        setActionError(t("workspaceMessenger.runtimeUnavailable"));
-        return;
-      }
-
-      const forwardedContent = buildForwardQuote(forwardDraft.messages, forwardDraft.selectedText);
-      if (forwardedContent.length === 0) return;
-
-      try {
-        if (target.kind === "topic") {
-          const targetRoute = resolveForwardTargetRoute({
-            orgId: route.orgId,
-            projectId: route.projectId,
-            streamUuid: target.streamUuid,
-            topicUuid: target.topicUuid,
-          });
-          applyForwardPrefill(targetRoute, forwardedContent);
-          closeForwardModal();
-          return;
-        }
-
-        const result = await runWorkspaceAction((signal) =>
-          createWorkspaceDirectStream({
-            runtimeContext,
-            getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-            signal,
-            directUserUuid: target.userUuid,
-          }),
-        );
-        if (result.status !== "applied") {
-          setActionError(t("workspaceMessenger.messageActionTargetMissing"));
-          return;
-        }
-        const targetRoute = workspaceMessengerStreamRoute({
-          orgId: route.orgId,
-          projectId: route.projectId,
-          streamUuid: result.stream.uuid,
-        });
-        applyForwardPrefill(targetRoute, forwardedContent);
-        closeForwardModal();
-      } catch (error) {
-        setActionError(normalizeWorkspaceActionError(error, t("message.forwardError")));
-      }
-    },
-    [
-      applyForwardPrefill,
-      closeForwardModal,
-      forwardDraft,
-      route,
-      runWorkspaceAction,
-      runtimeContext,
-    ],
   );
 
   const resolveSendTarget = useCallback(():
@@ -535,33 +389,21 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     [resolveSendTarget, runWorkspaceAction, runtimeContext],
   );
 
-  const requestMessageEdit = useCallback(
-    (messageId: number) => {
-      // The old list gives a numeric id, so first resolve the Workspace message uuid through the adapter.
-      const message = resolveMessageByVisualId(messageId);
-      if (!message?.isOwn) {
-        setActionError(t("message.editUnavailable"));
-        return;
-      }
-
-      setActionError(null);
-      setComposerEditSession({
-        messageId: workspaceChatVisualMessageId(message.uuid),
-        initialMarkdown: message.markdown,
-      });
-    },
-    [resolveMessageByVisualId],
-  );
-
   const handleSubmitEdit = useCallback(
-    async (visualMessageId: number, markdown: string) => {
+    async (_editSessionId: number, markdown: string) => {
       setActionError(null);
       if (runtimeContext == null) {
         const error = t("workspaceMessenger.runtimeUnavailable");
         setActionError(error);
         throw new Error(error);
       }
-      const message = resolveMessageByVisualId(visualMessageId);
+      const message =
+        composerEditMessageUuid == null
+          ? null
+          : selectWorkspaceMessageById(
+              useWorkspaceMessageStore.getState(),
+              composerEditMessageUuid,
+            );
       if (!message?.isOwn) {
         const error = t("message.editUnavailable");
         setActionError(error);
@@ -579,57 +421,150 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
           }),
         );
         setComposerEditSession(null);
+        setComposerEditMessageUuid(null);
       } catch (error) {
         const messageText = normalizeWorkspaceActionError(error, t("message.editFailed"));
         setActionError(messageText);
         throw error instanceof Error ? error : new Error(messageText);
       }
     },
-    [resolveMessageByVisualId, runWorkspaceAction, runtimeContext],
+    [composerEditMessageUuid, runWorkspaceAction, runtimeContext],
   );
 
-  const handleDeleteMessage = useCallback(
-    (visualMessageId: number) => {
-      // Deletion goes directly to the Workspace API; old Zulip delete handlers are not called on this route.
-      setActionError(null);
-      if (runtimeContext == null) {
-        setActionError(t("workspaceMessenger.runtimeUnavailable"));
-        return;
-      }
-      const message = resolveMessageByVisualId(visualMessageId);
+  const handleEditMessage = useCallback((messageUuid: string) => {
+    const message = selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
+    if (!message?.isOwn) {
+      setActionError(t("message.editUnavailable"));
+      return;
+    }
+
+    setComposerEditMessageUuid(message.uuid);
+    setComposerEditSession({
+      messageId: WORKSPACE_COMPOSER_EDIT_SESSION_ID,
+      initialMarkdown: message.markdown,
+    });
+  }, []);
+
+  const handleRequestDeleteMessage = useCallback((messageUuid: string) => {
+    const message = selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
+    if (!message?.isOwn) {
+      setActionError(t("workspaceMessenger.messageActionTargetMissing"));
+      return;
+    }
+
+    setPendingDeleteMessageUuid(message.uuid);
+  }, []);
+
+  const handleCancelDeleteMessage = useCallback(() => {
+    setPendingDeleteMessageUuid(null);
+  }, []);
+
+  const handleConfirmDeleteMessage = useCallback(() => {
+    setActionError(null);
+    if (runtimeContext == null) {
+      setActionError(t("workspaceMessenger.runtimeUnavailable"));
+      return;
+    }
+    const message =
+      pendingDeleteMessageUuid == null
+        ? null
+        : selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), pendingDeleteMessageUuid);
+    if (!message?.isOwn) {
+      setActionError(t("workspaceMessenger.messageActionTargetMissing"));
+      setPendingDeleteMessageUuid(null);
+      return;
+    }
+
+    setPendingDeleteMessageUuid(null);
+    void runWorkspaceAction((signal) =>
+      deleteMessengerMessage({
+        runtimeContext,
+        getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+        signal,
+        messageUuid: message.uuid,
+        streamUuid: message.streamUuid,
+        topicUuid: message.topicUuid,
+      }),
+    ).catch((error) => {
+      setActionError(normalizeWorkspaceActionError(error, t("message.deleteError")));
+    });
+  }, [pendingDeleteMessageUuid, runWorkspaceAction, runtimeContext]);
+
+  const handleReplyMessage = useCallback(
+    (messageUuid: string, selectedText?: string) => {
+      const message = selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
       if (message == null) {
         setActionError(t("workspaceMessenger.messageActionTargetMissing"));
         return;
       }
 
-      void runWorkspaceAction((signal) =>
-        deleteMessengerMessage({
-          runtimeContext,
-          getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-          signal,
-          messageUuid: message.uuid,
-          streamUuid: message.streamUuid,
-          topicUuid: message.topicUuid,
-        }),
-      ).catch((error) => {
-        setActionError(normalizeWorkspaceActionError(error, t("message.deleteError")));
-      });
+      const quoteSource = selectedText?.trim() || message.markdown.trim();
+      if (quoteSource.length === 0) return;
+      const authorLabel = resolveAuthorLabel(message.authorUuid) ?? t("message.replyTo");
+      const quoted = quoteSource
+        .split(/\r?\n/)
+        .map((line, index) => `> ${index === 0 ? `${authorLabel}: ` : ""}${line}`)
+        .join("\n");
+      const nextDraft = `${quoted}\n\n${composerValueRef.current.trim()}`.trimStart();
+      setDraftInitialValue(nextDraft);
+      composerValueRef.current = nextDraft;
     },
-    [resolveMessageByVisualId, runWorkspaceAction, runtimeContext],
+    [resolveAuthorLabel],
   );
 
-  const flushReadBatch = useCallback(() => {
-    // MessageList reports visible unread messages in batches; the backend accepts them one by one.
-    readBatchTimerRef.current = null;
-    if (runtimeContext == null || conversationId == null) {
-      pendingReadVisualIdsRef.current.clear();
+  const handleCopyMessageText = useCallback((messageUuid: string, text: string) => {
+    const message = selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
+    if (message == null) {
+      setActionError(t("workspaceMessenger.messageActionTargetMissing"));
+      return;
+    }
+    if (typeof navigator === "undefined" || navigator.clipboard == null) {
+      setActionError(t("message.copyFailed"));
       return;
     }
 
-    const visualIds = [...pendingReadVisualIdsRef.current];
-    pendingReadVisualIdsRef.current.clear();
-    for (const visualMessageId of visualIds) {
-      const message = resolveMessageByVisualId(visualMessageId);
+    void navigator.clipboard.writeText(text).catch(() => {
+      setActionError(t("message.copyFailed"));
+    });
+  }, []);
+
+  const handleToggleMessageReaction = useCallback(
+    (messageUuid: string, emojiName: string) => {
+      setActionError(null);
+      if (runtimeContext == null) {
+        setActionError(t("workspaceMessenger.runtimeUnavailable"));
+        return;
+      }
+
+      void runWorkspaceAction((signal) =>
+        toggleMessengerMessageReaction({
+          runtimeContext,
+          getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+          signal,
+          messageUuid,
+          emojiName,
+        }),
+      ).catch((error) => {
+        setActionError(normalizeWorkspaceActionError(error, t("message.reactionError")));
+      });
+    },
+    [runWorkspaceAction, runtimeContext],
+  );
+
+  const flushReadBatch = useCallback(() => {
+    // Новый список сообщает видимые непрочитанные сообщения сразу Workspace uuid.
+    // Поэтому тут больше нет шага "числовой id -> messageUuid": read action
+    // получает тот же ключ, который лежит в store и в DOM data-message-uuid.
+    readBatchTimerRef.current = null;
+    if (runtimeContext == null || conversationId == null) {
+      pendingReadMessageUuidsRef.current.clear();
+      return;
+    }
+
+    const messageUuids = [...pendingReadMessageUuidsRef.current];
+    pendingReadMessageUuidsRef.current.clear();
+    for (const messageUuid of messageUuids) {
+      const message = selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
       if (message == null || message.isOwn || message.read) continue;
       if (readRequestedMessageUuidsRef.current.has(message.uuid)) continue;
       readRequestedMessageUuidsRef.current.add(message.uuid);
@@ -646,13 +581,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         readRequestedMessageUuidsRef.current.delete(message.uuid);
       });
     }
-  }, [conversationId, resolveMessageByVisualId, runWorkspaceAction, runtimeContext]);
+  }, [conversationId, runWorkspaceAction, runtimeContext]);
 
   const scheduleReadBatch = useCallback(
-    (messageIds: number[]) => {
-      if (messageIds.length === 0) return;
-      for (const messageId of messageIds) {
-        pendingReadVisualIdsRef.current.add(messageId);
+    (messageUuids: string[]) => {
+      if (messageUuids.length === 0) return;
+      for (const messageUuid of messageUuids) {
+        pendingReadMessageUuidsRef.current.add(messageUuid);
       }
       if (readBatchTimerRef.current != null) return;
       readBatchTimerRef.current = window.setTimeout(flushReadBatch, READ_BATCH_DELAY_MS);
@@ -660,36 +595,56 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     [flushReadBatch],
   );
 
-  const messageCallbacks = useMemo<MessageListCallbacks>(
-    () => ({
-      // Supported actions are connected to the Workspace API; unsupported actions stay visible as placeholders.
-      onMessageEdit: (message) => requestMessageEdit(message.id),
-      onMessageDelete: (message) => handleDeleteMessage(message.id),
-      onMessageAddReaction: () => setActionError(t("workspaceMessenger.reactionsUnsupported")),
-      onMessageRemoveReaction: () => setActionError(t("workspaceMessenger.reactionsUnsupported")),
-      onMessageForward: requestForwardMessage,
-      onMessageViews: () => setActionError(t("workspaceMessenger.readReceiptsUnsupported")),
-      onMessagePermalinkClick: () => {
-        setActionError(t("workspaceMessenger.permalinkUnsupported"));
-        return true;
-      },
-      onRetryFailedOutgoing: () => setActionError(t("workspaceMessenger.retryUnsupported")),
-      onRemoveFailedOutgoing: () => setActionError(t("workspaceMessenger.retryUnsupported")),
-      onRetryFailedEdit: () => setActionError(t("workspaceMessenger.retryUnsupported")),
-      onCancelFailedEdit: () => setActionError(t("workspaceMessenger.retryUnsupported")),
-    }),
-    [handleDeleteMessage, requestForwardMessage, requestMessageEdit],
-  );
+  const handleLoadOlder = useCallback(() => {
+    if (
+      runtimeContext == null ||
+      conversationId == null ||
+      messagesStatus.loading ||
+      !messagesStatus.hasMore ||
+      messagesStatus.nextPageMarker == null
+    ) {
+      return;
+    }
+
+    void runWorkspaceAction((signal) =>
+      loadMessengerConversationMessages({
+        runtimeContext,
+        conversationId,
+        pageMarker: messagesStatus.nextPageMarker ?? undefined,
+        getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+        signal,
+      }),
+    );
+  }, [
+    conversationId,
+    messagesStatus.hasMore,
+    messagesStatus.loading,
+    messagesStatus.nextPageMarker,
+    runWorkspaceAction,
+    runtimeContext,
+  ]);
 
   const handleEditLastMessage = useCallback(() => {
     for (let index = routeMessages.length - 1; index >= 0; index -= 1) {
       const message = routeMessages[index];
       if (message?.isOwn === true) {
-        requestMessageEdit(workspaceChatVisualMessageId(message.uuid));
+        handleEditMessage(message.uuid);
         return;
       }
     }
-  }, [requestMessageEdit, routeMessages]);
+    setActionError(t("message.editUnavailable"));
+  }, [handleEditMessage, routeMessages]);
+
+  const handleCancelEdit = useCallback(() => {
+    setComposerEditSession(null);
+    setComposerEditMessageUuid(null);
+  }, []);
+
+  const handleLoadNewer = useCallback(() => {
+    // Workspace store пока не хранит отдельное окно newer around anchor.
+    // Поэтому route честно держит пустой callback и hasNewerMessages=false:
+    // список уже умеет нижнюю пагинацию, но странице пока нечего загрузить из store.
+  }, []);
 
   const handleToggleRightPanel = useCallback(() => {
     rightDrawer?.setOpen(!rightDrawer.open);
@@ -727,35 +682,35 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     );
   } else {
     body = (
-      <ChatPageMessageListSection
+      <ChatPageWorkspaceMessageListSection
         messagesLoading={messagesStatus.loading}
-        hasInitialPayload={viewModel.messages.length > 0}
-        isDmView={false}
-        activeDmUserIds={null}
-        activeStream={stream?.name ?? conversation?.title}
-        activeTopic={
-          selection.status === "conversation" && selection.kind === "topic" ? topicTitle : null
-        }
-        messages={viewModel.messages}
-        currentUserId={viewModel.currentUserId}
-        callbacks={messageCallbacks}
-        selectionMode={false}
-        selectedMessageIds={EMPTY_SELECTED_MESSAGE_IDS}
-        onLoadMore={noop}
-        isLoadingMore={false}
+        hasInitialPayload={routeMessages.length > 0}
+        messages={routeMessages}
+        currentUserUuid={currentUserUuid}
+        conversationId={selection.conversationId}
+        scrollToBottomKey={selection.conversationId}
+        onLoadOlder={handleLoadOlder}
+        isLoadingOlder={messagesStatus.loading && routeMessages.length > 0}
         isLoadingNewer={false}
-        onLoadNewer={noop}
+        onLoadNewer={handleLoadNewer}
+        hasOlderMessages={messagesStatus.hasMore}
         hasNewerMessages={false}
-        firstUnreadId={viewModel.firstUnreadId}
-        unreadCount={viewModel.unreadCount}
-        focusedMessageId={null}
+        firstUnreadUuid={firstUnreadMessage?.uuid}
+        unreadCount={unreadCount}
+        focusedMessageUuid={null}
         onUnreadMessagesVisible={scheduleReadBatch}
         onUnreadMessagesAtBottom={scheduleReadBatch}
+        onReplyMessage={handleReplyMessage}
+        onEditMessage={handleEditMessage}
+        onRequestDeleteMessage={handleRequestDeleteMessage}
+        onCopyMessageText={handleCopyMessageText}
+        onToggleMessageReaction={handleToggleMessageReaction}
         messagesLoadError={messagesLoadError}
         onRetryMessagesLoad={retry}
         boundaryLoadFailed={false}
         onDismissBoundaryLoadFailed={noop}
         scrollToBottomAfterSendNonce={scrollToBottomAfterSendNonce}
+        resolveAuthorLabel={resolveAuthorLabel}
       />
     );
   }
@@ -774,23 +729,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       />
       <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {body}
-        <AppDialogShell
-          open={forwardDraft != null}
-          onOpenChange={(open) => {
-            if (!open) closeForwardModal();
-          }}
-          contentClassName={FORWARD_DIALOG_CONTENT_CLASS}
-        >
-          <ForwardMessageModalBody
-            streamOptions={forwardStreamOptions}
-            topicOptions={forwardTopicOptions}
-            currentUserUuid={runtimeContext?.userUuid ?? ""}
-            onForward={(target) => {
-              void handleForwardTarget(target);
-            }}
-            onClose={closeForwardModal}
-          />
-        </AppDialogShell>
         <ChatPageInlineAlerts
           routeResolveError={null}
           actionError={actionError}
@@ -799,6 +737,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
           onDismissActionError={() => setActionError(null)}
           onDismissSendError={() => setSendError(null)}
         />
+        {pendingDeleteMessageUuid != null ? (
+          <ChatPageDeleteConfirmBar
+            mode="single"
+            onConfirm={handleConfirmDeleteMessage}
+            onCancel={handleCancelDeleteMessage}
+          />
+        ) : null}
         <ChatPageComposerSection
           isDmView={false}
           activeDmUserIds={null}
@@ -822,7 +767,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
           onEditLastMessage={handleEditLastMessage}
           editSession={composerEditSession}
           onSubmitEdit={handleSubmitEdit}
-          onCancelEdit={() => setComposerEditSession(null)}
+          onCancelEdit={handleCancelEdit}
           composerCapabilities={workspaceComposerCapabilities}
           aiMessagesContext={[]}
           aiChatContext={undefined}

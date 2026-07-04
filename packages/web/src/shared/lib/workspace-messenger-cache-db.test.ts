@@ -5,6 +5,9 @@ import {
   deleteCachedStreamMessageBuckets,
   deleteCachedMessage,
   deleteCachedTopicMessageBuckets,
+  deleteOwnMessageReaction,
+  deleteOwnMessageReactionsForMessage,
+  deleteOwnMessageReactionsForMessages,
   deleteExpiredMessengerSearchResults,
   deleteWorkspaceMessengerCacheDatabase,
   deleteWorkspaceMessengerOwnerCache,
@@ -13,12 +16,16 @@ import {
   readCachedMessagesByUuids,
   readConversationMessageWindow,
   readMessengerCatalogCache,
+  readOwnMessageReaction,
+  readOwnMessageReactions,
   readMessengerSearchResults,
+  replaceOwnMessageReactionsForMessage,
   resetWorkspaceMessengerCacheDbSingletonForTests,
   WORKSPACE_MESSENGER_CACHE_DB_NAME,
   WORKSPACE_MESSENGER_CACHE_DB_VERSION,
   workspaceMessengerMessageOrderKey,
   upsertCachedMessages,
+  upsertOwnMessageReaction,
   writeConversationMessagePage,
   writeMessengerCatalogCache,
   writeMessengerSearchResults,
@@ -31,6 +38,7 @@ const STREAM = "stream-a";
 const TOPIC = "topic-a";
 const STREAM_CONVERSATION = `stream:${STREAM}`;
 const TOPIC_CONVERSATION = `topic:${STREAM}:${TOPIC}`;
+const USER_UUID = "user-a";
 
 function message(uuid: string, createdAt: string) {
   return {
@@ -40,6 +48,17 @@ function message(uuid: string, createdAt: string) {
     topicUuid: TOPIC,
     createdAt,
     updatedAt: createdAt,
+  };
+}
+
+function ownReaction(messageUuid: string, emojiName: string, reactionUuid: string) {
+  return {
+    messageUuid,
+    userUuid: USER_UUID,
+    reactionUuid,
+    emojiName,
+    createdAt: "2026-07-01T08:00:00.000Z",
+    updatedAt: "2026-07-01T08:00:00.000Z",
   };
 }
 
@@ -67,6 +86,7 @@ describe("workspace-messenger-cache-db", () => {
       "messageBuckets",
       "messageWindows",
       "messages",
+      "ownMessageReactions",
       "ownerMeta",
       "realtimeCursor",
       "searchResults",
@@ -74,6 +94,13 @@ describe("workspace-messenger-cache-db", () => {
       "streams",
       "topics",
       "users",
+    ]);
+
+    const transaction = db.transaction("ownMessageReactions", "readonly");
+    expect([...transaction.objectStore("ownMessageReactions").indexNames]).toEqual([
+      "byOwner",
+      "byOwnerMessage",
+      "byOwnerReactionUuid",
     ]);
   });
 
@@ -380,6 +407,7 @@ describe("workspace-messenger-cache-db", () => {
     await writeConversationMessagePage(OWNER, TOPIC_CONVERSATION, {
       messages: [message("msg-a", "2026-07-01T08:01:00.000Z")],
     });
+    await upsertOwnMessageReaction(OWNER, ownReaction("msg-a", "thumbs_up", "reaction-a"));
 
     await deleteCachedMessage(OWNER, "msg-a", [TOPIC_CONVERSATION]);
 
@@ -392,11 +420,15 @@ describe("workspace-messenger-cache-db", () => {
     expect(streamWindowAfterTopicDelete.messages).toEqual([
       message("msg-a", "2026-07-01T08:01:00.000Z"),
     ]);
+    expect(
+      (await readOwnMessageReactions(OWNER, ["msg-a"])).map((row) => row.reactionUuid),
+    ).toEqual(["reaction-a"]);
 
     await deleteCachedMessage(OWNER, "msg-a", [STREAM_CONVERSATION]);
 
     const streamWindowAfterDelete = await readConversationMessageWindow(OWNER, STREAM_CONVERSATION);
     expect(streamWindowAfterDelete.messages).toEqual([]);
+    expect(await readOwnMessageReactions(OWNER, ["msg-a"])).toEqual([]);
   });
 
   it("deletes cached topic buckets and windows without requiring messages in memory", async () => {
@@ -415,6 +447,9 @@ describe("workspace-messenger-cache-db", () => {
         },
       ],
     });
+    await upsertOwnMessageReaction(OWNER, ownReaction("msg-a", "thumbs_up", "reaction-a"));
+    await upsertOwnMessageReaction(OWNER, ownReaction("msg-b", "eyes", "reaction-b"));
+    await upsertOwnMessageReaction(OWNER, ownReaction("msg-c", "heart", "reaction-c"));
 
     await deleteCachedTopicMessageBuckets(OWNER, STREAM, TOPIC);
 
@@ -425,6 +460,10 @@ describe("workspace-messenger-cache-db", () => {
     expect(topicWindow.messages).toEqual([]);
     expect(streamWindow.messages.map((item) => item.uuid)).toEqual(["msg-c"]);
     expect(otherTopicWindow.messages.map((item) => item.uuid)).toEqual(["msg-c"]);
+    expect(await readOwnMessageReactions(OWNER, ["msg-a", "msg-b"])).toEqual([]);
+    expect(
+      (await readOwnMessageReactions(OWNER, ["msg-c"])).map((row) => row.reactionUuid),
+    ).toEqual(["reaction-c"]);
   });
 
   it("deletes cached stream buckets, windows, and message bodies", async () => {
@@ -441,6 +480,8 @@ describe("workspace-messenger-cache-db", () => {
         },
       ],
     });
+    await upsertOwnMessageReaction(OWNER, ownReaction("msg-a", "thumbs_up", "reaction-a"));
+    await upsertOwnMessageReaction(OWNER, ownReaction("msg-b", "eyes", "reaction-b"));
 
     await deleteCachedStreamMessageBuckets(OWNER, STREAM);
 
@@ -451,6 +492,10 @@ describe("workspace-messenger-cache-db", () => {
     expect(streamWindow.messages).toEqual([]);
     expect(topicWindow.messages).toEqual([]);
     expect(otherWindow.messages.map((item) => item.uuid)).toEqual(["msg-b"]);
+    expect(await readOwnMessageReactions(OWNER, ["msg-a"])).toEqual([]);
+    expect(
+      (await readOwnMessageReactions(OWNER, ["msg-b"])).map((row) => row.reactionUuid),
+    ).toEqual(["reaction-b"]);
   });
 
   it("deletes cached topic and stream windows even when they have no buckets", async () => {
@@ -501,6 +546,66 @@ describe("workspace-messenger-cache-db", () => {
     expect(await readMessengerSearchResults(OWNER, "hash-b", 0)).toBeNull();
   });
 
+  it("replaces own reactions only for the requested message", async () => {
+    await upsertOwnMessageReaction(OWNER, ownReaction("msg-a", "thumbs_up", "reaction-a"));
+    await upsertOwnMessageReaction(OWNER, ownReaction("msg-a", "eyes", "reaction-b"));
+    await upsertOwnMessageReaction(OWNER, ownReaction("msg-b", "heart", "reaction-c"));
+
+    await replaceOwnMessageReactionsForMessage(OWNER, "msg-a", [
+      ownReaction("msg-a", "joy", "reaction-d"),
+    ]);
+
+    expect(
+      (await readOwnMessageReactions(OWNER, ["msg-a"])).map((row) => [
+        row.messageUuid,
+        row.emojiName,
+        row.reactionUuid,
+      ]),
+    ).toEqual([["msg-a", "joy", "reaction-d"]]);
+    expect(
+      (await readOwnMessageReactions(OWNER, ["msg-b"])).map((row) => [
+        row.messageUuid,
+        row.emojiName,
+        row.reactionUuid,
+      ]),
+    ).toEqual([["msg-b", "heart", "reaction-c"]]);
+  });
+
+  it("reads, upserts, and deletes one own reaction by message and emoji", async () => {
+    await upsertOwnMessageReaction(OWNER, ownReaction("msg-a", "thumbs_up", "reaction-a"));
+    await upsertOwnMessageReaction(OWNER, ownReaction("msg-a", "thumbs_up", "reaction-b"));
+
+    expect(await readOwnMessageReaction(OWNER, "msg-a", "thumbs_up")).toMatchObject({
+      messageUuid: "msg-a",
+      emojiName: "thumbs_up",
+      reactionUuid: "reaction-b",
+      ownerKey: OWNER,
+    });
+
+    await deleteOwnMessageReaction(OWNER, "msg-a", "thumbs_up");
+
+    expect(await readOwnMessageReaction(OWNER, "msg-a", "thumbs_up")).toBeNull();
+  });
+
+  it("deletes own reactions for only the requested messages", async () => {
+    await upsertOwnMessageReaction(OWNER, ownReaction("msg-a", "thumbs_up", "reaction-a"));
+    await upsertOwnMessageReaction(OWNER, ownReaction("msg-b", "eyes", "reaction-b"));
+    await upsertOwnMessageReaction(OWNER, ownReaction("msg-c", "heart", "reaction-c"));
+
+    await deleteOwnMessageReactionsForMessage(OWNER, "msg-a");
+    await deleteOwnMessageReactionsForMessages(OWNER, ["msg-b"]);
+
+    expect(
+      (await readOwnMessageReactions(OWNER, ["msg-a"])).map((row) => row.reactionUuid),
+    ).toEqual([]);
+    expect(
+      (await readOwnMessageReactions(OWNER, ["msg-b"])).map((row) => row.reactionUuid),
+    ).toEqual([]);
+    expect(
+      (await readOwnMessageReactions(OWNER, ["msg-c"])).map((row) => row.reactionUuid),
+    ).toEqual(["reaction-c"]);
+  });
+
   it("deletes one owner cache without touching another owner", async () => {
     await writeMessengerCatalogCache(OWNER, {
       streams: [{ uuid: STREAM, updatedAt: "2026-07-01T08:00:00.000Z" }],
@@ -513,6 +618,11 @@ describe("workspace-messenger-cache-db", () => {
     });
     await writeRealtimeCursor(OWNER, 10);
     await writeRealtimeCursor(OTHER_OWNER, 20);
+    await upsertOwnMessageReaction(OWNER, ownReaction("msg-a", "thumbs_up", "reaction-a"));
+    await upsertOwnMessageReaction(
+      OTHER_OWNER,
+      ownReaction("msg-a", "thumbs_up", "reaction-other"),
+    );
 
     await deleteWorkspaceMessengerOwnerCache(OWNER);
 
@@ -523,6 +633,10 @@ describe("workspace-messenger-cache-db", () => {
     expect(ownerCatalog.streams).toEqual([]);
     expect(ownerWindow.messages).toEqual([]);
     expect(ownerCatalog.realtimeCursor).toBeNull();
+    expect(await readOwnMessageReactions(OWNER, ["msg-a"])).toEqual([]);
+    expect(
+      (await readOwnMessageReactions(OTHER_OWNER, ["msg-a"])).map((row) => row.reactionUuid),
+    ).toEqual(["reaction-other"]);
     expect(otherOwnerCatalog.streams).toEqual([
       { uuid: "stream-b", updatedAt: "2026-07-01T08:00:00.000Z" },
     ]);

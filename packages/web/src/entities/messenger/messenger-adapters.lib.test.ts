@@ -89,6 +89,10 @@ const messageDto: WorkspaceMessengerMessageDto = {
   pinned: false,
   starred: false,
   is_own: true,
+  reactions: {
+    thumbs_up: 2,
+    eyes: 1,
+  },
   created_at: DATE,
   updated_at: DATE,
 };
@@ -220,6 +224,11 @@ describe("messenger adapters", () => {
       pinned: false,
       starred: false,
       isOwn: true,
+      reactions: {
+        thumbs_up: 2,
+        eyes: 1,
+      },
+      ownReactionUuidsByEmojiName: {},
       createdAt: DATE,
       updatedAt: DATE,
     });

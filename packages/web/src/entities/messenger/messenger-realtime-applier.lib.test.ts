@@ -157,6 +157,7 @@ function createMessageDto(
     pinned: false,
     starred: false,
     is_own: true,
+    reactions: {},
     created_at: DATE,
     updated_at: DATE,
     ...overrides,
@@ -342,6 +343,115 @@ describe("messenger realtime active applier", () => {
     expect(cache.writeRealtimeCursor).toHaveBeenNthCalledWith(1, ownerKey, 11);
     expect(cache.writeRealtimeCursor).toHaveBeenNthCalledWith(2, ownerKey, 12);
     expect(cache.writeRealtimeCursor).toHaveBeenNthCalledWith(3, ownerKey, 13);
+  });
+
+  it("updates message reaction aggregate without dropping own projection", () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const onMessageReactionAggregateUpdated = vi.fn();
+    const cache = {
+      patchCachedMessage: vi.fn(),
+      writeRealtimeCursor: vi.fn(),
+    };
+    const applier = createMessengerRealtimeActiveApplier({
+      cache,
+      onMessageReactionAggregateUpdated,
+    });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    applyStreamAndTopicSnapshot(applier, context);
+
+    applier.applyEvent(
+      {
+        epoch_version: 11,
+        type: "message",
+        message: createMessageDto({
+          reactions: { thumbs_up: 1 },
+        }),
+      },
+      context,
+    );
+    useWorkspaceMessageStore
+      .getState()
+      .setOwnMessageReaction(MESSAGE_A, "thumbs_up", "20000000-0000-4000-8000-000000000001");
+
+    applier.applyEvent(
+      {
+        epoch_version: 12,
+        type: "message",
+        kind: "message.updated",
+        message: createMessageDto({
+          reactions: { thumbs_up: 2, eyes: 1 },
+          updated_at: DATE_LATER,
+        }),
+      },
+      context,
+    );
+
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toEqual(
+      expect.objectContaining({
+        reactions: { thumbs_up: 2, eyes: 1 },
+        ownReactionUuidsByEmojiName: {
+          thumbs_up: "20000000-0000-4000-8000-000000000001",
+        },
+      }),
+    );
+    expect(cache.patchCachedMessage).toHaveBeenCalledWith(
+      ownerKey,
+      expect.objectContaining({
+        uuid: MESSAGE_A,
+        reactions: { thumbs_up: 2, eyes: 1 },
+      }),
+    );
+    expect(onMessageReactionAggregateUpdated).toHaveBeenCalledWith(
+      ownerKey,
+      expect.objectContaining({
+        uuid: MESSAGE_A,
+        reactions: { thumbs_up: 2, eyes: 1 },
+      }),
+    );
+  });
+
+  it("notifies reaction aggregate hook when the last reaction is removed", () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const onMessageReactionAggregateUpdated = vi.fn();
+    const applier = createMessengerRealtimeActiveApplier({
+      onMessageReactionAggregateUpdated,
+    });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    applyStreamAndTopicSnapshot(applier, context);
+
+    applier.applyEvent(
+      {
+        epoch_version: 11,
+        type: "message",
+        message: createMessageDto({
+          reactions: { thumbs_up: 1 },
+        }),
+      },
+      context,
+    );
+
+    applier.applyEvent(
+      {
+        epoch_version: 12,
+        type: "message",
+        kind: "message.updated",
+        message: createMessageDto({
+          reactions: {},
+          updated_at: DATE_LATER,
+        }),
+      },
+      context,
+    );
+
+    expect(onMessageReactionAggregateUpdated).toHaveBeenCalledWith(
+      ownerKey,
+      expect.objectContaining({
+        uuid: MESSAGE_A,
+        reactions: {},
+      }),
+    );
   });
 
   it("deduplicates repeated message events by uuid across topic and stream buckets", () => {

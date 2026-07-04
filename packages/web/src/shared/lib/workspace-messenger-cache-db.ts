@@ -4,7 +4,9 @@ import {
 } from "./workspace-messenger-cache-db-upgrade.lib";
 
 const DB_NAME = "workspace-messenger-cache-v1";
-const DB_VERSION = 2;
+// Версия повышается при добавлении ownMessageReactions, чтобы существующие
+// установки прошли upgrade и получили новый store без ручной очистки базы.
+const DB_VERSION = 3;
 const IDB_DELETE_BLOCKED_TIMEOUT_MS = 3_000;
 const DEFAULT_MESSAGE_BUCKET_RETENTION = 500;
 const ORDER_KEY_SEPARATOR = "|";
@@ -192,6 +194,33 @@ export interface WorkspaceMessengerMessageWindowRow {
   lastSyncedAt: number | null;
 }
 
+// В этой таблице хранится только связь текущего пользователя с его reaction_uuid.
+// Списки всех реакторов сюда намеренно не попадают: они быстро устаревают,
+// раздувают cache и не нужны для удаления своей реакции.
+export interface WorkspaceMessengerOwnMessageReactionCacheRow {
+  id: string;
+  ownerKey: string;
+  messageUuid: string;
+  userUuid: string;
+  reactionUuid: string;
+  emojiName: string;
+  createdAt: string;
+  updatedAt: string;
+  cacheUpdatedAt: number;
+}
+
+// Записывающие helper-ы принимают строку без служебных cache-полей. ownerKey
+// передается отдельным аргументом, чтобы вызывающий код не мог смешать данные
+// разных runtime owner-ов при гонках вкладок или переключении аккаунта.
+export interface WorkspaceMessengerOwnMessageReactionCacheWrite {
+  messageUuid: string;
+  userUuid: string;
+  reactionUuid: string;
+  emojiName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface WorkspaceMessengerRealtimeCursorRow {
   ownerKey: string;
   epochVersion: number;
@@ -306,6 +335,13 @@ export function createMessengerCatalogCacheReconcileFence(): number {
 
 function cacheRowId(ownerKey: string, id: string): string {
   return `${ownerKey}:${id}`;
+}
+
+// Ключ реакции строится из минимальной уникальной тройки Workspace-контракта:
+// один пользователь может иметь только одну реакцию с данным emojiName на
+// конкретном сообщении, а reactionUuid нужен уже для DELETE-запроса.
+function ownMessageReactionRowId(ownerKey: string, messageUuid: string, emojiName: string): string {
+  return `${ownerKey}:${messageUuid}:${emojiName}`;
 }
 
 export function workspaceMessengerMessageOrderKey(message: {
@@ -435,6 +471,7 @@ export async function deleteWorkspaceMessengerOwnerCache(ownerKey: string): Prom
       stores.messages,
       stores.messageBuckets,
       stores.messageWindows,
+      stores.ownMessageReactions,
       stores.realtimeCursor,
       stores.searchResults,
     ];
@@ -659,6 +696,25 @@ function toMessageRow(
   };
 }
 
+// Нормализация строки выполняется в одном месте: cacheUpdatedAt отражает момент
+// локальной записи, а id и ownerKey всегда пересчитываются из параметров helper-а.
+function toOwnMessageReactionRow(
+  ownerKey: string,
+  row: WorkspaceMessengerOwnMessageReactionCacheWrite,
+): WorkspaceMessengerOwnMessageReactionCacheRow {
+  return {
+    id: ownMessageReactionRowId(ownerKey, row.messageUuid, row.emojiName),
+    ownerKey,
+    messageUuid: row.messageUuid,
+    userUuid: row.userUuid,
+    reactionUuid: row.reactionUuid,
+    emojiName: row.emojiName,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    cacheUpdatedAt: nextCatalogCacheUpdatedAt(),
+  };
+}
+
 function bucketConversationIdsForMessage(
   message: WorkspaceMessengerCachedMessage,
   explicitConversationIds: readonly string[] = [],
@@ -770,6 +826,25 @@ async function readMessageRow(
 ): Promise<WorkspaceMessengerMessageCacheRow | undefined> {
   const rows = await readMessageRowsByUuid(db, ownerKey, [messageUuid]);
   return rows.get(messageUuid);
+}
+
+// Чтение своих реакций идет через compound index, потому что будущий runtime
+// будет гидрировать видимое окно пачкой UUID сообщений, не делая full scan owner-а.
+async function readOwnMessageReactionRowsByMessage(
+  db: IDBDatabase,
+  ownerKey: string,
+  messageUuid: string,
+): Promise<WorkspaceMessengerOwnMessageReactionCacheRow[]> {
+  const transaction = db.transaction(
+    WORKSPACE_MESSENGER_CACHE_STORES.ownMessageReactions,
+    "readonly",
+  );
+  const index = transaction
+    .objectStore(WORKSPACE_MESSENGER_CACHE_STORES.ownMessageReactions)
+    .index("byOwnerMessage");
+  return requestToPromise(index.getAll(IDBKeyRange.only([ownerKey, messageUuid]))) as Promise<
+    WorkspaceMessengerOwnMessageReactionCacheRow[]
+  >;
 }
 
 function buildWindowRow(
@@ -1550,6 +1625,7 @@ export async function deleteCachedTopicMessageBuckets(
       ),
     );
     await transactionDone(transaction);
+    await deleteOwnMessageReactionsForMessages(ownerKey, messageUuidsToDelete);
   } catch {
     return;
   }
@@ -1607,6 +1683,7 @@ export async function deleteCachedStreamMessageBuckets(
       windowStore.delete(cacheRowId(ownerKey, conversationId));
     }
     await transactionDone(transaction);
+    await deleteOwnMessageReactionsForMessages(ownerKey, [...messageUuidsToDelete]);
   } catch {
     return;
   }
@@ -1804,6 +1881,177 @@ export async function readCachedMessagesByUuids(
   }
 }
 
+// Пачечное чтение возвращает только реакции текущего owner-а для явно
+// запрошенных сообщений. Это важно для SWR: видимое окно может быть частичным,
+// и cache не должен делать выводы о сообщениях, которых не было в запросе.
+export async function readOwnMessageReactions(
+  ownerKey: string,
+  messageUuids: readonly string[],
+): Promise<WorkspaceMessengerOwnMessageReactionCacheRow[]> {
+  if (!isIndexedDBAvailable() || messageUuids.length === 0) return [];
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const rowsByMessage = await Promise.all(
+      [...new Set(messageUuids)].map((messageUuid) =>
+        readOwnMessageReactionRowsByMessage(db, ownerKey, messageUuid),
+      ),
+    );
+    return rowsByMessage.flat();
+  } catch {
+    return [];
+  }
+}
+
+// Точечное чтение нужно для remove/toggle: если store после reload еще не знает
+// reactionUuid, action-слой сможет найти его по устойчивой паре message+emoji.
+export async function readOwnMessageReaction(
+  ownerKey: string,
+  messageUuid: string,
+  emojiName: string,
+): Promise<WorkspaceMessengerOwnMessageReactionCacheRow | null> {
+  if (!isIndexedDBAvailable()) return null;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const transaction = db.transaction(
+      WORKSPACE_MESSENGER_CACHE_STORES.ownMessageReactions,
+      "readonly",
+    );
+    const request = transaction
+      .objectStore(WORKSPACE_MESSENGER_CACHE_STORES.ownMessageReactions)
+      .get(ownMessageReactionRowId(ownerKey, messageUuid, emojiName));
+    return (
+      ((await requestToPromise(request)) as
+        | WorkspaceMessengerOwnMessageReactionCacheRow
+        | undefined) ?? null
+    );
+  } catch {
+    return null;
+  }
+}
+
+// Ответ API по одному сообщению является авторитетным только для этого
+// сообщения. Поэтому helper удаляет старые строки ровно по byOwnerMessage и не
+// трогает реакции других сообщений того же owner-а.
+export async function replaceOwnMessageReactionsForMessage(
+  ownerKey: string,
+  messageUuid: string,
+  rows: readonly WorkspaceMessengerOwnMessageReactionCacheWrite[],
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const previousRows = await readOwnMessageReactionRowsByMessage(db, ownerKey, messageUuid);
+    const nextRows = rows.map((row) => toOwnMessageReactionRow(ownerKey, { ...row, messageUuid }));
+    const transaction = db.transaction(
+      WORKSPACE_MESSENGER_CACHE_STORES.ownMessageReactions,
+      "readwrite",
+    );
+    const store = transaction.objectStore(WORKSPACE_MESSENGER_CACHE_STORES.ownMessageReactions);
+    for (const row of previousRows) {
+      store.delete(row.id);
+    }
+    for (const row of nextRows) {
+      store.put(row);
+    }
+    await transactionDone(transaction);
+  } catch {
+    return;
+  }
+}
+
+// Upsert используется после успешного create: новая reactionUuid сразу
+// становится пригодной для будущего DELETE, не дожидаясь общего reload cache.
+export async function upsertOwnMessageReaction(
+  ownerKey: string,
+  row: WorkspaceMessengerOwnMessageReactionCacheWrite,
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const transaction = db.transaction(
+      WORKSPACE_MESSENGER_CACHE_STORES.ownMessageReactions,
+      "readwrite",
+    );
+    transaction
+      .objectStore(WORKSPACE_MESSENGER_CACHE_STORES.ownMessageReactions)
+      .put(toOwnMessageReactionRow(ownerKey, row));
+    await transactionDone(transaction);
+  } catch {
+    return;
+  }
+}
+
+// Удаление по message+emoji отражает пользовательское действие remove/toggle.
+// reactionUuid в ключ не входит, потому что при конфликте или повторной
+// гидрации нам важно очистить именно локальную проекцию emojiName.
+export async function deleteOwnMessageReaction(
+  ownerKey: string,
+  messageUuid: string,
+  emojiName: string,
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const transaction = db.transaction(
+      WORKSPACE_MESSENGER_CACHE_STORES.ownMessageReactions,
+      "readwrite",
+    );
+    transaction
+      .objectStore(WORKSPACE_MESSENGER_CACHE_STORES.ownMessageReactions)
+      .delete(ownMessageReactionRowId(ownerKey, messageUuid, emojiName));
+    await transactionDone(transaction);
+  } catch {
+    return;
+  }
+}
+
+// Очистка одного сообщения нужна для message.deleted и для случая, когда SWR
+// вернул пустой список собственных реакций на конкретное сообщение.
+export async function deleteOwnMessageReactionsForMessage(
+  ownerKey: string,
+  messageUuid: string,
+): Promise<void> {
+  await deleteOwnMessageReactionsForMessages(ownerKey, [messageUuid]);
+}
+
+// Массовая очистка принимает только явный список сообщений. Она не сканирует
+// все реакции owner-а, чтобы topic/stream cleanup не удалил строки сообщений,
+// которые не входили в текущий набор удаляемых messageUuid.
+export async function deleteOwnMessageReactionsForMessages(
+  ownerKey: string,
+  messageUuids: readonly string[],
+): Promise<void> {
+  if (!isIndexedDBAvailable() || messageUuids.length === 0) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const rowsByMessage = await Promise.all(
+      [...new Set(messageUuids)].map((messageUuid) =>
+        readOwnMessageReactionRowsByMessage(db, ownerKey, messageUuid),
+      ),
+    );
+    const ids = rowsByMessage.flat().map((row) => row.id);
+    if (ids.length === 0) return;
+
+    const transaction = db.transaction(
+      WORKSPACE_MESSENGER_CACHE_STORES.ownMessageReactions,
+      "readwrite",
+    );
+    const store = transaction.objectStore(WORKSPACE_MESSENGER_CACHE_STORES.ownMessageReactions);
+    for (const id of ids) {
+      store.delete(id);
+    }
+    await transactionDone(transaction);
+  } catch {
+    return;
+  }
+}
+
 export async function upsertCachedMessages(
   ownerKey: string,
   messages: readonly WorkspaceMessengerCachedMessage[],
@@ -1956,6 +2204,9 @@ export async function deleteCachedMessage(
     }
 
     await transactionDone(transaction);
+    if (shouldDeleteBody) {
+      await deleteOwnMessageReactionsForMessage(ownerKey, messageUuid);
+    }
   } catch {
     return;
   }

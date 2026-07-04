@@ -9,15 +9,20 @@ import {
   parsePaginationHeaders,
   parseStrictDtoList,
 } from "./messenger-transport.internal";
+import {
+  isWorkspaceMessengerMessageDto,
+  isWorkspaceMessengerMessageReactionDto,
+} from "./messenger.types";
 import type {
   MessengerClientOptions,
   MessengerCollectionPage,
   MessengerPaginationQuery,
 } from "./messenger-transport.internal";
-import { isWorkspaceMessengerMessageDto } from "./messenger.types";
 import type {
   WorkspaceMessengerCreateMessageRequestBody,
+  WorkspaceMessengerCreateMessageReactionRequestBody,
   WorkspaceMessengerMessageDto,
+  WorkspaceMessengerMessageReactionDto,
   WorkspaceMessengerUpdateMessageRequestBody,
 } from "./messenger.types";
 
@@ -27,12 +32,18 @@ export interface GetMessagesQuery extends MessengerPaginationQuery {
   topicUuid?: string;
 }
 
+// Запрос реакций всегда привязан к сообщению.
+// userUuid оставлен отдельным фильтром, потому что UI удаления должен быстро найти
+// только собственные reaction uuid текущего пользователя, не запрашивая полный список реакторов.
+export interface GetMessageReactionsQuery {
+  messageUuid: string;
+  userUuid?: string;
+}
+
 // These actions are explicit gaps in the backend contract, not Zulip fallbacks.
 export type UnsupportedMessengerApiAction =
   | "mark_message_unread"
   | "mark_conversation_read"
-  | "add_reaction"
-  | "remove_reaction"
   | "star_message"
   | "unstar_message"
   | "pin_message"
@@ -58,6 +69,13 @@ function messagesQueryParams(query: GetMessagesQuery) {
     ...paginationParams(query),
     stream_uuid: query.streamUuid,
     topic_uuid: query.topicUuid,
+  };
+}
+
+function messageReactionsQueryParams(query: GetMessageReactionsQuery) {
+  return {
+    message_uuid: query.messageUuid,
+    user_uuid: query.userUuid,
   };
 }
 
@@ -130,20 +148,50 @@ export async function markMessageRead(
   return parseDto(data, isWorkspaceMessengerMessageDto, "messenger message response");
 }
 
+// Эти wrappers являются единственным Workspace HTTP-контрактом реакций в shared/api.
+// Они не знают про UI-состояние, IndexedDB или optimistic update: выше по слоям код
+// сам решает, как связать агрегат message.reactions и uuid собственной реакции.
+export async function getMessageReactions(
+  options: MessengerClientOptions,
+  query: GetMessageReactionsQuery,
+): Promise<WorkspaceMessengerMessageReactionDto[]> {
+  const data = await messengerGetJson(
+    "/message_reactions/",
+    options,
+    messageReactionsQueryParams(query),
+  );
+  return parseStrictDtoList(
+    data,
+    isWorkspaceMessengerMessageReactionDto,
+    "messenger message reactions response",
+  );
+}
+
+export async function createMessageReaction(
+  options: MessengerClientOptions,
+  body: WorkspaceMessengerCreateMessageReactionRequestBody,
+): Promise<WorkspaceMessengerMessageReactionDto> {
+  const data = await messengerPostJson("/message_reactions/", options, body);
+  return parseDto(
+    data,
+    isWorkspaceMessengerMessageReactionDto,
+    "messenger message reaction response",
+  );
+}
+
+export async function deleteMessageReaction(
+  options: MessengerClientOptions,
+  reactionUuid: string,
+): Promise<void> {
+  await messengerDeleteJson(`/message_reactions/${reactionUuid}`, options);
+}
+
 export function markMessageUnreadUnsupported(..._args: unknown[]): Promise<never> {
   return rejectUnsupportedAction("mark_message_unread");
 }
 
 export function markConversationReadUnsupported(..._args: unknown[]): Promise<never> {
   return rejectUnsupportedAction("mark_conversation_read");
-}
-
-export function addReactionUnsupported(..._args: unknown[]): Promise<never> {
-  return rejectUnsupportedAction("add_reaction");
-}
-
-export function removeReactionUnsupported(..._args: unknown[]): Promise<never> {
-  return rejectUnsupportedAction("remove_reaction");
 }
 
 export function starMessageUnsupported(..._args: unknown[]): Promise<never> {

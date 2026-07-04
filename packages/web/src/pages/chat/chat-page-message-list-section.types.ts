@@ -1,5 +1,7 @@
-import type { MockMessage } from "~/shared/api/zulip.types";
-import type { MessageListCallbacks } from "~/widgets/message-list/message-list.types";
+import type {
+  MessageListCallbacks,
+  MessageListMessage,
+} from "~/widgets/message-list/message-list.types";
 
 export type ChatMessagesLoadErrorKind = "initial" | "refresh";
 
@@ -11,7 +13,7 @@ export interface ChatPageMessageListSectionProps {
   activeDmUserIds: number[] | null;
   activeStream: string | null | undefined;
   activeTopic: string | null | undefined;
-  messages: MockMessage[];
+  messages: MessageListMessage[];
   currentUserId: number | undefined;
   callbacks: MessageListCallbacks;
   selectionMode: boolean;
@@ -34,4 +36,7 @@ export interface ChatPageMessageListSectionProps {
   onDismissBoundaryLoadFailed: () => void;
   /** Bumped when the user sends a message so the list scrolls to the new tail */
   scrollToBottomAfterSendNonce: number;
+  // Workspace route использует старую MessageList оболочку, но custom emoji
+  // catalog для Workspace сообщений пока unsupported и отключается UI-флагом.
+  customEmojisSupported?: boolean;
 }

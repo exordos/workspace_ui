@@ -35,6 +35,7 @@ export const ChatPageMessageListSection = React.memo(function ChatPageMessageLis
   boundaryLoadFailed,
   onDismissBoundaryLoadFailed,
   scrollToBottomAfterSendNonce,
+  customEmojisSupported,
 }: ChatPageMessageListSectionProps) {
   const handleRetryClick = useCallback(() => {
     onRetryMessagesLoad();
@@ -136,6 +137,7 @@ export const ChatPageMessageListSection = React.memo(function ChatPageMessageLis
         onUnreadMessagesAtBottom={onUnreadMessagesAtBottom}
         showLoadingOverlay={showLoadingOverlay}
         showTopicInSenderName={showTopicInSenderName}
+        customEmojisSupported={customEmojisSupported}
       />
     </div>
   );

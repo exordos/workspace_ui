@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  createMessageReaction,
+  deleteMessageReaction,
   MessengerApiError,
   getEpoch,
   getEvents,
+  getMessageReactions,
   getMessages,
   getMessagesByUuids,
   getMessagesPage,
@@ -20,13 +23,14 @@ const USER_UUID = "11111111-1111-4111-8111-111111111111";
 const STREAM_UUID = "75309057-419c-4b12-a7c1-3932429ec4a6";
 const TOPIC_UUID = "4ec0b996-b778-45f8-8ef4-ef863be0c047";
 const MESSAGE_UUID = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
+const REACTION_UUID = "fae5c55d-9bb2-4646-9c03-f4a6dd65c9f0";
 const EVENT_UUID = "0cb14b5a-6bf0-4de2-bdb5-4e98df4044e0";
 const DATE = "2026-06-22T10:10:00Z";
 
 function jsonResponse(body: unknown, status = 200, headers?: HeadersInit): Response {
   const responseHeaders = new Headers(headers);
   responseHeaders.set("Content-Type", "application/json");
-  return new Response(JSON.stringify(body), {
+  return new Response(status === 204 ? null : JSON.stringify(body), {
     status,
     headers: responseHeaders,
   });
@@ -101,6 +105,19 @@ const messageDto = {
   pinned: false,
   starred: false,
   is_own: true,
+  reactions: {
+    thumbs_up: 2,
+  },
+  created_at: DATE,
+  updated_at: DATE,
+};
+
+const reactionDto = {
+  uuid: REACTION_UUID,
+  project_id: PROJECT_UUID,
+  message_uuid: MESSAGE_UUID,
+  user_uuid: USER_UUID,
+  emoji_name: "thumbs_up",
   created_at: DATE,
   updated_at: DATE,
 };
@@ -253,6 +270,49 @@ describe("messenger-client", () => {
 
     const [url] = firstFetchCall(fetchMock);
     expect(url).toBe(`/api/messenger/v1/messages/?uuid=${MESSAGE_UUID}&uuid=${EVENT_UUID}`);
+  });
+
+  it("wraps message reaction list, create, and delete endpoints", async () => {
+    const listFetchMock = createFetchMock([reactionDto]);
+    await expect(
+      getMessageReactions(
+        { accessToken: "access-token", projectId: PROJECT_UUID, fetchImpl: listFetchMock },
+        { messageUuid: MESSAGE_UUID, userUuid: USER_UUID },
+      ),
+    ).resolves.toEqual([reactionDto]);
+    const [listUrl, listInit] = firstFetchCall(listFetchMock);
+    expect(listUrl).toBe(
+      `/api/messenger/v1/message_reactions/?project_id=${PROJECT_UUID}&message_uuid=${MESSAGE_UUID}&user_uuid=${USER_UUID}`,
+    );
+    expect(listInit?.method).toBe("GET");
+
+    const createBody = {
+      message_uuid: MESSAGE_UUID,
+      emoji_name: "thumbs_up",
+    };
+    const createReactionFetchMock = createFetchMock(reactionDto);
+    await expect(
+      createMessageReaction(
+        { accessToken: "access-token", fetchImpl: createReactionFetchMock },
+        createBody,
+      ),
+    ).resolves.toEqual(reactionDto);
+    const [createUrl, createInit] = firstFetchCall(createReactionFetchMock);
+    expect(createUrl).toBe("/api/messenger/v1/message_reactions/");
+    expect(createInit?.method).toBe("POST");
+    expect(createInit?.body).toBe(JSON.stringify(createBody));
+
+    const deleteFetchMock = createFetchMock(null, 204);
+    await expect(
+      deleteMessageReaction(
+        { accessToken: "access-token", fetchImpl: deleteFetchMock },
+        REACTION_UUID,
+      ),
+    ).resolves.toBeUndefined();
+    const [deleteUrl, deleteInit] = firstFetchCall(deleteFetchMock);
+    expect(deleteUrl).toBe(`/api/messenger/v1/message_reactions/${REACTION_UUID}`);
+    expect(deleteInit?.method).toBe("DELETE");
+    expect(deleteInit?.body).toBeUndefined();
   });
 
   it("splits message UUID batches by 100 and flattens parallel responses", async () => {

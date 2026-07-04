@@ -20,10 +20,14 @@ import {
 } from "./messenger-cache.lib";
 import { parseMessengerConversationId } from "./messenger-ids.lib";
 import {
+  hydrateMessengerOwnMessageReactionsFromCache as defaultHydrateMessengerOwnMessageReactionsFromCache,
+  revalidateMessengerOwnMessageReactions as defaultRevalidateMessengerOwnMessageReactions,
+} from "./messenger-message-reactions-actions.lib";
+import {
   buildMessengerRequestOptions,
   type MessengerRequestOptionsOverrides,
 } from "./messenger-request-options.lib";
-import type { MessengerConversationId } from "./messenger.types";
+import type { MessengerConversationId, MessengerMessage, MessengerUuid } from "./messenger.types";
 
 // The first message page is loaded only after the user opens a conversation.
 const DEFAULT_MESSAGES_PAGE_LIMIT = 50;
@@ -54,6 +58,11 @@ export interface MessengerMessagesCacheDeps {
       hasMore: boolean;
     },
   ) => Promise<void> | void;
+}
+
+export interface MessengerMessagesOwnReactionSyncDeps {
+  hydrateFromCache?: typeof defaultHydrateMessengerOwnMessageReactionsFromCache;
+  revalidate?: typeof defaultRevalidateMessengerOwnMessageReactions;
 }
 
 export interface MessengerMessagesStoreApi {
@@ -96,6 +105,7 @@ export interface LoadMessengerConversationMessagesOptions {
   getRuntimeContext?: WorkspaceRuntimeContextGetter;
   client?: MessengerMessagesClientDeps;
   cache?: MessengerMessagesCacheDeps;
+  ownReactionSync?: MessengerMessagesOwnReactionSyncDeps;
   clientOptions?: MessengerRequestOptionsOverrides;
   signal?: AbortSignal;
   store?: MessengerMessagesStoreApi;
@@ -119,6 +129,80 @@ function writeMessagesCacheBestEffort(write: () => Promise<void> | void): void {
   }
 }
 
+function messageUuidsForOwnReactionSync(messages: readonly MessengerMessage[]): MessengerUuid[] {
+  // Own projection хранится отдельно от message aggregate, поэтому sync работает
+  // только по видимым uuid и не требует от loader знания reactionUuid или cache rows.
+  return messages.map((message) => message.uuid);
+}
+
+function scheduleVisibleOwnReactionRevalidate({
+  runtimeContext,
+  getRuntimeContext,
+  clientOptions,
+  signal,
+  ownReactionSync,
+  messageUuids,
+}: {
+  runtimeContext: WorkspaceRuntimeContext;
+  getRuntimeContext: WorkspaceRuntimeContextGetter;
+  clientOptions: MessengerRequestOptionsOverrides | undefined;
+  signal: AbortSignal | undefined;
+  ownReactionSync: MessengerMessagesOwnReactionSyncDeps | undefined;
+  messageUuids: readonly MessengerUuid[];
+}): void {
+  // Revalidate намеренно фоновый: cache hydrate должен быстро вернуть подсветку
+  // после reload, а серверная сверка не должна блокировать открытие чата.
+  const revalidate = ownReactionSync?.revalidate ?? defaultRevalidateMessengerOwnMessageReactions;
+  void revalidate({
+    runtimeContext,
+    getRuntimeContext,
+    clientOptions,
+    signal,
+    messageUuids,
+  }).catch(() => undefined);
+}
+
+async function syncVisibleOwnReactionsFromCacheThenServer({
+  runtimeContext,
+  getRuntimeContext,
+  clientOptions,
+  signal,
+  ownReactionSync,
+  messages,
+}: {
+  runtimeContext: WorkspaceRuntimeContext;
+  getRuntimeContext: WorkspaceRuntimeContextGetter;
+  clientOptions: MessengerRequestOptionsOverrides | undefined;
+  signal: AbortSignal | undefined;
+  ownReactionSync: MessengerMessagesOwnReactionSyncDeps | undefined;
+  messages: readonly MessengerMessage[];
+}): Promise<void> {
+  const messageUuids = messageUuidsForOwnReactionSync(messages);
+  if (messageUuids.length === 0) return;
+
+  const hydrate =
+    ownReactionSync?.hydrateFromCache ?? defaultHydrateMessengerOwnMessageReactionsFromCache;
+  try {
+    await hydrate({
+      runtimeContext,
+      getRuntimeContext,
+      signal,
+      messageUuids,
+    });
+  } catch {
+    // Сбой IDB hydrate не должен ломать историю сообщений: серверная revalidate
+    // ниже все равно попробует восстановить актуальные own rows.
+  }
+  scheduleVisibleOwnReactionRevalidate({
+    runtimeContext,
+    getRuntimeContext,
+    clientOptions,
+    signal,
+    ownReactionSync,
+    messageUuids,
+  });
+}
+
 // Stream conversations load by stream UUID; topic conversations add topic UUID.
 export async function loadMessengerConversationMessages({
   runtimeContext,
@@ -131,6 +215,7 @@ export async function loadMessengerConversationMessages({
     readConversationMessageWindow: defaultReadMessengerConversationWindowCache,
     writeConversationMessagePage: defaultWriteMessengerConversationWindowCache,
   },
+  ownReactionSync,
   clientOptions,
   signal,
   store = useWorkspaceMessageStore,
@@ -162,6 +247,14 @@ export async function loadMessengerConversationMessages({
     cachedStore.setConversationPagination(conversationId, {
       nextPageMarker: cachedWindow.nextPageMarker,
       hasMore: cachedWindow.hasMore,
+    });
+    await syncVisibleOwnReactionsFromCacheThenServer({
+      runtimeContext,
+      getRuntimeContext,
+      clientOptions,
+      signal,
+      ownReactionSync,
+      messages: cachedWindow.messages,
     });
   }
 
@@ -200,6 +293,14 @@ export async function loadMessengerConversationMessages({
     } else {
       messageStore.mergeConversationMessagesPage(conversationId, messages);
     }
+    await syncVisibleOwnReactionsFromCacheThenServer({
+      runtimeContext,
+      getRuntimeContext,
+      clientOptions,
+      signal,
+      ownReactionSync,
+      messages,
+    });
     messageStore.setMessagesLoading(conversationId, false);
     messageStore.setMessagesError(conversationId, null);
     messageStore.setConversationPagination(conversationId, { nextPageMarker, hasMore });

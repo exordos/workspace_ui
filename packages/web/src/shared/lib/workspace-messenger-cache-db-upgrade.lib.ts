@@ -13,6 +13,8 @@ export const WORKSPACE_MESSENGER_CACHE_STORES = {
   messages: "messages",
   messageBuckets: "messageBuckets",
   messageWindows: "messageWindows",
+  // Отдельный store нужен только для собственных reactionUuid текущего пользователя.
+  ownMessageReactions: "ownMessageReactions",
   realtimeCursor: "realtimeCursor",
   searchResults: "searchResults",
 } as const;
@@ -88,6 +90,16 @@ export function createWorkspaceMessengerCacheDbSchema(db: IDBDatabase): void {
   if (!db.objectStoreNames.contains(stores.messageWindows)) {
     const store = db.createObjectStore(stores.messageWindows, { keyPath: "id" });
     createOwnerIndex(store);
+  }
+
+  // Таблица хранит только реакции текущего пользователя. Индекс по сообщению
+  // нужен для гидрации видимого окна и точечного reconcile, а индекс по
+  // reactionUuid оставлен для будущих cleanup/lookup сценариев без full scan.
+  if (!db.objectStoreNames.contains(stores.ownMessageReactions)) {
+    const store = db.createObjectStore(stores.ownMessageReactions, { keyPath: "id" });
+    createOwnerIndex(store);
+    store.createIndex("byOwnerMessage", ["ownerKey", "messageUuid"], { unique: false });
+    store.createIndex("byOwnerReactionUuid", ["ownerKey", "reactionUuid"], { unique: false });
   }
 
   if (!db.objectStoreNames.contains(stores.realtimeCursor)) {

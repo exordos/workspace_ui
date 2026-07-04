@@ -1,6 +1,7 @@
 /**
  * Emoji display helpers for message reactions (Zulip emoji_name / emoji_code).
  */
+import type { MessengerPendingOwnReactionsByName } from "~/entities/messenger/messenger.types";
 import type { MessageReactionPayload, MockMessage, Reaction } from "~/shared/api/zulip.types";
 import {
   normalizeEmojiShortcodeName,
@@ -71,6 +72,29 @@ export function reactionPayloadFromEmojiClickData(
   return zulipEmojiPayloadFromPickerData(data, { mode: "strict" });
 }
 
+export function workspaceReactionPayloadFromEmojiClickData(
+  data: EmojiClickData,
+): MessageReactionPayload | null {
+  if (data.isCustom === true) return null;
+
+  // Workspace API принимает только opaque emoji_name. Для unicode emoji берем
+  // первое имя из picker, потому что оно стабильно читается в текущем UI, а при
+  // отсутствии имени падаем на unified codepoint как на детерминированный ключ.
+  const name = data.names?.find((candidate) => candidate.trim().length > 0);
+  const normalizedName = name == null ? "" : normalizeEmojiShortcodeName(name);
+  const emojiName =
+    normalizedName.length > 0
+      ? normalizedName
+      : (data.unified?.trim().toLowerCase() ?? data.emoji.trim());
+
+  if (emojiName.length === 0) return null;
+
+  return {
+    emojiName,
+    reactionType: "unicode_emoji",
+  };
+}
+
 export function getReactionDisplayChar(reaction: Reaction): string {
   const fromShortcode = resolveEmojiShortcodeDisplayGlyph(reaction.emoji_name);
   if (reaction.reaction_type === "unicode_emoji") {
@@ -101,6 +125,51 @@ export interface GroupedReaction {
   userIds: number[];
   displayChar: string;
   imageUrl?: string;
+}
+
+// Нативный grouped-chip для Workspace: это уже готовая UI-проекция backend aggregate,
+// а не список Zulip Reaction. Здесь нет user ids, emoji_code или reaction_type, потому
+// что Workspace API на этом этапе возвращает только opaque emoji_name и счетчик.
+export interface WorkspaceGroupedReaction {
+  key: string;
+  emojiName: string;
+  count: number;
+  reactedByMe: boolean;
+  displayChar: string;
+}
+
+// Workspace хранит emoji_name как opaque string. Для известных shortcodes показываем
+// Unicode-глиф, а неизвестные имена оставляем читаемой заглушкой вида :name: без
+// обращения к custom emoji catalog.
+export function getWorkspaceReactionDisplayChar(emojiName: string): string {
+  const normalizedEmojiName = normalizeEmojiShortcodeName(emojiName);
+  if (normalizedEmojiName.length === 0) {
+    return emojiName;
+  }
+
+  const unicodeGlyph = resolveShortcodeToUnicode(normalizedEmojiName);
+  return unicodeGlyph ?? `:${normalizedEmojiName}:`;
+}
+
+// Backend aggregate уже сгруппирован по emoji_name. Эта функция только сортирует
+// стабильный UI-список и добавляет reactedByMe из локальной карты own reaction uuid.
+export function groupWorkspaceReactions(
+  reactions: Readonly<Record<string, number>>,
+  ownReactionUuidsByEmojiName: Readonly<Record<string, string>>,
+  pendingOwnReactionsByEmojiName: Readonly<MessengerPendingOwnReactionsByName> = {},
+): WorkspaceGroupedReaction[] {
+  return Object.entries(reactions)
+    .filter(([emojiName, count]) => emojiName.trim().length > 0 && count > 0)
+    .sort(([leftEmojiName], [rightEmojiName]) => leftEmojiName.localeCompare(rightEmojiName))
+    .map(([emojiName, count]) => ({
+      key: `workspace:${emojiName}`,
+      emojiName,
+      count,
+      reactedByMe:
+        ownReactionUuidsByEmojiName[emojiName] != null ||
+        pendingOwnReactionsByEmojiName[emojiName]?.operation === "add",
+      displayChar: getWorkspaceReactionDisplayChar(emojiName),
+    }));
 }
 
 /** Group reactions by (emoji_name, reaction_type): { count, userIds, displayChar }. */

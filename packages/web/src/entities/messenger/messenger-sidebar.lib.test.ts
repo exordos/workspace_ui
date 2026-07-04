@@ -132,6 +132,8 @@ function message(overrides: Partial<MessengerMessage> = {}): MessengerMessage {
     pinned: false,
     starred: false,
     isOwn: false,
+    reactions: {},
+    ownReactionUuidsByEmojiName: {},
     createdAt: DATE_A,
     updatedAt: DATE_A,
     ...overrides,

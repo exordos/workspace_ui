@@ -7,18 +7,25 @@ import {
   deleteCachedTopicMessageBuckets,
   deleteMessengerFolderCatalogCache,
   deleteMessengerFolderItemCatalogCache,
+  deleteOwnMessageReaction,
+  deleteOwnMessageReactionsForMessage,
+  deleteOwnMessageReactionsForMessages,
   deleteMessengerStreamCatalogCache,
   deleteMessengerTopicCatalogCache,
   patchCachedMessage,
   readCachedMessagesByUuids,
   readConversationMessageWindow,
   readMessengerCatalogCache,
+  readOwnMessageReaction,
+  readOwnMessageReactions,
+  replaceOwnMessageReactionsForMessage,
   upsertCachedMessages,
   upsertMessengerConversationsCache,
   upsertMessengerFolderSnapshotsCache,
   upsertMessengerStreamBindingsCache as upsertMessengerStreamBindingsCatalogCache,
   upsertMessengerStreamsCache,
   upsertMessengerTopicsCache,
+  upsertOwnMessageReaction,
   writeConversationMessagePage,
   writeMessengerCatalogCache,
   writeRealtimeCursor,
@@ -29,6 +36,8 @@ import type {
   WorkspaceMessengerCatalogCacheWriteSnapshot,
   WorkspaceMessengerConversationMessagePage,
   WorkspaceMessengerCachedConversation,
+  WorkspaceMessengerOwnMessageReactionCacheRow,
+  WorkspaceMessengerOwnMessageReactionCacheWrite,
 } from "~/shared/lib/workspace-messenger-cache-db";
 import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
 import type {
@@ -57,6 +66,11 @@ export interface MessengerConversationCacheWindow {
   nextPageMarker: string | null;
   hasMore: boolean;
 }
+
+// Entity-слой оставляет низкоуровневую IndexedDB-схему внутри shared/lib, но
+// отдает будущим action/loaders уже доменно названные helpers для своих реакций.
+export type MessengerOwnMessageReactionCacheRow = WorkspaceMessengerOwnMessageReactionCacheRow;
+export type MessengerOwnMessageReactionCacheWrite = WorkspaceMessengerOwnMessageReactionCacheWrite;
 
 function hasCatalogData(snapshot: WorkspaceMessengerCatalogCacheSnapshot): boolean {
   return (
@@ -328,6 +342,69 @@ export async function deleteMessengerCachedMessage(
 ): Promise<void> {
   await deleteCachedMessage(ownerKey, messageUuid, conversationIds);
   await clearMessengerMessagePointerCache(ownerKey, messageUuid);
+}
+
+// Эти helpers хранят не сами счетчики reactions, а только локальную карту
+// "моя emojiName -> reactionUuid". Счетчики остаются правдой backend message DTO.
+export async function readMessengerOwnMessageReactionsCache(
+  ownerKey: string,
+  messageUuids: readonly MessengerUuid[],
+): Promise<MessengerOwnMessageReactionCacheRow[]> {
+  return readOwnMessageReactions(ownerKey, messageUuids);
+}
+
+// Точечное чтение нужно remove/toggle сценарию после reload, когда message store
+// еще не обогащен ownReactionUuidsByEmojiName.
+export async function readMessengerOwnMessageReactionCache(
+  ownerKey: string,
+  messageUuid: MessengerUuid,
+  emojiName: string,
+): Promise<MessengerOwnMessageReactionCacheRow | null> {
+  return readOwnMessageReaction(ownerKey, messageUuid, emojiName);
+}
+
+// Reconcile ограничен одним сообщением: пустой rows очищает только это
+// сообщение, а не весь owner cache и не весь видимый window.
+export async function replaceMessengerOwnMessageReactionsForMessageCache(
+  ownerKey: string,
+  messageUuid: MessengerUuid,
+  rows: readonly MessengerOwnMessageReactionCacheWrite[],
+): Promise<void> {
+  await replaceOwnMessageReactionsForMessage(ownerKey, messageUuid, rows);
+}
+
+// Upsert вызывается после create/revalidate и сохраняет reactionUuid, нужный
+// для последующего DELETE /message_reactions/{reaction_uuid}.
+export async function upsertMessengerOwnMessageReactionCache(
+  ownerKey: string,
+  row: MessengerOwnMessageReactionCacheWrite,
+): Promise<void> {
+  await upsertOwnMessageReaction(ownerKey, row);
+}
+
+// Удаление одной emojiName отражает успешное удаление своей реакции через API.
+export async function deleteMessengerOwnMessageReactionCache(
+  ownerKey: string,
+  messageUuid: MessengerUuid,
+  emojiName: string,
+): Promise<void> {
+  await deleteOwnMessageReaction(ownerKey, messageUuid, emojiName);
+}
+
+// Эти функции нужны cleanup-сценариям message/topic/stream. Они принимают только
+// явные UUID сообщений, чтобы не удалять реакции сообщений вне текущего события.
+export async function deleteMessengerOwnMessageReactionsForMessageCache(
+  ownerKey: string,
+  messageUuid: MessengerUuid,
+): Promise<void> {
+  await deleteOwnMessageReactionsForMessage(ownerKey, messageUuid);
+}
+
+export async function deleteMessengerOwnMessageReactionsForMessagesCache(
+  ownerKey: string,
+  messageUuids: readonly MessengerUuid[],
+): Promise<void> {
+  await deleteOwnMessageReactionsForMessages(ownerKey, messageUuids);
 }
 
 export async function writeMessengerRealtimeCursorCache(

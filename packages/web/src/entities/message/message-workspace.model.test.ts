@@ -22,6 +22,8 @@ const USER_UUID = "44444444-4444-4444-8444-444444444444";
 const MESSAGE_A = "10000000-0000-4000-8000-000000000001";
 const MESSAGE_B = "10000000-0000-4000-8000-000000000002";
 const MESSAGE_C = "10000000-0000-4000-8000-000000000003";
+const REACTION_A = "20000000-0000-4000-8000-000000000001";
+const REACTION_B = "20000000-0000-4000-8000-000000000002";
 const DATE = "2026-06-22T10:10:00Z";
 const DATE_LATER = "2026-06-22T10:20:00Z";
 const DATE_EARLIER = "2026-06-22T10:00:00Z";
@@ -46,6 +48,8 @@ function createMessage(
     pinned: false,
     starred: false,
     isOwn: false,
+    reactions: {},
+    ownReactionUuidsByEmojiName: {},
     createdAt: DATE,
     updatedAt: DATE,
     ...rest,
@@ -126,6 +130,57 @@ describe("workspace message store", () => {
       "initial",
       "live",
     ]);
+  });
+
+  it("preserves own reaction projection when a fresh message snapshot arrives", () => {
+    const store = useWorkspaceMessageStore.getState();
+    store.upsertMessage(
+      createMessage({
+        uuid: MESSAGE_A,
+        reactions: { thumbs_up: 1 },
+        ownReactionUuidsByEmojiName: { thumbs_up: REACTION_A },
+      }),
+    );
+
+    store.upsertMessage(
+      createMessage({
+        uuid: MESSAGE_A,
+        markdown: "fresh snapshot",
+        reactions: { thumbs_up: 2, eyes: 1 },
+        ownReactionUuidsByEmojiName: {},
+      }),
+    );
+
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toEqual(
+      expect.objectContaining({
+        markdown: "fresh snapshot",
+        reactions: { thumbs_up: 2, eyes: 1 },
+        ownReactionUuidsByEmojiName: { thumbs_up: REACTION_A },
+      }),
+    );
+  });
+
+  it("applies own reaction projection actions and aggregate patches", () => {
+    const store = useWorkspaceMessageStore.getState();
+    store.upsertMessage(createMessage({ uuid: MESSAGE_A }));
+
+    store.applyOwnMessageReactions(MESSAGE_A, [
+      { emojiName: "thumbs_up", reactionUuid: REACTION_A },
+      { emojiName: "eyes", reactionUuid: REACTION_B },
+    ]);
+    store.setOwnMessageReaction(MESSAGE_A, "heart", REACTION_A);
+    store.removeOwnMessageReaction(MESSAGE_A, "eyes");
+    store.applyMessageReactionAggregate(MESSAGE_A, { thumbs_up: 3, heart: 1 });
+
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toEqual(
+      expect.objectContaining({
+        reactions: { thumbs_up: 3, heart: 1 },
+        ownReactionUuidsByEmojiName: {
+          thumbs_up: REACTION_A,
+          heart: REACTION_A,
+        },
+      }),
+    );
   });
 
   it("indexes one message into topic and stream buckets when requested", () => {

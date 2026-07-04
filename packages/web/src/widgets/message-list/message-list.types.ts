@@ -4,36 +4,47 @@ import type {
   Reaction,
   RealmEmoji,
 } from "~/shared/api/zulip.types";
+import type { WorkspaceGroupedReaction } from "./message-bubble-emoji.lib";
 import type { MessageBubbleCallbacks } from "./message-bubble.types";
 import type { MessageMediaGallery } from "./message-list-media.lib";
 
+// Workspace route все еще использует старую MessageList оболочку, но реакции
+// передает отдельным native-полем. Это намеренно не расширяет Zulip Reaction[]
+// и не заставляет adapter придумывать фальшивых реакторов.
+export type MessageListMessage = MockMessage & {
+  workspaceReactionGroups?: WorkspaceGroupedReaction[];
+};
+
 export interface MessageListCallbacks {
-  onMessageReply?: (message: MockMessage, selectedText?: string) => void;
-  onMessageEdit?: (message: MockMessage) => void;
-  onMessageDelete?: (message: MockMessage) => void;
-  onMessageCopy?: (message: MockMessage) => void;
-  onMessageForward?: (message: MockMessage, selectedText?: string) => void;
-  onMessageStar?: (message: MockMessage) => void;
-  onMessageSelect?: (message: MockMessage) => void;
+  onMessageReply?: (message: MessageListMessage, selectedText?: string) => void;
+  onMessageEdit?: (message: MessageListMessage) => void;
+  onMessageDelete?: (message: MessageListMessage) => void;
+  onMessageCopy?: (message: MessageListMessage) => void;
+  onMessageForward?: (message: MessageListMessage, selectedText?: string) => void;
+  onMessageStar?: (message: MessageListMessage) => void;
+  onMessageSelect?: (message: MessageListMessage) => void;
   onMessageAddReaction?: (messageId: number, payload: MessageReactionPayload) => void;
   onMessageRemoveReaction?: (messageId: number, payload: MessageReactionPayload) => void;
+  // Workspace chip click не может доверять reactedByMe после reload, поэтому
+  // route может передать safe toggle, который сначала сверяет own rows.
+  onMessageToggleReaction?: (messageId: number, payload: MessageReactionPayload) => void;
   onOpenJitsiCall?: (url: string, locationName?: string) => void;
-  onMessageViews?: (message: MockMessage) => void;
-  onMessageOpenInChat?: (message: MockMessage) => void;
+  onMessageViews?: (message: MessageListMessage) => void;
+  onMessageOpenInChat?: (message: MessageListMessage) => void;
   onMessagePermalinkClick?: (href: string) => boolean;
   onTopicSeparatorClick?: (message: MockMessage) => void;
   onMessageAuthorClick?: (userId: number) => void;
   onOpenDirectMessage?: (userId: number) => void;
   onOpenDirectMessageByUuid?: (userUuid: string) => void;
-  onRetryFailedOutgoing?: (message: MockMessage) => void;
-  onRemoveFailedOutgoing?: (message: MockMessage) => void;
-  onRetryFailedEdit?: (message: MockMessage) => void;
-  onCancelFailedEdit?: (message: MockMessage) => void;
+  onRetryFailedOutgoing?: (message: MessageListMessage) => void;
+  onRemoveFailedOutgoing?: (message: MessageListMessage) => void;
+  onRetryFailedEdit?: (message: MessageListMessage) => void;
+  onCancelFailedEdit?: (message: MessageListMessage) => void;
 }
 
 /** Props for grouped non-own messages (avatar column + bubbles). */
 export interface MessageListSenderGroupProps {
-  messages: MockMessage[];
+  messages: MessageListMessage[];
   currentUserId?: number;
   bubbleCallbacks?: MessageBubbleCallbacks;
   selectionMode?: boolean;
@@ -42,6 +53,7 @@ export interface MessageListSenderGroupProps {
   mediaGallery: MessageMediaGallery;
   customEmojis?: RealmEmoji[];
   onEmojiPickerOpen?: () => void;
+  customEmojisSupported?: boolean;
   resolveCustomEmojiImageUrl?: (reaction: Reaction) => string | undefined;
   resolveCustomEmojiShortcodeImageUrl?: (shortcode: string) => string | undefined;
   /** Show topic label next to sender name in stream messages. */
@@ -49,7 +61,7 @@ export interface MessageListSenderGroupProps {
 }
 
 export interface MessageListProps {
-  messages: MockMessage[];
+  messages: MessageListMessage[];
   currentUserId?: number;
   /** When the key changes (chat/topic/DM), scroll resets to the latest messages */
   scrollToBottomKey?: string;
@@ -78,4 +90,7 @@ export interface MessageListProps {
   showLoadingOverlay?: boolean;
   /** Show topic label next to sender name in stream messages (default: true). */
   showTopicInSenderName?: boolean;
+  // Workspace route отключает кастомные emoji только на уровне UI: список не
+  // грузит realm catalog и не передает customEmojis в picker/markdown resolver.
+  customEmojisSupported?: boolean;
 }

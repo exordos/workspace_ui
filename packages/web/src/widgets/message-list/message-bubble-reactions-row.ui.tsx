@@ -69,12 +69,57 @@ export const MessageBubbleReactionsRow = React.memo(function MessageBubbleReacti
   message,
   currentUserId,
   reactionGroups,
+  workspaceReactionGroups,
   resolveReactionAuthorLabel,
   callbacks,
 }: MessageBubbleReactionsRowProps) {
-  if (reactionGroups.length === 0) return null;
+  if (reactionGroups.length === 0 && (workspaceReactionGroups?.length ?? 0) === 0) return null;
 
   const hideReactionChipMeta = isOneToOneDirectMessage(message);
+
+  if (workspaceReactionGroups != null && workspaceReactionGroups.length > 0) {
+    return (
+      <div className="flex min-w-0 flex-1 flex-wrap items-end justify-start gap-1">
+        {workspaceReactionGroups.map(({ key, count, displayChar, emojiName, reactedByMe }) => {
+          // Workspace aggregate не содержит авторов реакций, поэтому title и текст
+          // чипа строятся только из emoji_name/displayChar и серверного count.
+          const reactionTitle = resolveReactionTitle({
+            reactionAuthors: "",
+            reactionPrefix: displayChar,
+            count,
+          });
+          return (
+            <button
+              type="button"
+              key={key}
+              className={`inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-lg border px-2 py-0.5 text-sm transition-colors ${
+                reactedByMe
+                  ? "border-accent/40 bg-accent/15 hover:border-accent/50 hover:bg-accent/25"
+                  : "bg-bg-elevated/90 border-border-subtle hover:bg-bg-elevated"
+              }`}
+              title={hideReactionChipMeta ? undefined : reactionTitle}
+              aria-label={reactionTitle}
+              onClick={() => {
+                // Workspace chip не решает add/remove по reactedByMe: после
+                // reload это поле может быть stale, поэтому page передает safe
+                // toggle и action layer перед кликом сверяет own rows.
+                const payload = {
+                  emojiName,
+                  reactionType: "unicode_emoji" as const,
+                };
+                callbacks?.onToggleReaction?.(message.id, payload);
+              }}
+            >
+              <MessageBubbleReactionGlyph displayChar={displayChar} emojiName={emojiName} />
+              {!hideReactionChipMeta ? (
+                <span className="min-w-0 truncate text-[11px] text-text-muted">{count}</span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-w-0 flex-1 flex-wrap items-end justify-start gap-1">

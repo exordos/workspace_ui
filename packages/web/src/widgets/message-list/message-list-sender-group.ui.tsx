@@ -24,6 +24,7 @@ export const MessageListSenderGroup = React.memo<MessageListSenderGroupProps>(
     mediaGallery,
     customEmojis,
     onEmojiPickerOpen,
+    customEmojisSupported = true,
     resolveCustomEmojiImageUrl,
     resolveCustomEmojiShortcodeImageUrl,
     showTopicInSenderName = true,
@@ -83,6 +84,7 @@ export const MessageListSenderGroup = React.memo<MessageListSenderGroupProps>(
                 mediaGallery={mediaGallery}
                 customEmojis={customEmojis}
                 onEmojiPickerOpen={onEmojiPickerOpen}
+                customEmojisSupported={customEmojisSupported}
                 resolveCustomEmojiImageUrl={resolveCustomEmojiImageUrl}
                 resolveCustomEmojiShortcodeImageUrl={resolveCustomEmojiShortcodeImageUrl}
                 showTopicInSenderName={showTopicInSenderName}

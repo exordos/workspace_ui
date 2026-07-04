@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
@@ -18,7 +18,7 @@ import { renderWithProviders } from "~/test/render";
 import type { ChatHeaderProps } from "~/widgets/chat-view/chat-header.types";
 import { ChatPage } from "./chat-page.ui";
 import type { ChatPageComposerSectionProps } from "./chat-page-composer-section.types";
-import type { ChatPageMessageListSectionProps } from "./chat-page-message-list-section.types";
+import type { ChatPageWorkspaceMessageListSectionProps } from "./chat-page-workspace-message-list-section.types";
 
 const STREAM_UUID = "11111111-1111-4111-8111-111111111111";
 const TOPIC_UUID = "22222222-2222-4222-8222-222222222222";
@@ -31,16 +31,9 @@ const STREAM_BINDING_B_UUID = "77777777-7777-4777-8777-777777777777";
 const captured = vi.hoisted(() => ({
   composerProps: null as ChatPageComposerSectionProps | null,
   headerProps: null as ChatHeaderProps | null,
-  messageListProps: null as ChatPageMessageListSectionProps | null,
+  messageListProps: null as ChatPageWorkspaceMessageListSectionProps | null,
   oldChatListStore: vi.fn(() => {
     throw new Error("legacy chat-list store must not be used");
-  }),
-  createWorkspaceDirectStream: vi.fn().mockResolvedValue({
-    status: "applied",
-    ownerKey: "owner",
-    stream: { uuid: "88888888-8888-4888-8888-888888888888" },
-    defaultTopic: null,
-    streamBindings: [],
   }),
   loadWorkspaceMessages: vi.fn().mockResolvedValue({ status: "applied" }),
   streamBindingsForRoute: vi.fn(),
@@ -48,10 +41,6 @@ const captured = vi.hoisted(() => ({
 
 vi.mock("~/entities/chat-list/chat-list.model", () => ({
   useChatListStore: captured.oldChatListStore,
-}));
-
-vi.mock("~/entities/messenger/messenger-create-chat-actions.lib", () => ({
-  createWorkspaceDirectStream: captured.createWorkspaceDirectStream,
 }));
 
 vi.mock("~/entities/messenger/messenger-messages-loader.lib", async (importOriginal) => {
@@ -79,13 +68,15 @@ vi.mock("~/widgets/chat-view/chat-header.ui", () => ({
   },
 }));
 
-vi.mock("./chat-page-message-list-section.ui", () => ({
-  ChatPageMessageListSection: (props: ChatPageMessageListSectionProps) => {
+vi.mock("./chat-page-workspace-message-list-section.ui", () => ({
+  ChatPageWorkspaceMessageListSection: (props: ChatPageWorkspaceMessageListSectionProps) => {
     captured.messageListProps = props;
     return (
-      <div data-testid="old-message-list-section">
+      <div data-testid="workspace-message-list-section">
         {props.messages.map((message) => (
-          <article key={message.id}>{message.content}</article>
+          <article key={message.uuid} data-message-uuid={message.uuid}>
+            {message.markdown}
+          </article>
         ))}
       </div>
     );
@@ -220,13 +211,15 @@ function createMessage(): MessengerMessage {
     projectId: "project-a",
     streamUuid: STREAM_UUID,
     topicUuid: TOPIC_UUID,
-    authorUuid: USER_UUID,
-    userUuid: USER_UUID,
+    authorUuid: USER_B_UUID,
+    userUuid: USER_B_UUID,
     markdown: "workspace message",
     read: false,
     pinned: false,
     starred: false,
     isOwn: false,
+    reactions: {},
+    ownReactionUuidsByEmojiName: {},
     createdAt: "2026-06-30T10:00:00.000Z",
     updatedAt: "2026-06-30T10:00:00.000Z",
   };
@@ -285,7 +278,6 @@ describe("ChatPage Workspace route", () => {
     captured.headerProps = null;
     captured.messageListProps = null;
     captured.oldChatListStore.mockClear();
-    captured.createWorkspaceDirectStream.mockClear();
     captured.loadWorkspaceMessages.mockClear();
     captured.streamBindingsForRoute.mockClear();
   });
@@ -297,12 +289,12 @@ describe("ChatPage Workspace route", () => {
     useWorkspaceMessageStore.getState().clear();
   });
 
-  it("renders Workspace topic data through the old chat sections", async () => {
+  it("renders Workspace topic data through the Workspace-native message section", async () => {
     renderWorkspaceChatPageWithShellContexts(
       `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
     );
 
-    expect(await screen.findByTestId("old-message-list-section")).toBeInTheDocument();
+    expect(await screen.findByTestId("workspace-message-list-section")).toBeInTheDocument();
     expect(screen.getByTestId("chat-page")).toHaveClass(
       "max-w-chat-page",
       "flex-1",
@@ -323,7 +315,22 @@ describe("ChatPage Workspace route", () => {
     expect(captured.headerProps?.onOpenSearch).toEqual(expect.any(Function));
     expect(captured.headerProps?.onToggleRightPanel).toEqual(expect.any(Function));
     expect(captured.headerProps?.onOpenRightPanel).toEqual(expect.any(Function));
-    expect(captured.messageListProps?.activeTopic).toBe("Roadmap");
+    expect(captured.messageListProps?.conversationId).toBe(`topic:${STREAM_UUID}:${TOPIC_UUID}`);
+    expect(captured.messageListProps?.currentUserUuid).toBe(USER_UUID);
+    expect(captured.messageListProps?.resolveAuthorLabel?.(USER_B_UUID)).toBe("Bob Reed");
+    expect(captured.messageListProps?.messages[0]).toMatchObject({
+      uuid: "55555555-5555-4555-8555-555555555555",
+      markdown: "workspace message",
+    });
+    expect(captured.messageListProps?.messages[0]).not.toHaveProperty("id");
+    expect(captured.messageListProps?.messages[0]).not.toHaveProperty("content");
+    expect(captured.messageListProps?.firstUnreadUuid).toBe("55555555-5555-4555-8555-555555555555");
+    expect(captured.messageListProps?.unreadCount).toBe(1);
+    expect(captured.messageListProps?.onReplyMessage).toEqual(expect.any(Function));
+    expect(captured.messageListProps?.onEditMessage).toEqual(expect.any(Function));
+    expect(captured.messageListProps?.onRequestDeleteMessage).toEqual(expect.any(Function));
+    expect(captured.messageListProps?.onCopyMessageText).toEqual(expect.any(Function));
+    expect(captured.messageListProps?.onToggleMessageReaction).toEqual(expect.any(Function));
     expect(captured.composerProps?.readOnlyReason).toBeUndefined();
     expect(captured.composerProps?.composerCapabilities?.upload?.mode).toBe("unsupported");
     expect(captured.composerProps?.onSend).toEqual(expect.any(Function));
@@ -339,54 +346,6 @@ describe("ChatPage Workspace route", () => {
       },
     });
     await waitFor(() => expect(captured.loadWorkspaceMessages).toHaveBeenCalledTimes(1));
-  });
-
-  it("opens Workspace forward modal and prefills the current topic composer", async () => {
-    renderWorkspaceChatPageWithShellContexts(
-      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
-    );
-
-    expect(await screen.findByTestId("old-message-list-section")).toBeInTheDocument();
-    const message = captured.messageListProps?.messages[0];
-    expect(message).toBeDefined();
-    act(() => {
-      captured.messageListProps?.callbacks.onMessageForward?.(message!);
-    });
-
-    fireEvent.change(screen.getByLabelText("Channel"), { target: { value: STREAM_UUID } });
-    fireEvent.change(screen.getByLabelText("Topic name"), { target: { value: TOPIC_UUID } });
-    fireEvent.click(screen.getByRole("button", { name: "Forward" }));
-
-    await waitFor(() => {
-      expect(captured.composerProps?.draftInitialValue).toContain("workspace message");
-    });
-    expect(captured.createWorkspaceDirectStream).not.toHaveBeenCalled();
-  });
-
-  it("creates a Workspace direct stream before forwarding to a private chat", async () => {
-    renderWorkspaceChatPageWithShellContexts(
-      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
-    );
-
-    expect(await screen.findByTestId("old-message-list-section")).toBeInTheDocument();
-    const message = captured.messageListProps?.messages[0];
-    expect(message).toBeDefined();
-    act(() => {
-      captured.messageListProps?.callbacks.onMessageForward?.(message!);
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: /^dm$/i }));
-    fireEvent.click(screen.getByText("Bob Reed"));
-    fireEvent.click(screen.getByRole("button", { name: "Forward" }));
-
-    await waitFor(() => {
-      expect(captured.createWorkspaceDirectStream).toHaveBeenCalledWith(
-        expect.objectContaining({ directUserUuid: USER_B_UUID }),
-      );
-    });
-    await waitFor(() => {
-      expect(captured.composerProps?.draftInitialValue).toContain("workspace message");
-    });
   });
 
   it("maps Workspace direct private header view to old dmPartner header props", async () => {

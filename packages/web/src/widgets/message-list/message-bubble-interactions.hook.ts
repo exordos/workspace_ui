@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { useDownloadStore } from "~/entities/download/download.model";
-import type { MessageReactionPayload, MockMessage } from "~/shared/api/zulip.types";
+import type { MessageReactionPayload } from "~/shared/api/zulip.types";
 import { createLogger } from "~/shared/lib/logger";
 import { extractUserUploadPath } from "./message-attachment-download.lib";
 import {
@@ -16,7 +16,10 @@ import {
   MESSAGE_BUBBLE_ATTACHMENT_LINK_STATUS_CLASSES,
 } from "./message-bubble-attachment-styles.lib";
 import { mountCodeCopyButtons, teardownCodeCopyButtons } from "./message-bubble-code-copy.lib";
-import { reactionPayloadFromEmojiClickData } from "./message-bubble-emoji.lib";
+import {
+  reactionPayloadFromEmojiClickData,
+  workspaceReactionPayloadFromEmojiClickData,
+} from "./message-bubble-emoji.lib";
 import type {
   MessageBubbleContextMenuAnchor,
   MessageBubbleContextMenuSource,
@@ -25,6 +28,7 @@ import type { ContextItemLabel } from "./message-bubble-context.lib";
 import type {
   MessageBubbleAttachmentDownloadStatus,
   MessageBubbleCallbacks,
+  MessageBubbleMessage,
 } from "./message-bubble.types";
 import type { MessageMediaGallery } from "./message-list-media.lib";
 import type { EmojiClickData } from "emoji-picker-react";
@@ -34,7 +38,7 @@ const LONG_PRESS_MS = 500;
 const log = createLogger("message-bubble-interactions");
 
 export interface UseMessageBubbleInteractionsParams {
-  message: MockMessage;
+  message: MessageBubbleMessage;
   messageContent: string;
   safeMessageHtml: string;
   inSenderGroup: boolean;
@@ -43,6 +47,7 @@ export interface UseMessageBubbleInteractionsParams {
   mediaGallery?: MessageMediaGallery;
   callbacks?: MessageBubbleCallbacks;
   onEmojiPickerOpen?: () => void;
+  customEmojisSupported?: boolean;
   onBeforeMenuOpen?: () => void;
   messageBodyRef: RefObject<HTMLDivElement | null>;
   linkPreviewVisibilityRef: RefObject<HTMLDivElement | null>;
@@ -80,6 +85,7 @@ export function useMessageBubbleInteractions({
   mediaGallery,
   callbacks,
   onEmojiPickerOpen,
+  customEmojisSupported = true,
   onBeforeMenuOpen,
   messageBodyRef,
   linkPreviewVisibilityRef,
@@ -249,14 +255,20 @@ export function useMessageBubbleInteractions({
 
   const handleEmojiPick = useCallback(
     (data: EmojiClickData) => {
-      const payload = reactionPayloadFromEmojiClickData(data);
+      if (!customEmojisSupported && data.isCustom === true) {
+        log.warn("Workspace reaction picker ignored unsupported custom emoji selection");
+        return;
+      }
+      const payload = customEmojisSupported
+        ? reactionPayloadFromEmojiClickData(data)
+        : workspaceReactionPayloadFromEmojiClickData(data);
       if (payload == null) {
-        log.warn("Reaction emoji picker could not resolve selected emoji via Zulip catalog");
+        log.warn("Reaction emoji picker could not resolve selected emoji");
         return;
       }
       handleReaction(payload);
     },
-    [handleReaction],
+    [customEmojisSupported, handleReaction],
   );
 
   const handleEmojiPickerOpenChange = useCallback(

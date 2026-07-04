@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
+import { createMessengerReactionAggregateRevalidateHandler } from "~/entities/messenger/messenger-message-reactions-actions.lib";
 import {
   createMessengerRealtimeActiveApplier,
   createMessengerRealtimeBackgroundApplier,
@@ -218,7 +219,20 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
         activeApplierFactory: ({ isOwnerCurrent }) =>
           applier ??
           composeWorkspaceRealtimeAppliers([
-            createMessengerRealtimeActiveApplier({ isOwnerCurrent }),
+            createMessengerRealtimeActiveApplier({
+              isOwnerCurrent,
+              // Active realtime видит только aggregate счетчиков. Собственные
+              // reaction rows перечитываются отдельным action-layer handler-ом,
+              // чтобы realtime слой не знал ни про HTTP client, ни про IDB cache.
+              onMessageReactionAggregateUpdated:
+                activeRuntimeContext == null
+                  ? undefined
+                  : createMessengerReactionAggregateRevalidateHandler({
+                      runtimeContext: activeRuntimeContext,
+                      getRuntimeContext: () =>
+                        useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+                    }),
+            }),
             createUserRealtimeApplier({ isOwnerCurrent }),
           ]),
         backgroundApplierFactory: ({ isOwnerCurrent }) =>

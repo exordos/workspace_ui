@@ -55,6 +55,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     mediaGallery,
     customEmojis,
     onEmojiPickerOpen,
+    customEmojisSupported = true,
     resolveCustomEmojiImageUrl,
     resolveCustomEmojiShortcodeImageUrl,
     callbacks,
@@ -96,12 +97,13 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     }, [callbacks, message]);
 
     const time = formatMessageTimeShort(message.timestamp);
+    const workspaceReactionGroups = message.workspaceReactionGroups;
     const reactionGroups = useMemo(
       () =>
-        message.reactions?.length
+        workspaceReactionGroups == null && message.reactions?.length
           ? groupReactions(message.reactions, resolveCustomEmojiImageUrl)
           : [],
-      [message.reactions, resolveCustomEmojiImageUrl],
+      [message.reactions, resolveCustomEmojiImageUrl, workspaceReactionGroups],
     );
     const resolveReactionAuthorLabel = useCallback(
       (userId: number): string => {
@@ -159,6 +161,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       mediaGallery,
       callbacks,
       onEmojiPickerOpen,
+      customEmojisSupported,
       onBeforeMenuOpen: handleBeforeMenuOpen,
       messageBodyRef,
       linkPreviewVisibilityRef,
@@ -191,7 +194,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     const peerBubbleBackgroundClass = focusedBubbleBackgroundClass ?? "bg-bg-elevated";
     const ownBubbleTailClass = "rounded-br-[6px]";
     const peerBubbleTailClass = "rounded-bl-[6px]";
-    const hasReactions = reactionGroups.length > 0;
+    const hasReactions = reactionGroups.length > 0 || (workspaceReactionGroups?.length ?? 0) > 0;
     const contextSections = isJitsiCall ? JITSI_CONTEXT_SECTIONS : BASE_CONTEXT_SECTIONS;
     const visibleContextSections = useMemo(
       () =>
@@ -218,7 +221,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
         onMenuItem={interactions.handleMenuAction}
         onQuickReaction={interactions.handleQuickReaction}
         onEmojiPick={interactions.handleEmojiPick}
-        customEmojis={customEmojis}
+        customEmojis={customEmojisSupported ? customEmojis : undefined}
+        customEmojisSupported={customEmojisSupported}
       />
     );
 
@@ -261,6 +265,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
           time={time}
           hasReactions={hasReactions}
           reactionGroups={reactionGroups}
+          workspaceReactionGroups={workspaceReactionGroups}
           currentUserId={currentUserId}
           resolveReactionAuthorLabel={resolveReactionAuthorLabel}
           callbacks={callbacks}

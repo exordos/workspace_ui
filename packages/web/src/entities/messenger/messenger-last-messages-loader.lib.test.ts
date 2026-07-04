@@ -109,6 +109,7 @@ function createMessageDto(
     pinned: false,
     starred: false,
     is_own: true,
+    reactions: {},
     created_at: DATE,
     updated_at: DATE,
     ...overrides,

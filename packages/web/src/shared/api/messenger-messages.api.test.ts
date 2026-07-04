@@ -1,20 +1,21 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   UnsupportedMessengerApiActionError,
-  addReactionUnsupported,
+  createMessageReaction,
   createMessage,
+  deleteMessageReaction,
   deleteMessage,
   editMessage,
   getActivityUnsupported,
   getLinkPreviewUnsupported,
   getMessage,
+  getMessageReactions,
   getMessages,
   getMessagesPage,
   markConversationReadUnsupported,
   markMessageRead,
   markMessageUnreadUnsupported,
   pinMessageUnsupported,
-  removeReactionUnsupported,
   searchMessagesUnsupported,
   setTypingUnsupported,
   starMessageUnsupported,
@@ -30,6 +31,7 @@ const USER_UUID = "11111111-1111-4111-8111-111111111111";
 const STREAM_UUID = "75309057-419c-4b12-a7c1-3932429ec4a6";
 const TOPIC_UUID = "4ec0b996-b778-45f8-8ef4-ef863be0c047";
 const MESSAGE_UUID = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
+const REACTION_UUID = "fae5c55d-9bb2-4646-9c03-f4a6dd65c9f0";
 const DATE = "2026-06-22T10:10:00Z";
 
 const messageDto = {
@@ -47,6 +49,19 @@ const messageDto = {
   pinned: false,
   starred: false,
   is_own: true,
+  reactions: {
+    thumbs_up: 2,
+  },
+  created_at: DATE,
+  updated_at: DATE,
+};
+
+const reactionDto = {
+  uuid: REACTION_UUID,
+  project_id: PROJECT_UUID,
+  message_uuid: MESSAGE_UUID,
+  user_uuid: USER_UUID,
+  emoji_name: "thumbs_up",
   created_at: DATE,
   updated_at: DATE,
 };
@@ -209,6 +224,66 @@ describe("messenger messages API", () => {
     expect(deleteInit?.body).toBeUndefined();
   });
 
+  it("lists, creates, and deletes message reactions with Workspace payloads", async () => {
+    const listFetchMock = createFetchMock([reactionDto]);
+    await expect(
+      getMessageReactions(
+        { accessToken: "access-token", fetchImpl: listFetchMock },
+        { messageUuid: MESSAGE_UUID, userUuid: USER_UUID },
+      ),
+    ).resolves.toEqual([reactionDto]);
+    const [listUrl, listInit] = firstFetchCall(listFetchMock);
+    expect(listUrl).toBe(
+      `/api/messenger/v1/message_reactions/?message_uuid=${MESSAGE_UUID}&user_uuid=${USER_UUID}`,
+    );
+    expect(listInit?.method).toBe("GET");
+
+    const createBody = {
+      message_uuid: MESSAGE_UUID,
+      emoji_name: "thumbs_up",
+    };
+    const createReactionFetchMock = createFetchMock(reactionDto);
+    await expect(
+      createMessageReaction(
+        { accessToken: "access-token", fetchImpl: createReactionFetchMock },
+        createBody,
+      ),
+    ).resolves.toEqual(reactionDto);
+    const [createUrl, createInit] = firstFetchCall(createReactionFetchMock);
+    expect(createUrl).toBe("/api/messenger/v1/message_reactions/");
+    expect(createInit?.method).toBe("POST");
+    expect(createInit?.body).toBe(JSON.stringify(createBody));
+
+    const deleteFetchMock = createFetchMock(null, 204);
+    await expect(
+      deleteMessageReaction(
+        { accessToken: "access-token", fetchImpl: deleteFetchMock },
+        REACTION_UUID,
+      ),
+    ).resolves.toBeUndefined();
+    const [deleteUrl, deleteInit] = firstFetchCall(deleteFetchMock);
+    expect(deleteUrl).toBe(`/api/messenger/v1/message_reactions/${REACTION_UUID}`);
+    expect(deleteInit?.method).toBe("DELETE");
+    expect(deleteInit?.body).toBeUndefined();
+  });
+
+  it("strictly rejects invalid reaction rows", async () => {
+    const fetchMock = createFetchMock([
+      reactionDto,
+      {
+        ...reactionDto,
+        emoji_name: "",
+      },
+    ]);
+
+    await expect(
+      getMessageReactions(
+        { accessToken: "access-token", fetchImpl: fetchMock },
+        { messageUuid: MESSAGE_UUID },
+      ),
+    ).rejects.toThrow("Expected valid messenger message reactions response item at index 1");
+  });
+
   it("rejects unsupported actions without fetch", async () => {
     const fetchMock = vi.fn<typeof fetch>();
     const unsupportedCases: {
@@ -217,8 +292,6 @@ describe("messenger messages API", () => {
     }[] = [
       { action: "mark_message_unread", call: markMessageUnreadUnsupported },
       { action: "mark_conversation_read", call: markConversationReadUnsupported },
-      { action: "add_reaction", call: addReactionUnsupported },
-      { action: "remove_reaction", call: removeReactionUnsupported },
       { action: "star_message", call: starMessageUnsupported },
       { action: "unstar_message", call: unstarMessageUnsupported },
       { action: "pin_message", call: pinMessageUnsupported },

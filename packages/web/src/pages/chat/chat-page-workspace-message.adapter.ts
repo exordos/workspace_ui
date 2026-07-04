@@ -6,7 +6,8 @@ import type {
 } from "~/entities/messenger/messenger.types";
 import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import type { User, UsersById } from "~/entities/user/user.types";
-import type { MockMessage } from "~/shared/api/zulip.types";
+import { groupWorkspaceReactions } from "~/widgets/message-list/message-bubble-emoji.lib";
+import type { MessageListMessage } from "~/widgets/message-list/message-list.types";
 
 export const WORKSPACE_CHAT_VISUAL_CURRENT_USER_ID = 1;
 
@@ -16,7 +17,7 @@ const VISUAL_ID_MIN = 1_000;
 const VISUAL_ID_RANGE = 1_000_000_000;
 const UNKNOWN_SENDER_NAME = "Unknown user";
 
-type WorkspaceVisualMessage = MockMessage & { authorUuid: MessengerUuid };
+type WorkspaceVisualMessage = MessageListMessage & { authorUuid: MessengerUuid };
 
 export interface WorkspaceChatMessageListInput {
   messages: readonly MessengerMessage[];
@@ -27,7 +28,7 @@ export interface WorkspaceChatMessageListInput {
 }
 
 export interface WorkspaceChatMessageListViewModel {
-  messages: MockMessage[];
+  messages: MessageListMessage[];
   currentUserId: number;
   firstUnreadId: number | undefined;
   unreadCount: number;
@@ -93,10 +94,16 @@ function adaptMessageToVisualMessage(
   message: MessengerMessage,
   input: WorkspaceChatMessageListInput,
 ): WorkspaceVisualMessage {
-  // This is a temporary adapter for the old layout; it does not become the new domain contract.
+  // Это временная граница со старым layout. Она не становится новой доменной
+  // моделью и не превращает Workspace reactions aggregate в фальшивый Zulip Reaction[].
   const sender = input.usersById[message.authorUuid];
   const subject = resolveTopicLabel(message, input.conversation, input.topicsById);
   const streamName = input.streamName ?? "";
+  const workspaceReactionGroups = groupWorkspaceReactions(
+    message.reactions,
+    message.ownReactionUuidsByEmojiName,
+    message.pendingOwnReactionsByEmojiName,
+  );
 
   return {
     id: workspaceChatVisualMessageId(message.uuid),
@@ -111,6 +118,7 @@ function adaptMessageToVisualMessage(
     markdown_source: message.markdown,
     timestamp: Math.floor(Date.parse(message.createdAt) / 1000),
     flags: message.read ? ["read"] : [],
+    workspaceReactionGroups,
   };
 }
 

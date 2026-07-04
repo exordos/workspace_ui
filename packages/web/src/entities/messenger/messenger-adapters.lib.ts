@@ -144,6 +144,11 @@ export function adaptMessengerMessage(dto: WorkspaceMessengerMessageDto): Messen
     pinned: dto.pinned,
     starred: dto.starred,
     isOwn: dto.is_own,
+    // Backend message snapshot уже содержит финальный aggregate счетчиков.
+    // Своих reactionUuid в этом snapshot нет, поэтому adapter всегда начинает с
+    // пустой локальной проекции; store/action слой обогатит ее отдельно из cache/SWR.
+    reactions: { ...dto.reactions },
+    ownReactionUuidsByEmojiName: {},
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
   };
