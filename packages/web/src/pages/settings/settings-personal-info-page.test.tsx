@@ -44,6 +44,10 @@ vi.mock("~/shared/lib/avatar", async (importOriginal) => {
   };
 });
 
+vi.mock("~/features/external-accounts/zulip-external-account.ui", () => ({
+  ZulipExternalAccountCard: () => "Zulip external account card",
+}));
+
 function createPngFile(name = "avatar.png"): File {
   const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0, 0, 0, 0, 0]);
   return new File([bytes], name, { type: "image/png" });

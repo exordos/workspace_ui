@@ -131,7 +131,8 @@ export function handleMessageUpdated(
   event: MessengerEvent,
   ctx: LayoutMessengerEventDispatchContext,
 ): void {
-  if (event.type !== "message" || readMessageEventKind(event) !== "message.updated") return;
+  const kind = readMessageEventKind(event);
+  if (event.type !== "message" || (kind !== "message.updated" && kind !== "message.read")) return;
   if (!event.message) return;
   const { chatList, currentChat, users, activity, inbox, notifications } = ctx;
   const raw = event.message as unknown as WorkspaceRawMessage;
@@ -144,6 +145,9 @@ export function handleMessageUpdated(
   activity.markStale();
   activity.markStarredSummaryStale();
   inbox.markStale();
+  if (raw.read === true) {
+    closeReadMessageNotifications(notifications, [messageId], ctx.currentInstanceId);
+  }
 
   const currentUserId = chatList.currentUserId;
   const isForCurrentChat =
@@ -158,9 +162,6 @@ export function handleMessageUpdated(
   applyBooleanMessageFlagSnapshot(ctx, messageId, "pinned", raw.pinned);
   applyBooleanMessageFlagSnapshot(ctx, messageId, "starred", raw.starred);
   applyMessageReactionSnapshot(ctx, messageId, raw);
-  if (raw.read === true) {
-    closeReadMessageNotifications(notifications, [messageId], ctx.currentInstanceId);
-  }
 }
 
 export { readViewportState } from "./layout-messenger-event-viewport.lib";

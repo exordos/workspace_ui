@@ -279,14 +279,18 @@ function shouldAttachDevOrgTargetHeader(pathname: string): boolean {
   return messengerPrefixes.some((p) => pathnameUnderWorkspaceDevPrefix(pathname, p));
 }
 
-/** DEV: tells Vite dev proxy which org host should receive Workspace and Messenger REST. */
+/** DEV: tells the same-origin Vite proxy which org host should receive REST requests. */
 const devWorkspaceOrgTargetHeaderMiddleware: Middleware = async (req, next) => {
   if (!import.meta.env.DEV) {
     return next(req);
   }
   let pathname: string;
   try {
-    pathname = new URL(req.url).pathname;
+    const parsed = new URL(req.url);
+    if (typeof window !== "undefined" && parsed.origin !== window.location.origin) {
+      return next(req);
+    }
+    pathname = parsed.pathname;
   } catch {
     return next(req);
   }
@@ -848,25 +852,9 @@ function workspaceRestPathSuffix(): string {
   return workspaceRestApiPathSuffix(env.WORKSPACE_REST_API_PATH);
 }
 
-function devWorkspaceMountPathOnLocalhost(): string {
-  return devWorkspaceBrowserMountPath(env.WORKSPACE_REST_API_PATH);
-}
-
-/** Same-origin base for multi-org Workspace REST in dev (matches Vite `server.proxy`). */
-function getDevWorkspaceProxyBase(): string {
-  const base = env.WORKSPACE_API_BASE;
-  if (/^https?:\/\//i.test(base)) {
-    return `${DEV_WORKSPACE_ORG_PROXY_PATH_PREFIX}${devWorkspaceMountPathOnLocalhost()}`.replace(
-      /\/+$/,
-      "",
-    );
-  }
-  return base.replace(/\/+$/, "");
-}
-
 function getOrgScopedMessengerApiBase(path: string): string {
   const instance = getCurrentInstance();
-  if (instance == null || import.meta.env.DEV) {
+  if (instance == null) {
     return path;
   }
   const orgOrigin = resolveIamApiOrigin(instance).replace(/\/+$/, "");
@@ -894,10 +882,6 @@ export function getWorkspaceApiBaseForCurrentInstance(): string {
     return env.WORKSPACE_API_BASE;
   }
 
-  if (import.meta.env.DEV) {
-    return getDevWorkspaceProxyBase();
-  }
-
   const orgOrigin = workspaceOrgApiOriginForWorkspaceRest(instance);
   return `${orgOrigin}${workspaceRestPathSuffix()}`;
 }
@@ -920,16 +904,8 @@ export function refreshMessengerApiBase(): void {
   messengerApi.setBaseUrl(getMessengerBaseUrl());
 }
 
-/** DEV: routes Workspace REST through Vite proxy for the selected instance. */
 export function refreshWorkspaceApiBase(): void {
-  if (!import.meta.env.DEV) {
-    return;
-  }
-  if (getCurrentInstance() != null) {
-    workspaceApi.setBaseUrl(getDevWorkspaceProxyBase());
-  } else {
-    workspaceApi.setBaseUrl(env.WORKSPACE_API_BASE);
-  }
+  workspaceApi.setBaseUrl(getWorkspaceApiBaseForCurrentInstance());
 }
 
 export {

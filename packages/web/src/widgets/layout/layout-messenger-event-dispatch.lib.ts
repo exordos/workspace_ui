@@ -48,6 +48,10 @@ export function dispatchMessengerEvent(
         runDispatchHandler("dispatch:message.updated", () => handleMessageUpdated(event, ctx));
         return;
       }
+      if (event.kind === "message.read") {
+        runDispatchHandler("dispatch:message.read", () => handleMessageUpdated(event, ctx));
+        return;
+      }
       if (event.kind === "message.deleted") {
         runDispatchHandler("dispatch:message.deleted", () => handleDeleteMessage(event, ctx));
         return;

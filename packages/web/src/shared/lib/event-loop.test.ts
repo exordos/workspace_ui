@@ -217,8 +217,8 @@ function streamBindingsCreatedWorkspaceEvent(epochVersion: number): unknown {
     payload: {
       kind: "stream_bindings.created",
       project_id: "00000000-0000-4000-8000-000000000901",
-      stream_uuid: STREAM_UUID,
-      stream_bindings: [
+      uuid: STREAM_UUID,
+      items: [
         {
           uuid: STREAM_BINDING_UUID,
           project_id: "00000000-0000-4000-8000-000000000901",
@@ -373,6 +373,39 @@ describe("Workspace realtime event normalization", () => {
     });
   });
 
+  it("maps REST message.read events as message snapshots", () => {
+    const normalized = normalizeWorkspaceEventModel({
+      epoch_version: 17,
+      user_uuid: USER_UUID,
+      payload: {
+        kind: "message.read",
+        uuid: MESSAGE_UUID,
+        stream_uuid: STREAM_UUID,
+        topic_uuid: TOPIC_UUID,
+        author_uuid: OTHER_UUID,
+        payload: { kind: "markdown", content: "read over epochs" },
+        read: true,
+        pinned: false,
+        starred: false,
+        is_own: false,
+        created_at: "2026-06-24T10:20:30Z",
+        reactions: {},
+      },
+    });
+
+    expect(normalized?.event).toMatchObject({
+      id: 17,
+      type: "message",
+      kind: "message.read",
+      message: {
+        id: MESSAGE_UUID,
+        content: "read over epochs",
+        read: true,
+        flags: ["read"],
+      },
+    });
+  });
+
   it("maps REST user.updated events to normalized user profile events", () => {
     const normalized = normalizeWorkspaceEventModel(userUpdatedWorkspaceEvent(27));
 
@@ -456,6 +489,20 @@ describe("Workspace realtime event normalization", () => {
     });
   });
 
+  it("maps REST stream.read events to backend stream events", () => {
+    const normalized = normalizeWorkspaceEventModel(streamWorkspaceEvent(21, "stream.read", false));
+
+    expect(normalized?.event).toMatchObject({
+      id: 21,
+      type: "stream",
+      kind: "stream.read",
+      stream: {
+        uuid: STREAM_UUID,
+        name: "Engineering",
+      },
+    });
+  });
+
   it("maps REST topic.created events to backend topic events", () => {
     const normalized = normalizeWorkspaceEventModel(topicWorkspaceEvent(24));
 
@@ -472,6 +519,21 @@ describe("Workspace realtime event normalization", () => {
         unread_count: 2,
         is_default: false,
         is_done: true,
+      },
+    });
+  });
+
+  it("maps REST topic.read events to backend topic events", () => {
+    const normalized = normalizeWorkspaceEventModel(topicWorkspaceEvent(26, "topic.read"));
+
+    expect(normalized?.event).toMatchObject({
+      id: 26,
+      type: "topic",
+      kind: "topic.read",
+      topic: {
+        uuid: TOPIC_UUID,
+        stream_uuid: STREAM_UUID,
+        name: "planning",
       },
     });
   });
@@ -577,6 +639,20 @@ describe("Workspace realtime event normalization", () => {
       read: true,
       subject: TOPIC_UUID,
       flags: ["read"],
+    });
+  });
+
+  it("maps flat backend WS event rows without an outer event wrapper", () => {
+    const normalized = normalizeWorkspaceRealtimeEvent(workspaceEvent(29, OTHER_UUID), USER_UUID);
+
+    expect(normalized?.event).toMatchObject({
+      id: 29,
+      type: "message",
+      kind: "message.created",
+      message: {
+        id: MESSAGE_UUID,
+        read: false,
+      },
     });
   });
 
@@ -952,7 +1028,7 @@ describe("startMessengerEventLoop", () => {
     vi.useRealTimers();
   });
 
-  it("runs REST catch-up, opens WS with bearer subprotocol, handles live events, and stores cursor", async () => {
+  it("runs REST catch-up, opens WS with bearer subprotocol, handles flat live events, and stores cursor", async () => {
     const controller = new AbortController();
     const onEvent = vi.fn();
     const onQueueReady = vi.fn();
@@ -977,10 +1053,34 @@ describe("startMessengerEventLoop", () => {
     const ws = FakeWebSocket.instances[0]!;
     expect(ws.url).toBe("wss://workspace.example.test/api/messenger/ws?last_epoch_version=12");
     expect(ws.protocols).toEqual(["workspace.events.v1", "bearer.access-token"]);
+    expect(onQueueReady).toHaveBeenCalledTimes(1);
 
     ws.emit({ type: "hello", user_uuid: USER_UUID, project_id: "project", epoch_version: 12 });
     expect(onQueueReady).toHaveBeenCalledTimes(1);
 
+    ws.emit(workspaceEvent(13));
+
+    expect(onEvent).toHaveBeenCalledWith(expect.objectContaining({ id: 13, type: "message" }));
+    expect(ws.send).not.toHaveBeenCalledWith(JSON.stringify({ type: "ack", epoch_version: 13 }));
+    expect(localStorage.getItem("workspace-realtime:last-epoch:v1:inst-1")).toBe("13");
+    expect(recordDiagnosticRealtimeEventMock).toHaveBeenCalledWith("message");
+
+    controller.abort();
+  });
+
+  it("keeps legacy wrapped WS event frames compatible", async () => {
+    const controller = new AbortController();
+    const onEvent = vi.fn();
+
+    startMessengerEventLoop({
+      instanceId: "inst-1",
+      signal: controller.signal,
+      onEvent,
+    });
+
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+
+    const ws = FakeWebSocket.instances[0]!;
     ws.emit({
       type: "event",
       event: {
@@ -1000,8 +1100,6 @@ describe("startMessengerEventLoop", () => {
 
     expect(onEvent).toHaveBeenCalledWith(expect.objectContaining({ id: 13, type: "message" }));
     expect(ws.send).toHaveBeenCalledWith(JSON.stringify({ type: "ack", epoch_version: 13 }));
-    expect(localStorage.getItem("workspace-realtime:last-epoch:v1:inst-1")).toBe("13");
-    expect(recordDiagnosticRealtimeEventMock).toHaveBeenCalledWith("message");
 
     controller.abort();
   });

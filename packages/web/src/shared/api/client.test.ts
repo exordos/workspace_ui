@@ -535,7 +535,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     expect(headers.Authorization).toBe("Bearer iam-access-token");
   });
 
-  it("adds active organization target header to dev Messenger API requests", async () => {
+  it("routes active organization Messenger API requests to the organization origin", async () => {
     const {
       getMessengerGatewayApiBaseForCurrentInstance,
       setInstanceProvider,
@@ -559,12 +559,34 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
 
       const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
       const headers = init.headers as Record<string, string>;
-      expect(url).toContain("/api/messenger/v1/users/");
-      if (!import.meta.env.DEV) {
-        expect(headers["X-Workspace-Dev-Target-Origin"]).toBeUndefined();
-        return;
-      }
-      expect(headers["X-Workspace-Dev-Target-Origin"]).toBe("https://workspace.exordos.com");
+      expect(url).toBe("https://workspace.exordos.com/api/messenger/v1/users/");
+      expect(headers["X-Workspace-Dev-Target-Origin"]).toBeUndefined();
+    } finally {
+      setInstanceProvider(() => null);
+    }
+  });
+
+  it("routes active organization Workspace API requests to the organization origin", async () => {
+    const { setInstanceProvider, workspaceApi, refreshWorkspaceApiBase } = await import("./client");
+    setInstanceProvider(() => ({
+      id: "i-workspace-org",
+      realm: "https://messenger.exordos.com",
+      login: "admin",
+      authType: "iam",
+      iamAccessToken: "iam-access-token",
+      workspaceOrgOrigin: "https://workspace.exordos.com",
+    }));
+    refreshWorkspaceApiBase();
+
+    mockFetch.mockResolvedValueOnce(mockJsonResponse({ folders: [] }));
+
+    try {
+      await workspaceApi.get("/v1/folders/");
+
+      const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+      const headers = init.headers as Record<string, string>;
+      expect(url).toBe("https://workspace.exordos.com/v1/folders/");
+      expect(headers["X-Workspace-Dev-Target-Origin"]).toBeUndefined();
     } finally {
       setInstanceProvider(() => null);
     }

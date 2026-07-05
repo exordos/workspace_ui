@@ -6,6 +6,7 @@ import { applyUserStatusSnapshot } from "~/entities/user/api/user-status-write.l
 import { fetchOwnStatus, updateOwnStatus } from "~/entities/user/api/user.api";
 import { formatUserStatusLabel } from "~/entities/user/user-status.lib";
 import { useUsersStore, type UserStatus } from "~/entities/user/user.model";
+import { ZulipExternalAccountCard } from "~/features/external-accounts/zulip-external-account.ui";
 import {
   fetchUserProfile,
   getOwnAvatarCapabilities,
@@ -547,6 +548,7 @@ export const SettingsPersonalInfoPage: React.FC = () => {
     <div className="flex max-h-full min-h-0 min-w-0 max-w-narrow-page flex-1 flex-col overflow-hidden">
       <ChatHeader channelName={t("settings.personalInfo")} hideTopic hideParticipants />
       <section className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-4">
+        <ZulipExternalAccountCard />
         <div className="rounded-xl border border-border-subtle bg-card-bg p-4">
           <header className="border-b border-border-subtle pb-3">
             <h2 className="mb-3 text-sm font-semibold text-text-primary">

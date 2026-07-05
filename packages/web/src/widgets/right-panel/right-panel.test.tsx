@@ -81,6 +81,10 @@ vi.mock("~/shared/lib/updater", () => ({
   useAppUpdate: useAppUpdateMock,
 }));
 
+vi.mock("~/features/external-accounts/zulip-external-account.ui", () => ({
+  ZulipExternalAccountCard: () => "Zulip external account card",
+}));
+
 vi.mock("~/shared/api/messenger-users", async () => {
   const actual = await vi.importActual("~/shared/api/messenger-users");
   return {
@@ -719,6 +723,23 @@ describe("RightPanel truthfulness", () => {
     expect(screen.getByText("Human")).toBeInTheDocument();
     expect(screen.getByText(/^account status$/i)).toBeInTheDocument();
     expect(screen.getByText("Active")).toBeInTheDocument();
+  });
+
+  it("renders external account controls in the current user right-panel profile", () => {
+    useChatListStore.getState().setCurrentUserId(42);
+
+    renderWithProviders(
+      <RightPanelShell
+        title="Admin User"
+        user={{
+          name: "Admin User",
+          userId: 42,
+          email: "admin@example.com",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Zulip external account card")).toBeInTheDocument();
   });
 
   it("copies email and user id from profile contact rows", async () => {

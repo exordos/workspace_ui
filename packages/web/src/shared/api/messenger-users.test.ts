@@ -2,13 +2,14 @@
  * Tests for Workspace gateway users API.
  */
 import { describe, expect, it } from "vitest";
-import { fetchUser, fetchUsers, fetchUsersAvatarMap, getCurrentUser } from "./messenger-users";
 import {
   getMockGetCurrentInstance,
   getMockMessengerApi,
   getMockRefreshMessengerApiBase,
   TEST_INSTANCE,
 } from "./messenger.test.setup";
+// eslint-disable-next-line import-x/order -- setup module registers vi.mock("./client") before importing the subject.
+import { fetchUser, fetchUsers, fetchUsersAvatarMap, getCurrentUser } from "./messenger-users";
 
 const mockMessengerApi = getMockMessengerApi();
 const mockRefreshMessengerApiBase = getMockRefreshMessengerApiBase();

@@ -1185,6 +1185,60 @@ describe("dispatchMessengerEvent", () => {
       expect(ctx.currentChat.appendMessage).not.toHaveBeenCalled();
     });
 
+    it("applies message.read snapshots without treating them as new incoming messages", () => {
+      const { ctx } = buildCtx();
+      ctx.chatList.addMessage = vi.fn();
+      ctx.currentChat.appendMessage = vi.fn();
+      ctx.currentChat.updateMessageFlags = vi.fn();
+      ctx.notifications.closeByTag = vi.fn();
+      ctx.currentChat.context = {
+        type: "stream",
+        streamId: STREAM_UUID_10,
+        streamName: "engineering",
+        topic: TOPIC_UUID_7,
+        topicUuid: TOPIC_UUID_7,
+        streamWideView: false,
+      };
+
+      dispatchMessengerEvent(
+        {
+          id: 33,
+          type: "message",
+          kind: "message.read",
+          message: {
+            id: "00000000-0000-4000-8000-000000000033",
+            sender_id: 0,
+            author_uuid: USER_UUID_2,
+            sender_uuid: USER_UUID_2,
+            sender_full_name: "Alice",
+            content: "read body",
+            markdown_source: "read body",
+            timestamp: 1777960655,
+            type: "stream",
+            stream_uuid: STREAM_UUID_10,
+            topic_uuid: TOPIC_UUID_7,
+            subject: TOPIC_UUID_7,
+            read: true,
+            pinned: false,
+            starred: false,
+            flags: ["read"],
+          },
+        },
+        ctx,
+      );
+
+      expect(ctx.chatList.addMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "00000000-0000-4000-8000-000000000033" }),
+      );
+      expect(ctx.currentChat.updateMessageFlags).toHaveBeenCalledWith(
+        ["00000000-0000-4000-8000-000000000033"],
+        "read",
+        "add",
+      );
+      expect(ctx.notifications.closeByTag).toHaveBeenCalled();
+      expect(ctx.currentChat.appendMessage).not.toHaveBeenCalled();
+    });
+
     it("deletes messages from new message.deleted events", () => {
       const { ctx } = buildCtx();
       ctx.chatList.handleDeleteMessages = vi.fn();
@@ -1274,6 +1328,34 @@ describe("dispatchMessengerEvent", () => {
               uuid: "00000000-0000-4000-8000-000000000099",
               stream_uuid: STREAM_UUID_42,
               user_uuid: "00000000-0000-4000-8000-000000000100",
+              role: "member",
+            },
+          ],
+        },
+        {
+          ...ctx,
+          onStreamPeerMembersChanged,
+        },
+      );
+
+      expect(onStreamPeerMembersChanged).toHaveBeenCalledWith([STREAM_UUID_42]);
+    });
+
+    it("notifies stream ids from stream_bindings.created items payload", () => {
+      const { ctx } = buildCtx();
+      const onStreamPeerMembersChanged = vi.fn();
+
+      dispatchMessengerEvent(
+        {
+          id: 8,
+          type: "stream_binding",
+          kind: "stream_bindings.created",
+          uuid: STREAM_UUID_42,
+          items: [
+            {
+              uuid: "00000000-0000-4000-8000-000000000098",
+              stream_uuid: STREAM_UUID_42,
+              user_uuid: "00000000-0000-4000-8000-000000000101",
               role: "member",
             },
           ],

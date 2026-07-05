@@ -405,6 +405,7 @@ export function handleStream(
   if (
     event.kind !== "stream.created" &&
     event.kind !== "stream.updated" &&
+    event.kind !== "stream.read" &&
     event.kind !== "stream.deleted"
   ) {
     return;
@@ -434,7 +435,7 @@ export function handleStream(
   });
 }
 
-type WorkspaceTopicEventKind = "topic.created" | "topic.updated" | "topic.deleted";
+type WorkspaceTopicEventKind = "topic.created" | "topic.updated" | "topic.read" | "topic.deleted";
 
 interface WorkspaceTopicEventRow {
   topicUuid: string;
@@ -447,7 +448,12 @@ interface WorkspaceTopicEventRow {
 }
 
 function isWorkspaceTopicEventKind(kind: unknown): kind is WorkspaceTopicEventKind {
-  return kind === "topic.created" || kind === "topic.updated" || kind === "topic.deleted";
+  return (
+    kind === "topic.created" ||
+    kind === "topic.updated" ||
+    kind === "topic.read" ||
+    kind === "topic.deleted"
+  );
 }
 
 function parseWorkspaceTopicEventRow(value: unknown): WorkspaceTopicEventRow | null {
@@ -521,12 +527,13 @@ export function handleStreamBinding(
 ): void {
   if (event.type !== "stream_binding" || event.kind !== "stream_bindings.created") return;
   const streamUuids = new Set<string>();
-  const eventStreamUuid = parseStreamUuid(event.stream_uuid);
+  const eventStreamUuid = parseStreamUuid(event.stream_uuid) ?? parseStreamUuid(event.uuid);
   if (eventStreamUuid != null) {
     streamUuids.add(eventStreamUuid);
   }
-  if (Array.isArray(event.stream_bindings)) {
-    for (const binding of event.stream_bindings) {
+  const bindings = Array.isArray(event.stream_bindings) ? event.stream_bindings : event.items;
+  if (Array.isArray(bindings)) {
+    for (const binding of bindings) {
       if (binding == null || typeof binding !== "object" || Array.isArray(binding)) {
         continue;
       }

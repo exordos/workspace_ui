@@ -389,10 +389,19 @@ function messageFromWorkspaceEventPayload(
   };
 }
 
-type WorkspaceMessageEventKind = "message.created" | "message.updated" | "message.deleted";
+type WorkspaceMessageEventKind =
+  | "message.created"
+  | "message.updated"
+  | "message.read"
+  | "message.deleted";
 
 function isWorkspaceMessageEventKind(kind: string | null): kind is WorkspaceMessageEventKind {
-  return kind === "message.created" || kind === "message.updated" || kind === "message.deleted";
+  return (
+    kind === "message.created" ||
+    kind === "message.updated" ||
+    kind === "message.read" ||
+    kind === "message.deleted"
+  );
 }
 
 function deletedMessageFromWorkspaceEventPayload(
@@ -449,16 +458,30 @@ function userEventFromWorkspaceUser(
   };
 }
 
-type WorkspaceStreamEventKind = "stream.created" | "stream.updated" | "stream.deleted";
+type WorkspaceStreamEventKind =
+  | "stream.created"
+  | "stream.updated"
+  | "stream.read"
+  | "stream.deleted";
 
 function isWorkspaceStreamEventKind(kind: string | null): kind is WorkspaceStreamEventKind {
-  return kind === "stream.created" || kind === "stream.updated" || kind === "stream.deleted";
+  return (
+    kind === "stream.created" ||
+    kind === "stream.updated" ||
+    kind === "stream.read" ||
+    kind === "stream.deleted"
+  );
 }
 
-type WorkspaceTopicEventKind = "topic.created" | "topic.updated" | "topic.deleted";
+type WorkspaceTopicEventKind = "topic.created" | "topic.updated" | "topic.read" | "topic.deleted";
 
 function isWorkspaceTopicEventKind(kind: string | null): kind is WorkspaceTopicEventKind {
-  return kind === "topic.created" || kind === "topic.updated" || kind === "topic.deleted";
+  return (
+    kind === "topic.created" ||
+    kind === "topic.updated" ||
+    kind === "topic.read" ||
+    kind === "topic.deleted"
+  );
 }
 
 function streamEventFromWorkspaceStream(
@@ -552,13 +575,23 @@ function streamBindingsEventFromWorkspacePayload(
   if (!isRecord(payloadValue)) {
     return null;
   }
-  const streamUuid = normalizeUuid(payloadValue.stream_uuid);
-  if (streamUuid == null || !Array.isArray(payloadValue.stream_bindings)) {
+  const itemsValue = Array.isArray(payloadValue.items)
+    ? payloadValue.items
+    : payloadValue.stream_bindings;
+  if (!Array.isArray(itemsValue)) {
     return null;
   }
-  const streamBindings = payloadValue.stream_bindings
-    .filter(isRecord)
-    .map((binding) => ({ ...binding }));
+  const streamBindings = itemsValue.filter(isRecord).map((binding) => ({ ...binding }));
+  const firstBindingStreamUuid = streamBindings
+    .map((binding) => normalizeUuid(binding.stream_uuid))
+    .find((streamUuid): streamUuid is string => streamUuid != null);
+  const streamUuid =
+    normalizeUuid(payloadValue.uuid) ??
+    normalizeUuid(payloadValue.stream_uuid) ??
+    firstBindingStreamUuid;
+  if (streamUuid == null || streamBindings.length === 0) {
+    return null;
+  }
   return {
     id: epochVersion,
     type: "stream_binding",
@@ -659,7 +692,7 @@ export function normalizeWorkspaceEventModel(
       ? { epochVersion, event: null, skipReason: "invalid messages.read payload" }
       : { epochVersion, event };
   }
-  if (kind === "message.created" || kind === "message.updated") {
+  if (kind === "message.created" || kind === "message.updated" || kind === "message.read") {
     const currentUserUuid = normalizeUuid(row.user_uuid);
     const message = messageFromWorkspaceEventPayload(payload, currentUserUuid);
     if (message == null) {
@@ -798,6 +831,12 @@ export function normalizeWorkspaceRealtimeEvent(
 ): NormalizedWorkspaceRealtimeEvent | null {
   if (!isRecord(rawEvent)) {
     return null;
+  }
+  if (isRecord(rawEvent.payload)) {
+    const workspaceModelEvent = normalizeWorkspaceEventModel(rawEvent);
+    if (workspaceModelEvent != null) {
+      return workspaceModelEvent;
+    }
   }
   const epochVersion = normalizeEpochVersion(rawEvent.epoch_version ?? rawEvent.id);
   if (epochVersion == null) {
@@ -950,6 +989,23 @@ export function normalizeWorkspaceRealtimeEvent(
       epoch_version: epochVersion,
       message,
     },
+  };
+}
+
+function normalizeRealtimeSocketFrame(
+  frame: Record<string, unknown>,
+  currentUserUuid: string | null,
+): { normalized: NormalizedWorkspaceRealtimeEvent | null; shouldAck: boolean } {
+  const frameType = readString(frame.type);
+  if (frameType === "event") {
+    return {
+      normalized: normalizeWorkspaceRealtimeEvent(frame.event, currentUserUuid),
+      shouldAck: true,
+    };
+  }
+  return {
+    normalized: normalizeWorkspaceRealtimeEvent(frame, currentUserUuid),
+    shouldAck: false,
   };
 }
 
@@ -1139,6 +1195,7 @@ function openRealtimeSocket(
   return new Promise((resolve, reject) => {
     const url = buildRealtimeWebSocketUrl(runtime.websocketApiBaseUrl, state.lastEpochVersion);
     let socket: WebSocket;
+    let queueReadySent = false;
     let settled = false;
 
     const cleanup = () => {
@@ -1171,6 +1228,13 @@ function openRealtimeSocket(
       }
       fail(createAbortError());
     };
+    const markQueueReady = () => {
+      if (queueReadySent) {
+        return;
+      }
+      queueReadySent = true;
+      options.onQueueReady?.();
+    };
 
     try {
       socket = new WebSocket(url, [WORKSPACE_EVENTS_PROTOCOL, `bearer.${runtime.accessToken}`]);
@@ -1184,6 +1248,7 @@ function openRealtimeSocket(
 
     socket.onopen = () => {
       log.info("Realtime websocket connected", { url: WORKSPACE_REALTIME_WS_PATH });
+      markQueueReady();
     };
 
     socket.onmessage = (messageEvent: MessageEvent) => {
@@ -1194,23 +1259,22 @@ function openRealtimeSocket(
       const frameType = readString(frame.type);
       if (frameType === "hello") {
         state.currentUserUuid = normalizeUuid(frame.user_uuid) ?? state.currentUserUuid;
-        options.onQueueReady?.();
+        markQueueReady();
         return;
       }
       if (frameType === "ping") {
         sendPong(socket, frame);
         return;
       }
-      if (frameType !== "event") {
-        log.warn("Skipping unsupported realtime websocket frame", { frameType });
-        return;
-      }
-      const normalized = normalizeWorkspaceRealtimeEvent(frame.event, state.currentUserUuid);
+      const { normalized, shouldAck } = normalizeRealtimeSocketFrame(frame, state.currentUserUuid);
       if (normalized == null) {
+        log.warn("Skipping unsupported realtime websocket frame", {
+          frameType: frameType ?? "unknown",
+        });
         return;
       }
       try {
-        if (processNormalizedEvent(normalized, options, state)) {
+        if (processNormalizedEvent(normalized, options, state) && shouldAck) {
           sendAck(socket, normalized.epochVersion);
         }
       } catch (error) {
