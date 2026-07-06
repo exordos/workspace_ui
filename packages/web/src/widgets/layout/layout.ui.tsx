@@ -6,6 +6,7 @@ import { useHydrateDrafts } from "~/entities/draft/draft-hydration";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { syncUnreadSurfacesFromDelta } from "~/entities/unread-sync/unread-surfaces-sync.lib";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
+import { WorkspaceForwardMessageDialog } from "~/features/workspace-forward-message/workspace-forward-message.ui";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { useRightDrawerStore } from "~/widgets/right-panel/right-drawer.model";
@@ -368,6 +369,7 @@ export const Layout: React.FC = () => {
           />
         </LayoutLoadingGate>
       </div>
+      <WorkspaceForwardMessageDialog />
     </div>
   );
 };

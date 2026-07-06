@@ -1,4 +1,4 @@
-// /activity/:filter — cache-first for mentions/starred/reactions (IDB hydrate → background refresh → newest replace); drafts use hydrated global store.
+// /activity/:filter keeps Zulip-backed mentions/reactions cache-first; Workspace starred uses native messages.
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
@@ -6,10 +6,7 @@ import {
   isActivityMessagesSnapshotFresher,
 } from "~/entities/activity/activity-cache.lib";
 import { ensureReactionsLoaded } from "~/entities/activity/activity-reactions-loader.lib";
-import {
-  ensureStarredLoaded,
-  STARRED_SUMMARY_PAGE_SIZE,
-} from "~/entities/activity/activity-starred-loader.lib";
+import { fetchWorkspaceStarredMessages } from "~/entities/activity/activity-workspace-starred.api";
 import { fetchActivityMessagesPageWithPersist } from "~/entities/activity/activity.api";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
@@ -22,8 +19,22 @@ import {
   isActiveOrgRequestContextCurrent,
   useInstancesStore,
 } from "~/entities/instance/instance.model";
+import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
+import { useUsersStore } from "~/entities/user/user.model";
+import {
+  selectCurrentWorkspaceRuntimeContext,
+  useWorkspaceAuthStore,
+} from "~/entities/workspace-auth/workspace-auth.model";
+import {
+  isWorkspaceRuntimeRequestContextCurrent,
+  workspaceRuntimeOwnerKey,
+} from "~/entities/workspace-runtime/workspace-runtime.lib";
+import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { useWorkspaceForwardMessageStore } from "~/features/workspace-forward-message/workspace-forward-message.model";
 import { t } from "~/i18n/i18n";
-import { removeMessageFlag } from "~/shared/api/zulip-messages";
+import { unstarMessageUnsupported } from "~/shared/api/messenger-messages.api";
+import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
 import type { ActivityFilter, ZulipRawMessage } from "~/shared/api/zulip.types";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { formatActivityItemTime } from "~/shared/lib/datetime.lib";
@@ -37,9 +48,12 @@ import { scrollToBottom } from "~/shared/lib/scroll-position.lib";
 import { buildStreamSlug } from "~/shared/lib/stream-slug.lib";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
+import type { WorkspaceMessageSummaryOptions } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
+import { summarizeWorkspaceMessageMarkdown } from "~/shared/lib/workspace-message-render/workspace-message-summary.lib";
 import {
   workspaceActivityRoute,
   workspaceInboxRoute,
+  workspaceMessengerMessageRoute,
 } from "~/shared/lib/workspace-messenger-route.lib";
 import { AppDialog, DialogCancelButton, DialogPrimaryButton } from "~/shared/ui/app-dialog.ui";
 import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
@@ -62,6 +76,21 @@ const ALL_FILTERS = [
   "drafts",
 ] as const satisfies readonly ActivityPageExtendedFilter[];
 const EMPTY_ACTIVITY_MESSAGES: ZulipRawMessage[] = [];
+const EMPTY_WORKSPACE_STARRED_MESSAGES: WorkspaceMessengerMessageDto[] = [];
+const ACTIVITY_PAGE_SIZE = 200;
+const ACTIVITY_WORKSPACE_SUMMARY_OPTIONS = {
+  maxLength: 80,
+  includeMediaLabel: true,
+  includeAttachmentLabel: true,
+  includeQuotePrefix: true,
+} as const satisfies WorkspaceMessageSummaryOptions;
+
+interface WorkspaceStarredState {
+  ownerKey: string | null;
+  messages: WorkspaceMessengerMessageDto[];
+  isInitialLoading: boolean;
+  isRefreshing: boolean;
+}
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
@@ -91,6 +120,29 @@ function ActivitySenderName({ fallback }: { fallback: string }) {
   return <>{fallback}</>;
 }
 
+function ActivityWorkspaceSenderName({
+  authorUuid,
+  fallback,
+}: {
+  authorUuid: string;
+  fallback: string;
+}) {
+  const user = useUsersStore((s) => s.usersById[authorUuid]);
+  return <>{selectUserDisplayName(user, fallback)}</>;
+}
+
+function formatWorkspaceItemTime(createdAt: string): string {
+  const parsed = Date.parse(createdAt);
+  if (Number.isNaN(parsed)) return "";
+  return formatItemTime(Math.floor(parsed / 1000));
+}
+
+function isRuntimeContextCurrent(runtimeContext: WorkspaceRuntimeContext): boolean {
+  return isWorkspaceRuntimeRequestContextCurrent(runtimeContext, () =>
+    useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+  );
+}
+
 const DraftChatContextLabel = React.memo<{ draft: Draft }>(({ draft }) => {
   const streamsMap = useChatListStore((s) => s.streamsMap);
   const currentUserId = useChatListStore((s) => s.currentUserId ?? null);
@@ -118,8 +170,6 @@ const DraftChatContextLabel = React.memo<{ draft: Draft }>(({ draft }) => {
 });
 DraftChatContextLabel.displayName = "DraftChatContextLabel";
 
-const ACTIVITY_PAGE_SIZE = STARRED_SUMMARY_PAGE_SIZE;
-
 export const ActivityPage: React.FC = () => {
   const { filter, orgId, projectId } = useParams<{
     filter: string;
@@ -128,13 +178,31 @@ export const ActivityPage: React.FC = () => {
   }>();
   const navigate = useNavigate();
   const openSearch = useOpenSearch();
+  const sessions = useWorkspaceAuthStore((state) => state.sessions);
+  const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
+  const runtimeContext = React.useMemo(
+    () => selectCurrentWorkspaceRuntimeContext({ sessions, currentAccountId }),
+    [sessions, currentAccountId],
+  );
+  const ownerKey = React.useMemo(
+    () => (runtimeContext == null ? null : workspaceRuntimeOwnerKey(runtimeContext)),
+    [runtimeContext],
+  );
   const currentUserId = useChatListStore((s) => s.currentUserId ?? null);
   const streamsMap = useChatListStore((s) => s.streamsMap);
+  const workspaceStreamsById = useMessengerStore((s) => s.streamsById);
+  const workspaceTopicsById = useMessengerStore((s) => s.topicsById);
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const [pendingDraftId, setPendingDraftId] = useState<number | null>(null);
-  const [pendingUnstarIds, setPendingUnstarIds] = useState<Set<number>>(() => new Set());
+  const [pendingUnstarIds, setPendingUnstarIds] = useState<Set<string>>(() => new Set());
   const [editingDraft, setEditingDraft] = useState<Draft | null>(null);
   const [editingContent, setEditingContent] = useState("");
+  const [workspaceStarredState, setWorkspaceStarredState] = useState<WorkspaceStarredState>({
+    ownerKey: null,
+    messages: EMPTY_WORKSPACE_STARRED_MESSAGES,
+    isInitialLoading: false,
+    isRefreshing: false,
+  });
   const listScrollRef = useRef<HTMLUListElement>(null);
   const initialScrollPositionKeyRef = useRef<string | null>(null);
   const editDraftTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -147,7 +215,7 @@ export const ActivityPage: React.FC = () => {
   const startFilterRequest = useActivityStore((s) => s.startFilterRequest);
   const setFilterPageIfActual = useActivityStore((s) => s.setFilterPageIfActual);
   const setFilterErrorIfActual = useActivityStore((s) => s.setFilterErrorIfActual);
-  const removeMessageFromFilter = useActivityStore((s) => s.removeMessageFromFilter);
+  const openWorkspaceForward = useWorkspaceForwardMessageStore((s) => s.open);
 
   const validFilter: ActivityPageExtendedFilter | null =
     filter && (ALL_FILTERS as readonly string[]).includes(filter)
@@ -158,12 +226,31 @@ export const ActivityPage: React.FC = () => {
   const activityRefreshVersion = isDrafts ? 0 : activityStaleVersion;
   const activityFilterState =
     validFilter != null && !isDrafts ? activityFilters[validFilter] : null;
-  const messages = activityFilterState?.messages ?? EMPTY_ACTIVITY_MESSAGES;
-  const loading = isDrafts ? draftsLoading : (activityFilterState?.isInitialLoading ?? false);
-  const isRefreshing = isDrafts ? false : (activityFilterState?.isRefreshing ?? false);
+  const messages =
+    validFilter === "starred"
+      ? EMPTY_ACTIVITY_MESSAGES
+      : (activityFilterState?.messages ?? EMPTY_ACTIVITY_MESSAGES);
+  const workspaceStarredMessages =
+    workspaceStarredState.ownerKey === ownerKey
+      ? workspaceStarredState.messages
+      : EMPTY_WORKSPACE_STARRED_MESSAGES;
+  const loading = isDrafts
+    ? draftsLoading
+    : validFilter === "starred"
+      ? workspaceStarredState.ownerKey === ownerKey && workspaceStarredState.isInitialLoading
+      : (activityFilterState?.isInitialLoading ?? false);
+  const isRefreshing = isDrafts
+    ? false
+    : validFilter === "starred"
+      ? workspaceStarredState.ownerKey === ownerKey && workspaceStarredState.isRefreshing
+      : (activityFilterState?.isRefreshing ?? false);
   const initialScrollPositionKey =
-    validFilter != null ? `${currentInstanceId ?? "none"}:${validFilter}` : null;
-  const listLength = isDrafts ? drafts.length : messages.length;
+    validFilter != null ? `${ownerKey ?? currentInstanceId ?? "none"}:${validFilter}` : null;
+  const listLength = isDrafts
+    ? drafts.length
+    : validFilter === "starred"
+      ? workspaceStarredMessages.length
+      : messages.length;
 
   useEffect(() => {
     if (!validFilter) {
@@ -179,22 +266,7 @@ export const ActivityPage: React.FC = () => {
     const controller = new AbortController();
     const orgContext = captureActiveOrgRequestContext();
 
-    if (validFilter === "starred") {
-      void ensureStarredLoaded({
-        currentInstanceId,
-        currentUserId,
-        forceRefresh: false,
-        pageSize: ACTIVITY_PAGE_SIZE,
-        signal: controller.signal,
-      }).catch((error) => {
-        if (!isAbortError(error)) {
-          log.error("Failed to bootstrap starred activity", { error: String(error) });
-        }
-      });
-      return () => {
-        controller.abort();
-      };
-    }
+    if (validFilter === "starred") return;
 
     if (validFilter === "reactions") {
       void ensureReactionsLoaded({
@@ -288,6 +360,59 @@ export const ActivityPage: React.FC = () => {
   ]);
 
   useEffect(() => {
+    if (validFilter !== "starred") return;
+
+    if (runtimeContext == null || ownerKey == null) {
+      setWorkspaceStarredState({
+        ownerKey,
+        messages: EMPTY_WORKSPACE_STARRED_MESSAGES,
+        isInitialLoading: false,
+        isRefreshing: false,
+      });
+      return;
+    }
+
+    const controller = new AbortController();
+    setWorkspaceStarredState({
+      ownerKey,
+      messages: EMPTY_WORKSPACE_STARRED_MESSAGES,
+      isInitialLoading: true,
+      isRefreshing: false,
+    });
+
+    const requestRuntimeContext = runtimeContext;
+    void fetchWorkspaceStarredMessages({
+      runtimeContext: requestRuntimeContext,
+      signal: controller.signal,
+    })
+      .then((page) => {
+        if (controller.signal.aborted || !isRuntimeContextCurrent(requestRuntimeContext)) return;
+        setWorkspaceStarredState({
+          ownerKey,
+          messages: page.messages,
+          isInitialLoading: false,
+          isRefreshing: false,
+        });
+      })
+      .catch((error) => {
+        if (isAbortError(error) || controller.signal.aborted) return;
+        if (!isRuntimeContextCurrent(requestRuntimeContext)) return;
+        setWorkspaceStarredState((current) => ({
+          ownerKey,
+          messages:
+            current.ownerKey === ownerKey ? current.messages : EMPTY_WORKSPACE_STARRED_MESSAGES,
+          isInitialLoading: false,
+          isRefreshing: false,
+        }));
+        log.error("Failed to load Workspace starred activity", { error: String(error) });
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [ownerKey, runtimeContext, validFilter]);
+
+  useEffect(() => {
     setPendingDraftId(null);
     setPendingUnstarIds(new Set());
     setEditingDraft(null);
@@ -327,39 +452,53 @@ export const ActivityPage: React.FC = () => {
     [navigate, currentUserId],
   );
 
-  const handleUnstarMessage = useCallback(
-    async (messageId: number) => {
-      const orgContext = captureActiveOrgRequestContext();
-      setPendingUnstarIds((current) => {
-        const next = new Set(current);
-        next.add(messageId);
-        return next;
-      });
-      try {
-        await removeMessageFlag([messageId], "starred");
-        if (isActiveOrgRequestInvalidated(orgContext)) {
-          return;
-        }
-        removeMessageFromFilter("starred", messageId);
-      } catch (err) {
-        if (isActiveOrgRequestInvalidated(orgContext)) {
-          return;
-        }
-        log.error("Failed to remove star in activity", {
-          messageId,
-          error: String(err),
-        });
-      } finally {
-        if (!isActiveOrgRequestInvalidated(orgContext)) {
-          setPendingUnstarIds((current) => {
-            const next = new Set(current);
-            next.delete(messageId);
-            return next;
-          });
-        }
+  const handleUnstarMessage = useCallback(async (messageUuid: string) => {
+    const orgContext = captureActiveOrgRequestContext();
+    setPendingUnstarIds((current) => {
+      const next = new Set(current);
+      next.add(messageUuid);
+      return next;
+    });
+    try {
+      await unstarMessageUnsupported(messageUuid);
+      if (isActiveOrgRequestInvalidated(orgContext)) {
+        return;
       }
+    } catch (err) {
+      if (isActiveOrgRequestInvalidated(orgContext)) {
+        return;
+      }
+      log.error("Workspace unstar action is unsupported", {
+        messageUuid,
+        error: String(err),
+      });
+    } finally {
+      if (!isActiveOrgRequestInvalidated(orgContext)) {
+        setPendingUnstarIds((current) => {
+          const next = new Set(current);
+          next.delete(messageUuid);
+          return next;
+        });
+      }
+    }
+  }, []);
+
+  const handleWorkspaceMessageClick = useCallback(
+    (m: WorkspaceMessengerMessageDto, mode: "open" | "forward" = "open") => {
+      if (mode === "forward") {
+        openWorkspaceForward({ messageUuids: [m.uuid] });
+        return;
+      }
+      if (runtimeContext == null) return;
+      void navigate(
+        workspaceMessengerMessageRoute({
+          orgId: runtimeContext.organizationId,
+          projectId: runtimeContext.projectId,
+          messageUuid: m.uuid,
+        }),
+      );
     },
-    [removeMessageFromFilter],
+    [navigate, openWorkspaceForward, runtimeContext],
   );
 
   const handleDraftClick = useCallback(
@@ -574,6 +713,110 @@ export const ActivityPage: React.FC = () => {
         </ul>
       );
     }
+    if (validFilter === "starred") {
+      if (workspaceStarredMessages.length === 0) {
+        return <div className="p-4 text-sm text-text-muted">{t("chat.noMessages")}</div>;
+      }
+      return (
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <ul
+            ref={listScrollRef}
+            className="flex min-h-0 flex-1 flex-col space-y-1 overflow-auto scroll-auto p-2"
+          >
+            {workspaceStarredMessages.map((m) => {
+              const stream = workspaceStreamsById[m.stream_uuid];
+              const topic = workspaceTopicsById[m.topic_uuid];
+              const streamName = stream?.name.trim() ?? "";
+              const topicName = topic?.name.trim() ?? "";
+              const topicDisplay = topicName.length > 0 ? resolveTopicDisplayInfo(topicName) : null;
+              const isPrivate = stream?.isPrivate ?? false;
+              const privateContext =
+                isPrivate && streamName.length > 0 ? `${t("dm.private")} · ${streamName}` : null;
+              const isUnstarPending = pendingUnstarIds.has(m.uuid);
+              const preview = summarizeWorkspaceMessageMarkdown(
+                m.payload.content,
+                ACTIVITY_WORKSPACE_SUMMARY_OPTIONS,
+              ).text;
+
+              return (
+                <li key={m.uuid}>
+                  <div className="group flex items-start gap-2 rounded-lg p-3 transition-colors hover:bg-card-bg">
+                    <button
+                      type="button"
+                      onClick={() => handleWorkspaceMessageClick(m)}
+                      className="min-w-0 flex-1 text-left"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="shrink-0 text-[11px] text-text-muted">
+                          {formatWorkspaceItemTime(m.created_at)}
+                        </span>
+                        {streamName.length > 0 && !isPrivate ? (
+                          <span className="truncate text-[11px] text-text-muted">
+                            <span>{`#${streamName}`}</span>
+                            {topicDisplay != null ? (
+                              <>
+                                <span>{` · `}</span>
+                                <span className={topicDisplay.isSystem ? "italic" : ""}>
+                                  {topicDisplay.label}
+                                </span>
+                              </>
+                            ) : null}
+                          </span>
+                        ) : null}
+                        {privateContext != null ? (
+                          <span className="truncate text-[11px] text-text-muted">
+                            {privateContext}
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-0.5 text-xs text-sidebar-sender">
+                        <ActivityWorkspaceSenderName authorUuid={m.author_uuid} fallback="" />
+                      </p>
+                      <p className="mt-1 line-clamp-2 text-sm text-text-primary">
+                        {truncateText(preview)}
+                      </p>
+                    </button>
+                    <div className="mt-0.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void handleUnstarMessage(m.uuid);
+                        }}
+                        disabled={isUnstarPending}
+                        className="hover:bg-bg-elevated/70 rounded p-1 text-text-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                        aria-label={t("message.unstar")}
+                        title={t("message.unstar")}
+                      >
+                        <Icon name="star" size={16} className="text-current" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleWorkspaceMessageClick(m)}
+                        className="hover:bg-bg-elevated/70 rounded p-1 text-text-muted hover:text-text-primary"
+                        aria-label={t("message.openInChat")}
+                        title={t("message.openInChat")}
+                      >
+                        <Icon name="newWindow" size={16} className="text-current" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleWorkspaceMessageClick(m, "forward")}
+                        className="hover:bg-bg-elevated/70 rounded p-1 text-text-muted hover:text-text-primary"
+                        aria-label={t("message.forward")}
+                        title={t("message.forward")}
+                      >
+                        <Icon name="send" size={16} className="text-current" />
+                      </button>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <FloatingLoadingOverlay visible={isRefreshing} />
+        </div>
+      );
+    }
     if (messages.length === 0) {
       if (validFilter === "reactions") {
         return (
@@ -610,8 +853,6 @@ export const ActivityPage: React.FC = () => {
               generalChatLabel: t("chat.generalChat"),
               privateLabel: t("dm.private"),
             });
-            const isUnstarPending = pendingUnstarIds.has(m.id);
-
             return (
               <li key={m.id}>
                 <div className="group flex items-start gap-2 rounded-lg p-3 transition-colors hover:bg-card-bg">
@@ -648,20 +889,6 @@ export const ActivityPage: React.FC = () => {
                     )}
                   </button>
                   <div className="mt-0.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                    {validFilter === "starred" && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void handleUnstarMessage(m.id);
-                        }}
-                        disabled={isUnstarPending}
-                        className="hover:bg-bg-elevated/70 rounded p-1 text-text-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
-                        aria-label={t("message.unstar")}
-                        title={t("message.unstar")}
-                      >
-                        <Icon name="star" size={16} className="text-current" />
-                      </button>
-                    )}
                     <button
                       type="button"
                       onClick={() => handleMessageClick(m)}

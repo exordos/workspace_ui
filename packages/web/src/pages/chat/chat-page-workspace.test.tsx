@@ -14,6 +14,7 @@ import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-a
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
+import { useWorkspaceForwardMessageStore } from "~/features/workspace-forward-message/workspace-forward-message.model";
 import { t } from "~/i18n/i18n";
 import { OpenSearchContext } from "~/shared/contexts/open-search";
 import { RightDrawerContext } from "~/shared/contexts/right-drawer";
@@ -27,7 +28,6 @@ import type { ChatPageWorkspaceMessageListSectionProps } from "./chat-page-works
 const STREAM_UUID = "11111111-1111-4111-8111-111111111111";
 const TOPIC_UUID = "22222222-2222-4222-8222-222222222222";
 const DIRECT_STREAM_UUID = "88888888-8888-4888-8888-888888888888";
-const DIRECT_TOPIC_UUID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
 const USER_UUID = "33333333-3333-4333-8333-333333333333";
 const USER_B_UUID = "44444444-4444-4444-8444-444444444444";
 const MESSAGE_UUID = "55555555-5555-4555-8555-555555555555";
@@ -46,7 +46,6 @@ const captured = vi.hoisted(() => ({
   downloadWorkspaceFile: vi.fn(),
   uploadWorkspaceFile: vi.fn(),
   sendMessengerMessage: vi.fn(),
-  createWorkspaceDirectStream: vi.fn(),
   streamBindingsForRoute: vi.fn(),
 }));
 
@@ -74,15 +73,6 @@ vi.mock("~/entities/messenger/messenger-message-actions.lib", async (importOrigi
   return {
     ...actual,
     sendMessengerMessage: captured.sendMessengerMessage,
-  };
-});
-
-vi.mock("~/entities/messenger/messenger-create-chat-actions.lib", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("~/entities/messenger/messenger-create-chat-actions.lib")>();
-  return {
-    ...actual,
-    createWorkspaceDirectStream: captured.createWorkspaceDirectStream,
   };
 });
 
@@ -304,24 +294,6 @@ function renderWorkspaceChatPageWithShellContexts(route: string) {
   );
 }
 
-function chooseForwardTopicTarget() {
-  fireEvent.change(screen.getByLabelText("Channel"), { target: { value: STREAM_UUID } });
-  fireEvent.change(screen.getByLabelText("Topic name"), { target: { value: TOPIC_UUID } });
-  const forwardButtons = screen.getAllByRole("button", { name: "Forward" });
-  fireEvent.click(forwardButtons[forwardButtons.length - 1]!);
-}
-
-async function chooseForwardDirectTarget() {
-  fireEvent.click(screen.getByRole("button", { name: "DM" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Bob Reed" }));
-  await waitFor(() => {
-    const forwardButtons = screen.getAllByRole("button", { name: "Forward" });
-    expect(forwardButtons[forwardButtons.length - 1]).not.toBeDisabled();
-  });
-  const forwardButtons = screen.getAllByRole("button", { name: "Forward" });
-  fireEvent.click(forwardButtons[forwardButtons.length - 1]!);
-}
-
 describe("ChatPage Workspace route", () => {
   beforeEach(() => {
     const session = createSession();
@@ -379,12 +351,13 @@ describe("ChatPage Workspace route", () => {
       ownerKey: "owner-key",
       message: null,
     });
-    captured.createWorkspaceDirectStream.mockReset();
+    useWorkspaceForwardMessageStore.getState().reset();
     captured.streamBindingsForRoute.mockClear();
     useDownloadStore.getState().clearDownloads();
   });
 
   afterEach(() => {
+    useWorkspaceForwardMessageStore.getState().reset();
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
     useMessengerStore.getState().clear();
     useUsersStore.getState().clear();
@@ -688,7 +661,7 @@ describe("ChatPage Workspace route", () => {
     });
   });
 
-  it("forwards selected text from one Workspace message to a Workspace topic", async () => {
+  it("opens Workspace forward store for one message with selected text", async () => {
     renderWorkspaceChatPageWithShellContexts(
       `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
     );
@@ -700,140 +673,24 @@ describe("ChatPage Workspace route", () => {
       captured.messageListProps?.onForwardMessage?.(MESSAGE_UUID, "selected excerpt");
     });
 
-    expect(await screen.findByRole("heading", { name: "Forward to channel" })).toBeInTheDocument();
-    act(() => {
-      chooseForwardTopicTarget();
-    });
-
-    await waitFor(() =>
-      expect(captured.sendMessengerMessage).toHaveBeenCalledWith(
-        expect.objectContaining({
-          streamUuid: STREAM_UUID,
-          topicUuid: TOPIC_UUID,
-          markdown: expect.stringContaining("> selected excerpt"),
-        }),
-      ),
-    );
-    const markdown = captured.sendMessengerMessage.mock.calls.at(-1)?.[0].markdown as string;
-    expect(markdown).toContain(
-      "> **Bob Reed** [wrote](/org/org-a/project/project-a/message/55555555-5555-4555-8555-555555555555):",
-    );
-    expect(markdown).not.toContain("workspace message");
     await waitFor(() => {
-      expect(screen.queryByText("Forward to channel")).not.toBeInTheDocument();
-    });
-  });
-
-  it("disables the forward submit button while Workspace forwarding is in flight", async () => {
-    const sendRequest = createDeferred<{
-      status: "applied";
-      ownerKey: string;
-      message: MessengerMessage | null;
-    }>();
-    captured.sendMessengerMessage.mockReturnValueOnce(sendRequest.promise);
-
-    renderWorkspaceChatPageWithShellContexts(
-      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
-    );
-
-    await waitFor(() =>
-      expect(captured.messageListProps?.onForwardMessage).toEqual(expect.any(Function)),
-    );
-    act(() => {
-      captured.messageListProps?.onForwardMessage?.(MESSAGE_UUID);
-    });
-    expect(await screen.findByRole("heading", { name: "Forward to channel" })).toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText("Channel"), { target: { value: STREAM_UUID } });
-    fireEvent.change(screen.getByLabelText("Topic name"), { target: { value: TOPIC_UUID } });
-    const forwardButtons = screen.getAllByRole("button", { name: "Forward" });
-    const submitButton = forwardButtons[forwardButtons.length - 1]!;
-
-    fireEvent.click(submitButton);
-    fireEvent.click(submitButton);
-
-    await waitFor(() => expect(captured.sendMessengerMessage).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(submitButton).toBeDisabled());
-
-    act(() => {
-      sendRequest.resolve({
-        status: "applied",
-        ownerKey: "owner-key",
-        message: null,
+      expect(useWorkspaceForwardMessageStore.getState()).toMatchObject({
+        isOpen: true,
+        messageUuids: [MESSAGE_UUID],
+        selectedText: "selected excerpt",
+        onSuccess: undefined,
       });
     });
-
-    await waitFor(() => {
-      expect(screen.queryByRole("heading", { name: "Forward to channel" })).not.toBeInTheDocument();
-    });
+    expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
   });
 
-  it("creates a Workspace direct stream before forwarding to a user", async () => {
-    const payload = createBootstrapPayload();
-    captured.createWorkspaceDirectStream.mockResolvedValueOnce({
-      status: "applied",
-      ownerKey: "owner-key",
-      stream: {
-        ...payload.streams[0]!,
-        uuid: DIRECT_STREAM_UUID,
-        name: "Bob Reed",
-        audience: "private",
-        isPrivate: true,
-        directUserUuid: USER_B_UUID,
-      },
-      defaultTopic: {
-        ...payload.topics[0]!,
-        uuid: DIRECT_TOPIC_UUID,
-        streamUuid: DIRECT_STREAM_UUID,
-        isDefault: true,
-      },
-      streamBindings: [],
-    });
-
-    renderWorkspaceChatPageWithShellContexts(
-      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
-    );
-
-    await waitFor(() =>
-      expect(captured.messageListProps?.onForwardMessage).toEqual(expect.any(Function)),
-    );
-    act(() => {
-      captured.messageListProps?.onForwardMessage?.(MESSAGE_UUID);
-    });
-    expect(await screen.findByRole("heading", { name: "Forward to channel" })).toBeInTheDocument();
-
-    await act(async () => {
-      await chooseForwardDirectTarget();
-    });
-
-    await waitFor(() => expect(captured.createWorkspaceDirectStream).toHaveBeenCalledTimes(1));
-    expect(captured.createWorkspaceDirectStream).toHaveBeenCalledWith(
-      expect.objectContaining({
-        directUserUuid: USER_B_UUID,
-        name: "Bob Reed",
-        signal: expect.any(AbortSignal),
-      }),
-    );
-    await waitFor(() =>
-      expect(captured.sendMessengerMessage).toHaveBeenCalledWith(
-        expect.objectContaining({
-          streamUuid: DIRECT_STREAM_UUID,
-          topicUuid: DIRECT_TOPIC_UUID,
-          includeStreamConversation: true,
-        }),
-      ),
-    );
-    expect(captured.sendMessengerMessage.mock.calls[0]?.[0].markdown).not.toContain("/dm/");
-  });
-
-  it("forwards selected Workspace messages through the same topic send path", async () => {
+  it("opens Workspace forward store for selected message UUIDs", async () => {
     useWorkspaceMessageStore
       .getState()
       .replaceOrMergeConversationMessagesPage(`topic:${STREAM_UUID}:${TOPIC_UUID}`, [
         createMessage(),
         createSecondMessage(),
       ]);
-
     renderWorkspaceChatPageWithShellContexts(
       `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
     );
@@ -847,21 +704,25 @@ describe("ChatPage Workspace route", () => {
     });
 
     fireEvent.click(await screen.findByRole("button", { name: "Forward" }));
+
+    await waitFor(() => {
+      expect(useWorkspaceForwardMessageStore.getState()).toMatchObject({
+        isOpen: true,
+        messageUuids: [SECOND_MESSAGE_UUID, MESSAGE_UUID],
+        selectedText: undefined,
+      });
+    });
+    expect(useWorkspaceForwardMessageStore.getState().onSuccess).toEqual(expect.any(Function));
+    expect(captured.messageListProps?.selectedMessageUuids?.size).toBe(2);
+
     act(() => {
-      chooseForwardTopicTarget();
+      useWorkspaceForwardMessageStore.getState().onSuccess?.();
     });
 
-    await waitFor(() => expect(captured.sendMessengerMessage).toHaveBeenCalledTimes(1));
-    const markdown = captured.sendMessengerMessage.mock.calls[0]?.[0].markdown as string;
-    expect(markdown.indexOf("> workspace message")).toBeLessThan(
-      markdown.indexOf("> second workspace message"),
-    );
-    expect(markdown).toContain("> workspace message");
-    expect(markdown).toContain("> second workspace message");
-    expect(markdown).not.toContain("/dm/");
     await waitFor(() => {
       expect(captured.messageListProps?.selectedMessageUuids?.size).toBe(0);
     });
+    expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
   });
 
   it("downloads Workspace file attachments through the Workspace file API", async () => {

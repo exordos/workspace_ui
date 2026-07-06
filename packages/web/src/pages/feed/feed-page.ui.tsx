@@ -15,6 +15,7 @@ import {
   workspaceRuntimeOwnerKey,
 } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { useWorkspaceForwardMessageStore } from "~/features/workspace-forward-message/workspace-forward-message.model";
 import { t } from "~/i18n/i18n";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { formatMessageTimeWithDate } from "~/shared/lib/datetime.lib";
@@ -92,6 +93,7 @@ export const FeedPage: React.FC = () => {
   const hasMore = useFeedStore((s) => s.hasMore);
   const nextPageMarker = useFeedStore((s) => s.nextPageMarker);
   const error = useFeedStore((s) => s.error);
+  const openWorkspaceForward = useWorkspaceForwardMessageStore((s) => s.open);
   const setMessages = useFeedStore((s) => s.setMessages);
   const setMessagesIfActual = useFeedStore((s) => s.setMessagesIfActual);
   const setError = useFeedStore((s) => s.setError);
@@ -304,9 +306,15 @@ export const FeedPage: React.FC = () => {
   }, []);
 
   const handleMessageClick = (m: (typeof messages)[number], mode: "open" | "forward" = "open") => {
-    if (runtimeContext == null || mode === "forward") {
+    if (mode === "forward") {
+      openWorkspaceForward({ messageUuids: [m.uuid] });
       return;
     }
+
+    if (runtimeContext == null) {
+      return;
+    }
+
     void navigate(
       workspaceMessengerTopicRoute({
         orgId: runtimeContext.organizationId,
@@ -389,10 +397,10 @@ export const FeedPage: React.FC = () => {
                         </button>
                         <button
                           type="button"
-                          disabled
+                          onClick={() => handleMessageClick(m, "forward")}
                           className={FEED_ACTION_BUTTON_CLASS}
-                          aria-label={t("workspaceMessenger.forwardUnsupported")}
-                          title={t("workspaceMessenger.forwardUnsupported")}
+                          aria-label={t("message.forward")}
+                          title={t("message.forward")}
                         >
                           <Icon name="send" size={16} className="text-current" />
                         </button>

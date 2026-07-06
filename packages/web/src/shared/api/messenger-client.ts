@@ -56,6 +56,7 @@ export interface GetStreamTopicsQuery extends MessengerPaginationQuery {
 export interface GetMessagesQuery extends MessengerPaginationQuery {
   streamUuid?: string;
   topicUuid?: string;
+  starred?: boolean;
 }
 
 // Фильтр reaction rows оставляет messageUuid обязательным.
@@ -180,6 +181,7 @@ export async function getMessages(
       ...paginationParams(query),
       stream_uuid: query.streamUuid,
       topic_uuid: query.topicUuid,
+      starred: query.starred == null ? undefined : String(query.starred),
     }),
   );
   return parseDtoList(data, isWorkspaceMessengerMessageDto, "messenger messages response");
@@ -220,6 +222,7 @@ export async function getMessagesPage(
       ...paginationParams(query),
       stream_uuid: query.streamUuid,
       topic_uuid: query.topicUuid,
+      starred: query.starred == null ? undefined : String(query.starred),
     }),
   );
   return {

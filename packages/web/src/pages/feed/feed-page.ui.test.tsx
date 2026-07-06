@@ -10,6 +10,7 @@ import type { User } from "~/entities/user/user.types";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { useWorkspaceForwardMessageStore } from "~/features/workspace-forward-message/workspace-forward-message.model";
 import { FeedPage } from "./feed-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
 
@@ -173,6 +174,7 @@ function resetStores(): void {
     currentAccountId: null,
     runtimeGeneration: 0,
   });
+  useWorkspaceForwardMessageStore.getState().reset();
   useInstancesStore.setState({
     instances: [],
     currentInstanceId: null,
@@ -298,19 +300,20 @@ describe("FeedPage", () => {
     expect(screen.queryByText(new RegExp(imageFileUuid))).not.toBeInTheDocument();
   });
 
-  it("does not expose old numeric forward navigation from feed", async () => {
+  it("opens Workspace forward from a feed row", async () => {
     setRuntime();
-    fetchFeedMessages.mockResolvedValue(createPage([createFeedMessage()]));
+    const message = createFeedMessage();
+    const openForwardSpy = vi.spyOn(useWorkspaceForwardMessageStore.getState(), "open");
+    fetchFeedMessages.mockResolvedValue(createPage([message]));
 
     renderFeedPage();
 
-    const button = await screen.findByRole("button", {
-      name: "Forwarding is not connected to Workspace messaging yet.",
-    });
+    const button = await screen.findByRole("button", { name: "Forward" });
 
-    expect(button).toBeDisabled();
     fireEvent.click(button);
+    expect(openForwardSpy).toHaveBeenCalledWith({ messageUuids: [message.uuid] });
     expect(navigateSpy).not.toHaveBeenCalled();
+    openForwardSpy.mockRestore();
   });
 
   it("renders cached feed from the Workspace owner while refresh is in flight", () => {

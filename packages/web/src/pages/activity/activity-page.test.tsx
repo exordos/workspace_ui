@@ -6,7 +6,14 @@ import { useActivityStore } from "~/entities/activity/activity.model";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useDraftStore } from "~/entities/draft/draft.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
+import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
+import {
+  type WorkspaceAuthSession,
+  useWorkspaceAuthStore,
+} from "~/entities/workspace-auth/workspace-auth.model";
+import type { WorkspaceMessengerMessageDto } from "~/shared/api/messenger.types";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import { createMessage, createUser } from "~/test/factories";
 import { ActivityPage } from "./activity-page.ui";
@@ -16,8 +23,11 @@ const navigateSpy = vi.hoisted(() => vi.fn());
 const deleteDraftOnServer = vi.hoisted(() => vi.fn());
 const updateDraftOnServer = vi.hoisted(() => vi.fn());
 const fetchActivityMessagesPageWithPersist = vi.hoisted(() => vi.fn());
+const fetchWorkspaceStarredMessages = vi.hoisted(() => vi.fn());
 const hydrateActivityMessagesFromCache = vi.hoisted(() => vi.fn().mockResolvedValue([]));
 const removeMessageFlag = vi.hoisted(() => vi.fn());
+const unstarMessageUnsupported = vi.hoisted(() => vi.fn());
+const openWorkspaceForward = vi.hoisted(() => vi.fn());
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual<typeof ReactRouterDom>("react-router-dom");
@@ -42,6 +52,16 @@ vi.mock("~/entities/activity/activity.api", () => ({
   fetchActivityMessagesPageWithPersist,
 }));
 
+vi.mock("~/entities/activity/activity-workspace-starred.api", () => ({
+  fetchWorkspaceStarredMessages,
+}));
+
+vi.mock("~/features/workspace-forward-message/workspace-forward-message.model", () => ({
+  useWorkspaceForwardMessageStore: (
+    selector: (state: { open: typeof openWorkspaceForward }) => unknown,
+  ) => selector({ open: openWorkspaceForward }),
+}));
+
 vi.mock("~/entities/activity/activity-cache.lib", async () => {
   const actual = await vi.importActual<typeof import("~/entities/activity/activity-cache.lib")>(
     "~/entities/activity/activity-cache.lib",
@@ -49,6 +69,16 @@ vi.mock("~/entities/activity/activity-cache.lib", async () => {
   return {
     ...actual,
     hydrateActivityMessagesFromCache,
+  };
+});
+
+vi.mock("~/shared/api/messenger-messages.api", async () => {
+  const actual = await vi.importActual<typeof import("~/shared/api/messenger-messages.api")>(
+    "~/shared/api/messenger-messages.api",
+  );
+  return {
+    ...actual,
+    unstarMessageUnsupported,
   };
 });
 
@@ -84,9 +114,119 @@ function mockElementScrollHeight(value: number): () => void {
   };
 }
 
+const WORKSPACE_SESSION: WorkspaceAuthSession = {
+  accountId: "account-1",
+  instanceId: "instance-1",
+  organizationId: "acme",
+  organizationOrigin: "https://acme.example.com",
+  projectId: "project-1",
+  userUuid: "user-1",
+  accessToken: "access-token",
+  refreshToken: "refresh-token",
+  runtimeGeneration: 1,
+  login: "alice@example.com",
+  profile: {
+    uuid: "user-1",
+    username: "alice",
+    firstName: "Alice",
+    lastName: null,
+    email: "alice@example.com",
+  },
+};
+
+function setWorkspaceSession(session: WorkspaceAuthSession = WORKSPACE_SESSION): void {
+  useWorkspaceAuthStore.setState({
+    sessions: [session],
+    currentAccountId: session.accountId,
+    runtimeGeneration: session.runtimeGeneration,
+  });
+}
+
+function createWorkspaceMessage(
+  overrides: Partial<WorkspaceMessengerMessageDto> = {},
+): WorkspaceMessengerMessageDto {
+  return {
+    uuid: "message-1",
+    project_id: WORKSPACE_SESSION.projectId,
+    stream_uuid: "stream-1",
+    topic_uuid: "topic-1",
+    author_uuid: "user-2",
+    payload: { kind: "markdown", content: "Workspace starred message" },
+    user_uuid: WORKSPACE_SESSION.userUuid,
+    read: true,
+    pinned: false,
+    starred: true,
+    is_own: false,
+    reactions: {},
+    created_at: "2026-06-22T10:10:00Z",
+    updated_at: "2026-06-22T10:10:00Z",
+    ...overrides,
+  };
+}
+
+function seedWorkspaceMessengerContext(): void {
+  const stream: MessengerStream = {
+    uuid: "stream-1",
+    projectId: WORKSPACE_SESSION.projectId,
+    ownerUuid: WORKSPACE_SESSION.userUuid,
+    userUuid: WORKSPACE_SESSION.userUuid,
+    role: "member",
+    notificationMode: "all_messages",
+    name: "engineering",
+    description: "",
+    unreadCount: 0,
+    sourceName: "native",
+    source: { kind: "native" },
+    audience: "channel",
+    isPrivate: false,
+    inviteOnly: false,
+    announce: false,
+    isArchived: false,
+    directUserUuid: null,
+    lastMessageUuid: null,
+    createdAt: "2026-06-22T10:00:00Z",
+    updatedAt: "2026-06-22T10:00:00Z",
+  };
+  const topic: MessengerTopic = {
+    uuid: "topic-1",
+    projectId: WORKSPACE_SESSION.projectId,
+    streamUuid: "stream-1",
+    userUuid: WORKSPACE_SESSION.userUuid,
+    name: "bugs",
+    unreadCount: 0,
+    isDefault: false,
+    isDone: false,
+    notificationMode: "default",
+    lastMessageUuid: null,
+    createdAt: "2026-06-22T10:00:00Z",
+    updatedAt: "2026-06-22T10:00:00Z",
+  };
+
+  useMessengerStore.setState({
+    ownerKey: `${WORKSPACE_SESSION.organizationId}:${WORKSPACE_SESSION.projectId}:${WORKSPACE_SESSION.userUuid}`,
+    streamsById: { [stream.uuid]: stream },
+    streamIds: [stream.uuid],
+    topicsById: { [topic.uuid]: topic },
+    topicIds: [topic.uuid],
+  });
+}
+
+function mockWorkspaceStarredPage(messages: WorkspaceMessengerMessageDto[]): void {
+  fetchWorkspaceStarredMessages.mockResolvedValue({
+    messages,
+    nextPageMarker: null,
+    hasMore: false,
+    pageLimit: null,
+  });
+}
+
 describe("ActivityPage drafts routing", () => {
   beforeEach(() => {
     useActivityStore.getState().clear();
+    useWorkspaceAuthStore.getState().clear();
+    useMessengerStore.getState().clear();
+    openWorkspaceForward.mockReset();
+    unstarMessageUnsupported.mockRejectedValue(new Error("unsupported"));
     useInstancesStore.setState({
       instances: [],
       currentInstanceId: null,
@@ -100,13 +240,19 @@ describe("ActivityPage drafts routing", () => {
     deleteDraftOnServer.mockReset();
     updateDraftOnServer.mockReset();
     fetchActivityMessagesPageWithPersist.mockReset();
+    fetchWorkspaceStarredMessages.mockReset();
     hydrateActivityMessagesFromCache.mockReset();
     hydrateActivityMessagesFromCache.mockResolvedValue([]);
     removeMessageFlag.mockReset();
+    unstarMessageUnsupported.mockReset();
+    openWorkspaceForward.mockReset();
+    unstarMessageUnsupported.mockRejectedValue(new Error("unsupported"));
     useDraftStore.getState().clear();
     useChatListStore.getState().clear();
     useUsersStore.getState().clear();
     useActivityStore.getState().clear();
+    useWorkspaceAuthStore.getState().clear();
+    useMessengerStore.getState().clear();
     useInstancesStore.setState({
       instances: [],
       currentInstanceId: null,
@@ -449,26 +595,15 @@ describe("ActivityPage drafts routing", () => {
     expect(screen.queryByText("Old reaction")).not.toBeInTheDocument();
   });
 
-  it("removes starred message from list after unstar action", async () => {
-    const page = [
-      createMessage({
-        id: 55,
-        sender_id: 42,
-        sender_full_name: "Alice",
-        stream_id: 10,
-        subject: "bugs",
-        content: "Starred message",
-        timestamp: 1,
-        type: "stream",
-        display_recipient: "engineering",
+  it("loads starred messages from Workspace and keeps the row when unstar is unsupported", async () => {
+    setWorkspaceSession();
+    seedWorkspaceMessengerContext();
+    mockWorkspaceStarredPage([
+      createWorkspaceMessage({
+        uuid: "message-55",
+        payload: { kind: "markdown", content: "Starred message" },
       }),
-    ];
-
-    fetchActivityMessagesPageWithPersist.mockResolvedValue({
-      messages: page,
-      foundOldest: true,
-    });
-    removeMessageFlag.mockResolvedValue(undefined);
+    ]);
 
     render(
       <MemoryRouter initialEntries={["/activity/starred"]}>
@@ -485,31 +620,61 @@ describe("ActivityPage drafts routing", () => {
     fireEvent.click(screen.getByRole("button", { name: /unstar/i }));
 
     await waitFor(() => {
-      expect(removeMessageFlag).toHaveBeenCalledWith([55], "starred");
+      expect(unstarMessageUnsupported).toHaveBeenCalledWith("message-55");
     });
-    expect(screen.queryByText("Starred message")).not.toBeInTheDocument();
+    expect(fetchWorkspaceStarredMessages).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runtimeContext: expect.objectContaining({
+          organizationId: WORKSPACE_SESSION.organizationId,
+          projectId: WORKSPACE_SESSION.projectId,
+          userUuid: WORKSPACE_SESSION.userUuid,
+        }),
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(fetchWorkspaceStarredMessages.mock.calls[0]?.[0]).not.toHaveProperty("pageLimit");
+    expect(removeMessageFlag).not.toHaveBeenCalled();
+    expect(screen.getByText("Starred message")).toBeInTheDocument();
   });
 
-  it("keeps starred message when unstar request fails", async () => {
-    const page = [
-      createMessage({
-        id: 56,
-        sender_id: 42,
-        sender_full_name: "Alice",
-        stream_id: 10,
-        subject: "bugs",
-        content: "Starred message persists",
-        timestamp: 1,
-        type: "stream",
-        display_recipient: "engineering",
+  it("does not expose Workspace UUID fallbacks in starred rows", async () => {
+    setWorkspaceSession();
+    mockWorkspaceStarredPage([
+      createWorkspaceMessage({
+        uuid: "message-no-context",
+        stream_uuid: "stream-missing",
+        topic_uuid: "topic-missing",
+        author_uuid: "author-missing",
+        payload: { kind: "markdown", content: "Starred message without context" },
       }),
-    ];
+    ]);
 
-    fetchActivityMessagesPageWithPersist.mockResolvedValue({
-      messages: page,
-      foundOldest: true,
+    render(
+      <MemoryRouter initialEntries={["/activity/starred"]}>
+        <Routes>
+          <Route path="/activity/:filter" element={<ActivityPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Starred message without context")).toBeInTheDocument();
     });
-    removeMessageFlag.mockRejectedValue(new Error("network"));
+
+    expect(screen.queryByText("stream-missing")).not.toBeInTheDocument();
+    expect(screen.queryByText("topic-missing")).not.toBeInTheDocument();
+    expect(screen.queryByText("author-missing")).not.toBeInTheDocument();
+  });
+
+  it("opens Workspace starred message in the Workspace messenger route", async () => {
+    setWorkspaceSession();
+    seedWorkspaceMessengerContext();
+    mockWorkspaceStarredPage([
+      createWorkspaceMessage({
+        uuid: "message-56",
+        payload: { kind: "markdown", content: "Starred message persists" },
+      }),
+    ]);
 
     render(
       <MemoryRouter initialEntries={["/activity/starred"]}>
@@ -523,57 +688,20 @@ describe("ActivityPage drafts routing", () => {
       expect(screen.getByText("Starred message persists")).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /unstar/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Open in chat" }));
 
-    await waitFor(() => {
-      expect(removeMessageFlag).toHaveBeenCalledWith([56], "starred");
-    });
-    expect(screen.getByText("Starred message persists")).toBeInTheDocument();
+    expect(navigateSpy).toHaveBeenCalledWith("/org/acme/project/project-1/message/message-56");
   });
 
-  it("does not remove a new-organization starred row when stale unstar resolves", async () => {
-    let resolveUnstar: (() => void) | undefined;
-    removeMessageFlag.mockImplementationOnce(
-      () =>
-        new Promise<void>((resolve) => {
-          resolveUnstar = resolve;
-        }),
-    );
-    fetchActivityMessagesPageWithPersist.mockResolvedValue({
-      messages: [
-        createMessage({
-          id: 55,
-          sender_id: 42,
-          sender_full_name: "Alice",
-          stream_id: 10,
-          subject: "bugs",
-          content: "Org A starred message",
-          timestamp: 1,
-          type: "stream",
-          display_recipient: "engineering",
-        }),
-      ],
-      foundOldest: true,
-    });
-    useInstancesStore.setState({
-      instances: [
-        {
-          id: "instance-1",
-          realm: "https://one.example.com",
-          email: "one@example.com",
-          apiKey: "a",
-        },
-        {
-          id: "instance-2",
-          realm: "https://two.example.com",
-          email: "two@example.com",
-          apiKey: "b",
-        },
-      ],
-      currentInstanceId: "instance-1",
-      unreadCountsByInstance: {},
-      activeOrgEpoch: 0,
-    });
+  it("opens Workspace starred forward flow with message UUID", async () => {
+    setWorkspaceSession();
+    seedWorkspaceMessengerContext();
+    mockWorkspaceStarredPage([
+      createWorkspaceMessage({
+        uuid: "message-forward-1",
+        payload: { kind: "markdown", content: "Forward Workspace starred" },
+      }),
+    ]);
 
     render(
       <MemoryRouter initialEntries={["/activity/starred"]}>
@@ -584,47 +712,102 @@ describe("ActivityPage drafts routing", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Org A starred message")).toBeInTheDocument();
+      expect(screen.getByText("Forward Workspace starred")).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /unstar/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Forward" }));
+
+    expect(openWorkspaceForward).toHaveBeenCalledWith({
+      messageUuids: ["message-forward-1"],
+    });
+    expect(navigateSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not apply stale Workspace starred load after runtime changes", async () => {
+    let resolveFirstLoad:
+      | ((value: {
+          messages: WorkspaceMessengerMessageDto[];
+          nextPageMarker: null;
+          hasMore: false;
+          pageLimit: number | null;
+        }) => void)
+      | undefined;
+    const nextSession: WorkspaceAuthSession = {
+      ...WORKSPACE_SESSION,
+      accountId: "account-2",
+      instanceId: "instance-2",
+      organizationId: "bravo",
+      projectId: "project-2",
+      userUuid: "user-9",
+      runtimeGeneration: 2,
+    };
+
+    setWorkspaceSession();
+    seedWorkspaceMessengerContext();
+    fetchWorkspaceStarredMessages
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFirstLoad = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({
+        messages: [
+          createWorkspaceMessage({
+            uuid: "message-b",
+            project_id: nextSession.projectId,
+            user_uuid: nextSession.userUuid,
+            payload: { kind: "markdown", content: "Org B starred message" },
+          }),
+        ],
+        nextPageMarker: null,
+        hasMore: false,
+        pageLimit: null,
+      });
+
+    const { rerender } = render(
+      <MemoryRouter initialEntries={["/activity/starred"]}>
+        <Routes>
+          <Route path="/activity/:filter" element={<ActivityPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
 
     await waitFor(() => {
-      expect(removeMessageFlag).toHaveBeenCalledWith([55], "starred");
+      expect(fetchWorkspaceStarredMessages).toHaveBeenCalledTimes(1);
     });
 
     act(() => {
-      useInstancesStore.getState().setCurrentInstanceId("instance-2");
-      useActivityStore.setState((state) => ({
-        filters: {
-          ...state.filters,
-          starred: {
-            ...state.filters.starred,
-            messages: [
-              createMessage({
-                id: 55,
-                sender_id: 99,
-                sender_full_name: "Bob",
-                stream_id: 20,
-                subject: "support",
-                content: "Org B starred message",
-                timestamp: 2,
-                type: "stream",
-                display_recipient: "support",
-              }),
-            ],
-          },
-        },
-      }));
+      setWorkspaceSession(nextSession);
     });
-
-    act(() => {
-      resolveUnstar?.();
-    });
-
-    expect(useActivityStore.getState().filters.starred.messages[0]?.content).toBe(
-      "Org B starred message",
+    rerender(
+      <MemoryRouter initialEntries={["/activity/starred"]}>
+        <Routes>
+          <Route path="/activity/:filter" element={<ActivityPage />} />
+        </Routes>
+      </MemoryRouter>,
     );
+
+    await waitFor(() => {
+      expect(screen.getByText("Org B starred message")).toBeInTheDocument();
+    });
+
+    act(() => {
+      resolveFirstLoad?.({
+        messages: [
+          createWorkspaceMessage({
+            uuid: "message-a",
+            payload: { kind: "markdown", content: "Org A starred message" },
+          }),
+        ],
+        nextPageMarker: null,
+        hasMore: false,
+        pageLimit: null,
+      });
+    });
+
+    expect(screen.getByText("Org B starred message")).toBeInTheDocument();
+    expect(screen.queryByText("Org A starred message")).not.toBeInTheDocument();
   });
 
   it("does not fetch reactions until currentUserId is known", async () => {
@@ -743,7 +926,7 @@ describe("ActivityPage drafts routing", () => {
     expect(reactionsRow).not.toHaveTextContent("Me");
   });
 
-  it.each(["mentions", "reactions", "starred"] as const)(
+  it.each(["mentions", "reactions"] as const)(
     "initializes %s list at the latest messages",
     async (filter) => {
       const restoreScrollHeight = mockElementScrollHeight(1200);
@@ -801,6 +984,44 @@ describe("ActivityPage drafts routing", () => {
       }
     },
   );
+
+  it("initializes Workspace starred list at the latest messages", async () => {
+    const restoreScrollHeight = mockElementScrollHeight(1200);
+    try {
+      setWorkspaceSession();
+      seedWorkspaceMessengerContext();
+      mockWorkspaceStarredPage([
+        createWorkspaceMessage({
+          uuid: "message-10",
+          payload: { kind: "markdown", content: "starred first" },
+          created_at: "2026-06-22T10:00:00Z",
+        }),
+        createWorkspaceMessage({
+          uuid: "message-20",
+          payload: { kind: "markdown", content: "starred latest" },
+          created_at: "2026-06-22T10:01:00Z",
+        }),
+      ]);
+
+      const { container } = render(
+        <MemoryRouter initialEntries={["/activity/starred"]}>
+          <Routes>
+            <Route path="/activity/:filter" element={<ActivityPage />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText("starred latest")).toBeInTheDocument();
+      });
+
+      const list = container.querySelector("ul");
+      expect(list).not.toBeNull();
+      expect((list as HTMLUListElement).scrollTop).toBe(1200);
+    } finally {
+      restoreScrollHeight();
+    }
+  });
 
   it("initializes drafts list at the latest items", async () => {
     const restoreScrollHeight = mockElementScrollHeight(1200);
