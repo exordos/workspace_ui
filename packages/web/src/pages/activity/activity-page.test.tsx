@@ -698,7 +698,7 @@ describe("ActivityPage drafts routing", () => {
     seedWorkspaceMessengerContext();
     mockWorkspaceStarredPage([
       createWorkspaceMessage({
-        uuid: "message-forward-1",
+        uuid: "message-56",
         payload: { kind: "markdown", content: "Forward Workspace starred" },
       }),
     ]);
@@ -718,7 +718,7 @@ describe("ActivityPage drafts routing", () => {
     fireEvent.click(screen.getByRole("button", { name: "Forward" }));
 
     expect(openWorkspaceForward).toHaveBeenCalledWith({
-      messageUuids: ["message-forward-1"],
+      messageUuids: ["message-56"],
     });
     expect(navigateSpy).not.toHaveBeenCalled();
   });

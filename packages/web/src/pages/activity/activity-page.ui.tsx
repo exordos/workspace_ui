@@ -483,12 +483,15 @@ export const ActivityPage: React.FC = () => {
     }
   }, []);
 
+  const handleWorkspaceMessageForward = useCallback(
+    (messageUuid: string) => {
+      openWorkspaceForward({ messageUuids: [messageUuid] });
+    },
+    [openWorkspaceForward],
+  );
+
   const handleWorkspaceMessageClick = useCallback(
-    (m: WorkspaceMessengerMessageDto, mode: "open" | "forward" = "open") => {
-      if (mode === "forward") {
-        openWorkspaceForward({ messageUuids: [m.uuid] });
-        return;
-      }
+    (m: WorkspaceMessengerMessageDto) => {
       if (runtimeContext == null) return;
       void navigate(
         workspaceMessengerMessageRoute({
@@ -498,7 +501,7 @@ export const ActivityPage: React.FC = () => {
         }),
       );
     },
-    [navigate, openWorkspaceForward, runtimeContext],
+    [navigate, runtimeContext],
   );
 
   const handleDraftClick = useCallback(
@@ -800,7 +803,7 @@ export const ActivityPage: React.FC = () => {
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleWorkspaceMessageClick(m, "forward")}
+                        onClick={() => handleWorkspaceMessageForward(m.uuid)}
                         className="hover:bg-bg-elevated/70 rounded p-1 text-text-muted hover:text-text-primary"
                         aria-label={t("message.forward")}
                         title={t("message.forward")}
