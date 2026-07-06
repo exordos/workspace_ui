@@ -1,35 +1,29 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import {
+  runWorkspaceChannelCreate,
+  runWorkspaceDirectStreamCreate,
+} from "~/entities/messenger/messenger-create-chat-actions.lib";
+import { runWorkspaceCreateTopicRequest } from "~/entities/messenger/messenger-sidebar-actions.lib";
+import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
-import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
-import { fetchStreams, fetchSubscriptions } from "~/shared/api/zulip-streams";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { useCreateChatDialog } from "./create-chat-dialog.hook";
-import {
-  createChannel,
-  subscribeCurrentUserToStream,
-  unarchiveChannel,
-  unsubscribeChannel,
-} from "./create-chat.api";
 
-vi.mock("./create-chat.api", () => ({
-  createChannel: vi.fn(),
-  unarchiveChannel: vi.fn(),
-  subscribeCurrentUserToStream: vi.fn(),
-  unsubscribeChannel: vi.fn(),
+vi.mock("~/entities/messenger/messenger-create-chat-actions.lib", () => ({
+  runWorkspaceChannelCreate: vi.fn(),
+  runWorkspaceDirectStreamCreate: vi.fn(),
 }));
 
-vi.mock("~/shared/api/zulip-streams", () => ({
-  fetchStreams: vi.fn(),
-  fetchSubscriptions: vi.fn(),
+vi.mock("~/entities/messenger/messenger-sidebar-actions.lib", () => ({
+  runWorkspaceCreateTopicRequest: vi.fn(),
 }));
 
 function defaultHookOptions(overrides: Partial<Parameters<typeof useCreateChatDialog>[0]> = {}) {
   return {
     open: true,
-    onNavigateDm: vi.fn(),
-    onNavigateStream: vi.fn(),
     onChannelCreated: vi.fn(),
     ...overrides,
   };
@@ -51,6 +45,69 @@ function createUser(overrides: Partial<User> & { uuid: string }): User {
     createdAt: overrides.createdAt ?? "2026-06-30T09:00:00.000Z",
     updatedAt: overrides.updatedAt ?? "2026-06-30T09:00:00.000Z",
   };
+}
+
+function createStream(overrides: Partial<MessengerStream> & { uuid: string }): MessengerStream {
+  return {
+    uuid: overrides.uuid,
+    projectId: overrides.projectId ?? "project",
+    ownerUuid: overrides.ownerUuid ?? "current-user",
+    userUuid: overrides.userUuid ?? "current-user",
+    role: overrides.role ?? "owner",
+    notificationMode: overrides.notificationMode ?? "mentions_only",
+    name: overrides.name ?? "engineering",
+    description: overrides.description ?? "",
+    unreadCount: overrides.unreadCount ?? 0,
+    sourceName: overrides.sourceName ?? "native",
+    source: overrides.source ?? { kind: "native" },
+    audience: overrides.audience ?? "channel",
+    isPrivate: overrides.isPrivate ?? false,
+    inviteOnly: overrides.inviteOnly ?? false,
+    announce: overrides.announce ?? false,
+    isArchived: overrides.isArchived ?? false,
+    directUserUuid: overrides.directUserUuid ?? null,
+    lastMessageUuid: overrides.lastMessageUuid ?? null,
+    createdAt: overrides.createdAt ?? "2026-06-30T09:00:00.000Z",
+    updatedAt: overrides.updatedAt ?? "2026-06-30T09:00:00.000Z",
+  };
+}
+
+function createTopic(overrides: Partial<MessengerTopic> & { uuid: string }): MessengerTopic {
+  return {
+    uuid: overrides.uuid,
+    projectId: overrides.projectId ?? "project",
+    streamUuid: overrides.streamUuid ?? "stream-a",
+    userUuid: overrides.userUuid ?? "current-user",
+    name: overrides.name ?? "General",
+    unreadCount: overrides.unreadCount ?? 0,
+    isDefault: overrides.isDefault ?? true,
+    isDone: overrides.isDone ?? false,
+    notificationMode: overrides.notificationMode ?? "default",
+    lastMessageUuid: overrides.lastMessageUuid ?? null,
+    createdAt: overrides.createdAt ?? "2026-06-30T09:00:00.000Z",
+    updatedAt: overrides.updatedAt ?? "2026-06-30T09:00:00.000Z",
+  };
+}
+
+function seedWorkspaceSession(): void {
+  useWorkspaceAuthStore.getState().setSession({
+    accountId: "account",
+    instanceId: "instance",
+    organizationId: "org",
+    organizationOrigin: "https://workspace.test",
+    projectId: "project",
+    userUuid: "current-user",
+    accessToken: "token",
+    refreshToken: "refresh",
+    login: "current@example.com",
+    profile: {
+      uuid: "current-user",
+      username: "current",
+      firstName: "Current",
+      lastName: "User",
+      email: "current@example.com",
+    },
+  });
 }
 
 function seedUsers(): void {
@@ -79,301 +136,160 @@ function seedUsers(): void {
   ]);
 }
 
-function seedSystemGroups(): void {
-  useUserGroupsStore.getState().setGroups([
-    {
-      id: 11,
-      name: "role:administrators",
-      members: [],
-      direct_subgroup_ids: [],
-      is_system_group: true,
-    },
-    {
-      id: 12,
-      name: "role:moderators",
-      members: [],
-      direct_subgroup_ids: [],
-      is_system_group: true,
-    },
-  ]);
-}
-
 describe("useCreateChatDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useUsersStore.getState().clear();
-    useChatListStore.getState().clear();
-    useUserGroupsStore.getState().clear();
+    useMessengerStore.getState().clear();
+    useWorkspaceAuthStore.getState().clear();
   });
 
   afterEach(() => {
     useUsersStore.getState().clear();
-    useChatListStore.getState().clear();
-    useUserGroupsStore.getState().clear();
+    useMessengerStore.getState().clear();
+    useWorkspaceAuthStore.getState().clear();
   });
 
-  it("adds current user to subscribers and deduplicates IDs when creating channel", async () => {
+  it("keeps the full tab shell while using Workspace-only behavior", () => {
+    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
+
+    expect(result.current.visibleTabs).toEqual(["dm", "channels", "channel", "topic", "archived"]);
+    expect(result.current.browseChannels).toEqual([]);
+    expect(result.current.archivedChannels).toEqual([]);
+  });
+
+  it("allows callers to limit visible tabs without changing Workspace behavior", () => {
+    const { result } = renderHook(() =>
+      useCreateChatDialog(defaultHookOptions({ visibleTabs: ["dm", "channel"] })),
+    );
+
+    expect(result.current.visibleTabs).toEqual(["dm", "channel"]);
+
+    act(() => {
+      result.current.setTab("archived");
+    });
+    expect(result.current.tab).toBe("dm");
+
+    act(() => {
+      result.current.setTab("channel");
+    });
+    expect(result.current.tab).toBe("channel");
+  });
+
+  it("opens a direct chat by creating a Workspace direct stream", async () => {
+    seedWorkspaceSession();
     seedUsers();
-    useChatListStore.setState({ currentUserId: 10 });
-    vi.mocked(createChannel).mockResolvedValue({ streamId: 55 });
+    const stream = createStream({ uuid: "direct-stream", directUserUuid: "alice-user" });
+    vi.mocked(runWorkspaceDirectStreamCreate).mockResolvedValue({
+      status: "applied",
+      ownerKey: "owner",
+      stream,
+      defaultTopic: createTopic({ uuid: "topic-a", streamUuid: stream.uuid }),
+      streamBindings: [],
+    });
+    const onNavigateWorkspaceStream = vi.fn();
     const onChannelCreated = vi.fn();
 
     const { result } = renderHook(() =>
-      useCreateChatDialog(defaultHookOptions({ onChannelCreated })),
+      useCreateChatDialog(defaultHookOptions({ onNavigateWorkspaceStream, onChannelCreated })),
     );
+
+    act(() => {
+      result.current.openDirectUser(result.current.filteredUsers[0]!);
+    });
+
+    await waitFor(() => {
+      expect(runWorkspaceDirectStreamCreate).toHaveBeenCalledWith({
+        directUserUuid: "alice-user",
+      });
+    });
+    expect(onNavigateWorkspaceStream).toHaveBeenCalledWith("direct-stream");
+    expect(onChannelCreated).toHaveBeenCalledTimes(1);
+  });
+
+  it("creates a Workspace channel with selected member UUIDs", async () => {
+    seedWorkspaceSession();
+    seedUsers();
+    const stream = createStream({ uuid: "stream-a", name: "engineering" });
+    vi.mocked(runWorkspaceChannelCreate).mockResolvedValue({
+      status: "applied",
+      ownerKey: "owner",
+      stream,
+      defaultTopic: createTopic({ uuid: "topic-a", streamUuid: stream.uuid }),
+      streamBindings: [],
+    });
+
+    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
 
     act(() => {
       result.current.setChannelName("  engineering  ");
-      result.current.toggleChannelUser("3");
-      result.current.toggleChannelUser("1");
-      result.current.toggleChannelUser("10");
+      result.current.toggleChannelUser("alice-user");
     });
-
     act(() => {
       result.current.createChannel();
     });
 
     await waitFor(() => {
-      expect(createChannel).toHaveBeenCalledTimes(1);
-    });
-
-    // Assert: request includes author and selected users without duplicates.
-    expect(createChannel).toHaveBeenCalledWith(
-      expect.objectContaining({
+      expect(runWorkspaceChannelCreate).toHaveBeenCalledWith({
         name: "engineering",
-        subscribers: [1, 3, 10],
-      }),
-    );
-
-    await waitFor(() => {
-      expect(onChannelCreated).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  it("blocks channel creation when current user ID is unavailable", () => {
-    seedUsers();
-    useChatListStore.setState({ currentUserId: null });
-
-    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
-
-    act(() => {
-      result.current.setChannelName("engineering");
-      result.current.toggleChannelUser("1");
-      result.current.createChannel();
-    });
-
-    // Assert: without currentUserId, creation must not start.
-    expect(result.current.channelCreateBlocked).toBe(true);
-    expect(result.current.channelCreateBlockedReasonKey).toBe("channel.creatorProfileLoading");
-    expect(createChannel).not.toHaveBeenCalled();
-  });
-
-  it("passes canSendMessageGroup when announcement-only channel is enabled", async () => {
-    seedUsers();
-    seedSystemGroups();
-    useChatListStore.setState({ currentUserId: 10 });
-    vi.mocked(createChannel).mockResolvedValue(null);
-
-    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
-
-    act(() => {
-      result.current.setChannelName("announcements");
-      result.current.setChannelAnnouncementOnly(true);
-    });
-
-    act(() => {
-      result.current.createChannel();
-    });
-
-    await waitFor(() => {
-      expect(createChannel).toHaveBeenCalledTimes(1);
-    });
-
-    expect(createChannel).toHaveBeenCalledWith(
-      expect.objectContaining({
-        canSendMessageGroup: {
-          direct_members: [10],
-          direct_subgroups: [11, 12],
-        },
-      }),
-    );
-  });
-
-  it("blocks announcement-only when system posting groups are unavailable", () => {
-    seedUsers();
-    useChatListStore.setState({ currentUserId: 10 });
-
-    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
-
-    expect(result.current.channelAnnouncementOnlyBlocked).toBe(true);
-    expect(result.current.channelAnnouncementOnlyBlockedReasonKey).toBe(
-      "channel.announcementOnlyUnsupported",
-    );
-  });
-
-  it("maps unsupported unarchive responses to the unsupported inline error", async () => {
-    seedUsers();
-    vi.mocked(unarchiveChannel).mockResolvedValue({
-      ok: false,
-      kind: "unsupported",
-      message: "ignored",
-      status: 200,
-    });
-
-    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
-
-    await act(async () => {
-      await result.current.onUnarchiveArchivedChannel(5);
-    });
-
-    expect(unarchiveChannel).toHaveBeenCalledWith(5);
-    expect(result.current.unarchiveInlineError).toEqual({ kind: "unsupported" });
-  });
-
-  it("loads browse channels when the channels tab is opened", async () => {
-    seedUsers();
-    vi.mocked(fetchStreams).mockResolvedValue([
-      {
-        stream_id: 5,
-        name: "engineering",
-        description: "Eng",
-        is_announcement_only: false,
-      },
-      {
-        stream_id: 6,
-        name: "design",
-        description: "Design",
-        is_announcement_only: false,
-      },
-    ]);
-    vi.mocked(fetchSubscriptions).mockResolvedValue([
-      { stream_id: 5, name: "engineering", is_muted: false },
-    ]);
-
-    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
-
-    act(() => {
-      result.current.setTab("channels");
-    });
-
-    await waitFor(() => {
-      expect(result.current.channelsLoading).toBe(false);
-    });
-
-    expect(fetchStreams).toHaveBeenCalledTimes(1);
-    expect(fetchSubscriptions).toHaveBeenCalledTimes(1);
-    expect(result.current.browseChannels).toEqual([
-      {
-        streamId: 6,
-        name: "design",
-        description: "Design",
-        isSubscribed: false,
-        isMuted: false,
-        inviteOnly: null,
-        historyPublicToSubscribers: null,
-        isAnnouncementOnly: false,
-        isWebPublic: false,
-        streamPostPolicy: null,
-        subscriberCount: null,
-        weeklyMessageCount: null,
-        creatorId: null,
-        dateCreated: null,
-        folderId: null,
-        isDefault: null,
-        isRecentlyActive: null,
-        messageRetentionDays: null,
-        desktopNotifications: null,
-        audibleNotifications: null,
-      },
-    ]);
-    expect(result.current.selectedBrowseChannelId).toBe(6);
-    expect(result.current.channelsSubscriptionFilter).toBe("unsubscribed");
-  });
-
-  it("subscribes to a channel without navigating away from the dialog", async () => {
-    seedUsers();
-    useChatListStore.setState({ currentUserId: 10 });
-    vi.mocked(fetchStreams).mockResolvedValue([
-      {
-        stream_id: 7,
-        name: "design",
         description: "",
-        is_announcement_only: false,
-      },
-    ]);
-    vi.mocked(fetchSubscriptions).mockResolvedValue([]);
-    vi.mocked(subscribeCurrentUserToStream).mockResolvedValue({ ok: true });
-    const onNavigateStream = vi.fn();
-
-    const { result } = renderHook(() =>
-      useCreateChatDialog(defaultHookOptions({ onNavigateStream })),
-    );
-
-    act(() => {
-      result.current.setTab("channels");
-    });
-
-    await waitFor(() => {
-      expect(result.current.browseChannels).toHaveLength(1);
-    });
-
-    await act(async () => {
-      await result.current.onSubscribeToChannel(7, "design");
-    });
-
-    expect(subscribeCurrentUserToStream).toHaveBeenCalledWith("design", 10);
-    expect(onNavigateStream).not.toHaveBeenCalled();
-    expect(useChatListStore.getState().streamsMap.get(7)?.name).toBe("design");
-
-    act(() => {
-      result.current.setChannelsSubscriptionFilter("subscribed");
-    });
-
-    await waitFor(() => {
-      expect(result.current.browseChannels[0]?.isSubscribed).toBe(true);
+        memberUserUuids: ["alice-user"],
+        inviteOnly: false,
+        announce: false,
+      });
     });
   });
 
-  it("unsubscribes from a channel and removes it from the sidebar store", async () => {
-    seedUsers();
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 7, name: "design" }]);
-    vi.mocked(fetchStreams).mockResolvedValue([
-      {
-        stream_id: 7,
-        name: "design",
-        description: "Design team",
-        is_announcement_only: false,
-      },
-    ]);
-    vi.mocked(fetchSubscriptions).mockResolvedValue([
-      { stream_id: 7, name: "design", is_muted: false, invite_only: false },
-    ]);
-    vi.mocked(unsubscribeChannel).mockResolvedValue(true);
-
+  it("keeps unsupported browse and archive actions inert", async () => {
     const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
 
     act(() => {
       result.current.setTab("channels");
+      result.current.setChannelsSearch("design");
+      result.current.setChannelsSubscriptionFilter("subscribed");
+      result.current.setTab("archived");
+      result.current.setArchivedSearch("old");
+    });
+    await act(async () => {
+      await result.current.onSubscribeToChannel(1, "design");
+      await result.current.onUnsubscribeFromChannel(1, "design");
+      await result.current.onUnarchiveArchivedChannel(1);
     });
 
-    await waitFor(() => {
-      expect(result.current.channelsLoading).toBe(false);
+    expect(result.current.channelsLoading).toBe(false);
+    expect(result.current.channelsError).toBe(false);
+    expect(result.current.subscribeInlineError).toBeNull();
+    expect(result.current.unarchiveInlineError).toBeNull();
+  });
+
+  it("creates a Workspace topic for the selected stream", async () => {
+    seedWorkspaceSession();
+    const stream = createStream({
+      uuid: "11111111-1111-4111-8111-111111111111",
+      name: "engineering",
     });
+    useMessengerStore.getState().startBootstrap("owner");
+    useMessengerStore.getState().upsertStream("owner", stream);
+    vi.mocked(runWorkspaceCreateTopicRequest).mockResolvedValue({
+      status: "applied",
+      ownerKey: "owner",
+      topic: createTopic({ uuid: "topic-a", streamUuid: stream.uuid, name: "Roadmap" }),
+    });
+
+    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
 
     act(() => {
-      result.current.setChannelsSubscriptionFilter("subscribed");
+      result.current.setWorkspaceTopicName("Roadmap");
+    });
+    act(() => {
+      result.current.createWorkspaceTopic();
     });
 
     await waitFor(() => {
-      expect(result.current.browseChannels[0]?.isSubscribed).toBe(true);
+      expect(runWorkspaceCreateTopicRequest).toHaveBeenCalledWith({
+        streamUuid: "11111111-1111-4111-8111-111111111111",
+        name: "Roadmap",
+      });
     });
-
-    await act(async () => {
-      await result.current.onUnsubscribeFromChannel(7, "design");
-    });
-
-    expect(unsubscribeChannel).toHaveBeenCalledWith("design");
-    expect(useChatListStore.getState().streamsMap.has(7)).toBe(false);
-    expect(result.current.browseChannels).toHaveLength(0);
   });
 });

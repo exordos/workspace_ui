@@ -34,6 +34,8 @@ import {
   WorkspaceTopicContextMenu,
 } from "./sidebar-workspace-context-menu.ui";
 
+const WORKSPACE_CREATE_CHAT_VISIBLE_TABS = ["dm", "channel", "topic"] as const;
+
 export interface WorkspaceSidebarProps {
   streams: MessengerSidebarStreamItem[];
   loading: boolean;
@@ -479,9 +481,7 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
         <CreateChatDialog
           open={createChatOpen}
           onOpenChange={setCreateChatOpen}
-          mode="workspace"
-          onNavigateDm={() => undefined}
-          onNavigateStream={() => undefined}
+          visibleTabs={WORKSPACE_CREATE_CHAT_VISIBLE_TABS}
           onNavigateWorkspaceStream={handleWorkspaceStreamCreated}
           onNavigateWorkspaceTopic={handleWorkspaceTopicCreated}
           onChannelCreated={() => setCreateChatOpen(false)}

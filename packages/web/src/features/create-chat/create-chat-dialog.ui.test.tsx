@@ -1,24 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { CreateChatDialog } from "./create-chat-dialog.ui";
-import { createChannel, unarchiveChannel } from "./create-chat.api";
-
-vi.mock("./create-chat.api", () => ({
-  createChannel: vi.fn(),
-  unarchiveChannel: vi.fn(),
-  subscribeCurrentUserToStream: vi.fn(),
-  unsubscribeChannel: vi.fn(),
-}));
-
-vi.mock("~/shared/api/zulip-streams", () => ({
-  fetchStreams: vi.fn(),
-  fetchSubscriptions: vi.fn(),
-}));
-
-import { fetchStreams, fetchSubscriptions } from "~/shared/api/zulip-streams";
+import type { CreateChatDialogProps } from "./create-chat-dialog.types";
 
 function createUser(overrides: Partial<User> & { uuid: string }): User {
   return {
@@ -38,12 +24,53 @@ function createUser(overrides: Partial<User> & { uuid: string }): User {
   };
 }
 
+function seedWorkspaceSession(): void {
+  useWorkspaceAuthStore.getState().setSession({
+    accountId: "account",
+    instanceId: "instance",
+    organizationId: "org",
+    organizationOrigin: "https://workspace.test",
+    projectId: "project",
+    userUuid: "current-user",
+    accessToken: "token",
+    refreshToken: "refresh",
+    login: "current@example.com",
+    profile: {
+      uuid: "current-user",
+      username: "current",
+      firstName: "Current",
+      lastName: "User",
+      email: "current@example.com",
+    },
+  });
+}
+
+function renderDialog(props: Partial<CreateChatDialogProps> = {}): void {
+  render(
+    <CreateChatDialog
+      open
+      onOpenChange={vi.fn()}
+      onNavigateWorkspaceStream={vi.fn()}
+      onNavigateWorkspaceTopic={vi.fn()}
+      onChannelCreated={vi.fn()}
+      {...props}
+    />,
+  );
+}
+
 describe("CreateChatDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useUsersStore.getState().clear();
-    useChatListStore.getState().clear();
+    useWorkspaceAuthStore.getState().clear();
     useUsersStore.getState().replaceUsers([
+      createUser({
+        uuid: "current-user",
+        username: "current",
+        displayName: "Current User",
+        email: "current@example.com",
+        status: "active",
+      }),
       createUser({
         uuid: "alice-user",
         username: "alice",
@@ -52,155 +79,37 @@ describe("CreateChatDialog", () => {
         status: "active",
       }),
     ]);
-    vi.mocked(fetchStreams).mockResolvedValue([]);
-    vi.mocked(fetchSubscriptions).mockResolvedValue([]);
   });
 
   afterEach(() => {
     useUsersStore.getState().clear();
-    useChatListStore.getState().clear();
+    useWorkspaceAuthStore.getState().clear();
   });
 
-  it("disables channel creation and shows reason while current profile is loading", () => {
-    useChatListStore.setState({ currentUserId: null });
-
-    render(
-      <CreateChatDialog
-        open
-        onOpenChange={vi.fn()}
-        onNavigateDm={vi.fn()}
-        onNavigateStream={vi.fn()}
-        onChannelCreated={vi.fn()}
-      />,
-    );
+  it("disables channel creation and shows reason while Workspace profile is loading", () => {
+    renderDialog();
 
     fireEvent.click(screen.getByRole("tab", { name: "Create channel" }));
     fireEvent.change(screen.getByPlaceholderText("Channel name"), {
       target: { value: "engineering" },
     });
 
-    // Assert: UI explicitly blocks creation until author profile loads.
     const createButton = screen.getByRole("button", { name: "Create" });
     expect(createButton).toBeDisabled();
     expect(
       screen.getByText("Profile is still loading. Try again in a moment."),
     ).toBeInTheDocument();
-
-    fireEvent.click(createButton);
-    expect(createChannel).not.toHaveBeenCalled();
   });
 
-  it("renders channels tab with subscribe action in the detail panel", async () => {
-    useChatListStore.setState({ currentUserId: 10 });
-    vi.mocked(fetchStreams).mockResolvedValue([
-      {
-        stream_id: 42,
-        name: "engineering",
-        description: "Team channel",
-        is_announcement_only: false,
-        subscriber_count: 15,
-        stream_weekly_traffic: 30,
-      },
-    ]);
-    vi.mocked(fetchSubscriptions).mockResolvedValue([]);
-
-    render(
-      <CreateChatDialog
-        open
-        onOpenChange={vi.fn()}
-        onNavigateDm={vi.fn()}
-        onNavigateStream={vi.fn()}
-        onChannelCreated={vi.fn()}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("tab", { name: "Channels" }));
-
-    expect(await screen.findByText("Team channel")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "#engineering" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Subscribe" })).toBeEnabled();
-    expect(screen.getByLabelText("15 subscribers")).toBeInTheDocument();
-    expect(screen.getByLabelText("30 messages per week")).toBeInTheDocument();
-    expect(screen.getByText("Activity")).toBeInTheDocument();
-    expect(screen.getByText("General")).toBeInTheDocument();
-  });
-
-  it("shows unsubscribe and channel settings for subscribed channels", async () => {
-    useChatListStore.setState({ currentUserId: 10 });
-    vi.mocked(fetchStreams).mockResolvedValue([
-      {
-        stream_id: 42,
-        name: "engineering",
-        description: "Team channel",
-        is_announcement_only: false,
-        invite_only: true,
-        history_public_to_subscribers: true,
-        subscriber_count: 8,
-        stream_weekly_traffic: 12,
-      },
-    ]);
-    vi.mocked(fetchSubscriptions).mockResolvedValue([
-      { stream_id: 42, name: "engineering", is_muted: false, invite_only: true },
-    ]);
-
-    render(
-      <CreateChatDialog
-        open
-        onOpenChange={vi.fn()}
-        onNavigateDm={vi.fn()}
-        onNavigateStream={vi.fn()}
-        onChannelCreated={vi.fn()}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("tab", { name: "Channels" }));
-    fireEvent.click(screen.getByRole("button", { name: "Subscribed" }));
-
-    expect(await screen.findByText("Closed, open history")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open channel" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Unsubscribe" })).toBeEnabled();
-    expect(screen.getByRole("group", { name: "Show channels" })).toBeInTheDocument();
-  });
-
-  it("renders archived channels tab and linked tabpanel", () => {
-    useChatListStore
-      .getState()
-      .upsertStreamMetadataRows([{ streamId: 77, name: "engineering", isArchived: true }]);
-
-    render(
-      <CreateChatDialog
-        open
-        onOpenChange={vi.fn()}
-        onNavigateDm={vi.fn()}
-        onNavigateStream={vi.fn()}
-        onChannelCreated={vi.fn()}
-      />,
-    );
-
-    const archivedTab = screen.getByRole("tab", { name: "Archived channels" });
-    fireEvent.click(archivedTab);
-
-    const archivedPanelId = archivedTab.getAttribute("aria-controls");
-    expect(archivedPanelId).toBeTruthy();
-    const archivedPanel = document.getElementById(archivedPanelId!);
-    expect(archivedPanel).toBeInTheDocument();
-    expect(archivedPanel).toHaveAttribute("role", "tabpanel");
-    expect(archivedPanel).toHaveAttribute("aria-labelledby", archivedTab.id);
-  });
-
-  it("supports keyboard navigation to archived tab with End and back to start with Home", () => {
-    render(
-      <CreateChatDialog
-        open
-        onOpenChange={vi.fn()}
-        onNavigateDm={vi.fn()}
-        onNavigateStream={vi.fn()}
-        onChannelCreated={vi.fn()}
-      />,
-    );
+  it("keeps all create-chat tabs visible and keyboard-addressable", () => {
+    renderDialog();
 
     const startChatTab = screen.getByRole("tab", { name: "Start chat" });
     const archivedTab = screen.getByRole("tab", { name: "Archived channels" });
+
+    expect(screen.getByRole("tab", { name: "Channels" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Create channel" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Create topic" })).toBeInTheDocument();
 
     startChatTab.focus();
     fireEvent.keyDown(startChatTab, { key: "End" });
@@ -212,174 +121,56 @@ describe("CreateChatDialog", () => {
     expect(startChatTab).toHaveAttribute("aria-selected", "true");
   });
 
-  it("filters archived channels by search and renders unarchive action", () => {
-    useChatListStore.getState().upsertStreamMetadataRows([
-      { streamId: 77, name: "engineering", isArchived: true },
-      { streamId: 78, name: "design", isArchived: true },
-    ]);
+  it("uses caller-provided visible tabs", () => {
+    renderDialog({ visibleTabs: ["dm", "channel"] });
 
-    render(
-      <CreateChatDialog
-        open
-        onOpenChange={vi.fn()}
-        onNavigateDm={vi.fn()}
-        onNavigateStream={vi.fn()}
-        onChannelCreated={vi.fn()}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("tab", { name: "Archived channels" }));
-    fireEvent.change(screen.getByPlaceholderText("Search archived channels…"), {
-      target: { value: "engine" },
-    });
-
-    expect(screen.getByText("#engineering")).toBeInTheDocument();
-    expect(screen.queryByText("#design")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Unarchive: engineering/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Start chat" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Create channel" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Channels" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Create topic" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Archived channels" })).not.toBeInTheDocument();
   });
 
-  it("открывает архивный канал по клику на строку и вызывает onNavigateStream", () => {
-    useChatListStore
-      .getState()
-      .upsertStreamMetadataRows([{ streamId: 77, name: "engineering", isArchived: true }]);
-    const onNavigateStream = vi.fn();
+  it("renders channels tab as a Workspace placeholder without subscribe actions", () => {
+    renderDialog();
 
-    render(
-      <CreateChatDialog
-        open
-        onOpenChange={vi.fn()}
-        onNavigateDm={vi.fn()}
-        onNavigateStream={onNavigateStream}
-        onChannelCreated={vi.fn()}
-      />,
-    );
+    fireEvent.click(screen.getByRole("tab", { name: "Channels" }));
 
-    fireEvent.click(screen.getByRole("tab", { name: "Archived channels" }));
-    const title = screen.getByText("#engineering");
-    fireEvent.click(title.closest("button")!);
-
-    expect(onNavigateStream).toHaveBeenCalledWith(77, "engineering");
+    expect(
+      screen.getByText(
+        "Workspace channel browsing is not connected yet. The tab is kept as a placeholder.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Show channels" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Search channels…")).toBeInTheDocument();
+    expect(screen.getByText("No channels found")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Subscribe" })).not.toBeInTheDocument();
   });
 
-  it("кнопка разархивирования дергаёт API и не вызывает onNavigateStream", async () => {
-    useChatListStore
-      .getState()
-      .upsertStreamMetadataRows([{ streamId: 77, name: "engineering", isArchived: true }]);
-    vi.mocked(unarchiveChannel).mockResolvedValue({ ok: true });
-    const onNavigateStream = vi.fn();
-
-    render(
-      <CreateChatDialog
-        open
-        onOpenChange={vi.fn()}
-        onNavigateDm={vi.fn()}
-        onNavigateStream={onNavigateStream}
-        onChannelCreated={vi.fn()}
-      />,
-    );
+  it("renders archived channels tab as a Workspace placeholder", () => {
+    renderDialog();
 
     fireEvent.click(screen.getByRole("tab", { name: "Archived channels" }));
-    fireEvent.click(screen.getByRole("button", { name: /Unarchive: engineering/i }));
 
-    await waitFor(() => {
-      expect(unarchiveChannel).toHaveBeenCalledWith(77);
-    });
-    expect(onNavigateStream).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(
+        "Workspace archived channels are not connected yet. The tab is kept as a placeholder.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Search archived channels…")).toBeInTheDocument();
+    expect(screen.getByText("No archived channels found")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Unarchive/i })).not.toBeInTheDocument();
   });
 
-  it("убирает канал со вкладки после успеха и обновления isArchived в store", async () => {
-    useChatListStore
-      .getState()
-      .upsertStreamMetadataRows([{ streamId: 77, name: "engineering", isArchived: true }]);
-    vi.mocked(unarchiveChannel).mockResolvedValue({ ok: true });
+  it("keeps announcement-only control visible but disabled for Workspace", () => {
+    seedWorkspaceSession();
+    renderDialog();
 
-    render(
-      <CreateChatDialog
-        open
-        onOpenChange={vi.fn()}
-        onNavigateDm={vi.fn()}
-        onNavigateStream={vi.fn()}
-        onChannelCreated={vi.fn()}
-      />,
-    );
+    fireEvent.click(screen.getByRole("tab", { name: "Create channel" }));
 
-    fireEvent.click(screen.getByRole("tab", { name: "Archived channels" }));
-    fireEvent.click(screen.getByRole("button", { name: /Unarchive: engineering/i }));
-
-    await waitFor(() => {
-      expect(unarchiveChannel).toHaveBeenCalled();
-    });
-
-    useChatListStore
-      .getState()
-      .upsertStreamMetadataRows([{ streamId: 77, name: "engineering", isArchived: false }]);
-
-    await waitFor(() => {
-      expect(screen.queryByText("#engineering")).not.toBeInTheDocument();
-    });
-  });
-
-  it("рендерит inline-ошибку при неудачном unarchive", async () => {
-    useChatListStore
-      .getState()
-      .upsertStreamMetadataRows([{ streamId: 77, name: "engineering", isArchived: true }]);
-    vi.mocked(unarchiveChannel).mockResolvedValue({
-      ok: false,
-      kind: "transient",
-      message: "Rate limited",
-      status: 429,
-    });
-
-    render(
-      <CreateChatDialog
-        open
-        onOpenChange={vi.fn()}
-        onNavigateDm={vi.fn()}
-        onNavigateStream={vi.fn()}
-        onChannelCreated={vi.fn()}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("tab", { name: "Archived channels" }));
-    fireEvent.click(screen.getByRole("button", { name: /Unarchive: engineering/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent("Rate limited");
-    });
-  });
-
-  it("блокирует кнопку unarchive пока запрос выполняется", async () => {
-    useChatListStore
-      .getState()
-      .upsertStreamMetadataRows([{ streamId: 77, name: "engineering", isArchived: true }]);
-    let release!: () => void;
-    const deferred = new Promise<{ ok: true }>((resolve) => {
-      release = () => resolve({ ok: true });
-    });
-    vi.mocked(unarchiveChannel).mockReturnValue(deferred);
-
-    render(
-      <CreateChatDialog
-        open
-        onOpenChange={vi.fn()}
-        onNavigateDm={vi.fn()}
-        onNavigateStream={vi.fn()}
-        onChannelCreated={vi.fn()}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("tab", { name: "Archived channels" }));
-    const btn = screen.getByRole("button", { name: /Unarchive: engineering/i });
-    fireEvent.click(btn);
-
-    await waitFor(() => {
-      expect(btn).toHaveAttribute("aria-busy", "true");
-      expect(btn).toBeDisabled();
-    });
-
-    release();
-    await waitFor(() => {
-      expect(btn).not.toBeDisabled();
-    });
+    expect(screen.getByLabelText("Announcement-only channel")).toBeDisabled();
+    expect(
+      screen.getByText("Announcement-only policy is not connected to Workspace yet."),
+    ).toBeInTheDocument();
   });
 });

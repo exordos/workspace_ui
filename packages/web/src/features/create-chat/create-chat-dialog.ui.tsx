@@ -1,24 +1,16 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import React, { useCallback, useMemo } from "react";
-import { useUserGroupsStore } from "~/entities/user-group/user-group.model";
-import { getLocale, t } from "~/i18n/i18n";
+import React, { useCallback } from "react";
+import { t } from "~/i18n/i18n";
 import { AppDialogShell, APP_DIALOG_CONTENT_BASE_CLASS } from "~/shared/ui/app-dialog.ui";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { Spinner } from "~/shared/ui/spinner.ui";
 import {
-  buildBrowseChannelDetailSections,
-  createBrowseChannelDetailLabels,
-} from "./create-chat-browse-channel-settings.lib";
-import {
   useCreateChatDialog,
+  type BrowseChannelSubscriptionFilter,
   type CreateChatUserOption,
   type UseCreateChatDialogResult,
 } from "./create-chat-dialog.hook";
-import type {
-  BrowseChannelRow as BrowseChannelRowData,
-  BrowseChannelSubscriptionFilter,
-} from "./create-chat-browse-channels.lib";
 import type { CreateChatTab } from "./create-chat-dialog.lib";
 import type { CreateChatDialogProps } from "./create-chat-dialog.types";
 
@@ -42,17 +34,12 @@ const CREATE_CHAT_BROWSE_CHANNELS_ROW_CLASS =
 const CREATE_CHAT_LIST_ROW_CLASS =
   "flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm text-text-primary transition-colors hover:bg-sidebar-hover";
 
-// Composite row (archive): highlight full strip, not just the left button.
-const CREATE_CHAT_LIST_COMPOSITE_ROW_CLASS =
-  "flex w-full items-stretch gap-2 transition-colors hover:bg-sidebar-hover";
-
 // Footer pinned below scroll area — shared actions across tabs.
 const CREATE_CHAT_FOOTER_CLASS =
   "border-border-subtle bg-bg-elevated flex shrink-0 justify-end gap-2 border-t px-4 py-3";
 
 const createChatTabLabelKey: Record<CreateChatTab, string> = {
   dm: "dm.startChat",
-  group: "dm.createGroup",
   channels: "channel.browseChannels",
   channel: "channel.createChannel",
   topic: "channel.createTopic",
@@ -203,22 +190,7 @@ const BrowseChannelsListContent = React.memo<BrowseChannelsListContentProps>(
       );
     }
 
-    if (vm.browseChannels.length === 0) {
-      return <EmptyCreateChatList label={t("channel.noChannels")} />;
-    }
-
-    return (
-      <>
-        {vm.browseChannels.map((channel) => (
-          <BrowseChannelListItem
-            key={channel.streamId}
-            channel={channel}
-            isSelected={vm.selectedBrowseChannelId === channel.streamId}
-            onSelect={vm.setSelectedBrowseChannelId}
-          />
-        ))}
-      </>
-    );
+    return <EmptyCreateChatList label={t("channel.noChannels")} />;
   },
 );
 
@@ -240,26 +212,12 @@ const DialogCancelButton = React.memo(function DialogCancelButton() {
 });
 
 const CreateChatFooter = React.memo<CreateChatFooterProps>(function CreateChatFooter({ vm }) {
-  const showCreateGroup = vm.tab === "group";
   const showCreateChannel = vm.tab === "channel";
   const showCreateTopic = vm.tab === "topic";
   const showCancelOnly = vm.tab === "dm" || vm.tab === "archived" || vm.tab === "channels";
 
   return (
     <div className={CREATE_CHAT_FOOTER_CLASS}>
-      {showCreateGroup && (
-        <>
-          <DialogCancelButton />
-          <button
-            type="button"
-            disabled={vm.groupSelectedUserKeys.size === 0 || vm.creating}
-            onClick={vm.createGroup}
-            className="rounded-lg bg-accent px-3 py-1.5 text-sm text-bg hover:opacity-90 disabled:opacity-50"
-          >
-            {t("common.create")}
-          </button>
-        </>
-      )}
       {showCreateChannel && (
         <>
           <DialogCancelButton />
@@ -294,30 +252,19 @@ const CreateChatFooter = React.memo<CreateChatFooterProps>(function CreateChatFo
 export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
   open,
   onOpenChange,
-  mode = "legacy",
-  onNavigateDm,
-  onNavigateStream,
+  visibleTabs,
   onNavigateWorkspaceStream,
   onNavigateWorkspaceTopic,
   onChannelCreated,
 }) => {
   const vm = useCreateChatDialog({
     open,
-    mode,
-    onNavigateDm,
-    onNavigateStream,
+    visibleTabs,
     onNavigateWorkspaceStream,
     onNavigateWorkspaceTopic,
     onChannelCreated,
   });
-  // Three independent channel checkboxes: inviteOnly, channelAnnounce (bot notification), channelAnnouncementOnly (posting policy).
-
-  const handleOpenArchivedChannel = useCallback(
-    (streamId: number, streamName: string) => {
-      onNavigateStream(streamId, streamName);
-    },
-    [onNavigateStream],
-  );
+  // The announcement-only checkbox is preserved as UI shell until Workspace policy support exists.
 
   const contentClassName = `${APP_DIALOG_CONTENT_BASE_CLASS} top-1/2 flex min-h-[32rem] max-h-[85vh] max-w-4xl -translate-y-1/2 flex-col overflow-hidden p-0`;
 
@@ -372,37 +319,6 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
             </div>
           )}
 
-          {vm.tab === "group" && (
-            <div
-              role="tabpanel"
-              id={vm.panelIds.group}
-              aria-labelledby={vm.tabIds.group}
-              className="flex flex-col gap-3"
-            >
-              <input
-                type="text"
-                value={vm.userSearch}
-                onChange={(e) => vm.setUserSearch(e.target.value)}
-                className={CREATE_CHAT_TEXT_INPUT_CLASS}
-                placeholder={t("message.searchUsers")}
-              />
-              <div className={CREATE_CHAT_USER_LIST_CLASS}>
-                {vm.groupUsers.length === 0 ? (
-                  <EmptyCreateChatList label={t("search.noResults")} />
-                ) : (
-                  vm.groupUsers.map((user) => (
-                    <SelectableUserRow
-                      key={user.userKey}
-                      user={user}
-                      checked={vm.groupSelectedUserKeys.has(user.userKey)}
-                      onToggle={vm.toggleGroupUser}
-                    />
-                  ))
-                )}
-              </div>
-            </div>
-          )}
-
           {vm.tab === "channels" && (
             <div
               role="tabpanel"
@@ -421,6 +337,9 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                 </div>
               )}
               {vm.channelsError && <p className="text-sm text-notice-base">{t("app.error")}</p>}
+              <div className="rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-muted">
+                {t("channel.workspaceBrowseChannelsUnsupported")}
+              </div>
               <div className={CREATE_CHAT_BROWSE_CHANNELS_ROW_CLASS}>
                 <div className="flex h-full min-h-0 w-[38%] min-w-[9rem] flex-col gap-2">
                   <input
@@ -438,16 +357,9 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                     <BrowseChannelsListContent vm={vm} />
                   </div>
                 </div>
-                <BrowseChannelDetailPanel
-                  channel={vm.selectedBrowseChannel}
-                  isActionPending={
-                    vm.selectedBrowseChannel != null &&
-                    vm.subscribePendingStreamIds.includes(vm.selectedBrowseChannel.streamId)
-                  }
-                  onSubscribe={vm.onSubscribeToChannel}
-                  onUnsubscribe={vm.onUnsubscribeFromChannel}
-                  onOpenChannel={handleOpenArchivedChannel}
-                />
+                <div className="flex h-full min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-lg border border-border-subtle bg-bg px-4 text-center text-sm text-text-muted">
+                  {t("channel.browseSelectChannel")}
+                </div>
               </div>
             </div>
           )}
@@ -599,25 +511,13 @@ export const CreateChatDialog: React.FC<CreateChatDialogProps> = ({
                       })}
                 </div>
               )}
+              <div className="rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-muted">
+                {t("channel.workspaceArchivedChannelsUnsupported")}
+              </div>
               <div className={CREATE_CHAT_USER_LIST_CLASS}>
-                {vm.archivedChannels.length === 0 ? (
-                  <p className="px-3 py-4 text-center text-sm text-text-muted">
-                    {t("channel.noArchivedChannels")}
-                  </p>
-                ) : (
-                  vm.archivedChannels.map((channel) => (
-                    <ArchivedChannelRow
-                      key={channel.streamId}
-                      streamId={channel.streamId}
-                      name={channel.name}
-                      lastMessage={channel.lastMessage}
-                      time={channel.time}
-                      isUnarchivePending={vm.unarchivePendingStreamIds.includes(channel.streamId)}
-                      onOpenChannel={handleOpenArchivedChannel}
-                      onUnarchive={vm.onUnarchiveArchivedChannel}
-                    />
-                  ))
-                )}
+                <p className="px-3 py-4 text-center text-sm text-text-muted">
+                  {t("channel.noArchivedChannels")}
+                </p>
               </div>
             </div>
           )}
@@ -679,266 +579,3 @@ const BrowseChannelSubscriptionToggle = React.memo<BrowseChannelSubscriptionTogg
     );
   },
 );
-
-interface BrowseChannelListItemProps {
-  channel: BrowseChannelRowData;
-  isSelected: boolean;
-  onSelect: (streamId: number) => void;
-}
-
-const BrowseChannelListItem = React.memo<BrowseChannelListItemProps>(
-  function BrowseChannelListItem({ channel, isSelected, onSelect }) {
-    const handleClick = useCallback(() => {
-      onSelect(channel.streamId);
-    }, [channel.streamId, onSelect]);
-
-    return (
-      <button
-        type="button"
-        onClick={handleClick}
-        aria-current={isSelected ? "true" : undefined}
-        className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors ${
-          isSelected
-            ? "bg-sidebar-hover text-text-primary"
-            : "text-text-primary hover:bg-sidebar-hover"
-        }`}
-      >
-        <span className="min-w-0 flex-1 truncate font-medium">#{channel.name}</span>
-        <BrowseChannelRowMetrics channel={channel} />
-      </button>
-    );
-  },
-);
-
-const BrowseChannelRowMetrics = React.memo<{ channel: BrowseChannelRowData }>(
-  function BrowseChannelRowMetrics({ channel }) {
-    const showSubscribers = channel.subscriberCount != null;
-    const showMessages = channel.weeklyMessageCount != null;
-
-    if (!showSubscribers && !showMessages) {
-      return null;
-    }
-
-    return (
-      <div className="flex shrink-0 items-center gap-2.5 text-xs tabular-nums text-text-muted">
-        {showSubscribers && (
-          <span
-            className="flex items-center gap-1"
-            aria-label={t("channel.browseStatSubscribersAria", {
-              count: channel.subscriberCount!,
-            })}
-          >
-            <span>{channel.subscriberCount}</span>
-            <Icon name="group" size={14} className="shrink-0" aria-hidden />
-          </span>
-        )}
-        {showMessages && (
-          <span
-            className="flex items-center gap-1"
-            aria-label={t("channel.browseStatWeeklyAria", {
-              count: channel.weeklyMessageCount!,
-            })}
-          >
-            <span>{channel.weeklyMessageCount}</span>
-            <Icon name="chatBubble" size={14} className="shrink-0" aria-hidden />
-          </span>
-        )}
-      </div>
-    );
-  },
-);
-
-interface BrowseChannelDetailPanelProps {
-  channel: BrowseChannelRowData | null;
-  isActionPending: boolean;
-  onSubscribe: (streamId: number, streamName: string) => Promise<void>;
-  onUnsubscribe: (streamId: number, streamName: string) => Promise<void>;
-  onOpenChannel: (streamId: number, streamName: string) => void;
-}
-
-const BrowseChannelDetailPanel = React.memo<BrowseChannelDetailPanelProps>(
-  function BrowseChannelDetailPanel({
-    channel,
-    isActionPending,
-    onSubscribe,
-    onUnsubscribe,
-    onOpenChannel,
-  }) {
-    const groups = useUserGroupsStore((s) => s.groups);
-
-    const detailSections = useMemo(() => {
-      if (channel == null) {
-        return [];
-      }
-      const labels = createBrowseChannelDetailLabels({
-        t,
-        locale: getLocale(),
-        resolveUserName: () => undefined,
-        resolveGroupName: (groupId) => groups.get(groupId)?.name,
-      });
-      return buildBrowseChannelDetailSections(channel, labels);
-    }, [channel, groups]);
-
-    const handleSubscribe = useCallback(() => {
-      if (channel == null) return;
-      void onSubscribe(channel.streamId, channel.name);
-    }, [channel, onSubscribe]);
-
-    const handleUnsubscribe = useCallback(() => {
-      if (channel == null) return;
-      void onUnsubscribe(channel.streamId, channel.name);
-    }, [channel, onUnsubscribe]);
-
-    const handleOpen = useCallback(() => {
-      if (!channel?.isSubscribed) return;
-      onOpenChannel(channel.streamId, channel.name);
-    }, [channel, onOpenChannel]);
-
-    if (channel == null) {
-      return (
-        <div className="flex h-full min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-lg border border-border-subtle bg-bg px-4 text-center text-sm text-text-muted">
-          {t("channel.browseSelectChannel")}
-        </div>
-      );
-    }
-
-    const description =
-      channel.description.trim().length > 0
-        ? channel.description.trim()
-        : t("channel.noDescription");
-
-    return (
-      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border-subtle bg-bg">
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          <h3 className="truncate text-base font-semibold text-text-primary">#{channel.name}</h3>
-          <div className="mt-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
-              {t("channel.description")}
-            </p>
-            <p className="mt-1 text-sm text-text-primary">{description}</p>
-          </div>
-          {detailSections.map((section) => (
-            <div key={section.titleKey} className="mt-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
-                {t(section.titleKey)}
-              </p>
-              <dl className="mt-2 space-y-2">
-                {section.fields.map((field) => (
-                  <div key={field.id} className="flex items-start justify-between gap-3 text-sm">
-                    <dt className="text-text-muted">{t(field.labelKey)}</dt>
-                    <dd className="text-right text-text-primary">{field.value}</dd>
-                  </div>
-                ))}
-              </dl>
-            </div>
-          ))}
-        </div>
-        <div className="flex shrink-0 flex-wrap gap-2 border-t border-border-subtle p-4">
-          {channel.isSubscribed ? (
-            <>
-              <button
-                type="button"
-                onClick={handleOpen}
-                className="rounded-lg bg-accent px-3 py-1.5 text-sm text-bg transition-opacity hover:opacity-90"
-              >
-                {t("channel.openChannel")}
-              </button>
-              <button
-                type="button"
-                onClick={handleUnsubscribe}
-                disabled={isActionPending}
-                aria-busy={isActionPending}
-                className="hover:bg-bg/50 rounded-lg border border-border-subtle px-3 py-1.5 text-sm text-text-primary transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isActionPending ? t("app.loading") : t("channel.unsubscribe")}
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={handleSubscribe}
-              disabled={isActionPending}
-              aria-busy={isActionPending}
-              className="rounded-lg bg-accent px-3 py-1.5 text-sm text-bg transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isActionPending ? t("app.loading") : t("channel.subscribe")}
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  },
-);
-
-interface ArchivedChannelRowProps {
-  streamId: number;
-  name: string;
-  lastMessage: string;
-  time: string;
-  isUnarchivePending: boolean;
-  onOpenChannel: (streamId: number, streamName: string) => void;
-  onUnarchive: (streamId: number) => Promise<void>;
-}
-
-/** Archived channel row: row click opens chat; unarchive button is separate. */
-const ArchivedChannelRow = React.memo<ArchivedChannelRowProps>(function ArchivedChannelRow({
-  streamId,
-  name,
-  lastMessage,
-  time,
-  isUnarchivePending,
-  onOpenChannel,
-  onUnarchive,
-}) {
-  const handleRowClick = useCallback(() => {
-    onOpenChannel(streamId, name);
-  }, [onOpenChannel, streamId, name]);
-
-  const handleUnarchiveClick = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>) => {
-      // Stop propagation so row click and unarchive do not fire together.
-      event.stopPropagation();
-      void onUnarchive(streamId);
-    },
-    [onUnarchive, streamId],
-  );
-
-  const previewBase = lastMessage || t("channel.archivedChannels");
-  const previewTime = time ? ` · ${time}` : "";
-  const previewLine = `${previewBase}${previewTime}`.trim();
-
-  return (
-    <div className={CREATE_CHAT_LIST_COMPOSITE_ROW_CLASS}>
-      <button
-        type="button"
-        onClick={handleRowClick}
-        className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left text-sm text-text-primary"
-      >
-        <span className="min-w-0 flex-1">
-          <span className="block truncate font-medium">#{name}</span>
-          <span className="block truncate text-[11px] text-text-secondary">{previewLine}</span>
-        </span>
-      </button>
-      <div className="flex shrink-0 items-center pr-2">
-        <button
-          type="button"
-          onClick={handleUnarchiveClick}
-          disabled={isUnarchivePending}
-          aria-busy={isUnarchivePending}
-          aria-label={
-            isUnarchivePending
-              ? `${t("channel.unarchiveInProgress")}: ${name}`
-              : `${t("channel.unarchiveChannel")}: ${name}`
-          }
-          className="flex h-7 w-7 items-center justify-center rounded-md bg-indicator-green text-bg transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <Icon
-            name="logout"
-            size={14}
-            className={`text-bg ${isUnarchivePending ? "animate-spin" : ""}`}
-          />
-        </button>
-      </div>
-    </div>
-  );
-});
