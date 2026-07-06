@@ -61,11 +61,11 @@
     "ip-address": "10.1.1"
   },
   "devDependencies": {
-    "@commitlint/cli": "21.0.2",
-    "@commitlint/config-conventional": "21.0.2",
-    "@playwright/test": "1.60.0",
+    "@commitlint/cli": "21.2.0",
+    "@commitlint/config-conventional": "21.2.0",
+    "@playwright/test": "1.61.1",
     "lerna": "9.0.7",
-    "lint-staged": "17.0.7",
+    "lint-staged": "17.0.8",
     "simple-git-hooks": "2.13.1",
     "tinyexec": "1.2.4"
   },
