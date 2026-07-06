@@ -30,6 +30,7 @@ export interface ForwardMessageModalBodyProps {
   streamOptions: ForwardWorkspaceStreamOption[];
   topicOptions: ForwardWorkspaceTopicOption[];
   currentUserUuid: UserUuid;
+  isForwarding?: boolean;
   onForward: (target: ForwardMessageTarget) => void;
   onClose: () => void;
 }

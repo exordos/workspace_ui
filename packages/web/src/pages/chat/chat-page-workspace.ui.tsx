@@ -8,6 +8,7 @@ import {
   useWorkspaceMessageStore,
 } from "~/entities/message/message.model";
 import { selectWorkspaceChatHeaderView } from "~/entities/messenger/messenger-chat-header.lib";
+import { createWorkspaceDirectStream } from "~/entities/messenger/messenger-create-chat-actions.lib";
 import {
   conversationIdForStream,
   conversationIdForTopic,
@@ -41,6 +42,10 @@ import { t } from "~/i18n/i18n";
 import { downloadWorkspaceFile, uploadWorkspaceFile } from "~/shared/api/messenger-files.api";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
+import {
+  buildWorkspaceQuoteBlock,
+  buildWorkspaceQuoteHeader,
+} from "~/shared/lib/workspace-message-quote.lib";
 import type {
   WorkspaceMessageFileReference,
   WorkspaceMessageMentionResolution,
@@ -49,6 +54,7 @@ import {
   workspaceMessengerMessageRoute,
   type WorkspaceMessengerRouteMatch,
 } from "~/shared/lib/workspace-messenger-route.lib";
+import { AppDialogShell, APP_DIALOG_CONTENT_BASE_CLASS } from "~/shared/ui/app-dialog.ui";
 import type { ChatHeaderProps } from "~/widgets/chat-view/chat-header.types";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import type {
@@ -60,6 +66,7 @@ import type { WorkspaceMessageMediaGalleryOpenRequest } from "~/widgets/workspac
 import { consumePendingForwardPrefill } from "./chat-forward.lib";
 import { ChatPageComposerSection } from "./chat-page-composer-section.ui";
 import { ChatPageDeleteConfirmBar } from "./chat-page-delete-confirm-bar.ui";
+import { ForwardMessageModalBody } from "./chat-page-forward-modal.ui";
 import { ChatPageInlineAlerts } from "./chat-page-inline-alerts.ui";
 import { ChatPageSelectionBar } from "./chat-page-selection-bar.ui";
 import { ChatPageWorkspaceMessageListSection } from "./chat-page-workspace-message-list-section.ui";
@@ -75,9 +82,25 @@ import {
   workspaceFileDownloadKey,
 } from "./chat-workspace-file-download.lib";
 import type { WorkspaceChatMessagesLoadErrorKind } from "./chat-page-workspace-message-list-section.types";
+import type {
+  ForwardMessageTarget,
+  ForwardWorkspaceStreamOption,
+  ForwardWorkspaceTopicOption,
+} from "./chat-page.types";
 
 interface WorkspaceChatPageProps {
   route: WorkspaceMessengerRouteMatch | null;
+}
+
+interface PendingWorkspaceForward {
+  messageUuids: string[];
+  selectedText?: string;
+}
+
+interface WorkspaceForwardTarget {
+  streamUuid: string;
+  topicUuid: string;
+  includeStreamConversation: boolean;
 }
 
 const EMPTY_MESSAGES: MessengerMessage[] = [];
@@ -139,6 +162,67 @@ function findDefaultTopic(
   );
 }
 
+function normalizeSelectedForwardText(selectedText: string | undefined): string | undefined {
+  const normalized = selectedText?.trim();
+  return normalized != null && normalized.length > 0 ? normalized : undefined;
+}
+
+function resolveForwardMessages(
+  messageUuids: readonly string[],
+  routeMessages: readonly MessengerMessage[],
+): MessengerMessage[] | null {
+  const uniqueMessageUuids = [...new Set(messageUuids)];
+  if (uniqueMessageUuids.length === 0) return null;
+
+  const requestedUuids = new Set(uniqueMessageUuids);
+  const routeOrderedMessages = routeMessages.filter((message) => requestedUuids.has(message.uuid));
+  if (routeOrderedMessages.length === requestedUuids.size) return routeOrderedMessages;
+
+  const messageStoreState = useWorkspaceMessageStore.getState();
+  const messages = uniqueMessageUuids
+    .map((messageUuid) => selectWorkspaceMessageById(messageStoreState, messageUuid))
+    .filter((message): message is MessengerMessage => message != null);
+
+  return messages.length === uniqueMessageUuids.length ? messages : null;
+}
+
+function buildWorkspaceForwardMarkdown({
+  messages,
+  selectedText,
+  route,
+  resolveAuthorLabel,
+}: {
+  messages: readonly MessengerMessage[];
+  selectedText: string | undefined;
+  route: WorkspaceMessengerRouteMatch | null;
+  resolveAuthorLabel: (authorUuid: string) => string | null;
+}): string {
+  const singleSelectedText =
+    messages.length === 1 ? normalizeSelectedForwardText(selectedText) : undefined;
+
+  return messages
+    .map((message, index) => {
+      const authorLabel = resolveAuthorLabel(message.authorUuid) ?? t("message.replyTo");
+      const header = buildWorkspaceQuoteHeader({
+        senderName: authorLabel,
+        wroteLabel: t("message.replyQuoteWrote"),
+        permalinkUrl:
+          route == null
+            ? null
+            : workspaceMessengerMessageRoute({
+                orgId: route.orgId,
+                projectId: route.projectId,
+                messageUuid: message.uuid,
+              }),
+      });
+      return buildWorkspaceQuoteBlock(
+        header,
+        singleSelectedText != null && index === 0 ? singleSelectedText : message.markdown,
+      );
+    })
+    .join("\n");
+}
+
 function buildWorkspaceOutgoingPreviewMarkdown(
   content: string,
   files: readonly File[] | undefined,
@@ -183,6 +267,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   const [composerEditSession, setComposerEditSession] = useState<ComposerEditSession | null>(null);
   const [composerEditMessageUuid, setComposerEditMessageUuid] = useState<string | null>(null);
   const [pendingDeleteMessageUuid, setPendingDeleteMessageUuid] = useState<string | null>(null);
+  const [pendingForward, setPendingForward] = useState<PendingWorkspaceForward | null>(null);
+  const [forwardSubmitting, setForwardSubmitting] = useState(false);
   const [selectedMessageUuids, setSelectedMessageUuids] = useState<Set<string>>(() => new Set());
   const [replyQuote, setReplyQuote] = useState<ReplyQuote | null>(null);
   const [uploadProgress, setUploadProgress] = useState<ComposerUploadProgressState | null>(null);
@@ -194,6 +280,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   const readBatchTimerRef = useRef<number | null>(null);
   const actionAbortControllersRef = useRef<Set<AbortController>>(new Set());
   const uploadAbortControllerRef = useRef<AbortController | null>(null);
+  const forwardSubmittingRef = useRef(false);
   const selection = useMemo(() => selectMessengerConversationFromWorkspaceRoute(route), [route]);
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
@@ -255,6 +342,30 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   const streamBindingsById = useMessengerStore((state) => state.streamBindingsById);
   const streamBindingIdsByStreamId = useMessengerStore((state) => state.streamBindingIdsByStreamId);
   const conversationsById = useMessengerStore((state) => state.conversationsById);
+  const forwardStreamOptions = useMemo<ForwardWorkspaceStreamOption[]>(
+    () =>
+      Object.values(streamsById)
+        .filter((candidate) => !candidate.isArchived && candidate.directUserUuid == null)
+        .map((candidate) => ({
+          streamUuid: candidate.uuid,
+          name: candidate.name,
+        })),
+    [streamsById],
+  );
+  const forwardTopicOptions = useMemo<ForwardWorkspaceTopicOption[]>(
+    () =>
+      Object.values(topicsById)
+        .filter((candidate) => {
+          const stream = streamsById[candidate.streamUuid];
+          return stream != null && !stream.isArchived && stream.directUserUuid == null;
+        })
+        .map((candidate) => ({
+          streamUuid: candidate.streamUuid,
+          topicUuid: candidate.uuid,
+          name: candidate.name,
+        })),
+    [streamsById, topicsById],
+  );
   const headerView = useMemo(
     () =>
       selectWorkspaceChatHeaderView(
@@ -852,13 +963,171 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
 
   const handleForwardMessage = useCallback((messageUuid: string, selectedText?: string) => {
     const message = selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
-    if (message == null || selectedText?.trim().length === 0) {
+    if (message == null) {
       setActionError(t("workspaceMessenger.messageActionTargetMissing"));
       return;
     }
 
-    setActionError(t("workspaceMessenger.forwardUnsupported"));
+    setActionError(null);
+    setPendingForward({
+      messageUuids: [message.uuid],
+      selectedText: normalizeSelectedForwardText(selectedText),
+    });
   }, []);
+
+  const handleForwardSelectedMessages = useCallback(() => {
+    const messages = resolveForwardMessages([...selectedMessageUuids], routeMessages);
+    if (messages == null || messages.length === 0) {
+      setActionError(t("workspaceMessenger.messageActionTargetMissing"));
+      return;
+    }
+
+    setActionError(null);
+    setPendingForward({
+      messageUuids: messages.map((message) => message.uuid),
+    });
+  }, [routeMessages, selectedMessageUuids]);
+
+  const handleCloseForwardModal = useCallback(() => {
+    if (forwardSubmittingRef.current) return;
+    setPendingForward(null);
+  }, []);
+
+  const resolveDirectForwardTarget = useCallback(
+    async (target: Extract<ForwardMessageTarget, { kind: "direct" }>, signal: AbortSignal) => {
+      if (runtimeContext == null) return null;
+
+      const messengerState = useMessengerStore.getState();
+      const existingStream =
+        Object.values(messengerState.streamsById).find((candidate) => {
+          return (
+            candidate.isPrivate &&
+            candidate.directUserUuid === target.userUuid &&
+            !candidate.isArchived
+          );
+        }) ?? null;
+      const existingDefaultTopic =
+        existingStream == null
+          ? null
+          : findDefaultTopic(messengerState.topicsById, existingStream.uuid);
+      if (existingStream != null && existingDefaultTopic != null) {
+        return {
+          streamUuid: existingStream.uuid,
+          topicUuid: existingDefaultTopic.uuid,
+          includeStreamConversation: true,
+        } satisfies WorkspaceForwardTarget;
+      }
+
+      const user = useUsersStore.getState().usersById[target.userUuid];
+      const result = await createWorkspaceDirectStream({
+        runtimeContext,
+        getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+        signal,
+        directUserUuid: target.userUuid,
+        name: user == null ? undefined : selectUserDisplayName(user, user.uuid),
+      });
+
+      if (result.status !== "applied") return null;
+      return {
+        streamUuid: result.stream.uuid,
+        topicUuid: result.defaultTopic.uuid,
+        includeStreamConversation: true,
+      } satisfies WorkspaceForwardTarget;
+    },
+    [runtimeContext],
+  );
+
+  const resolveForwardTarget = useCallback(
+    async (
+      target: ForwardMessageTarget,
+      signal: AbortSignal,
+    ): Promise<WorkspaceForwardTarget | null> => {
+      if (target.kind === "topic") {
+        return {
+          streamUuid: target.streamUuid,
+          topicUuid: target.topicUuid,
+          includeStreamConversation: false,
+        };
+      }
+
+      return resolveDirectForwardTarget(target, signal);
+    },
+    [resolveDirectForwardTarget],
+  );
+
+  const handleSubmitForward = useCallback(
+    (target: ForwardMessageTarget) => {
+      if (forwardSubmittingRef.current) return;
+      const forward = pendingForward;
+      const messages =
+        forward == null ? null : resolveForwardMessages(forward.messageUuids, routeMessages);
+      if (forward == null || messages == null || messages.length === 0) {
+        setActionError(t("workspaceMessenger.messageActionTargetMissing"));
+        return;
+      }
+      if (runtimeContext == null) {
+        setActionError(t("workspaceMessenger.runtimeUnavailable"));
+        return;
+      }
+
+      const markdown = buildWorkspaceForwardMarkdown({
+        messages,
+        selectedText: forward.selectedText,
+        route,
+        resolveAuthorLabel,
+      });
+      if (markdown.trim().length === 0) {
+        setActionError(t("workspaceMessenger.messageActionTargetMissing"));
+        return;
+      }
+
+      setActionError(null);
+      forwardSubmittingRef.current = true;
+      setForwardSubmitting(true);
+      void runWorkspaceAction(async (signal) => {
+        const resolvedTarget = await resolveForwardTarget(target, signal);
+        if (resolvedTarget == null) {
+          throw new Error(t("message.forwardError"));
+        }
+
+        const result = await sendMessengerMessage({
+          runtimeContext,
+          getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+          signal,
+          streamUuid: resolvedTarget.streamUuid,
+          topicUuid: resolvedTarget.topicUuid,
+          markdown,
+          includeStreamConversation: resolvedTarget.includeStreamConversation,
+        });
+        if (result.status !== "applied") {
+          throw new Error(t("message.forwardError"));
+        }
+      })
+        .then(() => {
+          setPendingForward(null);
+          if (selectedMessageUuids.size > 0) {
+            setSelectedMessageUuids(new Set());
+          }
+        })
+        .catch((error) => {
+          setActionError(normalizeWorkspaceActionError(error, t("message.forwardError")));
+        })
+        .finally(() => {
+          forwardSubmittingRef.current = false;
+          setForwardSubmitting(false);
+        });
+    },
+    [
+      pendingForward,
+      resolveAuthorLabel,
+      resolveForwardTarget,
+      route,
+      routeMessages,
+      runWorkspaceAction,
+      runtimeContext,
+      selectedMessageUuids.size,
+    ],
+  );
 
   const handleToggleMessageReaction = useCallback(
     (messageUuid: string, emojiName: string) => {
@@ -1222,6 +1491,26 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       className="flex max-h-full min-h-0 min-w-0 max-w-chat-page flex-1 flex-col overflow-hidden"
       data-testid="chat-page"
     >
+      <AppDialogShell
+        open={pendingForward != null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && !forwardSubmittingRef.current) {
+            setPendingForward(null);
+          }
+        }}
+        contentClassName={`${APP_DIALOG_CONTENT_BASE_CLASS} top-1/2 flex max-h-[70vh] max-w-md -translate-y-1/2 flex-col p-0`}
+      >
+        {pendingForward != null ? (
+          <ForwardMessageModalBody
+            streamOptions={forwardStreamOptions}
+            topicOptions={forwardTopicOptions}
+            currentUserUuid={currentUserUuid}
+            isForwarding={forwardSubmitting}
+            onForward={handleSubmitForward}
+            onClose={handleCloseForwardModal}
+          />
+        ) : null}
+      </AppDialogShell>
       <ChatHeader
         {...chatHeaderContentProps}
         onOpenSearch={openSearch ?? undefined}
@@ -1233,9 +1522,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         {body}
         <ChatPageSelectionBar
           selectedCount={selectedMessageUuids.size}
-          forwardDisabled
+          forwardDisabled={selectedMessageUuids.size === 0}
           deleteDisabled
-          onForward={() => setActionError(t("workspaceMessenger.forwardUnsupported"))}
+          onForward={handleForwardSelectedMessages}
           onDelete={noop}
           onCancel={handleCancelMessageSelection}
         />
