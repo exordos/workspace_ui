@@ -32,12 +32,15 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
     onRequestDeleteMessage,
     onCopyMessageText,
     onToggleMessageReaction,
+    onDownloadFile,
+    onOpenUnsupportedFilePreview,
     messagesLoadError,
     onRetryMessagesLoad,
     boundaryLoadFailed,
     onDismissBoundaryLoadFailed,
     scrollToBottomAfterSendNonce,
     resolveAuthorLabel,
+    resolveMention,
   }: ChatPageWorkspaceMessageListSectionProps) {
     const handleRetryClick = useCallback(() => {
       onRetryMessagesLoad();
@@ -62,10 +65,14 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
         onRequestDeleteMessage,
         onCopyMessageText,
         onToggleMessageReaction,
+        onDownloadFile,
+        onOpenUnsupportedFilePreview,
       }),
       [
         onCopyMessageText,
+        onDownloadFile,
         onEditMessage,
+        onOpenUnsupportedFilePreview,
         onReplyMessage,
         onRequestDeleteMessage,
         onToggleMessageReaction,
@@ -148,6 +155,7 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
           onUnreadMessagesVisible={onUnreadMessagesVisible}
           onUnreadMessagesAtBottom={onUnreadMessagesAtBottom}
           resolveAuthorLabel={resolveAuthorLabel}
+          resolveMention={resolveMention}
           actions={messageActions}
         />
       </div>

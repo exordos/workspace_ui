@@ -2,6 +2,7 @@ import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply/ai-re
 import type {
   ComposerEditSession,
   MessageComposerCapabilities,
+  ReplyQuote,
 } from "~/widgets/message-composer/message-composer.types";
 import type { ComposerUploadProgressState } from "./chat-upload.lib";
 
@@ -19,13 +20,7 @@ export interface ChatPageComposerSectionProps {
   onCreateCallLink: (() => string | null) | undefined;
   onCancelUpload: () => void;
   activeTopic: string | null | undefined;
-  replyQuote: {
-    id: number;
-    content: string;
-    sender_full_name: string;
-    sender_id: number;
-    permalinkUrl: string | null;
-  } | null;
+  replyQuote: ReplyQuote | null;
   onClearReply: () => void;
   draftInitialValue: string | undefined;
   onComposerValueChange: (v: string) => void;

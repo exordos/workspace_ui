@@ -278,6 +278,26 @@ describe("FeedPage", () => {
     );
   });
 
+  it("renders Workspace feed message summary without raw file urls", async () => {
+    const imageFileUuid = "11111111-1111-4111-8111-111111111111";
+    setRuntime();
+    fetchFeedMessages.mockResolvedValue(
+      createPage([
+        createFeedMessage({
+          markdown: `![screen.png](workspace-file://${imageFileUuid}) Вот скрин`,
+        }),
+      ]),
+    );
+
+    renderFeedPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Изображение: Вот скрин")).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/workspace-file:\/\//)).not.toBeInTheDocument();
+    expect(screen.queryByText(new RegExp(imageFileUuid))).not.toBeInTheDocument();
+  });
+
   it("does not expose old numeric forward navigation from feed", async () => {
     setRuntime();
     fetchFeedMessages.mockResolvedValue(createPage([createFeedMessage()]));

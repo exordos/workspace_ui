@@ -264,10 +264,12 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
       icon: "copy",
       label: t("message.copy"),
       onSelect: () => {
+        const selectedText = getSelectedText();
+        const textToCopy = selectedText ?? message.markdown;
         if (onCopyMessageText != null) {
-          void onCopyMessageText(message.uuid, message.markdown);
+          void onCopyMessageText(message.uuid, textToCopy);
         } else {
-          copyTextToClipboard(message.markdown);
+          copyTextToClipboard(textToCopy);
         }
         closeMenu();
       },

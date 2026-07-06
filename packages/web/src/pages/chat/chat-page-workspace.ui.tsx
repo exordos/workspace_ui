@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { useDownloadStore } from "~/entities/download/download.model";
 import {
   selectWorkspaceMessagesForConversation,
   selectWorkspaceMessageById,
@@ -16,6 +17,7 @@ import {
 } from "~/entities/messenger/messenger-message-actions.lib";
 import { toggleMessengerMessageReaction } from "~/entities/messenger/messenger-message-reactions-actions.lib";
 import { loadMessengerConversationMessages } from "~/entities/messenger/messenger-messages-loader.lib";
+import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
 import { useMessengerStreamBindingsForRoute } from "~/entities/messenger/messenger-stream-bindings-loader.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerMessage, MessengerTopic } from "~/entities/messenger/messenger.types";
@@ -27,20 +29,32 @@ import {
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { t } from "~/i18n/i18n";
+import { downloadWorkspaceFile } from "~/shared/api/messenger-files.api";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
-import type { WorkspaceMessengerRouteMatch } from "~/shared/lib/workspace-messenger-route.lib";
+import type { WorkspaceMessageMentionResolution } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
+import {
+  workspaceMessengerMessageRoute,
+  type WorkspaceMessengerRouteMatch,
+} from "~/shared/lib/workspace-messenger-route.lib";
 import type { ChatHeaderProps } from "~/widgets/chat-view/chat-header.types";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import type {
   ComposerEditSession,
   MessageComposerCapabilities,
+  ReplyQuote,
 } from "~/widgets/message-composer/message-composer.types";
 import { consumePendingForwardPrefill } from "./chat-forward.lib";
 import { ChatPageComposerSection } from "./chat-page-composer-section.ui";
 import { ChatPageDeleteConfirmBar } from "./chat-page-delete-confirm-bar.ui";
 import { ChatPageInlineAlerts } from "./chat-page-inline-alerts.ui";
 import { ChatPageWorkspaceMessageListSection } from "./chat-page-workspace-message-list-section.ui";
+import {
+  deriveWorkspaceDownloadFileName,
+  parseWorkspaceDownloadTotalBytes,
+  triggerWorkspaceBrowserDownload,
+  workspaceFileDownloadKey,
+} from "./chat-workspace-file-download.lib";
 import type { WorkspaceChatMessagesLoadErrorKind } from "./chat-page-workspace-message-list-section.types";
 
 interface WorkspaceChatPageProps {
@@ -53,6 +67,10 @@ const READ_BATCH_DELAY_MS = 250;
 const WORKSPACE_COMPOSER_EDIT_SESSION_ID = 1;
 
 const noop = () => undefined;
+
+function normalizeWorkspaceMentionLookupText(value: string | null | undefined): string {
+  return (value ?? "").trim().replace(/^@+/, "").toLowerCase();
+}
 
 function normalizeWorkspaceActionError(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim().length > 0 ? error.message : fallback;
@@ -98,6 +116,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   const [composerEditSession, setComposerEditSession] = useState<ComposerEditSession | null>(null);
   const [composerEditMessageUuid, setComposerEditMessageUuid] = useState<string | null>(null);
   const [pendingDeleteMessageUuid, setPendingDeleteMessageUuid] = useState<string | null>(null);
+  const [replyQuote, setReplyQuote] = useState<ReplyQuote | null>(null);
   const [draftInitialValue, setDraftInitialValue] = useState<string | undefined>(undefined);
   const [scrollToBottomAfterSendNonce, setScrollToBottomAfterSendNonce] = useState(0);
   const composerValueRef = useRef("");
@@ -197,6 +216,34 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     },
     [usersById],
   );
+  const resolveMention = useCallback(
+    (displayText: string): WorkspaceMessageMentionResolution | null => {
+      const lookupText = normalizeWorkspaceMentionLookupText(displayText);
+      if (lookupText.length === 0) {
+        return null;
+      }
+
+      for (const user of Object.values(usersById)) {
+        const displayName = selectUserDisplayName(user, "");
+        const candidates = [
+          normalizeWorkspaceMentionLookupText(displayName),
+          normalizeWorkspaceMentionLookupText(user.username),
+        ];
+        if (candidates.includes(lookupText)) {
+          // Resolver возвращает только Workspace UUID. Здесь нет numeric
+          // userId и нет попытки открыть старый DM/profile путь: render core
+          // использует UUID только для data-workspace-user-uuid.
+          return {
+            userUuid: user.uuid,
+            displayText: displayName.length > 0 ? displayName : displayText,
+          };
+        }
+      }
+
+      return null;
+    },
+    [usersById],
+  );
   const workspaceComposerCapabilities = useMemo<MessageComposerCapabilities>(
     () => ({
       // The Workspace backend currently supports send/edit/delete/read, but not these extra actions.
@@ -272,6 +319,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
 
   useEffect(() => {
     setPendingDeleteMessageUuid(null);
+    setReplyQuote(null);
   }, [conversationId]);
 
   const topicTitle =
@@ -438,6 +486,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       return;
     }
 
+    setReplyQuote(null);
     setComposerEditMessageUuid(message.uuid);
     setComposerEditSession({
       messageId: WORKSPACE_COMPOSER_EDIT_SESSION_ID,
@@ -492,6 +541,14 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
 
   const handleReplyMessage = useCallback(
     (messageUuid: string, selectedText?: string) => {
+      if (
+        selection.status !== "conversation" ||
+        (route?.kind !== "stream" && route?.kind !== "topic")
+      ) {
+        setActionError(t("workspaceMessenger.messageActionTargetMissing"));
+        return;
+      }
+
       const message = selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
       if (message == null) {
         setActionError(t("workspaceMessenger.messageActionTargetMissing"));
@@ -501,16 +558,26 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       const quoteSource = selectedText?.trim() || message.markdown.trim();
       if (quoteSource.length === 0) return;
       const authorLabel = resolveAuthorLabel(message.authorUuid) ?? t("message.replyTo");
-      const quoted = quoteSource
-        .split(/\r?\n/)
-        .map((line, index) => `> ${index === 0 ? `${authorLabel}: ` : ""}${line}`)
-        .join("\n");
-      const nextDraft = `${quoted}\n\n${composerValueRef.current.trim()}`.trimStart();
-      setDraftInitialValue(nextDraft);
-      composerValueRef.current = nextDraft;
+      setComposerEditMessageUuid(null);
+      setComposerEditSession(null);
+      setReplyQuote({
+        id: message.uuid,
+        content: quoteSource,
+        sender_full_name: authorLabel,
+        permalinkUrl: workspaceMessengerMessageRoute({
+          orgId: route.orgId,
+          projectId: route.projectId,
+          messageUuid: message.uuid,
+        }),
+        quoteFormat: "workspace",
+      });
     },
-    [resolveAuthorLabel],
+    [resolveAuthorLabel, route, selection.status],
   );
+
+  const handleClearReply = useCallback(() => {
+    setReplyQuote(null);
+  }, []);
 
   const handleCopyMessageText = useCallback((messageUuid: string, text: string) => {
     const message = selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
@@ -550,6 +617,59 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     },
     [runWorkspaceAction, runtimeContext],
   );
+
+  const handleDownloadFile = useCallback(
+    (file: { fileUuid: string; name?: string }) => {
+      setActionError(null);
+      if (runtimeContext == null) {
+        setActionError(t("workspaceMessenger.runtimeUnavailable"));
+        return;
+      }
+
+      const downloadKey = workspaceFileDownloadKey(file.fileUuid);
+      const initialFileName = deriveWorkspaceDownloadFileName({
+        fileUuid: file.fileUuid,
+        fileNameHint: file.name,
+      });
+      const downloadStore = useDownloadStore.getState();
+      if (!downloadStore.startDownload(downloadKey, initialFileName)) {
+        return;
+      }
+
+      void runWorkspaceAction(async (signal) => {
+        const result = await downloadWorkspaceFile(
+          buildMessengerRequestOptions(runtimeContext, undefined, signal),
+          file.fileUuid,
+        );
+        const fileName = deriveWorkspaceDownloadFileName({
+          fileUuid: file.fileUuid,
+          fileNameHint: file.name,
+          contentDisposition: result.headers.get("content-disposition"),
+        });
+        const totalBytes =
+          parseWorkspaceDownloadTotalBytes(result.headers.get("content-length")) ??
+          result.blob.size;
+        useDownloadStore.getState().setProgress(downloadKey, {
+          receivedBytes: result.blob.size,
+          totalBytes,
+        });
+        triggerWorkspaceBrowserDownload(result.blob, fileName);
+        useDownloadStore.getState().finishDownload(downloadKey, true);
+      }).catch((error) => {
+        useDownloadStore.getState().finishDownload(downloadKey, false);
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          setActionError(
+            normalizeWorkspaceActionError(error, t("workspaceMessenger.fileDownloadFailed")),
+          );
+        }
+      });
+    },
+    [runWorkspaceAction, runtimeContext],
+  );
+
+  const handleOpenUnsupportedFilePreview = useCallback(() => {
+    setActionError(t("workspaceMessenger.mediaViewerUnsupported"));
+  }, []);
 
   const flushReadBatch = useCallback(() => {
     // Новый список сообщает видимые непрочитанные сообщения сразу Workspace uuid.
@@ -705,12 +825,15 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         onRequestDeleteMessage={handleRequestDeleteMessage}
         onCopyMessageText={handleCopyMessageText}
         onToggleMessageReaction={handleToggleMessageReaction}
+        onDownloadFile={handleDownloadFile}
+        onOpenUnsupportedFilePreview={handleOpenUnsupportedFilePreview}
         messagesLoadError={messagesLoadError}
         onRetryMessagesLoad={retry}
         boundaryLoadFailed={false}
         onDismissBoundaryLoadFailed={noop}
         scrollToBottomAfterSendNonce={scrollToBottomAfterSendNonce}
         resolveAuthorLabel={resolveAuthorLabel}
+        resolveMention={resolveMention}
       />
     );
   }
@@ -758,8 +881,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
           activeTopic={
             selection.status === "conversation" && selection.kind === "topic" ? topicTitle : null
           }
-          replyQuote={null}
-          onClearReply={noop}
+          replyQuote={replyQuote}
+          onClearReply={handleClearReply}
           draftInitialValue={draftInitialValue}
           onComposerValueChange={(value) => {
             composerValueRef.current = value;

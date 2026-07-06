@@ -149,6 +149,8 @@
     "routeUnsupportedForSend": "Из этой ссылки на чат отправка пока недоступна.",
     "messageActionTargetMissing": "Сообщение уже не загружено.",
     "uploadsUnsupported": "Загрузка файлов пока не подключена к Workspace-мессенджеру.",
+    "fileDownloadFailed": "Не удалось скачать файл. Попробуйте позже.",
+    "mediaViewerUnsupported": "Предпросмотр медиа Workspace пока не подключен. Скачайте файл вместо просмотра.",
     "savedSnippetsUnsupported": "Сохраненные сниппеты пока не подключены к Workspace-мессенджеру.",
     "previewUnsupported": "Предпросмотр временно отключен для Workspace-мессенджера.",
     "mentionsUnsupported": "Упоминания пока не подключены к Workspace-мессенджеру.",

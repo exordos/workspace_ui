@@ -1,17 +1,24 @@
-import React, { useCallback, useLayoutEffect, useRef, useState } from "react";
+import React, { useLayoutEffect, useMemo, useRef } from "react";
 import type { MessengerMessage, MessengerUuid } from "~/entities/messenger/messenger.types";
+import { parseWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
+import { DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS } from "~/shared/lib/workspace-message-render/workspace-message-render-options.lib";
+import { renderWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-render.lib";
+import { collectWorkspaceMessageFileReferences } from "./workspace-message-body-files.lib";
+import { useWorkspaceMessageBodyInteractions } from "./workspace-message-body-interactions.hook";
+import { WorkspaceMessageBody } from "./workspace-message-body.ui";
 import { WorkspaceMessageBubbleMenu } from "./workspace-message-bubble-menu.ui";
-import { resolveWorkspaceBubbleMetaPlacement } from "./workspace-message-bubble-meta-placement.lib";
 import { WorkspaceMessageBubbleMeta } from "./workspace-message-bubble-meta.ui";
-import type {
-  WorkspaceMessageBubbleMenuAnchor,
-  WorkspaceMessageBubbleMenuSource,
-} from "./workspace-message-bubble-menu.types";
 import type { WorkspaceMessageBubbleProps } from "./workspace-message-bubble.types";
 
 type WorkspaceMessageOwner = "own" | "peer";
 
-const MESSAGE_CONTEXT_MENU_CURSOR_GAP_PX = 6;
+const WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS = {
+  ...DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS,
+  enableCodeCopy: true,
+  enableProtectedMedia: true,
+  enableAttachments: true,
+  enableGallery: false,
+} as const;
 
 const BASE_BUBBLE_CLASS_NAME =
   "max-w-[min(720px,88%)] rounded-[18px] px-3 py-2 text-sm text-text-primary shadow-sm";
@@ -75,12 +82,9 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
     isFirstInGroup,
     isLastInGroup,
     resolveAuthorLabel,
+    resolveMention,
     actions,
   }): React.ReactElement {
-    const [menuOpen, setMenuOpen] = useState(false);
-    const [menuSource, setMenuSource] = useState<WorkspaceMessageBubbleMenuSource>("trigger");
-    const [contextMenuAnchor, setContextMenuAnchor] =
-      useState<WorkspaceMessageBubbleMenuAnchor | null>(null);
     const owner = resolveMessageOwner(message, currentUserUuid);
     const isOwn = owner === "own";
     const time = formatWorkspaceMessageTime(message.createdAt);
@@ -89,101 +93,63 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
         ? resolvePeerAuthorLabel(message.authorUuid, resolveAuthorLabel?.(message.authorUuid))
         : "";
     const bubbleClassName = resolveBubbleClassName(owner, isLastInGroup);
-    const metaPlacement = resolveWorkspaceBubbleMetaPlacement({
-      text: message.markdown,
-      hasReactions: hasWorkspaceReactions(message),
-    });
-    const useInlineMeta = metaPlacement === "inline";
-    const textRef = useRef<HTMLParagraphElement>(null);
+    const bodyRef = useRef<HTMLDivElement>(null);
     const metaRef = useRef<HTMLTimeElement>(null);
-    const getSelectedText = useCallback((): string | undefined => {
-      const selection = window.getSelection();
-      const selectedText = selection?.toString().trim();
-      const anchorNode = selection?.anchorNode;
-      const focusNode = selection?.focusNode;
-      const textElement = textRef.current;
-      if (
-        selectedText == null ||
-        selectedText.length === 0 ||
-        textElement == null ||
-        anchorNode == null ||
-        focusNode == null ||
-        !textElement.contains(anchorNode.parentElement ?? anchorNode) ||
-        !textElement.contains(focusNode.parentElement ?? focusNode)
-      ) {
-        return undefined;
-      }
-
-      return selectedText;
-    }, []);
-    const openTriggerMenu = useCallback(() => {
-      setContextMenuAnchor(null);
-      setMenuSource("trigger");
-      setMenuOpen(true);
-    }, []);
-    const openContextMenuAt = useCallback((clientX: number, clientY: number) => {
-      setContextMenuAnchor({
-        left: clientX + MESSAGE_CONTEXT_MENU_CURSOR_GAP_PX,
-        top: clientY,
-      });
-      setMenuSource("context");
-      setMenuOpen(true);
-    }, []);
-    const handleContextMenu = useCallback(
-      (event: React.MouseEvent<HTMLDivElement>) => {
-        event.preventDefault();
-        openContextMenuAt(event.clientX, event.clientY);
-      },
-      [openContextMenuAt],
-    );
-    const handleKeyDown = useCallback(
-      (event: React.KeyboardEvent<HTMLDivElement>) => {
-        const isKeyboardContextMenu =
-          event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey);
-        if (!isKeyboardContextMenu) return;
-        const target = event.target;
-        if (
-          target instanceof HTMLElement &&
-          target.closest("a,button,input,textarea,select,[contenteditable='true']")
-        ) {
-          return;
-        }
-        event.preventDefault();
-        openTriggerMenu();
-      },
-      [openTriggerMenu],
-    );
-    const handleMenuOpenChange = useCallback((nextOpen: boolean) => {
-      setMenuOpen(nextOpen);
-      if (!nextOpen) {
-        setContextMenuAnchor(null);
-      }
-    }, []);
-    const handleMenuSourceChange = useCallback((nextSource: WorkspaceMessageBubbleMenuSource) => {
-      setMenuSource(nextSource);
-      if (nextSource === "trigger") {
-        setContextMenuAnchor(null);
-      }
-    }, []);
+    const renderedBody = useMemo(() => {
+      const document = parseWorkspaceMessageBody(message.markdown, { resolveMention });
+      return {
+        ...renderWorkspaceMessageBody(document, {
+          ...WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS,
+          // Упоминания рендерятся интерактивно только если текущая поверхность
+          // дала UUID-only callback. Без него оставляем `@Name` обычным текстом,
+          // а не подменяем действие старым numeric DM/profile путем.
+          enableMentions: actions?.onOpenMentionUser != null,
+        }),
+        fileReferences: collectWorkspaceMessageFileReferences(document),
+      };
+    }, [actions?.onOpenMentionUser, message.markdown, resolveMention]);
+    const {
+      menuOpen,
+      menuSource,
+      contextMenuAnchor,
+      getSelectedText,
+      handleBodyClick,
+      handleContextMenu,
+      handleKeyDown,
+      handleMenuOpenChange,
+      handleMenuSourceChange,
+    } = useWorkspaceMessageBodyInteractions({
+      bodyRef,
+      renderedHtml: renderedBody.html,
+      enableCodeCopy: WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS.enableCodeCopy,
+      fileReferences: renderedBody.fileReferences,
+      onOpenMentionUser: actions?.onOpenMentionUser,
+      onDownloadFile: actions?.onDownloadFile,
+      onOpenUnsupportedFilePreview: actions?.onOpenUnsupportedFilePreview,
+    });
+    const metaPlacement = hasWorkspaceReactions(message)
+      ? "row"
+      : renderedBody.metadata.preferredMetaPlacement;
+    const useInlineMeta = metaPlacement === "inline";
 
     useLayoutEffect(() => {
       if (!useInlineMeta) {
         return;
       }
 
-      const textElement = textRef.current;
+      const bodyElement = bodyRef.current;
       const metaElement = metaRef.current;
-      if (textElement == null || metaElement == null) {
+      if (bodyElement == null || metaElement == null) {
         return;
       }
 
       const updateMetaReserve = () => {
         const rect = metaElement.getBoundingClientRect();
-        textElement.style.setProperty(
+        bodyElement.style.setProperty(
           "--workspace-message-bubble-meta-width",
           `${Math.ceil(rect.width)}px`,
         );
-        textElement.style.setProperty(
+        bodyElement.style.setProperty(
           "--workspace-message-bubble-meta-height",
           `${Math.ceil(rect.height)}px`,
         );
@@ -195,8 +161,8 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
         window.addEventListener("resize", updateMetaReserve);
         return () => {
           window.removeEventListener("resize", updateMetaReserve);
-          textElement.style.removeProperty("--workspace-message-bubble-meta-width");
-          textElement.style.removeProperty("--workspace-message-bubble-meta-height");
+          bodyElement.style.removeProperty("--workspace-message-bubble-meta-width");
+          bodyElement.style.removeProperty("--workspace-message-bubble-meta-height");
         };
       }
 
@@ -205,22 +171,30 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
 
       return () => {
         resizeObserver.disconnect();
-        textElement.style.removeProperty("--workspace-message-bubble-meta-width");
-        textElement.style.removeProperty("--workspace-message-bubble-meta-height");
+        bodyElement.style.removeProperty("--workspace-message-bubble-meta-width");
+        bodyElement.style.removeProperty("--workspace-message-bubble-meta-height");
       };
     }, [time, useInlineMeta]);
+    const containsInteractiveBody =
+      renderedBody.metadata.hasLinks ||
+      (renderedBody.metadata.hasMentions && actions?.onOpenMentionUser != null) ||
+      renderedBody.metadata.hasMedia ||
+      renderedBody.metadata.hasAttachments ||
+      (WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS.enableCodeCopy &&
+        renderedBody.metadata.hasCodeBlocks);
 
     return (
       <div
-        role="button"
         className={`group relative ${bubbleClassName}`}
         data-workspace-message-bubble="true"
+        data-workspace-message-interactive-body={containsInteractiveBody ? "true" : "false"}
         data-message-owner={owner}
         data-first-in-group={isFirstInGroup ? "true" : "false"}
         data-last-in-group={isLastInGroup ? "true" : "false"}
         onContextMenu={handleContextMenu}
         onKeyDown={handleKeyDown}
-        tabIndex={0}
+        role={containsInteractiveBody ? undefined : "button"}
+        tabIndex={containsInteractiveBody ? undefined : 0}
       >
         <WorkspaceMessageBubbleMenu
           message={message}
@@ -242,22 +216,17 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
             {peerAuthorLabel}
           </div>
         ) : null}
-        {/* React сам экранирует текстовые узлы, а whitespace-pre-wrap сохраняет
-            переносы строк. Поэтому новый Workspace bubble не запускает старый
-            HTML-рендер, не ищет Zulip-mentions и не превращает текст в медиа. */}
-        <p
-          ref={textRef}
-          className={`whitespace-pre-wrap break-words ${
-            useInlineMeta ? "workspace-message-bubble-inline-text" : ""
-          }`}
-          data-message-plain-text="true"
-        >
-          {message.markdown}
-        </p>
+        <WorkspaceMessageBody
+          bodyRef={bodyRef}
+          html={renderedBody.html}
+          metadata={renderedBody.metadata}
+          onBodyClick={handleBodyClick}
+          useInlineMeta={useInlineMeta}
+        />
         {useInlineMeta ? (
           <>
             {/* Inline-время лежит поверх правого нижнего угла bubble. Пустой
-                ::after у текста заранее занимает такую же ширину, поэтому
+                ::after у последнего блока body занимает такую же ширину, поэтому
                 последняя строка не заезжает под время даже после пересчета
                 размера шрифта или будущего индикатора доставки. */}
             <WorkspaceMessageBubbleMeta

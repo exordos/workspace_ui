@@ -127,9 +127,9 @@ export interface GroupedReaction {
   imageUrl?: string;
 }
 
-// Нативный grouped-chip для Workspace: это уже готовая UI-проекция backend aggregate,
-// а не список Zulip Reaction. Здесь нет user ids, emoji_code или reaction_type, потому
-// что Workspace API на этом этапе возвращает только opaque emoji_name и счетчик.
+// Legacy-only поддержка старого MessageList: этот тип оставлен для старых
+// тестов/референса bubble, но активный Workspace route не должен импортировать
+// `widgets/message-list`. Новый путь реакций живет в `widgets/workspace-message-list`.
 export interface WorkspaceGroupedReaction {
   key: string;
   emojiName: string;
@@ -151,8 +151,9 @@ export function getWorkspaceReactionDisplayChar(emojiName: string): string {
   return unicodeGlyph ?? `:${normalizedEmojiName}:`;
 }
 
-// Backend aggregate уже сгруппирован по emoji_name. Эта функция только сортирует
-// стабильный UI-список и добавляет reactedByMe из локальной карты own reaction uuid.
+// Legacy-only helper для старого MessageList. Его нельзя использовать как
+// скрытый адаптер нового Workspace renderer: backend aggregate уже должен
+// приходить в новый виджет без преобразования в Zulip-shaped message.
 export function groupWorkspaceReactions(
   reactions: Readonly<Record<string, number>>,
   ownReactionUuidsByEmojiName: Readonly<Record<string, string>>,

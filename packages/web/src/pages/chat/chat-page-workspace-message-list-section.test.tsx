@@ -106,6 +106,7 @@ describe("ChatPageWorkspaceMessageListSection", () => {
     const onUnreadMessagesVisible = vi.fn();
     const onUnreadMessagesAtBottom = vi.fn();
     const resolveAuthorLabel = vi.fn(() => "Bob Reed");
+    const resolveMention = vi.fn(() => ({ userUuid: "mention-user-uuid" }));
 
     render(
       <ChatPageWorkspaceMessageListSection
@@ -136,6 +137,7 @@ describe("ChatPageWorkspaceMessageListSection", () => {
         onDismissBoundaryLoadFailed={vi.fn()}
         scrollToBottomAfterSendNonce={7}
         resolveAuthorLabel={resolveAuthorLabel}
+        resolveMention={resolveMention}
       />,
     );
 
@@ -159,6 +161,7 @@ describe("ChatPageWorkspaceMessageListSection", () => {
       onUnreadMessagesAtBottom,
     );
     expect(captured.workspaceMessageListProps?.resolveAuthorLabel).toBe(resolveAuthorLabel);
+    expect(captured.workspaceMessageListProps?.resolveMention).toBe(resolveMention);
   });
 
   it("forwards Workspace message menu actions to the Workspace list", () => {
@@ -167,6 +170,8 @@ describe("ChatPageWorkspaceMessageListSection", () => {
     const onRequestDeleteMessage = vi.fn();
     const onCopyMessageText = vi.fn();
     const onToggleMessageReaction = vi.fn();
+    const onDownloadFile = vi.fn();
+    const onOpenUnsupportedFilePreview = vi.fn();
 
     render(
       <ChatPageWorkspaceMessageListSection
@@ -196,6 +201,8 @@ describe("ChatPageWorkspaceMessageListSection", () => {
         onRequestDeleteMessage={onRequestDeleteMessage}
         onCopyMessageText={onCopyMessageText}
         onToggleMessageReaction={onToggleMessageReaction}
+        onDownloadFile={onDownloadFile}
+        onOpenUnsupportedFilePreview={onOpenUnsupportedFilePreview}
         messagesLoadError={null}
         onRetryMessagesLoad={vi.fn()}
         boundaryLoadFailed={false}
@@ -212,6 +219,10 @@ describe("ChatPageWorkspaceMessageListSection", () => {
     expect(captured.workspaceMessageListProps?.actions?.onCopyMessageText).toBe(onCopyMessageText);
     expect(captured.workspaceMessageListProps?.actions?.onToggleMessageReaction).toBe(
       onToggleMessageReaction,
+    );
+    expect(captured.workspaceMessageListProps?.actions?.onDownloadFile).toBe(onDownloadFile);
+    expect(captured.workspaceMessageListProps?.actions?.onOpenUnsupportedFilePreview).toBe(
+      onOpenUnsupportedFilePreview,
     );
   });
 

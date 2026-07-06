@@ -5,12 +5,13 @@ import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply/ai-re
 import type { RefObject, ReactNode } from "react";
 
 export interface ReplyQuote {
-  id: number;
+  id: number | string;
   content: string;
   sender_full_name: string;
-  sender_id: number;
+  sender_id?: number;
   /** Full Zulip web URL (`https://realm/#narrow/.../near/id`); omit link text if null */
   permalinkUrl: string | null;
+  quoteFormat?: "zulip" | "workspace";
 }
 
 export interface ComposerUploadProgress {

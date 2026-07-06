@@ -52,6 +52,11 @@ export interface MessengerJsonResult {
   headers: Headers;
 }
 
+export interface MessengerBinaryResult {
+  blob: Blob;
+  headers: Headers;
+}
+
 export class MessengerApiError extends Error {
   readonly status: number;
   readonly data: unknown;
@@ -124,10 +129,11 @@ function buildHeaders(
   isPublic: boolean,
   devTargetOrigin: string | undefined,
   shouldAppendDevTargetOrigin: boolean,
+  accept = "application/json",
 ): Record<string, string> {
   const trimmedDevTargetOrigin = devTargetOrigin?.trim() ?? "";
   return {
-    Accept: "application/json",
+    Accept: accept,
     ...(body === undefined ? {} : { "Content-Type": "application/json" }),
     ...(isPublic ? {} : buildMessengerBearerAuthHeader(accessToken)),
     ...(import.meta.env.DEV &&
@@ -202,6 +208,41 @@ export async function getJsonResult(
   return sendJsonResult("GET", path, options, params);
 }
 
+export async function getBinaryResult(
+  path: string,
+  options: MessengerClientOptions,
+  params: MessengerQueryParams = {},
+): Promise<MessengerBinaryResult> {
+  // Workspace files/download возвращает не JSON, а bytes. Этот helper сохраняет
+  // общий auth/dev-proxy слой, но не пытается пропустить attachment через JSON parser.
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const url = buildMessengerUrl(options.baseUrl, path, params);
+  const init: RequestInit = {
+    method: "GET",
+    headers: buildHeaders(
+      options.accessToken,
+      undefined,
+      false,
+      options.devTargetOrigin,
+      shouldAppendDevProxyTargetHeader(url),
+      "*/*",
+    ),
+    signal: options.signal,
+  };
+  let response = await fetchImpl(url, init);
+  let responsePath = path;
+  const fallbackPath = pathWithoutTrailingSlash(path);
+  if (response.status === 404 && fallbackPath != null) {
+    responsePath = fallbackPath;
+    response = await fetchImpl(buildMessengerUrl(options.baseUrl, fallbackPath, params), init);
+  }
+  if (!response.ok) {
+    const data = await parseJsonResponse(response);
+    throw new MessengerApiError(`Messenger API GET ${responsePath} failed`, response.status, data);
+  }
+  return { blob: await response.blob(), headers: response.headers };
+}
+
 export async function publicGetJsonResult(
   path: string,
   options: MessengerPublicClientOptions,
@@ -236,6 +277,7 @@ export async function publicGetJsonResult(
 
 export const messengerRequestJsonResult = sendJsonResult;
 export const messengerPublicGetJsonResult = publicGetJsonResult;
+export const messengerRequestBinaryResult = getBinaryResult;
 
 export async function messengerGetJson(
   path: string,

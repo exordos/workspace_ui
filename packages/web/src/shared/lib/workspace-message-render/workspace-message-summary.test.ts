@@ -1,0 +1,231 @@
+import { describe, expect, it } from "vitest";
+import { parseWorkspaceMessageBody } from "./workspace-message-parse.lib";
+import { renderWorkspaceMessageBody } from "./workspace-message-render.lib";
+import {
+  summarizeWorkspaceMessageBody,
+  summarizeWorkspaceMessageMarkdown,
+} from "./workspace-message-summary.lib";
+
+describe("workspace message summary core", () => {
+  it("returns text preview separately from render html", () => {
+    const document = parseWorkspaceMessageBody("Hello\nworkspace");
+    const rendered = renderWorkspaceMessageBody(document);
+    const summary = summarizeWorkspaceMessageBody(document);
+
+    expect(rendered.html).toBe("<p>Hello<br>workspace</p>");
+    expect(summary).toEqual({
+      text: "Hello workspace",
+      leadingKind: "text",
+    });
+  });
+
+  it("summarizes markdown through the shared compact helper", () => {
+    const imageUuid = "11111111-1111-4111-8111-111111111111";
+    const summary = summarizeWorkspaceMessageMarkdown(
+      `![screen.png](workspace-file://${imageUuid}) Привет @**Alice**`,
+    );
+
+    expect(summary).toEqual({
+      text: "Изображение: Привет @Alice",
+      leadingKind: "image",
+    });
+    expect(summary.text).not.toContain("workspace-file://");
+  });
+
+  it("keeps html-like input as text preview", () => {
+    const document = parseWorkspaceMessageBody("<script>alert(1)</script>");
+    const summary = summarizeWorkspaceMessageBody(document);
+
+    expect(summary.text).toBe("<script>alert(1)</script>");
+    expect(summary.text).not.toBe("&lt;script&gt;alert(1)&lt;/script&gt;");
+  });
+
+  it("truncates preview by summary maxLength", () => {
+    const document = parseWorkspaceMessageBody("one two three four");
+    const summary = summarizeWorkspaceMessageBody(document, {
+      maxLength: 11,
+      includeMediaLabel: true,
+      includeAttachmentLabel: true,
+      includeQuotePrefix: true,
+    });
+
+    expect(summary.text).toBe("one two...");
+    expect(summary.leadingKind).toBe("text");
+  });
+
+  it("compacts unordered and ordered lists into readable text", () => {
+    const unordered = summarizeWorkspaceMessageBody(parseWorkspaceMessageBody("- one\n- two"));
+    const ordered = summarizeWorkspaceMessageBody(parseWorkspaceMessageBody("3. alpha\n4. beta"));
+
+    expect(unordered).toEqual({
+      text: "• one • two",
+      leadingKind: "text",
+    });
+    expect(ordered).toEqual({
+      text: "3. alpha 4. beta",
+      leadingKind: "text",
+    });
+  });
+
+  it("summarizes blockquotes and fenced code blocks", () => {
+    const quote = summarizeWorkspaceMessageBody(parseWorkspaceMessageBody("> quoted **text**"));
+    const code = summarizeWorkspaceMessageBody(
+      parseWorkspaceMessageBody(["```ts", "const value = 1;", "```"].join("\n")),
+    );
+
+    expect(quote).toEqual({
+      text: "Цитата: quoted text",
+      leadingKind: "quote",
+    });
+    expect(code).toEqual({
+      text: "Код: const value = 1;",
+      leadingKind: "code",
+    });
+  });
+
+  it("skips quoted payload when a reply has its own text", () => {
+    const document = parseWorkspaceMessageBody(
+      [
+        "> Alice: very long quoted text that should not own the compact preview",
+        "> another quoted line",
+        "",
+        "Отвечаю коротко",
+      ].join("\n"),
+    );
+    const summary = summarizeWorkspaceMessageBody(document);
+
+    expect(summary).toEqual({
+      text: "Отвечаю коротко",
+      leadingKind: "text",
+    });
+    expect(document.safeTextPreview).toBe("Отвечаю коротко");
+    expect(document.metadata.textPreview).toBe("Отвечаю коротко");
+  });
+
+  it("keeps a quote prefix for quote-only messages without duplicating nested quote labels", () => {
+    const summary = summarizeWorkspaceMessageBody(
+      parseWorkspaceMessageBody(["> Alice: outer", ">", "> > Bob: nested"].join("\n")),
+    );
+
+    expect(summary).toEqual({
+      text: "Цитата: Alice: outer Bob: nested",
+      leadingKind: "quote",
+    });
+    expect(summary.text).not.toContain("Цитата: Цитата:");
+  });
+
+  it("uses readable link labels instead of cluttering preview with urls", () => {
+    const summary = summarizeWorkspaceMessageBody(
+      parseWorkspaceMessageBody(
+        "Read [release notes](https://example.com/releases/2026/very/long/url)",
+      ),
+    );
+
+    expect(summary).toEqual({
+      text: "Read release notes",
+      leadingKind: "text",
+    });
+  });
+
+  it("summarizes resolved and unresolved mentions as readable names", () => {
+    const resolved = summarizeWorkspaceMessageBody(
+      parseWorkspaceMessageBody("Привет @**Alice Reed**", {
+        resolveMention: (displayText) =>
+          displayText === "Alice Reed"
+            ? {
+                userUuid: "11111111-1111-4111-8111-111111111111",
+                displayText: "Alice Reed",
+              }
+            : null,
+      }),
+    );
+    const unresolved = summarizeWorkspaceMessageBody(
+      parseWorkspaceMessageBody("Привет @**Unknown User**", {
+        resolveMention: () => null,
+      }),
+    );
+
+    expect(resolved).toEqual({
+      text: "Привет @Alice Reed",
+      leadingKind: "text",
+    });
+    expect(unresolved).toEqual({
+      text: "Привет @Unknown User",
+      leadingKind: "text",
+    });
+  });
+
+  it("converts known unicode emoji shortcodes and keeps unknown/custom shortcodes readable", () => {
+    const summary = summarizeWorkspaceMessageBody(
+      parseWorkspaceMessageBody("Привет :smile: :party_parrot: :definitely_unknown_shortcode:"),
+    );
+
+    expect(summary).toEqual({
+      text: "Привет 😄 :party_parrot: :definitely_unknown_shortcode:",
+      leadingKind: "text",
+    });
+  });
+
+  it("does not expose raw image or file urls in preview", () => {
+    const imageUuid = "11111111-1111-4111-8111-111111111111";
+    const fileUuid = "22222222-2222-4222-8222-222222222222";
+    const image = summarizeWorkspaceMessageBody(
+      parseWorkspaceMessageBody(`![screen.png](workspace-file://${imageUuid}) Вот скрин`),
+    );
+    const file = summarizeWorkspaceMessageBody(
+      parseWorkspaceMessageBody(`[report.pdf](workspace-file://${fileUuid})`),
+    );
+
+    expect(image).toEqual({
+      text: "Изображение: Вот скрин",
+      leadingKind: "image",
+    });
+    expect(file).toEqual({
+      text: "Файл: report.pdf",
+      leadingKind: "file",
+    });
+    expect(image.text).not.toContain("workspace-file://");
+    expect(file.text).not.toContain("workspace-file://");
+  });
+
+  it("summarizes single Workspace image, image caption, video, and attachment labels", () => {
+    const imageUuid = "11111111-1111-4111-8111-111111111111";
+    const videoUuid = "22222222-2222-4222-8222-222222222222";
+    const fileUuid = "33333333-3333-4333-8333-333333333333";
+
+    expect(
+      summarizeWorkspaceMessageBody(
+        parseWorkspaceMessageBody(`![screen.png](workspace-file://${imageUuid})`),
+      ),
+    ).toEqual({
+      text: "Изображение",
+      leadingKind: "image",
+    });
+    expect(
+      summarizeWorkspaceMessageBody(
+        parseWorkspaceMessageBody(`![screen.png](workspace-file://${imageUuid}) подпись`),
+      ),
+    ).toEqual({
+      text: "Изображение: подпись",
+      leadingKind: "image",
+    });
+    expect(
+      summarizeWorkspaceMessageBody(
+        parseWorkspaceMessageBody(
+          `[clip.mp4](workspace-file://${videoUuid}?content_type=video/mp4)`,
+        ),
+      ),
+    ).toEqual({
+      text: "Видео",
+      leadingKind: "video",
+    });
+    expect(
+      summarizeWorkspaceMessageBody(
+        parseWorkspaceMessageBody(`[report.pdf](workspace-file://${fileUuid})`),
+      ),
+    ).toEqual({
+      text: "Файл: report.pdf",
+      leadingKind: "file",
+    });
+  });
+});

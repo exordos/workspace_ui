@@ -4,6 +4,7 @@ import {
 } from "~/entities/user/user-selectors.lib";
 import type { User, UsersById } from "~/entities/user/user.types";
 import { t } from "~/i18n/i18n";
+import { summarizeWorkspaceMessageMarkdown } from "~/shared/lib/workspace-message-render/workspace-message-summary.lib";
 import {
   workspaceMessengerStreamRoute,
   workspaceMessengerTopicRoute,
@@ -132,9 +133,14 @@ function previewFromMessage(
     message.authorUuid === currentUserUuid
       ? t("common.you")
       : resolveUserDisplayName(usersById[message.authorUuid]);
+  const summary = summarizeWorkspaceMessageMarkdown(message.markdown);
+
   return {
     messageUuid: message.uuid,
-    text: message.markdown,
+    // Сайдбар не рендерит HTML и не показывает исходный markdown: короткая
+    // сводка скрывает приватные file URL и одинаково работает для текста,
+    // mentions, картинок и вложений.
+    text: summary.text,
     ...(senderName != null ? { senderName } : {}),
   };
 }

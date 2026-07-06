@@ -19,10 +19,11 @@ import { t } from "~/i18n/i18n";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { formatMessageTimeWithDate } from "~/shared/lib/datetime.lib";
 import { createLogger } from "~/shared/lib/logger";
-import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
 import { runInFlightDeduped } from "~/shared/lib/request-lifecycle.lib";
 import { scrollToBottom } from "~/shared/lib/scroll-position.lib";
 import { useCacheFirstPageLoad } from "~/shared/lib/use-cache-first-page.hook";
+import type { WorkspaceMessageSummaryOptions } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
+import { summarizeWorkspaceMessageMarkdown } from "~/shared/lib/workspace-message-render/workspace-message-summary.lib";
 import { workspaceMessengerTopicRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { FloatingLoadingOverlay } from "~/shared/ui/floating-loading-overlay";
 import { FloatingScrollToBottomButton } from "~/shared/ui/floating-scroll-to-bottom-button";
@@ -35,11 +36,6 @@ const log = createLogger("feed-page");
 function FeedSenderName({ authorUuid, fallback }: { authorUuid: string; fallback: string }) {
   const user = useUsersStore((s) => s.usersById[authorUuid]);
   return <>{selectUserDisplayName(user, fallback)}</>;
-}
-
-function truncateText(text: string, max = 80): string {
-  if (text.length <= max) return text;
-  return text.slice(0, max) + "…";
 }
 
 function formatFeedItemTime(createdAt: string): string {
@@ -64,6 +60,12 @@ const FEED_ROW_CLASS =
   "group flex items-start gap-2 rounded-xl border border-border-subtle bg-bg-elevated/60 p-2.5 transition-colors hover:border-accent-soft/40 hover:bg-card-bg";
 const FEED_ACTION_BUTTON_CLASS =
   "rounded-md p-1.5 text-text-muted transition-colors hover:bg-card-bg-active hover:text-text-primary";
+const FEED_MESSAGE_SUMMARY_OPTIONS = {
+  maxLength: 80,
+  includeMediaLabel: true,
+  includeAttachmentLabel: true,
+  includeQuotePrefix: true,
+} as const satisfies WorkspaceMessageSummaryOptions;
 
 function isNearBottom(el: HTMLElement, thresholdPx = FEED_BOTTOM_THRESHOLD_PX): boolean {
   return el.scrollHeight - el.scrollTop - el.clientHeight <= thresholdPx;
@@ -345,6 +347,12 @@ export const FeedPage: React.FC = () => {
                 const topic = topicsById[m.topicUuid]?.name.trim();
                 const contextTopic = topic != null && topic.length > 0 ? topic : m.topicUuid;
                 const context = `#${streamName} · ${contextTopic}`;
+                // Feed использует тот же Workspace summary, что и сайдбар:
+                // preview остается текстовым и не раскрывает workspace-file URL.
+                const summaryText = summarizeWorkspaceMessageMarkdown(
+                  m.markdown,
+                  FEED_MESSAGE_SUMMARY_OPTIONS,
+                ).text;
 
                 return (
                   <li key={m.uuid}>
@@ -366,7 +374,7 @@ export const FeedPage: React.FC = () => {
                           <FeedSenderName authorUuid={m.authorUuid} fallback={m.authorUuid} />
                         </p>
                         <p className="bg-bg/70 mt-1.5 line-clamp-2 rounded-lg px-2.5 py-2 text-sm leading-snug text-text-primary">
-                          {truncateText(plainTextPreviewFromMessageBody(m.markdown))}
+                          {summaryText}
                         </p>
                       </button>
                       <div className="bg-bg/60 mt-0.5 flex shrink-0 items-center gap-1 rounded-lg p-1 opacity-70 transition-opacity group-hover:opacity-100">

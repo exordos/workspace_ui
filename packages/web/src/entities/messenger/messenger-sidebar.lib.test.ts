@@ -472,6 +472,58 @@ describe("messenger sidebar selectors", () => {
     });
   });
 
+  it("builds Workspace summary previews without exposing raw file urls", () => {
+    const imageFileUuid = "11111111-1111-4111-8111-111111111111";
+    const reportFileUuid = "33333333-3333-4333-8333-333333333333";
+    const rows = selectMessengerSidebarStreams(
+      state({
+        streamsById: {
+          [STREAM_A]: stream({ lastMessageUuid: MESSAGE_A }),
+          [STREAM_B]: stream({
+            uuid: STREAM_B,
+            name: "Alice",
+            audience: "private",
+            isPrivate: true,
+            directUserUuid: "alice",
+            unreadCount: 4,
+            updatedAt: DATE_B,
+          }),
+        },
+        topicsById: {
+          [TOPIC_A]: topic({ lastMessageUuid: MESSAGE_B }),
+          [TOPIC_B]: topic({
+            uuid: TOPIC_B,
+            streamUuid: STREAM_B,
+            name: "General",
+            unreadCount: 6,
+            isDone: true,
+          }),
+        },
+      }),
+      {
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        usersById: createUsersById(),
+        messagesById: {
+          [MESSAGE_A]: message({
+            uuid: MESSAGE_A,
+            markdown: `![screen.png](workspace-file://${imageFileUuid}) Вот скрин`,
+          }),
+          [MESSAGE_B]: message({
+            uuid: MESSAGE_B,
+            markdown: `[report.pdf](workspace-file://${reportFileUuid}) **Важное** @**Alice Reed**`,
+          }),
+        },
+      },
+    );
+
+    expect(rows[0]?.preview?.text).toBe("Изображение: Вот скрин");
+    expect(rows[0]?.topics[0]?.preview?.text).toBe("Файл: report.pdf Важное @Alice Reed");
+    expect(JSON.stringify(rows)).not.toContain("workspace-file://");
+    expect(JSON.stringify(rows)).not.toContain(imageFileUuid);
+    expect(JSON.stringify(rows)).not.toContain(reportFileUuid);
+  });
+
   it("shows a localized self label for messages written by the current user", () => {
     const rows = selectMessengerSidebarStreams(
       state({

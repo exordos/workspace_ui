@@ -3,6 +3,10 @@
  */
 import { t } from "~/i18n/i18n";
 import { buildZulipQuoteBlock } from "~/shared/lib/message-zulip-quote.lib";
+import {
+  buildWorkspaceQuoteBlock,
+  buildWorkspaceQuoteHeader,
+} from "~/shared/lib/workspace-message-quote.lib";
 import { buildZulipQuoteHeader } from "~/shared/lib/zulip-quote-header.lib";
 import type { ReplyQuote } from "./message-composer.types";
 
@@ -10,6 +14,19 @@ import type { ReplyQuote } from "./message-composer.types";
 export function buildOutgoingMessageBody(value: string, replyQuote?: ReplyQuote | null): string {
   let body = value.trim();
   if (replyQuote) {
+    if (replyQuote.quoteFormat === "workspace") {
+      const header = buildWorkspaceQuoteHeader({
+        senderName: replyQuote.sender_full_name,
+        wroteLabel: t("message.replyQuoteWrote"),
+        permalinkUrl: replyQuote.permalinkUrl,
+      });
+      return buildWorkspaceQuoteBlock(header, replyQuote.content) + body;
+    }
+
+    if (replyQuote.sender_id == null) {
+      return body;
+    }
+
     const header = buildZulipQuoteHeader({
       senderName: replyQuote.sender_full_name,
       senderId: replyQuote.sender_id,

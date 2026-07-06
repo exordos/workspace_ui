@@ -338,7 +338,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   const effectiveReplyQuote = isEditing ? null : replyQuote;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const prevDisabledRef = useRef(disabled);
-  const prevReplyQuoteIdRef = useRef<number | null>(null);
+  const prevReplyQuoteIdRef = useRef<number | string | null>(null);
   useLayoutEffect(() => {
     if (prevDisabledRef.current && !disabled && mode === "write") {
       textareaRef.current?.focus();

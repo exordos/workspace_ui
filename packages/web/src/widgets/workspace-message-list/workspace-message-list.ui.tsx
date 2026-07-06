@@ -27,6 +27,7 @@ interface WorkspaceMessageListRowProps {
   isFirstInGroup: boolean;
   isLastInGroup: boolean;
   resolveAuthorLabel?: (authorUuid: MessengerUuid) => string | null | undefined;
+  resolveMention?: WorkspaceMessageListProps["resolveMention"];
   actions?: WorkspaceMessageListProps["actions"];
 }
 
@@ -37,6 +38,7 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
   isFirstInGroup,
   isLastInGroup,
   resolveAuthorLabel,
+  resolveMention,
   actions,
 }: WorkspaceMessageListRowProps): React.ReactElement {
   return (
@@ -55,6 +57,7 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
         isFirstInGroup={isFirstInGroup}
         isLastInGroup={isLastInGroup}
         resolveAuthorLabel={resolveAuthorLabel}
+        resolveMention={resolveMention}
         actions={actions}
       />
     </article>
@@ -65,6 +68,7 @@ interface WorkspaceMessageAuthorGroupViewProps {
   group: WorkspaceMessageAuthorGroup;
   currentUserUuid: MessengerUuid;
   resolveAuthorLabel?: (authorUuid: MessengerUuid) => string | null | undefined;
+  resolveMention?: WorkspaceMessageListProps["resolveMention"];
   actions?: WorkspaceMessageListProps["actions"];
 }
 
@@ -72,6 +76,7 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
   group,
   currentUserUuid,
   resolveAuthorLabel,
+  resolveMention,
   actions,
 }: WorkspaceMessageAuthorGroupViewProps): React.ReactElement {
   const firstMessage = group.messages[0];
@@ -94,6 +99,7 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
           isFirstInGroup={messageIndex === 0}
           isLastInGroup={messageIndex === group.messages.length - 1}
           resolveAuthorLabel={resolveAuthorLabel}
+          resolveMention={resolveMention}
           actions={actions}
         />
       ))}
@@ -119,6 +125,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
   onUnreadMessagesVisible,
   onUnreadMessagesAtBottom,
   resolveAuthorLabel,
+  resolveMention,
   actions,
 }) => {
   const { locale, t } = useTranslation();
@@ -220,6 +227,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
                 group={authorGroup}
                 currentUserUuid={currentUserUuid}
                 resolveAuthorLabel={resolveAuthorLabel}
+                resolveMention={resolveMention}
                 actions={actions}
               />
             ))}

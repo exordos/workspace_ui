@@ -68,6 +68,25 @@ describe("message-composer-body.lib", () => {
       expect(body).toContain("```quote\nline one\n\nline two\n```");
       expect(body.endsWith("reply")).toBe(true);
     });
+
+    it("prepends Workspace reply quote with message route anchor", () => {
+      const body = buildOutgoingMessageBody("clean reply", {
+        id: "55555555-5555-4555-8555-555555555555",
+        content: "quoted workspace text",
+        sender_full_name: "Bob Reed",
+        permalinkUrl: "/org/org-a/project/project-a/message/55555555-5555-4555-8555-555555555555",
+        quoteFormat: "workspace",
+      });
+
+      expect(body).toBe(
+        [
+          "> **Bob Reed** [wrote](/org/org-a/project/project-a/message/55555555-5555-4555-8555-555555555555):",
+          "> quoted workspace text",
+          "",
+          "clean reply",
+        ].join("\n"),
+      );
+    });
   });
 
   describe("getAttachmentExtensionLabel", () => {

@@ -668,6 +668,21 @@ G
 - старый `widgets/message-list` еще остается legacy/reference для non-Workspace
   поверхностей и будущего отдельного удаления.
 
+## Финальная сверка render cleanup
+
+Срез после фазы 11 `WORKSPACE_MESSAGE_RENDER_ARCHITECTURE_PLAN`:
+
+- active Workspace route больше не содержит
+  `MessengerMessage -> MockMessage/MessageListMessage` adapter;
+- `chat-page-workspace-message.adapter.ts` удален, потому что после
+  `ChatPageWorkspaceMessageListSection` он не обслуживал старый route, а был
+  скрытым мостом к старому списку;
+- `widgets/workspace-message-list` остается отдельным native entrypoint и не
+  импортирует `widgets/message-list`;
+- старый `widgets/message-list` не удален: он остается legacy surface для
+  non-Workspace маршрутов до отдельного согласованного прохода;
+- scroll anchor нового списка остается `data-message-uuid`.
+
 ### Шаблон задания субагенту
 
 Каждому субагенту выдавать задание в таком формате:

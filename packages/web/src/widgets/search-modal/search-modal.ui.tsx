@@ -91,6 +91,8 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   const runSearch = useCallback(
     async (q: string) => {
       if (workspaceMode) {
+        // Workspace message search пока отсутствует в API, поэтому здесь нет
+        // message body для summary/snippet. Поверхность остается поиском людей.
         setResults([]);
         setLoading(false);
         return;

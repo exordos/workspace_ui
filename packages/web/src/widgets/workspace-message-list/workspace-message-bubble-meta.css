@@ -1,4 +1,4 @@
-.workspace-message-bubble-inline-text::after {
+.workspace-message-bubble-inline-text > :last-child::after {
   content: "";
   display: inline-block;
   width: calc(var(--workspace-message-bubble-meta-width, 0px) + 0.5rem);

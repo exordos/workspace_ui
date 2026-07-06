@@ -1,6 +1,7 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useDownloadStore } from "~/entities/download/download.model";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type {
@@ -36,6 +37,7 @@ const captured = vi.hoisted(() => ({
     throw new Error("legacy chat-list store must not be used");
   }),
   loadWorkspaceMessages: vi.fn().mockResolvedValue({ status: "applied" }),
+  downloadWorkspaceFile: vi.fn(),
   streamBindingsForRoute: vi.fn(),
 }));
 
@@ -51,6 +53,10 @@ vi.mock("~/entities/messenger/messenger-messages-loader.lib", async (importOrigi
     loadMessengerConversationMessages: captured.loadWorkspaceMessages,
   };
 });
+
+vi.mock("~/shared/api/messenger-files.api", () => ({
+  downloadWorkspaceFile: captured.downloadWorkspaceFile,
+}));
 
 vi.mock("~/entities/messenger/messenger-stream-bindings-loader.lib", () => ({
   useMessengerStreamBindingsForRoute: captured.streamBindingsForRoute,
@@ -279,7 +285,16 @@ describe("ChatPage Workspace route", () => {
     captured.messageListProps = null;
     captured.oldChatListStore.mockClear();
     captured.loadWorkspaceMessages.mockClear();
+    captured.downloadWorkspaceFile.mockReset();
+    captured.downloadWorkspaceFile.mockResolvedValue({
+      blob: new Blob(["workspace file"], { type: "text/plain" }),
+      headers: new Headers({
+        "content-disposition": 'attachment; filename="workspace-report.txt"',
+        "content-length": "14",
+      }),
+    });
     captured.streamBindingsForRoute.mockClear();
+    useDownloadStore.getState().clearDownloads();
   });
 
   afterEach(() => {
@@ -287,6 +302,7 @@ describe("ChatPage Workspace route", () => {
     useMessengerStore.getState().clear();
     useUsersStore.getState().clear();
     useWorkspaceMessageStore.getState().clear();
+    useDownloadStore.getState().clearDownloads();
   });
 
   it("renders Workspace topic data through the Workspace-native message section", async () => {
@@ -318,6 +334,10 @@ describe("ChatPage Workspace route", () => {
     expect(captured.messageListProps?.conversationId).toBe(`topic:${STREAM_UUID}:${TOPIC_UUID}`);
     expect(captured.messageListProps?.currentUserUuid).toBe(USER_UUID);
     expect(captured.messageListProps?.resolveAuthorLabel?.(USER_B_UUID)).toBe("Bob Reed");
+    expect(captured.messageListProps?.resolveMention?.("Bob Reed")).toMatchObject({
+      userUuid: USER_B_UUID,
+      displayText: "Bob Reed",
+    });
     expect(captured.messageListProps?.messages[0]).toMatchObject({
       uuid: "55555555-5555-4555-8555-555555555555",
       markdown: "workspace message",
@@ -331,6 +351,8 @@ describe("ChatPage Workspace route", () => {
     expect(captured.messageListProps?.onRequestDeleteMessage).toEqual(expect.any(Function));
     expect(captured.messageListProps?.onCopyMessageText).toEqual(expect.any(Function));
     expect(captured.messageListProps?.onToggleMessageReaction).toEqual(expect.any(Function));
+    expect(captured.messageListProps?.onDownloadFile).toEqual(expect.any(Function));
+    expect(captured.messageListProps?.onOpenUnsupportedFilePreview).toEqual(expect.any(Function));
     expect(captured.composerProps?.readOnlyReason).toBeUndefined();
     expect(captured.composerProps?.composerCapabilities?.upload?.mode).toBe("unsupported");
     expect(captured.composerProps?.onSend).toEqual(expect.any(Function));
@@ -346,6 +368,167 @@ describe("ChatPage Workspace route", () => {
       },
     });
     await waitFor(() => expect(captured.loadWorkspaceMessages).toHaveBeenCalledTimes(1));
+  });
+
+  it("opens Workspace reply mode as composer quote state without injecting quote into draft", async () => {
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await screen.findByTestId("workspace-message-list-section");
+
+    act(() => {
+      captured.messageListProps?.onReplyMessage?.(
+        "55555555-5555-4555-8555-555555555555",
+        "selected excerpt",
+      );
+    });
+
+    await waitFor(() => {
+      expect(captured.composerProps?.replyQuote).toMatchObject({
+        id: "55555555-5555-4555-8555-555555555555",
+        content: "selected excerpt",
+        sender_full_name: "Bob Reed",
+        permalinkUrl: "/org/org-a/project/project-a/message/55555555-5555-4555-8555-555555555555",
+        quoteFormat: "workspace",
+      });
+    });
+    expect(captured.composerProps?.draftInitialValue).toBeUndefined();
+
+    act(() => {
+      captured.composerProps?.onClearReply();
+    });
+
+    await waitFor(() => {
+      expect(captured.composerProps?.replyQuote).toBeNull();
+    });
+  });
+
+  it("downloads Workspace file attachments through the Workspace file API", async () => {
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:workspace-file");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => undefined);
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await waitFor(() =>
+      expect(captured.messageListProps?.onDownloadFile).toEqual(expect.any(Function)),
+    );
+    captured.messageListProps?.onDownloadFile?.({
+      kind: "attachment",
+      href: "workspace-file://33333333-3333-4333-8333-333333333333",
+      fileUuid: "33333333-3333-4333-8333-333333333333",
+      name: "hint.txt",
+    });
+
+    await waitFor(() => {
+      expect(captured.downloadWorkspaceFile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accessToken: "access-token",
+          devTargetOrigin: "https://org-a.example.com",
+          projectId: "project-a",
+          signal: expect.any(AbortSignal),
+        }),
+        "33333333-3333-4333-8333-333333333333",
+      );
+    });
+
+    await waitFor(() => {
+      expect(useDownloadStore.getState().entries[0]).toMatchObject({
+        path: "workspace-file:33333333-3333-4333-8333-333333333333",
+        fileName: "hint.txt",
+        status: "downloaded",
+        receivedBytes: 14,
+        totalBytes: 14,
+      });
+    });
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-file");
+
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+    click.mockRestore();
+  });
+
+  it("downloads Workspace media placeholders through the same Workspace file API", async () => {
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:workspace-file");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => undefined);
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await waitFor(() =>
+      expect(captured.messageListProps?.onDownloadFile).toEqual(expect.any(Function)),
+    );
+    captured.messageListProps?.onDownloadFile?.({
+      kind: "media",
+      href: "workspace-file://44444444-4444-4444-8444-444444444444?content_type=image/png",
+      fileUuid: "44444444-4444-4444-8444-444444444444",
+      name: "screen.png",
+      contentType: "image/png",
+      mediaKind: "image",
+    });
+
+    await waitFor(() => {
+      expect(captured.downloadWorkspaceFile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accessToken: "access-token",
+          devTargetOrigin: "https://org-a.example.com",
+          projectId: "project-a",
+          signal: expect.any(AbortSignal),
+        }),
+        "44444444-4444-4444-8444-444444444444",
+      );
+    });
+
+    await waitFor(() => {
+      expect(useDownloadStore.getState().entries[0]).toMatchObject({
+        path: "workspace-file:44444444-4444-4444-8444-444444444444",
+        fileName: "screen.png",
+        status: "downloaded",
+        receivedBytes: 14,
+        totalBytes: 14,
+      });
+    });
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-file");
+
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+    click.mockRestore();
+  });
+
+  it("reports Workspace media preview as unsupported instead of opening legacy viewer", async () => {
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await waitFor(() =>
+      expect(captured.messageListProps?.onOpenUnsupportedFilePreview).toEqual(expect.any(Function)),
+    );
+    captured.messageListProps?.onOpenUnsupportedFilePreview?.({
+      kind: "media",
+      href: "workspace-file://44444444-4444-4444-8444-444444444444",
+      fileUuid: "44444444-4444-4444-8444-444444444444",
+      name: "screen.png",
+      contentType: "image/png",
+      mediaKind: "image",
+    });
+
+    expect(
+      await screen.findByText(
+        "Workspace media preview is not connected yet. Download the file instead.",
+      ),
+    ).toBeInTheDocument();
+    expect(captured.downloadWorkspaceFile).not.toHaveBeenCalled();
   });
 
   it("maps Workspace direct private header view to old dmPartner header props", async () => {

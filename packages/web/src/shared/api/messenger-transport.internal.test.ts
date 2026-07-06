@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   MessengerApiError,
   buildMessengerUrl,
+  getBinaryResult,
   getJsonResult,
   parsePaginationHeaders,
   publicGetJsonResult,
@@ -71,6 +72,35 @@ describe("messenger transport helper", () => {
     expect(init?.method).toBe("GET");
     expect(init?.headers).toEqual({
       Accept: "application/json",
+      Authorization: "Bearer token",
+    });
+  });
+
+  it("downloads binary responses with bearer auth without JSON parsing", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    fetchMock.mockResolvedValue(
+      new Response("file-bytes", {
+        status: 200,
+        headers: {
+          "Content-Type": "text/plain",
+          "Content-Disposition": 'attachment; filename="report.txt"',
+        },
+      }),
+    );
+
+    await expect(
+      getBinaryResult("/files/file-uuid/actions/download", {
+        accessToken: "token",
+        fetchImpl: fetchMock,
+      }),
+    ).resolves.toMatchObject({
+      headers: expect.any(Headers),
+    });
+
+    const [, init] = firstFetchCall(fetchMock);
+    expect(init?.method).toBe("GET");
+    expect(init?.headers).toEqual({
+      Accept: "*/*",
       Authorization: "Bearer token",
     });
   });

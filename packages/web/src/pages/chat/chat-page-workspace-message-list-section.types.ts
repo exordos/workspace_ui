@@ -3,6 +3,10 @@ import type {
   MessengerMessage,
   MessengerUuid,
 } from "~/entities/messenger/messenger.types";
+import type {
+  WorkspaceMessageFileReference,
+  WorkspaceMessageMentionResolver,
+} from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 
 export type WorkspaceChatMessagesLoadErrorKind = "initial" | "refresh";
 
@@ -29,10 +33,13 @@ export interface ChatPageWorkspaceMessageListSectionProps {
   onRequestDeleteMessage?: (messageUuid: MessengerUuid) => void;
   onCopyMessageText?: (messageUuid: MessengerUuid, text: string) => void | Promise<void>;
   onToggleMessageReaction?: (messageUuid: MessengerUuid, emojiName: string) => void | Promise<void>;
+  onDownloadFile?: (file: WorkspaceMessageFileReference) => void | Promise<void>;
+  onOpenUnsupportedFilePreview?: (file: WorkspaceMessageFileReference) => void;
   messagesLoadError: WorkspaceChatMessagesLoadErrorKind | null;
   onRetryMessagesLoad: () => void;
   boundaryLoadFailed: boolean;
   onDismissBoundaryLoadFailed: () => void;
   scrollToBottomAfterSendNonce: number;
   resolveAuthorLabel?: (authorUuid: MessengerUuid) => string | null | undefined;
+  resolveMention?: WorkspaceMessageMentionResolver;
 }

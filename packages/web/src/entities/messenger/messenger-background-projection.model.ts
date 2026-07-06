@@ -30,6 +30,9 @@ const LIGHTWEIGHT_SNAPSHOT_TTL_MS = 30 * 60 * 1000;
 
 const EMPTY_BACKGROUND_PROJECTIONS: Record<string, MessengerBackgroundProjection> = {};
 
+// Background notification candidate хранит только идентификаторы и счетчики:
+// body сообщения сюда намеренно не попадает, поэтому summary для Workspace
+// notifications подключать не к чему до появления отдельного body contract.
 export interface MessengerBackgroundNotificationCandidate {
   ownerKey: string;
   epochVersion: WorkspaceMessengerEpochVersion;
