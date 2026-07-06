@@ -182,6 +182,9 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
   onSourceChange,
   onOpenChange,
   onReplyMessage,
+  onForwardMessage,
+  onOpenMessageInChat,
+  onToggleMessageSelection,
   onEditMessage,
   onRequestDeleteMessage,
   onCopyMessageText,
@@ -245,9 +248,18 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
       });
     }
 
-    const actionItems: DropdownMenuItem[] = [];
+    const pushActionSection = (sectionItems: DropdownMenuItem[]) => {
+      if (sectionItems.length === 0) return;
+      const hasPreviousActionSection = items.some((item) => item.type === "action");
+      if (hasPreviousActionSection) {
+        items.push({ type: "separator", key: `context-separator-${items.length}` });
+      }
+      items.push(...sectionItems);
+    };
+
+    const primaryActionItems: DropdownMenuItem[] = [];
     if (onReplyMessage != null) {
-      actionItems.push({
+      primaryActionItems.push({
         type: "action",
         key: "reply",
         icon: "reply",
@@ -258,29 +270,63 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
         },
       });
     }
-    actionItems.push({
-      type: "action",
-      key: "copy",
-      icon: "copy",
-      label: t("message.copy"),
-      onSelect: () => {
-        const selectedText = getSelectedText();
-        const textToCopy = selectedText ?? message.markdown;
-        if (onCopyMessageText != null) {
-          void onCopyMessageText(message.uuid, textToCopy);
-        } else {
-          copyTextToClipboard(textToCopy);
-        }
-        closeMenu();
-      },
-    });
-
-    if (actionItems.length > 0) {
-      if (items.length > 0) {
-        items.push({ type: "separator", key: "context-separator-main" });
-      }
-      items.push(...actionItems);
+    if (onForwardMessage != null) {
+      primaryActionItems.push({
+        type: "action",
+        key: "forward",
+        icon: "forward",
+        label: t("message.forward"),
+        onSelect: () => {
+          onForwardMessage(message.uuid, getSelectedText());
+          closeMenu();
+        },
+      });
     }
+    if (onOpenMessageInChat != null) {
+      primaryActionItems.push({
+        type: "action",
+        key: "open-in-chat",
+        icon: "newWindow",
+        label: t("message.openInChat"),
+        onSelect: () => {
+          onOpenMessageInChat(message.uuid);
+          closeMenu();
+        },
+      });
+    }
+    pushActionSection(primaryActionItems);
+
+    const secondaryActionItems: DropdownMenuItem[] = [
+      {
+        type: "action",
+        key: "copy",
+        icon: "copy",
+        label: t("message.copy"),
+        onSelect: () => {
+          const selectedText = getSelectedText();
+          const textToCopy = selectedText ?? message.markdown;
+          if (onCopyMessageText != null) {
+            void onCopyMessageText(message.uuid, textToCopy);
+          } else {
+            copyTextToClipboard(textToCopy);
+          }
+          closeMenu();
+        },
+      },
+    ];
+    if (onToggleMessageSelection != null) {
+      secondaryActionItems.push({
+        type: "action",
+        key: "select",
+        icon: "check",
+        label: t("message.select"),
+        onSelect: () => {
+          onToggleMessageSelection(message.uuid);
+          closeMenu();
+        },
+      });
+    }
+    pushActionSection(secondaryActionItems);
 
     const ownItems: DropdownMenuItem[] = [];
     if (isOwn && onEditMessage != null) {
@@ -308,9 +354,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
         },
       });
     }
-    if (ownItems.length > 0) {
-      items.push({ type: "separator", key: "context-separator-own" }, ...ownItems);
-    }
+    pushActionSection(ownItems);
 
     return items;
   }, [
@@ -324,8 +368,11 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
     message.uuid,
     onCopyMessageText,
     onEditMessage,
+    onForwardMessage,
+    onOpenMessageInChat,
     onReplyMessage,
     onRequestDeleteMessage,
+    onToggleMessageSelection,
     onToggleMessageReaction,
   ]);
 

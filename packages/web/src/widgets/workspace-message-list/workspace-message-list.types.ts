@@ -1,3 +1,4 @@
+import type { MessengerOutgoingMessage } from "~/entities/messenger/messenger-outbox.types";
 import type {
   MessengerConversationId,
   MessengerMessage,
@@ -8,19 +9,68 @@ import type {
   WorkspaceMessageMentionResolver,
 } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 
+export interface WorkspaceMessageMediaGalleryItem {
+  messageUuid: MessengerUuid;
+  file: WorkspaceMessageFileReference;
+}
+
+export interface WorkspaceMessageMediaGalleryOpenRequest {
+  items: readonly WorkspaceMessageMediaGalleryItem[];
+  startIndex: number;
+}
+
 export interface WorkspaceMessageListActions {
   onReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
+  onForwardMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
+  onOpenMessageInChat?: (messageUuid: MessengerUuid) => void;
+  onToggleMessageSelection?: (messageUuid: MessengerUuid) => void;
   onEditMessage?: (messageUuid: MessengerUuid) => void;
   onRequestDeleteMessage?: (messageUuid: MessengerUuid) => void;
   onCopyMessageText?: (messageUuid: MessengerUuid, text: string) => void | Promise<void>;
   onToggleMessageReaction?: (messageUuid: MessengerUuid, emojiName: string) => void | Promise<void>;
   onOpenMentionUser?: (userUuid: MessengerUuid) => void;
   onDownloadFile?: (file: WorkspaceMessageFileReference) => void | Promise<void>;
+  onLoadWorkspaceFilePreview?: (
+    file: WorkspaceMessageFileReference,
+    signal: AbortSignal,
+  ) => Promise<Blob>;
+  onOpenWorkspaceMedia?: (
+    file: WorkspaceMessageFileReference,
+    gallery?: WorkspaceMessageMediaGalleryOpenRequest,
+  ) => void | Promise<void>;
   onOpenUnsupportedFilePreview?: (file: WorkspaceMessageFileReference) => void;
+  onRetryOutgoingMessage?: (localId: string) => void;
+  onRemoveOutgoingMessage?: (localId: string) => void;
 }
+
+export interface WorkspaceMessageListServerItem {
+  kind: "server";
+  key: MessengerUuid;
+  message: MessengerMessage;
+  createdAt: string;
+  authorUuid: MessengerUuid;
+  isOwn: boolean;
+  read: boolean;
+}
+
+export interface WorkspaceMessageListOutgoingItem {
+  kind: "outgoing";
+  key: string;
+  message: MessengerOutgoingMessage;
+  resolvedServerMessage?: MessengerMessage;
+  createdAt: string;
+  authorUuid: MessengerUuid;
+  isOwn: true;
+  read: true;
+}
+
+export type WorkspaceMessageListItem =
+  | WorkspaceMessageListServerItem
+  | WorkspaceMessageListOutgoingItem;
 
 export interface WorkspaceMessageListProps {
   messages: readonly MessengerMessage[];
+  outgoingMessages?: readonly MessengerOutgoingMessage[];
   currentUserUuid: MessengerUuid;
   conversationId: MessengerConversationId;
   scrollToBottomKey?: string;
@@ -28,6 +78,8 @@ export interface WorkspaceMessageListProps {
   firstUnreadUuid?: MessengerUuid;
   unreadCount?: number;
   focusedMessageUuid?: MessengerUuid | null;
+  selectionMode?: boolean;
+  selectedMessageUuids?: ReadonlySet<MessengerUuid>;
   isLoadingOlder?: boolean;
   isLoadingNewer?: boolean;
   hasOlderMessages?: boolean;

@@ -36,6 +36,7 @@ export interface UseWorkspaceMessageBodyInteractionsParams {
   fileReferences: readonly WorkspaceMessageFileReference[];
   onOpenMentionUser?: (userUuid: string) => void;
   onDownloadFile?: (file: WorkspaceMessageFileReference) => void | Promise<void>;
+  onOpenWorkspaceMedia?: (file: WorkspaceMessageFileReference) => void | Promise<void>;
   onOpenUnsupportedFilePreview?: (file: WorkspaceMessageFileReference) => void;
 }
 
@@ -80,6 +81,14 @@ function isInteractiveTarget(target: EventTarget): boolean {
   return (
     target instanceof HTMLElement &&
     target.closest("a,button,input,textarea,select,[contenteditable='true']") != null
+  );
+}
+
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+  return (
+    value != null &&
+    (typeof value === "object" || typeof value === "function") &&
+    typeof (value as { then?: unknown }).then === "function"
   );
 }
 
@@ -244,6 +253,7 @@ export function useWorkspaceMessageBodyInteractions({
   fileReferences,
   onOpenMentionUser,
   onDownloadFile,
+  onOpenWorkspaceMedia,
   onOpenUnsupportedFilePreview,
 }: UseWorkspaceMessageBodyInteractionsParams): UseWorkspaceMessageBodyInteractionsResult {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -251,6 +261,7 @@ export function useWorkspaceMessageBodyInteractions({
   const [contextMenuAnchor, setContextMenuAnchor] =
     useState<WorkspaceMessageBubbleMenuAnchor | null>(null);
   const capturedSelectionRef = useRef<string | undefined>(undefined);
+  const pendingDownloadFileUuidsRef = useRef<Set<string>>(new Set());
 
   const getSelectedText = useCallback((): string | undefined => {
     return capturedSelectionRef.current ?? resolveSelectionInsideBody(bodyRef.current);
@@ -274,6 +285,66 @@ export function useWorkspaceMessageBodyInteractions({
       setMenuOpen(true);
     },
     [bodyRef],
+  );
+
+  const requestWorkspaceFileDownload = useCallback(
+    (workspaceFile: WorkspaceMessageFileReference): boolean => {
+      if (onDownloadFile == null) {
+        return false;
+      }
+
+      const fileUuid = workspaceFile.fileUuid.trim();
+      if (fileUuid.length > 0 && pendingDownloadFileUuidsRef.current.has(fileUuid)) {
+        return true;
+      }
+
+      if (fileUuid.length > 0) {
+        pendingDownloadFileUuidsRef.current.add(fileUuid);
+      }
+
+      let result: void | Promise<void>;
+      try {
+        result = onDownloadFile(workspaceFile);
+      } catch (error) {
+        if (fileUuid.length > 0) {
+          pendingDownloadFileUuidsRef.current.delete(fileUuid);
+        }
+        throw error;
+      }
+
+      if (isPromiseLike(result)) {
+        void Promise.resolve(result)
+          .catch(() => undefined)
+          .finally(() => {
+            if (fileUuid.length > 0) {
+              pendingDownloadFileUuidsRef.current.delete(fileUuid);
+            }
+          });
+        return true;
+      }
+
+      if (fileUuid.length > 0) {
+        pendingDownloadFileUuidsRef.current.delete(fileUuid);
+      }
+      return true;
+    },
+    [onDownloadFile],
+  );
+
+  const requestWorkspaceMediaOpen = useCallback(
+    (workspaceFile: WorkspaceMessageFileReference): boolean => {
+      if (
+        onOpenWorkspaceMedia == null ||
+        workspaceFile.kind !== "media" ||
+        workspaceFile.mediaKind !== "image"
+      ) {
+        return false;
+      }
+
+      void onOpenWorkspaceMedia(workspaceFile);
+      return true;
+    },
+    [onOpenWorkspaceMedia],
   );
 
   const handleContextMenu = useCallback(
@@ -300,11 +371,10 @@ export function useWorkspaceMessageBodyInteractions({
         );
         if (workspaceFile != null) {
           event.preventDefault();
-          if (onDownloadFile != null) {
-            // Media и attachments используют один Workspace UUID download flow.
-            // Viewer по-прежнему не открывается: безопасного inline-src/gallery
-            // контракта нет, а скачивание уже подтверждено backend contract.
-            void onDownloadFile(workspaceFile);
+          if (requestWorkspaceMediaOpen(workspaceFile)) {
+            return;
+          }
+          if (requestWorkspaceFileDownload(workspaceFile)) {
             return;
           }
           if (workspaceFile.kind === "media") {
@@ -323,7 +393,13 @@ export function useWorkspaceMessageBodyInteractions({
       event.preventDefault();
       openTriggerMenu();
     },
-    [fileReferences, onDownloadFile, onOpenUnsupportedFilePreview, openTriggerMenu],
+    [
+      fileReferences,
+      onOpenUnsupportedFilePreview,
+      openTriggerMenu,
+      requestWorkspaceFileDownload,
+      requestWorkspaceMediaOpen,
+    ],
   );
 
   const handleMenuOpenChange = useCallback((nextOpen: boolean) => {
@@ -360,13 +436,16 @@ export function useWorkspaceMessageBodyInteractions({
           return;
         }
 
-        if (onDownloadFile != null) {
+        if (requestWorkspaceMediaOpen(workspaceFile)) {
+          return;
+        }
+
+        if (requestWorkspaceFileDownload(workspaceFile)) {
           // Скачивание опирается на Workspace UUID из разобранного document.
           // DOM здесь только сообщает, куда кликнули; он не становится
           // источником download/gallery items и не возвращает старый path-only ключ.
-          // Для media это честнее, чем показывать "скачайте файл" и не скачивать:
-          // viewer остается неподдержанным, а подтвержденный download path работает.
-          void onDownloadFile(workspaceFile);
+          // Для media preview уже может быть показан как blob-src, но viewer
+          // остается неподдержанным до отдельного gallery adapter.
           return;
         }
 
@@ -416,6 +495,10 @@ export function useWorkspaceMessageBodyInteractions({
         return;
       }
 
+      if (link.dataset.workspaceMessageLink === "true") {
+        return;
+      }
+
       const externalUrl = resolveExternalHttpUrl(href);
       if (externalUrl == null || !isPrimaryUnmodifiedClick(event)) {
         return;
@@ -424,7 +507,13 @@ export function useWorkspaceMessageBodyInteractions({
       event.preventDefault();
       window.open(externalUrl, "_blank", "noopener,noreferrer");
     },
-    [fileReferences, onDownloadFile, onOpenMentionUser, onOpenUnsupportedFilePreview],
+    [
+      fileReferences,
+      onOpenMentionUser,
+      onOpenUnsupportedFilePreview,
+      requestWorkspaceFileDownload,
+      requestWorkspaceMediaOpen,
+    ],
   );
 
   useEffect(() => {

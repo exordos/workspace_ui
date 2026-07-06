@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
-import { groupWorkspaceMessagesByDayAndAuthor } from "./workspace-message-list-grouping.lib";
+import {
+  createWorkspaceMessageListServerItem,
+  groupWorkspaceMessagesByDayAndAuthor,
+} from "./workspace-message-list-grouping.lib";
 
 function createWorkspaceMessage(overrides: Partial<MessengerMessage> = {}): MessengerMessage {
   return {
@@ -51,7 +54,9 @@ describe("groupWorkspaceMessagesByDayAndAuthor", () => {
       }),
     ];
 
-    const groupedMessages = groupWorkspaceMessagesByDayAndAuthor(sourceMessages);
+    const groupedMessages = groupWorkspaceMessagesByDayAndAuthor(
+      sourceMessages.map(createWorkspaceMessageListServerItem),
+    );
 
     expect(sourceMessages.map((message) => message.uuid)).toEqual([
       "message-c",
@@ -61,7 +66,7 @@ describe("groupWorkspaceMessagesByDayAndAuthor", () => {
     expect(
       groupedMessages.flatMap((dayGroup) =>
         dayGroup.authorGroups.flatMap((authorGroup) =>
-          authorGroup.messages.map((message) => message.uuid),
+          authorGroup.messages.map((message) => message.key),
         ),
       ),
     ).toEqual(["message-a", "message-b", "message-c"]);
@@ -69,31 +74,41 @@ describe("groupWorkspaceMessagesByDayAndAuthor", () => {
 
   it("splits calendar days and only groups neighboring messages from the same author", () => {
     const groupedMessages = groupWorkspaceMessagesByDayAndAuthor([
-      createWorkspaceMessage({
-        uuid: "day-one-author-a-first",
-        authorUuid: "author-a",
-        createdAt: "2026-07-03T09:00:00.000Z",
-      }),
-      createWorkspaceMessage({
-        uuid: "day-one-author-a-second",
-        authorUuid: "author-a",
-        createdAt: "2026-07-03T09:01:00.000Z",
-      }),
-      createWorkspaceMessage({
-        uuid: "day-one-author-b",
-        authorUuid: "author-b",
-        createdAt: "2026-07-03T09:02:00.000Z",
-      }),
-      createWorkspaceMessage({
-        uuid: "day-one-author-a-third",
-        authorUuid: "author-a",
-        createdAt: "2026-07-03T09:03:00.000Z",
-      }),
-      createWorkspaceMessage({
-        uuid: "day-two-author-a",
-        authorUuid: "author-a",
-        createdAt: "2026-07-04T09:00:00.000Z",
-      }),
+      createWorkspaceMessageListServerItem(
+        createWorkspaceMessage({
+          uuid: "day-one-author-a-first",
+          authorUuid: "author-a",
+          createdAt: "2026-07-03T09:00:00.000Z",
+        }),
+      ),
+      createWorkspaceMessageListServerItem(
+        createWorkspaceMessage({
+          uuid: "day-one-author-a-second",
+          authorUuid: "author-a",
+          createdAt: "2026-07-03T09:01:00.000Z",
+        }),
+      ),
+      createWorkspaceMessageListServerItem(
+        createWorkspaceMessage({
+          uuid: "day-one-author-b",
+          authorUuid: "author-b",
+          createdAt: "2026-07-03T09:02:00.000Z",
+        }),
+      ),
+      createWorkspaceMessageListServerItem(
+        createWorkspaceMessage({
+          uuid: "day-one-author-a-third",
+          authorUuid: "author-a",
+          createdAt: "2026-07-03T09:03:00.000Z",
+        }),
+      ),
+      createWorkspaceMessageListServerItem(
+        createWorkspaceMessage({
+          uuid: "day-two-author-a",
+          authorUuid: "author-a",
+          createdAt: "2026-07-04T09:00:00.000Z",
+        }),
+      ),
     ]);
 
     expect(groupedMessages).toHaveLength(2);
@@ -104,7 +119,7 @@ describe("groupWorkspaceMessagesByDayAndAuthor", () => {
       "author-b",
       "author-a",
     ]);
-    expect(groupedMessages[0]?.authorGroups[0]?.messages.map((message) => message.uuid)).toEqual([
+    expect(groupedMessages[0]?.authorGroups[0]?.messages.map((message) => message.key)).toEqual([
       "day-one-author-a-first",
       "day-one-author-a-second",
     ]);
@@ -114,19 +129,23 @@ describe("groupWorkspaceMessagesByDayAndAuthor", () => {
 
   it("uses the local calendar day near a day boundary", () => {
     const groupedMessages = groupWorkspaceMessagesByDayAndAuthor([
-      createWorkspaceMessage({
-        uuid: "local-day-start-message",
-        createdAt: createIsoStringFromLocalTime(2026, 6, 3, 0, 30),
-      }),
-      createWorkspaceMessage({
-        uuid: "local-day-end-message",
-        createdAt: createIsoStringFromLocalTime(2026, 6, 3, 23, 30),
-      }),
+      createWorkspaceMessageListServerItem(
+        createWorkspaceMessage({
+          uuid: "local-day-start-message",
+          createdAt: createIsoStringFromLocalTime(2026, 6, 3, 0, 30),
+        }),
+      ),
+      createWorkspaceMessageListServerItem(
+        createWorkspaceMessage({
+          uuid: "local-day-end-message",
+          createdAt: createIsoStringFromLocalTime(2026, 6, 3, 23, 30),
+        }),
+      ),
     ]);
 
     expect(groupedMessages).toHaveLength(1);
     expect(groupedMessages[0]?.dateKey).toBe("2026-07-03");
-    expect(groupedMessages[0]?.authorGroups[0]?.messages.map((message) => message.uuid)).toEqual([
+    expect(groupedMessages[0]?.authorGroups[0]?.messages.map((message) => message.key)).toEqual([
       "local-day-start-message",
       "local-day-end-message",
     ]);

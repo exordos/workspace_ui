@@ -13,6 +13,7 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
     messagesLoading,
     hasInitialPayload,
     messages,
+    outgoingMessages,
     currentUserUuid,
     conversationId,
     scrollToBottomKey,
@@ -25,15 +26,24 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
     firstUnreadUuid,
     unreadCount,
     focusedMessageUuid,
+    selectionMode,
+    selectedMessageUuids,
     onUnreadMessagesVisible,
     onUnreadMessagesAtBottom,
     onReplyMessage,
+    onForwardMessage,
+    onOpenMessageInChat,
+    onToggleMessageSelection,
     onEditMessage,
     onRequestDeleteMessage,
     onCopyMessageText,
     onToggleMessageReaction,
     onDownloadFile,
+    onLoadWorkspaceFilePreview,
+    onOpenWorkspaceMedia,
     onOpenUnsupportedFilePreview,
+    onRetryOutgoingMessage,
+    onRemoveOutgoingMessage,
     messagesLoadError,
     onRetryMessagesLoad,
     boundaryLoadFailed,
@@ -61,20 +71,34 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
     const messageActions = React.useMemo(
       () => ({
         onReplyMessage,
+        onForwardMessage,
+        onOpenMessageInChat,
+        onToggleMessageSelection,
         onEditMessage,
         onRequestDeleteMessage,
         onCopyMessageText,
         onToggleMessageReaction,
         onDownloadFile,
+        onLoadWorkspaceFilePreview,
+        onOpenWorkspaceMedia,
         onOpenUnsupportedFilePreview,
+        onRetryOutgoingMessage,
+        onRemoveOutgoingMessage,
       }),
       [
         onCopyMessageText,
         onDownloadFile,
         onEditMessage,
+        onForwardMessage,
+        onLoadWorkspaceFilePreview,
+        onOpenMessageInChat,
+        onOpenWorkspaceMedia,
         onOpenUnsupportedFilePreview,
+        onRemoveOutgoingMessage,
         onReplyMessage,
         onRequestDeleteMessage,
+        onRetryOutgoingMessage,
+        onToggleMessageSelection,
         onToggleMessageReaction,
       ],
     );
@@ -139,6 +163,7 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
         />
         <WorkspaceMessageList
           messages={messages}
+          outgoingMessages={outgoingMessages}
           currentUserUuid={currentUserUuid}
           conversationId={conversationId}
           scrollToBottomKey={scrollToBottomKey}
@@ -146,6 +171,8 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
           firstUnreadUuid={firstUnreadUuid}
           unreadCount={unreadCount}
           focusedMessageUuid={focusedMessageUuid}
+          selectionMode={selectionMode}
+          selectedMessageUuids={selectedMessageUuids}
           isLoadingOlder={isLoadingOlder}
           isLoadingNewer={isLoadingNewer}
           hasOlderMessages={hasOlderMessages}

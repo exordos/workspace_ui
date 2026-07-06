@@ -1,3 +1,4 @@
+import type { WorkspaceFileMetadata } from "~/shared/api/messenger-files.api";
 import { detectImageMime, sanitizeFilename, validateFileUpload } from "~/shared/lib/validation";
 
 export interface UploadFileRequestOptions {
@@ -5,6 +6,10 @@ export interface UploadFileRequestOptions {
 }
 
 export type UploadFileFn = (file: File, options?: UploadFileRequestOptions) => Promise<string>;
+export type UploadWorkspaceComposerFileFn = (
+  file: File,
+  options?: UploadFileRequestOptions,
+) => Promise<Pick<WorkspaceFileMetadata, "uuid" | "content_type">>;
 export interface ComposerUploadProgressState {
   completed: number;
   total: number;
@@ -41,6 +46,43 @@ function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) {
     throw createAbortError();
   }
+}
+
+function safeComposerFileName(file: File): string {
+  return sanitizeFilename(file.name) || "file";
+}
+
+function escapeMarkdownLinkLabel(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/\]/g, "\\]");
+}
+
+function resolveWorkspaceFileContentType(
+  file: File,
+  uploadedFile: Pick<WorkspaceFileMetadata, "content_type">,
+): string {
+  const uploadedContentType = uploadedFile.content_type.trim();
+  if (uploadedContentType.length > 0) return uploadedContentType;
+
+  const localContentType = file.type.trim();
+  return localContentType.length > 0 ? localContentType : "application/octet-stream";
+}
+
+export function buildWorkspaceFileMarkdownLink(
+  file: File,
+  uploadedFile: Pick<WorkspaceFileMetadata, "uuid" | "content_type">,
+): string {
+  const safeName = escapeMarkdownLinkLabel(safeComposerFileName(file));
+  const contentType = resolveWorkspaceFileContentType(file, uploadedFile);
+  const href = `workspace-file://${uploadedFile.uuid}?content_type=${encodeURIComponent(contentType)}`;
+
+  return contentType.startsWith("image/") ? `![${safeName}](${href})` : `[${safeName}](${href})`;
+}
+
+export function appendComposerMarkdownLinks(content: string, links: readonly string[]): string {
+  const cleanContent = content.trim();
+  if (links.length === 0) return cleanContent;
+  if (cleanContent.length === 0) return links.join("\n");
+  return `${cleanContent}\n${links.join("\n")}`;
 }
 
 async function validateComposerFile(file: File): Promise<void> {
@@ -89,8 +131,49 @@ export async function uploadComposerFiles(
       options.signal != null
         ? await uploadFile(file, { signal: options.signal })
         : await uploadFile(file);
-    const safeName = sanitizeFilename(file.name) || "file";
+    const safeName = safeComposerFileName(file);
     links.push(`[${safeName}](${uri})`);
+
+    const nextFileName = i + 1 < files.length ? files[i + 1]!.name : null;
+    options.onProgress?.({
+      completed: i + 1,
+      total: files.length,
+      activeFileName: nextFileName,
+    });
+  }
+
+  return links;
+}
+
+export async function uploadWorkspaceComposerFiles(
+  files: File[],
+  uploadFile: UploadWorkspaceComposerFileFn,
+  options: UploadComposerFilesOptions = {},
+): Promise<string[]> {
+  throwIfAborted(options.signal);
+  for (const file of files) {
+    await validateComposerFile(file);
+  }
+
+  if (files.length === 0) {
+    return [];
+  }
+
+  const links: string[] = [];
+  options.onProgress?.({
+    completed: 0,
+    total: files.length,
+    activeFileName: files[0]?.name ?? null,
+  });
+
+  for (let i = 0; i < files.length; i += 1) {
+    throwIfAborted(options.signal);
+    const file = files[i]!;
+    const uploadedFile =
+      options.signal != null
+        ? await uploadFile(file, { signal: options.signal })
+        : await uploadFile(file);
+    links.push(buildWorkspaceFileMarkdownLink(file, uploadedFile));
 
     const nextFileName = i + 1 < files.length ? files[i + 1]!.name : null;
     options.onProgress?.({

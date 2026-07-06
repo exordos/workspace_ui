@@ -171,6 +171,7 @@ describe("ChatPageWorkspaceMessageListSection", () => {
     const onCopyMessageText = vi.fn();
     const onToggleMessageReaction = vi.fn();
     const onDownloadFile = vi.fn();
+    const onLoadWorkspaceFilePreview = vi.fn();
     const onOpenUnsupportedFilePreview = vi.fn();
 
     render(
@@ -202,6 +203,7 @@ describe("ChatPageWorkspaceMessageListSection", () => {
         onCopyMessageText={onCopyMessageText}
         onToggleMessageReaction={onToggleMessageReaction}
         onDownloadFile={onDownloadFile}
+        onLoadWorkspaceFilePreview={onLoadWorkspaceFilePreview}
         onOpenUnsupportedFilePreview={onOpenUnsupportedFilePreview}
         messagesLoadError={null}
         onRetryMessagesLoad={vi.fn()}
@@ -221,6 +223,9 @@ describe("ChatPageWorkspaceMessageListSection", () => {
       onToggleMessageReaction,
     );
     expect(captured.workspaceMessageListProps?.actions?.onDownloadFile).toBe(onDownloadFile);
+    expect(captured.workspaceMessageListProps?.actions?.onLoadWorkspaceFilePreview).toBe(
+      onLoadWorkspaceFilePreview,
+    );
     expect(captured.workspaceMessageListProps?.actions?.onOpenUnsupportedFilePreview).toBe(
       onOpenUnsupportedFilePreview,
     );

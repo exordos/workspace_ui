@@ -1,8 +1,14 @@
+import type { MessengerOutgoingMessage } from "~/entities/messenger/messenger-outbox.types";
 import type { MessengerMessage, MessengerUuid } from "~/entities/messenger/messenger.types";
+import type {
+  WorkspaceMessageListItem,
+  WorkspaceMessageListOutgoingItem,
+  WorkspaceMessageListServerItem,
+} from "./workspace-message-list.types";
 
 export interface WorkspaceMessageAuthorGroup {
   authorUuid: MessengerUuid;
-  messages: readonly MessengerMessage[];
+  messages: readonly WorkspaceMessageListItem[];
 }
 
 export interface WorkspaceMessageDayGroup {
@@ -14,7 +20,7 @@ const UNKNOWN_DATE_KEY = "unknown-date";
 
 interface MutableWorkspaceMessageAuthorGroup {
   authorUuid: MessengerUuid;
-  messages: MessengerMessage[];
+  messages: WorkspaceMessageListItem[];
 }
 
 interface MutableWorkspaceMessageDayGroup {
@@ -22,7 +28,7 @@ interface MutableWorkspaceMessageDayGroup {
   authorGroups: MutableWorkspaceMessageAuthorGroup[];
 }
 
-function getMessageTimestamp(message: MessengerMessage): number {
+function getMessageTimestamp(message: Pick<WorkspaceMessageListItem, "createdAt">): number {
   return Date.parse(message.createdAt);
 }
 
@@ -34,9 +40,9 @@ function formatLocalDateKey(date: Date): string {
   return `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}`;
 }
 
-function compareMessagesByCreatedAtThenUuid(
-  firstMessage: MessengerMessage,
-  secondMessage: MessengerMessage,
+function compareMessagesByCreatedAtThenKey(
+  firstMessage: WorkspaceMessageListItem,
+  secondMessage: WorkspaceMessageListItem,
 ): number {
   const firstTimestamp = getMessageTimestamp(firstMessage);
   const secondTimestamp = getMessageTimestamp(secondMessage);
@@ -48,17 +54,47 @@ function compareMessagesByCreatedAtThenUuid(
       return createdAtCompare;
     }
 
-    return firstMessage.uuid.localeCompare(secondMessage.uuid);
+    return firstMessage.key.localeCompare(secondMessage.key);
   }
 
   if (firstTimestamp !== secondTimestamp) {
     return firstTimestamp - secondTimestamp;
   }
 
-  return firstMessage.uuid.localeCompare(secondMessage.uuid);
+  return firstMessage.key.localeCompare(secondMessage.key);
 }
 
-export function getWorkspaceMessageDateKey(message: MessengerMessage): string {
+export function createWorkspaceMessageListServerItem(
+  message: MessengerMessage,
+): WorkspaceMessageListServerItem {
+  return {
+    kind: "server",
+    key: message.uuid,
+    message,
+    createdAt: message.createdAt,
+    authorUuid: message.authorUuid,
+    isOwn: message.isOwn,
+    read: message.read,
+  };
+}
+
+export function createWorkspaceMessageListOutgoingItem(
+  message: MessengerOutgoingMessage,
+  resolvedServerMessage?: MessengerMessage,
+): WorkspaceMessageListOutgoingItem {
+  return {
+    kind: "outgoing",
+    key: message.localId,
+    message,
+    resolvedServerMessage,
+    createdAt: message.createdAt,
+    authorUuid: message.authorUuid,
+    isOwn: true,
+    read: true,
+  };
+}
+
+export function getWorkspaceMessageDateKey(message: WorkspaceMessageListItem): string {
   const timestamp = getMessageTimestamp(message);
 
   if (Number.isNaN(timestamp)) {
@@ -69,9 +105,9 @@ export function getWorkspaceMessageDateKey(message: MessengerMessage): string {
 }
 
 export function groupWorkspaceMessagesByDayAndAuthor(
-  messages: readonly MessengerMessage[],
+  messages: readonly WorkspaceMessageListItem[],
 ): WorkspaceMessageDayGroup[] {
-  const sortedMessages = [...messages].sort(compareMessagesByCreatedAtThenUuid);
+  const sortedMessages = [...messages].sort(compareMessagesByCreatedAtThenKey);
   const dayGroups: MutableWorkspaceMessageDayGroup[] = [];
 
   for (const message of sortedMessages) {

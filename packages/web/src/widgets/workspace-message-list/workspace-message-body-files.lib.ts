@@ -16,6 +16,7 @@ function collectFromInline(
     case "emphasis":
     case "strong":
     case "link":
+    case "spoiler":
       for (const child of inline.children) {
         collectFromInline(child, references);
       }
@@ -53,6 +54,14 @@ function collectFromBlock(
       }
       return;
     case "code":
+      return;
+    case "spoiler":
+      for (const headerChild of block.header) {
+        collectFromInline(headerChild, references);
+      }
+      for (const childBlock of block.blocks) {
+        collectFromBlock(childBlock, references);
+      }
       return;
   }
 }

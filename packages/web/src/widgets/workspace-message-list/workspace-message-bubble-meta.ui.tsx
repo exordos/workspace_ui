@@ -7,27 +7,33 @@ interface WorkspaceMessageBubbleMetaProps {
   createdAt: string;
   placement?: WorkspaceMessageBubbleMetaPlacement;
   className?: string;
+  after?: React.ReactNode;
 }
 
 export const WorkspaceMessageBubbleMeta = React.memo(
-  React.forwardRef<HTMLTimeElement, WorkspaceMessageBubbleMetaProps>(
+  React.forwardRef<HTMLSpanElement, WorkspaceMessageBubbleMetaProps>(
     function WorkspaceMessageBubbleMeta(
-      { time, createdAt, placement = "row", className = "" },
+      { time, createdAt, placement = "row", className = "", after = null },
       ref,
     ): React.ReactElement {
       const placementClassName =
         placement === "inline" ? "pointer-events-auto absolute bottom-2 right-3 z-base" : "";
 
       return (
-        <time
+        <span
           ref={ref}
-          className={`flex items-center text-xs leading-4 text-text-muted ${placementClassName} ${className}`}
-          dateTime={createdAt}
-          data-message-time="true"
+          className={`flex items-center gap-1 text-xs leading-4 text-text-muted ${placementClassName} ${className}`}
           data-message-meta-placement={placement}
         >
-          {time}
-        </time>
+          <time
+            dateTime={createdAt}
+            data-message-time="true"
+            data-message-meta-placement={placement}
+          >
+            {time}
+          </time>
+          {after}
+        </span>
       );
     },
   ),

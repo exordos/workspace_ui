@@ -1,5 +1,7 @@
 import React, { useLayoutEffect, useMemo, useRef } from "react";
 import type { MessengerMessage, MessengerUuid } from "~/entities/messenger/messenger.types";
+import { t } from "~/i18n/i18n";
+import { invariant } from "~/shared/lib/guards";
 import { parseWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
 import { DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS } from "~/shared/lib/workspace-message-render/workspace-message-render-options.lib";
 import { renderWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-render.lib";
@@ -8,7 +10,10 @@ import { useWorkspaceMessageBodyInteractions } from "./workspace-message-body-in
 import { WorkspaceMessageBody } from "./workspace-message-body.ui";
 import { WorkspaceMessageBubbleMenu } from "./workspace-message-bubble-menu.ui";
 import { WorkspaceMessageBubbleMeta } from "./workspace-message-bubble-meta.ui";
+import { useWorkspaceMessageFilePreviews } from "./workspace-message-file-preview.hook";
+import { WorkspaceMessageOutgoingDeliveryIndicator } from "./workspace-message-outgoing-delivery-indicator.ui";
 import type { WorkspaceMessageBubbleProps } from "./workspace-message-bubble.types";
+import type { WorkspaceMessageListItem } from "./workspace-message-list.types";
 
 type WorkspaceMessageOwner = "own" | "peer";
 
@@ -28,7 +33,7 @@ const COMPACT_OWN_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-r-[10px
 const COMPACT_PEER_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-l-[10px] bg-bg-elevated`;
 
 function resolveMessageOwner(
-  message: MessengerMessage,
+  message: WorkspaceMessageListItem,
   currentUserUuid: MessengerUuid,
 ): WorkspaceMessageOwner {
   return message.authorUuid === currentUserUuid || message.isOwn ? "own" : "peer";
@@ -81,22 +86,35 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
     currentUserUuid,
     isFirstInGroup,
     isLastInGroup,
+    isSelected = false,
+    selectionMode = false,
     resolveAuthorLabel,
     resolveMention,
     actions,
   }): React.ReactElement {
     const owner = resolveMessageOwner(message, currentUserUuid);
     const isOwn = owner === "own";
-    const time = formatWorkspaceMessageTime(message.createdAt);
+    const serverMessage =
+      message.kind === "server" ? message.message : (message.resolvedServerMessage ?? null);
+    const outgoingMessage = message.kind === "outgoing" ? message.message : null;
+    const displayMessage = serverMessage ?? outgoingMessage;
+    invariant(displayMessage != null, "WorkspaceMessageBubble expects message payload");
+    const time = formatWorkspaceMessageTime(displayMessage.createdAt);
+    const markdown = displayMessage.markdown;
     const peerAuthorLabel =
       owner === "peer" && isFirstInGroup
-        ? resolvePeerAuthorLabel(message.authorUuid, resolveAuthorLabel?.(message.authorUuid))
+        ? resolvePeerAuthorLabel(
+            displayMessage.authorUuid,
+            resolveAuthorLabel?.(displayMessage.authorUuid),
+          )
         : "";
-    const bubbleClassName = resolveBubbleClassName(owner, isLastInGroup);
+    const bubbleClassName = `${resolveBubbleClassName(owner, isLastInGroup)} ${
+      isSelected ? "ring-2 ring-accent-soft" : ""
+    }`;
     const bodyRef = useRef<HTMLDivElement>(null);
-    const metaRef = useRef<HTMLTimeElement>(null);
+    const metaRef = useRef<HTMLSpanElement>(null);
     const renderedBody = useMemo(() => {
-      const document = parseWorkspaceMessageBody(message.markdown, { resolveMention });
+      const document = parseWorkspaceMessageBody(markdown, { resolveMention });
       return {
         ...renderWorkspaceMessageBody(document, {
           ...WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS,
@@ -107,7 +125,7 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
         }),
         fileReferences: collectWorkspaceMessageFileReferences(document),
       };
-    }, [actions?.onOpenMentionUser, message.markdown, resolveMention]);
+    }, [actions?.onOpenMentionUser, markdown, resolveMention]);
     const {
       menuOpen,
       menuSource,
@@ -125,11 +143,19 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
       fileReferences: renderedBody.fileReferences,
       onOpenMentionUser: actions?.onOpenMentionUser,
       onDownloadFile: actions?.onDownloadFile,
+      onOpenWorkspaceMedia: actions?.onOpenWorkspaceMedia,
       onOpenUnsupportedFilePreview: actions?.onOpenUnsupportedFilePreview,
     });
-    const metaPlacement = hasWorkspaceReactions(message)
-      ? "row"
-      : renderedBody.metadata.preferredMetaPlacement;
+    useWorkspaceMessageFilePreviews({
+      bodyRef,
+      renderedHtml: renderedBody.html,
+      fileReferences: renderedBody.fileReferences,
+      onLoadWorkspaceFilePreview: actions?.onLoadWorkspaceFilePreview,
+    });
+    const metaPlacement =
+      serverMessage != null && hasWorkspaceReactions(serverMessage)
+        ? "row"
+        : renderedBody.metadata.preferredMetaPlacement;
     const useInlineMeta = metaPlacement === "inline";
 
     useLayoutEffect(() => {
@@ -196,21 +222,41 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
         role={containsInteractiveBody ? undefined : "button"}
         tabIndex={containsInteractiveBody ? undefined : 0}
       >
-        <WorkspaceMessageBubbleMenu
-          message={message}
-          isOwn={isOwn}
-          open={menuOpen}
-          source={menuSource}
-          contextAnchor={contextMenuAnchor}
-          onSourceChange={handleMenuSourceChange}
-          onOpenChange={handleMenuOpenChange}
-          onReplyMessage={actions?.onReplyMessage}
-          onEditMessage={actions?.onEditMessage}
-          onRequestDeleteMessage={actions?.onRequestDeleteMessage}
-          onCopyMessageText={actions?.onCopyMessageText}
-          onToggleMessageReaction={actions?.onToggleMessageReaction}
-          getSelectedText={getSelectedText}
-        />
+        {serverMessage != null ? (
+          <WorkspaceMessageBubbleMenu
+            message={serverMessage}
+            isOwn={isOwn}
+            open={menuOpen}
+            source={menuSource}
+            contextAnchor={contextMenuAnchor}
+            onSourceChange={handleMenuSourceChange}
+            onOpenChange={handleMenuOpenChange}
+            onReplyMessage={actions?.onReplyMessage}
+            onForwardMessage={actions?.onForwardMessage}
+            onOpenMessageInChat={actions?.onOpenMessageInChat}
+            onToggleMessageSelection={actions?.onToggleMessageSelection}
+            onEditMessage={actions?.onEditMessage}
+            onRequestDeleteMessage={actions?.onRequestDeleteMessage}
+            onCopyMessageText={actions?.onCopyMessageText}
+            onToggleMessageReaction={actions?.onToggleMessageReaction}
+            getSelectedText={getSelectedText}
+          />
+        ) : null}
+        {selectionMode && serverMessage != null ? (
+          <button
+            type="button"
+            aria-label={t("message.select")}
+            aria-pressed={isSelected}
+            className={`absolute top-2 z-base flex h-5 w-5 items-center justify-center rounded border text-[11px] ${
+              isOwn
+                ? "-left-7 border-accent bg-accent text-bg"
+                : "-right-7 border-accent bg-accent text-bg"
+            } ${isSelected ? "opacity-100" : "opacity-70"}`}
+            onClick={() => actions?.onToggleMessageSelection?.(serverMessage.uuid)}
+          >
+            {isSelected ? "✓" : ""}
+          </button>
+        ) : null}
         {peerAuthorLabel.length > 0 ? (
           <div className="mb-1 text-xs font-medium text-text-muted" data-peer-author-label="true">
             {peerAuthorLabel}
@@ -232,8 +278,17 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
             <WorkspaceMessageBubbleMeta
               ref={metaRef}
               time={time}
-              createdAt={message.createdAt}
+              createdAt={displayMessage.createdAt}
               placement="inline"
+              after={
+                outgoingMessage == null ? null : (
+                  <WorkspaceMessageOutgoingDeliveryIndicator
+                    message={outgoingMessage}
+                    onRetry={actions?.onRetryOutgoingMessage}
+                    onRemove={actions?.onRemoveOutgoingMessage}
+                  />
+                )
+              }
             />
           </>
         ) : (
@@ -241,7 +296,20 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
             {/* Для переносов, длинных слов и будущего сложного содержимого не
                 угадываем ширину строки. Отдельная строка с временем проще и
                 не ломает читаемость текста. */}
-            <WorkspaceMessageBubbleMeta time={time} createdAt={message.createdAt} placement="row" />
+            <WorkspaceMessageBubbleMeta
+              time={time}
+              createdAt={displayMessage.createdAt}
+              placement="row"
+              after={
+                outgoingMessage == null ? null : (
+                  <WorkspaceMessageOutgoingDeliveryIndicator
+                    message={outgoingMessage}
+                    onRetry={actions?.onRetryOutgoingMessage}
+                    onRemove={actions?.onRemoveOutgoingMessage}
+                  />
+                )
+              }
+            />
           </div>
         )}
       </div>

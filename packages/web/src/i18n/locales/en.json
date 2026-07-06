@@ -190,6 +190,7 @@
     "channelResolveUnavailable": "Channel not found or unavailable",
     "channelResolveTransient": "Could not open channel right now",
     "sendFailed": "Failed to send message",
+    "uploading": "Uploading…",
     "sending": "Sending…",
     "retrySend": "Retry send",
     "removeFailedSend": "Remove message",

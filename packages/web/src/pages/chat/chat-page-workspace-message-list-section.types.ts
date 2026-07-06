@@ -1,3 +1,4 @@
+import type { MessengerOutgoingMessage } from "~/entities/messenger/messenger-outbox.types";
 import type {
   MessengerConversationId,
   MessengerMessage,
@@ -7,6 +8,7 @@ import type {
   WorkspaceMessageFileReference,
   WorkspaceMessageMentionResolver,
 } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
+import type { WorkspaceMessageMediaGalleryOpenRequest } from "~/widgets/workspace-message-list/workspace-message-list.types";
 
 export type WorkspaceChatMessagesLoadErrorKind = "initial" | "refresh";
 
@@ -14,6 +16,7 @@ export interface ChatPageWorkspaceMessageListSectionProps {
   messagesLoading: boolean;
   hasInitialPayload: boolean;
   messages: readonly MessengerMessage[];
+  outgoingMessages?: readonly MessengerOutgoingMessage[];
   currentUserUuid: MessengerUuid;
   conversationId: MessengerConversationId;
   scrollToBottomKey: string | undefined;
@@ -26,15 +29,30 @@ export interface ChatPageWorkspaceMessageListSectionProps {
   firstUnreadUuid: MessengerUuid | undefined;
   unreadCount: number;
   focusedMessageUuid: MessengerUuid | null | undefined;
+  selectionMode?: boolean;
+  selectedMessageUuids?: ReadonlySet<MessengerUuid>;
   onUnreadMessagesVisible: (messageUuids: MessengerUuid[]) => void;
   onUnreadMessagesAtBottom: (messageUuids: MessengerUuid[]) => void;
   onReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
+  onForwardMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
+  onOpenMessageInChat?: (messageUuid: MessengerUuid) => void;
+  onToggleMessageSelection?: (messageUuid: MessengerUuid) => void;
   onEditMessage?: (messageUuid: MessengerUuid) => void;
   onRequestDeleteMessage?: (messageUuid: MessengerUuid) => void;
   onCopyMessageText?: (messageUuid: MessengerUuid, text: string) => void | Promise<void>;
   onToggleMessageReaction?: (messageUuid: MessengerUuid, emojiName: string) => void | Promise<void>;
   onDownloadFile?: (file: WorkspaceMessageFileReference) => void | Promise<void>;
+  onLoadWorkspaceFilePreview?: (
+    file: WorkspaceMessageFileReference,
+    signal: AbortSignal,
+  ) => Promise<Blob>;
+  onOpenWorkspaceMedia?: (
+    file: WorkspaceMessageFileReference,
+    gallery?: WorkspaceMessageMediaGalleryOpenRequest,
+  ) => void | Promise<void>;
   onOpenUnsupportedFilePreview?: (file: WorkspaceMessageFileReference) => void;
+  onRetryOutgoingMessage?: (localId: string) => void;
+  onRemoveOutgoingMessage?: (localId: string) => void;
   messagesLoadError: WorkspaceChatMessagesLoadErrorKind | null;
   onRetryMessagesLoad: () => void;
   boundaryLoadFailed: boolean;

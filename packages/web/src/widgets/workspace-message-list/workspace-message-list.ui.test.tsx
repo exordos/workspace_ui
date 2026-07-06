@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { MessengerOutgoingMessage } from "~/entities/messenger/messenger-outbox.types";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import { setLocale } from "~/i18n/i18n";
+import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/protected-message-media";
 import { WorkspaceMessageList } from "./workspace-message-list.ui";
 
 function createWorkspaceMessage(overrides: Partial<MessengerMessage> = {}): MessengerMessage {
@@ -25,6 +27,29 @@ function createWorkspaceMessage(overrides: Partial<MessengerMessage> = {}): Mess
     ownReactionUuidsByEmojiName: {},
     createdAt: "2026-07-03T09:00:00.000Z",
     updatedAt: "2026-07-03T09:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function createOutgoingMessage(
+  overrides: Partial<MessengerOutgoingMessage> = {},
+): MessengerOutgoingMessage {
+  return {
+    localId: "outgoing-local-id-1",
+    ownerKey: "owner-key-1",
+    conversationId: "topic:stream-uuid-1:topic-uuid-1",
+    projectId: "project-uuid-1",
+    streamUuid: "stream-uuid-1",
+    topicUuid: "topic-uuid-1",
+    authorUuid: "current-user-uuid",
+    markdown: "Local outgoing text",
+    sourceMarkdown: "Local outgoing text",
+    status: "sending",
+    createdAt: "2026-07-03T09:01:00.000Z",
+    updatedAt: "2026-07-03T09:01:00.000Z",
+    attempt: 1,
+    error: null,
+    includeStreamConversation: false,
     ...overrides,
   };
 }
@@ -94,6 +119,123 @@ describe("WorkspaceMessageList", () => {
     expect(renderedMessage).not.toHaveAttribute(["data", "message", "id"].join("-"));
   });
 
+  it("renders local outgoing messages in the same Workspace feed", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "server-message",
+            markdown: "Server text",
+            createdAt: "2026-07-03T09:00:00.000Z",
+          }),
+        ]}
+        outgoingMessages={[
+          createOutgoingMessage({
+            localId: "local-outgoing-message",
+            markdown: "Pending local text",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    expect(screen.getByText("Pending local text")).toBeInTheDocument();
+    const articles = Array.from(container.querySelectorAll("article"));
+    expect(articles.map((article) => article.getAttribute("data-message-kind"))).toEqual([
+      "server",
+      "outgoing",
+    ]);
+    expect(articles[1]).toHaveAttribute("data-message-uuid", "local-outgoing-message");
+    expect(articles[1]).toHaveAttribute("data-outgoing-message-id", "local-outgoing-message");
+    expect(
+      container.querySelector("[data-outgoing-delivery-status='sending']"),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the same outgoing row mounted when the server snapshot arrives", () => {
+    const serverMessageUuid = "server-message-uuid";
+    const localId = "local-outgoing-message";
+    const outgoingMessage = createOutgoingMessage({
+      localId,
+      markdown: "Local outgoing text",
+      status: "sending",
+    });
+
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: serverMessageUuid,
+            markdown: "Local outgoing text",
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        outgoingMessages={[outgoingMessage]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const articleBeforeResolve = container.querySelector("article");
+    expect(articleBeforeResolve).toHaveAttribute("data-message-uuid", localId);
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: serverMessageUuid,
+            markdown: "Local outgoing text",
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        outgoingMessages={[
+          createOutgoingMessage({
+            localId,
+            markdown: "Local outgoing text",
+            status: "sent",
+            resolvedServerMessageUuid: serverMessageUuid,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const articles = Array.from(container.querySelectorAll("article"));
+    expect(articles).toHaveLength(1);
+    expect(articles[0]).toBe(articleBeforeResolve);
+    expect(articles[0]).toHaveAttribute("data-message-uuid", serverMessageUuid);
+    expect(articles[0]).toHaveAttribute("data-outgoing-message-id", localId);
+    expect(container.querySelector("[data-outgoing-delivery-status='sent']")).toBeInTheDocument();
+  });
+
+  it("exposes retry and remove actions for failed local outgoing messages", () => {
+    const onRetryOutgoingMessage = vi.fn();
+    const onRemoveOutgoingMessage = vi.fn();
+    render(
+      <WorkspaceMessageList
+        messages={[]}
+        outgoingMessages={[
+          createOutgoingMessage({
+            localId: "failed-local-message",
+            status: "failed",
+            error: "network failed",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onRetryOutgoingMessage, onRemoveOutgoingMessage }}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText("Retry send"));
+    fireEvent.click(screen.getByLabelText("Remove message"));
+
+    expect(onRetryOutgoingMessage).toHaveBeenCalledWith("failed-local-message");
+    expect(onRemoveOutgoingMessage).toHaveBeenCalledWith("failed-local-message");
+  });
+
   it("connects the Workspace scroll controller to the feed container", () => {
     const { container } = render(
       <WorkspaceMessageList
@@ -113,7 +255,7 @@ describe("WorkspaceMessageList", () => {
     expect(feed).toHaveAttribute("data-scroll-at-bottom");
   });
 
-  it("resets the scroll state when the conversation scroll key changes", () => {
+  it("resets the scroll state when the conversation scroll key changes", async () => {
     const { container, rerender } = render(
       <WorkspaceMessageList
         messages={[
@@ -133,7 +275,7 @@ describe("WorkspaceMessageList", () => {
 
     fireEvent.wheel(feed!, { deltaY: -100 });
 
-    expect(feed).toHaveAttribute("data-scroll-at-bottom", "false");
+    await waitFor(() => expect(feed).toHaveAttribute("data-scroll-at-bottom", "false"));
 
     rerender(
       <WorkspaceMessageList
@@ -455,6 +597,8 @@ describe("WorkspaceMessageList", () => {
 
     expect(bubble).not.toHaveAttribute("role", "button");
     expect(bubble).toHaveAttribute("data-workspace-message-interactive-body", "true");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
 
     fireEvent.click(link!);
 
@@ -467,7 +611,72 @@ describe("WorkspaceMessageList", () => {
     openSpy.mockRestore();
   });
 
+  it("keeps Workspace message permalinks as internal links", () => {
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    const workspaceMessageUuid = "11111111-1111-4111-8111-111111111111";
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-permalink-message",
+            markdown: `[jump](https://workspace.example/org/org-a/project/project-a/message/${workspaceMessageUuid})`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const link = container.querySelector<HTMLAnchorElement>(
+      `[data-workspace-message-link='true'][href='https://workspace.example/org/org-a/project/project-a/message/${workspaceMessageUuid}']`,
+    );
+
+    expect(link).toHaveAttribute("data-workspace-message-uuid", workspaceMessageUuid);
+    expect(link).not.toHaveAttribute("target");
+
+    link?.addEventListener("click", (event) => event.preventDefault());
+    fireEvent.click(link!);
+
+    expect(openSpy).not.toHaveBeenCalled();
+
+    openSpy.mockRestore();
+  });
+
+  it("does not render dangerous protocols as navigable links", () => {
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "dangerous-link-message",
+            markdown: [
+              "[data](data:text/html;base64,PHNjcmlwdD4=)",
+              "[file](file:///etc/passwd)",
+              "[blob](blob:https://example.com/id)",
+              "[js](javascript:alert(1))",
+              "[protocol-relative](//evil.example/path)",
+            ].join(" "),
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const body = container.querySelector("[data-message-body='true']");
+
+    expect(body).toHaveTextContent("data file blob js protocol-relative");
+    expect(body?.querySelector("a[href]")).not.toBeInTheDocument();
+
+    fireEvent.click(body!);
+
+    expect(openSpy).not.toHaveBeenCalled();
+
+    openSpy.mockRestore();
+  });
+
   it("downloads Workspace attachment references through UUID-based file action", () => {
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
     const onDownloadFile = vi.fn();
     const fileUuid = "33333333-3333-4333-8333-333333333333";
     const { container } = render(
@@ -489,12 +698,17 @@ describe("WorkspaceMessageList", () => {
 
     expect(attachment).toHaveAttribute("data-workspace-file-uuid", fileUuid);
     expect(attachment).toHaveAttribute("data-workspace-file-kind", "attachment");
+    expect(attachment).toHaveAttribute("title", "Файл: report.pdf");
+    expect(attachment).not.toHaveAttribute("href");
+    expect(container).not.toHaveTextContent(`workspace-file://${fileUuid}`);
+    expect(container.innerHTML).not.toContain("/api/messenger/v1/files");
     expect(
       container.querySelector(`[${["data", "message", "id"].join("-")}]`),
     ).not.toBeInTheDocument();
 
     fireEvent.click(attachment);
 
+    expect(openSpy).not.toHaveBeenCalled();
     expect(onDownloadFile).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: "attachment",
@@ -503,6 +717,81 @@ describe("WorkspaceMessageList", () => {
       }),
     );
     expect(article).toHaveAttribute("data-message-uuid", "workspace-attachment-message");
+
+    openSpy.mockRestore();
+  });
+
+  it("activates Workspace attachment placeholders with Enter and Space", () => {
+    const onDownloadFile = vi.fn();
+    const fileUuid = "33333333-3333-4333-8333-333333333333";
+    render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-keyboard-attachment-message",
+            markdown: `[report.pdf](workspace-file://${fileUuid})`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onDownloadFile }}
+      />,
+    );
+
+    const attachment = screen.getByRole("button", { name: "Файл: report.pdf" });
+
+    fireEvent.keyDown(attachment, { key: "Enter" });
+    fireEvent.keyDown(attachment, { key: " " });
+
+    expect(onDownloadFile).toHaveBeenCalledTimes(2);
+    expect(onDownloadFile).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ kind: "attachment", fileUuid, name: "report.pdf" }),
+    );
+    expect(onDownloadFile).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ kind: "attachment", fileUuid, name: "report.pdf" }),
+    );
+  });
+
+  it("does not start a duplicate Workspace file download while the callback is active", async () => {
+    const fileUuid = "33333333-3333-4333-8333-333333333333";
+    const resolveDownloads: (() => void)[] = [];
+    const onDownloadFile = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveDownloads.push(resolve);
+        }),
+    );
+    render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-duplicate-attachment-message",
+            markdown: `[report.pdf](workspace-file://${fileUuid})`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onDownloadFile }}
+      />,
+    );
+
+    const attachment = screen.getByRole("button", { name: "Файл: report.pdf" });
+
+    fireEvent.click(attachment);
+    fireEvent.click(attachment);
+
+    expect(onDownloadFile).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveDownloads[0]?.();
+      await Promise.resolve();
+    });
+
+    fireEvent.click(attachment);
+
+    expect(onDownloadFile).toHaveBeenCalledTimes(2);
   });
 
   it("downloads Workspace media placeholders without opening unsupported viewer", () => {
@@ -529,7 +818,12 @@ describe("WorkspaceMessageList", () => {
     expect(media).toHaveAttribute("data-workspace-file-uuid", fileUuid);
     expect(media).toHaveAttribute("data-workspace-file-kind", "media");
     expect(media).toHaveAttribute("data-workspace-media-kind", "image");
-    expect(container.querySelector("img")).not.toBeInTheDocument();
+    expect(media).not.toHaveAttribute("href");
+    expect(
+      container.querySelector("img.workspace-message-file-placeholder__image"),
+    ).toHaveAttribute("src", AUTH_IMAGE_PLACEHOLDER_SRC);
+    expect(container.innerHTML).not.toContain(`workspace-file://${fileUuid}`);
+    expect(container.innerHTML).not.toContain("/api/messenger/v1/files");
 
     fireEvent.click(media);
 
@@ -544,6 +838,323 @@ describe("WorkspaceMessageList", () => {
     );
     expect(onOpenUnsupportedFilePreview).not.toHaveBeenCalled();
     expect(article).toHaveAttribute("data-message-uuid", "workspace-media-message");
+  });
+
+  it("opens Workspace image media through the viewer callback when available", () => {
+    const onDownloadFile = vi.fn();
+    const onOpenWorkspaceMedia = vi.fn();
+    const fileUuid = "44444444-4444-4444-8444-444444444444";
+    render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-media-viewer-message",
+            markdown: `![screen.png](workspace-file://${fileUuid}?content_type=image/png)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onDownloadFile, onOpenWorkspaceMedia }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Изображение" }));
+
+    expect(onOpenWorkspaceMedia).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "media",
+        fileUuid,
+        name: "screen.png",
+        mediaKind: "image",
+        contentType: "image/png",
+      }),
+      {
+        items: [
+          {
+            messageUuid: "workspace-media-viewer-message",
+            file: expect.objectContaining({
+              fileUuid,
+              name: "screen.png",
+              mediaKind: "image",
+            }),
+          },
+        ],
+        startIndex: 0,
+      },
+    );
+    expect(onDownloadFile).not.toHaveBeenCalled();
+  });
+
+  it("opens a Workspace image gallery with all conversation images and clicked index", () => {
+    const onOpenWorkspaceMedia = vi.fn();
+    const firstFileUuid = "11111111-1111-4111-8111-111111111111";
+    const secondFileUuid = "22222222-2222-4222-8222-222222222222";
+    const firstLegacyUrl = `/api/messenger/v1/files/${firstFileUuid}/actions/download`;
+    render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-gallery-first-message",
+            markdown: `![first.png](${firstLegacyUrl})`,
+            createdAt: "2026-07-03T09:00:00.000Z",
+          }),
+          createWorkspaceMessage({
+            uuid: "workspace-gallery-second-message",
+            markdown: `![second.png](workspace-file://${secondFileUuid}?content_type=image/png)`,
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onOpenWorkspaceMedia }}
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Изображение" })[1]!);
+
+    expect(onOpenWorkspaceMedia).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fileUuid: secondFileUuid,
+        name: "second.png",
+      }),
+      {
+        items: [
+          {
+            messageUuid: "workspace-gallery-first-message",
+            file: expect.objectContaining({
+              fileUuid: firstFileUuid,
+              name: "first.png",
+            }),
+          },
+          {
+            messageUuid: "workspace-gallery-second-message",
+            file: expect.objectContaining({
+              fileUuid: secondFileUuid,
+              name: "second.png",
+            }),
+          },
+        ],
+        startIndex: 1,
+      },
+    );
+  });
+
+  it("dedupes Workspace gallery images by fileUuid while preserving first occurrence", () => {
+    const onOpenWorkspaceMedia = vi.fn();
+    const fileUuid = "33333333-3333-4333-8333-333333333333";
+    render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-gallery-original-message",
+            markdown: `![original.png](workspace-file://${fileUuid}?content_type=image/png)`,
+            createdAt: "2026-07-03T09:00:00.000Z",
+          }),
+          createWorkspaceMessage({
+            uuid: "workspace-gallery-duplicate-message",
+            markdown: `![duplicate.png](workspace-file://${fileUuid}?content_type=image/png)`,
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onOpenWorkspaceMedia }}
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Изображение" })[1]!);
+
+    expect(onOpenWorkspaceMedia).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fileUuid,
+        name: "duplicate.png",
+      }),
+      {
+        items: [
+          {
+            messageUuid: "workspace-gallery-original-message",
+            file: expect.objectContaining({
+              fileUuid,
+              name: "original.png",
+            }),
+          },
+        ],
+        startIndex: 0,
+      },
+    );
+  });
+
+  it("does not collect Workspace gallery items from plain rendered text", () => {
+    const onOpenWorkspaceMedia = vi.fn();
+    const fakeFileUuid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const realFileUuid = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-gallery-code-message",
+            markdown: `\`workspace-file://${fakeFileUuid}?content_type=image/png\``,
+            createdAt: "2026-07-03T09:00:00.000Z",
+          }),
+          createWorkspaceMessage({
+            uuid: "workspace-gallery-real-message",
+            markdown: `![real.png](workspace-file://${realFileUuid}?content_type=image/png)`,
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onOpenWorkspaceMedia }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Изображение" }));
+
+    expect(onOpenWorkspaceMedia).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fileUuid: realFileUuid,
+      }),
+      {
+        items: [
+          {
+            messageUuid: "workspace-gallery-real-message",
+            file: expect.objectContaining({
+              fileUuid: realFileUuid,
+            }),
+          },
+        ],
+        startIndex: 0,
+      },
+    );
+    expect(onOpenWorkspaceMedia).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        fileUuid: fakeFileUuid,
+      }),
+      expect.anything(),
+    );
+  });
+
+  it("loads Workspace image previews through an authorized blob loader", async () => {
+    const fileUuid = "44444444-4444-4444-8444-444444444444";
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:workspace-image-preview");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(
+      new Blob(["image-bytes"], {
+        type: "image/png",
+      }),
+    );
+    const { container, unmount } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-media-preview-message",
+            markdown: `![screen.png](workspace-file://${fileUuid}?content_type=image/png)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    const image = await screen.findByRole("img", { name: "screen.png" });
+    const placeholder = screen.getByRole("button", { name: "Изображение" });
+
+    expect(onLoadWorkspaceFilePreview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "media",
+        fileUuid,
+        name: "screen.png",
+        mediaKind: "image",
+        contentType: "image/png",
+      }),
+      expect.any(AbortSignal),
+    );
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    expect(image).toHaveClass("message-media-preview");
+    expect(image).toHaveAttribute("src", "blob:workspace-image-preview");
+    expect(placeholder).toHaveAttribute("data-workspace-preview-status", "loaded");
+    expect(container.innerHTML).not.toContain(`workspace-file://${fileUuid}`);
+    expect(container.innerHTML).not.toContain("/api/messenger/v1/files");
+
+    unmount();
+
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-image-preview");
+
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+  });
+
+  it("keeps Workspace image preview source on blob URL when the loader knows a backend URL", async () => {
+    const fileUuid = "55555555-5555-4555-8555-555555555555";
+    const backendUrl = `/api/messenger/v1/files/${fileUuid}/actions/download`;
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:workspace-safe");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(new Blob([backendUrl]));
+
+    const { unmount } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-media-safe-src-message",
+            markdown: `![screen.png](workspace-file://${fileUuid}?content_type=image/png)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    const image = await screen.findByRole("img", { name: "screen.png" });
+
+    expect(image.getAttribute("src")).toBe("blob:workspace-safe");
+    expect(image.getAttribute("src")).not.toContain("/api/messenger/v1/files");
+
+    unmount();
+
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+  });
+
+  it("falls back to downloadable Workspace media placeholder when preview load fails", async () => {
+    const onDownloadFile = vi.fn();
+    const onLoadWorkspaceFilePreview = vi.fn().mockRejectedValue(new Error("preview failed"));
+    const fileUuid = "66666666-6666-4666-8666-666666666666";
+    render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-media-preview-failed-message",
+            markdown: `![screen.png](workspace-file://${fileUuid}?content_type=image/png)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onDownloadFile, onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    const placeholder = screen.getByRole("button", { name: "Изображение" });
+
+    await waitFor(() => {
+      expect(placeholder).toHaveAttribute("data-workspace-preview-status", "error");
+    });
+    expect(screen.queryByRole("img", { name: "screen.png" })).not.toBeInTheDocument();
+
+    fireEvent.click(placeholder);
+
+    expect(onDownloadFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "media",
+        fileUuid,
+        name: "screen.png",
+        mediaKind: "image",
+        contentType: "image/png",
+      }),
+    );
   });
 
   it("opens resolved Workspace mentions through UUID-only callback", () => {
@@ -1072,8 +1683,59 @@ describe("WorkspaceMessageList", () => {
     expect(onCopyMessageText).toHaveBeenCalledWith("selected-callback-message", "selected phrase");
   });
 
+  it("groups Workspace menu actions with old divider order", async () => {
+    render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "divider-order-message",
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+            markdown: "Divider order body",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{
+          onReplyMessage: vi.fn(),
+          onForwardMessage: vi.fn(),
+          onToggleMessageSelection: vi.fn(),
+          onEditMessage: vi.fn(),
+          onRequestDeleteMessage: vi.fn(),
+          onToggleMessageReaction: vi.fn(),
+        }}
+      />,
+    );
+
+    openWorkspaceMessageMenu();
+
+    const menu = await screen.findByRole("menu");
+    const actionAndSeparatorNodes = Array.from(
+      menu.querySelectorAll('[role="menuitem"], [role="separator"]'),
+    );
+
+    expect(
+      actionAndSeparatorNodes.map((node) =>
+        node.getAttribute("role") === "separator" ? "separator" : node.textContent,
+      ),
+    ).toEqual([
+      "Reply",
+      "Forward",
+      "separator",
+      "Copy text",
+      "Select",
+      "separator",
+      "Edit message",
+      "Delete",
+    ]);
+  });
+
   it("calls Workspace menu callbacks with message uuid", async () => {
     const onReplyMessage = vi.fn();
+    const onForwardMessage = vi.fn();
+    const onOpenMessageInChat = vi.fn();
+    const onToggleMessageSelection = vi.fn();
     const onEditMessage = vi.fn();
     const onRequestDeleteMessage = vi.fn();
     const onCopyMessageText = vi.fn();
@@ -1093,6 +1755,9 @@ describe("WorkspaceMessageList", () => {
         conversationId="topic:stream-uuid-1:topic-uuid-1"
         actions={{
           onReplyMessage,
+          onForwardMessage,
+          onOpenMessageInChat,
+          onToggleMessageSelection,
           onEditMessage,
           onRequestDeleteMessage,
           onCopyMessageText,
@@ -1105,8 +1770,20 @@ describe("WorkspaceMessageList", () => {
     expect(onReplyMessage).toHaveBeenCalledWith("uuid-callback-message", undefined);
 
     openWorkspaceMessageMenu();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Forward" }));
+    expect(onForwardMessage).toHaveBeenCalledWith("uuid-callback-message", undefined);
+
+    openWorkspaceMessageMenu();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Open in chat" }));
+    expect(onOpenMessageInChat).toHaveBeenCalledWith("uuid-callback-message");
+
+    openWorkspaceMessageMenu();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Copy text" }));
     expect(onCopyMessageText).toHaveBeenCalledWith("uuid-callback-message", "Callback body");
+
+    openWorkspaceMessageMenu();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Select" }));
+    expect(onToggleMessageSelection).toHaveBeenCalledWith("uuid-callback-message");
 
     openWorkspaceMessageMenu();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Edit message" }));

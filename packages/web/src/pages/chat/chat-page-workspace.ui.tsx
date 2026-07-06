@@ -8,7 +8,11 @@ import {
   useWorkspaceMessageStore,
 } from "~/entities/message/message.model";
 import { selectWorkspaceChatHeaderView } from "~/entities/messenger/messenger-chat-header.lib";
-import { selectMessengerConversationFromWorkspaceRoute } from "~/entities/messenger/messenger-ids.lib";
+import {
+  conversationIdForStream,
+  conversationIdForTopic,
+  selectMessengerConversationFromWorkspaceRoute,
+} from "~/entities/messenger/messenger-ids.lib";
 import {
   deleteMessengerMessage,
   editMessengerMessage,
@@ -17,6 +21,8 @@ import {
 } from "~/entities/messenger/messenger-message-actions.lib";
 import { toggleMessengerMessageReaction } from "~/entities/messenger/messenger-message-reactions-actions.lib";
 import { loadMessengerConversationMessages } from "~/entities/messenger/messenger-messages-loader.lib";
+import { useMessengerOutboxStore } from "~/entities/messenger/messenger-outbox.model";
+import type { MessengerOutgoingMessage } from "~/entities/messenger/messenger-outbox.types";
 import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
 import { useMessengerStreamBindingsForRoute } from "~/entities/messenger/messenger-stream-bindings-loader.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
@@ -28,11 +34,17 @@ import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
+import type { MediaItem } from "~/features/media-viewer/media-viewer.types";
 import { t } from "~/i18n/i18n";
-import { downloadWorkspaceFile } from "~/shared/api/messenger-files.api";
+import { downloadWorkspaceFile, uploadWorkspaceFile } from "~/shared/api/messenger-files.api";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
-import type { WorkspaceMessageMentionResolution } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
+import type {
+  WorkspaceMessageFileReference,
+  WorkspaceMessageMentionResolution,
+} from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import {
   workspaceMessengerMessageRoute,
   type WorkspaceMessengerRouteMatch,
@@ -44,11 +56,18 @@ import type {
   MessageComposerCapabilities,
   ReplyQuote,
 } from "~/widgets/message-composer/message-composer.types";
+import type { WorkspaceMessageMediaGalleryOpenRequest } from "~/widgets/workspace-message-list/workspace-message-list.types";
 import { consumePendingForwardPrefill } from "./chat-forward.lib";
 import { ChatPageComposerSection } from "./chat-page-composer-section.ui";
 import { ChatPageDeleteConfirmBar } from "./chat-page-delete-confirm-bar.ui";
 import { ChatPageInlineAlerts } from "./chat-page-inline-alerts.ui";
+import { ChatPageSelectionBar } from "./chat-page-selection-bar.ui";
 import { ChatPageWorkspaceMessageListSection } from "./chat-page-workspace-message-list-section.ui";
+import {
+  appendComposerMarkdownLinks,
+  uploadWorkspaceComposerFiles,
+  type ComposerUploadProgressState,
+} from "./chat-upload.lib";
 import {
   deriveWorkspaceDownloadFileName,
   parseWorkspaceDownloadTotalBytes,
@@ -62,6 +81,8 @@ interface WorkspaceChatPageProps {
 }
 
 const EMPTY_MESSAGES: MessengerMessage[] = [];
+const EMPTY_OUTGOING_MESSAGES: MessengerOutgoingMessage[] = [];
+const EMPTY_OUTGOING_MESSAGE_LOCAL_IDS: readonly string[] = [];
 const EMPTY_USERS_BY_ID: UsersById = {};
 const READ_BATCH_DELAY_MS = 250;
 const WORKSPACE_COMPOSER_EDIT_SESSION_ID = 1;
@@ -76,6 +97,35 @@ function normalizeWorkspaceActionError(error: unknown, fallback: string): string
   return error instanceof Error && error.message.trim().length > 0 ? error.message : fallback;
 }
 
+function isWorkspaceImageMediaReference(file: WorkspaceMessageFileReference): boolean {
+  return file.kind === "media" && file.mediaKind === "image" && file.fileUuid.trim().length > 0;
+}
+
+function resolveWorkspaceMediaOpenFiles(
+  file: WorkspaceMessageFileReference,
+  gallery: WorkspaceMessageMediaGalleryOpenRequest | undefined,
+): { files: readonly WorkspaceMessageFileReference[]; startIndex: number } | null {
+  const files = (gallery?.items.map((item) => item.file) ?? [file]).filter(
+    isWorkspaceImageMediaReference,
+  );
+  if (files.length === 0) {
+    return null;
+  }
+
+  const clickedFileUuid = file.fileUuid.trim();
+  const clickedIndex = files.findIndex(
+    (candidate) => candidate.fileUuid.trim() === clickedFileUuid,
+  );
+  if (clickedIndex >= 0) {
+    return { files, startIndex: clickedIndex };
+  }
+
+  const fallbackStartIndex =
+    gallery == null ? 0 : Math.max(0, Math.min(gallery.startIndex, files.length - 1));
+
+  return { files, startIndex: fallbackStartIndex };
+}
+
 function findDefaultTopic(
   topicsById: Readonly<Record<string, MessengerTopic>>,
   streamUuid: string,
@@ -87,6 +137,23 @@ function findDefaultTopic(
       return candidate.streamUuid === streamUuid && candidate.isDefault;
     }) ?? null
   );
+}
+
+function buildWorkspaceOutgoingPreviewMarkdown(
+  content: string,
+  files: readonly File[] | undefined,
+): string {
+  const trimmedContent = content.trim();
+  if (trimmedContent.length > 0) return content;
+  if (files == null || files.length === 0) return "";
+
+  // Пока файлы еще не загружены, серверных workspace-file ссылок нет.
+  // В локальной строке показываем имена файлов, чтобы пользователь видел,
+  // какая именно отправка стоит в очереди или упала.
+  return files
+    .map((file) => file.name.trim())
+    .filter((name) => name.length > 0)
+    .join("\n");
 }
 
 function WorkspaceChatState({
@@ -116,7 +183,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   const [composerEditSession, setComposerEditSession] = useState<ComposerEditSession | null>(null);
   const [composerEditMessageUuid, setComposerEditMessageUuid] = useState<string | null>(null);
   const [pendingDeleteMessageUuid, setPendingDeleteMessageUuid] = useState<string | null>(null);
+  const [selectedMessageUuids, setSelectedMessageUuids] = useState<Set<string>>(() => new Set());
   const [replyQuote, setReplyQuote] = useState<ReplyQuote | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<ComposerUploadProgressState | null>(null);
   const [draftInitialValue, setDraftInitialValue] = useState<string | undefined>(undefined);
   const [scrollToBottomAfterSendNonce, setScrollToBottomAfterSendNonce] = useState(0);
   const composerValueRef = useRef("");
@@ -124,6 +193,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   const readRequestedMessageUuidsRef = useRef<Set<string>>(new Set());
   const readBatchTimerRef = useRef<number | null>(null);
   const actionAbortControllersRef = useRef<Set<AbortController>>(new Set());
+  const uploadAbortControllerRef = useRef<AbortController | null>(null);
   const selection = useMemo(() => selectMessengerConversationFromWorkspaceRoute(route), [route]);
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
@@ -131,7 +201,12 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     () => selectCurrentWorkspaceRuntimeContext({ sessions, currentAccountId }),
     [sessions, currentAccountId],
   );
+  const ownerKey = useMemo(
+    () => (runtimeContext == null ? null : workspaceRuntimeOwnerKey(runtimeContext)),
+    [runtimeContext],
+  );
   const conversationId = selection.status === "conversation" ? selection.conversationId : null;
+  const selectionMode = selectedMessageUuids.size > 0;
   const streamUuid = selection.status === "conversation" ? selection.streamUuid : null;
   const topicUuid =
     selection.status === "conversation" && selection.kind === "topic" ? selection.topicUuid : null;
@@ -149,6 +224,24 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       ? EMPTY_MESSAGES
       : selectWorkspaceMessagesForConversation(state, conversationId),
   );
+  const outgoingMessagesByLocalId = useMessengerOutboxStore(
+    (state) => state.outgoingMessagesByLocalId,
+  );
+  const outgoingMessageLocalIds = useMessengerOutboxStore((state) =>
+    conversationId == null
+      ? EMPTY_OUTGOING_MESSAGE_LOCAL_IDS
+      : (state.outgoingMessageLocalIdsByConversationId[conversationId] ??
+        EMPTY_OUTGOING_MESSAGE_LOCAL_IDS),
+  );
+  const outgoingMessages = useMemo(() => {
+    if (ownerKey == null || outgoingMessageLocalIds.length === 0) return EMPTY_OUTGOING_MESSAGES;
+
+    const messages = outgoingMessageLocalIds
+      .map((localId) => outgoingMessagesByLocalId[localId])
+      .filter((message): message is MessengerOutgoingMessage => message?.ownerKey === ownerKey);
+
+    return messages.length === 0 ? EMPTY_OUTGOING_MESSAGES : messages;
+  }, [outgoingMessageLocalIds, outgoingMessagesByLocalId, ownerKey]);
   const messagesStatus = useWorkspaceMessageStore((state) =>
     conversationId == null
       ? selectWorkspaceMessageStatusForConversation(state, "")
@@ -196,6 +289,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         hideTopic: true,
         hideParticipants: true,
         dmPartner: headerView.dmPartner,
+        rightPanelLabel: t("info.partnerInfo"),
       };
     }
 
@@ -249,8 +343,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       // The Workspace backend currently supports send/edit/delete/read, but not these extra actions.
       // Buttons remain in the old UI, but show controlled placeholders instead of Zulip requests.
       upload: {
-        mode: "unsupported",
-        unsupportedText: t("workspaceMessenger.uploadsUnsupported"),
+        mode: "enabled",
       },
       savedSnippets: {
         mode: "unsupported",
@@ -299,12 +392,25 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         controller.abort();
       }
       actionAbortControllersRef.current.clear();
+      uploadAbortControllerRef.current = null;
       if (readBatchTimerRef.current != null) {
         window.clearTimeout(readBatchTimerRef.current);
         readBatchTimerRef.current = null;
       }
     };
   }, []);
+
+  useEffect(() => {
+    setUploadProgress(null);
+
+    return () => {
+      for (const controller of actionAbortControllersRef.current) {
+        controller.abort();
+      }
+      actionAbortControllersRef.current.clear();
+      uploadAbortControllerRef.current = null;
+    };
+  }, [conversationId, runtimeContext]);
 
   useEffect(() => {
     const pendingForwardPrefill = consumePendingForwardPrefill(location.pathname);
@@ -319,8 +425,18 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
 
   useEffect(() => {
     setPendingDeleteMessageUuid(null);
+    setSelectedMessageUuids(new Set());
     setReplyQuote(null);
   }, [conversationId]);
+
+  useEffect(() => {
+    return () => {
+      const mediaViewerState = useMediaViewerStore.getState();
+      if (mediaViewerState.items.some((item) => item.workspaceFile != null)) {
+        mediaViewerState.close();
+      }
+    };
+  }, [conversationId, runtimeContext]);
 
   const topicTitle =
     topic?.name ?? (selection.status === "conversation" ? conversation?.title : undefined);
@@ -347,14 +463,21 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     messagesStatus.error == null ? null : routeMessages.length === 0 ? "initial" : "refresh";
 
   const runWorkspaceAction = useCallback(
-    async <T,>(action: (signal: AbortSignal) => Promise<T>): Promise<T> => {
+    async <T,>(
+      action: (signal: AbortSignal) => Promise<T>,
+      options: { onController?: (controller: AbortController) => void } = {},
+    ): Promise<T> => {
       // Every write action gets its own AbortController so org/project switches do not apply old responses.
       const controller = new AbortController();
       actionAbortControllersRef.current.add(controller);
+      options.onController?.(controller);
       try {
         return await action(controller.signal);
       } finally {
         actionAbortControllersRef.current.delete(controller);
+        if (uploadAbortControllerRef.current === controller) {
+          uploadAbortControllerRef.current = null;
+        }
       }
     },
     [],
@@ -389,23 +512,118 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     };
   }, [selection, topicsById]);
 
+  const deliverOutgoingMessage = useCallback(
+    (localId: string) => {
+      const outgoing = useMessengerOutboxStore.getState().outgoingMessagesByLocalId[localId];
+      if (outgoing == null) return;
+
+      if (runtimeContext == null || ownerKey == null || outgoing.ownerKey !== ownerKey) {
+        useMessengerOutboxStore
+          .getState()
+          .markOutgoingMessageFailed(localId, t("workspaceMessenger.runtimeUnavailable"));
+        return;
+      }
+
+      const files = outgoing.files;
+      const hasFiles = files != null && files.length > 0;
+      if (hasFiles) {
+        useMessengerOutboxStore.getState().markOutgoingMessageUploading(localId);
+      } else {
+        useMessengerOutboxStore.getState().markOutgoingMessageSending(localId);
+      }
+
+      void runWorkspaceAction(
+        async (signal) => {
+          try {
+            const uploadedLinks = hasFiles
+              ? await uploadWorkspaceComposerFiles(
+                  [...files],
+                  (file, uploadOptions) =>
+                    uploadWorkspaceFile(
+                      buildMessengerRequestOptions(
+                        runtimeContext,
+                        undefined,
+                        uploadOptions?.signal,
+                      ),
+                      {
+                        file,
+                        streamUuid: outgoing.streamUuid,
+                      },
+                    ),
+                  {
+                    onProgress: setUploadProgress,
+                    signal,
+                  },
+                )
+              : [];
+            const markdown = appendComposerMarkdownLinks(outgoing.sourceMarkdown, uploadedLinks);
+            if (markdown.trim().length === 0) {
+              useMessengerOutboxStore.getState().removeOutgoingMessage(localId);
+              return;
+            }
+
+            // После успешной загрузки файлов retry больше не должен грузить их
+            // повторно: локальная строка уже содержит итоговый markdown с
+            // workspace-file ссылками, а следующий риск - только POST /messages.
+            useMessengerOutboxStore.getState().markOutgoingMessageSending(localId, {
+              markdown,
+              sourceMarkdown: markdown,
+              files: null,
+            });
+
+            const result = await sendMessengerMessage({
+              runtimeContext,
+              getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+              signal,
+              streamUuid: outgoing.streamUuid,
+              topicUuid: outgoing.topicUuid,
+              markdown,
+              includeStreamConversation: outgoing.includeStreamConversation,
+            });
+
+            if (result.status === "applied") {
+              useMessengerOutboxStore
+                .getState()
+                .resolveOutgoingMessage(localId, result.message?.uuid);
+              return;
+            }
+
+            useMessengerOutboxStore
+              .getState()
+              .markOutgoingMessageFailed(localId, t("message.sendFailed"));
+          } catch (error) {
+            useMessengerOutboxStore
+              .getState()
+              .markOutgoingMessageFailed(
+                localId,
+                normalizeWorkspaceActionError(error, t("message.sendFailed")),
+              );
+          } finally {
+            setUploadProgress(null);
+          }
+        },
+        {
+          onController: (controller) => {
+            if (hasFiles) {
+              uploadAbortControllerRef.current = controller;
+            }
+          },
+        },
+      );
+    },
+    [ownerKey, runWorkspaceAction, runtimeContext],
+  );
+
   const handleSend = useCallback(
-    async (content: string, _subjectOverride?: string, files?: File[]) => {
+    (content: string, _subjectOverride?: string, files?: File[]) => {
       // Composer remains old, but sending goes only through Workspace POST /messages/.
       setSendError(null);
+      setUploadProgress(null);
       if (runtimeContext == null) {
         const error = t("workspaceMessenger.runtimeUnavailable");
         setSendError(error);
         throw new Error(error);
       }
-      if (files != null && files.length > 0) {
-        const error = t("workspaceMessenger.uploadsUnsupported");
-        setSendError(error);
-        throw new Error(error);
-      }
-
-      const markdown = content.trim();
-      if (markdown.length === 0) return;
 
       const target = resolveSendTarget();
       if (target.status === "blocked") {
@@ -413,29 +631,50 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         throw new Error(target.error);
       }
 
-      try {
-        const result = await runWorkspaceAction((signal) =>
-          sendMessengerMessage({
-            runtimeContext,
-            getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-            signal,
-            streamUuid: target.streamUuid,
-            topicUuid: target.topicUuid,
-            markdown,
-            includeStreamConversation: target.includeStreamConversation,
-          }),
-        );
-        if (result.status === "applied") {
-          setScrollToBottomAfterSendNonce((value) => value + 1);
-        }
-      } catch (error) {
-        const message = normalizeWorkspaceActionError(error, t("message.sendFailed"));
-        setSendError(message);
-        throw error instanceof Error ? error : new Error(message);
-      }
+      const previewMarkdown = buildWorkspaceOutgoingPreviewMarkdown(content, files);
+      if (previewMarkdown.trim().length === 0) return;
+
+      const outgoing = useMessengerOutboxStore.getState().enqueueOutgoingMessage({
+        ownerKey: workspaceRuntimeOwnerKey(runtimeContext),
+        conversationId: target.includeStreamConversation
+          ? conversationIdForStream(target.streamUuid)
+          : conversationIdForTopic(target.streamUuid, target.topicUuid),
+        projectId: runtimeContext.projectId,
+        streamUuid: target.streamUuid,
+        topicUuid: target.topicUuid,
+        authorUuid: runtimeContext.userUuid,
+        markdown: previewMarkdown,
+        sourceMarkdown: content,
+        status: files != null && files.length > 0 ? "uploading" : "sending",
+        includeStreamConversation: target.includeStreamConversation,
+        files,
+      });
+
+      // Скроллим сразу после локальной строки. Серверный snapshot позже может
+      // переехать по backend created_at, но пользователь уже видит факт отправки.
+      setScrollToBottomAfterSendNonce((value) => value + 1);
+      deliverOutgoingMessage(outgoing.localId);
     },
-    [resolveSendTarget, runWorkspaceAction, runtimeContext],
+    [deliverOutgoingMessage, resolveSendTarget, runtimeContext],
   );
+
+  const handleCancelUpload = useCallback(() => {
+    const controller = uploadAbortControllerRef.current;
+    if (controller == null || controller.signal.aborted) return;
+    controller.abort();
+  }, []);
+
+  const handleRetryOutgoingMessage = useCallback(
+    (localId: string) => {
+      deliverOutgoingMessage(localId);
+      setScrollToBottomAfterSendNonce((value) => value + 1);
+    },
+    [deliverOutgoingMessage],
+  );
+
+  const handleRemoveOutgoingMessage = useCallback((localId: string) => {
+    useMessengerOutboxStore.getState().removeOutgoingMessage(localId);
+  }, []);
 
   const handleSubmitEdit = useCallback(
     async (_editSessionId: number, markdown: string) => {
@@ -595,6 +834,32 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     });
   }, []);
 
+  const handleToggleMessageSelection = useCallback((messageUuid: string) => {
+    setSelectedMessageUuids((current) => {
+      const next = new Set(current);
+      if (next.has(messageUuid)) {
+        next.delete(messageUuid);
+      } else {
+        next.add(messageUuid);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleCancelMessageSelection = useCallback(() => {
+    setSelectedMessageUuids(new Set());
+  }, []);
+
+  const handleForwardMessage = useCallback((messageUuid: string, selectedText?: string) => {
+    const message = selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
+    if (message == null || selectedText?.trim().length === 0) {
+      setActionError(t("workspaceMessenger.messageActionTargetMissing"));
+      return;
+    }
+
+    setActionError(t("workspaceMessenger.forwardUnsupported"));
+  }, []);
+
   const handleToggleMessageReaction = useCallback(
     (messageUuid: string, emojiName: string) => {
       setActionError(null);
@@ -665,6 +930,111 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       });
     },
     [runWorkspaceAction, runtimeContext],
+  );
+
+  const handleLoadWorkspaceFilePreview = useCallback(
+    async (file: { fileUuid: string }, signal: AbortSignal): Promise<Blob> => {
+      if (runtimeContext == null) {
+        throw new Error(t("workspaceMessenger.runtimeUnavailable"));
+      }
+
+      const result = await downloadWorkspaceFile(
+        buildMessengerRequestOptions(runtimeContext, undefined, signal),
+        file.fileUuid,
+      );
+      return result.blob;
+    },
+    [runtimeContext],
+  );
+
+  const handleOpenWorkspaceMedia = useCallback(
+    (file: WorkspaceMessageFileReference, gallery?: WorkspaceMessageMediaGalleryOpenRequest) => {
+      setActionError(null);
+      if (runtimeContext == null) {
+        setActionError(t("workspaceMessenger.runtimeUnavailable"));
+        return;
+      }
+
+      const mediaOpen = resolveWorkspaceMediaOpenFiles(file, gallery);
+      if (mediaOpen == null) {
+        setActionError(t("workspaceMessenger.mediaViewerUnsupported"));
+        return;
+      }
+
+      void runWorkspaceAction(async (signal) => {
+        const createdObjectUrls: string[] = [];
+        try {
+          const items: MediaItem[] = [];
+
+          for (const mediaFile of mediaOpen.files) {
+            const result = await downloadWorkspaceFile(
+              buildMessengerRequestOptions(runtimeContext, undefined, signal),
+              mediaFile.fileUuid,
+            );
+            if (signal.aborted) {
+              return;
+            }
+
+            const objectUrl = URL.createObjectURL(result.blob);
+            createdObjectUrls.push(objectUrl);
+            if (signal.aborted) {
+              return;
+            }
+
+            const fileName = deriveWorkspaceDownloadFileName({
+              fileUuid: mediaFile.fileUuid,
+              fileNameHint: mediaFile.name,
+              contentDisposition: result.headers.get("content-disposition"),
+            });
+            const blobContentType = result.blob.type.trim();
+            const contentType =
+              mediaFile.contentType ?? (blobContentType.length > 0 ? blobContentType : undefined);
+            const workspaceFile =
+              contentType == null
+                ? {
+                    fileUuid: mediaFile.fileUuid,
+                    name: fileName,
+                    objectUrl,
+                    onDownload: handleDownloadFile,
+                  }
+                : {
+                    fileUuid: mediaFile.fileUuid,
+                    name: fileName,
+                    contentType,
+                    objectUrl,
+                    onDownload: handleDownloadFile,
+                  };
+
+            items.push({
+              url: objectUrl,
+              type: "image",
+              previewUrl: objectUrl,
+              alt: mediaFile.name ?? fileName,
+              downloadFileName: fileName,
+              workspaceFile,
+            });
+          }
+
+          if (items.length === 0 || signal.aborted) {
+            return;
+          }
+
+          useMediaViewerStore.getState().open(items, mediaOpen.startIndex);
+          createdObjectUrls.length = 0;
+        } finally {
+          for (const objectUrl of createdObjectUrls) {
+            URL.revokeObjectURL(objectUrl);
+          }
+        }
+      }).catch((error) => {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          setActionError(
+            normalizeWorkspaceActionError(error, t("workspaceMessenger.mediaViewerUnsupported")),
+          );
+        }
+      });
+    },
+    [handleDownloadFile, runWorkspaceAction, runtimeContext],
   );
 
   const handleOpenUnsupportedFilePreview = useCallback(() => {
@@ -806,6 +1176,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         messagesLoading={messagesStatus.loading}
         hasInitialPayload={routeMessages.length > 0}
         messages={routeMessages}
+        outgoingMessages={outgoingMessages}
         currentUserUuid={currentUserUuid}
         conversationId={selection.conversationId}
         scrollToBottomKey={selection.conversationId}
@@ -818,15 +1189,23 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         firstUnreadUuid={firstUnreadMessage?.uuid}
         unreadCount={unreadCount}
         focusedMessageUuid={null}
+        selectionMode={selectionMode}
+        selectedMessageUuids={selectedMessageUuids}
         onUnreadMessagesVisible={scheduleReadBatch}
         onUnreadMessagesAtBottom={scheduleReadBatch}
         onReplyMessage={handleReplyMessage}
+        onForwardMessage={handleForwardMessage}
+        onToggleMessageSelection={handleToggleMessageSelection}
         onEditMessage={handleEditMessage}
         onRequestDeleteMessage={handleRequestDeleteMessage}
         onCopyMessageText={handleCopyMessageText}
         onToggleMessageReaction={handleToggleMessageReaction}
         onDownloadFile={handleDownloadFile}
+        onLoadWorkspaceFilePreview={handleLoadWorkspaceFilePreview}
+        onOpenWorkspaceMedia={handleOpenWorkspaceMedia}
         onOpenUnsupportedFilePreview={handleOpenUnsupportedFilePreview}
+        onRetryOutgoingMessage={handleRetryOutgoingMessage}
+        onRemoveOutgoingMessage={handleRemoveOutgoingMessage}
         messagesLoadError={messagesLoadError}
         onRetryMessagesLoad={retry}
         boundaryLoadFailed={false}
@@ -852,6 +1231,14 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       />
       <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {body}
+        <ChatPageSelectionBar
+          selectedCount={selectedMessageUuids.size}
+          forwardDisabled
+          deleteDisabled
+          onForward={() => setActionError(t("workspaceMessenger.forwardUnsupported"))}
+          onDelete={noop}
+          onCancel={handleCancelMessageSelection}
+        />
         <ChatPageInlineAlerts
           routeResolveError={null}
           actionError={actionError}
@@ -874,10 +1261,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
           showTopicPrompt={false}
           streamSlug={undefined}
           onExpandStreamTopics={noop}
-          uploadProgress={null}
+          uploadProgress={uploadProgress}
           onSend={handleSend}
           onCreateCallLink={undefined}
-          onCancelUpload={noop}
+          onCancelUpload={handleCancelUpload}
           activeTopic={
             selection.status === "conversation" && selection.kind === "topic" ? topicTitle : null
           }

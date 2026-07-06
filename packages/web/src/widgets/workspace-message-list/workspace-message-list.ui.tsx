@@ -1,31 +1,61 @@
 import React, { useCallback, useMemo } from "react";
-import type { MessengerMessage, MessengerUuid } from "~/entities/messenger/messenger.types";
+import type { MessengerUuid } from "~/entities/messenger/messenger.types";
 import { useTranslation } from "~/i18n/i18n";
+import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import { WorkspaceMessageBubble } from "./workspace-message-bubble.ui";
 import { formatWorkspaceMessageDayLabel } from "./workspace-message-day-label.lib";
-import { groupWorkspaceMessagesByDayAndAuthor } from "./workspace-message-list-grouping.lib";
+import {
+  createWorkspaceMessageListOutgoingItem,
+  createWorkspaceMessageListServerItem,
+  groupWorkspaceMessagesByDayAndAuthor,
+} from "./workspace-message-list-grouping.lib";
+import { collectWorkspaceMessageImageGallery } from "./workspace-message-list-media.lib";
 import { useWorkspaceMessageListScroll } from "./workspace-message-list-scroll.hook";
 import type { WorkspaceMessageAuthorGroup } from "./workspace-message-list-grouping.lib";
-import type { WorkspaceMessageListProps } from "./workspace-message-list.types";
+import type {
+  WorkspaceMessageListOutgoingItem,
+  WorkspaceMessageListItem,
+  WorkspaceMessageListProps,
+} from "./workspace-message-list.types";
 
 const OWN_ROW_CLASS_NAME = "flex w-full justify-end self-stretch";
 const PEER_ROW_CLASS_NAME = "flex w-full justify-start self-stretch";
 const OWN_AUTHOR_GROUP_CLASS_NAME = "flex flex-col gap-1 items-end";
 const PEER_AUTHOR_GROUP_CLASS_NAME = "flex flex-col gap-1 items-start";
+const EMPTY_SELECTED_MESSAGE_UUIDS = new Set<MessengerUuid>();
+const EMPTY_OUTGOING_MESSAGES: NonNullable<WorkspaceMessageListProps["outgoingMessages"]> = [];
+const OUTGOING_SERVER_MATCH_WINDOW_MS = 5 * 60 * 1000;
+
+function canMatchOutgoingServerMessage(
+  outgoingMessage: NonNullable<WorkspaceMessageListProps["outgoingMessages"]>[number],
+  serverMessage: WorkspaceMessageListProps["messages"][number],
+): boolean {
+  if (outgoingMessage.conversationId !== serverMessage.conversationId) return false;
+  if (outgoingMessage.authorUuid !== serverMessage.authorUuid) return false;
+  if (outgoingMessage.markdown !== serverMessage.markdown) return false;
+
+  const outgoingTimestamp = Date.parse(outgoingMessage.createdAt);
+  const serverTimestamp = Date.parse(serverMessage.createdAt);
+  if (Number.isNaN(outgoingTimestamp) || Number.isNaN(serverTimestamp)) return true;
+
+  return Math.abs(serverTimestamp - outgoingTimestamp) <= OUTGOING_SERVER_MATCH_WINDOW_MS;
+}
 
 function resolveMessageOwner(
-  message: MessengerMessage,
+  message: WorkspaceMessageListItem,
   currentUserUuid: MessengerUuid,
 ): "own" | "peer" {
   return message.authorUuid === currentUserUuid || message.isOwn ? "own" : "peer";
 }
 
 interface WorkspaceMessageListRowProps {
-  message: MessengerMessage;
+  message: WorkspaceMessageListItem;
   owner: "own" | "peer";
   currentUserUuid: MessengerUuid;
   isFirstInGroup: boolean;
   isLastInGroup: boolean;
+  isSelected: boolean;
+  selectionMode: boolean;
   resolveAuthorLabel?: (authorUuid: MessengerUuid) => string | null | undefined;
   resolveMention?: WorkspaceMessageListProps["resolveMention"];
   actions?: WorkspaceMessageListProps["actions"];
@@ -37,16 +67,23 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
   currentUserUuid,
   isFirstInGroup,
   isLastInGroup,
+  isSelected,
+  selectionMode,
   resolveAuthorLabel,
   resolveMention,
   actions,
 }: WorkspaceMessageListRowProps): React.ReactElement {
+  const resolvedServerMessageUuid =
+    message.kind === "server" ? message.message.uuid : message.resolvedServerMessage?.uuid;
   return (
     <article
       className={owner === "own" ? OWN_ROW_CLASS_NAME : PEER_ROW_CLASS_NAME}
-      data-message-uuid={message.uuid}
+      data-message-uuid={resolvedServerMessageUuid ?? message.key}
+      data-server-message-uuid={resolvedServerMessageUuid}
+      data-outgoing-message-id={message.kind === "outgoing" ? message.message.localId : undefined}
       data-author-uuid={message.authorUuid}
       data-message-owner={owner}
+      data-message-kind={message.kind}
     >
       {/* article остается строкой списка и DOM-якорем для скролла. Сам bubble
           ниже отвечает только за вид сообщения, чтобы следующие фазы могли
@@ -56,6 +93,8 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
         currentUserUuid={currentUserUuid}
         isFirstInGroup={isFirstInGroup}
         isLastInGroup={isLastInGroup}
+        isSelected={isSelected}
+        selectionMode={selectionMode}
         resolveAuthorLabel={resolveAuthorLabel}
         resolveMention={resolveMention}
         actions={actions}
@@ -70,6 +109,8 @@ interface WorkspaceMessageAuthorGroupViewProps {
   resolveAuthorLabel?: (authorUuid: MessengerUuid) => string | null | undefined;
   resolveMention?: WorkspaceMessageListProps["resolveMention"];
   actions?: WorkspaceMessageListProps["actions"];
+  selectedMessageUuids: ReadonlySet<MessengerUuid>;
+  selectionMode: boolean;
 }
 
 const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuthorGroupView({
@@ -78,6 +119,8 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
   resolveAuthorLabel,
   resolveMention,
   actions,
+  selectedMessageUuids,
+  selectionMode,
 }: WorkspaceMessageAuthorGroupViewProps): React.ReactElement {
   const firstMessage = group.messages[0];
   const groupOwner =
@@ -90,14 +133,24 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
       data-author-uuid={group.authorUuid}
       data-message-owner={groupOwner}
     >
+      {/* Выделение держится за серверный UUID, даже если строка ещё живёт в
+          локальном outbox-слое. Так DOM-узел не пересоздаётся при переходе
+          sent -> server snapshot. */}
       {group.messages.map((message, messageIndex) => (
         <WorkspaceMessageListRow
-          key={message.uuid}
+          key={message.key}
           message={message}
           owner={resolveMessageOwner(message, currentUserUuid)}
           currentUserUuid={currentUserUuid}
           isFirstInGroup={messageIndex === 0}
           isLastInGroup={messageIndex === group.messages.length - 1}
+          isSelected={
+            (message.kind === "server" && selectedMessageUuids.has(message.message.uuid)) ||
+            (message.kind === "outgoing" &&
+              message.resolvedServerMessage != null &&
+              selectedMessageUuids.has(message.resolvedServerMessage.uuid))
+          }
+          selectionMode={selectionMode}
           resolveAuthorLabel={resolveAuthorLabel}
           resolveMention={resolveMention}
           actions={actions}
@@ -109,6 +162,7 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
 
 export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
   messages,
+  outgoingMessages = EMPTY_OUTGOING_MESSAGES,
   currentUserUuid,
   conversationId,
   scrollToBottomKey,
@@ -116,6 +170,8 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
   firstUnreadUuid,
   unreadCount = 0,
   focusedMessageUuid = null,
+  selectionMode = false,
+  selectedMessageUuids = EMPTY_SELECTED_MESSAGE_UUIDS,
   isLoadingOlder = false,
   isLoadingNewer = false,
   hasOlderMessages = false,
@@ -129,9 +185,76 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
   actions,
 }) => {
   const { locale, t } = useTranslation();
+  const listItems = useMemo<readonly WorkspaceMessageListItem[]>(() => {
+    // Канонический store хранит только серверные snapshots. Локальные строки
+    // добавляем в display-модель здесь, чтобы UI видел один список, но cache,
+    // realtime и серверная сортировка не получали временные id.
+    if (outgoingMessages.length === 0) {
+      return messages.map(createWorkspaceMessageListServerItem);
+    }
+
+    const resolvedServerMessageUuids = new Set<string>();
+    const claimedServerMessageUuids = new Set<string>();
+    for (let outgoingIndex = outgoingMessages.length - 1; outgoingIndex >= 0; outgoingIndex -= 1) {
+      const outgoingMessage = outgoingMessages[outgoingIndex];
+      if (outgoingMessage == null) {
+        continue;
+      }
+      const resolvedServerMessageUuid = outgoingMessage.resolvedServerMessageUuid?.trim();
+      if (resolvedServerMessageUuid != null && resolvedServerMessageUuid.length > 0) {
+        resolvedServerMessageUuids.add(resolvedServerMessageUuid);
+        claimedServerMessageUuids.add(resolvedServerMessageUuid);
+        continue;
+      }
+
+      if (outgoingMessage.status === "failed") {
+        continue;
+      }
+
+      for (let serverIndex = messages.length - 1; serverIndex >= 0; serverIndex -= 1) {
+        const serverMessage = messages[serverIndex];
+        if (serverMessage == null) {
+          continue;
+        }
+        if (
+          claimedServerMessageUuids.has(serverMessage.uuid) ||
+          !canMatchOutgoingServerMessage(outgoingMessage, serverMessage)
+        ) {
+          continue;
+        }
+
+        resolvedServerMessageUuids.add(serverMessage.uuid);
+        claimedServerMessageUuids.add(serverMessage.uuid);
+        break;
+      }
+    }
+    const serverMessagesByUuid = new Map(
+      messages.map((message) => [message.uuid, message] as const),
+    );
+    const outgoingListItems = outgoingMessages
+      .map((outgoingMessage) => {
+        if (outgoingMessage == null) {
+          return null;
+        }
+
+        const resolvedServerMessage =
+          outgoingMessage.resolvedServerMessageUuid == null
+            ? undefined
+            : serverMessagesByUuid.get(outgoingMessage.resolvedServerMessageUuid);
+        return createWorkspaceMessageListOutgoingItem(outgoingMessage, resolvedServerMessage);
+      })
+      .filter((message): message is WorkspaceMessageListOutgoingItem => message != null);
+
+    return [
+      ...messages
+        .filter((message) => !resolvedServerMessageUuids.has(message.uuid))
+        .map(createWorkspaceMessageListServerItem),
+      ...outgoingListItems,
+    ];
+  }, [messages, outgoingMessages]);
   const dayGroups = useMemo(() => {
-    return groupWorkspaceMessagesByDayAndAuthor(messages);
-  }, [messages]);
+    return groupWorkspaceMessagesByDayAndAuthor(listItems);
+  }, [listItems]);
   const dayLabelsByDateKey = useMemo(() => {
     return new Map(
       dayGroups.map((dayGroup) => [
@@ -145,12 +268,49 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
       dayGroup.authorGroups.flatMap((authorGroup) => authorGroup.messages),
     );
   }, [dayGroups]);
+  const workspaceImageGallery = useMemo(() => {
+    const displayMessages = renderedMessages.flatMap((message) => {
+      if (message.kind === "server") {
+        return [message.message];
+      }
+
+      return message.resolvedServerMessage == null ? [] : [message.resolvedServerMessage];
+    });
+    return collectWorkspaceMessageImageGallery(displayMessages, { resolveMention });
+  }, [renderedMessages, resolveMention]);
+  const handleOpenWorkspaceMedia = useCallback(
+    (file: WorkspaceMessageFileReference) => {
+      const fileUuid = file.fileUuid.trim();
+      const startIndex = workspaceImageGallery.indexByFileUuid.get(fileUuid);
+      if (startIndex == null) {
+        void actions?.onOpenWorkspaceMedia?.(file);
+        return;
+      }
+
+      void actions?.onOpenWorkspaceMedia?.(file, {
+        items: workspaceImageGallery.items,
+        startIndex,
+      });
+    },
+    [actions, workspaceImageGallery],
+  );
+  const messageActions = useMemo(() => {
+    if (actions?.onOpenWorkspaceMedia == null) {
+      return actions;
+    }
+
+    return {
+      ...actions,
+      onOpenWorkspaceMedia: handleOpenWorkspaceMedia,
+    };
+  }, [actions, handleOpenWorkspaceMedia]);
   const scrollRequestKey = useMemo(() => {
     return `${conversationId}:${scrollToBottomKey ?? ""}:${scrollToBottomAfterSendNonce ?? 0}`;
   }, [conversationId, scrollToBottomAfterSendNonce, scrollToBottomKey]);
-  const getMessageKey = useCallback((message: MessengerMessage) => message.uuid, []);
+  const getMessageKey = useCallback((message: WorkspaceMessageListItem) => message.key, []);
   const isUnreadFromOther = useCallback(
-    (message: MessengerMessage) => !message.read && message.authorUuid !== currentUserUuid,
+    (message: WorkspaceMessageListItem) =>
+      message.kind === "server" && !message.read && message.authorUuid !== currentUserUuid,
     [currentUserUuid],
   );
   const { scrollContainerRef, handleScroll, handleWheel, handleTouchMove, isAtBottom } =
@@ -173,7 +333,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
       onUnreadMessagesAtBottom,
     });
 
-  if (messages.length === 0) {
+  if (listItems.length === 0) {
     return (
       <div
         ref={scrollContainerRef}
@@ -228,7 +388,9 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
                 currentUserUuid={currentUserUuid}
                 resolveAuthorLabel={resolveAuthorLabel}
                 resolveMention={resolveMention}
-                actions={actions}
+                actions={messageActions}
+                selectedMessageUuids={selectedMessageUuids}
+                selectionMode={selectionMode}
               />
             ))}
           </div>

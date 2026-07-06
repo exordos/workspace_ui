@@ -190,6 +190,7 @@
     "channelResolveUnavailable": "Канал не найден или недоступен",
     "channelResolveTransient": "Сейчас не удалось открыть канал",
     "sendFailed": "Не удалось отправить сообщение",
+    "uploading": "Загружается…",
     "sending": "Отправляется…",
     "retrySend": "Повторить отправку",
     "removeFailedSend": "Удалить сообщение",
