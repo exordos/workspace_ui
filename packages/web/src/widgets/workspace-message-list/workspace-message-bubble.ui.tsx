@@ -97,7 +97,7 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
     const serverMessage =
       message.kind === "server" ? message.message : (message.resolvedServerMessage ?? null);
     const outgoingMessage = message.kind === "outgoing" ? message.message : null;
-    const displayMessage = serverMessage ?? outgoingMessage;
+    const displayMessage = outgoingMessage ?? serverMessage;
     invariant(displayMessage != null, "WorkspaceMessageBubble expects message payload");
     const time = formatWorkspaceMessageTime(displayMessage.createdAt);
     const markdown = displayMessage.markdown;
@@ -118,9 +118,9 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
       return {
         ...renderWorkspaceMessageBody(document, {
           ...WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS,
-          // Упоминания рендерятся интерактивно только если текущая поверхность
-          // дала UUID-only callback. Без него оставляем `@Name` обычным текстом,
-          // а не подменяем действие старым numeric DM/profile путем.
+          // Enable interactive mentions only when the current surface exposes a
+          // UUID-only callback. Otherwise keep `@Name` as plain text instead of
+          // swapping the action back to the old number-based direct-message/profile path.
           enableMentions: actions?.onOpenMentionUser != null,
         }),
         fileReferences: collectWorkspaceMessageFileReferences(document),
@@ -271,10 +271,11 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
         />
         {useInlineMeta ? (
           <>
-            {/* Inline-время лежит поверх правого нижнего угла bubble. Пустой
-                ::after у последнего блока body занимает такую же ширину, поэтому
-                последняя строка не заезжает под время даже после пересчета
-                размера шрифта или будущего индикатора доставки. */}
+            {/* This explanatory block is intentionally kept here because the layout
+                depends on it. Inline time sits in the lower-right corner of the
+                bubble. The empty ::after on the last body block keeps the same
+                width, so the last line does not slide under the time label after
+                font-size recalculation or a future delivery indicator. */}
             <WorkspaceMessageBubbleMeta
               ref={metaRef}
               time={time}
@@ -293,9 +294,10 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
           </>
         ) : (
           <div className="mt-1 flex justify-end">
-            {/* Для переносов, длинных слов и будущего сложного содержимого не
-                угадываем ширину строки. Отдельная строка с временем проще и
-                не ломает читаемость текста. */}
+            {/* This explanatory block is intentionally kept here because the layout
+                depends on it. For wraps, long words, and future complex content,
+                do not guess the line width. A separate time row is simpler and
+                keeps the text readable. */}
             <WorkspaceMessageBubbleMeta
               time={time}
               createdAt={displayMessage.createdAt}

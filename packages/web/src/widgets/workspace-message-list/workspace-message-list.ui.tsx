@@ -78,16 +78,16 @@ const WorkspaceMessageListRow = React.memo(function WorkspaceMessageListRow({
   return (
     <article
       className={owner === "own" ? OWN_ROW_CLASS_NAME : PEER_ROW_CLASS_NAME}
-      data-message-uuid={resolvedServerMessageUuid ?? message.key}
+      data-message-uuid={message.key}
       data-server-message-uuid={resolvedServerMessageUuid}
       data-outgoing-message-id={message.kind === "outgoing" ? message.message.localId : undefined}
       data-author-uuid={message.authorUuid}
       data-message-owner={owner}
       data-message-kind={message.kind}
     >
-      {/* article остается строкой списка и DOM-якорем для скролла. Сам bubble
-          ниже отвечает только за вид сообщения, чтобы следующие фазы могли
-          менять форму bubble без переписывания scroll-контроллера. */}
+      {/* The article remains the list row and the DOM anchor for scrolling. The
+          bubble below only handles message presentation, so later phases can
+          reshape the bubble without rewriting the scroll controller. */}
       <WorkspaceMessageBubble
         message={message}
         currentUserUuid={currentUserUuid}
@@ -133,9 +133,9 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
       data-author-uuid={group.authorUuid}
       data-message-owner={groupOwner}
     >
-      {/* Выделение держится за серверный UUID, даже если строка ещё живёт в
-          локальном outbox-слое. Так DOM-узел не пересоздаётся при переходе
-          sent -> server snapshot. */}
+      {/* Selection stays tied to the server UUID even while the row still lives
+          in the local outbox layer. That keeps the DOM node from being recreated
+          during the sent -> server snapshot transition. */}
       {group.messages.map((message, messageIndex) => (
         <WorkspaceMessageListRow
           key={message.key}
@@ -186,9 +186,9 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
 }) => {
   const { locale, t } = useTranslation();
   const listItems = useMemo<readonly WorkspaceMessageListItem[]>(() => {
-    // Канонический store хранит только серверные snapshots. Локальные строки
-    // добавляем в display-модель здесь, чтобы UI видел один список, но cache,
-    // realtime и серверная сортировка не получали временные id.
+    // The canonical store keeps only server snapshots. Local rows are merged
+    // into the display model here so the UI sees one list, while cache,
+    // realtime, and server-side ordering stay free of temporary ids.
     if (outgoingMessages.length === 0) {
       return messages.map(createWorkspaceMessageListServerItem);
     }
@@ -367,8 +367,8 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
       data-scroll-at-bottom={isAtBottom ? "true" : "false"}
       data-workspace-scroll-controller="true"
     >
-      {/* Список уже хранит строковые Workspace UUID в DOM. Следующим фазам не
-          придется поддерживать старый числовой DOM-ключ только ради скролла. */}
+      {/* The list already stores string Workspace UUIDs in the DOM. Later phases
+          do not need to keep the old numeric DOM key around just for scrolling. */}
       {dayGroups.map((dayGroup) => (
         <section className="flex flex-col gap-2" key={dayGroup.dateKey} data-day-group="true">
           <div className="flex justify-center py-1">
