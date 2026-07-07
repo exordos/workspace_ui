@@ -3,6 +3,7 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import {
   resolveUserPresenceVisual,
   selectUserDisplayName,
+  selectUserStatusLabel,
 } from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
@@ -66,12 +67,11 @@ function resolveWorkspacePresenceState(
 }
 
 function resolveStatusLabel(
-  userStatusText: string | null | undefined,
+  customStatusLabel: string | null,
   presenceState: "active" | "idle" | "offline" | null,
 ): string | undefined {
-  const trimmedStatusText = trimToOptional(userStatusText);
-  if (trimmedStatusText != null) {
-    return trimmedStatusText;
+  if (customStatusLabel != null) {
+    return customStatusLabel;
   }
 
   const labelByPresence = {
@@ -111,7 +111,7 @@ export const TopBarProfileTrigger = React.memo(function TopBarProfileTrigger() {
   const userPresenceState = resolveUserPresenceVisual(currentUser?.status);
   const workspacePresenceState = resolveWorkspacePresenceState(workspaceProfile?.status);
   const presenceState = userPresenceState ?? workspacePresenceState;
-  const statusLabel = resolveStatusLabel(currentUser?.statusText, presenceState);
+  const statusLabel = resolveStatusLabel(selectUserStatusLabel(currentUser), presenceState);
 
   const handleClick = useCallback(() => {
     if (isUserMenuOpen) {

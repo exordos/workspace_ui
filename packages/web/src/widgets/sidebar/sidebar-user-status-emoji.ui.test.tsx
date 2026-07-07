@@ -4,38 +4,22 @@ import { SidebarUserStatusEmoji } from "./sidebar-user-status-emoji.ui";
 
 describe("SidebarUserStatusEmoji", () => {
   it("renders nothing when status has no emoji", () => {
-    render(<SidebarUserStatusEmoji status={{ text: "Busy", away: false }} />);
+    render(<SidebarUserStatusEmoji statusEmoji={null} />);
     expect(screen.queryByTestId("sidebar-user-status-emoji")).not.toBeInTheDocument();
   });
 
-  it("renders unicode status emoji", () => {
-    render(
-      <SidebarUserStatusEmoji
-        status={{
-          text: "Hi",
-          away: false,
-          emojiCode: "1f697",
-          emojiName: "car",
-          reactionType: "unicode_emoji",
-        }}
-      />,
-    );
-    expect(screen.getByTestId("sidebar-user-status-emoji")).toHaveTextContent("🚗");
+  it("renders native Workspace status emoji", () => {
+    render(<SidebarUserStatusEmoji statusEmoji="☕" />);
+    expect(screen.getByTestId("sidebar-user-status-emoji")).toHaveTextContent("☕");
   });
 
-  it("renders realm status emoji shortcode when image data is not available", () => {
-    render(
-      <SidebarUserStatusEmoji
-        status={{
-          text: "Party",
-          away: false,
-          emojiCode: "42",
-          emojiName: "party_parrot",
-          reactionType: "realm_emoji",
-        }}
-      />,
-    );
+  it("renders known legacy preset name as a native emoji", () => {
+    render(<SidebarUserStatusEmoji statusEmoji="speech_balloon" />);
+    expect(screen.getByTestId("sidebar-user-status-emoji")).toHaveTextContent("💬");
+  });
 
-    expect(screen.getByTestId("sidebar-user-status-emoji")).toHaveTextContent(":party_parrot:");
+  it("does not render unknown shortcode-like legacy values", () => {
+    render(<SidebarUserStatusEmoji statusEmoji="party_parrot" />);
+    expect(screen.queryByTestId("sidebar-user-status-emoji")).not.toBeInTheDocument();
   });
 });

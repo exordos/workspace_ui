@@ -442,6 +442,23 @@ describe("TopBar", () => {
     expect(status).not.toHaveAttribute("title");
   });
 
+  it("shows profile status emoji with status text in profile trigger", () => {
+    useChatListStore.setState({ currentUserId: 11 });
+    useUsersStore.getState().upsertUser(
+      createUser({
+        user_id: 11,
+        full_name: "Dmitrii Korobkin",
+        statusEmoji: "☕",
+        statusText: "Focus",
+      }),
+    );
+
+    renderWithProviders(<TopBar />);
+
+    const profileButton = screen.getByRole("button", { name: /profile/i });
+    expect(within(profileButton).getByText("☕ Focus")).toBeInTheDocument();
+  });
+
   it("shows full profile status on hover when truncated", () => {
     const longStatus = "a".repeat(TOP_BAR_PROFILE_STATUS_MAX_CH + 5);
     useChatListStore.setState({ currentUserId: 11 });

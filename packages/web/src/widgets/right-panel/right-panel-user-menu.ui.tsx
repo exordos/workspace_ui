@@ -4,6 +4,8 @@ import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
+import { selectUserStatusLabel } from "~/entities/user/user-selectors.lib";
+import { updateWorkspaceOwnStatus } from "~/entities/user/user-workspace-status-actions.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { removeWorkspaceSession } from "~/entities/workspace-auth/workspace-auth.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
@@ -23,10 +25,7 @@ import { createLogger } from "~/shared/lib/logger";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import { resolveOrganizationLogoUrl } from "~/shared/lib/organization-branding";
-import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
 import { toast } from "~/shared/lib/toast/toast";
-import { ensureZulipEmojiCatalogLoaded } from "~/shared/lib/zulip-emoji-catalog.lib";
-import { zulipEmojiPayloadFromPickerData } from "~/shared/lib/zulip-emoji-payload.lib";
 import { Icon } from "~/shared/ui/icon";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { SectionLabel } from "~/shared/ui/section-label.ui";
@@ -48,10 +47,7 @@ import {
   THEME_MODES,
 } from "./right-panel-user-menu-constants.lib";
 import { RightPanelUserMenuStatusDialog } from "./right-panel-user-menu-status-dialog.ui";
-import type {
-  UserStatusEmojiDisplay,
-  UserStatusReactionType,
-} from "./right-panel-user-menu-status-dialog.ui";
+import type { UserStatusEmojiDisplay } from "./right-panel-user-menu-status-dialog.ui";
 import type { RightPanelUserMenuProps } from "./right-panel-user-menu.types";
 
 const log = createLogger("right-panel-user-menu");
@@ -74,7 +70,6 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
       ? s.sessions.find((session) => session.accountId === accountId)
       : undefined;
   });
-  const workspaceReadOnly = currentWorkspaceSession != null;
   const currentWorkspaceUser = useUsersStore((s) =>
     currentWorkspaceSession?.userUuid != null
       ? s.usersById[currentWorkspaceSession.userUuid]
@@ -110,14 +105,9 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [statusTextDraft, setStatusTextDraft] = useState("");
   const [statusAwayDraft, setStatusAwayDraft] = useState(false);
-  const [statusEmojiNameDraft, setStatusEmojiNameDraft] = useState<string>("");
-  const [statusEmojiCodeDraft, setStatusEmojiCodeDraft] = useState<string>("");
-  const [, setStatusEmojiReactionTypeDraft] = useState<UserStatusReactionType | undefined>(
-    undefined,
-  );
+  const [statusEmojiDraft, setStatusEmojiDraft] = useState<string>("");
   const [statusEmojiPickerOpen, setStatusEmojiPickerOpen] = useState(false);
   const [statusSubmitting, setStatusSubmitting] = useState(false);
-  const [customEmojis, setCustomEmojis] = useState(() => getCachedRealmEmojis());
   const panelHeading = heading?.trim() ?? "";
   const currentLocaleName =
     locales.find((supportedLocale) => supportedLocale.id === currentLocale)?.nativeLabel ??
@@ -147,8 +137,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
     [currentInstance?.realmIcon, currentInstance?.realm, currentWorkspaceSession],
   );
   const currentStatusSubtitle =
-    currentWorkspaceUser?.statusText?.trim() ||
-    currentWorkspaceUser?.statusEmoji?.trim() ||
+    selectUserStatusLabel(currentWorkspaceUser) ??
     (currentWorkspaceUser?.status === "active"
       ? t("presence.online")
       : currentWorkspaceUser?.status === "idle" || currentWorkspaceUser?.status === "do_not_disturb"
@@ -157,41 +146,33 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
           ? t("presence.offline")
           : t("settings.statusPlaceholder"));
   const selectedStatusEmojiDisplay = useMemo<UserStatusEmojiDisplay | null>(
-    () => (statusEmojiNameDraft ? { kind: "text", text: "🙂" } : null),
-    [statusEmojiNameDraft],
+    () => (statusEmojiDraft ? { kind: "text", text: statusEmojiDraft } : null),
+    [statusEmojiDraft],
   );
   const statusEmojiPickerTheme = useMemo(
     () => (currentThemeMode === "light" ? Theme.LIGHT : Theme.DARK),
     [currentThemeMode],
   );
 
-  const ensureCustomEmojisLoaded = useCallback(() => {
-    void ensureZulipEmojiCatalogLoaded();
-    void ensureRealmEmojisLoaded()
-      .then((list) => {
-        setCustomEmojis(list);
-      })
-      .catch(() => {
-        log.warn("Failed to load realm custom emojis for status picker");
-      });
-  }, []);
-
   const closeDrawer = useCallback(() => {
     rightDrawer?.setOpen(false);
   }, [rightDrawer]);
 
   const openStatusDialog = useCallback(() => {
-    if (workspaceReadOnly) {
-      return;
-    }
-    setStatusTextDraft("");
-    setStatusAwayDraft(false);
-    setStatusEmojiNameDraft("");
-    setStatusEmojiCodeDraft("");
-    setStatusEmojiReactionTypeDraft(undefined);
+    if (currentWorkspaceSession == null) return;
+    setStatusTextDraft(currentWorkspaceUser?.statusText?.trim() ?? "");
+    setStatusAwayDraft(
+      currentWorkspaceUser?.status === "idle" || currentWorkspaceUser?.status === "do_not_disturb",
+    );
+    setStatusEmojiDraft(currentWorkspaceUser?.statusEmoji?.trim() ?? "");
     setStatusEmojiPickerOpen(false);
     setStatusDialogOpen(true);
-  }, [workspaceReadOnly]);
+  }, [
+    currentWorkspaceSession,
+    currentWorkspaceUser?.status,
+    currentWorkspaceUser?.statusEmoji,
+    currentWorkspaceUser?.statusText,
+  ]);
 
   const closeStatusDialog = useCallback(() => {
     if (statusSubmitting) {
@@ -204,32 +185,36 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   const clearStatusDraft = useCallback(() => {
     setStatusTextDraft("");
     setStatusAwayDraft(false);
-    setStatusEmojiNameDraft("");
-    setStatusEmojiCodeDraft("");
-    setStatusEmojiReactionTypeDraft(undefined);
+    setStatusEmojiDraft("");
     setStatusEmojiPickerOpen(false);
   }, []);
 
   const toggleStatusEmojiPicker = useCallback(() => {
-    setStatusEmojiPickerOpen((prevOpen) => {
-      const nextOpen = !prevOpen;
-      if (nextOpen) {
-        ensureCustomEmojisLoaded();
-      }
-      return nextOpen;
-    });
-  }, [ensureCustomEmojisLoaded]);
+    setStatusEmojiPickerOpen((prevOpen) => !prevOpen);
+  }, []);
 
-  const handleSaveStatus = useCallback(() => {
+  const handleSaveStatus = useCallback(async () => {
+    if (currentWorkspaceSession == null) {
+      toast.error(t("settings.statusUpdateError"));
+      return;
+    }
     setStatusSubmitting(true);
     try {
-      log.info("Status update skipped: user status API is not available");
-      toast.error(t("settings.statusUpdateError"));
+      const result = await updateWorkspaceOwnStatus({
+        runtimeContext: currentWorkspaceSession,
+        statusText: statusTextDraft,
+        statusEmoji: statusEmojiDraft,
+        away: statusAwayDraft,
+      });
+      if (!result.ok) {
+        toast.error(t("settings.statusUpdateError"));
+        return;
+      }
       setStatusDialogOpen(false);
     } finally {
       setStatusSubmitting(false);
     }
-  }, [t]);
+  }, [currentWorkspaceSession, statusAwayDraft, statusEmojiDraft, statusTextDraft, t]);
 
   const openPersonalInfo = useCallback(() => {
     if (currentUserId != null && rightDrawer?.openUserProfile != null) {
@@ -362,14 +347,12 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   ]);
 
   const handleStatusEmojiPick = useCallback((data: EmojiClickData) => {
-    const payload = zulipEmojiPayloadFromPickerData(data, { mode: "strict" });
-    if (payload == null) {
-      log.warn("Status emoji picker could not resolve selected emoji via Zulip catalog");
+    const emoji = data.emoji.trim();
+    if (emoji.length === 0) {
+      log.warn("Status emoji picker returned an empty emoji");
       return;
     }
-    setStatusEmojiNameDraft(payload.emojiName);
-    setStatusEmojiCodeDraft(payload.emojiCode);
-    setStatusEmojiReactionTypeDraft(payload.reactionType);
+    setStatusEmojiDraft(emoji.slice(0, 64));
     setStatusEmojiPickerOpen(false);
   }, []);
 
@@ -439,9 +422,9 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                 icon="mood"
                 subtitle={currentStatusSubtitle}
                 onClick={openStatusDialog}
-                disabled={workspaceReadOnly}
+                disabled={currentWorkspaceSession == null}
                 right={
-                  workspaceReadOnly ? null : (
+                  currentWorkspaceSession == null ? null : (
                     <Icon name="chevron-right" size={16} className="text-text-muted" />
                   )
                 }
@@ -727,11 +710,8 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
         statusEmojiPickerOpen={statusEmojiPickerOpen}
         onStatusEmojiPickerToggle={toggleStatusEmojiPicker}
         setStatusEmojiPickerOpen={setStatusEmojiPickerOpen}
-        statusEmojiNameDraft={statusEmojiNameDraft}
-        setStatusEmojiNameDraft={setStatusEmojiNameDraft}
-        statusEmojiCodeDraft={statusEmojiCodeDraft}
-        setStatusEmojiCodeDraft={setStatusEmojiCodeDraft}
-        setStatusEmojiReactionTypeDraft={setStatusEmojiReactionTypeDraft}
+        statusEmojiDraft={statusEmojiDraft}
+        setStatusEmojiDraft={setStatusEmojiDraft}
         statusTextDraft={statusTextDraft}
         setStatusTextDraft={setStatusTextDraft}
         statusAwayDraft={statusAwayDraft}
@@ -739,7 +719,6 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
         statusSubmitting={statusSubmitting}
         selectedStatusEmojiDisplay={selectedStatusEmojiDisplay}
         statusEmojiPickerTheme={statusEmojiPickerTheme}
-        customEmojis={customEmojis}
         t={t}
         handleStatusEmojiPick={handleStatusEmojiPick}
         clearStatusDraft={clearStatusDraft}

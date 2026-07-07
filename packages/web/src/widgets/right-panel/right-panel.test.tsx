@@ -27,6 +27,7 @@ const useAppUpdateMock = vi.hoisted(() => vi.fn());
 const navigateMock = vi.hoisted(() => vi.fn());
 const statusEmojiPickerMock = vi.hoisted(() => vi.fn());
 const fetchRealmEmojisMock = vi.hoisted(() => vi.fn());
+const updateWorkspaceOwnStatusMock = vi.hoisted(() => vi.fn());
 const useCurrentChatMessagesStore = {
   setState: vi.fn(),
 };
@@ -42,6 +43,10 @@ vi.mock("react-router-dom", async () => {
 vi.mock("~/shared/lib/updater", () => ({
   fetchVersionCatalog: fetchVersionCatalogMock,
   useAppUpdate: useAppUpdateMock,
+}));
+
+vi.mock("~/entities/user/user-workspace-status-actions.lib", () => ({
+  updateWorkspaceOwnStatus: (...args: unknown[]) => updateWorkspaceOwnStatusMock(...args),
 }));
 
 vi.mock("~/shared/api/zulip-users", async () => {
@@ -112,9 +117,56 @@ vi.mock("emoji-picker-react", () => ({
 }));
 
 describe("RightPanel truthfulness", () => {
+  const workspaceUserUuid = "a225223c-637c-4afa-918f-5f2798b9305f";
+
+  function setWorkspaceUserMenuSession() {
+    useWorkspaceAuthStore.setState({
+      currentAccountId: "account-a",
+      runtimeGeneration: 1,
+      sessions: [
+        {
+          accountId: "account-a",
+          instanceId: "instance-a",
+          organizationId: "workspace.example.com",
+          organizationOrigin: "https://workspace.example.com",
+          projectId: "project-a",
+          userUuid: workspaceUserUuid,
+          login: "alice@example.com",
+          accessToken: "access-token",
+          runtimeGeneration: 1,
+          profile: {
+            uuid: workspaceUserUuid,
+            username: "alice",
+            firstName: "Alice",
+            lastName: "Workspace",
+            email: "alice@example.com",
+            status: "active",
+          },
+        },
+      ],
+    });
+    useUsersStore.getState().upsertUser({
+      uuid: workspaceUserUuid,
+      username: "alice",
+      firstName: "Alice",
+      lastName: "Workspace",
+      displayName: "Alice Workspace",
+      email: "alice@example.com",
+      avatarUrl: null,
+      status: "active",
+      statusEmoji: null,
+      statusText: null,
+      lastPingAt: "2026-07-01T10:00:00Z",
+      createdAt: "2026-07-01T10:00:00Z",
+      updatedAt: "2026-07-01T10:00:00Z",
+    });
+  }
+
   beforeEach(() => {
     resetRealmEmojisCacheForTests();
     resetZulipEmojiCatalogForTests();
+    updateWorkspaceOwnStatusMock.mockReset();
+    updateWorkspaceOwnStatusMock.mockResolvedValue({ ok: true, user: null });
   });
 
   afterEach(() => {
@@ -298,6 +350,7 @@ describe("RightPanel truthfulness", () => {
   });
 
   it("opens user-status dialog from authenticated user menu", () => {
+    setWorkspaceUserMenuSession();
     renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);
 
     fireEvent.click(screen.getByRole("button", { name: /^status/i }));
@@ -308,14 +361,24 @@ describe("RightPanel truthfulness", () => {
     expect(within(statusDialog).getByRole("checkbox", { name: /away/i })).toBeInTheDocument();
   });
 
-  it("loads custom emojis for the status picker", async () => {
-    const realmEmoji = {
-      id: "42",
-      names: ["party_parrot"],
-      imgUrl: "https://chat.example.test/user_avatars/realm/42.png",
-    };
-    fetchRealmEmojisMock.mockResolvedValue([realmEmoji]);
+  it("shows Workspace status emoji with text in the user menu subtitle", () => {
+    setWorkspaceUserMenuSession();
+    const workspaceUser = useUsersStore.getState().usersById[workspaceUserUuid];
+    expect(workspaceUser).toBeDefined();
+    if (workspaceUser == null) return;
+    useUsersStore.getState().upsertUser({
+      ...workspaceUser,
+      statusEmoji: "☕",
+      statusText: "Focus",
+    });
 
+    renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);
+
+    expect(screen.getByText("☕ Focus")).toBeInTheDocument();
+  });
+
+  it("uses native emoji picker for Workspace status without realm custom emojis", async () => {
+    setWorkspaceUserMenuSession();
     renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);
 
     fireEvent.click(screen.getByRole("button", { name: /^status/i }));
@@ -323,18 +386,17 @@ describe("RightPanel truthfulness", () => {
     const statusDialog = screen.getByRole("dialog", { name: /^status$/i });
     fireEvent.click(within(statusDialog).getByRole("button", { name: /choose emoji/i }));
     await waitFor(() => {
-      expect(fetchRealmEmojisMock).toHaveBeenCalledTimes(1);
-    });
-    await waitFor(() => {
       const props = statusEmojiPickerMock.mock.calls.at(-1)?.[0] as
         | { customEmojis?: unknown[]; emojiStyle?: string }
         | undefined;
-      expect(props?.customEmojis).toEqual([realmEmoji]);
+      expect(props?.customEmojis).toBeUndefined();
       expect(props?.emojiStyle).toBe("native");
     });
+    expect(fetchRealmEmojisMock).not.toHaveBeenCalled();
   });
 
-  it("shows unsupported feedback when saving status without a Workspace write contract", async () => {
+  it("saves Workspace status from the user menu", async () => {
+    setWorkspaceUserMenuSession();
     renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);
 
     fireEvent.click(screen.getByRole("button", { name: /^status/i }));
@@ -342,12 +404,39 @@ describe("RightPanel truthfulness", () => {
     fireEvent.change(within(statusDialog).getByRole("textbox", { name: /^status$/i }), {
       target: { value: "Booting" },
     });
+    fireEvent.click(within(statusDialog).getByRole("checkbox", { name: /away/i }));
+    fireEvent.click(within(statusDialog).getByRole("button", { name: /choose emoji/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /pick status emoji/i }));
     fireEvent.click(within(statusDialog).getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => {
-      expect(screen.queryByRole("dialog", { name: /^status$/i })).not.toBeInTheDocument();
+      expect(updateWorkspaceOwnStatusMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          statusText: "Booting",
+          statusEmoji: "🧪",
+          away: true,
+        }),
+      );
     });
-    expect(useToastStore.getState().toasts.at(-1)?.message).toBe(t("settings.statusUpdateError"));
+    expect(screen.queryByRole("dialog", { name: /^status$/i })).not.toBeInTheDocument();
+  });
+
+  it("shows feedback when Workspace status save fails", async () => {
+    setWorkspaceUserMenuSession();
+    updateWorkspaceOwnStatusMock.mockResolvedValue({
+      ok: false,
+      kind: "transient",
+      message: "error",
+    });
+    renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^status/i }));
+    const statusDialog = screen.getByRole("dialog", { name: /^status$/i });
+    fireEvent.click(within(statusDialog).getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(useToastStore.getState().toasts.at(-1)?.message).toBe(t("settings.statusUpdateError"));
+    });
   });
 
   it("renders current server as a regular scrollable menu item", () => {

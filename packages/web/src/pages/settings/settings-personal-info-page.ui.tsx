@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
+import { selectUserStatusLabel } from "~/entities/user/user-selectors.lib";
+import { updateWorkspaceOwnStatus } from "~/entities/user/user-workspace-status-actions.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
 import {
@@ -84,6 +86,10 @@ function buildWorkspaceProfileStatusLabel(status: WorkspaceAuthProfile["status"]
   return t("presence.online");
 }
 
+function isWorkspaceAwayStatus(status: WorkspaceAuthProfile["status"]): boolean {
+  return status === "idle" || status === "do_not_disturb";
+}
+
 export const SettingsPersonalInfoPage: React.FC = () => {
   const navigate = useNavigate();
   const [profile, setProfile] = useState<UserProfileData | null>(null);
@@ -111,6 +117,7 @@ export const SettingsPersonalInfoPage: React.FC = () => {
   });
   const workspaceProfile = currentWorkspaceSession?.profile;
   const workspaceReadOnly = currentWorkspaceSession != null;
+  const canEditWorkspaceStatus = currentWorkspaceSession != null;
   const currentWorkspaceUser = useUsersStore((s) =>
     currentWorkspaceSession?.userUuid != null
       ? s.usersById[currentWorkspaceSession.userUuid]
@@ -216,9 +223,21 @@ export const SettingsPersonalInfoPage: React.FC = () => {
     if (isEditing) return;
     setEditableFullName(fullName === "-" ? "" : fullName);
     setEditableTimezone(profile?.timezone?.trim() ?? "");
-    setEditableStatusText(ownStatus?.text ?? "");
-    setEditableStatusAway(ownStatus?.away ?? false);
-  }, [fullName, isEditing, ownStatus?.away, ownStatus?.text, profile?.timezone]);
+    setEditableStatusText(currentWorkspaceUser?.statusText?.trim() ?? ownStatus?.text ?? "");
+    setEditableStatusAway(
+      currentWorkspaceUser != null
+        ? isWorkspaceAwayStatus(currentWorkspaceUser.status)
+        : (ownStatus?.away ?? false),
+    );
+  }, [
+    currentWorkspaceUser?.status,
+    currentWorkspaceUser?.statusText,
+    fullName,
+    isEditing,
+    ownStatus?.away,
+    ownStatus?.text,
+    profile?.timezone,
+  ]);
 
   const email = useMemo(() => {
     const profileEmail = profile?.email?.trim();
@@ -306,41 +325,58 @@ export const SettingsPersonalInfoPage: React.FC = () => {
   const handleStartProfileEdit = useCallback(() => {
     setEditableFullName(fullName === "-" ? "" : fullName);
     setEditableTimezone(profile?.timezone?.trim() ?? "");
-    setEditableStatusText(ownStatus?.text ?? "");
-    setEditableStatusAway(ownStatus?.away ?? false);
+    setEditableStatusText(currentWorkspaceUser?.statusText?.trim() ?? ownStatus?.text ?? "");
+    setEditableStatusAway(
+      currentWorkspaceUser != null
+        ? isWorkspaceAwayStatus(currentWorkspaceUser.status)
+        : (ownStatus?.away ?? false),
+    );
     setPendingAvatarAction(EMPTY_PENDING_AVATAR_ACTION);
     setAvatarDraftError(null);
     setTimezoneDraftError(null);
     setProfileSaveError(null);
     setIsEditing(true);
-  }, [fullName, ownStatus?.away, ownStatus?.text, profile?.timezone]);
+  }, [
+    currentWorkspaceUser?.status,
+    currentWorkspaceUser?.statusText,
+    fullName,
+    ownStatus?.away,
+    ownStatus?.text,
+    profile?.timezone,
+  ]);
 
   const handleCancelProfileEdit = useCallback(() => {
     setEditableFullName(fullName === "-" ? "" : fullName);
     setEditableTimezone(profile?.timezone?.trim() ?? "");
-    setEditableStatusText(ownStatus?.text ?? "");
-    setEditableStatusAway(ownStatus?.away ?? false);
+    setEditableStatusText(currentWorkspaceUser?.statusText?.trim() ?? ownStatus?.text ?? "");
+    setEditableStatusAway(
+      currentWorkspaceUser != null
+        ? isWorkspaceAwayStatus(currentWorkspaceUser.status)
+        : (ownStatus?.away ?? false),
+    );
     setPendingAvatarAction(EMPTY_PENDING_AVATAR_ACTION);
     setAvatarDraftError(null);
     setTimezoneDraftError(null);
     setProfileSaveError(null);
     setIsEditing(false);
-  }, [fullName, ownStatus?.away, ownStatus?.text, profile?.timezone]);
+  }, [
+    currentWorkspaceUser?.status,
+    currentWorkspaceUser?.statusText,
+    fullName,
+    ownStatus?.away,
+    ownStatus?.text,
+    profile?.timezone,
+  ]);
 
   const profileStatus = useMemo(() => {
-    const workspaceStatusText = currentWorkspaceUser?.statusText?.trim();
-    if (workspaceStatusText != null && workspaceStatusText.length > 0) {
-      return workspaceStatusText;
+    const workspaceStatusLabel = selectUserStatusLabel(currentWorkspaceUser);
+    if (workspaceStatusLabel != null) {
+      return workspaceStatusLabel;
     }
     return ownStatus != null
       ? buildProfileStatusLabel(ownStatus)
       : buildWorkspaceProfileStatusLabel(currentWorkspaceUser?.status ?? workspaceProfile?.status);
-  }, [
-    currentWorkspaceUser?.status,
-    currentWorkspaceUser?.statusText,
-    ownStatus,
-    workspaceProfile?.status,
-  ]);
+  }, [currentWorkspaceUser?.status, currentWorkspaceUser, ownStatus, workspaceProfile?.status]);
 
   const mapAvatarErrorMessage = useCallback(
     (kind: "forbidden" | "invalid" | "unsupported" | "transient", fallbackMessage?: string) => {
@@ -353,6 +389,28 @@ export const SettingsPersonalInfoPage: React.FC = () => {
   );
 
   const handleSaveProfile = useCallback(() => {
+    if (currentWorkspaceSession != null) {
+      if (isSavingProfile) return;
+      setIsSavingProfile(true);
+      setProfileSaveError(null);
+      void updateWorkspaceOwnStatus({
+        runtimeContext: currentWorkspaceSession,
+        statusText: editableStatusText,
+        statusEmoji: currentWorkspaceUser?.statusEmoji ?? null,
+        away: editableStatusAway,
+      })
+        .then((result) => {
+          if (!result.ok) {
+            setProfileSaveError(t("settings.statusUpdateError"));
+            return;
+          }
+          setIsEditing(false);
+        })
+        .finally(() => {
+          setIsSavingProfile(false);
+        });
+      return;
+    }
     if (workspaceReadOnly || currentUserId == null || isSavingProfile) return;
     const trimmedFullName = editableFullName.trim();
     const trimmedTimezone = editableTimezone.trim();
@@ -449,7 +507,11 @@ export const SettingsPersonalInfoPage: React.FC = () => {
       });
   }, [
     currentUserId,
+    currentWorkspaceSession,
+    currentWorkspaceUser?.statusEmoji,
     editableFullName,
+    editableStatusAway,
+    editableStatusText,
     editableTimezone,
     isSavingProfile,
     mapAvatarErrorMessage,
@@ -634,7 +696,7 @@ export const SettingsPersonalInfoPage: React.FC = () => {
               <Icon name="profile" size={20} className="mt-0.5 shrink-0 text-icon-base" />
               <div className="min-w-0 flex-1">
                 <SectionLabel className="mb-0.5">{t("settings.fullName")}</SectionLabel>
-                {isEditing ? (
+                {isEditing && !workspaceReadOnly ? (
                   <input
                     type="text"
                     value={editableFullName}
@@ -662,7 +724,7 @@ export const SettingsPersonalInfoPage: React.FC = () => {
               <Icon name="calendar" size={20} className="mt-0.5 shrink-0 text-icon-base" />
               <div className="min-w-0 flex-1">
                 <SectionLabel className="mb-0.5">{t("info.timezone")}</SectionLabel>
-                {isEditing ? (
+                {isEditing && !workspaceReadOnly ? (
                   <>
                     <input
                       type="text"
@@ -814,7 +876,7 @@ export const SettingsPersonalInfoPage: React.FC = () => {
           </ul>
         </div>
         <div className="flex items-center gap-2">
-          {!isEditing && !workspaceReadOnly ? (
+          {!isEditing && (!workspaceReadOnly || canEditWorkspaceStatus) ? (
             <button
               type="button"
               onClick={handleStartProfileEdit}

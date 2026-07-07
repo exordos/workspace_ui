@@ -9,13 +9,19 @@ import type {
 import { adaptWorkspaceMessengerUserDto } from "./user-adapters.lib";
 import { createUserRealtimeApplier } from "./user-realtime-applier.lib";
 import {
+  resolveWorkspaceStatusEmojiDisplay,
   resolveUserPresenceVisual,
   selectOnlineUserCount,
   selectUserDisplayName,
+  selectUserStatusLabel,
   selectUsersByIds,
 } from "./user-selectors.lib";
 import { applyBootstrapUsers, loadUserByUuid, refreshUsers } from "./user-sync.lib";
 import { startWorkspacePresenceReporter } from "./user-workspace-presence-reporter.lib";
+import {
+  buildWorkspaceOwnStatusBody,
+  updateWorkspaceOwnStatus,
+} from "./user-workspace-status-actions.lib";
 import { useUsersStore } from "./user.model";
 import type { User, UserUuid } from "./user.types";
 
@@ -605,13 +611,96 @@ describe("user realtime applier", () => {
   });
 });
 
+describe("Workspace own status actions", () => {
+  beforeEach(resetStore);
+  afterEach(resetStore);
+
+  it("builds presence body with Workspace null clearing semantics", () => {
+    expect(
+      buildWorkspaceOwnStatusBody({
+        statusText: "  Focus  ",
+        statusEmoji: "  ☕  ",
+        away: true,
+      }),
+    ).toEqual({
+      status: "idle",
+      emoji: "☕",
+      text: "Focus",
+    });
+
+    expect(
+      buildWorkspaceOwnStatusBody({
+        statusText: "   ",
+        statusEmoji: "",
+        away: false,
+      }),
+    ).toEqual({
+      status: "active",
+      emoji: null,
+      text: null,
+    });
+  });
+
+  it("writes Workspace status and applies returned user to current owner store", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+    useUsersStore.getState().startOwnerSync(ownerKey);
+    const invokePresence = vi.fn().mockResolvedValue(
+      createUserDto({
+        status: "idle",
+        status_emoji: "☕",
+        status_text: "Focus",
+      }),
+    );
+
+    await expect(
+      updateWorkspaceOwnStatus({
+        runtimeContext,
+        statusText: "Focus",
+        statusEmoji: "☕",
+        away: true,
+        invokePresence,
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      user: expect.objectContaining({
+        uuid: USER_A_UUID,
+        status: "idle",
+        statusEmoji: "☕",
+        statusText: "Focus",
+      }),
+    });
+
+    expect(invokePresence).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accessToken: runtimeContext.accessToken,
+        devTargetOrigin: runtimeContext.organizationOrigin,
+        projectId: runtimeContext.projectId,
+      }),
+      USER_A_UUID,
+      {
+        status: "idle",
+        emoji: "☕",
+        text: "Focus",
+      },
+    );
+    expect(useUsersStore.getState().getUser(USER_A_UUID)).toEqual(
+      expect.objectContaining({
+        status: "idle",
+        statusEmoji: "☕",
+        statusText: "Focus",
+      }),
+    );
+  });
+});
+
 describe("workspace presence reporter", () => {
   it("reports active presence on start and interval until cleanup", async () => {
     vi.useFakeTimers();
     type InvokePresence = NonNullable<
       Parameters<typeof startWorkspacePresenceReporter>[0]["invokePresence"]
     >;
-    const invokePresence = vi.fn<InvokePresence>(() => Promise.resolve());
+    const invokePresence = vi.fn<InvokePresence>(() => Promise.resolve(createUserDto()));
 
     try {
       const cleanup = startWorkspacePresenceReporter({
@@ -672,5 +761,16 @@ describe("user selectors", () => {
     };
 
     expect(selectOnlineUserCount(usersById, [USER_A_UUID, USER_B_UUID, USER_C_UUID])).toBe(1);
+  });
+
+  it("formats Workspace status labels with native and legacy preset emojis", () => {
+    expect(selectUserStatusLabel(createUser({ statusEmoji: "☕", statusText: "Focus" }))).toBe(
+      "☕ Focus",
+    );
+    expect(selectUserStatusLabel(createUser({ statusEmoji: "speech_balloon" }))).toBe("💬");
+    expect(resolveWorkspaceStatusEmojiDisplay("party_parrot")).toBeNull();
+    expect(
+      selectUserStatusLabel(createUser({ statusEmoji: "party_parrot", statusText: "Ship" })),
+    ).toBe("Ship");
   });
 });

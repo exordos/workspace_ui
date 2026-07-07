@@ -20,6 +20,7 @@ const getRealmBaseUrlMock = vi.hoisted(() => vi.fn());
 const createObjectURLMock = vi.hoisted(() => vi.fn());
 const revokeObjectURLMock = vi.hoisted(() => vi.fn());
 const bumpAvatarVersionMock = vi.hoisted(() => vi.fn());
+const updateWorkspaceOwnStatusMock = vi.hoisted(() => vi.fn());
 
 vi.mock("~/features/user-profile/user-profile.api", () => ({
   fetchUserProfile: fetchUserProfileMock,
@@ -29,6 +30,10 @@ vi.mock("~/features/user-profile/user-profile.api", () => ({
   getOwnAvatarCapabilities: getOwnAvatarCapabilitiesMock,
   uploadOwnAvatar: uploadOwnAvatarMock,
   removeOwnAvatar: removeOwnAvatarMock,
+}));
+
+vi.mock("~/entities/user/user-workspace-status-actions.lib", () => ({
+  updateWorkspaceOwnStatus: (...args: unknown[]) => updateWorkspaceOwnStatusMock(...args),
 }));
 
 vi.mock("~/shared/api/zulip-client.internal", () => ({
@@ -48,6 +53,51 @@ function createPngFile(name = "avatar.png"): File {
   return new File([bytes], name, { type: "image/png" });
 }
 
+const WORKSPACE_USER_UUID = "a225223c-637c-4afa-918f-5f2798b9305f";
+
+function setWorkspaceSession() {
+  useWorkspaceAuthStore.setState({
+    currentAccountId: "account-a",
+    runtimeGeneration: 1,
+    sessions: [
+      {
+        accountId: "account-a",
+        instanceId: "instance-a",
+        organizationId: "workspace.example.com",
+        organizationOrigin: "https://workspace.example.com",
+        projectId: "project-a",
+        userUuid: WORKSPACE_USER_UUID,
+        login: "alice@example.com",
+        accessToken: "access-token",
+        runtimeGeneration: 1,
+        profile: {
+          uuid: WORKSPACE_USER_UUID,
+          username: "alice",
+          firstName: "Alice",
+          lastName: "Workspace",
+          email: "alice@example.com",
+          status: "active",
+        },
+      },
+    ],
+  });
+  useUsersStore.getState().upsertUser({
+    uuid: WORKSPACE_USER_UUID,
+    username: "alice",
+    firstName: "Alice",
+    lastName: "Workspace",
+    displayName: "Alice Workspace",
+    email: "alice@example.com",
+    avatarUrl: null,
+    status: "active",
+    statusEmoji: "💬",
+    statusText: "Heads down",
+    lastPingAt: "2026-07-01T10:00:00Z",
+    createdAt: "2026-07-01T10:00:00Z",
+    updatedAt: "2026-07-01T10:00:00Z",
+  });
+}
+
 describe("SettingsPersonalInfoPage", () => {
   beforeEach(() => {
     fetchUserProfileMock.mockReset();
@@ -58,6 +108,8 @@ describe("SettingsPersonalInfoPage", () => {
     fetchOwnStatusMock.mockResolvedValue(null);
     updateOwnStatusMock.mockReset();
     updateOwnStatusMock.mockResolvedValue({ ok: true, status: null });
+    updateWorkspaceOwnStatusMock.mockReset();
+    updateWorkspaceOwnStatusMock.mockResolvedValue({ ok: true, user: null });
     getOwnAvatarCapabilitiesMock.mockReset();
     getOwnAvatarCapabilitiesMock.mockReturnValue({
       maxAvatarFileSizeMib: 25,
@@ -188,38 +240,67 @@ describe("SettingsPersonalInfoPage", () => {
   });
 
   it("renders Workspace auth identity when legacy user profile is unavailable", async () => {
-    useWorkspaceAuthStore.setState({
-      currentAccountId: "account-a",
-      runtimeGeneration: 1,
-      sessions: [
-        {
-          accountId: "account-a",
-          instanceId: "instance-a",
-          organizationId: "workspace.example.com",
-          organizationOrigin: "https://workspace.example.com",
-          projectId: "project-a",
-          userUuid: "a225223c-637c-4afa-918f-5f2798b9305f",
-          login: "alice@example.com",
-          accessToken: "access-token",
-          runtimeGeneration: 1,
-          profile: {
-            uuid: "a225223c-637c-4afa-918f-5f2798b9305f",
-            username: "alice",
-            firstName: "Alice",
-            lastName: "Workspace",
-            email: "alice@example.com",
-            status: "active",
-          },
-        },
-      ],
-    });
+    setWorkspaceSession();
 
     renderWithProviders(<SettingsPersonalInfoPage />);
 
     expect((await screen.findAllByText("Alice Workspace")).length).toBeGreaterThan(0);
     expect(screen.getByText("alice@example.com")).toBeInTheDocument();
-    expect(screen.getByText("a225223c-637c-4afa-918f-5f2798b9305f")).toBeInTheDocument();
+    expect(screen.getByText(WORKSPACE_USER_UUID)).toBeInTheDocument();
     expect(fetchUserProfileMock).not.toHaveBeenCalled();
+  });
+
+  it("saves Workspace status text and away from personal info without legacy profile writes", async () => {
+    setWorkspaceSession();
+
+    renderWithProviders(<SettingsPersonalInfoPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /edit profile/i }));
+    expect(screen.queryByRole("textbox", { name: /full name/i })).not.toBeInTheDocument();
+    const statusInput = screen.getByRole("textbox", { name: /status/i });
+    expect(statusInput).toHaveValue("Heads down");
+
+    fireEvent.change(statusInput, { target: { value: "Reviewing PRs" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /away/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(updateWorkspaceOwnStatusMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          statusText: "Reviewing PRs",
+          statusEmoji: "💬",
+          away: true,
+        }),
+      );
+    });
+    expect(updateOwnProfileMock).not.toHaveBeenCalled();
+    expect(updateOwnStatusMock).not.toHaveBeenCalled();
+    expect(fetchUserProfileMock).not.toHaveBeenCalled();
+  });
+
+  it("clears only Workspace status text from personal info and preserves current emoji", async () => {
+    setWorkspaceSession();
+
+    renderWithProviders(<SettingsPersonalInfoPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /edit profile/i }));
+    expect(screen.queryByRole("button", { name: /choose emoji/i })).not.toBeInTheDocument();
+
+    const statusInput = screen.getByRole("textbox", { name: /status/i });
+    fireEvent.change(statusInput, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(updateWorkspaceOwnStatusMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          statusText: "",
+          statusEmoji: "💬",
+          away: false,
+        }),
+      );
+    });
+    expect(updateOwnProfileMock).not.toHaveBeenCalled();
+    expect(updateOwnStatusMock).not.toHaveBeenCalled();
   });
 
   it("copies profile link using current instance realm", async () => {

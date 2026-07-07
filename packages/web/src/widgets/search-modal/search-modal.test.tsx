@@ -17,24 +17,6 @@ vi.mock("~/shared/api/zulip-messages", async () => {
   };
 });
 
-vi.mock("~/shared/lib/realm-emojis-cache", () => ({
-  getCachedRealmEmojis: () => [
-    {
-      id: "42",
-      names: ["scam"],
-      imgUrl: "https://chat.example.test/user_avatars/realm/42.png",
-    },
-  ],
-  ensureRealmEmojisLoaded: () =>
-    Promise.resolve([
-      {
-        id: "42",
-        names: ["scam"],
-        imgUrl: "https://chat.example.test/user_avatars/realm/42.png",
-      },
-    ]),
-}));
-
 describe("SearchModal open-in-chat action", () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -166,41 +148,30 @@ describe("SearchModal open-in-chat action", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it("renders emoji-only realm custom status in user results without falling back to email", async () => {
+  it("renders emoji-only Workspace status in user results without falling back to email", async () => {
     fetchMessages.mockResolvedValue([]);
     useUsersStore.getState().upsertUser(
       createUser({
-        ...createUser({
-          user_id: 43,
-          full_name: "Scam User",
-          email: "scam@example.com",
-        }),
-        status: {
-          text: "",
-          away: false,
-          emojiName: "scam",
-          emojiCode: "42",
-          reactionType: "realm_emoji",
-        },
+        user_id: 43,
+        full_name: "Coffee User",
+        email: "coffee@example.com",
+        statusEmoji: "☕",
+        statusText: null,
       }),
     );
 
     render(<SearchModal open onOpenChange={() => {}} onSelectMessage={() => {}} />);
 
     fireEvent.change(screen.getByPlaceholderText("Search"), {
-      target: { value: "scam" },
+      target: { value: "coffee" },
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Scam User/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Coffee User/i })).toBeInTheDocument();
     });
 
-    expect(screen.getByRole("img", { name: ":scam:" })).toHaveAttribute(
-      "src",
-      "https://chat.example.test/user_avatars/realm/42.png",
-    );
-    expect(screen.queryByText("scam@example.com")).not.toBeInTheDocument();
-    expect(screen.queryByText(":scam:")).not.toBeInTheDocument();
+    expect(screen.getByText("☕")).toBeInTheDocument();
+    expect(screen.queryByText("coffee@example.com")).not.toBeInTheDocument();
   });
 
   it("filters message search results by stream sender and date", async () => {

@@ -51,7 +51,6 @@ export const UserResultItem = React.memo(function UserResultItem({
   fullName,
   email,
   statusLabel,
-  statusEmoji,
   presenceState,
   onSelect,
 }: {
@@ -60,18 +59,10 @@ export const UserResultItem = React.memo(function UserResultItem({
   fullName: string;
   email?: string;
   statusLabel?: string;
-  statusEmoji?: { name: string; imgUrl: string };
   presenceState: "active" | "idle" | "offline" | null;
   onSelect: () => void;
 }) {
-  const secondaryText = statusLabel ?? (statusEmoji == null ? (email ?? "") : "");
-  const secondaryContent =
-    statusEmoji != null ? (
-      <span className="flex min-w-0 items-center gap-1 truncate text-[11px] text-text-secondary">
-        <img src={statusEmoji.imgUrl} alt={`:${statusEmoji.name}:`} className="size-3 shrink-0" />
-        {secondaryText.length > 0 ? <span className="truncate">{secondaryText}</span> : null}
-      </span>
-    ) : null;
+  const secondaryText = statusLabel ?? email ?? "";
 
   return (
     <li>
@@ -84,8 +75,7 @@ export const UserResultItem = React.memo(function UserResultItem({
         <PresenceIndicator status={presenceState} size="sm" />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium text-text-primary">{fullName}</span>
-          {secondaryContent}
-          {statusEmoji == null && secondaryText.length > 0 ? (
+          {secondaryText.length > 0 ? (
             <span className="block truncate text-[11px] text-text-secondary">{secondaryText}</span>
           ) : null}
         </span>

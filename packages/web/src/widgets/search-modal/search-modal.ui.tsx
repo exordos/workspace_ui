@@ -3,15 +3,15 @@ import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   resolveUserPresenceVisual,
   selectUserDisplayName,
+  selectUserStatusLabel,
   selectUsersByIds,
 } from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
 import { t } from "~/i18n/i18n";
 import { fetchMessages } from "~/shared/api/zulip-messages";
-import type { MockMessage, RealmEmoji } from "~/shared/api/zulip.types";
+import type { MockMessage } from "~/shared/api/zulip.types";
 import { SEARCH_INPUT_DEBOUNCE_MS } from "~/shared/config/constants";
-import { getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
 import { AppDialogShell, APP_DIALOG_CONTENT_BASE_CLASS } from "~/shared/ui/app-dialog.ui";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { SearchInput } from "~/shared/ui/search-input";
@@ -42,16 +42,6 @@ function matchesUserQuery(user: User, query: string): boolean {
     normalizeSearchValue(user.statusText).includes(query) ||
     normalizeSearchValue(user.statusEmoji).includes(query)
   );
-}
-
-function findRealmEmoji(realmEmojis: readonly RealmEmoji[], statusEmojiName: string) {
-  const normalizedStatusEmojiName = statusEmojiName.toLowerCase();
-  return realmEmojis.find((emoji) => {
-    if (emoji.id === statusEmojiName) {
-      return true;
-    }
-    return emoji.names.some((name) => name.toLowerCase() === normalizedStatusEmojiName);
-  });
 }
 
 function getNonEmptyValue(value: string | null | undefined): string | undefined {
@@ -86,13 +76,11 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   const users = useMemo(() => new Map(), []);
   const workspaceMode = mode === "workspace";
   const allUsers = useMemo(() => selectUsersByIds(usersById, userIds), [userIds, usersById]);
-  const realmEmojis = getCachedRealmEmojis();
 
   const runSearch = useCallback(
     async (q: string) => {
       if (workspaceMode) {
-        // Workspace message search пока отсутствует в API, поэтому здесь нет
-        // message body для summary/snippet. Поверхность остается поиском людей.
+        // Workspace message search is not available in the API yet.
         setResults([]);
         setLoading(false);
         return;
@@ -119,7 +107,6 @@ export const SearchModal: React.FC<SearchModalProps> = ({
       fullName: string;
       email?: string;
       statusLabel?: string;
-      statusEmoji?: { name: string; imgUrl: string };
       presenceState: "active" | "idle" | "offline" | null;
     }[]
   >(() => {
@@ -128,24 +115,18 @@ export const SearchModal: React.FC<SearchModalProps> = ({
       .filter((user) => matchesUserQuery(user, normalizedQuery))
       .map((user) => {
         const userId = resolveNumericUserId(user);
-        const statusEmojiName = user.statusEmoji?.trim() ?? "";
-        const realmEmoji = findRealmEmoji(realmEmojis, statusEmojiName);
         return {
           userUuid: user.uuid,
           ...(userId != null ? { userId } : {}),
           fullName: selectUserDisplayName(user),
           email: user.email ?? undefined,
-          statusLabel: getNonEmptyValue(user.statusText),
-          statusEmoji:
-            realmEmoji != null && statusEmojiName.length > 0
-              ? { name: statusEmojiName, imgUrl: realmEmoji.imgUrl }
-              : undefined,
+          statusLabel: getNonEmptyValue(selectUserStatusLabel(user)),
           presenceState: resolveUserPresenceVisual(user.status),
         };
       })
       .filter((user): user is NonNullable<typeof user> => user != null)
       .slice(0, MAX_USER_RESULTS);
-  }, [allUsers, query, realmEmojis]);
+  }, [allUsers, query]);
 
   const filteredMessageResults = useMemo(
     () =>
@@ -268,7 +249,6 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                   fullName={user.fullName}
                   email={user.email}
                   statusLabel={user.statusLabel}
-                  statusEmoji={user.statusEmoji}
                   presenceState={user.presenceState}
                   onSelect={() => handleSelectUser(user)}
                 />

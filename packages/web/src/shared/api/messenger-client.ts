@@ -77,8 +77,8 @@ export interface GetEventsQuery extends MessengerPaginationQuery {
 
 export interface InvokeUserPresenceBody {
   status: "active" | "idle" | "offline" | "do_not_disturb";
-  emoji?: string;
-  text?: string;
+  emoji?: string | null;
+  text?: string | null;
 }
 
 const MESSAGES_BY_UUIDS_CHUNK_SIZE = 100;
@@ -327,12 +327,13 @@ export async function invokeUserPresence(
   options: MessengerClientOptions,
   userUuid: string,
   body: InvokeUserPresenceBody,
-): Promise<void> {
-  await messengerPostJson(
+): Promise<WorkspaceMessengerUserDto> {
+  const data = await messengerPostJson(
     `/users/${encodeURIComponent(userUuid)}/actions/presence/invoke`,
     options,
     body,
   );
+  return parseDto(data, isWorkspaceMessengerUserDto, "messenger user presence response");
 }
 
 export async function getEvents(

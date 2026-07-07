@@ -96,7 +96,6 @@ describe("WorkspaceSidebar", () => {
     const expectedDisabledItems = [
       ["mentions", "workspaceMessenger.mentionsUnsupported"],
       ["drafts", "workspaceMessenger.draftsUnsupported"],
-      ["starred", "workspaceMessenger.starredUnsupported"],
       ["reactions", "workspaceMessenger.reactionsUnsupported"],
       ["feed", "workspaceMessenger.feedUnsupported"],
       ["private notes", "workspaceMessenger.privateNotesUnsupported"],
@@ -113,6 +112,12 @@ describe("WorkspaceSidebar", () => {
     expect(inboxControl).toHaveAttribute("href", "/org/acme/project/project-a/inbox");
     expect(within(inboxControl).getByText("2")).toBeInTheDocument();
     expect(within(inboxControl).queryByText("1")).not.toBeInTheDocument();
+
+    expect(screen.getByRole("link", { name: /starred/i })).toHaveAttribute(
+      "href",
+      "/org/acme/project/project-a/activity/starred",
+    );
+    expect(screen.queryByRole("button", { name: /starred/i })).not.toBeInTheDocument();
   });
 
   it("shows a distinct empty workspace state", () => {
@@ -219,9 +224,7 @@ describe("WorkspaceSidebar", () => {
     });
 
     const link = screen.getByRole("link", { name: /Alice Workspace/i });
-    expect(within(link).getByTestId("sidebar-user-status-emoji")).toHaveTextContent(
-      ":speech_balloon:",
-    );
+    expect(within(link).getByTestId("sidebar-user-status-emoji")).toHaveTextContent("💬");
     expect(within(link).getByText("Focus")).toBeInTheDocument();
   });
 });

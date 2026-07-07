@@ -221,10 +221,7 @@ function WorkspaceSidebarStreamRow({
   const isDirectPrivate = stream.uiKind === "directPrivate";
   const avatarLabel = isDirectPrivate ? stream.title.slice(0, 1) : "#";
   const title = isDirectPrivate ? stream.title : `#${stream.title}`;
-  const statusEmoji =
-    isDirectPrivate && stream.statusEmoji != null && stream.statusEmoji.trim().length > 0
-      ? { emojiName: stream.statusEmoji }
-      : null;
+  const statusEmoji = isDirectPrivate ? (stream.statusEmoji ?? null) : null;
   const statusText =
     isDirectPrivate && stream.statusText != null && stream.statusText.trim().length > 0
       ? stream.statusText.trim()
@@ -261,7 +258,7 @@ function WorkspaceSidebarStreamRow({
           <div className={sidebarChatRowBodyClass(compact)}>
             <div className="flex min-w-0 items-center gap-1">
               <div className="truncate text-sm font-medium text-text-primary">{title}</div>
-              {statusEmoji != null ? <SidebarUserStatusEmoji status={statusEmoji} /> : null}
+              {statusEmoji != null ? <SidebarUserStatusEmoji statusEmoji={statusEmoji} /> : null}
               {statusText != null ? (
                 <span className="truncate text-xs text-text-muted">{statusText}</span>
               ) : null}

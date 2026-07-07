@@ -431,15 +431,25 @@ describe("messenger-client", () => {
   });
 
   it("posts Workspace user presence update", async () => {
-    const fetchMock = createFetchMock(null);
+    const fetchMock = createFetchMock({
+      ...userDto,
+      status: "active",
+      status_emoji: "👋",
+      status_text: "Here",
+    });
 
     await expect(
       invokeUserPresence({ accessToken: "access-token", fetchImpl: fetchMock }, USER_UUID, {
         status: "active",
-        emoji: "wave",
+        emoji: "👋",
         text: "Here",
       }),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({
+      ...userDto,
+      status: "active",
+      status_emoji: "👋",
+      status_text: "Here",
+    });
 
     const [url, init] = firstFetchCall(fetchMock);
     expect(url).toBe(`/api/messenger/v1/users/${USER_UUID}/actions/presence/invoke`);
@@ -449,7 +459,32 @@ describe("messenger-client", () => {
       Authorization: "Bearer access-token",
       "Content-Type": "application/json",
     });
-    expect(init?.body).toBe(JSON.stringify({ status: "active", emoji: "wave", text: "Here" }));
+    expect(init?.body).toBe(JSON.stringify({ status: "active", emoji: "👋", text: "Here" }));
+  });
+
+  it("posts Workspace user presence clear values", async () => {
+    const fetchMock = createFetchMock({
+      ...userDto,
+      status: "active",
+      status_emoji: null,
+      status_text: null,
+    });
+
+    await expect(
+      invokeUserPresence({ accessToken: "access-token", fetchImpl: fetchMock }, USER_UUID, {
+        status: "active",
+        emoji: null,
+        text: null,
+      }),
+    ).resolves.toEqual({
+      ...userDto,
+      status: "active",
+      status_emoji: null,
+      status_text: null,
+    });
+
+    const [, init] = firstFetchCall(fetchMock);
+    expect(init?.body).toBe(JSON.stringify({ status: "active", emoji: null, text: null }));
   });
 
   it("strictly rejects invalid user rows", async () => {

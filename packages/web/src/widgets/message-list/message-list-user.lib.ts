@@ -1,18 +1,10 @@
 import {
   resolveUserPresenceVisual,
   selectUserDisplayName,
+  selectUserStatusLabel,
 } from "~/entities/user/user-selectors.lib";
 import type { User, UsersById, UserUuid } from "~/entities/user/user.types";
 import type { PresenceVisual } from "~/shared/ui/presence-indicator.types";
-
-const STATUS_EMOJI_SYMBOLS: Record<string, string> = {
-  speech_balloon: "💬",
-  house: "🏠",
-  palm_tree: "🌴",
-  plate_with_cutlery: "🍽️",
-  helmet_with_white_cross: "⛑️",
-  spiral_calendar_pad: "🗓️",
-};
 
 function normalizeDisplayName(value: string): string {
   return value.replace(/^@/, "").trim().toLowerCase();
@@ -84,12 +76,5 @@ export function resolveMentionUserUuid(usersById: UsersById, displayName: string
 }
 
 export function resolveCustomStatusLabel(user: User | undefined): string | null {
-  const text = user?.statusText?.trim() ?? "";
-  if (text.length === 0) {
-    return null;
-  }
-
-  const emojiName = user?.statusEmoji?.trim() ?? "";
-  const symbol = emojiName.length > 0 ? STATUS_EMOJI_SYMBOLS[emojiName] : undefined;
-  return symbol != null ? `${symbol} ${text}` : text;
+  return selectUserStatusLabel(user);
 }
