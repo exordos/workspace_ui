@@ -5,12 +5,19 @@ import {
 } from "~/shared/config/dev-workspace-org-proxy";
 import { buildMessengerBearerAuthHeader } from "./messenger-auth";
 
-// Нижний HTTP-слой для Workspace Messenger API.
-// Всё, что выше, должно работать уже с DTO или доменными объектами, а не собирать URL руками.
+// Low-level HTTP layer for Workspace Messenger API.
+// Higher layers should work with DTOs or domain objects instead of hand-built URLs.
 export const DEFAULT_MESSENGER_API_BASE = "/api/messenger/v1";
 
-export type MessengerHttpMethod = "GET" | "POST" | "PUT" | "DELETE";
+export type MessengerHttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 export type MessengerDtoGuard<T> = (value: unknown) => value is T;
+export interface MessengerAccessTokenRequest {
+  force?: boolean;
+  signal?: AbortSignal;
+}
+export type MessengerAccessTokenProvider = (
+  request?: MessengerAccessTokenRequest,
+) => string | null | undefined | Promise<string | null | undefined>;
 export type MessengerQueryParamValue = string | number;
 export type MessengerQueryParams = Record<
   string,
@@ -22,6 +29,7 @@ export type MessengerQueryParams = Record<
 
 export interface MessengerClientOptions {
   accessToken: string | null | undefined;
+  getAccessToken?: MessengerAccessTokenProvider;
   baseUrl?: string;
   devTargetOrigin?: string;
   projectId?: string;
@@ -99,7 +107,7 @@ function pathWithoutTrailingSlash(path: string): string | null {
   return path.replace(/\/+$/, "");
 }
 
-// Workspace API использует одинаковые имена курсора на списковых эндпоинтах.
+// Workspace API uses the same cursor names on list endpoints.
 export function paginationParams(
   query: MessengerPaginationQuery | undefined,
 ): MessengerQueryParams {
@@ -122,7 +130,24 @@ async function parseJsonResponse(response: Response): Promise<unknown> {
   return JSON.parse(text) as unknown;
 }
 
-// Публичные эндпоинты, например server_settings, не должны получать bearer auth.
+async function parseErrorResponse(response: Response): Promise<unknown> {
+  if (response.status === 204) {
+    return null;
+  }
+
+  const text = await response.text();
+  if (text.trim().length === 0) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return text;
+  }
+}
+
+// Public endpoints, for example server_settings, must not receive bearer auth.
 function buildHeaders(
   accessToken: string | null | undefined,
   body: unknown,
@@ -142,6 +167,40 @@ function buildHeaders(
       ? { [X_WORKSPACE_DEV_TARGET_ORIGIN]: new URL(trimmedDevTargetOrigin).origin }
       : {}),
   };
+}
+
+async function resolveMessengerAccessToken(
+  options: MessengerClientOptions,
+  force = false,
+): Promise<string | null | undefined> {
+  return options.getAccessToken?.({ force, signal: options.signal }) ?? options.accessToken;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" ? value.trim().toLowerCase() : null;
+}
+
+function hasAuthTypeMarker(data: unknown): boolean {
+  if (!isRecord(data)) {
+    return false;
+  }
+  if (stringValue(data.auth_type) != null || stringValue(data.authType) != null) {
+    return true;
+  }
+  const type = stringValue(data.type);
+  const code = stringValue(data.code);
+  return type?.includes("auth") === true || code?.includes("auth") === true;
+}
+
+function shouldRetryAfterAuthFailure(response: Response, data: unknown): boolean {
+  if (response.status === 401) {
+    return true;
+  }
+  return response.status === 403 && hasAuthTypeMarker(data);
 }
 
 function shouldAppendDevProxyTargetHeader(url: string): boolean {
@@ -167,13 +226,12 @@ export async function sendJsonResult(
   params: MessengerQueryParams = {},
   body?: unknown,
 ): Promise<MessengerJsonResult> {
-  // Здесь собирается реальный HTTP-запрос к Workspace API: auth, dev proxy header, body и abort signal.
   const fetchImpl = options.fetchImpl ?? fetch;
   const url = buildMessengerUrl(options.baseUrl, path, params);
   const init: RequestInit = {
     method,
     headers: buildHeaders(
-      options.accessToken,
+      await resolveMessengerAccessToken(options),
       body,
       false,
       options.devTargetOrigin,
@@ -189,7 +247,21 @@ export async function sendJsonResult(
     responsePath = fallbackPath;
     response = await fetchImpl(buildMessengerUrl(options.baseUrl, fallbackPath, params), init);
   }
-  const data = await parseJsonResponse(response);
+  let data = response.ok ? await parseJsonResponse(response) : await parseErrorResponse(response);
+  if (!response.ok && shouldRetryAfterAuthFailure(response, data)) {
+    const retryUrl = buildMessengerUrl(options.baseUrl, responsePath, params);
+    response = await fetchImpl(retryUrl, {
+      ...init,
+      headers: buildHeaders(
+        await resolveMessengerAccessToken(options, true),
+        body,
+        false,
+        options.devTargetOrigin,
+        shouldAppendDevProxyTargetHeader(retryUrl),
+      ),
+    });
+    data = response.ok ? await parseJsonResponse(response) : await parseErrorResponse(response);
+  }
   if (!response.ok) {
     throw new MessengerApiError(
       `Messenger API ${method} ${responsePath} failed`,
@@ -211,7 +283,7 @@ export async function sendFormDataResult(
   const init: RequestInit = {
     method: "POST",
     headers: buildHeaders(
-      options.accessToken,
+      await resolveMessengerAccessToken(options),
       undefined,
       false,
       options.devTargetOrigin,
@@ -227,7 +299,21 @@ export async function sendFormDataResult(
     responsePath = fallbackPath;
     response = await fetchImpl(buildMessengerUrl(options.baseUrl, fallbackPath, params), init);
   }
-  const data = await parseJsonResponse(response);
+  let data = response.ok ? await parseJsonResponse(response) : await parseErrorResponse(response);
+  if (!response.ok && shouldRetryAfterAuthFailure(response, data)) {
+    const retryUrl = buildMessengerUrl(options.baseUrl, responsePath, params);
+    response = await fetchImpl(retryUrl, {
+      ...init,
+      headers: buildHeaders(
+        await resolveMessengerAccessToken(options, true),
+        undefined,
+        false,
+        options.devTargetOrigin,
+        shouldAppendDevProxyTargetHeader(retryUrl),
+      ),
+    });
+    data = response.ok ? await parseJsonResponse(response) : await parseErrorResponse(response);
+  }
   if (!response.ok) {
     throw new MessengerApiError(`Messenger API POST ${responsePath} failed`, response.status, data);
   }
@@ -247,14 +333,12 @@ export async function getBinaryResult(
   options: MessengerClientOptions,
   params: MessengerQueryParams = {},
 ): Promise<MessengerBinaryResult> {
-  // Workspace files/download возвращает не JSON, а bytes. Этот helper сохраняет
-  // общий auth/dev-proxy слой, но не пытается пропустить attachment через JSON parser.
   const fetchImpl = options.fetchImpl ?? fetch;
   const url = buildMessengerUrl(options.baseUrl, path, params);
   const init: RequestInit = {
     method: "GET",
     headers: buildHeaders(
-      options.accessToken,
+      await resolveMessengerAccessToken(options),
       undefined,
       false,
       options.devTargetOrigin,
@@ -271,7 +355,25 @@ export async function getBinaryResult(
     response = await fetchImpl(buildMessengerUrl(options.baseUrl, fallbackPath, params), init);
   }
   if (!response.ok) {
-    const data = await parseJsonResponse(response);
+    let data = await parseErrorResponse(response);
+    if (shouldRetryAfterAuthFailure(response, data)) {
+      const retryUrl = buildMessengerUrl(options.baseUrl, responsePath, params);
+      response = await fetchImpl(retryUrl, {
+        ...init,
+        headers: buildHeaders(
+          await resolveMessengerAccessToken(options, true),
+          undefined,
+          false,
+          options.devTargetOrigin,
+          shouldAppendDevProxyTargetHeader(retryUrl),
+          "*/*",
+        ),
+      });
+      if (response.ok) {
+        return { blob: await response.blob(), headers: response.headers };
+      }
+      data = await parseErrorResponse(response);
+    }
     throw new MessengerApiError(`Messenger API GET ${responsePath} failed`, response.status, data);
   }
   return { blob: await response.blob(), headers: response.headers };
@@ -302,7 +404,7 @@ export async function publicGetJsonResult(
     responsePath = fallbackPath;
     response = await fetchImpl(buildMessengerUrl(options.baseUrl, fallbackPath, params), init);
   }
-  const data = await parseJsonResponse(response);
+  const data = response.ok ? await parseJsonResponse(response) : await parseErrorResponse(response);
   if (!response.ok) {
     throw new MessengerApiError(`Messenger API GET ${responsePath} failed`, response.status, data);
   }
@@ -362,7 +464,7 @@ export async function messengerPublicGetJson(
 }
 
 export function parseDtoList<T>(data: unknown, guard: MessengerDtoGuard<T>, label: string): T[] {
-  // Списковые ответы можно мягко фильтровать, чтобы один битый элемент не ронял весь sidebar.
+  // List responses can be filtered softly so one broken item does not drop the whole sidebar.
   if (!Array.isArray(data)) {
     throw new TypeError(`Expected ${label} to be an array`);
   }
@@ -375,7 +477,7 @@ export function parseStrictDtoList<T>(
   guard: MessengerDtoGuard<T>,
   label: string,
 ): T[] {
-  // Strict-режим используем там, где пропуск элемента опаснее явной ошибки контракта.
+  // Strict mode is used when dropping an item is riskier than exposing a contract error.
   if (!Array.isArray(data)) {
     throw new TypeError(`Expected ${label} to be an array`);
   }

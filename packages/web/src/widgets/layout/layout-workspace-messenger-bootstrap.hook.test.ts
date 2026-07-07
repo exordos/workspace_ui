@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
@@ -6,8 +6,7 @@ import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.
 import { useLayoutWorkspaceMessengerBootstrap } from "./layout-workspace-messenger-bootstrap.hook";
 
 const bootstrapMessengerStoreMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
-const refreshWorkspaceSessionMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
-const shouldRefreshWorkspaceSessionMock = vi.hoisted(() => vi.fn(() => false));
+const ensureFreshWorkspaceSessionMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 const WORKSPACE_AUTH_STORAGE_KEY = "workspace-auth-sessions";
 const WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY = "workspace-auth-current-account";
 
@@ -16,8 +15,13 @@ vi.mock("~/entities/messenger/messenger-bootstrap.lib", () => ({
 }));
 
 vi.mock("~/entities/workspace-auth/workspace-auth.lib", () => ({
-  refreshWorkspaceSession: refreshWorkspaceSessionMock,
-  shouldRefreshWorkspaceSession: shouldRefreshWorkspaceSessionMock,
+  classifyWorkspaceAuthRefreshError: (error: unknown) => {
+    if (error instanceof Error && error.message === "owner-mismatch") {
+      return { reason: "owner-mismatch", error };
+    }
+    return { reason: "unknown-transient", error };
+  },
+  ensureFreshWorkspaceSession: ensureFreshWorkspaceSessionMock,
 }));
 
 function createSession(): WorkspaceAuthSession {
@@ -55,9 +59,8 @@ describe("useLayoutWorkspaceMessengerBootstrap", () => {
     localStorage.removeItem(WORKSPACE_AUTH_STORAGE_KEY);
     localStorage.removeItem(WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY);
     bootstrapMessengerStoreMock.mockClear();
-    refreshWorkspaceSessionMock.mockClear();
-    shouldRefreshWorkspaceSessionMock.mockClear();
-    shouldRefreshWorkspaceSessionMock.mockReturnValue(false);
+    ensureFreshWorkspaceSessionMock.mockClear();
+    ensureFreshWorkspaceSessionMock.mockResolvedValue(undefined);
     useMessengerStore.getState().clear();
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
   });
@@ -80,7 +83,7 @@ describe("useLayoutWorkspaceMessengerBootstrap", () => {
       expect(useMessengerStore.getState().ownerKey).toBeNull();
     });
     expect(bootstrapMessengerStoreMock).not.toHaveBeenCalled();
-    expect(refreshWorkspaceSessionMock).not.toHaveBeenCalled();
+    expect(ensureFreshWorkspaceSessionMock).not.toHaveBeenCalled();
   });
 
   it("starts Workspace messenger bootstrap when enabled", async () => {
@@ -105,6 +108,64 @@ describe("useLayoutWorkspaceMessengerBootstrap", () => {
         }),
       }),
     );
-    expect(shouldRefreshWorkspaceSessionMock).toHaveBeenCalledWith(session);
+    expect(ensureFreshWorkspaceSessionMock).toHaveBeenCalledWith(
+      session.accountId,
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+      }),
+    );
+  });
+
+  it("retries Workspace messenger bootstrap after a transient refresh failure", async () => {
+    vi.useFakeTimers();
+    try {
+      const session = createSession();
+      setWorkspaceSession(session);
+      ensureFreshWorkspaceSessionMock
+        .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+        .mockResolvedValueOnce(undefined);
+
+      renderHook(() => useLayoutWorkspaceMessengerBootstrap({ enabled: true }));
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(ensureFreshWorkspaceSessionMock).toHaveBeenCalledTimes(1);
+      expect(bootstrapMessengerStoreMock).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+
+      expect(bootstrapMessengerStoreMock).toHaveBeenCalledTimes(1);
+      expect(ensureFreshWorkspaceSessionMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not retry Workspace messenger bootstrap after terminal refresh failure", async () => {
+    vi.useFakeTimers();
+    try {
+      const session = createSession();
+      setWorkspaceSession(session);
+      ensureFreshWorkspaceSessionMock.mockRejectedValueOnce(new Error("owner-mismatch"));
+
+      renderHook(() => useLayoutWorkspaceMessengerBootstrap({ enabled: true }));
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(ensureFreshWorkspaceSessionMock).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+
+      expect(ensureFreshWorkspaceSessionMock).toHaveBeenCalledTimes(1);
+      expect(bootstrapMessengerStoreMock).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

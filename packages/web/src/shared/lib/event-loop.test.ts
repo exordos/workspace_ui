@@ -1,12 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { startZulipEventLoop, startZulipEventLoopForCredentials } from "./event-loop";
+import { startZulipEventLoop } from "./event-loop";
 import { reportUnexpectedError } from "./unexpected-error.lib";
 import * as zulipEventQueueRegistry from "./zulip-event-queue-registry.lib";
 
 const registerQueueMock = vi.fn();
 const getEventsMock = vi.fn();
-const registerQueueForCredentialsMock = vi.fn();
-const getEventsForCredentialsMock = vi.fn();
 const onReconnectMock = vi.fn();
 const onStatusChangeMock = vi.fn();
 const onTabResumeMock = vi.fn();
@@ -20,8 +18,6 @@ const unsubStatusMock = vi.fn();
 vi.mock("~/shared/api/zulip-queue", () => ({
   registerQueue: (...args: unknown[]) => registerQueueMock(...args),
   getEvents: (...args: unknown[]) => getEventsMock(...args),
-  registerQueueForCredentials: (...args: unknown[]) => registerQueueForCredentialsMock(...args),
-  getEventsForCredentials: (...args: unknown[]) => getEventsForCredentialsMock(...args),
 }));
 
 vi.mock("~/shared/lib/network", () => ({
@@ -137,67 +133,6 @@ describe("startZulipEventLoop", () => {
     expect(clearQueueSpy).toHaveBeenCalledWith("inst-registry");
     setQueueSpy.mockRestore();
     clearQueueSpy.mockRestore();
-  });
-
-  it("starts credential-based event loop for background orgs", async () => {
-    registerQueueForCredentialsMock.mockResolvedValue({
-      queue_id: "q-cred",
-      last_event_id: 10,
-    });
-    getEventsForCredentialsMock.mockImplementation(
-      (
-        _credentials: { realm: string; email: string; apiKey: string },
-        _queueId: string,
-        _lastEventId: number,
-        options?: { signal?: AbortSignal },
-      ) =>
-        new Promise((_resolve, reject) => {
-          options?.signal?.addEventListener(
-            "abort",
-            () => reject(new Error("The operation was aborted")),
-            { once: true },
-          );
-        }),
-    );
-
-    onTabResumeMock.mockReturnValue(unsubResumeMock);
-    onReconnectMock.mockReturnValue(unsubReconnectMock);
-    onStatusChangeMock.mockReturnValue(unsubStatusMock);
-    waitForOnlineMock.mockResolvedValue(undefined);
-    isOnlineMock.mockReturnValue(true);
-
-    const controller = new AbortController();
-    const credentials = {
-      realm: "https://org-2.example.com",
-      email: "org-2@example.com",
-      apiKey: "k2",
-    };
-
-    startZulipEventLoopForCredentials({
-      credentials,
-      signal: controller.signal,
-      onEvent: vi.fn(),
-    });
-
-    await vi.waitFor(() => {
-      expect(registerQueueForCredentialsMock).toHaveBeenCalledWith(
-        credentials,
-        expect.arrayContaining(["stream", "subscription", "user_topic"]),
-        undefined,
-        expect.objectContaining({ signal: controller.signal }),
-      );
-    });
-    await vi.waitFor(() => {
-      expect(getEventsForCredentialsMock).toHaveBeenCalledWith(
-        credentials,
-        "q-cred",
-        10,
-        expect.any(Object),
-      );
-    });
-
-    controller.abort();
-    await Promise.resolve();
   });
 
   it("re-registers immediately on BAD_EVENT_QUEUE_ID with Russian error payload", async () => {

@@ -25,7 +25,6 @@ import { LayoutConnectionBanner } from "./layout-connection-banner.ui";
 import { useConnectionHealthSnapshot } from "./layout-connection-health.hook";
 import { useLayoutConnectionRecovery } from "./layout-connection-recovery.hook";
 import { useLayoutEscapeNavigation } from "./layout-escape-navigation.hook";
-import { useInactiveInstancesBackgroundWork } from "./layout-inactive-instances-background-work.hook";
 import { useLayoutInstanceBootstrap } from "./layout-instance-bootstrap.hook";
 import {
   computeInstanceDmUnreadCount,
@@ -62,8 +61,6 @@ export const Layout: React.FC = () => {
   const instances = useInstancesStore((s) => s.instances);
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const setCurrentInstanceId = useInstancesStore((s) => s.setCurrentInstanceId);
-  const setInstanceUnreadCount = useInstancesStore((s) => s.setInstanceUnreadCount);
-  const setInstanceDmUnreadCount = useInstancesStore((s) => s.setInstanceDmUnreadCount);
   const {
     streamSlug,
     topicName,
@@ -197,15 +194,6 @@ export const Layout: React.FC = () => {
   useLayoutMentionsSyncPolling({
     enabled: !workspaceMessengerActive && isLayoutUserConnectionReady(currentUserStatus),
     currentInstanceId,
-  });
-
-  useInactiveInstancesBackgroundWork({
-    instances,
-    currentInstanceId,
-    enabled: isLayoutUserConnectionReady(currentUserStatus),
-    online,
-    setUnreadCount: setInstanceUnreadCount,
-    setDmUnreadCount: setInstanceDmUnreadCount,
   });
 
   const openSearch = useSearchModalStore((s) => s.openModal);

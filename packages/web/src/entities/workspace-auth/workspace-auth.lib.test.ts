@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type * as WorkspaceIamAuthModule from "~/shared/api/workspace-iam-auth";
+import { WorkspaceIamAuthError } from "~/shared/api/workspace-iam-auth";
 import {
+  classifyWorkspaceAuthRefreshError,
+  ensureFreshWorkspaceSession,
   loginWorkspaceWithPassword,
-  refreshWorkspaceSession,
   removeWorkspaceSession,
 } from "./workspace-auth.lib";
 import { useWorkspaceAuthStore } from "./workspace-auth.model";
@@ -57,6 +59,50 @@ function ownerKeyFromSession(session: WorkspaceAuthSession): string {
   return workspaceRuntimeOwnerKey(session);
 }
 
+function createWorkspaceSession(
+  overrides: Partial<WorkspaceAuthSession> = {},
+): WorkspaceAuthSession {
+  const userUuid = overrides.userUuid ?? USER_UUID;
+  const projectId = overrides.projectId ?? PROJECT_ID;
+  return {
+    accountId: overrides.accountId ?? `workspace.example.com:${projectId}:${userUuid}`,
+    instanceId: overrides.instanceId ?? `instance-${userUuid}`,
+    organizationId: overrides.organizationId ?? "workspace.example.com",
+    organizationOrigin: overrides.organizationOrigin ?? "https://workspace.example.com",
+    projectId,
+    userUuid,
+    login: overrides.login ?? "user@example.com",
+    accessToken:
+      overrides.accessToken ??
+      tokenWithClaims({
+        user_uuid: userUuid,
+        project_id: projectId,
+        exp: 1_900_000_000,
+      }),
+    refreshToken: overrides.refreshToken ?? `refresh-${userUuid}`,
+    expiresAtMs: overrides.expiresAtMs ?? Date.now() - 1000,
+    profile: overrides.profile ?? {
+      uuid: userUuid,
+      username: userUuid,
+      firstName: null,
+      lastName: null,
+      email: null,
+    },
+    runtimeGeneration: overrides.runtimeGeneration ?? 0,
+  };
+}
+
+function storeWorkspaceSession(session: WorkspaceAuthSession): WorkspaceAuthSession {
+  useWorkspaceAuthStore.getState().setSession(session);
+  const stored = useWorkspaceAuthStore
+    .getState()
+    .sessions.find((item) => item.accountId === session.accountId);
+  if (stored == null) {
+    throw new Error("Expected Workspace session to be stored");
+  }
+  return stored;
+}
+
 async function loginAndGetCurrentSession(): Promise<WorkspaceAuthSession> {
   await loginWorkspaceWithPassword({
     organizationUrl: "https://workspace.example.com",
@@ -79,6 +125,20 @@ function createDeferred(): {
   let resolvePromise: () => void = () => {};
   let rejectPromise: (error: Error) => void = () => {};
   const promise = new Promise<void>((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
+  });
+  return { promise, resolve: resolvePromise, reject: rejectPromise };
+}
+
+function createDeferredValue<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (error: Error) => void;
+} {
+  let resolvePromise: (value: T) => void = () => {};
+  let rejectPromise: (error: Error) => void = () => {};
+  const promise = new Promise<T>((resolve, reject) => {
     resolvePromise = resolve;
     rejectPromise = reject;
   });
@@ -275,14 +335,173 @@ describe("workspace-auth flow", () => {
     expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
   });
 
-  it("removes only the failed session when refresh fails", async () => {
+  it("keeps a Workspace session when refresh fails transiently", async () => {
     const session = await loginAndGetCurrentSession();
-    refreshWorkspaceIamToken.mockRejectedValueOnce(new Error("expired"));
+    refreshWorkspaceIamToken.mockRejectedValueOnce(new TypeError("Failed to fetch"));
 
-    await expect(refreshWorkspaceSession(session.accountId)).resolves.toBe(false);
+    await expect(
+      ensureFreshWorkspaceSession(session.accountId, { force: true }),
+    ).rejects.toBeInstanceOf(TypeError);
 
-    expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
-    expect(useWorkspaceAuthStore.getState().sessions).toHaveLength(0);
+    expect(deleteWorkspaceMessengerOwnerCache).not.toHaveBeenCalled();
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([session]);
+  });
+
+  it("shares one refresh request between parallel ensureFreshWorkspaceSession calls", async () => {
+    const session = await loginAndGetCurrentSession();
+    const deferred = createDeferredValue<WorkspaceIamAuthModule.WorkspaceIamTokenResponse>();
+    refreshWorkspaceIamToken.mockReturnValueOnce(deferred.promise);
+
+    const first = ensureFreshWorkspaceSession(session.accountId, { force: true });
+    const second = ensureFreshWorkspaceSession(session.accountId, { force: true });
+
+    expect(refreshWorkspaceIamToken).toHaveBeenCalledTimes(1);
+
+    deferred.resolve({
+      accessToken: tokenWithClaims({
+        user_uuid: USER_UUID,
+        project_id: PROJECT_ID,
+        exp: 1_900_000_100,
+      }),
+      refreshToken: "refresh-token-next",
+      raw: {},
+    });
+
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+
+    expect(firstResult.accessToken).toBe(secondResult.accessToken);
+    expect(useWorkspaceAuthStore.getState().getCurrentSession()).toMatchObject({
+      accountId: session.accountId,
+      refreshToken: "refresh-token-next",
+    });
+  });
+
+  it("keeps shared refresh alive when one waiting caller is aborted", async () => {
+    const session = await loginAndGetCurrentSession();
+    const deferred = createDeferredValue<WorkspaceIamAuthModule.WorkspaceIamTokenResponse>();
+    refreshWorkspaceIamToken.mockReturnValueOnce(deferred.promise);
+    const firstController = new AbortController();
+
+    const first = ensureFreshWorkspaceSession(session.accountId, {
+      force: true,
+      signal: firstController.signal,
+    });
+    const second = ensureFreshWorkspaceSession(session.accountId, { force: true });
+
+    expect(refreshWorkspaceIamToken).toHaveBeenCalledTimes(1);
+    firstController.abort();
+
+    await expect(first).rejects.toMatchObject({ name: "AbortError" });
+
+    deferred.resolve({
+      accessToken: tokenWithClaims({
+        user_uuid: USER_UUID,
+        project_id: PROJECT_ID,
+        exp: 1_900_000_100,
+      }),
+      refreshToken: "refresh-token-after-abort",
+      raw: {},
+    });
+
+    await expect(second).resolves.toMatchObject({
+      accountId: session.accountId,
+      refreshToken: "refresh-token-after-abort",
+    });
+    expect(useWorkspaceAuthStore.getState().getCurrentSession()).toMatchObject({
+      accountId: session.accountId,
+      refreshToken: "refresh-token-after-abort",
+    });
+  });
+
+  it("refreshes only the requested Workspace account id", async () => {
+    const firstSession = storeWorkspaceSession(
+      createWorkspaceSession({
+        accountId: "workspace.example.com:project-a:user-a",
+        projectId: "project-a",
+        userUuid: "user-a",
+        accessToken: tokenWithClaims({
+          user_uuid: "user-a",
+          project_id: "project-a",
+          exp: 1,
+        }),
+        refreshToken: "refresh-token-a",
+      }),
+    );
+    const secondSession = storeWorkspaceSession(
+      createWorkspaceSession({
+        accountId: "workspace.example.com:project-b:user-b",
+        projectId: "project-b",
+        userUuid: "user-b",
+        accessToken: tokenWithClaims({
+          user_uuid: "user-b",
+          project_id: "project-b",
+          exp: 1,
+        }),
+        refreshToken: "refresh-token-b",
+      }),
+    );
+    refreshWorkspaceIamToken.mockResolvedValueOnce({
+      accessToken: tokenWithClaims({
+        user_uuid: "user-a",
+        project_id: "project-a",
+        exp: 1_900_000_100,
+      }),
+      refreshToken: "refresh-token-a-next",
+      raw: {},
+    });
+
+    const refreshedSession = await ensureFreshWorkspaceSession(firstSession.accountId, {
+      force: true,
+    });
+
+    expect(refreshWorkspaceIamToken).toHaveBeenCalledWith(
+      { refreshToken: "refresh-token-a" },
+      expect.objectContaining({
+        tokenUrl:
+          "https://workspace.example.com/api/core/v1/iam/clients/default/actions/get_token/invoke",
+      }),
+    );
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([
+      expect.objectContaining({
+        accountId: firstSession.accountId,
+        refreshToken: "refresh-token-a-next",
+      }),
+      secondSession,
+    ]);
+    expect(refreshedSession).toBe(
+      useWorkspaceAuthStore
+        .getState()
+        .sessions.find((session) => session.accountId === firstSession.accountId),
+    );
+  });
+
+  it("keeps the previous refresh token when IAM refresh omits a new one", async () => {
+    const session = await loginAndGetCurrentSession();
+    refreshWorkspaceIamToken.mockResolvedValueOnce({
+      accessToken: tokenWithClaims({
+        user_uuid: USER_UUID,
+        project_id: PROJECT_ID,
+        exp: 1_900_000_100,
+      }),
+      raw: {},
+    });
+
+    await ensureFreshWorkspaceSession(session.accountId, { force: true });
+
+    expect(useWorkspaceAuthStore.getState().getCurrentSession()).toMatchObject({
+      accessToken: expect.any(String),
+      refreshToken: "refresh-token",
+    });
+  });
+
+  it("classifies IAM refresh rejection as refresh-expired", () => {
+    const failure = classifyWorkspaceAuthRefreshError(
+      new WorkspaceIamAuthError("Workspace IAM token request failed", 400, {
+        error: "invalid_grant",
+      }),
+    );
+
+    expect(failure).toMatchObject({ reason: "refresh-expired", status: 400 });
   });
 
   it("waits for Workspace messenger owner cache cleanup before explicit session removal", async () => {
@@ -320,8 +539,17 @@ describe("workspace-auth flow", () => {
     expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
   });
 
-  it("cleans the Workspace messenger owner cache when refresh returns another user", async () => {
+  it("cleans only the mismatched Workspace session when refresh returns another user", async () => {
     const session = await loginAndGetCurrentSession();
+    const otherSession = storeWorkspaceSession(
+      createWorkspaceSession({
+        accountId:
+          "workspace.example.com:22222222-2222-4222-8222-222222222222:44444444-4444-4444-8444-444444444444",
+        instanceId: "instance-other",
+        userUuid: "44444444-4444-4444-8444-444444444444",
+        login: "other@example.com",
+      }),
+    );
     refreshWorkspaceIamToken.mockResolvedValueOnce({
       accessToken: tokenWithClaims({
         user_uuid: "33333333-3333-4333-8333-333333333333",
@@ -331,10 +559,18 @@ describe("workspace-auth flow", () => {
       raw: {},
     });
 
-    await expect(refreshWorkspaceSession(session.accountId)).resolves.toBe(false);
+    await expect(
+      ensureFreshWorkspaceSession(session.accountId, { force: true }),
+    ).rejects.toMatchObject({ code: "owner-mismatch" });
 
     expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
-    expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([
+      expect.objectContaining({
+        accountId: otherSession.accountId,
+        userUuid: otherSession.userUuid,
+        refreshToken: otherSession.refreshToken,
+      }),
+    ]);
   });
 
   it("cleans the Workspace messenger owner cache when refresh returns another project", async () => {
@@ -348,18 +584,26 @@ describe("workspace-auth flow", () => {
       raw: {},
     });
 
-    await expect(refreshWorkspaceSession(session.accountId)).resolves.toBe(false);
+    await expect(
+      ensureFreshWorkspaceSession(session.accountId, { force: true }),
+    ).rejects.toMatchObject({ code: "owner-mismatch" });
 
     expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
     expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
   });
 
-  it("removes a Workspace session even when owner cache cleanup fails", async () => {
+  it("removes a refresh-expired Workspace session even when owner cache cleanup fails", async () => {
     const session = await loginAndGetCurrentSession();
-    refreshWorkspaceIamToken.mockRejectedValueOnce(new Error("expired"));
+    refreshWorkspaceIamToken.mockRejectedValueOnce(
+      new WorkspaceIamAuthError("Workspace IAM token request failed", 401, {
+        error: "invalid_token",
+      }),
+    );
     deleteWorkspaceMessengerOwnerCache.mockRejectedValueOnce(new Error("idb failed"));
 
-    await expect(refreshWorkspaceSession(session.accountId)).resolves.toBe(false);
+    await expect(
+      ensureFreshWorkspaceSession(session.accountId, { force: true }),
+    ).rejects.toBeInstanceOf(WorkspaceIamAuthError);
 
     expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
   });

@@ -239,7 +239,7 @@ describe("syncUnreadSurfacesFromSnapshot", () => {
 
   it("does not touch chat-list when applyChatList is false", () => {
     syncUnreadSurfacesFromSnapshot({
-      source: "inactive-register",
+      source: "reconnect",
       instanceId: INSTANCE_ID,
       currentUserId: null,
       snapshot: {
@@ -257,7 +257,7 @@ describe("syncUnreadSurfacesFromSnapshot", () => {
 
   it("keeps snapshot-total as the default instance count mode", () => {
     syncUnreadSurfacesFromSnapshot({
-      source: "inactive-register",
+      source: "reconnect",
       instanceId: INSTANCE_ID,
       currentUserId: null,
       snapshot: {

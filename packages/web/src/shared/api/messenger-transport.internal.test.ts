@@ -20,6 +20,13 @@ function jsonResponse(body: unknown, status = 200, headers?: HeadersInit): Respo
   });
 }
 
+function textResponse(body: string, status = 200, headers?: HeadersInit): Response {
+  return new Response(body, {
+    status,
+    headers,
+  });
+}
+
 function createFetchMock(
   body: unknown,
   status = 200,
@@ -162,6 +169,73 @@ describe("messenger transport helper", () => {
     ]);
   });
 
+  it("retries auth failures on the trailing-slash fallback path with a fresh token", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ detail: "Not found" }, 404))
+      .mockResolvedValueOnce(jsonResponse({ detail: "expired" }, 401))
+      .mockResolvedValueOnce(jsonResponse([{ uuid: "stream" }]));
+    const getAccessToken = vi.fn(({ force = false } = {}) => (force ? "new-token" : "old-token"));
+
+    await expect(
+      getJsonResult(
+        "/streams/",
+        {
+          accessToken: "old-token",
+          baseUrl: "/api/messenger/v1",
+          fetchImpl: fetchMock,
+          getAccessToken,
+        },
+        { page_limit: 50 },
+      ),
+    ).resolves.toMatchObject({
+      data: [{ uuid: "stream" }],
+    });
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/messenger/v1/streams/?page_limit=50",
+      "/api/messenger/v1/streams?page_limit=50",
+      "/api/messenger/v1/streams?page_limit=50",
+    ]);
+    expect(
+      fetchMock.mock.calls.map(([, init]) => new Headers(init?.headers).get("Authorization")),
+    ).toEqual(["Bearer old-token", "Bearer old-token", "Bearer new-token"]);
+    expect(getAccessToken.mock.calls.map(([request]) => request?.force === true)).toEqual([
+      false,
+      true,
+    ]);
+  });
+
+  it("retries JSON requests after 401 responses with non-JSON bodies", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    fetchMock
+      .mockResolvedValueOnce(
+        textResponse("<html>Unauthorized</html>", 401, {
+          "Content-Type": "text/html",
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse([{ uuid: "stream" }]));
+    const getAccessToken = vi.fn(({ force = false } = {}) => (force ? "new-token" : "old-token"));
+
+    await expect(
+      getJsonResult("/streams/", {
+        accessToken: "old-token",
+        fetchImpl: fetchMock,
+        getAccessToken,
+      }),
+    ).resolves.toMatchObject({
+      data: [{ uuid: "stream" }],
+    });
+
+    expect(
+      fetchMock.mock.calls.map(([, init]) => new Headers(init?.headers).get("Authorization")),
+    ).toEqual(["Bearer old-token", "Bearer new-token"]);
+    expect(getAccessToken.mock.calls.map(([request]) => request?.force === true)).toEqual([
+      false,
+      true,
+    ]);
+  });
+
   it("reports the fallback path when both trailing-slash variants fail", async () => {
     const fetchMock = vi.fn<typeof fetch>();
     fetchMock
@@ -253,6 +327,61 @@ describe("messenger transport helper", () => {
       "X-Workspace-Dev-Target-Origin": "https://workspace.example.com",
     });
     expect(new Headers(init?.headers).has("Content-Type")).toBe(false);
+  });
+
+  it("retries upload requests after 401 responses with non-JSON bodies", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    fetchMock
+      .mockResolvedValueOnce(textResponse("Unauthorized", 401, { "Content-Type": "text/plain" }))
+      .mockResolvedValueOnce(jsonResponse({ uuid: "file-uuid" }));
+    const getAccessToken = vi.fn(({ force = false } = {}) => (force ? "new-token" : "old-token"));
+    const form = new FormData();
+    form.append("stream_uuid", "stream-uuid");
+    form.append("file", new File(["file-bytes"], "report.txt", { type: "text/plain" }));
+
+    await expect(
+      sendFormDataResult(
+        "/files/",
+        {
+          accessToken: "old-token",
+          fetchImpl: fetchMock,
+          getAccessToken,
+        },
+        form,
+      ),
+    ).resolves.toMatchObject({ data: { uuid: "file-uuid" } });
+
+    expect(fetchMock.mock.calls.map(([, init]) => init?.body)).toEqual([form, form]);
+    expect(
+      fetchMock.mock.calls.map(([, init]) => new Headers(init?.headers).get("Authorization")),
+    ).toEqual(["Bearer old-token", "Bearer new-token"]);
+  });
+
+  it("retries binary downloads after 401 responses with non-JSON bodies", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    fetchMock
+      .mockResolvedValueOnce(textResponse("Unauthorized", 401, { "Content-Type": "text/plain" }))
+      .mockResolvedValueOnce(
+        new Response("file-bytes", {
+          status: 200,
+          headers: { "Content-Type": "text/plain" },
+        }),
+      );
+    const getAccessToken = vi.fn(({ force = false } = {}) => (force ? "new-token" : "old-token"));
+
+    await expect(
+      getBinaryResult("/files/file-uuid/actions/download", {
+        accessToken: "old-token",
+        fetchImpl: fetchMock,
+        getAccessToken,
+      }),
+    ).resolves.toMatchObject({
+      headers: expect.any(Headers),
+    });
+
+    expect(
+      fetchMock.mock.calls.map(([, init]) => new Headers(init?.headers).get("Authorization")),
+    ).toEqual(["Bearer old-token", "Bearer new-token"]);
   });
 
   it("supports DELETE JSON and public GET without auth", async () => {

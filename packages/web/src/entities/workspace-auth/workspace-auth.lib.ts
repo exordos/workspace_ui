@@ -6,6 +6,7 @@ import {
   decodeWorkspaceIamClaims,
   refreshWorkspaceIamToken,
   requestWorkspaceIamLoginPasswordToken,
+  WorkspaceIamAuthError,
 } from "~/shared/api/workspace-iam-auth";
 import { getWorkspaceMessengerAuthProfile } from "~/shared/api/workspace-messenger-profile.api";
 import { env } from "~/shared/lib/env";
@@ -19,6 +20,7 @@ import type { WorkspaceAuthProfile, WorkspaceAuthSession } from "./workspace-aut
 
 const TOKEN_REFRESH_SKEW_MS = 60_000;
 const authLogger = createLogger("auth:workspace");
+const pendingWorkspaceSessionRefreshes = new Map<string, Promise<WorkspaceAuthSession>>();
 let instanceIdFallbackCounter = 0;
 
 export interface LoginWorkspaceWithPasswordParams {
@@ -41,6 +43,7 @@ export class WorkspaceAuthFlowError extends Error {
     | "missing-claims"
     | "project-mismatch"
     | "profile-load-failed"
+    | "owner-mismatch"
     | "refresh-unavailable";
 
   constructor(code: WorkspaceAuthFlowError["code"], message: string) {
@@ -49,6 +52,14 @@ export class WorkspaceAuthFlowError extends Error {
     this.code = code;
   }
 }
+
+export type WorkspaceAuthRefreshFailure =
+  | { reason: "transient-failed"; error: unknown }
+  | { reason: "refresh-expired"; status?: number; error: unknown }
+  | { reason: "owner-mismatch"; error: unknown }
+  | { reason: "network-offline"; error: unknown }
+  | { reason: "server-unavailable"; status?: number; error: unknown }
+  | { reason: "unknown-transient"; error: unknown };
 
 function joinOriginPath(origin: string, path: string): string {
   const cleanOrigin = origin.replace(/\/+$/, "");
@@ -104,7 +115,98 @@ function fallbackProfileFromIdentity(userUuid: string, login: string): Workspace
 }
 
 function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException && error.name === "AbortError";
+  return (
+    (error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError")
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function knownErrorText(value: unknown): string {
+  if (typeof value === "string") return value.toLowerCase();
+  if (!isRecord(value)) return "";
+  const textFields = ["error", "error_description", "message", "detail", "code"];
+  return textFields
+    .map((field) => value[field])
+    .filter((fieldValue): fieldValue is string => typeof fieldValue === "string")
+    .join(" ")
+    .toLowerCase();
+}
+
+function isNavigatorOffline(): boolean {
+  return typeof navigator !== "undefined" && navigator.onLine === false;
+}
+
+function isNetworkError(error: unknown): boolean {
+  if (!(error instanceof TypeError)) return false;
+  const message = error.message.toLowerCase();
+  return message.includes("fetch") || message.includes("network") || message.includes("offline");
+}
+
+function isRefreshTokenAuthRejection(error: unknown): error is WorkspaceIamAuthError {
+  if (!(error instanceof WorkspaceIamAuthError)) return false;
+  if (error.status === 401 || error.status === 403) return true;
+  if (error.status !== 400) return false;
+  const text = knownErrorText(error.data);
+  return (
+    text.includes("invalid_grant") ||
+    text.includes("invalid_token") ||
+    text.includes("refresh") ||
+    text.includes("expired") ||
+    text.includes("revoked") ||
+    text.includes("unauthorized") ||
+    text.includes("forbidden")
+  );
+}
+
+function isServerUnavailable(error: unknown): error is WorkspaceIamAuthError {
+  return (
+    error instanceof WorkspaceIamAuthError &&
+    (error.status === 408 || error.status === 429 || error.status >= 500)
+  );
+}
+
+function shouldRemoveSessionAfterRefreshFailure(failure: WorkspaceAuthRefreshFailure): boolean {
+  return failure.reason === "refresh-expired" || failure.reason === "owner-mismatch";
+}
+
+function abortSignalError(): Error {
+  const error = new Error("Workspace auth refresh aborted");
+  error.name = "AbortError";
+  return error;
+}
+
+function promiseRejectionError(error: unknown): Error {
+  if (error instanceof Error) return error;
+  return new Error("Workspace auth refresh failed");
+}
+
+function raceWithAbortSignal<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (signal == null) return promise;
+  if (signal.aborted) return Promise.reject(abortSignalError());
+
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(abortSignalError());
+    signal.addEventListener("abort", abort, { once: true });
+    void promise
+      .then(
+        (value) => {
+          signal.removeEventListener("abort", abort);
+          resolve(value);
+        },
+        (error: unknown) => {
+          signal.removeEventListener("abort", abort);
+          reject(promiseRejectionError(error));
+        },
+      )
+      .catch((error: unknown) => {
+        signal.removeEventListener("abort", abort);
+        reject(promiseRejectionError(error));
+      });
+  });
 }
 
 function findWorkspaceSession(accountId: string): WorkspaceAuthSession | undefined {
@@ -215,6 +317,110 @@ export function shouldRefreshWorkspaceSession(session: Pick<WorkspaceAuthSession
   return session.expiresAtMs != null && session.expiresAtMs - Date.now() <= TOKEN_REFRESH_SKEW_MS;
 }
 
+export function classifyWorkspaceAuthRefreshError(error: unknown): WorkspaceAuthRefreshFailure {
+  if (error instanceof WorkspaceAuthFlowError && error.code === "owner-mismatch") {
+    return { reason: "owner-mismatch", error };
+  }
+  if (isRefreshTokenAuthRejection(error)) {
+    return { reason: "refresh-expired", status: error.status, error };
+  }
+  if (isNavigatorOffline() || isNetworkError(error)) {
+    return { reason: "network-offline", error };
+  }
+  if (isServerUnavailable(error)) {
+    return { reason: "server-unavailable", status: error.status, error };
+  }
+  if (isAbortError(error) || error instanceof WorkspaceIamAuthError) {
+    return { reason: "transient-failed", error };
+  }
+  return { reason: "unknown-transient", error };
+}
+
+async function refreshWorkspaceAuthSessionOnce(
+  session: WorkspaceAuthSession,
+  signal: AbortSignal | undefined,
+): Promise<WorkspaceAuthSession> {
+  if (session.refreshToken == null || session.refreshToken.trim() === "") {
+    throw new WorkspaceAuthFlowError("refresh-unavailable", "Workspace refresh token is missing");
+  }
+
+  const token = await refreshWorkspaceIamToken(
+    { refreshToken: session.refreshToken },
+    { tokenUrl: iamTokenUrlForOrganizationOrigin(session.organizationOrigin), signal },
+  );
+  const claims = decodeWorkspaceIamClaims(token.accessToken);
+  const userUuid = userUuidFromClaims(claims);
+  if (userUuid !== session.userUuid || claims?.projectId !== session.projectId) {
+    throw new WorkspaceAuthFlowError(
+      "owner-mismatch",
+      "Workspace refresh token returned another owner",
+    );
+  }
+
+  useWorkspaceAuthStore.getState().updateTokens(session.accountId, {
+    accessToken: token.accessToken,
+    refreshToken: token.refreshToken,
+    expiresAtMs: expiresAtMsFromToken(token.expiresIn, claims?.expiresAtSeconds),
+  });
+
+  const refreshedSession = findWorkspaceSession(session.accountId);
+  if (refreshedSession == null) {
+    throw new WorkspaceAuthFlowError(
+      "refresh-unavailable",
+      "Workspace session disappeared during refresh",
+    );
+  }
+  return refreshedSession;
+}
+
+async function refreshWorkspaceAuthSessionForAccount(
+  session: WorkspaceAuthSession,
+): Promise<WorkspaceAuthSession> {
+  try {
+    return await refreshWorkspaceAuthSessionOnce(session, undefined);
+  } catch (error) {
+    const failure = classifyWorkspaceAuthRefreshError(error);
+    if (shouldRemoveSessionAfterRefreshFailure(failure)) {
+      await removeWorkspaceSessionAfterCacheCleanup(session.accountId, session);
+    }
+    throw error;
+  }
+}
+
+export function ensureFreshWorkspaceSession(
+  accountId: string,
+  options: { force?: boolean; signal?: AbortSignal } = {},
+): Promise<WorkspaceAuthSession> {
+  const session = findWorkspaceSession(accountId);
+  if (session == null) {
+    return Promise.reject(
+      new WorkspaceAuthFlowError("refresh-unavailable", "Workspace session is missing"),
+    );
+  }
+  if (options.force !== true && !shouldRefreshWorkspaceSession(session)) {
+    return Promise.resolve(session);
+  }
+  if (options.signal?.aborted === true) {
+    return Promise.reject(abortSignalError());
+  }
+
+  const pending = pendingWorkspaceSessionRefreshes.get(accountId);
+  if (pending != null) {
+    return raceWithAbortSignal(pending, options.signal);
+  }
+
+  const refreshPromise = refreshWorkspaceAuthSessionForAccount(session);
+  pendingWorkspaceSessionRefreshes.set(accountId, refreshPromise);
+  void refreshPromise
+    .finally(() => {
+      if (pendingWorkspaceSessionRefreshes.get(accountId) === refreshPromise) {
+        pendingWorkspaceSessionRefreshes.delete(accountId);
+      }
+    })
+    .catch(() => undefined);
+  return raceWithAbortSignal(refreshPromise, options.signal);
+}
+
 export async function loginWorkspaceWithPassword({
   organizationUrl,
   login,
@@ -295,40 +501,6 @@ export async function loginWorkspaceWithPassword({
     session: useWorkspaceAuthStore.getState().getCurrentSession() ?? session,
     serverSettings,
   };
-}
-
-export async function refreshWorkspaceSession(accountId: string): Promise<boolean> {
-  const store = useWorkspaceAuthStore.getState();
-  const session = store.sessions.find((item) => item.accountId === accountId);
-  if (session?.refreshToken == null || session.refreshToken.trim() === "") {
-    throw new WorkspaceAuthFlowError("refresh-unavailable", "Workspace refresh token is missing");
-  }
-
-  try {
-    const token = await refreshWorkspaceIamToken(
-      { refreshToken: session.refreshToken },
-      { tokenUrl: iamTokenUrlForOrganizationOrigin(session.organizationOrigin) },
-    );
-    const claims = decodeWorkspaceIamClaims(token.accessToken);
-    const userUuid = userUuidFromClaims(claims);
-    if (userUuid == null || userUuid !== session.userUuid) {
-      await removeWorkspaceSessionAfterCacheCleanup(accountId, session);
-      return false;
-    }
-    if (claims?.projectId != null && claims.projectId !== session.projectId) {
-      await removeWorkspaceSessionAfterCacheCleanup(accountId, session);
-      return false;
-    }
-    useWorkspaceAuthStore.getState().updateTokens(accountId, {
-      accessToken: token.accessToken,
-      refreshToken: token.refreshToken,
-      expiresAtMs: expiresAtMsFromToken(token.expiresIn, claims?.expiresAtSeconds),
-    });
-    return true;
-  } catch {
-    await removeWorkspaceSessionAfterCacheCleanup(accountId, session);
-    return false;
-  }
 }
 
 export async function removeWorkspaceSession(accountId: string): Promise<void> {

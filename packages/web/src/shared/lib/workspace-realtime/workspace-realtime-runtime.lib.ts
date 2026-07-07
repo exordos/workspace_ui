@@ -1,3 +1,4 @@
+import { MessengerApiError } from "~/shared/api/messenger-client";
 import {
   buildMessengerWebSocketProtocols,
   buildMessengerWebSocketUrl,
@@ -22,13 +23,14 @@ import type {
 
 export type WorkspaceRealtimeSurface = "active" | "background";
 
-// Режим runtime нужен не UI, а диагностике: по нему видно, где realtime застрял.
+// Runtime mode is diagnostic state; UI can use it later to see where realtime is stuck.
 export type WorkspaceRealtimeRuntimeMode =
   | "idle"
   | "starting"
   | "catching_up"
   | "connecting"
   | "connected"
+  | "auth_refreshing"
   | "reconnecting"
   | "disconnecting"
   | "stopped"
@@ -36,7 +38,7 @@ export type WorkspaceRealtimeRuntimeMode =
 
 export type WorkspaceRealtimeEventSource = "catch_up" | "websocket";
 
-// Причины skip намеренно общие для догонки и WebSocket, чтобы оба пути писали одинаковую диагностику.
+// Skip reasons are shared by catch-up and WebSocket so both paths report the same diagnostics.
 export type WorkspaceRealtimeSkipReason =
   | "duplicate_epoch"
   | "unsupported_event"
@@ -46,14 +48,14 @@ export type WorkspaceRealtimeSkipReason =
   | "transport_stopped";
 
 export interface WorkspaceRealtimeRuntimeOwner extends WorkspaceRealtimeCursorOwner {
-  // runtimeGeneration отделяет старый socket той же org/project от нового после refresh/re-login.
+  // runtimeGeneration separates an old socket from a new one after refresh or re-login.
   runtimeGeneration: number;
 }
 
 export interface WorkspaceRealtimeRuntimeContext {
   owner: WorkspaceRealtimeRuntimeOwner;
-  // ownerKey не содержит runtimeGeneration: он задаёт durable scope cursor/store.
-  // Само поколение проверяется отдельно через owner.
+  // ownerKey does not include runtimeGeneration; it defines durable cursor/store scope.
+  // The in-memory generation is checked separately through owner.
   ownerKey: string;
   surface: WorkspaceRealtimeSurface;
   signal?: AbortSignal;
@@ -79,7 +81,7 @@ export interface WorkspaceRealtimeSkippedEvent {
 }
 
 export interface WorkspaceRealtimeEventApplier {
-  // Transport не знает про Zustand и UI. Applier - единственная точка записи в доменный слой.
+  // Transport does not know about Zustand or UI. Applier is the only domain write boundary.
   applyEvent(event: WorkspaceRealtimeEvent, context: WorkspaceRealtimeEventContext): unknown;
   skipEvent(
     event: WorkspaceRealtimeEvent | WorkspaceRealtimeSkippedEvent,
@@ -96,7 +98,12 @@ export interface WorkspaceRealtimeDiagnostic {
   owner: WorkspaceRealtimeRuntimeOwner;
   ownerKey: string;
   surface: WorkspaceRealtimeSurface;
-  reason: WorkspaceRealtimeSkipReason | "websocket_error" | "catch_up_failed";
+  reason:
+    | WorkspaceRealtimeSkipReason
+    | "websocket_error"
+    | "catch_up_failed"
+    | "auth_failed"
+    | "auth_refresh_failed";
   error?: unknown;
 }
 
@@ -118,6 +125,16 @@ export type WorkspaceRealtimeWebSocketFactory = (
   protocols: string[],
 ) => WorkspaceRealtimeWebSocketLike;
 
+export interface WorkspaceRealtimeSessionRefreshOptions {
+  force?: boolean;
+  signal?: AbortSignal;
+}
+
+export type WorkspaceRealtimeSessionRefresh = (
+  accountId: string,
+  options: WorkspaceRealtimeSessionRefreshOptions,
+) => Promise<unknown>;
+
 export interface WorkspaceRealtimeRuntimeOptions {
   clientOptions: MessengerClientOptions;
   cursorStorage: WorkspaceRealtimeDurableCursorStorage;
@@ -130,6 +147,7 @@ export interface WorkspaceRealtimeRuntimeOptions {
   webSocketBaseUrl?: string;
   webSocketFactory?: WorkspaceRealtimeWebSocketFactory;
   reconnectDelayMs?: (attempt: number) => number;
+  refreshSession?: WorkspaceRealtimeSessionRefresh;
   onDiagnostic?: (diagnostic: WorkspaceRealtimeDiagnostic) => unknown;
 }
 
@@ -145,6 +163,7 @@ export interface WorkspaceRealtimeTransportCore {
 
 const DEFAULT_RECONNECT_BASE_DELAY_MS = 1_000;
 const DEFAULT_RECONNECT_MAX_DELAY_MS = 30_000;
+const WORKSPACE_WEBSOCKET_AUTH_CLOSE_CODE = 4401;
 const INVALID_FRAME_SYNTHETIC_EPOCH: WorkspaceMessengerEpochVersion = 0;
 
 function defaultReconnectDelayMs(attempt: number): number {
@@ -202,7 +221,7 @@ function withAbortSignal(
   options: MessengerClientOptions,
   signal: AbortSignal | undefined,
 ): MessengerClientOptions {
-  // REST-запросы догонки должны отменяться вместе с тем же runtime, что держит socket.
+  // Catch-up REST requests must be cancelled with the same runtime that owns the socket.
   return { ...options, signal };
 }
 
@@ -215,17 +234,48 @@ function isOwnerCurrent(
   return options.isOwnerCurrent?.(owner) ?? true;
 }
 
+function isAuthFailureError(error: unknown): boolean {
+  if (error instanceof MessengerApiError) {
+    return error.status === 401 || error.status === 403;
+  }
+  if (typeof error !== "object" || error == null || !("status" in error)) {
+    return false;
+  }
+  const status = error.status;
+  return status === 401 || status === 403;
+}
+
+function getWebSocketCloseCode(event: Event): number | null {
+  if (!("code" in event)) return null;
+  const code = event.code;
+  return typeof code === "number" ? code : null;
+}
+
+function isSameRuntimeOwner(
+  left: WorkspaceRealtimeRuntimeOwner,
+  right: WorkspaceRealtimeRuntimeOwner,
+): boolean {
+  return (
+    left.accountId === right.accountId &&
+    left.instanceId === right.instanceId &&
+    left.organizationId === right.organizationId &&
+    left.projectId === right.projectId &&
+    left.userUuid === right.userUuid &&
+    left.runtimeGeneration === right.runtimeGeneration
+  );
+}
+
 export function createWorkspaceRealtimeNoopApplier(): WorkspaceRealtimeEventApplier {
   return {
     applyEvent() {
-      // Phase 2 держит transport живым, но еще не пишет события в messengerStore.
-      // Domain apply path появится отдельным слоем в Phase 3.
+      // Phase 2 keeps transport alive but does not write events into messengerStore yet.
+      // The domain apply path is added as a separate layer.
     },
     skipEvent() {
-      // Background/unsupported события пока только двигают cursor в transport core.
+      // Background and unsupported events only advance the transport cursor for now.
     },
     onTransportStateChange() {
-      // Диагностическое состояние можно подключить позже без смены transport API.
+      // Diagnostic state can be wired later without changing the transport API.
     },
   };
 }
@@ -241,6 +291,9 @@ export function createWorkspaceRealtimeTransportCore(
   let lastEpochVersion: WorkspaceMessengerEpochVersion | null = null;
   let stopped = true;
   let removeExternalAbortListener: (() => void) | null = null;
+  let authRefreshPromise: Promise<void> | null = null;
+  let lastAuthRefreshToken: string | null = null;
+  let lastAuthFailure: { reason: string; error?: unknown } | null = null;
 
   const reconnectDelayMs = options.reconnectDelayMs ?? defaultReconnectDelayMs;
   const webSocketFactory = options.webSocketFactory ?? defaultWebSocketFactory;
@@ -306,6 +359,86 @@ export function createWorkspaceRealtimeTransportCore(
     });
   }
 
+  function scheduleAuthRefreshRetry(reason: string, error?: unknown): void {
+    if (context == null || stopped || reconnectTimer != null) return;
+    lastAuthFailure = { reason, error };
+    reconnectAttempt += 1;
+    void emitState("reconnecting", reason, error);
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      lastAuthRefreshToken = null;
+      const failure = lastAuthFailure;
+      void refreshSessionAfterAuthFailure(failure?.reason ?? "auth_refresh_retry", failure?.error);
+    }, reconnectDelayMs(reconnectAttempt));
+  }
+
+  function refreshSessionAfterAuthFailure(reason: string, error?: unknown): Promise<void> {
+    if (authRefreshPromise != null) return authRefreshPromise;
+    const nextRefreshPromise = runSessionRefreshAfterAuthFailure(reason, error);
+    authRefreshPromise = nextRefreshPromise;
+    void nextRefreshPromise.finally(() => {
+      if (authRefreshPromise === nextRefreshPromise) {
+        authRefreshPromise = null;
+      }
+    });
+    return nextRefreshPromise;
+  }
+
+  async function runSessionRefreshAfterAuthFailure(reason: string, error?: unknown): Promise<void> {
+    if (context == null || stopped) return;
+
+    const accessToken = options.clientOptions.accessToken ?? "";
+    if (lastAuthRefreshToken === accessToken) {
+      await emitState("failed", reason, error);
+      scheduleAuthRefreshRetry("auth_refresh_backoff", error);
+      return;
+    }
+
+    if (options.refreshSession == null) {
+      const missingCallbackError = new Error("Workspace realtime auth refresh callback is missing");
+      reportDiagnostic("auth_refresh_failed", missingCallbackError);
+      await emitState("failed", reason, missingCallbackError);
+      return;
+    }
+
+    lastAuthRefreshToken = accessToken;
+    reportDiagnostic("auth_failed", error);
+    await emitState("auth_refreshing", reason, error);
+
+    const refreshOwner = context.owner;
+    const refreshSignal = activeSignal();
+
+    try {
+      await options.refreshSession(refreshOwner.accountId, {
+        force: true,
+        signal: refreshSignal,
+      });
+      if (
+        stopped ||
+        activeSignal() !== refreshSignal ||
+        refreshSignal?.aborted === true ||
+        context == null ||
+        !isSameRuntimeOwner(context.owner, refreshOwner)
+      ) {
+        return;
+      }
+      await stop("auth_refreshed");
+    } catch (refreshError) {
+      if (
+        stopped ||
+        activeSignal() !== refreshSignal ||
+        refreshSignal?.aborted === true ||
+        context == null ||
+        !isSameRuntimeOwner(context.owner, refreshOwner)
+      ) {
+        return;
+      }
+      reportDiagnostic("auth_refresh_failed", refreshError);
+      await emitState("failed", reason, refreshError);
+      scheduleAuthRefreshRetry("auth_refresh_failed", refreshError);
+    }
+  }
+
   async function skipEvent(
     event: WorkspaceRealtimeEvent | WorkspaceRealtimeSkippedEvent,
     reason: WorkspaceRealtimeSkipReason,
@@ -322,7 +455,7 @@ export function createWorkspaceRealtimeTransportCore(
       options.cursorStorage.read(context.owner) ??
       INVALID_FRAME_SYNTHETIC_EPOCH;
     const nextEpochVersion = Math.max(previousEpochVersion, epochVersion);
-    // Durable cursor двигается в transport после успешного решения: apply или осознанный skip.
+    // Durable cursor moves in transport after a deliberate decision: apply or skip.
     options.cursorStorage.write(context.owner, nextEpochVersion);
     lastEpochVersion = nextEpochVersion;
     return nextEpochVersion > previousEpochVersion;
@@ -335,7 +468,7 @@ export function createWorkspaceRealtimeTransportCore(
   async function handleNormalizedEvent(event: WorkspaceRealtimeEvent): Promise<boolean> {
     if (context == null) return false;
     if (!isCurrentRuntime()) {
-      // Событие от старого socket не применяем и cursor не двигаем: новый runtime сам сделает догонку.
+      // Do not apply stale socket events or move the cursor; the new runtime will catch up.
       reportDiagnostic("stale_owner", event);
       return false;
     }
@@ -362,7 +495,7 @@ export function createWorkspaceRealtimeTransportCore(
         currentCursor != null && frame.epoch_version <= currentCursor
           ? "duplicate_epoch"
           : "unsupported_event";
-      // Если служебный/неподдержанный кадр несёт epoch, он всё равно участвует в порядке событий.
+      // Service or unsupported frames with an epoch still participate in event ordering.
       await skipEvent(skippedEvent, reason, "websocket");
       return advanceCursor(frame.epoch_version);
     }
@@ -388,7 +521,7 @@ export function createWorkspaceRealtimeTransportCore(
         return;
       }
       if (frame.type === "ping") {
-        // Сервер присылает JSON ping как прикладной heartbeat, поэтому отвечаем JSON pong явно.
+        // The server sends JSON ping as an application heartbeat, so answer with JSON pong.
         socket?.send(
           JSON.stringify(frame.ts == null ? { type: "pong" } : { type: "pong", ts: frame.ts }),
         );
@@ -414,8 +547,7 @@ export function createWorkspaceRealtimeTransportCore(
     if (!isCurrentRuntime()) return false;
     await emitState("catching_up");
 
-    // Догонка отдаёт события в тот же applier, но помечает source,
-    // чтобы диагностика отличала догоняющую загрузку от live socket.
+    // Catch-up sends events to the same applier but marks the source for diagnostics.
     const catchUpApplier: WorkspaceRealtimeCatchUpApplier = {
       applyEvent: (event, catchUpContext) =>
         options.applier.applyEvent(event, {
@@ -473,8 +605,8 @@ export function createWorkspaceRealtimeTransportCore(
 
   function openWebSocket(activeContext: WorkspaceRealtimeRuntimeContext): void {
     if (!isCurrentRuntime()) return;
-    // Открываем socket только после догонки от сохранённого cursor.
-    // Иначе live-события могут прийти раньше пропущенных REST-событий.
+    // Open the socket only after catch-up from the saved cursor.
+    // Otherwise live events may arrive before missed REST events.
     const currentCursor =
       lastEpochVersion ??
       options.cursorStorage.read(activeContext.owner) ??
@@ -496,9 +628,13 @@ export function createWorkspaceRealtimeTransportCore(
     socket.onerror = (event) => {
       reportDiagnostic("websocket_error", event);
     };
-    socket.onclose = () => {
+    socket.onclose = (event) => {
       socket = null;
       if (!stopped) {
+        if (getWebSocketCloseCode(event) === WORKSPACE_WEBSOCKET_AUTH_CLOSE_CODE) {
+          void refreshSessionAfterAuthFailure("websocket_auth_failed", event);
+          return;
+        }
         scheduleReconnect("socket_close");
       }
     };
@@ -514,6 +650,10 @@ export function createWorkspaceRealtimeTransportCore(
       openWebSocket(context);
     } catch (error) {
       if (stopped || activeSignal()?.aborted === true) return;
+      if (isAuthFailureError(error)) {
+        await refreshSessionAfterAuthFailure("catch_up_auth_failed", error);
+        return;
+      }
       reportDiagnostic("catch_up_failed", error);
       await emitState("failed", reason, error);
       scheduleReconnect("catch_up_failed");
@@ -548,6 +688,7 @@ export function createWorkspaceRealtimeTransportCore(
     stopped = true;
     clearReconnectTimer();
     cleanupExternalAbortListener();
+    lastAuthFailure = null;
     controller?.abort();
     await disconnect(reason);
     await emitState("stopped", reason);
@@ -561,6 +702,8 @@ export function createWorkspaceRealtimeTransportCore(
     controller = new AbortController();
     stopped = false;
     reconnectAttempt = 0;
+    lastAuthRefreshToken = null;
+    lastAuthFailure = null;
     lastEpochVersion = options.cursorStorage.read(nextContext.owner);
     attachExternalAbort(nextContext.signal);
     await emitState("starting");

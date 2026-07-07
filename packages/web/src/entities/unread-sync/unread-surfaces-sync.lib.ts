@@ -16,13 +16,11 @@ import {
   hasPersonalUnreadIndicator,
 } from "./unread-instance-count.lib";
 
-// Full unread snapshots come from register, reconnect, inactive org refresh, or Inbox.
+// Full unread snapshots come from register, reconnect, or Inbox.
 export type UnreadSurfaceSyncSource =
   | "event-loop-register"
   | "reconnect"
   | "reconnect-light"
-  | "inactive-register"
-  | "inactive-cached-register"
   | "inbox-fetch";
 
 export interface SyncUnreadSurfacesFromSnapshotOptions {

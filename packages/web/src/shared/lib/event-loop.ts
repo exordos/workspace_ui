@@ -9,13 +9,8 @@
  * - Long-poll fetch works in background (not throttled)
  * - On tab resume: nudges event loop to continue without timer delay
  */
-import {
-  getEvents,
-  getEventsForCredentials,
-  registerQueue,
-  registerQueueForCredentials,
-} from "~/shared/api/zulip-queue";
-import type { RegisterQueueResult, ZulipCredentials, ZulipEvent } from "~/shared/api/zulip.types";
+import { getEvents, registerQueue } from "~/shared/api/zulip-queue";
+import type { RegisterQueueResult, ZulipEvent } from "~/shared/api/zulip.types";
 import {
   isLikelyNetworkError,
   noteApiTransportFailure,
@@ -74,10 +69,6 @@ export interface StartZulipEventLoopOptions {
   shouldApplyActiveMetadata?: () => boolean;
   eventTypes?: string[];
   fetchEventTypes?: string[];
-}
-
-export interface StartZulipEventLoopForCredentialsOptions extends StartZulipEventLoopOptions {
-  credentials: ZulipCredentials;
 }
 
 interface EventLoopTransport {
@@ -341,20 +332,5 @@ export function startZulipEventLoop(options: StartZulipEventLoopOptions): void {
         getEvents(queueId, lastEventId, requestOptions),
     },
     options,
-  );
-}
-
-export function startZulipEventLoopForCredentials(
-  options: StartZulipEventLoopForCredentialsOptions,
-): void {
-  const { credentials, ...loopOptions } = options;
-  startZulipEventLoopWithTransport(
-    {
-      registerQueue: (eventTypes, fetchEventTypes, requestOptions) =>
-        registerQueueForCredentials(credentials, eventTypes, fetchEventTypes, requestOptions),
-      getEvents: (queueId, lastEventId, requestOptions) =>
-        getEventsForCredentials(credentials, queueId, lastEventId, requestOptions),
-    },
-    loopOptions,
   );
 }

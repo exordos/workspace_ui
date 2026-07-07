@@ -97,9 +97,9 @@ describe("unread surface sync", () => {
     expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(0);
   });
 
-  it("keeps snapshot-total as default for count-only inactive sources", () => {
+  it("keeps snapshot-total as default when chat-list writes are disabled", () => {
     syncUnreadSurfacesFromSnapshot({
-      source: "inactive-register",
+      source: "reconnect",
       instanceId: INSTANCE_ID,
       currentUserId: null,
       snapshot: {

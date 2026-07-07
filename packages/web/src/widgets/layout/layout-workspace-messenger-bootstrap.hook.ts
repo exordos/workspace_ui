@@ -2,8 +2,8 @@ import { useEffect, useMemo } from "react";
 import { bootstrapMessengerStore } from "~/entities/messenger/messenger-bootstrap.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import {
-  refreshWorkspaceSession,
-  shouldRefreshWorkspaceSession,
+  classifyWorkspaceAuthRefreshError,
+  ensureFreshWorkspaceSession,
 } from "~/entities/workspace-auth/workspace-auth.lib";
 import {
   selectCurrentWorkspaceRuntimeContext,
@@ -12,6 +12,19 @@ import {
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 
 // Layout owns the temporary messenger bootstrap until a dedicated process layer exists.
+const WORKSPACE_BOOTSTRAP_REFRESH_RETRY_DELAY_MS = 5_000;
+
+function hasWorkspaceAuthSession(accountId: string): boolean {
+  return useWorkspaceAuthStore
+    .getState()
+    .sessions.some((session) => session.accountId === accountId);
+}
+
+function isTerminalWorkspaceAuthRefreshError(error: unknown): boolean {
+  const failure = classifyWorkspaceAuthRefreshError(error);
+  return failure.reason === "refresh-expired" || failure.reason === "owner-mismatch";
+}
+
 export function useLayoutWorkspaceMessengerBootstrap(options: { enabled: boolean }): void {
   const { enabled } = options;
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
@@ -34,29 +47,59 @@ export function useLayoutWorkspaceMessengerBootstrap(options: { enabled: boolean
     }
 
     const controller = new AbortController();
-    const session = useWorkspaceAuthStore
-      .getState()
-      .sessions.find((item) => item.accountId === runtimeContext.accountId);
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-    if (session != null && shouldRefreshWorkspaceSession(session)) {
-      void refreshWorkspaceSession(runtimeContext.accountId).catch((error) => {
+    const scheduleRetry = (): void => {
+      if (controller.signal.aborted || retryTimer != null) return;
+      retryTimer = setTimeout(() => {
+        retryTimer = null;
+        void startBootstrap();
+      }, WORKSPACE_BOOTSTRAP_REFRESH_RETRY_DELAY_MS);
+    };
+
+    const startBootstrap = async (): Promise<void> => {
+      try {
+        await ensureFreshWorkspaceSession(runtimeContext.accountId, {
+          signal: controller.signal,
+        });
+      } catch (error) {
+        if (controller.signal.aborted || !hasWorkspaceAuthSession(runtimeContext.accountId)) {
+          return;
+        }
         reportUnexpectedError("workspace-auth:refresh", error);
-      });
-      return () => {
-        controller.abort();
-      };
-    }
+        if (!isTerminalWorkspaceAuthRefreshError(error)) {
+          scheduleRetry();
+        }
+        return;
+      }
 
-    void bootstrapMessengerStore({
-      runtimeContext,
-      getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-      signal: controller.signal,
-    }).catch((error) => {
-      reportUnexpectedError("workspace-messenger:bootstrap", error);
+      if (controller.signal.aborted) {
+        return;
+      }
+
+      const latestRuntimeContext = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+      if (latestRuntimeContext?.accountId !== runtimeContext.accountId) {
+        return;
+      }
+
+      await bootstrapMessengerStore({
+        runtimeContext: latestRuntimeContext,
+        getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+        signal: controller.signal,
+      });
+    };
+
+    void startBootstrap().catch((error) => {
+      if (!controller.signal.aborted) {
+        reportUnexpectedError("workspace-messenger:bootstrap", error);
+      }
     });
 
     return () => {
       controller.abort();
+      if (retryTimer != null) {
+        clearTimeout(retryTimer);
+      }
     };
   }, [clearMessengerStore, enabled, runtimeContext]);
 }

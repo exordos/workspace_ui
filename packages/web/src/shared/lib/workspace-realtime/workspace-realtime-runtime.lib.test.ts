@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { MessengerApiError } from "~/shared/api/messenger-client";
 import type { MessengerCollectionPage } from "~/shared/api/messenger-realtime.api";
 import type {
   WorkspaceMessengerEventDto,
@@ -77,9 +78,9 @@ class FakeWebSocket implements WorkspaceRealtimeWebSocketLike {
     this.onclose?.(new Event("close"));
   }
 
-  networkClose(): void {
+  networkClose(code?: number): void {
     this.closed = true;
-    this.onclose?.(new Event("close"));
+    this.onclose?.({ code: code ?? 1006 } as CloseEvent);
   }
 }
 
@@ -472,5 +473,104 @@ describe("workspace-realtime transport runtime", () => {
     expect(order).toEqual(["catch-up", "connect", "catch-up", "connect"]);
     expect(sockets).toHaveLength(2);
     vi.useRealTimers();
+  });
+
+  it("refreshes the session instead of reconnecting with the old token after websocket 4401", async () => {
+    vi.useFakeTimers();
+    const sockets: FakeWebSocket[] = [];
+    const states: string[] = [];
+    const refreshSession = vi.fn(() => Promise.resolve());
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, 10);
+    const { applier } = createApplier();
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "expired-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier: {
+        ...applier,
+        onTransportStateChange: vi.fn((state) => {
+          states.push(state.mode);
+        }),
+      },
+      getEventsPage: () => Promise.resolve(createPage([])),
+      refreshSession,
+      reconnectDelayMs: () => 10,
+      webSocketFactory: (url, protocols) => {
+        const socket = new FakeWebSocket(url, protocols);
+        sockets.push(socket);
+        return socket;
+      },
+    });
+
+    await runtime.start(context);
+    sockets[0]?.networkClose(4401);
+    await flushAsyncHandlers();
+    await vi.advanceTimersByTimeAsync(20);
+
+    expect(refreshSession).toHaveBeenCalledTimes(1);
+    expect(refreshSession).toHaveBeenCalledWith(
+      owner.accountId,
+      expect.objectContaining({ force: true, signal: expect.any(AbortSignal) }),
+    );
+    expect(states).toContain("auth_refreshing");
+    expect(sockets).toHaveLength(1);
+    vi.useRealTimers();
+  });
+
+  it("refreshes the session instead of reconnecting after catch-up 401", async () => {
+    vi.useFakeTimers();
+    const sockets: FakeWebSocket[] = [];
+    const refreshSession = vi.fn(() => Promise.resolve());
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, 10);
+    const { applier, states } = createApplier();
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "expired-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      getEventsPage: () => Promise.reject(new MessengerApiError("unauthorized", 401, {})),
+      refreshSession,
+      reconnectDelayMs: () => 10,
+      webSocketFactory: (url, protocols) => {
+        const socket = new FakeWebSocket(url, protocols);
+        sockets.push(socket);
+        return socket;
+      },
+    });
+
+    await runtime.start(context);
+    await flushAsyncHandlers();
+    await vi.advanceTimersByTimeAsync(20);
+
+    expect(refreshSession).toHaveBeenCalledTimes(1);
+    expect(refreshSession).toHaveBeenCalledWith(
+      owner.accountId,
+      expect.objectContaining({ force: true, signal: expect.any(AbortSignal) }),
+    );
+    expect(states).toContain("auth_refreshing");
+    expect(sockets).toHaveLength(0);
+    vi.useRealTimers();
+  });
+
+  it("refreshes the session after catch-up 403", async () => {
+    const refreshSession = vi.fn(() => Promise.resolve());
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, 10);
+    const { applier } = createApplier();
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "expired-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      getEventsPage: () => Promise.reject(new MessengerApiError("forbidden", 403, {})),
+      refreshSession,
+    });
+
+    await runtime.start(context);
+
+    expect(refreshSession).toHaveBeenCalledTimes(1);
+    expect(refreshSession).toHaveBeenCalledWith(
+      owner.accountId,
+      expect.objectContaining({ force: true, signal: expect.any(AbortSignal) }),
+    );
   });
 });

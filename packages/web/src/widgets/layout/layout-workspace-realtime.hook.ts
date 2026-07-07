@@ -7,6 +7,7 @@ import {
 import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
 import { createUserRealtimeApplier } from "~/entities/user/user-realtime-applier.lib";
 import { startWorkspacePresenceReporter } from "~/entities/user/user-workspace-presence-reporter.lib";
+import { ensureFreshWorkspaceSession } from "~/entities/workspace-auth/workspace-auth.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
@@ -27,6 +28,7 @@ import {
   createWorkspaceRealtimeTransportCore,
   type WorkspaceRealtimeEventApplier,
   type WorkspaceRealtimeRuntimeOwner,
+  type WorkspaceRealtimeSessionRefresh,
   type WorkspaceRealtimeTransportCore,
 } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
 
@@ -35,6 +37,7 @@ export interface LayoutWorkspaceRealtimeRuntimeFactoryOptions {
   cursorStorage: WorkspaceRealtimeDurableCursorStorage;
   applier: WorkspaceRealtimeEventApplier;
   isOwnerCurrent: (owner: WorkspaceRealtimeRuntimeOwner) => boolean;
+  refreshSession: WorkspaceRealtimeSessionRefresh;
   onDiagnostic: Parameters<typeof createWorkspaceRealtimeTransportCore>[0]["onDiagnostic"];
 }
 
@@ -52,6 +55,7 @@ export interface UseLayoutWorkspaceRealtimeOptions {
   runtimeFactory?: LayoutWorkspaceRealtimeRuntimeFactory;
   cursorStorageFactory?: () => WorkspaceRealtimeDurableCursorStorage | null;
   applier?: WorkspaceRealtimeEventApplier;
+  refreshSession?: WorkspaceRealtimeSessionRefresh;
   presenceReporterFactory?: LayoutWorkspacePresenceReporterFactory;
 }
 
@@ -127,11 +131,29 @@ function shouldStartWorkspaceRealtimeForRoute(
   return routeMatch.projectId === activeRuntimeContext.projectId;
 }
 
+function isAbortSignalAborted(signal: AbortSignal | undefined): boolean {
+  return signal?.aborted === true;
+}
+
+async function defaultWorkspaceRealtimeRefreshSession(
+  accountId: string,
+  options: Parameters<WorkspaceRealtimeSessionRefresh>[1],
+): Promise<void> {
+  if (isAbortSignalAborted(options.signal)) {
+    throw new DOMException("Workspace realtime auth refresh aborted", "AbortError");
+  }
+  await ensureFreshWorkspaceSession(accountId, { force: true, signal: options.signal });
+  if (isAbortSignalAborted(options.signal)) {
+    throw new DOMException("Workspace realtime auth refresh aborted", "AbortError");
+  }
+}
+
 function defaultRuntimeFactory({
   runtimeContext,
   cursorStorage,
   applier,
   isOwnerCurrent,
+  refreshSession,
   onDiagnostic,
 }: LayoutWorkspaceRealtimeRuntimeFactoryOptions): WorkspaceRealtimeTransportCore {
   return createWorkspaceRealtimeTransportCore({
@@ -140,6 +162,7 @@ function defaultRuntimeFactory({
     applier,
     isOwnerCurrent,
     webSocketBaseUrl: runtimeContext.organizationOrigin,
+    refreshSession,
     onDiagnostic: (diagnostic) => {
       onDiagnostic?.(diagnostic);
       reportUnexpectedError("workspace-realtime:transport", diagnostic.error ?? diagnostic.reason);
@@ -164,6 +187,7 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
     runtimeFactory = defaultRuntimeFactory,
     cursorStorageFactory = createWorkspaceRealtimeBrowserCursorStorage,
     applier,
+    refreshSession = defaultWorkspaceRealtimeRefreshSession,
     presenceReporterFactory = defaultPresenceReporterFactory,
   } = options;
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
@@ -214,6 +238,7 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
             cursorStorage,
             applier: runtimeApplier,
             isOwnerCurrent,
+            refreshSession,
             onDiagnostic,
           }),
         activeApplierFactory: ({ isOwnerCurrent }) =>
@@ -221,9 +246,8 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
           composeWorkspaceRealtimeAppliers([
             createMessengerRealtimeActiveApplier({
               isOwnerCurrent,
-              // Active realtime видит только aggregate счетчиков. Собственные
-              // reaction rows перечитываются отдельным action-layer handler-ом,
-              // чтобы realtime слой не знал ни про HTTP client, ни про IDB cache.
+              // Active realtime sees only aggregate counters. Own reaction rows are
+              // revalidated by the action layer so realtime stays transport-focused.
               onMessageReactionAggregateUpdated:
                 activeRuntimeContext == null
                   ? undefined
@@ -280,6 +304,7 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
     enabled,
     managerContexts,
     pathname,
+    refreshSession,
     runtimeFactory,
   ]);
 

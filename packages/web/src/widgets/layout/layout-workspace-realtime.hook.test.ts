@@ -19,6 +19,7 @@ import {
 } from "./layout-workspace-realtime.hook";
 import type { LayoutWorkspaceRealtimeRuntimeFactory } from "./layout-workspace-realtime.hook";
 
+const ensureFreshWorkspaceSessionMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 const WORKSPACE_AUTH_STORAGE_KEY = "workspace-auth-sessions";
 const WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY = "workspace-auth-current-account";
 const PROJECT_UUID = "22222222-2222-4222-8222-222222222222";
@@ -27,6 +28,10 @@ const STREAM_UUID = "75309057-419c-4b12-a7c1-3932429ec4a6";
 const TOPIC_UUID = "4ec0b996-b778-45f8-8ef4-ef863be0c047";
 const MESSAGE_UUID = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
 const DATE = "2026-06-22T10:10:00Z";
+
+vi.mock("~/entities/workspace-auth/workspace-auth.lib", () => ({
+  ensureFreshWorkspaceSession: ensureFreshWorkspaceSessionMock,
+}));
 
 class MemoryStorage implements WorkspaceRealtimeCursorStorageLike {
   readonly values = new Map<string, string>();
@@ -108,6 +113,7 @@ describe("useLayoutWorkspaceRealtime", () => {
   beforeEach(() => {
     localStorage.removeItem(WORKSPACE_AUTH_STORAGE_KEY);
     localStorage.removeItem(WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY);
+    ensureFreshWorkspaceSessionMock.mockClear();
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
     useMessengerStore.getState().clear();
     useWorkspaceMessageStore.getState().clear();
@@ -117,6 +123,7 @@ describe("useLayoutWorkspaceRealtime", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    ensureFreshWorkspaceSessionMock.mockClear();
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
     useMessengerStore.getState().clear();
     useWorkspaceMessageStore.getState().clear();
@@ -245,6 +252,96 @@ describe("useLayoutWorkspaceRealtime", () => {
       [activeSession.projectId, "active"],
       [backgroundSession.projectId, "background"],
     ]);
+  });
+
+  it("passes background runtime refresh through its own accountId", async () => {
+    const activeSession = createSession();
+    const backgroundSession = createSession({
+      accountId: "org-b:project-b:user-b",
+      instanceId: "instance-b",
+      organizationId: "org-b",
+      projectId: "project-b",
+      userUuid: "user-b",
+      login: "user-b@example.com",
+      accessToken: "access-token-b",
+      refreshToken: "refresh-token-b",
+      runtimeGeneration: 3,
+      profile: {
+        uuid: "user-b",
+        username: "user-b",
+        firstName: "User",
+        lastName: "B",
+        email: "user-b@example.com",
+      },
+    });
+    useWorkspaceAuthStore.setState({
+      sessions: [activeSession, backgroundSession],
+      currentAccountId: activeSession.accountId,
+      runtimeGeneration: activeSession.runtimeGeneration,
+    });
+    const refreshSession = vi.fn(() => Promise.resolve());
+    const { runtimeFactory, runtimes, startedContexts, factoryOptions } = createRuntimeFactory();
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+
+    renderHook(() =>
+      useLayoutWorkspaceRealtime({
+        enabled: true,
+        pathname: "/org/org-a/project/project-a/messenger",
+        runtimeFactory,
+        cursorStorageFactory: () => cursorStorage,
+        refreshSession,
+        presenceReporterFactory: noopPresenceReporterFactory,
+        applier: createWorkspaceRealtimeNoopApplier(),
+      }),
+    );
+
+    await waitFor(() => {
+      expect(runtimes).toHaveLength(2);
+    });
+    const backgroundIndex = startedContexts.findIndex(
+      (context) => context.surface === "background",
+    );
+
+    await factoryOptions[backgroundIndex]!.refreshSession(backgroundSession.accountId, {
+      force: true,
+    });
+
+    expect(refreshSession).toHaveBeenCalledWith(
+      backgroundSession.accountId,
+      expect.objectContaining({ force: true }),
+    );
+  });
+
+  it("forces Workspace session refresh through the default realtime callback", async () => {
+    const session = createSession();
+    setWorkspaceSession(session);
+    const { runtimeFactory, runtimes, factoryOptions } = createRuntimeFactory();
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    const controller = new AbortController();
+
+    renderHook(() =>
+      useLayoutWorkspaceRealtime({
+        enabled: true,
+        pathname: "/org/org-a/project/project-a/messenger",
+        runtimeFactory,
+        cursorStorageFactory: () => cursorStorage,
+        presenceReporterFactory: noopPresenceReporterFactory,
+        applier: createWorkspaceRealtimeNoopApplier(),
+      }),
+    );
+
+    await waitFor(() => {
+      expect(runtimes[0]?.start).toHaveBeenCalledTimes(1);
+    });
+
+    await factoryOptions[0]!.refreshSession(session.accountId, {
+      signal: controller.signal,
+    });
+
+    expect(ensureFreshWorkspaceSessionMock).toHaveBeenCalledWith(session.accountId, {
+      force: true,
+      signal: controller.signal,
+    });
   });
 
   it("uses active messenger applier by default", async () => {
