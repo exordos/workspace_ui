@@ -122,6 +122,7 @@ function buildParams(
     rightDrawerOpen: true,
     rightDrawerMode: "info",
     rightDrawerUserIdOverride: null,
+    rightDrawerWorkspaceUserUuidOverride: null,
     mutedStreamIds: new Set(),
     usersMapForChatInfo: new Map(),
     workspaceRoute: null,

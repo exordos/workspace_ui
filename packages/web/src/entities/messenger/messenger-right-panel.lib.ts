@@ -81,15 +81,26 @@ export interface WorkspaceRightPanelDirectPrivateInfoView {
   details: WorkspaceRightPanelDirectPrivateDetailView[];
 }
 
+export interface WorkspaceRightPanelUserProfileInfoView {
+  kind: "userProfile";
+  userUuid: MessengerUuid;
+  title: string;
+  avatarUrl: string | null;
+  status: User["status"] | null;
+  details: WorkspaceRightPanelDirectPrivateDetailView[];
+}
+
 export type WorkspaceRightPanelInfoView =
   | WorkspaceRightPanelChannelInfoView
-  | WorkspaceRightPanelDirectPrivateInfoView;
+  | WorkspaceRightPanelDirectPrivateInfoView
+  | WorkspaceRightPanelUserProfileInfoView;
 
 export interface SelectWorkspaceRightPanelInfoViewOptions {
   route: WorkspaceMessengerRouteMatch | null;
   usersById: UsersById;
   fallbackTitle: string;
   currentUserUuid?: MessengerUuid | null;
+  workspaceUserUuidOverride?: MessengerUuid | null;
   temporarilyNotConnectedText: string;
 }
 
@@ -147,13 +158,43 @@ function createWorkspaceRightPanelUnsupportedDetail(
   };
 }
 
+function createWorkspaceRightPanelUserDetails(
+  user: User | undefined,
+  temporarilyNotConnectedText: string,
+): WorkspaceRightPanelDirectPrivateDetailView[] {
+  return [
+    createWorkspaceRightPanelDetail("email", user?.email, temporarilyNotConnectedText),
+    createWorkspaceRightPanelDetail("username", user?.username, temporarilyNotConnectedText),
+    createWorkspaceRightPanelUnsupportedDetail("phone", temporarilyNotConnectedText),
+    createWorkspaceRightPanelUnsupportedDetail("jobTitle", temporarilyNotConnectedText),
+    createWorkspaceRightPanelUnsupportedDetail("manager", temporarilyNotConnectedText),
+    createWorkspaceRightPanelUnsupportedDetail("timezone", temporarilyNotConnectedText),
+    createWorkspaceRightPanelUnsupportedDetail("birthday", temporarilyNotConnectedText),
+  ];
+}
+
+function createWorkspaceRightPanelUserProfileInfoView(
+  userUuid: MessengerUuid,
+  user: User | undefined,
+  temporarilyNotConnectedText: string,
+): WorkspaceRightPanelUserProfileInfoView {
+  return {
+    kind: "userProfile",
+    userUuid,
+    title: resolveWorkspaceRightPanelDirectUserName(user, userUuid),
+    avatarUrl: user?.avatarUrl ?? null,
+    status: user?.status ?? null,
+    details: createWorkspaceRightPanelUserDetails(user, temporarilyNotConnectedText),
+  };
+}
+
 export function canRemoveWorkspaceRightPanelMember(input: {
   isCurrentUser: boolean;
   isCurrentUserStreamOwner: boolean;
 }): boolean {
-  // Бизнес-правило Workspace: каждый участник может отписать сам себя, а чужих
-  // участников может отписывать только владелец канала. Роли binding здесь не
-  // используем, потому что backend пока не отдает отдельную матрицу прав.
+  // Workspace business rule: every member can remove themselves, and only the
+  // channel owner can remove other members. Binding roles are not used here
+  // because the backend does not expose a separate permission matrix yet.
   return input.isCurrentUser || input.isCurrentUserStreamOwner;
 }
 
@@ -164,11 +205,21 @@ export function selectWorkspaceRightPanelInfoView(
     usersById,
     fallbackTitle,
     currentUserUuid = null,
+    workspaceUserUuidOverride = null,
     temporarilyNotConnectedText,
   }: SelectWorkspaceRightPanelInfoViewOptions,
 ): WorkspaceRightPanelInfoView | null {
   const selection = selectMessengerConversationFromWorkspaceRoute(route);
   if (selection.status !== "conversation" || route == null) return null;
+
+  const normalizedWorkspaceUserUuidOverride = workspaceUserUuidOverride?.trim() ?? "";
+  if (normalizedWorkspaceUserUuidOverride.length > 0) {
+    return createWorkspaceRightPanelUserProfileInfoView(
+      normalizedWorkspaceUserUuidOverride,
+      usersById[normalizedWorkspaceUserUuidOverride],
+      temporarilyNotConnectedText,
+    );
+  }
 
   const stream = state.streamsById[selection.streamUuid];
   const conversation = state.conversationsById[selection.conversationId];
@@ -193,15 +244,7 @@ export function selectWorkspaceRightPanelInfoView(
       title: resolveWorkspaceRightPanelDirectUserName(user, directFallbackTitle),
       avatarUrl: user?.avatarUrl ?? null,
       status: user?.status ?? null,
-      details: [
-        createWorkspaceRightPanelDetail("email", user?.email, temporarilyNotConnectedText),
-        createWorkspaceRightPanelDetail("username", user?.username, temporarilyNotConnectedText),
-        createWorkspaceRightPanelUnsupportedDetail("phone", temporarilyNotConnectedText),
-        createWorkspaceRightPanelUnsupportedDetail("jobTitle", temporarilyNotConnectedText),
-        createWorkspaceRightPanelUnsupportedDetail("manager", temporarilyNotConnectedText),
-        createWorkspaceRightPanelUnsupportedDetail("timezone", temporarilyNotConnectedText),
-        createWorkspaceRightPanelUnsupportedDetail("birthday", temporarilyNotConnectedText),
-      ],
+      details: createWorkspaceRightPanelUserDetails(user, temporarilyNotConnectedText),
     };
   }
 
@@ -209,8 +252,8 @@ export function selectWorkspaceRightPanelInfoView(
   const title = titleSeed != null && titleSeed.trim().length > 0 ? titleSeed : fallbackTitle;
   const bindingIds = state.streamBindingIdsByStreamId[selection.streamUuid] ?? [];
   const effectiveCurrentUserUuid = currentUserUuid ?? stream?.userUuid ?? null;
-  // Право на удаление считаем в проекции, чтобы UI оставался тонким: панель
-  // только показывает кнопку по готовому `canRemove`, а не знает правила ролей.
+  // Calculate remove permission in the projection, so UI stays thin: the panel
+  // only shows the button from ready `canRemove` and does not know role rules.
   const isCurrentUserStreamOwner =
     effectiveCurrentUserUuid != null && stream?.ownerUuid === effectiveCurrentUserUuid;
   const members = bindingIds

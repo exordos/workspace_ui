@@ -9,6 +9,7 @@ import {
   type WorkspaceRightPanelInfoView,
 } from "~/entities/messenger/messenger-right-panel.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import type { MessengerUuid } from "~/entities/messenger/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
 import {
   selectCurrentWorkspaceRuntimeContext,
@@ -41,6 +42,7 @@ export interface UseLayoutRightPanelShellParams {
   rightDrawerOpen: boolean;
   rightDrawerMode: RightDrawerMode;
   rightDrawerUserIdOverride: number | null;
+  rightDrawerWorkspaceUserUuidOverride: MessengerUuid | null;
   mutedStreamIds: Set<number>;
   usersMapForChatInfo: Map<number, { full_name?: string; email?: string }>;
   workspaceRoute: WorkspaceMessengerRouteMatch | null;
@@ -71,6 +73,7 @@ export function useLayoutRightPanelShell(
     rightDrawerOpen,
     rightDrawerMode,
     rightDrawerUserIdOverride,
+    rightDrawerWorkspaceUserUuidOverride,
     mutedStreamIds,
     usersMapForChatInfo,
     workspaceRoute,
@@ -162,8 +165,8 @@ export function useLayoutRightPanelShell(
     [workspaceCurrentAccountId, workspaceSessions],
   );
   const workspaceCurrentUserUuid = workspaceRuntimeContext?.userUuid ?? null;
-  // Workspace right panel берет структуру чата из messenger store, а карточки
-  // пользователей — из нового user store.
+  // Workspace right panel reads chat structure from messenger store and user cards
+  // from the new user store.
   const workspaceRightPanelInfo = useMemo(
     () =>
       selectWorkspaceRightPanelInfoView(
@@ -180,6 +183,7 @@ export function useLayoutRightPanelShell(
           usersById: workspaceUsersById,
           fallbackTitle: rightDrawerTitle || t("chat.generalChat"),
           currentUserUuid: workspaceCurrentUserUuid,
+          workspaceUserUuidOverride: rightDrawerWorkspaceUserUuidOverride,
           temporarilyNotConnectedText: t("workspaceMessenger.temporarilyNotConnected"),
         },
       ),
@@ -193,6 +197,7 @@ export function useLayoutRightPanelShell(
       workspaceTopicIds,
       workspaceTopicsById,
       workspaceCurrentUserUuid,
+      rightDrawerWorkspaceUserUuidOverride,
       workspaceUsersById,
     ],
   );

@@ -18,6 +18,7 @@ import { useWorkspaceForwardMessageStore } from "~/features/workspace-forward-me
 import { t } from "~/i18n/i18n";
 import { OpenSearchContext } from "~/shared/contexts/open-search";
 import { RightDrawerContext } from "~/shared/contexts/right-drawer";
+import type { RightDrawerContextValue } from "~/shared/contexts/right-drawer.types";
 import { createUser } from "~/test/factories";
 import { renderWithProviders } from "~/test/render";
 import type { ChatHeaderProps } from "~/widgets/chat-view/chat-header.types";
@@ -275,7 +276,10 @@ function createDeferred<T>(): {
   return { promise, resolve };
 }
 
-function renderWorkspaceChatPageWithShellContexts(route: string) {
+function renderWorkspaceChatPageWithShellContexts(
+  route: string,
+  rightDrawerOverrides: Partial<RightDrawerContextValue> = {},
+) {
   return render(
     <MemoryRouter initialEntries={[route]}>
       <OpenSearchContext.Provider value={vi.fn()}>
@@ -285,6 +289,8 @@ function renderWorkspaceChatPageWithShellContexts(route: string) {
             setOpen: vi.fn(),
             openInfo: vi.fn(),
             openUserProfile: vi.fn(),
+            openWorkspaceUserProfile: vi.fn(),
+            ...rightDrawerOverrides,
           }}
         >
           <ChatPage />
@@ -413,6 +419,7 @@ describe("ChatPage Workspace route", () => {
     expect(captured.messageListProps?.onRequestDeleteMessage).toEqual(expect.any(Function));
     expect(captured.messageListProps?.onCopyMessageText).toEqual(expect.any(Function));
     expect(captured.messageListProps?.onOpenMessageInChat).toBeUndefined();
+    expect(captured.messageListProps?.onOpenMentionUser).toEqual(expect.any(Function));
     expect(captured.messageListProps?.onToggleMessageReaction).toEqual(expect.any(Function));
     expect(captured.messageListProps?.onDownloadFile).toEqual(expect.any(Function));
     expect(captured.messageListProps?.onOpenWorkspaceMedia).toEqual(expect.any(Function));
@@ -432,6 +439,29 @@ describe("ChatPage Workspace route", () => {
       },
     });
     await waitFor(() => expect(captured.loadWorkspaceMessages).toHaveBeenCalledTimes(1));
+  });
+
+  it("opens Workspace mention profile through the right drawer UUID path", async () => {
+    const openWorkspaceUserProfile = vi.fn();
+    const openUserProfile = vi.fn();
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+      {
+        openWorkspaceUserProfile,
+        openUserProfile,
+      },
+    );
+
+    await waitFor(() =>
+      expect(captured.messageListProps?.onOpenMentionUser).toEqual(expect.any(Function)),
+    );
+    act(() => {
+      captured.messageListProps?.onOpenMentionUser?.(USER_B_UUID);
+    });
+
+    expect(openWorkspaceUserProfile).toHaveBeenCalledWith(USER_B_UUID);
+    expect(openUserProfile).not.toHaveBeenCalled();
   });
 
   it("adds a local outgoing row before Workspace send resolves", async () => {
@@ -853,11 +883,49 @@ describe("ChatPage Workspace route", () => {
         accessToken: "access-token",
         devTargetOrigin: "https://org-a.example.com",
         projectId: "project-a",
-        signal: controller.signal,
+        signal: expect.any(AbortSignal),
       }),
       "55555555-5555-4555-8555-555555555555",
     );
+    expect(captured.downloadWorkspaceFile.mock.calls[0]?.[0].signal).not.toBe(controller.signal);
     expect(blob).toBeInstanceOf(Blob);
+  });
+
+  it("reuses one Workspace image preview blob request for the same file UUID", async () => {
+    const imageBlob = new Blob(["cached-image"], { type: "image/png" });
+    captured.downloadWorkspaceFile.mockResolvedValueOnce({
+      blob: imageBlob,
+      headers: new Headers({
+        "content-disposition": 'attachment; filename="screen.png"',
+        "content-length": "12",
+      }),
+    });
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await waitFor(() =>
+      expect(captured.messageListProps?.onLoadWorkspaceFilePreview).toEqual(expect.any(Function)),
+    );
+    const firstController = new AbortController();
+    const secondController = new AbortController();
+    const file = {
+      kind: "media" as const,
+      href: "workspace-file://55555555-5555-4555-8555-555555555555?content_type=image/png",
+      fileUuid: "55555555-5555-4555-8555-555555555555",
+      name: "screen.png",
+      contentType: "image/png",
+      mediaKind: "image" as const,
+    };
+
+    await expect(
+      Promise.all([
+        captured.messageListProps?.onLoadWorkspaceFilePreview?.(file, firstController.signal),
+        captured.messageListProps?.onLoadWorkspaceFilePreview?.(file, secondController.signal),
+      ]),
+    ).resolves.toEqual([imageBlob, imageBlob]);
+
+    expect(captured.downloadWorkspaceFile).toHaveBeenCalledTimes(1);
   });
 
   it("opens Workspace image media in the old media viewer with a blob display URL", async () => {

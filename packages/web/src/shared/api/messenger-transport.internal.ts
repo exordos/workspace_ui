@@ -200,6 +200,40 @@ export async function sendJsonResult(
   return { data, headers: response.headers };
 }
 
+export async function sendFormDataResult(
+  path: string,
+  options: MessengerClientOptions,
+  form: FormData,
+  params: MessengerQueryParams = {},
+): Promise<MessengerJsonResult> {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const url = buildMessengerUrl(options.baseUrl, path, params);
+  const init: RequestInit = {
+    method: "POST",
+    headers: buildHeaders(
+      options.accessToken,
+      undefined,
+      false,
+      options.devTargetOrigin,
+      shouldAppendDevProxyTargetHeader(url),
+    ),
+    body: form,
+    signal: options.signal,
+  };
+  let response = await fetchImpl(url, init);
+  let responsePath = path;
+  const fallbackPath = pathWithoutTrailingSlash(path);
+  if (response.status === 404 && fallbackPath != null) {
+    responsePath = fallbackPath;
+    response = await fetchImpl(buildMessengerUrl(options.baseUrl, fallbackPath, params), init);
+  }
+  const data = await parseJsonResponse(response);
+  if (!response.ok) {
+    throw new MessengerApiError(`Messenger API POST ${responsePath} failed`, response.status, data);
+  }
+  return { data, headers: response.headers };
+}
+
 export async function getJsonResult(
   path: string,
   options: MessengerClientOptions,
@@ -276,6 +310,7 @@ export async function publicGetJsonResult(
 }
 
 export const messengerRequestJsonResult = sendJsonResult;
+export const messengerRequestFormDataResult = sendFormDataResult;
 export const messengerPublicGetJsonResult = publicGetJsonResult;
 export const messengerRequestBinaryResult = getBinaryResult;
 

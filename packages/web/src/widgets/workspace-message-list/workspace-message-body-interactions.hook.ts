@@ -262,6 +262,11 @@ export function useWorkspaceMessageBodyInteractions({
     useState<WorkspaceMessageBubbleMenuAnchor | null>(null);
   const capturedSelectionRef = useRef<string | undefined>(undefined);
   const pendingDownloadFileUuidsRef = useRef<Set<string>>(new Set());
+  const latestFileReferencesRef = useRef(fileReferences);
+
+  useEffect(() => {
+    latestFileReferencesRef.current = fileReferences;
+  }, [fileReferences]);
 
   const getSelectedText = useCallback((): string | undefined => {
     return capturedSelectionRef.current ?? resolveSelectionInsideBody(bodyRef.current);
@@ -367,7 +372,7 @@ export function useWorkspaceMessageBodyInteractions({
         const workspaceFile = resolveWorkspaceFileReferenceFromClick(
           event.target,
           event.currentTarget,
-          fileReferences,
+          latestFileReferencesRef.current,
         );
         if (workspaceFile != null) {
           event.preventDefault();
@@ -394,7 +399,6 @@ export function useWorkspaceMessageBodyInteractions({
       openTriggerMenu();
     },
     [
-      fileReferences,
       onOpenUnsupportedFilePreview,
       openTriggerMenu,
       requestWorkspaceFileDownload,
@@ -427,7 +431,7 @@ export function useWorkspaceMessageBodyInteractions({
       const workspaceFile = resolveWorkspaceFileReferenceFromClick(
         target,
         event.currentTarget,
-        fileReferences,
+        latestFileReferencesRef.current,
       );
       if (workspaceFile != null) {
         event.preventDefault();
@@ -441,18 +445,18 @@ export function useWorkspaceMessageBodyInteractions({
         }
 
         if (requestWorkspaceFileDownload(workspaceFile)) {
-          // Скачивание опирается на Workspace UUID из разобранного document.
-          // DOM здесь только сообщает, куда кликнули; он не становится
-          // источником download/gallery items и не возвращает старый path-only ключ.
-          // Для media preview уже может быть показан как blob-src, но viewer
-          // остается неподдержанным до отдельного gallery adapter.
+          // Download uses Workspace UUID from the parsed document. DOM only tells
+          // where the click happened here; it does not become the source of
+          // download/gallery items and does not bring back the old path-only key.
+          // Media preview can already be shown as blob-src, but viewer stays
+          // unsupported until a separate gallery adapter exists.
           return;
         }
 
         if (workspaceFile.kind === "media") {
-          // Если поверхность не передала download callback, media не уходит в
-          // старый viewer и не получает fake preview. Показываем только явное
-          // unsupported-состояние для этой поверхности.
+          // If the surface did not pass a download callback, media does not go to
+          // the old viewer and does not get a fake preview. Show only the explicit
+          // unsupported state for this surface.
           onOpenUnsupportedFilePreview?.(workspaceFile);
         }
         return;
@@ -470,9 +474,9 @@ export function useWorkspaceMessageBodyInteractions({
         const userUuid = mention.dataset.workspaceUserUuid?.trim();
         event.preventDefault();
         if (userUuid != null && userUuid.length > 0 && isPrimaryUnmodifiedClick(event)) {
-          // Mention-клик не пытается открыть старый DM/profile путь. Если
-          // поверхность передала Workspace UUID callback, вызываем его; если
-          // нет, действие остается явно неподдержанным без имитации.
+          // Mention click does not try to open the old DM/profile path. If the
+          // surface passed a Workspace UUID callback, call it; otherwise the
+          // action stays explicitly unsupported without imitation.
           onOpenMentionUser?.(userUuid);
         }
         return;
@@ -508,7 +512,6 @@ export function useWorkspaceMessageBodyInteractions({
       window.open(externalUrl, "_blank", "noopener,noreferrer");
     },
     [
-      fileReferences,
       onOpenMentionUser,
       onOpenUnsupportedFilePreview,
       requestWorkspaceFileDownload,

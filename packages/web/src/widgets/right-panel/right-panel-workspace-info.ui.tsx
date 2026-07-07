@@ -48,7 +48,7 @@ export interface RightPanelWorkspaceInfoProps {
 type WorkspaceRightPanelChannelInfoView = Extract<WorkspaceRightPanelInfoView, { kind: "channel" }>;
 type WorkspaceRightPanelDirectPrivateInfoView = Extract<
   WorkspaceRightPanelInfoView,
-  { kind: "directPrivate" }
+  { kind: "directPrivate" | "userProfile" }
 >;
 
 interface NotificationActionState {
@@ -140,8 +140,8 @@ function filterWorkspaceUserOptions(
   selectedUserUuids: readonly MessengerUuid[],
   query: string,
 ): WorkspaceUserPickerOption[] {
-  // Старый picker завязан на числовые Zulip userId, поэтому Workspace держит
-  // такой же по виду список, но строит его из UUID-пользователей user store.
+  // The old picker depends on numeric Zulip userId, so Workspace keeps the same
+  // visual list but builds it from UUID users in user store.
   const normalizedQuery = normalizeWorkspaceMemberQuery(query);
   const selected = new Set(selectedUserUuids);
   const options: WorkspaceUserPickerOption[] = [];
@@ -488,8 +488,8 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
   );
   const addMemberOptions = useMemo(
     () =>
-      // Кандидатов считаем только для открытого диалога: список пользователей
-      // может быть большим, а вне flow добавления эти данные панели не нужны.
+      // Build candidates only for the open dialog: the user list can be large,
+      // and the panel does not need this data outside the add flow.
       memberActionCurrent.addDialogOpen
         ? filterWorkspaceUserOptions(
             workspaceUsersById,
@@ -602,9 +602,9 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
     const userUuids = memberActionCurrent.selectedUserUuids.filter(
       (userUuid) => !existingMemberUuids.has(userUuid),
     );
-    // Диалог может хранить выбор чуть дольше, чем обновляется список members.
-    // Перед submit повторно отсекаем уже существующих участников, чтобы не
-    // отправлять backend-у дубли после параллельного обновления bindings.
+    // The dialog can keep selected users slightly longer than the members list
+    // refresh takes. Filter existing members again before submit, so parallel
+    // binding updates do not send duplicates to the backend.
     if (userUuids.length === 0) {
       setMemberActionState((prev) => ({
         ...prev,
@@ -659,8 +659,8 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
 
   const handleRemoveMember = useCallback(
     async (member: WorkspaceRightPanelChannelInfoView["members"][number]) => {
-      // UI доверяет готовому `canRemove` из selector-а: сам себя может удалить
-      // любой участник, а чужих участников видит с кнопкой только owner stream-а.
+      // UI trusts the selector-provided `canRemove`: any member can remove
+      // themselves, and only the stream owner sees the button for other members.
       if (
         info.streamUuid == null ||
         runtimeContext == null ||
@@ -833,8 +833,8 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
             <ul className="space-y-2">
               {info.members.map((member) => (
                 <li key={member.bindingUuid} className="group/member">
-                  {/* Строка участника намеренно не кнопка: Workspace profile flow
-                      пока не подключен, поэтому не создаем ложное действие. */}
+                  {/* The member row is intentionally not a button: Workspace profile
+                      flow is not wired here yet, so this surface creates no false action. */}
                   <div className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-bg-elevated">
                     <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
                       <div className="relative shrink-0">
@@ -907,7 +907,7 @@ const RightPanelWorkspaceChannelInfo: React.FC<{
 };
 
 export const RightPanelWorkspaceInfo: React.FC<RightPanelWorkspaceInfoProps> = ({ info }) => {
-  if (info.kind === "directPrivate") {
+  if (info.kind === "directPrivate" || info.kind === "userProfile") {
     return <RightPanelWorkspaceDirectPrivateInfo info={info} />;
   }
 

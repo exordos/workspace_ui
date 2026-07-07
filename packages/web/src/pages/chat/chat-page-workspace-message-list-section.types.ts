@@ -36,6 +36,7 @@ export interface ChatPageWorkspaceMessageListSectionProps {
   onReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onForwardMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onOpenMessageInChat?: (messageUuid: MessengerUuid) => void;
+  onOpenMentionUser?: (userUuid: MessengerUuid) => void;
   onToggleMessageSelection?: (messageUuid: MessengerUuid) => void;
   onEditMessage?: (messageUuid: MessengerUuid) => void;
   onRequestDeleteMessage?: (messageUuid: MessengerUuid) => void;

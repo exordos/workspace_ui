@@ -7,6 +7,14 @@
 
 export type MediaType = "image" | "video";
 
+export interface MediaViewerWorkspaceFile {
+  fileUuid: string;
+  name?: string;
+  contentType?: string;
+  objectUrl?: string;
+  onDownload?: (file: MediaViewerWorkspaceFile) => void | Promise<void>;
+}
+
 export interface MediaItem {
   url: string;
   type: MediaType;
@@ -15,6 +23,7 @@ export interface MediaItem {
   alt?: string;
   width?: number;
   height?: number;
+  workspaceFile?: MediaViewerWorkspaceFile;
 }
 
 export interface MediaViewerState {

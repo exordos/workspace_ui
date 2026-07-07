@@ -2,14 +2,17 @@
  * Mention Suggestions type definitions.
  *
  * Powers the @mention autocomplete dropdown in the message composer.
- * Filters users from the users store by matching query against name and email.
+ * Filters users from the users store by matching query against Workspace user fields.
  */
+
+import type { UserPresenceStatus } from "~/entities/user/user.types";
 
 export interface MentionSuggestion {
   userUuid: string;
-  userId: number | null;
-  fullName: string;
+  displayName: string;
+  username: string;
   email: string;
+  status: UserPresenceStatus | null;
   avatarUrl?: string;
 }
 

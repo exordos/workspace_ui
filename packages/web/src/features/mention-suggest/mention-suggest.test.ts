@@ -9,84 +9,145 @@ import { filterUsers } from "./mention-suggest.lib";
 import { useMentionSuggestStore } from "./mention-suggest.model";
 import type { MentionSuggestion } from "./mention-suggest.types";
 
-// ---------------------------------------------------------------------------
-// Fixtures
-// ---------------------------------------------------------------------------
-
 const USERS: MentionSuggestion[] = [
   {
-    userUuid: "user-1",
-    userId: 1,
-    fullName: "Alice Johnson",
+    userUuid: "4f2f1a30-c0a0-4d8b-a001-000000000001",
+    displayName: "Alice Johnson",
+    username: "alice",
     email: "alice@example.com",
+    status: "offline",
     avatarUrl: "https://cdn.example.com/a.jpg",
   },
-  { userUuid: "user-2", userId: 2, fullName: "Bob Smith", email: "bob@example.com" },
   {
-    userUuid: "user-3",
-    userId: 3,
-    fullName: "Charlie Brown",
+    userUuid: "4f2f1a30-c0a0-4d8b-a001-000000000002",
+    displayName: "Bob Smith",
+    username: "bobby",
+    email: "bob@example.com",
+    status: "offline",
+  },
+  {
+    userUuid: "4f2f1a30-c0a0-4d8b-a001-000000000003",
+    displayName: "Charlie Brown",
+    username: "charlie",
     email: "charlie.b@example.com",
+    status: "offline",
     avatarUrl: "https://cdn.example.com/c.jpg",
   },
-  { userUuid: "user-4", userId: 4, fullName: "Diana Prince", email: "diana@example.com" },
-  { userUuid: "user-5", userId: 5, fullName: "Алексей Иванов", email: "alexey@example.com" },
+  {
+    userUuid: "4f2f1a30-c0a0-4d8b-a001-000000000004",
+    displayName: "Diana Prince",
+    username: "diana",
+    email: "diana@example.com",
+    status: "offline",
+  },
+  {
+    userUuid: "4f2f1a30-c0a0-4d8b-a001-000000000005",
+    displayName: "Алексей Иванов",
+    username: "alexey",
+    email: "alexey@example.com",
+    status: "offline",
+  },
+  {
+    userUuid: "4f2f1a30-c0a0-4d8b-a001-000000000006",
+    displayName: "Eve Stone",
+    username: "eve",
+    email: "eve@example.com",
+    status: "offline",
+  },
+  {
+    userUuid: "4f2f1a30-c0a0-4d8b-a001-000000000007",
+    displayName: "Frank Moore",
+    username: "frank",
+    email: "frank@example.com",
+    status: "offline",
+  },
+  {
+    userUuid: "4f2f1a30-c0a0-4d8b-a001-000000000008",
+    displayName: "Grace Hopper",
+    username: "grace",
+    email: "grace@example.com",
+    status: "offline",
+  },
+  {
+    userUuid: "4f2f1a30-c0a0-4d8b-a001-000000000009",
+    displayName: "Helen Hunt",
+    username: "helen",
+    email: "helen@example.com",
+    status: "offline",
+  },
+  {
+    userUuid: "4f2f1a30-c0a0-4d8b-a001-000000000010",
+    displayName: "Ivan Petrov",
+    username: "ivan",
+    email: "ivan@example.com",
+    status: "offline",
+  },
+  {
+    userUuid: "4f2f1a30-c0a0-4d8b-a001-000000000011",
+    displayName: "Jane Doe",
+    username: "jane",
+    email: "jane@example.com",
+    status: "offline",
+  },
 ];
 
-// ---------------------------------------------------------------------------
-// filterUsers — pure function for matching users against a query
-// ---------------------------------------------------------------------------
-
 describe("filterUsers", () => {
-  it("returns first maxResults users for empty query (bare @)", () => {
+  it("returns all users for empty query", () => {
     const results = filterUsers("", USERS);
-    expect(results).toHaveLength(5);
-    expect(results[0]!.userId).toBe(1);
+    expect(results).toHaveLength(USERS.length);
+    expect(results.map((user) => user.userUuid)).toEqual(USERS.map((user) => user.userUuid));
   });
 
-  it("returns first maxResults users for whitespace-only query", () => {
+  it("returns all users for whitespace-only query", () => {
     const results = filterUsers("   ", USERS);
-    expect(results).toHaveLength(5);
+    expect(results).toHaveLength(USERS.length);
   });
 
-  it("respects maxResults for empty query", () => {
+  it("limits empty-query results only when maxResults is explicit", () => {
     const results = filterUsers("", USERS, 2);
     expect(results).toHaveLength(2);
+    expect(results.map((user) => user.username)).toEqual(["alice", "bobby"]);
   });
 
-  it("matches by full name (case-insensitive)", () => {
+  it("matches by Workspace UUID", () => {
+    const results = filterUsers("000000000003", USERS);
+    expect(results).toHaveLength(1);
+    expect(results[0]!.username).toBe("charlie");
+  });
+
+  it("matches by username case-insensitively", () => {
+    const results = filterUsers("BOBBY", USERS);
+    expect(results).toHaveLength(1);
+    expect(results[0]!.displayName).toBe("Bob Smith");
+  });
+
+  it("matches by display name case-insensitively", () => {
     const results = filterUsers("alice", USERS);
     expect(results).toHaveLength(1);
-    expect(results[0]!.userId).toBe(1);
+    expect(results[0]!.userUuid).toBe("4f2f1a30-c0a0-4d8b-a001-000000000001");
   });
 
-  it("matches by partial full name", () => {
+  it("matches by partial display name", () => {
     const results = filterUsers("john", USERS);
     expect(results).toHaveLength(1);
-    expect(results[0]!.fullName).toBe("Alice Johnson");
+    expect(results[0]!.displayName).toBe("Alice Johnson");
   });
 
-  it("matches by email (case-insensitive)", () => {
-    const results = filterUsers("BOB@", USERS);
+  it("matches by email case-insensitively", () => {
+    const results = filterUsers("CHARLIE.B@", USERS);
     expect(results).toHaveLength(1);
-    expect(results[0]!.userId).toBe(2);
-  });
-
-  it("matches by partial email prefix", () => {
-    const results = filterUsers("charlie.b", USERS);
-    expect(results).toHaveLength(1);
-    expect(results[0]!.userId).toBe(3);
+    expect(results[0]!.username).toBe("charlie");
   });
 
   it("returns multiple matches", () => {
     const results = filterUsers("example.com", USERS);
-    expect(results).toHaveLength(5);
+    expect(results).toHaveLength(USERS.length);
   });
 
   it("handles Cyrillic characters", () => {
     const results = filterUsers("Алексей", USERS);
     expect(results).toHaveLength(1);
-    expect(results[0]!.userId).toBe(5);
+    expect(results[0]!.username).toBe("alexey");
   });
 
   it("returns empty array for no matches", () => {
@@ -97,15 +158,11 @@ describe("filterUsers", () => {
     expect(filterUsers("alice", [])).toHaveLength(0);
   });
 
-  it("limits results to maxResults", () => {
+  it("limits matches only when maxResults is explicit", () => {
     const results = filterUsers("example", USERS, 2);
     expect(results).toHaveLength(2);
   });
 });
-
-// ---------------------------------------------------------------------------
-// Store
-// ---------------------------------------------------------------------------
 
 describe("useMentionSuggestStore", () => {
   afterEach(() => {
@@ -165,7 +222,6 @@ describe("useMentionSuggestStore", () => {
   });
 });
 
-// filterUsers edge cases — special characters, prioritization, boundaries
 describe("filterUsers (edge cases)", () => {
   it("handles special regex metacharacters in query safely", () => {
     expect(() => filterUsers(".*+?^${}()|[]\\", USERS)).not.toThrow();
@@ -180,25 +236,60 @@ describe("filterUsers (edge cases)", () => {
   it("single character query matches", () => {
     const results = filterUsers("b", USERS);
     expect(results.length).toBeGreaterThan(0);
-    expect(results.some((u) => u.fullName.toLowerCase().includes("b"))).toBe(true);
+    expect(results.some((user) => user.username.includes("b"))).toBe(true);
   });
 
-  it("prioritizes name matches over email-only matches", () => {
+  it("prioritizes UUID, username, display-name, then email matches", () => {
     const users: MentionSuggestion[] = [
-      { userUuid: "user-10", userId: 10, fullName: "No Match", email: "alice@test.com" },
-      { userUuid: "user-11", userId: 11, fullName: "Alice Real", email: "other@test.com" },
+      {
+        userUuid: "zzzz-needle",
+        displayName: "No Match",
+        username: "plain",
+        email: "plain@test.com",
+        status: "offline",
+      },
+      {
+        userUuid: "aaaa-other",
+        displayName: "No Match",
+        username: "needle",
+        email: "other@test.com",
+        status: "offline",
+      },
+      {
+        userUuid: "bbbb-other",
+        displayName: "Needle Name",
+        username: "other",
+        email: "other@test.com",
+        status: "offline",
+      },
+      {
+        userUuid: "cccc-other",
+        displayName: "No Match",
+        username: "other",
+        email: "needle@test.com",
+        status: "offline",
+      },
     ];
-    const results = filterUsers("alice", users);
-    expect(results).toHaveLength(2);
-    expect(results[0]!.userId).toBe(11);
-    expect(results[1]!.userId).toBe(10);
+    const results = filterUsers("needle", users);
+    expect(results.map((user) => user.userUuid)).toEqual([
+      "zzzz-needle",
+      "aaaa-other",
+      "bbbb-other",
+      "cccc-other",
+    ]);
   });
 
-  it("user matching both name and email appears once (in name group)", () => {
+  it("user matching several fields appears once in the highest-priority group", () => {
     const users: MentionSuggestion[] = [
-      { userUuid: "user-20", userId: 20, fullName: "alice alice", email: "alice@example.com" },
+      {
+        userUuid: "needle-user",
+        displayName: "needle user",
+        username: "needle",
+        email: "needle@example.com",
+        status: "offline",
+      },
     ];
-    const results = filterUsers("alice", users);
+    const results = filterUsers("needle", users);
     expect(results).toHaveLength(1);
   });
 
@@ -209,7 +300,7 @@ describe("filterUsers (edge cases)", () => {
   it("trims leading and trailing whitespace from query", () => {
     const results = filterUsers("  alice  ", USERS);
     expect(results).toHaveLength(1);
-    expect(results[0]!.userId).toBe(1);
+    expect(results[0]!.username).toBe("alice");
   });
 
   it("handles mixed case query matching", () => {

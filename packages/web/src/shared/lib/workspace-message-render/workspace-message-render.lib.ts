@@ -1,4 +1,5 @@
 import DOMPurify from "dompurify";
+import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/protected-message-media";
 import { DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS } from "./workspace-message-render-options.lib";
 import type {
   WorkspaceMessageBlock,
@@ -23,6 +24,7 @@ const WORKSPACE_MESSAGE_ALLOWED_TAGS = [
   "blockquote",
   "code",
   "pre",
+  "img",
 ];
 
 const WORKSPACE_MESSAGE_ALLOWED_ATTR = [
@@ -49,6 +51,10 @@ const WORKSPACE_MESSAGE_ALLOWED_ATTR = [
   "role",
   "tabindex",
   "aria-label",
+  "src",
+  "alt",
+  "decoding",
+  "loading",
 ];
 const SAFE_LINK_PROTOCOL_PATTERN = /^(?:https?:|mailto:)/i;
 const WORKSPACE_MESSAGE_ROUTE_PATTERN =
@@ -78,7 +84,9 @@ function sanitizeWorkspaceMessageHtml(html: string): string {
 function isSafeLinkHref(href: string): boolean {
   const trimmed = href.trim();
   return (
-    SAFE_LINK_PROTOCOL_PATTERN.test(trimmed) || trimmed.startsWith("/") || trimmed.startsWith("#")
+    SAFE_LINK_PROTOCOL_PATTERN.test(trimmed) ||
+    (trimmed.startsWith("/") && !trimmed.startsWith("//")) ||
+    trimmed.startsWith("#")
   );
 }
 
@@ -160,6 +168,7 @@ function renderWorkspaceFilePlaceholder(
 ): string {
   const { reference } = inline;
   const label = renderWorkspaceFileLabel(inline);
+  const isImage = reference.kind === "media" && reference.mediaKind === "image";
   const fileNameAttr =
     reference.name != null ? ` data-workspace-file-name="${escapeHtmlText(reference.name)}"` : "";
   const contentTypeAttr =
@@ -171,14 +180,20 @@ function renderWorkspaceFilePlaceholder(
       ? ` data-workspace-media-kind="${escapeHtmlText(reference.mediaKind)}"`
       : "";
 
-  // Workspace download сейчас требует bearer-доступ и отдает attachment response.
-  // Пока нет безопасного inline-src контракта, full render оставляет только явный
-  // placeholder с UUID; загрузку blob/viewer должен добавить отдельный слой фазы 9.
+  // Workspace download currently needs bearer access and returns an attachment
+  // response. Until there is a safe inline-src contract, full render leaves only
+  // an explicit UUID placeholder; a separate preview layer must add blob/viewer loading.
   return `<span role="button" tabindex="0" class="workspace-message-file-placeholder" data-workspace-file="true" data-workspace-file-uuid="${escapeHtmlText(
     reference.fileUuid,
-  )}" data-workspace-file-kind="${reference.kind}"${mediaKindAttr}${fileNameAttr}${contentTypeAttr} aria-label="${escapeHtmlText(
+  )}" data-workspace-file-kind="${reference.kind}"${mediaKindAttr}${fileNameAttr}${contentTypeAttr} title="${escapeHtmlText(
     label,
-  )}">${escapeHtmlText(label)}</span>`;
+  )}" aria-label="${escapeHtmlText(label)}">${
+    isImage
+      ? `<img class="workspace-message-file-placeholder__image" src="${escapeHtmlText(
+          AUTH_IMAGE_PLACEHOLDER_SRC,
+        )}" alt="" decoding="async" loading="lazy">`
+      : ""
+  }<span class="workspace-message-file-placeholder__label${isImage ? " sr-only" : ""}">${escapeHtmlText(label)}</span></span>`;
 }
 
 function renderInline(
@@ -223,15 +238,13 @@ function renderInline(
       const mentionText = `@${inline.displayText}`;
       if (
         !options.enableMentions ||
-        inline.unresolved === true ||
         inline.userUuid == null ||
         inline.userUuid.trim().length === 0
       ) {
         return escapeHtmlText(mentionText);
       }
-      // Кнопка содержит только Workspace UUID. Старый numeric user id сюда
-      // намеренно не добавляется: обработчик клика обязан работать от UUID
-      // или считать действие неподдержанным для текущей поверхности.
+      // The button carries only a Workspace UUID. Click handling must use UUIDs
+      // or treat the action as unsupported for the current surface.
       return `<button type="button" class="workspace-message-mention" data-workspace-mention="true" data-workspace-user-uuid="${escapeHtmlText(
         inline.userUuid,
       )}">${escapeHtmlText(mentionText)}</button>`;
@@ -247,9 +260,9 @@ function renderInline(
       }
       const workspaceMessageUuid = resolveWorkspaceMessageRouteUuid(inline.href);
       if (workspaceMessageUuid != null) {
-        // Ссылки на сообщения в Workspace разрешены только через project/message
-        // route с UUID. Старые `/message/:id`, `?msg=` и Zulip narrow не
-        // выпускаем как `<a>`, чтобы bubble не вел пользователя в legacy path.
+        // Workspace message links are allowed only through the project/message
+        // route with UUID. Old `/message/:id`, `?msg=`, and Zulip narrow are not
+        // emitted as `<a>`, so the bubble does not send users to a legacy path.
         return `<a href="${escapeHtmlText(
           inline.href,
         )}"${titleAttr} data-workspace-message-link="true" data-workspace-message-uuid="${escapeHtmlText(
@@ -317,8 +330,8 @@ export function renderWorkspaceMessageBody(
   document: WorkspaceMessageDocument,
   options: WorkspaceMessageRenderOptions = DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS,
 ): WorkspaceMessageRenderResult {
-  // Даже собственный renderer пропускаем через sanitize boundary: это защищает
-  // от будущих расширений markdown subset и от ошибок в allowlist ссылок.
+  // Even our own renderer goes through the sanitize boundary: this protects
+  // against future markdown subset growth and link allowlist mistakes.
   const html = options.enableMarkdown
     ? renderBlocks(document.blocks, options)
     : renderPlainText(document);

@@ -279,6 +279,43 @@ describe("MediaViewerOverlay", () => {
     );
   });
 
+  it("uses the Workspace download callback for Workspace viewer items", async () => {
+    const onDownload = vi.fn();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    useMediaViewerStore.getState().open(
+      [
+        {
+          url: "blob:workspace-viewer-image",
+          type: "image",
+          alt: "screen.png",
+          workspaceFile: {
+            fileUuid: "44444444-4444-4444-8444-444444444444",
+            name: "screen.png",
+            contentType: "image/png",
+            objectUrl: "blob:workspace-viewer-image",
+            onDownload,
+          },
+        },
+      ],
+      0,
+    );
+
+    render(<MediaViewerOverlay />);
+    fireEvent.click(screen.getByRole("button", { name: /download/i }));
+
+    await waitFor(() => {
+      expect(onDownload).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fileUuid: "44444444-4444-4444-8444-444444444444",
+          name: "screen.png",
+        }),
+      );
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("navigates to next and previous items with ArrowRight and ArrowLeft", () => {
     useMediaViewerStore.getState().open(GALLERY_ITEMS, 0);
 

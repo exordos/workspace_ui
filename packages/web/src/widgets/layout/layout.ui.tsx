@@ -124,8 +124,12 @@ export const Layout: React.FC = () => {
   const closeRightDrawer = useRightDrawerStore((s) => s.close);
   const rightDrawerMode = useRightDrawerStore((s) => s.mode);
   const rightDrawerUserIdOverride = useRightDrawerStore((s) => s.userIdOverride);
+  const rightDrawerWorkspaceUserUuidOverride = useRightDrawerStore(
+    (s) => s.workspaceUserUuidOverride,
+  );
   const openRightDrawerInfo = useRightDrawerStore((s) => s.openInfo);
   const openRightDrawerUserProfile = useRightDrawerStore((s) => s.openUserProfile);
+  const openWorkspaceUserProfile = useRightDrawerStore((s) => s.openWorkspaceUserProfile);
   const openRightDrawerSettings = useRightDrawerStore((s) => s.openSettings);
   const openRightDrawerAbout = useRightDrawerStore((s) => s.openAbout);
   const [currentUserStatus] = useState<LayoutUserConnectionStatus>("idle");
@@ -311,6 +315,7 @@ export const Layout: React.FC = () => {
     rightDrawerOpen,
     rightDrawerMode,
     rightDrawerUserIdOverride,
+    rightDrawerWorkspaceUserUuidOverride,
     mutedStreamIds,
     usersMapForChatInfo,
     workspaceRoute: workspaceMessengerRoute,
@@ -353,6 +358,7 @@ export const Layout: React.FC = () => {
             setRightDrawerOpen={setRightDrawerOpen}
             openRightDrawerInfo={openRightDrawerInfo}
             openRightDrawerUserProfile={openRightDrawerUserProfile}
+            openWorkspaceUserProfile={openWorkspaceUserProfile}
             shouldShowChatShell={shouldShowChatShell}
             pathname={location.pathname}
             sidebarOpen={sidebarOpen}

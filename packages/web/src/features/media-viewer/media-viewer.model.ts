@@ -13,6 +13,20 @@ const log = createLogger("media-viewer");
 
 const EMPTY_ITEMS: MediaItem[] = [];
 
+function releaseWorkspaceObjectUrls(items: readonly MediaItem[]): void {
+  const objectUrls = new Set<string>();
+  for (const item of items) {
+    const objectUrl = item.workspaceFile?.objectUrl;
+    if (objectUrl != null && objectUrl.startsWith("blob:")) {
+      objectUrls.add(objectUrl);
+    }
+  }
+
+  for (const objectUrl of objectUrls) {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -29,11 +43,13 @@ export const useMediaViewerStore = create<MediaViewerState>((set, get) => ({
     }
     const clamped = clamp(startIndex, 0, items.length - 1);
     logStoreAction("media-viewer", "open", { count: items.length, startIndex: clamped });
+    releaseWorkspaceObjectUrls(get().items);
     set({ isOpen: true, items, currentIndex: clamped });
   },
 
   close() {
     logStoreAction("media-viewer", "close", {});
+    releaseWorkspaceObjectUrls(get().items);
     set({ isOpen: false, items: EMPTY_ITEMS, currentIndex: 0 });
   },
 

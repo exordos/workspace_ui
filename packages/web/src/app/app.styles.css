@@ -227,6 +227,12 @@ body {
   box-sizing: border-box;
 }
 
+.message-body img.message-media-preview.workspace-message-file-preview-image {
+  background-color: transparent;
+  border: 0;
+  max-height: 180px;
+}
+
 /* ── Zulip link previews ──────────────────────────────── */
 
 .message-body .message_embed {

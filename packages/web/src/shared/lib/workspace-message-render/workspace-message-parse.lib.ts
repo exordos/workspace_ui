@@ -19,12 +19,17 @@ const NORMALIZE_LINE_BREAK_PATTERN = /\r\n?|\n/g;
 const WHITESPACE_PATTERN = /\s+/g;
 const URL_ONLY_PATTERN = /^(?:https?:\/\/|mailto:)[^\s]+$/i;
 const WORKSPACE_FILE_PROTOCOL = "workspace-file:";
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_PATTERN_SOURCE = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const UUID_PATTERN = new RegExp(`^${UUID_PATTERN_SOURCE}$`, "i");
+const LEGACY_WORKSPACE_FILE_DOWNLOAD_PATH_PATTERN =
+  /^\/api\/messenger\/v1\/files\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/actions\/download$/i;
 const IMAGE_FILE_EXTENSION_PATTERN = /\.(?:png|jpe?g|gif|webp|avif|svg)(?:$|[?#])/i;
 const VIDEO_FILE_EXTENSION_PATTERN = /\.(?:mp4|mov|m4v|webm|ogv)(?:$|[?#])/i;
 const SPOILER_CODE_LANGUAGE_PATTERN = /^spoiler(?:[ \t]+([\s\S]*))?$/i;
-const PLAIN_TEXT_INLINE_PATTERN =
-  /(^|[\s([{"'.,!?;:])@([A-Za-z0-9._-]{1,128})|:([A-Za-z0-9_+-]{1,128}):/g;
+const PLAIN_TEXT_INLINE_PATTERN = new RegExp(
+  `<@(${UUID_PATTERN_SOURCE})>|(^|[\\s([{"'.,!?;:])@([A-Za-z0-9._-]{1,128})|:([A-Za-z0-9_+-]{1,128}):`,
+  "gi",
+);
 const DEFAULT_WORKSPACE_SPOILER_HEADER = "Spoiler";
 
 interface WorkspaceMessageParseState {
@@ -43,6 +48,33 @@ interface WorkspaceMessageParseContext {
   options: WorkspaceMessageParseOptions;
   state: WorkspaceMessageParseState;
 }
+
+interface ParsedWorkspaceFileHref {
+  fileUuid: string;
+  searchParams: URLSearchParams;
+  href: string;
+  legacy: boolean;
+}
+
+const CONTENT_TYPE_BY_EXTENSION = new Map<string, string>([
+  ["avif", "image/avif"],
+  ["csv", "text/csv"],
+  ["gif", "image/gif"],
+  ["jpeg", "image/jpeg"],
+  ["jpg", "image/jpeg"],
+  ["json", "application/json"],
+  ["m4v", "video/x-m4v"],
+  ["mov", "video/quicktime"],
+  ["mp4", "video/mp4"],
+  ["ogv", "video/ogg"],
+  ["pdf", "application/pdf"],
+  ["png", "image/png"],
+  ["svg", "image/svg+xml"],
+  ["txt", "text/plain"],
+  ["webm", "video/webm"],
+  ["webp", "image/webp"],
+  ["zip", "application/zip"],
+]);
 
 function normalizeLineBreaks(value: string): string {
   return value.replaceAll(NORMALIZE_LINE_BREAK_PATTERN, "\n");
@@ -84,6 +116,14 @@ function normalizeOptionalText(value: string | null | undefined): string | undef
   return normalized == null || normalized.length === 0 ? undefined : normalized;
 }
 
+function inferContentTypeFromName(name: string): string | undefined {
+  const extension = /\.([A-Za-z0-9]+)(?:$|[?#])/.exec(name)?.[1]?.toLowerCase();
+  if (extension == null) {
+    return undefined;
+  }
+  return CONTENT_TYPE_BY_EXTENSION.get(extension);
+}
+
 function inferMediaKind(
   contentType: string | undefined,
   name: string,
@@ -104,11 +144,7 @@ function inferMediaKind(
   return null;
 }
 
-function parseWorkspaceFileHref(
-  href: string,
-  label: string,
-  sourceKind: "image" | "link",
-): WorkspaceMessageFileReference | null {
+function parseCanonicalWorkspaceFileHref(href: string): ParsedWorkspaceFileHref | null {
   let parsed: URL;
   try {
     parsed = new URL(href);
@@ -130,18 +166,80 @@ function parseWorkspaceFileHref(
     return null;
   }
 
-  const name =
-    normalizeOptionalText(parsed.searchParams.get("name")) ?? normalizeOptionalText(label);
+  return {
+    fileUuid,
+    searchParams: parsed.searchParams,
+    href,
+    legacy: false,
+  };
+}
+
+function parseLegacyWorkspaceFileDownloadHref(href: string): ParsedWorkspaceFileHref | null {
+  const trimmed = href.trim();
+  if (trimmed.startsWith("//")) {
+    return null;
+  }
+
+  let parsed: URL;
+  try {
+    if (trimmed.startsWith("/")) {
+      parsed = new URL(trimmed, "https://workspace.local");
+    } else if (/^https?:\/\//i.test(trimmed)) {
+      if (typeof window === "undefined" || window.location.origin.length === 0) {
+        return null;
+      }
+      parsed = new URL(trimmed);
+      if (parsed.origin !== window.location.origin) {
+        return null;
+      }
+    } else {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
+  const match = LEGACY_WORKSPACE_FILE_DOWNLOAD_PATH_PATTERN.exec(parsed.pathname);
+  const fileUuid = match?.[1];
+  if (fileUuid == null || !UUID_PATTERN.test(fileUuid)) {
+    return null;
+  }
+
+  return {
+    fileUuid,
+    searchParams: parsed.searchParams,
+    href: `workspace-file://${fileUuid}`,
+    legacy: true,
+  };
+}
+
+function parseWorkspaceFileHref(
+  href: string,
+  label: string,
+  sourceKind: "image" | "link",
+): WorkspaceMessageFileReference | null {
+  const parsed =
+    parseCanonicalWorkspaceFileHref(href) ?? parseLegacyWorkspaceFileDownloadHref(href);
+  if (parsed == null) {
+    return null;
+  }
+
+  const labelName = normalizeOptionalText(label);
+  const queryName = parsed.legacy
+    ? undefined
+    : normalizeOptionalText(parsed.searchParams.get("name"));
+  const name = queryName ?? labelName;
   const contentType =
     normalizeOptionalText(parsed.searchParams.get("content_type")) ??
-    normalizeOptionalText(parsed.searchParams.get("contentType"));
+    normalizeOptionalText(parsed.searchParams.get("contentType")) ??
+    inferContentTypeFromName(name ?? label);
   const mediaKind = inferMediaKind(contentType, name ?? label);
   const kind = sourceKind === "image" || mediaKind != null ? "media" : "attachment";
 
   return {
     kind,
-    href,
-    fileUuid,
+    href: parsed.href,
+    fileUuid: parsed.fileUuid,
     ...(name == null ? {} : { name }),
     ...(contentType == null ? {} : { contentType }),
     ...(kind === "media" ? { mediaKind: mediaKind ?? "image" } : {}),
@@ -291,13 +389,23 @@ function mentionDisplayTextFromInline(children: readonly WorkspaceMessageInline[
 function createMentionInline(
   displayText: string,
   context: WorkspaceMessageParseContext,
+  sourceUserUuid?: string,
 ): WorkspaceMessageInline {
   const normalizedDisplayText = normalizeMentionDisplayText(displayText);
   const resolution = context.options.resolveMention?.(normalizedDisplayText);
   const resolvedDisplayText = normalizeMentionDisplayText(
     resolution?.displayText ?? normalizedDisplayText,
   );
-  const userUuid = resolution?.userUuid?.trim();
+  const resolvedUserUuid = resolution?.userUuid?.trim();
+  const normalizedSourceUserUuid = sourceUserUuid?.trim();
+  const sourceUserUuidIsValid =
+    normalizedSourceUserUuid != null && UUID_PATTERN.test(normalizedSourceUserUuid);
+  const userUuid =
+    resolvedUserUuid != null && resolvedUserUuid.length > 0
+      ? resolvedUserUuid
+      : sourceUserUuidIsValid && resolution != null && resolution.unresolved !== true
+        ? normalizedSourceUserUuid
+        : undefined;
 
   context.state.hasInlineRich = true;
   context.state.hasMentions = true;
@@ -313,6 +421,7 @@ function createMentionInline(
   return {
     kind: "mention",
     displayText: resolvedDisplayText.length > 0 ? resolvedDisplayText : normalizedDisplayText,
+    ...(sourceUserUuidIsValid ? { userUuid: normalizedSourceUserUuid } : {}),
     unresolved: true,
   };
 }
@@ -347,9 +456,10 @@ function parseTextWithMentionsAndEmoji(
 
   for (const match of text.matchAll(PLAIN_TEXT_INLINE_PATTERN)) {
     const fullMatch = match[0] ?? "";
-    const separator = match[1] ?? "";
-    const displayText = match[2] ?? "";
-    const rawShortcode = match[3] ?? "";
+    const canonicalUserUuid = match[1] ?? "";
+    const separator = match[2] ?? "";
+    const displayText = match[3] ?? "";
+    const rawShortcode = match[4] ?? "";
     if (rawShortcode.length > 0) {
       const shortcodeStart = match.index;
       const shortcodeEnd = shortcodeStart + fullMatch.length;
@@ -369,6 +479,19 @@ function parseTextWithMentionsAndEmoji(
       }
 
       lastIndex = shortcodeEnd;
+      continue;
+    }
+
+    if (canonicalUserUuid.length > 0) {
+      const mentionStart = match.index;
+      const mentionEnd = mentionStart + fullMatch.length;
+
+      if (mentionStart > lastIndex) {
+        parts.push({ kind: "text", text: text.slice(lastIndex, mentionStart) });
+      }
+
+      parts.push(createMentionInline(canonicalUserUuid, context, canonicalUserUuid));
+      lastIndex = mentionEnd;
       continue;
     }
 
@@ -471,9 +594,8 @@ function mergeMarkedStrongMentions(
         } else {
           merged.pop();
         }
-        // Zulip-совместимый текст `@**Name**` здесь переводится в Workspace-модель:
-        // видимое имя остается в документе, а кликовый идентификатор появляется
-        // только из UUID resolver-а, а не из старого numeric user id.
+        // Convert Zulip-compatible `@**Name**` text into the Workspace model:
+        // keep the visible name in the document and resolve clicks from UUIDs.
         merged.push(createMentionInline(displayText, context));
         continue;
       }

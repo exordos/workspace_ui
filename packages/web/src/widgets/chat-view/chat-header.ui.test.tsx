@@ -107,6 +107,27 @@ describe("ChatHeader", () => {
     expect(onDmPartnerClick).toHaveBeenCalledTimes(1);
   });
 
+  it("opens right panel from DM name block click", () => {
+    const onOpenRightPanel = vi.fn();
+    const onDmPartnerClick = vi.fn();
+
+    renderWithProviders(
+      <ChatHeader
+        channelName="unused"
+        dmPartner={{ name: "Alice", avatarUrl: null, presenceState: "active" }}
+        hideParticipants
+        hideTopic
+        onOpenRightPanel={onOpenRightPanel}
+        onDmPartnerClick={onDmPartnerClick}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /partner info|информация о собеседнике/i }));
+
+    expect(onOpenRightPanel).toHaveBeenCalledTimes(1);
+    expect(onDmPartnerClick).not.toHaveBeenCalled();
+  });
+
   it("does not expose DM partner title as a button without profile handler", () => {
     renderWithProviders(
       <ChatHeader

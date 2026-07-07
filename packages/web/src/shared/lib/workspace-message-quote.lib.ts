@@ -1,23 +1,34 @@
-interface BuildWorkspaceQuoteHeaderOptions {
+export interface WorkspaceQuoteHeaderInput {
   senderName: string;
   wroteLabel: string;
   permalinkUrl?: string | null;
 }
 
-export function buildWorkspaceQuoteHeader(options: BuildWorkspaceQuoteHeaderOptions): string {
-  const { senderName, wroteLabel, permalinkUrl } = options;
-  const normalizedPermalink = permalinkUrl?.trim();
-  const permalinkSuffix =
-    normalizedPermalink != null && normalizedPermalink.length > 0
-      ? ` [${wroteLabel}](${normalizedPermalink})`
-      : "";
+function escapeMarkdownInline(value: string): string {
+  return Array.from(value, (character) =>
+    /[\\`*_{()[\]#+.!|>~-]/.test(character) ? `\\${character}` : character,
+  ).join("");
+}
 
-  return `**${senderName}**${permalinkSuffix}:`;
+function normalizeQuoteMarkdown(value: string): string {
+  return value.trim().replace(/\r\n?/g, "\n");
+}
+
+export function buildWorkspaceQuoteHeader({
+  senderName,
+  wroteLabel,
+  permalinkUrl,
+}: WorkspaceQuoteHeaderInput): string {
+  const author = escapeMarkdownInline(senderName.trim());
+  const normalizedUrl = permalinkUrl?.trim();
+  if (normalizedUrl != null && normalizedUrl.length > 0) {
+    return `**${author}** [${wroteLabel}](${normalizedUrl}):`;
+  }
+  return `**${author}**:`;
 }
 
 export function buildWorkspaceQuoteBlock(header: string, content: string): string {
-  const normalizedContent = content.trim();
-  const quoteLines = [header, ...normalizedContent.split(/\r?\n/)].map((line) => `> ${line}`);
-
-  return `${quoteLines.join("\n")}\n\n`;
+  const normalizedContent = normalizeQuoteMarkdown(content);
+  const lines = [header, ...normalizedContent.split("\n")];
+  return `${lines.map((line) => (line.length === 0 ? ">" : `> ${line}`)).join("\n")}\n\n`;
 }

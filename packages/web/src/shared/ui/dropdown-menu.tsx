@@ -279,18 +279,31 @@ export const DropdownMenu: React.FC<DropdownMenuProps> = React.memo(function Dro
     () => ({ ...contentProps, ...contextContentProps }),
     [contentProps, contextContentProps],
   );
+  const handleTriggerOpenChange = React.useCallback(
+    (nextOpen: boolean) => {
+      if (nextOpen) {
+        onSourceChange?.("trigger");
+      }
+      onOpenChange(nextOpen);
+    },
+    [onOpenChange, onSourceChange],
+  );
+  const handleContextOpenChange = React.useCallback(
+    (nextOpen: boolean) => {
+      if (nextOpen) {
+        onSourceChange?.("context");
+      }
+      onOpenChange(nextOpen);
+    },
+    [onOpenChange, onSourceChange],
+  );
 
   return (
     <>
       {hasTrigger && (
         <RadixDropdownMenu.Root
           open={isTriggerMenuOpen}
-          onOpenChange={(nextOpen) => {
-            if (nextOpen) {
-              onSourceChange?.("trigger");
-            }
-            onOpenChange(nextOpen);
-          }}
+          onOpenChange={handleTriggerOpenChange}
           modal={modal}
         >
           <RadixDropdownMenu.Trigger asChild>{trigger}</RadixDropdownMenu.Trigger>
@@ -310,12 +323,7 @@ export const DropdownMenu: React.FC<DropdownMenuProps> = React.memo(function Dro
       {contextAnchor != null && (
         <RadixDropdownMenu.Root
           open={isContextMenuOpen}
-          onOpenChange={(nextOpen) => {
-            if (nextOpen) {
-              onSourceChange?.("context");
-            }
-            onOpenChange(nextOpen);
-          }}
+          onOpenChange={handleContextOpenChange}
           modal={modal}
         >
           <RadixDropdownMenu.Trigger asChild>

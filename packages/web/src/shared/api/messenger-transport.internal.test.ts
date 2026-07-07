@@ -6,6 +6,7 @@ import {
   getJsonResult,
   parsePaginationHeaders,
   publicGetJsonResult,
+  sendFormDataResult,
   sendJsonResult,
 } from "./messenger-transport.internal";
 
@@ -213,6 +214,45 @@ describe("messenger transport helper", () => {
     const [, putInit] = firstFetchCall(putFetchMock);
     expect(putInit?.method).toBe("PUT");
     expect(putInit?.body).toBe(JSON.stringify({ name: "Engineering 2" }));
+  });
+
+  it("sends multipart FormData without explicit Content-Type and keeps trailing-slash fallback", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ detail: "Not found" }, 404))
+      .mockResolvedValueOnce(jsonResponse({ uuid: "file-uuid" }));
+    const form = new FormData();
+    form.append("stream_uuid", "stream-uuid");
+    form.append("file", new File(["file-bytes"], "report.txt", { type: "text/plain" }));
+    const controller = new AbortController();
+
+    await expect(
+      sendFormDataResult(
+        "/files/",
+        {
+          accessToken: " token ",
+          devTargetOrigin: "https://workspace.example.com",
+          fetchImpl: fetchMock,
+          signal: controller.signal,
+        },
+        form,
+      ),
+    ).resolves.toMatchObject({ data: { uuid: "file-uuid" } });
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/messenger/v1/files/",
+      "/api/messenger/v1/files",
+    ]);
+    const [, init] = firstFetchCall(fetchMock);
+    expect(init?.method).toBe("POST");
+    expect(init?.body).toBe(form);
+    expect(init?.signal).toBe(controller.signal);
+    expect(init?.headers).toEqual({
+      Accept: "application/json",
+      Authorization: "Bearer token",
+      "X-Workspace-Dev-Target-Origin": "https://workspace.example.com",
+    });
+    expect(new Headers(init?.headers).has("Content-Type")).toBe(false);
   });
 
   it("supports DELETE JSON and public GET without auth", async () => {

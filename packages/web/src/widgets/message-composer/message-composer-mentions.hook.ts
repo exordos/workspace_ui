@@ -29,16 +29,12 @@ export function useComposerMentions(options: { enabled?: boolean } = {}) {
       const user = usersById[userUuid];
       if (user == null) return;
 
-      const legacyUserId = (user as { user_id?: unknown }).user_id;
-      const numericUserId =
-        typeof legacyUserId === "number" && Number.isSafeInteger(legacyUserId) && legacyUserId > 0
-          ? legacyUserId
-          : null;
       suggestions.push({
         userUuid: user.uuid,
-        userId: numericUserId,
-        fullName: selectUserDisplayName(user, user.uuid),
+        displayName: selectUserDisplayName(user, user.uuid),
+        username: user.username,
         email: user.email ?? "",
+        status: user.status ?? null,
         ...(user.avatarUrl != null ? { avatarUrl: user.avatarUrl } : {}),
       });
     });

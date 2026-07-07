@@ -58,6 +58,9 @@ function isGenericMediaFileName(fileName: string): boolean {
 }
 
 export function deriveMediaFileName(item: MediaItem): string {
+  const fromWorkspaceFile = sanitizeFilename((item.workspaceFile?.name ?? "").trim());
+  if (fromWorkspaceFile) return fromWorkspaceFile;
+
   const fromAlt = sanitizeFilename((item.alt ?? "").trim());
   const fromUrl = sanitizeFilename(fileNameFromUrl(item.url));
   const primary = fromAlt || fromUrl;
@@ -157,6 +160,11 @@ async function fetchMediaItemBlob(item: MediaItem, displayUrl?: string): Promise
 }
 
 export async function downloadMediaItem(item: MediaItem, displayUrl?: string): Promise<boolean> {
+  if (item.workspaceFile?.onDownload != null) {
+    await item.workspaceFile.onDownload(item.workspaceFile);
+    return true;
+  }
+
   const fileName = deriveMediaFileName(item);
 
   const blob = await fetchMediaItemBlob(item, displayUrl);

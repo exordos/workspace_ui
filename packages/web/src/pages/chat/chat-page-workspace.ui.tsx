@@ -90,6 +90,50 @@ const WORKSPACE_COMPOSER_EDIT_SESSION_ID = 1;
 
 const noop = () => undefined;
 
+interface WorkspacePreviewBlobCacheEntry {
+  abortController: AbortController;
+  promise: Promise<Blob>;
+}
+
+function createWorkspacePreviewAbortError(): DOMException {
+  return new DOMException("Workspace preview load aborted", "AbortError");
+}
+
+function waitForWorkspacePreviewBlob(promise: Promise<Blob>, signal: AbortSignal): Promise<Blob> {
+  if (signal.aborted) {
+    return Promise.reject(createWorkspacePreviewAbortError());
+  }
+
+  return new Promise((resolve, reject) => {
+    const handleAbort = () => {
+      reject(createWorkspacePreviewAbortError());
+    };
+
+    signal.addEventListener("abort", handleAbort, { once: true });
+    promise.then(
+      (blob) => {
+        signal.removeEventListener("abort", handleAbort);
+        if (signal.aborted) {
+          reject(createWorkspacePreviewAbortError());
+          return;
+        }
+        resolve(blob);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", handleAbort);
+        reject(error instanceof Error ? error : new Error("Workspace preview load failed"));
+      },
+    );
+  });
+}
+
+function clearWorkspacePreviewBlobCache(cache: Map<string, WorkspacePreviewBlobCacheEntry>): void {
+  for (const entry of cache.values()) {
+    entry.abortController.abort();
+  }
+  cache.clear();
+}
+
 function normalizeWorkspaceMentionLookupText(value: string | null | undefined): string {
   return (value ?? "").trim().replace(/^@+/, "").toLowerCase();
 }
@@ -146,9 +190,8 @@ function buildWorkspaceOutgoingPreviewMarkdown(
   if (trimmedContent.length > 0) return content;
   if (files == null || files.length === 0) return "";
 
-  // Пока файлы еще не загружены, серверных workspace-file ссылок нет.
-  // В локальной строке показываем имена файлов, чтобы пользователь видел,
-  // какая именно отправка стоит в очереди или упала.
+  // Before files are uploaded, there are no server workspace-file links yet.
+  // The local row shows file names so the user can see which send is queued or failed.
   return files
     .map((file) => file.name.trim())
     .filter((name) => name.length > 0)
@@ -193,6 +236,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   const readBatchTimerRef = useRef<number | null>(null);
   const actionAbortControllersRef = useRef<Set<AbortController>>(new Set());
   const uploadAbortControllerRef = useRef<AbortController | null>(null);
+  const workspacePreviewBlobCacheRef = useRef<Map<string, WorkspacePreviewBlobCacheEntry>>(
+    new Map(),
+  );
   const openWorkspaceForward = useWorkspaceForwardMessageStore((state) => state.open);
   const selection = useMemo(() => selectMessengerConversationFromWorkspaceRoute(route), [route]);
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
@@ -320,13 +366,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       for (const user of Object.values(usersById)) {
         const displayName = selectUserDisplayName(user, "");
         const candidates = [
+          normalizeWorkspaceMentionLookupText(user.uuid),
           normalizeWorkspaceMentionLookupText(displayName),
           normalizeWorkspaceMentionLookupText(user.username),
         ];
         if (candidates.includes(lookupText)) {
-          // Resolver возвращает только Workspace UUID. Здесь нет numeric
-          // userId и нет попытки открыть старый DM/profile путь: render core
-          // использует UUID только для data-workspace-user-uuid.
+          // Resolver returns only Workspace UUIDs. The render core stores them
+          // in data-workspace-user-uuid without falling back to legacy IDs.
           return {
             userUuid: user.uuid,
             displayText: displayName.length > 0 ? displayName : displayText,
@@ -354,8 +400,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         unsupportedText: t("workspaceMessenger.previewUnsupported"),
       },
       mentions: {
-        mode: "unsupported",
-        unsupportedText: t("workspaceMessenger.mentionsUnsupported"),
+        mode: "enabled",
       },
       scheduledSend: {
         mode: "unsupported",
@@ -397,6 +442,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         window.clearTimeout(readBatchTimerRef.current);
         readBatchTimerRef.current = null;
       }
+      clearWorkspacePreviewBlobCache(workspacePreviewBlobCacheRef.current);
     };
   }, []);
 
@@ -409,6 +455,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       }
       actionAbortControllersRef.current.clear();
       uploadAbortControllerRef.current = null;
+      clearWorkspacePreviewBlobCache(workspacePreviewBlobCacheRef.current);
     };
   }, [conversationId, runtimeContext]);
 
@@ -562,9 +609,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
               return;
             }
 
-            // После успешной загрузки файлов retry больше не должен грузить их
-            // повторно: локальная строка уже содержит итоговый markdown с
-            // workspace-file ссылками, а следующий риск - только POST /messages.
+            // After successful file upload, retry must not upload them again:
+            // the local row already has final markdown with workspace-file links,
+            // and the next possible failure is only POST /messages.
             useMessengerOutboxStore.getState().markOutgoingMessageSending(localId, {
               markdown,
               sourceMarkdown: markdown,
@@ -650,8 +697,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         files,
       });
 
-      // Скроллим сразу после локальной строки. Серверный snapshot позже может
-      // переехать по backend created_at, но пользователь уже видит факт отправки.
+      // Scroll right after the local row appears. A later server snapshot can
+      // move it by backend created_at, but the user already sees the send happened.
       setScrollToBottomAfterSendNonce((value) => value + 1);
       deliverOutgoingMessage(outgoing.localId);
     },
@@ -949,11 +996,30 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         throw new Error(t("workspaceMessenger.runtimeUnavailable"));
       }
 
-      const result = await downloadWorkspaceFile(
-        buildMessengerRequestOptions(runtimeContext, undefined, signal),
-        file.fileUuid,
-      );
-      return result.blob;
+      const fileUuid = file.fileUuid.trim();
+      if (fileUuid.length === 0) {
+        throw new Error(t("workspaceMessenger.fileDownloadFailed"));
+      }
+
+      let cacheEntry = workspacePreviewBlobCacheRef.current.get(fileUuid);
+      if (cacheEntry == null) {
+        const previewAbortController = new AbortController();
+        const promise = downloadWorkspaceFile(
+          buildMessengerRequestOptions(runtimeContext, undefined, previewAbortController.signal),
+          fileUuid,
+        )
+          .then((result) => result.blob)
+          .catch((error: unknown) => {
+            if (workspacePreviewBlobCacheRef.current.get(fileUuid)?.promise === promise) {
+              workspacePreviewBlobCacheRef.current.delete(fileUuid);
+            }
+            throw error;
+          });
+        cacheEntry = { abortController: previewAbortController, promise };
+        workspacePreviewBlobCacheRef.current.set(fileUuid, cacheEntry);
+      }
+
+      return waitForWorkspacePreviewBlob(cacheEntry.promise, signal);
     },
     [runtimeContext],
   );
@@ -1053,9 +1119,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   }, []);
 
   const flushReadBatch = useCallback(() => {
-    // Новый список сообщает видимые непрочитанные сообщения сразу Workspace uuid.
-    // Поэтому тут больше нет шага "числовой id -> messageUuid": read action
-    // получает тот же ключ, который лежит в store и в DOM data-message-uuid.
+    // The new list reports visible unread messages directly as Workspace uuid.
+    // There is no "numeric id -> messageUuid" step here anymore: read action gets
+    // the same key that exists in store and in DOM data-message-uuid.
     readBatchTimerRef.current = null;
     if (runtimeContext == null || conversationId == null) {
       pendingReadMessageUuidsRef.current.clear();
@@ -1142,9 +1208,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   }, []);
 
   const handleLoadNewer = useCallback(() => {
-    // Workspace store пока не хранит отдельное окно newer around anchor.
-    // Поэтому route честно держит пустой callback и hasNewerMessages=false:
-    // список уже умеет нижнюю пагинацию, но странице пока нечего загрузить из store.
+    // Workspace store does not keep a separate newer-around-anchor window yet.
+    // So the route honestly keeps an empty callback and hasNewerMessages=false:
+    // the list already supports lower pagination, but the page has nothing to load from store yet.
   }, []);
 
   const handleToggleRightPanel = useCallback(() => {
@@ -1158,6 +1224,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     }
     rightDrawer?.setOpen(true);
   }, [rightDrawer]);
+  const openWorkspaceUserProfile = rightDrawer?.openWorkspaceUserProfile;
+  const handleOpenMentionUser = useCallback(
+    (userUuid: string) => {
+      openWorkspaceUserProfile?.(userUuid);
+    },
+    [openWorkspaceUserProfile],
+  );
 
   let body: React.ReactNode;
   if (selection.status === "invalid-route") {
@@ -1206,6 +1279,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         onUnreadMessagesAtBottom={scheduleReadBatch}
         onReplyMessage={handleReplyMessage}
         onForwardMessage={handleForwardMessage}
+        onOpenMentionUser={openWorkspaceUserProfile == null ? undefined : handleOpenMentionUser}
         onToggleMessageSelection={handleToggleMessageSelection}
         onEditMessage={handleEditMessage}
         onRequestDeleteMessage={handleRequestDeleteMessage}

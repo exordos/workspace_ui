@@ -128,12 +128,24 @@ describe("workspace message summary core", () => {
   });
 
   it("summarizes resolved and unresolved mentions as readable names", () => {
+    const userUuid = "11111111-1111-4111-8111-111111111111";
     const resolved = summarizeWorkspaceMessageBody(
       parseWorkspaceMessageBody("Привет @**Alice Reed**", {
         resolveMention: (displayText) =>
           displayText === "Alice Reed"
             ? {
-                userUuid: "11111111-1111-4111-8111-111111111111",
+                userUuid,
+                displayText: "Alice Reed",
+              }
+            : null,
+      }),
+    );
+    const resolvedByUuid = summarizeWorkspaceMessageBody(
+      parseWorkspaceMessageBody(`Привет <@${userUuid}>`, {
+        resolveMention: (displayText) =>
+          displayText === userUuid
+            ? {
+                userUuid,
                 displayText: "Alice Reed",
               }
             : null,
@@ -146,6 +158,10 @@ describe("workspace message summary core", () => {
     );
 
     expect(resolved).toEqual({
+      text: "Привет @Alice Reed",
+      leadingKind: "text",
+    });
+    expect(resolvedByUuid).toEqual({
       text: "Привет @Alice Reed",
       leadingKind: "text",
     });
@@ -169,11 +185,16 @@ describe("workspace message summary core", () => {
   it("does not expose raw image or file urls in preview", () => {
     const imageUuid = "11111111-1111-4111-8111-111111111111";
     const fileUuid = "22222222-2222-4222-8222-222222222222";
+    const legacyImageUuid = "33333333-3333-4333-8333-333333333333";
+    const legacyImageUrl = `/api/messenger/v1/files/${legacyImageUuid}/actions/download`;
     const image = summarizeWorkspaceMessageBody(
       parseWorkspaceMessageBody(`![screen.png](workspace-file://${imageUuid}) Вот скрин`),
     );
     const file = summarizeWorkspaceMessageBody(
       parseWorkspaceMessageBody(`[report.pdf](workspace-file://${fileUuid})`),
+    );
+    const legacyImage = summarizeWorkspaceMessageBody(
+      parseWorkspaceMessageBody(`![legacy.png](${legacyImageUrl})`),
     );
 
     expect(image).toEqual({
@@ -184,8 +205,14 @@ describe("workspace message summary core", () => {
       text: "Файл: report.pdf",
       leadingKind: "file",
     });
+    expect(legacyImage).toEqual({
+      text: "Изображение",
+      leadingKind: "image",
+    });
     expect(image.text).not.toContain("workspace-file://");
     expect(file.text).not.toContain("workspace-file://");
+    expect(legacyImage.text).not.toContain(legacyImageUrl);
+    expect(legacyImage.text).not.toContain("/api/messenger/v1/files");
   });
 
   it("summarizes single Workspace image, image caption, video, and attachment labels", () => {

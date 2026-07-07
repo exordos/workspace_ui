@@ -2,10 +2,10 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { useCallback, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
+import type { User } from "~/entities/user/user.types";
 import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
 import type * as ZulipMessagesApi from "~/shared/api/zulip-messages";
 import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
-import { createUser } from "~/test/factories";
 import { renderWithProviders } from "~/test/render";
 import { computeFloatingPickerPosition } from "./message-composer-picker-position.lib";
 import { resetComposerSavedSnippetsModelForTests } from "./message-composer-saved-snippets.model";
@@ -131,8 +131,30 @@ const focusComposerInput = () => {
   return textbox;
 };
 
+const TEST_USER_TIMESTAMP = new Date(0).toISOString();
+
+function createWorkspaceUser(overrides: Partial<User> = {}): User {
+  const uuid = overrides.uuid ?? "workspace-user-uuid";
+  const username = overrides.username ?? uuid;
+  return {
+    uuid,
+    username,
+    firstName: overrides.firstName ?? null,
+    lastName: overrides.lastName ?? null,
+    displayName: overrides.displayName ?? username,
+    email: overrides.email ?? `${username}@example.com`,
+    avatarUrl: overrides.avatarUrl ?? null,
+    status: overrides.status ?? "offline",
+    statusEmoji: overrides.statusEmoji ?? null,
+    statusText: overrides.statusText ?? null,
+    lastPingAt: overrides.lastPingAt ?? TEST_USER_TIMESTAMP,
+    createdAt: overrides.createdAt ?? TEST_USER_TIMESTAMP,
+    updatedAt: overrides.updatedAt ?? TEST_USER_TIMESTAMP,
+  };
+}
+
 describe("MessageComposer async send behavior", () => {
-  it("clears the composer as soon as send starts, before onSend resolves", async () => {
+  it("keeps the composer draft until onSend resolves successfully", async () => {
     let resolveSend: () => void = () => {
       throw new Error("Expected send resolver to be assigned");
     };
@@ -149,14 +171,15 @@ describe("MessageComposer async send behavior", () => {
     fireEvent.click(screen.getByRole("button", { name: /write a message/i }));
 
     expect(onSend).toHaveBeenCalledWith("Hello world", "", undefined);
+    expect(textbox).toHaveValue("Hello world");
+
+    resolveSend();
     await waitFor(() => {
       expect(textbox).toHaveValue("");
     });
-
-    resolveSend();
   });
 
-  it("keeps textarea editable while previous async send is still pending", async () => {
+  it("prevents duplicate sends while previous async send is still pending", async () => {
     let resolveFirstSend: () => void = () => {
       throw new Error("Expected first send resolver to be assigned");
     };
@@ -178,24 +201,23 @@ describe("MessageComposer async send behavior", () => {
 
     await waitFor(() => {
       expect(onSend).toHaveBeenNthCalledWith(1, "First message", "", undefined);
-      expect(textbox).toHaveValue("");
-      expect(textbox).toHaveFocus();
+      expect(textbox).toHaveValue("First message");
+      expect(textbox).toBeDisabled();
     });
 
-    fireEvent.change(textbox, { target: { value: "Second message" } });
     fireEvent.keyDown(textbox, { key: "Enter", code: "Enter" });
 
-    await waitFor(() => {
-      expect(onSend).toHaveBeenNthCalledWith(2, "Second message", "", undefined);
-    });
+    expect(onSend).toHaveBeenCalledTimes(1);
 
     resolveFirstSend();
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledTimes(2);
+      expect(textbox).toHaveValue("");
+      expect(textbox).not.toBeDisabled();
+      expect(textbox).toHaveFocus();
     });
   });
 
-  it("leaves the composer empty when async onSend rejects", async () => {
+  it("keeps the composer draft when async onSend rejects", async () => {
     const onSend = vi.fn().mockRejectedValue(new Error("send failed"));
 
     renderWithProviders(<MessageComposer onSend={onSend} />);
@@ -208,7 +230,7 @@ describe("MessageComposer async send behavior", () => {
       expect(onSend).toHaveBeenCalledWith("Draft text", "", undefined);
     });
 
-    expect(textbox).toHaveValue("");
+    expect(textbox).toHaveValue("Draft text");
   });
 
   it("restores textarea focus when parent re-enables composer after async send", async () => {
@@ -400,11 +422,14 @@ describe("MessageComposer saved snippets", () => {
 
 describe("MessageComposer mention suggestions", () => {
   it("opens mention popup for a standalone @ after supported delimiters", async () => {
-    useUsersStore
-      .getState()
-      .upsertUsers([
-        createUser({ user_id: 1001, full_name: "Alice Johnson", email: "alice@example.com" }),
-      ]);
+    useUsersStore.getState().upsertUsers([
+      createWorkspaceUser({
+        uuid: "user-alice-johnson",
+        displayName: "Alice Johnson",
+        username: "alice",
+        email: "alice@example.com",
+      }),
+    ]);
 
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
@@ -432,11 +457,14 @@ describe("MessageComposer mention suggestions", () => {
   });
 
   it("does not open mention popup when @ is inside a word or email", () => {
-    useUsersStore
-      .getState()
-      .upsertUsers([
-        createUser({ user_id: 1001, full_name: "Alice Johnson", email: "alice@example.com" }),
-      ]);
+    useUsersStore.getState().upsertUsers([
+      createWorkspaceUser({
+        uuid: "user-alice-johnson",
+        displayName: "Alice Johnson",
+        username: "alice",
+        email: "alice@example.com",
+      }),
+    ]);
 
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
@@ -449,12 +477,20 @@ describe("MessageComposer mention suggestions", () => {
   });
 
   it("uses mention store state and inserts the first suggestion on Enter", async () => {
-    useUsersStore
-      .getState()
-      .upsertUsers([
-        createUser({ user_id: 1001, full_name: "Alice Johnson", email: "alice@example.com" }),
-        createUser({ user_id: 1002, full_name: "Bob Smith", email: "bob@example.com" }),
-      ]);
+    useUsersStore.getState().upsertUsers([
+      createWorkspaceUser({
+        uuid: "user-alice-johnson",
+        displayName: "Alice Johnson",
+        username: "alice",
+        email: "alice@example.com",
+      }),
+      createWorkspaceUser({
+        uuid: "user-bob-smith",
+        displayName: "Bob Smith",
+        username: "bob",
+        email: "bob@example.com",
+      }),
+    ]);
 
     const onSend = vi.fn();
     renderWithProviders(<MessageComposer onSend={onSend} />);
@@ -469,18 +505,32 @@ describe("MessageComposer mention suggestions", () => {
     fireEvent.keyDown(textbox, { key: "Enter" });
 
     expect(onSend).not.toHaveBeenCalled();
-    expect(textbox).toHaveValue("@**Alice Johnson** ");
+    expect(textbox).toHaveValue("<@user-alice-johnson> ");
     expect(useMentionSuggestStore.getState().visible).toBe(false);
     expect(useMentionSuggestStore.getState().query).toBe("");
+
+    fireEvent.keyDown(textbox, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith("<@user-alice-johnson>", "", undefined);
+    });
   });
 
   it("supports arrow navigation before selecting a mention", async () => {
-    useUsersStore
-      .getState()
-      .upsertUsers([
-        createUser({ user_id: 2001, full_name: "Alice Johnson", email: "alice@example.com" }),
-        createUser({ user_id: 2002, full_name: "Alex Roe", email: "alex@example.com" }),
-      ]);
+    useUsersStore.getState().upsertUsers([
+      createWorkspaceUser({
+        uuid: "user-alice-johnson",
+        displayName: "Alice Johnson",
+        username: "alice",
+        email: "alice@example.com",
+      }),
+      createWorkspaceUser({
+        uuid: "user-alex-roe",
+        displayName: "Alex Roe",
+        username: "alex",
+        email: "alex@example.com",
+      }),
+    ]);
 
     const onSend = vi.fn();
     renderWithProviders(<MessageComposer onSend={onSend} />);
@@ -495,15 +545,18 @@ describe("MessageComposer mention suggestions", () => {
     fireEvent.keyDown(textbox, { key: "Enter" });
 
     expect(onSend).not.toHaveBeenCalled();
-    expect(textbox).toHaveValue("@**Alex Roe** ");
+    expect(textbox).toHaveValue("<@user-alex-roe> ");
   });
 
   it("shows no-results popup when mention query has no matches", async () => {
-    useUsersStore
-      .getState()
-      .upsertUsers([
-        createUser({ user_id: 3001, full_name: "Alice Johnson", email: "alice@example.com" }),
-      ]);
+    useUsersStore.getState().upsertUsers([
+      createWorkspaceUser({
+        uuid: "user-alice-johnson",
+        displayName: "Alice Johnson",
+        username: "alice",
+        email: "alice@example.com",
+      }),
+    ]);
 
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
@@ -514,12 +567,20 @@ describe("MessageComposer mention suggestions", () => {
   });
 
   it("updates mention suggestions as the query changes", async () => {
-    useUsersStore
-      .getState()
-      .upsertUsers([
-        createUser({ user_id: 2001, full_name: "Alice Johnson", email: "alice@example.com" }),
-        createUser({ user_id: 2002, full_name: "Alex Roe", email: "alex@example.com" }),
-      ]);
+    useUsersStore.getState().upsertUsers([
+      createWorkspaceUser({
+        uuid: "user-alice-johnson",
+        displayName: "Alice Johnson",
+        username: "alice",
+        email: "alice@example.com",
+      }),
+      createWorkspaceUser({
+        uuid: "user-alex-roe",
+        displayName: "Alex Roe",
+        username: "alex",
+        email: "alex@example.com",
+      }),
+    ]);
 
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
@@ -539,11 +600,14 @@ describe("MessageComposer mention suggestions", () => {
   });
 
   it("renders a compact, scrollable mention dropdown", async () => {
-    useUsersStore
-      .getState()
-      .upsertUsers([
-        createUser({ user_id: 3001, full_name: "Alice Johnson", email: "alice@example.com" }),
-      ]);
+    useUsersStore.getState().upsertUsers([
+      createWorkspaceUser({
+        uuid: "user-alice-johnson",
+        displayName: "Alice Johnson",
+        username: "alice",
+        email: "alice@example.com",
+      }),
+    ]);
 
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
@@ -563,34 +627,67 @@ describe("MessageComposer mention suggestions", () => {
     expect(inputRow).toHaveClass("overflow-visible");
   });
 
-  it("renders mention suggestions from the new user store without legacy presence badges", async () => {
+  it("renders Workspace presence indicators in mention suggestions", async () => {
     const now = Math.floor(Date.now() / 1000);
     useUsersStore.getState().upsertUsers([
-      createUser({
-        user_id: 5001,
-        full_name: "Alice Johnson",
-        email: "alice@example.com",
-        presence: { status: "active", timestamp: now },
+      createWorkspaceUser({
+        uuid: "user-presence-active",
+        displayName: "Presence Active",
+        username: "presence-active",
+        email: "active@example.com",
+        status: "active",
+        lastPingAt: new Date(now * 1000).toISOString(),
       }),
-      createUser({
-        user_id: 5002,
-        full_name: "Alex Roe",
-        email: "alex@example.com",
-        presence: { status: "idle", timestamp: now },
+      createWorkspaceUser({
+        uuid: "user-presence-idle",
+        displayName: "Presence Idle",
+        username: "presence-idle",
+        email: "idle@example.com",
+        status: "idle",
+        lastPingAt: new Date(now * 1000).toISOString(),
+      }),
+      createWorkspaceUser({
+        uuid: "user-presence-dnd",
+        displayName: "Presence Dnd",
+        username: "presence-dnd",
+        email: "dnd@example.com",
+        status: "do_not_disturb",
+        lastPingAt: new Date(now * 1000).toISOString(),
+      }),
+      createWorkspaceUser({
+        uuid: "user-presence-offline",
+        displayName: "Presence Offline",
+        username: "presence-offline",
+        email: "offline@example.com",
+        status: "offline",
+        lastPingAt: new Date(now * 1000).toISOString(),
       }),
     ]);
 
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
     const textbox = screen.getByRole("textbox");
-    fireEvent.change(textbox, { target: { value: "@a", selectionStart: 2 } });
+    fireEvent.change(textbox, { target: { value: "@presence", selectionStart: 9 } });
 
-    await screen.findByText("Alice Johnson");
-    expect(screen.getByText("Alex Roe")).toBeInTheDocument();
-    expect(screen.getByText("alice@example.com")).toBeInTheDocument();
-    expect(screen.getByText("alex@example.com")).toBeInTheDocument();
-    expect(screen.queryByRole("status", { name: /online/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("status", { name: /away/i })).not.toBeInTheDocument();
+    await screen.findByText("Presence Active");
+    expect(screen.getByText("Presence Idle")).toBeInTheDocument();
+    expect(screen.getByText("Presence Dnd")).toBeInTheDocument();
+    expect(screen.getByText("Presence Offline")).toBeInTheDocument();
+    expect(screen.getByText("@presence-active")).toBeInTheDocument();
+
+    expect(screen.getByRole("status", { name: /online/i })).toHaveAttribute(
+      "data-presence",
+      "active",
+    );
+    const awayIndicators = screen.getAllByRole("status", { name: /away/i });
+    expect(awayIndicators).toHaveLength(2);
+    awayIndicators.forEach((indicator) => {
+      expect(indicator).toHaveAttribute("data-presence", "idle");
+    });
+    expect(screen.getByRole("status", { name: /offline/i })).toHaveAttribute(
+      "data-presence",
+      "offline",
+    );
   });
 
   it("keeps legacy custom status emoji out of mention suggestions during cutover", async () => {
@@ -602,15 +699,13 @@ describe("MessageComposer mention suggestions", () => {
       },
     ]);
     useUsersStore.getState().upsertUser(
-      createUser({
-        ...createUser({ user_id: 5003, full_name: "Scam User", email: "scam@example.com" }),
-        status: {
-          text: "",
-          away: false,
-          emojiName: "scam",
-          emojiCode: "42",
-          reactionType: "realm_emoji",
-        },
+      createWorkspaceUser({
+        uuid: "user-scam",
+        displayName: "Scam User",
+        username: "",
+        email: "scam@example.com",
+        statusEmoji: "scam",
+        statusText: "",
       }),
     );
 
@@ -626,11 +721,14 @@ describe("MessageComposer mention suggestions", () => {
   });
 
   it("sends message on Enter when mention popup is open with no suggestions", async () => {
-    useUsersStore
-      .getState()
-      .upsertUsers([
-        createUser({ user_id: 3001, full_name: "Alice Johnson", email: "alice@example.com" }),
-      ]);
+    useUsersStore.getState().upsertUsers([
+      createWorkspaceUser({
+        uuid: "user-alice-johnson",
+        displayName: "Alice Johnson",
+        username: "alice",
+        email: "alice@example.com",
+      }),
+    ]);
 
     const onSend = vi.fn();
     renderWithProviders(<MessageComposer onSend={onSend} />);
@@ -648,12 +746,20 @@ describe("MessageComposer mention suggestions", () => {
   });
 
   it("does not wrap mention navigation at the list boundaries", async () => {
-    useUsersStore
-      .getState()
-      .upsertUsers([
-        createUser({ user_id: 4001, full_name: "Alice Johnson", email: "alice@example.com" }),
-        createUser({ user_id: 4002, full_name: "Alex Roe", email: "alex@example.com" }),
-      ]);
+    useUsersStore.getState().upsertUsers([
+      createWorkspaceUser({
+        uuid: "user-alice-johnson",
+        displayName: "Alice Johnson",
+        username: "alice",
+        email: "alice@example.com",
+      }),
+      createWorkspaceUser({
+        uuid: "user-alex-roe",
+        displayName: "Alex Roe",
+        username: "alex",
+        email: "alex@example.com",
+      }),
+    ]);
 
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
@@ -667,7 +773,7 @@ describe("MessageComposer mention suggestions", () => {
     fireEvent.keyDown(textbox, { key: "ArrowDown" });
     fireEvent.keyDown(textbox, { key: "Enter" });
 
-    expect(textbox).toHaveValue("@**Alex Roe** ");
+    expect(textbox).toHaveValue("<@user-alex-roe> ");
   });
 });
 

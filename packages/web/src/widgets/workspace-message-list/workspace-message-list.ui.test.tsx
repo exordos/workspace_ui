@@ -97,6 +97,7 @@ describe("WorkspaceMessageList", () => {
   afterEach(() => {
     setLocale("en");
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it("renders Workspace messages with uuid based DOM identity", () => {
@@ -205,8 +206,9 @@ describe("WorkspaceMessageList", () => {
     const articles = Array.from(container.querySelectorAll("article"));
     expect(articles).toHaveLength(1);
     expect(articles[0]).toBe(articleBeforeResolve);
-    expect(articles[0]).toHaveAttribute("data-message-uuid", serverMessageUuid);
+    expect(articles[0]).toHaveAttribute("data-message-uuid", localId);
     expect(articles[0]).toHaveAttribute("data-outgoing-message-id", localId);
+    expect(articles[0]).toHaveAttribute("data-server-message-uuid", serverMessageUuid);
     expect(container.querySelector("[data-outgoing-delivery-status='sent']")).toBeInTheDocument();
   });
 
@@ -1059,7 +1061,6 @@ describe("WorkspaceMessageList", () => {
       />,
     );
 
-    const image = await screen.findByRole("img", { name: "screen.png" });
     const placeholder = screen.getByRole("button", { name: "Изображение" });
 
     expect(onLoadWorkspaceFilePreview).toHaveBeenCalledWith(
@@ -1072,16 +1073,327 @@ describe("WorkspaceMessageList", () => {
       }),
       expect.any(AbortSignal),
     );
-    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(createObjectURL).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(container.querySelector("img[data-workspace-file-preview='true']")).not.toBeNull();
+    });
+    const previewImage = container.querySelector<HTMLImageElement>(
+      "img[data-workspace-file-preview='true']",
+    );
+    expect(previewImage).not.toBeNull();
+    expect(previewImage).toHaveAttribute("loading", "eager");
+
+    const image = await screen.findByRole("img", { name: "screen.png" });
     expect(image).toHaveClass("message-media-preview");
+    expect(image).toHaveClass("workspace-message-file-preview-image");
     expect(image).toHaveAttribute("src", "blob:workspace-image-preview");
+    expect(image).not.toHaveAttribute("aria-hidden");
+    expect(image).not.toHaveAttribute("data-workspace-preview-pending");
     expect(placeholder).toHaveAttribute("data-workspace-preview-status", "loaded");
+    expect(placeholder).toHaveClass("workspace-message-file-preview-loaded");
+    expect(placeholder.querySelectorAll("img:not([hidden])")).toHaveLength(1);
+    const upgradedPlaceholderImage = placeholder.querySelector(
+      "img.workspace-message-file-placeholder__image",
+    );
+    expect(upgradedPlaceholderImage).toBe(image);
+    expect(upgradedPlaceholderImage).not.toHaveAttribute("hidden");
+    expect(upgradedPlaceholderImage).toHaveAttribute("src", "blob:workspace-image-preview");
     expect(container.innerHTML).not.toContain(`workspace-file://${fileUuid}`);
     expect(container.innerHTML).not.toContain("/api/messenger/v1/files");
 
     unmount();
 
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-image-preview");
+
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+  });
+
+  it("defers Workspace image preview loading until the placeholder enters the viewport", async () => {
+    const observers: DeferredIntersectionObserver[] = [];
+    const disconnect = vi.fn();
+
+    class DeferredIntersectionObserver implements IntersectionObserver {
+      readonly root: Element | Document | null = null;
+      readonly rootMargin: string;
+      readonly scrollMargin = "";
+      readonly thresholds: readonly number[] = [];
+      readonly callback: IntersectionObserverCallback;
+      observedElement: Element | null = null;
+      observe = vi.fn((element: Element) => {
+        this.observedElement = element;
+      });
+      unobserve = vi.fn();
+      disconnect = disconnect;
+      takeRecords = vi.fn((): IntersectionObserverEntry[] => []);
+
+      constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
+        this.callback = callback;
+        this.rootMargin = options?.rootMargin ?? "";
+        observers.push(this);
+      }
+    }
+
+    vi.stubGlobal("IntersectionObserver", DeferredIntersectionObserver);
+
+    const fileUuid = "44444444-4444-4444-8444-444444444444";
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:workspace-image-preview");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(
+      new Blob(["image-bytes"], {
+        type: "image/png",
+      }),
+    );
+    const { container, unmount } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-media-preview-message",
+            markdown: `![screen.png](workspace-file://${fileUuid}?content_type=image/png)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    const placeholder = screen.getByRole("button", { name: "Изображение" });
+
+    expect(placeholder).toHaveAttribute("data-workspace-preview-status", "queued");
+    const observer = observers.find((candidate) => candidate.observedElement === placeholder);
+    expect(observer).not.toBeUndefined();
+    expect(observer?.observe).toHaveBeenCalledWith(placeholder);
+    expect(onLoadWorkspaceFilePreview).not.toHaveBeenCalled();
+
+    act(() => {
+      observer?.callback(
+        [
+          {
+            boundingClientRect: placeholder.getBoundingClientRect(),
+            intersectionRect: placeholder.getBoundingClientRect(),
+            isIntersecting: true,
+            intersectionRatio: 1,
+            rootBounds: null,
+            target: placeholder,
+            time: 1,
+          },
+        ],
+        observer,
+      );
+    });
+
+    await waitFor(() => {
+      expect(onLoadWorkspaceFilePreview).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(container.querySelector("img[data-workspace-file-preview='true']")).not.toBeNull();
+    });
+
+    expect(disconnect).toHaveBeenCalled();
+
+    unmount();
+
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-image-preview");
+
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+  });
+
+  it("keeps Workspace image preview mounted when file references rebuild with the same file key", async () => {
+    const fileUuid = "44444444-4444-4444-8444-444444444444";
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:workspace-stable-preview");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(
+      new Blob(["image-bytes"], {
+        type: "image/png",
+      }),
+    );
+    const message = createWorkspaceMessage({
+      uuid: "workspace-media-stable-preview-message",
+      markdown: `![screen.png](workspace-file://${fileUuid}?content_type=image/png)`,
+    });
+    const { container, rerender, unmount } = render(
+      <WorkspaceMessageList
+        messages={[message]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        resolveMention={() => null}
+        actions={{ onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector("img[data-workspace-file-preview='true']")).not.toBeNull();
+    });
+    const previewImage = container.querySelector<HTMLImageElement>(
+      "img[data-workspace-file-preview='true']",
+    );
+    expect(previewImage).not.toBeNull();
+    expect(onLoadWorkspaceFilePreview).toHaveBeenCalledTimes(1);
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[message]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        resolveMention={() => null}
+        actions={{ onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    expect(container.querySelector("img[data-workspace-file-preview='true']")).toBe(previewImage);
+    expect(onLoadWorkspaceFilePreview).toHaveBeenCalledTimes(1);
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+
+    unmount();
+
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-stable-preview");
+
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+  });
+
+  it("keeps Workspace image preview mounted when the loader callback identity changes", async () => {
+    const fileUuid = "44444444-4444-4444-8444-444444444444";
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:workspace-stable-loader-preview");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const firstLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(
+      new Blob(["image-bytes"], {
+        type: "image/png",
+      }),
+    );
+    const secondLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(
+      new Blob(["next-image-bytes"], {
+        type: "image/png",
+      }),
+    );
+    const message = createWorkspaceMessage({
+      uuid: "workspace-media-loader-stable-preview-message",
+      markdown: `![screen.png](workspace-file://${fileUuid}?content_type=image/png)`,
+    });
+    const { container, rerender, unmount } = render(
+      <WorkspaceMessageList
+        messages={[message]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview: firstLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector("img[data-workspace-file-preview='true']")).not.toBeNull();
+    });
+    const previewImage = container.querySelector<HTMLImageElement>(
+      "img[data-workspace-file-preview='true']",
+    );
+    expect(previewImage).not.toBeNull();
+    expect(firstLoadWorkspaceFilePreview).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[message]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview: secondLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    expect(container.querySelector("img[data-workspace-file-preview='true']")).toBe(previewImage);
+    expect(firstLoadWorkspaceFilePreview).toHaveBeenCalledTimes(1);
+    expect(secondLoadWorkspaceFilePreview).not.toHaveBeenCalled();
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+
+    unmount();
+
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-stable-loader-preview");
+
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+  });
+
+  it("recreates Workspace image preview when the file UUID changes", async () => {
+    const firstFileUuid = "44444444-4444-4444-8444-444444444444";
+    const secondFileUuid = "77777777-7777-4777-8777-777777777777";
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValueOnce("blob:workspace-first-preview")
+      .mockReturnValueOnce("blob:workspace-second-preview");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(
+      new Blob(["image-bytes"], {
+        type: "image/png",
+      }),
+    );
+    const { container, rerender, unmount } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-media-changing-preview-message",
+            markdown: `![screen.png](workspace-file://${firstFileUuid}?content_type=image/png)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(createObjectURL).toHaveBeenCalledTimes(1);
+    });
+    expect(container.querySelector("img[data-workspace-file-preview='true']")).toHaveAttribute(
+      "src",
+      "blob:workspace-first-preview",
+    );
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-media-changing-preview-message",
+            markdown: `![screen.png](workspace-file://${secondFileUuid}?content_type=image/png)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(createObjectURL).toHaveBeenCalledTimes(2);
+    });
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-first-preview");
+    expect(container.querySelector("img[data-workspace-file-preview='true']")).toHaveAttribute(
+      "src",
+      "blob:workspace-second-preview",
+    );
+    expect(onLoadWorkspaceFilePreview).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ fileUuid: firstFileUuid }),
+      expect.any(AbortSignal),
+    );
+    expect(onLoadWorkspaceFilePreview).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ fileUuid: secondFileUuid }),
+      expect.any(AbortSignal),
+    );
+
+    unmount();
+
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-second-preview");
 
     createObjectURL.mockRestore();
     revokeObjectURL.mockRestore();
@@ -1094,7 +1406,7 @@ describe("WorkspaceMessageList", () => {
     const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
     const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(new Blob([backendUrl]));
 
-    const { unmount } = render(
+    const { container, unmount } = render(
       <WorkspaceMessageList
         messages={[
           createWorkspaceMessage({
@@ -1107,6 +1419,14 @@ describe("WorkspaceMessageList", () => {
         actions={{ onLoadWorkspaceFilePreview }}
       />,
     );
+
+    await waitFor(() => {
+      expect(container.querySelector("img[data-workspace-file-preview='true']")).not.toBeNull();
+    });
+    const previewImage = container.querySelector<HTMLImageElement>(
+      "img[data-workspace-file-preview='true']",
+    );
+    expect(previewImage).not.toBeNull();
 
     const image = await screen.findByRole("img", { name: "screen.png" });
 
@@ -1216,6 +1536,35 @@ describe("WorkspaceMessageList", () => {
     fireEvent.click(screen.getByText("Привет @Unknown User"));
 
     expect(onOpenMentionUser).not.toHaveBeenCalled();
+  });
+
+  it("opens unresolved canonical UUID Workspace mentions through the UUID callback", () => {
+    const onOpenMentionUser = vi.fn();
+    const userUuid = "33333333-3333-4333-8333-333333333333";
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "unresolved-canonical-mention-message",
+            markdown: `Привет <@${userUuid}>`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        resolveMention={() => null}
+        actions={{ onOpenMentionUser }}
+      />,
+    );
+
+    const mention = screen.getByRole("button", { name: `@${userUuid}` });
+
+    expect(mention).toHaveAttribute("data-workspace-user-uuid", userUuid);
+    expect(mention).not.toHaveAttribute("data-user-id");
+
+    fireEvent.click(mention);
+
+    expect(onOpenMentionUser).toHaveBeenCalledWith(userUuid);
+    expect(container.querySelector("[data-user-id]")).not.toBeInTheDocument();
   });
 
   it("renders a copy button for fenced code blocks and copies code text", async () => {

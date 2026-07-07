@@ -306,6 +306,39 @@ describe("RightPanelWorkspaceInfo", () => {
     expect(screen.queryByRole("button", { name: "Add members" })).not.toBeInTheDocument();
   });
 
+  it("renders workspace user profile fallback for a missing user", () => {
+    const missingUserUuid = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+
+    renderWithProviders(
+      <RightPanelWorkspaceInfo
+        info={{
+          kind: "userProfile",
+          userUuid: missingUserUuid,
+          title: missingUserUuid,
+          avatarUrl: null,
+          status: null,
+          details: [
+            {
+              id: "email",
+              value: "Profile field unavailable",
+              isTemporarilyUnavailable: true,
+            },
+            {
+              id: "username",
+              value: "Profile field unavailable",
+              isTemporarilyUnavailable: true,
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText(missingUserUuid)).toBeInTheDocument();
+    expect(screen.getAllByText("Profile field unavailable")).toHaveLength(2);
+    expect(screen.queryByText("Channel info")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add members" })).not.toBeInTheDocument();
+  });
+
   it("opens add members dialog and excludes existing members", () => {
     seedWorkspaceAuth();
     seedWorkspaceUsers();

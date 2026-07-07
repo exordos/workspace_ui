@@ -533,6 +533,46 @@ describe("selectWorkspaceRightPanelInfoView", () => {
     });
   });
 
+  it("projects a Workspace user profile override by UUID with missing-user fallback", () => {
+    const route = {
+      kind: "stream" as const,
+      orgId: "org-a",
+      projectId: "project-a",
+      streamUuid: STREAM_UUID,
+    };
+    const view = selectWorkspaceRightPanelInfoView(useMessengerStore.getState(), {
+      route,
+      usersById: createUsersByIdWithout(USER_B_UUID),
+      fallbackTitle: "Messenger",
+      workspaceUserUuidOverride: USER_B_UUID,
+      temporarilyNotConnectedText: "Temporarily not connected",
+    });
+
+    expect(view).toEqual(
+      expect.objectContaining({
+        kind: "userProfile",
+        userUuid: USER_B_UUID,
+        title: USER_B_UUID,
+        avatarUrl: null,
+        status: null,
+      }),
+    );
+    expect(view?.kind === "userProfile" ? view.details : []).toEqual(
+      expect.arrayContaining([
+        {
+          id: "email",
+          value: "Temporarily not connected",
+          isTemporarilyUnavailable: true,
+        },
+        {
+          id: "username",
+          value: "Temporarily not connected",
+          isTemporarilyUnavailable: true,
+        },
+      ]),
+    );
+  });
+
   it("keeps a topic inside direct private stream on personal header and profile branches", () => {
     const route = {
       kind: "topic" as const,

@@ -4,7 +4,7 @@
  * Covers store actions: open, close, next, prev, goTo, and currentItem.
  * Validates navigation boundaries and state transitions.
  */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { useMediaViewerStore } from "./media-viewer.model";
 import type { MediaItem } from "./media-viewer.types";
 
@@ -73,6 +73,30 @@ describe("useMediaViewerStore", () => {
     expect(state.isOpen).toBe(false);
     expect(state.items).toHaveLength(0);
     expect(state.currentIndex).toBe(0);
+  });
+
+  it("releases Workspace-owned object URLs on close", () => {
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    useMediaViewerStore.getState().open(
+      [
+        {
+          url: "blob:workspace-viewer-image",
+          type: "image",
+          workspaceFile: {
+            fileUuid: "44444444-4444-4444-8444-444444444444",
+            objectUrl: "blob:workspace-viewer-image",
+          },
+        },
+        { url: "blob:legacy-preview", type: "image" },
+      ],
+      0,
+    );
+
+    useMediaViewerStore.getState().close();
+
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-viewer-image");
+    expect(revokeObjectURL).not.toHaveBeenCalledWith("blob:legacy-preview");
+    revokeObjectURL.mockRestore();
   });
 
   // --- next ---

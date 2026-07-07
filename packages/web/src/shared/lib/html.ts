@@ -71,6 +71,7 @@ function ensureMessageLinkTargetHooks(): void {
     if (node.tagName !== "A" || !node.hasAttribute("href")) return;
     const href = node.getAttribute("href")?.trim() ?? "";
     if (href === "") return;
+    if (node.hasAttribute("data-workspace-message-link")) return;
     node.setAttribute("target", "_blank");
     node.setAttribute("rel", "noopener noreferrer");
   });

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/protected-message-media";
 import { parseWorkspaceMessageBody } from "./workspace-message-parse.lib";
 import { renderWorkspaceMessageBody } from "./workspace-message-render.lib";
 
@@ -69,6 +70,39 @@ describe("workspace message render core", () => {
     });
   });
 
+  it("keeps ordinary https links separate from Workspace file placeholders", () => {
+    const fileUuid = "11111111-1111-4111-8111-111111111111";
+    const document = parseWorkspaceMessageBody(
+      [
+        "[docs](https://example.com/docs)",
+        `[report.pdf](workspace-file://${fileUuid}?content_type=application/pdf)`,
+      ].join(" "),
+    );
+    const result = renderWorkspaceMessageBody(document, {
+      enableMarkdown: true,
+      enableMentions: false,
+      enableQuotes: true,
+      enableEmojiShortcodes: true,
+      enableCodeHighlight: false,
+      enableCodeCopy: false,
+      enableProtectedMedia: false,
+      enableAttachments: true,
+      enableGallery: false,
+    });
+
+    expect(result.html).toContain(
+      '<a href="https://example.com/docs" target="_blank" rel="noopener noreferrer">docs</a>',
+    );
+    expect(result.html).toContain('data-workspace-file="true"');
+    expect(result.html).toContain(`data-workspace-file-uuid="${fileUuid}"`);
+    expect(result.html).not.toContain(`href="workspace-file://${fileUuid}`);
+    expect(result.html).not.toContain(`workspace-file://${fileUuid}`);
+    expect(document.metadata).toMatchObject({
+      hasLinks: true,
+      hasAttachments: true,
+    });
+  });
+
   it("sanitizes malicious html and javascript links", () => {
     const unsafeProtocol = ["java", "script:alert(1)"].join("");
     const document = parseWorkspaceMessageBody(
@@ -82,6 +116,28 @@ describe("workspace message render core", () => {
     expect(result.html).not.toContain("<img");
     expect(result.html).not.toContain("<script>");
     expect(result.html).not.toContain(unsafeProtocol.slice(0, 11));
+  });
+
+  it("blocks dangerous and protocol-relative message link hrefs", () => {
+    const document = parseWorkspaceMessageBody(
+      [
+        "[data](data:text/html;base64,PHNjcmlwdD4=)",
+        "[file](file:///etc/passwd)",
+        "[blob](blob:https://example.com/id)",
+        "[protocol-relative](//evil.example/path)",
+      ].join(" "),
+    );
+    const result = renderWorkspaceMessageBody(document);
+
+    expect(result.html).toContain("data");
+    expect(result.html).toContain("file");
+    expect(result.html).toContain("blob");
+    expect(result.html).toContain("protocol-relative");
+    expect(result.html).not.toContain("href=");
+    expect(result.html).not.toContain("data:text/html");
+    expect(result.html).not.toContain("file://");
+    expect(result.html).not.toContain("blob:");
+    expect(result.html).not.toContain("//evil.example");
   });
 
   it("renders non-Workspace markdown images as labels, not media tags", () => {
@@ -113,6 +169,7 @@ describe("workspace message render core", () => {
               href: `workspace-file://${fileUuid}`,
               fileUuid,
               name: "screen.png",
+              contentType: "image/png",
               mediaKind: "image",
             },
           },
@@ -124,6 +181,7 @@ describe("workspace message render core", () => {
     expect(result.html).not.toContain("src=");
     expect(result.metadata).toMatchObject({
       contentKind: "media",
+      hasLinks: false,
       hasMedia: true,
       hasProtectedMedia: true,
       hasAttachments: false,
@@ -132,7 +190,140 @@ describe("workspace message render core", () => {
     });
   });
 
-  it("renders enabled Workspace protected media as explicit placeholders without browser src", () => {
+  it("parses legacy Workspace image download URLs as protected media metadata", () => {
+    const fileUuid = "8c5fffd3-226e-4016-a49f-71282f52edfb";
+    const legacyUrl = `/api/messenger/v1/files/${fileUuid}/actions/download`;
+    const document = parseWorkspaceMessageBody(`![51203921285_a42da1ddf5_o (1).jpg](${legacyUrl})`);
+    const result = renderWorkspaceMessageBody(document, {
+      enableMarkdown: true,
+      enableMentions: false,
+      enableQuotes: true,
+      enableEmojiShortcodes: true,
+      enableCodeHighlight: false,
+      enableCodeCopy: false,
+      enableProtectedMedia: true,
+      enableAttachments: false,
+      enableGallery: false,
+    });
+
+    expect(document.blocks).toEqual([
+      {
+        kind: "paragraph",
+        children: [
+          {
+            kind: "file",
+            reference: {
+              kind: "media",
+              href: `workspace-file://${fileUuid}`,
+              fileUuid,
+              name: "51203921285_a42da1ddf5_o (1).jpg",
+              contentType: "image/jpeg",
+              mediaKind: "image",
+            },
+          },
+        ],
+      },
+    ]);
+    expect(result.html).toContain('data-workspace-file="true"');
+    expect(result.html).toContain(`data-workspace-file-uuid="${fileUuid}"`);
+    expect(result.html).toContain('data-workspace-file-kind="media"');
+    expect(result.html).toContain('data-workspace-media-kind="image"');
+    expect(result.html).toContain('data-workspace-file-content-type="image/jpeg"');
+    expect(result.html).toContain('class="workspace-message-file-placeholder__image"');
+    expect(result.html).toContain(`src="${AUTH_IMAGE_PLACEHOLDER_SRC}"`);
+    expect(result.html).not.toContain("href=");
+    expect(result.html).not.toContain(legacyUrl);
+    expect(result.html).not.toContain("/api/messenger/v1/files");
+    expect(result.html).not.toContain("workspace-file://");
+    expect(document.metadata).toMatchObject({
+      contentKind: "media",
+      hasLinks: false,
+      hasMedia: true,
+      hasProtectedMedia: true,
+      hasAttachments: false,
+    });
+  });
+
+  it("parses legacy Workspace download links as media by label extension or attachments", () => {
+    const imageUuid = "11111111-1111-4111-8111-111111111111";
+    const fileUuid = "22222222-2222-4222-8222-222222222222";
+    const document = parseWorkspaceMessageBody(
+      [
+        `[photo.webp](/api/messenger/v1/files/${imageUuid}/actions/download)`,
+        `[report.pdf](/api/messenger/v1/files/${fileUuid}/actions/download)`,
+      ].join(" "),
+    );
+    const result = renderWorkspaceMessageBody(document, {
+      enableMarkdown: true,
+      enableMentions: false,
+      enableQuotes: true,
+      enableEmojiShortcodes: true,
+      enableCodeHighlight: false,
+      enableCodeCopy: false,
+      enableProtectedMedia: true,
+      enableAttachments: true,
+      enableGallery: false,
+    });
+
+    expect(document.blocks).toEqual([
+      {
+        kind: "paragraph",
+        children: [
+          {
+            kind: "file",
+            reference: {
+              kind: "media",
+              href: `workspace-file://${imageUuid}`,
+              fileUuid: imageUuid,
+              name: "photo.webp",
+              contentType: "image/webp",
+              mediaKind: "image",
+            },
+          },
+          { kind: "text", text: " " },
+          {
+            kind: "file",
+            reference: {
+              kind: "attachment",
+              href: `workspace-file://${fileUuid}`,
+              fileUuid,
+              name: "report.pdf",
+              contentType: "application/pdf",
+            },
+          },
+        ],
+      },
+    ]);
+    expect(result.html).toContain(`data-workspace-file-uuid="${imageUuid}"`);
+    expect(result.html).toContain('data-workspace-file-kind="media"');
+    expect(result.html).toContain(`data-workspace-file-uuid="${fileUuid}"`);
+    expect(result.html).toContain('data-workspace-file-kind="attachment"');
+    expect(result.html).not.toContain("/api/messenger/v1/files");
+  });
+
+  it("keeps non-matching file paths as ordinary links", () => {
+    const fileUuid = "33333333-3333-4333-8333-333333333333";
+    const document = parseWorkspaceMessageBody(
+      [
+        `[broad](/files/${fileUuid}/actions/download)`,
+        `[wrong-action](/api/messenger/v1/files/${fileUuid}/actions/preview)`,
+        "[docs](/api/messenger/v1/docs)",
+      ].join(" "),
+    );
+    const result = renderWorkspaceMessageBody(document);
+
+    expect(result.html).toContain(`href="/files/${fileUuid}/actions/download"`);
+    expect(result.html).toContain(`href="/api/messenger/v1/files/${fileUuid}/actions/preview"`);
+    expect(result.html).toContain('href="/api/messenger/v1/docs"');
+    expect(result.html).not.toContain('data-workspace-file="true"');
+    expect(result.metadata).toMatchObject({
+      hasLinks: true,
+      hasMedia: false,
+      hasAttachments: false,
+    });
+  });
+
+  it("renders enabled Workspace protected media with the default protected image placeholder", () => {
     const fileUuid = "11111111-1111-4111-8111-111111111111";
     const document = parseWorkspaceMessageBody(
       `![screen.png](workspace-file://${fileUuid}?content_type=image/png)`,
@@ -154,11 +345,16 @@ describe("workspace message render core", () => {
     expect(result.html).toContain('data-workspace-file-kind="media"');
     expect(result.html).toContain('data-workspace-media-kind="image"');
     expect(result.html).toContain('data-workspace-file-content-type="image/png"');
+    expect(result.html).toContain('title="Изображение"');
+    expect(result.html).toContain('class="workspace-message-file-placeholder__image"');
+    expect(result.html).toContain(`src="${AUTH_IMAGE_PLACEHOLDER_SRC}"`);
+    expect(result.html).toContain('class="workspace-message-file-placeholder__label sr-only"');
     expect(result.html).toContain("Изображение");
-    expect(result.html).not.toContain("<img");
     expect(result.html).not.toContain("<video");
-    expect(result.html).not.toContain("src=");
+    expect(result.html).not.toContain("href=");
     expect(result.html).not.toContain("blob:");
+    expect(result.html).not.toContain("workspace-file://");
+    expect(result.html).not.toContain("/api/messenger/v1/files");
     expect(result.html).not.toContain(["", "user_uploads"].join("/"));
   });
 
@@ -218,9 +414,13 @@ describe("workspace message render core", () => {
     expect(disabled.html).toBe("<p>Файл: report.pdf</p>");
     expect(enabled.html).toContain(`data-workspace-file-uuid="${fileUuid}"`);
     expect(enabled.html).toContain('data-workspace-file-kind="attachment"');
+    expect(enabled.html).toContain('title="Файл: report.pdf"');
+    expect(enabled.html).toContain('class="workspace-message-file-placeholder__label"');
     expect(enabled.html).toContain("Файл: report.pdf");
     expect(enabled.html).not.toContain("href=");
     expect(enabled.html).not.toContain("download");
+    expect(enabled.html).not.toContain("workspace-file://");
+    expect(enabled.html).not.toContain("/api/messenger/v1/files");
   });
 
   it("renders resolved Workspace mentions with UUID data attributes only", () => {
@@ -251,6 +451,50 @@ describe("workspace message render core", () => {
       'data-workspace-user-uuid="11111111-1111-4111-8111-111111111111"',
     );
     expect(result.html).toContain("@Alice Reed");
+    expect(result.html).not.toContain("data-user-id");
+  });
+
+  it("parses canonical Workspace UUID mentions and renders resolved display names", () => {
+    const userUuid = "11111111-1111-4111-8111-111111111111";
+    const document = parseWorkspaceMessageBody(`Привет <@${userUuid}>`, {
+      resolveMention: (displayText) =>
+        displayText === userUuid
+          ? {
+              userUuid,
+              displayText: "Alice Reed",
+            }
+          : null,
+    });
+    const result = renderWorkspaceMessageBody(document, {
+      enableMarkdown: true,
+      enableMentions: true,
+      enableQuotes: false,
+      enableEmojiShortcodes: false,
+      enableCodeHighlight: false,
+      enableCodeCopy: false,
+      enableProtectedMedia: false,
+      enableAttachments: false,
+      enableGallery: false,
+    });
+
+    expect(document.blocks).toEqual([
+      {
+        kind: "paragraph",
+        children: [
+          { kind: "text", text: "Привет " },
+          {
+            kind: "mention",
+            displayText: "Alice Reed",
+            userUuid,
+          },
+        ],
+      },
+    ]);
+    expect(document.metadata.hasMentions).toBe(true);
+    expect(result.html).toContain('data-workspace-mention="true"');
+    expect(result.html).toContain(`data-workspace-user-uuid="${userUuid}"`);
+    expect(result.html).toContain("@Alice Reed");
+    expect(result.html).not.toContain("<@");
     expect(result.html).not.toContain("data-user-id");
   });
 
@@ -341,6 +585,41 @@ describe("workspace message render core", () => {
     expect(result.html).not.toContain("data-user-id");
   });
 
+  it("keeps unresolved canonical Workspace UUID mentions readable without callbacks", () => {
+    const userUuid = "11111111-1111-4111-8111-111111111111";
+    const document = parseWorkspaceMessageBody(`Привет <@${userUuid}>`);
+    const result = renderWorkspaceMessageBody(document, {
+      enableMarkdown: true,
+      enableMentions: true,
+      enableQuotes: false,
+      enableEmojiShortcodes: false,
+      enableCodeHighlight: false,
+      enableCodeCopy: false,
+      enableProtectedMedia: false,
+      enableAttachments: false,
+      enableGallery: false,
+    });
+
+    expect(document.blocks).toEqual([
+      {
+        kind: "paragraph",
+        children: [
+          { kind: "text", text: "Привет " },
+          {
+            kind: "mention",
+            displayText: userUuid,
+            userUuid,
+            unresolved: true,
+          },
+        ],
+      },
+    ]);
+    expect(document.metadata.hasMentions).toBe(true);
+    expect(result.html).toBe(`<p>Привет @${userUuid}</p>`);
+    expect(result.html).not.toContain("data-workspace-user-uuid");
+    expect(result.html).not.toContain("data-user-id");
+  });
+
   it("can render source markdown as escaped plain text when markdown is disabled", () => {
     const document = parseWorkspaceMessageBody("Hello **bold**\n<script>alert(1)</script>");
     const result = renderWorkspaceMessageBody(document, {
@@ -421,6 +700,9 @@ describe("workspace message render core", () => {
     expect(result.html).toContain(`data-workspace-message-uuid="${workspaceMessageUuid}"`);
     expect(result.html).toContain(
       `href="/org/org-a/project/project-a/message/${workspaceMessageUuid}"`,
+    );
+    expect(result.html).not.toContain(
+      `href="/org/org-a/project/project-a/message/${workspaceMessageUuid}" target="_blank"`,
     );
     expect(result.html).not.toContain('href="/message/123"');
     expect(result.html).not.toContain('href="/stream/10-general/topic/Bugs?msg=55"');

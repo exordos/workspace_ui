@@ -1,8 +1,8 @@
 import React from "react";
+import { resolveUserPresenceVisual } from "~/entities/user/user-selectors.lib";
 import { t } from "~/i18n/i18n";
-import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
-import { resolveAvatarUrl } from "~/shared/lib/avatar";
 import { Avatar } from "~/shared/ui/avatar";
+import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import type { ComposerMentionDropdownProps } from "./message-composer-mention-dropdown.types";
 
 export const ComposerMentionDropdown = React.memo(function ComposerMentionDropdown({
@@ -13,7 +13,6 @@ export const ComposerMentionDropdown = React.memo(function ComposerMentionDropdo
 }: ComposerMentionDropdownProps) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const itemRefs = React.useRef<(HTMLButtonElement | null)[]>([]);
-  const realmBaseUrl = getRealmBaseUrl();
 
   React.useEffect(() => {
     if (suggestions.length === 0) return;
@@ -31,7 +30,9 @@ export const ComposerMentionDropdown = React.memo(function ComposerMentionDropdo
     >
       {suggestions.length > 0 ? (
         suggestions.map((user, index) => {
-          const avatarSrc = resolveAvatarUrl(user.avatarUrl, realmBaseUrl);
+          const initials = user.displayName.slice(0, 1) || user.username.slice(0, 1) || "?";
+          const secondaryText = user.username ? `@${user.username}` : user.email;
+          const presence = resolveUserPresenceVisual(user.status);
           return (
             <button
               type="button"
@@ -48,16 +49,23 @@ export const ComposerMentionDropdown = React.memo(function ComposerMentionDropdo
               }}
               onMouseEnter={() => onHoverIndex(index)}
             >
-              <Avatar size="sm" src={avatarSrc} className="bg-bg text-text-primary">
-                {user.fullName.slice(0, 1)}
-              </Avatar>
+              <span className="relative flex shrink-0">
+                <Avatar size="sm" src={user.avatarUrl} className="bg-bg text-text-primary">
+                  {initials}
+                </Avatar>
+                <PresenceIndicator
+                  status={presence}
+                  size="sm"
+                  className="absolute -bottom-0.5 -right-0.5"
+                />
+              </span>
               <span className="min-w-0 flex-1">
                 <span className="flex min-w-0 items-center justify-between gap-2">
-                  <span className="truncate font-medium">{user.fullName}</span>
+                  <span className="truncate font-medium">{user.displayName}</span>
                 </span>
-                {user.email ? (
+                {secondaryText ? (
                   <span className="block truncate text-[11px] text-text-secondary">
-                    {user.email}
+                    {secondaryText}
                   </span>
                 ) : null}
               </span>

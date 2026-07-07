@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useCallback, useLayoutEffect } from "react";
+import React, { useState, useRef, useMemo, useCallback, useLayoutEffect, useEffect } from "react";
 import { AiComposerButton } from "~/features/ai-reply/ai-reply.ui";
 import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
 import { t } from "~/i18n/i18n";
@@ -287,6 +287,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   const [savedSnippetTitle, setSavedSnippetTitle] = useState("");
   const [savedSnippetContent, setSavedSnippetContent] = useState("");
   const [savedSnippetSaving, setSavedSnippetSaving] = useState(false);
+  const [sendInFlight, setSendInFlight] = useState(false);
   const [unsupportedActionText, setUnsupportedActionText] = useState<string | null>(null);
   const [aiMenuNotificationText, setAiMenuNotificationText] = useState<string | null>(null);
   const uploadCapability = resolveActionCapability(capabilities?.upload);
@@ -334,7 +335,6 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     mentionStartPos,
     setMentionStartPos,
   } = useComposerMentions({ enabled: mentionsSupported });
-  // На Workspace route mentions выключены, чтобы composer не брал пользователей из старого Zulip store.
   const effectiveReplyQuote = isEditing ? null : replyQuote;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const prevDisabledRef = useRef(disabled);
@@ -384,9 +384,17 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     uploadProgressPercent,
     isUploadInProgress,
   } = useMessageComposerUpload({
-    disabled: disabled || isEditing || !uploadSupported,
+    disabled: disabled || sendInFlight || isEditing || !uploadSupported,
     uploadProgress,
   });
+  const latestValueRef = useRef(value);
+  const latestFilesRef = useRef(files);
+  useEffect(() => {
+    latestValueRef.current = value;
+  }, [value]);
+  useEffect(() => {
+    latestFilesRef.current = files;
+  }, [files]);
   const [isComposerFocusWithin, setIsComposerFocusWithin] = useState(false);
   const outgoingBody = useMemo(
     () => buildOutgoingMessageBody(value, effectiveReplyQuote),
@@ -513,7 +521,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     (user: MentionSuggestion) => {
       const before = value.slice(0, mentionStartPos);
       const after = value.slice(textareaRef.current?.selectionStart ?? value.length);
-      const mention = `@**${user.fullName}** `;
+      const mention = `<@${user.userUuid}> `;
       const next = before + mention + after;
       setValue(next);
       hideMentionDropdown();
@@ -612,7 +620,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
 
   const handleSend = async () => {
     if (isEditing) {
-      if (disabled || editSession == null || onSubmitEdit == null) return;
+      if (disabled || sendInFlight || editSession == null || onSubmitEdit == null) return;
       const trimmed = value.trim();
       if (trimmed.length === 0) return;
       try {
@@ -625,14 +633,28 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
 
     const hasText = value.trim().length > 0;
     const hasFiles = files.length > 0;
-    if ((!hasText && !hasFiles) || disabled) return;
+    if ((!hasText && !hasFiles) || disabled || sendInFlight) return;
     const subject = activeTopic ?? "";
     const bodyToSend = outgoingBody;
+    const valueToSend = value;
+    const filesSnapshot = files;
     const filesToSend = hasFiles ? [...files] : undefined;
-    setValue("");
-    setFiles([]);
 
-    // Restore focus/caret after optimistic clear so typing can continue before network.
+    setSendInFlight(true);
+
+    try {
+      await onSend?.(bodyToSend, subject, filesToSend);
+    } catch {
+      return;
+    } finally {
+      setSendInFlight(false);
+    }
+    if (latestValueRef.current === valueToSend) {
+      setValue("");
+    }
+    if (latestFilesRef.current === filesSnapshot) {
+      setFiles([]);
+    }
     requestAnimationFrame(() => {
       const textarea = textareaRef.current;
       if (!textarea || disabled || mode !== "write") {
@@ -641,12 +663,6 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
       textarea.focus();
       textarea.setSelectionRange(0, 0);
     });
-
-    try {
-      await onSend?.(bodyToSend, subject, filesToSend);
-    } catch {
-      return;
-    }
     if (effectiveReplyQuote) {
       onClearReply?.();
     }
@@ -1219,7 +1235,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
                 <MessageComposerWriteBody
                   value={value}
                   placeholder={placeholder}
-                  disabled={disabled}
+                  disabled={disabled || sendInFlight}
                   textareaRef={textareaRef}
                   showMentions={showMentions}
                   mentionSuggestions={mentionSuggestions}
@@ -1253,7 +1269,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
             onClick={() => {
               void handleSend();
             }}
-            disabled={disabled || (isEditing && value.trim().length === 0)}
+            disabled={disabled || sendInFlight || (isEditing && value.trim().length === 0)}
             className="flex h-9 w-9 flex-shrink-0 items-center justify-center gap-0 self-center rounded-l-xl rounded-r-xl bg-composer-send text-on-accent transition-opacity hover:opacity-90 disabled:opacity-50"
             aria-label={isEditing ? t("common.save") : t("chat.sendPlaceholder")}
           >

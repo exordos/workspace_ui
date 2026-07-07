@@ -30,7 +30,7 @@ export interface ChatHeaderProps {
   onlineCount?: number;
   onOpenSearch?: () => void;
   onToggleRightPanel?: () => void;
-  /** Opens right info panel from header content clicks (channel/group title area). */
+  /** Opens right info panel from header content clicks (channel/group title or DM name block). */
   onOpenRightPanel?: () => void;
   rightPanelOpen?: boolean;
   /** Button label for the panel (e.g. "Contact info" in a DM) */

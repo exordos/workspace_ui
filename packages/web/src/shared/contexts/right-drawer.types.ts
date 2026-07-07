@@ -3,4 +3,5 @@ export interface RightDrawerContextValue {
   setOpen: (open: boolean) => void;
   openInfo?: () => void;
   openUserProfile?: (userId: number) => void;
+  openWorkspaceUserProfile?: (userUuid: string) => void;
 }
