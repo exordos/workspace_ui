@@ -15,6 +15,8 @@ export function toStreamMetadataRowsFromMeStreams(
       unreadCount: stream.unread_count,
       private: stream.private,
       ...(stream.color != null ? { color: stream.color } : {}),
+      ...(stream.source_name != null ? { sourceName: stream.source_name } : {}),
+      ...(stream.source != null ? { source: stream.source } : {}),
       inviteOnly: stream.invite_only,
     }));
 }
@@ -32,5 +34,7 @@ export function toStreamTopicMetadataRows(
       isDefault: topic.is_default,
       isDone: topic.is_done,
       ...(topic.color != null ? { color: topic.color } : {}),
+      ...(topic.source_name != null ? { sourceName: topic.source_name } : {}),
+      ...(topic.source != null ? { source: topic.source } : {}),
     }));
 }

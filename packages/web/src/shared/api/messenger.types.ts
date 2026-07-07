@@ -8,6 +8,8 @@ import type { UserId } from "~/shared/lib/user-id.lib";
 export type WorkspaceStreamNotificationMode = "all_messages" | "mentions_only" | "muted";
 export type WorkspaceTopicNotificationMode = "default" | "mute" | "follow" | "unmute";
 export type WorkspaceUserPresenceStatus = "active" | "idle" | "offline" | "do_not_disturb";
+export type MessengerSourceName = "native" | "zulip";
+export type MessengerSource = Record<string, unknown> & { kind?: string };
 
 export class MessengerAuthError extends Error {
   constructor(
@@ -49,8 +51,8 @@ export interface MessengerMeStream {
   /** UI/API alias for the stream UUID. */
   stream_uuid: string;
   last_synced_at?: string;
-  source_name?: string;
-  source?: Record<string, unknown>;
+  source_name?: MessengerSourceName;
+  source?: MessengerSource;
   invite_only: boolean;
   announce: boolean;
   private: boolean;
@@ -85,6 +87,11 @@ export interface MessengerMeMessage {
   read: boolean;
   pinned: boolean;
   starred: boolean;
+  /** Server-computed mention flag when available; otherwise activity falls back to payload scan. */
+  mentioned?: boolean;
+  /** Native Workspace rows use `native`; bridge-imported rows can use `zulip`. */
+  source_name?: MessengerSourceName;
+  source?: MessengerSource;
   reactions?: MessageReactions;
   user_uuid?: string;
   project_id?: string;
@@ -104,6 +111,9 @@ export interface MessengerStreamTopic {
   /** Server-owned topic color as 0xRRGGBB. */
   color?: number;
   notification_mode: WorkspaceTopicNotificationMode;
+  /** Native Workspace topics use `native`; bridge-imported topics can use `zulip`. */
+  source_name?: MessengerSourceName;
+  source?: MessengerSource;
   project_id?: string;
   created_at?: string;
   updated_at?: string;
@@ -278,6 +288,8 @@ export interface WorkspaceRawMessage {
   topic_uuid?: string;
   type?: string;
   stream_uuid?: string | null;
+  source_name?: MessengerSourceName;
+  source?: MessengerSource;
   flags?: string[];
   reactions?: MessageReactions;
 }
@@ -307,6 +319,8 @@ export interface MockStream {
   stream_weekly_traffic?: number | null;
   stream_post_policy?: number | null;
   owner?: string | null;
+  source_name?: MessengerSourceName;
+  source?: MessengerSource;
   date_created?: number | null;
   folder_id?: number | null;
   is_default?: boolean;
@@ -346,9 +360,11 @@ export interface MockMessage {
   channel?: string;
   subject: string;
   topic_uuid?: string;
+  source_name?: MessengerSourceName;
+  source?: MessengerSource;
   /**
-   * Message body: Workspace-flavored Markdown when fetched with `apply_markdown=false` (app default),
-   * or rendered HTML from some real-time payloads / legacy cache.
+   * Message body: Workspace-flavored Markdown from native rows, or rendered HTML from some
+   * real-time payloads / cache entries.
    */
   content: string;
   /**
@@ -403,6 +419,8 @@ export interface RawMessageToMockInput {
   topic_uuid?: string;
   type?: string;
   stream_uuid?: string | null;
+  source_name?: MessengerSourceName;
+  source?: MessengerSource;
   flags?: string[];
   reactions?: MessageReactions;
 }
@@ -414,6 +432,8 @@ export interface MessengerSubscription {
   notification_mode: WorkspaceStreamNotificationMode;
   is_archived?: boolean;
   owner?: string;
+  source_name?: MessengerSourceName;
+  source?: MessengerSource;
   invite_only?: boolean;
   private?: boolean;
   can_add_subscribers_group?: MessengerGroupSettingValue;
@@ -429,7 +449,7 @@ export interface MessengerSubscription {
 export interface MessagesPageResult {
   messages: MockMessage[];
   foundOldest: boolean;
-  /** Present when `num_after > 0`; Workspace `found_newest`. */
+  /** True when the current page reached the newest available row. */
   foundNewest: boolean;
 }
 

@@ -1,4 +1,8 @@
-import type { MessengerGroupSettingValue } from "~/shared/api/messenger.types";
+import type {
+  MessengerGroupSettingValue,
+  MessengerSource,
+  MessengerSourceName,
+} from "~/shared/api/messenger.types";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
 
@@ -15,6 +19,8 @@ export interface TopicWithLast {
   isDone?: boolean;
   /** Server-owned topic color as 0xRRGGBB. */
   color?: number;
+  sourceName?: MessengerSourceName;
+  source?: MessengerSource;
 }
 
 export type SidebarChat =
@@ -24,6 +30,8 @@ export type SidebarChat =
       private?: boolean;
       /** Server-owned stream color as 0xRRGGBB. */
       color?: number;
+      sourceName?: MessengerSourceName;
+      source?: MessengerSource;
       name: string;
       lastMessage?: string;
       lastMessageSenderName?: string;
@@ -55,6 +63,8 @@ export interface SidebarProps {
     private?: boolean;
     /** Server-owned stream color as 0xRRGGBB. */
     color?: number;
+    sourceName?: MessengerSourceName;
+    source?: MessengerSource;
     name: string;
     lastMessage?: string;
     time?: string;
@@ -73,6 +83,8 @@ export interface StreamWithLast {
   private?: boolean;
   /** Server-owned stream color as 0xRRGGBB. */
   color?: number;
+  sourceName?: MessengerSourceName;
+  source?: MessengerSource;
   name: string;
   lastMessage?: string;
   lastMessageSenderName?: string;
@@ -98,6 +110,8 @@ export interface StreamEntryInternal {
   isArchived?: boolean;
   creatorId?: string;
   inviteOnly?: boolean;
+  sourceName?: MessengerSourceName;
+  source?: MessengerSource;
   canAddSubscribersGroup?: MessengerGroupSettingValue;
   canRemoveSubscribersGroup?: MessengerGroupSettingValue;
   canAdministerChannelGroup?: MessengerGroupSettingValue;
@@ -116,6 +130,8 @@ export interface StreamEntryInternal {
       isDone?: boolean;
       /** Server-owned topic color as 0xRRGGBB. */
       color?: number;
+      sourceName?: MessengerSourceName;
+      source?: MessengerSource;
       lastMessageId?: MessageId;
     }
   >;

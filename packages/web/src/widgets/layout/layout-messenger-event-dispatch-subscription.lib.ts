@@ -1,7 +1,12 @@
 /**
  * Workspace realtime handlers: subscriptions, streams, user_topic.
  */
-import type { MessengerEvent, MessengerGroupSettingValue } from "~/shared/api/messenger.types";
+import type {
+  MessengerEvent,
+  MessengerGroupSettingValue,
+  MessengerSource,
+  MessengerSourceName,
+} from "~/shared/api/messenger.types";
 import { normalizeGroupSettingValue } from "~/shared/lib/messenger-group-setting.lib";
 import { parseWorkspaceStreamNotificationMode } from "~/shared/lib/stream-notification-resolve.lib";
 import { parseWorkspaceTopicNotificationMode } from "~/shared/lib/topic-notification-resolve.lib";
@@ -27,12 +32,26 @@ function parseOwnerUuid(record: Record<string, unknown>): string | undefined {
   return parseStreamUuid(record.owner) ?? undefined;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseSourceName(value: unknown): MessengerSourceName | undefined {
+  return value === "native" || value === "zulip" ? value : undefined;
+}
+
+function parseSource(value: unknown): MessengerSource | undefined {
+  return isRecord(value) ? value : undefined;
+}
+
 export function parseSubscriptionRows(value: unknown): {
   streamUuid: string;
   name: string;
   isArchived?: boolean;
   creatorId?: string;
   inviteOnly?: boolean;
+  sourceName?: MessengerSourceName;
+  source?: MessengerSource;
   color?: number;
   canAddSubscribersGroup?: MessengerGroupSettingValue;
   canRemoveSubscribersGroup?: MessengerGroupSettingValue;
@@ -46,6 +65,9 @@ export function parseSubscriptionRows(value: unknown): {
     isArchived?: boolean;
     creatorId?: string;
     inviteOnly?: boolean;
+    sourceName?: MessengerSourceName;
+    source?: MessengerSource;
+    color?: number;
     canAddSubscribersGroup?: MessengerGroupSettingValue;
     canRemoveSubscribersGroup?: MessengerGroupSettingValue;
     canAdministerChannelGroup?: MessengerGroupSettingValue;
@@ -67,6 +89,8 @@ export function parseOneSubscriptionRow(record: Record<string, unknown>): {
   isArchived?: boolean;
   creatorId?: string;
   inviteOnly?: boolean;
+  sourceName?: MessengerSourceName;
+  source?: MessengerSource;
   color?: number;
   canAddSubscribersGroup?: MessengerGroupSettingValue;
   canRemoveSubscribersGroup?: MessengerGroupSettingValue;
@@ -88,12 +112,16 @@ export function parseOneSubscriptionRow(record: Record<string, unknown>): {
   );
   const notificationMode = parseWorkspaceStreamNotificationMode(record.notification_mode);
   const color = parseWorkspaceColor(record.color);
+  const sourceName = parseSourceName(record.source_name);
+  const source = parseSource(record.source);
   return {
     streamUuid: streamUuidRaw,
     name: name.trim(),
     ...(typeof record.is_archived === "boolean" ? { isArchived: record.is_archived } : {}),
     ...(creatorId != null ? { creatorId } : {}),
     ...(typeof record.invite_only === "boolean" ? { inviteOnly: record.invite_only } : {}),
+    ...(sourceName != null ? { sourceName } : {}),
+    ...(source != null ? { source } : {}),
     ...(color != null ? { color } : {}),
     ...(canAddSubscribersGroup != null ? { canAddSubscribersGroup } : {}),
     ...(canRemoveSubscribersGroup != null ? { canRemoveSubscribersGroup } : {}),
@@ -125,6 +153,8 @@ export interface WorkspaceStreamEventRow {
   isArchived?: boolean;
   creatorId?: string;
   color?: number;
+  sourceName?: MessengerSourceName;
+  source?: MessengerSource;
   notificationMode?: ReturnType<typeof parseWorkspaceStreamNotificationMode>;
 }
 
@@ -143,6 +173,8 @@ export function parseWorkspaceStreamEventRow(value: unknown): WorkspaceStreamEve
   const creatorId = parseOwnerUuid(record);
   const notificationMode = parseWorkspaceStreamNotificationMode(record.notification_mode);
   const color = parseWorkspaceColor(record.color);
+  const sourceName = parseSourceName(record.source_name);
+  const source = parseSource(record.source);
   return {
     streamUuid,
     ...(name.length > 0 ? { name } : {}),
@@ -153,6 +185,8 @@ export function parseWorkspaceStreamEventRow(value: unknown): WorkspaceStreamEve
     ...(typeof record.is_archived === "boolean" ? { isArchived: record.is_archived } : {}),
     ...(creatorId != null ? { creatorId } : {}),
     ...(color != null ? { color } : {}),
+    ...(sourceName != null ? { sourceName } : {}),
+    ...(source != null ? { source } : {}),
     ...(notificationMode != null ? { notificationMode } : {}),
   };
 }
@@ -172,6 +206,8 @@ function buildChatListStreamMetadataRow(
     ...(row.isArchived != null ? { isArchived: row.isArchived } : {}),
     ...(row.creatorId != null ? { creatorId: row.creatorId } : {}),
     ...(row.color != null ? { color: row.color } : {}),
+    ...(row.sourceName != null ? { sourceName: row.sourceName } : {}),
+    ...(row.source != null ? { source: row.source } : {}),
   };
 }
 export function handleSubscriptionAdd(
@@ -444,6 +480,8 @@ interface WorkspaceTopicEventRow {
   unreadCount?: number;
   isDone?: boolean;
   color?: number;
+  sourceName?: MessengerSourceName;
+  source?: MessengerSource;
   notificationMode?: ReturnType<typeof parseWorkspaceTopicNotificationMode>;
 }
 
@@ -465,6 +503,8 @@ function parseWorkspaceTopicEventRow(value: unknown): WorkspaceTopicEventRow | n
   const name = typeof record.name === "string" ? record.name.trim() : "";
   const notificationMode = parseWorkspaceTopicNotificationMode(record.notification_mode);
   const color = parseWorkspaceColor(record.color);
+  const sourceName = parseSourceName(record.source_name);
+  const source = parseSource(record.source);
   return {
     topicUuid,
     streamUuid,
@@ -472,6 +512,8 @@ function parseWorkspaceTopicEventRow(value: unknown): WorkspaceTopicEventRow | n
     ...(isNonNegativeInteger(record.unread_count) ? { unreadCount: record.unread_count } : {}),
     ...(typeof record.is_done === "boolean" ? { isDone: record.is_done } : {}),
     ...(color != null ? { color } : {}),
+    ...(sourceName != null ? { sourceName } : {}),
+    ...(source != null ? { source } : {}),
     ...(notificationMode != null ? { notificationMode } : {}),
   };
 }
@@ -517,6 +559,8 @@ export function handleTopic(event: MessengerEvent, ctx: LayoutMessengerEventDisp
       ...(row.unreadCount != null ? { unreadCount: row.unreadCount } : {}),
       ...(row.isDone != null ? { isDone: row.isDone } : {}),
       ...(row.color != null ? { color: row.color } : {}),
+      ...(row.sourceName != null ? { sourceName: row.sourceName } : {}),
+      ...(row.source != null ? { source: row.source } : {}),
     },
   ]);
 }

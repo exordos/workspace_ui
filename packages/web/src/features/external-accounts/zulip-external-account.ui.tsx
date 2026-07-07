@@ -23,6 +23,12 @@ function mapSaveError(kind: SaveExternalAccountErrorKind): string {
   return t("settings.externalAccountSaveError");
 }
 
+function getSaveLabel(account: ZulipExternalAccount | null, hasLinkedAccount: boolean): string {
+  if (account == null) return t("settings.externalAccountAdd");
+  if (hasLinkedAccount) return t("settings.externalAccountUpdate");
+  return t("settings.externalAccountLink");
+}
+
 export const ZulipExternalAccountCard: React.FC<ZulipExternalAccountCardProps> = ({
   compact = false,
 }) => {
@@ -129,12 +135,11 @@ export const ZulipExternalAccountCard: React.FC<ZulipExternalAccountCardProps> =
       });
   }, [account?.uuid, isSaving, isUnlinking]);
 
-  const statusLabel =
-    account == null
-      ? t("settings.externalAccountNotConnected")
-      : t("settings.externalAccountConnected");
-  const saveLabel =
-    account == null ? t("settings.externalAccountAdd") : t("settings.externalAccountUpdate");
+  const hasLinkedAccount = account?.hasCredentials === true;
+  const statusLabel = !hasLinkedAccount
+    ? t("settings.externalAccountNotConnected")
+    : t("settings.externalAccountConnected");
+  const saveLabel = getSaveLabel(account, hasLinkedAccount);
   const cardClassName = compact
     ? "rounded-lg border border-border-subtle bg-bg-elevated p-3"
     : "rounded-xl border border-border-subtle bg-card-bg p-4";
@@ -210,7 +215,7 @@ export const ZulipExternalAccountCard: React.FC<ZulipExternalAccountCardProps> =
               disabled={isLoading || isSaving || isUnlinking}
               autoComplete="off"
               className="w-full rounded-md border border-border-subtle bg-bg px-2 py-1.5 text-sm text-text-primary outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-50"
-              placeholder={account == null ? "" : t("settings.zulipTokenPlaceholder")}
+              placeholder={hasLinkedAccount ? t("settings.zulipTokenPlaceholder") : ""}
               aria-label={t("settings.zulipToken")}
             />
           </label>
@@ -242,7 +247,7 @@ export const ZulipExternalAccountCard: React.FC<ZulipExternalAccountCardProps> =
             {saveLabel}
           </button>
         )}
-        {account != null && (
+        {hasLinkedAccount && (
           <button
             type="button"
             onClick={handleUnlink}

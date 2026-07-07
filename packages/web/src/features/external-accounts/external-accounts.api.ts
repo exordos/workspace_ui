@@ -74,12 +74,23 @@ function mapExternalAccount(raw: unknown): ZulipExternalAccount | null {
   const accountType = readString(row.account_type) ?? ZULIP_ACCOUNT_TYPE;
   const status = readString(row.status);
   const settings = isRecord(row.account_settings) ? row.account_settings : null;
-  const credentials = isRecord(settings?.credentials) ? settings.credentials : settings;
+  const legacyCredentials =
+    settings != null && !("credentials" in settings) && readString(settings.login) != null
+      ? settings
+      : null;
+  const credentials = isRecord(settings?.credentials) ? settings.credentials : legacyCredentials;
   const userInfoRaw = isRecord(settings?.user_info) ? settings.user_info : null;
   const kind = readString(settings?.kind) ?? ZULIP_ACCOUNT_TYPE;
-  const credentialsKind = readString(credentials?.kind) ?? ZULIP_ACCOUNT_TYPE;
-  const login = readString(credentials?.login) ?? readString(userInfoRaw?.email);
-  const serverUrl = readString(row.server_url) ?? readString(credentials?.server_url) ?? "";
+  const credentialsKind =
+    credentials == null ? ZULIP_ACCOUNT_TYPE : (readString(credentials.kind) ?? ZULIP_ACCOUNT_TYPE);
+  const credentialsLogin = readString(credentials?.login);
+  const login = credentialsLogin ?? readString(userInfoRaw?.email) ?? "";
+  const hasCredentials = credentials != null && credentialsLogin != null;
+  const serverUrl =
+    readString(row.server_url) ??
+    readString(credentials?.server_url) ??
+    readString(settings?.server_url) ??
+    "";
   const userInfoKind = readString(userInfoRaw?.kind) ?? ZULIP_ACCOUNT_TYPE;
   const userId = readNumber(userInfoRaw?.user_id);
   const role = readNumber(userInfoRaw?.role) ?? null;
@@ -87,8 +98,7 @@ function mapExternalAccount(raw: unknown): ZulipExternalAccount | null {
     uuid == null ||
     accountType !== ZULIP_ACCOUNT_TYPE ||
     kind !== ZULIP_ACCOUNT_TYPE ||
-    credentialsKind !== ZULIP_ACCOUNT_TYPE ||
-    login == null
+    credentialsKind !== ZULIP_ACCOUNT_TYPE
   ) {
     return null;
   }
@@ -97,6 +107,7 @@ function mapExternalAccount(raw: unknown): ZulipExternalAccount | null {
   return {
     uuid,
     accountType,
+    hasCredentials,
     accountSettings: {
       kind: ZULIP_ACCOUNT_TYPE,
       login,

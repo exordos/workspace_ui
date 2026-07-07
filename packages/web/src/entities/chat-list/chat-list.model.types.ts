@@ -1,5 +1,10 @@
 /** Types for the chat-list Zustand store — state and public actions consumed by layout/widgets. */
-import type { MessengerGroupSettingValue, WorkspaceRawMessage } from "~/shared/api/messenger.types";
+import type {
+  MessengerGroupSettingValue,
+  MessengerSource,
+  MessengerSourceName,
+  WorkspaceRawMessage,
+} from "~/shared/api/messenger.types";
 import type { ChatListSnapshotSerialized } from "~/shared/lib/chat-list-snapshot-serialize.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { UserId } from "~/shared/lib/user-id.lib";
@@ -17,6 +22,8 @@ export interface ChatListStreamMetadataRow {
   unreadCount?: number;
   private?: boolean;
   isArchived?: boolean;
+  sourceName?: MessengerSourceName;
+  source?: MessengerSource;
   creatorId?: string;
   inviteOnly?: boolean;
   /** Server-owned stream color as 0xRRGGBB. */
@@ -35,6 +42,8 @@ export interface ChatListStreamTopicMetadataRow {
   unreadCount?: number;
   isDefault?: boolean;
   isDone?: boolean;
+  sourceName?: MessengerSourceName;
+  source?: MessengerSource;
   /** Server-owned topic color as 0xRRGGBB. */
   color?: number;
 }

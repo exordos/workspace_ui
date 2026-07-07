@@ -7,6 +7,11 @@ import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
 type StreamTopicEntryInternal =
   StreamEntryInternal["topics"] extends Map<string, infer TopicEntry> ? TopicEntry : never;
 
+interface MergeStreamEntryOptions {
+  topicSourceName?: StreamTopicEntryInternal["sourceName"];
+  topicSource?: StreamTopicEntryInternal["source"];
+}
+
 function findExistingTopic(
   topics: Map<string, StreamTopicEntryInternal> | undefined,
   topicSubject: string,
@@ -43,11 +48,14 @@ export function mergeStreamEntry(
   topicTs: number,
   lastMessageId?: MessageId,
   topicUuid?: string,
+  options: MergeStreamEntryOptions = {},
 ): StreamEntryInternal {
   const existingTopicMatch = findExistingTopic(existing?.topics, topicSubject, topicUuid);
   const existingTopic = existingTopicMatch?.topic;
   const resolvedTopicSubject = existingTopic?.subject ?? topicSubject;
   const resolvedTopicUuid = topicUuid ?? existingTopic?.topicUuid;
+  const resolvedTopicSourceName = existingTopic?.sourceName ?? options.topicSourceName;
+  const resolvedTopicSource = existingTopic?.source ?? options.topicSource;
   const unreadCount = existingTopic?.unreadCount ?? 0;
   const topicColor = existingTopic?.color;
   const topicEntry = {
@@ -59,6 +67,8 @@ export function mergeStreamEntry(
     ts: topicTs,
     unreadCount,
     ...(topicColor != null ? { color: topicColor } : {}),
+    ...(resolvedTopicSourceName != null ? { sourceName: resolvedTopicSourceName } : {}),
+    ...(resolvedTopicSource != null ? { source: resolvedTopicSource } : {}),
     ...(existingTopic?.isDone === true ? { isDone: true } : {}),
     lastMessageId,
   };
@@ -89,6 +99,8 @@ export function mergeStreamEntry(
     streamUuid: existing.streamUuid,
     private: existing.private,
     ...(existing.color != null ? { color: existing.color } : {}),
+    ...(existing.sourceName != null ? { sourceName: existing.sourceName } : {}),
+    ...(existing.source != null ? { source: existing.source } : {}),
     name: existing.name,
     lastMessage: newerStream ? lastMessage : existing.lastMessage,
     lastMessageSenderName: newerStream ? lastMessageSenderName : existing.lastMessageSenderName,

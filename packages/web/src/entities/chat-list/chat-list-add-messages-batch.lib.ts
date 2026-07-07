@@ -106,6 +106,10 @@ function mergeStreamTopicPreviewsFromLatest(
       topic.ts,
       m.id,
       topic.topicUuid,
+      {
+        topicSourceName: topic.sourceName,
+        topicSource: topic.source,
+      },
     );
     nextStreams.set(streamUuid, merged);
   }

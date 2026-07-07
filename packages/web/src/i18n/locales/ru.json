@@ -498,6 +498,7 @@
     "externalAccountSaving": "Сохранение…",
     "externalAccountUnlinking": "Отвязка…",
     "externalAccountAdd": "Добавить аккаунт Zulip",
+    "externalAccountLink": "Связать аккаунт Zulip",
     "externalAccountUpdate": "Обновить аккаунт Zulip",
     "externalAccountUnlink": "Отвязать аккаунт Zulip",
     "externalAccountSaved": "Аккаунт Zulip сохранён",

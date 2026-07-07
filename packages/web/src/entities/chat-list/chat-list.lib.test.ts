@@ -142,9 +142,74 @@ describe("messageToStreamEntry", () => {
     expect(nativeTopic?.topic.topicUuid).toBe(topicUuid);
     expect(generalTopic?.topic.subject).toBe("general");
   });
+
+  it("keeps message source metadata on the derived topic entry", () => {
+    const source = {
+      kind: "zulip",
+      server_url: "https://zulip.example",
+      stream_id: 42,
+      topic_name: "general",
+      message_id: 1001,
+    };
+    const entry = messageToStreamEntry({
+      id: "00000000-0000-4000-8000-000000000013",
+      sender_id: 20,
+      sender_full_name: "Bob",
+      content: "bridged message",
+      timestamp: 1_700_000_004,
+      type: "stream",
+      stream_uuid: STREAM_UUID,
+      display_recipient: "engineering",
+      subject: "general",
+      source_name: "zulip",
+      source,
+      flags: [],
+    });
+
+    expect(entry?.stream.sourceName).toBeUndefined();
+    expect(entry?.topic).toMatchObject({
+      sourceName: "zulip",
+      source,
+    });
+  });
 });
 
 describe("buildSidebarFromMessages", () => {
+  it("surfaces source metadata on sidebar topics built from messages", () => {
+    const source = {
+      kind: "zulip",
+      server_url: "https://zulip.example",
+      stream_id: 42,
+      topic_name: "general",
+      message_id: 1001,
+    };
+    const { streams } = buildSidebarFromMessages(
+      [
+        {
+          id: "00000000-0000-4000-8000-000000000014",
+          sender_id: 20,
+          sender_full_name: "Bob",
+          content: "bridged message",
+          timestamp: 1000,
+          type: "stream",
+          stream_uuid: STREAM_UUID,
+          display_recipient: "engineering",
+          subject: "general",
+          source_name: "zulip",
+          source,
+          flags: [],
+        },
+      ],
+      null,
+    );
+
+    expect(streams[0]?.sourceName).toBeUndefined();
+    expect(streams[0]?.topics?.[0]).toMatchObject({
+      sourceName: "zulip",
+      source,
+    });
+  });
+
   it("does not derive unread counts from message flags", () => {
     const messages: WorkspaceRawMessage[] = [
       {

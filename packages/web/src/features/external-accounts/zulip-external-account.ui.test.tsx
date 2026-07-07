@@ -26,6 +26,7 @@ describe("ZulipExternalAccountCard", () => {
         uuid: "account-1",
         externalUserId: "42",
         accountType: "zulip",
+        hasCredentials: true,
         accountSettings: {
           kind: "zulip",
           login: "alice@example.com",
@@ -46,6 +47,7 @@ describe("ZulipExternalAccountCard", () => {
       uuid: "account-1",
       externalUserId: "42",
       accountType: "zulip",
+      hasCredentials: true,
       accountSettings: {
         kind: "zulip",
         login: "alice@example.com",
@@ -99,6 +101,7 @@ describe("ZulipExternalAccountCard", () => {
       uuid: "account-1",
       externalUserId: "42",
       accountType: "zulip",
+      hasCredentials: true,
       accountSettings: {
         kind: "zulip",
         login: "alice@example.com",
@@ -133,6 +136,7 @@ describe("ZulipExternalAccountCard", () => {
       uuid: "account-1",
       externalUserId: "42",
       accountType: "zulip",
+      hasCredentials: true,
       accountSettings: {
         kind: "zulip",
         login: "alice@example.com",
@@ -149,6 +153,42 @@ describe("ZulipExternalAccountCard", () => {
     expect(await screen.findByText("Zulip account unlinked")).toBeInTheDocument();
     expect(screen.getByText("Zulip account not connected")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /unlink zulip account/i })).not.toBeInTheDocument();
+  });
+
+  it("treats an account without credentials as not connected and keeps the URL", async () => {
+    fetchZulipExternalAccountMock.mockResolvedValue({
+      uuid: "account-2",
+      accountType: "zulip",
+      hasCredentials: false,
+      accountSettings: {
+        kind: "zulip",
+        login: "",
+        serverUrl: "https://zulip.example.com",
+      },
+    });
+
+    renderWithProviders(<ZulipExternalAccountCard />);
+
+    expect(await screen.findByText("Zulip account not connected")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /unlink zulip account/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /link zulip account/i }));
+    expect(screen.getByLabelText("Zulip server URL")).toHaveValue("https://zulip.example.com");
+    fireEvent.change(screen.getByLabelText("Zulip login"), {
+      target: { value: "alice@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Zulip API token"), {
+      target: { value: "z1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /link zulip account/i }));
+
+    await waitFor(() =>
+      expect(saveZulipExternalAccountMock).toHaveBeenCalledWith({
+        uuid: "account-2",
+        login: "alice@example.com",
+        serverUrl: "https://zulip.example.com",
+        token: "z1",
+      }),
+    );
   });
 
   it("requires all Zulip fields before saving", async () => {

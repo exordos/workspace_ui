@@ -53,6 +53,8 @@ describe("fetchSubscriptions", () => {
           announce: false,
           private: false,
           is_archived: true,
+          source_name: "zulip",
+          source: { kind: "zulip", server_url: "https://zulip.example", stream_id: 42 },
           color: 0x123456,
           unread_count: 5,
           notification_mode: "mentions_only",
@@ -80,6 +82,8 @@ describe("fetchSubscriptions", () => {
         invite_only: false,
         private: false,
         is_archived: true,
+        source_name: "zulip",
+        source: { kind: "zulip", server_url: "https://zulip.example", stream_id: 42 },
         color: 0x123456,
         unread_count: 5,
       },
@@ -601,12 +605,35 @@ describe("fetchTopics", () => {
     mockMessengerApi.getWithBase.mockResolvedValue({
       ok: true,
       status: 200,
-      data: [{ uuid: TOPIC_UUID, stream_uuid: STREAM_UUID, name: "planning", color: 0xabcdef }],
+      data: [
+        {
+          uuid: TOPIC_UUID,
+          stream_uuid: STREAM_UUID,
+          name: "planning",
+          color: 0xabcdef,
+          source_name: "zulip",
+          source: {
+            kind: "zulip",
+            server_url: "https://zulip.example",
+            stream_id: 42,
+            topic_name: "planning",
+          },
+        },
+      ],
       raw: { statusText: "OK" },
     });
 
     await expect(fetchStreamTopics(STREAM_UUID)).resolves.toEqual([
-      expect.objectContaining({ color: 0xabcdef }),
+      expect.objectContaining({
+        color: 0xabcdef,
+        source_name: "zulip",
+        source: {
+          kind: "zulip",
+          server_url: "https://zulip.example",
+          stream_id: 42,
+          topic_name: "planning",
+        },
+      }),
     ]);
   });
 
@@ -653,6 +680,8 @@ describe("fetchStreams", () => {
           announce: true,
           invite_only: false,
           private: false,
+          source_name: "zulip",
+          source: { kind: "zulip", server_url: "https://zulip.example", stream_id: 42 },
           color: 0x654321,
         },
         {
@@ -676,6 +705,8 @@ describe("fetchStreams", () => {
         description: "Main",
         is_announcement_only: true,
         invite_only: false,
+        source_name: "zulip",
+        source: { kind: "zulip", server_url: "https://zulip.example", stream_id: 42 },
         color: 0x654321,
       },
     ]);

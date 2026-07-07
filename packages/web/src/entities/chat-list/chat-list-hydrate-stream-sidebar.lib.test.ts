@@ -207,11 +207,17 @@ describe("requestStreamSidebarTopicListHydrate", () => {
   });
 
   it("fetches topic rows and inserts topic shells into store", async () => {
+    const source = {
+      kind: "zulip",
+      server_url: "https://zulip.example",
+      stream_id: 42,
+      topic_name: "alpha",
+    };
     useChatListStore
       .getState()
       .upsertStreamMetadataRows([{ streamUuid: STREAM_UUID, name: "general" }]);
     fetchStreamTopicsMock.mockResolvedValue([
-      topicRow("alpha", TOPIC_ALPHA_UUID),
+      topicRow("alpha", TOPIC_ALPHA_UUID, { source_name: "zulip", source }),
       topicRow("beta", TOPIC_BETA_UUID),
     ]);
 
@@ -221,6 +227,7 @@ describe("requestStreamSidebarTopicListHydrate", () => {
     const stream = useChatListStore.getState().streamsMap.get(STREAM_UUID);
     expect(stream?.topics.has("alpha")).toBe(true);
     expect(stream?.topics.has("beta")).toBe(true);
+    expect(stream?.topics.get("alpha")).toMatchObject({ sourceName: "zulip", source });
   });
 
   it("dedupes concurrent requests for the same stream", async () => {

@@ -689,6 +689,12 @@ describe("dispatchMessengerEvent", () => {
     it("upserts sidebar topic metadata on backend topic.updated", () => {
       const { ctx } = buildCtx();
       const upsertSpy = vi.spyOn(ctx.chatList, "upsertStreamTopicShells");
+      const source = {
+        kind: "zulip",
+        server_url: "https://zulip.example",
+        stream_id: 42,
+        topic_name: "retros",
+      };
 
       dispatchMessengerEvent(
         {
@@ -702,6 +708,8 @@ describe("dispatchMessengerEvent", () => {
             unread_count: 4,
             is_done: true,
             color: 0xabcdef,
+            source_name: "zulip",
+            source,
           },
         },
         ctx,
@@ -715,6 +723,8 @@ describe("dispatchMessengerEvent", () => {
           unreadCount: 4,
           isDone: true,
           color: 0xabcdef,
+          sourceName: "zulip",
+          source,
         },
       ]);
     });
@@ -902,6 +912,11 @@ describe("dispatchMessengerEvent", () => {
       const upsertSpy = vi.spyOn(ctx.chatList, "upsertStreamMetadataRows");
       const applyStreamMetadataUpdate = vi.fn();
       ctx.chatInfo = { applyStreamMetadataUpdate };
+      const source = {
+        kind: "zulip",
+        server_url: "https://zulip.example",
+        stream_id: 42,
+      };
 
       dispatchMessengerEvent(
         {
@@ -917,6 +932,8 @@ describe("dispatchMessengerEvent", () => {
             private: false,
             is_archived: true,
             color: 0x654321,
+            source_name: "zulip",
+            source,
           },
         },
         ctx,
@@ -931,6 +948,8 @@ describe("dispatchMessengerEvent", () => {
           private: false,
           isArchived: true,
           color: 0x654321,
+          sourceName: "zulip",
+          source,
         },
       ]);
       expect(applyStreamMetadataUpdate).toHaveBeenCalledWith({

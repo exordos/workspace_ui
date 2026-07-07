@@ -7,30 +7,24 @@ import { createLogger } from "~/shared/lib/logger";
 import { createMessageId, normalizeMessageId } from "~/shared/lib/message-id.lib";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import { messageBodyToUnsanitizedDisplayHtml } from "~/shared/lib/message-markdown-display.lib";
+import { mockMessageToRawMessage } from "~/shared/lib/message-mock-to-raw.lib";
 import {
-  MESSENGER_DM_CHAT_NUM_AFTER,
-  MESSENGER_DM_ANCHOR_NUM_BEFORE,
   MESSENGER_STREAM_ANCHOR_NUM_BEFORE,
   MESSENGER_STREAM_CHAT_NUM_AFTER,
 } from "~/shared/lib/messenger-message-window.lib";
-import {
-  normalizeMessengerMessagesNarrowForApi,
-  messengerTopicNarrowOperandForApi,
-  type MessengerMessagesNarrowClause,
-} from "~/shared/lib/messenger-topic-narrow.lib";
+import type { MessengerMessagesNarrowClause } from "~/shared/lib/messenger-topic-narrow.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
-import { numericUserIdOrNull, type UserId } from "~/shared/lib/user-id.lib";
+import { numericUserIdOrNull, userIdStorageKey, type UserId } from "~/shared/lib/user-id.lib";
 import { getMessengerWorkspaceApiBaseForCurrentInstance, messengerApi } from "./client";
-import { buildMessagesQueryParams } from "./messenger-client.internal";
 import {
+  fetchMeMessageById,
   fetchMyMessagesPage,
   meMessageToMockMessage,
   parseMeMessage,
 } from "./messenger-me-messages";
 import { rawMessageToMockMessage } from "./messenger-message-map.lib";
 import { postWorkspaceSendMessage } from "./messenger-message-send.internal";
-import { mapMessagesPageFromApiData } from "./messenger-messages-page.lib";
-import { ensureMessengerApiReady, messengerPipelineGet } from "./messenger-pipeline.internal";
+import { ensureMessengerApiReady } from "./messenger-pipeline.internal";
 import {
   validateMessageIds,
   validateMessagesApiAnchor,
@@ -40,59 +34,18 @@ import type {
   ActivityFilter,
   ActivityMessagesPageResult,
   CreateSavedSnippetParams,
+  MessengerMeMessage,
   MockMessage,
   Reaction,
   MessagesPageResult,
-  RawMessageToMockInput,
   SavedSnippet,
   SendMessageParams,
   WorkspaceRawMessage,
 } from "./messenger.types";
 
-const activityMessagesLog = createLogger("api:activity-messages");
-
-interface MessageWindowOptions {
-  anchor: string;
-  numBefore: number;
-  numAfter: number;
-  includeAnchor?: boolean;
-  applyMarkdown?: boolean;
-}
-
-interface NarrowEntry {
-  negated?: boolean;
-  operator: string;
-  operand: string | number;
-}
-
 const log = createLogger("api:messenger-messages");
 
-/** Workspace allows up to 5000 messages per GET /messages request. */
-const MESSAGE_IDS_CHUNK_SIZE = 1000;
-const MESSAGE_IDS_FALLBACK_CONCURRENCY = 8;
-
-let loggedMessageIdsBatchFallback = false;
-
-function parseMessagesListResponse(data: unknown): WorkspaceRawMessage[] | null {
-  if (data == null || typeof data !== "object") return null;
-  const payload = data as { result?: string; messages?: WorkspaceRawMessage[] };
-  if (payload.result === "error") return null;
-  return payload.messages ?? [];
-}
-
-function messengerRawMessageFromGetMessageApiData(data: unknown): WorkspaceRawMessage | null {
-  if (data == null || typeof data !== "object") return null;
-  const row = data as Record<string, unknown>;
-  if (row.result === "error") return null;
-  if (row.message != null && typeof row.message === "object") {
-    const message = row.message as WorkspaceRawMessage;
-    return normalizeMessageId(message.id) != null ? message : null;
-  }
-  if (normalizeMessageId(row.id) != null) {
-    return row as unknown as WorkspaceRawMessage;
-  }
-  return null;
-}
+const ACTIVITY_NATIVE_MAX_PAGES = 100;
 
 function workspaceMessageResponseToMockMessage(data: unknown): MockMessage | null {
   const envelope = data != null && typeof data === "object" ? data : null;
@@ -101,128 +54,21 @@ function workspaceMessageResponseToMockMessage(data: unknown): MockMessage | nul
   return row == null ? null : meMessageToMockMessage(row);
 }
 
-async function fetchMessagesByIdsChunk(messageIds: MessageId[]): Promise<{
-  messages: WorkspaceRawMessage[];
-  apiError: boolean;
-}> {
-  if (messageIds.length === 0) {
-    return { messages: [], apiError: false };
-  }
-  const messageIdsParam = JSON.stringify(messageIds);
-  log.info("fetchMessagesByIds: GET /messages (message_ids batch)", {
-    chunkSize: messageIds.length,
-    messageIdsParamLength: messageIdsParam.length,
-    messageIdSample: messageIds.slice(0, 8),
-  });
-  const res = await messengerPipelineGet("/messages", {
-    message_ids: messageIdsParam,
-    allow_empty_topic_name: "true",
-    apply_markdown: "false",
-  });
-  if (!res?.ok) {
-    log.warn("fetchMessagesByIds: batch request not ok", {
-      httpStatus: res?.status ?? null,
-      result:
-        res?.data != null && typeof res.data === "object"
-          ? (res.data as { result?: string }).result
-          : undefined,
-      msg:
-        res?.data != null && typeof res.data === "object"
-          ? (res.data as { msg?: string }).msg
-          : undefined,
-    });
-    return { messages: [], apiError: true };
-  }
-  const parsed = parseMessagesListResponse(res.data);
-  if (parsed == null) {
-    log.warn("fetchMessagesByIds: batch response parse error", {
-      httpStatus: res.status,
-      result:
-        res.data != null && typeof res.data === "object"
-          ? (res.data as { result?: string }).result
-          : undefined,
-      msg:
-        res.data != null && typeof res.data === "object"
-          ? (res.data as { msg?: string }).msg
-          : undefined,
-    });
-    return { messages: [], apiError: true };
-  }
-  log.info("fetchMessagesByIds: batch response ok", {
-    httpStatus: res.status,
-    messageCount: parsed.length,
-  });
-  return { messages: parsed, apiError: false };
-}
-
-async function fetchMessagesByIdsFallback(messageIds: MessageId[]): Promise<WorkspaceRawMessage[]> {
-  if (!loggedMessageIdsBatchFallback) {
-    loggedMessageIdsBatchFallback = true;
-    log.warn("GET /messages message_ids unavailable; falling back to per-message fetch", {
-      count: messageIds.length,
-    });
-  }
-  const results: WorkspaceRawMessage[] = [];
-  let nextIndex = 0;
-  const workerCount = Math.min(MESSAGE_IDS_FALLBACK_CONCURRENCY, messageIds.length);
-  const workers = Array.from({ length: workerCount }, async () => {
-    for (;;) {
-      const index = nextIndex;
-      nextIndex += 1;
-      if (index >= messageIds.length) return;
-      const messageId = messageIds[index]!;
-      const res = await messengerPipelineGet(`/messages/${messageId}`, {
-        allow_empty_topic_name: "true",
-        apply_markdown: "false",
-      });
-      if (!res?.ok) continue;
-      const message = messengerRawMessageFromGetMessageApiData(res.data);
-      if (message != null) {
-        results.push(message);
-      }
-    }
-  });
-  await Promise.all(workers);
-  return results;
-}
-
-function getActivityNarrow(filter: ActivityFilter): NarrowEntry[] {
-  switch (filter) {
-    case "starred":
-      return [{ negated: false, operator: "is", operand: "starred" }];
-    case "mentions":
-      return [{ negated: false, operator: "is", operand: "mentioned" }];
-    case "reactions":
-      return [{ negated: false, operator: "has", operand: "reaction" }];
-    default:
-      return [];
-  }
-}
-
-async function fetchMessageWindow(options: MessageWindowOptions): Promise<WorkspaceRawMessage[]> {
-  const { anchor, numBefore, numAfter, includeAnchor, applyMarkdown = false } = options;
-  const res = await messengerPipelineGet("/messages", {
-    anchor: String(anchor),
-    ...(includeAnchor == null ? {} : { include_anchor: includeAnchor ? "true" : "false" }),
-    num_before: String(numBefore),
-    num_after: String(numAfter),
-    allow_empty_topic_name: "true",
-    apply_markdown: applyMarkdown ? "true" : "false",
-  });
-  if (!res?.ok) return [];
-  const data = res.data as { result?: string; messages?: WorkspaceRawMessage[] };
-  if (!data || data.result === "error") return [];
-  return data.messages ?? [];
-}
-
 /** Loads the latest messages without a narrow (default 1000). */
 export async function fetchRecentMessages(numBefore = 1000): Promise<WorkspaceRawMessage[]> {
-  return fetchMessageWindow({
-    anchor: "newest",
-    numBefore,
-    numAfter: 0,
-    applyMarkdown: false,
-  });
+  const safeNumBefore = validateNonNegativeInteger(numBefore, "fetchRecentMessages.numBefore");
+  if (safeNumBefore === 0) return [];
+  try {
+    const page = await fetchMyMessagesPage({
+      limit: safeNumBefore,
+      sortKey: "created_at",
+      sortDir: "desc",
+    });
+    return [...page.messages].reverse().map(nativeMessageToRawMessage);
+  } catch (error) {
+    log.warn("Recent messages fetch failed", { error: String(error) });
+    return [];
+  }
 }
 
 /** Deep backfill: older chat-list messages before anchor. */
@@ -231,13 +77,23 @@ export async function fetchMessagesBeforeAnchor(
   numBefore = 5000,
 ): Promise<WorkspaceRawMessage[]> {
   guard.messageId(anchorMessageId, "fetchMessagesBeforeAnchor.anchorMessageId");
-  return fetchMessageWindow({
-    anchor: anchorMessageId,
+  const safeNumBefore = validateNonNegativeInteger(
     numBefore,
-    numAfter: 0,
-    includeAnchor: false,
-    applyMarkdown: false,
-  });
+    "fetchMessagesBeforeAnchor.numBefore",
+  );
+  if (safeNumBefore === 0) return [];
+  try {
+    const page = await fetchMyMessagesPage({
+      limit: safeNumBefore,
+      marker: anchorMessageId,
+      sortKey: "created_at",
+      sortDir: "desc",
+    });
+    return [...page.messages].reverse().map(nativeMessageToRawMessage);
+  } catch (error) {
+    log.warn("Messages before anchor fetch failed", { error: String(error) });
+    return [];
+  }
 }
 
 /** Loads newer chat-list messages after anchor (post-reconnect catch-up). */
@@ -246,13 +102,20 @@ export async function fetchMessagesAfterAnchor(
   numAfter = 5000,
 ): Promise<WorkspaceRawMessage[]> {
   guard.messageId(anchorMessageId, "fetchMessagesAfterAnchor.anchorMessageId");
-  return fetchMessageWindow({
-    anchor: anchorMessageId,
-    numBefore: 0,
-    numAfter,
-    includeAnchor: false,
-    applyMarkdown: false,
-  });
+  const safeNumAfter = validateNonNegativeInteger(numAfter, "fetchMessagesAfterAnchor.numAfter");
+  if (safeNumAfter === 0) return [];
+  try {
+    const page = await fetchMyMessagesPage({
+      limit: safeNumAfter,
+      marker: anchorMessageId,
+      sortKey: "created_at",
+      sortDir: "asc",
+    });
+    return page.messages.map(nativeMessageToRawMessage);
+  } catch (error) {
+    log.warn("Messages after anchor fetch failed", { error: String(error) });
+    return [];
+  }
 }
 
 /** Activity section narrows: starred, mentions, and reactions. */
@@ -269,91 +132,144 @@ export async function fetchActivityMessages(
 
 export async function fetchActivityMessagesPage(
   filter: ActivityFilter,
-  _currentUserId?: UserId | null,
+  currentUserId?: UserId | null,
   anchor: MessageId = "newest",
   numBefore = 200,
   options?: { signal?: AbortSignal },
 ): Promise<ActivityMessagesPageResult> {
   const normalizedAnchor =
     anchor === "newest" ? anchor : guard.messageId(anchor, "fetchActivityMessagesPage.anchor");
-  const narrow = getActivityNarrow(filter);
+  const validatedNumBefore = validateNonNegativeInteger(numBefore, "numBefore");
+  if (validatedNumBefore === 0) {
+    return { messages: [], foundOldest: normalizedAnchor === "newest" };
+  }
   if (options?.signal?.aborted) {
     throw new DOMException("Aborted", "AbortError");
   }
   try {
-    const res = await messengerPipelineGet(
-      "/messages",
-      {
-        anchor: String(normalizedAnchor),
-        num_before: String(numBefore),
-        num_after: "0",
-        narrow: JSON.stringify(narrow),
-        allow_empty_topic_name: "true",
-        apply_markdown: "false",
-      },
-      options?.signal,
-    );
-    throwIfWorkspacePipelineGetNull(res, options?.signal);
-    if (!res.ok) {
-      const errData = res.data as { msg?: string } | undefined;
-      const status = res.status;
-      const msg = errData?.msg ?? `Activity messages request failed (${status ?? "unknown"})`;
-      activityMessagesLog.warn("Activity messages fetch HTTP error", { filter, status });
-      throw new Error(msg);
-    }
-    const data = res.data as {
-      result?: string;
-      msg?: string;
-      messages?: WorkspaceRawMessage[];
-      found_oldest?: boolean;
-      foundOldest?: boolean;
-    };
-    if (options?.signal?.aborted) {
-      throw new DOMException("Aborted", "AbortError");
-    }
-    if (!data || data.result === "error") {
-      const msg = data?.msg ?? "Activity messages fetch error";
-      activityMessagesLog.warn("Activity messages API error", { filter, msg });
-      throw new Error(msg);
-    }
-    return {
-      messages: data.messages ?? [],
-      foundOldest: data.found_oldest ?? data.foundOldest ?? false,
-    };
+    return await fetchActivityMessagesPageViaNative({
+      filter,
+      currentUserId: currentUserId ?? null,
+      normalizedAnchor,
+      numBefore: validatedNumBefore,
+      signal: options?.signal,
+    });
   } catch (error) {
     if (isAbortError(error) || options?.signal?.aborted) {
       throw error;
     }
+    log.warn("Activity messages fetch failed", { filter, error: String(error) });
     throw error instanceof Error ? error : new Error(t("app.networkError"));
   }
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function hasPositiveReactionCounts(message: MessengerMeMessage): boolean {
+  return Object.values(message.reactions ?? {}).some(
+    (count) => Number.isFinite(count) && count > 0,
+  );
+}
+
+function nativeMessageMentionsCurrentUser(
+  message: MessengerMeMessage,
+  currentUserId: UserId | null,
+): boolean {
+  if (message.mentioned === true) {
+    return true;
+  }
+  if (currentUserId == null) {
+    return false;
+  }
+  const needle = userIdStorageKey(currentUserId);
+  if (needle.length === 0) {
+    return false;
+  }
+  const mentionPattern = new RegExp(`(?:<@|@)${escapeRegExp(needle)}(?:>|\\b)`, "i");
+  return mentionPattern.test(message.payload.content);
+}
+
+function nativeMessageMatchesActivityFilter(
+  message: MessengerMeMessage,
+  filter: ActivityFilter,
+  currentUserId: UserId | null,
+): boolean {
+  if (filter === "starred") {
+    return message.starred;
+  }
+  if (filter === "mentions") {
+    return nativeMessageMentionsCurrentUser(message, currentUserId);
+  }
+  return message.is_own && hasPositiveReactionCounts(message);
+}
+
+function nativeMessageToRawMessage(message: MessengerMeMessage): WorkspaceRawMessage {
+  return mockMessageToRawMessage(meMessageToMockMessage(message));
+}
+
+async function fetchActivityMessagesPageViaNative(args: {
+  filter: ActivityFilter;
+  currentUserId: UserId | null;
+  normalizedAnchor: MessageId;
+  numBefore: number;
+  signal?: AbortSignal;
+}): Promise<ActivityMessagesPageResult> {
+  const collectedNewestFirst: WorkspaceRawMessage[] = [];
+  const seenMarkers = new Set<string>();
+  let marker = args.normalizedAnchor === "newest" ? null : args.normalizedAnchor;
+  let foundOldest = false;
+
+  for (let pageIndex = 0; pageIndex < ACTIVITY_NATIVE_MAX_PAGES; pageIndex += 1) {
+    if (args.signal?.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
+    const page = await fetchMyMessagesPage({
+      limit: args.numBefore,
+      marker,
+      sortKey: "created_at",
+      sortDir: "desc",
+      ...(args.filter === "starred" ? { starred: true } : {}),
+      signal: args.signal,
+    });
+    if (args.signal?.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
+
+    const matchingMessages = page.messages
+      .filter((message) =>
+        nativeMessageMatchesActivityFilter(message, args.filter, args.currentUserId),
+      )
+      .map(nativeMessageToRawMessage);
+    collectedNewestFirst.push(...matchingMessages);
+
+    const nextMarker = page.nextMarker;
+    if (nextMarker == null || page.messages.length === 0 || nextMarker === marker) {
+      foundOldest = true;
+      break;
+    }
+    if (collectedNewestFirst.length >= args.numBefore) {
+      break;
+    }
+    if (seenMarkers.has(nextMarker)) {
+      foundOldest = true;
+      break;
+    }
+    seenMarkers.add(nextMarker);
+    marker = nextMarker;
+  }
+
+  return {
+    messages: collectedNewestFirst.slice(0, args.numBefore).reverse(),
+    foundOldest,
+  };
 }
 
 export { rawMessageToMockMessage };
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
-}
-
-function throwIfWorkspacePipelineGetNull(
-  response: Awaited<ReturnType<typeof messengerPipelineGet>> | null,
-  signal?: AbortSignal,
-): asserts response is NonNullable<Awaited<ReturnType<typeof messengerPipelineGet>>> {
-  if (response != null) return;
-  if (signal?.aborted) {
-    throw new DOMException("Aborted", "AbortError");
-  }
-  throw new Error(t("app.networkError"));
-}
-
-function mapMessengerMessage(m: RawMessageToMockInput): MockMessage {
-  return rawMessageToMockMessage(m);
-}
-
-function mapMarkdownModeMessengerMessage(m: RawMessageToMockInput): MockMessage {
-  return rawMessageToMockMessage({
-    ...m,
-    markdown_source: m.markdown_source ?? m.content,
-  });
 }
 
 export async function fetchMessages(
@@ -368,10 +284,10 @@ export async function fetchMessages(
   if (normalizedTopic !== undefined && normalizedStream === undefined) {
     throw new Error("fetchMessages.stream is required when topic is provided");
   }
-  const narrow: { operator: string; operand: string }[] = [];
+  const narrow: MessengerMessagesNarrowClause[] = [];
   if (normalizedStream) narrow.push({ operator: "stream", operand: normalizedStream });
   if (normalizedTopic !== undefined) {
-    narrow.push({ operator: "topic", operand: messengerTopicNarrowOperandForApi(normalizedTopic) });
+    narrow.push({ operator: "topic", operand: normalizedTopic });
   }
   if (q?.trim()) narrow.push({ operator: "search", operand: q.trim() });
   const page = await fetchMessagesWithNarrowPage(
@@ -396,34 +312,102 @@ export async function fetchMessagesWithNarrow(
   return page.messages;
 }
 
-async function fetchMessagesWithNarrowPageViaPipeline(args: {
-  apiNarrow: MessengerMessagesNarrowClause[];
-  validatedAnchor: string;
-  validatedNumBefore: number;
-  validatedNumAfter: number;
-  applyMarkdown: boolean;
-  signal?: AbortSignal;
-}): Promise<MessagesPageResult> {
-  const query = buildMessagesQueryParams({
-    narrow: args.apiNarrow.length > 0 ? args.apiNarrow : undefined,
-    anchor: args.validatedAnchor,
-    num_before: args.validatedNumBefore,
-    num_after: args.validatedNumAfter,
-  });
-  query.apply_markdown = args.applyMarkdown ? "true" : "false";
-  const response = await messengerPipelineGet("/messages", query, args.signal);
-  throwIfWorkspacePipelineGetNull(response, args.signal);
-  if (!response.ok) {
-    throw new Error(t("app.errorStatus", { status: String(response.status) }));
+interface NativeMessagesNarrowQuery {
+  streamUuid?: string;
+  topicUuid?: string;
+  starred?: boolean;
+  unread?: boolean;
+  search?: string;
+  unsupported: boolean;
+}
+
+function readUuidOperand(value: MessengerMessagesNarrowClause["operand"]): string | undefined {
+  return typeof value === "string" ? (normalizeMessageId(value) ?? undefined) : undefined;
+}
+
+function readStringOperand(value: MessengerMessagesNarrowClause["operand"]): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function applyNativeMessagesNarrowClause(
+  query: NativeMessagesNarrowQuery,
+  clause: MessengerMessagesNarrowClause,
+): void {
+  if (clause.negated === true) {
+    query.unsupported = true;
+    return;
   }
-  const data = response.data as Parameters<typeof mapMessagesPageFromApiData>[0];
-  if (args.signal?.aborted) {
-    throw new DOMException("Aborted", "AbortError");
+
+  if (clause.operator === "stream" || clause.operator === "topic") {
+    const uuid = readUuidOperand(clause.operand);
+    if (uuid == null) {
+      query.unsupported = true;
+      return;
+    }
+    if (clause.operator === "stream") {
+      query.streamUuid = uuid;
+    } else {
+      query.topicUuid = uuid;
+    }
+    return;
   }
-  return mapMessagesPageFromApiData(
-    data,
-    args.applyMarkdown ? mapMessengerMessage : mapMarkdownModeMessengerMessage,
-  );
+
+  if (clause.operator === "search") {
+    query.search = readStringOperand(clause.operand);
+    return;
+  }
+
+  if (clause.operator === "is" && clause.operand === "starred") {
+    query.starred = true;
+    return;
+  }
+
+  if (clause.operator === "is" && clause.operand === "unread") {
+    query.unread = true;
+    return;
+  }
+
+  query.unsupported = true;
+}
+
+function resolveNativeMessagesNarrow(
+  narrow: readonly MessengerMessagesNarrowClause[],
+): NativeMessagesNarrowQuery {
+  const query: NativeMessagesNarrowQuery = { unsupported: false };
+  for (const clause of narrow) {
+    applyNativeMessagesNarrowClause(query, clause);
+  }
+  return query;
+}
+
+function nativeMessageToMockMessage(
+  message: MessengerMeMessage,
+  applyMarkdown: boolean,
+): MockMessage {
+  const mock = meMessageToMockMessage(message);
+  if (!applyMarkdown) {
+    return mock;
+  }
+  return {
+    ...mock,
+    content: messageBodyToUnsanitizedDisplayHtml(mock.content, { treatAsMarkdown: true }),
+    markdown_source: mock.markdown_source ?? message.payload.content,
+  };
+}
+
+function nativeMessageMatchesQuery(
+  message: MessengerMeMessage,
+  query: NativeMessagesNarrowQuery,
+): boolean {
+  if (query.unread === true && message.read) {
+    return false;
+  }
+  if (query.search != null) {
+    return message.payload.content.toLowerCase().includes(query.search.toLowerCase());
+  }
+  return true;
 }
 
 /** Loads a narrow message page including pagination metadata. */
@@ -438,19 +422,38 @@ export async function fetchMessagesWithNarrowPage(
   const validatedNumBefore = validateNonNegativeInteger(numBefore, "numBefore");
   const validatedNumAfter = validateNonNegativeInteger(numAfter, "numAfter");
   const applyMarkdown = options?.applyMarkdown ?? false;
-  const apiNarrow = normalizeMessengerMessagesNarrowForApi(narrow);
   if (options?.signal?.aborted) {
     throw new DOMException("Aborted", "AbortError");
   }
+  const nativeQuery = resolveNativeMessagesNarrow(narrow);
+  if (nativeQuery.unsupported) {
+    return { messages: [], foundOldest: true, foundNewest: validatedAnchor === "newest" };
+  }
+  const limit = validatedNumBefore + validatedNumAfter;
+  if (limit === 0) {
+    return { messages: [], foundOldest: false, foundNewest: validatedAnchor === "newest" };
+  }
+  const sortDir =
+    validatedAnchor !== "newest" && validatedNumAfter > validatedNumBefore ? "asc" : "desc";
   try {
-    return await fetchMessagesWithNarrowPageViaPipeline({
-      apiNarrow,
-      validatedAnchor,
-      validatedNumBefore,
-      validatedNumAfter,
-      applyMarkdown,
+    const page = await fetchMyMessagesPage({
+      limit,
+      marker: validatedAnchor === "newest" ? null : validatedAnchor,
+      sortKey: "created_at",
+      sortDir,
+      ...(nativeQuery.streamUuid != null ? { streamUuid: nativeQuery.streamUuid } : {}),
+      ...(nativeQuery.topicUuid != null ? { topicUuid: nativeQuery.topicUuid } : {}),
+      ...(nativeQuery.starred != null ? { starred: nativeQuery.starred } : {}),
       signal: options?.signal,
     });
+    const rows = (sortDir === "desc" ? [...page.messages].reverse() : page.messages)
+      .filter((message) => nativeMessageMatchesQuery(message, nativeQuery))
+      .map((message) => nativeMessageToMockMessage(message, applyMarkdown));
+    return {
+      messages: rows,
+      foundOldest: sortDir === "desc" ? page.nextMarker == null : false,
+      foundNewest: sortDir === "asc" ? page.nextMarker == null : validatedAnchor === "newest",
+    };
   } catch (error) {
     if (isAbortError(error) || options?.signal?.aborted) {
       throw error;
@@ -462,7 +465,7 @@ export async function fetchMessagesWithNarrowPage(
   }
 }
 
-/** Loads one page of all messages (no narrow) via the API pipeline. */
+/** Loads one page of all messages (no narrow) via the native marker API. */
 export async function fetchAllMessagesPage(
   anchor: MessageId = "newest",
   numBefore = 100,
@@ -507,12 +510,6 @@ export async function fetchAllMessagesPage(
   }
 }
 
-interface DmNarrow {
-  negated: false;
-  operator: "dm";
-  operand: UserId[];
-}
-
 /** Loads 1:1 DM messages; pass the peer `userId`. */
 export async function fetchDmMessages(
   userIds: UserId | UserId[],
@@ -520,56 +517,17 @@ export async function fetchDmMessages(
 ): Promise<MockMessage[]> {
   const rawIds = Array.isArray(userIds) ? userIds : [userIds];
   if (rawIds.length === 0) return [];
-  const ids = rawIds.map((userId, index) =>
-    guard.userIdentity(userId, `fetchDmMessages.userIds[${index}]`),
-  );
+  rawIds.forEach((userId, index) => {
+    guard.userIdentity(userId, `fetchDmMessages.userIds[${index}]`);
+  });
   if (options?.signal?.aborted) {
     throw new DOMException("Aborted", "AbortError");
   }
-  const params = {
-    narrow: [{ negated: false, operator: "dm", operand: ids }] as DmNarrow[],
-    anchor: "newest",
-    num_before: MESSENGER_DM_ANCHOR_NUM_BEFORE,
-    num_after: MESSENGER_DM_CHAT_NUM_AFTER,
-    allow_empty_topic_name: true,
-    apply_markdown: true,
-  };
-  try {
-    const response = await messengerPipelineGet(
-      "/messages",
-      buildMessagesQueryParams({
-        narrow: params.narrow,
-        anchor: params.anchor,
-        num_before: params.num_before,
-        num_after: params.num_after,
-      }),
-      options?.signal,
-    );
-    throwIfWorkspacePipelineGetNull(response, options?.signal);
-    if (!response.ok) {
-      throw new Error(t("app.errorStatus", { status: String(response.status) }));
-    }
-    const data = response.data as { result?: string; messages?: RawMessageToMockInput[] };
-    if (data.result === "error") return [];
-    if (options?.signal?.aborted) {
-      throw new DOMException("Aborted", "AbortError");
-    }
-    return (data.messages ?? []).map(rawMessageToMockMessage);
-  } catch (error) {
-    if (isAbortError(error) || options?.signal?.aborted) {
-      throw error;
-    }
-    if (options?.signal) {
-      throw error instanceof Error ? error : new Error(t("app.networkError"));
-    }
-    return [];
-  }
+  await Promise.resolve();
+  return [];
 }
 
-/**
- * Fetches specific messages by id (messenger 10+ `message_ids` on GET /messages).
- * Falls back to per-id GET when the server rejects batch fetch.
- */
+/** Fetches specific messages by id through the native `/messages/<uuid>` endpoint. */
 export async function fetchMessagesByIds(messageIds: MessageId[]): Promise<WorkspaceRawMessage[]> {
   log.info("fetchMessagesByIds: called", { inputCount: messageIds.length });
 
@@ -580,48 +538,10 @@ export async function fetchMessagesByIds(messageIds: MessageId[]): Promise<Works
   }
 
   const validatedIds = validateMessageIds(uniqueIds, "fetchMessagesByIds");
-  const collected: WorkspaceRawMessage[] = [];
-  let useFallback = false;
-
-  log.info("fetchMessagesByIds: fetching chunks", {
-    validatedCount: validatedIds.length,
-    chunkSize: MESSAGE_IDS_CHUNK_SIZE,
-  });
-
-  for (let offset = 0; offset < validatedIds.length; offset += MESSAGE_IDS_CHUNK_SIZE) {
-    const chunk = validatedIds.slice(offset, offset + MESSAGE_IDS_CHUNK_SIZE);
-    const { messages, apiError } = await fetchMessagesByIdsChunk(chunk);
-    if (apiError) {
-      log.warn("fetchMessagesByIds: switching to per-id fallback", {
-        chunkOffset: offset,
-        chunkSize: chunk.length,
-      });
-      useFallback = true;
-      break;
-    }
-    collected.push(...messages);
-  }
-
-  if (useFallback) {
-    const fallbackMessages = await fetchMessagesByIdsFallback(validatedIds);
-    log.info("fetchMessagesByIds: fallback complete", {
-      requestedCount: validatedIds.length,
-      fetchedCount: fallbackMessages.length,
-    });
-    return fallbackMessages;
-  }
-
-  const foundIds = new Set(collected.map((message) => message.id));
-  const missingIds = validatedIds.filter((messageId) => !foundIds.has(messageId));
-  if (missingIds.length > 0) {
-    log.info("fetchMessagesByIds: recovering missing ids via fallback", {
-      missingCount: missingIds.length,
-      missingSample: missingIds.slice(0, 8),
-    });
-    const recovered = await fetchMessagesByIdsFallback(missingIds);
-    collected.push(...recovered);
-  }
-
+  const rows = await Promise.all(validatedIds.map((messageId) => fetchMeMessageById(messageId)));
+  const collected = rows
+    .filter((message): message is MessengerMeMessage => message != null)
+    .map(nativeMessageToRawMessage);
   log.info("fetchMessagesByIds: done", {
     requestedCount: validatedIds.length,
     fetchedCount: collected.length,
@@ -649,32 +569,14 @@ export async function fetchMessageRenderedHtmlById(
   signal?: AbortSignal,
 ): Promise<string | null> {
   guard.messageId(messageId, "fetchMessageRenderedHtmlById");
-  const res = await messengerPipelineGet(
-    `/messages/${messageId}`,
-    {
-      allow_empty_topic_name: "true",
-      apply_markdown: "true",
-    },
-    signal,
-  );
-  if (!res?.ok) {
+  const message = await fetchMeMessageById(messageId, signal);
+  if (message == null) {
     return null;
   }
-  const data = res.data as {
-    result?: string;
-    message?: { content?: string };
-    content?: string;
-  };
-  if (data.result === "error") {
-    return null;
-  }
-  let content: string | null = null;
-  if (typeof data.message?.content === "string") {
-    content = data.message.content;
-  } else if (typeof data.content === "string") {
-    content = data.content;
-  }
-  const trimmed = content?.trim() ?? "";
+  const html = messageBodyToUnsanitizedDisplayHtml(message.payload.content, {
+    treatAsMarkdown: true,
+  });
+  const trimmed = html.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
 
@@ -869,11 +771,10 @@ export async function addReaction(
     return { reaction: parseMessageReaction(res.data), created: true };
   }
   if (res.status === 409) {
-    const existing = (
-      await fetchMessageReactions(normalizedMessageId, {
-        ...(options.currentUserUuid != null ? { userUuid: options.currentUserUuid } : {}),
-      })
-    ).find((reaction) => reaction.emoji_name === normalizedEmojiName);
+    const reactions = await fetchMessageReactions(normalizedMessageId, {
+      ...(options.currentUserUuid != null ? { userUuid: options.currentUserUuid } : {}),
+    });
+    const existing = reactions.find((reaction) => reaction.emoji_name === normalizedEmojiName);
     if (existing != null) {
       return { reaction: existing, created: false };
     }

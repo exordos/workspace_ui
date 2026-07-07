@@ -488,6 +488,7 @@
     "externalAccountSaving": "Saving…",
     "externalAccountUnlinking": "Unlinking…",
     "externalAccountAdd": "Add Zulip account",
+    "externalAccountLink": "Link Zulip account",
     "externalAccountUpdate": "Update Zulip account",
     "externalAccountUnlink": "Unlink Zulip account",
     "externalAccountSaved": "Zulip account saved",

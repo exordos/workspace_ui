@@ -20,6 +20,8 @@ import type {
   MessengerMeMessage,
   MessengerMeMessagePayload,
   MessengerMeMessagesPage,
+  MessengerSource,
+  MessengerSourceName,
   MessageReactions,
   MockMessage,
 } from "./messenger.types";
@@ -44,6 +46,8 @@ export interface FetchMyMessagesOptions {
   streamUuid?: string;
   /** Restrict to a single topic (`topic_uuid` equality filter). */
   topicUuid?: string;
+  /** Restrict to rows starred by the authenticated user. */
+  starred?: boolean;
   /** Page size (`page_limit`); defaults to {@link ME_MESSAGES_PAGE_LIMIT}. */
   limit?: number;
   /** Pagination cursor (`page_marker`): the previous page's last row uuid. */
@@ -69,6 +73,14 @@ function readUuid(value: unknown): string | undefined {
 
 function readOptionalString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+function readSourceName(value: unknown): MessengerSourceName | undefined {
+  return value === "native" || value === "zulip" ? value : undefined;
+}
+
+function readSource(value: unknown): MessengerSource | undefined {
+  return isRecord(value) ? value : undefined;
 }
 
 function normalizeUuid(value: string, context: string): string {
@@ -130,6 +142,9 @@ export function parseMeMessage(row: unknown): MessengerMeMessage | null {
   const createdAt = readOptionalString(row.created_at);
   const updatedAt = readOptionalString(row.updated_at);
   const reactions = parseMessageReactions(row.reactions);
+  const mentioned = row.mentioned === true;
+  const sourceName = readSourceName(row.source_name);
+  const source = readSource(row.source);
   return {
     uuid,
     stream_uuid: streamUuid,
@@ -140,6 +155,9 @@ export function parseMeMessage(row: unknown): MessengerMeMessage | null {
     read: row.read === true,
     pinned: row.pinned === true,
     starred: row.starred === true,
+    ...(mentioned ? { mentioned } : {}),
+    ...(sourceName != null ? { source_name: sourceName } : {}),
+    ...(source != null ? { source } : {}),
     ...(reactions != null ? { reactions } : {}),
     ...(userUuid != null ? { user_uuid: userUuid } : {}),
     ...(projectId != null ? { project_id: projectId } : {}),
@@ -186,6 +204,9 @@ function buildMeMessagesParams(options: FetchMyMessagesOptions): Record<string, 
   }
   if (options.topicUuid != null) {
     params.topic_uuid = normalizeUuid(options.topicUuid, "fetchMyMessages.topicUuid");
+  }
+  if (options.starred != null) {
+    params.starred = options.starred ? "true" : "false";
   }
   const marker = options.marker?.trim();
   if (marker != null && marker.length > 0) {
@@ -290,6 +311,7 @@ export function meMessageToMockMessage(
   if (message.read) flags.push("read");
   if (message.pinned) flags.push("pinned");
   if (message.starred) flags.push("starred");
+  if (message.mentioned) flags.push("mentioned");
   const id: MessageId = message.uuid;
   const streamUuid = options.streamUuid ?? message.stream_uuid;
   const topicName = options.topicName ?? "";
@@ -307,6 +329,8 @@ export function meMessageToMockMessage(
     stream_uuid: streamUuid,
     subject: topicName,
     ...(message.topic_uuid != null ? { topic_uuid: message.topic_uuid } : {}),
+    ...(message.source_name != null ? { source_name: message.source_name } : {}),
+    ...(message.source != null ? { source: message.source } : {}),
     content,
     timestamp: isoToEpochSeconds(message.created_at),
     flags,

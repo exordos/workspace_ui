@@ -28,6 +28,8 @@ export function mockMessageToRawMessage(message: MockMessage): WorkspaceRawMessa
     topic_uuid: message.topic_uuid,
     type: isPrivate ? "private" : "stream",
     stream_uuid: message.stream_uuid,
+    source_name: message.source_name,
+    source: message.source,
     flags: message.flags,
     reactions: message.reactions,
   };

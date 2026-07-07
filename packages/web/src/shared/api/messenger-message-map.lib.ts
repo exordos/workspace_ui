@@ -1,7 +1,7 @@
 /**
  * Maps Messenger REST message payloads to MockMessage.
- * With `apply_markdown=false`, `content` is Workspace-flavored Markdown; optional `markdown_source`
- * from the API is preserved. Rendered HTML from events/API (legacy) is stored as-is in `content`.
+ * Native message rows carry Workspace-flavored Markdown; optional `markdown_source` from older
+ * payloads is preserved. Rendered HTML from events/cache is stored as-is in `content`.
  */
 import { normalizeMessageId } from "~/shared/lib/message-id.lib";
 import { isLikelyRenderedMessageHtml } from "~/shared/lib/message-markdown-display.lib";
@@ -30,6 +30,8 @@ export function rawMessageToMockMessage(m: RawMessageToMockInput): MockMessage {
     ...(m.starred != null ? { starred: m.starred } : {}),
     sender_full_name: m.sender_full_name ?? "",
     stream_uuid: m.stream_uuid ?? null,
+    ...(m.source_name != null ? { source_name: m.source_name } : {}),
+    ...(m.source != null ? { source: m.source } : {}),
     ...(m.topic_uuid != null ? { topic_uuid: m.topic_uuid } : {}),
     display_recipient: m.display_recipient,
     channel: typeof m.display_recipient === "string" ? m.display_recipient : undefined,
@@ -87,6 +89,8 @@ export function mockMessageFromGetMessageApiData(data: unknown): MockMessage | n
     topic_uuid: row.topic_uuid,
     type: row.type,
     stream_uuid: row.stream_uuid ?? null,
+    source_name: row.source_name,
+    source: row.source,
     flags: row.flags,
     reactions: row.reactions ?? {},
     markdown_source: markdownSource,

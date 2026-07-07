@@ -86,6 +86,15 @@ import type { ChatListState, MessageLocation } from "./chat-list.model.types";
 type StreamTopicEntryInternal =
   StreamEntryInternal["topics"] extends Map<string, infer TopicEntry> ? TopicEntry : never;
 
+function sourceMetadataEqual(
+  left: StreamTopicEntryInternal["source"] | undefined,
+  right: StreamTopicEntryInternal["source"] | undefined,
+): boolean {
+  if (left === right) return true;
+  if (left == null || right == null) return left == null && right == null;
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 function isStreamTopicShellSynced(
   existing: StreamTopicEntryInternal | undefined,
   topicUuid: string,
@@ -93,13 +102,17 @@ function isStreamTopicShellSynced(
   unreadCount: number,
   isDone: boolean,
   color: number | undefined,
+  sourceName: StreamTopicEntryInternal["sourceName"] | undefined,
+  source: StreamTopicEntryInternal["source"] | undefined,
 ): boolean {
   return (
     existing?.topicUuid === topicUuid &&
     existing.subject === topicName &&
     existing.unreadCount === unreadCount &&
     (existing.isDone ?? false) === isDone &&
-    existing.color === color
+    existing.color === color &&
+    existing.sourceName === sourceName &&
+    sourceMetadataEqual(existing.source, source)
   );
 }
 
@@ -163,6 +176,8 @@ function streamsMapToSortedStreams(
           badge: t.unreadCount > 0 ? t.unreadCount : undefined,
           isDone: t.isDone === true ? true : undefined,
           ...(t.color != null ? { color: t.color } : {}),
+          ...(t.sourceName != null ? { sourceName: t.sourceName } : {}),
+          ...(t.source != null ? { source: t.source } : {}),
           hasMention: mentionFlags.topicKeys.has(buildTopicMentionKey(s.streamUuid, t.subject))
             ? true
             : undefined,
@@ -172,6 +187,8 @@ function streamsMapToSortedStreams(
         streamUuid: s.streamUuid,
         private: s.private,
         ...(s.color != null ? { color: s.color } : {}),
+        ...(s.sourceName != null ? { sourceName: s.sourceName } : {}),
+        ...(s.source != null ? { source: s.source } : {}),
         name: s.name,
         lastMessage: s.lastMessage,
         lastMessageSenderName: s.lastMessageSenderName,
@@ -300,6 +317,12 @@ function hasStreamMetadataAccessChanged(
     return true;
   }
   if (existing.private !== nextEntry.private) {
+    return true;
+  }
+  if (existing.sourceName !== nextEntry.sourceName) {
+    return true;
+  }
+  if (!sourceMetadataEqual(existing.source, nextEntry.source)) {
     return true;
   }
   if (
@@ -663,8 +686,19 @@ export const useChatListStore = create<ChatListState>((set, get) => {
           const unreadCount = row.unreadCount ?? existing?.unreadCount ?? 0;
           const isDone = row.isDone ?? existing?.isDone ?? false;
           const color = row.color ?? existing?.color;
+          const sourceName = row.sourceName ?? existing?.sourceName;
+          const source = row.source ?? existing?.source;
           if (
-            isStreamTopicShellSynced(existing, topicUuid, topicName, unreadCount, isDone, color)
+            isStreamTopicShellSynced(
+              existing,
+              topicUuid,
+              topicName,
+              unreadCount,
+              isDone,
+              color,
+              sourceName,
+              source,
+            )
           ) {
             continue;
           }
@@ -687,6 +721,8 @@ export const useChatListStore = create<ChatListState>((set, get) => {
             subject: topicName,
             unreadCount,
             ...(color != null ? { color } : {}),
+            ...(sourceName != null ? { sourceName } : {}),
+            ...(source != null ? { source } : {}),
           };
           if (isDone) {
             nextTopic.isDone = true;

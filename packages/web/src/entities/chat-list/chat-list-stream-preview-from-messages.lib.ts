@@ -13,6 +13,14 @@ import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import { streamTopicCompositeKey } from "./chat-list-stream-topic-index.lib";
 
+type StreamTopicEntryInternal =
+  StreamEntryInternal["topics"] extends Map<string, infer TopicEntry> ? TopicEntry : never;
+
+interface MergeStreamPreviewEntryOptions {
+  topicSourceName?: StreamTopicEntryInternal["sourceName"];
+  topicSource?: StreamTopicEntryInternal["source"];
+}
+
 export function filterStreamMessagesForSidebar(
   messages: readonly WorkspaceRawMessage[],
 ): WorkspaceRawMessage[] {
@@ -74,10 +82,13 @@ function mergeStreamPreviewEntry(
   topicTs: number,
   lastMessageId?: MessageId,
   topicUuid?: string,
+  options: MergeStreamPreviewEntryOptions = {},
 ): StreamEntryInternal {
   const existingTopic = existing?.topics.get(topicSubject);
   const unreadCount = existingTopic?.unreadCount ?? 0;
   const resolvedTopicUuid = topicUuid ?? existingTopic?.topicUuid;
+  const resolvedTopicSourceName = existingTopic?.sourceName ?? options.topicSourceName;
+  const resolvedTopicSource = existingTopic?.source ?? options.topicSource;
   const topicColor = existingTopic?.color;
   const topicEntry = {
     ...(resolvedTopicUuid != null ? { topicUuid: resolvedTopicUuid } : {}),
@@ -88,6 +99,8 @@ function mergeStreamPreviewEntry(
     ts: topicTs,
     unreadCount,
     ...(topicColor != null ? { color: topicColor } : {}),
+    ...(resolvedTopicSourceName != null ? { sourceName: resolvedTopicSourceName } : {}),
+    ...(resolvedTopicSource != null ? { source: resolvedTopicSource } : {}),
     lastMessageId,
   };
   if (!existing) {
@@ -105,6 +118,8 @@ function mergeStreamPreviewEntry(
     streamUuid: existing.streamUuid,
     private: existing.private,
     ...(existing.color != null ? { color: existing.color } : {}),
+    ...(existing.sourceName != null ? { sourceName: existing.sourceName } : {}),
+    ...(existing.source != null ? { source: existing.source } : {}),
     name: existing.name,
     lastMessage: newerStream ? lastMessage : existing.lastMessage,
     lastMessageSenderName: newerStream ? lastMessageSenderName : existing.lastMessageSenderName,
@@ -180,6 +195,10 @@ export function mergeStreamSidebarPreviewsFromMessages(
         topic.ts,
         m.id,
         topic.topicUuid,
+        {
+          topicSourceName: topic.sourceName,
+          topicSource: topic.source,
+        },
       ),
     );
   }

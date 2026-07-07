@@ -40,6 +40,8 @@ interface StreamTopicEntry {
   time: string;
   ts: number;
   unreadCount: number;
+  sourceName?: WorkspaceRawMessage["source_name"];
+  source?: WorkspaceRawMessage["source"];
   lastMessageId?: MessageId;
 }
 
@@ -83,6 +85,8 @@ export function messageToStreamEntry(m: WorkspaceRawMessage): {
     time,
     ts: m.timestamp,
     unreadCount: 0,
+    ...(m.source_name != null ? { sourceName: m.source_name } : {}),
+    ...(m.source != null ? { source: m.source } : {}),
     lastMessageId: m.id,
   };
   return {
@@ -224,6 +228,8 @@ function upsertStreamFromMessage(
     ...streamResult.topic,
     unreadCount: 0,
     ...(existingTopic?.color != null ? { color: existingTopic.color } : {}),
+    ...(existingTopic?.sourceName != null ? { sourceName: existingTopic.sourceName } : {}),
+    ...(existingTopic?.source != null ? { source: existingTopic.source } : {}),
     lastMessageId: m.id,
   };
   if (!existing) {
@@ -296,11 +302,15 @@ function mapInternalStreamToSidebar(s: StreamEntryInternal): StreamWithLast {
       time: t.time,
       badge: t.unreadCount > 0 ? t.unreadCount : undefined,
       ...(t.color != null ? { color: t.color } : {}),
+      ...(t.sourceName != null ? { sourceName: t.sourceName } : {}),
+      ...(t.source != null ? { source: t.source } : {}),
     }));
   const badge = s.unreadCount ?? 0;
   return {
     private: s.private,
     ...(s.color != null ? { color: s.color } : {}),
+    ...(s.sourceName != null ? { sourceName: s.sourceName } : {}),
+    ...(s.source != null ? { source: s.source } : {}),
     streamUuid: s.streamUuid,
     name: s.name,
     lastMessage: s.lastMessage,

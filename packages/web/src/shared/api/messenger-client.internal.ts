@@ -3,7 +3,6 @@
  * Internal module for shared/api and `messenger-*` modules.
  */
 import { t } from "~/i18n/i18n";
-import type { MessengerMessagesNarrowClause } from "~/shared/lib/messenger-topic-narrow.lib";
 import { getCurrentInstance } from "./client";
 import { messengerPipelineGet } from "./messenger-pipeline.internal";
 import { normalizeRealm as normalizeRealmUrl } from "./messenger-realm.internal";
@@ -19,13 +18,13 @@ export interface WorkspaceClient {
   };
   messages: {
     retrieve: (params: {
-      narrow?: MessengerMessagesNarrowClause[];
-      anchor?: string | number;
-      num_before?: number;
-      num_after?: number;
-      include_anchor?: boolean;
-      allow_empty_topic_name?: boolean;
-      apply_markdown?: boolean;
+      page_limit?: number;
+      page_marker?: string;
+      sort_key?: string;
+      sort_dir?: "asc" | "desc";
+      stream_uuid?: string;
+      topic_uuid?: string;
+      starred?: boolean;
     }) => Promise<{
       messages?: {
         id: number;
@@ -45,20 +44,30 @@ export interface WorkspaceClient {
 let clientCache: { instanceId: string; promise: Promise<WorkspaceClient> } | null = null;
 
 export function buildMessagesQueryParams(params: {
-  narrow?: unknown;
-  anchor?: string | number;
-  num_before?: number;
-  num_after?: number;
+  page_limit?: number;
+  page_marker?: string;
+  sort_key?: string;
+  sort_dir?: "asc" | "desc";
+  stream_uuid?: string;
+  topic_uuid?: string;
+  starred?: boolean;
 }): Record<string, string> {
   const query: Record<string, string> = {
-    anchor: String(params.anchor ?? "newest"),
-    num_before: String(params.num_before ?? 100),
-    num_after: String(params.num_after ?? 0),
-    allow_empty_topic_name: "true",
-    apply_markdown: "false",
+    page_limit: String(Math.max(1, params.page_limit ?? 100)),
+    sort_key: params.sort_key ?? "created_at",
+    sort_dir: params.sort_dir ?? "desc",
   };
-  if (params.narrow != null) {
-    query.narrow = JSON.stringify(params.narrow);
+  if (params.page_marker != null && params.page_marker.trim().length > 0) {
+    query.page_marker = params.page_marker.trim();
+  }
+  if (params.stream_uuid != null) {
+    query.stream_uuid = params.stream_uuid;
+  }
+  if (params.topic_uuid != null) {
+    query.topic_uuid = params.topic_uuid;
+  }
+  if (params.starred != null) {
+    query.starred = params.starred ? "true" : "false";
   }
   return query;
 }
@@ -105,7 +114,7 @@ function createRestClient(): Promise<WorkspaceClient> {
     },
     messages: {
       retrieve: async (params) => {
-        const res = await messengerPipelineGet("/messages", buildMessagesQueryParams(params));
+        const res = await messengerPipelineGet("/messages/", buildMessagesQueryParams(params));
         if (!res?.ok) {
           return { result: "error", messages: [] };
         }

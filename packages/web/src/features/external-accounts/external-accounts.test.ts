@@ -63,6 +63,7 @@ describe("external accounts API", () => {
       uuid: "account-1",
       externalUserId: "42",
       accountType: "zulip",
+      hasCredentials: true,
       status: "active",
       accountSettings: {
         kind: "zulip",
@@ -87,7 +88,7 @@ describe("external accounts API", () => {
     );
   });
 
-  it("maps a Zulip account with user info but without stored credentials", async () => {
+  it("maps a Zulip account without stored credentials as not linked", async () => {
     messengerApi.getWithBase.mockResolvedValue(
       okResponse([
         {
@@ -115,6 +116,7 @@ describe("external accounts API", () => {
     expect(account).toMatchObject({
       uuid: "account-2",
       accountType: "zulip",
+      hasCredentials: false,
       status: "active",
       accountSettings: {
         kind: "zulip",

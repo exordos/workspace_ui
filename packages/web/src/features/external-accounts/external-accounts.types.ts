@@ -22,6 +22,7 @@ export interface ZulipExternalAccount {
   uuid: string;
   externalUserId?: string;
   accountType: ExternalAccountType;
+  hasCredentials: boolean;
   status?: ExternalAccountStatus;
   accountSettings: ZulipExternalAccountSettings;
   createdAt?: string;

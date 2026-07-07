@@ -81,6 +81,21 @@ describe("parseMeMessage", () => {
     ).toEqual({ thumbs_up: 2, eyes: 1 });
   });
 
+  it("preserves backend source metadata", () => {
+    const source = {
+      kind: "zulip",
+      server_url: "https://zulip.example",
+      stream_id: 42,
+      topic_name: "general",
+      message_id: 1001,
+    };
+
+    expect(parseMeMessage(rawRow({ source_name: "zulip", source }))).toMatchObject({
+      source_name: "zulip",
+      source,
+    });
+  });
+
   it("coerces flags to booleans and tolerates missing optional fields", () => {
     const parsed = parseMeMessage({
       uuid: MSG_UUID_1,
@@ -236,9 +251,23 @@ describe("fetchMyMessages", () => {
 
 describe("meMessageToMockMessage", () => {
   it("maps content, markdown source, flags, and timestamp", () => {
+    const source = {
+      kind: "zulip",
+      server_url: "https://zulip.example",
+      stream_id: 42,
+      topic_name: "general",
+      message_id: 1001,
+    };
     const mock = meMessageToMockMessage(
       parseMeMessage(
-        rawRow({ read: true, pinned: true, starred: true, reactions: { thumbs_up: 2 } }),
+        rawRow({
+          read: true,
+          pinned: true,
+          starred: true,
+          reactions: { thumbs_up: 2 },
+          source_name: "zulip",
+          source,
+        }),
       )!,
     );
 
@@ -255,6 +284,8 @@ describe("meMessageToMockMessage", () => {
       markdown_source: "Hello world",
       flags: ["read", "pinned", "starred"],
       reactions: { thumbs_up: 2 },
+      source_name: "zulip",
+      source,
       timestamp: Math.floor(Date.parse("2026-06-21T10:20:00Z") / 1000),
     });
   });

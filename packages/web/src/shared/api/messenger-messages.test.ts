@@ -33,17 +33,39 @@ import {
 const mockMessengerApi = getMockMessengerApi();
 const mockRefreshMessengerApiBase = getMockRefreshMessengerApiBase();
 
-function mockMessagesResponse(data: Record<string, unknown>): void {
-  mockMessengerApi.get.mockResolvedValue({
+const STREAM_UUID = "22222222-2222-4222-8222-222222222222";
+const TOPIC_UUID = "33333333-3333-4333-8333-333333333333";
+const AUTHOR_UUID = "55555555-5555-4555-8555-555555555555";
+
+function nativeMessageRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    uuid: "00000000-0000-4000-8000-000000000001",
+    stream_uuid: STREAM_UUID,
+    topic_uuid: TOPIC_UUID,
+    author_uuid: AUTHOR_UUID,
+    payload: { kind: "markdown", content: "hello" },
+    is_own: false,
+    read: true,
+    pinned: false,
+    starred: false,
+    created_at: "2026-06-22T10:00:00Z",
+    updated_at: "2026-06-22T10:00:00Z",
+    ...overrides,
+  };
+}
+
+function nativeMessagesPage(rows: unknown[], nextMarker?: string) {
+  return {
     ok: true,
     status: 200,
-    data,
+    data: rows,
+    headers: new Headers(nextMarker != null ? { "X-Pagination-Marker": nextMarker } : {}),
     raw: { statusText: "OK" },
-  });
+  };
 }
 
 describe("rawMessageToMockMessage", () => {
-  const streamUuid = "22222222-2222-4222-8222-222222222222";
+  const streamUuid = STREAM_UUID;
 
   it("maps a stream message", () => {
     const result = rawMessageToMockMessage({
@@ -123,109 +145,81 @@ describe("rawMessageToMockMessage", () => {
 });
 describe("fetchRecentMessages", () => {
   it("returns messages on success", async () => {
-    mockMessengerApi.get.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: {
-        result: "success",
-        messages: [
-          {
-            id: "00000000-0000-4000-8000-000000000001",
-            sender_id: 42,
-            content: "hi",
-            timestamp: 100,
-            display_recipient: "general",
-            subject: "test",
-          },
-        ],
-      },
-      raw: { statusText: "OK" },
-    });
+    mockMessengerApi.getWithBase.mockResolvedValue(
+      nativeMessagesPage([
+        nativeMessageRow({
+          uuid: "00000000-0000-4000-8000-000000000001",
+          payload: { kind: "markdown", content: "hi" },
+        }),
+      ]),
+    );
     const result = await fetchRecentMessages();
     expect(result).toHaveLength(1);
     expect(result[0]!.id).toBe(testMessageId(1));
-    expect(mockRefreshMessengerApiBase).toHaveBeenCalled();
-    expect(mockMessengerApi.get).toHaveBeenCalledWith(
-      "/messages",
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      "/messages/",
       {
-        anchor: "newest",
-        num_before: "1000",
-        num_after: "0",
-        allow_empty_topic_name: "true",
-        apply_markdown: "false",
+        page_limit: "1000",
+        sort_key: "created_at",
+        sort_dir: "desc",
       },
       undefined,
     );
   });
 
   it("returns empty array on non-ok", async () => {
-    mockMessengerApi.get.mockResolvedValue({
+    mockMessengerApi.getWithBase.mockResolvedValue({
       ok: false,
       status: 500,
       data: {},
+      headers: new Headers(),
       raw: { statusText: "Server Error" },
     });
     expect(await fetchRecentMessages()).toEqual([]);
   });
 
-  it("returns empty array on error result", async () => {
-    mockMessengerApi.get.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: { result: "error" },
-      raw: { statusText: "OK" },
-    });
-    expect(await fetchRecentMessages()).toEqual([]);
-  });
-
   it("returns empty array on transport error", async () => {
-    mockMessengerApi.get.mockRejectedValue(new SyntaxError("bad"));
+    mockMessengerApi.getWithBase.mockRejectedValue(new SyntaxError("bad"));
     expect(await fetchRecentMessages()).toEqual([]);
   });
 });
 
 describe("fetchMessagesBeforeAnchor", () => {
   it("requests older messages window without including anchor", async () => {
-    mockMessengerApi.get.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: {
-        result: "success",
-        messages: [
-          {
-            id: "00000000-0000-4000-8000-000000000050",
-            sender_id: 1,
-            content: "older",
-            timestamp: 10,
-          },
-        ],
-      },
-      raw: { statusText: "OK" },
-    });
+    mockMessengerApi.getWithBase.mockResolvedValue(
+      nativeMessagesPage([
+        nativeMessageRow({
+          uuid: "00000000-0000-4000-8000-000000000050",
+          payload: { kind: "markdown", content: "older" },
+        }),
+      ]),
+    );
 
     const result = await fetchMessagesBeforeAnchor("00000000-0000-4000-8000-000000000100");
 
     expect(result).toHaveLength(1);
     expect(result[0]!.id).toBe(testMessageId(50));
-    expect(mockMessengerApi.get).toHaveBeenCalledWith(
-      "/messages",
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      "/messages/",
       {
-        anchor: testMessageId(100),
-        include_anchor: "false",
-        num_before: "5000",
-        num_after: "0",
-        allow_empty_topic_name: "true",
-        apply_markdown: "false",
+        page_limit: "5000",
+        sort_key: "created_at",
+        sort_dir: "desc",
+        page_marker: testMessageId(100),
       },
       undefined,
     );
   });
 
   it("returns empty array on non-ok response", async () => {
-    mockMessengerApi.get.mockResolvedValue({
+    mockMessengerApi.getWithBase.mockResolvedValue({
       ok: false,
       status: 500,
       data: {},
+      headers: new Headers(),
       raw: { statusText: "Server Error" },
     });
 
@@ -237,43 +231,34 @@ describe("fetchMessagesBeforeAnchor", () => {
 
 describe("fetchMessagesAfterAnchor", () => {
   it("requests newer messages window without including anchor", async () => {
-    mockMessengerApi.get.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: {
-        result: "success",
-        messages: [
-          {
-            id: "00000000-0000-4000-8000-000000000101",
-            sender_id: 1,
-            content: "new",
-            timestamp: 11,
-          },
-        ],
-      },
-      raw: { statusText: "OK" },
-    });
+    mockMessengerApi.getWithBase.mockResolvedValue(
+      nativeMessagesPage([
+        nativeMessageRow({
+          uuid: "00000000-0000-4000-8000-000000000101",
+          payload: { kind: "markdown", content: "new" },
+        }),
+      ]),
+    );
 
     const result = await fetchMessagesAfterAnchor("00000000-0000-4000-8000-000000000100");
 
     expect(result).toHaveLength(1);
     expect(result[0]!.id).toBe(testMessageId(101));
-    expect(mockMessengerApi.get).toHaveBeenCalledWith(
-      "/messages",
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      "/messages/",
       {
-        anchor: testMessageId(100),
-        include_anchor: "false",
-        num_before: "0",
-        num_after: "5000",
-        allow_empty_topic_name: "true",
-        apply_markdown: "false",
+        page_limit: "5000",
+        sort_key: "created_at",
+        sort_dir: "asc",
+        page_marker: testMessageId(100),
       },
       undefined,
     );
   });
 
   it("returns empty array on transport error", async () => {
-    mockMessengerApi.get.mockRejectedValue(new Error("boom"));
+    mockMessengerApi.getWithBase.mockRejectedValue(new Error("boom"));
     await expect(fetchMessagesAfterAnchor("00000000-0000-4000-8000-000000000100")).resolves.toEqual(
       [],
     );
@@ -285,63 +270,87 @@ describe("fetchMessagesAfterAnchor", () => {
 // ---------------------------------------------------------------------------
 
 describe("fetchActivityMessages", () => {
-  it("fetches starred messages", async () => {
-    mockMessengerApi.get.mockResolvedValue({
+  const currentUserUuid = "55555555-5555-4555-8555-555555555555";
+
+  function nativeActivityMessageRow(overrides: Record<string, unknown> = {}) {
+    return {
+      uuid: "00000000-0000-4000-8000-000000000001",
+      stream_uuid: "22222222-2222-4222-8222-222222222222",
+      author_uuid: "66666666-6666-4666-8666-666666666666",
+      user_uuid: currentUserUuid,
+      payload: { kind: "markdown", content: "hello" },
+      is_own: false,
+      read: true,
+      pinned: false,
+      starred: false,
+      created_at: "2026-06-22T10:00:00Z",
+      updated_at: "2026-06-22T10:00:00Z",
+      ...overrides,
+    };
+  }
+
+  function nativeActivityMessagesPage(data: unknown, nextMarker?: string) {
+    return {
       ok: true,
       status: 200,
-      data: {
-        result: "success",
-        messages: [
-          { id: "00000000-0000-4000-8000-000000000001", sender_id: 1, content: "x", timestamp: 1 },
-        ],
-      },
+      data,
+      headers: new Headers(nextMarker == null ? undefined : { "X-Pagination-Marker": nextMarker }),
       raw: { statusText: "OK" },
-    });
+    };
+  }
+
+  it("fetches starred messages through the native endpoint without legacy narrow params", async () => {
+    mockMessengerApi.getWithBase.mockResolvedValue(
+      nativeActivityMessagesPage([nativeActivityMessageRow({ starred: true })]),
+    );
+
     const result = await fetchActivityMessages("starred");
     expect(result).toHaveLength(1);
-    expect(mockMessengerApi.get).toHaveBeenCalledWith(
-      "/messages",
+    expect(result[0]?.flags).toContain("starred");
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      "/messages/",
       {
-        anchor: "newest",
-        num_before: "200",
-        num_after: "0",
-        narrow: JSON.stringify([{ negated: false, operator: "is", operand: "starred" }]),
-        allow_empty_topic_name: "true",
-        apply_markdown: "false",
+        page_limit: "200",
+        sort_key: "created_at",
+        sort_dir: "desc",
+        starred: "true",
       },
       undefined,
     );
+    const params = mockMessengerApi.getWithBase.mock.calls[0]?.[2] as Record<string, string>;
+    expect(params).not.toHaveProperty("anchor");
+    expect(params).not.toHaveProperty("num_before");
+    expect(params).not.toHaveProperty("num_after");
+    expect(params).not.toHaveProperty("narrow");
+    expect(params).not.toHaveProperty("allow_empty_topic_name");
+    expect(params).not.toHaveProperty("apply_markdown");
   });
 
-  it("throws on API error result", async () => {
-    mockMessengerApi.get.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: { result: "error", msg: "invalid narrow" },
-      raw: { statusText: "OK" },
-    });
-    await expect(fetchActivityMessages("mentions")).rejects.toThrow(/invalid narrow/i);
-  });
-});
-
-describe("fetchActivityMessagesPage", () => {
-  it("preserves found-oldest metadata from the server", async () => {
-    mockMessengerApi.get.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: {
-        result: "success",
-        messages: [
-          { id: "00000000-0000-4000-8000-000000000001", sender_id: 1, content: "x", timestamp: 1 },
-        ],
-        found_oldest: true,
-      },
+  it("returns empty activity on native API error", async () => {
+    mockMessengerApi.getWithBase.mockResolvedValue({
+      ok: false,
+      status: 404,
+      data: { msg: "not found" },
+      headers: new Headers(),
       raw: { statusText: "OK" },
     });
 
-    const result = await fetchActivityMessagesPage("mentions");
+    await expect(fetchActivityMessages("mentions", currentUserUuid)).resolves.toEqual([]);
+  });
 
-    expect(result.foundOldest).toBe(true);
+  it("preserves native pagination metadata from the server", async () => {
+    mockMessengerApi.getWithBase.mockResolvedValue(
+      nativeActivityMessagesPage(
+        [nativeActivityMessageRow({ starred: true })],
+        "00000000-0000-4000-8000-000000000999",
+      ),
+    );
+
+    const result = await fetchActivityMessagesPage("starred", null, "newest", 1);
+
+    expect(result.foundOldest).toBe(false);
     expect(result.messages).toHaveLength(1);
   });
 
@@ -350,33 +359,58 @@ describe("fetchActivityMessagesPage", () => {
       /fetchActivityMessagesPage\.anchor/i,
     );
     expect(mockMessengerApi.get).not.toHaveBeenCalled();
+    expect(mockMessengerApi.getWithBase).not.toHaveBeenCalled();
   });
 
-  it("requests has:reaction narrow for reactions filter", async () => {
-    mockMessengerApi.get.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: {
-        result: "success",
-        messages: [
-          { id: "00000000-0000-4000-8000-000000000001", sender_id: 42, content: "x", timestamp: 1 },
-        ],
-        found_oldest: true,
-      },
-      raw: { statusText: "OK" },
-    });
+  it("filters mentions locally without issuing the legacy mentioned narrow", async () => {
+    mockMessengerApi.getWithBase.mockResolvedValue(
+      nativeActivityMessagesPage([
+        nativeActivityMessageRow({
+          uuid: "00000000-0000-4000-8000-000000000001",
+          payload: { kind: "markdown", content: `hello <@${currentUserUuid}>` },
+        }),
+        nativeActivityMessageRow({
+          uuid: "00000000-0000-4000-8000-000000000002",
+          payload: { kind: "markdown", content: "not for me" },
+        }),
+      ]),
+    );
+
+    const result = await fetchActivityMessagesPage("mentions", currentUserUuid);
+
+    expect(result.foundOldest).toBe(true);
+    expect(result.messages.map((message) => message.id)).toEqual([testMessageId(1)]);
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
+    const params = mockMessengerApi.getWithBase.mock.calls[0]?.[2] as Record<string, string>;
+    expect(params).not.toHaveProperty("narrow");
+  });
+
+  it("filters reactions locally from the native message rows", async () => {
+    mockMessengerApi.getWithBase.mockResolvedValue(
+      nativeActivityMessagesPage([
+        nativeActivityMessageRow({
+          uuid: "00000000-0000-4000-8000-000000000001",
+          is_own: true,
+          reactions: { thumbs_up: 2 },
+        }),
+        nativeActivityMessageRow({
+          uuid: "00000000-0000-4000-8000-000000000002",
+          is_own: false,
+          reactions: { eyes: 1 },
+        }),
+      ]),
+    );
 
     await fetchActivityMessagesPage("reactions", null);
 
-    expect(mockMessengerApi.get).toHaveBeenCalledWith(
-      "/messages",
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      "/messages/",
       {
-        anchor: "newest",
-        num_before: "200",
-        num_after: "0",
-        narrow: JSON.stringify([{ negated: false, operator: "has", operand: "reaction" }]),
-        allow_empty_topic_name: "true",
-        apply_markdown: "false",
+        page_limit: "200",
+        sort_key: "created_at",
+        sort_dir: "desc",
       },
       undefined,
     );
@@ -392,89 +426,62 @@ describe("fetchMessagesByIds", () => {
     expect(mockMessengerApi.get).not.toHaveBeenCalled();
   });
 
-  it("requests messages by message_ids batch", async () => {
-    mockMessengerApi.get.mockResolvedValue({
+  it("requests messages by id through the native endpoint", async () => {
+    const messageId = "00000000-0000-4000-8000-000000000501";
+    mockMessengerApi.getWithBase.mockResolvedValue({
       ok: true,
       status: 200,
-      data: {
-        result: "success",
-        messages: [
-          {
-            id: "00000000-0000-4000-8000-000000000501",
-            sender_id: 42,
-            sender_full_name: "Alice",
-            content: "dm preview",
-            timestamp: 1710000200,
-            type: "private",
-            stream_uuid: null,
-            display_recipient: [
-              { id: 7, full_name: "Bob" },
-              { id: 42, full_name: "Alice" },
-            ],
-          },
-        ],
-      },
+      data: nativeMessageRow({
+        uuid: messageId,
+        payload: { kind: "markdown", content: "dm preview" },
+      }),
       raw: { statusText: "OK" },
     });
 
-    const messageId = "00000000-0000-4000-8000-000000000501";
     const result = await fetchMessagesByIds([messageId, messageId, "not-a-message-id"]);
 
     expect(result).toHaveLength(1);
     expect(result[0]?.id).toBe(messageId);
-    expect(mockMessengerApi.get).toHaveBeenCalledWith(
-      "/messages",
-      {
-        message_ids: JSON.stringify([messageId]),
-        allow_empty_topic_name: "true",
-        apply_markdown: "false",
-      },
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      `/messages/${messageId}`,
+      undefined,
       undefined,
     );
   });
 
-  it("falls back to per-message fetch when batch request fails", async () => {
-    mockMessengerApi.get
+  it("skips messages that are missing from the native endpoint", async () => {
+    mockMessengerApi.getWithBase
       .mockResolvedValueOnce({
         ok: false,
-        status: 400,
-        data: { result: "error", msg: "message_ids not supported" },
-        raw: { statusText: "Bad Request" },
+        status: 404,
+        data: { msg: "not found" },
+        raw: { statusText: "Not Found" },
       })
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        data: {
-          result: "success",
-          message: {
-            id: "00000000-0000-4000-8000-000000000777",
-            sender_id: 42,
-            sender_full_name: "Alice",
-            content: "fallback dm",
-            timestamp: 1710000300,
-            type: "private",
-            stream_uuid: null,
-            display_recipient: [
-              { id: 7, full_name: "Bob" },
-              { id: 42, full_name: "Alice" },
-            ],
-          },
-        },
+        data: nativeMessageRow({
+          uuid: "00000000-0000-4000-8000-000000000777",
+          payload: { kind: "markdown", content: "fallback dm" },
+        }),
         raw: { statusText: "OK" },
       });
 
-    const result = await fetchMessagesByIds(["00000000-0000-4000-8000-000000000777"]);
+    const result = await fetchMessagesByIds([
+      "00000000-0000-4000-8000-000000000776",
+      "00000000-0000-4000-8000-000000000777",
+    ]);
 
     expect(result).toHaveLength(1);
     expect(result[0]?.content).toBe("fallback dm");
-    expect(mockMessengerApi.get).toHaveBeenCalledTimes(2);
-    expect(mockMessengerApi.get).toHaveBeenNthCalledWith(
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledTimes(2);
+    expect(mockMessengerApi.getWithBase).toHaveBeenNthCalledWith(
       2,
+      "/api/messenger/v1",
       `/messages/${testMessageId(777)}`,
-      {
-        allow_empty_topic_name: "true",
-        apply_markdown: "false",
-      },
+      undefined,
       undefined,
     );
   });
@@ -514,70 +521,68 @@ describe("fetchMessageById", () => {
 });
 
 describe("fetchMessages", () => {
-  it("returns mapped messages with narrow", async () => {
-    mockMessagesResponse({
-      messages: [
-        {
-          id: "00000000-0000-4000-8000-000000000010",
-          sender_id: 1,
-          content: "test",
-          timestamp: 100,
-          display_recipient: "general",
-          subject: "topic1",
-        },
-      ],
-    });
+  it("returns native messages for UUID stream and topic filters", async () => {
+    mockMessengerApi.getWithBase.mockResolvedValue(
+      nativeMessagesPage([
+        nativeMessageRow({
+          uuid: "00000000-0000-4000-8000-000000000010",
+          payload: { kind: "markdown", content: "test" },
+        }),
+      ]),
+    );
 
-    const result = await fetchMessages("general", "topic1");
+    const result = await fetchMessages(STREAM_UUID, TOPIC_UUID);
     expect(result).toHaveLength(1);
     expect(result[0]!.id).toBe(testMessageId(10));
-  });
-
-  it("uses literal general topic narrow operand for literal general topic route", async () => {
-    mockMessagesResponse({ messages: [] });
-    await fetchMessages("engineering", "general");
-    expect(mockMessengerApi.get).toHaveBeenCalledWith(
-      "/messages",
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      "/messages/",
       expect.objectContaining({
-        narrow: JSON.stringify([
-          { operator: "stream", operand: "engineering" },
-          { operator: "topic", operand: "general" },
-        ]),
+        stream_uuid: STREAM_UUID,
+        topic_uuid: TOPIC_UUID,
       }),
       undefined,
     );
   });
 
-  it("uses empty topic narrow operand for explicit empty topic route", async () => {
-    mockMessagesResponse({ messages: [] });
-    await fetchMessages("engineering", "");
-    expect(mockMessengerApi.get).toHaveBeenCalledWith(
-      "/messages",
-      expect.objectContaining({
-        narrow: JSON.stringify([
-          { operator: "stream", operand: "engineering" },
-          { operator: "topic", operand: "" },
-        ]),
-      }),
-      undefined,
+  it("filters search locally over native message rows", async () => {
+    mockMessengerApi.getWithBase.mockResolvedValue(
+      nativeMessagesPage([
+        nativeMessageRow({
+          uuid: "00000000-0000-4000-8000-000000000010",
+          payload: { kind: "markdown", content: "needle text" },
+        }),
+        nativeMessageRow({
+          uuid: "00000000-0000-4000-8000-000000000011",
+          payload: { kind: "markdown", content: "other text" },
+        }),
+      ]),
     );
+
+    const result = await fetchMessages(undefined, undefined, "needle");
+    expect(result.map((message) => message.id)).toEqual([testMessageId(10)]);
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
   });
 
-  it("returns empty array on error result", async () => {
-    mockMessagesResponse({ result: "error" });
+  it("returns empty array for unsupported legacy stream-name filters without a legacy request", async () => {
     expect(await fetchMessages("general")).toEqual([]);
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
+    expect(mockMessengerApi.getWithBase).not.toHaveBeenCalled();
   });
 
   it("returns empty array on exception", async () => {
-    mockMessengerApi.get.mockRejectedValue(new Error("Network"));
-    expect(await fetchMessages("general")).toEqual([]);
+    mockMessengerApi.getWithBase.mockRejectedValue(new Error("Network"));
+    expect(await fetchMessages()).toEqual([]);
   });
 
-  it("passes no narrow when no filters given", async () => {
-    mockMessagesResponse({ messages: [] });
+  it("passes no legacy narrow when no filters are given", async () => {
+    mockMessengerApi.getWithBase.mockResolvedValue(nativeMessagesPage([]));
     await fetchMessages();
-    expect(mockMessengerApi.get).toHaveBeenCalledWith(
-      "/messages",
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      "/messages/",
       expect.not.objectContaining({ narrow: expect.anything() }),
       undefined,
     );
@@ -603,62 +608,97 @@ describe("fetchMessages", () => {
 // ---------------------------------------------------------------------------
 
 describe("fetchMessagesWithNarrow", () => {
-  it("passes narrow, anchor, and counts to client", async () => {
-    mockMessagesResponse({ messages: [] });
-    await fetchMessagesWithNarrow([{ operator: "is", operand: "unread" }], "newest", 200, 0);
-    expect(mockMessengerApi.get).toHaveBeenCalledWith(
-      "/messages",
+  it("maps supported unread narrow to the native endpoint without legacy narrow params", async () => {
+    mockMessengerApi.getWithBase.mockResolvedValue(
+      nativeMessagesPage([
+        nativeMessageRow({
+          uuid: "00000000-0000-4000-8000-000000000001",
+          read: false,
+        }),
+        nativeMessageRow({
+          uuid: "00000000-0000-4000-8000-000000000002",
+          read: true,
+        }),
+      ]),
+    );
+
+    const result = await fetchMessagesWithNarrow(
+      [{ operator: "is", operand: "unread" }],
+      "newest",
+      200,
+      0,
+    );
+
+    expect(result.map((message) => message.id)).toEqual([testMessageId(1)]);
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      "/messages/",
       expect.objectContaining({
-        narrow: JSON.stringify([{ operator: "is", operand: "unread" }]),
-        anchor: "newest",
-        num_before: "200",
-        num_after: "0",
-        apply_markdown: "false",
+        page_limit: "200",
+        sort_key: "created_at",
+        sort_dir: "desc",
       }),
       undefined,
     );
+    const params = mockMessengerApi.getWithBase.mock.calls[0]?.[2] as Record<string, string>;
+    expect(params).not.toHaveProperty("narrow");
+    expect(params).not.toHaveProperty("anchor");
   });
 
-  it("returns empty on error result", async () => {
-    mockMessagesResponse({ result: "error" });
+  it("returns empty on native endpoint error", async () => {
+    mockMessengerApi.getWithBase.mockResolvedValue({
+      ok: false,
+      status: 500,
+      data: { msg: "server" },
+      headers: new Headers(),
+      raw: { statusText: "Server Error" },
+    });
     expect(await fetchMessagesWithNarrow([])).toEqual([]);
   });
 
   it("allows callers to explicitly request rendered HTML", async () => {
-    mockMessagesResponse({ messages: [] });
-    await fetchMessagesWithNarrow([{ operator: "stream", operand: "general" }], "newest", 200, 0, {
-      applyMarkdown: true,
-    });
-    expect(mockMessengerApi.get).toHaveBeenCalledWith(
-      "/messages",
+    mockMessengerApi.getWithBase.mockResolvedValue(
+      nativeMessagesPage([
+        nativeMessageRow({
+          uuid: "00000000-0000-4000-8000-000000000020",
+          payload: { kind: "markdown", content: "**bold**" },
+        }),
+      ]),
+    );
+    const result = await fetchMessagesWithNarrow(
+      [{ operator: "stream", operand: STREAM_UUID }],
+      "newest",
+      200,
+      0,
+      {
+        applyMarkdown: true,
+      },
+    );
+    expect(result[0]?.content).toContain("<strong>bold</strong>");
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      "/messages/",
       expect.objectContaining({
-        narrow: JSON.stringify([{ operator: "stream", operand: "general" }]),
-        apply_markdown: "true",
+        stream_uuid: STREAM_UUID,
       }),
       undefined,
     );
   });
 
   it("preserves markdown_source for html-like text in markdown mode", async () => {
-    mockMessagesResponse({
-      messages: [
-        {
-          id: "00000000-0000-4000-8000-000000000001",
-          sender_id: 42,
-          content: '<img src="x" onerror="alert(1)">',
-          timestamp: 1710000000,
-          display_recipient: "general",
-          subject: "test",
-          type: "stream",
-          stream_uuid: "00000000-0000-4000-8000-000000000010",
-        },
-      ],
-      found_oldest: true,
-      found_newest: true,
-    });
+    mockMessengerApi.getWithBase.mockResolvedValue(
+      nativeMessagesPage([
+        nativeMessageRow({
+          uuid: "00000000-0000-4000-8000-000000000001",
+          stream_uuid: STREAM_UUID,
+          payload: { kind: "markdown", content: '<img src="x" onerror="alert(1)">' },
+        }),
+      ]),
+    );
 
     const result = await fetchMessagesWithNarrow(
-      [{ operator: "stream", operand: "general" }],
+      [{ operator: "stream", operand: STREAM_UUID }],
       "newest",
       200,
       0,
@@ -699,20 +739,14 @@ describe("fetchMessagesWithNarrow", () => {
   });
 
   it("fetchMessagesWithNarrowPage returns foundOldest and foundNewest from server", async () => {
-    mockMessagesResponse({
-      messages: [
-        {
-          id: "00000000-0000-4000-8000-000000000001",
-          sender_id: 1,
-          content: "x",
-          timestamp: 1,
-          type: "stream",
-          stream_uuid: "00000000-0000-4000-8000-000000000001",
-        },
-      ],
-      found_oldest: true,
-      found_newest: true,
-    });
+    mockMessengerApi.getWithBase.mockResolvedValue(
+      nativeMessagesPage([
+        nativeMessageRow({
+          uuid: "00000000-0000-4000-8000-000000000001",
+          read: false,
+        }),
+      ]),
+    );
     const page = await fetchMessagesWithNarrowPage(
       [{ operator: "is", operand: "unread" }],
       "newest",
@@ -722,6 +756,14 @@ describe("fetchMessagesWithNarrow", () => {
     expect(page.foundOldest).toBe(true);
     expect(page.foundNewest).toBe(true);
     expect(page.messages).toHaveLength(1);
+  });
+
+  it("returns empty without a request for unsupported legacy dm narrow", async () => {
+    await expect(
+      fetchMessagesWithNarrow([{ operator: "dm", operand: [42, 43] }], "newest", 200, 0),
+    ).resolves.toEqual([]);
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
+    expect(mockMessengerApi.getWithBase).not.toHaveBeenCalled();
   });
 });
 
@@ -841,62 +883,20 @@ describe("fetchAllMessagesPage", () => {
 });
 
 // ---------------------------------------------------------------------------
-// fetchDmMessages — uses Messenger REST client
+// fetchDmMessages — stream-only backend compatibility
 // ---------------------------------------------------------------------------
 
 describe("fetchDmMessages", () => {
-  it("returns DM messages for a single user", async () => {
-    mockMessagesResponse({
-      messages: [
-        {
-          id: "00000000-0000-4000-8000-000000000001",
-          sender_id: 42,
-          content: "dm",
-          timestamp: 100,
-          type: "private",
-          stream_uuid: null,
-        },
-      ],
-    });
-    const result = await fetchDmMessages(42);
-    expect(result).toHaveLength(1);
-    expect(result[0]!.stream_uuid).toBeNull();
-  });
-
-  it("handles array of user IDs", async () => {
-    mockMessagesResponse({ messages: [] });
-    await fetchDmMessages([42, 43]);
-    expect(mockMessengerApi.get).toHaveBeenCalledWith(
-      "/messages",
-      expect.objectContaining({
-        narrow: JSON.stringify([{ negated: false, operator: "dm", operand: [42, 43] }]),
-      }),
-      undefined,
-    );
-  });
-
-  it("returns empty on exception", async () => {
-    mockMessengerApi.get.mockRejectedValue(new Error("fail"));
+  it("returns empty for a single user without issuing a legacy dm narrow", async () => {
     expect(await fetchDmMessages(42)).toEqual([]);
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
+    expect(mockMessengerApi.getWithBase).not.toHaveBeenCalled();
   });
 
-  it("does not synthesize markdown_source for rendered html bodies", async () => {
-    mockMessagesResponse({
-      messages: [
-        {
-          id: "00000000-0000-4000-8000-000000000001",
-          sender_id: 42,
-          content: "<p>dm</p>",
-          timestamp: 100,
-          type: "private",
-          stream_uuid: null,
-        },
-      ],
-    });
-
-    const result = await fetchDmMessages(42);
-    expect(result[0]?.content).toBe("<p>dm</p>");
-    expect(result[0]?.markdown_source).toBeUndefined();
+  it("validates array user IDs without issuing a legacy dm narrow", async () => {
+    expect(await fetchDmMessages([42, 43])).toEqual([]);
+    expect(mockMessengerApi.get).not.toHaveBeenCalled();
+    expect(mockMessengerApi.getWithBase).not.toHaveBeenCalled();
   });
 
   it("throws for invalid user id", async () => {
