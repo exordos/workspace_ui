@@ -1,8 +1,9 @@
-import { fireEvent, render, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCallParticipantsStore } from "~/entities/call/call.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
+import { t } from "~/i18n/i18n";
 import type { MockMessage } from "~/shared/api/messenger.types";
 import { createUser } from "~/test/factories";
 import { MessageBubble } from "./message-bubble.ui";
@@ -53,6 +54,16 @@ describe("MessageBubble markdown body", () => {
     const body = container.querySelector(".message-body");
     expect(body).toBeTruthy();
     expect(body?.innerHTML).toContain("<strong>Hello</strong>");
+  });
+
+  it("marks messages imported from an external messenger", () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+
+    render(<MessageBubble message={createMessage({ source_name: "zulip" })} isOwn={false} />);
+
+    expect(screen.getByLabelText(t("source.externalFrom", { source: "Zulip" }))).toHaveTextContent(
+      "Zulip",
+    );
   });
 
   it("still renders pre-rendered HTML bodies", () => {

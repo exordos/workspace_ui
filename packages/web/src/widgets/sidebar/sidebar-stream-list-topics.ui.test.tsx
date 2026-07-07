@@ -134,4 +134,40 @@ describe("SidebarStreamListTopics", () => {
     const topicLink = screen.getByRole("link", { name: /release/i });
     expect(topicLink.parentElement).toHaveStyle({ borderLeftColor: "#abcdef" });
   });
+
+  it("marks topics imported from an external messenger", () => {
+    render(
+      <MemoryRouter>
+        <SidebarStreamListTopics
+          stream={{
+            type: "stream",
+            streamUuid: "00000000-0000-4000-8000-000000000010",
+            name: "engineering",
+            lastMessage: "",
+            time: "",
+            topics: [],
+          }}
+          streamSlug="10-engineering"
+          topics={[
+            { subject: "release", lastMessage: "Ship it", time: "12:00", sourceName: "zulip" },
+          ]}
+          topicsLoading={false}
+          activeStreamSlug={null}
+          activeTopic={null}
+          isCompactDensity={true}
+          onNewTopic={undefined}
+          creatingTopicForSlug={null}
+          newTopicName=""
+          setCreatingTopicForSlug={() => {}}
+          setNewTopicName={() => {}}
+          newTopicInputRef={{ current: null }}
+          onMuteError={() => {}}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByLabelText(t("source.externalFrom", { source: "Zulip" }))).toHaveTextContent(
+      "Zulip",
+    );
+  });
 });

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
+import { ExternalSourceBadge } from "~/shared/ui/external-source-badge";
 import { Icon } from "~/shared/ui/icon";
 import { SidebarChatBadges } from "./sidebar-chat-badges.ui";
 import { SidebarMessagePreview } from "./sidebar-message-preview.ui";
@@ -108,11 +109,12 @@ export const SidebarStreamList: React.FC<SidebarStreamListProps> = ({
                       />
                       <div className="min-w-0 flex-1">
                         <div
-                          className={`truncate text-sm font-medium ${
+                          className={`flex min-w-0 items-center gap-1.5 text-sm font-medium ${
                             streamMuted ? "text-text-muted" : "text-text-primary"
                           }`}
                         >
-                          #{displayName}
+                          <span className="min-w-0 truncate">#{displayName}</span>
+                          <ExternalSourceBadge sourceName={stream.sourceName} />
                         </div>
                         {!isCompactDensity && (
                           <SidebarMessagePreview

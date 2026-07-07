@@ -2,6 +2,7 @@ import React from "react";
 import { t } from "~/i18n/i18n";
 import type { MockMessage } from "~/shared/api/messenger.types";
 import { MESSAGE_BUBBLE_BODY_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
+import { ExternalSourceBadge } from "~/shared/ui/external-source-badge";
 import { Icon } from "~/shared/ui/icon";
 import { Spinner } from "~/shared/ui/spinner.ui";
 import { MessageBubbleOwnDeliveryIndicator } from "./message-bubble-own-delivery-indicator.ui";
@@ -88,6 +89,7 @@ export const MessageBubbleStandardBody = React.memo<MessageBubbleStandardBodyPro
             </div>
           ) : null}
           <div className="flex flex-shrink-0 items-center gap-1 text-[11px] text-text-muted">
+            <ExternalSourceBadge sourceName={message.source_name} />
             <span>{time}</span>
             {ownDeliveryIndicator}
           </div>

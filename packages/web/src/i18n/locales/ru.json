@@ -122,6 +122,9 @@
     "today": "Сегодня",
     "yesterday": "Вчера"
   },
+  "source": {
+    "externalFrom": "Импортировано из {{source}}"
+  },
   "message": {
     "views": "Просмотры",
     "reply": "Ответить",

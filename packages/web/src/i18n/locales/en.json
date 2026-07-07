@@ -122,6 +122,9 @@
     "yesterday": "Yesterday",
     "loadNewer": "Load newer messages"
   },
+  "source": {
+    "externalFrom": "Imported from {{source}}"
+  },
   "message": {
     "views": "Views",
     "reply": "Reply",

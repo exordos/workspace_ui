@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import { type CallParticipant, useCallParticipantsStore } from "~/entities/call/call.model";
 import { t } from "~/i18n/i18n";
 import { Avatar } from "~/shared/ui/avatar";
+import { ExternalSourceBadge } from "~/shared/ui/external-source-badge";
 import { Icon } from "~/shared/ui/icon";
 import { formatJitsiRoomDisplayName, resolveJitsiLocationName } from "./message-jitsi-location.lib";
 import type { MessageBubbleJitsiCardProps } from "./message-bubble-jitsi-card.types";
@@ -122,6 +123,7 @@ export const MessageBubbleJitsiCard = React.memo(function MessageBubbleJitsiCard
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1 text-[11px] text-text-muted">
+          <ExternalSourceBadge sourceName={message.source_name} />
           <span>{time}</span>
           {ownDeliveryIndicator}
         </div>

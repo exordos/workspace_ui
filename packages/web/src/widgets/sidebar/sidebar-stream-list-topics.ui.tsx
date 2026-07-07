@@ -6,6 +6,7 @@ import { sidebarRowClass } from "~/shared/lib/format";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
 import { formatTopicDoneLabel } from "~/shared/lib/topic-resolve";
+import { ExternalSourceBadge } from "~/shared/ui/external-source-badge";
 import { SidebarChatBadges } from "./sidebar-chat-badges.ui";
 import { TopicContextMenu } from "./sidebar-chat-context-menu.ui";
 import { sidebarStreamTopicRoute } from "./sidebar-chat-routes.lib";
@@ -129,12 +130,13 @@ export const SidebarStreamListTopics = React.memo<SidebarStreamListTopicsProps>(
                     className="flex w-full min-w-0 items-start gap-3 py-2 pl-3 pr-12"
                   >
                     <div className="min-w-0 flex-1">
-                      <div
-                        className={`truncate text-sm font-medium text-text-primary ${
-                          topicDisplay.isSystem ? "italic" : ""
-                        }`}
-                      >
-                        {topicLabel}
+                      <div className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-text-primary">
+                        <span
+                          className={`min-w-0 truncate ${topicDisplay.isSystem ? "italic" : ""}`}
+                        >
+                          {topicLabel}
+                        </span>
+                        <ExternalSourceBadge sourceName={topic.sourceName} />
                       </div>
                       {!isCompactDensity && (
                         <SidebarMessagePreview
