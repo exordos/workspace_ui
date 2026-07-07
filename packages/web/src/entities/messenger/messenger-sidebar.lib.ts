@@ -48,6 +48,11 @@ export interface MessengerSidebarSelectorOptions {
   usersById?: UsersById;
 }
 
+export type MessengerSidebarStreamsState = Pick<
+  MessengerStoreState,
+  "streamIds" | "streamsById" | "topicIds" | "topicsById" | "foldersById" | "conversationsById"
+>;
+
 interface SidebarStreamsCacheEntry {
   streamIds: MessengerUuid[];
   streamsById: MessengerStoreState["streamsById"];
@@ -316,7 +321,7 @@ function streamItemFromConversation(input: {
 function topicsForStream(input: {
   organizationId: string;
   projectId: string;
-  state: MessengerStoreState;
+  state: MessengerSidebarStreamsState;
   streamUuid: MessengerUuid;
   messagesById: Record<MessengerUuid, MessengerMessage>;
   usersById: UsersById;
@@ -342,7 +347,7 @@ function topicsForStream(input: {
 }
 
 export function selectMessengerSidebarStreams(
-  state: MessengerStoreState,
+  state: MessengerSidebarStreamsState,
   options: MessengerSidebarSelectorOptions,
 ): MessengerSidebarStreamItem[] {
   const selectedFolderUuid = options.selectedFolderUuid ?? null;

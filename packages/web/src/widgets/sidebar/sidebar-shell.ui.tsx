@@ -4,6 +4,7 @@ import {
   selectMessengerSidebarActivityCounts,
   selectMessengerSidebarFolders,
   selectMessengerSidebarStreams,
+  type MessengerSidebarStreamsState,
 } from "~/entities/messenger/messenger-sidebar.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerSidebarStreamItem } from "~/entities/messenger/messenger.types";
@@ -33,7 +34,7 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
 }) => {
   const folderRailLayout = useSettingsStore((s) => s.folderRailLayout);
   const setSelectedFolderId = useSidebarConfigStore((s) => s.setSelectedFolderId);
-  const workspaceRoute = parseWorkspaceMessengerRoute(pathname);
+  const workspaceRoute = useMemo(() => parseWorkspaceMessengerRoute(pathname), [pathname]);
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
   const workspaceRuntimeContext = useMemo(
@@ -41,19 +42,46 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
     [currentAccountId, sessions],
   );
   const currentUserUuid = workspaceRuntimeContext?.userUuid ?? null;
-  const sidebarWorkspaceIdentity =
-    workspaceRoute != null
-      ? { organizationId: workspaceRoute.orgId, projectId: workspaceRoute.projectId }
-      : workspaceRuntimeContext != null
-        ? {
-            organizationId: workspaceRuntimeContext.organizationId,
-            projectId: workspaceRuntimeContext.projectId,
-          }
-        : null;
+  const sidebarWorkspaceIdentity = useMemo(() => {
+    if (workspaceRoute != null) {
+      return { organizationId: workspaceRoute.orgId, projectId: workspaceRoute.projectId };
+    }
+    if (workspaceRuntimeContext != null) {
+      return {
+        organizationId: workspaceRuntimeContext.organizationId,
+        projectId: workspaceRuntimeContext.projectId,
+      };
+    }
+    return null;
+  }, [workspaceRoute, workspaceRuntimeContext]);
   const workspaceFolders = useMessengerStore(selectMessengerSidebarFolders);
   const workspaceActivityCounts = useMessengerStore(selectMessengerSidebarActivityCounts);
+  const workspaceStreamIds = useMessengerStore((state) => state.streamIds);
+  const workspaceStreamsById = useMessengerStore((state) => state.streamsById);
+  const workspaceTopicIds = useMessengerStore((state) => state.topicIds);
+  const workspaceTopicsById = useMessengerStore((state) => state.topicsById);
+  const workspaceFoldersById = useMessengerStore((state) => state.foldersById);
+  const workspaceConversationsById = useMessengerStore((state) => state.conversationsById);
   const workspaceMessagesById = useWorkspaceMessageStore((state) => state.messagesById);
   const workspaceUsersById = useUsersStore((state) => state.usersById);
+  const workspaceSidebarState = useMemo<MessengerSidebarStreamsState>(
+    () => ({
+      streamIds: workspaceStreamIds,
+      streamsById: workspaceStreamsById,
+      topicIds: workspaceTopicIds,
+      topicsById: workspaceTopicsById,
+      foldersById: workspaceFoldersById,
+      conversationsById: workspaceConversationsById,
+    }),
+    [
+      workspaceConversationsById,
+      workspaceFoldersById,
+      workspaceStreamIds,
+      workspaceStreamsById,
+      workspaceTopicIds,
+      workspaceTopicsById,
+    ],
+  );
   const workspaceSelectedFolderId = useSidebarConfigStore((s) => s.selectedFolderId);
   const workspaceEffectiveFolder = workspaceFolders.some(
     (folder) => folder.folderUuid === workspaceSelectedFolderId,
@@ -63,18 +91,27 @@ export const SidebarShell: React.FC<SidebarShellProps> = ({
       workspaceFolders[0] ??
       null);
   const workspaceEffectiveFolderId = workspaceEffectiveFolder?.folderUuid ?? null;
-  const workspaceTotalStreamCount = useMessengerStore((state) => state.streamIds.length);
-  const workspaceStreams = useMessengerStore((state) =>
-    sidebarWorkspaceIdentity != null
-      ? selectMessengerSidebarStreams(state, {
-          organizationId: sidebarWorkspaceIdentity.organizationId,
-          projectId: sidebarWorkspaceIdentity.projectId,
-          currentUserUuid,
-          selectedFolderUuid: workspaceEffectiveFolderId,
-          messagesById: workspaceMessagesById,
-          usersById: workspaceUsersById,
-        })
-      : EMPTY_WORKSPACE_STREAMS,
+  const workspaceTotalStreamCount = workspaceStreamIds.length;
+  const workspaceStreams = useMemo(
+    () =>
+      sidebarWorkspaceIdentity != null
+        ? selectMessengerSidebarStreams(workspaceSidebarState, {
+            organizationId: sidebarWorkspaceIdentity.organizationId,
+            projectId: sidebarWorkspaceIdentity.projectId,
+            currentUserUuid,
+            selectedFolderUuid: workspaceEffectiveFolderId,
+            messagesById: workspaceMessagesById,
+            usersById: workspaceUsersById,
+          })
+        : EMPTY_WORKSPACE_STREAMS,
+    [
+      currentUserUuid,
+      sidebarWorkspaceIdentity,
+      workspaceEffectiveFolderId,
+      workspaceMessagesById,
+      workspaceSidebarState,
+      workspaceUsersById,
+    ],
   );
   const workspaceLoading = useMessengerStore((state) => state.isLoading);
   const workspaceError = useMessengerStore((state) => state.error);

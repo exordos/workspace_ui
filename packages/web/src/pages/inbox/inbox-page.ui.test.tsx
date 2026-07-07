@@ -1,84 +1,20 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useInboxStore } from "~/entities/inbox/inbox.model";
-import type { InboxEntry } from "~/entities/inbox/inbox.types";
-import { useInstancesStore } from "~/entities/instance/instance.model";
-import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messenger.types";
+import { useUsersStore } from "~/entities/user/user.model";
+import type { User } from "~/entities/user/user.types";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import {
+  workspaceInboxRoute,
+  workspaceMessengerStreamRoute,
+  workspaceMessengerTopicRoute,
+} from "~/shared/lib/workspace-messenger-route.lib";
 import { InboxPage } from "./inbox-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
 
 const navigateSpy = vi.hoisted(() => vi.fn());
-const fetchInboxEntries = vi.hoisted(() => vi.fn().mockResolvedValue([]));
-const hydrateInboxEntriesFromCache = vi.hoisted(() => vi.fn().mockResolvedValue([]));
-const fetchInboxUnreadSnapshotComplete = vi.hoisted(() => vi.fn(() => true));
-const buildUnreadSnapshotFromEntries = vi.hoisted(() => (entries: readonly InboxEntry[]) => {
-  const streams = entries
-    .filter((entry) => entry.streamId != null)
-    .map((entry) => ({
-      streamId: entry.streamId!,
-      topic: entry.topic ?? "",
-      unreadMessageIds: entry.messageIds,
-    }));
-  const dms = entries
-    .filter((entry) => entry.streamId == null)
-    .map((entry) => {
-      const userIds =
-        entry.dmSlug
-          ?.split(",")
-          .map((id) => Number(id))
-          .filter((id) => Number.isFinite(id)) ?? (entry.senderId != null ? [entry.senderId] : []);
-      return {
-        userIds,
-        unreadMessageIds: entry.messageIds,
-        isGroup: userIds.length > 1,
-      };
-    });
-  return {
-    streams,
-    dms,
-    totalCount: entries.reduce((total, entry) => total + entry.unreadCount, 0),
-    mentionMessageIds: [],
-  };
-});
-const buildUnreadMessagesFromEntries = vi.hoisted(
-  () => (entries: readonly InboxEntry[]) =>
-    entries.flatMap((entry) =>
-      entry.messageIds.map((messageId): ZulipRawMessage => {
-        if (entry.streamId != null) {
-          return {
-            id: messageId,
-            sender_id: entry.senderId ?? 42,
-            sender_full_name: entry.senderName ?? "Alice",
-            content: "",
-            timestamp: entry.lastMessageTimestamp,
-            type: "stream",
-            stream_id: entry.streamId,
-            display_recipient: entry.streamName ?? "engineering",
-            subject: entry.topic ?? "",
-            flags: [],
-          };
-        }
-        return {
-          id: messageId,
-          sender_id: entry.senderId ?? 42,
-          sender_full_name: entry.senderName ?? "Alice",
-          content: "",
-          timestamp: entry.lastMessageTimestamp,
-          type: "private",
-          display_recipient: [
-            {
-              id: entry.senderId ?? 42,
-              full_name: entry.senderName ?? "Alice",
-              email: "alice@example.com",
-            },
-          ],
-          flags: [],
-        };
-      }),
-    ),
-);
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual<typeof ReactRouterDom>("react-router-dom");
@@ -88,749 +24,259 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
-vi.mock("~/entities/inbox/inbox.api", async () => {
-  const actual = await vi.importActual<typeof import("~/entities/inbox/inbox.api")>(
-    "~/entities/inbox/inbox.api",
-  );
+const ORGANIZATION_ID = "workspace.example.com";
+const PROJECT_ID = "22222222-2222-4222-8222-222222222222";
+const CURRENT_USER_UUID = "11111111-1111-4111-8111-111111111111";
+const DIRECT_USER_UUID = "33333333-3333-4333-8333-333333333333";
+const DIRECT_STREAM_UUID = "44444444-4444-4444-8444-444444444444";
+const CHANNEL_STREAM_UUID = "55555555-5555-4555-8555-555555555555";
+const READ_STREAM_UUID = "66666666-6666-4666-8666-666666666666";
+const DIRECT_TOPIC_UUID = "77777777-7777-4777-8777-777777777777";
+const CHANNEL_TOPIC_UUID = "88888888-8888-4888-8888-888888888888";
+const READ_TOPIC_UUID = "99999999-9999-4999-8999-999999999999";
+const DATE_A = "2026-06-22T10:10:00Z";
+const DATE_B = "2026-06-22T11:10:00Z";
+
+function stream(overrides: Partial<MessengerStream> = {}): MessengerStream {
   return {
-    ...actual,
-    fetchInboxEntries,
-    fetchInboxEntriesWithSnapshot: async (
-      currentUserId?: number | null,
-      options?: unknown,
-      requestOptions?: unknown,
-    ) => {
-      const entries = (await fetchInboxEntries(
-        currentUserId,
-        options,
-        requestOptions,
-      )) as InboxEntry[];
-      return {
-        entries,
-        unreadSnapshot: buildUnreadSnapshotFromEntries(entries),
-        unreadSnapshotComplete: fetchInboxUnreadSnapshotComplete(),
-        unreadMessages: buildUnreadMessagesFromEntries(entries),
-      };
-    },
-    hydrateInboxEntriesFromCache,
+    uuid: CHANNEL_STREAM_UUID,
+    projectId: PROJECT_ID,
+    ownerUuid: CURRENT_USER_UUID,
+    userUuid: CURRENT_USER_UUID,
+    role: "member",
+    notificationMode: "all_messages",
+    name: "Engineering",
+    description: "",
+    unreadCount: 3,
+    sourceName: "native",
+    source: { kind: "native" },
+    audience: "channel",
+    isPrivate: false,
+    inviteOnly: false,
+    announce: false,
+    isArchived: false,
+    directUserUuid: null,
+    lastMessageUuid: null,
+    createdAt: DATE_A,
+    updatedAt: DATE_A,
+    ...overrides,
   };
-});
+}
 
-const TEST_INSTANCE_ID = "instance-inbox-test";
+function topic(overrides: Partial<MessengerTopic> = {}): MessengerTopic {
+  return {
+    uuid: CHANNEL_TOPIC_UUID,
+    projectId: PROJECT_ID,
+    streamUuid: CHANNEL_STREAM_UUID,
+    userUuid: CURRENT_USER_UUID,
+    name: "Releases",
+    unreadCount: 2,
+    isDefault: false,
+    isDone: false,
+    notificationMode: "default",
+    lastMessageUuid: null,
+    createdAt: DATE_A,
+    updatedAt: DATE_A,
+    ...overrides,
+  };
+}
 
-describe("InboxPage styling contract", () => {
+function user(overrides: Partial<User> = {}): User {
+  return {
+    uuid: DIRECT_USER_UUID,
+    username: "alice",
+    status: "active",
+    firstName: "Alice",
+    lastName: "Reed",
+    displayName: "Alice Reed",
+    email: "alice@example.com",
+    avatarUrl: null,
+    statusEmoji: null,
+    statusText: null,
+    lastPingAt: DATE_A,
+    createdAt: DATE_A,
+    updatedAt: DATE_A,
+    ...overrides,
+  };
+}
+
+function renderInbox(): void {
+  render(
+    <MemoryRouter initialEntries={[workspaceInboxRoute(ORGANIZATION_ID, PROJECT_ID)]}>
+      <Routes>
+        <Route path="/org/:orgId/project/:projectId/inbox" element={<InboxPage />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
+function seedWorkspaceInbox(input?: {
+  streams?: MessengerStream[];
+  topics?: MessengerTopic[];
+  users?: User[];
+}): void {
+  useWorkspaceAuthStore.getState().setSession({
+    accountId: "account",
+    instanceId: "instance",
+    organizationId: ORGANIZATION_ID,
+    organizationOrigin: "https://workspace.example.com",
+    projectId: PROJECT_ID,
+    userUuid: CURRENT_USER_UUID,
+    login: "me@example.com",
+    accessToken: "access-token",
+    profile: {
+      uuid: CURRENT_USER_UUID,
+      username: "me",
+      firstName: "Me",
+      lastName: null,
+      email: "me@example.com",
+      status: "active",
+    },
+  });
+  useUsersStore.getState().replaceUsers(input?.users ?? [user()]);
+  useMessengerStore.setState({
+    ownerKey: "account",
+    isLoading: false,
+    error: null,
+    streamsById: Object.fromEntries((input?.streams ?? []).map((item) => [item.uuid, item])),
+    streamIds: (input?.streams ?? []).map((item) => item.uuid),
+    topicsById: Object.fromEntries((input?.topics ?? []).map((item) => [item.uuid, item])),
+    topicIds: (input?.topics ?? []).map((item) => item.uuid),
+  });
+}
+
+describe("InboxPage workspace data", () => {
   beforeEach(() => {
-    useInstancesStore.setState({
-      instances: [
-        {
-          id: TEST_INSTANCE_ID,
-          realm: "https://zulip.example.com",
-          email: "user@example.com",
-          apiKey: "api-key",
-        },
-      ],
-      currentInstanceId: TEST_INSTANCE_ID,
-      unreadCountsByInstance: {},
-      activeOrgEpoch: 0,
-    });
+    navigateSpy.mockReset();
+    useWorkspaceAuthStore.getState().clear();
+    useMessengerStore.getState().clear();
+    useUsersStore.getState().clear();
   });
 
   afterEach(() => {
     navigateSpy.mockReset();
-    fetchInboxEntries.mockReset();
-    fetchInboxUnreadSnapshotComplete.mockReset();
-    hydrateInboxEntriesFromCache.mockReset();
-    fetchInboxEntries.mockResolvedValue([]);
-    fetchInboxUnreadSnapshotComplete.mockReturnValue(true);
-    hydrateInboxEntriesFromCache.mockResolvedValue([]);
-    useInboxStore.getState().clear();
-    useMuteStore.getState().clear();
-    useInstancesStore.setState({
-      instances: [],
-      currentInstanceId: null,
-      unreadCountsByInstance: {},
-      activeOrgEpoch: 0,
-    });
+    useWorkspaceAuthStore.getState().clear();
+    useMessengerStore.getState().clear();
+    useUsersStore.getState().clear();
   });
 
-  it("renders inbox rows as themed cards for all palettes", async () => {
-    fetchInboxEntries.mockResolvedValue([
-      {
-        key: "dm:42",
-        streamId: null,
-        streamName: null,
-        topic: null,
-        senderId: 42,
-        senderName: "Alice",
-        dmSlug: "42",
-        unreadCount: 2,
-        lastMessageTimestamp: 10,
-        messageIds: [1, 2],
-      },
-      {
-        key: "stream:10:release",
-        streamId: 10,
-        streamName: "engineering",
-        topic: "release",
-        senderId: null,
-        senderName: null,
-        dmSlug: null,
-        unreadCount: 1,
-        lastMessageTimestamp: 9,
-        messageIds: [3],
-      },
-    ]);
-
-    render(
-      <MemoryRouter initialEntries={["/inbox"]}>
-        <Routes>
-          <Route path="/inbox" element={<InboxPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("Alice")).toBeInTheDocument();
-    });
-
-    const dmRow = screen.getByText("Alice").closest("button");
-    const streamRow = screen.getByText("#engineering · release").closest("button");
-
-    expect(dmRow).toHaveClass("rounded-xl");
-    expect(dmRow).toHaveClass("border");
-    expect(dmRow).toHaveClass("border-border-subtle");
-    expect(dmRow).toHaveClass("bg-bg-elevated/50");
-
-    expect(streamRow).toHaveClass("rounded-xl");
-    expect(streamRow).toHaveClass("border");
-    expect(streamRow).toHaveClass("border-border-subtle");
-    expect(streamRow).toHaveClass("bg-bg-elevated/50");
-  });
-
-  it("renders cached inbox entries immediately while refresh is in flight", () => {
-    const cachedEntries = [
-      {
-        key: "dm:42",
-        streamId: null,
-        streamName: null,
-        topic: null,
-        senderId: 42,
-        senderName: "Cached Alice",
-        dmSlug: "42",
-        unreadCount: 2,
-        lastMessageTimestamp: 10,
-        messageIds: [1, 2],
-      },
-    ];
-
-    useInboxStore.setState({
-      entries: cachedEntries,
-      loading: false,
-      isInitialLoading: false,
-      isRefreshing: false,
-      requestVersion: 0,
-      lastLoadedAt: Date.now(),
-      error: null,
-      staleVersion: 0,
-    });
-    fetchInboxEntries.mockResolvedValue(cachedEntries);
-
-    render(
-      <MemoryRouter initialEntries={["/inbox"]}>
-        <Routes>
-          <Route path="/inbox" element={<InboxPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByText("Cached Alice")).toBeInTheDocument();
-  });
-
-  it("syncs organization unread count from network inbox snapshot", async () => {
-    fetchInboxEntries.mockResolvedValue([
-      {
-        key: "dm:42",
-        streamId: null,
-        streamName: null,
-        topic: null,
-        senderId: 42,
-        senderName: "Alice",
-        dmSlug: "42",
-        unreadCount: 2,
-        lastMessageTimestamp: 10,
-        messageIds: [1, 2],
-      },
-      {
-        key: "stream:10:release",
-        streamId: 10,
-        streamName: "engineering",
-        topic: "release",
-        senderId: null,
-        senderName: null,
-        dmSlug: null,
-        unreadCount: 1,
-        lastMessageTimestamp: 9,
-        messageIds: [3],
-      },
-    ]);
-
-    render(
-      <MemoryRouter initialEntries={["/inbox"]}>
-        <Routes>
-          <Route path="/inbox" element={<InboxPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    await waitFor(() => {
-      expect(useInstancesStore.getState().getInstanceUnreadCount(TEST_INSTANCE_ID)).toBe(3);
-    });
-  });
-
-  it("does not lower organization unread count from capped network inbox snapshot", async () => {
-    useInstancesStore.getState().setInstanceUnreadCount(TEST_INSTANCE_ID, 100);
-    fetchInboxUnreadSnapshotComplete.mockReturnValue(false);
-    fetchInboxEntries.mockResolvedValue([
-      {
-        key: "dm:42",
-        streamId: null,
-        streamName: null,
-        topic: null,
-        senderId: 42,
-        senderName: "Alice",
-        dmSlug: "42",
-        unreadCount: 2,
-        lastMessageTimestamp: 10,
-        messageIds: [1, 2],
-      },
-      {
-        key: "stream:10:release",
-        streamId: 10,
-        streamName: "engineering",
-        topic: "release",
-        senderId: null,
-        senderName: null,
-        dmSlug: null,
-        unreadCount: 1,
-        lastMessageTimestamp: 9,
-        messageIds: [3],
-      },
-    ]);
-
-    render(
-      <MemoryRouter initialEntries={["/inbox"]}>
-        <Routes>
-          <Route path="/inbox" element={<InboxPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("Alice")).toBeInTheDocument();
-    });
-    expect(useInstancesStore.getState().getInstanceUnreadCount(TEST_INSTANCE_ID)).toBe(100);
-  });
-
-  it("hides cached muted stream entries even when the topic is explicitly unmuted", () => {
-    useInboxStore.setState({
-      entries: [
-        {
-          key: "stream:10:release",
-          streamId: 10,
-          streamName: "engineering",
-          topic: "release",
-          senderId: null,
-          senderName: null,
-          dmSlug: null,
-          unreadCount: 1,
-          lastMessageTimestamp: 100,
-          messageIds: [10],
-        },
+  it("renders unread direct private streams in DM and unread channels in Channels", () => {
+    seedWorkspaceInbox({
+      streams: [
+        stream({
+          uuid: DIRECT_STREAM_UUID,
+          name: "Alice fallback",
+          audience: "private",
+          isPrivate: true,
+          directUserUuid: DIRECT_USER_UUID,
+          unreadCount: 4,
+          updatedAt: DATE_B,
+        }),
+        stream({ uuid: CHANNEL_STREAM_UUID, name: "Engineering", unreadCount: 3 }),
       ],
-      loading: false,
-      isInitialLoading: false,
-      isRefreshing: false,
-      requestVersion: 0,
-      lastLoadedAt: Date.now(),
-      error: null,
-      staleVersion: 0,
+      topics: [
+        topic({
+          uuid: DIRECT_TOPIC_UUID,
+          streamUuid: DIRECT_STREAM_UUID,
+          name: "Planning",
+          unreadCount: 4,
+          updatedAt: DATE_B,
+        }),
+        topic({ uuid: CHANNEL_TOPIC_UUID, name: "Releases", unreadCount: 2 }),
+      ],
     });
-    useMuteStore.getState().muteStream(10);
-    useMuteStore.getState().unmuteTopic(10, "release");
-    fetchInboxEntries.mockResolvedValue([]);
 
-    render(
-      <MemoryRouter initialEntries={["/inbox"]}>
-        <Routes>
-          <Route path="/inbox" element={<InboxPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
+    renderInbox();
 
-    expect(screen.queryByText("#engineering · release")).not.toBeInTheDocument();
+    expect(screen.getByText("Direct messages")).toBeInTheDocument();
+    expect(screen.getByText("Channels")).toBeInTheDocument();
+    expect(screen.getByText("Alice Reed")).toBeInTheDocument();
+    expect(screen.getByText("Alice Reed · Planning")).toBeInTheDocument();
+    expect(screen.getByText("#Engineering")).toBeInTheDocument();
+    expect(screen.getByText("#Engineering · Releases")).toBeInTheDocument();
+  });
+
+  it("hides streams and topics without unread counters", () => {
+    seedWorkspaceInbox({
+      streams: [
+        stream({
+          uuid: READ_STREAM_UUID,
+          name: "Read channel",
+          unreadCount: 0,
+        }),
+      ],
+      topics: [
+        topic({
+          uuid: READ_TOPIC_UUID,
+          streamUuid: READ_STREAM_UUID,
+          name: "Read topic",
+          unreadCount: 0,
+        }),
+      ],
+    });
+
+    renderInbox();
+
+    expect(screen.queryByText("#Read channel")).not.toBeInTheDocument();
+    expect(screen.queryByText("#Read channel · Read topic")).not.toBeInTheDocument();
     expect(screen.getByText("No unread messages")).toBeInTheDocument();
   });
 
-  it("keeps stale refresh soft when cached entries are hidden by mute filters", async () => {
-    let resolveFetch: (entries: InboxEntry[]) => void = () => {};
-    const fetchPromise = new Promise<InboxEntry[]>((resolve) => {
-      resolveFetch = resolve;
-    });
-
-    useInboxStore.setState({
-      entries: [
-        {
-          key: "stream:10:release",
-          streamId: 10,
-          streamName: "engineering",
-          topic: "release",
-          senderId: null,
-          senderName: null,
-          dmSlug: null,
-          unreadCount: 1,
-          lastMessageTimestamp: 100,
-          messageIds: [10],
-        },
+  it("shows only unread topics inside an unread stream", () => {
+    seedWorkspaceInbox({
+      streams: [stream({ uuid: CHANNEL_STREAM_UUID, name: "Engineering", unreadCount: 3 })],
+      topics: [
+        topic({ uuid: CHANNEL_TOPIC_UUID, name: "Releases", unreadCount: 2 }),
+        topic({ uuid: READ_TOPIC_UUID, name: "Archive", unreadCount: 0 }),
       ],
-      loading: false,
-      isInitialLoading: false,
-      isRefreshing: false,
-      requestVersion: 0,
-      lastLoadedAt: Date.now(),
-      error: null,
-      staleVersion: 1,
     });
-    useMuteStore.getState().muteStream(10);
-    fetchInboxEntries.mockReturnValue(fetchPromise);
-    hydrateInboxEntriesFromCache.mockReturnValue(new Promise(() => {}));
 
-    render(
-      <MemoryRouter initialEntries={["/inbox"]}>
-        <Routes>
-          <Route path="/inbox" element={<InboxPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
+    renderInbox();
 
-    expect(screen.queryByText("#engineering · release")).not.toBeInTheDocument();
-    expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
-    expect(screen.getByText("No unread messages")).toBeInTheDocument();
-
-    await act(async () => {
-      resolveFetch([]);
-      await fetchPromise;
-    });
+    expect(screen.getByText("#Engineering · Releases")).toBeInTheDocument();
+    expect(screen.queryByText("#Engineering · Archive")).not.toBeInTheDocument();
   });
 
-  it("keeps current in-memory entries when cache snapshot is older", async () => {
-    useInboxStore.setState({
-      entries: [
-        {
-          key: "dm:42",
-          streamId: null,
-          streamName: null,
-          topic: null,
-          senderId: 42,
-          senderName: "Fresh Alice",
-          dmSlug: "42",
-          unreadCount: 1,
-          lastMessageTimestamp: 300,
-          messageIds: [30],
-        },
-      ],
-      loading: false,
-      isInitialLoading: false,
-      isRefreshing: false,
-      requestVersion: 0,
-      lastLoadedAt: Date.now(),
-      error: null,
-      staleVersion: 0,
+  it("navigates topic rows to the prepared Workspace topic route", () => {
+    seedWorkspaceInbox({
+      streams: [stream({ uuid: CHANNEL_STREAM_UUID, name: "Engineering", unreadCount: 2 })],
+      topics: [topic({ uuid: CHANNEL_TOPIC_UUID, name: "Releases", unreadCount: 2 })],
     });
-    hydrateInboxEntriesFromCache.mockResolvedValue([
-      {
-        key: "dm:42",
-        streamId: null,
-        streamName: null,
-        topic: null,
-        senderId: 42,
-        senderName: "Old Alice",
-        dmSlug: "42",
-        unreadCount: 1,
-        lastMessageTimestamp: 100,
-        messageIds: [10],
-      },
-    ]);
-    fetchInboxEntries.mockResolvedValue([
-      {
-        key: "dm:42",
-        streamId: null,
-        streamName: null,
-        topic: null,
-        senderId: 42,
-        senderName: "Fresh Alice",
-        dmSlug: "42",
-        unreadCount: 1,
-        lastMessageTimestamp: 300,
-        messageIds: [30],
-      },
-    ]);
 
-    render(
-      <MemoryRouter initialEntries={["/inbox"]}>
-        <Routes>
-          <Route path="/inbox" element={<InboxPage />} />
-        </Routes>
-      </MemoryRouter>,
+    renderInbox();
+
+    const button = screen.getByText("#Engineering · Releases").closest("button");
+    expect(button).not.toBeNull();
+    fireEvent.click(button!);
+
+    expect(navigateSpy).toHaveBeenCalledWith(
+      workspaceMessengerTopicRoute({
+        orgId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        streamUuid: CHANNEL_STREAM_UUID,
+        topicUuid: CHANNEL_TOPIC_UUID,
+      }),
     );
-
-    await waitFor(() => {
-      expect(fetchInboxEntries).toHaveBeenCalled();
-      expect(screen.getByText("Fresh Alice")).toBeInTheDocument();
-    });
-    expect(screen.queryByText("Old Alice")).not.toBeInTheDocument();
   });
 
-  it("applies cache snapshot when it is fresher than in-memory entries", async () => {
-    useInboxStore.setState({
-      entries: [
-        {
-          key: "dm:42",
-          streamId: null,
-          streamName: null,
-          topic: null,
-          senderId: 42,
-          senderName: "Old Alice",
-          dmSlug: "42",
-          unreadCount: 1,
-          lastMessageTimestamp: 100,
-          messageIds: [10],
-        },
-      ],
-      loading: false,
-      isInitialLoading: false,
-      isRefreshing: false,
-      requestVersion: 0,
-      lastLoadedAt: Date.now(),
-      error: null,
-      staleVersion: 0,
+  it("falls back to the prepared stream route when a stream has unread without unread topics", () => {
+    seedWorkspaceInbox({
+      streams: [stream({ uuid: CHANNEL_STREAM_UUID, name: "Engineering", unreadCount: 2 })],
+      topics: [topic({ uuid: READ_TOPIC_UUID, name: "Archive", unreadCount: 0 })],
     });
-    hydrateInboxEntriesFromCache.mockResolvedValue([
-      {
-        key: "dm:42",
-        streamId: null,
-        streamName: null,
-        topic: null,
-        senderId: 42,
-        senderName: "Fresh Alice",
-        dmSlug: "42",
-        unreadCount: 1,
-        lastMessageTimestamp: 300,
-        messageIds: [30],
-      },
-    ]);
-    fetchInboxEntries.mockResolvedValue([
-      {
-        key: "dm:42",
-        streamId: null,
-        streamName: null,
-        topic: null,
-        senderId: 42,
-        senderName: "Fresh Alice",
-        dmSlug: "42",
-        unreadCount: 1,
-        lastMessageTimestamp: 300,
-        messageIds: [30],
-      },
-    ]);
 
-    render(
-      <MemoryRouter initialEntries={["/inbox"]}>
-        <Routes>
-          <Route path="/inbox" element={<InboxPage />} />
-        </Routes>
-      </MemoryRouter>,
+    renderInbox();
+
+    const button = screen.getByRole("button", { name: /#Engineering/ });
+    expect(button).not.toBeNull();
+    fireEvent.click(button);
+
+    expect(navigateSpy).toHaveBeenCalledWith(
+      workspaceMessengerStreamRoute({
+        orgId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        streamUuid: CHANNEL_STREAM_UUID,
+      }),
     );
-
-    await waitFor(() => {
-      expect(screen.getByText("Fresh Alice")).toBeInTheDocument();
-    });
-
-    expect(screen.queryByText("Old Alice")).not.toBeInTheDocument();
-  });
-
-  it("clears initial loading when mounted with staleVersion > 0 and no cached entries", async () => {
-    useInboxStore.setState({ staleVersion: 1 });
-    fetchInboxEntries.mockResolvedValue([
-      {
-        key: "dm:42",
-        streamId: null,
-        streamName: null,
-        topic: null,
-        senderId: 42,
-        senderName: "Alice",
-        dmSlug: "42",
-        unreadCount: 1,
-        lastMessageTimestamp: 10,
-        messageIds: [1],
-      },
-    ]);
-
-    render(
-      <MemoryRouter initialEntries={["/inbox"]}>
-        <Routes>
-          <Route path="/inbox" element={<InboxPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    await waitFor(() => {
-      expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
-      expect(screen.getByText("Alice")).toBeInTheDocument();
-    });
-  });
-
-  it("refetches inbox when markStale is called while page is open", async () => {
-    fetchInboxEntries
-      .mockResolvedValueOnce([
-        {
-          key: "dm:42",
-          streamId: null,
-          streamName: null,
-          topic: null,
-          senderId: 42,
-          senderName: "Initial Alice",
-          dmSlug: "42",
-          unreadCount: 1,
-          lastMessageTimestamp: 10,
-          messageIds: [1],
-        },
-      ])
-      .mockResolvedValueOnce([
-        {
-          key: "dm:99",
-          streamId: null,
-          streamName: null,
-          topic: null,
-          senderId: 99,
-          senderName: "New Bob",
-          dmSlug: "99",
-          unreadCount: 1,
-          lastMessageTimestamp: 20,
-          messageIds: [2],
-        },
-      ]);
-
-    render(
-      <MemoryRouter initialEntries={["/inbox"]}>
-        <Routes>
-          <Route path="/inbox" element={<InboxPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("Initial Alice")).toBeInTheDocument();
-    });
-
-    act(() => {
-      useInboxStore.getState().markStale();
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("New Bob")).toBeInTheDocument();
-    });
-
-    expect(fetchInboxEntries).toHaveBeenCalledTimes(2);
-  });
-
-  it("does not apply cached inbox entries from the previous organization after switch", async () => {
-    let resolveHydrate!: (entries: InboxEntry[]) => void;
-    const staleHydrate = new Promise<InboxEntry[]>((resolve) => {
-      resolveHydrate = resolve;
-    });
-
-    hydrateInboxEntriesFromCache
-      .mockReturnValueOnce(staleHydrate)
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([]);
-
-    let resolveNextOrgFetch!: (entries: InboxEntry[]) => void;
-    const nextOrgFetch = new Promise<InboxEntry[]>((resolve) => {
-      resolveNextOrgFetch = resolve;
-    });
-    fetchInboxEntries.mockReturnValue(nextOrgFetch);
-
-    useInstancesStore.setState({
-      instances: [
-        {
-          id: "instance-1",
-          realm: "https://one.example.com",
-          email: "one@example.com",
-          apiKey: "api-key",
-        },
-        {
-          id: "instance-2",
-          realm: "https://two.example.com",
-          email: "two@example.com",
-          apiKey: "api-key",
-        },
-      ],
-      currentInstanceId: "instance-1",
-      unreadCountsByInstance: {},
-      activeOrgEpoch: 0,
-    });
-
-    render(
-      <MemoryRouter initialEntries={["/inbox"]}>
-        <Routes>
-          <Route path="/inbox" element={<InboxPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    act(() => {
-      useInstancesStore.getState().setCurrentInstanceId("instance-2");
-    });
-
-    await act(async () => {
-      resolveHydrate([
-        {
-          key: "dm:42",
-          streamId: null,
-          streamName: null,
-          topic: null,
-          senderId: 42,
-          senderName: "Old org cached inbox row",
-          dmSlug: "42",
-          unreadCount: 1,
-          lastMessageTimestamp: 10,
-          messageIds: [1],
-        },
-      ]);
-      await staleHydrate;
-    });
-
-    expect(useInboxStore.getState().entries).toEqual([]);
-
-    await act(async () => {
-      resolveNextOrgFetch([
-        {
-          key: "dm:99",
-          streamId: null,
-          streamName: null,
-          topic: null,
-          senderId: 99,
-          senderName: "Current org inbox row",
-          dmSlug: "99",
-          unreadCount: 2,
-          lastMessageTimestamp: 20,
-          messageIds: [2],
-        },
-      ]);
-      await nextOrgFetch;
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Current org inbox row")).toBeInTheDocument();
-    });
-    expect(screen.queryByText("Old org cached inbox row")).not.toBeInTheDocument();
-  });
-
-  it("does not apply stale inbox refresh after organization switch", async () => {
-    let resolveOldFetch!: (entries: InboxEntry[]) => void;
-    const oldFetch = new Promise<InboxEntry[]>((resolve) => {
-      resolveOldFetch = resolve;
-    });
-
-    let resolveNewFetch!: (entries: InboxEntry[]) => void;
-    const newFetch = new Promise<InboxEntry[]>((resolve) => {
-      resolveNewFetch = resolve;
-    });
-
-    hydrateInboxEntriesFromCache.mockResolvedValue([]);
-    fetchInboxEntries.mockReturnValueOnce(oldFetch).mockReturnValueOnce(newFetch);
-
-    useInstancesStore.setState({
-      instances: [
-        {
-          id: "instance-1",
-          realm: "https://one.example.com",
-          email: "one@example.com",
-          apiKey: "api-key",
-        },
-        {
-          id: "instance-2",
-          realm: "https://two.example.com",
-          email: "two@example.com",
-          apiKey: "api-key",
-        },
-      ],
-      currentInstanceId: "instance-1",
-      unreadCountsByInstance: {},
-      activeOrgEpoch: 0,
-    });
-
-    render(
-      <MemoryRouter initialEntries={["/inbox"]}>
-        <Routes>
-          <Route path="/inbox" element={<InboxPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    await waitFor(() => {
-      expect(fetchInboxEntries).toHaveBeenCalledTimes(1);
-    });
-
-    act(() => {
-      useInstancesStore.getState().setCurrentInstanceId("instance-2");
-    });
-
-    await waitFor(() => {
-      expect(fetchInboxEntries).toHaveBeenCalledTimes(2);
-    });
-
-    await act(async () => {
-      resolveOldFetch([
-        {
-          key: "dm:42",
-          streamId: null,
-          streamName: null,
-          topic: null,
-          senderId: 42,
-          senderName: "Old org inbox refresh row",
-          dmSlug: "42",
-          unreadCount: 1,
-          lastMessageTimestamp: 10,
-          messageIds: [1],
-        },
-      ]);
-      await oldFetch;
-    });
-
-    expect(useInboxStore.getState().entries).toEqual([]);
-
-    await act(async () => {
-      resolveNewFetch([
-        {
-          key: "dm:99",
-          streamId: null,
-          streamName: null,
-          topic: null,
-          senderId: 99,
-          senderName: "Current org refreshed inbox row",
-          dmSlug: "99",
-          unreadCount: 2,
-          lastMessageTimestamp: 20,
-          messageIds: [2],
-        },
-      ]);
-      await newFetch;
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Current org refreshed inbox row")).toBeInTheDocument();
-    });
-    expect(screen.queryByText("Old org inbox refresh row")).not.toBeInTheDocument();
   });
 });

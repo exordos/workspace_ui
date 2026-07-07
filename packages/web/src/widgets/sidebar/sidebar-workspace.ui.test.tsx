@@ -65,7 +65,7 @@ describe("WorkspaceSidebar", () => {
     useSidebarConfigStore.getState().setCreateChatOpen(false);
   });
 
-  it("disables workspace activity items without legacy hrefs while showing workspace counts", () => {
+  it("keeps supported workspace activity links while disabling unsupported activity items", () => {
     useSidebarConfigStore.getState().setConfig({ activityOpen: true });
     useChatListStore.getState().setFromMessages(
       [
@@ -94,7 +94,6 @@ describe("WorkspaceSidebar", () => {
     });
 
     const expectedDisabledItems = [
-      ["inbox", "workspaceMessenger.inboxUnsupported"],
       ["mentions", "workspaceMessenger.mentionsUnsupported"],
       ["drafts", "workspaceMessenger.draftsUnsupported"],
       ["starred", "workspaceMessenger.starredUnsupported"],
@@ -110,7 +109,8 @@ describe("WorkspaceSidebar", () => {
       expect(control).toHaveAttribute("title", t(titleKey));
     }
 
-    const inboxControl = screen.getByRole("button", { name: /inbox/i });
+    const inboxControl = screen.getByRole("link", { name: /inbox/i });
+    expect(inboxControl).toHaveAttribute("href", "/org/acme/project/project-a/inbox");
     expect(within(inboxControl).getByText("2")).toBeInTheDocument();
     expect(within(inboxControl).queryByText("1")).not.toBeInTheDocument();
   });
