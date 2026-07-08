@@ -1,8 +1,10 @@
 import { create } from "zustand";
 import { logStoreAction } from "~/shared/lib/logger";
 
+export type IncomingDmCallMessageId = number | string;
+
 export interface IncomingDmCallInvite {
-  messageId: number;
+  messageId: IncomingDmCallMessageId;
   meetingUrl: string;
   callerName: string;
   locationName: string;
@@ -14,6 +16,17 @@ export interface IncomingDmCallInvite {
 }
 
 export interface ActiveJitsiCall {
+  callKey: string;
+  meetingUrl: string;
+  locationName: string;
+  ownerKey?: string;
+  meetUrl?: string;
+  displayName?: string;
+  startWithVideoMuted?: boolean;
+  startedAtMs: number;
+}
+
+export interface RequestOpenJitsiCallPayload {
   meetingUrl: string;
   locationName: string;
   ownerKey?: string;
@@ -22,11 +35,17 @@ export interface ActiveJitsiCall {
   startWithVideoMuted?: boolean;
 }
 
+export type RequestOpenJitsiCallResult =
+  | { status: "opened"; activeCall: ActiveJitsiCall }
+  | { status: "same"; activeCall: ActiveJitsiCall }
+  | { status: "blocked-active"; activeCall: ActiveJitsiCall };
+
 interface JitsiCallStoreState {
   activeCall: ActiveJitsiCall | null;
   incomingInvite: IncomingDmCallInvite | null;
-  lastIncomingMessageId: number | null;
-  openCall: (payload: ActiveJitsiCall) => void;
+  lastIncomingMessageId: IncomingDmCallMessageId | null;
+  requestOpenCall: (payload: RequestOpenJitsiCallPayload) => RequestOpenJitsiCallResult;
+  openCall: (payload: RequestOpenJitsiCallPayload) => RequestOpenJitsiCallResult;
   closeCall: () => void;
   ingestIncomingInvite: (invite: IncomingDmCallInvite) => void;
   acceptIncomingInvite: (options?: { startWithVideoMuted?: boolean }) => void;
@@ -34,13 +53,62 @@ interface JitsiCallStoreState {
   clear: () => void;
 }
 
+const normalizeMeetingUrlForCallKey = (meetingUrl: string): string => {
+  const trimmed = meetingUrl.trim().replace(/\/+$/, "");
+  try {
+    const url = new URL(trimmed);
+    url.protocol = url.protocol.toLowerCase();
+    url.hostname = url.hostname.toLowerCase();
+    return url.toString().replace(/\/+$/, "");
+  } catch {
+    return trimmed;
+  }
+};
+
+export const createJitsiCallKey = (payload: { meetingUrl: string; ownerKey?: string }): string => {
+  const ownerKey = payload.ownerKey?.trim() ?? "";
+  return `${ownerKey}:${normalizeMeetingUrlForCallKey(payload.meetingUrl)}`;
+};
+
+const buildActiveCall = (payload: RequestOpenJitsiCallPayload): ActiveJitsiCall => {
+  const startWithVideoMuted = payload.startWithVideoMuted ?? true;
+  return {
+    callKey: createJitsiCallKey(payload),
+    meetingUrl: payload.meetingUrl,
+    locationName: payload.locationName,
+    ownerKey: payload.ownerKey,
+    meetUrl: payload.meetUrl,
+    displayName: payload.displayName,
+    startWithVideoMuted,
+    startedAtMs: Date.now(),
+  };
+};
+
 export const useJitsiCallStore = create<JitsiCallStoreState>((set, get) => ({
   activeCall: null,
   incomingInvite: null,
   lastIncomingMessageId: null,
 
-  openCall(payload) {
+  requestOpenCall(payload) {
     const startWithVideoMuted = payload.startWithVideoMuted ?? true;
+    const callKey = createJitsiCallKey(payload);
+    const currentActiveCall = get().activeCall;
+
+    if (currentActiveCall != null) {
+      if (currentActiveCall.callKey === callKey) {
+        logStoreAction("jitsiCall", "requestOpenCallSame", {
+          hasOwnerKey: payload.ownerKey != null && payload.ownerKey.trim().length > 0,
+        });
+        return { status: "same", activeCall: currentActiveCall };
+      }
+
+      logStoreAction("jitsiCall", "requestOpenCallBlockedActive", {
+        hasOwnerKey: payload.ownerKey != null && payload.ownerKey.trim().length > 0,
+      });
+      return { status: "blocked-active", activeCall: currentActiveCall };
+    }
+
+    const activeCall = buildActiveCall(payload);
     logStoreAction("jitsiCall", "openCall", {
       hasLocationName: payload.locationName.trim().length > 0,
       hasOwnerKey: payload.ownerKey != null && payload.ownerKey.trim().length > 0,
@@ -48,16 +116,14 @@ export const useJitsiCallStore = create<JitsiCallStoreState>((set, get) => ({
       startWithVideoMuted,
     });
     set({
-      activeCall: {
-        meetingUrl: payload.meetingUrl,
-        locationName: payload.locationName,
-        ownerKey: payload.ownerKey,
-        meetUrl: payload.meetUrl,
-        displayName: payload.displayName,
-        startWithVideoMuted,
-      },
+      activeCall,
       incomingInvite: null,
     });
+    return { status: "opened", activeCall };
+  },
+
+  openCall(payload) {
+    return get().requestOpenCall(payload);
   },
 
   closeCall() {
@@ -94,22 +160,33 @@ export const useJitsiCallStore = create<JitsiCallStoreState>((set, get) => ({
   },
 
   acceptIncomingInvite(options) {
-    const invite = get().incomingInvite;
+    const { activeCall, incomingInvite: invite } = get();
     if (invite == null) return;
     const startWithVideoMuted = options?.startWithVideoMuted ?? true;
+
+    if (activeCall != null) {
+      logStoreAction("jitsiCall", "acceptIncomingInviteBlockedActive", {
+        messageId: invite.messageId,
+        startWithVideoMuted,
+      });
+      set({ incomingInvite: null });
+      return;
+    }
+
     logStoreAction("jitsiCall", "acceptIncomingInvite", {
       messageId: invite.messageId,
       startWithVideoMuted,
     });
+    const activeInviteCall = buildActiveCall({
+      meetingUrl: invite.meetingUrl,
+      locationName: invite.locationName,
+      ownerKey: invite.ownerKey,
+      meetUrl: invite.meetUrl,
+      displayName: invite.displayName,
+      startWithVideoMuted,
+    });
     set({
-      activeCall: {
-        meetingUrl: invite.meetingUrl,
-        locationName: invite.locationName,
-        ownerKey: invite.ownerKey,
-        meetUrl: invite.meetUrl,
-        displayName: invite.displayName,
-        startWithVideoMuted,
-      },
+      activeCall: activeInviteCall,
       incomingInvite: null,
     });
   },

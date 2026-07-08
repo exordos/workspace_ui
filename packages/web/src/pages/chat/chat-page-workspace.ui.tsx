@@ -11,6 +11,7 @@ import { selectWorkspaceChatHeaderView } from "~/entities/messenger/messenger-ch
 import {
   conversationIdForStream,
   conversationIdForTopic,
+  parseMessengerConversationId,
   selectMessengerConversationFromWorkspaceRoute,
 } from "~/entities/messenger/messenger-ids.lib";
 import {
@@ -20,14 +21,23 @@ import {
   sendMessengerMessage,
 } from "~/entities/messenger/messenger-message-actions.lib";
 import { toggleMessengerMessageReaction } from "~/entities/messenger/messenger-message-reactions-actions.lib";
-import { loadMessengerConversationMessages } from "~/entities/messenger/messenger-messages-loader.lib";
+import {
+  loadMessengerConversationMessages,
+  loadMessengerMessageWindowAroundMessage,
+  loadMessengerMessageWindowPage,
+} from "~/entities/messenger/messenger-messages-loader.lib";
 import { useMessengerOutboxStore } from "~/entities/messenger/messenger-outbox.model";
 import type { MessengerOutgoingMessage } from "~/entities/messenger/messenger-outbox.types";
 import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
 import { useMessengerStreamBindingsForRoute } from "~/entities/messenger/messenger-stream-bindings-loader.lib";
 import { normalizeWorkspacePreviewBlob } from "~/entities/messenger/messenger-workspace-message-preview-blob.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
-import type { MessengerMessage, MessengerTopic } from "~/entities/messenger/messenger.types";
+import type {
+  MessengerConversationId,
+  MessengerMessage,
+  MessengerTopic,
+  MessengerUuid,
+} from "~/entities/messenger/messenger.types";
 import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { UsersById } from "~/entities/user/user.types";
@@ -37,7 +47,7 @@ import {
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call-settings.model";
-import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
+import { createJitsiCallKey, useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { buildWorkspaceJitsiMeetingUrl } from "~/features/jitsi-call/workspace-jitsi-call.lib";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import type { MediaItem } from "~/features/media-viewer/media-viewer.types";
@@ -55,6 +65,7 @@ import {
   workspaceMessengerMessageRoute,
   type WorkspaceMessengerRouteMatch,
 } from "~/shared/lib/workspace-messenger-route.lib";
+import { Spinner } from "~/shared/ui/spinner.ui";
 import type { ChatHeaderProps } from "~/widgets/chat-view/chat-header.types";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import type {
@@ -231,15 +242,31 @@ function WorkspaceChatState({
   );
 }
 
+function WorkspaceChatBlockingLoader(): React.ReactElement {
+  return (
+    <div
+      className="flex min-h-[200px] flex-1 items-center justify-center"
+      aria-busy="true"
+      aria-label={t("chat.loadingMessages")}
+    >
+      <Spinner size="lg" />
+    </div>
+  );
+}
+
 export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) => {
   // This page is not a new chat layout: it assembles old sections and swaps only the data source.
-  useMessengerStreamBindingsForRoute({ route });
-  const location = useLocation();
-  const openSearch = useOpenSearch();
-  const rightDrawer = useRightDrawer();
   const [retryNonce, setRetryNonce] = useState(0);
   const [sendError, setSendError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [messageRouteUuid, setMessageRouteUuid] = useState<MessengerUuid | null>(null);
+  const [resolvedMessageConversationId, setResolvedMessageConversationId] =
+    useState<MessengerConversationId | null>(null);
+  const [focusedMessageUuid, setFocusedMessageUuid] = useState<MessengerUuid | null>(null);
+  const [messageRouteLoading, setMessageRouteLoading] = useState(false);
+  const [windowPaginationDirection, setWindowPaginationDirection] = useState<
+    "before" | "after" | null
+  >(null);
   const [composerEditSession, setComposerEditSession] = useState<ComposerEditSession | null>(null);
   const [composerEditMessageUuid, setComposerEditMessageUuid] = useState<string | null>(null);
   const [pendingDeleteMessageUuid, setPendingDeleteMessageUuid] = useState<string | null>(null);
@@ -254,11 +281,60 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   const readBatchTimerRef = useRef<number | null>(null);
   const actionAbortControllersRef = useRef<Set<AbortController>>(new Set());
   const uploadAbortControllerRef = useRef<AbortController | null>(null);
+  const pendingWorkspaceJitsiHeaderCallRef = useRef(false);
   const workspacePreviewBlobCacheRef = useRef<Map<string, WorkspacePreviewBlobCacheEntry>>(
     new Map(),
   );
   const openWorkspaceForward = useWorkspaceForwardMessageStore((state) => state.open);
-  const selection = useMemo(() => selectMessengerConversationFromWorkspaceRoute(route), [route]);
+  const routeSelection = useMemo(
+    () => selectMessengerConversationFromWorkspaceRoute(route),
+    [route],
+  );
+  const activeMessageConversationId =
+    routeSelection.status === "message" && messageRouteUuid === routeSelection.messageUuid
+      ? resolvedMessageConversationId
+      : null;
+  const activeFocusedMessageUuid =
+    routeSelection.status === "message" && messageRouteUuid === routeSelection.messageUuid
+      ? focusedMessageUuid
+      : null;
+  const hasCurrentMessageRouteState =
+    routeSelection.status === "message" && messageRouteUuid === routeSelection.messageUuid;
+  const effectiveRoute = useMemo<WorkspaceMessengerRouteMatch | null>(() => {
+    if (route?.kind !== "message" || activeMessageConversationId == null) {
+      return route;
+    }
+
+    const parsedConversationId = parseMessengerConversationId(activeMessageConversationId);
+    if (parsedConversationId == null) {
+      return route;
+    }
+
+    if (parsedConversationId.kind === "topic") {
+      return {
+        kind: "topic",
+        orgId: route.orgId,
+        projectId: route.projectId,
+        streamUuid: parsedConversationId.streamUuid,
+        topicUuid: parsedConversationId.topicUuid,
+      };
+    }
+
+    return {
+      kind: "stream",
+      orgId: route.orgId,
+      projectId: route.projectId,
+      streamUuid: parsedConversationId.streamUuid,
+    };
+  }, [activeMessageConversationId, route]);
+  useMessengerStreamBindingsForRoute({ route: effectiveRoute });
+  const location = useLocation();
+  const openSearch = useOpenSearch();
+  const rightDrawer = useRightDrawer();
+  const selection = useMemo(
+    () => selectMessengerConversationFromWorkspaceRoute(effectiveRoute),
+    [effectiveRoute],
+  );
   const sessions = useWorkspaceAuthStore((state) => state.sessions);
   const currentAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
   const runtimeContext = useMemo(
@@ -313,6 +389,14 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     conversationId == null
       ? selectWorkspaceMessageStatusForConversation(state, "")
       : selectWorkspaceMessageStatusForConversation(state, conversationId),
+  );
+  const beforePageMarker = useWorkspaceMessageStore((state) =>
+    conversationId == null
+      ? null
+      : (state.beforePageMarkerByConversationId[conversationId] ?? null),
+  );
+  const afterPageMarker = useWorkspaceMessageStore((state) =>
+    conversationId == null ? null : (state.afterPageMarkerByConversationId[conversationId] ?? null),
   );
   const usersById = useUsersStore((state) =>
     Object.keys(state.usersById).length > 0 ? state.usersById : EMPTY_USERS_BY_ID,
@@ -435,7 +519,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   );
 
   useEffect(() => {
-    if (selection.status !== "conversation" || runtimeContext == null) return;
+    if (
+      routeSelection.status === "message" ||
+      selection.status !== "conversation" ||
+      runtimeContext == null
+    ) {
+      return;
+    }
 
     // Message history loads from the Workspace API and applies only while the runtime owner is current.
     const controller = new AbortController();
@@ -449,7 +539,102 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     return () => {
       controller.abort();
     };
-  }, [retryNonce, runtimeContext, selection]);
+  }, [retryNonce, routeSelection.status, runtimeContext, selection]);
+
+  useEffect(() => {
+    if (routeSelection.status !== "message") {
+      setMessageRouteUuid(null);
+      setResolvedMessageConversationId(null);
+      setFocusedMessageUuid(null);
+      setMessageRouteLoading(false);
+      setWindowPaginationDirection(null);
+      return;
+    }
+
+    setMessageRouteUuid(routeSelection.messageUuid);
+    setResolvedMessageConversationId(null);
+    setFocusedMessageUuid(null);
+    setMessageRouteLoading(false);
+    setWindowPaginationDirection(null);
+  }, [
+    route?.orgId,
+    route?.projectId,
+    route?.kind,
+    routeSelection.status,
+    routeSelection.status === "message" ? routeSelection.messageUuid : null,
+    routeSelection.status === "conversation" ? routeSelection.conversationId : null,
+  ]);
+
+  useEffect(() => {
+    if (routeSelection.status !== "message" || runtimeContext == null) return;
+
+    const messageUuid = routeSelection.messageUuid;
+    const messageStoreState = useWorkspaceMessageStore.getState();
+    if (activeMessageConversationId != null && activeFocusedMessageUuid === messageUuid) {
+      return;
+    }
+    if (activeMessageConversationId != null) {
+      const activeMessages = selectWorkspaceMessagesForConversation(
+        messageStoreState,
+        activeMessageConversationId,
+      );
+      if (activeMessages.some((message) => message.uuid === messageUuid)) {
+        setMessageRouteUuid(messageUuid);
+        setFocusedMessageUuid(messageUuid);
+        return;
+      }
+    }
+
+    const existingMessage = selectWorkspaceMessageById(messageStoreState, messageUuid);
+    if (existingMessage != null) {
+      const existingConversationMessages = selectWorkspaceMessagesForConversation(
+        messageStoreState,
+        existingMessage.conversationId,
+      );
+      if (existingConversationMessages.some((message) => message.uuid === messageUuid)) {
+        setMessageRouteUuid(messageUuid);
+        setResolvedMessageConversationId(existingMessage.conversationId);
+        setFocusedMessageUuid(messageUuid);
+        return;
+      }
+    }
+
+    const controller = new AbortController();
+    setMessageRouteLoading(true);
+    setActionError(null);
+    void loadMessengerMessageWindowAroundMessage({
+      runtimeContext,
+      messageUuid,
+      getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+      signal: controller.signal,
+    })
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        if (result.status === "applied") {
+          setMessageRouteUuid(messageUuid);
+          setResolvedMessageConversationId(result.conversationId);
+          setFocusedMessageUuid(result.anchorUuid);
+          setActionError(null);
+          return;
+        }
+        if (result.status === "failed") {
+          setActionError(result.error);
+        }
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setActionError(normalizeWorkspaceActionError(error, t("chat.messagesLoadError")));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setMessageRouteLoading(false);
+        }
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [activeFocusedMessageUuid, activeMessageConversationId, routeSelection, runtimeContext]);
 
   useEffect(() => {
     return () => {
@@ -458,6 +643,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       }
       actionAbortControllersRef.current.clear();
       uploadAbortControllerRef.current = null;
+      pendingWorkspaceJitsiHeaderCallRef.current = false;
       if (readBatchTimerRef.current != null) {
         window.clearTimeout(readBatchTimerRef.current);
         readBatchTimerRef.current = null;
@@ -475,6 +661,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       }
       actionAbortControllersRef.current.clear();
       uploadAbortControllerRef.current = null;
+      pendingWorkspaceJitsiHeaderCallRef.current = false;
       clearWorkspacePreviewBlobCache(workspacePreviewBlobCacheRef.current);
     };
   }, [conversationId, runtimeContext]);
@@ -739,13 +926,17 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     (url: string, locationName?: string) => {
       if (runtimeContext == null || ownerKey == null) return;
 
-      useJitsiCallStore.getState().openCall({
+      const callPayload = {
         meetingUrl: url,
         locationName: locationName?.trim() ?? "",
         ownerKey,
         meetUrl: workspaceMeetUrl ?? undefined,
         displayName: resolveWorkspaceCurrentUserDisplayName(runtimeContext, usersById),
-      });
+      };
+      const result = useJitsiCallStore.getState().requestOpenCall(callPayload);
+      if (result.status === "blocked-active") {
+        setSendError(t("message.sendFailed"));
+      }
     },
     [ownerKey, runtimeContext, usersById, workspaceMeetUrl],
   );
@@ -767,6 +958,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       setSendError(target.error);
       return;
     }
+    if (pendingWorkspaceJitsiHeaderCallRef.current) {
+      return;
+    }
 
     const meetingUrl = buildWorkspaceJitsiMeetingUrl({
       meetUrl: workspaceMeetUrl,
@@ -776,7 +970,21 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       topicUuid: target.topicUuid,
     });
     const locationName = headerView.kind === "directPrivate" ? headerView.dmPartner.name : "";
+    const callPayload = {
+      meetingUrl,
+      locationName,
+      ownerKey,
+      meetUrl: workspaceMeetUrl,
+      displayName: resolveWorkspaceCurrentUserDisplayName(runtimeContext, usersById),
+    };
 
+    const activeCall = useJitsiCallStore.getState().activeCall;
+    if (activeCall != null && activeCall.callKey !== createJitsiCallKey(callPayload)) {
+      setSendError(t("message.sendFailed"));
+      return;
+    }
+
+    pendingWorkspaceJitsiHeaderCallRef.current = true;
     void runWorkspaceAction(async (signal) => {
       try {
         const result = await sendMessengerMessage({
@@ -789,20 +997,30 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
           includeStreamConversation: target.includeStreamConversation,
         });
 
+        if (signal.aborted) return;
+
         if (result.status !== "applied") {
           setSendError(t("message.sendFailed"));
           return;
         }
 
-        useJitsiCallStore.getState().openCall({
-          meetingUrl,
-          locationName,
-          ownerKey,
-          meetUrl: workspaceMeetUrl,
-          displayName: resolveWorkspaceCurrentUserDisplayName(runtimeContext, usersById),
-        });
+        const currentRuntimeContext = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+        if (
+          currentRuntimeContext == null ||
+          workspaceRuntimeOwnerKey(currentRuntimeContext) !== ownerKey
+        ) {
+          return;
+        }
+
+        const openResult = useJitsiCallStore.getState().requestOpenCall(callPayload);
+        if (openResult.status === "blocked-active") {
+          setSendError(t("message.sendFailed"));
+        }
       } catch (error) {
+        if (signal.aborted) return;
         setSendError(normalizeWorkspaceActionError(error, t("message.sendFailed")));
+      } finally {
+        pendingWorkspaceJitsiHeaderCallRef.current = false;
       }
     });
   }, [
@@ -939,7 +1157,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     (messageUuid: string, selectedText?: string) => {
       if (
         selection.status !== "conversation" ||
-        (route?.kind !== "stream" && route?.kind !== "topic")
+        (effectiveRoute?.kind !== "stream" && effectiveRoute?.kind !== "topic")
       ) {
         setActionError(t("workspaceMessenger.messageActionTargetMissing"));
         return;
@@ -961,14 +1179,14 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         content: quoteSource,
         sender_full_name: authorLabel,
         permalinkUrl: workspaceMessengerMessageRoute({
-          orgId: route.orgId,
-          projectId: route.projectId,
+          orgId: effectiveRoute.orgId,
+          projectId: effectiveRoute.projectId,
           messageUuid: message.uuid,
         }),
         quoteFormat: "workspace",
       });
     },
-    [resolveAuthorLabel, route, selection.status],
+    [effectiveRoute, resolveAuthorLabel, selection.status],
   );
 
   const handleClearReply = useCallback(() => {
@@ -1292,13 +1510,39 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   );
 
   const handleLoadOlder = useCallback(() => {
-    if (
-      runtimeContext == null ||
-      conversationId == null ||
-      messagesStatus.loading ||
-      !messagesStatus.hasMore ||
-      messagesStatus.nextPageMarker == null
-    ) {
+    if (runtimeContext == null || conversationId == null || messagesStatus.loading) {
+      return;
+    }
+
+    if (routeSelection.status === "message") {
+      if (beforePageMarker == null) return;
+
+      setWindowPaginationDirection("before");
+      void runWorkspaceAction((signal) =>
+        loadMessengerMessageWindowPage({
+          runtimeContext,
+          conversationId,
+          direction: "before",
+          pageMarker: beforePageMarker,
+          getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+          signal,
+        }),
+      )
+        .then((result) => {
+          if (result.status === "failed") {
+            setActionError(result.error);
+          }
+        })
+        .catch((error: unknown) => {
+          setActionError(normalizeWorkspaceActionError(error, t("chat.messagesLoadError")));
+        })
+        .finally(() => {
+          setWindowPaginationDirection(null);
+        });
+      return;
+    }
+
+    if (!messagesStatus.hasMore || messagesStatus.nextPageMarker == null) {
       return;
     }
 
@@ -1312,10 +1556,12 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       }),
     );
   }, [
+    beforePageMarker,
     conversationId,
     messagesStatus.hasMore,
     messagesStatus.loading,
     messagesStatus.nextPageMarker,
+    routeSelection.status,
     runWorkspaceAction,
     runtimeContext,
   ]);
@@ -1337,10 +1583,46 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   }, []);
 
   const handleLoadNewer = useCallback(() => {
-    // Workspace store does not keep a separate newer-around-anchor window yet.
-    // So the route honestly keeps an empty callback and hasNewerMessages=false:
-    // the list already supports lower pagination, but the page has nothing to load from store yet.
-  }, []);
+    if (
+      runtimeContext == null ||
+      conversationId == null ||
+      messagesStatus.loading ||
+      routeSelection.status !== "message" ||
+      afterPageMarker == null
+    ) {
+      return;
+    }
+
+    setWindowPaginationDirection("after");
+    void runWorkspaceAction((signal) =>
+      loadMessengerMessageWindowPage({
+        runtimeContext,
+        conversationId,
+        direction: "after",
+        pageMarker: afterPageMarker,
+        getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+        signal,
+      }),
+    )
+      .then((result) => {
+        if (result.status === "failed") {
+          setActionError(result.error);
+        }
+      })
+      .catch((error: unknown) => {
+        setActionError(normalizeWorkspaceActionError(error, t("chat.messagesLoadError")));
+      })
+      .finally(() => {
+        setWindowPaginationDirection(null);
+      });
+  }, [
+    afterPageMarker,
+    conversationId,
+    messagesStatus.loading,
+    routeSelection.status,
+    runWorkspaceAction,
+    runtimeContext,
+  ]);
 
   const handleToggleRightPanel = useCallback(() => {
     rightDrawer?.setOpen(!rightDrawer.open);
@@ -1380,13 +1662,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         detail={t("workspaceMessenger.invalidRouteHint")}
       />
     );
-  } else if (selection.status === "unsupported-message") {
-    body = (
-      <WorkspaceChatState
-        title={t("workspaceMessenger.messageRouteUnsupported")}
-        detail={t("workspaceMessenger.messageRouteUnsupportedHint")}
-      />
-    );
+  } else if (routeSelection.status === "message" && selection.status !== "conversation") {
+    body =
+      messageRouteLoading || !hasCurrentMessageRouteState || actionError == null ? (
+        <WorkspaceChatBlockingLoader />
+      ) : (
+        <WorkspaceChatState title={t("chat.messagesLoadError")} detail={actionError ?? undefined} />
+      );
   } else if (selection.status === "none") {
     body = (
       <WorkspaceChatState
@@ -1394,7 +1676,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         detail={t("workspaceMessenger.invalidRouteHint")}
       />
     );
-  } else {
+  } else if (selection.status === "conversation") {
     body = (
       <ChatPageWorkspaceMessageListSection
         messagesLoading={messagesStatus.loading}
@@ -1403,16 +1685,26 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         outgoingMessages={outgoingMessages}
         currentUserUuid={currentUserUuid}
         conversationId={selection.conversationId}
-        scrollToBottomKey={selection.conversationId}
+        scrollToBottomKey={`${selection.conversationId}:${activeFocusedMessageUuid ?? ""}`}
         onLoadOlder={handleLoadOlder}
-        isLoadingOlder={messagesStatus.loading && routeMessages.length > 0}
-        isLoadingNewer={false}
+        isLoadingOlder={
+          messagesStatus.loading &&
+          routeMessages.length > 0 &&
+          windowPaginationDirection !== "after"
+        }
+        isLoadingNewer={
+          messagesStatus.loading &&
+          routeMessages.length > 0 &&
+          windowPaginationDirection === "after"
+        }
         onLoadNewer={handleLoadNewer}
-        hasOlderMessages={messagesStatus.hasMore}
-        hasNewerMessages={false}
+        hasOlderMessages={
+          routeSelection.status === "message" ? beforePageMarker != null : messagesStatus.hasMore
+        }
+        hasNewerMessages={routeSelection.status === "message" && afterPageMarker != null}
         firstUnreadUuid={firstUnreadMessage?.uuid}
         unreadCount={unreadCount}
-        focusedMessageUuid={null}
+        focusedMessageUuid={activeFocusedMessageUuid}
         selectionMode={selectionMode}
         selectedMessageUuids={selectedMessageUuids}
         onUnreadMessagesVisible={scheduleReadBatch}
@@ -1441,6 +1733,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         scrollToBottomAfterSendNonce={scrollToBottomAfterSendNonce}
         resolveAuthorLabel={resolveAuthorLabel}
         resolveMention={resolveMention}
+      />
+    );
+  } else {
+    body = (
+      <WorkspaceChatState
+        title={t("workspaceMessenger.invalidRoute")}
+        detail={t("workspaceMessenger.invalidRouteHint")}
       />
     );
   }

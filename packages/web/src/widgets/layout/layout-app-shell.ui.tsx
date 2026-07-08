@@ -1,5 +1,5 @@
 import React from "react";
-import { JitsiCallShell } from "~/features/jitsi-call/jitsi-call-shell.ui";
+import { JitsiIncomingInviteHost } from "~/features/jitsi-call/jitsi-call-shell.ui";
 import { MediaViewerOverlay } from "~/features/media-viewer/media-viewer-overlay.ui";
 import { OpenSearchContext } from "~/shared/contexts/open-search";
 import { RightDrawerContext } from "~/shared/contexts/right-drawer";
@@ -72,7 +72,7 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
           aria-label={brand.appName}
         >
           <MediaViewerOverlay />
-          <JitsiCallShell />
+          <JitsiIncomingInviteHost />
           <TopBar />
           <LayoutMainWorkspace
             shouldShowChatShell={shouldShowChatShell}

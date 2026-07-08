@@ -10,6 +10,7 @@ import {
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { JitsiActiveCallHost } from "~/features/jitsi-call/jitsi-call-shell.ui";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { WorkspaceForwardMessageDialog } from "~/features/workspace-forward-message/workspace-forward-message.ui";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
@@ -369,6 +370,7 @@ export const Layout: React.FC = () => {
           onDismiss={notificationPermission.dismiss}
         />
       ) : null}
+      <JitsiActiveCallHost />
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <LayoutLoadingGate
           showFullscreenLoader={showFullscreenLoader}

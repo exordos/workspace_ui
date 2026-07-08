@@ -245,7 +245,75 @@ describe("JitsiCallModal", () => {
     });
   });
 
-  it("passes current Workspace user display name to Jitsi", async () => {
+  it("passes snapshot display name prop to Jitsi", async () => {
+    render(
+      <JitsiCallModal
+        open
+        meetingUrl="https://meet.genesis-core.tech/room-user-name"
+        locationName="User name"
+        displayName="  Snapshot User  "
+        onClose={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(latestJitsiUserInfo?.displayName).toBe("Snapshot User");
+    });
+  });
+
+  it("keeps active call display name when current Workspace user changes", async () => {
+    const session = createWorkspaceSession({ userUuid: "user-a" });
+    useWorkspaceAuthStore.setState({
+      sessions: [session],
+      currentAccountId: session.accountId,
+      runtimeGeneration: session.runtimeGeneration,
+    });
+    useUsersStore
+      .getState()
+      .upsertUser(createUser({ uuid: "user-a", displayName: "Alice Workspace" }));
+
+    const { rerender } = render(
+      <JitsiCallModal
+        open
+        meetingUrl="https://meet.genesis-core.tech/room-snapshot-stable"
+        locationName="Snapshot stable"
+        displayName="Snapshot User"
+        onClose={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(latestJitsiUserInfo?.displayName).toBe("Snapshot User");
+    });
+
+    const nextSession = createWorkspaceSession({
+      accountId: "account-b",
+      userUuid: "user-b",
+      runtimeGeneration: 2,
+    });
+    useWorkspaceAuthStore.setState({
+      sessions: [nextSession],
+      currentAccountId: nextSession.accountId,
+      runtimeGeneration: nextSession.runtimeGeneration,
+    });
+    useUsersStore
+      .getState()
+      .upsertUser(createUser({ uuid: "user-b", displayName: "Bob Workspace" }));
+
+    rerender(
+      <JitsiCallModal
+        open
+        meetingUrl="https://meet.genesis-core.tech/room-snapshot-stable"
+        locationName="Snapshot stable"
+        displayName="Snapshot User"
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(latestJitsiUserInfo?.displayName).toBe("Snapshot User");
+  });
+
+  it("falls back to participant label when snapshot display name is empty", async () => {
     const session = createWorkspaceSession({ userUuid: "user-a" });
     useWorkspaceAuthStore.setState({
       sessions: [session],
@@ -259,14 +327,15 @@ describe("JitsiCallModal", () => {
     render(
       <JitsiCallModal
         open
-        meetingUrl="https://meet.genesis-core.tech/room-user-name"
-        locationName="User name"
+        meetingUrl="https://meet.genesis-core.tech/room-fallback-user-name"
+        locationName="Fallback user name"
+        displayName="   "
         onClose={vi.fn()}
       />,
     );
 
     await waitFor(() => {
-      expect(latestJitsiUserInfo?.displayName).toBe("Alice Workspace");
+      expect(latestJitsiUserInfo?.displayName).toBe("Participant");
     });
   });
 

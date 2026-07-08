@@ -35,13 +35,14 @@ async function loadShell(variant?: "large" | "compact") {
   }
 
   const { useJitsiCallStore } = await import("./jitsi-call.model");
-  const { JitsiCallShell } = await import("./jitsi-call-shell.ui");
+  const { JitsiActiveCallHost, JitsiCallShell, JitsiIncomingInviteHost } =
+    await import("./jitsi-call-shell.ui");
 
   useJitsiCallStore.getState().clear();
-  return { useJitsiCallStore, JitsiCallShell };
+  return { useJitsiCallStore, JitsiActiveCallHost, JitsiCallShell, JitsiIncomingInviteHost };
 }
 
-describe("JitsiCallShell", () => {
+describe("Jitsi call hosts", () => {
   afterEach(async () => {
     const { useJitsiCallStore } = await import("./jitsi-call.model");
     useJitsiCallStore.getState().clear();
@@ -49,55 +50,71 @@ describe("JitsiCallShell", () => {
     vi.useRealTimers();
   });
 
-  it("renders large incoming modal by default", async () => {
-    const { useJitsiCallStore, JitsiCallShell } = await loadShell();
+  it("renders active modal from active host when activeCall exists", async () => {
+    const { useJitsiCallStore, JitsiActiveCallHost } = await loadShell();
     act(() => {
-      useJitsiCallStore.getState().ingestIncomingInvite(buildInvite(101));
+      useJitsiCallStore.getState().requestOpenCall({
+        meetingUrl: "https://meet.workspace.example.com/active-room",
+        locationName: "Active room",
+        startWithVideoMuted: false,
+      });
     });
 
-    render(<JitsiCallShell />);
+    render(<JitsiActiveCallHost />);
 
-    expect(screen.getByTestId("incoming-call-large")).toBeInTheDocument();
-    expect(screen.queryByTestId("incoming-call-compact")).not.toBeInTheDocument();
-  });
-
-  it("renders compact incoming modal when variant is compact", async () => {
-    const { useJitsiCallStore, JitsiCallShell } = await loadShell("compact");
-    act(() => {
-      useJitsiCallStore.getState().ingestIncomingInvite(buildInvite(102));
-    });
-
-    render(<JitsiCallShell />);
-
-    expect(screen.getByTestId("incoming-call-compact")).toBeInTheDocument();
-    expect(screen.queryByTestId("incoming-call-large")).not.toBeInTheDocument();
-  });
-
-  it("passes unmuted video preference from large modal toggle to active call", async () => {
-    const { useJitsiCallStore, JitsiCallShell } = await loadShell("large");
-    act(() => {
-      useJitsiCallStore.getState().ingestIncomingInvite(buildInvite(103));
-    });
-
-    render(<JitsiCallShell />);
-
-    fireEvent.click(screen.getByTestId("incoming-call-video-toggle"));
-    fireEvent.click(screen.getByTestId("incoming-call-accept"));
-
-    expect(useJitsiCallStore.getState().activeCall?.startWithVideoMuted).toBe(false);
     expect(screen.getByTestId("jitsi-call-modal")).toHaveAttribute(
       "data-start-with-video-muted",
       "false",
     );
   });
 
+  it("renders large incoming modal by default", async () => {
+    const { useJitsiCallStore, JitsiIncomingInviteHost } = await loadShell();
+    act(() => {
+      useJitsiCallStore.getState().ingestIncomingInvite(buildInvite(101));
+    });
+
+    render(<JitsiIncomingInviteHost />);
+
+    expect(screen.getByTestId("incoming-call-large")).toBeInTheDocument();
+    expect(screen.queryByTestId("incoming-call-compact")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("jitsi-call-modal")).not.toBeInTheDocument();
+  });
+
+  it("renders compact incoming modal when variant is compact", async () => {
+    const { useJitsiCallStore, JitsiIncomingInviteHost } = await loadShell("compact");
+    act(() => {
+      useJitsiCallStore.getState().ingestIncomingInvite(buildInvite(102));
+    });
+
+    render(<JitsiIncomingInviteHost />);
+
+    expect(screen.getByTestId("incoming-call-compact")).toBeInTheDocument();
+    expect(screen.queryByTestId("incoming-call-large")).not.toBeInTheDocument();
+  });
+
+  it("passes unmuted video preference from large modal toggle to active call", async () => {
+    const { useJitsiCallStore, JitsiIncomingInviteHost } = await loadShell("large");
+    act(() => {
+      useJitsiCallStore.getState().ingestIncomingInvite(buildInvite(103));
+    });
+
+    render(<JitsiIncomingInviteHost />);
+
+    fireEvent.click(screen.getByTestId("incoming-call-video-toggle"));
+    fireEvent.click(screen.getByTestId("incoming-call-accept"));
+
+    expect(useJitsiCallStore.getState().activeCall?.startWithVideoMuted).toBe(false);
+    expect(screen.queryByTestId("jitsi-call-modal")).not.toBeInTheDocument();
+  });
+
   it("declines incoming invite and clears invite state", async () => {
-    const { useJitsiCallStore, JitsiCallShell } = await loadShell("large");
+    const { useJitsiCallStore, JitsiIncomingInviteHost } = await loadShell("large");
     act(() => {
       useJitsiCallStore.getState().ingestIncomingInvite(buildInvite(104));
     });
 
-    render(<JitsiCallShell />);
+    render(<JitsiIncomingInviteHost />);
 
     fireEvent.click(screen.getByTestId("incoming-call-decline"));
 
@@ -108,12 +125,12 @@ describe("JitsiCallShell", () => {
 
   it("auto-declines incoming invite after 45 seconds", async () => {
     vi.useFakeTimers();
-    const { useJitsiCallStore, JitsiCallShell } = await loadShell("large");
+    const { useJitsiCallStore, JitsiIncomingInviteHost } = await loadShell("large");
     act(() => {
       useJitsiCallStore.getState().ingestIncomingInvite(buildInvite(105));
     });
 
-    render(<JitsiCallShell />);
+    render(<JitsiIncomingInviteHost />);
     expect(screen.getByTestId("incoming-call-large")).toBeInTheDocument();
 
     act(() => {
@@ -122,5 +139,16 @@ describe("JitsiCallShell", () => {
 
     expect(useJitsiCallStore.getState().incomingInvite).toBeNull();
     expect(screen.queryByTestId("incoming-call-large")).not.toBeInTheDocument();
+  });
+
+  it("keeps compatible shell rendering both hosts", async () => {
+    const { useJitsiCallStore, JitsiCallShell } = await loadShell("large");
+    act(() => {
+      useJitsiCallStore.getState().ingestIncomingInvite(buildInvite(106));
+    });
+
+    render(<JitsiCallShell />);
+
+    expect(screen.getByTestId("incoming-call-large")).toBeInTheDocument();
   });
 });

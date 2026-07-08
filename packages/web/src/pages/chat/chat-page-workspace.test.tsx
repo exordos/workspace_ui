@@ -14,7 +14,7 @@ import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-a
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call-settings.model";
-import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
+import { createJitsiCallKey, useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import { useWorkspaceForwardMessageStore } from "~/features/workspace-forward-message/workspace-forward-message.model";
 import { t } from "~/i18n/i18n";
@@ -47,6 +47,26 @@ const captured = vi.hoisted(() => ({
     throw new Error("legacy chat-list store must not be used");
   }),
   loadWorkspaceMessages: vi.fn().mockResolvedValue({ status: "applied" }),
+  loadWorkspaceMessageWindowAroundMessage: vi.fn().mockResolvedValue({
+    status: "applied",
+    ownerKey: "owner-key",
+    conversationId:
+      "topic:11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222",
+    anchorUuid: "55555555-5555-4555-8555-555555555555",
+    beforePageMarker: null,
+    afterPageMarker: null,
+    beforeLimit: null,
+    afterLimit: null,
+  }),
+  loadWorkspaceMessageWindowPage: vi.fn().mockResolvedValue({
+    status: "applied",
+    ownerKey: "owner-key",
+    conversationId:
+      "topic:11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222",
+    direction: "before",
+    nextPageMarker: null,
+    pageLimit: 50,
+  }),
   downloadWorkspaceFile: vi.fn(),
   uploadWorkspaceFile: vi.fn(),
   sendMessengerMessage: vi.fn(),
@@ -63,6 +83,8 @@ vi.mock("~/entities/messenger/messenger-messages-loader.lib", async (importOrigi
   return {
     ...actual,
     loadMessengerConversationMessages: captured.loadWorkspaceMessages,
+    loadMessengerMessageWindowAroundMessage: captured.loadWorkspaceMessageWindowAroundMessage,
+    loadMessengerMessageWindowPage: captured.loadWorkspaceMessageWindowPage,
   };
 });
 
@@ -350,6 +372,26 @@ describe("ChatPage Workspace route", () => {
     captured.messageListProps = null;
     captured.oldChatListStore.mockClear();
     captured.loadWorkspaceMessages.mockClear();
+    captured.loadWorkspaceMessageWindowAroundMessage.mockReset();
+    captured.loadWorkspaceMessageWindowAroundMessage.mockResolvedValue({
+      status: "applied",
+      ownerKey: "owner-key",
+      conversationId: `topic:${STREAM_UUID}:${TOPIC_UUID}`,
+      anchorUuid: MESSAGE_UUID,
+      beforePageMarker: null,
+      afterPageMarker: null,
+      beforeLimit: null,
+      afterLimit: null,
+    });
+    captured.loadWorkspaceMessageWindowPage.mockReset();
+    captured.loadWorkspaceMessageWindowPage.mockResolvedValue({
+      status: "applied",
+      ownerKey: "owner-key",
+      conversationId: `topic:${STREAM_UUID}:${TOPIC_UUID}`,
+      direction: "before",
+      nextPageMarker: null,
+      pageLimit: 50,
+    });
     captured.downloadWorkspaceFile.mockReset();
     captured.downloadWorkspaceFile.mockResolvedValue({
       blob: new Blob(["workspace file"], { type: "text/plain" }),
@@ -465,6 +507,152 @@ describe("ChatPage Workspace route", () => {
     await waitFor(() => expect(captured.loadWorkspaceMessages).toHaveBeenCalledTimes(1));
   });
 
+  it("focuses a Workspace message route from the active store without loading a window", async () => {
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/message/${MESSAGE_UUID}`,
+    );
+
+    expect(await screen.findByTestId("workspace-message-list-section")).toBeInTheDocument();
+    expect(screen.getByText("workspace message")).toBeInTheDocument();
+    expect(captured.messageListProps?.conversationId).toBe(`topic:${STREAM_UUID}:${TOPIC_UUID}`);
+    expect(captured.messageListProps?.focusedMessageUuid).toBe(MESSAGE_UUID);
+    expect(captured.loadWorkspaceMessageWindowAroundMessage).not.toHaveBeenCalled();
+    expect(captured.loadWorkspaceMessages).not.toHaveBeenCalled();
+  });
+
+  it("loads a Workspace message window when the anchor is indexed but absent from the conversation list", async () => {
+    useWorkspaceMessageStore.getState().clear();
+    useWorkspaceMessageStore.getState().upsertMessageBody(createMessage());
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/message/${MESSAGE_UUID}`,
+    );
+
+    await waitFor(() =>
+      expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledTimes(1),
+    );
+    const request = captured.loadWorkspaceMessageWindowAroundMessage.mock.calls[0]?.[0];
+    expect(request).toEqual(
+      expect.objectContaining({
+        messageUuid: MESSAGE_UUID,
+        runtimeContext: expect.objectContaining({
+          projectId: "project-a",
+          userUuid: USER_UUID,
+        }),
+        getRuntimeContext: expect.any(Function),
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(request?.conversationId).toBeUndefined();
+    expect(captured.loadWorkspaceMessages).not.toHaveBeenCalled();
+  });
+
+  it("loads a Workspace message window when the message route anchor is absent", async () => {
+    useWorkspaceMessageStore.getState().clear();
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/message/${MESSAGE_UUID}`,
+    );
+
+    await waitFor(() =>
+      expect(captured.loadWorkspaceMessageWindowAroundMessage).toHaveBeenCalledTimes(1),
+    );
+    const request = captured.loadWorkspaceMessageWindowAroundMessage.mock.calls[0]?.[0];
+    expect(request).toEqual(
+      expect.objectContaining({
+        messageUuid: MESSAGE_UUID,
+        runtimeContext: expect.objectContaining({
+          projectId: "project-a",
+          userUuid: USER_UUID,
+        }),
+        getRuntimeContext: expect.any(Function),
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(request?.conversationId).toBeUndefined();
+
+    await waitFor(() => {
+      expect(captured.messageListProps?.conversationId).toBe(`topic:${STREAM_UUID}:${TOPIC_UUID}`);
+      expect(captured.messageListProps?.focusedMessageUuid).toBe(MESSAGE_UUID);
+    });
+    expect(screen.getByTestId("workspace-message-list-section")).toBeInTheDocument();
+    expect(captured.loadWorkspaceMessages).not.toHaveBeenCalled();
+  });
+
+  it("loads older pages from the message window before marker", async () => {
+    const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    useWorkspaceMessageStore.getState().setConversationWindowMarkers(conversationId, {
+      beforePageMarker: "older-window-cursor",
+      afterPageMarker: null,
+    });
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/message/${MESSAGE_UUID}`,
+    );
+
+    await waitFor(() => expect(captured.messageListProps?.hasOlderMessages).toBe(true));
+    expect(captured.messageListProps?.hasNewerMessages).toBe(false);
+
+    act(() => {
+      captured.messageListProps?.onLoadOlder();
+    });
+
+    await waitFor(() => expect(captured.loadWorkspaceMessageWindowPage).toHaveBeenCalledTimes(1));
+    expect(captured.loadWorkspaceMessageWindowPage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId,
+        direction: "before",
+        pageMarker: "older-window-cursor",
+        runtimeContext: expect.objectContaining({ projectId: "project-a" }),
+        getRuntimeContext: expect.any(Function),
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(captured.loadWorkspaceMessages).not.toHaveBeenCalled();
+  });
+
+  it("loads newer pages from the message window after marker", async () => {
+    const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    useWorkspaceMessageStore.getState().setConversationWindowMarkers(conversationId, {
+      beforePageMarker: null,
+      afterPageMarker: "newer-window-cursor",
+    });
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/message/${MESSAGE_UUID}`,
+    );
+
+    await waitFor(() => expect(captured.messageListProps?.hasNewerMessages).toBe(true));
+    expect(captured.messageListProps?.hasOlderMessages).toBe(false);
+
+    act(() => {
+      captured.messageListProps?.onLoadNewer();
+    });
+
+    await waitFor(() => expect(captured.loadWorkspaceMessageWindowPage).toHaveBeenCalledTimes(1));
+    expect(captured.loadWorkspaceMessageWindowPage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId,
+        direction: "after",
+        pageMarker: "newer-window-cursor",
+        runtimeContext: expect.objectContaining({ projectId: "project-a" }),
+        getRuntimeContext: expect.any(Function),
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(captured.loadWorkspaceMessages).not.toHaveBeenCalled();
+  });
+
+  it("keeps normal topic routes on conversation history loading only", async () => {
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await waitFor(() => expect(captured.loadWorkspaceMessages).toHaveBeenCalledTimes(1));
+    expect(captured.loadWorkspaceMessageWindowAroundMessage).not.toHaveBeenCalled();
+    expect(captured.loadWorkspaceMessageWindowPage).not.toHaveBeenCalled();
+  });
+
   it("opens Workspace mention profile through the right drawer UUID path", async () => {
     const openWorkspaceUserProfile = vi.fn();
     const openUserProfile = vi.fn();
@@ -526,16 +714,155 @@ describe("ChatPage Workspace route", () => {
       );
       await waitFor(() =>
         expect(useJitsiCallStore.getState().activeCall).toMatchObject({
+          callKey: createJitsiCallKey({ meetingUrl: expectedUrl, ownerKey }),
           meetingUrl: expectedUrl,
           locationName: "Bob Reed",
           ownerKey,
           meetUrl: "https://meet.workspace.example.com",
           displayName: "Alice Stone",
+          startedAtMs: 123,
         }),
       );
     } finally {
       nowSpy.mockRestore();
     }
+  });
+
+  it("does not send a Workspace Jitsi call link when another call is active", async () => {
+    const session = createSession();
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    useMessengerStore.getState().clear();
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore
+      .getState()
+      .replaceBootstrapState(ownerKey, createDirectPrivateBootstrapPayload());
+    useWorkspaceJitsiSettingsStore
+      .getState()
+      .setWorkspaceMeetUrl(ownerKey, "https://meet.workspace.example.com/jitsi/");
+    const existingResult = useJitsiCallStore.getState().requestOpenCall({
+      meetingUrl: "https://meet.workspace.example.com/existing-room",
+      locationName: "Existing call",
+      ownerKey,
+      meetUrl: "https://meet.workspace.example.com",
+      displayName: "Alice Stone",
+    });
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${DIRECT_STREAM_UUID}`,
+    );
+
+    await waitFor(() => expect(captured.headerProps?.onCallClick).toEqual(expect.any(Function)));
+    act(() => {
+      captured.headerProps?.onCallClick?.();
+    });
+
+    expect(captured.sendMessengerMessage).not.toHaveBeenCalled();
+    expect(useJitsiCallStore.getState().activeCall).toBe(existingResult.activeCall);
+  });
+
+  it("does not send duplicate Workspace Jitsi call links while the first send is pending", async () => {
+    const session = createSession();
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    useMessengerStore.getState().clear();
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore
+      .getState()
+      .replaceBootstrapState(ownerKey, createDirectPrivateBootstrapPayload());
+    useWorkspaceJitsiSettingsStore
+      .getState()
+      .setWorkspaceMeetUrl(ownerKey, "https://meet.workspace.example.com/jitsi/");
+    const sendRequest = createDeferred<{
+      status: "applied";
+      ownerKey: string;
+      message: MessengerMessage | null;
+    }>();
+    captured.sendMessengerMessage.mockReturnValueOnce(sendRequest.promise);
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(456);
+
+    try {
+      renderWorkspaceChatPageWithShellContexts(
+        `/org/org-a/project/project-a/stream/${DIRECT_STREAM_UUID}`,
+      );
+
+      await waitFor(() => expect(captured.headerProps?.onCallClick).toEqual(expect.any(Function)));
+      act(() => {
+        captured.headerProps?.onCallClick?.();
+        captured.headerProps?.onCallClick?.();
+      });
+
+      expect(captured.sendMessengerMessage).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        sendRequest.resolve({
+          status: "applied",
+          ownerKey,
+          message: null,
+        });
+        await sendRequest.promise;
+        await Promise.resolve();
+      });
+
+      const expectedUrl = `https://meet.workspace.example.com/workspace-org-a-project-a-${DIRECT_STREAM_UUID}-${DIRECT_TOPIC_UUID}-456`;
+      expect(useJitsiCallStore.getState().activeCall).toMatchObject({
+        callKey: createJitsiCallKey({ meetingUrl: expectedUrl, ownerKey }),
+        meetingUrl: expectedUrl,
+      });
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it("does not open a Workspace Jitsi call when the send resolves after abort", async () => {
+    const session = createSession();
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    useMessengerStore.getState().clear();
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore
+      .getState()
+      .replaceBootstrapState(ownerKey, createDirectPrivateBootstrapPayload());
+    useWorkspaceJitsiSettingsStore
+      .getState()
+      .setWorkspaceMeetUrl(ownerKey, "https://meet.workspace.example.com/jitsi/");
+    const sendRequest = createDeferred<{
+      status: "applied";
+      ownerKey: string;
+      message: MessengerMessage | null;
+    }>();
+    let sendSignal: AbortSignal | undefined;
+    captured.sendMessengerMessage.mockImplementationOnce((request: { signal: AbortSignal }) => {
+      sendSignal = request.signal;
+      return sendRequest.promise;
+    });
+
+    const rendered = renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${DIRECT_STREAM_UUID}`,
+    );
+
+    await waitFor(() => expect(captured.headerProps?.onCallClick).toEqual(expect.any(Function)));
+    act(() => {
+      captured.headerProps?.onCallClick?.();
+    });
+    await waitFor(() => {
+      expect(captured.sendMessengerMessage).toHaveBeenCalledTimes(1);
+      expect(sendSignal).toBeInstanceOf(AbortSignal);
+    });
+
+    act(() => {
+      rendered.unmount();
+    });
+    expect(sendSignal?.aborted).toBe(true);
+
+    await act(async () => {
+      sendRequest.resolve({
+        status: "applied",
+        ownerKey,
+        message: null,
+      });
+      await sendRequest.promise;
+      await Promise.resolve();
+    });
+
+    expect(useJitsiCallStore.getState().activeCall).toBeNull();
   });
 
   it("adds a local outgoing row before Workspace send resolves", async () => {

@@ -22,9 +22,11 @@ function buildInvite(messageId = 777): IncomingDmCallInvite {
 
 function buildActiveCall(): ActiveJitsiCall {
   return {
+    callKey: ":https://meet.jit.si/active-room",
     meetingUrl: "https://meet.jit.si/active-room",
     locationName: "Active",
     startWithVideoMuted: true,
+    startedAtMs: 1_700_000_100_000,
   };
 }
 
