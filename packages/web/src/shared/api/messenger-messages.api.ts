@@ -30,6 +30,25 @@ import type {
 export interface GetMessagesQuery extends MessengerPaginationQuery {
   streamUuid?: string;
   topicUuid?: string;
+  sortKey?: "created_at";
+  sortDir?: "asc" | "desc";
+}
+
+export interface GetMessageWindowAroundMessageQuery {
+  messageUuid: string;
+  streamUuid?: string;
+  topicUuid?: string;
+  beforeLimit?: number;
+  afterLimit?: number;
+}
+
+export interface MessengerMessageWindow {
+  anchor: WorkspaceMessengerMessageDto;
+  before: WorkspaceMessengerMessageDto[];
+  after: WorkspaceMessengerMessageDto[];
+  items: WorkspaceMessengerMessageDto[];
+  beforePageMarker: string | null;
+  afterPageMarker: string | null;
 }
 
 // Запрос реакций всегда привязан к сообщению.
@@ -64,11 +83,15 @@ export class UnsupportedMessengerApiActionError extends Error {
   }
 }
 
+const DEFAULT_MESSAGE_WINDOW_LIMIT = 50;
+
 function messagesQueryParams(query: GetMessagesQuery) {
   return {
     ...paginationParams(query),
     stream_uuid: query.streamUuid,
     topic_uuid: query.topicUuid,
+    sort_key: query.sortKey,
+    sort_dir: query.sortDir,
   };
 }
 
@@ -81,6 +104,41 @@ function messageReactionsQueryParams(query: GetMessageReactionsQuery) {
 
 function rejectUnsupportedAction(action: UnsupportedMessengerApiAction): Promise<never> {
   return Promise.reject(new UnsupportedMessengerApiActionError(action));
+}
+
+function dedupeMessagesInOrder(
+  messages: readonly WorkspaceMessengerMessageDto[],
+): WorkspaceMessengerMessageDto[] {
+  const seen = new Set<string>();
+  const deduped: WorkspaceMessengerMessageDto[] = [];
+
+  for (const message of messages) {
+    if (seen.has(message.uuid)) {
+      continue;
+    }
+    seen.add(message.uuid);
+    deduped.push(message);
+  }
+
+  return deduped;
+}
+
+function buildMessageWindow(
+  anchor: WorkspaceMessengerMessageDto,
+  beforeDescPage: MessengerCollectionPage<WorkspaceMessengerMessageDto>,
+  afterAscPage: MessengerCollectionPage<WorkspaceMessengerMessageDto>,
+): MessengerMessageWindow {
+  const before = [...beforeDescPage.items].reverse();
+  const after = afterAscPage.items;
+
+  return {
+    anchor,
+    before,
+    after,
+    items: dedupeMessagesInOrder([...before, anchor, ...after]),
+    beforePageMarker: beforeDescPage.nextPageMarker,
+    afterPageMarker: afterAscPage.nextPageMarker,
+  };
 }
 
 // Message lists are strict because dropping rows would hide real chat history.
@@ -114,6 +172,62 @@ export async function getMessage(
 ): Promise<WorkspaceMessengerMessageDto> {
   const data = await messengerGetJson(`/messages/${messageUuid}`, options);
   return parseDto(data, isWorkspaceMessengerMessageDto, "messenger message response");
+}
+
+export async function getMessageWindowAroundMessage(
+  options: MessengerClientOptions,
+  query: GetMessageWindowAroundMessageQuery,
+): Promise<MessengerMessageWindow> {
+  const beforeLimit = query.beforeLimit ?? DEFAULT_MESSAGE_WINDOW_LIMIT;
+  const afterLimit = query.afterLimit ?? DEFAULT_MESSAGE_WINDOW_LIMIT;
+
+  if (query.streamUuid != null && query.topicUuid != null) {
+    const [anchor, beforeDescPage, afterAscPage] = await Promise.all([
+      getMessage(options, query.messageUuid),
+      getMessagesPage(options, {
+        streamUuid: query.streamUuid,
+        topicUuid: query.topicUuid,
+        pageLimit: beforeLimit,
+        pageMarker: query.messageUuid,
+        sortKey: "created_at",
+        sortDir: "desc",
+      }),
+      getMessagesPage(options, {
+        streamUuid: query.streamUuid,
+        topicUuid: query.topicUuid,
+        pageLimit: afterLimit,
+        pageMarker: query.messageUuid,
+        sortKey: "created_at",
+        sortDir: "asc",
+      }),
+    ]);
+
+    return buildMessageWindow(anchor, beforeDescPage, afterAscPage);
+  }
+
+  const anchor = await getMessage(options, query.messageUuid);
+  const streamUuid = query.streamUuid ?? anchor.stream_uuid;
+  const topicUuid = query.topicUuid ?? anchor.topic_uuid;
+  const [beforeDescPage, afterAscPage] = await Promise.all([
+    getMessagesPage(options, {
+      streamUuid,
+      topicUuid,
+      pageLimit: beforeLimit,
+      pageMarker: query.messageUuid,
+      sortKey: "created_at",
+      sortDir: "desc",
+    }),
+    getMessagesPage(options, {
+      streamUuid,
+      topicUuid,
+      pageLimit: afterLimit,
+      pageMarker: query.messageUuid,
+      sortKey: "created_at",
+      sortDir: "asc",
+    }),
+  ]);
+
+  return buildMessageWindow(anchor, beforeDescPage, afterAscPage);
 }
 
 export async function createMessage(
