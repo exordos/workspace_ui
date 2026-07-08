@@ -10,6 +10,24 @@ export type MessengerRequestOptionsOverrides = Pick<
 
 const pendingForcedSessionRefreshes = new Map<string, Promise<void>>();
 
+function messengerBaseUrlForOrganizationOrigin(origin: string): string {
+  return `${origin.replace(/\/+$/, "")}/api/messenger/v1`;
+}
+
+function runtimeMessengerBaseUrl(
+  runtimeContext: WorkspaceRuntimeContext,
+  overrideBaseUrl: string | undefined,
+): string | undefined {
+  const baseUrl = overrideBaseUrl?.trim();
+  if (baseUrl != null && baseUrl.length > 0) {
+    return baseUrl;
+  }
+  if (import.meta.env.DEV) {
+    return undefined;
+  }
+  return messengerBaseUrlForOrganizationOrigin(runtimeContext.organizationOrigin);
+}
+
 function findSessionAccessToken(accountId: string): string | null {
   return (
     useWorkspaceAuthStore.getState().sessions.find((session) => session.accountId === accountId)
@@ -50,10 +68,12 @@ export function buildMessengerRequestOptions(
 ): MessengerClientOptions {
   const projectId = overrides?.projectId?.trim();
   const devTargetOrigin = overrides?.devTargetOrigin?.trim();
+  const baseUrl = runtimeMessengerBaseUrl(runtimeContext, overrides?.baseUrl);
 
   return {
     ...overrides,
     accessToken: runtimeContext.accessToken,
+    baseUrl,
     devTargetOrigin:
       devTargetOrigin != null && devTargetOrigin.length > 0
         ? devTargetOrigin

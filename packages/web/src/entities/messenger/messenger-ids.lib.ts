@@ -22,7 +22,7 @@ export type MessengerRouteConversationSelection =
       streamUuid: MessengerUuid;
       topicUuid: MessengerUuid;
     }
-  | { status: "unsupported-message"; messageUuid: string }
+  | { status: "message"; messageUuid: MessengerUuid }
   | { status: "none"; reason: "root" | "inbox" | "activity" | "feed" | "missing-route" }
   | { status: "invalid-route" };
 
@@ -99,7 +99,8 @@ export function selectMessengerConversationFromWorkspaceRoute(
   }
 
   if (route.kind === "message") {
-    return { status: "unsupported-message", messageUuid: route.messageUuid };
+    if (!isMessengerUuid(route.messageUuid)) return { status: "invalid-route" };
+    return { status: "message", messageUuid: route.messageUuid };
   }
 
   return { status: "none", reason: route.kind };

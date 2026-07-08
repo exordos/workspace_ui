@@ -80,6 +80,16 @@ async function waitForCondition(predicate: () => boolean): Promise<void> {
   }
 }
 
+function withDevEnv<T>(dev: boolean, fn: () => T): T {
+  const original = import.meta.env.DEV;
+  (import.meta.env as Record<string, unknown>).DEV = dev;
+  try {
+    return fn();
+  } finally {
+    (import.meta.env as Record<string, unknown>).DEV = original;
+  }
+}
+
 describe("messenger request options", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -101,6 +111,18 @@ describe("messenger request options", () => {
       buildMessengerRequestOptions(createRuntimeContext(), undefined, controller.signal)
         .getAccessToken,
     ).toEqual(expect.any(Function));
+  });
+
+  it("uses organization messenger base url outside dev builds", () => {
+    expect(
+      withDevEnv(false, () =>
+        buildMessengerRequestOptions(
+          createRuntimeContext({ organizationOrigin: "https://org-a.example.com/" }),
+        ),
+      ),
+    ).toMatchObject({
+      baseUrl: "https://org-a.example.com/api/messenger/v1",
+    });
   });
 
   it("keeps explicit overrides for project and dev target origin", () => {

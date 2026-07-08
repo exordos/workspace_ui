@@ -28,6 +28,7 @@ import type {
 export type {
   WorkspaceConversationMessagesStatus,
   WorkspaceConversationPagination,
+  WorkspaceConversationWindowMarkers,
   WorkspaceMessageBucketIndexOptions,
   WorkspaceMessageEditPatch,
   WorkspaceMessageStoreData,
@@ -42,6 +43,10 @@ const EMPTY_MESSAGES_ERROR_BY_CONVERSATION_ID: Record<MessengerConversationId, s
 const EMPTY_NEXT_PAGE_MARKER_BY_CONVERSATION_ID: Record<MessengerConversationId, string | null> =
   {};
 const EMPTY_HAS_MORE_BY_CONVERSATION_ID: Record<MessengerConversationId, boolean> = {};
+const EMPTY_BEFORE_PAGE_MARKER_BY_CONVERSATION_ID: Record<MessengerConversationId, string | null> =
+  {};
+const EMPTY_AFTER_PAGE_MARKER_BY_CONVERSATION_ID: Record<MessengerConversationId, string | null> =
+  {};
 
 const EMPTY_STATUS: WorkspaceConversationMessagesStatus = {
   loading: false,
@@ -50,10 +55,9 @@ const EMPTY_STATUS: WorkspaceConversationMessagesStatus = {
   hasMore: false,
 };
 
-// Свежие backend snapshots не знают, какие реакции принадлежат текущему
-// пользователю. Если при upsert просто заменить message целиком, UI потеряет
-// подсветку собственных реакций и reactionUuid для удаления. Поэтому все входы
-// новых message snapshots проходят через один merge-helper.
+// Fresh backend snapshots do not always include the current user's reaction
+// projection. Preserve it across snapshot merges so UI highlighting and remove
+// actions keep their reaction UUIDs.
 function mergeWorkspaceMessageSnapshot(
   previousMessage: MessengerMessage | undefined,
   incomingMessage: MessengerMessage,
@@ -70,10 +74,8 @@ function mergeWorkspaceMessageSnapshot(
   };
 }
 
-// applyOwnMessageReactions принимает либо готовую projection-map, либо строки
-// вида { emojiName, reactionUuid }. Так следующий слой сможет передавать rows
-// из cache/SWR без знания store-internals, а сам store останется на доменной
-// форме Record<emojiName, reactionUuid>.
+// Accept either the domain projection map or cache rows so callers can pass
+// persisted own-reaction data without knowing the store's internal shape.
 function normalizeOwnReactionProjection(
   projection: MessengerOwnReactionUuidsByName | readonly MessengerOwnReactionProjectionRow[],
 ): MessengerOwnReactionUuidsByName {
@@ -92,8 +94,8 @@ function normalizeOwnReactionProjection(
   return normalized;
 }
 
-// Агрегат счетчиков тоже копируется на границе store action, чтобы внешние
-// callers не могли мутировать message.reactions после применения события.
+// Copy reaction aggregates at the store boundary so external callers cannot
+// mutate message.reactions after an event is applied.
 function cloneReactionAggregate(
   aggregate: MessengerReactionCountsByName,
 ): MessengerReactionCountsByName {
@@ -135,6 +137,8 @@ function createEmptyWorkspaceMessageData(): WorkspaceMessageStoreData {
     messagesErrorByConversationId: EMPTY_MESSAGES_ERROR_BY_CONVERSATION_ID,
     nextPageMarkerByConversationId: EMPTY_NEXT_PAGE_MARKER_BY_CONVERSATION_ID,
     hasMoreByConversationId: EMPTY_HAS_MORE_BY_CONVERSATION_ID,
+    beforePageMarkerByConversationId: EMPTY_BEFORE_PAGE_MARKER_BY_CONVERSATION_ID,
+    afterPageMarkerByConversationId: EMPTY_AFTER_PAGE_MARKER_BY_CONVERSATION_ID,
   };
 }
 
@@ -162,6 +166,32 @@ function applyConversationMessagesPage(
     messageIdsByConversationId: {
       ...state.messageIdsByConversationId,
       [conversationId]: nextMessageIds,
+    },
+  };
+}
+
+function applyConversationMessagesWindow(
+  state: Pick<WorkspaceMessageStoreData, "messagesById" | "messageIdsByConversationId">,
+  conversationId: MessengerConversationId,
+  messages: readonly MessengerMessage[],
+): Pick<WorkspaceMessageStoreData, "messagesById" | "messageIdsByConversationId"> {
+  const nextMessagesById = { ...state.messagesById };
+  for (const message of messages) {
+    nextMessagesById[message.uuid] = mergeWorkspaceMessageSnapshot(
+      nextMessagesById[message.uuid],
+      message,
+    );
+  }
+
+  return {
+    messagesById: nextMessagesById,
+    messageIdsByConversationId: {
+      ...state.messageIdsByConversationId,
+      [conversationId]: mergeSortedWorkspaceMessageIds(
+        EMPTY_WORKSPACE_MESSAGE_IDS,
+        messages,
+        nextMessagesById,
+      ),
     },
   };
 }
@@ -239,6 +269,14 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
       messages: messages.length,
     });
     set((state) => applyConversationMessagesPage(state, conversationId, messages));
+  },
+
+  replaceConversationMessagesWindow(conversationId, messages) {
+    logStoreAction("workspaceMessage", "replaceConversationMessagesWindow", {
+      conversationId,
+      messages: messages.length,
+    });
+    set((state) => applyConversationMessagesWindow(state, conversationId, messages));
   },
 
   mergeConversationMessagesPage(conversationId, messages) {
@@ -577,6 +615,24 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
       hasMoreByConversationId: {
         ...state.hasMoreByConversationId,
         [conversationId]: pagination.hasMore,
+      },
+    }));
+  },
+
+  setConversationWindowMarkers(conversationId, markers) {
+    logStoreAction("workspaceMessage", "setConversationWindowMarkers", {
+      conversationId,
+      beforePageMarker: markers.beforePageMarker,
+      afterPageMarker: markers.afterPageMarker,
+    });
+    set((state) => ({
+      beforePageMarkerByConversationId: {
+        ...state.beforePageMarkerByConversationId,
+        [conversationId]: markers.beforePageMarker,
+      },
+      afterPageMarkerByConversationId: {
+        ...state.afterPageMarkerByConversationId,
+        [conversationId]: markers.afterPageMarker,
       },
     }));
   },

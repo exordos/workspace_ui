@@ -72,7 +72,7 @@ describe("messenger conversation ids", () => {
     });
   });
 
-  it("keeps message routes unsupported until message UUID resolution exists", () => {
+  it("selects message routes for Workspace message window resolution", () => {
     expect(
       selectMessengerConversationFromWorkspaceRoute({
         kind: "message",
@@ -80,7 +80,7 @@ describe("messenger conversation ids", () => {
         projectId: "project-a",
         messageUuid: TOPIC_UUID,
       }),
-    ).toEqual({ status: "unsupported-message", messageUuid: TOPIC_UUID });
+    ).toEqual({ status: "message", messageUuid: TOPIC_UUID });
   });
 
   it("rejects invalid Workspace conversation route UUIDs", () => {
@@ -99,5 +99,13 @@ describe("messenger conversation ids", () => {
         projectId: "project-a",
       }),
     ).toEqual({ status: "none", reason: "root" });
+    expect(
+      selectMessengerConversationFromWorkspaceRoute({
+        kind: "message",
+        orgId: "org-a",
+        projectId: "project-a",
+        messageUuid: "not-a-message-uuid",
+      }),
+    ).toEqual({ status: "invalid-route" });
   });
 });

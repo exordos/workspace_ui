@@ -22,6 +22,8 @@ const USER_UUID = "44444444-4444-4444-8444-444444444444";
 const MESSAGE_A = "10000000-0000-4000-8000-000000000001";
 const MESSAGE_B = "10000000-0000-4000-8000-000000000002";
 const MESSAGE_C = "10000000-0000-4000-8000-000000000003";
+const MESSAGE_D = "10000000-0000-4000-8000-000000000004";
+const MESSAGE_E = "10000000-0000-4000-8000-000000000005";
 const REACTION_A = "20000000-0000-4000-8000-000000000001";
 const REACTION_B = "20000000-0000-4000-8000-000000000002";
 const DATE = "2026-06-22T10:10:00Z";
@@ -132,6 +134,24 @@ describe("workspace message store", () => {
     ]);
   });
 
+  it("strictly replaces a conversation window without keeping old message ids", () => {
+    const store = useWorkspaceMessageStore.getState();
+    store.mergeConversationMessagesPage(TOPIC_CONVERSATION_ID, [
+      createMessage({ uuid: MESSAGE_A, createdAt: DATE, markdown: "old-a" }),
+      createMessage({ uuid: MESSAGE_B, createdAt: DATE_LATER, markdown: "old-b" }),
+    ]);
+
+    store.replaceConversationMessagesWindow(TOPIC_CONVERSATION_ID, [
+      createMessage({ uuid: MESSAGE_E, createdAt: DATE_LATER, markdown: "new-e" }),
+      createMessage({ uuid: MESSAGE_D, createdAt: DATE_EARLIER, markdown: "new-d" }),
+    ]);
+
+    expect(selectMessages(TOPIC_CONVERSATION_ID).map((message) => message.uuid)).toEqual([
+      MESSAGE_D,
+      MESSAGE_E,
+    ]);
+  });
+
   it("preserves own reaction projection when a fresh message snapshot arrives", () => {
     const store = useWorkspaceMessageStore.getState();
     store.upsertMessage(
@@ -155,6 +175,35 @@ describe("workspace message store", () => {
       expect.objectContaining({
         markdown: "fresh snapshot",
         reactions: { thumbs_up: 2, eyes: 1 },
+        ownReactionUuidsByEmojiName: { thumbs_up: REACTION_A },
+      }),
+    );
+  });
+
+  it("preserves own reaction projection when replacing a conversation window", () => {
+    const store = useWorkspaceMessageStore.getState();
+    store.upsertMessage(
+      createMessage({
+        uuid: MESSAGE_A,
+        reactions: { thumbs_up: 1 },
+        ownReactionUuidsByEmojiName: { thumbs_up: REACTION_A },
+      }),
+    );
+
+    store.replaceConversationMessagesWindow(TOPIC_CONVERSATION_ID, [
+      createMessage({
+        uuid: MESSAGE_A,
+        markdown: "window snapshot",
+        reactions: { thumbs_up: 2 },
+        ownReactionUuidsByEmojiName: {},
+      }),
+      createMessage({ uuid: MESSAGE_B }),
+    ]);
+
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toEqual(
+      expect.objectContaining({
+        markdown: "window snapshot",
+        reactions: { thumbs_up: 2 },
         ownReactionUuidsByEmojiName: { thumbs_up: REACTION_A },
       }),
     );
@@ -218,5 +267,37 @@ describe("workspace message store", () => {
 
     expect(secondMessages).toBe(firstMessages);
     expect(secondStatus).toBe(firstStatus);
+  });
+
+  it("stores before and after window markers without changing forward pagination", () => {
+    const store = useWorkspaceMessageStore.getState();
+    store.setConversationPagination(TOPIC_CONVERSATION_ID, {
+      nextPageMarker: "next-1",
+      hasMore: true,
+    });
+
+    store.setConversationWindowMarkers(TOPIC_CONVERSATION_ID, {
+      beforePageMarker: "before-1",
+      afterPageMarker: "after-1",
+    });
+
+    const state = useWorkspaceMessageStore.getState();
+    expect(state.beforePageMarkerByConversationId[TOPIC_CONVERSATION_ID]).toBe("before-1");
+    expect(state.afterPageMarkerByConversationId[TOPIC_CONVERSATION_ID]).toBe("after-1");
+    expect(state.nextPageMarkerByConversationId[TOPIC_CONVERSATION_ID]).toBe("next-1");
+    expect(state.hasMoreByConversationId[TOPIC_CONVERSATION_ID]).toBe(true);
+  });
+
+  it("clears before and after window markers with the existing store reset", () => {
+    useWorkspaceMessageStore.getState().setConversationWindowMarkers(TOPIC_CONVERSATION_ID, {
+      beforePageMarker: "before-1",
+      afterPageMarker: "after-1",
+    });
+
+    useWorkspaceMessageStore.getState().clear();
+
+    const state = useWorkspaceMessageStore.getState();
+    expect(state.beforePageMarkerByConversationId[TOPIC_CONVERSATION_ID] ?? null).toBeNull();
+    expect(state.afterPageMarkerByConversationId[TOPIC_CONVERSATION_ID] ?? null).toBeNull();
   });
 });

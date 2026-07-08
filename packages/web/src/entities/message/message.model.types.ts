@@ -15,6 +15,8 @@ export interface WorkspaceMessageStoreData {
   messagesErrorByConversationId: Record<MessengerConversationId, string | null>;
   nextPageMarkerByConversationId: Record<MessengerConversationId, string | null>;
   hasMoreByConversationId: Record<MessengerConversationId, boolean>;
+  beforePageMarkerByConversationId: Record<MessengerConversationId, string | null>;
+  afterPageMarkerByConversationId: Record<MessengerConversationId, string | null>;
 }
 
 export interface WorkspaceMessageBucketIndexOptions {
@@ -36,6 +38,11 @@ export interface WorkspaceConversationPagination {
   hasMore: boolean;
 }
 
+export interface WorkspaceConversationWindowMarkers {
+  beforePageMarker: string | null;
+  afterPageMarker: string | null;
+}
+
 export interface WorkspaceConversationMessagesStatus {
   loading: boolean;
   error: string | null;
@@ -45,6 +52,10 @@ export interface WorkspaceConversationMessagesStatus {
 
 export interface WorkspaceMessageStoreState extends WorkspaceMessageStoreData {
   replaceOrMergeConversationMessagesPage: (
+    conversationId: MessengerConversationId,
+    messages: MessengerMessage[],
+  ) => void;
+  replaceConversationMessagesWindow: (
     conversationId: MessengerConversationId,
     messages: MessengerMessage[],
   ) => void;
@@ -102,6 +113,10 @@ export interface WorkspaceMessageStoreState extends WorkspaceMessageStoreData {
   setConversationPagination: (
     conversationId: MessengerConversationId,
     pagination: WorkspaceConversationPagination,
+  ) => void;
+  setConversationWindowMarkers: (
+    conversationId: MessengerConversationId,
+    markers: WorkspaceConversationWindowMarkers,
   ) => void;
   clear: () => void;
 }
