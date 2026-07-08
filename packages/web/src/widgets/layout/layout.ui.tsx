@@ -5,6 +5,11 @@ import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useHydrateDrafts } from "~/entities/draft/draft-hydration";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { syncUnreadSurfacesFromDelta } from "~/entities/unread-sync/unread-surfaces-sync.lib";
+import {
+  selectCurrentWorkspaceRuntimeContext,
+  useWorkspaceAuthStore,
+} from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { WorkspaceForwardMessageDialog } from "~/features/workspace-forward-message/workspace-forward-message.ui";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
@@ -35,6 +40,7 @@ import { LayoutLoadingGate } from "./layout-loading-gate.ui";
 import { useLayoutMentionsSyncPolling } from "./layout-mentions-sync-polling.hook";
 import { useLayoutMuteSnapshotSync } from "./layout-mute-snapshot-sync.hook";
 import { LayoutNotificationPermissionBanner } from "./layout-notification-permission-banner.ui";
+import { shouldEnableLayoutNotificationPermission } from "./layout-notification-permission-ready.lib";
 import { useLayoutNotificationPermission } from "./layout-notification-permission.hook";
 import { useLayoutOnlineStatus } from "./layout-online-status.hook";
 import { useLayoutPresencePolling } from "./layout-presence-polling.hook";
@@ -150,6 +156,20 @@ export const Layout: React.FC = () => {
     [location.pathname],
   );
   const workspaceMessengerActive = workspaceMessengerRoute != null;
+  const workspaceSessions = useWorkspaceAuthStore((state) => state.sessions);
+  const currentWorkspaceAccountId = useWorkspaceAuthStore((state) => state.currentAccountId);
+  const currentWorkspaceRuntimeContext = useMemo(
+    () =>
+      selectCurrentWorkspaceRuntimeContext({
+        sessions: workspaceSessions,
+        currentAccountId: currentWorkspaceAccountId,
+      }),
+    [currentWorkspaceAccountId, workspaceSessions],
+  );
+  const workspaceRouteReady =
+    workspaceMessengerRoute != null &&
+    workspaceMessengerRoute.orgId === currentWorkspaceRuntimeContext?.organizationId &&
+    workspaceMessengerRoute.projectId === currentWorkspaceRuntimeContext.projectId;
   useHydrateDrafts(currentInstanceId, currentUserStatus);
   useLayoutWorkspaceMessengerBootstrap({ enabled: true });
   useLayoutWorkspaceRealtime({
@@ -234,9 +254,8 @@ export const Layout: React.FC = () => {
   useLayoutAuthGuard({ currentInstanceId, currentUserStatus, navigate });
   useLayoutAuthErrorHandler({ currentInstanceId, currentUserStatus, navigate });
 
-  useLayoutPushPermission({ enabled: isLayoutUserConnectionReady(currentUserStatus) });
   useLayoutWorkspaceNotifications({
-    enabled: workspaceMessengerActive && isLayoutUserConnectionReady(currentUserStatus),
+    enabled: workspaceRouteReady,
     navigate,
   });
 
@@ -249,11 +268,23 @@ export const Layout: React.FC = () => {
 
   const layoutConnectionReady =
     currentInstanceId != null && isLayoutUserConnectionReady(currentUserStatus);
+  const workspaceNotificationScopeKey =
+    workspaceRouteReady && currentWorkspaceRuntimeContext != null
+      ? workspaceRuntimeOwnerKey(currentWorkspaceRuntimeContext)
+      : null;
+  const notificationPermissionReady = shouldEnableLayoutNotificationPermission({
+    legacyOrganizationId: currentInstanceId,
+    workspaceScopeKey: workspaceNotificationScopeKey,
+    workspaceMessengerActive,
+    currentUserStatus,
+  });
 
   const notificationPermission = useLayoutNotificationPermission({
-    enabled: layoutConnectionReady,
-    organizationId: currentInstanceId,
+    enabled: notificationPermissionReady,
+    organizationId: workspaceMessengerActive ? workspaceNotificationScopeKey : currentInstanceId,
+    registerPushOnGrant: !workspaceMessengerActive,
   });
+  useLayoutPushPermission({ enabled: layoutConnectionReady });
 
   useLayoutPresencePolling({ enabled: layoutConnectionReady });
 

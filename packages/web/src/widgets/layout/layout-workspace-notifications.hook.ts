@@ -7,10 +7,12 @@ import {
 import { resolveCachedWorkspaceUser } from "~/entities/user/user-sync.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { useSettingsStore } from "~/features/settings/settings.model";
 import {
   registerNotifiedWorkspaceMessage,
   wasWorkspaceMessageRecentlyNotified,
 } from "~/shared/lib/notification-dedup.lib";
+import { playNotificationSound } from "~/shared/lib/notification-sound";
 import { notificationService } from "~/shared/lib/notifications";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import { shouldWorkspaceDesktopNotify } from "~/shared/lib/workspace-desktop-notifications.lib";
@@ -134,12 +136,12 @@ export function useLayoutWorkspaceNotifications(options: {
     }
 
     let cancelled = false;
-    // Projection хранит историю candidates, поэтому отдельно помним уже обработанные UUID,
-    // иначе layout будет переигрывать старые уведомления при каждом обновлении store.
+    // Projection keeps candidate history, so track already processed UUIDs separately,
+    // otherwise the layout would replay old notifications on every store update.
     const nextCandidates = routeProjections
       .flatMap(({ ownerKey, projection }) =>
         [...projection.notificationCandidates]
-          // В store новые записи лежат первыми, а стекинг должен идти по естественному порядку.
+          // The store keeps new entries first, but stacking should follow natural order.
           .reverse()
           .map((candidate) => ({ ownerKey, projection, candidate })),
       )
@@ -236,6 +238,11 @@ export function useLayoutWorkspaceNotifications(options: {
               void navigate(aggregateSnapshot?.latestClickRoute ?? candidate.messageRoute);
             },
           });
+
+          const notificationSound = useSettingsStore.getState().notificationSound;
+          if (notificationSound !== "none") {
+            playNotificationSound(notificationSound);
+          }
 
           registerNotifiedWorkspaceMessage(candidate.ownerKey, messageUuid);
         } catch (error) {

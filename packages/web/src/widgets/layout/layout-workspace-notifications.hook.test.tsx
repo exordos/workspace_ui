@@ -9,16 +9,19 @@ import { useMessengerBackgroundProjectionStore } from "~/entities/messenger/mess
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { useSettingsStore } from "~/features/settings/settings.model";
 import { clearNotifiedMessageIds } from "~/shared/lib/notification-dedup.lib";
+import type { shouldWorkspaceDesktopNotify } from "~/shared/lib/workspace-desktop-notifications.lib";
 import { useLayoutWorkspaceNotifications } from "./layout-workspace-notifications.hook";
 import { clearNotificationAggregateRegistry } from "./notification-aggregate-registry.lib";
 
 const showNotificationMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+const playNotificationSoundMock = vi.hoisted(() => vi.fn());
 const resolveCachedWorkspaceUserMock = vi.hoisted(() =>
   vi.fn(() => Promise.resolve({ displayName: "Alice" })),
 );
 const shouldWorkspaceDesktopNotifyMock = vi.hoisted(() =>
-  vi.fn(() => ({ notify: true, trigger: "dm" as const })),
+  vi.fn<typeof shouldWorkspaceDesktopNotify>(() => ({ notify: true, trigger: "dm" })),
 );
 const closeReadMessageNotificationsMock = vi.hoisted(() => vi.fn());
 
@@ -26,6 +29,11 @@ vi.mock("~/shared/lib/notifications", () => ({
   notificationService: {
     show: (...args: Parameters<typeof showNotificationMock>) => showNotificationMock(...args),
   },
+}));
+
+vi.mock("~/shared/lib/notification-sound", () => ({
+  playNotificationSound: (...args: Parameters<typeof playNotificationSoundMock>) =>
+    playNotificationSoundMock(...args),
 }));
 
 vi.mock("~/entities/user/user-sync.lib", () => ({
@@ -170,6 +178,7 @@ describe("useLayoutWorkspaceNotifications", () => {
       currentAccountId: null,
       runtimeGeneration: 0,
     });
+    useSettingsStore.setState({ notificationSound: "none" });
     useMessengerBackgroundProjectionStore.getState().clear();
   });
 
@@ -181,6 +190,7 @@ describe("useLayoutWorkspaceNotifications", () => {
       currentAccountId: null,
       runtimeGeneration: 0,
     });
+    useSettingsStore.setState({ notificationSound: "none" });
     useMessengerBackgroundProjectionStore.getState().clear();
   });
 
@@ -298,5 +308,123 @@ describe("useLayoutWorkspaceNotifications", () => {
       ownerKeyA,
     );
     expect(showNotificationMock).not.toHaveBeenCalled();
+  });
+
+  it("plays the selected app sound when desktop notification decision is notify:true", async () => {
+    const session = createSession("sound");
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    const messageUuid = "sound-message";
+
+    useSettingsStore.setState({ notificationSound: "glass" });
+    useWorkspaceAuthStore.setState({
+      sessions: [session],
+      currentAccountId: session.accountId,
+      runtimeGeneration: 1,
+    });
+    useMessengerBackgroundProjectionStore.setState({
+      projectionsByOwnerKey: {
+        [ownerKey]: createProjection(ownerKey, {
+          notificationCandidates: [createCandidate(ownerKey, messageUuid)],
+          messageIdSnapshotsById: {
+            [messageUuid]: createMessageSnapshot(ownerKey, messageUuid),
+          },
+        }),
+      },
+    });
+
+    renderHook(() =>
+      useLayoutWorkspaceNotifications({
+        enabled: true,
+        navigate: vi.fn(),
+      }),
+    );
+
+    await waitFor(() => {
+      expect(showNotificationMock).toHaveBeenCalledTimes(1);
+    });
+    expect(playNotificationSoundMock).toHaveBeenCalledTimes(1);
+    expect(playNotificationSoundMock).toHaveBeenCalledWith("glass");
+    expect(showNotificationMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        silent: true,
+      }),
+    );
+  });
+
+  it('keeps the desktop notification silent and skips app sound when notificationSound is "none"', async () => {
+    const session = createSession("silent");
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    const messageUuid = "silent-message";
+
+    useSettingsStore.setState({ notificationSound: "none" });
+    useWorkspaceAuthStore.setState({
+      sessions: [session],
+      currentAccountId: session.accountId,
+      runtimeGeneration: 1,
+    });
+    useMessengerBackgroundProjectionStore.setState({
+      projectionsByOwnerKey: {
+        [ownerKey]: createProjection(ownerKey, {
+          notificationCandidates: [createCandidate(ownerKey, messageUuid)],
+          messageIdSnapshotsById: {
+            [messageUuid]: createMessageSnapshot(ownerKey, messageUuid),
+          },
+        }),
+      },
+    });
+
+    renderHook(() =>
+      useLayoutWorkspaceNotifications({
+        enabled: true,
+        navigate: vi.fn(),
+      }),
+    );
+
+    await waitFor(() => {
+      expect(showNotificationMock).toHaveBeenCalledTimes(1);
+    });
+    expect(showNotificationMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        silent: true,
+      }),
+    );
+    expect(playNotificationSoundMock).not.toHaveBeenCalled();
+  });
+
+  it("does not show a desktop notification or play app sound when decision is notify:false", async () => {
+    const session = createSession("blocked");
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    const messageUuid = "blocked-message";
+
+    shouldWorkspaceDesktopNotifyMock.mockReturnValueOnce({ notify: false, trigger: "stream" });
+    useSettingsStore.setState({ notificationSound: "glass" });
+    useWorkspaceAuthStore.setState({
+      sessions: [session],
+      currentAccountId: session.accountId,
+      runtimeGeneration: 1,
+    });
+    useMessengerBackgroundProjectionStore.setState({
+      projectionsByOwnerKey: {
+        [ownerKey]: createProjection(ownerKey, {
+          notificationCandidates: [createCandidate(ownerKey, messageUuid)],
+          messageIdSnapshotsById: {
+            [messageUuid]: createMessageSnapshot(ownerKey, messageUuid),
+          },
+        }),
+      },
+    });
+
+    renderHook(() =>
+      useLayoutWorkspaceNotifications({
+        enabled: true,
+        navigate: vi.fn(),
+      }),
+    );
+
+    await waitFor(() => {
+      expect(shouldWorkspaceDesktopNotifyMock).toHaveBeenCalledTimes(1);
+    });
+    expect(showNotificationMock).not.toHaveBeenCalled();
+    expect(playNotificationSoundMock).not.toHaveBeenCalled();
   });
 });
