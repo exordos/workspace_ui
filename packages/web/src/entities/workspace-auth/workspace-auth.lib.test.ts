@@ -16,6 +16,7 @@ const getWorkspaceMessengerAuthProfile = vi.hoisted(() => vi.fn());
 const requestWorkspaceIamLoginPasswordToken = vi.hoisted(() => vi.fn());
 const refreshWorkspaceIamToken = vi.hoisted(() => vi.fn());
 const deleteWorkspaceMessengerOwnerCache = vi.hoisted(() => vi.fn());
+const deleteWorkspaceUserOwnerCache = vi.hoisted(() => vi.fn());
 
 const USER_UUID = "11111111-1111-4111-8111-111111111111";
 const PROJECT_ID = "22222222-2222-4222-8222-222222222222";
@@ -39,6 +40,10 @@ vi.mock("~/shared/api/workspace-iam-auth", async (importOriginal) => {
 
 vi.mock("~/shared/lib/workspace-messenger-cache-db", () => ({
   deleteWorkspaceMessengerOwnerCache,
+}));
+
+vi.mock("~/shared/lib/workspace-user-cache-db", () => ({
+  deleteWorkspaceUserOwnerCache,
 }));
 
 function tokenWithClaims(claims: Record<string, unknown>): string {
@@ -344,6 +349,7 @@ describe("workspace-auth flow", () => {
     ).rejects.toBeInstanceOf(TypeError);
 
     expect(deleteWorkspaceMessengerOwnerCache).not.toHaveBeenCalled();
+    expect(deleteWorkspaceUserOwnerCache).not.toHaveBeenCalled();
     expect(useWorkspaceAuthStore.getState().sessions).toEqual([session]);
   });
 
@@ -504,6 +510,142 @@ describe("workspace-auth flow", () => {
     expect(failure).toMatchObject({ reason: "refresh-expired", status: 400 });
   });
 
+  it("keeps generic IAM 400 refresh wording transient", () => {
+    const failure = classifyWorkspaceAuthRefreshError(
+      new WorkspaceIamAuthError("Workspace IAM token request failed", 400, {
+        message: "refresh token expired unauthorized forbidden",
+      }),
+    );
+
+    expect(failure).toMatchObject({ reason: "transient-failed" });
+  });
+
+  it("keeps the Workspace session after the first invalid_grant refresh rejection", async () => {
+    const session = await loginAndGetCurrentSession();
+    refreshWorkspaceIamToken.mockRejectedValueOnce(
+      new WorkspaceIamAuthError("Workspace IAM token request failed", 400, {
+        error: "invalid_grant",
+      }),
+    );
+
+    await expect(
+      ensureFreshWorkspaceSession(session.accountId, { force: true }),
+    ).rejects.toBeInstanceOf(WorkspaceIamAuthError);
+
+    expect(deleteWorkspaceMessengerOwnerCache).not.toHaveBeenCalled();
+    expect(deleteWorkspaceUserOwnerCache).not.toHaveBeenCalled();
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([session]);
+  });
+
+  it("removes the Workspace session after repeated invalid_grant refresh rejections", async () => {
+    const session = await loginAndGetCurrentSession();
+    refreshWorkspaceIamToken.mockRejectedValue(
+      new WorkspaceIamAuthError("Workspace IAM token request failed", 400, {
+        error: "invalid_grant",
+      }),
+    );
+
+    await expect(
+      ensureFreshWorkspaceSession(session.accountId, { force: true }),
+    ).rejects.toBeInstanceOf(WorkspaceIamAuthError);
+    await expect(
+      ensureFreshWorkspaceSession(session.accountId, { force: true }),
+    ).rejects.toBeInstanceOf(WorkspaceIamAuthError);
+    await expect(
+      ensureFreshWorkspaceSession(session.accountId, { force: true }),
+    ).rejects.toBeInstanceOf(WorkspaceIamAuthError);
+
+    expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
+    expect(deleteWorkspaceUserOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
+  });
+
+  it("resets refresh-expired attempts after a transient IAM 400", async () => {
+    const session = await loginAndGetCurrentSession();
+    refreshWorkspaceIamToken
+      .mockRejectedValueOnce(
+        new WorkspaceIamAuthError("Workspace IAM token request failed", 400, {
+          error: "invalid_grant",
+        }),
+      )
+      .mockRejectedValueOnce(
+        new WorkspaceIamAuthError("Workspace IAM token request failed", 400, {
+          message: "refresh token expired unauthorized forbidden",
+        }),
+      )
+      .mockRejectedValueOnce(
+        new WorkspaceIamAuthError("Workspace IAM token request failed", 400, {
+          error: "invalid_grant",
+        }),
+      )
+      .mockRejectedValueOnce(
+        new WorkspaceIamAuthError("Workspace IAM token request failed", 400, {
+          error: "invalid_grant",
+        }),
+      );
+
+    await expect(
+      ensureFreshWorkspaceSession(session.accountId, { force: true }),
+    ).rejects.toBeInstanceOf(WorkspaceIamAuthError);
+    await expect(
+      ensureFreshWorkspaceSession(session.accountId, { force: true }),
+    ).rejects.toBeInstanceOf(WorkspaceIamAuthError);
+    await expect(
+      ensureFreshWorkspaceSession(session.accountId, { force: true }),
+    ).rejects.toBeInstanceOf(WorkspaceIamAuthError);
+    await expect(
+      ensureFreshWorkspaceSession(session.accountId, { force: true }),
+    ).rejects.toBeInstanceOf(WorkspaceIamAuthError);
+
+    expect(deleteWorkspaceMessengerOwnerCache).not.toHaveBeenCalled();
+    expect(deleteWorkspaceUserOwnerCache).not.toHaveBeenCalled();
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([session]);
+  });
+
+  it("resets refresh-expired attempts after a successful refresh", async () => {
+    const session = await loginAndGetCurrentSession();
+    refreshWorkspaceIamToken
+      .mockRejectedValueOnce(
+        new WorkspaceIamAuthError("Workspace IAM token request failed", 400, {
+          error: "invalid_grant",
+        }),
+      )
+      .mockResolvedValueOnce({
+        accessToken: tokenWithClaims({
+          user_uuid: USER_UUID,
+          project_id: PROJECT_ID,
+          exp: 1_900_000_100,
+        }),
+        refreshToken: "refresh-token-after-success",
+        raw: {},
+      })
+      .mockRejectedValueOnce(
+        new WorkspaceIamAuthError("Workspace IAM token request failed", 400, {
+          error: "invalid_grant",
+        }),
+      );
+
+    await expect(
+      ensureFreshWorkspaceSession(session.accountId, { force: true }),
+    ).rejects.toBeInstanceOf(WorkspaceIamAuthError);
+    await expect(ensureFreshWorkspaceSession(session.accountId, { force: true })).resolves.toEqual(
+      expect.objectContaining({
+        accountId: session.accountId,
+        refreshToken: "refresh-token-after-success",
+      }),
+    );
+    await expect(
+      ensureFreshWorkspaceSession(session.accountId, { force: true }),
+    ).rejects.toBeInstanceOf(WorkspaceIamAuthError);
+
+    expect(deleteWorkspaceMessengerOwnerCache).not.toHaveBeenCalled();
+    expect(deleteWorkspaceUserOwnerCache).not.toHaveBeenCalled();
+    expect(useWorkspaceAuthStore.getState().getCurrentSession()).toMatchObject({
+      accountId: session.accountId,
+      refreshToken: "refresh-token-after-success",
+    });
+  });
+
   it("waits for Workspace messenger owner cache cleanup before explicit session removal", async () => {
     const session = await loginAndGetCurrentSession();
     const deferred = createDeferred();
@@ -512,6 +654,7 @@ describe("workspace-auth flow", () => {
     const removal = removeWorkspaceSession(session.accountId);
 
     expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
+    expect(deleteWorkspaceUserOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
     expect(useWorkspaceAuthStore.getState().sessions).toEqual([session]);
 
     deferred.resolve();
@@ -526,6 +669,7 @@ describe("workspace-auth flow", () => {
     await removeWorkspaceSession("missing-account");
 
     expect(deleteWorkspaceMessengerOwnerCache).not.toHaveBeenCalled();
+    expect(deleteWorkspaceUserOwnerCache).not.toHaveBeenCalled();
     expect(useWorkspaceAuthStore.getState().sessions).toEqual([session]);
   });
 
@@ -536,6 +680,18 @@ describe("workspace-auth flow", () => {
     await removeWorkspaceSession(session.accountId);
 
     expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
+    expect(deleteWorkspaceUserOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
+  });
+
+  it("removes an explicit Workspace session even when user cache cleanup fails", async () => {
+    const session = await loginAndGetCurrentSession();
+    deleteWorkspaceUserOwnerCache.mockRejectedValueOnce(new Error("idb failed"));
+
+    await removeWorkspaceSession(session.accountId);
+
+    expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
+    expect(deleteWorkspaceUserOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
     expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
   });
 
@@ -564,6 +720,7 @@ describe("workspace-auth flow", () => {
     ).rejects.toMatchObject({ code: "owner-mismatch" });
 
     expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
+    expect(deleteWorkspaceUserOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
     expect(useWorkspaceAuthStore.getState().sessions).toEqual([
       expect.objectContaining({
         accountId: otherSession.accountId,
@@ -589,12 +746,13 @@ describe("workspace-auth flow", () => {
     ).rejects.toMatchObject({ code: "owner-mismatch" });
 
     expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
+    expect(deleteWorkspaceUserOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
     expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
   });
 
-  it("removes a refresh-expired Workspace session even when owner cache cleanup fails", async () => {
+  it("removes a repeatedly refresh-expired Workspace session even when owner cache cleanup fails", async () => {
     const session = await loginAndGetCurrentSession();
-    refreshWorkspaceIamToken.mockRejectedValueOnce(
+    refreshWorkspaceIamToken.mockRejectedValue(
       new WorkspaceIamAuthError("Workspace IAM token request failed", 401, {
         error: "invalid_token",
       }),
@@ -604,7 +762,15 @@ describe("workspace-auth flow", () => {
     await expect(
       ensureFreshWorkspaceSession(session.accountId, { force: true }),
     ).rejects.toBeInstanceOf(WorkspaceIamAuthError);
+    await expect(
+      ensureFreshWorkspaceSession(session.accountId, { force: true }),
+    ).rejects.toBeInstanceOf(WorkspaceIamAuthError);
+    await expect(
+      ensureFreshWorkspaceSession(session.accountId, { force: true }),
+    ).rejects.toBeInstanceOf(WorkspaceIamAuthError);
 
+    expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
+    expect(deleteWorkspaceUserOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
     expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
   });
 });

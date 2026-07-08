@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  DEFAULT_IAM_REFRESH_TOKEN_TTL_SECONDS,
   decodeWorkspaceIamClaims,
   refreshWorkspaceIamToken,
   requestWorkspaceIamLoginPasswordToken,
@@ -47,6 +48,7 @@ describe("workspace-iam-auth", () => {
       refreshToken: "refresh-token",
       expiresIn: 3600,
     });
+    expect(DEFAULT_IAM_REFRESH_TOKEN_TTL_SECONDS).toBe(2592000);
     expect(fetchImpl).toHaveBeenCalledWith(
       "/api/core/v1/iam/clients/default/actions/get_token/invoke",
       expect.objectContaining({
@@ -61,7 +63,7 @@ describe("workspace-iam-auth", () => {
           password: "admin",
           scope: "openid email profile project:project-1",
           ttl: 3600,
-          refresh_ttl: 172800,
+          refresh_ttl: DEFAULT_IAM_REFRESH_TOKEN_TTL_SECONDS,
         }),
       }),
     );

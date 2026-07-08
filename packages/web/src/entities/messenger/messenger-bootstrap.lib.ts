@@ -1,5 +1,9 @@
-import { applyBootstrapUsers, markUsersSyncError } from "~/entities/user/user-sync.lib";
-import type { UserSyncClientDeps } from "~/entities/user/user-sync.lib";
+import {
+  applyBootstrapUsers,
+  hydrateUsersFromCache,
+  markUsersSyncError,
+} from "~/entities/user/user-sync.lib";
+import type { UserCacheDeps, UserSyncClientDeps } from "~/entities/user/user-sync.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import {
   captureWorkspaceRuntimeRequestContext,
@@ -118,6 +122,7 @@ export interface BootstrapMessengerStoreOptions {
   clientOptions?: MessengerRequestOptionsOverrides;
   signal?: AbortSignal;
   store?: MessengerStoreApi;
+  userCache?: Pick<UserCacheDeps, "readUsersCache" | "replaceUsersCache">;
 }
 
 function normalizeBootstrapError(error: unknown): string {
@@ -161,6 +166,7 @@ export async function bootstrapMessengerStore({
   clientOptions,
   signal,
   store = useMessengerStore,
+  userCache,
 }: BootstrapMessengerStoreOptions): Promise<MessengerBootstrapResult> {
   const requestContext = captureWorkspaceRuntimeRequestContext(() => runtimeContext);
   if (requestContext == null) {
@@ -175,6 +181,13 @@ export async function bootstrapMessengerStore({
 
   store.getState().startBootstrap(ownerKey);
   useUsersStore.getState().startOwnerSync(ownerKey);
+  void hydrateUsersFromCache({
+    ownerKey,
+    requestContext,
+    getRuntimeContext,
+    signal,
+    cache: userCache,
+  });
   const loadLastMessagesForCurrentSidebar = (): void => {
     void loadMessengerLastMessagesForSidebar({
       runtimeContext,
@@ -243,6 +256,7 @@ export async function bootstrapMessengerStore({
         requestContext,
         getRuntimeContext,
         signal,
+        cache: userCache,
       });
       if (usersSyncResult.status === "skipped") {
         store.getState().finishBootstrapSilently(ownerKey);

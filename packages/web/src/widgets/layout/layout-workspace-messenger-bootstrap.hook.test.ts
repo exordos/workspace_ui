@@ -19,6 +19,9 @@ vi.mock("~/entities/workspace-auth/workspace-auth.lib", () => ({
     if (error instanceof Error && error.message === "owner-mismatch") {
       return { reason: "owner-mismatch", error };
     }
+    if (error instanceof Error && error.message === "refresh-expired") {
+      return { reason: "refresh-expired", error };
+    }
     return { reason: "unknown-transient", error };
   },
   ensureFreshWorkspaceSession: ensureFreshWorkspaceSessionMock,
@@ -164,6 +167,34 @@ describe("useLayoutWorkspaceMessengerBootstrap", () => {
 
       expect(ensureFreshWorkspaceSessionMock).toHaveBeenCalledTimes(1);
       expect(bootstrapMessengerStoreMock).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("retries refresh-expired failures while the Workspace session is still present", async () => {
+    vi.useFakeTimers();
+    try {
+      const session = createSession();
+      setWorkspaceSession(session);
+      ensureFreshWorkspaceSessionMock
+        .mockRejectedValueOnce(new Error("refresh-expired"))
+        .mockResolvedValueOnce(undefined);
+
+      renderHook(() => useLayoutWorkspaceMessengerBootstrap({ enabled: true }));
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(ensureFreshWorkspaceSessionMock).toHaveBeenCalledTimes(1);
+      expect(bootstrapMessengerStoreMock).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+
+      expect(ensureFreshWorkspaceSessionMock).toHaveBeenCalledTimes(2);
+      expect(bootstrapMessengerStoreMock).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
     }

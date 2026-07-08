@@ -423,6 +423,9 @@ function shouldSkipAuth401Handling(req: ApiRequest): boolean {
     ) {
       return true;
     }
+    if (/\/api\/messenger\/v1(?:\/|$)/.test(path)) {
+      return true;
+    }
     // Workspace REST 401 often means gateway policy or disabled feature, not bad Zulip creds.
     if (/\/v1\/(?:folders|services)(?:\/|$)/.test(path)) {
       return true;

@@ -20,9 +20,9 @@ function hasWorkspaceAuthSession(accountId: string): boolean {
     .sessions.some((session) => session.accountId === accountId);
 }
 
-function isTerminalWorkspaceAuthRefreshError(error: unknown): boolean {
+function shouldRetryWorkspaceAuthRefreshError(error: unknown): boolean {
   const failure = classifyWorkspaceAuthRefreshError(error);
-  return failure.reason === "refresh-expired" || failure.reason === "owner-mismatch";
+  return failure.reason !== "owner-mismatch";
 }
 
 export function useLayoutWorkspaceMessengerBootstrap(options: { enabled: boolean }): void {
@@ -67,7 +67,7 @@ export function useLayoutWorkspaceMessengerBootstrap(options: { enabled: boolean
           return;
         }
         reportUnexpectedError("workspace-auth:refresh", error);
-        if (!isTerminalWorkspaceAuthRefreshError(error)) {
+        if (shouldRetryWorkspaceAuthRefreshError(error)) {
           scheduleRetry();
         }
         return;

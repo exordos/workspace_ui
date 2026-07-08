@@ -1,4 +1,6 @@
 export const DEFAULT_IAM_TOKEN_URL = "/api/core/v1/iam/clients/default/actions/get_token/invoke";
+const SECONDS_PER_DAY = 24 * 60 * 60;
+export const DEFAULT_IAM_REFRESH_TOKEN_TTL_SECONDS = 30 * SECONDS_PER_DAY;
 
 // IAM is the source of the project-scoped bearer token for messenger calls.
 export interface WorkspaceIamTokenResponse {
@@ -117,7 +119,7 @@ export function requestWorkspaceIamLoginPasswordToken(
       password: params.password,
       scope: workspaceIamProjectScope(params.projectId),
       ttl: params.ttlSeconds ?? 3600,
-      refresh_ttl: params.refreshTtlSeconds ?? 172800,
+      refresh_ttl: params.refreshTtlSeconds ?? DEFAULT_IAM_REFRESH_TOKEN_TTL_SECONDS,
     },
     options,
   );

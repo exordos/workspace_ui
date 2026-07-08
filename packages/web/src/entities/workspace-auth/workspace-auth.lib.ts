@@ -15,12 +15,19 @@ import { createLogger } from "~/shared/lib/logger";
 import { buildOrgRouteIdFromOrigin } from "~/shared/lib/org-route";
 import { deleteWorkspaceMessengerOwnerCache } from "~/shared/lib/workspace-messenger-cache-db";
 import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspace-org-origin.lib";
+import { deleteWorkspaceUserOwnerCache } from "~/shared/lib/workspace-user-cache-db";
 import { useWorkspaceAuthStore } from "./workspace-auth.model";
 import type { WorkspaceAuthProfile, WorkspaceAuthSession } from "./workspace-auth.model";
 
 const TOKEN_REFRESH_SKEW_MS = 60_000;
+const TERMINAL_REFRESH_FAILURE_WINDOW_MS = 60_000;
+const TERMINAL_REFRESH_FAILURE_REMOVAL_THRESHOLD = 3;
 const authLogger = createLogger("auth:workspace");
 const pendingWorkspaceSessionRefreshes = new Map<string, Promise<WorkspaceAuthSession>>();
+const terminalRefreshFailureAttemptsByAccountId = new Map<
+  string,
+  { count: number; firstFailureAtMs: number }
+>();
 let instanceIdFallbackCounter = 0;
 
 export interface LoginWorkspaceWithPasswordParams {
@@ -136,6 +143,51 @@ function knownErrorText(value: unknown): string {
     .toLowerCase();
 }
 
+function normalizeAuthErrorMarker(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function hasAuthErrorMarker(text: string, marker: string): boolean {
+  const normalizedText = normalizeAuthErrorMarker(text);
+  return `_${normalizedText}_`.includes(`_${marker}_`);
+}
+
+function knownErrorCodeTexts(value: unknown): string[] {
+  if (!isRecord(value)) return [];
+  const codeFields = ["error", "code", "error_code", "errorCode", "reason", "type"];
+  return codeFields
+    .map((field) => value[field])
+    .filter((fieldValue): fieldValue is string => typeof fieldValue === "string");
+}
+
+function hasExplicitTerminalRefreshMarker(data: unknown): boolean {
+  const text = knownErrorText(data);
+  if (
+    hasAuthErrorMarker(text, "invalid_grant") ||
+    hasAuthErrorMarker(text, "invalid_token") ||
+    hasAuthErrorMarker(text, "revoked")
+  ) {
+    return true;
+  }
+
+  const terminalCodes = new Set([
+    "expired_token",
+    "invalid_refresh_token",
+    "refresh_token_expired",
+    "refresh_token_invalid",
+    "refresh_token_revoked",
+    "revoked_token",
+    "token_expired",
+    "token_revoked",
+  ]);
+  return knownErrorCodeTexts(data).some((codeText) =>
+    terminalCodes.has(normalizeAuthErrorMarker(codeText)),
+  );
+}
+
 function isNavigatorOffline(): boolean {
   return typeof navigator !== "undefined" && navigator.onLine === false;
 }
@@ -148,18 +200,8 @@ function isNetworkError(error: unknown): boolean {
 
 function isRefreshTokenAuthRejection(error: unknown): error is WorkspaceIamAuthError {
   if (!(error instanceof WorkspaceIamAuthError)) return false;
-  if (error.status === 401 || error.status === 403) return true;
-  if (error.status !== 400) return false;
-  const text = knownErrorText(error.data);
-  return (
-    text.includes("invalid_grant") ||
-    text.includes("invalid_token") ||
-    text.includes("refresh") ||
-    text.includes("expired") ||
-    text.includes("revoked") ||
-    text.includes("unauthorized") ||
-    text.includes("forbidden")
-  );
+  if (error.status !== 400 && error.status !== 401 && error.status !== 403) return false;
+  return hasExplicitTerminalRefreshMarker(error.data);
 }
 
 function isServerUnavailable(error: unknown): error is WorkspaceIamAuthError {
@@ -169,8 +211,41 @@ function isServerUnavailable(error: unknown): error is WorkspaceIamAuthError {
   );
 }
 
-function shouldRemoveSessionAfterRefreshFailure(failure: WorkspaceAuthRefreshFailure): boolean {
-  return failure.reason === "refresh-expired" || failure.reason === "owner-mismatch";
+function resetTerminalRefreshFailureAttempts(accountId: string): void {
+  terminalRefreshFailureAttemptsByAccountId.delete(accountId);
+}
+
+function shouldRemoveAfterTerminalRefreshFailure(accountId: string, nowMs = Date.now()): boolean {
+  const current = terminalRefreshFailureAttemptsByAccountId.get(accountId);
+  const isWithinWindow =
+    current != null && nowMs - current.firstFailureAtMs <= TERMINAL_REFRESH_FAILURE_WINDOW_MS;
+  const nextAttempt = {
+    count: isWithinWindow ? current.count + 1 : 1,
+    firstFailureAtMs: isWithinWindow ? current.firstFailureAtMs : nowMs,
+  };
+
+  if (nextAttempt.count >= TERMINAL_REFRESH_FAILURE_REMOVAL_THRESHOLD) {
+    resetTerminalRefreshFailureAttempts(accountId);
+    return true;
+  }
+
+  terminalRefreshFailureAttemptsByAccountId.set(accountId, nextAttempt);
+  return false;
+}
+
+function shouldRemoveSessionAfterRefreshFailure(
+  accountId: string,
+  failure: WorkspaceAuthRefreshFailure,
+): boolean {
+  if (failure.reason === "owner-mismatch") {
+    resetTerminalRefreshFailureAttempts(accountId);
+    return true;
+  }
+  if (failure.reason === "refresh-expired") {
+    return shouldRemoveAfterTerminalRefreshFailure(accountId);
+  }
+  resetTerminalRefreshFailureAttempts(accountId);
+  return false;
 }
 
 function abortSignalError(): Error {
@@ -230,11 +305,36 @@ async function cleanupWorkspaceMessengerOwnerCache(
   }
 }
 
+async function cleanupWorkspaceUserOwnerCache(
+  session: WorkspaceAuthSession | undefined,
+): Promise<void> {
+  if (session == null) return;
+  const ownerKey = workspaceRuntimeOwnerKey(session);
+  try {
+    await deleteWorkspaceUserOwnerCache(ownerKey);
+  } catch (error) {
+    authLogger.warn("Workspace user cache cleanup failed during session removal", {
+      accountId: session.accountId,
+      errorName: error instanceof Error ? error.name : typeof error,
+    });
+  }
+}
+
+async function cleanupWorkspaceOwnerCaches(
+  session: WorkspaceAuthSession | undefined,
+): Promise<void> {
+  await Promise.all([
+    cleanupWorkspaceMessengerOwnerCache(session),
+    cleanupWorkspaceUserOwnerCache(session),
+  ]);
+}
+
 async function removeWorkspaceSessionAfterCacheCleanup(
   accountId: string,
   session: WorkspaceAuthSession | undefined = findWorkspaceSession(accountId),
 ): Promise<void> {
-  await cleanupWorkspaceMessengerOwnerCache(session);
+  resetTerminalRefreshFailureAttempts(accountId);
+  await cleanupWorkspaceOwnerCaches(session);
   useWorkspaceAuthStore.getState().removeSession(accountId);
 }
 
@@ -377,10 +477,12 @@ async function refreshWorkspaceAuthSessionForAccount(
   session: WorkspaceAuthSession,
 ): Promise<WorkspaceAuthSession> {
   try {
-    return await refreshWorkspaceAuthSessionOnce(session, undefined);
+    const refreshedSession = await refreshWorkspaceAuthSessionOnce(session, undefined);
+    resetTerminalRefreshFailureAttempts(session.accountId);
+    return refreshedSession;
   } catch (error) {
     const failure = classifyWorkspaceAuthRefreshError(error);
-    if (shouldRemoveSessionAfterRefreshFailure(failure)) {
+    if (shouldRemoveSessionAfterRefreshFailure(session.accountId, failure)) {
       await removeWorkspaceSessionAfterCacheCleanup(session.accountId, session);
     }
     throw error;
@@ -496,6 +598,7 @@ export async function loginWorkspaceWithPassword({
     runtimeGeneration: existing?.runtimeGeneration ?? 0,
   };
 
+  resetTerminalRefreshFailureAttempts(accountId);
   useWorkspaceAuthStore.getState().setSession(session);
   return {
     session: useWorkspaceAuthStore.getState().getCurrentSession() ?? session,

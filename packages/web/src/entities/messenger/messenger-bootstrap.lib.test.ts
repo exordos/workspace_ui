@@ -541,6 +541,61 @@ describe("messenger bootstrap store", () => {
     await bootstrap;
   });
 
+  it("hydrates cached users before the users network request finishes", async () => {
+    const runtimeContext = createRuntimeContext();
+    const usersRequest = createDeferred<BootstrapUserDto[]>();
+    const readUsersCache = vi.fn(() =>
+      Promise.resolve([
+        {
+          uuid: USER_A,
+          username: "cached-alice",
+          displayName: "Cached Alice",
+          firstName: "Cached",
+          lastName: "Alice",
+          email: "cached-alice@example.test",
+          avatarUrl: null,
+          createdAt: DATE,
+          updatedAt: DATE,
+        },
+      ]),
+    );
+    const replaceUsersCache = vi.fn();
+
+    const bootstrap = bootstrapMessengerStore({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      client: createClient({
+        getUsers: () => usersRequest.promise,
+        getFolders: () => Promise.resolve([]),
+      }),
+      userCache: { readUsersCache, replaceUsersCache },
+    });
+    await flushPromises();
+    await flushPromises();
+
+    expect(readUsersCache).toHaveBeenCalledWith(workspaceRuntimeOwnerKey(runtimeContext));
+    expect(useUsersStore.getState().getUser(USER_A)).toEqual(
+      expect.objectContaining({
+        username: "cached-alice",
+        status: "offline",
+      }),
+    );
+    expect(replaceUsersCache).not.toHaveBeenCalled();
+
+    usersRequest.resolve([createUserDto({ username: "fresh-alice", updated_at: DATE_LATER })]);
+    await bootstrap;
+
+    expect(useUsersStore.getState().getUser(USER_A)).toEqual(
+      expect.objectContaining({
+        username: "fresh-alice",
+        status: "active",
+      }),
+    );
+    expect(replaceUsersCache).toHaveBeenCalledWith(workspaceRuntimeOwnerKey(runtimeContext), [
+      expect.objectContaining({ uuid: USER_A, username: "fresh-alice" }),
+    ]);
+  });
+
   it("keeps cached folders while the background folder request is pending", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
