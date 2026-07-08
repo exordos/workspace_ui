@@ -296,7 +296,7 @@ export async function getUsers(
   query: MessengerPaginationQuery = {},
 ): Promise<WorkspaceMessengerUserDto[]> {
   const data = await messengerGetJson("/users/", options, paginationParams(query));
-  return parseStrictDtoList(data, isWorkspaceMessengerUserDto, "messenger users response");
+  return parseDtoList(data, isWorkspaceMessengerUserDto, "messenger users response");
 }
 
 export async function getUsersPage(
@@ -310,7 +310,7 @@ export async function getUsersPage(
     paginationParams(query),
   );
   return {
-    items: parseStrictDtoList(data, isWorkspaceMessengerUserDto, "messenger users response"),
+    items: parseDtoList(data, isWorkspaceMessengerUserDto, "messenger users response"),
     ...parsePaginationHeaders(headers),
   };
 }

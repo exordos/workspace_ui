@@ -174,7 +174,7 @@ export interface WorkspaceMessengerUserDto {
   status_text?: string | null;
   first_name?: string | null;
   last_name?: string | null;
-  email: string | null;
+  email?: string | null;
   last_ping_at: WorkspaceMessengerDateTime;
   created_at: WorkspaceMessengerDateTime;
   updated_at: WorkspaceMessengerDateTime;
@@ -927,7 +927,7 @@ export function isWorkspaceMessengerUserDto(value: unknown): value is WorkspaceM
     (value.status_text == null || typeof value.status_text === "string") &&
     (value.first_name == null || typeof value.first_name === "string") &&
     (value.last_name == null || typeof value.last_name === "string") &&
-    (value.email === null || typeof value.email === "string") &&
+    (value.email == null || typeof value.email === "string") &&
     isDateTime(value.last_ping_at) &&
     isDateTime(value.created_at) &&
     isDateTime(value.updated_at)

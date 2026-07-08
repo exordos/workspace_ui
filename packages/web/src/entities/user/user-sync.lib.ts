@@ -180,12 +180,10 @@ function resolveUserSyncOwnerKey(options: UserSyncRuntimeGuardOptions): string |
   return requestContext == null ? null : workspaceRuntimeOwnerKey(requestContext);
 }
 
-function validateWorkspaceMessengerUsersDto(usersDto: WorkspaceMessengerUserDto[]): Error | null {
-  const invalidIndex = usersDto.findIndex((userDto) => !isWorkspaceMessengerUserDto(userDto));
-  if (invalidIndex >= 0) {
-    return new TypeError(`Expected valid messenger users response item at index ${invalidIndex}`);
-  }
-  return null;
+function filterWorkspaceMessengerUsersDto(
+  usersDto: WorkspaceMessengerUserDto[],
+): WorkspaceMessengerUserDto[] {
+  return usersDto.filter(isWorkspaceMessengerUserDto);
 }
 
 export function toWorkspaceUserCacheProfile(user: User): WorkspaceUserCacheProfile {
@@ -335,12 +333,12 @@ export function applyBootstrapUsers(
     return { status: "skipped", reason: "stale-owner" };
   }
 
-  const validationError = validateWorkspaceMessengerUsersDto(usersDto);
-  if (validationError != null) {
-    return markUsersSyncError(validationError, options);
+  const validUsersDto = filterWorkspaceMessengerUsersDto(usersDto);
+  if (usersDto.length > 0 && validUsersDto.length === 0) {
+    return markUsersSyncError(new TypeError("Expected at least one valid messenger user"), options);
   }
 
-  const users = usersDto.map(adaptWorkspaceMessengerUserDto);
+  const users = validUsersDto.map(adaptWorkspaceMessengerUserDto);
   const store = options.store ?? useUsersStore;
   const ownerKey = resolveUserSyncOwnerKey(options);
   if (options.mode === "upsert") {

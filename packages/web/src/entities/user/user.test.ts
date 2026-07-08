@@ -330,6 +330,21 @@ describe("user adapters", () => {
     expect(user.statusText).toBeNull();
   });
 
+  it("normalizes missing Workspace email to null", () => {
+    const dto = createUserDto({
+      uuid: "00000000-0000-0000-0000-000000000000",
+      username: "system-00000000-0000-0000-0000-000000000000",
+      first_name: undefined,
+      last_name: undefined,
+    });
+    delete dto.email;
+
+    const user = adaptWorkspaceMessengerUserDto(dto);
+
+    expect(user.email).toBeNull();
+    expect(user.displayName).toBe("system-00000000-0000-0000-0000-000000000000");
+  });
+
   it("defaults missing custom status fields to null", () => {
     const dto = createUserDto();
     delete dto.status_emoji;
@@ -375,6 +390,31 @@ describe("user sync", () => {
         getAccessToken: expect.any(Function),
       }),
     );
+  });
+
+  it("applies bootstrap users when a system user has no email", () => {
+    const systemUserDto = createUserDto({
+      uuid: "00000000-0000-0000-0000-000000000000",
+      username: "system-00000000-0000-0000-0000-000000000000",
+      status: "offline",
+      status_emoji: undefined,
+      status_text: undefined,
+      first_name: undefined,
+      last_name: undefined,
+      created_at: "2000-01-01T00:00:00.000000Z",
+      updated_at: "2000-01-01T00:00:00.000000Z",
+    });
+    delete systemUserDto.email;
+
+    expect(applyBootstrapUsers([systemUserDto, createUserDto({ uuid: USER_B_UUID })])).toEqual({
+      status: "applied",
+    });
+
+    const state = useUsersStore.getState();
+    expect(state.loadStatus).toBe("ready");
+    expect(state.error).toBeNull();
+    expect(state.userIds).toEqual(["00000000-0000-0000-0000-000000000000", USER_B_UUID]);
+    expect(state.getUser("00000000-0000-0000-0000-000000000000")?.email).toBeNull();
   });
 
   it("stores refresh errors without changing the current users", async () => {
@@ -428,7 +468,23 @@ describe("user sync", () => {
     expect(state.error).toBe("users unavailable");
   });
 
-  it("rejects legacy numeric ids before applying bootstrap users", () => {
+  it("filters invalid user rows before applying bootstrap users", () => {
+    const legacyUserDto = {
+      ...createUserDto(),
+      uuid: 123,
+    } as unknown as WorkspaceMessengerUserDto;
+
+    expect(applyBootstrapUsers([legacyUserDto, createUserDto({ uuid: USER_B_UUID })])).toEqual({
+      status: "applied",
+    });
+
+    const state = useUsersStore.getState();
+    expect(state.userIds).toEqual([USER_B_UUID]);
+    expect(state.loadStatus).toBe("ready");
+    expect(state.error).toBeNull();
+  });
+
+  it("rejects bootstrap users when every row is invalid", () => {
     const legacyUserDto = {
       ...createUserDto(),
       uuid: 123,
@@ -436,13 +492,13 @@ describe("user sync", () => {
 
     expect(applyBootstrapUsers([legacyUserDto])).toEqual({
       status: "failed",
-      error: "Expected valid messenger users response item at index 0",
+      error: "Expected at least one valid messenger user",
     });
 
     const state = useUsersStore.getState();
     expect(state.userIds).toEqual([]);
     expect(state.loadStatus).toBe("error");
-    expect(state.error).toBe("Expected valid messenger users response item at index 0");
+    expect(state.error).toBe("Expected at least one valid messenger user");
   });
 
   it("loads one user by uuid and upserts it", async () => {

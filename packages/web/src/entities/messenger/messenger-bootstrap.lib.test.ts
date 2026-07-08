@@ -228,7 +228,7 @@ function createUserFromDto(dto: BootstrapUserDto): User {
     firstName: dto.first_name ?? null,
     lastName: dto.last_name ?? null,
     displayName: displayName.length > 0 ? displayName : dto.username,
-    email: dto.email,
+    email: dto.email ?? null,
     avatarUrl: null,
     status: dto.status,
     statusEmoji: dto.status_emoji ?? null,
@@ -868,7 +868,7 @@ describe("messenger bootstrap store", () => {
     expect(messengerState.streamsById[STREAM_A]?.name).toBe("Engineering");
     expect(usersState.userIds).toEqual([]);
     expect(usersState.loadStatus).toBe("error");
-    expect(usersState.error).toBe("Expected valid messenger users response item at index 0");
+    expect(usersState.error).toBe("Expected at least one valid messenger user");
   });
 
   it("clears old owner data before replacing it with the next owner payload", async () => {

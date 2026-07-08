@@ -23,6 +23,7 @@ import {
 
 const log = createLogger("create-chat:dialog");
 
+const SYSTEM_WORKSPACE_USER_UUID = "00000000-0000-0000-0000-000000000000";
 const EMPTY_ARCHIVED_CHANNELS: ArchivedChannelOption[] = [];
 const EMPTY_BROWSE_CHANNELS: [] = [];
 
@@ -238,6 +239,7 @@ export function useCreateChatDialog(options: {
       .map((userId) => usersById[userId])
       .filter((user): user is User => user != null)
       .filter((user) => user.uuid !== currentUserUuid)
+      .filter((user) => user.uuid !== SYSTEM_WORKSPACE_USER_UUID)
       .map((user) => ({
         userKey: user.uuid,
         workspaceUserUuid: user.uuid,

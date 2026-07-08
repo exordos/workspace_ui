@@ -207,6 +207,29 @@ describe("useCreateChatDialog", () => {
     expect(onChannelCreated).toHaveBeenCalledTimes(1);
   });
 
+  it("does not offer the system user as a direct chat candidate", () => {
+    seedWorkspaceSession();
+    useUsersStore.getState().replaceUsers([
+      createUser({
+        uuid: "00000000-0000-0000-0000-000000000000",
+        username: "system-00000000-0000-0000-0000-000000000000",
+        displayName: "system-00000000-0000-0000-0000-000000000000",
+      }),
+      createUser({
+        uuid: "alice-user",
+        username: "alice",
+        displayName: "Alice",
+        email: "alice@example.com",
+      }),
+    ]);
+
+    const { result } = renderHook(() => useCreateChatDialog(defaultHookOptions()));
+
+    expect(result.current.filteredUsers.map((user) => user.workspaceUserUuid)).toEqual([
+      "alice-user",
+    ]);
+  });
+
   it("creates a Workspace channel with selected member UUIDs", async () => {
     seedWorkspaceSession();
     seedUsers();

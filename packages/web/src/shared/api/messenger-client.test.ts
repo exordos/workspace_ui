@@ -487,12 +487,12 @@ describe("messenger-client", () => {
     expect(init?.body).toBe(JSON.stringify({ status: "active", emoji: null, text: null }));
   });
 
-  it("strictly rejects invalid user rows", async () => {
+  it("filters invalid user rows", async () => {
     const fetchMock = createFetchMock([userDto, { ...userDto, status_emoji: 123 }]);
 
-    await expect(getUsers({ accessToken: "access-token", fetchImpl: fetchMock })).rejects.toThrow(
-      "Expected valid messenger users response item at index 1",
-    );
+    await expect(getUsers({ accessToken: "access-token", fetchImpl: fetchMock })).resolves.toEqual([
+      userDto,
+    ]);
   });
 
   it("throws on invalid singleton response", async () => {

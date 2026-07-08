@@ -355,6 +355,20 @@ describe("Workspace messenger DTO guards", () => {
     ).toBe(true);
   });
 
+  it("accepts system user payloads without email", () => {
+    expect(
+      isWorkspaceMessengerUserDto({
+        uuid: "00000000-0000-0000-0000-000000000000",
+        username: "system-00000000-0000-0000-0000-000000000000",
+        source: "iam",
+        status: "offline",
+        last_ping_at: "2026-07-08T06:03:22.232694Z",
+        created_at: "2000-01-01T00:00:00.000000Z",
+        updated_at: "2000-01-01T00:00:00.000000Z",
+      }),
+    ).toBe(true);
+  });
+
   it("rejects user payloads without a non-empty username", () => {
     expect(
       isWorkspaceMessengerUserDto({

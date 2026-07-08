@@ -21,7 +21,7 @@ export function adaptWorkspaceMessengerUserDto(dto: WorkspaceMessengerUserDto): 
     firstName: normalizeNamePart(dto.first_name),
     lastName: normalizeNamePart(dto.last_name),
     displayName: buildUserDisplayName(dto),
-    email: dto.email,
+    email: dto.email ?? null,
     avatarUrl: null,
     status: dto.status,
     statusEmoji: dto.status_emoji ?? null,
