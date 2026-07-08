@@ -1,7 +1,14 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useLayoutEffect, useRef, type RefObject } from "react";
+import { normalizeWorkspacePreviewBlob } from "~/entities/messenger/messenger-workspace-message-preview-blob.lib";
+import { createLogger } from "~/shared/lib/logger";
 import { MESSAGE_MEDIA_PREVIEW_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
-import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/protected-message-media";
+import {
+  AUTH_IMAGE_PLACEHOLDER_SRC,
+  createDisplayableBlobUrl,
+} from "~/shared/lib/protected-message-media";
 import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
+
+const previewLog = createLogger("workspace-message-preview");
 
 export type LoadWorkspaceFilePreview = (
   file: WorkspaceMessageFileReference,
@@ -27,6 +34,7 @@ interface MountedWorkspacePreview {
   label: HTMLElement | null;
   objectUrl: string | null;
   imageErrorHandler: (() => void) | null;
+  fileUuid: string;
 }
 
 const WORKSPACE_PREVIEW_INTERSECTION_ROOT_MARGIN = "640px 0px";
@@ -91,7 +99,23 @@ function reservePreviewAspectRatio(
   placeholder.style.aspectRatio = `${reference.width} / ${reference.height}`;
 }
 
-function revealFallback(mount: MountedWorkspacePreview): void {
+function isWorkspacePreviewAlreadyLoaded(placeholder: HTMLElement): boolean {
+  if (placeholder.dataset.workspacePreviewStatus !== "loaded") {
+    return false;
+  }
+
+  const previewImage = placeholder.querySelector<HTMLImageElement>(
+    'img[data-workspace-file-preview="true"]',
+  );
+  const src = previewImage?.getAttribute("src")?.trim() ?? "";
+  return src.length > 0 && src !== AUTH_IMAGE_PLACEHOLDER_SRC;
+}
+
+function revealFallback(mount: MountedWorkspacePreview, reason: string): void {
+  previewLog.warn("preview fallback", {
+    fileUuid: mount.fileUuid,
+    reason,
+  });
   mount.placeholder.dataset.workspacePreviewStatus = "error";
   mount.placeholder.classList.remove("workspace-message-file-preview-loaded");
   if (mount.previewImage != null) {
@@ -113,7 +137,9 @@ function revealFallback(mount: MountedWorkspacePreview): void {
   mount.previewImage = null;
   mount.createdPreviewImage = false;
   if (mount.objectUrl != null) {
-    URL.revokeObjectURL(mount.objectUrl);
+    if (mount.objectUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(mount.objectUrl);
+    }
     mount.objectUrl = null;
   }
   if (mount.placeholderImage != null) {
@@ -128,7 +154,7 @@ function revealFallback(mount: MountedWorkspacePreview): void {
 function revealLoadedPreview(
   mount: MountedWorkspacePreview,
   reference: WorkspaceMessageFileReference,
-  objectUrl: string,
+  displayUrl: string,
 ): void {
   const image = mount.placeholderImage ?? document.createElement("img");
   if (mount.placeholderImage == null) {
@@ -142,11 +168,11 @@ function revealLoadedPreview(
   image.setAttribute("loading", "eager");
 
   const handleImageError = () => {
-    revealFallback(mount);
+    revealFallback(mount, "image-decode-error");
   };
   image.addEventListener("error", handleImageError);
 
-  mount.objectUrl = objectUrl;
+  mount.objectUrl = displayUrl.startsWith("blob:") ? displayUrl : null;
   mount.previewImage = image;
   mount.imageErrorHandler = handleImageError;
   image.hidden = false;
@@ -158,10 +184,17 @@ function revealLoadedPreview(
   if (mount.createdPreviewImage) {
     mount.placeholder.appendChild(image);
   }
-  image.src = objectUrl;
+  image.src = displayUrl;
+
+  previewLog.debug("preview loaded", {
+    fileUuid: mount.fileUuid,
+    displayUrlKind: displayUrl.startsWith("data:") ? "data" : "blob",
+    contentType: reference.contentType ?? null,
+  });
 }
 
 function cleanupPreview(mount: MountedWorkspacePreview): void {
+  const wasLoaded = mount.placeholder.dataset.workspacePreviewStatus === "loaded";
   mount.abortController.abort();
   mount.intersectionObserver?.disconnect();
   mount.intersectionObserver = null;
@@ -202,6 +235,10 @@ function cleanupPreview(mount: MountedWorkspacePreview): void {
   mount.placeholder.style.aspectRatio = mount.placeholderInitialAspectRatio;
   delete mount.placeholder.dataset.workspacePreviewStatus;
   mount.imageErrorHandler = null;
+
+  if (wasLoaded) {
+    previewLog.debug("preview cleanup after load", { fileUuid: mount.fileUuid });
+  }
 }
 
 export function useWorkspaceMessageFilePreviews({
@@ -215,21 +252,23 @@ export function useWorkspaceMessageFilePreviews({
   const imagePreviewKey = buildWorkspaceImagePreviewKey(fileReferences);
   const hasPreviewLoader = onLoadWorkspaceFilePreview != null;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     latestFileReferencesRef.current = fileReferences;
   }, [fileReferences]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     latestLoadWorkspaceFilePreviewRef.current = onLoadWorkspaceFilePreview;
   }, [onLoadWorkspaceFilePreview]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!hasPreviewLoader) {
+      previewLog.debug("preview layer skipped", { reason: "missing-loader" });
       return;
     }
 
     const bodyElement = bodyRef.current;
     if (bodyElement == null) {
+      previewLog.debug("preview layer skipped", { reason: "missing-body-ref" });
       return;
     }
 
@@ -240,10 +279,24 @@ export function useWorkspaceMessageFilePreviews({
     );
     const mounts: MountedWorkspacePreview[] = [];
     const currentFileReferences = latestFileReferencesRef.current;
+    const objectUrlRegistry: string[] = [];
+
+    previewLog.debug("preview scan", {
+      placeholderCount: placeholders.length,
+      imagePreviewKey,
+      renderedHtmlLength: renderedHtml.length,
+    });
 
     for (const placeholder of placeholders) {
+      const fileUuid = placeholder.dataset.workspaceFileUuid?.trim() ?? "";
       const reference = findImageReference(placeholder, currentFileReferences);
       if (reference == null) {
+        previewLog.warn("preview reference missing", { fileUuid });
+        continue;
+      }
+
+      if (isWorkspacePreviewAlreadyLoaded(placeholder)) {
+        previewLog.debug("preview already loaded", { fileUuid });
         continue;
       }
 
@@ -265,6 +318,7 @@ export function useWorkspaceMessageFilePreviews({
         label: placeholder.querySelector<HTMLElement>(".workspace-message-file-placeholder__label"),
         objectUrl: null,
         imageErrorHandler: null,
+        fileUuid,
       };
       mounts.push(mount);
 
@@ -279,30 +333,54 @@ export function useWorkspaceMessageFilePreviews({
         }
         previewStarted = true;
         placeholder.dataset.workspacePreviewStatus = "loading";
+        previewLog.debug("preview load started", {
+          fileUuid,
+          contentType: reference.contentType ?? null,
+        });
 
         const loadWorkspaceFilePreview = latestLoadWorkspaceFilePreviewRef.current;
         if (loadWorkspaceFilePreview == null) {
-          revealFallback(mount);
+          revealFallback(mount, "missing-loader");
           return;
         }
 
         void loadWorkspaceFilePreview(reference, abortController.signal)
-          .then((blob) => {
+          .then(async (blob) => {
             if (abortController.signal.aborted) {
+              previewLog.debug("preview aborted before display", {
+                fileUuid,
+                stage: "after-blob",
+              });
               return;
             }
 
-            const objectUrl = URL.createObjectURL(blob);
+            const normalizedBlob = normalizeWorkspacePreviewBlob(blob, reference.contentType);
+            if (normalizedBlob.type !== blob.type) {
+              previewLog.debug("preview blob retyped", {
+                fileUuid,
+                fromType: blob.type || null,
+                toType: normalizedBlob.type,
+              });
+            }
+
+            const displayUrl = await createDisplayableBlobUrl(normalizedBlob, objectUrlRegistry);
             if (abortController.signal.aborted) {
-              URL.revokeObjectURL(objectUrl);
+              previewLog.debug("preview aborted before display", {
+                fileUuid,
+                stage: "after-display-url",
+              });
               return;
             }
 
-            revealLoadedPreview(mount, reference, objectUrl);
+            revealLoadedPreview(mount, reference, displayUrl);
           })
-          .catch(() => {
+          .catch((error: unknown) => {
             if (!abortController.signal.aborted) {
-              revealFallback(mount);
+              previewLog.warn("preview load failed", {
+                fileUuid,
+                error: error instanceof Error ? error.name : "unknown",
+              });
+              revealFallback(mount, "load-failed");
             }
           });
       };
@@ -333,6 +411,9 @@ export function useWorkspaceMessageFilePreviews({
     return () => {
       for (const mount of mounts) {
         cleanupPreview(mount);
+      }
+      for (const objectUrl of objectUrlRegistry) {
+        URL.revokeObjectURL(objectUrl);
       }
     };
   }, [bodyRef, hasPreviewLoader, imagePreviewKey, renderedHtml]);

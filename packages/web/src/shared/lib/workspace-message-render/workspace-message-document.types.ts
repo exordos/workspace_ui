@@ -91,6 +91,9 @@ export interface WorkspaceMessageFileReference {
   fileUuid: string;
   name?: string;
   contentType?: string;
+  width?: number;
+  height?: number;
+  sizeBytes?: number;
   mediaKind?: WorkspaceMessageMediaKind;
 }
 

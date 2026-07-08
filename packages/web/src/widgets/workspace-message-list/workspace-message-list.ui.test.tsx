@@ -686,7 +686,7 @@ describe("WorkspaceMessageList", () => {
         messages={[
           createWorkspaceMessage({
             uuid: "workspace-attachment-message",
-            markdown: `[report.pdf](workspace-file://${fileUuid})`,
+            markdown: `[report.pdf](urn:file:${fileUuid}?name=report.pdf)`,
           }),
         ]}
         currentUserUuid="current-user-uuid"
@@ -702,7 +702,7 @@ describe("WorkspaceMessageList", () => {
     expect(attachment).toHaveAttribute("data-workspace-file-kind", "attachment");
     expect(attachment).toHaveAttribute("title", "Файл: report.pdf");
     expect(attachment).not.toHaveAttribute("href");
-    expect(container).not.toHaveTextContent(`workspace-file://${fileUuid}`);
+    expect(container).not.toHaveTextContent(`urn:file:${fileUuid}`);
     expect(container.innerHTML).not.toContain("/api/messenger/v1/files");
     expect(
       container.querySelector(`[${["data", "message", "id"].join("-")}]`),
@@ -731,7 +731,7 @@ describe("WorkspaceMessageList", () => {
         messages={[
           createWorkspaceMessage({
             uuid: "workspace-keyboard-attachment-message",
-            markdown: `[report.pdf](workspace-file://${fileUuid})`,
+            markdown: `[report.pdf](urn:file:${fileUuid}?name=report.pdf)`,
           }),
         ]}
         currentUserUuid="current-user-uuid"
@@ -770,7 +770,7 @@ describe("WorkspaceMessageList", () => {
         messages={[
           createWorkspaceMessage({
             uuid: "workspace-duplicate-attachment-message",
-            markdown: `[report.pdf](workspace-file://${fileUuid})`,
+            markdown: `[report.pdf](urn:file:${fileUuid}?name=report.pdf)`,
           }),
         ]}
         currentUserUuid="current-user-uuid"
@@ -805,7 +805,7 @@ describe("WorkspaceMessageList", () => {
         messages={[
           createWorkspaceMessage({
             uuid: "workspace-media-message",
-            markdown: `![screen.png](workspace-file://${fileUuid}?content_type=image/png)`,
+            markdown: `![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng)`,
           }),
         ]}
         currentUserUuid="current-user-uuid"
@@ -824,7 +824,7 @@ describe("WorkspaceMessageList", () => {
     expect(
       container.querySelector("img.workspace-message-file-placeholder__image"),
     ).toHaveAttribute("src", AUTH_IMAGE_PLACEHOLDER_SRC);
-    expect(container.innerHTML).not.toContain(`workspace-file://${fileUuid}`);
+    expect(container.innerHTML).not.toContain(`urn:image:${fileUuid}`);
     expect(container.innerHTML).not.toContain("/api/messenger/v1/files");
 
     fireEvent.click(media);
@@ -851,7 +851,7 @@ describe("WorkspaceMessageList", () => {
         messages={[
           createWorkspaceMessage({
             uuid: "workspace-media-viewer-message",
-            markdown: `![screen.png](workspace-file://${fileUuid}?content_type=image/png)`,
+            markdown: `![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng)`,
           }),
         ]}
         currentUserUuid="current-user-uuid"
@@ -891,18 +891,17 @@ describe("WorkspaceMessageList", () => {
     const onOpenWorkspaceMedia = vi.fn();
     const firstFileUuid = "11111111-1111-4111-8111-111111111111";
     const secondFileUuid = "22222222-2222-4222-8222-222222222222";
-    const firstLegacyUrl = `/api/messenger/v1/files/${firstFileUuid}/actions/download`;
     render(
       <WorkspaceMessageList
         messages={[
           createWorkspaceMessage({
             uuid: "workspace-gallery-first-message",
-            markdown: `![first.png](${firstLegacyUrl})`,
+            markdown: `![first.png](urn:image:${firstFileUuid}?name=first.png&content_type=image%2Fpng)`,
             createdAt: "2026-07-03T09:00:00.000Z",
           }),
           createWorkspaceMessage({
             uuid: "workspace-gallery-second-message",
-            markdown: `![second.png](workspace-file://${secondFileUuid}?content_type=image/png)`,
+            markdown: `![second.png](urn:image:${secondFileUuid}?name=second.png&content_type=image%2Fpng)`,
             createdAt: "2026-07-03T09:01:00.000Z",
           }),
         ]}
@@ -949,12 +948,12 @@ describe("WorkspaceMessageList", () => {
         messages={[
           createWorkspaceMessage({
             uuid: "workspace-gallery-original-message",
-            markdown: `![original.png](workspace-file://${fileUuid}?content_type=image/png)`,
+            markdown: `![original.png](urn:image:${fileUuid}?name=original.png&content_type=image%2Fpng)`,
             createdAt: "2026-07-03T09:00:00.000Z",
           }),
           createWorkspaceMessage({
             uuid: "workspace-gallery-duplicate-message",
-            markdown: `![duplicate.png](workspace-file://${fileUuid}?content_type=image/png)`,
+            markdown: `![duplicate.png](urn:image:${fileUuid}?name=duplicate.png&content_type=image%2Fpng)`,
             createdAt: "2026-07-03T09:01:00.000Z",
           }),
         ]}
@@ -995,12 +994,12 @@ describe("WorkspaceMessageList", () => {
         messages={[
           createWorkspaceMessage({
             uuid: "workspace-gallery-code-message",
-            markdown: `\`workspace-file://${fakeFileUuid}?content_type=image/png\``,
+            markdown: `\`urn:image:${fakeFileUuid}?name=fake.png&content_type=image%2Fpng\``,
             createdAt: "2026-07-03T09:00:00.000Z",
           }),
           createWorkspaceMessage({
             uuid: "workspace-gallery-real-message",
-            markdown: `![real.png](workspace-file://${realFileUuid}?content_type=image/png)`,
+            markdown: `![real.png](urn:image:${realFileUuid}?name=real.png&content_type=image%2Fpng)`,
             createdAt: "2026-07-03T09:01:00.000Z",
           }),
         ]}
@@ -1052,7 +1051,7 @@ describe("WorkspaceMessageList", () => {
         messages={[
           createWorkspaceMessage({
             uuid: "workspace-media-preview-message",
-            markdown: `![screen.png](workspace-file://${fileUuid}?content_type=image/png)`,
+            markdown: `![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng)`,
           }),
         ]}
         currentUserUuid="current-user-uuid"
@@ -1100,12 +1099,54 @@ describe("WorkspaceMessageList", () => {
     expect(upgradedPlaceholderImage).toBe(image);
     expect(upgradedPlaceholderImage).not.toHaveAttribute("hidden");
     expect(upgradedPlaceholderImage).toHaveAttribute("src", "blob:workspace-image-preview");
-    expect(container.innerHTML).not.toContain(`workspace-file://${fileUuid}`);
+    expect(container.innerHTML).not.toContain(`urn:image:${fileUuid}`);
     expect(container.innerHTML).not.toContain("/api/messenger/v1/files");
 
     unmount();
 
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-image-preview");
+
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+  });
+
+  it("loads Workspace image preview when download blob has octet-stream MIME", async () => {
+    const fileUuid = "44444444-4444-4444-8444-444444444444";
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockImplementation((value) => {
+      expect(value).toBeInstanceOf(Blob);
+      expect((value as Blob).type).toBe("image/png");
+      return "blob:workspace-image-preview";
+    });
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(
+      new Blob(["image-bytes"], {
+        type: "application/octet-stream",
+      }),
+    );
+    const { container, unmount } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-media-preview-octet-stream-message",
+            markdown: `![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector("img[data-workspace-file-preview='true']")).not.toBeNull();
+    });
+
+    const image = container.querySelector<HTMLImageElement>(
+      "img[data-workspace-file-preview='true']",
+    );
+    expect(image).toHaveAttribute("src", "blob:workspace-image-preview");
+
+    unmount();
 
     createObjectURL.mockRestore();
     revokeObjectURL.mockRestore();
@@ -1153,7 +1194,7 @@ describe("WorkspaceMessageList", () => {
         messages={[
           createWorkspaceMessage({
             uuid: "workspace-media-preview-message",
-            markdown: `![screen.png](workspace-file://${fileUuid}?content_type=image/png)`,
+            markdown: `![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng)`,
           }),
         ]}
         currentUserUuid="current-user-uuid"
@@ -1217,7 +1258,7 @@ describe("WorkspaceMessageList", () => {
     );
     const message = createWorkspaceMessage({
       uuid: "workspace-media-stable-preview-message",
-      markdown: `![screen.png](workspace-file://${fileUuid}?content_type=image/png)`,
+      markdown: `![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng)`,
     });
     const { container, rerender, unmount } = render(
       <WorkspaceMessageList
@@ -1280,7 +1321,7 @@ describe("WorkspaceMessageList", () => {
     );
     const message = createWorkspaceMessage({
       uuid: "workspace-media-loader-stable-preview-message",
-      markdown: `![screen.png](workspace-file://${fileUuid}?content_type=image/png)`,
+      markdown: `![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng)`,
     });
     const { container, rerender, unmount } = render(
       <WorkspaceMessageList
@@ -1341,7 +1382,7 @@ describe("WorkspaceMessageList", () => {
         messages={[
           createWorkspaceMessage({
             uuid: "workspace-media-changing-preview-message",
-            markdown: `![screen.png](workspace-file://${firstFileUuid}?content_type=image/png)`,
+            markdown: `![screen.png](urn:image:${firstFileUuid}?name=screen.png&content_type=image%2Fpng)`,
           }),
         ]}
         currentUserUuid="current-user-uuid"
@@ -1363,7 +1404,7 @@ describe("WorkspaceMessageList", () => {
         messages={[
           createWorkspaceMessage({
             uuid: "workspace-media-changing-preview-message",
-            markdown: `![screen.png](workspace-file://${secondFileUuid}?content_type=image/png)`,
+            markdown: `![screen.png](urn:image:${secondFileUuid}?name=screen.png&content_type=image%2Fpng)`,
           }),
         ]}
         currentUserUuid="current-user-uuid"
@@ -1411,7 +1452,7 @@ describe("WorkspaceMessageList", () => {
         messages={[
           createWorkspaceMessage({
             uuid: "workspace-media-safe-src-message",
-            markdown: `![screen.png](workspace-file://${fileUuid}?content_type=image/png)`,
+            markdown: `![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng)`,
           }),
         ]}
         currentUserUuid="current-user-uuid"
@@ -1448,7 +1489,7 @@ describe("WorkspaceMessageList", () => {
         messages={[
           createWorkspaceMessage({
             uuid: "workspace-media-preview-failed-message",
-            markdown: `![screen.png](workspace-file://${fileUuid}?content_type=image/png)`,
+            markdown: `![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng)`,
           }),
         ]}
         currentUserUuid="current-user-uuid"

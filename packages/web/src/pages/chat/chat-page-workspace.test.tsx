@@ -579,7 +579,7 @@ describe("ChatPage Workspace route", () => {
           streamUuid: STREAM_UUID,
           topicUuid: TOPIC_UUID,
           markdown:
-            "hello\n[report____q1_.pdf](workspace-file://aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa?content_type=application%2Fpdf)\n![screen.png](workspace-file://bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb?content_type=image%2Fpng)",
+            "hello\n[report____q1_.pdf](urn:file:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa?name=report____q1_.pdf&content_type=application%2Fpdf&size=3)\n![screen.png](urn:image:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb?name=screen.png&content_type=image%2Fpng&size=8)",
         }),
       ),
     );
@@ -777,7 +777,7 @@ describe("ChatPage Workspace route", () => {
     );
     captured.messageListProps?.onDownloadFile?.({
       kind: "attachment",
-      href: "workspace-file://33333333-3333-4333-8333-333333333333",
+      href: "urn:file:33333333-3333-4333-8333-333333333333?name=hint.txt",
       fileUuid: "33333333-3333-4333-8333-333333333333",
       name: "hint.txt",
     });
@@ -827,7 +827,7 @@ describe("ChatPage Workspace route", () => {
     );
     captured.messageListProps?.onDownloadFile?.({
       kind: "media",
-      href: "workspace-file://44444444-4444-4444-8444-444444444444?content_type=image/png",
+      href: "urn:image:44444444-4444-4444-8444-444444444444?name=screen.png&content_type=image%2Fpng",
       fileUuid: "44444444-4444-4444-8444-444444444444",
       name: "screen.png",
       contentType: "image/png",
@@ -875,7 +875,7 @@ describe("ChatPage Workspace route", () => {
     const blob = await captured.messageListProps?.onLoadWorkspaceFilePreview?.(
       {
         kind: "media",
-        href: "workspace-file://55555555-5555-4555-8555-555555555555?content_type=image/png",
+        href: "urn:image:55555555-5555-4555-8555-555555555555?name=screen.png&content_type=image%2Fpng",
         fileUuid: "55555555-5555-4555-8555-555555555555",
         name: "screen.png",
         contentType: "image/png",
@@ -917,7 +917,7 @@ describe("ChatPage Workspace route", () => {
     const secondController = new AbortController();
     const file = {
       kind: "media" as const,
-      href: "workspace-file://55555555-5555-4555-8555-555555555555?content_type=image/png",
+      href: "urn:image:55555555-5555-4555-8555-555555555555?name=screen.png&content_type=image%2Fpng",
       fileUuid: "55555555-5555-4555-8555-555555555555",
       name: "screen.png",
       contentType: "image/png",
@@ -957,7 +957,7 @@ describe("ChatPage Workspace route", () => {
     act(() => {
       captured.messageListProps?.onOpenWorkspaceMedia?.({
         kind: "media",
-        href: "workspace-file://44444444-4444-4444-8444-444444444444?content_type=image/png",
+        href: "urn:image:44444444-4444-4444-8444-444444444444?name=screen.png&content_type=image%2Fpng",
         fileUuid: "44444444-4444-4444-8444-444444444444",
         name: "screen.png",
         contentType: "image/png",
@@ -1039,7 +1039,7 @@ describe("ChatPage Workspace route", () => {
       captured.messageListProps?.onOpenWorkspaceMedia?.(
         {
           kind: "media",
-          href: "workspace-file://22222222-2222-4222-8222-222222222222?content_type=image/png",
+          href: "urn:image:22222222-2222-4222-8222-222222222222?name=second.png&content_type=image%2Fpng",
           fileUuid: "22222222-2222-4222-8222-222222222222",
           name: "second.png",
           contentType: "image/png",
@@ -1052,7 +1052,7 @@ describe("ChatPage Workspace route", () => {
               messageUuid: "workspace-gallery-first-message",
               file: {
                 kind: "media",
-                href: "workspace-file://11111111-1111-4111-8111-111111111111?content_type=image/png",
+                href: "urn:image:11111111-1111-4111-8111-111111111111?name=first.png&content_type=image%2Fpng",
                 fileUuid: "11111111-1111-4111-8111-111111111111",
                 name: "first.png",
                 contentType: "image/png",
@@ -1063,7 +1063,7 @@ describe("ChatPage Workspace route", () => {
               messageUuid: "workspace-gallery-second-message",
               file: {
                 kind: "media",
-                href: "workspace-file://22222222-2222-4222-8222-222222222222?content_type=image/png",
+                href: "urn:image:22222222-2222-4222-8222-222222222222?name=second.png&content_type=image%2Fpng",
                 fileUuid: "22222222-2222-4222-8222-222222222222",
                 name: "second.png",
                 contentType: "image/png",
@@ -1155,7 +1155,7 @@ describe("ChatPage Workspace route", () => {
     act(() => {
       captured.messageListProps?.onOpenWorkspaceMedia?.({
         kind: "media",
-        href: "workspace-file://44444444-4444-4444-8444-444444444444?content_type=image/png",
+        href: "urn:image:44444444-4444-4444-8444-444444444444?name=screen.png&content_type=image%2Fpng",
         fileUuid: "44444444-4444-4444-8444-444444444444",
         name: "screen.png",
         contentType: "image/png",
@@ -1198,7 +1198,7 @@ describe("ChatPage Workspace route", () => {
     );
     captured.messageListProps?.onOpenUnsupportedFilePreview?.({
       kind: "media",
-      href: "workspace-file://44444444-4444-4444-8444-444444444444",
+      href: "urn:image:44444444-4444-4444-8444-444444444444?name=screen.png",
       fileUuid: "44444444-4444-4444-8444-444444444444",
       name: "screen.png",
       contentType: "image/png",

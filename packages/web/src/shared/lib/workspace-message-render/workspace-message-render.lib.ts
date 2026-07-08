@@ -1,4 +1,5 @@
 import DOMPurify from "dompurify";
+import { createLogger } from "~/shared/lib/logger";
 import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/protected-message-media";
 import { DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS } from "./workspace-message-render-options.lib";
 import type {
@@ -8,6 +9,8 @@ import type {
   WorkspaceMessageRenderOptions,
   WorkspaceMessageRenderResult,
 } from "./workspace-message-document.types";
+
+const workspaceMessageRenderLog = createLogger("workspace-message-render");
 
 const WORKSPACE_MESSAGE_ALLOWED_TAGS = [
   "p",
@@ -45,6 +48,9 @@ const WORKSPACE_MESSAGE_ALLOWED_ATTR = [
   "data-workspace-media-kind",
   "data-workspace-file-name",
   "data-workspace-file-content-type",
+  "data-workspace-file-size",
+  "data-workspace-media-width",
+  "data-workspace-media-height",
   "data-workspace-spoiler-toggle",
   "data-workspace-spoiler-inline",
   "data-inline-spoiler",
@@ -179,13 +185,33 @@ function renderWorkspaceFilePlaceholder(
     reference.mediaKind != null
       ? ` data-workspace-media-kind="${escapeHtmlText(reference.mediaKind)}"`
       : "";
+  const fileSizeAttr =
+    reference.sizeBytes != null
+      ? ` data-workspace-file-size="${escapeHtmlText(String(reference.sizeBytes))}"`
+      : "";
+  const mediaWidthAttr =
+    reference.width != null
+      ? ` data-workspace-media-width="${escapeHtmlText(String(reference.width))}"`
+      : "";
+  const mediaHeightAttr =
+    reference.height != null
+      ? ` data-workspace-media-height="${escapeHtmlText(String(reference.height))}"`
+      : "";
 
   // Workspace download currently needs bearer access and returns an attachment
   // response. Until there is a safe inline-src contract, full render leaves only
   // an explicit UUID placeholder; a separate preview layer must add blob/viewer loading.
+  if (isImage) {
+    workspaceMessageRenderLog.debug("render image placeholder", {
+      fileUuid: reference.fileUuid,
+      contentType: reference.contentType ?? null,
+      width: reference.width ?? null,
+      height: reference.height ?? null,
+    });
+  }
   return `<span role="button" tabindex="0" class="workspace-message-file-placeholder" data-workspace-file="true" data-workspace-file-uuid="${escapeHtmlText(
     reference.fileUuid,
-  )}" data-workspace-file-kind="${reference.kind}"${mediaKindAttr}${fileNameAttr}${contentTypeAttr} title="${escapeHtmlText(
+  )}" data-workspace-file-kind="${reference.kind}"${mediaKindAttr}${fileNameAttr}${contentTypeAttr}${fileSizeAttr}${mediaWidthAttr}${mediaHeightAttr} title="${escapeHtmlText(
     label,
   )}" aria-label="${escapeHtmlText(label)}">${
     isImage

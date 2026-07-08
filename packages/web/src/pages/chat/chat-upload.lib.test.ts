@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   appendComposerMarkdownLinks,
-  buildWorkspaceFileMarkdownLink,
   uploadComposerFiles,
   uploadWorkspaceComposerFiles,
 } from "./chat-upload.lib";
+import {
+  buildWorkspaceFileMetadata,
+  buildWorkspaceFileUrnMarkdownLink,
+} from "./chat-workspace-file-urn.lib";
 
 describe("uploadComposerFiles", () => {
   it("uploads valid files and returns markdown links with sanitized filenames", async () => {
@@ -165,32 +168,50 @@ describe("uploadWorkspaceComposerFiles", () => {
     const links = await uploadWorkspaceComposerFiles(files, uploadFile);
 
     expect(links).toEqual([
-      "[quarterly____report_.pdf](workspace-file://11111111-1111-4111-8111-111111111111?content_type=application%2Fpdf)",
-      "![image.png](workspace-file://22222222-2222-4222-8222-222222222222?content_type=image%2Fpng)",
-      "[clip.mp4](workspace-file://33333333-3333-4333-8333-333333333333?content_type=video%2Fmp4)",
+      "[quarterly____report_.pdf](urn:file:11111111-1111-4111-8111-111111111111?name=quarterly____report_.pdf&content_type=application%2Fpdf&size=6)",
+      "![image.png](urn:image:22222222-2222-4222-8222-222222222222?name=image.png&content_type=image%2Fpng&size=8)",
+      "[clip.mp4](urn:video:33333333-3333-4333-8333-333333333333?name=clip.mp4&content_type=video%2Fmp4&size=5)",
     ]);
   });
 
-  it("uses a safe fallback content type and escapes markdown link labels", () => {
+  it("builds Workspace URN markdown with metadata and escaped markdown labels", () => {
     const file = new File(["payload"], "release]notes.txt", { type: "" });
 
     expect(
-      buildWorkspaceFileMarkdownLink(file, {
+      buildWorkspaceFileUrnMarkdownLink({
+        type: "file",
+        uuid: "44444444-4444-4444-8444-444444444444",
+        name: "release]notes.txt",
+        sizeBytes: file.size,
+      }),
+    ).toBe(
+      "[release\\]notes.txt](urn:file:44444444-4444-4444-8444-444444444444?name=release%5Dnotes.txt&size=7)",
+    );
+  });
+
+  it("collects known Workspace URN metadata without requiring content type", async () => {
+    const file = new File(["payload"], "release]notes.txt", { type: "" });
+
+    await expect(
+      buildWorkspaceFileMetadata(file, {
         uuid: "44444444-4444-4444-8444-444444444444",
         content_type: "",
       }),
-    ).toBe(
-      "[release\\]notes.txt](workspace-file://44444444-4444-4444-8444-444444444444?content_type=application%2Foctet-stream)",
-    );
+    ).resolves.toEqual({
+      type: "file",
+      uuid: "44444444-4444-4444-8444-444444444444",
+      name: "release]notes.txt",
+      sizeBytes: 7,
+    });
   });
 
   it("combines clean composer text and uploaded Workspace links without mutating the draft", () => {
     expect(
       appendComposerMarkdownLinks("  hello  ", [
-        "[report.pdf](workspace-file://11111111-1111-4111-8111-111111111111?content_type=application%2Fpdf)",
+        "[report.pdf](urn:file:11111111-1111-4111-8111-111111111111?name=report.pdf&content_type=application%2Fpdf&size=6)",
       ]),
     ).toBe(
-      "hello\n[report.pdf](workspace-file://11111111-1111-4111-8111-111111111111?content_type=application%2Fpdf)",
+      "hello\n[report.pdf](urn:file:11111111-1111-4111-8111-111111111111?name=report.pdf&content_type=application%2Fpdf&size=6)",
     );
   });
 

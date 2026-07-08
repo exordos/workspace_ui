@@ -355,8 +355,8 @@ export const FeedPage: React.FC = () => {
                 const topic = topicsById[m.topicUuid]?.name.trim();
                 const contextTopic = topic != null && topic.length > 0 ? topic : m.topicUuid;
                 const context = `#${streamName} · ${contextTopic}`;
-                // Feed использует тот же Workspace summary, что и сайдбар:
-                // preview остается текстовым и не раскрывает workspace-file URL.
+                // Feed uses the same Workspace summary path as the sidebar:
+                // previews stay textual and do not expose protected file URLs.
                 const summaryText = summarizeWorkspaceMessageMarkdown(
                   m.markdown,
                   FEED_MESSAGE_SUMMARY_OPTIONS,

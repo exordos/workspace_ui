@@ -508,11 +508,11 @@ describe("messenger sidebar selectors", () => {
         messagesById: {
           [MESSAGE_A]: message({
             uuid: MESSAGE_A,
-            markdown: `![screen.png](workspace-file://${imageFileUuid}) Вот скрин`,
+            markdown: `![screen.png](urn:image:${imageFileUuid}?name=screen.png) Вот скрин`,
           }),
           [MESSAGE_B]: message({
             uuid: MESSAGE_B,
-            markdown: `[report.pdf](workspace-file://${reportFileUuid}) **Важное** @**Alice Reed**`,
+            markdown: `[report.pdf](urn:file:${reportFileUuid}?name=report.pdf) **Важное** @**Alice Reed**`,
           }),
         },
       },
@@ -520,7 +520,8 @@ describe("messenger sidebar selectors", () => {
 
     expect(rows[0]?.preview?.text).toBe("Изображение: Вот скрин");
     expect(rows[0]?.topics[0]?.preview?.text).toBe("Файл: report.pdf Важное @Alice Reed");
-    expect(JSON.stringify(rows)).not.toContain("workspace-file://");
+    expect(JSON.stringify(rows)).not.toContain("urn:image:");
+    expect(JSON.stringify(rows)).not.toContain("urn:file:");
     expect(JSON.stringify(rows)).not.toContain(imageFileUuid);
     expect(JSON.stringify(rows)).not.toContain(reportFileUuid);
   });

@@ -25,6 +25,7 @@ import { useMessengerOutboxStore } from "~/entities/messenger/messenger-outbox.m
 import type { MessengerOutgoingMessage } from "~/entities/messenger/messenger-outbox.types";
 import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
 import { useMessengerStreamBindingsForRoute } from "~/entities/messenger/messenger-stream-bindings-loader.lib";
+import { normalizeWorkspacePreviewBlob } from "~/entities/messenger/messenger-workspace-message-preview-blob.lib";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerMessage, MessengerTopic } from "~/entities/messenger/messenger.types";
 import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
@@ -42,6 +43,7 @@ import { t } from "~/i18n/i18n";
 import { downloadWorkspaceFile, uploadWorkspaceFile } from "~/shared/api/messenger-files.api";
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
+import { createLogger } from "~/shared/lib/logger";
 import type {
   WorkspaceMessageFileReference,
   WorkspaceMessageMentionResolution,
@@ -87,6 +89,7 @@ const EMPTY_OUTGOING_MESSAGE_LOCAL_IDS: readonly string[] = [];
 const EMPTY_USERS_BY_ID: UsersById = {};
 const READ_BATCH_DELAY_MS = 250;
 const WORKSPACE_COMPOSER_EDIT_SESSION_ID = 1;
+const workspacePreviewLoaderLog = createLogger("chat-page:workspace-preview-loader");
 
 const noop = () => undefined;
 
@@ -990,7 +993,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   );
 
   const handleLoadWorkspaceFilePreview = useCallback(
-    async (file: { fileUuid: string }, signal: AbortSignal): Promise<Blob> => {
+    async (file: WorkspaceMessageFileReference, signal: AbortSignal): Promise<Blob> => {
       if (runtimeContext == null) {
         throw new Error(t("workspaceMessenger.runtimeUnavailable"));
       }
@@ -1002,20 +1005,39 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
 
       let cacheEntry = workspacePreviewBlobCacheRef.current.get(fileUuid);
       if (cacheEntry == null) {
+        workspacePreviewLoaderLog.debug("preview cache miss", {
+          fileUuid,
+          contentType: file.contentType ?? null,
+        });
         const previewAbortController = new AbortController();
         const promise = downloadWorkspaceFile(
           buildMessengerRequestOptions(runtimeContext, undefined, previewAbortController.signal),
           fileUuid,
         )
-          .then((result) => result.blob)
+          .then((result) => {
+            const normalizedBlob = normalizeWorkspacePreviewBlob(result.blob, file.contentType);
+            workspacePreviewLoaderLog.debug("preview blob fetched", {
+              fileUuid,
+              responseType: result.blob.type || null,
+              normalizedType: normalizedBlob.type,
+              size: normalizedBlob.size,
+            });
+            return normalizedBlob;
+          })
           .catch((error: unknown) => {
             if (workspacePreviewBlobCacheRef.current.get(fileUuid)?.promise === promise) {
               workspacePreviewBlobCacheRef.current.delete(fileUuid);
             }
+            workspacePreviewLoaderLog.warn("preview blob fetch failed", {
+              fileUuid,
+              error: error instanceof Error ? error.name : "unknown",
+            });
             throw error;
           });
         cacheEntry = { abortController: previewAbortController, promise };
         workspacePreviewBlobCacheRef.current.set(fileUuid, cacheEntry);
+      } else {
+        workspacePreviewLoaderLog.debug("preview cache hit", { fileUuid });
       }
 
       return waitForWorkspacePreviewBlob(cacheEntry.promise, signal);

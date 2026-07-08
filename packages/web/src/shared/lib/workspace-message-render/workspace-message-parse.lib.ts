@@ -10,7 +10,6 @@ import type {
   WorkspaceMessageFileReference,
   WorkspaceMessageInline,
   WorkspaceMessageListItem,
-  WorkspaceMessageMediaKind,
   WorkspaceMessageParseOptions,
 } from "./workspace-message-document.types";
 
@@ -18,13 +17,13 @@ const LINE_BREAK_PATTERN = /\r\n?|\n/;
 const NORMALIZE_LINE_BREAK_PATTERN = /\r\n?|\n/g;
 const WHITESPACE_PATTERN = /\s+/g;
 const URL_ONLY_PATTERN = /^(?:https?:\/\/|mailto:)[^\s]+$/i;
-const WORKSPACE_FILE_PROTOCOL = "workspace-file:";
 const UUID_PATTERN_SOURCE = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const UUID_PATTERN = new RegExp(`^${UUID_PATTERN_SOURCE}$`, "i");
-const LEGACY_WORKSPACE_FILE_DOWNLOAD_PATH_PATTERN =
-  /^\/api\/messenger\/v1\/files\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/actions\/download$/i;
-const IMAGE_FILE_EXTENSION_PATTERN = /\.(?:png|jpe?g|gif|webp|avif|svg)(?:$|[?#])/i;
-const VIDEO_FILE_EXTENSION_PATTERN = /\.(?:mp4|mov|m4v|webm|ogv)(?:$|[?#])/i;
+const POSITIVE_INTEGER_PATTERN = /^[0-9]+$/;
+const WORKSPACE_FILE_URN_PATTERN = new RegExp(
+  `^urn:(image|video|file):(${UUID_PATTERN_SOURCE})(?:\\?([\\s\\S]*))?$`,
+  "i",
+);
 const SPOILER_CODE_LANGUAGE_PATTERN = /^spoiler(?:[ \t]+([\s\S]*))?$/i;
 const PLAIN_TEXT_INLINE_PATTERN = new RegExp(
   `<@(${UUID_PATTERN_SOURCE})>|(^|[\\s([{"'.,!?;:])@([A-Za-z0-9._-]{1,128})|:([A-Za-z0-9_+-]{1,128}):`,
@@ -49,32 +48,14 @@ interface WorkspaceMessageParseContext {
   state: WorkspaceMessageParseState;
 }
 
-interface ParsedWorkspaceFileHref {
+type ParsedWorkspaceFileType = "image" | "video" | "file";
+
+interface ParsedWorkspaceFileUrn {
+  type: ParsedWorkspaceFileType;
   fileUuid: string;
   searchParams: URLSearchParams;
   href: string;
-  legacy: boolean;
 }
-
-const CONTENT_TYPE_BY_EXTENSION = new Map<string, string>([
-  ["avif", "image/avif"],
-  ["csv", "text/csv"],
-  ["gif", "image/gif"],
-  ["jpeg", "image/jpeg"],
-  ["jpg", "image/jpeg"],
-  ["json", "application/json"],
-  ["m4v", "video/x-m4v"],
-  ["mov", "video/quicktime"],
-  ["mp4", "video/mp4"],
-  ["ogv", "video/ogg"],
-  ["pdf", "application/pdf"],
-  ["png", "image/png"],
-  ["svg", "image/svg+xml"],
-  ["txt", "text/plain"],
-  ["webm", "video/webm"],
-  ["webp", "image/webp"],
-  ["zip", "application/zip"],
-]);
 
 function normalizeLineBreaks(value: string): string {
   return value.replaceAll(NORMALIZE_LINE_BREAK_PATTERN, "\n");
@@ -116,125 +97,58 @@ function normalizeOptionalText(value: string | null | undefined): string | undef
   return normalized == null || normalized.length === 0 ? undefined : normalized;
 }
 
-function inferContentTypeFromName(name: string): string | undefined {
-  const extension = /\.([A-Za-z0-9]+)(?:$|[?#])/.exec(name)?.[1]?.toLowerCase();
-  if (extension == null) {
+function parsePositiveIntegerParam(searchParams: URLSearchParams, key: string): number | undefined {
+  const rawValue = normalizeOptionalText(searchParams.get(key));
+  if (rawValue == null) {
     return undefined;
   }
-  return CONTENT_TYPE_BY_EXTENSION.get(extension);
+  if (!POSITIVE_INTEGER_PATTERN.test(rawValue)) {
+    return undefined;
+  }
+
+  const parsed = Number(rawValue);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-function inferMediaKind(
-  contentType: string | undefined,
-  name: string,
-): WorkspaceMessageMediaKind | null {
-  const normalizedType = contentType?.trim().toLowerCase() ?? "";
-  if (normalizedType.startsWith("image/")) {
-    return "image";
-  }
-  if (normalizedType.startsWith("video/")) {
-    return "video";
-  }
-  if (IMAGE_FILE_EXTENSION_PATTERN.test(name)) {
-    return "image";
-  }
-  if (VIDEO_FILE_EXTENSION_PATTERN.test(name)) {
-    return "video";
-  }
-  return null;
-}
-
-function parseCanonicalWorkspaceFileHref(href: string): ParsedWorkspaceFileHref | null {
-  let parsed: URL;
-  try {
-    parsed = new URL(href);
-  } catch {
-    return null;
-  }
-
-  if (parsed.protocol !== WORKSPACE_FILE_PROTOCOL) {
-    return null;
-  }
-
-  let fileUuid: string;
-  try {
-    fileUuid = decodeURIComponent(parsed.hostname).trim();
-  } catch {
-    return null;
-  }
-  if (!UUID_PATTERN.test(fileUuid)) {
-    return null;
-  }
-
-  return {
-    fileUuid,
-    searchParams: parsed.searchParams,
-    href,
-    legacy: false,
-  };
-}
-
-function parseLegacyWorkspaceFileDownloadHref(href: string): ParsedWorkspaceFileHref | null {
+function parseWorkspaceFileUrn(href: string): ParsedWorkspaceFileUrn | null {
   const trimmed = href.trim();
-  if (trimmed.startsWith("//")) {
+  const match = WORKSPACE_FILE_URN_PATTERN.exec(trimmed);
+  if (match == null) {
     return null;
   }
 
-  let parsed: URL;
-  try {
-    if (trimmed.startsWith("/")) {
-      parsed = new URL(trimmed, "https://workspace.local");
-    } else if (/^https?:\/\//i.test(trimmed)) {
-      if (typeof window === "undefined" || window.location.origin.length === 0) {
-        return null;
-      }
-      parsed = new URL(trimmed);
-      if (parsed.origin !== window.location.origin) {
-        return null;
-      }
-    } else {
-      return null;
-    }
-  } catch {
+  const type = match[1]?.toLowerCase();
+  if (type !== "image" && type !== "video" && type !== "file") {
     return null;
   }
-
-  const match = LEGACY_WORKSPACE_FILE_DOWNLOAD_PATH_PATTERN.exec(parsed.pathname);
-  const fileUuid = match?.[1];
+  const fileUuid = match[2];
   if (fileUuid == null || !UUID_PATTERN.test(fileUuid)) {
     return null;
   }
 
   return {
+    type,
     fileUuid,
-    searchParams: parsed.searchParams,
-    href: `workspace-file://${fileUuid}`,
-    legacy: true,
+    searchParams: new URLSearchParams(match[3] ?? ""),
+    href: trimmed,
   };
 }
 
-function parseWorkspaceFileHref(
-  href: string,
-  label: string,
-  sourceKind: "image" | "link",
-): WorkspaceMessageFileReference | null {
-  const parsed =
-    parseCanonicalWorkspaceFileHref(href) ?? parseLegacyWorkspaceFileDownloadHref(href);
+function parseWorkspaceFileHref(href: string, label: string): WorkspaceMessageFileReference | null {
+  const parsed = parseWorkspaceFileUrn(href);
   if (parsed == null) {
     return null;
   }
 
   const labelName = normalizeOptionalText(label);
-  const queryName = parsed.legacy
-    ? undefined
-    : normalizeOptionalText(parsed.searchParams.get("name"));
+  const queryName = normalizeOptionalText(parsed.searchParams.get("name"));
   const name = queryName ?? labelName;
-  const contentType =
-    normalizeOptionalText(parsed.searchParams.get("content_type")) ??
-    normalizeOptionalText(parsed.searchParams.get("contentType")) ??
-    inferContentTypeFromName(name ?? label);
-  const mediaKind = inferMediaKind(contentType, name ?? label);
-  const kind = sourceKind === "image" || mediaKind != null ? "media" : "attachment";
+  const contentType = normalizeOptionalText(parsed.searchParams.get("content_type"));
+  const width = parsePositiveIntegerParam(parsed.searchParams, "w");
+  const height = parsePositiveIntegerParam(parsed.searchParams, "h");
+  const sizeBytes = parsePositiveIntegerParam(parsed.searchParams, "size");
+  const mediaKind = parsed.type === "image" || parsed.type === "video" ? parsed.type : undefined;
+  const kind = mediaKind == null ? "attachment" : "media";
 
   return {
     kind,
@@ -242,7 +156,10 @@ function parseWorkspaceFileHref(
     fileUuid: parsed.fileUuid,
     ...(name == null ? {} : { name }),
     ...(contentType == null ? {} : { contentType }),
-    ...(kind === "media" ? { mediaKind: mediaKind ?? "image" } : {}),
+    ...(width == null ? {} : { width }),
+    ...(height == null ? {} : { height }),
+    ...(sizeBytes == null ? {} : { sizeBytes }),
+    ...(mediaKind == null ? {} : { mediaKind }),
   };
 }
 
@@ -660,7 +577,7 @@ function parseInlineTokens(
         context.state.hasInlineRich = true;
         {
           const link = token as Tokens.Link;
-          const reference = parseWorkspaceFileHref(link.href, link.text, "link");
+          const reference = parseWorkspaceFileHref(link.href, link.text);
           if (reference != null) {
             applyWorkspaceFileState(reference, context);
             return [{ kind: "file", reference }];
@@ -681,7 +598,7 @@ function parseInlineTokens(
         ];
       case "image": {
         const image = token as Tokens.Image;
-        const reference = parseWorkspaceFileHref(image.href, image.text, "image");
+        const reference = parseWorkspaceFileHref(image.href, image.text);
         if (reference != null) {
           applyWorkspaceFileState(reference, context);
           return [{ kind: "file", reference }];

@@ -279,7 +279,7 @@ describe("FeedPage", () => {
     fetchFeedMessages.mockResolvedValue(
       createPage([
         createFeedMessage({
-          markdown: `![screen.png](workspace-file://${imageFileUuid}) Вот скрин`,
+          markdown: `![screen.png](urn:image:${imageFileUuid}?name=screen.png) Вот скрин`,
         }),
       ]),
     );
@@ -289,7 +289,7 @@ describe("FeedPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Изображение: Вот скрин")).toBeInTheDocument();
     });
-    expect(screen.queryByText(/workspace-file:\/\//)).not.toBeInTheDocument();
+    expect(screen.queryByText(/urn:image:/)).not.toBeInTheDocument();
     expect(screen.queryByText(new RegExp(imageFileUuid))).not.toBeInTheDocument();
   });
 

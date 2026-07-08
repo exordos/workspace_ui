@@ -1,5 +1,9 @@
 import type { WorkspaceFileMetadata } from "~/shared/api/messenger-files.api";
 import { detectImageMime, sanitizeFilename, validateFileUpload } from "~/shared/lib/validation";
+import {
+  buildWorkspaceFileMetadata,
+  buildWorkspaceFileUrnMarkdownLink,
+} from "./chat-workspace-file-urn.lib";
 
 export interface UploadFileRequestOptions {
   signal?: AbortSignal;
@@ -50,32 +54,6 @@ function throwIfAborted(signal?: AbortSignal): void {
 
 function safeComposerFileName(file: File): string {
   return sanitizeFilename(file.name) || "file";
-}
-
-function escapeMarkdownLinkLabel(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/\]/g, "\\]");
-}
-
-function resolveWorkspaceFileContentType(
-  file: File,
-  uploadedFile: Pick<WorkspaceFileMetadata, "content_type">,
-): string {
-  const uploadedContentType = uploadedFile.content_type.trim();
-  if (uploadedContentType.length > 0) return uploadedContentType;
-
-  const localContentType = file.type.trim();
-  return localContentType.length > 0 ? localContentType : "application/octet-stream";
-}
-
-export function buildWorkspaceFileMarkdownLink(
-  file: File,
-  uploadedFile: Pick<WorkspaceFileMetadata, "uuid" | "content_type">,
-): string {
-  const safeName = escapeMarkdownLinkLabel(safeComposerFileName(file));
-  const contentType = resolveWorkspaceFileContentType(file, uploadedFile);
-  const href = `workspace-file://${uploadedFile.uuid}?content_type=${encodeURIComponent(contentType)}`;
-
-  return contentType.startsWith("image/") ? `![${safeName}](${href})` : `[${safeName}](${href})`;
 }
 
 export function appendComposerMarkdownLinks(content: string, links: readonly string[]): string {
@@ -173,7 +151,10 @@ export async function uploadWorkspaceComposerFiles(
       options.signal != null
         ? await uploadFile(file, { signal: options.signal })
         : await uploadFile(file);
-    links.push(buildWorkspaceFileMarkdownLink(file, uploadedFile));
+    const metadata = await buildWorkspaceFileMetadata(file, uploadedFile, {
+      signal: options.signal,
+    });
+    links.push(buildWorkspaceFileUrnMarkdownLink(metadata));
 
     const nextFileName = i + 1 < files.length ? files[i + 1]!.name : null;
     options.onProgress?.({
