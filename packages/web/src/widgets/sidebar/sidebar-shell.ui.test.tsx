@@ -147,7 +147,7 @@ describe("SidebarShell", () => {
     useSettingsStore.getState().resetToDefaults();
     useSidebarConfigStore.getState().setSelectedFolderId("all");
     useSidebarConfigStore.getState().setConfig({
-      expandedStreamSlugs: [],
+      expandedStreamUuids: [],
       activityOpen: false,
     });
     useSidebarConfigStore.getState().setSearchQuery("");

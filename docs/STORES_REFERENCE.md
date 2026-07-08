@@ -1016,7 +1016,7 @@ interface SidebarConfigState {
 
 ### localStorage Key
 
-- `"zulip-web-sidebar-config"` — JSON object with `activityOpen` and extensible fields
+- `"workspace-sidebar-config"` — JSON object with `activityOpen` and extensible fields
 
 ### Accessing a Store Outside React (in actions, effects, callbacks)
 

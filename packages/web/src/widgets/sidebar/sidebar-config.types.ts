@@ -1,7 +1,7 @@
 /** Sidebar config persisted in localStorage. */
 export interface SidebarConfig {
   activityOpen: boolean;
-  expandedStreamSlugs: string[];
+  expandedStreamUuids: string[];
 }
 
 /** Transient sidebar UI state (not business data). */
@@ -13,9 +13,9 @@ export interface SidebarUiState {
 
 export interface SidebarConfigState extends SidebarConfig, SidebarUiState {
   setActivityOpen: (open: boolean) => void;
-  toggleExpandedStreamSlug: (slug: string) => void;
-  expandStreamSlug: (slug: string) => void;
-  collapseExpandedStreamsExcept: (slug: string) => void;
+  toggleExpandedStreamUuid: (uuid: string) => void;
+  expandStreamUuid: (uuid: string) => void;
+  collapseExpandedStreamsExcept: (uuid: string) => void;
   collapseAllExpandedStreams: () => void;
   setConfig: (patch: Partial<SidebarConfig>) => void;
   setSelectedFolderId: (folderId: string) => void;

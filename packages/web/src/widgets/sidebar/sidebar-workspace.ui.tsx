@@ -315,8 +315,8 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
   const setActivityOpen = useSidebarConfigStore((s) => s.setActivityOpen);
   const createChatOpen = useSidebarConfigStore((s) => s.createChatOpen);
   const setCreateChatOpen = useSidebarConfigStore((s) => s.setCreateChatOpen);
-  const expandedStreamSlugs = useSidebarConfigStore((s) => s.expandedStreamSlugs);
-  const toggleExpandedStreamSlug = useSidebarConfigStore((s) => s.toggleExpandedStreamSlug);
+  const expandedStreamUuids = useSidebarConfigStore((s) => s.expandedStreamUuids);
+  const toggleExpandedStreamUuid = useSidebarConfigStore((s) => s.toggleExpandedStreamUuid);
   const searchQuery = useSidebarConfigStore((s) => s.searchQuery);
   const setSearchQuery = useSidebarConfigStore((s) => s.setSearchQuery);
   const compact = useSettingsStore((s) => s.chatListDensity === "compact");
@@ -464,12 +464,12 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
                 <WorkspaceSidebarStreamRow
                   key={stream.id}
                   stream={stream}
-                  expanded={expandedStreamSlugs.includes(stream.streamUuid)}
+                  expanded={expandedStreamUuids.includes(stream.streamUuid)}
                   activeStreamUuid={activeStreamUuid}
                   activeTopicUuid={activeTopicUuid}
                   normalizedQuery={normalizedQuery}
                   compact={compact}
-                  onToggleStream={toggleExpandedStreamSlug}
+                  onToggleStream={toggleExpandedStreamUuid}
                 />
               ))}
             </div>

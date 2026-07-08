@@ -4,11 +4,11 @@ import { buildOrgScopedStorageKey } from "~/shared/lib/org-scoped-storage";
 import { SIDEBAR_SYSTEM_ALL_FOLDER_ID } from "./sidebar-folder.constants";
 import type { SidebarConfig, SidebarConfigState, SidebarUiState } from "./sidebar-config.types";
 
-const SIDEBAR_CONFIG_STORAGE_KEY = "zulip-web-sidebar-config";
+const SIDEBAR_CONFIG_STORAGE_KEY = "workspace-sidebar-config";
 
 const DEFAULT_CONFIG: SidebarConfig = {
   activityOpen: false,
-  expandedStreamSlugs: [],
+  expandedStreamUuids: [],
 };
 
 const DEFAULT_UI_STATE: SidebarUiState = {
@@ -21,14 +21,14 @@ function getStorageKeyForOrganization(organizationId: string | null): string {
   return buildOrgScopedStorageKey(SIDEBAR_CONFIG_STORAGE_KEY, organizationId);
 }
 
-function normalizeExpandedStreamSlugs(value: unknown): string[] {
+function normalizeExpandedStreamUuids(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   const unique = new Set<string>();
   for (const item of value) {
     if (typeof item !== "string") continue;
-    const slug = item.trim();
-    if (slug.length === 0) continue;
-    unique.add(slug);
+    const uuid = item.trim();
+    if (uuid.length === 0) continue;
+    unique.add(uuid);
   }
   return [...unique];
 }
@@ -36,7 +36,7 @@ function normalizeExpandedStreamSlugs(value: unknown): string[] {
 function buildPersistedConfig(state: Pick<SidebarConfigState, keyof SidebarConfig>): SidebarConfig {
   return {
     activityOpen: state.activityOpen,
-    expandedStreamSlugs: normalizeExpandedStreamSlugs(state.expandedStreamSlugs),
+    expandedStreamUuids: normalizeExpandedStreamUuids(state.expandedStreamUuids),
   };
 }
 
@@ -48,11 +48,11 @@ function loadConfig(
     const scopedKey = getStorageKeyForOrganization(organizationId);
     const raw = window.localStorage.getItem(scopedKey);
     if (!raw) return DEFAULT_CONFIG;
-    // Ignore legacy single-slug format; read expandedStreamSlugs and activityOpen only.
+    // Ignore legacy single-stream format; read expandedStreamUuids and activityOpen only.
     const parsed = JSON.parse(raw) as Partial<SidebarConfig>;
     return {
       activityOpen: parsed.activityOpen === true,
-      expandedStreamSlugs: normalizeExpandedStreamSlugs(parsed.expandedStreamSlugs),
+      expandedStreamUuids: normalizeExpandedStreamUuids(parsed.expandedStreamUuids),
     };
   } catch {
     return DEFAULT_CONFIG;
@@ -83,51 +83,51 @@ export const useSidebarConfigStore = create<SidebarConfigState>((set) => ({
       return next;
     }),
 
-  toggleExpandedStreamSlug: (slug) =>
+  toggleExpandedStreamUuid: (uuid) =>
     set((state) => {
-      const streamSlug = slug.trim();
-      if (streamSlug.length === 0) return state;
-      const expandedStreamSlugs = state.expandedStreamSlugs.includes(streamSlug)
-        ? state.expandedStreamSlugs.filter((value) => value !== streamSlug)
-        : [...state.expandedStreamSlugs, streamSlug];
-      const next = { ...state, expandedStreamSlugs };
+      const streamUuid = uuid.trim();
+      if (streamUuid.length === 0) return state;
+      const expandedStreamUuids = state.expandedStreamUuids.includes(streamUuid)
+        ? state.expandedStreamUuids.filter((value) => value !== streamUuid)
+        : [...state.expandedStreamUuids, streamUuid];
+      const next = { ...state, expandedStreamUuids };
       saveConfig(buildPersistedConfig(next));
       return next;
     }),
 
-  expandStreamSlug: (slug) =>
+  expandStreamUuid: (uuid) =>
     set((state) => {
-      const streamSlug = slug.trim();
-      if (streamSlug.length === 0 || state.expandedStreamSlugs.includes(streamSlug)) {
+      const streamUuid = uuid.trim();
+      if (streamUuid.length === 0 || state.expandedStreamUuids.includes(streamUuid)) {
         return state;
       }
-      const next = { ...state, expandedStreamSlugs: [...state.expandedStreamSlugs, streamSlug] };
+      const next = { ...state, expandedStreamUuids: [...state.expandedStreamUuids, streamUuid] };
       saveConfig(buildPersistedConfig(next));
       return next;
     }),
 
-  collapseExpandedStreamsExcept: (slug) =>
+  collapseExpandedStreamsExcept: (uuid) =>
     set((state) => {
       // Navigation: keep only the target stream expanded.
-      const streamSlug = slug.trim();
-      if (streamSlug.length === 0) {
-        if (state.expandedStreamSlugs.length === 0) return state;
-        const next = { ...state, expandedStreamSlugs: [] };
+      const streamUuid = uuid.trim();
+      if (streamUuid.length === 0) {
+        if (state.expandedStreamUuids.length === 0) return state;
+        const next = { ...state, expandedStreamUuids: [] };
         saveConfig(buildPersistedConfig(next));
         return next;
       }
-      if (state.expandedStreamSlugs.length === 1 && state.expandedStreamSlugs[0] === streamSlug) {
+      if (state.expandedStreamUuids.length === 1 && state.expandedStreamUuids[0] === streamUuid) {
         return state;
       }
-      const next = { ...state, expandedStreamSlugs: [streamSlug] };
+      const next = { ...state, expandedStreamUuids: [streamUuid] };
       saveConfig(buildPersistedConfig(next));
       return next;
     }),
 
   collapseAllExpandedStreams: () =>
     set((state) => {
-      if (state.expandedStreamSlugs.length === 0) return state;
-      const next = { ...state, expandedStreamSlugs: [] };
+      if (state.expandedStreamUuids.length === 0) return state;
+      const next = { ...state, expandedStreamUuids: [] };
       saveConfig(buildPersistedConfig(next));
       return next;
     }),
@@ -137,10 +137,10 @@ export const useSidebarConfigStore = create<SidebarConfigState>((set) => ({
       const next = {
         ...state,
         ...patch,
-        expandedStreamSlugs:
-          patch.expandedStreamSlugs == null
-            ? state.expandedStreamSlugs
-            : normalizeExpandedStreamSlugs(patch.expandedStreamSlugs),
+        expandedStreamUuids:
+          patch.expandedStreamUuids == null
+            ? state.expandedStreamUuids
+            : normalizeExpandedStreamUuids(patch.expandedStreamUuids),
       };
       saveConfig(buildPersistedConfig(next));
       return next;

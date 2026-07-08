@@ -59,7 +59,7 @@ describe("WorkspaceSidebar", () => {
     useChatListStore.getState().clear();
     useSidebarConfigStore.getState().setConfig({
       activityOpen: false,
-      expandedStreamSlugs: [],
+      expandedStreamUuids: [],
     });
     useSidebarConfigStore.getState().setSearchQuery("");
     useSidebarConfigStore.getState().setCreateChatOpen(false);

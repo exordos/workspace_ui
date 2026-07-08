@@ -157,7 +157,7 @@ describe("WorkspaceSidebar context menu", () => {
     useMessengerStore.getState().clear();
     useSidebarConfigStore.getState().setSelectedFolderId(SIDEBAR_SYSTEM_ALL_FOLDER_ID);
     useSidebarConfigStore.getState().setCreateChatOpen(false);
-    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: [] });
+    useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [] });
     runWorkspaceStreamNotificationUpdateMock.mockReset();
     runWorkspaceTopicNotificationUpdateMock.mockReset();
     runWorkspaceFolderItemPinToggleMock.mockReset();
@@ -253,7 +253,7 @@ describe("WorkspaceSidebar context menu", () => {
 
   it("opens the topic context menu and toggles done state", async () => {
     runWorkspaceTopicDoneToggleMock.mockResolvedValue({ status: "applied" });
-    useSidebarConfigStore.getState().setConfig({ expandedStreamSlugs: [STREAM_UUID] });
+    useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [STREAM_UUID] });
 
     renderWorkspaceSidebar([createStream({ topics: [createTopic()] })]);
 
