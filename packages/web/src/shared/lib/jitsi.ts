@@ -3,17 +3,17 @@
  *
  * Extracts, parses, and builds Jitsi meeting URLs.
  * Resolution order for "this organization's" Jitsi host: optional {@link JitsiLinkOptions.serverBaseUrl}
- * (from Zulip `POST /register`) then `VITE_JITSI_MEET_DOMAIN` via constants; public `meet.jit.si` is always
- * accepted for link detection and parsing.
+ * (from Workspace `server_settings.meet_url`) then `VITE_JITSI_MEET_DOMAIN` via constants.
+ * Public `meet.jit.si` is accepted for copied links only.
  *
  * Usage:
  *   import { getJitsiMeetingUrl, parseJitsiUrl, buildJitsiMeetingUrl } from "~/shared/lib/jitsi";
  */
 import { JITSI_MEET_BASE_URL, JITSI_MEET_DOMAIN } from "~/shared/config/constants";
 
-/** Optional overrides from Zulip register (per realm), see module header. */
+/** Optional per-Workspace override, see module header. */
 export interface JitsiLinkOptions {
-  /** Effective Jitsi base URL (`https://host`, no trailing slash), e.g. from Zulip register. */
+  /** Effective Jitsi base URL (`https://host`, no trailing slash), e.g. from Workspace server settings. */
   serverBaseUrl?: string | null;
 }
 
@@ -31,14 +31,14 @@ function getEffectiveJitsiBaseAndDomain(options?: JitsiLinkOptions): {
   baseUrl: string;
   domain: string;
 } {
-  const fromRegister =
+  const fromWorkspaceSettings =
     options?.serverBaseUrl != null && String(options.serverBaseUrl).trim() !== ""
       ? normalizeHttpOrigin(String(options.serverBaseUrl))
       : null;
-  if (fromRegister) {
+  if (fromWorkspaceSettings) {
     return {
-      baseUrl: fromRegister,
-      domain: new URL(fromRegister).hostname.toLowerCase(),
+      baseUrl: fromWorkspaceSettings,
+      domain: new URL(fromWorkspaceSettings).hostname.toLowerCase(),
     };
   }
   const base = JITSI_MEET_BASE_URL.replace(/\/+$/, "");
@@ -49,7 +49,7 @@ function getEffectiveJitsiBaseAndDomain(options?: JitsiLinkOptions): {
   return { baseUrl: "", domain: "" };
 }
 
-/** Extracts the first Jitsi meeting URL from text (configured host, Zulip register host, or meet.jit.si). */
+/** Extracts the first Jitsi meeting URL from text (configured Workspace host or meet.jit.si). */
 export function getJitsiMeetingUrl(content: string, options?: JitsiLinkOptions): string | null {
   const { baseUrl, domain } = getEffectiveJitsiBaseAndDomain(options);
   const trimmed = content.trim();

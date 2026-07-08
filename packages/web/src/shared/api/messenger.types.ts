@@ -337,6 +337,7 @@ export interface WorkspaceMessengerServerSettingsDto {
   realm_icon: string;
   realm_description: string;
   realm_web_public_access_enabled: boolean;
+  meet_url: string;
   external_authentication_methods: unknown[];
   realm_uri: string;
   ignored_parameters_unsupported?: string[];
@@ -856,6 +857,7 @@ export function isWorkspaceMessengerServerSettingsDto(
     typeof value.realm_icon === "string" &&
     typeof value.realm_description === "string" &&
     typeof value.realm_web_public_access_enabled === "boolean" &&
+    typeof value.meet_url === "string" &&
     Array.isArray(value.external_authentication_methods) &&
     typeof value.realm_uri === "string" &&
     isOptionalStringArray(value.ignored_parameters_unsupported)

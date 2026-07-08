@@ -13,6 +13,8 @@ import { useUsersStore } from "~/entities/user/user.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call-settings.model";
+import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import { useWorkspaceForwardMessageStore } from "~/features/workspace-forward-message/workspace-forward-message.model";
 import { t } from "~/i18n/i18n";
@@ -29,6 +31,7 @@ import type { ChatPageWorkspaceMessageListSectionProps } from "./chat-page-works
 const STREAM_UUID = "11111111-1111-4111-8111-111111111111";
 const TOPIC_UUID = "22222222-2222-4222-8222-222222222222";
 const DIRECT_STREAM_UUID = "88888888-8888-4888-8888-888888888888";
+const DIRECT_TOPIC_UUID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const USER_UUID = "33333333-3333-4333-8333-333333333333";
 const USER_B_UUID = "44444444-4444-4444-8444-444444444444";
 const MESSAGE_UUID = "55555555-5555-4555-8555-555555555555";
@@ -230,7 +233,16 @@ function createDirectPrivateBootstrapPayload(): MessengerBootstrapPayload {
       },
     ],
     streamBindings: [],
-    topics: [],
+    topics: [
+      {
+        ...payload.topics[0]!,
+        uuid: DIRECT_TOPIC_UUID,
+        streamUuid: DIRECT_STREAM_UUID,
+        name: "private",
+        unreadCount: 0,
+        isDefault: true,
+      },
+    ],
   };
 }
 
@@ -311,6 +323,7 @@ describe("ChatPage Workspace route", () => {
     const ownerKey = workspaceRuntimeOwnerKey(session);
     useMessengerStore.getState().startBootstrap(ownerKey);
     useMessengerStore.getState().replaceBootstrapState(ownerKey, createBootstrapPayload());
+    useWorkspaceJitsiSettingsStore.getState().clear();
     useUsersStore.getState().replaceUsers([
       createUser({
         uuid: USER_UUID,
@@ -331,6 +344,7 @@ describe("ChatPage Workspace route", () => {
         createMessage(),
       ]);
     useMessengerOutboxStore.getState().clear();
+    useJitsiCallStore.getState().clear();
     captured.composerProps = null;
     captured.headerProps = null;
     captured.messageListProps = null;
@@ -366,9 +380,11 @@ describe("ChatPage Workspace route", () => {
     useWorkspaceForwardMessageStore.getState().reset();
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
     useMessengerStore.getState().clear();
+    useWorkspaceJitsiSettingsStore.getState().clear();
     useUsersStore.getState().clear();
     useWorkspaceMessageStore.getState().clear();
     useMessengerOutboxStore.getState().clear();
+    useJitsiCallStore.getState().clear();
     useDownloadStore.getState().clearDownloads();
     useMediaViewerStore.getState().close();
   });
@@ -399,6 +415,7 @@ describe("ChatPage Workspace route", () => {
     expect(captured.headerProps?.onOpenSearch).toEqual(expect.any(Function));
     expect(captured.headerProps?.onToggleRightPanel).toEqual(expect.any(Function));
     expect(captured.headerProps?.onOpenRightPanel).toEqual(expect.any(Function));
+    expect(captured.headerProps?.onCallClick).toBeUndefined();
     expect(captured.messageListProps?.conversationId).toBe(`topic:${STREAM_UUID}:${TOPIC_UUID}`);
     expect(captured.messageListProps?.currentUserUuid).toBe(USER_UUID);
     expect(captured.messageListProps?.resolveAuthorLabel?.(USER_B_UUID)).toBe("Bob Reed");
@@ -433,6 +450,7 @@ describe("ChatPage Workspace route", () => {
     });
     expect(captured.composerProps?.onLoadWorkspaceFilePreview).toEqual(expect.any(Function));
     expect(captured.composerProps?.onSend).toEqual(expect.any(Function));
+    expect(captured.composerProps?.onCreateCallLink).toBeUndefined();
     expect(captured.composerProps?.onSubmitEdit).toEqual(expect.any(Function));
     expect(captured.oldChatListStore).not.toHaveBeenCalled();
     expect(captured.streamBindingsForRoute).toHaveBeenCalledWith({
@@ -468,6 +486,56 @@ describe("ChatPage Workspace route", () => {
 
     expect(openWorkspaceUserProfile).toHaveBeenCalledWith(USER_B_UUID);
     expect(openUserProfile).not.toHaveBeenCalled();
+  });
+
+  it("sends and opens a Workspace Jitsi call from the direct private header", async () => {
+    const session = createSession();
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    useMessengerStore.getState().clear();
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    useMessengerStore
+      .getState()
+      .replaceBootstrapState(ownerKey, createDirectPrivateBootstrapPayload());
+    useWorkspaceJitsiSettingsStore
+      .getState()
+      .setWorkspaceMeetUrl(ownerKey, "https://meet.workspace.example.com/jitsi/");
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(123);
+
+    try {
+      renderWorkspaceChatPageWithShellContexts(
+        `/org/org-a/project/project-a/stream/${DIRECT_STREAM_UUID}`,
+      );
+
+      await waitFor(() => expect(captured.headerProps?.onCallClick).toEqual(expect.any(Function)));
+      expect(captured.composerProps?.onCreateCallLink).toBeUndefined();
+
+      act(() => {
+        captured.headerProps?.onCallClick?.();
+      });
+
+      const expectedUrl = `https://meet.workspace.example.com/workspace-org-a-project-a-${DIRECT_STREAM_UUID}-${DIRECT_TOPIC_UUID}-123`;
+      await waitFor(() =>
+        expect(captured.sendMessengerMessage).toHaveBeenCalledWith(
+          expect.objectContaining({
+            streamUuid: DIRECT_STREAM_UUID,
+            topicUuid: DIRECT_TOPIC_UUID,
+            markdown: expectedUrl,
+            includeStreamConversation: true,
+          }),
+        ),
+      );
+      await waitFor(() =>
+        expect(useJitsiCallStore.getState().activeCall).toMatchObject({
+          meetingUrl: expectedUrl,
+          locationName: "Bob Reed",
+          ownerKey,
+          meetUrl: "https://meet.workspace.example.com",
+          displayName: "Alice Stone",
+        }),
+      );
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 
   it("adds a local outgoing row before Workspace send resolves", async () => {

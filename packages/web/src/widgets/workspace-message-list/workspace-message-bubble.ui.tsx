@@ -5,10 +5,12 @@ import { useWorkspaceMessageFilePreviews } from "~/entities/messenger/messenger-
 import type { MessengerMessage, MessengerUuid } from "~/entities/messenger/messenger.types";
 import { t } from "~/i18n/i18n";
 import { invariant } from "~/shared/lib/guards";
+import { getJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 import { parseWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
 import { DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS } from "~/shared/lib/workspace-message-render/workspace-message-render-options.lib";
 import { renderWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-render.lib";
 import { useWorkspaceMessageBodyInteractions } from "./workspace-message-body-interactions.hook";
+import { WorkspaceMessageBubbleJitsiCard } from "./workspace-message-bubble-jitsi-card.ui";
 import { WorkspaceMessageBubbleMenu } from "./workspace-message-bubble-menu.ui";
 import { WorkspaceMessageBubbleMeta } from "./workspace-message-bubble-meta.ui";
 import { WorkspaceMessageOutgoingDeliveryIndicator } from "./workspace-message-outgoing-delivery-indicator.ui";
@@ -31,6 +33,10 @@ const OWN_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-br-[6px] bg-msg
 const PEER_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-bl-[6px] bg-bg-elevated`;
 const COMPACT_OWN_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-r-[10px] bg-msg-own-bg`;
 const COMPACT_PEER_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-l-[10px] bg-bg-elevated`;
+const JITSI_OWN_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-br-[6px] bg-msg-call-bg`;
+const JITSI_PEER_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-bl-[6px] bg-msg-call-bg`;
+const COMPACT_JITSI_OWN_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-r-[10px] bg-msg-call-bg`;
+const COMPACT_JITSI_PEER_BUBBLE_CLASS_NAME = `${BASE_BUBBLE_CLASS_NAME} rounded-l-[10px] bg-msg-call-bg`;
 
 function resolveMessageOwner(
   message: WorkspaceMessageListItem,
@@ -68,7 +74,19 @@ function resolvePeerAuthorLabel(
   return safeUuidPart.length > 0 ? `#${safeUuidPart}` : "";
 }
 
-function resolveBubbleClassName(owner: WorkspaceMessageOwner, isLastInGroup: boolean): string {
+function resolveBubbleClassName(
+  owner: WorkspaceMessageOwner,
+  isLastInGroup: boolean,
+  isJitsiCall: boolean,
+): string {
+  if (isJitsiCall) {
+    if (owner === "own") {
+      return isLastInGroup ? JITSI_OWN_BUBBLE_CLASS_NAME : COMPACT_JITSI_OWN_BUBBLE_CLASS_NAME;
+    }
+
+    return isLastInGroup ? JITSI_PEER_BUBBLE_CLASS_NAME : COMPACT_JITSI_PEER_BUBBLE_CLASS_NAME;
+  }
+
   if (owner === "own") {
     return isLastInGroup ? OWN_BUBBLE_CLASS_NAME : COMPACT_OWN_BUBBLE_CLASS_NAME;
   }
@@ -101,6 +119,22 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
     invariant(displayMessage != null, "WorkspaceMessageBubble expects message payload");
     const time = formatWorkspaceMessageTime(displayMessage.createdAt);
     const markdown = displayMessage.markdown;
+    const jitsiLinkOptions = useMemo<JitsiLinkOptions>(
+      () => ({ serverBaseUrl: actions?.jitsiServerBaseUrl }),
+      [actions?.jitsiServerBaseUrl],
+    );
+    const jitsiUrl = useMemo(
+      () => getJitsiMeetingUrl(markdown, jitsiLinkOptions),
+      [jitsiLinkOptions, markdown],
+    );
+    const isJitsiCall = jitsiUrl != null;
+    const jitsiLocationName = actions?.jitsiLocationName?.trim() ?? "";
+    const handleOpenJitsiCall = useMemo(() => {
+      if (jitsiUrl == null || actions?.onOpenJitsiCall == null) return undefined;
+      return () => {
+        actions.onOpenJitsiCall?.(jitsiUrl, jitsiLocationName);
+      };
+    }, [actions, jitsiLocationName, jitsiUrl]);
     const peerAuthorLabel =
       owner === "peer" && isFirstInGroup
         ? resolvePeerAuthorLabel(
@@ -108,7 +142,11 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
             resolveAuthorLabel?.(displayMessage.authorUuid),
           )
         : "";
-    const bubbleClassName = `${resolveBubbleClassName(owner, isLastInGroup)} ${
+    const authorLabel = resolvePeerAuthorLabel(
+      displayMessage.authorUuid,
+      resolveAuthorLabel?.(displayMessage.authorUuid),
+    );
+    const bubbleClassName = `${resolveBubbleClassName(owner, isLastInGroup, isJitsiCall)} ${
       isSelected ? "ring-2 ring-accent-soft" : ""
     }`;
     const bodyRef = useRef<HTMLDivElement>(null);
@@ -153,7 +191,7 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
       onLoadWorkspaceFilePreview: actions?.onLoadWorkspaceFilePreview,
     });
     const metaPlacement =
-      serverMessage != null && hasWorkspaceReactions(serverMessage)
+      isJitsiCall || (serverMessage != null && hasWorkspaceReactions(serverMessage))
         ? "row"
         : renderedBody.metadata.preferredMetaPlacement;
     const useInlineMeta = metaPlacement === "inline";
@@ -202,6 +240,7 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
       };
     }, [time, useInlineMeta]);
     const containsInteractiveBody =
+      isJitsiCall ||
       renderedBody.metadata.hasLinks ||
       (renderedBody.metadata.hasMentions && actions?.onOpenMentionUser != null) ||
       renderedBody.metadata.hasMedia ||
@@ -262,14 +301,37 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
             {peerAuthorLabel}
           </div>
         ) : null}
-        <WorkspaceMessageBody
-          bodyRef={bodyRef}
-          html={renderedBody.html}
-          metadata={renderedBody.metadata}
-          onBodyClick={handleBodyClick}
-          useInlineMeta={useInlineMeta}
-        />
-        {useInlineMeta ? (
+        {isJitsiCall ? (
+          <WorkspaceMessageBubbleJitsiCard
+            messageKey={message.key}
+            authorLabel={authorLabel}
+            jitsiUrl={jitsiUrl}
+            jitsiLinkOptions={jitsiLinkOptions}
+            locationName={jitsiLocationName}
+            isOwn={isOwn}
+            time={time}
+            createdAt={displayMessage.createdAt}
+            deliveryIndicator={
+              outgoingMessage == null ? null : (
+                <WorkspaceMessageOutgoingDeliveryIndicator
+                  message={outgoingMessage}
+                  onRetry={actions?.onRetryOutgoingMessage}
+                  onRemove={actions?.onRemoveOutgoingMessage}
+                />
+              )
+            }
+            onOpenJitsiCall={handleOpenJitsiCall == null ? undefined : actions?.onOpenJitsiCall}
+          />
+        ) : (
+          <WorkspaceMessageBody
+            bodyRef={bodyRef}
+            html={renderedBody.html}
+            metadata={renderedBody.metadata}
+            onBodyClick={handleBodyClick}
+            useInlineMeta={useInlineMeta}
+          />
+        )}
+        {!isJitsiCall && useInlineMeta ? (
           <>
             {/* This explanatory block is intentionally kept here because the layout
                 depends on it. Inline time sits in the lower-right corner of the
@@ -292,7 +354,7 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
               }
             />
           </>
-        ) : (
+        ) : !isJitsiCall ? (
           <div className="mt-1 flex justify-end">
             {/* This explanatory block is intentionally kept here because the layout
                 depends on it. For wraps, long words, and future complex content,
@@ -313,7 +375,7 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
               }
             />
           </div>
-        )}
+        ) : null}
       </div>
     );
   },

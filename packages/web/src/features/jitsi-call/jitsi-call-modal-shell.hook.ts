@@ -56,6 +56,7 @@ export function useJitsiCallModalShell({
   open,
   meetingUrl,
   locationName,
+  displayName: displayNameFromCall,
   startWithVideoMuted = true,
   onClose,
 }: JitsiCallModalProps) {
@@ -90,7 +91,8 @@ export function useJitsiCallModalShell({
   const currentUser = useUsersStore((s) =>
     currentUserUuid == null ? undefined : s.usersById[currentUserUuid],
   );
-  const displayName = selectUserDisplayName(currentUser, t("call.participant"));
+  const displayName =
+    displayNameFromCall?.trim() || selectUserDisplayName(currentUser, t("call.participant"));
   const callLocationName = locationName?.trim() ?? "";
   const expandedWindowBounds = useMemo(() => getExpandedWindowBounds(viewportSize), [viewportSize]);
   const windowBounds = isMinimized ? pipWindowBounds : expandedWindowBounds;

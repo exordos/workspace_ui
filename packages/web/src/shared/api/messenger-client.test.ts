@@ -543,6 +543,7 @@ describe("messenger-client", () => {
       realm_icon: "/user_avatars/2/realm/icon.png?version=2",
       realm_description: "<p>The coolest place in the universe.</p>",
       realm_web_public_access_enabled: false,
+      meet_url: "https://meet.workspace.example.com",
       external_authentication_methods: [],
       realm_uri: "https://zulip.genesis-core.tech",
     });
@@ -550,6 +551,7 @@ describe("messenger-client", () => {
     await expect(getServerSettings({ fetchImpl: fetchMock })).resolves.toMatchObject({
       result: "success",
       realm_name: "Genesis Corporation",
+      meet_url: "https://meet.workspace.example.com",
     });
 
     const [url, init] = firstFetchCall(fetchMock);

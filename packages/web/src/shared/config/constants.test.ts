@@ -38,7 +38,7 @@ describe("constants", () => {
     expect(SCROLL_AREA_CLASS).toContain("scrollbar-thin");
   });
 
-  // Jitsi domain is used to match/extract meeting URLs from message content
+  // Jitsi domain is the build-time fallback when Workspace server settings are unavailable.
   it("JITSI_MEET_DOMAIN is a string", () => {
     expect(typeof JITSI_MEET_DOMAIN).toBe("string");
   });

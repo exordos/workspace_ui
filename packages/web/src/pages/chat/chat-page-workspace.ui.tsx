@@ -36,6 +36,9 @@ import {
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call-settings.model";
+import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
+import { buildWorkspaceJitsiMeetingUrl } from "~/features/jitsi-call/workspace-jitsi-call.lib";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import type { MediaItem } from "~/features/media-viewer/media-viewer.types";
 import { useWorkspaceForwardMessageStore } from "~/features/workspace-forward-message/workspace-forward-message.model";
@@ -143,6 +146,18 @@ function normalizeWorkspaceMentionLookupText(value: string | null | undefined): 
 
 function normalizeWorkspaceActionError(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim().length > 0 ? error.message : fallback;
+}
+
+function resolveWorkspaceCurrentUserDisplayName(
+  runtimeContext: ReturnType<typeof selectCurrentWorkspaceRuntimeContext>,
+  usersById: UsersById,
+): string {
+  if (runtimeContext == null) return "";
+
+  const storeDisplayName = selectUserDisplayName(usersById[runtimeContext.userUuid], "").trim();
+  if (storeDisplayName.length > 0) return storeDisplayName;
+
+  return runtimeContext.userUuid;
 }
 
 function isWorkspaceImageMediaReference(file: WorkspaceMessageFileReference): boolean {
@@ -253,6 +268,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   const ownerKey = useMemo(
     () => (runtimeContext == null ? null : workspaceRuntimeOwnerKey(runtimeContext)),
     [runtimeContext],
+  );
+  const workspaceMeetUrl = useWorkspaceJitsiSettingsStore((state) =>
+    ownerKey == null ? null : (state.meetUrlsByOwnerKey[ownerKey] ?? null),
   );
   const conversationId = selection.status === "conversation" ? selection.conversationId : null;
   const selectionMode = selectedMessageUuids.size > 0;
@@ -489,6 +507,16 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
 
   const topicTitle =
     topic?.name ?? (selection.status === "conversation" ? conversation?.title : undefined);
+  const jitsiLocationName = useMemo(() => {
+    if (headerView.kind === "directPrivate") {
+      return headerView.dmPartner.name;
+    }
+
+    const topicLabel = headerView.topic?.trim() ?? "";
+    if (topicLabel.length > 0) return topicLabel;
+
+    return headerView.channelName;
+  }, [headerView]);
   const composerReadOnlyReason =
     selection.status === "conversation"
       ? undefined
@@ -706,6 +734,86 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     },
     [deliverOutgoingMessage, resolveSendTarget, runtimeContext],
   );
+
+  const handleOpenWorkspaceJitsiCall = useCallback(
+    (url: string, locationName?: string) => {
+      if (runtimeContext == null || ownerKey == null) return;
+
+      useJitsiCallStore.getState().openCall({
+        meetingUrl: url,
+        locationName: locationName?.trim() ?? "",
+        ownerKey,
+        meetUrl: workspaceMeetUrl ?? undefined,
+        displayName: resolveWorkspaceCurrentUserDisplayName(runtimeContext, usersById),
+      });
+    },
+    [ownerKey, runtimeContext, usersById, workspaceMeetUrl],
+  );
+
+  const handleStartWorkspaceHeaderCall = useCallback(() => {
+    setSendError(null);
+
+    if (runtimeContext == null || ownerKey == null) {
+      setSendError(t("workspaceMessenger.runtimeUnavailable"));
+      return;
+    }
+    if (workspaceMeetUrl == null) {
+      setSendError(t("message.sendFailed"));
+      return;
+    }
+
+    const target = resolveSendTarget();
+    if (target.status === "blocked") {
+      setSendError(target.error);
+      return;
+    }
+
+    const meetingUrl = buildWorkspaceJitsiMeetingUrl({
+      meetUrl: workspaceMeetUrl,
+      organizationId: runtimeContext.organizationId,
+      projectId: runtimeContext.projectId,
+      streamUuid: target.streamUuid,
+      topicUuid: target.topicUuid,
+    });
+    const locationName = headerView.kind === "directPrivate" ? headerView.dmPartner.name : "";
+
+    void runWorkspaceAction(async (signal) => {
+      try {
+        const result = await sendMessengerMessage({
+          runtimeContext,
+          getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+          signal,
+          streamUuid: target.streamUuid,
+          topicUuid: target.topicUuid,
+          markdown: meetingUrl,
+          includeStreamConversation: target.includeStreamConversation,
+        });
+
+        if (result.status !== "applied") {
+          setSendError(t("message.sendFailed"));
+          return;
+        }
+
+        useJitsiCallStore.getState().openCall({
+          meetingUrl,
+          locationName,
+          ownerKey,
+          meetUrl: workspaceMeetUrl,
+          displayName: resolveWorkspaceCurrentUserDisplayName(runtimeContext, usersById),
+        });
+      } catch (error) {
+        setSendError(normalizeWorkspaceActionError(error, t("message.sendFailed")));
+      }
+    });
+  }, [
+    headerView,
+    ownerKey,
+    resolveSendTarget,
+    runWorkspaceAction,
+    runtimeContext,
+    usersById,
+    workspaceMeetUrl,
+  ]);
 
   const handleCancelUpload = useCallback(() => {
     const controller = uploadAbortControllerRef.current;
@@ -1253,6 +1361,17 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     [openWorkspaceUserProfile],
   );
 
+  const headerProps = useMemo<ChatHeaderProps>(() => {
+    if (headerView.kind === "directPrivate" && workspaceMeetUrl != null) {
+      return {
+        ...chatHeaderContentProps,
+        onCallClick: handleStartWorkspaceHeaderCall,
+      };
+    }
+
+    return chatHeaderContentProps;
+  }, [chatHeaderContentProps, handleStartWorkspaceHeaderCall, headerView.kind, workspaceMeetUrl]);
+
   let body: React.ReactNode;
   if (selection.status === "invalid-route") {
     body = (
@@ -1312,6 +1431,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         onOpenUnsupportedFilePreview={handleOpenUnsupportedFilePreview}
         onRetryOutgoingMessage={handleRetryOutgoingMessage}
         onRemoveOutgoingMessage={handleRemoveOutgoingMessage}
+        jitsiServerBaseUrl={workspaceMeetUrl}
+        jitsiLocationName={jitsiLocationName}
+        onOpenJitsiCall={handleOpenWorkspaceJitsiCall}
         messagesLoadError={messagesLoadError}
         onRetryMessagesLoad={retry}
         boundaryLoadFailed={false}
@@ -1329,7 +1451,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       data-testid="chat-page"
     >
       <ChatHeader
-        {...chatHeaderContentProps}
+        {...headerProps}
         onOpenSearch={openSearch ?? undefined}
         onToggleRightPanel={rightDrawer == null ? undefined : handleToggleRightPanel}
         onOpenRightPanel={rightDrawer == null ? undefined : handleOpenRightPanel}

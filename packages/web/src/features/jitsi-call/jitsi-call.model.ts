@@ -6,6 +6,9 @@ export interface IncomingDmCallInvite {
   meetingUrl: string;
   callerName: string;
   locationName: string;
+  ownerKey?: string;
+  meetUrl?: string;
+  displayName?: string;
   avatarUrl?: string;
   timestamp: number;
 }
@@ -13,6 +16,9 @@ export interface IncomingDmCallInvite {
 export interface ActiveJitsiCall {
   meetingUrl: string;
   locationName: string;
+  ownerKey?: string;
+  meetUrl?: string;
+  displayName?: string;
   startWithVideoMuted?: boolean;
 }
 
@@ -37,12 +43,17 @@ export const useJitsiCallStore = create<JitsiCallStoreState>((set, get) => ({
     const startWithVideoMuted = payload.startWithVideoMuted ?? true;
     logStoreAction("jitsiCall", "openCall", {
       hasLocationName: payload.locationName.trim().length > 0,
+      hasOwnerKey: payload.ownerKey != null && payload.ownerKey.trim().length > 0,
+      hasMeetUrl: payload.meetUrl != null && payload.meetUrl.trim().length > 0,
       startWithVideoMuted,
     });
     set({
       activeCall: {
         meetingUrl: payload.meetingUrl,
         locationName: payload.locationName,
+        ownerKey: payload.ownerKey,
+        meetUrl: payload.meetUrl,
+        displayName: payload.displayName,
         startWithVideoMuted,
       },
       incomingInvite: null,
@@ -94,6 +105,9 @@ export const useJitsiCallStore = create<JitsiCallStoreState>((set, get) => ({
       activeCall: {
         meetingUrl: invite.meetingUrl,
         locationName: invite.locationName,
+        ownerKey: invite.ownerKey,
+        meetUrl: invite.meetUrl,
+        displayName: invite.displayName,
         startWithVideoMuted,
       },
       incomingInvite: null,

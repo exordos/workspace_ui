@@ -36,6 +36,9 @@ export interface ChatPageWorkspaceMessageListSectionProps {
   onReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onForwardMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onOpenMessageInChat?: (messageUuid: MessengerUuid) => void;
+  jitsiServerBaseUrl?: string | null;
+  jitsiLocationName?: string | null;
+  onOpenJitsiCall?: (url: string, locationName?: string) => void;
   onOpenMentionUser?: (userUuid: MessengerUuid) => void;
   onToggleMessageSelection?: (messageUuid: MessengerUuid) => void;
   onEditMessage?: (messageUuid: MessengerUuid) => void;

@@ -19,7 +19,7 @@ vi.mock("./jitsi-call.ui", () => ({
 function buildInvite(messageId = 777): IncomingDmCallInvite {
   return {
     messageId,
-    meetingUrl: "https://meet.jit.si/zulip-dm-room-777",
+    meetingUrl: "https://meet.workspace.example.com/workspace-room-777",
     callerName: "Fox",
     locationName: "Fox",
     avatarUrl: undefined,

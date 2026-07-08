@@ -3,10 +3,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call-settings.model";
 import { useLayoutWorkspaceMessengerBootstrap } from "./layout-workspace-messenger-bootstrap.hook";
 
 const bootstrapMessengerStoreMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 const ensureFreshWorkspaceSessionMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+const fetchWorkspaceServerSettingsForOrganizationMock = vi.hoisted(() =>
+  vi.fn(() =>
+    Promise.resolve({
+      meet_url: "https://meet.workspace.example.com",
+    }),
+  ),
+);
 const WORKSPACE_AUTH_STORAGE_KEY = "workspace-auth-sessions";
 const WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY = "workspace-auth-current-account";
 
@@ -25,6 +34,7 @@ vi.mock("~/entities/workspace-auth/workspace-auth.lib", () => ({
     return { reason: "unknown-transient", error };
   },
   ensureFreshWorkspaceSession: ensureFreshWorkspaceSessionMock,
+  fetchWorkspaceServerSettingsForOrganization: fetchWorkspaceServerSettingsForOrganizationMock,
 }));
 
 function createSession(): WorkspaceAuthSession {
@@ -64,13 +74,19 @@ describe("useLayoutWorkspaceMessengerBootstrap", () => {
     bootstrapMessengerStoreMock.mockClear();
     ensureFreshWorkspaceSessionMock.mockClear();
     ensureFreshWorkspaceSessionMock.mockResolvedValue(undefined);
+    fetchWorkspaceServerSettingsForOrganizationMock.mockClear();
+    fetchWorkspaceServerSettingsForOrganizationMock.mockResolvedValue({
+      meet_url: "https://meet.workspace.example.com",
+    });
     useMessengerStore.getState().clear();
+    useWorkspaceJitsiSettingsStore.getState().clear();
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
   });
 
   afterEach(() => {
     vi.clearAllMocks();
     useMessengerStore.getState().clear();
+    useWorkspaceJitsiSettingsStore.getState().clear();
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
     localStorage.removeItem(WORKSPACE_AUTH_STORAGE_KEY);
     localStorage.removeItem(WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY);
@@ -113,6 +129,27 @@ describe("useLayoutWorkspaceMessengerBootstrap", () => {
     );
     expect(ensureFreshWorkspaceSessionMock).toHaveBeenCalledWith(
       session.accountId,
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+      }),
+    );
+  });
+
+  it("stores Workspace Jitsi meet_url from server settings", async () => {
+    const session = createSession();
+    setWorkspaceSession(session);
+
+    renderHook(() => useLayoutWorkspaceMessengerBootstrap({ enabled: true }));
+
+    await waitFor(() => {
+      expect(
+        useWorkspaceJitsiSettingsStore
+          .getState()
+          .getWorkspaceMeetUrl(workspaceRuntimeOwnerKey(session)),
+      ).toBe("https://meet.workspace.example.com");
+    });
+    expect(fetchWorkspaceServerSettingsForOrganizationMock).toHaveBeenCalledWith(
+      session.organizationOrigin,
       expect.objectContaining({
         signal: expect.any(AbortSignal),
       }),

@@ -8,6 +8,7 @@ export interface JitsiCallModalProps {
   open: boolean;
   meetingUrl: string;
   locationName?: string;
+  displayName?: string;
   startWithVideoMuted?: boolean;
   onClose: () => void;
 }

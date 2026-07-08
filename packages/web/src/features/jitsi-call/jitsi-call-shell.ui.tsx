@@ -107,6 +107,7 @@ export const JitsiCallShell: React.FC = () => {
           open={true}
           meetingUrl={activeCall.meetingUrl}
           locationName={activeCall.locationName}
+          displayName={activeCall.displayName}
           startWithVideoMuted={activeCall.startWithVideoMuted}
           onClose={closeCall}
         />

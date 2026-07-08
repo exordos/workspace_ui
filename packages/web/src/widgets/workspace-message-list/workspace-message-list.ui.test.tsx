@@ -2211,4 +2211,47 @@ describe("WorkspaceMessageList", () => {
     expect(screen.queryByRole("menuitem", { name: "Edit message" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Delete" })).not.toBeInTheDocument();
   });
+
+  it("renders Workspace Jitsi URLs with the old call bubble visual surface", () => {
+    const jitsiUrl = "https://meet.workspace.example.com/workspace-design-sync-room";
+    const onOpenJitsiCall = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-jitsi-message",
+            authorUuid: "peer-user-uuid",
+            userUuid: "peer-user-uuid",
+            isOwn: false,
+            markdown: jitsiUrl,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        resolveAuthorLabel={() => "Bob Reed"}
+        actions={{
+          jitsiServerBaseUrl: "https://meet.workspace.example.com/jitsi/",
+          jitsiLocationName: "Roadmap",
+          onOpenJitsiCall,
+        }}
+      />,
+    );
+
+    const jitsiCallButton = screen.getByRole("button", { name: "Join call" });
+    const bubble = jitsiCallButton.closest("[data-workspace-message-bubble='true']");
+    expect(bubble).toHaveClass("rounded-[18px]");
+    expect(bubble).toHaveClass("rounded-bl-[6px]");
+    expect(bubble).toHaveClass("bg-msg-call-bg");
+    expect(bubble).not.toHaveClass("bg-bg-elevated");
+    expect(jitsiCallButton).toHaveTextContent(/workspace design sync room/i);
+    expect(jitsiCallButton).toHaveTextContent(/roadmap/i);
+    expect(
+      screen.getByTestId("workspace-jitsi-call-participants-workspace-jitsi-message"),
+    ).toBeInTheDocument();
+    expect(container.querySelector("[data-workspace-jitsi-call='true']")).toBeNull();
+
+    fireEvent.click(jitsiCallButton);
+
+    expect(onOpenJitsiCall).toHaveBeenCalledWith(jitsiUrl, "Roadmap");
+  });
 });

@@ -86,7 +86,7 @@ describe("getJitsiMeetingUrl", () => {
     expect(getJitsiMeetingUrl("https://other.example.com/room")).toBeNull();
   });
 
-  it("detects meeting URL on serverBaseUrl host from Zulip register", () => {
+  it("detects meeting URL on serverBaseUrl host from Workspace server settings", () => {
     const text = "Join https://corp-jitsi.example.com/standup";
     expect(getJitsiMeetingUrl(text, { serverBaseUrl: "https://corp-jitsi.example.com" })).toBe(
       "https://corp-jitsi.example.com/standup",

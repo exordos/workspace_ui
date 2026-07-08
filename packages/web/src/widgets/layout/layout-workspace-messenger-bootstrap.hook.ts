@@ -4,11 +4,14 @@ import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import {
   classifyWorkspaceAuthRefreshError,
   ensureFreshWorkspaceSession,
+  fetchWorkspaceServerSettingsForOrganization,
 } from "~/entities/workspace-auth/workspace-auth.lib";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call-settings.model";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 
 // Layout owns the temporary messenger bootstrap until a dedicated process layer exists.
@@ -81,6 +84,24 @@ export function useLayoutWorkspaceMessengerBootstrap(options: { enabled: boolean
       if (latestRuntimeContext?.accountId !== runtimeContext.accountId) {
         return;
       }
+
+      const settingsOwnerKey = workspaceRuntimeOwnerKey(latestRuntimeContext);
+      void fetchWorkspaceServerSettingsForOrganization(latestRuntimeContext.organizationOrigin, {
+        signal: controller.signal,
+      })
+        .then((serverSettings) => {
+          if (controller.signal.aborted) return;
+          const currentRuntimeContext = useWorkspaceAuthStore.getState().getCurrentRuntimeContext();
+          if (currentRuntimeContext?.accountId !== latestRuntimeContext.accountId) return;
+          useWorkspaceJitsiSettingsStore
+            .getState()
+            .setWorkspaceMeetUrl(settingsOwnerKey, serverSettings.meet_url);
+        })
+        .catch((error) => {
+          if (!controller.signal.aborted) {
+            reportUnexpectedError("workspace-jitsi:server-settings", error);
+          }
+        });
 
       await bootstrapMessengerStore({
         runtimeContext: latestRuntimeContext,

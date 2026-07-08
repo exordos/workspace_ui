@@ -129,9 +129,8 @@ export const env = {
 
   /**
    * Jitsi Meet domain without protocol (e.g. `meet.example.com`).
-   * Build-time fallback when the server does not return a Jitsi URL in `POST /api/v1/register`.
-   * Runtime resolution: Zulip register `jitsi_server_url` / realm+server fields → this env →
-   * link detection still accepts public `meet.jit.si` (see `~/shared/lib/jitsi`).
+   * Build-time fallback when Workspace `server_settings.meet_url` is unavailable.
+   * Runtime calls should prefer Workspace server settings.
    */
   JITSI_MEET_DOMAIN: optional("VITE_JITSI_MEET_DOMAIN"),
 

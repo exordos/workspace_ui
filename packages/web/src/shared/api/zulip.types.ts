@@ -133,11 +133,6 @@ export interface RegisterQueueResult {
   realm_avatar_changes_disabled?: boolean;
   /** Present when `realm` is included in `fetch_event_types`. */
   server_avatar_changes_disabled?: boolean;
-  /**
-   * Effective Jitsi Meet base URL from register (`jitsi_server_url` or realm/server fields).
-   * Canonical origin without trailing slash.
-   */
-  jitsi_server_url_effective?: string;
   /** Present when `user_settings_object` client capability is set. */
   user_settings?: Record<string, unknown>;
   /** Present when `user_status` is included in `fetch_event_types`. */

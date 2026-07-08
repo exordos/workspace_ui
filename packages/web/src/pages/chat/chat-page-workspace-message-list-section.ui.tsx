@@ -33,6 +33,9 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
     onReplyMessage,
     onForwardMessage,
     onOpenMessageInChat,
+    jitsiServerBaseUrl,
+    jitsiLocationName,
+    onOpenJitsiCall,
     onOpenMentionUser,
     onToggleMessageSelection,
     onEditMessage,
@@ -71,9 +74,12 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
     const showRefreshLoadError = messagesLoadError === "refresh" && messages.length > 0;
     const messageActions = React.useMemo(
       () => ({
+        jitsiServerBaseUrl,
+        jitsiLocationName,
         onReplyMessage,
         onForwardMessage,
         onOpenMessageInChat,
+        onOpenJitsiCall,
         onOpenMentionUser,
         onToggleMessageSelection,
         onEditMessage,
@@ -88,6 +94,8 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
         onRemoveOutgoingMessage,
       }),
       [
+        jitsiServerBaseUrl,
+        jitsiLocationName,
         onCopyMessageText,
         onDownloadFile,
         onEditMessage,
@@ -95,6 +103,7 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
         onOpenMentionUser,
         onLoadWorkspaceFilePreview,
         onOpenMessageInChat,
+        onOpenJitsiCall,
         onOpenWorkspaceMedia,
         onOpenUnsupportedFilePreview,
         onRemoveOutgoingMessage,

@@ -20,9 +20,12 @@ export interface WorkspaceMessageMediaGalleryOpenRequest {
 }
 
 export interface WorkspaceMessageListActions {
+  jitsiServerBaseUrl?: string | null;
+  jitsiLocationName?: string | null;
   onReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onForwardMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onOpenMessageInChat?: (messageUuid: MessengerUuid) => void;
+  onOpenJitsiCall?: (url: string, locationName?: string) => void;
   onToggleMessageSelection?: (messageUuid: MessengerUuid) => void;
   onEditMessage?: (messageUuid: MessengerUuid) => void;
   onRequestDeleteMessage?: (messageUuid: MessengerUuid) => void;

@@ -6,7 +6,6 @@ import { normalizeGroupSettingValue } from "~/shared/lib/zulip-group-setting.lib
 import { extractUserSettingsFromRegisterData } from "~/shared/lib/zulip-notification-settings.lib";
 import { parseSubscriptions } from "./zulip-queue-parse-subscription.lib";
 import { parseRecentPrivateConversations } from "./zulip-recent-private-conversations.lib";
-import { parseRegisterResponseJitsiServerUrl } from "./zulip-register-jitsi.lib";
 import {
   parseAvatarChangesDisabledFlag,
   parseMaxAvatarFileSizeMib,
@@ -168,7 +167,6 @@ export interface RegisterQueueParsedMetadata {
   maxAvatarFileSizeMib: ReturnType<typeof parseMaxAvatarFileSizeMib>;
   realmAvatarChangesDisabled: ReturnType<typeof parseAvatarChangesDisabledFlag>;
   serverAvatarChangesDisabled: ReturnType<typeof parseAvatarChangesDisabledFlag>;
-  jitsiServerUrlEffective: ReturnType<typeof parseRegisterResponseJitsiServerUrl>;
   userStatusSnapshot: ReturnType<typeof parseUserStatusSnapshot>;
   starredMessageIds: number[] | null;
   serverEmojiDataUrl: string | null;
@@ -224,7 +222,6 @@ export function parseRegisterQueueMetadata(
     serverAvatarChangesDisabled: parseAvatarChangesDisabledFlag(
       data.server_avatar_changes_disabled,
     ),
-    jitsiServerUrlEffective: parseRegisterResponseJitsiServerUrl(data),
     userStatusSnapshot: parseUserStatusSnapshot(data),
     starredMessageIds: parseRegisterStarredMessageIds(data),
     serverEmojiDataUrl,
@@ -290,9 +287,6 @@ export function buildRegisterQueueResult(
       : {}),
     ...(metadata.serverAvatarChangesDisabled != null
       ? { server_avatar_changes_disabled: metadata.serverAvatarChangesDisabled }
-      : {}),
-    ...(metadata.jitsiServerUrlEffective
-      ? { jitsi_server_url_effective: metadata.jitsiServerUrlEffective }
       : {}),
     ...(metadata.userSettings ? { user_settings: metadata.userSettings } : {}),
     ...(metadata.userStatusSnapshot !== undefined
