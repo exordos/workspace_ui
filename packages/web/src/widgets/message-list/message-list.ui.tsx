@@ -162,6 +162,10 @@ export const MessageListInner: React.FC<MessageListProps> = ({
   const scrollLogLastAtMsRef = useRef(0);
   const bottomReadDispatchKeyRef = useRef<string | null>(null);
   const prevMessagesLengthForReanchorRef = useRef<number | null>(null);
+  const prevTailFollowRef = useRef<{
+    length: number;
+    firstId: MessageId | undefined;
+  } | null>(null);
   const [unreadAnchorId, setUnreadAnchorId] = useState<MessageId | null>(null);
   const intersectionObserverRef = useRef<IntersectionObserver | null>(null);
   const observedUnreadNodesRef = useRef<Map<MessageId, HTMLElement>>(new Map());
@@ -383,6 +387,10 @@ export const MessageListInner: React.FC<MessageListProps> = ({
     prevMessagesLengthForReanchorRef.current = null;
     setUnreadAnchorId(null);
     setBelowViewportUnreadCount(0);
+  }, [scrollToBottomKey, focusedMessageId]);
+
+  useLayoutEffect(() => {
+    prevTailFollowRef.current = null;
   }, [scrollToBottomKey, focusedMessageId]);
 
   useEffect(() => {
@@ -1030,6 +1038,39 @@ export const MessageListInner: React.FC<MessageListProps> = ({
       }
     };
   }, [processIntersectionEntries, dispatchVisibleUnreadInViewport, dispatchUnreadAtBottom]);
+
+  useLayoutEffect(() => {
+    const prev = prevTailFollowRef.current;
+    prevTailFollowRef.current = {
+      length: messages.length,
+      firstId: messageFirstId,
+    };
+    if (prev == null) return;
+    if (messages.length <= prev.length) return;
+    if (prev.firstId !== messageFirstId) return;
+    if (focusedMessageId != null) return;
+    if (pendingPrependScrollRef.current != null) return;
+    if (!wasAtBottomRef.current) return;
+    if (unreadAnchorId != null && unreadCount > 0 && !userScrollSeenRef.current) return;
+
+    const el = scrollRef.current;
+    if (!el) return;
+
+    logScrollMetrics("scroll:toBottom", { reason: "tailAppend" });
+    runProgrammaticScroll(() => {
+      scrollToBottom(el);
+      syncWasAtBottomFromElement(el);
+    });
+  }, [
+    focusedMessageId,
+    logScrollMetrics,
+    messageFirstId,
+    messages.length,
+    runProgrammaticScroll,
+    syncWasAtBottomFromElement,
+    unreadAnchorId,
+    unreadCount,
+  ]);
 
   const scrollFocusedMessageIntoView = useCallback(() => {
     if (focusedMessageId == null) return;

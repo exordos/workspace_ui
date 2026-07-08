@@ -80,6 +80,26 @@ describe("MessageBubble attachment links", () => {
     });
   });
 
+  it("decorates Workspace file URN links as attachment actions", async () => {
+    render(
+      <MessageBubble
+        message={msg({
+          content:
+            '<p><a href="urn:file:55555555-5555-4555-8555-555555555555?name=report.pdf&amp;content_type=application%2Fpdf&amp;size=4096">report.pdf</a></p>',
+        })}
+      />,
+    );
+
+    const link = await screen.findByRole("link", { name: "report.pdf" });
+    await waitFor(() => {
+      expect(link).toHaveAttribute("data-attachment-link", "true");
+    });
+    expect(link).toHaveAttribute(
+      "href",
+      "/api/messenger/v1/files/55555555-5555-4555-8555-555555555555/actions/download",
+    );
+  });
+
   it("opens message context menu on right click", async () => {
     render(<MessageBubble message={msg()} />);
 
@@ -129,6 +149,31 @@ describe("MessageBubble attachment links", () => {
         path: "/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download",
         status: "downloaded",
       });
+    });
+  });
+
+  it("downloads Workspace file URN attachments via authenticated helper", async () => {
+    render(
+      <MessageBubble
+        message={msg({
+          content:
+            '<p><a href="urn:file:55555555-5555-4555-8555-555555555555?name=report.pdf&amp;content_type=application%2Fpdf&amp;size=4096">report.pdf</a></p>',
+        })}
+      />,
+    );
+
+    const link = await screen.findByRole("link", { name: "report.pdf" });
+    fireEvent.click(link);
+
+    await waitFor(() => {
+      expect(downloadWorkspaceFileAttachmentMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: "/api/messenger/v1/files/55555555-5555-4555-8555-555555555555/actions/download",
+          fileName: "report.pdf",
+          authHeaders: { Authorization: "Bearer token" },
+          onProgress: expect.any(Function),
+        }),
+      );
     });
   });
 });

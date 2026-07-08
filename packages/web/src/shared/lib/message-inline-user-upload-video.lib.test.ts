@@ -22,4 +22,19 @@ describe("upgradeUserUploadVideoLinksInContainer", () => {
 
     expect(upgradeUserUploadVideoLinksInContainer(root)).toBe(0);
   });
+
+  it("replaces Workspace file video anchors using content-type metadata", () => {
+    const root = document.createElement("div");
+    root.innerHTML =
+      '<p><a href="/api/messenger/v1/files/44444444-4444-4444-8444-444444444444/actions/download" data-original-content-type="video/mp4">clip.bin</a></p>';
+
+    const count = upgradeUserUploadVideoLinksInContainer(root);
+
+    expect(count).toBe(1);
+    expect(root.querySelector("a")).toBeNull();
+    expect(root.querySelector("video source")?.getAttribute("src")).toBe(
+      "/api/messenger/v1/files/44444444-4444-4444-8444-444444444444/actions/download",
+    );
+    expect(root.querySelector("video source")?.getAttribute("type")).toBe("video/mp4");
+  });
 });

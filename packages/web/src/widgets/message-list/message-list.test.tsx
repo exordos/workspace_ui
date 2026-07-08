@@ -671,7 +671,7 @@ describe("MessageList focused message behavior", () => {
     expect(onUnreadMessagesVisible).not.toHaveBeenCalled();
   });
 
-  it("does not scroll to bottom when a new own message appears", () => {
+  it("does not scroll to bottom when a new own message appears away from bottom", () => {
     const scrollTo = vi.fn();
     const { rerender } = render(
       <MessageList messages={[msg(1), msg(2), msg(3)]} currentUserId={7} />,

@@ -42,6 +42,7 @@ import {
   isUserUploadsPath,
   isWorkspaceFileDownloadPath,
 } from "~/shared/lib/user-uploads-url.lib";
+import { parseWorkspaceFileUrn, type WorkspaceFileUrn } from "~/shared/lib/workspace-file-urn.lib";
 
 export { collapseDuplicateWorkspaceV1InUrl };
 
@@ -208,6 +209,8 @@ export function isProtectedMessageMediaUrl(
 function isWorkspaceFileDownloadImageLink(link: HTMLAnchorElement, href: string): boolean {
   const parsed = parseProtectedMessageMediaUrl(href);
   if (parsed == null || !isWorkspaceFileDownloadPath(parsed.pathname)) return false;
+  const contentType = link.dataset.originalContentType?.trim().toLowerCase() ?? "";
+  if (contentType.startsWith("image/")) return true;
   return [
     link.textContent ?? "",
     link.getAttribute("title") ?? "",
@@ -740,6 +743,73 @@ function inlineUserUploadImageLinksInContainer(container: ParentNode): void {
   removeDuplicateQuoteBlockInlineImages(container);
 }
 
+function setWorkspaceFileUrnMetadataAttrs(element: HTMLElement, urn: WorkspaceFileUrn): void {
+  element.dataset.originalUrl = `urn:${urn.kind}:${urn.fileUuid}`;
+  if (urn.contentType != null) {
+    element.dataset.originalContentType = urn.contentType;
+  }
+  if (urn.width != null && urn.height != null) {
+    element.dataset.originalDimensions = `${urn.width}x${urn.height}`;
+  }
+  if (element.getAttribute("title") == null && urn.name != null) {
+    element.setAttribute("title", urn.name);
+  }
+}
+
+function rewriteWorkspaceFileUrnLink(link: HTMLAnchorElement): void {
+  const urn = parseWorkspaceFileUrn(link.getAttribute("href") ?? "");
+  if (urn == null) return;
+  link.setAttribute("href", urn.downloadPath);
+  setWorkspaceFileUrnMetadataAttrs(link, urn);
+  if ((link.textContent ?? "").trim().length === 0 && urn.name != null) {
+    link.textContent = urn.name;
+  }
+}
+
+function fillWorkspaceFileUrnImageLabel(image: HTMLImageElement, fileName: string): void {
+  if ((image.getAttribute("alt") ?? "").trim().length === 0) {
+    image.setAttribute("alt", fileName);
+  }
+  if ((image.getAttribute("title") ?? "").trim().length === 0) {
+    image.setAttribute("title", fileName);
+  }
+}
+
+function rewriteWorkspaceFileUrnMediaElement(element: HTMLElement): void {
+  const urn = parseWorkspaceFileUrn(element.getAttribute("src") ?? "");
+  if (urn == null) return;
+  element.setAttribute("src", urn.downloadPath);
+  setWorkspaceFileUrnMetadataAttrs(element, urn);
+  if (element instanceof HTMLImageElement && urn.name != null) {
+    fillWorkspaceFileUrnImageLabel(element, urn.name);
+  }
+  if (
+    (element instanceof HTMLSourceElement || element instanceof HTMLMediaElement) &&
+    urn.contentType != null
+  ) {
+    element.setAttribute("type", urn.contentType);
+  }
+}
+
+function rewriteWorkspaceFileUrnsInHtml(rawHtml: string): string {
+  if (typeof document === "undefined" || !rawHtml.includes("urn:")) {
+    return rawHtml;
+  }
+
+  const template = document.createElement("template");
+  template.innerHTML = rawHtml;
+
+  for (const link of template.content.querySelectorAll<HTMLAnchorElement>("a[href]")) {
+    rewriteWorkspaceFileUrnLink(link);
+  }
+
+  for (const element of template.content.querySelectorAll<HTMLElement>("img,source,audio,video")) {
+    rewriteWorkspaceFileUrnMediaElement(element);
+  }
+
+  return template.innerHTML;
+}
+
 function enrichSanitizedMessageHtml(
   container: ParentNode,
   options?: PrepareProtectedMessageHtmlOptions,
@@ -838,7 +908,7 @@ export function prepareProtectedMessageHtml(
   baseUrl?: string,
   options?: PrepareProtectedMessageHtmlOptions,
 ): string {
-  const html = sanitizeHtml(rawHtml, baseUrl);
+  const html = sanitizeHtml(rewriteWorkspaceFileUrnsInHtml(rawHtml), baseUrl);
   const baseOrigin = getUrlOrigin(baseUrl);
   return prepareProtectedSanitizedHtml(
     html,

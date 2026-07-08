@@ -759,7 +759,7 @@ describe("MessageList unread anchor scroll", () => {
     expect(scrollToBottomMock).not.toHaveBeenCalled();
   });
 
-  it("does not auto-scroll when list was at bottom before message append", async () => {
+  it("auto-scrolls when list was at bottom before message append", async () => {
     const base = [
       msg(1, { sender_id: 99, flags: ["read"] }),
       msg(2, { sender_id: 43, flags: ["read"] }),
@@ -791,7 +791,8 @@ describe("MessageList unread anchor scroll", () => {
       await flushProgrammaticScrollFrames();
     });
 
-    expect(scrollToBottomMock).not.toHaveBeenCalled();
+    expect(scrollToBottomMock).toHaveBeenCalledTimes(1);
+    expect(scrollToBottomMock.mock.calls[0]?.[0]).toBe(feed);
   });
 
   it("does not auto-scroll when user scrolled up before incoming message", async () => {

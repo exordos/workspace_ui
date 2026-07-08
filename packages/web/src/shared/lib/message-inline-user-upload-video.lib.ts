@@ -5,16 +5,26 @@ import {
   isUserUploadVideoPath,
   userUploadVideoMimeType,
 } from "~/shared/lib/user-upload-media-path.lib";
+import { isWorkspaceFileDownloadPath } from "~/shared/lib/user-uploads-url.lib";
 
-export function createInlineUserUploadVideoElement(href: string): HTMLVideoElement {
+export function createInlineUserUploadVideoElement(
+  href: string,
+  contentType = userUploadVideoMimeType(href),
+): HTMLVideoElement {
   const video = document.createElement("video");
   video.setAttribute("controls", "");
   video.setAttribute("preload", "metadata");
   const source = document.createElement("source");
   source.setAttribute("src", href);
-  source.setAttribute("type", userUploadVideoMimeType(href));
+  source.setAttribute("type", contentType);
   video.appendChild(source);
   return video;
+}
+
+function workspaceFileVideoMimeType(link: HTMLAnchorElement, href: string): string | null {
+  if (!isWorkspaceFileDownloadPath(href)) return null;
+  const contentType = link.dataset.originalContentType?.trim().toLowerCase() ?? "";
+  return contentType.startsWith("video/") ? contentType : null;
 }
 
 /** Replaces bare user-upload video anchors with inline players. Returns count upgraded. */
@@ -26,11 +36,15 @@ export function upgradeUserUploadVideoLinksInContainer(container: ParentNode): n
   let upgraded = 0;
   for (const link of container.querySelectorAll<HTMLAnchorElement>("a[href]")) {
     const href = link.getAttribute("href")?.trim() ?? "";
-    if (href === "" || !isUserUploadVideoPath(href)) continue;
+    if (href === "") continue;
+    const workspaceFileContentType = workspaceFileVideoMimeType(link, href);
+    if (!isUserUploadVideoPath(href) && workspaceFileContentType == null) continue;
     if (link.querySelector("video") != null) continue;
     if (link.querySelector("img") != null) continue;
 
-    link.replaceWith(createInlineUserUploadVideoElement(href));
+    link.replaceWith(
+      createInlineUserUploadVideoElement(href, workspaceFileContentType ?? undefined),
+    );
     upgraded += 1;
   }
 
