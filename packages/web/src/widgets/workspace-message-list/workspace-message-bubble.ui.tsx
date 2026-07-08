@@ -4,6 +4,10 @@ import { WorkspaceMessageBody } from "~/entities/messenger/messenger-workspace-m
 import { useWorkspaceMessageFilePreviews } from "~/entities/messenger/messenger-workspace-message-file-preview.hook";
 import type { MessengerMessage, MessengerUuid } from "~/entities/messenger/messenger.types";
 import { t } from "~/i18n/i18n";
+import {
+  normalizeEmojiShortcodeName,
+  resolveShortcodeToUnicode,
+} from "~/shared/lib/emoji-shortcodes.lib";
 import { invariant } from "~/shared/lib/guards";
 import { getJitsiMeetingUrl, type JitsiLinkOptions } from "~/shared/lib/jitsi";
 import { parseWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
@@ -18,6 +22,14 @@ import type { WorkspaceMessageBubbleProps } from "./workspace-message-bubble.typ
 import type { WorkspaceMessageListItem } from "./workspace-message-list.types";
 
 type WorkspaceMessageOwner = "own" | "peer";
+
+interface WorkspaceMessageReactionChip {
+  key: string;
+  emojiName: string;
+  displayChar: string;
+  count: number;
+  reactedByMe: boolean;
+}
 
 const WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS = {
   ...DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS,
@@ -97,6 +109,78 @@ function resolveBubbleClassName(
 function hasWorkspaceReactions(message: MessengerMessage): boolean {
   return Object.values(message.reactions).some((count) => count > 0);
 }
+
+function resolveWorkspaceReactionDisplayChar(emojiName: string): string {
+  const normalizedEmojiName = normalizeEmojiShortcodeName(emojiName);
+  if (normalizedEmojiName.length === 0) {
+    return emojiName;
+  }
+
+  return resolveShortcodeToUnicode(normalizedEmojiName) ?? `:${normalizedEmojiName}:`;
+}
+
+function getWorkspaceReactionChips(message: MessengerMessage): WorkspaceMessageReactionChip[] {
+  return Object.entries(message.reactions)
+    .filter(([emojiName, count]) => emojiName.trim().length > 0 && count > 0)
+    .sort(([leftEmojiName], [rightEmojiName]) => leftEmojiName.localeCompare(rightEmojiName))
+    .map(([emojiName, count]) => ({
+      key: `workspace-reaction:${emojiName}`,
+      emojiName,
+      displayChar: resolveWorkspaceReactionDisplayChar(emojiName),
+      count,
+      reactedByMe: message.ownReactionUuidsByEmojiName[emojiName] != null,
+    }));
+}
+
+interface WorkspaceMessageReactionRowProps {
+  message: MessengerMessage;
+  onToggleMessageReaction?: (messageUuid: MessengerUuid, emojiName: string) => void | Promise<void>;
+}
+
+const WorkspaceMessageReactionRow = React.memo(function WorkspaceMessageReactionRow({
+  message,
+  onToggleMessageReaction,
+}: WorkspaceMessageReactionRowProps): React.ReactElement | null {
+  const reactionChips = getWorkspaceReactionChips(message);
+  if (reactionChips.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="flex min-w-0 flex-1 flex-wrap items-center justify-start gap-1">
+      {reactionChips.map(({ key, emojiName, displayChar, count, reactedByMe }) => {
+        const label = `${displayChar} ${count}`;
+        return (
+          <button
+            type="button"
+            key={key}
+            data-workspace-message-reaction-chip="true"
+            className={`inline-flex min-w-0 max-w-full items-center gap-1 rounded-lg border px-2 py-0.5 text-sm transition-colors ${
+              reactedByMe
+                ? "border-accent/40 bg-accent/15 hover:border-accent/50 hover:bg-accent/25"
+                : "bg-bg-elevated/90 border-border-subtle hover:bg-bg-elevated"
+            } ${
+              onToggleMessageReaction == null
+                ? "cursor-default"
+                : "cursor-pointer hover:text-text-primary"
+            }`}
+            title={label}
+            aria-label={label}
+            disabled={onToggleMessageReaction == null}
+            onClick={() => {
+              void onToggleMessageReaction?.(message.uuid, emojiName);
+            }}
+          >
+            <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden leading-none">
+              <span className="block text-base leading-none">{displayChar}</span>
+            </span>
+            <span className="min-w-0 truncate text-[11px] text-text-muted">{count}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+});
 
 export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = React.memo(
   function WorkspaceMessageBubble({
@@ -355,11 +439,21 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
             />
           </>
         ) : !isJitsiCall ? (
-          <div className="mt-1 flex justify-end">
+          <div
+            className="mt-1 flex min-w-0 items-end justify-between gap-2"
+            data-workspace-message-reaction-footer="true"
+          >
+            {serverMessage != null ? (
+              <WorkspaceMessageReactionRow
+                message={serverMessage}
+                onToggleMessageReaction={actions?.onToggleMessageReaction}
+              />
+            ) : (
+              <span className="min-w-0 flex-1" aria-hidden />
+            )}
             {/* This explanatory block is intentionally kept here because the layout
-                depends on it. For wraps, long words, and future complex content,
-                do not guess the line width. A separate time row is simpler and
-                keeps the text readable. */}
+                depends on it. Row placement keeps reactions and time on the same
+                baseline while the reaction list wraps within the available width. */}
             <WorkspaceMessageBubbleMeta
               time={time}
               createdAt={displayMessage.createdAt}

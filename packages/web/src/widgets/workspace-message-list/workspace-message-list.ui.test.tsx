@@ -1958,6 +1958,43 @@ describe("WorkspaceMessageList", () => {
     );
   });
 
+  it("renders Workspace reaction chips inside the message bubble", () => {
+    const onToggleMessageReaction = vi.fn();
+
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "reaction-chip-message",
+            markdown: "Reacted text",
+            reactions: { thumbs_up: 1 },
+            ownReactionUuidsByEmojiName: { thumbs_up: "reaction-uuid-1" },
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onToggleMessageReaction }}
+      />,
+    );
+
+    const article = container.querySelector("[data-message-uuid='reaction-chip-message']");
+    const reactionChip = article?.querySelector("[data-workspace-message-reaction-chip='true']");
+    const reactionFooter = article?.querySelector(
+      "[data-workspace-message-reaction-footer='true']",
+    );
+    const messageTime = article?.querySelector("[data-message-time='true']");
+
+    expect(reactionChip).toBeInTheDocument();
+    expect(reactionChip).toHaveTextContent("👍");
+    expect(reactionChip).toHaveTextContent("1");
+    expect(reactionFooter).toContainElement(reactionChip as HTMLElement);
+    expect(reactionFooter).toContainElement(messageTime as HTMLElement);
+
+    fireEvent.click(reactionChip!);
+
+    expect(onToggleMessageReaction).toHaveBeenCalledWith("reaction-chip-message", "thumbs_up");
+  });
+
   it("opens the Workspace bubble menu from the trigger button", async () => {
     const onReplyMessage = vi.fn();
     const onEditMessage = vi.fn();
