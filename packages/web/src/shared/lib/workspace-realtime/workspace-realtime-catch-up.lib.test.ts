@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
+import { normalizeWorkspaceRestEvent } from "~/shared/api/messenger-realtime.api";
 import type { MessengerCollectionPage } from "~/shared/api/messenger-realtime.api";
 import type {
   WorkspaceMessengerEventDto,
   WorkspaceMessengerMessageDto,
+  WorkspaceMessengerRawEventDto,
+  WorkspaceMessengerRealtimeEventDto,
   WorkspaceRealtimeEvent,
 } from "~/shared/api/messenger.types";
 import { catchUpWorkspaceRealtime } from "./workspace-realtime-catch-up.lib";
@@ -76,14 +79,35 @@ const messageDto: WorkspaceMessengerMessageDto = {
 
 function createEventDto(epochVersion: number): WorkspaceMessengerEventDto {
   return {
+    schema_version: 1,
     epoch_version: epochVersion,
     uuid: EVENT_UUID,
     project_id: PROJECT_UUID,
     user_uuid: USER_UUID,
+    object_type: "message",
+    action: "created",
     payload: {
       kind: "message.created",
       ...messageDto,
       uuid: `${MESSAGE_UUID.slice(0, -1)}${epochVersion % 10}`,
+    },
+    created_at: DATE,
+    updated_at: DATE,
+  };
+}
+
+function createRawEventDto(epochVersion: number): WorkspaceMessengerRawEventDto {
+  return {
+    schema_version: 2,
+    epoch_version: epochVersion,
+    uuid: EVENT_UUID,
+    project_id: PROJECT_UUID,
+    user_uuid: USER_UUID,
+    object_type: "workspace_widget",
+    action: "refreshed",
+    payload: {
+      kind: "workspace_widget.refreshed",
+      uuid: "bb2ac71e-85ed-45d6-87da-89f9f0bcc523",
     },
     created_at: DATE,
     updated_at: DATE,
@@ -102,9 +126,9 @@ function createRealtimeEvent(epochVersion: number): WorkspaceRealtimeEvent {
 }
 
 function createPage(
-  items: WorkspaceMessengerEventDto[],
+  items: WorkspaceMessengerRealtimeEventDto[],
   nextPageMarker: string | null = null,
-): MessengerCollectionPage<WorkspaceMessengerEventDto> {
+): MessengerCollectionPage<WorkspaceMessengerRealtimeEventDto> {
   return {
     items,
     nextPageMarker,
@@ -226,6 +250,26 @@ describe("workspace-realtime catch-up", () => {
     expect(appliedEpochs).toEqual([]);
     expect(skippedEvents).toEqual([{ epochVersion: 7, reason: "unsupported_event" }]);
     expect(cursorStorage.read(cursorOwner)).toBe(7);
+  });
+
+  it("skips unknown flat event envelopes and advances cursor", async () => {
+    const rawStorage = new MemoryStorage();
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(rawStorage);
+    cursorStorage.write(cursorOwner, 5);
+    const { applier, appliedEpochs, skippedEvents } = createApplier();
+
+    await catchUpWorkspaceRealtime(
+      createOptions({
+        cursorStorage,
+        applier,
+        getEventsPage: () => Promise.resolve(createPage([createRawEventDto(8)])),
+        normalizeRestEvent: normalizeWorkspaceRestEvent,
+      }),
+    );
+
+    expect(appliedEpochs).toEqual([]);
+    expect(skippedEvents).toEqual([{ epochVersion: 8, reason: "unsupported_event" }]);
+    expect(cursorStorage.read(cursorOwner)).toBe(8);
   });
 
   it("does not apply, skip, or advance cursor for a stale owner", async () => {

@@ -11,7 +11,7 @@ import type {
 import type {
   WorkspaceMessengerEpochDto,
   WorkspaceMessengerEpochVersion,
-  WorkspaceMessengerEventDto,
+  WorkspaceMessengerRealtimeEventDto,
   WorkspaceRealtimeEvent,
 } from "~/shared/api/messenger.types";
 import type {
@@ -72,15 +72,15 @@ export interface WorkspaceRealtimeCatchUpOptions {
   getEventsPage?: (
     options: MessengerClientOptions,
     query: GetEventsQuery,
-  ) => Promise<MessengerCollectionPage<WorkspaceMessengerEventDto>>;
-  normalizeRestEvent?: (event: WorkspaceMessengerEventDto) => WorkspaceRealtimeEvent | null;
+  ) => Promise<MessengerCollectionPage<WorkspaceMessengerRealtimeEventDto>>;
+  normalizeRestEvent?: (event: WorkspaceMessengerRealtimeEventDto) => WorkspaceRealtimeEvent | null;
 }
 
 const DEFAULT_CATCH_UP_PAGE_LIMIT = 100;
 
 function compareEventsByEpochVersion(
-  left: WorkspaceMessengerEventDto,
-  right: WorkspaceMessengerEventDto,
+  left: WorkspaceMessengerRealtimeEventDto,
+  right: WorkspaceMessengerRealtimeEventDto,
 ): number {
   return left.epoch_version - right.epoch_version;
 }

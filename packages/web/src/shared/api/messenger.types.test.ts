@@ -5,7 +5,9 @@ import {
   isWorkspaceMessengerFolderDto,
   isWorkspaceMessengerMessageDto,
   isWorkspaceMessengerMessageReactionDto,
+  isWorkspaceMessengerRawEventDto,
   isWorkspaceMessengerReactionAggregate,
+  isWorkspaceMessengerRealtimeEventDto,
   isWorkspaceMessengerServerSettingsDto,
   isWorkspaceMessengerStreamBindingDto,
   isWorkspaceMessengerStreamDto,
@@ -13,6 +15,10 @@ import {
   isWorkspaceMessengerUserDto,
   isWorkspaceMessengerWebSocketFrameDto,
   isWorkspaceRealtimeEvent,
+} from "./messenger.types";
+import type {
+  WorkspaceMessengerEventAction,
+  WorkspaceMessengerEventObjectType,
 } from "./messenger.types";
 
 // DTO guard tests keep the frontend aligned with the backend messenger contract.
@@ -108,6 +114,16 @@ const reactionDto = {
   updated_at: DATE,
 };
 
+const reactionEventPayloadDto = {
+  uuid: REACTION_UUID,
+  project_id: PROJECT_UUID,
+  message_uuid: MESSAGE_UUID,
+  user_uuid: USER_UUID,
+  emoji_name: "thumbs_up",
+  source_name: "native",
+  source: { kind: "native" },
+};
+
 const userDto = {
   uuid: USER_UUID,
   username: "admin",
@@ -181,12 +197,41 @@ const serverSettingsDto = {
   ignored_parameters_unsupported: ["foo"],
 };
 
+function payloadKindOf(payload: unknown): string {
+  if (typeof payload !== "object" || payload == null) return "";
+  const { kind } = payload as { kind?: unknown };
+  return typeof kind === "string" ? kind : "";
+}
+
+function eventActionFromKind(kind: string): WorkspaceMessengerEventAction {
+  if (kind.endsWith(".updated")) return "updated";
+  if (kind.endsWith(".deleted")) return "deleted";
+  if (kind.endsWith(".read")) return "read";
+  return "created";
+}
+
+function eventObjectTypeFromKind(kind: string): WorkspaceMessengerEventObjectType {
+  if (kind.startsWith("message_reaction.")) return "message_reaction";
+  if (kind === "messages.read") return "message";
+  if (kind.startsWith("message.")) return "message";
+  if (kind.startsWith("stream_bindings.")) return "stream_binding";
+  if (kind.startsWith("stream.")) return "stream";
+  if (kind.startsWith("topic.")) return "topic";
+  if (kind.startsWith("folder_item.")) return "folder_item";
+  if (kind.startsWith("folder.")) return "folder";
+  return "user";
+}
+
 function eventDto(payload: unknown) {
+  const kind = payloadKindOf(payload);
   return {
+    schema_version: 1,
     epoch_version: 124,
     uuid: EVENT_UUID,
     project_id: PROJECT_UUID,
     user_uuid: USER_UUID,
+    object_type: eventObjectTypeFromKind(kind),
+    action: eventActionFromKind(kind),
     payload,
     created_at: DATE,
     updated_at: DATE,
@@ -417,6 +462,9 @@ describe("Workspace messenger DTO guards", () => {
     expect(isWorkspaceMessengerEventDto(eventDto({ kind: "stream.updated", ...streamDto }))).toBe(
       true,
     );
+    expect(isWorkspaceMessengerEventDto(eventDto({ kind: "stream.read", ...streamDto }))).toBe(
+      true,
+    );
     expect(
       isWorkspaceMessengerEventDto(eventDto({ kind: "stream.deleted", uuid: STREAM_UUID })),
     ).toBe(true);
@@ -424,8 +472,8 @@ describe("Workspace messenger DTO guards", () => {
       isWorkspaceMessengerEventDto(
         eventDto({
           kind: "stream_bindings.created",
-          stream_uuid: STREAM_UUID,
-          stream_bindings: [streamBindingDto],
+          uuid: STREAM_UUID,
+          items: [streamBindingDto],
         }),
       ),
     ).toBe(true);
@@ -435,6 +483,7 @@ describe("Workspace messenger DTO guards", () => {
     expect(isWorkspaceMessengerEventDto(eventDto({ kind: "topic.updated", ...topicDto }))).toBe(
       true,
     );
+    expect(isWorkspaceMessengerEventDto(eventDto({ kind: "topic.read", ...topicDto }))).toBe(true);
     expect(
       isWorkspaceMessengerEventDto(
         eventDto({ kind: "topic.deleted", uuid: TOPIC_UUID, stream_uuid: STREAM_UUID }),
@@ -446,6 +495,46 @@ describe("Workspace messenger DTO guards", () => {
     expect(isWorkspaceMessengerEventDto(eventDto({ kind: "message.updated", ...messageDto }))).toBe(
       true,
     );
+    expect(isWorkspaceMessengerEventDto(eventDto({ kind: "message.read", ...messageDto }))).toBe(
+      true,
+    );
+    expect(
+      isWorkspaceMessengerEventDto(
+        eventDto({
+          kind: "messages.read",
+          project_id: PROJECT_UUID,
+          message_uuids: [MESSAGE_UUID],
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isWorkspaceMessengerEventDto(
+        eventDto({
+          kind: "message_reaction.created",
+          ...reactionEventPayloadDto,
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isWorkspaceMessengerEventDto(
+        eventDto({
+          kind: "message_reaction.updated",
+          ...reactionEventPayloadDto,
+          old_message_uuid: MESSAGE_UUID,
+          old_emoji_name: "eyes",
+          old_source_name: "native",
+          old_source: { kind: "native" },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isWorkspaceMessengerEventDto(
+        eventDto({
+          kind: "message_reaction.deleted",
+          ...reactionEventPayloadDto,
+        }),
+      ),
+    ).toBe(true);
     expect(
       isWorkspaceMessengerEventDto(
         eventDto({
@@ -499,6 +588,54 @@ describe("Workspace messenger DTO guards", () => {
     ).toBe(false);
   });
 
+  it("rejects events with mismatched metadata and payload kind", () => {
+    const messageEvent = eventDto({ kind: "message.updated", ...messageDto });
+    expect(isWorkspaceMessengerEventDto({ ...messageEvent, action: "created" })).toBe(false);
+    expect(isWorkspaceMessengerEventDto({ ...messageEvent, object_type: "stream" })).toBe(false);
+    expect(isWorkspaceMessengerRawEventDto({ ...messageEvent, action: "created" })).toBe(false);
+    expect(isWorkspaceMessengerRealtimeEventDto({ ...messageEvent, action: "created" })).toBe(
+      false,
+    );
+
+    const legacyReadEvent = eventDto({
+      kind: "messages.read",
+      project_id: PROJECT_UUID,
+      message_uuids: [MESSAGE_UUID],
+    });
+    expect(isWorkspaceMessengerEventDto({ ...legacyReadEvent, action: "updated" })).toBe(false);
+  });
+
+  it("accepts unknown flat event envelopes only as raw realtime events", () => {
+    const unknownSchemaEvent = {
+      ...eventDto({ kind: "message.updated", ...messageDto }),
+      schema_version: 2,
+    };
+    const unknownObjectEvent = {
+      ...eventDto({
+        kind: "workspace_widget.refreshed",
+        uuid: "bb2ac71e-85ed-45d6-87da-89f9f0bcc523",
+      }),
+      object_type: "workspace_widget",
+      action: "refreshed",
+    };
+    const malformedKnownEvent = {
+      ...eventDto({
+        kind: "message.deleted",
+        uuid: MESSAGE_UUID,
+        stream_uuid: STREAM_UUID,
+      }),
+    };
+
+    expect(isWorkspaceMessengerEventDto(unknownSchemaEvent)).toBe(false);
+    expect(isWorkspaceMessengerRawEventDto(unknownSchemaEvent)).toBe(true);
+    expect(isWorkspaceMessengerRealtimeEventDto(unknownSchemaEvent)).toBe(true);
+    expect(isWorkspaceMessengerEventDto(unknownObjectEvent)).toBe(false);
+    expect(isWorkspaceMessengerRawEventDto(unknownObjectEvent)).toBe(true);
+    expect(isWorkspaceMessengerRealtimeEventDto(unknownObjectEvent)).toBe(true);
+    expect(isWorkspaceMessengerRawEventDto(malformedKnownEvent)).toBe(false);
+    expect(isWorkspaceMessengerRealtimeEventDto(malformedKnownEvent)).toBe(false);
+  });
+
   it("accepts dispatch-ready realtime events and websocket frames", () => {
     const messageCreatedEvent = {
       epoch_version: 125,
@@ -521,6 +658,9 @@ describe("Workspace messenger DTO guards", () => {
     expect(isWorkspaceRealtimeEvent(messageCreatedEvent)).toBe(true);
     expect(isWorkspaceRealtimeEvent(folderDeletedEvent)).toBe(true);
     expect(isWorkspaceRealtimeEvent(userUpdatedEvent)).toBe(true);
+    expect(
+      isWorkspaceMessengerWebSocketFrameDto(eventDto({ kind: "message.created", ...messageDto })),
+    ).toBe(true);
     expect(
       isWorkspaceMessengerWebSocketFrameDto({
         type: "hello",

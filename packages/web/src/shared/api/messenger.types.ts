@@ -99,6 +99,27 @@ export interface WorkspaceMessengerMessageReactionDto {
   updated_at: WorkspaceMessengerDateTime;
 }
 
+export interface WorkspaceMessengerMessageReactionEventPayloadDto {
+  kind: "message_reaction.created" | "message_reaction.updated" | "message_reaction.deleted";
+  uuid: WorkspaceMessengerUuid;
+  project_id: WorkspaceMessengerUuid;
+  message_uuid: WorkspaceMessengerUuid;
+  user_uuid: WorkspaceMessengerUuid;
+  emoji_name: string;
+  source_name: WorkspaceMessengerSourceName;
+  source: WorkspaceMessengerSourceDto;
+  old_message_uuid?: WorkspaceMessengerUuid | null;
+  old_emoji_name?: string | null;
+  old_source_name?: WorkspaceMessengerSourceName | null;
+  old_source?: WorkspaceMessengerSourceDto | null;
+}
+
+export interface WorkspaceMessengerMessagesReadPayloadDto {
+  kind: "messages.read";
+  project_id: WorkspaceMessengerUuid;
+  message_uuids: WorkspaceMessengerUuid[];
+}
+
 export interface WorkspaceMessengerMessageDto {
   uuid: WorkspaceMessengerUuid;
   project_id: WorkspaceMessengerUuid;
@@ -261,8 +282,8 @@ export interface WorkspaceMessengerStreamDeletedPayloadDto {
 
 export interface WorkspaceMessengerStreamBindingsCreatedPayloadDto {
   kind: "stream_bindings.created";
-  stream_uuid: WorkspaceMessengerUuid;
-  stream_bindings: WorkspaceMessengerStreamBindingDto[];
+  uuid: WorkspaceMessengerUuid;
+  items: WorkspaceMessengerStreamBindingDto[];
 }
 
 export interface WorkspaceMessengerTopicDeletedPayloadDto {
@@ -289,26 +310,66 @@ export type WorkspaceMessengerUserUpdatedPayloadDto = {
 
 // REST-события - это долговечные строки серверного outbox для догонки и reconnect.
 export type WorkspaceMessengerEventPayloadDto =
-  | ({ kind: "stream.created" | "stream.updated" } & WorkspaceMessengerStreamDto)
+  | ({ kind: "stream.created" | "stream.updated" | "stream.read" } & WorkspaceMessengerStreamDto)
   | WorkspaceMessengerStreamDeletedPayloadDto
   | WorkspaceMessengerStreamBindingsCreatedPayloadDto
-  | ({ kind: "topic.created" | "topic.updated" } & WorkspaceMessengerTopicDto)
+  | ({ kind: "topic.created" | "topic.updated" | "topic.read" } & WorkspaceMessengerTopicDto)
   | WorkspaceMessengerTopicDeletedPayloadDto
-  | ({ kind: "message.created" | "message.updated" } & WorkspaceMessengerMessageDto)
+  | ({
+      kind: "message.created" | "message.updated" | "message.read";
+    } & WorkspaceMessengerMessageDto)
+  | WorkspaceMessengerMessagesReadPayloadDto
   | WorkspaceMessengerMessageDeletedPayloadDto
+  | WorkspaceMessengerMessageReactionEventPayloadDto
   | ({ kind: "folder.created" | "folder.updated" } & WorkspaceMessengerFolderDto)
   | WorkspaceMessengerUuidDeletedPayloadDto
   | WorkspaceMessengerUserUpdatedPayloadDto;
 
+export type WorkspaceMessengerEventObjectType =
+  | "message"
+  | "message_reaction"
+  | "stream"
+  | "stream_binding"
+  | "topic"
+  | "user"
+  | "folder"
+  | "folder_item";
+
+export type WorkspaceMessengerEventAction = "created" | "updated" | "deleted" | "read";
+
 export interface WorkspaceMessengerEventDto {
+  schema_version: 1;
   epoch_version: WorkspaceMessengerEpochVersion;
   uuid: WorkspaceMessengerUuid;
   project_id: WorkspaceMessengerUuid;
   user_uuid: WorkspaceMessengerUuid;
+  object_type: WorkspaceMessengerEventObjectType;
+  action: WorkspaceMessengerEventAction;
   payload: WorkspaceMessengerEventPayloadDto;
   created_at: WorkspaceMessengerDateTime;
   updated_at: WorkspaceMessengerDateTime;
 }
+
+export type WorkspaceMessengerRawEventPayloadDto = {
+  kind: string;
+} & Record<string, unknown>;
+
+export interface WorkspaceMessengerRawEventDto {
+  schema_version: number;
+  epoch_version: WorkspaceMessengerEpochVersion;
+  uuid: WorkspaceMessengerUuid;
+  project_id: WorkspaceMessengerUuid;
+  user_uuid: WorkspaceMessengerUuid;
+  object_type: string;
+  action: string;
+  payload: WorkspaceMessengerRawEventPayloadDto;
+  created_at: WorkspaceMessengerDateTime;
+  updated_at: WorkspaceMessengerDateTime;
+}
+
+export type WorkspaceMessengerRealtimeEventDto =
+  | WorkspaceMessengerEventDto
+  | WorkspaceMessengerRawEventDto;
 
 export interface WorkspaceMessengerAuthenticationMethodsDto {
   password: boolean;
@@ -438,7 +499,7 @@ export interface WorkspaceMessengerWebSocketConnectedFrameDto {
 
 export interface WorkspaceMessengerWebSocketPingFrameDto {
   // ts optional: часть серверных сборок присылает просто { type: "ping" }.
-  // Runtime отвечает тем же JSON pong и не пропускает ping в доменный слой.
+  // Runtime skips legacy ping frames before the domain layer.
   type: "ping";
   ts?: WorkspaceMessengerDateTime;
 }
@@ -455,6 +516,7 @@ export interface WorkspaceMessengerWebSocketEventFrameDto {
 }
 
 export type WorkspaceMessengerWebSocketFrameDto =
+  | WorkspaceMessengerRealtimeEventDto
   | WorkspaceMessengerWebSocketHelloFrameDto
   | WorkspaceMessengerWebSocketConnectedFrameDto
   | WorkspaceMessengerWebSocketPingFrameDto
@@ -546,6 +608,87 @@ function isUserStatus(value: unknown): value is WorkspaceMessengerUserStatus {
   return (
     value === "active" || value === "idle" || value === "offline" || value === "do_not_disturb"
   );
+}
+
+function isWorkspaceMessengerEventObjectType(
+  value: unknown,
+): value is WorkspaceMessengerEventObjectType {
+  return (
+    value === "message" ||
+    value === "message_reaction" ||
+    value === "stream" ||
+    value === "stream_binding" ||
+    value === "topic" ||
+    value === "user" ||
+    value === "folder" ||
+    value === "folder_item"
+  );
+}
+
+function isWorkspaceMessengerEventAction(value: unknown): value is WorkspaceMessengerEventAction {
+  return value === "created" || value === "updated" || value === "deleted" || value === "read";
+}
+
+function expectedWorkspaceMessengerEventMetadata(payloadKind: string): {
+  objectType: WorkspaceMessengerEventObjectType;
+  action: WorkspaceMessengerEventAction;
+} | null {
+  switch (payloadKind) {
+    case "message.created":
+      return { objectType: "message", action: "created" };
+    case "message.updated":
+      return { objectType: "message", action: "updated" };
+    case "message.deleted":
+      return { objectType: "message", action: "deleted" };
+    case "message.read":
+    case "messages.read":
+      return { objectType: "message", action: "read" };
+    case "message_reaction.created":
+      return { objectType: "message_reaction", action: "created" };
+    case "message_reaction.updated":
+      return { objectType: "message_reaction", action: "updated" };
+    case "message_reaction.deleted":
+      return { objectType: "message_reaction", action: "deleted" };
+    case "stream.created":
+      return { objectType: "stream", action: "created" };
+    case "stream.updated":
+      return { objectType: "stream", action: "updated" };
+    case "stream.deleted":
+      return { objectType: "stream", action: "deleted" };
+    case "stream.read":
+      return { objectType: "stream", action: "read" };
+    case "stream_bindings.created":
+      return { objectType: "stream_binding", action: "created" };
+    case "topic.created":
+      return { objectType: "topic", action: "created" };
+    case "topic.updated":
+      return { objectType: "topic", action: "updated" };
+    case "topic.deleted":
+      return { objectType: "topic", action: "deleted" };
+    case "topic.read":
+      return { objectType: "topic", action: "read" };
+    case "user.updated":
+      return { objectType: "user", action: "updated" };
+    case "folder.created":
+      return { objectType: "folder", action: "created" };
+    case "folder.updated":
+      return { objectType: "folder", action: "updated" };
+    case "folder.deleted":
+      return { objectType: "folder", action: "deleted" };
+    case "folder_item.deleted":
+      return { objectType: "folder_item", action: "deleted" };
+    default:
+      return null;
+  }
+}
+
+function matchesWorkspaceMessengerEventMetadata(
+  objectType: WorkspaceMessengerEventObjectType,
+  action: WorkspaceMessengerEventAction,
+  payload: WorkspaceMessengerEventPayloadDto,
+): boolean {
+  const expected = expectedWorkspaceMessengerEventMetadata(payload.kind);
+  return expected?.objectType === objectType && expected.action === action;
 }
 
 function isUuidOnlyDto(value: unknown): value is { uuid: WorkspaceMessengerUuid } {
@@ -701,6 +844,35 @@ export function isWorkspaceMessengerMessageReactionDto(
   );
 }
 
+function isWorkspaceMessengerMessageReactionEventPayloadDto(
+  value: unknown,
+): value is WorkspaceMessengerMessageReactionEventPayloadDto {
+  const record = isRecord(value) ? value : null;
+  return (
+    record != null &&
+    (record.kind === "message_reaction.created" ||
+      record.kind === "message_reaction.updated" ||
+      record.kind === "message_reaction.deleted") &&
+    isUuid(record.uuid) &&
+    isUuid(record.project_id) &&
+    isUuid(record.message_uuid) &&
+    isUuid(record.user_uuid) &&
+    isNonEmptyString(record.emoji_name) &&
+    isSourceName(record.source_name) &&
+    isWorkspaceMessengerSourceDto(record.source) &&
+    (record.old_message_uuid === undefined || isNullableUuid(record.old_message_uuid)) &&
+    (record.old_emoji_name === undefined ||
+      record.old_emoji_name === null ||
+      isNonEmptyString(record.old_emoji_name)) &&
+    (record.old_source_name === undefined ||
+      record.old_source_name === null ||
+      isSourceName(record.old_source_name)) &&
+    (record.old_source === undefined ||
+      record.old_source === null ||
+      isWorkspaceMessengerSourceDto(record.old_source))
+  );
+}
+
 export function isWorkspaceMessengerFolderItemDto(
   value: unknown,
 ): value is WorkspaceMessengerFolderItemDto {
@@ -776,25 +948,38 @@ export function isWorkspaceMessengerEventPayloadDto(
   switch (value.kind) {
     case "stream.created":
     case "stream.updated":
+    case "stream.read":
       return isWorkspaceMessengerStreamDto(value);
     case "stream.deleted":
       return isUuid(value.uuid);
     case "stream_bindings.created":
       return (
-        isUuid(value.stream_uuid) &&
-        Array.isArray(value.stream_bindings) &&
-        value.stream_bindings.every(isWorkspaceMessengerStreamBindingDto)
+        isUuid(value.uuid) &&
+        Array.isArray(value.items) &&
+        value.items.every(isWorkspaceMessengerStreamBindingDto)
       );
     case "topic.created":
     case "topic.updated":
+    case "topic.read":
       return isWorkspaceMessengerTopicDto(value);
     case "topic.deleted":
       return isUuid(value.uuid) && isUuid(value.stream_uuid);
     case "message.created":
     case "message.updated":
+    case "message.read":
       return isWorkspaceMessengerMessageDto(value);
+    case "messages.read":
+      return (
+        isUuid(value.project_id) &&
+        Array.isArray(value.message_uuids) &&
+        value.message_uuids.every(isUuid)
+      );
     case "message.deleted":
       return isUuid(value.uuid) && isUuid(value.stream_uuid) && isUuid(value.topic_uuid);
+    case "message_reaction.created":
+    case "message_reaction.updated":
+    case "message_reaction.deleted":
+      return isWorkspaceMessengerMessageReactionEventPayloadDto(value);
     case "folder.created":
     case "folder.updated":
       return isWorkspaceMessengerFolderDto(value);
@@ -811,14 +996,58 @@ export function isWorkspaceMessengerEventPayloadDto(
 export function isWorkspaceMessengerEventDto(value: unknown): value is WorkspaceMessengerEventDto {
   return (
     isRecord(value) &&
+    value.schema_version === 1 &&
     isNonNegativeInteger(value.epoch_version) &&
     isUuid(value.uuid) &&
     isUuid(value.project_id) &&
     isUuid(value.user_uuid) &&
+    isWorkspaceMessengerEventObjectType(value.object_type) &&
+    isWorkspaceMessengerEventAction(value.action) &&
     isWorkspaceMessengerEventPayloadDto(value.payload) &&
+    matchesWorkspaceMessengerEventMetadata(value.object_type, value.action, value.payload) &&
     isDateTime(value.created_at) &&
     isDateTime(value.updated_at)
   );
+}
+
+export function isWorkspaceMessengerRawEventDto(
+  value: unknown,
+): value is WorkspaceMessengerRawEventDto {
+  if (
+    !isRecord(value) ||
+    !isNonNegativeInteger(value.schema_version) ||
+    !isNonNegativeInteger(value.epoch_version) ||
+    !isUuid(value.uuid) ||
+    !isUuid(value.project_id) ||
+    !isUuid(value.user_uuid) ||
+    !isNonEmptyString(value.object_type) ||
+    !isNonEmptyString(value.action) ||
+    !isRecord(value.payload) ||
+    !isNonEmptyString(value.payload.kind) ||
+    !isDateTime(value.created_at) ||
+    !isDateTime(value.updated_at)
+  ) {
+    return false;
+  }
+
+  if (value.schema_version !== 1) {
+    return true;
+  }
+
+  if (
+    !isWorkspaceMessengerEventObjectType(value.object_type) ||
+    !isWorkspaceMessengerEventAction(value.action)
+  ) {
+    return true;
+  }
+
+  return expectedWorkspaceMessengerEventMetadata(value.payload.kind) == null;
+}
+
+export function isWorkspaceMessengerRealtimeEventDto(
+  value: unknown,
+): value is WorkspaceMessengerRealtimeEventDto {
+  return isWorkspaceMessengerEventDto(value) || isWorkspaceMessengerRawEventDto(value);
 }
 
 export function isWorkspaceMessengerAuthenticationMethodsDto(
@@ -911,6 +1140,12 @@ export function isWorkspaceMessengerWebSocketFrameDto(
 ): value is WorkspaceMessengerWebSocketFrameDto {
   if (!isRecord(value)) {
     return false;
+  }
+  if (isWorkspaceMessengerEventDto(value)) {
+    return true;
+  }
+  if (isWorkspaceMessengerRawEventDto(value)) {
+    return true;
   }
 
   switch (value.type) {

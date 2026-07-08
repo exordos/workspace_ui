@@ -14,15 +14,17 @@ import {
   parseWorkspaceWebSocketFrame,
 } from "./messenger-realtime.api";
 import type {
+  WorkspaceMessengerEventAction,
   WorkspaceMessengerEventDto,
+  WorkspaceMessengerEventObjectType,
   WorkspaceMessengerFolderDto,
   WorkspaceMessengerFolderItemDto,
   WorkspaceMessengerMessageDto,
+  WorkspaceMessengerRawEventDto,
   WorkspaceMessengerStreamBindingDto,
   WorkspaceMessengerStreamDto,
   WorkspaceMessengerTopicDto,
   WorkspaceMessengerUserDto,
-  WorkspaceRealtimeEvent,
 } from "./messenger.types";
 
 // Realtime tests keep REST catch-up and websocket events in one shape.
@@ -32,6 +34,7 @@ const USER_B_UUID = "33333333-3333-4333-8333-333333333333";
 const STREAM_UUID = "75309057-419c-4b12-a7c1-3932429ec4a6";
 const TOPIC_UUID = "4ec0b996-b778-45f8-8ef4-ef863be0c047";
 const MESSAGE_UUID = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
+const REACTION_UUID = "413ea116-fd71-47be-b88e-190fa24505fc";
 const EVENT_UUID = "0cb14b5a-6bf0-4de2-bdb5-4e98df4044e0";
 const FOLDER_UUID = "f6ef9e59-57d6-42a9-bb50-fb7e9bdde2c9";
 const FOLDER_ITEM_UUID = "7b14f82d-3a67-4db4-9b7b-84b7f49ac9da";
@@ -176,16 +179,61 @@ const folderDto: WorkspaceMessengerFolderDto = {
   updated_at: DATE,
 };
 
+function eventActionFromKind(
+  kind: WorkspaceMessengerEventDto["payload"]["kind"],
+): WorkspaceMessengerEventAction {
+  if (kind.endsWith(".updated")) return "updated";
+  if (kind.endsWith(".deleted")) return "deleted";
+  if (kind.endsWith(".read")) return "read";
+  return "created";
+}
+
+function eventObjectTypeFromKind(
+  kind: WorkspaceMessengerEventDto["payload"]["kind"],
+): WorkspaceMessengerEventObjectType {
+  if (kind.startsWith("message_reaction.")) return "message_reaction";
+  if (kind === "messages.read") return "message";
+  if (kind.startsWith("message.")) return "message";
+  if (kind.startsWith("stream_bindings.")) return "stream_binding";
+  if (kind.startsWith("stream.")) return "stream";
+  if (kind.startsWith("topic.")) return "topic";
+  if (kind.startsWith("folder_item.")) return "folder_item";
+  if (kind.startsWith("folder.")) return "folder";
+  return "user";
+}
+
 function createEvent(
   payload: WorkspaceMessengerEventDto["payload"],
   epochVersion = 124,
 ): WorkspaceMessengerEventDto {
+  const kind = payload.kind;
   return {
+    schema_version: 1,
     epoch_version: epochVersion,
     uuid: EVENT_UUID,
     project_id: PROJECT_UUID,
     user_uuid: USER_UUID,
+    object_type: eventObjectTypeFromKind(kind),
+    action: eventActionFromKind(kind),
     payload,
+    created_at: DATE,
+    updated_at: DATE,
+  };
+}
+
+function createRawEvent(epochVersion = 130): WorkspaceMessengerRawEventDto {
+  return {
+    schema_version: 2,
+    epoch_version: epochVersion,
+    uuid: EVENT_UUID,
+    project_id: PROJECT_UUID,
+    user_uuid: USER_UUID,
+    object_type: "workspace_widget",
+    action: "refreshed",
+    payload: {
+      kind: "workspace_widget.refreshed",
+      uuid: "bb2ac71e-85ed-45d6-87da-89f9f0bcc523",
+    },
     created_at: DATE,
     updated_at: DATE,
   };
@@ -218,6 +266,7 @@ describe("messenger-realtime.api", () => {
       realm_icon: "/icon.png",
       realm_description: "<p>Workspace</p>",
       realm_web_public_access_enabled: false,
+      meet_url: "https://meet.workspace.example.com",
       external_authentication_methods: [],
       realm_uri: "https://chat.example.com",
     });
@@ -225,6 +274,7 @@ describe("messenger-realtime.api", () => {
     await expect(getServerSettings({ fetchImpl: fetchMock })).resolves.toMatchObject({
       result: "success",
       realm_name: "Workspace",
+      meet_url: "https://meet.workspace.example.com",
     });
 
     const [url, init] = firstFetchCall(fetchMock);
@@ -261,7 +311,7 @@ describe("messenger-realtime.api", () => {
       ),
     ).resolves.toEqual([eventDto]);
     expect(firstFetchCall(eventsFetchMock)[0]).toBe(
-      `/api/messenger/v1/events/?epoch_version%3E=123&project_id=${PROJECT_UUID}`,
+      "/api/messenger/v1/events/?epoch_version%3E=123",
     );
 
     const epochFetchMock = createFetchMock({ epoch_version: 124 });
@@ -306,8 +356,28 @@ describe("messenger-realtime.api", () => {
       pageLimit: 500,
     });
     expect(firstFetchCall(eventsFetchMock)[0]).toBe(
-      `/api/messenger/v1/events/?page_limit=500&epoch_version%3E=123&project_id=${PROJECT_UUID}`,
+      "/api/messenger/v1/events/?page_limit=500&epoch_version%3E=123",
     );
+  });
+
+  it("accepts unknown flat REST event envelopes for cursor skip", async () => {
+    const rawEvent = createRawEvent(130);
+    const fetchMock = createFetchMock([rawEvent], 200, {
+      "X-Pagination-Marker": "130",
+      "X-Pagination-Limit": "500",
+    });
+
+    await expect(
+      getEventsPage(
+        { accessToken: "access-token", fetchImpl: fetchMock, projectId: PROJECT_UUID },
+        { afterEpochVersion: 123, pageLimit: 500 },
+      ),
+    ).resolves.toEqual({
+      items: [rawEvent],
+      nextPageMarker: "130",
+      pageLimit: 500,
+    });
+    expect(normalizeWorkspaceRestEvent(rawEvent)).toBeNull();
   });
 
   it("strictly rejects invalid REST event rows", async () => {
@@ -349,6 +419,7 @@ describe("messenger-realtime.api", () => {
   });
 
   it("parses websocket string frames and rejects invalid input", () => {
+    const websocketEvent = createEvent({ kind: "message.created", ...messageDto }, 125);
     const helloFrame = {
       type: "hello",
       user_uuid: USER_UUID,
@@ -363,15 +434,10 @@ describe("messenger-realtime.api", () => {
       type: "ping",
     });
 
-    const eventFrame = {
-      type: "event",
-      event: {
-        epoch_version: 125,
-        type: "message",
-        message: messageDto,
-      },
-    };
-    expect(parseWorkspaceWebSocketFrame(JSON.stringify(eventFrame))).toEqual(eventFrame);
+    expect(parseWorkspaceWebSocketFrame(JSON.stringify(websocketEvent))).toEqual(websocketEvent);
+    expect(parseWorkspaceWebSocketFrame(JSON.stringify(createRawEvent(126)))).toEqual(
+      createRawEvent(126),
+    );
     expect(() => parseWorkspaceWebSocketFrame("{")).toThrow(TypeError);
     expect(() =>
       parseWorkspaceWebSocketFrame({ type: "event", event: { type: "message" } }),
@@ -381,6 +447,14 @@ describe("messenger-realtime.api", () => {
   it("normalizes REST message events", () => {
     expect(
       normalizeWorkspaceRestEvent(createEvent({ kind: "message.updated", ...messageDto })),
+    ).toEqual({
+      epoch_version: 124,
+      type: "message",
+      kind: "message.updated",
+      message: messageDto,
+    });
+    expect(
+      normalizeWorkspaceRestEvent(createEvent({ kind: "message.read", ...messageDto })),
     ).toEqual({
       epoch_version: 124,
       type: "message",
@@ -413,8 +487,8 @@ describe("messenger-realtime.api", () => {
       normalizeWorkspaceRestEvent(
         createEvent({
           kind: "stream_bindings.created",
-          stream_uuid: STREAM_UUID,
-          stream_bindings: [streamBindingDto],
+          uuid: STREAM_UUID,
+          items: [streamBindingDto],
         }),
       ),
     ).toEqual({
@@ -476,6 +550,14 @@ describe("messenger-realtime.api", () => {
       kind: "stream.created",
       stream: streamDto,
     });
+    expect(normalizeWorkspaceRestEvent(createEvent({ kind: "stream.read", ...streamDto }))).toEqual(
+      {
+        epoch_version: 124,
+        type: "stream",
+        kind: "stream.updated",
+        stream: streamDto,
+      },
+    );
     expect(
       normalizeWorkspaceRestEvent(createEvent({ kind: "stream.deleted", uuid: STREAM_UUID })),
     ).toEqual({
@@ -487,6 +569,12 @@ describe("messenger-realtime.api", () => {
     expect(
       normalizeWorkspaceRestEvent(createEvent({ kind: "topic.updated", ...topicDto })),
     ).toEqual({
+      epoch_version: 124,
+      type: "topic",
+      kind: "topic.updated",
+      topic: topicDto,
+    });
+    expect(normalizeWorkspaceRestEvent(createEvent({ kind: "topic.read", ...topicDto }))).toEqual({
       epoch_version: 124,
       type: "topic",
       kind: "topic.updated",
@@ -514,6 +602,29 @@ describe("messenger-realtime.api", () => {
       kind: "user.updated",
       user: userDto,
     });
+    expect(
+      normalizeWorkspaceRestEvent(
+        createEvent({
+          kind: "messages.read",
+          project_id: PROJECT_UUID,
+          message_uuids: [MESSAGE_UUID],
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      normalizeWorkspaceRestEvent(
+        createEvent({
+          kind: "message_reaction.created",
+          uuid: REACTION_UUID,
+          project_id: PROJECT_UUID,
+          message_uuid: MESSAGE_UUID,
+          user_uuid: USER_UUID,
+          emoji_name: "thumbs_up",
+          source_name: "native",
+          source: { kind: "native" },
+        }),
+      ),
+    ).toBeNull();
   });
 
   it("normalizes websocket frames", () => {
@@ -526,16 +637,14 @@ describe("messenger-realtime.api", () => {
       }),
     ).toBeNull();
 
-    const event: WorkspaceRealtimeEvent = {
+    expect(
+      normalizeWorkspaceWebSocketFrame(
+        createEvent({ kind: "message.created", ...messageDto }, 125),
+      ),
+    ).toEqual({
       epoch_version: 125,
       type: "message",
       message: messageDto,
-    };
-    expect(
-      normalizeWorkspaceWebSocketFrame({
-        type: "event",
-        event,
-      }),
-    ).toEqual(event);
+    });
   });
 });

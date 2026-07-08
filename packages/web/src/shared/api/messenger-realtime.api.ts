@@ -11,6 +11,7 @@ import {
 import {
   isWorkspaceMessengerEpochDto,
   isWorkspaceMessengerEventDto,
+  isWorkspaceMessengerRealtimeEventDto,
   isWorkspaceMessengerServerSettingsDto,
   isWorkspaceMessengerUserDto,
   isWorkspaceMessengerWebSocketFrameDto,
@@ -19,12 +20,11 @@ import type {
   MessengerClientOptions,
   MessengerCollectionPage,
   MessengerPaginationQuery,
-  MessengerQueryParams,
   MessengerPublicClientOptions,
 } from "./messenger-transport.internal";
 import type {
   WorkspaceMessengerEpochDto,
-  WorkspaceMessengerEventDto,
+  WorkspaceMessengerRealtimeEventDto,
   WorkspaceMessengerServerSettingsDto,
   WorkspaceMessengerUserDto,
   WorkspaceMessengerWebSocketFrameDto,
@@ -44,23 +44,6 @@ export interface GetEventsQuery extends MessengerPaginationQuery {
 export interface BuildMessengerWebSocketUrlOptions {
   baseUrl?: string;
   lastEpochVersion: number;
-}
-
-function projectScopedRealtimeParams(
-  options: MessengerClientOptions,
-  params: MessengerQueryParams,
-): MessengerQueryParams {
-  // REST-догонка всё ещё принимает project_id как параметр запроса.
-  // WebSocket берёт границы проекта из токена, поэтому buildMessengerWebSocketUrl его не добавляет.
-  const projectId = options.projectId?.trim();
-  if (!projectId) {
-    return params;
-  }
-
-  return {
-    ...params,
-    project_id: projectId,
-  };
 }
 
 export async function getServerSettings(
@@ -109,33 +92,32 @@ export async function getUser(
 export async function getEvents(
   options: MessengerClientOptions,
   query: GetEventsQuery = {},
-): Promise<WorkspaceMessengerEventDto[]> {
-  const data = await messengerGetJson(
-    "/events/",
-    options,
-    projectScopedRealtimeParams(options, {
-      ...paginationParams(query),
-      "epoch_version>": query.afterEpochVersion,
-    }),
+): Promise<WorkspaceMessengerRealtimeEventDto[]> {
+  const data = await messengerGetJson("/events/", options, {
+    ...paginationParams(query),
+    "epoch_version>": query.afterEpochVersion,
+  });
+  return parseStrictDtoList(
+    data,
+    isWorkspaceMessengerRealtimeEventDto,
+    "messenger events response",
   );
-  return parseStrictDtoList(data, isWorkspaceMessengerEventDto, "messenger events response");
 }
 
 export async function getEventsPage(
   options: MessengerClientOptions,
   query: GetEventsQuery = {},
-): Promise<MessengerCollectionPage<WorkspaceMessengerEventDto>> {
-  const { data, headers } = await messengerRequestJsonResult(
-    "GET",
-    "/events/",
-    options,
-    projectScopedRealtimeParams(options, {
-      ...paginationParams(query),
-      "epoch_version>": query.afterEpochVersion,
-    }),
-  );
+): Promise<MessengerCollectionPage<WorkspaceMessengerRealtimeEventDto>> {
+  const { data, headers } = await messengerRequestJsonResult("GET", "/events/", options, {
+    ...paginationParams(query),
+    "epoch_version>": query.afterEpochVersion,
+  });
   return {
-    items: parseStrictDtoList(data, isWorkspaceMessengerEventDto, "messenger events response"),
+    items: parseStrictDtoList(
+      data,
+      isWorkspaceMessengerRealtimeEventDto,
+      "messenger events response",
+    ),
     ...parsePaginationHeaders(headers),
   };
 }
@@ -205,8 +187,12 @@ function withoutPayloadKind<TValue extends { kind: string }>(value: TValue): Omi
 // иначе активный и фоновый режимы начнут жить по разным правилам.
 // Поэтому REST outbox здесь приводится к форме WebSocket event.
 export function normalizeWorkspaceRestEvent(
-  model: WorkspaceMessengerEventDto,
+  model: WorkspaceMessengerRealtimeEventDto,
 ): WorkspaceRealtimeEvent | null {
+  if (!isWorkspaceMessengerEventDto(model)) {
+    return null;
+  }
+
   switch (model.payload.kind) {
     case "message.created": {
       const message = withoutPayloadKind(model.payload);
@@ -216,7 +202,8 @@ export function normalizeWorkspaceRestEvent(
         message,
       };
     }
-    case "message.updated": {
+    case "message.updated":
+    case "message.read": {
       const message = withoutPayloadKind(model.payload);
       return {
         epoch_version: model.epoch_version,
@@ -237,12 +224,13 @@ export function normalizeWorkspaceRestEvent(
         },
       };
     case "stream.created":
-    case "stream.updated": {
-      const { kind, ...stream } = model.payload;
+    case "stream.updated":
+    case "stream.read": {
+      const { kind: payloadKind, ...stream } = model.payload;
       return {
         epoch_version: model.epoch_version,
         type: "stream",
-        kind,
+        kind: payloadKind === "stream.created" ? "stream.created" : "stream.updated",
         stream,
       };
     }
@@ -260,16 +248,17 @@ export function normalizeWorkspaceRestEvent(
         epoch_version: model.epoch_version,
         type: "stream_binding",
         kind: "stream_bindings.created",
-        stream_uuid: model.payload.stream_uuid,
-        stream_bindings: model.payload.stream_bindings,
+        stream_uuid: model.payload.uuid,
+        stream_bindings: model.payload.items,
       };
     case "topic.created":
-    case "topic.updated": {
-      const { kind, ...topic } = model.payload;
+    case "topic.updated":
+    case "topic.read": {
+      const { kind: payloadKind, ...topic } = model.payload;
       return {
         epoch_version: model.epoch_version,
         type: "topic",
-        kind,
+        kind: payloadKind === "topic.created" ? "topic.created" : "topic.updated",
         topic,
       };
     }
@@ -320,6 +309,17 @@ export function normalizeWorkspaceRestEvent(
         user,
       };
     }
+    // Reaction row events are intentionally not applied to message.reactions here.
+    // The backend emits message.updated snapshots with the aggregate reaction counters,
+    // and the active applier uses that aggregate change to revalidate own reaction rows.
+    // Returning null makes runtime/catch-up skip this event while still advancing cursor.
+    case "message_reaction.created":
+    case "message_reaction.updated":
+    case "message_reaction.deleted":
+      return null;
+    // Historical migration event: current read updates use message.read/topic.read/stream.read.
+    case "messages.read":
+      return null;
     default:
       return null;
   }
@@ -328,8 +328,10 @@ export function normalizeWorkspaceRestEvent(
 export function normalizeWorkspaceWebSocketFrame(
   frame: WorkspaceMessengerWebSocketFrameDto,
 ): WorkspaceRealtimeEvent | null {
-  // hello/connected/ping/error - служебные кадры транспорта, а не события мессенджера.
-  if (frame.type !== "event") {
+  if (isWorkspaceMessengerEventDto(frame)) {
+    return normalizeWorkspaceRestEvent(frame);
+  }
+  if (!("type" in frame) || frame.type !== "event") {
     return null;
   }
   return frame.event;

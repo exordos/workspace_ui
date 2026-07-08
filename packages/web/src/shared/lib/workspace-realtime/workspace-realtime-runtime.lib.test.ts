@@ -4,6 +4,8 @@ import type { MessengerCollectionPage } from "~/shared/api/messenger-realtime.ap
 import type {
   WorkspaceMessengerEventDto,
   WorkspaceMessengerMessageDto,
+  WorkspaceMessengerRawEventDto,
+  WorkspaceMessengerRealtimeEventDto,
   WorkspaceRealtimeEvent,
 } from "~/shared/api/messenger.types";
 import { createWorkspaceRealtimeCursorStorage } from "./workspace-realtime-cursor.lib";
@@ -134,10 +136,13 @@ function createEvent(epochVersion: number): WorkspaceRealtimeEvent {
 
 function createRestEventDto(epochVersion: number): WorkspaceMessengerEventDto {
   return {
+    schema_version: 1,
     epoch_version: epochVersion,
     uuid: EVENT_UUID,
     project_id: PROJECT_UUID,
     user_uuid: USER_UUID,
+    object_type: "message",
+    action: "created",
     payload: {
       kind: "message.created",
       ...messageDto,
@@ -147,9 +152,27 @@ function createRestEventDto(epochVersion: number): WorkspaceMessengerEventDto {
   };
 }
 
+function createRawEventDto(epochVersion: number): WorkspaceMessengerRawEventDto {
+  return {
+    schema_version: 2,
+    epoch_version: epochVersion,
+    uuid: EVENT_UUID,
+    project_id: PROJECT_UUID,
+    user_uuid: USER_UUID,
+    object_type: "workspace_widget",
+    action: "refreshed",
+    payload: {
+      kind: "workspace_widget.refreshed",
+      uuid: "bb2ac71e-85ed-45d6-87da-89f9f0bcc523",
+    },
+    created_at: DATE,
+    updated_at: DATE,
+  };
+}
+
 function createPage(
-  items: WorkspaceMessengerEventDto[],
-): MessengerCollectionPage<WorkspaceMessengerEventDto> {
+  items: WorkspaceMessengerRealtimeEventDto[],
+): MessengerCollectionPage<WorkspaceMessengerRealtimeEventDto> {
   return {
     items,
     nextPageMarker: null,
@@ -235,15 +258,15 @@ describe("workspace-realtime transport runtime", () => {
     });
 
     await runtime.start(context);
-    sockets[0]?.message(JSON.stringify({ type: "event", event: createEvent(11) }));
+    sockets[0]?.message(JSON.stringify(createRestEventDto(11)));
     await flushAsyncHandlers();
 
     expect(appliedEpochs).toEqual([11]);
     expect(cursorStorage.read(cursorOwner)).toBe(11);
-    expect(sockets[0]?.sent).toEqual([JSON.stringify({ type: "ack", epoch_version: 11 })]);
+    expect(sockets[0]?.sent).toEqual([]);
   });
 
-  it("accepts service frames without advancing cursor and replies to websocket ping", async () => {
+  it("accepts legacy service frames without advancing cursor", async () => {
     const sockets: FakeWebSocket[] = [];
     const diagnostics: string[] = [];
     const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
@@ -278,10 +301,7 @@ describe("workspace-realtime transport runtime", () => {
     sockets[0]?.message(JSON.stringify({ type: "ping", ts: DATE }));
     await flushAsyncHandlers();
 
-    expect(sockets[0]?.sent).toEqual([
-      JSON.stringify({ type: "pong" }),
-      JSON.stringify({ type: "pong", ts: DATE }),
-    ]);
+    expect(sockets[0]?.sent).toEqual([]);
     expect(appliedEpochs).toEqual([]);
     expect(skippedEvents).toEqual([]);
     expect(diagnostics).toEqual([]);
@@ -306,7 +326,7 @@ describe("workspace-realtime transport runtime", () => {
     });
 
     await runtime.start(context);
-    sockets[0]?.message(JSON.stringify({ type: "event", event: createEvent(11) }));
+    sockets[0]?.message(JSON.stringify(createRestEventDto(11)));
     await flushAsyncHandlers();
 
     expect(appliedEpochs).toEqual([]);
@@ -315,7 +335,7 @@ describe("workspace-realtime transport runtime", () => {
     expect(sockets[0]?.sent).toEqual([]);
   });
 
-  it("acks unsupported websocket frames only when they advance cursor", async () => {
+  it("skips unsupported websocket frames when they advance cursor", async () => {
     const sockets: FakeWebSocket[] = [];
     const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
     cursorStorage.write(cursorOwner, 10);
@@ -345,7 +365,38 @@ describe("workspace-realtime transport runtime", () => {
 
     expect(skippedEvents).toEqual([{ epochVersion: 11, reason: "unsupported_event" }]);
     expect(cursorStorage.read(cursorOwner)).toBe(11);
-    expect(sockets[0]?.sent).toEqual([JSON.stringify({ type: "ack", epoch_version: 11 })]);
+    expect(sockets[0]?.sent).toEqual([]);
+  });
+
+  it("skips unknown flat websocket events without treating them as invalid frames", async () => {
+    const sockets: FakeWebSocket[] = [];
+    const diagnostics: string[] = [];
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, 10);
+    const { applier, appliedEpochs, skippedEvents } = createApplier();
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      getEventsPage: () => Promise.resolve(createPage([])),
+      webSocketFactory: (url, protocols) => {
+        const socket = new FakeWebSocket(url, protocols);
+        sockets.push(socket);
+        return socket;
+      },
+      onDiagnostic: (diagnostic) => {
+        diagnostics.push(diagnostic.reason);
+      },
+    });
+
+    await runtime.start(context);
+    sockets[0]?.message(JSON.stringify(createRawEventDto(12)));
+    await flushAsyncHandlers();
+
+    expect(appliedEpochs).toEqual([]);
+    expect(skippedEvents).toEqual([{ epochVersion: 12, reason: "unsupported_event" }]);
+    expect(diagnostics).not.toContain("invalid_frame");
+    expect(cursorStorage.read(cursorOwner)).toBe(12);
   });
 
   it("reports and skips an invalid websocket frame without crashing runtime", async () => {
@@ -431,7 +482,7 @@ describe("workspace-realtime transport runtime", () => {
 
     await runtime.start(context);
     current = false;
-    sockets[0]?.message(JSON.stringify({ type: "event", event: createEvent(11) }));
+    sockets[0]?.message(JSON.stringify(createRestEventDto(11)));
     await flushAsyncHandlers();
 
     expect(appliedEpochs).toEqual([]);

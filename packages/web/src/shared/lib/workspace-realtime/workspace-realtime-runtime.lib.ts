@@ -461,10 +461,6 @@ export function createWorkspaceRealtimeTransportCore(
     return nextEpochVersion > previousEpochVersion;
   }
 
-  function sendAck(epochVersion: WorkspaceMessengerEpochVersion): void {
-    socket?.send(JSON.stringify({ type: "ack", epoch_version: epochVersion }));
-  }
-
   async function handleNormalizedEvent(event: WorkspaceRealtimeEvent): Promise<boolean> {
     if (context == null) return false;
     if (!isCurrentRuntime()) {
@@ -517,27 +513,18 @@ export function createWorkspaceRealtimeTransportCore(
   async function handleRawFrame(raw: unknown): Promise<void> {
     try {
       const frame = parseWorkspaceWebSocketFrame(raw);
-      if (frame.type === "connected" || frame.type === "hello") {
-        return;
-      }
-      if (frame.type === "ping") {
-        // The server sends JSON ping as an application heartbeat, so answer with JSON pong.
-        socket?.send(
-          JSON.stringify(frame.ts == null ? { type: "pong" } : { type: "pong", ts: frame.ts }),
-        );
+      if (
+        "type" in frame &&
+        (frame.type === "connected" || frame.type === "hello" || frame.type === "ping")
+      ) {
         return;
       }
       const event = normalizeWorkspaceWebSocketFrame(frame);
       if (event == null) {
-        const advanced = await handleUnsupportedFrame(frame);
-        if (advanced && "epoch_version" in frame && typeof frame.epoch_version === "number") {
-          sendAck(frame.epoch_version);
-        }
+        await handleUnsupportedFrame(frame);
         return;
       }
-      if (await handleNormalizedEvent(event)) {
-        sendAck(event.epoch_version);
-      }
+      await handleNormalizedEvent(event);
     } catch (error) {
       await handleInvalidFrame(error);
     }
