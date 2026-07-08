@@ -39,7 +39,6 @@ import { useLayoutNotificationPermission } from "./layout-notification-permissio
 import { useLayoutOnlineStatus } from "./layout-online-status.hook";
 import { useLayoutPresencePolling } from "./layout-presence-polling.hook";
 import { useLayoutPushClickRouting } from "./layout-push-click-routing.hook";
-import { useLayoutPushNotifications } from "./layout-push-notifications.hook";
 import { useLayoutPushPermission } from "./layout-push-permission.hook";
 import { useLayoutResetRightDrawerOnInstanceChange } from "./layout-reset-right-drawer-on-instance-change.hook";
 import { useLayoutRightPanelShell } from "./layout-right-panel-shell.hook";
@@ -49,6 +48,7 @@ import { useLayoutUnreadAndTitle } from "./layout-unread-title.hook";
 import { isLayoutUserConnectionReady } from "./layout-user-connection-status.types";
 import { useLayoutWindowBranding } from "./layout-window-branding.hook";
 import { useLayoutWorkspaceMessengerBootstrap } from "./layout-workspace-messenger-bootstrap.hook";
+import { useLayoutWorkspaceNotifications } from "./layout-workspace-notifications.hook";
 import { useLayoutWorkspaceRealtime } from "./layout-workspace-realtime.hook";
 import { useZulipRateLimitCountdownSeconds } from "./layout-zulip-rate-limit-banner.hook";
 import type { LayoutUserConnectionStatus } from "./layout-user-connection-status.types";
@@ -235,7 +235,10 @@ export const Layout: React.FC = () => {
   useLayoutAuthErrorHandler({ currentInstanceId, currentUserStatus, navigate });
 
   useLayoutPushPermission({ enabled: isLayoutUserConnectionReady(currentUserStatus) });
-  useLayoutPushNotifications({ enabled: isLayoutUserConnectionReady(currentUserStatus) });
+  useLayoutWorkspaceNotifications({
+    enabled: workspaceMessengerActive && isLayoutUserConnectionReady(currentUserStatus),
+    navigate,
+  });
 
   useLayoutPushClickRouting({
     currentInstanceId,

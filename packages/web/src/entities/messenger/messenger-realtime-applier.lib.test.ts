@@ -36,6 +36,7 @@ const INSTANCE_A = "instance-a";
 const ORGANIZATION_A = "organization-a";
 const PROJECT_A = "22222222-2222-4222-8222-222222222222";
 const USER_A = "11111111-1111-4111-8111-111111111111";
+const USER_B = "99999999-9999-4999-8999-999999999999";
 const STREAM_A = "75309057-419c-4b12-a7c1-3932429ec4a6";
 const STREAM_B = "37a28696-153d-431e-a5fb-36f0c0209765";
 const STREAM_BINDING_A = "ea4364f4-96e3-4b33-b80d-fd53e5697151";
@@ -903,6 +904,88 @@ describe("messenger realtime active applier", () => {
     expect(useMessengerStore.getState().streamIds).toEqual([]);
     expect(useMessengerStore.getState().skippedRealtimeEvents).toEqual([]);
     expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
+  });
+
+  it("projects active owner realtime messages into the shared notification projection store", () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const applier = createMessengerRealtimeActiveApplier();
+    useMessengerStore.getState().startBootstrap(ownerKey);
+
+    applyStreamAndTopicSnapshot(applier, context, {
+      stream: {
+        private: true,
+        notification_mode: "mentions_only",
+      },
+      topic: {
+        name: "Releases",
+        notification_mode: "follow",
+      },
+    });
+
+    applier.applyEvent(
+      {
+        epoch_version: 3,
+        type: "message",
+        message: createMessageDto({
+          author_uuid: USER_B,
+          is_own: false,
+          read: false,
+          payload: {
+            kind: "markdown",
+            content: "Ping for active owner",
+          },
+        }),
+      },
+      context,
+    );
+
+    const projection =
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[ownerKey];
+
+    expect(projection).toEqual(
+      expect.objectContaining({
+        lastEpochVersion: 3,
+      }),
+    );
+    expect(projection?.streamSnapshotsById[STREAM_A]).toEqual(
+      expect.objectContaining({
+        ownerKey,
+        streamUuid: STREAM_A,
+        isPrivate: true,
+        notificationMode: "mentions_only",
+      }),
+    );
+    expect(projection?.topicSnapshotsById[TOPIC_A]).toEqual(
+      expect.objectContaining({
+        ownerKey,
+        topicUuid: TOPIC_A,
+        streamUuid: STREAM_A,
+        topicName: "Releases",
+        notificationMode: "follow",
+      }),
+    );
+    expect(projection?.messageIdSnapshotsById[MESSAGE_A]).toEqual(
+      expect.objectContaining({
+        ownerKey,
+        messageUuid: MESSAGE_A,
+        authorUuid: USER_B,
+        isOwn: false,
+        read: false,
+      }),
+    );
+    expect(projection?.notificationCandidates).toEqual([
+      expect.objectContaining({
+        ownerKey,
+        messageUuid: MESSAGE_A,
+        authorUuid: USER_B,
+        audience: "private",
+        streamName: "Engineering",
+        topicName: "Releases",
+        streamNotificationMode: "mentions_only",
+        topicNotificationMode: "follow",
+      }),
+    ]);
   });
 
   it("applies stream, binding, topic, folder, and delete skeleton mappings", () => {

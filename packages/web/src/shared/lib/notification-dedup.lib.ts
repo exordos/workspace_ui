@@ -1,33 +1,67 @@
 /**
- * Recent desktop-notification deduplication by message id.
- *
- * Prevents duplicate OS toasts when the same message is delivered via long-poll and FCM.
+ * Recent Workspace desktop-notification deduplication by owner + message UUID.
  */
 
-const MAX_RECENT_IDS = 200;
-const recentIds: number[] = [];
-const recentIdSet = new Set<number>();
+const MAX_RECENT_KEYS = 200;
+const recentKeys: string[] = [];
+const recentKeySet = new Set<string>();
 
-export function registerNotifiedMessageId(messageId: number): void {
-  if (!Number.isInteger(messageId) || messageId <= 0) return;
-  if (recentIdSet.has(messageId)) return;
+function normalizeRecentNotificationKey(value: string | null | undefined): string | null {
+  const trimmed = value?.trim() ?? "";
+  return trimmed.length > 0 ? trimmed : null;
+}
 
-  recentIds.push(messageId);
-  recentIdSet.add(messageId);
+function pushRecentNotificationKey(key: string): void {
+  if (recentKeySet.has(key)) return;
 
-  while (recentIds.length > MAX_RECENT_IDS) {
-    const removed = recentIds.shift();
+  recentKeys.push(key);
+  recentKeySet.add(key);
+
+  while (recentKeys.length > MAX_RECENT_KEYS) {
+    const removed = recentKeys.shift();
     if (removed != null) {
-      recentIdSet.delete(removed);
+      recentKeySet.delete(removed);
     }
   }
 }
 
-export function wasRecentlyNotified(messageId: number): boolean {
-  return recentIdSet.has(messageId);
+function hasRecentNotificationKey(key: string): boolean {
+  return recentKeySet.has(key);
+}
+
+export function buildWorkspaceNotificationDedupKey(
+  ownerKey: string | null | undefined,
+  messageUuid: string | null | undefined,
+): string | null {
+  const normalizedOwnerKey = normalizeRecentNotificationKey(ownerKey);
+  const normalizedMessageUuid = normalizeRecentNotificationKey(messageUuid);
+  if (normalizedOwnerKey == null || normalizedMessageUuid == null) {
+    return null;
+  }
+  return `${normalizedOwnerKey}::${normalizedMessageUuid}`;
+}
+
+export function registerNotifiedWorkspaceMessage(
+  ownerKey: string | null | undefined,
+  messageUuid: string | null | undefined,
+): void {
+  const dedupKey = buildWorkspaceNotificationDedupKey(ownerKey, messageUuid);
+  if (dedupKey == null) {
+    return;
+  }
+
+  pushRecentNotificationKey(dedupKey);
+}
+
+export function wasWorkspaceMessageRecentlyNotified(
+  ownerKey: string | null | undefined,
+  messageUuid: string | null | undefined,
+): boolean {
+  const dedupKey = buildWorkspaceNotificationDedupKey(ownerKey, messageUuid);
+  return dedupKey == null ? false : hasRecentNotificationKey(dedupKey);
 }
 
 export function clearNotifiedMessageIds(): void {
-  recentIds.length = 0;
-  recentIdSet.clear();
+  recentKeys.length = 0;
+  recentKeySet.clear();
 }

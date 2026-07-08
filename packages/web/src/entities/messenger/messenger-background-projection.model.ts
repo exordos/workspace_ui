@@ -13,35 +13,63 @@ import type {
   WorkspaceRealtimeEvent,
 } from "~/shared/api/messenger.types";
 import { logStoreAction } from "~/shared/lib/logger";
+import {
+  hasWorkspaceMentionForCurrentUser,
+  hasWorkspaceWildcardMention,
+} from "~/shared/lib/workspace-desktop-notifications.lib";
+import { summarizeWorkspaceMessageMarkdown } from "~/shared/lib/workspace-message-render/workspace-message-summary.lib";
+import {
+  workspaceMessengerMessageRoute,
+  workspaceMessengerStreamRoute,
+  workspaceMessengerTopicRoute,
+} from "~/shared/lib/workspace-messenger-route.lib";
 import type {
   WorkspaceRealtimeEventContext,
   WorkspaceRealtimeSkipReason,
   WorkspaceRealtimeSkippedEvent,
   WorkspaceRealtimeTransportState,
 } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
+import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
 
 const MAX_RECENT_EVENTS = 50;
 const MAX_NOTIFICATION_CANDIDATES = 50;
 const MAX_SKIPPED_EVENTS = 50;
 // Background keeps only limited in-memory data to speed up cold start.
-// This is not a second chat store: message text, names, and other PII are not stored here.
+// This is not a second chat store: only compact notification data and short chat names live here.
 const MAX_LIGHTWEIGHT_SNAPSHOTS = 200;
 const LIGHTWEIGHT_SNAPSHOT_TTL_MS = 30 * 60 * 1000;
 
 const EMPTY_BACKGROUND_PROJECTIONS: Record<string, MessengerBackgroundProjection> = {};
 
-// Background notification candidate хранит только идентификаторы и счетчики:
-// body сообщения сюда намеренно не попадает, поэтому summary для Workspace
-// notifications подключать не к чему до появления отдельного body contract.
+// Background candidate хранит только компактные данные для будущей нотификации:
+// summary, UUID и готовые Workspace-маршруты. Полный body сообщения сюда не кладем.
+export type MessengerBackgroundConversationAudience = "private" | "channel" | "unknown";
+
 export interface MessengerBackgroundNotificationCandidate {
   ownerKey: string;
+  organizationId: string;
+  projectId: string;
   epochVersion: WorkspaceMessengerEpochVersion;
   messageUuid: WorkspaceMessengerUuid;
   streamUuid: WorkspaceMessengerUuid;
   topicUuid: WorkspaceMessengerUuid;
   authorUuid: WorkspaceMessengerUuid;
   isOwn: boolean;
+  read: boolean;
   createdAt: string;
+  previewText: string;
+  audience: MessengerBackgroundConversationAudience;
+  streamName: string | null;
+  topicName: string | null;
+  messageRoute: string;
+  streamRoute: string;
+  topicRoute: string;
+  streamConversationId: string;
+  topicConversationId: string;
+  streamNotificationMode: WorkspaceMessengerStreamNotificationMode | null;
+  topicNotificationMode: WorkspaceMessengerTopicNotificationMode | null;
+  hasCurrentUserMention?: boolean;
+  hasWildcardMention?: boolean;
   observedAt: number;
 }
 
@@ -65,8 +93,10 @@ export interface MessengerBackgroundSkippedEvent {
 export interface MessengerBackgroundStreamSnapshot {
   ownerKey: string;
   streamUuid: WorkspaceMessengerUuid;
+  streamName: string;
   unreadCount: number;
   notificationMode: WorkspaceMessengerStreamNotificationMode;
+  isPrivate: boolean;
   lastMessageUuid: WorkspaceMessengerUuid | null;
   isArchived: boolean;
   epochVersion: WorkspaceMessengerEpochVersion;
@@ -78,6 +108,7 @@ export interface MessengerBackgroundTopicSnapshot {
   ownerKey: string;
   topicUuid: WorkspaceMessengerUuid;
   streamUuid: WorkspaceMessengerUuid;
+  topicName: string | null;
   unreadCount: number;
   notificationMode: WorkspaceMessengerTopicNotificationMode;
   lastMessageUuid: WorkspaceMessengerUuid | null;
@@ -449,15 +480,67 @@ function applyMessageProjection(
     return compactProjection(nextProjection, observedAt);
   }
 
+  const streamNotificationMode =
+    baseProjection.streamSnapshotsById[event.message.stream_uuid]?.notificationMode ?? null;
+  const streamSnapshot = baseProjection.streamSnapshotsById[event.message.stream_uuid];
+  const topicSnapshot = baseProjection.topicSnapshotsById[event.message.topic_uuid];
+  const topicNotificationMode = topicSnapshot?.notificationMode ?? null;
+  const previewText = summarizeWorkspaceMessageMarkdown(event.message.payload.content).text;
+  // Пока stream snapshot не приехал, тип разговора честно не угадываем.
+  const audience: MessengerBackgroundConversationAudience =
+    streamSnapshot == null ? "unknown" : streamSnapshot.isPrivate ? "private" : "channel";
+  // Для default topic держим null, чтобы следующий слой сам собрал корректный заголовок.
+  const topicName = topicSnapshot?.topicName ?? null;
+  // В фоне считаем только уверенные признаки: UUID-mention текущего пользователя и простые wildcard.
+  const hasCurrentUserMention = hasWorkspaceMentionForCurrentUser({
+    kind: audience === "private" ? "dm" : "stream",
+    markdown: event.message.payload.content,
+    isOwn: event.message.is_own,
+    read: event.message.read,
+    currentUserUuid: context.owner.userUuid,
+  });
+  const hasWildcardMention = hasWorkspaceWildcardMention(event.message.payload.content);
   const candidate: MessengerBackgroundNotificationCandidate = {
     ownerKey: context.ownerKey,
+    organizationId: context.owner.organizationId,
+    projectId: context.owner.projectId,
     epochVersion: event.epoch_version,
     messageUuid: event.message.uuid,
     streamUuid: event.message.stream_uuid,
     topicUuid: event.message.topic_uuid,
     authorUuid: event.message.author_uuid,
     isOwn: event.message.is_own,
+    read: event.message.read,
     createdAt: event.message.created_at,
+    previewText,
+    audience,
+    streamName: streamSnapshot?.streamName ?? null,
+    topicName,
+    messageRoute: workspaceMessengerMessageRoute({
+      orgId: context.owner.organizationId,
+      projectId: context.owner.projectId,
+      messageUuid: event.message.uuid,
+    }),
+    streamRoute: workspaceMessengerStreamRoute({
+      orgId: context.owner.organizationId,
+      projectId: context.owner.projectId,
+      streamUuid: event.message.stream_uuid,
+    }),
+    topicRoute: workspaceMessengerTopicRoute({
+      orgId: context.owner.organizationId,
+      projectId: context.owner.projectId,
+      streamUuid: event.message.stream_uuid,
+      topicUuid: event.message.topic_uuid,
+    }),
+    streamConversationId: conversationIdForStream(event.message.stream_uuid),
+    topicConversationId: conversationIdForTopic(
+      event.message.stream_uuid,
+      event.message.topic_uuid,
+    ),
+    streamNotificationMode,
+    topicNotificationMode,
+    hasCurrentUserMention,
+    hasWildcardMention,
     observedAt,
   };
   return compactProjection(
@@ -528,8 +611,10 @@ function applyStreamProjection(
         [event.stream.uuid]: {
           ownerKey: context.ownerKey,
           streamUuid: event.stream.uuid,
+          streamName: event.stream.name,
           unreadCount: event.stream.unread_count,
           notificationMode: event.stream.notification_mode,
+          isPrivate: event.stream.private,
           lastMessageUuid: event.stream.last_message_uuid ?? null,
           isArchived: event.stream.is_archived,
           epochVersion: event.epoch_version,
@@ -576,6 +661,7 @@ function applyTopicProjection(
           ownerKey: context.ownerKey,
           topicUuid: event.topic.uuid,
           streamUuid: event.topic.stream_uuid,
+          topicName: event.topic.is_default ? null : event.topic.name,
           unreadCount: event.topic.unread_count,
           notificationMode: event.topic.notification_mode,
           lastMessageUuid: event.topic.last_message_uuid ?? null,

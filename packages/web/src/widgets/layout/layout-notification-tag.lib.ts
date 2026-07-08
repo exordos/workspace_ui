@@ -18,21 +18,25 @@ export function buildScopedNotificationKey(
 
 export function buildNotificationAggregateTag(
   bucketKey: string,
-  instanceId: string | null | undefined,
+  instanceId: string | null | undefined = null,
 ): string {
   return `bucket:${buildScopedNotificationKey(bucketKey, instanceId)}`;
 }
 
-export function buildNotificationFallbackTag(
-  messageId: number,
-  instanceId: string | null | undefined,
+export function buildWorkspaceNotificationFallbackTag(
+  ownerKey: string,
+  messageUuid: string,
 ): string {
-  return `msg:${buildScopedNotificationKey(String(messageId), instanceId)}`;
+  return `msg:${buildScopedNotificationKey(messageUuid, ownerKey)}`;
 }
 
-export function buildNotificationMessageScopeKey(
-  messageId: number,
-  instanceId: string | null | undefined,
+export function buildWorkspaceNotificationMessageScopeKey(
+  ownerKey: string,
+  messageUuid: string,
 ): string {
-  return buildScopedNotificationKey(`message:${messageId}`, instanceId);
+  return buildScopedNotificationKey(`message:${messageUuid}`, ownerKey);
+}
+
+export function buildWorkspaceNotificationBucketKey(ownerKey: string, bucketKey: string): string {
+  return buildScopedNotificationKey(bucketKey, ownerKey);
 }

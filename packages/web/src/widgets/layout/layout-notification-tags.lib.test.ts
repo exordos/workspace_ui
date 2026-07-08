@@ -1,14 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { MessengerBackgroundNotificationCandidate } from "~/entities/messenger/messenger-background-projection.model";
 import {
   closeAllActiveMessageNotifications,
   closeReadMessageNotifications,
 } from "./layout-notification-tags.lib";
-import { buildNotificationTitleContextFromMessage } from "./layout-notification-title.lib";
 import {
+  formatNotificationTitle,
+  type NotificationTitleContext,
+} from "./layout-notification-title.lib";
+import {
+  buildNotificationAggregateTag,
   clearNotificationAggregateRegistry,
   upsertNotificationAggregate,
 } from "./notification-aggregate-registry.lib";
+
+const CHANNEL_TITLE_CONTEXT: NotificationTitleContext = {
+  kind: "stream",
+  senderName: "Alice",
+  channelName: "General",
+  topicName: "Bugs",
+};
 
 function createNotifications(): {
   show: ReturnType<
@@ -40,18 +51,36 @@ function createNotifications(): {
   };
 }
 
-function createStreamMessage(overrides: Partial<ZulipRawMessage> = {}): ZulipRawMessage {
+function createCandidate(
+  overrides: Partial<MessengerBackgroundNotificationCandidate> = {},
+): MessengerBackgroundNotificationCandidate {
+  const messageUuid = overrides.messageUuid ?? "msg-1";
+  const projectId = overrides.projectId ?? "project-1";
+
   return {
-    id: 55,
-    sender_id: 42,
-    sender_full_name: "Alice",
-    content: "<p>Hello</p>",
-    timestamp: 1,
-    type: "stream",
-    stream_id: 10,
-    display_recipient: "General Discussion",
-    subject: "Bugs",
-    flags: [],
+    ownerKey: "owner-1",
+    organizationId: "org-1",
+    projectId,
+    epochVersion: 1,
+    messageUuid,
+    streamUuid: "stream-1",
+    topicUuid: "topic-1",
+    authorUuid: "user-1",
+    isOwn: false,
+    read: false,
+    createdAt: "2026-07-07T10:00:00.000Z",
+    previewText: "Hello",
+    audience: "channel",
+    streamName: "General",
+    topicName: "Bugs",
+    messageRoute: `/project/${projectId}/message/${messageUuid}`,
+    streamRoute: `/project/${projectId}/stream/stream-1`,
+    topicRoute: `/project/${projectId}/topic/topic-1`,
+    streamConversationId: "dm:user-1,user-2",
+    topicConversationId: "topic:stream-1:bugs",
+    streamNotificationMode: null,
+    topicNotificationMode: null,
+    observedAt: 1,
     ...overrides,
   };
 }
@@ -62,123 +91,141 @@ beforeEach(() => {
 });
 
 describe("closeReadMessageNotifications", () => {
-  it("closes fallback message notifications for untracked read message ids", () => {
+  it("closes fallback notifications by ownerKey and messageUuid", () => {
     const notifications = createNotifications();
 
-    closeReadMessageNotifications(notifications, [101, 202, 303], "inst-1");
+    closeReadMessageNotifications(notifications, ["msg-101", "msg-202"], "owner-1");
 
-    expect(notifications.closeByTag).toHaveBeenCalledTimes(3);
-    expect(notifications.closeByTag).toHaveBeenNthCalledWith(1, "msg:inst-1::101");
-    expect(notifications.closeByTag).toHaveBeenNthCalledWith(2, "msg:inst-1::202");
-    expect(notifications.closeByTag).toHaveBeenNthCalledWith(3, "msg:inst-1::303");
+    expect(notifications.closeByTag).toHaveBeenCalledTimes(2);
+    expect(notifications.closeByTag).toHaveBeenNthCalledWith(1, "msg:owner-1::msg-101");
+    expect(notifications.closeByTag).toHaveBeenNthCalledWith(2, "msg:owner-1::msg-202");
   });
 
-  it("deduplicates IDs and ignores invalid values", () => {
+  it("deduplicates UUIDs and ignores blank values for fallback close", () => {
     const notifications = createNotifications();
 
-    closeReadMessageNotifications(notifications, [101, 101, 0, -1, Number.NaN], "inst-1");
+    closeReadMessageNotifications(notifications, ["msg-101", "msg-101", "", "   "], "owner-1");
 
     expect(notifications.closeByTag).toHaveBeenCalledTimes(1);
-    expect(notifications.closeByTag).toHaveBeenCalledWith("msg:inst-1::101");
+    expect(notifications.closeByTag).toHaveBeenCalledWith("msg:owner-1::msg-101");
   });
 
-  it("updates the bucket notification when only part of it is read", async () => {
+  it("updates aggregate notification after partial read", async () => {
     const notifications = createNotifications();
-    const first = createStreamMessage();
-    const second = createStreamMessage({ id: 56, content: "<p>Latest</p>" });
 
     upsertNotificationAggregate({
-      message: first,
-      currentUserId: 7,
-      currentInstanceId: "inst-1",
-      body: "Hello",
-      clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=55",
-      titleContext: buildNotificationTitleContextFromMessage(first, 7),
+      candidate: createCandidate({
+        messageUuid: "msg-1",
+      }),
+      body: "First",
+      clickRoute: "/project/project-1/message/msg-1",
+      titleContext: CHANNEL_TITLE_CONTEXT,
     });
     upsertNotificationAggregate({
-      message: second,
-      currentUserId: 7,
-      currentInstanceId: "inst-1",
-      body: "Latest",
-      clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=56",
-      titleContext: buildNotificationTitleContextFromMessage(second, 7),
+      candidate: createCandidate({
+        messageUuid: "msg-2",
+      }),
+      body: "Second",
+      clickRoute: "/project/project-1/message/msg-2",
+      titleContext: CHANNEL_TITLE_CONTEXT,
     });
 
-    closeReadMessageNotifications(notifications, [56], "inst-1");
+    closeReadMessageNotifications(notifications, ["msg-2"], "owner-1");
 
     expect(notifications.closeByTag).not.toHaveBeenCalled();
     await vi.waitFor(() => {
       expect(notifications.show).toHaveBeenCalledWith({
-        title: "Alice · General Discussion · Bugs",
-        body: "Hello",
-        tag: "bucket:inst-1::stream:10:Bugs:sender:42",
+        title: formatNotificationTitle(CHANNEL_TITLE_CONTEXT, 1),
+        body: "First",
+        tag: "bucket:owner-1::topic:stream-1:bugs:author:user-1",
         silent: true,
-        clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=55",
+        clickRoute: "/project/project-1/message/msg-1",
       });
     });
   });
 
-  it("closes the bucket notification when the last unread message is read", () => {
+  it("closes aggregate bucket by UUID when the last unread message is read", () => {
     const notifications = createNotifications();
-    const message = createStreamMessage();
 
     upsertNotificationAggregate({
-      message,
-      currentUserId: 7,
-      currentInstanceId: "inst-1",
-      body: "Hello",
-      clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=55",
-      titleContext: buildNotificationTitleContextFromMessage(message, 7),
+      candidate: createCandidate({
+        messageUuid: "msg-1",
+      }),
+      body: "First",
+      titleContext: CHANNEL_TITLE_CONTEXT,
     });
 
-    closeReadMessageNotifications(notifications, [55], "inst-1");
+    closeReadMessageNotifications(notifications, ["msg-1"], "owner-1");
 
     expect(notifications.closeByTag).toHaveBeenCalledTimes(1);
     expect(notifications.closeByTag).toHaveBeenCalledWith(
-      "bucket:inst-1::stream:10:Bugs:sender:42",
+      "bucket:owner-1::topic:stream-1:bugs:author:user-1",
     );
     expect(notifications.show).not.toHaveBeenCalled();
   });
 
-  it("closes all active buckets on mark all read", () => {
+  it("does not mix the same messageUuid across owners", () => {
     const notifications = createNotifications();
 
-    const first = createStreamMessage();
-    const second = createStreamMessage({ id: 56, sender_id: 99, sender_full_name: "Bob" });
-
     upsertNotificationAggregate({
-      message: first,
-      currentUserId: 7,
-      currentInstanceId: "inst-1",
-      body: "Hello",
-      clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=55",
-      titleContext: buildNotificationTitleContextFromMessage(first, 7),
+      candidate: createCandidate({
+        ownerKey: "owner-1",
+        messageUuid: "shared-uuid",
+      }),
+      body: "Owner one",
+      titleContext: CHANNEL_TITLE_CONTEXT,
     });
     upsertNotificationAggregate({
-      message: second,
-      currentUserId: 7,
-      currentInstanceId: "inst-1",
-      body: "Other",
-      clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=56",
-      titleContext: buildNotificationTitleContextFromMessage(second, 7),
+      candidate: createCandidate({
+        ownerKey: "owner-2",
+        messageUuid: "shared-uuid",
+      }),
+      body: "Owner two",
+      titleContext: CHANNEL_TITLE_CONTEXT,
     });
 
-    closeAllActiveMessageNotifications(notifications, "inst-1");
+    closeReadMessageNotifications(notifications, ["shared-uuid"], "owner-2");
+
+    expect(notifications.closeByTag).toHaveBeenCalledTimes(1);
+    expect(notifications.closeByTag).toHaveBeenCalledWith(
+      "bucket:owner-2::topic:stream-1:bugs:author:user-1",
+    );
+
+    closeReadMessageNotifications(notifications, ["shared-uuid"], "owner-1");
 
     expect(notifications.closeByTag).toHaveBeenCalledTimes(2);
-    expect(notifications.closeByTag).toHaveBeenCalledWith(
-      "bucket:inst-1::stream:10:Bugs:sender:42",
-    );
-    expect(notifications.closeByTag).toHaveBeenCalledWith(
-      "bucket:inst-1::stream:10:Bugs:sender:99",
+    expect(notifications.closeByTag).toHaveBeenLastCalledWith(
+      "bucket:owner-1::topic:stream-1:bugs:author:user-1",
     );
   });
+});
 
-  it("does not close fallback tags for another instance", () => {
+describe("closeAllActiveMessageNotifications", () => {
+  it("closes only aggregate buckets for the requested owner", () => {
     const notifications = createNotifications();
 
-    closeReadMessageNotifications(notifications, [101], "inst-2");
+    upsertNotificationAggregate({
+      candidate: createCandidate({
+        ownerKey: "owner-1",
+        messageUuid: "msg-1",
+      }),
+      body: "Owner one",
+      titleContext: CHANNEL_TITLE_CONTEXT,
+    });
+    upsertNotificationAggregate({
+      candidate: createCandidate({
+        ownerKey: "owner-2",
+        messageUuid: "msg-2",
+      }),
+      body: "Owner two",
+      titleContext: CHANNEL_TITLE_CONTEXT,
+    });
 
-    expect(notifications.closeByTag).toHaveBeenCalledWith("msg:inst-2::101");
+    closeAllActiveMessageNotifications(notifications, "owner-1");
+
+    expect(notifications.closeByTag).toHaveBeenCalledTimes(1);
+    expect(notifications.closeByTag).toHaveBeenCalledWith(
+      buildNotificationAggregateTag("owner-1::topic:stream-1:bugs:author:user-1"),
+    );
   });
 });

@@ -16,7 +16,14 @@ import {
   selectUserStatusLabel,
   selectUsersByIds,
 } from "./user-selectors.lib";
-import { applyBootstrapUsers, loadUserByUuid, refreshUsers } from "./user-sync.lib";
+import {
+  applyBootstrapUsers,
+  fromWorkspaceUserCacheProfile,
+  hydrateUsersFromCache,
+  loadUserByUuid,
+  refreshUsers,
+  resolveCachedWorkspaceUser,
+} from "./user-sync.lib";
 import { startWorkspacePresenceReporter } from "./user-workspace-presence-reporter.lib";
 import {
   buildWorkspaceOwnStatusBody,
@@ -496,6 +503,153 @@ describe("user sync", () => {
     expect(useUsersStore.getState().ownerKey).toBe(OWNER_B_KEY);
     expect(useUsersStore.getState().userIds).toEqual([]);
   });
+
+  it("hydrates users from owner-scoped cache without treating presence as fresh", async () => {
+    useUsersStore.getState().startOwnerSync(OWNER_A_KEY);
+    const readUsersCache = vi.fn(() =>
+      Promise.resolve([
+        {
+          uuid: USER_A_UUID,
+          username: "alice-cache",
+          displayName: "Alice Cache",
+          firstName: "Alice",
+          lastName: "Cache",
+          email: "alice-cache@example.com",
+          avatarUrl: "https://cdn.example.com/alice.png",
+          createdAt: DATE_1,
+          updatedAt: DATE_1,
+        },
+      ]),
+    );
+
+    await expect(
+      hydrateUsersFromCache({
+        ownerKey: OWNER_A_KEY,
+        cache: { readUsersCache },
+      }),
+    ).resolves.toEqual({ status: "applied" });
+
+    expect(readUsersCache).toHaveBeenCalledWith(OWNER_A_KEY);
+    expect(useUsersStore.getState().getUser(USER_A_UUID)).toEqual(
+      expect.objectContaining({
+        username: "alice-cache",
+        status: "offline",
+        statusEmoji: null,
+        statusText: null,
+        lastPingAt: "1970-01-01T00:00:00.000Z",
+      }),
+    );
+  });
+
+  it("replaces stale cached users after a fresh network refresh", () => {
+    useUsersStore.getState().startOwnerSync(OWNER_A_KEY);
+    useUsersStore.getState().upsertUsersForOwner(OWNER_A_KEY, [
+      fromWorkspaceUserCacheProfile({
+        uuid: USER_A_UUID,
+        username: "alice-cache",
+        displayName: "Alice Cache",
+        firstName: "Alice",
+        lastName: "Cache",
+        email: "alice-cache@example.com",
+        avatarUrl: null,
+        createdAt: DATE_1,
+        updatedAt: DATE_1,
+      }),
+      fromWorkspaceUserCacheProfile({
+        uuid: USER_C_UUID,
+        username: "stale-cache",
+        displayName: "Stale Cache",
+        firstName: null,
+        lastName: null,
+        email: null,
+        avatarUrl: null,
+        createdAt: DATE_1,
+        updatedAt: DATE_1,
+      }),
+    ]);
+    const replaceUsersCache = vi.fn();
+
+    expect(
+      applyBootstrapUsers([createUserDto({ uuid: USER_A_UUID, username: "alice-fresh" })], {
+        ownerKey: OWNER_A_KEY,
+        cache: { replaceUsersCache },
+      }),
+    ).toEqual({ status: "applied" });
+
+    expect(useUsersStore.getState().userIds).toEqual([USER_A_UUID]);
+    expect(useUsersStore.getState().getUser(USER_A_UUID)?.username).toBe("alice-fresh");
+    expect(useUsersStore.getState().getUser(USER_C_UUID)).toBeUndefined();
+    expect(replaceUsersCache).toHaveBeenCalledWith(OWNER_A_KEY, [
+      expect.objectContaining({
+        uuid: USER_A_UUID,
+        username: "alice-fresh",
+        displayName: "Alice Smith",
+      }),
+    ]);
+  });
+
+  it("writes point user refreshes through to cache", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+    const upsertUsersCache = vi.fn();
+    const getUser = vi.fn(() =>
+      Promise.resolve(createUserDto({ uuid: USER_B_UUID, username: "bob", first_name: "Bob" })),
+    );
+
+    await expect(
+      loadUserByUuid(
+        {
+          runtimeContext,
+          getRuntimeContext: () => runtimeContext,
+          client: { getUser },
+          cache: { upsertUsersCache },
+        },
+        USER_B_UUID,
+      ),
+    ).resolves.toEqual({ status: "applied" });
+
+    expect(upsertUsersCache).toHaveBeenCalledWith(ownerKey, [
+      expect.objectContaining({
+        uuid: USER_B_UUID,
+        username: "bob",
+        displayName: "Bob Smith",
+      }),
+    ]);
+  });
+
+  it("resolves one cached Workspace user without using users store", async () => {
+    const readUserCacheProfile = vi.fn(() =>
+      Promise.resolve({
+        uuid: USER_B_UUID,
+        username: "bob-cache",
+        displayName: "Bob Cache",
+        firstName: "Bob",
+        lastName: "Cache",
+        email: "bob-cache@example.com",
+        avatarUrl: "https://cdn.example.com/bob.png",
+        createdAt: DATE_1,
+        updatedAt: DATE_2,
+      }),
+    );
+
+    await expect(
+      resolveCachedWorkspaceUser({
+        ownerKey: OWNER_A_KEY,
+        userUuid: USER_B_UUID,
+        cache: { readUserCacheProfile },
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        uuid: USER_B_UUID,
+        username: "bob-cache",
+        status: "offline",
+        lastPingAt: "1970-01-01T00:00:00.000Z",
+      }),
+    );
+
+    expect(readUserCacheProfile).toHaveBeenCalledWith(OWNER_A_KEY, USER_B_UUID);
+    expect(useUsersStore.getState().userIds).toEqual([]);
+  });
 });
 
 describe("user realtime applier", () => {
@@ -525,6 +679,33 @@ describe("user realtime applier", () => {
         statusText: "Focus",
       }),
     );
+  });
+
+  it("writes realtime user.updated events through to cache", () => {
+    const upsertUsersCache = vi.fn();
+    const applier = createUserRealtimeApplier({ userCache: { upsertUsersCache } });
+    const owner = createRealtimeOwner();
+    const ownerKey = workspaceRuntimeOwnerKey(owner);
+    useUsersStore.getState().startOwnerSync(ownerKey);
+
+    applier.applyEvent(
+      {
+        epoch_version: 14,
+        type: "user",
+        kind: "user.updated",
+        user: createUserDto({ username: "realtime-alice", updated_at: DATE_3 }),
+      },
+      createRealtimeContext(owner),
+    );
+
+    expect(useUsersStore.getState().getUser(USER_A_UUID)?.username).toBe("realtime-alice");
+    expect(upsertUsersCache).toHaveBeenCalledWith(ownerKey, [
+      expect.objectContaining({
+        uuid: USER_A_UUID,
+        username: "realtime-alice",
+        updatedAt: DATE_3,
+      }),
+    ]);
   });
 
   it("skips user.updated when owner is stale or signal is aborted", () => {
@@ -583,6 +764,39 @@ describe("user realtime applier", () => {
     );
 
     expect(useUsersStore.getState().userIds).toEqual([]);
+  });
+
+  it("writes background user.updated events only to cache", () => {
+    const upsertUsersCache = vi.fn();
+    const owner = createRealtimeOwner({
+      accountId: "account-b",
+      instanceId: "instance-b",
+      organizationId: "organization-b",
+      projectId: "55555555-5555-4555-8555-555555555555",
+      userUuid: USER_B_UUID,
+    });
+    const ownerKey = workspaceRuntimeOwnerKey(owner);
+    const applier = createUserRealtimeApplier({ userCache: { upsertUsersCache } });
+    useUsersStore.getState().startOwnerSync(OWNER_A_KEY);
+
+    applier.applyEvent(
+      {
+        epoch_version: 12,
+        type: "user",
+        kind: "user.updated",
+        user: createUserDto({ uuid: USER_B_UUID, username: "background-user", first_name: "Bob" }),
+      },
+      createRealtimeContext(owner, { surface: "background" }),
+    );
+
+    expect(useUsersStore.getState().userIds).toEqual([]);
+    expect(upsertUsersCache).toHaveBeenCalledWith(ownerKey, [
+      expect.objectContaining({
+        uuid: USER_B_UUID,
+        username: "background-user",
+        displayName: "Bob Smith",
+      }),
+    ]);
   });
 
   it("skips active user.updated events for a stale owner key", () => {

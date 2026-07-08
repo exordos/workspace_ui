@@ -8,6 +8,11 @@ import type {
   WorkspaceMessengerTopicDto,
   WorkspaceRealtimeEvent,
 } from "~/shared/api/messenger.types";
+import {
+  workspaceMessengerMessageRoute,
+  workspaceMessengerStreamRoute,
+  workspaceMessengerTopicRoute,
+} from "~/shared/lib/workspace-messenger-route.lib";
 import type {
   WorkspaceRealtimeEventContext,
   WorkspaceRealtimeRuntimeOwner,
@@ -17,6 +22,7 @@ import {
   selectMessengerBackgroundProjectionSnapshot,
   useMessengerBackgroundProjectionStore,
 } from "./messenger-background-projection.model";
+import { conversationIdForStream, conversationIdForTopic } from "./messenger-ids.lib";
 import { createMessengerRealtimeBackgroundApplier } from "./messenger-realtime-applier.lib";
 import { useMessengerStore } from "./messenger.model";
 
@@ -34,6 +40,8 @@ const FOLDER_ITEM_B = "5f5b9a9d-0e57-4775-849b-c8308f95a809";
 const MESSAGE_A = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
 const DATE = "2026-06-22T10:10:00Z";
 const DATE_LATER = "2026-06-22T10:15:00Z";
+const MESSAGE_MARKDOWN = "Вот **короткий** [анонс](https://workspace.local/private?token=1)";
+const MESSAGE_PREVIEW = "Вот короткий анонс";
 
 function createOwner(overrides: Partial<WorkspaceRealtimeRuntimeOwner> = {}) {
   return {
@@ -71,7 +79,7 @@ function createMessageDto(
     author_uuid: USER_A,
     payload: {
       kind: "markdown",
-      content: "Do not copy this text into background projection",
+      content: MESSAGE_MARKDOWN,
     },
     user_uuid: USER_A,
     read: false,
@@ -90,7 +98,7 @@ function createStreamDto(
 ): WorkspaceMessengerStreamDto {
   return {
     uuid: STREAM_A,
-    name: "Private stream name must not be cached",
+    name: "Release channel",
     description: "Private stream description must not be cached",
     project_id: PROJECT_A,
     owner: USER_A,
@@ -118,7 +126,7 @@ function createTopicDto(
   return {
     uuid: TOPIC_A,
     project_id: PROJECT_A,
-    name: "Private topic name must not be cached",
+    name: "Weekly launch",
     stream_uuid: STREAM_A,
     user_uuid: USER_A,
     unread_count: 6,
@@ -188,11 +196,33 @@ describe("messenger background projection", () => {
     vi.useRealTimers();
   });
 
-  it("records message.created notification candidate without touching messengerStore", () => {
+  it("records message.created notification candidate with workspace preview and route data", () => {
     const context = createContext();
     const applier = createMessengerRealtimeBackgroundApplier();
     useMessengerStore.getState().startBootstrap(context.ownerKey);
 
+    applier.applyEvent(
+      {
+        epoch_version: 9,
+        type: "stream",
+        kind: "stream.created",
+        stream: createStreamDto({
+          notification_mode: "mentions_only",
+          private: true,
+          direct_user_uuid: "33333333-3333-4333-8333-333333333333",
+        }),
+      },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 10,
+        type: "topic",
+        kind: "topic.created",
+        topic: createTopicDto({ notification_mode: "follow" }),
+      },
+      context,
+    );
     applier.applyEvent(
       {
         epoch_version: 11,
@@ -207,13 +237,42 @@ describe("messenger background projection", () => {
     expect(projection?.notificationCandidates).toEqual([
       expect.objectContaining({
         ownerKey: context.ownerKey,
+        organizationId: ORGANIZATION_A,
+        projectId: PROJECT_A,
         epochVersion: 11,
         messageUuid: MESSAGE_A,
         streamUuid: STREAM_A,
         topicUuid: TOPIC_A,
         authorUuid: USER_A,
         isOwn: false,
+        read: false,
         createdAt: DATE,
+        previewText: MESSAGE_PREVIEW,
+        audience: "private",
+        streamName: "Release channel",
+        topicName: "Weekly launch",
+        messageRoute: workspaceMessengerMessageRoute({
+          orgId: ORGANIZATION_A,
+          projectId: PROJECT_A,
+          messageUuid: MESSAGE_A,
+        }),
+        streamRoute: workspaceMessengerStreamRoute({
+          orgId: ORGANIZATION_A,
+          projectId: PROJECT_A,
+          streamUuid: STREAM_A,
+        }),
+        topicRoute: workspaceMessengerTopicRoute({
+          orgId: ORGANIZATION_A,
+          projectId: PROJECT_A,
+          streamUuid: STREAM_A,
+          topicUuid: TOPIC_A,
+        }),
+        streamConversationId: conversationIdForStream(STREAM_A),
+        topicConversationId: conversationIdForTopic(STREAM_A, TOPIC_A),
+        streamNotificationMode: "mentions_only",
+        topicNotificationMode: "follow",
+        hasCurrentUserMention: false,
+        hasWildcardMention: false,
       }),
     ]);
     expect(projection?.messageIdSnapshotsById[MESSAGE_A]).toEqual(
@@ -225,9 +284,96 @@ describe("messenger background projection", () => {
         deletedAt: null,
       }),
     );
-    expect(JSON.stringify(projection)).not.toContain("Do not copy this text");
+    expect(JSON.stringify(projection)).not.toContain(MESSAGE_MARKDOWN);
+    expect(JSON.stringify(projection)).not.toContain("https://workspace.local/private?token=1");
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
     expect(useMessengerStore.getState().lastEpochVersion).toBeNull();
+  });
+
+  it("keeps notification names and modes null when message arrives before stream and topic snapshots", () => {
+    const context = createContext();
+    const applier = createMessengerRealtimeBackgroundApplier();
+
+    applier.applyEvent(
+      {
+        epoch_version: 11,
+        type: "message",
+        message: createMessageDto(),
+      },
+      context,
+    );
+
+    const projection =
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey];
+    expect(projection?.notificationCandidates).toEqual([
+      expect.objectContaining({
+        messageUuid: MESSAGE_A,
+        audience: "unknown",
+        streamName: null,
+        topicName: null,
+        streamNotificationMode: null,
+        topicNotificationMode: null,
+      }),
+    ]);
+  });
+
+  it("stores precomputed notification mention flags without keeping full markdown", () => {
+    const context = createContext();
+    const applier = createMessengerRealtimeBackgroundApplier();
+
+    applier.applyEvent(
+      {
+        epoch_version: 11,
+        type: "message",
+        message: createMessageDto({
+          payload: {
+            kind: "markdown",
+            content: `Привет <@${USER_A}> и @everyone`,
+          },
+        }),
+      },
+      context,
+    );
+
+    const projection =
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey];
+    expect(projection?.notificationCandidates).toEqual([
+      expect.objectContaining({
+        messageUuid: MESSAGE_A,
+        hasCurrentUserMention: true,
+        hasWildcardMention: true,
+      }),
+    ]);
+    expect(JSON.stringify(projection)).not.toContain(`<@${USER_A}>`);
+  });
+
+  it("does not guess current-user mention from plain display text in background mode", () => {
+    const context = createContext();
+    const applier = createMessengerRealtimeBackgroundApplier();
+
+    applier.applyEvent(
+      {
+        epoch_version: 11,
+        type: "message",
+        message: createMessageDto({
+          payload: {
+            kind: "markdown",
+            content: "Пинг @alice",
+          },
+        }),
+      },
+      context,
+    );
+
+    const projection =
+      useMessengerBackgroundProjectionStore.getState().projectionsByOwnerKey[context.ownerKey];
+    expect(projection?.notificationCandidates).toEqual([
+      expect.objectContaining({
+        messageUuid: MESSAGE_A,
+        hasCurrentUserMention: false,
+        hasWildcardMention: false,
+      }),
+    ]);
   });
 
   it("records folder unread counters from folder snapshot", () => {
@@ -317,7 +463,9 @@ describe("messenger background projection", () => {
     expect(projection?.streamSnapshotsById[STREAM_A]).toEqual(
       expect.objectContaining({
         streamUuid: STREAM_A,
+        streamName: "Release channel",
         unreadCount: 5,
+        isPrivate: false,
         lastMessageUuid: MESSAGE_A,
       }),
     );
@@ -325,6 +473,7 @@ describe("messenger background projection", () => {
       expect.objectContaining({
         topicUuid: TOPIC_A,
         streamUuid: STREAM_A,
+        topicName: "Weekly launch",
         unreadCount: 6,
       }),
     );
@@ -337,10 +486,12 @@ describe("messenger background projection", () => {
     expect(getMessengerBackgroundProjectionSnapshot(context.ownerKey)).toBe(projection);
 
     const serializedProjection = JSON.stringify(projection);
-    expect(serializedProjection).not.toContain("Do not copy this text");
-    expect(serializedProjection).not.toContain("Private stream name");
+    expect(serializedProjection).toContain(MESSAGE_PREVIEW);
+    expect(serializedProjection).toContain("Release channel");
+    expect(serializedProjection).toContain("Weekly launch");
+    expect(serializedProjection).not.toContain(MESSAGE_MARKDOWN);
+    expect(serializedProjection).not.toContain("https://workspace.local/private?token=1");
     expect(serializedProjection).not.toContain("Private stream description");
-    expect(serializedProjection).not.toContain("Private topic name");
     expect(serializedProjection).not.toContain("Private folder title");
   });
 
@@ -379,7 +530,10 @@ describe("messenger background projection", () => {
           type: "message",
           message: createMessageDto({
             uuid: `00000000-0000-4000-8000-${suffix}`,
-            payload: { kind: "markdown", content: `private-body-${index}` },
+            payload: {
+              kind: "markdown",
+              content: `**private-body-${index}** [label-${index}](https://example.com/${index})`,
+            },
           }),
         },
         context,
@@ -396,8 +550,9 @@ describe("messenger background projection", () => {
     expect(projection?.notificationCandidates).toHaveLength(50);
     expect(projection?.skippedEvents).toHaveLength(50);
     expect(Object.keys(projection?.messageIdSnapshotsById ?? {})).toHaveLength(200);
+    expect(JSON.stringify(projection)).not.toContain("**private-body-259**");
+    expect(JSON.stringify(projection)).not.toContain("https://example.com/259");
     expect(JSON.stringify(projection)).not.toContain("private-body-0");
-    expect(JSON.stringify(projection)).not.toContain("private-body-259");
   });
 
   it("expires stale lightweight snapshots on the next background event", () => {

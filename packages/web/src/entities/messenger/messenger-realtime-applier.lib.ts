@@ -450,6 +450,19 @@ function applySupportedRealtimeEvent(
   }
 }
 
+function applyLightweightProjectionEvent(
+  event: MessengerRealtimeEvent,
+  context: WorkspaceRealtimeEventContext,
+): void {
+  if (!isBackgroundLightweightEvent(event)) {
+    return;
+  }
+
+  useMessengerBackgroundProjectionStore
+    .getState()
+    .recordAppliedEvent(context.ownerKey, event, context);
+}
+
 export function createMessengerRealtimeActiveApplier(
   options: MessengerRealtimeActiveApplierOptions = {},
 ): WorkspaceRealtimeEventApplier {
@@ -472,6 +485,7 @@ export function createMessengerRealtimeActiveApplier(
       }
 
       applySupportedRealtimeEvent(event, context.ownerKey, activeCache, options);
+      applyLightweightProjectionEvent(event, context);
 
       store.setRealtimeCursor(context.ownerKey, event.epoch_version);
       writeRealtimeCursorCache(activeCache, context.ownerKey, event.epoch_version);
@@ -512,8 +526,8 @@ export function createMessengerRealtimeBackgroundApplier(
         return;
       }
 
-      // Background projection stores only lightweight id snapshots and counters.
-      // It has no notification side effects or messengerStore writes, so background does not become a second active path.
+      // Background projection хранит только легкие снимки, compact preview и route-данные.
+      // Побочных эффектов нотификаций и записей в messengerStore тут по-прежнему нет.
       if (isBackgroundLightweightEvent(event)) {
         store.recordAppliedEvent(context.ownerKey, event, context);
         return;

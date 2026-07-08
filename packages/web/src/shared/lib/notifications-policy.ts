@@ -1,12 +1,8 @@
 /**
  * Notification policy — pure decision helpers.
  *
- * Legacy `shouldNotify` kept for simple mute/self checks.
- * Desktop decisions use `shouldDesktopNotify` from zulip-desktop-notifications.lib.ts.
- *
- * Usage:
- *   import { shouldNotify } from "~/shared/lib/notifications-policy";
- *   if (shouldNotify({ isFromSelf, isForCurrentChat, isMuted })) { ... }
+ * `shouldNotify` stays as a tiny generic helper for simple mute/self checks.
+ * Workspace desktop policy is exported from this module as the only rich path.
  */
 
 export function shouldNotify(options: {
@@ -19,9 +15,13 @@ export function shouldNotify(options: {
 }
 
 export {
-  shouldDesktopNotify,
-  classifyNotificationTrigger,
-  type NotificationMessageTrigger,
-  type ShouldDesktopNotifyInput,
-  type ShouldDesktopNotifyResult,
-} from "./zulip-desktop-notifications.lib";
+  shouldWorkspaceDesktopNotify,
+  classifyWorkspaceNotificationTrigger,
+  isWorkspaceDesktopNotificationMuted,
+  isWorkspaceDesktopNotificationEnabledForTrigger,
+  type WorkspaceNotificationMessageTrigger,
+  type WorkspaceDesktopNotificationMessageContext,
+  type WorkspaceDesktopNotificationViewportContext,
+  type ShouldWorkspaceDesktopNotifyInput,
+  type ShouldWorkspaceDesktopNotifyResult,
+} from "./workspace-desktop-notifications.lib";

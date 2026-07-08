@@ -1,45 +1,57 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { ZulipRawMessage } from "~/shared/api/zulip.types";
-import { buildNotificationTitleContextFromMessage } from "./layout-notification-title.lib";
+import type { MessengerBackgroundNotificationCandidate } from "~/entities/messenger/messenger-background-projection.model";
 import {
   buildNotificationAggregateTag,
-  buildNotificationBucketKeyFromMessage,
+  buildNotificationBucketKeyFromCandidate,
   clearNotificationAggregateRegistry,
   consumeReadMessagesFromNotificationAggregates,
   upsertNotificationAggregate,
 } from "./notification-aggregate-registry.lib";
+import type { NotificationTitleContext } from "./layout-notification-title.lib";
 
-function createStreamMessage(overrides: Partial<ZulipRawMessage> = {}): ZulipRawMessage {
-  return {
-    id: 55,
-    sender_id: 42,
-    sender_full_name: "Alice",
-    content: "<p>Hello</p>",
-    timestamp: 1,
-    type: "stream",
-    stream_id: 10,
-    display_recipient: "General Discussion",
-    subject: "Bugs",
-    flags: [],
-    ...overrides,
-  };
-}
+const CHANNEL_TITLE_CONTEXT: NotificationTitleContext = {
+  kind: "stream",
+  senderName: "Alice",
+  channelName: "General",
+  topicName: "Bugs",
+};
 
-function createDmMessage(overrides: Partial<ZulipRawMessage> = {}): ZulipRawMessage {
+const DM_TITLE_CONTEXT: NotificationTitleContext = {
+  kind: "dm",
+  senderName: "Alice",
+  conversationName: "Alice",
+};
+
+function createCandidate(
+  overrides: Partial<MessengerBackgroundNotificationCandidate> = {},
+): MessengerBackgroundNotificationCandidate {
+  const messageUuid = overrides.messageUuid ?? "msg-1";
+  const projectId = overrides.projectId ?? "project-1";
+
   return {
-    id: 77,
-    sender_id: 42,
-    sender_full_name: "Alice",
-    content: "<p>Hello</p>",
-    timestamp: 1,
-    type: "private",
-    stream_id: null,
-    subject: "",
-    display_recipient: [
-      { id: 7, full_name: "You" },
-      { id: 42, full_name: "Alice" },
-    ],
-    flags: [],
+    ownerKey: "owner-1",
+    organizationId: "org-1",
+    projectId,
+    epochVersion: 1,
+    messageUuid,
+    streamUuid: "stream-1",
+    topicUuid: "topic-1",
+    authorUuid: "user-1",
+    isOwn: false,
+    read: false,
+    createdAt: "2026-07-07T10:00:00.000Z",
+    previewText: "Hello",
+    audience: "channel",
+    streamName: "General",
+    topicName: "Bugs",
+    messageRoute: `/project/${projectId}/message/${messageUuid}`,
+    streamRoute: `/project/${projectId}/stream/stream-1`,
+    topicRoute: `/project/${projectId}/topic/topic-1`,
+    streamConversationId: "dm:user-1,user-2",
+    topicConversationId: "topic:stream-1:bugs",
+    streamNotificationMode: null,
+    topicNotificationMode: null,
+    observedAt: 1,
     ...overrides,
   };
 }
@@ -48,180 +60,181 @@ beforeEach(() => {
   clearNotificationAggregateRegistry();
 });
 
-describe("buildNotificationBucketKeyFromMessage", () => {
-  it("returns the same key for the same sender in the same stream topic", () => {
-    const first = buildNotificationBucketKeyFromMessage(createStreamMessage(), 7, "inst-1");
-    const second = buildNotificationBucketKeyFromMessage(
-      createStreamMessage({ id: 56 }),
-      7,
-      "inst-1",
+describe("buildNotificationBucketKeyFromCandidate", () => {
+  it("uses conversation bucket for private messages", () => {
+    const first = buildNotificationBucketKeyFromCandidate(
+      createCandidate({
+        audience: "private",
+        authorUuid: "user-1",
+        streamConversationId: "dm:user-1,user-2",
+        topicConversationId: "topic:ignored",
+      }),
+    );
+    const second = buildNotificationBucketKeyFromCandidate(
+      createCandidate({
+        messageUuid: "msg-2",
+        audience: "private",
+        authorUuid: "user-9",
+        streamConversationId: "dm:user-1,user-2",
+        topicConversationId: "topic:other",
+      }),
     );
 
-    expect(first).toBe("inst-1::stream:10:Bugs:sender:42");
+    expect(first).toBe("owner-1::dm:user-1,user-2");
     expect(second).toBe(first);
   });
 
-  it("returns a different key for a different sender in the same stream topic", () => {
-    const first = buildNotificationBucketKeyFromMessage(createStreamMessage(), 7, "inst-1");
-    const second = buildNotificationBucketKeyFromMessage(
-      createStreamMessage({ id: 56, sender_id: 99, sender_full_name: "Bob" }),
-      7,
-      "inst-1",
+  it("uses topic plus author bucket for channel messages", () => {
+    const first = buildNotificationBucketKeyFromCandidate(
+      createCandidate({
+        audience: "channel",
+        authorUuid: "user-1",
+        topicConversationId: "topic:stream-1:bugs",
+      }),
+    );
+    const sameAuthor = buildNotificationBucketKeyFromCandidate(
+      createCandidate({
+        messageUuid: "msg-2",
+        audience: "channel",
+        authorUuid: "user-1",
+        topicConversationId: "topic:stream-1:bugs",
+      }),
+    );
+    const otherAuthor = buildNotificationBucketKeyFromCandidate(
+      createCandidate({
+        messageUuid: "msg-3",
+        audience: "channel",
+        authorUuid: "user-2",
+        topicConversationId: "topic:stream-1:bugs",
+      }),
     );
 
-    expect(second).toBe("inst-1::stream:10:Bugs:sender:99");
-    expect(second).not.toBe(first);
-  });
-
-  it("returns the same key for the same DM conversation", () => {
-    const first = buildNotificationBucketKeyFromMessage(createDmMessage(), 7, "inst-1");
-    const second = buildNotificationBucketKeyFromMessage(createDmMessage({ id: 78 }), 7, "inst-1");
-
-    expect(first).toBe("inst-1::dm:7,42");
-    expect(second).toBe(first);
+    expect(first).toBe("owner-1::topic:stream-1:bugs:author:user-1");
+    expect(sameAuthor).toBe(first);
+    expect(otherAuthor).toBe("owner-1::topic:stream-1:bugs:author:user-2");
   });
 });
 
 describe("notification aggregate registry", () => {
-  it("updates one stream bucket across multiple messages from the same sender", () => {
-    const firstMessage = createStreamMessage();
-    const secondMessage = createStreamMessage({
-      id: 56,
-      content: "<p>Latest</p>",
+  it("tracks the same messageUuid independently for different owners", () => {
+    const ownerOne = upsertNotificationAggregate({
+      candidate: createCandidate({
+        ownerKey: "owner-1",
+        messageUuid: "shared-uuid",
+      }),
+      body: "Owner one",
+      titleContext: CHANNEL_TITLE_CONTEXT,
+    });
+    const ownerTwo = upsertNotificationAggregate({
+      candidate: createCandidate({
+        ownerKey: "owner-2",
+        messageUuid: "shared-uuid",
+      }),
+      body: "Owner two",
+      titleContext: CHANNEL_TITLE_CONTEXT,
     });
 
-    const first = upsertNotificationAggregate({
-      message: firstMessage,
-      currentUserId: 7,
-      currentInstanceId: "inst-1",
-      body: "Hello",
-      clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=55",
-      titleContext: buildNotificationTitleContextFromMessage(firstMessage, 7),
-    });
-    const second = upsertNotificationAggregate({
-      message: secondMessage,
-      currentUserId: 7,
-      currentInstanceId: "inst-1",
-      body: "Latest",
-      clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=56",
-      titleContext: buildNotificationTitleContextFromMessage(secondMessage, 7),
-    });
-
-    expect(first).toMatchObject({
-      tag: buildNotificationAggregateTag("inst-1::stream:10:Bugs:sender:42", null),
+    expect(ownerOne).toMatchObject({
+      tag: "bucket:owner-1::topic:stream-1:bugs:author:user-1",
       count: 1,
-      lastMessageId: 55,
-      latestBody: "Hello",
+      lastMessageUuid: "shared-uuid",
+      latestBody: "Owner one",
     });
-    expect(second).toMatchObject({
-      tag: buildNotificationAggregateTag("inst-1::stream:10:Bugs:sender:42", null),
-      count: 2,
-      lastMessageId: 56,
-      latestBody: "Latest",
-      latestClickRoute: "/stream/10-general-discussion/topic/Bugs?msg=56",
+    expect(ownerTwo).toMatchObject({
+      tag: "bucket:owner-2::topic:stream-1:bugs:author:user-1",
+      count: 1,
+      lastMessageUuid: "shared-uuid",
+      latestBody: "Owner two",
     });
+
+    const ownerTwoRead = consumeReadMessagesFromNotificationAggregates(["shared-uuid"], "owner-2");
+    const ownerOneRead = consumeReadMessagesFromNotificationAggregates(["shared-uuid"], "owner-1");
+
+    expect(ownerTwoRead.closedTags).toEqual(["bucket:owner-2::topic:stream-1:bugs:author:user-1"]);
+    expect(ownerTwoRead.untrackedMessageUuids).toEqual([]);
+    expect(ownerOneRead.closedTags).toEqual(["bucket:owner-1::topic:stream-1:bugs:author:user-1"]);
+    expect(ownerOneRead.untrackedMessageUuids).toEqual([]);
   });
 
-  it("restores the previous latest message when the newest one is read", () => {
-    const firstMessage = createStreamMessage();
-    const secondMessage = createStreamMessage({
-      id: 56,
-      content: "<p>Latest</p>",
-    });
-
+  it("updates aggregate snapshot after reading the newest message", () => {
     upsertNotificationAggregate({
-      message: firstMessage,
-      currentUserId: 7,
-      currentInstanceId: "inst-1",
-      body: "Hello",
-      clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=55",
-      titleContext: buildNotificationTitleContextFromMessage(firstMessage, 7),
+      candidate: createCandidate({
+        messageUuid: "msg-1",
+      }),
+      body: "First",
+      clickRoute: "/project/project-1/message/msg-1",
+      titleContext: CHANNEL_TITLE_CONTEXT,
     });
     upsertNotificationAggregate({
-      message: secondMessage,
-      currentUserId: 7,
-      currentInstanceId: "inst-1",
-      body: "Latest",
-      clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=56",
-      titleContext: buildNotificationTitleContextFromMessage(secondMessage, 7),
+      candidate: createCandidate({
+        messageUuid: "msg-2",
+      }),
+      body: "Second",
+      clickRoute: "/project/project-1/message/msg-2",
+      titleContext: CHANNEL_TITLE_CONTEXT,
     });
 
-    const result = consumeReadMessagesFromNotificationAggregates([56], "inst-1");
+    const result = consumeReadMessagesFromNotificationAggregates(["msg-2"], "owner-1");
 
     expect(result.closedTags).toEqual([]);
-    expect(result.untrackedMessageIds).toEqual([]);
+    expect(result.untrackedMessageUuids).toEqual([]);
     expect(result.updatedSnapshots).toEqual([
       {
-        tag: "bucket:inst-1::stream:10:Bugs:sender:42",
+        tag: "bucket:owner-1::topic:stream-1:bugs:author:user-1",
         count: 1,
-        lastMessageId: 55,
-        latestBody: "Hello",
-        latestClickRoute: "/stream/10-general-discussion/topic/Bugs?msg=55",
-        titleContext: {
-          kind: "stream",
-          senderName: "Alice",
-          channelName: "General Discussion",
-          topicName: "Bugs",
-        },
+        lastMessageUuid: "msg-1",
+        latestBody: "First",
+        latestClickRoute: "/project/project-1/message/msg-1",
+        titleContext: CHANNEL_TITLE_CONTEXT,
       },
     ]);
   });
 
-  it("returns untracked message ids for fallback notifications", () => {
-    const result = consumeReadMessagesFromNotificationAggregates([101, 101, 0, -1], "inst-1");
+  it("returns untracked UUIDs for messages outside aggregate registry", () => {
+    const result = consumeReadMessagesFromNotificationAggregates(
+      ["msg-404", "msg-404", "", "   "],
+      "owner-1",
+    );
 
     expect(result.closedTags).toEqual([]);
     expect(result.updatedSnapshots).toEqual([]);
-    expect(result.untrackedMessageIds).toEqual([101]);
+    expect(result.untrackedMessageUuids).toEqual(["msg-404"]);
   });
 
-  it("keeps aggregates isolated across instances even with identical message ids", () => {
+  it("keeps private conversation messages in one aggregate bucket", () => {
     const first = upsertNotificationAggregate({
-      message: createStreamMessage(),
-      currentUserId: 7,
-      currentInstanceId: "inst-1",
-      body: "Hello",
-      clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=55",
-      titleContext: buildNotificationTitleContextFromMessage(createStreamMessage(), 7),
+      candidate: createCandidate({
+        messageUuid: "dm-1",
+        audience: "private",
+        streamConversationId: "dm:user-1,user-2",
+        topicConversationId: "topic:unused",
+        authorUuid: "user-1",
+      }),
+      body: "Ping",
+      titleContext: DM_TITLE_CONTEXT,
     });
     const second = upsertNotificationAggregate({
-      message: createStreamMessage(),
-      currentUserId: 7,
-      currentInstanceId: "inst-2",
-      body: "Hello",
-      clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=55",
-      titleContext: buildNotificationTitleContextFromMessage(createStreamMessage(), 7),
+      candidate: createCandidate({
+        messageUuid: "dm-2",
+        audience: "private",
+        streamConversationId: "dm:user-1,user-2",
+        topicConversationId: "topic:other",
+        authorUuid: "user-9",
+      }),
+      body: "Pong",
+      titleContext: DM_TITLE_CONTEXT,
     });
 
-    expect(first?.tag).toBe("bucket:inst-1::stream:10:Bugs:sender:42");
-    expect(second?.tag).toBe("bucket:inst-2::stream:10:Bugs:sender:42");
-    expect(second?.tag).not.toBe(first?.tag);
-  });
-
-  it("consumes read messages only for the active instance", () => {
-    upsertNotificationAggregate({
-      message: createStreamMessage(),
-      currentUserId: 7,
-      currentInstanceId: "inst-1",
-      body: "Hello",
-      clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=55",
-      titleContext: buildNotificationTitleContextFromMessage(createStreamMessage(), 7),
+    expect(first).toMatchObject({
+      tag: buildNotificationAggregateTag("owner-1::dm:user-1,user-2"),
+      count: 1,
+      lastMessageUuid: "dm-1",
     });
-    upsertNotificationAggregate({
-      message: createStreamMessage(),
-      currentUserId: 7,
-      currentInstanceId: "inst-2",
-      body: "Hello",
-      clickRoute: "/stream/10-general-discussion/topic/Bugs?msg=55",
-      titleContext: buildNotificationTitleContextFromMessage(createStreamMessage(), 7),
+    expect(second).toMatchObject({
+      tag: buildNotificationAggregateTag("owner-1::dm:user-1,user-2"),
+      count: 2,
+      lastMessageUuid: "dm-2",
+      latestBody: "Pong",
     });
-
-    const inst2Result = consumeReadMessagesFromNotificationAggregates([55], "inst-2");
-    const inst1Result = consumeReadMessagesFromNotificationAggregates([55], "inst-1");
-
-    expect(inst2Result.closedTags).toEqual(["bucket:inst-2::stream:10:Bugs:sender:42"]);
-    expect(inst2Result.untrackedMessageIds).toEqual([]);
-    expect(inst1Result.closedTags).toEqual(["bucket:inst-1::stream:10:Bugs:sender:42"]);
-    expect(inst1Result.untrackedMessageIds).toEqual([]);
   });
 });
