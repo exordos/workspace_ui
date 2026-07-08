@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  buildOrgRouteIdForZulipInstance,
-  buildOrgRouteIdFromRealm,
+  buildOrgRouteIdFromOrigin,
   extractOrgRouteFromPathname,
   isOrgRoutePublicPath,
   replaceOrgRouteInPath,
@@ -16,29 +15,12 @@ afterEach(() => {
 });
 
 describe("org-route", () => {
-  it("builds stable org route id from realm host", () => {
-    expect(buildOrgRouteIdFromRealm("https://chat.example.com")).toBe("chat.example.com");
+  it("builds stable org route id from origin host", () => {
+    expect(buildOrgRouteIdFromOrigin("https://chat.example.com")).toBe("chat.example.com");
   });
 
   it("includes port in org route id when present", () => {
-    expect(buildOrgRouteIdFromRealm("https://localhost:9991")).toBe("localhost-9991");
-  });
-
-  it("prefers workspace org origin over canonical realm for org route id", () => {
-    expect(
-      buildOrgRouteIdForZulipInstance({
-        realm: "https://zulip.example.com",
-        workspaceOrgOrigin: "https://gw.example.com",
-      }),
-    ).toBe("gw.example.com");
-  });
-
-  it("falls back to realm when workspace org origin is missing", () => {
-    expect(
-      buildOrgRouteIdForZulipInstance({
-        realm: "https://chat.example.com",
-      }),
-    ).toBe("chat.example.com");
+    expect(buildOrgRouteIdFromOrigin("https://localhost:9991")).toBe("localhost-9991");
   });
 
   it("extracts org route id and scoped pathname", () => {

@@ -28,7 +28,7 @@
   },
   "auth": {
     "server": "Сервер",
-    "selectServer": "Выбрать сервер Zulip",
+    "selectServer": "Выбрать аккаунт",
     "removeServer": "Удалить сервер",
     "login": "Войти",
     "loginLoading": "Вход…",

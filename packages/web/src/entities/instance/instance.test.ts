@@ -1,10 +1,3 @@
-/**
- * Tests for instancesStore — manages Zulip server instances (multi-account support).
- *
- * Each instance holds realm URL, email, and API key. The store persists to
- * localStorage so credentials survive page reload. Correctness here is critical
- * because a bug means users lose access to their accounts or leak credentials.
- */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   captureActiveOrgRequestContext,
@@ -12,9 +5,9 @@ import {
   useInstancesStore,
 } from "./instance.model";
 
-const INSTANCES_KEY = "zulip-web-instances";
-const CURRENT_KEY = "zulip-web-current-instance";
-const UNREAD_BY_INSTANCE_KEY = "zulip-web-instance-unread-counts";
+const INSTANCES_KEY = "workspace-runtime-instances";
+const CURRENT_KEY = "workspace-runtime-current-instance";
+const UNREAD_BY_INSTANCE_KEY = "workspace-runtime-instance-unread-counts";
 
 function resetStore() {
   useInstancesStore.setState({
@@ -22,158 +15,59 @@ function resetStore() {
     currentInstanceId: null,
     activeOrgEpoch: 0,
     unreadCountsByInstance: {},
+    dmUnreadCountsByInstance: {},
     jitsiMeetBaseUrl: null,
   });
   window.localStorage.clear();
 }
 
-// Verifies CRUD operations, instance switching, and localStorage persistence.
 describe("instancesStore", () => {
   beforeEach(resetStore);
   afterEach(resetStore);
 
-  // addInstance is the entry point for multi-account — called after successful login.
   describe("addInstance", () => {
-    // First instance must auto-select as current so the app loads immediately.
     it("adds an instance and sets it as current when none existed", () => {
-      const { addInstance } = useInstancesStore.getState();
-      const result = addInstance({ realm: "https://z.test", email: "a@b.com", apiKey: "k1" });
-      const id = result.id;
+      const result = useInstancesStore.getState().addInstance();
 
       const state = useInstancesStore.getState();
       expect(result.status).toBe("added");
-      expect(state.instances).toHaveLength(1);
-      expect(state.instances[0]!.id).toBe(id);
-      expect(state.instances[0]!.realm).toBe("https://z.test");
-      expect(state.currentInstanceId).toBe(id);
+      expect(state.instances).toEqual([{ id: result.id }]);
+      expect(state.currentInstanceId).toBe(result.id);
     });
 
-    it("defaults auth type to api_key", () => {
-      const id = useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://z.test", email: "a@b.com", apiKey: "k1" }).id;
-
-      const state = useInstancesStore.getState();
-      expect(state.instances.find((instance) => instance.id === id)?.authType).toBe("api_key");
-    });
-
-    it("keeps explicit session auth type when provided", () => {
-      const id = useInstancesStore.getState().addInstance({
-        realm: "https://z.test",
-        email: "session-user@example.com",
-        apiKey: "",
-        authType: "session",
-      }).id;
-
-      const state = useInstancesStore.getState();
-      expect(state.instances.find((instance) => instance.id === id)?.authType).toBe("session");
-    });
-
-    it("stores user id when provided", () => {
-      const id = useInstancesStore.getState().addInstance({
-        realm: "https://z.test",
-        email: "user@example.com",
-        apiKey: "k1",
-        userId: 42,
-      }).id;
+    it("stores valid user id when provided", () => {
+      const id = useInstancesStore.getState().addInstance({ userId: 42 }).id;
 
       expect(
         useInstancesStore.getState().instances.find((instance) => instance.id === id)?.userId,
       ).toBe(42);
     });
 
-    // Adding a second account must not switch away from the active one.
     it("adds a second instance without changing current", () => {
-      const { addInstance } = useInstancesStore.getState();
-      const id1 = addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" }).id;
-      const id2 = useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://b.test", email: "b@b.com", apiKey: "k2" }).id;
+      const first = useInstancesStore.getState().addInstance();
+      const second = useInstancesStore.getState().addInstance();
 
       const state = useInstancesStore.getState();
       expect(state.instances).toHaveLength(2);
-      expect(state.currentInstanceId).toBe(id1);
-      expect(id2).not.toBe(id1);
-    });
-
-    // IDs must be unique to avoid instance collision in the Map.
-    it("generates unique ids", () => {
-      const { addInstance } = useInstancesStore.getState();
-      const id1 = addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" }).id;
-      const id2 = useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://b.test", email: "b@b.com", apiKey: "k2" }).id;
-
-      expect(id1).not.toBe(id2);
-    });
-
-    it("returns duplicate for the same normalized realm and email", () => {
-      const first = useInstancesStore.getState().addInstance({
-        realm: "https://Chat.Example.com/api/v1/",
-        email: " User@Example.com ",
-        apiKey: "k1",
-      });
-
-      const duplicate = useInstancesStore.getState().addInstance({
-        realm: "https://chat.example.com",
-        email: "user@example.com",
-        apiKey: "k2",
-      });
-
-      expect(first.status).toBe("added");
-      expect(duplicate).toEqual({ status: "duplicate", id: first.id });
-      expect(useInstancesStore.getState().instances).toHaveLength(1);
-      expect(useInstancesStore.getState().instances[0]?.apiKey).toBe("k1");
-    });
-
-    it("returns duplicate when gateway origin matches an existing canonical realm account", () => {
-      const first = useInstancesStore.getState().addInstance({
-        realm: "https://canonical.example.com",
-        email: "user@example.com",
-        apiKey: "k1",
-        workspaceOrgOrigin: "https://gw.example.com",
-      });
-
-      const duplicate = useInstancesStore.getState().addInstance({
-        realm: "https://gw.example.com",
-        email: "USER@example.com",
-        apiKey: "k2",
-        workspaceOrgOrigin: "https://gw.example.com",
-      });
-
-      expect(first.status).toBe("added");
-      expect(duplicate).toEqual({ status: "duplicate", id: first.id });
-      expect(useInstancesStore.getState().instances).toHaveLength(1);
-      expect(useInstancesStore.getState().instances[0]?.realm).toBe(
-        "https://canonical.example.com",
-      );
-      expect(useInstancesStore.getState().instances[0]?.apiKey).toBe("k1");
+      expect(state.currentInstanceId).toBe(first.id);
+      expect(second.id).not.toBe(first.id);
     });
   });
 
-  // removeInstance handles account logout / deletion.
   describe("removeInstance", () => {
-    // Removing the current instance must auto-select the next one.
     it("removes an instance and resets current to first remaining", () => {
-      const { addInstance } = useInstancesStore.getState();
-      const id1 = addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" }).id;
-      const id2 = useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://b.test", email: "b@b.com", apiKey: "k2" }).id;
+      const first = useInstancesStore.getState().addInstance();
+      const second = useInstancesStore.getState().addInstance();
 
-      useInstancesStore.getState().removeInstance(id1);
+      useInstancesStore.getState().removeInstance(first.id);
 
       const state = useInstancesStore.getState();
-      expect(state.instances).toHaveLength(1);
-      expect(state.instances[0]!.id).toBe(id2);
-      expect(state.currentInstanceId).toBe(id2);
+      expect(state.instances).toEqual([{ id: second.id }]);
+      expect(state.currentInstanceId).toBe(second.id);
     });
 
-    // Removing the last instance leaves a null selection — shows login screen.
     it("sets current to null when last instance is removed", () => {
-      const id = useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" }).id;
+      const id = useInstancesStore.getState().addInstance().id;
 
       useInstancesStore.getState().removeInstance(id);
 
@@ -182,19 +76,14 @@ describe("instancesStore", () => {
       expect(state.currentInstanceId).toBeNull();
     });
 
-    // Removing a non-active instance must not affect the current selection.
     it("does not change current when removing a non-current instance", () => {
-      const id1 = useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" }).id;
-      const id2 = useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://b.test", email: "b@b.com", apiKey: "k2" }).id;
+      const first = useInstancesStore.getState().addInstance();
+      const second = useInstancesStore.getState().addInstance();
 
-      useInstancesStore.getState().removeInstance(id2);
+      useInstancesStore.getState().removeInstance(second.id);
 
-      expect(useInstancesStore.getState().currentInstanceId).toBe(id1);
-      expect(useInstancesStore.getState().instances).toHaveLength(1);
+      expect(useInstancesStore.getState().currentInstanceId).toBe(first.id);
+      expect(useInstancesStore.getState().instances).toEqual([{ id: first.id }]);
     });
   });
 
@@ -208,26 +97,20 @@ describe("instancesStore", () => {
     });
 
     it("clears Jitsi URL when switching current instance", () => {
-      useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" });
-      const id2 = useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://b.test", email: "b@b.com", apiKey: "k2" }).id;
+      useInstancesStore.getState().addInstance();
+      const second = useInstancesStore.getState().addInstance();
 
-      useInstancesStore.getState().setJitsiMeetBaseUrl("https://jitsi.a.test");
-      useInstancesStore.getState().setCurrentInstanceId(id2);
+      useInstancesStore.getState().setJitsiMeetBaseUrl("https://jitsi.example.com");
+      useInstancesStore.getState().setCurrentInstanceId(second.id);
 
       expect(useInstancesStore.getState().jitsiMeetBaseUrl).toBeNull();
-      expect(useInstancesStore.getState().currentInstanceId).toBe(id2);
+      expect(useInstancesStore.getState().currentInstanceId).toBe(second.id);
     });
   });
 
   describe("setInstanceUserId", () => {
     it("updates an existing instance user id and persists it", () => {
-      const id = useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" }).id;
+      const id = useInstancesStore.getState().addInstance().id;
 
       useInstancesStore.getState().setInstanceUserId(id, 77);
 
@@ -239,9 +122,7 @@ describe("instancesStore", () => {
     });
 
     it("ignores invalid user ids", () => {
-      const id = useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" }).id;
+      const id = useInstancesStore.getState().addInstance().id;
 
       useInstancesStore.getState().setInstanceUserId(id, 0);
 
@@ -251,38 +132,26 @@ describe("instancesStore", () => {
     });
   });
 
-  // Switching instances triggers data reload — must only accept valid IDs.
-  describe("setCurrentInstanceId / switchInstance", () => {
-    // Valid ID must update the selection immediately.
+  describe("setCurrentInstanceId", () => {
     it("switches to a valid instance id", () => {
-      useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" });
-      const id2 = useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://b.test", email: "b@b.com", apiKey: "k2" }).id;
+      useInstancesStore.getState().addInstance();
+      const second = useInstancesStore.getState().addInstance();
 
-      useInstancesStore.getState().setCurrentInstanceId(id2);
+      useInstancesStore.getState().setCurrentInstanceId(second.id);
 
-      expect(useInstancesStore.getState().currentInstanceId).toBe(id2);
+      expect(useInstancesStore.getState().currentInstanceId).toBe(second.id);
     });
 
-    // Invalid IDs (e.g. from corrupted localStorage) must be silently ignored.
     it("ignores setting current to an id that does not exist", () => {
-      const id1 = useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" }).id;
+      const first = useInstancesStore.getState().addInstance();
 
       useInstancesStore.getState().setCurrentInstanceId("nonexistent");
 
-      expect(useInstancesStore.getState().currentInstanceId).toBe(id1);
+      expect(useInstancesStore.getState().currentInstanceId).toBe(first.id);
     });
 
-    // Null is valid — used during logout to deselect all instances.
     it("allows setting current to null", () => {
-      useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" });
+      useInstancesStore.getState().addInstance();
 
       useInstancesStore.getState().setCurrentInstanceId(null);
 
@@ -290,51 +159,39 @@ describe("instancesStore", () => {
     });
 
     it("reorders instances by latest user selection", () => {
-      const idA = useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" }).id;
-      const idB = useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://b.test", email: "b@b.com", apiKey: "k2" }).id;
-      const idC = useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://c.test", email: "c@c.com", apiKey: "k3" }).id;
+      const first = useInstancesStore.getState().addInstance();
+      const second = useInstancesStore.getState().addInstance();
+      const third = useInstancesStore.getState().addInstance();
 
-      useInstancesStore.getState().setCurrentInstanceId(idB);
+      useInstancesStore.getState().setCurrentInstanceId(second.id);
       expect(useInstancesStore.getState().instances.map((instance) => instance.id)).toEqual([
-        idB,
-        idA,
-        idC,
+        second.id,
+        first.id,
+        third.id,
       ]);
 
-      useInstancesStore.getState().setCurrentInstanceId(idC);
+      useInstancesStore.getState().setCurrentInstanceId(third.id);
       expect(useInstancesStore.getState().instances.map((instance) => instance.id)).toEqual([
-        idC,
-        idB,
-        idA,
+        third.id,
+        second.id,
+        first.id,
       ]);
     });
 
     it("increments activeOrgEpoch when the active instance changes", () => {
-      const idA = useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" }).id;
-      const idB = useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://b.test", email: "b@b.com", apiKey: "k2" }).id;
+      const first = useInstancesStore.getState().addInstance();
+      const second = useInstancesStore.getState().addInstance();
       const epochAfterAdd = useInstancesStore.getState().activeOrgEpoch;
 
-      useInstancesStore.getState().setCurrentInstanceId(idB);
+      useInstancesStore.getState().setCurrentInstanceId(second.id);
       expect(useInstancesStore.getState().activeOrgEpoch).toBe(epochAfterAdd + 1);
 
-      useInstancesStore.getState().setCurrentInstanceId(idA);
+      useInstancesStore.getState().setCurrentInstanceId(first.id);
       expect(useInstancesStore.getState().activeOrgEpoch).toBe(epochAfterAdd + 2);
     });
 
     it("does not increment activeOrgEpoch when current instance does not change", () => {
-      const id = useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" }).id;
+      const id = useInstancesStore.getState().addInstance().id;
       const epochBefore = useInstancesStore.getState().activeOrgEpoch;
 
       useInstancesStore.getState().setCurrentInstanceId(id);
@@ -343,9 +200,7 @@ describe("instancesStore", () => {
     });
 
     it("increments activeOrgEpoch when switching to null", () => {
-      useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" });
+      useInstancesStore.getState().addInstance();
       const epochBefore = useInstancesStore.getState().activeOrgEpoch;
 
       useInstancesStore.getState().setCurrentInstanceId(null);
@@ -356,9 +211,7 @@ describe("instancesStore", () => {
 
   describe("active organization request context", () => {
     it("captures the current instance id and epoch", () => {
-      const id = useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" }).id;
+      const id = useInstancesStore.getState().addInstance().id;
 
       expect(captureActiveOrgRequestContext()).toEqual({
         instanceId: id,
@@ -367,43 +220,29 @@ describe("instancesStore", () => {
     });
 
     it("reports a captured context as stale after switching instances", () => {
-      useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" });
-      const idB = useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://b.test", email: "b@b.com", apiKey: "k2" }).id;
+      useInstancesStore.getState().addInstance();
+      const second = useInstancesStore.getState().addInstance();
       const context = captureActiveOrgRequestContext();
 
       expect(isActiveOrgRequestContextCurrent(context)).toBe(true);
 
-      useInstancesStore.getState().setCurrentInstanceId(idB);
+      useInstancesStore.getState().setCurrentInstanceId(second.id);
 
       expect(isActiveOrgRequestContextCurrent(context)).toBe(false);
     });
   });
 
-  // getCurrentInstance is used by API client and auth middleware.
   describe("getCurrentInstance", () => {
-    // Must return the full instance object with realm, email, and apiKey.
     it("returns the current instance when one is selected", () => {
-      useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" });
+      const id = useInstancesStore.getState().addInstance({ userId: 42 }).id;
 
-      const current = useInstancesStore.getState().getCurrentInstance();
-
-      expect(current).not.toBeNull();
-      expect(current!.realm).toBe("https://a.test");
-      expect(current!.email).toBe("a@a.com");
+      expect(useInstancesStore.getState().getCurrentInstance()).toEqual({ id, userId: 42 });
     });
 
-    // No selection means no authenticated API calls — callers must handle null.
     it("returns null when no instance is selected", () => {
       expect(useInstancesStore.getState().getCurrentInstance()).toBeNull();
     });
 
-    // Orphaned ID (e.g. after data corruption) must not crash — returns null.
     it("returns null when currentInstanceId does not match any instance", () => {
       useInstancesStore.setState({
         instances: [],
@@ -416,53 +255,18 @@ describe("instancesStore", () => {
     });
   });
 
-  // Persistence ensures credentials survive page reload / app restart.
   describe("localStorage persistence", () => {
-    // After adding an instance, localStorage must contain the serialized data.
-    it("persists instances to localStorage on add", () => {
-      useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" });
+    it("persists runtime instances to localStorage on add", () => {
+      const id = useInstancesStore.getState().addInstance({ userId: 42 }).id;
 
       const stored = JSON.parse(window.localStorage.getItem(INSTANCES_KEY) ?? "[]");
-      expect(stored).toHaveLength(1);
-      expect(stored[0].realm).toBe("https://a.test");
-    });
-
-    it("persists workspaceOrgOrigin when present", () => {
-      useInstancesStore.getState().addInstance({
-        realm: "https://z.test",
-        email: "a@a.com",
-        apiKey: "k1",
-        workspaceOrgOrigin: "https://gw.example.com",
-      });
-      const stored = JSON.parse(window.localStorage.getItem(INSTANCES_KEY) ?? "[]");
-      expect(stored[0].workspaceOrgOrigin).toBe("https://gw.example.com");
-    });
-
-    it("persists userId when present", () => {
-      useInstancesStore.getState().addInstance({
-        realm: "https://z.test",
-        email: "a@a.com",
-        apiKey: "k1",
-        userId: 42,
-      });
-      const stored = JSON.parse(window.localStorage.getItem(INSTANCES_KEY) ?? "[]");
-      expect(stored[0].userId).toBe(42);
+      expect(stored).toEqual([{ id, userId: 42 }]);
     });
 
     it("ignores invalid userId from localStorage", async () => {
       window.localStorage.setItem(
         INSTANCES_KEY,
-        JSON.stringify([
-          {
-            id: "stored-instance",
-            realm: "https://z.test",
-            email: "a@a.com",
-            apiKey: "k1",
-            userId: 0,
-          },
-        ]),
+        JSON.stringify([{ id: "stored-instance", userId: 0 }]),
       );
       window.localStorage.setItem(CURRENT_KEY, "stored-instance");
 
@@ -473,30 +277,42 @@ describe("instancesStore", () => {
       vi.resetModules();
     });
 
-    // The active instance ID is stored separately so it survives independently.
+    it("drops unsupported stored instance metadata", async () => {
+      window.localStorage.setItem(
+        INSTANCES_KEY,
+        JSON.stringify([
+          {
+            id: "stored-instance",
+            userId: 42,
+            serverUrl: "https://legacy.test",
+            credential: "secret",
+          },
+        ]),
+      );
+      window.localStorage.setItem(CURRENT_KEY, "stored-instance");
+
+      vi.resetModules();
+      const { useInstancesStore: freshStore } = await import("./instance.model");
+
+      expect(freshStore.getState().instances).toEqual([{ id: "stored-instance", userId: 42 }]);
+      vi.resetModules();
+    });
+
     it("persists current instance id to localStorage", () => {
-      const id = useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" }).id;
+      const id = useInstancesStore.getState().addInstance().id;
 
       expect(window.localStorage.getItem(CURRENT_KEY)).toBe(id);
     });
 
-    // Null selection must clean up the localStorage key entirely.
     it("removes current instance key from localStorage when set to null", () => {
-      useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" });
+      useInstancesStore.getState().addInstance();
       useInstancesStore.getState().setCurrentInstanceId(null);
 
       expect(window.localStorage.getItem(CURRENT_KEY)).toBeNull();
     });
 
-    // Instance removal must be reflected in localStorage so reload doesn't restore it.
     it("persists removal to localStorage", () => {
-      const id = useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" }).id;
+      const id = useInstancesStore.getState().addInstance().id;
 
       useInstancesStore.getState().removeInstance(id);
 
@@ -507,9 +323,7 @@ describe("instancesStore", () => {
 
   describe("per-instance unread counters", () => {
     it("stores unread counters per instance and persists them", () => {
-      const id = useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" }).id;
+      const id = useInstancesStore.getState().addInstance().id;
 
       useInstancesStore.getState().setInstanceUnreadCount(id, 7);
 
@@ -519,10 +333,25 @@ describe("instancesStore", () => {
       expect(JSON.parse(raw ?? "{}")).toMatchObject({ [id]: 7 });
     });
 
+    it("normalizes invalid unread counters", () => {
+      const id = useInstancesStore.getState().addInstance().id;
+
+      useInstancesStore.getState().setInstanceUnreadCount(id, -3);
+
+      expect(useInstancesStore.getState().getInstanceUnreadCount(id)).toBe(0);
+    });
+
+    it("stores dm unread counters in memory", () => {
+      const id = useInstancesStore.getState().addInstance().id;
+
+      useInstancesStore.getState().setInstanceDmUnreadCount(id, 4);
+
+      expect(useInstancesStore.getState().getInstanceDmUnreadCount(id)).toBe(4);
+      expect(JSON.parse(window.localStorage.getItem(UNREAD_BY_INSTANCE_KEY) ?? "{}")).toEqual({});
+    });
+
     it("removes unread counters when instance is removed", () => {
-      const id = useInstancesStore
-        .getState()
-        .addInstance({ realm: "https://a.test", email: "a@a.com", apiKey: "k1" }).id;
+      const id = useInstancesStore.getState().addInstance().id;
 
       useInstancesStore.getState().setInstanceUnreadCount(id, 3);
       useInstancesStore.getState().removeInstance(id);

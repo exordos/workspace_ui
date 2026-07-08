@@ -1,11 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import { useInstancesStore } from "~/entities/instance/instance.model";
 import { t } from "~/i18n/i18n";
 import { fetchMessageById } from "~/shared/api/zulip-messages";
 import { getCurrentUser } from "~/shared/api/zulip-users";
-import { buildRouteFromMessage, findInstanceIdByRealmUri } from "~/shared/lib/push-click";
+import { buildRouteFromMessage } from "~/shared/lib/push-click";
 import { isValidUrl } from "~/shared/lib/validation";
 import { PageLoader } from "~/shared/ui/error-boundary";
 
@@ -23,9 +22,6 @@ export const MessageRedirectPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { messageId } = useParams<{ messageId: string }>();
-  const instances = useInstancesStore((s) => s.instances);
-  const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
-  const setCurrentInstanceId = useInstancesStore((s) => s.setCurrentInstanceId);
   const currentUserId = useChatListStore((s) => s.currentUserId ?? null);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,19 +47,12 @@ export const MessageRedirectPage: React.FC = () => {
       };
     }
 
-    const matchedInstanceId = findInstanceIdByRealmUri(instances, realmUri);
-    if (realmUri && matchedInstanceId == null) {
+    if (realmUri) {
       const redirectTo = `${location.pathname}${location.search}`;
       void navigate(
         `/login?realm=${encodeURIComponent(realmUri)}&redirectTo=${encodeURIComponent(redirectTo)}`,
         { replace: true },
       );
-      return () => {
-        cancelled = true;
-      };
-    }
-    if (matchedInstanceId != null && matchedInstanceId !== currentInstanceId) {
-      setCurrentInstanceId(matchedInstanceId);
       return () => {
         cancelled = true;
       };
@@ -99,17 +88,7 @@ export const MessageRedirectPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [
-    parsedMessageId,
-    instances,
-    realmUri,
-    currentInstanceId,
-    setCurrentInstanceId,
-    currentUserId,
-    navigate,
-    location.pathname,
-    location.search,
-  ]);
+  }, [parsedMessageId, realmUri, currentUserId, navigate, location.pathname, location.search]);
 
   if (error) {
     return (

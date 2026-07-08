@@ -303,7 +303,8 @@ describe("SettingsPersonalInfoPage", () => {
     expect(updateOwnStatusMock).not.toHaveBeenCalled();
   });
 
-  it("copies profile link using current instance realm", async () => {
+  it("copies profile link using current workspace organization origin", async () => {
+    setWorkspaceSession();
     const writeTextMock = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -320,30 +321,17 @@ describe("SettingsPersonalInfoPage", () => {
         email: "alice@example.com",
       }),
     );
-    useInstancesStore.setState({
-      instances: [
-        {
-          id: "instance-1",
-          realm: "https://zulip.example.com",
-          email: "alice@example.com",
-          apiKey: "api-key",
-        },
-      ],
-      currentInstanceId: "instance-1",
-      unreadCountsByInstance: {},
-    });
 
     renderWithProviders(<SettingsPersonalInfoPage />);
-    await waitFor(() => expect(fetchUserProfileMock).toHaveBeenCalledWith(42));
     fireEvent.click(screen.getByRole("button", { name: /share profile/i }));
 
     await waitFor(() =>
-      expect(writeTextMock).toHaveBeenCalledWith("https://zulip.example.com/#user/42"),
+      expect(writeTextMock).toHaveBeenCalledWith("https://workspace.example.com/#user/42"),
     );
     expect(screen.getByText(/profile link copied/i)).toBeInTheDocument();
   });
 
-  it("disables share profile action when instance realm is invalid", async () => {
+  it("disables share profile action when workspace session is missing", async () => {
     const writeTextMock = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -360,18 +348,6 @@ describe("SettingsPersonalInfoPage", () => {
         email: "alice@example.com",
       }),
     );
-    useInstancesStore.setState({
-      instances: [
-        {
-          id: "instance-1",
-          realm: "http://zulip.example.com",
-          email: "alice@example.com",
-          apiKey: "api-key",
-        },
-      ],
-      currentInstanceId: "instance-1",
-      unreadCountsByInstance: {},
-    });
 
     renderWithProviders(<SettingsPersonalInfoPage />);
     await waitFor(() => expect(fetchUserProfileMock).toHaveBeenCalledWith(42));

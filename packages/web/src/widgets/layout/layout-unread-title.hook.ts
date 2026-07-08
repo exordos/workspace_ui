@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { resolvePersonalDmSidebarTitle } from "~/entities/chat-list/chat-list-format.lib";
-import type { ZulipInstance } from "~/entities/instance/instance.model";
+import type { RuntimeInstance } from "~/entities/instance/instance.model";
 import { computeIsGroupDmView, normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
 import { getDmById, parseDmSlugToUserIds, parseStreamSlug } from "~/widgets/sidebar/sidebar.lib";
@@ -13,7 +13,7 @@ import {
 type DmSidebarChat = Extract<SidebarChat, { type: "dm" }>;
 
 export function useLayoutUnreadAndTitle(options: {
-  instances: ZulipInstance[];
+  instances: RuntimeInstance[];
   currentInstanceId: string | null;
   streams: StreamWithLast[];
   dms: SidebarChat[];
@@ -30,8 +30,6 @@ export function useLayoutUnreadAndTitle(options: {
   activeChatWindowTitle: string | null;
 } {
   const {
-    instances,
-    currentInstanceId,
     streams,
     dms,
     streamsMap,
@@ -43,10 +41,7 @@ export function useLayoutUnreadAndTitle(options: {
     isEffectivelyMuted,
   } = options;
 
-  const realmIcon = useMemo(
-    () => instances.find((instance) => instance.id === currentInstanceId)?.realmIcon,
-    [instances, currentInstanceId],
-  );
+  const realmIcon = undefined;
 
   const unreadCount = useMemo(
     () =>

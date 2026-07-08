@@ -140,14 +140,7 @@ function setRuntime(session: WorkspaceAuthSession = createSession()): string {
     runtimeGeneration: session.runtimeGeneration,
   });
   useInstancesStore.setState({
-    instances: [
-      {
-        id: session.instanceId,
-        realm: session.organizationOrigin,
-        email: session.login,
-        apiKey: session.accessToken,
-      },
-    ],
+    instances: [{ id: session.instanceId }],
     currentInstanceId: session.instanceId,
     unreadCountsByInstance: {},
     activeOrgEpoch: 0,

@@ -1,9 +1,9 @@
 /**
  * Helpers for organization-scoped localStorage keys.
  *
- * Uses the active instance id as organization scope for user preferences.
+ * Uses the active runtime instance id as organization scope for user preferences.
  */
-const CURRENT_INSTANCE_STORAGE_KEY = "zulip-web-current-instance";
+const CURRENT_INSTANCE_STORAGE_KEY = "workspace-runtime-current-instance";
 
 export function getActiveOrganizationIdFromStorage(): string | null {
   if (typeof window === "undefined") {

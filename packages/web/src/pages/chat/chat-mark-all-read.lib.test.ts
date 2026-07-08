@@ -21,14 +21,7 @@ const INSTANCE_ID = "chat-mark-all-read-test";
 function resetStores(): void {
   useChatListStore.getState().clear();
   useInstancesStore.setState({
-    instances: [
-      {
-        id: INSTANCE_ID,
-        realm: "https://zulip.example.com",
-        email: "user@example.com",
-        apiKey: "api-key",
-      },
-    ],
+    instances: [{ id: INSTANCE_ID }],
     currentInstanceId: INSTANCE_ID,
     unreadCountsByInstance: {},
     dmUnreadCountsByInstance: {},

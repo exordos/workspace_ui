@@ -30,12 +30,8 @@ function resetInstancesStore(): void {
   });
 }
 
-function seedActiveInstance(realm = "https://zulip.test"): string {
-  return useInstancesStore.getState().addInstance({
-    realm,
-    email: "sidebar@example.com",
-    apiKey: `key-${realm}`,
-  }).id;
+function seedActiveInstance(): string {
+  return useInstancesStore.getState().addInstance().id;
 }
 
 function streamMsg(overrides: Partial<ZulipRawMessage> = {}): ZulipRawMessage {
@@ -207,7 +203,7 @@ describe("hydrateStreamSidebarPreviewsFromUnreadSnapshot", () => {
     );
 
     const first = hydrateStreamSidebarPreviewsFromUnreadSnapshot(snapshot);
-    const secondInstanceId = seedActiveInstance("https://zulip-2.test");
+    const secondInstanceId = seedActiveInstance();
     useInstancesStore.getState().setCurrentInstanceId(secondInstanceId);
     useChatListStore.getState().clear();
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
@@ -252,7 +248,7 @@ describe("hydrateStreamSidebarPreviewsFromUnreadSnapshot", () => {
 
     const first = hydrateStreamSidebarPreviewsFromUnreadSnapshot(snapshot);
 
-    const secondInstanceId = seedActiveInstance("https://zulip-2.test");
+    const secondInstanceId = seedActiveInstance();
     useInstancesStore.getState().setCurrentInstanceId(secondInstanceId);
     useChatListStore.getState().clear();
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);

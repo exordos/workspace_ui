@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import { useInstancesStore } from "~/entities/instance/instance.model";
 import { selectUserStatusLabel } from "~/entities/user/user-selectors.lib";
 import { updateWorkspaceOwnStatus } from "~/entities/user/user-workspace-status-actions.lib";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -123,7 +122,6 @@ export const SettingsPersonalInfoPage: React.FC = () => {
       ? s.usersById[currentWorkspaceSession.userUuid]
       : undefined,
   );
-  const currentInstance = useInstancesStore((s) => s.getCurrentInstance());
   const avatarCapabilities = getOwnAvatarCapabilities();
   const supportedTimezones = useMemo(() => getRuntimeSupportedTimezones(), []);
   const supportedTimezoneSet = useMemo(() => new Set(supportedTimezones), [supportedTimezones]);
@@ -310,10 +308,10 @@ export const SettingsPersonalInfoPage: React.FC = () => {
   }, [profile?.isActive]);
 
   const profileLink = useMemo(() => {
-    const realm = currentInstance?.realm?.trim() ?? currentWorkspaceSession?.organizationOrigin;
+    const realm = currentWorkspaceSession?.organizationOrigin;
     if (!realm || !isValidRealmUrl(realm) || userId === "-") return undefined;
     return `${realm.replace(/\/+$/, "")}/#user/${userId}`;
-  }, [currentInstance?.realm, currentWorkspaceSession?.organizationOrigin, userId]);
+  }, [currentWorkspaceSession?.organizationOrigin, userId]);
 
   const handleShareProfile = useCallback(() => {
     if (!profileLink) return;

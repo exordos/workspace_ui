@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { Outlet } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
@@ -111,6 +111,19 @@ describe("App default routing", () => {
     };
   }
 
+  function createSessionWithOverrides(
+    overrides: Partial<WorkspaceAuthSession> = {},
+  ): WorkspaceAuthSession {
+    return {
+      ...createSession(),
+      ...overrides,
+      profile: {
+        ...createSession().profile,
+        ...overrides.profile,
+      },
+    };
+  }
+
   function setAuthorizedSession(): void {
     const session = createSession();
     useWorkspaceAuthStore.setState({
@@ -176,6 +189,49 @@ describe("App default routing", () => {
     });
 
     expect(await screen.findByTestId("chat-page")).toBeInTheDocument();
+  });
+
+  it("keeps the selected account when multiple sessions share one organization route", async () => {
+    const firstSession = createSessionWithOverrides({
+      accountId: "zulip.example.com:project-a:user-a",
+      instanceId: "inst-a",
+      userUuid: "user-a",
+      login: "alice@example.com",
+      profile: {
+        uuid: "user-a",
+        username: "alice",
+        firstName: "Alice",
+        lastName: null,
+        email: "alice@example.com",
+      },
+    });
+    const secondSession = createSessionWithOverrides({
+      accountId: "zulip.example.com:project-a:user-b",
+      instanceId: "inst-b",
+      userUuid: "user-b",
+      login: "bob@example.com",
+      profile: {
+        uuid: "user-b",
+        username: "bob",
+        firstName: "Bob",
+        lastName: null,
+        email: "bob@example.com",
+      },
+    });
+    useWorkspaceAuthStore.setState({
+      sessions: [firstSession, secondSession],
+      currentAccountId: secondSession.accountId,
+      runtimeGeneration: 1,
+    });
+
+    renderWithProviders(<App />, {
+      route: "/org/zulip.example.com/project/project-a/stream/stream-uuid",
+    });
+
+    expect(await screen.findByTestId("chat-page")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(useWorkspaceAuthStore.getState().currentAccountId).toBe(secondSession.accountId);
+    });
   });
 
   it("redirects unknown webview org routes to project Inbox", async () => {

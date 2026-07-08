@@ -97,8 +97,8 @@ export function wipeCredentials(): void {
   // Fallback to direct key removal only when no app-layer cleanup has been provided.
   if (!hasInjectedStoreWiper) {
     try {
-      localStorage.removeItem("zulip-web-instances");
-      localStorage.removeItem("zulip-web-current-instance");
+      localStorage.removeItem("workspace-runtime-instances");
+      localStorage.removeItem("workspace-runtime-current-instance");
     } catch {
       /* localStorage may not be available */
     }

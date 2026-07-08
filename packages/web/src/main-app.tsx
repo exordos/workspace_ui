@@ -37,16 +37,7 @@ import "./app/focus-outline.styles.css";
 // ---------------------------------------------------------------------------
 
 setInstanceProvider(() => {
-  const inst = useInstancesStore.getState().getCurrentInstance();
-  if (!inst) return null;
-  return {
-    id: inst.id,
-    realm: inst.realm,
-    email: inst.email,
-    apiKey: inst.apiKey,
-    authType: inst.authType ?? "api_key",
-    workspaceOrgOrigin: inst.workspaceOrgOrigin,
-  };
+  return null;
 });
 
 function syncApiBasesAfterInstanceChange(): void {
@@ -61,9 +52,7 @@ useInstancesStore.subscribe((state, prev) => {
 });
 
 setAuthInstanceGetter(() => {
-  const inst = useInstancesStore.getState().getCurrentInstance();
-  if (!inst) return null;
-  return { email: inst.email, apiKey: inst.apiKey, realm: inst.realm };
+  return null;
 });
 
 setStoreWiper(() => {

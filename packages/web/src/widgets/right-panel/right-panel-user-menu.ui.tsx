@@ -24,7 +24,6 @@ import { performApplicationColdStart } from "~/shared/lib/local-reset";
 import { createLogger } from "~/shared/lib/logger";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
-import { resolveOrganizationLogoUrl } from "~/shared/lib/organization-branding";
 import { toast } from "~/shared/lib/toast/toast";
 import { Icon } from "~/shared/ui/icon";
 import { ScrollArea } from "~/shared/ui/scroll-area";
@@ -61,7 +60,6 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   const rightDrawer = useRightDrawer();
   const { t, locale: currentLocale, setLocale, supportedLocales: locales } = useTranslation();
   const currentUserId = useChatListStore((s) => s.currentUserId);
-  const instances = useInstancesStore((s) => s.instances);
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const removeInstance = useInstancesStore((s) => s.removeInstance);
   const currentWorkspaceSession = useWorkspaceAuthStore((s) => {
@@ -112,10 +110,6 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   const currentLocaleName =
     locales.find((supportedLocale) => supportedLocale.id === currentLocale)?.nativeLabel ??
     currentLocale;
-  const currentInstance = useMemo(
-    () => instances.find((instance) => instance.id === currentInstanceId) ?? null,
-    [instances, currentInstanceId],
-  );
   const currentServerLabel = useMemo(
     () =>
       currentWorkspaceSession != null
@@ -123,19 +117,13 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
             currentWorkspaceSession.organizationOrigin,
             currentWorkspaceSession.login,
           )
-        : currentInstance
-          ? getInstanceLabel(currentInstance.realm, currentInstance.email)
+        : currentInstanceId != null
+          ? currentInstanceId
           : "",
-    [currentInstance, currentWorkspaceSession],
+    [currentInstanceId, currentWorkspaceSession],
   );
-  const currentServerAccountLabel = currentWorkspaceSession?.login ?? currentInstance?.email ?? "";
-  const currentServerIconUrl = useMemo(
-    () =>
-      currentWorkspaceSession != null
-        ? null
-        : resolveOrganizationLogoUrl(currentInstance?.realmIcon, currentInstance?.realm),
-    [currentInstance?.realmIcon, currentInstance?.realm, currentWorkspaceSession],
-  );
+  const currentServerAccountLabel = currentWorkspaceSession?.login ?? currentInstanceId ?? "";
+  const currentServerIconUrl = null;
   const currentStatusSubtitle =
     selectUserStatusLabel(currentWorkspaceUser) ??
     (currentWorkspaceUser?.status === "active"
@@ -330,16 +318,16 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
       closeDrawer();
       return;
     }
-    if (currentInstance == null) return;
+    if (currentInstanceId == null) return;
     const confirmed = window.confirm(
       t("auth.logoutFromOrgConfirm", { server: currentServerLabel }),
     );
     if (!confirmed) return;
-    removeInstance(currentInstance.id);
+    removeInstance(currentInstanceId);
     closeDrawer();
   }, [
     closeDrawer,
-    currentInstance,
+    currentInstanceId,
     currentServerLabel,
     currentWorkspaceSession,
     removeInstance,
@@ -371,7 +359,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
               {t("nav.profile")}
             </SectionLabel>
             <div className="divide-y divide-border-subtle overflow-hidden rounded-lg border border-border-subtle bg-card-bg">
-              {(currentWorkspaceSession != null || currentInstance != null) && (
+              {(currentWorkspaceSession != null || currentInstanceId != null) && (
                 <div
                   data-testid="user-menu-current-server-item"
                   className="flex items-center justify-between gap-3 px-2.5 py-2.5"

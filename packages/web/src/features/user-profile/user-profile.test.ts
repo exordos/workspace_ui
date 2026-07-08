@@ -186,10 +186,7 @@ describe("useUserProfileStore", () => {
       const { zulipApi, getCurrentInstance } = await import("~/shared/api/client");
       vi.mocked(getCurrentInstance).mockReturnValue(null);
       useInstancesStore.setState({
-        instances: [
-          { id: "inst-a", realm: "https://a.test", email: "a@test.com", apiKey: "a-key" },
-          { id: "inst-b", realm: "https://b.test", email: "b@test.com", apiKey: "b-key" },
-        ],
+        instances: [{ id: "inst-a" }, { id: "inst-b" }],
         currentInstanceId: "inst-a",
         activeOrgEpoch: 0,
       });

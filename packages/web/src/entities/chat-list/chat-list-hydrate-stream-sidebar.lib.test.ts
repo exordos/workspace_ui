@@ -48,12 +48,8 @@ function resetInstancesStore(): void {
   });
 }
 
-function seedActiveInstance(realm = "https://zulip.test"): string {
-  return useInstancesStore.getState().addInstance({
-    realm,
-    email: `${realm}@example.com`,
-    apiKey: `key-${realm}`,
-  }).id;
+function seedActiveInstance(): string {
+  return useInstancesStore.getState().addInstance().id;
 }
 
 async function flushMicrotasks(turns = 5): Promise<void> {
@@ -365,7 +361,7 @@ describe("requestStreamSidebarTopicPreviewBackfill", () => {
 
     clearStreamSidebarHydrateState();
     useChatListStore.getState().clear();
-    const secondInstanceId = seedActiveInstance("https://zulip-2.test");
+    const secondInstanceId = seedActiveInstance();
     useInstancesStore.getState().setCurrentInstanceId(secondInstanceId);
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
 

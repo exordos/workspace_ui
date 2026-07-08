@@ -1,33 +1,18 @@
-/**
- * Instances store — manages Zulip server connections.
- *
- * Persists realm URLs, credentials, and active instance selection to localStorage.
- */
 import { create } from "zustand";
-import { normalizeRealm } from "~/shared/api/zulip-realm.internal";
 import { clearAvatarBlobCacheForInstance } from "~/shared/lib/avatar-blob-cache-db";
 import { logAction, logStoreAction } from "~/shared/lib/logger";
 
-const INSTANCES_STORAGE_KEY = "zulip-web-instances";
-const CURRENT_INSTANCE_KEY = "zulip-web-current-instance";
-const UNREAD_BY_INSTANCE_KEY = "zulip-web-instance-unread-counts";
+const INSTANCES_STORAGE_KEY = "workspace-runtime-instances";
+const CURRENT_INSTANCE_KEY = "workspace-runtime-current-instance";
+const UNREAD_BY_INSTANCE_KEY = "workspace-runtime-instance-unread-counts";
 
-export type ZulipAuthType = "api_key" | "session";
-
-export interface ZulipInstance {
+export interface RuntimeInstance {
   id: string;
-  realm: string;
-  email: string;
-  apiKey: string;
   userId?: number;
-  authType?: ZulipAuthType;
-  realmIcon?: string;
-  /** Workspace REST origin from the server URL entered at login (not canonical Zulip realm). */
-  workspaceOrgOrigin?: string;
 }
 
 interface StoredState {
-  instances: ZulipInstance[];
+  instances: RuntimeInstance[];
   currentInstanceId: string | null;
   unreadCountsByInstance: Record<string, number>;
 }
@@ -48,52 +33,33 @@ function toSafeUnreadCount(value: unknown): number {
   return Math.max(0, Math.trunc(value));
 }
 
-function normalizeAuthType(value: unknown): ZulipAuthType {
-  return value === "session" ? "session" : "api_key";
-}
-
 function normalizeUserId(value: unknown): number | undefined {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
 }
 
-function normalizeStoredInstances(value: unknown): ZulipInstance[] {
+function normalizeStoredInstances(value: unknown): RuntimeInstance[] {
   if (!Array.isArray(value)) {
     return [];
   }
-  const normalized: ZulipInstance[] = [];
+  const normalized: RuntimeInstance[] = [];
   for (const candidate of value) {
     if (typeof candidate !== "object" || candidate == null) {
       continue;
     }
     const record = candidate as Record<string, unknown>;
-    if (
-      typeof record.id !== "string" ||
-      typeof record.realm !== "string" ||
-      typeof record.email !== "string" ||
-      typeof record.apiKey !== "string"
-    ) {
+    if (typeof record.id !== "string") {
       continue;
     }
-    const workspaceOrgOriginRaw = record.workspaceOrgOrigin;
     normalized.push({
       id: record.id,
-      realm: record.realm,
-      email: record.email,
-      apiKey: record.apiKey,
       userId: normalizeUserId(record.userId),
-      authType: normalizeAuthType(record.authType),
-      realmIcon: typeof record.realmIcon === "string" ? record.realmIcon : undefined,
-      workspaceOrgOrigin:
-        typeof workspaceOrgOriginRaw === "string" && workspaceOrgOriginRaw.trim() !== ""
-          ? workspaceOrgOriginRaw.trim()
-          : undefined,
     });
   }
   return normalized;
 }
 
 function filterUnreadCountsByInstances(
-  instances: ZulipInstance[],
+  instances: RuntimeInstance[],
   unreadCountsByInstance: Record<string, unknown>,
 ): Record<string, number> {
   const knownIds = new Set(instances.map((instance) => instance.id));
@@ -134,13 +100,16 @@ function loadFromStorage(): StoredState {
 }
 
 function persist(
-  instances: ZulipInstance[],
+  instances: RuntimeInstance[],
   currentInstanceId: string | null,
   unreadCountsByInstance: Record<string, number>,
 ) {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(INSTANCES_STORAGE_KEY, JSON.stringify(instances));
+    window.localStorage.setItem(
+      INSTANCES_STORAGE_KEY,
+      JSON.stringify(normalizeStoredInstances(instances)),
+    );
     window.localStorage.setItem(
       UNREAD_BY_INSTANCE_KEY,
       JSON.stringify(filterUnreadCountsByInstances(instances, unreadCountsByInstance)),
@@ -155,15 +124,6 @@ function persist(
   }
 }
 
-function realmHostFromRealm(realm: string): string {
-  try {
-    const normalized = /^https?:\/\//i.test(realm) ? realm : `https://${realm}`;
-    return new URL(normalized).hostname;
-  } catch {
-    return "unknown";
-  }
-}
-
 function generateId(): string {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
     return crypto.randomUUID();
@@ -173,60 +133,20 @@ function generateId(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export type AddInstanceResult =
-  | { status: "added"; id: string }
-  | { status: "duplicate"; id: string };
-
-function addInstanceDuplicateKey(keys: Set<string>, realmLike: string, email: string): void {
-  const normalizedRealm = normalizeRealm(realmLike).toLowerCase();
-  if (normalizedRealm.length === 0) {
-    return;
-  }
-  keys.add(`${normalizedRealm}::${email}`);
-}
-
-function getInstanceDuplicateKeys(
-  instance: Pick<ZulipInstance, "realm" | "email" | "workspaceOrgOrigin">,
-): Set<string> {
-  const email = instance.email.trim().toLowerCase();
-  const keys = new Set<string>();
-  addInstanceDuplicateKey(keys, instance.realm, email);
-
-  const workspaceOrgOrigin = instance.workspaceOrgOrigin?.trim() ?? "";
-  if (workspaceOrgOrigin.length > 0) {
-    addInstanceDuplicateKey(keys, workspaceOrgOrigin, email);
-  }
-  return keys;
-}
-
-function findDuplicateInstance(
-  instances: ZulipInstance[],
-  candidate: Pick<ZulipInstance, "realm" | "email" | "workspaceOrgOrigin">,
-): ZulipInstance | undefined {
-  const candidateKeys = getInstanceDuplicateKeys(candidate);
-  return instances.find((instance) => {
-    const instanceKeys = getInstanceDuplicateKeys(instance);
-    for (const key of candidateKeys) {
-      if (instanceKeys.has(key)) {
-        return true;
-      }
-    }
-    return false;
-  });
-}
+export type AddInstanceResult = { status: "added"; id: string };
 
 interface InstancesState extends StoredState {
   activeOrgEpoch: number;
   /** DM unread per instance (in-memory; used for dock/tray/favicon badges). */
   dmUnreadCountsByInstance: Record<string, number>;
-  /** Effective Jitsi base URL from last Zulip register for the active instance (not persisted). */
+  /** Effective Jitsi base URL for the active runtime instance (not persisted). */
   jitsiMeetBaseUrl: string | null;
   setJitsiMeetBaseUrl: (url: string | null) => void;
-  addInstance: (instance: Omit<ZulipInstance, "id">) => AddInstanceResult;
+  addInstance: (instance?: Partial<Omit<RuntimeInstance, "id">>) => AddInstanceResult;
   removeInstance: (id: string) => void;
   setCurrentInstanceId: (id: string | null) => void;
   setInstanceUserId: (id: string, userId: number) => void;
-  getCurrentInstance: () => ZulipInstance | null;
+  getCurrentInstance: () => RuntimeInstance | null;
   setInstanceUnreadCount: (id: string, unreadCount: number) => void;
   getInstanceUnreadCount: (id: string) => number;
   setInstanceDmUnreadCount: (id: string, dmUnreadCount: number) => void;
@@ -245,20 +165,11 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
     set({ jitsiMeetBaseUrl: next });
   },
 
-  addInstance: (instance) => {
-    const duplicate = findDuplicateInstance(get().instances, instance);
-    if (duplicate) {
-      const duplicateResult: AddInstanceResult = { status: "duplicate", id: duplicate.id };
-      logStoreAction("instances", "addInstanceDuplicate", { instanceId: duplicateResult.id });
-      return duplicateResult;
-    }
-
+  addInstance: (instance = {}) => {
     const id = generateId();
-    const newInstance: ZulipInstance = {
-      ...instance,
+    const newInstance: RuntimeInstance = {
       id,
       userId: normalizeUserId(instance.userId),
-      authType: normalizeAuthType(instance.authType),
     };
 
     set((state) => {
@@ -277,13 +188,11 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
     logStoreAction("instances", "addInstance", { instanceId: addedResult.id });
     logAction("instance_added", {
       instanceId: addedResult.id,
-      realmHost: realmHostFromRealm(newInstance.realm),
     });
     return addedResult;
   },
 
   removeInstance: (id) => {
-    const removedRealm = get().instances.find((i) => i.id === id)?.realm;
     set((state) => {
       const removedWasCurrent = state.currentInstanceId === id;
       const instances = state.instances.filter((i) => i.id !== id);
@@ -313,7 +222,6 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
     void clearAvatarBlobCacheForInstance(id);
     logAction("instance_removed", {
       instanceId: id,
-      ...(removedRealm ? { realmHost: realmHostFromRealm(removedRealm) } : {}),
     });
   },
 
@@ -356,12 +264,10 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
       };
     });
     if (id !== previousId) {
-      const targetRealm = id != null ? get().instances.find((i) => i.id === id)?.realm : undefined;
       logStoreAction("instances", "setCurrentInstanceId", { instanceId: id });
       logAction("instance_switched", {
         instanceId: id,
         previousInstanceId: previousId,
-        ...(targetRealm ? { realmHost: realmHostFromRealm(targetRealm) } : {}),
       });
     }
   },

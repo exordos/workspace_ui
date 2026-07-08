@@ -9,7 +9,6 @@
  */
 import React, { Suspense, useEffect } from "react";
 import { Routes, Route, useNavigate, useLocation, Navigate, useParams } from "react-router-dom";
-import { useInstancesStore } from "~/entities/instance/instance.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
@@ -29,7 +28,6 @@ import {
   workspaceInboxRoute,
   workspaceMessengerRootRoute,
 } from "~/shared/lib/workspace-messenger-route.lib";
-import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspace-org-origin.lib";
 import { ErrorBoundary, PageErrorFallback, PageLoader } from "~/shared/ui/error-boundary";
 
 const ActivityPage = React.lazy(() =>
@@ -113,8 +111,6 @@ const WebviewWorkspaceMessengerDefaultRedirect: React.FC = () => {
 export const WebViewShell: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const addInstance = useInstancesStore((s) => s.addInstance);
-  const setCurrentInstanceId = useInstancesStore((s) => s.setCurrentInstanceId);
   const diagnosticsRouteElement = IS_CONNECTION_DIAGNOSTICS_ENABLED ? (
     <LogsPage />
   ) : (
@@ -122,20 +118,8 @@ export const WebViewShell: React.FC = () => {
   );
 
   useEffect(() => {
-    const unsub = onAuthFromNative(({ email, apiKey, realm }) => {
-      const workspaceOrgOrigin = workspaceOrgOriginFromLoginServerUrlInput(realm);
-      const addInstanceResult = addInstance({
-        realm,
-        email,
-        apiKey,
-        ...(workspaceOrgOrigin !== "" ? { workspaceOrgOrigin } : {}),
-      });
-      if (addInstanceResult.status === "duplicate") {
-        setCurrentInstanceId(addInstanceResult.id);
-      }
-    });
-    return unsub;
-  }, [addInstance, setCurrentInstanceId]);
+    return onAuthFromNative(() => {});
+  }, []);
 
   useEffect(() => {
     const bridge = getNativeBridge();

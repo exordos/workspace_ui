@@ -21,7 +21,10 @@ import { setPluginNavigate } from "~/shared/lib/plugins/api";
 import { useShortcut } from "~/shared/lib/shortcuts";
 import { useAppUpdate } from "~/shared/lib/updater";
 import { isWebView } from "~/shared/lib/webview";
-import { workspaceMessengerRootRoute } from "~/shared/lib/workspace-messenger-route.lib";
+import {
+  parseWorkspaceMessengerRoute,
+  workspaceMessengerRootRoute,
+} from "~/shared/lib/workspace-messenger-route.lib";
 import { ErrorBoundary, PageErrorFallback, PageLoader } from "~/shared/ui/error-boundary";
 import { resolveElectronTrayNavigation } from "./app-electron-navigation.lib";
 import { isForceUpdateRequiredStatus, shouldRedirectToForceUpdate } from "./app-force-update.lib";
@@ -149,7 +152,20 @@ const App: React.FC = () => {
       return;
     }
 
-    const matchedSession = sessions.find((session) => session.organizationId === orgId);
+    const workspaceRoute = parseWorkspaceMessengerRoute(location.pathname);
+    const currentSessionMatchesRoute =
+      currentSession?.organizationId === orgId &&
+      (workspaceRoute == null || currentSession.projectId === workspaceRoute.projectId);
+    if (currentSessionMatchesRoute) {
+      return;
+    }
+
+    const matchedSession =
+      sessions.find(
+        (session) =>
+          session.organizationId === orgId &&
+          (workspaceRoute == null || session.projectId === workspaceRoute.projectId),
+      ) ?? sessions.find((session) => session.organizationId === orgId);
     if (matchedSession == null) {
       const fallbackPath = replaceOrgRouteInPath(fullPath, currentOrgRouteId);
       if (fallbackPath !== fullPath) {
@@ -169,6 +185,7 @@ const App: React.FC = () => {
     location.hash,
     navigate,
     sessions,
+    currentSession,
     currentAccountId,
     setCurrentAccountId,
   ]);

@@ -44,14 +44,7 @@ function unreadDmMessage(id: number): ZulipRawMessage {
 beforeEach(() => {
   useChatListStore.getState().clear();
   useInstancesStore.setState({
-    instances: [
-      {
-        id: INSTANCE_ID,
-        realm: "https://zulip.example.com",
-        email: "user@example.com",
-        apiKey: "api-key",
-      },
-    ],
+    instances: [{ id: INSTANCE_ID }],
     currentInstanceId: INSTANCE_ID,
     unreadCountsByInstance: {},
     dmUnreadCountsByInstance: {},

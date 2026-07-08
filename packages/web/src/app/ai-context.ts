@@ -20,7 +20,6 @@
  */
 
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { getLocale } from "~/i18n/i18n";
@@ -81,15 +80,13 @@ function getCurrentChat(): AiChatContext {
 }
 
 function getCurrentUser(): AiUserContext {
-  const instance = useInstancesStore.getState().getCurrentInstance();
   const userId = useChatListStore.getState().currentUserId;
   const user = userId != null ? useUsersStore.getState().getUser(String(userId)) : undefined;
 
   return {
     userId,
-    email: instance?.email,
+    email: user?.email ?? undefined,
     fullName: user?.displayName,
-    realm: instance?.realm,
   };
 }
 

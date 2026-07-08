@@ -440,11 +440,7 @@ describe("RightPanel truthfulness", () => {
   });
 
   it("renders current server as a regular scrollable menu item", () => {
-    const instanceId = useInstancesStore.getState().addInstance({
-      realm: "https://chat.example.test",
-      email: "qa-user@example.test",
-      apiKey: "",
-    }).id;
+    const instanceId = useInstancesStore.getState().addInstance().id;
     useInstancesStore.getState().setCurrentInstanceId(instanceId);
 
     renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);

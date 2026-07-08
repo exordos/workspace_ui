@@ -3,7 +3,7 @@
  * panel user card, chat-info sync, presence fallbacks, resolved panel title.
  */
 import { useMemo } from "react";
-import type { ZulipInstance } from "~/entities/instance/instance.model";
+import type { RuntimeInstance } from "~/entities/instance/instance.model";
 import {
   selectWorkspaceRightPanelInfoView,
   type WorkspaceRightPanelInfoView,
@@ -29,7 +29,7 @@ import { useLayoutUserProfileAutoload } from "./layout-user-profile-autoload.hoo
 import { useLayoutUserStatusFallback } from "./layout-user-status-fallback.hook";
 
 export interface UseLayoutRightPanelShellParams {
-  instances: readonly ZulipInstance[];
+  instances: readonly RuntimeInstance[];
   currentInstanceId: string | null;
   currentUserStatus: "idle" | "loading" | "ready" | "degraded" | "blocked";
   streamsFromStore: StreamWithLast[];
@@ -60,7 +60,6 @@ export function useLayoutRightPanelShell(
   params: UseLayoutRightPanelShellParams,
 ): LayoutRightPanelShellResult {
   const {
-    instances,
     currentInstanceId,
     currentUserStatus,
     streamsFromStore,
@@ -113,10 +112,7 @@ export function useLayoutRightPanelShell(
     rightDrawerOpen,
   });
 
-  const currentInstanceRealm = useMemo(
-    () => instances.find((instance) => instance.id === currentInstanceId)?.realm,
-    [instances, currentInstanceId],
-  );
+  const currentInstanceRealm = undefined;
 
   const rightPanelUser = useLayoutRightPanelUser({
     rightDrawerTargetUserId,

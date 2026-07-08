@@ -28,7 +28,7 @@
   },
   "auth": {
     "server": "Server",
-    "selectServer": "Select Zulip server",
+    "selectServer": "Select account",
     "removeServer": "Remove server",
     "login": "Login",
     "loginLoading": "Logging in…",

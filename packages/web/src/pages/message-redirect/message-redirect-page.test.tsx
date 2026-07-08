@@ -37,9 +37,7 @@ describe("MessageRedirectPage", () => {
 
   it("redirects to login with realm prefill when no saved instance matches", async () => {
     useInstancesStore.setState({
-      instances: [
-        { id: "1", realm: "https://zulip.example.com", email: "a@test.com", apiKey: "k" },
-      ],
+      instances: [{ id: "1" }],
       currentInstanceId: "1",
     });
 
@@ -62,51 +60,9 @@ describe("MessageRedirectPage", () => {
     expect(fetchMessageById).not.toHaveBeenCalled();
   });
 
-  it("switches to the matched saved instance before resolving the final route", async () => {
-    useInstancesStore.setState({
-      instances: [
-        { id: "1", realm: "https://zulip.example.com", email: "a@test.com", apiKey: "k1" },
-        { id: "2", realm: "https://chat.example.com", email: "b@test.com", apiKey: "k2" },
-      ],
-      currentInstanceId: "1",
-    });
-    useChatListStore.setState({ currentUserId: 7 });
-    fetchMessageById.mockResolvedValue({
-      id: 123,
-      sender_id: 42,
-      sender_full_name: "Alice",
-      stream_id: 10,
-      channel: "engineering",
-      display_recipient: "engineering",
-      subject: "bugs",
-      content: "hello",
-      timestamp: 1710000000,
-    });
-    getCurrentUser.mockResolvedValue({ user_id: 7, full_name: "You", email: "you@test.com" });
-
-    render(
-      <MemoryRouter initialEntries={["/message/123?realm=https%3A%2F%2Fchat.example.com"]}>
-        <Routes>
-          <Route path="/message/:messageId" element={<MessageRedirectPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    await waitFor(() => {
-      expect(useInstancesStore.getState().currentInstanceId).toBe("2");
-    });
-    await waitFor(() => {
-      expect(navigateSpy).toHaveBeenCalledWith("/stream/10-engineering/topic/bugs?msg=123", {
-        replace: true,
-      });
-    });
-  });
-
   it("fails fast for non-decimal message id params", async () => {
     useInstancesStore.setState({
-      instances: [
-        { id: "1", realm: "https://zulip.example.com", email: "a@test.com", apiKey: "k" },
-      ],
+      instances: [{ id: "1" }],
       currentInstanceId: "1",
     });
     useChatListStore.setState({ currentUserId: 7 });
@@ -139,9 +95,7 @@ describe("MessageRedirectPage", () => {
 
   it("shows access denied error when target message is unavailable", async () => {
     useInstancesStore.setState({
-      instances: [
-        { id: "1", realm: "https://zulip.example.com", email: "a@test.com", apiKey: "k" },
-      ],
+      instances: [{ id: "1" }],
       currentInstanceId: "1",
     });
     useChatListStore.setState({ currentUserId: 7 });
@@ -162,9 +116,7 @@ describe("MessageRedirectPage", () => {
 
   it("ignores invalid realm query values and resolves within current instance", async () => {
     useInstancesStore.setState({
-      instances: [
-        { id: "1", realm: "https://zulip.example.com", email: "a@test.com", apiKey: "k" },
-      ],
+      instances: [{ id: "1" }],
       currentInstanceId: "1",
     });
     useChatListStore.setState({ currentUserId: 7 });

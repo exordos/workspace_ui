@@ -1154,20 +1154,7 @@ describe("ActivityPage drafts routing", () => {
         }),
     );
     useInstancesStore.setState({
-      instances: [
-        {
-          id: "instance-1",
-          realm: "https://one.example.com",
-          email: "one@example.com",
-          apiKey: "a",
-        },
-        {
-          id: "instance-2",
-          realm: "https://two.example.com",
-          email: "two@example.com",
-          apiKey: "b",
-        },
-      ],
+      instances: [{ id: "instance-1" }, { id: "instance-2" }],
       currentInstanceId: "instance-1",
       unreadCountsByInstance: {},
       activeOrgEpoch: 0,
@@ -1269,20 +1256,7 @@ describe("ActivityPage drafts routing", () => {
         }),
     );
     useInstancesStore.setState({
-      instances: [
-        {
-          id: "instance-1",
-          realm: "https://one.example.com",
-          email: "one@example.com",
-          apiKey: "a",
-        },
-        {
-          id: "instance-2",
-          realm: "https://two.example.com",
-          email: "two@example.com",
-          apiKey: "b",
-        },
-      ],
+      instances: [{ id: "instance-1" }, { id: "instance-2" }],
       currentInstanceId: "instance-1",
       unreadCountsByInstance: {},
       activeOrgEpoch: 0,
@@ -1461,20 +1435,7 @@ describe("ActivityPage drafts routing", () => {
     fetchActivityMessagesPageWithPersist.mockReturnValue(nextOrgFetch);
 
     useInstancesStore.setState({
-      instances: [
-        {
-          id: "instance-1",
-          realm: "https://one.example.com",
-          email: "one@example.com",
-          apiKey: "api-key",
-        },
-        {
-          id: "instance-2",
-          realm: "https://two.example.com",
-          email: "two@example.com",
-          apiKey: "api-key",
-        },
-      ],
+      instances: [{ id: "instance-1" }, { id: "instance-2" }],
       currentInstanceId: "instance-1",
       unreadCountsByInstance: {},
       activeOrgEpoch: 0,
@@ -1559,20 +1520,7 @@ describe("ActivityPage drafts routing", () => {
       .mockReturnValueOnce(newFetch);
 
     useInstancesStore.setState({
-      instances: [
-        {
-          id: "instance-1",
-          realm: "https://one.example.com",
-          email: "one@example.com",
-          apiKey: "api-key",
-        },
-        {
-          id: "instance-2",
-          realm: "https://two.example.com",
-          email: "two@example.com",
-          apiKey: "api-key",
-        },
-      ],
+      instances: [{ id: "instance-1" }, { id: "instance-2" }],
       currentInstanceId: "instance-1",
       unreadCountsByInstance: {},
       activeOrgEpoch: 0,

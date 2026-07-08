@@ -9,9 +9,6 @@ describe("syncCurrentUserIdFromActiveInstance", () => {
       instances: [
         {
           id: "inst-1",
-          realm: "https://z.test",
-          email: "user@example.com",
-          apiKey: "k1",
           userId: 42,
         },
       ],
@@ -27,14 +24,7 @@ describe("syncCurrentUserIdFromActiveInstance", () => {
     const setCurrentUserId = vi.fn();
 
     syncCurrentUserIdFromActiveInstance({
-      instances: [
-        {
-          id: "inst-1",
-          realm: "https://z.test",
-          email: "user@example.com",
-          apiKey: "k1",
-        },
-      ],
+      instances: [{ id: "inst-1" }],
       currentInstanceId: "inst-1",
       currentUserId: 42,
       setCurrentUserId,

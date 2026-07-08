@@ -65,7 +65,6 @@ export const LogsPage: React.FC = () => {
   const currentChatMessagesCount = useWorkspaceMessageStore(
     (s) => Object.keys(s.messagesById).length,
   );
-  const currentInstance = useInstancesStore((s) => s.getCurrentInstance());
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const instancesCount = useInstancesStore((s) => s.instances.length);
   const unreadCountsByInstance = useInstancesStore((s) => s.unreadCountsByInstance);
@@ -146,8 +145,8 @@ export const LogsPage: React.FC = () => {
         usersCount,
         currentChatMessagesCount,
         currentInstanceId,
-        currentRealm: currentInstance?.realm ?? null,
-        currentEmail: currentInstance?.email ?? null,
+        currentRealm: null,
+        currentEmail: null,
         instancesCount,
         unreadCountsByInstance,
         settingsLanguage,
@@ -163,8 +162,6 @@ export const LogsPage: React.FC = () => {
       cacheSnapshot,
       connectionHealth,
       currentChatMessagesCount,
-      currentInstance?.email,
-      currentInstance?.realm,
       currentInstanceId,
       currentUserId,
       dmsCount,

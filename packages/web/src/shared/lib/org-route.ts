@@ -1,8 +1,7 @@
 /**
  * Organization-scoped routing helpers.
  *
- * Builds deterministic `/org/:orgId` segments from the Workspace gateway origin
- * saved at login (`workspaceOrgOrigin`) when present; otherwise from Zulip realm.
+ * Builds deterministic `/org/:orgId` segments from the Workspace organization origin.
  * Helpers prefix or replace `/org/:orgId` in internal routes while preserving query/hash.
  */
 
@@ -51,14 +50,14 @@ function safeDecodeURIComponent(value: string): string {
   }
 }
 
-export function buildOrgRouteIdFromRealm(realm: string): string {
-  const trimmedRealm = realm.trim();
-  if (trimmedRealm.length === 0) return "org";
+export function buildOrgRouteIdFromOrigin(origin: string): string {
+  const trimmedOrigin = origin.trim();
+  if (trimmedOrigin.length === 0) return "org";
 
   try {
-    const withProtocol = /^https?:\/\//i.test(trimmedRealm)
-      ? trimmedRealm
-      : `https://${trimmedRealm}`;
+    const withProtocol = /^https?:\/\//i.test(trimmedOrigin)
+      ? trimmedOrigin
+      : `https://${trimmedOrigin}`;
     const parsed = new URL(withProtocol);
     const host = parsed.hostname.toLowerCase();
     const portSuffix = parsed.port.length > 0 ? `-${parsed.port}` : "";
@@ -68,31 +67,13 @@ export function buildOrgRouteIdFromRealm(realm: string): string {
       .replace(/^-|-$/g, "");
     return normalized.length > 0 ? normalized : "org";
   } catch {
-    const fallback = trimmedRealm
+    const fallback = trimmedOrigin
       .toLowerCase()
       .replace(/[^a-z0-9.-]/g, "-")
       .replace(/-+/g, "-")
       .replace(/^-|-$/g, "");
     return fallback.length > 0 ? fallback : "org";
   }
-}
-
-/** Minimal persisted instance fields needed to derive the org segment (shared layer — no entity import). */
-export interface OrgRouteInstanceInput {
-  realm: string;
-  /** Origin of the server URL entered at login; aligns with Workspace REST / folders when set. */
-  workspaceOrgOrigin?: string;
-}
-
-/**
- * Org route id for multi-tab routing: prefer login gateway origin over canonical Zulip realm.
- */
-export function buildOrgRouteIdForZulipInstance(instance: OrgRouteInstanceInput): string {
-  const fromLogin = instance.workspaceOrgOrigin?.trim() ?? "";
-  if (fromLogin.length > 0) {
-    return buildOrgRouteIdFromRealm(fromLogin);
-  }
-  return buildOrgRouteIdFromRealm(instance.realm);
 }
 
 export function extractOrgRouteFromPathname(pathname: string): OrgRouteMatch {

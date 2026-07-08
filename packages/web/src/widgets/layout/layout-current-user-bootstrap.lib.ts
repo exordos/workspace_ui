@@ -1,7 +1,7 @@
-import type { ZulipInstance } from "~/entities/instance/instance.model";
+import type { RuntimeInstance } from "~/entities/instance/instance.model";
 
 export function getCurrentUserIdFromActiveInstance(
-  instances: readonly ZulipInstance[],
+  instances: readonly RuntimeInstance[],
   currentInstanceId: string | null,
 ): number | null {
   return instances.find((instance) => instance.id === currentInstanceId)?.userId ?? null;
@@ -13,7 +13,7 @@ export function syncCurrentUserIdFromActiveInstance({
   currentUserId,
   setCurrentUserId,
 }: {
-  instances: readonly ZulipInstance[];
+  instances: readonly RuntimeInstance[];
   currentInstanceId: string | null;
   currentUserId: number | null;
   setCurrentUserId: (id: number | null) => void;

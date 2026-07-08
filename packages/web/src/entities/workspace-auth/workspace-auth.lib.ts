@@ -12,7 +12,7 @@ import { getWorkspaceMessengerAuthProfile } from "~/shared/api/workspace-messeng
 import { env } from "~/shared/lib/env";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
-import { buildOrgRouteIdFromRealm } from "~/shared/lib/org-route";
+import { buildOrgRouteIdFromOrigin } from "~/shared/lib/org-route";
 import { deleteWorkspaceMessengerOwnerCache } from "~/shared/lib/workspace-messenger-cache-db";
 import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspace-org-origin.lib";
 import { useWorkspaceAuthStore } from "./workspace-auth.model";
@@ -472,7 +472,7 @@ export async function loginWorkspaceWithPassword({
     login,
   });
 
-  const organizationId = buildOrgRouteIdFromRealm(safeOrigin);
+  const organizationId = buildOrgRouteIdFromOrigin(safeOrigin);
   const accountId = buildWorkspaceAccountId({
     organizationId,
     projectId: trimmedProjectId,

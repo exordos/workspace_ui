@@ -4,11 +4,11 @@ import { useUsersStore } from "~/entities/user/user.model";
 import { fetchMessagesByIds } from "~/shared/api/zulip-messages";
 import type { ZulipRecentPrivateConversation, ZulipRawMessage } from "~/shared/api/zulip.types";
 import { upsertDmIndexFromMessages } from "~/shared/lib/dm-index";
-import { useChatListStore } from "./chat-list.model";
 import {
   collectLastMessageIdsFromRecentPrivateConversations,
   hydrateDmSidebarPreviewsFromRecentConversations,
 } from "./chat-list-dm-preview-hydrate.lib";
+import { useChatListStore } from "./chat-list.model";
 
 vi.mock("~/shared/api/zulip-messages", async (importOriginal) => {
   const actual = await importOriginal<typeof import("~/shared/api/zulip-messages")>();
@@ -40,12 +40,8 @@ function resetInstancesStore(): void {
   });
 }
 
-function seedActiveInstance(realm = "https://zulip.test"): string {
-  return useInstancesStore.getState().addInstance({
-    realm,
-    email: "dm@example.com",
-    apiKey: `key-${realm}`,
-  }).id;
+function seedActiveInstance(): string {
+  return useInstancesStore.getState().addInstance().id;
 }
 
 function dmMessage(overrides: Partial<ZulipRawMessage> = {}): ZulipRawMessage {
@@ -153,7 +149,7 @@ describe("hydrateDmSidebarPreviewsFromRecentConversations", () => {
       instanceId: useInstancesStore.getState().currentInstanceId ?? undefined,
     });
 
-    const secondInstanceId = seedActiveInstance("https://zulip-2.test");
+    const secondInstanceId = seedActiveInstance();
     useInstancesStore.getState().setCurrentInstanceId(secondInstanceId);
     useChatListStore.getState().clear();
 
