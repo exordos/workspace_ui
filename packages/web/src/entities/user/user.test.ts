@@ -372,6 +372,7 @@ describe("user sync", () => {
       expect.objectContaining({
         accessToken: "access-token-a",
         devTargetOrigin: "https://org-a.example.test",
+        getAccessToken: expect.any(Function),
       }),
     );
   });
@@ -463,7 +464,13 @@ describe("user sync", () => {
 
     expect(useUsersStore.getState().loadStatus).toBe("ready");
     expect(useUsersStore.getState().getUser(USER_B_UUID)?.username).toBe("bob");
-    expect(getUser).toHaveBeenCalledWith(expect.any(Object), USER_B_UUID);
+    expect(getUser).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accessToken: "access-token-a",
+        getAccessToken: expect.any(Function),
+      }),
+      USER_B_UUID,
+    );
   });
 
   it("does not apply a refresh response after the runtime owner changes", async () => {
@@ -889,6 +896,7 @@ describe("Workspace own status actions", () => {
       expect.objectContaining({
         accessToken: runtimeContext.accessToken,
         devTargetOrigin: runtimeContext.organizationOrigin,
+        getAccessToken: expect.any(Function),
         projectId: runtimeContext.projectId,
       }),
       USER_A_UUID,

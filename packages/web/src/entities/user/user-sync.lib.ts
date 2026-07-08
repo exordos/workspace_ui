@@ -1,3 +1,4 @@
+import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
 import {
   captureWorkspaceRuntimeRequestContext,
   isWorkspaceRuntimeRequestInvalidated,
@@ -135,19 +136,7 @@ function buildUserRequestOptions(
   overrides?: UserRequestOptionsOverrides,
   signal?: AbortSignal,
 ): MessengerClientOptions {
-  const projectId = overrides?.projectId?.trim();
-  const devTargetOrigin = overrides?.devTargetOrigin?.trim();
-
-  return {
-    ...overrides,
-    accessToken: runtimeContext.accessToken,
-    devTargetOrigin:
-      devTargetOrigin != null && devTargetOrigin.length > 0
-        ? devTargetOrigin
-        : runtimeContext.organizationOrigin,
-    projectId: projectId != null && projectId.length > 0 ? projectId : runtimeContext.projectId,
-    signal,
-  };
+  return buildMessengerRequestOptions(runtimeContext, overrides, signal);
 }
 
 function isUserSyncInvalidated({

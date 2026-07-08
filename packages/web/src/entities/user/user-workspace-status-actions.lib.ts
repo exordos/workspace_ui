@@ -1,3 +1,4 @@
+import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import {
@@ -52,12 +53,7 @@ function buildWorkspaceStatusRequestOptions(
   runtimeContext: WorkspaceRuntimeContext,
   signal?: AbortSignal,
 ): MessengerClientOptions {
-  return {
-    accessToken: runtimeContext.accessToken,
-    devTargetOrigin: runtimeContext.organizationOrigin,
-    projectId: runtimeContext.projectId,
-    signal,
-  };
+  return buildMessengerRequestOptions(runtimeContext, undefined, signal);
 }
 
 function upsertWorkspaceStatusUser(
