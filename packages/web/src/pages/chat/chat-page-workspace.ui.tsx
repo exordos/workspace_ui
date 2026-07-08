@@ -387,7 +387,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   const workspaceComposerCapabilities = useMemo<MessageComposerCapabilities>(
     () => ({
       // The Workspace backend currently supports send/edit/delete/read, but not these extra actions.
-      // Buttons remain in the old UI, but show controlled placeholders instead of Zulip requests.
+      // Buttons remain in the old UI, but show controlled placeholders instead of legacy requests.
       upload: {
         mode: "enabled",
       },
@@ -396,8 +396,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         unsupportedText: t("workspaceMessenger.savedSnippetsUnsupported"),
       },
       preview: {
-        mode: "unsupported",
-        unsupportedText: t("workspaceMessenger.previewUnsupported"),
+        mode: "enabled",
       },
       mentions: {
         mode: "enabled",
@@ -1364,6 +1363,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
           onSubmitEdit={handleSubmitEdit}
           onCancelEdit={handleCancelEdit}
           composerCapabilities={workspaceComposerCapabilities}
+          resolveMention={resolveMention}
+          onLoadWorkspaceFilePreview={handleLoadWorkspaceFilePreview}
           aiMessagesContext={[]}
           aiChatContext={undefined}
           readOnlyReason={composerReadOnlyReason}

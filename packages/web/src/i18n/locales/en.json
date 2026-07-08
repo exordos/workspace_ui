@@ -152,7 +152,6 @@
     "fileDownloadFailed": "File download failed. Try again later.",
     "mediaViewerUnsupported": "Workspace media preview is not connected yet. Download the file instead.",
     "savedSnippetsUnsupported": "Saved snippets are not connected to Workspace messaging yet.",
-    "previewUnsupported": "Preview is temporarily disabled for Workspace messaging.",
     "mentionsUnsupported": "Mentions are not connected to Workspace messaging yet.",
     "privateNotesUnsupported": "Private notes are not connected to Workspace messaging yet.",
     "inboxUnsupported": "Workspace inbox is not connected yet.",

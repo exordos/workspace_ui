@@ -19,6 +19,7 @@ interface MountedWorkspacePreview {
   abortController: AbortController;
   intersectionObserver: IntersectionObserver | null;
   placeholder: HTMLElement;
+  placeholderInitialAspectRatio: string;
   placeholderImage: HTMLImageElement | null;
   placeholderImageInitialSrc: string | null;
   previewImage: HTMLImageElement | null;
@@ -42,6 +43,8 @@ function buildWorkspaceImagePreviewKey(
         reference.name?.trim() ?? "",
         reference.contentType?.trim() ?? "",
         reference.mediaKind ?? "",
+        reference.width ?? "",
+        reference.height ?? "",
       ].join("|"),
     )
     .join(WORKSPACE_PREVIEW_KEY_SEPARATOR);
@@ -65,6 +68,27 @@ function findImageReference(
       );
     }) ?? null
   );
+}
+
+function hasStableMediaDimensions(reference: WorkspaceMessageFileReference): boolean {
+  return (
+    reference.width != null &&
+    reference.height != null &&
+    Number.isFinite(reference.width) &&
+    Number.isFinite(reference.height) &&
+    reference.width > 0 &&
+    reference.height > 0
+  );
+}
+
+function reservePreviewAspectRatio(
+  placeholder: HTMLElement,
+  reference: WorkspaceMessageFileReference,
+): void {
+  if (!hasStableMediaDimensions(reference)) {
+    return;
+  }
+  placeholder.style.aspectRatio = `${reference.width} / ${reference.height}`;
 }
 
 function revealFallback(mount: MountedWorkspacePreview): void {
@@ -175,6 +199,7 @@ function cleanupPreview(mount: MountedWorkspacePreview): void {
     "workspace-message-file-preview-shell",
     "workspace-message-file-preview-loaded",
   );
+  mount.placeholder.style.aspectRatio = mount.placeholderInitialAspectRatio;
   delete mount.placeholder.dataset.workspacePreviewStatus;
   mount.imageErrorHandler = null;
 }
@@ -227,6 +252,7 @@ export function useWorkspaceMessageFilePreviews({
         abortController,
         intersectionObserver: null,
         placeholder,
+        placeholderInitialAspectRatio: placeholder.style.aspectRatio,
         placeholderImage: placeholder.querySelector<HTMLImageElement>(
           "img.workspace-message-file-placeholder__image",
         ),
@@ -244,6 +270,7 @@ export function useWorkspaceMessageFilePreviews({
 
       placeholder.classList.add("workspace-message-file-preview-shell");
       placeholder.dataset.workspacePreviewStatus = "queued";
+      reservePreviewAspectRatio(placeholder, reference);
 
       let previewStarted = false;
       const startPreviewLoad = () => {

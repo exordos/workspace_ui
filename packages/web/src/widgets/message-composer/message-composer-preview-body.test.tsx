@@ -1,123 +1,88 @@
 import { render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { collectWorkspaceMessageFileReferences } from "~/entities/messenger/messenger-workspace-message-body-files.lib";
+import { parseWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
+import { renderWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-render.lib";
 import { MessageComposerPreviewBody } from "./message-composer-preview-body.ui";
 
-vi.mock("~/shared/api/zulip-client.internal", () => ({
-  getRealmBaseUrl: () => "https://zulip.example.com",
-}));
+function renderWorkspacePreview(markdown: string) {
+  const document = parseWorkspaceMessageBody(markdown);
+  const rendered = renderWorkspaceMessageBody(document, {
+    enableMarkdown: true,
+    enableMentions: true,
+    enableQuotes: true,
+    enableEmojiShortcodes: true,
+    enableCodeHighlight: true,
+    enableCodeCopy: false,
+    enableProtectedMedia: true,
+    enableAttachments: true,
+    enableGallery: false,
+  });
 
-vi.mock("~/shared/lib/env", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/lib/env")>();
   return {
-    ...actual,
-    env: {
-      ...actual.env,
-      USER_UPLOADS_PATH_PREFIX: "",
-    },
+    ...rendered,
+    fileReferences: collectWorkspaceMessageFileReferences(document),
   };
-});
-
-vi.mock("~/shared/lib/auth-guard", () => ({
-  buildAuthHeader: () => ({ Authorization: "Basic test" }),
-}));
+}
 
 describe("MessageComposerPreviewBody", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it("keeps protected preview media on placeholder/data-auth attrs only", () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() => new Promise(() => {})),
-    );
-
-    const { container } = render(
-      <MessageComposerPreviewBody
-        outgoingBodyTrim="preview"
-        previewLoading={false}
-        previewError={null}
-        previewHtml={
-          '<picture><source srcset="/external_content/a.webp 1x, /external_content/b.webp 2x" sizes="100vw"><img style="background-image:url(/external_content/bg.png)" alt="preview"></picture>'
-        }
-      />,
-    );
-
-    const image = container.querySelector("img");
-    const source = container.querySelector("source");
-
-    expect(image).not.toBeNull();
-    expect(source).not.toBeNull();
-    expect(image?.getAttribute("src")).toBeTruthy();
-    expect(image?.getAttribute("src")).not.toContain("/external_content/");
-    expect(image?.getAttribute("data-auth-src")).toContain("/external_content/b.webp");
-    expect(image?.hasAttribute("srcset")).toBe(false);
-    expect(image?.hasAttribute("sizes")).toBe(false);
-    expect(image?.hasAttribute("style")).toBe(false);
-    expect(source?.hasAttribute("srcset")).toBe(false);
-    expect(source?.hasAttribute("sizes")).toBe(false);
-  });
-
-  it("loads Zulip embed background previews through authenticated fetch without keeping the raw style", async () => {
-    const fetchMock = vi.fn((input: string | URL) => {
-      const value = String(input);
-      if (
-        value === "/external_content/hash/preview.jpeg" ||
-        value === "https://zulip.example.com/external_content/hash/preview.jpeg"
-      ) {
-        return Promise.resolve({
-          ok: true,
-          blob: () => Promise.resolve(new Blob(["ok"])),
-        });
-      }
-      return Promise.resolve({
-        ok: false,
-        blob: () => Promise.resolve(new Blob([])),
-      });
-    });
+  it("renders the shared Workspace body classes without composer-only preview classes", () => {
+    const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test-composer-embed");
+    const preview = renderWorkspacePreview(
+      "Hello **workspace**\n\n<script>alert(1)</script>\n\n1. one\n2. two",
+    );
 
     const { container } = render(
       <MessageComposerPreviewBody
         outgoingBodyTrim="preview"
         previewLoading={false}
         previewError={null}
-        previewHtml={
-          '<div class="message_embed"><a class="message_embed_image" href="https://habr.com/ru/articles/1024154/" style="background-image:url(&quot;/external_content/hash/preview.jpeg&quot;)"></a></div>'
-        }
+        previewHtml={preview.html}
+        previewMetadata={preview.metadata}
+        fileReferences={preview.fileReferences}
       />,
     );
 
-    const embedImage = container.querySelector<HTMLElement>(".message_embed_image");
-    expect(embedImage).not.toBeNull();
-    expect(embedImage?.getAttribute("style")).toBeNull();
-    expect(embedImage?.getAttribute("data-auth-background-image")).toBe(
-      "/external_content/hash/preview.jpeg",
-    );
+    const body = container.querySelector(".message-body");
+    const strong = container.querySelector("strong");
 
-    await waitFor(() => {
-      expect(embedImage?.style.backgroundImage).toContain("blob:test-composer-embed");
-    });
-    expect(embedImage?.style.backgroundImage).not.toContain("/external_content/");
+    expect(body).not.toBeNull();
+    expect(body).toHaveClass("workspace-message-body");
+    expect(body?.className).not.toContain("bg-msg-own-bg");
+    expect(body?.className).toContain("[&_ol]:list-decimal");
+    expect(strong).toHaveTextContent("workspace");
+    expect(container.querySelector("script")).toBeNull();
+    expect(body?.textContent).toContain('"<script>alert(1)</script>"'.replace(/"/g, ""));
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("keeps list structure and list formatting hooks in preview body", () => {
-    const listHtml = [
-      "<p>Intro paragraph</p>",
-      "<ol>",
-      "<li><p>First item</p><ul><li><p>Nested A</p></li><li><p>Nested B</p></li></ul></li>",
-      "<li><p>Second item</p></li>",
-      "</ol>",
-      "<p>Outro paragraph</p>",
-    ].join("");
+  it("keeps rendered Workspace list and quote structure inside the shared body", () => {
+    const preview = renderWorkspacePreview(
+      [
+        "Intro paragraph",
+        "",
+        "1. First item",
+        "   - Nested A",
+        "   - Nested B",
+        "2. Second item",
+        "",
+        "> Outro quote",
+      ].join("\n"),
+    );
 
     const { container } = render(
       <MessageComposerPreviewBody
         outgoingBodyTrim="preview"
         previewLoading={false}
         previewError={null}
-        previewHtml={listHtml}
+        previewHtml={preview.html}
+        previewMetadata={preview.metadata}
+        fileReferences={preview.fileReferences}
       />,
     );
 
@@ -126,8 +91,9 @@ describe("MessageComposerPreviewBody", () => {
     expect(body?.querySelector("ol")).not.toBeNull();
     expect(body?.querySelector("ul")).not.toBeNull();
     expect(body?.querySelector("ol li ul")).not.toBeNull();
+    expect(body?.querySelector("blockquote.workspace-message-quote")).not.toBeNull();
     expect(body?.textContent).toContain("Intro paragraph");
-    expect(body?.textContent).toContain("Outro paragraph");
+    expect(body?.textContent).toContain("Outro quote");
 
     const className = body?.className ?? "";
     expect(className).toContain("[&_ol]:list-decimal");
@@ -135,5 +101,61 @@ describe("MessageComposerPreviewBody", () => {
     expect(className).toContain("[&_li>p]:mb-0");
     expect(className).toContain("[&_p+ol]:mt-1");
     expect(className).toContain("[&_ol+p]:mt-1");
+  });
+
+  it("loads Workspace image URNs through the preview loader", async () => {
+    const fileUuid = "11111111-1111-4111-8111-111111111111";
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:composer-workspace-preview");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(
+      new Blob(["image-bytes"], {
+        type: "image/png",
+      }),
+    );
+    const preview = renderWorkspacePreview(
+      `![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng)`,
+    );
+
+    try {
+      const { container, unmount } = render(
+        <MessageComposerPreviewBody
+          outgoingBodyTrim="preview"
+          previewLoading={false}
+          previewError={null}
+          previewHtml={preview.html}
+          previewMetadata={preview.metadata}
+          fileReferences={preview.fileReferences}
+          onLoadWorkspaceFilePreview={onLoadWorkspaceFilePreview}
+        />,
+      );
+
+      expect(onLoadWorkspaceFilePreview).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "media",
+          fileUuid,
+          name: "screen.png",
+          contentType: "image/png",
+          mediaKind: "image",
+        }),
+        expect.any(AbortSignal),
+      );
+      await waitFor(() => {
+        expect(createObjectURL).toHaveBeenCalledTimes(1);
+      });
+      const image = container.querySelector<HTMLImageElement>(
+        "img[data-workspace-file-preview='true']",
+      );
+      expect(image).not.toBeNull();
+      expect(image).toHaveAttribute("src", "blob:composer-workspace-preview");
+      expect(container.innerHTML).not.toContain(`urn:image:${fileUuid}`);
+
+      unmount();
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:composer-workspace-preview");
+    } finally {
+      createObjectURL.mockRestore();
+      revokeObjectURL.mockRestore();
+    }
   });
 });

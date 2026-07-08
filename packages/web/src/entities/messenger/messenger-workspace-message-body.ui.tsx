@@ -1,7 +1,7 @@
 import React from "react";
 import { sanitizeHtml } from "~/shared/lib/html";
 import { MESSAGE_BUBBLE_BODY_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
-import type { WorkspaceMessageBodyProps } from "./workspace-message-body.types";
+import type { WorkspaceMessageBodyProps } from "./messenger-workspace-message-body.types";
 
 const BASE_BODY_CLASS_NAME = [
   MESSAGE_BUBBLE_BODY_CLASS_NAME,
@@ -107,10 +107,9 @@ export const WorkspaceMessageBody: React.FC<WorkspaceMessageBodyProps> = React.m
         data-message-content-kind={metadata.contentKind}
         data-message-meta-preferred-placement={metadata.preferredMetaPlacement}
         onClick={onBodyClick}
-        // HTML приходит только из Workspace render core, где markdown уже
-        // разобран в документ и пропущен через sanitize boundary. Виджет не
-        // добавляет запасной старый renderer, чтобы не смешивать Workspace и
-        // Zulip-контракты тела сообщения.
+        // HTML only comes from the Workspace render core, where markdown has
+        // already been parsed into a document and passed through the sanitize
+        // boundary. This shared body does not add a legacy renderer fallback.
         dangerouslySetInnerHTML={{ __html: safeHtml }}
       />
     );

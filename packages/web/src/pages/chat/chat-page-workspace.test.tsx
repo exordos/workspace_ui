@@ -426,6 +426,12 @@ describe("ChatPage Workspace route", () => {
     expect(captured.messageListProps?.onOpenUnsupportedFilePreview).toEqual(expect.any(Function));
     expect(captured.composerProps?.readOnlyReason).toBeUndefined();
     expect(captured.composerProps?.composerCapabilities?.upload?.mode).toBe("enabled");
+    expect(captured.composerProps?.composerCapabilities?.preview?.mode).toBe("enabled");
+    expect(captured.composerProps?.resolveMention?.("Bob Reed")).toMatchObject({
+      userUuid: USER_B_UUID,
+      displayText: "Bob Reed",
+    });
+    expect(captured.composerProps?.onLoadWorkspaceFilePreview).toEqual(expect.any(Function));
     expect(captured.composerProps?.onSend).toEqual(expect.any(Function));
     expect(captured.composerProps?.onSubmitEdit).toEqual(expect.any(Function));
     expect(captured.oldChatListStore).not.toHaveBeenCalled();

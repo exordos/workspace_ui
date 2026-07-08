@@ -1,7 +1,7 @@
 import React, { useMemo } from "react";
 import { t } from "~/i18n/i18n";
 import { chatBottomNoticeBarClassName } from "~/shared/lib/chat-bottom-notice-bar.lib";
-import { plainTextPreviewFromMessageBody } from "~/shared/lib/message-markdown-display.lib";
+import { summarizeWorkspaceMessageMarkdown } from "~/shared/lib/workspace-message-render/workspace-message-summary.lib";
 import { Icon } from "~/shared/ui/icon";
 import {
   formatAttachmentSize,
@@ -17,6 +17,7 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
     uploadProgressPercent,
     files,
     filePreviewUrls,
+    showFiles = true,
     isUploadInProgress,
     onCancelUpload,
     removeFile,
@@ -29,8 +30,12 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
   }) => {
     const replyQuotePreview = useMemo(() => {
       if (replyQuote == null) return "";
-      const plain = plainTextPreviewFromMessageBody(replyQuote.content).trim();
-      return plain.length <= QUOTE_PREVIEW_MAX ? plain : plain.slice(0, QUOTE_PREVIEW_MAX) + "…";
+      return summarizeWorkspaceMessageMarkdown(replyQuote.content, {
+        maxLength: QUOTE_PREVIEW_MAX,
+        includeMediaLabel: true,
+        includeAttachmentLabel: true,
+        includeQuotePrefix: false,
+      }).text.trim();
     }, [replyQuote]);
 
     return (
@@ -84,7 +89,7 @@ export const MessageComposerPreface: React.FC<MessageComposerPrefaceProps> = Rea
           </div>
         )}
 
-        {!isEditing && files.length > 0 && (
+        {!isEditing && showFiles && files.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 px-4 py-2">
             {files.map((file, i) => {
               const previewUrl = filePreviewUrls[i] ?? null;

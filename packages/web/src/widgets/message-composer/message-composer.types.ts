@@ -1,7 +1,9 @@
 /**
  * Types for the message composer widget.
  */
+import type { LoadWorkspaceFilePreview } from "~/entities/messenger/messenger-workspace-message-file-preview.hook";
 import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply/ai-reply.types";
+import type { WorkspaceMessageMentionResolver } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import type { RefObject, ReactNode } from "react";
 
 export interface ReplyQuote {
@@ -9,7 +11,7 @@ export interface ReplyQuote {
   content: string;
   sender_full_name: string;
   sender_id?: number;
-  /** Full Zulip web URL (`https://realm/#narrow/.../near/id`); omit link text if null */
+  /** Optional message permalink URL; omit link text if null. */
   permalinkUrl: string | null;
   quoteFormat?: "zulip" | "workspace";
 }
@@ -40,8 +42,8 @@ export interface MessageComposerActionCapability {
   unsupportedText?: string;
 }
 
-// Capabilities нужны для миграции: одна и та же старая верстка composer работает с разными backend.
-// Для Workspace неподдержанные действия не скрываем, а переводим в понятную заглушку без Zulip API.
+// Capabilities keep the old composer layout while each backend controls action availability.
+// Unsupported Workspace actions stay visible through explicit placeholders without legacy API calls.
 export interface MessageComposerCapabilities {
   upload?: MessageComposerActionCapability;
   savedSnippets?: MessageComposerActionCapability;
@@ -74,6 +76,10 @@ export interface MessageComposerProps {
   /** Active message edit session routed from chat page. */
   editSession?: ComposerEditSession | null;
   capabilities?: MessageComposerCapabilities;
+  /** Workspace-native mention resolver used by local preview render. */
+  resolveMention?: WorkspaceMessageMentionResolver;
+  /** Workspace-native file preview loader used by local preview render. */
+  onLoadWorkspaceFilePreview?: LoadWorkspaceFilePreview;
   /** Recent chat messages used as AI context. */
   aiMessagesContext?: AiMessageContext[];
   /** Current chat metadata used by AI provider. */
@@ -111,6 +117,7 @@ export interface MessageComposerPrefaceProps {
   uploadProgressPercent: number;
   files: File[];
   filePreviewUrls: (string | null)[];
+  showFiles?: boolean;
   isUploadInProgress: boolean;
   onCancelUpload?: () => void;
   removeFile: (index: number) => void;

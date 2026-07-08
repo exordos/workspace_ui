@@ -1,63 +1,81 @@
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
+import { collectWorkspaceMessageFileReferences } from "~/entities/messenger/messenger-workspace-message-body-files.lib";
 import { t } from "~/i18n/i18n";
-import { renderMessageContent } from "~/shared/api/zulip-messages";
-import { messageBodyToUnsanitizedDisplayHtml } from "~/shared/lib/message-markdown-display.lib";
+import type {
+  WorkspaceMessageBodyMetadata,
+  WorkspaceMessageFileReference,
+  WorkspaceMessageMentionResolver,
+} from "~/shared/lib/workspace-message-render/workspace-message-document.types";
+import { parseWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
+import { DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS } from "~/shared/lib/workspace-message-render/workspace-message-render-options.lib";
+import { renderWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-render.lib";
+
+const COMPOSER_PREVIEW_RENDER_OPTIONS = {
+  ...DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS,
+  enableMentions: true,
+  enableProtectedMedia: true,
+  enableAttachments: true,
+  enableGallery: false,
+} as const;
+
+const EMPTY_FILE_REFERENCES: readonly WorkspaceMessageFileReference[] = [];
+
+export interface MessageComposerPreviewResult {
+  html: string;
+  metadata: WorkspaceMessageBodyMetadata | null;
+  fileReferences: readonly WorkspaceMessageFileReference[];
+  loading: boolean;
+  error: string | null;
+}
 
 export function useMessageComposerPreview(options: {
   mode: "write" | "preview";
   outgoingBody: string;
   enabled?: boolean;
   unsupportedText?: string;
-}): { html: string; loading: boolean; error: string | null } {
-  const { mode, outgoingBody, enabled = true, unsupportedText } = options;
-  const [html, setHtml] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  resolveMention?: WorkspaceMessageMentionResolver;
+}): MessageComposerPreviewResult {
+  const { mode, outgoingBody, enabled = true, unsupportedText, resolveMention } = options;
 
-  useEffect(() => {
-    if (mode !== "preview") return;
-    // На Workspace route preview пока не рендерим через Zulip endpoint, а показываем понятную заглушку.
+  return useMemo(() => {
+    if (mode !== "preview" || outgoingBody.trim().length === 0) {
+      return {
+        html: "",
+        metadata: null,
+        fileReferences: EMPTY_FILE_REFERENCES,
+        loading: false,
+        error: null,
+      };
+    }
     if (!enabled) {
-      setHtml("");
-      setLoading(false);
-      setError(unsupportedText ?? t("composer.actionUnsupported"));
-      return;
-    }
-    if (outgoingBody.trim().length === 0) {
-      setHtml("");
-      setError(null);
-      setLoading(false);
-      return;
+      return {
+        html: "",
+        metadata: null,
+        fileReferences: EMPTY_FILE_REFERENCES,
+        loading: false,
+        error: unsupportedText ?? t("composer.actionUnsupported"),
+      };
     }
 
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
+    try {
+      const document = parseWorkspaceMessageBody(outgoingBody, { resolveMention });
+      const rendered = renderWorkspaceMessageBody(document, COMPOSER_PREVIEW_RENDER_OPTIONS);
 
-    void renderMessageContent(outgoingBody)
-      .then((rendered) => {
-        if (cancelled) return;
-        setHtml(rendered);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        try {
-          setHtml(messageBodyToUnsanitizedDisplayHtml(outgoingBody, { treatAsMarkdown: true }));
-          setError(null);
-        } catch {
-          setHtml("");
-          setError(t("composer.previewError"));
-        }
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled, mode, outgoingBody, unsupportedText]);
-
-  return { html, loading, error };
+      return {
+        html: rendered.html,
+        metadata: rendered.metadata,
+        fileReferences: collectWorkspaceMessageFileReferences(document),
+        loading: false,
+        error: null,
+      };
+    } catch {
+      return {
+        html: "",
+        metadata: null,
+        fileReferences: EMPTY_FILE_REFERENCES,
+        loading: false,
+        error: t("composer.previewError"),
+      };
+    }
+  }, [enabled, mode, outgoingBody, resolveMention, unsupportedText]);
 }

@@ -90,8 +90,3 @@ export const MESSAGE_BUBBLE_BODY_CLASS_NAME = [
   "[&_img.message-media-preview]:object-center",
   "[&_span.user-mention]:cursor-pointer",
 ].join(" ");
-
-export const MESSAGE_COMPOSER_PREVIEW_BODY_CLASS_NAME = [
-  "composer-preview-html",
-  MESSAGE_BODY_RICH_TEXT_BASE_CLASS_NAME,
-].join(" ");

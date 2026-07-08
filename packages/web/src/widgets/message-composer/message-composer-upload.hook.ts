@@ -34,6 +34,12 @@ function createAttachmentPreviewUrl(file: File): string | null {
   }
 }
 
+function revokeAttachmentPreviewUrl(previewUrl: string | null): void {
+  if (previewUrl == null) return;
+  if (typeof URL === "undefined" || typeof URL.revokeObjectURL !== "function") return;
+  URL.revokeObjectURL(previewUrl);
+}
+
 export function useMessageComposerUpload(options: {
   disabled: boolean;
   uploadProgress?: ComposerUploadProgressLike | null;
@@ -57,7 +63,9 @@ export function useMessageComposerUpload(options: {
   const { disabled, uploadProgress } = options;
 
   const [files, setFiles] = useState<File[]>([]);
+  const [filePreviewUrls, setFilePreviewUrls] = useState<(string | null)[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
+  const filePreviewUrlByFileRef = useRef(new Map<File, string | null>());
   // One picker open = one session; commit selected files at most once per session.
   const fileSelectionSessionRef = useRef<FileSelectionSessionState>({
     sessionId: 0,
@@ -65,23 +73,35 @@ export function useMessageComposerUpload(options: {
     pendingInputFiles: null,
   });
 
-  const filePreviewUrls = useMemo(
-    () => files.map((file) => createAttachmentPreviewUrl(file)),
-    [files],
-  );
+  useEffect(() => {
+    const previewUrlByFile = filePreviewUrlByFileRef.current;
+    const nextFiles = new Set(files);
+
+    for (const [file, previewUrl] of previewUrlByFile) {
+      if (!nextFiles.has(file)) {
+        revokeAttachmentPreviewUrl(previewUrl);
+        previewUrlByFile.delete(file);
+      }
+    }
+
+    for (const file of files) {
+      if (!previewUrlByFile.has(file)) {
+        previewUrlByFile.set(file, createAttachmentPreviewUrl(file));
+      }
+    }
+
+    setFilePreviewUrls(files.map((file) => previewUrlByFile.get(file) ?? null));
+  }, [files]);
 
   useEffect(() => {
+    const previewUrlByFile = filePreviewUrlByFileRef.current;
     return () => {
-      if (typeof URL === "undefined" || typeof URL.revokeObjectURL !== "function") {
-        return;
+      for (const previewUrl of previewUrlByFile.values()) {
+        revokeAttachmentPreviewUrl(previewUrl);
       }
-      for (const previewUrl of filePreviewUrls) {
-        if (previewUrl != null) {
-          URL.revokeObjectURL(previewUrl);
-        }
-      }
+      previewUrlByFile.clear();
     };
-  }, [filePreviewUrls]);
+  }, []);
 
   const onDragOver = useCallback(
     (e: React.DragEvent) => {

@@ -31,6 +31,8 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
   onSubmitEdit,
   onCancelEdit,
   composerCapabilities,
+  resolveMention,
+  onLoadWorkspaceFilePreview,
   aiMessagesContext,
   aiChatContext,
   readOnlyReason,
@@ -69,6 +71,8 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
         onSubmitEdit={onSubmitEdit}
         onCancelEdit={onCancelEdit}
         capabilities={effectiveComposerCapabilities}
+        resolveMention={resolveMention}
+        onLoadWorkspaceFilePreview={onLoadWorkspaceFilePreview}
         aiMessagesContext={[]}
         aiChatContext={undefined}
       />
@@ -123,6 +127,8 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
       onSubmitEdit={onSubmitEdit}
       onCancelEdit={onCancelEdit}
       capabilities={effectiveComposerCapabilities}
+      resolveMention={resolveMention}
+      onLoadWorkspaceFilePreview={onLoadWorkspaceFilePreview}
       aiMessagesContext={aiMessagesContext}
       aiChatContext={aiChatContext}
     />

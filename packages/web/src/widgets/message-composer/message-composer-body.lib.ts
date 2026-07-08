@@ -10,7 +10,7 @@ import {
 import { buildZulipQuoteHeader } from "~/shared/lib/zulip-quote-header.lib";
 import type { ReplyQuote } from "./message-composer.types";
 
-/** Zulip-style reply: silent user mention, optional “wrote” permalink link, and fenced `quote` block. */
+/** Builds a reply quote prefix before the outgoing draft body. */
 export function buildOutgoingMessageBody(value: string, replyQuote?: ReplyQuote | null): string {
   let body = value.trim();
   if (replyQuote) {

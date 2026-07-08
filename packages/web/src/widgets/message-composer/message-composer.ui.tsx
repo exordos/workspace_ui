@@ -69,7 +69,7 @@ import type { EmojiClickData } from "emoji-picker-react";
 
 export type { ReplyQuote } from "./message-composer.types";
 
-// TODO: Re-enable after scheduled send uses Zulip's server API and persists the target chat.
+// TODO: Re-enable after scheduled send uses a backend API and persists the target chat.
 const ENABLE_SCHEDULED_SEND_UI = false;
 
 const DEFAULT_ACTION_CAPABILITY: MessageComposerActionCapability = { mode: "enabled" };
@@ -268,10 +268,12 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   onEditLastMessage,
   editSession,
   capabilities,
+  resolveMention,
+  onLoadWorkspaceFilePreview,
   aiMessagesContext,
   aiChatContext,
 }) => {
-  // Capabilities не меняют внешний вид composer: они только решают, можно ли действию идти в backend.
+  // Capabilities preserve the composer layout while deciding whether an action can hit the backend.
   const sendNewlineMode: ComposerSendNewlineMode = "enter-sends";
   const [mode, setMode] = useState<ComposerMode>("write");
   const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
@@ -302,7 +304,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   const mentionsSupported = isActionSupported(mentionsCapability);
   const scheduledSendSupported = isActionSupported(scheduledSendCapability);
   const customEmojisSupported = isActionSupported(customEmojisCapability);
-  // Saved snippets store остаётся старым, поэтому Workspace route открывает только заглушку и не синхронизирует его.
+  // Saved snippets still use the old store, so Workspace routes expose only a placeholder and skip sync.
   const savedSnippets = useComposerSavedSnippetsStore((s) => s.snippets);
   const savedSnippetsLoading = useComposerSavedSnippetsStore((s) => s.loadingInitial);
   const savedSnippetsErrorCode = useComposerSavedSnippetsStore((s) => s.error);
@@ -405,8 +407,8 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     outgoingBody,
     enabled: previewSupported,
     unsupportedText: previewCapability.unsupportedText,
+    resolveMention,
   });
-  // Preview пока Zulip-backed, поэтому Workspace route получает сообщение "не поддержано" вместо render API.
   const scheduleOptions = useMemo<ScheduleMenuOption[]>(
     () => [
       {
@@ -655,9 +657,10 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     if (latestFilesRef.current === filesSnapshot) {
       setFiles([]);
     }
+    setMode("write");
     requestAnimationFrame(() => {
       const textarea = textareaRef.current;
-      if (!textarea || disabled || mode !== "write") {
+      if (!textarea || disabled) {
         return;
       }
       textarea.focus();
@@ -1088,6 +1091,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
         uploadProgressPercent={uploadProgressPercent}
         files={files}
         filePreviewUrls={filePreviewUrls}
+        showFiles={mode === "write"}
         isUploadInProgress={isUploadInProgress}
         onCancelUpload={onCancelUpload}
         removeFile={removeFile}
@@ -1259,6 +1263,12 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
                   previewLoading={previewLoading}
                   previewError={previewError}
                   previewHtml={previewHtml}
+                  previewMetadata={preview.metadata}
+                  fileReferences={preview.fileReferences}
+                  onLoadWorkspaceFilePreview={onLoadWorkspaceFilePreview}
+                  files={!isEditing ? files : []}
+                  filePreviewUrls={!isEditing ? filePreviewUrls : []}
+                  removeFile={!isEditing ? removeFile : undefined}
                 />
               )}
             </div>

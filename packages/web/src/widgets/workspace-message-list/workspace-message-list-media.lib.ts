@@ -1,10 +1,10 @@
+import { collectWorkspaceMessageFileReferences } from "~/entities/messenger/messenger-workspace-message-body-files.lib";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import type {
   WorkspaceMessageFileReference,
   WorkspaceMessageMentionResolver,
 } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import { parseWorkspaceMessageBody } from "~/shared/lib/workspace-message-render/workspace-message-parse.lib";
-import { collectWorkspaceMessageFileReferences } from "./workspace-message-body-files.lib";
 import type { WorkspaceMessageMediaGalleryItem } from "./workspace-message-list.types";
 
 export interface WorkspaceMessageImageGallery {

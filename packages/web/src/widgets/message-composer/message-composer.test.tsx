@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
 import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
-import type * as ZulipMessagesApi from "~/shared/api/zulip-messages";
 import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
 import { renderWithProviders } from "~/test/render";
 import { computeFloatingPickerPosition } from "./message-composer-picker-position.lib";
@@ -14,7 +13,6 @@ import { MessageComposer } from "./message-composer.ui";
 
 const isWebViewMock = vi.fn(() => false);
 const useViewportKeyboardMock = vi.fn(() => ({ isOpen: false, keyboardHeight: 0 }));
-const renderMessageContentMock = vi.hoisted(() => vi.fn());
 const fetchSavedSnippetsMock = vi.hoisted(() => vi.fn());
 const createSavedSnippetMock = vi.hoisted(() => vi.fn());
 const emojiPickerMock = vi.hoisted(() => vi.fn());
@@ -42,10 +40,11 @@ vi.mock("~/shared/lib/touch", async () => {
 });
 
 vi.mock("~/shared/api/zulip-messages", async () => {
-  const actual = await vi.importActual<typeof ZulipMessagesApi>("~/shared/api/zulip-messages");
+  const actual = await vi.importActual<typeof import("~/shared/api/zulip-messages")>(
+    "~/shared/api/zulip-messages",
+  );
   return {
     ...actual,
-    renderMessageContent: (...args: unknown[]) => renderMessageContentMock(...args),
     fetchSavedSnippets: (...args: unknown[]) => fetchSavedSnippetsMock(...args),
     createSavedSnippet: (...args: unknown[]) => createSavedSnippetMock(...args),
   };
@@ -109,8 +108,6 @@ afterEach(() => {
   isWebViewMock.mockReturnValue(false);
   useViewportKeyboardMock.mockReset();
   useViewportKeyboardMock.mockReturnValue({ isOpen: false, keyboardHeight: 0 });
-  renderMessageContentMock.mockReset();
-  renderMessageContentMock.mockResolvedValue("<p>preview</p>");
   fetchSavedSnippetsMock.mockReset();
   fetchSavedSnippetsMock.mockResolvedValue([]);
   createSavedSnippetMock.mockReset();
@@ -299,7 +296,7 @@ describe("MessageComposer scheduled send", () => {
 });
 
 describe("MessageComposer saved snippets", () => {
-  it("hides saved snippets when Zulip-backed action is unsupported", () => {
+  it("hides saved snippets when the action is unsupported", () => {
     renderWithProviders(
       <MessageComposer
         onSend={vi.fn()}
@@ -871,7 +868,7 @@ describe("MessageComposer formatting shortcuts", () => {
 });
 
 describe("MessageComposer preview mode", () => {
-  it("hides preview tab and does not call the Zulip render API when unsupported", () => {
+  it("hides preview tab when unsupported", () => {
     renderWithProviders(
       <MessageComposer
         onSend={vi.fn()}
@@ -888,50 +885,57 @@ describe("MessageComposer preview mode", () => {
     fireEvent.change(textbox, { target: { value: "**Hello** world" } });
 
     expect(screen.queryByRole("button", { name: "Preview" })).not.toBeInTheDocument();
-    expect(renderMessageContentMock).not.toHaveBeenCalled();
   });
 
-  it("renders markdown preview via Zulip render API and keeps draft intact", async () => {
-    renderMessageContentMock.mockResolvedValue("<p><strong>Hello</strong> world</p>");
+  it("opens preview mode and keeps draft intact", () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
     const textbox = screen.getByRole("textbox");
     fireEvent.change(textbox, { target: { value: "**Hello** world" } });
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    const previewButton = screen.getByRole("button", { name: "Preview" });
+    expect(previewButton).toBeInTheDocument();
+    fireEvent.click(previewButton);
 
-    await waitFor(() => {
-      expect(renderMessageContentMock).toHaveBeenCalledWith("**Hello** world");
-      expect(screen.getByRole("region", { name: "Preview" })).toHaveTextContent("Hello world");
-    });
+    expect(screen.getByRole("region", { name: "Preview" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Write" }));
     expect(screen.getByRole("textbox")).toHaveValue("**Hello** world");
   });
 
-  it("keeps rendering preview after switching back to write mode and opening preview again", async () => {
-    renderMessageContentMock.mockResolvedValue("<p><strong>Hello</strong> world</p>");
+  it("keeps preview mode available after switching back to write mode", () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
     const textbox = screen.getByRole("textbox");
     fireEvent.change(textbox, { target: { value: "**Hello** world" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Preview" }));
-    await waitFor(() => {
-      expect(screen.getByRole("region", { name: "Preview" })).toHaveTextContent("Hello world");
-    });
+    expect(screen.getByRole("region", { name: "Preview" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Write" }));
     expect(screen.getByRole("textbox")).toHaveValue("**Hello** world");
 
     fireEvent.click(screen.getByRole("button", { name: "Preview" }));
-    await waitFor(() => {
-      expect(screen.getByRole("region", { name: "Preview" })).toHaveTextContent("Hello world");
-    });
-    expect(renderMessageContentMock).toHaveBeenCalledTimes(2);
-    expect(renderMessageContentMock).toHaveBeenNthCalledWith(2, "**Hello** world");
+    expect(screen.getByRole("region", { name: "Preview" })).toBeInTheDocument();
   });
 
-  it("does not call preview API for empty draft", async () => {
+  it("returns to write mode after sending from preview mode", async () => {
+    const onSend = vi.fn();
+    renderWithProviders(<MessageComposer onSend={onSend} />);
+
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "**Hello** world" } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    expect(screen.getByRole("region", { name: "Preview" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /write a message/i }));
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith("**Hello** world", "", undefined);
+      expect(screen.getByRole("textbox")).toHaveValue("");
+    });
+    expect(screen.queryByRole("region", { name: "Preview" })).not.toBeInTheDocument();
+  });
+
+  it("shows empty preview state for empty draft", async () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
     const textbox = screen.getByRole("textbox");
@@ -939,43 +943,188 @@ describe("MessageComposer preview mode", () => {
     fireEvent.click(screen.getByRole("button", { name: "Preview" }));
 
     await waitFor(() => {
-      expect(renderMessageContentMock).not.toHaveBeenCalled();
       expect(screen.getByText("Nothing to preview yet")).toBeInTheDocument();
     });
   });
 
-  it("falls back to local markdown rendering when preview API fails", async () => {
-    renderMessageContentMock.mockRejectedValue(new Error("preview unavailable"));
-    renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+  it("renders Workspace preview with mentions during edit session", () => {
+    const userUuid = "11111111-1111-4111-8111-111111111111";
 
-    const textbox = screen.getByRole("textbox");
-    fireEvent.change(textbox, { target: { value: "**Fallback works**" } });
+    renderWithProviders(
+      <MessageComposer
+        onSend={vi.fn()}
+        onSubmitEdit={vi.fn().mockResolvedValue(undefined)}
+        editSession={{
+          messageId: 7,
+          initialMarkdown: [
+            `Hello <@${userUuid}>`,
+            "",
+            "> quoted line",
+            "",
+            "```ts",
+            "const editPreview = true;",
+            "```",
+          ].join("\n"),
+        }}
+        resolveMention={(displayText) =>
+          displayText === userUuid
+            ? {
+                userUuid,
+                displayText: "Alice Reed",
+              }
+            : null
+        }
+      />,
+    );
+
     fireEvent.click(screen.getByRole("button", { name: "Preview" }));
 
-    await waitFor(() => {
-      const previewRegion = screen.getByRole("region", { name: "Preview" });
-      const strong = previewRegion.querySelector("strong");
-      expect(strong).not.toBeNull();
-      expect(strong).toHaveTextContent("Fallback works");
-    });
+    const preview = screen.getByRole("region", { name: "Preview" });
+    expect(within(preview).getByText("@Alice Reed")).toBeInTheDocument();
+    expect(preview.querySelector("blockquote.workspace-message-quote")).not.toBeNull();
+    expect(preview.querySelector('code[class*="language-ts"]')).not.toBeNull();
   });
 
-  it("adds syntax-highlight classes to code blocks in preview", async () => {
-    renderMessageContentMock.mockResolvedValue(
-      '<pre><code class="language-javascript">const value = 1;</code></pre>',
+  it("loads Workspace image URN previews during edit preview", async () => {
+    const fileUuid = "22222222-2222-4222-8222-222222222222";
+    const createObjectURLMock = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:composer-edit-workspace-preview");
+    const revokeObjectURLMock = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(
+      new Blob(["image-bytes"], {
+        type: "image/png",
+      }),
     );
-    renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
-    const textbox = screen.getByRole("textbox");
-    fireEvent.change(textbox, { target: { value: "```javascript\\nconst value = 1;\\n```" } });
+    try {
+      const { unmount } = renderWithProviders(
+        <MessageComposer
+          onSend={vi.fn()}
+          onSubmitEdit={vi.fn().mockResolvedValue(undefined)}
+          editSession={{
+            messageId: 7,
+            initialMarkdown: `![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng)`,
+          }}
+          onLoadWorkspaceFilePreview={onLoadWorkspaceFilePreview}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+
+      expect(onLoadWorkspaceFilePreview).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "media",
+          fileUuid,
+          name: "screen.png",
+          contentType: "image/png",
+          mediaKind: "image",
+        }),
+        expect.any(AbortSignal),
+      );
+      await waitFor(() => {
+        expect(createObjectURLMock).toHaveBeenCalledTimes(1);
+      });
+
+      const preview = screen.getByRole("region", { name: "Preview" });
+      const image = preview.querySelector<HTMLImageElement>(
+        "img[data-workspace-file-preview='true']",
+      );
+      expect(image).not.toBeNull();
+      expect(image).toHaveAttribute("src", "blob:composer-edit-workspace-preview");
+      expect(preview.innerHTML).not.toContain(`urn:image:${fileUuid}`);
+
+      unmount();
+      expect(revokeObjectURLMock).toHaveBeenCalledWith("blob:composer-edit-workspace-preview");
+    } finally {
+      createObjectURLMock.mockRestore();
+      revokeObjectURLMock.mockRestore();
+    }
+  });
+
+  it("renders attached local image files in preview mode with a blob URL", async () => {
+    const createObjectURLMock = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:composer-preview-image");
+    const revokeObjectURLMock = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+
+    try {
+      const { container } = renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+      const input = container.querySelector('input[type="file"]');
+      if (!(input instanceof HTMLInputElement)) {
+        throw new Error("Expected hidden file input");
+      }
+
+      const imageFile = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "preview.png", {
+        type: "image/png",
+      });
+      fireEvent.change(input, { target: { files: [imageFile] } });
+      fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+
+      const preview = screen.getByRole("region", { name: "Preview" });
+      const thumbnail = await within(preview).findByRole("img", { name: "preview.png" });
+      expect(thumbnail).toHaveAttribute("src", "blob:composer-preview-image");
+      expect(within(preview).queryByText("preview.png")).not.toBeInTheDocument();
+      expect(within(preview).queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+      expect(screen.queryByText("Nothing to preview yet")).not.toBeInTheDocument();
+      expect(createObjectURLMock).toHaveBeenCalledTimes(1);
+      expect(createObjectURLMock).toHaveBeenCalledWith(imageFile);
+    } finally {
+      createObjectURLMock.mockRestore();
+      revokeObjectURLMock.mockRestore();
+    }
+  });
+
+  it("renders attached non-image files as preview plaques", () => {
+    const { container } = renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+    const input = container.querySelector('input[type="file"]');
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error("Expected hidden file input");
+    }
+
+    const file = new File([new Uint8Array(2048)], "brief.final.pdf", {
+      type: "application/pdf",
+    });
+    fireEvent.change(input, { target: { files: [file] } });
     fireEvent.click(screen.getByRole("button", { name: "Preview" }));
 
-    await waitFor(() => {
-      const previewRegion = screen.getByRole("region", { name: "Preview" });
-      const highlightedCode = previewRegion.querySelector("code.hljs");
-      expect(highlightedCode).not.toBeNull();
-      expect(highlightedCode?.querySelector(".hljs-keyword")).not.toBeNull();
-    });
+    const preview = screen.getByRole("region", { name: "Preview" });
+    expect(within(preview).getByText("brief.final.pdf")).toBeInTheDocument();
+    expect(within(preview).getByText("PDF")).toBeInTheDocument();
+    expect(within(preview).getByText("2 KB")).toBeInTheDocument();
+  });
+
+  it("revokes attached image preview blob URLs when preview unmounts", async () => {
+    const createObjectURLMock = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:composer-preview-unmount");
+    const revokeObjectURLMock = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+
+    try {
+      const { container, unmount } = renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+      const input = container.querySelector('input[type="file"]');
+      if (!(input instanceof HTMLInputElement)) {
+        throw new Error("Expected hidden file input");
+      }
+
+      const imageFile = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "remove.png", {
+        type: "image/png",
+      });
+      fireEvent.change(input, { target: { files: [imageFile] } });
+      fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+
+      const preview = screen.getByRole("region", { name: "Preview" });
+      await within(preview).findByRole("img", { name: "remove.png" });
+      expect(within(preview).queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+      unmount();
+
+      await waitFor(() => {
+        expect(revokeObjectURLMock).toHaveBeenCalledWith("blob:composer-preview-unmount");
+      });
+    } finally {
+      createObjectURLMock.mockRestore();
+      revokeObjectURLMock.mockRestore();
+    }
   });
 });
 
