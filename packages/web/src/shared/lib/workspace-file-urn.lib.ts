@@ -1,7 +1,7 @@
 import { MESSENGER_WORKSPACE_API_PATH } from "~/shared/config/workspace-api-layout";
 
 const WORKSPACE_FILE_URN_RE =
-  /^urn:(image|video|file):([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(?:\?([\s\S]*))?$/i;
+  /^urn:(image|video|file):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\?([\s\S]*))?$/i;
 
 export type WorkspaceFileUrnKind = "image" | "video" | "file";
 

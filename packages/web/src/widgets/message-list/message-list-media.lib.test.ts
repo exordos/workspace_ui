@@ -182,4 +182,32 @@ describe("buildMessageMediaGallery", () => {
     expect(gallery.items[0]?.url).toMatch(/\/api\/messenger\/v1\/files\/.+\/actions\/download$/);
     expect(gallery.indexByUrl.get(href)).toBe(0);
   });
+
+  it("extracts backend Workspace file image URNs from markdown", () => {
+    const urn =
+      "urn:image:33333333-3333-7333-c333-333333333333?name=photo.bin&content_type=image%2Fjpeg&w=1280&h=720&size=1024";
+    const href = "/api/messenger/v1/files/33333333-3333-7333-c333-333333333333/actions/download";
+    const gallery = buildMessageMediaGallery([msg(1, `![photo.bin](${urn})`)]);
+
+    expect(gallery.items).toHaveLength(1);
+    expect(gallery.items[0]?.type).toBe("image");
+    expect(gallery.items[0]?.url).toMatch(/\/api\/messenger\/v1\/files\/.+\/actions\/download$/);
+    expect(gallery.items[0]?.downloadFileName).toBe(`image-${testMessageId(1)}.jpg`);
+    expect(gallery.indexByUrl.get(href)).toBe(0);
+    expect(resolveGalleryMediaIndex(gallery, urn)).toBe(0);
+  });
+
+  it("extracts backend Workspace file video URNs from markdown", () => {
+    const urn =
+      "urn:video:44444444-4444-7444-c444-444444444444?name=clip.bin&content_type=video%2Fmp4&w=1920&h=1080&size=2048";
+    const href = "/api/messenger/v1/files/44444444-4444-7444-c444-444444444444/actions/download";
+    const gallery = buildMessageMediaGallery([msg(1, `[clip.bin](${urn})`)]);
+
+    expect(gallery.items).toHaveLength(1);
+    expect(gallery.items[0]?.type).toBe("video");
+    expect(gallery.items[0]?.url).toMatch(/\/api\/messenger\/v1\/files\/.+\/actions\/download$/);
+    expect(gallery.items[0]?.downloadFileName).toBe(`media-${testMessageId(1)}.mp4`);
+    expect(gallery.indexByUrl.get(href)).toBe(0);
+    expect(resolveGalleryMediaIndex(gallery, urn)).toBe(0);
+  });
 });

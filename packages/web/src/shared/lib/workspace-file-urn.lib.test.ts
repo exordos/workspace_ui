@@ -23,4 +23,11 @@ describe("parseWorkspaceFileUrn", () => {
     expect(parseWorkspaceFileUrn("urn:note:33333333-3333-4333-8333-333333333333")).toBeNull();
     expect(parseWorkspaceFileUrn("https://example.com/report.pdf")).toBeNull();
   });
+
+  it("accepts UUIDs without restricting the UUID version", () => {
+    expect(
+      parseWorkspaceFileUrn("urn:file:33333333-3333-7333-c333-333333333333?name=archive.zip")
+        ?.fileUuid,
+    ).toBe("33333333-3333-7333-c333-333333333333");
+  });
 });
