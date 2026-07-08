@@ -682,7 +682,32 @@ describe("messenger bootstrap store", () => {
       reason: "stale-owner",
     });
     expect(useMessengerStore.getState().streamIds).toEqual([]);
+    expect(useMessengerStore.getState().isLoading).toBe(false);
+    expect(useMessengerStore.getState().error).toBeNull();
     expect(useUsersStore.getState().userIds).toEqual([]);
+  });
+
+  it("ignores abort errors from streams bootstrap without showing a sidebar error", async () => {
+    const runtimeContext = createRuntimeContext();
+
+    await expect(
+      bootstrapMessengerStore({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        client: createClient({
+          getStreams: () => Promise.reject(new DOMException("Aborted", "AbortError")),
+        }),
+      }),
+    ).resolves.toEqual({
+      status: "skipped",
+      ownerKey: workspaceRuntimeOwnerKey(runtimeContext),
+      reason: "aborted",
+    });
+
+    const messengerState = useMessengerStore.getState();
+    expect(messengerState.streamIds).toEqual([]);
+    expect(messengerState.isLoading).toBe(false);
+    expect(messengerState.error).toBeNull();
   });
 
   it("keeps streams and topics bootstrap when users request fails", async () => {

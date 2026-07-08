@@ -62,6 +62,7 @@ export interface MessengerStoreState extends MessengerDomainData {
   lastLoadedAt: number | null;
 
   startBootstrap: (ownerKey: string) => void;
+  finishBootstrapSilently: (ownerKey: string) => void;
   replaceBootstrapState: (ownerKey: string, payload: MessengerBootstrapPayload) => void;
   replaceFolderSnapshots: (ownerKey: string, folders: MessengerFolder[]) => void;
   upsertStream: (ownerKey: string, stream: MessengerStream) => void;
@@ -121,6 +122,7 @@ function createEmptyMessengerData(): MessengerDomainData {
 function createInitialState(): Omit<
   MessengerStoreState,
   | "startBootstrap"
+  | "finishBootstrapSilently"
   | "replaceBootstrapState"
   | "replaceFolderSnapshots"
   | "upsertStream"
@@ -544,6 +546,18 @@ export const useMessengerStore = create<MessengerStoreState>((set) => ({
         isLoading: true,
         error: null,
         lastLoadedAt: null,
+      };
+    });
+  },
+
+  finishBootstrapSilently(ownerKey) {
+    logStoreAction("messenger", "finishBootstrapSilently", { ownerKey });
+    set((state) => {
+      if (state.ownerKey !== ownerKey) return state;
+
+      return {
+        isLoading: false,
+        error: null,
       };
     });
   },

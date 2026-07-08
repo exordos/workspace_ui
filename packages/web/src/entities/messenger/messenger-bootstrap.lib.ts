@@ -21,6 +21,7 @@ import type {
   WorkspaceMessengerStreamDto,
   WorkspaceMessengerTopicDto,
 } from "~/shared/api/messenger.types";
+import { isAbortError } from "~/shared/lib/abort-error";
 import { adaptMessengerBootstrapPayload, adaptMessengerFolder } from "./messenger-adapters.lib";
 import {
   createMessengerCatalogCacheReconcileFence as defaultCreateMessengerCatalogCacheReconcileFence,
@@ -81,6 +82,7 @@ export interface MessengerStoreApi {
   getState: () => Pick<
     MessengerStoreState,
     | "startBootstrap"
+    | "finishBootstrapSilently"
     | "replaceBootstrapState"
     | "replaceFolderSnapshots"
     | "setBootstrapError"
@@ -100,7 +102,11 @@ export interface MessengerStoreApi {
 
 export type MessengerBootstrapResult =
   | { status: "applied"; ownerKey: string }
-  | { status: "skipped"; ownerKey: string | null; reason: "missing-context" | "stale-owner" }
+  | {
+      status: "skipped";
+      ownerKey: string | null;
+      reason: "missing-context" | "stale-owner" | "aborted";
+    }
   | { status: "failed"; ownerKey: string; error: string };
 
 export interface BootstrapMessengerStoreOptions {
@@ -163,6 +169,7 @@ export async function bootstrapMessengerStore({
 
   const ownerKey = workspaceRuntimeOwnerKey(requestContext);
   if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
+    store.getState().finishBootstrapSilently(ownerKey);
     return { status: "skipped", ownerKey, reason: "stale-owner" };
   }
 
@@ -226,6 +233,7 @@ export async function bootstrapMessengerStore({
     ]);
 
     if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
+      store.getState().finishBootstrapSilently(ownerKey);
       return { status: "skipped", ownerKey, reason: "stale-owner" };
     }
 
@@ -237,6 +245,7 @@ export async function bootstrapMessengerStore({
         signal,
       });
       if (usersSyncResult.status === "skipped") {
+        store.getState().finishBootstrapSilently(ownerKey);
         return { status: "skipped", ownerKey, reason: "stale-owner" };
       }
     } else {
@@ -259,6 +268,7 @@ export async function bootstrapMessengerStore({
       cache: lastMessagesCache,
     });
     if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
+      store.getState().finishBootstrapSilently(ownerKey);
       return { status: "skipped", ownerKey, reason: "stale-owner" };
     }
 
@@ -300,6 +310,9 @@ export async function bootstrapMessengerStore({
       if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
         return { status: "applied", ownerKey };
       }
+      if (isAbortError(folderError)) {
+        return { status: "applied", ownerKey };
+      }
       const message = normalizeBootstrapError(folderError);
       store.getState().setBootstrapError(ownerKey, message);
     }
@@ -307,7 +320,12 @@ export async function bootstrapMessengerStore({
     return { status: "applied", ownerKey };
   } catch (error) {
     if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
+      store.getState().finishBootstrapSilently(ownerKey);
       return { status: "skipped", ownerKey, reason: "stale-owner" };
+    }
+    if (isAbortError(error)) {
+      store.getState().finishBootstrapSilently(ownerKey);
+      return { status: "skipped", ownerKey, reason: "aborted" };
     }
 
     const message = normalizeBootstrapError(error);
