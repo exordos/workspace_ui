@@ -82,6 +82,12 @@ export interface MessengerRealtimeActiveCacheWriter {
 export interface MessengerRealtimeActiveApplierOptions {
   isOwnerCurrent?: (owner: WorkspaceRealtimeRuntimeOwner) => boolean;
   cache?: MessengerRealtimeActiveCacheWriter;
+  onMessageCreated?: (
+    ownerKey: string,
+    message: MessengerMessage,
+    stream: MessengerStream | null,
+    context: WorkspaceRealtimeEventContext,
+  ) => void | Promise<void>;
   // message.updated приносит только новый aggregate счетчиков, но не reactionUuid
   // текущего пользователя. Этот hook оставляет точку подключения для SWR-слоя:
   // он сможет перечитать own reaction rows без того, чтобы realtime applier знал
@@ -262,6 +268,7 @@ function removeTopicMessagesFromWorkspaceStore(
 function applyMessageRealtimeEvent(
   event: MessengerMessageRealtimeEvent,
   ownerKey: string,
+  context: WorkspaceRealtimeEventContext,
   activeCache: MessengerRealtimeActiveCacheWriter,
   options: MessengerRealtimeActiveApplierOptions,
 ): void {
@@ -285,6 +292,7 @@ function applyMessageRealtimeEvent(
   }
 
   const message = adaptMessengerMessage(event.message);
+  const stream = store.streamsById[message.streamUuid] ?? null;
   const previousMessage = messageStore.messagesById[message.uuid];
   messageStore.upsertMessage(message);
   store.applyMessagePointer(ownerKey, message);
@@ -305,6 +313,11 @@ function applyMessageRealtimeEvent(
   }
 
   writeRealtimeMessagePageCache(activeCache, ownerKey, message);
+  if (options.onMessageCreated != null) {
+    writeRealtimeCacheBestEffort(() =>
+      options.onMessageCreated?.(ownerKey, message, stream, context),
+    );
+  }
 }
 
 function applyStreamRealtimeEvent(
@@ -425,12 +438,13 @@ function applyFolderItemRealtimeEvent(
 function applySupportedRealtimeEvent(
   event: MessengerRealtimeEvent,
   ownerKey: string,
+  context: WorkspaceRealtimeEventContext,
   activeCache: MessengerRealtimeActiveCacheWriter,
   options: MessengerRealtimeActiveApplierOptions,
 ): void {
   switch (event.type) {
     case "message":
-      applyMessageRealtimeEvent(event, ownerKey, activeCache, options);
+      applyMessageRealtimeEvent(event, ownerKey, context, activeCache, options);
       break;
     case "stream":
       applyStreamRealtimeEvent(event, ownerKey, activeCache);
@@ -484,7 +498,7 @@ export function createMessengerRealtimeActiveApplier(
         return;
       }
 
-      applySupportedRealtimeEvent(event, context.ownerKey, activeCache, options);
+      applySupportedRealtimeEvent(event, context.ownerKey, context, activeCache, options);
       applyLightweightProjectionEvent(event, context);
 
       store.setRealtimeCursor(context.ownerKey, event.epoch_version);

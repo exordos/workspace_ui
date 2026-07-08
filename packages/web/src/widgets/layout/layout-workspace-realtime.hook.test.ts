@@ -6,6 +6,8 @@ import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call-settings.model";
+import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { createWorkspaceRealtimeCursorStorage } from "~/shared/lib/workspace-realtime/workspace-realtime-cursor.lib";
 import type { WorkspaceRealtimeCursorStorageLike } from "~/shared/lib/workspace-realtime/workspace-realtime-cursor.lib";
 import { createWorkspaceRealtimeNoopApplier } from "~/shared/lib/workspace-realtime/workspace-realtime-runtime.lib";
@@ -24,6 +26,7 @@ const WORKSPACE_AUTH_STORAGE_KEY = "workspace-auth-sessions";
 const WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY = "workspace-auth-current-account";
 const PROJECT_UUID = "22222222-2222-4222-8222-222222222222";
 const USER_UUID = "11111111-1111-4111-8111-111111111111";
+const CALLER_UUID = "99999999-9999-4999-8999-999999999999";
 const STREAM_UUID = "75309057-419c-4b12-a7c1-3932429ec4a6";
 const TOPIC_UUID = "4ec0b996-b778-45f8-8ef4-ef863be0c047";
 const MESSAGE_UUID = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
@@ -119,6 +122,8 @@ describe("useLayoutWorkspaceRealtime", () => {
     useWorkspaceMessageStore.getState().clear();
     useMessengerBackgroundProjectionStore.getState().clear();
     useUsersStore.getState().clear();
+    useWorkspaceJitsiSettingsStore.getState().clear();
+    useJitsiCallStore.getState().clear();
   });
 
   afterEach(() => {
@@ -129,6 +134,8 @@ describe("useLayoutWorkspaceRealtime", () => {
     useWorkspaceMessageStore.getState().clear();
     useMessengerBackgroundProjectionStore.getState().clear();
     useUsersStore.getState().clear();
+    useWorkspaceJitsiSettingsStore.getState().clear();
+    useJitsiCallStore.getState().clear();
     localStorage.removeItem(WORKSPACE_AUTH_STORAGE_KEY);
     localStorage.removeItem(WORKSPACE_AUTH_CURRENT_ACCOUNT_KEY);
   });
@@ -391,6 +398,164 @@ describe("useLayoutWorkspaceRealtime", () => {
 
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_UUID]).toEqual(
       expect.objectContaining({ markdown: "Live workspace message" }),
+    );
+  });
+
+  it("opens incoming Jitsi invite from a peer Workspace DM message", async () => {
+    setWorkspaceSession(
+      createSession({
+        projectId: PROJECT_UUID,
+        userUuid: USER_UUID,
+        profile: {
+          uuid: USER_UUID,
+          username: "current",
+          firstName: "Current",
+          lastName: "User",
+          email: "current@example.com",
+        },
+      }),
+    );
+    const { runtimeFactory, runtimes, startedContexts, factoryOptions } = createRuntimeFactory();
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+
+    renderHook(() =>
+      useLayoutWorkspaceRealtime({
+        enabled: true,
+        pathname: `/org/org-a/project/${PROJECT_UUID}/messenger`,
+        runtimeFactory,
+        cursorStorageFactory: () => cursorStorage,
+        presenceReporterFactory: noopPresenceReporterFactory,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(runtimes[0]?.start).toHaveBeenCalledTimes(1);
+    });
+    const context = startedContexts[0]!;
+    useMessengerStore.getState().startBootstrap(context.ownerKey);
+    useUsersStore.getState().upsertUsers([
+      {
+        uuid: CALLER_UUID,
+        username: "alice",
+        firstName: "Alice",
+        lastName: "Adams",
+        displayName: "Alice Adams",
+        email: "alice@example.com",
+        avatarUrl: "/avatars/alice.png",
+        status: "active",
+        statusEmoji: null,
+        statusText: null,
+        lastPingAt: DATE,
+        createdAt: DATE,
+        updatedAt: DATE,
+      },
+      {
+        uuid: USER_UUID,
+        username: "current",
+        firstName: "Current",
+        lastName: "User",
+        displayName: "Current User",
+        email: "current@example.com",
+        avatarUrl: null,
+        status: "active",
+        statusEmoji: null,
+        statusText: null,
+        lastPingAt: DATE,
+        createdAt: DATE,
+        updatedAt: DATE,
+      },
+    ]);
+    useWorkspaceJitsiSettingsStore
+      .getState()
+      .setWorkspaceMeetUrl(context.ownerKey, "https://meet.workspace.example.com");
+
+    factoryOptions[0]!.applier.applyEvent(
+      {
+        epoch_version: 7,
+        type: "stream",
+        kind: "stream.created",
+        stream: {
+          uuid: STREAM_UUID,
+          name: "Alice Adams",
+          description: "",
+          project_id: PROJECT_UUID,
+          owner: USER_UUID,
+          user_uuid: USER_UUID,
+          role: "member",
+          notification_mode: "all_messages",
+          unread_count: 1,
+          source_name: "native",
+          source: { kind: "native" },
+          invite_only: true,
+          announce: false,
+          private: true,
+          is_archived: false,
+          direct_user_uuid: CALLER_UUID,
+          created_at: DATE,
+          updated_at: DATE,
+        },
+      },
+      { ...context, source: "websocket" },
+    );
+    factoryOptions[0]!.applier.applyEvent(
+      {
+        epoch_version: 8,
+        type: "topic",
+        kind: "topic.created",
+        topic: {
+          uuid: TOPIC_UUID,
+          project_id: PROJECT_UUID,
+          name: "direct",
+          stream_uuid: STREAM_UUID,
+          user_uuid: USER_UUID,
+          unread_count: 1,
+          is_default: true,
+          is_done: false,
+          notification_mode: "default",
+          created_at: DATE,
+          updated_at: DATE,
+        },
+      },
+      { ...context, source: "websocket" },
+    );
+    factoryOptions[0]!.applier.applyEvent(
+      {
+        epoch_version: 9,
+        type: "message",
+        message: {
+          uuid: MESSAGE_UUID,
+          project_id: PROJECT_UUID,
+          stream_uuid: STREAM_UUID,
+          topic_uuid: TOPIC_UUID,
+          author_uuid: CALLER_UUID,
+          payload: {
+            kind: "markdown",
+            content: "https://meet.workspace.example.com/workspace-room-1",
+          },
+          user_uuid: USER_UUID,
+          read: false,
+          pinned: false,
+          starred: false,
+          is_own: false,
+          reactions: {},
+          created_at: DATE,
+          updated_at: DATE,
+        },
+      },
+      { ...context, source: "websocket" },
+    );
+
+    expect(useJitsiCallStore.getState().incomingInvite).toEqual(
+      expect.objectContaining({
+        messageId: MESSAGE_UUID,
+        meetingUrl: "https://meet.workspace.example.com/workspace-room-1",
+        callerName: "Alice Adams",
+        locationName: "Alice Adams",
+        ownerKey: context.ownerKey,
+        meetUrl: "https://meet.workspace.example.com",
+        displayName: "Current User",
+        avatarUrl: "/avatars/alice.png",
+      }),
     );
   });
 

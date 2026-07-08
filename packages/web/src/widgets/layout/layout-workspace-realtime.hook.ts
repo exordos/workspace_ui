@@ -6,12 +6,17 @@ import {
 } from "~/entities/messenger/messenger-realtime-applier.lib";
 import { buildMessengerRequestOptions } from "~/entities/messenger/messenger-request-options.lib";
 import { createUserRealtimeApplier } from "~/entities/user/user-realtime-applier.lib";
+import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import { startWorkspacePresenceReporter } from "~/entities/user/user-workspace-presence-reporter.lib";
+import { useUsersStore } from "~/entities/user/user.model";
 import { ensureFreshWorkspaceSession } from "~/entities/workspace-auth/workspace-auth.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/workspace-runtime.types";
+import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call-settings.model";
+import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
+import { buildWorkspaceIncomingDmCallInvite } from "~/features/jitsi-call/workspace-jitsi-incoming-call.lib";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
 import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { composeWorkspaceRealtimeAppliers } from "~/shared/lib/workspace-realtime/workspace-realtime-applier.lib";
@@ -246,6 +251,26 @@ export function useLayoutWorkspaceRealtime(options: UseLayoutWorkspaceRealtimeOp
           composeWorkspaceRealtimeAppliers([
             createMessengerRealtimeActiveApplier({
               isOwnerCurrent,
+              onMessageCreated: (ownerKey, message, stream, eventContext) => {
+                const usersById = useUsersStore.getState().usersById;
+                const currentUser = usersById[eventContext.owner.userUuid];
+                const currentUserDisplayName = selectUserDisplayName(
+                  currentUser,
+                  eventContext.owner.userUuid,
+                );
+                const invite = buildWorkspaceIncomingDmCallInvite({
+                  ownerKey,
+                  message,
+                  stream,
+                  usersById,
+                  currentUserUuid: eventContext.owner.userUuid,
+                  currentUserDisplayName,
+                  meetUrl: useWorkspaceJitsiSettingsStore.getState().getWorkspaceMeetUrl(ownerKey),
+                });
+                if (invite != null) {
+                  useJitsiCallStore.getState().ingestIncomingInvite(invite);
+                }
+              },
               // Active realtime sees only aggregate counters. Own reaction rows are
               // revalidated by the action layer so realtime stays transport-focused.
               onMessageReactionAggregateUpdated:

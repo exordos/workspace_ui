@@ -506,6 +506,69 @@ describe("messenger realtime active applier", () => {
     ]);
   });
 
+  it("emits message created callback with stream context for incoming DM call detection", () => {
+    const context = createContext();
+    const ownerKey = context.ownerKey;
+    const onMessageCreated = vi.fn();
+    const applier = createMessengerRealtimeActiveApplier({ onMessageCreated });
+    useMessengerStore.getState().startBootstrap(ownerKey);
+    applyStreamAndTopicSnapshot(applier, context, {
+      stream: {
+        private: true,
+        invite_only: true,
+        direct_user_uuid: USER_B,
+      },
+    });
+
+    applier.applyEvent(
+      {
+        epoch_version: 11,
+        type: "message",
+        message: createMessageDto({
+          author_uuid: USER_B,
+          is_own: false,
+          payload: {
+            kind: "markdown",
+            content: "https://meet.workspace.example.com/workspace-room-1",
+          },
+        }),
+      },
+      context,
+    );
+    applier.applyEvent(
+      {
+        epoch_version: 12,
+        type: "message",
+        kind: "message.updated",
+        message: createMessageDto({
+          author_uuid: USER_B,
+          is_own: false,
+          payload: {
+            kind: "markdown",
+            content: "https://meet.workspace.example.com/workspace-room-2",
+          },
+        }),
+      },
+      context,
+    );
+
+    expect(onMessageCreated).toHaveBeenCalledTimes(1);
+    expect(onMessageCreated).toHaveBeenCalledWith(
+      ownerKey,
+      expect.objectContaining({
+        uuid: MESSAGE_A,
+        authorUuid: USER_B,
+        markdown: "https://meet.workspace.example.com/workspace-room-1",
+      }),
+      expect.objectContaining({
+        uuid: STREAM_A,
+        isPrivate: true,
+        directUserUuid: USER_B,
+      }),
+      context,
+    );
+  });
+
   it("inserts delayed live messages by created time in stream and topic buckets", () => {
     const context = createContext();
     const ownerKey = context.ownerKey;
