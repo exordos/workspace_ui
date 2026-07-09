@@ -3,24 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "~/test/render";
 import { ChatHeader } from "./chat-header.ui";
 
-vi.mock("~/shared/lib/realm-emojis-cache", () => ({
-  getCachedRealmEmojis: () => [
-    {
-      id: "42",
-      names: ["scam"],
-      imgUrl: "https://chat.example.test/user_avatars/realm/42.png",
-    },
-  ],
-  ensureRealmEmojisLoaded: () =>
-    Promise.resolve([
-      {
-        id: "42",
-        names: ["scam"],
-        imgUrl: "https://chat.example.test/user_avatars/realm/42.png",
-      },
-    ]),
-}));
-
 describe("ChatHeader", () => {
   it("shows typing status for DM partner when typing flag is set", () => {
     const dmPartner = {

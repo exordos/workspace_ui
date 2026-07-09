@@ -2,10 +2,19 @@
  * Persists GET /users directory (per Zulip instance) in IndexedDB for instant hydrate
  * after reload; network fetch still replaces/merges fresh data.
  */
-import type { ZulipUserMember } from "~/shared/api/zulip.types";
 import { openMessageCacheDb } from "~/shared/lib/message-cache-db";
 
 const STORE_USERS_DIRECTORY = "usersDirectory";
+
+interface ZulipUserMember {
+  user_id: number;
+  full_name?: string;
+  email?: string;
+  avatar_url?: string | null;
+  role?: number;
+  is_active?: boolean;
+  profile_data?: Record<string, { value?: string; rendered_value?: string }>;
+}
 
 function idbError(reason: unknown): Error {
   return reason instanceof Error ? reason : new Error("indexedDB error", { cause: reason });

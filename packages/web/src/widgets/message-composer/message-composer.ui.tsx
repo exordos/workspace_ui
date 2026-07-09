@@ -2,7 +2,6 @@ import React, { useState, useRef, useMemo, useCallback, useLayoutEffect, useEffe
 import { AiComposerButton } from "~/features/ai-reply/ai-reply.ui";
 import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
 import { t } from "~/i18n/i18n";
-import type { SavedSnippet } from "~/shared/api/zulip.types";
 import { COMPOSER_FORMATTING_TOOLBAR_ALWAYS_VISIBLE } from "~/shared/config/constants";
 import { useViewportKeyboard } from "~/shared/lib/touch";
 import { isWebView } from "~/shared/lib/webview";
@@ -56,6 +55,7 @@ import { FormattingToolbar } from "./message-composer-toolbar.ui";
 import { useMessageComposerUpload } from "./message-composer-upload.hook";
 import { MessageComposerWriteBody } from "./message-composer-write-body.ui";
 import type { ComposerSendNewlineMode } from "./message-composer-input-commands.lib";
+import type { SavedSnippet } from "./message-composer-saved-snippets.types";
 import type { ScheduleMenuOption } from "./message-composer-schedule-popover.types";
 import type {
   MessageComposerActionCapability,

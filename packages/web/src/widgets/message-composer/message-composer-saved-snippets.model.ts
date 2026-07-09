@@ -1,6 +1,6 @@
 import { create } from "zustand";
-import type { SavedSnippet } from "~/shared/api/zulip.types";
 import { logStoreAction } from "~/shared/lib/logger";
+import type { SavedSnippet } from "./message-composer-saved-snippets.types";
 
 export const SAVED_SNIPPETS_TTL_MS = 60_000;
 

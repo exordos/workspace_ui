@@ -1,5 +1,3 @@
-import type { MockMessage } from "~/shared/api/zulip.types";
-import { buildDmRouteSlugFromRecipients } from "~/shared/lib/dm-route-slug.lib";
 import { withCurrentOrgRoute, withOrgRoutePrefix } from "~/shared/lib/org-route";
 import { buildStreamSlug } from "~/shared/lib/stream-slug.lib";
 import { encodeTopicForRoute } from "~/shared/lib/topic-identity.lib";
@@ -234,93 +232,6 @@ export function buildRouteFromPushNotificationClick(
     orgId: payload.orgId,
     projectId: payload.projectId,
   });
-}
-
-type WorkspaceMessageRouteFields = Partial<{
-  uuid: string;
-  messageUuid: string;
-  project_id: string;
-  projectId: string;
-  stream_uuid: string;
-  streamUuid: string;
-  topic_uuid: string;
-  topicUuid: string;
-  org_id: string;
-  orgId: string;
-}>;
-
-export function buildRouteFromMessage(
-  message: Pick<MockMessage, "id" | "stream_id" | "channel" | "display_recipient" | "subject"> &
-    WorkspaceMessageRouteFields,
-  _currentUserId: number | null,
-): string {
-  const workspaceRoute = buildWorkspaceMessageRoute({
-    messageId: message.id,
-    messageUuid: message.messageUuid ?? message.uuid,
-    orgId: message.orgId ?? message.org_id,
-    projectId: message.projectId ?? message.project_id,
-  });
-  if (workspaceRoute != null) {
-    return workspaceRoute;
-  }
-
-  if (message.stream_id != null) {
-    return buildPushClickUrl({
-      type: "stream",
-      messageId: message.id,
-      streamId: message.stream_id,
-      streamName:
-        typeof message.channel === "string" && message.channel.trim().length > 0
-          ? message.channel
-          : typeof message.display_recipient === "string"
-            ? message.display_recipient
-            : undefined,
-      topic: message.subject,
-    });
-  }
-
-  if (Array.isArray(message.display_recipient)) {
-    const slug = buildDmRouteSlugFromRecipients(message.display_recipient, _currentUserId);
-    if (slug != null) {
-      return appendMessageFocus(withCurrentOrgRoute(`/dm/${slug}`), message.id);
-    }
-  }
-
-  return buildInboxRoute(message.orgId ?? message.org_id);
-}
-
-export function buildNavigableRouteFromMessage(
-  message: {
-    id: number;
-    stream_id?: number | null;
-    channel?: string;
-    display_recipient?: MockMessage["display_recipient"];
-    subject?: string;
-    sender_id?: number;
-  } & WorkspaceMessageRouteFields,
-  currentUserId: number | null,
-): string | null {
-  const exactRoute = buildRouteFromMessage(
-    {
-      id: message.id,
-      stream_id: message.stream_id ?? null,
-      channel: message.channel,
-      display_recipient: message.display_recipient,
-      subject: message.subject ?? "",
-      uuid: message.uuid,
-      messageUuid: message.messageUuid,
-      stream_uuid: message.stream_uuid,
-      streamUuid: message.streamUuid,
-      topic_uuid: message.topic_uuid,
-      topicUuid: message.topicUuid,
-      org_id: message.org_id,
-      orgId: message.orgId,
-      project_id: message.project_id,
-      projectId: message.projectId,
-    },
-    currentUserId,
-  );
-  return exactRoute;
 }
 
 export function findInstanceIdByRealmUri(

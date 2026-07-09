@@ -9,12 +9,6 @@ export interface ZulipUserTopic {
   visibility_policy: number;
 }
 
-export interface ZulipRecentPrivateConversation {
-  user_ids: number[];
-  max_message_id: number | null;
-  unread_message_ids: number[];
-}
-
 export interface ZulipGroupSettingValueObject {
   direct_members: number[];
   direct_subgroups: number[];
@@ -29,13 +23,6 @@ export interface ZulipRealmUserGroup {
   members: number[];
   direct_subgroup_ids: number[];
   is_system_group?: boolean;
-}
-
-export interface SavedSnippet {
-  id: number;
-  title: string;
-  content: string;
-  date_created: number;
 }
 
 export interface ZulipEvent {
@@ -60,26 +47,6 @@ export interface ZulipCurrentUser {
 
 /** Map of user_id to relative avatar_url path. */
 export type AvatarUrlByUserId = Map<number, string>;
-
-/** A single user entry from GET /users. */
-export interface ZulipUserMember {
-  user_id: number;
-  full_name?: string;
-  email?: string;
-  avatar_url?: string | null;
-  role?: number;
-  /** Zulip: `false` when the account is deactivated. */
-  is_active?: boolean;
-  /** Present when `include_custom_profile_fields=true`. */
-  profile_data?: Record<string, { value?: string; rendered_value?: string }>;
-}
-
-/** Normalized custom emoji entry for emoji-picker-react. */
-export interface RealmEmoji {
-  id: string;
-  names: string[];
-  imgUrl: string;
-}
 
 /** A single reaction on a message (Zulip API shape). */
 export interface Reaction {
@@ -258,9 +225,4 @@ export interface SendMessageParams {
   sender_full_name?: string;
   /** For private/DM message: recipient user ids. When set, `stream` is ignored. */
   to?: number[];
-}
-
-export interface CreateSavedSnippetParams {
-  title: string;
-  content: string;
 }

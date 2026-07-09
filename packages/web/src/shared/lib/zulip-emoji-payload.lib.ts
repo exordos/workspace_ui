@@ -9,8 +9,7 @@ import type { EmojiClickData } from "emoji-picker-react";
 export interface ZulipEmojiPayload {
   emojiName: string;
   emojiCode: string;
-  reactionType: ReactionType;
-  imageUrl?: string;
+  reactionType: Extract<ReactionType, "unicode_emoji">;
 }
 
 export type ZulipEmojiPayloadMode = "strict" | "composerFallback";
@@ -60,22 +59,6 @@ function resolveUnicodeLookupCodes(data: EmojiClickData): string[] {
   return Array.from(codes);
 }
 
-function resolveCustomEmojiPayload(data: EmojiClickData): ZulipEmojiPayload | null {
-  const emojiName = normalizeEmojiShortcodeName(data.names?.[0] ?? "");
-  const emojiCode = (data.unified || data.unifiedWithoutSkinTone || data.emoji || "").trim();
-
-  if (emojiName.length === 0 || emojiCode.length === 0) {
-    return null;
-  }
-
-  return {
-    emojiName,
-    emojiCode,
-    reactionType: "realm_emoji",
-    ...(data.imageUrl ? { imageUrl: data.imageUrl } : {}),
-  };
-}
-
 function resolveUnicodeEmojiPayload(
   data: EmojiClickData,
   mode: ZulipEmojiPayloadMode,
@@ -116,7 +99,7 @@ export function zulipEmojiPayloadFromPickerData(
   options: { mode: ZulipEmojiPayloadMode },
 ): ZulipEmojiPayload | null {
   if (data.isCustom) {
-    return resolveCustomEmojiPayload(data);
+    return null;
   }
 
   return resolveUnicodeEmojiPayload(data, options.mode);

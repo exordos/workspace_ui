@@ -74,27 +74,6 @@ describe("zulipEmojiPayloadFromPickerData", () => {
     });
   });
 
-  it("maps realm custom emoji payload with id and imageUrl", () => {
-    expect(
-      zulipEmojiPayloadFromPickerData(
-        emojiClickData({
-          unified: "42",
-          unifiedWithoutSkinTone: "42",
-          emoji: "42",
-          names: ["party_parrot"],
-          imageUrl: "https://cdn.example.com/party_parrot.png",
-          isCustom: true,
-        }),
-        { mode: "strict" },
-      ),
-    ).toEqual({
-      emojiName: "party_parrot",
-      emojiCode: "42",
-      reactionType: "realm_emoji",
-      imageUrl: "https://cdn.example.com/party_parrot.png",
-    });
-  });
-
   it("returns null for unknown unicode emoji in strict mode", () => {
     expect(
       zulipEmojiPayloadFromPickerData(
@@ -109,15 +88,16 @@ describe("zulipEmojiPayloadFromPickerData", () => {
     ).toBeNull();
   });
 
-  it("returns null for broken custom emoji data", () => {
+  it("returns null for custom emoji data", () => {
     expect(
       zulipEmojiPayloadFromPickerData(
         emojiClickData({
           isCustom: true,
-          names: [],
-          unified: "",
-          unifiedWithoutSkinTone: "",
-          emoji: "",
+          names: ["party_parrot"],
+          unified: "42",
+          unifiedWithoutSkinTone: "42",
+          emoji: "42",
+          imageUrl: "https://cdn.example.com/party_parrot.png",
         }),
         { mode: "strict" },
       ),

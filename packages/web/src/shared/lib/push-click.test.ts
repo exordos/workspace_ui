@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildMessageRedirectRouteFromZulipPermalink,
   buildPushClickUrl,
-  buildRouteFromMessage,
   findInstanceIdByRealmUri,
   buildRouteFromPushNotificationClick,
 } from "./push-click";
@@ -131,90 +130,6 @@ describe("findInstanceIdByRealmUri", () => {
   });
 });
 
-describe("buildRouteFromMessage", () => {
-  it("builds a Workspace message route from message UUID and project", () => {
-    const route = buildRouteFromMessage(
-      {
-        id: 55,
-        stream_id: 10,
-        channel: "General Discussion",
-        subject: "Bugs",
-        uuid: "message-uuid",
-        stream_uuid: "stream-uuid",
-        topic_uuid: "topic-uuid",
-        org_id: "chat.example.com",
-        project_id: "project-uuid",
-      },
-      7,
-    );
-
-    expect(route).toBe("/org/chat.example.com/project/project-uuid/message/message-uuid");
-  });
-
-  it("builds legacy stream route with numeric Zulip ids", () => {
-    const route = buildRouteFromMessage(
-      {
-        id: 55,
-        stream_id: 10,
-        channel: "General Discussion",
-        subject: "Bugs",
-      },
-      7,
-    );
-
-    expect(route).toBe("/stream/10-general-discussion/topic/Bugs?msg=55");
-  });
-
-  it("builds explicit empty-topic legacy route when topic is empty", () => {
-    const route = buildRouteFromMessage(
-      {
-        id: 56,
-        stream_id: 10,
-        channel: "General Discussion",
-        subject: "   ",
-      },
-      7,
-    );
-
-    expect(route).toBe("/stream/10-general-discussion/topic/__empty__?msg=56");
-  });
-
-  it("builds legacy DM route from numeric recipients", () => {
-    const route = buildRouteFromMessage(
-      {
-        id: 77,
-        stream_id: null,
-        display_recipient: [
-          { id: 7, full_name: "You" },
-          { id: 42, full_name: "Alice" },
-        ],
-        subject: "",
-      },
-      7,
-    );
-
-    expect(route).toBe("/dm/42-alice?msg=77");
-  });
-
-  it("builds legacy group-DM route from numeric recipients", () => {
-    const route = buildRouteFromMessage(
-      {
-        id: 99,
-        stream_id: null,
-        display_recipient: [
-          { id: 7, full_name: "You" },
-          { id: 42, full_name: "Alice" },
-          { id: 51, full_name: "Bob" },
-        ],
-        subject: "",
-      },
-      7,
-    );
-
-    expect(route).toBe("/dm/42-alice,51-bob?msg=99");
-  });
-});
-
 describe("buildMessageRedirectRoute", () => {
   it("builds legacy message redirect for numeric message id with realm", async () => {
     const { buildMessageRedirectRoute } = await import("./push-click");
@@ -259,89 +174,6 @@ describe("buildMessageRedirectRouteFromZulipPermalink", () => {
     expect(
       buildMessageRedirectRouteFromZulipPermalink("https://zulip.example.com/#narrow/channel/1-a"),
     ).toBeNull();
-  });
-});
-
-describe("buildNavigableRouteFromMessage", () => {
-  it("builds a Workspace message route when UUID and project are present", async () => {
-    const { buildNavigableRouteFromMessage } = await import("./push-click");
-    expect(
-      buildNavigableRouteFromMessage(
-        {
-          id: 15,
-          stream_id: 10,
-          channel: "Engineering",
-          subject: "Bugs",
-          sender_id: 7,
-          uuid: "message-uuid",
-          orgId: "chat.example.com",
-          projectId: "project-uuid",
-        },
-        7,
-      ),
-    ).toBe("/org/chat.example.com/project/project-uuid/message/message-uuid");
-  });
-
-  it("builds exact legacy stream route with numeric ids", async () => {
-    const { buildNavigableRouteFromMessage } = await import("./push-click");
-    expect(
-      buildNavigableRouteFromMessage(
-        {
-          id: 15,
-          stream_id: 10,
-          channel: "Engineering",
-          subject: "Bugs",
-          sender_id: 7,
-        },
-        7,
-      ),
-    ).toBe("/stream/10-engineering/topic/Bugs?msg=15");
-  });
-
-  it("builds empty-topic legacy route", async () => {
-    const { buildNavigableRouteFromMessage } = await import("./push-click");
-    expect(
-      buildNavigableRouteFromMessage(
-        {
-          id: 16,
-          stream_id: 10,
-          channel: "Engineering",
-          subject: "",
-          sender_id: 7,
-        },
-        7,
-      ),
-    ).toBe("/stream/10-engineering/topic/__empty__?msg=16");
-  });
-
-  it("falls back to Inbox instead of sender-based DM routing", async () => {
-    const { buildNavigableRouteFromMessage } = await import("./push-click");
-    expect(
-      buildNavigableRouteFromMessage(
-        {
-          id: 77,
-          stream_id: null,
-          subject: "",
-          sender_id: 42,
-        },
-        7,
-      ),
-    ).toBe("/inbox");
-  });
-
-  it("falls back to Inbox when recipients are unavailable and sender is current user", async () => {
-    const { buildNavigableRouteFromMessage } = await import("./push-click");
-    expect(
-      buildNavigableRouteFromMessage(
-        {
-          id: 88,
-          stream_id: null,
-          subject: "",
-          sender_id: 7,
-        },
-        7,
-      ),
-    ).toBe("/inbox");
   });
 });
 
