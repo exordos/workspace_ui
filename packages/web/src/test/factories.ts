@@ -1,5 +1,4 @@
 import type { UserPresenceStatus } from "~/entities/user/user.types";
-import type { Reaction } from "~/shared/api/zulip.types";
 
 /**
  * Test data factories — typed builders for domain objects.
@@ -42,7 +41,14 @@ interface MessageOverrides {
   type?: "stream" | "private";
   display_recipient?: string | { id: number; full_name: string; email?: string }[];
   avatar_url?: string | null;
-  reactions?: Reaction[];
+  reactions?: TestMessageReaction[];
+}
+
+interface TestMessageReaction {
+  emoji_name: string;
+  emoji_code: string;
+  reaction_type: "unicode_emoji" | "realm_emoji" | "zulip_extra_emoji";
+  user_id: number;
 }
 
 export function createMessage(overrides: MessageOverrides = {}) {

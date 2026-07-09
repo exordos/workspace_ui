@@ -8,7 +8,6 @@ import {
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { setLocale, t } from "~/i18n/i18n";
-import { resetZulipEmojiCatalogForTests } from "~/shared/lib/zulip-emoji-catalog.lib";
 import { renderWithProviders } from "~/test/render";
 import { RightPanelShell } from "./right-panel-shell.ui";
 
@@ -76,7 +75,6 @@ describe("RightPanelShell", () => {
   }
 
   beforeEach(() => {
-    resetZulipEmojiCatalogForTests();
     updateWorkspaceOwnStatusMock.mockReset();
     updateWorkspaceOwnStatusMock.mockResolvedValue({ ok: true, user: null });
   });

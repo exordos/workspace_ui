@@ -1,5 +1,3 @@
-import type { ZulipGroupSettingValue } from "~/shared/api/zulip.types";
-
 export interface TopicWithLast {
   subject: string;
   lastMessage?: string;
@@ -77,11 +75,6 @@ export interface StreamEntryInternal {
   isArchived?: boolean;
   creatorId?: number;
   inviteOnly?: boolean;
-  canAddSubscribersGroup?: ZulipGroupSettingValue;
-  canRemoveSubscribersGroup?: ZulipGroupSettingValue;
-  canAdministerChannelGroup?: ZulipGroupSettingValue;
-  canResolveTopicsGroup?: ZulipGroupSettingValue;
-  canMoveMessagesOutOfChannelGroup?: ZulipGroupSettingValue;
   topics: Map<
     string,
     {

@@ -1,10 +1,7 @@
 import type { IconName } from "~/shared/ui/icon";
 import type { NotificationLevel, TopicVisibilityLevel } from "./notification-level.lib";
 
-/**
- * Legacy topic visibility order:
- * 1 muted → 0 inherit → 2 unmuted (only if stream muted or topic unmuted) → 3 followed
- */
+/** Topic notification options shared by the Workspace sidebar controls. */
 
 type StreamNotificationLabelKey =
   | "channel.notificationDefault"
@@ -29,7 +26,6 @@ export interface TopicVisibilityLevelOption {
   labelKey: TopicVisibilityLabelKey;
 }
 
-/** Legacy channel notification states. */
 export const STREAM_NOTIFICATION_LEVEL_OPTIONS: readonly NotificationLevelOption[] = [
   { level: "default", icon: "at", labelKey: "channel.notificationDefault" },
   { level: "muted", icon: "bell_off", labelKey: "channel.notificationMuted" },
@@ -64,22 +60,4 @@ export function getTopicVisibilityLevelOptions(
   }
   levels.push("followed");
   return levels.map((level) => TOPIC_VISIBILITY_OPTION_BY_LEVEL[level]);
-}
-
-export function getNextTopicVisibilityLevel(
-  current: TopicVisibilityLevel,
-  streamMuted: boolean,
-  topicExplicitlyUnmuted: boolean,
-): TopicVisibilityLevel {
-  const options = getTopicVisibilityLevelOptions(streamMuted, topicExplicitlyUnmuted);
-  const levels = options.map((o) => o.level);
-  const index = levels.indexOf(current);
-  const nextIndex = index < 0 ? 0 : (index + 1) % levels.length;
-  return levels[nextIndex]!;
-}
-
-export function getTopicVisibilityLevelOption(
-  level: TopicVisibilityLevel,
-): TopicVisibilityLevelOption {
-  return TOPIC_VISIBILITY_OPTION_BY_LEVEL[level];
 }
