@@ -18,7 +18,6 @@ import { getIdleTimeMs, getLocalPresenceStatus } from "~/shared/lib/presence";
 import { getRuntime, isPwa } from "~/shared/lib/pwa";
 import { isTabVisible } from "~/shared/lib/visibility";
 import { getWebViewPlatform, isWebView } from "~/shared/lib/webview";
-import { getZulipEventQueueIdForCurrentInstance } from "~/shared/lib/zulip-event-queue-registry.lib";
 
 export type DiagnosticsOverallStatus = "healthy" | "degraded" | "offline";
 
@@ -28,7 +27,6 @@ export interface DiagnosticsPageSnapshot {
   connection: ConnectionHealthSnapshot;
   rateLimitBlockedUntil: number | null;
   realtime: {
-    eventQueueId: string | null;
     online: boolean;
     tabVisible: boolean;
     stats: DiagnosticRealtimeStats;
@@ -221,7 +219,6 @@ export function collectDiagnosticsPageSnapshot(
     connection,
     rateLimitBlockedUntil: input.rateLimitBlockedUntil,
     realtime: {
-      eventQueueId: getZulipEventQueueIdForCurrentInstance() ?? null,
       online,
       tabVisible: isTabVisible(),
       stats: input.realtimeStats,
@@ -333,10 +330,4 @@ export function buildConnectionReportSnapshot(
       data: entry.data,
     })),
   };
-}
-
-export function truncateQueueId(queueId: string | null, maxLength = 12): string | null {
-  if (queueId == null) return null;
-  if (queueId.length <= maxLength) return queueId;
-  return `${queueId.slice(0, maxLength)}…`;
 }

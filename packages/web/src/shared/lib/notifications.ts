@@ -33,7 +33,7 @@ export interface NotificationOptions {
 export interface NotificationService {
   getPermission(): NotificationPermissionStatus;
   requestPermission(): Promise<NotificationPermissionStatus>;
-  show(options: NotificationOptions): Promise<void>;
+  show(options: NotificationOptions): Promise<boolean>;
   closeByTag(tag: string): Promise<void>;
   setBadgeCount(count: number): Promise<void>;
   clearBadge(): Promise<void>;
@@ -81,8 +81,9 @@ function createElectronNotificationService(): NotificationService {
     async show({ title, body, tag, silent, clickRoute }) {
       const api = getElectronAPI();
       if (api) {
-        await api.notifications.show(title, body, { tag, silent, clickRoute });
+        return api.notifications.show(title, body, { tag, silent, clickRoute });
       }
+      return false;
     },
 
     async closeByTag(tag: string) {
@@ -117,9 +118,10 @@ function createWebNotificationService(): NotificationService {
       return result;
     },
 
-    // eslint-disable-next-line @typescript-eslint/require-await
-    async show({ title, body, icon, tag, silent, onClick }) {
-      if (!("Notification" in window) || Notification.permission !== "granted") return;
+    show({ title, body, icon, tag, silent, onClick }) {
+      if (!("Notification" in window) || Notification.permission !== "granted") {
+        return Promise.resolve(false);
+      }
 
       if (tag != null && tag.length > 0) {
         activeNotificationsByTag.get(tag)?.close();
@@ -148,6 +150,8 @@ function createWebNotificationService(): NotificationService {
           notification.close();
         };
       }
+
+      return Promise.resolve(true);
     },
 
     closeByTag(tag: string) {

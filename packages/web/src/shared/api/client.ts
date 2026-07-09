@@ -1,14 +1,12 @@
 /**
- * HTTP client with a middleware pipeline (auth, logging, retry, timeouts).
+ * HTTP client with a middleware pipeline (logging, retry, connection health).
  *
  * Usage:
- *   import { zulipApi, workspaceApi } from "~/shared/api/client";
- *   const res = await zulipApi.get("/messages", { anchor: "newest" });
- *   await zulipApi.post("/messages", { type: "stream", content: "hi" });
- *   zulipApi.use(myMiddleware);
+ *   import { workspaceApi } from "~/shared/api/client";
+ *   const res = await workspaceApi.get("/health");
+ *   workspaceApi.use(myMiddleware);
  */
 
-import { ZULIP_API_FETCH_TIMEOUT_MS } from "~/shared/config/constants";
 import {
   DEV_WORKSPACE_ORG_PROXY_PATH_PREFIX,
   X_WORKSPACE_DEV_TARGET_ORIGIN,
@@ -17,7 +15,6 @@ import {
   workspaceRestApiPathSuffix,
 } from "~/shared/config/dev-workspace-org-proxy";
 import { isAbortError } from "~/shared/lib/abort-error";
-import { getBasicAuthValue, wipeCredentials } from "~/shared/lib/auth-guard";
 import {
   noteApiTransportFailure,
   noteApiTransportSuccess,
@@ -27,15 +24,6 @@ import { env } from "~/shared/lib/env";
 import { createLogger, logApiCall } from "~/shared/lib/logger";
 import { extractLoggableRequestParams } from "~/shared/lib/logger-request-params.lib";
 import { workspaceOrgApiOriginFromZulipRealmRoot } from "~/shared/lib/workspace-org-origin.lib";
-import {
-  ingestZulipRateLimitFromApiResponse,
-  waitUntilZulipRateLimitReleased,
-} from "~/shared/lib/zulip-rate-limit-gate";
-import {
-  getCachedSessionCsrfToken,
-  getOrFetchWebSessionCsrfToken,
-  readSessionCsrfTokenFromDocument,
-} from "./zulip-session-csrf.internal";
 
 // ---
 // Instance credentials provider (injected from `app` to avoid shared → entities import)
@@ -60,12 +48,6 @@ export function setInstanceProvider(fn: () => InstanceCredentials | null): void 
 
 export function getCurrentInstance(): InstanceCredentials | null {
   return instanceProvider?.() ?? null;
-}
-
-type InstanceAuthType = "api_key" | "session";
-
-function resolveInstanceAuthType(instance: InstanceCredentials | null): InstanceAuthType {
-  return instance?.authType === "session" ? "session" : "api_key";
 }
 
 function normalizeInstanceRealmRoot(realmInput: string): string {
@@ -217,55 +199,6 @@ const noCacheMiddleware: Middleware = async (req, next) => {
   return next(req);
 };
 
-const authMiddleware: Middleware = async (req, next) => {
-  const instance = getCurrentInstance();
-  if (resolveInstanceAuthType(instance) === "api_key" && instance?.email && instance?.apiKey) {
-    const authValue = getBasicAuthValue({ email: instance.email, apiKey: instance.apiKey });
-    if (authValue) {
-      req.headers.Authorization = authValue;
-    }
-  }
-  return next(req);
-};
-
-async function readElectronCsrfToken(realm: string): Promise<string | null> {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  const getCsrfToken = window.electronAPI?.auth?.getCsrfToken;
-  if (typeof getCsrfToken !== "function") {
-    return null;
-  }
-  try {
-    const token = await getCsrfToken({ realm });
-    return token != null && token.length > 0 ? token : null;
-  } catch {
-    return null;
-  }
-}
-
-const zulipSessionCsrfMiddleware: Middleware = async (req, next) => {
-  const instance = getCurrentInstance();
-  if (resolveInstanceAuthType(instance) !== "session" || req.method === "GET") {
-    return next(req);
-  }
-  const csrfToken =
-    (instance != null ? getCachedSessionCsrfToken(instance.realm) : null) ??
-    (instance != null ? await getOrFetchWebSessionCsrfToken(instance.realm) : null) ??
-    readSessionCsrfTokenFromDocument() ??
-    (instance != null ? await readElectronCsrfToken(instance.realm) : null);
-  if (csrfToken && csrfToken.length > 0) {
-    return next({
-      ...req,
-      headers: {
-        ...req.headers,
-        "X-CSRFToken": csrfToken,
-      },
-    });
-  }
-  return next(req);
-};
-
 function pathnameUnderWorkspaceDevPrefix(pathname: string, prefix: string): boolean {
   const p = prefix.replace(/\/+$/, "");
   return pathname === p || pathname.startsWith(`${p}/`);
@@ -406,24 +339,10 @@ const retryMiddleware: Middleware = async (req, next) => {
   throw lastError;
 };
 
-const zulipRateLimitGateMiddleware: Middleware = async (req, next) => {
-  await waitUntilZulipRateLimitReleased(req.signal);
-  const res = await next(req);
-  ingestZulipRateLimitFromApiResponse(res.status, res.data, res.headers);
-  return res;
-};
-
 function shouldSkipAuth401Handling(req: ApiRequest): boolean {
   try {
     const parsed = new URL(req.url);
     const path = parsed.pathname;
-    if (
-      /\/fetch_api_key\/?$/.test(path) ||
-      /\/server_settings\/?$/.test(path) ||
-      /\/accounts\/login\/?$/.test(path)
-    ) {
-      return true;
-    }
     if (/\/api\/messenger\/v1(?:\/|$)/.test(path)) {
       return true;
     }
@@ -436,59 +355,6 @@ function shouldSkipAuth401Handling(req: ApiRequest): boolean {
     return false;
   }
 }
-
-/** Links caller `signal` with a timeout; whichever fires first wins. */
-function createLinkedAbortSignal(
-  outer: AbortSignal | undefined,
-  timeoutMs: number,
-): { signal: AbortSignal; cleanup: () => void } {
-  const controller = new AbortController();
-  const id = setTimeout(() => {
-    controller.abort();
-  }, timeoutMs);
-  const onOuterAbort = () => {
-    controller.abort();
-  };
-  if (outer) {
-    if (outer.aborted) {
-      controller.abort();
-    } else {
-      outer.addEventListener("abort", onOuterAbort);
-    }
-  }
-  return {
-    signal: controller.signal,
-    cleanup: () => {
-      clearTimeout(id);
-      outer?.removeEventListener("abort", onOuterAbort);
-    },
-  };
-}
-
-/** Zulip event long-poll must not use the generic REST timeout (server holds the connection). */
-function isZulipEventsLongPollGet(req: ApiRequest): boolean {
-  if (req.method !== "GET") {
-    return false;
-  }
-  try {
-    return /\/events\/?$/.test(new URL(req.url).pathname);
-  } catch {
-    return false;
-  }
-}
-
-/** Applies `ZULIP_API_FETCH_TIMEOUT_MS` per retry attempt (runs after retry middleware). */
-const zulipRequestTimeoutMiddleware: Middleware = async (req, next) => {
-  if (isZulipEventsLongPollGet(req)) {
-    return next(req);
-  }
-  const { signal, cleanup } = createLinkedAbortSignal(req.signal, ZULIP_API_FETCH_TIMEOUT_MS);
-  try {
-    return await next({ ...req, signal });
-  } finally {
-    cleanup();
-  }
-};
 
 const authErrorMiddleware: Middleware = async (req, next) => {
   const res = await next(req);
@@ -525,12 +391,11 @@ const authErrorMiddleware: Middleware = async (req, next) => {
     return res;
   }
   lastHandledAuth401At = now;
-  authLog.warn("Global 401 logout handler wiping legacy credentials", {
+  authLog.warn("Global 401 handler invoked", {
     method: req.method,
     url: req.url,
     status: res.status,
   });
-  wipeCredentials();
   authErrorHandler?.();
 
   return res;
@@ -570,7 +435,6 @@ class ApiClient {
     this.baseUrl = baseUrl;
     this.middlewares = [
       noCacheMiddleware,
-      authMiddleware,
       loggingMiddleware,
       retryMiddleware,
       connectionHealthMiddleware,
@@ -614,13 +478,12 @@ class ApiClient {
     const chain = [...this.middlewares];
 
     const fetchFn: NextFn = async (r) => {
-      const authType = resolveInstanceAuthType(getCurrentInstance());
       const init: RequestInit = {
         method: r.method,
         headers: r.headers,
         signal: r.signal,
         cache: r.cache,
-        credentials: authType === "session" ? "include" : "same-origin",
+        credentials: "same-origin",
       };
       if (r.body) {
         init.body = r.body;
@@ -853,27 +716,9 @@ export function getWorkspaceApiBaseForCurrentInstance(): string {
   return `${orgOrigin}${workspaceRestPathSuffix()}`;
 }
 
-function getZulipBaseUrl(): string {
-  const instance = getCurrentInstance();
-  if (!instance) return "";
-  const authType = resolveInstanceAuthType(instance);
-  const apiPath = authType === "session" ? "/json" : env.ZULIP_API_PATH;
-  const realm = normalizeInstanceRealmRoot(instance.realm);
-  return `${realm}${apiPath}`;
-}
-
-export const zulipApi = new ApiClient("");
-zulipApi.useBefore(loggingMiddleware, zulipSessionCsrfMiddleware);
-zulipApi.useBefore(retryMiddleware, zulipRateLimitGateMiddleware);
-zulipApi.useBefore(authErrorMiddleware, zulipRequestTimeoutMiddleware);
-
 export const workspaceApi = new ApiClient(env.WORKSPACE_API_BASE);
 
 workspaceApi.useBefore(loggingMiddleware, devWorkspaceOrgTargetHeaderMiddleware);
-
-export function refreshZulipApiBase(): void {
-  zulipApi.setBaseUrl(getZulipBaseUrl());
-}
 
 /** DEV: routes Workspace REST through Vite proxy for the selected instance. */
 export function refreshWorkspaceApiBase(): void {
@@ -890,11 +735,8 @@ export function refreshWorkspaceApiBase(): void {
 export {
   connectionHealthMiddleware,
   noCacheMiddleware,
-  authMiddleware,
-  zulipSessionCsrfMiddleware,
   loggingMiddleware,
   retryMiddleware,
-  zulipRateLimitGateMiddleware,
   authErrorMiddleware,
   type ApiClient,
 };

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  fetchReplacementMessageForDeletedPreview,
   pickReplacementForDm,
   pickReplacementForStreamTopic,
 } from "./chat-list-delete-messages.lib";
@@ -41,5 +42,31 @@ describe("chat-list-delete-messages", () => {
     const messages = [dmMsg(10, [10, 20], 5), dmMsg(11, [10, 30], 15)];
     expect(pickReplacementForDm(messages, "10,20", 10)?.id).toBe(10);
     expect(pickReplacementForDm(messages, "10,30", 10)?.id).toBe(11);
+  });
+
+  it("does not fetch replacement previews after legacy Zulip API removal", async () => {
+    await expect(
+      fetchReplacementMessageForDeletedPreview(
+        {
+          kind: "stream",
+          streamId: 5,
+          topicKey: "topic",
+          streamName: "general",
+          deletedLastMessageId: 2,
+        },
+        10,
+      ),
+    ).resolves.toBeNull();
+
+    await expect(
+      fetchReplacementMessageForDeletedPreview(
+        {
+          kind: "dm",
+          dmKey: "10,20",
+          deletedLastMessageId: 10,
+        },
+        10,
+      ),
+    ).resolves.toBeNull();
   });
 });

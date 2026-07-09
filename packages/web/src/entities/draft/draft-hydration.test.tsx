@@ -1,17 +1,7 @@
-import { render, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { render } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 import { useHydrateDrafts } from "./draft-hydration";
 import { useDraftStore } from "./draft.model";
-
-const fetchDrafts = vi.hoisted(() => vi.fn());
-
-vi.mock("./draft.api", async () => {
-  const actual = await vi.importActual("./draft.api");
-  return {
-    ...actual,
-    fetchDrafts,
-  };
-});
 
 function Harness({
   currentInstanceId,
@@ -27,23 +17,21 @@ function Harness({
 describe("useHydrateDrafts", () => {
   afterEach(() => {
     useDraftStore.getState().clear();
-    fetchDrafts.mockReset();
   });
 
-  it("loads drafts when an instance is ready", async () => {
-    fetchDrafts.mockResolvedValue([
-      { id: 1, type: "stream", to: [10], topic: "general", content: "Draft 1", timestamp: 1 },
-    ]);
+  it("preserves local drafts when an instance is ready", () => {
+    useDraftStore
+      .getState()
+      .setDrafts([
+        { id: 1, type: "stream", to: [10], topic: "general", content: "Draft 1", timestamp: 1 },
+      ]);
 
     render(<Harness currentInstanceId="inst-1" currentUserStatus="ready" />);
 
-    await waitFor(() => {
-      expect(useDraftStore.getState().drafts).toHaveLength(1);
-    });
+    expect(useDraftStore.getState().drafts).toHaveLength(1);
   });
 
   it("clears stale drafts when readiness is lost", () => {
-    fetchDrafts.mockResolvedValue([]);
     useDraftStore
       .getState()
       .setDrafts([
@@ -54,23 +42,5 @@ describe("useHydrateDrafts", () => {
     rerender(<Harness currentInstanceId="inst-1" currentUserStatus="loading" />);
 
     expect(useDraftStore.getState().drafts).toHaveLength(0);
-  });
-
-  it("preserves existing drafts when refresh fails", async () => {
-    fetchDrafts.mockRejectedValue(new Error("offline"));
-    useDraftStore
-      .getState()
-      .setDrafts([
-        { id: 1, type: "stream", to: [10], topic: "general", content: "Draft 1", timestamp: 1 },
-      ]);
-
-    render(<Harness currentInstanceId="inst-1" currentUserStatus="ready" />);
-
-    await waitFor(() => {
-      expect(fetchDrafts).toHaveBeenCalledTimes(1);
-    });
-    await expect(fetchDrafts.mock.results[0]!.value).rejects.toThrow("offline");
-
-    expect(useDraftStore.getState().drafts).toHaveLength(1);
   });
 });

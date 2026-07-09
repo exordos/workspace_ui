@@ -7,10 +7,9 @@ import {
 } from "~/entities/activity/activity-cache.lib";
 import { ensureReactionsLoaded } from "~/entities/activity/activity-reactions-loader.lib";
 import { fetchWorkspaceStarredMessages } from "~/entities/activity/activity-workspace-starred.api";
-import { fetchActivityMessagesPageWithPersist } from "~/entities/activity/activity.api";
+import { loadLegacyActivityEmptyPage } from "~/entities/activity/activity.api";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import { deleteDraftOnServer, updateDraftOnServer } from "~/entities/draft/draft.api";
 import { useDraftStore } from "~/entities/draft/draft.model";
 import type { Draft } from "~/entities/draft/draft.types";
 import {
@@ -193,7 +192,6 @@ export const ActivityPage: React.FC = () => {
   const workspaceStreamsById = useMessengerStore((s) => s.streamsById);
   const workspaceTopicsById = useMessengerStore((s) => s.topicsById);
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
-  const [pendingDraftId, setPendingDraftId] = useState<number | null>(null);
   const [pendingUnstarIds, setPendingUnstarIds] = useState<Set<string>>(() => new Set());
   const [editingDraft, setEditingDraft] = useState<Draft | null>(null);
   const [editingContent, setEditingContent] = useState("");
@@ -208,7 +206,6 @@ export const ActivityPage: React.FC = () => {
   const editDraftTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const drafts = useDraftStore((s) => s.drafts);
-  const draftsLoading = useDraftStore((s) => s.loading);
   const activityStaleVersion = useActivityStore((s) => s.staleVersion);
   const activityFilters = useActivityStore((s) => s.filters);
   const setFilterCache = useActivityStore((s) => s.setFilterCache);
@@ -235,7 +232,7 @@ export const ActivityPage: React.FC = () => {
       ? workspaceStarredState.messages
       : EMPTY_WORKSPACE_STARRED_MESSAGES;
   const loading = isDrafts
-    ? draftsLoading
+    ? false
     : validFilter === "starred"
       ? workspaceStarredState.ownerKey === ownerKey && workspaceStarredState.isInitialLoading
       : (activityFilterState?.isInitialLoading ?? false);
@@ -316,13 +313,9 @@ export const ActivityPage: React.FC = () => {
       try {
         // Best-effort IDB persist after refresh.
         const page = await runInFlightDeduped(requestKey, () =>
-          fetchActivityMessagesPageWithPersist(
-            activityFilter,
-            currentUserId,
-            "newest",
-            ACTIVITY_PAGE_SIZE,
-            { signal: controller.signal },
-          ),
+          loadLegacyActivityEmptyPage(activityFilter, currentUserId, "newest", ACTIVITY_PAGE_SIZE, {
+            signal: controller.signal,
+          }),
         );
         if (controller.signal.aborted || !isActiveOrgRequestContextCurrent(orgContext)) return;
         setFilterPageIfActual(activityFilter, requestVersion, page.messages, !page.foundOldest);
@@ -413,7 +406,6 @@ export const ActivityPage: React.FC = () => {
   }, [ownerKey, runtimeContext, validFilter]);
 
   useEffect(() => {
-    setPendingDraftId(null);
     setPendingUnstarIds(new Set());
     setEditingDraft(null);
     setEditingContent("");
@@ -532,76 +524,29 @@ export const ActivityPage: React.FC = () => {
     [currentUserId, navigate, orgId, projectId, streamsMap],
   );
 
-  const handleDeleteDraft = useCallback(async (e: React.MouseEvent, draft: Draft) => {
+  const handleDeleteDraft = useCallback((e: React.MouseEvent, draft: Draft) => {
     e.preventDefault();
     e.stopPropagation();
 
-    if (draft.id == null) {
-      useDraftStore.getState().removeDraftByIdentifier(draft.timestamp);
-      return;
-    }
-
-    const orgContext = captureActiveOrgRequestContext();
-    setPendingDraftId(draft.id);
-    try {
-      const deleted = await deleteDraftOnServer(draft.id);
-      if (isActiveOrgRequestInvalidated(orgContext)) {
-        return;
-      }
-      if (!deleted) {
-        log.error("Failed to delete draft", { draftId: draft.id });
-        return;
-      }
-      useDraftStore.getState().removeDraftByIdentifier(draft.id);
-    } catch (err) {
-      log.error("Failed to delete draft", {
-        draftId: draft.id,
-        error: String(err),
-      });
-    } finally {
-      if (!isActiveOrgRequestInvalidated(orgContext)) {
-        setPendingDraftId((current) => (current === draft.id ? null : current));
-      }
-    }
+    useDraftStore.getState().removeDraftByIdentifier(draft.id ?? draft.timestamp);
   }, []);
 
   const handleStartEditDraft = useCallback((draft: Draft) => {
-    if (draft.id == null) return;
     setEditingDraft(draft);
     setEditingContent(draft.content);
   }, []);
 
-  const handleEditDialogOpenChange = useCallback(
-    (open: boolean) => {
-      if (open || pendingDraftId != null) return;
-      setEditingDraft(null);
-    },
-    [pendingDraftId],
-  );
+  const handleEditDialogOpenChange = useCallback((open: boolean) => {
+    if (open) return;
+    setEditingDraft(null);
+  }, []);
 
-  const handleSaveDraftEdit = useCallback(async () => {
-    if (editingDraft?.id == null) return;
-    const orgContext = captureActiveOrgRequestContext();
+  const handleSaveDraftEdit = useCallback(() => {
+    if (editingDraft == null) return;
+    const draftIdentifier = editingDraft.id ?? editingDraft.timestamp;
     if (!editingContent.trim()) {
-      setPendingDraftId(editingDraft.id);
-      try {
-        const deleted = await deleteDraftOnServer(editingDraft.id);
-        if (isActiveOrgRequestInvalidated(orgContext)) {
-          return;
-        }
-        if (!deleted) {
-          log.error("Failed to delete draft from edit dialog", {
-            draftId: editingDraft.id,
-          });
-          return;
-        }
-        useDraftStore.getState().removeDraftByIdentifier(editingDraft.id);
-        setEditingDraft(null);
-      } finally {
-        if (!isActiveOrgRequestInvalidated(orgContext)) {
-          setPendingDraftId((current) => (current === editingDraft.id ? null : current));
-        }
-      }
+      useDraftStore.getState().removeDraftByIdentifier(draftIdentifier);
+      setEditingDraft(null);
       return;
     }
     if (editingContent === editingDraft.content) {
@@ -609,30 +554,18 @@ export const ActivityPage: React.FC = () => {
       return;
     }
 
-    setPendingDraftId(editingDraft.id);
-    try {
-      const updated = await updateDraftOnServer(editingDraft.id, {
-        type: editingDraft.type,
-        to: editingDraft.to,
-        topic: editingDraft.topic ?? "",
-        content: editingContent,
-      });
-      if (isActiveOrgRequestInvalidated(orgContext)) {
-        return;
-      }
-      if (!updated) {
-        log.error("Failed to edit draft", { draftId: editingDraft.id });
-        return;
-      }
+    if (editingDraft.id != null) {
       useDraftStore.getState().updateDraft(editingDraft.id, {
         content: editingContent,
       });
-      setEditingDraft(null);
-    } finally {
-      if (!isActiveOrgRequestInvalidated(orgContext)) {
-        setPendingDraftId((current) => (current === editingDraft.id ? null : current));
-      }
+    } else {
+      useDraftStore.getState().setLocalDraft({
+        ...editingDraft,
+        content: editingContent,
+        timestamp: Math.floor(Date.now() / 1000),
+      });
     }
+    setEditingDraft(null);
   }, [editingDraft, editingContent]);
 
   useEffect(() => {
@@ -663,56 +596,49 @@ export const ActivityPage: React.FC = () => {
       }
       return (
         <ul ref={listScrollRef} className="flex flex-col space-y-1 overflow-auto scroll-auto p-2">
-          {drafts.map((d) => {
-            const isPendingDelete = d.id != null && pendingDraftId === d.id;
-            return (
-              <li key={d.id ?? d.timestamp}>
-                <div className="flex items-start gap-2 rounded-lg p-3 transition-colors hover:bg-card-bg">
-                  <button
-                    type="button"
-                    onClick={() => handleDraftClick(d)}
-                    className="min-w-0 flex-1 text-left"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="shrink-0 text-[11px] text-text-muted">
-                        {formatItemTime(d.timestamp)}
-                      </span>
-                      <span className="truncate text-[11px] text-text-muted">
-                        <DraftChatContextLabel draft={d} />
-                      </span>
-                    </div>
-                    <p className="mt-1 line-clamp-2 text-sm text-text-primary">
-                      {truncateText(d.content)}
-                    </p>
-                  </button>
-                  {d.id != null && (
-                    <button
-                      type="button"
-                      onClick={() => handleStartEditDraft(d)}
-                      disabled={isPendingDelete}
-                      className="shrink-0 rounded p-1.5 text-text-muted transition-colors hover:bg-card-bg hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
-                      aria-label={t("activity.editDraft")}
-                      title={t("activity.editDraft")}
-                    >
-                      ✎
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      void handleDeleteDraft(e, d);
-                    }}
-                    disabled={isPendingDelete}
-                    className="shrink-0 rounded p-1.5 text-text-muted transition-colors hover:bg-card-bg hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
-                    aria-label={t("activity.deleteDraft")}
-                    title={t("activity.deleteDraft")}
-                  >
-                    🗑
-                  </button>
-                </div>
-              </li>
-            );
-          })}
+          {drafts.map((d) => (
+            <li key={d.id ?? d.timestamp}>
+              <div className="flex items-start gap-2 rounded-lg p-3 transition-colors hover:bg-card-bg">
+                <button
+                  type="button"
+                  onClick={() => handleDraftClick(d)}
+                  className="min-w-0 flex-1 text-left"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="shrink-0 text-[11px] text-text-muted">
+                      {formatItemTime(d.timestamp)}
+                    </span>
+                    <span className="truncate text-[11px] text-text-muted">
+                      <DraftChatContextLabel draft={d} />
+                    </span>
+                  </div>
+                  <p className="mt-1 line-clamp-2 text-sm text-text-primary">
+                    {truncateText(d.content)}
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleStartEditDraft(d)}
+                  className="shrink-0 rounded p-1.5 text-text-muted transition-colors hover:bg-card-bg hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label={t("activity.editDraft")}
+                  title={t("activity.editDraft")}
+                >
+                  ✎
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    handleDeleteDraft(e, d);
+                  }}
+                  className="shrink-0 rounded p-1.5 text-text-muted transition-colors hover:bg-card-bg hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label={t("activity.deleteDraft")}
+                  title={t("activity.deleteDraft")}
+                >
+                  🗑
+                </button>
+              </div>
+            </li>
+          ))}
         </ul>
       );
     }
@@ -939,21 +865,14 @@ export const ActivityPage: React.FC = () => {
         maxWidthClassName="max-w-lg"
         footer={
           <>
-            <DialogCancelButton
-              useDialogClose={false}
-              onClick={() => setEditingDraft(null)}
-              disabled={editingDraft?.id != null && pendingDraftId === editingDraft.id}
-            >
+            <DialogCancelButton useDialogClose={false} onClick={() => setEditingDraft(null)}>
               {t("common.cancel")}
             </DialogCancelButton>
             <DialogPrimaryButton
               onClick={() => {
-                void handleSaveDraftEdit();
+                handleSaveDraftEdit();
               }}
-              disabled={
-                editingContent === (editingDraft?.content ?? "") ||
-                (editingDraft?.id != null && pendingDraftId === editingDraft.id)
-              }
+              disabled={editingContent === (editingDraft?.content ?? "")}
             >
               {t("common.save")}
             </DialogPrimaryButton>
@@ -965,7 +884,6 @@ export const ActivityPage: React.FC = () => {
           value={editingContent}
           onChange={(e) => setEditingContent(e.target.value)}
           className="min-h-32 w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
-          disabled={editingDraft?.id != null && pendingDraftId === editingDraft.id}
         />
       </AppDialog>
     </div>

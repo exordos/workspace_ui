@@ -7,12 +7,6 @@ import {
 } from "./typing-indicator.model";
 import { buildDmTypingChatKey, buildStreamTypingChatKey } from "./typing-key";
 
-vi.mock("~/shared/api/client", () => ({
-  zulipApi: {
-    post: vi.fn(),
-  },
-}));
-
 describe("typing-indicator store", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -280,84 +274,6 @@ describe("typing transitions", () => {
     expect(resolveTypingIdleTransition(false)).toEqual({
       action: null,
       nextWasTyping: false,
-    });
-  });
-});
-
-// Typing notification API — sends start/stop events to Zulip.
-describe("typing-indicator API", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  const mockOk = {
-    ok: true,
-    status: 200,
-    data: {},
-    headers: new Headers(),
-    raw: new Response(),
-    durationMs: 10,
-  };
-
-  describe("sendTypingStart", () => {
-    it("calls POST /typing with start op and user IDs", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
-
-      const { sendTypingStart } = await import("./typing-indicator.api");
-      await sendTypingStart([42, 99]);
-
-      expect(zulipApi.post).toHaveBeenCalledWith("/typing", {
-        op: "start",
-        to: JSON.stringify([42, 99]),
-        type: "direct",
-      });
-    });
-
-    it("does not throw on API error (logs warning instead)", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockRejectedValue(new Error("Network error"));
-
-      const { sendTypingStart } = await import("./typing-indicator.api");
-      await expect(sendTypingStart([42])).resolves.toBeUndefined();
-    });
-
-    it("sends empty array when no users", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
-
-      const { sendTypingStart } = await import("./typing-indicator.api");
-      await sendTypingStart([]);
-
-      expect(zulipApi.post).toHaveBeenCalledWith("/typing", {
-        op: "start",
-        to: "[]",
-        type: "direct",
-      });
-    });
-  });
-
-  describe("sendTypingStop", () => {
-    it("calls POST /typing with stop op and user IDs", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
-
-      const { sendTypingStop } = await import("./typing-indicator.api");
-      await sendTypingStop([42]);
-
-      expect(zulipApi.post).toHaveBeenCalledWith("/typing", {
-        op: "stop",
-        to: JSON.stringify([42]),
-        type: "direct",
-      });
-    });
-
-    it("does not throw on API error (logs warning instead)", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockRejectedValue(new Error("Server down"));
-
-      const { sendTypingStop } = await import("./typing-indicator.api");
-      await expect(sendTypingStop([42])).resolves.toBeUndefined();
     });
   });
 });

@@ -4,7 +4,6 @@ import type { LogEntry } from "~/shared/lib/logger";
 import {
   collectDiagnosticsPageSnapshot,
   resolveDiagnosticsOverallStatus,
-  truncateQueueId,
 } from "./diagnostics-collect.lib";
 
 const readyConnection: ConnectionHealthSnapshot = {
@@ -81,6 +80,7 @@ describe("collectDiagnosticsPageSnapshot", () => {
     });
 
     expect(snapshot).not.toHaveProperty("push");
+    expect(snapshot.realtime).not.toHaveProperty("eventQueueId");
     expect(snapshot.notifications.permission).toBe("unsupported");
   });
 
@@ -122,11 +122,5 @@ describe("collectDiagnosticsPageSnapshot", () => {
     expect(snapshot.logs.recentErrors).toHaveLength(1);
     expect(snapshot.logs.recentErrors[0]?.message).toBe("boom");
     expect(snapshot.overallStatus).toBe("degraded");
-  });
-});
-
-describe("truncateQueueId", () => {
-  it("truncates long queue ids", () => {
-    expect(truncateQueueId("abcdefghijklmnop", 8)).toBe("abcdefgh…");
   });
 });

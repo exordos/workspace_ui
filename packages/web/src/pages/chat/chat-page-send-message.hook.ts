@@ -3,18 +3,9 @@
  */
 import { useCallback, useEffect, useRef } from "react";
 import { t } from "~/i18n/i18n";
-import { sendMessage } from "~/shared/api/zulip-messages";
 import type { MockMessage } from "~/shared/api/zulip.types";
-import { createLogger } from "~/shared/lib/logger";
-import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import { executeChatPageSend } from "./chat-page-send-handler.lib";
-import {
-  buildOptimisticOutgoingMessage,
-  markOutgoingMessageFailed,
-} from "./chat-send-delivery.lib";
 import type { ComposerUploadProgressState } from "./chat-upload.lib";
-
-const log = createLogger("chat-page");
 
 export interface UseChatPageSendMessageParams {
   currentUserId: number | null;
@@ -137,114 +128,14 @@ export function useChatPageSendMessage(
   );
 
   const handleRetryFailedOutgoing = useCallback(
-    async (msg: MockMessage) => {
-      if (msg.delivery_status !== "failed" || msg.id >= 0) return;
+    (msg: MockMessage) => {
+      if (msg.delivery_status !== "failed" || msg.id >= 0) return Promise.resolve();
       setSendError(null);
-      const body = msg.content;
-      removeMessage(msg.id);
-
-      const stopTypingAfterSend = () => {
-        stopTyping();
-      };
-
-      if (isDmView && activeDmUserIds?.length) {
-        const optimisticMessageId = optimisticMessageIdRef.current;
-        optimisticMessageIdRef.current -= 1;
-        const optimisticMessage = buildOptimisticOutgoingMessage({
-          id: optimisticMessageId,
-          senderId: currentUserId ?? 0,
-          senderFullName: t("common.you"),
-          content: body,
-          target: { mode: "dm", recipientIds: activeDmUserIds },
-        });
-        appendMessage(optimisticMessage);
-        requestScrollToBottom();
-        try {
-          const newMsg = await sendMessage({
-            to: activeDmUserIds,
-            content: body,
-            sender_id: currentUserId ?? 0,
-            sender_full_name: t("common.you"),
-            local_id: String(optimisticMessageId),
-          });
-          commitOutgoingMessage(optimisticMessageId, newMsg);
-          clearReplyQuote();
-          stopTypingAfterSend();
-        } catch (err) {
-          removeMessage(optimisticMessageId);
-          appendMessage(markOutgoingMessageFailed(optimisticMessage));
-          setSendError(err instanceof Error ? err.message : t("message.sendFailed"));
-        } finally {
-          setUploadProgress(null);
-        }
-        return;
-      }
-      if (activeStream) {
-        if (!activeStreamCanonicalName) {
-          log.warn("Blocked retry for failed stream message without canonical stream name", {
-            streamId: activeStreamId ?? undefined,
-            displayName: activeStream,
-            failedMessageId: msg.id,
-          });
-          setSendError(t("message.sendFailed"));
-          return;
-        }
-        const subject = normalizeTopicForIdentity(msg.subject ?? activeTopic ?? "");
-        const optimisticMessageId = optimisticMessageIdRef.current;
-        optimisticMessageIdRef.current -= 1;
-        const optimisticMessage = buildOptimisticOutgoingMessage({
-          id: optimisticMessageId,
-          senderId: currentUserId ?? 0,
-          senderFullName: t("common.you"),
-          content: body,
-          target: {
-            mode: "stream",
-            stream: activeStreamCanonicalName,
-            streamId: activeStreamId ?? undefined,
-            subject,
-          },
-        });
-        appendMessage(optimisticMessage);
-        requestScrollToBottom();
-        try {
-          const newMsg = await sendMessage({
-            stream: activeStreamCanonicalName,
-            streamId: activeStreamId ?? undefined,
-            subject,
-            content: body,
-            sender_id: currentUserId ?? 0,
-            sender_full_name: t("common.you"),
-            local_id: String(optimisticMessageId),
-          });
-          commitOutgoingMessage(optimisticMessageId, newMsg);
-          clearReplyQuote();
-          stopTypingAfterSend();
-        } catch (err) {
-          removeMessage(optimisticMessageId);
-          appendMessage(markOutgoingMessageFailed(optimisticMessage));
-          setSendError(err instanceof Error ? err.message : t("message.sendFailed"));
-        } finally {
-          setUploadProgress(null);
-        }
-      }
+      setSendError(t("message.sendFailed"));
+      setUploadProgress(null);
+      return Promise.resolve();
     },
-    [
-      activeDmUserIds,
-      activeStream,
-      activeStreamCanonicalName,
-      activeStreamId,
-      activeTopic,
-      appendMessage,
-      clearReplyQuote,
-      commitOutgoingMessage,
-      currentUserId,
-      isDmView,
-      removeMessage,
-      requestScrollToBottom,
-      setSendError,
-      setUploadProgress,
-      stopTyping,
-    ],
+    [setSendError, setUploadProgress],
   );
 
   const handleCancelUpload = useCallback(() => {

@@ -1,33 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { useInstancesStore } from "~/entities/instance/instance.model";
-import { useUsersStore } from "~/entities/user/user.model";
-import { fetchMessagesByIds } from "~/shared/api/zulip-messages";
-import type { ZulipRecentPrivateConversation, ZulipRawMessage } from "~/shared/api/zulip.types";
-import { upsertDmIndexFromMessages } from "~/shared/lib/dm-index";
+import type { ZulipRecentPrivateConversation } from "~/shared/api/zulip.types";
 import {
   collectLastMessageIdsFromRecentPrivateConversations,
   hydrateDmSidebarPreviewsFromRecentConversations,
 } from "./chat-list-dm-preview-hydrate.lib";
 import { useChatListStore } from "./chat-list.model";
-
-vi.mock("~/shared/api/zulip-messages", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/api/zulip-messages")>();
-  return {
-    ...actual,
-    fetchMessagesByIds: vi.fn(),
-  };
-});
-
-vi.mock("~/shared/lib/dm-index", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/lib/dm-index")>();
-  return {
-    ...actual,
-    upsertDmIndexFromMessages: vi.fn(),
-  };
-});
-
-const fetchMessagesByIdsMock = vi.mocked(fetchMessagesByIds);
-const upsertDmIndexFromMessagesMock = vi.mocked(upsertDmIndexFromMessages);
 
 function resetInstancesStore(): void {
   useInstancesStore.setState({
@@ -42,23 +20,6 @@ function resetInstancesStore(): void {
 
 function seedActiveInstance(): string {
   return useInstancesStore.getState().addInstance().id;
-}
-
-function dmMessage(overrides: Partial<ZulipRawMessage> = {}): ZulipRawMessage {
-  return {
-    id: 100,
-    sender_id: 20,
-    sender_full_name: "DM Sender",
-    content: "hello",
-    timestamp: 1000,
-    type: "private",
-    display_recipient: [
-      { id: 7, full_name: "Current User" },
-      { id: 20, full_name: "Other User" },
-    ],
-    flags: [],
-    ...overrides,
-  };
 }
 
 describe("collectLastMessageIdsFromRecentPrivateConversations", () => {
@@ -101,20 +62,14 @@ describe("hydrateDmSidebarPreviewsFromRecentConversations", () => {
     resetInstancesStore();
     seedActiveInstance();
     useChatListStore.getState().clear();
-    useUsersStore.getState().clear();
-    fetchMessagesByIdsMock.mockReset();
-    upsertDmIndexFromMessagesMock.mockReset();
   });
 
   afterEach(() => {
     resetInstancesStore();
     useChatListStore.getState().clear();
-    useUsersStore.getState().clear();
   });
 
-  it("applies fetched DM previews to chat list and DM index", async () => {
-    fetchMessagesByIdsMock.mockResolvedValue([dmMessage({ id: 555 })]);
-
+  it("does not fetch or apply DM previews from legacy metadata", async () => {
     await hydrateDmSidebarPreviewsFromRecentConversations({
       conversations: {
         a: { user_ids: [7, 20], max_message_id: 555, unread_message_ids: [] },
@@ -123,40 +78,19 @@ describe("hydrateDmSidebarPreviewsFromRecentConversations", () => {
       instanceId: useInstancesStore.getState().currentInstanceId ?? undefined,
     });
 
-    expect(fetchMessagesByIdsMock).toHaveBeenCalledWith([555]);
-    expect(useChatListStore.getState().dmsMap.size).toBe(1);
-    expect(upsertDmIndexFromMessagesMock).toHaveBeenCalledWith(
-      expect.any(String),
-      [expect.objectContaining({ id: 555 })],
-      7,
-    );
+    expect(useChatListStore.getState().dmsMap.size).toBe(0);
   });
 
-  it("drops stale DM preview results after organization switch", async () => {
-    let resolveFetch!: (value: ZulipRawMessage[]) => void;
-    fetchMessagesByIdsMock.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveFetch = resolve;
-        }),
-    );
-
-    const pending = hydrateDmSidebarPreviewsFromRecentConversations({
+  it("keeps no-op behavior when cancelled", async () => {
+    await hydrateDmSidebarPreviewsFromRecentConversations({
       conversations: {
         a: { user_ids: [7, 20], max_message_id: 555, unread_message_ids: [] },
       },
       currentUserId: 7,
       instanceId: useInstancesStore.getState().currentInstanceId ?? undefined,
+      cancelled: () => true,
     });
 
-    const secondInstanceId = seedActiveInstance();
-    useInstancesStore.getState().setCurrentInstanceId(secondInstanceId);
-    useChatListStore.getState().clear();
-
-    resolveFetch([dmMessage({ id: 555, content: "stale dm preview" })]);
-    await pending;
-
     expect(useChatListStore.getState().dmsMap.size).toBe(0);
-    expect(upsertDmIndexFromMessagesMock).not.toHaveBeenCalled();
   });
 });

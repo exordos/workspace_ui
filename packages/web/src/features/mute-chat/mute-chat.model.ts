@@ -1,7 +1,7 @@
 /**
  * Mute store — tracks which streams and topics the user has muted.
  *
- * Populated from subscription data (stream is_muted, desktop_notifications) and user_topics
+ * Populated from legacy subscription data and topic visibility rows.
  * (topic visibility_policy). Updated via API calls when the user toggles mute in the UI.
  */
 
@@ -380,7 +380,7 @@ export const useMuteStore = create<MuteStoreState>((set, get) => ({
   },
 }));
 
-/** Builds mute-store snapshot fields from Zulip subscriptions and user topics. */
+/** Builds mute-store snapshot fields from legacy subscriptions and topic visibility rows. */
 export function buildMuteSnapshotFromBootstrap(options: {
   subscriptions?: readonly ZulipSubscription[];
   userTopics?: readonly { stream_id: number; topic_name: string; visibility_policy: number }[];

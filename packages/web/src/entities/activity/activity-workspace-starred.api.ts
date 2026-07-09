@@ -56,7 +56,7 @@ export async function fetchWorkspaceStarredMessages({
       starred: true,
     });
     const durationMs = Math.round(performance.now() - start);
-    logApiCall("GET", "/messages/", {
+    logApiCall("GET", "workspace-messages-starred", {
       status: 200,
       durationMs,
     });
@@ -69,7 +69,7 @@ export async function fetchWorkspaceStarredMessages({
   } catch (err) {
     const durationMs = Math.round(performance.now() - start);
     const aborted = isAbortError(err) || signal?.aborted === true;
-    logApiCall("GET", "/messages/", {
+    logApiCall("GET", "workspace-messages-starred", {
       durationMs,
       ...(aborted ? { aborted: true } : { error: String(err) }),
     });

@@ -1,21 +1,15 @@
 /**
  * Hydrates DM sidebar previews from register `recent_private_conversations` metadata.
  *
- * Uses GET /messages `message_ids` for one batch request per chunk instead of loading DM history.
+ * Legacy network hydrate was removed with the Zulip API cutover. The id collector remains pure;
+ * the hydrate entrypoint traces a controlled no-op.
  */
 import {
   summarizeRecentPrivateConversationsForTrace,
   traceDmPreviewHydrate,
 } from "~/entities/chat-list/chat-list-dm-preview-hydrate-trace.lib";
-import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import type { ChatListDmMetadataRow } from "~/entities/chat-list/chat-list.model.types";
-import {
-  captureActiveOrgRequestContext,
-  isActiveOrgRequestContextCurrent,
-} from "~/entities/instance/instance.model";
-import { fetchMessagesByIds } from "~/shared/api/zulip-messages";
 import type { ZulipRecentPrivateConversation } from "~/shared/api/zulip.types";
-import { upsertDmIndexFromMessages } from "~/shared/lib/dm-index";
 import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
 
 function addPositiveMessageId(ids: Set<number>, messageId: number | null | undefined): void {
@@ -48,18 +42,10 @@ export interface HydrateDmSidebarPreviewsOptions {
   cancelled?: () => boolean;
 }
 
-function isCancelledOrStale(
-  orgContext: ReturnType<typeof captureActiveOrgRequestContext>,
-  cancelled?: () => boolean,
-): boolean {
-  return cancelled?.() === true || !isActiveOrgRequestContextCurrent(orgContext);
-}
-
-/** Loads last DM messages from register metadata and merges them into the chat list store. */
-export async function hydrateDmSidebarPreviewsFromRecentConversations(
+/** Legacy DM preview network hydrate is disabled; Workspace/local paths own preview data. */
+export function hydrateDmSidebarPreviewsFromRecentConversations(
   options: HydrateDmSidebarPreviewsOptions,
 ): Promise<void> {
-  const orgContext = captureActiveOrgRequestContext();
   traceDmPreviewHydrate("hydrate:start", {
     instanceId: options.instanceId ?? null,
     currentUserId: options.currentUserId,
@@ -78,74 +64,14 @@ export async function hydrateDmSidebarPreviewsFromRecentConversations(
     messageIdSample: messageIds.slice(0, 12),
   });
 
-  if (orgContext.instanceId == null || isCancelledOrStale(orgContext, options.cancelled)) {
-    traceDmPreviewHydrate("hydrate:skip", { reason: "stale_org_context_before_fetch" });
-    return;
-  }
-  if (messageIds.length === 0) {
-    logChatListFlow("chatList: skip DM preview hydrate (no last message ids)", {
-      hasConversations: options.conversations != null,
-      metadataRowCount: options.metadataRows?.length ?? 0,
-    });
-    traceDmPreviewHydrate("hydrate:skip", { reason: "no_message_ids" });
-    return;
-  }
-  if (options.currentUserId == null) {
-    logChatListFlow("chatList: skip DM preview hydrate (currentUserId missing)", {
-      messageIdCount: messageIds.length,
-    });
-    traceDmPreviewHydrate("hydrate:skip", {
-      reason: "no_current_user_id",
-      messageIdCount: messageIds.length,
-    });
-    return;
-  }
-
-  logChatListFlow("chatList: hydrate DM previews from recent_private_conversations", {
+  logChatListFlow("chatList: skip legacy DM preview hydrate (Zulip API removed)", {
     messageIdCount: messageIds.length,
     currentUserId: options.currentUserId,
-  });
-
-  traceDmPreviewHydrate("hydrate:fetchMessagesByIds", { messageIdCount: messageIds.length });
-
-  let messages: Awaited<ReturnType<typeof fetchMessagesByIds>>;
-  try {
-    messages = await fetchMessagesByIds(messageIds);
-  } catch (error) {
-    traceDmPreviewHydrate("hydrate:fetchFailed", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-    throw error;
-  }
-
-  traceDmPreviewHydrate("hydrate:fetchDone", {
-    requestedCount: messageIds.length,
-    fetchedCount: messages.length,
-    fetchedIdSample: messages.slice(0, 12).map((message) => message.id),
     cancelled: options.cancelled?.() ?? false,
   });
-
-  if (isCancelledOrStale(orgContext, options.cancelled)) {
-    traceDmPreviewHydrate("hydrate:skip", { reason: "stale_org_context_after_fetch" });
-    return;
-  }
-  if (messages.length === 0) {
-    traceDmPreviewHydrate("hydrate:skip", { reason: "empty_fetch_result" });
-    return;
-  }
-
-  useChatListStore.getState().addMessages(messages);
-  if (options.instanceId != null) {
-    upsertDmIndexFromMessages(options.instanceId, messages, options.currentUserId);
-  }
-
-  logChatListFlow("chatList: hydrate DM previews applied", {
-    fetchedCount: messages.length,
-    dmsMapSize: useChatListStore.getState().dmsMap.size,
+  traceDmPreviewHydrate("hydrate:skip", {
+    reason: "legacy_zulip_api_removed",
+    messageIdCount: messageIds.length,
   });
-
-  traceDmPreviewHydrate("hydrate:applied", {
-    fetchedCount: messages.length,
-    dmsMapSize: useChatListStore.getState().dmsMap.size,
-  });
+  return Promise.resolve();
 }

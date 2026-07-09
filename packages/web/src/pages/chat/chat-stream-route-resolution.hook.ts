@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { t } from "~/i18n/i18n";
-import { resolveStreamIdByName } from "~/shared/api/zulip-streams";
 import { buildPushClickUrl } from "~/shared/lib/push-click";
 import type { ResolvedStreamByDisplayName } from "~/shared/lib/stream-name.lib";
 import type { NavigateFunction } from "react-router-dom";
@@ -55,7 +53,6 @@ export function useChatStreamRouteResolution(
     navigate,
   } = options;
   const [routeResolveError, setRouteResolveError] = useState<string | null>(null);
-  const resolutionTokenRef = useRef(0);
   const pendingNavigationPathRef = useRef<string | null>(null);
   const dismissRouteResolveError = useCallback(() => {
     setRouteResolveError(null);
@@ -86,39 +83,8 @@ export function useChatStreamRouteResolution(
       return;
     }
 
-    const resolutionToken = resolutionTokenRef.current + 1;
-    resolutionTokenRef.current = resolutionToken;
     pendingNavigationPathRef.current = null;
-    setRouteResolveError(null);
-
-    let cancelled = false;
-    void resolveStreamIdByName(unresolvedStreamName).then((result) => {
-      if (cancelled || resolutionTokenRef.current !== resolutionToken) {
-        return;
-      }
-      if (!result.ok) {
-        setRouteResolveError(resolveStreamRouteErrorMessage(result.kind));
-        return;
-      }
-
-      useChatListStore
-        .getState()
-        .upsertStreamMetadataRows([{ streamId: result.streamId, name: unresolvedStreamName }]);
-      const targetPath = buildCanonicalStreamRoute({
-        streamId: result.streamId,
-        streamName: unresolvedStreamName,
-        hasExplicitTopicRoute,
-        topic,
-        search: locationSearch,
-      });
-      pendingNavigationPathRef.current = targetPath;
-      setRouteResolveError(null);
-      void navigate(targetPath, { replace: true });
-    });
-
-    return () => {
-      cancelled = true;
-    };
+    setRouteResolveError(resolveStreamRouteErrorMessage("transient"));
   }, [
     activeTopic,
     hasExplicitTopicRoute,

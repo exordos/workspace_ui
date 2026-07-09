@@ -26,7 +26,6 @@ const fetchVersionCatalogMock = vi.hoisted(() => vi.fn());
 const useAppUpdateMock = vi.hoisted(() => vi.fn());
 const navigateMock = vi.hoisted(() => vi.fn());
 const statusEmojiPickerMock = vi.hoisted(() => vi.fn());
-const fetchRealmEmojisMock = vi.hoisted(() => vi.fn());
 const updateWorkspaceOwnStatusMock = vi.hoisted(() => vi.fn());
 const useCurrentChatMessagesStore = {
   setState: vi.fn(),
@@ -48,14 +47,6 @@ vi.mock("~/shared/lib/updater", () => ({
 vi.mock("~/entities/user/user-workspace-status-actions.lib", () => ({
   updateWorkspaceOwnStatus: (...args: unknown[]) => updateWorkspaceOwnStatusMock(...args),
 }));
-
-vi.mock("~/shared/api/zulip-users", async () => {
-  const actual = await vi.importActual("~/shared/api/zulip-users");
-  return {
-    ...actual,
-    fetchRealmEmojis: (...args: unknown[]) => fetchRealmEmojisMock(...args),
-  };
-});
 
 vi.mock("emoji-picker-react", () => ({
   default: (props: {
@@ -213,8 +204,6 @@ describe("RightPanel truthfulness", () => {
     useAppUpdateMock.mockReset();
     navigateMock.mockReset();
     statusEmojiPickerMock.mockReset();
-    fetchRealmEmojisMock.mockReset();
-    fetchRealmEmojisMock.mockResolvedValue([]);
     act(() => {
       setLocale("en");
     });
@@ -392,7 +381,6 @@ describe("RightPanel truthfulness", () => {
       expect(props?.customEmojis).toBeUndefined();
       expect(props?.emojiStyle).toBe("native");
     });
-    expect(fetchRealmEmojisMock).not.toHaveBeenCalled();
   });
 
   it("saves Workspace status from the user menu", async () => {

@@ -91,7 +91,7 @@ describe("extractLoggableRequestParams", () => {
     expect(params).toEqual({ body: "[FormData]" });
   });
 
-  it("limits long-poll events params to queue fields", () => {
+  it("omits legacy queue id from long-poll events params", () => {
     const params = extractLoggableRequestParams(
       makeReq({
         method: "GET",
@@ -100,10 +100,22 @@ describe("extractLoggableRequestParams", () => {
     );
 
     expect(params).toEqual({
-      queue_id: "q1",
       last_event_id: "5",
       timeout: "90",
     });
+  });
+
+  it("omits legacy queue id from request bodies", () => {
+    const params = extractLoggableRequestParams(
+      makeReq({
+        method: "POST",
+        url: "https://chat.example.com/api/v1/messages",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "type=stream&queue_id=q1&local_id=-1&content=hello",
+      }),
+    );
+
+    expect(params).toEqual({ type: "stream", local_id: "-1", content: "hello" });
   });
 
   it("returns undefined when no params", () => {

@@ -13,11 +13,9 @@ import {
   runOptimisticTopicVisibilityUpdate,
 } from "./mute-chat.optimistic.lib";
 
-vi.mock("~/shared/api/client", () => ({
-  zulipApi: {
-    post: vi.fn(),
-  },
-}));
+vi.mock("~/shared/api/client", () => {
+  throw new Error("mute-chat API must not import shared/api/client");
+});
 
 describe("useMuteStore", () => {
   afterEach(() => {
@@ -316,326 +314,130 @@ describe("mute-chat optimistic helpers", () => {
   });
 });
 
-// Mute API — calls Zulip endpoints to mute/unmute streams and topics.
+// Mute API — legacy numeric writes are unsupported and must not call network.
 describe("mute-chat API", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    useMuteStore.getState().clear();
   });
 
-  const mockOk = {
-    ok: true,
-    status: 200,
-    data: {},
-    headers: new Headers(),
-    raw: new Response(),
-    durationMs: 20,
-  };
-
-  const mockFail = {
-    ok: false,
-    status: 400,
-    data: null,
-    headers: new Headers(),
-    raw: new Response(),
-    durationMs: 10,
-  };
+  function blockFetch(): ReturnType<typeof vi.spyOn> {
+    return vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Unexpected network call"));
+  }
 
   describe("setStreamMuted", () => {
-    it("sends mute request with correct subscription data", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
-
+    it("returns false without calling network", async () => {
+      const fetchSpy = blockFetch();
       const { setStreamMuted } = await import("./mute-chat.api");
-      const result = await setStreamMuted(10, true);
 
-      expect(result).toBe(true);
-      expect(zulipApi.post).toHaveBeenCalledWith("/users/me/subscriptions/properties", {
-        subscription_data: JSON.stringify([{ stream_id: 10, property: "is_muted", value: true }]),
-      });
-    });
-
-    it("sends unmute request with value=false", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
-
-      const { setStreamMuted } = await import("./mute-chat.api");
-      await setStreamMuted(10, false);
-
-      expect(zulipApi.post).toHaveBeenCalledWith(
-        "/users/me/subscriptions/properties",
-        expect.objectContaining({
-          subscription_data: JSON.stringify([
-            { stream_id: 10, property: "is_muted", value: false },
-          ]),
-        }),
-      );
-    });
-
-    it("returns false on API failure", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockResolvedValue(mockFail);
-
-      const { setStreamMuted } = await import("./mute-chat.api");
       expect(await setStreamMuted(10, true)).toBe(false);
+      expect(await setStreamMuted(10, false)).toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
     });
 
-    it("returns false on network error", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockRejectedValue(new Error("Timeout"));
-
+    it("keeps streamId validation", async () => {
       const { setStreamMuted } = await import("./mute-chat.api");
-      expect(await setStreamMuted(10, true)).toBe(false);
+      await expect(setStreamMuted(0, true)).rejects.toThrow("Invalid streamId");
+    });
+  });
+
+  describe("setStreamDesktopNotifications / setStreamAudibleNotifications", () => {
+    it("return false without calling network", async () => {
+      const fetchSpy = blockFetch();
+      const { setStreamDesktopNotifications, setStreamAudibleNotifications } =
+        await import("./mute-chat.api");
+
+      expect(await setStreamDesktopNotifications(10, true)).toBe(false);
+      expect(await setStreamDesktopNotifications(10, false)).toBe(false);
+      expect(await setStreamAudibleNotifications(10, true)).toBe(false);
+      expect(await setStreamAudibleNotifications(10, false)).toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
     });
   });
 
   describe("setTopicVisibility", () => {
-    it("sends topic visibility policy with correct params", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
-
+    it("returns false without calling network", async () => {
+      const fetchSpy = blockFetch();
       const { setTopicVisibility } = await import("./mute-chat.api");
-      const result = await setTopicVisibility(10, "announcements", 1);
 
-      expect(result).toBe(true);
-      expect(zulipApi.post).toHaveBeenCalledWith("/user_topics", {
-        stream_id: "10",
-        topic: "announcements",
-        visibility_policy: "1",
-      });
+      expect(await setTopicVisibility(10, "announcements", 1)).toBe(false);
+      expect(await setTopicVisibility(10, "general", 1)).toBe(false);
+      expect(await setTopicVisibility(10, "", 1)).toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
     });
 
-    it("preserves literal general topic in user_topics payload", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
-
+    it("keeps streamId validation", async () => {
       const { setTopicVisibility } = await import("./mute-chat.api");
-      const result = await setTopicVisibility(10, "general", 1);
-
-      expect(result).toBe(true);
-      expect(zulipApi.post).toHaveBeenCalledWith("/user_topics", {
-        stream_id: "10",
-        topic: "general",
-        visibility_policy: "1",
-      });
-    });
-
-    it("supports explicit empty topic in user_topics payload", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
-
-      const { setTopicVisibility } = await import("./mute-chat.api");
-      const result = await setTopicVisibility(10, "", 1);
-
-      expect(result).toBe(true);
-      expect(zulipApi.post).toHaveBeenCalledWith("/user_topics", {
-        stream_id: "10",
-        topic: "",
-        visibility_policy: "1",
-      });
-    });
-
-    it("returns false on API failure", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockResolvedValue(mockFail);
-
-      const { setTopicVisibility } = await import("./mute-chat.api");
-      expect(await setTopicVisibility(10, "spam", 1)).toBe(false);
-    });
-
-    it("returns false on network error", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockRejectedValue(new Error("Offline"));
-
-      const { setTopicVisibility } = await import("./mute-chat.api");
-      expect(await setTopicVisibility(10, "spam", 1)).toBe(false);
+      await expect(setTopicVisibility(0, "spam", 1)).rejects.toThrow("Invalid streamId");
     });
   });
 
-  // Convenience wrappers delegate to the core functions.
   describe("muteStream / unmuteStream", () => {
-    it("muteStream calls setStreamMuted with true", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
+    it("return false without calling network", async () => {
+      const fetchSpy = blockFetch();
+      const { muteStream, unmuteStream } = await import("./mute-chat.api");
 
-      const { muteStream } = await import("./mute-chat.api");
-      expect(await muteStream(42)).toBe(true);
-
-      const body = vi.mocked(zulipApi.post).mock.calls[0]![1];
-      const data = JSON.parse(body.subscription_data!) as { value: boolean }[];
-      expect(data[0]!.value).toBe(true);
-    });
-
-    it("unmuteStream calls setStreamMuted with false", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockClear();
-      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
-
-      const { unmuteStream } = await import("./mute-chat.api");
-      expect(await unmuteStream(42)).toBe(true);
-
-      const body = vi.mocked(zulipApi.post).mock.calls[0]![1];
-      const data = JSON.parse(body.subscription_data!) as { value: boolean }[];
-      expect(data[0]!.value).toBe(false);
+      expect(await muteStream(42)).toBe(false);
+      expect(await unmuteStream(42)).toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
     });
   });
 
   describe("setStreamNotificationLevel", () => {
-    it("sends mute and desktop properties for subscribed level", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockClear();
-      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
-
+    it("returns false for all levels without calling network", async () => {
+      const fetchSpy = blockFetch();
       const { setStreamNotificationLevel } = await import("./mute-chat.api");
-      const result = await setStreamNotificationLevel(10, "subscribed");
 
-      expect(result).toBe(true);
-      const body = vi.mocked(zulipApi.post).mock.calls.at(-1)![1];
-      const data = JSON.parse(body.subscription_data!) as { property: string; value: boolean }[];
-      expect(data).toEqual(
-        expect.arrayContaining([
-          { stream_id: 10, property: "is_muted", value: false },
-          { stream_id: 10, property: "desktop_notifications", value: true },
-          { stream_id: 10, property: "audible_notifications", value: true },
-        ]),
-      );
-    });
-
-    it("sends only is_muted for muted level", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockClear();
-      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
-
-      const { setStreamNotificationLevel } = await import("./mute-chat.api");
-      await setStreamNotificationLevel(10, "muted");
-
-      const body = vi.mocked(zulipApi.post).mock.calls.at(-1)![1];
-      const data = JSON.parse(body.subscription_data!) as { property: string }[];
-      expect(data).toEqual([{ stream_id: 10, property: "is_muted", value: true }]);
+      expect(await setStreamNotificationLevel(10, "default")).toBe(false);
+      expect(await setStreamNotificationLevel(10, "muted")).toBe(false);
+      expect(await setStreamNotificationLevel(10, "subscribed")).toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
     });
   });
 
   describe("muteTopic / unmuteTopic", () => {
-    it("muteTopic sends MUTED policy (1)", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
+    it("return false without calling network", async () => {
+      const fetchSpy = blockFetch();
+      const { muteTopic, unmuteTopic, unmuteTopicInMutedStream } = await import("./mute-chat.api");
 
-      const { muteTopic } = await import("./mute-chat.api");
-      expect(await muteTopic(10, "off-topic")).toBe(true);
-
-      expect(zulipApi.post).toHaveBeenCalledWith("/user_topics", {
-        stream_id: "10",
-        topic: "off-topic",
-        visibility_policy: "1",
-      });
-    });
-
-    it("unmuteTopic sends INHERIT policy (0)", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
-
-      const { unmuteTopic } = await import("./mute-chat.api");
-      expect(await unmuteTopic(10, "off-topic")).toBe(true);
-
-      expect(zulipApi.post).toHaveBeenCalledWith("/user_topics", {
-        stream_id: "10",
-        topic: "off-topic",
-        visibility_policy: "0",
-      });
-    });
-
-    it("unmuteTopicInMutedStream sends UNMUTED policy (2)", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
-
-      const { unmuteTopicInMutedStream } = await import("./mute-chat.api");
-      expect(await unmuteTopicInMutedStream(10, "off-topic")).toBe(true);
-
-      expect(zulipApi.post).toHaveBeenCalledWith("/user_topics", {
-        stream_id: "10",
-        topic: "off-topic",
-        visibility_policy: "2",
-      });
+      expect(await muteTopic(10, "off-topic")).toBe(false);
+      expect(await unmuteTopic(10, "off-topic")).toBe(false);
+      expect(await unmuteTopicInMutedStream(10, "off-topic")).toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
     });
   });
 
   describe("setTopicNotificationLevel", () => {
-    it("maps muted, subscribed, and default in a normal stream", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockClear();
-      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
-
+    it("returns false for every mapped level without calling network", async () => {
+      const fetchSpy = blockFetch();
       const { setTopicNotificationLevel } = await import("./mute-chat.api");
 
-      expect(await setTopicNotificationLevel(10, "general", "muted")).toBe(true);
-      expect(await setTopicNotificationLevel(10, "general", "subscribed")).toBe(true);
-      expect(await setTopicNotificationLevel(10, "general", "default")).toBe(true);
-
-      expect(zulipApi.post).toHaveBeenNthCalledWith(1, "/user_topics", {
-        stream_id: "10",
-        topic: "general",
-        visibility_policy: "1",
-      });
-      expect(zulipApi.post).toHaveBeenNthCalledWith(2, "/user_topics", {
-        stream_id: "10",
-        topic: "general",
-        visibility_policy: "3",
-      });
-      expect(zulipApi.post).toHaveBeenNthCalledWith(3, "/user_topics", {
-        stream_id: "10",
-        topic: "general",
-        visibility_policy: "0",
-      });
+      expect(await setTopicNotificationLevel(10, "general", "muted")).toBe(false);
+      expect(await setTopicNotificationLevel(10, "general", "subscribed")).toBe(false);
+      expect(await setTopicNotificationLevel(10, "general", "default")).toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
     });
 
-    it("uses UNMUTED policy for default when stream is muted", async () => {
+    it("returns false for default when stream is muted", async () => {
+      const fetchSpy = blockFetch();
       useMuteStore.getState().muteStream(10);
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
 
       const { setTopicNotificationLevel } = await import("./mute-chat.api");
-      expect(await setTopicNotificationLevel(10, "general", "default")).toBe(true);
-
-      expect(zulipApi.post).toHaveBeenCalledWith("/user_topics", {
-        stream_id: "10",
-        topic: "general",
-        visibility_policy: "2",
-      });
+      expect(await setTopicNotificationLevel(10, "general", "default")).toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
     });
   });
 
   describe("setTopicVisibilityLevel", () => {
-    it("maps each TopicVisibilityLevel to visibility_policy", async () => {
-      const { zulipApi } = await import("~/shared/api/client");
-      vi.mocked(zulipApi.post).mockClear();
-      vi.mocked(zulipApi.post).mockResolvedValue(mockOk);
-
+    it("returns false for each TopicVisibilityLevel without calling network", async () => {
+      const fetchSpy = blockFetch();
       const { setTopicVisibilityLevel } = await import("./mute-chat.api");
 
-      expect(await setTopicVisibilityLevel(10, "general", "muted")).toBe(true);
-      expect(await setTopicVisibilityLevel(10, "general", "inherit")).toBe(true);
-      expect(await setTopicVisibilityLevel(10, "general", "unmuted")).toBe(true);
-      expect(await setTopicVisibilityLevel(10, "general", "followed")).toBe(true);
-
-      expect(zulipApi.post).toHaveBeenNthCalledWith(1, "/user_topics", {
-        stream_id: "10",
-        topic: "general",
-        visibility_policy: "1",
-      });
-      expect(zulipApi.post).toHaveBeenNthCalledWith(2, "/user_topics", {
-        stream_id: "10",
-        topic: "general",
-        visibility_policy: "0",
-      });
-      expect(zulipApi.post).toHaveBeenNthCalledWith(3, "/user_topics", {
-        stream_id: "10",
-        topic: "general",
-        visibility_policy: "2",
-      });
-      expect(zulipApi.post).toHaveBeenNthCalledWith(4, "/user_topics", {
-        stream_id: "10",
-        topic: "general",
-        visibility_policy: "3",
-      });
+      expect(await setTopicVisibilityLevel(10, "general", "muted")).toBe(false);
+      expect(await setTopicVisibilityLevel(10, "general", "inherit")).toBe(false);
+      expect(await setTopicVisibilityLevel(10, "general", "unmuted")).toBe(false);
+      expect(await setTopicVisibilityLevel(10, "general", "followed")).toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
     });
   });
 

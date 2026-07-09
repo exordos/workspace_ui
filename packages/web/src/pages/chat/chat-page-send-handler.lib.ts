@@ -1,16 +1,13 @@
 import { t } from "~/i18n/i18n";
-import { sendMessage } from "~/shared/api/zulip-messages";
-import { uploadFile } from "~/shared/api/zulip-upload";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { createLogger } from "~/shared/lib/logger";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
-import { isAbortLikeError } from "./chat-page-ai.lib";
 import {
   buildOptimisticOutgoingMessage,
   markOutgoingMessageFailed,
   type OutgoingMessageTarget,
 } from "./chat-send-delivery.lib";
-import { uploadComposerFiles, type ComposerUploadProgressState } from "./chat-upload.lib";
+import type { ComposerUploadProgressState } from "./chat-upload.lib";
 
 const log = createLogger("chat-page");
 
@@ -34,63 +31,27 @@ export interface ChatPageSendHandlerDeps {
   releaseUploadAbortController: (controller: AbortController) => void;
 }
 
-async function prepareComposerBodyWithUploads(options: {
+function prepareComposerBodyWithUploads(options: {
   content: string;
   files: File[] | undefined;
   setUploadProgress: ChatPageSendHandlerDeps["setUploadProgress"];
-  setUploadAbortController: ChatPageSendHandlerDeps["setUploadAbortController"];
-  releaseUploadAbortController: ChatPageSendHandlerDeps["releaseUploadAbortController"];
   setSendError: ChatPageSendHandlerDeps["setSendError"];
 }): Promise<string> {
-  const {
-    content,
-    files,
-    setUploadProgress,
-    setUploadAbortController,
-    releaseUploadAbortController,
-    setSendError,
-  } = options;
-  if (files == null || files.length === 0) return content;
+  const { content, files, setUploadProgress, setSendError } = options;
+  if (files == null || files.length === 0) return Promise.resolve(content);
 
-  const uploadController = new AbortController();
-  setUploadAbortController(uploadController);
-  setUploadProgress({
-    completed: 0,
-    total: files.length,
-    activeFileName: files[0]?.name ?? null,
-  });
-
-  try {
-    const uploadedLinks = await uploadComposerFiles(files, uploadFile, {
-      onProgress: setUploadProgress,
-      signal: uploadController.signal,
-    });
-    return content + "\n" + uploadedLinks.join("\n");
-  } catch (err) {
-    const wasCancelled = isAbortLikeError(err) || uploadController.signal.aborted;
-    let errorMessage: string;
-    if (wasCancelled) {
-      errorMessage = t("composer.uploadCancelled");
-    } else if (err instanceof Error) {
-      errorMessage = err.message;
-    } else {
-      errorMessage = t("message.sendFailed");
-    }
-    setSendError(errorMessage);
-    setUploadProgress(null);
-    throw new Error(errorMessage, { cause: err });
-  } finally {
-    releaseUploadAbortController(uploadController);
-  }
+  const errorMessage = t("message.fileUploadUnsupported");
+  setSendError(errorMessage);
+  setUploadProgress(null);
+  throw new Error(errorMessage);
 }
 
-async function sendOutgoingMessageWithOptimisticUi(options: {
+function sendOutgoingMessageWithOptimisticUi(options: {
   deps: ChatPageSendHandlerDeps;
   body: string;
   target: OutgoingMessageTarget;
-  apiPayload: Parameters<typeof sendMessage>[0];
 }): Promise<void> {
-  const { deps, body, target, apiPayload } = options;
+  const { deps, body, target } = options;
   const optimisticMessageId = deps.allocateOptimisticMessageId();
   const optimisticMessage = buildOptimisticOutgoingMessage({
     id: optimisticMessageId,
@@ -100,27 +61,12 @@ async function sendOutgoingMessageWithOptimisticUi(options: {
     target,
   });
 
-  deps.appendMessage(optimisticMessage);
+  deps.appendMessage(markOutgoingMessageFailed(optimisticMessage));
   deps.requestScrollToBottom();
-
-  try {
-    const newMsg = await sendMessage({
-      ...apiPayload,
-      sender_id: deps.currentUserId ?? 0,
-      sender_full_name: t("common.you"),
-      local_id: String(optimisticMessageId),
-    });
-    deps.commitOutgoingMessage(optimisticMessageId, newMsg);
-    deps.clearReplyQuote();
-    deps.stopTyping();
-  } catch (err) {
-    deps.appendMessage(markOutgoingMessageFailed(optimisticMessage));
-    const message = err instanceof Error ? err.message : t("message.sendFailed");
-    deps.setSendError(message);
-    throw err instanceof Error ? err : new Error(t("message.sendFailed"));
-  } finally {
-    deps.setUploadProgress(null);
-  }
+  const error = t("message.sendFailed");
+  deps.setSendError(error);
+  deps.setUploadProgress(null);
+  return Promise.reject(new Error(error));
 }
 
 /** Sends composer content (optional file uploads) to the active DM or stream narrow. */
@@ -137,8 +83,6 @@ export async function executeChatPageSend(
     content,
     files,
     setUploadProgress: deps.setUploadProgress,
-    setUploadAbortController: deps.setUploadAbortController,
-    releaseUploadAbortController: deps.releaseUploadAbortController,
     setSendError: deps.setSendError,
   });
 
@@ -147,7 +91,6 @@ export async function executeChatPageSend(
       deps,
       body,
       target: { mode: "dm", recipientIds: deps.activeDmUserIds },
-      apiPayload: { to: deps.activeDmUserIds, content: body },
     });
     return;
   }
@@ -177,12 +120,6 @@ export async function executeChatPageSend(
       stream: deps.activeStreamCanonicalName,
       streamId: deps.activeStreamId ?? undefined,
       subject,
-    },
-    apiPayload: {
-      stream: deps.activeStreamCanonicalName,
-      streamId: deps.activeStreamId ?? undefined,
-      subject,
-      content: body,
     },
   });
 }

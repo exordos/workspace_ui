@@ -1,8 +1,6 @@
 /**
- * Sidebar preview repair when messages are deleted (local patch + optional network fetch).
+ * Sidebar preview repair when messages are deleted.
  */
-import { parseDmKeyToUserIds } from "~/entities/message/message-chat-context.lib";
-import { fetchMessagesWithNarrow } from "~/shared/api/zulip-messages";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { dmConversationKey } from "~/shared/lib/dm-key";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
@@ -118,49 +116,15 @@ export function pickReplacementForDm<T extends ChatListPreviewSourceMessage>(
   );
 }
 
-export async function fetchReplacementMessageForDeletedPreview(
+export function fetchReplacementMessageForDeletedPreview(
   context: DeletedPreviewContext,
   currentUserId: number | null,
   signal?: AbortSignal,
 ): Promise<MockMessage | null> {
-  try {
-    if (context.kind === "stream") {
-      if (context.streamName.trim().length === 0) return null;
-      const messages = await fetchMessagesWithNarrow(
-        [
-          { operator: "stream", operand: context.streamName },
-          { operator: "topic", operand: context.topicKey },
-        ],
-        "newest",
-        1,
-        0,
-        { applyMarkdown: true, signal },
-      );
-      const replacement = pickReplacementForStreamTopic(
-        messages,
-        context.streamId,
-        context.topicKey,
-      );
-      return replacement?.id === context.deletedLastMessageId ? null : replacement;
-    }
-
-    const userIds = parseDmKeyToUserIds(context.dmKey, currentUserId);
-    if (userIds.length === 0) return null;
-    const messages = await fetchMessagesWithNarrow(
-      [{ operator: "dm", operand: userIds }],
-      "newest",
-      1,
-      0,
-      { applyMarkdown: true, signal },
-    );
-    const replacement = pickReplacementForDm(messages, context.dmKey, currentUserId);
-    return replacement?.id === context.deletedLastMessageId ? null : replacement;
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      return null;
-    }
-    return null;
-  }
+  void context;
+  void currentUserId;
+  void signal;
+  return Promise.resolve(null);
 }
 
 type StreamDeleteContext = Extract<DeletedPreviewContext, { kind: "stream" }>;

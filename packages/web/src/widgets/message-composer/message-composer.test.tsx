@@ -12,8 +12,6 @@ import { MessageComposer } from "./message-composer.ui";
 
 const isWebViewMock = vi.fn(() => false);
 const useViewportKeyboardMock = vi.fn(() => ({ isOpen: false, keyboardHeight: 0 }));
-const fetchSavedSnippetsMock = vi.hoisted(() => vi.fn());
-const createSavedSnippetMock = vi.hoisted(() => vi.fn());
 const emojiPickerMock = vi.hoisted(() => vi.fn());
 
 vi.mock("~/shared/config/constants", async (importOriginal) => {
@@ -34,17 +32,6 @@ vi.mock("~/shared/lib/touch", async () => {
   return {
     ...actual,
     useViewportKeyboard: () => useViewportKeyboardMock(),
-  };
-});
-
-vi.mock("~/shared/api/zulip-messages", async () => {
-  const actual = await vi.importActual<typeof import("~/shared/api/zulip-messages")>(
-    "~/shared/api/zulip-messages",
-  );
-  return {
-    ...actual,
-    fetchSavedSnippets: (...args: unknown[]) => fetchSavedSnippetsMock(...args),
-    createSavedSnippet: (...args: unknown[]) => createSavedSnippetMock(...args),
   };
 });
 
@@ -98,10 +85,6 @@ afterEach(() => {
   isWebViewMock.mockReturnValue(false);
   useViewportKeyboardMock.mockReset();
   useViewportKeyboardMock.mockReturnValue({ isOpen: false, keyboardHeight: 0 });
-  fetchSavedSnippetsMock.mockReset();
-  fetchSavedSnippetsMock.mockResolvedValue([]);
-  createSavedSnippetMock.mockReset();
-  createSavedSnippetMock.mockResolvedValue(1);
   emojiPickerMock.mockReset();
 });
 
@@ -299,39 +282,22 @@ describe("MessageComposer saved snippets", () => {
     focusComposerInput();
 
     expect(screen.queryByRole("button", { name: /saved snippets/i })).not.toBeInTheDocument();
-    expect(fetchSavedSnippetsMock).not.toHaveBeenCalled();
     expect(screen.queryByRole("textbox", { name: /filter snippets/i })).not.toBeInTheDocument();
   });
 
-  it("loads saved snippets and inserts selected content into composer", async () => {
-    fetchSavedSnippetsMock.mockResolvedValue([
-      {
-        id: 101,
-        title: "Incident template",
-        content: "Status update:\n- Impact\n- Mitigation",
-        date_created: 1710000000,
-      },
-    ]);
-
+  it("opens an empty saved snippets stub without fetching legacy snippets", async () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
     const textbox = screen.getByRole("textbox");
     fireEvent.focus(textbox);
     fireEvent.click(screen.getByRole("button", { name: /saved snippets/i }));
 
-    await screen.findByRole("button", { name: "Incident template" });
-    fireEvent.click(screen.getByRole("button", { name: "Incident template" }));
-
-    expect(textbox).toHaveValue("Status update:\n- Impact\n- Mitigation");
-    expect(fetchSavedSnippetsMock).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("textbox", { name: /filter snippets/i })).toBeInTheDocument();
+    expect(screen.getByText("No matching results")).toBeInTheDocument();
+    expect(textbox).toHaveValue("");
   });
 
-  it("filters snippets and shows no matching state", async () => {
-    fetchSavedSnippetsMock.mockResolvedValue([
-      { id: 101, title: "Incident template", content: "Status update", date_created: 1710000000 },
-      { id: 102, title: "Release notes", content: "## Changes", date_created: 1710000001 },
-    ]);
-
+  it("keeps the empty stub when filtering snippets", async () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
     fireEvent.focus(screen.getByRole("textbox"));
@@ -344,36 +310,21 @@ describe("MessageComposer saved snippets", () => {
     expect(screen.getByRole("button", { name: /create new saved snippet/i })).toBeInTheDocument();
   });
 
-  it("reuses snippets cache when menu is reopened within ttl window", async () => {
-    fetchSavedSnippetsMock.mockResolvedValue([
-      { id: 101, title: "Incident template", content: "Status update", date_created: 1710000000 },
-    ]);
-
+  it("reopens the empty saved snippets stub without fetching", async () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
     fireEvent.focus(screen.getByRole("textbox"));
     const trigger = screen.getByRole("button", { name: /saved snippets/i });
 
     fireEvent.click(trigger);
-    await screen.findByRole("button", { name: "Incident template" });
+    await screen.findByRole("textbox", { name: /filter snippets/i });
     fireEvent.click(trigger);
 
     fireEvent.click(trigger);
-    await screen.findByRole("button", { name: "Incident template" });
-
-    expect(fetchSavedSnippetsMock).toHaveBeenCalledTimes(1);
+    await screen.findByRole("textbox", { name: /filter snippets/i });
   });
 
-  it("creates a saved snippet from the current draft", async () => {
-    fetchSavedSnippetsMock.mockResolvedValueOnce([]).mockResolvedValueOnce([
-      {
-        id: 333,
-        title: "Bug report",
-        content: "Current draft body",
-        date_created: 1710000002,
-      },
-    ]);
-
+  it("shows unsupported when creating a saved snippet from the current draft", async () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
     const textbox = screen.getByRole("textbox");
@@ -391,16 +342,8 @@ describe("MessageComposer saved snippets", () => {
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => {
-      expect(createSavedSnippetMock).toHaveBeenCalledWith({
-        title: "Bug report",
-        content: "Current draft body",
-      });
+      expect(screen.getByText("Saved snippets are not connected yet.")).toBeInTheDocument();
     });
-
-    await waitFor(() => {
-      expect(fetchSavedSnippetsMock).toHaveBeenCalledTimes(2);
-    });
-    expect(await screen.findByRole("button", { name: "Bug report" })).toBeInTheDocument();
   });
 });
 

@@ -1,7 +1,7 @@
 /**
  * Extracts external URLs from message markdown suitable for Zulip link-preview unfurl.
  *
- * Used with POST /messages/render — does not fetch OG data in the browser.
+ * Used by local preview extraction; does not fetch OG data in the browser.
  *
  * Usage:
  *   import {

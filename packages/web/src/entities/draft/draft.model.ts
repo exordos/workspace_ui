@@ -1,5 +1,5 @@
 /**
- * Draft store — manages message drafts (auto-saved when leaving a chat).
+ * Draft store — manages local message drafts.
  */
 
 import { create } from "zustand";
@@ -22,32 +22,22 @@ function countNonEmptyDrafts(drafts: readonly Draft[]): number {
 interface DraftState {
   drafts: Draft[];
   nonEmptyDraftCount: number;
-  loading: boolean;
 
   setDrafts: (drafts: Draft[]) => void;
   addDraft: (draft: Draft) => void;
   setLocalDraft: (draft: Draft) => void;
   updateDraft: (id: number, patch: Partial<Pick<Draft, "content" | "topic" | "to">>) => void;
-  updateDraftId: (oldId: number, newId: number) => void;
-  linkDraftToServerId: (
-    type: DraftType,
-    to: number[],
-    topic: string | undefined,
-    newId: number,
-  ) => void;
   removeDraft: (id: number) => void;
-  /** Removes draft by id (server) or timestamp (local-only). Use when draft.id may be null. */
+  /** Removes draft by local id or timestamp. Use when draft.id may be null. */
   removeDraftByIdentifier: (identifier: number) => void;
   removeDraftForChat: (type: DraftType, to: number[], topic?: string) => void;
   getDraftForChat: (type: DraftType, to: number[], topic?: string) => Draft | undefined;
-  setLoading: (loading: boolean) => void;
   clear: () => void;
 }
 
 export const useDraftStore = create<DraftState>((set, get) => ({
   drafts: [],
   nonEmptyDraftCount: 0,
-  loading: false,
 
   setDrafts(drafts) {
     logStoreAction("draft", "setDrafts", { count: drafts.length });
@@ -81,27 +71,6 @@ export const useDraftStore = create<DraftState>((set, get) => ({
     set((s) => {
       const drafts = s.drafts.map((d) =>
         d.id === id ? { ...d, ...patch, timestamp: Math.floor(Date.now() / 1000) } : d,
-      );
-      return { drafts, nonEmptyDraftCount: countNonEmptyDrafts(drafts) };
-    });
-  },
-
-  updateDraftId(oldId, newId) {
-    logStoreAction("draft", "updateDraftId", { oldId, newId });
-    set((s) => {
-      const drafts = s.drafts.map((d) => (d.id === oldId ? { ...d, id: newId } : d));
-      return { drafts, nonEmptyDraftCount: countNonEmptyDrafts(drafts) };
-    });
-  },
-
-  linkDraftToServerId(type, to, topic, newId) {
-    logStoreAction("draft", "linkDraftToServerId", { draftType: type, newId });
-    const targetKey = buildDraftChatKey(type, to, topic);
-    set((s) => {
-      const drafts = s.drafts.map((draft) =>
-        draft.id == null && buildDraftChatKey(draft.type, draft.to, draft.topic) === targetKey
-          ? { ...draft, id: newId }
-          : draft,
       );
       return { drafts, nonEmptyDraftCount: countNonEmptyDrafts(drafts) };
     });
@@ -141,12 +110,8 @@ export const useDraftStore = create<DraftState>((set, get) => ({
     );
   },
 
-  setLoading(loading) {
-    set({ loading });
-  },
-
   clear() {
     logStoreAction("draft", "clear", {});
-    set({ drafts: [], nonEmptyDraftCount: 0, loading: false });
+    set({ drafts: [], nonEmptyDraftCount: 0 });
   },
 }));

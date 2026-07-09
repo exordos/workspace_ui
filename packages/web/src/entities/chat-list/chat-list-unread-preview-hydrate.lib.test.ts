@@ -1,6 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { useInstancesStore } from "~/entities/instance/instance.model";
-import { fetchMessagesByIds } from "~/shared/api/zulip-messages";
 import type { ZulipUnreadMessagesSnapshot } from "~/shared/api/zulip-unread.lib";
 import type { ZulipRawMessage } from "~/shared/api/zulip.types";
 import {
@@ -8,16 +7,6 @@ import {
   resolveLatestUnreadMessageIdsForMissingPreviews,
 } from "./chat-list-unread-preview-hydrate.lib";
 import { useChatListStore } from "./chat-list.model";
-
-vi.mock("~/shared/api/zulip-messages", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/api/zulip-messages")>();
-  return {
-    ...actual,
-    fetchMessagesByIds: vi.fn(),
-  };
-});
-
-const fetchMessagesByIdsMock = vi.mocked(fetchMessagesByIds);
 
 function resetInstancesStore(): void {
   useInstancesStore.setState({
@@ -111,7 +100,6 @@ describe("hydrateStreamSidebarPreviewsFromUnreadSnapshot", () => {
     resetInstancesStore();
     seedActiveInstance();
     useChatListStore.getState().clear();
-    fetchMessagesByIdsMock.mockReset();
   });
 
   afterEach(() => {
@@ -119,7 +107,7 @@ describe("hydrateStreamSidebarPreviewsFromUnreadSnapshot", () => {
     useChatListStore.getState().clear();
   });
 
-  it("fetches latest unread ids and applies stream/topic preview merge", async () => {
+  it("does not fetch or apply previews from unread ids", async () => {
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
 
     const snapshot: ZulipUnreadMessagesSnapshot = {
@@ -129,28 +117,15 @@ describe("hydrateStreamSidebarPreviewsFromUnreadSnapshot", () => {
       mentionMessageIds: [],
     };
 
-    fetchMessagesByIdsMock.mockResolvedValue([
-      streamMsg({
-        id: 302,
-        stream_id: 5,
-        subject: "alpha",
-        content: "fresh preview",
-        timestamp: 9000,
-        sender_full_name: "Fresh Sender",
-      }),
-    ]);
-
     await hydrateStreamSidebarPreviewsFromUnreadSnapshot(snapshot);
 
-    expect(fetchMessagesByIdsMock).toHaveBeenCalledWith([302]);
     const stream = useChatListStore.getState().streamsMap.get(5);
-    expect(stream?.topics.get("alpha")?.lastMessage).toContain("fresh preview");
-    expect(stream?.topics.get("alpha")?.ts).toBe(9000);
-    expect(stream?.ts).toBe(9000);
-    expect(stream?.lastMessage).toContain("fresh preview");
+    expect(stream?.topics.size).toBe(0);
+    expect(stream?.lastMessage).toBe("");
+    expect(stream?.ts).toBe(0);
   });
 
-  it("dedupes concurrent hydrate calls", async () => {
+  it("resolves concurrent no-op hydrate calls without mutating state", async () => {
     useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
     const snapshot: ZulipUnreadMessagesSnapshot = {
       streams: [{ streamId: 5, topic: "alpha", unreadMessageIds: [301] }],
@@ -158,109 +133,17 @@ describe("hydrateStreamSidebarPreviewsFromUnreadSnapshot", () => {
       totalCount: 1,
       mentionMessageIds: [],
     };
-
-    let resolveFetch!: (value: ZulipRawMessage[]) => void;
-    fetchMessagesByIdsMock.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveFetch = resolve;
-        }),
-    );
 
     const first = hydrateStreamSidebarPreviewsFromUnreadSnapshot(snapshot);
     const second = hydrateStreamSidebarPreviewsFromUnreadSnapshot(snapshot);
 
-    expect(fetchMessagesByIdsMock).toHaveBeenCalledTimes(1);
-
-    resolveFetch([
-      streamMsg({
-        id: 301,
-        stream_id: 5,
-        subject: "alpha",
-        content: "hello",
-        timestamp: 2000,
-      }),
-    ]);
-
     await Promise.all([first, second]);
-    expect(fetchMessagesByIdsMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("drops stale unread preview hydrate after organization switch", async () => {
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
-    const snapshot: ZulipUnreadMessagesSnapshot = {
-      streams: [{ streamId: 5, topic: "alpha", unreadMessageIds: [301] }],
-      dms: [],
-      totalCount: 1,
-      mentionMessageIds: [],
-    };
-    let resolveFetch!: (value: ZulipRawMessage[]) => void;
-    fetchMessagesByIdsMock.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveFetch = resolve;
-        }),
-    );
-
-    const first = hydrateStreamSidebarPreviewsFromUnreadSnapshot(snapshot);
-    const secondInstanceId = seedActiveInstance();
-    useInstancesStore.getState().setCurrentInstanceId(secondInstanceId);
-    useChatListStore.getState().clear();
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
-
-    resolveFetch([
-      streamMsg({
-        id: 301,
-        stream_id: 5,
-        subject: "alpha",
-        content: "stale preview",
-        timestamp: 2000,
-      }),
-    ]);
-    await first;
-
     expect(useChatListStore.getState().streamsMap.get(5)?.topics.size).toBe(0);
   });
 
-  it("does not dedupe unread preview hydrate across organizations", async () => {
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
-    const snapshot: ZulipUnreadMessagesSnapshot = {
-      streams: [{ streamId: 5, topic: "alpha", unreadMessageIds: [301] }],
-      dms: [],
-      totalCount: 1,
-      mentionMessageIds: [],
-    };
-    let resolveFirst!: (value: ZulipRawMessage[]) => void;
-    let resolveSecond!: (value: ZulipRawMessage[]) => void;
-    fetchMessagesByIdsMock
-      .mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            resolveFirst = resolve;
-          }),
-      )
-      .mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            resolveSecond = resolve;
-          }),
-      );
-
-    const first = hydrateStreamSidebarPreviewsFromUnreadSnapshot(snapshot);
-
-    const secondInstanceId = seedActiveInstance();
-    useInstancesStore.getState().setCurrentInstanceId(secondInstanceId);
-    useChatListStore.getState().clear();
-    useChatListStore.getState().upsertStreamMetadataRows([{ streamId: 5, name: "general" }]);
-
-    const second = hydrateStreamSidebarPreviewsFromUnreadSnapshot(snapshot);
-
-    expect(fetchMessagesByIdsMock).toHaveBeenCalledTimes(2);
-
-    resolveFirst([streamMsg({ id: 301, stream_id: 5, subject: "alpha", content: "old" })]);
-    resolveSecond([streamMsg({ id: 301, stream_id: 5, subject: "alpha", content: "new" })]);
-    await Promise.all([first, second]);
-
-    expect(useChatListStore.getState().streamsMap.get(5)?.lastMessage).toContain("new");
+  it("accepts null snapshot and cancellation without side effects", async () => {
+    await expect(
+      hydrateStreamSidebarPreviewsFromUnreadSnapshot(null, () => true),
+    ).resolves.toBeUndefined();
   });
 });

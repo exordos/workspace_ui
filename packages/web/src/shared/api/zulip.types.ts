@@ -1,41 +1,7 @@
 /**
  * Public TypeScript contracts for the Zulip API client (`zulip-*.ts` modules).
  */
-import type { ZulipUnreadMessagesSnapshot } from "~/shared/api/zulip-unread.lib";
 import type { LinkPreviewData } from "~/shared/lib/message-link-preview.types";
-
-export class ZulipAuthError extends Error {
-  constructor(
-    message: string,
-    public readonly code?: string,
-    public readonly response?: unknown,
-  ) {
-    super(message);
-    this.name = "ZulipAuthError";
-  }
-}
-
-export interface ZulipServerSettings {
-  realm_name: string;
-  realm_icon: string;
-  /** Canonical organization URL (Zulip 9+: prefer {@link realm_url}). */
-  realm_uri: string;
-  /** Canonical organization URL (Zulip 9+). Alias of realm_uri in older docs. */
-  realm_url: string;
-  external_authentication_methods: {
-    name: string;
-    display_name: string;
-    display_icon?: string;
-    login_url: string;
-  }[];
-}
-
-export interface DesktopFlowExchangeResult {
-  authType: "api_key" | "session";
-  email: string;
-  userId?: number;
-  apiKey?: string;
-}
 
 export interface ZulipUserTopic {
   stream_id: number;
@@ -72,94 +38,10 @@ export interface SavedSnippet {
   date_created: number;
 }
 
-/** One server-supported user-upload thumbnail variant (Zulip 9.0+; see `server_thumbnail_formats` in register). */
-export interface ZulipServerThumbnailFormat {
-  name: string;
-  max_width: number;
-  max_height: number;
-  format: string;
-  animated: boolean;
-}
-
-/** Avatar-related capabilities from register `realm` metadata. */
-export interface ZulipOwnAvatarCapabilities {
-  max_avatar_file_size_mib?: number;
-  realm_avatar_changes_disabled?: boolean;
-  server_avatar_changes_disabled?: boolean;
-}
-
-export type ZulipUserStatusReactionType = "unicode_emoji" | "realm_emoji" | "zulip_extra_emoji";
-
-export interface ZulipUserStatusSnapshot {
-  text: string;
-  emojiName?: string;
-  emojiCode?: string;
-  reactionType?: ZulipUserStatusReactionType;
-  away: boolean;
-}
-
-export interface ZulipUserStatusSnapshotEntry {
-  userId: number;
-  status: ZulipUserStatusSnapshot;
-}
-
-export interface RegisterQueueResult {
-  queue_id: string;
-  last_event_id: number;
-  event_queue_longpoll_timeout_seconds?: number;
-  /** Zulip server Unicode emoji catalog URL from register. */
-  server_emoji_data_url?: string;
-  subscriptions?: ZulipSubscription[];
-  user_topics?: ZulipUserTopic[];
-  /** Recent DM metadata for initial sidebar dialog list. */
-  recent_private_conversations?: Record<string, ZulipRecentPrivateConversation>;
-  /** Org groups from register metadata (channel-level permission resolution). */
-  realm_user_groups?: ZulipRealmUserGroup[];
-  /** Present when `realm` is included in `fetch_event_types` (modern Zulip 10+). */
-  realm_can_add_subscribers_group?: ZulipGroupSettingValue;
-  /** Present when `realm` is in `fetch_event_types` (Zulip 10+). */
-  realm_can_resolve_topics_group?: ZulipGroupSettingValue;
-  /** Present when `realm` is in `fetch_event_types` (Zulip 10+). */
-  realm_can_move_messages_between_channels_group?: ZulipGroupSettingValue;
-  /** Present when `realm` is in `fetch_event_types`. */
-  realm_allow_message_editing?: boolean;
-  /** `null` means message content can be edited indefinitely. */
-  realm_message_content_edit_limit_seconds?: number | null;
-  /** Present when `realm` is included in `fetch_event_types` (Zulip 9.0+). */
-  server_thumbnail_formats?: ZulipServerThumbnailFormat[];
-  /** Present when `realm` is included in `fetch_event_types`. */
-  max_avatar_file_size_mib?: number;
-  /** Present when `realm` is included in `fetch_event_types`. */
-  realm_avatar_changes_disabled?: boolean;
-  /** Present when `realm` is included in `fetch_event_types`. */
-  server_avatar_changes_disabled?: boolean;
-  /** Present when `user_settings_object` client capability is set. */
-  user_settings?: Record<string, unknown>;
-  /** Present when `user_status` is included in `fetch_event_types`. */
-  userStatusSnapshot?: ZulipUserStatusSnapshotEntry[];
-  /**
-   * Authoritative unread buckets from register `unread_msgs`
-   * (when `message` and `update_message_flags` are in `event_types`).
-   */
-  unread_snapshot?: ZulipUnreadMessagesSnapshot;
-  /** Starred message ids from register metadata, used for an exact sidebar count. */
-  starred_message_ids?: number[];
-}
-
 export interface ZulipEvent {
   id: number;
   type: string;
   [key: string]: unknown;
-}
-
-export interface GetEventsResult {
-  result?: string;
-  msg?: string;
-  code?: string;
-  /** Seconds until the client may retry (Zulip rate limit JSON). */
-  "retry-after"?: number;
-  events?: ZulipEvent[];
-  queue_id?: string;
 }
 
 export interface ZulipCredentials {
@@ -192,19 +74,7 @@ export interface ZulipUserMember {
   profile_data?: Record<string, { value?: string; rendered_value?: string }>;
 }
 
-/** Response shape from GET /api/v1/realm/presence (keyed by user email). */
-export interface RealmPresenceEntry {
-  aggregated?: { status: string; timestamp: number };
-  website?: { status: string; timestamp: number };
-}
-
-export interface RealmPresenceResponse {
-  result?: string;
-  presences?: Record<string, RealmPresenceEntry>;
-  server_timestamp?: number;
-}
-
-/** Normalized custom emoji entry from GET /realm/emoji for emoji-picker-react. */
+/** Normalized custom emoji entry for emoji-picker-react. */
 export interface RealmEmoji {
   id: string;
   names: string[];
@@ -388,8 +258,6 @@ export interface SendMessageParams {
   sender_full_name?: string;
   /** For private/DM message: recipient user ids. When set, `stream` is ignored. */
   to?: number[];
-  /** Zulip local echo id (pairs with the active event queue `queue_id`). */
-  local_id?: string;
 }
 
 export interface CreateSavedSnippetParams {

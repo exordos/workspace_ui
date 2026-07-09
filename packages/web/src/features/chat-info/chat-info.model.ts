@@ -35,7 +35,7 @@ interface ChatInfoState {
   error: string | null;
   // Last active chat-info context (none/dm/stream).
   context: ChatInfoContext;
-  // Last server-fetched member ids for stream context.
+  // Last locally resolved member ids for stream context.
   streamMemberIds: number[];
   // Request version for stale-response protection.
   requestVersion: number;
@@ -100,7 +100,7 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
 
   setContext(context) {
     const previous = get().context;
-    // Invalidate API caches when switching instances.
+    // Keep the compatibility hook for callers that still notify about instance changes.
     if (
       previous.instanceId != null &&
       context.instanceId != null &&
@@ -158,7 +158,7 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
     }
 
     try {
-      // Stream: fetch members and metadata in parallel.
+      // Stream: legacy numeric context has no reliable Workspace UUID, so hydrate locally only.
       const [memberIds, metadata] = await Promise.all([
         loadStreamMembers(context.instanceId, context.streamId),
         loadStreamMetadata(context.instanceId, context.streamId),
@@ -206,7 +206,7 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
       return;
     }
 
-    // Sync reset for empty context — no network.
+    // Sync reset for empty context.
     if (context.kind === "none") {
       if (state.data == null) return;
       set({ data: null, loading: false, error: null, streamMemberIds: [] });
@@ -230,7 +230,7 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
       return;
     }
 
-    // Stream derived refresh: topics/mute/presence without another HTTP round-trip.
+    // Stream derived refresh: topics/mute/presence from local state only.
     const members = resolveUsersById(state.streamMemberIds);
     const description = state.data?.type === "stream" ? state.data.description : null;
     const streamName = state.data?.type === "stream" ? state.data.name : context.streamName;
@@ -252,7 +252,7 @@ export const useChatInfoStore = create<ChatInfoState>((set, get) => ({
 
   invalidateStream(instanceId, streamId) {
     logStoreAction("chatInfo", "invalidateStream", { instanceId, streamId });
-    // Clear stream API cache and instance snapshot.
+    // Preserve the old invalidation hook, but do not revive legacy stream fetches.
     invalidateStreamCache(instanceId, streamId);
     const context = get().context;
     // Re-hydrate immediately when invalidating the active stream.

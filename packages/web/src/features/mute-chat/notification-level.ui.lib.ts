@@ -2,7 +2,7 @@ import type { IconName } from "~/shared/ui/icon";
 import type { NotificationLevel, TopicVisibilityLevel } from "./notification-level.lib";
 
 /**
- * Zulip user_topics.visibility_policy (topic row / popover order):
+ * Legacy topic visibility order:
  * 1 muted → 0 inherit → 2 unmuted (only if stream muted or topic unmuted) → 3 followed
  */
 
@@ -29,7 +29,7 @@ export interface TopicVisibilityLevelOption {
   labelKey: TopicVisibilityLabelKey;
 }
 
-/** Channel subscription: desktop_notifications + is_muted. */
+/** Legacy channel notification states. */
 export const STREAM_NOTIFICATION_LEVEL_OPTIONS: readonly NotificationLevelOption[] = [
   { level: "default", icon: "at", labelKey: "channel.notificationDefault" },
   { level: "muted", icon: "bell_off", labelKey: "channel.notificationMuted" },

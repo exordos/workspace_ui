@@ -5,14 +5,9 @@
  * uuid-based user store cutover.
  */
 
-import {
-  getOwnAvatarCapabilities as getOwnAvatarCapabilitiesFromApi,
-  removeOwnAvatar as removeOwnAvatarFromApi,
-  uploadOwnAvatar as uploadOwnAvatarFromApi,
-} from "~/shared/api/zulip-avatar-settings";
-import { updateOwnProfileSettings } from "~/shared/api/zulip-profile-settings";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
+import type { RealmProfileFieldDefinition } from "~/shared/lib/zulip-profile-fields-map.lib";
 import type {
   OwnAvatarCapabilities,
   OwnAvatarMutationResult,
@@ -23,11 +18,25 @@ import type {
 } from "./user-profile.types";
 
 const log = createLogger("user-profile:api");
+const UNSUPPORTED_PROFILE_MESSAGE =
+  "Profile updates are read-only until Workspace profile write API is available";
+const UNSUPPORTED_AVATAR_MESSAGE =
+  "Avatar changes are read-only until Workspace avatar API is available";
+const FALLBACK_MAX_AVATAR_FILE_SIZE_MIB = 25;
 
-export {
-  clearRealmProfileFieldsCache,
-  fetchRealmProfileFieldDefinitionsWithSignal as fetchRealmProfileFieldDefinitions,
-} from "~/shared/api/zulip-realm-profile-fields";
+export function clearRealmProfileFieldsCache(): void {
+  // Kept as a no-op for callers that clear all profile-side caches after logout.
+}
+
+export function fetchRealmProfileFieldDefinitions(
+  signal?: AbortSignal,
+): Promise<RealmProfileFieldDefinition[] | null> {
+  if (signal?.aborted) {
+    return Promise.reject(new DOMException("Aborted", "AbortError"));
+  }
+  log.info("Realm profile fields are unsupported in Workspace profile API");
+  return Promise.resolve(null);
+}
 
 export function fetchUserProfile(
   userId: number,
@@ -50,26 +59,17 @@ export interface UpdateOwnProfileParams {
   timezone: string;
 }
 
-export async function updateOwnProfile(
-  params: UpdateOwnProfileParams,
-): Promise<OwnProfileUpdateResult> {
+export function updateOwnProfile(params: UpdateOwnProfileParams): Promise<OwnProfileUpdateResult> {
   const fullName = params.fullName.trim();
   const timezone = params.timezone.trim();
   guard.nonEmpty(fullName, "updateOwnProfile.fullName");
   guard.nonEmpty(timezone, "updateOwnProfile.timezone");
 
-  const result = await updateOwnProfileSettings({
-    fullName,
-    timezone,
-  });
-  if (result.ok) {
-    return { ok: true };
-  }
-  return {
+  return Promise.resolve({
     ok: false,
-    kind: result.kind,
-    message: result.message,
-  };
+    kind: "unsupported",
+    message: UNSUPPORTED_PROFILE_MESSAGE,
+  });
 }
 
 export interface UpdateOwnStatusParams {
@@ -86,33 +86,24 @@ export function updateOwnStatus(_params: UpdateOwnStatusParams): Promise<OwnStat
 }
 
 export function getOwnAvatarCapabilities(): OwnAvatarCapabilities {
-  const capabilities = getOwnAvatarCapabilitiesFromApi();
   return {
-    maxAvatarFileSizeMib: capabilities.maxAvatarFileSizeMib,
-    avatarChangesDisabled: capabilities.avatarChangesDisabled,
+    maxAvatarFileSizeMib: FALLBACK_MAX_AVATAR_FILE_SIZE_MIB,
+    avatarChangesDisabled: true,
   };
 }
 
-export async function uploadOwnAvatar(file: File): Promise<OwnAvatarMutationResult> {
-  const result = await uploadOwnAvatarFromApi(file);
-  if (result.ok) {
-    return result;
-  }
-  return {
+export function uploadOwnAvatar(_file: File): Promise<OwnAvatarMutationResult> {
+  return Promise.resolve({
     ok: false,
-    kind: result.kind,
-    message: result.message,
-  };
+    kind: "unsupported",
+    message: UNSUPPORTED_AVATAR_MESSAGE,
+  });
 }
 
-export async function removeOwnAvatar(): Promise<OwnAvatarMutationResult> {
-  const result = await removeOwnAvatarFromApi();
-  if (result.ok) {
-    return result;
-  }
-  return {
+export function removeOwnAvatar(): Promise<OwnAvatarMutationResult> {
+  return Promise.resolve({
     ok: false,
-    kind: result.kind,
-    message: result.message,
-  };
+    kind: "unsupported",
+    message: UNSUPPORTED_AVATAR_MESSAGE,
+  });
 }

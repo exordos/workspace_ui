@@ -1,5 +1,4 @@
 import React from "react";
-import { useMessageReadersStore } from "~/features/message-readers/message-readers.model";
 import { t } from "~/i18n/i18n";
 import { AppDialog } from "~/shared/ui/app-dialog.ui";
 import { Spinner } from "~/shared/ui/spinner.ui";
@@ -17,9 +16,6 @@ export const ChatPageReadReceiptsDialog: React.FC<ChatPageReadReceiptsDialogProp
       open={open}
       onOpenChange={(nextOpen) => {
         onOpenChange(nextOpen);
-        if (!nextOpen) {
-          useMessageReadersStore.getState().clear();
-        }
       }}
       title={t("message.readBy")}
       maxWidthClassName="max-w-sm"
@@ -37,7 +33,9 @@ export const ChatPageReadReceiptsDialog: React.FC<ChatPageReadReceiptsDialogProp
           </p>
         )}
         {!readersLoading && !readersError && readerEntries.length === 0 && (
-          <p className="py-4 text-center text-sm text-text-muted">{t("message.noReadReceipts")}</p>
+          <p className="py-4 text-center text-sm text-text-muted">
+            {t("message.readReceiptsUnsupported")}
+          </p>
         )}
         {!readersLoading && !readersError && readerEntries.length > 0 && (
           <ul className="space-y-2">

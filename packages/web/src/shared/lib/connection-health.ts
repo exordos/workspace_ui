@@ -6,7 +6,6 @@
  */
 import { createLogger } from "~/shared/lib/logger";
 import { isOnline, onReconnect, onStatusChange } from "~/shared/lib/network";
-import { probeApiTransport } from "~/shared/lib/network-transport-probe.lib";
 import {
   getZulipRateLimitBlockedUntil,
   subscribeZulipRateLimitGate,
@@ -57,7 +56,6 @@ let activeReconnectFn: (() => Promise<boolean>) | null = null;
 let activeReconnectSignal: AbortSignal | undefined;
 let reconnectBackoffAttempt = 0;
 let transportFailureActive = false;
-let pendingOnlineProbe: Promise<void> | null = null;
 
 /** True when fetch failed despite `navigator.onLine` (no route to server). */
 export function isLikelyNetworkError(err: unknown): boolean {
@@ -127,8 +125,8 @@ function shouldClearFailureUiOnNetworkRestore(): boolean {
   );
 }
 
-/** Verifies API transport before clearing failure UI after browser online. */
-async function verifyTransportAndRestoreReady(): Promise<void> {
+/** Restores connection UI after browser online without the removed Zulip probe. */
+function restoreReadyAfterBrowserOnline(): void {
   if (!isOnline()) {
     return;
   }
@@ -139,34 +137,16 @@ async function verifyTransportAndRestoreReady(): Promise<void> {
     return;
   }
 
-  snapshot = {
-    ...snapshot,
-    phase: "connecting",
-    isReconnecting: true,
-    retryAfterMs: 0,
-  };
-  notify();
-
-  const transportOk = await probeApiTransport();
-  if (!isOnline()) {
-    return;
-  }
-
   reconnectBackoffAttempt = 0;
-  if (transportOk) {
-    transportFailureActive = false;
-    snapshot = {
-      phase: "ready",
-      retryAfterMs: 0,
-      lastFailureAt: null,
-      reconnectAttempt: 0,
-      failureReason: null,
-      isReconnecting: false,
-    };
-  } else {
-    transportFailureActive = true;
-    reportFailure({ reason: "network", phase: "degraded" });
-  }
+  transportFailureActive = false;
+  snapshot = {
+    phase: "ready",
+    retryAfterMs: 0,
+    lastFailureAt: null,
+    reconnectAttempt: 0,
+    failureReason: null,
+    isReconnecting: false,
+  };
   syncRateLimitFromGate();
   notify();
 }
@@ -175,12 +155,7 @@ function handleBrowserNetworkOnline(): void {
   if (!isOnline()) {
     return;
   }
-  if (pendingOnlineProbe != null) {
-    return;
-  }
-  pendingOnlineProbe = verifyTransportAndRestoreReady().finally(() => {
-    pendingOnlineProbe = null;
-  });
+  restoreReadyAfterBrowserOnline();
 }
 
 function notify(): void {
@@ -472,7 +447,6 @@ export function initConnectionHealth(): () => void {
 export function resetConnectionHealthForTests(): void {
   stopScheduledReconnect();
   transportFailureActive = false;
-  pendingOnlineProbe = null;
   snapshot = {
     phase: "connecting",
     retryAfterMs: 0,

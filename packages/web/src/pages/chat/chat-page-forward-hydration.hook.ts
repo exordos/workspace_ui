@@ -1,59 +1,51 @@
 import { useEffect, useRef, useState } from "react";
-import { fetchMessageById } from "~/shared/api/zulip-messages";
-import type { MockMessage } from "~/shared/api/zulip.types";
-import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
+
+export interface ChatForwardHydrationMessage {
+  id: number;
+}
 
 export function useChatForwardHydration(options: {
   forwardMessageId: number | null;
-  messages: MockMessage[];
+  messages: ChatForwardHydrationMessage[];
 }): {
-  forwardMessages: MockMessage[];
-  setForwardMessages: React.Dispatch<React.SetStateAction<MockMessage[]>>;
+  forwardMessages: ChatForwardHydrationMessage[];
+  setForwardMessages: React.Dispatch<React.SetStateAction<ChatForwardHydrationMessage[]>>;
   forwardSelectedText: string | undefined;
   setForwardSelectedText: React.Dispatch<React.SetStateAction<string | undefined>>;
 } {
   const { forwardMessageId, messages } = options;
 
-  const [forwardMessages, setForwardMessages] = useState<MockMessage[]>([]);
+  const [forwardMessages, setForwardMessages] = useState<ChatForwardHydrationMessage[]>([]);
   const [forwardSelectedText, setForwardSelectedText] = useState<string | undefined>(undefined);
-  const processedForwardMessageIdRef = useRef<number | null>(null);
+  const hydratedForwardMessageIdRef = useRef<number | null>(null);
+  const missingForwardMessageIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (forwardMessageId == null) {
-      processedForwardMessageIdRef.current = null;
+      hydratedForwardMessageIdRef.current = null;
+      missingForwardMessageIdRef.current = null;
       return;
     }
 
     const messageFromCurrentChat = messages.find((message) => message.id === forwardMessageId);
     if (messageFromCurrentChat != null) {
-      processedForwardMessageIdRef.current = forwardMessageId;
+      if (hydratedForwardMessageIdRef.current === forwardMessageId) {
+        return;
+      }
+      hydratedForwardMessageIdRef.current = forwardMessageId;
+      missingForwardMessageIdRef.current = null;
       setForwardMessages([messageFromCurrentChat]);
       setForwardSelectedText(undefined);
       return;
     }
 
-    if (processedForwardMessageIdRef.current === forwardMessageId) {
+    if (missingForwardMessageIdRef.current === forwardMessageId) {
       return;
     }
-    processedForwardMessageIdRef.current = forwardMessageId;
-
-    let cancelled = false;
-    fetchMessageById(forwardMessageId)
-      .then((message) => {
-        if (cancelled || message == null) return;
-        setForwardMessages([message]);
-        setForwardSelectedText(undefined);
-      })
-      .catch((err) => {
-        reportUnexpectedError("chat-page", err, {
-          phase: "forward-hydration",
-          messageId: forwardMessageId,
-        });
-      });
-
-    return () => {
-      cancelled = true;
-    };
+    missingForwardMessageIdRef.current = forwardMessageId;
+    hydratedForwardMessageIdRef.current = null;
+    setForwardMessages([]);
+    setForwardSelectedText(undefined);
   }, [forwardMessageId, messages]);
 
   return { forwardMessages, setForwardMessages, forwardSelectedText, setForwardSelectedText };

@@ -47,18 +47,11 @@ vi.mock("./zulip-rate-limit-gate", async (importOriginal) => {
   };
 });
 
-const probeApiTransportMock = vi.fn();
-
-vi.mock("./network-transport-probe.lib", () => ({
-  probeApiTransport: (...args: unknown[]) => probeApiTransportMock(...args),
-}));
-
 describe("connection-health", () => {
   beforeEach(() => {
     resetConnectionHealthForTests();
     resetZulipRateLimitGateForTests();
     isOnlineMock.mockReturnValue(true);
-    probeApiTransportMock.mockResolvedValue(true);
     waitUntilZulipRateLimitReleasedMock.mockResolvedValue(undefined);
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-14T12:00:00.000Z"));
@@ -192,7 +185,7 @@ describe("connection-health", () => {
     isOnlineMock.mockReturnValue(true);
   });
 
-  it("clears failure UI after transport probe succeeds on browser online", async () => {
+  it("clears failure UI on browser online without a Zulip transport probe", async () => {
     const statusListenerHolder: { listener?: (online: boolean) => void } = {};
     onStatusChangeMock.mockImplementation((listener: (online: boolean) => void) => {
       statusListenerHolder.listener = listener;

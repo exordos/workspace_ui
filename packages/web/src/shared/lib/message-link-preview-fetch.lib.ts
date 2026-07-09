@@ -1,8 +1,7 @@
 /**
- * Fetches link preview metadata from Zulip-rendered HTML (`.message_embed`).
+ * Parses link preview metadata from already-rendered HTML (`.message_embed`).
  *
- * Persisted messages: GET `/messages/{id}?apply_markdown=true` (includes server unfurl).
- * Ephemeral content: POST `/messages/render` (composer-style, often without embed).
+ * Workspace preview fetching is local-only until a native preview contract exists.
  *
  * Usage:
  *   import {
@@ -10,22 +9,15 @@
  *     parseAllMessageEmbedsFromRenderedHtml,
  *   } from "~/shared/lib/message-link-preview-fetch.lib";
  */
-import { fetchMessageRenderedHtmlById, renderMessageContent } from "~/shared/api/zulip-messages";
 import { guard } from "~/shared/lib/guards";
 import { sanitizeHtmlToFragment } from "~/shared/lib/html";
-import { createLogger } from "~/shared/lib/logger";
 import { traceLinkPreview } from "~/shared/lib/message-link-preview-trace.lib";
-import {
-  findLinkPreviewDataForUrl,
-  linkPreviewUrlKey,
-} from "~/shared/lib/message-link-preview-url-match.lib";
+import { linkPreviewUrlKey } from "~/shared/lib/message-link-preview-url-match.lib";
 import { extractLinkPreviewUrls } from "~/shared/lib/message-link-preview-urls.lib";
 import type {
   LinkPreviewData,
   LinkPreviewResolvedItem,
 } from "~/shared/lib/message-link-preview.types";
-
-const log = createLogger("link-preview");
 
 const BACKGROUND_IMAGE_URL_PATTERN = /background-image:\s*url\(["']?([^"')]+)["']?\)/i;
 
@@ -111,79 +103,29 @@ export function parseAllMessageEmbedsFromRenderedHtml(html: string): LinkPreview
   return result;
 }
 
-function resolveItemsFromHtml(
-  html: string,
-  expectedUrls: string[],
-  source: "get-message" | "render",
-): LinkPreviewResolvedItem[] {
-  const embeds = parseAllMessageEmbedsFromRenderedHtml(html);
-
-  return expectedUrls.map((url) => {
-    const data = findLinkPreviewDataForUrl(url, embeds);
-    if (data == null) {
-      traceLinkPreview("fetch:no-embed", {
-        expectedUrl: url,
-        renderedLen: html.length,
-        source,
-      });
-    } else {
-      traceLinkPreview("fetch:ok", {
-        expectedUrl: url,
-        title: data.title,
-        source,
-      });
-    }
-    return { targetUrl: url, data };
-  });
-}
-
 /**
- * Loads link preview metadata for all previewable URLs in markdown.
+ * Returns empty local preview rows for all previewable URLs in markdown.
  */
-export async function fetchLinkPreviewsFromMessageMarkdown(
+export function fetchLinkPreviewsFromMessageMarkdown(
   markdown: string,
   messageId: number,
   signal?: AbortSignal,
 ): Promise<LinkPreviewResolvedItem[]> {
   const body = markdown.trim();
   if (body.length === 0) {
-    return [];
+    return Promise.resolve([]);
   }
   const expectedUrls = extractLinkPreviewUrls(body);
   if (expectedUrls.length === 0) {
-    return [];
+    return Promise.resolve([]);
   }
-  try {
-    if (signal?.aborted) {
-      return expectedUrls.map((targetUrl) => ({ targetUrl, data: null }));
-    }
-    if (messageId > 0) {
-      const html = await fetchMessageRenderedHtmlById(messageId, signal);
-      if (signal?.aborted) {
-        return expectedUrls.map((targetUrl) => ({ targetUrl, data: null }));
-      }
-      if (html == null) {
-        return expectedUrls.map((targetUrl) => ({ targetUrl, data: null }));
-      }
-      return resolveItemsFromHtml(html, expectedUrls, "get-message");
-    }
-    const rendered = await renderMessageContent(body);
-    if (signal?.aborted) {
-      return expectedUrls.map((targetUrl) => ({ targetUrl, data: null }));
-    }
-    return resolveItemsFromHtml(rendered, expectedUrls, "render");
-  } catch (error) {
-    if (signal?.aborted) {
-      return expectedUrls.map((targetUrl) => ({ targetUrl, data: null }));
-    }
-    log.warn("Link preview fetch failed", {
-      error: error instanceof Error ? error.message : "unknown",
-      messageId,
-    });
-    traceLinkPreview("fetch:error", {
-      error: error instanceof Error ? error.message : "unknown",
-      messageId,
-    });
-    return expectedUrls.map((targetUrl) => ({ targetUrl, data: null }));
+  if (signal?.aborted) {
+    return Promise.resolve(expectedUrls.map((targetUrl) => ({ targetUrl, data: null })));
   }
+
+  traceLinkPreview("fetch:unsupported", {
+    messageId,
+    urlCount: expectedUrls.length,
+  });
+  return Promise.resolve(expectedUrls.map((targetUrl) => ({ targetUrl, data: null })));
 }

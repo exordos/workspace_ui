@@ -301,7 +301,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   const previewSupported = isActionSupported(previewCapability);
   const mentionsSupported = isActionSupported(mentionsCapability);
   const scheduledSendSupported = isActionSupported(scheduledSendCapability);
-  // Saved snippets still use the old store, so Workspace routes expose only a placeholder and skip sync.
+  // Saved snippets are intentionally local-only until Workspace exposes this contract.
   const savedSnippets = useComposerSavedSnippetsStore((s) => s.snippets);
   const savedSnippetsLoading = useComposerSavedSnippetsStore((s) => s.loadingInitial);
   const savedSnippetsErrorCode = useComposerSavedSnippetsStore((s) => s.error);
@@ -456,6 +456,9 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     }
     if (savedSnippetsErrorCode === "create_failed") {
       return t("composer.savedSnippetsCreateError");
+    }
+    if (savedSnippetsErrorCode === "unsupported") {
+      return t("composer.savedSnippetsUnsupported");
     }
     return null;
   }, [savedSnippetsErrorCode]);
@@ -938,7 +941,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   }, [updateAiMenuPosition]);
 
   const toggleSavedSnippetsMenu = useCallback(() => {
-    // Сниппеты завязаны на старую синхронизацию, поэтому на Workspace route показываем controlled stub.
+    // Workspace routes show a controlled placeholder instead of legacy requests.
     if (!savedSnippetsSupported) {
       showAiMenuNotice(savedSnippetsCapability);
       setSavedSnippetsMenuOpen(false);

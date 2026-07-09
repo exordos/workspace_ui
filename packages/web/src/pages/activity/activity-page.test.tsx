@@ -20,12 +20,9 @@ import { ActivityPage } from "./activity-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
 
 const navigateSpy = vi.hoisted(() => vi.fn());
-const deleteDraftOnServer = vi.hoisted(() => vi.fn());
-const updateDraftOnServer = vi.hoisted(() => vi.fn());
-const fetchActivityMessagesPageWithPersist = vi.hoisted(() => vi.fn());
+const loadLegacyActivityEmptyPage = vi.hoisted(() => vi.fn());
 const fetchWorkspaceStarredMessages = vi.hoisted(() => vi.fn());
 const hydrateActivityMessagesFromCache = vi.hoisted(() => vi.fn().mockResolvedValue([]));
-const removeMessageFlag = vi.hoisted(() => vi.fn());
 const unstarMessageUnsupported = vi.hoisted(() => vi.fn());
 const openWorkspaceForward = vi.hoisted(() => vi.fn());
 
@@ -37,19 +34,8 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
-vi.mock("~/entities/draft/draft.api", async () => {
-  const actual = await vi.importActual<typeof import("~/entities/draft/draft.api")>(
-    "~/entities/draft/draft.api",
-  );
-  return {
-    ...actual,
-    deleteDraftOnServer,
-    updateDraftOnServer,
-  };
-});
-
 vi.mock("~/entities/activity/activity.api", () => ({
-  fetchActivityMessagesPageWithPersist,
+  loadLegacyActivityEmptyPage,
 }));
 
 vi.mock("~/entities/activity/activity-workspace-starred.api", () => ({
@@ -79,16 +65,6 @@ vi.mock("~/shared/api/messenger-messages.api", async () => {
   return {
     ...actual,
     unstarMessageUnsupported,
-  };
-});
-
-vi.mock("~/shared/api/zulip-messages", async () => {
-  const actual = await vi.importActual<typeof import("~/shared/api/zulip-messages")>(
-    "~/shared/api/zulip-messages",
-  );
-  return {
-    ...actual,
-    removeMessageFlag,
   };
 });
 
@@ -237,13 +213,10 @@ describe("ActivityPage drafts routing", () => {
 
   afterEach(() => {
     navigateSpy.mockReset();
-    deleteDraftOnServer.mockReset();
-    updateDraftOnServer.mockReset();
-    fetchActivityMessagesPageWithPersist.mockReset();
+    loadLegacyActivityEmptyPage.mockReset();
     fetchWorkspaceStarredMessages.mockReset();
     hydrateActivityMessagesFromCache.mockReset();
     hydrateActivityMessagesFromCache.mockResolvedValue([]);
-    removeMessageFlag.mockReset();
     unstarMessageUnsupported.mockReset();
     openWorkspaceForward.mockReset();
     unstarMessageUnsupported.mockRejectedValue(new Error("unsupported"));
@@ -400,7 +373,7 @@ describe("ActivityPage drafts routing", () => {
       }),
     ];
 
-    fetchActivityMessagesPageWithPersist.mockResolvedValue({
+    loadLegacyActivityEmptyPage.mockResolvedValue({
       messages: page,
       foundOldest: true,
     });
@@ -437,7 +410,7 @@ describe("ActivityPage drafts routing", () => {
       }),
     ];
 
-    fetchActivityMessagesPageWithPersist.mockResolvedValue({
+    loadLegacyActivityEmptyPage.mockResolvedValue({
       messages: page,
       foundOldest: true,
     });
@@ -472,7 +445,7 @@ describe("ActivityPage drafts routing", () => {
       display_recipient: "engineering",
     }) as ZulipRawMessage;
     useActivityStore.getState().setFilterCache("mentions", [cachedMention], true);
-    fetchActivityMessagesPageWithPersist.mockResolvedValue({
+    loadLegacyActivityEmptyPage.mockResolvedValue({
       messages: [cachedMention],
       foundOldest: true,
     });
@@ -521,7 +494,7 @@ describe("ActivityPage drafts routing", () => {
       },
     }));
     hydrateActivityMessagesFromCache.mockResolvedValue([oldReaction]);
-    fetchActivityMessagesPageWithPersist.mockResolvedValue({
+    loadLegacyActivityEmptyPage.mockResolvedValue({
       messages: [freshReaction],
       foundOldest: true,
     });
@@ -535,7 +508,7 @@ describe("ActivityPage drafts routing", () => {
     );
 
     await waitFor(() => {
-      expect(fetchActivityMessagesPageWithPersist).toHaveBeenCalled();
+      expect(loadLegacyActivityEmptyPage).toHaveBeenCalled();
     });
 
     expect(screen.getByText("Fresh reaction")).toBeInTheDocument();
@@ -575,7 +548,7 @@ describe("ActivityPage drafts routing", () => {
       },
     }));
     hydrateActivityMessagesFromCache.mockResolvedValue([freshReaction]);
-    fetchActivityMessagesPageWithPersist.mockResolvedValue({
+    loadLegacyActivityEmptyPage.mockResolvedValue({
       messages: [freshReaction],
       foundOldest: true,
     });
@@ -633,7 +606,6 @@ describe("ActivityPage drafts routing", () => {
       }),
     );
     expect(fetchWorkspaceStarredMessages.mock.calls[0]?.[0]).not.toHaveProperty("pageLimit");
-    expect(removeMessageFlag).not.toHaveBeenCalled();
     expect(screen.getByText("Starred message")).toBeInTheDocument();
   });
 
@@ -821,11 +793,11 @@ describe("ActivityPage drafts routing", () => {
       </MemoryRouter>,
     );
 
-    fetchActivityMessagesPageWithPersist.mockClear();
-    expect(fetchActivityMessagesPageWithPersist).not.toHaveBeenCalled();
+    loadLegacyActivityEmptyPage.mockClear();
+    expect(loadLegacyActivityEmptyPage).not.toHaveBeenCalled();
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
 
-    fetchActivityMessagesPageWithPersist.mockResolvedValue({
+    loadLegacyActivityEmptyPage.mockResolvedValue({
       messages: [
         createMessage({
           id: 50,
@@ -842,7 +814,7 @@ describe("ActivityPage drafts routing", () => {
     });
 
     await waitFor(() => {
-      expect(fetchActivityMessagesPageWithPersist).toHaveBeenCalledWith(
+      expect(loadLegacyActivityEmptyPage).toHaveBeenCalledWith(
         "reactions",
         42,
         "newest",
@@ -854,7 +826,7 @@ describe("ActivityPage drafts routing", () => {
 
   it("shows reactions-specific empty state copy", async () => {
     useChatListStore.setState({ currentUserId: 42 });
-    fetchActivityMessagesPageWithPersist.mockResolvedValue({
+    loadLegacyActivityEmptyPage.mockResolvedValue({
       messages: [],
       foundOldest: true,
     });
@@ -882,7 +854,7 @@ describe("ActivityPage drafts routing", () => {
         createUser({ user_id: 7, full_name: "Bob" }),
         createUser({ user_id: 42, full_name: "Me" }),
       ]);
-    fetchActivityMessagesPageWithPersist.mockResolvedValue({
+    loadLegacyActivityEmptyPage.mockResolvedValue({
       messages: [
         createMessage({
           id: 50,
@@ -959,7 +931,7 @@ describe("ActivityPage drafts routing", () => {
           }),
         ];
 
-        fetchActivityMessagesPageWithPersist.mockResolvedValue({
+        loadLegacyActivityEmptyPage.mockResolvedValue({
           messages: page,
           foundOldest: true,
         });
@@ -1065,15 +1037,7 @@ describe("ActivityPage drafts routing", () => {
     }
   });
 
-  it("keeps a draft row visible while server deletion is pending", async () => {
-    let resolveDelete: (value: boolean) => void = (_value: boolean) => {
-      throw new Error("Expected delete resolver to be assigned");
-    };
-    deleteDraftOnServer.mockReturnValue(
-      new Promise<boolean>((resolve) => {
-        resolveDelete = resolve;
-      }),
-    );
+  it("deletes a draft locally from the drafts list", async () => {
     useDraftStore.getState().setDrafts([
       {
         id: 7,
@@ -1100,114 +1064,10 @@ describe("ActivityPage drafts routing", () => {
     const deleteButton = screen.getByTitle("Delete draft");
     fireEvent.click(deleteButton);
 
-    expect(deleteDraftOnServer).toHaveBeenCalledWith(7);
-    expect(screen.getByText("Pending delete draft")).toBeInTheDocument();
-    expect(deleteButton).toBeDisabled();
-
-    resolveDelete(true);
-
-    await waitFor(() => {
-      expect(screen.queryByText("Pending delete draft")).not.toBeInTheDocument();
-    });
+    expect(screen.queryByText("Pending delete draft")).not.toBeInTheDocument();
   });
 
-  it("keeps a draft row when server deletion returns false", async () => {
-    deleteDraftOnServer.mockResolvedValue(false);
-    useDraftStore.getState().setDrafts([
-      {
-        id: 11,
-        type: "stream",
-        to: [10],
-        topic: "general",
-        content: "Failed delete draft",
-        timestamp: 1710000000,
-      },
-    ]);
-
-    render(
-      <MemoryRouter initialEntries={["/activity/drafts"]}>
-        <Routes>
-          <Route path="/activity/:filter" element={<ActivityPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("Failed delete draft")).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByTitle("Delete draft"));
-
-    await waitFor(() => {
-      expect(deleteDraftOnServer).toHaveBeenCalledWith(11);
-    });
-
-    expect(screen.getByText("Failed delete draft")).toBeInTheDocument();
-  });
-
-  it("does not delete a new-organization draft when stale delete resolves", async () => {
-    let resolveDelete: ((value: boolean) => void) | undefined;
-    deleteDraftOnServer.mockImplementationOnce(
-      () =>
-        new Promise<boolean>((resolve) => {
-          resolveDelete = resolve;
-        }),
-    );
-    useInstancesStore.setState({
-      instances: [{ id: "instance-1" }, { id: "instance-2" }],
-      currentInstanceId: "instance-1",
-      unreadCountsByInstance: {},
-      activeOrgEpoch: 0,
-    });
-    useDraftStore.getState().setDrafts([
-      {
-        id: 7,
-        type: "stream",
-        to: [10],
-        topic: "general",
-        content: "Org A draft",
-        timestamp: 1710000000,
-      },
-    ]);
-
-    render(
-      <MemoryRouter initialEntries={["/activity/drafts"]}>
-        <Routes>
-          <Route path="/activity/:filter" element={<ActivityPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("Org A draft")).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByTitle("Delete draft"));
-    expect(deleteDraftOnServer).toHaveBeenCalledWith(7);
-
-    act(() => {
-      useInstancesStore.getState().setCurrentInstanceId("instance-2");
-      useDraftStore.getState().setDrafts([
-        {
-          id: 7,
-          type: "stream",
-          to: [20],
-          topic: "triage",
-          content: "Org B draft",
-          timestamp: 1710000200,
-        },
-      ]);
-    });
-
-    act(() => {
-      resolveDelete?.(true);
-    });
-
-    expect(useDraftStore.getState().drafts[0]?.content).toBe("Org B draft");
-  });
-
-  it("edits a server-backed draft from the drafts list", async () => {
-    updateDraftOnServer.mockResolvedValue(true);
+  it("edits a draft locally from the drafts list", async () => {
     useDraftStore.getState().setDrafts([
       {
         id: 8,
@@ -1235,39 +1095,17 @@ describe("ActivityPage drafts routing", () => {
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "Edited draft content" } });
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
 
-    await waitFor(() => {
-      expect(updateDraftOnServer).toHaveBeenCalledWith(8, {
-        type: "stream",
-        to: [10],
-        topic: "general",
-        content: "Edited draft content",
-      });
-    });
-
     expect(screen.getByText("Edited draft content")).toBeInTheDocument();
   });
 
-  it("does not edit a new-organization draft when stale save resolves", async () => {
-    let resolveUpdate: ((value: boolean) => void) | undefined;
-    updateDraftOnServer.mockImplementationOnce(
-      () =>
-        new Promise<boolean>((resolve) => {
-          resolveUpdate = resolve;
-        }),
-    );
-    useInstancesStore.setState({
-      instances: [{ id: "instance-1" }, { id: "instance-2" }],
-      currentInstanceId: "instance-1",
-      unreadCountsByInstance: {},
-      activeOrgEpoch: 0,
-    });
+  it("edits a timestamp-only local draft from the drafts list", async () => {
     useDraftStore.getState().setDrafts([
       {
-        id: 8,
+        id: null,
         type: "stream",
         to: [10],
         topic: "general",
-        content: "Org A draft",
+        content: "Local only draft",
         timestamp: 1710000000,
       },
     ]);
@@ -1281,45 +1119,17 @@ describe("ActivityPage drafts routing", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Org A draft")).toBeInTheDocument();
+      expect(screen.getByText("Local only draft")).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByTitle("Edit draft"));
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Edited in org A" } });
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Edited local draft" } });
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
 
-    await waitFor(() => {
-      expect(updateDraftOnServer).toHaveBeenCalledWith(8, {
-        type: "stream",
-        to: [10],
-        topic: "general",
-        content: "Edited in org A",
-      });
-    });
-
-    act(() => {
-      useInstancesStore.getState().setCurrentInstanceId("instance-2");
-      useDraftStore.getState().setDrafts([
-        {
-          id: 8,
-          type: "stream",
-          to: [20],
-          topic: "triage",
-          content: "Org B draft",
-          timestamp: 1710000200,
-        },
-      ]);
-    });
-
-    act(() => {
-      resolveUpdate?.(true);
-    });
-
-    expect(useDraftStore.getState().drafts[0]?.content).toBe("Org B draft");
+    expect(screen.getByText("Edited local draft")).toBeInTheDocument();
   });
 
   it("treats empty edited draft content as delete", async () => {
-    deleteDraftOnServer.mockResolvedValue(true);
     useDraftStore.getState().setDrafts([
       {
         id: 12,
@@ -1347,15 +1157,11 @@ describe("ActivityPage drafts routing", () => {
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
 
-    await waitFor(() => {
-      expect(deleteDraftOnServer).toHaveBeenCalledWith(12);
-    });
-
     expect(screen.queryByText("Delete from edit draft")).not.toBeInTheDocument();
   });
 
   it("refetches activity messages when the page is marked stale", async () => {
-    fetchActivityMessagesPageWithPersist
+    loadLegacyActivityEmptyPage
       .mockResolvedValueOnce({
         messages: [
           createMessage({
@@ -1409,7 +1215,7 @@ describe("ActivityPage drafts routing", () => {
       expect(screen.getByText("Updated mention")).toBeInTheDocument();
     });
 
-    expect(fetchActivityMessagesPageWithPersist).toHaveBeenCalledTimes(2);
+    expect(loadLegacyActivityEmptyPage).toHaveBeenCalledTimes(2);
   });
 
   it("does not apply cached mentions from the previous organization after switch", async () => {
@@ -1432,7 +1238,7 @@ describe("ActivityPage drafts routing", () => {
       .mockReturnValueOnce(staleHydrate)
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
-    fetchActivityMessagesPageWithPersist.mockReturnValue(nextOrgFetch);
+    loadLegacyActivityEmptyPage.mockReturnValue(nextOrgFetch);
 
     useInstancesStore.setState({
       instances: [{ id: "instance-1" }, { id: "instance-2" }],
@@ -1515,9 +1321,7 @@ describe("ActivityPage drafts routing", () => {
     );
 
     hydrateActivityMessagesFromCache.mockResolvedValue([]);
-    fetchActivityMessagesPageWithPersist
-      .mockReturnValueOnce(oldFetch)
-      .mockReturnValueOnce(newFetch);
+    loadLegacyActivityEmptyPage.mockReturnValueOnce(oldFetch).mockReturnValueOnce(newFetch);
 
     useInstancesStore.setState({
       instances: [{ id: "instance-1" }, { id: "instance-2" }],
@@ -1535,7 +1339,7 @@ describe("ActivityPage drafts routing", () => {
     );
 
     await waitFor(() => {
-      expect(fetchActivityMessagesPageWithPersist).toHaveBeenCalledTimes(1);
+      expect(loadLegacyActivityEmptyPage).toHaveBeenCalledTimes(1);
     });
 
     act(() => {
@@ -1544,7 +1348,7 @@ describe("ActivityPage drafts routing", () => {
     });
 
     await waitFor(() => {
-      expect(fetchActivityMessagesPageWithPersist).toHaveBeenCalledTimes(2);
+      expect(loadLegacyActivityEmptyPage).toHaveBeenCalledTimes(2);
     });
 
     await act(async () => {

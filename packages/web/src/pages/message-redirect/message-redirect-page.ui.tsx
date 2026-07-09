@@ -1,10 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { t } from "~/i18n/i18n";
-import { fetchMessageById } from "~/shared/api/zulip-messages";
-import { getCurrentUser } from "~/shared/api/zulip-users";
-import { buildRouteFromMessage } from "~/shared/lib/push-click";
 import { isValidUrl } from "~/shared/lib/validation";
 import { PageLoader } from "~/shared/ui/error-boundary";
 
@@ -22,8 +18,6 @@ export const MessageRedirectPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { messageId } = useParams<{ messageId: string }>();
-  const currentUserId = useChatListStore((s) => s.currentUserId ?? null);
-  const [error, setError] = useState<string | null>(null);
 
   const parsedMessageId = useMemo(() => parseMessageIdParam(messageId), [messageId]);
 
@@ -37,66 +31,24 @@ export const MessageRedirectPage: React.FC = () => {
   }, [location.search]);
 
   useEffect(() => {
-    let cancelled = false;
-    if (parsedMessageId == null) {
-      void Promise.resolve().then(() => {
-        if (!cancelled) setError(t("app.pageLoadError"));
-      });
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    if (realmUri) {
+    if (parsedMessageId != null && realmUri) {
       const redirectTo = `${location.pathname}${location.search}`;
       void navigate(
         `/login?realm=${encodeURIComponent(realmUri)}&redirectTo=${encodeURIComponent(redirectTo)}`,
         { replace: true },
       );
-      return () => {
-        cancelled = true;
-      };
     }
+  }, [parsedMessageId, realmUri, navigate, location.pathname, location.search]);
 
-    const resolve = async () => {
-      try {
-        const resolvedCurrentUserId =
-          currentUserId ?? (await getCurrentUser().then((u) => u?.user_id ?? null));
-        const message = await fetchMessageById(parsedMessageId);
-        if (cancelled) return;
-
-        if (!message) {
-          setError(t("message.anchorAccessDenied"));
-          return;
-        }
-
-        const route = buildRouteFromMessage(message, resolvedCurrentUserId);
-        if (!route) {
-          setError(t("message.anchorAccessDenied"));
-          return;
-        }
-
-        void navigate(route, { replace: true });
-      } catch {
-        if (cancelled) return;
-        setError(t("message.anchorAccessDenied"));
-      }
-    };
-
-    void resolve();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [parsedMessageId, realmUri, currentUserId, navigate, location.pathname, location.search]);
-
-  if (error) {
-    return (
-      <div className="flex flex-1 items-center justify-center p-6 text-sm text-text-muted">
-        {error}
-      </div>
-    );
+  if (parsedMessageId != null && realmUri) {
+    return <PageLoader />;
   }
 
-  return <PageLoader />;
+  const error = parsedMessageId == null ? t("app.pageLoadError") : t("message.anchorAccessDenied");
+
+  return (
+    <div className="flex flex-1 items-center justify-center p-6 text-sm text-text-muted">
+      {error}
+    </div>
+  );
 };

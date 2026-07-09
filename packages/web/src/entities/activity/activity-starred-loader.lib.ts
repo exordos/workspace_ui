@@ -1,13 +1,13 @@
 /**
- * Shared starred bootstrap/refresh for ActivityPage.
+ * Shared starred bootstrap for ActivityPage.
  *
- * Cache-first hydrate and deduped server refresh for starred message bodies.
+ * Cache-first hydrate and deduped no-network refresh for starred message bodies.
  */
 import {
   hydrateActivityMessagesFromCache,
   isActivityMessagesSnapshotFresher,
 } from "~/entities/activity/activity-cache.lib";
-import { fetchActivityMessagesPageWithPersist } from "~/entities/activity/activity.api";
+import { loadLegacyActivityEmptyPage } from "~/entities/activity/activity.api";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import {
   captureActiveOrgRequestContext,
@@ -92,13 +92,9 @@ export async function ensureStarredLoaded(options: EnsureStarredLoadedOptions): 
     const filterRequestVersion = latest.startFilterRequest("starred", hasCachedData);
 
     try {
-      const page = await fetchActivityMessagesPageWithPersist(
-        "starred",
-        currentUserId,
-        "newest",
-        pageSize,
-        { signal },
-      );
+      const page = await loadLegacyActivityEmptyPage("starred", currentUserId, "newest", pageSize, {
+        signal,
+      });
       throwIfAbortedOrStale(signal, orgContext);
       const hasMore = !page.foundOldest;
       useActivityStore

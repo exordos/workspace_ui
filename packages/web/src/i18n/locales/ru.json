@@ -167,6 +167,7 @@
   },
   "message": {
     "sendRequiresStreamOrTo": "Нужен канал (stream) или получатели (to) для отправки",
+    "fileUploadUnsupported": "Загрузка файлов в старом пути чата больше недоступна.",
     "views": "Просмотры",
     "reply": "Ответить",
     "edit": "Изменить сообщение",
@@ -591,6 +592,7 @@
     "diagnosticsPingFailed": "Недоступен",
     "diagnosticsReconnectAttempt": "Попыток переподключения: {{count}}",
     "diagnosticsQueueInactive": "Очередь событий неактивна",
+    "diagnosticsEventsReceived": "Получено событий: {{count}}",
     "diagnosticsOffline": "Офлайн",
     "diagnosticsTabVisible": "Вкладка активна",
     "diagnosticsTabHidden": "Вкладка скрыта",
@@ -901,6 +903,7 @@
     "savedSnippetContent": "Содержимое сниппета",
     "savedSnippetsLoadError": "Не удалось загрузить сохраненные сниппеты",
     "savedSnippetsCreateError": "Не удалось создать сохраненный сниппет",
+    "savedSnippetsUnsupported": "Сохраненные сниппеты пока не подключены.",
     "actionUnsupported": "Это действие пока недоступно в этом чате.",
     "aiTemporarilyUnavailable": "AI-функции в вашей организации не подключены."
   },

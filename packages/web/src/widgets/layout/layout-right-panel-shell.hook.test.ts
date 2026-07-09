@@ -8,8 +8,6 @@ import { createUser } from "~/test/factories";
 import { useLayoutRightPanelShell } from "./layout-right-panel-shell.hook";
 import type { UseLayoutRightPanelShellParams } from "./layout-right-panel-shell.hook";
 
-const fetchStreamMembersMock = vi.hoisted(() => vi.fn());
-const fetchStreamsMock = vi.hoisted(() => vi.fn());
 const OWNER_KEY = "account-a:org-a:project-a";
 const STREAM_UUID = "11111111-1111-4111-8111-111111111111";
 const TOPIC_UUID = "22222222-2222-4222-8222-222222222222";
@@ -17,11 +15,6 @@ const USER_UUID = "33333333-3333-4333-8333-333333333333";
 const DIRECT_USER_UUID = "44444444-4444-4444-8444-444444444444";
 const BINDING_UUID = "55555555-5555-4555-8555-555555555555";
 const DIRECT_STREAM_UUID = "66666666-6666-4666-8666-666666666666";
-
-vi.mock("~/shared/api/zulip-streams", () => ({
-  fetchStreamMembers: fetchStreamMembersMock,
-  fetchStreams: fetchStreamsMock,
-}));
 
 function createBootstrapPayload(): MessengerBootstrapPayload {
   return {
@@ -162,8 +155,6 @@ describe("useLayoutRightPanelShell", () => {
     const chatInfoState = useChatInfoStore.getState();
     const hydrateSpy = vi.spyOn(chatInfoState, "hydrate");
     const syncDerivedSpy = vi.spyOn(chatInfoState, "syncDerived");
-    fetchStreamMembersMock.mockResolvedValue([]);
-    fetchStreamsMock.mockResolvedValue([]);
 
     const { result } = renderHook(() =>
       useLayoutRightPanelShell(
@@ -195,8 +186,6 @@ describe("useLayoutRightPanelShell", () => {
     ]);
     expect(hydrateSpy).not.toHaveBeenCalled();
     expect(syncDerivedSpy).not.toHaveBeenCalled();
-    expect(fetchStreamMembersMock).not.toHaveBeenCalled();
-    expect(fetchStreamsMock).not.toHaveBeenCalled();
   });
 
   it("returns Workspace direct private panel data without legacy right-panel user", () => {
@@ -231,7 +220,5 @@ describe("useLayoutRightPanelShell", () => {
     );
     expect(hydrateSpy).not.toHaveBeenCalled();
     expect(syncDerivedSpy).not.toHaveBeenCalled();
-    expect(fetchStreamMembersMock).not.toHaveBeenCalled();
-    expect(fetchStreamsMock).not.toHaveBeenCalled();
   });
 });

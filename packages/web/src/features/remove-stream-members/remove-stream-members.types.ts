@@ -1,10 +1,16 @@
 // remove-stream-members domain types — shared contract for UI and store.
-import type {
-  RemoveStreamMembersParams,
-  RemoveStreamMembersResult,
-} from "~/shared/api/zulip-streams";
+export interface RemoveStreamMembersParams {
+  streamName: string;
+  userIds: number[];
+}
 
-export type { RemoveStreamMembersParams, RemoveStreamMembersResult };
+export interface RemoveStreamMembersResult {
+  ok: boolean;
+  removedUserIds: number[];
+  alreadyUnsubscribedUserIds: number[];
+  unauthorizedStreams: string[];
+  errorCode?: string;
+}
 
 export interface RemoveStreamMemberSubmitOptions {
   streamId: number;

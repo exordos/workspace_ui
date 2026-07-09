@@ -10,7 +10,6 @@ async function flushPromises(): Promise<void> {
 }
 
 const runChatListBootstrapMock = vi.fn();
-const fetchRealmPresenceMock = vi.fn();
 const lightRefreshMock = vi.fn();
 
 vi.mock("./layout-chat-list-bootstrap.lib", () => ({
@@ -23,10 +22,6 @@ vi.mock("./layout-reconnect-stream-preview.lib", () => ({
   stageReconnectStreamPreviews: (...args: unknown[]) => stageReconnectStreamPreviewsMock(...args),
 }));
 
-vi.mock("./layout-realm-presence-refresh.lib", () => ({
-  refreshRealmPresenceFromApi: vi.fn(),
-}));
-
 vi.mock("./layout-reconnect-light.lib", () => ({
   refreshLayoutReconnectLight: (...args: unknown[]) => lightRefreshMock(...args),
 }));
@@ -35,10 +30,6 @@ const ensureMentionsUnreadSyncedMock = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("~/entities/chat-list/chat-list-mentions-sync.lib", () => ({
   ensureMentionsUnreadSynced: (...args: unknown[]) => ensureMentionsUnreadSyncedMock(...args),
-}));
-
-vi.mock("~/shared/api/zulip-users", () => ({
-  fetchRealmPresence: () => fetchRealmPresenceMock(),
 }));
 
 vi.mock("~/entities/chat-list/chat-list.model", () => ({

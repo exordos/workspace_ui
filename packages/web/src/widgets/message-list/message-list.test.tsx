@@ -3,21 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useChatDmCallBridgeStore } from "~/features/chat-dm-call-bridge/chat-dm-call-bridge.model";
-import type * as ZulipUsersApi from "~/shared/api/zulip-users";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
 import { createUser } from "~/test/factories";
 import { MessageList } from "./message-list.ui";
-
-const fetchRealmEmojisMock = vi.hoisted(() => vi.fn());
-
-vi.mock("~/shared/api/zulip-users", async (importOriginal) => {
-  const actual = await importOriginal<typeof ZulipUsersApi>();
-  return {
-    ...actual,
-    fetchRealmEmojis: (...args: unknown[]) => fetchRealmEmojisMock(...args),
-  };
-});
 
 function msg(id: number, overrides: Partial<MockMessage> = {}): MockMessage {
   return {
@@ -66,8 +55,6 @@ describe("MessageList focused message behavior", () => {
     scrollTargets.length = 0;
     scrollIntoView.mockReset();
     intersectionCallback = null;
-    fetchRealmEmojisMock.mockReset();
-    fetchRealmEmojisMock.mockResolvedValue([]);
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       value: scrollIntoView,
@@ -321,7 +308,7 @@ describe("MessageList focused message behavior", () => {
     expect(onOpenDirectMessage).not.toHaveBeenCalled();
   });
 
-  it("loads realm custom emojis once when markdown shortcode is present", async () => {
+  it("keeps legacy realm custom emojis empty when markdown shortcode is present", () => {
     const { rerender } = render(
       <MessageList
         messages={[
@@ -331,10 +318,6 @@ describe("MessageList focused message behavior", () => {
         ]}
       />,
     );
-
-    await waitFor(() => {
-      expect(fetchRealmEmojisMock).toHaveBeenCalledTimes(1);
-    });
 
     rerender(
       <MessageList
@@ -349,12 +332,10 @@ describe("MessageList focused message behavior", () => {
       />,
     );
 
-    await waitFor(() => {
-      expect(fetchRealmEmojisMock).toHaveBeenCalledTimes(1);
-    });
+    expect(screen.getByText(/Still/)).toBeInTheDocument();
   });
 
-  it("does not load realm custom emojis when custom emoji UI is disabled", async () => {
+  it("keeps legacy realm custom emojis empty when custom emoji UI is disabled", () => {
     render(
       <MessageList
         customEmojisSupported={false}
@@ -366,18 +347,10 @@ describe("MessageList focused message behavior", () => {
       />,
     );
 
-    await waitFor(() => {
-      expect(fetchRealmEmojisMock).not.toHaveBeenCalled();
-    });
+    expect(screen.getByText(/Hi/)).toBeInTheDocument();
   });
 
-  it("loads realm custom emojis and renders reaction image when message has realm_emoji reaction", async () => {
-    const realmEmoji = {
-      id: "9001",
-      names: ["party_parrot"],
-      imgUrl: "https://chat.example.test/user_avatars/realm/9001.png",
-    };
-    fetchRealmEmojisMock.mockResolvedValue([realmEmoji]);
+  it("does not render legacy realm emoji images without Workspace custom emoji source", async () => {
     const { rerender } = render(
       <MessageList
         messages={[
@@ -397,9 +370,8 @@ describe("MessageList focused message behavior", () => {
     );
 
     await waitFor(() => {
-      expect(fetchRealmEmojisMock).toHaveBeenCalledTimes(1);
+      expect(screen.queryByAltText(":party_parrot:")).not.toBeInTheDocument();
     });
-    expect(await screen.findByAltText(":party_parrot:")).toBeInTheDocument();
 
     rerender(
       <MessageList
@@ -422,12 +394,10 @@ describe("MessageList focused message behavior", () => {
       />,
     );
 
-    await waitFor(() => {
-      expect(fetchRealmEmojisMock).toHaveBeenCalledTimes(1);
-    });
+    expect(screen.queryByAltText(":party_parrot:")).not.toBeInTheDocument();
   });
 
-  it("does not load realm custom emojis when no shortcode is present", async () => {
+  it("keeps legacy realm custom emojis empty when no shortcode is present", () => {
     render(
       <MessageList
         messages={[
@@ -438,9 +408,7 @@ describe("MessageList focused message behavior", () => {
       />,
     );
 
-    await waitFor(() => {
-      expect(fetchRealmEmojisMock).not.toHaveBeenCalled();
-    });
+    expect(screen.getByText(/Hi/)).toBeInTheDocument();
   });
 
   it("uses large avatar size for grouped sender blocks", () => {

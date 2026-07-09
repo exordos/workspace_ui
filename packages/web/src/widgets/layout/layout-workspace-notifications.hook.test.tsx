@@ -15,8 +15,9 @@ import type { shouldWorkspaceDesktopNotify } from "~/shared/lib/workspace-deskto
 import { useLayoutWorkspaceNotifications } from "./layout-workspace-notifications.hook";
 import { clearNotificationAggregateRegistry } from "./notification-aggregate-registry.lib";
 
-const showNotificationMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+const showNotificationMock = vi.hoisted(() => vi.fn(() => Promise.resolve(true)));
 const playNotificationSoundMock = vi.hoisted(() => vi.fn());
+const requestAttentionMock = vi.hoisted(() => vi.fn());
 const resolveCachedWorkspaceUserMock = vi.hoisted(() =>
   vi.fn(() => Promise.resolve({ displayName: "Alice" })),
 );
@@ -36,6 +37,13 @@ vi.mock("~/shared/lib/notification-sound", () => ({
     playNotificationSoundMock(...args),
 }));
 
+vi.mock("~/shared/lib/os-integration", () => ({
+  osIntegration: {
+    requestAttention: (...args: Parameters<typeof requestAttentionMock>) =>
+      requestAttentionMock(...args),
+  },
+}));
+
 vi.mock("~/entities/user/user-sync.lib", () => ({
   resolveCachedWorkspaceUser: (...args: Parameters<typeof resolveCachedWorkspaceUserMock>) =>
     resolveCachedWorkspaceUserMock(...args),
@@ -51,9 +59,7 @@ vi.mock("~/shared/lib/unexpected-error.lib", () => ({
 }));
 
 vi.mock("./layout-notification-tags.lib", async () => {
-  const actual = await vi.importActual<typeof import("./layout-notification-tags.lib")>(
-    "./layout-notification-tags.lib",
-  );
+  const actual = await vi.importActual<Record<string, unknown>>("./layout-notification-tags.lib");
 
   return {
     ...actual,
@@ -149,6 +155,8 @@ function createProjection(
   options: {
     notificationCandidates?: MessengerBackgroundNotificationCandidate[];
     messageIdSnapshotsById?: Record<string, MessengerBackgroundMessageIdSnapshot>;
+    streamSnapshotsById?: MessengerBackgroundProjection["streamSnapshotsById"];
+    topicSnapshotsById?: MessengerBackgroundProjection["topicSnapshotsById"];
   } = {},
 ): MessengerBackgroundProjection {
   return {
@@ -156,8 +164,8 @@ function createProjection(
     lastEpochVersion: 1,
     unreadByFolderId: {},
     unreadByFolderItemId: {},
-    streamSnapshotsById: {},
-    topicSnapshotsById: {},
+    streamSnapshotsById: options.streamSnapshotsById ?? {},
+    topicSnapshotsById: options.topicSnapshotsById ?? {},
     folderSnapshotsById: {},
     folderItemSnapshotsById: {},
     messageIdSnapshotsById: options.messageIdSnapshotsById ?? {},
@@ -344,6 +352,7 @@ describe("useLayoutWorkspaceNotifications", () => {
     });
     expect(playNotificationSoundMock).toHaveBeenCalledTimes(1);
     expect(playNotificationSoundMock).toHaveBeenCalledWith("glass");
+    expect(requestAttentionMock).toHaveBeenCalledTimes(1);
     expect(showNotificationMock).toHaveBeenCalledWith(
       expect.objectContaining({
         silent: true,
@@ -389,6 +398,7 @@ describe("useLayoutWorkspaceNotifications", () => {
       }),
     );
     expect(playNotificationSoundMock).not.toHaveBeenCalled();
+    expect(requestAttentionMock).toHaveBeenCalledTimes(1);
   });
 
   it("does not show a desktop notification or play app sound when decision is notify:false", async () => {
@@ -426,5 +436,119 @@ describe("useLayoutWorkspaceNotifications", () => {
     });
     expect(showNotificationMock).not.toHaveBeenCalled();
     expect(playNotificationSoundMock).not.toHaveBeenCalled();
+    expect(requestAttentionMock).not.toHaveBeenCalled();
+  });
+
+  it("defers an unknown candidate until stream metadata can resolve the audience", async () => {
+    const session = createSession("deferred");
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    const messageUuid = "deferred-message";
+    const deferredCandidate = createCandidate(ownerKey, messageUuid, {
+      audience: "unknown",
+      streamName: null,
+      streamNotificationMode: null,
+      topicNotificationMode: null,
+    });
+
+    useWorkspaceAuthStore.setState({
+      sessions: [session],
+      currentAccountId: session.accountId,
+      runtimeGeneration: 1,
+    });
+    useMessengerBackgroundProjectionStore.setState({
+      projectionsByOwnerKey: {
+        [ownerKey]: createProjection(ownerKey, {
+          notificationCandidates: [deferredCandidate],
+          messageIdSnapshotsById: {
+            [messageUuid]: createMessageSnapshot(ownerKey, messageUuid),
+          },
+        }),
+      },
+    });
+
+    renderHook(() =>
+      useLayoutWorkspaceNotifications({
+        enabled: true,
+        navigate: vi.fn(),
+      }),
+    );
+
+    expect(showNotificationMock).not.toHaveBeenCalled();
+    expect(shouldWorkspaceDesktopNotifyMock).not.toHaveBeenCalled();
+
+    useMessengerBackgroundProjectionStore.setState({
+      projectionsByOwnerKey: {
+        [ownerKey]: createProjection(ownerKey, {
+          notificationCandidates: [deferredCandidate],
+          messageIdSnapshotsById: {
+            [messageUuid]: createMessageSnapshot(ownerKey, messageUuid),
+          },
+          streamSnapshotsById: {
+            "stream-1": {
+              ownerKey,
+              streamUuid: "stream-1",
+              streamName: "Direct chat",
+              unreadCount: 1,
+              notificationMode: "mentions_only",
+              isPrivate: true,
+              lastMessageUuid: messageUuid,
+              isArchived: false,
+              epochVersion: 1,
+              updatedAt: "2026-07-07T10:00:00.000Z",
+              observedAt: 2,
+            },
+          },
+        }),
+      },
+    });
+
+    await waitFor(() => {
+      expect(showNotificationMock).toHaveBeenCalledTimes(1);
+    });
+    expect(shouldWorkspaceDesktopNotifyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.objectContaining({
+          kind: "dm",
+          streamNotificationMode: "mentions_only",
+        }),
+      }),
+    );
+  });
+
+  it("plays app sound and requests attention even when native notification returns false", async () => {
+    const session = createSession("native-false");
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    const messageUuid = "native-false-message";
+
+    showNotificationMock.mockResolvedValueOnce(false);
+    useSettingsStore.setState({ notificationSound: "glass" });
+    useWorkspaceAuthStore.setState({
+      sessions: [session],
+      currentAccountId: session.accountId,
+      runtimeGeneration: 1,
+    });
+    useMessengerBackgroundProjectionStore.setState({
+      projectionsByOwnerKey: {
+        [ownerKey]: createProjection(ownerKey, {
+          notificationCandidates: [createCandidate(ownerKey, messageUuid)],
+          messageIdSnapshotsById: {
+            [messageUuid]: createMessageSnapshot(ownerKey, messageUuid),
+          },
+        }),
+      },
+    });
+
+    renderHook(() =>
+      useLayoutWorkspaceNotifications({
+        enabled: true,
+        navigate: vi.fn(),
+      }),
+    );
+
+    await waitFor(() => {
+      expect(playNotificationSoundMock).toHaveBeenCalledTimes(1);
+    });
+    expect(requestAttentionMock).toHaveBeenCalledTimes(1);
+    expect(showNotificationMock).toHaveBeenCalledTimes(1);
   });
 });

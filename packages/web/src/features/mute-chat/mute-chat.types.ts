@@ -1,9 +1,9 @@
 /**
  * Mute/unmute type definitions.
  *
- * Zulip supports muting at two levels:
- * 1. Channel (stream) level — via subscription properties
- * 2. Topic level — via user_topics visibility policy
+ * Legacy numeric UI keeps two local levels:
+ * 1. Channel (stream) level
+ * 2. Topic visibility override level
  */
 
 export type MuteTarget =
@@ -13,7 +13,7 @@ export type MuteTarget =
 export type VisibilityPolicy = 0 | 1 | 2 | 3;
 
 /**
- * Zulip visibility policy values:
+ * Legacy topic visibility policy values:
  * 0 = inherit (not explicitly muted or unmuted)
  * 1 = muted
  * 2 = unmuted (overrides channel-level mute)

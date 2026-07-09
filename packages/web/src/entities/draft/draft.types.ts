@@ -1,14 +1,13 @@
 /**
  * Draft entity type definitions.
  *
- * Drafts are saved locally and synced with the Zulip Drafts API.
- * Each draft has a type (stream or DM), target, and content.
+ * Drafts are saved locally. Workspace API does not expose a drafts contract.
  */
 
 export type DraftType = "stream" | "private";
 
 export interface Draft {
-  /** Server-assigned ID (null if local-only, not yet synced). */
+  /** Local draft identifier, or null for timestamp-only drafts. */
   id: number | null;
   /** "stream" for channel messages, "private" for DMs. */
   type: DraftType;
@@ -20,11 +19,4 @@ export interface Draft {
   content: string;
   /** Last update timestamp (Unix seconds). */
   timestamp: number;
-}
-
-export interface DraftInput {
-  type: DraftType;
-  to: number[];
-  topic: string;
-  content: string;
 }

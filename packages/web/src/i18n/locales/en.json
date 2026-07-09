@@ -167,6 +167,7 @@
   },
   "message": {
     "sendRequiresStreamOrTo": "Stream or recipients (to) required for sending",
+    "fileUploadUnsupported": "File uploads are no longer available in this legacy chat path.",
     "views": "Views",
     "reply": "Reply",
     "edit": "Edit message",
@@ -581,6 +582,7 @@
     "diagnosticsPingFailed": "Unreachable",
     "diagnosticsReconnectAttempt": "Reconnect attempts: {{count}}",
     "diagnosticsQueueInactive": "Event queue inactive",
+    "diagnosticsEventsReceived": "Events received: {{count}}",
     "diagnosticsOffline": "Offline",
     "diagnosticsTabVisible": "Tab visible",
     "diagnosticsTabHidden": "Tab hidden",
@@ -892,6 +894,7 @@
     "savedSnippetContent": "Snippet content",
     "savedSnippetsLoadError": "Failed to load saved snippets",
     "savedSnippetsCreateError": "Failed to create saved snippet",
+    "savedSnippetsUnsupported": "Saved snippets are not connected yet.",
     "actionUnsupported": "This action is not available in this conversation yet.",
     "aiTemporarilyUnavailable": "AI features are temporarily unavailable in your organization."
   },

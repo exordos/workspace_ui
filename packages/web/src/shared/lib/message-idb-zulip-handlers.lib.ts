@@ -1,8 +1,7 @@
 /**
  * Per-event IndexedDB mirrors for Zulip realtime events (`message-idb-from-zulip.lib.ts`).
  */
-import { rawMessageToMockMessage } from "~/shared/api/zulip-messages";
-import type { ZulipEvent, ZulipRawMessage } from "~/shared/api/zulip.types";
+import type { MockMessage, ZulipEvent, ZulipRawMessage } from "~/shared/api/zulip.types";
 import {
   deleteMessagesByIds,
   moveTopicMessagesInCache,
@@ -16,6 +15,37 @@ import { chatKeyFromRawMessage } from "~/shared/lib/message-cache-keys.lib";
 import { extractStreamMoveFromUpdateEvent } from "~/shared/lib/update-message-stream-move.lib";
 import { extractTopicMoveFromUpdateEvent } from "~/shared/lib/update-message-topic-move.lib";
 import { zulipMessageCacheWindowNForChatKey } from "~/shared/lib/zulip-message-window.lib";
+import { isLikelyRenderedMessageHtml } from "./message-markdown-display.lib";
+
+function rawMessageToCachedMessage(raw: ZulipRawMessage): MockMessage {
+  const contentTrim = raw.content.trim();
+  const apiMd = raw.markdown_source?.trim();
+  const isHtmlBody = isLikelyRenderedMessageHtml(contentTrim);
+  let markdownSource: string | undefined;
+  if (apiMd != null && apiMd.length > 0) {
+    markdownSource = apiMd;
+  } else if (!isHtmlBody && contentTrim.length > 0) {
+    markdownSource = contentTrim;
+  }
+
+  const message: MockMessage = {
+    id: raw.id,
+    sender_id: raw.sender_id,
+    sender_full_name: raw.sender_full_name ?? "",
+    stream_id: raw.stream_id ?? (raw.type === "private" ? null : (raw.stream_id ?? null)),
+    display_recipient: raw.display_recipient,
+    channel: typeof raw.display_recipient === "string" ? raw.display_recipient : undefined,
+    subject: raw.subject ?? "",
+    content: raw.content,
+    timestamp: raw.timestamp,
+    flags: raw.flags,
+    reactions: raw.reactions,
+  };
+  if (markdownSource != null && markdownSource.length > 0) {
+    message.markdown_source = markdownSource;
+  }
+  return message;
+}
 
 export async function mirrorZulipMessageEventToIndexedDb(options: {
   instanceId: string;
@@ -24,7 +54,7 @@ export async function mirrorZulipMessageEventToIndexedDb(options: {
 }): Promise<void> {
   const chatKey = chatKeyFromRawMessage(options.raw, options.currentUserId);
   if (chatKey == null) return;
-  const mock = rawMessageToMockMessage(options.raw);
+  const mock = rawMessageToCachedMessage(options.raw);
   await putSingleMessage({
     instanceId: options.instanceId,
     chatKey,

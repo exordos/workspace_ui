@@ -1,12 +1,24 @@
-// remove-stream-members API adapter — delegates to shared/api transport.
-import {
-  removeMembersFromStream,
-  type RemoveStreamMembersParams,
-  type RemoveStreamMembersResult,
-} from "~/shared/api/zulip-streams";
+// remove-stream-members API adapter — legacy numeric channels are unsupported without Workspace UUIDs.
+import { createLogger } from "~/shared/lib/logger";
+import type {
+  RemoveStreamMembersParams,
+  RemoveStreamMembersResult,
+} from "./remove-stream-members.types";
 
-export async function removeStreamMembers(
+const log = createLogger("remove-stream-members");
+
+export function removeStreamMembers(
   params: RemoveStreamMembersParams,
 ): Promise<RemoveStreamMembersResult> {
-  return removeMembersFromStream(params);
+  log.warn("Legacy stream member removal is unsupported without Workspace stream UUID", {
+    streamName: params.streamName,
+    requestedCount: params.userIds.length,
+  });
+  return Promise.resolve({
+    ok: false,
+    removedUserIds: [],
+    alreadyUnsubscribedUserIds: [],
+    unauthorizedStreams: [],
+    errorCode: "unsupported",
+  });
 }

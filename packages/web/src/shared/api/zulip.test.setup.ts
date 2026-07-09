@@ -4,53 +4,16 @@
  * Import this module first in each test file so `vi.mock` runs before the module under test loads.
  */
 import { afterEach, beforeEach, vi } from "vitest";
-import { clearAllZulipEventQueueIds } from "~/shared/lib/zulip-event-queue-registry.lib";
-
-const mockZulipClient = vi.hoisted(() => ({
-  streams: {
-    retrieve: vi.fn(),
-    topics: { retrieve: vi.fn() },
-  },
-  messages: {
-    retrieve: vi.fn(),
-    send: vi.fn(),
-  },
-}));
-
-export function getMockZulipClient() {
-  return mockZulipClient;
-}
 
 const mockGetCurrentInstance = vi.hoisted(() => vi.fn());
-
-const mockZulipApi = vi.hoisted(() => ({
-  get: vi.fn(),
-  getWithBase: vi.fn(),
-  post: vi.fn(),
-  postFormData: vi.fn(),
-  patch: vi.fn(),
-  delete: vi.fn(),
-}));
-
-const mockRefreshZulipApiBase = vi.hoisted(() => vi.fn());
 const mockRefreshWorkspaceApiBase = vi.hoisted(() => vi.fn());
 
 export function getMockGetCurrentInstance() {
   return mockGetCurrentInstance;
 }
 
-export function getMockZulipApi() {
-  return mockZulipApi;
-}
-
-export function getMockRefreshZulipApiBase() {
-  return mockRefreshZulipApiBase;
-}
-
 vi.mock("./client", () => ({
   getCurrentInstance: mockGetCurrentInstance,
-  zulipApi: mockZulipApi,
-  refreshZulipApiBase: mockRefreshZulipApiBase,
   refreshWorkspaceApiBase: mockRefreshWorkspaceApiBase,
 }));
 
@@ -75,10 +38,6 @@ vi.mock("~/shared/lib/logger", async (importOriginal) => {
   );
 });
 
-vi.mock("zulip-js", () => ({
-  default: vi.fn(() => Promise.resolve(mockZulipClient)),
-}));
-
 export const TEST_INSTANCE = {
   id: "test-inst",
   realm: "https://zulip.example.com",
@@ -98,22 +57,10 @@ export function jsonResponse(data: unknown, status = 200): Response {
 }
 
 beforeEach(() => {
-  clearAllZulipEventQueueIds();
   vi.stubGlobal("fetch", mockFetch);
   mockFetch.mockReset();
   mockGetCurrentInstance.mockReset();
   mockGetCurrentInstance.mockReturnValue(TEST_INSTANCE);
-  mockZulipClient.streams.retrieve.mockReset();
-  mockZulipClient.streams.topics.retrieve.mockReset();
-  mockZulipClient.messages.retrieve.mockReset();
-  mockZulipClient.messages.send.mockReset();
-  mockZulipApi.get.mockReset();
-  mockZulipApi.getWithBase.mockReset();
-  mockZulipApi.post.mockReset();
-  mockZulipApi.postFormData.mockReset();
-  mockZulipApi.patch.mockReset();
-  mockZulipApi.delete.mockReset();
-  mockRefreshZulipApiBase.mockReset();
   mockRefreshWorkspaceApiBase.mockReset();
 });
 

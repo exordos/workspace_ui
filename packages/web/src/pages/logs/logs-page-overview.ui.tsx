@@ -1,6 +1,5 @@
 import React from "react";
 import { t } from "~/i18n/i18n";
-import { truncateQueueId } from "./diagnostics-collect.lib";
 import type { DiagnosticsPageSnapshot } from "./diagnostics-collect.lib";
 
 export interface LogsPageOverviewProps {
@@ -30,7 +29,6 @@ export const LogsPageOverview: React.FC<LogsPageOverviewProps> = ({
   onPingServer,
   onOpenLogs,
 }) => {
-  const queueLabel = truncateQueueId(snapshot.realtime.eventQueueId);
   const collectedAtMs = Date.parse(snapshot.collectedAt);
   const lastEventAgeMs =
     snapshot.realtime.stats.lastEventAt != null && !Number.isNaN(collectedAtMs)
@@ -80,7 +78,9 @@ export const LogsPageOverview: React.FC<LogsPageOverviewProps> = ({
 
         <DiagnosticCard title={t("settings.diagnosticsRealtime")}>
           <p className="font-medium text-text-primary">
-            {queueLabel ?? t("settings.diagnosticsQueueInactive")}
+            {t("settings.diagnosticsEventsReceived", {
+              count: snapshot.realtime.stats.eventsReceivedCount,
+            })}
           </p>
           <p className="text-text-muted">
             {snapshot.realtime.online ? t("presence.online") : t("settings.diagnosticsOffline")}

@@ -5,19 +5,12 @@
  * For chats whose latest activity is older than the global 5000-message preview window,
  * sidebar rows can show unread badges while lacking preview text and timestamps used for sorting.
  *
- * This module batch-fetches the latest unread message per stream/topic via Zulip 10+ `message_ids`
- * and merges preview metadata without affecting unread totals.
+ * Network preview repair was removed with the legacy Zulip API cutover. The pure id resolver stays
+ * for local callers/tests; the hydrate entrypoint is now a controlled no-op.
  */
-import {
-  captureActiveOrgRequestContext,
-  isActiveOrgRequestContextCurrent,
-} from "~/entities/instance/instance.model";
-import { fetchMessagesByIds } from "~/shared/api/zulip-messages";
 import type { ZulipUnreadMessagesSnapshot } from "~/shared/api/zulip-unread.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
-import { filterStreamMessagesForSidebar } from "./chat-list-stream-preview-from-messages.lib";
-import { useChatListStore } from "./chat-list.model";
 
 function maxPositiveInt(values: readonly number[]): number | null {
   let max: number | null = null;
@@ -71,51 +64,15 @@ export function resolveLatestUnreadMessageIdsForMissingPreviews(
   return [...ids];
 }
 
-const inFlightByInstanceId = new Map<string, Promise<void>>();
-
-function isCancelledOrStale(
-  orgContext: ReturnType<typeof captureActiveOrgRequestContext>,
-  cancelled?: () => boolean,
-): boolean {
-  return cancelled?.() === true || !isActiveOrgRequestContextCurrent(orgContext);
-}
-
 /**
- * Best-effort hydrate: if request fails, sidebar still functions (counts are already correct).
- * Dedupes concurrent calls to avoid repeated batch fetches during fast remounts.
+ * Legacy unread preview hydrate no longer performs network repair. Sidebar counts stay intact;
+ * preview text is filled only by local/Workspace-native data paths.
  */
 export function hydrateStreamSidebarPreviewsFromUnreadSnapshot(
   snapshot: ZulipUnreadMessagesSnapshot | null | undefined,
   cancelled?: () => boolean,
 ): Promise<void> {
-  if (snapshot == null) return Promise.resolve();
-  const orgContext = captureActiveOrgRequestContext();
-  if (orgContext.instanceId == null || isCancelledOrStale(orgContext, cancelled)) {
-    return Promise.resolve();
-  }
-  const instanceId = orgContext.instanceId;
-  const existing = inFlightByInstanceId.get(instanceId);
-  if (existing != null) return existing;
-
-  const promise = (async () => {
-    try {
-      const { streamsMap } = useChatListStore.getState();
-      const messageIds = resolveLatestUnreadMessageIdsForMissingPreviews(snapshot, streamsMap);
-      if (messageIds.length === 0) return;
-      if (isCancelledOrStale(orgContext, cancelled)) return;
-
-      const messages = await fetchMessagesByIds(messageIds);
-      if (isCancelledOrStale(orgContext, cancelled)) return;
-
-      const streamOnly = filterStreamMessagesForSidebar(messages);
-      if (streamOnly.length === 0) return;
-
-      useChatListStore.getState().applyStreamSidebarPreviewsFromMessages(streamOnly);
-    } finally {
-      inFlightByInstanceId.delete(instanceId);
-    }
-  })();
-
-  inFlightByInstanceId.set(instanceId, promise);
-  return promise;
+  void snapshot;
+  void cancelled;
+  return Promise.resolve();
 }

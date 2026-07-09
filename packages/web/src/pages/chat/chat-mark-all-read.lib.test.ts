@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { syncUnreadSurfacesFromDelta } from "~/entities/unread-sync/unread-surfaces-sync.lib";
-import { markMessagesAsRead } from "~/shared/api/zulip-read-state";
 import {
   applyOpenChatMarkAllAsRead,
   collectMarkAllAsReadMessageIds,
@@ -11,10 +10,6 @@ import {
   resolveMarkAllAsReadTarget,
   type MarkAllAsReadTarget,
 } from "./chat-mark-all-read.lib";
-
-vi.mock("~/shared/api/zulip-read-state", () => ({
-  markMessagesAsRead: vi.fn().mockResolvedValue(undefined),
-}));
 
 const INSTANCE_ID = "chat-mark-all-read-test";
 
@@ -27,8 +22,6 @@ function resetStores(): void {
     dmUnreadCountsByInstance: {},
     activeOrgEpoch: 0,
   });
-  vi.mocked(markMessagesAsRead).mockClear();
-  vi.mocked(markMessagesAsRead).mockResolvedValue(undefined);
 }
 
 function applyUnreadDelta(source: "local-chat-mark-all-read", applyDelta: () => void): void {
@@ -127,7 +120,7 @@ describe("chat-mark-all-read", () => {
     ).toEqual([1, 99]);
   });
 
-  it("applyOpenChatMarkAllAsRead uses per-id flags API", async () => {
+  it("applyOpenChatMarkAllAsRead applies local unread clear without network", async () => {
     const applyOptimistic = vi.fn();
     const target: MarkAllAsReadTarget = { type: "topic", streamId: 5, topic: "bugs" };
     await applyOpenChatMarkAllAsRead({
@@ -137,7 +130,6 @@ describe("chat-mark-all-read", () => {
       applyOptimistic,
       applyUnreadDelta,
     });
-    expect(markMessagesAsRead).toHaveBeenCalledWith([10]);
     expect(applyOptimistic).toHaveBeenCalledWith([10], {
       type: "stream",
       streamId: 5,
@@ -167,7 +159,6 @@ describe("chat-mark-all-read", () => {
       applyUnreadDelta,
     });
 
-    expect(markMessagesAsRead).not.toHaveBeenCalled();
     expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("bugs")?.unreadCount).toBe(0);
     expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(0);
   });
@@ -198,7 +189,6 @@ describe("chat-mark-all-read", () => {
       applyUnreadDelta,
     });
 
-    expect(markMessagesAsRead).toHaveBeenCalledWith([10]);
     expect(useChatListStore.getState().streamsMap.get(5)?.topics.get("bugs")?.unreadCount).toBe(0);
     expect(useInstancesStore.getState().getInstanceUnreadCount(INSTANCE_ID)).toBe(0);
   });

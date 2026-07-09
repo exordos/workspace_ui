@@ -9,7 +9,8 @@ import type { ApiRequest } from "~/shared/api/client";
 import { redact } from "./logger";
 
 const MAX_PARAM_STRING_LENGTH = 200;
-const LONG_POLL_PARAM_KEYS = new Set(["queue_id", "last_event_id", "timeout"]);
+const LONG_POLL_PARAM_KEYS = new Set(["last_event_id", "timeout"]);
+const OMIT_PARAM_KEYS = new Set(["queue_id"]);
 
 function truncateString(value: string): string {
   if (value.length <= MAX_PARAM_STRING_LENGTH) {
@@ -29,6 +30,7 @@ function truncateParamValues(value: unknown, depth = 0): unknown {
   if (value != null && typeof value === "object") {
     const result: Record<string, unknown> = {};
     for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+      if (OMIT_PARAM_KEYS.has(key)) continue;
       result[key] = truncateParamValues(nested, depth + 1);
     }
     return result;
@@ -49,12 +51,12 @@ function isEventsLongPollPath(pathname: string): boolean {
 }
 
 function filterEventsLongPollParams(
-  params: Record<string, string>,
+  params: Record<string, unknown>,
 ): Record<string, string> | undefined {
   const filtered: Record<string, string> = {};
   for (const key of LONG_POLL_PARAM_KEYS) {
     const value = params[key];
-    if (value != null) {
+    if (typeof value === "string") {
       filtered[key] = value;
     }
   }
@@ -136,8 +138,10 @@ export function extractLoggableRequestParams(req: ApiRequest): Record<string, un
     return undefined;
   }
 
-  if (isEventsLongPollPath(pathname) && fromQuery) {
-    return sanitizeParams(filterEventsLongPollParams(fromQuery) ?? {});
+  if (isEventsLongPollPath(pathname)) {
+    return sanitizeParams(
+      filterEventsLongPollParams(mergeParams(fromExplicitParams, fromQuery) ?? {}) ?? {},
+    );
   }
 
   return sanitizeParams(combined);

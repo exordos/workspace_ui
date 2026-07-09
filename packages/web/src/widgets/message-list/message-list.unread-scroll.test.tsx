@@ -1,20 +1,10 @@
 import { act, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type * as ZulipUsersApi from "~/shared/api/zulip-users";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
 import { MessageList } from "./message-list.ui";
 
-const fetchRealmEmojisMock = vi.hoisted(() => vi.fn());
 const scrollToBottomMock = vi.hoisted(() => vi.fn());
-
-vi.mock("~/shared/api/zulip-users", async (importOriginal) => {
-  const actual = await importOriginal<typeof ZulipUsersApi>();
-  return {
-    ...actual,
-    fetchRealmEmojis: (...args: unknown[]) => fetchRealmEmojisMock(...args),
-  };
-});
 
 vi.mock("~/shared/lib/scroll-position.lib", () => ({
   scrollToBottom: (...args: unknown[]) => scrollToBottomMock(...args),
@@ -116,8 +106,6 @@ describe("MessageList unread anchor scroll", () => {
     scrollTargets.length = 0;
     scrollIntoView.mockReset();
     scrollToBottomMock.mockReset();
-    fetchRealmEmojisMock.mockReset();
-    fetchRealmEmojisMock.mockResolvedValue([]);
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       value: scrollIntoView,
@@ -994,8 +982,6 @@ describe("MessageList chat open scroll to bottom", () => {
     scrollTargets.length = 0;
     scrollIntoView.mockReset();
     scrollToBottomMock.mockReset();
-    fetchRealmEmojisMock.mockReset();
-    fetchRealmEmojisMock.mockResolvedValue([]);
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       value: scrollIntoView,

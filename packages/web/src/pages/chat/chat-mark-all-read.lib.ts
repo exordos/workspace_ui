@@ -5,7 +5,6 @@ import {
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import type { MessageLocation } from "~/entities/chat-list/chat-list.model.types";
 import type { UnreadDeltaSyncSource } from "~/entities/unread-sync/unread-surfaces-sync.lib";
-import { markMessagesAsRead } from "~/shared/api/zulip-read-state";
 import { dmRouteKey } from "~/shared/lib/dm-key";
 import { buildMessageIdMap } from "~/shared/lib/message-id-index.lib";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
@@ -116,8 +115,8 @@ export interface ApplyOpenChatMarkAllAsReadOptions {
   ) => void;
 }
 
-/** Marks all unread in the open chat via per-id flags API (never narrow). */
-export async function applyOpenChatMarkAllAsRead(
+/** Clears local unread state for the open legacy chat without calling old Zulip read APIs. */
+export function applyOpenChatMarkAllAsRead(
   options: ApplyOpenChatMarkAllAsReadOptions,
 ): Promise<boolean> {
   const chatListState = useChatListStore.getState();
@@ -128,10 +127,6 @@ export async function applyOpenChatMarkAllAsRead(
     options.currentUserId,
   );
   const fallbackContext = markAllAsReadFallbackContext(options.target, options.currentUserId);
-
-  if (messageIds.length > 0) {
-    await markMessagesAsRead(messageIds);
-  }
 
   // Clear both known ids and any remaining badge inside one unread sync pass.
   options.applyUnreadDelta("local-chat-mark-all-read", () => {
@@ -146,7 +141,7 @@ export async function applyOpenChatMarkAllAsRead(
       "chat:markAllClearRemaining",
     );
   });
-  return true;
+  return Promise.resolve(true);
 }
 
 /** Message shape needed to decide if an id still counts as unread for optimistic read application. */

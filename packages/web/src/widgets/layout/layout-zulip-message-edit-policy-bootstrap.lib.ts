@@ -1,12 +1,13 @@
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import type { RegisterQueueResult } from "~/shared/api/zulip.types";
 import type { CurrentUserMessageEditPolicy } from "~/shared/types/message-edit-policy";
 
+interface ZulipRegisterMessageEditPolicyInput {
+  realm_allow_message_editing?: boolean;
+  realm_message_content_edit_limit_seconds?: number | null;
+}
+
 export function messageEditPolicyFromZulipRegister(
-  registration: Pick<
-    RegisterQueueResult,
-    "realm_allow_message_editing" | "realm_message_content_edit_limit_seconds"
-  >,
+  registration: ZulipRegisterMessageEditPolicyInput,
 ): CurrentUserMessageEditPolicy | undefined {
   const hasAllowMessageEditing = registration.realm_allow_message_editing !== undefined;
   const hasContentEditLimit = registration.realm_message_content_edit_limit_seconds !== undefined;
@@ -28,10 +29,7 @@ export function messageEditPolicyFromZulipRegister(
 }
 
 export function applyZulipRegisterMessageEditPolicy(
-  registration: Pick<
-    RegisterQueueResult,
-    "realm_allow_message_editing" | "realm_message_content_edit_limit_seconds"
-  >,
+  registration: ZulipRegisterMessageEditPolicyInput,
 ): void {
   useChatListStore
     .getState()

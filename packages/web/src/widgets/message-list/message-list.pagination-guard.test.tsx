@@ -4,16 +4,6 @@ import type { MockMessage } from "~/shared/api/zulip.types";
 import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
 import { MessageList } from "./message-list.ui";
 
-const fetchRealmEmojisMock = vi.hoisted(() => vi.fn());
-
-vi.mock("~/shared/api/zulip-users", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/shared/api/zulip-users")>();
-  return {
-    ...actual,
-    fetchRealmEmojis: (...args: unknown[]) => fetchRealmEmojisMock(...args),
-  };
-});
-
 function msg(id: number, overrides: Partial<MockMessage> = {}): MockMessage {
   return {
     id,
@@ -66,8 +56,6 @@ describe("MessageList boundary pagination guards", () => {
   beforeEach(() => {
     resetRealmEmojisCacheForTests();
     scrollIntoView.mockReset();
-    fetchRealmEmojisMock.mockReset();
-    fetchRealmEmojisMock.mockResolvedValue([]);
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       value: scrollIntoView,

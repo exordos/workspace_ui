@@ -5,11 +5,7 @@ import { installDevTools } from "~/app/devtools";
 import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
-import {
-  refreshWorkspaceApiBase,
-  refreshZulipApiBase,
-  setInstanceProvider,
-} from "~/shared/api/client";
+import { refreshWorkspaceApiBase, setInstanceProvider } from "~/shared/api/client";
 import { initAnalytics } from "~/shared/lib/analytics/setup";
 import { setStoreWiper, setAuthInstanceGetter } from "~/shared/lib/auth-guard";
 import { brand } from "~/shared/lib/brand";
@@ -40,7 +36,6 @@ setInstanceProvider(() => {
 });
 
 function syncApiBasesAfterInstanceChange(): void {
-  refreshZulipApiBase();
   refreshWorkspaceApiBase();
 }
 

@@ -1,6 +1,5 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { sendMessage } from "~/shared/api/zulip-messages";
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { createMessage } from "~/test/factories";
 import { executeChatPageSend } from "./chat-page-send-handler.lib";
@@ -8,10 +7,6 @@ import { useChatPageSendMessage } from "./chat-page-send-message.hook";
 
 vi.mock("./chat-page-send-handler.lib", () => ({
   executeChatPageSend: vi.fn().mockResolvedValue(undefined),
-}));
-
-vi.mock("~/shared/api/zulip-messages", () => ({
-  sendMessage: vi.fn(),
 }));
 
 vi.mock("./chat-send-delivery.lib", () => ({
@@ -66,7 +61,6 @@ describe("useChatPageSendMessage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(executeChatPageSend).mockResolvedValue(undefined);
-    vi.mocked(sendMessage).mockResolvedValue(createMessage({ id: 99 }) as MockMessage);
   });
 
   it("delegates handleSend to executeChatPageSend", async () => {
@@ -108,13 +102,13 @@ describe("useChatPageSendMessage", () => {
     const { result } = renderHook(() => useChatPageSendMessage(params));
 
     act(() => {
-      result.current.handleRemoveFailedOutgoing(createMessage({ id: 5 }) as MockMessage);
+      result.current.handleRemoveFailedOutgoing(createMessage({ id: 5 }));
     });
 
     expect(params.removeMessage).not.toHaveBeenCalled();
   });
 
-  it("retries failed DM outgoing via sendMessage", async () => {
+  it("keeps failed DM outgoing local and reports controlled retry failure", async () => {
     const params = defaultParams();
     const { result } = renderHook(() => useChatPageSendMessage(params));
 
@@ -122,24 +116,15 @@ describe("useChatPageSendMessage", () => {
       await result.current.handleRetryFailedOutgoing(failedOutgoing());
     });
 
-    expect(params.removeMessage).toHaveBeenCalledWith(-3);
-    expect(sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        to: [42],
-        content: "retry me",
-        local_id: "-1",
-      }),
-    );
-    await waitFor(() => {
-      expect(params.commitOutgoingMessage).toHaveBeenCalledWith(
-        -1,
-        expect.objectContaining({ id: 99 }),
-      );
-    });
+    expect(params.removeMessage).not.toHaveBeenCalled();
+    expect(params.appendMessage).not.toHaveBeenCalled();
+    expect(params.commitOutgoingMessage).not.toHaveBeenCalled();
+    expect(params.setSendError).toHaveBeenCalledWith(null);
+    expect(params.setSendError).toHaveBeenCalledWith("message.sendFailed");
+    expect(params.setUploadProgress).toHaveBeenCalledWith(null);
   });
 
-  it("marks retried stream message failed and removes optimistic row on send error", async () => {
-    vi.mocked(sendMessage).mockRejectedValueOnce(new Error("network"));
+  it("keeps failed stream outgoing local and reports controlled retry failure", async () => {
     const params = defaultParams({
       isDmView: false,
       activeDmUserIds: null,
@@ -160,39 +145,22 @@ describe("useChatPageSendMessage", () => {
       );
     });
 
-    await waitFor(() => {
-      expect(sendMessage).toHaveBeenCalledWith(
-        expect.objectContaining({
-          stream: "engineering",
-          streamId: 5,
-          subject: "general",
-          local_id: "-1",
-        }),
-      );
-      expect(params.removeMessage).toHaveBeenCalledWith(-3);
-      expect(params.removeMessage).toHaveBeenCalledWith(-1);
-      expect(params.appendMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ id: -1, delivery_status: "failed" }),
-      );
-    });
+    expect(params.removeMessage).not.toHaveBeenCalled();
+    expect(params.appendMessage).not.toHaveBeenCalled();
+    expect(params.commitOutgoingMessage).not.toHaveBeenCalled();
+    expect(params.setSendError).toHaveBeenCalledWith("message.sendFailed");
   });
 
-  it("marks retried message failed when sendMessage rejects", async () => {
-    vi.mocked(sendMessage).mockRejectedValueOnce(new Error("network"));
+  it("ignores retry for non-local failed messages", async () => {
     const params = defaultParams();
     const { result } = renderHook(() => useChatPageSendMessage(params));
 
     await act(async () => {
-      await result.current.handleRetryFailedOutgoing(failedOutgoing());
+      await result.current.handleRetryFailedOutgoing(failedOutgoing({ id: 5 }));
     });
 
-    await waitFor(() => {
-      expect(params.removeMessage).toHaveBeenCalledWith(-3);
-      expect(params.removeMessage).toHaveBeenCalledWith(-1);
-      expect(params.setSendError).toHaveBeenCalledWith("network");
-      expect(params.appendMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ id: -1, delivery_status: "failed" }),
-      );
-    });
+    expect(params.removeMessage).not.toHaveBeenCalled();
+    expect(params.appendMessage).not.toHaveBeenCalled();
+    expect(params.setSendError).not.toHaveBeenCalled();
   });
 });

@@ -36,7 +36,7 @@ describe("useDraftStore", () => {
     expect(useDraftStore.getState().drafts).toHaveLength(0);
   });
 
-  // setDrafts replaces all drafts (used on initial load from API)
+  // setDrafts replaces all local drafts
   it("setDrafts replaces all drafts", () => {
     useDraftStore.getState().setDrafts([STREAM_DRAFT, DM_DRAFT]);
     expect(useDraftStore.getState().drafts).toHaveLength(2);
@@ -113,24 +113,6 @@ describe("useDraftStore", () => {
     const state = useDraftStore.getState();
     expect(state.drafts).toHaveLength(1);
     expect(state.drafts[0]!.content).toBe("New local draft");
-  });
-
-  it("linkDraftToServerId upgrades a matching local-only draft", () => {
-    useDraftStore.getState().setDrafts([
-      {
-        id: null,
-        type: "private",
-        to: [42],
-        topic: "",
-        content: "Pending local DM draft",
-        timestamp: 1710000400,
-      },
-    ]);
-
-    useDraftStore.getState().linkDraftToServerId("private", [42], "", 99);
-
-    const draft = useDraftStore.getState().getDraftForChat("private", [42]);
-    expect(draft?.id).toBe(99);
   });
 
   it("removeDraftForChat removes a local-only draft by chat identity", () => {

@@ -4,11 +4,11 @@ import { useInstancesStore } from "~/entities/instance/instance.model";
 import { createMessage } from "~/test/factories";
 import { ensureReactionsLoaded } from "./activity-reactions-loader.lib";
 
-const fetchActivityMessagesPageWithPersist = vi.hoisted(() => vi.fn());
+const loadLegacyActivityEmptyPage = vi.hoisted(() => vi.fn());
 const hydrateActivityMessagesFromCache = vi.hoisted(() => vi.fn());
 
 vi.mock("~/entities/activity/activity.api", () => ({
-  fetchActivityMessagesPageWithPersist,
+  loadLegacyActivityEmptyPage,
 }));
 
 vi.mock("~/entities/activity/activity-cache.lib", () => ({
@@ -25,7 +25,7 @@ describe("ensureReactionsLoaded", () => {
       unreadCountsByInstance: {},
       activeOrgEpoch: 0,
     });
-    fetchActivityMessagesPageWithPersist.mockReset();
+    loadLegacyActivityEmptyPage.mockReset();
     hydrateActivityMessagesFromCache.mockReset();
     hydrateActivityMessagesFromCache.mockResolvedValue([]);
   });
@@ -53,9 +53,7 @@ describe("ensureReactionsLoaded", () => {
       resolveNewFetch = resolve;
     });
 
-    fetchActivityMessagesPageWithPersist
-      .mockReturnValueOnce(oldFetch)
-      .mockReturnValueOnce(newFetch);
+    loadLegacyActivityEmptyPage.mockReturnValueOnce(oldFetch).mockReturnValueOnce(newFetch);
 
     useInstancesStore.setState({
       instances: [{ id: "instance-1" }, { id: "instance-2" }],
@@ -72,7 +70,7 @@ describe("ensureReactionsLoaded", () => {
 
     await Promise.resolve();
     await Promise.resolve();
-    expect(fetchActivityMessagesPageWithPersist).toHaveBeenCalledTimes(1);
+    expect(loadLegacyActivityEmptyPage).toHaveBeenCalledTimes(1);
 
     useInstancesStore.getState().setCurrentInstanceId("instance-2");
     useActivityStore.getState().clear();

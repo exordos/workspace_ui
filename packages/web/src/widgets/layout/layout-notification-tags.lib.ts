@@ -13,7 +13,7 @@ interface NotificationTagActions {
     tag: string;
     silent?: boolean;
     clickRoute?: string;
-  }) => Promise<void>;
+  }) => Promise<unknown>;
   closeByTag: (tag: string) => void | Promise<void>;
 }
 

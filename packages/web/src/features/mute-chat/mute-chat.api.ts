@@ -1,11 +1,10 @@
 /**
- * Mute/unmute API — calls Zulip endpoints for stream and topic muting.
+ * Legacy numeric mute actions.
  *
- * Stream mute: POST /users/me/subscriptions/properties
- * Topic mute: POST /user_topics
+ * Workspace-native notification writes live outside this slice. These functions are still used by
+ * numeric legacy UI, where writes are intentionally unsupported so optimistic callers roll back.
  */
 
-import { zulipApi } from "~/shared/api/client";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
@@ -15,103 +14,46 @@ import type { NotificationLevel, TopicVisibilityLevel } from "./notification-lev
 
 const log = createLogger("mute:api");
 
-interface SubscriptionPropertyRow {
-  stream_id: number;
-  property: string;
-  value: boolean;
-}
-
-async function postSubscriptionProperties(rows: SubscriptionPropertyRow[]): Promise<boolean> {
-  if (rows.length === 0) return true;
-  try {
-    const res = await zulipApi.post("/users/me/subscriptions/properties", {
-      subscription_data: JSON.stringify(rows),
-    });
-    if (res.ok) return true;
-    log.warn("Subscription properties failed", { status: res.status, count: rows.length });
-    return false;
-  } catch (err) {
-    log.error("Subscription properties error", { error: String(err), count: rows.length });
-    return false;
-  }
+function unsupported(action: string, details: Record<string, unknown>): false {
+  log.warn("Legacy numeric mute action is unsupported", { action, ...details });
+  return false;
 }
 
 /**
- * Mute or unmute a stream (channel).
- * Sets the `is_muted` property on the user's subscription.
+ * Mute or unmute a legacy numeric stream.
  */
-export async function setStreamMuted(streamId: number, muted: boolean): Promise<boolean> {
+export function setStreamMuted(streamId: number, muted: boolean): Promise<boolean> {
   guard.streamId(streamId, "setStreamMuted");
-  const ok = await postSubscriptionProperties([
-    { stream_id: streamId, property: "is_muted", value: muted },
-  ]);
-  if (ok) {
-    log.info(`Stream ${muted ? "muted" : "unmuted"}`, { streamId });
-  }
-  return ok;
+  return Promise.resolve(unsupported("setStreamMuted", { streamId, muted }));
 }
 
-export async function setStreamDesktopNotifications(
+export function setStreamDesktopNotifications(
   streamId: number,
   enabled: boolean,
 ): Promise<boolean> {
   guard.streamId(streamId, "setStreamDesktopNotifications");
-  const ok = await postSubscriptionProperties([
-    { stream_id: streamId, property: "desktop_notifications", value: enabled },
-  ]);
-  if (ok) {
-    log.info("Stream desktop notifications set", { streamId, enabled });
-  }
-  return ok;
+  return Promise.resolve(unsupported("setStreamDesktopNotifications", { streamId, enabled }));
 }
 
-export async function setStreamAudibleNotifications(
+export function setStreamAudibleNotifications(
   streamId: number,
   enabled: boolean,
 ): Promise<boolean> {
   guard.streamId(streamId, "setStreamAudibleNotifications");
-  const ok = await postSubscriptionProperties([
-    { stream_id: streamId, property: "audible_notifications", value: enabled },
-  ]);
-  if (ok) {
-    log.info("Stream audible notifications set", { streamId, enabled });
-  }
-  return ok;
+  return Promise.resolve(unsupported("setStreamAudibleNotifications", { streamId, enabled }));
 }
 
-/** Applies Zulip channel notification level in one request (mute + desktop). */
-export async function setStreamNotificationLevel(
+/** Applies a legacy numeric channel notification level. */
+export function setStreamNotificationLevel(
   streamId: number,
   level: NotificationLevel,
 ): Promise<boolean> {
   guard.streamId(streamId, "setStreamNotificationLevel");
-
-  const rows: SubscriptionPropertyRow[] = [];
-  if (level === "muted") {
-    rows.push({ stream_id: streamId, property: "is_muted", value: true });
-  } else {
-    rows.push({ stream_id: streamId, property: "is_muted", value: false });
-    rows.push({
-      stream_id: streamId,
-      property: "desktop_notifications",
-      value: level === "subscribed",
-    });
-    rows.push({
-      stream_id: streamId,
-      property: "audible_notifications",
-      value: level === "subscribed",
-    });
-  }
-
-  const ok = await postSubscriptionProperties(rows);
-  if (ok) {
-    log.info("Stream notification level set", { streamId, level });
-  }
-  return ok;
+  return Promise.resolve(unsupported("setStreamNotificationLevel", { streamId, level }));
 }
 
 /**
- * Set topic visibility policy (mute/unmute/follow).
+ * Set legacy numeric topic visibility policy.
  *
  * Policies:
  *   0 = inherit (remove explicit override)
@@ -119,32 +61,16 @@ export async function setStreamNotificationLevel(
  *   2 = unmuted (overrides stream-level mute)
  *   3 = followed
  */
-export async function setTopicVisibility(
+export function setTopicVisibility(
   streamId: number,
   topic: string,
   policy: VisibilityPolicy,
 ): Promise<boolean> {
   guard.streamId(streamId, "setTopicVisibility");
   const normalizedTopic = normalizeTopicForIdentity(topic);
-
-  try {
-    const res = await zulipApi.post("/user_topics", {
-      stream_id: String(streamId),
-      topic: normalizedTopic,
-      visibility_policy: String(policy),
-    });
-
-    if (res.ok) {
-      log.info("Topic visibility set", { streamId, topic: normalizedTopic, policy });
-      return true;
-    }
-
-    log.warn("Topic visibility failed", { streamId, topic: normalizedTopic, status: res.status });
-    return false;
-  } catch (err) {
-    log.error("Topic visibility error", { streamId, topic: normalizedTopic, error: String(err) });
-    return false;
-  }
+  return Promise.resolve(
+    unsupported("setTopicVisibility", { streamId, topic: normalizedTopic, policy }),
+  );
 }
 
 export async function muteStream(streamId: number): Promise<boolean> {
@@ -172,7 +98,7 @@ function topicVisibilityLevelToPolicy(level: TopicVisibilityLevel): VisibilityPo
   }
 }
 
-/** Sets Zulip user_topics.visibility_policy (0–3). */
+/** Sets a legacy numeric topic visibility level. */
 export async function setTopicVisibilityLevel(
   streamId: number,
   topic: string,

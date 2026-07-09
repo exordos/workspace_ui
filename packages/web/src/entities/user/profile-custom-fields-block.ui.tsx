@@ -1,13 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo } from "react";
 import { useTranslation } from "~/i18n/i18n";
-import { fetchRealmProfileFieldDefinitions } from "~/shared/api/zulip-realm-profile-fields";
 import { sanitizeHtml } from "~/shared/lib/html";
 import {
   getCustomProfileFieldLines,
   type CustomProfileFieldLine,
   type ZulipCustomProfileDataMap,
 } from "~/shared/lib/user-profile-fields.lib";
-import type { RealmProfileFieldDefinition } from "~/shared/lib/zulip-profile-fields-map.lib";
 import { SectionLabel } from "~/shared/ui/section-label.ui";
 
 export interface ProfileCustomFieldsBlockProps {
@@ -100,25 +98,10 @@ export const ProfileCustomFieldsBlock = React.memo(function ProfileCustomFieldsB
   onOpenUserProfile,
 }: ProfileCustomFieldsBlockProps) {
   const { t } = useTranslation();
-  const [fieldDefinitions, setFieldDefinitions] = useState<RealmProfileFieldDefinition[] | null>(
-    null,
-  );
-
-  useEffect(() => {
-    let cancelled = false;
-    void fetchRealmProfileFieldDefinitions().then((fields) => {
-      if (!cancelled) {
-        setFieldDefinitions(fields ?? []);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const lines = useMemo(
-    () => getCustomProfileFieldLines(profileData ?? undefined, baseUrl, fieldDefinitions),
-    [profileData, baseUrl, fieldDefinitions],
+    () => getCustomProfileFieldLines(profileData ?? undefined, baseUrl, null),
+    [profileData, baseUrl],
   );
 
   if (lines.length === 0) return null;

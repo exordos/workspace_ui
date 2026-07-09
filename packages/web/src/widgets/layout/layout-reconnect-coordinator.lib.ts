@@ -12,7 +12,6 @@ import { createLogger } from "~/shared/lib/logger";
 import { logChatListFlow } from "~/shared/lib/message-flow-debug.lib";
 import { runChatListBootstrap } from "./layout-chat-list-bootstrap.lib";
 import { getCachedRegisterUnreadSnapshot } from "./layout-instance-register-unread.lib";
-import { refreshRealmPresenceFromApi } from "./layout-realm-presence-refresh.lib";
 import { refreshLayoutReconnectLight } from "./layout-reconnect-light.lib";
 import { stageReconnectStreamPreviews } from "./layout-reconnect-stream-preview.lib";
 import { reconcileSidebarUnreadAfterBootstrap } from "./layout-sidebar-unread-reconcile.lib";
@@ -163,8 +162,6 @@ function refreshSharedLayers(
   ) {
     return;
   }
-
-  refreshRealmPresenceFromApi({ isCancelled: params.isCancelled });
 
   // Full reconnect re-registers the queue — unread comes from fresh onQueueRegistered, not stale cache.
   if (mode === "full") {

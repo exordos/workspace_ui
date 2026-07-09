@@ -1,14 +1,14 @@
 /**
- * Shared reactions bootstrap/refresh for ActivityPage.
+ * Shared reactions bootstrap for ActivityPage.
  *
  * Waits for currentUserId before fetch — avoids has:reaction-only narrow that returns
- * unrelated messages and is replaced with an empty sender-filtered page.
+ * unrelated messages; legacy server refresh is intentionally empty now.
  */
 import {
   hydrateActivityMessagesFromCache,
   isActivityMessagesSnapshotFresher,
 } from "~/entities/activity/activity-cache.lib";
-import { fetchActivityMessagesPageWithPersist } from "~/entities/activity/activity.api";
+import { loadLegacyActivityEmptyPage } from "~/entities/activity/activity.api";
 import { useActivityStore } from "~/entities/activity/activity.model";
 import {
   captureActiveOrgRequestContext,
@@ -96,7 +96,7 @@ export async function ensureReactionsLoaded(options: EnsureReactionsLoadedOption
     const filterRequestVersion = latest.startFilterRequest("reactions", hasCachedData);
 
     try {
-      const page = await fetchActivityMessagesPageWithPersist(
+      const page = await loadLegacyActivityEmptyPage(
         "reactions",
         currentUserId,
         "newest",

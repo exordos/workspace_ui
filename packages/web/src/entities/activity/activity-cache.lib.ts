@@ -1,7 +1,7 @@
 /**
  * Local /activity bootstrap from message IDB.
  *
- * Cache paints the first frame quickly; server refresh remains the source of truth.
+ * Cache paints the first frame while legacy server-backed filters are disabled.
  */
 import type { ActivityFilter, MockMessage, ZulipRawMessage } from "~/shared/api/zulip.types";
 import { getInstanceMessagesAscending } from "~/shared/lib/message-cache-db";

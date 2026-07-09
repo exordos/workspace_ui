@@ -1,12 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { sendMessage } from "~/shared/api/zulip-messages";
 import type { MockMessage } from "~/shared/api/zulip.types";
-import { createMessage } from "~/test/factories";
 import { executeChatPageSend, type ChatPageSendHandlerDeps } from "./chat-page-send-handler.lib";
-
-vi.mock("~/shared/api/zulip-messages", () => ({
-  sendMessage: vi.fn(),
-}));
 
 vi.mock("./chat-send-delivery.lib", () => ({
   buildOptimisticOutgoingMessage: vi.fn((options: { id: number; content: string }) => ({
@@ -58,25 +52,51 @@ function createDeps(overrides: Partial<ChatPageSendHandlerDeps> = {}): ChatPageS
 describe("executeChatPageSend", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(sendMessage).mockResolvedValue(createMessage({ id: 99 }) as MockMessage);
   });
 
-  it("sends the system general chat as an empty Zulip subject", async () => {
+  it("adds a failed local message for legacy stream sends without HTTP", async () => {
     const deps = createDeps();
 
-    await executeChatPageSend(deps, "hello");
+    await expect(executeChatPageSend(deps, "hello")).rejects.toThrow("message.sendFailed");
 
-    expect(sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        stream: "engineering",
-        streamId: 10,
-        subject: "",
-        content: "hello",
-      }),
+    expect(deps.appendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ id: -1, content: "hello", delivery_status: "failed" }),
     );
-    expect(deps.commitOutgoingMessage).toHaveBeenCalledWith(
-      -1,
-      expect.objectContaining({ id: 99 }),
+    expect(deps.commitOutgoingMessage).not.toHaveBeenCalled();
+    expect(deps.clearReplyQuote).not.toHaveBeenCalled();
+    expect(deps.stopTyping).not.toHaveBeenCalled();
+    expect(deps.setSendError).toHaveBeenCalledWith("message.sendFailed");
+    expect(deps.setUploadProgress).toHaveBeenLastCalledWith(null);
+  });
+
+  it("adds a failed local message for legacy DM sends without HTTP", async () => {
+    const deps = createDeps({
+      isDmView: true,
+      activeDmUserIds: [42],
+      activeStream: null,
+      activeStreamCanonicalName: null,
+      activeStreamId: null,
+    });
+
+    await expect(executeChatPageSend(deps, "hello")).rejects.toThrow("message.sendFailed");
+
+    expect(deps.appendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ id: -1, content: "hello", delivery_status: "failed" }),
     );
+    expect(deps.commitOutgoingMessage).not.toHaveBeenCalled();
+  });
+
+  it("rejects legacy file sends before message send starts", async () => {
+    const deps = createDeps();
+    const file = new File(["payload"], "report.txt", { type: "text/plain" });
+
+    await expect(executeChatPageSend(deps, "hello", undefined, [file])).rejects.toThrow(
+      "message.fileUploadUnsupported",
+    );
+
+    expect(deps.appendMessage).not.toHaveBeenCalled();
+    expect(deps.setSendError).toHaveBeenCalledWith("message.fileUploadUnsupported");
+    expect(deps.setUploadProgress).toHaveBeenLastCalledWith(null);
+    expect(deps.setUploadAbortController).not.toHaveBeenCalled();
   });
 });

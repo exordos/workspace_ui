@@ -8,11 +8,11 @@ import { useInstancesStore } from "~/entities/instance/instance.model";
 import { createMessage } from "~/test/factories";
 import { ensureStarredLoaded } from "./activity-starred-loader.lib";
 
-const fetchActivityMessagesPageWithPersist = vi.hoisted(() => vi.fn());
+const loadLegacyActivityEmptyPage = vi.hoisted(() => vi.fn());
 const hydrateActivityMessagesFromCache = vi.hoisted(() => vi.fn());
 
 vi.mock("~/entities/activity/activity.api", () => ({
-  fetchActivityMessagesPageWithPersist,
+  loadLegacyActivityEmptyPage,
 }));
 
 vi.mock("~/entities/activity/activity-cache.lib", () => {
@@ -32,7 +32,7 @@ describe("ensureStarredLoaded", () => {
       unreadCountsByInstance: {},
       activeOrgEpoch: 0,
     });
-    fetchActivityMessagesPageWithPersist.mockReset();
+    loadLegacyActivityEmptyPage.mockReset();
     hydrateActivityMessagesFromCache.mockReset();
     hydrateActivityMessagesFromCache.mockResolvedValue([]);
   });
@@ -79,7 +79,7 @@ describe("ensureStarredLoaded", () => {
       }),
     ];
     hydrateActivityMessagesFromCache.mockResolvedValue(cached);
-    fetchActivityMessagesPageWithPersist.mockResolvedValue({
+    loadLegacyActivityEmptyPage.mockResolvedValue({
       messages: server,
       foundOldest: false,
     });
@@ -94,14 +94,14 @@ describe("ensureStarredLoaded", () => {
     expect(state.filters.starred.messages.map((m) => m.id)).toEqual([22]);
     expect(state.starredSummary.count).toBe(3);
     expect(state.starredSummary.isCapped).toBe(false);
-    expect(fetchActivityMessagesPageWithPersist).toHaveBeenCalledWith("starred", 7, "newest", 200, {
+    expect(loadLegacyActivityEmptyPage).toHaveBeenCalledWith("starred", 7, "newest", 200, {
       signal: undefined,
     });
   });
 
   it("does not replace exact register summary with capped page size", async () => {
     useActivityStore.getState().setStarredSummaryFromRegisterMessageIds([1, 2, 3, 4, 5]);
-    fetchActivityMessagesPageWithPersist.mockResolvedValue({
+    loadLegacyActivityEmptyPage.mockResolvedValue({
       messages: [
         createMessage({ id: 4, flags: ["starred"] }),
         createMessage({ id: 5, flags: ["starred"] }),
@@ -131,7 +131,7 @@ describe("ensureStarredLoaded", () => {
     const fetchPromise = new Promise<FetchResult>((resolve) => {
       resolveFetch = resolve;
     });
-    fetchActivityMessagesPageWithPersist.mockReturnValue(fetchPromise);
+    loadLegacyActivityEmptyPage.mockReturnValue(fetchPromise);
 
     const first = ensureStarredLoaded({
       currentInstanceId: "instance-1",
@@ -146,7 +146,7 @@ describe("ensureStarredLoaded", () => {
 
     await Promise.resolve();
     await Promise.resolve();
-    expect(fetchActivityMessagesPageWithPersist).toHaveBeenCalledTimes(1);
+    expect(loadLegacyActivityEmptyPage).toHaveBeenCalledTimes(1);
 
     resolveFetch({
       messages: [
@@ -193,9 +193,7 @@ describe("ensureStarredLoaded", () => {
       resolveNewFetch = resolve;
     });
 
-    fetchActivityMessagesPageWithPersist
-      .mockReturnValueOnce(oldFetch)
-      .mockReturnValueOnce(newFetch);
+    loadLegacyActivityEmptyPage.mockReturnValueOnce(oldFetch).mockReturnValueOnce(newFetch);
 
     useInstancesStore.setState({
       instances: [{ id: "instance-1" }, { id: "instance-2" }],
@@ -212,7 +210,7 @@ describe("ensureStarredLoaded", () => {
 
     await Promise.resolve();
     await Promise.resolve();
-    expect(fetchActivityMessagesPageWithPersist).toHaveBeenCalledTimes(1);
+    expect(loadLegacyActivityEmptyPage).toHaveBeenCalledTimes(1);
 
     useInstancesStore.getState().setCurrentInstanceId("instance-2");
     useActivityStore.getState().clear();

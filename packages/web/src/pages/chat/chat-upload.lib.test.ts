@@ -1,146 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  appendComposerMarkdownLinks,
-  uploadComposerFiles,
-  uploadWorkspaceComposerFiles,
-} from "./chat-upload.lib";
+import { appendComposerMarkdownLinks, uploadWorkspaceComposerFiles } from "./chat-upload.lib";
 import {
   buildWorkspaceFileMetadata,
   buildWorkspaceFileUrnMarkdownLink,
 } from "./chat-workspace-file-urn.lib";
-
-describe("uploadComposerFiles", () => {
-  it("uploads valid files and returns markdown links with sanitized filenames", async () => {
-    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00, 0x00, 0x00, 0x00]);
-    const files = [
-      new File(["report"], 'quarterly<>:"report?.txt', { type: "text/plain" }),
-      new File([pngBytes], "image.png", { type: "image/png" }),
-    ];
-    const uploadFile = vi
-      .fn<(file: File) => Promise<string>>()
-      .mockResolvedValueOnce("/user_uploads/1/report.txt")
-      .mockResolvedValueOnce("/user_uploads/1/image.png");
-
-    const links = await uploadComposerFiles(files, uploadFile);
-
-    expect(links).toEqual([
-      "[quarterly____report_.txt](/user_uploads/1/report.txt)",
-      "[image.png](/user_uploads/1/image.png)",
-    ]);
-    expect(uploadFile).toHaveBeenCalledTimes(2);
-    expect(uploadFile).toHaveBeenNthCalledWith(1, files[0]);
-    expect(uploadFile).toHaveBeenNthCalledWith(2, files[1]);
-  });
-
-  it("rejects empty files before upload starts", async () => {
-    const files = [new File([""], "empty.txt", { type: "text/plain" })];
-    const uploadFile = vi.fn<(file: File) => Promise<string>>();
-
-    await expect(uploadComposerFiles(files, uploadFile)).rejects.toThrow("File is empty");
-    expect(uploadFile).not.toHaveBeenCalled();
-  });
-
-  it("rejects oversized files before upload starts", async () => {
-    const oversizedPayload = new Uint8Array(26 * 1024 * 1024);
-    const files = [new File([oversizedPayload], "large.bin", { type: "application/octet-stream" })];
-    const uploadFile = vi.fn<(file: File) => Promise<string>>();
-
-    await expect(uploadComposerFiles(files, uploadFile)).rejects.toThrow("File is too large");
-    expect(uploadFile).not.toHaveBeenCalled();
-  });
-
-  it("rejects files that claim image mime but have invalid bytes", async () => {
-    const files = [new File(["not-an-image"], "avatar.png", { type: "image/png" })];
-    const uploadFile = vi.fn<(file: File) => Promise<string>>();
-
-    await expect(uploadComposerFiles(files, uploadFile)).rejects.toThrow(
-      "Image file type is invalid",
-    );
-    expect(uploadFile).not.toHaveBeenCalled();
-  });
-
-  it("allows image types without known magic-byte signature", async () => {
-    const files = [
-      new File(['<svg xmlns="http://www.w3.org/2000/svg"></svg>'], "icon.svg", {
-        type: "image/svg+xml",
-      }),
-    ];
-    const uploadFile = vi
-      .fn<(file: File) => Promise<string>>()
-      .mockResolvedValue("/user_uploads/1/icon.svg");
-
-    const links = await uploadComposerFiles(files, uploadFile);
-
-    expect(links).toEqual(["[icon.svg](/user_uploads/1/icon.svg)"]);
-    expect(uploadFile).toHaveBeenCalledTimes(1);
-    expect(uploadFile).toHaveBeenCalledWith(files[0]);
-  });
-
-  it("reports upload progress while uploading composer files", async () => {
-    const files = [
-      new File(["a"], "one.txt", { type: "text/plain" }),
-      new File(["b"], "two.txt", { type: "text/plain" }),
-    ];
-    const uploadFile = vi
-      .fn<(file: File) => Promise<string>>()
-      .mockResolvedValueOnce("/user_uploads/1/one.txt")
-      .mockResolvedValueOnce("/user_uploads/1/two.txt");
-    const onProgress = vi.fn();
-
-    await uploadComposerFiles(files, uploadFile, { onProgress });
-
-    expect(onProgress).toHaveBeenCalledTimes(3);
-    expect(onProgress).toHaveBeenNthCalledWith(1, {
-      completed: 0,
-      total: 2,
-      activeFileName: "one.txt",
-    });
-    expect(onProgress).toHaveBeenNthCalledWith(2, {
-      completed: 1,
-      total: 2,
-      activeFileName: "two.txt",
-    });
-    expect(onProgress).toHaveBeenNthCalledWith(3, {
-      completed: 2,
-      total: 2,
-      activeFileName: null,
-    });
-  });
-
-  it("forwards abort signal to upload function", async () => {
-    const file = new File(["doc"], "spec.txt", { type: "text/plain" });
-    const controller = new AbortController();
-    const uploadFile = vi
-      .fn<(file: File, options?: { signal?: AbortSignal }) => Promise<string>>()
-      .mockResolvedValue("/user_uploads/1/spec.txt");
-
-    await uploadComposerFiles([file], uploadFile, {
-      signal: controller.signal,
-    });
-
-    expect(uploadFile).toHaveBeenCalledWith(file, { signal: controller.signal });
-  });
-
-  it("rejects with abort error when upload signal is already aborted", async () => {
-    const file = new File(["doc"], "aborted.txt", { type: "text/plain" });
-    const controller = new AbortController();
-    controller.abort();
-    const uploadFile = vi
-      .fn<(file: File, options?: { signal?: AbortSignal }) => Promise<string>>()
-      .mockImplementation((_file, options) => {
-        if (options?.signal?.aborted) {
-          throw new DOMException("Aborted", "AbortError");
-        }
-        return Promise.resolve("/user_uploads/1/aborted.txt");
-      });
-
-    await expect(
-      uploadComposerFiles([file], uploadFile, {
-        signal: controller.signal,
-      }),
-    ).rejects.toThrow("Aborted");
-  });
-});
 
 describe("uploadWorkspaceComposerFiles", () => {
   it("uploads files and returns Workspace markdown with encoded content types", async () => {
@@ -172,6 +35,123 @@ describe("uploadWorkspaceComposerFiles", () => {
       "![image.png](urn:image:22222222-2222-4222-8222-222222222222?name=image.png&content_type=image%2Fpng&size=8)",
       "[clip.mp4](urn:video:33333333-3333-4333-8333-333333333333?name=clip.mp4&content_type=video%2Fmp4&size=5)",
     ]);
+  });
+
+  it("rejects empty files before Workspace upload starts", async () => {
+    const files = [new File([""], "empty.txt", { type: "text/plain" })];
+    const uploadWorkspaceFile =
+      vi.fn<(file: File) => Promise<{ uuid: string; content_type: string }>>();
+
+    await expect(uploadWorkspaceComposerFiles(files, uploadWorkspaceFile)).rejects.toThrow(
+      "File is empty",
+    );
+    expect(uploadWorkspaceFile).not.toHaveBeenCalled();
+  });
+
+  it("rejects oversized files before Workspace upload starts", async () => {
+    const oversizedPayload = new Uint8Array(26 * 1024 * 1024);
+    const files = [new File([oversizedPayload], "large.bin", { type: "application/octet-stream" })];
+    const uploadWorkspaceFile =
+      vi.fn<(file: File) => Promise<{ uuid: string; content_type: string }>>();
+
+    await expect(uploadWorkspaceComposerFiles(files, uploadWorkspaceFile)).rejects.toThrow(
+      "File is too large",
+    );
+    expect(uploadWorkspaceFile).not.toHaveBeenCalled();
+  });
+
+  it("rejects files that claim image mime but have invalid bytes", async () => {
+    const files = [new File(["not-an-image"], "avatar.png", { type: "image/png" })];
+    const uploadWorkspaceFile =
+      vi.fn<(file: File) => Promise<{ uuid: string; content_type: string }>>();
+
+    await expect(uploadWorkspaceComposerFiles(files, uploadWorkspaceFile)).rejects.toThrow(
+      "Image file type is invalid",
+    );
+    expect(uploadWorkspaceFile).not.toHaveBeenCalled();
+  });
+
+  it("allows image types without known magic-byte signature", async () => {
+    const files = [
+      new File(['<svg xmlns="http://www.w3.org/2000/svg"></svg>'], "icon.svg", {
+        type: "image/svg+xml",
+      }),
+    ];
+    const uploadWorkspaceFile = vi
+      .fn<(file: File) => Promise<{ uuid: string; content_type: string }>>()
+      .mockResolvedValue({
+        uuid: "66666666-6666-4666-8666-666666666666",
+        content_type: "image/svg+xml",
+      });
+
+    const links = await uploadWorkspaceComposerFiles(files, uploadWorkspaceFile);
+
+    expect(links).toEqual([
+      "![icon.svg](urn:image:66666666-6666-4666-8666-666666666666?name=icon.svg&content_type=image%2Fsvg%2Bxml&size=46)",
+    ]);
+    expect(uploadWorkspaceFile).toHaveBeenCalledTimes(1);
+    expect(uploadWorkspaceFile).toHaveBeenCalledWith(files[0]);
+  });
+
+  it("reports upload progress while uploading Workspace composer files", async () => {
+    const files = [
+      new File(["a"], "one.txt", { type: "text/plain" }),
+      new File(["b"], "two.txt", { type: "text/plain" }),
+    ];
+    const uploadWorkspaceFile = vi
+      .fn<(file: File) => Promise<{ uuid: string; content_type: string }>>()
+      .mockResolvedValueOnce({
+        uuid: "77777777-7777-4777-8777-777777777777",
+        content_type: "text/plain",
+      })
+      .mockResolvedValueOnce({
+        uuid: "88888888-8888-4888-8888-888888888888",
+        content_type: "text/plain",
+      });
+    const onProgress = vi.fn();
+
+    await uploadWorkspaceComposerFiles(files, uploadWorkspaceFile, { onProgress });
+
+    expect(onProgress).toHaveBeenCalledTimes(3);
+    expect(onProgress).toHaveBeenNthCalledWith(1, {
+      completed: 0,
+      total: 2,
+      activeFileName: "one.txt",
+    });
+    expect(onProgress).toHaveBeenNthCalledWith(2, {
+      completed: 1,
+      total: 2,
+      activeFileName: "two.txt",
+    });
+    expect(onProgress).toHaveBeenNthCalledWith(3, {
+      completed: 2,
+      total: 2,
+      activeFileName: null,
+    });
+  });
+
+  it("rejects with abort error when Workspace upload signal is already aborted", async () => {
+    const file = new File(["doc"], "aborted.txt", { type: "text/plain" });
+    const controller = new AbortController();
+    controller.abort();
+    const uploadWorkspaceFile = vi
+      .fn<
+        (
+          file: File,
+          options?: { signal?: AbortSignal },
+        ) => Promise<{ uuid: string; content_type: string }>
+      >()
+      .mockResolvedValue({
+        uuid: "99999999-9999-4999-8999-999999999999",
+        content_type: "text/plain",
+      });
+
+    await expect(
+      uploadWorkspaceComposerFiles([file], uploadWorkspaceFile, {
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow("Aborted");
+    expect(uploadWorkspaceFile).not.toHaveBeenCalled();
   });
 
   it("builds Workspace URN markdown with metadata and escaped markdown labels", () => {

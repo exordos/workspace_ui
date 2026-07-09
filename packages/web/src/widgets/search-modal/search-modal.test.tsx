@@ -1,38 +1,20 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
 import { t } from "~/i18n/i18n";
-import type * as ZulipMessagesModule from "~/shared/api/zulip-messages";
-import { SEARCH_INPUT_DEBOUNCE_MS } from "~/shared/config/constants";
-import { createMessage, createUser } from "~/test/factories";
+import { createUser } from "~/test/factories";
+import { useSearchModalStore } from "./search-modal.model";
 import { SearchModal } from "./search-modal.ui";
-
-const fetchMessages = vi.hoisted(() => vi.fn());
-
-vi.mock("~/shared/api/zulip-messages", async () => {
-  const actual = await vi.importActual<typeof ZulipMessagesModule>("~/shared/api/zulip-messages");
-  return {
-    ...actual,
-    fetchMessages,
-  };
-});
 
 describe("SearchModal open-in-chat action", () => {
   afterEach(() => {
-    vi.useRealTimers();
-    fetchMessages.mockReset();
     useUsersStore.getState().clear();
+    useSearchModalStore.getState().reset();
   });
 
-  it("searches Workspace users locally without calling legacy message search", () => {
-    vi.useFakeTimers();
+  it("searches Workspace users locally", () => {
     const onSelectUserUuid = vi.fn(() => true);
     const onOpenChange = vi.fn();
-    const legacyResult = createMessage({
-      id: 55,
-      content: "<p>Search target</p>",
-    });
-    fetchMessages.mockResolvedValue([legacyResult]);
     useUsersStore.getState().upsertUser(
       createUser({
         uuid: "a225223c-637c-4afa-918f-5f2798b9305f",
@@ -58,11 +40,7 @@ describe("SearchModal open-in-chat action", () => {
     expect(screen.queryByPlaceholderText(t("search.filterStream"))).not.toBeInTheDocument();
 
     fireEvent.change(searchInput, { target: { value: "alice.workspace" } });
-    act(() => {
-      vi.advanceTimersByTime(SEARCH_INPUT_DEBOUNCE_MS + 1);
-    });
 
-    expect(fetchMessages).not.toHaveBeenCalled();
     expect(screen.queryByText("Search target")).not.toBeInTheDocument();
     const result = screen.getByRole("button", { name: /Alice Workspace/i });
     expect(result).toBeInTheDocument();
@@ -73,44 +51,10 @@ describe("SearchModal open-in-chat action", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it("opens selected result in chat from context action", async () => {
-    const onSelectMessage = vi.fn();
-    const onOpenChange = vi.fn();
-    const result = createMessage({
-      id: 55,
-      sender_id: 77,
-      sender_full_name: "Alice",
-      stream_id: 10,
-      channel: "engineering",
-      subject: "bugs",
-      content: "<p>Search target</p>",
-      type: "stream",
-      display_recipient: "engineering",
-    });
-    fetchMessages.mockResolvedValue([result]);
-
-    render(<SearchModal open onOpenChange={onOpenChange} onSelectMessage={onSelectMessage} />);
-
-    fireEvent.change(screen.getByPlaceholderText("Search"), {
-      target: { value: "target" },
-    });
-
-    await waitFor(() => {
-      expect(fetchMessages).toHaveBeenCalledWith(undefined, undefined, "target");
-      expect(screen.getByText("Search target")).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Open in chat" }));
-
-    expect(onSelectMessage).toHaveBeenCalledWith(expect.objectContaining({ id: 55 }));
-    expect(onOpenChange).toHaveBeenCalledWith(false);
-  });
-
-  it("matches users by email and opens dm from user result", async () => {
+  it("matches users by email and opens dm from user result", () => {
     const onSelectMessage = vi.fn();
     const onSelectUser = vi.fn();
     const onOpenChange = vi.fn();
-    fetchMessages.mockResolvedValue([]);
     useUsersStore.getState().upsertUser(
       createUser({
         user_id: 42,
@@ -133,13 +77,10 @@ describe("SearchModal open-in-chat action", () => {
       target: { value: "alice@example.com" },
     });
 
-    await waitFor(() => {
-      expect(fetchMessages).toHaveBeenCalledWith(undefined, undefined, "alice@example.com");
-      expect(
-        screen.getByRole("button", { name: /Alice \(alice@example\.com\)/i }),
-      ).toBeInTheDocument();
-      expect(screen.getByRole("status", { name: /online/i })).toBeInTheDocument();
-    });
+    expect(
+      screen.getByRole("button", { name: /Alice \(alice@example\.com\)/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: /online/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Alice \(alice@example\.com\)/i }));
 
@@ -148,8 +89,7 @@ describe("SearchModal open-in-chat action", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it("renders emoji-only Workspace status in user results without falling back to email", async () => {
-    fetchMessages.mockResolvedValue([]);
+  it("renders emoji-only Workspace status in user results without falling back to email", () => {
     useUsersStore.getState().upsertUser(
       createUser({
         user_id: 43,
@@ -166,70 +106,13 @@ describe("SearchModal open-in-chat action", () => {
       target: { value: "coffee" },
     });
 
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Coffee User/i })).toBeInTheDocument();
-    });
+    expect(screen.getByRole("button", { name: /Coffee User/i })).toBeInTheDocument();
 
     expect(screen.getByText("☕")).toBeInTheDocument();
     expect(screen.queryByText("coffee@example.com")).not.toBeInTheDocument();
   });
 
-  it("filters message search results by stream sender and date", async () => {
-    const onSelectMessage = vi.fn();
-    const onOpenChange = vi.fn();
-    const streamHit = createMessage({
-      id: 101,
-      sender_id: 10,
-      sender_full_name: "Alice Dev",
-      stream_id: 15,
-      channel: "engineering",
-      subject: "release",
-      content: "<p>Release checklist</p>",
-      timestamp: Math.floor(new Date("2026-03-16T11:00:00.000Z").getTime() / 1000),
-      type: "stream",
-      display_recipient: "engineering",
-    });
-    const streamMiss = createMessage({
-      id: 102,
-      sender_id: 11,
-      sender_full_name: "Bob Design",
-      stream_id: 21,
-      channel: "design",
-      subject: "release",
-      content: "<p>Design release notes</p>",
-      timestamp: Math.floor(new Date("2026-03-15T11:00:00.000Z").getTime() / 1000),
-      type: "stream",
-      display_recipient: "design",
-    });
-    fetchMessages.mockResolvedValue([streamHit, streamMiss]);
-
-    render(<SearchModal open onOpenChange={onOpenChange} onSelectMessage={onSelectMessage} />);
-
-    fireEvent.change(screen.getByPlaceholderText("Search"), {
-      target: { value: "release" },
-    });
-
-    await waitFor(() => {
-      expect(fetchMessages).toHaveBeenCalledWith(undefined, undefined, "release");
-      expect(screen.getByText("Release checklist")).toBeInTheDocument();
-      expect(screen.getByText("Design release notes")).toBeInTheDocument();
-    });
-
-    fireEvent.change(screen.getByPlaceholderText("Stream"), {
-      target: { value: "engineering" },
-    });
-    fireEvent.change(screen.getByPlaceholderText("Sender"), {
-      target: { value: "alice" },
-    });
-    fireEvent.change(screen.getByLabelText("Date"), {
-      target: { value: "2026-03-16" },
-    });
-
-    expect(screen.getByText("Release checklist")).toBeInTheDocument();
-    expect(screen.queryByText("Design release notes")).not.toBeInTheDocument();
-  });
-
-  it("uses subtle focus styling variants for search inputs", () => {
+  it("does not render legacy message filters", () => {
     render(<SearchModal open onOpenChange={() => {}} onSelectMessage={() => {}} />);
 
     const queryInput = screen.getByPlaceholderText("Search");
@@ -240,17 +123,23 @@ describe("SearchModal open-in-chat action", () => {
     expect(queryInputFrame).toHaveClass("focus-within:border-accent-soft");
     expect(queryInput).toHaveClass("focus-visible:!outline-none");
 
-    const streamInput = screen.getByPlaceholderText("Stream");
-    expect(streamInput).toHaveClass("outline-none");
-    expect(streamInput).toHaveClass("focus-visible:bg-bg-elevated");
-
-    const dateInput = screen.getByLabelText("Date");
-    expect(dateInput).toHaveClass("outline-none");
-    expect(dateInput).toHaveClass("focus-visible:bg-bg-elevated");
+    expect(screen.queryByPlaceholderText("Stream")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Sender")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Date")).not.toBeInTheDocument();
   });
 
-  it("keeps user name fixed and truncates email in user search results", async () => {
-    fetchMessages.mockResolvedValue([]);
+  it("shows empty state instead of legacy message results", () => {
+    render(<SearchModal open onOpenChange={() => {}} onSelectMessage={() => {}} />);
+
+    fireEvent.change(screen.getByPlaceholderText("Search"), {
+      target: { value: "release" },
+    });
+
+    expect(screen.getByText("No results found")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open in chat" })).not.toBeInTheDocument();
+  });
+
+  it("keeps user name fixed and truncates email in user search results", () => {
     useUsersStore.getState().upsertUser(
       createUser({
         user_id: 97,
@@ -266,9 +155,7 @@ describe("SearchModal open-in-chat action", () => {
       target: { value: "alexandria" },
     });
 
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Alexandria Montgomery/i })).toBeInTheDocument();
-    });
+    expect(screen.getByRole("button", { name: /Alexandria Montgomery/i })).toBeInTheDocument();
 
     const userName = screen.getByText("Alexandria Montgomery");
     expect(userName).toHaveClass("text-sm");

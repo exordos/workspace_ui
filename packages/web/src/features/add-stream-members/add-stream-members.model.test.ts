@@ -1,10 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { addStreamMembers } from "./add-stream-members.api";
 import { useAddStreamMembersStore } from "./add-stream-members.model";
-
-vi.mock("./add-stream-members.api", () => ({
-  addStreamMembers: vi.fn(),
-}));
 
 function resetStore(): void {
   useAddStreamMembersStore.setState({
@@ -22,7 +17,6 @@ function resetStore(): void {
 
 describe("useAddStreamMembersStore", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
     resetStore();
   });
 
@@ -44,70 +38,49 @@ describe("useAddStreamMembersStore", () => {
     expect(nextState.selectedIds).toEqual([88]);
   });
 
-  it("submits selected users and closes dialog on success", async () => {
-    vi.mocked(addStreamMembers).mockResolvedValue({
-      ok: true,
-      addedUserIds: [88],
-      alreadySubscribedUserIds: [],
-      unauthorizedStreams: [],
-    });
-
+  it("keeps legacy numeric submit in unsupported state without closing dialog", async () => {
     const onSuccess = vi.fn();
     const store = useAddStreamMembersStore.getState();
     store.openForStream({ streamId: 10, streamName: "engineering", existingMemberIds: [77] });
     store.toggleSelected(88);
 
-    await store.submit({ onSuccess });
+    const result = await store.submit({ onSuccess });
 
-    expect(addStreamMembers).toHaveBeenCalledWith({
-      streamName: "engineering",
-      userIds: [88],
-    });
-    expect(onSuccess).toHaveBeenCalledWith(10);
+    expect(result).toMatchObject({ ok: false, errorCode: "unsupported" });
+    expect(onSuccess).not.toHaveBeenCalled();
     const nextState = useAddStreamMembersStore.getState();
-    expect(nextState.open).toBe(false);
-    expect(nextState.selectedIds).toEqual([]);
-    expect(nextState.error).toBeNull();
+    expect(nextState.open).toBe(true);
+    expect(nextState.selectedIds).toEqual([88]);
+    expect(nextState.error).toBe("app.error");
   });
 
-  it("keeps dialog open and stores error on submit failure", async () => {
-    vi.mocked(addStreamMembers).mockResolvedValue({
-      ok: false,
+  it("returns success only when every selected user is already excluded locally", async () => {
+    const store = useAddStreamMembersStore.getState();
+    store.openForStream({ streamId: 10, streamName: "engineering", existingMemberIds: [88] });
+    store.toggleSelected(88);
+
+    const result = await store.submit({});
+
+    const nextState = useAddStreamMembersStore.getState();
+    expect(result).toEqual({
+      ok: true,
       addedUserIds: [],
       alreadySubscribedUserIds: [],
       unauthorizedStreams: [],
-      errorCode: "http_403",
     });
-
-    const store = useAddStreamMembersStore.getState();
-    store.openForStream({ streamId: 10, streamName: "engineering", existingMemberIds: [] });
-    store.toggleSelected(88);
-
-    await store.submit({});
-
-    const nextState = useAddStreamMembersStore.getState();
     expect(nextState.open).toBe(true);
-    expect(nextState.error).toBe("app.error");
+    expect(nextState.error).toBeNull();
     expect(nextState.submitting).toBe(false);
   });
 
-  it("allows submitting current user id when selected", async () => {
-    vi.mocked(addStreamMembers).mockResolvedValue({
-      ok: true,
-      addedUserIds: [42],
-      alreadySubscribedUserIds: [],
-      unauthorizedStreams: [],
-    });
-
+  it("does not bridge numeric selected users to Workspace API from the legacy fallback", async () => {
     const store = useAddStreamMembersStore.getState();
     store.openForStream({ streamId: 10, streamName: "engineering", existingMemberIds: [] });
     store.toggleSelected(42);
 
-    await store.submit({});
+    const result = await store.submit({});
 
-    expect(addStreamMembers).toHaveBeenCalledWith({
-      streamName: "engineering",
-      userIds: [42],
-    });
+    expect(result).toMatchObject({ ok: false, errorCode: "unsupported" });
+    expect(useAddStreamMembersStore.getState().error).toBe("app.error");
   });
 });

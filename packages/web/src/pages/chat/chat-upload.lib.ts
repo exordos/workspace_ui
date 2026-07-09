@@ -1,5 +1,5 @@
 import type { WorkspaceFileMetadata } from "~/shared/api/messenger-files.api";
-import { detectImageMime, sanitizeFilename, validateFileUpload } from "~/shared/lib/validation";
+import { detectImageMime, validateFileUpload } from "~/shared/lib/validation";
 import {
   buildWorkspaceFileMetadata,
   buildWorkspaceFileUrnMarkdownLink,
@@ -9,7 +9,6 @@ export interface UploadFileRequestOptions {
   signal?: AbortSignal;
 }
 
-export type UploadFileFn = (file: File, options?: UploadFileRequestOptions) => Promise<string>;
 export type UploadWorkspaceComposerFileFn = (
   file: File,
   options?: UploadFileRequestOptions,
@@ -52,10 +51,6 @@ function throwIfAborted(signal?: AbortSignal): void {
   }
 }
 
-function safeComposerFileName(file: File): string {
-  return sanitizeFilename(file.name) || "file";
-}
-
 export function appendComposerMarkdownLinks(content: string, links: readonly string[]): string {
   const cleanContent = content.trim();
   if (links.length === 0) return cleanContent;
@@ -81,51 +76,9 @@ async function validateComposerFile(file: File): Promise<void> {
   }
 }
 
-export async function uploadComposerFiles(
-  files: File[],
-  uploadFile: UploadFileFn,
-  options: UploadComposerFilesOptions = {},
-): Promise<string[]> {
-  throwIfAborted(options.signal);
-  for (const file of files) {
-    await validateComposerFile(file);
-  }
-
-  if (files.length === 0) {
-    return [];
-  }
-
-  const links: string[] = [];
-  options.onProgress?.({
-    completed: 0,
-    total: files.length,
-    activeFileName: files[0]?.name ?? null,
-  });
-
-  for (let i = 0; i < files.length; i += 1) {
-    throwIfAborted(options.signal);
-    const file = files[i]!;
-    const uri =
-      options.signal != null
-        ? await uploadFile(file, { signal: options.signal })
-        : await uploadFile(file);
-    const safeName = safeComposerFileName(file);
-    links.push(`[${safeName}](${uri})`);
-
-    const nextFileName = i + 1 < files.length ? files[i + 1]!.name : null;
-    options.onProgress?.({
-      completed: i + 1,
-      total: files.length,
-      activeFileName: nextFileName,
-    });
-  }
-
-  return links;
-}
-
 export async function uploadWorkspaceComposerFiles(
   files: File[],
-  uploadFile: UploadWorkspaceComposerFileFn,
+  uploadWorkspaceFile: UploadWorkspaceComposerFileFn,
   options: UploadComposerFilesOptions = {},
 ): Promise<string[]> {
   throwIfAborted(options.signal);
@@ -149,8 +102,8 @@ export async function uploadWorkspaceComposerFiles(
     const file = files[i]!;
     const uploadedFile =
       options.signal != null
-        ? await uploadFile(file, { signal: options.signal })
-        : await uploadFile(file);
+        ? await uploadWorkspaceFile(file, { signal: options.signal })
+        : await uploadWorkspaceFile(file);
     const metadata = await buildWorkspaceFileMetadata(file, uploadedFile, {
       signal: options.signal,
     });
