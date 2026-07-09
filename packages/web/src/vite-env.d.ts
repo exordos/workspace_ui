@@ -44,12 +44,6 @@ interface ImportMetaEnv {
   readonly VITE_DEFAULT_LOGIN_ORGANIZATION_NAME?: string;
   /** Default Workspace project UUID for IAM password login. Required until project discovery exists. */
   readonly VITE_DEFAULT_WORKSPACE_PROJECT_ID?: string;
-  /** Persist chat messages to IndexedDB (write-through). Optional; legacy VITE_CHAT_MESSAGES_SOURCE_INDEXEDDB. */
-  readonly VITE_CHAT_MESSAGES_PERSIST_INDEXEDDB?: string;
-  /** @deprecated Prefer VITE_CHAT_MESSAGES_PERSIST_INDEXEDDB. */
-  readonly VITE_CHAT_MESSAGES_SOURCE_INDEXEDDB?: string;
-  /** Persist avatar blobs to IndexedDB. Optional; default on. */
-  readonly VITE_AVATAR_PERSIST_INDEXEDDB?: string;
   /** Top bar: show Calls nav. */
   readonly VITE_TOP_BAR_CALLS_NAV?: string;
   /** Top bar: show Services nav. */

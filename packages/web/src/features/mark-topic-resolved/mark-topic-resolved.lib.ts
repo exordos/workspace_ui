@@ -1,4 +1,15 @@
-import type { CurrentChatContext } from "~/entities/message/message-chat-context.lib";
+export type CurrentChatContext =
+  | {
+      type: "stream";
+      streamId: number;
+      streamName: string;
+      topic: string;
+      streamWideView?: boolean;
+    }
+  | {
+      type: "dm";
+      dmKey: string;
+    };
 
 export interface TopicResolveTarget {
   streamId: number;

@@ -29,22 +29,6 @@ function cleanOrigin(url: string): string {
   return url.replace(/\/api\/v1\/?$/, "").replace(/\/+$/, "");
 }
 
-const chatMessagesPersistIndexedDb = (() => {
-  if (import.meta.env.MODE === "test") return false;
-  const explicit = optional("VITE_CHAT_MESSAGES_PERSIST_INDEXEDDB", "");
-  if (explicit.trim() !== "") {
-    const v = explicit.toLowerCase();
-    return v !== "false" && v !== "0";
-  }
-  const legacy = optional("VITE_CHAT_MESSAGES_SOURCE_INDEXEDDB", "true").toLowerCase();
-  return legacy !== "false" && legacy !== "0";
-})();
-
-const avatarPersistIndexedDb = (() => {
-  if (import.meta.env.MODE === "test") return false;
-  return parseBooleanEnvFlag(optional("VITE_AVATAR_PERSIST_INDEXEDDB", "true"), true);
-})();
-
 function parseBooleanEnvFlag(value: string, fallback: boolean): boolean {
   // Consistent true/false and 1/0 parsing so feature flags behave the same everywhere.
   const normalized = value.trim().toLowerCase();
@@ -197,19 +181,6 @@ export const env = {
   get DEFAULT_WORKSPACE_PROJECT_ID(): string {
     return optional("VITE_DEFAULT_WORKSPACE_PROJECT_ID", DEFAULT_WORKSPACE_PROJECT_ID);
   },
-
-  /**
-   * When true, chat messages are written to IndexedDB (write-through cache). UI always uses Zustand.
-   * Set `VITE_CHAT_MESSAGES_PERSIST_INDEXEDDB=false` to disable IDB (no disk cache for messages).
-   * Legacy: `VITE_CHAT_MESSAGES_SOURCE_INDEXEDDB` is read if `VITE_CHAT_MESSAGES_PERSIST_INDEXEDDB` is unset.
-   */
-  CHAT_MESSAGES_PERSIST_INDEXEDDB: chatMessagesPersistIndexedDb,
-
-  /**
-   * When true, avatar images are cached as blobs in IndexedDB (LRU per instance).
-   * Set `VITE_AVATAR_PERSIST_INDEXEDDB=false` to disable.
-   */
-  AVATAR_PERSIST_INDEXEDDB: avatarPersistIndexedDb,
 
   /**
    * When true, top bar shows the Calls section shortcut.

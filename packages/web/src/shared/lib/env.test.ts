@@ -42,7 +42,6 @@ describe("env", () => {
     expect(env).toHaveProperty("BASE_URL");
     expect(env).toHaveProperty("CALENDAR_EMBED_URL");
     expect(env).toHaveProperty("MAIL_EMBED_URL");
-    expect(env).toHaveProperty("CHAT_MESSAGES_PERSIST_INDEXEDDB");
     expect(env).toHaveProperty("TOP_BAR_CALLS_NAV");
     expect(env).toHaveProperty("TOP_BAR_SERVICES_NAV");
   });

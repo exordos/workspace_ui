@@ -1,4 +1,6 @@
-import { instanceChatKey } from "~/shared/lib/message-cache-keys.lib";
+function instanceScopedKey(instanceId: string, baseKey: string): string {
+  return `${instanceId}::${baseKey}`;
+}
 
 function normalizeNotificationInstanceId(instanceId: string | null | undefined): string | null {
   const trimmed = instanceId?.trim() ?? "";
@@ -13,7 +15,7 @@ export function buildScopedNotificationKey(
   if (normalizedInstanceId == null) {
     return baseKey;
   }
-  return instanceChatKey(normalizedInstanceId, baseKey);
+  return instanceScopedKey(normalizedInstanceId, baseKey);
 }
 
 export function buildNotificationAggregateTag(

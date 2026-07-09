@@ -6,7 +6,6 @@
  *   await performApplicationColdStart();
  *   window.location.reload();
  */
-import { deleteMessageCacheDatabase } from "~/shared/lib/message-cache-db";
 import { deleteWorkspaceMessengerCacheDatabase } from "~/shared/lib/workspace-messenger-cache-db";
 
 const PRESERVED_AUTH_STORAGE_KEYS = [
@@ -57,14 +56,8 @@ async function clearHttpCaches(): Promise<void> {
   }
 }
 
-/** Wipes IDB message cache, sessionStorage, HTTP caches, and localStorage except saved org logins. */
+/** Wipes Workspace cache, sessionStorage, HTTP caches, and localStorage except saved org logins. */
 export async function performApplicationColdStart(): Promise<void> {
-  try {
-    await deleteMessageCacheDatabase();
-  } catch {
-    /* IDB wipe is best-effort */
-  }
-
   try {
     await deleteWorkspaceMessengerCacheDatabase();
   } catch {

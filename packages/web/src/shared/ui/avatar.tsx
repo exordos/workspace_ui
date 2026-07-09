@@ -1,5 +1,4 @@
 import React from "react";
-import { useAvatarBlobSrc } from "~/shared/lib/avatar-blob-src.hook";
 import type { AvatarProps, AvatarSize } from "./avatar.types";
 
 const SIZE_CLASS: Record<AvatarSize, string> = {
@@ -14,11 +13,10 @@ const AvatarImage = React.memo<{
   src: string;
   imageLoading: "eager" | "lazy";
 }>(({ baseClass, src, imageLoading }) => {
-  const displaySrc = useAvatarBlobSrc(src);
   return (
     <div className={baseClass}>
       <img
-        src={displaySrc ?? src}
+        src={src}
         alt=""
         className="h-full w-full object-cover"
         loading={imageLoading}

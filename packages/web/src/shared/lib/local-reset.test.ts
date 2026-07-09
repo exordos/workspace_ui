@@ -1,14 +1,6 @@
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { MockMessage } from "~/shared/api/zulip.types";
 import { performApplicationColdStart } from "./local-reset";
-import {
-  getChatMessagesAscending,
-  MESSAGE_CACHE_DB_NAME,
-  openMessageCacheDb,
-  resetMessageCacheDbSingletonForTests,
-  upsertChatMessages,
-} from "./message-cache-db";
 
 function clearTestStorage(): void {
   for (const key of [
@@ -35,30 +27,13 @@ function clearTestStorage(): void {
   sessionStorage.clear();
 }
 
-async function deleteMessageCacheDbForTests(): Promise<void> {
-  try {
-    const db = await openMessageCacheDb();
-    db.close();
-  } catch {
-    // no open DB
-  }
-  resetMessageCacheDbSingletonForTests();
-  await new Promise<void>((resolve, reject) => {
-    const req = indexedDB.deleteDatabase(MESSAGE_CACHE_DB_NAME);
-    req.onerror = () => reject(req.error ?? new Error("indexedDB deleteDatabase error"));
-    req.onsuccess = () => resolve();
-  });
-}
-
 describe("performApplicationColdStart", () => {
-  beforeEach(async () => {
+  beforeEach(() => {
     clearTestStorage();
-    await deleteMessageCacheDbForTests();
   });
 
-  afterEach(async () => {
+  afterEach(() => {
     clearTestStorage();
-    await deleteMessageCacheDbForTests();
   });
 
   it("preserves auth keys while removing preferences, caches, and misc localStorage", async () => {
@@ -98,31 +73,6 @@ describe("performApplicationColdStart", () => {
     expect(localStorage.getItem("analytics_consent")).toBeNull();
     expect(localStorage.getItem("push_token")).toBeNull();
     expect(localStorage.getItem("workspace-last-messenger-route")).toBeNull();
-  });
-
-  it("deletes cached messages from IndexedDB", async () => {
-    const instanceId = "inst-cold-start";
-    const chatKey = "stream:1:general";
-    const message: MockMessage = {
-      id: 1,
-      sender_id: 10,
-      sender_full_name: "A",
-      stream_id: 1,
-      subject: "general",
-      content: "<p>1</p>",
-      timestamp: 1000,
-    };
-    await upsertChatMessages({
-      instanceId,
-      chatKey,
-      messages: [message],
-      windowSizeN: 200,
-    });
-    expect(await getChatMessagesAscending(instanceId, chatKey)).toHaveLength(1);
-
-    await performApplicationColdStart();
-
-    expect(await getChatMessagesAscending(instanceId, chatKey)).toEqual([]);
   });
 
   it("does not throw when storage operations fail", async () => {
