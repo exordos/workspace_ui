@@ -6,7 +6,6 @@ export const MAX_USER_RESULTS = 20;
 
 export const UserResultItem = React.memo(function UserResultItem({
   userIdentity,
-  userId,
   fullName,
   email,
   statusLabel,
@@ -14,7 +13,6 @@ export const UserResultItem = React.memo(function UserResultItem({
   onSelect,
 }: {
   userIdentity: string;
-  userId?: number;
   fullName: string;
   email?: string;
   statusLabel?: string;
@@ -38,9 +36,6 @@ export const UserResultItem = React.memo(function UserResultItem({
             <span className="block truncate text-[11px] text-text-secondary">{secondaryText}</span>
           ) : null}
         </span>
-        {userId != null ? (
-          <span className="ml-2 shrink-0 text-[11px] text-text-muted">#{userId}</span>
-        ) : null}
       </SelectableRow>
     </li>
   );

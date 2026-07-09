@@ -26,12 +26,15 @@ import {
   workspaceMessengerRootRoute,
 } from "~/shared/lib/workspace-messenger-route.lib";
 import { ErrorBoundary, PageErrorFallback, PageLoader } from "~/shared/ui/error-boundary";
+import { configureWorkspaceI18nStorageScope } from "~/widgets/layout/layout-i18n-scope.lib";
 import { resolveElectronTrayNavigation } from "./app-electron-navigation.lib";
 import { isForceUpdateRequiredStatus, shouldRedirectToForceUpdate } from "./app-force-update.lib";
 import { AuthenticatedAppRoutes, LoginAppRoutes, WebViewAppRoutes } from "./app-route-definitions";
 import { AppShortcutsHelpModal } from "./app-shortcuts-help-modal.ui";
 import { buildShortcutHelpSections } from "./app-shortcuts-help.lib";
 import { resolveGlobalNavigationRoute, resolveGlobalShortcutAction } from "./app-shortcuts.lib";
+
+configureWorkspaceI18nStorageScope();
 
 const App: React.FC = () => {
   const location = useLocation();

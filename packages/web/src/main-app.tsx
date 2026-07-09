@@ -2,12 +2,10 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { installAiContext } from "~/app/ai-context";
 import { installDevTools } from "~/app/devtools";
-import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import { useInstancesStore } from "~/entities/instance/instance.model";
-import { useThemeStore } from "~/entities/theme/theme.model";
-import { refreshWorkspaceApiBase, setInstanceProvider } from "~/shared/api/client";
+import { createWorkspacePluginDataProvider } from "~/app/workspace-plugin-data-provider.lib";
+import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import { initAnalytics } from "~/shared/lib/analytics/setup";
-import { setStoreWiper, setAuthInstanceGetter } from "~/shared/lib/auth-guard";
+import { setStoreWiper } from "~/shared/lib/auth-guard";
 import { brand } from "~/shared/lib/brand";
 import { initConnectionHealth } from "~/shared/lib/connection-health";
 import { createLogger } from "~/shared/lib/logger";
@@ -27,58 +25,17 @@ import { AppRoot } from "./app/app-root";
 import "./app/app.styles.css";
 import "./app/focus-outline.styles.css";
 
-// ---------------------------------------------------------------------------
-// FSD provider wiring (shared layer cannot import entities; we inject here)
-// ---------------------------------------------------------------------------
-
-setInstanceProvider(() => {
-  return null;
-});
-
-function syncApiBasesAfterInstanceChange(): void {
-  refreshWorkspaceApiBase();
-}
-
-useInstancesStore.subscribe((state, prev) => {
-  if (state.currentInstanceId !== prev.currentInstanceId) {
-    syncApiBasesAfterInstanceChange();
-  }
-});
-
-setAuthInstanceGetter(() => {
-  return null;
-});
-
 setStoreWiper(() => {
-  const store = useInstancesStore.getState();
-  const current = store.getCurrentInstance();
-  if (current) {
-    store.removeInstance(current.id);
-  }
-  useChatListStore.getState().clear();
+  useMessengerStore.getState().clear();
 });
 
-setPluginDataProvider({
-  getCurrentUserId: () => useChatListStore.getState().currentUserId ?? null,
-  getStreams: () =>
-    useChatListStore
-      .getState()
-      .streams()
-      .map((s) => ({
-        id: s.stream_id,
-        name: s.name,
-        badge: s.badge,
-      })),
-  getThemeMode: () => useThemeStore.getState().mode,
-});
+setPluginDataProvider(createWorkspacePluginDataProvider());
 
 /** Application bootstrap after vendored Jitsi external_api is loaded (see `main.tsx`). */
 export function mountApplication(): void {
   // ---------------------------------------------------------------------------
   // App initialization
   // ---------------------------------------------------------------------------
-
-  syncApiBasesAfterInstanceChange();
 
   perf.mark("app:init");
   initSentry();
@@ -103,7 +60,6 @@ export function mountApplication(): void {
     runtime: getRuntime(),
     version: import.meta.env.VITE_APP_VERSION ?? "unknown",
     brand: brand.appName,
-    instanceCount: useInstancesStore.getState().instances.length,
   });
 
   ReactDOM.createRoot(document.getElementById("root")!).render(React.createElement(AppRoot));

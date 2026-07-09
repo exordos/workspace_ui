@@ -43,9 +43,6 @@ const captured = vi.hoisted(() => ({
   composerProps: null as ChatPageComposerSectionProps | null,
   headerProps: null as ChatHeaderProps | null,
   messageListProps: null as ChatPageWorkspaceMessageListSectionProps | null,
-  oldChatListStore: vi.fn(() => {
-    throw new Error("legacy chat-list store must not be used");
-  }),
   loadWorkspaceMessages: vi.fn().mockResolvedValue({ status: "applied" }),
   loadWorkspaceMessageWindowAroundMessage: vi.fn().mockResolvedValue({
     status: "applied",
@@ -71,10 +68,6 @@ const captured = vi.hoisted(() => ({
   uploadWorkspaceFile: vi.fn(),
   sendMessengerMessage: vi.fn(),
   streamBindingsForRoute: vi.fn(),
-}));
-
-vi.mock("~/entities/chat-list/chat-list.model", () => ({
-  useChatListStore: captured.oldChatListStore,
 }));
 
 vi.mock("~/entities/messenger/messenger-messages-loader.lib", async (importOriginal) => {
@@ -370,7 +363,6 @@ describe("ChatPage Workspace route", () => {
     captured.composerProps = null;
     captured.headerProps = null;
     captured.messageListProps = null;
-    captured.oldChatListStore.mockClear();
     captured.loadWorkspaceMessages.mockClear();
     captured.loadWorkspaceMessageWindowAroundMessage.mockReset();
     captured.loadWorkspaceMessageWindowAroundMessage.mockResolvedValue({
@@ -494,7 +486,6 @@ describe("ChatPage Workspace route", () => {
     expect(captured.composerProps?.onSend).toEqual(expect.any(Function));
     expect(captured.composerProps?.onCreateCallLink).toBeUndefined();
     expect(captured.composerProps?.onSubmitEdit).toEqual(expect.any(Function));
-    expect(captured.oldChatListStore).not.toHaveBeenCalled();
     expect(captured.streamBindingsForRoute).toHaveBeenCalledWith({
       route: {
         kind: "topic",
@@ -1631,7 +1622,6 @@ describe("ChatPage Workspace route", () => {
     expect(captured.headerProps?.hideParticipants).toBe(true);
     expect(captured.headerProps).not.toHaveProperty("participantsCount");
     expect(captured.headerProps).not.toHaveProperty("onlineCount");
-    expect(captured.oldChatListStore).not.toHaveBeenCalled();
   });
 
   it("keeps old chat routes in a controlled Workspace state", () => {
@@ -1644,7 +1634,6 @@ describe("ChatPage Workspace route", () => {
       "Sending is not available from this chat link yet.",
     );
     expect(captured.messageListProps).toBeNull();
-    expect(captured.oldChatListStore).not.toHaveBeenCalled();
     expect(captured.loadWorkspaceMessages).not.toHaveBeenCalled();
   });
 });

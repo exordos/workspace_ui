@@ -20,13 +20,6 @@ function normalizeSearchValue(value: string | null | undefined): string {
   return (value ?? "").trim().toLowerCase();
 }
 
-function resolveNumericUserId(user: User): number | null {
-  const legacyUserId = (user as { user_id?: unknown }).user_id;
-  return typeof legacyUserId === "number" && Number.isSafeInteger(legacyUserId) && legacyUserId > 0
-    ? legacyUserId
-    : null;
-}
-
 function matchesUserQuery(user: User, query: string): boolean {
   if (query.length === 0) {
     return false;
@@ -48,7 +41,6 @@ function getNonEmptyValue(value: string | null | undefined): string | undefined 
 export const SearchModal: React.FC<SearchModalProps> = ({
   open,
   onOpenChange,
-  onSelectUser,
   onSelectUserUuid,
   mode = "zulip",
 }) => {
@@ -64,7 +56,6 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   const userResults = useMemo<
     {
       userUuid: string;
-      userId?: number;
       fullName: string;
       email?: string;
       statusLabel?: string;
@@ -75,10 +66,8 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     return allUsers
       .filter((user) => matchesUserQuery(user, normalizedQuery))
       .map((user) => {
-        const userId = resolveNumericUserId(user);
         return {
           userUuid: user.uuid,
-          ...(userId != null ? { userId } : {}),
           fullName: selectUserDisplayName(user),
           email: user.email ?? undefined,
           statusLabel: getNonEmptyValue(selectUserStatusLabel(user)),
@@ -106,18 +95,16 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   }, [open]);
 
   const handleSelectUser = useCallback(
-    (user: { userId?: number; userUuid: string }) => {
+    (user: { userUuid: string }) => {
       if (workspaceMode) {
         if (onSelectUserUuid?.(user.userUuid) === true) {
           onOpenChange(false);
         }
         return;
-      } else if (user.userId != null) {
-        onSelectUser?.(user.userId);
       }
       onOpenChange(false);
     },
-    [onOpenChange, onSelectUser, onSelectUserUuid, workspaceMode],
+    [onOpenChange, onSelectUserUuid, workspaceMode],
   );
 
   const noResults = query.trim() && userResults.length === 0;
@@ -153,7 +140,6 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                 <UserResultItem
                   key={user.userUuid}
                   userIdentity={user.userUuid}
-                  userId={user.userId}
                   fullName={user.fullName}
                   email={user.email}
                   statusLabel={user.statusLabel}

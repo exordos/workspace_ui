@@ -7,9 +7,17 @@ const shouldNetworkFetchAvatarBlob = vi.hoisted(() => vi.fn(() => true));
 const persistAvatarBlobsToIndexedDb = vi.hoisted(() => vi.fn(() => true));
 const getAvatarBlobCacheRow = vi.hoisted(() => vi.fn());
 
-vi.mock("~/entities/instance/instance.model", () => ({
-  useInstancesStore: (selector: (s: { currentInstanceId: string }) => unknown) =>
-    selector({ currentInstanceId: "inst-1" }),
+vi.mock("~/entities/workspace-auth/workspace-auth.model", () => ({
+  useWorkspaceAuthStore: (
+    selector: (s: { currentAccountId: string; sessions: unknown[] }) => unknown,
+  ) => selector({ currentAccountId: "account-1", sessions: [] }),
+}));
+
+vi.mock("~/entities/workspace-auth/workspace-session-storage-scope.lib", () => ({
+  getWorkspaceSessionStorageScopeFromAuthState: () => ({
+    ownerKey: "owner-key-1",
+    legacyInstanceId: "inst-1",
+  }),
 }));
 
 vi.mock("~/shared/lib/avatar-blob-cache-persist.lib", () => ({
@@ -47,6 +55,7 @@ describe("useAvatarBlobSrc", () => {
       expect(getAvatarBlobCacheRow).toHaveBeenCalled();
     });
 
+    expect(getAvatarBlobCacheRow).toHaveBeenCalledWith("owner-key-1", "/avatar/42.png");
     expect(fetchAvatarBlob).not.toHaveBeenCalled();
     expect(result.current).toBe("https://z.example.com/avatar/42.png?_av=1");
   });

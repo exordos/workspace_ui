@@ -10,12 +10,6 @@ import {
 } from "~/shared/lib/dm-route-slug.lib";
 
 export { buildDmRouteSlugFromRecipients, isDmRouteSlugActive, parseDmRouteParticipantIds };
-export {
-  buildSidebarFromMessages,
-  messageToStreamEntry,
-  messageToDmEntry,
-  isUnread,
-} from "~/entities/chat-list/chat-list.lib";
 
 /** System rail folders plus legacy `selectedFolderId="all"` used in tests and older routes. */
 export function isSidebarSystemFolderScope(folderId: string | undefined): boolean {

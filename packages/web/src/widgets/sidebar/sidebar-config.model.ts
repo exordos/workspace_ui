@@ -1,6 +1,12 @@
 import { create } from "zustand";
-import { useInstancesStore } from "~/entities/instance/instance.model";
-import { buildOrgScopedStorageKey } from "~/shared/lib/org-scoped-storage";
+import {
+  buildLegacyWorkspaceSessionStorageKey,
+  buildWorkspaceSessionStorageKey,
+  getCurrentWorkspaceSessionStorageScope,
+  getWorkspaceSessionStorageScopeFromAuthState,
+  type WorkspaceSessionStorageScope,
+} from "~/entities/workspace-auth/workspace-session-storage-scope.lib";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { SIDEBAR_SYSTEM_ALL_FOLDER_ID } from "./sidebar-folder.constants";
 import type { SidebarConfig, SidebarConfigState, SidebarUiState } from "./sidebar-config.types";
 
@@ -17,8 +23,14 @@ const DEFAULT_UI_STATE: SidebarUiState = {
   createChatOpen: false,
 };
 
-function getStorageKeyForOrganization(organizationId: string | null): string {
-  return buildOrgScopedStorageKey(SIDEBAR_CONFIG_STORAGE_KEY, organizationId);
+function getStorageKeysForScope(scope: WorkspaceSessionStorageScope): {
+  key: string;
+  legacyKey: string | null;
+} {
+  return {
+    key: buildWorkspaceSessionStorageKey(SIDEBAR_CONFIG_STORAGE_KEY, scope),
+    legacyKey: buildLegacyWorkspaceSessionStorageKey(SIDEBAR_CONFIG_STORAGE_KEY, scope),
+  };
 }
 
 function normalizeExpandedStreamUuids(value: unknown): string[] {
@@ -40,13 +52,19 @@ function buildPersistedConfig(state: Pick<SidebarConfigState, keyof SidebarConfi
   };
 }
 
+function readConfigRaw(key: string, legacyKey: string | null): string | null {
+  const raw = window.localStorage.getItem(key);
+  if (raw != null || legacyKey == null || legacyKey === key) return raw;
+  return window.localStorage.getItem(legacyKey);
+}
+
 function loadConfig(
-  organizationId: string | null = useInstancesStore.getState().currentInstanceId,
+  scope: WorkspaceSessionStorageScope = getCurrentWorkspaceSessionStorageScope(),
 ): SidebarConfig {
   if (typeof window === "undefined") return DEFAULT_CONFIG;
   try {
-    const scopedKey = getStorageKeyForOrganization(organizationId);
-    const raw = window.localStorage.getItem(scopedKey);
+    const { key, legacyKey } = getStorageKeysForScope(scope);
+    const raw = readConfigRaw(key, legacyKey);
     if (!raw) return DEFAULT_CONFIG;
     // Ignore legacy single-stream format; read expandedStreamUuids and activityOpen only.
     const parsed = JSON.parse(raw) as Partial<SidebarConfig>;
@@ -61,12 +79,12 @@ function loadConfig(
 
 function saveConfig(
   config: SidebarConfig,
-  organizationId: string | null = useInstancesStore.getState().currentInstanceId,
+  scope: WorkspaceSessionStorageScope = getCurrentWorkspaceSessionStorageScope(),
 ): void {
   if (typeof window === "undefined") return;
   try {
-    const scopedKey = getStorageKeyForOrganization(organizationId);
-    window.localStorage.setItem(scopedKey, JSON.stringify(config));
+    const { key } = getStorageKeysForScope(scope);
+    window.localStorage.setItem(key, JSON.stringify(config));
   } catch {
     // ignore
   }
@@ -154,19 +172,19 @@ export const useSidebarConfigStore = create<SidebarConfigState>((set) => ({
 }));
 
 if (typeof window !== "undefined") {
-  let previousOrganizationId = useInstancesStore.getState().currentInstanceId;
-  useInstancesStore.subscribe((state) => {
-    const nextOrganizationId = state.currentInstanceId;
-    if (nextOrganizationId === previousOrganizationId) {
+  let previousOwnerKey = getCurrentWorkspaceSessionStorageScope().ownerKey;
+  useWorkspaceAuthStore.subscribe((state) => {
+    const nextScope = getWorkspaceSessionStorageScopeFromAuthState(state);
+    if (nextScope.ownerKey === previousOwnerKey) {
       return;
     }
 
-    previousOrganizationId = nextOrganizationId;
-    // On org switch: reload scoped persist and reset transient UI flags.
+    previousOwnerKey = nextScope.ownerKey;
+    // On owner switch: reload scoped persist and reset transient UI flags.
     useSidebarConfigStore.setState((prev) => ({
       ...DEFAULT_UI_STATE,
-      ...loadConfig(nextOrganizationId),
-      // Preserve non-persisted UI state only if it belongs to the same organization.
+      ...loadConfig(nextScope),
+      // Preserve the current selection while persisted sidebar flags are reloaded.
       selectedFolderId: prev.selectedFolderId,
     }));
   });

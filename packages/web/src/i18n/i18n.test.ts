@@ -8,19 +8,44 @@
  */
 import { renderHook, act } from "@testing-library/react";
 import { describe, expect, it, beforeEach, vi } from "vitest";
-import { t, setLocale, getLocale, getSupportedLocales, useTranslation } from "./i18n";
+import {
+  configureI18nStorageScope,
+  t,
+  setLocale,
+  getLocale,
+  getSupportedLocales,
+  useTranslation,
+} from "./i18n";
+import type { I18nStorageScope } from "./i18n";
+
+let currentTestScope: I18nStorageScope = { scopeKey: null, legacyScopeKey: null };
+let emitScopeChange: (() => void) | null = null;
+
+function configureTestStorageScope(scope: I18nStorageScope): void {
+  currentTestScope = scope;
+  configureI18nStorageScope({
+    getScope: () => currentTestScope,
+    subscribe: (onScopeChange) => {
+      emitScopeChange = onScopeChange;
+      return () => {
+        if (emitScopeChange === onScopeChange) {
+          emitScopeChange = null;
+        }
+      };
+    },
+  });
+}
+
+function setTestStorageScope(scope: I18nStorageScope): void {
+  currentTestScope = scope;
+  emitScopeChange?.();
+}
 
 // Core translation function, plural rules, locale switching, and React hook.
 describe("i18n", () => {
   beforeEach(() => {
-    for (const key of [
-      "zulip-web-current-instance",
-      "workspace-locale",
-      "workspace-locale:org-1",
-      "workspace-locale:org-2",
-    ]) {
-      localStorage.removeItem(key);
-    }
+    localStorage.clear();
+    configureI18nStorageScope();
     setLocale("en");
   });
 
@@ -108,10 +133,35 @@ describe("i18n", () => {
       expect(result).toBe("nonexistent.key");
     });
 
-    it("stores locale scoped to active organization", () => {
-      localStorage.setItem("zulip-web-current-instance", "org-1");
+    it("stores locale scoped to configured storage scope", () => {
+      configureTestStorageScope({ scopeKey: "owner-a", legacyScopeKey: "instance-a" });
+
       setLocale("ru");
-      expect(localStorage.getItem("workspace-locale:org-1")).toBe("ru");
+      expect(localStorage.getItem("workspace-locale:owner-a")).toBe("ru");
+      expect(localStorage.getItem("workspace-locale")).toBe("en");
+    });
+
+    it("loads locale when configured storage scope changes", () => {
+      localStorage.setItem("workspace-locale:owner-a", "ru");
+      localStorage.setItem("workspace-locale:owner-b", "en");
+
+      configureTestStorageScope({ scopeKey: "owner-a", legacyScopeKey: "instance-a" });
+      expect(getLocale()).toBe("ru");
+
+      setTestStorageScope({ scopeKey: "owner-b", legacyScopeKey: "instance-b" });
+      expect(getLocale()).toBe("en");
+    });
+
+    it("reads legacy instance-scoped locale without writing back to legacy keys", () => {
+      localStorage.setItem("workspace-locale:instance-a", "ru");
+
+      configureTestStorageScope({ scopeKey: "owner-a", legacyScopeKey: "instance-a" });
+      expect(getLocale()).toBe("ru");
+
+      setLocale("en");
+
+      expect(localStorage.getItem("workspace-locale:owner-a")).toBe("en");
+      expect(localStorage.getItem("workspace-locale:instance-a")).toBe("ru");
     });
   });
 
@@ -149,12 +199,13 @@ describe("i18n", () => {
       expect(getLocale()).toBe("en");
     });
 
-    it("loads locale from organization-scoped storage on init", async () => {
-      localStorage.setItem("zulip-web-current-instance", "org-2");
-      localStorage.setItem("workspace-locale:org-2", "ru");
+    it("loads locale from configured storage scope on init", async () => {
+      localStorage.setItem("workspace-locale:owner-b", "ru");
 
       vi.resetModules();
-      const { getLocale: getFreshLocale } = await import("./i18n");
+      const { configureI18nStorageScope: configureFreshScope, getLocale: getFreshLocale } =
+        await import("./i18n");
+      configureFreshScope({ getScope: () => ({ scopeKey: "owner-b" }) });
       expect(getFreshLocale()).toBe("ru");
     });
   });

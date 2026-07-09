@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { useInstancesStore } from "~/entities/instance/instance.model";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { getWorkspaceSessionStorageScopeFromAuthState } from "~/entities/workspace-auth/workspace-session-storage-scope.lib";
 import { getAvatarVersion } from "~/shared/lib/avatar";
 import {
   getAvatarBlobCacheRow,
@@ -19,7 +20,9 @@ import { fetchAvatarBlob, shouldNetworkFetchAvatarBlob } from "~/shared/lib/avat
  * Resolves avatar `src` via IndexedDB blob cache when enabled; falls back to HTTPS URL.
  */
 export function useAvatarBlobSrc(resolvedSrc: string | undefined | null): string | undefined {
-  const instanceId = useInstancesStore((s) => s.currentInstanceId);
+  const ownerKey = useWorkspaceAuthStore(
+    (s) => getWorkspaceSessionStorageScopeFromAuthState(s).ownerKey,
+  );
   const [displaySrc, setDisplaySrc] = useState<string | undefined>(() => {
     const s = resolvedSrc?.trim();
     return s && s.length > 0 ? s : undefined;
@@ -35,7 +38,7 @@ export function useAvatarBlobSrc(resolvedSrc: string | undefined | null): string
     if (
       !persistAvatarBlobsToIndexedDb() ||
       shouldBypassAvatarBlobCache(trimmed) ||
-      instanceId == null
+      ownerKey == null
     ) {
       setDisplaySrc(trimmed);
       return;
@@ -59,12 +62,12 @@ export function useAvatarBlobSrc(resolvedSrc: string | undefined | null): string
 
     void (async () => {
       const currentVersion = getAvatarVersion();
-      const cached = await getAvatarBlobCacheRow(instanceId, cacheKey);
+      const cached = await getAvatarBlobCacheRow(ownerKey, cacheKey);
       if (cancelled) return;
 
       if (cached != null && isAvatarBlobCacheVersionValid(cached.avatarVersion, currentVersion)) {
         const now = Date.now();
-        void touchAvatarBlobCacheRow(instanceId, cacheKey, now);
+        void touchAvatarBlobCacheRow(ownerKey, cacheKey, now);
         applyBlobUrl(cached.blob);
         return;
       }
@@ -79,7 +82,7 @@ export function useAvatarBlobSrc(resolvedSrc: string | undefined | null): string
       if (isAvatarBlobCacheEntrySizeAllowed(blob.size)) {
         const now = Date.now();
         void putAvatarBlobCacheRow({
-          instanceId,
+          instanceId: ownerKey,
           cacheKey,
           blob,
           mimeType: blob.type || "application/octet-stream",
@@ -99,7 +102,7 @@ export function useAvatarBlobSrc(resolvedSrc: string | undefined | null): string
         URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [instanceId, resolvedSrc]);
+  }, [ownerKey, resolvedSrc]);
 
   return displaySrc;
 }

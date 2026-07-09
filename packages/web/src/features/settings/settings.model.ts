@@ -6,10 +6,16 @@
  */
 
 import { create } from "zustand";
-import { useInstancesStore } from "~/entities/instance/instance.model";
+import {
+  buildLegacyWorkspaceSessionStorageKey,
+  buildWorkspaceSessionStorageKey,
+  getCurrentWorkspaceSessionStorageScope,
+  getWorkspaceSessionStorageScopeFromAuthState,
+  type WorkspaceSessionStorageScope,
+} from "~/entities/workspace-auth/workspace-session-storage-scope.lib";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { setLocale } from "~/i18n/i18n";
 import { logStoreAction } from "~/shared/lib/logger";
-import { buildOrgScopedStorageKey } from "~/shared/lib/org-scoped-storage";
 import { resolveAuthIdleTimeout } from "./auth-idle-timeout.lib";
 import type {
   AppLanguage,
@@ -22,12 +28,14 @@ import type {
 
 const STORAGE_KEY = "workspace-settings";
 
-function getActiveOrganizationId(): string | null {
-  return useInstancesStore.getState().currentInstanceId;
-}
-
-function getStorageKeyForOrganization(organizationId: string | null): string {
-  return buildOrgScopedStorageKey(STORAGE_KEY, organizationId);
+function getStorageKeysForScope(scope: WorkspaceSessionStorageScope): {
+  key: string;
+  legacyKey: string | null;
+} {
+  return {
+    key: buildWorkspaceSessionStorageKey(STORAGE_KEY, scope),
+    legacyKey: buildLegacyWorkspaceSessionStorageKey(STORAGE_KEY, scope),
+  };
 }
 
 function resolveBrowserLanguage(): AppLanguage {
@@ -100,11 +108,19 @@ function resolveChatListDensity(value: unknown): ChatListDensity {
   return value === "compact" ? "compact" : FALLBACK_SETTINGS.chatListDensity;
 }
 
-function loadSettings(organizationId: string | null = getActiveOrganizationId()): AppSettings {
+function readSettingsRaw(key: string, legacyKey: string | null): string | null {
+  const raw = localStorage.getItem(key);
+  if (raw != null || legacyKey == null || legacyKey === key) return raw;
+  return localStorage.getItem(legacyKey);
+}
+
+function loadSettings(
+  scope: WorkspaceSessionStorageScope = getCurrentWorkspaceSessionStorageScope(),
+): AppSettings {
   if (typeof window === "undefined") return createDefaultSettings();
   try {
-    const scopedKey = getStorageKeyForOrganization(organizationId);
-    const raw = localStorage.getItem(scopedKey);
+    const { key, legacyKey } = getStorageKeysForScope(scope);
+    const raw = readSettingsRaw(key, legacyKey);
     if (!raw) return createDefaultSettings();
     const parsed = JSON.parse(raw) as Partial<AppSettings>;
     const prioritizePersonalUnread =
@@ -139,12 +155,12 @@ function loadSettings(organizationId: string | null = getActiveOrganizationId())
 
 function persistSettings(
   settings: AppSettings,
-  organizationId: string | null = getActiveOrganizationId(),
+  scope: WorkspaceSessionStorageScope = getCurrentWorkspaceSessionStorageScope(),
 ): void {
   if (typeof window === "undefined") return;
   try {
-    const scopedKey = getStorageKeyForOrganization(organizationId);
-    localStorage.setItem(scopedKey, JSON.stringify(settings));
+    const { key } = getStorageKeysForScope(scope);
+    localStorage.setItem(key, JSON.stringify(settings));
   } catch {
     /* quota exceeded */
   }
@@ -226,18 +242,15 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 }));
 
 if (typeof window !== "undefined") {
-  setLocale(initial.language);
-
-  let previousOrganizationId = useInstancesStore.getState().currentInstanceId;
-  useInstancesStore.subscribe((state) => {
-    const nextOrganizationId = state.currentInstanceId;
-    if (nextOrganizationId === previousOrganizationId) {
+  let previousOwnerKey = getCurrentWorkspaceSessionStorageScope().ownerKey;
+  useWorkspaceAuthStore.subscribe((state) => {
+    const nextScope = getWorkspaceSessionStorageScopeFromAuthState(state);
+    if (nextScope.ownerKey === previousOwnerKey) {
       return;
     }
 
-    previousOrganizationId = nextOrganizationId;
-    const nextSettings = loadSettings(nextOrganizationId);
+    previousOwnerKey = nextScope.ownerKey;
+    const nextSettings = loadSettings(nextScope);
     useSettingsStore.setState(nextSettings);
-    setLocale(nextSettings.language);
   });
 }

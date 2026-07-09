@@ -19,54 +19,35 @@ describe("layout notification permission readiness", () => {
   it("enables the prompt for Workspace routes once a runtime scope is selected", () => {
     expect(
       shouldEnableLayoutNotificationPermission({
-        legacyOrganizationId: null,
         workspaceScopeKey:
           "account:account-a:instance:instance-a:organization:org-1:project:project-a:user:user-a",
         workspaceMessengerActive: true,
-        currentUserStatus: "idle",
       }),
     ).toBe(true);
   });
 
-  it("keeps the legacy route gated by user connection readiness", () => {
+  it("keeps the legacy route disabled", () => {
     expect(
       shouldEnableLayoutNotificationPermission({
-        legacyOrganizationId: "org-1",
         workspaceScopeKey: null,
         workspaceMessengerActive: false,
-        currentUserStatus: "idle",
       }),
     ).toBe(false);
 
     expect(
       shouldEnableLayoutNotificationPermission({
-        legacyOrganizationId: "org-1",
-        workspaceScopeKey: null,
+        workspaceScopeKey:
+          "account:account-a:instance:instance-a:organization:org-1:project:project-a:user:user-a",
         workspaceMessengerActive: false,
-        currentUserStatus: "ready",
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("stays disabled until an organization is selected", () => {
     expect(
       shouldEnableLayoutNotificationPermission({
-        legacyOrganizationId: "legacy-org",
         workspaceScopeKey: null,
         workspaceMessengerActive: true,
-        currentUserStatus: "ready",
-      }),
-    ).toBe(false);
-  });
-
-  it("keeps legacy routes disabled without the legacy organization", () => {
-    expect(
-      shouldEnableLayoutNotificationPermission({
-        legacyOrganizationId: null,
-        workspaceScopeKey:
-          "account:account-a:instance:instance-a:organization:org-1:project:project-a:user:user-a",
-        workspaceMessengerActive: false,
-        currentUserStatus: "ready",
       }),
     ).toBe(false);
   });

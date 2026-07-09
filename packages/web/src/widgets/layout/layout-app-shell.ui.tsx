@@ -5,10 +5,7 @@ import { OpenSearchContext } from "~/shared/contexts/open-search";
 import { RightDrawerContext } from "~/shared/contexts/right-drawer";
 import { brand } from "~/shared/lib/brand";
 import type { RightDrawerMode } from "~/widgets/right-panel/right-drawer.model";
-import type {
-  RightPanelUserInfo,
-  WorkspaceRightPanelInfoView,
-} from "~/widgets/right-panel/right-panel.types";
+import type { WorkspaceRightPanelInfoView } from "~/widgets/right-panel/right-panel.types";
 import { TopBar } from "~/widgets/top-bar/top-bar.ui";
 import { LayoutMainWorkspace } from "./layout-main-workspace.ui";
 
@@ -27,9 +24,7 @@ export interface LayoutAppShellProps {
   rightPanelTitle: string;
   participantsCount: number;
   onlineCount: number;
-  rightPanelUser: RightPanelUserInfo | undefined;
   workspaceRightPanelInfo: WorkspaceRightPanelInfoView | null;
-  onSelectCommonGroup: (slug: string) => void;
   onOpenSettingsDrawer: () => void;
   onOpenAboutDrawer: () => void;
 }
@@ -49,9 +44,7 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
   rightPanelTitle,
   participantsCount,
   onlineCount,
-  rightPanelUser,
   workspaceRightPanelInfo,
-  onSelectCommonGroup,
   onOpenSettingsDrawer,
   onOpenAboutDrawer,
 }) {
@@ -84,9 +77,7 @@ export const LayoutAppShell = React.memo<LayoutAppShellProps>(function LayoutApp
             rightPanelTitle={rightPanelTitle}
             participantsCount={participantsCount}
             onlineCount={onlineCount}
-            rightPanelUser={rightPanelUser}
             workspaceRightPanelInfo={workspaceRightPanelInfo}
-            onSelectCommonGroup={onSelectCommonGroup}
             onOpenSettingsDrawer={onOpenSettingsDrawer}
             onOpenAboutDrawer={onOpenAboutDrawer}
           />

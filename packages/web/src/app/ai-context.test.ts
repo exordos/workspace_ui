@@ -7,10 +7,10 @@
  * state and receive real-time events without direct store access.
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { useChatListStore } from "../entities/chat-list/chat-list.model";
-import { useInstancesStore } from "../entities/instance/instance.model";
+import { useMessengerStore } from "../entities/messenger/messenger.model";
 import { useThemeStore } from "../entities/theme/theme.model";
 import { useUsersStore } from "../entities/user/user.model";
+import { useWorkspaceAuthStore } from "../entities/workspace-auth/workspace-auth.model";
 import {
   installAiContext,
   notifyAiNewMessage,
@@ -18,14 +18,22 @@ import {
   type AiContextBridge,
 } from "./ai-context";
 
-vi.mock("../entities/chat-list/chat-list.model", () => ({
-  useChatListStore: { getState: vi.fn() },
+vi.mock("../entities/messenger/messenger-sidebar.lib", () => ({
+  selectMessengerSidebarActivityCounts: vi.fn((state: { inboxCount?: number }) => ({
+    inboxCount: state.inboxCount ?? 0,
+    mentionsCount: 0,
+    reactionsCount: 0,
+    starredCount: 0,
+  })),
+}));
+vi.mock("../entities/messenger/messenger.model", () => ({
+  useMessengerStore: { getState: vi.fn() },
 }));
 vi.mock("../entities/user/user.model", () => ({
   useUsersStore: { getState: vi.fn() },
 }));
-vi.mock("../entities/instance/instance.model", () => ({
-  useInstancesStore: { getState: vi.fn() },
+vi.mock("../entities/workspace-auth/workspace-auth.model", () => ({
+  useWorkspaceAuthStore: { getState: vi.fn() },
 }));
 vi.mock("../entities/theme/theme.model", () => ({
   useThemeStore: { getState: vi.fn() },
@@ -47,16 +55,12 @@ function getAi(): AiContextBridge {
 }
 
 function setupDefaultStoreMocks() {
-  vi.mocked(useChatListStore.getState).mockReturnValue({
-    currentUserId: null,
-    streams: () => [],
-    dms: () => [],
-  } as never);
+  vi.mocked(useMessengerStore.getState).mockReturnValue({ inboxCount: 0 } as never);
   vi.mocked(useUsersStore.getState).mockReturnValue({
     getUser: vi.fn(() => undefined),
   } as never);
-  vi.mocked(useInstancesStore.getState).mockReturnValue({
-    getCurrentInstance: vi.fn(() => null),
+  vi.mocked(useWorkspaceAuthStore.getState).mockReturnValue({
+    getCurrentSession: vi.fn(() => null),
   } as never);
   vi.mocked(useThemeStore.getState).mockReturnValue({
     paletteId: "orange-warm",
@@ -153,52 +157,57 @@ describe("ai-context", () => {
     });
 
     // AI uses user info for personalized responses and context
-    it("returns user info from stores when logged in", () => {
-      vi.mocked(useChatListStore.getState).mockReturnValue({
-        currentUserId: 42,
-        streams: () => [],
-        dms: () => [],
-      } as never);
+    it("returns user info from workspace stores when logged in", () => {
       vi.mocked(useUsersStore.getState).mockReturnValue({
-        getUser: vi.fn((id: string) => (id === "42" ? { displayName: "Alice Test" } : undefined)),
+        getUser: vi.fn((id: string) =>
+          id === "user-uuid"
+            ? { displayName: "Alice Test", email: "alice@example.com" }
+            : undefined,
+        ),
       } as never);
-      vi.mocked(useInstancesStore.getState).mockReturnValue({
-        getCurrentInstance: vi.fn(() => ({
-          email: "alice@example.com",
-          realm: "https://zulip.example.com",
+      vi.mocked(useWorkspaceAuthStore.getState).mockReturnValue({
+        getCurrentSession: vi.fn(() => ({
+          userUuid: "user-uuid",
+          profile: {
+            email: "profile@example.com",
+            username: "alice",
+            firstName: "Alice",
+            lastName: "Test",
+          },
         })),
       } as never);
 
       installAiContext();
       const result = getAi().context.getCurrentUser();
-      expect(result.userId).toBe(42);
+      expect(result.userId).toBeNull();
+      expect(result.userUuid).toBe("user-uuid");
       expect(result.email).toBe("alice@example.com");
       expect(result.fullName).toBe("Alice Test");
-      expect(result.realm).toBe("https://zulip.example.com");
     });
 
     // Profile may load async — AI should still get available data
     it("returns partial info when user profile is not loaded yet", () => {
-      vi.mocked(useChatListStore.getState).mockReturnValue({
-        currentUserId: 99,
-        streams: () => [],
-        dms: () => [],
-      } as never);
       vi.mocked(useUsersStore.getState).mockReturnValue({
         getUser: vi.fn(() => undefined),
       } as never);
-      vi.mocked(useInstancesStore.getState).mockReturnValue({
-        getCurrentInstance: vi.fn(() => ({
-          email: "user@example.com",
-          realm: "https://zulip.example.com",
+      vi.mocked(useWorkspaceAuthStore.getState).mockReturnValue({
+        getCurrentSession: vi.fn(() => ({
+          userUuid: "user-uuid",
+          profile: {
+            email: "user@example.com",
+            username: "fallback-user",
+            firstName: null,
+            lastName: null,
+          },
         })),
       } as never);
 
       installAiContext();
       const result = getAi().context.getCurrentUser();
-      expect(result.userId).toBe(99);
+      expect(result.userId).toBeNull();
+      expect(result.userUuid).toBe("user-uuid");
       expect(result.email).toBe("user@example.com");
-      expect(result.fullName).toBeUndefined();
+      expect(result.fullName).toBe("fallback-user");
     });
   });
 
@@ -219,12 +228,8 @@ describe("ai-context", () => {
     });
 
     // Unread count helps AI prioritize which conversations to suggest
-    it("computes unreadCount from streams and dms badges", () => {
-      vi.mocked(useChatListStore.getState).mockReturnValue({
-        currentUserId: null,
-        streams: () => [{ badge: 5 }, { badge: 3 }, { badge: 0 }],
-        dms: () => [{ badge: 2 }, { badge: undefined }],
-      } as never);
+    it("computes unreadCount from messenger sidebar counts", () => {
+      vi.mocked(useMessengerStore.getState).mockReturnValue({ inboxCount: 10 } as never);
 
       installAiContext();
       const result = getAi().context.getAppState();

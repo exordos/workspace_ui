@@ -23,8 +23,8 @@ import type {
 // ---------------------------------------------------------------------------
 
 export interface PluginDataProvider {
-  getCurrentUserId(): number | null;
-  getStreams(): { id: number; name: string; badge?: number }[];
+  getCurrentUserId(): string | number | null;
+  getStreams(): { id: string | number; name: string; badge?: number }[];
   getThemeMode(): string;
 }
 

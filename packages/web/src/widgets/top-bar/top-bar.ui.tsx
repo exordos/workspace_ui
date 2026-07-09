@@ -1,8 +1,9 @@
 import React, { useCallback, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useInstancesStore } from "~/entities/instance/instance.model";
-import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
-import { InstanceSwitcher } from "~/features/instance-switch/instance-switch.ui";
+import {
+  selectCurrentWorkspaceRuntimeContext,
+  useWorkspaceAuthStore,
+} from "~/entities/workspace-auth/workspace-auth.model";
 import { t } from "~/i18n/i18n";
 import { SCROLL_AREA_CLASS } from "~/shared/config/constants";
 import { isElectronDarwin } from "~/shared/lib/electron";
@@ -19,6 +20,7 @@ import { TopBarProfileTrigger } from "./top-bar-profile-trigger.ui";
 import { TopBarSearchButton } from "./top-bar-search-button.ui";
 import { useTopBarSearchModal } from "./top-bar-search-modal.hook";
 import { TopBarSectionNav } from "./top-bar-section-nav.ui";
+import { InstanceSwitcher } from "./top-bar-workspace-session-switcher.ui";
 import {
   getSectionFromPathname,
   getTopBarSectionNavItems,
@@ -35,23 +37,20 @@ export const TopBar: React.FC = () => {
   const {
     open: searchOpen,
     setOpen: setSearchOpen,
-    onSelectMessage: handleSearchSelectMessage,
-    onSelectUser: handleSearchSelectUser,
     onSelectUserUuid: handleSearchSelectUserUuid,
   } = useTopBarSearchModal({ navigate, mode: searchModalMode, pathname: location.pathname });
-  const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
-  const currentWorkspaceInstanceId = useWorkspaceAuthStore((s) => {
-    const accountId = s.currentAccountId;
-    return accountId != null
-      ? (s.sessions.find((session) => session.accountId === accountId)?.instanceId ?? null)
-      : null;
-  });
-  const currentWorkspaceProjectId = useWorkspaceAuthStore((s) => {
-    const accountId = s.currentAccountId;
-    return accountId != null
-      ? (s.sessions.find((session) => session.accountId === accountId)?.projectId ?? null)
-      : null;
-  });
+  const workspaceSessions = useWorkspaceAuthStore((s) => s.sessions);
+  const currentWorkspaceAccountId = useWorkspaceAuthStore((s) => s.currentAccountId);
+  const currentWorkspaceRuntimeContext = useMemo(
+    () =>
+      selectCurrentWorkspaceRuntimeContext({
+        sessions: workspaceSessions,
+        currentAccountId: currentWorkspaceAccountId,
+      }),
+    [currentWorkspaceAccountId, workspaceSessions],
+  );
+  const currentWorkspaceInstanceId = currentWorkspaceRuntimeContext?.instanceId ?? null;
+  const currentWorkspaceProjectId = currentWorkspaceRuntimeContext?.projectId ?? null;
   const sections = useMemo(
     () =>
       getTopBarSectionNavItems({
@@ -72,7 +71,7 @@ export const TopBar: React.FC = () => {
         const messengerPath =
           currentWorkspaceProjectId != null && currentWorkspaceProjectId.trim().length > 0
             ? resolveMessengerNavigationPath({
-                instanceId: currentWorkspaceInstanceId ?? currentInstanceId,
+                instanceId: currentWorkspaceInstanceId,
                 projectId: currentWorkspaceProjectId,
               })
             : "/inbox";
@@ -81,7 +80,7 @@ export const TopBar: React.FC = () => {
         void navigate(withCurrentOrgRoute(`/${section}`));
       }
     },
-    [currentInstanceId, currentWorkspaceInstanceId, currentWorkspaceProjectId, navigate],
+    [currentWorkspaceInstanceId, currentWorkspaceProjectId, navigate],
   );
 
   return (
@@ -89,8 +88,6 @@ export const TopBar: React.FC = () => {
       <SearchModal
         open={searchOpen}
         onOpenChange={setSearchOpen}
-        onSelectMessage={handleSearchSelectMessage}
-        onSelectUser={handleSearchSelectUser}
         onSelectUserUuid={handleSearchSelectUserUuid}
         mode={searchModalMode}
       />

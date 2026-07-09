@@ -1,9 +1,4 @@
-/**
- * Right drawer + chat info wiring for Layout: drawer context, profile autoload,
- * panel user card, chat-info sync, presence fallbacks, resolved panel title.
- */
 import { useMemo } from "react";
-import type { RuntimeInstance } from "~/entities/instance/instance.model";
 import {
   selectWorkspaceRightPanelInfoView,
   type WorkspaceRightPanelInfoView,
@@ -19,19 +14,11 @@ import { t } from "~/i18n/i18n";
 import type { WorkspaceMessengerRouteMatch } from "~/shared/lib/workspace-messenger-route.lib";
 import type { StreamEntryInternal } from "~/shared/types/sidebar-chat";
 import type { RightDrawerMode } from "~/widgets/right-panel/right-drawer.model";
-import type { RightPanelUserInfo } from "~/widgets/right-panel/right-panel.types";
 import type { SidebarChat, StreamWithLast } from "~/widgets/sidebar/sidebar.types";
-import { useLayoutChatInfoSync } from "./layout-chat-info-sync.hook";
 import { useLayoutRightDrawerContext } from "./layout-right-drawer-context.hook";
 import { resolveLayoutRightPanelTitle } from "./layout-right-drawer-title.lib";
-import { useLayoutRightPanelUser } from "./layout-right-panel-user.hook";
-import { useLayoutUserProfileAutoload } from "./layout-user-profile-autoload.hook";
-import { useLayoutUserStatusFallback } from "./layout-user-status-fallback.hook";
 
 export interface UseLayoutRightPanelShellParams {
-  instances: readonly RuntimeInstance[];
-  currentInstanceId: string | null;
-  currentUserStatus: "idle" | "loading" | "ready" | "degraded" | "blocked";
   streamsFromStore: StreamWithLast[];
   dmsFromStore: SidebarChat[];
   streamsMap: Map<number, StreamEntryInternal>;
@@ -44,7 +31,7 @@ export interface UseLayoutRightPanelShellParams {
   rightDrawerUserIdOverride: number | null;
   rightDrawerWorkspaceUserUuidOverride: MessengerUuid | null;
   mutedStreamIds: Set<number>;
-  usersMapForChatInfo: Map<number, { full_name?: string; email?: string }>;
+  usersMapForRightDrawer: Map<number, { full_name?: string; email?: string }>;
   workspaceRoute: WorkspaceMessengerRouteMatch | null;
 }
 
@@ -52,7 +39,6 @@ export interface LayoutRightPanelShellResult {
   rightPanelTitleResolved: string;
   participantsCount: number;
   onlineCount: number;
-  rightPanelUser: RightPanelUserInfo | undefined;
   workspaceRightPanelInfo: WorkspaceRightPanelInfoView | null;
 }
 
@@ -60,8 +46,6 @@ export function useLayoutRightPanelShell(
   params: UseLayoutRightPanelShellParams,
 ): LayoutRightPanelShellResult {
   const {
-    currentInstanceId,
-    currentUserStatus,
     streamsFromStore,
     dmsFromStore,
     streamsMap,
@@ -73,24 +57,17 @@ export function useLayoutRightPanelShell(
     rightDrawerMode,
     rightDrawerUserIdOverride,
     rightDrawerWorkspaceUserUuidOverride,
-    mutedStreamIds,
-    usersMapForChatInfo,
+    usersMapForRightDrawer,
     workspaceRoute,
   } = params;
   const workspaceMessengerActive = workspaceRoute != null;
 
   const rightDrawerOverrideUser =
-    rightDrawerUserIdOverride != null ? usersMapForChatInfo.get(rightDrawerUserIdOverride) : null;
+    rightDrawerUserIdOverride != null ? usersMapForRightDrawer.get(rightDrawerUserIdOverride) : null;
   const rightDrawerOverrideUserName = rightDrawerOverrideUser?.full_name?.trim();
 
   const {
     title: rightDrawerTitle,
-    rightDrawerTargetUserId,
-    partnerUserId,
-    dmChat,
-    dmParticipantIds,
-    activeStreamId,
-    activeStreamName,
   } = useLayoutRightDrawerContext({
     streams: streamsFromStore,
     dms: dmsFromStore,
@@ -103,42 +80,6 @@ export function useLayoutRightPanelShell(
     rightDrawerUserIdOverride,
     rightDrawerOverrideUserName,
     rightDrawerOpen,
-  });
-
-  useLayoutUserProfileAutoload({
-    currentInstanceId,
-    rightDrawerMode,
-    rightDrawerTargetUserId,
-    rightDrawerOpen,
-  });
-
-  const currentInstanceRealm = undefined;
-
-  const rightPanelUser = useLayoutRightPanelUser({
-    rightDrawerTargetUserId,
-    dmChat,
-    dms: dmsFromStore,
-    currentInstanceRealm,
-  });
-
-  const chatInfoTopics = useMemo(() => {
-    if (activeStreamId == null) return [];
-    return Array.from(streamsMap.get(activeStreamId)?.topics.values() ?? []).map((topic) => ({
-      name: topic.subject,
-      unreadCount: topic.unreadCount,
-    }));
-  }, [activeStreamId, streamsMap]);
-
-  const { chatInfoData } = useLayoutChatInfoSync({
-    enabled: !workspaceMessengerActive,
-    currentInstanceId,
-    dmChat,
-    dmParticipantIds,
-    activeStreamId,
-    activeStreamName,
-    mutedStreamIds,
-    topics: chatInfoTopics,
-    usersMapForChatInfo,
   });
 
   const workspaceConversationsById = useMessengerStore((state) => state.conversationsById);
@@ -197,26 +138,21 @@ export function useLayoutRightPanelShell(
       workspaceUsersById,
     ],
   );
-
-  const rightPanelMemberStatusIds = useMemo(() => {
-    if (!rightDrawerOpen) return [];
-    if (chatInfoData?.type !== "stream" && chatInfoData?.type !== "dm") {
-      return [];
-    }
-    return chatInfoData.members
-      .slice(0, 40)
-      .map((member) => member.userId)
-      .filter((userId) => Number.isFinite(userId) && userId > 0);
-  }, [chatInfoData, rightDrawerOpen]);
-
-  useLayoutUserStatusFallback({
-    enabled: currentUserStatus === "ready" || currentUserStatus === "degraded",
-    currentUserId,
-    partnerUserId,
-    rightDrawerOpen,
-    rightDrawerTargetUserId,
-    rightPanelMemberStatusIds,
-  });
+  const effectiveWorkspaceRightPanelInfo = useMemo<WorkspaceRightPanelInfoView | null>(() => {
+    if (!workspaceMessengerActive) return null;
+    if (workspaceRightPanelInfo != null) return workspaceRightPanelInfo;
+    return {
+      kind: "channel",
+      streamUuid: null,
+      notificationMode: null,
+      title: t("workspaceMessenger.temporarilyNotConnected"),
+      description: null,
+      participantsCount: 0,
+      onlineCount: 0,
+      members: [],
+      topics: [],
+    };
+  }, [workspaceMessengerActive, workspaceRightPanelInfo]);
 
   const rightPanelTitleResolved = resolveLayoutRightPanelTitle(
     rightDrawerMode,
@@ -224,15 +160,18 @@ export function useLayoutRightPanelShell(
     t,
   );
   const workspaceParticipantsCount =
-    workspaceRightPanelInfo?.kind === "channel" ? workspaceRightPanelInfo.participantsCount : null;
+    effectiveWorkspaceRightPanelInfo?.kind === "channel"
+      ? effectiveWorkspaceRightPanelInfo.participantsCount
+      : null;
   const workspaceOnlineCount =
-    workspaceRightPanelInfo?.kind === "channel" ? workspaceRightPanelInfo.onlineCount : null;
+    effectiveWorkspaceRightPanelInfo?.kind === "channel"
+      ? effectiveWorkspaceRightPanelInfo.onlineCount
+      : null;
 
   return {
-    rightPanelTitleResolved: workspaceRightPanelInfo?.title ?? rightPanelTitleResolved,
-    participantsCount: workspaceParticipantsCount ?? chatInfoData?.memberCount ?? 0,
-    onlineCount: workspaceOnlineCount ?? chatInfoData?.onlineCount ?? 0,
-    rightPanelUser: workspaceMessengerActive ? undefined : (rightPanelUser ?? undefined),
-    workspaceRightPanelInfo,
+    rightPanelTitleResolved: effectiveWorkspaceRightPanelInfo?.title ?? rightPanelTitleResolved,
+    participantsCount: workspaceParticipantsCount ?? 0,
+    onlineCount: workspaceOnlineCount ?? 0,
+    workspaceRightPanelInfo: effectiveWorkspaceRightPanelInfo,
   };
 }

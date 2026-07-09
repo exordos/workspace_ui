@@ -19,9 +19,11 @@
  *   __ai__.commands.register("summarize-chat", handler)
  */
 
-import { useChatListStore } from "~/entities/chat-list/chat-list.model";
+import { selectMessengerSidebarActivityCounts } from "~/entities/messenger/messenger-sidebar.lib";
+import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { useUsersStore } from "~/entities/user/user.model";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { getLocale } from "~/i18n/i18n";
 import { createLogger } from "~/shared/lib/logger";
 
@@ -42,6 +44,7 @@ export interface AiChatContext {
 
 export interface AiUserContext {
   userId: number | null;
+  userUuid?: string;
   email?: string;
   fullName?: string;
   realm?: string;
@@ -80,30 +83,32 @@ function getCurrentChat(): AiChatContext {
 }
 
 function getCurrentUser(): AiUserContext {
-  const userId = useChatListStore.getState().currentUserId;
-  const user = userId != null ? useUsersStore.getState().getUser(String(userId)) : undefined;
+  const session = useWorkspaceAuthStore.getState().getCurrentSession();
+  const userUuid = session?.userUuid;
+  const user = userUuid != null ? useUsersStore.getState().getUser(userUuid) : undefined;
+  const sessionFullName = [session?.profile.firstName, session?.profile.lastName]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
 
   return {
-    userId,
-    email: user?.email ?? undefined,
-    fullName: user?.displayName,
+    userId: null,
+    userUuid,
+    email: user?.email ?? session?.profile.email ?? undefined,
+    fullName:
+      user?.displayName ??
+      (sessionFullName.length > 0 ? sessionFullName : session?.profile.username),
   };
 }
 
 function getAppState(): AiAppState {
   const theme = useThemeStore.getState();
-  const chatList = useChatListStore.getState();
-  const streams = chatList.streams();
-  const dms = chatList.dms();
-
-  const unreadCount =
-    streams.reduce((sum, s) => sum + (s.badge ?? 0), 0) +
-    dms.reduce((sum, d) => sum + (d.badge ?? 0), 0);
+  const counts = selectMessengerSidebarActivityCounts(useMessengerStore.getState());
 
   return {
     locale: getLocale(),
     theme: { palette: theme.paletteId, mode: theme.mode },
-    unreadCount,
+    unreadCount: counts.inboxCount ?? 0,
     online: typeof navigator !== "undefined" ? navigator.onLine : true,
     runtime: typeof window !== "undefined" && window.electronAPI ? "electron" : "browser",
     version: import.meta.env.VITE_APP_VERSION ?? "0.0.0",

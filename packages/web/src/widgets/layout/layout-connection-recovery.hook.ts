@@ -1,5 +1,4 @@
 import { useEffect, useRef } from "react";
-import { captureActiveOrgRequestContext } from "~/entities/instance/instance.model";
 import {
   getConnectionHealthSnapshot,
   requestReconnect,
@@ -8,10 +7,6 @@ import {
 } from "~/shared/lib/connection-health";
 import { onReconnect } from "~/shared/lib/network";
 import { onTabResume, onVisibilityChange } from "~/shared/lib/visibility";
-import {
-  scheduleLayoutReconnectRefresh,
-  type LayoutReconnectRefreshParams,
-} from "./layout-reconnect-coordinator.lib";
 import { isLayoutUserConnectionReady } from "./layout-user-connection-status.types";
 import type { LayoutUserConnectionStatus } from "./layout-user-connection-status.types";
 
@@ -36,21 +31,12 @@ export function useLayoutConnectionRecovery(options: UseLayoutConnectionRecovery
   const { currentUserStatus, currentInstanceId, latestMessageIdRef, focusedMessageId } = options;
   const statusRef = useRef(currentUserStatus);
   const hasBootstrapSettledRef = useRef(false);
-  const refreshParamsRef = useRef<LayoutReconnectRefreshParams>({
-    instanceId: currentInstanceId,
-    latestMessageIdRef,
-    focusedMessageId: focusedMessageId ?? null,
-    orgContext: captureActiveOrgRequestContext(),
-  });
 
   useEffect(() => {
     statusRef.current = currentUserStatus;
-    refreshParamsRef.current = {
-      instanceId: currentInstanceId,
-      latestMessageIdRef,
-      focusedMessageId: focusedMessageId ?? null,
-      orgContext: captureActiveOrgRequestContext(),
-    };
+    void currentInstanceId;
+    void latestMessageIdRef;
+    void focusedMessageId;
     if (isLayoutUserConnectionReady(currentUserStatus)) {
       hasBootstrapSettledRef.current = true;
     }
@@ -61,7 +47,6 @@ export function useLayoutConnectionRecovery(options: UseLayoutConnectionRecovery
       if (!hasBootstrapSettledRef.current) {
         return;
       }
-      scheduleLayoutReconnectRefresh(refreshParamsRef.current, "full");
       if (statusRef.current === "degraded" || statusRef.current === "blocked") {
         requestReconnect({ showReconnecting: false });
       }
@@ -71,7 +56,6 @@ export function useLayoutConnectionRecovery(options: UseLayoutConnectionRecovery
       if (!hasBootstrapSettledRef.current) {
         return;
       }
-      scheduleLayoutReconnectRefresh(refreshParamsRef.current, "light");
       if (statusRef.current === "degraded" || statusRef.current === "blocked") {
         requestReconnect();
       }

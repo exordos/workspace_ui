@@ -3,20 +3,22 @@
  */
 import { useEffect, useRef } from "react";
 import {
-  captureActiveOrgRequestContext,
-  isActiveOrgRequestContextCurrent,
-  type ActiveOrgRequestContext,
-} from "~/entities/instance/instance.model";
+  captureWorkspaceRuntimeRequestContext,
+  isWorkspaceRuntimeRequestContextCurrent,
+  type WorkspaceRuntimeContextGetter,
+} from "~/entities/workspace-runtime/workspace-runtime.lib";
+import type { WorkspaceRuntimeRequestContext } from "~/entities/workspace-runtime/workspace-runtime.types";
 import { runInFlightDeduped } from "~/shared/lib/request-lifecycle.lib";
 
 interface CacheFirstPageRunContext {
   instanceId: string;
-  orgContext: ActiveOrgRequestContext;
+  requestContext: WorkspaceRuntimeRequestContext;
   signal: AbortSignal;
 }
 
 export interface UseCacheFirstPageLoadConfig {
   instanceId: string | null;
+  getRuntimeContext: WorkspaceRuntimeContextGetter;
   /** Dedupe key for `runInFlightDeduped` (include instance + resource). */
   dedupeKey: string;
   /** Increment to re-run hydrate + network refresh (e.g. inbox/activity stale signals). */
@@ -45,11 +47,13 @@ export function useCacheFirstPageLoad(config: UseCacheFirstPageLoadConfig): void
 
     if (instanceId == null) return;
 
-    const orgContext = captureActiveOrgRequestContext();
+    const requestContext = captureWorkspaceRuntimeRequestContext(configRef.current.getRuntimeContext);
+    if (requestContext == null) return;
+
     const controller = new AbortController();
     const runContext: CacheFirstPageRunContext = {
       instanceId,
-      orgContext,
+      requestContext,
       signal: controller.signal,
     };
     configRef.current.onInstanceChange?.(instanceId);
@@ -61,13 +65,24 @@ export function useCacheFirstPageLoad(config: UseCacheFirstPageLoadConfig): void
         if (
           isAbortError(error) ||
           controller.signal.aborted ||
-          !isActiveOrgRequestContextCurrent(orgContext)
+          !isWorkspaceRuntimeRequestContextCurrent(
+            requestContext,
+            configRef.current.getRuntimeContext,
+          )
         ) {
           return;
         }
       }
 
-      if (controller.signal.aborted || !isActiveOrgRequestContextCurrent(orgContext)) return;
+      if (
+        controller.signal.aborted ||
+        !isWorkspaceRuntimeRequestContextCurrent(
+          requestContext,
+          configRef.current.getRuntimeContext,
+        )
+      ) {
+        return;
+      }
 
       const requestVersion = configRef.current.startRequest(configRef.current.hasCachedData());
       try {
@@ -78,7 +93,10 @@ export function useCacheFirstPageLoad(config: UseCacheFirstPageLoadConfig): void
         if (
           isAbortError(error) ||
           controller.signal.aborted ||
-          !isActiveOrgRequestContextCurrent(orgContext)
+          !isWorkspaceRuntimeRequestContextCurrent(
+            requestContext,
+            configRef.current.getRuntimeContext,
+          )
         ) {
           return;
         }

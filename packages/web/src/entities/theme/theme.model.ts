@@ -5,8 +5,14 @@
  * Listens to OS prefers-color-scheme changes when mode is "system".
  */
 import { create } from "zustand";
-import { useInstancesStore } from "~/entities/instance/instance.model";
-import { buildOrgScopedStorageKey } from "~/shared/lib/org-scoped-storage";
+import {
+  buildLegacyWorkspaceSessionStorageKey,
+  buildWorkspaceSessionStorageKey,
+  getCurrentWorkspaceSessionStorageScope,
+  getWorkspaceSessionStorageScopeFromAuthState,
+  type WorkspaceSessionStorageScope,
+} from "~/entities/workspace-auth/workspace-session-storage-scope.lib";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { applyTheme, getResolvedMode } from "~/shared/lib/themes/engine";
 import { defaultPaletteId } from "~/shared/lib/themes/registry";
 import type { ThemeMode } from "~/shared/lib/themes/tokens";
@@ -24,24 +30,34 @@ const STORAGE_KEY_PALETTE = "workspace-palette";
 const STORAGE_KEY_MODE = "workspace-theme-mode";
 const DEFAULT_MODE: ThemeMode = "system";
 
-function getStorageKeysForOrganization(organizationId: string | null): {
+function getStorageKeysForScope(scope: WorkspaceSessionStorageScope): {
   paletteKey: string;
   modeKey: string;
+  legacyPaletteKey: string | null;
+  legacyModeKey: string | null;
 } {
   return {
-    paletteKey: buildOrgScopedStorageKey(STORAGE_KEY_PALETTE, organizationId),
-    modeKey: buildOrgScopedStorageKey(STORAGE_KEY_MODE, organizationId),
+    paletteKey: buildWorkspaceSessionStorageKey(STORAGE_KEY_PALETTE, scope),
+    modeKey: buildWorkspaceSessionStorageKey(STORAGE_KEY_MODE, scope),
+    legacyPaletteKey: buildLegacyWorkspaceSessionStorageKey(STORAGE_KEY_PALETTE, scope),
+    legacyModeKey: buildLegacyWorkspaceSessionStorageKey(STORAGE_KEY_MODE, scope),
   };
 }
 
+function readStorageWithFallback(primaryKey: string, fallbackKey: string | null): string | null {
+  const primary = localStorage.getItem(primaryKey);
+  if (primary != null || fallbackKey == null || fallbackKey === primaryKey) return primary;
+  return localStorage.getItem(fallbackKey);
+}
+
 function loadStored(
-  organizationId: string | null = useInstancesStore.getState().currentInstanceId,
+  scope: WorkspaceSessionStorageScope = getCurrentWorkspaceSessionStorageScope(),
 ): { paletteId: string; mode: ThemeMode } {
   if (typeof window === "undefined") return { paletteId: defaultPaletteId, mode: DEFAULT_MODE };
   try {
-    const { paletteKey, modeKey } = getStorageKeysForOrganization(organizationId);
-    const storedMode = localStorage.getItem(modeKey);
-    const storedPaletteId = localStorage.getItem(paletteKey);
+    const { paletteKey, modeKey, legacyPaletteKey, legacyModeKey } = getStorageKeysForScope(scope);
+    const storedMode = readStorageWithFallback(modeKey, legacyModeKey);
+    const storedPaletteId = readStorageWithFallback(paletteKey, legacyPaletteKey);
 
     const mode: ThemeMode =
       storedMode === "light" || storedMode === "dark" || storedMode === "system"
@@ -59,11 +75,11 @@ function loadStored(
 function persist(
   paletteId: string,
   mode: ThemeMode,
-  organizationId: string | null = useInstancesStore.getState().currentInstanceId,
+  scope: WorkspaceSessionStorageScope = getCurrentWorkspaceSessionStorageScope(),
 ): void {
   if (typeof window === "undefined") return;
   try {
-    const { paletteKey, modeKey } = getStorageKeysForOrganization(organizationId);
+    const { paletteKey, modeKey } = getStorageKeysForScope(scope);
     localStorage.setItem(paletteKey, paletteId);
     localStorage.setItem(modeKey, mode);
   } catch {
@@ -104,15 +120,15 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
 if (typeof window !== "undefined") {
   applyTheme(initial.paletteId, initial.mode);
 
-  let previousOrganizationId = useInstancesStore.getState().currentInstanceId;
-  useInstancesStore.subscribe((state) => {
-    const nextOrganizationId = state.currentInstanceId;
-    if (nextOrganizationId === previousOrganizationId) {
+  let previousOwnerKey = getCurrentWorkspaceSessionStorageScope().ownerKey;
+  useWorkspaceAuthStore.subscribe((state) => {
+    const nextScope = getWorkspaceSessionStorageScopeFromAuthState(state);
+    if (nextScope.ownerKey === previousOwnerKey) {
       return;
     }
 
-    previousOrganizationId = nextOrganizationId;
-    const nextTheme = loadStored(nextOrganizationId);
+    previousOwnerKey = nextScope.ownerKey;
+    const nextTheme = loadStored(nextScope);
     useThemeStore.setState(nextTheme);
     applyTheme(nextTheme.paletteId, nextTheme.mode);
   });

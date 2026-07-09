@@ -2,7 +2,6 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useFeedStore } from "~/entities/feed/feed.model";
-import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -139,12 +138,6 @@ function setRuntime(session: WorkspaceAuthSession = createSession()): string {
     currentAccountId: session.accountId,
     runtimeGeneration: session.runtimeGeneration,
   });
-  useInstancesStore.setState({
-    instances: [{ id: session.instanceId }],
-    currentInstanceId: session.instanceId,
-    unreadCountsByInstance: {},
-    activeOrgEpoch: 0,
-  });
   return workspaceRuntimeOwnerKey(session);
 }
 
@@ -168,12 +161,6 @@ function resetStores(): void {
     runtimeGeneration: 0,
   });
   useWorkspaceForwardMessageStore.getState().reset();
-  useInstancesStore.setState({
-    instances: [],
-    currentInstanceId: null,
-    unreadCountsByInstance: {},
-    activeOrgEpoch: 0,
-  });
 }
 
 function mockElementScrollHeight(value: number): () => void {

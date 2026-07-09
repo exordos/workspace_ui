@@ -4,32 +4,57 @@
  * Covers activity toggle and expanded stream topics state.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useInstancesStore } from "~/entities/instance/instance.model";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useSidebarConfigStore } from "./sidebar-config.model";
 
 const STORAGE_KEY = "workspace-sidebar-config";
 
 function resetStore() {
   window.localStorage.clear();
-  useInstancesStore.setState({
-    instances: [],
-    currentInstanceId: null,
-    unreadCountsByInstance: {},
+  useWorkspaceAuthStore.setState({
+    sessions: [],
+    currentAccountId: null,
+    runtimeGeneration: 0,
   });
   useSidebarConfigStore.setState({ activityOpen: false, expandedStreamUuids: [] });
 }
 
-function setInstanceScope(instanceIds: string[], currentInstanceId: string): void {
-  useInstancesStore.setState({
-    instances: instanceIds.map((id) => ({
-      id,
-      realm: `https://${id}.example.com`,
-      email: `${id}@example.com`,
-      apiKey: `key-${id}`,
-    })),
-    currentInstanceId,
-    unreadCountsByInstance: {},
+function createSession(id: "a" | "b"): WorkspaceAuthSession {
+  return {
+    accountId: `account-${id}`,
+    instanceId: `instance-${id}`,
+    organizationId: `org-${id}`,
+    organizationOrigin: `https://org-${id}.example.com`,
+    projectId: `project-${id}`,
+    userUuid: `user-${id}`,
+    accessToken: `access-token-${id}`,
+    refreshToken: `refresh-token-${id}`,
+    runtimeGeneration: 1,
+    login: `user-${id}@example.com`,
+    profile: {
+      uuid: `user-${id}`,
+      username: `user-${id}`,
+      firstName: "User",
+      lastName: id.toUpperCase(),
+      email: `user-${id}@example.com`,
+    },
+  };
+}
+
+function setWorkspaceSessionScope(currentAccountId: "account-a" | "account-b"): {
+  sessionA: WorkspaceAuthSession;
+  sessionB: WorkspaceAuthSession;
+} {
+  const sessionA = createSession("a");
+  const sessionB = createSession("b");
+  useWorkspaceAuthStore.setState({
+    sessions: [sessionA, sessionB],
+    currentAccountId,
+    runtimeGeneration: 1,
   });
+  return { sessionA, sessionB };
 }
 
 // Verifies default state, direct setter, partial config patch, and localStorage sync.
@@ -144,45 +169,73 @@ describe("sidebarConfigStore", () => {
     });
   });
 
-  describe("organization scope", () => {
-    it("persists sidebar config under active organization id", () => {
-      setInstanceScope(["org-a"], "org-a");
+  describe("workspace owner scope", () => {
+    it("persists sidebar config under active workspace owner key", () => {
+      const { sessionA } = setWorkspaceSessionScope("account-a");
+      const ownerKey = workspaceRuntimeOwnerKey(sessionA);
       useSidebarConfigStore.getState().expandStreamUuid("11-engineering");
 
-      const scopedRaw = window.localStorage.getItem("workspace-sidebar-config:org-a");
+      const scopedRaw = window.localStorage.getItem(`workspace-sidebar-config:${ownerKey}`);
       expect(scopedRaw).not.toBeNull();
       const stored = JSON.parse(scopedRaw!);
       expect(stored.expandedStreamUuids).toEqual(["11-engineering"]);
       expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
     });
 
-    it("loads sidebar config for the newly selected organization", () => {
+    it("loads sidebar config for the newly selected workspace account", () => {
+      const sessionA = createSession("a");
+      const sessionB = createSession("b");
+      const ownerAKey = workspaceRuntimeOwnerKey(sessionA);
+      const ownerBKey = workspaceRuntimeOwnerKey(sessionB);
       window.localStorage.setItem(
-        "workspace-sidebar-config:org-a",
+        `workspace-sidebar-config:${ownerAKey}`,
         JSON.stringify({ activityOpen: true, expandedStreamUuids: ["11-engineering"] }),
       );
       window.localStorage.setItem(
-        "workspace-sidebar-config:org-b",
+        `workspace-sidebar-config:${ownerBKey}`,
         JSON.stringify({ activityOpen: false, expandedStreamUuids: ["22-product"] }),
       );
 
-      setInstanceScope(["org-a", "org-b"], "org-a");
+      setWorkspaceSessionScope("account-a");
       expect(useSidebarConfigStore.getState().expandedStreamUuids).toEqual(["11-engineering"]);
 
-      useInstancesStore.getState().setCurrentInstanceId("org-b");
+      useWorkspaceAuthStore.getState().setCurrentAccountId("account-b");
       expect(useSidebarConfigStore.getState().expandedStreamUuids).toEqual(["22-product"]);
     });
 
     it("ignores legacy single-stream shape from localStorage", () => {
       window.localStorage.setItem(
-        "workspace-sidebar-config:org-a",
+        "workspace-sidebar-config:instance-a",
         JSON.stringify({ activityOpen: true, expandedStreamUuid: "11-engineering" }),
       );
 
-      setInstanceScope(["org-a"], "org-a");
+      setWorkspaceSessionScope("account-a");
 
       expect(useSidebarConfigStore.getState().activityOpen).toBe(true);
       expect(useSidebarConfigStore.getState().expandedStreamUuids).toEqual([]);
+    });
+
+    it("reads legacy instance-scoped config without writing back to legacy keys", () => {
+      const sessionA = createSession("a");
+      window.localStorage.setItem(
+        "workspace-sidebar-config:instance-a",
+        JSON.stringify({ activityOpen: true, expandedStreamUuids: ["11-engineering"] }),
+      );
+
+      setWorkspaceSessionScope("account-a");
+      expect(useSidebarConfigStore.getState().expandedStreamUuids).toEqual(["11-engineering"]);
+
+      useSidebarConfigStore.getState().expandStreamUuid("22-product");
+
+      const ownerKey = workspaceRuntimeOwnerKey(sessionA);
+      const stored = JSON.parse(
+        window.localStorage.getItem(`workspace-sidebar-config:${ownerKey}`)!,
+      );
+      expect(stored.expandedStreamUuids).toEqual(["11-engineering", "22-product"]);
+      const legacyStored = JSON.parse(
+        window.localStorage.getItem("workspace-sidebar-config:instance-a")!,
+      );
+      expect(legacyStored.expandedStreamUuids).toEqual(["11-engineering"]);
     });
   });
 });

@@ -8,10 +8,6 @@ describe("RightPanelShell Workspace info", () => {
     renderWithProviders(
       <RightPanelShell
         title="Legacy Alice"
-        user={{
-          name: "Legacy Alice",
-          userId: 42,
-        }}
         workspaceInfo={{
           kind: "directPrivate",
           directUserUuid: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",

@@ -2,7 +2,6 @@ import React, { useEffect, useLayoutEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchFeedMessages, hydrateFeedMessagesFromCache } from "~/entities/feed/feed.api";
 import { useFeedStore } from "~/entities/feed/feed.model";
-import { isActiveOrgRequestContextCurrent } from "~/entities/instance/instance.model";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import { selectUserDisplayName } from "~/entities/user/user-selectors.lib";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -114,6 +113,7 @@ export const FeedPage: React.FC = () => {
 
   useCacheFirstPageLoad({
     instanceId: currentInstanceId,
+    getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
     dedupeKey: `${ownerKey ?? "none"}:feed:newest:${FEED_PAGE_SIZE}`,
     onInstanceChange: () => {
       const cachedOwnerKey = useFeedStore.getState().ownerKey;
@@ -124,9 +124,16 @@ export const FeedPage: React.FC = () => {
       pendingScrollRestoreRef.current = null;
       loadMoreRequestRef.current = null;
     },
-    hydrate: async ({ instanceId, signal, orgContext }) => {
+    hydrate: async ({ instanceId, signal, requestContext }) => {
       const cached = await hydrateFeedMessagesFromCache(ownerKey ?? instanceId);
-      if (signal.aborted || !isActiveOrgRequestContextCurrent(orgContext)) return;
+      if (
+        signal.aborted ||
+        !isWorkspaceRuntimeRequestContextCurrent(requestContext, () =>
+          useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+        )
+      ) {
+        return;
+      }
       if (cached.length > 0) {
         setMessages(cached, { nextPageMarker: null, hasMore: false }, ownerKey);
       }
@@ -141,12 +148,14 @@ export const FeedPage: React.FC = () => {
         hasCached && (scrollEl == null || isNearBottom(scrollEl));
       return startRequest(hasCached);
     },
-    fetch: async ({ instanceId, orgContext, requestVersion, signal }) => {
+    fetch: async ({ instanceId, requestContext, requestVersion, signal }) => {
       if (runtimeContext == null) return;
       const page = await fetchFeedMessages({ runtimeContext, pageLimit: FEED_PAGE_SIZE, signal });
       if (
         signal.aborted ||
-        !isActiveOrgRequestContextCurrent(orgContext) ||
+        !isWorkspaceRuntimeRequestContextCurrent(requestContext, () =>
+          useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+        ) ||
         !isRuntimeContextCurrent(runtimeContext)
       ) {
         return;

@@ -17,10 +17,6 @@
  */
 
 import { useCallback, useSyncExternalStore } from "react";
-import {
-  buildOrgScopedStorageKey,
-  getActiveOrganizationIdFromStorage,
-} from "~/shared/lib/org-scoped-storage";
 import enMessages from "./locales/en.json";
 import ruMessages from "./locales/ru.json";
 
@@ -31,6 +27,16 @@ import ruMessages from "./locales/ru.json";
 export type Locale = "ru" | "en";
 
 type Messages = Record<string, unknown>;
+
+export interface I18nStorageScope {
+  scopeKey: string | null;
+  legacyScopeKey?: string | null;
+}
+
+export interface I18nStorageScopeConfig {
+  getScope: () => I18nStorageScope;
+  subscribe?: (onScopeChange: () => void) => () => void;
+}
 
 // ---------------------------------------------------------------------------
 // Registry
@@ -53,19 +59,56 @@ const SUPPORTED_LOCALES: readonly { id: Locale; label: string; nativeLabel: stri
 // State (reactive, no external deps)
 // ---------------------------------------------------------------------------
 
+const DEFAULT_STORAGE_SCOPE: I18nStorageScope = { scopeKey: null, legacyScopeKey: null };
+
+let getStorageScope: () => I18nStorageScope = () => DEFAULT_STORAGE_SCOPE;
+let unsubscribeStorageScope: (() => void) | null = null;
 let currentLocale: Locale = loadLocale();
 const subscribers = new Set<() => void>();
 
-function loadLocale(): Locale {
+function normalizeStorageScope(scope: I18nStorageScope): I18nStorageScope {
+  return {
+    scopeKey: scope.scopeKey != null && scope.scopeKey.length > 0 ? scope.scopeKey : null,
+    legacyScopeKey:
+      scope.legacyScopeKey != null && scope.legacyScopeKey.length > 0 ? scope.legacyScopeKey : null,
+  };
+}
+
+function getCurrentStorageScope(): I18nStorageScope {
+  try {
+    return normalizeStorageScope(getStorageScope());
+  } catch {
+    return DEFAULT_STORAGE_SCOPE;
+  }
+}
+
+function buildLocaleStorageKey(scopeKey: string | null): string {
+  if (scopeKey == null || scopeKey.length === 0) return LOCALE_STORAGE_KEY;
+  return `${LOCALE_STORAGE_KEY}:${scopeKey}`;
+}
+
+function storageScopeFingerprint(scope: I18nStorageScope): string {
+  return `${scope.scopeKey ?? ""}\n${scope.legacyScopeKey ?? ""}`;
+}
+
+function readLocaleRaw(key: string, legacyKey: string | null): string | null {
+  const raw = localStorage.getItem(key);
+  if (raw != null || legacyKey == null || legacyKey === key) return raw;
+  return localStorage.getItem(legacyKey);
+}
+
+function loadLocale(scope: I18nStorageScope = getCurrentStorageScope()): Locale {
   if (typeof window === "undefined") return DEFAULT_LOCALE;
   try {
-    const activeOrganizationId = getActiveOrganizationIdFromStorage();
-    const scopedKey = buildOrgScopedStorageKey(LOCALE_STORAGE_KEY, activeOrganizationId);
-    const stored = localStorage.getItem(scopedKey) as Locale | null;
+    const scopedKey = buildLocaleStorageKey(scope.scopeKey);
+    const legacyKey =
+      scope.legacyScopeKey == null ? null : buildLocaleStorageKey(scope.legacyScopeKey);
+    const stored = readLocaleRaw(scopedKey, legacyKey) as Locale | null;
     if (stored && stored in MESSAGES) return stored;
   } catch {
     /* restricted storage */
   }
+  if (typeof navigator === "undefined") return DEFAULT_LOCALE;
   const browser = navigator.language.slice(0, 2) as Locale;
   return browser in MESSAGES ? browser : DEFAULT_LOCALE;
 }
@@ -74,24 +117,53 @@ function notify() {
   subscribers.forEach((cb) => cb());
 }
 
+function applyLocale(locale: Locale): void {
+  currentLocale = locale;
+  if (typeof document !== "undefined") {
+    document.documentElement.lang = locale;
+  }
+  notify();
+}
+
+export function configureI18nStorageScope(config?: I18nStorageScopeConfig): void {
+  unsubscribeStorageScope?.();
+  unsubscribeStorageScope = null;
+  getStorageScope = config?.getScope ?? (() => DEFAULT_STORAGE_SCOPE);
+
+  let previousScopeFingerprint = storageScopeFingerprint(getCurrentStorageScope());
+  applyLocale(loadLocale());
+
+  if (config?.subscribe == null || typeof window === "undefined") {
+    return;
+  }
+
+  unsubscribeStorageScope = config.subscribe(() => {
+    const nextScope = getCurrentStorageScope();
+    const nextScopeFingerprint = storageScopeFingerprint(nextScope);
+    if (nextScopeFingerprint === previousScopeFingerprint) {
+      return;
+    }
+
+    previousScopeFingerprint = nextScopeFingerprint;
+    applyLocale(loadLocale(nextScope));
+  });
+}
+
 export function getLocale(): Locale {
   return currentLocale;
 }
 
 export function setLocale(locale: Locale): void {
   if (!(locale in MESSAGES)) return;
-  currentLocale = locale;
   if (typeof window !== "undefined") {
     try {
-      const activeOrganizationId = getActiveOrganizationIdFromStorage();
-      const scopedKey = buildOrgScopedStorageKey(LOCALE_STORAGE_KEY, activeOrganizationId);
+      const scopedKey = buildLocaleStorageKey(getCurrentStorageScope().scopeKey);
       localStorage.setItem(scopedKey, locale);
     } catch {
       /* restricted storage */
     }
-    document.documentElement.lang = locale;
   }
-  notify();
+  applyLocale(locale);
 }
 
 export function getSupportedLocales() {

@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerBootstrapPayload } from "~/entities/messenger/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
-import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
 import { createUser } from "~/test/factories";
 import { useLayoutRightPanelShell } from "./layout-right-panel-shell.hook";
 import type { UseLayoutRightPanelShellParams } from "./layout-right-panel-shell.hook";
@@ -102,9 +101,6 @@ function buildParams(
   overrides: Partial<UseLayoutRightPanelShellParams> = {},
 ): UseLayoutRightPanelShellParams {
   return {
-    instances: [],
-    currentInstanceId: "instance-a",
-    currentUserStatus: "ready",
     streamsFromStore: [],
     dmsFromStore: [],
     streamsMap: new Map(),
@@ -117,7 +113,7 @@ function buildParams(
     rightDrawerUserIdOverride: null,
     rightDrawerWorkspaceUserUuidOverride: null,
     mutedStreamIds: new Set(),
-    usersMapForChatInfo: new Map(),
+    usersMapForRightDrawer: new Map(),
     workspaceRoute: null,
     ...overrides,
   };
@@ -141,21 +137,15 @@ describe("useLayoutRightPanelShell", () => {
         status: "idle",
       }),
     ]);
-    useChatInfoStore.getState().clear();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
     useMessengerStore.getState().clear();
     useUsersStore.getState().clear();
-    useChatInfoStore.getState().clear();
   });
 
-  it("uses Workspace projection without hydrating legacy chat info on Workspace routes", () => {
-    const chatInfoState = useChatInfoStore.getState();
-    const hydrateSpy = vi.spyOn(chatInfoState, "hydrate");
-    const syncDerivedSpy = vi.spyOn(chatInfoState, "syncDerived");
-
+  it("uses Workspace projection on Workspace routes", () => {
     const { result } = renderHook(() =>
       useLayoutRightPanelShell(
         buildParams({
@@ -184,15 +174,9 @@ describe("useLayoutRightPanelShell", () => {
         route: `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
       },
     ]);
-    expect(hydrateSpy).not.toHaveBeenCalled();
-    expect(syncDerivedSpy).not.toHaveBeenCalled();
   });
 
   it("returns Workspace direct private panel data without legacy right-panel user", () => {
-    const chatInfoState = useChatInfoStore.getState();
-    const hydrateSpy = vi.spyOn(chatInfoState, "hydrate");
-    const syncDerivedSpy = vi.spyOn(chatInfoState, "syncDerived");
-
     const { result } = renderHook(() =>
       useLayoutRightPanelShell(
         buildParams({
@@ -209,7 +193,6 @@ describe("useLayoutRightPanelShell", () => {
     expect(result.current.rightPanelTitleResolved).toBe("Cora Lane");
     expect(result.current.participantsCount).toBe(0);
     expect(result.current.onlineCount).toBe(0);
-    expect(result.current.rightPanelUser).toBeUndefined();
     expect(result.current.workspaceRightPanelInfo).toEqual(
       expect.objectContaining({
         kind: "directPrivate",
@@ -218,7 +201,31 @@ describe("useLayoutRightPanelShell", () => {
         status: "idle",
       }),
     );
-    expect(hydrateSpy).not.toHaveBeenCalled();
-    expect(syncDerivedSpy).not.toHaveBeenCalled();
+  });
+
+  it("keeps Workspace panel fallback when route data is not projected yet", () => {
+    const { result } = renderHook(() =>
+      useLayoutRightPanelShell(
+        buildParams({
+          workspaceRoute: {
+            kind: "stream",
+            orgId: "org-a",
+            projectId: "project-a",
+            streamUuid: "77777777-7777-4777-8777-777777777777",
+          },
+        }),
+      ),
+    );
+
+    expect(result.current.rightPanelTitleResolved).toBe("#General Chat");
+    expect(result.current.participantsCount).toBe(0);
+    expect(result.current.onlineCount).toBe(0);
+    expect(result.current.workspaceRightPanelInfo).toEqual(
+      expect.objectContaining({
+        kind: "channel",
+        streamUuid: null,
+        title: "#General Chat",
+      }),
+    );
   });
 });

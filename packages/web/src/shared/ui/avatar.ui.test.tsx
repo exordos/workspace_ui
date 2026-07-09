@@ -7,6 +7,7 @@ const getAvatarBlobCacheRow = vi.hoisted(() => vi.fn());
 const putAvatarBlobCacheRow = vi.hoisted(() => vi.fn());
 const fetchAvatarBlob = vi.hoisted(() => vi.fn());
 const shouldNetworkFetchAvatarBlob = vi.hoisted(() => vi.fn(() => true));
+const OWNER_KEY = "account:account-a:instance:inst-1:organization:org-a:project:project-a:user:user-a";
 
 vi.mock("~/shared/lib/avatar-blob-cache-persist.lib", () => ({
   persistAvatarBlobsToIndexedDb,
@@ -24,9 +25,12 @@ vi.mock("~/shared/lib/avatar-blob-fetch.lib", () => ({
   shouldNetworkFetchAvatarBlob,
 }));
 
-vi.mock("~/entities/instance/instance.model", () => ({
-  useInstancesStore: (selector: (s: { currentInstanceId: string | null }) => unknown) =>
-    selector({ currentInstanceId: "inst-1" }),
+vi.mock("~/entities/workspace-auth/workspace-auth.model", () => ({
+  useWorkspaceAuthStore: (selector: (state: unknown) => unknown) => selector({}),
+}));
+
+vi.mock("~/entities/workspace-auth/workspace-session-storage-scope.lib", () => ({
+  getWorkspaceSessionStorageScopeFromAuthState: () => ({ ownerKey: OWNER_KEY }),
 }));
 
 vi.mock("~/shared/lib/avatar", () => ({
@@ -44,8 +48,8 @@ describe("Avatar IndexedDB cache", () => {
   it("uses cached blob without fetch on hit", async () => {
     const blob = new Blob(["cached"], { type: "image/png" });
     getAvatarBlobCacheRow.mockResolvedValue({
-      id: "inst-1:/avatar/1.png",
-      instanceId: "inst-1",
+      id: `${OWNER_KEY}:/avatar/1.png`,
+      instanceId: OWNER_KEY,
       cacheKey: "/avatar/1.png",
       blob,
       mimeType: "image/png",

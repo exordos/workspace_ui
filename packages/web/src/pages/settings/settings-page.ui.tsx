@@ -27,7 +27,7 @@ const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? "dev";
 
 export const SettingsPage: React.FC = () => {
   const navigate = useNavigate();
-  const { t, locale: currentLocale, setLocale, supportedLocales: locales } = useTranslation();
+  const { t, locale: currentLocale, supportedLocales: locales } = useTranslation();
   const prioritizePersonalUnread = useSettingsStore((s) => s.prioritizePersonalUnread);
   const prioritizeUnmutedUnreadChannels = useSettingsStore(
     (s) => s.prioritizeUnmutedUnreadChannels,
@@ -81,9 +81,8 @@ export const SettingsPage: React.FC = () => {
   const handleCycleLanguage = useCallback(() => {
     const idx = locales.findIndex((supportedLocale) => supportedLocale.id === currentLocale);
     const next = locales[(idx + 1) % locales.length]!;
-    setLocale(next.id);
     setLanguage(next.id);
-  }, [currentLocale, locales, setLocale, setLanguage]);
+  }, [currentLocale, locales, setLanguage]);
 
   const handleLogout = useCallback(() => {
     log.info("User initiated logout from settings page");

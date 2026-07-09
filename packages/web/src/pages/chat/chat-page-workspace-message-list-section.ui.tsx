@@ -64,9 +64,6 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
       onDismissBoundaryLoadFailed();
     }, [onDismissBoundaryLoadFailed]);
 
-    // Здесь больше нет старого MessageList и нет Zulip-shaped visual messages.
-    // Секция только держит прежние состояния route: блокирующая загрузка,
-    // ошибка и тонкий loading-показ поверх уже загруженной истории.
     const showBlockingLoader = messagesLoading && !hasInitialPayload;
     const showLoadingOverlay =
       !showBlockingLoader && messages.length > 0 && (messagesLoading || isLoadingOlder);

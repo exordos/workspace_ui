@@ -2,7 +2,10 @@ import { useEffect, useMemo } from "react";
 import { getElectronAPI } from "~/shared/lib/electron";
 import { syncFaviconWithUnreadIndicator } from "~/shared/lib/organization-branding";
 import { osIntegration } from "~/shared/lib/os-integration";
-import { hasPersonalUnreadIndicator } from "./layout-instance-unread.lib";
+
+function hasPersonalUnreadIndicator(personalDmUnread: number, mentionsUnread: number): boolean {
+  return Math.max(0, personalDmUnread) > 0 || Math.max(0, mentionsUnread) > 0;
+}
 
 export function useLayoutAppIconBadge(options: {
   personalDmUnread: number;

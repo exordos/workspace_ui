@@ -53,6 +53,7 @@ const LOG_FILE_NAME = "workspace.log";
 const LOG_ROTATED_FILE_NAME = "workspace.log.1";
 const MAX_LOG_FILE_BYTES = 1024 * 1024;
 const MAX_LOG_LINE_LENGTH = 32768;
+const NOTIFICATION_SHOW_RESULT_TIMEOUT_MS = 3000;
 
 /**
  * Fallback timeout for {@link focusMainWindow} when no `focus`/`closed` event
@@ -624,6 +625,44 @@ function setProgressBar(progress: number): void {
   }
 }
 
+function waitForNotificationShowResult(
+  notification: InstanceType<typeof Notification>,
+  tag: string | undefined,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let cleanup = (): void => {};
+    const finish = (shown: boolean): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      cleanup();
+      resolve(shown);
+    };
+
+    const timeoutId = setTimeout(() => {
+      appendLogsLine(`[notifications] show timeout tag=${tag ?? "none"}`);
+      finish(false);
+    }, NOTIFICATION_SHOW_RESULT_TIMEOUT_MS);
+
+    const onShow = (): void => {
+      appendLogsLine(`[notifications] shown tag=${tag ?? "none"}`);
+      finish(true);
+    };
+    const onFailed = (_event: Electron.Event, error: string): void => {
+      appendLogsLine(`[notifications] failed tag=${tag ?? "none"} error=${String(error)}`);
+      finish(false);
+    };
+    cleanup = () => {
+      notification.off("show", onShow);
+      notification.off("failed", onFailed);
+    };
+
+    notification.once("show", onShow);
+    notification.once("failed", onFailed);
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Flash Frame (attention request)
 // ---------------------------------------------------------------------------
@@ -900,12 +939,7 @@ function registerIpcHandlers(): void {
           activeNotificationsByTag.get(tag)?.close();
         }
         const notification = new Notification({ title: t, body: b, silent });
-        notification.on("show", () => {
-          appendLogsLine(`[notifications] shown tag=${tag ?? "none"}`);
-        });
-        notification.on("failed", (_event, error) => {
-          appendLogsLine(`[notifications] failed tag=${tag ?? "none"} error=${String(error)}`);
-        });
+        const showResult = waitForNotificationShowResult(notification, tag);
         if (tag != null) {
           activeNotificationsByTag.set(tag, notification);
           notification.on("close", () => {
@@ -922,7 +956,7 @@ function registerIpcHandlers(): void {
           showMainWindow();
         });
         notification.show();
-        return true;
+        return await showResult;
       } catch (err) {
         appendLogsLine(
           `[notifications] show error tag=${tag ?? "none"} error=${

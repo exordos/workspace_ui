@@ -1,12 +1,14 @@
 import { act, fireEvent, screen, within } from "@testing-library/react";
 import { useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { useDownloadStore } from "~/entities/download/download.model";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type { MessengerStream } from "~/entities/messenger/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
-import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import {
+  useWorkspaceAuthStore,
+  type WorkspaceAuthSession,
+} from "~/entities/workspace-auth/workspace-auth.model";
 import { t } from "~/i18n/i18n";
 import { ELECTRON_MAC_TITLEBAR_STRIP_CLASS } from "~/shared/lib/electron-title-bar.lib";
 import { setCurrentOrgRouteIdResolver } from "~/shared/lib/org-route";
@@ -17,12 +19,13 @@ import { useSearchModalStore } from "~/widgets/search-modal/search-modal.model";
 import { TOP_BAR_PROFILE_STATUS_MAX_CH } from "./top-bar.lib";
 import { TopBar } from "./top-bar.ui";
 
+const CURRENT_USER_UUID = "a225223c-637c-4afa-918f-5f2798b9305f";
+
 function LocationProbe() {
   return <span data-testid="location-path">{useLocation().pathname}</span>;
 }
 
 function resetTopBarRelatedStores(): void {
-  useChatListStore.setState({ currentUserId: null });
   useMessengerStore.getState().clear();
   useUsersStore.getState().clear();
   useDownloadStore.setState({ entries: [], duplicateRequestTick: 0 });
@@ -30,6 +33,41 @@ function resetTopBarRelatedStores(): void {
   setCurrentOrgRouteIdResolver(null);
   useSearchModalStore.getState().closeModal();
   useRightDrawerStore.setState({ open: false, mode: "info", userIdOverride: null });
+}
+
+function createWorkspaceSession(
+  overrides: Partial<WorkspaceAuthSession> = {},
+): WorkspaceAuthSession {
+  const userUuid = overrides.userUuid ?? CURRENT_USER_UUID;
+  return {
+    accountId: "account-a",
+    instanceId: "instance-a",
+    organizationId: "workspace.example.com",
+    organizationOrigin: "https://workspace.example.com",
+    projectId: "project-a",
+    userUuid,
+    login: "alice@example.com",
+    accessToken: "access-token",
+    runtimeGeneration: 1,
+    profile: {
+      uuid: userUuid,
+      username: "alice",
+      firstName: "Alice",
+      lastName: "Workspace",
+      email: "alice@example.com",
+      status: "active",
+    },
+    ...overrides,
+  };
+}
+
+function seedWorkspaceSession(userUuid = CURRENT_USER_UUID): void {
+  const session = createWorkspaceSession({ userUuid });
+  useWorkspaceAuthStore.setState({
+    currentAccountId: session.accountId,
+    runtimeGeneration: 1,
+    sessions: [session],
+  });
 }
 
 function createDirectWorkspaceStream(overrides: Partial<MessengerStream> = {}): MessengerStream {
@@ -105,31 +143,7 @@ describe("TopBar", () => {
   });
 
   it("navigates to Workspace messenger root when chat is selected with Workspace project", () => {
-    useWorkspaceAuthStore.setState({
-      currentAccountId: "account-a",
-      runtimeGeneration: 1,
-      sessions: [
-        {
-          accountId: "account-a",
-          instanceId: "instance-a",
-          organizationId: "workspace.example.com",
-          organizationOrigin: "https://workspace.example.com",
-          projectId: "project-a",
-          userUuid: "a225223c-637c-4afa-918f-5f2798b9305f",
-          login: "alice@example.com",
-          accessToken: "access-token",
-          runtimeGeneration: 1,
-          profile: {
-            uuid: "a225223c-637c-4afa-918f-5f2798b9305f",
-            username: "alice",
-            firstName: "Alice",
-            lastName: "Workspace",
-            email: "alice@example.com",
-            status: "active",
-          },
-        },
-      ],
-    });
+    seedWorkspaceSession();
     setCurrentOrgRouteIdResolver(() => "workspace.example.com");
 
     renderWithProviders(
@@ -311,10 +325,10 @@ describe("TopBar", () => {
   });
 
   it("uses semantic token classes for presence indicators", () => {
-    useChatListStore.setState({ currentUserId: 7 });
+    seedWorkspaceSession();
     useUsersStore.getState().upsertUser(
       createUser({
-        user_id: 7,
+        uuid: CURRENT_USER_UUID,
         full_name: "Alice",
         presence: { status: "active", timestamp: Date.now() },
       }),
@@ -326,7 +340,7 @@ describe("TopBar", () => {
     act(() => {
       useUsersStore.getState().upsertUser(
         createUser({
-          user_id: 7,
+          uuid: CURRENT_USER_UUID,
           full_name: "Alice",
           presence: { status: "idle", timestamp: Date.now() },
         }),
@@ -336,10 +350,10 @@ describe("TopBar", () => {
   });
 
   it("updates profile trigger avatar src when users store avatar changes", () => {
-    useChatListStore.setState({ currentUserId: 7 });
+    seedWorkspaceSession();
     useUsersStore.getState().upsertUser(
       createUser({
-        user_id: 7,
+        uuid: CURRENT_USER_UUID,
         full_name: "Alice",
         email: "alice@example.com",
         avatar_url: "https://cdn.example.com/avatar/old.png",
@@ -354,7 +368,7 @@ describe("TopBar", () => {
     act(() => {
       useUsersStore.getState().upsertUser(
         createUser({
-          user_id: 7,
+          uuid: CURRENT_USER_UUID,
           avatar_url: "https://cdn.example.com/avatar/new.png",
         }),
       );
@@ -365,10 +379,10 @@ describe("TopBar", () => {
   });
 
   it("shows current user email under display name in profile trigger", () => {
-    useChatListStore.setState({ currentUserId: 11 });
+    seedWorkspaceSession();
     useUsersStore.getState().upsertUser(
       createUser({
-        user_id: 11,
+        uuid: CURRENT_USER_UUID,
         full_name: "Dmitrii Korobkin",
         email: "dmitrii@example.com",
       }),
@@ -388,31 +402,7 @@ describe("TopBar", () => {
   });
 
   it("shows Workspace auth profile when legacy user store is empty", () => {
-    useWorkspaceAuthStore.setState({
-      currentAccountId: "account-a",
-      runtimeGeneration: 1,
-      sessions: [
-        {
-          accountId: "account-a",
-          instanceId: "instance-a",
-          organizationId: "workspace.example.com",
-          organizationOrigin: "https://workspace.example.com",
-          projectId: "project-a",
-          userUuid: "a225223c-637c-4afa-918f-5f2798b9305f",
-          login: "alice@example.com",
-          accessToken: "access-token",
-          runtimeGeneration: 1,
-          profile: {
-            uuid: "a225223c-637c-4afa-918f-5f2798b9305f",
-            username: "alice",
-            firstName: "Alice",
-            lastName: "Workspace",
-            email: "alice@example.com",
-            status: "active",
-          },
-        },
-      ],
-    });
+    seedWorkspaceSession();
 
     renderWithProviders(<TopBar />);
 
@@ -423,11 +413,60 @@ describe("TopBar", () => {
     expect(screen.getByLabelText(/online/i)).toBeInTheDocument();
   });
 
+  it("navigates to the next Workspace inbox after logging out from the current account", async () => {
+    const firstSession = createWorkspaceSession();
+    const secondSession = createWorkspaceSession({
+      accountId: "account-b",
+      instanceId: "instance-b",
+      organizationId: "next.example.com",
+      organizationOrigin: "https://next.example.com",
+      projectId: "project-b",
+      userUuid: "b225223c-637c-4afa-918f-5f2798b9305f",
+      login: "bob@example.com",
+      runtimeGeneration: 1,
+      profile: {
+        uuid: "b225223c-637c-4afa-918f-5f2798b9305f",
+        username: "bob",
+        firstName: "Bob",
+        lastName: "Workspace",
+        email: "bob@example.com",
+        status: "active",
+      },
+    });
+    useWorkspaceAuthStore.setState({
+      currentAccountId: firstSession.accountId,
+      runtimeGeneration: 1,
+      sessions: [firstSession, secondSession],
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    renderWithProviders(
+      <>
+        <LocationProbe />
+        <TopBar />
+      </>,
+      { route: "/org/workspace.example.com/project/project-a/stream/old-stream" },
+    );
+
+    const accountMenuTrigger = screen
+      .getAllByRole("button", { name: t("auth.selectServer") })
+      .find((button) => button.getAttribute("aria-haspopup") === "menu");
+    expect(accountMenuTrigger).toBeDefined();
+    fireEvent.pointerDown(accountMenuTrigger!, { button: 0, ctrlKey: false });
+    fireEvent.click((await screen.findAllByRole("button", { name: t("auth.logoutFromOrg") }))[0]!);
+
+    await screen.findByText("bob@example.com");
+    expect(screen.getByTestId("location-path")).toHaveTextContent(
+      "/org/next.example.com/project/project-b/inbox",
+    );
+    expect(useWorkspaceAuthStore.getState().currentAccountId).toBe(secondSession.accountId);
+  });
+
   it("shows short profile status without a hover title", () => {
-    useChatListStore.setState({ currentUserId: 11 });
+    seedWorkspaceSession();
     useUsersStore.getState().upsertUser(
       createUser({
-        user_id: 11,
+        uuid: CURRENT_USER_UUID,
         full_name: "Dmitrii Korobkin",
         status: { text: "In a meeting", away: false },
       }),
@@ -443,10 +482,10 @@ describe("TopBar", () => {
   });
 
   it("shows profile status emoji with status text in profile trigger", () => {
-    useChatListStore.setState({ currentUserId: 11 });
+    seedWorkspaceSession();
     useUsersStore.getState().upsertUser(
       createUser({
-        user_id: 11,
+        uuid: CURRENT_USER_UUID,
         full_name: "Dmitrii Korobkin",
         statusEmoji: "☕",
         statusText: "Focus",
@@ -461,10 +500,10 @@ describe("TopBar", () => {
 
   it("shows full profile status on hover when truncated", () => {
     const longStatus = "a".repeat(TOP_BAR_PROFILE_STATUS_MAX_CH + 5);
-    useChatListStore.setState({ currentUserId: 11 });
+    seedWorkspaceSession();
     useUsersStore.getState().upsertUser(
       createUser({
-        user_id: 11,
+        uuid: CURRENT_USER_UUID,
         full_name: "Dmitrii Korobkin",
         status: { text: longStatus, away: false },
       }),

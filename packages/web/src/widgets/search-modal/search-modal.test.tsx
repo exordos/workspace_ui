@@ -30,7 +30,6 @@ describe("SearchModal open-in-chat action", () => {
         open
         mode="workspace"
         onOpenChange={onOpenChange}
-        onSelectMessage={() => {}}
         onSelectUserUuid={onSelectUserUuid}
       />,
     );
@@ -51,13 +50,13 @@ describe("SearchModal open-in-chat action", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it("matches users by email and opens dm from user result", () => {
-    const onSelectMessage = vi.fn();
-    const onSelectUser = vi.fn();
+  it("matches Workspace users by email and selects their UUID", () => {
+    const onSelectUserUuid = vi.fn(() => true);
     const onOpenChange = vi.fn();
     useUsersStore.getState().upsertUser(
       createUser({
-        user_id: 42,
+        uuid: "e877964e-8f29-4b4f-b41e-90c69365b871",
+        username: "alice.email",
         full_name: "Alice",
         email: "alice@example.com",
         presence: { status: "active", timestamp: Math.floor(Date.now() / 1000) },
@@ -67,9 +66,9 @@ describe("SearchModal open-in-chat action", () => {
     render(
       <SearchModal
         open
+        mode="workspace"
         onOpenChange={onOpenChange}
-        onSelectMessage={onSelectMessage}
-        onSelectUser={onSelectUser}
+        onSelectUserUuid={onSelectUserUuid}
       />,
     );
 
@@ -84,8 +83,7 @@ describe("SearchModal open-in-chat action", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Alice \(alice@example\.com\)/i }));
 
-    expect(onSelectUser).toHaveBeenCalledWith(42);
-    expect(onSelectMessage).not.toHaveBeenCalled();
+    expect(onSelectUserUuid).toHaveBeenCalledWith("e877964e-8f29-4b4f-b41e-90c69365b871");
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
@@ -100,7 +98,7 @@ describe("SearchModal open-in-chat action", () => {
       }),
     );
 
-    render(<SearchModal open onOpenChange={() => {}} onSelectMessage={() => {}} />);
+    render(<SearchModal open onOpenChange={() => {}} />);
 
     fireEvent.change(screen.getByPlaceholderText("Search"), {
       target: { value: "coffee" },
@@ -113,7 +111,7 @@ describe("SearchModal open-in-chat action", () => {
   });
 
   it("does not render legacy message filters", () => {
-    render(<SearchModal open onOpenChange={() => {}} onSelectMessage={() => {}} />);
+    render(<SearchModal open onOpenChange={() => {}} />);
 
     const queryInput = screen.getByPlaceholderText("Search");
     const queryInputFrame = queryInput.closest("label");
@@ -129,7 +127,7 @@ describe("SearchModal open-in-chat action", () => {
   });
 
   it("shows empty state instead of legacy message results", () => {
-    render(<SearchModal open onOpenChange={() => {}} onSelectMessage={() => {}} />);
+    render(<SearchModal open onOpenChange={() => {}} />);
 
     fireEvent.change(screen.getByPlaceholderText("Search"), {
       target: { value: "release" },
@@ -149,7 +147,7 @@ describe("SearchModal open-in-chat action", () => {
       }),
     );
 
-    render(<SearchModal open onOpenChange={() => {}} onSelectMessage={() => {}} />);
+    render(<SearchModal open onOpenChange={() => {}} />);
 
     fireEvent.change(screen.getByPlaceholderText("Search"), {
       target: { value: "alexandria" },

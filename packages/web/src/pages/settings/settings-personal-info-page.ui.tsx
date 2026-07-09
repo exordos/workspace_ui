@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import { selectUserStatusLabel } from "~/entities/user/user-selectors.lib";
 import { updateWorkspaceOwnStatus } from "~/entities/user/user-workspace-status-actions.lib";
 import { useUsersStore } from "~/entities/user/user.model";
@@ -107,7 +106,7 @@ export const SettingsPersonalInfoPage: React.FC = () => {
   );
   const [avatarDraftError, setAvatarDraftError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const currentUserId = useChatListStore((s) => s.currentUserId);
+  const currentUserId: number | null = null;
   const currentWorkspaceSession = useWorkspaceAuthStore((s) => {
     const accountId = s.currentAccountId;
     return accountId != null
@@ -132,9 +131,7 @@ export const SettingsPersonalInfoPage: React.FC = () => {
       const user =
         userUuid != null
           ? store.getUser(userUuid)
-          : currentUserId != null
-            ? store.getUser(String(currentUserId))
-            : undefined;
+          : undefined;
       if (user == null) return;
       store.upsertUser({
         ...user,
@@ -142,7 +139,7 @@ export const SettingsPersonalInfoPage: React.FC = () => {
         updatedAt: patch.updatedAt ?? new Date().toISOString(),
       });
     },
-    [currentUserId, currentWorkspaceSession?.userUuid],
+    [currentWorkspaceSession?.userUuid],
   );
 
   useEffect(() => {

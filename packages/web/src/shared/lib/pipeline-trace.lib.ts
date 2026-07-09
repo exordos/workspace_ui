@@ -10,11 +10,14 @@
  *   logMessageFlow("merge:done", { count: 12 });
  */
 
-import type { MessageLocation } from "~/entities/chat-list/chat-list.model.types";
 import type { ZulipRecentPrivateConversation } from "~/shared/api/zulip.types";
 import { createLogger } from "~/shared/lib/logger";
 import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sidebar-chat";
+
+type MessageLocation =
+  | { type: "stream"; stream_id: number; topic: string }
+  | { type: "dm"; dmKey: string };
 
 export type PipelineTraceChannel =
   | "messages"

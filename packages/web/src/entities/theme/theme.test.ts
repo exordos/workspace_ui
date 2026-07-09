@@ -6,28 +6,53 @@
  * Also listens to OS color-scheme changes when mode is "system".
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useInstancesStore } from "~/entities/instance/instance.model";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useThemeStore } from "./theme.model";
 
-function resetInstanceScope(): void {
-  useInstancesStore.setState({
-    instances: [],
-    currentInstanceId: null,
-    unreadCountsByInstance: {},
+function resetWorkspaceSessionScope(): void {
+  useWorkspaceAuthStore.setState({
+    sessions: [],
+    currentAccountId: null,
+    runtimeGeneration: 0,
   });
 }
 
-function setInstanceScope(instanceIds: string[], currentInstanceId: string): void {
-  useInstancesStore.setState({
-    instances: instanceIds.map((id) => ({
-      id,
-      realm: `https://${id}.example.com`,
-      email: `${id}@example.com`,
-      apiKey: `key-${id}`,
-    })),
-    currentInstanceId,
-    unreadCountsByInstance: {},
+function createSession(id: "a" | "b"): WorkspaceAuthSession {
+  return {
+    accountId: `account-${id}`,
+    instanceId: `instance-${id}`,
+    organizationId: `org-${id}`,
+    organizationOrigin: `https://org-${id}.example.com`,
+    projectId: `project-${id}`,
+    userUuid: `user-${id}`,
+    accessToken: `access-token-${id}`,
+    refreshToken: `refresh-token-${id}`,
+    runtimeGeneration: 1,
+    login: `user-${id}@example.com`,
+    profile: {
+      uuid: `user-${id}`,
+      username: `user-${id}`,
+      firstName: "User",
+      lastName: id.toUpperCase(),
+      email: `user-${id}@example.com`,
+    },
+  };
+}
+
+function setWorkspaceSessionScope(currentAccountId: "account-a" | "account-b"): {
+  sessionA: WorkspaceAuthSession;
+  sessionB: WorkspaceAuthSession;
+} {
+  const sessionA = createSession("a");
+  const sessionB = createSession("b");
+  useWorkspaceAuthStore.setState({
+    sessions: [sessionA, sessionB],
+    currentAccountId,
+    runtimeGeneration: 1,
   });
+  return { sessionA, sessionB };
 }
 
 // Palette/mode switching, toggle, and localStorage persistence.
@@ -35,7 +60,7 @@ describe("themeStore", () => {
   beforeEach(() => {
     // eslint-disable-next-line no-restricted-properties -- test teardown, no credentials stored
     localStorage.clear();
-    resetInstanceScope();
+    resetWorkspaceSessionScope();
     useThemeStore.setState({ paletteId: "orange-warm", mode: "dark" });
   });
 
@@ -78,29 +103,51 @@ describe("themeStore", () => {
     expect(localStorage.getItem("workspace-theme-mode")).toBe("light");
   });
 
-  it("persists palette and mode under organization scope", () => {
-    setInstanceScope(["org-a"], "org-a");
+  it("persists palette and mode under workspace owner scope", () => {
+    const { sessionA } = setWorkspaceSessionScope("account-a");
+    const ownerKey = workspaceRuntimeOwnerKey(sessionA);
 
     useThemeStore.getState().setPalette("blue-cold");
     useThemeStore.getState().setMode("light");
 
-    expect(localStorage.getItem("workspace-palette:org-a")).toBe("blue-cold");
-    expect(localStorage.getItem("workspace-theme-mode:org-a")).toBe("light");
+    expect(localStorage.getItem(`workspace-palette:${ownerKey}`)).toBe("blue-cold");
+    expect(localStorage.getItem(`workspace-theme-mode:${ownerKey}`)).toBe("light");
+    expect(localStorage.getItem("workspace-palette")).toBeNull();
   });
 
-  it("loads organization-specific theme when active organization changes", () => {
-    localStorage.setItem("workspace-palette:org-a", "orange-warm");
-    localStorage.setItem("workspace-theme-mode:org-a", "dark");
-    localStorage.setItem("workspace-palette:org-b", "blue-cold");
-    localStorage.setItem("workspace-theme-mode:org-b", "light");
+  it("loads owner-specific theme when active workspace account changes", () => {
+    const sessionA = createSession("a");
+    const sessionB = createSession("b");
+    const ownerAKey = workspaceRuntimeOwnerKey(sessionA);
+    const ownerBKey = workspaceRuntimeOwnerKey(sessionB);
+    localStorage.setItem(`workspace-palette:${ownerAKey}`, "orange-warm");
+    localStorage.setItem(`workspace-theme-mode:${ownerAKey}`, "dark");
+    localStorage.setItem(`workspace-palette:${ownerBKey}`, "blue-cold");
+    localStorage.setItem(`workspace-theme-mode:${ownerBKey}`, "light");
 
-    setInstanceScope(["org-a", "org-b"], "org-a");
+    setWorkspaceSessionScope("account-a");
     expect(useThemeStore.getState().paletteId).toBe("orange-warm");
     expect(useThemeStore.getState().mode).toBe("dark");
 
-    useInstancesStore.getState().setCurrentInstanceId("org-b");
+    useWorkspaceAuthStore.getState().setCurrentAccountId("account-b");
     expect(useThemeStore.getState().paletteId).toBe("blue-cold");
     expect(useThemeStore.getState().mode).toBe("light");
+  });
+
+  it("reads legacy instance-scoped theme without writing back to legacy keys", () => {
+    const sessionA = createSession("a");
+    localStorage.setItem("workspace-palette:instance-a", "blue-cold");
+    localStorage.setItem("workspace-theme-mode:instance-a", "dark");
+
+    setWorkspaceSessionScope("account-a");
+    expect(useThemeStore.getState().paletteId).toBe("blue-cold");
+    expect(useThemeStore.getState().mode).toBe("dark");
+
+    useThemeStore.getState().setMode("light");
+
+    const ownerKey = workspaceRuntimeOwnerKey(sessionA);
+    expect(localStorage.getItem(`workspace-theme-mode:${ownerKey}`)).toBe("light");
+    expect(localStorage.getItem("workspace-theme-mode:instance-a")).toBe("dark");
   });
 
   // Toggle must be bidirectional — light→dark and dark→light.
@@ -129,7 +176,7 @@ describe("OS color scheme change listener", () => {
   beforeEach(() => {
     // eslint-disable-next-line no-restricted-properties -- test teardown, no credentials stored
     localStorage.clear();
-    resetInstanceScope();
+    resetWorkspaceSessionScope();
     useThemeStore.setState({ paletteId: "orange-warm", mode: "dark" });
   });
 

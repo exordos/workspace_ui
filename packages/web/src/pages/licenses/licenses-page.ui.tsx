@@ -1,6 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import licensesData from "~/generated/licenses.json";
 import { t } from "~/i18n/i18n";
@@ -16,7 +15,6 @@ const licenses = licensesData as LicenseEntry[];
 export const LicensesPage: React.FC = () => {
   const navigate = useNavigate();
   const { goBack, canGoBack } = useNavigationHistory();
-  const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const currentWorkspaceInstanceId = useWorkspaceAuthStore((s) => {
     const accountId = s.currentAccountId;
     return accountId != null
@@ -39,19 +37,12 @@ export const LicensesPage: React.FC = () => {
     }
     const fallbackPath = withCurrentOrgRoute(
       resolveMessengerNavigationPath({
-        instanceId: currentWorkspaceInstanceId ?? currentInstanceId,
+        instanceId: currentWorkspaceInstanceId,
         projectId: currentWorkspaceProjectId,
       }),
     );
     void navigate(fallbackPath);
-  }, [
-    canGoBack,
-    currentInstanceId,
-    currentWorkspaceInstanceId,
-    currentWorkspaceProjectId,
-    goBack,
-    navigate,
-  ]);
+  }, [canGoBack, currentWorkspaceInstanceId, currentWorkspaceProjectId, goBack, navigate]);
 
   const licenseTypes = useMemo(() => {
     const counts = new Map<string, number>();

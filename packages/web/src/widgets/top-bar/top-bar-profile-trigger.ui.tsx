@@ -1,5 +1,4 @@
 import React, { useCallback } from "react";
-import { useChatListStore } from "~/entities/chat-list/chat-list.model";
 import {
   resolveUserPresenceVisual,
   selectUserDisplayName,
@@ -87,7 +86,6 @@ export const TopBarProfileTrigger = React.memo(function TopBarProfileTrigger() {
   const isUserMenuOpen = useRightDrawerStore((s) => s.open && s.mode === "user-menu");
   const openUserMenu = useRightDrawerStore((s) => s.openUserMenu);
   const closeDrawer = useRightDrawerStore((s) => s.close);
-  const currentUserId = useChatListStore((s) => s.currentUserId);
   const workspaceSession = useWorkspaceAuthStore((s) => {
     const accountId = s.currentAccountId;
     return accountId != null
@@ -99,7 +97,7 @@ export const TopBarProfileTrigger = React.memo(function TopBarProfileTrigger() {
     if (workspaceSession?.userUuid != null) {
       return s.usersById[workspaceSession.userUuid];
     }
-    return currentUserId != null ? s.usersById[String(currentUserId)] : undefined;
+    return undefined;
   });
 
   const workspaceDisplayName = resolveWorkspaceDisplayName(workspaceProfile);

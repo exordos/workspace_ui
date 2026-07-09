@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
-import { useInstancesStore } from "~/entities/instance/instance.model";
 import { LAST_MESSENGER_ROUTE_PERSIST_DEBOUNCE_MS } from "~/shared/config/constants";
 import {
   extractPersistableMessengerChatPath,
@@ -13,9 +12,8 @@ import {
  * Writes are debounced + deduped to avoid flooding localStorage when the user
  * scrolls through topics or rapidly switches between chats.
  */
-export function useLayoutLastMessengerRoutePersistence(): void {
+export function useLayoutLastMessengerRoutePersistence(currentInstanceId: string | null): void {
   const location = useLocation();
-  const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
   const lastSavedRef = useRef<string | null>(null);
 
   useEffect(() => {

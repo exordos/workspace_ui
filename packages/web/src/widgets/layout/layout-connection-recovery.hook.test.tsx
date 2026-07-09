@@ -6,14 +6,6 @@ const onTabResumeMock = vi.fn();
 const onVisibilityChangeMock = vi.fn();
 const onReconnectMock = vi.fn();
 const requestReconnectMock = vi.fn();
-const scheduleReconnectMock = vi.fn();
-const captureActiveOrgRequestContextMock = vi.hoisted(() =>
-  vi.fn(() => ({ instanceId: "inst-1", epoch: 3 })),
-);
-
-vi.mock("~/entities/instance/instance.model", () => ({
-  captureActiveOrgRequestContext: captureActiveOrgRequestContextMock,
-}));
 
 vi.mock("~/shared/lib/visibility", () => ({
   onTabResume: (...args: unknown[]) => onTabResumeMock(...args),
@@ -28,10 +20,6 @@ vi.mock("~/shared/lib/connection-health", () => ({
   requestReconnect: (...args: unknown[]) => requestReconnectMock(...args),
   getConnectionHealthSnapshot: () => ({ phase: "ready", failureReason: null }),
   subscribeConnectionHealth: () => () => {},
-}));
-
-vi.mock("./layout-reconnect-coordinator.lib", () => ({
-  scheduleLayoutReconnectRefresh: (...args: unknown[]) => scheduleReconnectMock(...args),
 }));
 
 function Harness({
@@ -64,11 +52,10 @@ describe("useLayoutConnectionRecovery", () => {
     render(<Harness currentUserStatus="idle" />);
 
     resumeCb?.(60_000);
-    expect(scheduleReconnectMock).not.toHaveBeenCalled();
     expect(requestReconnectMock).not.toHaveBeenCalled();
   });
 
-  it("schedules light refresh on tab resume after bootstrap settled", () => {
+  it("requests reconnect on tab resume after bootstrap settled", () => {
     let resumeCb: ((hiddenDurationMs: number) => void) | undefined;
     onTabResumeMock.mockImplementation((cb: (hiddenDurationMs: number) => void) => {
       resumeCb = cb;
@@ -80,17 +67,10 @@ describe("useLayoutConnectionRecovery", () => {
     render(<Harness currentUserStatus="degraded" />);
 
     resumeCb?.(60_000);
-    expect(scheduleReconnectMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        instanceId: "inst-1",
-        orgContext: { instanceId: "inst-1", epoch: 3 },
-      }),
-      "light",
-    );
     expect(requestReconnectMock).toHaveBeenCalled();
   });
 
-  it("schedules full refresh on network reconnect", () => {
+  it("does not force visible reconnect on network reconnect after ready status", () => {
     let reconnectCb: (() => void) | undefined;
     onTabResumeMock.mockReturnValue(vi.fn());
     onVisibilityChangeMock.mockReturnValue(vi.fn());
@@ -102,12 +82,6 @@ describe("useLayoutConnectionRecovery", () => {
     render(<Harness currentUserStatus="ready" />);
 
     reconnectCb?.();
-    expect(scheduleReconnectMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        instanceId: "inst-1",
-        orgContext: { instanceId: "inst-1", epoch: 3 },
-      }),
-      "full",
-    );
+    expect(requestReconnectMock).not.toHaveBeenCalled();
   });
 });

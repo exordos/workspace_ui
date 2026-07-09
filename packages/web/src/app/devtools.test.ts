@@ -11,8 +11,8 @@ import { describe, expect, it, vi, afterEach } from "vitest";
 import { useThemeStore } from "../entities/theme/theme.model";
 import { installDevTools } from "./devtools";
 
-vi.mock("../entities/chat-list/chat-list.model", () => ({
-  useChatListStore: { getState: vi.fn(() => ({})) },
+vi.mock("../entities/messenger/messenger.model", () => ({
+  useMessengerStore: { getState: vi.fn(() => ({})) },
 }));
 vi.mock("../entities/message/message.model", () => ({
   useWorkspaceMessageStore: { getState: vi.fn(() => ({})) },
@@ -20,8 +20,8 @@ vi.mock("../entities/message/message.model", () => ({
 vi.mock("../entities/user/user.model", () => ({
   useUsersStore: { getState: vi.fn(() => ({})) },
 }));
-vi.mock("../entities/instance/instance.model", () => ({
-  useInstancesStore: { getState: vi.fn(() => ({})) },
+vi.mock("../entities/workspace-auth/workspace-auth.model", () => ({
+  useWorkspaceAuthStore: { getState: vi.fn(() => ({})) },
 }));
 const { mockThemeState, initConsoleCaptureMock } = vi.hoisted(() => ({
   mockThemeState: {
@@ -170,10 +170,10 @@ describe("devtools", () => {
       installDevTools();
       const dev = getDev()!;
       const storeNames = Object.keys(dev.stores);
-      expect(storeNames).toContain("chatList");
+      expect(storeNames).toContain("messenger");
       expect(storeNames).toContain("messages");
       expect(storeNames).toContain("users");
-      expect(storeNames).toContain("instances");
+      expect(storeNames).toContain("workspaceAuth");
       expect(storeNames).toContain("theme");
       expect(storeNames).toContain("sidebar");
       expect(storeNames).toContain("callParticipants");

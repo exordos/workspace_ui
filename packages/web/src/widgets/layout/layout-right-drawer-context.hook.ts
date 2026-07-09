@@ -1,5 +1,4 @@
 import { useMemo } from "react";
-import { resolvePersonalDmSidebarTitle } from "~/entities/chat-list/chat-list-format.lib";
 import { t } from "~/i18n/i18n";
 import { computeIsGroupDmView, normalizeDmRouteUserIds } from "~/shared/lib/dm-route.lib";
 import {
@@ -15,6 +14,11 @@ import type {
 } from "./layout-right-drawer-context.types";
 
 export type { LayoutRightDrawerContext } from "./layout-right-drawer-context.types";
+
+function resolveDmTitle(chatName: string | undefined): string {
+  const trimmed = chatName?.trim() ?? "";
+  return trimmed.length > 0 ? trimmed : t("dm.directMessage");
+}
 
 export function useLayoutRightDrawerContext(
   options: UseLayoutRightDrawerContextOptions,
@@ -119,11 +123,7 @@ export function useLayoutRightDrawerContext(
       if (isGroupDm) {
         return (dmChat?.name?.trim() ?? "") || t("dm.groupChat");
       }
-      return resolvePersonalDmSidebarTitle({
-        chatName: dmChat?.name ?? "",
-        userFullName: undefined,
-        storeDisplayName: "",
-      });
+      return resolveDmTitle(dmChat?.name);
     }
     if (activeStreamName && activeStreamName.trim().length > 0) {
       return `#${activeStreamName}`;

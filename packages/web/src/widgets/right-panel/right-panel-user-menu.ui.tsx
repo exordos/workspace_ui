@@ -1,14 +1,13 @@
 import { Theme, type EmojiClickData } from "emoji-picker-react";
 import React, { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { selectUserStatusLabel } from "~/entities/user/user-selectors.lib";
 import { updateWorkspaceOwnStatus } from "~/entities/user/user-workspace-status-actions.lib";
 import { useUsersStore } from "~/entities/user/user.model";
 import { removeWorkspaceSession } from "~/entities/workspace-auth/workspace-auth.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import { resolveWorkspacePostLogoutRoute } from "~/entities/workspace-auth/workspace-post-logout-route.lib";
 import { AUTH_IDLE_TIMEOUT_PRESETS } from "~/features/settings/auth-idle-timeout.lib";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import type { AuthIdleTimeout, NotificationSound } from "~/features/settings/settings.types";
@@ -58,16 +57,14 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
 }) => {
   const navigate = useNavigate();
   const rightDrawer = useRightDrawer();
-  const { t, locale: currentLocale, setLocale, supportedLocales: locales } = useTranslation();
-  const currentUserId = useChatListStore((s) => s.currentUserId);
-  const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
-  const removeInstance = useInstancesStore((s) => s.removeInstance);
+  const { t, locale: currentLocale, supportedLocales: locales } = useTranslation();
   const currentWorkspaceSession = useWorkspaceAuthStore((s) => {
     const accountId = s.currentAccountId;
     return accountId != null
       ? s.sessions.find((session) => session.accountId === accountId)
       : undefined;
   });
+  const getCurrentWorkspaceSession = useWorkspaceAuthStore((s) => s.getCurrentSession);
   const currentWorkspaceUser = useUsersStore((s) =>
     currentWorkspaceSession?.userUuid != null
       ? s.usersById[currentWorkspaceSession.userUuid]
@@ -117,12 +114,10 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
             currentWorkspaceSession.organizationOrigin,
             currentWorkspaceSession.login,
           )
-        : currentInstanceId != null
-          ? currentInstanceId
-          : "",
-    [currentInstanceId, currentWorkspaceSession],
+        : "",
+    [currentWorkspaceSession],
   );
-  const currentServerAccountLabel = currentWorkspaceSession?.login ?? currentInstanceId ?? "";
+  const currentServerAccountLabel = currentWorkspaceSession?.login ?? "";
   const currentServerIconUrl = null;
   const currentStatusSubtitle =
     selectUserStatusLabel(currentWorkspaceUser) ??
@@ -205,12 +200,8 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   }, [currentWorkspaceSession, statusAwayDraft, statusEmojiDraft, statusTextDraft, t]);
 
   const openPersonalInfo = useCallback(() => {
-    if (currentUserId != null && rightDrawer?.openUserProfile != null) {
-      rightDrawer.openUserProfile(currentUserId);
-      return;
-    }
     void navigate(withCurrentOrgRoute("/settings/personal-info"));
-  }, [currentUserId, navigate, rightDrawer]);
+  }, [navigate]);
 
   const openDiagnostics = useCallback(() => {
     void navigate(withCurrentOrgRoute("/settings/logs"));
@@ -230,10 +221,9 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
 
   const handleSelectLanguage = useCallback(
     (nextLocale: (typeof locales)[number]["id"]) => {
-      setLocale(nextLocale);
       setLanguage(nextLocale);
     },
-    [setLanguage, setLocale],
+    [setLanguage],
   );
 
   const handleSelectNotificationSound = useCallback(
@@ -309,28 +299,20 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   }, [t]);
 
   const handleLogoutFromCurrentOrg = useCallback(async () => {
-    if (currentWorkspaceSession != null) {
-      const confirmed = window.confirm(
-        t("auth.logoutFromOrgConfirm", { server: currentServerLabel }),
-      );
-      if (!confirmed) return;
-      await removeWorkspaceSession(currentWorkspaceSession.accountId);
-      closeDrawer();
-      return;
-    }
-    if (currentInstanceId == null) return;
+    if (currentWorkspaceSession == null) return;
     const confirmed = window.confirm(
       t("auth.logoutFromOrgConfirm", { server: currentServerLabel }),
     );
     if (!confirmed) return;
-    removeInstance(currentInstanceId);
+    await removeWorkspaceSession(currentWorkspaceSession.accountId);
+    void navigate(resolveWorkspacePostLogoutRoute(getCurrentWorkspaceSession()), { replace: true });
     closeDrawer();
   }, [
     closeDrawer,
-    currentInstanceId,
     currentServerLabel,
     currentWorkspaceSession,
-    removeInstance,
+    getCurrentWorkspaceSession,
+    navigate,
     t,
   ]);
 
@@ -359,7 +341,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
               {t("nav.profile")}
             </SectionLabel>
             <div className="divide-y divide-border-subtle overflow-hidden rounded-lg border border-border-subtle bg-card-bg">
-              {(currentWorkspaceSession != null || currentInstanceId != null) && (
+              {currentWorkspaceSession != null && (
                 <div
                   data-testid="user-menu-current-server-item"
                   className="flex items-center justify-between gap-3 px-2.5 py-2.5"

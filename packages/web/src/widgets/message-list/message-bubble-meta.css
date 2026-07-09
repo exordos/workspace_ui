@@ -1,7 +1,0 @@
-.message-bubble-body-inline-meta > :last-child::after {
-  content: "";
-  display: inline-block;
-  width: calc(var(--message-bubble-meta-width, 0px) + 0.5rem);
-  height: var(--message-bubble-meta-height, 1rem);
-  vertical-align: baseline;
-}

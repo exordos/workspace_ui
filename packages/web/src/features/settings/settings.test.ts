@@ -3,34 +3,63 @@
  * individual setting updates, and reset to defaults.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useInstancesStore } from "~/entities/instance/instance.model";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
+import type { WorkspaceAuthSession } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
+import { configureI18nStorageScope, getLocale, setLocale } from "~/i18n/i18n";
+import { configureWorkspaceI18nStorageScope } from "~/widgets/layout/layout-i18n-scope.lib";
 import { useSettingsStore } from "./settings.model";
 
-function resetInstanceScope(): void {
-  useInstancesStore.setState({
-    instances: [],
-    currentInstanceId: null,
-    unreadCountsByInstance: {},
+function resetWorkspaceSessionScope(): void {
+  useWorkspaceAuthStore.setState({
+    sessions: [],
+    currentAccountId: null,
+    runtimeGeneration: 0,
   });
 }
 
-function setInstanceScope(instanceIds: string[], currentInstanceId: string): void {
-  useInstancesStore.setState({
-    instances: instanceIds.map((id) => ({
-      id,
-      realm: `https://${id}.example.com`,
-      email: `${id}@example.com`,
-      apiKey: `key-${id}`,
-    })),
-    currentInstanceId,
-    unreadCountsByInstance: {},
+function createSession(id: "a" | "b"): WorkspaceAuthSession {
+  return {
+    accountId: `account-${id}`,
+    instanceId: `instance-${id}`,
+    organizationId: `org-${id}`,
+    organizationOrigin: `https://org-${id}.example.com`,
+    projectId: `project-${id}`,
+    userUuid: `user-${id}`,
+    accessToken: `access-token-${id}`,
+    refreshToken: `refresh-token-${id}`,
+    runtimeGeneration: 1,
+    login: `user-${id}@example.com`,
+    profile: {
+      uuid: `user-${id}`,
+      username: `user-${id}`,
+      firstName: "User",
+      lastName: id.toUpperCase(),
+      email: `user-${id}@example.com`,
+    },
+  };
+}
+
+function setWorkspaceSessionScope(currentAccountId: "account-a" | "account-b"): {
+  sessionA: WorkspaceAuthSession;
+  sessionB: WorkspaceAuthSession;
+} {
+  const sessionA = createSession("a");
+  const sessionB = createSession("b");
+  useWorkspaceAuthStore.setState({
+    sessions: [sessionA, sessionB],
+    currentAccountId,
+    runtimeGeneration: 1,
   });
+  return { sessionA, sessionB };
 }
 
 describe("useSettingsStore", () => {
   afterEach(() => {
     useSettingsStore.getState().resetToDefaults();
-    resetInstanceScope();
+    resetWorkspaceSessionScope();
+    configureI18nStorageScope();
+    setLocale("en");
     // eslint-disable-next-line no-restricted-properties -- test teardown, no credentials stored
     localStorage.clear();
   });
@@ -230,13 +259,14 @@ describe("useSettingsStore", () => {
     });
   });
 
-  describe("organization scope", () => {
-    it("persists settings under the active organization id", () => {
-      setInstanceScope(["org-a"], "org-a");
+  describe("workspace owner scope", () => {
+    it("persists settings under the active workspace owner key", () => {
+      const { sessionA } = setWorkspaceSessionScope("account-a");
+      const ownerKey = workspaceRuntimeOwnerKey(sessionA);
 
       useSettingsStore.getState().setNotificationSound("subtle");
 
-      const raw = localStorage.getItem("workspace-settings:org-a");
+      const raw = localStorage.getItem(`workspace-settings:${ownerKey}`);
       expect(raw).not.toBeNull();
       const parsed = JSON.parse(raw!);
       expect(parsed.notificationSound).toBe("subtle");
@@ -244,31 +274,35 @@ describe("useSettingsStore", () => {
       expect(localStorage.getItem("workspace-settings")).toBeNull();
     });
 
-    it("switches store state when active organization changes", () => {
+    it("switches store state when active workspace account changes", () => {
+      const sessionA = createSession("a");
+      const sessionB = createSession("b");
+      const ownerAKey = workspaceRuntimeOwnerKey(sessionA);
+      const ownerBKey = workspaceRuntimeOwnerKey(sessionB);
       localStorage.setItem(
-        "workspace-settings:org-a",
+        `workspace-settings:${ownerAKey}`,
         JSON.stringify({ notificationSound: "none", language: "ru" }),
       );
       localStorage.setItem(
-        "workspace-settings:org-b",
+        `workspace-settings:${ownerBKey}`,
         JSON.stringify({ notificationSound: "subtle", language: "en" }),
       );
 
-      setInstanceScope(["org-a", "org-b"], "org-a");
+      setWorkspaceSessionScope("account-a");
       expect(useSettingsStore.getState().notificationSound).toBe("none");
 
-      useInstancesStore.getState().setCurrentInstanceId("org-b");
+      useWorkspaceAuthStore.getState().setCurrentAccountId("account-b");
       expect(useSettingsStore.getState().notificationSound).toBe("subtle");
     });
 
-    it("remembers notification sound and unread-priority flags per organization", () => {
-      setInstanceScope(["org-a", "org-b"], "org-a");
+    it("remembers notification sound and unread-priority flags per workspace owner", () => {
+      setWorkspaceSessionScope("account-a");
 
       useSettingsStore.getState().setNotificationSound("glass");
       useSettingsStore.getState().setPrioritizePersonalUnread(true);
       useSettingsStore.getState().setPrioritizeUnmutedUnreadChannels(false);
 
-      useInstancesStore.getState().setCurrentInstanceId("org-b");
+      useWorkspaceAuthStore.getState().setCurrentAccountId("account-b");
       useSettingsStore.getState().setNotificationSound("none");
       useSettingsStore.getState().setPrioritizePersonalUnread(false);
       useSettingsStore.getState().setPrioritizeUnmutedUnreadChannels(false);
@@ -277,10 +311,58 @@ describe("useSettingsStore", () => {
       expect(useSettingsStore.getState().prioritizePersonalUnread).toBe(false);
       expect(useSettingsStore.getState().prioritizeUnmutedUnreadChannels).toBe(false);
 
-      useInstancesStore.getState().setCurrentInstanceId("org-a");
+      useWorkspaceAuthStore.getState().setCurrentAccountId("account-a");
       expect(useSettingsStore.getState().notificationSound).toBe("glass");
       expect(useSettingsStore.getState().prioritizePersonalUnread).toBe(true);
       expect(useSettingsStore.getState().prioritizeUnmutedUnreadChannels).toBe(false);
+    });
+
+    it("reads legacy instance-scoped settings without writing back to legacy keys", () => {
+      const sessionA = createSession("a");
+      localStorage.setItem(
+        "workspace-settings:instance-a",
+        JSON.stringify({ notificationSound: "pulse", language: "ru" }),
+      );
+
+      setWorkspaceSessionScope("account-a");
+      expect(useSettingsStore.getState().notificationSound).toBe("pulse");
+
+      useSettingsStore.getState().setNotificationSound("glass");
+
+      const ownerKey = workspaceRuntimeOwnerKey(sessionA);
+      const raw = localStorage.getItem(`workspace-settings:${ownerKey}`);
+      expect(JSON.parse(raw!).notificationSound).toBe("glass");
+      expect(
+        JSON.parse(localStorage.getItem("workspace-settings:instance-a")!).notificationSound,
+      ).toBe("pulse");
+    });
+
+    it("does not override scoped i18n locale from settings language on account switch", () => {
+      configureWorkspaceI18nStorageScope();
+      const sessionA = createSession("a");
+      const ownerKey = workspaceRuntimeOwnerKey(sessionA);
+      localStorage.setItem(`workspace-locale:${ownerKey}`, "ru");
+      localStorage.setItem(
+        `workspace-settings:${ownerKey}`,
+        JSON.stringify({ language: "en", notificationSound: "none" }),
+      );
+
+      setWorkspaceSessionScope("account-a");
+
+      expect(useSettingsStore.getState().language).toBe("en");
+      expect(getLocale()).toBe("ru");
+    });
+
+    it("keeps scoped i18n locale when owner settings are absent", () => {
+      configureWorkspaceI18nStorageScope();
+      const sessionA = createSession("a");
+      const ownerKey = workspaceRuntimeOwnerKey(sessionA);
+      localStorage.setItem(`workspace-locale:${ownerKey}`, "ru");
+
+      setWorkspaceSessionScope("account-a");
+
+      expect(useSettingsStore.getState().language).toBe("en");
+      expect(getLocale()).toBe("ru");
     });
   });
 });
@@ -288,7 +370,7 @@ describe("useSettingsStore", () => {
 // loadSettings — module reload tests to verify localStorage parsing
 describe("loadSettings (module reload)", () => {
   afterEach(() => {
-    resetInstanceScope();
+    resetWorkspaceSessionScope();
     // eslint-disable-next-line no-restricted-properties -- test teardown, no credentials stored
     localStorage.clear();
     vi.resetModules();

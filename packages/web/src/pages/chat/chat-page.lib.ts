@@ -71,15 +71,3 @@ export function resolveChatHeaderRightPanelLabel(
   }
   return undefined;
 }
-
-export function resolveMessageListScrollKey(options: {
-  isDmView: boolean;
-  activeDmUserIds: number[] | null;
-  activeStream: string | null | undefined;
-  activeTopic: string | null | undefined;
-}): string | undefined {
-  if (options.isDmView) {
-    return options.activeDmUserIds !== null ? `dm-${options.activeDmUserIds.join(",")}` : undefined;
-  }
-  return [options.activeStream ?? "", options.activeTopic ?? ""].join("|");
-}

@@ -9,11 +9,11 @@
  */
 
 import { useCallParticipantsStore } from "~/entities/call/call.model";
-import { useChatListStore } from "~/entities/chat-list/chat-list.model";
-import { useInstancesStore } from "~/entities/instance/instance.model";
+import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { useThemeStore } from "~/entities/theme/theme.model";
 import { useUsersStore } from "~/entities/user/user.model";
+import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { t, setLocale, getLocale, getSupportedLocales } from "~/i18n/i18n";
 import { initConsoleCapture } from "~/shared/lib/console-capture.lib";
 import { env } from "~/shared/lib/env";
@@ -34,10 +34,10 @@ import { useSidebarConfigStore } from "~/widgets/sidebar/sidebar-config.model";
 
 interface DevTools {
   stores: {
-    chatList: typeof useChatListStore;
+    messenger: typeof useMessengerStore;
     messages: typeof useWorkspaceMessageStore;
     users: typeof useUsersStore;
-    instances: typeof useInstancesStore;
+    workspaceAuth: typeof useWorkspaceAuthStore;
     theme: typeof useThemeStore;
     sidebar: typeof useSidebarConfigStore;
     callParticipants: typeof useCallParticipantsStore;
@@ -77,10 +77,10 @@ export function installDevTools(): void {
 
   const devtools: DevTools = {
     stores: {
-      chatList: useChatListStore,
+      messenger: useMessengerStore,
       messages: useWorkspaceMessageStore,
       users: useUsersStore,
-      instances: useInstancesStore,
+      workspaceAuth: useWorkspaceAuthStore,
       theme: useThemeStore,
       sidebar: useSidebarConfigStore,
       callParticipants: useCallParticipantsStore,
@@ -133,7 +133,7 @@ Log scopes: app, api, realtime, connection-health, action, store:<name>, trace:*
   __dev__.i18n.setLocale("en")
   __dev__.perf.startTimer("label")
 
-Stores: chatList, messages, users, instances, theme, sidebar, callParticipants
+Stores: messenger, messages, users, workspaceAuth, theme, sidebar, callParticipants
       `);
       /* eslint-enable no-console */
     },
