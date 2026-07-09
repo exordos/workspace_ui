@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useRef } from "react";
 import { t } from "~/i18n/i18n";
-import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/protected-message-media";
-import { useProtectedMediaDisplayUrl } from "~/shared/lib/protected-message-media.hook";
+import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
 import { Icon } from "~/shared/ui/icon";
+import { canUseMediaViewerDisplayUrl } from "./media-viewer-actions.lib";
 import type {
   MediaViewerThumbnailItemProps,
   MediaViewerThumbnailsProps,
@@ -10,7 +10,7 @@ import type {
 
 const MediaViewerThumbnailItem = React.memo<MediaViewerThumbnailItemProps>(
   ({ item, index, isActive, onSelect, buttonRef }) => {
-    const displayUrl = useProtectedMediaDisplayUrl(item.url, item.type);
+    const displayUrl = canUseMediaViewerDisplayUrl(item.url) ? item.url : undefined;
 
     const handleClick = useCallback(
       (event: React.MouseEvent) => {

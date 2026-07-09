@@ -21,7 +21,6 @@ import {
   type UserProfileData,
 } from "~/features/user-profile/user-profile.types";
 import { t } from "~/i18n/i18n";
-import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import { bumpAvatarVersion, resolveAvatarUrl } from "~/shared/lib/avatar";
 import { writeText } from "~/shared/lib/clipboard";
 import { formatDateJoined } from "~/shared/lib/datetime.lib";
@@ -128,10 +127,7 @@ export const SettingsPersonalInfoPage: React.FC = () => {
     (patch: Partial<Pick<User, "avatarUrl" | "displayName" | "updatedAt">>) => {
       const userUuid = currentWorkspaceSession?.userUuid ?? null;
       const store = useUsersStore.getState();
-      const user =
-        userUuid != null
-          ? store.getUser(userUuid)
-          : undefined;
+      const user = userUuid != null ? store.getUser(userUuid) : undefined;
       if (user == null) return;
       store.upsertUser({
         ...user,
@@ -629,11 +625,11 @@ export const SettingsPersonalInfoPage: React.FC = () => {
     }
     const profileAvatar = profile?.avatarUrl;
     if (profileAvatar != null && profileAvatar.length > 0) {
-      return resolveAvatarUrl(profileAvatar, getRealmBaseUrl()) ?? null;
+      return resolveAvatarUrl(profileAvatar) ?? null;
     }
     const workspaceAvatar = currentWorkspaceUser?.avatarUrl;
     if (workspaceAvatar != null && workspaceAvatar.length > 0) {
-      return resolveAvatarUrl(workspaceAvatar, getRealmBaseUrl()) ?? null;
+      return resolveAvatarUrl(workspaceAvatar) ?? null;
     }
     return null;
   }, [currentWorkspaceUser?.avatarUrl, pendingAvatarAction, profile?.avatarUrl]);

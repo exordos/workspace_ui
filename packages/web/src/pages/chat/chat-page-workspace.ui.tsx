@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
 import { useDownloadStore } from "~/entities/download/download.model";
 import {
   selectWorkspaceMessagesForConversation,
@@ -74,7 +73,6 @@ import type {
   ReplyQuote,
 } from "~/widgets/message-composer/message-composer.types";
 import type { WorkspaceMessageMediaGalleryOpenRequest } from "~/widgets/workspace-message-list/workspace-message-list.types";
-import { consumePendingForwardPrefill } from "./chat-forward.lib";
 import { ChatPageComposerSection } from "./chat-page-composer-section.ui";
 import { ChatPageDeleteConfirmBar } from "./chat-page-delete-confirm-bar.ui";
 import { ChatPageInlineAlerts } from "./chat-page-inline-alerts.ui";
@@ -273,9 +271,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   const [selectedMessageUuids, setSelectedMessageUuids] = useState<Set<string>>(() => new Set());
   const [replyQuote, setReplyQuote] = useState<ReplyQuote | null>(null);
   const [uploadProgress, setUploadProgress] = useState<ComposerUploadProgressState | null>(null);
-  const [draftInitialValue, setDraftInitialValue] = useState<string | undefined>(undefined);
   const [scrollToBottomAfterSendNonce, setScrollToBottomAfterSendNonce] = useState(0);
-  const composerValueRef = useRef("");
   const pendingReadMessageUuidsRef = useRef<Set<string>>(new Set());
   const readRequestedMessageUuidsRef = useRef<Set<string>>(new Set());
   const readBatchTimerRef = useRef<number | null>(null);
@@ -328,7 +324,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     };
   }, [activeMessageConversationId, route]);
   useMessengerStreamBindingsForRoute({ route: effectiveRoute });
-  const location = useLocation();
   const openSearch = useOpenSearch();
   const rightDrawer = useRightDrawer();
   const selection = useMemo(
@@ -661,17 +656,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       clearWorkspacePreviewBlobCache(workspacePreviewBlobCacheRef.current);
     };
   }, [conversationId, runtimeContext]);
-
-  useEffect(() => {
-    const pendingForwardPrefill = consumePendingForwardPrefill(location.pathname);
-    if (pendingForwardPrefill == null) {
-      setDraftInitialValue(undefined);
-      composerValueRef.current = "";
-      return;
-    }
-    setDraftInitialValue(pendingForwardPrefill);
-    composerValueRef.current = pendingForwardPrefill;
-  }, [location.pathname]);
 
   useEffect(() => {
     setPendingDeleteMessageUuid(null);
@@ -1793,10 +1777,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
           }
           replyQuote={replyQuote}
           onClearReply={handleClearReply}
-          draftInitialValue={draftInitialValue}
-          onComposerValueChange={(value) => {
-            composerValueRef.current = value;
-          }}
+          draftInitialValue={undefined}
+          onComposerValueChange={noop}
           onEditLastMessage={handleEditLastMessage}
           editSession={composerEditSession}
           onSubmitEdit={handleSubmitEdit}

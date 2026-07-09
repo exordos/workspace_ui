@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MessengerOutgoingMessage } from "~/entities/messenger/messenger-outbox.types";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import { setLocale } from "~/i18n/i18n";
-import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/protected-message-media";
+import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
 import { WorkspaceMessageList } from "./workspace-message-list.ui";
 
 vi.mock("emoji-picker-react", () => ({

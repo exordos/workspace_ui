@@ -1,11 +1,11 @@
 import { useLayoutEffect, useRef, type RefObject } from "react";
 import { normalizeWorkspacePreviewBlob } from "~/entities/messenger/messenger-workspace-message-preview-blob.lib";
 import { createLogger } from "~/shared/lib/logger";
-import { MESSAGE_MEDIA_PREVIEW_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
 import {
   AUTH_IMAGE_PLACEHOLDER_SRC,
   createDisplayableBlobUrl,
-} from "~/shared/lib/protected-message-media";
+} from "~/shared/lib/media-display-url.lib";
+import { MESSAGE_MEDIA_PREVIEW_CLASS_NAME } from "~/shared/lib/message-body-rich-text-classes";
 import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 
 const previewLog = createLogger("workspace-message-preview");

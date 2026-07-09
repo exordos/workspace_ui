@@ -1,7 +1,6 @@
 import React, { useCallback, useMemo } from "react";
 import { isElectron } from "~/shared/lib/electron";
-import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/protected-message-media";
-import { useProtectedMediaDisplayUrl } from "~/shared/lib/protected-message-media.hook";
+import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
 import {
   canUseMediaViewerDisplayUrl,
   downloadMediaItem,
@@ -24,7 +23,10 @@ export const MediaViewerOverlay: React.FC = () => {
   const goTo = useMediaViewerStore((s) => s.goTo);
   const { zoom, onWheel } = useMediaViewerZoom({ currentIndex });
   const item = items[currentIndex] ?? null;
-  const displayUrl = useProtectedMediaDisplayUrl(item?.url ?? "", item?.type ?? "image");
+  const displayUrl = useMemo(() => {
+    const url = item?.url;
+    return canUseMediaViewerDisplayUrl(url) ? url : undefined;
+  }, [item?.url]);
   const hasMultipleItems = items.length > 1;
   const showOpenInNewTab = !isElectron();
 

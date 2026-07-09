@@ -1,6 +1,6 @@
 /**
  * Fetches avatar images with auth headers for private Zulip realms / gateways.
- * Uses same-origin relative paths in dev (Vite realm proxy) — mirrors protected-message-media.
+ * Uses same-origin relative paths in dev through the current app origin.
  *
  * Usage:
  *   import { buildAvatarFetchUrl, fetchAvatarBlob, shouldNetworkFetchAvatarBlob } from "~/shared/lib/avatar-blob-fetch.lib";

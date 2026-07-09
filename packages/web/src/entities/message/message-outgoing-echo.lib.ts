@@ -7,7 +7,6 @@
  */
 import type { MockMessage } from "~/shared/api/zulip.types";
 import { stripHtml } from "~/shared/lib/html";
-import { userUploadImageIdentitiesMatchBetweenBodies } from "~/shared/lib/message-inline-user-upload-image.lib";
 
 function normalizeEchoBody(raw: string): string {
   return stripHtml(raw).replace(/\s+/g, " ").trim();
@@ -21,5 +20,5 @@ export function outgoingEchoContentMatches(
   if (normalizeEchoBody(optimistic.content) === normalizeEchoBody(serverEcho.content)) {
     return true;
   }
-  return userUploadImageIdentitiesMatchBetweenBodies(optimistic.content, serverEcho.content);
+  return false;
 }

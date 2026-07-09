@@ -1,6 +1,6 @@
 import DOMPurify from "dompurify";
 import { createLogger } from "~/shared/lib/logger";
-import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/protected-message-media";
+import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
 import { DEFAULT_WORKSPACE_MESSAGE_RENDER_OPTIONS } from "./workspace-message-render-options.lib";
 import type {
   WorkspaceMessageBlock,

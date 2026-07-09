@@ -1,6 +1,5 @@
 import React, { useCallback } from "react";
 import { t } from "~/i18n/i18n";
-import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import { resolveAvatarUrl } from "~/shared/lib/avatar";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
@@ -9,7 +8,7 @@ import { resolveDmStatusText } from "./chat-header.lib";
 import type { ChatHeaderProps } from "./chat-header.types";
 
 function resolveAvatarSrc(url: string | undefined | null): string | undefined {
-  return resolveAvatarUrl(url, getRealmBaseUrl());
+  return resolveAvatarUrl(url);
 }
 
 const TITLE_ACTION_BUTTON_CLASS =

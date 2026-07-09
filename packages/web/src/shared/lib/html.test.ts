@@ -3,19 +3,8 @@
 // These tests are critical for XSS protection. All HTML from the Zulip API
 // passes through `sanitizeHtml` before render via `dangerouslySetInnerHTML`.
 // A bug here could execute arbitrary JS in the user's session.
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { resolveMessageMediaUrl, sanitizeHtmlToFragment, stripHtml, sanitizeHtml } from "./html";
-
-vi.mock("~/shared/lib/env", () => ({
-  env: {
-    USER_UPLOADS_PATH_PREFIX: "/workspace/v1",
-  },
-}));
-
-vi.mock("~/shared/lib/zulip-message-media-base.lib", () => ({
-  getMessageImagesBaseUrl: vi.fn(() => "https://zulip.example.com/workspace/v1"),
-  getMessageRealmBaseUrl: vi.fn(() => "https://zulip.example.com"),
-}));
 
 // `stripHtml` extracts plain text from messages, e.g. for notifications and previews.
 describe("stripHtml", () => {
@@ -122,19 +111,16 @@ describe("sanitizeHtml", () => {
     expect(result).toContain('height="560"');
   });
 
-  // Zulip serves user uploads as relative paths — rewrite to absolute URLs.
-  it("rewrites relative img src when baseUrl provided", () => {
+  it("does not rewrite relative img src when baseUrl is provided", () => {
     const html = '<img src="/user_uploads/1/img.png">';
     const result = sanitizeHtml(html, "https://zulip.example.com/workspace/v1");
-    expect(result).toContain('src="https://zulip.example.com/workspace/v1/user_uploads/1/img.png"');
+    expect(result).toContain('src="/user_uploads/1/img.png"');
   });
 
-  // In Electron on `file://`, `sanitizeHtml` may run without `baseUrl`,
-  // but `/user_uploads/` must still resolve via realm.
-  it("rewrites relative user_uploads when baseUrl omitted (realm media base fallback)", () => {
+  it("does not infer a legacy media base when baseUrl is omitted", () => {
     const html = '<img src="/user_uploads/1/img.png" alt="">';
     const result = sanitizeHtml(html);
-    expect(result).toContain('src="https://zulip.example.com/workspace/v1/user_uploads/1/img.png"');
+    expect(result).toContain('src="/user_uploads/1/img.png"');
   });
 
   // Already-absolute external CDN URLs must not change.
@@ -144,29 +130,31 @@ describe("sanitizeHtml", () => {
     expect(result).toContain('src="https://cdn.example.com/img.png"');
   });
 
-  it("rewrites absolute user_uploads img src to canonical base", () => {
+  it("does not rewrite absolute user_uploads img src to a canonical base", () => {
     const html = '<img src="https://sys.platform.genesis-core.team/user_uploads/1/x.png" alt="">';
     const result = sanitizeHtml(html, "https://zulip.example.com/workspace/v1");
-    expect(result).toContain('src="https://zulip.example.com/workspace/v1/user_uploads/1/x.png"');
+    expect(result).toContain('src="https://sys.platform.genesis-core.team/user_uploads/1/x.png"');
   });
 
-  it("rewrites user_uploads link href to canonical base", () => {
+  it("does not rewrite user_uploads link href to a canonical base", () => {
     const html = '<a href="https://sys.platform.genesis-core.team/user_uploads/1/x.png">file</a>';
     const result = sanitizeHtml(html, "https://zulip.example.com/workspace/v1");
-    expect(result).toContain('href="https://zulip.example.com/workspace/v1/user_uploads/1/x.png"');
+    expect(result).toContain('href="https://sys.platform.genesis-core.team/user_uploads/1/x.png"');
   });
 
-  it("rewrites relative external_content media when baseUrl omitted", () => {
+  it("does not infer a base for relative external_content media", () => {
     const html = '<img src="/external_content/preview.png" alt="preview">';
     const result = sanitizeHtml(html);
-    expect(result).toContain('src="https://zulip.example.com/external_content/preview.png"');
+    expect(result).toContain('src="/external_content/preview.png"');
   });
 
-  it("rewrites absolute external_content URLs to the canonical realm origin", () => {
+  it("does not rewrite absolute external_content URLs to a canonical realm origin", () => {
     const html =
       '<img src="https://sys.platform.genesis-core.team/external_content/preview.png" alt="">';
     const result = sanitizeHtml(html, "https://zulip.example.com/workspace/v1");
-    expect(result).toContain('src="https://zulip.example.com/external_content/preview.png"');
+    expect(result).toContain(
+      'src="https://sys.platform.genesis-core.team/external_content/preview.png"',
+    );
   });
 
   it("preserves audio preview markup and Zulip preview metadata attrs", () => {
@@ -174,7 +162,7 @@ describe("sanitizeHtml", () => {
       '<audio controls src="/external_content/audio.mp3" title="Preview" data-original-url="https://example.com/audio.mp3" data-original-dimensions="320x180" data-original-content-type="audio/mpeg"></audio>';
     const result = sanitizeHtml(html, "https://zulip.example.com/workspace/v1");
     expect(result).toContain("<audio");
-    expect(result).toContain('src="https://zulip.example.com/external_content/audio.mp3"');
+    expect(result).toContain('src="/external_content/audio.mp3"');
     expect(result).toContain('title="Preview"');
     expect(result).toContain('data-original-url="https://example.com/audio.mp3"');
     expect(result).toContain('data-original-dimensions="320x180"');

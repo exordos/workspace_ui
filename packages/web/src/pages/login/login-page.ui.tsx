@@ -8,10 +8,10 @@ import {
 } from "~/entities/workspace-auth/workspace-auth.lib";
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { t } from "~/i18n/i18n";
-import { normalizeRealm } from "~/shared/api/zulip-realm.internal";
 import { env } from "~/shared/lib/env";
 import { extractOrgRouteFromPathname } from "~/shared/lib/org-route";
 import { getOrganizationFallbackLogoUrl } from "~/shared/lib/organization-branding";
+import { normalizeServerBaseUrl } from "~/shared/lib/server-url.lib";
 import { isValidRealmUrl } from "~/shared/lib/validation";
 import { Button } from "~/shared/ui/button";
 import { FormField } from "~/shared/ui/form-field.ui";
@@ -98,7 +98,7 @@ export const LoginPage: React.FC = () => {
       if (id !== fetchIdRef.current) {
         return false;
       }
-      const realmBase = normalizeRealm(nextRealm);
+      const realmBase = normalizeServerBaseUrl(nextRealm);
 
       const nextSettings = {
         realm_base: realmBase,

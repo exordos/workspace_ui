@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/protected-message-media";
+import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
 import { parseWorkspaceMessageBody } from "./workspace-message-parse.lib";
 import { renderWorkspaceMessageBody } from "./workspace-message-render.lib";
 

@@ -1,6 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { t } from "~/i18n/i18n";
-import { getRealmBaseUrl } from "~/shared/api/zulip-client.internal";
 import { CALL_INCOMING_MODAL_VARIANT } from "~/shared/config/constants";
 import { resolveAvatarUrl } from "~/shared/lib/avatar";
 import { IncomingCallCompact } from "./jitsi-call-incoming-compact.ui";
@@ -38,7 +37,7 @@ export const JitsiIncomingInviteHost: React.FC = () => {
 
   const trimmedCallerName = incomingInvite?.callerName.trim() ?? "";
   const inviteTitle = trimmedCallerName.length > 0 ? trimmedCallerName : t("call.participant");
-  const inviteAvatarSrc = resolveAvatarUrl(incomingInvite?.avatarUrl, getRealmBaseUrl()) ?? null;
+  const inviteAvatarSrc = resolveAvatarUrl(incomingInvite?.avatarUrl) ?? null;
   const inviteAvatarLetter = inviteTitle[0]?.toUpperCase() ?? "?";
   const incomingMessageId = incomingInvite?.messageId ?? null;
   const incomingMessageKey = incomingMessageId == null ? null : String(incomingMessageId);

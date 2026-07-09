@@ -4,15 +4,8 @@
  * Uses resolved display URLs (blob or public) — never raw protected URLs without auth.
  */
 
-import { buildAuthHeader } from "~/shared/lib/auth-guard";
 import { guard } from "~/shared/lib/guards";
-import {
-  AUTH_IMAGE_PLACEHOLDER_SRC,
-  fetchProtectedUploadBlob,
-  isProtectedMessageMediaUrl,
-  resolveProtectedUploadFetchOptions,
-  buildProtectedUploadFetchUrl,
-} from "~/shared/lib/protected-message-media";
+import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
 import { isValidUrl, sanitizeFilename } from "~/shared/lib/validation";
 import type { MediaItem } from "./media-viewer.types";
 
@@ -125,15 +118,8 @@ async function fetchBlobFromDisplayUrl(displayUrl: string): Promise<Blob | null>
 async function fetchPublicMediaBlob(url: string): Promise<Blob | null> {
   if (!isValidUrl(url)) return null;
 
-  const headers = buildAuthHeader();
-  const fetchUrl = isProtectedMessageMediaUrl(url) ? buildProtectedUploadFetchUrl(url) : url;
   try {
-    const response = await fetch(
-      fetchUrl,
-      isProtectedMessageMediaUrl(url)
-        ? resolveProtectedUploadFetchOptions(fetchUrl, headers)
-        : { credentials: "include" },
-    );
+    const response = await fetch(url, { credentials: "include" });
     if (!response.ok) return null;
     return await response.blob();
   } catch {
@@ -151,10 +137,6 @@ async function fetchMediaItemBlob(item: MediaItem, displayUrl?: string): Promise
 
   const sourceUrl = item.url.trim();
   if (sourceUrl === "") return null;
-
-  if (isProtectedMessageMediaUrl(sourceUrl)) {
-    return await fetchProtectedUploadBlob(sourceUrl, buildAuthHeader());
-  }
 
   return await fetchPublicMediaBlob(sourceUrl);
 }
