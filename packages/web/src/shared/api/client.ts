@@ -24,7 +24,7 @@ import {
   reportFailure,
 } from "~/shared/lib/connection-health";
 import { env } from "~/shared/lib/env";
-import { logApiCall } from "~/shared/lib/logger";
+import { createLogger, logApiCall } from "~/shared/lib/logger";
 import { extractLoggableRequestParams } from "~/shared/lib/logger-request-params.lib";
 import { workspaceOrgApiOriginFromZulipRealmRoot } from "~/shared/lib/workspace-org-origin.lib";
 import {
@@ -202,6 +202,7 @@ type AuthErrorHandler = () => void;
 const AUTH_401_COOLDOWN_MS = 1000;
 let authErrorHandler: AuthErrorHandler | null = null;
 let lastHandledAuth401At = 0;
+const authLog = createLogger("api:auth");
 
 export function setAuthErrorHandler(handler: AuthErrorHandler | null): void {
   authErrorHandler = handler;
@@ -495,17 +496,40 @@ const authErrorMiddleware: Middleware = async (req, next) => {
     return res;
   }
   if (shouldSkipAuth401Handling(req)) {
+    authLog.info("Skipped global 401 logout handler", {
+      method: req.method,
+      url: req.url,
+      status: res.status,
+      reason: "allowlisted_path",
+    });
     return res;
   }
   if (getCurrentInstance() == null) {
+    authLog.warn("Skipped global 401 logout handler without active legacy instance", {
+      method: req.method,
+      url: req.url,
+      status: res.status,
+      reason: "missing_legacy_instance",
+    });
     return res;
   }
 
   const now = Date.now();
   if (now - lastHandledAuth401At < AUTH_401_COOLDOWN_MS) {
+    authLog.warn("Skipped repeated global 401 logout handler during cooldown", {
+      method: req.method,
+      url: req.url,
+      status: res.status,
+      cooldownMs: AUTH_401_COOLDOWN_MS,
+    });
     return res;
   }
   lastHandledAuth401At = now;
+  authLog.warn("Global 401 logout handler wiping legacy credentials", {
+    method: req.method,
+    url: req.url,
+    status: res.status,
+  });
   wipeCredentials();
   authErrorHandler?.();
 

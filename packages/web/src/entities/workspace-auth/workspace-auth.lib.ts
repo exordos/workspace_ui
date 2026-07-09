@@ -30,6 +30,18 @@ const terminalRefreshFailureAttemptsByAccountId = new Map<
 >();
 let instanceIdFallbackCounter = 0;
 
+type WorkspaceSessionRemovalReason =
+  | "explicit-logout"
+  | "owner-mismatch"
+  | "terminal-refresh-failure";
+
+interface WorkspaceSessionRemovalDecision {
+  remove: boolean;
+  terminalAttemptCount?: number;
+  terminalAttemptThreshold?: number;
+  terminalAttemptWindowMs?: number;
+}
+
 export interface LoginWorkspaceWithPasswordParams {
   organizationUrl: string;
   login: string;
@@ -215,7 +227,10 @@ function resetTerminalRefreshFailureAttempts(accountId: string): void {
   terminalRefreshFailureAttemptsByAccountId.delete(accountId);
 }
 
-function shouldRemoveAfterTerminalRefreshFailure(accountId: string, nowMs = Date.now()): boolean {
+function shouldRemoveAfterTerminalRefreshFailure(
+  accountId: string,
+  nowMs = Date.now(),
+): WorkspaceSessionRemovalDecision {
   const current = terminalRefreshFailureAttemptsByAccountId.get(accountId);
   const isWithinWindow =
     current != null && nowMs - current.firstFailureAtMs <= TERMINAL_REFRESH_FAILURE_WINDOW_MS;
@@ -226,26 +241,36 @@ function shouldRemoveAfterTerminalRefreshFailure(accountId: string, nowMs = Date
 
   if (nextAttempt.count >= TERMINAL_REFRESH_FAILURE_REMOVAL_THRESHOLD) {
     resetTerminalRefreshFailureAttempts(accountId);
-    return true;
+    return {
+      remove: true,
+      terminalAttemptCount: nextAttempt.count,
+      terminalAttemptThreshold: TERMINAL_REFRESH_FAILURE_REMOVAL_THRESHOLD,
+      terminalAttemptWindowMs: TERMINAL_REFRESH_FAILURE_WINDOW_MS,
+    };
   }
 
   terminalRefreshFailureAttemptsByAccountId.set(accountId, nextAttempt);
-  return false;
+  return {
+    remove: false,
+    terminalAttemptCount: nextAttempt.count,
+    terminalAttemptThreshold: TERMINAL_REFRESH_FAILURE_REMOVAL_THRESHOLD,
+    terminalAttemptWindowMs: TERMINAL_REFRESH_FAILURE_WINDOW_MS,
+  };
 }
 
-function shouldRemoveSessionAfterRefreshFailure(
+function sessionRemovalDecisionAfterRefreshFailure(
   accountId: string,
   failure: WorkspaceAuthRefreshFailure,
-): boolean {
+): WorkspaceSessionRemovalDecision {
   if (failure.reason === "owner-mismatch") {
     resetTerminalRefreshFailureAttempts(accountId);
-    return true;
+    return { remove: true };
   }
   if (failure.reason === "refresh-expired") {
     return shouldRemoveAfterTerminalRefreshFailure(accountId);
   }
   resetTerminalRefreshFailureAttempts(accountId);
-  return false;
+  return { remove: false };
 }
 
 function abortSignalError(): Error {
@@ -332,10 +357,24 @@ async function cleanupWorkspaceOwnerCaches(
 async function removeWorkspaceSessionAfterCacheCleanup(
   accountId: string,
   session: WorkspaceAuthSession | undefined = findWorkspaceSession(accountId),
+  reason: WorkspaceSessionRemovalReason = "explicit-logout",
 ): Promise<void> {
+  authLogger.warn("Workspace session removal requested", {
+    accountId,
+    reason,
+    sessionPresent: session != null,
+    organizationId: session?.organizationId,
+    projectId: session?.projectId,
+    userUuid: session?.userUuid,
+  });
   resetTerminalRefreshFailureAttempts(accountId);
   await cleanupWorkspaceOwnerCaches(session);
   useWorkspaceAuthStore.getState().removeSession(accountId);
+  authLogger.warn("Workspace session removed", {
+    accountId,
+    reason,
+    sessionPresentBeforeRemoval: session != null,
+  });
 }
 
 async function loadWorkspaceProfileOrFallback(params: {
@@ -378,6 +417,20 @@ function userUuidFromClaims(
   claims: ReturnType<typeof decodeWorkspaceIamClaims>,
 ): string | undefined {
   return claims?.userUuid ?? claims?.subject;
+}
+
+function resolveWorkspaceRefreshOwnerMismatch(
+  session: WorkspaceAuthSession,
+  claims: ReturnType<typeof decodeWorkspaceIamClaims>,
+): string | null {
+  const tokenUserUuid = userUuidFromClaims(claims);
+  if (tokenUserUuid != null && tokenUserUuid !== session.userUuid) {
+    return "user_uuid";
+  }
+  if (claims?.projectId != null && claims.projectId !== session.projectId) {
+    return "project_id";
+  }
+  return null;
 }
 
 function generateInstanceId(): string {
@@ -449,12 +502,33 @@ async function refreshWorkspaceAuthSessionOnce(
     { tokenUrl: iamTokenUrlForOrganizationOrigin(session.organizationOrigin), signal },
   );
   const claims = decodeWorkspaceIamClaims(token.accessToken);
-  const userUuid = userUuidFromClaims(claims);
-  if (userUuid !== session.userUuid || claims?.projectId !== session.projectId) {
+  const ownerMismatchClaim = resolveWorkspaceRefreshOwnerMismatch(session, claims);
+  if (ownerMismatchClaim != null) {
+    authLogger.warn("Workspace refresh token owner claim mismatch", {
+      accountId: session.accountId,
+      organizationId: session.organizationId,
+      projectId: session.projectId,
+      userUuid: session.userUuid,
+      claim: ownerMismatchClaim,
+      tokenUserUuid: userUuidFromClaims(claims),
+      tokenProjectId: claims?.projectId,
+      hasClaims: claims != null,
+    });
     throw new WorkspaceAuthFlowError(
       "owner-mismatch",
       "Workspace refresh token returned another owner",
     );
+  }
+  if (claims?.projectId == null) {
+    authLogger.warn("Workspace refresh token returned incomplete local claims", {
+      accountId: session.accountId,
+      organizationId: session.organizationId,
+      projectId: session.projectId,
+      userUuid: session.userUuid,
+      hasClaims: claims != null,
+      hasUserUuid: userUuidFromClaims(claims) != null,
+      hasProjectId: claims?.projectId != null,
+    });
   }
 
   useWorkspaceAuthStore.getState().updateTokens(session.accountId, {
@@ -479,11 +553,38 @@ async function refreshWorkspaceAuthSessionForAccount(
   try {
     const refreshedSession = await refreshWorkspaceAuthSessionOnce(session, undefined);
     resetTerminalRefreshFailureAttempts(session.accountId);
+    authLogger.info("Workspace auth refresh succeeded", {
+      accountId: session.accountId,
+      organizationId: session.organizationId,
+      projectId: session.projectId,
+      userUuid: session.userUuid,
+      refreshTokenRotated: refreshedSession.refreshToken !== session.refreshToken,
+      expiresAtMs: refreshedSession.expiresAtMs,
+    });
     return refreshedSession;
   } catch (error) {
     const failure = classifyWorkspaceAuthRefreshError(error);
-    if (shouldRemoveSessionAfterRefreshFailure(session.accountId, failure)) {
-      await removeWorkspaceSessionAfterCacheCleanup(session.accountId, session);
+    const removalDecision = sessionRemovalDecisionAfterRefreshFailure(session.accountId, failure);
+    authLogger.warn("Workspace auth refresh failed", {
+      accountId: session.accountId,
+      organizationId: session.organizationId,
+      projectId: session.projectId,
+      userUuid: session.userUuid,
+      reason: failure.reason,
+      status: "status" in failure ? failure.status : undefined,
+      errorName: error instanceof Error ? error.name : typeof error,
+      errorMessage: error instanceof Error ? error.message : undefined,
+      willRemoveSession: removalDecision.remove,
+      terminalAttemptCount: removalDecision.terminalAttemptCount,
+      terminalAttemptThreshold: removalDecision.terminalAttemptThreshold,
+      terminalAttemptWindowMs: removalDecision.terminalAttemptWindowMs,
+    });
+    if (removalDecision.remove) {
+      await removeWorkspaceSessionAfterCacheCleanup(
+        session.accountId,
+        session,
+        failure.reason === "owner-mismatch" ? "owner-mismatch" : "terminal-refresh-failure",
+      );
     }
     throw error;
   }
@@ -607,5 +708,5 @@ export async function loginWorkspaceWithPassword({
 }
 
 export async function removeWorkspaceSession(accountId: string): Promise<void> {
-  await removeWorkspaceSessionAfterCacheCleanup(accountId);
+  await removeWorkspaceSessionAfterCacheCleanup(accountId, undefined, "explicit-logout");
 }

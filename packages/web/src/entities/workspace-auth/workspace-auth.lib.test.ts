@@ -500,6 +500,38 @@ describe("workspace-auth flow", () => {
     });
   });
 
+  it("refreshes the Workspace session when IAM refresh omits the project claim", async () => {
+    const session = await loginAndGetCurrentSession();
+    refreshWorkspaceIamToken.mockResolvedValueOnce({
+      accessToken: tokenWithClaims({
+        user_uuid: USER_UUID,
+        exp: 1_900_000_100,
+      }),
+      refreshToken: "refresh-token-without-project",
+      raw: {},
+    });
+
+    await expect(ensureFreshWorkspaceSession(session.accountId, { force: true })).resolves.toEqual(
+      expect.objectContaining({
+        accountId: session.accountId,
+        projectId: PROJECT_ID,
+        userUuid: USER_UUID,
+        refreshToken: "refresh-token-without-project",
+      }),
+    );
+
+    expect(deleteWorkspaceMessengerOwnerCache).not.toHaveBeenCalled();
+    expect(deleteWorkspaceUserOwnerCache).not.toHaveBeenCalled();
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([
+      expect.objectContaining({
+        accountId: session.accountId,
+        projectId: PROJECT_ID,
+        userUuid: USER_UUID,
+        refreshToken: "refresh-token-without-project",
+      }),
+    ]);
+  });
+
   it("classifies IAM refresh rejection as refresh-expired", () => {
     const failure = classifyWorkspaceAuthRefreshError(
       new WorkspaceIamAuthError("Workspace IAM token request failed", 400, {
