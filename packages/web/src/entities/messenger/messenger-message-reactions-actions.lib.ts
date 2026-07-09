@@ -21,6 +21,7 @@ import {
   deleteMessengerOwnMessageReactionCache as defaultDeleteMessengerOwnMessageReactionCache,
   readMessengerOwnMessageReactionCache as defaultReadMessengerOwnMessageReactionCache,
   readMessengerOwnMessageReactionsCache as defaultReadMessengerOwnMessageReactionsCache,
+  replaceMessengerOwnMessageReactionsForOwnerCache as defaultReplaceMessengerOwnMessageReactionsForOwnerCache,
   replaceMessengerOwnMessageReactionsForMessageCache as defaultReplaceMessengerOwnMessageReactionsForMessageCache,
   upsertMessengerOwnMessageReactionCache as defaultUpsertMessengerOwnMessageReactionCache,
 } from "./messenger-cache.lib";
@@ -41,7 +42,7 @@ import type {
 export interface MessengerMessageReactionClientDeps {
   getMessageReactions?: (
     options: MessengerClientOptions,
-    query: { messageUuid: string; userUuid?: string },
+    query: { messageUuid?: string; userUuid?: string },
   ) => Promise<WorkspaceMessengerMessageReactionDto[]>;
   createMessageReaction?: (
     options: MessengerClientOptions,
@@ -63,6 +64,10 @@ export interface MessengerMessageReactionCacheDeps {
   replaceOwnMessageReactionsForMessage?: (
     ownerKey: string,
     messageUuid: MessengerUuid,
+    rows: readonly MessengerOwnMessageReactionCacheWrite[],
+  ) => Promise<void> | void;
+  replaceOwnMessageReactionsForOwner?: (
+    ownerKey: string,
     rows: readonly MessengerOwnMessageReactionCacheWrite[],
   ) => Promise<void> | void;
   upsertOwnMessageReaction?: (
@@ -149,6 +154,7 @@ const defaultReactionCache: Required<MessengerMessageReactionCacheDeps> = {
   readOwnMessageReactions: defaultReadMessengerOwnMessageReactionsCache,
   readOwnMessageReaction: defaultReadMessengerOwnMessageReactionCache,
   replaceOwnMessageReactionsForMessage: defaultReplaceMessengerOwnMessageReactionsForMessageCache,
+  replaceOwnMessageReactionsForOwner: defaultReplaceMessengerOwnMessageReactionsForOwnerCache,
   upsertOwnMessageReaction: defaultUpsertMessengerOwnMessageReactionCache,
   deleteOwnMessageReaction: defaultDeleteMessengerOwnMessageReactionCache,
 };
@@ -461,6 +467,62 @@ export async function revalidateMessengerOwnMessageReactions({
     ownerKey: action.ownerKey,
     messageUuids: normalizedUuids,
     reactions: reactionCount,
+  };
+}
+
+export async function syncMessengerOwnerOwnMessageReactions({
+  runtimeContext,
+  getRuntimeContext = () => runtimeContext,
+  clientOptions,
+  client = {},
+  cache = defaultReactionCache,
+  signal,
+  store = useWorkspaceMessageStore,
+  messageUuids,
+}: MessengerVisibleOwnReactionsOptions): Promise<MessengerOwnReactionsSyncResult> {
+  const action = captureReactionAction(runtimeContext, getRuntimeContext, signal);
+  if (action.ownerKey == null)
+    return { status: "skipped", ownerKey: null, reason: "missing-context" };
+  if (action.isStale())
+    return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+
+  const normalizedUuids = normalizedMessageUuids(messageUuids);
+  if (normalizedUuids.length === 0) {
+    return { status: "skipped", ownerKey: action.ownerKey, reason: "empty-message-list" };
+  }
+
+  const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
+  const effectiveCache = { ...defaultReactionCache, ...cache };
+  const dtoRows = await (client.getMessageReactions ?? defaultGetMessageReactions)(requestOptions, {
+    userUuid: runtimeContext.userUuid,
+  });
+  if (action.isStale())
+    return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+
+  const rows = dtoRows
+    .filter((dto) => reactionDtoMatchesCurrentUser(dto, runtimeContext))
+    .map(dtoToOwnReactionCacheWrite);
+  const visibleUuids = new Set<MessengerUuid>(normalizedUuids);
+  const visibleRows = rows.filter((row) => visibleUuids.has(row.messageUuid));
+  const groupedRows = groupOwnReactionRowsByMessage(visibleRows);
+
+  try {
+    await effectiveCache.replaceOwnMessageReactionsForOwner(action.ownerKey, rows);
+  } catch {
+    // Cache sync is best-effort; store projection still reflects the server response.
+  }
+  if (action.isStale())
+    return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+
+  for (const messageUuid of normalizedUuids) {
+    applyOwnRowsToStore(store, messageUuid, groupedRows.get(messageUuid) ?? []);
+  }
+
+  return {
+    status: "applied",
+    ownerKey: action.ownerKey,
+    messageUuids: normalizedUuids,
+    reactions: visibleRows.length,
   };
 }
 

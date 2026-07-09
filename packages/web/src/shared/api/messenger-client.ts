@@ -59,11 +59,8 @@ export interface GetMessagesQuery extends MessengerPaginationQuery {
   starred?: boolean;
 }
 
-// Фильтр reaction rows оставляет messageUuid обязательным.
-// userUuid нужен для узкой загрузки собственных реакций, чтобы слой выше мог удалить
-// реакцию по ее uuid без подмешивания Zulip-полей или фальшивых пользователей.
 export interface GetMessageReactionsQuery {
-  messageUuid: string;
+  messageUuid?: string;
   userUuid?: string;
 }
 

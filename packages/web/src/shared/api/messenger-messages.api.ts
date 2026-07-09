@@ -51,11 +51,8 @@ export interface MessengerMessageWindow {
   afterPageMarker: string | null;
 }
 
-// Запрос реакций всегда привязан к сообщению.
-// userUuid оставлен отдельным фильтром, потому что UI удаления должен быстро найти
-// только собственные reaction uuid текущего пользователя, не запрашивая полный список реакторов.
 export interface GetMessageReactionsQuery {
-  messageUuid: string;
+  messageUuid?: string;
   userUuid?: string;
 }
 

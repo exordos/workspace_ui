@@ -18,6 +18,7 @@ import {
   readMessengerCatalogCache,
   readOwnMessageReaction,
   readOwnMessageReactions,
+  replaceOwnMessageReactionsForOwner,
   replaceOwnMessageReactionsForMessage,
   upsertCachedMessages,
   upsertMessengerConversationsCache,
@@ -371,6 +372,13 @@ export async function replaceMessengerOwnMessageReactionsForMessageCache(
   rows: readonly MessengerOwnMessageReactionCacheWrite[],
 ): Promise<void> {
   await replaceOwnMessageReactionsForMessage(ownerKey, messageUuid, rows);
+}
+
+export async function replaceMessengerOwnMessageReactionsForOwnerCache(
+  ownerKey: string,
+  rows: readonly MessengerOwnMessageReactionCacheWrite[],
+): Promise<void> {
+  await replaceOwnMessageReactionsForOwner(ownerKey, rows);
 }
 
 // Upsert вызывается после create/revalidate и сохраняет reactionUuid, нужный

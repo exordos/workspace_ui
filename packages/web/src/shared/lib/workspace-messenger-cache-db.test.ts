@@ -19,6 +19,7 @@ import {
   readOwnMessageReaction,
   readOwnMessageReactions,
   readMessengerSearchResults,
+  replaceOwnMessageReactionsForOwner,
   replaceOwnMessageReactionsForMessage,
   resetWorkspaceMessengerCacheDbSingletonForTests,
   WORKSPACE_MESSENGER_CACHE_DB_NAME,
@@ -569,6 +570,38 @@ describe("workspace-messenger-cache-db", () => {
         row.reactionUuid,
       ]),
     ).toEqual([["msg-b", "heart", "reaction-c"]]);
+  });
+
+  it("replaces own reactions only for the requested owner", async () => {
+    await upsertOwnMessageReaction(OWNER, ownReaction("msg-a", "thumbs_up", "reaction-a"));
+    await upsertOwnMessageReaction(OWNER, ownReaction("msg-b", "eyes", "reaction-b"));
+    await upsertOwnMessageReaction(
+      OTHER_OWNER,
+      ownReaction("msg-a", "thumbs_up", "reaction-other"),
+    );
+
+    await replaceOwnMessageReactionsForOwner(OWNER, [
+      ownReaction("msg-c", "heart", "reaction-c"),
+      ownReaction("msg-d", "joy", "reaction-d"),
+    ]);
+
+    expect(
+      (await readOwnMessageReactions(OWNER, ["msg-a", "msg-b", "msg-c", "msg-d"])).map((row) => [
+        row.messageUuid,
+        row.emojiName,
+        row.reactionUuid,
+      ]),
+    ).toEqual([
+      ["msg-c", "heart", "reaction-c"],
+      ["msg-d", "joy", "reaction-d"],
+    ]);
+    expect(
+      (await readOwnMessageReactions(OTHER_OWNER, ["msg-a"])).map((row) => [
+        row.messageUuid,
+        row.emojiName,
+        row.reactionUuid,
+      ]),
+    ).toEqual([["msg-a", "thumbs_up", "reaction-other"]]);
   });
 
   it("reads, upserts, and deletes one own reaction by message and emoji", async () => {

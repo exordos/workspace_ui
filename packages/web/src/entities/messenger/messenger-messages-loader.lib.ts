@@ -27,7 +27,7 @@ import {
 } from "./messenger-ids.lib";
 import {
   hydrateMessengerOwnMessageReactionsFromCache as defaultHydrateMessengerOwnMessageReactionsFromCache,
-  revalidateMessengerOwnMessageReactions as defaultRevalidateMessengerOwnMessageReactions,
+  syncMessengerOwnerOwnMessageReactions as defaultSyncMessengerOwnerOwnMessageReactions,
 } from "./messenger-message-reactions-actions.lib";
 import {
   buildMessengerRequestOptions,
@@ -71,7 +71,7 @@ export interface MessengerMessagesCacheDeps {
 
 export interface MessengerMessagesOwnReactionSyncDeps {
   hydrateFromCache?: typeof defaultHydrateMessengerOwnMessageReactionsFromCache;
-  revalidate?: typeof defaultRevalidateMessengerOwnMessageReactions;
+  syncOwner?: typeof defaultSyncMessengerOwnerOwnMessageReactions;
 }
 
 export interface MessengerMessagesStoreApi {
@@ -235,7 +235,52 @@ function messageUuidsForOwnReactionSync(messages: readonly MessengerMessage[]): 
   return messages.map((message) => message.uuid);
 }
 
-function scheduleVisibleOwnReactionRevalidate({
+function haveSameMessageUuids(
+  left: readonly MessengerUuid[],
+  right: readonly MessengerUuid[],
+): boolean {
+  if (left.length !== right.length) return false;
+
+  const leftUuids = new Set(left);
+  const rightUuids = new Set(right);
+  if (leftUuids.size !== rightUuids.size) return false;
+
+  return left.every((uuid) => rightUuids.has(uuid));
+}
+
+async function hydrateVisibleOwnReactionsFromCache({
+  runtimeContext,
+  getRuntimeContext,
+  signal,
+  ownReactionSync,
+  messages,
+}: {
+  runtimeContext: WorkspaceRuntimeContext;
+  getRuntimeContext: WorkspaceRuntimeContextGetter;
+  signal: AbortSignal | undefined;
+  ownReactionSync: MessengerMessagesOwnReactionSyncDeps | undefined;
+  messages: readonly MessengerMessage[];
+}): Promise<MessengerUuid[]> {
+  const messageUuids = messageUuidsForOwnReactionSync(messages);
+  if (messageUuids.length === 0) return [];
+
+  const hydrate =
+    ownReactionSync?.hydrateFromCache ?? defaultHydrateMessengerOwnMessageReactionsFromCache;
+  try {
+    await hydrate({
+      runtimeContext,
+      getRuntimeContext,
+      signal,
+      messageUuids,
+    });
+  } catch {
+    // IDB hydration failures must not break message history; server sync can
+    // still restore current own-reaction rows.
+  }
+  return messageUuids;
+}
+
+function scheduleVisibleOwnReactionSync({
   runtimeContext,
   getRuntimeContext,
   clientOptions,
@@ -250,10 +295,10 @@ function scheduleVisibleOwnReactionRevalidate({
   ownReactionSync: MessengerMessagesOwnReactionSyncDeps | undefined;
   messageUuids: readonly MessengerUuid[];
 }): void {
-  // Revalidation is intentionally backgrounded: cache hydration should restore
+  // Server sync is intentionally backgrounded: cache hydration should restore
   // highlighting quickly after reload, and server checks must not block opening.
-  const revalidate = ownReactionSync?.revalidate ?? defaultRevalidateMessengerOwnMessageReactions;
-  void revalidate({
+  const syncOwner = ownReactionSync?.syncOwner ?? defaultSyncMessengerOwnerOwnMessageReactions;
+  void syncOwner({
     runtimeContext,
     getRuntimeContext,
     clientOptions,
@@ -277,23 +322,16 @@ async function syncVisibleOwnReactionsFromCacheThenServer({
   ownReactionSync: MessengerMessagesOwnReactionSyncDeps | undefined;
   messages: readonly MessengerMessage[];
 }): Promise<void> {
-  const messageUuids = messageUuidsForOwnReactionSync(messages);
+  const messageUuids = await hydrateVisibleOwnReactionsFromCache({
+    runtimeContext,
+    getRuntimeContext,
+    signal,
+    ownReactionSync,
+    messages,
+  });
   if (messageUuids.length === 0) return;
 
-  const hydrate =
-    ownReactionSync?.hydrateFromCache ?? defaultHydrateMessengerOwnMessageReactionsFromCache;
-  try {
-    await hydrate({
-      runtimeContext,
-      getRuntimeContext,
-      signal,
-      messageUuids,
-    });
-  } catch {
-    // IDB hydration failures must not break message history; server
-    // revalidation below can still restore current own-reaction rows.
-  }
-  scheduleVisibleOwnReactionRevalidate({
+  scheduleVisibleOwnReactionSync({
     runtimeContext,
     getRuntimeContext,
     clientOptions,
@@ -348,14 +386,23 @@ export async function loadMessengerConversationMessages({
       nextPageMarker: cachedWindow.nextPageMarker,
       hasMore: cachedWindow.hasMore,
     });
-    await syncVisibleOwnReactionsFromCacheThenServer({
+    const cachedOwnReactionSyncUuids = await hydrateVisibleOwnReactionsFromCache({
       runtimeContext,
       getRuntimeContext,
-      clientOptions,
       signal,
       ownReactionSync,
       messages: cachedWindow.messages,
     });
+    if (cachedOwnReactionSyncUuids.length > 0) {
+      scheduleVisibleOwnReactionSync({
+        runtimeContext,
+        getRuntimeContext,
+        clientOptions,
+        signal,
+        ownReactionSync,
+        messageUuids: cachedOwnReactionSyncUuids,
+      });
+    }
   }
 
   store.getState().setMessagesLoading(conversationId, true);
@@ -393,14 +440,20 @@ export async function loadMessengerConversationMessages({
     } else {
       messageStore.mergeConversationMessagesPage(conversationId, messages);
     }
-    await syncVisibleOwnReactionsFromCacheThenServer({
-      runtimeContext,
-      getRuntimeContext,
-      clientOptions,
-      signal,
-      ownReactionSync,
-      messages,
-    });
+    if (messages.length > 0) {
+      const serverMessageUuids = messageUuidsForOwnReactionSync(messages);
+      const cachedMessageUuids = messageUuidsForOwnReactionSync(cachedWindow.messages);
+      if (!haveSameMessageUuids(serverMessageUuids, cachedMessageUuids)) {
+        await syncVisibleOwnReactionsFromCacheThenServer({
+          runtimeContext,
+          getRuntimeContext,
+          clientOptions,
+          signal,
+          ownReactionSync,
+          messages,
+        });
+      }
+    }
     messageStore.setMessagesLoading(conversationId, false);
     messageStore.setMessagesError(conversationId, null);
     messageStore.setConversationPagination(conversationId, { nextPageMarker, hasMore });

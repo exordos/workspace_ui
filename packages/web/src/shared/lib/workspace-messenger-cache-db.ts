@@ -1962,6 +1962,37 @@ export async function replaceOwnMessageReactionsForMessage(
   }
 }
 
+export async function replaceOwnMessageReactionsForOwner(
+  ownerKey: string,
+  rows: readonly WorkspaceMessengerOwnMessageReactionCacheWrite[],
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const previousRows = await readRowsByOwner<WorkspaceMessengerOwnMessageReactionCacheRow>(
+      db,
+      ownerKey,
+      WORKSPACE_MESSENGER_CACHE_STORES.ownMessageReactions,
+    );
+    const nextRows = rows.map((row) => toOwnMessageReactionRow(ownerKey, row));
+    const transaction = db.transaction(
+      WORKSPACE_MESSENGER_CACHE_STORES.ownMessageReactions,
+      "readwrite",
+    );
+    const store = transaction.objectStore(WORKSPACE_MESSENGER_CACHE_STORES.ownMessageReactions);
+    for (const row of previousRows) {
+      store.delete(row.id);
+    }
+    for (const row of nextRows) {
+      store.put(row);
+    }
+    await transactionDone(transaction);
+  } catch {
+    return;
+  }
+}
+
 // Upsert используется после успешного create: новая reactionUuid сразу
 // становится пригодной для будущего DELETE, не дожидаясь общего reload cache.
 export async function upsertOwnMessageReaction(

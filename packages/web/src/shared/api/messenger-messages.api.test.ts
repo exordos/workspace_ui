@@ -446,6 +446,21 @@ describe("messenger messages API", () => {
     expect(deleteInit?.body).toBeUndefined();
   });
 
+  it("lists current user reactions without a message UUID filter", async () => {
+    const fetchMock = createFetchMock([reactionDto]);
+
+    await expect(
+      getMessageReactions(
+        { accessToken: "access-token", fetchImpl: fetchMock },
+        { userUuid: USER_UUID },
+      ),
+    ).resolves.toEqual([reactionDto]);
+
+    const [url] = firstFetchCall(fetchMock);
+    expect(url).toBe(`/api/messenger/v1/message_reactions/?user_uuid=${USER_UUID}`);
+    expect(url).not.toContain("message_uuid");
+  });
+
   it("strictly rejects invalid reaction rows", async () => {
     const fetchMock = createFetchMock([
       reactionDto,

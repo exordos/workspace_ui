@@ -315,6 +315,23 @@ describe("messenger-client", () => {
     expect(deleteInit?.body).toBeUndefined();
   });
 
+  it("lists current user reactions without a message UUID filter", async () => {
+    const fetchMock = createFetchMock([reactionDto]);
+
+    await expect(
+      getMessageReactions(
+        { accessToken: "access-token", projectId: PROJECT_UUID, fetchImpl: fetchMock },
+        { userUuid: USER_UUID },
+      ),
+    ).resolves.toEqual([reactionDto]);
+
+    const [url] = firstFetchCall(fetchMock);
+    expect(url).toBe(
+      `/api/messenger/v1/message_reactions/?project_id=${PROJECT_UUID}&user_uuid=${USER_UUID}`,
+    );
+    expect(url).not.toContain("message_uuid");
+  });
+
   it("splits message UUID batches by 100 and flattens parallel responses", async () => {
     const uuids = Array.from({ length: 201 }, (_, index) => createMessageUuid(index + 1));
     const firstRequest = createDeferred<Response>();

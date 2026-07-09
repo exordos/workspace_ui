@@ -13,6 +13,7 @@ import {
   hydrateMessengerOwnMessageReactionsFromCache,
   removeMessengerMessageReaction,
   revalidateMessengerOwnMessageReactions,
+  syncMessengerOwnerOwnMessageReactions,
   toggleMessengerMessageReaction,
 } from "./messenger-message-reactions-actions.lib";
 import type { MessengerOwnMessageReactionCacheRow } from "./messenger-cache.lib";
@@ -178,7 +179,7 @@ describe("messenger message reaction actions", () => {
     indexMessages(createMessage());
     const replaceOwnMessageReactionsForMessage = vi.fn(() => Promise.resolve());
     const getMessageReactions = vi.fn(
-      (_options: MessengerClientOptions, _query: { messageUuid: string; userUuid?: string }) =>
+      (_options: MessengerClientOptions, _query: { messageUuid?: string; userUuid?: string }) =>
         Promise.resolve([createReactionDto()]),
     );
 
@@ -221,6 +222,97 @@ describe("messenger message reaction actions", () => {
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactions).toEqual({
       thumbs_up: 1,
     });
+  });
+
+  it("syncs visible own reactions through one owner request and replaces owner cache", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
+    indexMessages(
+      createMessage({
+        ownReactionUuidsByEmojiName: { stale: "stale-reaction" },
+      }),
+      createMessage({ uuid: MESSAGE_B, reactions: { eyes: 1 } }),
+    );
+    const replaceOwnMessageReactionsForOwner = vi.fn(() => Promise.resolve());
+    const getMessageReactions = vi.fn(
+      (_options: MessengerClientOptions, _query: { messageUuid?: string; userUuid?: string }) =>
+        Promise.resolve([
+          createReactionDto(),
+          createReactionDto({
+            uuid: REACTION_B,
+            message_uuid: MESSAGE_B,
+            emoji_name: "eyes",
+          }),
+          createReactionDto({
+            uuid: "11111111-0000-4000-8000-000000000003",
+            message_uuid: "c93dca35-3061-4748-bda4-7f6f8c660ea5",
+            emoji_name: "heart",
+          }),
+          createReactionDto({
+            uuid: "11111111-0000-4000-8000-000000000004",
+            message_uuid: MESSAGE_A,
+            user_uuid: USER_B,
+            emoji_name: "joy",
+          }),
+        ]),
+    );
+
+    await expect(
+      syncMessengerOwnerOwnMessageReactions({
+        runtimeContext,
+        getRuntimeContext: () => runtimeContext,
+        messageUuids: [MESSAGE_A, MESSAGE_A, MESSAGE_B],
+        client: { getMessageReactions },
+        cache: { replaceOwnMessageReactionsForOwner },
+      }),
+    ).resolves.toEqual({
+      status: "applied",
+      ownerKey,
+      messageUuids: [MESSAGE_A, MESSAGE_B],
+      reactions: 2,
+    });
+
+    expect(getMessageReactions).toHaveBeenCalledTimes(1);
+    expect(getMessageReactions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accessToken: "access-token-a",
+        devTargetOrigin: "https://org-a.example.com",
+        projectId: PROJECT_A,
+      }),
+      { userUuid: USER_A },
+    );
+    expect(replaceOwnMessageReactionsForOwner).toHaveBeenCalledWith(ownerKey, [
+      {
+        messageUuid: MESSAGE_A,
+        userUuid: USER_A,
+        reactionUuid: REACTION_A,
+        emojiName: "thumbs_up",
+        createdAt: DATE,
+        updatedAt: DATE,
+      },
+      {
+        messageUuid: MESSAGE_B,
+        userUuid: USER_A,
+        reactionUuid: REACTION_B,
+        emojiName: "eyes",
+        createdAt: DATE,
+        updatedAt: DATE,
+      },
+      {
+        messageUuid: "c93dca35-3061-4748-bda4-7f6f8c660ea5",
+        userUuid: USER_A,
+        reactionUuid: "11111111-0000-4000-8000-000000000003",
+        emojiName: "heart",
+        createdAt: DATE,
+        updatedAt: DATE,
+      },
+    ]);
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.ownReactionUuidsByEmojiName,
+    ).toEqual({ thumbs_up: REACTION_A });
+    expect(
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]?.ownReactionUuidsByEmojiName,
+    ).toEqual({ eyes: REACTION_B });
   });
 
   it("adds a reaction, stores the returned row, and applies own projection", async () => {
