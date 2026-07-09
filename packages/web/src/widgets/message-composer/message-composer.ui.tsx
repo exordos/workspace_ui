@@ -4,7 +4,6 @@ import type { MentionSuggestion } from "~/features/mention-suggest/mention-sugge
 import { t } from "~/i18n/i18n";
 import type { SavedSnippet } from "~/shared/api/zulip.types";
 import { COMPOSER_FORMATTING_TOOLBAR_ALWAYS_VISIBLE } from "~/shared/config/constants";
-import { ensureRealmEmojisLoaded, getCachedRealmEmojis } from "~/shared/lib/realm-emojis-cache";
 import { useViewportKeyboard } from "~/shared/lib/touch";
 import { isWebView } from "~/shared/lib/webview";
 import { Icon } from "~/shared/ui/icon";
@@ -297,13 +296,11 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   const previewCapability = resolveActionCapability(capabilities?.preview);
   const mentionsCapability = resolveActionCapability(capabilities?.mentions);
   const scheduledSendCapability = resolveActionCapability(capabilities?.scheduledSend);
-  const customEmojisCapability = resolveActionCapability(capabilities?.customEmojis);
   const uploadSupported = isActionSupported(uploadCapability);
   const savedSnippetsSupported = isActionSupported(savedSnippetsCapability);
   const previewSupported = isActionSupported(previewCapability);
   const mentionsSupported = isActionSupported(mentionsCapability);
   const scheduledSendSupported = isActionSupported(scheduledSendCapability);
-  const customEmojisSupported = isActionSupported(customEmojisCapability);
   // Saved snippets still use the old store, so Workspace routes expose only a placeholder and skip sync.
   const savedSnippets = useComposerSavedSnippetsStore((s) => s.snippets);
   const savedSnippetsLoading = useComposerSavedSnippetsStore((s) => s.loadingInitial);
@@ -315,7 +312,6 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   const clearSavedSnippetsError = useComposerSavedSnippetsStore((s) => s.clearSavedSnippetsError);
   const [scheduledMessages, setScheduledMessages] = useState<ScheduledComposerMessage[]>([]);
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
-  const [customEmojis, setCustomEmojis] = useState(() => getCachedRealmEmojis());
   const { value, setValue, isEditing } = useComposerDraft({
     initialValue,
     editSession,
@@ -474,16 +470,6 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     setSavedSnippetsMenuOpen(false);
     setAiMenuOpen(true);
   }, []);
-  const ensureCustomEmojisLoaded = useCallback(() => {
-    if (!customEmojisSupported) return;
-    void ensureRealmEmojisLoaded()
-      .then((list) => {
-        setCustomEmojis(list);
-      })
-      .catch(() => {
-        // Custom emoji load failure is non-fatal; picker still uses Unicode.
-      });
-  }, [customEmojisSupported]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const applyFormattingShortcut = useCallback(
     (marker: string) => {
@@ -676,11 +662,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   };
 
   const handleEmojiClick = (data: EmojiClickData) => {
-    const customEmojiName = data.names?.[0]?.trim() ?? "";
-    let emoji = data.emoji ?? "";
-    if (data.isCustom) {
-      emoji = customEmojiName ? `:${customEmojiName}:` : "";
-    }
+    const emoji = data.emoji.trim();
     if (emoji.length === 0) return;
     setValue((prev) => prev + emoji);
     const textarea = textareaRef.current;
@@ -819,12 +801,9 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
       setScheduleMenuOpen(false);
       setSavedSnippetsMenuOpen(false);
       setMediaPickerOpen(true);
-      if (tab === "emoji") {
-        ensureCustomEmojisLoaded();
-      }
       updateMediaPickerPosition(tab);
     },
-    [ensureCustomEmojisLoaded, mediaPickerOpen, mediaPickerTab, updateMediaPickerPosition],
+    [mediaPickerOpen, mediaPickerTab, updateMediaPickerPosition],
   );
 
   const updateScheduleMenuPosition = useCallback(() => {
@@ -1220,13 +1199,9 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
                 onClose={() => setMediaPickerOpen(false)}
                 onTabChange={(tab) => {
                   setMediaPickerTab(tab);
-                  if (tab === "emoji") {
-                    ensureCustomEmojisLoaded();
-                  }
                   updateMediaPickerPosition(tab);
                 }}
                 onEmojiClick={handleEmojiClick}
-                customEmojis={customEmojis}
                 onStickerSelect={(markdown) => {
                   setValue((prev) => prev + markdown);
                   setMediaPickerOpen(false);

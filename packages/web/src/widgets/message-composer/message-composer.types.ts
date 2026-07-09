@@ -50,7 +50,6 @@ export interface MessageComposerCapabilities {
   preview?: MessageComposerActionCapability;
   mentions?: MessageComposerActionCapability;
   scheduledSend?: MessageComposerActionCapability;
-  customEmojis?: MessageComposerActionCapability;
 }
 
 export interface MessageComposerProps {

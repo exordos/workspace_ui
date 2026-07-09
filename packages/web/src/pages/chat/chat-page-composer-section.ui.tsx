@@ -49,7 +49,6 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
           preview: { mode: "unsupported" as const, unsupportedText: readOnlyReason },
           mentions: { mode: "unsupported" as const, unsupportedText: readOnlyReason },
           scheduledSend: { mode: "unsupported" as const, unsupportedText: readOnlyReason },
-          customEmojis: { mode: "unsupported" as const, unsupportedText: readOnlyReason },
         });
 
   if (readOnlyReason != null) {

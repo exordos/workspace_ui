@@ -510,10 +510,6 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         mode: "unsupported",
         unsupportedText: t("workspaceMessenger.scheduledSendUnsupported"),
       },
-      customEmojis: {
-        mode: "unsupported",
-        unsupportedText: t("workspaceMessenger.customEmojisUnsupported"),
-      },
     }),
     [],
   );

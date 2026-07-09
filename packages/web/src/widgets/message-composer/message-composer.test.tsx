@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
 import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
-import { resetRealmEmojisCacheForTests } from "~/shared/lib/realm-emojis-cache";
 import { renderWithProviders } from "~/test/render";
 import { computeFloatingPickerPosition } from "./message-composer-picker-position.lib";
 import { resetComposerSavedSnippetsModelForTests } from "./message-composer-saved-snippets.model";
@@ -16,7 +15,6 @@ const useViewportKeyboardMock = vi.fn(() => ({ isOpen: false, keyboardHeight: 0 
 const fetchSavedSnippetsMock = vi.hoisted(() => vi.fn());
 const createSavedSnippetMock = vi.hoisted(() => vi.fn());
 const emojiPickerMock = vi.hoisted(() => vi.fn());
-const fetchRealmEmojisMock = vi.hoisted(() => vi.fn());
 
 vi.mock("~/shared/config/constants", async (importOriginal) => {
   const actual = await importOriginal<typeof import("~/shared/config/constants")>();
@@ -47,14 +45,6 @@ vi.mock("~/shared/api/zulip-messages", async () => {
     ...actual,
     fetchSavedSnippets: (...args: unknown[]) => fetchSavedSnippetsMock(...args),
     createSavedSnippet: (...args: unknown[]) => createSavedSnippetMock(...args),
-  };
-});
-
-vi.mock("~/shared/api/zulip-users", async () => {
-  const actual = await vi.importActual("~/shared/api/zulip-users");
-  return {
-    ...actual,
-    fetchRealmEmojis: (...args: unknown[]) => fetchRealmEmojisMock(...args),
   };
 });
 
@@ -113,12 +103,9 @@ afterEach(() => {
   createSavedSnippetMock.mockReset();
   createSavedSnippetMock.mockResolvedValue(1);
   emojiPickerMock.mockReset();
-  fetchRealmEmojisMock.mockReset();
-  fetchRealmEmojisMock.mockResolvedValue([]);
 });
 
 beforeEach(() => {
-  resetRealmEmojisCacheForTests();
   resetComposerSavedSnippetsModelForTests();
 });
 
@@ -688,13 +675,6 @@ describe("MessageComposer mention suggestions", () => {
   });
 
   it("keeps legacy custom status emoji out of mention suggestions during cutover", async () => {
-    fetchRealmEmojisMock.mockResolvedValue([
-      {
-        id: "42",
-        names: ["scam"],
-        imgUrl: "https://chat.example.test/user_avatars/realm/42.png",
-      },
-    ]);
     useUsersStore.getState().upsertUser(
       createWorkspaceUser({
         uuid: "user-scam",
@@ -1770,7 +1750,7 @@ describe("MessageComposer emoji picker behavior", () => {
     expect(textbox).toHaveFocus();
   });
 
-  it("passes custom emoji picker class for themed scrollbar styling", async () => {
+  it("passes composer emoji picker class for themed scrollbar styling", async () => {
     renderWithProviders(<MessageComposer onSend={vi.fn()} />);
 
     fireEvent.click(screen.getByRole("button", { name: /emoji/i }));
@@ -1781,41 +1761,6 @@ describe("MessageComposer emoji picker behavior", () => {
       | undefined;
     expect(props?.className).toContain("composer-emoji-picker");
     expect(props?.emojiStyle).toBe("native");
-  });
-
-  it("loads and passes realm custom emojis to composer emoji picker", async () => {
-    const realmEmoji = {
-      id: "9001",
-      names: ["party_parrot"],
-      imgUrl: "https://chat.example.test/user_avatars/realm/9001.png",
-    };
-    fetchRealmEmojisMock.mockResolvedValue([realmEmoji]);
-
-    renderWithProviders(<MessageComposer onSend={vi.fn()} />);
-
-    fireEvent.click(screen.getByRole("button", { name: /emoji/i }));
-
-    await waitFor(() => {
-      expect(fetchRealmEmojisMock).toHaveBeenCalledTimes(1);
-    });
-    await waitFor(() => {
-      const props = emojiPickerMock.mock.calls.at(-1)?.[0] as
-        | { customEmojis?: unknown[]; emojiStyle?: string }
-        | undefined;
-      expect(props?.customEmojis).toEqual([realmEmoji]);
-      expect(props?.emojiStyle).toBe("native");
-    });
-  });
-
-  it("keeps emoji picker local when custom emojis are unsupported", async () => {
-    renderWithProviders(
-      <MessageComposer onSend={vi.fn()} capabilities={{ customEmojis: { mode: "unsupported" } }} />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: /emoji/i }));
-    await screen.findByRole("button", { name: /pick emoji/i });
-
-    expect(fetchRealmEmojisMock).not.toHaveBeenCalled();
   });
 });
 

@@ -16,7 +16,6 @@ export const MessageComposerMediaPickerPopover = React.memo(
     onTabChange,
     onEmojiClick,
     onStickerSelect,
-    customEmojis,
   }: MessageComposerMediaPickerPopoverProps) {
     return (
       <AnchoredPopover
@@ -67,7 +66,6 @@ export const MessageComposerMediaPickerPopover = React.memo(
         {mediaPickerTab === "emoji" ? (
           <EmojiPicker
             onEmojiClick={onEmojiClick}
-            customEmojis={customEmojis}
             className="composer-emoji-picker"
             emojiStyle={EmojiStyle.NATIVE}
             theme={document.documentElement.dataset.theme === "light" ? Theme.LIGHT : Theme.DARK}
