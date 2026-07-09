@@ -342,6 +342,13 @@ describe("usersStore", () => {
       expect(useUsersStore.getState().getAvatarUrl(1)).toBe("/avatar.png");
     });
 
+    it("returns Workspace avatar URNs for users with backend avatar refs", () => {
+      const avatar = "urn:gavatar:00000000-0000-4000-8000-000000000001";
+      useUsersStore.getState().mergeUser({ user_id: 1, full_name: "Alice", avatar_url: avatar });
+
+      expect(useUsersStore.getState().getAvatarUrl(1)).toBe(avatar);
+    });
+
     // Missing avatar triggers the fallback initials avatar in the UI.
     it("returns undefined for a user without avatar_url", () => {
       useUsersStore.getState().mergeUser({ user_id: 1, full_name: "Alice" });
@@ -391,13 +398,17 @@ describe("usersStore", () => {
       useUsersStore.getState().mergeUsers([
         { user_id: 1, full_name: "A", avatar_url: "/a.png" },
         { user_id: 2, full_name: "B" },
-        { user_id: 3, full_name: "C", avatar_url: "/c.png" },
+        {
+          user_id: 3,
+          full_name: "C",
+          avatar_url: "urn:gavatar:00000000-0000-4000-8000-000000000003",
+        },
       ]);
 
       const map = useUsersStore.getState().getAvatarMap();
       expect(map.size).toBe(2);
       expect(map.get("1")).toBe("/a.png");
-      expect(map.get("3")).toBe("/c.png");
+      expect(map.get("3")).toBe("urn:gavatar:00000000-0000-4000-8000-000000000003");
     });
   });
 

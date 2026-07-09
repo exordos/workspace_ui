@@ -206,7 +206,7 @@ export interface WorkspaceCurrentUser {
   role?: number;
 }
 
-/** Map of normalized user id key → relative avatar_url path. */
+/** Map of normalized user id key → avatar ref (legacy URL/path or Workspace avatar URN). */
 export type AvatarUrlByUserId = Map<string, string>;
 
 /** A normalized user entry from `GET /api/messenger/v1/users/`. */
@@ -214,6 +214,7 @@ export interface MessengerUserMember {
   user_id: UserId;
   full_name?: string;
   email?: string;
+  /** Normalized avatar ref from backend `avatar` URNs or legacy `avatar_url`. */
   avatar_url?: string | null;
   role?: number;
   /** Custom status profile fields from Workspace `status_emoji` / `status_text`. */

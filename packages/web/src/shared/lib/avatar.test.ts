@@ -50,6 +50,33 @@ describe("resolveAvatarUrl", () => {
     expect(url).toContain("_av=");
   });
 
+  it("resolves Workspace generated avatar URNs to Gravatar identicons", () => {
+    const url = resolveAvatarUrl("urn:gavatar:8f0754ce-153c-b919-f0a3-02266c469481", REALM);
+    expect(url).toMatch(
+      /^https:\/\/secure\.gravatar\.com\/avatar\/8f0754ce153cb919f0a302266c469481\?d=identicon&version=\d+&s=500$/,
+    );
+  });
+
+  it("resolves Workspace URL avatar URNs", () => {
+    const url = resolveAvatarUrl("urn:url:https://cdn.example.com/img.png?size=128", REALM);
+    expect(url).toContain("https://cdn.example.com/img.png?size=128");
+    expect(url).toMatch(/&_av=\d+$/);
+  });
+
+  it("resolves Workspace image avatar URNs to file download URLs", () => {
+    const url = resolveAvatarUrl("urn:image:33333333-3333-4333-8333-333333333333", REALM);
+    expect(url).toContain(
+      "https://chat.example.com/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download",
+    );
+    expect(url).toContain("_av=");
+  });
+
+  it("returns undefined for invalid Workspace avatar URNs", () => {
+    expect(resolveAvatarUrl("urn:gavatar:not-a-uuid", REALM)).toBeUndefined();
+    expect(resolveAvatarUrl("urn:url:javascript:alert(1)", REALM)).toBeUndefined();
+    expect(resolveAvatarUrl("urn:image:not-a-uuid", REALM)).toBeUndefined();
+  });
+
   it("passes through blob URLs as-is for local previews", () => {
     expect(resolveAvatarUrl("blob:preview-123", REALM)).toBe("blob:preview-123");
   });

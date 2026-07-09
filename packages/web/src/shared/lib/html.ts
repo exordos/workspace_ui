@@ -131,6 +131,13 @@ const MESSAGE_ADD_ATTR = [
   "rowspan",
   "data-user-id",
   "data-user-group-id",
+  "data-user-uuid",
+  "data-workspace-urn",
+  "data-workspace-entity-type",
+  "data-workspace-entity-uuid",
+  "data-workspace-message-uuid",
+  "data-workspace-stream-uuid",
+  "data-workspace-topic-uuid",
 ];
 
 const MESSAGE_FORBID_ATTR = ["data-auth-src", "data-auth-poster", "data-auth-background-image"];

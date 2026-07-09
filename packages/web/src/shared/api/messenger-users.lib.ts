@@ -100,7 +100,7 @@ function parseGatewayUserRow(data: unknown): MessengerGatewayUserRow | null {
     first_name: readString(data.first_name),
     last_name: readString(data.last_name),
     email: readString(data.email),
-    avatar_url: typeof data.avatar_url === "string" ? data.avatar_url.trim() : null,
+    avatar_url: readOptionalString(data.avatar) ?? readOptionalString(data.avatar_url),
     last_ping_at: readOptionalString(data.last_ping_at),
   };
 }

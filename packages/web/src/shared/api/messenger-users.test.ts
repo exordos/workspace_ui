@@ -102,6 +102,7 @@ describe("fetchUsers", () => {
           first_name: "Admin",
           last_name: "User",
           email: "admin@example.com",
+          avatar: "urn:gavatar:" + CURRENT_USER_UUID,
           last_ping_at: "2026-06-24T10:21:00Z",
         },
         {
@@ -125,6 +126,7 @@ describe("fetchUsers", () => {
         user_id: CURRENT_USER_UUID,
         full_name: "Admin User",
         email: "admin@example.com",
+        avatar_url: "urn:gavatar:" + CURRENT_USER_UUID,
         presence: {
           status: "active",
           timestamp: 1782296460,
@@ -206,6 +208,7 @@ describe("fetchUser", () => {
         status: "active",
         status_emoji: "coffee",
         status_text: "Focusing",
+        avatar: "urn:gavatar:" + PARTNER_UUID,
         last_ping_at: "2026-06-24T10:21:00Z",
       },
       raw: { statusText: "OK" },
@@ -217,6 +220,7 @@ describe("fetchUser", () => {
       user_id: PARTNER_UUID,
       full_name: "charlie",
       email: "charlie@example.com",
+      avatar_url: "urn:gavatar:" + PARTNER_UUID,
       presence: {
         status: "active",
         timestamp: 1782296460,
@@ -255,21 +259,21 @@ describe("fetchUser", () => {
 });
 
 describe("fetchUsersAvatarMap", () => {
-  it("returns user_id to avatar_url map from gateway rows", async () => {
+  it("returns user_id to avatar map from gateway rows", async () => {
     mockMessengerApi.getWithBase.mockResolvedValue({
       ok: true,
       status: 200,
       data: [
-        { uuid: CURRENT_USER_UUID, avatar_url: "/avatar/admin.png" },
-        { uuid: PARTNER_UUID, avatar_url: "" },
+        { uuid: CURRENT_USER_UUID, avatar: "urn:gavatar:" + CURRENT_USER_UUID },
+        { uuid: PARTNER_UUID, avatar: "", avatar_url: "/avatar/partner.png" },
       ],
       raw: { statusText: "OK" },
     });
 
     const map = await fetchUsersAvatarMap();
 
-    expect(map.size).toBe(1);
-    expect(map.get(CURRENT_USER_UUID)).toBe("/avatar/admin.png");
-    expect(map.has(PARTNER_UUID)).toBe(false);
+    expect(map.size).toBe(2);
+    expect(map.get(CURRENT_USER_UUID)).toBe("urn:gavatar:" + CURRENT_USER_UUID);
+    expect(map.get(PARTNER_UUID)).toBe("/avatar/partner.png");
   });
 });

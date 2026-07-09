@@ -248,6 +248,7 @@ function userUpdatedWorkspaceEvent(epochVersion: number): unknown {
       first_name: "Alice",
       last_name: "Admin",
       email: "alice@example.com",
+      avatar: "urn:gavatar:" + OTHER_UUID,
       last_ping_at: "2026-06-24T10:21:00Z",
     },
   };
@@ -417,6 +418,7 @@ describe("Workspace realtime event normalization", () => {
         user_id: OTHER_UUID,
         full_name: "Alice Admin",
         email: "alice@example.com",
+        avatar_url: "urn:gavatar:" + OTHER_UUID,
         presence: {
           status: "do_not_disturb",
           timestamp: 1782296460,
@@ -749,6 +751,7 @@ describe("Workspace realtime event normalization", () => {
           first_name: "Alice",
           last_name: "Admin",
           email: "alice@example.com",
+          avatar: "urn:gavatar:" + OTHER_UUID,
           last_ping_at: "2026-06-24T10:21:00Z",
         },
       },
@@ -762,6 +765,7 @@ describe("Workspace realtime event normalization", () => {
       user: {
         user_id: OTHER_UUID,
         full_name: "Alice Admin",
+        avatar_url: "urn:gavatar:" + OTHER_UUID,
         presence: {
           status: "active",
           timestamp: 1782296460,

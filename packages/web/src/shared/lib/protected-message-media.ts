@@ -15,6 +15,7 @@ import {
   normalizeRealmSiteOriginForUploads,
   shouldApplyUserUploadsPathPrefixForRealmBase,
 } from "~/shared/api/messenger-realm.internal";
+import { resolveAvatarUrl } from "~/shared/lib/avatar";
 import { env } from "~/shared/lib/env";
 import { sanitizeHtml } from "~/shared/lib/html";
 import { isImageFileName } from "~/shared/lib/media-file-name.lib";
@@ -56,6 +57,14 @@ export interface PrepareProtectedMessageHtmlOptions {
 
 export type TrustedProtectedMediaOrigins = ReadonlySet<string>;
 
+type WorkspaceEntityUrnKind = "user" | "message" | "stream" | "topic";
+
+interface WorkspaceEntityUrn {
+  kind: WorkspaceEntityUrnKind;
+  uuid: string;
+  original: string;
+}
+
 const LANGUAGE_CLASS_PATTERN = /\b(?:language|lang)-([a-z0-9#+-]+)\b/i;
 const LANGUAGE_ALIASES: Record<string, string> = {
   cjs: "javascript",
@@ -66,6 +75,11 @@ const LANGUAGE_ALIASES: Record<string, string> = {
   tsx: "typescript",
 };
 const DEFAULT_SPOILER_HEADER = "Spoiler";
+const WORKSPACE_GAVATAR_URN_PREFIX = "urn:gavatar:";
+const WORKSPACE_ENTITY_URN_RE =
+  /^urn:(user|message|stream|topic):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+const WORKSPACE_URL_URN_PREFIX = "urn:url:";
+const HTTP_URL_RE = /^https?:\/\//i;
 
 function resolveLanguageFromClassName(className: string): string | null {
   const match = LANGUAGE_CLASS_PATTERN.exec(className);
@@ -756,14 +770,15 @@ function setWorkspaceFileUrnMetadataAttrs(element: HTMLElement, urn: WorkspaceFi
   }
 }
 
-function rewriteWorkspaceFileUrnLink(link: HTMLAnchorElement): void {
+function rewriteWorkspaceFileUrnLink(link: HTMLAnchorElement): boolean {
   const urn = parseWorkspaceFileUrn(link.getAttribute("href") ?? "");
-  if (urn == null) return;
+  if (urn == null) return false;
   link.setAttribute("href", urn.downloadPath);
   setWorkspaceFileUrnMetadataAttrs(link, urn);
   if ((link.textContent ?? "").trim().length === 0 && urn.name != null) {
     link.textContent = urn.name;
   }
+  return true;
 }
 
 function fillWorkspaceFileUrnImageLabel(image: HTMLImageElement, fileName: string): void {
@@ -775,9 +790,9 @@ function fillWorkspaceFileUrnImageLabel(image: HTMLImageElement, fileName: strin
   }
 }
 
-function rewriteWorkspaceFileUrnMediaElement(element: HTMLElement): void {
+function rewriteWorkspaceFileUrnMediaElement(element: HTMLElement): boolean {
   const urn = parseWorkspaceFileUrn(element.getAttribute("src") ?? "");
-  if (urn == null) return;
+  if (urn == null) return false;
   element.setAttribute("src", urn.downloadPath);
   setWorkspaceFileUrnMetadataAttrs(element, urn);
   if (element instanceof HTMLImageElement && urn.name != null) {
@@ -789,9 +804,126 @@ function rewriteWorkspaceFileUrnMediaElement(element: HTMLElement): void {
   ) {
     element.setAttribute("type", urn.contentType);
   }
+  return true;
 }
 
-function rewriteWorkspaceFileUrnsInHtml(rawHtml: string): string {
+function normalizeWorkspaceUrnValue(value: string): string {
+  return value.trim().replace(/&amp;/gi, "&");
+}
+
+function parseWorkspaceEntityUrn(value: string): WorkspaceEntityUrn | null {
+  const original = normalizeWorkspaceUrnValue(value);
+  const match = WORKSPACE_ENTITY_URN_RE.exec(original);
+  if (match == null) return null;
+  const kind = match[1]?.toLowerCase() as WorkspaceEntityUrnKind | undefined;
+  const uuid = match[2]?.toLowerCase();
+  if (kind == null || uuid == null) return null;
+  return { kind, uuid, original };
+}
+
+function parseWorkspaceUrlUrn(value: string): string | null {
+  const original = normalizeWorkspaceUrnValue(value);
+  if (!original.toLowerCase().startsWith(WORKSPACE_URL_URN_PREFIX)) return null;
+  const url = original.slice(WORKSPACE_URL_URN_PREFIX.length);
+  return HTTP_URL_RE.test(url) ? url : null;
+}
+
+function resolveWorkspaceGeneratedAvatarUrn(value: string): string | null {
+  const original = normalizeWorkspaceUrnValue(value);
+  if (!original.toLowerCase().startsWith(WORKSPACE_GAVATAR_URN_PREFIX)) return null;
+  const url = resolveAvatarUrl(original);
+  return url ?? null;
+}
+
+function buildWorkspaceEntityLinkHref(urn: WorkspaceEntityUrn): string {
+  return `#workspace-${urn.kind}-${urn.uuid}`;
+}
+
+function buildWorkspaceMentionLabel(link: HTMLAnchorElement): string {
+  const label = (link.textContent ?? "").trim();
+  if (label.length === 0) return "@unknown";
+  return label.startsWith("@") ? label : `@${label}`;
+}
+
+function replaceWorkspaceUserUrnLink(link: HTMLAnchorElement, urn: WorkspaceEntityUrn): void {
+  const mention = document.createElement("span");
+  mention.classList.add("user-mention");
+  mention.setAttribute("data-user-uuid", urn.uuid);
+  mention.setAttribute("data-workspace-urn", urn.original);
+  mention.textContent = buildWorkspaceMentionLabel(link);
+  link.replaceWith(mention);
+}
+
+function setWorkspaceEntityUrnAttrs(link: HTMLAnchorElement, urn: WorkspaceEntityUrn): void {
+  link.setAttribute("href", buildWorkspaceEntityLinkHref(urn));
+  link.setAttribute("data-workspace-urn", urn.original);
+  link.setAttribute("data-workspace-entity-type", urn.kind);
+  link.setAttribute("data-workspace-entity-uuid", urn.uuid);
+  if (urn.kind === "message") {
+    link.setAttribute("data-workspace-message-uuid", urn.uuid);
+  }
+  if (urn.kind === "stream") {
+    link.setAttribute("data-workspace-stream-uuid", urn.uuid);
+  }
+  if (urn.kind === "topic") {
+    link.setAttribute("data-workspace-topic-uuid", urn.uuid);
+  }
+}
+
+function rewriteWorkspaceEntityUrnLink(link: HTMLAnchorElement): boolean {
+  const urn = parseWorkspaceEntityUrn(link.getAttribute("href") ?? "");
+  if (urn == null) return false;
+  if (urn.kind === "user") {
+    replaceWorkspaceUserUrnLink(link, urn);
+    return true;
+  }
+  setWorkspaceEntityUrnAttrs(link, urn);
+  return true;
+}
+
+function rewriteWorkspaceGeneratedAvatarUrnLink(link: HTMLAnchorElement): boolean {
+  const original = normalizeWorkspaceUrnValue(link.getAttribute("href") ?? "");
+  const url = resolveWorkspaceGeneratedAvatarUrn(original);
+  if (url == null) return false;
+  link.setAttribute("href", url);
+  link.setAttribute("data-workspace-urn", original);
+  return true;
+}
+
+function rewriteWorkspaceUrlUrnLink(link: HTMLAnchorElement): void {
+  const url = parseWorkspaceUrlUrn(link.getAttribute("href") ?? "");
+  if (url != null) link.setAttribute("href", url);
+}
+
+function rewriteWorkspaceGeneratedAvatarUrnMediaElement(element: HTMLElement): boolean {
+  if (!(element instanceof HTMLImageElement)) return false;
+  const original = normalizeWorkspaceUrnValue(element.getAttribute("src") ?? "");
+  const url = resolveWorkspaceGeneratedAvatarUrn(original);
+  if (url == null) return false;
+  element.setAttribute("src", url);
+  element.setAttribute("data-workspace-urn", original);
+  return true;
+}
+
+function rewriteWorkspaceUrlUrnMediaElement(element: HTMLElement): void {
+  const url = parseWorkspaceUrlUrn(element.getAttribute("src") ?? "");
+  if (url != null) element.setAttribute("src", url);
+}
+
+function rewriteWorkspaceUrnLink(link: HTMLAnchorElement): void {
+  if (rewriteWorkspaceFileUrnLink(link)) return;
+  if (rewriteWorkspaceEntityUrnLink(link)) return;
+  if (rewriteWorkspaceGeneratedAvatarUrnLink(link)) return;
+  rewriteWorkspaceUrlUrnLink(link);
+}
+
+function rewriteWorkspaceUrnMediaElement(element: HTMLElement): void {
+  if (rewriteWorkspaceFileUrnMediaElement(element)) return;
+  if (rewriteWorkspaceGeneratedAvatarUrnMediaElement(element)) return;
+  rewriteWorkspaceUrlUrnMediaElement(element);
+}
+
+function rewriteWorkspaceUrnsInHtml(rawHtml: string): string {
   if (typeof document === "undefined" || !rawHtml.includes("urn:")) {
     return rawHtml;
   }
@@ -800,11 +932,11 @@ function rewriteWorkspaceFileUrnsInHtml(rawHtml: string): string {
   template.innerHTML = rawHtml;
 
   for (const link of template.content.querySelectorAll<HTMLAnchorElement>("a[href]")) {
-    rewriteWorkspaceFileUrnLink(link);
+    rewriteWorkspaceUrnLink(link);
   }
 
   for (const element of template.content.querySelectorAll<HTMLElement>("img,source,audio,video")) {
-    rewriteWorkspaceFileUrnMediaElement(element);
+    rewriteWorkspaceUrnMediaElement(element);
   }
 
   return template.innerHTML;
@@ -908,7 +1040,7 @@ export function prepareProtectedMessageHtml(
   baseUrl?: string,
   options?: PrepareProtectedMessageHtmlOptions,
 ): string {
-  const html = sanitizeHtml(rewriteWorkspaceFileUrnsInHtml(rawHtml), baseUrl);
+  const html = sanitizeHtml(rewriteWorkspaceUrnsInHtml(rawHtml), baseUrl);
   const baseOrigin = getUrlOrigin(baseUrl);
   return prepareProtectedSanitizedHtml(
     html,

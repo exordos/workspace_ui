@@ -214,6 +214,67 @@ describe("prepareProtectedMessageHtml message rendering pipeline", () => {
     expect(html).toContain("😄");
   });
 
+  it("renders Workspace user URN markdown links as mention spans", () => {
+    const html = renderPreparedMessageHtml(
+      "Hello [Jane Doe](urn:user:11111111-1111-4111-8111-111111111111)",
+    );
+
+    expect(html).toContain('class="user-mention"');
+    expect(html).toContain('data-user-uuid="11111111-1111-4111-8111-111111111111"');
+    expect(html).toContain(">@Jane Doe</span>");
+    expect(html).not.toContain('href="urn:user:');
+  });
+
+  it("rewrites Workspace entity URN markdown links before sanitization", () => {
+    const html = renderPreparedMessageHtml(
+      [
+        "[message](urn:message:22222222-2222-4222-8222-222222222222)",
+        "[stream](urn:stream:33333333-3333-4333-8333-333333333333)",
+        "[topic](urn:topic:44444444-4444-4444-8444-444444444444)",
+      ].join(" "),
+    );
+
+    expect(html).toContain('href="#workspace-message-22222222-2222-4222-8222-222222222222"');
+    expect(html).toContain('data-workspace-message-uuid="22222222-2222-4222-8222-222222222222"');
+    expect(html).toContain('href="#workspace-stream-33333333-3333-4333-8333-333333333333"');
+    expect(html).toContain('data-workspace-stream-uuid="33333333-3333-4333-8333-333333333333"');
+    expect(html).toContain('href="#workspace-topic-44444444-4444-4444-8444-444444444444"');
+    expect(html).toContain('data-workspace-topic-uuid="44444444-4444-4444-8444-444444444444"');
+    expect(html).not.toContain('href="urn:message:');
+    expect(html).not.toContain('href="urn:stream:');
+    expect(html).not.toContain('href="urn:topic:');
+  });
+
+  it("unwraps external URL URNs before sanitization", () => {
+    const html = renderPreparedMessageHtml("[site](urn:url:https://example.com/a?x=1#section)");
+
+    expect(html).toContain('href="https://example.com/a?x=1#section"');
+    expect(html).toContain(">site</a>");
+    expect(html).not.toContain("urn:url:");
+  });
+
+  it("rewrites Workspace generated avatar URNs in links and image sources", () => {
+    const userUuid = "55555555-5555-4555-8555-555555555555";
+    const avatarHash = userUuid.replace(/-/g, "");
+    const html = renderPreparedMessageHtml(
+      `[avatar](urn:gavatar:${userUuid}) ![avatar](urn:gavatar:${userUuid})`,
+    );
+
+    expect(html).toContain(`href="https://secure.gravatar.com/avatar/${avatarHash}?`);
+    expect(html).toContain(`src="https://secure.gravatar.com/avatar/${avatarHash}?`);
+    expect(html).toContain("d=identicon");
+    expect(html).toContain("version=");
+    expect(html).not.toContain('href="urn:gavatar:');
+    expect(html).not.toContain('src="urn:gavatar:');
+  });
+
+  it("unwraps external URL URNs in image sources", () => {
+    const html = renderPreparedMessageHtml("![cdn](urn:url:https://cdn.example.com/a.png?x=1)");
+
+    expect(html).toContain('src="https://cdn.example.com/a.png?x=1"');
+    expect(html).not.toContain('src="urn:url:');
+  });
+
   it("does not add a second img when messenger HTML already has message_inline_image", () => {
     const messengerHtml = [
       '<p><a href="/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png">image.png</a></p>',

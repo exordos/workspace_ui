@@ -241,6 +241,7 @@ describe("dispatchMessengerEvent", () => {
         user_id: USER_UUID_1,
         full_name: "Alice Admin",
         email: "alice@example.com",
+        avatar_url: "urn:gavatar:" + USER_UUID_1,
         presence: { status: "do_not_disturb" as const, timestamp: 1_788_000_000 },
       };
 
