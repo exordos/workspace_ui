@@ -226,7 +226,7 @@ describe("messenger message reaction actions", () => {
   it("adds a reaction, stores the returned row, and applies own projection", async () => {
     const runtimeContext = createRuntimeContext();
     const ownerKey = workspaceRuntimeOwnerKey(runtimeContext);
-    indexMessages(createMessage());
+    indexMessages(createMessage({ reactions: { "👍": 1 } }));
     const request = createDeferred<WorkspaceMessengerMessageReactionDto>();
     const upsertOwnMessageReaction = vi.fn(() => Promise.resolve());
     const createMessageReaction = vi.fn(
@@ -240,31 +240,32 @@ describe("messenger message reaction actions", () => {
       runtimeContext,
       getRuntimeContext: () => runtimeContext,
       messageUuid: MESSAGE_A,
-      emojiName: "thumbs_up",
+      emojiName: "👍",
       client: { createMessageReaction },
       cache: { upsertOwnMessageReaction },
     });
 
     expect(createMessageReaction).toHaveBeenCalledWith(expect.any(Object), {
       message_uuid: MESSAGE_A,
-      emoji_name: "thumbs_up",
+      emoji_name: "👍",
     });
     expect(upsertOwnMessageReaction).not.toHaveBeenCalled();
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.reactions).toEqual({
-      thumbs_up: 2,
+      "👍": 2,
     });
     expect(
-      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.pendingOwnReactionsByEmojiName
-        ?.thumbs_up?.operation,
+      useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.pendingOwnReactionsByEmojiName?.[
+        "👍"
+      ]?.operation,
     ).toBe("add");
 
-    request.resolve(createReactionDto());
+    request.resolve(createReactionDto({ emoji_name: "👍" }));
 
     await expect(actionPromise).resolves.toEqual({
       status: "applied",
       ownerKey,
       messageUuid: MESSAGE_A,
-      emojiName: "thumbs_up",
+      emojiName: "👍",
       operation: "added",
       reactionUuid: REACTION_A,
     });
@@ -273,13 +274,13 @@ describe("messenger message reaction actions", () => {
       messageUuid: MESSAGE_A,
       userUuid: USER_A,
       reactionUuid: REACTION_A,
-      emojiName: "thumbs_up",
+      emojiName: "👍",
       createdAt: DATE,
       updatedAt: DATE,
     });
     expect(
       useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.ownReactionUuidsByEmojiName,
-    ).toEqual({ thumbs_up: REACTION_A });
+    ).toEqual({ "👍": REACTION_A });
     expect(
       useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.pendingOwnReactionsByEmojiName,
     ).toBeUndefined();

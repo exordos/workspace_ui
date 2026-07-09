@@ -9,6 +9,33 @@ import { setLocale } from "~/i18n/i18n";
 import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/protected-message-media";
 import { WorkspaceMessageList } from "./workspace-message-list.ui";
 
+vi.mock("emoji-picker-react", () => ({
+  default: (props: {
+    onEmojiClick?: (data: {
+      emoji: string;
+      isCustom?: boolean;
+      names?: string[];
+      unified?: string;
+    }) => void;
+  }) => (
+    <button
+      type="button"
+      onClick={() =>
+        props.onEmojiClick?.({
+          emoji: "😀",
+          isCustom: false,
+          names: ["grinning"],
+          unified: "1f600",
+        })
+      }
+    >
+      Pick emoji
+    </button>
+  ),
+  EmojiStyle: { NATIVE: "native" },
+  Theme: { DARK: "dark", LIGHT: "light" },
+}));
+
 function createWorkspaceMessage(overrides: Partial<MessengerMessage> = {}): MessengerMessage {
   return {
     uuid: "message-uuid-1",
@@ -1967,8 +1994,8 @@ describe("WorkspaceMessageList", () => {
           createWorkspaceMessage({
             uuid: "reaction-chip-message",
             markdown: "Reacted text",
-            reactions: { thumbs_up: 1 },
-            ownReactionUuidsByEmojiName: { thumbs_up: "reaction-uuid-1" },
+            reactions: { "👍": 1 },
+            ownReactionUuidsByEmojiName: { "👍": "reaction-uuid-1" },
           }),
         ]}
         currentUserUuid="current-user-uuid"
@@ -1992,7 +2019,7 @@ describe("WorkspaceMessageList", () => {
 
     fireEvent.click(reactionChip!);
 
-    expect(onToggleMessageReaction).toHaveBeenCalledWith("reaction-chip-message", "thumbs_up");
+    expect(onToggleMessageReaction).toHaveBeenCalledWith("reaction-chip-message", "👍");
   });
 
   it("opens the Workspace bubble menu from the trigger button", async () => {
@@ -2031,7 +2058,31 @@ describe("WorkspaceMessageList", () => {
     expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText("Thumbs up"));
-    expect(onToggleMessageReaction).toHaveBeenCalledWith("own-menu-message", "thumbs_up");
+    expect(onToggleMessageReaction).toHaveBeenCalledWith("own-menu-message", "👍");
+  });
+
+  it("sends native emoji from the Workspace reaction picker", async () => {
+    const onToggleMessageReaction = vi.fn();
+
+    render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "picker-reaction-message",
+            markdown: "Picker reaction message",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onToggleMessageReaction }}
+      />,
+    );
+
+    openWorkspaceMessageMenu();
+    fireEvent.click(screen.getByLabelText("More reactions"));
+    fireEvent.click(await screen.findByRole("button", { name: "Pick emoji" }));
+
+    expect(onToggleMessageReaction).toHaveBeenCalledWith("picker-reaction-message", "😀");
   });
 
   it("opens the Workspace bubble menu from right click", async () => {

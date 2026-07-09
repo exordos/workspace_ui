@@ -2,7 +2,6 @@ import EmojiPicker, { EmojiStyle, Theme, type EmojiClickData } from "emoji-picke
 import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { t } from "~/i18n/i18n";
-import { normalizeEmojiShortcodeName } from "~/shared/lib/emoji-shortcodes.lib";
 import {
   DropdownMenu,
   type DropdownMenuContentProps,
@@ -79,16 +78,10 @@ function getReactionEmojiPickerStyle(anchor: HTMLElement | null): React.CSSPrope
   };
 }
 
-function emojiNameFromPickerData(data: EmojiClickData): string | null {
+function emojiGlyphFromPickerData(data: EmojiClickData): string | null {
   if (data.isCustom === true) return null;
-  const name = data.names?.find((candidate) => candidate.trim().length > 0);
-  const normalizedName = name == null ? "" : normalizeEmojiShortcodeName(name);
-  const emojiName =
-    normalizedName.length > 0
-      ? normalizedName
-      : (data.unified?.trim().toLowerCase() ?? data.emoji.trim());
-
-  return emojiName.length > 0 ? emojiName : null;
+  const emoji = data.emoji.trim();
+  return emoji.length > 0 ? emoji : null;
 }
 
 function copyTextToClipboard(text: string): void {
@@ -208,7 +201,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
 
   const handleEmojiPick = useCallback(
     (data: EmojiClickData) => {
-      const emojiName = emojiNameFromPickerData(data);
+      const emojiName = emojiGlyphFromPickerData(data);
       if (emojiName == null) return;
       handleReaction(emojiName);
     },
@@ -232,7 +225,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
                 aria-label={t(reaction.labelKey)}
                 onClick={(event) => {
                   event.preventDefault();
-                  handleReaction(reaction.emojiName);
+                  handleReaction(reaction.glyph);
                 }}
               >
                 <span className="text-[15px] leading-none">{reaction.glyph}</span>
