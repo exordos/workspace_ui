@@ -8,7 +8,6 @@ import { IS_CONNECTION_DIAGNOSTICS_ENABLED } from "~/shared/config/constants";
 import { wipeCredentials } from "~/shared/lib/auth-guard";
 import { createLogger } from "~/shared/lib/logger";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
-import { pushService } from "~/shared/lib/push/push.service";
 import { Icon } from "~/shared/ui/icon";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
 import {
@@ -88,7 +87,6 @@ export const SettingsPage: React.FC = () => {
 
   const handleLogout = useCallback(() => {
     log.info("User initiated logout from settings page");
-    void pushService.unregister().catch(() => {});
     wipeCredentials();
     void navigate("/login");
   }, [navigate]);

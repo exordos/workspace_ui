@@ -7,13 +7,12 @@
 
 ### Assets to Protect
 
-| Asset                   | Location                         | Threat                                  |
-| ----------------------- | -------------------------------- | --------------------------------------- |
-| Zulip API key           | `localStorage` (plain)           | XSS reads token → full account takeover |
-| Message content         | Zustand store (memory)           | XSS reads messages → data exfiltration  |
-| User credentials        | Login form → POST → never stored | MITM intercepts → credential theft      |
-| Push notification token | `localStorage` + Zulip server    | Token theft → impersonation             |
-| File uploads            | API multipart → Zulip server     | Malicious file → server-side exploit    |
+| Asset            | Location                         | Threat                                  |
+| ---------------- | -------------------------------- | --------------------------------------- |
+| Zulip API key    | `localStorage` (plain)           | XSS reads token → full account takeover |
+| Message content  | Zustand store (memory)           | XSS reads messages → data exfiltration  |
+| User credentials | Login form → POST → never stored | MITM intercepts → credential theft      |
+| File uploads     | API multipart → Zulip server     | Malicious file → server-side exploit    |
 
 ### Attack Surfaces
 
@@ -77,7 +76,6 @@
 | Input validation      | `noUncheckedIndexedAccess` | —            | —                               | `guard.*`, `invariant()`        | IPC validation          |
 | Session management    | —                          | —            | —                               | `initAuthGuard()` (24h timeout) | —                       |
 | Dependency safety     | —                          | —            | —                               | —                               | `npm audit`, Dependabot |
-| Push security         | —                          | —            | —                               | Middleware pipeline             | FCM encryption          |
 
 ## Modules
 
@@ -88,7 +86,6 @@
 | Auth guard      | `shared/lib/auth-guard.ts`      | Auth header, credential wipe, session timeout |
 | Logger          | `shared/lib/logger.ts`          | Auto-redaction of 15 sensitive key patterns   |
 | Guards          | `shared/lib/guards.ts`          | Runtime invariants and domain validators      |
-| Push middleware | `shared/lib/push/middleware.ts` | Decrypt → parse → validate → dedup            |
 | Analytics       | `shared/lib/analytics/index.ts` | PII stripping, consent management             |
 | Sentry          | `shared/lib/sentry.ts`          | `beforeSend` strips auth headers + cookies    |
 | Roles           | `shared/lib/roles.ts`           | `hasPermission()` for RBAC                    |

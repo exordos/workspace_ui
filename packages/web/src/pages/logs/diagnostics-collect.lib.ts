@@ -15,21 +15,12 @@ import { env } from "~/shared/lib/env";
 import type { LogEntry } from "~/shared/lib/logger";
 import { isOnline } from "~/shared/lib/network";
 import { getIdleTimeMs, getLocalPresenceStatus } from "~/shared/lib/presence";
-import type { PushState } from "~/shared/lib/push/types";
 import { getRuntime, isPwa } from "~/shared/lib/pwa";
 import { isTabVisible } from "~/shared/lib/visibility";
 import { getWebViewPlatform, isWebView } from "~/shared/lib/webview";
 import { getZulipEventQueueIdForCurrentInstance } from "~/shared/lib/zulip-event-queue-registry.lib";
 
 export type DiagnosticsOverallStatus = "healthy" | "degraded" | "offline";
-
-export interface DiagnosticsPushSnapshot {
-  permission: PushState["permission"];
-  registered: boolean;
-  provider: string | null;
-  registrationError: string | null;
-  tokenPrefix: string | null;
-}
 
 export interface DiagnosticsPageSnapshot {
   collectedAt: string;
@@ -103,7 +94,6 @@ export interface DiagnosticsPageSnapshot {
     currentEmail: string | null;
     unreadCountsByInstance: Record<string, number>;
   };
-  push: DiagnosticsPushSnapshot;
   notifications: {
     permission: NotificationPermission | "unsupported";
   };
@@ -130,7 +120,6 @@ export interface DiagnosticsCollectInput {
   connection: ConnectionHealthSnapshot;
   rateLimitBlockedUntil: number | null;
   memorySnapshot: DiagnosticsMemorySnapshot | null;
-  pushState: PushState;
   vitals: readonly DiagnosticVitalEntry[];
   cache: DiagnosticIdbSnapshot | null;
   realtimeStats: DiagnosticRealtimeStats;
@@ -177,20 +166,6 @@ export function resolveDiagnosticsOverallStatus(
     return "degraded";
   }
   return "healthy";
-}
-
-function sanitizePushState(pushState: PushState): DiagnosticsPushSnapshot {
-  const tokenPrefix =
-    pushState.token != null && pushState.token.length > 0
-      ? `${pushState.token.slice(0, 8)}…`
-      : null;
-  return {
-    permission: pushState.permission,
-    registered: pushState.registered,
-    provider: pushState.provider,
-    registrationError: pushState.registrationError,
-    tokenPrefix,
-  };
 }
 
 function collectRecentErrors(entries: readonly LogEntry[]): LogEntry[] {
@@ -320,7 +295,6 @@ export function collectDiagnosticsPageSnapshot(
       currentEmail: input.currentEmail,
       unreadCountsByInstance: input.unreadCountsByInstance,
     },
-    push: sanitizePushState(input.pushState),
     notifications: {
       permission: typeof Notification === "undefined" ? "unsupported" : Notification.permission,
     },

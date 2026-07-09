@@ -27,7 +27,6 @@ import {
   type LogEntry,
 } from "~/shared/lib/logger";
 import { probeApiTransportWithLatency } from "~/shared/lib/network-transport-probe.lib";
-import { pushService } from "~/shared/lib/push/push.service";
 import { getZulipRateLimitBlockedUntil } from "~/shared/lib/zulip-rate-limit-gate";
 import {
   buildConnectionReportSnapshot,
@@ -133,7 +132,6 @@ export const LogsPage: React.FC = () => {
         connection: connectionHealth,
         rateLimitBlockedUntil: getZulipRateLimitBlockedUntil(),
         memorySnapshot,
-        pushState: pushService.getState(),
         vitals: getDiagnosticVitalsSnapshot(),
         cache: cacheSnapshot,
         realtimeStats: getDiagnosticRealtimeStats(),

@@ -21,7 +21,6 @@ import { perf } from "~/shared/lib/perf";
 import { setPluginDataProvider } from "~/shared/lib/plugins/api";
 import { initPlugins } from "~/shared/lib/plugins/setup";
 import { initPresenceTracker } from "~/shared/lib/presence";
-import { initPush } from "~/shared/lib/push/push.service";
 import { cleanupDevServiceWorkers, initPwaListeners, getRuntime } from "~/shared/lib/pwa";
 import { initSentry } from "~/shared/lib/sentry";
 import { initTouchTracking } from "~/shared/lib/touch";
@@ -96,7 +95,6 @@ export function mountApplication(): void {
   initTouchTracking();
   initVisibilityTracking();
   initPresenceTracker();
-  initPush();
   attachNotificationAudioUnlock();
   initWebViewBridge();
   installAiContext();

@@ -16,9 +16,6 @@ const readyConnection: ConnectionHealthSnapshot = {
   isReconnecting: false,
 };
 
-/** Sample FCM token for redaction tests — not a real credential. */
-const SAMPLE_PUSH_TOKEN = "abcdefghijklmnop";
-
 function createEntry(partial: Partial<LogEntry> & Pick<LogEntry, "level" | "message">): LogEntry {
   return {
     timestamp: partial.timestamp ?? new Date().toISOString(),
@@ -51,7 +48,7 @@ describe("resolveDiagnosticsOverallStatus", () => {
 });
 
 describe("collectDiagnosticsPageSnapshot", () => {
-  it("does not include raw push token in snapshot", () => {
+  it("collects runtime notification permission without push state", () => {
     const snapshot = collectDiagnosticsPageSnapshot({
       pathname: "/settings/logs",
       entries: [],
@@ -59,13 +56,6 @@ describe("collectDiagnosticsPageSnapshot", () => {
       connection: readyConnection,
       rateLimitBlockedUntil: null,
       memorySnapshot: null,
-      pushState: {
-        permission: "granted",
-        token: SAMPLE_PUSH_TOKEN,
-        registered: true,
-        provider: "fcm",
-        registrationError: null,
-      },
       vitals: [],
       cache: null,
       realtimeStats: { eventsReceivedCount: 0, lastEventAt: null, lastEventType: null },
@@ -90,8 +80,8 @@ describe("collectDiagnosticsPageSnapshot", () => {
       folderRailLayout: "expanded",
     });
 
-    expect(snapshot.push.tokenPrefix).toBe("abcdefgh…");
-    expect(JSON.stringify(snapshot)).not.toContain(SAMPLE_PUSH_TOKEN);
+    expect(snapshot).not.toHaveProperty("push");
+    expect(snapshot.notifications.permission).toBe("unsupported");
   });
 
   it("collects recent errors from log entries", () => {
@@ -105,13 +95,6 @@ describe("collectDiagnosticsPageSnapshot", () => {
       connection: readyConnection,
       rateLimitBlockedUntil: null,
       memorySnapshot: null,
-      pushState: {
-        permission: "default",
-        token: null,
-        registered: false,
-        provider: null,
-        registrationError: null,
-      },
       vitals: [],
       cache: null,
       realtimeStats: { eventsReceivedCount: 2, lastEventAt: Date.now(), lastEventType: "message" },

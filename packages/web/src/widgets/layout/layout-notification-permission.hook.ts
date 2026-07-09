@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { notificationService } from "~/shared/lib/notifications";
 import type { NotificationPermissionStatus } from "~/shared/lib/notifications";
-import { pushService } from "~/shared/lib/push/push.service";
 import {
   readNotificationPromptDismissed,
   shouldShowNotificationPermissionBanner,
@@ -11,7 +10,6 @@ import {
 export function useLayoutNotificationPermission(options: {
   enabled: boolean;
   organizationId: string | null;
-  registerPushOnGrant?: boolean;
 }): {
   visible: boolean;
   permission: NotificationPermissionStatus;
@@ -19,7 +17,7 @@ export function useLayoutNotificationPermission(options: {
   enable: () => void;
   dismiss: () => void;
 } {
-  const { enabled, organizationId, registerPushOnGrant = true } = options;
+  const { enabled, organizationId } = options;
   const [permission, setPermission] = useState<NotificationPermissionStatus>(() =>
     notificationService.getPermission(),
   );
@@ -68,14 +66,11 @@ export function useLayoutNotificationPermission(options: {
       .requestPermission()
       .then((perm) => {
         setPermission(perm);
-        if (registerPushOnGrant && perm === "granted") {
-          void pushService.register();
-        }
       })
       .finally(() => {
         setEnabling(false);
       });
-  }, [registerPushOnGrant]);
+  }, []);
 
   const dismiss = useCallback(() => {
     writeNotificationPromptDismissed(organizationId);

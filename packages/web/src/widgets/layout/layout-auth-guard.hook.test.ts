@@ -5,22 +5,14 @@ import { useSettingsStore } from "~/features/settings/settings.model";
 import { useLayoutAuthGuard } from "./layout-auth-guard.hook";
 
 const initAuthGuardMock = vi.hoisted(() => vi.fn());
-const unregisterMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 
 vi.mock("~/shared/lib/auth-guard", () => ({
   initAuthGuard: initAuthGuardMock,
 }));
 
-vi.mock("~/shared/lib/push/push.service", () => ({
-  pushService: {
-    unregister: unregisterMock,
-  },
-}));
-
 describe("useLayoutAuthGuard", () => {
   afterEach(() => {
     initAuthGuardMock.mockReset();
-    unregisterMock.mockClear();
     useSettingsStore.getState().resetToDefaults();
   });
 

@@ -17,7 +17,6 @@ import { setLocale } from "~/i18n/i18n";
 import { IS_CONNECTION_DIAGNOSTICS_ENABLED } from "~/shared/config/constants";
 import { wipeCredentials } from "~/shared/lib/auth-guard";
 import { withCurrentOrgRoute } from "~/shared/lib/org-route";
-import { pushService } from "~/shared/lib/push/push.service";
 import {
   getNativeBridge,
   onNativeMessage,
@@ -152,13 +151,8 @@ export const WebViewShell: React.FC = () => {
         }
       }
       if (msg.type === "logout") {
-        void pushService
-          .unregister()
-          .catch(() => {})
-          .finally(() => {
-            wipeCredentials();
-            void navigate("/login");
-          });
+        wipeCredentials();
+        void navigate("/login");
       }
     });
   }, [navigate]);

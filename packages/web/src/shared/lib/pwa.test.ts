@@ -145,7 +145,7 @@ describe("pwa", () => {
   describe("cleanupDevServiceWorkers", () => {
     it("unregisters stale vite pwa workers in dev", async () => {
       const unregisterDevSw = vi.fn().mockResolvedValue(true);
-      const unregisterFirebaseSw = vi.fn().mockResolvedValue(true);
+      const unregisterAppSw = vi.fn().mockResolvedValue(true);
       const getRegistrations = vi.fn().mockResolvedValue([
         {
           active: { scriptURL: "http://localhost:5173/dev-sw.js?dev-sw" },
@@ -154,10 +154,10 @@ describe("pwa", () => {
           unregister: unregisterDevSw,
         },
         {
-          active: { scriptURL: "http://localhost:5173/firebase-messaging-sw.js" },
+          active: { scriptURL: "http://localhost:5173/workbox-runtime.js" },
           waiting: null,
           installing: null,
-          unregister: unregisterFirebaseSw,
+          unregister: unregisterAppSw,
         },
       ] as unknown);
 
@@ -173,7 +173,7 @@ describe("pwa", () => {
 
       expect(getRegistrations).toHaveBeenCalledTimes(1);
       expect(unregisterDevSw).toHaveBeenCalledTimes(1);
-      expect(unregisterFirebaseSw).not.toHaveBeenCalled();
+      expect(unregisterAppSw).not.toHaveBeenCalled();
     });
 
     it("swallows service worker lookup failures", async () => {

@@ -72,9 +72,8 @@ UC-AUTH-01:
 UC-AUTH-04:
   1. Click "Log out"
   2. wipeCredentials() → clear localStorage
-  3. Revoke push token (unregisterPushToken)
-  4. Send presence "idle"
-  5. Redirect to login page
+  3. Send presence "idle"
+  4. Redirect to login page
 ```
 
 ---
@@ -225,18 +224,16 @@ UC-AUTH-04:
 
 ## 11. Notifications
 
-| ID        | Use Case                                                                                | Actor  | Status |
-| --------- | --------------------------------------------------------------------------------------- | ------ | ------ |
-| UC-NTF-01 | Request notification permission                                                         | System | `[x]`  |
-| UC-NTF-02 | Desktop notification on new message (offscreen or tab unfocused; Zulip server triggers) | System | `[x]`  |
-| UC-NTF-03 | Push notification via Firebase FCM (background tab / closed)                            | System | `[x]`  |
-| UC-NTF-04 | Register FCM token on Zulip server                                                      | System | `[x]`  |
-| UC-NTF-05 | Click notification → focus tab + navigate to chat                                       | User   | `[x]`  |
-| UC-NTF-06 | Dismiss notification when message is read                                               | System | `[x]`  |
-| UC-NTF-07 | Sound alert per Zulip audible settings (no double OS + app sound)                       | System | `[x]`  |
-| UC-NTF-08 | Muted streams/topics do not generate notifications                                      | System | `[x]`  |
-| UC-NTF-10 | Notification triggers follow Zulip `user_settings` from server                          | System | `[x]`  |
-| UC-NTF-09 | Badge count (unread) on app icon                                                        | System | `[x]`  |
+| ID        | Use Case                                                          | Actor  | Status |
+| --------- | ----------------------------------------------------------------- | ------ | ------ |
+| UC-NTF-01 | Request notification permission                                   | System | `[x]`  |
+| UC-NTF-02 | Local desktop notification on Workspace realtime message          | System | `[x]`  |
+| UC-NTF-05 | Click notification → focus tab + navigate to chat                 | User   | `[x]`  |
+| UC-NTF-06 | Dismiss notification when message is read                         | System | `[x]`  |
+| UC-NTF-07 | Sound alert per Zulip audible settings (no double OS + app sound) | System | `[x]`  |
+| UC-NTF-08 | Muted streams/topics do not generate notifications                | System | `[x]`  |
+| UC-NTF-10 | Notification triggers follow Zulip `user_settings` from server    | System | `[x]`  |
+| UC-NTF-09 | Badge count (unread) on app icon                                  | System | `[x]`  |
 
 ---
 

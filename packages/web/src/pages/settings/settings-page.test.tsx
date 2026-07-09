@@ -8,7 +8,6 @@ import { SettingsPage } from "./settings-page.ui";
 import type * as ReactRouterDom from "react-router-dom";
 
 const navigateSpy = vi.hoisted(() => vi.fn());
-const unregisterSpy = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 const wipeCredentialsSpy = vi.hoisted(() => vi.fn());
 
 vi.mock("react-router-dom", async () => {
@@ -19,12 +18,6 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
-vi.mock("~/shared/lib/push/push.service", () => ({
-  pushService: {
-    unregister: unregisterSpy,
-  },
-}));
-
 vi.mock("~/shared/lib/auth-guard", () => ({
   wipeCredentials: wipeCredentialsSpy,
 }));
@@ -32,7 +25,6 @@ vi.mock("~/shared/lib/auth-guard", () => ({
 describe("SettingsPage", () => {
   afterEach(() => {
     navigateSpy.mockReset();
-    unregisterSpy.mockReset();
     wipeCredentialsSpy.mockReset();
     useSettingsStore.getState().resetToDefaults();
     useThemeStore.setState({ mode: "dark", paletteId: "orange-warm" });
@@ -112,7 +104,6 @@ describe("SettingsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /logout/i }));
 
     expect(wipeCredentialsSpy).toHaveBeenCalledTimes(1);
-    expect(unregisterSpy).toHaveBeenCalledTimes(1);
     expect(navigateSpy).toHaveBeenCalledWith("/login");
   });
 

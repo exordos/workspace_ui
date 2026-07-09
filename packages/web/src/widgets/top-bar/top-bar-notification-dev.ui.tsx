@@ -13,14 +13,12 @@ import {
 } from "~/shared/lib/notification-sound";
 import { resolveNotificationSoundPreset } from "~/shared/lib/notification-sound-preset.lib";
 import { notificationService } from "~/shared/lib/notifications";
-import { pushService, usePushState } from "~/shared/lib/push/push.service";
 import { Button } from "~/shared/ui/button";
 
 const DEV_TEST_TAG = "dev-notification-test";
 
 export const TopBarNotificationDev: React.FC = () => {
   const [status, setStatus] = useState<string>("");
-  const pushState = usePushState();
   const serverSettings = useNotificationSettingsStore((s) => s.settings);
   const settingsHydrated = useNotificationSettingsStore((s) => s.hydrated);
 
@@ -77,23 +75,6 @@ export const TopBarNotificationDev: React.FC = () => {
     setStatusMessage(`sound: ${preset}`);
   }, [setStatusMessage]);
 
-  const handlePushRegister = useCallback(() => {
-    void pushService
-      .requestPermission()
-      .then((perm) => {
-        if (perm !== "granted") {
-          setStatusMessage(`push permission: ${perm}`);
-          return;
-        }
-        return pushService.register();
-      })
-      .then((registered) => {
-        if (registered === undefined) return;
-        setStatusMessage(registered ? "push registered" : "push register failed");
-      })
-      .catch(() => setStatusMessage("push error"));
-  }, [setStatusMessage]);
-
   const handleCloseTest = useCallback(() => {
     void notificationService.closeByTag(DEV_TEST_TAG);
     void notificationService.closeByTag(`${DEV_TEST_TAG}-sound`);
@@ -108,17 +89,9 @@ export const TopBarNotificationDev: React.FC = () => {
         `hydrated=${settingsHydrated}`,
         `dm=${serverSettings.enableDesktopNotifications}`,
         `stream=${serverSettings.enableStreamDesktopNotifications}`,
-        `push=${pushState.registered ? "yes" : "no"}`,
-        `provider=${pushState.provider ?? "none"}`,
       ].join(" "),
     );
-  }, [
-    pushState.provider,
-    pushState.registered,
-    serverSettings,
-    settingsHydrated,
-    setStatusMessage,
-  ]);
+  }, [serverSettings, settingsHydrated, setStatusMessage]);
 
   if (!import.meta.env.DEV) {
     return null;
@@ -142,9 +115,6 @@ export const TopBarNotificationDev: React.FC = () => {
         </Button>
         <Button type="button" variant="ghost" size="sm" onClick={handlePlaySound}>
           ♪
-        </Button>
-        <Button type="button" variant="ghost" size="sm" onClick={handlePushRegister}>
-          Push
         </Button>
         <Button type="button" variant="ghost" size="sm" onClick={handleShowDiagnostics}>
           ?

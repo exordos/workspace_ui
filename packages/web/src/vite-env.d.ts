@@ -58,16 +58,6 @@ interface ImportMetaEnv {
   readonly VITE_GA4_MEASUREMENT_ID?: string;
   /** Yandex Metrika counter ID (numeric). Optional. */
   readonly VITE_YM_COUNTER_ID?: string;
-  /** Firebase API key for FCM push. Optional. */
-  readonly VITE_FIREBASE_API_KEY?: string;
-  /** Firebase project ID. Optional. */
-  readonly VITE_FIREBASE_PROJECT_ID?: string;
-  /** Firebase messaging sender ID (numeric). Optional. */
-  readonly VITE_FIREBASE_MESSAGING_SENDER_ID?: string;
-  /** Firebase app ID. Optional. */
-  readonly VITE_FIREBASE_APP_ID?: string;
-  /** VAPID key for web push certificates. Optional. */
-  readonly VITE_FIREBASE_VAPID_KEY?: string;
   /** White-label: see `~/shared/lib/brand` and `.env.brand-example`. */
   readonly VITE_BRAND_APP_NAME?: string;
   readonly VITE_BRAND_SHORT_NAME?: string;

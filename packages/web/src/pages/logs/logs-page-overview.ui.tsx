@@ -122,16 +122,11 @@ export const LogsPageOverview: React.FC<LogsPageOverviewProps> = ({
           <p className="truncate text-text-muted">{snapshot.environment.brandAppName}</p>
         </DiagnosticCard>
 
-        <DiagnosticCard title={t("settings.diagnosticsPush")}>
-          <p className="font-medium capitalize text-text-primary">{snapshot.push.permission}</p>
-          <p className="text-text-muted">
-            {snapshot.push.registered
-              ? t("settings.diagnosticsPushRegistered")
-              : t("settings.diagnosticsPushNotRegistered")}
+        <DiagnosticCard title={t("settings.diagnosticsNotifications")}>
+          <p className="font-medium capitalize text-text-primary">
+            {snapshot.notifications.permission}
           </p>
-          {snapshot.push.provider != null && (
-            <p className="text-text-muted">{snapshot.push.provider}</p>
-          )}
+          <p className="text-text-muted">{t("settings.diagnosticsNotificationPermission")}</p>
         </DiagnosticCard>
 
         <DiagnosticCard title={t("settings.diagnosticsLogCounts")}>

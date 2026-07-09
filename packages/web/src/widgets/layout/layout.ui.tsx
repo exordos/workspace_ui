@@ -45,8 +45,6 @@ import { shouldEnableLayoutNotificationPermission } from "./layout-notification-
 import { useLayoutNotificationPermission } from "./layout-notification-permission.hook";
 import { useLayoutOnlineStatus } from "./layout-online-status.hook";
 import { useLayoutPresencePolling } from "./layout-presence-polling.hook";
-import { useLayoutPushClickRouting } from "./layout-push-click-routing.hook";
-import { useLayoutPushPermission } from "./layout-push-permission.hook";
 import { useLayoutResetRightDrawerOnInstanceChange } from "./layout-reset-right-drawer-on-instance-change.hook";
 import { useLayoutRightPanelShell } from "./layout-right-panel-shell.hook";
 import { useLayoutShortcuts } from "./layout-shortcuts.hook";
@@ -67,7 +65,6 @@ export const Layout: React.FC = () => {
   const navigate = useNavigate();
   const instances = useInstancesStore((s) => s.instances);
   const currentInstanceId = useInstancesStore((s) => s.currentInstanceId);
-  const setCurrentInstanceId = useInstancesStore((s) => s.setCurrentInstanceId);
   const {
     streamSlug,
     topicName,
@@ -260,13 +257,6 @@ export const Layout: React.FC = () => {
     navigate,
   });
 
-  useLayoutPushClickRouting({
-    currentInstanceId,
-    instances,
-    setCurrentInstanceId,
-    navigate,
-  });
-
   const layoutConnectionReady =
     currentInstanceId != null && isLayoutUserConnectionReady(currentUserStatus);
   const workspaceNotificationScopeKey =
@@ -283,9 +273,7 @@ export const Layout: React.FC = () => {
   const notificationPermission = useLayoutNotificationPermission({
     enabled: notificationPermissionReady,
     organizationId: workspaceMessengerActive ? workspaceNotificationScopeKey : currentInstanceId,
-    registerPushOnGrant: !workspaceMessengerActive,
   });
-  useLayoutPushPermission({ enabled: layoutConnectionReady });
 
   useLayoutPresencePolling({ enabled: layoutConnectionReady });
 
