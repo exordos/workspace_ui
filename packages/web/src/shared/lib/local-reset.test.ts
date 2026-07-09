@@ -78,7 +78,6 @@ describe("performApplicationColdStart", () => {
     localStorage.setItem("analytics_consent", "granted");
     localStorage.setItem("push_token", "abc");
     localStorage.setItem("workspace-last-messenger-route", '{"path":"/chat"}');
-    sessionStorage.setItem("zulip-web-oidc-desktop-flow", "flow");
 
     await performApplicationColdStart();
 
@@ -99,7 +98,6 @@ describe("performApplicationColdStart", () => {
     expect(localStorage.getItem("analytics_consent")).toBeNull();
     expect(localStorage.getItem("push_token")).toBeNull();
     expect(localStorage.getItem("workspace-last-messenger-route")).toBeNull();
-    expect(sessionStorage.getItem("zulip-web-oidc-desktop-flow")).toBeNull();
   });
 
   it("deletes cached messages from IndexedDB", async () => {

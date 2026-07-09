@@ -124,45 +124,6 @@ const electronAPI = {
         blinkMemoryInfo,
       })),
   },
-
-  auth: {
-    getCsrfToken: (payload: { realm: string }): Promise<string | null> =>
-      ipcRenderer.invoke("auth:getCsrfToken", payload),
-    // The renderer cannot access Electron session directly; it only asks the main process to exchange.
-    exchangeDesktopFlowToken: (payload: {
-      // Realm tells the main process which Zulip server should exchange the token.
-      realm: string;
-      // Token comes from desktop-flow and is only valid during exchange.
-      token: string;
-    }): Promise<
-      | {
-          ok: true;
-          data: {
-            // api_key means normal Basic auth; session means later requests use cookies.
-            authType: "api_key" | "session";
-            // Email is saved in the instance list after successful login.
-            email: string;
-            // Current Zulip user id is saved for cache bootstrap when available.
-            userId?: number;
-            // API key exists only for api_key auth; session auth does not need it.
-            apiKey?: string;
-          };
-        }
-      | {
-          ok: false;
-          // A short reason is used by UI and logs, so they do not depend on error text.
-          reason:
-            | "INVALID_DESKTOP_FLOW_TOKEN"
-            | "DESKTOP_FLOW_EXCHANGE_NETWORK_ERROR"
-            | "DESKTOP_FLOW_EXCHANGE_HTTP_ERROR"
-            | "DESKTOP_FLOW_SESSION_FAILED";
-          // HTTP status is optional: network and validation errors do not have it.
-          status?: number;
-          // Details help debugging, but should not be shown to the user as is.
-          details?: string;
-        }
-    > => ipcRenderer.invoke("auth:exchangeDesktopFlowToken", payload),
-  },
 };
 
 contextBridge.exposeInMainWorld("electronAPI", electronAPI);

@@ -56,9 +56,8 @@ describe("org-route", () => {
     ).toBe("/org/b.example.com/stream/10-general?msg=3");
   });
 
-  it("detects login and paste-token as public routes", () => {
+  it("detects login as a public route", () => {
     expect(isOrgRoutePublicPath("/login")).toBe(true);
-    expect(isOrgRoutePublicPath("/paste-token")).toBe(true);
     expect(isOrgRoutePublicPath("/stream/10-general")).toBe(false);
   });
 
