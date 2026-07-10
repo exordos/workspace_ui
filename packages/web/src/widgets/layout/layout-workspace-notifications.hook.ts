@@ -124,6 +124,12 @@ function resolveTitleContext(
   };
 }
 
+function resolveNotificationConversationRoute(
+  candidate: MessengerBackgroundNotificationCandidate,
+): string {
+  return candidate.topicRoute;
+}
+
 interface RouteProjectionSnapshot {
   ownerKey: string;
   projection: MessengerBackgroundProjection;
@@ -229,12 +235,14 @@ async function runNotificationEffects(options: {
     const senderName = trimNonEmpty(author?.displayName) ?? DEFAULT_NOTIFICATION_SENDER;
     const titleContext = resolveTitleContext(candidate, senderName);
     const body = trimNonEmpty(candidate.previewText) ?? "";
+    const conversationRoute = resolveNotificationConversationRoute(candidate);
     const aggregateSnapshot = upsertNotificationAggregate({
       candidate,
       body,
-      clickRoute: candidate.messageRoute,
+      clickRoute: conversationRoute,
       titleContext,
     });
+    const notificationClickRoute = aggregateSnapshot?.latestClickRoute ?? conversationRoute;
 
     markCandidateProcessed(processedCandidates, candidate.ownerKey, messageUuid);
     options.deferredCandidates.delete(scopeKey);
@@ -247,7 +255,7 @@ async function runNotificationEffects(options: {
       body: aggregateSnapshot?.latestBody ?? body,
       tag: aggregateSnapshot?.tag ?? `msg:${candidate.ownerKey}::${messageUuid}`,
       silent: true,
-      clickRoute: aggregateSnapshot?.latestClickRoute ?? candidate.messageRoute,
+      clickRoute: notificationClickRoute,
       onClick: () => {
         if (aggregateSnapshot != null) {
           const aggregateTag = aggregateSnapshot.tag;
@@ -259,7 +267,7 @@ async function runNotificationEffects(options: {
             });
           });
         }
-        void navigate(aggregateSnapshot?.latestClickRoute ?? candidate.messageRoute);
+        void navigate(notificationClickRoute);
       },
     });
 

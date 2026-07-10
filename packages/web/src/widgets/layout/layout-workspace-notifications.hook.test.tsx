@@ -11,12 +11,17 @@ import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { clearNotifiedMessageIds } from "~/shared/lib/notification-dedup.lib";
+import type { NotificationOptions } from "~/shared/lib/notifications";
 import type { shouldWorkspaceDesktopNotify } from "~/shared/lib/workspace-desktop-notifications.lib";
 import { useLayoutWorkspaceNotifications } from "./layout-workspace-notifications.hook";
-import { clearNotificationAggregateRegistry, consumeReadMessagesFromNotificationAggregates } from "./notification-aggregate-registry.lib";
+import { clearNotificationAggregateRegistry } from "./notification-aggregate-registry.lib";
 
-const showNotificationMock = vi.hoisted(() => vi.fn(() => Promise.resolve(true)));
-const closeNotificationMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+const showNotificationMock = vi.hoisted(() =>
+  vi.fn<(options: NotificationOptions) => Promise<boolean>>(() => Promise.resolve(true)),
+);
+const closeNotificationMock = vi.hoisted(() =>
+  vi.fn<(tag: string) => Promise<void>>(() => Promise.resolve()),
+);
 const playNotificationSoundMock = vi.hoisted(() => vi.fn());
 const requestAttentionMock = vi.hoisted(() => vi.fn());
 const resolveCachedWorkspaceUserMock = vi.hoisted(() =>
@@ -257,14 +262,14 @@ describe("useLayoutWorkspaceNotifications", () => {
     expect(showNotificationMock).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
-        clickRoute: "/messages/owner-a/shared-message",
+        clickRoute: `/topics/${ownerKeyA}/topic-1`,
         tag: expect.stringContaining(ownerKeyA),
       }),
     );
     expect(showNotificationMock).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
-        clickRoute: "/messages/owner-b/shared-message",
+        clickRoute: `/topics/${ownerKeyB}/topic-1`,
         tag: expect.stringContaining(ownerKeyB),
       }),
     );
@@ -272,8 +277,67 @@ describe("useLayoutWorkspaceNotifications", () => {
     expect(shouldWorkspaceDesktopNotifyMock).toHaveBeenCalledTimes(2);
   });
 
-  it("dismisses an aggregate on click and does not resurface its messages", async () => {
-    const session = createSession("aggregate-dismiss");
+  it("opens private and channel notifications in the topic", async () => {
+    const privateSession = createSession("private");
+    const channelSession = createSession("channel");
+    const privateOwnerKey = workspaceRuntimeOwnerKey(privateSession);
+    const channelOwnerKey = workspaceRuntimeOwnerKey(channelSession);
+    const privateMessageUuid = "private-message";
+    const channelMessageUuid = "channel-message";
+
+    useWorkspaceAuthStore.setState({
+      sessions: [privateSession, channelSession],
+      currentAccountId: privateSession.accountId,
+      runtimeGeneration: 1,
+    });
+    useMessengerBackgroundProjectionStore.setState({
+      projectionsByOwnerKey: {
+        [privateOwnerKey]: createProjection(privateOwnerKey, {
+          notificationCandidates: [createCandidate(privateOwnerKey, privateMessageUuid)],
+          messageIdSnapshotsById: {
+            [privateMessageUuid]: createMessageSnapshot(privateOwnerKey, privateMessageUuid),
+          },
+        }),
+        [channelOwnerKey]: createProjection(channelOwnerKey, {
+          notificationCandidates: [
+            createCandidate(channelOwnerKey, channelMessageUuid, {
+              audience: "channel",
+              streamName: "General",
+              topicName: "Bugs",
+              streamNotificationMode: "all_messages",
+            }),
+          ],
+          messageIdSnapshotsById: {
+            [channelMessageUuid]: createMessageSnapshot(channelOwnerKey, channelMessageUuid),
+          },
+        }),
+      },
+    });
+
+    renderHook(() =>
+      useLayoutWorkspaceNotifications({
+        enabled: true,
+        navigate: vi.fn(),
+      }),
+    );
+
+    await waitFor(() => {
+      expect(showNotificationMock).toHaveBeenCalledTimes(2);
+    });
+    expect(showNotificationMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clickRoute: `/topics/${privateOwnerKey}/topic-1`,
+      }),
+    );
+    expect(showNotificationMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clickRoute: `/topics/${channelOwnerKey}/topic-1`,
+      }),
+    );
+  });
+
+  it("keeps the conversation route when notifications are aggregated", async () => {
+    const session = createSession("aggregate");
     const ownerKey = workspaceRuntimeOwnerKey(session);
     const firstMessageUuid = "aggregate-first";
     const secondMessageUuid = "aggregate-second";
@@ -288,8 +352,14 @@ describe("useLayoutWorkspaceNotifications", () => {
       projectionsByOwnerKey: {
         [ownerKey]: createProjection(ownerKey, {
           notificationCandidates: [
-            createCandidate(ownerKey, firstMessageUuid, { observedAt: 1 }),
-            createCandidate(ownerKey, secondMessageUuid, { observedAt: 2 }),
+            createCandidate(ownerKey, firstMessageUuid, {
+              observedAt: 1,
+              messageRoute: "/message/aggregate-first",
+            }),
+            createCandidate(ownerKey, secondMessageUuid, {
+              observedAt: 2,
+              messageRoute: "/message/aggregate-second",
+            }),
           ],
           messageIdSnapshotsById: {
             [firstMessageUuid]: createMessageSnapshot(ownerKey, firstMessageUuid),
@@ -301,21 +371,52 @@ describe("useLayoutWorkspaceNotifications", () => {
       },
     });
 
-    renderHook(() => useLayoutWorkspaceNotifications({ enabled: true, navigate }));
+    renderHook(() =>
+      useLayoutWorkspaceNotifications({
+        enabled: true,
+        navigate,
+      }),
+    );
 
     await waitFor(() => {
       expect(showNotificationMock).toHaveBeenCalledTimes(2);
     });
-    const latestNotification = showNotificationMock.mock.calls[1]?.[0];
-    latestNotification?.onClick?.();
+    expect(showNotificationMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        clickRoute: `/topics/${ownerKey}/topic-1`,
+      }),
+    );
+    expect(showNotificationMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        clickRoute: `/topics/${ownerKey}/topic-1`,
+      }),
+    );
+    const aggregatedNotification = showNotificationMock.mock.calls[1]?.[0];
+    expect(aggregatedNotification).toBeDefined();
+    expect(aggregatedNotification?.onClick).toEqual(expect.any(Function));
 
+    aggregatedNotification?.onClick?.();
     expect(closeNotificationMock).toHaveBeenCalledWith(`bucket:${ownerKey}::dm:${ownerKey}`);
-    expect(navigate).toHaveBeenCalledWith(`/messages/${ownerKey}/${secondMessageUuid}`);
-    expect(consumeReadMessagesFromNotificationAggregates([firstMessageUuid, secondMessageUuid], ownerKey)).toEqual({
-      closedTags: [],
-      updatedSnapshots: [],
-      untrackedMessageUuids: [firstMessageUuid, secondMessageUuid],
-    });
+    expect(navigate).toHaveBeenCalledWith(`/topics/${ownerKey}/topic-1`);
+
+    const notificationActions = {
+      show: showNotificationMock,
+      closeByTag: closeNotificationMock,
+    };
+    const actualTags = await vi.importActual<Record<string, unknown>>(
+      "./layout-notification-tags.lib",
+    );
+    const closeReadMessageNotifications = actualTags.closeReadMessageNotifications as (
+      notifications: typeof notificationActions,
+      messageUuids: string[],
+      ownerKey: string,
+    ) => void;
+    closeReadMessageNotifications(notificationActions, [secondMessageUuid], ownerKey);
+    closeReadMessageNotifications(notificationActions, [firstMessageUuid], ownerKey);
+
+    expect(showNotificationMock).toHaveBeenCalledTimes(2);
   });
 
   it("closes read notifications only for the matching ownerKey", async () => {
@@ -372,12 +473,12 @@ describe("useLayoutWorkspaceNotifications", () => {
     const ownerKey = workspaceRuntimeOwnerKey(session);
     const messageUuid = "sound-message";
 
-    useSettingsStore.setState({ notificationSound: "glass" });
     useWorkspaceAuthStore.setState({
       sessions: [session],
       currentAccountId: session.accountId,
       runtimeGeneration: 1,
     });
+    useSettingsStore.setState({ notificationSound: "glass" });
     useMessengerBackgroundProjectionStore.setState({
       projectionsByOwnerKey: {
         [ownerKey]: createProjection(ownerKey, {
@@ -414,12 +515,12 @@ describe("useLayoutWorkspaceNotifications", () => {
     const ownerKey = workspaceRuntimeOwnerKey(session);
     const messageUuid = "silent-message";
 
-    useSettingsStore.setState({ notificationSound: "none" });
     useWorkspaceAuthStore.setState({
       sessions: [session],
       currentAccountId: session.accountId,
       runtimeGeneration: 1,
     });
+    useSettingsStore.setState({ notificationSound: "none" });
     useMessengerBackgroundProjectionStore.setState({
       projectionsByOwnerKey: {
         [ownerKey]: createProjection(ownerKey, {
@@ -456,12 +557,12 @@ describe("useLayoutWorkspaceNotifications", () => {
     const messageUuid = "blocked-message";
 
     shouldWorkspaceDesktopNotifyMock.mockReturnValueOnce({ notify: false, trigger: "stream" });
-    useSettingsStore.setState({ notificationSound: "glass" });
     useWorkspaceAuthStore.setState({
       sessions: [session],
       currentAccountId: session.accountId,
       runtimeGeneration: 1,
     });
+    useSettingsStore.setState({ notificationSound: "glass" });
     useMessengerBackgroundProjectionStore.setState({
       projectionsByOwnerKey: {
         [ownerKey]: createProjection(ownerKey, {
@@ -570,12 +671,12 @@ describe("useLayoutWorkspaceNotifications", () => {
     const messageUuid = "native-false-message";
 
     showNotificationMock.mockResolvedValueOnce(false);
-    useSettingsStore.setState({ notificationSound: "glass" });
     useWorkspaceAuthStore.setState({
       sessions: [session],
       currentAccountId: session.accountId,
       runtimeGeneration: 1,
     });
+    useSettingsStore.setState({ notificationSound: "glass" });
     useMessengerBackgroundProjectionStore.setState({
       projectionsByOwnerKey: {
         [ownerKey]: createProjection(ownerKey, {
