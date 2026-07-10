@@ -5,7 +5,7 @@ interface ForwardMessage {
   streamUuid: string;
   topicUuid: string;
   authorUuid: string;
-  markdown: string;
+  payload: { kind: "markdown"; content: string };
   createdAt: string;
 }
 
@@ -17,7 +17,7 @@ function createForwardMessage(overrides: Partial<ForwardMessage> = {}): ForwardM
     streamUuid: "stream-a",
     topicUuid: "topic-a",
     authorUuid: "user-a",
-    markdown: "full message text",
+    payload: { kind: "markdown", content: "full message text" },
     createdAt: "2026-07-06T09:00:00.000Z",
     ...overrides,
   };
@@ -72,8 +72,14 @@ describe("workspace forward message lib contract", () => {
 
     const markdown = buildWorkspaceForwardMarkdown({
       messages: [
-        createForwardMessage({ uuid: "message-a", markdown: "first full text" }),
-        createForwardMessage({ uuid: "message-b", markdown: "second full text" }),
+        createForwardMessage({
+          uuid: "message-a",
+          payload: { kind: "markdown", content: "first full text" },
+        }),
+        createForwardMessage({
+          uuid: "message-b",
+          payload: { kind: "markdown", content: "second full text" },
+        }),
       ],
       selectedText: "selected fragment",
       resolveAuthorLabel: vi.fn(() => "Alice"),
@@ -82,6 +88,20 @@ describe("workspace forward message lib contract", () => {
     expect(markdown).toContain("first full text");
     expect(markdown).toContain("second full text");
     expect(markdown).not.toContain("selected fragment");
+  });
+
+  it("uses canonical Workspace user and message links in the forwarded quote", async () => {
+    const { buildWorkspaceForwardMarkdown } = await import(LIB_MODULE);
+
+    const markdown = buildWorkspaceForwardMarkdown({
+      messages: [createForwardMessage()],
+      resolveAuthorLabel: vi.fn(() => "Alice [Admin]"),
+      wroteLabel: "said",
+    });
+
+    expect(markdown).toContain(
+      "> [Alice \\[Admin\\]](urn:user:user-a) [said](urn:message:message-a):",
+    );
   });
 
   it("reuses an existing private stream with default topic for a direct target", async () => {

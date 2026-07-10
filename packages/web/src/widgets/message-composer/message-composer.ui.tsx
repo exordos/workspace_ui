@@ -13,6 +13,7 @@ import {
 } from "./message-composer-ai-surfaces.ui";
 import {
   buildOutgoingMessageBody,
+  insertWorkspaceMention,
   isLikelyImageAttachment,
   normalizeImageAttachmentFile,
   resolveTomorrowMorningTimestamp,
@@ -510,17 +511,19 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
 
   const handleMentionSelect = useCallback(
     (user: MentionSuggestion) => {
-      const before = value.slice(0, mentionStartPos);
-      const after = value.slice(textareaRef.current?.selectionStart ?? value.length);
-      const mention = `<@${user.userUuid}> `;
-      const next = before + mention + after;
-      setValue(next);
+      const insertion = insertWorkspaceMention(
+        value,
+        mentionStartPos,
+        textareaRef.current?.selectionStart ?? value.length,
+        user.displayName,
+        user.userUuid,
+      );
+      setValue(insertion.value);
       hideMentionDropdown();
       setActiveMentionIndex(0);
-      const newCursorPos = before.length + mention.length;
       requestAnimationFrame(() => {
         textareaRef.current?.focus();
-        textareaRef.current?.setSelectionRange(newCursorPos, newCursorPos);
+        textareaRef.current?.setSelectionRange(insertion.cursorPosition, insertion.cursorPosition);
       });
     },
     [value, mentionStartPos, hideMentionDropdown, setValue],

@@ -432,14 +432,18 @@ describe("MessageComposer mention suggestions", () => {
     fireEvent.keyDown(textbox, { key: "Enter" });
 
     expect(onSend).not.toHaveBeenCalled();
-    expect(textbox).toHaveValue("<@user-alice-johnson> ");
+    expect(textbox).toHaveValue("[Alice Johnson](urn:user:user-alice-johnson) ");
     expect(useMentionSuggestStore.getState().visible).toBe(false);
     expect(useMentionSuggestStore.getState().query).toBe("");
 
     fireEvent.keyDown(textbox, { key: "Enter" });
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith("<@user-alice-johnson>", "", undefined);
+      expect(onSend).toHaveBeenCalledWith(
+        "[Alice Johnson](urn:user:user-alice-johnson)",
+        "",
+        undefined,
+      );
     });
   });
 
@@ -472,7 +476,7 @@ describe("MessageComposer mention suggestions", () => {
     fireEvent.keyDown(textbox, { key: "Enter" });
 
     expect(onSend).not.toHaveBeenCalled();
-    expect(textbox).toHaveValue("<@user-alex-roe> ");
+    expect(textbox).toHaveValue("[Alex Roe](urn:user:user-alex-roe) ");
   });
 
   it("shows no-results popup when mention query has no matches", async () => {
@@ -693,7 +697,7 @@ describe("MessageComposer mention suggestions", () => {
     fireEvent.keyDown(textbox, { key: "ArrowDown" });
     fireEvent.keyDown(textbox, { key: "Enter" });
 
-    expect(textbox).toHaveValue("<@user-alex-roe> ");
+    expect(textbox).toHaveValue("[Alex Roe](urn:user:user-alex-roe) ");
   });
 });
 
@@ -880,7 +884,7 @@ describe("MessageComposer preview mode", () => {
         editSession={{
           messageId: 7,
           initialMarkdown: [
-            `Hello <@${userUuid}>`,
+            `Hello [Alice Reed](urn:user:${userUuid})`,
             "",
             "> quoted line",
             "",
@@ -890,7 +894,7 @@ describe("MessageComposer preview mode", () => {
           ].join("\n"),
         }}
         resolveMention={(displayText) =>
-          displayText === userUuid
+          displayText === "Alice Reed"
             ? {
                 userUuid,
                 displayText: "Alice Reed",

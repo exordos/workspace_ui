@@ -479,6 +479,54 @@ describe("workspace message render core", () => {
     expect(result.html).not.toContain("data-user-id");
   });
 
+  it("parses canonical Workspace user and message URNs inside reply quotes", () => {
+    const userUuid = "11111111-1111-4111-8111-111111111111";
+    const messageUuid = "22222222-2222-4222-8222-222222222222";
+    const document = parseWorkspaceMessageBody(
+      [
+        `> [Alice Reed](urn:user:${userUuid}) [said](urn:message:${messageUuid}):`,
+        "> quoted text",
+      ].join("\n"),
+    );
+    const result = renderWorkspaceMessageBody(document, {
+      enableMarkdown: true,
+      enableMentions: true,
+      enableQuotes: true,
+      enableEmojiShortcodes: false,
+      enableCodeHighlight: false,
+      enableCodeCopy: false,
+      enableProtectedMedia: false,
+      enableAttachments: false,
+      enableGallery: false,
+    });
+
+    expect(document.metadata).toMatchObject({
+      hasMentions: true,
+      hasLinks: true,
+      hasRichBlocks: true,
+    });
+    expect(result.html).toContain('class="workspace-message-quote"');
+    expect(result.html).toContain('data-workspace-mention="true"');
+    expect(result.html).toContain(`data-workspace-user-uuid="${userUuid}"`);
+    expect(result.html).toContain('data-workspace-message-link="true"');
+    expect(result.html).toContain(`data-workspace-message-uuid="${messageUuid}"`);
+    expect(result.html).toContain(`href="#workspace-message-${messageUuid}"`);
+    expect(result.html).not.toContain(`urn:user:${userUuid}`);
+    expect(result.html).not.toContain(`urn:message:${messageUuid}`);
+  });
+
+  it("keeps invalid Workspace entity URNs as non-navigable labels", () => {
+    const document = parseWorkspaceMessageBody(
+      "[bad user](urn:user:not-a-uuid) [bad message](urn:message:not-a-uuid)",
+    );
+    const result = renderWorkspaceMessageBody(document);
+
+    expect(result.html).toBe("<p>bad user bad message</p>");
+    expect(result.html).not.toContain("href=");
+    expect(result.html).not.toContain("data-workspace-user-uuid");
+    expect(result.html).not.toContain("data-workspace-message-uuid");
+  });
+
   it("renders known unicode emoji shortcodes and keeps unknown/custom shortcodes as text", () => {
     const document = parseWorkspaceMessageBody(
       "Привет :smile: :party_parrot: :definitely_unknown_shortcode:",
@@ -634,6 +682,67 @@ describe("workspace message render core", () => {
       preferredMetaPlacement: "row",
       textPreview: "Own reply",
     });
+  });
+
+  it("renders historical quote fences as read-only Workspace quote blocks", () => {
+    const userUuid = "11111111-1111-4111-8111-111111111111";
+    const document = parseWorkspaceMessageBody(
+      ["```quote", `[Alice](urn:user:${userUuid})`, "", "Quoted body", "```"].join("\n"),
+    );
+    const result = renderWorkspaceMessageBody(document, {
+      enableMarkdown: true,
+      enableMentions: true,
+      enableQuotes: true,
+      enableEmojiShortcodes: false,
+      enableCodeHighlight: false,
+      enableCodeCopy: false,
+      enableProtectedMedia: false,
+      enableAttachments: false,
+      enableGallery: false,
+    });
+
+    expect(result.html).toContain('<blockquote class="workspace-message-quote">');
+    expect(result.html).toContain('data-workspace-mention="true"');
+    expect(result.html).not.toContain("<pre>");
+    expect(result.html).not.toContain("```quote");
+  });
+
+  it("renders nested historical quote fences inside a markdown quote", () => {
+    const userUuid = "11111111-1111-4111-8111-111111111111";
+    const messageUuid = "22222222-2222-4222-8222-222222222222";
+    const document = parseWorkspaceMessageBody(
+      [
+        "> **corle corle**:",
+        `> [Alice](urn:user:${userUuid}) [said](urn:message:${messageUuid}):`,
+        "> `````quote",
+        "> ````quote",
+        "> ```",
+        "> curl --compressed https://workspace.example/files/download",
+        "> ```",
+        "> ````",
+        "> должно заработать",
+        "> `````",
+        "",
+        "4444",
+      ].join("\n"),
+    );
+    const result = renderWorkspaceMessageBody(document, {
+      enableMarkdown: true,
+      enableMentions: true,
+      enableQuotes: true,
+      enableEmojiShortcodes: false,
+      enableCodeHighlight: false,
+      enableCodeCopy: false,
+      enableProtectedMedia: false,
+      enableAttachments: false,
+      enableGallery: false,
+    });
+
+    expect(result.html.match(/class="workspace-message-quote"/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(result.html).toContain(`data-workspace-user-uuid="${userUuid}"`);
+    expect(result.html).toContain(`data-workspace-message-uuid="${messageUuid}"`);
+    expect(result.html).not.toContain("language-quote");
+    expect(result.html).toContain("4444");
   });
 
   it("keeps nested markdown blockquotes as compact quote blocks", () => {

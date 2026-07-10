@@ -677,6 +677,40 @@ describe("WorkspaceMessageList", () => {
     openSpy.mockRestore();
   });
 
+  it("opens canonical Workspace URN entities through UUID callbacks", () => {
+    const userUuid = "11111111-1111-4111-8111-111111111111";
+    const messageUuid = "22222222-2222-4222-8222-222222222222";
+    const onOpenMentionUser = vi.fn();
+    const onOpenMessageInChat = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-urn-entities-message",
+            markdown: `> [Alice](urn:user:${userUuid}) [jump](urn:message:${messageUuid}):\n> quoted`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onOpenMentionUser, onOpenMessageInChat }}
+      />,
+    );
+
+    const mention = container.querySelector<HTMLElement>("[data-workspace-mention='true']");
+    const messageLink = container.querySelector<HTMLAnchorElement>(
+      "[data-workspace-message-link='true']",
+    );
+
+    expect(mention).toHaveAttribute("data-workspace-user-uuid", userUuid);
+    expect(messageLink).toHaveAttribute("data-workspace-message-uuid", messageUuid);
+
+    fireEvent.click(mention!);
+    fireEvent.click(messageLink!);
+
+    expect(onOpenMentionUser).toHaveBeenCalledWith(userUuid);
+    expect(onOpenMessageInChat).toHaveBeenCalledWith(messageUuid);
+  });
+
   it("does not render dangerous protocols as navigable links", () => {
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
     const { container } = render(

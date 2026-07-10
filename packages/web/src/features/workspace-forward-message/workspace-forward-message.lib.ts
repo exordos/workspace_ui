@@ -71,7 +71,6 @@ export function buildWorkspaceForwardMarkdown(options: {
     authorUuid: MessengerUuid,
     message: WorkspaceForwardSourceMessage,
   ) => string;
-  resolvePermalinkUrl?: (message: WorkspaceForwardSourceMessage) => string | null | undefined;
   wroteLabel?: string;
 }): string {
   const selectedText = normalizeSelectedForwardText(options.selectedText);
@@ -84,8 +83,9 @@ export function buildWorkspaceForwardMarkdown(options: {
         options.resolveAuthorLabel?.(message.authorUuid, message) ?? message.authorUuid;
       const header = buildWorkspaceQuoteHeader({
         senderName,
+        senderUuid: message.authorUuid,
         wroteLabel,
-        permalinkUrl: options.resolvePermalinkUrl?.(message),
+        messageUuid: message.uuid,
       });
       const content = shouldUseSelectedText ? selectedText : message.payload.content;
       return buildWorkspaceQuoteBlock(header, content);

@@ -24,6 +24,8 @@ const WORKSPACE_FILE_URN_PATTERN = new RegExp(
   `^urn:(image|video|file):(${UUID_PATTERN_SOURCE})(?:\\?([\\s\\S]*))?$`,
   "i",
 );
+const WORKSPACE_USER_URN_PATTERN = new RegExp(`^urn:user:(${UUID_PATTERN_SOURCE})$`, "i");
+const WORKSPACE_MESSAGE_URN_PATTERN = new RegExp(`^urn:message:(${UUID_PATTERN_SOURCE})$`, "i");
 const SPOILER_CODE_LANGUAGE_PATTERN = /^spoiler(?:[ \t]+([\s\S]*))?$/i;
 const PLAIN_TEXT_INLINE_PATTERN = new RegExp(
   `<@(${UUID_PATTERN_SOURCE})>|(^|[\\s([{"'.,!?;:])@([A-Za-z0-9._-]{1,128})|:([A-Za-z0-9_+-]{1,128}):`,
@@ -132,6 +134,20 @@ function parseWorkspaceFileUrn(href: string): ParsedWorkspaceFileUrn | null {
     searchParams: new URLSearchParams(match[3] ?? ""),
     href: trimmed,
   };
+}
+
+function parseWorkspaceEntityUuid(href: string, pattern: RegExp): string | null {
+  const match = pattern.exec(href.trim());
+  const uuid = match?.[1];
+  return uuid != null && UUID_PATTERN.test(uuid) ? uuid : null;
+}
+
+function parseWorkspaceUserUrn(href: string): string | null {
+  return parseWorkspaceEntityUuid(href, WORKSPACE_USER_URN_PATTERN);
+}
+
+function parseWorkspaceMessageUrn(href: string): string | null {
+  return parseWorkspaceEntityUuid(href, WORKSPACE_MESSAGE_URN_PATTERN);
 }
 
 function parseWorkspaceFileHref(href: string, label: string): WorkspaceMessageFileReference | null {
@@ -317,17 +333,17 @@ function createMentionInline(
   const normalizedSourceUserUuid = sourceUserUuid?.trim();
   const sourceUserUuidIsValid =
     normalizedSourceUserUuid != null && UUID_PATTERN.test(normalizedSourceUserUuid);
-  const userUuid =
-    resolvedUserUuid != null && resolvedUserUuid.length > 0
+  const userUuid = sourceUserUuidIsValid
+    ? normalizedSourceUserUuid
+    : resolvedUserUuid != null && resolvedUserUuid.length > 0
       ? resolvedUserUuid
-      : sourceUserUuidIsValid && resolution != null && resolution.unresolved !== true
-        ? normalizedSourceUserUuid
-        : undefined;
+      : undefined;
+  const mentionIsResolved = resolution != null && resolution.unresolved !== true;
 
   context.state.hasInlineRich = true;
   context.state.hasMentions = true;
 
-  if (userUuid != null && userUuid.length > 0 && resolution?.unresolved !== true) {
+  if (userUuid != null && userUuid.length > 0 && mentionIsResolved) {
     return {
       kind: "mention",
       displayText: resolvedDisplayText.length > 0 ? resolvedDisplayText : normalizedDisplayText,
@@ -577,6 +593,25 @@ function parseInlineTokens(
         context.state.hasInlineRich = true;
         {
           const link = token as Tokens.Link;
+          const workspaceUserUuid = parseWorkspaceUserUrn(link.href);
+          if (workspaceUserUuid != null) {
+            return [createMentionInline(link.text, context, workspaceUserUuid)];
+          }
+
+          const workspaceMessageUuid = parseWorkspaceMessageUrn(link.href);
+          if (workspaceMessageUuid != null) {
+            context.state.hasLinks = true;
+            return [
+              {
+                kind: "link",
+                href: link.href,
+                title: link.title ?? undefined,
+                workspaceMessageUuid,
+                children: parseInlineTokens(link.tokens, link.text, context),
+              },
+            ];
+          }
+
           const reference = parseWorkspaceFileHref(link.href, link.text);
           if (reference != null) {
             applyWorkspaceFileState(reference, context);
@@ -661,6 +696,27 @@ function parseSpoilerCodeBlock(
   };
 }
 
+function parseHistoricalQuoteCodeBlock(
+  code: Tokens.Code,
+  context: WorkspaceMessageParseContext,
+): WorkspaceMessageBlock | null {
+  if ((code.lang?.trim() ?? "").toLowerCase() !== "quote") {
+    return null;
+  }
+
+  context.state.hasRichBlocks = true;
+  if (context.state.leadingKind === "text") {
+    context.state.leadingKind = "quote";
+  }
+
+  // Historical Zulip quote fences are read-only input. Parse their body into
+  // the Workspace document model, but never emit this format from composer code.
+  return {
+    kind: "quote",
+    blocks: parseBlockTokens(marked.lexer(code.text), context),
+  };
+}
+
 function parseBlockTokens(
   tokens: readonly Token[],
   context: WorkspaceMessageParseContext,
@@ -709,6 +765,10 @@ function parseBlockTokens(
         const spoiler = parseSpoilerCodeBlock(code, context);
         if (spoiler != null) {
           return [spoiler];
+        }
+        const historicalQuote = parseHistoricalQuoteCodeBlock(code, context);
+        if (historicalQuote != null) {
+          return [historicalQuote];
         }
         context.state.hasRichBlocks = true;
         context.state.hasCodeBlocks = true;

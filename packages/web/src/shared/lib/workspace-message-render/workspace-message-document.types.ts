@@ -65,6 +65,7 @@ export interface WorkspaceMessageLinkInline {
   kind: "link";
   href: string;
   title?: string;
+  workspaceMessageUuid?: string;
   children: readonly WorkspaceMessageInline[];
 }
 

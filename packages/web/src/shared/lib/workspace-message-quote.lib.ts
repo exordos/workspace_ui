@@ -1,13 +1,18 @@
 export interface WorkspaceQuoteHeaderInput {
   senderName: string;
+  senderUuid: string;
   wroteLabel: string;
-  permalinkUrl?: string | null;
+  messageUuid: string;
 }
 
-function escapeMarkdownInline(value: string): string {
+export function escapeWorkspaceMarkdownInline(value: string): string {
   return Array.from(value, (character) =>
     /[\\`*_{()[\]#+.!|>~-]/.test(character) ? `\\${character}` : character,
   ).join("");
+}
+
+export function buildWorkspaceUserMention(senderName: string, senderUuid: string): string {
+  return `[${escapeWorkspaceMarkdownInline(senderName.trim())}](urn:user:${senderUuid})`;
 }
 
 function normalizeQuoteMarkdown(value: string): string {
@@ -16,15 +21,14 @@ function normalizeQuoteMarkdown(value: string): string {
 
 export function buildWorkspaceQuoteHeader({
   senderName,
+  senderUuid,
   wroteLabel,
-  permalinkUrl,
+  messageUuid,
 }: WorkspaceQuoteHeaderInput): string {
-  const author = escapeMarkdownInline(senderName.trim());
-  const normalizedUrl = permalinkUrl?.trim();
-  if (normalizedUrl != null && normalizedUrl.length > 0) {
-    return `**${author}** [${wroteLabel}](${normalizedUrl}):`;
-  }
-  return `**${author}**:`;
+  const author = buildWorkspaceUserMention(senderName, senderUuid);
+  const wrote = escapeWorkspaceMarkdownInline(wroteLabel.trim());
+  const messageLink = `[${wrote}](urn:message:${messageUuid})`;
+  return `${author} ${messageLink}:`;
 }
 
 export function buildWorkspaceQuoteBlock(header: string, content: string): string {

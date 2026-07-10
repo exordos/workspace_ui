@@ -281,6 +281,15 @@ function renderInline(
         inline.title != null && inline.title.trim().length > 0
           ? ` title="${escapeHtmlText(inline.title)}"`
           : "";
+      if (inline.workspaceMessageUuid != null) {
+        // URN links are a content contract, not browser URLs. Use a harmless
+        // fragment and let the UUID-only message action handle navigation.
+        return `<a href="#workspace-message-${escapeHtmlText(
+          inline.workspaceMessageUuid,
+        )}"${titleAttr} data-workspace-message-link="true" data-workspace-message-uuid="${escapeHtmlText(
+          inline.workspaceMessageUuid,
+        )}">${labelHtml}</a>`;
+      }
       if (!isSafeLinkHref(inline.href)) {
         return labelHtml;
       }

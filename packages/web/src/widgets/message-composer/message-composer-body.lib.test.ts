@@ -4,6 +4,7 @@ import {
   formatAttachmentSize,
   formatScheduledTimestamp,
   getAttachmentExtensionLabel,
+  insertWorkspaceMention,
   isLikelyImageAttachment,
   normalizeImageAttachmentFile,
   resolveTomorrowMorningTimestamp,
@@ -69,23 +70,52 @@ describe("message-composer-body.lib", () => {
       expect(body.endsWith("reply")).toBe(true);
     });
 
-    it("prepends Workspace reply quote with message route anchor", () => {
+    it("prepends a Workspace reply quote with canonical user and message URNs", () => {
       const body = buildOutgoingMessageBody("clean reply", {
         id: "55555555-5555-4555-8555-555555555555",
         content: "quoted workspace text",
         sender_full_name: "Bob Reed",
-        permalinkUrl: "/org/org-a/project/project-a/message/55555555-5555-4555-8555-555555555555",
+        sender_uuid: "44444444-4444-4444-8444-444444444444",
+        permalinkUrl: null,
         quoteFormat: "workspace",
       });
 
       expect(body).toBe(
         [
-          "> **Bob Reed** [wrote](/org/org-a/project/project-a/message/55555555-5555-4555-8555-555555555555):",
+          "> [Bob Reed](urn:user:44444444-4444-4444-8444-444444444444) [wrote](urn:message:55555555-5555-4555-8555-555555555555):",
           "> quoted workspace text",
           "",
           "clean reply",
         ].join("\n"),
       );
+    });
+
+    it("escapes a Workspace display name inside the mention label", () => {
+      const body = buildOutgoingMessageBody("reply", {
+        id: "message-uuid",
+        content: "quoted",
+        sender_full_name: "A]lice * Smith",
+        sender_uuid: "user-uuid",
+        permalinkUrl: null,
+        quoteFormat: "workspace",
+      });
+
+      expect(body).toContain("> [A\\]lice \\* Smith](urn:user:user-uuid)");
+    });
+  });
+
+  describe("insertWorkspaceMention", () => {
+    it("replaces the active query and keeps the cursor after the inserted link", () => {
+      const result = insertWorkspaceMention("Hi @bo!", 3, 6, "Bob Reed", "user-uuid");
+
+      expect(result.value).toBe("Hi [Bob Reed](urn:user:user-uuid) !");
+      expect(result.cursorPosition).toBe("Hi [Bob Reed](urn:user:user-uuid) ".length);
+    });
+
+    it("escapes the display name in an ordinary mention", () => {
+      const result = insertWorkspaceMention("@a", 0, 2, "A]lice", "user-uuid");
+
+      expect(result.value).toBe("[A\\]lice](urn:user:user-uuid) ");
     });
   });
 

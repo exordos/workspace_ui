@@ -60,10 +60,7 @@ import type {
   WorkspaceMessageFileReference,
   WorkspaceMessageMentionResolution,
 } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
-import {
-  workspaceMessengerMessageRoute,
-  type WorkspaceMessengerRouteMatch,
-} from "~/shared/lib/workspace-messenger-route.lib";
+import type { WorkspaceMessengerRouteMatch } from "~/shared/lib/workspace-messenger-route.lib";
 import { Spinner } from "~/shared/ui/spinner.ui";
 import type { ChatHeaderProps } from "~/widgets/chat-view/chat-header.types";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
@@ -1158,11 +1155,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         id: message.uuid,
         content: quoteSource,
         sender_full_name: authorLabel,
-        permalinkUrl: workspaceMessengerMessageRoute({
-          orgId: effectiveRoute.orgId,
-          projectId: effectiveRoute.projectId,
-          messageUuid: message.uuid,
-        }),
+        sender_uuid: message.authorUuid,
+        permalinkUrl: null,
         quoteFormat: "workspace",
       });
     },

@@ -6,15 +6,24 @@ import type { AiMessageContext, AiReplyRequest } from "~/features/ai-reply/ai-re
 import type { WorkspaceMessageMentionResolver } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import type { RefObject, ReactNode } from "react";
 
-export interface ReplyQuote {
-  id: number | string;
+interface ReplyQuoteBase {
   content: string;
   sender_full_name: string;
-  sender_id?: number;
-  /** Optional message permalink URL; omit link text if null. */
   permalinkUrl: string | null;
-  quoteFormat?: "zulip" | "workspace";
 }
+
+export type ReplyQuote =
+  | (ReplyQuoteBase & {
+      id: number | string;
+      sender_id?: number;
+      quoteFormat?: "zulip";
+    })
+  | (ReplyQuoteBase & {
+      id: string;
+      /** Workspace author UUID used to build a user mention in a reply header. */
+      sender_uuid: string;
+      quoteFormat: "workspace";
+    });
 
 export interface ComposerUploadProgress {
   completed: number;

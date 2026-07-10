@@ -1068,7 +1068,8 @@ describe("ChatPage Workspace route", () => {
         id: "55555555-5555-4555-8555-555555555555",
         content: "selected excerpt",
         sender_full_name: "Bob Reed",
-        permalinkUrl: "/org/org-a/project/project-a/message/55555555-5555-4555-8555-555555555555",
+        sender_uuid: USER_B_UUID,
+        permalinkUrl: null,
         quoteFormat: "workspace",
       });
     });

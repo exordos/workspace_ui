@@ -265,6 +265,7 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
       enableCodeCopy: WORKSPACE_MESSAGE_BUBBLE_RENDER_OPTIONS.enableCodeCopy,
       fileReferences: renderedBody.fileReferences,
       onOpenMentionUser: actions?.onOpenMentionUser,
+      onOpenMessageInChat: actions?.onOpenMessageInChat,
       onDownloadFile: actions?.onDownloadFile,
       onOpenWorkspaceMedia: actions?.onOpenWorkspaceMedia,
       onOpenUnsupportedFilePreview: actions?.onOpenUnsupportedFilePreview,

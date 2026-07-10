@@ -21,6 +21,7 @@ import type {
 const MESSAGE_CONTEXT_MENU_CURSOR_GAP_PX = 6;
 const CODE_COPY_RESET_MS = 1200;
 const UNSAFE_BODY_LINK_PROTOCOL_PATTERN = /^(?:javascript|data|file|blob):/i;
+const WORKSPACE_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface WorkspaceCodeCopyButtonMount {
   button: HTMLButtonElement;
@@ -35,6 +36,7 @@ export interface UseWorkspaceMessageBodyInteractionsParams {
   enableCodeCopy: boolean;
   fileReferences: readonly WorkspaceMessageFileReference[];
   onOpenMentionUser?: (userUuid: string) => void;
+  onOpenMessageInChat?: (messageUuid: string) => void;
   onDownloadFile?: (file: WorkspaceMessageFileReference) => void | Promise<void>;
   onOpenWorkspaceMedia?: (file: WorkspaceMessageFileReference) => void | Promise<void>;
   onOpenUnsupportedFilePreview?: (file: WorkspaceMessageFileReference) => void;
@@ -252,6 +254,7 @@ export function useWorkspaceMessageBodyInteractions({
   enableCodeCopy,
   fileReferences,
   onOpenMentionUser,
+  onOpenMessageInChat,
   onDownloadFile,
   onOpenWorkspaceMedia,
   onOpenUnsupportedFilePreview,
@@ -500,6 +503,15 @@ export function useWorkspaceMessageBodyInteractions({
       }
 
       if (link.dataset.workspaceMessageLink === "true") {
+        const messageUuid = link.dataset.workspaceMessageUuid?.trim();
+        event.preventDefault();
+        if (
+          messageUuid != null &&
+          WORKSPACE_UUID_PATTERN.test(messageUuid) &&
+          isPrimaryUnmodifiedClick(event)
+        ) {
+          onOpenMessageInChat?.(messageUuid);
+        }
         return;
       }
 
@@ -513,6 +525,7 @@ export function useWorkspaceMessageBodyInteractions({
     },
     [
       onOpenMentionUser,
+      onOpenMessageInChat,
       onOpenUnsupportedFilePreview,
       requestWorkspaceFileDownload,
       requestWorkspaceMediaOpen,
