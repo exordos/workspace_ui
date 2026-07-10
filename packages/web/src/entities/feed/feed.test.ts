@@ -2,7 +2,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
 import { useFeedStore } from "./feed.model";
 
-function msg(overrides: Partial<MessengerMessage> = {}): MessengerMessage {
+type MessageOverrides = Omit<Partial<MessengerMessage>, "payload"> & {
+  markdown?: string;
+  payload?: MessengerMessage["payload"];
+};
+
+function msg(overrides: MessageOverrides = {}): MessengerMessage {
+  const { markdown, payload, ...rest } = overrides;
   return {
     uuid: "message-a",
     conversationId: "topic:stream-a:topic-a",
@@ -11,7 +17,7 @@ function msg(overrides: Partial<MessengerMessage> = {}): MessengerMessage {
     topicUuid: "topic-a",
     authorUuid: "user-a",
     userUuid: "user-a",
-    markdown: "Hello",
+    payload: payload ?? { kind: "markdown", content: markdown ?? "Hello" },
     read: true,
     pinned: false,
     starred: false,
@@ -20,7 +26,7 @@ function msg(overrides: Partial<MessengerMessage> = {}): MessengerMessage {
     ownReactionUuidsByEmojiName: {},
     createdAt: "2026-07-02T10:00:00Z",
     updatedAt: "2026-07-02T10:00:00Z",
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -168,7 +174,7 @@ describe("useFeedStore", () => {
       .getState()
       .messages.find((message) => message.uuid === "message-b");
     expect(current).toMatchObject({
-      markdown: "Edited current body",
+      payload: { kind: "markdown", content: "Edited current body" },
       read: true,
       starred: true,
       updatedAt: "2026-07-02T10:05:00Z",

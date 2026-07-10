@@ -187,11 +187,14 @@ describe("messenger last messages loader", () => {
       }),
       [MESSAGE_A, MESSAGE_B],
     );
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.markdown).toBe(
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload.content).toBe(
       "Hello, workspace",
     );
     expect(writeMessages).toHaveBeenCalledWith(ownerKey, [
-      expect.objectContaining({ uuid: MESSAGE_A, markdown: "Hello, workspace" }),
+      expect.objectContaining({
+        uuid: MESSAGE_A,
+        payload: { kind: "markdown", content: "Hello, workspace" },
+      }),
     ]);
   });
 
@@ -225,10 +228,12 @@ describe("messenger last messages loader", () => {
 
     expect(getMessagesByUuids).not.toHaveBeenCalled();
     expect(writeMessages).not.toHaveBeenCalled();
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.markdown).toBe(
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload.content).toBe(
       "Hello, workspace",
     );
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]?.markdown).toBe("Cached B");
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]?.payload.content).toBe(
+      "Cached B",
+    );
   });
 
   it("loads only cache misses from the client", async () => {
@@ -257,10 +262,12 @@ describe("messenger last messages loader", () => {
     });
 
     expect(getMessagesByUuids).toHaveBeenCalledWith(expect.any(Object), [MESSAGE_B]);
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.markdown).toBe(
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload.content).toBe(
       "Hello, workspace",
     );
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]?.markdown).toBe("Network B");
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]?.payload.content).toBe(
+      "Network B",
+    );
   });
 
   it("writes network responses back to the message cache", async () => {
@@ -280,7 +287,10 @@ describe("messenger last messages loader", () => {
     });
 
     expect(writeMessages).toHaveBeenCalledWith(ownerKey, [
-      expect.objectContaining({ uuid: MESSAGE_A, markdown: "Hello, workspace" }),
+      expect.objectContaining({
+        uuid: MESSAGE_A,
+        payload: { kind: "markdown", content: "Hello, workspace" },
+      }),
     ]);
   });
 
@@ -407,7 +417,7 @@ describe("messenger last messages loader", () => {
     });
 
     expect(getMessagesByUuids).toHaveBeenCalledWith(expect.any(Object), [MESSAGE_A, MESSAGE_B]);
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.markdown).toBe(
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload.content).toBe(
       "Hello, workspace",
     );
   });

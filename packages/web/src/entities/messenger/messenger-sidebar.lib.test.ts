@@ -118,7 +118,13 @@ function folder(overrides: Partial<MessengerFolder> = {}): MessengerFolder {
   };
 }
 
-function message(overrides: Partial<MessengerMessage> = {}): MessengerMessage {
+type MessageOverrides = Omit<Partial<MessengerMessage>, "payload"> & {
+  markdown?: string;
+  payload?: MessengerMessage["payload"];
+};
+
+function message(overrides: MessageOverrides = {}): MessengerMessage {
+  const { markdown, payload, ...rest } = overrides;
   return {
     uuid: MESSAGE_A,
     conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
@@ -127,7 +133,7 @@ function message(overrides: Partial<MessengerMessage> = {}): MessengerMessage {
     topicUuid: TOPIC_A,
     authorUuid: AUTHOR_UUID,
     userUuid: "user",
-    markdown: "Latest workspace message",
+    payload: payload ?? { kind: "markdown", content: markdown ?? "Latest workspace message" },
     read: true,
     pinned: false,
     starred: false,
@@ -136,7 +142,7 @@ function message(overrides: Partial<MessengerMessage> = {}): MessengerMessage {
     ownReactionUuidsByEmojiName: {},
     createdAt: DATE_A,
     updatedAt: DATE_A,
-    ...overrides,
+    ...rest,
   };
 }
 

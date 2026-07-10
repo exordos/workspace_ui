@@ -493,7 +493,7 @@ describe("messenger bootstrap store", () => {
     await bootstrap;
     await flushPromises();
 
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.markdown).toBe(
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload.content).toBe(
       "Hello, workspace",
     );
   });
@@ -532,7 +532,7 @@ describe("messenger bootstrap store", () => {
 
     expect(useMessengerStore.getState().streamsById[STREAM_A]?.name).toBe("Engineering");
     expect(readMessagesByUuids).toHaveBeenCalledWith(ownerKey, [MESSAGE_A]);
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.markdown).toBe(
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload.content).toBe(
       "Cached preview",
     );
     expect(getMessagesByUuids).not.toHaveBeenCalled();
@@ -1099,7 +1099,7 @@ describe("messenger bootstrap store", () => {
       .mergeConversationMessagesPage(`topic:${STREAM_A}:${TOPIC_A}`, [
         messageB,
         messageA,
-        { ...messageA, markdown: "Edited" },
+        { ...messageA, payload: { kind: "markdown", content: "Edited" } },
       ]);
 
     expect(
@@ -1108,7 +1108,10 @@ describe("messenger bootstrap store", () => {
         `topic:${STREAM_A}:${TOPIC_A}`,
       ),
     ).toEqual([
-      expect.objectContaining({ uuid: MESSAGE_A, markdown: "Edited" }),
+      expect.objectContaining({
+        uuid: MESSAGE_A,
+        payload: { kind: "markdown", content: "Edited" },
+      }),
       expect.objectContaining({ uuid: MESSAGE_B }),
     ]);
 
@@ -1155,7 +1158,7 @@ describe("messenger bootstrap store", () => {
 
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toEqual(
       expect.objectContaining({
-        markdown: "Edited workspace message",
+        payload: { kind: "markdown", content: "Edited workspace message" },
         read: true,
         updatedAt: "2026-06-22T10:20:00Z",
       }),

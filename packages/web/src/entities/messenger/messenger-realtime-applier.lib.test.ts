@@ -309,12 +309,12 @@ describe("messenger realtime active applier", () => {
       ownerKey,
       expect.objectContaining({
         uuid: MESSAGE_A,
-        markdown: "Edited workspace message",
+        payload: { kind: "markdown", content: "Edited workspace message" },
       }),
     );
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toEqual(
       expect.objectContaining({
-        markdown: "Edited workspace message",
+        payload: { kind: "markdown", content: "Edited workspace message" },
         updatedAt: "2026-06-22T10:20:00Z",
       }),
     );
@@ -499,10 +499,16 @@ describe("messenger realtime active applier", () => {
 
     const state = useWorkspaceMessageStore.getState();
     expect(selectWorkspaceMessagesForConversation(state, `stream:${STREAM_A}`)).toEqual([
-      expect.objectContaining({ uuid: MESSAGE_A, markdown: "Hello, workspace" }),
+      expect.objectContaining({
+        uuid: MESSAGE_A,
+        payload: { kind: "markdown", content: "Hello, workspace" },
+      }),
     ]);
     expect(selectWorkspaceMessagesForConversation(state, `topic:${STREAM_A}:${TOPIC_A}`)).toEqual([
-      expect.objectContaining({ uuid: MESSAGE_A, markdown: "Hello, workspace" }),
+      expect.objectContaining({
+        uuid: MESSAGE_A,
+        payload: { kind: "markdown", content: "Hello, workspace" },
+      }),
     ]);
   });
 
@@ -558,7 +564,10 @@ describe("messenger realtime active applier", () => {
       expect.objectContaining({
         uuid: MESSAGE_A,
         authorUuid: USER_B,
-        markdown: "https://meet.workspace.example.com/workspace-room-1",
+        payload: {
+          kind: "markdown",
+          content: "https://meet.workspace.example.com/workspace-room-1",
+        },
       }),
       expect.objectContaining({
         uuid: STREAM_A,
@@ -708,7 +717,12 @@ describe("messenger realtime active applier", () => {
     const messageState = useWorkspaceMessageStore.getState();
     expect(
       selectWorkspaceMessagesForConversation(messageState, `topic:${STREAM_B}:${TOPIC_B}`),
-    ).toEqual([expect.objectContaining({ uuid: MESSAGE_B, markdown: "Fresh inactive chat" })]);
+    ).toEqual([
+      expect.objectContaining({
+        uuid: MESSAGE_B,
+        payload: { kind: "markdown", content: "Fresh inactive chat" },
+      }),
+    ]);
     const rows = selectMessengerSidebarStreams(messengerState, {
       organizationId: ORGANIZATION_A,
       projectId: PROJECT_A,
@@ -772,7 +786,7 @@ describe("messenger realtime active applier", () => {
       selectWorkspaceMessagesForConversation(
         useWorkspaceMessageStore.getState(),
         `topic:${STREAM_A}:${TOPIC_A}`,
-      ).map((message) => [message.uuid, message.markdown]),
+      ).map((message) => [message.uuid, message.payload.content]),
     ).toEqual([
       [MESSAGE_A, "Edited first message"],
       [MESSAGE_B, "Second message"],

@@ -87,7 +87,7 @@ export function buildWorkspaceForwardMarkdown(options: {
         wroteLabel,
         permalinkUrl: options.resolvePermalinkUrl?.(message),
       });
-      const content = shouldUseSelectedText ? selectedText : message.markdown;
+      const content = shouldUseSelectedText ? selectedText : message.payload.content;
       return buildWorkspaceQuoteBlock(header, content);
     })
     .join("")

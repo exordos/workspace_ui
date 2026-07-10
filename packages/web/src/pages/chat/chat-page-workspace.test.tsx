@@ -118,7 +118,7 @@ vi.mock("./chat-page-workspace-message-list-section.ui", () => ({
       <div data-testid="workspace-message-list-section">
         {props.messages.map((message) => (
           <article key={message.uuid} data-message-uuid={message.uuid}>
-            {message.markdown}
+            {message.payload.content}
           </article>
         ))}
         {props.outgoingMessages?.map((message) => (
@@ -270,7 +270,7 @@ function createMessage(): MessengerMessage {
     topicUuid: TOPIC_UUID,
     authorUuid: USER_B_UUID,
     userUuid: USER_B_UUID,
-    markdown: "workspace message",
+    payload: { kind: "markdown", content: "workspace message" },
     read: false,
     pinned: false,
     starred: false,
@@ -286,7 +286,7 @@ function createSecondMessage(): MessengerMessage {
   return {
     ...createMessage(),
     uuid: SECOND_MESSAGE_UUID,
-    markdown: "second workspace message",
+    payload: { kind: "markdown", content: "second workspace message" },
     createdAt: "2026-06-30T10:01:00.000Z",
     updatedAt: "2026-06-30T10:01:00.000Z",
   };

@@ -1,6 +1,7 @@
 import type {
   WorkspaceMessengerFolderDto,
   WorkspaceMessengerFolderItemDto,
+  WorkspaceMessengerMessagePayloadDto,
   WorkspaceMessengerMessageDto,
   WorkspaceMessengerStreamBindingDto,
   WorkspaceMessengerStreamDto,
@@ -13,6 +14,7 @@ import type {
   MessengerFolder,
   MessengerFolderItem,
   MessengerMessage,
+  MessengerMessagePayload,
   MessengerStream,
   MessengerStreamBinding,
   MessengerTopic,
@@ -139,7 +141,7 @@ export function adaptMessengerMessage(dto: WorkspaceMessengerMessageDto): Messen
     topicUuid: dto.topic_uuid,
     authorUuid: dto.author_uuid,
     userUuid: dto.user_uuid,
-    markdown: dto.payload.content,
+    payload: adaptMessengerMessagePayload(dto.payload),
     read: dto.read,
     pinned: dto.pinned,
     starred: dto.starred,
@@ -152,6 +154,15 @@ export function adaptMessengerMessage(dto: WorkspaceMessengerMessageDto): Messen
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
   };
+}
+
+export function adaptMessengerMessagePayload(
+  dto: WorkspaceMessengerMessagePayloadDto,
+): MessengerMessagePayload {
+  switch (dto.kind) {
+    case "markdown":
+      return { kind: "markdown", content: dto.content };
+  }
 }
 
 export function adaptMessengerFolderItem(

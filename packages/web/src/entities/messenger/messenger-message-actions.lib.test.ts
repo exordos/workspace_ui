@@ -126,7 +126,10 @@ describe("messenger message actions", () => {
     ).resolves.toEqual({
       status: "applied",
       ownerKey,
-      message: expect.objectContaining({ uuid: MESSAGE_A, markdown: "Hello, workspace" }),
+      message: expect.objectContaining({
+        uuid: MESSAGE_A,
+        payload: { kind: "markdown", content: "Hello, workspace" },
+      }),
     });
 
     expect(createMessage).toHaveBeenCalledWith(
@@ -216,7 +219,7 @@ describe("messenger message actions", () => {
       ownerKey,
       reason: "stale-owner",
     });
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.markdown).not.toBe(
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.payload.content).not.toBe(
       "Edited",
     );
     expect(cache.patchCachedMessage).not.toHaveBeenCalled();

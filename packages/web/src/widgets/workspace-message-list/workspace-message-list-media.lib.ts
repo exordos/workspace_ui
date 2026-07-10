@@ -39,7 +39,7 @@ export function collectWorkspaceMessageImageGallery(
   const indexByFileUuid = new Map<string, number>();
 
   for (const message of messages) {
-    const document = parseWorkspaceMessageBody(message.markdown, {
+    const document = parseWorkspaceMessageBody(message.payload.content, {
       resolveMention: options.resolveMention,
     });
     const fileReferences = collectWorkspaceMessageFileReferences(document);

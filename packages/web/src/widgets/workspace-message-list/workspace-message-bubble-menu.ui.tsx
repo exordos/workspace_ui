@@ -297,7 +297,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
         label: t("message.copy"),
         onSelect: () => {
           const selectedText = getSelectedText();
-          const textToCopy = selectedText ?? message.markdown;
+          const textToCopy = selectedText ?? message.payload.content;
           if (onCopyMessageText != null) {
             void onCopyMessageText(message.uuid, textToCopy);
           } else {
@@ -357,7 +357,7 @@ export const WorkspaceMessageBubbleMenu = React.memo(function WorkspaceMessageBu
     handleEmojiPick,
     handleReaction,
     isOwn,
-    message.markdown,
+    message.payload.content,
     message.uuid,
     onCopyMessageText,
     onEditMessage,

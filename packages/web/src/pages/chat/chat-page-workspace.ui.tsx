@@ -1084,7 +1084,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     setComposerEditMessageUuid(message.uuid);
     setComposerEditSession({
       messageId: WORKSPACE_COMPOSER_EDIT_SESSION_ID,
-      initialMarkdown: message.markdown,
+      initialMarkdown: message.payload.content,
     });
   }, []);
 
@@ -1149,7 +1149,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         return;
       }
 
-      const quoteSource = selectedText?.trim() || message.markdown.trim();
+      const quoteSource = selectedText?.trim() || message.payload.content.trim();
       if (quoteSource.length === 0) return;
       const authorLabel = resolveAuthorLabel(message.authorUuid) ?? t("message.replyTo");
       setComposerEditMessageUuid(null);

@@ -4,9 +4,9 @@ import {
 } from "./workspace-messenger-cache-db-upgrade.lib";
 
 const DB_NAME = "workspace-messenger-cache-v1";
-// Версия повышается при добавлении ownMessageReactions, чтобы существующие
-// установки прошли upgrade и получили новый store без ручной очистки базы.
-const DB_VERSION = 3;
+// Version 4 marks the message body schema change from a flattened markdown
+// field to the backend-shaped payload envelope.
+const DB_VERSION = 4;
 const IDB_DELETE_BLOCKED_TIMEOUT_MS = 3_000;
 const DEFAULT_MESSAGE_BUCKET_RETENTION = 500;
 const ORDER_KEY_SEPARATOR = "|";
@@ -156,8 +156,14 @@ export interface WorkspaceMessengerCachedMessage {
   conversationId: string;
   streamUuid: string;
   topicUuid: string;
+  payload: WorkspaceMessengerCachedMessagePayload;
   createdAt: string;
   updatedAt?: string | null;
+}
+
+export interface WorkspaceMessengerCachedMessagePayload {
+  kind: "markdown";
+  content: string;
 }
 
 export interface WorkspaceMessengerMessageCacheRow {
@@ -282,6 +288,18 @@ export interface WorkspaceMessengerConversationMessagePage {
 export interface WorkspaceMessengerConversationMessageWindow {
   messages: WorkspaceMessengerCachedMessage[];
   window: WorkspaceMessengerMessageWindowRow | null;
+}
+
+function isCachedMessageWithPayload(value: unknown): value is WorkspaceMessengerCachedMessage {
+  if (value == null || typeof value !== "object") return false;
+  const message = value as { payload?: unknown };
+  const payload = message.payload;
+  return (
+    payload != null &&
+    typeof payload === "object" &&
+    (payload as { kind?: unknown }).kind === "markdown" &&
+    typeof (payload as { content?: unknown }).content === "string"
+  );
 }
 
 export interface WorkspaceMessengerSearchResultWrite {
@@ -1856,7 +1874,7 @@ export async function readConversationMessageWindow(
     );
     const messages = buckets
       .map((bucket) => messageRows.get(bucket.messageUuid)?.message)
-      .filter((message): message is WorkspaceMessengerCachedMessage => message != null);
+      .filter(isCachedMessageWithPayload);
 
     return { messages, window };
   } catch {
@@ -1875,7 +1893,7 @@ export async function readCachedMessagesByUuids(
     const messageRows = await readMessageRowsByUuid(db, ownerKey, messageUuids);
     return messageUuids
       .map((messageUuid) => messageRows.get(messageUuid)?.message)
-      .filter((message): message is WorkspaceMessengerCachedMessage => message != null);
+      .filter(isCachedMessageWithPayload);
   } catch {
     return [];
   }

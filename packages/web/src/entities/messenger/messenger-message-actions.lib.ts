@@ -254,7 +254,7 @@ export async function editMessengerMessage({
   store.getState().upsertMessage(message);
   useMessengerStore.getState().applyMessagePointer(action.ownerKey, message);
   store.getState().applyMessageEdit(message.uuid, {
-    markdown: message.markdown,
+    markdown: message.payload.content,
     updatedAt: message.updatedAt,
   });
   if (cache?.patchCachedMessage != null) {

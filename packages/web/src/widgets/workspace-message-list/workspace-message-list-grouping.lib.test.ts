@@ -5,7 +5,13 @@ import {
   groupWorkspaceMessagesByDayAndAuthor,
 } from "./workspace-message-list-grouping.lib";
 
-function createWorkspaceMessage(overrides: Partial<MessengerMessage> = {}): MessengerMessage {
+type MessageOverrides = Omit<Partial<MessengerMessage>, "payload"> & {
+  markdown?: string;
+  payload?: MessengerMessage["payload"];
+};
+
+function createWorkspaceMessage(overrides: MessageOverrides = {}): MessengerMessage {
+  const { markdown, payload, ...rest } = overrides;
   return {
     uuid: "message-uuid-1",
     conversationId: "topic:stream-uuid-1:topic-uuid-1",
@@ -14,7 +20,7 @@ function createWorkspaceMessage(overrides: Partial<MessengerMessage> = {}): Mess
     topicUuid: "topic-uuid-1",
     authorUuid: "author-uuid-1",
     userUuid: "author-uuid-1",
-    markdown: "Workspace text message",
+    payload: payload ?? { kind: "markdown", content: markdown ?? "Workspace text message" },
     read: false,
     pinned: false,
     starred: false,
@@ -23,7 +29,7 @@ function createWorkspaceMessage(overrides: Partial<MessengerMessage> = {}): Mess
     ownReactionUuidsByEmojiName: {},
     createdAt: "2026-07-03T09:00:00.000Z",
     updatedAt: "2026-07-03T09:00:00.000Z",
-    ...overrides,
+    ...rest,
   };
 }
 

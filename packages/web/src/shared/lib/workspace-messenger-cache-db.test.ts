@@ -47,6 +47,7 @@ function message(uuid: string, createdAt: string) {
     conversationId: TOPIC_CONVERSATION,
     streamUuid: STREAM,
     topicUuid: TOPIC,
+    payload: { kind: "markdown" as const, content: `Message ${uuid}` },
     createdAt,
     updatedAt: createdAt,
   };

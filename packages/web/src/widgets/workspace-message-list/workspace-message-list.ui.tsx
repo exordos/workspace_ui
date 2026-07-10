@@ -32,7 +32,7 @@ function canMatchOutgoingServerMessage(
 ): boolean {
   if (outgoingMessage.conversationId !== serverMessage.conversationId) return false;
   if (outgoingMessage.authorUuid !== serverMessage.authorUuid) return false;
-  if (outgoingMessage.markdown !== serverMessage.markdown) return false;
+  if (outgoingMessage.markdown !== serverMessage.payload.content) return false;
 
   const outgoingTimestamp = Date.parse(outgoingMessage.createdAt);
   const serverTimestamp = Date.parse(serverMessage.createdAt);

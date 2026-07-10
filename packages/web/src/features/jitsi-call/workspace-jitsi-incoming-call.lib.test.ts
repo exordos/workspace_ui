@@ -12,7 +12,13 @@ const MESSAGE_UUID = "55555555-5555-4555-8555-555555555555";
 const DATE = "2026-07-08T10:30:00Z";
 const MEET_URL = "https://meet.workspace.example.com";
 
-function createMessage(overrides: Partial<MessengerMessage> = {}): MessengerMessage {
+type MessageOverrides = Omit<Partial<MessengerMessage>, "payload"> & {
+  markdown?: string;
+  payload?: MessengerMessage["payload"];
+};
+
+function createMessage(overrides: MessageOverrides = {}): MessengerMessage {
+  const { markdown, payload, ...rest } = overrides;
   return {
     uuid: MESSAGE_UUID,
     conversationId: `topic:${STREAM_UUID}:${TOPIC_UUID}`,
@@ -21,7 +27,10 @@ function createMessage(overrides: Partial<MessengerMessage> = {}): MessengerMess
     topicUuid: TOPIC_UUID,
     authorUuid: CALLER_UUID,
     userUuid: CURRENT_USER_UUID,
-    markdown: `${MEET_URL}/workspace-room-1`,
+    payload: payload ?? {
+      kind: "markdown",
+      content: markdown ?? `${MEET_URL}/workspace-room-1`,
+    },
     read: false,
     pinned: false,
     starred: false,
@@ -30,7 +39,7 @@ function createMessage(overrides: Partial<MessengerMessage> = {}): MessengerMess
     ownReactionUuidsByEmojiName: {},
     createdAt: DATE,
     updatedAt: DATE,
-    ...overrides,
+    ...rest,
   };
 }
 

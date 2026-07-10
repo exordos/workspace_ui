@@ -53,7 +53,13 @@ function createRuntimeContext(
   };
 }
 
-function createMessage(overrides: Partial<MessengerMessage> = {}): MessengerMessage {
+type MessageOverrides = Omit<Partial<MessengerMessage>, "payload"> & {
+  markdown?: string;
+  payload?: MessengerMessage["payload"];
+};
+
+function createMessage(overrides: MessageOverrides = {}): MessengerMessage {
+  const { markdown, payload, ...rest } = overrides;
   return {
     uuid: MESSAGE_A,
     conversationId: `topic:${STREAM_A}:${TOPIC_A}`,
@@ -62,7 +68,7 @@ function createMessage(overrides: Partial<MessengerMessage> = {}): MessengerMess
     topicUuid: TOPIC_A,
     authorUuid: USER_A,
     userUuid: USER_A,
-    markdown: "Hello",
+    payload: payload ?? { kind: "markdown", content: markdown ?? "Hello" },
     read: false,
     pinned: false,
     starred: false,
@@ -71,7 +77,7 @@ function createMessage(overrides: Partial<MessengerMessage> = {}): MessengerMess
     ownReactionUuidsByEmojiName: {},
     createdAt: DATE,
     updatedAt: DATE,
-    ...overrides,
+    ...rest,
   };
 }
 

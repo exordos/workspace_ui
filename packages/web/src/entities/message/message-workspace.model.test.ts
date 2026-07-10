@@ -33,10 +33,13 @@ const DATE_EARLIER = "2026-06-22T10:00:00Z";
 const TOPIC_CONVERSATION_ID = conversationIdForTopic(STREAM_UUID, TOPIC_UUID);
 const STREAM_CONVERSATION_ID = conversationIdForStream(STREAM_UUID);
 
-function createMessage(
-  overrides: Partial<MessengerMessage> & { uuid: MessengerUuid },
-): MessengerMessage {
-  const { uuid, ...rest } = overrides;
+type MessageOverrides = Omit<Partial<MessengerMessage>, "payload"> & {
+  markdown?: string;
+  payload?: MessengerMessage["payload"];
+};
+
+function createMessage(overrides: MessageOverrides & { uuid: MessengerUuid }): MessengerMessage {
+  const { uuid, markdown, payload, ...rest } = overrides;
   return {
     uuid,
     conversationId: TOPIC_CONVERSATION_ID,
@@ -45,7 +48,7 @@ function createMessage(
     topicUuid: TOPIC_UUID,
     authorUuid: AUTHOR_UUID,
     userUuid: USER_UUID,
-    markdown: "message",
+    payload: payload ?? { kind: "markdown", content: markdown ?? "message" },
     read: false,
     pinned: false,
     starred: false,
@@ -86,6 +89,27 @@ describe("workspace message store", () => {
     ]);
   });
 
+  it("marks loaded messages in the same topic read through an anchor", () => {
+    const earlier = createMessage({ uuid: MESSAGE_A, createdAt: DATE_EARLIER });
+    const anchor = createMessage({ uuid: MESSAGE_B, createdAt: DATE });
+    const later = createMessage({ uuid: MESSAGE_C, createdAt: DATE_LATER });
+
+    useWorkspaceMessageStore
+      .getState()
+      .mergeConversationMessagesPage(TOPIC_CONVERSATION_ID, [earlier, anchor, later]);
+
+    const changed = useWorkspaceMessageStore.getState().markMessagesReadUpTo(MESSAGE_B, {
+      conversationIds: [TOPIC_CONVERSATION_ID],
+    });
+
+    expect(changed.map((message) => message.uuid)).toEqual([MESSAGE_A, MESSAGE_B]);
+    expect(selectMessages(TOPIC_CONVERSATION_ID)).toEqual([
+      expect.objectContaining({ uuid: MESSAGE_A, read: true }),
+      expect.objectContaining({ uuid: MESSAGE_B, read: true }),
+      expect.objectContaining({ uuid: MESSAGE_C, read: false }),
+    ]);
+  });
+
   it("deduplicates by uuid and stores the latest body", () => {
     useWorkspaceMessageStore
       .getState()
@@ -96,7 +120,7 @@ describe("workspace message store", () => {
 
     const messages = selectMessages(TOPIC_CONVERSATION_ID);
     expect(messages).toHaveLength(1);
-    expect(messages[0]?.markdown).toBe("second");
+    expect(messages[0]?.payload.content).toBe("second");
   });
 
   it("reindexes a duplicate message when createdAt changes", () => {
@@ -128,10 +152,9 @@ describe("workspace message store", () => {
         createMessage({ uuid: MESSAGE_A, createdAt: DATE, markdown: "initial" }),
       ]);
 
-    expect(selectMessages(TOPIC_CONVERSATION_ID).map((message) => message.markdown)).toEqual([
-      "initial",
-      "live",
-    ]);
+    expect(selectMessages(TOPIC_CONVERSATION_ID).map((message) => message.payload.content)).toEqual(
+      ["initial", "live"],
+    );
   });
 
   it("strictly replaces a conversation window without keeping old message ids", () => {
@@ -173,7 +196,7 @@ describe("workspace message store", () => {
 
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toEqual(
       expect.objectContaining({
-        markdown: "fresh snapshot",
+        payload: { kind: "markdown", content: "fresh snapshot" },
         reactions: { thumbs_up: 2, eyes: 1 },
         ownReactionUuidsByEmojiName: { thumbs_up: REACTION_A },
       }),
@@ -202,7 +225,7 @@ describe("workspace message store", () => {
 
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toEqual(
       expect.objectContaining({
-        markdown: "window snapshot",
+        payload: { kind: "markdown", content: "window snapshot" },
         reactions: { thumbs_up: 2 },
         ownReactionUuidsByEmojiName: { thumbs_up: REACTION_A },
       }),

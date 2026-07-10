@@ -29,7 +29,7 @@ export interface WorkspaceForwardMessageState {
 
 export type WorkspaceForwardSourceMessage = Pick<
   MessengerMessage,
-  "uuid" | "streamUuid" | "topicUuid" | "authorUuid" | "markdown" | "createdAt"
+  "uuid" | "streamUuid" | "topicUuid" | "authorUuid" | "payload" | "createdAt"
 >;
 
 export interface WorkspaceForwardTopicTarget {

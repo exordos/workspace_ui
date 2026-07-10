@@ -367,7 +367,7 @@ export const FeedPage: React.FC = () => {
                 // Feed uses the same Workspace summary path as the sidebar:
                 // previews stay textual and do not expose protected file URLs.
                 const summaryText = summarizeWorkspaceMessageMarkdown(
-                  m.markdown,
+                  m.payload.content,
                   FEED_MESSAGE_SUMMARY_OPTIONS,
                 ).text;
 

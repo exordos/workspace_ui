@@ -138,7 +138,7 @@ function previewFromMessage(
     message.authorUuid === currentUserUuid
       ? t("common.you")
       : resolveUserDisplayName(usersById[message.authorUuid]);
-  const summary = summarizeWorkspaceMessageMarkdown(message.markdown);
+  const summary = summarizeWorkspaceMessageMarkdown(message.payload.content);
 
   return {
     messageUuid: message.uuid,

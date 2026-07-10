@@ -1082,7 +1082,7 @@ describe("messenger conversation messages loader", () => {
       selectWorkspaceMessagesForConversation(
         useWorkspaceMessageStore.getState(),
         `topic:${STREAM_A}:${TOPIC_A}`,
-      ).map((message) => [message.uuid, message.markdown]),
+      ).map((message) => [message.uuid, message.payload.content]),
     ).toEqual([
       [MESSAGE_A, "Hello, workspace"],
       [MESSAGE_B, "Edited overlap"],

@@ -93,7 +93,13 @@ function createUser(overrides: Partial<User> = {}): User {
   };
 }
 
-function createFeedMessage(overrides: Partial<MessengerMessage> = {}): MessengerMessage {
+type MessageOverrides = Omit<Partial<MessengerMessage>, "payload"> & {
+  markdown?: string;
+  payload?: MessengerMessage["payload"];
+};
+
+function createFeedMessage(overrides: MessageOverrides = {}): MessengerMessage {
+  const { markdown, payload, ...rest } = overrides;
   return {
     uuid: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
     conversationId: `topic:${STREAM_UUID}:${TOPIC_UUID}`,
@@ -102,7 +108,7 @@ function createFeedMessage(overrides: Partial<MessengerMessage> = {}): Messenger
     topicUuid: TOPIC_UUID,
     authorUuid: AUTHOR_UUID,
     userUuid: USER_UUID,
-    markdown: "Workspace feed message",
+    payload: payload ?? { kind: "markdown", content: markdown ?? "Workspace feed message" },
     read: true,
     pinned: false,
     starred: false,
@@ -111,7 +117,7 @@ function createFeedMessage(overrides: Partial<MessengerMessage> = {}): Messenger
     ownReactionUuidsByEmojiName: {},
     createdAt: "2026-07-02T10:00:00Z",
     updatedAt: "2026-07-02T10:00:00Z",
-    ...overrides,
+    ...rest,
   };
 }
 

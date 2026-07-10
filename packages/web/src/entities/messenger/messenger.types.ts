@@ -40,6 +40,15 @@ export interface MessengerPendingOwnReactionState {
 // счетчик/подсветку до ответа Workspace API.
 export type MessengerPendingOwnReactionsByName = Record<string, MessengerPendingOwnReactionState>;
 
+export interface MessengerMarkdownPayload {
+  kind: "markdown";
+  content: string;
+}
+
+// Domain payload mirrors the Workspace API envelope. Add new message kinds
+// here when the backend contract grows instead of flattening them into text.
+export type MessengerMessagePayload = MessengerMarkdownPayload;
+
 // Минимальная строка собственной реакции для обогащения message store из cache
 // или SWR. Store не зависит от IndexedDB-типа и принимает только доменные поля,
 // которые действительно нужны для projection.
@@ -125,7 +134,7 @@ export interface MessengerMessage {
   topicUuid: MessengerUuid;
   authorUuid: MessengerUuid;
   userUuid: MessengerUuid;
-  markdown: string;
+  payload: MessengerMessagePayload;
   read: boolean;
   pinned: boolean;
   starred: boolean;

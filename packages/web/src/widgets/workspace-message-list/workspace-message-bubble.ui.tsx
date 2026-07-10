@@ -202,7 +202,8 @@ export const WorkspaceMessageBubble: React.FC<WorkspaceMessageBubbleProps> = Rea
     const displayMessage = outgoingMessage ?? serverMessage;
     invariant(displayMessage != null, "WorkspaceMessageBubble expects message payload");
     const time = formatWorkspaceMessageTime(displayMessage.createdAt);
-    const markdown = displayMessage.markdown;
+    const markdown =
+      message.kind === "outgoing" ? message.message.markdown : message.message.payload.content;
     const jitsiLinkOptions = useMemo<JitsiLinkOptions>(
       () => ({ serverBaseUrl: actions?.jitsiServerBaseUrl }),
       [actions?.jitsiServerBaseUrl],

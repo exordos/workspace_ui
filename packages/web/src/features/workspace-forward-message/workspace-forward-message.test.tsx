@@ -243,7 +243,7 @@ function prepareStores(options: { includeDirect?: boolean } = {}) {
 
 async function waitForForwardMessageInStore(): Promise<void> {
   await waitFor(() => {
-    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_UUID]?.markdown).toBe(
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_UUID]?.payload.content).toBe(
       "full message text",
     );
   });

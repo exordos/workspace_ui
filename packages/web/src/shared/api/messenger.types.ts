@@ -80,6 +80,10 @@ export interface WorkspaceMessengerMarkdownPayloadDto {
   content: string;
 }
 
+// Keep the backend payload envelope extensible. The current Workspace API
+// supports markdown only, but new message kinds must be added here explicitly.
+export type WorkspaceMessengerMessagePayloadDto = WorkspaceMessengerMarkdownPayloadDto;
+
 // Aggregate хранит только серверные счетчики по имени emoji.
 // Здесь намеренно нет списка пользователей, reaction_type, emoji_code или numeric user id:
 // Workspace API пока отдает только имя emoji и количество, а недостающие сведения нельзя
@@ -126,7 +130,7 @@ export interface WorkspaceMessengerMessageDto {
   stream_uuid: WorkspaceMessengerUuid;
   topic_uuid: WorkspaceMessengerUuid;
   author_uuid: WorkspaceMessengerUuid;
-  payload: WorkspaceMessengerMarkdownPayloadDto;
+  payload: WorkspaceMessengerMessagePayloadDto;
   user_uuid: WorkspaceMessengerUuid;
   read: boolean;
   pinned: boolean;
@@ -261,11 +265,11 @@ export interface WorkspaceMessengerTopicNotificationRequestBody {
 export interface WorkspaceMessengerCreateMessageRequestBody {
   stream_uuid: WorkspaceMessengerUuid;
   topic_uuid: WorkspaceMessengerUuid;
-  payload: WorkspaceMessengerMarkdownPayloadDto;
+  payload: WorkspaceMessengerMessagePayloadDto;
 }
 
 export interface WorkspaceMessengerUpdateMessageRequestBody {
-  payload: WorkspaceMessengerMarkdownPayloadDto;
+  payload: WorkspaceMessengerMessagePayloadDto;
 }
 
 // Создание реакции принимает ровно тот контракт, который поддерживает Workspace backend.
@@ -728,6 +732,12 @@ export function isWorkspaceMessengerMarkdownPayloadDto(
   value: unknown,
 ): value is WorkspaceMessengerMarkdownPayloadDto {
   return isRecord(value) && value.kind === "markdown" && typeof value.content === "string";
+}
+
+export function isWorkspaceMessengerMessagePayloadDto(
+  value: unknown,
+): value is WorkspaceMessengerMessagePayloadDto {
+  return isWorkspaceMessengerMarkdownPayloadDto(value);
 }
 
 export function isWorkspaceMessengerReactionAggregate(

@@ -219,7 +219,7 @@ describe("messenger adapters", () => {
       topicUuid: TOPIC_UUID,
       authorUuid: USER_UUID,
       userUuid: USER_UUID,
-      markdown: "Hello, workspace",
+      payload: { kind: "markdown", content: "Hello, workspace" },
       read: true,
       pinned: false,
       starred: false,

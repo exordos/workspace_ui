@@ -46,7 +46,7 @@ export function buildWorkspaceIncomingDmCallInvite(
     return null;
   }
 
-  const meetingUrl = getJitsiMeetingUrl(input.message.markdown, {
+  const meetingUrl = getJitsiMeetingUrl(input.message.payload.content, {
     serverBaseUrl: input.meetUrl,
   });
   if (meetingUrl == null) {

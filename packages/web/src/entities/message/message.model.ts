@@ -354,7 +354,7 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
           ...state.messagesById,
           [messageUuid]: {
             ...message,
-            markdown: patch.markdown,
+            payload: { kind: "markdown", content: patch.markdown },
             updatedAt: patch.updatedAt ?? message.updatedAt,
           },
         },
