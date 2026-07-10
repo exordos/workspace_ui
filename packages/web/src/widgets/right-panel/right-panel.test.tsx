@@ -13,6 +13,15 @@ import { RightPanelShell } from "./right-panel-shell.ui";
 
 const updateWorkspaceOwnStatusMock = vi.hoisted(() => vi.fn());
 
+vi.mock("./right-panel-external-account.integration", () => ({
+  RightPanelConnectExternalAccountDialog: ({ open }: { open: boolean }) =>
+    open ? <div role="dialog">Connect external account</div> : null,
+  RightPanelExternalAccountsList: () => (
+    <div data-testid="connected-external-accounts-list">Zulip · https://zulip.example.com</div>
+  ),
+  ExternalAccountConnectActionIcon: () => <span aria-hidden="true">+</span>,
+}));
+
 vi.mock("~/entities/user/user-workspace-status-actions.lib", () => ({
   updateWorkspaceOwnStatus: (...args: unknown[]) => updateWorkspaceOwnStatusMock(...args),
 }));
@@ -123,6 +132,18 @@ describe("RightPanelShell", () => {
     const currentServerItem = screen.getByTestId("user-menu-current-server-item");
     expect(within(currentServerItem).getByText(/workspace.example.com/i)).toBeInTheDocument();
     expect(within(currentServerItem).getByText("alice@example.com")).toBeInTheDocument();
+  });
+
+  it("opens the external-account feature from the profile and renders its compact list", () => {
+    setWorkspaceUserMenuSession();
+
+    renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);
+
+    expect(screen.getByTestId("connected-external-accounts-list")).toHaveTextContent(
+      "Zulip · https://zulip.example.com",
+    );
+    fireEvent.click(screen.getByTestId("connect-external-account-trigger"));
+    expect(screen.getByRole("dialog", { name: "" })).toHaveTextContent("Connect external account");
   });
 
   it("navigates to the next Workspace inbox after user-menu logout from current account", async () => {

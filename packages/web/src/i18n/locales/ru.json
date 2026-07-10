@@ -73,6 +73,44 @@
     "defaultOrganizationHint": "Или можете подключиться к нашему публичному сервису.",
     "defaultOrganizationName": "Exordos Core Public"
   },
+  "connectExternalAccount": {
+    "title": "Подключить внешний аккаунт",
+    "description": "Подключите аккаунт Zulip к этому профилю Workspace.",
+    "provider": "Провайдер",
+    "providers": {
+      "zulip": "Zulip"
+    },
+    "serverUrl": "URL сервера",
+    "serverUrlHint": "https://chat.example.com",
+    "login": "Логин",
+    "loginHint": "Логин аккаунта",
+    "token": "Токен",
+    "tokenHint": "Вставьте API-токен",
+    "showToken": "Показать токен",
+    "hideToken": "Скрыть токен",
+    "connect": "Подключить",
+    "connectedAccounts": "Подключённые внешние аккаунты",
+    "noAccounts": "Внешние аккаунты ещё не подключены.",
+    "checking": "Проверяем…",
+    "errors": {
+      "allFields": "Заполните все поля",
+      "alreadyConnected": "Аккаунт Zulip уже подключён",
+      "alreadyConnectedHint": "К этому профилю Workspace можно подключить только один аккаунт Zulip.",
+      "invalidCredentials": "Логин или токен Zulip неверны",
+      "unavailable": "Сервер Zulip недоступен",
+      "requestFailed": "Не удалось подключить внешний аккаунт",
+      "serverUrlRequired": "Укажите URL сервера",
+      "serverUrlInvalid": "Укажите корректный HTTPS URL сервера",
+      "loginRequired": "Укажите логин",
+      "tokenRequired": "Укажите токен"
+    },
+    "status": {
+      "connecting": "Подключение…",
+      "connected": "Аккаунт подключён",
+      "checking": "Проверяем…",
+      "unsupportedProvider": "Этот провайдер пока не поддерживается"
+    }
+  },
   "nav": {
     "messenger": "Мессенджер",
     "calendar": "Календарь",

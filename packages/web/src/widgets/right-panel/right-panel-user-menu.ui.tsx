@@ -28,6 +28,11 @@ import { Icon } from "~/shared/ui/icon";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { SectionLabel } from "~/shared/ui/section-label.ui";
 import {
+  ExternalAccountConnectActionIcon,
+  RightPanelConnectExternalAccountDialog,
+  RightPanelExternalAccountsList,
+} from "./right-panel-external-account.integration";
+import {
   RightPanelUserMenuMenuButton,
   RightPanelUserMenuOptionButton,
 } from "./right-panel-user-menu-buttons.ui";
@@ -103,6 +108,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   const [statusEmojiDraft, setStatusEmojiDraft] = useState<string>("");
   const [statusEmojiPickerOpen, setStatusEmojiPickerOpen] = useState(false);
   const [statusSubmitting, setStatusSubmitting] = useState(false);
+  const [externalAccountDialogOpen, setExternalAccountDialogOpen] = useState(false);
   const panelHeading = heading?.trim() ?? "";
   const currentLocaleName =
     locales.find((supportedLocale) => supportedLocale.id === currentLocale)?.nativeLabel ??
@@ -379,6 +385,38 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                   >
                     <Icon name="logout" size={14} className="text-current" />
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setExternalAccountDialogOpen(true)}
+                    className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-border-subtle text-accent transition-colors hover:bg-bg-elevated"
+                    aria-label={t("connectExternalAccount.connect")}
+                    title={t("connectExternalAccount.connect")}
+                    data-testid="connect-external-account-trigger"
+                  >
+                    <ExternalAccountConnectActionIcon />
+                  </button>
+                </div>
+              )}
+              {currentWorkspaceSession != null && (
+                <div
+                  className="border-t border-border-subtle px-2.5 py-2"
+                  data-testid="user-menu-external-accounts"
+                >
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <span className="text-xs font-medium text-text-secondary">
+                      {t("connectExternalAccount.connectedAccounts")}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setExternalAccountDialogOpen(true)}
+                      className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[11px] text-accent transition-colors hover:bg-bg-elevated"
+                      aria-label={t("connectExternalAccount.connect")}
+                    >
+                      <ExternalAccountConnectActionIcon />
+                      <span>{t("connectExternalAccount.connect")}</span>
+                    </button>
+                  </div>
+                  <RightPanelExternalAccountsList />
                 </div>
               )}
               <RightPanelUserMenuMenuButton
@@ -693,6 +731,10 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
         handleStatusEmojiPick={handleStatusEmojiPick}
         clearStatusDraft={clearStatusDraft}
         handleSaveStatus={handleSaveStatus}
+      />
+      <RightPanelConnectExternalAccountDialog
+        open={externalAccountDialogOpen}
+        onOpenChange={setExternalAccountDialogOpen}
       />
     </div>
   );
