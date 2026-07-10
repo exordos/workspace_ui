@@ -146,6 +146,7 @@ interface ElectronAPI {
       options?: { tag?: string; silent?: boolean; clickRoute?: string },
     ) => Promise<boolean>;
     closeByTag: (tag: string) => Promise<void>;
+    onClick?: (callback: (tag: string) => void) => () => void;
     diagnostics?: () => Promise<{
       platform: string;
       isPackaged: boolean;

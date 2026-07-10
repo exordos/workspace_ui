@@ -4,6 +4,7 @@ import {
   buildNotificationAggregateTag,
   buildNotificationBucketKeyFromCandidate,
   clearNotificationAggregateRegistry,
+  consumeNotificationAggregateByTag,
   consumeReadMessagesFromNotificationAggregates,
   upsertNotificationAggregate,
 } from "./notification-aggregate-registry.lib";
@@ -188,6 +189,29 @@ describe("notification aggregate registry", () => {
         titleContext: CHANNEL_TITLE_CONTEXT,
       },
     ]);
+  });
+
+  it("consumes an aggregate by tag and returns all message UUIDs", () => {
+    upsertNotificationAggregate({
+      candidate: createCandidate({ messageUuid: "msg-1" }),
+      body: "First",
+      titleContext: CHANNEL_TITLE_CONTEXT,
+    });
+    upsertNotificationAggregate({
+      candidate: createCandidate({ messageUuid: "msg-2" }),
+      body: "Second",
+      titleContext: CHANNEL_TITLE_CONTEXT,
+    });
+
+    const tag = buildNotificationAggregateTag("owner-1::topic:stream-1:bugs:author:user-1");
+
+    expect(consumeNotificationAggregateByTag(tag)).toEqual(["msg-1", "msg-2"]);
+    expect(consumeNotificationAggregateByTag(tag)).toEqual([]);
+    expect(consumeReadMessagesFromNotificationAggregates(["msg-1", "msg-2"], "owner-1")).toEqual({
+      closedTags: [],
+      updatedSnapshots: [],
+      untrackedMessageUuids: ["msg-1", "msg-2"],
+    });
   });
 
   it("returns untracked UUIDs for messages outside aggregate registry", () => {

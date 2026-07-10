@@ -13,9 +13,10 @@ import { useSettingsStore } from "~/features/settings/settings.model";
 import { clearNotifiedMessageIds } from "~/shared/lib/notification-dedup.lib";
 import type { shouldWorkspaceDesktopNotify } from "~/shared/lib/workspace-desktop-notifications.lib";
 import { useLayoutWorkspaceNotifications } from "./layout-workspace-notifications.hook";
-import { clearNotificationAggregateRegistry } from "./notification-aggregate-registry.lib";
+import { clearNotificationAggregateRegistry, consumeReadMessagesFromNotificationAggregates } from "./notification-aggregate-registry.lib";
 
 const showNotificationMock = vi.hoisted(() => vi.fn(() => Promise.resolve(true)));
+const closeNotificationMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 const playNotificationSoundMock = vi.hoisted(() => vi.fn());
 const requestAttentionMock = vi.hoisted(() => vi.fn());
 const resolveCachedWorkspaceUserMock = vi.hoisted(() =>
@@ -29,6 +30,8 @@ const closeReadMessageNotificationsMock = vi.hoisted(() => vi.fn());
 vi.mock("~/shared/lib/notifications", () => ({
   notificationService: {
     show: (...args: Parameters<typeof showNotificationMock>) => showNotificationMock(...args),
+    closeByTag: (...args: Parameters<typeof closeNotificationMock>) =>
+      closeNotificationMock(...args),
   },
 }));
 
@@ -267,6 +270,52 @@ describe("useLayoutWorkspaceNotifications", () => {
     );
     expect(resolveCachedWorkspaceUserMock).toHaveBeenCalledTimes(2);
     expect(shouldWorkspaceDesktopNotifyMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("dismisses an aggregate on click and does not resurface its messages", async () => {
+    const session = createSession("aggregate-dismiss");
+    const ownerKey = workspaceRuntimeOwnerKey(session);
+    const firstMessageUuid = "aggregate-first";
+    const secondMessageUuid = "aggregate-second";
+    const navigate = vi.fn();
+
+    useWorkspaceAuthStore.setState({
+      sessions: [session],
+      currentAccountId: session.accountId,
+      runtimeGeneration: 1,
+    });
+    useMessengerBackgroundProjectionStore.setState({
+      projectionsByOwnerKey: {
+        [ownerKey]: createProjection(ownerKey, {
+          notificationCandidates: [
+            createCandidate(ownerKey, firstMessageUuid, { observedAt: 1 }),
+            createCandidate(ownerKey, secondMessageUuid, { observedAt: 2 }),
+          ],
+          messageIdSnapshotsById: {
+            [firstMessageUuid]: createMessageSnapshot(ownerKey, firstMessageUuid),
+            [secondMessageUuid]: createMessageSnapshot(ownerKey, secondMessageUuid, {
+              observedAt: 2,
+            }),
+          },
+        }),
+      },
+    });
+
+    renderHook(() => useLayoutWorkspaceNotifications({ enabled: true, navigate }));
+
+    await waitFor(() => {
+      expect(showNotificationMock).toHaveBeenCalledTimes(2);
+    });
+    const latestNotification = showNotificationMock.mock.calls[1]?.[0];
+    latestNotification?.onClick?.();
+
+    expect(closeNotificationMock).toHaveBeenCalledWith(`bucket:${ownerKey}::dm:${ownerKey}`);
+    expect(navigate).toHaveBeenCalledWith(`/messages/${ownerKey}/${secondMessageUuid}`);
+    expect(consumeReadMessagesFromNotificationAggregates([firstMessageUuid, secondMessageUuid], ownerKey)).toEqual({
+      closedTags: [],
+      updatedSnapshots: [],
+      untrackedMessageUuids: [firstMessageUuid, secondMessageUuid],
+    });
   });
 
   it("closes read notifications only for the matching ownerKey", async () => {

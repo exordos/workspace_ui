@@ -144,6 +144,24 @@ export function upsertNotificationAggregate(input: {
   return buildSnapshot(tag, entry);
 }
 
+export function consumeNotificationAggregateByTag(tag: string): string[] {
+  const entry = aggregatesByTag.get(tag);
+  if (entry == null) {
+    return [];
+  }
+
+  aggregatesByTag.delete(tag);
+
+  const messageUuids = [...entry.messages.keys()];
+  for (const [messageScopeKey, aggregateTag] of messageUuidToAggregateTag) {
+    if (aggregateTag === tag) {
+      messageUuidToAggregateTag.delete(messageScopeKey);
+    }
+  }
+
+  return messageUuids;
+}
+
 export function consumeReadMessagesFromNotificationAggregates(
   messageUuids: string[],
   ownerKey: string,

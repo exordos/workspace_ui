@@ -55,6 +55,11 @@ const electronAPI = {
       options?: { tag?: string; silent?: boolean; clickRoute?: string },
     ): Promise<boolean> => ipcRenderer.invoke("notifications:show", title, body, options),
     closeByTag: (tag: string): Promise<void> => ipcRenderer.invoke("notifications:closeByTag", tag),
+    onClick: (callback: (tag: string) => void): (() => void) => {
+      const handler = (_event: unknown, tag: string) => callback(tag);
+      ipcRenderer.on("notifications:click", handler);
+      return () => ipcRenderer.removeListener("notifications:click", handler);
+    },
     diagnostics: (): Promise<{
       platform: string;
       isPackaged: boolean;

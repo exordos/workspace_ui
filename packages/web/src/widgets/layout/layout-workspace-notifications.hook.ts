@@ -23,7 +23,10 @@ import {
   formatNotificationTitle,
   type NotificationTitleContext,
 } from "./layout-notification-title.lib";
-import { upsertNotificationAggregate } from "./notification-aggregate-registry.lib";
+import {
+  consumeNotificationAggregateByTag,
+  upsertNotificationAggregate,
+} from "./notification-aggregate-registry.lib";
 import type { NavigateFunction } from "react-router-dom";
 
 const DEFAULT_NOTIFICATION_SENDER = "New message";
@@ -246,6 +249,16 @@ async function runNotificationEffects(options: {
       silent: true,
       clickRoute: aggregateSnapshot?.latestClickRoute ?? candidate.messageRoute,
       onClick: () => {
+        if (aggregateSnapshot != null) {
+          const aggregateTag = aggregateSnapshot.tag;
+          consumeNotificationAggregateByTag(aggregateTag);
+          void notificationService.closeByTag(aggregateTag).catch((error) => {
+            reportUnexpectedError("layout:notification", error, {
+              tag: aggregateTag,
+              phase: "dismiss-on-click",
+            });
+          });
+        }
         void navigate(aggregateSnapshot?.latestClickRoute ?? candidate.messageRoute);
       },
     });

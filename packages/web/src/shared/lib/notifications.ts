@@ -41,6 +41,15 @@ export interface NotificationService {
 }
 
 function createElectronNotificationService(): NotificationService {
+  const clickHandlersByTag = new Map<string, () => void>();
+  const api = getElectronAPI();
+  api?.notifications.onClick?.((tag) => {
+    const handler = clickHandlersByTag.get(tag);
+    if (handler == null) return;
+    clickHandlersByTag.delete(tag);
+    handler();
+  });
+
   function readLocalPermission(): NotificationPermissionStatus {
     try {
       return localStorage.getItem(ELECTRON_NOTIFICATION_PERMISSION_KEY) === "1"
@@ -78,16 +87,18 @@ function createElectronNotificationService(): NotificationService {
       return "granted";
     },
 
-    async show({ title, body, tag, silent, clickRoute }) {
-      const api = getElectronAPI();
+    async show({ title, body, tag, silent, clickRoute, onClick }) {
       if (api) {
+        if (tag != null && onClick != null) {
+          clickHandlersByTag.set(tag, onClick);
+        }
         return api.notifications.show(title, body, { tag, silent, clickRoute });
       }
       return false;
     },
 
     async closeByTag(tag: string) {
-      const api = getElectronAPI();
+      clickHandlersByTag.delete(tag);
       if (api?.notifications.closeByTag) {
         await api.notifications.closeByTag(tag);
       }

@@ -949,6 +949,9 @@ function registerIpcHandlers(): void {
           });
         }
         notification.on("click", () => {
+          if (tag != null) {
+            mainWindow?.webContents.send("notifications:click", tag);
+          }
           if (clickRoute != null) {
             dispatchInternalNavigation(clickRoute);
             return;

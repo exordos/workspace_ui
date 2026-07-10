@@ -410,6 +410,39 @@ describe("notificationService (electron runtime)", () => {
     });
   });
 
+  it("runs the renderer click handler for the matching Electron notification tag", async () => {
+    vi.resetModules();
+
+    const showFn = vi.fn().mockResolvedValue(true);
+    let clickHandler: ((tag: string) => void) | undefined;
+    const onClick = vi.fn((callback: (tag: string) => void) => {
+      clickHandler = callback;
+      return () => undefined;
+    });
+    const electronMod = await import("./electron");
+    (electronMod.isElectron as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    (electronMod.getElectronAPI as ReturnType<typeof vi.fn>).mockReturnValue({
+      notifications: { show: showFn, onClick },
+    });
+
+    const pwaMod = await import("./pwa");
+    (pwaMod.getRuntime as ReturnType<typeof vi.fn>).mockReturnValue("electron");
+
+    const mod = await import("./notifications");
+    const onNotificationClick = vi.fn();
+    await mod.getNotificationService().show({
+      title: "Title",
+      body: "Body",
+      tag: "msg-42",
+      onClick: onNotificationClick,
+    });
+
+    clickHandler?.("other-tag");
+    expect(onNotificationClick).not.toHaveBeenCalled();
+    clickHandler?.("msg-42");
+    expect(onNotificationClick).toHaveBeenCalledOnce();
+  });
+
   // Electron uses os-integration for badges, not the notification service
   it("setBadgeCount and clearBadge are no-ops in electron service", async () => {
     vi.resetModules();

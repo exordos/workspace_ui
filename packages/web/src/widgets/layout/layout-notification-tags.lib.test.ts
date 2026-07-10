@@ -11,6 +11,7 @@ import {
 import {
   buildNotificationAggregateTag,
   clearNotificationAggregateRegistry,
+  consumeNotificationAggregateByTag,
   upsertNotificationAggregate,
 } from "./notification-aggregate-registry.lib";
 
@@ -142,6 +143,30 @@ describe("closeReadMessageNotifications", () => {
         clickRoute: "/project/project-1/message/msg-1",
       });
     });
+  });
+
+  it("does not show old aggregate messages after the aggregate was dismissed", async () => {
+    const notifications = createNotifications();
+
+    upsertNotificationAggregate({
+      candidate: createCandidate({ messageUuid: "msg-1" }),
+      body: "First",
+      titleContext: CHANNEL_TITLE_CONTEXT,
+    });
+    upsertNotificationAggregate({
+      candidate: createCandidate({ messageUuid: "msg-2" }),
+      body: "Second",
+      titleContext: CHANNEL_TITLE_CONTEXT,
+    });
+
+    const tag = buildNotificationAggregateTag("owner-1::topic:stream-1:bugs:author:user-1");
+    expect(consumeNotificationAggregateByTag(tag)).toEqual(["msg-1", "msg-2"]);
+
+    closeReadMessageNotifications(notifications, ["msg-2"], "owner-1");
+    closeReadMessageNotifications(notifications, ["msg-1"], "owner-1");
+    await Promise.resolve();
+
+    expect(notifications.show).not.toHaveBeenCalled();
   });
 
   it("closes aggregate bucket by UUID when the last unread message is read", () => {
