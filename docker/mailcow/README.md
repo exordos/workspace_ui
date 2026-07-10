@@ -31,6 +31,8 @@ npm run dev:mailcow
 
 # 6. mail-proxy + web
 npm run dev:mail-proxy
+#    Swagger UI: http://localhost:8787/docs  |  OpenAPI: /openapi.json
+#    Static export: packages/mail-proxy/docs/swagger.html (npm run docs:mail-proxy)
 npm run dev:web   # VITE_MAIL_API_ORIGIN=/mail-api in packages/web/.env.local
 ```
 

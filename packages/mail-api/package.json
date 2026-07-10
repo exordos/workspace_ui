@@ -6,10 +6,12 @@
   "license": "Apache-2.0",
   "exports": {
     "./mail-api-mutator": "./src/mail-api-mutator.ts",
-    "./mail-api.generated": "./src/generated/mail-api.ts"
+    "./mail-api.generated": "./src/generated/mail-api.ts",
+    "./openapi.json": "./openapi/mail-proxy.openapi.json"
   },
   "scripts": {
     "codegen": "orval --config orval.config.ts",
+    "export:docs": "node ../../scripts/export-mail-proxy-docs.mjs",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

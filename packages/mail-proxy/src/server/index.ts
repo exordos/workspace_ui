@@ -13,6 +13,8 @@ const stopCleanup = startSessionCleanup();
 const server = app.listen(mailProxyEnv.PORT, () => {
   mailLog.info("Mail proxy listening", {
     port: mailProxyEnv.PORT,
+    docs: `http://localhost:${mailProxyEnv.PORT}/docs`,
+    openApi: `http://localhost:${mailProxyEnv.PORT}/openapi.json`,
     sogoUrl: mailProxyEnv.SOGO_URL,
     caldavPrefix: mailProxyEnv.CALDAV_PREFIX,
   });

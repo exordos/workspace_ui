@@ -7,6 +7,7 @@ import express from "express";
 import { registerCalendarRoutes } from "../calendar/calendar.routes";
 import { registerMailRoutes } from "../mail/mail.routes";
 import { mailProxyEnv } from "../shared/env.lib";
+import { registerOpenApiDocs } from "./openapi-docs.lib";
 
 export function createApp(): express.Express {
   const app = express();
@@ -27,6 +28,8 @@ export function createApp(): express.Express {
   app.get("/health", (_req, res) => {
     res.json({ ok: true });
   });
+
+  registerOpenApiDocs(app);
 
   registerMailRoutes(app);
   registerCalendarRoutes(app);

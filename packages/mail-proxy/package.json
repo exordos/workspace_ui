@@ -17,13 +17,15 @@
     "imapflow": "1.0.193",
     "libqp": "2.1.1",
     "mailparser": "3.9.6",
-    "nodemailer": "7.0.5"
+    "nodemailer": "7.0.5",
+    "swagger-ui-express": "5.0.1"
   },
   "devDependencies": {
     "@types/cors": "2.8.19",
     "@types/express": "5.0.3",
     "@types/node": "22.18.0",
     "@types/nodemailer": "6.4.17",
+    "@types/swagger-ui-express": "4.1.8",
     "tsx": "4.20.5",
     "typescript": "5.6.3",
     "vitest": "4.0.8"
