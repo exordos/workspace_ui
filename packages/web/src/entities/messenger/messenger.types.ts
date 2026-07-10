@@ -211,6 +211,7 @@ export interface MessengerSkippedRealtimeEvent {
 
 export interface MessengerSidebarMessagePreview {
   messageUuid: MessengerUuid;
+  route?: string;
   text: string;
   senderName?: string;
 }

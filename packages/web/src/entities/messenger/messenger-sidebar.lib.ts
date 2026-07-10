@@ -127,25 +127,33 @@ function resolveUserDisplayName(user: User | undefined): string | undefined {
   return selectUserDisplayName(user);
 }
 
-function previewFromMessage(
-  messageUuid: MessengerUuid | null,
-  messagesById: Record<MessengerUuid, MessengerMessage>,
-  usersById: UsersById,
-  currentUserUuid: MessengerUuid | null,
-): MessengerSidebarMessagePreview | null {
-  if (messageUuid == null) return null;
+function previewFromMessage(input: {
+  messageUuid: MessengerUuid | null;
+  organizationId: string;
+  projectId: string;
+  messagesById: Record<MessengerUuid, MessengerMessage>;
+  usersById: UsersById;
+  currentUserUuid: MessengerUuid | null;
+}): MessengerSidebarMessagePreview | null {
+  if (input.messageUuid == null) return null;
 
-  const message = messagesById[messageUuid];
+  const message = input.messagesById[input.messageUuid];
   if (message == null) return null;
 
   const senderName =
-    message.authorUuid === currentUserUuid
+    message.authorUuid === input.currentUserUuid
       ? t("common.you")
-      : resolveUserDisplayName(usersById[message.authorUuid]);
+      : resolveUserDisplayName(input.usersById[message.authorUuid]);
   const summary = summarizeWorkspaceMessageMarkdown(message.payload.content);
 
   return {
     messageUuid: message.uuid,
+    route: workspaceMessengerTopicRoute({
+      orgId: input.organizationId,
+      projectId: input.projectId,
+      streamUuid: message.streamUuid,
+      topicUuid: message.topicUuid,
+    }),
     // Сайдбар не рендерит HTML и не показывает исходный markdown: короткая
     // сводка скрывает приватные file URL и одинаково работает для текста,
     // mentions, картинок и вложений.
@@ -200,12 +208,14 @@ function topicItemFromTopic(input: {
       streamUuid: input.topic.streamUuid,
       topicUuid: input.topic.uuid,
     }),
-    preview: previewFromMessage(
-      input.topic.lastMessageUuid,
-      input.messagesById,
-      input.usersById,
-      input.currentUserUuid,
-    ),
+    preview: previewFromMessage({
+      messageUuid: input.topic.lastMessageUuid,
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      messagesById: input.messagesById,
+      usersById: input.usersById,
+      currentUserUuid: input.currentUserUuid,
+    }),
     lastMessageCreatedAt: messageCreatedAt(input.topic.lastMessageUuid, input.messagesById),
     updatedAt: input.topic.updatedAt,
   };
@@ -251,12 +261,14 @@ function streamItemFromStream(input: {
       streamUuid: input.stream.uuid,
     }),
     topics: input.topics,
-    preview: previewFromMessage(
-      input.stream.lastMessageUuid,
-      input.messagesById,
-      input.usersById,
-      input.currentUserUuid,
-    ),
+    preview: previewFromMessage({
+      messageUuid: input.stream.lastMessageUuid,
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      messagesById: input.messagesById,
+      usersById: input.usersById,
+      currentUserUuid: input.currentUserUuid,
+    }),
     avatarUrl: uiKind === "directPrivate" ? (directUser?.avatarUrl ?? null) : undefined,
     presence:
       uiKind === "directPrivate" ? resolveUserPresenceVisual(directUser?.status) : undefined,
@@ -307,12 +319,14 @@ function streamItemFromConversation(input: {
       streamUuid: input.conversation.streamUuid,
     }),
     topics: EMPTY_SIDEBAR_TOPICS,
-    preview: previewFromMessage(
-      input.conversation.lastMessageUuid ?? null,
-      input.messagesById,
-      input.usersById,
-      input.currentUserUuid,
-    ),
+    preview: previewFromMessage({
+      messageUuid: input.conversation.lastMessageUuid ?? null,
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      messagesById: input.messagesById,
+      usersById: input.usersById,
+      currentUserUuid: input.currentUserUuid,
+    }),
     avatarUrl: uiKind === "directPrivate" ? (directUser?.avatarUrl ?? null) : undefined,
     presence:
       uiKind === "directPrivate" ? resolveUserPresenceVisual(directUser?.status) : undefined,

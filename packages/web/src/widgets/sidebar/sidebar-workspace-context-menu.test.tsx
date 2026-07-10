@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import type {
@@ -298,6 +299,38 @@ describe("WorkspaceSidebar context menu", () => {
         formatMessageTimeRelative(Math.floor(Date.parse(lastMessageCreatedAt) / 1000)),
       ),
     ).toBeInTheDocument();
+  });
+
+  it("links a loaded stream preview to its message topic without changing expansion", () => {
+    const previewRoute = `/org/acme/project/project-a/messenger/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`;
+    useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [] });
+
+    renderWorkspaceSidebar([
+      createStream({
+        preview: {
+          messageUuid: "message-a",
+          route: previewRoute,
+          senderName: "Alice",
+          text: "Latest update",
+        },
+      }),
+    ]);
+
+    const previewLink = screen.getByRole("link", { name: /alice:latest update/i });
+    expect(previewLink).toHaveAttribute("href", previewRoute);
+    expect(previewLink).toHaveClass("hover:bg-bg-elevated");
+
+    act(() => {
+      fireEvent.click(previewLink);
+    });
+
+    expect(useSidebarConfigStore.getState().expandedStreamUuids).toEqual([]);
+  });
+
+  it("does not render a preview link when the preview is missing", () => {
+    renderWorkspaceSidebar([createStream({ preview: null })]);
+
+    expect(screen.queryByRole("link", { name: /latest update/i })).not.toBeInTheDocument();
   });
 
   it("passes private chat type when adding a personal chat to a folder", async () => {

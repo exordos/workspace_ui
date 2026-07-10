@@ -239,44 +239,59 @@ function WorkspaceSidebarStreamRow({
   return (
     <>
       <WorkspaceStreamContextMenu stream={stream}>
-        <Link
-          to={stream.route}
+        <div
           className={`${rowClass} w-full ${
             expanded || isActive ? "bg-sidebar-hover" : "hover:bg-sidebar-hover"
           }`}
-          onClick={() => {
-            if (!expanded) onToggleStream(stream.streamUuid);
-          }}
         >
-          <span className="relative shrink-0">
-            <Avatar
-              size={avatarSize}
-              src={isDirectPrivate ? (stream.avatarUrl ?? undefined) : undefined}
-            >
-              {avatarLabel}
-            </Avatar>
-            {isDirectPrivate && (
-              <PresenceIndicator
-                status={stream.presence ?? null}
-                size="sm"
-                pulse={false}
-                className="absolute bottom-0 right-0 ring-border-subtle"
-              />
-            )}
-          </span>
+          <Link
+            to={stream.route}
+            className="focus-visible:ring-border-strong relative shrink-0 focus-visible:outline-none focus-visible:ring-1"
+            onClick={() => {
+              if (!expanded) onToggleStream(stream.streamUuid);
+            }}
+          >
+            <span className="relative shrink-0">
+              <Avatar
+                size={avatarSize}
+                src={isDirectPrivate ? (stream.avatarUrl ?? undefined) : undefined}
+              >
+                {avatarLabel}
+              </Avatar>
+              {isDirectPrivate && (
+                <PresenceIndicator
+                  status={stream.presence ?? null}
+                  size="sm"
+                  pulse={false}
+                  className="absolute bottom-0 right-0 ring-border-subtle"
+                />
+              )}
+            </span>
+          </Link>
           <div className={sidebarChatRowBodyClass(compact)}>
-            <div className="flex min-w-0 items-center gap-1">
+            <Link
+              to={stream.route}
+              className="focus-visible:ring-border-strong flex min-w-0 items-center gap-1 rounded-md focus-visible:outline-none focus-visible:ring-1"
+              onClick={() => {
+                if (!expanded) onToggleStream(stream.streamUuid);
+              }}
+            >
               <div className="truncate text-sm font-medium text-text-primary">{title}</div>
               {statusEmoji != null ? <SidebarUserStatusEmoji statusEmoji={statusEmoji} /> : null}
               {statusText != null ? (
                 <span className="truncate text-xs text-text-muted">{statusText}</span>
               ) : null}
-            </div>
-            {!compact && (
-              <SidebarMessagePreview
-                senderName={stream.preview?.senderName}
-                message={stream.preview?.text}
-              />
+            </Link>
+            {!compact && stream.preview?.route != null && (
+              <Link
+                to={stream.preview.route}
+                className="-ml-1.5 block min-w-0 rounded-md py-0.5 pl-1.5 pr-2 transition-colors hover:bg-bg-elevated focus-visible:bg-bg-elevated focus-visible:outline-none"
+              >
+                <SidebarMessagePreview
+                  senderName={stream.preview.senderName}
+                  message={stream.preview.text}
+                />
+              </Link>
             )}
           </div>
           <SidebarChatRowMeta
@@ -295,7 +310,7 @@ function WorkspaceSidebarStreamRow({
                 : undefined
             }
           />
-        </Link>
+        </div>
       </WorkspaceStreamContextMenu>
       {expanded && (
         <WorkspaceSidebarTopics

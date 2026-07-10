@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { User, UsersById } from "~/entities/user/user.types";
 import { t } from "~/i18n/i18n";
-import { workspaceMessengerRootRoute } from "~/shared/lib/workspace-messenger-route.lib";
+import {
+  workspaceMessengerRootRoute,
+  workspaceMessengerTopicRoute,
+} from "~/shared/lib/workspace-messenger-route.lib";
 import {
   selectMessengerSidebarActivityCounts,
   selectMessengerSidebarFolders,
@@ -462,19 +465,39 @@ describe("messenger sidebar selectors", () => {
         projectId: PROJECT_ID,
         usersById: createUsersById(),
         messagesById: {
-          [MESSAGE_A]: message({ uuid: MESSAGE_A, markdown: "Stream preview" }),
-          [MESSAGE_B]: message({ uuid: MESSAGE_B, markdown: "Topic preview" }),
+          [MESSAGE_A]: message({
+            uuid: MESSAGE_A,
+            topicUuid: TOPIC_B,
+            markdown: "Stream preview",
+          }),
+          [MESSAGE_B]: message({
+            uuid: MESSAGE_B,
+            topicUuid: TOPIC_A,
+            markdown: "Topic preview",
+          }),
         },
       },
     );
 
     expect(rows[0]?.preview).toEqual({
       messageUuid: MESSAGE_A,
+      route: workspaceMessengerTopicRoute({
+        orgId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        streamUuid: STREAM_A,
+        topicUuid: TOPIC_B,
+      }),
       text: "Stream preview",
       senderName: "Alice Wonderland",
     });
     expect(rows[0]?.topics[0]?.preview).toEqual({
       messageUuid: MESSAGE_B,
+      route: workspaceMessengerTopicRoute({
+        orgId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        streamUuid: STREAM_A,
+        topicUuid: TOPIC_A,
+      }),
       text: "Topic preview",
       senderName: "Alice Wonderland",
     });
@@ -640,6 +663,12 @@ describe("messenger sidebar selectors", () => {
 
     expect(rows[0]?.preview).toEqual({
       messageUuid: MESSAGE_A,
+      route: workspaceMessengerTopicRoute({
+        orgId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        streamUuid: STREAM_A,
+        topicUuid: TOPIC_A,
+      }),
       text: "Self preview",
       senderName: t("common.you"),
     });
