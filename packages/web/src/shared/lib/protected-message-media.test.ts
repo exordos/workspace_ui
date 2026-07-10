@@ -173,6 +173,38 @@ describe("prepareProtectedMessageHtml", () => {
     expectNoLiveProtectedAttrs(out);
   });
 
+  it("rewrites Workspace file video URN links without content-type into protected inline video", () => {
+    const urn = "urn:video:44444444-4444-4444-8444-444444444444?name=clip.webm";
+    const out = prepareProtectedMessageHtml(`<p><a href="${urn}">clip.webm</a></p>`);
+    const template = document.createElement("template");
+    template.innerHTML = out;
+    const source = template.content.querySelector("video source");
+
+    expect(template.content.querySelector("a")).toBeNull();
+    expect(source?.getAttribute("data-auth-src")).toBe(
+      "/api/messenger/v1/files/44444444-4444-4444-8444-444444444444/actions/download",
+    );
+    expect(source?.getAttribute("src")).toBeNull();
+    expect(source?.getAttribute("type")).toBe("video/webm");
+    expectNoLiveProtectedAttrs(out);
+  });
+
+  it("rewrites Workspace file video URN image syntax into protected inline video", () => {
+    const urn = "urn:video:44444444-4444-4444-8444-444444444444?name=clip.mp4";
+    const out = prepareProtectedMessageHtml(`<p><img src="${urn}" alt="clip.mp4"></p>`);
+    const template = document.createElement("template");
+    template.innerHTML = out;
+    const source = template.content.querySelector("video source");
+
+    expect(template.content.querySelector("img")).toBeNull();
+    expect(source?.getAttribute("data-auth-src")).toBe(
+      "/api/messenger/v1/files/44444444-4444-4444-8444-444444444444/actions/download",
+    );
+    expect(source?.getAttribute("src")).toBeNull();
+    expect(source?.getAttribute("type")).toBe("video/mp4");
+    expectNoLiveProtectedAttrs(out);
+  });
+
   it("rewrites Workspace file URNs into attachment download links", () => {
     const urn =
       "urn:file:55555555-5555-4555-8555-555555555555?name=report.pdf&content_type=application%2Fpdf&size=4096";

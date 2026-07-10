@@ -24,7 +24,11 @@ export function createInlineUserUploadVideoElement(
 function workspaceFileVideoMimeType(link: HTMLAnchorElement, href: string): string | null {
   if (!isWorkspaceFileDownloadPath(href)) return null;
   const contentType = link.dataset.originalContentType?.trim().toLowerCase() ?? "";
-  return contentType.startsWith("video/") ? contentType : null;
+  if (contentType.startsWith("video/")) return contentType;
+  const originalUrl = link.dataset.originalUrl?.trim().toLowerCase() ?? "";
+  if (!originalUrl.startsWith("urn:video:")) return null;
+  const label = (link.textContent ?? "").trim();
+  return userUploadVideoMimeType(label.length > 0 ? label : href);
 }
 
 /** Replaces bare user-upload video anchors with inline players. Returns count upgraded. */

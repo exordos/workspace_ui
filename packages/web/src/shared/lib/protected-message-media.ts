@@ -35,6 +35,7 @@ import {
   USER_UPLOAD_THUMBNAIL_DISPLAY_MAX_HEIGHT,
   USER_UPLOAD_THUMBNAIL_DISPLAY_MAX_WIDTH,
 } from "~/shared/lib/protected-message-media-thumbnail";
+import { userUploadVideoMimeType } from "~/shared/lib/user-upload-media-path.lib";
 import {
   collapseDuplicateWorkspaceV1InUrl,
   extractProtectedMessageMediaPathAndQuery,
@@ -790,9 +791,46 @@ function fillWorkspaceFileUrnImageLabel(image: HTMLImageElement, fileName: strin
   }
 }
 
+function isWorkspaceFileVideoUrn(urn: WorkspaceFileUrn): boolean {
+  return urn.kind === "video" || urn.contentType?.toLowerCase().startsWith("video/") === true;
+}
+
+function workspaceFileUrnVideoMimeType(urn: WorkspaceFileUrn): string {
+  const contentType = urn.contentType?.trim().toLowerCase() ?? "";
+  if (contentType.startsWith("video/")) return contentType;
+  return userUploadVideoMimeType(urn.name ?? urn.downloadPath);
+}
+
+function replaceWorkspaceFileUrnImageWithVideo(
+  image: HTMLImageElement,
+  urn: WorkspaceFileUrn,
+): void {
+  const video = document.createElement("video");
+  video.setAttribute("controls", "");
+  video.setAttribute("preload", "metadata");
+  setWorkspaceFileUrnMetadataAttrs(video, urn);
+
+  const titleAttr = image.getAttribute("title")?.trim();
+  const altAttr = image.getAttribute("alt")?.trim();
+  const title = titleAttr != null && titleAttr.length > 0 ? titleAttr : altAttr;
+  if (title != null && title.length > 0 && video.getAttribute("title") == null) {
+    video.setAttribute("title", title);
+  }
+
+  const source = document.createElement("source");
+  source.setAttribute("src", urn.downloadPath);
+  source.setAttribute("type", workspaceFileUrnVideoMimeType(urn));
+  video.appendChild(source);
+  image.replaceWith(video);
+}
+
 function rewriteWorkspaceFileUrnMediaElement(element: HTMLElement): boolean {
   const urn = parseWorkspaceFileUrn(element.getAttribute("src") ?? "");
   if (urn == null) return false;
+  if (element instanceof HTMLImageElement && isWorkspaceFileVideoUrn(urn)) {
+    replaceWorkspaceFileUrnImageWithVideo(element, urn);
+    return true;
+  }
   element.setAttribute("src", urn.downloadPath);
   setWorkspaceFileUrnMetadataAttrs(element, urn);
   if (element instanceof HTMLImageElement && urn.name != null) {
