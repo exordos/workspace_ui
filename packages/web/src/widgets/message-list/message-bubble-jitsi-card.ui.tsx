@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import { type CallParticipant, useCallParticipantsStore } from "~/entities/call/call.model";
 import { t } from "~/i18n/i18n";
+import { getExternalMessageSourceName } from "~/shared/lib/messenger-source.lib";
 import { Avatar } from "~/shared/ui/avatar";
 import { ExternalSourceBadge } from "~/shared/ui/external-source-badge";
 import { Icon } from "~/shared/ui/icon";
@@ -60,6 +61,7 @@ export const MessageBubbleJitsiCard = React.memo(function MessageBubbleJitsiCard
     0,
   );
   const participantBorderClass = isOwn ? "border-msg-own-bg" : "border-bg-elevated";
+  const externalSourceName = getExternalMessageSourceName(message.source_name, message.source);
 
   return (
     <div
@@ -123,7 +125,7 @@ export const MessageBubbleJitsiCard = React.memo(function MessageBubbleJitsiCard
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1 text-[11px] text-text-muted">
-          <ExternalSourceBadge sourceName={message.source_name} />
+          <ExternalSourceBadge sourceName={externalSourceName} />
           <span>{time}</span>
           {ownDeliveryIndicator}
         </div>

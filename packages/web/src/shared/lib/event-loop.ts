@@ -8,6 +8,8 @@ import { parseMessengerGatewayUser } from "~/shared/api/messenger-users.lib";
 import type {
   MessengerCredentials,
   MessengerEvent,
+  MessengerSource,
+  MessengerSourceName,
   WorkspaceRawMessage,
 } from "~/shared/api/messenger.types";
 import { MESSENGER_API_PATH } from "~/shared/config/workspace-api-layout";
@@ -112,6 +114,14 @@ function readString(value: unknown): string | null {
 
 function readOptionalString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+function readMessengerSourceName(value: unknown): MessengerSourceName | undefined {
+  return value === "native" || value === "zulip" ? value : undefined;
+}
+
+function readMessengerSource(value: unknown): MessengerSource | undefined {
+  return isRecord(value) ? value : undefined;
 }
 
 function readMessageReactions(value: unknown): Record<string, number> {
@@ -367,6 +377,8 @@ function messageFromWorkspaceEventPayload(
   const topicUuid = normalizeUuid(payload.topic_uuid);
   const isOwn = readBoolean(payload.is_own, userUuidsEqual(authorUuid, currentUserUuid));
   const read = readBoolean(payload.read, isOwn);
+  const sourceName = readMessengerSourceName(payload.source_name);
+  const source = readMessengerSource(payload.source);
   return {
     id: messageUuid,
     source_message_uuid: messageUuid,
@@ -384,6 +396,8 @@ function messageFromWorkspaceEventPayload(
     ...(topicUuid != null ? { topic_uuid: topicUuid } : {}),
     type: "stream",
     stream_uuid: streamUuid,
+    ...(sourceName != null ? { source_name: sourceName } : {}),
+    ...(source != null ? { source } : {}),
     flags: read ? ["read"] : [],
     reactions: readMessageReactions(payload.reactions),
   };
@@ -795,6 +809,8 @@ function messageFromRealtimeFrame(
   const topicUuid = normalizeUuid(messageValue.topic_uuid);
   const isOwn = readBoolean(messageValue.is_own, userUuidsEqual(authorUuid, currentUserUuid));
   const read = readBoolean(messageValue.read, isOwn);
+  const sourceName = readMessengerSourceName(messageValue.source_name);
+  const source = readMessengerSource(messageValue.source);
   const senderId = typeof messageValue.sender_id === "number" ? messageValue.sender_id : 0;
   const subject = readOptionalString(messageValue.subject) ?? topicUuid ?? "";
   return {
@@ -820,6 +836,8 @@ function messageFromRealtimeFrame(
     ...(topicUuid != null ? { topic_uuid: topicUuid } : {}),
     type: readOptionalString(messageValue.type) ?? "stream",
     stream_uuid: streamUuid,
+    ...(sourceName != null ? { source_name: sourceName } : {}),
+    ...(source != null ? { source } : {}),
     flags: readStringArray(messageValue.flags) ?? (read ? ["read"] : []),
     reactions: readMessageReactions(messageValue.reactions),
   };

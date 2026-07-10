@@ -312,6 +312,9 @@ describe("Workspace realtime event normalization", () => {
         is_own: false,
         created_at: "2026-06-24T10:20:30Z",
         reactions: { thumbs_up: 2 },
+        // Keeps external-source badges reactive instead of waiting for a chat reload.
+        source_name: "zulip",
+        source: { kind: "zulip", message_id: 1042 },
       },
     });
 
@@ -325,6 +328,8 @@ describe("Workspace realtime event normalization", () => {
         read: true,
         starred: true,
         reactions: { thumbs_up: 2 },
+        source_name: "zulip",
+        source: { kind: "zulip", message_id: 1042 },
       },
     });
   });
@@ -676,6 +681,8 @@ describe("Workspace realtime event normalization", () => {
           is_own: false,
           created_at: "2026-06-24T10:20:30Z",
           reactions: { heart: 1, ignored: 0 },
+          source_name: "zulip",
+          source: { kind: "zulip", message_id: 1043 },
         },
       },
       USER_UUID,
@@ -690,6 +697,8 @@ describe("Workspace realtime event normalization", () => {
         content: "edited live",
         read: true,
         reactions: { heart: 1 },
+        source_name: "zulip",
+        source: { kind: "zulip", message_id: 1043 },
       },
     });
   });

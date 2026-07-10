@@ -628,6 +628,18 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
     persistMessageContent(messageId, content, markdownSource);
   },
 
+  updateMessageSource(messageId, sourceName, source) {
+    if (sourceName == null && source == null) return;
+    set((state) => ({
+      messages: patchMessageAtId(state.messages, messageId, (message) => ({
+        ...message,
+        ...(sourceName != null ? { source_name: sourceName } : {}),
+        ...(source != null ? { source } : {}),
+      })),
+    }));
+    logStoreAction("message", "updateMessageSource", { messageId, sourceName });
+  },
+
   applyOptimisticMessageEdit(messageId, markdown) {
     set((state) => ({
       messages: patchMessageAtId(state.messages, messageId, (m) =>

@@ -59,11 +59,37 @@ describe("MessageBubble markdown body", () => {
   it("marks messages imported from an external messenger", () => {
     useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
 
-    render(<MessageBubble message={createMessage({ source_name: "zulip" })} isOwn={false} />);
+    render(
+      <MessageBubble
+        message={createMessage({
+          source_name: "zulip",
+          source: { kind: "zulip", message_id: 42 },
+        })}
+        isOwn={false}
+      />,
+    );
 
     expect(screen.getByLabelText(t("source.externalFrom", { source: "Zulip" }))).toHaveTextContent(
       "Zulip",
     );
+  });
+
+  it("waits for the external message id before marking a message as imported", () => {
+    useUsersStore.getState().mergeUser(createUser({ user_id: 77, full_name: "Alice" }));
+
+    render(
+      <MessageBubble
+        message={createMessage({
+          source_name: "zulip",
+          source: { kind: "zulip", message_id: null },
+        })}
+        isOwn={false}
+      />,
+    );
+
+    expect(
+      screen.queryByLabelText(t("source.externalFrom", { source: "Zulip" })),
+    ).not.toBeInTheDocument();
   });
 
   it("still renders pre-rendered HTML bodies", () => {

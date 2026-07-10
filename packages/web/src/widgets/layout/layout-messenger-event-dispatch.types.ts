@@ -70,6 +70,11 @@ export interface LayoutCurrentChatActions {
   replaceMessageReactions: (messageId: MessageId, reactions: MessageReactions) => void;
   removeMessages: (messageIds: MessageId[]) => void;
   updateMessageContent: (messageId: MessageId, content: string, markdownSource?: string) => void;
+  updateMessageSource: (
+    messageId: MessageId,
+    sourceName: MockMessage["source_name"],
+    source: MockMessage["source"],
+  ) => void;
   updateMessageLinkPreview: (messageId: MessageId, linkPreview: LinkPreviewData | null) => void;
   moveStreamTopicMessages: (params: {
     streamId: string;

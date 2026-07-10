@@ -80,6 +80,7 @@ function createContext(notifications = createNotifications()): LayoutMessengerEv
       replaceMessageReactions: vi.fn(),
       removeMessages: vi.fn(),
       updateMessageContent: vi.fn(),
+      updateMessageSource: vi.fn(),
       updateMessageLinkPreview: vi.fn(),
       moveStreamTopicMessages: vi.fn(),
       moveTopicToStreamMessages: vi.fn(),

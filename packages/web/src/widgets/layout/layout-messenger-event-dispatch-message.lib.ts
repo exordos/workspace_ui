@@ -158,6 +158,7 @@ export function handleMessageUpdated(
 
   const message = rawMessageToMockMessage(raw);
   currentChat.updateMessageContent(messageId, message.content, message.markdown_source);
+  currentChat.updateMessageSource(messageId, message.source_name, message.source);
   applyBooleanMessageFlagSnapshot(ctx, messageId, "read", raw.read);
   applyBooleanMessageFlagSnapshot(ctx, messageId, "pinned", raw.pinned);
   applyBooleanMessageFlagSnapshot(ctx, messageId, "starred", raw.starred);

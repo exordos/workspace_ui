@@ -71,6 +71,7 @@ function buildCtx(
       removeMessages: noop,
       updateMessageContent:
         updateMessageContentMock as LayoutCurrentChatActions["updateMessageContent"],
+      updateMessageSource: noop,
       updateMessageLinkPreview:
         updateMessageLinkPreviewMock as LayoutCurrentChatActions["updateMessageLinkPreview"],
       moveStreamTopicMessages:
@@ -1137,6 +1138,62 @@ describe("dispatchMessengerEvent", () => {
   });
 
   describe("workspace message lifecycle events", () => {
+    it("applies Zulip source metadata from message.updated to the open chat immediately", () => {
+      const messageId = "00000000-0000-4000-8000-000000000034";
+      useCurrentChatMessagesStore.setState({
+        context: {
+          type: "stream",
+          streamId: STREAM_UUID_10,
+          streamName: "engineering",
+          topic: TOPIC_UUID_7,
+          topicUuid: TOPIC_UUID_7,
+          streamWideView: false,
+        },
+        messages: [
+          mockMsg(messageId, {
+            stream_uuid: STREAM_UUID_10,
+            subject: TOPIC_UUID_7,
+            topic_uuid: TOPIC_UUID_7,
+          }),
+        ],
+      });
+      const ctx = buildIntegrationCtx();
+      const source = {
+        kind: "zulip",
+        server_url: "https://zulip.example",
+        message_id: 34,
+      };
+
+      dispatchMessengerEvent(
+        {
+          id: 34,
+          type: "message",
+          kind: "message.updated",
+          message: {
+            id: messageId,
+            sender_id: 99,
+            sender_full_name: "Alice",
+            content: "hi",
+            timestamp: 1777960656,
+            type: "stream",
+            stream_uuid: STREAM_UUID_10,
+            topic_uuid: TOPIC_UUID_7,
+            subject: TOPIC_UUID_7,
+            source_name: "zulip",
+            source,
+            flags: [],
+          },
+        },
+        ctx,
+      );
+
+      // Prevents the external-source badge from waiting for a chat reload after realtime sync.
+      expect(useCurrentChatMessagesStore.getState().messages[0]).toMatchObject({
+        source_name: "zulip",
+        source,
+      });
+    });
+
     it("applies message.updated snapshots to the open chat and sidebar preview", () => {
       const { ctx, updateMessageContentMock } = buildCtx();
       ctx.chatList.addMessage = vi.fn();

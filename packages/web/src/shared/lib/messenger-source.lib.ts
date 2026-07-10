@@ -1,4 +1,4 @@
-import type { MessengerSourceName } from "~/shared/api/messenger.types";
+import type { MessengerSource, MessengerSourceName } from "~/shared/api/messenger.types";
 
 type ExternalMessengerSourceName = Exclude<MessengerSourceName, "native">;
 
@@ -17,4 +17,16 @@ export function getExternalMessengerSourceLabel(
 ): string | null {
   if (!isExternalMessengerSourceName(sourceName)) return null;
   return EXTERNAL_MESSENGER_SOURCE_LABEL[sourceName];
+}
+
+export function getExternalMessageSourceName(
+  sourceName: MessengerSourceName | undefined,
+  source: MessengerSource | undefined,
+): MessengerSourceName | undefined {
+  if (!isExternalMessengerSourceName(sourceName)) return undefined;
+  const messageId = source?.message_id;
+  if (typeof messageId !== "number" || !Number.isSafeInteger(messageId) || messageId < 0) {
+    return undefined;
+  }
+  return sourceName;
 }
