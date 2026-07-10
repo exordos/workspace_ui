@@ -1,5 +1,5 @@
 /**
- * Request validation for calendar-proxy routes.
+ * Calendar event payload validation — client-side before CalDAV transport calls.
  */
 
 import type { CalendarEventInput } from "@mail/api/mail-api.generated";

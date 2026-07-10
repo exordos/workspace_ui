@@ -1,5 +1,5 @@
 /**
- * REST routes for calendar-proxy (/v1/calendar/*).
+ * REST routes for calendar-proxy (/v1/calendar/*) — CalDAV transport only.
  */
 
 import type { Express } from "express";
@@ -14,11 +14,11 @@ import {
   updateCalendarEvent,
 } from "./caldav.lib";
 import {
-  parseCalendarEventInput,
   parseCalendarIdsQuery,
+  parseCalendarIcsBody,
   parseEventUidParam,
   parseIsoDateQuery,
-} from "./validation.lib";
+} from "./request.lib";
 
 export function registerCalendarRoutes(app: Express): void {
   app.get("/v1/calendar/calendars", async (req, res) => {
@@ -39,8 +39,8 @@ export function registerCalendarRoutes(app: Express): void {
       const calendarIds = parseCalendarIdsQuery(req.query.calendarId);
       const start = parseIsoDateQuery(req.query.start, "start");
       const end = parseIsoDateQuery(req.query.end, "end");
-      const events = await queryCalendarEvents(session, calendarIds, start, end);
-      res.json({ events });
+      const items = await queryCalendarEvents(session, calendarIds, start, end);
+      res.json({ items });
     } catch (error) {
       handleRouteError(res, error, "Failed to query events", { detectAuthErrors: true });
     }
@@ -55,12 +55,12 @@ export function registerCalendarRoutes(app: Express): void {
       if (calendarId == null) {
         throw new Error("calendarId query parameter is required");
       }
-      const event = await getCalendarEvent(session, calendarId, eventUid);
-      if (event == null) {
+      const resource = await getCalendarEvent(session, calendarId, eventUid);
+      if (resource == null) {
         res.status(404).json({ error: "Event not found" });
         return;
       }
-      res.json({ event });
+      res.json(resource);
     } catch (error) {
       handleRouteError(res, error, "Failed to get event", { detectAuthErrors: true });
     }
@@ -70,9 +70,9 @@ export function registerCalendarRoutes(app: Express): void {
     const session = requireMailSession(req, res);
     if (!session) return;
     try {
-      const input = parseCalendarEventInput(req.body);
-      const event = await createCalendarEvent(session, input);
-      res.status(201).json({ event });
+      const { calendarId, ics } = parseCalendarIcsBody(req.body);
+      const resource = await createCalendarEvent(session, calendarId, ics);
+      res.status(201).json(resource);
     } catch (error) {
       handleRouteError(res, error, "Failed to create event", { detectAuthErrors: true });
     }
@@ -83,9 +83,9 @@ export function registerCalendarRoutes(app: Express): void {
     if (!session) return;
     try {
       const eventUid = parseEventUidParam(req.params.eventUid);
-      const input = parseCalendarEventInput(req.body);
-      const event = await updateCalendarEvent(session, eventUid, input);
-      res.json({ event });
+      const { calendarId, ics, etag } = parseCalendarIcsBody(req.body);
+      const resource = await updateCalendarEvent(session, eventUid, calendarId, ics, etag);
+      res.json(resource);
     } catch (error) {
       handleRouteError(res, error, "Failed to update event", { detectAuthErrors: true });
     }

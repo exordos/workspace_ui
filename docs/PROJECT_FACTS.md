@@ -38,18 +38,21 @@ Single source of truth for volatile counts, paths, and workflow. Other docs shou
 
 ## Key module paths
 
-| Concern                  | Path                                                                  |
-| ------------------------ | --------------------------------------------------------------------- |
-| Zulip event loop         | `packages/web/src/shared/lib/event-loop.ts`                           |
-| Event loop startup       | `packages/web/src/widgets/layout/layout-zulip-event-loop.hook.ts`     |
-| Event dispatch           | `packages/web/src/widgets/layout/layout-zulip-event-dispatch*.lib.ts` |
-| HTTP client (middleware) | `packages/web/src/shared/api/client.ts`                               |
-| Zulip API modules        | `packages/web/src/shared/api/zulip-*.ts`                              |
-| Workspace API client     | `packages/web/src/shared/api/workspace-client.ts`                     |
-| Mail API client          | `packages/web/src/entities/mail/mail.api.ts` (Orval via `@mail/api`)  |
-| Mail proxy server        | `packages/mail-proxy/src/server/`                                     |
-| White-label config       | `packages/web/src/shared/lib/brand.ts`                                |
-| User API (split)         | `packages/web/src/entities/user/api/`                                 |
+| Concern                  | Path                                                                                                            |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| Zulip event loop         | `packages/web/src/shared/lib/event-loop.ts`                                                                     |
+| Event loop startup       | `packages/web/src/widgets/layout/layout-zulip-event-loop.hook.ts`                                               |
+| Event dispatch           | `packages/web/src/widgets/layout/layout-zulip-event-dispatch*.lib.ts`                                           |
+| HTTP client (middleware) | `packages/web/src/shared/api/client.ts`                                                                         |
+| Zulip API modules        | `packages/web/src/shared/api/zulip-*.ts`                                                                        |
+| Workspace API client     | `packages/web/src/shared/api/workspace-client.ts`                                                               |
+| Mail API client          | `packages/web/src/entities/mail/mail.api.ts` (Orval via `@mail/api`)                                            |
+| Mail domain logic        | `packages/web/src/entities/mail/*-validation.lib.ts`, `*-folder-ops.lib.ts`, `mail-compose.lib.ts`              |
+| Calendar API client      | `packages/web/src/entities/calendar/calendar.api.ts`                                                            |
+| Calendar domain logic    | `packages/web/src/entities/calendar/calendar-ical.lib.ts`, `calendar-validation.lib.ts`, `calendar-date.lib.ts` |
+| Mail proxy server        | `packages/mail-proxy/src/server/` (thin IMAP/SMTP/CalDAV transport)                                             |
+| White-label config       | `packages/web/src/shared/lib/brand.ts`                                                                          |
+| User API (split)         | `packages/web/src/entities/user/api/`                                                                           |
 
 ## Import policy
 
@@ -76,11 +79,11 @@ import { zulipFetch } from "~/shared/api/client";
 
 ## Documentation
 
-| Category                           |                                                          Count |
-| ---------------------------------- | -------------------------------------------------------------: |
-| Technical references (`docs/*.md`) |                                                  8 + this file |
-| ADRs (`docs/adr/`)                 | 14 (000 template + 001–010, 012–013, 016; 011 merged into 009) |
-| Cursor rules (`.cursor/rules/`)    |                                                             50 |
+| Category                           |                                                              Count |
+| ---------------------------------- | -----------------------------------------------------------------: |
+| Technical references (`docs/*.md`) |                                                      8 + this file |
+| ADRs (`docs/adr/`)                 | 15 (000 template + 001–010, 012–013, 016–017; 011 merged into 009) |
+| Cursor rules (`.cursor/rules/`)    |                                                                 50 |
 
 ## Client legacy compatibility
 

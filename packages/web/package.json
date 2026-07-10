@@ -37,11 +37,13 @@
     "emojibase-data": "17.0.0",
     "firebase": "12.14.0",
     "highlight.js": "11.11.1",
+    "ical.js": "2.1.0",
     "marked": "18.0.5",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "react-rnd": "10.5.3",
     "react-router-dom": "7.17.0",
+    "rrule": "2.8.1",
     "tinyexec": "1.2.4",
     "zulip-js": "2.1.0",
     "zustand": "5.0.14"

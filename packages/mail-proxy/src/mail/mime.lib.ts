@@ -267,52 +267,6 @@ function formatReferences(
   return trimmed.length > 0 ? trimmed : null;
 }
 
-/** Prefixes subject with Re: when missing. */
-export function buildReplySubject(subject: string): string {
-  const trimmed = subject.trim();
-  if (/^re:/i.test(trimmed)) return trimmed;
-  return `Re: ${trimmed}`;
-}
-
-/** Prefixes subject with Fwd: when missing. */
-export function buildForwardSubject(subject: string): string {
-  const trimmed = subject.trim();
-  if (/^(fwd|fw):/i.test(trimmed)) return trimmed;
-  return `Fwd: ${trimmed}`;
-}
-
-export interface QuotedMailOriginal {
-  from: string;
-  date: string;
-  subject: string;
-  bodyHtml: string | null;
-  bodyText: string | null;
-}
-
-/** Builds HTML blockquote for reply/forward compose. */
-export function buildQuotedHtml(original: QuotedMailOriginal): string {
-  const body =
-    original.bodyHtml != null && original.bodyHtml.trim().length > 0
-      ? original.bodyHtml
-      : escapeHtml(original.bodyText ?? "").replace(/\n/g, "<br>");
-  return [
-    "<br><br>",
-    `<div>On ${escapeHtml(original.date)}, ${escapeHtml(original.from)} wrote:</div>`,
-    `<blockquote style="margin:0 0 0 8px;border-left:2px solid #ccc;padding-left:8px">`,
-    `<div><strong>${escapeHtml(original.subject)}</strong></div>`,
-    body,
-    "</blockquote>",
-  ].join("");
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
 /** Strips HTML tags for multipart text alternative. */
 export function buildPlainTextFallback(html: string): string {
   return html

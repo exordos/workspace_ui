@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  buildIcsFromInput,
-  expandRecurringEvents,
-  parseVeventFromIcs,
-} from "./ical.lib";
-import type { CalendarEvent } from "@mail/api/mail-api.generated";
+import { buildIcsFromInput, expandRecurringEvents, parseVeventFromIcs } from "./calendar-ical.lib";
+import type { CalendarEvent } from "./calendar.types";
 
 const SAMPLE_ICS = `BEGIN:VCALENDAR
 VERSION:2.0
@@ -68,7 +64,9 @@ describe("calendar-ical.lib", () => {
           start: "2026-06-20T12:00:00.000Z",
           end: "2026-06-20T13:00:00.000Z",
           description: "Cafe",
-          attendees: [{ email: "bob@example.test", displayName: "Bob", partstat: null, role: null }],
+          attendees: [
+            { email: "bob@example.test", displayName: "Bob", partstat: null, role: null },
+          ],
           alarms: [{ triggerMinutes: 30, triggerAbsolute: null, action: "DISPLAY" }],
         },
         "uid-lunch",

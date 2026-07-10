@@ -20,7 +20,19 @@ import {
   sendMailMessage as apiSendMailMessage,
 } from "@mail/api/mail-api.generated";
 import { mailApiAuthOptions, MailApiHttpError } from "~/shared/api/mail-orval-mutator";
+import {
+  assertDeleteFolderAllowed,
+  computeMoveFolderPath,
+  computeRenameFolderPath,
+} from "./mail-folder-ops.lib";
 import { detectMailFolderDelimiter } from "./mail-folder-tree.lib";
+import {
+  buildCreateFolderPath,
+  parseMessageFlagsPayload,
+  parseMoveMailPayload,
+  parseSendMailPayload,
+  parseSessionPayload,
+} from "./mail-validation.lib";
 import type {
   MailComposePayload,
   MailCreateFolderInput,
@@ -37,7 +49,8 @@ import type {
 export { MailApiHttpError as MailApiError };
 
 export async function createMailSession(email: string, password: string): Promise<MailSessionInfo> {
-  const data = await apiCreateMailSession({ email, password });
+  const payload = parseSessionPayload({ email, password });
+  const data = await apiCreateMailSession(payload);
   return {
     token: data.sessionToken,
     expiresAt: data.expiresAt,
@@ -64,14 +77,8 @@ export async function createMailFolder(
   input: MailCreateFolderInput,
   delimiter: string,
 ): Promise<string> {
-  const data = await apiCreateMailFolder(
-    {
-      name: input.name,
-      parentPath: input.parentPath ?? "",
-      delimiter,
-    },
-    mailApiAuthOptions(token),
-  );
+  const path = buildCreateFolderPath(input, delimiter);
+  const data = await apiCreateMailFolder({ path }, mailApiAuthOptions(token));
   return data.path;
 }
 
@@ -80,7 +87,8 @@ export async function renameMailFolder(
   input: MailRenameFolderInput,
   delimiter: string,
 ): Promise<string> {
-  const data = await apiRenameMailFolder({ ...input, delimiter }, mailApiAuthOptions(token));
+  const toPath = computeRenameFolderPath(input.path, input.name, delimiter);
+  const data = await apiRenameMailFolder({ path: input.path, toPath }, mailApiAuthOptions(token));
   return data.path;
 }
 
@@ -89,7 +97,8 @@ export async function moveMailFolder(
   input: MailMoveFolderInput,
   delimiter: string,
 ): Promise<string> {
-  const data = await apiMoveMailFolder({ ...input, delimiter }, mailApiAuthOptions(token));
+  const toPath = computeMoveFolderPath(input.path, input.parentPath, delimiter);
+  const data = await apiMoveMailFolder({ path: input.path, toPath }, mailApiAuthOptions(token));
   return data.path;
 }
 
@@ -98,6 +107,7 @@ export async function deleteMailFolder(
   path: string,
   delimiter: string,
 ): Promise<void> {
+  assertDeleteFolderAllowed(path, delimiter);
   await apiDeleteMailFolder({ path, delimiter }, undefined, mailApiAuthOptions(token));
 }
 
@@ -152,7 +162,8 @@ export async function patchMailMessageFlags(
   uid: number,
   patch: MailFlagsPatch,
 ): Promise<void> {
-  await apiPatchMailMessageFlags(uid, { folder, ...patch }, mailApiAuthOptions(token));
+  const payload = parseMessageFlagsPayload(folder, patch);
+  await apiPatchMailMessageFlags(uid, payload, mailApiAuthOptions(token));
 }
 
 export async function deleteMailMessage(token: string, folder: string, uid: number): Promise<void> {
@@ -165,9 +176,11 @@ export async function moveMailMessage(
   toFolder: string,
   uid: number,
 ): Promise<void> {
-  await apiMoveMailMessage(uid, { fromFolder, toFolder }, mailApiAuthOptions(token));
+  const { fromFolder: from, toFolder: to } = parseMoveMailPayload(fromFolder, toFolder);
+  await apiMoveMailMessage(uid, { fromFolder: from, toFolder: to }, mailApiAuthOptions(token));
 }
 
 export async function sendMailMessage(token: string, payload: MailComposePayload): Promise<void> {
-  await apiSendMailMessage(payload, mailApiAuthOptions(token));
+  const validated = parseSendMailPayload(payload);
+  await apiSendMailMessage(validated, mailApiAuthOptions(token));
 }

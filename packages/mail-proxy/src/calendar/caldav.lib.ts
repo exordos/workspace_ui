@@ -2,27 +2,25 @@
  * CalDAV client for Mailcow SOGo calendar integration.
  */
 
-import { randomUUID } from "node:crypto";
 import { caldavHttpsFetch } from "./caldav-fetch.lib";
 import type { RequestInit as UndiciRequestInit } from "undici";
 import {
   buildCalendarHomeUrl,
   buildCalendarHomeUrlCandidates,
   decodeCalendarDataXml,
-  eventIntersectsRange,
   extractXmlTag,
   sogoDavUserSegment,
   toCalDavTimeRangeValue,
 } from "./caldav-url.lib";
-import {
-  expandRecurringEvents,
-  mergeEventInputWithExisting,
-  parseVeventFromIcs,
-  buildIcsFromInput,
-} from "./ical.lib";
 import { mailProxyEnv } from "../shared/env.lib";
 import type { MailSessionRecord } from "../shared/session/session.lib";
-import type { CalendarEvent, CalendarEventInput, CalendarInfo } from "@mail/api/mail-api.generated";
+import type { CalendarInfo } from "@mail/api/mail-api.generated";
+
+export interface CalendarIcsResource {
+  calendarId: string;
+  etag: string | null;
+  ics: string;
+}
 
 function basicAuthHeader(email: string, password: string): string {
   return `Basic ${Buffer.from(`${email}:${password}`).toString("base64")}`;
@@ -210,10 +208,8 @@ export async function queryCalendarEvents(
   calendarIds: string[],
   startIso: string,
   endIso: string,
-): Promise<CalendarEvent[]> {
-  const rangeStart = new Date(startIso);
-  const rangeEnd = new Date(endIso);
-  const allEvents: CalendarEvent[] = [];
+): Promise<CalendarIcsResource[]> {
+  const items: CalendarIcsResource[] = [];
 
   const rangeStartCal = toCalDavTimeRangeValue(startIso);
   const rangeEndCal = toCalDavTimeRangeValue(endIso);
@@ -256,19 +252,27 @@ export async function queryCalendarEvents(
       if (calendarData == null || calendarData.length === 0) continue;
       const etag = extractXmlTag(block, "getetag")?.replace(/^"|"$/g, "") ?? null;
       const decoded = decodeCalendarDataXml(calendarData);
-      const events = parseVeventFromIcs(decoded, calendarId, etag);
-      allEvents.push(...events);
+      items.push({ calendarId, etag, ics: decoded });
     }
   }
 
-  return expandRecurringEvents(allEvents, rangeStart, rangeEnd);
+  return items;
+}
+
+function extractUidFromIcs(ics: string): string {
+  const match = /^UID:([^\r\n]+)/im.exec(ics);
+  const uid = match?.[1]?.trim();
+  if (uid == null || uid.length === 0) {
+    throw new Error("ICS must contain UID");
+  }
+  return uid;
 }
 
 export async function getCalendarEvent(
   session: MailSessionRecord,
   calendarId: string,
   eventUid: string,
-): Promise<CalendarEvent | null> {
+): Promise<CalendarIcsResource | null> {
   const url = eventResourceUrl(session, calendarId, eventUid);
   const response = await caldavFetch(session, url, { method: "GET" });
   if (response.status === 404) return null;
@@ -277,17 +281,16 @@ export async function getCalendarEvent(
   }
   const ics = await response.text();
   const etag = response.headers.get("etag");
-  const events = parseVeventFromIcs(ics, calendarId, etag);
-  return events[0] ?? null;
+  return { calendarId, etag, ics };
 }
 
 export async function createCalendarEvent(
   session: MailSessionRecord,
-  input: CalendarEventInput,
-): Promise<CalendarEvent> {
-  const uid = input.uid ?? randomUUID();
-  const ics = buildIcsFromInput(input, uid);
-  const url = eventResourceUrl(session, input.calendarId, uid);
+  calendarId: string,
+  ics: string,
+): Promise<CalendarIcsResource> {
+  const uid = extractUidFromIcs(ics);
+  const url = eventResourceUrl(session, calendarId, uid);
   const response = await caldavFetch(session, url, {
     method: "PUT",
     headers: { "Content-Type": "text/calendar; charset=utf-8" },
@@ -296,32 +299,24 @@ export async function createCalendarEvent(
   if (!response.ok) {
     throw new Error(`CalDAV PUT create failed (${response.status})`);
   }
-  const event = await getCalendarEvent(session, input.calendarId, uid);
-  if (event == null) {
+  const resource = await getCalendarEvent(session, calendarId, uid);
+  if (resource == null) {
     throw new Error("Event created but could not be fetched");
   }
-  return event;
+  return resource;
 }
 
 export async function updateCalendarEvent(
   session: MailSessionRecord,
   eventUid: string,
-  input: CalendarEventInput,
-): Promise<CalendarEvent> {
-  const url = eventResourceUrl(session, input.calendarId, eventUid);
-  let existingIcs = "";
-  const getResponse = await caldavFetch(session, url, { method: "GET" });
-  if (getResponse.ok) {
-    existingIcs = await getResponse.text();
-  }
-  const ics =
-    existingIcs.length > 0
-      ? mergeEventInputWithExisting(existingIcs, input, eventUid)
-      : buildIcsFromInput(input, eventUid);
-
+  calendarId: string,
+  ics: string,
+  etag?: string,
+): Promise<CalendarIcsResource> {
+  const url = eventResourceUrl(session, calendarId, eventUid);
   const headers: Record<string, string> = { "Content-Type": "text/calendar; charset=utf-8" };
-  if (input.etag != null && input.etag.length > 0) {
-    headers["If-Match"] = input.etag;
+  if (etag != null && etag.length > 0) {
+    headers["If-Match"] = etag;
   }
 
   const response = await caldavFetch(session, url, {
@@ -332,11 +327,11 @@ export async function updateCalendarEvent(
   if (!response.ok) {
     throw new Error(`CalDAV PUT update failed (${response.status})`);
   }
-  const event = await getCalendarEvent(session, input.calendarId, eventUid);
-  if (event == null) {
+  const resource = await getCalendarEvent(session, calendarId, eventUid);
+  if (resource == null) {
     throw new Error("Event updated but could not be fetched");
   }
-  return event;
+  return resource;
 }
 
 export async function deleteCalendarEvent(

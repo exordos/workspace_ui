@@ -1,5 +1,5 @@
 /**
- * Calendar REST client — thin wrapper over Orval-generated @mail/api client.
+ * Calendar REST client — iCal parsing/serialization on client, CalDAV transport via @mail/api.
  */
 
 import {
@@ -9,11 +9,32 @@ import {
   listCalendars as apiListCalendars,
   queryCalendarEvents as apiQueryCalendarEvents,
   updateCalendarEvent as apiUpdateCalendarEvent,
+  type CalendarIcsResource,
 } from "@mail/api/mail-api.generated";
 import { MailApiHttpError, mailApiAuthOptions } from "~/shared/api/mail-orval-mutator";
+import {
+  buildIcsFromInput,
+  expandRecurringEvents,
+  mergeEventInputWithExisting,
+  parseVeventFromIcs,
+} from "./calendar-ical.lib";
+import { parseCalendarEventInput } from "./calendar-validation.lib";
 import type { CalendarEvent, CalendarEventInput, CalendarInfo } from "./calendar.types";
 
 export { MailApiHttpError as CalendarApiError };
+
+function parseIcsResource(resource: CalendarIcsResource): CalendarEvent[] {
+  return parseVeventFromIcs(resource.ics, resource.calendarId, resource.etag ?? null);
+}
+
+function parseIcsResourceFirst(resource: CalendarIcsResource): CalendarEvent {
+  const events = parseIcsResource(resource);
+  const event = events[0];
+  if (event == null) {
+    throw new Error("Event not found in ICS");
+  }
+  return event;
+}
 
 export async function fetchCalendars(token: string): Promise<CalendarInfo[]> {
   const data = await apiListCalendars(mailApiAuthOptions(token));
@@ -34,7 +55,8 @@ export async function fetchCalendarEvents(
     },
     mailApiAuthOptions(token),
   );
-  return data.events;
+  const masters = data.items.flatMap((item) => parseIcsResource(item));
+  return expandRecurringEvents(masters, new Date(start), new Date(end));
 }
 
 export async function fetchCalendarEvent(
@@ -42,16 +64,22 @@ export async function fetchCalendarEvent(
   calendarId: string,
   eventUid: string,
 ): Promise<CalendarEvent> {
-  const data = await apiGetCalendarEvent(eventUid, { calendarId }, mailApiAuthOptions(token));
-  return data.event;
+  const resource = await apiGetCalendarEvent(eventUid, { calendarId }, mailApiAuthOptions(token));
+  return parseIcsResourceFirst(resource);
 }
 
 export async function createCalendarEvent(
   token: string,
   input: CalendarEventInput,
 ): Promise<CalendarEvent> {
-  const data = await apiCreateCalendarEvent(input, mailApiAuthOptions(token));
-  return data.event;
+  const parsed = parseCalendarEventInput(input);
+  const uid = parsed.uid ?? crypto.randomUUID();
+  const ics = buildIcsFromInput({ ...parsed, uid }, uid);
+  const resource = await apiCreateCalendarEvent(
+    { calendarId: parsed.calendarId, ics },
+    mailApiAuthOptions(token),
+  );
+  return parseIcsResourceFirst(resource);
 }
 
 export async function updateCalendarEvent(
@@ -59,8 +87,30 @@ export async function updateCalendarEvent(
   eventUid: string,
   input: CalendarEventInput,
 ): Promise<CalendarEvent> {
-  const data = await apiUpdateCalendarEvent(eventUid, input, mailApiAuthOptions(token));
-  return data.event;
+  const parsed = parseCalendarEventInput(input);
+  let ics = buildIcsFromInput({ ...parsed, uid: eventUid }, eventUid);
+  if (parsed.etag != null) {
+    try {
+      const existing = await apiGetCalendarEvent(
+        eventUid,
+        { calendarId: parsed.calendarId },
+        mailApiAuthOptions(token),
+      );
+      ics = mergeEventInputWithExisting(existing.ics, { ...parsed, uid: eventUid }, eventUid);
+    } catch {
+      /* use freshly built ICS when existing fetch fails */
+    }
+  }
+  const resource = await apiUpdateCalendarEvent(
+    eventUid,
+    {
+      calendarId: parsed.calendarId,
+      ics,
+      ...(parsed.etag != null ? { etag: parsed.etag } : {}),
+    },
+    mailApiAuthOptions(token),
+  );
+  return parseIcsResourceFirst(resource);
 }
 
 export async function deleteCalendarEvent(

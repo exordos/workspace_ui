@@ -49,21 +49,17 @@ export interface MailFoldersResponse {
 }
 
 export interface CreateMailFolderRequest {
-  name: string;
-  parentPath?: string;
-  delimiter?: string;
+  path: string;
 }
 
 export interface RenameMailFolderRequest {
   path: string;
-  name: string;
-  delimiter?: string;
+  toPath: string;
 }
 
 export interface MoveMailFolderRequest {
   path: string;
-  parentPath: string;
-  delimiter?: string;
+  toPath: string;
 }
 
 export interface FolderPathRequest {
@@ -181,6 +177,33 @@ export interface CalendarEvent {
   isRecurringInstance: boolean;
 }
 
+export interface CalendarIcsResource {
+  calendarId: string;
+  /** @nullable */
+  etag?: string | null;
+  ics: string;
+}
+
+export interface CalendarIcsListResponse {
+  items: CalendarIcsResource[];
+}
+
+export interface CalendarIcsRequest {
+  calendarId: string;
+  ics: string;
+  etag?: string;
+}
+
+export interface CalendarsResponse {
+  calendars: CalendarInfo[];
+}
+
+export interface CalendarEventsResponse {
+  items: CalendarIcsResource[];
+}
+
+export type CalendarEventResponse = CalendarIcsResource;
+
 export interface CalendarEventInput {
   calendarId: string;
   uid?: string;
@@ -197,18 +220,6 @@ export interface CalendarEventInput {
   alarms?: CalendarAlarm[];
   /** @nullable */
   etag?: string | null;
-}
-
-export interface CalendarsResponse {
-  calendars: CalendarInfo[];
-}
-
-export interface CalendarEventsResponse {
-  events: CalendarEvent[];
-}
-
-export interface CalendarEventResponse {
-  event: CalendarEvent;
 }
 
 /**
@@ -757,14 +768,14 @@ export const getCreateCalendarEventUrl = () => {
 /**
  * @summary Create calendar event
  */
-export const createCalendarEvent = async (calendarEventInput: CalendarEventInput, options?: RequestInit): Promise<CalendarEventResponse> => {
+export const createCalendarEvent = async (calendarIcsRequest: CalendarIcsRequest, options?: RequestInit): Promise<CalendarIcsResource> => {
 
-  return customInstance<CalendarEventResponse>(getCreateCalendarEventUrl(),
+  return customInstance<CalendarIcsResource>(getCreateCalendarEventUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(calendarEventInput)
+    body: JSON.stringify(calendarIcsRequest)
   }
 );}
 
@@ -790,9 +801,9 @@ export const getGetCalendarEventUrl = (eventUid: string,
  * @summary Get calendar event
  */
 export const getCalendarEvent = async (eventUid: string,
-    params: GetCalendarEventParams, options?: RequestInit): Promise<CalendarEventResponse> => {
+    params: GetCalendarEventParams, options?: RequestInit): Promise<CalendarIcsResource> => {
 
-  return customInstance<CalendarEventResponse>(getGetCalendarEventUrl(eventUid,params),
+  return customInstance<CalendarIcsResource>(getGetCalendarEventUrl(eventUid,params),
   {
     ...options,
     method: 'GET'
@@ -815,14 +826,14 @@ export const getUpdateCalendarEventUrl = (eventUid: string,) => {
  * @summary Update calendar event
  */
 export const updateCalendarEvent = async (eventUid: string,
-    calendarEventInput: CalendarEventInput, options?: RequestInit): Promise<CalendarEventResponse> => {
+    calendarIcsRequest: CalendarIcsRequest, options?: RequestInit): Promise<CalendarIcsResource> => {
 
-  return customInstance<CalendarEventResponse>(getUpdateCalendarEventUrl(eventUid),
+  return customInstance<CalendarIcsResource>(getUpdateCalendarEventUrl(eventUid),
   {
     ...options,
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(calendarEventInput)
+    body: JSON.stringify(calendarIcsRequest)
   }
 );}
 

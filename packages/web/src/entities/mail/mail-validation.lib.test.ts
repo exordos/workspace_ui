@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildCreateFolderPath,
   isValidEmail,
-  parseCreateFolderPayload,
-  parseMessageUid,
   parseSendMailPayload,
   parseSessionPayload,
   sanitizeFolderPath,
-} from "./validation.lib";
+} from "./mail-validation.lib";
 
 describe("mail-validation.lib", () => {
   it("validates email addresses", () => {
@@ -38,17 +37,6 @@ describe("mail-validation.lib", () => {
       inReplyTo: undefined,
       references: undefined,
     });
-    expect(
-      parseSendMailPayload({ to: "to@example.com", subject: "Hi", body: "Hello" }),
-    ).toEqual({
-      to: "to@example.com",
-      subject: "Hi",
-      bodyHtml: "Hello",
-      bodyText: undefined,
-      cc: undefined,
-      inReplyTo: undefined,
-      references: undefined,
-    });
   });
 
   it("sanitizes folder path", () => {
@@ -56,19 +44,9 @@ describe("mail-validation.lib", () => {
     expect(sanitizeFolderPath("Sent")).toBe("Sent");
   });
 
-  it("parses message uid", () => {
-    expect(parseMessageUid("42")).toBe(42);
-    expect(() => parseMessageUid("0")).toThrow();
-  });
-
-  it("parses nested create folder payload", () => {
-    expect(
-      parseCreateFolderPayload({
-        name: "Client",
-        parentPath: "Projects",
-        delimiter: ".",
-      }),
-    ).toEqual({ path: "Projects.Client" });
-    expect(parseCreateFolderPayload({ path: "Legacy.Path" })).toEqual({ path: "Legacy.Path" });
+  it("builds nested create folder path", () => {
+    expect(buildCreateFolderPath({ name: "Client", parentPath: "Projects" }, ".")).toEqual(
+      "Projects.Client",
+    );
   });
 });

@@ -24,9 +24,9 @@ Add **`packages/mail-api`** (`@mail/api`) with:
 - Orval-generated `src/generated/mail-api.ts`
 - Injectable mutator (`mail-api-mutator.ts`) wired in web via `mail-orval-mutator.ts`
 
-Web entities keep thin wrappers (`mail.api.ts`, `calendar.api.ts`) for domain mapping (e.g. `sessionToken` → `token`, folder delimiter fallback).
+Web entities keep thin wrappers (`mail.api.ts`, `calendar.api.ts`) for domain mapping (e.g. `sessionToken` → `token`, folder delimiter fallback, iCal parse/expand on the client).
 
-`packages/mail-proxy` is reorganized into `server/`, `shared/`, `mail/`, `calendar/` and imports DTO types from `@mail/api`.
+`packages/mail-proxy` is reorganized into `server/`, `shared/`, `mail/`, `calendar/` and imports DTO types from `@mail/api`. Business rules live in web entities per [ADR 017](017-mail-proxy-thin-transport.md).
 
 ## Consequences
 

@@ -4,11 +4,8 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  buildForwardSubject,
   buildMailSnippet,
   buildPlainTextFallback,
-  buildQuotedHtml,
-  buildReplySubject,
   decodeMailHeaderValue,
   decodeQuotedPrintableUtf8,
   looksLikeUndecodedQuotedPrintable,
@@ -148,28 +145,6 @@ Content-Transfer-Encoding: 8bit
       cc: [],
       references: null,
     });
-  });
-
-  it("buildReplySubject prefixes Re:", () => {
-    expect(buildReplySubject("Hello")).toBe("Re: Hello");
-    expect(buildReplySubject("Re: Hello")).toBe("Re: Hello");
-  });
-
-  it("buildForwardSubject prefixes Fwd:", () => {
-    expect(buildForwardSubject("Hello")).toBe("Fwd: Hello");
-    expect(buildForwardSubject("Fwd: Hello")).toBe("Fwd: Hello");
-  });
-
-  it("buildQuotedHtml wraps original body in blockquote", () => {
-    const html = buildQuotedHtml({
-      from: "Alice <alice@test>",
-      date: "2026-01-01",
-      subject: "Hi",
-      bodyHtml: null,
-      bodyText: "Hello world",
-    });
-    expect(html).toContain("blockquote");
-    expect(html).toContain("Hello world");
   });
 
   it("buildPlainTextFallback strips HTML tags", () => {

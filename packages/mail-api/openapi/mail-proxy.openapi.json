@@ -84,29 +84,25 @@
       },
       "CreateMailFolderRequest": {
         "type": "object",
-        "required": ["name"],
+        "required": ["path"],
         "properties": {
-          "name": { "type": "string" },
-          "parentPath": { "type": "string" },
-          "delimiter": { "type": "string" }
+          "path": { "type": "string" }
         }
       },
       "RenameMailFolderRequest": {
         "type": "object",
-        "required": ["path", "name"],
+        "required": ["path", "toPath"],
         "properties": {
           "path": { "type": "string" },
-          "name": { "type": "string" },
-          "delimiter": { "type": "string" }
+          "toPath": { "type": "string" }
         }
       },
       "MoveMailFolderRequest": {
         "type": "object",
-        "required": ["path", "parentPath"],
+        "required": ["path", "toPath"],
         "properties": {
           "path": { "type": "string" },
-          "parentPath": { "type": "string" },
-          "delimiter": { "type": "string" }
+          "toPath": { "type": "string" }
         }
       },
       "FolderPathRequest": {
@@ -273,6 +269,57 @@
           "isRecurringInstance": { "type": "boolean" }
         }
       },
+      "CalendarIcsResource": {
+        "type": "object",
+        "required": ["calendarId", "ics"],
+        "properties": {
+          "calendarId": { "type": "string" },
+          "etag": { "type": "string", "nullable": true },
+          "ics": { "type": "string" }
+        }
+      },
+      "CalendarIcsListResponse": {
+        "type": "object",
+        "required": ["items"],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/CalendarIcsResource" }
+          }
+        }
+      },
+      "CalendarIcsRequest": {
+        "type": "object",
+        "required": ["calendarId", "ics"],
+        "properties": {
+          "calendarId": { "type": "string" },
+          "ics": { "type": "string" },
+          "etag": { "type": "string" }
+        }
+      },
+      "CalendarsResponse": {
+        "type": "object",
+        "required": ["calendars"],
+        "properties": {
+          "calendars": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/CalendarInfo" }
+          }
+        }
+      },
+      "CalendarEventsResponse": {
+        "type": "object",
+        "required": ["items"],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/CalendarIcsResource" }
+          }
+        }
+      },
+      "CalendarEventResponse": {
+        "$ref": "#/components/schemas/CalendarIcsResource"
+      },
       "CalendarEventInput": {
         "type": "object",
         "required": ["calendarId", "summary", "start", "end"],
@@ -295,33 +342,6 @@
             "items": { "$ref": "#/components/schemas/CalendarAlarm" }
           },
           "etag": { "type": "string", "nullable": true }
-        }
-      },
-      "CalendarsResponse": {
-        "type": "object",
-        "required": ["calendars"],
-        "properties": {
-          "calendars": {
-            "type": "array",
-            "items": { "$ref": "#/components/schemas/CalendarInfo" }
-          }
-        }
-      },
-      "CalendarEventsResponse": {
-        "type": "object",
-        "required": ["events"],
-        "properties": {
-          "events": {
-            "type": "array",
-            "items": { "$ref": "#/components/schemas/CalendarEvent" }
-          }
-        }
-      },
-      "CalendarEventResponse": {
-        "type": "object",
-        "required": ["event"],
-        "properties": {
-          "event": { "$ref": "#/components/schemas/CalendarEvent" }
         }
       }
     },
@@ -820,7 +840,7 @@
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/CalendarEventInput" }
+              "schema": { "$ref": "#/components/schemas/CalendarIcsRequest" }
             }
           }
         },
@@ -872,7 +892,7 @@
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/CalendarEventInput" }
+              "schema": { "$ref": "#/components/schemas/CalendarIcsRequest" }
             }
           }
         },

@@ -4,7 +4,7 @@
 
 import ICAL from "ical.js";
 import rruleModule from "rrule";
-import { eventIntersectsRange, normalizeAllDayEndIso } from "./caldav-url.lib";
+import { eventIntersectsRange, normalizeAllDayEndIso } from "./calendar-date.lib";
 import type {
   CalendarAlarm,
   CalendarAttendee,
@@ -27,7 +27,9 @@ function parseIcalDate(value: ICAL.Time): { iso: string; allDay: boolean } {
 function toIcalTime(iso: string, allDay: boolean): ICAL.Time {
   if (allDay) {
     const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
-    return ICAL.Time.fromDateTimeString(`${y}${String(m).padStart(2, "0")}${String(d).padStart(2, "0")}`);
+    return ICAL.Time.fromDateTimeString(
+      `${y}${String(m).padStart(2, "0")}${String(d).padStart(2, "0")}`,
+    );
   }
   return ICAL.Time.fromJSDate(new Date(iso), true);
 }
@@ -158,9 +160,7 @@ export function expandRecurringEvents(
     }
 
     try {
-      const dtstart = event.allDay
-        ? new Date(`${event.start}T00:00:00Z`)
-        : new Date(event.start);
+      const dtstart = event.allDay ? new Date(`${event.start}T00:00:00Z`) : new Date(event.start);
       const rule = rruleModule.RRule.fromString(event.recurrence.rrule.replace(/^RRULE:/i, ""));
       rule.options.dtstart = dtstart;
       const durationMs =
@@ -187,9 +187,7 @@ export function expandRecurringEvents(
           : occEnd.toISOString();
         expanded.push({
           ...event,
-          start: event.allDay
-            ? occurrence.toISOString().slice(0, 10)
-            : occurrence.toISOString(),
+          start: event.allDay ? occurrence.toISOString().slice(0, 10) : occurrence.toISOString(),
           end: endIso,
           isRecurringInstance: true,
           recurrenceId: occurrence.toISOString(),
