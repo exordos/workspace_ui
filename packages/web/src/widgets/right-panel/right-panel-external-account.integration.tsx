@@ -1,12 +1,15 @@
 import React, { useEffect, useMemo } from "react";
 import { refreshExternalAccounts } from "~/entities/external-account/external-account-sync.lib";
 import { useExternalAccountStore } from "~/entities/external-account/external-account.model";
+import type { ExternalAccount } from "~/entities/external-account/external-account.types";
 import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { ConnectExternalAccountDialog } from "~/features/connect-external-account/connect-external-account-dialog.ui";
 import { useTranslation } from "~/i18n/i18n";
+import { resolveAvatarUrl } from "~/shared/lib/avatar";
+import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 
 export const RightPanelConnectExternalAccountDialog: React.FC<{
@@ -48,44 +51,144 @@ export const RightPanelExternalAccountsList: React.FC = () => {
   }
 
   return (
-    <ul className="space-y-1">
+    <ul className="space-y-2">
       {accounts.map((account) => (
-        <li key={account.uuid}>
-          <details className="group rounded-md hover:bg-bg-elevated">
-            <summary
-              className="flex cursor-pointer list-none items-center justify-between gap-2 px-1.5 py-1 text-xs"
-              title={account.serverUrl}
-            >
-              <span className="flex min-w-0 items-center gap-2">
-                <span className="flex h-5 w-5 items-center justify-center rounded bg-accent text-[10px] font-bold text-on-accent">
-                  Z
-                </span>
-                <span className="truncate text-text-primary">{account.serverUrl}</span>
-              </span>
-              <Icon
-                name="chevron-right"
-                size={13}
-                className="text-text-muted transition-transform group-open:rotate-90"
-              />
-            </summary>
-            <div className="px-8 pb-2 text-[11px] text-text-muted">
-              <div>
-                {account.accessStatus === "confirmed"
-                  ? t("connectExternalAccount.status.connected")
-                  : account.accessStatus === "invalid_credentials"
-                    ? t("connectExternalAccount.errors.invalidCredentials")
-                    : account.accessStatus === "unavailable"
-                      ? t("connectExternalAccount.errors.unavailable")
-                      : t("connectExternalAccount.status.checking")}
-              </div>
-              {account.accessLastError != null && <div>{account.accessLastError}</div>}
-            </div>
-          </details>
-        </li>
+        <ExternalAccountCard key={account.uuid} account={account} />
       ))}
     </ul>
   );
 };
+
+function getDisplayName(account: ExternalAccount): string {
+  return account.userInfo?.fullName ?? account.userInfo?.email ?? account.serverUrl;
+}
+
+function getInitials(value: string): string {
+  const words = value.trim().split(/\s+/).filter(Boolean);
+  const initials = words
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join("")
+    .toUpperCase();
+  return initials || "Z";
+}
+
+function getStatusLabel(
+  account: ExternalAccount,
+  t: ReturnType<typeof useTranslation>["t"],
+): string {
+  if (account.accessStatus === "confirmed") {
+    return t("connectExternalAccount.status.connected");
+  }
+  if (account.accessStatus === "invalid_credentials") {
+    return t("connectExternalAccount.errors.invalidCredentials");
+  }
+  if (account.accessStatus === "unavailable") {
+    return t("connectExternalAccount.errors.unavailable");
+  }
+  return t("connectExternalAccount.status.checking");
+}
+
+function getCompactStatusLabel(
+  account: ExternalAccount,
+  t: ReturnType<typeof useTranslation>["t"],
+): string {
+  if (account.accessStatus === "confirmed") {
+    return t("connectExternalAccount.status.connected");
+  }
+  if (account.accessStatus === "invalid_credentials") {
+    return t("connectExternalAccount.errors.invalidCredentialsShort");
+  }
+  if (account.accessStatus === "unavailable") {
+    return t("connectExternalAccount.errors.unavailableShort");
+  }
+  return t("connectExternalAccount.status.checkingShort");
+}
+
+function getStatusClassName(account: ExternalAccount): string {
+  if (account.accessStatus === "confirmed") {
+    return "bg-call-green/10 text-call-green";
+  }
+  if (account.accessStatus === "invalid_credentials" || account.accessStatus === "unavailable") {
+    return "bg-notice-base/10 text-notice-base";
+  }
+  return "bg-accent/10 text-accent";
+}
+
+const ExternalAccountCard = React.memo<{ account: ExternalAccount }>(({ account }) => {
+  const { t } = useTranslation();
+  const displayName = getDisplayName(account);
+  const avatarSrc = resolveAvatarUrl(account.userInfo?.avatarUrl, account.serverUrl);
+  const statusLabel = getStatusLabel(account, t);
+  const compactStatusLabel = getCompactStatusLabel(account, t);
+
+  return (
+    <li>
+      <details className="open:border-accent/40 group overflow-hidden rounded-lg border border-border-subtle bg-card-bg transition-colors">
+        <summary
+          className="flex cursor-pointer list-none items-center justify-between gap-3 px-2.5 py-2.5 transition-colors hover:bg-bg-elevated"
+          title={account.serverUrl}
+        >
+          <span className="flex min-w-0 items-center gap-2.5">
+            <Avatar size="sm" src={avatarSrc} className="bg-accent/15 text-accent">
+              {getInitials(displayName)}
+            </Avatar>
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-medium text-text-primary">
+                {displayName}
+              </span>
+              <span className="mt-0.5 block truncate text-[11px] text-text-muted">
+                {account.userInfo?.email ?? account.serverUrl}
+              </span>
+            </span>
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            {account.accessStatus !== "confirmed" && (
+              <span
+                className={`inline-flex max-w-24 truncate rounded-full px-2 py-0.5 text-[10px] font-medium sm:max-w-28 ${getStatusClassName(account)}`}
+                title={statusLabel}
+              >
+                {compactStatusLabel}
+              </span>
+            )}
+            <Icon
+              name="chevron-right"
+              size={14}
+              className="text-text-muted transition-transform group-open:rotate-90"
+            />
+          </span>
+        </summary>
+        <div className="border-t border-border-subtle px-2.5 py-2.5 text-[11px] text-text-muted">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="min-w-0">
+              <span className="block text-[10px] uppercase tracking-wide text-text-muted">
+                {t("connectExternalAccount.provider")}
+              </span>
+              <span className="mt-0.5 block truncate text-text-primary">
+                {t(`connectExternalAccount.providers.${account.accountType}`)}
+              </span>
+            </div>
+            <div className="min-w-0">
+              <span className="block text-[10px] uppercase tracking-wide text-text-muted">
+                {t("connectExternalAccount.server")}
+              </span>
+              <span className="mt-0.5 block truncate text-text-primary">{account.serverUrl}</span>
+            </div>
+          </div>
+          <div
+            className={`mt-2 inline-flex items-center rounded-full px-2 py-1 ${getStatusClassName(account)}`}
+          >
+            <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-current" />
+            {statusLabel}
+          </div>
+          {account.accessLastError != null && (
+            <p className="mt-2 break-words text-notice-base">{account.accessLastError}</p>
+          )}
+        </div>
+      </details>
+    </li>
+  );
+});
 
 export const ExternalAccountConnectActionIcon: React.FC = () => (
   <Icon name="plus" size={14} className="text-current" />

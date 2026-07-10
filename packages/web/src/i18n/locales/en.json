@@ -89,15 +89,19 @@
     "showToken": "Show token",
     "hideToken": "Hide token",
     "connect": "Connect",
+    "connectHint": "Link another service to this profile",
     "connectedAccounts": "Connected external accounts",
     "noAccounts": "No external accounts connected yet.",
+    "server": "Server",
     "checking": "Checking…",
     "errors": {
       "allFields": "Fill in all fields",
       "alreadyConnected": "A Zulip account is already connected",
       "alreadyConnectedHint": "Only one Zulip account can be connected to this Workspace profile.",
       "invalidCredentials": "The Zulip login or token is invalid",
+      "invalidCredentialsShort": "Invalid credentials",
       "unavailable": "The Zulip server is unavailable",
+      "unavailableShort": "Unavailable",
       "requestFailed": "Could not connect the external account",
       "serverUrlRequired": "Enter the server URL",
       "serverUrlInvalid": "Enter a valid HTTPS server URL",
@@ -108,6 +112,7 @@
       "connecting": "Connecting…",
       "connected": "Account connected",
       "checking": "Checking…",
+      "checkingShort": "Checking",
       "unsupportedProvider": "This provider is not supported yet"
     }
   },

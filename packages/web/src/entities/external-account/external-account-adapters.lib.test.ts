@@ -21,7 +21,12 @@ const dto: WorkspaceExternalAccountDto = {
   account_settings: {
     kind: "zulip",
     credentials: { kind: "zulip", login: "user@example.com", token: "fixture-token" },
-    user_info: { user_id: 7 },
+    user_info: {
+      user_id: 7,
+      email: "user@example.com",
+      full_name: "Phoenix",
+      avatar_url: "/user_avatars/2/avatar.png",
+    },
   },
   created_at: "2026-07-10T08:00:00Z",
   updated_at: "2026-07-10T09:00:00Z",
@@ -45,11 +50,16 @@ describe("external account adapters", () => {
       accessNextCheckAt: "2026-07-10T10:00:00Z",
       accessLastError: null,
       accountSettingsKind: "zulip",
+      userInfo: {
+        userId: 7,
+        email: "user@example.com",
+        fullName: "Phoenix",
+        avatarUrl: "/user_avatars/2/avatar.png",
+      },
       createdAt: "2026-07-10T08:00:00Z",
       updatedAt: "2026-07-10T09:00:00Z",
     });
     expect(account).not.toHaveProperty("credentials");
-    expect(account).not.toHaveProperty("userInfo");
   });
 
   it("detects the backend duplicate rule by account type", () => {

@@ -16,6 +16,7 @@ const account: ExternalAccount = {
   accessNextCheckAt: "2026-07-10T10:00:00Z",
   accessLastError: null,
   accountSettingsKind: "zulip",
+  userInfo: null,
   createdAt: "2026-07-10T08:00:00Z",
   updatedAt: "2026-07-10T09:00:00Z",
 };

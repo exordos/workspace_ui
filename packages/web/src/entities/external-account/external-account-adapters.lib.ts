@@ -18,6 +18,15 @@ export function adaptWorkspaceExternalAccountDto(
     accessNextCheckAt: dto.access_next_check_at ?? dto.updated_at,
     accessLastError: dto.access_last_error ?? null,
     accountSettingsKind: dto.account_settings.kind,
+    userInfo:
+      dto.account_settings.user_info == null
+        ? null
+        : {
+            userId: dto.account_settings.user_info.user_id ?? null,
+            email: dto.account_settings.user_info.email?.trim() || null,
+            fullName: dto.account_settings.user_info.full_name?.trim() || null,
+            avatarUrl: dto.account_settings.user_info.avatar_url ?? null,
+          },
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
   };

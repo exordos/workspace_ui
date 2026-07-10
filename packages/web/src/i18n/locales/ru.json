@@ -89,15 +89,19 @@
     "showToken": "Показать токен",
     "hideToken": "Скрыть токен",
     "connect": "Подключить",
+    "connectHint": "Привязать ещё один сервис к этому профилю",
     "connectedAccounts": "Подключённые внешние аккаунты",
     "noAccounts": "Внешние аккаунты ещё не подключены.",
+    "server": "Сервер",
     "checking": "Проверяем…",
     "errors": {
       "allFields": "Заполните все поля",
       "alreadyConnected": "Аккаунт Zulip уже подключён",
       "alreadyConnectedHint": "К этому профилю Workspace можно подключить только один аккаунт Zulip.",
       "invalidCredentials": "Логин или токен Zulip неверны",
+      "invalidCredentialsShort": "Неверные данные",
       "unavailable": "Сервер Zulip недоступен",
+      "unavailableShort": "Недоступен",
       "requestFailed": "Не удалось подключить внешний аккаунт",
       "serverUrlRequired": "Укажите URL сервера",
       "serverUrlInvalid": "Укажите корректный HTTPS URL сервера",
@@ -108,6 +112,7 @@
       "connecting": "Подключение…",
       "connected": "Аккаунт подключён",
       "checking": "Проверяем…",
+      "checkingShort": "Проверка",
       "unsupportedProvider": "Этот провайдер пока не поддерживается"
     }
   },

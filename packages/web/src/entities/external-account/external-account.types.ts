@@ -8,6 +8,13 @@ export type ExternalAccountAccessStatus =
   | "unavailable";
 export type ExternalAccountLoadStatus = "idle" | "loading" | "ready" | "error";
 
+export interface ExternalAccountUserInfo {
+  userId: number | null;
+  email: string | null;
+  fullName: string | null;
+  avatarUrl: string | null;
+}
+
 export interface ExternalAccount {
   uuid: ExternalAccountUuid;
   projectId: string;
@@ -22,6 +29,7 @@ export interface ExternalAccount {
   accessNextCheckAt: string;
   accessLastError: string | null;
   accountSettingsKind: ExternalAccountType;
+  userInfo: ExternalAccountUserInfo | null;
   createdAt: string;
   updatedAt: string;
 }

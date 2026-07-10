@@ -102,6 +102,7 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
   const [folderLayoutOpen, setFolderLayoutOpen] = useState(false);
   const [chatListDensityOpen, setChatListDensityOpen] = useState(false);
   const [authIdleTimeoutOpen, setAuthIdleTimeoutOpen] = useState(false);
+  const [externalAccountsOpen, setExternalAccountsOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [statusTextDraft, setStatusTextDraft] = useState("");
   const [statusAwayDraft, setStatusAwayDraft] = useState(false);
@@ -398,26 +399,49 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                 </div>
               )}
               {currentWorkspaceSession != null && (
-                <div
-                  className="border-t border-border-subtle px-2.5 py-2"
-                  data-testid="user-menu-external-accounts"
-                >
-                  <div className="mb-1 flex items-center justify-between gap-2">
-                    <span className="text-xs font-medium text-text-secondary">
-                      {t("connectExternalAccount.connectedAccounts")}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setExternalAccountDialogOpen(true)}
-                      className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[11px] text-accent transition-colors hover:bg-bg-elevated"
-                      aria-label={t("connectExternalAccount.connect")}
+                <>
+                  <RightPanelUserMenuMenuButton
+                    label={t("connectExternalAccount.connectedAccounts")}
+                    icon="links"
+                    onClick={() => setExternalAccountsOpen((open) => !open)}
+                    right={
+                      <Icon
+                        name={externalAccountsOpen ? "chevron-up" : "chevron-right"}
+                        size={16}
+                        className="text-text-muted"
+                      />
+                    }
+                  />
+                  {externalAccountsOpen && (
+                    <div
+                      className="mx-2 mb-2 rounded-md border border-border-subtle bg-bg-elevated px-2 py-2"
+                      data-testid="user-menu-external-accounts"
                     >
-                      <ExternalAccountConnectActionIcon />
-                      <span>{t("connectExternalAccount.connect")}</span>
-                    </button>
-                  </div>
-                  <RightPanelExternalAccountsList />
-                </div>
+                      <button
+                        type="button"
+                        onClick={() => setExternalAccountDialogOpen(true)}
+                        className="border-accent/40 bg-accent/5 hover:bg-accent/10 mb-2 flex w-full items-center justify-between gap-3 rounded-lg border border-dashed px-2.5 py-2 text-left transition-colors"
+                        aria-label={t("connectExternalAccount.connect")}
+                      >
+                        <span className="flex min-w-0 items-center gap-2.5">
+                          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent text-on-accent">
+                            <ExternalAccountConnectActionIcon />
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block text-xs font-medium text-text-primary">
+                              {t("connectExternalAccount.connect")}
+                            </span>
+                            <span className="mt-0.5 block truncate text-[10px] text-text-muted">
+                              {t("connectExternalAccount.connectHint")}
+                            </span>
+                          </span>
+                        </span>
+                        <Icon name="chevron-right" size={14} className="shrink-0 text-accent" />
+                      </button>
+                      <RightPanelExternalAccountsList />
+                    </div>
+                  )}
+                </>
               )}
               <RightPanelUserMenuMenuButton
                 label={t("settings.personalInfo")}

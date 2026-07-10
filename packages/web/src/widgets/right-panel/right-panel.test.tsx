@@ -139,6 +139,8 @@ describe("RightPanelShell", () => {
 
     renderWithProviders(<RightPanelShell mode="user-menu" title="Profile" />);
 
+    expect(screen.queryByTestId("connected-external-accounts-list")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /connected external accounts/i }));
     expect(screen.getByTestId("connected-external-accounts-list")).toHaveTextContent(
       "Zulip · https://zulip.example.com",
     );

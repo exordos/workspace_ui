@@ -8,6 +8,13 @@ export type WorkspaceExternalAccountAccessStatus =
   | "invalid_credentials"
   | "unavailable";
 
+export interface WorkspaceExternalAccountUserInfoDto {
+  user_id?: number;
+  email?: string;
+  full_name?: string;
+  avatar_url?: string | null;
+}
+
 export interface WorkspaceExternalAccountDto {
   uuid: WorkspaceMessengerUuid;
   project_id: WorkspaceMessengerUuid;
@@ -24,7 +31,7 @@ export interface WorkspaceExternalAccountDto {
   account_settings: {
     kind: WorkspaceExternalAccountProvider;
     credentials?: unknown;
-    user_info?: unknown;
+    user_info?: WorkspaceExternalAccountUserInfoDto | null;
   };
   created_at: string;
   updated_at: string;
