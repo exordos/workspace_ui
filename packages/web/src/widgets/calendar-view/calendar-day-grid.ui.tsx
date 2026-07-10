@@ -12,6 +12,7 @@ export const CalendarDayGrid: React.FC<CalendarDayGridProps> = ({
   events,
   getEventColor,
   onSelectEvent,
+  onSelectTimeSlot,
 }) => {
   const isoDate = toIsoDate(date);
   const days = useMemo(() => [date], [date, isoDate]);
@@ -22,6 +23,7 @@ export const CalendarDayGrid: React.FC<CalendarDayGridProps> = ({
       events={events}
       getEventColor={getEventColor}
       onSelectEvent={onSelectEvent}
+      onSelectTimeSlot={onSelectTimeSlot}
       layout="day"
     />
   );

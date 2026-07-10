@@ -4,10 +4,12 @@ import {
   buildForwardComposeState,
   buildNewComposeState,
   buildReplyComposeState,
+  buildDraftComposeState,
 } from "~/entities/mail/mail-compose.lib";
+import { downloadMailMessageAttachment } from "~/entities/mail/mail.api";
 import {
-  filterMailMessagesByQuery,
   isTrashFolder,
+  isDraftsFolder,
   resolveSpecialFolderPath,
   sortMailFolders,
   sortMailMessagesByUidDesc,
@@ -37,11 +39,21 @@ export function useMailView() {
   const foldersRaw = useMailStore((s) => s.folders);
   const folderDelimiter = useMailStore((s) => s.folderDelimiter);
   const messagesRaw = useMailStore((s) => s.messages);
+  const searchResults = useMailStore((s) => s.searchResults);
+  const messagesNextCursor = useMailStore((s) => s.messagesNextCursor);
+  const loadingMoreMessages = useMailStore((s) => s.loadingMoreMessages);
+  const messageAttachments = useMailStore((s) => s.messageAttachments);
+  const searchMessages = useMailStore((s) => s.searchMessages);
+  const loadMoreMessages = useMailStore((s) => s.loadMoreMessages);
+  const clearSearch = useMailStore((s) => s.clearSearch);
   const signIn = useMailStore((s) => s.signIn);
   const signOut = useMailStore((s) => s.signOut);
   const selectFolder = useMailStore((s) => s.selectFolder);
   const selectMessage = useMailStore((s) => s.selectMessage);
   const sendMessage = useMailStore((s) => s.sendMessage);
+  const saveDraft = useMailStore((s) => s.saveDraft);
+  const sendDraft = useMailStore((s) => s.sendDraft);
+  const batchMessages = useMailStore((s) => s.batchMessages);
   const deleteMessage = useMailStore((s) => s.deleteMessage);
   const moveMessage = useMailStore((s) => s.moveMessage);
   const setMessageFlags = useMailStore((s) => s.setMessageFlags);
@@ -72,18 +84,21 @@ export function useMailView() {
   const [folderActionPath, setFolderActionPath] = useState<string | null>(null);
   const [folderDialog, setFolderDialog] = useState<FolderDialogKind | null>(null);
   const [folderActionPending, setFolderActionPending] = useState(false);
+  const [composeDraftUid, setComposeDraftUid] = useState<number | null>(null);
+  const [selectedUids, setSelectedUids] = useState<number[]>([]);
+  const [batchMode, setBatchMode] = useState(false);
 
   const folders = useMemo(() => sortMailFolders(foldersRaw), [foldersRaw]);
   const folderActionTarget = useMemo(
     () => folders.find((folder) => folder.path === folderActionPath) ?? null,
     [folderActionPath, folders],
   );
-  const messages = useMemo(() => sortMailMessagesByUidDesc(messagesRaw), [messagesRaw]);
-  const filteredMessages = useMemo(
-    () => filterMailMessagesByQuery(messages, searchQuery),
-    [messages, searchQuery],
+  const messages = useMemo(
+    () => sortMailMessagesByUidDesc(searchResults ?? messagesRaw),
+    [messagesRaw, searchResults],
   );
   const inTrash = useMemo(() => isTrashFolder(selectedFolder), [selectedFolder]);
+  const inDrafts = useMemo(() => isDraftsFolder(selectedFolder), [selectedFolder]);
   const userEmail = session?.email ?? email;
 
   useEffect(() => {
@@ -106,6 +121,20 @@ export function useMailView() {
       void loadFolders();
     });
   }, [session?.token, loadFolders]);
+
+  useEffect(() => {
+    if (!session?.token) return;
+    const timer = setTimeout(() => {
+      void searchMessages(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery, searchMessages, session?.token]);
+
+  useEffect(() => {
+    return () => {
+      clearSearch();
+    };
+  }, [clearSearch]);
 
   const openCompose = useCallback(
     (mode: MailComposeMode, initial: MailComposeInitialState | null) => {
@@ -238,23 +267,87 @@ export function useMailView() {
   );
 
   const handleComposeOpen = useCallback(() => {
+    setComposeDraftUid(null);
     openCompose("new", buildNewComposeState());
   }, [openCompose]);
 
+  const handleEditDraft = useCallback(() => {
+    if (selectedMessage == null || selectedUid == null) return;
+    setComposeDraftUid(selectedUid);
+    openCompose("new", buildDraftComposeState(selectedMessage));
+  }, [openCompose, selectedMessage, selectedUid]);
+
   const handleComposeOpenChange = useCallback((open: boolean) => {
     setComposeOpen(open);
+    if (!open) setComposeDraftUid(null);
   }, []);
 
   const handleComposeSend = useCallback(
     async (payload: MailComposePayload) => {
       try {
-        await sendMessage(payload);
+        if (composeDraftUid != null) {
+          await saveDraft(payload, composeDraftUid);
+          await sendDraft(composeDraftUid);
+        } else {
+          await sendMessage(payload);
+        }
         setComposeOpen(false);
+        setComposeDraftUid(null);
       } catch {
         /* error shown in store */
       }
     },
-    [sendMessage],
+    [composeDraftUid, saveDraft, sendDraft, sendMessage],
+  );
+
+  const handleComposeAutosave = useCallback(
+    async (payload: MailComposePayload) => {
+      if (!inDrafts && composeDraftUid == null) {
+        await saveDraft(payload);
+        return;
+      }
+      await saveDraft(payload, composeDraftUid ?? undefined);
+    },
+    [composeDraftUid, inDrafts, saveDraft],
+  );
+
+  const handleToggleBatchMode = useCallback(() => {
+    setBatchMode((prev) => !prev);
+    setSelectedUids([]);
+  }, []);
+
+  const handleToggleSelectUid = useCallback((uid: number) => {
+    setSelectedUids((prev) =>
+      prev.includes(uid) ? prev.filter((item) => item !== uid) : [...prev, uid],
+    );
+  }, []);
+
+  const handleBatchDelete = useCallback(async () => {
+    if (selectedUids.length === 0) return;
+    await batchMessages(selectedUids, "delete");
+    setSelectedUids([]);
+    setBatchMode(false);
+  }, [batchMessages, selectedUids]);
+
+  const handleDownloadAttachment = useCallback(
+    async (attachmentId: string) => {
+      const token = session?.token;
+      if (token == null || selectedUid == null) return;
+      const meta = messageAttachments.find((item) => item.id === attachmentId);
+      const blob = await downloadMailMessageAttachment(
+        token,
+        selectedFolder,
+        selectedUid,
+        attachmentId,
+      );
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = meta?.filename ?? "attachment";
+      link.click();
+      URL.revokeObjectURL(url);
+    },
+    [messageAttachments, selectedFolder, selectedUid, session?.token],
   );
 
   const handleMoveToFolder = useCallback(
@@ -412,6 +505,10 @@ export function useMailView() {
     if (!open) setFolderDialog(null);
   }, []);
 
+  const handleLoadMore = useCallback(() => {
+    void loadMoreMessages();
+  }, [loadMoreMessages]);
+
   return {
     session,
     signingIn,
@@ -425,13 +522,19 @@ export function useMailView() {
     foldersCompact,
     folders,
     folderDelimiter,
-    filteredMessages,
+    messages,
+    messagesNextCursor,
+    loadingMoreMessages,
+    messageAttachments,
     selectedFolder,
     selectedUid,
     selectedMessage,
     loadingMessages,
     loadingMessage,
     inTrash,
+    inDrafts,
+    batchMode,
+    selectedUids,
     moveDialogOpen,
     createFolderOpen,
     createFolderParent,
@@ -451,6 +554,13 @@ export function useMailView() {
     handleAuthSubmit,
     handleComposeOpen,
     handleComposeOpenChange,
+    composeDraftUid,
+    handleEditDraft,
+    handleComposeAutosave,
+    handleToggleBatchMode,
+    handleToggleSelectUid,
+    handleBatchDelete,
+    handleDownloadAttachment,
     handleComposeSend,
     handlePreviewAction,
     handleMessageAction,
@@ -467,5 +577,6 @@ export function useMailView() {
     handleConfirmDeleteFolder,
     handleConfirmClearFolder,
     handleFolderDialogOpenChange,
+    handleLoadMore,
   };
 }

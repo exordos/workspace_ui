@@ -7,10 +7,15 @@ import { clearMailSessionFromStorage } from "~/entities/mail/mail-session-storag
 import { logStoreAction } from "~/shared/lib/logger";
 import { getMailboxSessionToken } from "./calendar-session.lib";
 import {
+  createCalendarCollection,
   createCalendarEvent,
+  deleteCalendarCollection,
   deleteCalendarEvent,
-  fetchCalendarEvents,
   fetchCalendars,
+  fetchCalendarEvents,
+  importCalendarEventIcs,
+  searchCalendarEvents,
+  updateCalendarCollection,
   updateCalendarEvent,
 } from "./calendar.api";
 import { isCalendarUnauthorizedError } from "./calendar.lib";
@@ -26,6 +31,7 @@ interface CalendarState {
   visibleCalendarIds: string[];
   events: CalendarEvent[];
   selectedEventUid: string | null;
+  selectedRecurrenceId: string | null;
   focusDate: Date;
   viewMode: CalendarViewMode;
   loadingCalendars: boolean;
@@ -36,12 +42,25 @@ interface CalendarState {
   setFocusDate: (date: Date) => void;
   setViewMode: (mode: CalendarViewMode) => void;
   toggleCalendarVisibility: (calendarId: string) => void;
-  selectEvent: (uid: string | null) => void;
+  selectEvent: (uid: string | null, recurrenceId?: string | null) => void;
+  createCalendar: (displayName: string, color?: string | null) => Promise<CalendarInfo>;
+  updateCalendar: (
+    calendarId: string,
+    displayName?: string,
+    color?: string | null,
+  ) => Promise<CalendarInfo>;
+  deleteCalendar: (calendarId: string) => Promise<void>;
   loadCalendars: () => Promise<void>;
   loadEventsForRange: (start: string, end: string) => Promise<void>;
   createEvent: (input: CalendarEventInput) => Promise<CalendarEvent>;
   updateEvent: (eventUid: string, input: CalendarEventInput) => Promise<CalendarEvent>;
-  deleteEvent: (calendarId: string, eventUid: string) => Promise<void>;
+  deleteEvent: (
+    calendarId: string,
+    eventUid: string,
+    options?: { recurrenceId?: string | null; scope?: "this" | "thisAndFuture" | "all" },
+  ) => Promise<void>;
+  searchEvents: (query: string, start: string, end: string) => Promise<void>;
+  importEventIcs: (calendarId: string, ics: string) => Promise<void>;
   clear: () => void;
 }
 
@@ -65,6 +84,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
       visibleCalendarIds: [],
       events: EMPTY_EVENTS,
       selectedEventUid: null,
+      selectedRecurrenceId: null,
       loadingCalendars: false,
       loadingEvents: false,
       saving: false,
@@ -78,6 +98,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
     visibleCalendarIds: [],
     events: EMPTY_EVENTS,
     selectedEventUid: null,
+    selectedRecurrenceId: null,
     focusDate: new Date(),
     viewMode: "month",
     loadingCalendars: false,
@@ -108,9 +129,9 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
       });
     },
 
-    selectEvent: (uid) => {
-      logStoreAction("calendar", "selectEvent", { uid });
-      set({ selectedEventUid: uid });
+    selectEvent: (uid, recurrenceId = null) => {
+      logStoreAction("calendar", "selectEvent", { uid, recurrenceId });
+      set({ selectedEventUid: uid, selectedRecurrenceId: recurrenceId });
     },
 
     loadCalendars: async () => {
@@ -154,6 +175,70 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
       }
     },
 
+    async createCalendar(displayName, color) {
+      set({ saving: true, error: null });
+      try {
+        const token = requireToken();
+        const calendar = await createCalendarCollection(token, displayName, color);
+        logStoreAction("calendar", "createCalendar", { id: calendar.id });
+        set((state) => ({
+          calendars: [...state.calendars, calendar],
+          visibleCalendarIds: [...state.visibleCalendarIds, calendar.id],
+          saving: false,
+        }));
+        return calendar;
+      } catch (error) {
+        if (invalidateIfUnauthorized(error)) throw error;
+        set({
+          saving: false,
+          error: error instanceof Error ? error.message : "Failed to create calendar",
+        });
+        throw error;
+      }
+    },
+
+    async updateCalendar(calendarId, displayName, color) {
+      set({ saving: true, error: null });
+      try {
+        const token = requireToken();
+        const calendar = await updateCalendarCollection(token, calendarId, displayName, color);
+        logStoreAction("calendar", "updateCalendar", { id: calendar.id });
+        set((state) => ({
+          calendars: state.calendars.map((item) => (item.id === calendarId ? calendar : item)),
+          saving: false,
+        }));
+        return calendar;
+      } catch (error) {
+        if (invalidateIfUnauthorized(error)) throw error;
+        set({
+          saving: false,
+          error: error instanceof Error ? error.message : "Failed to update calendar",
+        });
+        throw error;
+      }
+    },
+
+    async deleteCalendar(calendarId) {
+      set({ saving: true, error: null });
+      try {
+        const token = requireToken();
+        await deleteCalendarCollection(token, calendarId);
+        logStoreAction("calendar", "deleteCalendar", { id: calendarId });
+        set((state) => ({
+          calendars: state.calendars.filter((item) => item.id !== calendarId),
+          visibleCalendarIds: state.visibleCalendarIds.filter((id) => id !== calendarId),
+          saving: false,
+        }));
+      } catch (error) {
+        if (invalidateIfUnauthorized(error)) throw error;
+        set({
+          saving: false,
+          error: error instanceof Error ? error.message : "Failed to delete calendar",
+        });
+        throw error;
+      }
+    },
+
     createEvent: async (input) => {
       set({ saving: true, error: null });
       try {
@@ -193,15 +278,31 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
       }
     },
 
-    deleteEvent: async (calendarId, eventUid) => {
+    deleteEvent: async (calendarId, eventUid, options = {}) => {
       set({ saving: true, error: null });
       try {
         const token = requireToken();
-        await deleteCalendarEvent(token, calendarId, eventUid);
-        logStoreAction("calendar", "deleteEvent", { uid: eventUid });
+        const masterEvent = get().events.find(
+          (event) =>
+            event.uid === eventUid &&
+            (options.recurrenceId == null || event.recurrenceId === options.recurrenceId),
+        );
+        await deleteCalendarEvent(token, calendarId, eventUid, {
+          recurrenceId: options.recurrenceId,
+          scope: options.scope,
+          masterEvent,
+        });
+        logStoreAction("calendar", "deleteEvent", { uid: eventUid, scope: options.scope });
         set((state) => ({
-          events: state.events.filter((e) => e.uid !== eventUid),
+          events:
+            options.scope === "this" && options.recurrenceId != null
+              ? state.events.filter(
+                  (event) =>
+                    !(event.uid === eventUid && event.recurrenceId === options.recurrenceId),
+                )
+              : state.events.filter((event) => event.uid !== eventUid),
           selectedEventUid: state.selectedEventUid === eventUid ? null : state.selectedEventUid,
+          selectedRecurrenceId: null,
           saving: false,
         }));
       } catch (error) {
@@ -209,6 +310,46 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
         set({
           saving: false,
           error: error instanceof Error ? error.message : "Failed to delete event",
+        });
+        throw error;
+      }
+    },
+
+    searchEvents: async (query, start, end) => {
+      const trimmed = query.trim();
+      if (trimmed.length === 0) return;
+      set({ loadingEvents: true, error: null });
+      try {
+        const token = requireToken();
+        const calendarIds = get().visibleCalendarIds;
+        const events = await searchCalendarEvents(token, calendarIds, start, end, trimmed);
+        logStoreAction("calendar", "searchEvents", { query: trimmed, count: events.length });
+        set({ events, loadingEvents: false });
+      } catch (error) {
+        if (invalidateIfUnauthorized(error)) throw error;
+        set({
+          loadingEvents: false,
+          error: error instanceof Error ? error.message : "Failed to search events",
+        });
+        throw error;
+      }
+    },
+
+    importEventIcs: async (calendarId, ics) => {
+      set({ saving: true, error: null });
+      try {
+        const token = requireToken();
+        const event = await importCalendarEventIcs(token, calendarId, ics);
+        logStoreAction("calendar", "importEventIcs", { uid: event.uid });
+        set((state) => ({
+          events: [...state.events, event],
+          saving: false,
+        }));
+      } catch (error) {
+        if (invalidateIfUnauthorized(error)) throw error;
+        set({
+          saving: false,
+          error: error instanceof Error ? error.message : "Failed to import event",
         });
         throw error;
       }

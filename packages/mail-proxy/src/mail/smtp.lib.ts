@@ -14,11 +14,13 @@ import type { MailSessionRecord } from "../shared/session/session.lib";
 export interface SendMailOptions {
   to: string;
   cc?: string;
+  bcc?: string;
   subject: string;
   bodyHtml: string;
   bodyText?: string;
   inReplyTo?: string;
   references?: string;
+  attachments?: Array<{ filename: string; content: Buffer; contentType: string }>;
 }
 
 function createTransporter(session: MailSessionRecord) {
@@ -52,6 +54,16 @@ export async function sendMailMessage(
   if (options.cc != null && options.cc.trim().length > 0) {
     mailOptions.cc = options.cc;
   }
+  if (options.bcc != null && options.bcc.trim().length > 0) {
+    mailOptions.bcc = options.bcc;
+  }
+  if (options.attachments != null && options.attachments.length > 0) {
+    mailOptions.attachments = options.attachments.map((item) => ({
+      filename: item.filename,
+      content: item.content,
+      contentType: item.contentType,
+    }));
+  }
   const headers: Record<string, string> = {};
   if (options.inReplyTo != null && options.inReplyTo.length > 0) {
     headers["In-Reply-To"] = options.inReplyTo;
@@ -73,11 +85,13 @@ export async function sendMailMessage(
       from: session.email,
       to: options.to,
       cc: options.cc,
+      bcc: options.bcc,
       subject: options.subject,
       bodyHtml: options.bodyHtml,
       bodyText,
       inReplyTo: options.inReplyTo,
       references: options.references,
+      attachments: options.attachments,
     });
     await appendMailMessage(session, sentFolder, rawMime, ["\\Seen"]);
   } catch {

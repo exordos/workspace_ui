@@ -52,6 +52,21 @@ export interface MailComposeInitialState {
   references?: string;
 }
 
+export type MailBatchAction = "delete" | "move" | "setFlags";
+
+export interface MailAttachmentMeta {
+  id: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
+export interface MailComposeAttachment {
+  filename: string;
+  mimeType: string;
+  contentBase64: string;
+}
+
 export type MailMessageAction =
   | "reply"
   | "replyAll"

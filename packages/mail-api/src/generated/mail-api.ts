@@ -114,14 +114,125 @@ export interface MoveMailMessageRequest {
   toFolder: string;
 }
 
+export interface SendMailAttachment {
+  filename: string;
+  mimeType: string;
+  contentBase64: string;
+}
+
 export interface SendMailRequest {
   to: string;
   cc?: string;
+  bcc?: string;
   subject: string;
   bodyHtml: string;
   bodyText?: string;
   inReplyTo?: string;
   references?: string;
+  attachments?: SendMailAttachment[];
+}
+
+export interface MailAttachmentMeta {
+  id: string;
+  filename: string;
+  mimeType: string;
+  /** @minimum 0 */
+  sizeBytes: number;
+}
+
+export interface MailAttachmentsResponse {
+  attachments: MailAttachmentMeta[];
+}
+
+export interface MailSearchResponse {
+  messages: MailMessageSummary[];
+  /** @nullable */
+  nextCursor: string | null;
+}
+
+export type MailBatchRequestAction = typeof MailBatchRequestAction[keyof typeof MailBatchRequestAction];
+
+
+export const MailBatchRequestAction = {
+  delete: 'delete',
+  move: 'move',
+  setFlags: 'setFlags',
+} as const;
+
+export interface MailBatchRequest {
+  folder: string;
+  uids: number[];
+  action: MailBatchRequestAction;
+  toFolder?: string;
+  addFlags?: string[];
+  removeFlags?: string[];
+}
+
+export type MailSyncResponseFlagChangesItem = {
+  /** @minimum 1 */
+  uid: number;
+  seen: boolean;
+  flagged: boolean;
+};
+
+export interface MailSyncResponse {
+  newMessages: MailMessageSummary[];
+  deletedUids: number[];
+  flagChanges: MailSyncResponseFlagChangesItem[];
+}
+
+export interface MailSessionExchangeRequest {
+  email: string;
+  realmUrl: string;
+  apiKey: string;
+  password?: string;
+}
+
+export interface CreateCalendarRequest {
+  displayName: string;
+  /** @nullable */
+  color?: string | null;
+}
+
+export interface UpdateCalendarRequest {
+  displayName?: string;
+  /** @nullable */
+  color?: string | null;
+}
+
+export interface MoveCalendarEventRequest {
+  fromCalendarId: string;
+  toCalendarId: string;
+  /** @nullable */
+  recurrenceId?: string | null;
+}
+
+export type CalendarEventScope = typeof CalendarEventScope[keyof typeof CalendarEventScope];
+
+
+export const CalendarEventScope = {
+  this: 'this',
+  thisAndFuture: 'thisAndFuture',
+  all: 'all',
+} as const;
+
+export interface FreeBusySlot {
+  start: string;
+  end: string;
+}
+
+export interface FreeBusyEntry {
+  email: string;
+  busy: FreeBusySlot[];
+}
+
+export interface FreeBusyResponse {
+  entries: FreeBusyEntry[];
+}
+
+export interface CalendarImportRequest {
+  calendarId: string;
+  ics: string;
 }
 
 export interface CalendarInfo {
@@ -192,6 +303,9 @@ export interface CalendarIcsRequest {
   calendarId: string;
   ics: string;
   etag?: string;
+  /** @nullable */
+  recurrenceId?: string | null;
+  scope?: CalendarEventScope;
 }
 
 export interface CalendarsResponse {
@@ -266,6 +380,50 @@ export type DeleteMailMessageParams = {
 folder?: string;
 };
 
+export type ListMailMessageAttachmentsParams = {
+folder?: string;
+};
+
+export type GetMailMessageAttachmentParams = {
+folder?: string;
+};
+
+export type SearchMailMessagesParams = {
+q: string;
+folder?: string;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+cursor?: string;
+};
+
+export type SyncMailFolderParams = {
+folder?: string;
+/**
+ * @minimum 0
+ */
+sinceUid?: number;
+};
+
+export type SearchCalendarEventsParams = {
+q: string;
+calendarId: string;
+start: string;
+end: string;
+};
+
+export type QueryCalendarFreeBusyParams = {
+start: string;
+end: string;
+emails: string;
+};
+
+export type ExportCalendarEventParams = {
+calendarId: string;
+};
+
 export type QueryCalendarEventsParams = {
 /**
  * Comma-separated calendar IDs
@@ -277,10 +435,13 @@ end: string;
 
 export type GetCalendarEventParams = {
 calendarId: string;
+recurrenceId?: string;
 };
 
 export type DeleteCalendarEventParams = {
 calendarId: string;
+recurrenceId?: string;
+scope?: CalendarEventScope;
 };
 
 export const getGetHealthUrl = () => {
@@ -302,6 +463,30 @@ export const getHealth = async ( options?: RequestInit): Promise<HealthResponse>
     method: 'GET'
 
 
+  }
+);}
+
+
+
+export const getExchangeMailSessionUrl = () => {
+
+
+
+
+  return `/v1/mail/session/exchange`
+}
+
+/**
+ * @summary Exchange Zulip credentials for mail session
+ */
+export const exchangeMailSession = async (mailSessionExchangeRequest: MailSessionExchangeRequest, options?: RequestInit): Promise<MailSessionResponse> => {
+
+  return customInstance<MailSessionResponse>(getExchangeMailSessionUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(mailSessionExchangeRequest)
   }
 );}
 
@@ -677,6 +862,257 @@ export const deleteMailMessage = async (uid: number,
 
 
 
+export const getListMailMessageAttachmentsUrl = (uid: number,
+    params?: ListMailMessageAttachmentsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/v1/mail/messages/${uid}/attachments?${stringifiedParams}` : `/v1/mail/messages/${uid}/attachments`
+}
+
+/**
+ * @summary List message attachments
+ */
+export const listMailMessageAttachments = async (uid: number,
+    params?: ListMailMessageAttachmentsParams, options?: RequestInit): Promise<MailAttachmentsResponse> => {
+
+  return customInstance<MailAttachmentsResponse>(getListMailMessageAttachmentsUrl(uid,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getGetMailMessageAttachmentUrl = (uid: number,
+    attachmentId: string,
+    params?: GetMailMessageAttachmentParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/v1/mail/messages/${uid}/attachments/${attachmentId}?${stringifiedParams}` : `/v1/mail/messages/${uid}/attachments/${attachmentId}`
+}
+
+/**
+ * @summary Download message attachment
+ */
+export const getMailMessageAttachment = async (uid: number,
+    attachmentId: string,
+    params?: GetMailMessageAttachmentParams, options?: RequestInit): Promise<Blob> => {
+
+  return customInstance<Blob>(getGetMailMessageAttachmentUrl(uid,attachmentId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getSearchMailMessagesUrl = (params: SearchMailMessagesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/v1/mail/search?${stringifiedParams}` : `/v1/mail/search`
+}
+
+/**
+ * @summary Search messages
+ */
+export const searchMailMessages = async (params: SearchMailMessagesParams, options?: RequestInit): Promise<MailSearchResponse> => {
+
+  return customInstance<MailSearchResponse>(getSearchMailMessagesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getSyncMailFolderUrl = (params?: SyncMailFolderParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/v1/mail/sync?${stringifiedParams}` : `/v1/mail/sync`
+}
+
+/**
+ * @summary Sync folder changes since UID
+ */
+export const syncMailFolder = async (params?: SyncMailFolderParams, options?: RequestInit): Promise<MailSyncResponse> => {
+
+  return customInstance<MailSyncResponse>(getSyncMailFolderUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getBatchMailMessagesUrl = () => {
+
+
+
+
+  return `/v1/mail/messages/batch`
+}
+
+/**
+ * @summary Batch message operations
+ */
+export const batchMailMessages = async (mailBatchRequest: MailBatchRequest, options?: RequestInit): Promise<OkResponse> => {
+
+  return customInstance<OkResponse>(getBatchMailMessagesUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(mailBatchRequest)
+  }
+);}
+
+
+
+export const getCreateMailDraftUrl = () => {
+
+
+
+
+  return `/v1/mail/drafts`
+}
+
+/**
+ * @summary Create mail draft
+ */
+export const createMailDraft = async (sendMailRequest: SendMailRequest, options?: RequestInit): Promise<MailMessageResponse> => {
+
+  return customInstance<MailMessageResponse>(getCreateMailDraftUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(sendMailRequest)
+  }
+);}
+
+
+
+export const getUpdateMailDraftUrl = (uid: number,) => {
+
+
+
+
+  return `/v1/mail/drafts/${uid}`
+}
+
+/**
+ * @summary Update mail draft
+ */
+export const updateMailDraft = async (uid: number,
+    sendMailRequest: SendMailRequest, options?: RequestInit): Promise<MailMessageResponse> => {
+
+  return customInstance<MailMessageResponse>(getUpdateMailDraftUrl(uid),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(sendMailRequest)
+  }
+);}
+
+
+
+export const getDeleteMailDraftUrl = (uid: number,) => {
+
+
+
+
+  return `/v1/mail/drafts/${uid}`
+}
+
+/**
+ * @summary Delete mail draft
+ */
+export const deleteMailDraft = async (uid: number, options?: RequestInit): Promise<void> => {
+
+  return customInstance<void>(getDeleteMailDraftUrl(uid),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export const getSendMailDraftUrl = (uid: number,) => {
+
+
+
+
+  return `/v1/mail/drafts/${uid}/send`
+}
+
+/**
+ * @summary Send mail draft
+ */
+export const sendMailDraft = async (uid: number, options?: RequestInit): Promise<OkResponse> => {
+
+  return customInstance<OkResponse>(getSendMailDraftUrl(uid),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
 export const getMoveMailMessageUrl = (uid: number,) => {
 
 
@@ -716,6 +1152,223 @@ export const getListCalendarsUrl = () => {
 export const listCalendars = async ( options?: RequestInit): Promise<CalendarsResponse> => {
 
   return customInstance<CalendarsResponse>(getListCalendarsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getCreateCalendarUrl = () => {
+
+
+
+
+  return `/v1/calendar/calendars`
+}
+
+/**
+ * @summary Create calendar
+ */
+export const createCalendar = async (createCalendarRequest: CreateCalendarRequest, options?: RequestInit): Promise<CalendarInfo> => {
+
+  return customInstance<CalendarInfo>(getCreateCalendarUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createCalendarRequest)
+  }
+);}
+
+
+
+export const getUpdateCalendarUrl = (calendarId: string,) => {
+
+
+
+
+  return `/v1/calendar/calendars/${calendarId}`
+}
+
+/**
+ * @summary Update calendar
+ */
+export const updateCalendar = async (calendarId: string,
+    updateCalendarRequest: UpdateCalendarRequest, options?: RequestInit): Promise<CalendarInfo> => {
+
+  return customInstance<CalendarInfo>(getUpdateCalendarUrl(calendarId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateCalendarRequest)
+  }
+);}
+
+
+
+export const getDeleteCalendarUrl = (calendarId: string,) => {
+
+
+
+
+  return `/v1/calendar/calendars/${calendarId}`
+}
+
+/**
+ * @summary Delete calendar
+ */
+export const deleteCalendar = async (calendarId: string, options?: RequestInit): Promise<void> => {
+
+  return customInstance<void>(getDeleteCalendarUrl(calendarId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export const getSearchCalendarEventsUrl = (params: SearchCalendarEventsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/v1/calendar/events/search?${stringifiedParams}` : `/v1/calendar/events/search`
+}
+
+/**
+ * @summary Search calendar events
+ */
+export const searchCalendarEvents = async (params: SearchCalendarEventsParams, options?: RequestInit): Promise<CalendarEventsResponse> => {
+
+  return customInstance<CalendarEventsResponse>(getSearchCalendarEventsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getImportCalendarEventUrl = () => {
+
+
+
+
+  return `/v1/calendar/events/import`
+}
+
+/**
+ * @summary Import calendar event from ICS
+ */
+export const importCalendarEvent = async (calendarImportRequest: CalendarImportRequest, options?: RequestInit): Promise<CalendarIcsResource> => {
+
+  return customInstance<CalendarIcsResource>(getImportCalendarEventUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(calendarImportRequest)
+  }
+);}
+
+
+
+export const getQueryCalendarFreeBusyUrl = (params: QueryCalendarFreeBusyParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/v1/calendar/freebusy?${stringifiedParams}` : `/v1/calendar/freebusy`
+}
+
+/**
+ * @summary Query free/busy
+ */
+export const queryCalendarFreeBusy = async (params: QueryCalendarFreeBusyParams, options?: RequestInit): Promise<FreeBusyResponse> => {
+
+  return customInstance<FreeBusyResponse>(getQueryCalendarFreeBusyUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getMoveCalendarEventUrl = (eventUid: string,) => {
+
+
+
+
+  return `/v1/calendar/events/${eventUid}/move`
+}
+
+/**
+ * @summary Move event to another calendar
+ */
+export const moveCalendarEvent = async (eventUid: string,
+    moveCalendarEventRequest: MoveCalendarEventRequest, options?: RequestInit): Promise<CalendarIcsResource> => {
+
+  return customInstance<CalendarIcsResource>(getMoveCalendarEventUrl(eventUid),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(moveCalendarEventRequest)
+  }
+);}
+
+
+
+export const getExportCalendarEventUrl = (eventUid: string,
+    params: ExportCalendarEventParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/v1/calendar/events/${eventUid}/export?${stringifiedParams}` : `/v1/calendar/events/${eventUid}/export`
+}
+
+/**
+ * @summary Export event as ICS
+ */
+export const exportCalendarEvent = async (eventUid: string,
+    params: ExportCalendarEventParams, options?: RequestInit): Promise<string> => {
+
+  return customInstance<string>(getExportCalendarEventUrl(eventUid,params),
   {
     ...options,
     method: 'GET'

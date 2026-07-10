@@ -3,21 +3,31 @@
  */
 
 import {
+  batchMailMessages as apiBatchMailMessages,
   clearMailFolder as apiClearMailFolder,
+  createMailDraft as apiCreateMailDraft,
   createMailFolder as apiCreateMailFolder,
   createMailSession as apiCreateMailSession,
+  deleteMailDraft as apiDeleteMailDraft,
   deleteMailFolder as apiDeleteMailFolder,
   deleteMailMessage as apiDeleteMailMessage,
   deleteMailSession as apiDeleteMailSession,
+  exchangeMailSession as apiExchangeMailSession,
   getMailMessage as apiGetMailMessage,
+  getMailMessageAttachment as apiGetMailMessageAttachment,
   listMailFolders as apiListMailFolders,
+  listMailMessageAttachments as apiListMailMessageAttachments,
   listMailMessages as apiListMailMessages,
   markAllMailFolderRead as apiMarkAllMailFolderRead,
   moveMailFolder as apiMoveMailFolder,
   moveMailMessage as apiMoveMailMessage,
   patchMailMessageFlags as apiPatchMailMessageFlags,
   renameMailFolder as apiRenameMailFolder,
+  searchMailMessages as apiSearchMailMessages,
+  sendMailDraft as apiSendMailDraft,
   sendMailMessage as apiSendMailMessage,
+  syncMailFolder as apiSyncMailFolder,
+  updateMailDraft as apiUpdateMailDraft,
 } from "@mail/api/mail-api.generated";
 import { mailApiAuthOptions, MailApiHttpError } from "~/shared/api/mail-orval-mutator";
 import {
@@ -28,12 +38,14 @@ import {
 import { detectMailFolderDelimiter } from "./mail-folder-tree.lib";
 import {
   buildCreateFolderPath,
+  parseDraftMailPayload,
   parseMessageFlagsPayload,
   parseMoveMailPayload,
   parseSendMailPayload,
   parseSessionPayload,
 } from "./mail-validation.lib";
 import type {
+  MailAttachmentMeta,
   MailComposePayload,
   MailCreateFolderInput,
   MailFlagsPatch,
@@ -44,6 +56,7 @@ import type {
   MailMoveFolderInput,
   MailRenameFolderInput,
   MailSessionInfo,
+  MailBatchAction,
 } from "./mail.types";
 
 export { MailApiHttpError as MailApiError };
@@ -183,4 +196,121 @@ export async function moveMailMessage(
 export async function sendMailMessage(token: string, payload: MailComposePayload): Promise<void> {
   const validated = parseSendMailPayload(payload);
   await apiSendMailMessage(validated, mailApiAuthOptions(token));
+}
+
+export async function exchangeMailSession(
+  email: string,
+  realmUrl: string,
+  apiKey: string,
+  password?: string,
+): Promise<MailSessionInfo> {
+  const data = await apiExchangeMailSession({ email, realmUrl, apiKey, password });
+  return {
+    token: data.sessionToken,
+    expiresAt: data.expiresAt,
+    email: data.email,
+  };
+}
+
+export async function fetchMailMessageAttachments(
+  token: string,
+  folder: string,
+  uid: number,
+): Promise<MailAttachmentMeta[]> {
+  const data = await apiListMailMessageAttachments(uid, { folder }, mailApiAuthOptions(token));
+  return Array.isArray(data.attachments) ? data.attachments : [];
+}
+
+export async function downloadMailMessageAttachment(
+  token: string,
+  folder: string,
+  uid: number,
+  attachmentId: string,
+): Promise<Blob> {
+  return apiGetMailMessageAttachment(uid, attachmentId, { folder }, mailApiAuthOptions(token));
+}
+
+export async function searchMailMessages(
+  token: string,
+  query: string,
+  folder?: string | null,
+  limit = 50,
+  cursor?: string | null,
+): Promise<{ messages: MailMessageSummary[]; nextCursor: string | null }> {
+  const data = await apiSearchMailMessages(
+    {
+      q: query,
+      limit,
+      ...(folder != null && folder.length > 0 ? { folder } : {}),
+      ...(cursor != null && cursor.length > 0 ? { cursor } : {}),
+    },
+    mailApiAuthOptions(token),
+  );
+  return {
+    messages: Array.isArray(data.messages) ? data.messages : [],
+    nextCursor: data.nextCursor ?? null,
+  };
+}
+
+export async function syncMailFolder(
+  token: string,
+  folder: string,
+  sinceUid: number,
+): Promise<{
+  newMessages: MailMessageSummary[];
+  deletedUids: number[];
+  flagChanges: { uid: number; seen: boolean; flagged: boolean }[];
+}> {
+  return apiSyncMailFolder({ folder, sinceUid }, mailApiAuthOptions(token));
+}
+
+export async function batchMailMessages(
+  token: string,
+  folder: string,
+  uids: number[],
+  action: MailBatchAction,
+  options: {
+    toFolder?: string;
+    addFlags?: string[];
+    removeFlags?: string[];
+  } = {},
+): Promise<void> {
+  await apiBatchMailMessages(
+    {
+      folder,
+      uids,
+      action,
+      toFolder: options.toFolder,
+      addFlags: options.addFlags,
+      removeFlags: options.removeFlags,
+    },
+    mailApiAuthOptions(token),
+  );
+}
+
+export async function createMailDraft(
+  token: string,
+  payload: MailComposePayload,
+): Promise<MailMessageDetail> {
+  const validated = parseDraftMailPayload(payload);
+  const data = await apiCreateMailDraft(validated, mailApiAuthOptions(token));
+  return data.message;
+}
+
+export async function updateMailDraft(
+  token: string,
+  uid: number,
+  payload: MailComposePayload,
+): Promise<MailMessageDetail> {
+  const validated = parseDraftMailPayload(payload);
+  const data = await apiUpdateMailDraft(uid, validated, mailApiAuthOptions(token));
+  return data.message;
+}
+
+export async function deleteMailDraft(token: string, uid: number): Promise<void> {
+  await apiDeleteMailDraft(uid, mailApiAuthOptions(token));
+}
+
+export async function sendMailDraft(token: string, uid: number): Promise<void> {
+  await apiSendMailDraft(uid, mailApiAuthOptions(token));
 }

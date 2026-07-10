@@ -4,13 +4,18 @@ import { MailMessageActionBar } from "~/features/mail-message-actions/mail-messa
 import { t } from "~/i18n/i18n";
 import { formatMailMessageDetailTime } from "~/shared/lib/datetime.lib";
 import { sanitizeHtml } from "~/shared/lib/html";
+import { Button } from "~/shared/ui/button";
 import type { MailMessagePreviewProps } from "./mail-view.types";
 
 export const MailMessagePreview: React.FC<MailMessagePreviewProps> = ({
   loading,
   message,
+  attachments = [],
   inTrash,
+  inDrafts = false,
   onAction,
+  onEditDraft,
+  onDownloadAttachment,
 }) => {
   const previewBody = useMemo(() => {
     if (message == null) return null;
@@ -53,8 +58,30 @@ export const MailMessagePreview: React.FC<MailMessagePreviewProps> = ({
           </p>
         </div>
         <MailMessageActionBar message={message} inTrash={inTrash} onAction={onAction} />
+        {inDrafts && onEditDraft != null ? (
+          <Button type="button" size="sm" variant="ghost" onClick={onEditDraft}>
+            {t("mail.editDraft")}
+          </Button>
+        ) : null}
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto p-4 text-sm text-text-primary">
+        {attachments.length > 0 ? (
+          <ul className="mb-4 flex flex-wrap gap-2">
+            {attachments.map((attachment) => (
+              <li key={attachment.id}>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="rounded-lg border border-border-subtle bg-card-bg px-3 py-2 text-xs text-text-secondary"
+                  onClick={() => onDownloadAttachment?.(attachment.id)}
+                >
+                  {attachment.filename} ({Math.round(attachment.sizeBytes / 1024)} KB)
+                </Button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
         {previewBody?.mode === "html" ? (
           <div
             className="mail-body max-w-none text-text-primary"

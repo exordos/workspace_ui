@@ -12,6 +12,7 @@ import {
   sogoDavUserSegment,
   toCalDavTimeRangeValue,
 } from "./caldav-url.lib";
+import { formatEtagForIfMatch, normalizeStoredEtag } from "./caldav-etag.lib";
 import { mailProxyEnv } from "../shared/env.lib";
 import type { MailSessionRecord } from "../shared/session/session.lib";
 import type { CalendarInfo } from "@mail/api/mail-api.generated";
@@ -250,7 +251,7 @@ export async function queryCalendarEvents(
     for (const block of blocks) {
       const calendarData = extractXmlTag(block, "calendar-data");
       if (calendarData == null || calendarData.length === 0) continue;
-      const etag = extractXmlTag(block, "getetag")?.replace(/^"|"$/g, "") ?? null;
+      const etag = normalizeStoredEtag(extractXmlTag(block, "getetag"));
       const decoded = decodeCalendarDataXml(calendarData);
       items.push({ calendarId, etag, ics: decoded });
     }
@@ -280,7 +281,7 @@ export async function getCalendarEvent(
     throw new Error(`CalDAV GET failed (${response.status})`);
   }
   const ics = await response.text();
-  const etag = response.headers.get("etag");
+  const etag = normalizeStoredEtag(response.headers.get("etag"));
   return { calendarId, etag, ics };
 }
 
@@ -316,7 +317,7 @@ export async function updateCalendarEvent(
   const url = eventResourceUrl(session, calendarId, eventUid);
   const headers: Record<string, string> = { "Content-Type": "text/calendar; charset=utf-8" };
   if (etag != null && etag.length > 0) {
-    headers["If-Match"] = etag;
+    headers["If-Match"] = formatEtagForIfMatch(etag);
   }
 
   const response = await caldavFetch(session, url, {
@@ -338,13 +339,206 @@ export async function deleteCalendarEvent(
   session: MailSessionRecord,
   calendarId: string,
   eventUid: string,
+  options: {
+    recurrenceId?: string;
+    scope?: "this" | "thisAndFuture" | "all";
+    ics?: string;
+  } = {},
 ): Promise<void> {
+  if (options.scope === "this" && options.ics != null && options.ics.length > 0) {
+    await updateCalendarEvent(session, eventUid, calendarId, options.ics);
+    return;
+  }
+
   const url = eventResourceUrl(session, calendarId, eventUid);
   const response = await caldavFetch(session, url, { method: "DELETE" });
   if (response.status === 404) return;
   if (!response.ok) {
     throw new Error(`CalDAV DELETE failed (${response.status})`);
   }
+}
+
+function slugifyCalendarId(displayName: string): string {
+  const slug = displayName
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug.length > 0 ? slug : `calendar-${Date.now()}`;
+}
+
+export async function createCalendar(
+  session: MailSessionRecord,
+  displayName: string,
+  color?: string,
+): Promise<CalendarInfo> {
+  const homeUrl = await resolveCalendarHomeUrl(session);
+  const calendarId = slugifyCalendarId(displayName);
+  const collectionUrl = `${homeUrl}${encodeURIComponent(calendarId)}/`;
+  const mkcolBody = `<?xml version="1.0" encoding="utf-8"?>
+<C:mkcalendar xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav" xmlns:ICAL="http://apple.com/ns/ical/">
+  <D:set>
+    <D:prop>
+      <D:displayname>${displayName}</D:displayname>
+      <C:supported-calendar-component-set>
+        <C:comp name="VEVENT"/>
+      </C:supported-calendar-component-set>
+      ${color != null ? `<ICAL:calendar-color>${color}</ICAL:calendar-color>` : ""}
+    </D:prop>
+  </D:set>
+</C:mkcalendar>`;
+
+  const response = await caldavFetch(session, collectionUrl, {
+    method: "MKCALENDAR",
+    headers: { "Content-Type": "application/xml; charset=utf-8" },
+    body: mkcolBody,
+  });
+  if (!response.ok) {
+    throw new Error(`CalDAV MKCALENDAR failed (${response.status})`);
+  }
+  return { id: calendarId, displayName, color: color ?? null, ctag: null };
+}
+
+export async function updateCalendar(
+  session: MailSessionRecord,
+  calendarId: string,
+  displayName?: string,
+  color?: string | null,
+): Promise<CalendarInfo> {
+  const collectionUrl = calendarCollectionUrl(session, calendarId);
+  const props: string[] = [];
+  if (displayName != null) {
+    props.push(`<D:displayname>${displayName}</D:displayname>`);
+  }
+  if (color !== undefined) {
+    props.push(
+      color == null
+        ? "<ICAL:calendar-color xmlns:ICAL=\"http://apple.com/ns/ical/\"/>"
+        : `<ICAL:calendar-color xmlns:ICAL="http://apple.com/ns/ical/">${color}</ICAL:calendar-color>`,
+    );
+  }
+  if (props.length === 0) {
+    throw new Error("No calendar properties to update");
+  }
+
+  const body = `<?xml version="1.0" encoding="utf-8"?>
+<D:propertyupdate xmlns:D="DAV:" xmlns:ICAL="http://apple.com/ns/ical/">
+  <D:set><D:prop>${props.join("")}</D:prop></D:set>
+</D:propertyupdate>`;
+
+  const response = await caldavFetch(session, collectionUrl, {
+    method: "PROPPATCH",
+    headers: { "Content-Type": "application/xml; charset=utf-8" },
+    body,
+  });
+  if (!response.ok) {
+    throw new Error(`CalDAV PROPPATCH failed (${response.status})`);
+  }
+
+  const calendars = await listCalendars(session);
+  const updated = calendars.find((item) => item.id === calendarId);
+  if (updated == null) {
+    return { id: calendarId, displayName: displayName ?? calendarId, color: color ?? null, ctag: null };
+  }
+  return updated;
+}
+
+export async function deleteCalendar(
+  session: MailSessionRecord,
+  calendarId: string,
+): Promise<void> {
+  const collectionUrl = calendarCollectionUrl(session, calendarId);
+  const response = await caldavFetch(session, collectionUrl, { method: "DELETE" });
+  if (response.status === 404) return;
+  if (!response.ok) {
+    throw new Error(`CalDAV DELETE calendar failed (${response.status})`);
+  }
+}
+
+export async function moveCalendarEvent(
+  session: MailSessionRecord,
+  eventUid: string,
+  fromCalendarId: string,
+  toCalendarId: string,
+): Promise<CalendarIcsResource> {
+  const existing = await getCalendarEvent(session, fromCalendarId, eventUid);
+  if (existing == null) {
+    throw new Error("Event not found");
+  }
+  const created = await createCalendarEvent(session, toCalendarId, existing.ics);
+  await deleteCalendarEvent(session, fromCalendarId, eventUid);
+  return created;
+}
+
+export async function exportCalendarEvent(
+  session: MailSessionRecord,
+  calendarId: string,
+  eventUid: string,
+): Promise<string> {
+  const resource = await getCalendarEvent(session, calendarId, eventUid);
+  if (resource == null) {
+    throw new Error("Event not found");
+  }
+  return resource.ics;
+}
+
+export async function searchCalendarEvents(
+  session: MailSessionRecord,
+  calendarIds: string[],
+  startIso: string,
+  endIso: string,
+  query: string,
+): Promise<CalendarIcsResource[]> {
+  const items = await queryCalendarEvents(session, calendarIds, startIso, endIso);
+  const needle = query.trim().toLowerCase();
+  if (needle.length === 0) return items;
+  return items.filter((item) => item.ics.toLowerCase().includes(needle));
+}
+
+export async function queryCalendarFreeBusy(
+  session: MailSessionRecord,
+  startIso: string,
+  endIso: string,
+  emails: string[],
+): Promise<Array<{ email: string; busy: Array<{ start: string; end: string }> }>> {
+  const homeUrl = await resolveCalendarHomeUrl(session);
+  const rangeStartCal = toCalDavTimeRangeValue(startIso);
+  const rangeEndCal = toCalDavTimeRangeValue(endIso);
+  const entries: Array<{ email: string; busy: Array<{ start: string; end: string }> }> = [];
+
+  for (const email of emails) {
+    const reportBody = `<?xml version="1.0" encoding="utf-8"?>
+<C:free-busy-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+  <C:time-range start="${rangeStartCal}" end="${rangeEndCal}"/>
+  <D:prop><C:calendar-data/></D:prop>
+</C:free-busy-query>`;
+
+    const url = `${homeUrl}${encodeURIComponent(email)}/`;
+    const response = await caldavFetch(session, url, {
+      method: "REPORT",
+      headers: {
+        Depth: "0",
+        "Content-Type": "application/xml; charset=utf-8",
+      },
+      body: reportBody,
+    });
+
+    const busy: Array<{ start: string; end: string }> = [];
+    if (response.ok) {
+      const xml = await response.text();
+      const fbMatches = xml.matchAll(/FREEBUSY:([^\s]+)\/([^\s;]+)/g);
+      for (const match of fbMatches) {
+        const start = match[1];
+        const end = match[2];
+        if (start != null && end != null) {
+          busy.push({ start, end });
+        }
+      }
+    }
+    entries.push({ email, busy });
+  }
+
+  return entries;
 }
 
 export async function verifyCaldavCredentials(session: MailSessionRecord): Promise<void> {

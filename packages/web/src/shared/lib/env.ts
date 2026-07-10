@@ -184,6 +184,9 @@ export const env = {
     return "";
   })(),
 
+  /** When true, mail/calendar REST calls use Workspace API gateway instead of standalone mail-proxy. */
+  MAIL_USE_WORKSPACE_GATEWAY: optional("VITE_MAIL_USE_WORKSPACE_GATEWAY") === "true",
+
   /**
    * Optional default organization URL for the login page quick-fill CTA.
    * When set, the login page shows a button that inserts this realm into the organization field.

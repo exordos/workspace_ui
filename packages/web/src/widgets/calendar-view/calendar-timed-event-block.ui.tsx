@@ -8,7 +8,7 @@ export interface CalendarTimedEventBlockProps {
   heightPx: number;
   leftPercent: number;
   widthPercent: number;
-  onSelect: (uid: string) => void;
+  onSelect: (uid: string, recurrenceId?: string | null) => void;
 }
 
 export const CalendarTimedEventBlock = React.memo<CalendarTimedEventBlockProps>(
@@ -24,9 +24,9 @@ export const CalendarTimedEventBlock = React.memo<CalendarTimedEventBlockProps>(
     const handleClick = useCallback(
       (e: React.MouseEvent) => {
         e.stopPropagation();
-        onSelect(event.uid);
+        onSelect(event.uid, event.recurrenceId);
       },
-      [event.uid, onSelect],
+      [event.recurrenceId, event.uid, onSelect],
     );
 
     return (

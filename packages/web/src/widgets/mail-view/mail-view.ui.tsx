@@ -29,13 +29,19 @@ export const MailView: React.FC = () => {
     foldersCompact,
     folders,
     folderDelimiter,
-    filteredMessages,
+    messages,
+    messagesNextCursor,
+    loadingMoreMessages,
+    messageAttachments,
     selectedFolder,
     selectedUid,
     selectedMessage,
     loadingMessages,
     loadingMessage,
     inTrash,
+    inDrafts,
+    batchMode,
+    selectedUids,
     moveDialogOpen,
     createFolderOpen,
     createFolderParent,
@@ -70,6 +76,13 @@ export const MailView: React.FC = () => {
     handleConfirmDeleteFolder,
     handleConfirmClearFolder,
     handleFolderDialogOpenChange,
+    handleLoadMore,
+    handleEditDraft,
+    handleComposeAutosave,
+    handleToggleBatchMode,
+    handleToggleSelectUid,
+    handleBatchDelete,
+    handleDownloadAttachment,
   } = useMailView();
 
   const clearFolderIsTrash = useMemo(
@@ -94,9 +107,13 @@ export const MailView: React.FC = () => {
     <div className="flex h-full min-h-0 flex-1 flex-col p-3">
       <MailViewToolbar
         searchQuery={searchQuery}
+        batchMode={batchMode}
+        selectedCount={selectedUids.length}
         onSearchChange={setSearchQuery}
         onComposeOpen={handleComposeOpen}
         onSignOut={handleSignOut}
+        onToggleBatchMode={handleToggleBatchMode}
+        onBatchDelete={handleBatchDelete}
       />
 
       {error != null && error.length > 0 ? (
@@ -126,18 +143,28 @@ export const MailView: React.FC = () => {
         </aside>
         <section className="flex min-h-0 flex-col border-b border-border-subtle lg:border-b-0 lg:border-r">
           <MailMessageList
-            messages={filteredMessages}
+            messages={messages}
             selectedUid={selectedUid}
             loading={loadingMessages}
+            loadingMore={loadingMoreMessages}
+            hasMore={messagesNextCursor != null}
+            batchMode={batchMode}
+            selectedUids={selectedUids}
+            onLoadMore={handleLoadMore}
             onSelectMessage={handleSelectMessage}
+            onToggleSelectUid={handleToggleSelectUid}
           />
         </section>
         <section className="min-h-0 min-w-0 overflow-visible">
           <MailMessagePreview
             loading={loadingMessage}
             message={selectedMessage}
+            attachments={messageAttachments}
             inTrash={inTrash}
+            inDrafts={inDrafts}
             onAction={handlePreviewAction}
+            onEditDraft={handleEditDraft}
+            onDownloadAttachment={handleDownloadAttachment}
           />
         </section>
       </div>
@@ -150,6 +177,7 @@ export const MailView: React.FC = () => {
         error={null}
         onOpenChange={handleComposeOpenChange}
         onSend={handleComposeSend}
+        onAutosave={handleComposeAutosave}
       />
 
       <MailMoveFolderDialog

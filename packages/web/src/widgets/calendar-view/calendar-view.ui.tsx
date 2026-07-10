@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useCallback } from "react";
 import { CalendarEventFormDialog } from "~/features/calendar-event-form/calendar-event-form.ui";
+import { CalendarRecurrenceScopeDialog } from "~/features/calendar-recurrence-scope/calendar-recurrence-scope-dialog.ui";
 import { MailSignInDialog } from "~/features/mail-sign-in/mail-sign-in.ui";
 import { t } from "~/i18n/i18n";
 import { CalendarDayGrid } from "./calendar-day-grid.ui";
@@ -25,13 +26,20 @@ export const CalendarView: React.FC = () => {
     weekDays,
     eventsByDay,
     selectedEvent,
+    selectedCalendarName,
+    selectedCalendarColor,
     selectedIsoDate,
     loadingEvents,
     saving,
     formOpen,
     editingEvent,
+    draftStart,
     toolbarTitle,
+    searchQuery,
+    scopeDialogOpen,
+    pendingScopeAction,
     setEmail,
+    setSearchQuery,
     setViewMode,
     toggleCalendarVisibility,
     selectEvent,
@@ -44,11 +52,27 @@ export const CalendarView: React.FC = () => {
     handleToday,
     handleSelectDay,
     handleNewEvent,
+    handleSelectTimeSlot,
     handleEditEvent,
     handleDeleteEvent,
     handleFormSubmit,
     handleFormOpenChange,
+    handleRecurrenceScopeSelect,
+    handleScopeDialogOpenChange,
+    handleCreateCalendar,
+    handleDeleteCalendar,
+    handleImportIcs,
   } = useCalendarView();
+
+  const handleImportFile = useCallback(
+    async (file: File) => {
+      const calendarId = visibleCalendarIds[0];
+      if (calendarId == null) return;
+      const ics = await file.text();
+      await handleImportIcs(calendarId, ics);
+    },
+    [handleImportIcs, visibleCalendarIds],
+  );
 
   if (!session) {
     return (
@@ -68,6 +92,9 @@ export const CalendarView: React.FC = () => {
       <CalendarToolbar
         viewMode={viewMode}
         title={toolbarTitle}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        onImportIcs={handleImportFile}
         onViewModeChange={setViewMode}
         onPrev={handlePrev}
         onNext={handleNext}
@@ -82,6 +109,8 @@ export const CalendarView: React.FC = () => {
           focusDate={focusDate}
           onToggleCalendar={toggleCalendarVisibility}
           onSelectDate={handleSelectDay}
+          onCreateCalendar={handleCreateCalendar}
+          onDeleteCalendar={handleDeleteCalendar}
           getCalendarColor={getCalendarColor}
         />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -105,6 +134,7 @@ export const CalendarView: React.FC = () => {
                 events={events}
                 getEventColor={getEventColor}
                 onSelectEvent={selectEvent}
+                onSelectTimeSlot={handleSelectTimeSlot}
               />
             </div>
           ) : null}
@@ -115,12 +145,15 @@ export const CalendarView: React.FC = () => {
                 events={events}
                 getEventColor={getEventColor}
                 onSelectEvent={selectEvent}
+                onSelectTimeSlot={handleSelectTimeSlot}
               />
             </div>
           ) : null}
         </div>
         <CalendarEventDetail
           event={selectedEvent}
+          calendarName={selectedCalendarName}
+          calendarColor={selectedCalendarColor}
           saving={saving}
           onEdit={handleEditEvent}
           onDelete={handleDeleteEvent}
@@ -132,10 +165,19 @@ export const CalendarView: React.FC = () => {
         calendars={calendars}
         initialEvent={editingEvent}
         focusDate={focusDate}
+        draftStart={draftStart}
         saving={saving}
         onOpenChange={handleFormOpenChange}
         onSubmit={handleFormSubmit}
       />
+      {pendingScopeAction != null ? (
+        <CalendarRecurrenceScopeDialog
+          open={scopeDialogOpen}
+          action={pendingScopeAction}
+          onOpenChange={handleScopeDialogOpenChange}
+          onSelect={handleRecurrenceScopeSelect}
+        />
+      ) : null}
     </div>
   );
 };

@@ -65,6 +65,41 @@ export function getNowIndicatorTopPx(now: Date, hourHeightPx = CALENDAR_HOUR_HEI
   return minutesToGridTopPx(getMinutesFromDayStart(now), hourHeightPx);
 }
 
+/** Default snap interval when creating an event from a time-grid click. */
+export const CALENDAR_TIME_SLOT_SNAP_MINUTES = 15;
+
+export function snapMinutesToInterval(
+  minutes: number,
+  interval = CALENDAR_TIME_SLOT_SNAP_MINUTES,
+): number {
+  return Math.round(minutes / interval) * interval;
+}
+
+/** Map a vertical offset inside a day column to a local start time (snapped). */
+export function dateFromGridOffsetPx(
+  offsetPx: number,
+  day: Date,
+  hourHeightPx = CALENDAR_HOUR_HEIGHT_PX,
+  snapMinutes = CALENDAR_TIME_SLOT_SNAP_MINUTES,
+): Date {
+  const rawMinutes = (offsetPx / hourHeightPx) * 60;
+  const clamped = Math.min(Math.max(rawMinutes, 0), MINUTES_PER_DAY);
+  const snapped = Math.min(
+    snapMinutesToInterval(clamped, snapMinutes),
+    MINUTES_PER_DAY - snapMinutes,
+  );
+  const result = new Date(day);
+  result.setHours(0, 0, 0, 0);
+  result.setMinutes(snapped);
+  return result;
+}
+
+export function formatLocalTimeHHmm(date: Date): string {
+  const h = String(date.getHours()).padStart(2, "0");
+  const m = String(date.getMinutes()).padStart(2, "0");
+  return `${h}:${m}`;
+}
+
 export interface TimedEventLayout {
   event: CalendarEvent;
   topPx: number;

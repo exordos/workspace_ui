@@ -19,16 +19,24 @@ import {
   fetchMailFolders,
   fetchMailMessage,
   fetchMailMessages,
+  fetchMailMessageAttachments,
   markAllMailFolderRead,
   moveMailFolder,
   moveMailMessage,
   patchMailMessageFlags,
   renameMailFolder,
+  searchMailMessages,
   sendMailMessage,
+  createMailDraft,
+  updateMailDraft,
+  sendMailDraft,
+  batchMailMessages,
 } from "./mail.api";
 import { isTrashFolder, resolveSpecialFolderPath, selectAdjacentMessageUid } from "./mail.lib";
 import { invalidateMailSessionIfUnauthorized, resolveMailActionError } from "./mail.model.lib";
 import type {
+  MailAttachmentMeta,
+  MailBatchAction,
   MailComposePayload,
   MailCreateFolderInput,
   MailFlagsPatch,
@@ -45,6 +53,11 @@ interface MailState {
   folders: MailFolder[];
   folderDelimiter: string;
   messages: MailMessageSummary[];
+  messagesNextCursor: string | null;
+  loadingMoreMessages: boolean;
+  searchQuery: string;
+  searchResults: MailMessageSummary[] | null;
+  messageAttachments: MailAttachmentMeta[];
   selectedFolder: string;
   selectedUid: number | null;
   selectedMessage: MailMessageDetail | null;
@@ -60,6 +73,17 @@ interface MailState {
   signOut: () => Promise<void>;
   loadFolders: () => Promise<void>;
   selectFolder: (folderPath: string) => Promise<void>;
+  loadMoreMessages: () => Promise<void>;
+  searchMessages: (query: string) => Promise<void>;
+  clearSearch: () => void;
+  loadMessageAttachments: (uid: number) => Promise<void>;
+  saveDraft: (payload: MailComposePayload, uid?: number) => Promise<void>;
+  sendDraft: (uid: number) => Promise<void>;
+  batchMessages: (
+    uids: number[],
+    action: MailBatchAction,
+    options?: { toFolder?: string; addFlags?: string[]; removeFlags?: string[] },
+  ) => Promise<void>;
   selectMessage: (uid: number, options?: { markSeen?: boolean }) => Promise<void>;
   sendMessage: (payload: MailComposePayload) => Promise<void>;
   deleteMessage: (uid: number) => Promise<void>;
@@ -131,6 +155,11 @@ export const useMailStore = create<MailState>((set, get) => {
     folders: [],
     folderDelimiter: ".",
     messages: [],
+    messagesNextCursor: null,
+    loadingMoreMessages: false,
+    searchQuery: "",
+    searchResults: null,
+    messageAttachments: [],
     selectedFolder: "INBOX",
     selectedUid: null,
     selectedMessage: null,
@@ -209,14 +238,147 @@ export const useMailStore = create<MailState>((set, get) => {
         error: null,
       });
       try {
-        const { messages } = await fetchMailMessages(token, folderPath);
-        set({ messages, loadingMessages: false });
+        const { messages, nextCursor } = await fetchMailMessages(token, folderPath);
+        set({
+          messages,
+          messagesNextCursor: nextCursor,
+          loadingMessages: false,
+          searchResults: null,
+          searchQuery: "",
+        });
       } catch (error) {
         invalidateSessionIfUnauthorized(error);
         set({
           loadingMessages: false,
           error: resolveMailActionError(error, "mail.errors.loadMessages"),
         });
+      }
+    },
+
+    async loadMoreMessages() {
+      const token = get().session?.token;
+      const folder = get().selectedFolder;
+      const cursor = get().messagesNextCursor;
+      if (!token || cursor == null) return;
+      set({ loadingMoreMessages: true, error: null });
+      try {
+        const { messages, nextCursor } = await fetchMailMessages(token, folder, 50, cursor);
+        set({
+          messages: [...get().messages, ...messages],
+          messagesNextCursor: nextCursor,
+          loadingMoreMessages: false,
+        });
+      } catch (error) {
+        invalidateSessionIfUnauthorized(error);
+        set({
+          loadingMoreMessages: false,
+          error: resolveMailActionError(error, "mail.errors.loadMessages"),
+        });
+      }
+    },
+
+    async searchMessages(query) {
+      const token = get().session?.token;
+      if (!token) return;
+      const trimmed = query.trim();
+      set({ searchQuery: trimmed, loadingMessages: true, error: null });
+      if (trimmed.length === 0) {
+        set({ searchResults: null, loadingMessages: false });
+        await get().selectFolder(get().selectedFolder);
+        return;
+      }
+      try {
+        const { messages, nextCursor } = await searchMailMessages(
+          token,
+          trimmed,
+          get().selectedFolder,
+        );
+        set({
+          searchResults: messages,
+          messagesNextCursor: nextCursor,
+          loadingMessages: false,
+        });
+      } catch (error) {
+        invalidateSessionIfUnauthorized(error);
+        set({
+          loadingMessages: false,
+          error: resolveMailActionError(error, "mail.errors.loadMessages"),
+        });
+      }
+    },
+
+    clearSearch() {
+      set({ searchQuery: "", searchResults: null });
+    },
+
+    async loadMessageAttachments(uid) {
+      const token = get().session?.token;
+      const folder = get().selectedFolder;
+      if (!token) return;
+      try {
+        const attachments = await fetchMailMessageAttachments(token, folder, uid);
+        set({ messageAttachments: attachments });
+      } catch (error) {
+        invalidateSessionIfUnauthorized(error);
+        set({ messageAttachments: [] });
+      }
+    },
+
+    async saveDraft(payload, uid) {
+      const token = get().session?.token;
+      if (!token) return;
+      logStoreAction("mail", "saveDraft", { uid });
+      set({ sending: true, error: null });
+      try {
+        if (uid != null) {
+          await updateMailDraft(token, uid, payload);
+        } else {
+          await createMailDraft(token, payload);
+        }
+        set({ sending: false });
+        await get().loadFolders();
+      } catch (error) {
+        invalidateSessionIfUnauthorized(error);
+        set({
+          sending: false,
+          error: resolveMailActionError(error, "mail.errors.sendMessage"),
+        });
+        throw error;
+      }
+    },
+
+    async sendDraft(uid) {
+      const token = get().session?.token;
+      if (!token) return;
+      logStoreAction("mail", "sendDraft", { uid });
+      set({ sending: true, error: null });
+      try {
+        await sendMailDraft(token, uid);
+        set({ sending: false });
+        await get().selectFolder(get().selectedFolder);
+      } catch (error) {
+        invalidateSessionIfUnauthorized(error);
+        set({
+          sending: false,
+          error: resolveMailActionError(error, "mail.errors.sendMessage"),
+        });
+        throw error;
+      }
+    },
+
+    async batchMessages(uids, action, options = {}) {
+      const token = get().session?.token;
+      const folder = get().selectedFolder;
+      if (!token || uids.length === 0) return;
+      logStoreAction("mail", "batchMessages", { action, count: uids.length });
+      set({ error: null });
+      try {
+        await batchMailMessages(token, folder, uids, action, options);
+        await get().selectFolder(folder);
+      } catch (error) {
+        invalidateSessionIfUnauthorized(error);
+        set({ error: resolveMailActionError(error, "mail.errors.moveMessage") });
+        throw error;
       }
     },
 
@@ -248,7 +410,9 @@ export const useMailStore = create<MailState>((set, get) => {
           loadingMessage: false,
           messages,
           folders,
+          messageAttachments: [],
         });
+        await get().loadMessageAttachments(uid);
       } catch (error) {
         invalidateSessionIfUnauthorized(error);
         set({
@@ -481,6 +645,11 @@ export const useMailStore = create<MailState>((set, get) => {
         folders: [],
         folderDelimiter: ".",
         messages: [],
+        messagesNextCursor: null,
+        loadingMoreMessages: false,
+        searchQuery: "",
+        searchResults: null,
+        messageAttachments: [],
         selectedFolder: "INBOX",
         selectedUid: null,
         selectedMessage: null,

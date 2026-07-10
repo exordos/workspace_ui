@@ -6,9 +6,20 @@ import {
 } from "~/entities/mail/mail-compose.lib";
 import { t } from "~/i18n/i18n";
 import { stripHtml } from "~/shared/lib/html";
+import { validateFileUpload } from "~/shared/lib/validation";
 import { AppDialog, AppDialogFormFooter } from "~/shared/ui/app-dialog.ui";
 import { MailRichEditor } from "./mail-rich-editor.ui";
 import type { MailComposeDialogProps } from "./mail-compose.types";
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
 
 export const MailComposeDialog: React.FC<MailComposeDialogProps> = ({
   open,
@@ -18,9 +29,14 @@ export const MailComposeDialog: React.FC<MailComposeDialogProps> = ({
   error,
   onOpenChange,
   onSend,
+  onAutosave,
 }) => {
   const [to, setTo] = useState("");
   const [cc, setCc] = useState("");
+  const [bcc, setBcc] = useState("");
+  const [attachments, setAttachments] = useState<
+    { filename: string; mimeType: string; contentBase64: string }[]
+  >([]);
   const [subject, setSubject] = useState("");
   const [bodyHtml, setBodyHtml] = useState("<p><br></p>");
   const [inReplyTo, setInReplyTo] = useState<string | undefined>();
@@ -30,6 +46,8 @@ export const MailComposeDialog: React.FC<MailComposeDialogProps> = ({
     const next = state ?? buildNewComposeState();
     setTo(next.to);
     setCc(next.cc);
+    setBcc("");
+    setAttachments([]);
     setSubject(next.subject);
     setBodyHtml(next.bodyHtml);
     setInReplyTo(next.inReplyTo);
@@ -52,6 +70,27 @@ export const MailComposeDialog: React.FC<MailComposeDialogProps> = ({
     }
   }, [open, resetForm]);
 
+  useEffect(() => {
+    if (!open || onAutosave == null) return;
+    const timer = setTimeout(() => {
+      const sanitized = sanitizeMailComposeHtml(bodyHtml);
+      const plain = stripHtml(sanitized).trim();
+      if (to.length === 0 && subject.length === 0 && plain.length === 0) return;
+      onAutosave({
+        to,
+        cc: cc.length > 0 ? cc : undefined,
+        bcc: bcc.length > 0 ? bcc : undefined,
+        subject,
+        bodyHtml: sanitized,
+        bodyText: plain,
+        inReplyTo,
+        references,
+        attachments: attachments.length > 0 ? attachments : undefined,
+      });
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [attachments, bcc, bodyHtml, cc, inReplyTo, onAutosave, open, references, subject, to]);
+
   const handleSubmit = useCallback(() => {
     const sanitized = sanitizeMailComposeHtml(bodyHtml);
     const plain = stripHtml(sanitized).trim();
@@ -59,13 +98,15 @@ export const MailComposeDialog: React.FC<MailComposeDialogProps> = ({
     onSend({
       to,
       cc: cc.length > 0 ? cc : undefined,
+      bcc: bcc.length > 0 ? bcc : undefined,
       subject,
       bodyHtml: sanitized,
       bodyText: plain,
       inReplyTo,
       references,
+      attachments: attachments.length > 0 ? attachments : undefined,
     });
-  }, [bodyHtml, cc, inReplyTo, onSend, references, subject, to]);
+  }, [attachments, bcc, bodyHtml, cc, inReplyTo, onSend, references, subject, to]);
 
   const handleOpenChange = useCallback(
     (next: boolean) => {
@@ -77,6 +118,27 @@ export const MailComposeDialog: React.FC<MailComposeDialogProps> = ({
   const handleCancel = useCallback(() => {
     handleOpenChange(false);
   }, [handleOpenChange]);
+
+  const handleAttachmentsChange = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const files = event.target.files;
+      if (files == null || files.length === 0) return;
+      const next: { filename: string; mimeType: string; contentBase64: string }[] = [];
+      for (const file of Array.from(files)) {
+        const { valid } = validateFileUpload(file);
+        if (!valid) continue;
+        const buffer = await file.arrayBuffer();
+        next.push({
+          filename: file.name,
+          mimeType: file.type || "application/octet-stream",
+          contentBase64: arrayBufferToBase64(buffer),
+        });
+      }
+      setAttachments((prev) => [...prev, ...next]);
+      event.target.value = "";
+    },
+    [],
+  );
 
   const showCc = mode === "replyAll" || cc.length > 0;
 
@@ -123,6 +185,15 @@ export const MailComposeDialog: React.FC<MailComposeDialogProps> = ({
           </label>
         ) : null}
         <label className="block text-sm">
+          <span className="mb-1 block text-text-muted">{t("mail.bcc")}</span>
+          <input
+            type="text"
+            value={bcc}
+            onChange={(e) => setBcc(e.target.value)}
+            className="w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary"
+          />
+        </label>
+        <label className="block text-sm">
           <span className="mb-1 block text-text-muted">{t("mail.subject")}</span>
           <input
             type="text"
@@ -133,6 +204,22 @@ export const MailComposeDialog: React.FC<MailComposeDialogProps> = ({
           />
         </label>
         <MailRichEditor value={bodyHtml} onChange={setBodyHtml} disabled={sending} />
+        <label className="block text-sm">
+          <span className="mb-1 block text-text-muted">{t("mail.attachments")}</span>
+          <input
+            type="file"
+            multiple
+            onChange={handleAttachmentsChange}
+            className="w-full text-sm text-text-secondary"
+          />
+          {attachments.length > 0 ? (
+            <ul className="mt-2 space-y-1 text-xs text-text-muted">
+              {attachments.map((item) => (
+                <li key={item.filename}>{item.filename}</li>
+              ))}
+            </ul>
+          ) : null}
+        </label>
         {error != null && error.length > 0 ? (
           <p className="text-sm text-notice-base" role="alert">
             {error}

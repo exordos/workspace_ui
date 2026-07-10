@@ -16,6 +16,7 @@ import {
   decodeMailHeaderValue,
   normalizeMailSourceBuffer,
   parseMailMimeSource,
+  parseMailAttachments,
   parseRawHeaderFields,
   readStreamToBuffer,
   resolveMailFrom,
@@ -57,6 +58,14 @@ export interface MailMessageFlagsPatch {
 
 const TRASH_FOLDER_CANDIDATES = ["Trash", "INBOX.Trash", "Deleted", "INBOX.Deleted"] as const;
 const SENT_FOLDER_CANDIDATES = ["Sent", "INBOX.Sent", "Sent Messages", "INBOX.Sent Messages"] as const;
+const DRAFTS_FOLDER_CANDIDATES = ["Drafts", "INBOX.Drafts", "Draft"] as const;
+
+export interface MailAttachmentMetaDto {
+  id: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+}
 
 function tlsOptions() {
   return { rejectUnauthorized: mailProxyEnv.TLS_REJECT_UNAUTHORIZED };
@@ -103,7 +112,7 @@ async function loadMessageSource(
   }
 
   try {
-    const downloaded = await client.download(String(uid), false, { uid: true });
+    const downloaded = await client.download(String(uid), undefined, { uid: true });
     const content = downloaded.content as Readable | undefined;
     if (content != null) {
       const buffer = await readStreamToBuffer(content);
@@ -506,6 +515,187 @@ export async function resolveTrashFolder(session: MailSessionRecord): Promise<st
 export async function resolveSentFolder(session: MailSessionRecord): Promise<string | null> {
   const { folders } = await listMailFolders(session);
   return resolveFolderByCandidates(folders, SENT_FOLDER_CANDIDATES);
+}
+
+export async function resolveDraftsFolder(session: MailSessionRecord): Promise<string | null> {
+  const { folders } = await listMailFolders(session);
+  return resolveFolderByCandidates(folders, DRAFTS_FOLDER_CANDIDATES);
+}
+
+async function loadMessageSourceBuffer(
+  session: MailSessionRecord,
+  folder: string,
+  uid: number,
+): Promise<Buffer | null> {
+  const client = createImapClient(session);
+  await client.connect();
+  const lock = await client.getMailboxLock(folder);
+  try {
+    const msg = await client.fetchOne(String(uid), { uid: true, source: true }, { uid: true });
+    if (!msg || msg.uid == null) return null;
+    const rawSource = await loadMessageSource(client, msg.uid, msg.source);
+    return rawSource.buffer;
+  } finally {
+    lock.release();
+    await client.logout();
+  }
+}
+
+export async function listMailMessageAttachments(
+  session: MailSessionRecord,
+  folder: string,
+  uid: number,
+): Promise<MailAttachmentMetaDto[]> {
+  const buffer = await loadMessageSourceBuffer(session, folder, uid);
+  if (buffer == null) return [];
+  const attachments = await parseMailAttachments(buffer);
+  return attachments.map(({ id, filename, mimeType, sizeBytes }) => ({
+    id,
+    filename,
+    mimeType,
+    sizeBytes,
+  }));
+}
+
+export async function getMailMessageAttachment(
+  session: MailSessionRecord,
+  folder: string,
+  uid: number,
+  attachmentId: string,
+): Promise<{ filename: string; mimeType: string; content: Buffer } | null> {
+  const buffer = await loadMessageSourceBuffer(session, folder, uid);
+  if (buffer == null) return null;
+  const attachments = await parseMailAttachments(buffer);
+  const attachment = attachments.find((item) => item.id === attachmentId);
+  if (attachment == null) return null;
+  return {
+    filename: attachment.filename,
+    mimeType: attachment.mimeType,
+    content: attachment.content,
+  };
+}
+
+export async function searchMailMessages(
+  session: MailSessionRecord,
+  query: string,
+  folder: string | null,
+  limit: number,
+  cursorUid: number | null,
+): Promise<MailMessageSummaryDto[]> {
+  const trimmedQuery = query.trim();
+  if (trimmedQuery.length === 0) return [];
+
+  const foldersToSearch =
+    folder != null && folder.length > 0
+      ? [folder]
+      : (await listMailFolders(session)).folders
+          .map((item) => item.path)
+          .filter((path) => path === "INBOX" || path.toLowerCase().includes("sent"));
+
+  const client = createImapClient(session);
+  await client.connect();
+  const allMessages: MailMessageSummaryDto[] = [];
+
+  try {
+    for (const folderPath of foldersToSearch) {
+      const lock = await client.getMailboxLock(folderPath);
+      try {
+        const searchResult = await client.search(
+          {
+            or: [{ subject: trimmedQuery }, { from: trimmedQuery }],
+          },
+          { uid: true },
+        );
+        const uids = searchResult === false ? [] : searchResult;
+        const sorted = [...uids].sort((a, b) => b - a);
+        const filtered =
+          cursorUid != null && cursorUid > 0
+            ? sorted.filter((uid) => uid < cursorUid)
+            : sorted;
+        const slice = filtered.slice(0, limit);
+
+        for (const uid of slice) {
+          const msg = await client.fetchOne(
+            String(uid),
+            { uid: true, envelope: true, flags: true, headers: ["Subject", "From"] },
+            { uid: true },
+          );
+          if (!msg || msg.uid == null) continue;
+          const envelope = msg.envelope;
+          const headerFields = extractHeaderFields(msg);
+          const envelopeFrom = formatAddress(envelope);
+          allMessages.push({
+            uid: msg.uid,
+            from: resolveMailFrom(null, envelopeFrom, headerFields.from),
+            subject: resolveMailSubject(null, envelope?.subject, headerFields.subject),
+            snippet: "",
+            date: envelope?.date?.toISOString() ?? new Date().toISOString(),
+            seen: msg.flags?.has("\\Seen") ?? false,
+            flagged: msg.flags?.has("\\Flagged") ?? false,
+          });
+        }
+      } finally {
+        lock.release();
+      }
+    }
+  } finally {
+    await client.logout();
+  }
+
+  return allMessages.sort((a, b) => b.uid - a.uid).slice(0, limit);
+}
+
+export async function syncMailFolder(
+  session: MailSessionRecord,
+  folder: string,
+  sinceUid: number,
+): Promise<{
+  newMessages: MailMessageSummaryDto[];
+  deletedUids: number[];
+  flagChanges: Array<{ uid: number; seen: boolean; flagged: boolean }>;
+}> {
+  const client = createImapClient(session);
+  await client.connect();
+  const lock = await client.getMailboxLock(folder);
+  try {
+    const status = await client.status(folder, { uidNext: true });
+    const maxUid = (status.uidNext ?? 2) - 1;
+    if (maxUid <= sinceUid) {
+      return { newMessages: [], deletedUids: [], flagChanges: [] };
+    }
+
+    const range = `${sinceUid + 1}:${maxUid}`;
+    const newMessages: MailMessageSummaryDto[] = [];
+    for await (const msg of client.fetch(
+      range,
+      { uid: true, envelope: true, flags: true, headers: ["Subject", "From"] },
+      { uid: true },
+    )) {
+      const uid = msg.uid;
+      if (uid == null) continue;
+      const envelope = msg.envelope;
+      const headerFields = extractHeaderFields(msg);
+      const envelopeFrom = formatAddress(envelope);
+      newMessages.push({
+        uid,
+        from: resolveMailFrom(null, envelopeFrom, headerFields.from),
+        subject: resolveMailSubject(null, envelope?.subject, headerFields.subject),
+        snippet: "",
+        date: envelope?.date?.toISOString() ?? new Date().toISOString(),
+        seen: msg.flags?.has("\\Seen") ?? false,
+        flagged: msg.flags?.has("\\Flagged") ?? false,
+      });
+    }
+
+    return {
+      newMessages: newMessages.sort((a, b) => b.uid - a.uid),
+      deletedUids: [],
+      flagChanges: [],
+    };
+  } finally {
+    lock.release();
+    await client.logout();
+  }
 }
 
 /** Verifies IMAP credentials without creating a persistent session record. */

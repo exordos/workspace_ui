@@ -9,6 +9,7 @@ export interface CalendarEventFormDialogProps {
   calendars: CalendarInfo[];
   initialEvent: CalendarEvent | null;
   focusDate: Date;
+  draftStart?: Date | null;
   saving: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (input: CalendarEventInput) => Promise<void>;

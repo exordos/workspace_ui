@@ -9,11 +9,18 @@ import type { MailMessageListProps } from "./mail-view.types";
 const MailMessageRow = React.memo<{
   message: MailMessageSummary;
   active: boolean;
+  batchMode: boolean;
+  selected: boolean;
   onSelect: (uid: number) => void;
-}>(({ message, active, onSelect }) => {
+  onToggleSelect?: (uid: number) => void;
+}>(({ message, active, batchMode, selected, onSelect, onToggleSelect }) => {
   const handleClick = useCallback(() => {
     onSelect(message.uid);
   }, [message.uid, onSelect]);
+
+  const handleCheckboxChange = useCallback(() => {
+    onToggleSelect?.(message.uid);
+  }, [message.uid, onToggleSelect]);
 
   const unread = !message.seen;
   const flagged = message.flagged;
@@ -31,6 +38,16 @@ const MailMessageRow = React.memo<{
         active ? "" : "hover:bg-sidebar-hover"
       } ${rowStateClass}`}
     >
+      {batchMode ? (
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={handleCheckboxChange}
+          onClick={(e) => e.stopPropagation()}
+          className="mr-2 mt-1 shrink-0"
+          aria-label={message.subject}
+        />
+      ) : null}
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex min-w-0 items-baseline justify-between gap-2">
           <span className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -74,7 +91,13 @@ export const MailMessageList: React.FC<MailMessageListProps> = ({
   messages,
   selectedUid,
   loading,
+  loadingMore = false,
+  hasMore = false,
+  batchMode = false,
+  selectedUids = [],
+  onLoadMore,
   onSelectMessage,
+  onToggleSelectUid,
 }) => {
   if (loading) {
     return (
@@ -93,15 +116,30 @@ export const MailMessageList: React.FC<MailMessageListProps> = ({
   }
 
   return (
-    <div className="min-h-0 flex-1 divide-y divide-border-subtle overflow-y-auto">
-      {messages.map((message) => (
-        <MailMessageRow
-          key={message.uid}
-          message={message}
-          active={message.uid === selectedUid}
-          onSelect={onSelectMessage}
-        />
-      ))}
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 divide-y divide-border-subtle overflow-y-auto">
+        {messages.map((message) => (
+          <MailMessageRow
+            key={message.uid}
+            message={message}
+            active={message.uid === selectedUid}
+            batchMode={batchMode}
+            selected={selectedUids.includes(message.uid)}
+            onSelect={onSelectMessage}
+            onToggleSelect={onToggleSelectUid}
+          />
+        ))}
+      </div>
+      {hasMore && onLoadMore != null ? (
+        <button
+          type="button"
+          onClick={onLoadMore}
+          disabled={loadingMore}
+          className="shrink-0 border-t border-border-subtle px-3 py-2 text-sm text-accent hover:bg-sidebar-hover disabled:opacity-50"
+        >
+          {loadingMore ? t("app.loading") : t("common.loadMore")}
+        </button>
+      ) : null}
     </div>
   );
 };

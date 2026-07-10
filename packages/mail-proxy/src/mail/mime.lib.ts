@@ -24,6 +24,16 @@ export interface ParsedMailContent {
   references: string | null;
 }
 
+export interface ParsedMailAttachment {
+  id: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  content: Buffer;
+}
+
+export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+
 function normalizeBody(value: string | false | undefined): string | null {
   if (value == null || value === false) return null;
   const trimmed = value.trim();
@@ -231,6 +241,38 @@ export async function parseMailMimeSource(
   };
 }
 
+/** Parses attachment metadata and content from a raw MIME message. */
+export async function parseMailAttachments(
+  source: Buffer | Uint8Array | string | false | null | undefined,
+): Promise<ParsedMailAttachment[]> {
+  const buffer = normalizeMailSourceBuffer(source);
+  if (buffer == null) return [];
+
+  const parsed = await simpleParser(buffer, { defaultCharset: "utf-8" });
+  const attachments = parsed.attachments ?? [];
+  const result: ParsedMailAttachment[] = [];
+
+  for (let index = 0; index < attachments.length; index++) {
+    const attachment = attachments[index]!;
+    const content = attachment.content;
+    if (content == null || content.length === 0) continue;
+    if (content.length > MAX_ATTACHMENT_BYTES) continue;
+    const filename =
+      decodeMailHeaderValue(attachment.filename) ??
+      attachment.filename ??
+      `attachment-${index + 1}`;
+    result.push({
+      id: String(index),
+      filename,
+      mimeType: attachment.contentType ?? "application/octet-stream",
+      sizeBytes: content.length,
+      content: Buffer.isBuffer(content) ? content : Buffer.from(content),
+    });
+  }
+
+  return result;
+}
+
 function formatAddressEntry(entry: { name?: string; address?: string }): string {
   const name = decodeMailHeaderValue(entry.name?.trim()) ?? entry.name?.trim() ?? "";
   const address = entry.address?.trim() ?? "";
@@ -287,11 +329,13 @@ export interface OutboundMimeOptions {
   from: string;
   to: string;
   cc?: string;
+  bcc?: string;
   subject: string;
   bodyHtml: string;
   bodyText?: string;
   inReplyTo?: string;
   references?: string;
+  attachments?: Array<{ filename: string; content: Buffer; contentType: string }>;
 }
 
 /** Builds RFC822 MIME buffer for IMAP append (Sent folder). */
@@ -315,6 +359,16 @@ export async function buildOutboundMime(options: OutboundMimeOptions): Promise<B
   };
   if (options.cc != null && options.cc.trim().length > 0) {
     mailOptions.cc = options.cc;
+  }
+  if (options.bcc != null && options.bcc.trim().length > 0) {
+    mailOptions.bcc = options.bcc;
+  }
+  if (options.attachments != null && options.attachments.length > 0) {
+    mailOptions.attachments = options.attachments.map((item) => ({
+      filename: item.filename,
+      content: item.content,
+      contentType: item.contentType,
+    }));
   }
   const headers: Record<string, string> = {};
   if (options.inReplyTo != null && options.inReplyTo.length > 0) {

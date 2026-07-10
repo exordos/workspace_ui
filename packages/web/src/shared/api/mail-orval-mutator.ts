@@ -18,6 +18,9 @@ export class MailApiHttpError extends Error {
 }
 
 function resolveBaseUrl(): string {
+  if (env.MAIL_USE_WORKSPACE_GATEWAY && env.WORKSPACE_API_ORIGIN.length > 0) {
+    return `${env.WORKSPACE_API_ORIGIN.replace(/\/+$/, "")}/mail-proxy`;
+  }
   return getMailApiBase(env.MAIL_API_ORIGIN);
 }
 

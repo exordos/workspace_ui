@@ -19,6 +19,7 @@ import type {
 } from "~/entities/calendar/calendar.types";
 import { useInstancesStore } from "~/entities/instance/instance.model";
 import { useMailStore } from "~/entities/mail/mail.model";
+import type { CalendarRecurrenceScope } from "~/features/calendar-recurrence-scope/calendar-recurrence-scope-dialog.ui";
 
 export function useCalendarView() {
   const instanceEmail = useInstancesStore((s) => s.getCurrentInstance()?.email ?? "");
@@ -38,6 +39,7 @@ export function useCalendarView() {
   const saving = useCalendarStore((s) => s.saving);
   const calendarError = useCalendarStore((s) => s.error);
   const selectedEventUid = useCalendarStore((s) => s.selectedEventUid);
+  const selectedRecurrenceId = useCalendarStore((s) => s.selectedRecurrenceId);
   const setFocusDate = useCalendarStore((s) => s.setFocusDate);
   const setViewMode = useCalendarStore((s) => s.setViewMode);
   const toggleCalendarVisibility = useCalendarStore((s) => s.toggleCalendarVisibility);
@@ -47,11 +49,19 @@ export function useCalendarView() {
   const createEvent = useCalendarStore((s) => s.createEvent);
   const updateEvent = useCalendarStore((s) => s.updateEvent);
   const deleteEvent = useCalendarStore((s) => s.deleteEvent);
+  const createCalendar = useCalendarStore((s) => s.createCalendar);
+  const deleteCalendar = useCalendarStore((s) => s.deleteCalendar);
+  const searchEvents = useCalendarStore((s) => s.searchEvents);
+  const importEventIcs = useCalendarStore((s) => s.importEventIcs);
 
   const [email, setEmail] = useState(instanceEmail);
   const [formOpen, setFormOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
+  const [draftStart, setDraftStart] = useState<Date | null>(null);
   const [selectedIsoDate, setSelectedIsoDate] = useState<string | null>(toIsoDate(new Date()));
+  const [searchQuery, setSearchQuery] = useState("");
+  const [scopeDialogOpen, setScopeDialogOpen] = useState(false);
+  const [pendingScopeAction, setPendingScopeAction] = useState<"delete" | "edit" | null>(null);
 
   useEffect(() => {
     if (instanceEmail.length > 0) setEmail(instanceEmail);
@@ -85,8 +95,17 @@ export function useCalendarView() {
 
   useEffect(() => {
     if (!session?.token || visibleCalendarIds.length === 0) return;
+    if (searchQuery.trim().length > 0) return;
     void loadEventsForRange(range.start, range.end);
-  }, [session?.token, visibleCalendarIds, range.start, range.end, loadEventsForRange]);
+  }, [session?.token, visibleCalendarIds, range.start, range.end, loadEventsForRange, searchQuery]);
+
+  useEffect(() => {
+    if (!session?.token || searchQuery.trim().length === 0) return;
+    const timer = setTimeout(() => {
+      void searchEvents(searchQuery, range.start, range.end);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [range.end, range.start, searchEvents, searchQuery, session?.token]);
 
   const monthCells = useMemo(() => buildMonthGrid(focusDate), [focusDate]);
   const weekDays = useMemo(() => buildWeekDays(focusDate), [focusDate]);
@@ -103,9 +122,28 @@ export function useCalendarView() {
   }, [monthCells, events]);
 
   const selectedEvent = useMemo(
-    () => events.find((e) => e.uid === selectedEventUid) ?? null,
-    [events, selectedEventUid],
+    () =>
+      events.find(
+        (event) =>
+          event.uid === selectedEventUid &&
+          (selectedRecurrenceId == null
+            ? event.recurrenceId == null
+            : event.recurrenceId === selectedRecurrenceId),
+      ) ??
+      events.find((event) => event.uid === selectedEventUid) ??
+      null,
+    [events, selectedEventUid, selectedRecurrenceId],
   );
+
+  const selectedCalendarMeta = useMemo(() => {
+    if (selectedEvent == null) return { name: null, color: null };
+    const calendar = calendars.find((c) => c.id === selectedEvent.calendarId);
+    const index = calendars.findIndex((c) => c.id === selectedEvent.calendarId);
+    return {
+      name: calendar?.displayName ?? selectedEvent.calendarId,
+      color: calendar?.color ?? defaultCalendarColor(Math.max(index, 0)),
+    };
+  }, [calendars, selectedEvent]);
 
   const calendarColorMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -172,19 +210,81 @@ export function useCalendarView() {
 
   const handleNewEvent = useCallback(() => {
     setEditingEvent(null);
+    setDraftStart(null);
     setFormOpen(true);
   }, []);
 
+  const handleSelectTimeSlot = useCallback(
+    (day: Date, start: Date) => {
+      setEditingEvent(null);
+      setDraftStart(start);
+      setFocusDate(day);
+      setSelectedIsoDate(toIsoDate(day));
+      setFormOpen(true);
+    },
+    [setFocusDate],
+  );
+
   const handleEditEvent = useCallback(() => {
     if (selectedEvent == null) return;
+    if (selectedEvent.isRecurringInstance && selectedEvent.recurrenceId != null) {
+      setPendingScopeAction("edit");
+      setScopeDialogOpen(true);
+      return;
+    }
     setEditingEvent(selectedEvent);
     setFormOpen(true);
   }, [selectedEvent]);
 
-  const handleDeleteEvent = useCallback(async () => {
+  const handleDeleteEvent = useCallback(() => {
     if (selectedEvent == null) return;
-    await deleteEvent(selectedEvent.calendarId, selectedEvent.uid);
+    if (selectedEvent.isRecurringInstance && selectedEvent.recurrenceId != null) {
+      setPendingScopeAction("delete");
+      setScopeDialogOpen(true);
+      return;
+    }
+    void deleteEvent(selectedEvent.calendarId, selectedEvent.uid, { scope: "all" });
   }, [deleteEvent, selectedEvent]);
+
+  const handleRecurrenceScopeSelect = useCallback(
+    async (scope: CalendarRecurrenceScope) => {
+      if (selectedEvent == null || pendingScopeAction == null) return;
+      setScopeDialogOpen(false);
+      if (pendingScopeAction === "delete") {
+        await deleteEvent(selectedEvent.calendarId, selectedEvent.uid, {
+          recurrenceId: selectedEvent.recurrenceId,
+          scope,
+        });
+      } else {
+        setEditingEvent(selectedEvent);
+        setFormOpen(true);
+      }
+      setPendingScopeAction(null);
+    },
+    [deleteEvent, pendingScopeAction, selectedEvent],
+  );
+
+  const handleCreateCalendar = useCallback(
+    async (displayName: string) => {
+      await createCalendar(displayName);
+    },
+    [createCalendar],
+  );
+
+  const handleDeleteCalendar = useCallback(
+    async (calendarId: string) => {
+      await deleteCalendar(calendarId);
+    },
+    [deleteCalendar],
+  );
+
+  const handleImportIcs = useCallback(
+    async (calendarId: string, ics: string) => {
+      await importEventIcs(calendarId, ics);
+      await loadEventsForRange(range.start, range.end);
+    },
+    [importEventIcs, loadEventsForRange, range.end, range.start],
+  );
 
   const handleFormSubmit = useCallback(
     async (input: CalendarEventInput) => {
@@ -202,7 +302,10 @@ export function useCalendarView() {
 
   const handleFormOpenChange = useCallback((open: boolean) => {
     setFormOpen(open);
-    if (!open) setEditingEvent(null);
+    if (!open) {
+      setEditingEvent(null);
+      setDraftStart(null);
+    }
   }, []);
 
   return {
@@ -219,6 +322,8 @@ export function useCalendarView() {
     weekDays,
     eventsByDay,
     selectedEvent,
+    selectedCalendarName: selectedCalendarMeta.name,
+    selectedCalendarColor: selectedCalendarMeta.color,
     selectedIsoDate,
     selectedEventUid,
     loadingCalendars,
@@ -226,8 +331,13 @@ export function useCalendarView() {
     saving,
     formOpen,
     editingEvent,
+    draftStart,
     toolbarTitle,
+    searchQuery,
+    scopeDialogOpen,
+    pendingScopeAction,
     setEmail,
+    setSearchQuery,
     setViewMode,
     toggleCalendarVisibility,
     selectEvent,
@@ -240,9 +350,15 @@ export function useCalendarView() {
     handleToday,
     handleSelectDay,
     handleNewEvent,
+    handleSelectTimeSlot,
     handleEditEvent,
     handleDeleteEvent,
     handleFormSubmit,
     handleFormOpenChange,
+    handleRecurrenceScopeSelect,
+    handleScopeDialogOpenChange: setScopeDialogOpen,
+    handleCreateCalendar,
+    handleDeleteCalendar,
+    handleImportIcs,
   };
 }

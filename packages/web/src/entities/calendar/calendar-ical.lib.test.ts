@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildIcsFromInput, expandRecurringEvents, parseVeventFromIcs } from "./calendar-ical.lib";
+import {
+  buildIcsFromInput,
+  buildIcsWithExdate,
+  expandRecurringEvents,
+  parseVeventFromIcs,
+} from "./calendar-ical.lib";
 import type { CalendarEvent } from "./calendar.types";
 
 const SAMPLE_ICS = `BEGIN:VCALENDAR
@@ -127,6 +132,30 @@ describe("calendar-ical.lib", () => {
         new Date("2026-06-20T23:59:59.999Z"),
       );
       expect(expanded.some((e) => e.uid === "rec-2")).toBe(true);
+    });
+  });
+
+  describe("buildIcsWithExdate", () => {
+    it("adds EXDATE for a recurring instance", () => {
+      const master: CalendarEvent = {
+        uid: "rec-ex",
+        calendarId: "personal",
+        summary: "Weekly",
+        description: null,
+        location: null,
+        start: "2026-06-01T10:00:00.000Z",
+        end: "2026-06-01T11:00:00.000Z",
+        allDay: false,
+        etag: '"etag"',
+        recurrence: { rrule: "FREQ=WEEKLY;COUNT=4" },
+        attendees: [],
+        alarms: [],
+        recurrenceId: null,
+        isRecurringInstance: false,
+      };
+      const ics = buildIcsWithExdate(master, "2026-06-08T10:00:00.000Z");
+      expect(ics).toContain("EXDATE");
+      expect(ics).toContain("20260608");
     });
   });
 });

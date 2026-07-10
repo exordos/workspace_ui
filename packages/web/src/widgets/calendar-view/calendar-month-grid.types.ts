@@ -7,5 +7,5 @@ export interface CalendarMonthGridProps {
   selectedIsoDate: string | null;
   getEventColor: (event: CalendarEvent) => string;
   onSelectDay: (date: Date) => void;
-  onSelectEvent: (uid: string) => void;
+  onSelectEvent: (uid: string, recurrenceId?: string | null) => void;
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildMonthGrid,
+  dateFromGridOffsetPx,
   eventOccursOnDay,
   getNowIndicatorTopPx,
   layoutTimedEventsOnDay,
@@ -224,5 +225,21 @@ describe("calendar.lib", () => {
   it("maps local time to grid offset", () => {
     const at1030 = new Date("2026-06-17T10:30:00");
     expect(getNowIndicatorTopPx(at1030)).toBe(10.5 * 48);
+  });
+
+  it("maps grid offset to snapped local start time", () => {
+    const day = new Date("2026-06-17T00:00:00");
+    const at10h = 10 * 48;
+    const start = dateFromGridOffsetPx(at10h, day);
+    expect(start.getHours()).toBe(10);
+    expect(start.getMinutes()).toBe(0);
+  });
+
+  it("snaps grid click offset to 15-minute intervals", () => {
+    const day = new Date("2026-06-17T00:00:00");
+    const offsetPx = 10.4 * 48;
+    const start = dateFromGridOffsetPx(offsetPx, day);
+    expect(start.getHours()).toBe(10);
+    expect(start.getMinutes()).toBe(30);
   });
 });

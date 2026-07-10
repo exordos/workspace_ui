@@ -9,6 +9,7 @@ import {
   decodeMailHeaderValue,
   decodeQuotedPrintableUtf8,
   looksLikeUndecodedQuotedPrintable,
+  parseMailAttachments,
   parseMailMimeSource,
   parseRawHeaderFields,
   resolveMailFrom,
@@ -149,5 +150,30 @@ Content-Transfer-Encoding: 8bit
 
   it("buildPlainTextFallback strips HTML tags", () => {
     expect(buildPlainTextFallback("<p>Hello<br>world</p>")).toContain("Hello");
+  });
+
+  it("parseMailAttachments extracts binary parts from multipart message", async () => {
+    const multipart = `From: a@test
+To: b@test
+Subject: Files
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="boundary"
+
+--boundary
+Content-Type: text/plain; charset=utf-8
+
+Hello
+--boundary
+Content-Type: application/pdf; name="doc.pdf"
+Content-Disposition: attachment; filename="doc.pdf"
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQK
+--boundary--
+`;
+    const attachments = await parseMailAttachments(multipart);
+    expect(attachments.length).toBeGreaterThanOrEqual(1);
+    expect(attachments[0]?.filename).toContain("doc.pdf");
+    expect(attachments[0]?.sizeBytes).toBeGreaterThan(0);
   });
 });

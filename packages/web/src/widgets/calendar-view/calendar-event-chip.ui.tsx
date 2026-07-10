@@ -9,9 +9,9 @@ export const CalendarEventChip = React.memo<CalendarEventChipProps>(function Cal
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      onSelect(event.uid);
+      onSelect(event.uid, event.recurrenceId);
     },
-    [event.uid, onSelect],
+    [event.recurrenceId, event.uid, onSelect],
   );
 
   return (

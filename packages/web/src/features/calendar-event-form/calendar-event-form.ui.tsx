@@ -12,19 +12,20 @@ export const CalendarEventFormDialog: React.FC<CalendarEventFormDialogProps> = (
   calendars,
   initialEvent,
   focusDate,
+  draftStart = null,
   saving,
   onOpenChange,
   onSubmit,
 }) => {
   const [form, setForm] = useState<CalendarEventFormState>(() =>
-    buildDefaultFormState(calendars, focusDate, initialEvent),
+    buildDefaultFormState(calendars, focusDate, initialEvent, draftStart),
   );
 
   useEffect(() => {
     if (open) {
-      setForm(buildDefaultFormState(calendars, focusDate, initialEvent));
+      setForm(buildDefaultFormState(calendars, focusDate, initialEvent, draftStart));
     }
-  }, [open, calendars, focusDate, initialEvent]);
+  }, [open, calendars, focusDate, initialEvent, draftStart]);
 
   const updateField = useCallback(
     <K extends keyof CalendarEventFormState>(key: K, value: CalendarEventFormState[K]) => {

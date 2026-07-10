@@ -126,6 +126,20 @@ export function buildNewComposeState(): MailComposeInitialState {
   };
 }
 
+export function buildDraftComposeState(message: MailMessageDetail): MailComposeInitialState {
+  return {
+    to: formatMailAddressList(message.to),
+    cc: formatMailAddressList(message.cc),
+    subject: message.subject,
+    bodyHtml:
+      message.bodyHtml != null && message.bodyHtml.trim().length > 0
+        ? message.bodyHtml
+        : `<p>${escapeHtml(message.bodyText ?? "").replace(/\n/g, "<br>")}</p>`,
+    inReplyTo: message.messageId ?? undefined,
+    references: message.references ?? undefined,
+  };
+}
+
 const MAIL_COMPOSE_ALLOWED_TAGS = [
   "p",
   "br",

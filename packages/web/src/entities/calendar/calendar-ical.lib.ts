@@ -3,7 +3,7 @@
  */
 
 import ICAL from "ical.js";
-import rruleModule from "rrule";
+import { RRule } from "rrule";
 import { eventIntersectsRange, normalizeAllDayEndIso } from "./calendar-date.lib";
 import type {
   CalendarAlarm,
@@ -161,7 +161,7 @@ export function expandRecurringEvents(
 
     try {
       const dtstart = event.allDay ? new Date(`${event.start}T00:00:00Z`) : new Date(event.start);
-      const rule = rruleModule.RRule.fromString(event.recurrence.rrule.replace(/^RRULE:/i, ""));
+      const rule = RRule.fromString(event.recurrence.rrule.replace(/^RRULE:/i, ""));
       rule.options.dtstart = dtstart;
       const durationMs =
         (event.allDay
@@ -303,5 +303,36 @@ export function mergeEventInputWithExisting(
   }
   applyAlarms(vevent, input.alarms ?? []);
 
+  return comp.toString();
+}
+
+/** Adds EXDATE for a recurring instance without deleting the whole series. */
+export function buildIcsWithExdate(event: CalendarEvent, recurrenceId: string): string {
+  const jcal = ICAL.parse(
+    buildIcsFromInput(
+      {
+        calendarId: event.calendarId,
+        summary: event.summary,
+        description: event.description,
+        location: event.location,
+        start: event.start,
+        end: event.end,
+        allDay: event.allDay,
+        recurrence: event.recurrence,
+        attendees: event.attendees,
+        alarms: event.alarms,
+        uid: event.uid,
+        etag: event.etag,
+      },
+      event.uid,
+    ),
+  );
+  const comp = new ICAL.Component(jcal);
+  const vevent = comp.getFirstSubcomponent("vevent");
+  if (vevent == null) {
+    throw new Error("VEVENT not found");
+  }
+  const exdate = ICAL.Time.fromJSDate(new Date(recurrenceId), event.allDay);
+  vevent.updatePropertyWithValue("exdate", exdate);
   return comp.toString();
 }

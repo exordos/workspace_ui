@@ -12,4 +12,5 @@ export interface MailComposeDialogProps {
   error: string | null;
   onOpenChange: (open: boolean) => void;
   onSend: (payload: MailComposePayload) => void;
+  onAutosave?: (payload: MailComposePayload) => void;
 }

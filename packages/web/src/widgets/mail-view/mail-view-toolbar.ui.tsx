@@ -6,16 +6,24 @@ import { SearchInput } from "~/shared/ui/search-input";
 
 export interface MailViewToolbarProps {
   searchQuery: string;
+  batchMode: boolean;
+  selectedCount: number;
   onSearchChange: (value: string) => void;
   onComposeOpen: () => void;
   onSignOut: () => void;
+  onToggleBatchMode: () => void;
+  onBatchDelete: () => void;
 }
 
 export const MailViewToolbar: React.FC<MailViewToolbarProps> = ({
   searchQuery,
+  batchMode,
+  selectedCount,
   onSearchChange,
   onComposeOpen,
   onSignOut,
+  onToggleBatchMode,
+  onBatchDelete,
 }) => (
   <header className="relative z-sticky mb-3 flex shrink-0 flex-wrap items-center justify-between gap-2">
     <h1 className="text-lg font-medium text-text-primary">{t("nav.mail")}</h1>
@@ -30,6 +38,26 @@ export const MailViewToolbar: React.FC<MailViewToolbarProps> = ({
         iconPosition="left"
         className="w-36"
       />
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        onClick={onToggleBatchMode}
+        className="shrink-0"
+      >
+        {batchMode ? t("mail.batchDone") : t("mail.batchSelect")}
+      </Button>
+      {batchMode && selectedCount > 0 ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={onBatchDelete}
+          className="shrink-0"
+        >
+          {t("mail.batchDelete", { count: selectedCount })}
+        </Button>
+      ) : null}
       <Button type="button" size="sm" variant="ghost" onClick={onSignOut} className="shrink-0">
         {t("mail.signOut")}
       </Button>

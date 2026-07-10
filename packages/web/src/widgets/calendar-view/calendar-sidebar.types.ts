@@ -6,5 +6,7 @@ export interface CalendarSidebarProps {
   focusDate: Date;
   onToggleCalendar: (calendarId: string) => void;
   onSelectDate: (date: Date) => void;
+  onCreateCalendar: (displayName: string) => void;
+  onDeleteCalendar: (calendarId: string) => void;
   getCalendarColor: (calendar: CalendarInfo, index: number) => string;
 }

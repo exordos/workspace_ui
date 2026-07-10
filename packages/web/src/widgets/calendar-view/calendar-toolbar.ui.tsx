@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useRef } from "react";
 import { t } from "~/i18n/i18n";
 import { Button } from "~/shared/ui/button";
 import { Icon } from "~/shared/ui/icon";
@@ -7,6 +7,9 @@ import type { CalendarToolbarProps } from "./calendar-toolbar.types";
 export const CalendarToolbar: React.FC<CalendarToolbarProps> = ({
   viewMode,
   title,
+  searchQuery,
+  onSearchChange,
+  onImportIcs,
   onViewModeChange,
   onPrev,
   onNext,
@@ -17,11 +20,32 @@ export const CalendarToolbar: React.FC<CalendarToolbarProps> = ({
   const setMonth = useCallback(() => onViewModeChange("month"), [onViewModeChange]);
   const setWeek = useCallback(() => onViewModeChange("week"), [onViewModeChange]);
   const setDay = useCallback(() => onViewModeChange("day"), [onViewModeChange]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImportClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (file != null) onImportIcs(file);
+      event.target.value = "";
+    },
+    [onImportIcs],
+  );
 
   return (
     <header className="relative z-sticky mb-3 flex shrink-0 flex-wrap items-center justify-between gap-2">
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
         <h1 className="truncate text-lg font-medium text-text-primary">{title}</h1>
+        <input
+          type="search"
+          value={searchQuery}
+          onChange={(e) => onSearchChange(e.target.value)}
+          placeholder={t("calendar.searchPlaceholder")}
+          className="max-w-xs flex-1 rounded-lg border border-border-subtle bg-bg px-3 py-1.5 text-sm text-text-primary"
+        />
         <div className="flex items-center gap-1">
           <Button
             type="button"
@@ -73,6 +97,16 @@ export const CalendarToolbar: React.FC<CalendarToolbarProps> = ({
             {t("calendar.viewDay")}
           </Button>
         </div>
+        <Button type="button" size="sm" variant="ghost" onClick={handleImportClick}>
+          {t("calendar.importIcs")}
+        </Button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".ics,text/calendar"
+          className="hidden"
+          onChange={handleFileChange}
+        />
         <Button type="button" size="sm" variant="ghost" onClick={onSignOut}>
           {t("mail.signOut")}
         </Button>

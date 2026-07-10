@@ -18,4 +18,18 @@ describe("calendar-event-form.lib", () => {
     expect(input.summary).toBe("Standup");
     expect(input.calendarId).toBe("personal");
   });
+
+  it("prefills start and end from draft slot click", () => {
+    const draftStart = new Date("2026-06-17T14:30:00");
+    const state = buildDefaultFormState(
+      [{ id: "personal" }],
+      new Date("2026-06-17"),
+      null,
+      draftStart,
+    );
+    expect(state.startDate).toBe("2026-06-17");
+    expect(state.startTime).toBe("14:30");
+    expect(state.endDate).toBe("2026-06-17");
+    expect(state.endTime).toBe("15:30");
+  });
 });

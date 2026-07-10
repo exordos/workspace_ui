@@ -42,17 +42,23 @@ export function parseSessionPayload(body: { email: string; password: string }): 
 export function parseSendMailPayload(body: {
   to: string;
   cc?: string;
+  bcc?: string;
   subject: string;
   bodyHtml: string;
   bodyText?: string;
   inReplyTo?: string;
   references?: string;
+  attachments?: { filename: string; mimeType: string; contentBase64: string }[];
 }): typeof body {
   const to = body.to.trim();
   const cc = body.cc?.trim();
+  const bcc = body.bcc?.trim();
   const subject = body.subject.trim();
   const bodyHtml = body.bodyHtml;
 
+  if (to.length === 0) {
+    throw new Error("Recipient is required");
+  }
   if (!isValidEmail(to)) {
     throw new Error("Invalid recipient email");
   }
@@ -64,6 +70,14 @@ export function parseSendMailPayload(body: {
       }
     }
   }
+  if (bcc != null && bcc.length > 0) {
+    for (const part of bcc.split(",")) {
+      const trimmed = part.trim();
+      if (trimmed.length > 0 && !isValidEmail(trimmed)) {
+        throw new Error("Invalid bcc email");
+      }
+    }
+  }
   if (subject.length === 0) {
     throw new Error("Subject is required");
   }
@@ -71,6 +85,33 @@ export function parseSendMailPayload(body: {
     throw new Error("Body is required");
   }
   if (bodyHtml.length > MAX_BODY_LENGTH) {
+    throw new Error("Body is too long");
+  }
+  if (body.attachments != null) {
+    for (const attachment of body.attachments) {
+      if (attachment.filename.trim().length === 0) {
+        throw new Error("Attachment filename is required");
+      }
+      if (attachment.contentBase64.length === 0) {
+        throw new Error("Attachment content is required");
+      }
+    }
+  }
+  return body;
+}
+
+export function parseDraftMailPayload(body: {
+  to: string;
+  cc?: string;
+  bcc?: string;
+  subject: string;
+  bodyHtml: string;
+  bodyText?: string;
+  inReplyTo?: string;
+  references?: string;
+  attachments?: { filename: string; mimeType: string; contentBase64: string }[];
+}): typeof body {
+  if (body.bodyHtml.length > MAX_BODY_LENGTH) {
     throw new Error("Body is too long");
   }
   return body;

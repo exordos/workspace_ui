@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   CALENDAR_HOUR_HEIGHT_PX,
+  dateFromGridOffsetPx,
   eventOccursOnDay,
   getNowIndicatorTopPx,
   layoutTimedEventsOnDay,
@@ -50,6 +51,7 @@ export const CalendarTimeGrid: React.FC<CalendarTimeGridProps> = ({
   events,
   getEventColor,
   onSelectEvent,
+  onSelectTimeSlot,
   layout = "week",
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -91,7 +93,20 @@ export const CalendarTimeGrid: React.FC<CalendarTimeGridProps> = ({
 
   const showNowInGutter = days.some((day) => toIsoDate(day) === todayIso);
 
-  const handleSelect = useCallback((uid: string) => onSelectEvent(uid), [onSelectEvent]);
+  const handleSelect = useCallback(
+    (uid: string, recurrenceId?: string | null) => onSelectEvent(uid, recurrenceId),
+    [onSelectEvent],
+  );
+
+  const handleDayColumnClick = useCallback(
+    (day: Date) => (event: React.MouseEvent<HTMLDivElement>) => {
+      if (onSelectTimeSlot == null) return;
+      const rect = event.currentTarget.getBoundingClientRect();
+      const offsetPx = event.clientY - rect.top;
+      onSelectTimeSlot(day, dateFromGridOffsetPx(offsetPx, day));
+    },
+    [onSelectTimeSlot],
+  );
 
   return (
     <div
@@ -158,8 +173,10 @@ export const CalendarTimeGrid: React.FC<CalendarTimeGridProps> = ({
             return (
               <div
                 key={iso}
-                className="relative border-r border-border-subtle"
+                data-testid={`calendar-day-column-${iso}`}
+                className={`relative border-r border-border-subtle${onSelectTimeSlot != null ? "cursor-pointer" : ""}`}
                 style={{ height: gridHeightPx }}
+                onClick={onSelectTimeSlot != null ? handleDayColumnClick(day) : undefined}
               >
                 {HOURS.map((hour) => (
                   <div

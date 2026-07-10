@@ -2,7 +2,7 @@
  * Calendar event form state builders and RRULE presets.
  */
 
-import { toIsoDate } from "~/entities/calendar/calendar.lib";
+import { formatLocalTimeHHmm, toIsoDate } from "~/entities/calendar/calendar.lib";
 import type { CalendarEvent, CalendarEventInput } from "~/entities/calendar/calendar.types";
 import type { CalendarEventFormState, RecurrencePreset } from "./calendar-event-form.types";
 
@@ -31,6 +31,7 @@ export function buildDefaultFormState(
   calendars: { id: string }[],
   focusDate: Date,
   initialEvent: CalendarEvent | null,
+  draftStart?: Date | null,
 ): CalendarEventFormState {
   const defaultCalendarId = initialEvent?.calendarId ?? calendars[0]?.id ?? "personal";
   const iso = toIsoDate(focusDate);
@@ -63,6 +64,28 @@ export function buildDefaultFormState(
       attendees: initialEvent.attendees,
       reminderMinutes: initialEvent.alarms[0]?.triggerMinutes?.toString() ?? "",
       alarms: initialEvent.alarms,
+    };
+  }
+  if (draftStart != null) {
+    const end = new Date(draftStart);
+    end.setMinutes(end.getMinutes() + 60);
+    return {
+      calendarId: defaultCalendarId,
+      summary: "",
+      description: "",
+      location: "",
+      startDate: toIsoDate(draftStart),
+      startTime: formatLocalTimeHHmm(draftStart),
+      endDate: toIsoDate(end),
+      endTime: formatLocalTimeHHmm(end),
+      allDay: false,
+      recurrencePreset: "none",
+      customRrule: "",
+      attendeeEmail: "",
+      attendeeName: "",
+      attendees: [],
+      reminderMinutes: "15",
+      alarms: [{ triggerMinutes: 15, triggerAbsolute: null, action: "DISPLAY" }],
     };
   }
   return {

@@ -113,6 +113,11 @@ export function isTrashFolder(path: string): boolean {
   return lower === "trash" || lower.endsWith(".trash") || lower === "deleted";
 }
 
+export function isDraftsFolder(path: string): boolean {
+  const lower = path.toLowerCase();
+  return lower === "drafts" || lower.endsWith(".drafts");
+}
+
 export function resolveSpecialFolderPath(
   folders: readonly MailFolder[],
   kind: keyof typeof SPECIAL_FOLDER_CANDIDATES,
