@@ -8,6 +8,7 @@ import type {
 } from "~/entities/messenger/messenger.types";
 import { RightDrawerContext } from "~/shared/contexts/right-drawer";
 import type { RightDrawerContextValue } from "~/shared/contexts/right-drawer.types";
+import { formatMessageTimeRelative } from "~/shared/lib/datetime.lib";
 import { renderWithProviders } from "~/test/render";
 import { useSidebarConfigStore } from "./sidebar-config.model";
 import { SIDEBAR_SYSTEM_ALL_FOLDER_ID } from "./sidebar-folder.constants";
@@ -56,6 +57,7 @@ function createTopic(
     isDone: false,
     route: `/org/acme/project/project-a/messenger/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
     preview: null,
+    lastMessageCreatedAt: null,
     updatedAt: DATE,
     ...overrides,
   };
@@ -271,6 +273,31 @@ describe("WorkspaceSidebar context menu", () => {
       });
     });
     expect(screen.queryByRole("menuitem", { name: /mark as read/i })).not.toBeInTheDocument();
+  });
+
+  it("shows the prepared last-message time in a workspace topic row", () => {
+    useSidebarConfigStore.getState().setConfig({ expandedStreamUuids: [STREAM_UUID] });
+    const lastMessageCreatedAt = new Date().toISOString();
+
+    renderWorkspaceSidebar([createStream({ topics: [createTopic({ lastMessageCreatedAt })] })]);
+
+    expect(
+      screen.getByText(
+        formatMessageTimeRelative(Math.floor(Date.parse(lastMessageCreatedAt) / 1000)),
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the prepared last-message time in a workspace stream row", () => {
+    const lastMessageCreatedAt = new Date().toISOString();
+
+    renderWorkspaceSidebar([createStream({ lastMessageCreatedAt })]);
+
+    expect(
+      screen.getByText(
+        formatMessageTimeRelative(Math.floor(Date.parse(lastMessageCreatedAt) / 1000)),
+      ),
+    ).toBeInTheDocument();
   });
 
   it("passes private chat type when adding a personal chat to a folder", async () => {

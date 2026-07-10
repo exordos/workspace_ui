@@ -226,6 +226,7 @@ export interface MessengerSidebarTopicItem {
   isDone: boolean;
   route: string;
   preview: MessengerSidebarMessagePreview | null;
+  lastMessageCreatedAt: string | null;
   updatedAt: string;
 }
 

@@ -118,6 +118,10 @@ function compareSidebarStreams(
   return 0;
 }
 
+function compareSidebarTopics(a: MessengerSidebarTopicItem, b: MessengerSidebarTopicItem): number {
+  return compareNullableStringsDesc(a.lastMessageCreatedAt, b.lastMessageCreatedAt);
+}
+
 function resolveUserDisplayName(user: User | undefined): string | undefined {
   if (user == null) return undefined;
   return selectUserDisplayName(user);
@@ -202,6 +206,7 @@ function topicItemFromTopic(input: {
       input.usersById,
       input.currentUserUuid,
     ),
+    lastMessageCreatedAt: messageCreatedAt(input.topic.lastMessageUuid, input.messagesById),
     updatedAt: input.topic.updatedAt,
   };
 }
@@ -343,7 +348,7 @@ function topicsForStream(input: {
     );
 
   if (topics.length === 0) return EMPTY_SIDEBAR_TOPICS;
-  return topics;
+  return topics.sort(compareSidebarTopics);
 }
 
 export function selectMessengerSidebarStreams(

@@ -8,6 +8,7 @@ import type {
 import { CreateChatDialog } from "~/features/create-chat/create-chat-dialog.ui";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { t } from "~/i18n/i18n";
+import { formatMessageTimeRelative } from "~/shared/lib/datetime.lib";
 import { sidebarRowClass } from "~/shared/lib/format";
 import {
   parseWorkspaceMessengerRoute,
@@ -65,6 +66,13 @@ function workspaceTopicMatchesQuery(
   normalizedQuery: string,
 ): boolean {
   return normalizedQuery.length === 0 || topic.title.toLowerCase().includes(normalizedQuery);
+}
+
+function formatWorkspaceMessageTime(createdAt: string | null): string | undefined {
+  if (createdAt == null) return undefined;
+  const timestamp = Date.parse(createdAt);
+  if (Number.isNaN(timestamp)) return undefined;
+  return formatMessageTimeRelative(Math.floor(timestamp / 1000));
 }
 
 function resolveWorkspaceSidebarEmptyState(input: {
@@ -147,6 +155,7 @@ function WorkspaceSidebarTopicRow({
           isPinned={false}
           unreadCount={topic.unreadCount}
           hasMention={false}
+          time={formatWorkspaceMessageTime(topic.lastMessageCreatedAt)}
         />
       </Link>
     </WorkspaceTopicContextMenu>
@@ -275,6 +284,7 @@ function WorkspaceSidebarStreamRow({
             isPinned={stream.pinnedAt != null}
             unreadCount={stream.unreadCount}
             hasMention={false}
+            time={formatWorkspaceMessageTime(stream.lastMessageCreatedAt)}
             expandChevron={
               stream.topics.length > 0
                 ? {

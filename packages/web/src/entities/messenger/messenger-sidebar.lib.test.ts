@@ -22,6 +22,7 @@ const STREAM_A = "75309057-419c-4b12-a7c1-3932429ec4a6";
 const STREAM_B = "37a28696-153d-431e-a5fb-36f0c0209765";
 const TOPIC_A = "4ec0b996-b778-45f8-8ef4-ef863be0c047";
 const TOPIC_B = "ed25f944-8106-4386-b2f9-65e9db32d465";
+const TOPIC_C = "a5bde5af-8228-4b88-8e6d-e8dfe59e9b56";
 const FOLDER_A = "50ecadd0-9823-4d97-b54c-806cc672c210";
 const FOLDER_ITEM_A = "9f41b1a7-77f9-4c12-bdc6-d3cebc5dbf50";
 const FOLDER_ITEM_B = "5f5b9a9d-0e57-4775-849b-c8308f95a809";
@@ -477,6 +478,74 @@ describe("messenger sidebar selectors", () => {
       text: "Topic preview",
       senderName: "Alice Wonderland",
     });
+  });
+
+  it("sorts topics by last message time and exposes that time on each row", () => {
+    const rows = selectMessengerSidebarStreams(
+      state({
+        topicsById: {
+          [TOPIC_A]: topic({ lastMessageUuid: MESSAGE_A }),
+          [TOPIC_B]: topic({
+            uuid: TOPIC_B,
+            name: "Later topic",
+            lastMessageUuid: MESSAGE_B,
+          }),
+        },
+        topicIds: [TOPIC_A, TOPIC_B],
+      }),
+      {
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        usersById: createUsersById(),
+        messagesById: {
+          [MESSAGE_A]: message({ uuid: MESSAGE_A, createdAt: DATE_A }),
+          [MESSAGE_B]: message({
+            uuid: MESSAGE_B,
+            conversationId: `topic:${STREAM_A}:${TOPIC_B}`,
+            topicUuid: TOPIC_B,
+            createdAt: DATE_B,
+          }),
+        },
+      },
+    );
+
+    expect(rows[0]?.topics.map((item) => item.topicUuid)).toEqual([TOPIC_B, TOPIC_A]);
+    expect(rows[0]?.topics[0]?.lastMessageCreatedAt).toBe(DATE_B);
+    expect(rows[0]?.topics[1]?.lastMessageCreatedAt).toBe(DATE_A);
+  });
+
+  it("keeps topic order predictable when last message bodies are missing", () => {
+    const rows = selectMessengerSidebarStreams(
+      state({
+        topicsById: {
+          [TOPIC_A]: topic({ lastMessageUuid: MESSAGE_A }),
+          [TOPIC_B]: topic({
+            uuid: TOPIC_B,
+            name: "Topic without body",
+            lastMessageUuid: MESSAGE_B,
+          }),
+          [TOPIC_C]: topic({
+            uuid: TOPIC_C,
+            name: "Topic without last message",
+            lastMessageUuid: null,
+          }),
+        },
+        topicIds: [TOPIC_A, TOPIC_B, TOPIC_C],
+      }),
+      {
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        usersById: createUsersById(),
+        messagesById: {
+          [MESSAGE_A]: message({ uuid: MESSAGE_A, createdAt: DATE_A }),
+        },
+      },
+    );
+
+    expect(rows[0]?.topics.map((item) => item.topicUuid)).toEqual([TOPIC_A, TOPIC_B, TOPIC_C]);
+    expect(rows[0]?.topics[0]?.lastMessageCreatedAt).toBe(DATE_A);
+    expect(rows[0]?.topics[1]?.lastMessageCreatedAt).toBeNull();
+    expect(rows[0]?.topics[2]?.lastMessageCreatedAt).toBeNull();
   });
 
   it("builds Workspace summary previews without exposing raw file urls", () => {
