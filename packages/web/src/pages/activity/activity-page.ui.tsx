@@ -162,7 +162,7 @@ export const ActivityPage: React.FC = () => {
           replace: true,
         });
       } else {
-        void navigate("/activity/mentions", { replace: true });
+        void navigate("/", { replace: true });
       }
     }
   }, [navigate, orgId, projectId, validFilter]);

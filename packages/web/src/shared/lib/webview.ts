@@ -229,10 +229,13 @@ export interface WebViewPageDef {
 
 const webViewPages: WebViewPageDef[] = [
   { path: "/licenses", label: "Open Source Licenses" },
-  { path: "/activity/:filter", label: "Activity" },
-  { path: "/stream/:streamSlug", label: "Channel" },
-  { path: "/stream/:streamSlug/topic/:topicName", label: "Topic" },
-  { path: "/dm/:dmId", label: "Direct Message" },
+  { path: "/org/:orgId/project/:projectId/activity/:filter", label: "Activity" },
+  // Workspace uses the same stream route for channels and direct-message conversations.
+  { path: "/org/:orgId/project/:projectId/stream/:streamUuid", label: "Conversation" },
+  {
+    path: "/org/:orgId/project/:projectId/stream/:streamUuid/topic/:topicUuid",
+    label: "Topic",
+  },
   { path: "/calendar", label: "Calendar" },
   { path: "/mail", label: "Mail" },
   { path: "/call", label: "Call" },
@@ -248,8 +251,8 @@ const webViewPages: WebViewPageDef[] = [
     : []),
   { path: "/services", label: "Services" },
   { path: "/all-services", label: "All Services" },
-  { path: "/inbox", label: "Inbox" },
-  { path: "/feed", label: "Feed" },
+  { path: "/org/:orgId/project/:projectId/inbox", label: "Inbox" },
+  { path: "/org/:orgId/project/:projectId/feed", label: "Feed" },
   { path: "/updates", label: "Update Center" },
 ];
 

@@ -3,13 +3,9 @@ import type { SidebarChat, StreamWithLast } from "~/shared/types/sidebar-chat";
 import { isSidebarSystemFolderId } from "./sidebar-folder.constants";
 
 export { dmConversationKey } from "~/shared/lib/dm-key";
-import {
-  buildDmRouteSlugFromRecipients,
-  isDmRouteSlugActive,
-  parseDmRouteParticipantIds,
-} from "~/shared/lib/dm-route-slug.lib";
+import { isDmRouteSlugActive, parseDmRouteParticipantIds } from "~/shared/lib/dm-route-slug.lib";
 
-export { buildDmRouteSlugFromRecipients, isDmRouteSlugActive, parseDmRouteParticipantIds };
+export { isDmRouteSlugActive, parseDmRouteParticipantIds };
 
 /** System rail folders plus legacy `selectedFolderId="all"` used in tests and older routes. */
 export function isSidebarSystemFolderScope(folderId: string | undefined): boolean {
@@ -28,42 +24,36 @@ export const MY_ACTIVITY = [
     labelKey: "nav.inbox" as const,
     icon: "mail" as const,
     iconBgClass: "bg-accent",
-    route: "/inbox" as const,
   },
   {
     key: "mentions",
     labelKey: "activity.mentions" as const,
     icon: "at" as const,
     iconBgClass: "bg-indicator-yellow",
-    route: "/activity/mentions" as const,
   },
   {
     key: "drafts",
     labelKey: "activity.drafts" as const,
     icon: "files" as const,
     iconBgClass: "bg-indicator-purple",
-    route: "/activity/drafts" as const,
   },
   {
     key: "favorites",
     labelKey: "activity.starred" as const,
     icon: "star_outline" as const,
     iconBgClass: "bg-accent",
-    route: "/activity/starred" as const,
   },
   {
     key: "reactions",
     labelKey: "activity.reactions" as const,
     icon: "mood" as const,
     iconBgClass: "bg-indicator-green",
-    route: "/activity/reactions" as const,
   },
   {
     key: "feed",
     labelKey: "nav.feed" as const,
     icon: "chat_bubble_outline" as const,
     iconBgClass: "bg-indicator-green",
-    route: "/feed" as const,
   },
 ] as const;
 

@@ -1,5 +1,4 @@
 import { useEffect } from "react";
-import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import {
   parseWorkspaceMessengerRoute,
   workspaceInboxRoute,
@@ -36,7 +35,7 @@ export function useLayoutEscapeNavigation(options: {
       const target =
         workspaceRoute != null
           ? workspaceInboxRoute(workspaceRoute.orgId, workspaceRoute.projectId)
-          : withCurrentOrgRoute("/inbox");
+          : "/";
       void navigate(target);
     };
 

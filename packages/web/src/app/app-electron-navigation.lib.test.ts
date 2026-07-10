@@ -3,11 +3,8 @@ import { TRAY_MESSENGER_OPEN_ROUTE } from "~/shared/lib/last-messenger-route.lib
 import { resolveElectronTrayNavigation } from "./app-electron-navigation.lib";
 
 describe("resolveElectronTrayNavigation", () => {
-  it("maps slash-prefixed routes to navigate actions", () => {
-    expect(resolveElectronTrayNavigation("/stream/general")).toEqual({
-      type: "navigate",
-      route: "/stream/general",
-    });
+  it("rejects legacy messenger routes and maps supported routes", () => {
+    expect(resolveElectronTrayNavigation("/stream/general")).toBeNull();
     expect(resolveElectronTrayNavigation("/calendar")).toEqual({
       type: "navigate",
       route: "/calendar",
@@ -18,10 +15,10 @@ describe("resolveElectronTrayNavigation", () => {
     });
   });
 
-  it("normalizes routes without leading slash and trims whitespace", () => {
-    expect(resolveElectronTrayNavigation("stream/general")).toEqual({
+  it("normalizes canonical routes without leading slash and trims whitespace", () => {
+    expect(resolveElectronTrayNavigation("org/acme/project/project-a/stream/stream-uuid")).toEqual({
       type: "navigate",
-      route: "/stream/general",
+      route: "/org/acme/project/project-a/stream/stream-uuid",
     });
     expect(resolveElectronTrayNavigation("  /calendar  ")).toEqual({
       type: "navigate",

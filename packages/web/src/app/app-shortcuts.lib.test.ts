@@ -58,7 +58,7 @@ describe("app-shortcuts", () => {
       { key: "mod+2", route: "/calendar" },
       { key: "mod+3", route: "/mail" },
       { key: "mod+4", route: "/calls" },
-      { key: "mod+shift+a", route: "/activity/starred" },
+      { key: "mod+shift+a", route: "/" },
     ];
 
     for (const item of cases) {

@@ -1,9 +1,8 @@
-import { withCurrentOrgRoute } from "~/shared/lib/org-route";
 import type { SidebarChat } from "~/shared/types/sidebar-chat";
 import type { ResolveChatShortcutRouteOptions } from "./layout-chat-shortcuts.types";
 
-function toChatRoute(_chat: SidebarChat): string {
-  return withCurrentOrgRoute("/inbox");
+function toChatRoute(_chat: SidebarChat): string | null {
+  return null;
 }
 
 function getActiveChatRoute(
@@ -11,10 +10,10 @@ function getActiveChatRoute(
   activeDmIdParam: string | null | undefined,
 ): string | null {
   if (activeDmIdParam != null && activeDmIdParam.length > 0) {
-    return withCurrentOrgRoute("/inbox");
+    return null;
   }
   if (activeStreamSlug != null && activeStreamSlug.length > 0) {
-    return withCurrentOrgRoute("/inbox");
+    return null;
   }
   return null;
 }
@@ -27,7 +26,7 @@ export function resolveChatShortcutRoute({
 }: ResolveChatShortcutRouteOptions): string | null {
   if (sidebarChats.length === 0) return null;
 
-  const routes = sidebarChats.map(toChatRoute);
+  const routes = sidebarChats.map(toChatRoute).filter((route): route is string => route != null);
   const activeRoute = getActiveChatRoute(activeStreamSlug, activeDmIdParam);
   const activeIndex = activeRoute != null ? routes.indexOf(activeRoute) : -1;
 

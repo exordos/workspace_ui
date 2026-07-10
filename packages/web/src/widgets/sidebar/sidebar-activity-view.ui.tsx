@@ -1,7 +1,6 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { t } from "~/i18n/i18n";
-import { extractOrgRouteFromPathname, withCurrentOrgRoute } from "~/shared/lib/org-route";
 import {
   parseWorkspaceMessengerRoute,
   workspaceActivityRoute,
@@ -63,9 +62,18 @@ function getExpandedActivityIconSize(key: string): number {
   return key === "favorites" || key === "feed" ? 16 : 18;
 }
 
-function activityFilterFromRoute(route: string): string | null {
-  const match = /^\/activity\/([^/]+)$/.exec(route);
-  return match?.[1] ?? null;
+function activityFilterForKey(key: SidebarActivityItemKey): string | null {
+  switch (key) {
+    case "mentions":
+    case "drafts":
+    case "reactions":
+      return key;
+    case "favorites":
+      return "starred";
+    case "inbox":
+    case "feed":
+      return null;
+  }
 }
 
 function countForActivityKey(
@@ -102,7 +110,6 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
   favoritesError = null,
 }) => {
   const { pathname } = useLocation();
-  const { scopedPathname } = extractOrgRouteFromPathname(pathname);
   const workspaceRoute = React.useMemo(() => parseWorkspaceMessengerRoute(pathname), [pathname]);
   const workspaceOrgId = workspaceRoute?.orgId ?? null;
   const workspaceProjectId = workspaceRoute?.projectId ?? null;
@@ -115,19 +122,19 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
   const inboxRoute =
     workspaceOrgId != null && workspaceProjectId != null
       ? workspaceInboxRoute(workspaceOrgId, workspaceProjectId)
-      : withCurrentOrgRoute("/inbox");
+      : "/";
   const resolveActivityRoute = React.useCallback(
-    (route: string): string => {
+    (key: SidebarActivityItemKey): string => {
       if (workspaceOrgId == null || workspaceProjectId == null) {
-        return withCurrentOrgRoute(route);
+        return "/";
       }
-      if (route === "/inbox") {
+      if (key === "inbox") {
         return workspaceInboxRoute(workspaceOrgId, workspaceProjectId);
       }
-      if (route === "/feed") {
+      if (key === "feed") {
         return workspaceFeedRoute(workspaceOrgId, workspaceProjectId);
       }
-      const filter = activityFilterFromRoute(route);
+      const filter = activityFilterForKey(key);
       if (filter != null) {
         return workspaceActivityRoute({
           orgId: workspaceOrgId,
@@ -135,23 +142,23 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
           filter,
         });
       }
-      return withCurrentOrgRoute(route);
+      return "/";
     },
     [workspaceOrgId, workspaceProjectId],
   );
   const isActivityRouteActive = React.useCallback(
-    (key: string, route: string): boolean => {
+    (key: SidebarActivityItemKey): boolean => {
       if (workspaceRoute != null) {
         if (key === "inbox") return workspaceRoute.kind === "inbox";
         if (key === "feed") return workspaceRoute.kind === "feed";
-        const filter = activityFilterFromRoute(route);
+        const filter = activityFilterForKey(key);
         return (
           filter != null && workspaceRoute.kind === "activity" && workspaceRoute.filter === filter
         );
       }
-      return scopedPathname === route;
+      return false;
     },
-    [scopedPathname, workspaceRoute],
+    [workspaceRoute],
   );
 
   return (
@@ -205,13 +212,9 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
                 </li>
               )}
               {MY_ACTIVITY.map((item) => {
-                const route = "route" in item ? item.route : undefined;
+                const route = resolveActivityRoute(item.key);
                 const disabledReason = disabledItems[item.key];
-                const resolvedRoute = route !== undefined ? resolveActivityRoute(route) : undefined;
-                const isActive =
-                  disabledReason == null &&
-                  route !== undefined &&
-                  isActivityRouteActive(item.key, route);
+                const isActive = disabledReason == null && isActivityRouteActive(item.key);
                 const label = t(item.labelKey);
                 const count = countForActivityKey(item.key, counts);
                 const canShowCount =
@@ -223,10 +226,10 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
                     key={`compact-${item.key}`}
                     className={`${compactListItemClass} ${canShowCount ? "z-sticky" : ""}`}
                   >
-                    {route != null && disabledReason == null ? (
+                    {disabledReason == null ? (
                       <>
                         <Link
-                          to={resolvedRoute ?? withCurrentOrgRoute(route)}
+                          to={route}
                           aria-label={label}
                           aria-current={isActive ? "page" : undefined}
                           className={`${compactRowClass} ${isActive ? compactRowActiveClass : ""}`}
@@ -331,13 +334,9 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
             </li>
           )}
           {MY_ACTIVITY.map((item) => {
-            const route = "route" in item ? item.route : undefined;
+            const route = resolveActivityRoute(item.key);
             const disabledReason = disabledItems[item.key];
-            const resolvedRoute = route !== undefined ? resolveActivityRoute(route) : undefined;
-            const isActive =
-              disabledReason == null &&
-              route !== undefined &&
-              isActivityRouteActive(item.key, route);
+            const isActive = disabledReason == null && isActivityRouteActive(item.key);
             const count = countForActivityKey(item.key, counts);
             const canShowCount =
               count != null && count > 0 && (item.key !== "favorites" || favoritesError == null);
@@ -363,9 +362,9 @@ export const SidebarActivityView: React.FC<SidebarActivityViewProps> = ({
             );
             return (
               <li key={item.key}>
-                {route != null && disabledReason == null ? (
+                {disabledReason == null ? (
                   <Link
-                    to={resolvedRoute ?? withCurrentOrgRoute(route)}
+                    to={route}
                     className={`${expandedRowClass} ${isActive ? expandedRowActiveClass : ""}`}
                     aria-current={isActive ? "page" : undefined}
                   >

@@ -44,7 +44,7 @@ export function resolveGlobalNavigationRoute(
         filter: "starred",
       });
     }
-    return withCurrentOrgRoute("/activity/starred");
+    return withCurrentOrgRoute("/");
   }
   return withCurrentOrgRoute("/calls");
 }

@@ -130,7 +130,7 @@ describe("LoginPage", () => {
         password: "secret",
         projectId: "project-default",
       });
-      expect(navigateSpy).toHaveBeenCalledWith("/inbox", { replace: true });
+      expect(navigateSpy).toHaveBeenCalledWith("/", { replace: true });
     });
   });
 

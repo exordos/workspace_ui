@@ -13,7 +13,7 @@
  *
  * Usage from external AI agent (via window.__ai__):
  *   __ai__.context.getCurrentChat()
- *   __ai__.actions.navigate("/dm/42")
+ *   __ai__.actions.navigate("/org/example.com/project/project-uuid/stream/stream-uuid")
  *   __ai__.actions.sendMessage({ stream: "general", topic: "test", content: "Hello" })
  *   __ai__.events.onNewMessage((msg) => { ... })
  *   __ai__.commands.register("summarize-chat", handler)

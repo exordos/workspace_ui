@@ -74,7 +74,7 @@ export const TopBar: React.FC = () => {
                 instanceId: currentWorkspaceInstanceId,
                 projectId: currentWorkspaceProjectId,
               })
-            : "/inbox";
+            : "/";
         void navigate(withCurrentOrgRoute(messengerPath));
       } else {
         void navigate(withCurrentOrgRoute(`/${section}`));

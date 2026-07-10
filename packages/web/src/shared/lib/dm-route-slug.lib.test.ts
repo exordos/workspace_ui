@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  buildDmRouteSlugFromRecipients,
-  isDmRouteSlugActive,
-  parseDmRouteParticipantIds,
-} from "./dm-route-slug.lib";
+import { isDmRouteSlugActive, parseDmRouteParticipantIds } from "./dm-route-slug.lib";
 
 describe("parseDmRouteParticipantIds", () => {
   it("parses single-user slug with display name suffix", () => {
@@ -16,33 +12,6 @@ describe("parseDmRouteParticipantIds", () => {
 
   it("parses comma-separated group slug", () => {
     expect(parseDmRouteParticipantIds("7-bob,8-carol")).toEqual([7, 8]);
-  });
-});
-
-describe("buildDmRouteSlugFromRecipients", () => {
-  it("builds id-name slug for 1:1 excluding current user", () => {
-    expect(
-      buildDmRouteSlugFromRecipients(
-        [
-          { id: 42, full_name: "Alice" },
-          { id: 7, full_name: "Me" },
-        ],
-        7,
-      ),
-    ).toBe("42-alice");
-  });
-
-  it("builds comma-separated slugs for group DM", () => {
-    expect(
-      buildDmRouteSlugFromRecipients(
-        [
-          { id: 7, full_name: "Bob" },
-          { id: 8, full_name: "Carol" },
-          { id: 9, full_name: "Me" },
-        ],
-        9,
-      ),
-    ).toBe("7-bob,8-carol");
   });
 });
 

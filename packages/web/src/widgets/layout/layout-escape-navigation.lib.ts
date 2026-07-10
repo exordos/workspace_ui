@@ -3,7 +3,6 @@
  * form control (input, textarea, select, contenteditable) or a modal is open.
  */
 
-import { extractOrgRouteFromPathname } from "~/shared/lib/org-route";
 import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
 
 export const COMPOSER_FOCUS_ZONE_SELECTOR = '[data-focus-zone="composer"]';
@@ -43,19 +42,15 @@ export function isInteractiveElementFocused(
 
 export function isInboxMessengerPathname(pathname: string): boolean {
   const workspaceRoute = parseWorkspaceMessengerRoute(pathname);
-  if (workspaceRoute != null) {
-    return workspaceRoute.kind === "inbox";
-  }
-  const { scopedPathname } = extractOrgRouteFromPathname(pathname);
-  return scopedPathname === "/inbox";
+  return workspaceRoute?.kind === "inbox";
 }
 
 export function isMessengerChatPathname(pathname: string): boolean {
-  const { scopedPathname } = extractOrgRouteFromPathname(pathname);
+  const workspaceRoute = parseWorkspaceMessengerRoute(pathname);
   return (
-    scopedPathname.startsWith("/stream/") ||
-    scopedPathname.startsWith("/dm/") ||
-    scopedPathname.startsWith("/message/")
+    workspaceRoute?.kind === "stream" ||
+    workspaceRoute?.kind === "topic" ||
+    workspaceRoute?.kind === "message"
   );
 }
 

@@ -2,14 +2,17 @@ import { describe, expect, it } from "vitest";
 import { normalizeElectronDeeplinkRoute } from "./app-deeplink.lib";
 
 describe("normalizeElectronDeeplinkRoute", () => {
-  it("returns slash-prefixed internal route as-is", () => {
-    expect(normalizeElectronDeeplinkRoute("/dm/42")).toBe("/dm/42");
+  it("rejects legacy messenger routes", () => {
+    expect(normalizeElectronDeeplinkRoute("/dm/42")).toBeNull();
+    expect(normalizeElectronDeeplinkRoute("/org/acme/inbox")).toBeNull();
   });
 
   it("normalizes route without leading slash", () => {
-    expect(normalizeElectronDeeplinkRoute("stream/5-general?msg=10")).toBe(
-      "/stream/5-general?msg=10",
-    );
+    expect(
+      normalizeElectronDeeplinkRoute(
+        "org/acme/project/project-a/stream/stream-uuid?msg=message-uuid",
+      ),
+    ).toBe("/org/acme/project/project-a/stream/stream-uuid?msg=message-uuid");
   });
 
   it("rejects empty input", () => {

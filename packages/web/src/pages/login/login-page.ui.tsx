@@ -9,10 +9,10 @@ import {
 import { useWorkspaceAuthStore } from "~/entities/workspace-auth/workspace-auth.model";
 import { t } from "~/i18n/i18n";
 import { env } from "~/shared/lib/env";
-import { extractOrgRouteFromPathname } from "~/shared/lib/org-route";
 import { getOrganizationFallbackLogoUrl } from "~/shared/lib/organization-branding";
 import { normalizeServerBaseUrl } from "~/shared/lib/server-url.lib";
 import { isValidRealmUrl } from "~/shared/lib/validation";
+import { parseWorkspaceMessengerRoute } from "~/shared/lib/workspace-messenger-route.lib";
 import { Button } from "~/shared/ui/button";
 import { FormField } from "~/shared/ui/form-field.ui";
 import { Icon } from "~/shared/ui/icon";
@@ -70,8 +70,8 @@ export const LoginPage: React.FC = () => {
     if (explicit) {
       return explicit;
     }
-    const { scopedPathname } = extractOrgRouteFromPathname(location.pathname);
-    if (!scopedPathname.startsWith("/message/")) {
+    const workspaceRoute = parseWorkspaceMessengerRoute(location.pathname);
+    if (workspaceRoute?.kind !== "message") {
       return null;
     }
     return sanitizeInternalRedirectTarget(`${location.pathname}${location.search}`);

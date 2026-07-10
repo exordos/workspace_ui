@@ -7,19 +7,26 @@ import {
 } from "./layout-escape-navigation.lib";
 
 describe("isMessengerChatPathname", () => {
-  it("matches stream and DM routes", () => {
-    expect(isMessengerChatPathname("/stream/general")).toBe(true);
-    expect(isMessengerChatPathname("/org/acme/dm/42")).toBe(true);
+  it("matches canonical Workspace stream, topic, and message routes", () => {
+    expect(isMessengerChatPathname("/org/acme/project/project-uuid/stream/stream-uuid")).toBe(true);
+    expect(
+      isMessengerChatPathname("/org/acme/project/project-uuid/stream/stream-uuid/topic/topic-uuid"),
+    ).toBe(true);
+    expect(isMessengerChatPathname("/org/acme/project/project-uuid/message/message-uuid")).toBe(
+      true,
+    );
   });
 
-  it("does not match inbox", () => {
+  it("does not match legacy chat paths or inbox", () => {
+    expect(isMessengerChatPathname("/stream/general")).toBe(false);
+    expect(isMessengerChatPathname("/org/acme/dm/42")).toBe(false);
     expect(isMessengerChatPathname("/inbox")).toBe(false);
     expect(isMessengerChatPathname("/org/acme/inbox")).toBe(false);
   });
 });
 
 describe("resolveLayoutEscapeKeyDown", () => {
-  const chatPathname = "/org/acme/stream/general";
+  const chatPathname = "/org/acme/project/project-uuid/stream/stream-uuid";
 
   const baseOptions = {
     key: "Escape",
@@ -118,9 +125,10 @@ describe("isInteractiveElementFocused", () => {
 });
 
 describe("isInboxMessengerPathname", () => {
-  it("detects inbox with and without org prefix", () => {
-    expect(isInboxMessengerPathname("/inbox")).toBe(true);
-    expect(isInboxMessengerPathname("/org/realm/inbox")).toBe(true);
+  it("detects only the canonical Workspace inbox", () => {
+    expect(isInboxMessengerPathname("/org/realm/project/project-uuid/inbox")).toBe(true);
+    expect(isInboxMessengerPathname("/inbox")).toBe(false);
+    expect(isInboxMessengerPathname("/org/realm/inbox")).toBe(false);
     expect(isInboxMessengerPathname("/stream/general")).toBe(false);
   });
 });

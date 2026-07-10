@@ -1,3 +1,5 @@
+import { isLegacyMessengerPathname } from "~/shared/lib/workspace-messenger-route.lib";
+
 export function sanitizeInternalRedirectTarget(
   rawTarget: string | null | undefined,
 ): string | null {
@@ -7,6 +9,9 @@ export function sanitizeInternalRedirectTarget(
   }
 
   if (!trimmed.startsWith("/") || trimmed.startsWith("//")) {
+    return null;
+  }
+  if (isLegacyMessengerPathname(trimmed)) {
     return null;
   }
 

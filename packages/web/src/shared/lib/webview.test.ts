@@ -121,6 +121,7 @@ describe("WebView page registry", () => {
   // Default pages (licenses, profile) must be registered out of the box.
   it("returns default pages", () => {
     const pages = getWebViewPages();
+    const paths = pages.map((page) => page.path);
     expect(pages.length).toBeGreaterThan(0);
     expect(pages.some((p) => p.path === "/licenses")).toBe(true);
     expect(pages.some((p) => p.path === "/updates")).toBe(true);
@@ -128,8 +129,18 @@ describe("WebView page registry", () => {
     expect(pages.some((p) => p.path === "/settings/logs")).toBe(true);
     expect(pages.some((p) => p.path === "/logs")).toBe(true);
     expect(pages.some((p) => p.path === "/settings/build")).toBe(true);
-    expect(pages.some((p) => p.path === "/inbox")).toBe(true);
-    expect(pages.some((p) => p.path === "/feed")).toBe(true);
+    expect(paths).toContain("/org/:orgId/project/:projectId/stream/:streamUuid");
+    expect(paths).toContain("/org/:orgId/project/:projectId/activity/:filter");
+    expect(paths).toContain("/org/:orgId/project/:projectId/stream/:streamUuid/topic/:topicUuid");
+    expect(paths).toContain("/org/:orgId/project/:projectId/inbox");
+    expect(paths).toContain("/org/:orgId/project/:projectId/feed");
+
+    expect(paths).not.toContain("/stream/:streamSlug");
+    expect(paths).not.toContain("/activity/:filter");
+    expect(paths).not.toContain("/stream/:streamSlug/topic/:topicName");
+    expect(paths).not.toContain("/dm/:dmId");
+    expect(paths).not.toContain("/inbox");
+    expect(paths).not.toContain("/feed");
   });
 
   // Custom pages can be registered at runtime by plugins or feature flags.

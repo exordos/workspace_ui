@@ -1,7 +1,7 @@
 /**
  * Tests for the deep linking module.
  *
- * Deep links enable navigation to specific streams, topics, messages, and DMs
+ * Deep links enable navigation to specific streams, topics, and messages
  * via URL paths. They are used for shareable links, custom protocol handling
  * (ew://), browser history, and cross-platform link opening.
  * Broken deep links mean users can't navigate to shared content.
@@ -18,8 +18,8 @@ afterEach(() => {
 
 // Builder functions generate URL paths from entity IDs — used for programmatic navigation
 describe("deeplink builders", () => {
-  it("toStream falls back to Inbox without Workspace UUIDs", () => {
-    expect(deeplink.toStream(5, "general")).toBe("/inbox");
+  it("toStream falls back to the app root without Workspace context", () => {
+    expect(deeplink.toStream(5, "general")).toBe("/");
   });
 
   it("toStream builds Workspace route when UUID and project are present", () => {
@@ -32,12 +32,14 @@ describe("deeplink builders", () => {
     ).toBe("/org/chat.example.com/project/project-uuid/stream/stream-uuid");
   });
 
-  it("toStream with special chars still falls back to Inbox without Workspace UUIDs", () => {
-    expect(deeplink.toStream(10, "My Channel!")).toBe("/inbox");
+  it("toStream uses the safe root fallback for incomplete Workspace context", () => {
+    expect(deeplink.toStream(10, "My Channel!", { orgId: "chat.example.com" })).toBe(
+      "/org/chat.example.com",
+    );
   });
 
-  it("toTopic falls back to Inbox without Workspace topic UUID", () => {
-    expect(deeplink.toTopic(5, "general", "bugs")).toBe("/inbox");
+  it("toTopic falls back to the app root without Workspace context", () => {
+    expect(deeplink.toTopic(5, "general", "bugs")).toBe("/");
   });
 
   it("toTopic builds Workspace topic route when UUIDs and project are present", () => {
@@ -51,20 +53,18 @@ describe("deeplink builders", () => {
     ).toBe("/org/chat.example.com/project/project-uuid/stream/stream-uuid/topic/topic-uuid");
   });
 
-  it("toTopic with spaces falls back to Inbox without Workspace UUIDs", () => {
-    expect(deeplink.toTopic(5, "general", "my topic")).toBe("/inbox");
+  it("toTopic uses the safe root fallback when Workspace context is incomplete", () => {
+    expect(
+      deeplink.toTopic(5, "general", "bugs", {
+        orgId: "chat.example.com",
+        projectId: "project-uuid",
+        streamUuid: "stream-uuid",
+      }),
+    ).toBe("/org/chat.example.com");
   });
 
-  it("toTopic with empty topic falls back to Inbox without Workspace UUIDs", () => {
-    expect(deeplink.toTopic(5, "general", "")).toBe("/inbox");
-  });
-
-  it("toTopic with literal empty-topic token falls back to Inbox without Workspace UUIDs", () => {
-    expect(deeplink.toTopic(5, "general", "__empty__")).toBe("/inbox");
-  });
-
-  it("toMessage falls back to Inbox without Workspace message UUID", () => {
-    expect(deeplink.toMessage(5, "general", "bugs", 12345)).toBe("/inbox");
+  it("toMessage falls back to the app root without Workspace context", () => {
+    expect(deeplink.toMessage(5, "general", "bugs", 12345)).toBe("/");
   });
 
   it("toMessage builds Workspace message route when UUID and project are present", () => {
@@ -77,14 +77,49 @@ describe("deeplink builders", () => {
     ).toBe("/org/chat.example.com/project/project-uuid/message/message-uuid");
   });
 
-  it("toDm falls back to Inbox from numeric user id", () => {
-    expect(deeplink.toDm(42)).toBe("/inbox");
+  it("toDm falls back to the app root without Workspace context", () => {
+    expect(deeplink.toDm(42)).toBe("/");
   });
 
-  // Activity filters (starred, mentions) navigate to filtered activity views
-  it("toActivity", () => {
-    expect(deeplink.toActivity("starred")).toBe("/activity/starred");
-    expect(deeplink.toActivity("mentions")).toBe("/activity/mentions");
+  it("toDm builds Workspace stream route when the direct stream UUID is present", () => {
+    expect(
+      deeplink.toDm(42, {
+        orgId: "chat.example.com",
+        projectId: "project-uuid",
+        streamUuid: "direct-stream-uuid",
+      }),
+    ).toBe("/org/chat.example.com/project/project-uuid/stream/direct-stream-uuid");
+  });
+
+  it("toDm uses the topic route when a topic UUID is present", () => {
+    expect(
+      deeplink.toDm(42, {
+        orgId: "chat.example.com",
+        projectId: "project-uuid",
+        streamUuid: "direct-stream-uuid",
+        topicUuid: "topic-uuid",
+      }),
+    ).toBe("/org/chat.example.com/project/project-uuid/stream/direct-stream-uuid/topic/topic-uuid");
+  });
+
+  // Activity filters (starred, mentions) navigate to filtered Workspace views.
+  it("toActivity builds a canonical Workspace route", () => {
+    expect(
+      deeplink.toActivity("starred", {
+        orgId: "chat.example.com",
+        projectId: "project-uuid",
+      }),
+    ).toBe("/org/chat.example.com/project/project-uuid/activity/starred");
+    expect(
+      deeplink.toActivity("mentions", {
+        orgId: "chat.example.com",
+        projectId: "project-uuid",
+      }),
+    ).toBe("/org/chat.example.com/project/project-uuid/activity/mentions");
+  });
+
+  it("toActivity falls back to the app root without Workspace context", () => {
+    expect(deeplink.toActivity("starred")).toBe("/");
   });
 
   // Static routes for non-chat pages
@@ -97,103 +132,71 @@ describe("deeplink builders", () => {
 
   it("prefixes routes with current org scope", () => {
     setCurrentOrgRouteIdResolver(() => "chat.example.com");
-    expect(deeplink.toDm(42)).toBe("/org/chat.example.com/inbox");
-    expect(deeplink.toStream(5, "general")).toBe("/org/chat.example.com/inbox");
+    expect(deeplink.toDm(42)).toBe("/org/chat.example.com");
+    expect(deeplink.toStream(5, "general")).toBe("/org/chat.example.com");
   });
 });
 
 // Parser extracts structured data from URL strings — inverse of builders
 describe("deeplink parser", () => {
-  // Stream URLs must extract the slug for router navigation
-  it("parses stream URL", () => {
-    const result = deeplink.parse("/stream/5-general");
+  it("parses the canonical Workspace stream URL", () => {
+    const result = deeplink.parse("/org/chat.example.com/project/project-uuid/stream/stream-uuid");
     expect(result.type).toBe("stream");
-    expect(result.streamSlug).toBe("5-general");
-  });
-
-  // Topic URLs must extract both stream slug and topic name
-  it("parses topic URL", () => {
-    const result = deeplink.parse("/stream/5-general/topic/bugs");
-    expect(result.type).toBe("topic");
-    expect(result.streamSlug).toBe("5-general");
-    expect(result.topicName).toBe("bugs");
-  });
-
-  it("parses reserved token as empty topic name", () => {
-    const result = deeplink.parse("/stream/5-general/topic/__empty__");
-    expect(result.type).toBe("topic");
-    expect(result.topicName).toBe("");
-  });
-
-  it("parses escaped token as literal topic value", () => {
-    const result = deeplink.parse("/stream/5-general/topic/~__empty__");
-    expect(result.type).toBe("topic");
-    expect(result.topicName).toBe("__empty__");
-  });
-
-  it("does not throw on malformed encoded topic segments", () => {
-    const malformedTopicPath = "/stream/5-general/topic/%E0%A4%A";
-    expect(() => deeplink.parse(malformedTopicPath)).not.toThrow();
-    const result = deeplink.parse(malformedTopicPath);
-    expect(result.type).toBe("topic");
-    expect(result.topicName).toBe("%E0%A4%A");
-  });
-
-  // Message URLs extract the numeric message ID from the ?msg= param
-  it("parses message URL", () => {
-    const result = deeplink.parse("/stream/5-general/topic/bugs?msg=12345");
-    expect(result.type).toBe("message");
-    expect(result.messageId).toBe(12345);
-  });
-
-  it("ignores invalid msg query values in stream topic links", () => {
-    const result = deeplink.parse("/stream/5-general/topic/bugs?msg=Infinity");
-    expect(result.type).toBe("topic");
-    expect(result.messageId).toBeUndefined();
-  });
-
-  it("ignores exponent-form msg query values in stream topic links", () => {
-    const result = deeplink.parse("/stream/5-general/topic/bugs?msg=1e3");
-    expect(result.type).toBe("topic");
-    expect(result.messageId).toBeUndefined();
-  });
-
-  it("ignores hex-form msg query values in stream topic links", () => {
-    const result = deeplink.parse("/stream/5-general/topic/bugs?msg=0x10");
-    expect(result.type).toBe("topic");
-    expect(result.messageId).toBeUndefined();
-  });
-
-  it("parses DM URL", () => {
-    const result = deeplink.parse("/dm/42");
-    expect(result.type).toBe("dm");
-    expect(result.dmId).toBe("42");
-  });
-
-  it("parses org-scoped DM URL", () => {
-    const result = deeplink.parse("/org/chat.example.com/dm/42");
-    expect(result.type).toBe("dm");
-    expect(result.dmId).toBe("42");
     expect(result.orgId).toBe("chat.example.com");
+    expect(result.projectId).toBe("project-uuid");
+    expect(result.streamUuid).toBe("stream-uuid");
   });
 
-  it("parses activity URL", () => {
-    const result = deeplink.parse("/activity/starred");
+  it("parses the canonical Workspace topic URL", () => {
+    const result = deeplink.parse(
+      "/org/chat.example.com/project/project-uuid/stream/stream-uuid/topic/topic-uuid",
+    );
+    expect(result.type).toBe("topic");
+    expect(result.projectId).toBe("project-uuid");
+    expect(result.streamUuid).toBe("stream-uuid");
+    expect(result.topicUuid).toBe("topic-uuid");
+  });
+
+  it("parses the canonical Workspace message URL", () => {
+    const result = deeplink.parse(
+      "/org/chat.example.com/project/project-uuid/message/message-uuid",
+    );
+    expect(result.type).toBe("message");
+    expect(result.projectId).toBe("project-uuid");
+    expect(result.messageUuid).toBe("message-uuid");
+  });
+
+  it("does not parse legacy chat URLs", () => {
+    expect(deeplink.parse("/stream/5-general").type).toBe("unknown");
+    expect(deeplink.parse("/dm/42").type).toBe("unknown");
+    expect(deeplink.parse("/message/12345").type).toBe("unknown");
+  });
+
+  it("parses canonical Workspace activity URL", () => {
+    const result = deeplink.parse("/org/chat.example.com/project/project-uuid/activity/starred");
     expect(result.type).toBe("activity");
+    expect(result.projectId).toBe("project-uuid");
     expect(result.filter).toBe("starred");
   });
 
-  // Custom protocol (ew://) is used by Electron for OS-level deep linking
-  it("parses custom protocol URL", () => {
-    const result = deeplink.parse("ew://open/dm/42");
-    expect(result.type).toBe("dm");
-    expect(result.dmId).toBe("42");
+  it("does not parse a legacy unscoped activity URL", () => {
+    expect(deeplink.parse("/activity/starred").type).toBe("unknown");
   });
 
-  // Full HTTPS URLs from shared links must also be parseable
-  it("parses full https URL", () => {
-    const result = deeplink.parse("https://app.example.com/stream/5-general");
-    expect(result.type).toBe("stream");
+  it("parses canonical Workspace URL from the custom protocol", () => {
+    const result = deeplink.parse(
+      "ew://open/org/chat.example.com/project/project-uuid/stream/stream-uuid/topic/topic-uuid",
+    );
+    expect(result.type).toBe("topic");
+    expect(result.topicUuid).toBe("topic-uuid");
+  });
+
+  it("parses a full HTTPS Workspace URL", () => {
+    const result = deeplink.parse(
+      "https://app.example.com/org/chat.example.com/project/project-uuid/message/message-uuid",
+    );
+    expect(result.type).toBe("message");
+    expect(result.messageUuid).toBe("message-uuid");
   });
 
   // Unrecognized paths should return "unknown" type, not crash
@@ -208,11 +211,10 @@ describe("deeplink parser", () => {
     expect(deeplink.parse("/calls").type).toBe("calls");
   });
 
-  // Input without leading slash should be normalized — tolerates sloppy input
-  it("prepends slash when path has no leading slash", () => {
-    const result = deeplink.parse("stream/5-general");
-    expect(result.type).toBe("stream");
-    expect(result.path).toBe("/stream/5-general");
+  it("returns unknown for incomplete Workspace routes", () => {
+    expect(
+      deeplink.parse("/org/chat.example.com/project/project-uuid/stream/stream-uuid/topic"),
+    ).toMatchObject({ type: "unknown" });
   });
 });
 
@@ -222,17 +224,25 @@ describe("toShareableUrl", () => {
     delete (window as unknown as Record<string, unknown>).electronAPI;
   });
 
-  // In browser, shareable URL uses the current origin (https://app.example.com)
-  it("returns origin + path in browser", () => {
-    const result = deeplink.toShareableUrl("/stream/5-general");
-    expect(result).toBe(`${window.location.origin}/stream/5-general`);
+  it("returns origin + canonical Workspace path in browser", () => {
+    const result = deeplink.toShareableUrl(
+      "/org/chat.example.com/project/project-uuid/stream/stream-uuid/topic/topic-uuid",
+    );
+    expect(result).toBe(
+      `${window.location.origin}/org/chat.example.com/project/project-uuid/stream/stream-uuid/topic/topic-uuid`,
+    );
   });
 
-  // In Electron, use custom protocol so the OS routes clicks to the desktop app
-  it("returns custom protocol URL in Electron", () => {
+  it("uses the custom protocol for a canonical Workspace path in Electron", () => {
     (window as unknown as Record<string, unknown>).electronAPI = {};
-    const result = deeplink.toShareableUrl("/dm/42");
-    expect(result).toBe("ew://open/dm/42");
+    const result = deeplink.toShareableUrl(
+      "/org/chat.example.com/project/project-uuid/message/message-uuid",
+    );
+    expect(result).toBe("ew://open/org/chat.example.com/project/project-uuid/message/message-uuid");
+  });
+
+  it("does not generate a legacy shareable path", () => {
+    expect(deeplink.toShareableUrl("/dm/42")).toBe(`${window.location.origin}/`);
   });
 });
 
@@ -310,7 +320,7 @@ describe("share", () => {
 });
 
 describe("toStream edge cases", () => {
-  it("falls back to Inbox when name is all special characters and UUID is missing", () => {
-    expect(deeplink.toStream(1, "!!!")).toBe("/inbox");
+  it("uses the app root when Workspace context is absent", () => {
+    expect(deeplink.toStream(1, "!!!")).toBe("/");
   });
 });

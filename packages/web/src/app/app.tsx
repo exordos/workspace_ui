@@ -22,6 +22,7 @@ import { useShortcut } from "~/shared/lib/shortcuts";
 import { useAppUpdate } from "~/shared/lib/updater";
 import { isWebView } from "~/shared/lib/webview";
 import {
+  isLegacyMessengerPathname,
   parseWorkspaceMessengerRoute,
   workspaceMessengerRootRoute,
 } from "~/shared/lib/workspace-messenger-route.lib";
@@ -107,6 +108,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     setPluginNavigate((path) => {
+      if (isLegacyMessengerPathname(path)) return;
       void navigate(withCurrentOrgRoute(path));
     });
   }, [navigate]);

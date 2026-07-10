@@ -202,3 +202,9 @@ export function parseWorkspaceMessengerRoute(
 export function isWorkspaceMessengerRoute(pathname: string): boolean {
   return parseWorkspaceMessengerRoute(pathname) != null;
 }
+
+/** Returns true for pre-Workspace messenger paths that must never be navigated to. */
+export function isLegacyMessengerPathname(pathname: string): boolean {
+  const { scopedPathname } = extractOrgRouteFromPathname(pathname);
+  return /^(?:\/stream|\/dm|\/message|\/inbox|\/feed|\/activity)(?:[/?#]|$)/.test(scopedPathname);
+}

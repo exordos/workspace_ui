@@ -24,6 +24,7 @@ import {
   type NativeMessage,
 } from "~/shared/lib/webview";
 import {
+  isLegacyMessengerPathname,
   workspaceInboxRoute,
   workspaceMessengerRootRoute,
 } from "~/shared/lib/workspace-messenger-route.lib";
@@ -132,7 +133,11 @@ export const WebViewShell: React.FC = () => {
         const cleaned = msg.path.replace(/^\/webview/, "");
         // Only allow internal app paths — reject absolute URLs, protocol handlers,
         // and any path that doesn't start with "/" (prevents javascript:, data:, etc.)
-        if (cleaned.startsWith("/") && !cleaned.startsWith("//")) {
+        if (
+          cleaned.startsWith("/") &&
+          !cleaned.startsWith("//") &&
+          !isLegacyMessengerPathname(cleaned)
+        ) {
           void navigate(withCurrentOrgRoute(cleaned));
         }
       }

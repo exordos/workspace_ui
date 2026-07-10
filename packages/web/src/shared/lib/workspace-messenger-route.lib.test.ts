@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isLegacyMessengerPathname,
   isWorkspaceMessengerRoute,
   parseWorkspaceMessengerRoute,
   workspaceActivityRoute,
@@ -42,5 +43,15 @@ describe("workspace-messenger-route", () => {
   it("does not treat old org Inbox as Workspace messenger runtime", () => {
     expect(isWorkspaceMessengerRoute("/org/org-a/inbox")).toBe(false);
     expect(isWorkspaceMessengerRoute("/org/org-a/project/project-a/inbox")).toBe(true);
+  });
+
+  it("identifies legacy messenger paths without matching Workspace paths", () => {
+    expect(isLegacyMessengerPathname("/stream/general")).toBe(true);
+    expect(isLegacyMessengerPathname("/org/org-a/dm/42")).toBe(true);
+    expect(isLegacyMessengerPathname("/org/org-a/inbox")).toBe(true);
+    expect(isLegacyMessengerPathname("/org/org-a/project/project-a/inbox")).toBe(false);
+    expect(isLegacyMessengerPathname("/org/org-a/project/project-a/stream/stream-uuid")).toBe(
+      false,
+    );
   });
 });

@@ -14,7 +14,7 @@
  *   import { analytics, AnalyticsEvent } from "~/lib/analytics";
  *
  *   analytics.track(AnalyticsEvent.MESSAGE_SENT, { streamId: 42, hasAttachment: true });
- *   analytics.page("/stream/10-general");
+ *   analytics.page("/org/example.com/project/project-uuid/stream/stream-uuid");
  *   analytics.identify("123", { role: "admin", locale: "ru" });
  */
 

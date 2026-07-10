@@ -3,21 +3,14 @@
  *
  * Generates shareable URLs for any content within the app.
  * Handles three runtimes:
- * - Web/PWA: standard URL paths (https://app.example.com/stream/5-general)
- * - Electron: custom protocol (workspace://open/stream/5-general)
- * - Internal: react-router paths (/stream/5-general)
+ * - Web/PWA: standard URL paths
+ * - Electron: custom protocol links
+ * - Internal: react-router paths
  *
  * Usage:
  *   import { deeplink } from "~/lib/deeplinks";
  *
- *   deeplink.toStream(5, "general");          // "/inbox"
- *   deeplink.toTopic(5, "general", "bugs");   // "/inbox"
- *   deeplink.toDm(42);                        // "/inbox"
- *   deeplink.toActivity("starred");           // "/activity/starred"
- *   deeplink.toMessage(5, "general", 12345);  // "/inbox"
- *
- *   deeplink.toShareableUrl("/stream/5-general");  // "https://app.example.com/stream/5-general"
- *   deeplink.parse("workspace://open/dm/42");      // { type: "dm", dmId: "42" }
+ *   deeplink.toActivity("starred", { orgId, projectId });
  *
  *   await deeplink.share({ title: "#general", url: shareUrl });
  */
@@ -26,9 +19,11 @@ import { writeText } from "./clipboard";
 import { isElectron } from "./electron";
 import { createLogger } from "./logger";
 import { extractOrgRouteFromPathname, withCurrentOrgRoute, withOrgRoutePrefix } from "./org-route";
-import { decodeTopicFromRoute } from "./topic-identity.lib";
 import {
+  isLegacyMessengerPathname,
   workspaceMessengerMessageRoute,
+  parseWorkspaceMessengerRoute,
+  workspaceActivityRoute,
   workspaceMessengerStreamRoute,
   workspaceMessengerTopicRoute,
 } from "./workspace-messenger-route.lib";
@@ -39,20 +34,11 @@ const log = createLogger("deeplinks");
 // Route builders (internal paths)
 // ---------------------------------------------------------------------------
 
-interface WorkspaceRouteScope {
+export interface WorkspaceDeepLinkScope {
   orgId?: string;
   projectId?: string;
-}
-
-interface WorkspaceStreamRouteScope extends WorkspaceRouteScope {
   streamUuid?: string;
-}
-
-interface WorkspaceTopicRouteScope extends WorkspaceStreamRouteScope {
   topicUuid?: string;
-}
-
-interface WorkspaceMessageRouteScope extends WorkspaceRouteScope {
   messageUuid?: string;
 }
 
@@ -62,24 +48,21 @@ function normalizeNonEmpty(value: string | undefined): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function inboxRoute(scope?: WorkspaceRouteScope): string {
+function safeFallbackRoute(scope?: WorkspaceDeepLinkScope): string {
   const orgId = normalizeNonEmpty(scope?.orgId);
-  if (orgId != null) {
-    return withOrgRoutePrefix("/inbox", orgId);
-  }
-  return withCurrentOrgRoute("/inbox");
+  return orgId != null ? withOrgRoutePrefix("/", orgId) : withCurrentOrgRoute("/");
 }
 
 export function toStream(
   _streamId: number,
   _streamName: string,
-  workspace?: WorkspaceStreamRouteScope,
+  workspace?: WorkspaceDeepLinkScope,
 ): string {
   const orgId = normalizeNonEmpty(workspace?.orgId);
   const projectId = normalizeNonEmpty(workspace?.projectId);
   const streamUuid = normalizeNonEmpty(workspace?.streamUuid);
   if (orgId == null || projectId == null || streamUuid == null) {
-    return inboxRoute(workspace);
+    return safeFallbackRoute(workspace);
   }
   return workspaceMessengerStreamRoute({ orgId, projectId, streamUuid });
 }
@@ -88,14 +71,14 @@ export function toTopic(
   _streamId: number,
   _streamName: string,
   _topic: string,
-  workspace?: WorkspaceTopicRouteScope,
+  workspace?: WorkspaceDeepLinkScope,
 ): string {
   const orgId = normalizeNonEmpty(workspace?.orgId);
   const projectId = normalizeNonEmpty(workspace?.projectId);
   const streamUuid = normalizeNonEmpty(workspace?.streamUuid);
   const topicUuid = normalizeNonEmpty(workspace?.topicUuid);
   if (orgId == null || projectId == null || streamUuid == null || topicUuid == null) {
-    return inboxRoute(workspace);
+    return safeFallbackRoute(workspace);
   }
   return workspaceMessengerTopicRoute({ orgId, projectId, streamUuid, topicUuid });
 }
@@ -105,23 +88,39 @@ export function toMessage(
   _streamName: string,
   _topic: string,
   _messageId: number,
-  workspace?: WorkspaceMessageRouteScope,
+  workspace?: WorkspaceDeepLinkScope,
 ): string {
   const orgId = normalizeNonEmpty(workspace?.orgId);
   const projectId = normalizeNonEmpty(workspace?.projectId);
   const messageUuid = normalizeNonEmpty(workspace?.messageUuid);
   if (orgId == null || projectId == null || messageUuid == null) {
-    return inboxRoute(workspace);
+    return safeFallbackRoute(workspace);
   }
   return workspaceMessengerMessageRoute({ orgId, projectId, messageUuid });
 }
 
-export function toDm(_dmId: number | string): string {
-  return withCurrentOrgRoute("/inbox");
+export function toDm(_dmId: number | string, workspace?: WorkspaceDeepLinkScope): string {
+  const orgId = normalizeNonEmpty(workspace?.orgId);
+  const projectId = normalizeNonEmpty(workspace?.projectId);
+  const streamUuid = normalizeNonEmpty(workspace?.streamUuid);
+  if (orgId == null || projectId == null || streamUuid == null) {
+    return safeFallbackRoute(workspace);
+  }
+  const topicUuid = normalizeNonEmpty(workspace?.topicUuid);
+  if (topicUuid != null) {
+    return workspaceMessengerTopicRoute({ orgId, projectId, streamUuid, topicUuid });
+  }
+  return workspaceMessengerStreamRoute({ orgId, projectId, streamUuid });
 }
 
-export function toActivity(filter: "starred" | "mentions" | "reactions"): string {
-  return withCurrentOrgRoute(`/activity/${filter}`);
+export function toActivity(
+  filter: "starred" | "mentions" | "reactions",
+  workspace?: Pick<WorkspaceDeepLinkScope, "orgId" | "projectId">,
+): string {
+  const orgId = normalizeNonEmpty(workspace?.orgId);
+  const projectId = normalizeNonEmpty(workspace?.projectId);
+  if (orgId == null || projectId == null) return safeFallbackRoute(workspace);
+  return workspaceActivityRoute({ orgId, projectId, filter });
 }
 
 export function toCalendar(): string {
@@ -147,7 +146,7 @@ export function toLicenses(): string {
 const CUSTOM_PROTOCOL = "ew";
 
 export function toShareableUrl(internalPath: string): string {
-  const scopedPath = withCurrentOrgRoute(internalPath);
+  const scopedPath = withCurrentOrgRoute(normalizeShareablePath(internalPath));
   if (typeof window === "undefined") return scopedPath;
 
   if (isElectron()) {
@@ -163,55 +162,26 @@ export function toShareableUrl(internalPath: string): string {
 // ---------------------------------------------------------------------------
 
 export interface ParsedDeepLink {
-  type:
-    | "stream"
-    | "topic"
-    | "dm"
-    | "activity"
-    | "message"
-    | "calendar"
-    | "mail"
-    | "calls"
-    | "unknown";
+  type: "stream" | "topic" | "activity" | "message" | "calendar" | "mail" | "calls" | "unknown";
   path: string;
   orgId?: string;
-  streamSlug?: string;
-  topicName?: string;
-  dmId?: string;
+  projectId?: string;
+  streamUuid?: string;
+  topicUuid?: string;
+  messageUuid?: string;
   filter?: string;
-  messageId?: number;
 }
 
-const DECIMAL_INTEGER_RE = /^\d+$/;
-
-function parseMessageId(searchParams: URLSearchParams): number | undefined {
-  const rawMessageId = searchParams.get("msg");
-  if (rawMessageId == null) {
-    return undefined;
-  }
-  if (!DECIMAL_INTEGER_RE.test(rawMessageId)) {
-    return undefined;
-  }
-  const parsed = Number(rawMessageId);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    return undefined;
-  }
-  return parsed;
-}
-
-function decodeUriComponentSafe(value: string): string {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
+function normalizeShareablePath(internalPath: string): string {
+  const path = internalPath.trim();
+  return isLegacyMessengerPathname(path) ? "/" : path;
 }
 
 export function parse(url: string): ParsedDeepLink {
   let path: string;
 
   try {
-    const parsed = new URL(url);
+    const parsed = new URL(url, "https://workspace.invalid");
     if (parsed.protocol === `${CUSTOM_PROTOCOL}:`) {
       path = parsed.pathname.replace(/^\/open/, "") || "/";
     } else {
@@ -221,42 +191,47 @@ export function parse(url: string): ParsedDeepLink {
     path = url.startsWith("/") ? url : `/${url}`;
   }
 
-  const searchParams = new URLSearchParams(url.includes("?") ? url.split("?")[1] : "");
   const { orgId, scopedPathname } = extractOrgRouteFromPathname(path);
 
-  if (scopedPathname.startsWith("/stream/")) {
-    const parts = scopedPathname.replace("/stream/", "").split("/topic/");
-    const hasTopicSegment = parts.length > 1;
-    const streamSlug = parts[0];
-    const topicNameRaw = parts[1] ? decodeUriComponentSafe(parts[1]) : undefined;
-    const topicName = topicNameRaw != null ? decodeTopicFromRoute(topicNameRaw) : undefined;
-    const messageId = parseMessageId(searchParams);
-
-    if (messageId) {
-      return { type: "message", path, orgId: orgId ?? undefined, streamSlug, topicName, messageId };
+  const workspaceRoute = parseWorkspaceMessengerRoute(path);
+  if (workspaceRoute != null) {
+    if (workspaceRoute.kind === "stream") {
+      return {
+        type: "stream",
+        path,
+        orgId: workspaceRoute.orgId,
+        projectId: workspaceRoute.projectId,
+        streamUuid: workspaceRoute.streamUuid,
+      };
     }
-    if (hasTopicSegment) {
-      return { type: "topic", path, orgId: orgId ?? undefined, streamSlug, topicName };
+    if (workspaceRoute.kind === "topic") {
+      return {
+        type: "topic",
+        path,
+        orgId: workspaceRoute.orgId,
+        projectId: workspaceRoute.projectId,
+        streamUuid: workspaceRoute.streamUuid,
+        topicUuid: workspaceRoute.topicUuid,
+      };
     }
-    return { type: "stream", path, orgId: orgId ?? undefined, streamSlug };
-  }
-
-  if (scopedPathname.startsWith("/dm/")) {
-    return {
-      type: "dm",
-      path,
-      orgId: orgId ?? undefined,
-      dmId: scopedPathname.replace("/dm/", ""),
-    };
-  }
-
-  if (scopedPathname.startsWith("/activity/")) {
-    return {
-      type: "activity",
-      path,
-      orgId: orgId ?? undefined,
-      filter: scopedPathname.replace("/activity/", ""),
-    };
+    if (workspaceRoute.kind === "message") {
+      return {
+        type: "message",
+        path,
+        orgId: workspaceRoute.orgId,
+        projectId: workspaceRoute.projectId,
+        messageUuid: workspaceRoute.messageUuid,
+      };
+    }
+    if (workspaceRoute.kind === "activity") {
+      return {
+        type: "activity",
+        path,
+        orgId: workspaceRoute.orgId,
+        projectId: workspaceRoute.projectId,
+        filter: workspaceRoute.filter,
+      };
+    }
   }
 
   if (scopedPathname === "/calendar") return { type: "calendar", path, orgId: orgId ?? undefined };

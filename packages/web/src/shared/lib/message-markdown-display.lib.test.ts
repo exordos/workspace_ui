@@ -127,57 +127,55 @@ describe("messageBodyToUnsanitizedDisplayHtml + Zulip mentions", () => {
     expect(html).not.toContain("**");
   });
 
-  it("renders resolved zulip stream reference as internal stream link", () => {
+  it("renders resolved zulip stream reference as plain text", () => {
     const html = messageBodyToUnsanitizedDisplayHtml("#**Engineering**", {
       resolveStreamByName: (streamName) =>
         streamName === "Engineering" ? { streamId: 10, streamName } : null,
     });
-    expect(html).toContain('<a class="stream" href="/stream/10-engineering">#Engineering</a>');
+    expect(html).toContain("#Engineering");
+    expect(html).not.toContain("<a");
   });
 
-  it("renders resolved zulip stream topic reference as internal topic link", () => {
+  it("renders resolved zulip stream topic reference as plain text", () => {
     const html = messageBodyToUnsanitizedDisplayHtml("#**Engineering>Bugs**", {
       resolveStreamByName: (streamName) =>
         streamName === "Engineering" ? { streamId: 10, streamName } : null,
     });
-    expect(html).toContain(
-      '<a class="stream-topic" href="/stream/10-engineering/topic/Bugs">#Engineering&gt;Bugs</a>',
-    );
+    expect(html).toContain("#Engineering&gt;Bugs");
+    expect(html).not.toContain("<a");
   });
 
-  it("renders resolved zulip stream topic message reference as narrow message link", () => {
+  it("renders resolved zulip stream topic message reference as plain text", () => {
     const html = messageBodyToUnsanitizedDisplayHtml("#**Engineering>Bugs@12345**", {
       resolveStreamByName: (streamName) =>
         streamName === "Engineering" ? { streamId: 10, streamName } : null,
     });
-    expect(html).toContain(
-      '<a class="message-link" href="#narrow/channel/10-Engineering/topic/Bugs/near/12345">#Engineering&gt;Bugs@12345</a>',
-    );
+    expect(html).toContain("#Engineering&gt;Bugs@12345");
+    expect(html).not.toContain("<a");
   });
 
-  it("falls back to internal message redirect when stream is unresolved", () => {
+  it("renders an unresolved zulip message reference as plain text", () => {
     const html = messageBodyToUnsanitizedDisplayHtml("#**Unknown>Bugs@12345**", {
       resolveStreamByName: () => null,
     });
-    expect(html).toContain(
-      '<a class="message-link" href="/message/12345">#Unknown&gt;Bugs@12345</a>',
-    );
+    expect(html).toContain("#Unknown&gt;Bugs@12345");
+    expect(html).not.toContain("<a");
   });
 
-  it("renders unresolved zulip stream reference as name-route link", () => {
+  it("renders unresolved zulip stream reference as plain text", () => {
     const html = messageBodyToUnsanitizedDisplayHtml("#**Unknown**", {
       resolveStreamByName: () => null,
     });
-    expect(html).toContain('<a class="stream" href="/stream/Unknown">#Unknown</a>');
+    expect(html).toContain("#Unknown");
+    expect(html).not.toContain("<a");
   });
 
-  it("renders unresolved zulip stream topic reference as name-route link", () => {
+  it("renders unresolved zulip stream topic reference as plain text", () => {
     const html = messageBodyToUnsanitizedDisplayHtml("#**Unknown>Bugs**", {
       resolveStreamByName: () => null,
     });
-    expect(html).toContain(
-      '<a class="stream-topic" href="/stream/Unknown/topic/Bugs">#Unknown&gt;Bugs</a>',
-    );
+    expect(html).toContain("#Unknown&gt;Bugs");
+    expect(html).not.toContain("<a");
   });
 });
 

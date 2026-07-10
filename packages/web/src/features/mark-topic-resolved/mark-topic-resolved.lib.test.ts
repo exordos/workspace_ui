@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { buildStreamSlug } from "~/shared/lib/stream-slug.lib";
 import {
   resolveMarkTopicResolvedVisibility,
   resolveMarkTopicResolvedVisibilityForTopic,
   resolveTopicResolveTargetFromContext,
 } from "./mark-topic-resolved.lib";
+
+const buildConversationKey = (streamId: number, streamName: string): string =>
+  `${streamId}-${streamName.trim().toLowerCase()}`;
 
 describe("mark-topic-resolved.lib", () => {
   it("returns topic target for stream topic narrow", () => {
@@ -49,7 +51,7 @@ describe("mark-topic-resolved.lib", () => {
       },
       currentUserId: 42,
       streamNameFromMap: "",
-      buildStreamSlug,
+      buildStreamSlug: buildConversationKey,
     });
 
     expect(visibility.canToggle).toBe(true);
@@ -67,7 +69,7 @@ describe("mark-topic-resolved.lib", () => {
       },
       currentUserId: 507,
       streamNameFromMap: "InternalServicesDev",
-      buildStreamSlug,
+      buildStreamSlug: buildConversationKey,
     });
 
     expect(visibility.canToggle).toBe(true);
@@ -80,7 +82,7 @@ describe("mark-topic-resolved.lib", () => {
       topic: "incident",
       streamName: "engineering",
       currentUserId: 42,
-      buildStreamSlug,
+      buildStreamSlug: buildConversationKey,
     });
 
     expect(visibility.canToggle).toBe(true);
@@ -97,7 +99,7 @@ describe("mark-topic-resolved.lib", () => {
       },
       currentUserId: null,
       streamNameFromMap: "engineering",
-      buildStreamSlug,
+      buildStreamSlug: buildConversationKey,
     });
 
     expect(visibility.canToggle).toBe(false);

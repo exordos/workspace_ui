@@ -1,3 +1,5 @@
+import { isLegacyMessengerPathname } from "~/shared/lib/workspace-messenger-route.lib";
+
 const INTERNAL_DEEPLINK_BASE_URL = "https://workspace.local";
 const MAX_DEEPLINK_ROUTE_LENGTH = 512;
 
@@ -22,6 +24,9 @@ export function normalizeElectronDeeplinkRoute(route: string): string | null {
 
     const normalized = `${parsed.pathname}${parsed.search}${parsed.hash}`;
     if (!normalized.startsWith("/") || normalized.includes("//")) {
+      return null;
+    }
+    if (isLegacyMessengerPathname(parsed.pathname)) {
       return null;
     }
 
