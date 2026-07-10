@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { useCalendarStore } from "~/entities/calendar/calendar.model";
 import { t } from "~/i18n/i18n";
 import { AppDialog, DialogPrimaryButton } from "~/shared/ui/app-dialog.ui";
 import { buildDefaultFormState, formStateToEventInput } from "./calendar-event-form.lib";
@@ -17,9 +18,11 @@ export const CalendarEventFormDialog: React.FC<CalendarEventFormDialogProps> = (
   onOpenChange,
   onSubmit,
 }) => {
+  const checkAttendeeBusy = useCalendarStore((s) => s.checkAttendeeBusy);
   const [form, setForm] = useState<CalendarEventFormState>(() =>
     buildDefaultFormState(calendars, focusDate, initialEvent, draftStart),
   );
+  const [attendeeBusyWarning, setAttendeeBusyWarning] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -34,8 +37,11 @@ export const CalendarEventFormDialog: React.FC<CalendarEventFormDialogProps> = (
     [],
   );
 
-  const handleAddAttendee = useCallback(() => {
+  const handleAddAttendee = useCallback(async () => {
     if (form.attendeeEmail.trim().length === 0) return;
+    const input = formStateToEventInput(form);
+    const busy = await checkAttendeeBusy(form.attendeeEmail.trim(), input.start, input.end);
+    setAttendeeBusyWarning(busy ? t("calendar.attendeeBusy") : null);
     setForm((prev) => ({
       ...prev,
       attendees: [
@@ -50,7 +56,7 @@ export const CalendarEventFormDialog: React.FC<CalendarEventFormDialogProps> = (
       attendeeEmail: "",
       attendeeName: "",
     }));
-  }, [form.attendeeEmail, form.attendeeName]);
+  }, [checkAttendeeBusy, form]);
 
   const handleSubmit = useCallback(async () => {
     if (form.summary.trim().length === 0) return;
@@ -231,6 +237,11 @@ export const CalendarEventFormDialog: React.FC<CalendarEventFormDialogProps> = (
               {t("common.add")}
             </button>
           </div>
+          {attendeeBusyWarning != null ? (
+            <p className="mt-1 text-xs text-notice-base" role="status">
+              {attendeeBusyWarning}
+            </p>
+          ) : null}
         </div>
         <label className="block text-sm">
           <span className="mb-1 block text-text-muted">{t("calendar.reminder")}</span>

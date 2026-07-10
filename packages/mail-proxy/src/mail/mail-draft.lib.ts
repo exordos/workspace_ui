@@ -1,16 +1,13 @@
 /**
- * IMAP draft operations — APPEND with \\Draft flag.
+ * IMAP draft transport — APPEND with \\Draft flag.
  */
 
 import {
   appendMailMessage,
   deleteMailMessage,
-  getMailMessage,
-  resolveDraftsFolder,
-  resolveTrashFolder,
+  listMailMessages,
 } from "./imap.lib";
 import { buildOutboundMime } from "./mime.lib";
-import { sendMailMessage, type SendMailOptions } from "./smtp.lib";
 import type { MailSessionRecord } from "../shared/session/session.lib";
 
 export interface DraftMailPayload {
@@ -45,67 +42,33 @@ async function buildDraftMime(
 
 export async function createMailDraft(
   session: MailSessionRecord,
+  folder: string,
   payload: DraftMailPayload,
 ): Promise<{ uid: number; folder: string }> {
-  const draftsFolder = await resolveDraftsFolder(session);
-  if (draftsFolder == null) {
-    throw new Error("Drafts folder not found");
-  }
   const rawMime = await buildDraftMime(session, payload);
-  await appendMailMessage(session, draftsFolder, rawMime, ["\\Draft", "\\Seen"]);
-  const { listMailMessages } = await import("./imap.lib");
-  const messages = await listMailMessages(session, draftsFolder, 1, null);
+  await appendMailMessage(session, folder, rawMime, ["\\Draft", "\\Seen"]);
+  const messages = await listMailMessages(session, folder, 1, null);
   const latest = messages[0];
   if (latest == null) {
     throw new Error("Draft created but could not be located");
   }
-  return { uid: latest.uid, folder: draftsFolder };
+  return { uid: latest.uid, folder };
 }
 
 export async function updateMailDraft(
   session: MailSessionRecord,
+  folder: string,
   uid: number,
   payload: DraftMailPayload,
 ): Promise<{ uid: number; folder: string }> {
-  const draftsFolder = await resolveDraftsFolder(session);
-  if (draftsFolder == null) {
-    throw new Error("Drafts folder not found");
-  }
-  const trashFolder = await resolveTrashFolder(session);
-  await deleteMailMessage(session, draftsFolder, uid, trashFolder);
-  return createMailDraft(session, payload);
+  await deleteMailMessage(session, folder, uid);
+  return createMailDraft(session, folder, payload);
 }
 
-export async function deleteMailDraft(session: MailSessionRecord, uid: number): Promise<void> {
-  const draftsFolder = await resolveDraftsFolder(session);
-  if (draftsFolder == null) {
-    throw new Error("Drafts folder not found");
-  }
-  const trashFolder = await resolveTrashFolder(session);
-  await deleteMailMessage(session, draftsFolder, uid, trashFolder);
-}
-
-export async function sendMailDraft(session: MailSessionRecord, uid: number): Promise<void> {
-  const draftsFolder = await resolveDraftsFolder(session);
-  if (draftsFolder == null) {
-    throw new Error("Drafts folder not found");
-  }
-  const message = await getMailMessage(session, draftsFolder, uid, { markSeen: true });
-  if (message == null) {
-    throw new Error("Draft not found");
-  }
-
-  const sendOptions: SendMailOptions = {
-    to: message.to.join(", ") || session.email,
-    cc: message.cc.length > 0 ? message.cc.join(", ") : undefined,
-    subject: message.subject,
-    bodyHtml: message.bodyHtml ?? message.bodyText ?? "",
-    bodyText: message.bodyText ?? undefined,
-    inReplyTo: message.messageId ?? undefined,
-    references: message.references ?? undefined,
-  };
-  await sendMailMessage(session, sendOptions);
-
-  const trashFolder = await resolveTrashFolder(session);
-  await deleteMailMessage(session, draftsFolder, uid, trashFolder);
+export async function deleteMailDraft(
+  session: MailSessionRecord,
+  folder: string,
+  uid: number,
+): Promise<void> {
+  await deleteMailMessage(session, folder, uid);
 }

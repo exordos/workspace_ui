@@ -2,15 +2,15 @@
  * Mail REST payload validation — client-side before mail-proxy transport calls.
  */
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+import { isValidEmail } from "~/shared/lib/validation";
+import { joinMailFolderPath } from "./mail-folder-tree.lib";
+
+export { isValidEmail };
+
 const MAX_BODY_LENGTH = 512_000;
 const MAX_FOLDER_PATH_LENGTH = 256;
 
 const ALLOWED_IMAP_FLAGS = new Set(["\\Seen", "\\Flagged", "\\Answered", "\\Draft"]);
-
-export function isValidEmail(value: string): boolean {
-  return EMAIL_RE.test(value.trim());
-}
 
 export function sanitizeFolderPath(folder: string): string {
   const trimmed = folder.trim();
@@ -39,6 +39,42 @@ export function parseSessionPayload(body: { email: string; password: string }): 
   return { email, password };
 }
 
+function validateRecipientList(value: string | undefined, fieldLabel: string): void {
+  if (value == null || value.length === 0) return;
+  for (const part of value.split(",")) {
+    const trimmed = part.trim();
+    if (trimmed.length > 0 && !isValidEmail(trimmed)) {
+      throw new Error(`Invalid ${fieldLabel} email`);
+    }
+  }
+}
+
+function validateSubjectAndBody(subject: string, bodyHtml: string): void {
+  if (subject.length === 0) {
+    throw new Error("Subject is required");
+  }
+  if (bodyHtml.length === 0) {
+    throw new Error("Body is required");
+  }
+  if (bodyHtml.length > MAX_BODY_LENGTH) {
+    throw new Error("Body is too long");
+  }
+}
+
+function validateAttachments(
+  attachments: { filename: string; contentBase64: string }[] | undefined,
+): void {
+  if (attachments == null) return;
+  for (const attachment of attachments) {
+    if (attachment.filename.trim().length === 0) {
+      throw new Error("Attachment filename is required");
+    }
+    if (attachment.contentBase64.length === 0) {
+      throw new Error("Attachment content is required");
+    }
+  }
+}
+
 export function parseSendMailPayload(body: {
   to: string;
   cc?: string;
@@ -62,41 +98,10 @@ export function parseSendMailPayload(body: {
   if (!isValidEmail(to)) {
     throw new Error("Invalid recipient email");
   }
-  if (cc != null && cc.length > 0) {
-    for (const part of cc.split(",")) {
-      const trimmed = part.trim();
-      if (trimmed.length > 0 && !isValidEmail(trimmed)) {
-        throw new Error("Invalid cc email");
-      }
-    }
-  }
-  if (bcc != null && bcc.length > 0) {
-    for (const part of bcc.split(",")) {
-      const trimmed = part.trim();
-      if (trimmed.length > 0 && !isValidEmail(trimmed)) {
-        throw new Error("Invalid bcc email");
-      }
-    }
-  }
-  if (subject.length === 0) {
-    throw new Error("Subject is required");
-  }
-  if (bodyHtml.length === 0) {
-    throw new Error("Body is required");
-  }
-  if (bodyHtml.length > MAX_BODY_LENGTH) {
-    throw new Error("Body is too long");
-  }
-  if (body.attachments != null) {
-    for (const attachment of body.attachments) {
-      if (attachment.filename.trim().length === 0) {
-        throw new Error("Attachment filename is required");
-      }
-      if (attachment.contentBase64.length === 0) {
-        throw new Error("Attachment content is required");
-      }
-    }
-  }
+  validateRecipientList(cc, "cc");
+  validateRecipientList(bcc, "bcc");
+  validateSubjectAndBody(subject, bodyHtml);
+  validateAttachments(body.attachments);
   return body;
 }
 
@@ -129,31 +134,18 @@ function validateFolderSegmentName(name: string, delimiter: string): void {
   }
 }
 
-export function joinMailFolderPath(parentPath: string, name: string, delimiter: string): string {
-  const trimmedParent = parentPath.trim();
-  const trimmedName = name.trim();
-  validateFolderSegmentName(trimmedName, delimiter);
-  if (trimmedParent.length === 0) {
-    return sanitizeFolderPath(trimmedName);
-  }
-  return sanitizeFolderPath(`${trimmedParent}${delimiter}${trimmedName}`);
-}
-
 export function buildCreateFolderPath(
   input: { name: string; parentPath?: string },
   delimiter: string,
 ): string {
-  const path = joinMailFolderPath(input.parentPath ?? "", input.name, delimiter);
+  validateFolderSegmentName(input.name.trim(), delimiter);
+  const path = sanitizeFolderPath(
+    joinMailFolderPath(input.parentPath ?? "", input.name, delimiter),
+  );
   if (path === "INBOX") {
     throw new Error("Cannot create INBOX");
   }
   return path;
-}
-
-export function getMailFolderParentPath(path: string, delimiter: string): string | null {
-  const index = path.lastIndexOf(delimiter);
-  if (index <= 0) return null;
-  return path.slice(0, index);
 }
 
 export function parseMoveMailPayload(

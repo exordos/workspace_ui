@@ -58,6 +58,99 @@ export function parseFolderPathBody(body: unknown): string {
   return sanitizeFolderPath(typeof record.path === "string" ? record.path : "");
 }
 
+export type MailFolderClearMode = "permanent" | "move";
+
+export function parseFolderClearMode(value: unknown): MailFolderClearMode {
+  if (value === "permanent" || value === "move") return value;
+  throw new Error("clearMode must be permanent or move");
+}
+
+export function parseFolderClearBody(body: unknown): {
+  path: string;
+  mode: MailFolderClearMode;
+  targetFolder?: string;
+} {
+  if (typeof body !== "object" || body == null) {
+    throw new Error("Invalid request body");
+  }
+  const record = body as Record<string, unknown>;
+  const path = sanitizeFolderPath(typeof record.path === "string" ? record.path : "");
+  const mode = parseFolderClearMode(record.mode);
+  const targetFolder =
+    typeof record.targetFolder === "string" && record.targetFolder.trim().length > 0
+      ? sanitizeFolderPath(record.targetFolder)
+      : undefined;
+  if (mode === "move" && targetFolder == null) {
+    throw new Error("targetFolder is required when mode is move");
+  }
+  return { path, mode, targetFolder };
+}
+
+export function parseDeleteMailFolderInput(input: {
+  path?: unknown;
+  delimiter?: unknown;
+  clearMode?: unknown;
+  targetFolder?: unknown;
+}): {
+  path: string;
+  delimiter: string;
+  clearOptions: { mode: MailFolderClearMode; targetFolder?: string };
+} {
+  const path = sanitizeFolderPath(typeof input.path === "string" ? input.path : "");
+  const delimiter =
+    typeof input.delimiter === "string" && input.delimiter.length === 1 ? input.delimiter : ".";
+  const mode = parseFolderClearMode(input.clearMode);
+  const targetFolder =
+    typeof input.targetFolder === "string" && input.targetFolder.trim().length > 0
+      ? sanitizeFolderPath(input.targetFolder)
+      : undefined;
+  if (mode === "move" && targetFolder == null) {
+    throw new Error("targetFolder is required when clearMode is move");
+  }
+  return {
+    path,
+    delimiter,
+    clearOptions: { mode, targetFolder },
+  };
+}
+
+export function parseDraftMailBody(body: unknown): {
+  folder: string;
+  payload: Record<string, unknown>;
+} {
+  if (typeof body !== "object" || body == null) {
+    throw new Error("Invalid request body");
+  }
+  const record = body as Record<string, unknown>;
+  const folder = sanitizeFolderPath(typeof record.folder === "string" ? record.folder : "");
+  const { folder: _folder, ...payload } = record;
+  return { folder, payload };
+}
+
+export function parseFoldersQuery(value: unknown): string[] {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error("folders query parameter is required");
+  }
+  const folders = value
+    .split(",")
+    .map((item) => sanitizeFolderPath(item))
+    .filter((item, index, array) => array.indexOf(item) === index);
+  if (folders.length === 0) {
+    throw new Error("folders query parameter is required");
+  }
+  return folders;
+}
+
+export function parseSearchFoldersQuery(folder: unknown, folders: unknown): string[] {
+  if (typeof folders === "string" && folders.trim().length > 0) {
+    return parseFoldersQuery(folders);
+  }
+  if (typeof folder === "string" && folder.trim().length > 0) {
+    return [sanitizeFolderPath(folder)];
+  }
+  throw new Error("folder or folders query parameter is required");
+}
+
 export function parseFolderMoveBody(body: unknown): { path: string; toPath: string } {
   if (typeof body !== "object" || body == null) {
     throw new Error("Invalid request body");
@@ -135,46 +228,6 @@ export function parseSinceUidQuery(value: unknown): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
 }
 
-export function parseBatchMailBody(body: unknown): {
-  folder: string;
-  uids: number[];
-  action: "delete" | "move" | "setFlags";
-  toFolder?: string;
-  addFlags?: string[];
-  removeFlags?: string[];
-} {
-  if (typeof body !== "object" || body == null) {
-    throw new Error("Invalid request body");
-  }
-  const record = body as Record<string, unknown>;
-  const folder = sanitizeFolderPath(typeof record.folder === "string" ? record.folder : "INBOX");
-  const uids = Array.isArray(record.uids)
-    ? record.uids
-        .map((item) => Number.parseInt(String(item), 10))
-        .filter((item) => Number.isFinite(item) && item >= 1)
-    : [];
-  const action = record.action;
-  if (action !== "delete" && action !== "move" && action !== "setFlags") {
-    throw new Error("Invalid batch action");
-  }
-  if (uids.length === 0) {
-    throw new Error("uids are required");
-  }
-  return {
-    folder,
-    uids,
-    action,
-    toFolder:
-      typeof record.toFolder === "string" ? sanitizeFolderPath(record.toFolder) : undefined,
-    addFlags: Array.isArray(record.addFlags)
-      ? record.addFlags.filter((item): item is string => typeof item === "string")
-      : undefined,
-    removeFlags: Array.isArray(record.removeFlags)
-      ? record.removeFlags.filter((item): item is string => typeof item === "string")
-      : undefined,
-  };
-}
-
 export function parseSessionExchangeBody(body: unknown): {
   email: string;
   realmUrl: string;
@@ -204,6 +257,7 @@ export function coerceSendMailPayload(record: Record<string, unknown>): {
   bodyText?: string;
   inReplyTo?: string;
   references?: string;
+  saveToFolder?: string;
   attachments?: Array<{ filename: string; content: Buffer; contentType: string }>;
 } {
   const attachments = Array.isArray(record.attachments)
@@ -245,6 +299,10 @@ export function coerceSendMailPayload(record: Record<string, unknown>): {
     bodyText: typeof record.bodyText === "string" ? record.bodyText : undefined,
     inReplyTo: typeof record.inReplyTo === "string" ? record.inReplyTo : undefined,
     references: typeof record.references === "string" ? record.references : undefined,
+    saveToFolder:
+      typeof record.saveToFolder === "string" && record.saveToFolder.trim().length > 0
+        ? sanitizeFolderPath(record.saveToFolder)
+        : undefined,
     attachments: attachments != null && attachments.length > 0 ? attachments : undefined,
   };
 }

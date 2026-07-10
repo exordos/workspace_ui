@@ -3,6 +3,7 @@
  */
 
 import { create } from "zustand";
+import { useCalendarStore } from "~/entities/calendar/calendar.model";
 import { logStoreAction } from "~/shared/lib/logger";
 import {
   clearMailSessionFromStorage,
@@ -13,9 +14,11 @@ import {
   clearMailFolder,
   createMailFolder,
   createMailSession,
+  deleteMailDraft as apiDeleteMailDraft,
   deleteMailFolder,
   deleteMailMessage,
   deleteMailSession,
+  exchangeMailSession as apiExchangeMailSession,
   fetchMailFolders,
   fetchMailMessage,
   fetchMailMessages,
@@ -31,8 +34,15 @@ import {
   updateMailDraft,
   sendMailDraft,
   batchMailMessages,
+  syncMailFolder as apiSyncMailFolder,
 } from "./mail.api";
-import { isTrashFolder, resolveSpecialFolderPath, selectAdjacentMessageUid } from "./mail.lib";
+import {
+  buildDefaultSearchFolders,
+  buildMailFolderClearOptions,
+  isTrashFolder,
+  resolveSpecialFolderPath,
+  selectAdjacentMessageUid,
+} from "./mail.lib";
 import { invalidateMailSessionIfUnauthorized, resolveMailActionError } from "./mail.model.lib";
 import type {
   MailAttachmentMeta,
@@ -70,8 +80,10 @@ interface MailState {
 
   hydrateSession: () => void;
   signIn: (email: string, password: string) => Promise<void>;
+  signInWithZulip: (email: string, realmUrl: string, apiKey: string) => Promise<void>;
   signOut: () => Promise<void>;
   loadFolders: () => Promise<void>;
+  syncCurrentFolder: () => Promise<void>;
   selectFolder: (folderPath: string) => Promise<void>;
   loadMoreMessages: () => Promise<void>;
   searchMessages: (query: string) => Promise<void>;
@@ -84,6 +96,7 @@ interface MailState {
     action: MailBatchAction,
     options?: { toFolder?: string; addFlags?: string[]; removeFlags?: string[] },
   ) => Promise<void>;
+  deleteDraft: (uid: number) => Promise<void>;
   selectMessage: (uid: number, options?: { markSeen?: boolean }) => Promise<void>;
   sendMessage: (payload: MailComposePayload) => Promise<void>;
   deleteMessage: (uid: number) => Promise<void>;
@@ -196,6 +209,24 @@ export const useMailStore = create<MailState>((set, get) => {
       }
     },
 
+    async signInWithZulip(email, realmUrl, apiKey) {
+      logStoreAction("mail", "signInWithZulip", { email });
+      set({ signingIn: true, error: null });
+      try {
+        const session = await apiExchangeMailSession(email, realmUrl, apiKey);
+        saveMailSessionToStorage(session);
+        set({ session, signingIn: false, error: null });
+        await get().loadFolders();
+        await get().selectFolder("INBOX");
+      } catch (error) {
+        set({
+          signingIn: false,
+          error: resolveMailActionError(error, "mail.errors.signIn"),
+        });
+        throw error;
+      }
+    },
+
     async signOut() {
       const token = get().session?.token;
       logStoreAction("mail", "signOut");
@@ -223,6 +254,23 @@ export const useMailStore = create<MailState>((set, get) => {
           loadingFolders: false,
           error: resolveMailActionError(error, "mail.errors.loadFolders"),
         });
+      }
+    },
+
+    async syncCurrentFolder() {
+      const token = get().session?.token;
+      const folder = get().selectedFolder;
+      const messages = get().messages;
+      if (token == null || messages.length === 0) return;
+      const sinceUid = Math.max(...messages.map((message) => message.uid));
+      try {
+        const result = await apiSyncMailFolder(token, folder, sinceUid);
+        if (result.newMessages.length > 0) {
+          set({ messages: [...result.newMessages, ...messages] });
+        }
+        await get().loadFolders();
+      } catch (error) {
+        invalidateSessionIfUnauthorized(error);
       }
     },
 
@@ -288,11 +336,9 @@ export const useMailStore = create<MailState>((set, get) => {
         return;
       }
       try {
-        const { messages, nextCursor } = await searchMailMessages(
-          token,
-          trimmed,
-          get().selectedFolder,
-        );
+        const folders = get().folders;
+        const searchFolders = buildDefaultSearchFolders(folders, get().selectedFolder);
+        const { messages, nextCursor } = await searchMailMessages(token, trimmed, searchFolders);
         set({
           searchResults: messages,
           messagesNextCursor: nextCursor,
@@ -327,13 +373,23 @@ export const useMailStore = create<MailState>((set, get) => {
     async saveDraft(payload, uid) {
       const token = get().session?.token;
       if (!token) return;
+      const draftsFolder = resolveSpecialFolderPath(get().folders, "Drafts");
+      if (draftsFolder == null) {
+        set({
+          error: resolveMailActionError(
+            new Error("Drafts folder not found"),
+            "mail.errors.sendMessage",
+          ),
+        });
+        throw new Error("Drafts folder not found");
+      }
       logStoreAction("mail", "saveDraft", { uid });
       set({ sending: true, error: null });
       try {
         if (uid != null) {
-          await updateMailDraft(token, uid, payload);
+          await updateMailDraft(token, draftsFolder, uid, payload);
         } else {
-          await createMailDraft(token, payload);
+          await createMailDraft(token, draftsFolder, payload);
         }
         set({ sending: false });
         await get().loadFolders();
@@ -350,10 +406,55 @@ export const useMailStore = create<MailState>((set, get) => {
     async sendDraft(uid) {
       const token = get().session?.token;
       if (!token) return;
+      const draftsFolder = resolveSpecialFolderPath(get().folders, "Drafts");
+      if (draftsFolder == null) {
+        set({
+          error: resolveMailActionError(
+            new Error("Drafts folder not found"),
+            "mail.errors.sendMessage",
+          ),
+        });
+        throw new Error("Drafts folder not found");
+      }
+      const sentFolder = resolveSpecialFolderPath(get().folders, "Sent");
       logStoreAction("mail", "sendDraft", { uid });
       set({ sending: true, error: null });
       try {
-        await sendMailDraft(token, uid);
+        await sendMailDraft(
+          token,
+          draftsFolder,
+          uid,
+          sentFolder != null ? { saveToFolder: sentFolder } : {},
+        );
+        set({ sending: false });
+        await get().selectFolder(get().selectedFolder);
+      } catch (error) {
+        invalidateSessionIfUnauthorized(error);
+        set({
+          sending: false,
+          error: resolveMailActionError(error, "mail.errors.sendMessage"),
+        });
+        throw error;
+      }
+    },
+
+    async deleteDraft(uid) {
+      const token = get().session?.token;
+      if (!token) return;
+      const draftsFolder = resolveSpecialFolderPath(get().folders, "Drafts");
+      if (draftsFolder == null) {
+        set({
+          error: resolveMailActionError(
+            new Error("Drafts folder not found"),
+            "mail.errors.sendMessage",
+          ),
+        });
+        throw new Error("Drafts folder not found");
+      }
+      logStoreAction("mail", "deleteDraft", { uid });
+      set({ sending: true, error: null });
+      try {
+        await apiDeleteMailDraft(token, draftsFolder, uid);
         set({ sending: false });
         await get().selectFolder(get().selectedFolder);
       } catch (error) {
@@ -373,7 +474,14 @@ export const useMailStore = create<MailState>((set, get) => {
       logStoreAction("mail", "batchMessages", { action, count: uids.length });
       set({ error: null });
       try {
-        await batchMailMessages(token, folder, uids, action, options);
+        const trashFolder =
+          action === "delete" && !isTrashFolder(folder)
+            ? resolveSpecialFolderPath(get().folders, "Trash")
+            : undefined;
+        await batchMailMessages(token, folder, uids, action, {
+          ...options,
+          ...(trashFolder != null ? { trashFolder } : {}),
+        });
         await get().selectFolder(folder);
       } catch (error) {
         invalidateSessionIfUnauthorized(error);
@@ -425,10 +533,15 @@ export const useMailStore = create<MailState>((set, get) => {
     async sendMessage(payload) {
       const token = get().session?.token;
       if (!token) return;
+      const sentFolder = resolveSpecialFolderPath(get().folders, "Sent");
       logStoreAction("mail", "sendMessage", { to: payload.to });
       set({ sending: true, error: null });
       try {
-        await sendMailMessage(token, payload);
+        await sendMailMessage(
+          token,
+          payload,
+          sentFolder != null ? { saveToFolder: sentFolder } : {},
+        );
         set({ sending: false });
         await get().selectFolder(get().selectedFolder);
       } catch (error) {
@@ -448,6 +561,14 @@ export const useMailStore = create<MailState>((set, get) => {
       logStoreAction("mail", "deleteMessage", { uid, folder });
       set({ error: null });
       try {
+        if (!isTrashFolder(folder)) {
+          const trashFolder = resolveSpecialFolderPath(get().folders, "Trash");
+          if (trashFolder != null) {
+            await moveMailMessage(token, folder, trashFolder, uid);
+            await refreshAfterMessageRemoved(uid);
+            return;
+          }
+        }
         await deleteMailMessage(token, folder, uid);
         await refreshAfterMessageRemoved(uid);
       } catch (error) {
@@ -581,10 +702,11 @@ export const useMailStore = create<MailState>((set, get) => {
     async deleteFolder(path) {
       const token = get().session?.token;
       if (!token) return;
+      const clearOptions = buildMailFolderClearOptions(get().folders, path);
       logStoreAction("mail", "deleteFolder", { path });
       set({ error: null });
       try {
-        await deleteMailFolder(token, path, get().folderDelimiter);
+        await deleteMailFolder(token, path, get().folderDelimiter, clearOptions);
         await get().loadFolders();
         if (get().selectedFolder === path) {
           await get().selectFolder("INBOX");
@@ -601,10 +723,11 @@ export const useMailStore = create<MailState>((set, get) => {
     async clearFolder(path) {
       const token = get().session?.token;
       if (!token) return;
+      const clearOptions = buildMailFolderClearOptions(get().folders, path);
       logStoreAction("mail", "clearFolder", { path });
       set({ error: null });
       try {
-        await clearMailFolder(token, path);
+        await clearMailFolder(token, path, clearOptions);
         await get().loadFolders();
         if (get().selectedFolder === path) {
           await get().selectFolder(path);
@@ -668,6 +791,5 @@ export const useMailStore = create<MailState>((set, get) => {
 export function clearMailSessionOnLogout(): void {
   clearMailSessionFromStorage();
   useMailStore.getState().clear();
+  useCalendarStore.getState().clear();
 }
-
-export { isTrashFolder, resolveSpecialFolderPath };

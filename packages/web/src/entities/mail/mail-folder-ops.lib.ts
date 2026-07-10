@@ -7,11 +7,8 @@ import {
   isDescendantMailFolderPath,
   isProtectedMailFolder,
 } from "./mail-folder-guard.lib";
-import {
-  getMailFolderParentPath,
-  joinMailFolderPath,
-  sanitizeFolderPath,
-} from "./mail-validation.lib";
+import { getMailFolderParentPath, joinMailFolderPath } from "./mail-folder-tree.lib";
+import { sanitizeFolderPath } from "./mail-validation.lib";
 
 function assertMailFolderManageable(path: string, delimiter: string): void {
   if (isProtectedMailFolder(path, delimiter)) {

@@ -15,16 +15,31 @@ const workspace = JSON.parse(readFileSync(workspacePath, "utf8"));
 const mail = JSON.parse(readFileSync(mailPath, "utf8"));
 
 workspace.paths ??= {};
+const mailProxyPaths = new Set(
+  Object.keys(mail.paths ?? {}).map((path) => `/mail-proxy${path}`),
+);
+for (const path of Object.keys(workspace.paths)) {
+  if (path.startsWith("/mail-proxy/v1/mail/") && !mailProxyPaths.has(path)) {
+    delete workspace.paths[path];
+  }
+}
 for (const [path, item] of Object.entries(mail.paths ?? {})) {
   workspace.paths[`/mail-proxy${path}`] = item;
 }
 
 const mailSchemas = mail.components?.schemas ?? {};
+const mailResponses = mail.components?.responses ?? {};
 workspace.components ??= {};
 workspace.components.schemas ??= {};
+workspace.components.responses ??= {};
 for (const [name, schema] of Object.entries(mailSchemas)) {
   if (workspace.components.schemas[name] == null) {
     workspace.components.schemas[name] = schema;
+  }
+}
+for (const [name, response] of Object.entries(mailResponses)) {
+  if (workspace.components.responses[name] == null) {
+    workspace.components.responses[name] = response;
   }
 }
 

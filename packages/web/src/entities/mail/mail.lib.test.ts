@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { MailApiError } from "./mail.api";
 import {
+  buildDefaultSearchFolders,
+  buildMailFolderClearOptions,
   compareMailFolders,
   getMailFolderIconName,
   isMailApiConfigured,
@@ -59,5 +61,26 @@ describe("mail.lib", () => {
       mode: "plain",
       text: "> Quoted plain",
     });
+  });
+
+  it("builds move-to-trash clear options for non-trash folders", () => {
+    const folders: MailFolder[] = [
+      { path: "INBOX", name: "Inbox", unread: 0, total: 0 },
+      { path: "Trash", name: "Trash", unread: 0, total: 0 },
+    ];
+    expect(buildMailFolderClearOptions(folders, "INBOX")).toEqual({
+      mode: "move",
+      targetFolder: "Trash",
+    });
+    expect(buildMailFolderClearOptions(folders, "Trash")).toEqual({ mode: "permanent" });
+  });
+
+  it("builds default search folders from INBOX and Sent", () => {
+    const folders: MailFolder[] = [
+      { path: "INBOX", name: "Inbox", unread: 0, total: 0 },
+      { path: "INBOX.Sent", name: "Sent", unread: 0, total: 0 },
+    ];
+    expect(buildDefaultSearchFolders(folders)).toEqual(["INBOX", "INBOX.Sent"]);
+    expect(buildDefaultSearchFolders(folders, "Custom")).toEqual(["Custom"]);
   });
 });

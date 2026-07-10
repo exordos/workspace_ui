@@ -16,6 +16,46 @@
             }
           }
         }
+      },
+      "BadRequest": {
+        "description": "Invalid request",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Missing or invalid session",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Resource not found",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "TooManyRequests": {
+        "description": "Rate limit exceeded",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
       }
     },
     "schemas": {
@@ -1505,6 +1545,72 @@
             "nullable": true
           }
         }
+      },
+      "ClearMailFolderRequest": {
+        "type": "object",
+        "required": ["path", "mode"],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["permanent", "move"]
+          },
+          "targetFolder": {
+            "type": "string"
+          }
+        }
+      },
+      "DeleteMailFolderRequest": {
+        "type": "object",
+        "required": ["path", "clearMode"],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "delimiter": {
+            "type": "string"
+          },
+          "clearMode": {
+            "type": "string",
+            "enum": ["permanent", "move"]
+          },
+          "targetFolder": {
+            "type": "string"
+          }
+        }
+      },
+      "DraftMailRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SendMailRequest"
+          },
+          {
+            "type": "object",
+            "required": ["folder"],
+            "properties": {
+              "folder": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
+      "MailMessagesSinceResponse": {
+        "type": "object",
+        "required": ["folder", "messages"],
+        "properties": {
+          "folder": {
+            "type": "string"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MailMessageSummary"
+            }
+          }
+        }
       }
     },
     "parameters": {
@@ -2926,7 +3032,7 @@
       },
       "delete": {
         "operationId": "deleteMailFolder",
-        "summary": "Delete mail folder",
+        "summary": "Delete mail folder tree",
         "security": [
           {
             "bearerAuth": []
@@ -2948,6 +3054,23 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "clearMode",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": ["permanent", "move"]
+            }
+          },
+          {
+            "name": "targetFolder",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -2955,7 +3078,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/FolderPathRequest"
+                "$ref": "#/components/schemas/DeleteMailFolderRequest"
               }
             }
           }
@@ -3026,7 +3149,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/FolderPathRequest"
+                "$ref": "#/components/schemas/ClearMailFolderRequest"
               }
             }
           }
@@ -3291,7 +3414,7 @@
       },
       "delete": {
         "operationId": "deleteMailMessage",
-        "summary": "Delete message",
+        "summary": "Permanently delete message",
         "security": [
           {
             "bearerAuth": []
@@ -3466,6 +3589,14 @@
             }
           },
           {
+            "name": "folders",
+            "in": "query",
+            "description": "Comma-separated folder paths to search",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "schema": {
@@ -3503,92 +3634,6 @@
         }
       }
     },
-    "/mail-proxy/v1/mail/sync": {
-      "get": {
-        "operationId": "syncMailFolder",
-        "summary": "Sync folder changes since UID",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "folder",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "default": "INBOX"
-            }
-          },
-          {
-            "name": "sinceUid",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "minimum": 0
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Sync delta",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MailSyncResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
-    "/mail-proxy/v1/mail/messages/batch": {
-      "post": {
-        "operationId": "batchMailMessages",
-        "summary": "Batch message operations",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MailBatchRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Batch completed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OkResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
     "/mail-proxy/v1/mail/drafts": {
       "post": {
         "operationId": "createMailDraft",
@@ -3603,7 +3648,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SendMailRequest"
+                "$ref": "#/components/schemas/DraftMailRequest"
               }
             }
           }
@@ -3653,7 +3698,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SendMailRequest"
+                "$ref": "#/components/schemas/DraftMailRequest"
               }
             }
           }
@@ -3682,7 +3727,7 @@
       },
       "delete": {
         "operationId": "deleteMailDraft",
-        "summary": "Delete mail draft",
+        "summary": "Permanently delete mail draft",
         "security": [
           {
             "bearerAuth": []
@@ -3696,6 +3741,14 @@
             "schema": {
               "type": "integer",
               "minimum": 1
+            }
+          },
+          {
+            "name": "folder",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -3708,49 +3761,6 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
-    "/mail-proxy/v1/mail/drafts/{uid}/send": {
-      "post": {
-        "operationId": "sendMailDraft",
-        "summary": "Send mail draft",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "uid",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "minimum": 1
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "Draft sent",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OkResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
           }
         }
       }
@@ -4451,6 +4461,53 @@
         "responses": {
           "204": {
             "description": "Event deleted"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/mail-proxy/v1/mail/messages/since": {
+      "get": {
+        "operationId": "listMailMessagesSince",
+        "summary": "List messages with UID greater than sinceUid",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "folder",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "INBOX"
+            }
+          },
+          {
+            "name": "sinceUid",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "New messages since UID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailMessagesSinceResponse"
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"

@@ -24,32 +24,28 @@ import {
   listMailFolders,
   listMailMessages,
   listMailMessageAttachments,
+  listMailMessagesSince,
   markAllMailFolderRead,
   moveMailMessage,
   renameMailFolder,
-  resolveTrashFolder,
   searchMailMessages,
-  syncMailFolder,
   updateMailMessageFlags,
   verifyImapCredentials,
 } from "./imap.lib";
-import {
-  createMailDraft,
-  deleteMailDraft,
-  sendMailDraft,
-  updateMailDraft,
-} from "./mail-draft.lib";
+import { createMailDraft, deleteMailDraft, updateMailDraft } from "./mail-draft.lib";
 import {
   parseAttachmentIdParam,
-  parseBatchMailBody,
   parseBooleanQuery,
+  parseDeleteMailFolderInput,
+  parseDraftMailBody,
+  parseFolderClearBody,
   parseFolderMoveBody,
   parseFolderPathBody,
   parseMessageFlagsBody,
   parseMessageUid,
   parseMoveMailBody,
-  parseOptionalFolderQuery,
   parsePositiveInt,
+  parseSearchFoldersQuery,
   parseSearchQuery,
   parseSendMailBody,
   parseSessionBody,
@@ -158,16 +154,37 @@ export function registerMailRoutes(app: Express): void {
     const session = requireMailSession(req, res);
     if (!session) return;
     try {
-      const folderPath =
-        typeof req.query.path === "string"
-          ? sanitizeFolderPath(req.query.path)
-          : parseFolderPathBody(req.body);
-      const delimiter =
-        typeof req.query.delimiter === "string" && req.query.delimiter.length === 1
-          ? req.query.delimiter
-          : ".";
-      const trashFolder = await resolveTrashFolder(session);
-      await deleteMailFolder(session, folderPath, delimiter, trashFolder);
+      const body =
+        typeof req.body === "object" && req.body != null
+          ? (req.body as Record<string, unknown>)
+          : {};
+      const { path, delimiter, clearOptions } = parseDeleteMailFolderInput({
+        path:
+          typeof req.query.path === "string"
+            ? req.query.path
+            : typeof body.path === "string"
+              ? body.path
+              : "",
+        delimiter:
+          typeof req.query.delimiter === "string"
+            ? req.query.delimiter
+            : typeof body.delimiter === "string"
+              ? body.delimiter
+              : undefined,
+        clearMode:
+          typeof req.query.clearMode === "string"
+            ? req.query.clearMode
+            : typeof body.clearMode === "string"
+              ? body.clearMode
+              : undefined,
+        targetFolder:
+          typeof req.query.targetFolder === "string"
+            ? req.query.targetFolder
+            : typeof body.targetFolder === "string"
+              ? body.targetFolder
+              : undefined,
+      });
+      await deleteMailFolder(session, path, delimiter, clearOptions);
       res.status(204).end();
     } catch (error) {
       handleRouteError(res, error, "Failed to delete folder");
@@ -178,9 +195,8 @@ export function registerMailRoutes(app: Express): void {
     const session = requireMailSession(req, res);
     if (!session) return;
     try {
-      const path = parseFolderPathBody(req.body);
-      const trashFolder = await resolveTrashFolder(session);
-      await clearMailFolder(session, path, trashFolder);
+      const { path, mode, targetFolder } = parseFolderClearBody(req.body);
+      await clearMailFolder(session, path, { mode, targetFolder });
       res.json({ ok: true });
     } catch (error) {
       handleRouteError(res, error, "Failed to clear folder");
@@ -216,6 +232,21 @@ export function registerMailRoutes(app: Express): void {
       res.json({ folder, messages, nextCursor });
     } catch (error) {
       handleRouteError(res, error, "Failed to list messages");
+    }
+  });
+
+  app.get("/v1/mail/messages/since", async (req, res) => {
+    const session = requireMailSession(req, res);
+    if (!session) return;
+    try {
+      const folder = sanitizeFolderPath(typeof req.query.folder === "string" ? req.query.folder : "INBOX");
+      const sinceUid = parseSinceUidQuery(
+        typeof req.query.sinceUid === "string" ? req.query.sinceUid : undefined,
+      );
+      const messages = await listMailMessagesSince(session, folder, sinceUid);
+      res.json({ folder, messages });
+    } catch (error) {
+      handleRouteError(res, error, "Failed to list messages since UID");
     }
   });
 
@@ -262,8 +293,7 @@ export function registerMailRoutes(app: Express): void {
     try {
       const folder = sanitizeFolderPath(typeof req.query.folder === "string" ? req.query.folder : "INBOX");
       const uid = parseMessageUid(req.params.uid ?? "");
-      const trashFolder = await resolveTrashFolder(session);
-      await deleteMailMessage(session, folder, uid, trashFolder);
+      await deleteMailMessage(session, folder, uid);
       res.status(204).end();
     } catch (error) {
       handleRouteError(res, error, "Failed to delete message");
@@ -337,7 +367,7 @@ export function registerMailRoutes(app: Express): void {
     if (!session) return;
     try {
       const q = parseSearchQuery(req.query.q);
-      const folder = parseOptionalFolderQuery(req.query.folder);
+      const folders = parseSearchFoldersQuery(req.query.folder, req.query.folders);
       const limit = parsePositiveInt(
         typeof req.query.limit === "string" ? req.query.limit : undefined,
         50,
@@ -345,7 +375,7 @@ export function registerMailRoutes(app: Express): void {
       );
       const cursorRaw = typeof req.query.cursor === "string" ? req.query.cursor : undefined;
       const cursorUid = cursorRaw != null && cursorRaw.length > 0 ? parseMessageUid(cursorRaw) : null;
-      const messages = await searchMailMessages(session, q, folder, limit, cursorUid);
+      const messages = await searchMailMessages(session, q, folders, limit, cursorUid);
       const nextCursor = messages.length > 0 ? String(messages[messages.length - 1]!.uid) : null;
       res.json({ messages, nextCursor });
     } catch (error) {
@@ -353,54 +383,13 @@ export function registerMailRoutes(app: Express): void {
     }
   });
 
-  app.get("/v1/mail/sync", async (req, res) => {
-    const session = requireMailSession(req, res);
-    if (!session) return;
-    try {
-      const folder = sanitizeFolderPath(typeof req.query.folder === "string" ? req.query.folder : "INBOX");
-      const sinceUid = parseSinceUidQuery(
-        typeof req.query.sinceUid === "string" ? req.query.sinceUid : undefined,
-      );
-      const delta = await syncMailFolder(session, folder, sinceUid);
-      res.json(delta);
-    } catch (error) {
-      handleRouteError(res, error, "Failed to sync folder");
-    }
-  });
-
-  app.post("/v1/mail/messages/batch", async (req, res) => {
-    const session = requireMailSession(req, res);
-    if (!session) return;
-    try {
-      const batch = parseBatchMailBody(req.body);
-      const trashFolder = await resolveTrashFolder(session);
-      for (const uid of batch.uids) {
-        if (batch.action === "delete") {
-          await deleteMailMessage(session, batch.folder, uid, trashFolder);
-        } else if (batch.action === "move") {
-          if (batch.toFolder == null) {
-            throw new Error("toFolder is required for move");
-          }
-          await moveMailMessage(session, batch.folder, batch.toFolder, uid);
-        } else {
-          await updateMailMessageFlags(session, batch.folder, uid, {
-            add: batch.addFlags,
-            remove: batch.removeFlags,
-          });
-        }
-      }
-      res.json({ ok: true });
-    } catch (error) {
-      handleRouteError(res, error, "Failed to batch update messages");
-    }
-  });
-
   app.post("/v1/mail/drafts", async (req, res) => {
     const session = requireMailSession(req, res);
     if (!session) return;
     try {
-      const payload = coerceSendMailPayload(parseSendMailBody(req.body));
-      const draft = await createMailDraft(session, payload);
+      const { folder, payload } = parseDraftMailBody(req.body);
+      const draftPayload = coerceSendMailPayload(payload);
+      const draft = await createMailDraft(session, folder, draftPayload);
       const message = await getMailMessage(session, draft.folder, draft.uid, { markSeen: true });
       if (message == null) {
         res.status(500).json({ error: "Draft created but could not be loaded" });
@@ -417,8 +406,9 @@ export function registerMailRoutes(app: Express): void {
     if (!session) return;
     try {
       const uid = parseMessageUid(req.params.uid ?? "");
-      const payload = coerceSendMailPayload(parseSendMailBody(req.body));
-      const draft = await updateMailDraft(session, uid, payload);
+      const { folder, payload } = parseDraftMailBody(req.body);
+      const draftPayload = coerceSendMailPayload(payload);
+      const draft = await updateMailDraft(session, folder, uid, draftPayload);
       const message = await getMailMessage(session, draft.folder, draft.uid, { markSeen: true });
       if (message == null) {
         res.status(500).json({ error: "Draft updated but could not be loaded" });
@@ -435,22 +425,11 @@ export function registerMailRoutes(app: Express): void {
     if (!session) return;
     try {
       const uid = parseMessageUid(req.params.uid ?? "");
-      await deleteMailDraft(session, uid);
+      const folder = sanitizeFolderPath(typeof req.query.folder === "string" ? req.query.folder : "");
+      await deleteMailDraft(session, folder, uid);
       res.status(204).end();
     } catch (error) {
       handleRouteError(res, error, "Failed to delete draft");
-    }
-  });
-
-  app.post("/v1/mail/drafts/:uid/send", async (req, res) => {
-    const session = requireMailSession(req, res);
-    if (!session) return;
-    try {
-      const uid = parseMessageUid(req.params.uid ?? "");
-      await sendMailDraft(session, uid);
-      res.status(201).json({ ok: true });
-    } catch (error) {
-      handleRouteError(res, error, "Failed to send draft");
     }
   });
 }

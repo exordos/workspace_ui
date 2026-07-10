@@ -162,18 +162,6 @@ export const env = {
   BASE_URL: import.meta.env.BASE_URL,
 
   /**
-   * Calendar iframe URL override.
-   * Defaults to same-origin `/embeds/calendar-placeholder.html` when empty.
-   */
-  CALENDAR_EMBED_URL: optional("VITE_CALENDAR_EMBED_URL"),
-
-  /**
-   * Mail iframe URL override (legacy embed mode).
-   * Defaults to same-origin `/embeds/mail-placeholder.html` when empty.
-   */
-  MAIL_EMBED_URL: optional("VITE_MAIL_EMBED_URL"),
-
-  /**
    * Native mail client API base (mail-proxy).
    * Dev: `/mail-api` (Vite proxies to mail-proxy). Prod: full origin URL.
    */

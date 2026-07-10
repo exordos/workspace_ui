@@ -3,7 +3,6 @@
  */
 
 import { create } from "zustand";
-import { clearMailSessionFromStorage } from "~/entities/mail/mail-session-storage.lib";
 import { logStoreAction } from "~/shared/lib/logger";
 import { getMailboxSessionToken } from "./calendar-session.lib";
 import {
@@ -11,14 +10,18 @@ import {
   createCalendarEvent,
   deleteCalendarCollection,
   deleteCalendarEvent,
+  exportCalendarEventIcs,
+  fetchCalendarEvent,
   fetchCalendars,
   fetchCalendarEvents,
+  fetchCalendarFreeBusy,
   importCalendarEventIcs,
+  moveCalendarEventToCalendar,
   searchCalendarEvents,
   updateCalendarCollection,
   updateCalendarEvent,
 } from "./calendar.api";
-import { isCalendarUnauthorizedError } from "./calendar.lib";
+import { invalidateCalendarSessionIfUnauthorized } from "./calendar.model.lib";
 import type {
   CalendarEvent,
   CalendarEventInput,
@@ -53,7 +56,20 @@ interface CalendarState {
   loadCalendars: () => Promise<void>;
   loadEventsForRange: (start: string, end: string) => Promise<void>;
   createEvent: (input: CalendarEventInput) => Promise<CalendarEvent>;
-  updateEvent: (eventUid: string, input: CalendarEventInput) => Promise<CalendarEvent>;
+  updateEvent: (
+    eventUid: string,
+    input: CalendarEventInput & {
+      scope?: "this" | "thisAndFuture" | "all";
+      recurrenceId?: string | null;
+    },
+  ) => Promise<CalendarEvent>;
+  moveEvent: (
+    eventUid: string,
+    fromCalendarId: string,
+    toCalendarId: string,
+  ) => Promise<CalendarEvent>;
+  exportEventIcs: (calendarId: string, eventUid: string) => Promise<string>;
+  loadEventForEdit: (calendarId: string, eventUid: string) => Promise<CalendarEvent | null>;
   deleteEvent: (
     calendarId: string,
     eventUid: string,
@@ -61,6 +77,7 @@ interface CalendarState {
   ) => Promise<void>;
   searchEvents: (query: string, start: string, end: string) => Promise<void>;
   importEventIcs: (calendarId: string, ics: string) => Promise<void>;
+  checkAttendeeBusy: (email: string, start: string, end: string) => Promise<boolean>;
   clear: () => void;
 }
 
@@ -77,20 +94,10 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
   }
 
   function invalidateIfUnauthorized(error: unknown): boolean {
-    if (!isCalendarUnauthorizedError(error)) return false;
-    clearMailSessionFromStorage();
-    set({
-      calendars: EMPTY_CALENDARS,
-      visibleCalendarIds: [],
-      events: EMPTY_EVENTS,
-      selectedEventUid: null,
-      selectedRecurrenceId: null,
-      loadingCalendars: false,
-      loadingEvents: false,
-      saving: false,
+    return invalidateCalendarSessionIfUnauthorized(error, {
+      emptyCalendars: EMPTY_CALENDARS,
+      set,
     });
-    logStoreAction("calendar", "invalidateSession", { reason: "unauthorized" });
-    return true;
   }
 
   return {
@@ -262,7 +269,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
       try {
         const token = requireToken();
         const event = await updateCalendarEvent(token, eventUid, input);
-        logStoreAction("calendar", "updateEvent", { uid: event.uid });
+        logStoreAction("calendar", "updateEvent", { uid: event.uid, scope: input.scope });
         set((state) => ({
           events: state.events.map((e) => (e.uid === eventUid ? event : e)),
           saving: false,
@@ -275,6 +282,53 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
           error: error instanceof Error ? error.message : "Failed to update event",
         });
         throw error;
+      }
+    },
+
+    moveEvent: async (eventUid, fromCalendarId, toCalendarId) => {
+      set({ saving: true, error: null });
+      try {
+        const token = requireToken();
+        const event = await moveCalendarEventToCalendar(
+          token,
+          eventUid,
+          fromCalendarId,
+          toCalendarId,
+        );
+        logStoreAction("calendar", "moveEvent", { uid: event.uid, toCalendarId });
+        set((state) => ({
+          events: state.events.map((e) => (e.uid === eventUid ? event : e)),
+          saving: false,
+        }));
+        return event;
+      } catch (error) {
+        if (invalidateIfUnauthorized(error)) throw error;
+        set({
+          saving: false,
+          error: error instanceof Error ? error.message : "Failed to move event",
+        });
+        throw error;
+      }
+    },
+
+    exportEventIcs: async (calendarId, eventUid) => {
+      const token = requireToken();
+      return exportCalendarEventIcs(token, calendarId, eventUid);
+    },
+
+    loadEventForEdit: async (calendarId, eventUid) => {
+      set({ error: null });
+      try {
+        const token = requireToken();
+        const event = await fetchCalendarEvent(token, calendarId, eventUid);
+        logStoreAction("calendar", "loadEventForEdit", { uid: eventUid });
+        return event;
+      } catch (error) {
+        if (invalidateIfUnauthorized(error)) return null;
+        set({
+          error: error instanceof Error ? error.message : "Failed to load event",
+        });
+        return null;
       }
     },
 
@@ -355,12 +409,32 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
       }
     },
 
+    checkAttendeeBusy: async (email, start, end) => {
+      try {
+        const token = requireToken();
+        const entries = await fetchCalendarFreeBusy(token, start, end, [email]);
+        const busy = entries[0]?.busy ?? [];
+        const startMs = new Date(start).getTime();
+        const endMs = new Date(end).getTime();
+        return busy.some((slot) => {
+          const slotStart = new Date(slot.start).getTime();
+          const slotEnd = new Date(slot.end).getTime();
+          return slotStart < endMs && slotEnd > startMs;
+        });
+      } catch {
+        return false;
+      }
+    },
+
     clear: () => {
       set({
         calendars: EMPTY_CALENDARS,
         visibleCalendarIds: [],
         events: EMPTY_EVENTS,
         selectedEventUid: null,
+        selectedRecurrenceId: null,
+        focusDate: new Date(),
+        viewMode: "month",
         loadingCalendars: false,
         loadingEvents: false,
         saving: false,

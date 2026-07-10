@@ -66,6 +66,58 @@ export interface FolderPathRequest {
   path: string;
 }
 
+export type ClearMailFolderRequestMode = typeof ClearMailFolderRequestMode[keyof typeof ClearMailFolderRequestMode];
+
+
+export const ClearMailFolderRequestMode = {
+  permanent: 'permanent',
+  move: 'move',
+} as const;
+
+export interface ClearMailFolderRequest {
+  path: string;
+  mode: ClearMailFolderRequestMode;
+  targetFolder?: string;
+}
+
+export type DeleteMailFolderRequestClearMode = typeof DeleteMailFolderRequestClearMode[keyof typeof DeleteMailFolderRequestClearMode];
+
+
+export const DeleteMailFolderRequestClearMode = {
+  permanent: 'permanent',
+  move: 'move',
+} as const;
+
+export interface DeleteMailFolderRequest {
+  path: string;
+  delimiter?: string;
+  clearMode: DeleteMailFolderRequestClearMode;
+  targetFolder?: string;
+}
+
+export interface SendMailAttachment {
+  filename: string;
+  mimeType: string;
+  contentBase64: string;
+}
+
+export interface SendMailRequest {
+  to: string;
+  cc?: string;
+  bcc?: string;
+  subject: string;
+  bodyHtml: string;
+  bodyText?: string;
+  inReplyTo?: string;
+  references?: string;
+  attachments?: SendMailAttachment[];
+  saveToFolder?: string;
+}
+
+export type DraftMailRequest = SendMailRequest & {
+  folder: string;
+};
+
 export interface MailMessageSummary {
   /** @minimum 1 */
   uid: number;
@@ -114,24 +166,6 @@ export interface MoveMailMessageRequest {
   toFolder: string;
 }
 
-export interface SendMailAttachment {
-  filename: string;
-  mimeType: string;
-  contentBase64: string;
-}
-
-export interface SendMailRequest {
-  to: string;
-  cc?: string;
-  bcc?: string;
-  subject: string;
-  bodyHtml: string;
-  bodyText?: string;
-  inReplyTo?: string;
-  references?: string;
-  attachments?: SendMailAttachment[];
-}
-
 export interface MailAttachmentMeta {
   id: string;
   filename: string;
@@ -150,35 +184,9 @@ export interface MailSearchResponse {
   nextCursor: string | null;
 }
 
-export type MailBatchRequestAction = typeof MailBatchRequestAction[keyof typeof MailBatchRequestAction];
-
-
-export const MailBatchRequestAction = {
-  delete: 'delete',
-  move: 'move',
-  setFlags: 'setFlags',
-} as const;
-
-export interface MailBatchRequest {
+export interface MailMessagesSinceResponse {
   folder: string;
-  uids: number[];
-  action: MailBatchRequestAction;
-  toFolder?: string;
-  addFlags?: string[];
-  removeFlags?: string[];
-}
-
-export type MailSyncResponseFlagChangesItem = {
-  /** @minimum 1 */
-  uid: number;
-  seen: boolean;
-  flagged: boolean;
-};
-
-export interface MailSyncResponse {
-  newMessages: MailMessageSummary[];
-  deletedUids: number[];
-  flagChanges: MailSyncResponseFlagChangesItem[];
+  messages: MailMessageSummary[];
 }
 
 export interface MailSessionExchangeRequest {
@@ -359,7 +367,17 @@ export type TooManyRequestsResponse = ErrorResponse;
 export type DeleteMailFolderParams = {
 path: string;
 delimiter?: string;
+clearMode: DeleteMailFolderClearMode;
+targetFolder?: string;
 };
+
+export type DeleteMailFolderClearMode = typeof DeleteMailFolderClearMode[keyof typeof DeleteMailFolderClearMode];
+
+
+export const DeleteMailFolderClearMode = {
+  permanent: 'permanent',
+  move: 'move',
+} as const;
 
 export type ListMailMessagesParams = {
 folder?: string;
@@ -392,6 +410,10 @@ export type SearchMailMessagesParams = {
 q: string;
 folder?: string;
 /**
+ * Comma-separated folder paths to search
+ */
+folders?: string;
+/**
  * @minimum 1
  * @maximum 100
  */
@@ -399,12 +421,16 @@ limit?: number;
 cursor?: string;
 };
 
-export type SyncMailFolderParams = {
+export type ListMailMessagesSinceParams = {
 folder?: string;
 /**
  * @minimum 0
  */
 sinceUid?: number;
+};
+
+export type DeleteMailDraftParams = {
+folder: string;
 };
 
 export type SearchCalendarEventsParams = {
@@ -628,17 +654,17 @@ export const getDeleteMailFolderUrl = (params: DeleteMailFolderParams,) => {
 }
 
 /**
- * @summary Delete mail folder
+ * @summary Delete mail folder tree
  */
 export const deleteMailFolder = async (params: DeleteMailFolderParams,
-    folderPathRequest?: FolderPathRequest, options?: RequestInit): Promise<void> => {
+    deleteMailFolderRequest?: DeleteMailFolderRequest, options?: RequestInit): Promise<void> => {
 
   return customInstance<void>(getDeleteMailFolderUrl(params),
   {
     ...options,
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(folderPathRequest)
+    body: JSON.stringify(deleteMailFolderRequest)
   }
 );}
 
@@ -679,14 +705,14 @@ export const getClearMailFolderUrl = () => {
 /**
  * @summary Clear all messages in folder
  */
-export const clearMailFolder = async (folderPathRequest: FolderPathRequest, options?: RequestInit): Promise<OkResponse> => {
+export const clearMailFolder = async (clearMailFolderRequest: ClearMailFolderRequest, options?: RequestInit): Promise<OkResponse> => {
 
   return customInstance<OkResponse>(getClearMailFolderUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(folderPathRequest)
+    body: JSON.stringify(clearMailFolderRequest)
   }
 );}
 
@@ -846,7 +872,7 @@ export const getDeleteMailMessageUrl = (uid: number,
 }
 
 /**
- * @summary Delete message
+ * @summary Permanently delete message
  */
 export const deleteMailMessage = async (uid: number,
     params?: DeleteMailMessageParams, options?: RequestInit): Promise<void> => {
@@ -961,7 +987,7 @@ export const searchMailMessages = async (params: SearchMailMessagesParams, optio
 
 
 
-export const getSyncMailFolderUrl = (params?: SyncMailFolderParams,) => {
+export const getListMailMessagesSinceUrl = (params?: ListMailMessagesSinceParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -973,44 +999,20 @@ export const getSyncMailFolderUrl = (params?: SyncMailFolderParams,) => {
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/v1/mail/sync?${stringifiedParams}` : `/v1/mail/sync`
+  return stringifiedParams.length > 0 ? `/v1/mail/messages/since?${stringifiedParams}` : `/v1/mail/messages/since`
 }
 
 /**
- * @summary Sync folder changes since UID
+ * @summary List messages with UID greater than sinceUid
  */
-export const syncMailFolder = async (params?: SyncMailFolderParams, options?: RequestInit): Promise<MailSyncResponse> => {
+export const listMailMessagesSince = async (params?: ListMailMessagesSinceParams, options?: RequestInit): Promise<MailMessagesSinceResponse> => {
 
-  return customInstance<MailSyncResponse>(getSyncMailFolderUrl(params),
+  return customInstance<MailMessagesSinceResponse>(getListMailMessagesSinceUrl(params),
   {
     ...options,
     method: 'GET'
 
 
-  }
-);}
-
-
-
-export const getBatchMailMessagesUrl = () => {
-
-
-
-
-  return `/v1/mail/messages/batch`
-}
-
-/**
- * @summary Batch message operations
- */
-export const batchMailMessages = async (mailBatchRequest: MailBatchRequest, options?: RequestInit): Promise<OkResponse> => {
-
-  return customInstance<OkResponse>(getBatchMailMessagesUrl(),
-  {
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(mailBatchRequest)
   }
 );}
 
@@ -1027,14 +1029,14 @@ export const getCreateMailDraftUrl = () => {
 /**
  * @summary Create mail draft
  */
-export const createMailDraft = async (sendMailRequest: SendMailRequest, options?: RequestInit): Promise<MailMessageResponse> => {
+export const createMailDraft = async (draftMailRequest: DraftMailRequest, options?: RequestInit): Promise<MailMessageResponse> => {
 
   return customInstance<MailMessageResponse>(getCreateMailDraftUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(sendMailRequest)
+    body: JSON.stringify(draftMailRequest)
   }
 );}
 
@@ -1052,60 +1054,45 @@ export const getUpdateMailDraftUrl = (uid: number,) => {
  * @summary Update mail draft
  */
 export const updateMailDraft = async (uid: number,
-    sendMailRequest: SendMailRequest, options?: RequestInit): Promise<MailMessageResponse> => {
+    draftMailRequest: DraftMailRequest, options?: RequestInit): Promise<MailMessageResponse> => {
 
   return customInstance<MailMessageResponse>(getUpdateMailDraftUrl(uid),
   {
     ...options,
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(sendMailRequest)
+    body: JSON.stringify(draftMailRequest)
   }
 );}
 
 
 
-export const getDeleteMailDraftUrl = (uid: number,) => {
+export const getDeleteMailDraftUrl = (uid: number,
+    params: DeleteMailDraftParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/v1/mail/drafts/${uid}`
+  return stringifiedParams.length > 0 ? `/v1/mail/drafts/${uid}?${stringifiedParams}` : `/v1/mail/drafts/${uid}`
 }
 
 /**
- * @summary Delete mail draft
+ * @summary Permanently delete mail draft
  */
-export const deleteMailDraft = async (uid: number, options?: RequestInit): Promise<void> => {
+export const deleteMailDraft = async (uid: number,
+    params: DeleteMailDraftParams, options?: RequestInit): Promise<void> => {
 
-  return customInstance<void>(getDeleteMailDraftUrl(uid),
+  return customInstance<void>(getDeleteMailDraftUrl(uid,params),
   {
     ...options,
     method: 'DELETE'
-
-
-  }
-);}
-
-
-
-export const getSendMailDraftUrl = (uid: number,) => {
-
-
-
-
-  return `/v1/mail/drafts/${uid}/send`
-}
-
-/**
- * @summary Send mail draft
- */
-export const sendMailDraft = async (uid: number, options?: RequestInit): Promise<OkResponse> => {
-
-  return customInstance<OkResponse>(getSendMailDraftUrl(uid),
-  {
-    ...options,
-    method: 'POST'
 
 
   }

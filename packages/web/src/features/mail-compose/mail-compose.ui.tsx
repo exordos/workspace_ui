@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { buildMailComposePayload } from "~/entities/mail/mail-compose-payload.lib";
 import {
   buildNewComposeState,
   getMailComposeDialogTitleKey,
-  sanitizeMailComposeHtml,
 } from "~/entities/mail/mail-compose.lib";
 import { t } from "~/i18n/i18n";
 import { stripHtml } from "~/shared/lib/html";
@@ -73,39 +73,35 @@ export const MailComposeDialog: React.FC<MailComposeDialogProps> = ({
   useEffect(() => {
     if (!open || onAutosave == null) return;
     const timer = setTimeout(() => {
-      const sanitized = sanitizeMailComposeHtml(bodyHtml);
-      const plain = stripHtml(sanitized).trim();
-      if (to.length === 0 && subject.length === 0 && plain.length === 0) return;
-      onAutosave({
+      const payload = buildMailComposePayload({
         to,
-        cc: cc.length > 0 ? cc : undefined,
-        bcc: bcc.length > 0 ? bcc : undefined,
+        cc,
+        bcc,
         subject,
-        bodyHtml: sanitized,
-        bodyText: plain,
+        bodyHtml,
         inReplyTo,
         references,
-        attachments: attachments.length > 0 ? attachments : undefined,
+        attachments,
       });
+      if (payload == null) return;
+      onAutosave(payload);
     }, 2000);
     return () => clearTimeout(timer);
   }, [attachments, bcc, bodyHtml, cc, inReplyTo, onAutosave, open, references, subject, to]);
 
   const handleSubmit = useCallback(() => {
-    const sanitized = sanitizeMailComposeHtml(bodyHtml);
-    const plain = stripHtml(sanitized).trim();
-    if (to.length === 0 || subject.length === 0 || plain.length === 0) return;
-    onSend({
+    const payload = buildMailComposePayload({
       to,
-      cc: cc.length > 0 ? cc : undefined,
-      bcc: bcc.length > 0 ? bcc : undefined,
+      cc,
+      bcc,
       subject,
-      bodyHtml: sanitized,
-      bodyText: plain,
+      bodyHtml,
       inReplyTo,
       references,
-      attachments: attachments.length > 0 ? attachments : undefined,
+      attachments,
     });
+    if (payload == null || payload.to.length === 0 || payload.subject.length === 0) return;
+    onSend(payload);
   }, [attachments, bcc, bodyHtml, cc, inReplyTo, onSend, references, subject, to]);
 
   const handleOpenChange = useCallback(

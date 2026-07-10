@@ -10,7 +10,16 @@ const SPECIAL_FOLDER_CANDIDATES: Record<string, readonly string[]> = {
   Archive: ["Archive", "INBOX.Archive"],
   Spam: ["Spam", "Junk", "INBOX.Spam", "INBOX.Junk"],
   Trash: ["Trash", "INBOX.Trash", "Deleted", "INBOX.Deleted"],
+  Sent: ["Sent", "INBOX.Sent", "Sent Messages", "INBOX.Sent Messages"],
+  Drafts: ["Drafts", "INBOX.Drafts", "Draft"],
 };
+
+export type MailFolderClearMode = "permanent" | "move";
+
+export interface MailFolderClearOptions {
+  mode: MailFolderClearMode;
+  targetFolder?: string;
+}
 
 export function compareMailFolders(a: MailFolder, b: MailFolder): number {
   const aIndex = FOLDER_ORDER.indexOf(a.path as (typeof FOLDER_ORDER)[number]);
@@ -95,19 +104,6 @@ export function sortMailMessagesByUidDesc(
   return [...messages].sort((a, b) => b.uid - a.uid);
 }
 
-export function filterMailMessagesByQuery(
-  messages: readonly MailMessageSummary[],
-  query: string,
-): MailMessageSummary[] {
-  const normalized = query.trim().toLowerCase();
-  if (normalized.length === 0) return [...messages];
-  return messages.filter(
-    (message) =>
-      message.subject.toLowerCase().includes(normalized) ||
-      message.from.toLowerCase().includes(normalized),
-  );
-}
-
 export function isTrashFolder(path: string): boolean {
   const lower = path.toLowerCase();
   return lower === "trash" || lower.endsWith(".trash") || lower === "deleted";
@@ -133,6 +129,36 @@ export function resolveSpecialFolderPath(
     if (match != null) return match;
   }
   return null;
+}
+
+/** Client-side clear/delete semantics — move to Trash unless already in Trash. */
+export function buildMailFolderClearOptions(
+  folders: readonly MailFolder[],
+  path: string,
+): MailFolderClearOptions {
+  if (isTrashFolder(path)) {
+    return { mode: "permanent" };
+  }
+  const trashPath = resolveSpecialFolderPath(folders, "Trash");
+  if (trashPath != null) {
+    return { mode: "move", targetFolder: trashPath };
+  }
+  return { mode: "permanent" };
+}
+
+export function buildDefaultSearchFolders(
+  folders: readonly MailFolder[],
+  selectedFolder?: string | null,
+): string[] {
+  if (selectedFolder != null && selectedFolder.trim().length > 0) {
+    return [selectedFolder];
+  }
+  const paths = new Set<string>(["INBOX"]);
+  const sentPath = resolveSpecialFolderPath(folders, "Sent");
+  if (sentPath != null) {
+    paths.add(sentPath);
+  }
+  return [...paths];
 }
 
 export function selectAdjacentMessageUid(

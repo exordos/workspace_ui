@@ -1,8 +1,11 @@
+import type { RecurrencePreset } from "~/entities/calendar/calendar-recurrence.lib";
 import type {
   CalendarEvent,
   CalendarEventInput,
   CalendarInfo,
 } from "~/entities/calendar/calendar.types";
+
+export type { RecurrencePreset };
 
 export interface CalendarEventFormDialogProps {
   open: boolean;
@@ -14,8 +17,6 @@ export interface CalendarEventFormDialogProps {
   onOpenChange: (open: boolean) => void;
   onSubmit: (input: CalendarEventInput) => Promise<void>;
 }
-
-export type RecurrencePreset = "none" | "daily" | "weekly" | "monthly" | "custom";
 
 export interface CalendarEventFormState {
   calendarId: string;

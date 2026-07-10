@@ -7,5 +7,7 @@ export interface CalendarEventDetailProps {
   saving: boolean;
   onEdit: () => void;
   onDelete: () => void;
+  onMove: () => void;
+  onExport: () => void;
   onClose: () => void;
 }

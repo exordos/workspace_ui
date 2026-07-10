@@ -8,8 +8,10 @@ export const MailSignInDialog: React.FC<MailSignInDialogProps> = ({
   email,
   signingIn,
   error,
+  canSignInWithZulip = false,
   onEmailChange,
   onSubmit,
+  onZulipSignIn,
 }) => {
   const [password, setPassword] = useState("");
 
@@ -37,14 +39,21 @@ export const MailSignInDialog: React.FC<MailSignInDialogProps> = ({
       title={t("mail.signIn")}
       description={t("mail.signInHint")}
       footer={
-        <DialogPrimaryButton
-          type="button"
-          onClick={submitAuth}
-          isSubmitting={signingIn}
-          disabled={password.length === 0 || email.length === 0}
-        >
-          {t("mail.signIn")}
-        </DialogPrimaryButton>
+        <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+          {canSignInWithZulip && onZulipSignIn != null ? (
+            <DialogPrimaryButton type="button" onClick={onZulipSignIn} isSubmitting={signingIn}>
+              {t("mail.signInWithZulip")}
+            </DialogPrimaryButton>
+          ) : null}
+          <DialogPrimaryButton
+            type="button"
+            onClick={submitAuth}
+            isSubmitting={signingIn}
+            disabled={password.length === 0 || email.length === 0}
+          >
+            {t("mail.signIn")}
+          </DialogPrimaryButton>
+        </div>
       }
     >
       <form id="mail-auth-form" onSubmit={handleSubmit} className="space-y-3">

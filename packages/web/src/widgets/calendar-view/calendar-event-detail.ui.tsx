@@ -33,6 +33,8 @@ export const CalendarEventDetail: React.FC<CalendarEventDetailProps> = ({
   saving,
   onEdit,
   onDelete,
+  onMove,
+  onExport,
   onClose,
 }) => {
   const handleClose = useCallback(() => onClose(), [onClose]);
@@ -146,9 +148,15 @@ export const CalendarEventDetail: React.FC<CalendarEventDetailProps> = ({
         </DetailSection>
       ) : null}
 
-      <div className="mt-auto flex gap-2 pt-2">
+      <div className="mt-auto flex flex-wrap gap-2 pt-2">
         <Button type="button" size="sm" variant="ghost" onClick={onEdit} disabled={saving}>
           {t("calendar.editEvent")}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onMove} disabled={saving}>
+          {t("calendar.moveEvent")}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onExport} disabled={saving}>
+          {t("calendar.exportIcs")}
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={onDelete} disabled={saving}>
           {t("common.delete")}

@@ -40,8 +40,8 @@ describe("env", () => {
     expect(env).toHaveProperty("JITSI_MEET_BASE_URL");
     expect(env).toHaveProperty("CDN_URL");
     expect(env).toHaveProperty("BASE_URL");
-    expect(env).toHaveProperty("CALENDAR_EMBED_URL");
-    expect(env).toHaveProperty("MAIL_EMBED_URL");
+    expect(env).not.toHaveProperty("CALENDAR_EMBED_URL");
+    expect(env).not.toHaveProperty("MAIL_EMBED_URL");
     expect(env).toHaveProperty("CHAT_MESSAGES_PERSIST_INDEXEDDB");
     expect(env).toHaveProperty("TOP_BAR_CALLS_NAV");
     expect(env).toHaveProperty("TOP_BAR_SERVICES_NAV");
@@ -113,8 +113,6 @@ describe("env", () => {
       "JITSI_MEET_BASE_URL",
       "CDN_URL",
       "BASE_URL",
-      "CALENDAR_EMBED_URL",
-      "MAIL_EMBED_URL",
       "MAIL_API_ORIGIN",
     ] as const;
     for (const key of stringKeys) {

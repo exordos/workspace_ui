@@ -24,9 +24,11 @@ import type {
   MailMessageAction,
 } from "~/entities/mail/mail.types";
 import { onTabResume } from "~/shared/lib/visibility";
+import { useFolderDialogAction, useFolderDialogSubmitAction } from "./mail-view-folder-dialog.hook";
 
 export function useMailView() {
-  const instanceEmail = useInstancesStore((s) => s.getCurrentInstance()?.email ?? "");
+  const instance = useInstancesStore((s) => s.getCurrentInstance());
+  const instanceEmail = instance?.email ?? "";
   const session = useMailStore((s) => s.session);
   const signingIn = useMailStore((s) => s.signingIn);
   const sending = useMailStore((s) => s.sending);
@@ -47,6 +49,7 @@ export function useMailView() {
   const loadMoreMessages = useMailStore((s) => s.loadMoreMessages);
   const clearSearch = useMailStore((s) => s.clearSearch);
   const signIn = useMailStore((s) => s.signIn);
+  const signInWithZulip = useMailStore((s) => s.signInWithZulip);
   const signOut = useMailStore((s) => s.signOut);
   const selectFolder = useMailStore((s) => s.selectFolder);
   const selectMessage = useMailStore((s) => s.selectMessage);
@@ -64,10 +67,13 @@ export function useMailView() {
   const clearFolder = useMailStore((s) => s.clearFolder);
   const markFolderAllRead = useMailStore((s) => s.markFolderAllRead);
   const loadFolders = useMailStore((s) => s.loadFolders);
+  const syncCurrentFolder = useMailStore((s) => s.syncCurrentFolder);
+  const deleteDraft = useMailStore((s) => s.deleteDraft);
 
   type FolderDialogKind = "rename" | "move" | "delete" | "clear";
 
-  const [email, setEmail] = useState(instanceEmail);
+  const [emailOverride, setEmailOverride] = useState("");
+  const email = emailOverride.length > 0 ? emailOverride : instanceEmail;
   const [composeOpen, setComposeOpen] = useState(false);
   const [composeMode, setComposeMode] = useState<MailComposeMode>("new");
   const [composeInitial, setComposeInitial] = useState<MailComposeInitialState | null>(null);
@@ -100,12 +106,8 @@ export function useMailView() {
   const inTrash = useMemo(() => isTrashFolder(selectedFolder), [selectedFolder]);
   const inDrafts = useMemo(() => isDraftsFolder(selectedFolder), [selectedFolder]);
   const userEmail = session?.email ?? email;
-
-  useEffect(() => {
-    if (instanceEmail.length > 0) {
-      setEmail(instanceEmail);
-    }
-  }, [instanceEmail]);
+  const canSignInWithZulip =
+    instance != null && instance.apiKey.length > 0 && instance.email.length > 0;
 
   useEffect(() => {
     if (!session?.token) return;
@@ -118,9 +120,10 @@ export function useMailView() {
   useEffect(() => {
     if (!session?.token) return;
     return onTabResume(() => {
+      void syncCurrentFolder();
       void loadFolders();
     });
-  }, [session?.token, loadFolders]);
+  }, [session?.token, loadFolders, syncCurrentFolder]);
 
   useEffect(() => {
     if (!session?.token) return;
@@ -277,10 +280,16 @@ export function useMailView() {
     openCompose("new", buildDraftComposeState(selectedMessage));
   }, [openCompose, selectedMessage, selectedUid]);
 
-  const handleComposeOpenChange = useCallback((open: boolean) => {
-    setComposeOpen(open);
-    if (!open) setComposeDraftUid(null);
-  }, []);
+  const handleComposeOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open && composeDraftUid != null) {
+        void deleteDraft(composeDraftUid);
+      }
+      setComposeOpen(open);
+      if (!open) setComposeDraftUid(null);
+    },
+    [composeDraftUid, deleteDraft],
+  );
 
   const handleComposeSend = useCallback(
     async (payload: MailComposePayload) => {
@@ -412,6 +421,11 @@ export function useMailView() {
     }
   }, [actionUid, deleteMessage, selectedUid]);
 
+  const handleZulipSignIn = useCallback(() => {
+    if (instance == null) return;
+    void signInWithZulip(instance.email, instance.realm, instance.apiKey);
+  }, [instance, signInWithZulip]);
+
   const handleSignOut = useCallback(() => {
     void signOut();
   }, [signOut]);
@@ -443,63 +457,37 @@ export function useMailView() {
     [markFolderAllRead],
   );
 
-  const handleRenameFolderSubmit = useCallback(
-    async (name: string) => {
-      if (folderActionPath == null) return;
-      setFolderActionPending(true);
-      try {
-        await renameFolder({ path: folderActionPath, name });
-        setFolderDialog(null);
-      } catch {
-        /* error shown in store */
-      } finally {
-        setFolderActionPending(false);
-      }
-    },
-    [folderActionPath, renameFolder],
+  const handleConfirmDeleteFolder = useFolderDialogAction(
+    folderActionPath,
+    setFolderDialog,
+    setFolderActionPending,
+    deleteFolder,
   );
 
-  const handleMoveFolderSubmit = useCallback(
-    async (parentPath: string) => {
-      if (folderActionPath == null) return;
-      setFolderActionPending(true);
-      try {
-        await moveFolder({ path: folderActionPath, parentPath });
-        setFolderDialog(null);
-      } catch {
-        /* error shown in store */
-      } finally {
-        setFolderActionPending(false);
-      }
-    },
-    [folderActionPath, moveFolder],
+  const handleConfirmClearFolder = useFolderDialogAction(
+    folderActionPath,
+    setFolderDialog,
+    setFolderActionPending,
+    clearFolder,
   );
 
-  const handleConfirmDeleteFolder = useCallback(async () => {
-    if (folderActionPath == null) return;
-    setFolderActionPending(true);
-    try {
-      await deleteFolder(folderActionPath);
-      setFolderDialog(null);
-    } catch {
-      /* error shown in store */
-    } finally {
-      setFolderActionPending(false);
-    }
-  }, [deleteFolder, folderActionPath]);
+  const handleRenameFolderSubmit = useFolderDialogSubmitAction<string>(
+    folderActionPath,
+    setFolderDialog,
+    setFolderActionPending,
+    async (path, name) => {
+      await renameFolder({ path, name });
+    },
+  );
 
-  const handleConfirmClearFolder = useCallback(async () => {
-    if (folderActionPath == null) return;
-    setFolderActionPending(true);
-    try {
-      await clearFolder(folderActionPath);
-      setFolderDialog(null);
-    } catch {
-      /* error shown in store */
-    } finally {
-      setFolderActionPending(false);
-    }
-  }, [clearFolder, folderActionPath]);
+  const handleMoveFolderSubmit = useFolderDialogSubmitAction<string>(
+    folderActionPath,
+    setFolderDialog,
+    setFolderActionPending,
+    async (path, parentPath) => {
+      await moveFolder({ path, parentPath });
+    },
+  );
 
   const handleFolderDialogOpenChange = useCallback((open: boolean) => {
     if (!open) setFolderDialog(null);
@@ -544,7 +532,9 @@ export function useMailView() {
     folderDialog,
     folderActionTarget,
     folderActionPending,
-    setEmail,
+    setEmail: setEmailOverride,
+    canSignInWithZulip,
+    handleZulipSignIn,
     setSearchQuery,
     setMoveDialogOpen,
     setCreateFolderOpen,

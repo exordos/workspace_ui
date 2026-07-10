@@ -8,42 +8,6 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-export function parseCalendarIdsQuery(value: unknown): string[] {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw new Error("calendarId query parameter is required");
-  }
-  return value
-    .split(",")
-    .map((id) => id.trim())
-    .filter((id) => id.length > 0);
-}
-
-export function parseIsoDateQuery(value: unknown, label: string): string {
-  if (!isNonEmptyString(value)) {
-    throw new Error(`${label} query parameter is required`);
-  }
-  const trimmed = value.trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-    const parsed = Date.parse(`${trimmed}T00:00:00.000Z`);
-    if (!Number.isFinite(parsed)) {
-      throw new Error(`${label} must be a valid ISO date`);
-    }
-    return new Date(parsed).toISOString();
-  }
-  const parsed = Date.parse(trimmed);
-  if (!Number.isFinite(parsed)) {
-    throw new Error(`${label} must be a valid ISO date`);
-  }
-  return new Date(parsed).toISOString();
-}
-
-export function parseEventUidParam(value: unknown): string {
-  if (!isNonEmptyString(value)) {
-    throw new Error("eventUid is required");
-  }
-  return value.trim();
-}
-
 export function parseCalendarEventInput(body: unknown): CalendarEventInput {
   if (body == null || typeof body !== "object") {
     throw new Error("Invalid event payload");

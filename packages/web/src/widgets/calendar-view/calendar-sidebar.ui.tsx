@@ -12,6 +12,8 @@ export const CalendarSidebarPanel = React.memo<CalendarSidebarProps>(function Ca
   onSelectDate,
   onCreateCalendar,
   onDeleteCalendar,
+  onRenameCalendar,
+  loadingCalendars = false,
   getCalendarColor,
 }) {
   const [newCalendarName, setNewCalendarName] = useState("");
@@ -23,6 +25,12 @@ export const CalendarSidebarPanel = React.memo<CalendarSidebarProps>(function Ca
     setNewCalendarName("");
   }, [newCalendarName, onCreateCalendar]);
 
+  const handleRename = useCallback(
+    (calendarId: string) => () => {
+      onRenameCalendar(calendarId);
+    },
+    [onRenameCalendar],
+  );
   const handleDelete = useCallback(
     (calendarId: string) => () => {
       onDeleteCalendar(calendarId);
@@ -39,6 +47,9 @@ export const CalendarSidebarPanel = React.memo<CalendarSidebarProps>(function Ca
       <div>
         <div className="mb-2 flex items-center justify-between gap-2">
           <h2 className="text-sm font-medium text-text-primary">{t("calendar.myCalendars")}</h2>
+          {loadingCalendars ? (
+            <span className="text-xs text-text-muted">{t("calendar.loading")}</span>
+          ) : null}
         </div>
         <div className="mb-2 flex gap-1">
           <input
@@ -71,6 +82,16 @@ export const CalendarSidebarPanel = React.memo<CalendarSidebarProps>(function Ca
                   />
                   <span className="truncate text-text-primary">{calendar.displayName}</span>
                 </label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="opacity-0 group-hover:opacity-100"
+                  onClick={handleRename(calendar.id)}
+                  aria-label={t("calendar.renameCalendar")}
+                >
+                  ✎
+                </Button>
                 <Button
                   type="button"
                   size="sm"
@@ -120,5 +141,3 @@ export const CalendarSidebarPanel = React.memo<CalendarSidebarProps>(function Ca
     </aside>
   );
 });
-
-export const CalendarSidebar = CalendarSidebarPanel;

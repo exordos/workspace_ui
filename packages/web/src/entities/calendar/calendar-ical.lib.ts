@@ -146,6 +146,49 @@ export function parseVeventFromIcs(
   return events;
 }
 
+function computeRecurringEventDurationMs(event: CalendarEvent, dtstart: Date): number {
+  if (event.allDay) {
+    const endIso = normalizeAllDayEndIso(event.start, event.end).slice(0, 10);
+    return new Date(`${endIso}T00:00:00Z`).getTime() - dtstart.getTime() || 3600000;
+  }
+  return new Date(event.end).getTime() - dtstart.getTime() || 3600000;
+}
+
+function expandSingleRecurringEvent(
+  event: CalendarEvent,
+  rangeStart: Date,
+  rangeEnd: Date,
+): CalendarEvent[] {
+  if (event.recurrence?.rrule == null) return [event];
+  const dtstart = event.allDay ? new Date(`${event.start}T00:00:00Z`) : new Date(event.start);
+  const rule = RRule.fromString(event.recurrence.rrule.replace(/^RRULE:/i, ""));
+  rule.options.dtstart = dtstart;
+  const durationMs = computeRecurringEventDurationMs(event, dtstart);
+  const occurrences = rule.between(rangeStart, rangeEnd, true);
+
+  if (occurrences.length === 0) {
+    return eventIntersectsRange(event, rangeStart, rangeEnd) ? [event] : [];
+  }
+
+  return occurrences.map((occurrence) => {
+    const occEnd = new Date(occurrence.getTime() + durationMs);
+    const endIso = event.allDay
+      ? normalizeAllDayEndIso(
+          occurrence.toISOString().slice(0, 10),
+          occEnd.toISOString().slice(0, 10),
+        )
+      : occEnd.toISOString();
+    return {
+      ...event,
+      start: event.allDay ? occurrence.toISOString().slice(0, 10) : occurrence.toISOString(),
+      end: endIso,
+      isRecurringInstance: true,
+      recurrenceId: occurrence.toISOString(),
+      recurrence: null,
+    };
+  });
+}
+
 export function expandRecurringEvents(
   events: CalendarEvent[],
   rangeStart: Date,
@@ -160,40 +203,7 @@ export function expandRecurringEvents(
     }
 
     try {
-      const dtstart = event.allDay ? new Date(`${event.start}T00:00:00Z`) : new Date(event.start);
-      const rule = RRule.fromString(event.recurrence.rrule.replace(/^RRULE:/i, ""));
-      rule.options.dtstart = dtstart;
-      const durationMs =
-        (event.allDay
-          ? new Date(
-              `${normalizeAllDayEndIso(event.start, event.end).slice(0, 10)}T00:00:00Z`,
-            ).getTime() - dtstart.getTime()
-          : new Date(event.end).getTime() - dtstart.getTime()) || 3600000;
-
-      const occurrences = rule.between(rangeStart, rangeEnd, true);
-      if (occurrences.length === 0) {
-        if (eventIntersectsRange(event, rangeStart, rangeEnd)) {
-          expanded.push(event);
-        }
-        continue;
-      }
-      for (const occurrence of occurrences) {
-        const occEnd = new Date(occurrence.getTime() + durationMs);
-        const endIso = event.allDay
-          ? normalizeAllDayEndIso(
-              occurrence.toISOString().slice(0, 10),
-              occEnd.toISOString().slice(0, 10),
-            )
-          : occEnd.toISOString();
-        expanded.push({
-          ...event,
-          start: event.allDay ? occurrence.toISOString().slice(0, 10) : occurrence.toISOString(),
-          end: endIso,
-          isRecurringInstance: true,
-          recurrenceId: occurrence.toISOString(),
-          recurrence: null,
-        });
-      }
+      expanded.push(...expandSingleRecurringEvent(event, rangeStart, rangeEnd));
     } catch {
       expanded.push(event);
     }

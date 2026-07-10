@@ -1,31 +1,16 @@
 /**
- * Calendar event form state builders and RRULE presets.
+ * Calendar event form state builders.
  */
 
+import {
+  detectRecurrencePreset,
+  recurrencePresetToRrule,
+} from "~/entities/calendar/calendar-recurrence.lib";
 import { formatLocalTimeHHmm, toIsoDate } from "~/entities/calendar/calendar.lib";
 import type { CalendarEvent, CalendarEventInput } from "~/entities/calendar/calendar.types";
-import type { CalendarEventFormState, RecurrencePreset } from "./calendar-event-form.types";
+import type { CalendarEventFormState } from "./calendar-event-form.types";
 
-export function recurrencePresetToRrule(preset: RecurrencePreset, custom: string): string | null {
-  if (preset === "none") return null;
-  if (preset === "custom") return custom.trim().length > 0 ? custom.trim() : null;
-  if (preset === "daily") return "FREQ=DAILY";
-  if (preset === "weekly") return "FREQ=WEEKLY";
-  if (preset === "monthly") return "FREQ=MONTHLY";
-  return null;
-}
-
-export function detectRecurrencePreset(rrule: string | null | undefined): {
-  preset: RecurrencePreset;
-  custom: string;
-} {
-  if (rrule == null || rrule.length === 0) return { preset: "none", custom: "" };
-  const normalized = rrule.replace(/^RRULE:/i, "");
-  if (normalized === "FREQ=DAILY") return { preset: "daily", custom: "" };
-  if (normalized === "FREQ=WEEKLY") return { preset: "weekly", custom: "" };
-  if (normalized === "FREQ=MONTHLY") return { preset: "monthly", custom: "" };
-  return { preset: "custom", custom: normalized };
-}
+export { detectRecurrencePreset, recurrencePresetToRrule };
 
 export function buildDefaultFormState(
   calendars: { id: string }[],

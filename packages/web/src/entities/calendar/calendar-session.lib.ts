@@ -8,8 +8,3 @@ export function getMailboxSessionToken(): string | null {
   const session = loadMailSessionFromStorage();
   return session?.token ?? null;
 }
-
-export function getMailboxSessionEmail(): string | null {
-  const session = loadMailSessionFromStorage();
-  return session?.email ?? null;
-}

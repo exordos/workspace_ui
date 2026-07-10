@@ -112,6 +112,37 @@
           "path": { "type": "string" }
         }
       },
+      "ClearMailFolderRequest": {
+        "type": "object",
+        "required": ["path", "mode"],
+        "properties": {
+          "path": { "type": "string" },
+          "mode": { "type": "string", "enum": ["permanent", "move"] },
+          "targetFolder": { "type": "string" }
+        }
+      },
+      "DeleteMailFolderRequest": {
+        "type": "object",
+        "required": ["path", "clearMode"],
+        "properties": {
+          "path": { "type": "string" },
+          "delimiter": { "type": "string" },
+          "clearMode": { "type": "string", "enum": ["permanent", "move"] },
+          "targetFolder": { "type": "string" }
+        }
+      },
+      "DraftMailRequest": {
+        "allOf": [
+          { "$ref": "#/components/schemas/SendMailRequest" },
+          {
+            "type": "object",
+            "required": ["folder"],
+            "properties": {
+              "folder": { "type": "string" }
+            }
+          }
+        ]
+      },
       "MailMessageSummary": {
         "type": "object",
         "required": ["uid", "from", "subject", "snippet", "date", "seen", "flagged"],
@@ -194,7 +225,8 @@
           "attachments": {
             "type": "array",
             "items": { "$ref": "#/components/schemas/SendMailAttachment" }
-          }
+          },
+          "saveToFolder": { "type": "string" }
         }
       },
       "SendMailAttachment": {
@@ -237,44 +269,14 @@
           "nextCursor": { "type": "string", "nullable": true }
         }
       },
-      "MailBatchRequest": {
+      "MailMessagesSinceResponse": {
         "type": "object",
-        "required": ["folder", "uids", "action"],
+        "required": ["folder", "messages"],
         "properties": {
           "folder": { "type": "string" },
-          "uids": {
-            "type": "array",
-            "items": { "type": "integer", "minimum": 1 }
-          },
-          "action": { "type": "string", "enum": ["delete", "move", "setFlags"] },
-          "toFolder": { "type": "string" },
-          "addFlags": { "type": "array", "items": { "type": "string" } },
-          "removeFlags": { "type": "array", "items": { "type": "string" } }
-        }
-      },
-      "MailSyncResponse": {
-        "type": "object",
-        "required": ["newMessages", "deletedUids", "flagChanges"],
-        "properties": {
-          "newMessages": {
+          "messages": {
             "type": "array",
             "items": { "$ref": "#/components/schemas/MailMessageSummary" }
-          },
-          "deletedUids": {
-            "type": "array",
-            "items": { "type": "integer", "minimum": 1 }
-          },
-          "flagChanges": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": ["uid", "seen", "flagged"],
-              "properties": {
-                "uid": { "type": "integer", "minimum": 1 },
-                "seen": { "type": "boolean" },
-                "flagged": { "type": "boolean" }
-              }
-            }
           }
         }
       },
@@ -692,17 +694,29 @@
       },
       "delete": {
         "operationId": "deleteMailFolder",
-        "summary": "Delete mail folder",
+        "summary": "Delete mail folder tree",
         "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "path", "in": "query", "required": true, "schema": { "type": "string" } },
-          { "name": "delimiter", "in": "query", "required": false, "schema": { "type": "string" } }
+          { "name": "delimiter", "in": "query", "required": false, "schema": { "type": "string" } },
+          {
+            "name": "clearMode",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "enum": ["permanent", "move"] }
+          },
+          {
+            "name": "targetFolder",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
+          }
         ],
         "requestBody": {
           "required": false,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/FolderPathRequest" }
+              "schema": { "$ref": "#/components/schemas/DeleteMailFolderRequest" }
             }
           }
         },
@@ -749,7 +763,7 @@
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/FolderPathRequest" }
+              "schema": { "$ref": "#/components/schemas/ClearMailFolderRequest" }
             }
           }
         },
@@ -911,7 +925,7 @@
       },
       "delete": {
         "operationId": "deleteMailMessage",
-        "summary": "Delete message",
+        "summary": "Permanently delete message",
         "security": [{ "bearerAuth": [] }],
         "parameters": [
           {
@@ -1002,6 +1016,12 @@
           { "name": "q", "in": "query", "required": true, "schema": { "type": "string" } },
           { "name": "folder", "in": "query", "schema": { "type": "string" } },
           {
+            "name": "folders",
+            "in": "query",
+            "description": "Comma-separated folder paths to search",
+            "schema": { "type": "string" }
+          },
+          {
             "name": "limit",
             "in": "query",
             "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 }
@@ -1022,10 +1042,10 @@
         }
       }
     },
-    "/v1/mail/sync": {
+    "/v1/mail/messages/since": {
       "get": {
-        "operationId": "syncMailFolder",
-        "summary": "Sync folder changes since UID",
+        "operationId": "listMailMessagesSince",
+        "summary": "List messages with UID greater than sinceUid",
         "security": [{ "bearerAuth": [] }],
         "parameters": [
           { "name": "folder", "in": "query", "schema": { "type": "string", "default": "INBOX" } },
@@ -1033,37 +1053,10 @@
         ],
         "responses": {
           "200": {
-            "description": "Sync delta",
+            "description": "New messages since UID",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/MailSyncResponse" }
-              }
-            }
-          },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" }
-        }
-      }
-    },
-    "/v1/mail/messages/batch": {
-      "post": {
-        "operationId": "batchMailMessages",
-        "summary": "Batch message operations",
-        "security": [{ "bearerAuth": [] }],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/MailBatchRequest" }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Batch completed",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/OkResponse" }
+                "schema": { "$ref": "#/components/schemas/MailMessagesSinceResponse" }
               }
             }
           },
@@ -1081,7 +1074,7 @@
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/SendMailRequest" }
+              "schema": { "$ref": "#/components/schemas/DraftMailRequest" }
             }
           }
         },
@@ -1116,7 +1109,7 @@
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/SendMailRequest" }
+              "schema": { "$ref": "#/components/schemas/DraftMailRequest" }
             }
           }
         },
@@ -1136,7 +1129,7 @@
       },
       "delete": {
         "operationId": "deleteMailDraft",
-        "summary": "Delete mail draft",
+        "summary": "Permanently delete mail draft",
         "security": [{ "bearerAuth": [] }],
         "parameters": [
           {
@@ -1144,40 +1137,13 @@
             "in": "path",
             "required": true,
             "schema": { "type": "integer", "minimum": 1 }
-          }
+          },
+          { "name": "folder", "in": "query", "required": true, "schema": { "type": "string" } }
         ],
         "responses": {
           "204": { "description": "Draft deleted" },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" }
-        }
-      }
-    },
-    "/v1/mail/drafts/{uid}/send": {
-      "post": {
-        "operationId": "sendMailDraft",
-        "summary": "Send mail draft",
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [
-          {
-            "name": "uid",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "integer", "minimum": 1 }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "Draft sent",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/OkResponse" }
-              }
-            }
-          },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
     },

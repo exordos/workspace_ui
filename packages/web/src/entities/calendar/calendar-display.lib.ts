@@ -3,6 +3,7 @@
  */
 
 import { t } from "~/i18n/i18n";
+import { formatRecurrenceLabel } from "./calendar-recurrence.lib";
 import { addDays, parseLocalDate, toIsoDate } from "./calendar.lib";
 import type { CalendarAlarm, CalendarAttendee, CalendarEvent } from "./calendar.types";
 
@@ -86,14 +87,7 @@ export function formatEventDuration(event: CalendarEvent): string | null {
   return t("calendar.durationHoursMinutes", { hours, minutes });
 }
 
-export function formatRecurrenceLabel(rrule: string | null | undefined): string | null {
-  if (rrule == null || rrule.length === 0) return null;
-  const normalized = rrule.replace(/^RRULE:/i, "");
-  if (normalized === "FREQ=DAILY") return t("calendar.recurrenceDaily");
-  if (normalized === "FREQ=WEEKLY") return t("calendar.recurrenceWeekly");
-  if (normalized === "FREQ=MONTHLY") return t("calendar.recurrenceMonthly");
-  return normalized;
-}
+export { formatRecurrenceLabel };
 
 export function formatAlarmLabel(alarm: CalendarAlarm): string {
   if (alarm.triggerMinutes != null) {

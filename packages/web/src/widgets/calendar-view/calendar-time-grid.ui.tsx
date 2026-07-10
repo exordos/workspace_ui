@@ -99,7 +99,7 @@ export const CalendarTimeGrid: React.FC<CalendarTimeGridProps> = ({
   );
 
   const handleDayColumnClick = useCallback(
-    (day: Date) => (event: React.MouseEvent<HTMLDivElement>) => {
+    (day: Date) => (event: React.MouseEvent<HTMLButtonElement>) => {
       if (onSelectTimeSlot == null) return;
       const rect = event.currentTarget.getBoundingClientRect();
       const offsetPx = event.clientY - rect.top;
@@ -171,8 +171,9 @@ export const CalendarTimeGrid: React.FC<CalendarTimeGridProps> = ({
             const timed = eventsByDay.get(iso)?.timed ?? [];
             const isToday = iso === todayIso;
             return (
-              <div
+              <button
                 key={iso}
+                type="button"
                 data-testid={`calendar-day-column-${iso}`}
                 className={`relative border-r border-border-subtle${onSelectTimeSlot != null ? "cursor-pointer" : ""}`}
                 style={{ height: gridHeightPx }}
@@ -201,7 +202,7 @@ export const CalendarTimeGrid: React.FC<CalendarTimeGridProps> = ({
                     onSelect={handleSelect}
                   />
                 ))}
-              </div>
+              </button>
             );
           })}
         </div>

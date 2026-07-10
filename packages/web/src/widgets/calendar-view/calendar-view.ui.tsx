@@ -1,12 +1,14 @@
 import React, { useCallback } from "react";
 import { CalendarEventFormDialog } from "~/features/calendar-event-form/calendar-event-form.ui";
+import { CalendarMoveEventDialog } from "~/features/calendar-move-event/calendar-move-event-dialog.ui";
 import { CalendarRecurrenceScopeDialog } from "~/features/calendar-recurrence-scope/calendar-recurrence-scope-dialog.ui";
+import { CalendarRenameDialog } from "~/features/calendar-rename/calendar-rename-dialog.ui";
 import { MailSignInDialog } from "~/features/mail-sign-in/mail-sign-in.ui";
 import { t } from "~/i18n/i18n";
 import { CalendarDayGrid } from "./calendar-day-grid.ui";
 import { CalendarEventDetail } from "./calendar-event-detail.ui";
 import { CalendarMonthGrid } from "./calendar-month-grid.ui";
-import { CalendarSidebar } from "./calendar-sidebar.ui";
+import { CalendarSidebarPanel } from "./calendar-sidebar.ui";
 import { CalendarToolbar } from "./calendar-toolbar.ui";
 import { useCalendarView } from "./calendar-view.hook";
 import { CalendarWeekGrid } from "./calendar-week-grid.ui";
@@ -17,6 +19,7 @@ export const CalendarView: React.FC = () => {
     signingIn,
     error,
     email,
+    canSignInWithZulip,
     calendars,
     visibleCalendarIds,
     events,
@@ -29,6 +32,7 @@ export const CalendarView: React.FC = () => {
     selectedCalendarName,
     selectedCalendarColor,
     selectedIsoDate,
+    loadingCalendars,
     loadingEvents,
     saving,
     formOpen,
@@ -38,6 +42,9 @@ export const CalendarView: React.FC = () => {
     searchQuery,
     scopeDialogOpen,
     pendingScopeAction,
+    moveDialogOpen,
+    renameDialogOpen,
+    renamingCalendarId,
     setEmail,
     setSearchQuery,
     setViewMode,
@@ -46,6 +53,7 @@ export const CalendarView: React.FC = () => {
     getEventColor,
     getCalendarColor,
     handleAuthSubmit,
+    handleZulipSignIn,
     handleSignOut,
     handlePrev,
     handleNext,
@@ -60,8 +68,14 @@ export const CalendarView: React.FC = () => {
     handleRecurrenceScopeSelect,
     handleScopeDialogOpenChange,
     handleCreateCalendar,
+    handleRenameCalendar,
+    handleOpenRenameCalendar,
     handleDeleteCalendar,
     handleImportIcs,
+    handleMoveEvent,
+    handleExportEvent,
+    setMoveDialogOpen,
+    setRenameDialogOpen,
   } = useCalendarView();
 
   const handleImportFile = useCallback(
@@ -74,6 +88,20 @@ export const CalendarView: React.FC = () => {
     [handleImportIcs, visibleCalendarIds],
   );
 
+  const handleOpenMoveDialog = useCallback(() => {
+    setMoveDialogOpen(true);
+  }, [setMoveDialogOpen]);
+
+  const renamingCalendar = calendars.find((calendar) => calendar.id === renamingCalendarId) ?? null;
+
+  const handleRenameSubmit = useCallback(
+    async (displayName: string, color: string | null) => {
+      if (renamingCalendarId == null) return;
+      await handleRenameCalendar(renamingCalendarId, displayName, color);
+    },
+    [handleRenameCalendar, renamingCalendarId],
+  );
+
   if (!session) {
     return (
       <MailSignInDialog
@@ -81,8 +109,10 @@ export const CalendarView: React.FC = () => {
         email={email}
         signingIn={signingIn}
         error={error}
+        canSignInWithZulip={canSignInWithZulip}
         onEmailChange={setEmail}
         onSubmit={handleAuthSubmit}
+        onZulipSignIn={handleZulipSignIn}
       />
     );
   }
@@ -103,14 +133,16 @@ export const CalendarView: React.FC = () => {
         onSignOut={handleSignOut}
       />
       <div className="flex min-h-0 flex-1 gap-3">
-        <CalendarSidebar
+        <CalendarSidebarPanel
           calendars={calendars}
           visibleCalendarIds={visibleCalendarIds}
           focusDate={focusDate}
+          loadingCalendars={loadingCalendars}
           onToggleCalendar={toggleCalendarVisibility}
           onSelectDate={handleSelectDay}
           onCreateCalendar={handleCreateCalendar}
           onDeleteCalendar={handleDeleteCalendar}
+          onRenameCalendar={handleOpenRenameCalendar}
           getCalendarColor={getCalendarColor}
         />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -157,6 +189,8 @@ export const CalendarView: React.FC = () => {
           saving={saving}
           onEdit={handleEditEvent}
           onDelete={handleDeleteEvent}
+          onMove={handleOpenMoveDialog}
+          onExport={() => void handleExportEvent()}
           onClose={() => selectEvent(null)}
         />
       </div>
@@ -178,6 +212,21 @@ export const CalendarView: React.FC = () => {
           onSelect={handleRecurrenceScopeSelect}
         />
       ) : null}
+      <CalendarMoveEventDialog
+        open={moveDialogOpen}
+        calendars={calendars}
+        currentCalendarId={selectedEvent?.calendarId ?? null}
+        saving={saving}
+        onOpenChange={setMoveDialogOpen}
+        onMove={handleMoveEvent}
+      />
+      <CalendarRenameDialog
+        open={renameDialogOpen}
+        calendar={renamingCalendar}
+        saving={saving}
+        onOpenChange={setRenameDialogOpen}
+        onSubmit={handleRenameSubmit}
+      />
     </div>
   );
 };

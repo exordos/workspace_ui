@@ -56,9 +56,12 @@ export interface MailMessageFlagsPatch {
   remove?: string[];
 }
 
-const TRASH_FOLDER_CANDIDATES = ["Trash", "INBOX.Trash", "Deleted", "INBOX.Deleted"] as const;
-const SENT_FOLDER_CANDIDATES = ["Sent", "INBOX.Sent", "Sent Messages", "INBOX.Sent Messages"] as const;
-const DRAFTS_FOLDER_CANDIDATES = ["Drafts", "INBOX.Drafts", "Draft"] as const;
+export type MailFolderClearMode = "permanent" | "move";
+
+export interface MailFolderClearOptions {
+  mode: MailFolderClearMode;
+  targetFolder?: string;
+}
 
 export interface MailAttachmentMetaDto {
   id: string;
@@ -125,27 +128,6 @@ async function loadMessageSource(
   }
 
   return { buffer: null, loadedVia: "none" };
-}
-
-export function resolveFolderByCandidates(
-  folders: readonly MailFolderDto[],
-  candidates: readonly string[],
-): string | null {
-  const paths = new Set(folders.map((folder) => folder.path));
-  for (const candidate of candidates) {
-    if (paths.has(candidate)) return candidate;
-  }
-  const lowerMap = new Map(folders.map((folder) => [folder.path.toLowerCase(), folder.path]));
-  for (const candidate of candidates) {
-    const match = lowerMap.get(candidate.toLowerCase());
-    if (match != null) return match;
-  }
-  return null;
-}
-
-export function isTrashFolderPath(folder: string): boolean {
-  const lower = folder.toLowerCase();
-  return lower === "trash" || lower.endsWith(".trash") || lower === "deleted";
 }
 
 export async function listMailFolders(
@@ -354,16 +336,11 @@ export async function deleteMailMessage(
   session: MailSessionRecord,
   folder: string,
   uid: number,
-  trashFolder: string | null,
 ): Promise<void> {
   const client = createImapClient(session);
   await client.connect();
   const lock = await client.getMailboxLock(folder);
   try {
-    if (!isTrashFolderPath(folder) && trashFolder != null) {
-      await client.messageMove(String(uid), trashFolder, { uid: true });
-      return;
-    }
     await client.messageDelete(String(uid), { uid: true });
   } finally {
     lock.release();
@@ -421,7 +398,7 @@ export async function renameMailFolder(
 async function clearMailFolderMessages(
   session: MailSessionRecord,
   folder: string,
-  trashFolder: string | null,
+  options: MailFolderClearOptions,
 ): Promise<void> {
   const client = createImapClient(session);
   await client.connect();
@@ -429,11 +406,14 @@ async function clearMailFolderMessages(
   try {
     const status = await client.status(folder, { messages: true });
     if ((status.messages ?? 0) < 1) return;
-    if (isTrashFolderPath(folder) || trashFolder == null) {
-      await client.messageDelete("1:*", { uid: true });
+    if (options.mode === "move") {
+      if (options.targetFolder == null || options.targetFolder.length === 0) {
+        throw new Error("targetFolder is required when mode is move");
+      }
+      await client.messageMove("1:*", options.targetFolder, { uid: true });
       return;
     }
-    await client.messageMove("1:*", trashFolder, { uid: true });
+    await client.messageDelete("1:*", { uid: true });
   } finally {
     lock.release();
     await client.logout();
@@ -443,9 +423,9 @@ async function clearMailFolderMessages(
 export async function clearMailFolder(
   session: MailSessionRecord,
   folder: string,
-  trashFolder: string | null,
+  options: MailFolderClearOptions,
 ): Promise<void> {
-  await clearMailFolderMessages(session, folder, trashFolder);
+  await clearMailFolderMessages(session, folder, options);
 }
 
 export async function markAllMailFolderRead(session: MailSessionRecord, folder: string): Promise<void> {
@@ -476,7 +456,7 @@ export async function deleteMailFolder(
   session: MailSessionRecord,
   path: string,
   delimiter: string,
-  trashFolder: string | null,
+  clearOptions: MailFolderClearOptions,
 ): Promise<void> {
   const { folders } = await listMailFolders(session);
   const descendantPaths = folders
@@ -485,10 +465,10 @@ export async function deleteMailFolder(
     .sort((a, b) => b.split(delimiter).length - a.split(delimiter).length);
 
   for (const childPath of descendantPaths) {
-    await clearMailFolderMessages(session, childPath, trashFolder);
+    await clearMailFolderMessages(session, childPath, clearOptions);
     await deleteMailFolderMailbox(session, childPath);
   }
-  await clearMailFolderMessages(session, path, trashFolder);
+  await clearMailFolderMessages(session, path, clearOptions);
   await deleteMailFolderMailbox(session, path);
 }
 
@@ -507,19 +487,49 @@ export async function appendMailMessage(
   }
 }
 
-export async function resolveTrashFolder(session: MailSessionRecord): Promise<string | null> {
-  const { folders } = await listMailFolders(session);
-  return resolveFolderByCandidates(folders, TRASH_FOLDER_CANDIDATES);
-}
+export async function listMailMessagesSince(
+  session: MailSessionRecord,
+  folder: string,
+  sinceUid: number,
+): Promise<MailMessageSummaryDto[]> {
+  const client = createImapClient(session);
+  await client.connect();
+  const lock = await client.getMailboxLock(folder);
+  try {
+    const status = await client.status(folder, { uidNext: true });
+    const maxUid = (status.uidNext ?? 2) - 1;
+    if (maxUid <= sinceUid) {
+      return [];
+    }
 
-export async function resolveSentFolder(session: MailSessionRecord): Promise<string | null> {
-  const { folders } = await listMailFolders(session);
-  return resolveFolderByCandidates(folders, SENT_FOLDER_CANDIDATES);
-}
+    const range = `${sinceUid + 1}:${maxUid}`;
+    const newMessages: MailMessageSummaryDto[] = [];
+    for await (const msg of client.fetch(
+      range,
+      { uid: true, envelope: true, flags: true, headers: ["Subject", "From"] },
+      { uid: true },
+    )) {
+      const uid = msg.uid;
+      if (uid == null) continue;
+      const envelope = msg.envelope;
+      const headerFields = extractHeaderFields(msg);
+      const envelopeFrom = formatAddress(envelope);
+      newMessages.push({
+        uid,
+        from: resolveMailFrom(null, envelopeFrom, headerFields.from),
+        subject: resolveMailSubject(null, envelope?.subject, headerFields.subject),
+        snippet: "",
+        date: envelope?.date?.toISOString() ?? new Date().toISOString(),
+        seen: msg.flags?.has("\\Seen") ?? false,
+        flagged: msg.flags?.has("\\Flagged") ?? false,
+      });
+    }
 
-export async function resolveDraftsFolder(session: MailSessionRecord): Promise<string | null> {
-  const { folders } = await listMailFolders(session);
-  return resolveFolderByCandidates(folders, DRAFTS_FOLDER_CANDIDATES);
+    return newMessages.sort((a, b) => b.uid - a.uid);
+  } finally {
+    lock.release();
+    await client.logout();
+  }
 }
 
 async function loadMessageSourceBuffer(
@@ -578,26 +588,22 @@ export async function getMailMessageAttachment(
 export async function searchMailMessages(
   session: MailSessionRecord,
   query: string,
-  folder: string | null,
+  folders: readonly string[],
   limit: number,
   cursorUid: number | null,
 ): Promise<MailMessageSummaryDto[]> {
   const trimmedQuery = query.trim();
   if (trimmedQuery.length === 0) return [];
-
-  const foldersToSearch =
-    folder != null && folder.length > 0
-      ? [folder]
-      : (await listMailFolders(session)).folders
-          .map((item) => item.path)
-          .filter((path) => path === "INBOX" || path.toLowerCase().includes("sent"));
+  if (folders.length === 0) {
+    throw new Error("At least one folder is required");
+  }
 
   const client = createImapClient(session);
   await client.connect();
   const allMessages: MailMessageSummaryDto[] = [];
 
   try {
-    for (const folderPath of foldersToSearch) {
+    for (const folderPath of folders) {
       const lock = await client.getMailboxLock(folderPath);
       try {
         const searchResult = await client.search(
@@ -643,59 +649,6 @@ export async function searchMailMessages(
   }
 
   return allMessages.sort((a, b) => b.uid - a.uid).slice(0, limit);
-}
-
-export async function syncMailFolder(
-  session: MailSessionRecord,
-  folder: string,
-  sinceUid: number,
-): Promise<{
-  newMessages: MailMessageSummaryDto[];
-  deletedUids: number[];
-  flagChanges: Array<{ uid: number; seen: boolean; flagged: boolean }>;
-}> {
-  const client = createImapClient(session);
-  await client.connect();
-  const lock = await client.getMailboxLock(folder);
-  try {
-    const status = await client.status(folder, { uidNext: true });
-    const maxUid = (status.uidNext ?? 2) - 1;
-    if (maxUid <= sinceUid) {
-      return { newMessages: [], deletedUids: [], flagChanges: [] };
-    }
-
-    const range = `${sinceUid + 1}:${maxUid}`;
-    const newMessages: MailMessageSummaryDto[] = [];
-    for await (const msg of client.fetch(
-      range,
-      { uid: true, envelope: true, flags: true, headers: ["Subject", "From"] },
-      { uid: true },
-    )) {
-      const uid = msg.uid;
-      if (uid == null) continue;
-      const envelope = msg.envelope;
-      const headerFields = extractHeaderFields(msg);
-      const envelopeFrom = formatAddress(envelope);
-      newMessages.push({
-        uid,
-        from: resolveMailFrom(null, envelopeFrom, headerFields.from),
-        subject: resolveMailSubject(null, envelope?.subject, headerFields.subject),
-        snippet: "",
-        date: envelope?.date?.toISOString() ?? new Date().toISOString(),
-        seen: msg.flags?.has("\\Seen") ?? false,
-        flagged: msg.flags?.has("\\Flagged") ?? false,
-      });
-    }
-
-    return {
-      newMessages: newMessages.sort((a, b) => b.uid - a.uid),
-      deletedUids: [],
-      flagChanges: [],
-    };
-  } finally {
-    lock.release();
-    await client.logout();
-  }
 }
 
 /** Verifies IMAP credentials without creating a persistent session record. */

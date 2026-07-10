@@ -3,10 +3,7 @@
  */
 
 import nodemailer from "nodemailer";
-import {
-  appendMailMessage,
-  resolveSentFolder,
-} from "./imap.lib";
+import { appendMailMessage } from "./imap.lib";
 import { buildOutboundMime, buildPlainTextFallback } from "./mime.lib";
 import { mailProxyEnv } from "../shared/env.lib";
 import type { MailSessionRecord } from "../shared/session/session.lib";
@@ -20,6 +17,7 @@ export interface SendMailOptions {
   bodyText?: string;
   inReplyTo?: string;
   references?: string;
+  saveToFolder?: string;
   attachments?: Array<{ filename: string; content: Buffer; contentType: string }>;
 }
 
@@ -78,9 +76,10 @@ export async function sendMailMessage(
   const transporter = createTransporter(session);
   await transporter.sendMail(mailOptions);
 
+  const saveToFolder = options.saveToFolder?.trim();
+  if (saveToFolder == null || saveToFolder.length === 0) return;
+
   try {
-    const sentFolder = await resolveSentFolder(session);
-    if (sentFolder == null) return;
     const rawMime = await buildOutboundMime({
       from: session.email,
       to: options.to,
@@ -93,7 +92,7 @@ export async function sendMailMessage(
       references: options.references,
       attachments: options.attachments,
     });
-    await appendMailMessage(session, sentFolder, rawMime, ["\\Seen"]);
+    await appendMailMessage(session, saveToFolder, rawMime, ["\\Seen"]);
   } catch {
     /* Sent append is best-effort — SMTP delivery already succeeded */
   }

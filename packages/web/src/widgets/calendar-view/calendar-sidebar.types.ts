@@ -8,5 +8,7 @@ export interface CalendarSidebarProps {
   onSelectDate: (date: Date) => void;
   onCreateCalendar: (displayName: string) => void;
   onDeleteCalendar: (calendarId: string) => void;
+  onRenameCalendar: (calendarId: string) => void;
+  loadingCalendars?: boolean;
   getCalendarColor: (calendar: CalendarInfo, index: number) => string;
 }

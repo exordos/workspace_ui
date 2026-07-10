@@ -59,6 +59,8 @@ export const MailView: React.FC = () => {
     handleSelectFolder,
     handleSelectMessage,
     handleAuthSubmit,
+    handleZulipSignIn,
+    canSignInWithZulip,
     handleComposeOpen,
     handleComposeOpenChange,
     handleComposeSend,
@@ -97,8 +99,10 @@ export const MailView: React.FC = () => {
         email={email}
         signingIn={signingIn}
         error={error}
+        canSignInWithZulip={canSignInWithZulip}
         onEmailChange={setEmail}
         onSubmit={handleAuthSubmit}
+        onZulipSignIn={handleZulipSignIn}
       />
     );
   }

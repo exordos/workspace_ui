@@ -153,3 +153,86 @@ export function createMessages(count: number, base: MessageOverrides = {}) {
 export function createUsers(count: number) {
   return Array.from({ length: count }, () => createUser());
 }
+
+// ---------------------------------------------------------------------------
+// Mail
+// ---------------------------------------------------------------------------
+
+interface MailFolderOverrides {
+  path?: string;
+  name?: string;
+  unseen?: number;
+}
+
+export function createMailFolder(overrides: MailFolderOverrides = {}) {
+  return {
+    path: overrides.path ?? "INBOX",
+    name: overrides.name ?? "INBOX",
+    unseen: overrides.unseen ?? 0,
+  };
+}
+
+interface MailMessageSummaryOverrides {
+  uid?: number;
+  subject?: string;
+  from?: string;
+  seen?: boolean;
+  flagged?: boolean;
+}
+
+export function createMailMessageSummary(overrides: MailMessageSummaryOverrides = {}) {
+  return {
+    uid: overrides.uid ?? 1,
+    subject: overrides.subject ?? "Test subject",
+    from: overrides.from ?? "sender@example.com",
+    seen: overrides.seen ?? false,
+    flagged: overrides.flagged ?? false,
+    date: new Date().toISOString(),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Calendar
+// ---------------------------------------------------------------------------
+
+interface CalendarInfoOverrides {
+  id?: string;
+  displayName?: string;
+  color?: string | null;
+}
+
+export function createCalendarInfo(overrides: CalendarInfoOverrides = {}) {
+  return {
+    id: overrides.id ?? "personal",
+    displayName: overrides.displayName ?? "Personal",
+    color: overrides.color ?? null,
+  };
+}
+
+interface CalendarEventOverrides {
+  uid?: string;
+  calendarId?: string;
+  summary?: string;
+  start?: string;
+  end?: string;
+  allDay?: boolean;
+}
+
+export function createCalendarEvent(overrides: CalendarEventOverrides = {}) {
+  return {
+    uid: overrides.uid ?? "event-1",
+    calendarId: overrides.calendarId ?? "personal",
+    summary: overrides.summary ?? "Meeting",
+    description: null,
+    location: null,
+    start: overrides.start ?? "2026-07-10T09:00:00.000Z",
+    end: overrides.end ?? "2026-07-10T10:00:00.000Z",
+    allDay: overrides.allDay ?? false,
+    etag: null,
+    recurrence: null,
+    attendees: [],
+    alarms: [],
+    recurrenceId: null,
+    isRecurringInstance: false,
+  };
+}

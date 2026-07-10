@@ -2,15 +2,11 @@
  * Calendar utilities — API config and grid date helpers.
  */
 
-import { getMailApiBase, isMailApiConfigured } from "~/entities/mail/mail.lib";
+import { isMailApiConfigured } from "~/entities/mail/mail.lib";
 import type { CalendarEvent } from "./calendar.types";
 
 export function isCalendarApiConfigured(configuredOrigin: string): boolean {
   return isMailApiConfigured(configuredOrigin);
-}
-
-export function getCalendarApiBase(configuredOrigin: string): string {
-  return getMailApiBase(configuredOrigin);
 }
 
 export function isCalendarUnauthorizedError(error: unknown): boolean {
@@ -217,10 +213,6 @@ export function startOfWeek(date: Date, weekStartsOn = 1): Date {
   return addDays(d, -diff);
 }
 
-export function endOfWeek(date: Date, weekStartsOn = 1): Date {
-  return endOfDay(addDays(startOfWeek(date, weekStartsOn), 6));
-}
-
 export function startOfMonth(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), 1);
 }
@@ -272,6 +264,20 @@ export function sortEventsByStart(events: readonly CalendarEvent[]): CalendarEve
     const bTime = b.allDay ? b.start.slice(0, 10) : b.start;
     return aTime.localeCompare(bTime);
   });
+}
+
+export function buildEventsByDay(
+  events: readonly CalendarEvent[],
+  isoDates: readonly string[],
+): Map<string, CalendarEvent[]> {
+  const map = new Map<string, CalendarEvent[]>();
+  for (const isoDate of isoDates) {
+    map.set(
+      isoDate,
+      events.filter((event) => eventOccursOnDay(event, isoDate)),
+    );
+  }
+  return map;
 }
 
 export function defaultCalendarColor(index: number): string {
