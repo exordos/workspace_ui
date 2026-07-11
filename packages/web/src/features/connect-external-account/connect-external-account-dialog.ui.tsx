@@ -63,17 +63,23 @@ export const ConnectExternalAccountDialog = React.memo<ConnectExternalAccountDia
             </ul>
           )}
         </div>
-        <ConnectExternalAccountForm
-          draft={vm.draft}
-          accounts={vm.accounts}
-          submitting={vm.submitting}
-          error={vm.error}
-          onProviderChange={vm.setProvider}
-          onServerUrlChange={vm.setServerUrl}
-          onLoginChange={vm.setLogin}
-          onTokenChange={vm.setToken}
-          onSubmit={vm.submit}
-        />
+        {vm.duplicateZulip ? (
+          <p className="text-sm text-text-muted">
+            {t("connectExternalAccount.errors.alreadyConnectedHint")}
+          </p>
+        ) : (
+          <ConnectExternalAccountForm
+            draft={vm.draft}
+            accounts={vm.accounts}
+            submitting={vm.submitting}
+            error={vm.error}
+            onProviderChange={vm.setProvider}
+            onServerUrlChange={vm.setServerUrl}
+            onLoginChange={vm.setLogin}
+            onTokenChange={vm.setToken}
+            onSubmit={vm.submit}
+          />
+        )}
       </AppDialog>
     );
   },

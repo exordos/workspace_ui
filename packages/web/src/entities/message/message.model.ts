@@ -581,6 +581,56 @@ export const useWorkspaceMessageStore = create<WorkspaceMessageStoreState>((set)
     });
   },
 
+  markMessagesReadUpTo(messageUuid, options) {
+    logStoreAction("workspaceMessage", "markMessagesReadUpTo", { messageUuid });
+    let changedMessages: MessengerMessage[] = [];
+
+    set((state) => {
+      const anchor = state.messagesById[messageUuid];
+      if (anchor == null) return state;
+
+      const candidateMessageIds = new Set<MessengerUuid>();
+      const conversationIds = options?.conversationIds;
+      if (conversationIds == null) {
+        for (const candidateMessageUuid of Object.keys(state.messagesById)) {
+          candidateMessageIds.add(candidateMessageUuid);
+        }
+      } else {
+        for (const conversationId of conversationIds) {
+          for (const candidateMessageUuid of state.messageIdsByConversationId[conversationId] ??
+            EMPTY_WORKSPACE_MESSAGE_IDS) {
+            candidateMessageIds.add(candidateMessageUuid);
+          }
+        }
+      }
+
+      changedMessages = [...candidateMessageIds]
+        .map((candidateMessageUuid) => state.messagesById[candidateMessageUuid])
+        .filter(
+          (message): message is MessengerMessage =>
+            message != null &&
+            !message.read &&
+            message.streamUuid === anchor.streamUuid &&
+            message.topicUuid === anchor.topicUuid &&
+            message.createdAt.localeCompare(anchor.createdAt) <= 0,
+        );
+
+      if (changedMessages.length === 0) return state;
+
+      const nextMessagesById = { ...state.messagesById };
+      for (const message of changedMessages) {
+        nextMessagesById[message.uuid] = { ...message, read: true };
+      }
+
+      changedMessages = changedMessages
+        .map((message) => nextMessagesById[message.uuid])
+        .filter((message): message is MessengerMessage => message != null);
+      return { messagesById: nextMessagesById };
+    });
+
+    return changedMessages;
+  },
+
   setMessagesLoading(conversationId, loading) {
     logStoreAction("workspaceMessage", "setMessagesLoading", { conversationId, loading });
     set((state) => ({

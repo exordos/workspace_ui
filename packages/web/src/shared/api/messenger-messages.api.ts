@@ -259,6 +259,17 @@ export async function markMessageRead(
   return parseDto(data, isWorkspaceMessengerMessageDto, "messenger message response");
 }
 
+export async function markMessagesReadUpTo(
+  options: MessengerClientOptions,
+  messageUuid: string,
+): Promise<WorkspaceMessengerMessageDto> {
+  const data = await messengerPostJson(
+    `/messages/${messageUuid}/actions/read_up_to/invoke`,
+    options,
+  );
+  return parseDto(data, isWorkspaceMessengerMessageDto, "messenger message response");
+}
+
 // Эти wrappers являются единственным Workspace HTTP-контрактом реакций в shared/api.
 // Они не знают про UI-состояние, IndexedDB или optimistic update: выше по слоям код
 // сам решает, как связать агрегат message.reactions и uuid собственной реакции.

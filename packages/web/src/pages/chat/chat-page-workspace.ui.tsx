@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDownloadStore } from "~/entities/download/download.model";
+import { compareWorkspaceMessages } from "~/entities/message/message-workspace-order.lib";
 import {
   selectWorkspaceMessagesForConversation,
   selectWorkspaceMessageById,
@@ -16,7 +17,7 @@ import {
 import {
   deleteMessengerMessage,
   editMessengerMessage,
-  markMessengerMessageRead,
+  markMessengerMessagesReadUpTo,
   sendMessengerMessage,
 } from "~/entities/messenger/messenger-message-actions.lib";
 import { toggleMessengerMessageReaction } from "~/entities/messenger/messenger-message-reactions-actions.lib";
@@ -269,8 +270,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   const [replyQuote, setReplyQuote] = useState<ReplyQuote | null>(null);
   const [uploadProgress, setUploadProgress] = useState<ComposerUploadProgressState | null>(null);
   const [scrollToBottomAfterSendNonce, setScrollToBottomAfterSendNonce] = useState(0);
-  const pendingReadMessageUuidsRef = useRef<Set<string>>(new Set());
-  const readRequestedMessageUuidsRef = useRef<Set<string>>(new Set());
+  const pendingReadUpToMessageUuidRef = useRef<string | null>(null);
+  const lastReadUpToMessageUuidRef = useRef<string | null>(null);
   const readBatchTimerRef = useRef<number | null>(null);
   const actionAbortControllersRef = useRef<Set<AbortController>>(new Set());
   const uploadAbortControllerRef = useRef<AbortController | null>(null);
@@ -636,6 +637,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         window.clearTimeout(readBatchTimerRef.current);
         readBatchTimerRef.current = null;
       }
+      pendingReadUpToMessageUuidRef.current = null;
+      lastReadUpToMessageUuidRef.current = null;
       clearWorkspacePreviewBlobCache(workspacePreviewBlobCacheRef.current);
     };
   }, []);
@@ -650,6 +653,12 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       actionAbortControllersRef.current.clear();
       uploadAbortControllerRef.current = null;
       pendingWorkspaceJitsiHeaderCallRef.current = false;
+      if (readBatchTimerRef.current != null) {
+        window.clearTimeout(readBatchTimerRef.current);
+        readBatchTimerRef.current = null;
+      }
+      pendingReadUpToMessageUuidRef.current = null;
+      lastReadUpToMessageUuidRef.current = null;
       clearWorkspacePreviewBlobCache(workspacePreviewBlobCacheRef.current);
     };
   }, [conversationId, runtimeContext]);
@@ -1440,44 +1449,74 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   }, []);
 
   const flushReadBatch = useCallback(() => {
-    // The new list reports visible unread messages directly as Workspace uuid.
-    // There is no "numeric id -> messageUuid" step here anymore: read action gets
-    // the same key that exists in store and in DOM data-message-uuid.
     readBatchTimerRef.current = null;
     if (runtimeContext == null || conversationId == null) {
-      pendingReadMessageUuidsRef.current.clear();
+      pendingReadUpToMessageUuidRef.current = null;
       return;
     }
 
-    const messageUuids = [...pendingReadMessageUuidsRef.current];
-    pendingReadMessageUuidsRef.current.clear();
-    for (const messageUuid of messageUuids) {
-      const message = selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
-      if (message == null || message.isOwn || message.read) continue;
-      if (readRequestedMessageUuidsRef.current.has(message.uuid)) continue;
-      readRequestedMessageUuidsRef.current.add(message.uuid);
+    const messageUuid = pendingReadUpToMessageUuidRef.current;
+    pendingReadUpToMessageUuidRef.current = null;
+    if (messageUuid == null) return;
 
-      void runWorkspaceAction((signal) =>
-        markMessengerMessageRead({
-          runtimeContext,
-          getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
-          signal,
-          messageUuid: message.uuid,
-          conversationIds: [conversationId],
-        }),
-      ).catch(() => {
-        readRequestedMessageUuidsRef.current.delete(message.uuid);
-      });
+    const state = useWorkspaceMessageStore.getState();
+    const message = selectWorkspaceMessageById(state, messageUuid);
+    const lastMessageUuid = lastReadUpToMessageUuidRef.current;
+    const lastMessage =
+      lastMessageUuid == null ? null : selectWorkspaceMessageById(state, lastMessageUuid);
+    if (
+      message == null ||
+      message.isOwn ||
+      message.read ||
+      (lastMessage != null && compareWorkspaceMessages(message, lastMessage) <= 0)
+    ) {
+      return;
     }
+
+    lastReadUpToMessageUuidRef.current = message.uuid;
+    void runWorkspaceAction((signal) =>
+      markMessengerMessagesReadUpTo({
+        runtimeContext,
+        getRuntimeContext: () => useWorkspaceAuthStore.getState().getCurrentRuntimeContext(),
+        signal,
+        messageUuid: message.uuid,
+        conversationIds: [conversationId],
+      }),
+    ).catch(() => {
+      if (lastReadUpToMessageUuidRef.current === message.uuid) {
+        lastReadUpToMessageUuidRef.current = null;
+      }
+    });
   }, [conversationId, runWorkspaceAction, runtimeContext]);
 
   const scheduleReadBatch = useCallback(
     (messageUuids: string[]) => {
       if (messageUuids.length === 0) return;
-      for (const messageUuid of messageUuids) {
-        pendingReadMessageUuidsRef.current.add(messageUuid);
+
+      const latestMessageUuid = messageUuids.at(-1);
+      if (latestMessageUuid == null) return;
+
+      const state = useWorkspaceMessageStore.getState();
+      const latestMessage = selectWorkspaceMessageById(state, latestMessageUuid);
+      if (latestMessage == null || latestMessage.isOwn || latestMessage.read) return;
+
+      const pendingMessageUuid = pendingReadUpToMessageUuidRef.current;
+      const pendingMessage =
+        pendingMessageUuid == null ? null : selectWorkspaceMessageById(state, pendingMessageUuid);
+      const lastMessageUuid = lastReadUpToMessageUuidRef.current;
+      const lastMessage =
+        lastMessageUuid == null ? null : selectWorkspaceMessageById(state, lastMessageUuid);
+      if (
+        (pendingMessage != null && compareWorkspaceMessages(latestMessage, pendingMessage) <= 0) ||
+        (lastMessage != null && compareWorkspaceMessages(latestMessage, lastMessage) <= 0)
+      ) {
+        return;
       }
-      if (readBatchTimerRef.current != null) return;
+
+      pendingReadUpToMessageUuidRef.current = latestMessage.uuid;
+      if (readBatchTimerRef.current != null) {
+        window.clearTimeout(readBatchTimerRef.current);
+      }
       readBatchTimerRef.current = window.setTimeout(flushReadBatch, READ_BATCH_DELAY_MS);
     },
     [flushReadBatch],

@@ -16,6 +16,7 @@ import {
   deleteMessengerMessage,
   editMessengerMessage,
   markMessengerMessageRead,
+  markMessengerMessagesReadUpTo,
   sendMessengerMessage,
 } from "./messenger-message-actions.lib";
 import { useMessengerStore } from "./messenger.model";
@@ -33,6 +34,7 @@ const USER_B = "44444444-4444-4444-8444-444444444444";
 const STREAM_A = "75309057-419c-4b12-a7c1-3932429ec4a6";
 const TOPIC_A = "4ec0b996-b778-45f8-8ef4-ef863be0c047";
 const MESSAGE_A = "a93dca35-3061-4748-bda4-7f6f8c660ea5";
+const MESSAGE_B = "b93dca35-3061-4748-bda4-7f6f8c660ea5";
 const DATE = "2026-06-22T10:10:00Z";
 
 function createRuntimeContext(
@@ -275,6 +277,52 @@ describe("messenger message actions", () => {
     ]);
     expect(useMessengerStore.getState().ownerKey).toBe(ownerKey);
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]).toBeUndefined();
+  });
+
+  it("uses read_up_to and updates loaded messages after the response", async () => {
+    const runtimeContext = createRuntimeContext();
+    const ownerKey = prepareStoreOwner(runtimeContext);
+    const earlier = adaptMessengerMessage(
+      createMessageDto({
+        uuid: MESSAGE_A,
+        is_own: false,
+        read: false,
+        created_at: "2026-06-22T10:00:00Z",
+      }),
+    );
+    const anchor = adaptMessengerMessage(
+      createMessageDto({
+        uuid: MESSAGE_B,
+        is_own: false,
+        read: false,
+        created_at: "2026-06-22T10:10:00Z",
+      }),
+    );
+    useWorkspaceMessageStore
+      .getState()
+      .mergeConversationMessagesPage(earlier.conversationId, [earlier, anchor]);
+
+    const markMessagesReadUpTo = vi.fn(() =>
+      Promise.resolve(createMessageDto({ uuid: MESSAGE_B, read: true })),
+    );
+    const cache = { patchCachedMessage: vi.fn(() => Promise.resolve()) };
+
+    await markMessengerMessagesReadUpTo({
+      runtimeContext,
+      getRuntimeContext: () => runtimeContext,
+      messageUuid: MESSAGE_B,
+      conversationIds: [earlier.conversationId],
+      client: { markMessagesReadUpTo },
+      cache,
+    });
+
+    expect(markMessagesReadUpTo).toHaveBeenCalledTimes(1);
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_A]?.read).toBe(true);
+    expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_B]?.read).toBe(true);
+    expect(cache.patchCachedMessage).toHaveBeenCalledWith(
+      ownerKey,
+      expect.objectContaining({ uuid: MESSAGE_A, read: true }),
+    );
   });
 
   it("keeps the send result applied when the cache write fails", async () => {

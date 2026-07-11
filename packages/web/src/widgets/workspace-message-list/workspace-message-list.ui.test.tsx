@@ -452,6 +452,69 @@ describe("WorkspaceMessageList", () => {
     expect(divider).not.toHaveTextContent("2026-07-03");
   });
 
+  it("renders one unread divider before the author group containing the anchor", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "first-author-message",
+            authorUuid: "author-a",
+            createdAt: "2026-07-03T09:00:00.000Z",
+          }),
+          createWorkspaceMessage({
+            uuid: "second-author-message",
+            authorUuid: "author-b",
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+          createWorkspaceMessage({
+            uuid: "unread-anchor",
+            authorUuid: "author-b",
+            createdAt: "2026-07-03T09:02:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        firstUnreadUuid="unread-anchor"
+        unreadCount={2}
+      />,
+    );
+
+    const unreadDivider = container.querySelector("[data-unread-divider='true']");
+    const authorGroups = Array.from(container.querySelectorAll("[data-author-group='true']"));
+
+    expect(unreadDivider).toHaveTextContent("Unread messages • 2");
+    expect(container.querySelectorAll("[data-unread-divider='true']")).toHaveLength(1);
+    expect(unreadDivider?.nextElementSibling).toBe(authorGroups[1]);
+    expect(authorGroups[1]).toContainElement(
+      container.querySelector("[data-message-uuid='unread-anchor']"),
+    );
+  });
+
+  it("does not render an unread divider without an anchor in the current messages", () => {
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid: "loaded-message" })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        unreadCount={2}
+      />,
+    );
+
+    expect(container.querySelector("[data-unread-divider='true']")).not.toBeInTheDocument();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid: "loaded-message" })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        firstUnreadUuid="not-loaded-message"
+        unreadCount={2}
+      />,
+    );
+
+    expect(container.querySelector("[data-unread-divider='true']")).not.toBeInTheDocument();
+  });
+
   it("renders neighboring author groups separately", () => {
     const { container } = render(
       <WorkspaceMessageList

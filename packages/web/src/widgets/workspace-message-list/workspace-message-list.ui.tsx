@@ -48,6 +48,17 @@ function resolveMessageOwner(
   return message.authorUuid === currentUserUuid || message.isOwn ? "own" : "peer";
 }
 
+const WorkspaceUnreadMessagesDivider: React.FC<{ label: string }> = ({ label }) => (
+  <div
+    className="flex items-center gap-2 px-4 py-1 text-xs text-notice-base"
+    data-unread-divider="true"
+  >
+    <div className="bg-notice-base/30 h-px flex-1" />
+    <span>{label}</span>
+    <div className="bg-notice-base/30 h-px flex-1" />
+  </div>
+);
+
 interface WorkspaceMessageListRowProps {
   message: WorkspaceMessageListItem;
   owner: "own" | "peer";
@@ -332,6 +343,10 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
       onUnreadMessagesVisible,
       onUnreadMessagesAtBottom,
     });
+  const unreadMessagesLabel =
+    unreadCount > 0
+      ? t("chat.unreadMessagesWithCount", { count: unreadCount })
+      : t("chat.unreadMessages");
 
   if (listItems.length === 0) {
     return (
@@ -381,18 +396,29 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
             </time>
           </div>
           <div className="flex flex-col gap-2">
-            {dayGroup.authorGroups.map((authorGroup, authorGroupIndex) => (
-              <WorkspaceMessageAuthorGroupView
-                key={`${dayGroup.dateKey}:${authorGroup.authorUuid}:${authorGroupIndex}`}
-                group={authorGroup}
-                currentUserUuid={currentUserUuid}
-                resolveAuthorLabel={resolveAuthorLabel}
-                resolveMention={resolveMention}
-                actions={messageActions}
-                selectedMessageUuids={selectedMessageUuids}
-                selectionMode={selectionMode}
-              />
-            ))}
+            {dayGroup.authorGroups.map((authorGroup, authorGroupIndex) => {
+              const showUnreadMarker =
+                firstUnreadUuid != null &&
+                authorGroup.messages.some((message) => message.key === firstUnreadUuid);
+              const authorGroupKey = `${dayGroup.dateKey}:${authorGroup.authorUuid}:${authorGroupIndex}`;
+
+              return (
+                <React.Fragment key={authorGroupKey}>
+                  {showUnreadMarker && (
+                    <WorkspaceUnreadMessagesDivider label={unreadMessagesLabel} />
+                  )}
+                  <WorkspaceMessageAuthorGroupView
+                    group={authorGroup}
+                    currentUserUuid={currentUserUuid}
+                    resolveAuthorLabel={resolveAuthorLabel}
+                    resolveMention={resolveMention}
+                    actions={messageActions}
+                    selectedMessageUuids={selectedMessageUuids}
+                    selectionMode={selectionMode}
+                  />
+                </React.Fragment>
+              );
+            })}
           </div>
         </section>
       ))}

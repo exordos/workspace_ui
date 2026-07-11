@@ -15,6 +15,7 @@ import {
   getMessagesPage,
   markConversationReadUnsupported,
   markMessageRead,
+  markMessagesReadUpTo,
   markMessageUnreadUnsupported,
   pinMessageUnsupported,
   searchMessagesUnsupported,
@@ -392,6 +393,20 @@ describe("messenger messages API", () => {
     expect(readUrl).toBe(`/api/messenger/v1/messages/${MESSAGE_UUID}/actions/read/invoke`);
     expect(readInit?.method).toBe("POST");
     expect(readInit?.body).toBeUndefined();
+
+    const readUpToFetchMock = createFetchMock({ ...messageDto, read: true });
+    await expect(
+      markMessagesReadUpTo(
+        { accessToken: "access-token", fetchImpl: readUpToFetchMock },
+        MESSAGE_UUID,
+      ),
+    ).resolves.toEqual({ ...messageDto, read: true });
+    const [readUpToUrl, readUpToInit] = firstFetchCall(readUpToFetchMock);
+    expect(readUpToUrl).toBe(
+      `/api/messenger/v1/messages/${MESSAGE_UUID}/actions/read_up_to/invoke`,
+    );
+    expect(readUpToInit?.method).toBe("POST");
+    expect(readUpToInit?.body).toBeUndefined();
 
     const deleteFetchMock = createFetchMock(null, 204);
     await expect(

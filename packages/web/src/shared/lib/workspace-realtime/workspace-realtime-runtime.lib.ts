@@ -294,6 +294,7 @@ export function createWorkspaceRealtimeTransportCore(
   let authRefreshPromise: Promise<void> | null = null;
   let lastAuthRefreshToken: string | null = null;
   let lastAuthFailure: { reason: string; error?: unknown } | null = null;
+  let frameQueue: Promise<void> = Promise.resolve();
 
   const reconnectDelayMs = options.reconnectDelayMs ?? defaultReconnectDelayMs;
   const webSocketFactory = options.webSocketFactory ?? defaultWebSocketFactory;
@@ -604,18 +605,27 @@ export function createWorkspaceRealtimeTransportCore(
     });
     const protocols = buildMessengerWebSocketProtocols(options.clientOptions.accessToken ?? "");
     socket = webSocketFactory(url, protocols);
+    const activeSocket = socket;
 
-    socket.onopen = () => {
+    activeSocket.onopen = () => {
       reconnectAttempt = 0;
       void emitState("connected");
     };
-    socket.onmessage = (event) => {
-      void handleRawFrame(event.data);
+    activeSocket.onmessage = (event) => {
+      frameQueue = frameQueue
+        .then(async () => {
+          // Preserve server epoch order and ignore frames left behind by an old socket.
+          if (stopped || socket !== activeSocket) return;
+          await handleRawFrame(event.data);
+        })
+        .catch((error: unknown) => {
+          reportDiagnostic("websocket_error", error);
+        });
     };
-    socket.onerror = (event) => {
+    activeSocket.onerror = (event) => {
       reportDiagnostic("websocket_error", event);
     };
-    socket.onclose = (event) => {
+    activeSocket.onclose = (event) => {
       socket = null;
       if (!stopped) {
         if (getWebSocketCloseCode(event) === WORKSPACE_WEBSOCKET_AUTH_CLOSE_CODE) {

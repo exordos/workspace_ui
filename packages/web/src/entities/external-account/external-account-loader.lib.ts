@@ -12,7 +12,15 @@ import type { WorkspaceRuntimeContext } from "~/entities/workspace-runtime/works
 import { getExternalAccounts as defaultGetExternalAccounts } from "~/shared/api/messenger-external-accounts.api";
 import type { MessengerClientOptions } from "~/shared/api/messenger-transport.internal";
 import { isAbortError } from "~/shared/lib/abort-error";
-import { adaptWorkspaceExternalAccountDto } from "./external-account-adapters.lib";
+import {
+  readWorkspaceExternalAccountCache,
+  replaceWorkspaceExternalAccountCache,
+} from "~/shared/lib/workspace-external-account-cache-db";
+import {
+  adaptCachedExternalAccount,
+  adaptWorkspaceExternalAccountDto,
+  toWorkspaceExternalAccountCacheProfile,
+} from "./external-account-adapters.lib";
 import { useExternalAccountsStore } from "./external-account.model";
 import type { ExternalAccountsStoreState } from "./external-account.model";
 
@@ -73,6 +81,20 @@ export async function loadExternalAccounts({
   }
 
   store.getState().startOwnerSync(ownerKey);
+  const cachedAccounts = await readWorkspaceExternalAccountCache(ownerKey);
+  if (isWorkspaceRuntimeRequestInvalidated(requestContext, getRuntimeContext, signal)) {
+    return { status: "skipped", ownerKey, reason: signal?.aborted ? "aborted" : "stale-owner" };
+  }
+  if (cachedAccounts.length > 0) {
+    if (
+      !store
+        .getState()
+        .replaceAccountsForOwner(ownerKey, cachedAccounts.map(adaptCachedExternalAccount))
+    ) {
+      return { status: "skipped", ownerKey, reason: "stale-owner" };
+    }
+  }
+
   const requestOptions = buildMessengerRequestOptions(runtimeContext, clientOptions, signal);
 
   try {
@@ -84,6 +106,12 @@ export async function loadExternalAccounts({
     const accounts = dtos.map(adaptWorkspaceExternalAccountDto);
     if (!store.getState().replaceAccountsForOwner(ownerKey, accounts)) {
       return { status: "skipped", ownerKey, reason: "stale-owner" };
+    }
+    if (store.getState().ownerKey === ownerKey) {
+      await replaceWorkspaceExternalAccountCache(
+        ownerKey,
+        accounts.map(toWorkspaceExternalAccountCacheProfile),
+      );
     }
     return { status: "applied", ownerKey };
   } catch (error) {

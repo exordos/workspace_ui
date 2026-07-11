@@ -13,6 +13,7 @@ import { env } from "~/shared/lib/env";
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 import { buildOrgRouteIdFromOrigin } from "~/shared/lib/org-route";
+import { deleteWorkspaceExternalAccountOwnerCache } from "~/shared/lib/workspace-external-account-cache-db";
 import { deleteWorkspaceMessengerOwnerCache } from "~/shared/lib/workspace-messenger-cache-db";
 import { workspaceOrgOriginFromLoginServerUrlInput } from "~/shared/lib/workspace-org-origin.lib";
 import { deleteWorkspaceUserOwnerCache } from "~/shared/lib/workspace-user-cache-db";
@@ -345,12 +346,28 @@ async function cleanupWorkspaceUserOwnerCache(
   }
 }
 
+async function cleanupWorkspaceExternalAccountOwnerCache(
+  session: WorkspaceAuthSession | undefined,
+): Promise<void> {
+  if (session == null) return;
+  const ownerKey = workspaceRuntimeOwnerKey(session);
+  try {
+    await deleteWorkspaceExternalAccountOwnerCache(ownerKey);
+  } catch (error) {
+    authLogger.warn("Workspace external account cache cleanup failed during session removal", {
+      accountId: session.accountId,
+      errorName: error instanceof Error ? error.name : typeof error,
+    });
+  }
+}
+
 async function cleanupWorkspaceOwnerCaches(
   session: WorkspaceAuthSession | undefined,
 ): Promise<void> {
   await Promise.all([
     cleanupWorkspaceMessengerOwnerCache(session),
     cleanupWorkspaceUserOwnerCache(session),
+    cleanupWorkspaceExternalAccountOwnerCache(session),
   ]);
 }
 

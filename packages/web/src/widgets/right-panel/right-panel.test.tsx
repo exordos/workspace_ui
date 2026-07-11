@@ -19,7 +19,6 @@ vi.mock("./right-panel-external-account.integration", () => ({
   RightPanelExternalAccountsList: () => (
     <div data-testid="connected-external-accounts-list">Zulip · https://zulip.example.com</div>
   ),
-  ExternalAccountConnectActionIcon: () => <span aria-hidden="true">+</span>,
 }));
 
 vi.mock("~/entities/user/user-workspace-status-actions.lib", () => ({

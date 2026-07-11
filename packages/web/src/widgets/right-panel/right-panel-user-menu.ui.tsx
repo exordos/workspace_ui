@@ -28,7 +28,6 @@ import { Icon } from "~/shared/ui/icon";
 import { ScrollArea } from "~/shared/ui/scroll-area";
 import { SectionLabel } from "~/shared/ui/section-label.ui";
 import {
-  ExternalAccountConnectActionIcon,
   RightPanelConnectExternalAccountDialog,
   RightPanelExternalAccountsList,
 } from "./right-panel-external-account.integration";
@@ -386,16 +385,6 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                   >
                     <Icon name="logout" size={14} className="text-current" />
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setExternalAccountDialogOpen(true)}
-                    className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-border-subtle text-accent transition-colors hover:bg-bg-elevated"
-                    aria-label={t("connectExternalAccount.connect")}
-                    title={t("connectExternalAccount.connect")}
-                    data-testid="connect-external-account-trigger"
-                  >
-                    <ExternalAccountConnectActionIcon />
-                  </button>
                 </div>
               )}
               {currentWorkspaceSession != null && (
@@ -422,18 +411,14 @@ export const RightPanelUserMenu: React.FC<RightPanelUserMenuProps> = ({
                         onClick={() => setExternalAccountDialogOpen(true)}
                         className="border-accent/40 bg-accent/5 hover:bg-accent/10 mb-2 flex w-full items-center justify-between gap-3 rounded-lg border border-dashed px-2.5 py-2 text-left transition-colors"
                         aria-label={t("connectExternalAccount.connect")}
+                        data-testid="connect-external-account-trigger"
                       >
-                        <span className="flex min-w-0 items-center gap-2.5">
-                          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent text-on-accent">
-                            <ExternalAccountConnectActionIcon />
+                        <span className="min-w-0">
+                          <span className="block text-xs font-medium text-text-primary">
+                            {t("connectExternalAccount.connect")}
                           </span>
-                          <span className="min-w-0">
-                            <span className="block text-xs font-medium text-text-primary">
-                              {t("connectExternalAccount.connect")}
-                            </span>
-                            <span className="mt-0.5 block truncate text-[10px] text-text-muted">
-                              {t("connectExternalAccount.connectHint")}
-                            </span>
+                          <span className="mt-0.5 block truncate text-[10px] text-text-muted">
+                            {t("connectExternalAccount.connectHint")}
                           </span>
                         </span>
                         <Icon name="chevron-right" size={14} className="shrink-0 text-accent" />

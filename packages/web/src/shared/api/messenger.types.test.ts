@@ -606,10 +606,8 @@ describe("Workspace messenger DTO guards", () => {
     const messageEvent = eventDto({ kind: "message.updated", ...messageDto });
     expect(isWorkspaceMessengerEventDto({ ...messageEvent, action: "created" })).toBe(false);
     expect(isWorkspaceMessengerEventDto({ ...messageEvent, object_type: "stream" })).toBe(false);
-    expect(isWorkspaceMessengerRawEventDto({ ...messageEvent, action: "created" })).toBe(false);
-    expect(isWorkspaceMessengerRealtimeEventDto({ ...messageEvent, action: "created" })).toBe(
-      false,
-    );
+    expect(isWorkspaceMessengerRawEventDto({ ...messageEvent, action: "created" })).toBe(true);
+    expect(isWorkspaceMessengerRealtimeEventDto({ ...messageEvent, action: "created" })).toBe(true);
 
     const legacyReadEvent = eventDto({
       kind: "messages.read",
@@ -619,7 +617,7 @@ describe("Workspace messenger DTO guards", () => {
     expect(isWorkspaceMessengerEventDto({ ...legacyReadEvent, action: "updated" })).toBe(false);
   });
 
-  it("accepts unknown flat event envelopes only as raw realtime events", () => {
+  it("accepts unappliable flat event envelopes for realtime cursor skipping", () => {
     const unknownSchemaEvent = {
       ...eventDto({ kind: "message.updated", ...messageDto }),
       schema_version: 2,
@@ -646,8 +644,16 @@ describe("Workspace messenger DTO guards", () => {
     expect(isWorkspaceMessengerEventDto(unknownObjectEvent)).toBe(false);
     expect(isWorkspaceMessengerRawEventDto(unknownObjectEvent)).toBe(true);
     expect(isWorkspaceMessengerRealtimeEventDto(unknownObjectEvent)).toBe(true);
-    expect(isWorkspaceMessengerRawEventDto(malformedKnownEvent)).toBe(false);
-    expect(isWorkspaceMessengerRealtimeEventDto(malformedKnownEvent)).toBe(false);
+    expect(isWorkspaceMessengerRawEventDto(malformedKnownEvent)).toBe(true);
+    expect(isWorkspaceMessengerRealtimeEventDto(malformedKnownEvent)).toBe(true);
+
+    const zulipUserEvent = {
+      ...eventDto({ kind: "user.updated", ...userDto }),
+      payload: { kind: "user.updated" as const, ...userDto, source: "zulip" as const },
+    };
+    expect(isWorkspaceMessengerEventDto(zulipUserEvent)).toBe(false);
+    expect(isWorkspaceMessengerRawEventDto(zulipUserEvent)).toBe(true);
+    expect(isWorkspaceMessengerRealtimeEventDto(zulipUserEvent)).toBe(true);
   });
 
   it("accepts dispatch-ready realtime events and websocket frames", () => {

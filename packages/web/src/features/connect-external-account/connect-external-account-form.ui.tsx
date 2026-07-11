@@ -2,7 +2,6 @@ import React, { useCallback } from "react";
 import { t } from "~/i18n/i18n";
 import { Button } from "~/shared/ui/button";
 import { FormField } from "~/shared/ui/form-field.ui";
-import { Icon } from "~/shared/ui/icon";
 import type { ConnectExternalAccountFormProps } from "./connect-external-account.types";
 
 function ExternalProviderBadge() {
@@ -129,7 +128,6 @@ export const ConnectExternalAccountForm = React.memo<ConnectExternalAccountFormP
           {submitting
             ? t("connectExternalAccount.status.connecting")
             : t("connectExternalAccount.connect")}
-          {!submitting && <Icon name="add" size={16} />}
         </Button>
       </form>
     );

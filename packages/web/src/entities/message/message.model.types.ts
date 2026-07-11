@@ -108,6 +108,10 @@ export interface WorkspaceMessageStoreState extends WorkspaceMessageStoreData {
     messageUuid: MessengerUuid,
     options?: WorkspaceScopedMessageMutationOptions,
   ) => void;
+  markMessagesReadUpTo: (
+    messageUuid: MessengerUuid,
+    options?: WorkspaceScopedMessageMutationOptions,
+  ) => MessengerMessage[];
   setMessagesLoading: (conversationId: MessengerConversationId, loading: boolean) => void;
   setMessagesError: (conversationId: MessengerConversationId, error: string | null) => void;
   setConversationPagination: (

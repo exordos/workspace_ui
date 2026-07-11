@@ -1,5 +1,11 @@
 import type { WorkspaceExternalAccountDto } from "~/shared/api/messenger-external-accounts.types";
+import type { WorkspaceExternalAccountCacheProfile } from "~/shared/lib/workspace-external-account-cache-db";
 import type { ExternalAccount, ExternalAccountType } from "./external-account.types";
+
+function trimOptional(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed != null && trimmed.length > 0 ? trimmed : null;
+}
 
 export function adaptWorkspaceExternalAccountDto(
   dto: WorkspaceExternalAccountDto,
@@ -23,8 +29,8 @@ export function adaptWorkspaceExternalAccountDto(
         ? null
         : {
             userId: dto.account_settings.user_info.user_id ?? null,
-            email: dto.account_settings.user_info.email?.trim() || null,
-            fullName: dto.account_settings.user_info.full_name?.trim() || null,
+            email: trimOptional(dto.account_settings.user_info.email),
+            fullName: trimOptional(dto.account_settings.user_info.full_name),
             avatarUrl: dto.account_settings.user_info.avatar_url ?? null,
           },
     createdAt: dto.created_at,
@@ -37,4 +43,16 @@ export function isExternalAccountDuplicate(
   accountType: ExternalAccountType,
 ): boolean {
   return accounts.some((account) => account.accountType === accountType);
+}
+
+export function toWorkspaceExternalAccountCacheProfile(
+  account: ExternalAccount,
+): WorkspaceExternalAccountCacheProfile {
+  return { ...account };
+}
+
+export function adaptCachedExternalAccount(
+  account: WorkspaceExternalAccountCacheProfile,
+): ExternalAccount {
+  return { ...account };
 }

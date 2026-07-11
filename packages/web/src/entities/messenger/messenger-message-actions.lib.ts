@@ -12,6 +12,7 @@ import {
   deleteMessage as defaultDeleteMessage,
   editMessage as defaultEditMessage,
   markMessageRead as defaultMarkMessageRead,
+  markMessagesReadUpTo as defaultMarkMessagesReadUpTo,
 } from "~/shared/api/messenger-messages.api";
 import type {
   WorkspaceMessengerCreateMessageRequestBody,
@@ -43,6 +44,10 @@ export interface MessengerMessageActionClientDeps {
     options: MessengerClientOptions,
     messageUuid: string,
   ) => Promise<WorkspaceMessengerMessageDto>;
+  markMessagesReadUpTo?: (
+    options: MessengerClientOptions,
+    messageUuid: string,
+  ) => Promise<WorkspaceMessengerMessageDto>;
 }
 
 export interface MessengerMessageActionCacheConversationPage {
@@ -71,6 +76,7 @@ export interface MessengerMessageActionStoreApi {
     | "upsertMessage"
     | "applyMessageEdit"
     | "markMessageRead"
+    | "markMessagesReadUpTo"
     | "removeMessage"
   >;
 }
@@ -108,6 +114,11 @@ export interface DeleteMessengerMessageOptions extends MessengerMessageActionBas
 }
 
 export interface MarkMessengerMessageReadOptions extends MessengerMessageActionBaseOptions {
+  messageUuid: MessengerUuid;
+  conversationIds?: readonly MessengerConversationId[];
+}
+
+export interface MarkMessengerMessagesReadUpToOptions extends MessengerMessageActionBaseOptions {
   messageUuid: MessengerUuid;
   conversationIds?: readonly MessengerConversationId[];
 }
@@ -346,5 +357,56 @@ export async function markMessengerMessageRead({
       cache.patchCachedMessage?.(action.ownerKey, { ...message, read: true }),
     );
   }
+  return { status: "applied", ownerKey: action.ownerKey, message };
+}
+
+export async function markMessengerMessagesReadUpTo({
+  runtimeContext,
+  getRuntimeContext = () => runtimeContext,
+  clientOptions,
+  client = {},
+  cache = messengerMessageActionCache,
+  signal,
+  store = useWorkspaceMessageStore,
+  messageUuid,
+  conversationIds,
+}: MarkMessengerMessagesReadUpToOptions): Promise<MessengerMessageActionResult> {
+  const action = captureMessageAction(runtimeContext, getRuntimeContext, signal);
+  if (action.ownerKey == null)
+    return { status: "skipped", ownerKey: null, reason: "missing-context" };
+  if (action.isStale())
+    return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+
+  const dto = await (client.markMessagesReadUpTo ?? defaultMarkMessagesReadUpTo)(
+    buildMessengerRequestOptions(runtimeContext, clientOptions, signal),
+    messageUuid,
+  );
+  if (action.isStale())
+    return { status: "skipped", ownerKey: action.ownerKey, reason: "stale-owner" };
+
+  const message = adaptMessengerMessage(dto);
+  store.getState().upsertMessage(message);
+  useMessengerStore.getState().applyMessagePointer(action.ownerKey, message);
+
+  const scope = conversationIds ?? [
+    message.conversationId,
+    conversationIdForStream(message.streamUuid),
+  ];
+  const changedMessages = store.getState().markMessagesReadUpTo(message.uuid, {
+    conversationIds: scope,
+  });
+  const messagesToCache = new Map<string, MessengerMessage>([[message.uuid, message]]);
+  for (const changedMessage of changedMessages) {
+    messagesToCache.set(changedMessage.uuid, changedMessage);
+  }
+
+  if (cache?.patchCachedMessage != null) {
+    for (const changedMessage of messagesToCache.values()) {
+      await writeActionCacheBestEffort(() =>
+        cache.patchCachedMessage?.(action.ownerKey, { ...changedMessage, read: true }),
+      );
+    }
+  }
+
   return { status: "applied", ownerKey: action.ownerKey, message };
 }

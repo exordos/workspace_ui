@@ -266,6 +266,56 @@ describe("workspace-realtime transport runtime", () => {
     expect(sockets[0]?.sent).toEqual([]);
   });
 
+  it("serializes websocket frames before applying the next epoch", async () => {
+    const sockets: FakeWebSocket[] = [];
+    const cursorStorage = createWorkspaceRealtimeCursorStorage(new MemoryStorage());
+    cursorStorage.write(cursorOwner, 10);
+    const appliedEpochs: number[] = [];
+    let releaseFirstEvent = (): void => {
+      throw new Error("First event was not started");
+    };
+    const applier: WorkspaceRealtimeEventApplier = {
+      applyEvent: vi.fn((event: WorkspaceRealtimeEvent) => {
+        if (event.epoch_version === 11) {
+          return new Promise<void>((resolve) => {
+            releaseFirstEvent = () => {
+              appliedEpochs.push(event.epoch_version);
+              resolve();
+            };
+          });
+        }
+        appliedEpochs.push(event.epoch_version);
+      }),
+      skipEvent: vi.fn(),
+      onTransportStateChange: vi.fn(),
+    };
+    const runtime = createWorkspaceRealtimeTransportCore({
+      clientOptions: { accessToken: "access-token", projectId: PROJECT_UUID },
+      cursorStorage,
+      applier,
+      getEventsPage: () => Promise.resolve(createPage([])),
+      webSocketFactory: (url, protocols) => {
+        const socket = new FakeWebSocket(url, protocols);
+        sockets.push(socket);
+        return socket;
+      },
+    });
+
+    await runtime.start(context);
+    sockets[0]?.message(JSON.stringify(createRestEventDto(11)));
+    sockets[0]?.message(JSON.stringify(createRestEventDto(12)));
+    await flushAsyncHandlers();
+
+    expect(appliedEpochs).toEqual([]);
+    releaseFirstEvent();
+    for (let index = 0; index < 12; index += 1) {
+      await Promise.resolve();
+    }
+
+    expect(appliedEpochs).toEqual([11, 12]);
+    expect(cursorStorage.read(cursorOwner)).toBe(12);
+  });
+
   it("accepts legacy service frames without advancing cursor", async () => {
     const sockets: FakeWebSocket[] = [];
     const diagnostics: string[] = [];

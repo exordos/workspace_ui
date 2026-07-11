@@ -15,6 +15,7 @@ const getServerSettings = vi.hoisted(() => vi.fn());
 const getWorkspaceMessengerAuthProfile = vi.hoisted(() => vi.fn());
 const requestWorkspaceIamLoginPasswordToken = vi.hoisted(() => vi.fn());
 const refreshWorkspaceIamToken = vi.hoisted(() => vi.fn());
+const deleteWorkspaceExternalAccountOwnerCache = vi.hoisted(() => vi.fn());
 const deleteWorkspaceMessengerOwnerCache = vi.hoisted(() => vi.fn());
 const deleteWorkspaceUserOwnerCache = vi.hoisted(() => vi.fn());
 
@@ -40,6 +41,10 @@ vi.mock("~/shared/api/workspace-iam-auth", async (importOriginal) => {
 
 vi.mock("~/shared/lib/workspace-messenger-cache-db", () => ({
   deleteWorkspaceMessengerOwnerCache,
+}));
+
+vi.mock("~/shared/lib/workspace-external-account-cache-db", () => ({
+  deleteWorkspaceExternalAccountOwnerCache,
 }));
 
 vi.mock("~/shared/lib/workspace-user-cache-db", () => ({

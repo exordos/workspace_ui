@@ -827,7 +827,7 @@ export function isWorkspaceMessengerMessageDto(
     isUuid(value.stream_uuid) &&
     isUuid(value.topic_uuid) &&
     isUuid(value.author_uuid) &&
-    isWorkspaceMessengerMarkdownPayloadDto(value.payload) &&
+    isWorkspaceMessengerMessagePayloadDto(value.payload) &&
     isUuid(value.user_uuid) &&
     typeof value.read === "boolean" &&
     typeof value.pinned === "boolean" &&
@@ -1040,18 +1040,9 @@ export function isWorkspaceMessengerRawEventDto(
     return false;
   }
 
-  if (value.schema_version !== 1) {
-    return true;
-  }
-
-  if (
-    !isWorkspaceMessengerEventObjectType(value.object_type) ||
-    !isWorkspaceMessengerEventAction(value.action)
-  ) {
-    return true;
-  }
-
-  return expectedWorkspaceMessengerEventMetadata(value.payload.kind) == null;
+  // Keep the transport envelope usable when a known event has a payload that
+  // this client cannot apply yet. The realtime layer will skip it by epoch.
+  return true;
 }
 
 export function isWorkspaceMessengerRealtimeEventDto(

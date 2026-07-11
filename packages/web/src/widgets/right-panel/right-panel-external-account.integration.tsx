@@ -6,6 +6,7 @@ import {
   selectCurrentWorkspaceRuntimeContext,
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
+import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { ConnectExternalAccountDialog } from "~/features/connect-external-account/connect-external-account-dialog.ui";
 import { useTranslation } from "~/i18n/i18n";
 import { resolveAvatarUrl } from "~/shared/lib/avatar";
@@ -40,19 +41,30 @@ export const RightPanelExternalAccountsList: React.FC = () => {
     [currentAccountId, sessions],
   );
   const accounts = useExternalAccountStore((state) => state.accounts);
+  const accountOwnerKey = useExternalAccountStore((state) => state.ownerKey);
+  const accountLoadStatus = useExternalAccountStore((state) => state.loadStatus);
+  const runtimeOwnerKey = runtimeContext == null ? null : workspaceRuntimeOwnerKey(runtimeContext);
+  const visibleAccounts = accountOwnerKey === runtimeOwnerKey ? accounts : [];
 
   useEffect(() => {
     if (runtimeContext == null) return;
     void refreshExternalAccounts({ runtimeContext }).catch(() => undefined);
   }, [runtimeContext]);
 
-  if (accounts.length === 0) {
+  if (
+    runtimeOwnerKey != null &&
+    (accountOwnerKey !== runtimeOwnerKey || accountLoadStatus === "loading")
+  ) {
+    return <p className="text-[11px] text-text-muted">{t("connectExternalAccount.checking")}</p>;
+  }
+
+  if (visibleAccounts.length === 0) {
     return <p className="text-[11px] text-text-muted">{t("connectExternalAccount.noAccounts")}</p>;
   }
 
   return (
     <ul className="space-y-2">
-      {accounts.map((account) => (
+      {visibleAccounts.map((account) => (
         <ExternalAccountCard key={account.uuid} account={account} />
       ))}
     </ul>
@@ -189,7 +201,3 @@ const ExternalAccountCard = React.memo<{ account: ExternalAccount }>(({ account 
     </li>
   );
 });
-
-export const ExternalAccountConnectActionIcon: React.FC = () => (
-  <Icon name="plus" size={14} className="text-current" />
-);
