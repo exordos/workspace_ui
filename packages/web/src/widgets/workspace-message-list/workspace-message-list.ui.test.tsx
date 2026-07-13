@@ -365,6 +365,65 @@ describe("WorkspaceMessageList", () => {
     expect(container.querySelector("[data-outgoing-delivery-status='sent']")).toBeInTheDocument();
   });
 
+  it("renders edited content from the resolved server snapshot", () => {
+    const serverMessageUuid = "edited-server-message-uuid";
+    const localId = "edited-local-outgoing-message";
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: serverMessageUuid,
+            isOwn: true,
+            authorUuid: "current-user-uuid",
+            markdown: "Original server text",
+          }),
+        ]}
+        outgoingMessages={[
+          createOutgoingMessage({
+            localId,
+            markdown: "Original local text",
+            status: "sent",
+            resolvedServerMessageUuid: serverMessageUuid,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    expect(screen.getByText("Original server text")).toBeInTheDocument();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: serverMessageUuid,
+            isOwn: true,
+            authorUuid: "current-user-uuid",
+            markdown: "Edited server text",
+            updatedAt: "2026-07-03T09:02:00.000Z",
+          }),
+        ]}
+        outgoingMessages={[
+          createOutgoingMessage({
+            localId,
+            markdown: "Original local text",
+            status: "sent",
+            resolvedServerMessageUuid: serverMessageUuid,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    expect(screen.getByText("Edited server text")).toBeInTheDocument();
+    expect(screen.queryByText("Original local text")).not.toBeInTheDocument();
+    expect(
+      container.querySelector("[data-message-uuid='edited-local-outgoing-message']"),
+    ).toBeInTheDocument();
+  });
+
   it("exposes retry and remove actions for failed local outgoing messages", () => {
     const onRetryOutgoingMessage = vi.fn();
     const onRemoveOutgoingMessage = vi.fn();
