@@ -107,6 +107,7 @@ describe("messenger transport helper", () => {
 
     const [, init] = firstFetchCall(fetchMock);
     expect(init?.method).toBe("GET");
+    expect(init?.cache).toBe("force-cache");
     expect(init?.headers).toEqual({
       Accept: "*/*",
       Authorization: "Bearer token",

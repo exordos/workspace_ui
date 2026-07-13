@@ -337,6 +337,9 @@ export async function getBinaryResult(
   const url = buildMessengerUrl(options.baseUrl, path, params);
   const init: RequestInit = {
     method: "GET",
+    // File UUIDs identify immutable bytes for the client. Let the browser
+    // reuse a cached response before making another authenticated request.
+    cache: "force-cache",
     headers: buildHeaders(
       await resolveMessengerAccessToken(options),
       undefined,
