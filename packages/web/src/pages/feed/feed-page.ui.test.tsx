@@ -525,10 +525,7 @@ describe("FeedPage forward action", () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
 
-    let resolveNextOrgFetch!: (value: {
-      messages: MockMessage[];
-      foundOldest: boolean;
-    }) => void;
+    let resolveNextOrgFetch!: (value: { messages: MockMessage[]; foundOldest: boolean }) => void;
     const nextOrgFetch = new Promise<{ messages: MockMessage[]; foundOldest: boolean }>(
       (resolve) => {
         resolveNextOrgFetch = resolve;

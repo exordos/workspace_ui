@@ -8,8 +8,7 @@ import {
 import { resolveComposerTypingTransition, resolveTypingIdleTransition } from "./typing-transition";
 
 type ComposerTypingTarget =
-  | { kind: "dm"; userIds: number[] }
-  | { kind: "stream"; streamId: number; topic: string };
+  { kind: "dm"; userIds: number[] } | { kind: "stream"; streamId: number; topic: string };
 
 function startTyping(target: ComposerTypingTarget): void {
   if (target.kind === "dm") {

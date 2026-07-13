@@ -6,8 +6,7 @@ import { useIntersectedOnce } from "./intersected-once.hook";
 describe("useIntersectedOnce", () => {
   const originalIo = globalThis.IntersectionObserver;
   let ioCallback:
-    | ((entries: IntersectionObserverEntry[], observer: IntersectionObserver) => void)
-    | null = null;
+    ((entries: IntersectionObserverEntry[], observer: IntersectionObserver) => void) | null = null;
 
   class IoMock implements IntersectionObserver {
     readonly root: Element | Document | null = null;

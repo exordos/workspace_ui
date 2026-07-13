@@ -5,8 +5,7 @@ import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sideba
 
 /** Same shape as `MessageLocation` in chat-list entity (kept here to avoid shared→entities import). */
 export type ChatListSnapshotMessageLocation =
-  | { type: "stream"; stream_id: number; topic: string }
-  | { type: "dm"; dmKey: string };
+  { type: "stream"; stream_id: number; topic: string } | { type: "dm"; dmKey: string };
 
 export interface ChatListSnapshotSerialized {
   version: 1;

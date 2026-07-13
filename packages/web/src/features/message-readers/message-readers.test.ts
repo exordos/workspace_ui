@@ -132,8 +132,7 @@ describe("useMessageReadersStore", () => {
 
     const mock = await getZulipMock();
     let resolveResponse:
-      | ((value: { ok: true; status: number; data: { user_ids: number[] } }) => void)
-      | undefined;
+      ((value: { ok: true; status: number; data: { user_ids: number[] } }) => void) | undefined;
     mock.mockImplementation(
       () =>
         new Promise((resolve) => {

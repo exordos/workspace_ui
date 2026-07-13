@@ -225,8 +225,7 @@ export function handleUpdateMessageFlags(
       inbox.markStale();
 
       const messageDetails = event.message_details as
-        | Record<string, ZulipMarkUnreadMessageDetail>
-        | undefined;
+        Record<string, ZulipMarkUnreadMessageDetail> | undefined;
       const locationRows = zulipRawMessagesFromMarkUnreadDetails(
         messageIds,
         messageDetails,

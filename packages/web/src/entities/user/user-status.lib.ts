@@ -49,8 +49,7 @@ export function normalizeStatusEmojiName(name: string): string {
 }
 
 export type UserStatusEmojiDisplay =
-  | { kind: "image"; src: string; alt: string }
-  | { kind: "text"; text: string };
+  { kind: "image"; src: string; alt: string } | { kind: "text"; text: string };
 
 function getRealmEmojiFallbackLabel(status: UserStatus): string | null {
   const emojiName = normalizeStatusEmojiName(status.emojiName ?? "");

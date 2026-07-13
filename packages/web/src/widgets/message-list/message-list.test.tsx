@@ -46,8 +46,7 @@ describe("MessageList focused message behavior", () => {
   });
   const originalIntersectionObserver = globalThis.IntersectionObserver;
   let intersectionCallback:
-    | ((entries: IntersectionObserverEntry[], observer: IntersectionObserver) => void)
-    | null = null;
+    ((entries: IntersectionObserverEntry[], observer: IntersectionObserver) => void) | null = null;
 
   class IntersectionObserverMock implements IntersectionObserver {
     readonly root = null;

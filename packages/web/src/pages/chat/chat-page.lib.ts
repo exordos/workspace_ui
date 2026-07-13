@@ -3,8 +3,7 @@ import { t } from "~/i18n/i18n";
 import { dmRouteKey } from "~/shared/lib/dm-key";
 
 export type ReadFallbackContext =
-  | { type: "stream"; streamId: number; topic: string }
-  | { type: "dm"; dmKey: string };
+  { type: "stream"; streamId: number; topic: string } | { type: "dm"; dmKey: string };
 
 export function resolveDraftType(
   isDmView: boolean,

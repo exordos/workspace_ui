@@ -51,8 +51,7 @@ export interface DeleteTopicResult {
 }
 
 export type ResolveStreamIdByNameResult =
-  | { ok: true; streamId: number }
-  | { ok: false; kind: "not_found" | "forbidden" | "transient" };
+  { ok: true; streamId: number } | { ok: false; kind: "not_found" | "forbidden" | "transient" };
 
 /** PATCH /streams/{id} response fields relevant to unarchive and server compatibility. */
 interface StreamPatchResponsePayload {

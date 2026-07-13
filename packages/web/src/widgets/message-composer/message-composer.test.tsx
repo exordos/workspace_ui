@@ -1478,8 +1478,7 @@ describe("MessageComposer emoji picker behavior", () => {
     await screen.findByRole("button", { name: /pick emoji/i });
 
     const props = emojiPickerMock.mock.calls.at(-1)?.[0] as
-      | { className?: string; emojiStyle?: string }
-      | undefined;
+      { className?: string; emojiStyle?: string } | undefined;
     expect(props?.className).toContain("composer-emoji-picker");
     expect(props?.emojiStyle).toBe("native");
   });
@@ -1501,8 +1500,7 @@ describe("MessageComposer emoji picker behavior", () => {
     });
     await waitFor(() => {
       const props = emojiPickerMock.mock.calls.at(-1)?.[0] as
-        | { customEmojis?: unknown[]; emojiStyle?: string }
-        | undefined;
+        { customEmojis?: unknown[]; emojiStyle?: string } | undefined;
       expect(props?.customEmojis).toEqual([realmEmoji]);
       expect(props?.emojiStyle).toBe("native");
     });

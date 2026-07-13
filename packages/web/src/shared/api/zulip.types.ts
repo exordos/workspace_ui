@@ -246,8 +246,7 @@ export interface ZulipRawMessage {
   markdown_source?: string;
   timestamp: number;
   display_recipient?:
-    | string
-    | { id: number; full_name: string; email?: string; avatar_url?: string }[];
+    string | { id: number; full_name: string; email?: string; avatar_url?: string }[];
   subject?: string;
   type?: string;
   stream_id?: number | null;
@@ -301,8 +300,7 @@ export interface MockMessage {
   sender_full_name: string;
   stream_id: number | null;
   display_recipient?:
-    | string
-    | { id: number; full_name: string; email?: string; avatar_url?: string }[];
+    string | { id: number; full_name: string; email?: string; avatar_url?: string }[];
   channel?: string;
   subject: string;
   /**

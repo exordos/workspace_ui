@@ -109,9 +109,7 @@ type StreamTopicEntryInternal =
 
 /** Writable store fields accepted by patchSet (Zustand v5 setState is stricter than v4). */
 type ChatListStateDataPatch =
-  | Partial<ChatListState>
-  | SetFromMessagesBootstrapState
-  | ChatListHydrateFromSnapshotState;
+  Partial<ChatListState> | SetFromMessagesBootstrapState | ChatListHydrateFromSnapshotState;
 
 type ChatListStateUpdater = (state: ChatListState) => ChatListState | ChatListStateDataPatch;
 

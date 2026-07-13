@@ -19,12 +19,7 @@ const MIN_BACKOFF_MS = 2000;
 const MAX_BACKOFF_MS = 30_000;
 
 export type ConnectionHealthPhase =
-  | "offline"
-  | "connecting"
-  | "ready"
-  | "degraded"
-  | "blocked"
-  | "rate_limited";
+  "offline" | "connecting" | "ready" | "degraded" | "blocked" | "rate_limited";
 
 export type ConnectionFailureReason = "network" | "timeout" | "server" | "rate_limit" | "unknown";
 

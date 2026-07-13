@@ -155,7 +155,8 @@ export const FeedPage: React.FC = () => {
 
   const handleLoadMore = React.useCallback(
     (preserveScroll: boolean) => {
-      if (isLoadingMore || isAllLoaded || lastMessageId == null || currentInstanceId == null) return;
+      if (isLoadingMore || isAllLoaded || lastMessageId == null || currentInstanceId == null)
+        return;
 
       if (preserveScroll && listRef.current) {
         // Snapshot scroll position before prepending older messages.

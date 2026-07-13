@@ -13,8 +13,7 @@ import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sideba
 import type { MessageLocation } from "./chat-list.model.types";
 
 export type ChatListReadFallbackContext =
-  | { type: "stream"; streamId: number; topic: string }
-  | { type: "dm"; dmKey: string };
+  { type: "stream"; streamId: number; topic: string } | { type: "dm"; dmKey: string };
 
 export interface ChatListUnreadDecrementActions {
   decrementUnreadForMessages: (messageIds: number[]) => void;

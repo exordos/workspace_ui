@@ -65,10 +65,14 @@ export async function fetchUserProfile(
 
   try {
     const [res, realmFields] = await Promise.all([
-      zulipApi.get(`/users/${userId}`, {
-        client_gravatar: "false",
-        include_custom_profile_fields: "true",
-      }, options?.signal),
+      zulipApi.get(
+        `/users/${userId}`,
+        {
+          client_gravatar: "false",
+          include_custom_profile_fields: "true",
+        },
+        options?.signal,
+      ),
       fetchRealmProfileFieldDefinitionsWithSignal(options?.signal),
     ]);
 

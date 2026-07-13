@@ -110,15 +110,7 @@ export function toShareableUrl(internalPath: string): string {
 
 export interface ParsedDeepLink {
   type:
-    | "stream"
-    | "topic"
-    | "dm"
-    | "activity"
-    | "message"
-    | "calendar"
-    | "mail"
-    | "calls"
-    | "unknown";
+    "stream" | "topic" | "dm" | "activity" | "message" | "calendar" | "mail" | "calls" | "unknown";
   path: string;
   orgId?: string;
   streamSlug?: string;

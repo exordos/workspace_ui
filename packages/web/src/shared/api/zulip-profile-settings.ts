@@ -21,10 +21,7 @@ export interface UpdateOwnProfileSettingsParams {
 }
 
 export type ProfileSettingsMutationErrorKind =
-  | "forbidden"
-  | "invalid"
-  | "unsupported"
-  | "transient";
+  "forbidden" | "invalid" | "unsupported" | "transient";
 
 export type ProfileSettingsMutationResult =
   | { ok: true }

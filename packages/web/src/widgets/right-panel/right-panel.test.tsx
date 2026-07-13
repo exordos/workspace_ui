@@ -341,8 +341,7 @@ describe("RightPanel truthfulness", () => {
     });
     await waitFor(() => {
       const props = statusEmojiPickerMock.mock.calls.at(-1)?.[0] as
-        | { customEmojis?: unknown[]; emojiStyle?: string }
-        | undefined;
+        { customEmojis?: unknown[]; emojiStyle?: string } | undefined;
       expect(props?.customEmojis).toEqual([realmEmoji]);
       expect(props?.emojiStyle).toBe("native");
     });

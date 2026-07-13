@@ -27,13 +27,7 @@ const log = createLogger("updater");
 const VERSION_CONFIG_URL = brand.updateServerUrl;
 
 export type UpdateStatus =
-  | "idle"
-  | "checking"
-  | "available"
-  | "downloading"
-  | "ready"
-  | "up-to-date"
-  | "error";
+  "idle" | "checking" | "available" | "downloading" | "ready" | "up-to-date" | "error";
 
 export interface UpdateState {
   status: UpdateStatus;
