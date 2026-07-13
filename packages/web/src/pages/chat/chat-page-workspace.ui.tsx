@@ -57,6 +57,7 @@ import { downloadWorkspaceFile, uploadWorkspaceFile } from "~/shared/api/messeng
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { createLogger } from "~/shared/lib/logger";
+import { loadWorkspaceFile } from "~/shared/lib/workspace-file-loader.lib";
 import type {
   WorkspaceMessageFileReference,
   WorkspaceMessageMentionResolution,
@@ -108,21 +109,30 @@ interface WorkspacePreviewBlobCacheEntry {
   promise: Promise<Blob>;
 }
 
+function workspacePreviewBlobCacheKey(
+  ownerKey: string,
+  runtimeGeneration: number,
+  fileUuid: string,
+): string {
+  return JSON.stringify([ownerKey, runtimeGeneration, fileUuid]);
+}
+
 function createWorkspacePreviewAbortError(): DOMException {
   return new DOMException("Workspace preview load aborted", "AbortError");
 }
 
 function waitForWorkspacePreviewBlob(promise: Promise<Blob>, signal: AbortSignal): Promise<Blob> {
-  if (signal.aborted) {
-    return Promise.reject(createWorkspacePreviewAbortError());
-  }
-
   return new Promise((resolve, reject) => {
     const handleAbort = () => {
+      signal.removeEventListener("abort", handleAbort);
       reject(createWorkspacePreviewAbortError());
     };
 
     signal.addEventListener("abort", handleAbort, { once: true });
+    if (signal.aborted) {
+      handleAbort();
+    }
+
     promise.then(
       (blob) => {
         signal.removeEventListener("abort", handleAbort);
@@ -134,6 +144,10 @@ function waitForWorkspacePreviewBlob(promise: Promise<Blob>, signal: AbortSignal
       },
       (error: unknown) => {
         signal.removeEventListener("abort", handleAbort);
+        if (signal.aborted) {
+          reject(createWorkspacePreviewAbortError());
+          return;
+        }
         reject(error instanceof Error ? error : new Error("Workspace preview load failed"));
       },
     );
@@ -1312,17 +1326,26 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         throw new Error(t("workspaceMessenger.fileDownloadFailed"));
       }
 
-      let cacheEntry = workspacePreviewBlobCacheRef.current.get(fileUuid);
+      const previewOwnerKey = workspaceRuntimeOwnerKey(runtimeContext);
+      const cacheKey = workspacePreviewBlobCacheKey(
+        previewOwnerKey,
+        runtimeContext.runtimeGeneration,
+        fileUuid,
+      );
+      let cacheEntry = workspacePreviewBlobCacheRef.current.get(cacheKey);
       if (cacheEntry == null) {
         workspacePreviewLoaderLog.debug("preview cache miss", {
           fileUuid,
           contentType: file.contentType ?? null,
         });
         const previewAbortController = new AbortController();
-        const promise = downloadWorkspaceFile(
-          buildMessengerRequestOptions(runtimeContext, undefined, previewAbortController.signal),
+        const promise = loadWorkspaceFile({
+          ownerKey: previewOwnerKey,
+          runtimeGeneration: runtimeContext.runtimeGeneration,
           fileUuid,
-        )
+          requestOptions: buildMessengerRequestOptions(runtimeContext),
+          signal: previewAbortController.signal,
+        })
           .then((result) => {
             const normalizedBlob = normalizeWorkspacePreviewBlob(result.blob, file.contentType);
             workspacePreviewLoaderLog.debug("preview blob fetched", {
@@ -1334,8 +1357,8 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
             return normalizedBlob;
           })
           .catch((error: unknown) => {
-            if (workspacePreviewBlobCacheRef.current.get(fileUuid)?.promise === promise) {
-              workspacePreviewBlobCacheRef.current.delete(fileUuid);
+            if (workspacePreviewBlobCacheRef.current.get(cacheKey)?.promise === promise) {
+              workspacePreviewBlobCacheRef.current.delete(cacheKey);
             }
             workspacePreviewLoaderLog.warn("preview blob fetch failed", {
               fileUuid,
@@ -1344,7 +1367,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
             throw error;
           });
         cacheEntry = { abortController: previewAbortController, promise };
-        workspacePreviewBlobCacheRef.current.set(fileUuid, cacheEntry);
+        workspacePreviewBlobCacheRef.current.set(cacheKey, cacheEntry);
       } else {
         workspacePreviewLoaderLog.debug("preview cache hit", { fileUuid });
       }

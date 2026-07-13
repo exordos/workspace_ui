@@ -155,6 +155,7 @@ function revealLoadedPreview(
   mount: MountedWorkspacePreview,
   reference: WorkspaceMessageFileReference,
   displayUrl: string,
+  objectUrlRegistry: string[],
 ): void {
   const image = mount.placeholderImage ?? document.createElement("img");
   if (mount.placeholderImage == null) {
@@ -172,7 +173,13 @@ function revealLoadedPreview(
   };
   image.addEventListener("error", handleImageError);
 
-  mount.objectUrl = displayUrl.startsWith("blob:") ? displayUrl : null;
+  if (displayUrl.startsWith("blob:")) {
+    mount.objectUrl = displayUrl;
+    const registryIndex = objectUrlRegistry.indexOf(displayUrl);
+    if (registryIndex !== -1) {
+      objectUrlRegistry.splice(registryIndex, 1);
+    }
+  }
   mount.previewImage = image;
   mount.imageErrorHandler = handleImageError;
   image.hidden = false;
@@ -372,7 +379,7 @@ export function useWorkspaceMessageFilePreviews({
               return;
             }
 
-            revealLoadedPreview(mount, reference, displayUrl);
+            revealLoadedPreview(mount, reference, displayUrl, objectUrlRegistry);
           })
           .catch((error: unknown) => {
             if (!abortController.signal.aborted) {
@@ -416,5 +423,5 @@ export function useWorkspaceMessageFilePreviews({
         URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [bodyRef, hasPreviewLoader, imagePreviewKey, renderedHtml]);
+  }, [bodyRef, hasPreviewLoader, imagePreviewKey, onLoadWorkspaceFilePreview, renderedHtml]);
 }

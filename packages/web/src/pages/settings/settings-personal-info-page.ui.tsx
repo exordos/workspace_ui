@@ -20,6 +20,7 @@ import {
   type OwnStatusData,
   type UserProfileData,
 } from "~/features/user-profile/user-profile.types";
+import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
 import { bumpAvatarVersion, resolveAvatarUrl } from "~/shared/lib/avatar";
 import { writeText } from "~/shared/lib/clipboard";
@@ -627,12 +628,11 @@ export const SettingsPersonalInfoPage: React.FC = () => {
     if (profileAvatar != null && profileAvatar.length > 0) {
       return resolveAvatarUrl(profileAvatar) ?? null;
     }
-    const workspaceAvatar = currentWorkspaceUser?.avatarUrl;
-    if (workspaceAvatar != null && workspaceAvatar.length > 0) {
-      return resolveAvatarUrl(workspaceAvatar) ?? null;
-    }
     return null;
-  }, [currentWorkspaceUser?.avatarUrl, pendingAvatarAction, profile?.avatarUrl]);
+  }, [pendingAvatarAction, profile?.avatarUrl]);
+
+  const shouldUseWorkspaceAvatar =
+    currentWorkspaceSession != null && pendingAvatarAction.kind === "none";
 
   return (
     <div className="flex max-h-full min-h-0 min-w-0 max-w-narrow-page flex-1 flex-col overflow-hidden">
@@ -651,9 +651,15 @@ export const SettingsPersonalInfoPage: React.FC = () => {
               onChange={handleAvatarUploadChange}
             />
             <div className="flex items-center gap-3">
-              <Avatar size="lg" src={avatarSrc}>
-                {avatarFallback}
-              </Avatar>
+              {shouldUseWorkspaceAvatar ? (
+                <WorkspaceAvatar size="lg" avatarUrn={currentWorkspaceUser?.avatarUrl}>
+                  {avatarFallback}
+                </WorkspaceAvatar>
+              ) : (
+                <Avatar size="lg" src={avatarSrc}>
+                  {avatarFallback}
+                </Avatar>
+              )}
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-text-primary">{fullName}</p>
                 <p className="text-[11px] text-text-secondary">{profileStatus}</p>

@@ -5,6 +5,8 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MessengerOutgoingMessage } from "~/entities/messenger/messenger-outbox.types";
 import type { MessengerMessage } from "~/entities/messenger/messenger.types";
+import { useUsersStore } from "~/entities/user/user.model";
+import type { User } from "~/entities/user/user.types";
 import { setLocale } from "~/i18n/i18n";
 import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
 import { WorkspaceMessageList } from "./workspace-message-list.ui";
@@ -61,6 +63,25 @@ function createWorkspaceMessage(overrides: MessageOverrides = {}): MessengerMess
     createdAt: "2026-07-03T09:00:00.000Z",
     updatedAt: "2026-07-03T09:00:00.000Z",
     ...rest,
+  };
+}
+
+function createWorkspaceUser(overrides: Partial<User> = {}): User {
+  return {
+    uuid: "peer-user-uuid",
+    username: "bob",
+    firstName: "Bob",
+    lastName: "Reed",
+    displayName: "Bob Reed",
+    email: "bob@example.com",
+    avatarUrl: null,
+    status: "offline",
+    statusEmoji: null,
+    statusText: null,
+    lastPingAt: "2026-07-03T09:00:00.000Z",
+    createdAt: "2026-07-03T09:00:00.000Z",
+    updatedAt: "2026-07-03T09:00:00.000Z",
+    ...overrides,
   };
 }
 
@@ -124,11 +145,13 @@ function selectMessageBodyText(
 describe("WorkspaceMessageList", () => {
   beforeEach(() => {
     setLocale("en");
+    useUsersStore.getState().clear();
     vi.useRealTimers();
   });
 
   afterEach(() => {
     setLocale("en");
+    useUsersStore.getState().clear();
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -151,6 +174,103 @@ describe("WorkspaceMessageList", () => {
 
     expect(renderedMessage).toHaveAttribute("data-message-uuid", "workspace-message-uuid");
     expect(renderedMessage).not.toHaveAttribute(["data", "message", "id"].join("-"));
+  });
+
+  it("renders one Workspace peer avatar with presence for an author group", () => {
+    const onOpenAuthorProfile = vi.fn();
+    useUsersStore.getState().replaceUsers([
+      createWorkspaceUser({
+        avatarUrl: "urn:url:https://cdn.example/avatar.png",
+        status: "active",
+      }),
+    ]);
+
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "peer-message-1",
+            authorUuid: "peer-user-uuid",
+            userUuid: "peer-user-uuid",
+            markdown: "First peer message",
+          }),
+          createWorkspaceMessage({
+            uuid: "peer-message-2",
+            authorUuid: "peer-user-uuid",
+            userUuid: "peer-user-uuid",
+            markdown: "Second peer message",
+            createdAt: "2026-07-03T09:01:00.000Z",
+            updatedAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onOpenAuthorProfile }}
+      />,
+    );
+
+    expect(container.querySelectorAll("[data-workspace-peer-avatar='true']")).toHaveLength(1);
+    expect(container.querySelector("[data-workspace-peer-avatar='true'] img")).toHaveAttribute(
+      "src",
+      "https://cdn.example/avatar.png",
+    );
+    expect(container.querySelector("[data-presence='active']")).toBeInTheDocument();
+    expect(screen.getByText("Bob Reed")).toBeInTheDocument();
+
+    fireEvent.click(container.querySelector("[data-workspace-peer-avatar='true']")!);
+    expect(onOpenAuthorProfile).toHaveBeenCalledWith("peer-user-uuid");
+  });
+
+  it("keeps a fallback avatar for an unknown UUID", () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            authorUuid: "unknown-author-uuid",
+            userUuid: "unknown-author-uuid",
+            markdown: "Unknown author message",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        resolveAuthorLabel={() => null}
+      />,
+    );
+
+    expect(screen.getByText("#unknown-")).toBeInTheDocument();
+    expect(container.querySelector("[data-workspace-peer-avatar='true']")).toBeInTheDocument();
+    expect(container.querySelector("[data-workspace-peer-avatar='true'] img")).toBeNull();
+    expect(container.querySelector("[data-presence]")).toBeNull();
+  });
+
+  it("does not render a peer avatar for own messages", () => {
+    useUsersStore.getState().replaceUsers([
+      createWorkspaceUser({
+        uuid: "current-user-uuid",
+        displayName: "Current User",
+        status: "active",
+        avatarUrl: "urn:image:own-avatar-uuid",
+      }),
+    ]);
+
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            authorUuid: "current-user-uuid",
+            userUuid: "current-user-uuid",
+            isOwn: true,
+            markdown: "Own message",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    expect(container.querySelector("[data-message-owner='own']")).toBeInTheDocument();
+    expect(container.querySelector("[data-workspace-peer-avatar='true']")).toBeNull();
+    expect(container.querySelector("[data-presence]")).toBeNull();
   });
 
   it("renders local outgoing messages in the same Workspace feed", () => {
@@ -1282,6 +1402,59 @@ describe("WorkspaceMessageList", () => {
     revokeObjectURL.mockRestore();
   });
 
+  it("revokes a Workspace preview URL only once when image fallback runs before unmount", async () => {
+    const fileUuid = "44444444-4444-4444-8444-444444444444";
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:workspace-fallback-preview");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const onLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(
+      new Blob(["image-bytes"], {
+        type: "image/png",
+      }),
+    );
+    const { container, unmount } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-media-preview-fallback-cleanup-message",
+            markdown: `![screen.png](urn:image:${fileUuid}?name=screen.png&content_type=image%2Fpng)`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onLoadWorkspaceFilePreview }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector("img[data-workspace-file-preview='true']")).not.toBeNull();
+    });
+
+    const previewImage = container.querySelector<HTMLImageElement>(
+      "img[data-workspace-file-preview='true']",
+    );
+    expect(previewImage).not.toBeNull();
+
+    fireEvent.error(previewImage!);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Изображение" })).toHaveAttribute(
+        "data-workspace-preview-status",
+        "error",
+      );
+    });
+    expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-fallback-preview");
+
+    unmount();
+
+    expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+  });
+
   it("defers Workspace image preview loading until the placeholder enters the viewport", async () => {
     const observers: DeferredIntersectionObserver[] = [];
     const disconnect = vi.fn();
@@ -1433,11 +1606,12 @@ describe("WorkspaceMessageList", () => {
     revokeObjectURL.mockRestore();
   });
 
-  it("keeps Workspace image preview mounted when the loader callback identity changes", async () => {
+  it("cleans the old Workspace image preview when the runtime loader callback changes", async () => {
     const fileUuid = "44444444-4444-4444-8444-444444444444";
     const createObjectURL = vi
       .spyOn(URL, "createObjectURL")
-      .mockReturnValue("blob:workspace-stable-loader-preview");
+      .mockReturnValueOnce("blob:workspace-old-loader-preview")
+      .mockReturnValueOnce("blob:workspace-new-loader-preview");
     const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
     const firstLoadWorkspaceFilePreview = vi.fn().mockResolvedValue(
       new Blob(["image-bytes"], {
@@ -1480,15 +1654,21 @@ describe("WorkspaceMessageList", () => {
       />,
     );
 
+    await waitFor(() => {
+      expect(secondLoadWorkspaceFilePreview).toHaveBeenCalledTimes(1);
+      expect(createObjectURL).toHaveBeenCalledTimes(2);
+    });
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-old-loader-preview");
     expect(container.querySelector("img[data-workspace-file-preview='true']")).toBe(previewImage);
-    expect(firstLoadWorkspaceFilePreview).toHaveBeenCalledTimes(1);
-    expect(secondLoadWorkspaceFilePreview).not.toHaveBeenCalled();
-    expect(createObjectURL).toHaveBeenCalledTimes(1);
-    expect(revokeObjectURL).not.toHaveBeenCalled();
+    expect(container.querySelector("img[data-workspace-file-preview='true']")).toHaveAttribute(
+      "src",
+      "blob:workspace-new-loader-preview",
+    );
+    expect(container.querySelector("img[src='blob:workspace-old-loader-preview']")).toBeNull();
 
     unmount();
 
-    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-stable-loader-preview");
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-new-loader-preview");
 
     createObjectURL.mockRestore();
     revokeObjectURL.mockRestore();
