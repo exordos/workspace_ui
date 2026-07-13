@@ -51,10 +51,14 @@ export async function fetchUser(
   options?: { signal?: AbortSignal },
 ): Promise<ZulipUserMember | null> {
   guard.userId(userId, "fetchUser");
-  const res = await zulipPipelineGet(`/users/${userId}`, {
-    client_gravatar: "false",
-    include_custom_profile_fields: "true",
-  }, options?.signal);
+  const res = await zulipPipelineGet(
+    `/users/${userId}`,
+    {
+      client_gravatar: "false",
+      include_custom_profile_fields: "true",
+    },
+    options?.signal,
+  );
   if (!res?.ok) {
     return null;
   }

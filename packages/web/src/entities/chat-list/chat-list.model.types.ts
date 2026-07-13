@@ -34,15 +34,13 @@ export interface ChatListDmMetadataRow {
 }
 
 export type MessageLocation =
-  | { type: "stream"; stream_id: number; topic: string }
-  | { type: "dm"; dmKey: string };
+  { type: "stream"; stream_id: number; topic: string } | { type: "dm"; dmKey: string };
 
 export interface ChatListPreviewSourceMessage {
   id: number;
   stream_id?: number | null;
   display_recipient?:
-    | string
-    | { id: number; full_name: string; email?: string; avatar_url?: string }[];
+    string | { id: number; full_name: string; email?: string; avatar_url?: string }[];
   subject?: string;
   content: string;
   timestamp: number;

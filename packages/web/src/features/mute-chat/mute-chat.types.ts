@@ -7,8 +7,7 @@
  */
 
 export type MuteTarget =
-  | { type: "stream"; streamId: number }
-  | { type: "topic"; streamId: number; topic: string };
+  { type: "stream"; streamId: number } | { type: "topic"; streamId: number; topic: string };
 
 export type VisibilityPolicy = 0 | 1 | 2 | 3;
 

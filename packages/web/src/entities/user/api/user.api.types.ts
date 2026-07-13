@@ -54,11 +54,7 @@ export type StatusFetchOutcome =
   | { kind: "transient_error"; status: null };
 
 export type UserStatusRequestReason =
-  | "bootstrap"
-  | "dm_header"
-  | "right_panel"
-  | "top_bar"
-  | "compat";
+  "bootstrap" | "dm_header" | "right_panel" | "top_bar" | "compat";
 
 export type UserStatusRequestPriority = "high" | "low";
 

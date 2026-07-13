@@ -17,11 +17,7 @@ import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 import type { DmEntryInternal, StreamEntryInternal } from "~/shared/types/sidebar-chat";
 
 export type PipelineTraceChannel =
-  | "messages"
-  | "chat-list"
-  | "sidebar-unread"
-  | "folders"
-  | "link-preview";
+  "messages" | "chat-list" | "sidebar-unread" | "folders" | "link-preview";
 
 const TRACE_SCOPE: Record<PipelineTraceChannel, string> = {
   messages: "trace:messages",
@@ -105,9 +101,7 @@ function tracePipeline(
 
 /** Narrow shape for log labels only (mirrors `CurrentChatContext`). */
 export type ChatContextLogShape =
-  | null
-  | { type: "stream"; streamId: number; topic: string }
-  | { type: "dm"; dmKey: string };
+  null | { type: "stream"; streamId: number; topic: string } | { type: "dm"; dmKey: string };
 
 /** Short, stable label for logs (no message content). */
 export function summarizeChatContextForLog(context: ChatContextLogShape): string {
@@ -201,8 +195,7 @@ export function logLinkPreviewTrace(event: string, data?: Record<string, unknown
 }
 
 export type SidebarUnreadLogContext =
-  | { type: "stream"; streamId: number; topic: string }
-  | { type: "dm"; dmKey: string };
+  { type: "stream"; streamId: number; topic: string } | { type: "dm"; dmKey: string };
 
 export interface SidebarUnreadLogStateSlice {
   sidebarStreamsUnread: number;

@@ -22,8 +22,7 @@ export function handlePresence(event: ZulipEvent, ctx: LayoutZulipEventDispatchC
   const { users } = ctx;
   const email = event.email as string | undefined;
   const presenceData = event.presence as
-    | Record<string, { status?: string; timestamp?: number }>
-    | undefined;
+    Record<string, { status?: string; timestamp?: number }> | undefined;
   if (!email || !presenceData) return;
   const agg = presenceData.aggregated ?? presenceData.website;
   if (agg?.status == null || agg?.timestamp == null) return;

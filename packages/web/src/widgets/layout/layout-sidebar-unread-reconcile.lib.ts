@@ -40,8 +40,7 @@ export function resetSidebarUnreadReconcileDedupe(): void {
 }
 
 export type SidebarUnreadReconcileSkippedReason =
-  | "register_unread_unavailable"
-  | "empty_cached_snapshot_preserves_local_unread";
+  "register_unread_unavailable" | "empty_cached_snapshot_preserves_local_unread";
 
 export type SidebarUnreadReconcileSnapshotSource = "fresh-register" | "cached-register";
 

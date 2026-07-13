@@ -366,8 +366,7 @@ describe("useLayoutZulipEventLoop", () => {
     expect(fetchSubscriptionsMock).toHaveBeenCalledWith(expect.any(AbortSignal));
 
     const firstCallArg = startZulipEventLoopMock.mock.calls[0]?.[0] as
-      | { fetchEventTypes?: string[] }
-      | undefined;
+      { fetchEventTypes?: string[] } | undefined;
     expect(firstCallArg?.fetchEventTypes).toEqual([
       ...DEFAULT_REGISTER_FETCH_EVENT_TYPES,
       "starred_messages",

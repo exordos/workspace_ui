@@ -33,8 +33,7 @@ interface ArchivedChannelOption {
 
 /** Inline unarchive error state on the Archived tab. */
 export type UnarchiveInlineErrorState =
-  | { kind: "unsupported" }
-  | { kind: "failed"; message: string };
+  { kind: "unsupported" } | { kind: "failed"; message: string };
 
 export interface UseCreateChatDialogResult {
   tab: CreateChatTab;

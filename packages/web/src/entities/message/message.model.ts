@@ -410,8 +410,7 @@ export const useCurrentChatMessagesStore = create<CurrentChatMessagesState>((set
   commitOutgoingMessage(optimisticId, finalMessage) {
     const idbRef: {
       current:
-        | { kind: "none" }
-        | { kind: "sync"; deleteNegativeId: number | null; message: MockMessage };
+        { kind: "none" } | { kind: "sync"; deleteNegativeId: number | null; message: MockMessage };
     } = { current: { kind: "none" } };
 
     set((state) => {

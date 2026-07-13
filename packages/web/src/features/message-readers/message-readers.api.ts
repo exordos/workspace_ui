@@ -17,7 +17,11 @@ export async function fetchReadReceipts(
 ): Promise<ReadReceiptsResponse> {
   guard.messageId(messageId, "fetchReadReceipts");
 
-  const res = await zulipApi.get(`/messages/${messageId}/read_receipts`, undefined, options?.signal);
+  const res = await zulipApi.get(
+    `/messages/${messageId}/read_receipts`,
+    undefined,
+    options?.signal,
+  );
 
   if (!res.ok) {
     const msg = `Failed to fetch read receipts for message ${messageId}: HTTP ${res.status}`;

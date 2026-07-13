@@ -174,8 +174,7 @@ function generateId(): string {
 }
 
 export type AddInstanceResult =
-  | { status: "added"; id: string }
-  | { status: "duplicate"; id: string };
+  { status: "added"; id: string } | { status: "duplicate"; id: string };
 
 function addInstanceDuplicateKey(keys: Set<string>, realmLike: string, email: string): void {
   const normalizedRealm = normalizeRealm(realmLike).toLowerCase();

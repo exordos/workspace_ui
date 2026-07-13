@@ -4,14 +4,7 @@ import { buildMailtoHref, buildTelHref, formatDateJoined } from "./right-panel.l
 import type { RightPanelUserInfo } from "./right-panel.types";
 
 export type RightPanelUserContactIcon =
-  | "mail"
-  | "phone"
-  | "profile"
-  | "calendar"
-  | "businessCenter"
-  | "handshake"
-  | "group"
-  | "info";
+  "mail" | "phone" | "profile" | "calendar" | "businessCenter" | "handshake" | "group" | "info";
 
 export interface RightPanelUserContactRow {
   label: string;

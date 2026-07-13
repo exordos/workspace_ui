@@ -7,9 +7,7 @@ import type { NotificationLevel, TopicVisibilityLevel } from "./notification-lev
  */
 
 type StreamNotificationLabelKey =
-  | "channel.notificationDefault"
-  | "channel.notificationMuted"
-  | "channel.notificationSubscribed";
+  "channel.notificationDefault" | "channel.notificationMuted" | "channel.notificationSubscribed";
 
 type TopicVisibilityLabelKey =
   | "channel.topicVisibilityMuted"

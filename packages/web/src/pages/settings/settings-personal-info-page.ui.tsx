@@ -58,9 +58,7 @@ function canonicalizeTimezone(value: string): string | null {
 }
 
 type PendingAvatarAction =
-  | { kind: "none" }
-  | { kind: "upload"; file: File; previewUrl: string }
-  | { kind: "remove" };
+  { kind: "none" } | { kind: "upload"; file: File; previewUrl: string } | { kind: "remove" };
 
 const EMPTY_PENDING_AVATAR_ACTION: PendingAvatarAction = { kind: "none" };
 

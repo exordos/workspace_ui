@@ -8,11 +8,7 @@
 import type { ZulipNotificationSettings } from "./zulip-notification-settings.lib";
 
 export type NotificationMessageTrigger =
-  | "dm"
-  | "mention"
-  | "wildcard_mention"
-  | "followed_topic"
-  | "stream";
+  "dm" | "mention" | "wildcard_mention" | "followed_topic" | "stream";
 
 export interface DesktopNotificationMessageContext {
   /** Zulip message type (`"private"` for DMs, `"stream"` for channels). */

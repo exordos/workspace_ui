@@ -12,8 +12,7 @@ import { normalizeTopicForIdentity } from "~/shared/lib/topic-identity.lib";
 
 /** Narrow context shape for cache keys (compatible with `CurrentChatContext`). */
 export type MessageCacheChatContext =
-  | { type: "stream"; streamId: number; topic: string }
-  | { type: "dm"; dmKey: string };
+  { type: "stream"; streamId: number; topic: string } | { type: "dm"; dmKey: string };
 
 /** Align with `chatKeyFromRawMessage` / Zulip topic identity normalization. */
 export function normalizeStreamTopicForMessageCache(topic: string): string {

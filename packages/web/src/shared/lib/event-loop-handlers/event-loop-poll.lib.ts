@@ -41,11 +41,7 @@ export function isAbortLikePollError(err: unknown): boolean {
 }
 
 export type EventPollCatchDisposition =
-  | "exit"
-  | "continue"
-  | "clear_queue_continue"
-  | "clear_queue_wake_continue"
-  | "re_register";
+  "exit" | "continue" | "clear_queue_continue" | "clear_queue_wake_continue" | "re_register";
 
 export function resolveEventPollCatchDisposition(
   err: unknown,

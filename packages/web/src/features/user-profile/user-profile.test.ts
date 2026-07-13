@@ -232,16 +232,14 @@ describe("useUserProfileStore", () => {
       });
 
       let resolveResponse:
-        | ((
-            value: {
-              ok: true;
-              status: number;
-              data: typeof MOCK_ZULIP_USER;
-              headers: Headers;
-              raw: Response;
-              durationMs: number;
-            },
-          ) => void)
+        | ((value: {
+            ok: true;
+            status: number;
+            data: typeof MOCK_ZULIP_USER;
+            headers: Headers;
+            raw: Response;
+            durationMs: number;
+          }) => void)
         | undefined;
       vi.mocked(zulipApi.get).mockImplementationOnce(
         () =>

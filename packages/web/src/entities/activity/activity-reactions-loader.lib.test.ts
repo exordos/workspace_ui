@@ -35,23 +35,27 @@ describe("ensureReactionsLoaded", () => {
       messages: ReturnType<typeof createMessage>[];
       foundOldest: boolean;
     }) => void;
-    const oldFetch = new Promise<{ messages: ReturnType<typeof createMessage>[]; foundOldest: boolean }>(
-      (resolve) => {
-        resolveOldFetch = resolve;
-      },
-    );
+    const oldFetch = new Promise<{
+      messages: ReturnType<typeof createMessage>[];
+      foundOldest: boolean;
+    }>((resolve) => {
+      resolveOldFetch = resolve;
+    });
 
     let resolveNewFetch!: (value: {
       messages: ReturnType<typeof createMessage>[];
       foundOldest: boolean;
     }) => void;
-    const newFetch = new Promise<{ messages: ReturnType<typeof createMessage>[]; foundOldest: boolean }>(
-      (resolve) => {
-        resolveNewFetch = resolve;
-      },
-    );
+    const newFetch = new Promise<{
+      messages: ReturnType<typeof createMessage>[];
+      foundOldest: boolean;
+    }>((resolve) => {
+      resolveNewFetch = resolve;
+    });
 
-    fetchActivityMessagesPageWithPersist.mockReturnValueOnce(oldFetch).mockReturnValueOnce(newFetch);
+    fetchActivityMessagesPageWithPersist
+      .mockReturnValueOnce(oldFetch)
+      .mockReturnValueOnce(newFetch);
 
     useInstancesStore.setState({
       instances: [

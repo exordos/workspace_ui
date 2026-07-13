@@ -43,13 +43,7 @@ export function attachNotificationAudioUnlock(): () => void {
 }
 
 type NotificationSoundPreset =
-  | "default"
-  | "subtle"
-  | "digital"
-  | "glass"
-  | "pulse"
-  | "soft_call"
-  | "none";
+  "default" | "subtle" | "digital" | "glass" | "pulse" | "soft_call" | "none";
 
 interface ToneSpec {
   frequency: number;
