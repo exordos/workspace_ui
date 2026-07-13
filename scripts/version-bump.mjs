@@ -48,6 +48,6 @@ if (rootVersion !== next) {
 console.log("\nNext steps:");
 console.log("  1. Update CHANGELOG.md manually (if needed)");
 console.log(`  2. git add -A && git commit -m "chore: release v${next}"`);
-console.log("  3. Open MR to master and merge (direct push to master is forbidden)");
+console.log("  3. Open PR to master and merge (direct push to master is forbidden)");
 console.log("  4. On merged master: npm run version:tag   # push tag only");
 console.log("\nNote: GitHub Release is created only on tag push (not on branch push alone).");

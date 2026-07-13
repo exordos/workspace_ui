@@ -417,7 +417,7 @@ npm run package:electron:linux # Linux (AppImage, deb, rpm)
 # Utilities
 npm run licenses             # Regenerate OSS license list
 npm run version:bump -- <patch|minor|major>  # Lerna fixed-version bump
-npm run version:tag  # Push release tag only (after MR merge to master)
+npm run version:tag  # Push release tag only (after PR merge to master)
 ```
 
 > **Requirements:** Node.js ≥ 22 (`.nvmrc`), npm 10+

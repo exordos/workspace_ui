@@ -23,8 +23,10 @@ Each release (local):
 
 1. `npm run version:bump -- <patch|minor|major>` — Lerna updates all workspace packages + `lerna.json`, then syncs root `package.json`
 2. Edit `CHANGELOG.md` if needed
-3. `git add -A && git commit -m "chore: release v<version>"` → merge to `master` via MR (direct push forbidden)
+3. `git add -A && git commit -m "chore: release v<version>"` → merge to `master` via PR (direct push forbidden)
 4. On `master` after merge: `npm run version:tag` — creates tag `<version>` (no `v` prefix) and pushes tag only
+
+See also [`RELEASE.md`](../../RELEASE.md) for the full release workflow.
 
 Pushing a semver tag to GitHub triggers CI (`build-electron` + GitHub Release with desktop artifacts). Push to `master` alone runs check/e2e/build but does **not** create a GitHub Release.
 
