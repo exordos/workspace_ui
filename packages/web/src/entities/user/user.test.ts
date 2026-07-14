@@ -93,6 +93,7 @@ function createUserDto(
     uuid: overrides.uuid ?? USER_A_UUID,
     username: "alice",
     source: "iam",
+    avatar: `urn:gavatar:${overrides.uuid ?? USER_A_UUID}`,
     status: "active",
     status_emoji: "test_tube",
     status_text: "Testing",
@@ -290,7 +291,7 @@ describe("user adapters", () => {
       lastName: "Smith",
       displayName: "Alice Smith",
       email: "alice@example.com",
-      avatarUrl: null,
+      avatarUrl: `urn:gavatar:${USER_A_UUID}`,
       status: "active",
       statusEmoji: "test_tube",
       statusText: "Testing",
@@ -298,6 +299,15 @@ describe("user adapters", () => {
       createdAt: DATE_1,
       updatedAt: DATE_2,
     });
+  });
+
+  it("keeps a valid Gravatar URN on the user profile", () => {
+    const user = adaptWorkspaceMessengerUserDto(
+      createUserDto({ avatar: "urn:gravatar:eb7767d8c30c3ec0b6a155b77b7a6b7d" }),
+    );
+
+    expect(user.displayName).toBe("Alice Smith");
+    expect(user.avatarUrl).toBe("urn:gravatar:eb7767d8c30c3ec0b6a155b77b7a6b7d");
   });
 
   it("falls back to username when first and last name are missing", () => {
@@ -415,6 +425,26 @@ describe("user sync", () => {
     expect(state.error).toBeNull();
     expect(state.userIds).toEqual(["00000000-0000-0000-0000-000000000000", USER_B_UUID]);
     expect(state.getUser("00000000-0000-0000-0000-000000000000")?.email).toBeNull();
+  });
+
+  it("applies Zulip-source users to the Workspace user store", () => {
+    const zulipUserDto = createUserDto({
+      uuid: USER_B_UUID,
+      source: "zulip",
+      username: "Slon",
+      first_name: undefined,
+      last_name: undefined,
+    });
+
+    expect(applyBootstrapUsers([zulipUserDto])).toEqual({ status: "applied" });
+
+    const user = useUsersStore.getState().usersById[USER_B_UUID];
+    expect(user).toMatchObject({
+      uuid: USER_B_UUID,
+      username: "Slon",
+      displayName: "Slon",
+      avatarUrl: `urn:gavatar:${USER_B_UUID}`,
+    });
   });
 
   it("stores refresh errors without changing the current users", async () => {

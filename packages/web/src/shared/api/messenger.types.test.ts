@@ -128,6 +128,7 @@ const userDto = {
   uuid: USER_UUID,
   username: "admin",
   source: "iam",
+  avatar: `urn:gavatar:${USER_UUID}`,
   status: "active",
   status_emoji: null,
   status_text: null,
@@ -251,6 +252,16 @@ describe("Workspace messenger DTO guards", () => {
     expect(isWorkspaceMessengerEpochDto({ epoch_version: 124 })).toBe(true);
   });
 
+  it("keeps a user valid when the avatar is missing or uses an unknown format", () => {
+    expect(isWorkspaceMessengerUserDto({ ...userDto, avatar: undefined })).toBe(true);
+    expect(
+      isWorkspaceMessengerUserDto({
+        ...userDto,
+        avatar: "urn:gravatar:eb7767d8c30c3ec0b6a155b77b7a6b7d",
+      }),
+    ).toBe(true);
+  });
+
   it("validates message reaction aggregates and reaction rows", () => {
     expect(isWorkspaceMessengerReactionAggregate({ thumbs_up: 2, eyes: 0 })).toBe(true);
     expect(isWorkspaceMessengerReactionAggregate({ "": 1 })).toBe(false);
@@ -329,10 +340,27 @@ describe("Workspace messenger DTO guards", () => {
         uuid: USER_UUID,
         username: "test3",
         source: "iam",
+        avatar: `urn:gavatar:${USER_UUID}`,
         status: "active",
         status_emoji: null,
         status_text: "Focus",
         email: "test3@example.com",
+        last_ping_at: DATE,
+        created_at: DATE,
+        updated_at: DATE,
+      }),
+    ).toBe(true);
+  });
+
+  it("accepts users synchronized from Zulip", () => {
+    expect(
+      isWorkspaceMessengerUserDto({
+        uuid: USER_UUID,
+        username: "Slon",
+        source: "zulip",
+        avatar: `urn:gavatar:${USER_UUID}`,
+        status: "offline",
+        email: "slon@example.com",
         last_ping_at: DATE,
         created_at: DATE,
         updated_at: DATE,
@@ -346,6 +374,7 @@ describe("Workspace messenger DTO guards", () => {
         uuid: USER_UUID,
         username: "test4",
         source: "iam",
+        avatar: `urn:gavatar:${USER_UUID}`,
         status: "active",
         email: "test4@example.com",
         last_ping_at: DATE,
@@ -361,6 +390,7 @@ describe("Workspace messenger DTO guards", () => {
         uuid: "00000000-0000-0000-0000-000000000000",
         username: "system-00000000-0000-0000-0000-000000000000",
         source: "iam",
+        avatar: "urn:gavatar:00000000-0000-0000-0000-000000000000",
         status: "offline",
         last_ping_at: "2026-07-08T06:03:22.232694Z",
         created_at: "2000-01-01T00:00:00.000000Z",
@@ -375,6 +405,7 @@ describe("Workspace messenger DTO guards", () => {
         uuid: USER_UUID,
         username: "",
         source: "iam",
+        avatar: `urn:gavatar:${USER_UUID}`,
         status: "active",
         status_emoji: null,
         status_text: null,
@@ -391,6 +422,7 @@ describe("Workspace messenger DTO guards", () => {
       uuid: USER_UUID,
       username: "test3",
       source: "iam",
+      avatar: `urn:gavatar:${USER_UUID}`,
       status: "active",
       status_emoji: null,
       status_text: null,
@@ -651,7 +683,7 @@ describe("Workspace messenger DTO guards", () => {
       ...eventDto({ kind: "user.updated", ...userDto }),
       payload: { kind: "user.updated" as const, ...userDto, source: "zulip" as const },
     };
-    expect(isWorkspaceMessengerEventDto(zulipUserEvent)).toBe(false);
+    expect(isWorkspaceMessengerEventDto(zulipUserEvent)).toBe(true);
     expect(isWorkspaceMessengerRawEventDto(zulipUserEvent)).toBe(true);
     expect(isWorkspaceMessengerRealtimeEventDto(zulipUserEvent)).toBe(true);
   });

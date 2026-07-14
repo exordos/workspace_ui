@@ -1,4 +1,5 @@
 import type { WorkspaceMessengerUserDto } from "~/shared/api/messenger.types";
+import { isWorkspaceAvatarUrn } from "~/shared/lib/workspace-avatar-urn.lib";
 import type { User } from "./user.types";
 
 function normalizeNamePart(value: string | null | undefined): string | null {
@@ -22,7 +23,7 @@ export function adaptWorkspaceMessengerUserDto(dto: WorkspaceMessengerUserDto): 
     lastName: normalizeNamePart(dto.last_name),
     displayName: buildUserDisplayName(dto),
     email: dto.email ?? null,
-    avatarUrl: null,
+    avatarUrl: isWorkspaceAvatarUrn(dto.avatar) ? dto.avatar : null,
     status: dto.status,
     statusEmoji: dto.status_emoji ?? null,
     statusText: dto.status_text ?? null,

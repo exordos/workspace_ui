@@ -37,6 +37,18 @@ beforeEach(() => {
 });
 
 describe("Workspace avatar resolution", () => {
+  it("resolves Gravatar hash URNs to the secure Gravatar URL", () => {
+    const hash = "7ec7606c46a14a7ef514d1f1f9038823";
+    const avatarUrn = `urn:gravatar:${hash}`;
+
+    expect(resolveWorkspaceAvatarSource(avatarUrn)).toEqual({
+      kind: "external",
+      url: `https://secure.gravatar.com/avatar/${hash}?d=identicon&s=500`,
+    });
+    expect(isWorkspaceAvatarUrn(avatarUrn)).toBe(true);
+    expect(isWorkspaceAvatarUrn("urn:gravatar:not-a-hash")).toBe(false);
+  });
+
   it("accepts only safe https URL avatars", () => {
     expect(resolveWorkspaceAvatarSource("urn:url:https://cdn.example/avatar.png")).toEqual({
       kind: "external",

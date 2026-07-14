@@ -172,7 +172,8 @@ export interface WorkspaceMessengerFolderDto {
 export interface WorkspaceMessengerUserDto {
   uuid: WorkspaceMessengerUuid;
   username: string;
-  source: "iam";
+  source: "iam" | "zulip";
+  avatar?: string | null;
   status: WorkspaceMessengerUserStatus;
   status_emoji?: string | null;
   status_text?: string | null;
@@ -931,7 +932,8 @@ export function isWorkspaceMessengerUserDto(value: unknown): value is WorkspaceM
     isUuid(value.uuid) &&
     typeof value.username === "string" &&
     value.username.trim().length > 0 &&
-    value.source === "iam" &&
+    (value.source === "iam" || value.source === "zulip") &&
+    (value.avatar == null || typeof value.avatar === "string") &&
     isUserStatus(value.status) &&
     (value.status_emoji == null || typeof value.status_emoji === "string") &&
     (value.status_text == null || typeof value.status_text === "string") &&
