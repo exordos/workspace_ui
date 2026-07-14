@@ -254,6 +254,25 @@ describe("MediaViewerOverlay", () => {
     expect(useMediaViewerStore.getState().currentIndex).toBe(2);
   });
 
+  it("keeps navigation on the exact index when an item is still loading", () => {
+    useMediaViewerStore.getState().open(
+      [
+        { url: "https://example.com/loaded.png", type: "image" },
+        { url: "", previewUrl: "data:image/svg+xml,%3Csvg/%3E", type: "image" },
+        { url: "https://example.com/next.png", type: "image" },
+      ],
+      0,
+    );
+
+    render(<MediaViewerOverlay />);
+
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    expect(useMediaViewerStore.getState().currentIndex).toBe(1);
+
+    fireEvent.click(screen.getByRole("tab", { name: /media 3/i }));
+    expect(useMediaViewerStore.getState().currentIndex).toBe(2);
+  });
+
   it("hides navigation controls and thumbnails for a single item", () => {
     useMediaViewerStore
       .getState()

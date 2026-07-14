@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { useEffect } from "react";
+import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useDownloadStore } from "~/entities/download/download.model";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
@@ -71,6 +72,76 @@ const captured = vi.hoisted(() => ({
   streamBindingsForRoute: vi.fn(),
 }));
 
+function createTestWorkspaceFileResourceCache() {
+  const entries = new Map<
+    string,
+    { abortController: AbortController; promise: Promise<{ blob: Blob; headers: Headers }> }
+  >();
+
+  return {
+    load(options: {
+      ownerKey: string;
+      runtimeGeneration: number;
+      fileUuid: string;
+      requestOptions: unknown;
+      signal?: AbortSignal;
+    }): Promise<{ blob: Blob; headers: Headers }> {
+      if (options.signal?.aborted) {
+        return Promise.reject(new DOMException("Aborted", "AbortError"));
+      }
+
+      const key = JSON.stringify([options.ownerKey, options.runtimeGeneration, options.fileUuid]);
+      let entry = entries.get(key);
+      if (entry == null) {
+        const abortController = new AbortController();
+        const promise = captured.loadWorkspaceFile({
+          ...options,
+          signal: abortController.signal,
+        });
+        entry = { abortController, promise };
+        entries.set(key, entry);
+        void promise.catch(() => {
+          if (entries.get(key)?.promise === promise) {
+            entries.delete(key);
+          }
+        });
+      }
+
+      if (options.signal == null) {
+        return entry.promise;
+      }
+
+      return new Promise((resolve, reject) => {
+        const onAbort = () => {
+          options.signal?.removeEventListener("abort", onAbort);
+          reject(new DOMException("Aborted", "AbortError"));
+        };
+        options.signal?.addEventListener("abort", onAbort, { once: true });
+        void entry?.promise.then(
+          (value) => {
+            options.signal?.removeEventListener("abort", onAbort);
+            if (options.signal?.aborted) {
+              reject(new DOMException("Aborted", "AbortError"));
+              return;
+            }
+            resolve(value);
+          },
+          (error: unknown) => {
+            options.signal?.removeEventListener("abort", onAbort);
+            reject(error instanceof Error ? error : new Error(String(error)));
+          },
+        );
+      });
+    },
+    clear() {
+      for (const entry of entries.values()) {
+        entry.abortController.abort();
+      }
+      entries.clear();
+    },
+  };
+}
+
 vi.mock("~/entities/messenger/messenger-messages-loader.lib", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("~/entities/messenger/messenger-messages-loader.lib")>();
@@ -89,6 +160,7 @@ vi.mock("~/shared/api/messenger-files.api", () => ({
 
 vi.mock("~/shared/lib/workspace-file-loader.lib", () => ({
   loadWorkspaceFile: captured.loadWorkspaceFile,
+  createWorkspaceFileResourceCache: createTestWorkspaceFileResourceCache,
 }));
 
 vi.mock("~/entities/messenger/messenger-message-actions.lib", async (importOriginal) => {
@@ -311,12 +383,26 @@ function createDeferred<T>(): {
   return { promise, resolve, reject };
 }
 
+let navigateTo: ReturnType<typeof useNavigate> | null = null;
+
+function WorkspaceNavigationProbe() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    navigateTo = navigate;
+    return () => {
+      navigateTo = null;
+    };
+  }, [navigate]);
+  return null;
+}
+
 function renderWorkspaceChatPageWithShellContexts(
   route: string,
   rightDrawerOverrides: Partial<RightDrawerContextValue> = {},
 ) {
   return render(
     <MemoryRouter initialEntries={[route]}>
+      <WorkspaceNavigationProbe />
       <WorkspaceLocationProbe />
       <OpenSearchContext.Provider value={vi.fn()}>
         <RightDrawerContext.Provider
@@ -430,6 +516,7 @@ describe("ChatPage Workspace route", () => {
   });
 
   afterEach(() => {
+    navigateTo = null;
     useWorkspaceForwardMessageStore.getState().reset();
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
     useMessengerStore.getState().clear();
@@ -1535,10 +1622,10 @@ describe("ChatPage Workspace route", () => {
       .spyOn(URL, "createObjectURL")
       .mockReturnValue("blob:workspace-viewer-image");
     const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
-    captured.downloadWorkspaceFile.mockResolvedValueOnce({
+    captured.loadWorkspaceFile.mockResolvedValueOnce({
       blob: new Blob(["image-bytes"], { type: "image/png" }),
       headers: new Headers({
-        "content-disposition": 'attachment; filename="screen.png"',
+        "content-disposition": 'attachment; filename="server-screen.png"',
         "content-length": "11",
       }),
     });
@@ -1553,23 +1640,25 @@ describe("ChatPage Workspace route", () => {
     act(() => {
       captured.messageListProps?.onOpenWorkspaceMedia?.({
         kind: "media",
-        href: "urn:image:44444444-4444-4444-8444-444444444444?name=screen.png&content_type=image%2Fpng",
+        href: "urn:image:44444444-4444-4444-8444-444444444444?name=hint-screen.png&content_type=image%2Fpng",
         fileUuid: "44444444-4444-4444-8444-444444444444",
-        name: "screen.png",
+        name: "hint-screen.png",
         contentType: "image/png",
         mediaKind: "image",
       });
     });
 
     await waitFor(() => {
-      expect(captured.downloadWorkspaceFile).toHaveBeenCalledWith(
+      expect(captured.loadWorkspaceFile).toHaveBeenCalledWith(
         expect.objectContaining({
-          accessToken: "access-token",
-          devTargetOrigin: "https://org-a.example.com",
-          projectId: "project-a",
+          fileUuid: "44444444-4444-4444-8444-444444444444",
           signal: expect.any(AbortSignal),
+          requestOptions: expect.objectContaining({
+            accessToken: "access-token",
+            devTargetOrigin: "https://org-a.example.com",
+            projectId: "project-a",
+          }),
         }),
-        "44444444-4444-4444-8444-444444444444",
       );
     });
     await waitFor(() => {
@@ -1581,11 +1670,11 @@ describe("ChatPage Workspace route", () => {
       url: "blob:workspace-viewer-image",
       type: "image",
       previewUrl: "blob:workspace-viewer-image",
-      alt: "screen.png",
-      downloadFileName: "screen.png",
+      alt: "hint-screen.png",
+      downloadFileName: "server-screen.png",
       workspaceFile: {
         fileUuid: "44444444-4444-4444-8444-444444444444",
-        name: "screen.png",
+        name: "server-screen.png",
         contentType: "image/png",
         objectUrl: "blob:workspace-viewer-image",
       },
@@ -1602,13 +1691,53 @@ describe("ChatPage Workspace route", () => {
     revokeObjectURL.mockRestore();
   });
 
+  it("keeps the file hint when the Workspace response has no filename", async () => {
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:workspace-viewer-fallback");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    captured.loadWorkspaceFile.mockResolvedValueOnce({
+      blob: new Blob(["image-bytes"], { type: "image/png" }),
+      headers: new Headers(),
+    });
+
+    const { unmount } = renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await waitFor(() =>
+      expect(captured.messageListProps?.onOpenWorkspaceMedia).toEqual(expect.any(Function)),
+    );
+    act(() => {
+      captured.messageListProps?.onOpenWorkspaceMedia?.({
+        kind: "media",
+        href: "urn:image:44444444-4444-4444-8444-444444444444?name=hint-screen.png",
+        fileUuid: "44444444-4444-4444-8444-444444444444",
+        name: "hint-screen.png",
+        contentType: "image/png",
+        mediaKind: "image",
+      });
+    });
+
+    await waitFor(() => expect(useMediaViewerStore.getState().isOpen).toBe(true));
+    expect(useMediaViewerStore.getState().items[0]).toMatchObject({
+      downloadFileName: "hint-screen.png",
+      workspaceFile: { name: "hint-screen.png" },
+    });
+
+    unmount();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-viewer-fallback");
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+  });
+
   it("opens a Workspace image gallery in the old media viewer with the clicked index", async () => {
     const createObjectURL = vi
       .spyOn(URL, "createObjectURL")
-      .mockReturnValueOnce("blob:workspace-gallery-first")
-      .mockReturnValueOnce("blob:workspace-gallery-second");
+      .mockReturnValueOnce("blob:workspace-gallery-second")
+      .mockReturnValueOnce("blob:workspace-gallery-first");
     const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
-    captured.downloadWorkspaceFile
+    captured.loadWorkspaceFile
       .mockResolvedValueOnce({
         blob: new Blob(["first-image"], { type: "image/png" }),
         headers: new Headers({
@@ -1675,25 +1804,29 @@ describe("ChatPage Workspace route", () => {
       expect(useMediaViewerStore.getState().isOpen).toBe(true);
     });
 
-    expect(captured.downloadWorkspaceFile).toHaveBeenNthCalledWith(
+    expect(captured.loadWorkspaceFile).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
-        accessToken: "access-token",
-        devTargetOrigin: "https://org-a.example.com",
-        projectId: "project-a",
+        fileUuid: "11111111-1111-4111-8111-111111111111",
         signal: expect.any(AbortSignal),
+        requestOptions: expect.objectContaining({
+          accessToken: "access-token",
+          devTargetOrigin: "https://org-a.example.com",
+          projectId: "project-a",
+        }),
       }),
-      "11111111-1111-4111-8111-111111111111",
     );
-    expect(captured.downloadWorkspaceFile).toHaveBeenNthCalledWith(
+    expect(captured.loadWorkspaceFile).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
-        accessToken: "access-token",
-        devTargetOrigin: "https://org-a.example.com",
-        projectId: "project-a",
+        fileUuid: "22222222-2222-4222-8222-222222222222",
         signal: expect.any(AbortSignal),
+        requestOptions: expect.objectContaining({
+          accessToken: "access-token",
+          devTargetOrigin: "https://org-a.example.com",
+          projectId: "project-a",
+        }),
       }),
-      "22222222-2222-4222-8222-222222222222",
     );
     expect(useMediaViewerStore.getState().currentIndex).toBe(1);
     expect(useMediaViewerStore.getState().items).toMatchObject([
@@ -1728,18 +1861,284 @@ describe("ChatPage Workspace route", () => {
     revokeObjectURL.mockRestore();
   });
 
+  it("opens the gallery after the selected image and fills other slots later", async () => {
+    const firstImage = createDeferred<{ blob: Blob; headers: Headers }>();
+    const selectedImage = createDeferred<{ blob: Blob; headers: Headers }>();
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValueOnce("blob:workspace-gallery-selected")
+      .mockReturnValueOnce("blob:workspace-gallery-first");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    captured.loadWorkspaceFile.mockImplementation((options: { fileUuid: string }) => {
+      return options.fileUuid.startsWith("11111111") ? firstImage.promise : selectedImage.promise;
+    });
+
+    const { unmount } = renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await waitFor(() =>
+      expect(captured.messageListProps?.onOpenWorkspaceMedia).toEqual(expect.any(Function)),
+    );
+    act(() => {
+      captured.messageListProps?.onOpenWorkspaceMedia?.(
+        {
+          kind: "media",
+          href: "urn:image:22222222-2222-4222-8222-222222222222?name=second.png",
+          fileUuid: "22222222-2222-4222-8222-222222222222",
+          name: "second.png",
+          contentType: "image/png",
+          mediaKind: "image",
+        },
+        {
+          startIndex: 1,
+          items: [
+            {
+              messageUuid: "workspace-gallery-first-message",
+              file: {
+                kind: "media",
+                href: "urn:image:11111111-1111-4111-8111-111111111111?name=first.png",
+                fileUuid: "11111111-1111-4111-8111-111111111111",
+                name: "first.png",
+                contentType: "image/png",
+                mediaKind: "image",
+              },
+            },
+            {
+              messageUuid: "workspace-gallery-second-message",
+              file: {
+                kind: "media",
+                href: "urn:image:22222222-2222-4222-8222-222222222222?name=second.png",
+                fileUuid: "22222222-2222-4222-8222-222222222222",
+                name: "second.png",
+                contentType: "image/png",
+                mediaKind: "image",
+              },
+            },
+          ],
+        },
+      );
+    });
+
+    await waitFor(() => expect(captured.loadWorkspaceFile).toHaveBeenCalledTimes(2));
+    selectedImage.resolve({
+      blob: new Blob(["selected-image"], { type: "image/png" }),
+      headers: new Headers({
+        "content-disposition": 'attachment; filename="server-second.png"',
+      }),
+    });
+
+    await waitFor(() => {
+      expect(useMediaViewerStore.getState().isOpen).toBe(true);
+      expect(useMediaViewerStore.getState().items[1]?.url).toBe("blob:workspace-gallery-selected");
+      expect(useMediaViewerStore.getState().items[1]?.downloadFileName).toBe("server-second.png");
+      expect(useMediaViewerStore.getState().items[1]?.workspaceFile?.name).toBe(
+        "server-second.png",
+      );
+    });
+    expect(useMediaViewerStore.getState().items[0]?.url).toBe("");
+    expect(useMediaViewerStore.getState().items[0]?.downloadFileName).toBe("first.png");
+    expect(useMediaViewerStore.getState().items[0]?.workspaceFile?.name).toBe("first.png");
+
+    firstImage.resolve({
+      blob: new Blob(["first-image"], { type: "image/png" }),
+      headers: new Headers({
+        "content-disposition": 'attachment; filename="server-first.png"',
+      }),
+    });
+    await waitFor(() => {
+      expect(useMediaViewerStore.getState().items[0]?.url).toBe("blob:workspace-gallery-first");
+      expect(useMediaViewerStore.getState().items[0]?.downloadFileName).toBe("server-first.png");
+      expect(useMediaViewerStore.getState().items[0]?.workspaceFile?.name).toBe("server-first.png");
+    });
+
+    unmount();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-gallery-selected");
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-gallery-first");
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+  });
+
+  it("drops a stale Workspace gallery result after the conversation changes", async () => {
+    const staleImage = createDeferred<{ blob: Blob; headers: Headers }>();
+    const createObjectURL = vi.spyOn(URL, "createObjectURL");
+    const staleFile = {
+      kind: "media" as const,
+      href: "urn:image:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa?name=stale.png",
+      fileUuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      name: "stale.png",
+      contentType: "image/png",
+      mediaKind: "image" as const,
+    };
+    captured.loadWorkspaceFile.mockReturnValue(staleImage.promise);
+
+    const { unmount } = renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await waitFor(() =>
+      expect(captured.messageListProps?.onOpenWorkspaceMedia).toEqual(expect.any(Function)),
+    );
+    act(() => {
+      captured.messageListProps?.onOpenWorkspaceMedia?.(staleFile);
+    });
+    await waitFor(() => expect(captured.loadWorkspaceFile).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${DIRECT_TOPIC_UUID}`);
+    });
+    await act(async () => {
+      staleImage.resolve({
+        blob: new Blob(["stale-image"], { type: "image/png" }),
+        headers: new Headers(),
+      });
+      await staleImage.promise;
+    });
+
+    expect(useMediaViewerStore.getState().isOpen).toBe(false);
+    expect(createObjectURL).not.toHaveBeenCalled();
+
+    unmount();
+    createObjectURL.mockRestore();
+  });
+
+  it("drops a stale Workspace gallery result after the runtime changes", async () => {
+    const staleImage = createDeferred<{ blob: Blob; headers: Headers }>();
+    const createObjectURL = vi.spyOn(URL, "createObjectURL");
+    const staleFile = {
+      kind: "media" as const,
+      href: "urn:image:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb?name=stale.png",
+      fileUuid: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      name: "stale.png",
+      contentType: "image/png",
+      mediaKind: "image" as const,
+    };
+    captured.loadWorkspaceFile.mockReturnValue(staleImage.promise);
+
+    const { unmount } = renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await waitFor(() =>
+      expect(captured.messageListProps?.onOpenWorkspaceMedia).toEqual(expect.any(Function)),
+    );
+    act(() => {
+      captured.messageListProps?.onOpenWorkspaceMedia?.(staleFile);
+    });
+    await waitFor(() => expect(captured.loadWorkspaceFile).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      const nextSession = {
+        ...createSession(),
+        accessToken: "next-access-token",
+        runtimeGeneration: 2,
+      };
+      useWorkspaceAuthStore.setState({
+        sessions: [nextSession],
+        currentAccountId: nextSession.accountId,
+        runtimeGeneration: 2,
+      });
+    });
+    await act(async () => {
+      staleImage.resolve({
+        blob: new Blob(["stale-image"], { type: "image/png" }),
+        headers: new Headers(),
+      });
+      await staleImage.promise;
+    });
+
+    expect(useMediaViewerStore.getState().isOpen).toBe(false);
+    expect(createObjectURL).not.toHaveBeenCalled();
+
+    unmount();
+    createObjectURL.mockRestore();
+  });
+
+  it("ignores an old gallery result after a new gallery opens", async () => {
+    const oldImage = createDeferred<{ blob: Blob; headers: Headers }>();
+    const newImage = createDeferred<{ blob: Blob; headers: Headers }>();
+    const createObjectURL = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:workspace-gallery-new");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const oldFile = {
+      kind: "media" as const,
+      href: "urn:image:cccccccc-cccc-4ccc-8ccc-cccccccccccc?name=old.png",
+      fileUuid: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      name: "old.png",
+      contentType: "image/png",
+      mediaKind: "image" as const,
+    };
+    const newFile = {
+      kind: "media" as const,
+      href: "urn:image:dddddddd-dddd-4ddd-8ddd-dddddddddddd?name=new.png",
+      fileUuid: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      name: "new.png",
+      contentType: "image/png",
+      mediaKind: "image" as const,
+    };
+    captured.loadWorkspaceFile.mockImplementation((options: { fileUuid: string }) =>
+      options.fileUuid === oldFile.fileUuid ? oldImage.promise : newImage.promise,
+    );
+
+    const { unmount } = renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await waitFor(() =>
+      expect(captured.messageListProps?.onOpenWorkspaceMedia).toEqual(expect.any(Function)),
+    );
+    act(() => {
+      captured.messageListProps?.onOpenWorkspaceMedia?.(oldFile);
+    });
+    await waitFor(() => expect(captured.loadWorkspaceFile).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      captured.messageListProps?.onOpenWorkspaceMedia?.(newFile);
+    });
+    await waitFor(() => expect(captured.loadWorkspaceFile).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      oldImage.resolve({
+        blob: new Blob(["old-image"], { type: "image/png" }),
+        headers: new Headers(),
+      });
+      await oldImage.promise;
+    });
+    expect(useMediaViewerStore.getState().isOpen).toBe(false);
+    expect(createObjectURL).not.toHaveBeenCalled();
+
+    await act(async () => {
+      newImage.resolve({
+        blob: new Blob(["new-image"], { type: "image/png" }),
+        headers: new Headers(),
+      });
+      await newImage.promise;
+    });
+    await waitFor(() => {
+      expect(useMediaViewerStore.getState().isOpen).toBe(true);
+      expect(useMediaViewerStore.getState().items[0]?.workspaceFile?.fileUuid).toBe(
+        newFile.fileUuid,
+      );
+    });
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+
+    unmount();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:workspace-gallery-new");
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
+  });
+
   it("aborts an in-flight Workspace viewer fetch when the runtime context changes", async () => {
     let viewerSignal: AbortSignal | undefined;
-    captured.downloadWorkspaceFile.mockImplementation(
-      (requestOptions: { signal?: AbortSignal }) => {
-        viewerSignal = requestOptions.signal;
-        return new Promise((_, reject) => {
-          requestOptions.signal?.addEventListener("abort", () => {
-            reject(new DOMException("Aborted", "AbortError"));
-          });
+    captured.loadWorkspaceFile.mockImplementation((requestOptions: { signal?: AbortSignal }) => {
+      viewerSignal = requestOptions.signal;
+      return new Promise((_, reject) => {
+        requestOptions.signal?.addEventListener("abort", () => {
+          reject(new DOMException("Aborted", "AbortError"));
         });
-      },
-    );
+      });
+    });
 
     renderWorkspaceChatPageWithShellContexts(
       `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
@@ -1760,7 +2159,7 @@ describe("ChatPage Workspace route", () => {
     });
 
     await waitFor(() => {
-      expect(captured.downloadWorkspaceFile).toHaveBeenCalledTimes(1);
+      expect(captured.loadWorkspaceFile).toHaveBeenCalledTimes(1);
       expect(viewerSignal).toBeInstanceOf(AbortSignal);
       expect(viewerSignal?.aborted).toBe(false);
     });

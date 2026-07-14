@@ -32,6 +32,7 @@ export interface MediaViewerState {
   items: MediaItem[];
 
   open: (items: MediaItem[], startIndex?: number) => void;
+  replaceItem: (index: number, item: MediaItem) => void;
   close: () => void;
   next: () => void;
   prev: () => void;

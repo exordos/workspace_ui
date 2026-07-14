@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDownloadStore } from "~/entities/download/download.model";
 import { compareWorkspaceMessages } from "~/entities/message/message-workspace-order.lib";
@@ -58,7 +58,11 @@ import { downloadWorkspaceFile, uploadWorkspaceFile } from "~/shared/api/messeng
 import { useOpenSearch } from "~/shared/contexts/open-search";
 import { useRightDrawer } from "~/shared/contexts/right-drawer";
 import { createLogger } from "~/shared/lib/logger";
-import { loadWorkspaceFile } from "~/shared/lib/workspace-file-loader.lib";
+import { AUTH_IMAGE_PLACEHOLDER_SRC } from "~/shared/lib/media-display-url.lib";
+import {
+  createWorkspaceFileResourceCache,
+  type WorkspaceFileResourceCache,
+} from "~/shared/lib/workspace-file-loader.lib";
 import type {
   WorkspaceMessageFileReference,
   WorkspaceMessageMentionResolution,
@@ -102,6 +106,58 @@ interface WorkspaceChatPageProps {
   route: WorkspaceMessengerRouteMatch | null;
 }
 
+type WorkspaceMediaLoadResult =
+  | {
+      file: WorkspaceMessageFileReference;
+      resource: WorkspaceFilePreviewResource;
+    }
+  | { file: WorkspaceMessageFileReference; error: unknown };
+
+interface WorkspaceFilePreviewResource {
+  blob: Blob;
+  headers: Headers;
+}
+
+type WorkspaceMediaDownloadHandler = (file: { fileUuid: string; name?: string }) => void;
+
+interface WorkspaceMediaOpenScope {
+  ownerKey: string | null;
+  runtimeGeneration: number | null;
+  conversationId: MessengerConversationId | null;
+}
+
+function buildWorkspaceViewerItem(
+  mediaFile: WorkspaceMessageFileReference,
+  blob: Blob | undefined,
+  objectUrl: string | undefined,
+  onDownload: WorkspaceMediaDownloadHandler,
+  contentDisposition?: string | null,
+): MediaItem {
+  const fileName = deriveWorkspaceDownloadFileName({
+    fileUuid: mediaFile.fileUuid,
+    fileNameHint: mediaFile.name,
+    contentDisposition,
+  });
+  const blobContentType = blob?.type.trim() ?? "";
+  const contentType =
+    mediaFile.contentType ?? (blobContentType.length > 0 ? blobContentType : undefined);
+
+  return {
+    url: objectUrl ?? "",
+    type: "image",
+    previewUrl: objectUrl ?? AUTH_IMAGE_PLACEHOLDER_SRC,
+    alt: mediaFile.name ?? fileName,
+    downloadFileName: fileName,
+    workspaceFile: {
+      fileUuid: mediaFile.fileUuid,
+      name: fileName,
+      ...(contentType == null ? {} : { contentType }),
+      ...(objectUrl == null ? {} : { objectUrl }),
+      onDownload,
+    },
+  };
+}
+
 const EMPTY_MESSAGES: MessengerMessage[] = [];
 const EMPTY_OUTGOING_MESSAGES: MessengerOutgoingMessage[] = [];
 const EMPTY_OUTGOING_MESSAGE_LOCAL_IDS: readonly string[] = [];
@@ -111,63 +167,6 @@ const WORKSPACE_COMPOSER_EDIT_SESSION_ID = 1;
 const workspacePreviewLoaderLog = createLogger("chat-page:workspace-preview-loader");
 
 const noop = () => undefined;
-
-interface WorkspacePreviewBlobCacheEntry {
-  abortController: AbortController;
-  promise: Promise<Blob>;
-}
-
-function workspacePreviewBlobCacheKey(
-  ownerKey: string,
-  runtimeGeneration: number,
-  fileUuid: string,
-): string {
-  return JSON.stringify([ownerKey, runtimeGeneration, fileUuid]);
-}
-
-function createWorkspacePreviewAbortError(): DOMException {
-  return new DOMException("Workspace preview load aborted", "AbortError");
-}
-
-function waitForWorkspacePreviewBlob(promise: Promise<Blob>, signal: AbortSignal): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    const handleAbort = () => {
-      signal.removeEventListener("abort", handleAbort);
-      reject(createWorkspacePreviewAbortError());
-    };
-
-    signal.addEventListener("abort", handleAbort, { once: true });
-    if (signal.aborted) {
-      handleAbort();
-    }
-
-    promise.then(
-      (blob) => {
-        signal.removeEventListener("abort", handleAbort);
-        if (signal.aborted) {
-          reject(createWorkspacePreviewAbortError());
-          return;
-        }
-        resolve(blob);
-      },
-      (error: unknown) => {
-        signal.removeEventListener("abort", handleAbort);
-        if (signal.aborted) {
-          reject(createWorkspacePreviewAbortError());
-          return;
-        }
-        reject(error instanceof Error ? error : new Error("Workspace preview load failed"));
-      },
-    );
-  });
-}
-
-function clearWorkspacePreviewBlobCache(cache: Map<string, WorkspacePreviewBlobCacheEntry>): void {
-  for (const entry of cache.values()) {
-    entry.abortController.abort();
-  }
-  cache.clear();
-}
 
 function normalizeWorkspaceMentionLookupText(value: string | null | undefined): string {
   return (value ?? "").trim().replace(/^@+/, "").toLowerCase();
@@ -299,9 +298,16 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   const actionAbortControllersRef = useRef<Set<AbortController>>(new Set());
   const uploadAbortControllerRef = useRef<AbortController | null>(null);
   const pendingWorkspaceJitsiHeaderCallRef = useRef(false);
-  const workspacePreviewBlobCacheRef = useRef<Map<string, WorkspacePreviewBlobCacheEntry>>(
-    new Map(),
+  const workspaceFileResourceCache = useMemo<WorkspaceFileResourceCache>(
+    () => createWorkspaceFileResourceCache(),
+    [],
   );
+  const workspaceMediaOpenGenerationRef = useRef(0);
+  const workspaceMediaOpenScopeRef = useRef<WorkspaceMediaOpenScope>({
+    ownerKey: null,
+    runtimeGeneration: null,
+    conversationId: null,
+  });
   const openWorkspaceForward = useWorkspaceForwardMessageStore((state) => state.open);
   const routeSelection = useMemo(
     () => selectMessengerConversationFromWorkspaceRoute(route),
@@ -365,6 +371,18 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     ownerKey == null ? null : (state.meetUrlsByOwnerKey[ownerKey] ?? null),
   );
   const conversationId = selection.status === "conversation" ? selection.conversationId : null;
+  const workspaceMediaOpenScope = useMemo<WorkspaceMediaOpenScope>(
+    () => ({
+      ownerKey,
+      runtimeGeneration: runtimeContext?.runtimeGeneration ?? null,
+      conversationId,
+    }),
+    [conversationId, ownerKey, runtimeContext?.runtimeGeneration],
+  );
+  // Keep the current scope available before passive effect cleanup runs.
+  useLayoutEffect(() => {
+    workspaceMediaOpenScopeRef.current = workspaceMediaOpenScope;
+  }, [workspaceMediaOpenScope]);
   const selectionMode = selectedMessageUuids.size > 0;
   const streamUuid = selection.status === "conversation" ? selection.streamUuid : null;
   const topicUuid =
@@ -662,9 +680,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       }
       pendingReadUpToMessageUuidRef.current = null;
       lastReadUpToMessageUuidRef.current = null;
-      clearWorkspacePreviewBlobCache(workspacePreviewBlobCacheRef.current);
+      workspaceMediaOpenGenerationRef.current += 1;
+      workspaceFileResourceCache.clear();
     };
-  }, []);
+  }, [workspaceFileResourceCache]);
 
   useEffect(() => {
     setUploadProgress(null);
@@ -682,9 +701,10 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       }
       pendingReadUpToMessageUuidRef.current = null;
       lastReadUpToMessageUuidRef.current = null;
-      clearWorkspacePreviewBlobCache(workspacePreviewBlobCacheRef.current);
+      workspaceMediaOpenGenerationRef.current += 1;
+      workspaceFileResourceCache.clear();
     };
-  }, [conversationId, runtimeContext]);
+  }, [conversationId, runtimeContext, workspaceFileResourceCache]);
 
   useEffect(() => {
     setPendingDeleteMessageUuid(null);
@@ -1324,8 +1344,11 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     [runWorkspaceAction, runtimeContext],
   );
 
-  const handleLoadWorkspaceFilePreview = useCallback(
-    async (file: WorkspaceMessageFileReference, signal: AbortSignal): Promise<Blob> => {
+  const handleLoadWorkspaceFileResource = useCallback(
+    async (
+      file: WorkspaceMessageFileReference,
+      signal: AbortSignal,
+    ): Promise<WorkspaceFilePreviewResource> => {
       if (runtimeContext == null) {
         throw new Error(t("workspaceMessenger.runtimeUnavailable"));
       }
@@ -1335,55 +1358,31 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         throw new Error(t("workspaceMessenger.fileDownloadFailed"));
       }
 
-      const previewOwnerKey = workspaceRuntimeOwnerKey(runtimeContext);
-      const cacheKey = workspacePreviewBlobCacheKey(
-        previewOwnerKey,
-        runtimeContext.runtimeGeneration,
+      const result = await workspaceFileResourceCache.load({
+        ownerKey: workspaceRuntimeOwnerKey(runtimeContext),
+        runtimeGeneration: runtimeContext.runtimeGeneration,
         fileUuid,
-      );
-      let cacheEntry = workspacePreviewBlobCacheRef.current.get(cacheKey);
-      if (cacheEntry == null) {
-        workspacePreviewLoaderLog.debug("preview cache miss", {
-          fileUuid,
-          contentType: file.contentType ?? null,
-        });
-        const previewAbortController = new AbortController();
-        const promise = loadWorkspaceFile({
-          ownerKey: previewOwnerKey,
-          runtimeGeneration: runtimeContext.runtimeGeneration,
-          fileUuid,
-          requestOptions: buildMessengerRequestOptions(runtimeContext),
-          signal: previewAbortController.signal,
-        })
-          .then((result) => {
-            const normalizedBlob = normalizeWorkspacePreviewBlob(result.blob, file.contentType);
-            workspacePreviewLoaderLog.debug("preview blob fetched", {
-              fileUuid,
-              responseType: result.blob.type || null,
-              normalizedType: normalizedBlob.type,
-              size: normalizedBlob.size,
-            });
-            return normalizedBlob;
-          })
-          .catch((error: unknown) => {
-            if (workspacePreviewBlobCacheRef.current.get(cacheKey)?.promise === promise) {
-              workspacePreviewBlobCacheRef.current.delete(cacheKey);
-            }
-            workspacePreviewLoaderLog.warn("preview blob fetch failed", {
-              fileUuid,
-              error: error instanceof Error ? error.name : "unknown",
-            });
-            throw error;
-          });
-        cacheEntry = { abortController: previewAbortController, promise };
-        workspacePreviewBlobCacheRef.current.set(cacheKey, cacheEntry);
-      } else {
-        workspacePreviewLoaderLog.debug("preview cache hit", { fileUuid });
-      }
-
-      return waitForWorkspacePreviewBlob(cacheEntry.promise, signal);
+        requestOptions: buildMessengerRequestOptions(runtimeContext),
+        signal,
+      });
+      const normalizedBlob = normalizeWorkspacePreviewBlob(result.blob, file.contentType);
+      workspacePreviewLoaderLog.debug("preview blob loaded", {
+        fileUuid,
+        responseType: result.blob.type || null,
+        normalizedType: normalizedBlob.type,
+        size: normalizedBlob.size,
+      });
+      return { blob: normalizedBlob, headers: result.headers };
     },
-    [runtimeContext],
+    [runtimeContext, workspaceFileResourceCache],
+  );
+
+  const handleLoadWorkspaceFilePreview = useCallback(
+    async (file: WorkspaceMessageFileReference, signal: AbortSignal): Promise<Blob> => {
+      const resource = await handleLoadWorkspaceFileResource(file, signal);
+      return resource.blob;
+    },
+    [handleLoadWorkspaceFileResource],
   );
 
   const handleOpenWorkspaceMedia = useCallback(
@@ -1400,72 +1399,102 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         return;
       }
 
+      const openGeneration = workspaceMediaOpenGenerationRef.current + 1;
+      workspaceMediaOpenGenerationRef.current = openGeneration;
+      const requestScope = workspaceMediaOpenScope;
+      const isCurrentMediaOpen = (signal?: AbortSignal): boolean => {
+        const currentScope = workspaceMediaOpenScopeRef.current;
+        return (
+          signal?.aborted !== true &&
+          workspaceMediaOpenGenerationRef.current === openGeneration &&
+          currentScope.ownerKey === requestScope.ownerKey &&
+          currentScope.runtimeGeneration === requestScope.runtimeGeneration &&
+          currentScope.conversationId === requestScope.conversationId
+        );
+      };
+
       void runWorkspaceAction(async (signal) => {
-        const createdObjectUrls: string[] = [];
-        try {
-          const items: MediaItem[] = [];
+        const loadResults: Promise<WorkspaceMediaLoadResult>[] = mediaOpen.files.map((mediaFile) =>
+          handleLoadWorkspaceFileResource(mediaFile, signal)
+            .then((resource): WorkspaceMediaLoadResult => ({ file: mediaFile, resource }))
+            .catch((error: unknown): WorkspaceMediaLoadResult => ({ file: mediaFile, error })),
+        );
+        const selectedResult = await loadResults[mediaOpen.startIndex];
+        if (selectedResult == null || "error" in selectedResult) {
+          throw selectedResult?.error instanceof Error
+            ? selectedResult.error
+            : new Error(t("workspaceMessenger.mediaViewerUnsupported"));
+        }
 
-          for (const mediaFile of mediaOpen.files) {
-            const result = await downloadWorkspaceFile(
-              buildMessengerRequestOptions(runtimeContext, undefined, signal),
-              mediaFile.fileUuid,
-            );
-            if (signal.aborted) {
+        if (!isCurrentMediaOpen(signal)) {
+          return;
+        }
+
+        const pendingItems = mediaOpen.files.map((mediaFile) =>
+          buildWorkspaceViewerItem(mediaFile, undefined, undefined, handleDownloadFile),
+        );
+        const selectedObjectUrl = URL.createObjectURL(selectedResult.resource.blob);
+        pendingItems[mediaOpen.startIndex] = buildWorkspaceViewerItem(
+          selectedResult.file,
+          selectedResult.resource.blob,
+          selectedObjectUrl,
+          handleDownloadFile,
+          selectedResult.resource.headers.get("content-disposition"),
+        );
+        if (!isCurrentMediaOpen(signal)) {
+          URL.revokeObjectURL(selectedObjectUrl);
+          return;
+        }
+        useMediaViewerStore.getState().open(pendingItems, mediaOpen.startIndex);
+
+        const isGallerySlotActive = (index: number, fileUuid: string): boolean => {
+          const viewerState = useMediaViewerStore.getState();
+          return (
+            isCurrentMediaOpen(signal) &&
+            viewerState.isOpen &&
+            viewerState.items[index]?.workspaceFile?.fileUuid === fileUuid
+          );
+        };
+
+        for (let index = 0; index < loadResults.length; index += 1) {
+          if (index === mediaOpen.startIndex) {
+            continue;
+          }
+
+          const loadResult = loadResults[index];
+          if (loadResult == null) {
+            continue;
+          }
+
+          void loadResult.then((result) => {
+            if ("error" in result || !isGallerySlotActive(index, result.file.fileUuid)) {
               return;
             }
 
-            const objectUrl = URL.createObjectURL(result.blob);
-            createdObjectUrls.push(objectUrl);
-            if (signal.aborted) {
+            const objectUrl = URL.createObjectURL(result.resource.blob);
+            if (!isGallerySlotActive(index, result.file.fileUuid)) {
+              URL.revokeObjectURL(objectUrl);
               return;
             }
 
-            const fileName = deriveWorkspaceDownloadFileName({
-              fileUuid: mediaFile.fileUuid,
-              fileNameHint: mediaFile.name,
-              contentDisposition: result.headers.get("content-disposition"),
-            });
-            const blobContentType = result.blob.type.trim();
-            const contentType =
-              mediaFile.contentType ?? (blobContentType.length > 0 ? blobContentType : undefined);
-            const workspaceFile =
-              contentType == null
-                ? {
-                    fileUuid: mediaFile.fileUuid,
-                    name: fileName,
-                    objectUrl,
-                    onDownload: handleDownloadFile,
-                  }
-                : {
-                    fileUuid: mediaFile.fileUuid,
-                    name: fileName,
-                    contentType,
-                    objectUrl,
-                    onDownload: handleDownloadFile,
-                  };
-
-            items.push({
-              url: objectUrl,
-              type: "image",
-              previewUrl: objectUrl,
-              alt: mediaFile.name ?? fileName,
-              downloadFileName: fileName,
-              workspaceFile,
-            });
-          }
-
-          if (items.length === 0 || signal.aborted) {
-            return;
-          }
-
-          useMediaViewerStore.getState().open(items, mediaOpen.startIndex);
-          createdObjectUrls.length = 0;
-        } finally {
-          for (const objectUrl of createdObjectUrls) {
-            URL.revokeObjectURL(objectUrl);
-          }
+            useMediaViewerStore
+              .getState()
+              .replaceItem(
+                index,
+                buildWorkspaceViewerItem(
+                  result.file,
+                  result.resource.blob,
+                  objectUrl,
+                  handleDownloadFile,
+                  result.resource.headers.get("content-disposition"),
+                ),
+              );
+          });
         }
       }).catch((error) => {
+        if (!isCurrentMediaOpen()) {
+          return;
+        }
         if (!(error instanceof DOMException && error.name === "AbortError")) {
           setActionError(
             normalizeWorkspaceActionError(error, t("workspaceMessenger.mediaViewerUnsupported")),
@@ -1473,7 +1502,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         }
       });
     },
-    [handleDownloadFile, runWorkspaceAction, runtimeContext],
+    [
+      handleDownloadFile,
+      handleLoadWorkspaceFileResource,
+      runWorkspaceAction,
+      runtimeContext,
+      workspaceMediaOpenScope,
+    ],
   );
 
   const handleOpenUnsupportedFilePreview = useCallback(() => {

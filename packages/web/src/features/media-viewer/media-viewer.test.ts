@@ -64,6 +64,107 @@ describe("useMediaViewerStore", () => {
     expect(useMediaViewerStore.getState().isOpen).toBe(false);
   });
 
+  // --- replaceItem ---
+
+  it("replaces an item without changing the current index", () => {
+    const placeholder: MediaItem = { url: "blob:placeholder", type: "image" };
+    const ready: MediaItem = {
+      url: "blob:ready",
+      type: "image",
+      alt: "Loaded image",
+      workspaceFile: { fileUuid: "55555555-5555-4555-8555-555555555555" },
+    };
+    useMediaViewerStore.getState().open([placeholder, ITEMS[1]!], 1);
+
+    useMediaViewerStore.getState().replaceItem(0, ready);
+
+    const state = useMediaViewerStore.getState();
+    expect(state.items[0]).toBe(ready);
+    expect(state.currentIndex).toBe(1);
+  });
+
+  it("does nothing for an invalid index or a closed viewer", () => {
+    const items = [ITEMS[0]!, ITEMS[1]!];
+    useMediaViewerStore.getState().open(items, 1);
+    const stateBefore = useMediaViewerStore.getState();
+
+    useMediaViewerStore.getState().replaceItem(-1, ITEMS[2]!);
+    useMediaViewerStore.getState().replaceItem(items.length, ITEMS[2]!);
+
+    const stateAfter = useMediaViewerStore.getState();
+    expect(stateAfter.items).toBe(stateBefore.items);
+    expect(stateAfter.currentIndex).toBe(1);
+
+    useMediaViewerStore.getState().close();
+    useMediaViewerStore.getState().replaceItem(0, ITEMS[2]!);
+    expect(useMediaViewerStore.getState().items).toHaveLength(0);
+  });
+
+  it("releases the replaced Workspace object URL when it is no longer used", () => {
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const oldItem: MediaItem = {
+      url: "blob:old",
+      type: "image",
+      workspaceFile: {
+        fileUuid: "66666666-6666-4666-8666-666666666666",
+        objectUrl: "blob:old",
+      },
+    };
+    const newItem: MediaItem = {
+      url: "blob:new",
+      type: "image",
+      workspaceFile: {
+        fileUuid: "77777777-7777-4777-8777-777777777777",
+        objectUrl: "blob:new",
+      },
+    };
+    useMediaViewerStore.getState().open([oldItem], 0);
+
+    useMediaViewerStore.getState().replaceItem(0, newItem);
+
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:old");
+    expect(revokeObjectURL).not.toHaveBeenCalledWith("blob:new");
+
+    useMediaViewerStore.getState().close();
+    revokeObjectURL.mockRestore();
+  });
+
+  it("keeps an old object URL that is still used by another item or the replacement", () => {
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const sharedObjectUrl = "blob:shared";
+    const oldItem: MediaItem = {
+      url: sharedObjectUrl,
+      type: "image",
+      workspaceFile: {
+        fileUuid: "88888888-8888-4888-8888-888888888888",
+        objectUrl: sharedObjectUrl,
+      },
+    };
+    const otherItem: MediaItem = {
+      url: "blob:other",
+      type: "image",
+      workspaceFile: {
+        fileUuid: "99999999-9999-4999-8999-999999999999",
+        objectUrl: sharedObjectUrl,
+      },
+    };
+    useMediaViewerStore.getState().open([oldItem, otherItem], 0);
+
+    useMediaViewerStore.getState().replaceItem(0, {
+      url: sharedObjectUrl,
+      type: "image",
+      workspaceFile: {
+        fileUuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        objectUrl: sharedObjectUrl,
+      },
+    });
+
+    expect(revokeObjectURL).not.toHaveBeenCalledWith(sharedObjectUrl);
+
+    useMediaViewerStore.getState().close();
+    revokeObjectURL.mockRestore();
+  });
+
   // --- close ---
 
   it("closes and resets state", () => {

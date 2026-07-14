@@ -25,6 +25,16 @@ interface PendingRequest {
   promise: Promise<MessengerBinaryResult>;
 }
 
+export interface WorkspaceFileResourceCache {
+  load(options: WorkspaceFileLoaderOptions): Promise<MessengerBinaryResult>;
+  clear(): void;
+}
+
+interface ResourceCacheEntry {
+  abortController: AbortController;
+  promise: Promise<MessengerBinaryResult>;
+}
+
 const pendingRequests = new Map<string, PendingRequest>();
 
 function requestKey(options: WorkspaceFileLoaderOptions): string {
@@ -138,4 +148,77 @@ export function loadWorkspaceFile(
       },
     );
   });
+}
+
+function waitForResource(
+  promise: Promise<MessengerBinaryResult>,
+  signal: AbortSignal | undefined,
+): Promise<MessengerBinaryResult> {
+  if (signal == null) {
+    return promise;
+  }
+  if (signal.aborted) {
+    return Promise.reject(abortReason(signal));
+  }
+
+  return new Promise<MessengerBinaryResult>((resolve, reject) => {
+    const onAbort = () => {
+      signal.removeEventListener("abort", onAbort);
+      reject(abortReason(signal));
+    };
+
+    signal.addEventListener("abort", onAbort, { once: true });
+    void promise.then(
+      (result) => {
+        signal.removeEventListener("abort", onAbort);
+        if (signal.aborted) {
+          reject(abortReason(signal));
+          return;
+        }
+        resolve(result);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      },
+    );
+  });
+}
+
+export function createWorkspaceFileResourceCache(): WorkspaceFileResourceCache {
+  const entries = new Map<string, ResourceCacheEntry>();
+
+  return {
+    load(options) {
+      if (options.signal?.aborted) {
+        return Promise.reject(abortReason(options.signal));
+      }
+
+      const key = requestKey(options);
+      let entry = entries.get(key);
+      if (entry == null) {
+        const abortController = new AbortController();
+        const promise = loadWorkspaceFile({
+          ...options,
+          signal: abortController.signal,
+        }).catch((error: unknown) => {
+          if (entries.get(key)?.promise === promise) {
+            entries.delete(key);
+          }
+          throw error instanceof Error ? error : new Error(String(error));
+        });
+        entry = { abortController, promise };
+        entries.set(key, entry);
+      }
+
+      return waitForResource(entry.promise, options.signal);
+    },
+
+    clear() {
+      for (const entry of entries.values()) {
+        entry.abortController.abort();
+      }
+      entries.clear();
+    },
+  };
 }

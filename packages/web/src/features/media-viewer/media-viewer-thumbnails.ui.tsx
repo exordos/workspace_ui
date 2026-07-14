@@ -93,7 +93,8 @@ export const MediaViewerThumbnails: React.FC<MediaViewerThumbnailsProps> = ({
         >
           {items.map((item, index) => (
             <MediaViewerThumbnailItem
-              key={`${item.type}:${item.url}`}
+              // Gallery slots keep their identity while their preview is loading.
+              key={index}
               item={item}
               index={index}
               isActive={index === currentIndex}

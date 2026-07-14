@@ -17,7 +17,7 @@ function releaseWorkspaceObjectUrls(items: readonly MediaItem[]): void {
   const objectUrls = new Set<string>();
   for (const item of items) {
     const objectUrl = item.workspaceFile?.objectUrl;
-    if (objectUrl != null && objectUrl.startsWith("blob:")) {
+    if (objectUrl?.startsWith("blob:") === true) {
       objectUrls.add(objectUrl);
     }
   }
@@ -25,6 +25,17 @@ function releaseWorkspaceObjectUrls(items: readonly MediaItem[]): void {
   for (const objectUrl of objectUrls) {
     URL.revokeObjectURL(objectUrl);
   }
+}
+
+function releaseReplacedWorkspaceObjectUrl(
+  previousItem: MediaItem,
+  nextItems: readonly MediaItem[],
+): void {
+  const objectUrl = previousItem.workspaceFile?.objectUrl;
+  if (objectUrl?.startsWith("blob:") !== true) return;
+  if (nextItems.some((item) => item.workspaceFile?.objectUrl === objectUrl)) return;
+
+  URL.revokeObjectURL(objectUrl);
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -45,6 +56,21 @@ export const useMediaViewerStore = create<MediaViewerState>((set, get) => ({
     logStoreAction("media-viewer", "open", { count: items.length, startIndex: clamped });
     releaseWorkspaceObjectUrls(get().items);
     set({ isOpen: true, items, currentIndex: clamped });
+  },
+
+  replaceItem(index, item) {
+    const { isOpen, items, currentIndex } = get();
+    if (!isOpen || index < 0 || index >= items.length) return;
+
+    const previousItem = items[index];
+    if (previousItem == null) return;
+    if (previousItem === item) return;
+
+    const nextItems = items.slice();
+    nextItems[index] = item;
+    releaseReplacedWorkspaceObjectUrl(previousItem, nextItems);
+    logStoreAction("media-viewer", "replaceItem", { index, currentIndex });
+    set({ items: nextItems });
   },
 
   close() {

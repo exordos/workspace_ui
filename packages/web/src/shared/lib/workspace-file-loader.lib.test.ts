@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { downloadWorkspaceFile } from "~/shared/api/messenger-files.api";
 import type { MessengerBinaryResult } from "~/shared/api/messenger-transport.internal";
-import { loadWorkspaceFile, type WorkspaceFileLoaderOptions } from "./workspace-file-loader.lib";
+import {
+  createWorkspaceFileResourceCache,
+  loadWorkspaceFile,
+  type WorkspaceFileLoaderOptions,
+} from "./workspace-file-loader.lib";
 
 vi.mock("~/shared/api/messenger-files.api", () => ({
   downloadWorkspaceFile: vi.fn(),
@@ -24,7 +28,11 @@ function options(overrides: Partial<WorkspaceFileLoaderOptions> = {}): Workspace
 function result(text = "file"): MessengerBinaryResult {
   return {
     blob: new Blob([text], { type: "text/plain" }),
-    headers: new Headers({ "Content-Type": "text/plain", "X-File": "workspace" }),
+    headers: new Headers({
+      "Content-Disposition": 'attachment; filename="workspace.txt"',
+      "Content-Type": "text/plain",
+      "X-File": "workspace",
+    }),
   };
 }
 
@@ -147,5 +155,72 @@ describe("loadWorkspaceFile", () => {
     await expect(first).rejects.toBe(error);
     await expect(second).rejects.toBe(error);
     expect(downloadMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses a completed result from the resource cache", async () => {
+    const resourceCache = createWorkspaceFileResourceCache();
+    const value = result("cached");
+    downloadMock.mockResolvedValue(value);
+
+    const cached = await resourceCache.load(options());
+    expect(cached).toBe(value);
+
+    expect(downloadMock).toHaveBeenCalledTimes(1);
+    expect(cached.headers.get("content-disposition")).toBe('attachment; filename="workspace.txt"');
+  });
+
+  it.each([
+    ["ownerKey", { ownerKey: "owner-b" }],
+    ["runtimeGeneration", { runtimeGeneration: 2 }],
+    ["fileUuid", { fileUuid: "44444444-4444-4444-8444-444444444444" }],
+  ])("does not reuse a completed result with a different %s", async (_name, override) => {
+    const resourceCache = createWorkspaceFileResourceCache();
+    downloadMock.mockResolvedValue(result());
+
+    await resourceCache.load(options());
+    await resourceCache.load(options(override));
+
+    expect(downloadMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("removes a failed result from the resource cache", async () => {
+    const resourceCache = createWorkspaceFileResourceCache();
+    downloadMock.mockRejectedValueOnce(new Error("download failed")).mockResolvedValue(result());
+
+    await expect(resourceCache.load(options())).rejects.toThrow("download failed");
+    await expect(resourceCache.load(options())).resolves.toBeDefined();
+
+    expect(downloadMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("supports aborting one resource-cache consumer without aborting another", async () => {
+    const resourceCache = createWorkspaceFileResourceCache();
+    const request = deferred<MessengerBinaryResult>();
+    downloadMock.mockReturnValue(request.promise);
+    const firstController = new AbortController();
+    const secondController = new AbortController();
+
+    const first = resourceCache.load(options({ signal: firstController.signal }));
+    const second = resourceCache.load(options({ signal: secondController.signal }));
+    firstController.abort();
+
+    await expect(first).rejects.toMatchObject({ name: "AbortError" });
+    request.resolve(result());
+    await expect(second).resolves.toBeDefined();
+    expect(requestSignal().aborted).toBe(false);
+  });
+
+  it("clears cached resources and aborts their in-flight request", async () => {
+    const resourceCache = createWorkspaceFileResourceCache();
+    const request = deferred<MessengerBinaryResult>();
+    downloadMock.mockReturnValue(request.promise);
+    const consumerController = new AbortController();
+
+    const pending = resourceCache.load(options({ signal: consumerController.signal }));
+    const sharedSignal = requestSignal();
+    resourceCache.clear();
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(sharedSignal.aborted).toBe(true);
   });
 });
