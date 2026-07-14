@@ -253,19 +253,18 @@ describe("prepareProtectedMessageHtml message rendering pipeline", () => {
     expect(html).not.toContain("urn:url:");
   });
 
-  it("rewrites Workspace generated avatar URNs in links and image sources", () => {
-    const userUuid = "55555555-5555-4555-8555-555555555555";
-    const avatarHash = userUuid.replace(/-/g, "");
+  it("rewrites canonical Workspace Gravatar URNs in links and image sources", () => {
+    const avatarHash = "539ee7d79023d65612ec4801a588a6bc";
     const html = renderPreparedMessageHtml(
-      `[avatar](urn:gavatar:${userUuid}) ![avatar](urn:gavatar:${userUuid})`,
+      `[avatar](urn:gravatar:${avatarHash}) ![avatar](urn:gravatar:${avatarHash})`,
     );
 
     expect(html).toContain(`href="https://secure.gravatar.com/avatar/${avatarHash}?`);
     expect(html).toContain(`src="https://secure.gravatar.com/avatar/${avatarHash}?`);
     expect(html).toContain("d=identicon");
     expect(html).toContain("version=");
-    expect(html).not.toContain('href="urn:gavatar:');
-    expect(html).not.toContain('src="urn:gavatar:');
+    expect(html).not.toContain('href="urn:gravatar:');
+    expect(html).not.toContain('src="urn:gravatar:');
   });
 
   it("unwraps external URL URNs in image sources", () => {

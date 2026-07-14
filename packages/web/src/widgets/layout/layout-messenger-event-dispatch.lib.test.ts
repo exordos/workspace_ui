@@ -27,6 +27,7 @@ const TOPIC_UUID_7 = "00000000-0000-4000-8000-000000000007";
 const USER_UUID_1 = "00000000-0000-4000-8000-000000000001";
 const USER_UUID_2 = "00000000-0000-4000-8000-000000000002";
 const USER_UUID_7 = "00000000-0000-4000-8000-000000000007";
+const ALICE_GRAVATAR = "urn:gravatar:c160f8cc69a4f0bf2b0362752353d060";
 
 function buildCtx(
   overrides: {
@@ -242,7 +243,7 @@ describe("dispatchMessengerEvent", () => {
         user_id: USER_UUID_1,
         full_name: "Alice Admin",
         email: "alice@example.com",
-        avatar_url: "urn:gavatar:" + USER_UUID_1,
+        avatar_url: ALICE_GRAVATAR,
         presence: { status: "do_not_disturb" as const, timestamp: 1_788_000_000 },
       };
 

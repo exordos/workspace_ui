@@ -13,10 +13,11 @@ import { buildWorkspaceFileDownloadPath } from "~/shared/lib/workspace-file-urn.
 
 let avatarVersion = 1;
 
-const WORKSPACE_GAVATAR_PREFIX = "urn:gavatar:";
+const WORKSPACE_GRAVATAR_PREFIX = "urn:gravatar:";
 const WORKSPACE_IMAGE_AVATAR_PREFIX = "urn:image:";
 const WORKSPACE_URL_AVATAR_PREFIX = "urn:url:";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const GRAVATAR_HASH_RE = /^(?:[0-9a-f]{32}|[0-9a-f]{64})$/i;
 
 /** Increment the global avatar version. Call after bulk user re-fetch (reconnect, login). */
 export function bumpAvatarVersion(): void {
@@ -28,10 +29,10 @@ export function getAvatarVersion(): number {
 }
 
 function resolveGeneratedAvatarUrn(value: string): string | undefined {
-  if (!value.toLowerCase().startsWith(WORKSPACE_GAVATAR_PREFIX)) return undefined;
-  const userUuid = value.slice(WORKSPACE_GAVATAR_PREFIX.length).trim().toLowerCase();
-  if (!UUID_RE.test(userUuid)) return undefined;
-  const hash = userUuid.replace(/-/g, "");
+  const normalizedValue = value.toLowerCase();
+  if (!normalizedValue.startsWith(WORKSPACE_GRAVATAR_PREFIX)) return undefined;
+  const hash = value.slice(WORKSPACE_GRAVATAR_PREFIX.length).trim().toLowerCase();
+  if (!GRAVATAR_HASH_RE.test(hash)) return undefined;
   return `https://secure.gravatar.com/avatar/${hash}?d=identicon&version=${avatarVersion}&s=500`;
 }
 

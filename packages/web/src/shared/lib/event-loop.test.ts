@@ -53,6 +53,7 @@ const TOPIC_UUID = "00000000-0000-4000-8000-000000000301";
 const FOLDER_UUID = "00000000-0000-0000-0000-000000000002";
 const FOLDER_ITEM_UUID = "00000000-0000-4000-8000-000000000401";
 const STREAM_BINDING_UUID = "00000000-0000-4000-8000-000000000501";
+const ALICE_GRAVATAR = "urn:gravatar:c160f8cc69a4f0bf2b0362752353d060";
 
 class FakeWebSocket {
   static readonly instances: FakeWebSocket[] = [];
@@ -248,7 +249,7 @@ function userUpdatedWorkspaceEvent(epochVersion: number): unknown {
       first_name: "Alice",
       last_name: "Admin",
       email: "alice@example.com",
-      avatar: "urn:gavatar:" + OTHER_UUID,
+      avatar: ALICE_GRAVATAR,
       last_ping_at: "2026-06-24T10:21:00Z",
     },
   };
@@ -423,7 +424,7 @@ describe("Workspace realtime event normalization", () => {
         user_id: OTHER_UUID,
         full_name: "Alice Admin",
         email: "alice@example.com",
-        avatar_url: "urn:gavatar:" + OTHER_UUID,
+        avatar_url: ALICE_GRAVATAR,
         presence: {
           status: "do_not_disturb",
           timestamp: 1782296460,
@@ -760,7 +761,7 @@ describe("Workspace realtime event normalization", () => {
           first_name: "Alice",
           last_name: "Admin",
           email: "alice@example.com",
-          avatar: "urn:gavatar:" + OTHER_UUID,
+          avatar: ALICE_GRAVATAR,
           last_ping_at: "2026-06-24T10:21:00Z",
         },
       },
@@ -774,7 +775,7 @@ describe("Workspace realtime event normalization", () => {
       user: {
         user_id: OTHER_UUID,
         full_name: "Alice Admin",
-        avatar_url: "urn:gavatar:" + OTHER_UUID,
+        avatar_url: ALICE_GRAVATAR,
         presence: {
           status: "active",
           timestamp: 1782296460,

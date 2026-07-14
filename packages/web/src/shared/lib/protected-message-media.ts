@@ -76,7 +76,7 @@ const LANGUAGE_ALIASES: Record<string, string> = {
   tsx: "typescript",
 };
 const DEFAULT_SPOILER_HEADER = "Spoiler";
-const WORKSPACE_GAVATAR_URN_PREFIX = "urn:gavatar:";
+const WORKSPACE_GRAVATAR_URN_PREFIX = "urn:gravatar:";
 const WORKSPACE_ENTITY_URN_RE =
   /^urn:(user|message|stream|topic):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 const WORKSPACE_URL_URN_PREFIX = "urn:url:";
@@ -868,7 +868,10 @@ function parseWorkspaceUrlUrn(value: string): string | null {
 
 function resolveWorkspaceGeneratedAvatarUrn(value: string): string | null {
   const original = normalizeWorkspaceUrnValue(value);
-  if (!original.toLowerCase().startsWith(WORKSPACE_GAVATAR_URN_PREFIX)) return null;
+  const normalized = original.toLowerCase();
+  if (!normalized.startsWith(WORKSPACE_GRAVATAR_URN_PREFIX)) {
+    return null;
+  }
   const url = resolveAvatarUrl(original);
   return url ?? null;
 }

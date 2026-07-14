@@ -17,6 +17,8 @@ const mockGetCurrentInstance = getMockGetCurrentInstance();
 
 const CURRENT_USER_UUID = "00000000-0000-0000-0000-000000000000";
 const PARTNER_UUID = "05c53ea8-4c94-4ec0-8b85-aa16717feaa2";
+const CURRENT_USER_GRAVATAR = "urn:gravatar:e64c7d89f26bd1972efa854d13d7dd61";
+const PARTNER_GRAVATAR = "urn:gravatar:426b189df1e2f359efe6ee90f2d2030f";
 
 function jwtWithClaims(claims: Record<string, unknown>): string {
   const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
@@ -102,7 +104,7 @@ describe("fetchUsers", () => {
           first_name: "Admin",
           last_name: "User",
           email: "admin@example.com",
-          avatar: "urn:gavatar:" + CURRENT_USER_UUID,
+          avatar: CURRENT_USER_GRAVATAR,
           last_ping_at: "2026-06-24T10:21:00Z",
         },
         {
@@ -126,7 +128,7 @@ describe("fetchUsers", () => {
         user_id: CURRENT_USER_UUID,
         full_name: "Admin User",
         email: "admin@example.com",
-        avatar_url: "urn:gavatar:" + CURRENT_USER_UUID,
+        avatar_url: CURRENT_USER_GRAVATAR,
         presence: {
           status: "active",
           timestamp: 1782296460,
@@ -208,7 +210,7 @@ describe("fetchUser", () => {
         status: "active",
         status_emoji: "coffee",
         status_text: "Focusing",
-        avatar: "urn:gavatar:" + PARTNER_UUID,
+        avatar: PARTNER_GRAVATAR,
         last_ping_at: "2026-06-24T10:21:00Z",
       },
       raw: { statusText: "OK" },
@@ -220,7 +222,7 @@ describe("fetchUser", () => {
       user_id: PARTNER_UUID,
       full_name: "charlie",
       email: "charlie@example.com",
-      avatar_url: "urn:gavatar:" + PARTNER_UUID,
+      avatar_url: PARTNER_GRAVATAR,
       presence: {
         status: "active",
         timestamp: 1782296460,
@@ -264,7 +266,7 @@ describe("fetchUsersAvatarMap", () => {
       ok: true,
       status: 200,
       data: [
-        { uuid: CURRENT_USER_UUID, avatar: "urn:gavatar:" + CURRENT_USER_UUID },
+        { uuid: CURRENT_USER_UUID, avatar: CURRENT_USER_GRAVATAR },
         { uuid: PARTNER_UUID, avatar: "", avatar_url: "/avatar/partner.png" },
       ],
       raw: { statusText: "OK" },
@@ -273,7 +275,7 @@ describe("fetchUsersAvatarMap", () => {
     const map = await fetchUsersAvatarMap();
 
     expect(map.size).toBe(2);
-    expect(map.get(CURRENT_USER_UUID)).toBe("urn:gavatar:" + CURRENT_USER_UUID);
+    expect(map.get(CURRENT_USER_UUID)).toBe(CURRENT_USER_GRAVATAR);
     expect(map.get(PARTNER_UUID)).toBe("/avatar/partner.png");
   });
 });

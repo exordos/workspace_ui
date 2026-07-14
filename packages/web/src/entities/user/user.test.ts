@@ -9,6 +9,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { WorkspaceRawMessage } from "~/shared/api/messenger.types";
 import { useUsersStore } from "./user.model";
 
+const ALICE_GRAVATAR = "urn:gravatar:83671ce07bedad98c31b0d238601db4b";
+
 function resetStore() {
   useUsersStore.getState().clear();
 }
@@ -343,7 +345,7 @@ describe("usersStore", () => {
     });
 
     it("returns Workspace avatar URNs for users with backend avatar refs", () => {
-      const avatar = "urn:gavatar:00000000-0000-4000-8000-000000000001";
+      const avatar = ALICE_GRAVATAR;
       useUsersStore.getState().mergeUser({ user_id: 1, full_name: "Alice", avatar_url: avatar });
 
       expect(useUsersStore.getState().getAvatarUrl(1)).toBe(avatar);
@@ -401,14 +403,14 @@ describe("usersStore", () => {
         {
           user_id: 3,
           full_name: "C",
-          avatar_url: "urn:gavatar:00000000-0000-4000-8000-000000000003",
+          avatar_url: ALICE_GRAVATAR,
         },
       ]);
 
       const map = useUsersStore.getState().getAvatarMap();
       expect(map.size).toBe(2);
       expect(map.get("1")).toBe("/a.png");
-      expect(map.get("3")).toBe("urn:gavatar:00000000-0000-4000-8000-000000000003");
+      expect(map.get("3")).toBe(ALICE_GRAVATAR);
     });
   });
 

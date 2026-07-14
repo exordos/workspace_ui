@@ -216,6 +216,14 @@ function contextFromMessage(msg, currentUserId): CurrentChatContext | null;
 
 Users, avatars, presence.
 
+`avatar_url` may contain an ordinary URL or a Workspace avatar URN. The
+canonical generated-avatar form is `urn:gravatar:<hash>`, where `hash` is a
+32-character MD5 or 64-character SHA-256 hexadecimal digest. The avatar
+resolver converts it to `https://secure.gravatar.com/avatar/<hash>` and uses an
+identicon fallback. The misspelled legacy `urn:gavatar:<user-uuid>` form is not
+resolved; backend migration 0095 converts stored legacy data before the updated
+contract is used.
+
 ### Interfaces
 
 ```typescript

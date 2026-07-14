@@ -50,8 +50,8 @@ describe("resolveAvatarUrl", () => {
     expect(url).toContain("_av=");
   });
 
-  it("resolves Workspace generated avatar URNs to Gravatar identicons", () => {
-    const url = resolveAvatarUrl("urn:gavatar:8f0754ce-153c-b919-f0a3-02266c469481", REALM);
+  it("resolves canonical Workspace Gravatar URNs", () => {
+    const url = resolveAvatarUrl("urn:gravatar:8f0754ce153cb919f0a302266c469481", REALM);
     expect(url).toMatch(
       /^https:\/\/secure\.gravatar\.com\/avatar\/8f0754ce153cb919f0a302266c469481\?d=identicon&version=\d+&s=500$/,
     );
@@ -73,6 +73,10 @@ describe("resolveAvatarUrl", () => {
 
   it("returns undefined for invalid Workspace avatar URNs", () => {
     expect(resolveAvatarUrl("urn:gavatar:not-a-uuid", REALM)).toBeUndefined();
+    expect(
+      resolveAvatarUrl("urn:gavatar:8f0754ce-153c-b919-f0a3-02266c469481", REALM),
+    ).toBeUndefined();
+    expect(resolveAvatarUrl("urn:gravatar:not-a-hash", REALM)).toBeUndefined();
     expect(resolveAvatarUrl("urn:url:javascript:alert(1)", REALM)).toBeUndefined();
     expect(resolveAvatarUrl("urn:image:not-a-uuid", REALM)).toBeUndefined();
   });
