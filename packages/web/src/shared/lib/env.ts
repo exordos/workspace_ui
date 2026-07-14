@@ -26,7 +26,7 @@ function optional(key: string, fallback = ""): string {
 }
 
 function cleanOrigin(url: string): string {
-  return url.replace(/\/api\/messenger\/v1\/?$/i, "").replace(/\/+$/, "");
+  return url.replace(/\/+$/, "");
 }
 
 const chatMessagesPersistIndexedDb = (() => {
@@ -75,19 +75,19 @@ export const env = {
   /**
    * Optional default Workspace/Messenger API origin (e.g. `https://chat.example.com`).
    * Dev: optional static Vite `server.proxy` target; multi-org uses instance + `X-Workspace-Dev-Target-Origin`
-   * for `/workspace` and `/user_uploads` fetches.
+   * for `/api/workspace` and `/user_uploads` fetches.
    * Prod: use with `VITE_WORKSPACE_API_BASE_URL` or instance-derived bases when empty.
    */
   WORKSPACE_API_ORIGIN: cleanOrigin(WORKSPACE_API_ORIGIN_RAW),
 
-  /** Messenger gateway Messenger API path (`/api/messenger/v1`). Fixed — same module. */
+  /** Messenger gateway Messenger API path (`/api/workspace/v1/messenger`). Fixed — same module. */
   MESSENGER_API_PATH,
 
-  /** Workspace gateway API path (`/workspace/v1`). Fixed — same module. */
+  /** Workspace gateway API path (`/api/workspace/v1`). Fixed — same module. */
   WORKSPACE_API_PATH,
 
   /**
-   * Path after origin for Workspace REST (`/workspace`). Fixed — see `~/shared/config/workspace-api-layout`.
+   * Path after origin for Workspace REST (`/api/workspace`). Fixed — see `~/shared/config/workspace-api-layout`.
    */
   WORKSPACE_REST_API_PATH,
 
@@ -103,7 +103,8 @@ export const env = {
 
   /**
    * Workspace REST API base (Orval paths are `/v1/...`).
-   * Default: dev `/workspace`, prod `origin` — no extra suffix so URLs are `{base}/v1/...` (→ `/workspace/v1/...`).
+   * Default: dev and prod `/api/workspace`, so Orval `/v1/...` paths resolve to
+   * `/api/workspace/v1/...`.
    * messenger uploads still use {@link WORKSPACE_API_PATH}. Override: `VITE_WORKSPACE_API_BASE_URL` only.
    */
   WORKSPACE_API_BASE: (() => {
@@ -119,7 +120,7 @@ export const env = {
 
   /**
    * Workspace uploads origin for absolute URLs in messages.
-   * e.g. `https://chat.example.com/workspace/v1`
+   * e.g. `https://chat.example.com/api/workspace/v1`
    */
   WORKSPACE_UPLOADS_ORIGIN: (() => {
     const origin = cleanOrigin(WORKSPACE_API_ORIGIN_RAW);

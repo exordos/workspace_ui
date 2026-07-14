@@ -12,7 +12,7 @@ const messengerApi = vi.hoisted(() => ({
 
 vi.mock("~/shared/api/client", () => ({
   messengerApi,
-  getMessengerGatewayApiBaseForCurrentInstance: vi.fn(() => "/api/messenger/v1"),
+  getMessengerGatewayApiBaseForCurrentInstance: vi.fn(() => "/api/workspace/v1/messenger"),
 }));
 
 const folderResponse = {
@@ -68,7 +68,7 @@ describe("manage-folders API", () => {
         updatedAt: "2026-01-01T00:00:00Z",
       });
       expect(messengerApi.postJsonWithBase).toHaveBeenCalledWith(
-        "/api/messenger/v1",
+        "/api/workspace/v1/messenger",
         "/folders/",
         expect.objectContaining({
           title: "Engineering",
@@ -84,7 +84,7 @@ describe("manage-folders API", () => {
       await createFolder({ title: "Red Folder", backgroundColor: 0xff0000 });
 
       expect(messengerApi.postJsonWithBase).toHaveBeenCalledWith(
-        "/api/messenger/v1",
+        "/api/workspace/v1/messenger",
         "/folders/",
         expect.objectContaining({
           title: "Red Folder",
@@ -126,13 +126,13 @@ describe("manage-folders API", () => {
       await updateFolder("folder-1", { title: "Renamed" });
 
       expect(messengerApi.getWithBase).toHaveBeenCalledWith(
-        "/api/messenger/v1",
+        "/api/workspace/v1/messenger",
         "/folders/folder-1",
         undefined,
         undefined,
       );
       expect(messengerApi.putJsonWithBase).toHaveBeenCalledWith(
-        "/api/messenger/v1",
+        "/api/workspace/v1/messenger",
         "/folders/folder-1",
         expect.objectContaining({
           title: "Renamed",
@@ -165,7 +165,7 @@ describe("manage-folders API", () => {
       await updateFolder("folder-1", { backgroundColor: 0x00ff00 });
 
       expect(messengerApi.putJsonWithBase).toHaveBeenCalledWith(
-        "/api/messenger/v1",
+        "/api/workspace/v1/messenger",
         "/folders/folder-1",
         expect.objectContaining({
           background_color_value: 0x00ff00,
@@ -231,7 +231,7 @@ describe("manage-folders API", () => {
 
       expect(result).toBe(true);
       expect(messengerApi.deleteWithBase).toHaveBeenCalledWith(
-        "/api/messenger/v1",
+        "/api/workspace/v1/messenger",
         "/folders/folder-1",
       );
     });

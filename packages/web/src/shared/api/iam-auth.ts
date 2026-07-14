@@ -17,7 +17,7 @@ import { logAction } from "~/shared/lib/logger";
 const IAM_DEFAULT_CLIENT = "default";
 const IAM_GRANT_TYPE_PASSWORD_LOGIN = "login+password";
 const IAM_GRANT_TYPE_REFRESH_TOKEN = "refresh_token";
-const IAM_TOKEN_SCOPE = "openid email profile project:fe02e55d-4548-4b3e-a175-fcae928f41b2";
+const IAM_TOKEN_SCOPE = "openid email profile project:default";
 const IAM_TOKEN_TTL_SECONDS = 60 * 60;
 const IAM_REFRESH_TOKEN_TTL_SECONDS = 2 * 24 * 60 * 60;
 const IAM_OTP_HEADER = "X-OTP";

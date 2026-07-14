@@ -120,6 +120,21 @@ body {
   padding-left: 8px;
 }
 
+/* Mail preview — HTML quotes (blockquote, gmail_quote, Outlook borders) */
+.mail-body blockquote,
+.mail-body .gmail_quote,
+.mail-body .gmail_extra {
+  border-left: 2px solid var(--color-border-subtle);
+  color: var(--color-text-muted);
+  margin: 8px 0;
+  padding-left: 12px;
+}
+
+.mail-body blockquote p,
+.mail-body .gmail_quote p {
+  margin: 0.25rem 0;
+}
+
 /* ── Workspace spoiler blocks ─────────────────────────────── */
 
 .message-body .spoiler-block {

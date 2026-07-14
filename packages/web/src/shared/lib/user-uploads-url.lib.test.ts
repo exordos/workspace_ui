@@ -11,20 +11,20 @@ import {
 } from "./user-uploads-url.lib";
 
 describe("collapseDuplicateWorkspaceV1InUrl", () => {
-  it("collapses repeated /workspace/v1 before user_uploads", () => {
+  it("collapses repeated /api/workspace/v1 before user_uploads", () => {
     expect(
       collapseDuplicateWorkspaceV1InUrl(
-        "https://sys.t/workspace/v1/workspace/v1/user_uploads/1/a.png",
+        "https://sys.t/api/workspace/v1/api/workspace/v1/user_uploads/1/a.png",
       ),
-    ).toBe("https://sys.t/workspace/v1/user_uploads/1/a.png");
+    ).toBe("https://sys.t/api/workspace/v1/user_uploads/1/a.png");
   });
 
   it("collapses multiple repeats", () => {
     expect(
       collapseDuplicateWorkspaceV1InUrl(
-        "https://sys.t/workspace/v1/workspace/v1/workspace/v1/user_uploads/x",
+        "https://sys.t/api/workspace/v1/api/workspace/v1/api/workspace/v1/user_uploads/x",
       ),
-    ).toBe("https://sys.t/workspace/v1/user_uploads/x");
+    ).toBe("https://sys.t/api/workspace/v1/user_uploads/x");
   });
 });
 
@@ -41,16 +41,16 @@ describe("extractUserUploadsPathAndQuery", () => {
   it("removes gateway prefix before user_uploads", () => {
     expect(
       extractUserUploadsPathAndQuery(
-        "https://gw.example.com/workspace/v1/user_uploads/x/y.png",
+        "https://gw.example.com/api/workspace/v1/user_uploads/x/y.png",
         "https://localhost",
       ),
     ).toBe("/user_uploads/x/y.png");
   });
 
-  it("strips gateway segments before user_uploads (Vite dev /workspace/v1/...)", () => {
+  it("strips gateway segments before user_uploads (Vite dev /api/workspace/v1/...)", () => {
     expect(
       extractUserUploadsPathAndQuery(
-        "http://localhost:5173/workspace/v1/user_uploads/2/ff/a/image.png?q=1",
+        "http://localhost:5173/api/workspace/v1/user_uploads/2/ff/a/image.png?q=1",
         "http://localhost:5173",
       ),
     ).toBe("/user_uploads/2/ff/a/image.png?q=1");
@@ -70,11 +70,11 @@ describe("extractProtectedMessageMediaPathAndQuery", () => {
   it("keeps Workspace file download path+query for absolute API URLs", () => {
     expect(
       extractProtectedMessageMediaPathAndQuery(
-        "http://localhost:5173/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download?inline=1",
+        "http://localhost:5173/api/workspace/v1/messenger/files/33333333-3333-4333-8333-333333333333/actions/download?inline=1",
         "http://localhost:5173",
       ),
     ).toBe(
-      "/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download?inline=1",
+      "/api/workspace/v1/messenger/files/33333333-3333-4333-8333-333333333333/actions/download?inline=1",
     );
   });
 });
@@ -82,14 +82,16 @@ describe("extractProtectedMessageMediaPathAndQuery", () => {
 describe("isProtectedMessageMediaPath", () => {
   it("detects user_uploads, external_content, and Workspace file downloads", () => {
     const filePath =
-      "/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download";
+      "/api/workspace/v1/messenger/files/33333333-3333-4333-8333-333333333333/actions/download";
 
     expect(isProtectedMessageMediaPath("/user_uploads/1/a.png")).toBe(true);
     expect(isProtectedMessageMediaPath("/external_content/abc.png")).toBe(true);
     expect(isProtectedMessageMediaPath(filePath)).toBe(true);
     expect(isExternalContentPath("/external_content/abc.png")).toBe(true);
     expect(isWorkspaceFileDownloadPath(filePath)).toBe(true);
-    expect(isWorkspaceFileDownloadPath("/api/messenger/v1/files/333/actions/meta")).toBe(false);
+    expect(isWorkspaceFileDownloadPath("/api/workspace/v1/messenger/files/333/actions/meta")).toBe(
+      false,
+    );
     expect(isProtectedMessageMediaPath("/static/logo.png")).toBe(false);
   });
 });
@@ -117,9 +119,9 @@ describe("rewriteUserUploadMediaUrlToCanonical", () => {
     expect(
       rewriteUserUploadMediaUrlToCanonical(
         "https://sys.platform.test/user_uploads/1/a.png",
-        "https://api.test/workspace/v1",
+        "https://api.test/api/workspace/v1",
       ),
-    ).toBe("https://api.test/workspace/v1/user_uploads/1/a.png");
+    ).toBe("https://api.test/api/workspace/v1/user_uploads/1/a.png");
   });
 });
 

@@ -40,7 +40,7 @@ function streamMessageForSidebar(
 }
 
 function logMessageResponse(label: string, messages: readonly WorkspaceRawMessage[]): void {
-  logChatListFlow(`api: GET /api/messenger/v1/messages/ → ${label} (response)`, {
+  logChatListFlow(`api: GET /api/workspace/v1/messenger/messages/ → ${label} (response)`, {
     ...summarizeMessengerMessagesForFlowDebug(messages),
   });
 }
@@ -55,10 +55,13 @@ export async function fetchRecentStreamMessagesForSidebarPreview(
     "fetchRecentStreamMessagesForSidebarPreview.numBefore",
   );
   throwIfAborted(signal);
-  logChatListFlow("api: GET /api/messenger/v1/messages/ → stream sidebar preview (request)", {
-    limit: safeNumBefore,
-    sortDir: "desc",
-  });
+  logChatListFlow(
+    "api: GET /api/workspace/v1/messenger/messages/ → stream sidebar preview (request)",
+    {
+      limit: safeNumBefore,
+      sortDir: "desc",
+    },
+  );
   const page = await fetchMyMessagesPage({
     limit: safeNumBefore,
     sortKey: "created_at",
@@ -82,11 +85,14 @@ export async function fetchStreamChannelMessagesForSidebarTopics(
     "fetchStreamChannelMessagesForSidebarTopics.numBefore",
   );
   throwIfAborted(signal);
-  logChatListFlow("api: GET /api/messenger/v1/messages/ → sidebar topic hydrate (request)", {
-    streamUuid,
-    limit: safeNumBefore,
-    sortDir: "desc",
-  });
+  logChatListFlow(
+    "api: GET /api/workspace/v1/messenger/messages/ → sidebar topic hydrate (request)",
+    {
+      streamUuid,
+      limit: safeNumBefore,
+      sortDir: "desc",
+    },
+  );
   const page = await fetchMyMessagesPage({
     streamUuid,
     limit: safeNumBefore,
@@ -173,7 +179,7 @@ export async function fetchMessagesAfterAnchor(
   guard.messageId(anchorMessageId, "fetchMessagesAfterAnchor.anchorMessageId");
   const safeNumAfter = validateNonNegativeInteger(numAfter, "fetchMessagesAfterAnchor.numAfter");
   throwIfAborted(signal);
-  logChatListFlow("api: GET /api/messenger/v1/messages/ → chat list delta (request)", {
+  logChatListFlow("api: GET /api/workspace/v1/messenger/messages/ → chat list delta (request)", {
     marker: anchorMessageId,
     limit: safeNumAfter,
     sortDir: "asc",

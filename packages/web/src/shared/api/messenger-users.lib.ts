@@ -1,5 +1,5 @@
 /**
- * Parsers for Workspace gateway GET /api/messenger/v1/users/ rows.
+ * Parsers for Workspace gateway GET /api/workspace/v1/users/ rows.
  */
 import type { MessengerUserMember, WorkspaceUserPresenceStatus } from "./messenger.types";
 

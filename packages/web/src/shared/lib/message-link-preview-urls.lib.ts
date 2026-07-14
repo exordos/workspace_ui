@@ -107,7 +107,7 @@ function isExcludedPreviewUrl(
     if (path.includes("/user_uploads/")) {
       return true;
     }
-    if (path.includes("/api/messenger/v1/")) {
+    if (path.includes("/api/workspace/v1/messenger/")) {
       return true;
     }
     if (MESSENGER_PERMALINK_PATH_PATTERN.test(parsed.hash)) {

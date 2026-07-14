@@ -14,7 +14,7 @@ import {
 } from "./mute-chat.optimistic.lib";
 
 vi.mock("~/shared/api/client", () => ({
-  getMessengerWorkspaceApiBaseForCurrentInstance: () => "/api/messenger/v1",
+  getMessengerWorkspaceApiBaseForCurrentInstance: () => "/api/workspace/v1/messenger",
   messengerApi: {
     post: vi.fn(),
     postJsonWithBase: vi.fn(),
@@ -383,7 +383,7 @@ describe("mute-chat API", () => {
       await expect(setStreamMuted(TEST_STREAM_UUID, true)).resolves.toBe(true);
 
       expect(messengerApi.postJsonWithBase).toHaveBeenCalledWith(
-        "/api/messenger/v1",
+        "/api/workspace/v1/messenger",
         `/streams/${TEST_STREAM_UUID}/actions/notifications/invoke`,
         { notification_mode: "muted" },
       );
@@ -397,7 +397,7 @@ describe("mute-chat API", () => {
       await expect(setStreamMuted(TEST_STREAM_UUID, false)).resolves.toBe(true);
 
       expect(messengerApi.postJsonWithBase).toHaveBeenCalledWith(
-        "/api/messenger/v1",
+        "/api/workspace/v1/messenger",
         `/streams/${TEST_STREAM_UUID}/actions/notifications/invoke`,
         { notification_mode: "mentions_only" },
       );
@@ -415,7 +415,7 @@ describe("mute-chat API", () => {
       ).resolves.toBe(true);
 
       expect(messengerApi.postJsonWithBase).toHaveBeenCalledWith(
-        "/api/messenger/v1",
+        "/api/workspace/v1/messenger",
         `/stream_topics/${TEST_TOPIC_UUID}/actions/notifications/invoke`,
         { notification_mode: "follow" },
       );
@@ -442,7 +442,7 @@ describe("mute-chat API", () => {
       await expect(muteStream(TEST_STREAM_UUID)).resolves.toBe(true);
 
       expect(messengerApi.postJsonWithBase).toHaveBeenCalledWith(
-        "/api/messenger/v1",
+        "/api/workspace/v1/messenger",
         `/streams/${TEST_STREAM_UUID}/actions/notifications/invoke`,
         { notification_mode: "muted" },
       );
@@ -456,7 +456,7 @@ describe("mute-chat API", () => {
       await expect(unmuteStream(TEST_STREAM_UUID)).resolves.toBe(true);
 
       expect(messengerApi.postJsonWithBase).toHaveBeenCalledWith(
-        "/api/messenger/v1",
+        "/api/workspace/v1/messenger",
         `/streams/${TEST_STREAM_UUID}/actions/notifications/invoke`,
         { notification_mode: "mentions_only" },
       );
@@ -475,19 +475,19 @@ describe("mute-chat API", () => {
 
       expect(messengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
         1,
-        "/api/messenger/v1",
+        "/api/workspace/v1/messenger",
         `/streams/${TEST_STREAM_UUID}/actions/notifications/invoke`,
         { notification_mode: "all_messages" },
       );
       expect(messengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
         2,
-        "/api/messenger/v1",
+        "/api/workspace/v1/messenger",
         `/streams/${TEST_STREAM_UUID}/actions/notifications/invoke`,
         { notification_mode: "mentions_only" },
       );
       expect(messengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
         3,
-        "/api/messenger/v1",
+        "/api/workspace/v1/messenger",
         `/streams/${TEST_STREAM_UUID}/actions/notifications/invoke`,
         { notification_mode: "muted" },
       );
@@ -506,19 +506,19 @@ describe("mute-chat API", () => {
 
       expect(messengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
         1,
-        "/api/messenger/v1",
+        "/api/workspace/v1/messenger",
         `/stream_topics/${TEST_TOPIC_UUID}/actions/notifications/invoke`,
         { notification_mode: "mute" },
       );
       expect(messengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
         2,
-        "/api/messenger/v1",
+        "/api/workspace/v1/messenger",
         `/stream_topics/${TEST_TOPIC_UUID}/actions/notifications/invoke`,
         { notification_mode: "default" },
       );
       expect(messengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
         3,
-        "/api/messenger/v1",
+        "/api/workspace/v1/messenger",
         `/stream_topics/${TEST_TOPIC_UUID}/actions/notifications/invoke`,
         { notification_mode: "unmute" },
       );
@@ -547,25 +547,25 @@ describe("mute-chat API", () => {
 
       expect(messengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
         1,
-        "/api/messenger/v1",
+        "/api/workspace/v1/messenger",
         `/stream_topics/${TEST_TOPIC_UUID}/actions/notifications/invoke`,
         { notification_mode: "mute" },
       );
       expect(messengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
         2,
-        "/api/messenger/v1",
+        "/api/workspace/v1/messenger",
         `/stream_topics/${TEST_TOPIC_UUID}/actions/notifications/invoke`,
         { notification_mode: "follow" },
       );
       expect(messengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
         3,
-        "/api/messenger/v1",
+        "/api/workspace/v1/messenger",
         `/stream_topics/${TEST_TOPIC_UUID}/actions/notifications/invoke`,
         { notification_mode: "default" },
       );
       expect(messengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
         4,
-        "/api/messenger/v1",
+        "/api/workspace/v1/messenger",
         `/stream_topics/${TEST_TOPIC_UUID}/actions/notifications/invoke`,
         { notification_mode: "follow" },
       );

@@ -7,7 +7,7 @@ import { isValidRealmUrl } from "~/shared/lib/validation";
 import type { MessengerServerSettings } from "./messenger.types";
 
 /**
- * Fetches server settings (GET /api/messenger/v1/server_settings). No auth required.
+ * Fetches server settings (GET /api/workspace/v1/messenger/server_settings). No auth required.
  * Used on login page to show organization icon and name.
  */
 export async function fetchServerSettings(
@@ -20,8 +20,7 @@ export async function fetchServerSettings(
     const parsedRealm = new URL(realmUrl.trim());
     const normalizedPath = parsedRealm.pathname
       .replace(/\/+$/, "")
-      .replace(/\/api\/messenger\/v1$/i, "")
-      .replace(/\/api$/, "");
+      .replace(/\/api\/workspace\/v1\/messenger$/i, "");
     const base = `${parsedRealm.origin}${normalizedPath}`.replace(/\/+$/, "");
     if (!base) return null;
     const url = `${base}${MESSENGER_API_PATH}/server_settings`;

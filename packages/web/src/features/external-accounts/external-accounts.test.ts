@@ -9,7 +9,7 @@ const messengerApi = vi.hoisted(() => ({
 
 vi.mock("~/shared/api/client", () => ({
   messengerApi,
-  getMessengerGatewayApiBaseForCurrentInstance: vi.fn(() => "/api/messenger/v1"),
+  getWorkspaceCommonApiBaseForCurrentInstance: vi.fn(() => "/api/workspace/v1"),
 }));
 
 function okResponse(data: unknown) {
@@ -81,8 +81,8 @@ describe("external accounts API", () => {
     expect(account?.accountSettings).not.toHaveProperty("token");
     expect(account?.accountSettings).not.toHaveProperty("credentials");
     expect(messengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
-      "/external_accounts/",
+      "/api/workspace/v1",
+      "/external_users/",
       { account_type: "zulip" },
       undefined,
     );
@@ -96,6 +96,7 @@ describe("external accounts API", () => {
           server_url: "https://zulip.example.com",
           account_type: "zulip",
           status: "active",
+          access_status: "missing_credentials",
           account_settings: {
             kind: "zulip",
             credentials: null,
@@ -156,8 +157,8 @@ describe("external accounts API", () => {
 
     expect(result.ok).toBe(true);
     expect(messengerApi.postJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
-      "/external_accounts/",
+      "/api/workspace/v1",
+      "/external_users/",
       {
         account_type: "zulip",
         server_url: "https://zulip.example.com",
@@ -199,8 +200,8 @@ describe("external accounts API", () => {
 
     expect(result.ok).toBe(true);
     expect(messengerApi.putJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
-      "/external_accounts/account-1",
+      "/api/workspace/v1",
+      "/external_users/account-1",
       expect.objectContaining({
         server_url: "https://next-zulip.example.com",
         account_settings: expect.objectContaining({
@@ -241,8 +242,8 @@ describe("external accounts API", () => {
 
     expect(result).toEqual({ ok: true });
     expect(messengerApi.deleteWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
-      "/external_accounts/account-1",
+      "/api/workspace/v1",
+      "/external_users/account-1",
     );
   });
 

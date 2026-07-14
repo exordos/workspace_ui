@@ -11,9 +11,11 @@ describe("workspaceOrgOriginFromLoginServerUrlInput", () => {
     );
   });
 
-  it("strips /api/messenger/v1 before taking origin", () => {
+  it("strips /api/workspace/v1/messenger before taking origin", () => {
     expect(
-      workspaceOrgOriginFromLoginServerUrlInput("https://gw.example.com/api/messenger/v1"),
+      workspaceOrgOriginFromLoginServerUrlInput(
+        "https://gw.example.com/api/workspace/v1/messenger",
+      ),
     ).toBe("https://gw.example.com");
   });
 

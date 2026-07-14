@@ -164,26 +164,28 @@ All four phases are complete. Ongoing slices (folder-sync, stream-members, etc.)
 ## Authorization and API Requests
 
 ```
-┌────────────┐    ┌──────────────┐    ┌─────────────────┐
-│  React     │───►│  shared/api/ │───►│  Workspace Server   │
-│  Component │    │  messengerFetch  │    │  /api/v1/*       │
-│            │    │  Basic Auth  │    │                  │
-│  useStore  │    │  (email:key) │    ├─────────────────┤
-│  selector  │    └──────────────┘    │  Workspace API  │
-│            │    ┌──────────────┐    │  /folders/*      │
-│            │───►│  entities/*/ │    │  /services/*     │
-│            │    │  *.api.ts    │───►│                  │
-└────────────┘    └──────────────┘    └─────────────────┘
+┌────────────┐    ┌──────────────────┐    ┌──────────────────────────┐
+│ React      │───►│ shared/api and   │───►│ /api/workspace/v1        │
+│ components │    │ @workspace/api   │    │   /messenger             │
+│            │    │ IAM Bearer token │    │   /mail                  │
+│ stores     │    │ project:default  │    │   /calendar              │
+│            │◄───│ common event loop│◄───│   /events/ws             │
+└────────────┘    └──────────────────┘    └──────────────────────────┘
 ```
 
 Key points:
 
-- Credentials (`email`, `apiKey`) are stored in `instancesStore` (persisted to `localStorage`).
-- `shared/api/client.ts` — low-level helpers (`messengerFetch`, `messengerPost`, `messengerPatch`, `messengerDelete`) + middleware pipeline (auth, logging, retry). Reads credentials from `instancesStore.getState()`.
-- `shared/api/workspace-client.ts` — Workspace API `request()` helper with Basic Auth.
+- IAM authorization state supplies one bearer token for all Workspace domains;
+  passwords and API keys are not stored in the instance model.
+- `shared/api/client.ts` — low-level messenger helpers plus the common IAM,
+  logging, and retry middleware pipeline.
+- `shared/api/workspace-client.ts` and `@workspace/api` — common, mail,
+  calendar, and messenger API operations.
 - `entities/*/api.ts` — entity-level API functions, uses helpers from `shared/api/`.
 - `features/ai-reply/ai-reply.api.ts` — AI provider factory (mock + HTTP).
-- Real-time event loop (`shared/lib/event-loop.ts`, started from `widgets/layout/layout-messenger-event-loop.hook.ts`) — registers queue, long-polls, dispatches events via layout dispatch libs.
+- The common real-time event loop connects only to
+  `/api/workspace/v1/events/ws`, resumes by epoch, and dispatches messenger,
+  mail, and calendar events through layout dispatch libraries.
 
 ---
 

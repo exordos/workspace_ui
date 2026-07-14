@@ -27,7 +27,7 @@ describe("loggingMiddleware", () => {
     const next: NextFn = vi.fn().mockResolvedValue(createMockResponse({ status: 201 }));
     const req: ApiRequest = {
       method: "POST",
-      url: "https://chat.example.com/api/messenger/v1/messages",
+      url: "https://chat.example.com/api/workspace/v1/messenger/messages",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: `type=stream&stream_uuid=${STREAM_UUID_10}`,
       meta: {},
@@ -37,7 +37,7 @@ describe("loggingMiddleware", () => {
 
     const entry = getLogHistory().find((e) => e.scope === "api");
     expect(entry).toBeDefined();
-    expect(entry!.message).toBe("POST /api/messenger/v1/messages");
+    expect(entry!.message).toBe("POST /api/workspace/v1/messenger/messages");
     const data = entry!.data as Record<string, unknown>;
     expect(data.status).toBe(201);
     expect((data.params as Record<string, string>).stream_uuid).toBe(STREAM_UUID_10);
@@ -50,7 +50,7 @@ describe("loggingMiddleware", () => {
     controller.abort();
     const req: ApiRequest = {
       method: "GET",
-      url: "https://chat.example.com/api/messenger/v1/messages",
+      url: "https://chat.example.com/api/workspace/v1/messenger/messages",
       headers: {},
       meta: {},
       signal: controller.signal,

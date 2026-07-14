@@ -8,12 +8,12 @@ import { resolveMessageMediaUrl, sanitizeHtmlToFragment, stripHtml, sanitizeHtml
 
 vi.mock("~/shared/lib/env", () => ({
   env: {
-    USER_UPLOADS_PATH_PREFIX: "/workspace/v1",
+    USER_UPLOADS_PATH_PREFIX: "/api/workspace/v1",
   },
 }));
 
 vi.mock("~/shared/lib/messenger-message-media-base.lib", () => ({
-  getMessageImagesBaseUrl: vi.fn(() => "https://chat.example.com/workspace/v1"),
+  getMessageImagesBaseUrl: vi.fn(() => "https://chat.example.com/api/workspace/v1"),
   getMessageRealmBaseUrl: vi.fn(() => "https://chat.example.com"),
 }));
 
@@ -48,8 +48,8 @@ describe("stripHtml", () => {
 describe("resolveMessageMediaUrl", () => {
   it("prefixes relative paths with base", () => {
     expect(
-      resolveMessageMediaUrl("/user_uploads/1/a.png", "https://chat.example.com/workspace/v1"),
-    ).toBe("https://chat.example.com/workspace/v1/user_uploads/1/a.png");
+      resolveMessageMediaUrl("/user_uploads/1/a.png", "https://chat.example.com/api/workspace/v1"),
+    ).toBe("https://chat.example.com/api/workspace/v1/user_uploads/1/a.png");
   });
 
   it("leaves blob URLs unchanged", () => {
@@ -125,8 +125,10 @@ describe("sanitizeHtml", () => {
   // Workspace serves user uploads as relative paths — rewrite to absolute URLs.
   it("rewrites relative img src when baseUrl provided", () => {
     const html = '<img src="/user_uploads/1/img.png">';
-    const result = sanitizeHtml(html, "https://chat.example.com/workspace/v1");
-    expect(result).toContain('src="https://chat.example.com/workspace/v1/user_uploads/1/img.png"');
+    const result = sanitizeHtml(html, "https://chat.example.com/api/workspace/v1");
+    expect(result).toContain(
+      'src="https://chat.example.com/api/workspace/v1/user_uploads/1/img.png"',
+    );
   });
 
   // In Electron on `file://`, `sanitizeHtml` may run without `baseUrl`,
@@ -134,7 +136,9 @@ describe("sanitizeHtml", () => {
   it("rewrites relative user_uploads when baseUrl omitted (realm media base fallback)", () => {
     const html = '<img src="/user_uploads/1/img.png" alt="">';
     const result = sanitizeHtml(html);
-    expect(result).toContain('src="https://chat.example.com/workspace/v1/user_uploads/1/img.png"');
+    expect(result).toContain(
+      'src="https://chat.example.com/api/workspace/v1/user_uploads/1/img.png"',
+    );
   });
 
   // Already-absolute external CDN URLs must not change.
@@ -146,14 +150,18 @@ describe("sanitizeHtml", () => {
 
   it("rewrites absolute user_uploads img src to canonical base", () => {
     const html = '<img src="https://sys.platform.genesis-core.team/user_uploads/1/x.png" alt="">';
-    const result = sanitizeHtml(html, "https://chat.example.com/workspace/v1");
-    expect(result).toContain('src="https://chat.example.com/workspace/v1/user_uploads/1/x.png"');
+    const result = sanitizeHtml(html, "https://chat.example.com/api/workspace/v1");
+    expect(result).toContain(
+      'src="https://chat.example.com/api/workspace/v1/user_uploads/1/x.png"',
+    );
   });
 
   it("rewrites user_uploads link href to canonical base", () => {
     const html = '<a href="https://sys.platform.genesis-core.team/user_uploads/1/x.png">file</a>';
-    const result = sanitizeHtml(html, "https://chat.example.com/workspace/v1");
-    expect(result).toContain('href="https://chat.example.com/workspace/v1/user_uploads/1/x.png"');
+    const result = sanitizeHtml(html, "https://chat.example.com/api/workspace/v1");
+    expect(result).toContain(
+      'href="https://chat.example.com/api/workspace/v1/user_uploads/1/x.png"',
+    );
   });
 
   it("rewrites relative external_content media when baseUrl omitted", () => {
@@ -165,14 +173,14 @@ describe("sanitizeHtml", () => {
   it("rewrites absolute external_content URLs to the canonical realm origin", () => {
     const html =
       '<img src="https://sys.platform.genesis-core.team/external_content/preview.png" alt="">';
-    const result = sanitizeHtml(html, "https://chat.example.com/workspace/v1");
+    const result = sanitizeHtml(html, "https://chat.example.com/api/workspace/v1");
     expect(result).toContain('src="https://chat.example.com/external_content/preview.png"');
   });
 
   it("preserves audio preview markup and Workspace preview metadata attrs", () => {
     const html =
       '<audio controls src="/external_content/audio.mp3" title="Preview" data-original-url="https://example.com/audio.mp3" data-original-dimensions="320x180" data-original-content-type="audio/mpeg"></audio>';
-    const result = sanitizeHtml(html, "https://chat.example.com/workspace/v1");
+    const result = sanitizeHtml(html, "https://chat.example.com/api/workspace/v1");
     expect(result).toContain("<audio");
     expect(result).toContain('src="https://chat.example.com/external_content/audio.mp3"');
     expect(result).toContain('title="Preview"');
@@ -184,7 +192,7 @@ describe("sanitizeHtml", () => {
   it("preserves picture/source markup for protected media preprocessing", () => {
     const html =
       '<picture><source srcset="/external_content/a.webp 1x, /external_content/b.webp 2x" sizes="100vw"><img alt="preview"></picture>';
-    const result = sanitizeHtml(html, "https://chat.example.com/workspace/v1");
+    const result = sanitizeHtml(html, "https://chat.example.com/api/workspace/v1");
     expect(result).toContain("<picture>");
     expect(result).toContain("<source");
     expect(result).toContain('srcset="/external_content/a.webp 1x, /external_content/b.webp 2x"');

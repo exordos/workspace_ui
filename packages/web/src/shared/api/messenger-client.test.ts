@@ -17,10 +17,10 @@ describe("getRealmBaseUrl", () => {
     expect(getRealmBaseUrl()).toBe("https://chat.example.com");
   });
 
-  it("strips trailing /api/messenger/v1 from realm", () => {
+  it("strips trailing /api/workspace/v1/messenger from realm", () => {
     vi.mocked(getCurrentInstance).mockReturnValue({
       ...TEST_INSTANCE,
-      realm: "https://chat.example.com/api/messenger/v1",
+      realm: "https://chat.example.com/api/workspace/v1/messenger",
     });
     expect(getRealmBaseUrl()).toBe("https://chat.example.com");
   });

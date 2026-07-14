@@ -40,7 +40,7 @@ function expectNoLiveProtectedAttrs(html: string): void {
       const value = element.getAttribute(attr);
       expect(value?.includes("/user_uploads/") ?? false).toBe(false);
       expect(value?.includes("/external_content/") ?? false).toBe(false);
-      expect(value?.includes("/api/messenger/v1/files/") ?? false).toBe(false);
+      expect(value?.includes("/api/workspace/v1/messenger/files/") ?? false).toBe(false);
     }
   }
 }
@@ -92,7 +92,7 @@ describe("protected media URL trust", () => {
     );
     expect(
       isProtectedMessageMediaUrl(
-        "/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download",
+        "/api/workspace/v1/messenger/files/33333333-3333-4333-8333-333333333333/actions/download",
       ),
     ).toBe(true);
   });
@@ -123,7 +123,8 @@ describe("prepareProtectedMessageHtml", () => {
   });
 
   it("expands Workspace file image links using the link filename", () => {
-    const href = "/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download";
+    const href =
+      "/api/workspace/v1/messenger/files/33333333-3333-4333-8333-333333333333/actions/download";
     const out = prepareProtectedMessageHtml(`<p><a href="${href}">photo.jpg</a></p>`);
     const template = document.createElement("template");
     template.innerHTML = out;
@@ -132,7 +133,7 @@ describe("prepareProtectedMessageHtml", () => {
 
     expect(image).not.toBeNull();
     expect(image?.getAttribute("data-auth-src")).toBe(href);
-    expect(image?.getAttribute("src")).not.toContain("/api/messenger/v1/files/");
+    expect(image?.getAttribute("src")).not.toContain("/api/workspace/v1/messenger/files/");
     expect(image?.classList.contains(MESSAGE_MEDIA_PREVIEW_CLASS_NAME)).toBe(true);
     expectNoLiveProtectedAttrs(out);
   });
@@ -146,9 +147,9 @@ describe("prepareProtectedMessageHtml", () => {
     const image = template.content.querySelector("img");
 
     expect(image?.getAttribute("data-auth-src")).toBe(
-      "/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download",
+      "/api/workspace/v1/messenger/files/33333333-3333-4333-8333-333333333333/actions/download",
     );
-    expect(image?.getAttribute("src")).not.toContain("/api/messenger/v1/files/");
+    expect(image?.getAttribute("src")).not.toContain("/api/workspace/v1/messenger/files/");
     expect(image?.getAttribute("alt")).toBe("photo.png");
     expect(image?.dataset.originalContentType).toBe("image/png");
     expect(image?.dataset.originalDimensions).toBe("1280x720");
@@ -166,7 +167,7 @@ describe("prepareProtectedMessageHtml", () => {
 
     expect(template.content.querySelector("a")).toBeNull();
     expect(source?.getAttribute("data-auth-src")).toBe(
-      "/api/messenger/v1/files/44444444-4444-4444-8444-444444444444/actions/download",
+      "/api/workspace/v1/messenger/files/44444444-4444-4444-8444-444444444444/actions/download",
     );
     expect(source?.getAttribute("src")).toBeNull();
     expect(source?.getAttribute("type")).toBe("video/mp4");
@@ -182,7 +183,7 @@ describe("prepareProtectedMessageHtml", () => {
 
     expect(template.content.querySelector("a")).toBeNull();
     expect(source?.getAttribute("data-auth-src")).toBe(
-      "/api/messenger/v1/files/44444444-4444-4444-8444-444444444444/actions/download",
+      "/api/workspace/v1/messenger/files/44444444-4444-4444-8444-444444444444/actions/download",
     );
     expect(source?.getAttribute("src")).toBeNull();
     expect(source?.getAttribute("type")).toBe("video/webm");
@@ -198,7 +199,7 @@ describe("prepareProtectedMessageHtml", () => {
 
     expect(template.content.querySelector("img")).toBeNull();
     expect(source?.getAttribute("data-auth-src")).toBe(
-      "/api/messenger/v1/files/44444444-4444-4444-8444-444444444444/actions/download",
+      "/api/workspace/v1/messenger/files/44444444-4444-4444-8444-444444444444/actions/download",
     );
     expect(source?.getAttribute("src")).toBeNull();
     expect(source?.getAttribute("type")).toBe("video/mp4");
@@ -214,7 +215,7 @@ describe("prepareProtectedMessageHtml", () => {
     const link = template.content.querySelector("a");
 
     expect(link?.getAttribute("href")).toBe(
-      "/api/messenger/v1/files/55555555-5555-4555-8555-555555555555/actions/download",
+      "/api/workspace/v1/messenger/files/55555555-5555-4555-8555-555555555555/actions/download",
     );
     expect(link?.dataset.originalContentType).toBe("application/pdf");
     expect(link?.textContent).toBe("report.pdf");
@@ -263,10 +264,10 @@ describe("prepareProtectedMessageHtml", () => {
   it("protects absolute media URLs resolved from the provided message media base", () => {
     const html =
       '<video controls><source src="/user_uploads/1/private.webm" type="video/webm"></video>';
-    const out = prepareProtectedMessageHtml(html, "https://sys.example.com/workspace/v1");
+    const out = prepareProtectedMessageHtml(html, "https://sys.example.com/api/workspace/v1");
 
     expect(out).toContain(
-      'data-auth-src="https://sys.example.com/workspace/v1/user_uploads/1/private.webm"',
+      'data-auth-src="https://sys.example.com/api/workspace/v1/user_uploads/1/private.webm"',
     );
     const template = document.createElement("template");
     template.innerHTML = out;
@@ -318,7 +319,8 @@ describe("buildProtectedUploadFetchUrl", () => {
   });
 
   it("keeps Workspace file downloads on the same-origin API path", () => {
-    const path = "/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download";
+    const path =
+      "/api/workspace/v1/messenger/files/33333333-3333-4333-8333-333333333333/actions/download";
 
     expect(buildProtectedUploadFetchUrl(`https://app.example.com${path}`)).toBe(path);
   });

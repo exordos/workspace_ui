@@ -3,7 +3,7 @@ import type { WorkspaceFolder } from "./workspace-client";
 
 const getCurrentInstance = vi.fn();
 const getWorkspaceApiBaseForCurrentInstance = vi.fn(() => "https://messenger.genesis-core.tech");
-let workspaceBaseUrl = "/workspace";
+let workspaceBaseUrl = "/api/workspace";
 
 const workspaceApi = {
   get: vi.fn(),
@@ -52,7 +52,7 @@ const messengerApi = {
   ),
   delete: vi.fn(),
   setBaseUrl: vi.fn(),
-  getBaseUrl: vi.fn(() => "/api/messenger/v1"),
+  getBaseUrl: vi.fn(() => "/api/workspace/v1/messenger"),
 };
 type MessengerGetResponse = Awaited<ReturnType<typeof messengerApi.get>>;
 
@@ -61,13 +61,13 @@ vi.mock("./client", () => ({
   messengerApi,
   getCurrentInstance,
   getWorkspaceApiBaseForCurrentInstance,
-  getMessengerGatewayApiBaseForCurrentInstance: () => "/api/messenger/v1",
+  getMessengerGatewayApiBaseForCurrentInstance: () => "/api/workspace/v1/messenger",
 }));
 
 describe("workspace-client", () => {
   beforeEach(async () => {
     vi.resetModules();
-    workspaceBaseUrl = "/workspace";
+    workspaceBaseUrl = "/api/workspace";
     getCurrentInstance.mockReturnValue({
       id: "instance-1",
       realm: "https://messenger.genesis-core.tech",
@@ -93,7 +93,7 @@ describe("workspace-client", () => {
     await getFolders();
 
     expect(messengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/folders/",
       undefined,
       undefined,
@@ -350,7 +350,7 @@ describe("workspace-client", () => {
     ).resolves.toBe(true);
 
     expect(messengerApi.postJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/folder_items/",
       {
         folder_uuid: "folder-1",
@@ -374,7 +374,7 @@ describe("workspace-client", () => {
 
     expect(messengerApi.postJsonWithBase).toHaveBeenCalledTimes(1);
     expect(messengerApi.postJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/folder_items/",
       {
         folder_uuid: "folder-1",
@@ -397,7 +397,7 @@ describe("workspace-client", () => {
     await expect(removeChatFromFolder("folder-1", "item-1")).resolves.toBe(true);
 
     expect(messengerApi.deleteWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/folder_items/item-1",
     );
   });
@@ -424,13 +424,13 @@ describe("workspace-client", () => {
     await expect(updateFolderItemOrder("folder-1", "item-1", 3)).resolves.toBe(true);
 
     expect(messengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/folder_items/item-1",
       undefined,
       undefined,
     );
     expect(messengerApi.putJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/folder_items/item-1",
       expect.objectContaining({
         order_index: 3,

@@ -101,7 +101,10 @@ describe("fetchSubscriptions", () => {
         unread_count: 2,
       },
     ]);
-    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith("/api/messenger/v1", "/streams/");
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
+      "/api/workspace/v1/messenger",
+      "/streams/",
+    );
   });
 
   it("keeps UUID-only gateway stream rows", async () => {
@@ -172,7 +175,7 @@ describe("createPrivateMessageStream", () => {
 
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
       1,
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/streams/",
       {
         name: "Alice Smith",
@@ -255,7 +258,7 @@ describe("createWorkspaceStream", () => {
 
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
       1,
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/streams/",
       {
         name: "engineering",
@@ -269,7 +272,7 @@ describe("createWorkspaceStream", () => {
     );
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
       2,
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/streams/${STREAM_UUID}/actions/add_users/invoke`,
       {
         member: [PEER_UUID, MEMBER_UUID],
@@ -371,7 +374,7 @@ describe("resolveOrCreateDirectMessageStream", () => {
     });
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledTimes(1);
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/streams/",
       {
         name: "Alice Smith",
@@ -439,7 +442,7 @@ describe("fetchStreamMembers", () => {
 
     await expect(fetchStreamMembers(STREAM_UUID)).resolves.toEqual([PEER_UUID]);
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/stream_bindings/",
     );
   });
@@ -458,7 +461,7 @@ describe("stream binding mutations", () => {
 
     await expect(deleteStreamBinding(BINDING_UUID)).resolves.toBe(true);
     expect(mockMessengerApi.deleteWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/stream_bindings/${BINDING_UUID}`,
     );
   });
@@ -473,7 +476,7 @@ describe("stream binding mutations", () => {
 
     await expect(updateStreamBindingRole(BINDING_UUID, "moderator")).resolves.toBe(true);
     expect(mockMessengerApi.putJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/stream_bindings/${BINDING_UUID}`,
       { role: "moderator" },
     );
@@ -517,7 +520,7 @@ describe("addMembersToStream", () => {
 
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenNthCalledWith(
       1,
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/streams/${STREAM_UUID}/actions/add_users/invoke`,
       {
         member: [PEER_UUID, MEMBER_UUID],
@@ -569,7 +572,7 @@ describe("fetchTopics", () => {
 
     await expect(fetchTopics(STREAM_UUID)).resolves.toEqual(["planning", "release"]);
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/stream_topics/",
       { stream_uuid: STREAM_UUID },
       undefined,
@@ -589,7 +592,7 @@ describe("fetchTopics", () => {
 
     await expect(fetchStreamTopicNames(STREAM_UUID)).resolves.toEqual(["release"]);
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/stream_topics/",
       { stream_uuid: STREAM_UUID },
       undefined,
@@ -718,7 +721,10 @@ describe("fetchStreams", () => {
         color: 0x654321,
       },
     ]);
-    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith("/api/messenger/v1", "/streams/");
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
+      "/api/workspace/v1/messenger",
+      "/streams/",
+    );
   });
 
   it("returns empty list when gateway rows only contain private streams", async () => {
@@ -788,7 +794,7 @@ describe("updateStream", () => {
       updateStream(STREAM_UUID, { name: "platform", description: "Platform discussions" }),
     ).resolves.toBe(true);
     expect(mockMessengerApi.putJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/streams/${STREAM_UUID}`,
       {
         name: "platform",
@@ -826,7 +832,7 @@ describe("deleteStream", () => {
 
     await expect(deleteStream(STREAM_UUID)).resolves.toBe(true);
     expect(mockMessengerApi.deleteWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/streams/${STREAM_UUID}`,
     );
   });
@@ -843,7 +849,7 @@ describe("archiveStream", () => {
 
     await expect(archiveStream(STREAM_UUID)).resolves.toBe(true);
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/streams/${STREAM_UUID}/actions/archive/invoke`,
       {},
     );
@@ -863,7 +869,7 @@ describe("unarchiveStream", () => {
 
     await expect(unarchiveStream(STREAM_UUID)).resolves.toEqual({ ok: true });
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/streams/${STREAM_UUID}/actions/unarchive/invoke`,
       {},
     );
@@ -904,7 +910,7 @@ describe("deleteTopic", () => {
       attempts: 1,
     });
     expect(mockMessengerApi.deleteWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/stream_topics/${TOPIC_UUID}`,
     );
   });
@@ -984,7 +990,7 @@ describe("updateStreamTopic", () => {
       { ok: true, topic: { ...responseTopic, notification_mode: "default" } },
     );
     expect(mockMessengerApi.putJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/stream_topics/${TOPIC_UUID}`,
       { name: "postmortem" },
     );
@@ -1010,7 +1016,7 @@ describe("updateStreamTopic", () => {
       updateStreamTopic({ topicUuid: TOPIC_UUID, streamUuid: OTHER_STREAM_UUID }),
     ).resolves.toEqual({ ok: true, topic: { ...responseTopic, notification_mode: "default" } });
     expect(mockMessengerApi.putJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/stream_topics/${TOPIC_UUID}`,
       { stream_uuid: OTHER_STREAM_UUID },
     );
@@ -1059,7 +1065,7 @@ describe("toggleStreamTopicDone", () => {
       topic: { ...responseTopic, notification_mode: "default" },
     });
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/stream_topics/${TOPIC_UUID}/actions/toggle_done/invoke`,
       {},
     );
@@ -1097,7 +1103,7 @@ describe("setStreamTopicDefault", () => {
       topic: { ...responseTopic, notification_mode: "default" },
     });
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/stream_topics/${TOPIC_UUID}/actions/set_default/invoke`,
       {},
     );

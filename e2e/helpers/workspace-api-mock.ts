@@ -1,5 +1,5 @@
 /**
- * Playwright route mock for Workspace REST (`/workspace/v1/**`, dev org proxy paths).
+ * Playwright route mock for Workspace REST (`/api/workspace/v1/**`, dev org proxy paths).
  */
 import type { Page, Route } from "@playwright/test";
 import {
@@ -9,8 +9,8 @@ import {
 } from "../mocks/workspace-default-responses";
 
 /** Same-origin Workspace REST in dev (avoid `*workspace*` — it matches `workspace-api` npm paths). */
-const WORKSPACE_REST_ROUTE = /\/workspace\/v1\//;
-const WORKSPACE_DEV_ORG_ROUTE = /\/__dev_workspace_org\/workspace\//;
+const WORKSPACE_REST_ROUTE = /\/api\/workspace\/v1\//;
+const WORKSPACE_DEV_ORG_ROUTE = /\/__dev_workspace_org\/api\/workspace\/v1\//;
 
 export class WorkspaceApiMock {
   private installed = false;

@@ -25,6 +25,40 @@ export function formatMessageTimeShort(timestamp: number): string {
   return formatLocalHoursMinutes(new Date(timestamp * 1000));
 }
 
+function parseMailDateInput(dateInput: string | number): number | null {
+  if (typeof dateInput === "number") {
+    return Number.isFinite(dateInput) ? dateInput : null;
+  }
+  const trimmed = dateInput.trim();
+  if (trimmed.length === 0) return null;
+  const parsedMs = Date.parse(trimmed);
+  if (Number.isNaN(parsedMs)) return null;
+  return Math.floor(parsedMs / 1000);
+}
+
+/** Mail API ISO date → list row label (today: time; otherwise: short date). */
+export function formatMailMessageListTime(dateInput: string | number): string {
+  const ts = parseMailDateInput(dateInput);
+  if (ts == null) return "";
+  const d = new Date(ts * 1000);
+  const now = new Date();
+  const sameDay =
+    d.getDate() === now.getDate() &&
+    d.getMonth() === now.getMonth() &&
+    d.getFullYear() === now.getFullYear();
+  if (sameDay) {
+    return formatLocalHoursMinutes(d);
+  }
+  return d.toLocaleDateString(localeTag(), { day: "numeric", month: "short" });
+}
+
+/** Mail API ISO date → preview header (today time, else date + time). */
+export function formatMailMessageDetailTime(dateInput: string | number): string {
+  const ts = parseMailDateInput(dateInput);
+  if (ts == null) return "";
+  return formatMessageTimeWithDate(ts);
+}
+
 /** Sidebar / chat-list: today → time; yesterday label; else short date. */
 export function formatMessageTimeRelative(ts: number): string {
   const d = new Date(ts * 1000);

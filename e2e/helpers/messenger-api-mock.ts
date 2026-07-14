@@ -1,5 +1,5 @@
 /**
- * Playwright route mock for Messenger REST API (`/api/v1/**`).
+ * Playwright route mock for Messenger REST API (`/api/workspace/v1/messenger/**`).
  */
 import type { Page, Route } from "@playwright/test";
 import {
@@ -17,8 +17,7 @@ import {
 } from "../mocks/messenger-default-responses";
 import { foldersSuccess } from "../mocks/workspace-default-responses";
 
-const API_ROUTE = "**/api/v1/**";
-const MESSENGER_API_ROUTE = "**/api/messenger/v1/**";
+const MESSENGER_API_ROUTE = "**/api/workspace/v1/messenger/**";
 
 export interface MessengerApiFailRule {
   pattern: RegExp;
@@ -55,14 +54,12 @@ export class MessengerApiMock {
     this.nextEventsBody = null;
     this.persistentMessagesBody = null;
     this.fixedQueueId = null;
-    await this.page.route(API_ROUTE, (route) => this.handleRoute(route));
     await this.page.route(MESSENGER_API_ROUTE, (route) => this.handleRoute(route));
     this.installed = true;
   }
 
   async uninstall(): Promise<void> {
     if (!this.installed) return;
-    await this.page.unroute(API_ROUTE);
     await this.page.unroute(MESSENGER_API_ROUTE);
     this.installed = false;
   }

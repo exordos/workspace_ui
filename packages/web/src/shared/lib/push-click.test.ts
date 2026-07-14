@@ -108,9 +108,9 @@ describe("findInstanceIdByRealmUri", () => {
   });
 
   it("matches normalized realm url with api suffix and trailing slash", () => {
-    expect(findInstanceIdByRealmUri(instances, "https://chat.example.com/api/messenger/v1/")).toBe(
-      "1",
-    );
+    expect(
+      findInstanceIdByRealmUri(instances, "https://chat.example.com/api/workspace/v1/messenger/"),
+    ).toBe("1");
   });
 
   it("returns null when no realm matches", () => {

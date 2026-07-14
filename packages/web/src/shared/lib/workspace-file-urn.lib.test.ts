@@ -10,7 +10,8 @@ describe("parseWorkspaceFileUrn", () => {
     ).toEqual({
       kind: "image",
       fileUuid: "33333333-3333-4333-8333-333333333333",
-      downloadPath: "/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download",
+      downloadPath:
+        "/api/workspace/v1/messenger/files/33333333-3333-4333-8333-333333333333/actions/download",
       name: "photo.png",
       contentType: "image/png",
       width: 1280,

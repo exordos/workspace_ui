@@ -3,7 +3,6 @@
  */
 import "./messenger.test.setup";
 import { describe, expect, it } from "vitest";
-
 import { fetchServerSettings } from "./messenger-auth";
 import { jsonResponse, mockFetch } from "./messenger.test.setup";
 
@@ -24,7 +23,7 @@ describe("fetchServerSettings", () => {
       realm_url: "",
     });
     expect(mockFetch).toHaveBeenCalledWith(
-      "https://chat.example.com/api/messenger/v1/server_settings",
+      "https://chat.example.com/api/workspace/v1/messenger/server_settings",
       undefined,
     );
   });
@@ -81,11 +80,11 @@ describe("fetchServerSettings", () => {
     expect(result?.realm_url).toBe("https://preferred.example.com");
   });
 
-  it("strips /api/messenger/v1 suffix before constructing URL", async () => {
+  it("strips /api/workspace/v1/messenger suffix before constructing URL", async () => {
     mockFetch.mockResolvedValue(jsonResponse({}));
-    await fetchServerSettings("http://workspace.exordos.local/api/messenger/v1");
+    await fetchServerSettings("http://workspace.exordos.local/api/workspace/v1/messenger");
     expect(mockFetch).toHaveBeenCalledWith(
-      "http://workspace.exordos.local/api/messenger/v1/server_settings",
+      "http://workspace.exordos.local/api/workspace/v1/messenger/server_settings",
       undefined,
     );
   });

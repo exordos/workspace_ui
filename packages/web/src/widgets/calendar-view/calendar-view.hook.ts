@@ -1,0 +1,73 @@
+import { useCalendarViewAuth } from "./calendar-view-auth.hook";
+import { useCalendarViewData } from "./calendar-view-data.hook";
+import { useCalendarViewEvents } from "./calendar-view-events.hook";
+
+export function useCalendarView() {
+  const auth = useCalendarViewAuth();
+  const data = useCalendarViewData({ sessionToken: auth.session?.token });
+  const eventActions = useCalendarViewEvents({
+    selectedEvent: data.selectedEvent,
+    range: data.range,
+    loadEventsForRange: data.loadEventsForRange,
+    setFocusDate: data.setFocusDate,
+    setSelectedIsoDate: data.setSelectedIsoDate,
+  });
+
+  return {
+    session: auth.session,
+    error: auth.mailError ?? data.calendarError,
+    calendars: data.calendars,
+    visibleCalendarIds: data.visibleCalendarIds,
+    events: data.events,
+    focusDate: data.focusDate,
+    viewMode: data.viewMode,
+    monthCells: data.monthCells,
+    weekDays: data.weekDays,
+    eventsByDay: data.eventsByDay,
+    selectedEvent: data.selectedEvent,
+    selectedCalendarName: data.selectedCalendarName,
+    selectedCalendarColor: data.selectedCalendarColor,
+    selectedIsoDate: data.selectedIsoDate,
+    selectedEventUid: data.selectedEventUid,
+    loadingCalendars: data.loadingCalendars,
+    loadingEvents: data.loadingEvents,
+    saving: eventActions.saving,
+    formOpen: eventActions.formOpen,
+    editingEvent: eventActions.editingEvent,
+    draftStart: eventActions.draftStart,
+    toolbarTitle: data.toolbarTitle,
+    searchQuery: data.searchQuery,
+    scopeDialogOpen: eventActions.scopeDialogOpen,
+    pendingScopeAction: eventActions.pendingScopeAction,
+    moveDialogOpen: eventActions.moveDialogOpen,
+    renameDialogOpen: eventActions.renameDialogOpen,
+    renamingCalendarId: eventActions.renamingCalendarId,
+    setSearchQuery: data.setSearchQuery,
+    setViewMode: data.setViewMode,
+    toggleCalendarVisibility: data.toggleCalendarVisibility,
+    selectEvent: data.selectEvent,
+    getEventColor: data.getEventColor,
+    getCalendarColor: data.getCalendarColor,
+    handlePrev: data.handlePrev,
+    handleNext: data.handleNext,
+    handleToday: data.handleToday,
+    handleSelectDay: data.handleSelectDay,
+    handleNewEvent: eventActions.handleNewEvent,
+    handleSelectTimeSlot: eventActions.handleSelectTimeSlot,
+    handleEditEvent: eventActions.handleEditEvent,
+    handleDeleteEvent: eventActions.handleDeleteEvent,
+    handleFormSubmit: eventActions.handleFormSubmit,
+    handleFormOpenChange: eventActions.handleFormOpenChange,
+    handleRecurrenceScopeSelect: eventActions.handleRecurrenceScopeSelect,
+    handleScopeDialogOpenChange: eventActions.handleScopeDialogOpenChange,
+    handleCreateCalendar: eventActions.handleCreateCalendar,
+    handleRenameCalendar: eventActions.handleRenameCalendar,
+    handleOpenRenameCalendar: eventActions.handleOpenRenameCalendar,
+    handleDeleteCalendar: eventActions.handleDeleteCalendar,
+    handleImportIcs: eventActions.handleImportIcs,
+    handleMoveEvent: eventActions.handleMoveEvent,
+    handleExportEvent: eventActions.handleExportEvent,
+    setMoveDialogOpen: eventActions.setMoveDialogOpen,
+    setRenameDialogOpen: eventActions.setRenameDialogOpen,
+  };
+}

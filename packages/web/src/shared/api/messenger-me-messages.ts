@@ -1,5 +1,5 @@
 /**
- * Workspace gateway per-user message API (`GET /api/messenger/v1/messages/`).
+ * Workspace gateway per-user message API (`GET /api/workspace/v1/messenger/messages/`).
  *
  * Returns the authenticated user's synced message-view rows (markdown content plus personal
  * read/pinned/starred flags) for their streams. The request is authenticated with the instance

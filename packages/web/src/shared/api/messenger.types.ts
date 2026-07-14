@@ -37,7 +37,7 @@ export interface MessengerRecentPrivateConversation {
   unread_message_ids: MessageId[];
 }
 
-/** Stream row returned by `GET /api/messenger/v1/streams/`. */
+/** Stream row returned by `GET /api/workspace/v1/messenger/streams/`. */
 export interface MessengerMeStream {
   /** Workspace stream UUID used for reads and writes. */
   uuid: string;
@@ -72,7 +72,7 @@ export interface MessengerMeMessagePayload {
 }
 
 /**
- * One message row from `GET /api/messenger/v1/messages/` for the authenticated user.
+ * One message row from `GET /api/workspace/v1/messenger/messages/` for the authenticated user.
  * `stream_uuid` is the single stream identity used for reads and writes. Field names are
  * snake_case (`convert_underscore=False`).
  */
@@ -102,7 +102,7 @@ export interface MessengerMeMessage {
   updated_at?: string;
 }
 
-/** Stream topic row returned by `GET /api/messenger/v1/stream_topics/`. */
+/** Stream topic row returned by `GET /api/workspace/v1/messenger/stream_topics/`. */
 export interface MessengerStreamTopic {
   uuid: string;
   name: string;
@@ -211,7 +211,7 @@ export interface WorkspaceCurrentUser {
 /** Map of normalized user id key → avatar ref (legacy URL/path or Workspace avatar URN). */
 export type AvatarUrlByUserId = Map<string, string>;
 
-/** A normalized user entry from `GET /api/messenger/v1/users/`. */
+/** A normalized user entry from `GET /api/workspace/v1/users/`. */
 export interface MessengerUserMember {
   user_id: UserId;
   full_name?: string;
@@ -461,7 +461,7 @@ export interface MessagesPageResult {
 }
 
 export interface SendMessageParams {
-  /** Client-generated Workspace message UUID sent to `/api/messenger/v1/messages/`. */
+  /** Client-generated Workspace message UUID sent to `/api/workspace/v1/messenger/messages/`. */
   messageUuid?: MessageId;
   /** Display stream name for the local echo. */
   stream?: string;

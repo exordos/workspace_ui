@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import { uploadComposerFiles } from "./chat-upload.lib";
 
 const STREAM_UUID = "22222222-2222-4222-8222-222222222222";
-const FILE_A_URI = "/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download";
-const FILE_B_URI = "/api/messenger/v1/files/44444444-4444-4444-8444-444444444444/actions/download";
+const FILE_A_URI =
+  "/api/workspace/v1/messenger/files/33333333-3333-4333-8333-333333333333/actions/download";
+const FILE_B_URI =
+  "/api/workspace/v1/messenger/files/44444444-4444-4444-8444-444444444444/actions/download";
 
 describe("uploadComposerFiles", () => {
   it("uploads valid files and returns markdown links with sanitized filenames", async () => {

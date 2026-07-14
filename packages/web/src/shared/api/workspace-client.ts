@@ -4,7 +4,7 @@
  * HTTP is implemented via Orval-generated calls + `workspaceOrvalMutator` → `workspaceApi`
  * (auth, logging, retries). All Workspace REST calls use {@link getWorkspaceApiBaseForCurrentInstance}
  * (login origin + realm; gateway `workspace.*` when organization realm is `messenger.*`).
- * Paths are `/v1/...` (REST mount `/workspace` — see `~/shared/config/workspace-api-layout`).
+ * Paths are `/v1/...` under the `/api/workspace` REST mount.
  *
  * Usage:
  *   import { getFolders, mapWorkspaceFoldersToRail } from "~/shared/api/workspace-client";
@@ -22,26 +22,30 @@ import {
   messengerFoldersPostJson,
   messengerFoldersPutJson,
 } from "./messenger-folders.internal";
-import type { FilterV1Folders200Item, ServiceFilter } from "@workspace/api/workspace-api.generated";
+import type { ServiceFilter } from "@workspace/api/workspace-api.generated";
 
 const inFlightWorkspaceGets = new Map<string, Promise<unknown>>();
 
 const MESSENGER_FOLDERS_LIST_PATH = "/folders/";
 
-type GeneratedWorkspaceFolderItem = NonNullable<FilterV1Folders200Item["items"]>[number];
-type WorkspaceFolderItem = GeneratedWorkspaceFolderItem & {
+type WorkspaceFolderItem = Record<string, unknown> & {
   folder?: string;
   folder_uuid?: string;
   stream_uuid?: string;
   unread_count?: number | null;
 };
 
-/** Folder row from `GET /api/messenger/v1/folders/` (nested items included). */
-export type WorkspaceFolder = Omit<FilterV1Folders200Item, "items"> & {
+/** Folder row from `GET /api/workspace/v1/messenger/folders/` (nested items included). */
+export interface WorkspaceFolder {
+  uuid?: string;
+  created_at?: string;
+  updated_at?: string;
+  title?: string;
+  background_color_value?: number | null;
+  system_type?: WorkspaceFolderSystemType | null;
   unread_count?: number | null;
   folder_items?: WorkspaceFolderItem[];
-  items?: GeneratedWorkspaceFolderItem[];
-};
+}
 
 type WorkspaceFolderSystemType = "created" | "all" | "personal" | "channels";
 export type WorkspaceFolderRailSystemType = WorkspaceFolderSystemType | "personal" | "channels";

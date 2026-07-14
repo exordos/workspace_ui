@@ -1,11 +1,11 @@
 /**
  * Canonical base URLs for messenger message media (`/user_uploads/`, `/external_content/`).
- * Rewrites gateway/legacy hosts so SPA, Electron `file://`, and Vite dev-proxy behave the same.
+ * Rewrites gateway hosts so SPA, Electron `file://`, and Vite dev-proxy behave the same.
  */
 
 const USER_UPLOADS_SEGMENT = "/user_uploads/";
 const EXTERNAL_CONTENT_SEGMENT = "/external_content/";
-const WORKSPACE_FILE_DOWNLOAD_PREFIX = "/api/messenger/v1/files/";
+const WORKSPACE_FILE_DOWNLOAD_PREFIX = "/api/workspace/v1/messenger/files/";
 const WORKSPACE_FILE_DOWNLOAD_SUFFIX = "/actions/download";
 const PROTECTED_MESSAGE_MEDIA_SEGMENTS = [
   WORKSPACE_FILE_DOWNLOAD_PREFIX,
@@ -15,8 +15,8 @@ const PROTECTED_MESSAGE_MEDIA_SEGMENTS = [
 
 export function collapseDuplicateWorkspaceV1InUrl(raw: string): string {
   let s = raw.trim();
-  while (s.includes("/workspace/v1/workspace/v1")) {
-    s = s.replace(/\/workspace\/v1\/workspace\/v1/g, "/workspace/v1");
+  while (s.includes("/api/workspace/v1/api/workspace/v1")) {
+    s = s.replace(/\/api\/workspace\/v1\/api\/workspace\/v1/g, "/api/workspace/v1");
   }
   return s;
 }

@@ -1,13 +1,13 @@
 /**
  * Public user API facade for backend-only user data.
  *
- * The new backend user contract exposes account data through /api/messenger/v1/users/.
+ * The unified backend exposes account data through /api/workspace/v1/users/.
  * Presence is reported through the Workspace users presence action.
  */
 
 import {
   getCurrentInstance,
-  getMessengerGatewayApiBaseForCurrentInstance,
+  getWorkspaceCommonApiBaseForCurrentInstance,
   messengerApi,
 } from "~/shared/api/client";
 import { parseMessengerGatewayUser } from "~/shared/api/messenger-users.lib";
@@ -148,7 +148,7 @@ export async function reportPresence(status: ReportablePresenceStatus): Promise<
   if (context == null) {
     return;
   }
-  const base = getMessengerGatewayApiBaseForCurrentInstance();
+  const base = getWorkspaceCommonApiBaseForCurrentInstance();
   const isStatusLoaded = await ensureOwnStatusLoadedBeforeHeartbeat(base, context);
   if (!isStatusLoaded) {
     return;
@@ -177,7 +177,7 @@ export async function fetchOwnStatus(): Promise<UserStatus | null> {
   }
   try {
     const user = await fetchAndMergeCurrentUserSnapshot(
-      getMessengerGatewayApiBaseForCurrentInstance(),
+      getWorkspaceCommonApiBaseForCurrentInstance(),
       context,
     );
     return user?.status ?? null;
@@ -203,7 +203,7 @@ export async function updateOwnStatus(
   const text = status?.text.trim() ?? "";
   const emojiName = status?.emojiName?.trim() ?? "";
   const res = await messengerApi.postJsonWithBase(
-    getMessengerGatewayApiBaseForCurrentInstance(),
+    getWorkspaceCommonApiBaseForCurrentInstance(),
     `/users/${context.userUuid}/actions/presence/invoke`,
     {
       status: status?.away === true ? "idle" : "active",

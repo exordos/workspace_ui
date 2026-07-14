@@ -23,7 +23,7 @@
  *   import { logger, createLogger } from "~/lib/logger";
  *
  *   logger.info("User logged in", { userId: 42 });
- *   logger.error("API failed", { status: 401, url: "/api/messenger/v1/messages" });
+ *   logger.error("API failed", { status: 401, url: "/api/workspace/v1/messenger/messages" });
  *
  *   const apiLog = createLogger("api");
  *   apiLog.warn("Slow response", { ms: 3200, endpoint: "/messages" });

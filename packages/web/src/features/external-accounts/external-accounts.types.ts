@@ -2,8 +2,14 @@
  * External messenger account bindings for the current user.
  */
 
-export type ExternalAccountType = "zulip";
+export type ExternalAccountType = "zulip" | "mail" | "calendar";
 export type ExternalAccountStatus = "new" | "active";
+export type ExternalAccountAccessStatus =
+  | "pending"
+  | "missing_credentials"
+  | "confirmed"
+  | "invalid_credentials"
+  | "unavailable";
 
 export interface ZulipExternalAccountUserInfo {
   kind: "zulip";
@@ -21,13 +27,60 @@ export interface ZulipExternalAccountSettings {
 export interface ZulipExternalAccount {
   uuid: string;
   externalUserId?: string;
-  accountType: ExternalAccountType;
+  accountType: "zulip";
   hasCredentials: boolean;
   status?: ExternalAccountStatus;
   accountSettings: ZulipExternalAccountSettings;
   createdAt?: string;
   updatedAt?: string;
 }
+
+interface GroupwareExternalAccountBase {
+  uuid: string;
+  serverUrl: string;
+  status?: ExternalAccountStatus;
+  accessStatus: ExternalAccountAccessStatus;
+  accessLastError?: string;
+}
+
+export interface MailExternalAccount extends GroupwareExternalAccountBase {
+  accountType: "mail";
+  email: string;
+  imapHost: string;
+  imapPort: number;
+  imapSecurity: "tls" | "starttls" | "plain";
+  smtpHost: string;
+  smtpPort: number;
+  smtpSecurity: "tls" | "starttls" | "plain";
+}
+
+export interface CalendarExternalAccount extends GroupwareExternalAccountBase {
+  accountType: "calendar";
+}
+
+export interface SaveMailExternalAccountInput {
+  uuid?: string;
+  email: string;
+  username: string;
+  password: string;
+  imapHost: string;
+  imapPort: number;
+  imapSecurity: "tls" | "starttls" | "plain";
+  smtpHost: string;
+  smtpPort: number;
+  smtpSecurity: "tls" | "starttls" | "plain";
+}
+
+export interface SaveCalendarExternalAccountInput {
+  uuid?: string;
+  serverUrl: string;
+  username: string;
+  password: string;
+}
+
+export type SaveGroupwareExternalAccountResult<T> =
+  | { ok: true; account: T }
+  | { ok: false; kind: SaveExternalAccountErrorKind };
 
 export interface SaveZulipExternalAccountInput {
   uuid?: string;

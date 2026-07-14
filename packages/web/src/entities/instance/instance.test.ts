@@ -54,14 +54,12 @@ describe("instancesStore", () => {
     });
 
     it("defaults auth type to iam", () => {
-      const id = useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://z.test",
-          login: "a@b.com",
-          authType: "iam",
-          iamAccessToken: "k1",
-        }).id;
+      const id = useInstancesStore.getState().addInstance({
+        realm: "https://z.test",
+        login: "a@b.com",
+        authType: "iam",
+        iamAccessToken: "k1",
+      }).id;
 
       const state = useInstancesStore.getState();
       expect(state.instances.find((instance) => instance.id === id)?.authType).toBe("iam");
@@ -88,14 +86,12 @@ describe("instancesStore", () => {
         authType: "iam",
         iamAccessToken: "k1",
       }).id;
-      const id2 = useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://b.test",
-          login: "b@b.com",
-          authType: "iam",
-          iamAccessToken: "k2",
-        }).id;
+      const id2 = useInstancesStore.getState().addInstance({
+        realm: "https://b.test",
+        login: "b@b.com",
+        authType: "iam",
+        iamAccessToken: "k2",
+      }).id;
 
       const state = useInstancesStore.getState();
       expect(state.instances).toHaveLength(2);
@@ -112,21 +108,19 @@ describe("instancesStore", () => {
         authType: "iam",
         iamAccessToken: "k1",
       }).id;
-      const id2 = useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://b.test",
-          login: "b@b.com",
-          authType: "iam",
-          iamAccessToken: "k2",
-        }).id;
+      const id2 = useInstancesStore.getState().addInstance({
+        realm: "https://b.test",
+        login: "b@b.com",
+        authType: "iam",
+        iamAccessToken: "k2",
+      }).id;
 
       expect(id1).not.toBe(id2);
     });
 
     it("returns duplicate for the same normalized realm and email", () => {
       const first = useInstancesStore.getState().addInstance({
-        realm: "https://Chat.Example.com/api/messenger/v1/",
+        realm: "https://Chat.Example.com/api/workspace/v1/messenger/",
         login: " User@Example.com ",
         authType: "iam",
         iamAccessToken: "k1",
@@ -183,14 +177,12 @@ describe("instancesStore", () => {
         authType: "iam",
         iamAccessToken: "k1",
       }).id;
-      const id2 = useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://b.test",
-          login: "b@b.com",
-          authType: "iam",
-          iamAccessToken: "k2",
-        }).id;
+      const id2 = useInstancesStore.getState().addInstance({
+        realm: "https://b.test",
+        login: "b@b.com",
+        authType: "iam",
+        iamAccessToken: "k2",
+      }).id;
 
       useInstancesStore.getState().removeInstance(id1);
 
@@ -202,14 +194,12 @@ describe("instancesStore", () => {
 
     // Removing the last instance leaves a null selection — shows login screen.
     it("sets current to null when last instance is removed", () => {
-      const id = useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://a.test",
-          login: "a@a.com",
-          authType: "iam",
-          iamAccessToken: "k1",
-        }).id;
+      const id = useInstancesStore.getState().addInstance({
+        realm: "https://a.test",
+        login: "a@a.com",
+        authType: "iam",
+        iamAccessToken: "k1",
+      }).id;
 
       useInstancesStore.getState().removeInstance(id);
 
@@ -220,22 +210,18 @@ describe("instancesStore", () => {
 
     // Removing a non-active instance must not affect the current selection.
     it("does not change current when removing a non-current instance", () => {
-      const id1 = useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://a.test",
-          login: "a@a.com",
-          authType: "iam",
-          iamAccessToken: "k1",
-        }).id;
-      const id2 = useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://b.test",
-          login: "b@b.com",
-          authType: "iam",
-          iamAccessToken: "k2",
-        }).id;
+      const id1 = useInstancesStore.getState().addInstance({
+        realm: "https://a.test",
+        login: "a@a.com",
+        authType: "iam",
+        iamAccessToken: "k1",
+      }).id;
+      const id2 = useInstancesStore.getState().addInstance({
+        realm: "https://b.test",
+        login: "b@b.com",
+        authType: "iam",
+        iamAccessToken: "k2",
+      }).id;
 
       useInstancesStore.getState().removeInstance(id2);
 
@@ -254,22 +240,18 @@ describe("instancesStore", () => {
     });
 
     it("clears Jitsi URL when switching current instance", () => {
-      useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://a.test",
-          login: "a@a.com",
-          authType: "iam",
-          iamAccessToken: "k1",
-        });
-      const id2 = useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://b.test",
-          login: "b@b.com",
-          authType: "iam",
-          iamAccessToken: "k2",
-        }).id;
+      useInstancesStore.getState().addInstance({
+        realm: "https://a.test",
+        login: "a@a.com",
+        authType: "iam",
+        iamAccessToken: "k1",
+      });
+      const id2 = useInstancesStore.getState().addInstance({
+        realm: "https://b.test",
+        login: "b@b.com",
+        authType: "iam",
+        iamAccessToken: "k2",
+      }).id;
 
       useInstancesStore.getState().setJitsiMeetBaseUrl("https://jitsi.a.test");
       useInstancesStore.getState().setCurrentInstanceId(id2);
@@ -283,22 +265,18 @@ describe("instancesStore", () => {
   describe("setCurrentInstanceId / switchInstance", () => {
     // Valid ID must update the selection immediately.
     it("switches to a valid instance id", () => {
-      useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://a.test",
-          login: "a@a.com",
-          authType: "iam",
-          iamAccessToken: "k1",
-        });
-      const id2 = useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://b.test",
-          login: "b@b.com",
-          authType: "iam",
-          iamAccessToken: "k2",
-        }).id;
+      useInstancesStore.getState().addInstance({
+        realm: "https://a.test",
+        login: "a@a.com",
+        authType: "iam",
+        iamAccessToken: "k1",
+      });
+      const id2 = useInstancesStore.getState().addInstance({
+        realm: "https://b.test",
+        login: "b@b.com",
+        authType: "iam",
+        iamAccessToken: "k2",
+      }).id;
 
       useInstancesStore.getState().setCurrentInstanceId(id2);
 
@@ -307,14 +285,12 @@ describe("instancesStore", () => {
 
     // Invalid IDs (e.g. from corrupted localStorage) must be silently ignored.
     it("ignores setting current to an id that does not exist", () => {
-      const id1 = useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://a.test",
-          login: "a@a.com",
-          authType: "iam",
-          iamAccessToken: "k1",
-        }).id;
+      const id1 = useInstancesStore.getState().addInstance({
+        realm: "https://a.test",
+        login: "a@a.com",
+        authType: "iam",
+        iamAccessToken: "k1",
+      }).id;
 
       useInstancesStore.getState().setCurrentInstanceId("nonexistent");
 
@@ -323,14 +299,12 @@ describe("instancesStore", () => {
 
     // Null is valid — used during logout to deselect all instances.
     it("allows setting current to null", () => {
-      useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://a.test",
-          login: "a@a.com",
-          authType: "iam",
-          iamAccessToken: "k1",
-        });
+      useInstancesStore.getState().addInstance({
+        realm: "https://a.test",
+        login: "a@a.com",
+        authType: "iam",
+        iamAccessToken: "k1",
+      });
 
       useInstancesStore.getState().setCurrentInstanceId(null);
 
@@ -338,30 +312,24 @@ describe("instancesStore", () => {
     });
 
     it("reorders instances by latest user selection", () => {
-      const idA = useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://a.test",
-          login: "a@a.com",
-          authType: "iam",
-          iamAccessToken: "k1",
-        }).id;
-      const idB = useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://b.test",
-          login: "b@b.com",
-          authType: "iam",
-          iamAccessToken: "k2",
-        }).id;
-      const idC = useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://c.test",
-          login: "c@c.com",
-          authType: "iam",
-          iamAccessToken: "k3",
-        }).id;
+      const idA = useInstancesStore.getState().addInstance({
+        realm: "https://a.test",
+        login: "a@a.com",
+        authType: "iam",
+        iamAccessToken: "k1",
+      }).id;
+      const idB = useInstancesStore.getState().addInstance({
+        realm: "https://b.test",
+        login: "b@b.com",
+        authType: "iam",
+        iamAccessToken: "k2",
+      }).id;
+      const idC = useInstancesStore.getState().addInstance({
+        realm: "https://c.test",
+        login: "c@c.com",
+        authType: "iam",
+        iamAccessToken: "k3",
+      }).id;
 
       useInstancesStore.getState().setCurrentInstanceId(idB);
       expect(useInstancesStore.getState().instances.map((instance) => instance.id)).toEqual([
@@ -379,22 +347,18 @@ describe("instancesStore", () => {
     });
 
     it("increments activeOrgEpoch when the active instance changes", () => {
-      const idA = useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://a.test",
-          login: "a@a.com",
-          authType: "iam",
-          iamAccessToken: "k1",
-        }).id;
-      const idB = useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://b.test",
-          login: "b@b.com",
-          authType: "iam",
-          iamAccessToken: "k2",
-        }).id;
+      const idA = useInstancesStore.getState().addInstance({
+        realm: "https://a.test",
+        login: "a@a.com",
+        authType: "iam",
+        iamAccessToken: "k1",
+      }).id;
+      const idB = useInstancesStore.getState().addInstance({
+        realm: "https://b.test",
+        login: "b@b.com",
+        authType: "iam",
+        iamAccessToken: "k2",
+      }).id;
       const epochAfterAdd = useInstancesStore.getState().activeOrgEpoch;
 
       useInstancesStore.getState().setCurrentInstanceId(idB);
@@ -405,14 +369,12 @@ describe("instancesStore", () => {
     });
 
     it("does not increment activeOrgEpoch when current instance does not change", () => {
-      const id = useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://a.test",
-          login: "a@a.com",
-          authType: "iam",
-          iamAccessToken: "k1",
-        }).id;
+      const id = useInstancesStore.getState().addInstance({
+        realm: "https://a.test",
+        login: "a@a.com",
+        authType: "iam",
+        iamAccessToken: "k1",
+      }).id;
       const epochBefore = useInstancesStore.getState().activeOrgEpoch;
 
       useInstancesStore.getState().setCurrentInstanceId(id);
@@ -421,14 +383,12 @@ describe("instancesStore", () => {
     });
 
     it("increments activeOrgEpoch when switching to null", () => {
-      useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://a.test",
-          login: "a@a.com",
-          authType: "iam",
-          iamAccessToken: "k1",
-        });
+      useInstancesStore.getState().addInstance({
+        realm: "https://a.test",
+        login: "a@a.com",
+        authType: "iam",
+        iamAccessToken: "k1",
+      });
       const epochBefore = useInstancesStore.getState().activeOrgEpoch;
 
       useInstancesStore.getState().setCurrentInstanceId(null);
@@ -439,14 +399,12 @@ describe("instancesStore", () => {
 
   describe("active organization request context", () => {
     it("captures the current instance id and epoch", () => {
-      const id = useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://a.test",
-          login: "a@a.com",
-          authType: "iam",
-          iamAccessToken: "k1",
-        }).id;
+      const id = useInstancesStore.getState().addInstance({
+        realm: "https://a.test",
+        login: "a@a.com",
+        authType: "iam",
+        iamAccessToken: "k1",
+      }).id;
 
       expect(captureActiveOrgRequestContext()).toEqual({
         instanceId: id,
@@ -455,22 +413,18 @@ describe("instancesStore", () => {
     });
 
     it("reports a captured context as stale after switching instances", () => {
-      useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://a.test",
-          login: "a@a.com",
-          authType: "iam",
-          iamAccessToken: "k1",
-        });
-      const idB = useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://b.test",
-          login: "b@b.com",
-          authType: "iam",
-          iamAccessToken: "k2",
-        }).id;
+      useInstancesStore.getState().addInstance({
+        realm: "https://a.test",
+        login: "a@a.com",
+        authType: "iam",
+        iamAccessToken: "k1",
+      });
+      const idB = useInstancesStore.getState().addInstance({
+        realm: "https://b.test",
+        login: "b@b.com",
+        authType: "iam",
+        iamAccessToken: "k2",
+      }).id;
       const context = captureActiveOrgRequestContext();
 
       expect(isActiveOrgRequestContextCurrent(context)).toBe(true);
@@ -485,14 +439,12 @@ describe("instancesStore", () => {
   describe("getCurrentInstance", () => {
     // Must return the full instance object with realm, login, and IAM tokens.
     it("returns the current instance when one is selected", () => {
-      useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://a.test",
-          login: "a@a.com",
-          authType: "iam",
-          iamAccessToken: "k1",
-        });
+      useInstancesStore.getState().addInstance({
+        realm: "https://a.test",
+        login: "a@a.com",
+        authType: "iam",
+        iamAccessToken: "k1",
+      });
 
       const current = useInstancesStore.getState().getCurrentInstance();
 
@@ -523,14 +475,12 @@ describe("instancesStore", () => {
   describe("localStorage persistence", () => {
     // After adding an instance, localStorage must contain the serialized data.
     it("persists instances to localStorage on add", () => {
-      useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://a.test",
-          login: "a@a.com",
-          authType: "iam",
-          iamAccessToken: "k1",
-        });
+      useInstancesStore.getState().addInstance({
+        realm: "https://a.test",
+        login: "a@a.com",
+        authType: "iam",
+        iamAccessToken: "k1",
+      });
 
       const stored = JSON.parse(window.localStorage.getItem(INSTANCES_KEY) ?? "[]");
       expect(stored).toHaveLength(1);
@@ -604,28 +554,24 @@ describe("instancesStore", () => {
 
     // The active instance ID is stored separately so it survives independently.
     it("persists current instance id to localStorage", () => {
-      const id = useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://a.test",
-          login: "a@a.com",
-          authType: "iam",
-          iamAccessToken: "k1",
-        }).id;
+      const id = useInstancesStore.getState().addInstance({
+        realm: "https://a.test",
+        login: "a@a.com",
+        authType: "iam",
+        iamAccessToken: "k1",
+      }).id;
 
       expect(window.localStorage.getItem(CURRENT_KEY)).toBe(id);
     });
 
     // Null selection must clean up the localStorage key entirely.
     it("removes current instance key from localStorage when set to null", () => {
-      useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://a.test",
-          login: "a@a.com",
-          authType: "iam",
-          iamAccessToken: "k1",
-        });
+      useInstancesStore.getState().addInstance({
+        realm: "https://a.test",
+        login: "a@a.com",
+        authType: "iam",
+        iamAccessToken: "k1",
+      });
       useInstancesStore.getState().setCurrentInstanceId(null);
 
       expect(window.localStorage.getItem(CURRENT_KEY)).toBeNull();
@@ -633,14 +579,12 @@ describe("instancesStore", () => {
 
     // Instance removal must be reflected in localStorage so reload doesn't restore it.
     it("persists removal to localStorage", () => {
-      const id = useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://a.test",
-          login: "a@a.com",
-          authType: "iam",
-          iamAccessToken: "k1",
-        }).id;
+      const id = useInstancesStore.getState().addInstance({
+        realm: "https://a.test",
+        login: "a@a.com",
+        authType: "iam",
+        iamAccessToken: "k1",
+      }).id;
 
       useInstancesStore.getState().removeInstance(id);
 
@@ -651,14 +595,12 @@ describe("instancesStore", () => {
 
   describe("per-instance unread counters", () => {
     it("stores unread counters per instance and persists them", () => {
-      const id = useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://a.test",
-          login: "a@a.com",
-          authType: "iam",
-          iamAccessToken: "k1",
-        }).id;
+      const id = useInstancesStore.getState().addInstance({
+        realm: "https://a.test",
+        login: "a@a.com",
+        authType: "iam",
+        iamAccessToken: "k1",
+      }).id;
 
       useInstancesStore.getState().setInstanceUnreadCount(id, 7);
 
@@ -669,14 +611,12 @@ describe("instancesStore", () => {
     });
 
     it("removes unread counters when instance is removed", () => {
-      const id = useInstancesStore
-        .getState()
-        .addInstance({
-          realm: "https://a.test",
-          login: "a@a.com",
-          authType: "iam",
-          iamAccessToken: "k1",
-        }).id;
+      const id = useInstancesStore.getState().addInstance({
+        realm: "https://a.test",
+        login: "a@a.com",
+        authType: "iam",
+        iamAccessToken: "k1",
+      }).id;
 
       useInstancesStore.getState().setInstanceUnreadCount(id, 3);
       useInstancesStore.getState().removeInstance(id);

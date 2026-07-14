@@ -4,16 +4,14 @@
 interface ImportMetaEnv {
   /** Optional default Workspace/Workspace API origin. Multi-org: use instance + dev header at runtime. */
   readonly VITE_WORKSPACE_API_ORIGIN?: string;
-  /** Legacy Workspace API host for dev `/workspace/workspace/v1` proxy. Optional. */
-  readonly VITE_WORKSPACE_API_LEGACY_ORIGIN?: string;
   /**
-   * When true, dev proxy forwards `/user_uploads/...` without the fixed `/workspace/v1` prefix
+   * When true, dev proxy forwards `/user_uploads/...` without the fixed `/api/workspace/v1` prefix
    * (standard Workspace: `https://realm/user_uploads/...`).
    */
   readonly VITE_USER_UPLOADS_AT_REALM_ROOT?: string;
   /**
    * When true, dev `/user_uploads` proxy to the realm host uses a gateway prefix for uploads.
-   * Set only if uploads on the Workspace host are under a prefix (e.g. /workspace/v1).
+   * Set only if uploads on the Workspace host are under a prefix (e.g. /api/workspace/v1).
    */
   readonly VITE_USER_UPLOADS_PREFIX_ON_REALM?: string;
   /** When true, Vite dev server logs each proxied request: method, path → upstream URL. */

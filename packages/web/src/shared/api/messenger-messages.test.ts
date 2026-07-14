@@ -158,7 +158,7 @@ describe("fetchRecentMessages", () => {
     expect(result[0]!.id).toBe(testMessageId(1));
     expect(mockMessengerApi.get).not.toHaveBeenCalled();
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/messages/",
       {
         page_limit: "1000",
@@ -202,7 +202,7 @@ describe("fetchMessagesBeforeAnchor", () => {
     expect(result).toHaveLength(1);
     expect(result[0]!.id).toBe(testMessageId(50));
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/messages/",
       {
         page_limit: "5000",
@@ -245,7 +245,7 @@ describe("fetchMessagesAfterAnchor", () => {
     expect(result).toHaveLength(1);
     expect(result[0]!.id).toBe(testMessageId(101));
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/messages/",
       {
         page_limit: "5000",
@@ -309,7 +309,7 @@ describe("fetchActivityMessages", () => {
     expect(result[0]?.flags).toContain("starred");
     expect(mockMessengerApi.get).not.toHaveBeenCalled();
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/messages/",
       {
         page_limit: "200",
@@ -405,7 +405,7 @@ describe("fetchActivityMessages", () => {
 
     expect(mockMessengerApi.get).not.toHaveBeenCalled();
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/messages/",
       {
         page_limit: "200",
@@ -444,7 +444,7 @@ describe("fetchMessagesByIds", () => {
     expect(result[0]?.id).toBe(messageId);
     expect(mockMessengerApi.get).not.toHaveBeenCalled();
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/messages/${messageId}`,
       undefined,
       undefined,
@@ -479,7 +479,7 @@ describe("fetchMessagesByIds", () => {
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledTimes(2);
     expect(mockMessengerApi.getWithBase).toHaveBeenNthCalledWith(
       2,
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/messages/${testMessageId(777)}`,
       undefined,
       undefined,
@@ -514,7 +514,7 @@ describe("fetchMessageById", () => {
     expect(result?.markdown_source).toBe("hello");
     expect(result?.read).toBe(true);
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/messages/${testMessageId(100)}`,
     );
   });
@@ -536,7 +536,7 @@ describe("fetchMessages", () => {
     expect(result[0]!.id).toBe(testMessageId(10));
     expect(mockMessengerApi.get).not.toHaveBeenCalled();
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/messages/",
       expect.objectContaining({
         stream_uuid: STREAM_UUID,
@@ -581,7 +581,7 @@ describe("fetchMessages", () => {
     await fetchMessages();
     expect(mockMessengerApi.get).not.toHaveBeenCalled();
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/messages/",
       expect.not.objectContaining({ narrow: expect.anything() }),
       undefined,
@@ -632,7 +632,7 @@ describe("fetchMessagesWithNarrow", () => {
     expect(result.map((message) => message.id)).toEqual([testMessageId(1)]);
     expect(mockMessengerApi.get).not.toHaveBeenCalled();
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/messages/",
       expect.objectContaining({
         page_limit: "200",
@@ -677,7 +677,7 @@ describe("fetchMessagesWithNarrow", () => {
     );
     expect(result[0]?.content).toContain("<strong>bold</strong>");
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/messages/",
       expect.objectContaining({
         stream_uuid: STREAM_UUID,
@@ -812,7 +812,7 @@ describe("fetchAllMessagesPage", () => {
 
     expect(mockMessengerApi.get).not.toHaveBeenCalled();
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/messages/",
       {
         page_limit: "25",
@@ -836,7 +836,7 @@ describe("fetchAllMessagesPage", () => {
     await fetchAllMessagesPage("00000000-0000-4000-8000-000000000100", 50);
 
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/messages/",
       {
         page_limit: "50",
@@ -951,7 +951,7 @@ describe("sendMessage", () => {
       timestamp: expect.any(Number),
     });
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/messages/",
       {
         uuid: messageUuid,
@@ -1030,7 +1030,7 @@ describe("sendMessage", () => {
       markdown_source: "hi",
     });
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/messages/",
       {
         uuid: messageUuid,
@@ -1174,7 +1174,7 @@ describe("updateMessage", () => {
       }),
     );
     expect(mockMessengerApi.putJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/messages/${testMessageId(42)}`,
       {
         payload: {
@@ -1225,7 +1225,7 @@ describe("deleteMessage", () => {
     });
     await expect(deleteMessage("00000000-0000-4000-8000-000000000042")).resolves.toBeUndefined();
     expect(mockMessengerApi.deleteWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/messages/${testMessageId(42)}`,
     );
   });
@@ -1265,7 +1265,7 @@ describe("fetchMessageReactions", () => {
     await expect(fetchMessageReactions(testMessageId(42))).resolves.toEqual([reaction]);
     expect(mockRefreshMessengerApiBase).toHaveBeenCalled();
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/message_reactions/",
       { message_uuid: testMessageId(42) },
       undefined,
@@ -1285,7 +1285,7 @@ describe("fetchMessageReactions", () => {
     });
 
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/message_reactions/",
       {
         message_uuid: testMessageId(42),
@@ -1318,7 +1318,7 @@ describe("addReaction", () => {
     });
     expect(mockRefreshMessengerApiBase).toHaveBeenCalled();
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/message_reactions/",
       {
         message_uuid: testMessageId(42),
@@ -1361,7 +1361,7 @@ describe("addReaction", () => {
       created: false,
     });
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/message_reactions/",
       {
         message_uuid: testMessageId(42),
@@ -1397,7 +1397,7 @@ describe("removeReaction", () => {
 
     await expect(removeReaction("33333333-3333-4333-8333-333333333333")).resolves.toBeUndefined();
     expect(mockMessengerApi.deleteWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/message_reactions/33333333-3333-4333-8333-333333333333",
     );
   });

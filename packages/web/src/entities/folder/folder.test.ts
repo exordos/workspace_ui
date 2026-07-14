@@ -21,13 +21,13 @@ const { workspaceApi, messengerApi } = vi.hoisted(() => {
         (_base: string, path: string, params?: Record<string, string>, signal?: AbortSignal) =>
           get(path, params, signal),
       ),
-      getBaseUrl: vi.fn(() => "/api/messenger/v1"),
+      getBaseUrl: vi.fn(() => "/api/workspace/v1/messenger"),
       setBaseUrl: vi.fn(),
     },
     messengerApi: {
       get,
       getWithBase,
-      getBaseUrl: vi.fn(() => "/api/messenger/v1"),
+      getBaseUrl: vi.fn(() => "/api/workspace/v1/messenger"),
       setBaseUrl: vi.fn(),
     },
   };
@@ -44,7 +44,7 @@ vi.mock("~/shared/api/client", () => ({
     iamAccessToken: "iam-token",
   }),
   getWorkspaceApiBaseForCurrentInstance: () => "https://messenger.test",
-  getMessengerGatewayApiBaseForCurrentInstance: () => "/api/messenger/v1",
+  getMessengerGatewayApiBaseForCurrentInstance: () => "/api/workspace/v1/messenger",
   setInstanceProvider: vi.fn(),
 }));
 
@@ -194,7 +194,7 @@ describe("getFolders", () => {
     await getFolders();
 
     expect(messengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/folders/",
       undefined,
       undefined,

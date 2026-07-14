@@ -2,7 +2,7 @@
 
 Single source of truth for volatile counts, paths, and workflow. Other docs should link here instead of duplicating.
 
-**Last verified:** 2026-06-04 (branch `master`, version `0.1.3`).
+**Last verified:** 2026-07-14 (branch `platform-messanger`).
 
 ## Monorepo packages
 
@@ -53,7 +53,7 @@ Import **concrete segment files** (`*.model.ts`, `*.api.ts`, `*.ui.tsx`). Do not
 
 ```typescript
 import { useUsersStore } from "~/entities/user/user.model";
-import { messengerFetch } from "~/shared/api/client";
+import { workspaceApi } from "~/shared/api/workspace-api";
 ```
 
 ## Git workflow

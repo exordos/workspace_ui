@@ -66,7 +66,7 @@ describe("resolveAvatarUrl", () => {
   it("resolves Workspace image avatar URNs to file download URLs", () => {
     const url = resolveAvatarUrl("urn:image:33333333-3333-4333-8333-333333333333", REALM);
     expect(url).toContain(
-      "https://chat.example.com/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download",
+      "https://chat.example.com/api/workspace/v1/messenger/files/33333333-3333-4333-8333-333333333333/actions/download",
     );
     expect(url).toContain("_av=");
   });

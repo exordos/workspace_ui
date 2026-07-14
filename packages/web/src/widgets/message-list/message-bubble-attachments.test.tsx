@@ -40,7 +40,7 @@ function msg(overrides: Partial<MockMessage> = {}): MockMessage {
     stream_uuid: "00000000-0000-4000-8000-000000000010",
     subject: "general",
     content:
-      '<p><a href="/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download">report.pdf</a></p>',
+      '<p><a href="/api/workspace/v1/messenger/files/33333333-3333-4333-8333-333333333333/actions/download">report.pdf</a></p>',
     timestamp: 1710000000,
   };
   return {
@@ -96,7 +96,7 @@ describe("MessageBubble attachment links", () => {
     });
     expect(link).toHaveAttribute(
       "href",
-      "/api/messenger/v1/files/55555555-5555-4555-8555-555555555555/actions/download",
+      "/api/workspace/v1/messenger/files/55555555-5555-4555-8555-555555555555/actions/download",
     );
   });
 
@@ -136,7 +136,7 @@ describe("MessageBubble attachment links", () => {
     await waitFor(() => {
       expect(downloadWorkspaceFileAttachmentMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          path: "/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download",
+          path: "/api/workspace/v1/messenger/files/33333333-3333-4333-8333-333333333333/actions/download",
           fileName: "report.pdf",
           authHeaders: { Authorization: "Bearer token" },
           onProgress: expect.any(Function),
@@ -146,7 +146,7 @@ describe("MessageBubble attachment links", () => {
 
     await waitFor(() => {
       expect(useDownloadStore.getState().entries[0]).toMatchObject({
-        path: "/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download",
+        path: "/api/workspace/v1/messenger/files/33333333-3333-4333-8333-333333333333/actions/download",
         status: "downloaded",
       });
     });
@@ -168,7 +168,7 @@ describe("MessageBubble attachment links", () => {
     await waitFor(() => {
       expect(downloadWorkspaceFileAttachmentMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          path: "/api/messenger/v1/files/55555555-5555-4555-8555-555555555555/actions/download",
+          path: "/api/workspace/v1/messenger/files/55555555-5555-4555-8555-555555555555/actions/download",
           fileName: "report.pdf",
           authHeaders: { Authorization: "Bearer token" },
           onProgress: expect.any(Function),

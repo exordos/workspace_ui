@@ -12,9 +12,9 @@ describe("resolveIamApiOrigin", () => {
   });
 
   it("derives origin from login realm URL", () => {
-    expect(resolveIamApiOrigin({ realm: "https://chat.example.com/api/messenger/v1" })).toBe(
-      "https://chat.example.com",
-    );
+    expect(
+      resolveIamApiOrigin({ realm: "https://chat.example.com/api/workspace/v1/messenger" }),
+    ).toBe("https://chat.example.com");
   });
 });
 

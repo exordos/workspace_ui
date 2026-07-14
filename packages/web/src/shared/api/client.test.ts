@@ -16,8 +16,8 @@ vi.mock("../lib/logger", async (importOriginal) => {
 
 vi.mock("../lib/env", () => ({
   env: {
-    WORKSPACE_API_BASE: "https://workspace.test/workspace",
-    WORKSPACE_REST_API_PATH: "",
+    WORKSPACE_API_BASE: "https://workspace.test/api/workspace",
+    WORKSPACE_REST_API_PATH: "/api/workspace",
   },
 }));
 
@@ -455,13 +455,16 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true, folders: [] }));
 
     const before = workspaceApi.getBaseUrl();
-    const res = await workspaceApi.getWithBase("https://org.example.com/workspace", "/v1/folders/");
+    const res = await workspaceApi.getWithBase(
+      "https://org.example.com/api/workspace",
+      "/v1/folders/",
+    );
     const after = workspaceApi.getBaseUrl();
 
     expect(res.ok).toBe(true);
     expect(before).toBe(after);
     const [url] = mockFetch.mock.calls[0] as [string];
-    expect(url).toBe("https://org.example.com/workspace/v1/folders/");
+    expect(url).toBe("https://org.example.com/api/workspace/v1/folders/");
   });
 
   // `postFormData` must not break multipart headers set by the browser.
@@ -504,12 +507,12 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     const form = new FormData();
     form.append("file", new File(["data"], "test.txt"));
 
-    await messengerApi.postFormDataWithBase("/api/messenger/v1", "/files/", form);
+    await messengerApi.postFormDataWithBase("/api/workspace/v1/messenger", "/files/", form);
 
     const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
     const headers = init.headers as Record<string, string>;
     const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost";
-    expect(url).toBe(`${origin}/api/messenger/v1/files/`);
+    expect(url).toBe(`${origin}/api/workspace/v1/messenger/files/`);
     expect(init.body).toBe(form);
     expect(headers["Content-Type"]).toBeUndefined();
   });
@@ -537,7 +540,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
 
   it("routes active organization Messenger API requests to the organization origin", async () => {
     const {
-      getMessengerGatewayApiBaseForCurrentInstance,
+      getWorkspaceCommonApiBaseForCurrentInstance,
       setInstanceProvider,
       messengerApi,
       refreshMessengerApiBase,
@@ -555,11 +558,11 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ users: [] }));
 
     try {
-      await messengerApi.getWithBase(getMessengerGatewayApiBaseForCurrentInstance(), "/users/");
+      await messengerApi.getWithBase(getWorkspaceCommonApiBaseForCurrentInstance(), "/users/");
 
       const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
       const headers = init.headers as Record<string, string>;
-      expect(url).toBe("https://workspace.exordos.com/api/messenger/v1/users/");
+      expect(url).toBe("https://workspace.exordos.com/api/workspace/v1/users/");
       expect(headers["X-Workspace-Dev-Target-Origin"]).toBeUndefined();
     } finally {
       setInstanceProvider(() => null);
@@ -585,7 +588,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
 
       const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
       const headers = init.headers as Record<string, string>;
-      expect(url).toBe("https://workspace.exordos.com/v1/folders/");
+      expect(url).toBe("https://workspace.exordos.com/api/workspace/v1/folders/");
       expect(headers["X-Workspace-Dev-Target-Origin"]).toBeUndefined();
     } finally {
       setInstanceProvider(() => null);
@@ -709,19 +712,19 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
     expect(mockFetch).toHaveBeenCalledOnce();
   });
 
-  // In dev, Workspace API uses relative base path `/workspace/...`.
+  // In dev, Workspace API uses the relative canonical base `/api/workspace/...`.
   // URL builder must resolve via `window.location.origin`, not throw `Invalid URL`.
   it("resolves relative workspace base URLs against window origin", async () => {
     const { workspaceApi, setInstanceProvider } = await import("./client");
     setInstanceProvider(() => null);
-    workspaceApi.setBaseUrl("/workspace");
+    workspaceApi.setBaseUrl("/api/workspace");
 
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true }));
 
     await expect(workspaceApi.get("/v1/services/")).resolves.toMatchObject({ ok: true });
     expect(mockFetch).toHaveBeenCalledOnce();
     const [url] = mockFetch.mock.calls[0] as [string, RequestInit];
-    expect(url).toContain("/workspace/v1/services/");
+    expect(url).toContain("/api/workspace/v1/services/");
   });
 
   // Trailing slashes on base URL cause double slashes in the path — trim them.
@@ -885,7 +888,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
       )
       .mockResolvedValueOnce(mockJsonResponse({ messages: [] }));
 
-    const res = await messengerApi.getWithBase("/api/messenger/v1", "/messages/");
+    const res = await messengerApi.getWithBase("/api/workspace/v1/messenger", "/messages/");
 
     expect(res.status).toBe(200);
     expect(mockFetch).toHaveBeenCalledTimes(3);
@@ -1013,7 +1016,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
       }),
     );
 
-    const res = await messengerApi.getWithBase("/api/messenger/v1", "/folders/");
+    const res = await messengerApi.getWithBase("/api/workspace/v1/messenger", "/folders/");
 
     expect(res.status).toBe(401);
     expect(vi.mocked(wipeCredentials)).not.toHaveBeenCalled();
@@ -1041,7 +1044,7 @@ describe("ApiClient (via messengerApi / workspaceApi)", () => {
       }),
     );
 
-    const res = await messengerApi.postJsonWithBase("/api/messenger/v1", "/messages/", {
+    const res = await messengerApi.postJsonWithBase("/api/workspace/v1/messenger", "/messages/", {
       stream_uuid: "22222222-2222-4222-8222-222222222222",
       payload: { kind: "markdown", content: "hi" },
     });

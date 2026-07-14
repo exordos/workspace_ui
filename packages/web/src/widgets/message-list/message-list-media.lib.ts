@@ -280,7 +280,7 @@ function extractUserUploadImageLinkUrls(content: string): string[] {
 
 function extractWorkspaceFileImageLinkUrls(content: string): string[] {
   const urls: string[] = [];
-  if (!content.includes("/api/messenger/v1/files/") && !content.includes("urn:")) {
+  if (!content.includes("/api/workspace/v1/messenger/files/") && !content.includes("urn:")) {
     return urls;
   }
 
@@ -318,7 +318,7 @@ function extractMarkdownMediaUrls(content: string): string[] {
   const urls: string[] = [];
   if (
     !content.includes("/user_uploads/") &&
-    !content.includes("/api/messenger/v1/files/") &&
+    !content.includes("/api/workspace/v1/messenger/files/") &&
     !content.includes("urn:")
   ) {
     return urls;

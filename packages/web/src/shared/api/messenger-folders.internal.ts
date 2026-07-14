@@ -1,7 +1,7 @@
 /**
- * Messenger gateway folder REST helpers (`/api/messenger/v1/...`).
+ * Messenger gateway folder REST helpers (`/api/workspace/v1/messenger/...`).
  *
- * Folder CRUD and item assignment moved from Workspace REST (`/workspace/v1/folders/`)
+ * Folder CRUD and item assignment moved from Workspace REST (`/api/workspace/v1/folders/`)
  * to the messenger gateway. Uses `messengerApi` with IAM Bearer auth middleware.
  *
  * Usage:

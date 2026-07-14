@@ -13,9 +13,7 @@ function normalizeRealmForComparison(realm: string): string {
   return realm
     .trim()
     .replace(/\/+$/, "")
-    .replace(/\/api\/messenger\/v1$/, "")
-    .replace(/\/api\/v1$/, "")
-    .replace(/\/api$/, "")
+    .replace(/\/api\/workspace\/v1\/messenger$/i, "")
     .toLowerCase();
 }
 

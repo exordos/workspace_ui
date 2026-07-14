@@ -18,6 +18,7 @@ import {
 import {
   MESSENGER_API_PATH,
   MESSENGER_WORKSPACE_API_PATH,
+  WORKSPACE_GATEWAY_V1_PATH,
 } from "~/shared/config/workspace-api-layout";
 import { wipeCredentials } from "~/shared/lib/auth-guard";
 import {
@@ -66,7 +67,7 @@ function normalizeInstanceRealmRoot(realmInput: string): string {
   return realmInput
     .trim()
     .replace(/\/+$/, "")
-    .replace(/\/api\/messenger\/v1$/i, "")
+    .replace(/\/api\/workspace\/v1\/messenger$/i, "")
     .replace(/\/+$/, "");
 }
 
@@ -453,9 +454,10 @@ function shouldSkipAuth401Logout(req: ApiRequest): boolean {
     if (/\/v1\/(?:folders|services)(?:\/|$)/.test(path)) {
       return true;
     }
-    // Workspace messenger gateway APIs use IAM Bearer; refresh is allowed, logout is not.
+    // Workspace messenger resource APIs use IAM Bearer; refresh is allowed,
+    // logout is not because a resource policy can also return 401.
     if (
-      /\/api\/messenger(?:\/v1)?\/(?:folders|streams|stream_bindings|stream_topics|messages|events|epoch)(?:\/|$)/.test(
+      /\/api\/workspace\/v1\/messenger\/(?:folders|streams|stream_bindings|stream_topics|messages|events|epoch)(?:\/|$)/.test(
         path,
       )
     ) {
@@ -864,14 +866,19 @@ function getOrgScopedMessengerApiBase(path: string): string {
   return `${orgOrigin}${path}`;
 }
 
-/** Messenger gateway REST base (`/api/messenger/v1`) for the active org. */
+/** Messenger gateway REST base (`/api/workspace/v1/messenger`) for the active org. */
 export function getMessengerGatewayApiBaseForCurrentInstance(): string {
   return getOrgScopedMessengerApiBase(MESSENGER_API_PATH);
 }
 
-/** Native Workspace messenger REST base (`/api/messenger`) for the active org. */
+/** Workspace messenger REST base (`/api/workspace/v1/messenger`) for the active org. */
 export function getMessengerWorkspaceApiBaseForCurrentInstance(): string {
   return getOrgScopedMessengerApiBase(MESSENGER_WORKSPACE_API_PATH);
+}
+
+/** Common Workspace v1 base for users, external users, mail, and calendar. */
+export function getWorkspaceCommonApiBaseForCurrentInstance(): string {
+  return getOrgScopedMessengerApiBase(WORKSPACE_GATEWAY_V1_PATH);
 }
 
 /** Workspace REST `/v1/...` base for the active org (Workspace API origin, not always organization realm). */

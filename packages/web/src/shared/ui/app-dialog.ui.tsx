@@ -1,5 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import React from "react";
+import { t } from "~/i18n/i18n";
+import { Icon } from "~/shared/ui/icon";
 import { Spinner } from "~/shared/ui/spinner.ui";
 import type {
   AppDialogFormFooterProps,
@@ -122,10 +124,16 @@ export const AppDialog: React.FC<AppDialogProps> = ({
   children,
   footer,
   maxWidthClassName = "max-w-md",
-  positionClassName = "top-[20%]",
+  positionClassName = "top-1/2 -translate-y-1/2",
   onCloseAutoFocus,
+  showCloseButton = false,
 }) => {
-  const contentClassName = `${DEFAULT_CONTENT_CLASS} ${maxWidthClassName} ${positionClassName}`;
+  const contentClassName = [
+    DEFAULT_CONTENT_CLASS,
+    maxWidthClassName,
+    positionClassName,
+    "flex max-h-[min(90dvh,calc(100dvh-2rem))] flex-col overflow-hidden",
+  ].join(" ");
 
   return (
     <AppDialogShell
@@ -134,16 +142,37 @@ export const AppDialog: React.FC<AppDialogProps> = ({
       contentClassName={contentClassName}
       onCloseAutoFocus={onCloseAutoFocus}
     >
-      <Dialog.Title className="mb-4 text-base font-semibold text-text-primary">
-        {title}
-      </Dialog.Title>
-      {description != null && description.length > 0 ? (
-        <Dialog.Description className="mb-4 text-sm text-text-secondary">
-          {description}
-        </Dialog.Description>
+      <div className="shrink-0">
+        <div className={`flex items-start justify-between gap-3 ${showCloseButton ? "mb-4" : ""}`}>
+          <Dialog.Title
+            className={`text-base font-semibold text-text-primary ${showCloseButton ? "" : "mb-4"}`}
+          >
+            {title}
+          </Dialog.Title>
+          {showCloseButton ? (
+            <Dialog.Close asChild>
+              <button
+                type="button"
+                className="hover:bg-bg/50 shrink-0 rounded p-1 text-text-muted transition-colors hover:text-text-primary"
+                aria-label={t("common.close")}
+              >
+                <Icon name="close" size={18} />
+              </button>
+            </Dialog.Close>
+          ) : null}
+        </div>
+        {description != null && description.length > 0 ? (
+          <Dialog.Description className="mb-4 text-sm text-text-secondary">
+            {description}
+          </Dialog.Description>
+        ) : null}
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+      {footer != null ? (
+        <div className="mt-4 flex shrink-0 justify-end gap-2 border-t border-border-subtle pt-4">
+          {footer}
+        </div>
       ) : null}
-      {children}
-      {footer != null ? <div className="mt-4 flex justify-end gap-2">{footer}</div> : null}
     </AppDialogShell>
   );
 };

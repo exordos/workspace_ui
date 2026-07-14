@@ -15,7 +15,7 @@ describe("extractLoggableRequestParams", () => {
     const params = extractLoggableRequestParams(
       makeReq({
         method: "GET",
-        url: "https://chat.example.com/api/messenger/v1/messages",
+        url: "https://chat.example.com/api/workspace/v1/messenger/messages",
         params: { anchor: "newest", num_before: "50" },
       }),
     );
@@ -27,7 +27,7 @@ describe("extractLoggableRequestParams", () => {
     const params = extractLoggableRequestParams(
       makeReq({
         method: "GET",
-        url: "https://chat.example.com/api/messenger/v1/messages?anchor=newest&num_before=50",
+        url: "https://chat.example.com/api/workspace/v1/messenger/messages?anchor=newest&num_before=50",
       }),
     );
 
@@ -38,7 +38,7 @@ describe("extractLoggableRequestParams", () => {
     const params = extractLoggableRequestParams(
       makeReq({
         method: "POST",
-        url: "https://chat.example.com/api/messenger/v1/messages",
+        url: "https://chat.example.com/api/workspace/v1/messenger/messages",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: "type=stream&stream_uuid=00000000-0000-4000-8000-000000000010&topic=general",
       }),
@@ -56,7 +56,7 @@ describe("extractLoggableRequestParams", () => {
     const params = extractLoggableRequestParams(
       makeReq({
         method: "POST",
-        url: "https://chat.example.com/api/messenger/v1/messages",
+        url: "https://chat.example.com/api/workspace/v1/messenger/messages",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: `type=direct&content=${encodeURIComponent(longContent)}&password=secret`,
       }),
@@ -87,7 +87,7 @@ describe("extractLoggableRequestParams", () => {
     const params = extractLoggableRequestParams(
       makeReq({
         method: "POST",
-        url: "https://chat.example.com/api/messenger/v1/users/00000000-0000-0000-0000-000000000001",
+        url: "https://chat.example.com/api/workspace/v1/messenger/users/00000000-0000-0000-0000-000000000001",
         body: form,
       }),
     );
@@ -100,7 +100,7 @@ describe("extractLoggableRequestParams", () => {
       extractLoggableRequestParams(
         makeReq({
           method: "GET",
-          url: "https://chat.example.com/api/messenger/v1/streams",
+          url: "https://chat.example.com/api/workspace/v1/messenger/streams",
         }),
       ),
     ).toBeUndefined();

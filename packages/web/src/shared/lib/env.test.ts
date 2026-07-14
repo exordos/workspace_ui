@@ -83,7 +83,7 @@ describe("env", () => {
       vi.stubEnv("VITE_WORKSPACE_API_PATH", "/custom");
       vi.resetModules();
       const { env } = await import("./env");
-      expect(env.WORKSPACE_API_PATH).toBe("/workspace/v1");
+      expect(env.WORKSPACE_API_PATH).toBe("/api/workspace/v1");
     });
   });
 

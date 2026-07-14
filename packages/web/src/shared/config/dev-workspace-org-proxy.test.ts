@@ -7,15 +7,15 @@ import {
 
 describe("devWorkspaceBrowserMountPath", () => {
   it("matches dev WORKSPACE_API_BASE when REST path is empty", () => {
-    expect(devWorkspaceBrowserMountPath("")).toBe("/workspace");
+    expect(devWorkspaceBrowserMountPath("")).toBe("/api/workspace");
   });
 
   it("concatenates normalized REST suffix", () => {
-    expect(devWorkspaceBrowserMountPath("/gateway")).toBe("/workspace/gateway");
+    expect(devWorkspaceBrowserMountPath("/gateway")).toBe("/gateway");
   });
 
-  it("does not duplicate /workspace when REST path is already /workspace (prod gateway layout)", () => {
-    expect(devWorkspaceBrowserMountPath("/workspace")).toBe("/workspace");
+  it("does not duplicate the canonical REST mount", () => {
+    expect(devWorkspaceBrowserMountPath("/api/workspace")).toBe("/api/workspace");
   });
 });
 
@@ -23,8 +23,8 @@ describe("workspaceDevProxyUpstreamPathname", () => {
   it("with empty REST suffix upstream is /v1/… only", () => {
     expect(
       workspaceDevProxyUpstreamPathname({
-        pathname: "/workspace/v1/folders/",
-        mount: "/workspace",
+        pathname: "/api/workspace/v1/folders/",
+        mount: "/api/workspace",
         onDevEscaped: false,
         workspaceRestPathRaw: "",
       }),
@@ -34,19 +34,19 @@ describe("workspaceDevProxyUpstreamPathname", () => {
   it("prepends WORKSPACE_REST_API_PATH after stripping dev mount", () => {
     expect(
       workspaceDevProxyUpstreamPathname({
-        pathname: "/workspace/v1/folders/",
-        mount: "/workspace",
+        pathname: "/api/workspace/v1/folders/",
+        mount: "/api/workspace",
         onDevEscaped: false,
-        workspaceRestPathRaw: "/workspace",
+        workspaceRestPathRaw: "/api/workspace",
       }),
-    ).toBe("/workspace/v1/folders/");
+    ).toBe("/api/workspace/v1/folders/");
   });
 
-  it("strips /workspace/gateway mount and prepends gateway suffix", () => {
+  it("strips a custom gateway mount and prepends the same suffix", () => {
     expect(
       workspaceDevProxyUpstreamPathname({
-        pathname: "/workspace/gateway/v1/folders/",
-        mount: "/workspace/gateway",
+        pathname: "/gateway/v1/folders/",
+        mount: "/gateway",
         onDevEscaped: false,
         workspaceRestPathRaw: "/gateway",
       }),
@@ -56,8 +56,8 @@ describe("workspaceDevProxyUpstreamPathname", () => {
   it("handles __dev escaped path then mount", () => {
     expect(
       workspaceDevProxyUpstreamPathname({
-        pathname: "/__dev_workspace_org/workspace/v1/folders/",
-        mount: "/workspace",
+        pathname: "/__dev_workspace_org/api/workspace/v1/folders/",
+        mount: "/api/workspace",
         onDevEscaped: true,
         workspaceRestPathRaw: "",
       }),

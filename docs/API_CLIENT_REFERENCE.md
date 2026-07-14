@@ -16,13 +16,17 @@ features/<name>/<name>.api.ts      Feature-level API functions (ai-reply, mute-c
 
 ### Authentication
 
-All Messenger API calls use **HTTP Basic Auth**: `Authorization: Basic base64(email:apiKey)`.
-Credentials are taken from `useInstancesStore.getState().getCurrentInstance()`.
+All Workspace API calls use the Exordos Core IAM access token:
+`Authorization: Bearer <access token>`. Interactive authorization requests
+`openid email profile project:default`, the same scope and token used by the
+messenger domain.
 
 Two approaches:
 
-1. **Middleware client** (`shared/api/client.ts`) — `messengerFetch/messengerPost/messengerPatch/messengerDelete` with middleware pipeline (auth, logging, retry)
-2. **Workspace API** (`shared/api/workspace-client.ts`) — `request()` for Workspace backend
+1. **Middleware client** (`shared/api/client.ts`) — messenger helpers with the
+   shared IAM, logging, and retry middleware pipeline.
+2. **Generated Workspace client** (`@workspace/api`) — common, mail, calendar,
+   and messenger resource operations from the checked-in OpenAPI contract.
 
 New code should use the functions from `shared/api/` directly, or entity-level API functions from `entities/*/`.
 
@@ -32,14 +36,16 @@ New code should use the functions from `shared/api/` directly, or entity-level A
 
 **Import**: `import { messengerFetch, messengerPost, messengerPatch, messengerDelete } from '~/shared/api/client'`
 
-These low-level helpers construct the full URL, attach Basic Auth headers, and handle form encoding for POST/PATCH/DELETE.
+These low-level helpers construct URLs under
+`/api/workspace/v1/messenger`, attach the IAM bearer token, and handle request
+encoding.
 
-| Function                            | Purpose                                        |
-| ----------------------------------- | ---------------------------------------------- |
-| `messengerFetch(endpoint, params?)` | GET request to `/api/v1/{endpoint}`            |
-| `messengerPost(endpoint, data?)`    | POST with `application/x-www-form-urlencoded`  |
-| `messengerPatch(endpoint, data?)`   | PATCH with `application/x-www-form-urlencoded` |
-| `messengerDelete(endpoint, data?)`  | DELETE with optional body                      |
+| Function                            | Purpose                                                 |
+| ----------------------------------- | ------------------------------------------------------- |
+| `messengerFetch(endpoint, params?)` | GET request to `/api/workspace/v1/messenger/{endpoint}` |
+| `messengerPost(endpoint, data?)`    | POST with `application/x-www-form-urlencoded`           |
+| `messengerPatch(endpoint, data?)`   | PATCH with `application/x-www-form-urlencoded`          |
+| `messengerDelete(endpoint, data?)`  | DELETE with optional body                               |
 
 Also includes middleware pipeline: `messengerApi.get/post/patch/delete` with auth, logging, and retry middleware.
 
@@ -49,9 +55,10 @@ Also includes middleware pipeline: `messengerApi.get/post/patch/delete` with aut
 
 **Import**: `import { request, getFolders } from '~/shared/api'`
 
-**Base URL**: `VITE_WORKSPACE_API_BASE_URL` or `/workspace-api/api/v1` (dev proxy) / `{VITE_WORKSPACE_API_ORIGIN}/api/v1` (prod)
+**Public base URL**: `/api/workspace/v1`. `VITE_WORKSPACE_API_ORIGIN` may
+select another origin, but the path layout is fixed.
 
-**Auth**: Basic (same as Workspace — email:apiKey from instancesStore)
+**Auth**: Exordos Core IAM bearer token with `project:default` scope.
 
 | Function                     | Purpose                               |
 | ---------------------------- | ------------------------------------- |

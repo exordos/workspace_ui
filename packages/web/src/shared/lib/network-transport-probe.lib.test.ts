@@ -5,7 +5,8 @@ const getCurrentInstance = vi.fn();
 
 vi.mock("~/shared/api/client", () => ({
   getCurrentInstance: () => getCurrentInstance(),
-  getMessengerGatewayApiBaseForCurrentInstance: () => "https://chat.example.com/api/messenger/v1",
+  getMessengerGatewayApiBaseForCurrentInstance: () =>
+    "https://chat.example.com/api/workspace/v1/messenger",
 }));
 
 describe("probeApiTransport", () => {

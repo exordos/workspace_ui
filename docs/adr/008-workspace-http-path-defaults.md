@@ -1,39 +1,42 @@
-# ADR-008: Workspace gateway HTTP path defaults
+# ADR-008: Canonical Workspace API path layout
 
 **Date**: 2026-04-14  
-**Status**: accepted (superseded in part: path env overrides removed 2026-05)
+**Status**: accepted; replaced by the greenfield unified API decision in 2026-07
 
 ## Context
 
-Workspace UI supports both:
-
-1. **Vanilla Workspace** — JSON API and upload-related URLs use `/api/v1` on the realm host.
-2. **Workspace gateway** — Workspace REST mount `/workspace` and uploads prefix `/workspace/v1` are fixed in code; gateway-aligned API path defaults to `/workspace/v1` while the organization realm may stay on `/api/v1`.
-
-Previously, path defaults lived only as string literals in [`packages/web/src/shared/lib/env.ts`](packages/web/src/shared/lib/env.ts), duplicated from mental model to [`packages/web/vite.config.ts`](packages/web/vite.config.ts). Product scope for the primary shipping configuration (gateway) was not documented in one place.
-
-## Options
-
-1. **Keep vanilla-only defaults** — zero migration; gateway users must always set three `VITE_*` path vars.
-2. **Gateway-first defaults in code** — one shared module; vanilla deployments set explicit env paths (historical; removed later).
-3. **Remove env entirely, hardcode gateway** — adopted for path layout: all paths in `workspace-api-layout.ts` (no `VITE_*` path overrides).
+Workspace UI consumes one backend for messenger, mail, calendar, common users,
+and durable events. The product does not support the earlier standalone
+messenger or UI-side mail proxy contracts. Path overrides would allow clients
+to silently recreate removed layouts and make deployments disagree about the
+public contract.
 
 ## Decision
 
-Adopt **option 2**:
+The public API layout is fixed:
 
-- [`packages/web/src/shared/config/workspace-api-layout.ts`](packages/web/src/shared/config/workspace-api-layout.ts) exports fixed `MESSENGER_API_V1_PATH`, `WORKSPACE_REST_API_PATH`, `WORKSPACE_GATEWAY_V1_PATH`, `WORKSPACE_API_PATH`.
-- [`env.ts`](packages/web/src/shared/lib/env.ts) re-exports those constants on `env`; no `VITE_MESSENGER_API_V1_PATH` / `VITE_WORKSPACE_API_PATH`.
-- [`vite.config.ts`](packages/web/vite.config.ts) uses the same defaults for dev proxy path resolution when `loadEnv` omits keys (undefined), keeping dev aligned with the client bundle.
+```text
+/api/workspace/v1/                  common resources
+/api/workspace/v1/messenger/        messenger resources
+/api/workspace/v1/mail/             mail resources
+/api/workspace/v1/calendar/         calendar resources
+/api/workspace/v1/events/ws         common websocket
+```
 
-`MESSENGER_API_V1_PATH` is fixed to `/api/v1` so JSON API calls against a canonical organization realm URL stay standard.
+`packages/web/src/shared/config/workspace-api-layout.ts` is the single source
+of these path constants. `env.ts`, the Vite development proxy, generated API
+configuration, uploads, and the event loop derive their URLs from that layout.
+An environment setting may change the API origin, but not these paths.
+
+All domains use the same Exordos Core IAM bearer token with
+`project:default` scope. The websocket is common to messenger, mail, and
+calendar and is not nested below a domain.
 
 ## Consequences
 
-- **Positive**: Gateway deployments need fewer lines in `.env`; defaults are documented and testable; Vite and client share one source of truth.
-- **Negative**: Vanilla Workspace (workspace uploads at `/api/v1`) is not configurable via env; gateway-only path layout.
-- **Risks**: CI or local tests that assumed implicit vanilla paths must stub env explicitly (already common in Vitest).
-
-## Migration (legacy messenger host)
-
-Path env overrides are no longer supported. Deployments that are not the Workspace gateway require a fork or a future product decision to reintroduce configurable paths.
+- The browser never talks directly to SMTP, IMAP, CalDAV, or a UI-side proxy.
+- There are no redirects, aliases, fallbacks, or persisted-state migrations for
+  removed API paths.
+- Backend and UI contract changes require regenerating `@workspace/api`,
+  running UI typecheck/tests, and verifying the exact gateway routes.
+- Deployments that do not provide this layout are unsupported.

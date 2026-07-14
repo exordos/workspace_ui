@@ -7,7 +7,7 @@ import type { UserId } from "~/shared/lib/user-id.lib";
 import { isIamUserUuid, userIdStorageKey } from "~/shared/lib/user-id.lib";
 import {
   getCurrentInstance,
-  getMessengerGatewayApiBaseForCurrentInstance,
+  getWorkspaceCommonApiBaseForCurrentInstance,
   messengerApi,
 } from "./client";
 import { parseMessengerGatewayUser, parseMessengerGatewayUserList } from "./messenger-users.lib";
@@ -42,7 +42,7 @@ export async function getCurrentUser(): Promise<WorkspaceCurrentUser | null> {
 export async function fetchUsers(): Promise<MessengerUserMember[]> {
   try {
     const res = await messengerApi.getWithBase(
-      getMessengerGatewayApiBaseForCurrentInstance(),
+      getWorkspaceCommonApiBaseForCurrentInstance(),
       "/users/",
     );
     if (!res.ok) {
@@ -65,7 +65,7 @@ export async function fetchUser(
   const userUuid = userId.trim().toLowerCase();
   try {
     const res = await messengerApi.getWithBase(
-      getMessengerGatewayApiBaseForCurrentInstance(),
+      getWorkspaceCommonApiBaseForCurrentInstance(),
       "/users/" + userUuid,
       undefined,
       options?.signal,
@@ -80,8 +80,8 @@ export async function fetchUser(
 }
 
 /** The current backend does not expose custom realm emoji metadata. */
-export async function fetchRealmEmojis(): Promise<RealmEmoji[]> {
-  return [];
+export function fetchRealmEmojis(): Promise<RealmEmoji[]> {
+  return Promise.resolve([]);
 }
 
 /**

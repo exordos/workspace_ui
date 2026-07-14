@@ -18,7 +18,7 @@ const {
   resolveUserUuidFromAccessTokenMock,
 } = vi.hoisted(() => ({
   getCurrentInstanceMock: vi.fn(),
-  getMessengerGatewayApiBaseForCurrentInstanceMock: vi.fn(() => "/api/messenger/v1"),
+  getMessengerGatewayApiBaseForCurrentInstanceMock: vi.fn(() => "/api/workspace/v1/messenger"),
   mockGet: vi.fn(),
   mockGetWithBase: vi.fn(),
   mockPost: vi.fn(),
@@ -32,6 +32,7 @@ vi.mock("~/shared/api/client", () => ({
   getCurrentInstance: (...args: unknown[]) => getCurrentInstanceMock(...args),
   getMessengerGatewayApiBaseForCurrentInstance: () =>
     getMessengerGatewayApiBaseForCurrentInstanceMock(),
+  getWorkspaceCommonApiBaseForCurrentInstance: () => "/api/workspace/v1",
   messengerApi: {
     get: (...args: unknown[]) => mockGet(...args),
     getWithBase: (...args: unknown[]) => mockGetWithBase(...args),
@@ -64,7 +65,7 @@ describe("backend-only user api facade", () => {
   beforeEach(() => {
     getCurrentInstanceMock.mockReset();
     getMessengerGatewayApiBaseForCurrentInstanceMock.mockReset();
-    getMessengerGatewayApiBaseForCurrentInstanceMock.mockReturnValue("/api/messenger/v1");
+    getMessengerGatewayApiBaseForCurrentInstanceMock.mockReturnValue("/api/workspace/v1/messenger");
     mockGet.mockReset();
     mockGetWithBase.mockReset();
     mockPost.mockReset();
@@ -111,9 +112,9 @@ describe("backend-only user api facade", () => {
 
     await reportPresence("active");
 
-    expect(mockGetWithBase).toHaveBeenCalledWith("/api/messenger/v1", `/users/${USER_UUID}`);
+    expect(mockGetWithBase).toHaveBeenCalledWith("/api/workspace/v1", `/users/${USER_UUID}`);
     expect(mockPostJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1",
       `/users/${USER_UUID}/actions/presence/invoke`,
       { status: "active" },
     );
@@ -156,7 +157,7 @@ describe("backend-only user api facade", () => {
 
     expect(mockGetWithBase).not.toHaveBeenCalled();
     expect(mockPostJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1",
       `/users/${USER_UUID}/actions/presence/invoke`,
       { status: "idle" },
     );
@@ -198,9 +199,9 @@ describe("backend-only user api facade", () => {
 
     await reportPresence("active");
 
-    expect(mockGetWithBase).toHaveBeenCalledWith("/api/messenger/v1", `/users/${USER_UUID}`);
+    expect(mockGetWithBase).toHaveBeenCalledWith("/api/workspace/v1", `/users/${USER_UUID}`);
     expect(mockPostJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1",
       `/users/${USER_UUID}/actions/presence/invoke`,
       { status: "idle" },
     );
@@ -252,7 +253,7 @@ describe("backend-only user api facade", () => {
     await reportPresence("active");
 
     expect(mockPostJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1",
       `/users/${USER_UUID}/actions/presence/invoke`,
       { status: "idle" },
     );
@@ -302,7 +303,7 @@ describe("backend-only user api facade", () => {
     await reportPresence("active");
 
     expect(mockPostJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1",
       `/users/${USER_UUID}/actions/presence/invoke`,
       { status: "active" },
     );
@@ -348,7 +349,7 @@ describe("backend-only user api facade", () => {
       away: true,
     });
 
-    expect(mockGetWithBase).toHaveBeenCalledWith("/api/messenger/v1", `/users/${USER_UUID}`);
+    expect(mockGetWithBase).toHaveBeenCalledWith("/api/workspace/v1", `/users/${USER_UUID}`);
   });
 
   it("saves submitted status through the Workspace user presence action", async () => {
@@ -391,7 +392,7 @@ describe("backend-only user api facade", () => {
       },
     });
     expect(mockPostJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1",
       `/users/${USER_UUID}/actions/presence/invoke`,
       { status: "idle", emoji: "plate_with_cutlery", text: "Lunch" },
     );
@@ -435,7 +436,7 @@ describe("backend-only user api facade", () => {
       },
     });
     expect(mockPostJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1",
       `/users/${USER_UUID}/actions/presence/invoke`,
       { status: "active", emoji: null, text: "Text only" },
     );
@@ -467,7 +468,7 @@ describe("backend-only user api facade", () => {
 
     expect(result).toEqual({ ok: true, status: null });
     expect(mockPostJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1",
       `/users/${USER_UUID}/actions/presence/invoke`,
       { status: "active", emoji: null, text: null },
     );

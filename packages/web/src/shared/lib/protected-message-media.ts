@@ -299,7 +299,7 @@ function hasProtectedMessageMediaInStyle(styleValue: string | null): boolean {
   return (
     styleValue.includes("/user_uploads/") ||
     styleValue.includes("/external_content/") ||
-    styleValue.includes("/api/messenger/v1/files/")
+    styleValue.includes("/api/workspace/v1/messenger/files/")
   );
 }
 

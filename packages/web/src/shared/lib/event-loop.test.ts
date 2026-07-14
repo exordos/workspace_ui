@@ -10,7 +10,7 @@ const messengerApiMock = vi.hoisted(() => ({
   getWithBase: vi.fn(),
 }));
 const getCurrentInstanceMock = vi.hoisted(() => vi.fn());
-const getMessengerGatewayApiBaseForCurrentInstanceMock = vi.hoisted(() => vi.fn());
+const getWorkspaceCommonApiBaseForCurrentInstanceMock = vi.hoisted(() => vi.fn());
 const attachEventLoopLifecycleMock = vi.hoisted(() => vi.fn(() => vi.fn()));
 const isOnlineMock = vi.hoisted(() => vi.fn(() => true));
 const onStatusChangeMock = vi.hoisted(() => vi.fn(() => vi.fn()));
@@ -18,7 +18,7 @@ const recordDiagnosticRealtimeEventMock = vi.hoisted(() => vi.fn());
 
 vi.mock("~/shared/api/client", () => ({
   getCurrentInstance: getCurrentInstanceMock,
-  getMessengerGatewayApiBaseForCurrentInstance: getMessengerGatewayApiBaseForCurrentInstanceMock,
+  getWorkspaceCommonApiBaseForCurrentInstance: getWorkspaceCommonApiBaseForCurrentInstanceMock,
   messengerApi: messengerApiMock,
 }));
 
@@ -1031,7 +1031,7 @@ describe("startMessengerEventLoop", () => {
       authType: "iam",
       iamAccessToken: "access-token",
     });
-    getMessengerGatewayApiBaseForCurrentInstanceMock.mockReturnValue("/api/messenger/v1");
+    getWorkspaceCommonApiBaseForCurrentInstanceMock.mockReturnValue("/api/workspace/v1");
     messengerApiMock.getWithBase.mockResolvedValue(apiResponse([workspaceEvent(12)]));
     attachEventLoopLifecycleMock.mockClear();
     recordDiagnosticRealtimeEventMock.mockClear();
@@ -1057,7 +1057,7 @@ describe("startMessengerEventLoop", () => {
     await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
 
     expect(messengerApiMock.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1",
       "/events/",
       { "epoch_version>": "0", page_limit: "500" },
       controller.signal,
@@ -1065,7 +1065,9 @@ describe("startMessengerEventLoop", () => {
     expect(onEvent).toHaveBeenCalledWith(expect.objectContaining({ id: 12, type: "message" }));
 
     const ws = FakeWebSocket.instances[0]!;
-    expect(ws.url).toBe("wss://workspace.example.test/api/messenger/ws?last_epoch_version=12");
+    expect(ws.url).toBe(
+      "wss://workspace.example.test/api/workspace/v1/events/ws?last_epoch_version=12",
+    );
     expect(ws.protocols).toEqual(["workspace.events.v1", "bearer.access-token"]);
     expect(onQueueReady).toHaveBeenCalledTimes(1);
 
@@ -1170,11 +1172,11 @@ describe("startMessengerEventLoop", () => {
     await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://workspace.example.test/api/messenger/v1/events/?epoch_version%3E=0&page_limit=500",
+      "https://workspace.example.test/api/workspace/v1/events/?epoch_version%3E=0&page_limit=500",
       expect.objectContaining({ headers: { Authorization: "Bearer background-token" } }),
     );
     expect(FakeWebSocket.instances[0]!.url).toBe(
-      "wss://workspace.example.test/api/messenger/ws?last_epoch_version=0",
+      "wss://workspace.example.test/api/workspace/v1/events/ws?last_epoch_version=0",
     );
 
     controller.abort();
@@ -1205,11 +1207,11 @@ describe("startMessengerEventLoop", () => {
     await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://gateway.example.test/api/messenger/v1/events/?epoch_version%3E=0&page_limit=500",
+      "https://gateway.example.test/api/workspace/v1/events/?epoch_version%3E=0&page_limit=500",
       expect.objectContaining({ headers: { Authorization: "Bearer background-token" } }),
     );
     expect(FakeWebSocket.instances[0]!.url).toBe(
-      "wss://gateway.example.test/api/messenger/ws?last_epoch_version=0",
+      "wss://gateway.example.test/api/workspace/v1/events/ws?last_epoch_version=0",
     );
 
     controller.abort();

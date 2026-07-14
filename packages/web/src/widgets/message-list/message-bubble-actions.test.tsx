@@ -711,7 +711,8 @@ describe("MessageBubble edit/delete actions parity", () => {
   });
 
   it("expands markdown Workspace file image links into inline images", () => {
-    const href = "/api/messenger/v1/files/33333333-3333-4333-8333-333333333333/actions/download";
+    const href =
+      "/api/workspace/v1/messenger/files/33333333-3333-4333-8333-333333333333/actions/download";
 
     render(
       <MessageBubble
@@ -725,12 +726,12 @@ describe("MessageBubble edit/delete actions parity", () => {
     const link = screen.getByRole("link", { name: "upload-test.jpg" });
     expect(link).toBeInTheDocument();
     expect(link.getAttribute("href")).toMatch(
-      /\/api\/messenger\/v1\/files\/.+\/actions\/download$/,
+      /\/api\/workspace\/v1\/messenger\/files\/.+\/actions\/download$/,
     );
     const image = link.querySelector("img");
     expect(image).not.toBeNull();
     expect(image?.getAttribute("data-auth-src")).toBe(href);
-    expect(image?.getAttribute("src")).not.toContain("/api/messenger/v1/files/");
+    expect(image?.getAttribute("src")).not.toContain("/api/workspace/v1/messenger/files/");
     expect(image).toHaveClass(MESSAGE_MEDIA_PREVIEW_CLASS_NAME);
   });
 

@@ -51,7 +51,7 @@ describe("markMessagesAsRead", () => {
 
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledTimes(1);
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/messages/${MESSAGE_ID_3}/actions/read_up_to/invoke`,
       {},
     );
@@ -109,7 +109,7 @@ describe("markDmAsRead", () => {
 
     expect(result).toBe(true);
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/streams/${STREAM_UUID}/actions/read/invoke`,
       {},
     );
@@ -145,7 +145,7 @@ describe("markStreamAsRead", () => {
 
     expect(result).toBe(true);
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/streams/${STREAM_UUID}/actions/read/invoke`,
       {},
     );
@@ -184,7 +184,7 @@ describe("markTopicAsRead", () => {
 
     expect(result).toBe(true);
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/stream_topics/${TOPIC_UUID}/actions/read/invoke`,
       {},
     );
@@ -200,7 +200,7 @@ describe("markTopicAsRead", () => {
 
     await expect(markTopicAsRead(STREAM_UUID, TOPIC_UUID)).resolves.toBe(true);
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/stream_topics/${TOPIC_UUID}/actions/read/invoke`,
       {},
     );
@@ -241,7 +241,7 @@ describe("renameStreamTopic", () => {
       renameStreamTopic(TOPIC_UUID, STREAM_UUID, "incident", "postmortem"),
     ).resolves.toEqual(responseTopic);
     expect(mockMessengerApi.putJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/stream_topics/${TOPIC_UUID}`,
       { name: "postmortem" },
     );
@@ -268,7 +268,7 @@ describe("moveStreamTopicToChannel", () => {
       moveStreamTopicToChannel(TOPIC_UUID, STREAM_UUID, "incident", TARGET_STREAM_UUID, "incident"),
     ).resolves.toEqual(responseTopic);
     expect(mockMessengerApi.putJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/stream_topics/${TOPIC_UUID}`,
       { stream_uuid: TARGET_STREAM_UUID },
     );
@@ -317,7 +317,7 @@ describe("moveStreamTopicToChannel", () => {
       ),
     ).resolves.toEqual(responseTopic);
     expect(mockMessengerApi.putJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/stream_topics/${TOPIC_UUID}`,
       { stream_uuid: TARGET_STREAM_UUID, name: "postmortem" },
     );
@@ -342,7 +342,7 @@ describe("setTopicResolvedState", () => {
       responseTopic,
     );
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/stream_topics/${TOPIC_UUID}/actions/toggle_done/invoke`,
       {},
     );
@@ -364,7 +364,7 @@ describe("setTopicResolvedState", () => {
       setTopicResolvedState(TOPIC_UUID, STREAM_UUID, "incident", false),
     ).resolves.toEqual(responseTopic);
     expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/stream_topics/${TOPIC_UUID}/actions/toggle_done/invoke`,
       {},
     );

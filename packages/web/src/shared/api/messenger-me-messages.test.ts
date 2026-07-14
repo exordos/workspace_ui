@@ -140,7 +140,7 @@ describe("fetchMyMessagesPage", () => {
     expect(page.messages).toHaveLength(1);
     expect(page.nextMarker).toBeNull();
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/messages/",
       {
         page_limit: String(ME_MESSAGES_PAGE_LIMIT),
@@ -164,7 +164,7 @@ describe("fetchMyMessagesPage", () => {
     });
 
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/messages/",
       {
         page_limit: "25",
@@ -212,7 +212,7 @@ describe("fetchStreamMessages", () => {
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledTimes(2);
     expect(mockMessengerApi.getWithBase).toHaveBeenNthCalledWith(
       2,
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/messages/",
       expect.objectContaining({ page_marker: MSG_UUID_1, stream_uuid: STREAM_UUID }),
       undefined,
@@ -225,7 +225,7 @@ describe("fetchStreamMessages", () => {
     await fetchStreamMessages(STREAM_UUID.toUpperCase());
 
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/messages/",
       expect.objectContaining({ stream_uuid: STREAM_UUID }),
       undefined,
@@ -319,7 +319,7 @@ describe("fetchMeMessageById", () => {
 
     expect(result?.uuid).toBe(MSG_UUID_1);
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       `/messages/${MSG_UUID_1}`,
       undefined,
       undefined,
@@ -359,7 +359,7 @@ describe("fetchStreamMessagesPage", () => {
     expect(page.foundNewest).toBe(true);
     expect(page.foundOldest).toBe(true);
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/messages/",
       expect.objectContaining({
         stream_uuid: STREAM_UUID,
@@ -394,7 +394,7 @@ describe("fetchStreamMessagesPage", () => {
     expect(page.foundOldest).toBe(true);
     expect(page.foundNewest).toBe(false);
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/messages/",
       expect.objectContaining({ sort_dir: "desc", page_marker: MSG_UUID_2, page_limit: "30" }),
       undefined,
@@ -417,7 +417,7 @@ describe("fetchStreamMessagesPage", () => {
     expect(page.foundOldest).toBe(false);
     expect(page.foundNewest).toBe(false);
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/messages/",
       expect.objectContaining({ sort_dir: "asc", page_marker: MSG_UUID_1, page_limit: "30" }),
       undefined,

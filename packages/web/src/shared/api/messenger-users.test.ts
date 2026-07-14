@@ -60,7 +60,7 @@ describe("getCurrentUser", () => {
     expect(mockRefreshMessengerApiBase).not.toHaveBeenCalled();
     expect(mockMessengerApi.get).not.toHaveBeenCalled();
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1",
       "/users/" + CURRENT_USER_UUID,
       undefined,
       undefined,
@@ -153,7 +153,7 @@ describe("fetchUsers", () => {
       },
     ]);
     expect(mockMessengerApi.get).not.toHaveBeenCalled();
-    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith("/api/messenger/v1", "/users/");
+    expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith("/api/workspace/v1", "/users/");
   });
 
   it("falls back to username when first and last name are empty", async () => {
@@ -235,7 +235,7 @@ describe("fetchUser", () => {
       is_active: true,
     });
     expect(mockMessengerApi.getWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1",
       "/users/" + PARTNER_UUID,
       undefined,
       undefined,

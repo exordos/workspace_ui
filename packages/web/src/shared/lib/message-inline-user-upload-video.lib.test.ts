@@ -26,14 +26,14 @@ describe("upgradeUserUploadVideoLinksInContainer", () => {
   it("replaces Workspace file video anchors using content-type metadata", () => {
     const root = document.createElement("div");
     root.innerHTML =
-      '<p><a href="/api/messenger/v1/files/44444444-4444-4444-8444-444444444444/actions/download" data-original-content-type="video/mp4">clip.bin</a></p>';
+      '<p><a href="/api/workspace/v1/messenger/files/44444444-4444-4444-8444-444444444444/actions/download" data-original-content-type="video/mp4">clip.bin</a></p>';
 
     const count = upgradeUserUploadVideoLinksInContainer(root);
 
     expect(count).toBe(1);
     expect(root.querySelector("a")).toBeNull();
     expect(root.querySelector("video source")?.getAttribute("src")).toBe(
-      "/api/messenger/v1/files/44444444-4444-4444-8444-444444444444/actions/download",
+      "/api/workspace/v1/messenger/files/44444444-4444-4444-8444-444444444444/actions/download",
     );
     expect(root.querySelector("video source")?.getAttribute("type")).toBe("video/mp4");
   });
@@ -41,14 +41,14 @@ describe("upgradeUserUploadVideoLinksInContainer", () => {
   it("replaces Workspace file video anchors using original URN metadata", () => {
     const root = document.createElement("div");
     root.innerHTML =
-      '<p><a href="/api/messenger/v1/files/44444444-4444-4444-8444-444444444444/actions/download" data-original-url="urn:video:44444444-4444-4444-8444-444444444444">clip.webm</a></p>';
+      '<p><a href="/api/workspace/v1/messenger/files/44444444-4444-4444-8444-444444444444/actions/download" data-original-url="urn:video:44444444-4444-4444-8444-444444444444">clip.webm</a></p>';
 
     const count = upgradeUserUploadVideoLinksInContainer(root);
 
     expect(count).toBe(1);
     expect(root.querySelector("a")).toBeNull();
     expect(root.querySelector("video source")?.getAttribute("src")).toBe(
-      "/api/messenger/v1/files/44444444-4444-4444-8444-444444444444/actions/download",
+      "/api/workspace/v1/messenger/files/44444444-4444-4444-8444-444444444444/actions/download",
     );
     expect(root.querySelector("video source")?.getAttribute("type")).toBe("video/webm");
   });

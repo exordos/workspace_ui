@@ -477,13 +477,15 @@ describe("LoginPage", () => {
     });
 
     renderWithProviders(<LoginPage />, {
-      route: "/login?realm=https%3A%2F%2Fchat.example.com%2Fapi%2Fmessenger%2Fv1",
+      route: "/login?realm=https%3A%2F%2Fchat.example.com%2Fapi%2Fworkspace%2Fv1%2Fmessenger",
     });
 
     const realmInput = await screen.findByLabelText(/server address/i);
     fireEvent.blur(realmInput);
     await waitFor(() => {
-      expect(fetchServerSettings).toHaveBeenCalledWith("https://chat.example.com/api/messenger/v1");
+      expect(fetchServerSettings).toHaveBeenCalledWith(
+        "https://chat.example.com/api/workspace/v1/messenger",
+      );
     });
 
     fireEvent.click(screen.getByRole("button", { name: /next/i }));

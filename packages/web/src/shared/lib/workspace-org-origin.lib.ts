@@ -8,12 +8,7 @@
 
 /** Workspace API origin from the server URL the user typed at login (before Workspace canonical realm). */
 export function workspaceOrgOriginFromLoginServerUrlInput(serverUrlInput: string): string {
-  const base = serverUrlInput
-    .trim()
-    .replace(/\/+$/, "")
-    .replace(/\/api\/messenger\/v1$/i, "")
-    .replace(/\/workspace\/v1$/i, "")
-    .replace(/\/workspace$/i, "");
+  const base = serverUrlInput.trim().replace(/\/+$/, "");
   if (base === "") {
     return "";
   }

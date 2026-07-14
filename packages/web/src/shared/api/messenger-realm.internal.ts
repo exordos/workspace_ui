@@ -7,15 +7,14 @@ export function normalizeRealm(realm: string): string {
   return realm
     .trim()
     .replace(/\/+$/, "")
-    .replace(/\/api\/messenger\/v1$/i, "")
+    .replace(/\/api\/workspace\/v1\/messenger$/i, "")
     .replace(/\/+$/, "");
 }
 
 /**
  * Web origin for the messenger API static routes such as `/user_uploads/`.
- * Strips Workspace gateway tails repeatedly: e.g. `WORKSPACE_REST_API_PATH` may be `/workspace`
- * while the realm URL ends with `/workspace/v1` — we must remove `/workspace/v1` first, not stop
- * after a non-matching `/workspace` check.
+ * Strips the canonical Workspace gateway tails repeatedly so media paths can be
+ * resolved from the organization origin.
  */
 export function normalizeRealmSiteOriginForUploads(realmBaseAfterApiStrip: string): string {
   let r = realmBaseAfterApiStrip.trim().replace(/\/+$/, "");
@@ -23,7 +22,7 @@ export function normalizeRealmSiteOriginForUploads(realmBaseAfterApiStrip: strin
 
   const restTail = env.WORKSPACE_REST_API_PATH;
   const suffixes = Array.from(
-    new Set(["/workspace/v1", "/workspace", restTail].filter((s) => s.length > 0)),
+    new Set(["/api/workspace/v1", restTail].filter((s) => s.length > 0)),
   ).sort((a, b) => b.length - a.length);
 
   let changed = true;
@@ -56,7 +55,7 @@ export function appendUserUploadsPathPrefix(site: string, prefix: string): strin
 
 /**
  * Whether to append {@link env.USER_UPLOADS_PATH_PREFIX} when building upload URLs from a Workspace
- * instance realm. Prefix matches gateway mounts; after stripping `/workspace/v1` from the stored
+ * instance realm. Prefix matches gateway mounts; after stripping `/api/workspace/v1` from the stored
  * realm we must re-append it. A canonical realm host (`https://chat.example.com`) already serves
  * `/user_uploads/` at the origin — no prefix unless {@link env.USER_UPLOADS_PREFIX_ON_REALM}.
  */

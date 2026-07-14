@@ -1,7 +1,7 @@
 /** Workspace realtime transport: REST epoch catch-up followed by WebSocket live events. */
 import {
   getCurrentInstance,
-  getMessengerGatewayApiBaseForCurrentInstance,
+  getWorkspaceCommonApiBaseForCurrentInstance,
   messengerApi,
 } from "~/shared/api/client";
 import { parseMessengerGatewayUser } from "~/shared/api/messenger-users.lib";
@@ -12,7 +12,7 @@ import type {
   MessengerSourceName,
   WorkspaceRawMessage,
 } from "~/shared/api/messenger.types";
-import { MESSENGER_API_PATH } from "~/shared/config/workspace-api-layout";
+import { WORKSPACE_GATEWAY_V1_PATH } from "~/shared/config/workspace-api-layout";
 import { recordDiagnosticRealtimeEvent } from "~/shared/lib/diagnostics-realtime.lib";
 import { attachEventLoopLifecycle } from "~/shared/lib/event-loop-lifecycle.lib";
 import { resolveIamAccessToken, resolveIamApiOrigin } from "~/shared/lib/iam-instance.lib";
@@ -22,7 +22,7 @@ import { isOnline, onStatusChange } from "~/shared/lib/network";
 const log = createLogger("realtime");
 
 const WORKSPACE_EVENTS_PROTOCOL = "workspace.events.v1";
-const WORKSPACE_REALTIME_WS_PATH = "/api/messenger/ws";
+const WORKSPACE_REALTIME_WS_PATH = "/api/workspace/v1/events/ws";
 const WORKSPACE_EVENTS_PATH = "/events/";
 const REALTIME_STORAGE_PREFIX = "workspace-realtime:last-epoch:v1:";
 const CATCH_UP_PAGE_LIMIT = 500;
@@ -270,9 +270,9 @@ function resolveRuntimeConfig(options: StartMessengerEventLoopOptions): RuntimeC
     return {
       accessToken,
       fetchMode: "direct",
-      messengerApiBaseUrl: `${origin}${MESSENGER_API_PATH}`,
+      messengerApiBaseUrl: `${origin}${WORKSPACE_GATEWAY_V1_PATH}`,
       storageKey: buildStorageKey(identity),
-      websocketApiBaseUrl: `${origin}${MESSENGER_API_PATH}`,
+      websocketApiBaseUrl: `${origin}${WORKSPACE_GATEWAY_V1_PATH}`,
     };
   }
 
@@ -286,14 +286,16 @@ function resolveRuntimeConfig(options: StartMessengerEventLoopOptions): RuntimeC
   }
   const identity = options.instanceId ?? instance.id ?? `${instance.realm}|${instance.login}`;
   const websocketOrigin = resolveIamApiOrigin(instance).replace(/\/+$/, "");
-  const messengerApiBaseUrl = getMessengerGatewayApiBaseForCurrentInstance();
+  const messengerApiBaseUrl = getWorkspaceCommonApiBaseForCurrentInstance();
   return {
     accessToken,
     fetchMode: "active-client",
     messengerApiBaseUrl,
     storageKey: buildStorageKey(identity),
     websocketApiBaseUrl:
-      websocketOrigin.length > 0 ? `${websocketOrigin}${MESSENGER_API_PATH}` : messengerApiBaseUrl,
+      websocketOrigin.length > 0
+        ? `${websocketOrigin}${WORKSPACE_GATEWAY_V1_PATH}`
+        : messengerApiBaseUrl,
   };
 }
 
@@ -776,6 +778,19 @@ export function normalizeWorkspaceEventModel(
     return event == null
       ? { epochVersion, event: null, skipReason: "invalid folder_item.deleted payload" }
       : { epochVersion, event };
+  }
+  if (kind?.startsWith("mail.") || kind?.startsWith("calendar.")) {
+    const type = kind.startsWith("mail.") ? "mail" : "calendar";
+    return {
+      epochVersion,
+      event: {
+        id: epochVersion,
+        type,
+        kind,
+        epoch_version: epochVersion,
+        resource: payload,
+      },
+    };
   }
   return {
     epochVersion,

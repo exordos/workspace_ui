@@ -1,5 +1,5 @@
 /**
- * POST /api/messenger/v1/messages/ to the Workspace native messenger API.
+ * POST /api/workspace/v1/messenger/messages/ to the Workspace native messenger API.
  */
 import { t } from "~/i18n/i18n";
 import { guard } from "~/shared/lib/guards";

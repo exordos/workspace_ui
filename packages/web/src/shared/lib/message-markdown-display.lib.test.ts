@@ -141,7 +141,7 @@ function renderPreparedMessageHtml(
     resolveUserMention: options?.resolveUserMention,
     treatAsMarkdown: options?.treatAsMarkdown,
   });
-  return prepareProtectedMessageHtml(raw, "https://sys.example.com/workspace/v1", {
+  return prepareProtectedMessageHtml(raw, "https://sys.example.com/api/workspace/v1", {
     resolveCustomEmojiShortcodeImageUrl: options?.resolveCustomEmojiShortcodeImageUrl,
   });
 }
@@ -294,10 +294,10 @@ describe("prepareProtectedMessageHtml message rendering pipeline", () => {
       "[image.png](/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png)",
     );
     expect(html).toContain(
-      '<a href="https://sys.example.com/workspace/v1/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png"',
+      '<a href="https://sys.example.com/api/workspace/v1/user_uploads/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png"',
     );
     expect(html).toContain(
-      'data-auth-src="https://sys.example.com/workspace/v1/user_uploads/thumbnail/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png/840x560.webp"',
+      'data-auth-src="https://sys.example.com/api/workspace/v1/user_uploads/thumbnail/2/ff/aP3oHiNs40xdmpUNVol7Z5ga/image.png/840x560.webp"',
     );
     expect(html).toContain('src="data:image/svg+xml');
     expect(html).not.toMatch(
@@ -308,7 +308,7 @@ describe("prepareProtectedMessageHtml message rendering pipeline", () => {
   it("keeps non-image user_upload links as regular links", () => {
     const html = renderPreparedMessageHtml("[report.pdf](/user_uploads/2/ff/report.pdf)");
     expect(html).toContain(
-      '<a href="https://sys.example.com/workspace/v1/user_uploads/2/ff/report.pdf" target="_blank" rel="noopener noreferrer">report.pdf</a>',
+      '<a href="https://sys.example.com/api/workspace/v1/user_uploads/2/ff/report.pdf" target="_blank" rel="noopener noreferrer">report.pdf</a>',
     );
     expect(html).not.toContain("<img");
   });
@@ -392,7 +392,7 @@ describe("prepareProtectedMessageHtml message rendering pipeline", () => {
     expect(html).toContain('class="messenger-quote-block"');
     expect(html).toContain('class="messenger-quote-body"');
     expect(html).toContain(
-      'data-auth-src="https://sys.example.com/workspace/v1/user_uploads/thumbnail/',
+      'data-auth-src="https://sys.example.com/api/workspace/v1/user_uploads/thumbnail/',
     );
     expect(html).toContain('class="message-media-preview"');
     expect(html).not.toMatch(new RegExp(`>${uploadUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}<`));
@@ -411,7 +411,7 @@ describe("prepareProtectedMessageHtml message rendering pipeline", () => {
     expect(html).toContain('class="messenger-quote-body"');
     expect(html).toContain('class="message-media-preview"');
     expect(html).toContain(
-      'data-auth-src="https://sys.example.com/workspace/v1/user_uploads/thumbnail/',
+      'data-auth-src="https://sys.example.com/api/workspace/v1/user_uploads/thumbnail/',
     );
     expect(html).toMatch(/messenger-quote-body[\s\S]*<img[^>]*message-media-preview/);
     expect((html.match(/<img\b/gi) ?? []).length).toBe(1);

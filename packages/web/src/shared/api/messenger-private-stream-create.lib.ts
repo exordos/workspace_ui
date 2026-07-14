@@ -43,7 +43,7 @@ export function resolvePrivateMessageStreamName(
   return peerUserUuid.trim();
 }
 
-/** POST /api/messenger/v1/streams/ payload for a new 1:1 private stream. */
+/** POST /api/workspace/v1/messenger/streams/ payload for a new 1:1 private stream. */
 export function buildCreatePrivateMessageStreamBody(options: {
   peerUserUuid: string;
   peerDisplayName: string;
@@ -58,7 +58,7 @@ export function buildCreatePrivateMessageStreamBody(options: {
   };
 }
 
-/** POST /api/messenger/v1/streams/{uuid}/actions/add_users/invoke payload. */
+/** POST /api/workspace/v1/messenger/streams/{uuid}/actions/add_users/invoke payload. */
 export function buildAddStreamUsersBody(options: {
   userUuids: readonly string[];
   role?: MessengerStreamBindingRole;

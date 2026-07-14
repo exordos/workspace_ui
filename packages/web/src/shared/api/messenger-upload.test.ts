@@ -10,7 +10,7 @@ import { getMockMessengerApi } from "./messenger.test.setup";
 const mockMessengerApi = getMockMessengerApi();
 const STREAM_UUID = "22222222-2222-4222-8222-222222222222";
 const FILE_UUID = "33333333-3333-4333-8333-333333333333";
-const FILE_DOWNLOAD_URI = `/api/messenger/v1/files/${FILE_UUID}/actions/download`;
+const FILE_DOWNLOAD_URI = `/api/workspace/v1/messenger/files/${FILE_UUID}/actions/download`;
 
 describe("uploadFile", () => {
   it("uploads file to workspace files endpoint and returns download action URI", async () => {
@@ -26,7 +26,7 @@ describe("uploadFile", () => {
 
     expect(result).toBe(FILE_DOWNLOAD_URI);
     expect(mockMessengerApi.postFormDataWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/files/",
       expect.any(FormData),
       undefined,
@@ -53,7 +53,7 @@ describe("uploadFile", () => {
 
     expect(result).toBe(FILE_DOWNLOAD_URI);
     expect(mockMessengerApi.postFormDataWithBase).toHaveBeenCalledWith(
-      "/api/messenger/v1",
+      "/api/workspace/v1/messenger",
       "/files/",
       expect.any(FormData),
       controller.signal,

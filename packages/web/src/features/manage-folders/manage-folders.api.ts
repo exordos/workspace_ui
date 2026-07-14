@@ -1,8 +1,8 @@
 /**
  * Folder CRUD API — messenger gateway endpoints for folder management.
  *
- * `POST /api/messenger/v1/folders/`, `PUT /api/messenger/v1/folders/{uuid}`,
- * `DELETE /api/messenger/v1/folders/{uuid}`.
+ * `POST /api/workspace/v1/messenger/folders/`, `PUT /api/workspace/v1/messenger/folders/{uuid}`,
+ * `DELETE /api/workspace/v1/messenger/folders/{uuid}`.
  */
 
 import {
@@ -15,7 +15,7 @@ import {
 import { guard } from "~/shared/lib/guards";
 import { createLogger } from "~/shared/lib/logger";
 import type { CreateFolderInput, FolderItem, UpdateFolderInput } from "./manage-folders.types";
-import type { FolderCreate, FolderUpdate } from "@workspace/api/workspace-api.generated";
+import type { UserFolderCreate, UserFolderUpdate } from "@workspace/api/workspace-api.generated";
 
 const log = createLogger("manage-folders:api");
 
@@ -25,16 +25,17 @@ function isoNow(): string {
 
 function mapToFolderItem(
   raw: { uuid?: string; title: string; background_color_value?: number | null } & {
-    created_at: string;
-    updated_at: string;
+    created_at?: string;
+    updated_at?: string;
   },
 ): FolderItem {
+  const timestamp = isoNow();
   return {
     id: raw.uuid ?? "",
     title: raw.title,
     backgroundColor: raw.background_color_value ?? 0,
-    createdAt: raw.created_at,
-    updatedAt: raw.updated_at,
+    createdAt: raw.created_at ?? timestamp,
+    updatedAt: raw.updated_at ?? raw.created_at ?? timestamp,
   };
 }
 
@@ -43,13 +44,13 @@ export async function createFolder(input: CreateFolderInput): Promise<FolderItem
 
   try {
     const t = isoNow();
-    const folderCreate: FolderCreate = {
+    const folderCreate: UserFolderCreate = {
       created_at: t,
       updated_at: t,
       title: input.title,
       background_color_value: input.backgroundColor ?? 0,
     };
-    const raw = await messengerFoldersPostJson<FolderCreate>("/folders/", folderCreate);
+    const raw = await messengerFoldersPostJson<UserFolderCreate>("/folders/", folderCreate);
     log.info("Folder created", { title: input.title });
     return mapToFolderItem(raw);
   } catch (err) {
@@ -65,14 +66,14 @@ export async function updateFolder(
   guard.nonEmpty(folderId, "folder id");
 
   try {
-    const current = await messengerFoldersGet<FolderUpdate & { title: string }>(
+    const current = await messengerFoldersGet<UserFolderUpdate & { title: string }>(
       messengerFolderPath(folderId),
     );
     const folderUpdate = {
       title: input.title ?? current.title,
       background_color_value: input.backgroundColor ?? current.background_color_value ?? 0,
-    } as FolderUpdate;
-    const raw = await messengerFoldersPutJson<FolderCreate>(
+    } as UserFolderUpdate;
+    const raw = await messengerFoldersPutJson<UserFolderCreate>(
       messengerFolderPath(folderId),
       folderUpdate,
     );

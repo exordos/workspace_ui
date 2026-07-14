@@ -12,7 +12,6 @@ import {
 } from "./src/shared/config/workspace-api-layout";
 import { applyBrandEnvDefaults } from "./src/shared/lib/brand-defaults.lib";
 import { buildPermissionsPolicyHeader } from "./src/shared/lib/permissions-policy";
-import { workspaceOrgApiOriginFromRealmRoot } from "./src/shared/lib/workspace-org-origin.lib";
 import { installDevWorkspaceOrgProxyMiddleware } from "./vite-dev-workspace-org-proxy";
 
 const webPackageVersion = (
@@ -111,19 +110,6 @@ function withDevProxyRequestLog(
   };
 }
 
-function deriveLegacyWorkspaceOrigin(
-  workspaceOrigin: string,
-  explicitLegacyOrigin: string | undefined,
-): string {
-  const normalizedExplicitOrigin = explicitLegacyOrigin?.trim().replace(/\/+$/, "");
-  if (normalizedExplicitOrigin) {
-    return normalizedExplicitOrigin;
-  }
-
-  const normalizedWorkspaceOrigin = workspaceOrigin.replace(/\/+$/, "");
-  return workspaceOrgApiOriginFromRealmRoot(normalizedWorkspaceOrigin);
-}
-
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, import.meta.dirname, "");
   applyBrandEnvDefaults(env);
@@ -135,9 +121,6 @@ export default defineConfig(({ mode }) => {
   const userUploadsPathPrefix = proxyUserUploadsAsRealmRoot
     ? ""
     : normalizeUserUploadsPathPrefix(WORKSPACE_GATEWAY_V1_PATH);
-  const workspaceLegacyOrigin = workspaceOrigin
-    ? deriveLegacyWorkspaceOrigin(workspaceOrigin, env.VITE_WORKSPACE_API_LEGACY_ORIGIN)
-    : "";
   const isElectron = !!env.ELECTRON;
   const isPwaDevEnabled = env.VITE_PWA_DEV === "true";
   const cdnUrl = env.VITE_CDN_URL?.replace(/\/+$/, "");
@@ -158,21 +141,7 @@ export default defineConfig(({ mode }) => {
   const devApiProxy =
     workspaceOrigin &&
     ({
-      "/workspace/workspace/v1": withDevProxyRequestLog(
-        "workspace-legacy",
-        workspaceLegacyOrigin,
-        proxyDebug,
-        {
-          target: workspaceLegacyOrigin,
-          changeOrigin: true,
-          rewrite: (pathValue) => pathValue.replace(/^\/workspace/, ""),
-        },
-      ),
-      "/workspace": withDevProxyRequestLog("workspace", workspaceOrigin, proxyDebug, {
-        target: workspaceOrigin,
-        changeOrigin: true,
-      }),
-      "/api/messenger": withDevProxyRequestLog("messenger-api", workspaceOrigin, proxyDebug, {
+      "/api/workspace": withDevProxyRequestLog("workspace", workspaceOrigin, proxyDebug, {
         target: workspaceOrigin,
         changeOrigin: true,
         ws: true,
@@ -213,7 +182,7 @@ export default defineConfig(({ mode }) => {
     },
 
     plugins: [
-      // Multi-org Workspace REST: `/workspace/...` + `X-Workspace-Dev-Target-Origin` before static proxy.
+      // Multi-org Workspace REST: `/api/workspace/...` + `X-Workspace-Dev-Target-Origin` before static proxy.
       ...(mode === "development" && !isElectron
         ? [
             {

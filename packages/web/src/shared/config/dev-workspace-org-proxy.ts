@@ -5,8 +5,8 @@
  * `/user_uploads` fetches use the same header with the **organization realm** origin (files live on the
  * realm host). Vite middleware forwards `/user_uploads/...` without a gateway prefix; the static
  * proxy is the fallback. If
- * `WORKSPACE_API_BASE` is an absolute URL, the client falls back to
- * `/{prefix}/workspace{REST}/...` (see {@link DEV_WORKSPACE_ORG_PROXY_PATH_PREFIX}).
+ * `WORKSPACE_API_BASE` is an absolute URL, the client falls back to the
+ * escaped dev proxy prefix (see {@link DEV_WORKSPACE_ORG_PROXY_PATH_PREFIX}).
  * Keep in sync with `vite-dev-workspace-org-proxy.ts`.
  */
 
@@ -14,18 +14,14 @@ export const DEV_WORKSPACE_ORG_PROXY_PATH_PREFIX = "/__dev_workspace_org";
 
 /**
  * Same rule as `env.WORKSPACE_API_BASE` in dev when not overridden by an absolute URL.
- * When {@link WORKSPACE_REST_API_PATH} is `/workspace` (REST under `origin/workspace/...` in prod),
- * the dev mount is still a single `/workspace` segment — do not produce `/workspace/workspace`.
+ * The public mount is the canonical `/api/workspace` path.
  */
 export function devWorkspaceBrowserMountPath(restPathNoTrailingSlash: string): string {
   const rest = restPathNoTrailingSlash.replace(/\/+$/, "");
   if (rest === "") {
-    return "/workspace";
+    return "/api/workspace";
   }
-  if (rest === "/workspace" || rest.startsWith("/workspace/")) {
-    return rest;
-  }
-  return `/workspace${rest}`;
+  return rest.startsWith("/") ? rest : `/${rest}`;
 }
 
 /** Path after Workspace API origin before `/v1/...` (same rules as `getWorkspaceApiBaseForCurrentInstance` in prod). */
