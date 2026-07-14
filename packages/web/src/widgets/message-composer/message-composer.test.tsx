@@ -1,6 +1,8 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { useCallback, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useMessengerStore } from "~/entities/messenger/messenger.model";
+import type { MessengerStream, MessengerTopic } from "~/entities/messenger/messenger.types";
 import { useUsersStore } from "~/entities/user/user.model";
 import type { User } from "~/entities/user/user.types";
 import { useMentionSuggestStore } from "~/features/mention-suggest/mention-suggest.model";
@@ -79,6 +81,7 @@ vi.mock("~/entities/sticker/sticker.api", () => ({
 }));
 
 afterEach(() => {
+  useMessengerStore.getState().clear();
   useUsersStore.getState().clear();
   useMentionSuggestStore.getState().clear();
   isWebViewMock.mockReset();
@@ -118,6 +121,59 @@ function createWorkspaceUser(overrides: Partial<User> = {}): User {
     createdAt: overrides.createdAt ?? TEST_USER_TIMESTAMP,
     updatedAt: overrides.updatedAt ?? TEST_USER_TIMESTAMP,
   };
+}
+
+const COMPOSER_STREAM_UUID = "11111111-1111-4111-8111-111111111111";
+const COMPOSER_TOPIC_UUID = "22222222-2222-4222-8222-222222222222";
+const COMPOSER_OWNER_KEY = "composer-workspace-owner";
+
+function createComposerStream(): MessengerStream {
+  return {
+    uuid: COMPOSER_STREAM_UUID,
+    projectId: "project-uuid",
+    ownerUuid: "owner-uuid",
+    userUuid: "user-uuid",
+    role: "member",
+    notificationMode: "all_messages",
+    name: "Engineering",
+    description: "",
+    unreadCount: 0,
+    sourceName: "native",
+    source: { kind: "native" },
+    audience: "channel",
+    isPrivate: false,
+    inviteOnly: false,
+    announce: false,
+    isArchived: false,
+    directUserUuid: null,
+    lastMessageUuid: null,
+    createdAt: "",
+    updatedAt: "",
+  };
+}
+
+function createComposerTopic(): MessengerTopic {
+  return {
+    uuid: COMPOSER_TOPIC_UUID,
+    projectId: "project-uuid",
+    streamUuid: COMPOSER_STREAM_UUID,
+    userUuid: "user-uuid",
+    name: "Releases",
+    unreadCount: 0,
+    isDefault: false,
+    isDone: false,
+    notificationMode: "default",
+    lastMessageUuid: null,
+    createdAt: "",
+    updatedAt: "",
+  };
+}
+
+function seedComposerWorkspaceStore(): void {
+  const store = useMessengerStore.getState();
+  store.startBootstrap(COMPOSER_OWNER_KEY);
+  store.upsertStream(COMPOSER_OWNER_KEY, createComposerStream());
+  store.upsertTopic(COMPOSER_OWNER_KEY, createComposerTopic());
 }
 
 describe("MessageComposer async send behavior", () => {
@@ -198,6 +254,50 @@ describe("MessageComposer async send behavior", () => {
     });
 
     expect(textbox).toHaveValue("Draft text");
+  });
+
+  it.each([
+    { value: "@ali", query: "ali", seed: "mention" },
+    { value: "#eng", query: "eng", seed: "reference" },
+  ])("closes stale $seed suggestions after a successful send", async ({ value, query, seed }) => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    if (seed === "mention") {
+      useUsersStore.getState().upsertUsers([
+        createWorkspaceUser({
+          uuid: "user-alice-johnson",
+          displayName: "Alice Johnson",
+          username: "alice",
+        }),
+      ]);
+    } else {
+      seedComposerWorkspaceStore();
+    }
+
+    renderWithProviders(
+      <MessageComposer onSend={onSend} capabilities={{ mentions: { mode: "enabled" } }} />,
+    );
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value, selectionStart: value.length } });
+    await waitFor(() => {
+      expect(screen.getByRole("listbox")).toBeInTheDocument();
+    });
+
+    if (seed === "mention") {
+      expect(useMentionSuggestStore.getState().query).toBe(query);
+    }
+    fireEvent.click(screen.getByRole("button", { name: /write a message/i }));
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalled();
+      expect(textbox).toHaveValue("");
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    });
+    expect(textbox).toHaveAttribute("aria-expanded", "false");
+    expect(textbox).not.toHaveAttribute("aria-controls");
+    expect(textbox).not.toHaveAttribute("aria-activedescendant");
+    expect(useMentionSuggestStore.getState().visible).toBe(false);
+    expect(useMentionSuggestStore.getState().query).toBe("");
   });
 
   it("restores textarea focus when parent re-enables composer after async send", async () => {
@@ -348,6 +448,61 @@ describe("MessageComposer saved snippets", () => {
 });
 
 describe("MessageComposer mention suggestions", () => {
+  it("does not open hash suggestions in the legacy composer", () => {
+    renderWithProviders(<MessageComposer onSend={vi.fn()} />);
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "#eng", selectionStart: 4 } });
+
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+
+  it("selects a Workspace hash reference and clears suggestion state", async () => {
+    seedComposerWorkspaceStore();
+    renderWithProviders(
+      <MessageComposer onSend={vi.fn()} capabilities={{ mentions: { mode: "enabled" } }} />,
+    );
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "#rel", selectionStart: 4 } });
+
+    const option = await screen.findByRole("option", { name: /Engineering.*Releases/ });
+    expect(option).toHaveAttribute("aria-selected", "true");
+    expect(textbox).toHaveAttribute("aria-expanded", "true");
+    expect(textbox).toHaveAttribute("aria-controls");
+
+    fireEvent.keyDown(textbox, { key: "Enter" });
+
+    expect(textbox).toHaveValue(`[#Engineering › Releases](urn:topic:${COMPOSER_TOPIC_UUID}) `);
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(textbox).toHaveAttribute("aria-expanded", "false");
+    expect(textbox).not.toHaveAttribute("aria-controls");
+    expect(textbox).not.toHaveAttribute("aria-activedescendant");
+  });
+
+  it.each(["ArrowLeft", "ArrowRight", "Home", "End"])(
+    "rechecks hash suggestions after %s",
+    async (key) => {
+      seedComposerWorkspaceStore();
+      renderWithProviders(
+        <MessageComposer onSend={vi.fn()} capabilities={{ mentions: { mode: "enabled" } }} />,
+      );
+
+      const textbox = screen.getByRole("textbox");
+      if (!(textbox instanceof HTMLTextAreaElement)) {
+        throw new Error("Expected textarea element");
+      }
+      fireEvent.change(textbox, { target: { value: "#eng", selectionStart: 4 } });
+      const options = await screen.findAllByRole("option");
+      expect(options[0]).toHaveTextContent("Engineering");
+
+      textbox.setSelectionRange(0, 0);
+      fireEvent.keyUp(textbox, { key });
+
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    },
+  );
+
   it("opens mention popup for a standalone @ after supported delimiters", async () => {
     useUsersStore.getState().upsertUsers([
       createWorkspaceUser({

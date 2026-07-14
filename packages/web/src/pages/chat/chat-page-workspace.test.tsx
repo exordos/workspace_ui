@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useDownloadStore } from "~/entities/download/download.model";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
@@ -317,6 +317,7 @@ function renderWorkspaceChatPageWithShellContexts(
 ) {
   return render(
     <MemoryRouter initialEntries={[route]}>
+      <WorkspaceLocationProbe />
       <OpenSearchContext.Provider value={vi.fn()}>
         <RightDrawerContext.Provider
           value={{
@@ -333,6 +334,11 @@ function renderWorkspaceChatPageWithShellContexts(
       </OpenSearchContext.Provider>
     </MemoryRouter>,
   );
+}
+
+function WorkspaceLocationProbe() {
+  const location = useLocation();
+  return <span data-testid="workspace-location">{location.pathname}</span>;
 }
 
 describe("ChatPage Workspace route", () => {
@@ -678,6 +684,66 @@ describe("ChatPage Workspace route", () => {
 
     expect(openWorkspaceUserProfile).toHaveBeenCalledWith(USER_B_UUID);
     expect(openUserProfile).not.toHaveBeenCalled();
+  });
+
+  it("opens a canonical topic reference through the topic store", async () => {
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await waitFor(() =>
+      expect(captured.messageListProps?.onOpenWorkspaceReference).toEqual(expect.any(Function)),
+    );
+
+    act(() => {
+      captured.messageListProps?.onOpenWorkspaceReference?.({
+        kind: "topic",
+        topicUuid: TOPIC_UUID,
+      });
+    });
+
+    expect(screen.getByTestId("workspace-location")).toHaveTextContent(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+  });
+
+  it("does not navigate when a canonical topic is absent from the topic store", async () => {
+    const unknownTopicUuid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const initialRoute = `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`;
+    renderWorkspaceChatPageWithShellContexts(initialRoute);
+
+    await waitFor(() =>
+      expect(captured.messageListProps?.onOpenWorkspaceReference).toEqual(expect.any(Function)),
+    );
+
+    act(() => {
+      captured.messageListProps?.onOpenWorkspaceReference?.({
+        kind: "topic",
+        topicUuid: unknownTopicUuid,
+      });
+    });
+
+    expect(screen.getByTestId("workspace-location")).toHaveTextContent(initialRoute);
+  });
+
+  it("does not navigate when a topic reference contains a mismatched stream", async () => {
+    const initialRoute = `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`;
+    const mismatchedStreamUuid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    renderWorkspaceChatPageWithShellContexts(initialRoute);
+
+    await waitFor(() =>
+      expect(captured.messageListProps?.onOpenWorkspaceReference).toEqual(expect.any(Function)),
+    );
+
+    act(() => {
+      captured.messageListProps?.onOpenWorkspaceReference?.({
+        kind: "topic",
+        topicUuid: TOPIC_UUID,
+        streamUuid: mismatchedStreamUuid,
+      });
+    });
+
+    expect(screen.getByTestId("workspace-location")).toHaveTextContent(initialRoute);
   });
 
   it("sends and opens a Workspace Jitsi call from the direct private header", async () => {

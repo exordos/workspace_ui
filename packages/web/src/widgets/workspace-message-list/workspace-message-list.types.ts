@@ -8,6 +8,12 @@ import type {
   WorkspaceMessageFileReference,
   WorkspaceMessageMentionResolver,
 } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
+import type { WorkspaceUrnReference } from "~/shared/lib/workspace-reference-urn.lib";
+
+export type WorkspaceMessageConversationReference = Extract<
+  WorkspaceUrnReference,
+  { kind: "stream" } | { kind: "topic" }
+>;
 
 export interface WorkspaceMessageMediaGalleryItem {
   messageUuid: MessengerUuid;
@@ -25,6 +31,8 @@ export interface WorkspaceMessageListActions {
   onReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onForwardMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onOpenMessageInChat?: (messageUuid: MessengerUuid) => void;
+  onOpenWorkspaceReference?: (reference: WorkspaceMessageConversationReference) => void;
+  onOpenAuthorProfile?: (userUuid: MessengerUuid) => void;
   onOpenJitsiCall?: (url: string, locationName?: string) => void;
   onToggleMessageSelection?: (messageUuid: MessengerUuid) => void;
   onEditMessage?: (messageUuid: MessengerUuid) => void;

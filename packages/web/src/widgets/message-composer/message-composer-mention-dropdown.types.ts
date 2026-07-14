@@ -1,8 +1,12 @@
 import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
+import type { WorkspaceComposerReference } from "./message-composer-reference.lib";
+
+export type ComposerSuggestion = MentionSuggestion | WorkspaceComposerReference;
 
 export interface ComposerMentionDropdownProps {
-  suggestions: MentionSuggestion[];
+  suggestions: ComposerSuggestion[];
   activeIndex: number;
-  onSelect: (user: MentionSuggestion) => void;
+  listboxId: string;
+  onSelect: (suggestion: ComposerSuggestion) => void;
   onHoverIndex: (index: number) => void;
 }

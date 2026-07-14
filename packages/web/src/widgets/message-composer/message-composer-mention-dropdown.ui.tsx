@@ -3,11 +3,13 @@ import { resolveUserPresenceVisual } from "~/entities/user/user-selectors.lib";
 import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
+import { getWorkspaceComposerReferenceLabel } from "./message-composer-reference.lib";
 import type { ComposerMentionDropdownProps } from "./message-composer-mention-dropdown.types";
 
 export const ComposerMentionDropdown = React.memo(function ComposerMentionDropdown({
   suggestions,
   activeIndex,
+  listboxId,
   onSelect,
   onHoverIndex,
 }: ComposerMentionDropdownProps) {
@@ -26,16 +28,59 @@ export const ComposerMentionDropdown = React.memo(function ComposerMentionDropdo
   return (
     <div
       ref={containerRef}
+      id={listboxId}
+      role="listbox"
       className="absolute bottom-full left-0 z-dropdown mb-1 max-h-48 w-80 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border border-border-subtle bg-bg-elevated shadow-xl"
     >
       {suggestions.length > 0 ? (
-        suggestions.map((user, index) => {
+        suggestions.map((suggestion, index) => {
+          if ("kind" in suggestion) {
+            const label = getWorkspaceComposerReferenceLabel(suggestion);
+            const secondaryText = suggestion.kind === "topic" ? suggestion.topicName : "";
+            return (
+              <button
+                type="button"
+                id={`${listboxId}-option-${index}`}
+                role="option"
+                aria-selected={activeIndex === index}
+                key={`${suggestion.kind}:${suggestion.kind === "stream" ? suggestion.streamUuid : suggestion.topicUuid}`}
+                ref={(node) => {
+                  itemRefs.current[index] = node;
+                }}
+                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-primary transition-colors hover:bg-bg ${
+                  activeIndex === index ? "bg-bg" : ""
+                }`}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onSelect(suggestion);
+                }}
+                onMouseEnter={() => onHoverIndex(index)}
+              >
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-bg text-xs text-text-secondary">
+                  {suggestion.kind === "stream" ? "#" : "›"}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium">{label}</span>
+                  {secondaryText ? (
+                    <span className="block truncate text-[11px] text-text-secondary">
+                      {secondaryText}
+                    </span>
+                  ) : null}
+                </span>
+              </button>
+            );
+          }
+
+          const user = suggestion;
           const initials = user.displayName.slice(0, 1) || user.username.slice(0, 1) || "?";
           const secondaryText = user.username ? `@${user.username}` : user.email;
           const presence = resolveUserPresenceVisual(user.status);
           return (
             <button
               type="button"
+              id={`${listboxId}-option-${index}`}
+              role="option"
+              aria-selected={activeIndex === index}
               key={user.userUuid}
               ref={(node) => {
                 itemRefs.current[index] = node;

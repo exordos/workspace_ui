@@ -3,6 +3,7 @@ import {
   normalizeEmojiShortcodeName,
   resolveShortcodeToUnicode,
 } from "~/shared/lib/emoji-shortcodes.lib";
+import { parseWorkspaceReferenceUrn } from "../workspace-reference-urn.lib";
 import type {
   WorkspaceMessageBlock,
   WorkspaceMessageBodyMetadata,
@@ -24,8 +25,6 @@ const WORKSPACE_FILE_URN_PATTERN = new RegExp(
   `^urn:(image|video|file):(${UUID_PATTERN_SOURCE})(?:\\?([\\s\\S]*))?$`,
   "i",
 );
-const WORKSPACE_USER_URN_PATTERN = new RegExp(`^urn:user:(${UUID_PATTERN_SOURCE})$`, "i");
-const WORKSPACE_MESSAGE_URN_PATTERN = new RegExp(`^urn:message:(${UUID_PATTERN_SOURCE})$`, "i");
 const SPOILER_CODE_LANGUAGE_PATTERN = /^spoiler(?:[ \t]+([\s\S]*))?$/i;
 const PLAIN_TEXT_INLINE_PATTERN = new RegExp(
   `<@(${UUID_PATTERN_SOURCE})>|(^|[\\s([{"'.,!?;:])@([A-Za-z0-9._-]{1,128})|:([A-Za-z0-9_+-]{1,128}):`,
@@ -134,20 +133,6 @@ function parseWorkspaceFileUrn(href: string): ParsedWorkspaceFileUrn | null {
     searchParams: new URLSearchParams(match[3] ?? ""),
     href: trimmed,
   };
-}
-
-function parseWorkspaceEntityUuid(href: string, pattern: RegExp): string | null {
-  const match = pattern.exec(href.trim());
-  const uuid = match?.[1];
-  return uuid != null && UUID_PATTERN.test(uuid) ? uuid : null;
-}
-
-function parseWorkspaceUserUrn(href: string): string | null {
-  return parseWorkspaceEntityUuid(href, WORKSPACE_USER_URN_PATTERN);
-}
-
-function parseWorkspaceMessageUrn(href: string): string | null {
-  return parseWorkspaceEntityUuid(href, WORKSPACE_MESSAGE_URN_PATTERN);
 }
 
 function parseWorkspaceFileHref(href: string, label: string): WorkspaceMessageFileReference | null {
@@ -593,20 +578,33 @@ function parseInlineTokens(
         context.state.hasInlineRich = true;
         {
           const link = token as Tokens.Link;
-          const workspaceUserUuid = parseWorkspaceUserUrn(link.href);
-          if (workspaceUserUuid != null) {
-            return [createMentionInline(link.text, context, workspaceUserUuid)];
+          const workspaceReference = parseWorkspaceReferenceUrn(link.href);
+          if (workspaceReference?.kind === "user") {
+            return [createMentionInline(link.text, context, workspaceReference.userUuid)];
           }
 
-          const workspaceMessageUuid = parseWorkspaceMessageUrn(link.href);
-          if (workspaceMessageUuid != null) {
+          if (workspaceReference?.kind === "message") {
             context.state.hasLinks = true;
             return [
               {
                 kind: "link",
                 href: link.href,
                 title: link.title ?? undefined,
-                workspaceMessageUuid,
+                workspaceMessageUuid: workspaceReference.messageUuid,
+                workspaceReference,
+                children: parseInlineTokens(link.tokens, link.text, context),
+              },
+            ];
+          }
+
+          if (workspaceReference?.kind === "stream" || workspaceReference?.kind === "topic") {
+            context.state.hasLinks = true;
+            return [
+              {
+                kind: "link",
+                href: link.href,
+                title: link.title ?? undefined,
+                workspaceReference,
                 children: parseInlineTokens(link.tokens, link.text, context),
               },
             ];

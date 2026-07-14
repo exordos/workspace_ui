@@ -42,6 +42,10 @@ const WORKSPACE_MESSAGE_ALLOWED_ATTR = [
   "data-workspace-user-uuid",
   "data-workspace-message-link",
   "data-workspace-message-uuid",
+  "data-workspace-reference",
+  "data-workspace-reference-kind",
+  "data-workspace-stream-uuid",
+  "data-workspace-topic-uuid",
   "data-workspace-file",
   "data-workspace-file-uuid",
   "data-workspace-file-kind",
@@ -222,6 +226,38 @@ function renderWorkspaceFilePlaceholder(
   }<span class="workspace-message-file-placeholder__label${isImage ? " sr-only" : ""}">${escapeHtmlText(label)}</span></span>`;
 }
 
+function renderWorkspaceConversationReference(
+  inline: Extract<WorkspaceMessageInline, { kind: "link" }>,
+  options: WorkspaceMessageRenderOptions,
+): string | null {
+  const reference = inline.workspaceReference;
+  if (reference?.kind !== "stream" && reference?.kind !== "topic") {
+    return null;
+  }
+
+  const labelHtml = renderInlineChildren(inline.children, options);
+  const titleAttr =
+    inline.title != null && inline.title.trim().length > 0
+      ? ` title="${escapeHtmlText(inline.title)}"`
+      : "";
+  const referenceKind = reference.kind;
+  const streamUuid =
+    reference.streamUuid == null ? undefined : escapeHtmlText(reference.streamUuid);
+  const topicUuid = reference.kind === "topic" ? escapeHtmlText(reference.topicUuid) : undefined;
+  const streamUuidAttr =
+    reference.kind === "topic" && reference.streamUuid == null
+      ? ""
+      : ` data-workspace-stream-uuid="${streamUuid}"`;
+  const fragment =
+    reference.kind === "stream"
+      ? `#workspace-reference-stream-${streamUuid}`
+      : reference.streamUuid == null
+        ? `#workspace-reference-topic-${topicUuid}`
+        : `#workspace-reference-topic-${streamUuid}-${topicUuid}`;
+
+  return `<a href="${fragment}"${titleAttr} data-workspace-reference="true" data-workspace-reference-kind="${referenceKind}"${streamUuidAttr}${topicUuid == null ? "" : ` data-workspace-topic-uuid="${topicUuid}"`}>${labelHtml}</a>`;
+}
+
 function renderInline(
   inline: WorkspaceMessageInline,
   options: WorkspaceMessageRenderOptions,
@@ -276,6 +312,10 @@ function renderInline(
       )}">${escapeHtmlText(mentionText)}</button>`;
     }
     case "link": {
+      const workspaceConversationReference = renderWorkspaceConversationReference(inline, options);
+      if (workspaceConversationReference != null) {
+        return workspaceConversationReference;
+      }
       const labelHtml = renderInlineChildren(inline.children, options);
       const titleAttr =
         inline.title != null && inline.title.trim().length > 0

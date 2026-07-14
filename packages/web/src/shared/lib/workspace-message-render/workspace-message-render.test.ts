@@ -515,6 +515,84 @@ describe("workspace message render core", () => {
     expect(result.html).not.toContain(`urn:message:${messageUuid}`);
   });
 
+  it("parses stream and topic URNs as typed internal links", () => {
+    const streamUuid = "33333333-3333-4333-8333-333333333333";
+    const topicUuid = "44444444-4444-4444-8444-444444444444";
+    const document = parseWorkspaceMessageBody(
+      [
+        `[general](urn:stream:${streamUuid})`,
+        `[#general > Bugs](urn:topic:${streamUuid}:${topicUuid})`,
+        "[docs](https://example.com/docs)",
+      ].join(" "),
+    );
+
+    expect(document.blocks).toEqual([
+      {
+        kind: "paragraph",
+        children: [
+          {
+            kind: "link",
+            href: `urn:stream:${streamUuid}`,
+            workspaceReference: { kind: "stream", streamUuid },
+            children: [{ kind: "text", text: "general" }],
+          },
+          { kind: "text", text: " " },
+          {
+            kind: "link",
+            href: `urn:topic:${streamUuid}:${topicUuid}`,
+            workspaceReference: { kind: "topic", streamUuid, topicUuid },
+            children: [{ kind: "text", text: "#general > Bugs" }],
+          },
+          { kind: "text", text: " " },
+          {
+            kind: "link",
+            href: "https://example.com/docs",
+            children: [{ kind: "text", text: "docs" }],
+          },
+        ],
+      },
+    ]);
+    expect(document.metadata).toMatchObject({ hasLinks: true });
+
+    const result = renderWorkspaceMessageBody(document);
+    expect(result.html).toContain(
+      `data-workspace-reference="true" data-workspace-reference-kind="stream" data-workspace-stream-uuid="${streamUuid}"`,
+    );
+    expect(result.html).toContain(
+      `href="#workspace-reference-topic-${streamUuid}-${topicUuid}" data-workspace-reference="true" data-workspace-reference-kind="topic"`,
+    );
+    expect(result.html).toContain('href="https://example.com/docs"');
+    expect(result.html).not.toContain("urn:stream:");
+    expect(result.html).not.toContain("urn:topic:");
+  });
+
+  it("renders a canonical topic URN without a stream UUID as a Workspace reference", () => {
+    const topicUuid = "44444444-4444-4444-8444-444444444444";
+    const document = parseWorkspaceMessageBody(`[Bugs](urn:topic:${topicUuid})`);
+
+    expect(document.blocks).toEqual([
+      {
+        kind: "paragraph",
+        children: [
+          {
+            kind: "link",
+            href: `urn:topic:${topicUuid}`,
+            workspaceReference: { kind: "topic", topicUuid },
+            children: [{ kind: "text", text: "Bugs" }],
+          },
+        ],
+      },
+    ]);
+
+    const result = renderWorkspaceMessageBody(document);
+    expect(result.html).toContain("Bugs");
+    expect(result.html).toContain(
+      `href="#workspace-reference-topic-${topicUuid}" data-workspace-reference="true" data-workspace-reference-kind="topic"`,
+    );
+    expect(result.html).toContain(`data-workspace-topic-uuid="${topicUuid}"`);
+    expect(result.html).not.toContain("data-workspace-stream-uuid");
+  });
+
   it("keeps invalid Workspace entity URNs as non-navigable labels", () => {
     const document = parseWorkspaceMessageBody(
       "[bad user](urn:user:not-a-uuid) [bad message](urn:message:not-a-uuid)",

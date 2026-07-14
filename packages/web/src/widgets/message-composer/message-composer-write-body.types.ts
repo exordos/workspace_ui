@@ -1,5 +1,5 @@
-import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
 import type { ComposerSendNewlineMode } from "./message-composer-input-commands.lib";
+import type { ComposerSuggestion } from "./message-composer-mention-dropdown.types";
 import type { ClipboardEvent, Dispatch, RefObject, SetStateAction } from "react";
 
 export interface MessageComposerWriteBodyProps {
@@ -7,11 +7,12 @@ export interface MessageComposerWriteBodyProps {
   placeholder: string;
   disabled: boolean;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
+  textareaId: string;
   showMentions: boolean;
-  mentionSuggestions: MentionSuggestion[];
+  mentionSuggestions: ComposerSuggestion[];
   activeMentionIndex: number;
   onActiveMentionIndexChange: Dispatch<SetStateAction<number>>;
-  onMentionSelect: (suggestion: MentionSuggestion) => void;
+  onMentionSelect: (suggestion: ComposerSuggestion) => void;
   onHideMentionDropdown: () => void;
   onValueChange: (next: string) => void;
   onDetectMention: (text: string, cursorPosition: number) => void;

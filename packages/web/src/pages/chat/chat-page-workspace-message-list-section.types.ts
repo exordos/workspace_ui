@@ -8,7 +8,10 @@ import type {
   WorkspaceMessageFileReference,
   WorkspaceMessageMentionResolver,
 } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
-import type { WorkspaceMessageMediaGalleryOpenRequest } from "~/widgets/workspace-message-list/workspace-message-list.types";
+import type {
+  WorkspaceMessageConversationReference,
+  WorkspaceMessageMediaGalleryOpenRequest,
+} from "~/widgets/workspace-message-list/workspace-message-list.types";
 
 export type WorkspaceChatMessagesLoadErrorKind = "initial" | "refresh";
 
@@ -36,6 +39,7 @@ export interface ChatPageWorkspaceMessageListSectionProps {
   onReplyMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onForwardMessage?: (messageUuid: MessengerUuid, selectedText?: string) => void;
   onOpenMessageInChat?: (messageUuid: MessengerUuid) => void;
+  onOpenWorkspaceReference?: (reference: WorkspaceMessageConversationReference) => void;
   jitsiServerBaseUrl?: string | null;
   jitsiLocationName?: string | null;
   onOpenJitsiCall?: (url: string, locationName?: string) => void;

@@ -953,6 +953,103 @@ describe("WorkspaceMessageList", () => {
     expect(onOpenMessageInChat).toHaveBeenCalledWith(messageUuid);
   });
 
+  it("opens stream and topic URNs through the Workspace reference callback", () => {
+    const streamUuid = "33333333-3333-4333-8333-333333333333";
+    const topicUuid = "44444444-4444-4444-8444-444444444444";
+    const onOpenWorkspaceReference = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-conversation-urn-message",
+            markdown: `[general](urn:stream:${streamUuid}) [Bugs](urn:topic:${streamUuid}:${topicUuid})`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onOpenWorkspaceReference }}
+      />,
+    );
+
+    const references = container.querySelectorAll<HTMLElement>("[data-workspace-reference='true']");
+
+    expect(references).toHaveLength(2);
+    expect(references[0]).toHaveAttribute("data-workspace-reference-kind", "stream");
+    expect(references[0]).toHaveAttribute("data-workspace-stream-uuid", streamUuid);
+    expect(references[1]).toHaveAttribute("data-workspace-reference-kind", "topic");
+    expect(references[1]).toHaveAttribute("data-workspace-topic-uuid", topicUuid);
+
+    fireEvent.click(references[0]!);
+    fireEvent.click(references[1]!);
+
+    expect(onOpenWorkspaceReference).toHaveBeenNthCalledWith(1, {
+      kind: "stream",
+      streamUuid,
+    });
+    expect(onOpenWorkspaceReference).toHaveBeenNthCalledWith(2, {
+      kind: "topic",
+      streamUuid,
+      topicUuid,
+    });
+  });
+
+  it("opens a canonical topic URN through the Workspace reference callback", () => {
+    const topicUuid = "44444444-4444-4444-8444-444444444444";
+    const onOpenWorkspaceReference = vi.fn();
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-canonical-topic-urn-message",
+            markdown: `[Bugs](urn:topic:${topicUuid})`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        actions={{ onOpenWorkspaceReference }}
+      />,
+    );
+
+    const reference = container.querySelector<HTMLAnchorElement>("a[href]");
+
+    expect(reference).not.toBeNull();
+    expect(reference).toHaveAttribute("data-workspace-reference", "true");
+    expect(reference).toHaveAttribute("data-workspace-reference-kind", "topic");
+    expect(reference).toHaveAttribute("data-workspace-topic-uuid", topicUuid);
+    expect(reference).not.toHaveAttribute("data-workspace-stream-uuid");
+
+    fireEvent.click(reference!);
+
+    expect(onOpenWorkspaceReference).toHaveBeenCalledWith({
+      kind: "topic",
+      topicUuid,
+    });
+  });
+
+  it("keeps a Workspace conversation reference safe when no open callback is wired", () => {
+    const streamUuid = "55555555-5555-4555-8555-555555555555";
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "workspace-conversation-urn-without-callback",
+            markdown: `[general](urn:stream:${streamUuid})`,
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+      />,
+    );
+
+    const reference = container.querySelector<HTMLElement>("[data-workspace-reference='true']");
+    const initialHash = window.location.hash;
+
+    expect(reference).toHaveAttribute("href", `#workspace-reference-stream-${streamUuid}`);
+    fireEvent.click(reference!);
+
+    expect(window.location.hash).toBe(initialHash);
+  });
+
   it("does not render dangerous protocols as navigable links", () => {
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
     const { container } = render(

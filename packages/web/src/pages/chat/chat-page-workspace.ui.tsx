@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useDownloadStore } from "~/entities/download/download.model";
 import { compareWorkspaceMessages } from "~/entities/message/message-workspace-order.lib";
 import {
@@ -62,7 +63,11 @@ import type {
   WorkspaceMessageFileReference,
   WorkspaceMessageMentionResolution,
 } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
-import type { WorkspaceMessengerRouteMatch } from "~/shared/lib/workspace-messenger-route.lib";
+import {
+  workspaceMessengerStreamRoute,
+  workspaceMessengerTopicRoute,
+  type WorkspaceMessengerRouteMatch,
+} from "~/shared/lib/workspace-messenger-route.lib";
 import { Spinner } from "~/shared/ui/spinner.ui";
 import type { ChatHeaderProps } from "~/widgets/chat-view/chat-header.types";
 import { ChatHeader } from "~/widgets/chat-view/chat-header.ui";
@@ -71,7 +76,10 @@ import type {
   MessageComposerCapabilities,
   ReplyQuote,
 } from "~/widgets/message-composer/message-composer.types";
-import type { WorkspaceMessageMediaGalleryOpenRequest } from "~/widgets/workspace-message-list/workspace-message-list.types";
+import type {
+  WorkspaceMessageConversationReference,
+  WorkspaceMessageMediaGalleryOpenRequest,
+} from "~/widgets/workspace-message-list/workspace-message-list.types";
 import { ChatPageComposerSection } from "./chat-page-composer-section.ui";
 import { ChatPageDeleteConfirmBar } from "./chat-page-delete-confirm-bar.ui";
 import { ChatPageInlineAlerts } from "./chat-page-inline-alerts.ui";
@@ -284,6 +292,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   const [replyQuote, setReplyQuote] = useState<ReplyQuote | null>(null);
   const [uploadProgress, setUploadProgress] = useState<ComposerUploadProgressState | null>(null);
   const [scrollToBottomAfterSendNonce, setScrollToBottomAfterSendNonce] = useState(0);
+  const navigate = useNavigate();
   const pendingReadUpToMessageUuidRef = useRef<string | null>(null);
   const lastReadUpToMessageUuidRef = useRef<string | null>(null);
   const readBatchTimerRef = useRef<number | null>(null);
@@ -1678,6 +1687,42 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     },
     [openWorkspaceUserProfile],
   );
+  const handleOpenWorkspaceReference = useCallback(
+    (reference: WorkspaceMessageConversationReference) => {
+      if (runtimeContext == null) {
+        return;
+      }
+
+      if (reference.kind === "stream") {
+        void navigate(
+          workspaceMessengerStreamRoute({
+            orgId: runtimeContext.organizationId,
+            projectId: runtimeContext.projectId,
+            streamUuid: reference.streamUuid,
+          }),
+        );
+        return;
+      }
+
+      const topic = topicsById[reference.topicUuid];
+      if (topic == null) {
+        return;
+      }
+      if (reference.streamUuid != null && topic.streamUuid !== reference.streamUuid) {
+        return;
+      }
+
+      void navigate(
+        workspaceMessengerTopicRoute({
+          orgId: runtimeContext.organizationId,
+          projectId: runtimeContext.projectId,
+          streamUuid: topic.streamUuid,
+          topicUuid: topic.uuid,
+        }),
+      );
+    },
+    [navigate, runtimeContext, topicsById],
+  );
 
   const headerProps = useMemo<ChatHeaderProps>(() => {
     if (headerView.kind === "directPrivate" && workspaceMeetUrl != null) {
@@ -1748,6 +1793,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         onReplyMessage={handleReplyMessage}
         onForwardMessage={handleForwardMessage}
         onOpenMentionUser={openWorkspaceUserProfile == null ? undefined : handleOpenMentionUser}
+        onOpenWorkspaceReference={handleOpenWorkspaceReference}
         onToggleMessageSelection={handleToggleMessageSelection}
         onEditMessage={handleEditMessage}
         onRequestDeleteMessage={handleRequestDeleteMessage}

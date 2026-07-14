@@ -11,17 +11,20 @@ import { t } from "~/i18n/i18n";
 import CheckIconRaw from "~/shared/assets/icons/check.svg?raw";
 import CopyIconRaw from "~/shared/assets/icons/copy.svg?raw";
 import { writeText } from "~/shared/lib/clipboard";
+import { createLogger } from "~/shared/lib/logger";
 import { isValidUrl } from "~/shared/lib/validation";
 import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
 import type {
   WorkspaceMessageBubbleMenuAnchor,
   WorkspaceMessageBubbleMenuSource,
 } from "./workspace-message-bubble-menu.types";
+import type { WorkspaceMessageConversationReference } from "./workspace-message-list.types";
 
 const MESSAGE_CONTEXT_MENU_CURSOR_GAP_PX = 6;
 const CODE_COPY_RESET_MS = 1200;
 const UNSAFE_BODY_LINK_PROTOCOL_PATTERN = /^(?:javascript|data|file|blob):/i;
 const WORKSPACE_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const workspaceMessageBodyInteractionsLog = createLogger("workspace-message-body-interactions");
 
 interface WorkspaceCodeCopyButtonMount {
   button: HTMLButtonElement;
@@ -37,6 +40,7 @@ export interface UseWorkspaceMessageBodyInteractionsParams {
   fileReferences: readonly WorkspaceMessageFileReference[];
   onOpenMentionUser?: (userUuid: string) => void;
   onOpenMessageInChat?: (messageUuid: string) => void;
+  onOpenWorkspaceReference?: (reference: WorkspaceMessageConversationReference) => void;
   onDownloadFile?: (file: WorkspaceMessageFileReference) => void | Promise<void>;
   onOpenWorkspaceMedia?: (file: WorkspaceMessageFileReference) => void | Promise<void>;
   onOpenUnsupportedFilePreview?: (file: WorkspaceMessageFileReference) => void;
@@ -248,6 +252,41 @@ function resolveWorkspaceFileReferenceFromClick(
   );
 }
 
+function resolveWorkspaceConversationReferenceFromClick(
+  target: HTMLElement,
+  bodyElement: HTMLDivElement,
+): WorkspaceMessageConversationReference | null {
+  const referenceElement = target.closest<HTMLElement>(
+    "[data-workspace-reference='true'][data-workspace-reference-kind]",
+  );
+  if (referenceElement == null || !bodyElement.contains(referenceElement)) {
+    return null;
+  }
+
+  const kind = referenceElement.dataset.workspaceReferenceKind;
+  const streamUuid = referenceElement.dataset.workspaceStreamUuid?.trim();
+  if (kind === "stream") {
+    return streamUuid != null && WORKSPACE_UUID_PATTERN.test(streamUuid)
+      ? { kind, streamUuid }
+      : null;
+  }
+
+  if (kind !== "topic") {
+    return null;
+  }
+
+  const topicUuid = referenceElement.dataset.workspaceTopicUuid?.trim();
+  if (topicUuid == null || !WORKSPACE_UUID_PATTERN.test(topicUuid)) {
+    return null;
+  }
+
+  if (streamUuid == null) {
+    return { kind, topicUuid };
+  }
+
+  return WORKSPACE_UUID_PATTERN.test(streamUuid) ? { kind, streamUuid, topicUuid } : null;
+}
+
 export function useWorkspaceMessageBodyInteractions({
   bodyRef,
   renderedHtml,
@@ -255,6 +294,7 @@ export function useWorkspaceMessageBodyInteractions({
   fileReferences,
   onOpenMentionUser,
   onOpenMessageInChat,
+  onOpenWorkspaceReference,
   onDownloadFile,
   onOpenWorkspaceMedia,
   onOpenUnsupportedFilePreview,
@@ -515,6 +555,28 @@ export function useWorkspaceMessageBodyInteractions({
         return;
       }
 
+      const workspaceReference = resolveWorkspaceConversationReferenceFromClick(
+        link,
+        event.currentTarget,
+      );
+      if (workspaceReference != null) {
+        event.preventDefault();
+        if (!isPrimaryUnmodifiedClick(event)) {
+          return;
+        }
+
+        if (onOpenWorkspaceReference == null) {
+          workspaceMessageBodyInteractionsLog.warn(
+            "Workspace conversation reference has no open callback",
+            { kind: workspaceReference.kind },
+          );
+          return;
+        }
+
+        onOpenWorkspaceReference(workspaceReference);
+        return;
+      }
+
       const externalUrl = resolveExternalHttpUrl(href);
       if (externalUrl == null || !isPrimaryUnmodifiedClick(event)) {
         return;
@@ -526,6 +588,7 @@ export function useWorkspaceMessageBodyInteractions({
     [
       onOpenMentionUser,
       onOpenMessageInChat,
+      onOpenWorkspaceReference,
       onOpenUnsupportedFilePreview,
       requestWorkspaceFileDownload,
       requestWorkspaceMediaOpen,

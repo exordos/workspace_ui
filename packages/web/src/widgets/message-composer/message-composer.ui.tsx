@@ -1,4 +1,13 @@
-import React, { useState, useRef, useMemo, useCallback, useLayoutEffect, useEffect } from "react";
+import React, {
+  useState,
+  useRef,
+  useMemo,
+  useCallback,
+  useLayoutEffect,
+  useEffect,
+  useId,
+} from "react";
+import { useMessengerStore } from "~/entities/messenger/messenger.model";
 import { AiComposerButton } from "~/features/ai-reply/ai-reply.ui";
 import type { MentionSuggestion } from "~/features/mention-suggest/mention-suggest.types";
 import { t } from "~/i18n/i18n";
@@ -42,6 +51,12 @@ import { ComposerModeTabs } from "./message-composer-mode-tabs.ui";
 import { MessageComposerPreface } from "./message-composer-preface.ui";
 import { MessageComposerPreviewBody } from "./message-composer-preview-body.ui";
 import { useMessageComposerPreview } from "./message-composer-preview.hook";
+import {
+  getWorkspaceComposerReferenceSuggestions,
+  insertWorkspaceComposerReference,
+  replaceWorkspaceComposerLinks,
+  type WorkspaceComposerReference,
+} from "./message-composer-reference.lib";
 import { MessageComposerSavedSnippetsDialog } from "./message-composer-saved-snippets-dialog.ui";
 import { useComposerSavedSnippetsStore } from "./message-composer-saved-snippets.model";
 import { MessageComposerSchedulePopover } from "./message-composer-schedule-popover.ui";
@@ -56,6 +71,7 @@ import { FormattingToolbar } from "./message-composer-toolbar.ui";
 import { useMessageComposerUpload } from "./message-composer-upload.hook";
 import { MessageComposerWriteBody } from "./message-composer-write-body.ui";
 import type { ComposerSendNewlineMode } from "./message-composer-input-commands.lib";
+import type { ComposerSuggestion } from "./message-composer-mention-dropdown.types";
 import type { SavedSnippet } from "./message-composer-saved-snippets.types";
 import type { ScheduleMenuOption } from "./message-composer-schedule-popover.types";
 import type {
@@ -334,8 +350,50 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     mentionStartPos,
     setMentionStartPos,
   } = useComposerMentions({ enabled: mentionsSupported });
+  const messengerOwnerKey = useMessengerStore((state) => state.ownerKey);
+  const workspaceReferencesEnabled =
+    capabilities?.mentions?.mode === "enabled" && messengerOwnerKey != null;
+  const streamIds = useMessengerStore((state) => state.streamIds);
+  const streamsById = useMessengerStore((state) => state.streamsById);
+  const topicIds = useMessengerStore((state) => state.topicIds);
+  const topicsById = useMessengerStore((state) => state.topicsById);
+  const [showWorkspaceReferences, setShowWorkspaceReferences] = useState(false);
+  const [workspaceReferenceQuery, setWorkspaceReferenceQuery] = useState("");
+  const [activeWorkspaceReferenceIndex, setActiveWorkspaceReferenceIndex] = useState(0);
+  const [workspaceReferenceStartPos, setWorkspaceReferenceStartPos] = useState(0);
+  const resetWorkspaceReferenceState = useCallback(() => {
+    setShowWorkspaceReferences(false);
+    setWorkspaceReferenceQuery("");
+    setActiveWorkspaceReferenceIndex(0);
+    setWorkspaceReferenceStartPos(0);
+  }, []);
+  const workspaceReferenceSuggestions = useMemo(() => {
+    if (!workspaceReferencesEnabled) return [];
+    return getWorkspaceComposerReferenceSuggestions({
+      streamIds,
+      streamsById,
+      topicIds,
+      topicsById,
+      query: workspaceReferenceQuery,
+    });
+  }, [
+    streamIds,
+    streamsById,
+    topicIds,
+    topicsById,
+    workspaceReferenceQuery,
+    workspaceReferencesEnabled,
+  ]);
+  const composerSuggestions = showWorkspaceReferences
+    ? workspaceReferenceSuggestions
+    : mentionSuggestions;
+  const showComposerSuggestions = showMentions || showWorkspaceReferences;
+  const activeComposerSuggestionIndex = showWorkspaceReferences
+    ? activeWorkspaceReferenceIndex
+    : activeMentionIndex;
   const effectiveReplyQuote = isEditing ? null : replyQuote;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const textareaId = useId();
   const prevDisabledRef = useRef(disabled);
   const prevReplyQuoteIdRef = useRef<number | string | null>(null);
   useLayoutEffect(() => {
@@ -487,26 +545,64 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   const previewHtml = preview.html;
   const previewLoading = preview.loading;
   const previewError = preview.error;
+  const resetMentionState = useCallback(() => {
+    hideMentionDropdown();
+    setMentionQuery("");
+    setMentionStartPos(0);
+    setActiveMentionIndex(0);
+  }, [hideMentionDropdown, setActiveMentionIndex, setMentionQuery, setMentionStartPos]);
+
+  useEffect(() => {
+    if (!workspaceReferencesEnabled) {
+      resetWorkspaceReferenceState();
+    }
+  }, [resetWorkspaceReferenceState, workspaceReferencesEnabled]);
 
   const detectMention = useCallback(
     (text: string, cursorPos: number) => {
-      if (!mentionsSupported) {
-        hideMentionDropdown();
+      const before = text.slice(0, cursorPos);
+      const match = /(?:^|[\s([{,.:;!?])([@#])(\S*)$/.exec(before);
+      if (match == null) {
+        resetMentionState();
+        resetWorkspaceReferenceState();
         return;
       }
-      const before = text.slice(0, cursorPos);
-      const match = /(?:^|[\s([{,.:;!?])@(\S*)$/.exec(before);
-      if (match) {
-        const query = match[1] ?? "";
+
+      const trigger = match[1];
+      const query = match[2] ?? "";
+      const startPos = cursorPos - query.length - 1;
+      if (trigger === "@") {
+        resetWorkspaceReferenceState();
+        if (!mentionsSupported) {
+          resetMentionState();
+          return;
+        }
         setMentionQuery(query);
-        setMentionStartPos(cursorPos - query.length - 1);
+        setMentionStartPos(startPos);
         showMentionDropdown();
         setActiveMentionIndex(0);
-      } else {
-        hideMentionDropdown();
+        return;
       }
+
+      resetMentionState();
+      if (!workspaceReferencesEnabled) {
+        resetWorkspaceReferenceState();
+        return;
+      }
+      setWorkspaceReferenceQuery(query);
+      setWorkspaceReferenceStartPos(startPos);
+      setShowWorkspaceReferences(true);
+      setActiveWorkspaceReferenceIndex(0);
     },
-    [hideMentionDropdown, mentionsSupported, setMentionQuery, showMentionDropdown],
+    [
+      mentionsSupported,
+      resetMentionState,
+      resetWorkspaceReferenceState,
+      setMentionQuery,
+      setMentionStartPos,
+      showMentionDropdown,
+      workspaceReferencesEnabled,
+    ],
   );
 
   const handleMentionSelect = useCallback(
@@ -519,15 +615,51 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
         user.userUuid,
       );
       setValue(insertion.value);
-      hideMentionDropdown();
-      setActiveMentionIndex(0);
+      resetMentionState();
+      resetWorkspaceReferenceState();
       requestAnimationFrame(() => {
         textareaRef.current?.focus();
         textareaRef.current?.setSelectionRange(insertion.cursorPosition, insertion.cursorPosition);
       });
     },
-    [value, mentionStartPos, hideMentionDropdown, setValue],
+    [mentionStartPos, resetMentionState, resetWorkspaceReferenceState, setValue, value],
   );
+
+  const handleWorkspaceReferenceSelect = useCallback(
+    (reference: WorkspaceComposerReference) => {
+      const insertion = insertWorkspaceComposerReference(
+        value,
+        workspaceReferenceStartPos,
+        textareaRef.current?.selectionStart ?? value.length,
+        reference,
+      );
+      if (insertion == null) return;
+      setValue(insertion.value);
+      resetMentionState();
+      resetWorkspaceReferenceState();
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus();
+        textareaRef.current?.setSelectionRange(insertion.cursorPosition, insertion.cursorPosition);
+      });
+    },
+    [resetMentionState, resetWorkspaceReferenceState, setValue, value, workspaceReferenceStartPos],
+  );
+
+  const handleComposerSuggestionSelect = useCallback(
+    (suggestion: ComposerSuggestion) => {
+      if ("kind" in suggestion) {
+        handleWorkspaceReferenceSelect(suggestion);
+        return;
+      }
+      handleMentionSelect(suggestion);
+    },
+    [handleMentionSelect, handleWorkspaceReferenceSelect],
+  );
+
+  const handleHideComposerSuggestions = useCallback(() => {
+    resetMentionState();
+    resetWorkspaceReferenceState();
+  }, [resetMentionState, resetWorkspaceReferenceState]);
 
   const clearComposerInput = useCallback(() => {
     if (effectiveReplyQuote) {
@@ -643,6 +775,8 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
     } finally {
       setSendInFlight(false);
     }
+    resetMentionState();
+    resetWorkspaceReferenceState();
     if (latestValueRef.current === valueToSend) {
       setValue("");
     }
@@ -680,17 +814,16 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
 
   const handlePaste = useCallback(
     (e: React.ClipboardEvent) => {
-      if (isEditing || !uploadSupported) return;
+      if (isEditing) return;
       const items = e.clipboardData?.items;
-      if (!items) return;
 
       const imageFiles: File[] = [];
-      for (const item of Array.from(items)) {
+      for (const item of Array.from(items ?? [])) {
         if (item.kind !== "file") continue;
         const file = item.getAsFile();
         if (file == null) continue;
         const normalized = normalizeImageAttachmentFile(file, item.type);
-        if (isLikelyImageAttachment(normalized)) {
+        if (uploadSupported && isLikelyImageAttachment(normalized)) {
           imageFiles.push(normalized);
         }
       }
@@ -698,9 +831,32 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
       if (imageFiles.length > 0) {
         e.preventDefault();
         setFiles((prev) => [...prev, ...imageFiles]);
+        return;
       }
+
+      const pastedText = e.clipboardData?.getData("text/plain") ?? "";
+      if (pastedText.length === 0) return;
+      const convertedText = replaceWorkspaceComposerLinks(
+        pastedText,
+        { streamsById, topicsById },
+        typeof window === "undefined" ? null : window.location.origin,
+      );
+      if (convertedText === pastedText) return;
+
+      e.preventDefault();
+      const textarea = textareaRef.current;
+      const selectionStart = textarea?.selectionStart ?? value.length;
+      const selectionEnd = textarea?.selectionEnd ?? value.length;
+      const nextValue = value.slice(0, selectionStart) + convertedText + value.slice(selectionEnd);
+      const nextCursor = selectionStart + convertedText.length;
+      setValue(nextValue);
+      detectMention(nextValue, nextCursor);
+      requestAnimationFrame(() => {
+        textarea?.focus();
+        textarea?.setSelectionRange(nextCursor, nextCursor);
+      });
     },
-    [isEditing, setFiles, uploadSupported],
+    [detectMention, isEditing, setFiles, setValue, streamsById, topicsById, uploadSupported, value],
   );
 
   const handleAttachClick = () => {
@@ -1222,12 +1378,19 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
                   placeholder={placeholder}
                   disabled={disabled || sendInFlight}
                   textareaRef={textareaRef}
-                  showMentions={showMentions}
-                  mentionSuggestions={mentionSuggestions}
-                  activeMentionIndex={activeMentionIndex}
-                  onActiveMentionIndexChange={setActiveMentionIndex}
-                  onMentionSelect={handleMentionSelect}
-                  onHideMentionDropdown={hideMentionDropdown}
+                  textareaId={textareaId}
+                  showMentions={showComposerSuggestions}
+                  mentionSuggestions={composerSuggestions}
+                  activeMentionIndex={activeComposerSuggestionIndex}
+                  onActiveMentionIndexChange={(nextIndex) => {
+                    if (showWorkspaceReferences) {
+                      setActiveWorkspaceReferenceIndex(nextIndex);
+                    } else {
+                      setActiveMentionIndex(nextIndex);
+                    }
+                  }}
+                  onMentionSelect={handleComposerSuggestionSelect}
+                  onHideMentionDropdown={handleHideComposerSuggestions}
                   onValueChange={setValue}
                   onDetectMention={detectMention}
                   applyFormattingShortcut={applyFormattingShortcut}

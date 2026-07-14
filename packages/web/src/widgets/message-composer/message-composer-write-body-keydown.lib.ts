@@ -1,23 +1,22 @@
 import { KEYBOARD_SHORTCUTS_ENABLED } from "~/shared/config/constants";
 import { isNewlineCommand, isSendCommand } from "./message-composer-input-commands.lib";
 import { applyListContinuationOnNewline } from "./message-composer-list-continuation.lib";
+import type { ComposerSuggestion } from "./message-composer-mention-dropdown.types";
 import type { MessageComposerWriteBodyProps } from "./message-composer-write-body.types";
 import type { KeyboardEvent, RefObject } from "react";
-
-type MentionSuggestion = MessageComposerWriteBodyProps["mentionSuggestions"][number];
 
 export interface HandleComposerWriteBodyKeyDownOptions {
   event: KeyboardEvent<HTMLTextAreaElement>;
   value: string;
   showMentions: boolean;
-  mentionSuggestions: readonly MentionSuggestion[];
+  mentionSuggestions: readonly ComposerSuggestion[];
   activeMentionIndex: number;
   sendNewlineMode: MessageComposerWriteBodyProps["sendNewlineMode"];
   isEditing: boolean;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   applyFormattingShortcut: MessageComposerWriteBodyProps["applyFormattingShortcut"];
   onActiveMentionIndexChange: MessageComposerWriteBodyProps["onActiveMentionIndexChange"];
-  onMentionSelect: MessageComposerWriteBodyProps["onMentionSelect"];
+  onMentionSelect: (suggestion: ComposerSuggestion) => void;
   onHideMentionDropdown: MessageComposerWriteBodyProps["onHideMentionDropdown"];
   onValueChange: MessageComposerWriteBodyProps["onValueChange"];
   onDetectMention: MessageComposerWriteBodyProps["onDetectMention"];

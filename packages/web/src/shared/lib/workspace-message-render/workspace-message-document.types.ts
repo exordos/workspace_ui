@@ -1,3 +1,5 @@
+import type { WorkspaceUrnReference } from "../workspace-reference-urn.lib";
+
 export type WorkspaceMessageContentKind =
   | "plain"
   | "inline-rich"
@@ -66,6 +68,7 @@ export interface WorkspaceMessageLinkInline {
   href: string;
   title?: string;
   workspaceMessageUuid?: string;
+  workspaceReference?: Exclude<WorkspaceUrnReference, { kind: "user" }>;
   children: readonly WorkspaceMessageInline[];
 }
 
