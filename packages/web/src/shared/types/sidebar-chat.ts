@@ -97,6 +97,8 @@ export interface StreamWithLast {
 export interface StreamEntryInternal {
   /** Workspace stream UUID used as the stream identity and for gateway reads/writes. */
   streamUuid: string;
+  /** Server-owned default topic UUID, or null when no default is configured. */
+  defaultTopicUuid?: string | null;
   /** Workspace private streams are shown in Personal. */
   private?: boolean;
   /** Server-owned stream color as 0xRRGGBB. */

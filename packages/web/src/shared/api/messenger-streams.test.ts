@@ -21,6 +21,7 @@ import {
   fetchTopics,
   findPrivateStreamForUserUuid,
   resolveOrCreateDirectMessageStream,
+  setStreamTopicDefault,
   unarchiveStream,
   toggleStreamTopicDone,
   updateStream,
@@ -47,6 +48,7 @@ describe("fetchSubscriptions", () => {
       data: [
         {
           uuid: "11111111-1111-4111-8111-111111111111",
+          default_topic_uuid: "22222222-2222-4222-8222-222222222222",
           name: "general",
           description: "Main",
           invite_only: false,
@@ -77,6 +79,7 @@ describe("fetchSubscriptions", () => {
     await expect(fetchSubscriptions()).resolves.toEqual([
       {
         stream_uuid: "11111111-1111-4111-8111-111111111111",
+        default_topic_uuid: "22222222-2222-4222-8222-222222222222",
         name: "general",
         notification_mode: "mentions_only",
         invite_only: false,
@@ -89,6 +92,7 @@ describe("fetchSubscriptions", () => {
       },
       {
         stream_uuid: "33333333-3333-4333-8333-333333333333",
+        default_topic_uuid: null,
         name: "Alice",
         notification_mode: "muted",
         invite_only: false,
@@ -121,6 +125,7 @@ describe("fetchSubscriptions", () => {
     await expect(fetchSubscriptions()).resolves.toEqual([
       {
         stream_uuid: "11111111-1111-4111-8111-111111111111",
+        default_topic_uuid: null,
         name: "general",
         notification_mode: "all_messages",
         invite_only: false,
@@ -386,6 +391,7 @@ describe("findPrivateStreamForUserUuid", () => {
         {
           uuid: STREAM_UUID,
           stream_uuid: STREAM_UUID,
+          default_topic_uuid: null,
           name: "Alice Smith",
           description: "",
           user_uuid: CURRENT_PEER_UUID,
@@ -675,6 +681,7 @@ describe("fetchStreams", () => {
       data: [
         {
           uuid: "11111111-1111-4111-8111-111111111111",
+          default_topic_uuid: "22222222-2222-4222-8222-222222222222",
           name: "general",
           description: "Main",
           announce: true,
@@ -701,6 +708,7 @@ describe("fetchStreams", () => {
     expect(result).toEqual([
       {
         stream_uuid: "11111111-1111-4111-8111-111111111111",
+        default_topic_uuid: "22222222-2222-4222-8222-222222222222",
         name: "general",
         description: "Main",
         is_announcement_only: true,
@@ -754,6 +762,7 @@ describe("fetchStreams", () => {
     await expect(fetchStreams()).resolves.toEqual([
       {
         stream_uuid: "11111111-1111-4111-8111-111111111111",
+        default_topic_uuid: null,
         name: "general",
         description: "Main",
         is_announcement_only: false,
@@ -1058,6 +1067,44 @@ describe("toggleStreamTopicDone", () => {
 
   it("returns invalid_topic_uuid before calling the action API", async () => {
     await expect(toggleStreamTopicDone("not-a-uuid")).resolves.toEqual({
+      ok: false,
+      topic: null,
+      errorCode: "invalid_topic_uuid",
+    });
+    expect(mockMessengerApi.postJsonWithBase).not.toHaveBeenCalled();
+  });
+});
+
+describe("setStreamTopicDefault", () => {
+  it("sets the server-owned default topic through workspace action API", async () => {
+    const responseTopic = {
+      uuid: TOPIC_UUID,
+      stream_uuid: STREAM_UUID,
+      name: "incident",
+      unread_count: 3,
+      is_default: true,
+      is_done: false,
+    };
+    mockMessengerApi.postJsonWithBase.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: responseTopic,
+      raw: { statusText: "OK" },
+    });
+
+    await expect(setStreamTopicDefault(TOPIC_UUID)).resolves.toEqual({
+      ok: true,
+      topic: { ...responseTopic, notification_mode: "default" },
+    });
+    expect(mockMessengerApi.postJsonWithBase).toHaveBeenCalledWith(
+      "/api/messenger/v1",
+      `/stream_topics/${TOPIC_UUID}/actions/set_default/invoke`,
+      {},
+    );
+  });
+
+  it("returns invalid_topic_uuid before calling the action API", async () => {
+    await expect(setStreamTopicDefault("not-a-uuid")).resolves.toEqual({
       ok: false,
       topic: null,
       errorCode: "invalid_topic_uuid",

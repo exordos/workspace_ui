@@ -86,4 +86,26 @@ describe("parseWorkspaceStreamEventRow", () => {
       description: "Updated description",
     });
   });
+
+  it("keeps nullable default topic UUID from stream updates", () => {
+    expect(
+      parseWorkspaceStreamEventRow({
+        uuid: "00000000-0000-4000-8000-000000000001",
+        default_topic_uuid: "00000000-0000-4000-8000-000000000002",
+      }),
+    ).toEqual({
+      streamUuid: "00000000-0000-4000-8000-000000000001",
+      defaultTopicUuid: "00000000-0000-4000-8000-000000000002",
+    });
+
+    expect(
+      parseWorkspaceStreamEventRow({
+        uuid: "00000000-0000-4000-8000-000000000001",
+        default_topic_uuid: null,
+      }),
+    ).toEqual({
+      streamUuid: "00000000-0000-4000-8000-000000000001",
+      defaultTopicUuid: null,
+    });
+  });
 });

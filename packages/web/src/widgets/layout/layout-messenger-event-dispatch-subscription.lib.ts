@@ -145,6 +145,7 @@ export function parseSubscriptionStreamUuids(value: unknown): string[] {
 
 export interface WorkspaceStreamEventRow {
   streamUuid: string;
+  defaultTopicUuid?: string | null;
   name?: string;
   description?: string | null;
   unreadCount?: number;
@@ -156,6 +157,11 @@ export interface WorkspaceStreamEventRow {
   sourceName?: MessengerSourceName;
   source?: MessengerSource;
   notificationMode?: ReturnType<typeof parseWorkspaceStreamNotificationMode>;
+}
+
+function parseDefaultTopicUuid(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  return parseStreamUuid(value) ?? undefined;
 }
 
 export function parseWorkspaceStreamEventRow(value: unknown): WorkspaceStreamEventRow | null {
@@ -175,8 +181,10 @@ export function parseWorkspaceStreamEventRow(value: unknown): WorkspaceStreamEve
   const color = parseWorkspaceColor(record.color);
   const sourceName = parseSourceName(record.source_name);
   const source = parseSource(record.source);
+  const defaultTopicUuid = parseDefaultTopicUuid(record.default_topic_uuid);
   return {
     streamUuid,
+    ...(defaultTopicUuid !== undefined ? { defaultTopicUuid } : {}),
     ...(name.length > 0 ? { name } : {}),
     ...(description !== undefined ? { description } : {}),
     ...(isNonNegativeInteger(record.unread_count) ? { unreadCount: record.unread_count } : {}),
@@ -199,6 +207,7 @@ function buildChatListStreamMetadataRow(
   if (name == null || name.trim().length === 0) return null;
   return {
     streamUuid: row.streamUuid,
+    ...(row.defaultTopicUuid !== undefined ? { defaultTopicUuid: row.defaultTopicUuid } : {}),
     name,
     ...(row.unreadCount != null ? { unreadCount: row.unreadCount } : {}),
     ...(row.private != null ? { private: row.private } : {}),

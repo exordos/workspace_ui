@@ -288,6 +288,7 @@ function parseMeStream(row: unknown): MessengerMeStream | null {
     return null;
   }
   const streamUuid = uuid;
+  const defaultTopicUuid = readUuid(row.default_topic_uuid) ?? null;
   const projectId = readUuid(row.project_id);
   const userUuid = readUuid(row.user_uuid);
   const owner = readUuid(row.owner);
@@ -308,6 +309,7 @@ function parseMeStream(row: unknown): MessengerMeStream | null {
     ...(userUuid != null ? { user_uuid: userUuid } : {}),
     ...(owner != null ? { owner } : {}),
     stream_uuid: streamUuid,
+    default_topic_uuid: defaultTopicUuid,
     ...(lastSyncedAt != null ? { last_synced_at: lastSyncedAt } : {}),
     ...(sourceName != null ? { source_name: sourceName } : {}),
     ...(source != null ? { source } : {}),
@@ -669,6 +671,40 @@ export async function toggleStreamTopicDone(topicUuid: string): Promise<UpdateSt
   }
 }
 
+/** Makes a stream topic the server-owned default topic for its stream. */
+export async function setStreamTopicDefault(topicUuid: string): Promise<UpdateStreamTopicResult> {
+  const normalizedTopicUuid = readUuid(topicUuid);
+  if (normalizedTopicUuid == null) {
+    return { ok: false, topic: null, errorCode: "invalid_topic_uuid" };
+  }
+
+  try {
+    const response = await messengerApi.postJsonWithBase(
+      getMessengerWorkspaceApiBaseForCurrentInstance(),
+      `/stream_topics/${normalizedTopicUuid}/actions/set_default/invoke`,
+      {},
+    );
+    if (!response.ok) {
+      return { ok: false, topic: null, errorCode: `http_${response.status}` };
+    }
+    const data = isRecord(response.data) ? response.data : {};
+    if (data.result === "error") {
+      const code = typeof data.code === "string" ? data.code : undefined;
+      return { ok: false, topic: null, errorCode: code ?? "unknown_error" };
+    }
+    const topic = parseStreamTopic(response.data);
+    if (topic == null) {
+      log.warn("Set default stream topic returned invalid payload", {
+        topicUuid: normalizedTopicUuid,
+      });
+      return { ok: false, topic: null, errorCode: "invalid_response" };
+    }
+    return { ok: true, topic };
+  } catch {
+    return { ok: false, topic: null, errorCode: "network_error" };
+  }
+}
+
 /** Finds an existing 1:1 private stream row for a peer IAM UUID through stream bindings. */
 export function findPrivateStreamForUserUuid(
   streams: readonly MessengerMeStream[],
@@ -793,6 +829,7 @@ export async function createWorkspaceStream(
 function subscriptionFromMeStream(stream: MessengerMeStream): MessengerSubscription | null {
   return {
     stream_uuid: stream.stream_uuid,
+    default_topic_uuid: stream.default_topic_uuid,
     name: stream.name,
     notification_mode: stream.notification_mode,
     invite_only: stream.invite_only,
@@ -820,6 +857,7 @@ export async function fetchStreams(): Promise<MockStream[]> {
     .filter((stream) => !stream.private)
     .map((stream) => ({
       stream_uuid: stream.stream_uuid,
+      default_topic_uuid: stream.default_topic_uuid,
       name: stream.name,
       description: stream.description,
       is_announcement_only: stream.announce,

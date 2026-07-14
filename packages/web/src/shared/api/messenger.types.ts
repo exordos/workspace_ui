@@ -50,6 +50,8 @@ export interface MessengerMeStream {
   owner?: string;
   /** UI/API alias for the stream UUID. */
   stream_uuid: string;
+  /** Server-owned default topic UUID, or null when no default is configured. */
+  default_topic_uuid: string | null;
   last_synced_at?: string;
   source_name?: MessengerSourceName;
   source?: MessengerSource;
@@ -310,6 +312,8 @@ export interface DirectMessagesPageResult {
 export interface MockStream {
   /** Workspace stream UUID used as the stream identity and for message reads/writes. */
   stream_uuid: string;
+  /** Server-owned default topic UUID, or null when no default is configured. */
+  default_topic_uuid?: string | null;
   name: string;
   description: string;
   is_announcement_only: boolean;
@@ -429,6 +433,8 @@ export interface RawMessageToMockInput {
 export interface MessengerSubscription {
   /** Workspace stream UUID used as the stream identity. */
   stream_uuid: string;
+  /** Server-owned default topic UUID, or null when no default is configured. */
+  default_topic_uuid?: string | null;
   name: string;
   notification_mode: WorkspaceStreamNotificationMode;
   is_archived?: boolean;

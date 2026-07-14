@@ -11,6 +11,7 @@ export function toStreamMetadataRowsFromMeStreams(
     .filter((stream) => stream.stream_uuid.trim().length > 0 && stream.name.trim().length > 0)
     .map((stream) => ({
       streamUuid: stream.stream_uuid,
+      defaultTopicUuid: stream.default_topic_uuid,
       name: stream.name,
       unreadCount: stream.unread_count,
       private: stream.private,

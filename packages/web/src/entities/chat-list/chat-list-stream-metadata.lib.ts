@@ -75,6 +75,9 @@ export function buildStreamMetadataEntry(
   const unreadCount = row.unreadCount ?? existing?.unreadCount ?? 0;
   const accessFields = resolveStreamMetadataAccessFields(row, existing);
   const accessSpread = spreadStreamMetadataAccessFields(accessFields);
+  const defaultTopicUuid =
+    "defaultTopicUuid" in row ? (row.defaultTopicUuid ?? null) : existing?.defaultTopicUuid;
+  const defaultTopicSpread = defaultTopicUuid !== undefined ? { defaultTopicUuid } : {};
   const streamUuid = row.streamUuid;
   if (existing) {
     return {
@@ -82,6 +85,7 @@ export function buildStreamMetadataEntry(
       name: name.length > 0 ? name : existing.name,
       streamUuid,
       unreadCount,
+      ...defaultTopicSpread,
       ...accessSpread,
     };
   }
@@ -93,6 +97,7 @@ export function buildStreamMetadataEntry(
     time: "",
     ts: 0,
     unreadCount,
+    ...defaultTopicSpread,
     ...accessSpread,
     topics: new Map(),
   };
