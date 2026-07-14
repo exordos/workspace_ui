@@ -53,6 +53,7 @@ interface WorkspaceMessageListScrollResult {
   handleScroll: (event: React.UIEvent<HTMLDivElement>) => void;
   handleWheel: (event: React.WheelEvent<HTMLDivElement>) => void;
   handleTouchMove: () => void;
+  isUnreadDividerDismissed: boolean;
 }
 
 function scrollToBottom(root: HTMLElement): void {
@@ -118,11 +119,14 @@ export function useWorkspaceMessageListScroll<TMessage>({
   const previousFirstMessageKeyForTopPaginationRef = useRef<string | undefined>(undefined);
   const pendingScrollToBottomKeyRef = useRef<string | null>(null);
   const unreadScrollKeyRef = useRef<string | null>(null);
+  const unreadDividerDismissedRef = useRef(false);
+  const lastScrollTopRef = useRef<number | null>(null);
   const bottomUnreadDispatchKeyRef = useRef<string | null>(null);
   const observedUnreadNodesRef = useRef<Map<string, HTMLElement>>(new Map());
   const viewportUnreadKeysRef = useRef<Set<string>>(new Set());
   const intersectionObserverRef = useRef<IntersectionObserver | null>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
+  const [isUnreadDividerDismissed, setIsUnreadDividerDismissed] = useState(false);
 
   const messageKeys = useMemo(
     () => getOrderedKeys(messages, getMessageKey),
@@ -172,6 +176,31 @@ export function useWorkspaceMessageListScroll<TMessage>({
       });
     });
   }, []);
+
+  const dismissUnreadDividerIfPassed = useCallback(
+    (root: HTMLElement): void => {
+      if (firstUnreadKey == null || unreadDividerDismissedRef.current) {
+        return;
+      }
+
+      const divider = root.querySelector<HTMLElement>("[data-unread-divider-anchor='true']");
+
+      if (divider == null || root.clientHeight <= 0) {
+        return;
+      }
+
+      const rootRect = root.getBoundingClientRect();
+      const dividerRect = divider.getBoundingClientRect();
+
+      if (dividerRect.top >= rootRect.top || dividerRect.bottom > rootRect.top) {
+        return;
+      }
+
+      unreadDividerDismissedRef.current = true;
+      setIsUnreadDividerDismissed(true);
+    },
+    [firstUnreadKey],
+  );
 
   const pinTailToBottom = useCallback(
     (root: HTMLElement): void => {
@@ -300,6 +329,7 @@ export function useWorkspaceMessageListScroll<TMessage>({
     topPaginationArmedRef.current = true;
     previousFirstMessageKeyForTopPaginationRef.current = undefined;
     unreadScrollKeyRef.current = null;
+    lastScrollTopRef.current = null;
     setIsAtBottom(true);
     pendingScrollToBottomKeyRef.current =
       scrollToBottomKey != null && focusedMessageKey == null ? scrollToBottomKey : null;
@@ -664,9 +694,14 @@ export function useWorkspaceMessageListScroll<TMessage>({
       }
 
       const isTrustedUserScroll = event.nativeEvent.isTrusted && !programmaticScrollRef.current;
+      const previousScrollTop = lastScrollTopRef.current;
+      lastScrollTopRef.current = root.scrollTop;
 
       if (isTrustedUserScroll) {
         userScrollSeenRef.current = true;
+        if (previousScrollTop != null && root.scrollTop > previousScrollTop) {
+          dismissUnreadDividerIfPassed(root);
+        }
       }
 
       const atBottom = syncAtBottomFromElement(root);
@@ -729,12 +764,18 @@ export function useWorkspaceMessageListScroll<TMessage>({
       onLoadNewer,
       onLoadOlder,
       syncAtBottomFromElement,
+      dismissUnreadDividerIfPassed,
     ],
   );
 
   const handleWheel = useCallback(
     (event: React.WheelEvent<HTMLDivElement>) => {
       userScrollSeenRef.current = true;
+
+      const root = scrollContainerRef.current;
+      if (root != null) {
+        lastScrollTopRef.current = root.scrollTop;
+      }
 
       if (event.deltaY < 0) {
         userScrolledAwayFromBottomRef.current = true;
@@ -743,20 +784,25 @@ export function useWorkspaceMessageListScroll<TMessage>({
         return;
       }
 
-      const root = scrollContainerRef.current;
-
       if (root == null) {
         return;
       }
 
+      dismissUnreadDividerIfPassed(root);
+
       const atBottom = syncAtBottomFromElement(root);
       userScrolledAwayFromBottomRef.current = !atBottom;
     },
-    [syncAtBottomFromElement],
+    [dismissUnreadDividerIfPassed, syncAtBottomFromElement],
   );
 
   const handleTouchMove = useCallback(() => {
     userScrollSeenRef.current = true;
+
+    const root = scrollContainerRef.current;
+    if (root != null) {
+      lastScrollTopRef.current = root.scrollTop;
+    }
   }, []);
 
   return {
@@ -765,5 +811,6 @@ export function useWorkspaceMessageListScroll<TMessage>({
     handleScroll,
     handleWheel,
     handleTouchMove,
+    isUnreadDividerDismissed,
   };
 }

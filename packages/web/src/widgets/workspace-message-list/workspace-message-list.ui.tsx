@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { MessengerUuid } from "~/entities/messenger/messenger.types";
 import {
   resolveUserPresenceVisual,
@@ -75,6 +75,7 @@ const WorkspaceUnreadMessagesDivider: React.FC<{ label: string }> = ({ label }) 
   <div
     className="flex items-center gap-2 px-4 py-1 text-xs text-notice-base"
     data-unread-divider="true"
+    data-unread-divider-anchor="true"
   >
     <div className="bg-notice-base/30 h-px flex-1" />
     <span>{label}</span>
@@ -237,6 +238,7 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
   outgoingMessages = EMPTY_OUTGOING_MESSAGES,
   currentUserUuid,
   conversationId,
+  initialSnapshotReady = true,
   scrollToBottomKey,
   scrollToBottomAfterSendNonce,
   firstUnreadUuid,
@@ -257,6 +259,31 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
   actions,
 }) => {
   const { locale, t } = useTranslation();
+  const [unreadDividerSession, setUnreadDividerSession] = useState<{
+    ready: boolean;
+    anchor: MessengerUuid | undefined;
+  }>(() => ({
+    ready: initialSnapshotReady,
+    anchor: initialSnapshotReady ? firstUnreadUuid : undefined,
+  }));
+  const stableFirstUnreadUuid = unreadDividerSession.ready
+    ? unreadDividerSession.anchor
+    : firstUnreadUuid;
+
+  useEffect(() => {
+    if (!initialSnapshotReady) {
+      return;
+    }
+
+    setUnreadDividerSession((current) => {
+      if (current.ready) {
+        return current;
+      }
+
+      return { ready: true, anchor: firstUnreadUuid };
+    });
+  }, [firstUnreadUuid, initialSnapshotReady]);
+
   const usersById = useUsersStore((state) => state.usersById);
   const effectiveResolveAuthorLabel = useCallback(
     (authorUuid: MessengerUuid) =>
@@ -391,25 +418,31 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
       message.kind === "server" && !message.read && message.authorUuid !== currentUserUuid,
     [currentUserUuid],
   );
-  const { scrollContainerRef, handleScroll, handleWheel, handleTouchMove, isAtBottom } =
-    useWorkspaceMessageListScroll({
-      messages: renderedMessages,
-      getMessageKey,
-      isUnreadFromOther,
-      scrollToBottomKey: scrollRequestKey,
-      scrollToBottomAfterSendNonce,
-      firstUnreadKey: firstUnreadUuid,
-      unreadCount,
-      focusedMessageKey: focusedMessageUuid,
-      isLoadingOlder,
-      isLoadingNewer,
-      hasOlderMessages,
-      hasNewerMessages,
-      onLoadOlder,
-      onLoadNewer,
-      onUnreadMessagesVisible,
-      onUnreadMessagesAtBottom,
-    });
+  const {
+    scrollContainerRef,
+    handleScroll,
+    handleWheel,
+    handleTouchMove,
+    isAtBottom,
+    isUnreadDividerDismissed,
+  } = useWorkspaceMessageListScroll({
+    messages: renderedMessages,
+    getMessageKey,
+    isUnreadFromOther,
+    scrollToBottomKey: scrollRequestKey,
+    scrollToBottomAfterSendNonce,
+    firstUnreadKey: stableFirstUnreadUuid,
+    unreadCount,
+    focusedMessageKey: focusedMessageUuid,
+    isLoadingOlder,
+    isLoadingNewer,
+    hasOlderMessages,
+    hasNewerMessages,
+    onLoadOlder,
+    onLoadNewer,
+    onUnreadMessagesVisible,
+    onUnreadMessagesAtBottom,
+  });
   const unreadMessagesLabel =
     unreadCount > 0
       ? t("chat.unreadMessagesWithCount", { count: unreadCount })
@@ -465,13 +498,13 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
           <div className="flex flex-col gap-2">
             {dayGroup.authorGroups.map((authorGroup, authorGroupIndex) => {
               const showUnreadMarker =
-                firstUnreadUuid != null &&
-                authorGroup.messages.some((message) => message.key === firstUnreadUuid);
+                stableFirstUnreadUuid != null &&
+                authorGroup.messages.some((message) => message.key === stableFirstUnreadUuid);
               const authorGroupKey = `${dayGroup.dateKey}:${authorGroup.authorUuid}:${authorGroupIndex}`;
 
               return (
                 <React.Fragment key={authorGroupKey}>
-                  {showUnreadMarker && (
+                  {showUnreadMarker && !isUnreadDividerDismissed && (
                     <WorkspaceUnreadMessagesDivider label={unreadMessagesLabel} />
                   )}
                   <WorkspaceMessageAuthorGroupView

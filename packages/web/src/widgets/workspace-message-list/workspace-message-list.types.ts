@@ -84,6 +84,7 @@ export interface WorkspaceMessageListProps {
   outgoingMessages?: readonly MessengerOutgoingMessage[];
   currentUserUuid: MessengerUuid;
   conversationId: MessengerConversationId;
+  initialSnapshotReady?: boolean;
   scrollToBottomKey?: string;
   scrollToBottomAfterSendNonce?: number;
   firstUnreadUuid?: MessengerUuid;

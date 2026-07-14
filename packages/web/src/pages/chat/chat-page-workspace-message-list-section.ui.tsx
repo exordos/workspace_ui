@@ -175,10 +175,12 @@ export const ChatPageWorkspaceMessageListSection = React.memo(
           position="top-left"
         />
         <WorkspaceMessageList
+          key={conversationId}
           messages={messages}
           outgoingMessages={outgoingMessages}
           currentUserUuid={currentUserUuid}
           conversationId={conversationId}
+          initialSnapshotReady={hasInitialPayload && !messagesLoading}
           scrollToBottomKey={scrollToBottomKey}
           scrollToBottomAfterSendNonce={scrollToBottomAfterSendNonce}
           firstUnreadUuid={firstUnreadUuid}

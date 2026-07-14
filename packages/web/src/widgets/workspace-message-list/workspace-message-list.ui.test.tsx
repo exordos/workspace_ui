@@ -694,6 +694,257 @@ describe("WorkspaceMessageList", () => {
     expect(container.querySelector("[data-unread-divider='true']")).not.toBeInTheDocument();
   });
 
+  it("keeps the unread divider at the initial anchor while read state advances", () => {
+    const messages = [
+      createWorkspaceMessage({
+        uuid: "initial-unread-anchor",
+        authorUuid: "author-a",
+        createdAt: "2026-07-03T09:00:00.000Z",
+      }),
+      createWorkspaceMessage({
+        uuid: "later-unread-anchor",
+        authorUuid: "author-b",
+        createdAt: "2026-07-03T09:01:00.000Z",
+      }),
+    ];
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={messages}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        firstUnreadUuid="initial-unread-anchor"
+        unreadCount={2}
+      />,
+    );
+
+    rerender(
+      <WorkspaceMessageList
+        messages={messages}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        firstUnreadUuid="later-unread-anchor"
+        unreadCount={1}
+      />,
+    );
+
+    const unreadDivider = container.querySelector<HTMLElement>("[data-unread-divider='true']");
+    const initialAnchor = container.querySelector<HTMLElement>(
+      "[data-message-uuid='initial-unread-anchor']",
+    );
+
+    expect(unreadDivider).toBeInTheDocument();
+    expect(unreadDivider?.nextElementSibling as HTMLElement | null).toContainElement(initialAnchor);
+  });
+
+  it("waits for the initial snapshot before fixing a late unread anchor", () => {
+    const messages = [
+      createWorkspaceMessage({
+        uuid: "late-unread-anchor",
+        createdAt: "2026-07-03T09:00:00.000Z",
+      }),
+    ];
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={messages}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialSnapshotReady={false}
+        unreadCount={0}
+      />,
+    );
+
+    expect(container.querySelector("[data-unread-divider='true']")).not.toBeInTheDocument();
+
+    rerender(
+      <WorkspaceMessageList
+        messages={messages}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        initialSnapshotReady
+        firstUnreadUuid="late-unread-anchor"
+        unreadCount={1}
+      />,
+    );
+
+    expect(container.querySelector("[data-unread-divider='true']")).toBeInTheDocument();
+  });
+
+  it("resets the unread divider anchor when entering another conversation", () => {
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        key="topic:stream-uuid-1:topic-uuid-1"
+        messages={[createWorkspaceMessage({ uuid: "first-conversation-anchor" })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        firstUnreadUuid="first-conversation-anchor"
+        unreadCount={1}
+      />,
+    );
+
+    rerender(
+      <WorkspaceMessageList
+        key="topic:stream-uuid-2:topic-uuid-2"
+        messages={[
+          createWorkspaceMessage({
+            uuid: "second-conversation-anchor",
+            conversationId: "topic:stream-uuid-2:topic-uuid-2",
+            streamUuid: "stream-uuid-2",
+            topicUuid: "topic-uuid-2",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-2:topic-uuid-2"
+        firstUnreadUuid="second-conversation-anchor"
+        unreadCount={1}
+      />,
+    );
+
+    const unreadDivider = container.querySelector<HTMLElement>("[data-unread-divider='true']");
+    const secondAnchor = container.querySelector<HTMLElement>(
+      "[data-message-uuid='second-conversation-anchor']",
+    );
+
+    expect(unreadDivider?.nextElementSibling as HTMLElement | null).toContainElement(secondAnchor);
+  });
+
+  it("captures a new first unread message after the conversation is re-entered", () => {
+    const conversationId = "topic:stream-uuid-1:topic-uuid-1";
+    const initial = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({
+            uuid: "initial-anchor",
+            createdAt: "2026-07-03T09:00:00.000Z",
+          }),
+          createWorkspaceMessage({
+            uuid: "next-anchor",
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId={conversationId}
+        firstUnreadUuid="initial-anchor"
+        unreadCount={2}
+      />,
+    );
+
+    initial.rerender(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({ uuid: "initial-anchor", read: true }),
+          createWorkspaceMessage({
+            uuid: "next-anchor",
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId={conversationId}
+        firstUnreadUuid="next-anchor"
+        unreadCount={1}
+      />,
+    );
+
+    initial.unmount();
+
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({ uuid: "initial-anchor", read: true }),
+          createWorkspaceMessage({
+            uuid: "next-anchor",
+            createdAt: "2026-07-03T09:01:00.000Z",
+          }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId={conversationId}
+        firstUnreadUuid="next-anchor"
+        unreadCount={1}
+      />,
+    );
+
+    const unreadDivider = container.querySelector<HTMLElement>("[data-unread-divider='true']");
+    const nextAnchor = container.querySelector<HTMLElement>("[data-message-uuid='next-anchor']");
+
+    expect(unreadDivider?.nextElementSibling as HTMLElement | null).toContainElement(nextAnchor);
+  });
+
+  it("does not create an unread divider for messages received after entering a read chat", () => {
+    const { container, rerender } = render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid: "read-message", read: true })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        unreadCount={0}
+      />,
+    );
+
+    rerender(
+      <WorkspaceMessageList
+        messages={[
+          createWorkspaceMessage({ uuid: "read-message", read: true }),
+          createWorkspaceMessage({ uuid: "new-unread-message" }),
+        ]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        firstUnreadUuid="new-unread-message"
+        unreadCount={1}
+      />,
+    );
+
+    expect(container.querySelector("[data-unread-divider='true']")).not.toBeInTheDocument();
+  });
+
+  it("dismisses the divider only after a user scroll passes its boundary", async () => {
+    const { container } = render(
+      <WorkspaceMessageList
+        messages={[createWorkspaceMessage({ uuid: "unread-anchor" })]}
+        currentUserUuid="current-user-uuid"
+        conversationId="topic:stream-uuid-1:topic-uuid-1"
+        firstUnreadUuid="unread-anchor"
+        unreadCount={1}
+      />,
+    );
+
+    const feed = container.querySelector("[role='feed']");
+    const unreadDivider = container.querySelector<HTMLElement>("[data-unread-divider='true']");
+
+    if (feed == null || unreadDivider == null) {
+      throw new Error("Unread divider test nodes were not found");
+    }
+
+    Object.defineProperty(feed, "clientHeight", { configurable: true, value: 100 });
+    vi.spyOn(feed, "getBoundingClientRect").mockReturnValue({
+      top: 0,
+      bottom: 100,
+      left: 0,
+      right: 100,
+      width: 100,
+      height: 100,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(unreadDivider, "getBoundingClientRect").mockReturnValue({
+      top: -20,
+      bottom: -1,
+      left: 0,
+      right: 100,
+      width: 100,
+      height: 19,
+      x: 0,
+      y: -20,
+      toJSON: () => ({}),
+    });
+
+    expect(unreadDivider).toBeInTheDocument();
+
+    fireEvent.wheel(feed, { deltaY: 120 });
+
+    await waitFor(() => {
+      expect(container.querySelector("[data-unread-divider='true']")).not.toBeInTheDocument();
+    });
+  });
+
   it("renders neighboring author groups separately", () => {
     const { container } = render(
       <WorkspaceMessageList
