@@ -11,7 +11,7 @@
 import { env } from "~/shared/lib/env";
 
 export const SCROLL_AREA_CLASS =
-  "scrollbar scrollbar-thin scrollbar-thumb-border-subtle scrollbar-track-bg scrollbar-thumb-rounded-md";
+  "scrollbar scrollbar-thin scrollbar-thumb-border-subtle scrollbar-track-transparent scrollbar-thumb-rounded-md";
 
 export const JITSI_MEET_DOMAIN = env.JITSI_MEET_DOMAIN;
 export const JITSI_MEET_BASE_URL = env.JITSI_MEET_BASE_URL;

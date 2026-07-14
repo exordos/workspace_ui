@@ -420,7 +420,7 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
       aria-label="Chat list"
     >
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <ScrollArea className="flex-1 scrollbar-track-sidebar-bg" data-sidebar-scroll>
+        <ScrollArea className="flex-1" data-sidebar-scroll>
           <SidebarSearchHeader
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}

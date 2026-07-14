@@ -645,7 +645,8 @@ html.keyboard-open .keyboard-sticky {
 .overflow-x-scroll:not(.scrollbar-none),
 .overflow-y-scroll:not(.scrollbar-none) {
   scrollbar-width: thin;
-  scrollbar-color: var(--color-border-subtle) var(--color-bg);
+  /* Transparent track: avoids a dark gutter on hover */
+  scrollbar-color: var(--color-border-subtle) transparent;
 }
 
 .overflow-auto:not(.scrollbar-none)::-webkit-scrollbar,
@@ -653,7 +654,14 @@ html.keyboard-open .keyboard-sticky {
 .overflow-y-auto:not(.scrollbar-none)::-webkit-scrollbar,
 .overflow-scroll:not(.scrollbar-none)::-webkit-scrollbar,
 .overflow-x-scroll:not(.scrollbar-none)::-webkit-scrollbar,
-.overflow-y-scroll:not(.scrollbar-none)::-webkit-scrollbar {
+.overflow-y-scroll:not(.scrollbar-none)::-webkit-scrollbar,
+.overflow-auto:not(.scrollbar-none)::-webkit-scrollbar:hover,
+.overflow-x-auto:not(.scrollbar-none)::-webkit-scrollbar:hover,
+.overflow-y-auto:not(.scrollbar-none)::-webkit-scrollbar:hover,
+.overflow-scroll:not(.scrollbar-none)::-webkit-scrollbar:hover,
+.overflow-x-scroll:not(.scrollbar-none)::-webkit-scrollbar:hover,
+.overflow-y-scroll:not(.scrollbar-none)::-webkit-scrollbar:hover {
+  /* Lock size so Chromium does not expand the bar on hover */
   width: 8px;
   height: 8px;
 }
@@ -664,7 +672,7 @@ html.keyboard-open .keyboard-sticky {
 .overflow-scroll:not(.scrollbar-none)::-webkit-scrollbar-track,
 .overflow-x-scroll:not(.scrollbar-none)::-webkit-scrollbar-track,
 .overflow-y-scroll:not(.scrollbar-none)::-webkit-scrollbar-track {
-  background-color: var(--color-bg);
+  background-color: transparent;
   border-radius: 8px;
 }
 
@@ -673,19 +681,16 @@ html.keyboard-open .keyboard-sticky {
 .overflow-y-auto:not(.scrollbar-none)::-webkit-scrollbar-thumb,
 .overflow-scroll:not(.scrollbar-none)::-webkit-scrollbar-thumb,
 .overflow-x-scroll:not(.scrollbar-none)::-webkit-scrollbar-thumb,
-.overflow-y-scroll:not(.scrollbar-none)::-webkit-scrollbar-thumb {
-  background-color: var(--color-border-subtle);
-  border: 2px solid var(--color-bg);
-  border-radius: 8px;
-}
-
+.overflow-y-scroll:not(.scrollbar-none)::-webkit-scrollbar-thumb,
 .overflow-auto:not(.scrollbar-none)::-webkit-scrollbar-thumb:hover,
 .overflow-x-auto:not(.scrollbar-none)::-webkit-scrollbar-thumb:hover,
 .overflow-y-auto:not(.scrollbar-none)::-webkit-scrollbar-thumb:hover,
 .overflow-scroll:not(.scrollbar-none)::-webkit-scrollbar-thumb:hover,
 .overflow-x-scroll:not(.scrollbar-none)::-webkit-scrollbar-thumb:hover,
 .overflow-y-scroll:not(.scrollbar-none)::-webkit-scrollbar-thumb:hover {
-  background-color: color-mix(in srgb, var(--color-border-subtle) 70%, var(--color-icon-base) 30%);
+  background-color: var(--color-border-subtle);
+  border: 2px solid transparent;
+  border-radius: 8px;
 }
 
 /*
@@ -695,30 +700,29 @@ html.keyboard-open .keyboard-sticky {
 .composer-emoji-picker .epr-body,
 .composer-emoji-picker .epr-emoji-category-content {
   scrollbar-width: thin;
-  scrollbar-color: var(--color-border-subtle) var(--color-bg);
+  scrollbar-color: var(--color-border-subtle) transparent;
 }
 
 .composer-emoji-picker .epr-body::-webkit-scrollbar,
-.composer-emoji-picker .epr-emoji-category-content::-webkit-scrollbar {
+.composer-emoji-picker .epr-emoji-category-content::-webkit-scrollbar,
+.composer-emoji-picker .epr-body::-webkit-scrollbar:hover,
+.composer-emoji-picker .epr-emoji-category-content::-webkit-scrollbar:hover {
   width: 8px;
 }
 
 .composer-emoji-picker .epr-body::-webkit-scrollbar-track,
 .composer-emoji-picker .epr-emoji-category-content::-webkit-scrollbar-track {
-  background-color: var(--color-bg);
+  background-color: transparent;
   border-radius: 8px;
 }
 
 .composer-emoji-picker .epr-body::-webkit-scrollbar-thumb,
-.composer-emoji-picker .epr-emoji-category-content::-webkit-scrollbar-thumb {
-  background-color: var(--color-border-subtle);
-  border: 2px solid var(--color-bg);
-  border-radius: 8px;
-}
-
+.composer-emoji-picker .epr-emoji-category-content::-webkit-scrollbar-thumb,
 .composer-emoji-picker .epr-body::-webkit-scrollbar-thumb:hover,
 .composer-emoji-picker .epr-emoji-category-content::-webkit-scrollbar-thumb:hover {
-  background-color: color-mix(in srgb, var(--color-border-subtle) 70%, var(--color-icon-base) 30%);
+  background-color: var(--color-border-subtle);
+  border: 2px solid transparent;
+  border-radius: 8px;
 }
 
 /* Disable pull-to-refresh on the main shell in PWA / mobile browser */
