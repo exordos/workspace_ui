@@ -207,6 +207,7 @@ function createUserDto(overrides: Partial<BootstrapUserDto> = {}): BootstrapUser
     uuid: USER_A,
     username: "alice",
     source: "iam",
+    avatar: `urn:gavatar:${USER_A}`,
     status: "active",
     status_emoji: null,
     status_text: null,

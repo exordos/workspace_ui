@@ -10,14 +10,13 @@ import {
   useWorkspaceAuthStore,
   type WorkspaceAuthProfile,
 } from "~/entities/workspace-auth/workspace-auth.model";
+import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
-import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { useRightDrawerStore } from "~/widgets/right-panel/right-drawer.model";
 import {
   getTopBarProfileStatusMaxWidthClass,
-  resolveTopBarAvatarSrc,
   shouldShowTopBarProfileStatusTooltip,
 } from "./top-bar.lib";
 
@@ -105,7 +104,6 @@ export const TopBarProfileTrigger = React.memo(function TopBarProfileTrigger() {
   const displayEmail = resolveDisplayEmail(currentUser?.email, workspaceProfile?.email);
   const avatarLetter = displayName[0]?.toUpperCase() ?? "?";
   const statusMaxWidthClass = getTopBarProfileStatusMaxWidthClass();
-  const avatarSrc = resolveTopBarAvatarSrc(currentUser?.avatarUrl ?? undefined);
   const userPresenceState = resolveUserPresenceVisual(currentUser?.status);
   const workspacePresenceState = resolveWorkspacePresenceState(workspaceProfile?.status);
   const presenceState = userPresenceState ?? workspacePresenceState;
@@ -128,9 +126,9 @@ export const TopBarProfileTrigger = React.memo(function TopBarProfileTrigger() {
       aria-expanded={isUserMenuOpen}
     >
       <div className="relative flex-shrink-0">
-        <Avatar size="xs" src={avatarSrc}>
+        <WorkspaceAvatar size="xs" avatarUrn={currentUser?.avatarUrl}>
           {avatarLetter}
-        </Avatar>
+        </WorkspaceAvatar>
         <PresenceIndicator
           status={presenceState}
           size="md"

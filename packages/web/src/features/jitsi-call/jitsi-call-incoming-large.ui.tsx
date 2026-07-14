@@ -1,11 +1,12 @@
 import React from "react";
+import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
 import IncomingCallVideoIcon from "~/shared/assets/icons/call_incoming_video_toggle.svg?react";
 import { Icon } from "~/shared/ui/icon";
 
 export interface IncomingCallLargeProps {
   inviteTitle: string;
-  inviteAvatarSrc: string | null;
+  inviteAvatarUrn?: string;
   inviteAvatarLetter: string;
   videoEnabled: boolean;
   onToggleVideo: () => void;
@@ -15,7 +16,7 @@ export interface IncomingCallLargeProps {
 
 export const IncomingCallLarge: React.FC<IncomingCallLargeProps> = ({
   inviteTitle,
-  inviteAvatarSrc,
+  inviteAvatarUrn,
   inviteAvatarLetter,
   videoEnabled,
   onToggleVideo,
@@ -33,10 +34,14 @@ export const IncomingCallLarge: React.FC<IncomingCallLargeProps> = ({
         style={{ backgroundColor: "#000000" }}
       >
         <div className="mt-3 flex flex-col items-center gap-5 sm:mt-6 sm:gap-7">
-          {inviteAvatarSrc != null ? (
-            <span className="h-[160px] w-[160px] overflow-hidden rounded-full bg-neutral-500 sm:h-[200px] sm:w-[200px]">
-              <img src={inviteAvatarSrc} alt="" className="h-full w-full object-cover" />
-            </span>
+          {inviteAvatarUrn != null ? (
+            <WorkspaceAvatar
+              size="lg"
+              avatarUrn={inviteAvatarUrn}
+              className="!h-[160px] !w-[160px] bg-neutral-500 text-white sm:!h-[200px] sm:!w-[200px]"
+            >
+              {inviteAvatarLetter}
+            </WorkspaceAvatar>
           ) : (
             <span className="flex h-[160px] w-[160px] items-center justify-center rounded-full bg-neutral-500 text-white sm:h-[200px] sm:w-[200px]">
               {inviteAvatarLetter !== "?" ? (

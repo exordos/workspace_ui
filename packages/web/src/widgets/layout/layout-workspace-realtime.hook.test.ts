@@ -589,6 +589,7 @@ describe("useLayoutWorkspaceRealtime", () => {
           uuid: USER_UUID,
           username: "alice",
           source: "iam",
+          avatar: `urn:gavatar:${USER_UUID}`,
           status: "idle",
           status_emoji: null,
           status_text: "Focus",

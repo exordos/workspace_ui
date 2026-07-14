@@ -170,6 +170,7 @@ function createUserDto(overrides: Partial<RealtimeUserPayload> = {}): RealtimeUs
     uuid: USER_A,
     username: "alice",
     source: "iam",
+    avatar: `urn:gavatar:${USER_A}`,
     status: "active",
     status_emoji: null,
     status_text: null,

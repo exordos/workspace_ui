@@ -1,7 +1,6 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { t } from "~/i18n/i18n";
 import { CALL_INCOMING_MODAL_VARIANT } from "~/shared/config/constants";
-import { resolveAvatarUrl } from "~/shared/lib/avatar";
 import { IncomingCallCompact } from "./jitsi-call-incoming-compact.ui";
 import { IncomingCallLarge } from "./jitsi-call-incoming-large.ui";
 import { useIncomingCallLifecycle } from "./jitsi-call-incoming-lifecycle.hook";
@@ -37,7 +36,7 @@ export const JitsiIncomingInviteHost: React.FC = () => {
 
   const trimmedCallerName = incomingInvite?.callerName.trim() ?? "";
   const inviteTitle = trimmedCallerName.length > 0 ? trimmedCallerName : t("call.participant");
-  const inviteAvatarSrc = resolveAvatarUrl(incomingInvite?.avatarUrl) ?? null;
+  const inviteAvatarUrn = incomingInvite?.avatarUrl;
   const inviteAvatarLetter = inviteTitle[0]?.toUpperCase() ?? "?";
   const incomingMessageId = incomingInvite?.messageId ?? null;
   const incomingMessageKey = incomingMessageId == null ? null : String(incomingMessageId);
@@ -86,7 +85,7 @@ export const JitsiIncomingInviteHost: React.FC = () => {
       return (
         <IncomingCallCompact
           inviteTitle={inviteTitle}
-          inviteAvatarSrc={inviteAvatarSrc}
+          inviteAvatarUrn={inviteAvatarUrn}
           inviteAvatarLetter={inviteAvatarLetter}
           onAccept={handleAcceptIncomingInvite}
           onDecline={handleDeclineIncomingInvite}
@@ -97,7 +96,7 @@ export const JitsiIncomingInviteHost: React.FC = () => {
     return (
       <IncomingCallLarge
         inviteTitle={inviteTitle}
-        inviteAvatarSrc={inviteAvatarSrc}
+        inviteAvatarUrn={inviteAvatarUrn}
         inviteAvatarLetter={inviteAvatarLetter}
         videoEnabled={videoEnabled}
         onToggleVideo={handleToggleVideo}
@@ -109,7 +108,7 @@ export const JitsiIncomingInviteHost: React.FC = () => {
     incomingInvite,
     isCompactIncomingVariant,
     inviteTitle,
-    inviteAvatarSrc,
+    inviteAvatarUrn,
     inviteAvatarLetter,
     videoEnabled,
     handleToggleVideo,

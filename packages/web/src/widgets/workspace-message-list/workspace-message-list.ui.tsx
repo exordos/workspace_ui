@@ -1,7 +1,15 @@
 import React, { useCallback, useMemo } from "react";
 import type { MessengerUuid } from "~/entities/messenger/messenger.types";
-import { useTranslation } from "~/i18n/i18n";
+import {
+  resolveUserPresenceVisual,
+  selectUserDisplayName,
+} from "~/entities/user/user-selectors.lib";
+import { useUsersStore } from "~/entities/user/user.model";
+import type { UsersById } from "~/entities/user/user.types";
+import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
+import { t, useTranslation } from "~/i18n/i18n";
 import type { WorkspaceMessageFileReference } from "~/shared/lib/workspace-message-render/workspace-message-document.types";
+import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { WorkspaceMessageBubble } from "./workspace-message-bubble.ui";
 import { formatWorkspaceMessageDayLabel } from "./workspace-message-day-label.lib";
 import {
@@ -21,7 +29,8 @@ import type {
 const OWN_ROW_CLASS_NAME = "flex w-full justify-end self-stretch";
 const PEER_ROW_CLASS_NAME = "flex w-full justify-start self-stretch";
 const OWN_AUTHOR_GROUP_CLASS_NAME = "flex flex-col gap-1 items-end";
-const PEER_AUTHOR_GROUP_CLASS_NAME = "flex flex-col gap-1 items-start";
+const PEER_AUTHOR_GROUP_CLASS_NAME = "flex w-full items-stretch gap-2";
+const PEER_AUTHOR_GROUP_CONTENT_CLASS_NAME = "flex min-w-0 flex-1 flex-col items-start gap-1";
 const EMPTY_SELECTED_MESSAGE_UUIDS = new Set<MessengerUuid>();
 const EMPTY_OUTGOING_MESSAGES: NonNullable<WorkspaceMessageListProps["outgoingMessages"]> = [];
 const OUTGOING_SERVER_MATCH_WINDOW_MS = 5 * 60 * 1000;
@@ -46,6 +55,20 @@ function resolveMessageOwner(
   currentUserUuid: MessengerUuid,
 ): "own" | "peer" {
   return message.authorUuid === currentUserUuid || message.isOwn ? "own" : "peer";
+}
+
+function resolveWorkspaceAuthorLabel(
+  authorUuid: MessengerUuid,
+  resolveAuthorLabel: WorkspaceMessageListProps["resolveAuthorLabel"],
+  usersById: UsersById,
+): string | null {
+  const resolvedLabel = resolveAuthorLabel?.(authorUuid)?.trim();
+  if (resolvedLabel != null && resolvedLabel.length > 0) {
+    return resolvedLabel;
+  }
+
+  const userLabel = selectUserDisplayName(usersById[authorUuid], "").trim();
+  return userLabel.length > 0 ? userLabel : null;
 }
 
 const WorkspaceUnreadMessagesDivider: React.FC<{ label: string }> = ({ label }) => (
@@ -122,6 +145,7 @@ interface WorkspaceMessageAuthorGroupViewProps {
   actions?: WorkspaceMessageListProps["actions"];
   selectedMessageUuids: ReadonlySet<MessengerUuid>;
   selectionMode: boolean;
+  usersById: UsersById;
 }
 
 const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuthorGroupView({
@@ -132,10 +156,40 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
   actions,
   selectedMessageUuids,
   selectionMode,
+  usersById,
 }: WorkspaceMessageAuthorGroupViewProps): React.ReactElement {
   const firstMessage = group.messages[0];
   const groupOwner =
     group.authorUuid === currentUserUuid || firstMessage?.isOwn === true ? "own" : "peer";
+
+  const author = usersById[group.authorUuid];
+  const displayName =
+    resolveWorkspaceAuthorLabel(group.authorUuid, resolveAuthorLabel, usersById) ??
+    `#${group.authorUuid.trim().slice(0, 8)}`;
+  const presence = resolveUserPresenceVisual(author?.status);
+  const handleAuthorClick = () => {
+    actions?.onOpenAuthorProfile?.(group.authorUuid);
+  };
+  const messageRows = group.messages.map((message, messageIndex) => (
+    <WorkspaceMessageListRow
+      key={message.key}
+      message={message}
+      owner={resolveMessageOwner(message, currentUserUuid)}
+      currentUserUuid={currentUserUuid}
+      isFirstInGroup={messageIndex === 0}
+      isLastInGroup={messageIndex === group.messages.length - 1}
+      isSelected={
+        (message.kind === "server" && selectedMessageUuids.has(message.message.uuid)) ||
+        (message.kind === "outgoing" &&
+          message.resolvedServerMessage != null &&
+          selectedMessageUuids.has(message.resolvedServerMessage.uuid))
+      }
+      selectionMode={selectionMode}
+      resolveAuthorLabel={resolveAuthorLabel}
+      resolveMention={resolveMention}
+      actions={actions}
+    />
+  ));
 
   return (
     <section
@@ -144,29 +198,36 @@ const WorkspaceMessageAuthorGroupView = React.memo(function WorkspaceMessageAuth
       data-author-uuid={group.authorUuid}
       data-message-owner={groupOwner}
     >
-      {/* Selection stays tied to the server UUID even while the row still lives
-          in the local outbox layer. That keeps the DOM node from being recreated
-          during the sent -> server snapshot transition. */}
-      {group.messages.map((message, messageIndex) => (
-        <WorkspaceMessageListRow
-          key={message.key}
-          message={message}
-          owner={resolveMessageOwner(message, currentUserUuid)}
-          currentUserUuid={currentUserUuid}
-          isFirstInGroup={messageIndex === 0}
-          isLastInGroup={messageIndex === group.messages.length - 1}
-          isSelected={
-            (message.kind === "server" && selectedMessageUuids.has(message.message.uuid)) ||
-            (message.kind === "outgoing" &&
-              message.resolvedServerMessage != null &&
-              selectedMessageUuids.has(message.resolvedServerMessage.uuid))
-          }
-          selectionMode={selectionMode}
-          resolveAuthorLabel={resolveAuthorLabel}
-          resolveMention={resolveMention}
-          actions={actions}
-        />
-      ))}
+      {groupOwner === "peer" ? (
+        <div className="flex w-12 flex-shrink-0 flex-col justify-end pb-2">
+          <button
+            type="button"
+            onClick={handleAuthorClick}
+            className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft"
+            aria-label={t("a11y.openUserProfile", { name: displayName })}
+            data-workspace-peer-avatar="true"
+          >
+            <span className="relative block">
+              <WorkspaceAvatar
+                size="lg"
+                className="bg-bg-elevated text-accent-soft"
+                avatarUrn={author?.avatarUrl}
+                imageLoading="lazy"
+              >
+                {displayName.slice(0, 1)}
+              </WorkspaceAvatar>
+              <PresenceIndicator
+                status={presence}
+                size="sm"
+                className="absolute bottom-0 right-0"
+              />
+            </span>
+          </button>
+        </div>
+      ) : null}
+      <div className={groupOwner === "peer" ? PEER_AUTHOR_GROUP_CONTENT_CLASS_NAME : "contents"}>
+        {messageRows}
+      </div>
     </section>
   );
 });
@@ -196,6 +257,12 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
   actions,
 }) => {
   const { locale, t } = useTranslation();
+  const usersById = useUsersStore((state) => state.usersById);
+  const effectiveResolveAuthorLabel = useCallback(
+    (authorUuid: MessengerUuid) =>
+      resolveWorkspaceAuthorLabel(authorUuid, resolveAuthorLabel, usersById),
+    [resolveAuthorLabel, usersById],
+  );
   const listItems = useMemo<readonly WorkspaceMessageListItem[]>(() => {
     // The canonical store keeps only server snapshots. Local rows are merged
     // into the display model here so the UI sees one list, while cache,
@@ -410,11 +477,12 @@ export const WorkspaceMessageList: React.FC<WorkspaceMessageListProps> = ({
                   <WorkspaceMessageAuthorGroupView
                     group={authorGroup}
                     currentUserUuid={currentUserUuid}
-                    resolveAuthorLabel={resolveAuthorLabel}
+                    resolveAuthorLabel={effectiveResolveAuthorLabel}
                     resolveMention={resolveMention}
                     actions={messageActions}
                     selectedMessageUuids={selectedMessageUuids}
                     selectionMode={selectionMode}
+                    usersById={usersById}
                   />
                 </React.Fragment>
               );

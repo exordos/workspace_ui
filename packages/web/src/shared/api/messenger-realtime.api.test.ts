@@ -72,6 +72,7 @@ const userDto: WorkspaceMessengerUserDto = {
   uuid: USER_UUID,
   username: "alice",
   source: "iam",
+  avatar: `urn:gavatar:${USER_UUID}`,
   status: "active",
   status_emoji: null,
   status_text: null,

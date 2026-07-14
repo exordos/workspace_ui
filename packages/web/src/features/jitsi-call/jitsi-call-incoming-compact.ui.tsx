@@ -1,12 +1,12 @@
 import React from "react";
+import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
-import { Avatar } from "~/shared/ui/avatar";
 import { Button } from "~/shared/ui/button";
 import { Icon } from "~/shared/ui/icon";
 
 export interface IncomingCallCompactProps {
   inviteTitle: string;
-  inviteAvatarSrc: string | null;
+  inviteAvatarUrn?: string;
   inviteAvatarLetter: string;
   onAccept: () => void;
   onDecline: () => void;
@@ -14,7 +14,7 @@ export interface IncomingCallCompactProps {
 
 export const IncomingCallCompact: React.FC<IncomingCallCompactProps> = ({
   inviteTitle,
-  inviteAvatarSrc,
+  inviteAvatarUrn,
   inviteAvatarLetter,
   onAccept,
   onDecline,
@@ -26,10 +26,14 @@ export const IncomingCallCompact: React.FC<IncomingCallCompactProps> = ({
     >
       <section className="pointer-events-auto rounded-xl border border-border-subtle bg-bg-elevated p-3 shadow-xl">
         <div className="mb-2 flex items-center gap-2">
-          {inviteAvatarSrc != null ? (
-            <Avatar size="sm" src={inviteAvatarSrc} className="bg-bg-elevated text-text-primary">
+          {inviteAvatarUrn != null ? (
+            <WorkspaceAvatar
+              size="sm"
+              avatarUrn={inviteAvatarUrn}
+              className="bg-bg-elevated text-text-primary"
+            >
               {inviteAvatarLetter}
-            </Avatar>
+            </WorkspaceAvatar>
           ) : (
             <span className="bg-call-green/15 inline-flex h-8 w-8 items-center justify-center rounded-full text-call-green">
               <Icon name="phone" size={16} className="text-current" />

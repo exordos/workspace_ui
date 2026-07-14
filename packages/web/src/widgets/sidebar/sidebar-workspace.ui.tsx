@@ -7,6 +7,7 @@ import type {
 } from "~/entities/messenger/messenger.types";
 import { CreateChatDialog } from "~/features/create-chat/create-chat-dialog.ui";
 import { useSettingsStore } from "~/features/settings/settings.model";
+import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
 import { formatMessageTimeRelative } from "~/shared/lib/datetime.lib";
 import { sidebarRowClass } from "~/shared/lib/format";
@@ -15,7 +16,6 @@ import {
   workspaceMessengerStreamRoute,
   workspaceMessengerTopicRoute,
 } from "~/shared/lib/workspace-messenger-route.lib";
-import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { ScrollArea } from "~/shared/ui/scroll-area";
@@ -252,12 +252,12 @@ function WorkspaceSidebarStreamRow({
             }}
           >
             <span className="relative shrink-0">
-              <Avatar
+              <WorkspaceAvatar
                 size={avatarSize}
-                src={isDirectPrivate ? (stream.avatarUrl ?? undefined) : undefined}
+                avatarUrn={isDirectPrivate ? stream.avatarUrl : null}
               >
                 {avatarLabel}
-              </Avatar>
+              </WorkspaceAvatar>
               {isDirectPrivate && (
                 <PresenceIndicator
                   status={stream.presence ?? null}

@@ -24,6 +24,7 @@ import {
   useWorkspaceAuthStore,
 } from "~/entities/workspace-auth/workspace-auth.model";
 import { StreamNotificationLevelSwitch } from "~/features/mute-chat/stream-notification-level-switch.ui";
+import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
 import { resolveTopicDisplayInfo } from "~/shared/lib/topic-display.lib";
 import { reportUnexpectedError } from "~/shared/lib/unexpected-error.lib";
@@ -373,13 +374,13 @@ const RightPanelWorkspaceDirectPrivateInfo: React.FC<{
           <h2 className="mb-3 text-sm font-semibold text-text-primary">{t("info.information")}</h2>
           <div className="flex items-center gap-3">
             <div className="relative shrink-0">
-              <Avatar
+              <WorkspaceAvatar
                 size="lg"
-                src={info.avatarUrl ?? undefined}
+                avatarUrn={info.avatarUrl}
                 className="bg-bg-elevated text-text-secondary"
               >
                 {info.title.slice(0, 1)}
-              </Avatar>
+              </WorkspaceAvatar>
               {info.status != null && (
                 <span className="absolute -bottom-0.5 -right-0.5">
                   <PresenceIndicator status={presence} size="sm" />

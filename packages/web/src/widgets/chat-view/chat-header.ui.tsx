@@ -1,15 +1,11 @@
 import React, { useCallback } from "react";
+import { WorkspaceAvatar } from "~/features/workspace-avatar/workspace-avatar.ui";
 import { t } from "~/i18n/i18n";
-import { resolveAvatarUrl } from "~/shared/lib/avatar";
 import { Avatar } from "~/shared/ui/avatar";
 import { Icon } from "~/shared/ui/icon";
 import { PresenceIndicator } from "~/shared/ui/presence-indicator";
 import { resolveDmStatusText } from "./chat-header.lib";
 import type { ChatHeaderProps } from "./chat-header.types";
-
-function resolveAvatarSrc(url: string | undefined | null): string | undefined {
-  return resolveAvatarUrl(url);
-}
 
 const TITLE_ACTION_BUTTON_CLASS =
   "absolute inset-0 rounded-lg bg-transparent text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft";
@@ -36,7 +32,6 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
 }) => {
   const infoLabel =
     rightPanelLabel ?? (dmPartner != null ? t("info.partnerInfo") : t("info.channelInfo"));
-  const avatarSrc = dmPartner ? resolveAvatarSrc(dmPartner.avatarUrl) : undefined;
   const statusText = dmPartner ? resolveDmStatusText(dmPartner) : "";
   const canOpenDmPartner = onDmPartnerClick != null;
   const canOpenRightPanelFromHeader = onOpenRightPanel != null || onToggleRightPanel != null;
@@ -66,13 +61,13 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
               className={AVATAR_ACTION_BUTTON_CLASS}
               aria-label={t("a11y.openUserProfile", { name: dmPartner.name })}
             >
-              <Avatar
+              <WorkspaceAvatar
                 size="md"
                 className="border border-border-subtle bg-bg-elevated text-text-muted"
-                src={avatarSrc}
+                avatarUrn={dmPartner.avatarUrl}
               >
                 {dmPartner.name.slice(0, 1).toUpperCase()}
-              </Avatar>
+              </WorkspaceAvatar>
               <PresenceIndicator
                 status={dmPartner.presenceState}
                 size="md"
@@ -84,13 +79,13 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             </button>
           ) : (
             <span className="relative shrink-0">
-              <Avatar
+              <WorkspaceAvatar
                 size="md"
                 className="border border-border-subtle bg-bg-elevated text-text-muted"
-                src={avatarSrc}
+                avatarUrn={dmPartner.avatarUrl}
               >
                 {dmPartner.name.slice(0, 1).toUpperCase()}
-              </Avatar>
+              </WorkspaceAvatar>
               <PresenceIndicator
                 status={dmPartner.presenceState}
                 size="md"

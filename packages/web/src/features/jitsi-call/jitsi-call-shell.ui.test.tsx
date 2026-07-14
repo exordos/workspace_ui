@@ -2,10 +2,6 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IncomingDmCallInvite } from "./jitsi-call.model";
 
-vi.mock("~/shared/lib/avatar", () => ({
-  resolveAvatarUrl: () => null,
-}));
-
 vi.mock("./jitsi-call.ui", () => ({
   JitsiCallModal: ({ startWithVideoMuted = true }: { startWithVideoMuted?: boolean }) => (
     <div data-testid="jitsi-call-modal" data-start-with-video-muted={String(startWithVideoMuted)} />

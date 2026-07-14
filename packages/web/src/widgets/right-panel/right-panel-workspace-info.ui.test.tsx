@@ -277,7 +277,7 @@ describe("RightPanelWorkspaceInfo", () => {
           kind: "directPrivate",
           directUserUuid: ALICE_USER_UUID,
           title: "Alice Adams",
-          avatarUrl: "/alice.png",
+          avatarUrl: "urn:url:https://cdn.example/alice.png",
           status: "do_not_disturb",
           details: [
             {
@@ -299,7 +299,7 @@ describe("RightPanelWorkspaceInfo", () => {
     expect(screen.getByText("alice@example.com")).toBeInTheDocument();
     expect(screen.getByText("do not disturb")).toBeInTheDocument();
     expect(screen.getByRole("status", { name: "away" })).toHaveAttribute("data-presence", "idle");
-    expect(container.querySelector('img[src="/alice.png"]')).not.toBeNull();
+    expect(container.querySelector('img[src="https://cdn.example/alice.png"]')).not.toBeNull();
     expect(screen.getAllByText("Temporarily not connected")).toHaveLength(2);
     expect(screen.queryByText("Channel info")).not.toBeInTheDocument();
     expect(screen.queryByText("Topics")).not.toBeInTheDocument();
