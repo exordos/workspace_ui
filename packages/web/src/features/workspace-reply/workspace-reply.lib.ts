@@ -121,6 +121,41 @@ export function removeWorkspaceReplyTab(
   };
 }
 
+/**
+ * Reorders a tab using its insertion position in the list before removal.
+ * The list length is a valid destination index and means append to the end.
+ */
+export function reorderWorkspaceReplyTab(
+  session: WorkspaceReplySession,
+  tabId: string,
+  destinationIndex: number,
+): WorkspaceReplySession {
+  const normalizedSession = normalizeWorkspaceReplySession(session);
+  const sourceIndex = normalizedSession.tabs.findIndex((tab) => tab.id === tabId);
+  if (sourceIndex < 0 || normalizedSession.tabs.length < 2) return normalizedSession;
+  if (!Number.isFinite(destinationIndex)) return normalizedSession;
+
+  const boundedDestinationIndex = Math.max(
+    0,
+    Math.min(Math.trunc(destinationIndex), normalizedSession.tabs.length),
+  );
+  const adjustedDestinationIndex =
+    boundedDestinationIndex > sourceIndex ? boundedDestinationIndex - 1 : boundedDestinationIndex;
+  if (adjustedDestinationIndex === sourceIndex) return normalizedSession;
+
+  const movedTab = normalizedSession.tabs[sourceIndex];
+  if (movedTab == null) return normalizedSession;
+
+  const nextTabs = [...normalizedSession.tabs];
+  nextTabs.splice(sourceIndex, 1);
+  nextTabs.splice(adjustedDestinationIndex, 0, movedTab);
+
+  return {
+    ...normalizedSession,
+    tabs: nextTabs,
+  };
+}
+
 export function buildWorkspaceReplyMarkdown(
   tabs: readonly WorkspaceReplyTab[],
   options?: { wroteLabel?: string },

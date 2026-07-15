@@ -1,8 +1,27 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { useLayoutEffect, useRef, useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const pddMocks = vi.hoisted(() => ({
+  draggable: vi.fn(() => vi.fn()),
+  dropTargetForElements: vi.fn(() => vi.fn()),
+  combine: vi.fn((...cleanups: Array<(() => void) | undefined>) => () => {
+    for (const cleanup of cleanups) cleanup?.();
+  }),
+}));
+
+vi.mock("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
+  draggable: pddMocks.draggable,
+  dropTargetForElements: pddMocks.dropTargetForElements,
+}));
+vi.mock("@atlaskit/pragmatic-drag-and-drop/combine", () => ({ combine: pddMocks.combine }));
+
 import { WorkspaceReplyTabs } from "./workspace-reply.ui";
 import type { WorkspaceReplySession, WorkspaceReplyTab } from "./workspace-reply.types";
+import {
+  WORKSPACE_REPLY_TAB_DND_TYPE,
+  WORKSPACE_REPLY_TAB_LIST_TARGET_ID,
+} from "./workspace-reply.dnd";
 
 function tab(
   overrides: Partial<WorkspaceReplyTab> & Pick<WorkspaceReplyTab, "id" | "senderName">,
@@ -26,7 +45,183 @@ function session(
   return { tabs, activeTabId };
 }
 
+interface MockDragRegistration {
+  getInitialData: () => Record<string, unknown>;
+  onDrag: (args: never) => void;
+  onDrop: (args: never) => void;
+}
+
+interface MockDropTargetRegistration {
+  element: Element;
+  getData: () => Record<string, unknown>;
+}
+
+function mockDragEvent(
+  tabId: string,
+  clientX: number,
+  target: MockDropTargetRegistration,
+): never {
+  return {
+    source: { data: { type: WORKSPACE_REPLY_TAB_DND_TYPE, tabId } },
+    location: {
+      current: {
+        input: { clientX },
+        dropTargets: [{ element: target.element, data: target.getData() }],
+      },
+    },
+  } as never;
+}
+
 describe("WorkspaceReplyTabs", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("registers PDD sources and targets with move semantics and tab-only data", () => {
+    const first = tab({ id: "first", senderName: "Alice" });
+    const second = tab({ id: "second", senderName: "Maria" });
+
+    render(
+      <WorkspaceReplyTabs
+        session={session([first, second])}
+        onSelect={vi.fn()}
+        onRemove={vi.fn()}
+        onReorder={vi.fn()}
+      />,
+    );
+
+    expect(pddMocks.draggable).toHaveBeenCalledTimes(2);
+    expect(pddMocks.dropTargetForElements).toHaveBeenCalledTimes(3);
+
+    const sourceRegistrations = (pddMocks.draggable.mock.calls as unknown as Array<[unknown]>).map(
+      ([args]) => args as { dragHandle: Element; getInitialData: () => Record<string, unknown> },
+    );
+    expect(sourceRegistrations.map((registration) => registration.getInitialData())).toEqual([
+      { type: WORKSPACE_REPLY_TAB_DND_TYPE, tabId: first.id },
+      { type: WORKSPACE_REPLY_TAB_DND_TYPE, tabId: second.id },
+    ]);
+
+    const targetRegistrations = (
+      pddMocks.dropTargetForElements.mock.calls as unknown as Array<[unknown]>
+    ).map(
+      ([args]) =>
+        args as {
+          getData: () => Record<string, unknown>;
+          getDropEffect: () => string;
+        },
+    );
+    expect(targetRegistrations.map((registration) => registration.getData())).toEqual(
+      expect.arrayContaining([
+        { type: WORKSPACE_REPLY_TAB_DND_TYPE, tabId: WORKSPACE_REPLY_TAB_LIST_TARGET_ID },
+        { type: WORKSPACE_REPLY_TAB_DND_TYPE, tabId: first.id },
+        { type: WORKSPACE_REPLY_TAB_DND_TYPE, tabId: second.id },
+      ]),
+    );
+    expect(targetRegistrations.every((registration) => registration.getDropEffect() === "move")).toBe(
+      true,
+    );
+
+    const firstTab = screen.getByRole("tab", { name: "Alice: Quote from Alice: Reply" });
+    const closeButton = screen.getByRole("button", { name: "Close: Alice" });
+    expect(sourceRegistrations[0]?.dragHandle).toBe(firstTab);
+    expect(sourceRegistrations[0]?.dragHandle).not.toBe(closeButton);
+  });
+
+  it("uses midpoint before/after positions and reorders only from the mocked drop callback", () => {
+    const first = tab({ id: "first", senderName: "Alice" });
+    const second = tab({ id: "second", senderName: "Maria" });
+    const third = tab({ id: "third", senderName: "Igor" });
+    const onReorder = vi.fn();
+
+    render(
+      <WorkspaceReplyTabs
+        session={session([first, second, third])}
+        onSelect={vi.fn()}
+        onRemove={vi.fn()}
+        onReorder={onReorder}
+      />,
+    );
+
+    const source = (
+      pddMocks.draggable.mock.calls as unknown as Array<[unknown]>
+    )
+      .map(([args]) => args as MockDragRegistration)
+      .find((registration) => registration.getInitialData().tabId === first.id);
+    const target = (
+      pddMocks.dropTargetForElements.mock.calls as unknown as Array<[unknown]>
+    )
+      .map(([args]) => args as MockDropTargetRegistration)
+      .find((registration) => registration.getData().tabId === second.id);
+
+    expect(source).toBeDefined();
+    expect(target).toBeDefined();
+    if (source == null || target == null) return;
+
+    vi.spyOn(target.element, "getBoundingClientRect").mockReturnValue({
+      left: 100,
+      width: 100,
+      right: 200,
+      top: 0,
+      bottom: 40,
+      height: 40,
+      x: 100,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    act(() => source.onDrag(mockDragEvent(first.id, 120, target)));
+    expect(screen.getByTestId("workspace-reply-drop-indicator")).toBeInTheDocument();
+    act(() => source.onDrop(mockDragEvent(first.id, 120, target)));
+    expect(onReorder).toHaveBeenNthCalledWith(1, first.id, 1);
+    expect(screen.queryByTestId("workspace-reply-drop-indicator")).not.toBeInTheDocument();
+
+    act(() => source.onDrag(mockDragEvent(first.id, 180, target)));
+    act(() => source.onDrop(mockDragEvent(first.id, 180, target)));
+    expect(onReorder).toHaveBeenNthCalledWith(2, first.id, 2);
+  });
+
+  it("clears stale post-drop suppression on the next pointer interaction", () => {
+    const first = tab({ id: "first", senderName: "Alice" });
+    const second = tab({ id: "second", senderName: "Maria" });
+    const onSelect = vi.fn();
+
+    render(
+      <WorkspaceReplyTabs
+        session={session([first, second])}
+        onSelect={onSelect}
+        onRemove={vi.fn()}
+        onReorder={vi.fn()}
+      />,
+    );
+
+    const source = (
+      pddMocks.draggable.mock.calls as unknown as Array<[unknown]>
+    )
+      .map(([args]) => args as MockDragRegistration)
+      .find((registration) => registration.getInitialData().tabId === first.id);
+    const listTarget = (
+      pddMocks.dropTargetForElements.mock.calls as unknown as Array<[unknown]>
+    )
+      .map(([args]) => args as MockDropTargetRegistration)
+      .find((registration) => registration.getData().tabId === WORKSPACE_REPLY_TAB_LIST_TARGET_ID);
+    const firstTab = screen.getByRole("tab", { name: "Alice: Quote from Alice: Reply" });
+    const secondTab = screen.getByRole("tab", { name: "Maria: Quote from Maria: Reply" });
+
+    expect(source).toBeDefined();
+    expect(listTarget).toBeDefined();
+    if (source == null || listTarget == null) return;
+
+    act(() => source.onDrop(mockDragEvent(first.id, -1, listTarget)));
+
+    // No click arrived for the drop. A later real pointer interaction must not be swallowed.
+    fireEvent.pointerDown(secondTab);
+    fireEvent.click(secondTab);
+    fireEvent.click(firstTab);
+
+    expect(onSelect).toHaveBeenNthCalledWith(1, second.id, "pointer");
+    expect(onSelect).toHaveBeenNthCalledWith(2, first.id, "pointer");
+  });
+
   it("renders ordinary tab and close button interactions", () => {
     const first = tab({ id: "first", senderName: "Alice", quotedContent: "First quote" });
     const second = tab({ id: "second", senderName: "Maria", quotedContent: "Second quote" });
@@ -38,6 +233,7 @@ describe("WorkspaceReplyTabs", () => {
         session={session([first, second], second.id)}
         onSelect={onSelect}
         onRemove={onRemove}
+        onReorder={vi.fn()}
       />,
     );
 
@@ -70,6 +266,7 @@ describe("WorkspaceReplyTabs", () => {
         session={session([first, second])}
         onSelect={vi.fn()}
         onRemove={vi.fn()}
+        onReorder={vi.fn()}
       />,
     );
 
@@ -90,6 +287,7 @@ describe("WorkspaceReplyTabs", () => {
         session={session([first, second, third], second.id)}
         onSelect={onSelect}
         onRemove={vi.fn()}
+        onReorder={vi.fn()}
       />,
     );
 
@@ -118,6 +316,7 @@ describe("WorkspaceReplyTabs", () => {
             setActiveTabId(tabId);
           }}
           onRemove={vi.fn()}
+          onReorder={vi.fn()}
         />
       );
     }
@@ -174,6 +373,7 @@ describe("WorkspaceReplyTabs", () => {
               setFocusKey(source === "keyboard" ? null : tabId);
             }}
             onRemove={vi.fn()}
+            onReorder={vi.fn()}
           />
         </>
       );
@@ -199,7 +399,12 @@ describe("WorkspaceReplyTabs", () => {
 
   it("renders nothing for an empty session", () => {
     const { container } = render(
-      <WorkspaceReplyTabs session={session([])} onSelect={vi.fn()} onRemove={vi.fn()} />,
+      <WorkspaceReplyTabs
+        session={session([])}
+        onSelect={vi.fn()}
+        onRemove={vi.fn()}
+        onReorder={vi.fn()}
+      />,
     );
 
     expect(container).toBeEmptyDOMElement();

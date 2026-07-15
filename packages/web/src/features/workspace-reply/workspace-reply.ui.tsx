@@ -1,12 +1,25 @@
-import React, { useCallback, useLayoutEffect, useRef } from "react";
+import { combine } from "@atlaskit/pragmatic-drag-and-drop/combine";
+import {
+  draggable,
+  dropTargetForElements,
+  type ElementEventPayloadMap,
+} from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
+import {
+  getWorkspaceReplyTabDragData,
+  getWorkspaceReplyTabDropIndex,
+  isWorkspaceReplyTabDragData,
+  WORKSPACE_REPLY_TAB_LIST_TARGET_ID,
+} from "./workspace-reply.dnd";
 import type { WorkspaceReplySession, WorkspaceReplyTab } from "./workspace-reply.types";
 
 export interface WorkspaceReplyTabsProps {
   session: WorkspaceReplySession;
   onSelect: (tabId: string, source?: WorkspaceReplyTabSelectSource) => void;
   onRemove: (tabId: string) => void;
+  onReorder?: (tabId: string, destinationIndex: number) => void;
   className?: string;
 }
 
@@ -34,6 +47,12 @@ interface WorkspaceReplyTabItemProps {
   onKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => void;
   replyLabel: string;
   closeLabel: string;
+  dragging: boolean;
+  onDrag: (args: ElementEventPayloadMap["onDrag"]) => void;
+  onDragStart: (tabId: string) => void;
+  onDrop: (args: ElementEventPayloadMap["onDrop"]) => void;
+  onDndCleanup: (tabId: string) => void;
+  registerTabElement: (tabId: string, element: HTMLElement | null) => void;
 }
 
 const WorkspaceReplyTabItem = React.memo<WorkspaceReplyTabItemProps>(
@@ -48,19 +67,59 @@ const WorkspaceReplyTabItem = React.memo<WorkspaceReplyTabItemProps>(
     onKeyDown,
     replyLabel,
     closeLabel,
+    dragging,
+    onDrag,
+    onDragStart,
+    onDrop,
+    onDndCleanup,
+    registerTabElement,
   }) {
     const tabLabel = getTabLabel(tab);
+    const tabElementRef = useRef<HTMLDivElement>(null);
+    const dragHandleRef = useRef<HTMLButtonElement>(null);
     const handleSelect = useCallback(() => onSelectClick(tab.id), [onSelectClick, tab.id]);
     const handleRemove = useCallback(() => onRemove(tab.id), [onRemove, tab.id]);
     const handleTabButtonRef = useCallback(
-      (button: HTMLButtonElement | null) => registerTabButton(tab.id, button),
+      (button: HTMLButtonElement | null) => {
+        dragHandleRef.current = button;
+        registerTabButton(tab.id, button);
+      },
       [registerTabButton, tab.id],
     );
 
+    useEffect(() => {
+      const element = tabElementRef.current;
+      const dragHandle = dragHandleRef.current;
+      if (element == null || dragHandle == null) return;
+
+      registerTabElement(tab.id, element);
+
+      return combine(
+        draggable({
+          element,
+          dragHandle,
+          getInitialData: () => getWorkspaceReplyTabDragData(tab.id),
+          onDragStart: () => onDragStart(tab.id),
+          onDrag,
+          onDrop,
+        }),
+        dropTargetForElements({
+          element,
+          getData: () => getWorkspaceReplyTabDragData(tab.id),
+          canDrop: ({ source }) =>
+            isWorkspaceReplyTabDragData(source.data) && source.data.tabId !== tab.id,
+          getDropEffect: () => "move",
+        }),
+        () => onDndCleanup(tab.id),
+        () => registerTabElement(tab.id, null),
+      );
+    }, [onDndCleanup, onDrag, onDragStart, onDrop, registerTabElement, tab.id]);
+
     return (
       <div
+        ref={tabElementRef}
         onPointerDown={onPointerDown}
-        className="bg-bg-elevated/50 flex min-w-0 shrink-0 items-center overflow-hidden rounded-xl border border-border-subtle"
+        className={`bg-bg-elevated/50 flex min-w-0 shrink-0 items-center overflow-hidden rounded-xl border border-border-subtle transition-[opacity,transform] duration-150 ease-out ${dragging ? "opacity-60" : ""}`}
       >
         <button
           type="button"
@@ -98,13 +157,22 @@ export const WorkspaceReplyTabs = React.memo<WorkspaceReplyTabsProps>(function W
   session,
   onSelect,
   onRemove,
+  onReorder,
   className = "",
 }) {
   const { t: translate } = useTranslation();
   const replyLabel = translate("message.replyTo");
   const closeLabel = translate("common.close");
   const tabButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+  const tabElementsRef = useRef(new Map<string, HTMLElement>());
+  const tabsRef = useRef(session.tabs);
+  const listElementRef = useRef<HTMLDivElement>(null);
   const pendingKeyboardFocusTabIdRef = useRef<string | null>(null);
+  const suppressedClickTabIdRef = useRef<string | null>(null);
+  const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
+
+  tabsRef.current = session.tabs;
 
   const registerTabButton = useCallback((tabId: string, button: HTMLButtonElement | null) => {
     if (button == null) {
@@ -130,13 +198,99 @@ export const WorkspaceReplyTabs = React.memo<WorkspaceReplyTabsProps>(function W
     pendingKeyboardFocusTabIdRef.current = null;
   }, []);
 
+  const getDropIndex = useCallback(
+    (args: ElementEventPayloadMap["onDrag"]) =>
+      getWorkspaceReplyTabDropIndex({
+        tabs: tabsRef.current,
+        tabElements: tabElementsRef.current,
+        dropTargets: args.location.current.dropTargets,
+        clientX: args.location.current.input.clientX,
+      }),
+    [],
+  );
+
+  const handleDrag = useCallback(
+    (args: ElementEventPayloadMap["onDrag"]) => {
+      if (!isWorkspaceReplyTabDragData(args.source.data)) {
+        setDropIndex(null);
+        return;
+      }
+
+      setDraggingTabId(args.source.data.tabId);
+      setDropIndex(getDropIndex(args));
+    },
+    [getDropIndex],
+  );
+
+  const handleDragStart = useCallback((tabId: string) => {
+    suppressedClickTabIdRef.current = null;
+    setDraggingTabId(tabId);
+    setDropIndex(null);
+  }, []);
+
+  const clearDndState = useCallback(() => {
+    setDraggingTabId(null);
+    setDropIndex(null);
+  }, []);
+
+  const handleDrop = useCallback(
+    (args: ElementEventPayloadMap["onDrop"]) => {
+      const sourceData = args.source.data;
+      const destinationIndex = isWorkspaceReplyTabDragData(sourceData)
+        ? getDropIndex(args)
+        : null;
+
+      clearDndState();
+
+      if (
+        !isWorkspaceReplyTabDragData(sourceData) ||
+        sourceData.tabId === WORKSPACE_REPLY_TAB_LIST_TARGET_ID ||
+        destinationIndex == null
+      ) {
+        return;
+      }
+
+      suppressedClickTabIdRef.current = sourceData.tabId;
+      onReorder?.(sourceData.tabId, destinationIndex);
+    },
+    [clearDndState, getDropIndex, onReorder],
+  );
+
+  const registerTabElement = useCallback((tabId: string, element: HTMLElement | null) => {
+    if (element == null) {
+      tabElementsRef.current.delete(tabId);
+    } else {
+      tabElementsRef.current.set(tabId, element);
+    }
+  }, []);
+
+  useEffect(() => {
+    const element = listElementRef.current;
+    if (element == null) return;
+
+    return dropTargetForElements({
+      element,
+      getData: () => getWorkspaceReplyTabDragData(WORKSPACE_REPLY_TAB_LIST_TARGET_ID),
+      canDrop: ({ source }) => isWorkspaceReplyTabDragData(source.data),
+      getDropEffect: () => "move",
+    });
+  }, []);
+
+  useEffect(() => clearDndState, [clearDndState]);
+
   const handlePointerDown = useCallback(() => {
     clearPendingKeyboardFocus();
+    // A new pointer interaction starts a new click cycle.
+    suppressedClickTabIdRef.current = null;
   }, [clearPendingKeyboardFocus]);
 
   const handleSelectClick = useCallback(
     (tabId: string) => {
       clearPendingKeyboardFocus();
+      if (suppressedClickTabIdRef.current === tabId) {
+        suppressedClickTabIdRef.current = null;
+        return;
+      }
       onSelect(tabId, "pointer");
     },
     [clearPendingKeyboardFocus, onSelect],
@@ -171,24 +325,44 @@ export const WorkspaceReplyTabs = React.memo<WorkspaceReplyTabsProps>(function W
   return (
     <div
       className={`flex min-w-0 gap-1.5 overflow-x-auto border-b border-border-subtle px-3 py-2 ${className}`}
+      ref={listElementRef}
       role="tablist"
       aria-label={replyLabel}
     >
       {session.tabs.map((tab, index) => (
-        <WorkspaceReplyTabItem
-          key={tab.id}
-          tab={tab}
-          index={index}
-          selected={session.activeTabId === tab.id}
-          onSelectClick={handleSelectClick}
-          onPointerDown={handlePointerDown}
-          onRemove={onRemove}
-          registerTabButton={registerTabButton}
-          onKeyDown={handleKeyDown}
-          replyLabel={replyLabel}
-          closeLabel={closeLabel}
-        />
+        <React.Fragment key={tab.id}>
+          {dropIndex === index && <WorkspaceReplyDropIndicator />}
+          <WorkspaceReplyTabItem
+            tab={tab}
+            index={index}
+            selected={session.activeTabId === tab.id}
+            onSelectClick={handleSelectClick}
+            onPointerDown={handlePointerDown}
+            onRemove={onRemove}
+            registerTabButton={registerTabButton}
+            onKeyDown={handleKeyDown}
+            replyLabel={replyLabel}
+            closeLabel={closeLabel}
+            dragging={draggingTabId === tab.id}
+            onDrag={handleDrag}
+            onDragStart={handleDragStart}
+            onDrop={handleDrop}
+            onDndCleanup={clearDndState}
+            registerTabElement={registerTabElement}
+          />
+        </React.Fragment>
       ))}
+      {dropIndex === session.tabs.length && <WorkspaceReplyDropIndicator />}
     </div>
   );
 });
+
+function WorkspaceReplyDropIndicator() {
+  return (
+    <span
+      aria-hidden="true"
+      data-testid="workspace-reply-drop-indicator"
+      className="h-8 w-0.5 shrink-0 rounded-full bg-accent transition-[opacity,transform] duration-150 ease-out"
+    />
+  );
+}

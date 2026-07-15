@@ -28,6 +28,7 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
   workspaceReplySession,
   onSelectWorkspaceReplyTab,
   onRemoveWorkspaceReplyTab,
+  onReorderWorkspaceReplyTab,
   outgoingBodyOverride,
   allowEmptyActiveValueSend = false,
   focusKey,
@@ -115,7 +116,8 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
     workspaceReplySession != null &&
     workspaceReplySession.tabs.length > 1 &&
     onSelectWorkspaceReplyTab != null &&
-    onRemoveWorkspaceReplyTab != null;
+    onRemoveWorkspaceReplyTab != null &&
+    onReorderWorkspaceReplyTab != null;
 
   return (
     <MessageComposer
@@ -139,6 +141,7 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
             session={workspaceReplySession}
             onSelect={onSelectWorkspaceReplyTab}
             onRemove={onRemoveWorkspaceReplyTab}
+            onReorder={onReorderWorkspaceReplyTab}
           />
         ) : null
       }

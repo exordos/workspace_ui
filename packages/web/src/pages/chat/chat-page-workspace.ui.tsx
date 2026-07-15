@@ -57,6 +57,7 @@ import {
   addWorkspaceReplyTab,
   buildWorkspaceReplyMarkdown,
   removeWorkspaceReplyTab,
+  reorderWorkspaceReplyTab,
   replyToWorkspaceReply,
   selectWorkspaceReplyTab,
   setWorkspaceReplyAnswer,
@@ -1310,6 +1311,15 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     setWorkspaceReplySession((current) => setWorkspaceReplyAnswer(current, value));
   }, []);
 
+  const handleReorderWorkspaceReplyTab = useCallback(
+    (tabId: string, destinationIndex: number) => {
+      setWorkspaceReplySession((current) =>
+        reorderWorkspaceReplyTab(current, tabId, destinationIndex),
+      );
+    },
+    [setWorkspaceReplySession],
+  );
+
   const handleCopyMessageText = useCallback((messageUuid: string, text: string) => {
     const message = selectWorkspaceMessageById(useWorkspaceMessageStore.getState(), messageUuid);
     if (message == null) {
@@ -2035,6 +2045,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
           workspaceReplySession={workspaceReplySession}
           onSelectWorkspaceReplyTab={handleSelectWorkspaceReplyTab}
           onRemoveWorkspaceReplyTab={handleRemoveWorkspaceReplyTab}
+          onReorderWorkspaceReplyTab={handleReorderWorkspaceReplyTab}
           outgoingBodyOverride={workspaceReplyOutgoingBody}
           allowEmptyActiveValueSend={workspaceReplyHasAnswer ? true : undefined}
           focusKey={

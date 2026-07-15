@@ -28,6 +28,7 @@ export interface ChatPageComposerSectionProps {
   workspaceReplySession?: WorkspaceReplySession | null;
   onSelectWorkspaceReplyTab?: (tabId: string) => void;
   onRemoveWorkspaceReplyTab?: (tabId: string) => void;
+  onReorderWorkspaceReplyTab?: (tabId: string, destinationIndex: number) => void;
   outgoingBodyOverride?: string;
   allowEmptyActiveValueSend?: boolean;
   focusKey?: string | null;

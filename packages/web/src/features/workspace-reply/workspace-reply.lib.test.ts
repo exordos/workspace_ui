@@ -3,6 +3,7 @@ import {
   addWorkspaceReplyTab,
   buildWorkspaceReplyMarkdown,
   removeWorkspaceReplyTab,
+  reorderWorkspaceReplyTab,
   replyToWorkspaceReply,
   selectWorkspaceReplyTab,
   setWorkspaceReplyAnswer,
@@ -172,6 +173,69 @@ describe("workspace-reply.lib", () => {
       tabs: [],
       activeTabId: null,
     });
+  });
+
+  it.each([
+    ["start to middle", "tab-a", 2, ["tab-b", "tab-a", "tab-c", "tab-d"]],
+    ["start to end", "tab-a", 4, ["tab-b", "tab-c", "tab-d", "tab-a"]],
+    ["middle to start", "tab-c", 0, ["tab-c", "tab-a", "tab-b", "tab-d"]],
+    ["middle to middle", "tab-c", 1, ["tab-a", "tab-c", "tab-b", "tab-d"]],
+    ["middle to end", "tab-c", 4, ["tab-a", "tab-b", "tab-d", "tab-c"]],
+    ["end to start", "tab-d", 0, ["tab-d", "tab-a", "tab-b", "tab-c"]],
+    ["end to middle", "tab-d", 1, ["tab-a", "tab-d", "tab-b", "tab-c"]],
+  ])(
+    "moves a tab from %s and preserves the session data",
+    (_caseName, tabId, destinationIndex, expectedOrder) => {
+      const current = {
+        ...session(
+          tab(quoteA, "tab-a", "ответ А"),
+          tab(quoteB, "tab-b", "ответ Б"),
+          tab(quoteC, "tab-c", "ответ В"),
+          tab(quoteA, "tab-d", "ответ Г"),
+        ),
+        activeTabId: "tab-c",
+      };
+      const originalTabs = current.tabs;
+      const originalSession = { ...current, tabs: [...current.tabs] };
+
+      const next = reorderWorkspaceReplyTab(current, tabId, destinationIndex);
+
+      expect(next.tabs.map((item) => item.id)).toEqual(expectedOrder);
+      expect(next.activeTabId).toBe("tab-c");
+      expect(Object.fromEntries(next.tabs.map((item) => [item.id, item.answer]))).toEqual({
+        "tab-a": "ответ А",
+        "tab-b": "ответ Б",
+        "tab-c": "ответ В",
+        "tab-d": "ответ Г",
+      });
+      expect(current).toEqual(originalSession);
+      expect(current.tabs).toBe(originalTabs);
+    },
+  );
+
+  it("shifts a forward destination index after removing the dragged tab", () => {
+    const current = session(
+      tab(quoteA, "tab-a", "ответ А"),
+      tab(quoteB, "tab-b", "ответ Б"),
+      tab(quoteC, "tab-c", "ответ В"),
+    );
+
+    expect(reorderWorkspaceReplyTab(current, "tab-a", 2).tabs.map((item) => item.id)).toEqual([
+      "tab-b",
+      "tab-a",
+      "tab-c",
+    ]);
+  });
+
+  it("returns an equivalent session for a missing tab and a no-op", () => {
+    const current = {
+      ...session(tab(quoteA, "tab-a", "ответ А"), tab(quoteB, "tab-b", "ответ Б")),
+      activeTabId: "tab-b",
+    };
+
+    expect(reorderWorkspaceReplyTab(current, "missing-tab", 0)).toEqual(current);
+    expect(reorderWorkspaceReplyTab(current, "tab-b", 2)).toEqual(current);
+    expect(reorderWorkspaceReplyTab(current, "tab-b", 1)).toEqual(current);
   });
 
   it("serializes duplicate source messages and answers in the current tab order", () => {
