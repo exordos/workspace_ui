@@ -18,6 +18,8 @@ import { attachEventLoopLifecycle } from "~/shared/lib/event-loop-lifecycle.lib"
 import { resolveIamAccessToken, resolveIamApiOrigin } from "~/shared/lib/iam-instance.lib";
 import { createLogger, logEvent } from "~/shared/lib/logger";
 import { isOnline, onStatusChange } from "~/shared/lib/network";
+import { parseProviderDeliveryMeta } from "~/shared/lib/provider-delivery.lib";
+import type { WorkspaceEvent, WorkspaceEventObjectType } from "~/shared/types/workspace-event";
 
 const log = createLogger("realtime");
 
@@ -33,10 +35,25 @@ const CLIENT_RECONNECT_CLOSE_CODE = 4000;
 const CLIENT_OFFLINE_CLOSE_CODE = 4001;
 const AUTH_CLOSE_CODES = new Set([4401, 4403]);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const WORKSPACE_EVENT_OBJECT_TYPES = new Set<WorkspaceEventObjectType>([
+  "message",
+  "message_reaction",
+  "stream",
+  "stream_binding",
+  "topic",
+  "user",
+  "folder",
+  "folder_item",
+  "external_account",
+  "mail_folder",
+  "mail_message",
+  "calendar",
+  "calendar_event",
+]);
 
 export interface StartMessengerEventLoopOptions {
   enabled?: boolean;
-  onEvent: (event: MessengerEvent) => void;
+  onEvent: (event: WorkspaceEvent) => void;
   onBadQueue?: () => void;
   onQueueReady?: () => void;
   onTabStaleResume?: (hiddenDurationMs: number) => void;
@@ -58,7 +75,6 @@ interface RuntimeConfig {
 }
 
 interface LoopState {
-  currentUserUuid: string | null;
   forceImmediateReconnect: boolean;
   lastEpochVersion: number;
   socket: WebSocket | null;
@@ -66,6 +82,12 @@ interface LoopState {
 }
 
 export interface NormalizedWorkspaceRealtimeEvent {
+  epochVersion: number;
+  event: WorkspaceEvent | null;
+  skipReason?: string;
+}
+
+export interface AdaptedMessengerEvent {
   epochVersion: number;
   event: MessengerEvent | null;
   skipReason?: string;
@@ -110,6 +132,14 @@ function readString(value: unknown): string | null {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function readWorkspaceEventObjectType(value: unknown): WorkspaceEventObjectType | null {
+  const objectType = readString(value);
+  return objectType != null &&
+    WORKSPACE_EVENT_OBJECT_TYPES.has(objectType as WorkspaceEventObjectType)
+    ? (objectType as WorkspaceEventObjectType)
+    : null;
 }
 
 function readOptionalString(value: unknown): string | undefined {
@@ -381,6 +411,7 @@ function messageFromWorkspaceEventPayload(
   const read = readBoolean(payload.read, isOwn);
   const sourceName = readMessengerSourceName(payload.source_name);
   const source = readMessengerSource(payload.source);
+  const providerDelivery = parseProviderDeliveryMeta(payload);
   return {
     id: messageUuid,
     source_message_uuid: messageUuid,
@@ -402,22 +433,8 @@ function messageFromWorkspaceEventPayload(
     ...(source != null ? { source } : {}),
     flags: read ? ["read"] : [],
     reactions: readMessageReactions(payload.reactions),
+    ...(providerDelivery != null ? providerDelivery : {}),
   };
-}
-
-type WorkspaceMessageEventKind =
-  | "message.created"
-  | "message.updated"
-  | "message.read"
-  | "message.deleted";
-
-function isWorkspaceMessageEventKind(kind: string | null): kind is WorkspaceMessageEventKind {
-  return (
-    kind === "message.created" ||
-    kind === "message.updated" ||
-    kind === "message.read" ||
-    kind === "message.deleted"
-  );
 }
 
 function deletedMessageFromWorkspaceEventPayload(
@@ -681,9 +698,7 @@ function folderItemDeletedEventFromWorkspaceItem(
   };
 }
 
-export function normalizeWorkspaceEventModel(
-  row: unknown,
-): NormalizedWorkspaceRealtimeEvent | null {
+export function adaptWorkspaceEventForMessenger(row: unknown): AdaptedMessengerEvent | null {
   if (!isRecord(row)) {
     return null;
   }
@@ -799,247 +814,76 @@ export function normalizeWorkspaceEventModel(
   };
 }
 
-function messageFromRealtimeFrame(
-  messageValue: unknown,
-  currentUserUuid: string | null,
-): WorkspaceRawMessage | null {
-  if (!isRecord(messageValue)) {
-    return null;
-  }
-  const markdownPayload = isRecord(messageValue.payload) ? messageValue.payload : null;
-  const messageUuid =
-    normalizeUuid(messageValue.id) ??
-    normalizeUuid(messageValue.uuid) ??
-    normalizeUuid(messageValue.source_message_uuid);
-  const streamUuid = normalizeUuid(messageValue.stream_uuid);
-  const authorUuid =
-    normalizeUuid(messageValue.author_uuid) ?? normalizeUuid(messageValue.sender_uuid);
-  const content =
-    readOptionalString(messageValue.content) ??
-    readOptionalString(messageValue.markdown_source) ??
-    readOptionalString(markdownPayload?.content);
-  if (messageUuid == null || streamUuid == null || authorUuid == null || content == null) {
-    return null;
-  }
-  const topicUuid = normalizeUuid(messageValue.topic_uuid);
-  const isOwn = readBoolean(messageValue.is_own, userUuidsEqual(authorUuid, currentUserUuid));
-  const read = readBoolean(messageValue.read, isOwn);
-  const sourceName = readMessengerSourceName(messageValue.source_name);
-  const source = readMessengerSource(messageValue.source);
-  const senderId = typeof messageValue.sender_id === "number" ? messageValue.sender_id : 0;
-  const subject = readOptionalString(messageValue.subject) ?? topicUuid ?? "";
-  return {
-    id: messageUuid,
-    source_message_uuid: normalizeUuid(messageValue.source_message_uuid) ?? messageUuid,
-    sender_id: senderId,
-    author_uuid: authorUuid,
-    sender_uuid: normalizeUuid(messageValue.sender_uuid) ?? authorUuid,
-    is_own: isOwn,
-    read,
-    pinned: readBoolean(messageValue.pinned, false),
-    starred: readBoolean(messageValue.starred, false),
-    sender_full_name: readOptionalString(messageValue.sender_full_name) ?? "",
-    content,
-    markdown_source: readOptionalString(messageValue.markdown_source) ?? content,
-    timestamp: timestampFromValue(
-      messageValue.timestamp ?? messageValue.created_at ?? messageValue.updated_at,
-    ),
-    ...(typeof messageValue.display_recipient === "string"
-      ? { display_recipient: messageValue.display_recipient }
-      : {}),
-    subject,
-    ...(topicUuid != null ? { topic_uuid: topicUuid } : {}),
-    type: readOptionalString(messageValue.type) ?? "stream",
-    stream_uuid: streamUuid,
-    ...(sourceName != null ? { source_name: sourceName } : {}),
-    ...(source != null ? { source } : {}),
-    flags: readStringArray(messageValue.flags) ?? (read ? ["read"] : []),
-    reactions: readMessageReactions(messageValue.reactions),
-  };
-}
-
-export function normalizeWorkspaceRealtimeEvent(
-  rawEvent: unknown,
-  currentUserUuid: string | null,
-): NormalizedWorkspaceRealtimeEvent | null {
-  if (!isRecord(rawEvent)) {
-    return null;
-  }
-  if (isRecord(rawEvent.payload)) {
-    const workspaceModelEvent = normalizeWorkspaceEventModel(rawEvent);
-    if (workspaceModelEvent != null) {
-      return workspaceModelEvent;
-    }
-  }
-  const epochVersion = normalizeEpochVersion(rawEvent.epoch_version ?? rawEvent.id);
-  if (epochVersion == null) {
-    return null;
-  }
-  const type = readString(rawEvent.type);
-  if (type === "stream") {
-    const kind = readString(rawEvent.kind);
-    if (!isWorkspaceStreamEventKind(kind)) {
-      return {
-        epochVersion,
-        event: null,
-        skipReason: `unsupported stream event kind: ${kind ?? "unknown"}`,
-      };
-    }
-    const event = streamEventFromWorkspaceStream(epochVersion, kind, rawEvent.stream);
-    return event == null
-      ? { epochVersion, event: null, skipReason: `invalid ${kind} frame` }
-      : { epochVersion, event };
-  }
-  if (type === "topic") {
-    const kind = readString(rawEvent.kind);
-    if (!isWorkspaceTopicEventKind(kind)) {
-      return {
-        epochVersion,
-        event: null,
-        skipReason: `unsupported topic event kind: ${kind ?? "unknown"}`,
-      };
-    }
-    const event = topicEventFromWorkspaceTopic(epochVersion, kind, rawEvent.topic);
-    return event == null
-      ? { epochVersion, event: null, skipReason: `invalid ${kind} frame` }
-      : { epochVersion, event };
-  }
-  if (type === "stream_binding") {
-    const kind = readString(rawEvent.kind);
-    if (kind !== "stream_bindings.created") {
-      return {
-        epochVersion,
-        event: null,
-        skipReason: `unsupported stream_binding event kind: ${kind ?? "unknown"}`,
-      };
-    }
-    const event = streamBindingsEventFromWorkspacePayload(epochVersion, rawEvent);
-    return event == null
-      ? { epochVersion, event: null, skipReason: "invalid stream_bindings.created frame" }
-      : { epochVersion, event };
-  }
-  if (type === "folder") {
-    const kind = readString(rawEvent.kind);
-    if (kind === "folder.created" || kind === "folder.updated") {
-      const event = folderEventFromWorkspaceFolder(epochVersion, kind, rawEvent.folder);
-      return event == null
-        ? { epochVersion, event: null, skipReason: `invalid ${kind} frame` }
-        : { epochVersion, event };
-    }
-    if (kind === "folder.deleted") {
-      const event = folderDeletedEventFromWorkspaceFolder(epochVersion, rawEvent.folder);
-      return event == null
-        ? { epochVersion, event: null, skipReason: "invalid folder.deleted frame" }
-        : { epochVersion, event };
-    }
+function parseCanonicalWorkspaceEvent(row: unknown): NormalizedWorkspaceRealtimeEvent | null {
+  if (!isRecord(row) || !isRecord(row.payload)) return null;
+  const epochVersion = normalizeEpochVersion(row.epoch_version);
+  const schemaVersion = normalizeEpochVersion(row.schema_version);
+  if (epochVersion != null && schemaVersion != null && schemaVersion !== 1) {
     return {
       epochVersion,
       event: null,
-      skipReason: `unsupported folder event kind: ${kind ?? "unknown"}`,
+      skipReason: `unsupported schema_version: ${schemaVersion}`,
     };
   }
-  if (type === "folder_item") {
-    const kind = readString(rawEvent.kind);
-    if (kind !== "folder_item.deleted") {
-      return {
-        epochVersion,
-        event: null,
-        skipReason: `unsupported folder_item event kind: ${kind ?? "unknown"}`,
-      };
-    }
-    const event = folderItemDeletedEventFromWorkspaceItem(epochVersion, rawEvent.folder_item);
-    return event == null
-      ? { epochVersion, event: null, skipReason: "invalid folder_item.deleted frame" }
-      : { epochVersion, event };
-  }
-  if (type === "user") {
-    const kind = readString(rawEvent.kind);
-    if (kind !== "user.updated") {
-      return {
-        epochVersion,
-        event: null,
-        skipReason: `unsupported user event kind: ${kind ?? "unknown"}`,
-      };
-    }
-    const event = userEventFromWorkspaceUser(epochVersion, rawEvent.user);
-    return event == null
-      ? { epochVersion, event: null, skipReason: "invalid user.updated frame" }
-      : { epochVersion, event };
-  }
-  if (type !== "message") {
-    return {
-      epochVersion,
-      event: null,
-      skipReason: `unsupported event type: ${type ?? "unknown"}`,
-    };
-  }
-  const kind = readString(rawEvent.kind);
-  if (kind === "messages.read") {
-    const event = messagesReadEventFromWorkspacePayload(epochVersion, rawEvent);
-    return event == null
-      ? { epochVersion, event: null, skipReason: "invalid messages.read frame" }
-      : { epochVersion, event };
-  }
-  if (kind != null && !isWorkspaceMessageEventKind(kind)) {
-    return {
-      epochVersion,
-      event: null,
-      skipReason: `unsupported message event kind: ${kind}`,
-    };
-  }
-  if (kind === "message.deleted") {
-    const messageValue = isRecord(rawEvent.message) ? rawEvent.message : null;
-    if (messageValue == null) {
-      return { epochVersion, event: null, skipReason: "invalid message.deleted frame" };
-    }
-    const message = deletedMessageFromWorkspaceEventPayload(messageValue);
-    if (message == null) {
-      return { epochVersion, event: null, skipReason: "invalid message.deleted frame" };
-    }
-    return {
-      epochVersion,
-      event: {
-        id: epochVersion,
-        type: "message",
-        kind,
-        epoch_version: epochVersion,
-        message,
-        message_id: message.id,
-        message_ids: [message.id],
-      },
-    };
-  }
-  const message = messageFromRealtimeFrame(rawEvent.message, currentUserUuid);
-  if (message == null) {
-    return { epochVersion, event: null, skipReason: "invalid message frame" };
+  const uuid = readString(row.uuid);
+  const projectId = readString(row.project_id);
+  const userUuid = readString(row.user_uuid);
+  const objectType = readWorkspaceEventObjectType(row.object_type);
+  const action = readString(row.action);
+  const createdAt = readString(row.created_at);
+  const updatedAt = readString(row.updated_at);
+  const kind = readString(row.payload.kind);
+  if (
+    epochVersion == null ||
+    schemaVersion == null ||
+    schemaVersion !== 1 ||
+    uuid == null ||
+    projectId == null ||
+    userUuid == null ||
+    objectType == null ||
+    action == null ||
+    createdAt == null ||
+    updatedAt == null ||
+    kind == null
+  ) {
+    return null;
   }
   return {
     epochVersion,
     event: {
-      id: epochVersion,
-      type: "message",
-      ...(kind != null ? { kind } : {}),
+      schema_version: schemaVersion,
+      uuid,
       epoch_version: epochVersion,
-      message,
+      project_id: projectId,
+      user_uuid: userUuid,
+      object_type: objectType,
+      action,
+      created_at: createdAt,
+      updated_at: updatedAt,
+      payload: { ...row.payload, kind },
     },
   };
 }
 
-function normalizeRealtimeSocketFrame(
-  frame: Record<string, unknown>,
-  currentUserUuid: string | null,
-): { normalized: NormalizedWorkspaceRealtimeEvent | null; shouldAck: boolean } {
-  const frameType = readString(frame.type);
-  if (frameType === "event") {
+/** Converts one canonical event to the existing messenger domain projection. */
+export function normalizeWorkspaceEventModel(row: unknown): AdaptedMessengerEvent | null {
+  return adaptWorkspaceEventForMessenger(row);
+}
+
+export function normalizeWorkspaceRealtimeEvent(
+  rawEvent: unknown,
+  _currentUserUuid: string | null,
+): AdaptedMessengerEvent | null {
+  const normalized = parseCanonicalWorkspaceEvent(rawEvent);
+  if (normalized == null) return null;
+  if (normalized.event == null) {
     return {
-      normalized: normalizeWorkspaceRealtimeEvent(frame.event, currentUserUuid),
-      shouldAck: true,
+      epochVersion: normalized.epochVersion,
+      event: null,
+      ...(normalized.skipReason == null ? {} : { skipReason: normalized.skipReason }),
     };
   }
-  return {
-    normalized: normalizeWorkspaceRealtimeEvent(frame, currentUserUuid),
-    shouldAck: false,
-  };
+  return adaptWorkspaceEventForMessenger(normalized.event);
 }
 
 function createAbortError(): Error {
@@ -1108,9 +952,9 @@ function getReconnectBackoffMs(attempt: number): number {
 
 function shouldDeliverEvent(
   options: StartMessengerEventLoopOptions,
-  event: MessengerEvent,
+  event: WorkspaceEvent,
 ): boolean {
-  return options.eventTypes == null || options.eventTypes.includes(event.type);
+  return options.eventTypes == null || options.eventTypes.includes(event.object_type);
 }
 
 function advanceStoredEpoch(state: LoopState, epochVersion: number): void {
@@ -1139,14 +983,14 @@ function processNormalizedEvent(
   if (!shouldDeliverEvent(options, normalized.event)) {
     log.debug("Skipping realtime event excluded by eventTypes", {
       epochVersion: normalized.epochVersion,
-      type: normalized.event.type,
+      type: normalized.event.object_type,
     });
     advanceStoredEpoch(state, normalized.epochVersion);
     return true;
   }
 
-  recordDiagnosticRealtimeEvent(normalized.event.type);
-  logEvent(normalized.event.type, { epochVersion: normalized.epochVersion });
+  recordDiagnosticRealtimeEvent(normalized.event.object_type);
+  logEvent(normalized.event.payload.kind, { epochVersion: normalized.epochVersion });
   options.onEvent(normalized.event);
   advanceStoredEpoch(state, normalized.epochVersion);
   return true;
@@ -1164,7 +1008,7 @@ async function runCatchUp(
     }
 
     const normalizedRows = rows
-      .map((row) => normalizeWorkspaceEventModel(row))
+      .map((row) => parseCanonicalWorkspaceEvent(row))
       .filter((row): row is NormalizedWorkspaceRealtimeEvent => row != null)
       .sort((left, right) => left.epochVersion - right.epochVersion);
 
@@ -1195,21 +1039,6 @@ function parseJsonFrame(raw: unknown): Record<string, unknown> | null {
   } catch {
     return null;
   }
-}
-
-function sendAck(socket: WebSocket, epochVersion: number): void {
-  if (socket.readyState !== 1) {
-    return;
-  }
-  socket.send(JSON.stringify({ type: "ack", epoch_version: epochVersion }));
-}
-
-function sendPong(socket: WebSocket, frame: Record<string, unknown>): void {
-  if (socket.readyState !== 1) {
-    return;
-  }
-  const ts = readString(frame.ts);
-  socket.send(JSON.stringify(ts == null ? { type: "pong" } : { type: "pong", ts }));
 }
 
 function openRealtimeSocket(
@@ -1289,27 +1118,15 @@ function openRealtimeSocket(
       if (frame == null) {
         return;
       }
-      const frameType = readString(frame.type);
-      if (frameType === "hello") {
-        state.currentUserUuid = normalizeUuid(frame.user_uuid) ?? state.currentUserUuid;
-        markQueueReady();
-        return;
-      }
-      if (frameType === "ping") {
-        sendPong(socket, frame);
-        return;
-      }
-      const { normalized, shouldAck } = normalizeRealtimeSocketFrame(frame, state.currentUserUuid);
+      const normalized = parseCanonicalWorkspaceEvent(frame);
       if (normalized == null) {
         log.warn("Skipping unsupported realtime websocket frame", {
-          frameType: frameType ?? "unknown",
+          frameType: readString(frame.type) ?? "unknown",
         });
         return;
       }
       try {
-        if (processNormalizedEvent(normalized, options, state) && shouldAck) {
-          sendAck(socket, normalized.epochVersion);
-        }
+        processNormalizedEvent(normalized, options, state);
       } catch (error) {
         log.error("Realtime event handler failed", {
           error: error instanceof Error ? error.message : String(error),
@@ -1381,7 +1198,6 @@ async function runWorkspaceRealtimeLoop(options: StartMessengerEventLoopOptions)
   }
 
   const state: LoopState = {
-    currentUserUuid: null,
     forceImmediateReconnect: false,
     lastEpochVersion: readLastEpochVersion(initialRuntime.storageKey),
     socket: null,

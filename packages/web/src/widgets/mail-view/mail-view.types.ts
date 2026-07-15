@@ -28,6 +28,8 @@ export interface MailMessageListProps {
   onLoadMore?: () => void;
   onSelectMessage: (uid: string) => void;
   onToggleSelectUid?: (uid: string) => void;
+  onToggleStar?: (uid: string) => void;
+  onToggleRead?: (uid: string) => void;
 }
 
 export interface MailMessagePreviewProps {
@@ -39,4 +41,5 @@ export interface MailMessagePreviewProps {
   onAction: (action: MailMessageAction) => void;
   onEditDraft?: () => void;
   onDownloadAttachment?: (attachmentId: string) => void;
+  onBack?: () => void;
 }

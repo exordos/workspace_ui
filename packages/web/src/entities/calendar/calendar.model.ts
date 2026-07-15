@@ -4,6 +4,8 @@
 
 import { create } from "zustand";
 import { logStoreAction } from "~/shared/lib/logger";
+import type { WorkspaceEvent } from "~/shared/types/workspace-event";
+import { reduceCalendarWorkspaceEvent } from "./calendar-event-reducer.lib";
 import { getMailboxSessionToken } from "./calendar-session.lib";
 import {
   createCalendarCollection,
@@ -44,6 +46,7 @@ interface CalendarState {
   loadedRangeStart: string | null;
   loadedRangeEnd: string | null;
 
+  applyWorkspaceEvent: (event: WorkspaceEvent) => boolean;
   setFocusDate: (date: Date) => void;
   setViewMode: (mode: CalendarViewMode) => void;
   toggleCalendarVisibility: (calendarId: string) => void;
@@ -116,6 +119,19 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
     error: null,
     loadedRangeStart: null,
     loadedRangeEnd: null,
+
+    applyWorkspaceEvent: (event) => {
+      let complete = false;
+      set((state) => {
+        const result = reduceCalendarWorkspaceEvent(state, event);
+        complete = result.complete;
+        return result.patch;
+      });
+      if (complete) {
+        logStoreAction("calendar", "applyWorkspaceEvent", { kind: event.payload.kind });
+      }
+      return complete;
+    },
 
     setFocusDate: (date) => {
       logStoreAction("calendar", "setFocusDate", { iso: date.toISOString() });
@@ -444,6 +460,8 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
         loadingEvents: false,
         saving: false,
         error: null,
+        loadedRangeStart: null,
+        loadedRangeEnd: null,
       });
     },
   };

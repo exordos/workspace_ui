@@ -267,7 +267,6 @@ export function createCalendarEvent(overrides: CalendarEventOverrides = {}) {
     start: overrides.start ?? "2026-07-10T09:00:00.000Z",
     end: overrides.end ?? "2026-07-10T10:00:00.000Z",
     allDay: overrides.allDay ?? false,
-    etag: null,
     recurrence: null,
     attendees: [],
     alarms: [],

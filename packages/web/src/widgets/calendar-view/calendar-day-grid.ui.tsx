@@ -1,5 +1,4 @@
 import React, { useMemo } from "react";
-import { toIsoDate } from "~/entities/calendar/calendar.lib";
 import { CalendarTimeGrid } from "./calendar-time-grid.ui";
 import type { CalendarWeekGridProps } from "./calendar-week-grid.types";
 
@@ -14,8 +13,7 @@ export const CalendarDayGrid: React.FC<CalendarDayGridProps> = ({
   onSelectEvent,
   onSelectTimeSlot,
 }) => {
-  const isoDate = toIsoDate(date);
-  const days = useMemo(() => [date], [date, isoDate]);
+  const days = useMemo(() => [date], [date]);
 
   return (
     <CalendarTimeGrid

@@ -61,7 +61,10 @@ export const MessageBubbleJitsiCard = React.memo(function MessageBubbleJitsiCard
     0,
   );
   const participantBorderClass = isOwn ? "border-msg-own-bg" : "border-bg-elevated";
-  const externalSourceName = getExternalMessageSourceName(message.source_name, message.source);
+  const externalSourceName =
+    message.provider == null
+      ? getExternalMessageSourceName(message.source_name, message.source)
+      : undefined;
 
   return (
     <div
@@ -124,10 +127,13 @@ export const MessageBubbleJitsiCard = React.memo(function MessageBubbleJitsiCard
             )}
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1 text-[11px] text-text-muted">
+        <div
+          className="flex shrink-0 items-center gap-1 text-[11px] text-text-muted"
+          data-testid={`message-meta-${message.id}`}
+        >
           <ExternalSourceBadge sourceName={externalSourceName} />
-          <span>{time}</span>
           {ownDeliveryIndicator}
+          <span data-testid={`message-time-${message.id}`}>{time}</span>
         </div>
       </div>
     </div>

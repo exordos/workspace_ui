@@ -11,6 +11,13 @@ export type ExternalAccountAccessStatus =
   | "invalid_credentials"
   | "unavailable";
 
+export interface WorkspaceProvider {
+  uuid: string;
+  name: string;
+  supportedKinds: ExternalAccountType[];
+  version: string | null;
+}
+
 export interface ZulipExternalAccountUserInfo {
   kind: "zulip";
   userId: number;
@@ -26,6 +33,7 @@ export interface ZulipExternalAccountSettings {
 
 export interface ZulipExternalAccount {
   uuid: string;
+  providerUuid: string;
   externalUserId?: string;
   accountType: "zulip";
   hasCredentials: boolean;
@@ -37,6 +45,7 @@ export interface ZulipExternalAccount {
 
 interface GroupwareExternalAccountBase {
   uuid: string;
+  providerUuid: string;
   serverUrl: string;
   status?: ExternalAccountStatus;
   accessStatus: ExternalAccountAccessStatus;
@@ -60,6 +69,7 @@ export interface CalendarExternalAccount extends GroupwareExternalAccountBase {
 
 export interface SaveMailExternalAccountInput {
   uuid?: string;
+  providerUuid: string;
   email: string;
   username: string;
   password: string;
@@ -73,6 +83,7 @@ export interface SaveMailExternalAccountInput {
 
 export interface SaveCalendarExternalAccountInput {
   uuid?: string;
+  providerUuid: string;
   serverUrl: string;
   username: string;
   password: string;
@@ -84,6 +95,7 @@ export type SaveGroupwareExternalAccountResult<T> =
 
 export interface SaveZulipExternalAccountInput {
   uuid?: string;
+  providerUuid: string;
   login: string;
   serverUrl: string;
   token: string;

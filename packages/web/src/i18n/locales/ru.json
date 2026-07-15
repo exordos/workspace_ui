@@ -512,6 +512,9 @@
     "externalAccountUnlinkError": "Не удалось отвязать внешний аккаунт",
     "externalAccountForbidden": "У тебя нет прав на сохранение этого аккаунта",
     "externalAccountConflict": "Этот внешний аккаунт уже привязан",
+    "externalAccountProvider": "Провайдер",
+    "externalAccountProviderPlaceholder": "Выберите провайдера",
+    "externalAccountProviderLoadError": "Каталог провайдеров недоступен",
     "externalAccountInvalid": "Проверьте поля аккаунта Zulip",
     "mailAccount": "Почтовый аккаунт (IMAP/SMTP)",
     "calendarAccount": "Календарный аккаунт (CalDAV)",
@@ -828,6 +831,7 @@
     "batchSelect": "Выбрать",
     "batchDone": "Готово",
     "batchDelete": "Удалить ({{count}})",
+    "selectedCount": "Выбрано: {{count}}",
     "loadMore": "Загрузить ещё",
     "reply": "Ответить",
     "replyAll": "Ответить всем",
@@ -896,6 +900,7 @@
       "markAllRead": "Не удалось пометить всё прочитанным"
     },
     "previewEmpty": "Выберите письмо для просмотра",
+    "backToList": "Назад к списку писем",
     "from": "От",
     "unread_one": "{{count}} непрочитанное",
     "unread_few": "{{count}} непрочитанных",
@@ -1009,6 +1014,11 @@
     "loadMore": "Загрузить ещё",
     "email": "Email",
     "retry": "Повторить"
+  },
+  "providerDelivery": {
+    "pending": "Ожидает доставки через {{provider}}",
+    "delivered": "Доставлено через {{provider}}",
+    "failed": "Ошибка доставки через {{provider}}"
   },
   "sidebar": {
     "emptyAllChats": "Пока нет чатов",

@@ -106,6 +106,7 @@ export const InboxPage: React.FC = () => {
       entries.filter((entry) => {
         if (entry.streamId == null) return true;
         if (entry.topic == null) return !isStreamMuted(entry.streamId);
+        if (isStreamMuted(entry.streamId)) return false;
         if (
           isTopicUnmuted(entry.streamId, entry.topic) ||
           isTopicFollowed(entry.streamId, entry.topic)
@@ -113,7 +114,6 @@ export const InboxPage: React.FC = () => {
           return true;
         }
         if (isTopicMuted(entry.streamId, entry.topic)) return false;
-        if (isStreamMuted(entry.streamId)) return false;
         return true;
       }),
     [

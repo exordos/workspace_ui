@@ -5,7 +5,6 @@ import type { MessengerEvent } from "~/shared/api/messenger.types";
 import { getElectronAPI } from "~/shared/lib/electron";
 import { safeCatch } from "~/shared/lib/guards";
 import { handleFolder, handleFolderItem } from "./layout-messenger-event-dispatch-folder.lib";
-import { handleGroupwareEvent } from "./layout-messenger-event-dispatch-groupware.lib";
 import {
   applyMessageCacheIndexedDb,
   handleDeleteMessage,
@@ -38,11 +37,6 @@ export function dispatchMessengerEvent(
   ctx: LayoutMessengerEventDispatchContext,
 ): void {
   applyMessageCacheIndexedDb(event, ctx);
-
-  if (event.type === "mail" || event.type === "calendar") {
-    runDispatchHandler(`dispatch:${event.type}`, () => handleGroupwareEvent(event));
-    return;
-  }
 
   if (event.type === "message") {
     if (event.kind === "messages.read") {

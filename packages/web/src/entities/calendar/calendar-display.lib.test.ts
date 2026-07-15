@@ -13,7 +13,6 @@ const baseEvent: Omit<CalendarEvent, "start" | "end" | "allDay" | "summary"> = {
   calendarId: "personal",
   description: null,
   location: null,
-  etag: null,
   recurrence: null,
   attendees: [],
   alarms: [],

@@ -1,3 +1,5 @@
+import type { Delivery, ProviderSummary } from "~/shared/types/provider-delivery";
+
 export interface MailFolder {
   uuid?: string;
   path: string;
@@ -5,6 +7,8 @@ export interface MailFolder {
   unread: number;
   total: number;
   specialUse?: string | null;
+  provider?: ProviderSummary | null;
+  delivery?: Delivery | null;
 }
 
 export interface MailMessageSummary {
@@ -15,6 +19,8 @@ export interface MailMessageSummary {
   date: string;
   seen: boolean;
   flagged: boolean;
+  provider?: ProviderSummary | null;
+  delivery?: Delivery | null;
 }
 
 export interface MailMessageDetail extends MailMessageSummary {

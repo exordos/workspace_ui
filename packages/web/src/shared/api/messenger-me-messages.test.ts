@@ -96,6 +96,32 @@ describe("parseMeMessage", () => {
     });
   });
 
+  it("maps canonical provider delivery metadata", () => {
+    const parsed = parseMeMessage(
+      rawRow({
+        provider: { uuid: "provider-1", name: "Zulip", kind: "zulip" },
+        delivery: {
+          status: "pending",
+          safe_error: null,
+          updated_at: "2026-07-15T10:00:00Z",
+        },
+      }),
+    );
+
+    expect(parsed).toMatchObject({
+      provider: { uuid: "provider-1", name: "Zulip", kind: "zulip" },
+      delivery: {
+        status: "pending",
+        safeError: null,
+        updatedAt: "2026-07-15T10:00:00Z",
+      },
+    });
+    expect(meMessageToMockMessage(parsed!)).toMatchObject({
+      provider: { name: "Zulip" },
+      delivery: { status: "pending" },
+    });
+  });
+
   it("coerces flags to booleans and tolerates missing optional fields", () => {
     const parsed = parseMeMessage({
       uuid: MSG_UUID_1,

@@ -697,7 +697,7 @@ describe("ActivityPage drafts routing", () => {
     });
   });
 
-  it("shows peer emoji reactions on the reactions activity list", async () => {
+  it("shows aggregated emoji reaction counts on the reactions activity list", async () => {
     useChatListStore.setState({ currentUserId: 42 });
     useUsersStore
       .getState()
@@ -731,8 +731,8 @@ describe("ActivityPage drafts routing", () => {
     });
 
     const reactionsRow = screen.getByTestId(`activity-peer-reactions-${testMessageId(50)}`);
-    expect(reactionsRow).toHaveTextContent("Bob");
     expect(reactionsRow).toHaveTextContent("👍");
+    expect(reactionsRow).toHaveTextContent("2");
     expect(reactionsRow).not.toHaveTextContent("Me");
   });
 

@@ -181,6 +181,9 @@ Key points:
   logging, and retry middleware pipeline.
 - `shared/api/workspace-client.ts` and `@workspace/api` — common, mail,
   calendar, and messenger API operations.
+- Workspace UI calls only the IAM-authenticated `/api/workspace/v1` contract.
+  Provider registration sync, blobs, and commands belong to the trusted
+  provider-daemon boundary and must not be imported or called by UI slices.
 - `entities/*/api.ts` — entity-level API functions, uses helpers from `shared/api/`.
 - `features/ai-reply/ai-reply.api.ts` — AI provider factory (mock + HTTP).
 - The common real-time event loop connects only to

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceInstance } from "~/entities/instance/instance.model";
+import type { WorkspaceEvent, WorkspaceEventObjectType } from "~/shared/types/workspace-event";
 import { startInactiveInstanceEventStreams } from "./layout-multi-org-event-streams.lib";
 import type { StartCredentialEventLoopFn } from "./layout-multi-org-event-streams.types";
 
@@ -26,6 +27,21 @@ const INSTANCES: WorkspaceInstance[] = [
     iamAccessToken: "token-3",
   },
 ];
+
+function event(epochVersion: number, objectType: WorkspaceEventObjectType): WorkspaceEvent {
+  return {
+    schema_version: 1,
+    uuid: `event-${epochVersion}`,
+    epoch_version: epochVersion,
+    project_id: "project-1",
+    user_uuid: "user-1",
+    object_type: objectType,
+    action: "updated",
+    created_at: "2026-07-15T10:00:00Z",
+    updated_at: "2026-07-15T10:00:00Z",
+    payload: { kind: `${objectType}.updated` },
+  };
+}
 
 describe("startInactiveInstanceEventStreams", () => {
   beforeEach(() => {
@@ -119,9 +135,9 @@ describe("startInactiveInstanceEventStreams", () => {
 
     expect(loops).toHaveLength(2);
     const first = loops[0]!;
-    first.onEvent({ id: 1, type: "message" });
-    first.onEvent({ id: 2, type: "message" });
-    first.onEvent({ id: 3, type: "update_message_flags" });
+    first.onEvent(event(1, "message"));
+    first.onEvent(event(2, "message"));
+    first.onEvent(event(3, "message_reaction"));
 
     await vi.advanceTimersByTimeAsync(99);
     expect(refreshUnreadForInstance).not.toHaveBeenCalled();
@@ -132,7 +148,7 @@ describe("startInactiveInstanceEventStreams", () => {
       expect.objectContaining({ id: "inst-2" }),
     );
 
-    first.onEvent({ id: 4, type: "presence" });
+    first.onEvent(event(4, "user"));
     await vi.advanceTimersByTimeAsync(200);
     expect(refreshUnreadForInstance).toHaveBeenCalledTimes(1);
 

@@ -8,12 +8,12 @@ import { createLogger } from "../logger";
 
 const log = createLogger("push:messenger");
 
-export async function registerPushToken(_token: string): Promise<boolean> {
+export function registerPushToken(_token: string): Promise<boolean> {
   log.warn("Push token registration is unsupported by the current backend");
-  return false;
+  return Promise.resolve(false);
 }
 
-export async function unregisterPushToken(_token: string): Promise<boolean> {
+export function unregisterPushToken(_token: string): Promise<boolean> {
   log.warn("Push token unregister is unsupported by the current backend");
-  return false;
+  return Promise.resolve(false);
 }

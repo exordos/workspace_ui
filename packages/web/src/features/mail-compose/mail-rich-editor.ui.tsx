@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef } from "react";
 import { t } from "~/i18n/i18n";
 import { Button } from "~/shared/ui/button";
+import { Icon } from "~/shared/ui/icon";
 
 export interface MailRichEditorProps {
   value: string;
@@ -54,15 +55,37 @@ export const MailRichEditor: React.FC<MailRichEditorProps> = ({
   }, [runCommand]);
 
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap gap-1">
-        <Button type="button" size="sm" variant="ghost" onClick={handleBold} disabled={disabled}>
+    <div className="overflow-hidden rounded-xl border border-border-subtle bg-bg focus-within:border-accent focus-within:ring-1 focus-within:ring-accent">
+      <div className="flex min-h-10 flex-wrap items-center gap-1 border-b border-border-subtle bg-card-bg px-2 py-1">
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={handleBold}
+          disabled={disabled}
+          className="h-8 w-8 px-0 text-sm font-bold"
+        >
           B
         </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={handleItalic} disabled={disabled}>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={handleItalic}
+          disabled={disabled}
+          className="h-8 w-8 px-0 text-sm italic"
+        >
           I
         </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={handleLink} disabled={disabled}>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={handleLink}
+          disabled={disabled}
+          className="gap-1.5 px-2"
+        >
+          <Icon name="links" size={15} />
           {t("mail.link")}
         </Button>
       </div>
@@ -72,7 +95,7 @@ export const MailRichEditor: React.FC<MailRichEditorProps> = ({
         role="textbox"
         aria-multiline="true"
         aria-label={t("mail.body")}
-        className="min-h-40 w-full rounded-lg border border-border-subtle bg-bg px-3 py-2 text-sm text-text-primary outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        className="min-h-52 w-full bg-bg px-4 py-3 text-sm leading-relaxed text-text-primary outline-none"
         onInput={handleInput}
         suppressContentEditableWarning
       />

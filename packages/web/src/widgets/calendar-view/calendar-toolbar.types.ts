@@ -10,5 +10,6 @@ export interface CalendarToolbarProps {
   onPrev: () => void;
   onNext: () => void;
   onToday: () => void;
+  onToggleSidebar: () => void;
   onNewEvent: () => void;
 }

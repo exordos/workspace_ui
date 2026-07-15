@@ -383,7 +383,7 @@ describe("Sidebar", () => {
     expect(dmLink).toHaveClass("py-1.5");
 
     const avatarText = within(dmLink).getByText("#");
-    const avatar = avatarText.closest("div");
+    const avatar = avatarText.closest("span");
     expect(avatar).not.toBeNull();
     expect(avatar).toHaveClass("w-8");
     expect(avatar).toHaveClass("h-8");
@@ -706,7 +706,7 @@ describe("Sidebar", () => {
       expect(createChannelMock).toHaveBeenCalledWith({
         name: "Engineering",
         description: "",
-        subscribers: [1001, 1002],
+        subscribers: [1002],
         inviteOnly: true,
         announce: true,
       });
@@ -1288,7 +1288,7 @@ describe("Sidebar", () => {
         "11111111-1111-4111-8111-111111111111",
         "muted",
       );
-      expect(useMuteStore.getState().getStreamNotificationLevel(STREAM_UUID)).toBe("default");
+      expect(useMuteStore.getState().getStreamNotificationLevel(STREAM_UUID)).toBe("subscribed");
       expect(screen.getByText(t("app.error"))).toBeInTheDocument();
     });
 

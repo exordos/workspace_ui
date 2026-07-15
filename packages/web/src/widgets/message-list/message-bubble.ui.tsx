@@ -11,6 +11,7 @@ import { messageBodyToUnsanitizedDisplayHtml } from "~/shared/lib/message-markdo
 import { prepareProtectedMessageHtml } from "~/shared/lib/protected-message-media";
 import { useProtectedMessageHtml } from "~/shared/lib/protected-message-media.hook";
 import { isIamUserUuid, numericUserIdOrNull, userIdsEqual } from "~/shared/lib/user-id.lib";
+import { ProviderDeliveryBadge } from "~/shared/ui/provider-delivery-badge";
 import { filterVisibleContextSections } from "./message-bubble-actions.lib";
 import {
   MessageBubbleStandardBody,
@@ -217,7 +218,17 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
     const editStatusIndicator = isOwn
       ? resolveMessageEditStatusIndicatorNode(message, callbacks)
       : null;
-    const ownDeliveryIndicator = editStatusIndicator ?? deliveryStatusIndicator;
+    const localDeliveryIndicator = editStatusIndicator ?? deliveryStatusIndicator;
+    const providerDeliveryBadge = (
+      <ProviderDeliveryBadge provider={message.provider} delivery={message.delivery} />
+    );
+    const ownDeliveryIndicator =
+      localDeliveryIndicator == null && message.provider == null ? null : (
+        <span className="inline-flex items-center gap-1">
+          {providerDeliveryBadge}
+          {localDeliveryIndicator}
+        </span>
+      );
     const bubbleSurfaceClass = "rounded-[18px]";
     const focusedBubbleBackgroundClass = !isSelected && isFocused ? "bg-card-bg-active" : null;
     const ownBubbleBackgroundClass = focusedBubbleBackgroundClass ?? "bg-msg-own-bg";

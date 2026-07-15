@@ -3,6 +3,7 @@
  * Reconnect / bad-queue recovery used by `useLayoutMessengerEventLoop` without resetting the long-poll loop.
  */
 import type { MessageId } from "~/shared/lib/message-id.lib";
+import { refreshGroupwareAfterEventGap } from "./layout-messenger-event-dispatch-groupware.lib";
 import { scheduleLayoutReconnectRefresh } from "./layout-reconnect-coordinator.lib";
 
 export interface RunLayoutReconnectRefreshOptions {
@@ -17,6 +18,7 @@ export function runLayoutReconnectRefresh(options: RunLayoutReconnectRefreshOpti
   const { cancelled, instanceId, latestMessageIdRef, focusedMessageId } = options;
   if (cancelled) return;
 
+  refreshGroupwareAfterEventGap();
   scheduleLayoutReconnectRefresh(
     {
       instanceId,

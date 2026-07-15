@@ -84,6 +84,7 @@ export function useMailView() {
   const [composeDraftUid, setComposeDraftUid] = useState<string | null>(null);
   const [selectedUids, setSelectedUids] = useState<string[]>([]);
   const [batchMode, setBatchMode] = useState(false);
+  const [narrowPreviewOpen, setNarrowPreviewOpen] = useState(false);
 
   const folders = useMemo(() => sortMailFolders(foldersRaw), [foldersRaw]);
   const folderActionTarget = useMemo(
@@ -143,7 +144,7 @@ export function useMailView() {
       await selectMessage(uid);
       return useMailStore.getState().selectedMessage;
     },
-    [selectMessage, selectedMessage?.uid],
+    [selectMessage, selectedMessage],
   );
 
   const handleMessageAction = useCallback(
@@ -239,6 +240,7 @@ export function useMailView() {
 
   const handleSelectFolder = useCallback(
     (path: string) => {
+      setNarrowPreviewOpen(false);
       void selectFolder(path);
     },
     [selectFolder],
@@ -246,9 +248,30 @@ export function useMailView() {
 
   const handleSelectMessage = useCallback(
     (uid: string) => {
+      setNarrowPreviewOpen(true);
       void selectMessage(uid);
     },
     [selectMessage],
+  );
+
+  const handleBackToMessageList = useCallback(() => {
+    setNarrowPreviewOpen(false);
+  }, []);
+
+  const handleToggleMessageStar = useCallback(
+    (uid: string) => {
+      void handleMessageAction(uid, "toggleStar");
+    },
+    [handleMessageAction],
+  );
+
+  const handleToggleMessageRead = useCallback(
+    (uid: string) => {
+      const summary = messagesRaw.find((message) => message.uid === uid);
+      const seen = summary?.seen ?? (selectedMessage?.uid === uid && selectedMessage.seen);
+      void setMessageFlags(uid, seen ? { removeFlags: ["\\Seen"] } : { addFlags: ["\\Seen"] });
+    },
+    [messagesRaw, selectedMessage, setMessageFlags],
   );
 
   const handleComposeOpen = useCallback(() => {
@@ -491,6 +514,7 @@ export function useMailView() {
     inDrafts,
     batchMode,
     selectedUids,
+    narrowPreviewOpen,
     moveDialogOpen,
     createFolderOpen,
     createFolderParent,
@@ -506,6 +530,9 @@ export function useMailView() {
     setDeleteConfirmOpen,
     handleSelectFolder,
     handleSelectMessage,
+    handleBackToMessageList,
+    handleToggleMessageStar,
+    handleToggleMessageRead,
     handleComposeOpen,
     handleComposeOpenChange,
     composeDraftUid,

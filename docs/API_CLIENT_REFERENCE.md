@@ -28,6 +28,11 @@ Two approaches:
 2. **Generated Workspace client** (`@workspace/api`) — common, mail, calendar,
    and messenger resource operations from the checked-in OpenAPI contract.
 
+The UI never calls `/api/workspace-service/v1`. That is a trusted
+provider-daemon contract with a different security boundary. Provider discovery
+for account setup uses the IAM-authenticated `GET /api/workspace/v1/providers/`
+catalog.
+
 New code should use the functions from `shared/api/` directly, or entity-level API functions from `entities/*/`.
 
 ---
@@ -288,16 +293,19 @@ interface AiSuggestion {
 
 ---
 
-## Messenger API modules (`shared/api/messenger-*.ts`)
+## Workspace domain API modules
 
-Legacy monolithic `lib/messenger-client.ts` was removed. Messenger REST calls are split across modules such as:
+Messenger REST calls are split across `shared/api/messenger-*.ts`. Mail and
+Calendar use entity-level APIs backed by the generated `@workspace/api` client.
 
-| Module                         | Examples                                   |
-| ------------------------------ | ------------------------------------------ |
-| `messenger-messages.ts`        | fetch/send/update/delete messages, flags   |
-| `messenger-queue.ts`           | `registerQueue`, `getEvents`               |
-| `messenger-streams.ts`         | streams, topics, subscriptions             |
-| `messenger-client.internal.ts` | shared fetch helpers used by modules above |
+| Module                                                | Examples                                   |
+| ----------------------------------------------------- | ------------------------------------------ |
+| `messenger-messages.ts`                               | fetch/send/update/delete messages, flags   |
+| `messenger-streams.ts`                                | streams, topics, subscriptions             |
+| `messenger-client.internal.ts`                        | shared fetch helpers used by modules above |
+| `entities/mail/mail.api.ts`                           | folders, messages, attachments, actions    |
+| `entities/calendar/calendar.api.ts`                   | calendars, events, move action             |
+| `features/external-accounts/external-accounts.api.ts` | provider catalog and External Accounts     |
 
 Import the specific module you need, or use entity/feature `*.api.ts` wrappers.
 
@@ -308,17 +316,21 @@ Import the specific module you need, or use entity/feature `*.api.ts` wrappers.
 ### Configuration
 
 ```typescript
-const DEFAULT_EVENT_TYPES = ["message", "update_message_flags", "reaction", "delete_message"];
-const RETRY_PAUSE_MS = 2000;
-const DEFAULT_LONGPOLL_TIMEOUT_SEC = 90;
+const restCatchUp = "/api/workspace/v1/events/?epoch_version%3E=<last>&page_limit=500";
+const websocket = "/api/workspace/v1/events/ws?last_epoch_version=<last>";
+const websocketProtocols = ["workspace.events.v1", `bearer.${accessToken}`];
 ```
 
 ### Interface
 
 ```typescript
 interface StartMessengerEventLoopOptions {
-  onEvent: (event: MessengerEvent) => void;
+  enabled?: boolean;
+  onEvent: (event: WorkspaceEvent) => void;
   onBadQueue?: () => void;
+  onQueueReady?: () => void;
+  onTabStaleResume?: (hiddenDurationMs: number) => void;
+  instanceId?: string;
   signal?: AbortSignal;
   eventTypes?: string[];
 }
@@ -328,24 +340,31 @@ function startMessengerEventLoop(options: StartMessengerEventLoopOptions): void;
 
 ### Algorithm
 
-1. `registerQueue(eventTypes)` → `queue_id`, `last_event_id`
-2. `while(true)`:
-   - Check `signal.aborted` → exit
-   - `getEvents(queueId, lastEventId, { timeoutSec, signal })` — blocking long-poll
-   - If `BAD_EVENT_QUEUE_ID` → re-register queue
-   - For each event: `lastEventId = max(lastEventId, event.id)`, skip `heartbeat`, call `onEvent(event)`
-3. On fetch error: `queueId = null`, sleep 2s, retry
+1. Load the latest persisted `epoch_version` for the organization.
+2. Fetch REST events strictly newer than the cursor until catch-up is empty.
+3. Apply each flat `schema_version: 1` event idempotently and persist its epoch.
+4. Connect to the common websocket with `last_epoch_version` and IAM token
+   subprotocols.
+5. Dispatch Messenger, Mail, and Calendar events through the same callback.
+6. Deduplicate REST catch-up, websocket catch-up, and live delivery by epoch.
+7. On close or visibility resume, run REST catch-up again and reconnect with
+   backoff.
+
+The server sends protocol-level WebSocket ping frames. It does not send JSON
+`hello`/`ping` messages and the client does not send JSON `pong` or `ack`.
 
 ### Event Handling
 
-Events are dispatched in `widgets/layout/layout-messenger-event-dispatch*.lib.ts` (message, subscription, presence, typing, etc.) — not inline in the event loop module.
+Events are dispatched in `widgets/layout/layout-messenger-event-dispatch*.lib.ts`
+and `layout-messenger-event-dispatch-groupware.lib.ts`, not inline in the event
+loop module.
 
 ```
-onEvent(event) → layout-messenger-event-dispatch.lib.ts
-  ├── message / update_message / delete_message → message + chat-list stores
-  ├── update_message_flags → unread counts + message flags
-  ├── subscription / user_settings / … → chat-list, folder-sync, user stores
-  └── heartbeat → skipped
+onEvent(event)
+  ├── messenger object types → message, chat-list, folder, and user stores
+  ├── mail_folder / mail_message → Mail reducers and stores
+  ├── calendar / calendar_event → Calendar reducers and stores
+  └── unknown schema/object/action/kind → log and skip safely
 ```
 
 ---

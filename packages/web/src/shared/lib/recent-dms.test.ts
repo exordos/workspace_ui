@@ -2,6 +2,8 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { saveRecentDmPartners, loadRecentDmPartners } from "./recent-dms";
 
 const RECENT_DM_KEY = "recent_dm_partners";
+const userUuid = (value: number): string =>
+  `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
 
 describe("recent-dms", () => {
   const store: Record<string, string> = {};
@@ -34,14 +36,15 @@ describe("recent-dms", () => {
 
   describe("saveRecentDmPartners", () => {
     it("saves partner IDs to localStorage", () => {
-      saveRecentDmPartners([1, 2, 3]);
+      const ids = [userUuid(1), userUuid(2), userUuid(3)];
+      saveRecentDmPartners(ids);
       const raw = store[RECENT_DM_KEY];
       expect(raw).toBeTruthy();
-      expect(JSON.parse(raw!)).toEqual([1, 2, 3]);
+      expect(JSON.parse(raw!)).toEqual(ids);
     });
 
     it("limits to 50 partners", () => {
-      const ids = Array.from({ length: 60 }, (_, i) => i + 1);
+      const ids = Array.from({ length: 60 }, (_, index) => userUuid(index + 1));
       saveRecentDmPartners(ids);
       const loaded = loadRecentDmPartners();
       expect(loaded).toHaveLength(50);
@@ -55,13 +58,15 @@ describe("recent-dms", () => {
     });
 
     it("returns saved partner IDs", () => {
-      saveRecentDmPartners([42, 100, 7]);
-      expect(loadRecentDmPartners()).toEqual([42, 100, 7]);
+      const ids = [userUuid(42), userUuid(100), userUuid(7)];
+      saveRecentDmPartners(ids);
+      expect(loadRecentDmPartners()).toEqual(ids);
     });
 
     it("filters invalid values", () => {
-      store[RECENT_DM_KEY] = JSON.stringify([1, "x", 2, null, 3.5, -1, 0]);
-      expect(loadRecentDmPartners()).toEqual([1, 2]);
+      const validIds = [userUuid(1), userUuid(2)];
+      store[RECENT_DM_KEY] = JSON.stringify([validIds[0], "x", validIds[1], null, 3.5, -1, 0]);
+      expect(loadRecentDmPartners()).toEqual(validIds);
     });
 
     it("returns empty array for invalid JSON", () => {

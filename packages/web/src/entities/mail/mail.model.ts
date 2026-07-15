@@ -5,6 +5,8 @@
 import { create } from "zustand";
 import { useCalendarStore } from "~/entities/calendar/calendar.model";
 import { logStoreAction } from "~/shared/lib/logger";
+import type { WorkspaceEvent } from "~/shared/types/workspace-event";
+import { reduceMailWorkspaceEvent } from "./mail-event-reducer.lib";
 import {
   clearMailSessionFromStorage,
   loadMailSessionFromStorage,
@@ -80,6 +82,7 @@ interface MailState {
   signingIn: boolean;
   error: string | null;
 
+  applyWorkspaceEvent: (event: WorkspaceEvent) => boolean;
   hydrateSession: () => void;
   signIn: (email: string, password: string) => Promise<void>;
   signInWithZulip: (email: string, realmUrl: string, apiKey: string) => Promise<void>;
@@ -188,6 +191,19 @@ export const useMailStore = create<MailState>((set, get) => {
     sending: false,
     signingIn: false,
     error: null,
+
+    applyWorkspaceEvent(event) {
+      let complete = false;
+      set((state) => {
+        const result = reduceMailWorkspaceEvent(state, event);
+        complete = result.complete;
+        return result.patch;
+      });
+      if (complete) {
+        logStoreAction("mail", "applyWorkspaceEvent", { kind: event.payload.kind });
+      }
+      return complete;
+    },
 
     hydrateSession() {
       const stored = loadMailSessionFromStorage();

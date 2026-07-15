@@ -1,6 +1,12 @@
 # @workspace/api
 
-OpenAPI-driven TypeScript client for the Workspace backend (folders, services catalog, etc.), generated with [Orval](https://orval.dev/).
+OpenAPI-driven TypeScript client for the IAM-authenticated Workspace UI API,
+including common resources, Messenger, Mail, and Calendar. It is generated with
+[Orval](https://orval.dev/).
+
+This package intentionally does not contain the trusted Provider Service API.
+Workspace UI must never call provider registration, entity sync, blob, or
+command endpoints.
 
 npm package name is `@workspace/api` (not `workspace-api` — that name is taken on the public registry by an unrelated Trimble package).
 

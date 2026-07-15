@@ -19,6 +19,31 @@ describe("MailComposeDialog", () => {
     );
 
     expect(screen.getByRole("button", { name: /close/i })).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toHaveClass("bottom-2", "right-2");
+  });
+
+  it("keeps optional recipient rows compact until requested", async () => {
+    const user = userEvent.setup();
+    render(
+      <MailComposeDialog
+        open
+        mode="new"
+        initial={buildNewComposeState()}
+        sending={false}
+        error={null}
+        onOpenChange={vi.fn()}
+        onSend={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByLabelText(/^cc$/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^bcc$/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^cc$/i }));
+    await user.click(screen.getByRole("button", { name: /^bcc$/i }));
+
+    expect(screen.getByLabelText(/^cc$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^bcc$/i)).toBeInTheDocument();
   });
 
   it("clears fields when dialog closes after send", async () => {

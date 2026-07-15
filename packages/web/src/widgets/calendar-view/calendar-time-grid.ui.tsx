@@ -110,24 +110,38 @@ export const CalendarTimeGrid: React.FC<CalendarTimeGridProps> = ({
 
   return (
     <div
-      className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border-subtle bg-card-bg"
+      className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card-bg"
       data-testid="calendar-time-grid"
       data-layout={layout}
     >
       <div
-        className="grid border-b border-border-subtle"
+        className="grid shrink-0 border-b border-border-subtle bg-bg"
         style={{ gridTemplateColumns: gridColumns }}
       >
         <div className="border-r border-border-subtle" />
         {days.map((day) => (
-          <div key={toIsoDate(day)} className="border-r border-border-subtle px-2 py-2 text-center">
-            {formatDayHeader(day, layout)}
+          <div
+            key={toIsoDate(day)}
+            className={[
+              "border-r border-border-subtle px-2 py-2 text-center",
+              toIsoDate(day) === todayIso ? "bg-accent/5" : "",
+            ].join(" ")}
+          >
+            <div
+              className={
+                toIsoDate(day) === todayIso && layout !== "day"
+                  ? "mx-auto flex h-11 w-11 flex-col items-center justify-center rounded-full bg-accent text-on-accent"
+                  : ""
+              }
+            >
+              {formatDayHeader(day, layout)}
+            </div>
           </div>
         ))}
       </div>
 
       <div
-        className="grid border-b border-border-subtle bg-bg"
+        className="grid shrink-0 border-b border-border-subtle bg-bg"
         style={{ gridTemplateColumns: gridColumns }}
       >
         <div className="border-r border-border-subtle px-2 py-1 text-xs text-text-muted">
@@ -137,7 +151,7 @@ export const CalendarTimeGrid: React.FC<CalendarTimeGridProps> = ({
           const iso = toIsoDate(day);
           const allDay = eventsByDay.get(iso)?.allDay ?? [];
           return (
-            <div key={`allday-${iso}`} className="min-h-8 border-r border-border-subtle p-0.5">
+            <div key={`allday-${iso}`} className="min-h-9 border-r border-border-subtle p-1">
               {allDay.map((event) => (
                 <CalendarEventChip
                   key={`${event.uid}-${event.recurrenceId ?? ""}`}
@@ -157,7 +171,7 @@ export const CalendarTimeGrid: React.FC<CalendarTimeGridProps> = ({
             {HOURS.map((hour) => (
               <div
                 key={hour}
-                className="border-b border-border-subtle px-2 text-xs text-text-muted"
+                className="border-b border-border-subtle pr-2 text-right text-xs text-text-muted"
                 style={{ height: CALENDAR_HOUR_HEIGHT_PX }}
               >
                 {String(hour).padStart(2, "0")}:00
@@ -171,23 +185,39 @@ export const CalendarTimeGrid: React.FC<CalendarTimeGridProps> = ({
             const timed = eventsByDay.get(iso)?.timed ?? [];
             const isToday = iso === todayIso;
             return (
-              <button
+              <div
                 key={iso}
-                type="button"
                 data-testid={`calendar-day-column-${iso}`}
-                className={`relative border-r border-border-subtle${onSelectTimeSlot != null ? "cursor-pointer" : ""}`}
+                role="gridcell"
+                className={[
+                  "relative min-w-0 border-r border-border-subtle",
+                  isToday ? "bg-accent/[0.025]" : "",
+                ].join(" ")}
                 style={{ height: gridHeightPx }}
-                onClick={onSelectTimeSlot != null ? handleDayColumnClick(day) : undefined}
               >
-                {HOURS.map((hour) => (
-                  <div
-                    key={hour}
-                    className="absolute left-0 right-0 border-b border-border-subtle"
-                    style={{
-                      top: hour * CALENDAR_HOUR_HEIGHT_PX,
-                      height: CALENDAR_HOUR_HEIGHT_PX,
-                    }}
+                {onSelectTimeSlot != null ? (
+                  <button
+                    type="button"
+                    data-testid={`calendar-day-slot-${iso}`}
+                    aria-label={day.toLocaleDateString()}
+                    className="absolute inset-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+                    onClick={handleDayColumnClick(day)}
                   />
+                ) : null}
+                {HOURS.map((hour) => (
+                  <React.Fragment key={hour}>
+                    <div
+                      className="pointer-events-none absolute left-0 right-0 border-b border-border-subtle"
+                      style={{
+                        top: hour * CALENDAR_HOUR_HEIGHT_PX,
+                        height: CALENDAR_HOUR_HEIGHT_PX,
+                      }}
+                    />
+                    <div
+                      className="border-border-subtle/40 pointer-events-none absolute left-0 right-0 border-b"
+                      style={{ top: (hour + 0.5) * CALENDAR_HOUR_HEIGHT_PX }}
+                    />
+                  </React.Fragment>
                 ))}
                 {isToday ? <CalendarNowIndicator topPx={nowTopPx} /> : null}
                 {timed.map(({ event, topPx, heightPx, leftPercent, widthPercent }) => (
@@ -202,7 +232,7 @@ export const CalendarTimeGrid: React.FC<CalendarTimeGridProps> = ({
                     onSelect={handleSelect}
                   />
                 ))}
-              </button>
+              </div>
             );
           })}
         </div>

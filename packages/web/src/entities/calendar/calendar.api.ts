@@ -2,6 +2,7 @@
 
 import { WorkspaceApiHttpError, workspaceOrvalMutator } from "~/shared/api/workspace-orval-mutator";
 import { createMessageId } from "~/shared/lib/message-id.lib";
+import { requireProviderDeliveryMeta } from "~/shared/lib/provider-delivery.lib";
 import { buildIcsFromInput, expandRecurringEvents, parseVeventFromIcs } from "./calendar-ical.lib";
 import { parseCalendarEventInput } from "./calendar-validation.lib";
 import type {
@@ -14,14 +15,15 @@ import type {
 
 export { WorkspaceApiHttpError as CalendarApiError };
 
-interface WorkspaceCalendar {
+export interface WorkspaceCalendar {
   uuid: string;
   name: string;
   color: string | null;
-  ctag: string | null;
+  provider: unknown;
+  delivery: unknown;
 }
 
-interface WorkspaceCalendarEvent {
+export interface WorkspaceCalendarEvent {
   uuid: string;
   calendar_uuid: string;
   uid: string;
@@ -31,7 +33,6 @@ interface WorkspaceCalendarEvent {
   starts_at: string;
   ends_at: string;
   all_day: boolean;
-  etag: string | null;
   recurrence: { rrule?: string | null } | null;
   attendees: {
     email: string;
@@ -46,6 +47,8 @@ interface WorkspaceCalendarEvent {
     triggerAbsolute?: string | null;
   }[];
   recurrence_id: string | null;
+  provider: unknown;
+  delivery: unknown;
 }
 
 const eventResourceIds = new Map<string, string>();
@@ -83,12 +86,16 @@ async function resolveCalendarExternalUserId(): Promise<string | null> {
   return calendarExternalUserIdPromise;
 }
 
-function mapCalendar(calendar: WorkspaceCalendar): CalendarInfo {
+export function mapWorkspaceCalendar(calendar: WorkspaceCalendar): CalendarInfo {
+  const metadata = requireProviderDeliveryMeta({
+    provider: calendar.provider,
+    delivery: calendar.delivery,
+  });
   return {
     id: calendar.uuid,
     displayName: calendar.name,
     color: calendar.color,
-    ctag: calendar.ctag,
+    ...metadata,
   };
 }
 
@@ -115,9 +122,14 @@ function mapAlarm(alarm: WorkspaceCalendarEvent["alarms"][number]): CalendarAlar
   };
 }
 
-function mapEvent(event: WorkspaceCalendarEvent): CalendarEvent {
+export function mapWorkspaceCalendarEvent(event: WorkspaceCalendarEvent): CalendarEvent {
   eventResourceIds.set(eventKey(event.calendar_uuid, event.uid), event.uuid);
+  const metadata = requireProviderDeliveryMeta({
+    provider: event.provider,
+    delivery: event.delivery,
+  });
   return {
+    resourceId: event.uuid,
     uid: event.uid,
     calendarId: event.calendar_uuid,
     summary: event.summary,
@@ -126,12 +138,12 @@ function mapEvent(event: WorkspaceCalendarEvent): CalendarEvent {
     start: event.starts_at,
     end: event.ends_at,
     allDay: event.all_day,
-    etag: event.etag,
     recurrence: event.recurrence == null ? null : { rrule: event.recurrence.rrule ?? null },
     attendees: event.attendees.map(mapAttendee),
     alarms: event.alarms.map(mapAlarm),
     recurrenceId: event.recurrence_id,
     isRecurringInstance: false,
+    ...metadata,
   };
 }
 
@@ -160,13 +172,13 @@ async function resolveEventResourceId(calendarId: string, uid: string): Promise<
   );
   const resource = events[0];
   if (resource == null) throw new Error("Calendar event not found");
-  mapEvent(resource);
+  mapWorkspaceCalendarEvent(resource);
   return resource.uuid;
 }
 
 export async function fetchCalendars(_token: string): Promise<CalendarInfo[]> {
   const data = await request<WorkspaceCalendar[]>("/v1/calendar/calendars/");
-  return data.map(mapCalendar);
+  return data.map(mapWorkspaceCalendar);
 }
 
 export async function fetchCalendarEvents(
@@ -186,7 +198,7 @@ export async function fetchCalendarEvents(
   const rangeEnd = new Date(end).getTime();
   const masters = pages
     .flat()
-    .map(mapEvent)
+    .map(mapWorkspaceCalendarEvent)
     .filter(
       (event) =>
         new Date(event.end).getTime() >= rangeStart && new Date(event.start).getTime() <= rangeEnd,
@@ -200,7 +212,9 @@ export async function fetchCalendarEvent(
   eventUid: string,
 ): Promise<CalendarEvent> {
   const uuid = await resolveEventResourceId(calendarId, eventUid);
-  return mapEvent(await request<WorkspaceCalendarEvent>(`/v1/calendar/events/${uuid}`));
+  return mapWorkspaceCalendarEvent(
+    await request<WorkspaceCalendarEvent>(`/v1/calendar/events/${uuid}`),
+  );
 }
 
 function eventPayload(input: CalendarEventInput, uid: string) {
@@ -230,7 +244,7 @@ export async function createCalendarEvent(
     "POST",
     eventPayload(parsed, uid),
   );
-  return mapEvent(event);
+  return mapWorkspaceCalendarEvent(event);
 }
 
 export async function updateCalendarEvent(
@@ -245,7 +259,7 @@ export async function updateCalendarEvent(
     "PUT",
     eventPayload(parsed, eventUid),
   );
-  return mapEvent(event);
+  return mapWorkspaceCalendarEvent(event);
 }
 
 export async function deleteCalendarEvent(
@@ -269,7 +283,7 @@ export async function createCalendarCollection(
   color?: string | null,
 ): Promise<CalendarInfo> {
   const externalUserUuid = await resolveCalendarExternalUserId();
-  return mapCalendar(
+  return mapWorkspaceCalendar(
     await request<WorkspaceCalendar>("/v1/calendar/calendars/", "POST", {
       name: displayName,
       color: color ?? null,
@@ -284,7 +298,7 @@ export async function updateCalendarCollection(
   displayName?: string,
   color?: string | null,
 ): Promise<CalendarInfo> {
-  return mapCalendar(
+  return mapWorkspaceCalendar(
     await request<WorkspaceCalendar>(`/v1/calendar/calendars/${calendarId}`, "PUT", {
       ...(displayName === undefined ? {} : { name: displayName }),
       ...(color === undefined ? {} : { color }),
@@ -309,7 +323,7 @@ export async function moveCalendarEventToCalendar(
     { calendar_uuid: toCalendarId },
   );
   eventResourceIds.delete(eventKey(fromCalendarId, eventUid));
-  return mapEvent(event);
+  return mapWorkspaceCalendarEvent(event);
 }
 
 export async function searchCalendarEvents(
@@ -333,7 +347,7 @@ export async function importCalendarEventIcs(
   calendarId: string,
   ics: string,
 ): Promise<CalendarEvent> {
-  const parsed = parseVeventFromIcs(ics, calendarId, null)[0];
+  const parsed = parseVeventFromIcs(ics, calendarId)[0];
   if (parsed == null) throw new Error("ICS does not contain an event");
   return createCalendarEvent(token, parsed);
 }

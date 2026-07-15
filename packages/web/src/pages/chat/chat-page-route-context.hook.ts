@@ -12,8 +12,15 @@ import {
 } from "~/widgets/sidebar/sidebar.lib";
 import type { Location } from "react-router-dom";
 
-type RouteStreamTopicEntry = { subject: string; topicUuid?: string };
-type RouteStreamEntry = { name: string; topics?: Map<string, RouteStreamTopicEntry> };
+interface RouteStreamTopicEntry {
+  subject: string;
+  topicUuid?: string;
+}
+
+interface RouteStreamEntry {
+  name: string;
+  topics?: Map<string, RouteStreamTopicEntry>;
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -45,7 +52,6 @@ function resolveRouteTopic(
   }
   return { activeTopic: decoded, activeTopicUuid: routeTopicUuid ?? undefined };
 }
-
 
 function parseMessageIdFromSearch(location: Location, key: string): MessageId | null {
   const raw = new URLSearchParams(location.search).get(key);

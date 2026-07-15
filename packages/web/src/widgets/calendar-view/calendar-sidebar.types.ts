@@ -1,6 +1,7 @@
 import type { CalendarInfo } from "~/entities/calendar/calendar.types";
 
 export interface CalendarSidebarProps {
+  open: boolean;
   calendars: CalendarInfo[];
   visibleCalendarIds: string[];
   focusDate: Date;

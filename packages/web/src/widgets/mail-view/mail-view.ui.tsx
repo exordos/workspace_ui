@@ -38,6 +38,7 @@ export const MailView: React.FC = () => {
     inDrafts,
     batchMode,
     selectedUids,
+    narrowPreviewOpen,
     moveDialogOpen,
     createFolderOpen,
     createFolderParent,
@@ -53,6 +54,9 @@ export const MailView: React.FC = () => {
     setDeleteConfirmOpen,
     handleSelectFolder,
     handleSelectMessage,
+    handleBackToMessageList,
+    handleToggleMessageStar,
+    handleToggleMessageRead,
     handleComposeOpen,
     handleComposeOpenChange,
     handleComposeSend,
@@ -84,7 +88,7 @@ export const MailView: React.FC = () => {
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col p-3">
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-2 md:p-3">
       <MailViewToolbar
         searchQuery={searchQuery}
         batchMode={batchMode}
@@ -102,13 +106,14 @@ export const MailView: React.FC = () => {
       ) : null}
 
       <div
-        className={`grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-lg border border-border-subtle bg-bg ${
+        data-testid="mail-responsive-shell"
+        className={`grid min-h-0 flex-1 grid-cols-[56px_minmax(0,1fr)] overflow-hidden rounded-xl border border-border-subtle bg-bg-elevated shadow-sm ring-1 ring-border-subtle md:grid-cols-[56px_minmax(280px,320px)_minmax(0,1fr)] ${
           foldersCompact
-            ? "lg:grid-cols-[56px_minmax(240px,300px)_minmax(0,1fr)]"
-            : "lg:grid-cols-[200px_minmax(240px,300px)_minmax(0,1fr)]"
+            ? "lg:grid-cols-[56px_minmax(320px,360px)_minmax(0,1fr)]"
+            : "lg:grid-cols-[216px_minmax(320px,360px)_minmax(0,1fr)]"
         }`}
       >
-        <aside className="min-h-0 shrink-0 overflow-hidden border-b border-border-subtle lg:border-b-0 lg:border-r">
+        <aside className="col-start-1 row-start-1 min-h-0 shrink-0 overflow-hidden border-r border-border-subtle bg-sidebar-bg">
           <MailFolderList
             folders={folders}
             delimiter={folderDelimiter}
@@ -120,7 +125,10 @@ export const MailView: React.FC = () => {
             onFolderAction={handleFolderAction}
           />
         </aside>
-        <section className="flex min-h-0 flex-col border-b border-border-subtle lg:border-b-0 lg:border-r">
+        <section
+          data-testid="mail-message-list-panel"
+          className={`${narrowPreviewOpen ? "hidden" : "flex"} col-start-2 row-start-1 min-h-0 flex-col bg-sidebar-bg md:flex md:border-r md:border-border-subtle`}
+        >
           <MailMessageList
             messages={messages}
             selectedUid={selectedUid}
@@ -132,9 +140,14 @@ export const MailView: React.FC = () => {
             onLoadMore={handleLoadMore}
             onSelectMessage={handleSelectMessage}
             onToggleSelectUid={handleToggleSelectUid}
+            onToggleStar={handleToggleMessageStar}
+            onToggleRead={handleToggleMessageRead}
           />
         </section>
-        <section className="min-h-0 min-w-0 overflow-visible">
+        <section
+          data-testid="mail-message-preview-panel"
+          className={`${narrowPreviewOpen ? "block" : "hidden"} col-start-2 row-start-1 min-h-0 min-w-0 overflow-visible bg-bg md:col-start-3 md:block`}
+        >
           <MailMessagePreview
             loading={loadingMessage}
             message={selectedMessage}
@@ -144,6 +157,7 @@ export const MailView: React.FC = () => {
             onAction={handlePreviewAction}
             onEditDraft={handleEditDraft}
             onDownloadAttachment={handleDownloadAttachment}
+            onBack={handleBackToMessageList}
           />
         </section>
       </div>

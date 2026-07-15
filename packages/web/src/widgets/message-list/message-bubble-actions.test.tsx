@@ -526,6 +526,39 @@ describe("MessageBubble edit/delete actions parity", () => {
     expect(screen.queryByText("✓✓")).not.toBeInTheDocument();
   });
 
+  it("shows the backend provider delivery badge on a messenger message", () => {
+    render(
+      <MessageBubble
+        message={createMessage({
+          source_name: "zulip",
+          source: { kind: "zulip", message_id: 42 },
+          provider: {
+            uuid: "provider-1",
+            name: "CASSI Zulip",
+            kind: "zulip",
+          },
+          delivery: {
+            status: "failed",
+            safeError: "Remote service unavailable",
+            updatedAt: "2026-07-15T10:00:00Z",
+          },
+        })}
+        isOwn
+      />,
+    );
+
+    expect(screen.getByTestId("provider-delivery-failed")).toHaveTextContent("CASSI Zulip");
+    expect(screen.queryByTestId("external-source-zulip")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/delivery via cassi zulip failed/i)).toHaveAttribute(
+      "title",
+      expect.stringContaining("Remote service unavailable"),
+    );
+    const metadata = screen.getByTestId(`message-meta-${testMessageId(101)}`);
+    expect(metadata.lastElementChild).toBe(
+      screen.getByTestId(`message-time-${testMessageId(101)}`),
+    );
+  });
+
   it("keeps message content selectable", () => {
     const { container } = render(<MessageBubble message={createMessage()} isOwn={false} />);
 

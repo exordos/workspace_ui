@@ -143,7 +143,6 @@ export function useCalendarViewEvents({
       if (editingEvent != null) {
         await updateEvent(editingEvent.uid, {
           ...input,
-          etag: editingEvent.etag,
           scope: pendingScope ?? undefined,
           recurrenceId: editingEvent.recurrenceId,
         });

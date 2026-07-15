@@ -889,7 +889,7 @@ describe("RightPanel truthfulness", () => {
       expect(screen.getByText(/something went wrong/i)).toBeInTheDocument();
     });
     expect(useMuteStore.getState().getStreamNotificationLevel(ENGINEERING_STREAM_UUID)).toBe(
-      "default",
+      "subscribed",
     );
   });
 

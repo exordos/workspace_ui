@@ -1,8 +1,11 @@
+import type { Delivery, ProviderSummary } from "~/shared/types/provider-delivery";
+
 export interface CalendarInfo {
   id: string;
   displayName: string;
   color: string | null;
-  ctag: string | null;
+  provider?: ProviderSummary | null;
+  delivery?: Delivery | null;
 }
 
 export interface CalendarAttendee {
@@ -23,6 +26,7 @@ export interface CalendarRecurrence {
 }
 
 export interface CalendarEvent {
+  resourceId?: string;
   uid: string;
   calendarId: string;
   summary: string;
@@ -31,12 +35,13 @@ export interface CalendarEvent {
   start: string;
   end: string;
   allDay: boolean;
-  etag: string | null;
   recurrence: CalendarRecurrence | null;
   attendees: CalendarAttendee[];
   alarms: CalendarAlarm[];
   recurrenceId: string | null;
   isRecurringInstance: boolean;
+  provider?: ProviderSummary | null;
+  delivery?: Delivery | null;
 }
 
 export interface CalendarEventInput {
@@ -51,7 +56,6 @@ export interface CalendarEventInput {
   recurrence?: CalendarRecurrence | null;
   attendees?: CalendarAttendee[];
   alarms?: CalendarAlarm[];
-  etag?: string | null;
 }
 
 export type CalendarViewMode = "month" | "week" | "day";

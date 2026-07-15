@@ -63,6 +63,5 @@ export function parseCalendarEventInput(body: unknown): CalendarEventInput {
             action: isNonEmptyString(a.action) ? a.action : "DISPLAY",
           }))
       : [],
-    etag: isNonEmptyString(record.etag) ? record.etag : null,
   };
 }

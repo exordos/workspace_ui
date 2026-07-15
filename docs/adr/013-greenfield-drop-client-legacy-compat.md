@@ -1,7 +1,7 @@
 # ADR 013: Greenfield — drop client legacy compatibility
 
 **Date**: 2026-06-02  
-**Status**: accepted
+**Status**: accepted, amended 2026-07-15
 
 ## Context
 
@@ -25,23 +25,28 @@ This service now starts from scratch (greenfield). Backward compatibility with p
    Pros: simpler codepaths, fewer tests, clearer contracts, faster iteration.  
    Cons: breaking change for existing installations (requires resetting browser storage).
 
-3. **Drop everything including server (Workspace) API fallbacks**  
-   Pros: smallest client code.  
-   Cons: forces a minimum Workspace version contract and may break multi-server support.
+3. **Drop client state and server API compatibility together**
+   Pros: one explicit Workspace v1 contract, smallest client code, no ambiguous
+   event or route parsing.
+   Cons: all connected backends must implement the current Workspace v1 contract.
 
 ## Decision
 
-We choose **Option 2**:
+We choose **Option 3**:
 
 - Remove client-side backward compatibility for persisted browser state (localStorage + IndexedDB),
   legacy routes, and legacy folder/pin identifiers.
-- **Keep** server-side (Messenger API) fallbacks and parsing, because they are not client-data
-  migrations and still provide value when connecting to different server versions.
+- Remove server API fallbacks, old messenger queue envelopes, compatibility
+  websocket frames, historical route aliases, and dual contract parsing.
+- Require the greenfield `/api/workspace/v1` API and the flat common event
+  contract at `/api/workspace/v1/events/ws`.
 
 ## Consequences
 
 - Codebase becomes simpler: fewer “legacy” branches and fewer migration tests.
 - Existing dev installs may need a one-time reset.
+- Backends that do not implement the current Workspace v1 contract are not
+  supported and must be upgraded rather than handled by client fallbacks.
 
 ### Developer break-glass reset
 

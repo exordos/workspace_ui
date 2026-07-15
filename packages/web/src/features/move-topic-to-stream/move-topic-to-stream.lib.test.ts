@@ -21,8 +21,8 @@ describe("move-topic-to-stream.lib", () => {
     ).toEqual([{ streamId: TARGET_STREAM_UUID, name: "dev" }]);
   });
 
-  it("resolveMoveTopicTargetName preserves resolved checkmark", () => {
-    expect(resolveMoveTopicTargetName("\u2714 incident", "postmortem")).toBe("\u2714 postmortem");
+  it("resolveMoveTopicTargetName keeps done state out of the topic name", () => {
+    expect(resolveMoveTopicTargetName("\u2714 incident", "postmortem")).toBe("postmortem");
   });
 
   it("resolveSelectedTargetStreamId returns id only for valid option", () => {

@@ -22,22 +22,25 @@ function validateDraftInput(input: DraftInput, scope: string): void {
   }
 }
 
-export async function fetchDrafts(): Promise<Draft[]> {
-  return [];
+export function fetchDrafts(): Promise<Draft[]> {
+  return Promise.resolve([]);
 }
 
 export async function createDraft(input: DraftInput): Promise<MessageId | null> {
   validateDraftInput(input, "createDraft");
+  await Promise.resolve();
   return null;
 }
 
 export async function updateDraftOnServer(id: MessageId, input: DraftInput): Promise<boolean> {
   guard.messageId(id, "updateDraftOnServer");
   validateDraftInput(input, "updateDraftOnServer");
+  await Promise.resolve();
   return false;
 }
 
 export async function deleteDraftOnServer(id: MessageId): Promise<boolean> {
   guard.messageId(id, "deleteDraftOnServer");
+  await Promise.resolve();
   return false;
 }

@@ -36,7 +36,7 @@ describe("CreateChatDialog", () => {
     useChatListStore.getState().clear();
   });
 
-  it("disables channel creation and shows reason while current profile is loading", () => {
+  it("allows channel creation while the server-owned creator profile is unavailable", () => {
     useChatListStore.setState({ currentUserId: null });
 
     render(
@@ -53,15 +53,16 @@ describe("CreateChatDialog", () => {
       target: { value: "engineering" },
     });
 
-    // Assert: UI explicitly blocks creation until author profile loads.
     const createButton = screen.getByRole("button", { name: "Create" });
-    expect(createButton).toBeDisabled();
+    expect(createButton).toBeEnabled();
     expect(
-      screen.getByText("Profile is still loading. Try again in a moment."),
-    ).toBeInTheDocument();
+      screen.queryByText("Profile is still loading. Try again in a moment."),
+    ).not.toBeInTheDocument();
 
     fireEvent.click(createButton);
-    expect(createChannel).not.toHaveBeenCalled();
+    expect(createChannel).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "engineering", subscribers: [] }),
+    );
   });
 
   it("renders channels tab with subscribe action in the detail panel", async () => {

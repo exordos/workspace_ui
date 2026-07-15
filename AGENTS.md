@@ -2,42 +2,42 @@
 
 ## Project Overview
 
-Workspace UI is an open-source corporate messenger built on the Messenger API, shipping as a desktop app (Electron), web app (SPA), PWA, and native mobile WebView — all from a single React 19 codebase. The architecture follows Feature-Sliced Design (FSD) with strict 6-layer isolation, 50 Cursor rules governing code quality, and a defensive programming model using runtime guards, invariants, and exhaustive type checking. The project supports white-label rebranding via environment variables, full i18n (English default + Russian), and two theme palettes with dark/light modes.
+Workspace UI is an open-source messenger, mail, and calendar client built on one IAM-authenticated Workspace API, shipping as a desktop app (Electron), web app (SPA), PWA, and native mobile WebView — all from a single React 19 codebase. The UI knows nothing about provider daemons and never calls the trusted Provider Service API. The architecture follows Feature-Sliced Design (FSD) with strict 6-layer isolation, 50 Cursor rules governing code quality, and a defensive programming model using runtime guards, invariants, and exhaustive type checking. The project supports white-label rebranding via environment variables, full i18n (English default + Russian), and two theme palettes with dark/light modes.
 
 > **Canonical counts and paths:** [docs/PROJECT_FACTS.md](docs/PROJECT_FACTS.md)
 
 ## Tech Stack
 
-| Layer             | Technology                     | Details                                                              |
-| ----------------- | ------------------------------ | -------------------------------------------------------------------- |
-| Language          | TypeScript 5.9                 | `strict`, `noUncheckedIndexedAccess`, `verbatimModuleSyntax`, ES2022 |
-| Framework         | React 19                       | Functional components, hooks, Suspense, `React.lazy`                 |
-| Build             | Vite 8                         | SWC transpiler, tree-shaking, source maps, 400KB chunk budget        |
-| Styling           | Tailwind CSS 3.4               | CSS custom properties, 42 semantic design tokens, 4px grid           |
-| State             | Zustand 4.5                    | 17 entity stores + feature/widget stores, cached selectors           |
-| Routing           | react-router-dom 7             | Lazy-loaded routes, nested layouts                                   |
-| UI Primitives     | Radix UI                       | dialog, dropdown-menu, scroll-area, tabs, tooltip                    |
-| API               | Messenger REST + Workspace API | Middleware pipeline: auth → logging → retry → parse                  |
-| Real-time         | Long-polling event loop        | `shared/lib/event-loop.ts`, background-tab resilient                 |
-| Video Calls       | Jitsi Meet React SDK           | PiP mode, call participants store                                    |
-| Push              | Firebase Cloud Messaging       | `shared/lib/push/`, messenger token sync                             |
-| Desktop           | Electron 42                    | electron-builder, macOS code signing + notarization                  |
-| PWA               | vite-plugin-pwa + Workbox      | Install prompt, app badge, offline caching                           |
-| i18n              | Custom lightweight engine      | en (default) + ru, 3 Russian plural forms, interpolation             |
-| Unit Testing      | Vitest 4                       | 3800+ tests, 380+ test files, Jest-compatible API                    |
-| Component Testing | @testing-library/react         | + user-event for realistic interactions                              |
-| API Mocking       | MSW 2                          | Service worker interceptors                                          |
-| E2E Testing       | Playwright 1.60                | 15 specs, Chromium                                                   |
-| Linting           | ESLint 9                       | Flat config, type-checked, jsx-a11y, import-x                        |
-| Formatting        | Prettier                       | Enforced via pre-commit hook                                         |
-| Commit Lint       | commitlint                     | Conventional Commits format                                          |
-| Error Tracking    | Sentry 10                      | Opt-in via `VITE_SENTRY_DSN`, PII redaction                          |
-| Analytics         | GA4 + Yandex Metrica           | Opt-in, PII auto-stripped                                            |
-| Logging           | Custom structured logger       | Scoped, 15 auto-redaction patterns                                   |
-| CI                | GitHub Actions + GitLab CI     | Dual pipeline                                                        |
-| Monorepo          | Lerna 9 + npm workspaces       | 3 packages: web, electron-app, workspace-api                         |
-| Icons             | vite-plugin-svgr               | 68 SVG icons as React components                                     |
-| Sanitization      | DOMPurify                      | HTML whitelist for messenger content                                 |
+| Layer             | Technology                 | Details                                                              |
+| ----------------- | -------------------------- | -------------------------------------------------------------------- |
+| Language          | TypeScript 5.9             | `strict`, `noUncheckedIndexedAccess`, `verbatimModuleSyntax`, ES2022 |
+| Framework         | React 19                   | Functional components, hooks, Suspense, `React.lazy`                 |
+| Build             | Vite 8                     | SWC transpiler, tree-shaking, source maps, 400KB chunk budget        |
+| Styling           | Tailwind CSS 3.4           | CSS custom properties, 42 semantic design tokens, 4px grid           |
+| State             | Zustand 4.5                | 19 entity slices + feature/widget stores, cached selectors           |
+| Routing           | react-router-dom 7         | Lazy-loaded routes, nested layouts                                   |
+| UI Primitives     | Radix UI                   | dialog, dropdown-menu, scroll-area, tabs, tooltip                    |
+| API               | Workspace REST API         | IAM-authenticated common, Messenger, Mail, and Calendar domains      |
+| Real-time         | REST catch-up + WebSocket  | Common epoch cursor in `shared/lib/event-loop.ts`                    |
+| Video Calls       | Jitsi Meet React SDK       | PiP mode, call participants store                                    |
+| Push              | Firebase Cloud Messaging   | `shared/lib/push/`, messenger token sync                             |
+| Desktop           | Electron 42                | electron-builder, macOS code signing + notarization                  |
+| PWA               | vite-plugin-pwa + Workbox  | Install prompt, app badge, offline caching                           |
+| i18n              | Custom lightweight engine  | en (default) + ru, 3 Russian plural forms, interpolation             |
+| Unit Testing      | Vitest 4                   | 3800+ tests, 380+ test files, Jest-compatible API                    |
+| Component Testing | @testing-library/react     | + user-event for realistic interactions                              |
+| API Mocking       | MSW 2                      | Service worker interceptors                                          |
+| E2E Testing       | Playwright 1.60            | 15 specs, Chromium                                                   |
+| Linting           | ESLint 9                   | Flat config, type-checked, jsx-a11y, import-x                        |
+| Formatting        | Prettier                   | Enforced via pre-commit hook                                         |
+| Commit Lint       | commitlint                 | Conventional Commits format                                          |
+| Error Tracking    | Sentry 10                  | Opt-in via `VITE_SENTRY_DSN`, PII redaction                          |
+| Analytics         | GA4 + Yandex Metrica       | Opt-in, PII auto-stripped                                            |
+| Logging           | Custom structured logger   | Scoped, 15 auto-redaction patterns                                   |
+| CI                | GitHub Actions + GitLab CI | Dual pipeline                                                        |
+| Monorepo          | Lerna 9 + npm workspaces   | 3 packages: web, electron-app, workspace-api                         |
+| Icons             | vite-plugin-svgr           | 68 SVG icons as React components                                     |
+| Sanitization      | DOMPurify                  | HTML whitelist for messenger content                                 |
 
 ## Architecture
 
@@ -56,7 +56,7 @@ workspace_ui/
 │   ├── electron/         Desktop shell (Windows, macOS, Linux)
 │   └── workspace-api/    Orval-generated @workspace/api client
 ├── e2e/                  Playwright E2E tests (15 specs)
-├── docs/                 9 technical references + 13 ADR files
+├── docs/                 10 technical references + 13 ADR files
 ├── scripts/              Build utilities (licenses, versioning, design tokens)
 ├── .cursor/rules/        50 AI agent rules
 ├── .cursor/skills/       4 AI skills
@@ -71,9 +71,9 @@ See [docs/PROJECT_FACTS.md](docs/PROJECT_FACTS.md) for full slice lists and [doc
 packages/web/src/
 ├── app/           Router, providers, contexts, global styles
 ├── pages/         14 lazy-loaded route pages
-├── widgets/       9 composite UI blocks (layout, sidebar, message-list, …)
-├── features/      22 user scenarios (folder-sync, jitsi-call, settings, …)
-├── entities/      17 domain stores + API (user, message, chat-list, activity, …)
+├── widgets/       11 composite UI blocks (layout, mail-view, calendar-view, …)
+├── features/      30 user scenarios (external accounts, compose, event form, …)
+├── entities/      19 domain slices + API (user, message, mail, calendar, …)
 ├── shared/        ui/, api/, lib/ (incl. event-loop.ts, brand.ts), config/
 ├── i18n/          en + ru locales
 └── test/          Factories, MSW handlers, render helper
@@ -82,7 +82,7 @@ packages/web/src/
 ### Data Flow
 
 1. `main.tsx` → `app/app.tsx` — mounts router, providers, layout
-2. `widgets/layout/layout-messenger-event-loop.hook.ts` + `shared/lib/event-loop.ts` — registers messenger event queue, starts long-polling
+2. `widgets/layout/layout-messenger-event-loop.hook.ts` + `shared/lib/event-loop.ts` — catches up `/events/` by epoch and connects to the common `/events/ws` stream
 3. `shared/api/client.ts` — all HTTP goes through middleware pipeline (auth → logging → retry)
 4. Entity stores (`entities/*/`) — single source of truth, cached selectors
 5. Components subscribe via `useStore((s) => s.field)` — minimal selectors only

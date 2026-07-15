@@ -1,7 +1,7 @@
 import type { WorkspaceInstance } from "~/entities/instance/instance.model";
-import type { MessengerEvent } from "~/shared/api/messenger.types";
 import { MULTI_ORG_UNREAD_REFRESH_DEBOUNCE_MS } from "~/shared/config/constants";
 import { resolveIamAccessToken } from "~/shared/lib/iam-instance.lib";
+import type { WorkspaceEvent } from "~/shared/types/workspace-event";
 import type { StartInactiveInstanceEventStreamsOptions } from "./layout-multi-org-event-streams.types";
 
 export type {
@@ -9,13 +9,12 @@ export type {
   StartCredentialEventLoopOptions,
 } from "./layout-multi-org-event-streams.types";
 
-function shouldRefreshUnreadForEvent(event: MessengerEvent): boolean {
+function shouldRefreshUnreadForEvent(event: WorkspaceEvent): boolean {
   return (
-    event.type === "message" ||
-    event.type === "update_message_flags" ||
-    event.type === "delete_message" ||
-    event.type === "subscription" ||
-    event.type === "user_topic"
+    event.object_type === "message" ||
+    event.object_type === "message_reaction" ||
+    event.object_type === "stream" ||
+    event.object_type === "topic"
   );
 }
 

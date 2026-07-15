@@ -52,7 +52,7 @@ export const MailMessageActionBar: React.FC<MailMessageActionBarProps> = ({
 
   return (
     <div
-      className="flex shrink-0 flex-wrap items-center justify-end gap-0.5"
+      className="flex min-w-max shrink-0 items-center justify-start gap-0.5 rounded-lg md:justify-end"
       role="toolbar"
       aria-label={t("mail.messageActions")}
     >

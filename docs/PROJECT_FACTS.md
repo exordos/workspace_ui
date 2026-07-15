@@ -2,7 +2,7 @@
 
 Single source of truth for volatile counts, paths, and workflow. Other docs should link here instead of duplicating.
 
-**Last verified:** 2026-07-14 (branch `platform-messanger`).
+**Last verified:** 2026-07-15 (branch `cassi/workspace-mail-calendar-ui`).
 
 ## Monorepo packages
 
@@ -27,12 +27,12 @@ Single source of truth for volatile counts, paths, and workflow. Other docs shou
 
 ## FSD slice counts
 
-| Layer        | Count | Slices                                                                                                                                                                                                                                                                                                                                       |
-| ------------ | ----: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **entities** |    17 | activity, call, chat-list, download, draft, feed, folder, inbox, instance, link-preview, message, notification-settings, sticker, stream-members, theme, user, user-group                                                                                                                                                                    |
-| **features** |    22 | add-stream-members, ai-reply, chat-dm-call-bridge, chat-info, create-chat, folder-sync, instance-switch, jitsi-call, manage-folders, mark-chat-read, mark-topic-resolved, media-viewer, mention-suggest, message-readers, mute-chat, pin-chat, remove-stream-members, settings, sticker-picker, theme-picker, typing-indicator, user-profile |
-| **pages**    |    14 | activity, calendar, calls, chat, feed, inbox, licenses, login, logs, mail, message-redirect, services, settings, update                                                                                                                                                                                                                      |
-| **widgets**  |     9 | chat-view, folder-rail, layout, message-composer, message-list, right-panel, search-modal, sidebar, top-bar                                                                                                                                                                                                                                  |
+| Layer        | Count | Slices                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------ | ----: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **entities** |    19 | activity, calendar, call, chat-list, download, draft, feed, folder, inbox, instance, link-preview, mail, message, notification-settings, sticker, theme, unread-sync, user, user-group                                                                                                                                                                                                                                                                                                                        |
+| **features** |    30 | add-stream-members, ai-reply, calendar-event-form, calendar-move-event, calendar-recurrence-scope, calendar-rename, chat-dm-call-bridge, chat-info, create-chat, external-accounts, folder-sync, instance-switch, jitsi-call, mail-compose, mail-folder-actions, mail-message-actions, manage-folders, mark-chat-read, mark-topic-resolved, media-viewer, mention-suggest, message-readers, move-topic-to-stream, mute-chat, pin-chat, settings, sticker-picker, theme-picker, typing-indicator, user-profile |
+| **pages**    |    14 | activity, calendar, calls, chat, feed, inbox, licenses, login, logs, mail, message-redirect, services, settings, update                                                                                                                                                                                                                                                                                                                                                                                       |
+| **widgets**  |    11 | calendar-view, chat-view, folder-rail, layout, mail-view, message-composer, message-list, right-panel, search-modal, sidebar, top-bar                                                                                                                                                                                                                                                                                                                                                                         |
 
 ## Key module paths
 
@@ -44,6 +44,8 @@ Single source of truth for volatile counts, paths, and workflow. Other docs shou
 | HTTP client (middleware) | `packages/web/src/shared/api/client.ts`                                   |
 | Messenger API modules    | `packages/web/src/shared/api/messenger-*.ts`                              |
 | Workspace API client     | `packages/web/src/shared/api/workspace-client.ts`                         |
+| Mail API and store       | `packages/web/src/entities/mail/`                                         |
+| Calendar API and store   | `packages/web/src/entities/calendar/`                                     |
 | White-label config       | `packages/web/src/shared/lib/brand.ts`                                    |
 | User API (split)         | `packages/web/src/entities/user/api/`                                     |
 
@@ -74,7 +76,7 @@ import { workspaceApi } from "~/shared/api/workspace-api";
 
 | Category                           |                                                     Count |
 | ---------------------------------- | --------------------------------------------------------: |
-| Technical references (`docs/*.md`) |                                             8 + this file |
+| Technical references (`docs/*.md`) |                                             9 + this file |
 | ADRs (`docs/adr/`)                 | 13 (000 template + 001–010, 012–013; 011 merged into 009) |
 | Cursor rules (`.cursor/rules/`)    |                                                        50 |
 

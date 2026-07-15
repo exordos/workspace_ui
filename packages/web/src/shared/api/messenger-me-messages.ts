@@ -14,6 +14,7 @@
  */
 import { createLogger } from "~/shared/lib/logger";
 import type { MessageId } from "~/shared/lib/message-id.lib";
+import { parseProviderDeliveryMeta } from "~/shared/lib/provider-delivery.lib";
 import { getMessengerGatewayApiBaseForCurrentInstance, messengerApi } from "./client";
 import type {
   MessagesPageResult,
@@ -145,6 +146,7 @@ export function parseMeMessage(row: unknown): MessengerMeMessage | null {
   const mentioned = row.mentioned === true;
   const sourceName = readSourceName(row.source_name);
   const source = readSource(row.source);
+  const providerDelivery = parseProviderDeliveryMeta(row);
   return {
     uuid,
     stream_uuid: streamUuid,
@@ -164,6 +166,7 @@ export function parseMeMessage(row: unknown): MessengerMeMessage | null {
     ...(lastSyncedAt != null ? { last_synced_at: lastSyncedAt } : {}),
     ...(createdAt != null ? { created_at: createdAt } : {}),
     ...(updatedAt != null ? { updated_at: updatedAt } : {}),
+    ...(providerDelivery != null ? providerDelivery : {}),
   };
 }
 
@@ -335,6 +338,8 @@ export function meMessageToMockMessage(
     timestamp: isoToEpochSeconds(message.created_at),
     flags,
     reactions: message.reactions ?? {},
+    ...(message.provider !== undefined ? { provider: message.provider } : {}),
+    ...(message.delivery !== undefined ? { delivery: message.delivery } : {}),
   };
   if (content.trim().length > 0) {
     base.markdown_source = content;

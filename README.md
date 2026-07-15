@@ -1,6 +1,8 @@
 # Workspace UI
 
-Open-source corporate messenger built on the [Workspace](https://messenger.com/) API.
+Open-source Workspace client for messenger, mail, and calendar. The UI talks to
+one IAM-authenticated Workspace backend and receives all domain updates through
+one durable REST/WebSocket event contract.
 
 Single React codebase, multiple targets:
 
@@ -67,9 +69,9 @@ app -> pages -> widgets -> features -> entities -> shared
 Core flow:
 
 1. `main.tsx` mounts the app shell and routes
-2. `widgets/layout/layout-messenger-event-loop.hook.ts` + `shared/lib/event-loop.ts` start messenger event queue polling
+2. `widgets/layout/layout-messenger-event-loop.hook.ts` + `shared/lib/event-loop.ts` run REST epoch catch-up and the common `/api/workspace/v1/events/ws` stream
 3. `shared/api/client.ts` handles auth/logging/retry middleware
-4. Entity stores (`entities/*`) provide domain state
+4. Messenger, Mail, and Calendar entity stores (`entities/*`) provide domain state
 5. UI subscribes through minimal selectors
 
 ## Repository Structure

@@ -54,7 +54,10 @@ export const MessageBubbleStandardBody = React.memo<MessageBubbleStandardBodyPro
     linkPreviewVisibilityRef,
     linkPreviews,
   }) {
-    const externalSourceName = getExternalMessageSourceName(message.source_name, message.source);
+    const externalSourceName =
+      message.provider == null
+        ? getExternalMessageSourceName(message.source_name, message.source)
+        : undefined;
     return (
       <div
         ref={linkPreviewVisibilityRef}
@@ -90,10 +93,13 @@ export const MessageBubbleStandardBody = React.memo<MessageBubbleStandardBodyPro
               />
             </div>
           ) : null}
-          <div className="flex flex-shrink-0 items-center gap-1 text-[11px] text-text-muted">
+          <div
+            className="flex flex-shrink-0 items-center gap-1 text-[11px] text-text-muted"
+            data-testid={`message-meta-${message.id}`}
+          >
             <ExternalSourceBadge sourceName={externalSourceName} />
-            <span>{time}</span>
             {ownDeliveryIndicator}
+            <span data-testid={`message-time-${message.id}`}>{time}</span>
           </div>
         </div>
       </div>

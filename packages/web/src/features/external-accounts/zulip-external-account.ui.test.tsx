@@ -1,17 +1,20 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setLocale } from "~/i18n/i18n";
 import { renderWithProviders } from "~/test/render";
+import { publishExternalAccountUpdated } from "./external-account-realtime.lib";
 import { ZulipExternalAccountCard } from "./zulip-external-account.ui";
 
 const fetchZulipExternalAccountMock = vi.hoisted(() => vi.fn());
 const saveZulipExternalAccountMock = vi.hoisted(() => vi.fn());
 const unlinkZulipExternalAccountMock = vi.hoisted(() => vi.fn());
+const fetchWorkspaceProvidersMock = vi.hoisted(() => vi.fn());
 
 vi.mock("~/features/external-accounts/external-accounts.api", () => ({
   fetchZulipExternalAccount: fetchZulipExternalAccountMock,
   saveZulipExternalAccount: saveZulipExternalAccountMock,
   unlinkZulipExternalAccount: unlinkZulipExternalAccountMock,
+  fetchWorkspaceProviders: fetchWorkspaceProvidersMock,
 }));
 
 describe("ZulipExternalAccountCard", () => {
@@ -19,11 +22,21 @@ describe("ZulipExternalAccountCard", () => {
     setLocale("en");
     fetchZulipExternalAccountMock.mockReset();
     fetchZulipExternalAccountMock.mockResolvedValue(null);
+    fetchWorkspaceProvidersMock.mockReset();
+    fetchWorkspaceProvidersMock.mockResolvedValue([
+      {
+        uuid: "provider-zulip",
+        name: "Zulip provider",
+        supportedKinds: ["zulip"],
+        version: null,
+      },
+    ]);
     saveZulipExternalAccountMock.mockReset();
     saveZulipExternalAccountMock.mockResolvedValue({
       ok: true,
       account: {
         uuid: "account-1",
+        providerUuid: "provider-zulip",
         externalUserId: "42",
         accountType: "zulip",
         hasCredentials: true,
@@ -45,6 +58,7 @@ describe("ZulipExternalAccountCard", () => {
   it("loads an existing Zulip account without pre-filling the token", async () => {
     fetchZulipExternalAccountMock.mockResolvedValue({
       uuid: "account-1",
+      providerUuid: "provider-zulip",
       externalUserId: "42",
       accountType: "zulip",
       hasCredentials: true,
@@ -67,12 +81,43 @@ describe("ZulipExternalAccountCard", () => {
     expect(screen.getByLabelText("Zulip API token")).toHaveValue("");
   });
 
+  it("reloads the account when the common event stream reports an update", async () => {
+    renderWithProviders(<ZulipExternalAccountCard />);
+    await waitFor(() => expect(fetchZulipExternalAccountMock).toHaveBeenCalledOnce());
+    fetchZulipExternalAccountMock.mockResolvedValue({
+      uuid: "account-1",
+      providerUuid: "provider-zulip",
+      externalUserId: "42",
+      accountType: "zulip",
+      hasCredentials: true,
+      accountSettings: {
+        kind: "zulip",
+        login: "alice@example.com",
+        serverUrl: "https://zulip.example.com",
+      },
+    });
+
+    act(() => {
+      publishExternalAccountUpdated({
+        kind: "external_account.updated",
+        account_type: "zulip",
+      });
+    });
+
+    await waitFor(() => expect(fetchZulipExternalAccountMock).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText("Zulip account connected")).toBeInTheDocument();
+  });
+
   it("creates a new Zulip account from form values", async () => {
     renderWithProviders(<ZulipExternalAccountCard />);
 
     await waitFor(() => expect(fetchZulipExternalAccountMock).toHaveBeenCalled());
     expect(screen.queryByLabelText("Zulip login")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /add zulip account/i }));
+    await screen.findByRole("option", { name: "Zulip provider" });
+    fireEvent.change(screen.getByLabelText("Provider"), {
+      target: { value: "provider-zulip" },
+    });
     fireEvent.change(screen.getByLabelText("Zulip server URL"), {
       target: { value: "https://zulip.example.com" },
     });
@@ -87,6 +132,7 @@ describe("ZulipExternalAccountCard", () => {
     await waitFor(() =>
       expect(saveZulipExternalAccountMock).toHaveBeenCalledWith({
         uuid: undefined,
+        providerUuid: "provider-zulip",
         login: "alice@example.com",
         serverUrl: "https://zulip.example.com",
         token: "z1",
@@ -99,6 +145,7 @@ describe("ZulipExternalAccountCard", () => {
   it("updates the existing Zulip account by uuid", async () => {
     fetchZulipExternalAccountMock.mockResolvedValue({
       uuid: "account-1",
+      providerUuid: "provider-zulip",
       externalUserId: "42",
       accountType: "zulip",
       hasCredentials: true,
@@ -124,6 +171,7 @@ describe("ZulipExternalAccountCard", () => {
     await waitFor(() =>
       expect(saveZulipExternalAccountMock).toHaveBeenCalledWith({
         uuid: "account-1",
+        providerUuid: "provider-zulip",
         login: "alice@example.com",
         serverUrl: "https://next-zulip.example.com",
         token: "z2",
@@ -134,6 +182,7 @@ describe("ZulipExternalAccountCard", () => {
   it("unlinks the existing Zulip account", async () => {
     fetchZulipExternalAccountMock.mockResolvedValue({
       uuid: "account-1",
+      providerUuid: "provider-zulip",
       externalUserId: "42",
       accountType: "zulip",
       hasCredentials: true,
@@ -158,6 +207,7 @@ describe("ZulipExternalAccountCard", () => {
   it("treats an account without credentials as not connected and keeps the URL", async () => {
     fetchZulipExternalAccountMock.mockResolvedValue({
       uuid: "account-2",
+      providerUuid: "provider-zulip",
       accountType: "zulip",
       hasCredentials: false,
       accountSettings: {
@@ -184,6 +234,7 @@ describe("ZulipExternalAccountCard", () => {
     await waitFor(() =>
       expect(saveZulipExternalAccountMock).toHaveBeenCalledWith({
         uuid: "account-2",
+        providerUuid: "provider-zulip",
         login: "alice@example.com",
         serverUrl: "https://zulip.example.com",
         token: "z1",

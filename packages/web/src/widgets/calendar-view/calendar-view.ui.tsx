@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import { CalendarEventFormDialog } from "~/features/calendar-event-form/calendar-event-form.ui";
 import { CalendarMoveEventDialog } from "~/features/calendar-move-event/calendar-move-event-dialog.ui";
 import { CalendarRecurrenceScopeDialog } from "~/features/calendar-recurrence-scope/calendar-recurrence-scope-dialog.ui";
@@ -13,6 +13,7 @@ import { useCalendarView } from "./calendar-view.hook";
 import { CalendarWeekGrid } from "./calendar-week-grid.ui";
 
 export const CalendarView: React.FC = () => {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const {
     error,
     calendars,
@@ -83,6 +84,22 @@ export const CalendarView: React.FC = () => {
     setMoveDialogOpen(true);
   }, [setMoveDialogOpen]);
 
+  const handleToggleSidebar = useCallback(() => {
+    setSidebarOpen((open) => !open);
+  }, []);
+
+  const handleCloseSidebar = useCallback(() => {
+    setSidebarOpen(false);
+  }, []);
+
+  const handleExportSelected = useCallback(() => {
+    void handleExportEvent();
+  }, [handleExportEvent]);
+
+  const handleCloseDetail = useCallback(() => {
+    selectEvent(null);
+  }, [selectEvent]);
+
   const renamingCalendar = calendars.find((calendar) => calendar.id === renamingCalendarId) ?? null;
 
   const handleRenameSubmit = useCallback(
@@ -94,7 +111,7 @@ export const CalendarView: React.FC = () => {
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col p-3">
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-3">
       <CalendarToolbar
         viewMode={viewMode}
         title={toolbarTitle}
@@ -105,6 +122,7 @@ export const CalendarView: React.FC = () => {
         onPrev={handlePrev}
         onNext={handleNext}
         onToday={handleToday}
+        onToggleSidebar={handleToggleSidebar}
         onNewEvent={handleNewEvent}
       />
       {error != null && error.length > 0 ? (
@@ -112,8 +130,17 @@ export const CalendarView: React.FC = () => {
           {error}
         </p>
       ) : null}
-      <div className="flex min-h-0 flex-1 gap-3">
+      <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl border border-border-subtle bg-bg">
+        {sidebarOpen ? (
+          <button
+            type="button"
+            className="bg-bg/70 absolute inset-0 z-dropdown backdrop-blur-sm md:hidden"
+            onClick={handleCloseSidebar}
+            aria-label={t("common.close")}
+          />
+        ) : null}
         <CalendarSidebarPanel
+          open={sidebarOpen}
           calendars={calendars}
           visibleCalendarIds={visibleCalendarIds}
           focusDate={focusDate}
@@ -125,7 +152,7 @@ export const CalendarView: React.FC = () => {
           onRenameCalendar={handleOpenRenameCalendar}
           getCalendarColor={getCalendarColor}
         />
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {loadingEvents ? (
             <p className="text-sm text-text-muted">{t("calendar.loading")}</p>
           ) : null}
@@ -161,7 +188,7 @@ export const CalendarView: React.FC = () => {
               />
             </div>
           ) : null}
-        </div>
+        </main>
         <CalendarEventDetail
           event={selectedEvent}
           calendarName={selectedCalendarName}
@@ -170,8 +197,8 @@ export const CalendarView: React.FC = () => {
           onEdit={handleEditEvent}
           onDelete={handleDeleteEvent}
           onMove={handleOpenMoveDialog}
-          onExport={() => void handleExportEvent()}
-          onClose={() => selectEvent(null)}
+          onExport={handleExportSelected}
+          onClose={handleCloseDetail}
         />
       </div>
       <CalendarEventFormDialog

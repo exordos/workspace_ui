@@ -502,6 +502,9 @@
     "externalAccountUnlinkError": "Failed to unlink external account",
     "externalAccountForbidden": "You do not have permission to save this account",
     "externalAccountConflict": "This external account is already linked",
+    "externalAccountProvider": "Provider",
+    "externalAccountProviderPlaceholder": "Select a provider",
+    "externalAccountProviderLoadError": "Provider catalog is unavailable",
     "externalAccountInvalid": "Check Zulip account fields",
     "mailAccount": "Mail account (IMAP/SMTP)",
     "calendarAccount": "Calendar account (CalDAV)",
@@ -819,6 +822,7 @@
     "batchSelect": "Select",
     "batchDone": "Done",
     "batchDelete": "Delete ({{count}})",
+    "selectedCount": "{{count}} selected",
     "loadMore": "Load more",
     "reply": "Reply",
     "replyAll": "Reply all",
@@ -887,6 +891,7 @@
       "markAllRead": "Failed to mark all as read"
     },
     "previewEmpty": "Select a message to preview",
+    "backToList": "Back to message list",
     "from": "From",
     "unread_one": "{{count}} unread",
     "unread_other": "{{count}} unread",
@@ -995,6 +1000,11 @@
     "loadMore": "Load more",
     "email": "Email",
     "retry": "Retry"
+  },
+  "providerDelivery": {
+    "pending": "Pending delivery via {{provider}}",
+    "delivered": "Delivered via {{provider}}",
+    "failed": "Delivery via {{provider}} failed"
   },
   "sidebar": {
     "emptyAllChats": "No chats yet",

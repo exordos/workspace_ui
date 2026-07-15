@@ -5,17 +5,20 @@ import { useCurrentChatMessagesStore } from "~/entities/message/message.model";
 import { useNotificationSettingsStore } from "~/entities/notification-settings/notification-settings.model";
 import { useUsersStore } from "~/entities/user/user.model";
 import { useChatInfoStore } from "~/features/chat-info/chat-info.model";
+import { publishExternalAccountUpdated } from "~/features/external-accounts/external-account-realtime.lib";
 import { useFolderSyncStore } from "~/features/folder-sync/folder-sync.model";
 import { useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { useMuteStore } from "~/features/mute-chat/mute-chat.model";
 import { useSettingsStore } from "~/features/settings/settings.model";
 import { useTypingIndicatorStore } from "~/features/typing-indicator/typing-indicator.model";
-import type { MessengerEvent } from "~/shared/api/messenger.types";
 import { upsertDmIndexFromMessages } from "~/shared/lib/dm-index";
+import { adaptWorkspaceEventForMessenger } from "~/shared/lib/event-loop";
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import { playNotificationSound } from "~/shared/lib/notification-sound";
 import { resolveNotificationSoundPreset } from "~/shared/lib/notification-sound-preset.lib";
 import { notificationService } from "~/shared/lib/notifications";
+import type { WorkspaceEvent } from "~/shared/types/workspace-event";
+import { handleCanonicalGroupwareEvent } from "./layout-messenger-event-dispatch-groupware.lib";
 import {
   buildLayoutNotificationsActions,
   dispatchMessengerEvent,
@@ -60,14 +63,29 @@ export interface LayoutMessengerEventLoopOnEventOptions {
 
 export function createLayoutMessengerEventLoopOnEventHandler(
   options: LayoutMessengerEventLoopOnEventOptions,
-): (event: MessengerEvent) => void {
+): (event: WorkspaceEvent) => void {
   return (event) => handleLayoutMessengerEventLoopQueueEvent(event, options);
 }
 
 export function handleLayoutMessengerEventLoopQueueEvent(
-  event: MessengerEvent,
+  event: WorkspaceEvent,
   options: LayoutMessengerEventLoopOnEventOptions,
 ): void {
+  if (
+    event.object_type === "mail_folder" ||
+    event.object_type === "mail_message" ||
+    event.object_type === "calendar" ||
+    event.object_type === "calendar_event"
+  ) {
+    handleCanonicalGroupwareEvent(event);
+    return;
+  }
+  if (event.object_type === "external_account") {
+    publishExternalAccountUpdated(event.payload);
+    return;
+  }
+  const adapted = adaptWorkspaceEventForMessenger(event);
+  if (adapted?.event == null) return;
   const chatList = useChatListStore.getState();
   const currentChat = useCurrentChatMessagesStore.getState();
   const users = useUsersStore.getState();
@@ -78,7 +96,7 @@ export function handleLayoutMessengerEventLoopQueueEvent(
   const jitsiCall = useJitsiCallStore.getState();
   const folderSync = useFolderSyncStore.getState();
 
-  dispatchMessengerEvent(event, {
+  dispatchMessengerEvent(adapted.event, {
     currentInstanceId: options.currentInstanceId,
     chatList,
     currentChat,

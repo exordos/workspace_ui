@@ -13,7 +13,6 @@ const event: CalendarEvent = {
   start: "2026-06-17T10:00:00",
   end: "2026-06-17T11:00:00",
   allDay: false,
-  etag: null,
   recurrence: null,
   attendees: [],
   alarms: [],
@@ -51,7 +50,7 @@ describe("CalendarDayGrid", () => {
       />,
     );
 
-    const column = screen.getByTestId("calendar-day-column-2026-06-17");
+    const column = screen.getByTestId("calendar-day-slot-2026-06-17");
     vi.spyOn(column, "getBoundingClientRect").mockReturnValue({
       top: 0,
       left: 0,
@@ -70,5 +69,24 @@ describe("CalendarDayGrid", () => {
     const [, start] = onSelectTimeSlot.mock.calls[0] as [Date, Date];
     expect(start.getHours()).toBe(10);
     expect(start.getMinutes()).toBe(0);
+  });
+
+  it("keeps event controls outside the time-slot button", () => {
+    render(
+      <CalendarDayGrid
+        date={new Date("2026-06-17T12:00:00")}
+        events={[event]}
+        getEventColor={() => "var(--accent)"}
+        onSelectEvent={vi.fn()}
+        onSelectTimeSlot={vi.fn()}
+      />,
+    );
+
+    const eventButton = screen.getByRole("button", { name: "Standup" });
+    const slotButton = screen.getByTestId("calendar-day-slot-2026-06-17");
+
+    expect(eventButton.parentElement?.closest("button")).toBeNull();
+    expect(slotButton).not.toContainElement(eventButton);
+    expect(slotButton.parentElement).toHaveAttribute("role", "gridcell");
   });
 });

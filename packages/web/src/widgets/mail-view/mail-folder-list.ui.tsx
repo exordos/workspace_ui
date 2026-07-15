@@ -70,22 +70,24 @@ const MailFolderRow = React.memo<{
     const label = resolveMailFolderLabel(folder);
     const iconName = getMailFolderIconName(folder.path);
     const rowStateClass = active
-      ? "border-l-accent bg-sidebar-hover"
+      ? "border-l-accent bg-card-bg-active shadow-sm"
       : "border-l-transparent hover:bg-sidebar-hover";
     const indentStyle = compact
       ? undefined
-      : { paddingLeft: depth > 0 ? `${8 + depth * 12}px` : undefined };
+      : ({ "--mail-folder-indent": `${depth > 0 ? 8 + depth * 12 : 8}px` } as React.CSSProperties);
 
     if (compact) {
       return (
-        <div className={`flex w-full flex-col items-center border-l-2 ${rowStateClass}`}>
+        <div
+          className={`mx-1 flex w-auto flex-col items-center rounded-lg border-l-2 ${rowStateClass}`}
+        >
           <button
             type="button"
             onClick={handleClick}
             title={folder.path}
             aria-label={label}
             aria-current={active ? "page" : undefined}
-            className="flex w-full flex-col items-center gap-1 px-0 py-2 transition-colors"
+            className="flex min-h-11 w-full flex-col items-center justify-center gap-0.5 px-0 py-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
           >
             <Icon
               name={iconName}
@@ -104,7 +106,7 @@ const MailFolderRow = React.memo<{
 
     return (
       <div
-        className={`flex w-full items-stretch border-l-2 pl-2 pr-2 ${rowStateClass}`}
+        className={`mx-1 flex w-auto items-stretch rounded-lg border-l-2 px-0 max-lg:flex-col max-lg:items-center lg:pl-[var(--mail-folder-indent)] lg:pr-1 ${rowStateClass}`}
         style={indentStyle}
       >
         {hasChildren ? (
@@ -112,7 +114,7 @@ const MailFolderRow = React.memo<{
             type="button"
             data-icon-hover="custom"
             onClick={handleToggleExpand}
-            className="flex h-6 w-6 shrink-0 items-center justify-center self-center rounded-none p-0 text-text-muted hover:bg-sidebar-hover hover:text-text-primary"
+            className="flex h-6 w-6 shrink-0 items-center justify-center self-center rounded-none p-0 text-text-muted hover:bg-sidebar-hover hover:text-text-primary max-lg:hidden"
             aria-label={expanded ? t("mail.collapseFolder") : t("mail.expandFolder")}
           >
             <Icon
@@ -122,22 +124,24 @@ const MailFolderRow = React.memo<{
             />
           </button>
         ) : (
-          <span className="w-6 shrink-0" aria-hidden />
+          <span className="w-6 shrink-0 max-lg:hidden" aria-hidden />
         )}
         <button
           type="button"
           onClick={handleClick}
           aria-current={active ? "page" : undefined}
-          className="flex min-w-0 flex-1 items-center gap-2 py-2.5 text-left text-sm transition-colors"
+          className="flex min-h-10 min-w-0 flex-1 items-center gap-2 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent max-lg:min-h-11 max-lg:w-full max-lg:flex-col max-lg:justify-center max-lg:gap-0.5 max-lg:px-0 max-lg:py-1.5"
         >
           <Icon name={iconName} size={18} className="shrink-0 text-text-muted" />
           <span
-            className={`min-w-0 flex-1 truncate ${active ? "font-medium text-text-primary" : "text-text-primary"}`}
+            className={`min-w-0 flex-1 truncate max-lg:hidden ${active ? "font-medium text-text-primary" : "text-text-primary"}`}
           >
             {label}
           </span>
           {folder.unread > 0 ? (
-            <span className="ml-2 shrink-0 text-xs font-medium text-accent">{folder.unread}</span>
+            <span className="ml-2 shrink-0 text-xs font-medium text-accent max-lg:ml-0">
+              {folder.unread}
+            </span>
           ) : null}
         </button>
         {active ? (
@@ -151,7 +155,7 @@ const MailFolderRow = React.memo<{
               <button
                 type="button"
                 data-icon-hover="custom"
-                className="flex h-8 w-8 shrink-0 items-center justify-center self-center rounded-none px-0 text-text-muted hover:bg-sidebar-hover hover:text-text-primary"
+                className="flex h-8 w-8 shrink-0 items-center justify-center self-center rounded-none px-0 text-text-muted hover:bg-sidebar-hover hover:text-text-primary max-lg:hidden"
                 aria-label={t("mail.folderActions.menu")}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -213,12 +217,20 @@ export const MailFolderList: React.FC<MailFolderListProps> = ({
   return (
     <nav aria-label={t("nav.mail")} className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div
-        className={`flex shrink-0 border-b border-border-subtle ${
-          compact ? "flex-col items-center px-1 py-2" : "flex-row items-center gap-1 px-2 py-2"
+        className={`flex min-h-11 shrink-0 border-b border-border-subtle ${
+          compact
+            ? "flex-col items-center justify-center px-1 py-1.5"
+            : "flex-row items-center gap-1 px-2 py-1.5 max-lg:flex-col max-lg:justify-center max-lg:px-1"
         }`}
       >
+        <span
+          className={`items-center justify-center text-accent ${compact ? "flex" : "flex lg:hidden"}`}
+          aria-hidden
+        >
+          <Icon name="mail" size={20} />
+        </span>
         {!compact ? (
-          <span className="min-w-0 flex-1 text-xs font-medium uppercase tracking-wide text-text-muted">
+          <span className="min-w-0 flex-1 text-xs font-medium uppercase tracking-wide text-text-muted max-lg:hidden">
             {t("mail.foldersLabel")}
           </span>
         ) : null}
@@ -227,14 +239,14 @@ export const MailFolderList: React.FC<MailFolderListProps> = ({
           variant="ghost"
           size="sm"
           onClick={handleToggleCompact}
-          className="h-8 w-8 shrink-0 px-0"
+          className="h-8 w-8 shrink-0 px-0 max-lg:hidden"
           aria-label={compact ? t("mail.foldersExpanded") : t("mail.foldersCompact")}
           title={compact ? t("mail.foldersExpanded") : t("mail.foldersCompact")}
         >
           <Icon name={compact ? "list_bulleted" : "grid"} size={18} />
         </Button>
       </div>
-      <div className="min-h-0 flex-1 divide-y divide-border-subtle overflow-y-auto">
+      <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto py-1.5">
         {visibleRows.map((row) => (
           <MailFolderRow
             key={row.folder.path}
@@ -261,12 +273,16 @@ export const MailFolderList: React.FC<MailFolderListProps> = ({
           variant="ghost"
           size="sm"
           onClick={handleCreateFolder}
-          className={compact ? "h-8 w-8 px-0" : "h-8 w-full justify-start gap-2 px-0"}
+          className={
+            compact
+              ? "h-8 w-8 px-0"
+              : "h-8 w-full justify-start gap-2 px-0 max-lg:w-8 max-lg:justify-center"
+          }
           aria-label={t("mail.createFolder")}
           title={t("mail.createFolder")}
         >
           <Icon name="add" size={18} />
-          {!compact ? <span>{t("mail.createFolder")}</span> : null}
+          {!compact ? <span className="max-lg:hidden">{t("mail.createFolder")}</span> : null}
         </Button>
       </div>
     </nav>

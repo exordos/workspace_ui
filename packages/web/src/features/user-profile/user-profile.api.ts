@@ -74,6 +74,7 @@ export async function updateOwnProfile(
   guard.nonEmpty(fullName, "updateOwnProfile.fullName");
   guard.nonEmpty(timezone, "updateOwnProfile.timezone");
 
+  await Promise.resolve();
   return { ok: true };
 }
 
@@ -98,18 +99,18 @@ export function getOwnAvatarCapabilities(): OwnAvatarCapabilities {
   };
 }
 
-export async function uploadOwnAvatar(_file: File): Promise<OwnAvatarMutationResult> {
-  return {
+export function uploadOwnAvatar(_file: File): Promise<OwnAvatarMutationResult> {
+  return Promise.resolve({
     ok: false,
     kind: "unsupported",
     message: "Avatar changes are not supported by the current backend",
-  };
+  });
 }
 
-export async function removeOwnAvatar(): Promise<OwnAvatarMutationResult> {
-  return {
+export function removeOwnAvatar(): Promise<OwnAvatarMutationResult> {
+  return Promise.resolve({
     ok: false,
     kind: "unsupported",
     message: "Avatar changes are not supported by the current backend",
-  };
+  });
 }

@@ -4,6 +4,7 @@
 import type { MessageId } from "~/shared/lib/message-id.lib";
 import type { LinkPreviewData } from "~/shared/lib/message-link-preview.types";
 import type { UserId } from "~/shared/lib/user-id.lib";
+import type { Delivery, ProviderSummary } from "~/shared/types/provider-delivery";
 
 export type WorkspaceStreamNotificationMode = "all_messages" | "mentions_only" | "muted";
 export type WorkspaceTopicNotificationMode = "default" | "mute" | "follow" | "unmute";
@@ -100,6 +101,8 @@ export interface MessengerMeMessage {
   last_synced_at?: string;
   created_at?: string;
   updated_at?: string;
+  provider?: ProviderSummary | null;
+  delivery?: Delivery | null;
 }
 
 /** Stream topic row returned by `GET /api/workspace/v1/messenger/stream_topics/`. */
@@ -295,6 +298,8 @@ export interface WorkspaceRawMessage {
   source?: MessengerSource;
   flags?: string[];
   reactions?: MessageReactions;
+  provider?: ProviderSummary | null;
+  delivery?: Delivery | null;
 }
 
 export type ActivityFilter = "starred" | "mentions" | "reactions";
@@ -380,6 +385,10 @@ export interface MockMessage {
   /** Event/cache flags (e.g. 'read', 'mentioned') projected from gateway booleans where needed. */
   flags?: string[];
   reactions?: MessageReactions;
+  /** Provider responsible for synchronizing this message, if external. */
+  provider?: ProviderSummary | null;
+  /** Backend-owned external delivery state. */
+  delivery?: Delivery | null;
   /** Local delivery state for optimistic outgoing messages. */
   delivery_status?: MockMessageDeliveryStatus;
   /** Local state for optimistic edits of existing server messages. */
@@ -428,6 +437,8 @@ export interface RawMessageToMockInput {
   source?: MessengerSource;
   flags?: string[];
   reactions?: MessageReactions;
+  provider?: ProviderSummary | null;
+  delivery?: Delivery | null;
 }
 
 export interface MessengerSubscription {

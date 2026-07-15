@@ -11,6 +11,9 @@ import type {
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
 import { SectionLabel } from "~/shared/ui/section-label.ui";
+import { subscribeExternalAccountUpdates } from "./external-account-realtime.lib";
+import { useProviderCatalog } from "./provider-catalog.hook";
+import { ProviderSelect } from "./provider-select.ui";
 
 export interface ZulipExternalAccountCardProps {
   compact?: boolean;
@@ -36,34 +39,46 @@ export const ZulipExternalAccountCard: React.FC<ZulipExternalAccountCardProps> =
   const [login, setLogin] = useState("");
   const [serverUrl, setServerUrl] = useState("");
   const [token, setToken] = useState("");
+  const [providerUuid, setProviderUuid] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isUnlinking, setIsUnlinking] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const providerCatalog = useProviderCatalog("zulip");
 
   useEffect(() => {
-    const controller = new AbortController();
-    void fetchZulipExternalAccount({ signal: controller.signal })
-      .then((nextAccount) => {
-        if (controller.signal.aborted) return;
-        setAccount(nextAccount);
-        setLogin(nextAccount?.accountSettings.login ?? "");
-        setServerUrl(nextAccount?.accountSettings.serverUrl ?? "");
-        setToken("");
-      })
-      .catch(() => {
-        if (controller.signal.aborted) return;
-        setError(t("settings.externalAccountLoadError"));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
-          setIsLoading(false);
-        }
-      });
+    let controller: AbortController | null = null;
+    const loadAccount = (hydrateForm: boolean) => {
+      controller?.abort();
+      const requestController = new AbortController();
+      controller = requestController;
+      void fetchZulipExternalAccount({ signal: requestController.signal })
+        .then((nextAccount) => {
+          if (requestController.signal.aborted) return;
+          setAccount(nextAccount);
+          if (!hydrateForm) return;
+          setLogin(nextAccount?.accountSettings.login ?? "");
+          setServerUrl(nextAccount?.accountSettings.serverUrl ?? "");
+          setToken("");
+          setProviderUuid(nextAccount?.providerUuid ?? "");
+        })
+        .catch(() => {
+          if (requestController.signal.aborted) return;
+          setError(t("settings.externalAccountLoadError"));
+        })
+        .finally(() => {
+          if (!requestController.signal.aborted) {
+            setIsLoading(false);
+          }
+        });
+    };
+    loadAccount(true);
+    const unsubscribe = subscribeExternalAccountUpdates(() => loadAccount(false));
     return () => {
-      controller.abort();
+      controller?.abort();
+      unsubscribe();
     };
   }, []);
 
@@ -72,7 +87,12 @@ export const ZulipExternalAccountCard: React.FC<ZulipExternalAccountCardProps> =
     const trimmedLogin = login.trim();
     const trimmedServerUrl = serverUrl.trim();
     const trimmedToken = token.trim();
-    if (trimmedLogin.length === 0 || trimmedServerUrl.length === 0 || trimmedToken.length === 0) {
+    if (
+      providerUuid.length === 0 ||
+      trimmedLogin.length === 0 ||
+      trimmedServerUrl.length === 0 ||
+      trimmedToken.length === 0
+    ) {
       setError(t("settings.externalAccountRequired"));
       setSuccess(null);
       return;
@@ -83,6 +103,7 @@ export const ZulipExternalAccountCard: React.FC<ZulipExternalAccountCardProps> =
     setSuccess(null);
     void saveZulipExternalAccount({
       uuid: account?.uuid,
+      providerUuid,
       login: trimmedLogin,
       serverUrl: trimmedServerUrl,
       token: trimmedToken,
@@ -96,6 +117,7 @@ export const ZulipExternalAccountCard: React.FC<ZulipExternalAccountCardProps> =
         setLogin(result.account.accountSettings.login);
         setServerUrl(result.account.accountSettings.serverUrl);
         setToken("");
+        setProviderUuid(result.account.providerUuid);
         setIsFormOpen(false);
         setSuccess(t("settings.externalAccountSaved"));
       })
@@ -105,7 +127,7 @@ export const ZulipExternalAccountCard: React.FC<ZulipExternalAccountCardProps> =
       .finally(() => {
         setIsSaving(false);
       });
-  }, [account?.uuid, isSaving, isUnlinking, login, serverUrl, token]);
+  }, [account?.uuid, isSaving, isUnlinking, login, providerUuid, serverUrl, token]);
 
   const handleUnlink = useCallback(() => {
     const accountUuid = account?.uuid;
@@ -124,6 +146,7 @@ export const ZulipExternalAccountCard: React.FC<ZulipExternalAccountCardProps> =
         setLogin("");
         setServerUrl("");
         setToken("");
+        setProviderUuid("");
         setIsFormOpen(false);
         setSuccess(t("settings.externalAccountUnlinked"));
       })
@@ -171,6 +194,13 @@ export const ZulipExternalAccountCard: React.FC<ZulipExternalAccountCardProps> =
       </header>
       {isFormOpen && (
         <div className={formClassName}>
+          <ProviderSelect
+            providers={providerCatalog.providers}
+            value={providerUuid}
+            disabled={isLoading || providerCatalog.loading || isSaving || isUnlinking}
+            failed={providerCatalog.failed}
+            onChange={setProviderUuid}
+          />
           <label className="block min-w-0">
             <SectionLabel className="mb-1">{t("settings.zulipServerUrl")}</SectionLabel>
             <input

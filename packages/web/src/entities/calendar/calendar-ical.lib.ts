@@ -85,11 +85,7 @@ function parseRecurrence(vevent: ICAL.Component): CalendarRecurrence | null {
   return { rrule: value.toString() };
 }
 
-export function parseVeventFromIcs(
-  icsData: string,
-  calendarId: string,
-  etag: string | null,
-): CalendarEvent[] {
+export function parseVeventFromIcs(icsData: string, calendarId: string): CalendarEvent[] {
   const jcal = ICAL.parse(icsData);
   const comp = new ICAL.Component(jcal);
   const vevents = comp.getAllSubcomponents("vevent");
@@ -134,7 +130,6 @@ export function parseVeventFromIcs(
       start: startParsed.iso,
       end: endParsed.iso,
       allDay: startParsed.allDay,
-      etag,
       recurrence: parseRecurrence(vevent),
       attendees: parseAttendees(vevent),
       alarms: parseAlarms(vevent),
@@ -332,7 +327,6 @@ export function buildIcsWithExdate(event: CalendarEvent, recurrenceId: string): 
         attendees: event.attendees,
         alarms: event.alarms,
         uid: event.uid,
-        etag: event.etag,
       },
       event.uid,
     ),

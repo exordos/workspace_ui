@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { t } from "~/i18n/i18n";
 import { Icon } from "~/shared/ui/icon";
 import { SectionLabel } from "~/shared/ui/section-label.ui";
+import { subscribeExternalAccountUpdates } from "./external-account-realtime.lib";
 import {
   fetchCalendarExternalAccount,
   fetchMailExternalAccount,
@@ -9,6 +10,8 @@ import {
   saveMailExternalAccount,
   unlinkGroupwareExternalAccount,
 } from "./external-accounts.api";
+import { useProviderCatalog } from "./provider-catalog.hook";
+import { ProviderSelect } from "./provider-select.ui";
 import type {
   CalendarExternalAccount,
   ExternalAccountAccessStatus,
@@ -62,6 +65,7 @@ export function MailExternalAccountCard(): React.ReactElement {
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [providerUuid, setProviderUuid] = useState("");
   const [imapHost, setImapHost] = useState("");
   const [imapPort, setImapPort] = useState(993);
   const [smtpHost, setSmtpHost] = useState("");
@@ -69,25 +73,41 @@ export function MailExternalAccountCard(): React.ReactElement {
   const [saving, setSaving] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const providerCatalog = useProviderCatalog("mail");
 
   useEffect(() => {
-    const controller = new AbortController();
-    void fetchMailExternalAccount(controller.signal).then((value) => {
-      if (controller.signal.aborted || value == null) return;
-      setAccount(value);
-      setEmail(value.email);
-      setUsername(value.email);
-      setImapHost(value.imapHost);
-      setImapPort(value.imapPort);
-      setSmtpHost(value.smtpHost);
-      setSmtpPort(value.smtpPort);
-    });
-    return () => controller.abort();
+    let controller: AbortController | null = null;
+    const loadAccount = (hydrateForm: boolean) => {
+      controller?.abort();
+      const requestController = new AbortController();
+      controller = requestController;
+      void fetchMailExternalAccount(requestController.signal).then((value) => {
+        if (requestController.signal.aborted || value == null) return;
+        setAccount(value);
+        if (!hydrateForm) return;
+        setEmail(value.email);
+        setUsername(value.email);
+        setImapHost(value.imapHost);
+        setImapPort(value.imapPort);
+        setSmtpHost(value.smtpHost);
+        setSmtpPort(value.smtpPort);
+        setProviderUuid(value.providerUuid);
+      });
+    };
+    loadAccount(true);
+    const unsubscribe = subscribeExternalAccountUpdates(() => loadAccount(false));
+    return () => {
+      controller?.abort();
+      unsubscribe();
+    };
   }, []);
 
   const save = () => {
     if (saving) return;
-    if ([email, username, password, imapHost, smtpHost].some((value) => value.trim() === "")) {
+    if (
+      providerUuid === "" ||
+      [email, username, password, imapHost, smtpHost].some((value) => value.trim() === "")
+    ) {
       setError(t("settings.groupwareRequired"));
       return;
     }
@@ -95,6 +115,7 @@ export function MailExternalAccountCard(): React.ReactElement {
     setError(null);
     void saveMailExternalAccount({
       uuid: account?.uuid,
+      providerUuid,
       email,
       username,
       password,
@@ -135,6 +156,13 @@ export function MailExternalAccountCard(): React.ReactElement {
       <CardHeader icon="mail" title={t("settings.mailAccount")} status={account?.accessStatus} />
       {formOpen && (
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <ProviderSelect
+            providers={providerCatalog.providers}
+            value={providerUuid}
+            disabled={saving || providerCatalog.loading}
+            failed={providerCatalog.failed}
+            onChange={setProviderUuid}
+          />
           <Field label={t("common.email")}>
             <input
               className={inputClass}
@@ -188,6 +216,7 @@ export function MailExternalAccountCard(): React.ReactElement {
                 autoComplete="off"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                placeholder={account == null ? "" : t("auth.passwordPlaceholder")}
               />
             </Field>
           </div>
@@ -227,40 +256,61 @@ export function CalendarExternalAccountCard(): React.ReactElement {
   const [serverUrl, setServerUrl] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [providerUuid, setProviderUuid] = useState("");
   const [saving, setSaving] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const providerCatalog = useProviderCatalog("calendar");
 
   useEffect(() => {
-    const controller = new AbortController();
-    void fetchCalendarExternalAccount(controller.signal).then((value) => {
-      if (controller.signal.aborted || value == null) return;
-      setAccount(value);
-      setServerUrl(value.serverUrl);
-    });
-    return () => controller.abort();
+    let controller: AbortController | null = null;
+    const loadAccount = (hydrateForm: boolean) => {
+      controller?.abort();
+      const requestController = new AbortController();
+      controller = requestController;
+      void fetchCalendarExternalAccount(requestController.signal).then((value) => {
+        if (requestController.signal.aborted || value == null) return;
+        setAccount(value);
+        if (!hydrateForm) return;
+        setServerUrl(value.serverUrl);
+        setProviderUuid(value.providerUuid);
+      });
+    };
+    loadAccount(true);
+    const unsubscribe = subscribeExternalAccountUpdates(() => loadAccount(false));
+    return () => {
+      controller?.abort();
+      unsubscribe();
+    };
   }, []);
 
   const save = () => {
     if (saving) return;
-    if ([serverUrl, username, password].some((value) => value.trim() === "")) {
+    if (
+      providerUuid === "" ||
+      [serverUrl, username, password].some((value) => value.trim() === "")
+    ) {
       setError(t("settings.groupwareRequired"));
       return;
     }
     setSaving(true);
     setError(null);
-    void saveCalendarExternalAccount({ uuid: account?.uuid, serverUrl, username, password }).then(
-      (result) => {
-        setSaving(false);
-        if (!result.ok) {
-          setError(t("settings.groupwareSaveError"));
-          return;
-        }
-        setAccount(result.account);
-        setPassword("");
-        setFormOpen(false);
-      },
-    );
+    void saveCalendarExternalAccount({
+      uuid: account?.uuid,
+      providerUuid,
+      serverUrl,
+      username,
+      password,
+    }).then((result) => {
+      setSaving(false);
+      if (!result.ok) {
+        setError(t("settings.groupwareSaveError"));
+        return;
+      }
+      setAccount(result.account);
+      setPassword("");
+      setFormOpen(false);
+    });
   };
 
   const unlink = () => {
@@ -286,6 +336,13 @@ export function CalendarExternalAccountCard(): React.ReactElement {
       />
       {formOpen && (
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <ProviderSelect
+            providers={providerCatalog.providers}
+            value={providerUuid}
+            disabled={saving || providerCatalog.loading}
+            failed={providerCatalog.failed}
+            onChange={setProviderUuid}
+          />
           <div className="sm:col-span-2">
             <Field label={t("settings.caldavUrl")}>
               <input
@@ -310,6 +367,7 @@ export function CalendarExternalAccountCard(): React.ReactElement {
               autoComplete="off"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              placeholder={account == null ? "" : t("auth.passwordPlaceholder")}
             />
           </Field>
         </div>

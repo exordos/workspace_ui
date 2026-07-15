@@ -33,6 +33,7 @@ describe("external accounts API", () => {
       okResponse([
         {
           uuid: "account-1",
+          provider_uuid: "provider-zulip",
           external_user_id: "42",
           server_url: "https://zulip.example.com",
           account_type: "zulip",
@@ -41,6 +42,7 @@ describe("external accounts API", () => {
             kind: "zulip",
             credentials: {
               kind: "zulip",
+              email: "alice@example.com",
               login: "alice@example.com",
               token: "abc123",
             },
@@ -61,6 +63,7 @@ describe("external accounts API", () => {
 
     expect(account).toEqual({
       uuid: "account-1",
+      providerUuid: "provider-zulip",
       externalUserId: "42",
       accountType: "zulip",
       hasCredentials: true,
@@ -93,6 +96,7 @@ describe("external accounts API", () => {
       okResponse([
         {
           uuid: "account-2",
+          provider_uuid: "provider-zulip",
           server_url: "https://zulip.example.com",
           account_type: "zulip",
           status: "active",
@@ -116,6 +120,7 @@ describe("external accounts API", () => {
 
     expect(account).toMatchObject({
       uuid: "account-2",
+      providerUuid: "provider-zulip",
       accountType: "zulip",
       hasCredentials: false,
       status: "active",
@@ -136,6 +141,7 @@ describe("external accounts API", () => {
     messengerApi.postJsonWithBase.mockResolvedValue(
       okResponse({
         uuid: "account-1",
+        provider_uuid: "provider-zulip",
         server_url: "https://zulip.example.com",
         account_type: "zulip",
         account_settings: {
@@ -150,6 +156,7 @@ describe("external accounts API", () => {
 
     const { saveZulipExternalAccount } = await import("./external-accounts.api");
     const result = await saveZulipExternalAccount({
+      providerUuid: "provider-zulip",
       login: " alice@example.com ",
       serverUrl: " https://zulip.example.com ",
       token: " z1 ",
@@ -160,6 +167,7 @@ describe("external accounts API", () => {
       "/api/workspace/v1",
       "/external_users/",
       {
+        provider_uuid: "provider-zulip",
         account_type: "zulip",
         server_url: "https://zulip.example.com",
         account_settings: {
@@ -178,6 +186,7 @@ describe("external accounts API", () => {
     messengerApi.putJsonWithBase.mockResolvedValue(
       okResponse({
         uuid: "account-1",
+        provider_uuid: "provider-zulip",
         server_url: "https://next-zulip.example.com",
         account_type: "zulip",
         account_settings: {
@@ -193,6 +202,7 @@ describe("external accounts API", () => {
     const { saveZulipExternalAccount } = await import("./external-accounts.api");
     const result = await saveZulipExternalAccount({
       uuid: "account-1",
+      providerUuid: "provider-zulip",
       login: "next@example.com",
       serverUrl: "https://next-zulip.example.com",
       token: "z2",
@@ -203,6 +213,7 @@ describe("external accounts API", () => {
       "/api/workspace/v1",
       "/external_users/account-1",
       expect.objectContaining({
+        provider_uuid: "provider-zulip",
         server_url: "https://next-zulip.example.com",
         account_settings: expect.objectContaining({
           credentials: expect.objectContaining({
@@ -226,12 +237,50 @@ describe("external accounts API", () => {
 
     const { saveZulipExternalAccount } = await import("./external-accounts.api");
     const result = await saveZulipExternalAccount({
+      providerUuid: "provider-zulip",
       login: "alice@example.com",
       serverUrl: "https://zulip.example.com",
       token: "z1",
     });
 
     expect(result).toEqual({ ok: false, kind: "conflict" });
+  });
+
+  it("loads the strict backend provider catalog", async () => {
+    messengerApi.getWithBase.mockResolvedValue(
+      okResponse([
+        {
+          uuid: "provider-zulip",
+          name: "Zulip bridge",
+          supported_kinds: ["zulip"],
+          version: "1.2.3",
+          enabled: true,
+        },
+        {
+          uuid: "disabled-provider",
+          name: "Disabled",
+          supported_kinds: ["mail"],
+          version: null,
+          enabled: false,
+        },
+      ]),
+    );
+
+    const { fetchWorkspaceProviders } = await import("./external-accounts.api");
+    await expect(fetchWorkspaceProviders()).resolves.toEqual([
+      {
+        uuid: "provider-zulip",
+        name: "Zulip bridge",
+        supportedKinds: ["zulip"],
+        version: "1.2.3",
+      },
+    ]);
+    expect(messengerApi.getWithBase).toHaveBeenCalledWith(
+      "/api/workspace/v1",
+      "/providers/",
+      undefined,
+      undefined,
+    );
   });
 
   it("unlinks an existing Zulip account by uuid", async () => {

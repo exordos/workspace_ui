@@ -2,6 +2,7 @@
 
 import { getWorkspaceApiBaseForCurrentInstance, workspaceApi } from "~/shared/api/client";
 import { WorkspaceApiHttpError, workspaceOrvalMutator } from "~/shared/api/workspace-orval-mutator";
+import { requireProviderDeliveryMeta } from "~/shared/lib/provider-delivery.lib";
 import {
   assertDeleteFolderAllowed,
   computeMoveFolderPath,
@@ -39,7 +40,7 @@ export class MailApiError extends WorkspaceApiHttpError {
   }
 }
 
-interface WorkspaceMailFolder {
+export interface WorkspaceMailFolder {
   uuid: string;
   external_user_uuid?: string | null;
   path: string;
@@ -48,9 +49,11 @@ interface WorkspaceMailFolder {
   special_use?: string | null;
   unread_count?: number;
   total_count?: number;
+  provider: unknown;
+  delivery: unknown;
 }
 
-interface WorkspaceMailMessage {
+export interface WorkspaceMailMessage {
   uuid: string;
   folder_uuid: string;
   from_address: string;
@@ -66,6 +69,8 @@ interface WorkspaceMailMessage {
   sent_at: string;
   seen: boolean;
   flagged: boolean;
+  provider: unknown;
+  delivery: unknown;
 }
 
 interface WorkspaceMailAttachment {
@@ -101,10 +106,14 @@ async function request<T>(path: string, method = "GET", body?: unknown): Promise
   });
 }
 
-function mapFolder(folder: WorkspaceMailFolder): MailFolder {
+export function mapWorkspaceMailFolder(folder: WorkspaceMailFolder): MailFolder {
   folderIdsByPath.set(folder.path, folder.uuid);
   folderPathsById.set(folder.uuid, folder.path);
   externalUserIdsByPath.set(folder.path, folder.external_user_uuid ?? null);
+  const metadata = requireProviderDeliveryMeta({
+    provider: folder.provider,
+    delivery: folder.delivery,
+  });
   return {
     uuid: folder.uuid,
     path: folder.path,
@@ -112,10 +121,15 @@ function mapFolder(folder: WorkspaceMailFolder): MailFolder {
     unread: folder.unread_count ?? 0,
     total: folder.total_count ?? 0,
     specialUse: folder.special_use ?? null,
+    ...metadata,
   };
 }
 
-function mapMessage(message: WorkspaceMailMessage): MailMessageDetail {
+export function mapWorkspaceMailMessage(message: WorkspaceMailMessage): MailMessageDetail {
+  const metadata = requireProviderDeliveryMeta({
+    provider: message.provider,
+    delivery: message.delivery,
+  });
   return {
     uid: message.uuid,
     from: message.from_address,
@@ -131,6 +145,7 @@ function mapMessage(message: WorkspaceMailMessage): MailMessageDetail {
     messageId: message.message_id,
     replyTo: message.reply_to,
     references: message.references,
+    ...metadata,
   };
 }
 
@@ -176,7 +191,7 @@ export async function exchangeMailSession(
 
 export async function fetchMailFolders(_token: string): Promise<MailFoldersResult> {
   const data = await request<WorkspaceMailFolder[]>("/v1/mail/folders/");
-  const folders = data.map(mapFolder);
+  const folders = data.map(mapWorkspaceMailFolder);
   const delimiter =
     data.find((folder) => folder.delimiter.length > 0)?.delimiter ??
     detectMailFolderDelimiter(folders.map((folder) => folder.path));
@@ -198,7 +213,7 @@ export async function createMailFolder(
     delimiter,
     ...(parentExternalUserUuid == null ? {} : { external_user_uuid: parentExternalUserUuid }),
   });
-  mapFolder(folder);
+  mapWorkspaceMailFolder(folder);
   return folder.path;
 }
 
@@ -214,7 +229,7 @@ export async function renameMailFolder(
     name: input.name,
   });
   folderIdsByPath.delete(input.path);
-  mapFolder(folder);
+  mapWorkspaceMailFolder(folder);
   return path;
 }
 
@@ -229,7 +244,7 @@ export async function moveMailFolder(
     path,
   });
   folderIdsByPath.delete(input.path);
-  mapFolder(folder);
+  mapWorkspaceMailFolder(folder);
   return path;
 }
 
@@ -280,7 +295,7 @@ export async function fetchMailMessages(
   const data = await request<WorkspaceMailMessage[]>(
     `/v1/mail/messages/${query({ folder_uuid: folderUuid, page_limit: limit })}`,
   );
-  return { messages: data.map(mapMessage), nextCursor: null };
+  return { messages: data.map(mapWorkspaceMailMessage), nextCursor: null };
 }
 
 export async function fetchMailMessage(
@@ -294,7 +309,7 @@ export async function fetchMailMessage(
     await patchMailMessageFlags(token, "", uid, { addFlags: ["\\Seen"] });
     message = { ...message, seen: true };
   }
-  return mapMessage(message);
+  return mapWorkspaceMailMessage(message);
 }
 
 export async function patchMailMessageFlags(
@@ -385,7 +400,7 @@ async function createMessage(
     draft,
   });
   await uploadAttachments(message.uuid, payload.attachments ?? []);
-  return mapMessage(message);
+  return mapWorkspaceMailMessage(message);
 }
 
 export async function sendMailMessage(
@@ -519,7 +534,7 @@ export async function updateMailDraft(
     references: validated.references,
     draft: true,
   });
-  return mapMessage(message);
+  return mapWorkspaceMailMessage(message);
 }
 
 export async function deleteMailDraft(token: string, folder: string, uid: string): Promise<void> {

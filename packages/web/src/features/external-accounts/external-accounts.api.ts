@@ -20,11 +20,13 @@ import type {
   SaveZulipExternalAccountResult,
   UnlinkZulipExternalAccountResult,
   ZulipExternalAccount,
+  WorkspaceProvider,
 } from "./external-accounts.types";
 
 const log = createLogger("external-accounts:api");
 const EXTERNAL_ACCOUNTS_PATH = "/external_users/";
 const ZULIP_ACCOUNT_TYPE = "zulip";
+const PROVIDERS_PATH = "/providers/";
 
 interface RawExternalAccount {
   uuid?: unknown;
@@ -37,6 +39,15 @@ interface RawExternalAccount {
   updated_at?: unknown;
   access_status?: unknown;
   access_last_error?: unknown;
+  provider_uuid?: unknown;
+}
+
+interface RawWorkspaceProvider {
+  uuid?: unknown;
+  name?: unknown;
+  supported_kinds?: unknown;
+  version?: unknown;
+  enabled?: unknown;
 }
 
 function readPort(value: unknown, fallback: number): number {
@@ -100,15 +111,12 @@ function mapExternalAccount(raw: unknown): ZulipExternalAccount | null {
   }
   const row = raw as RawExternalAccount;
   const uuid = readString(row.uuid);
+  const providerUuid = readString(row.provider_uuid);
   const externalUserId = readString(row.external_user_id);
   const accountType = readString(row.account_type) ?? ZULIP_ACCOUNT_TYPE;
   const status = readString(row.status);
   const settings = isRecord(row.account_settings) ? row.account_settings : null;
-  const legacyCredentials =
-    settings != null && !("credentials" in settings) && readString(settings.login) != null
-      ? settings
-      : null;
-  const credentials = isRecord(settings?.credentials) ? settings.credentials : legacyCredentials;
+  const credentials = isRecord(settings?.credentials) ? settings.credentials : null;
   const userInfoRaw = isRecord(settings?.user_info) ? settings.user_info : null;
   const kind = readString(settings?.kind) ?? ZULIP_ACCOUNT_TYPE;
   const credentialsKind =
@@ -128,6 +136,7 @@ function mapExternalAccount(raw: unknown): ZulipExternalAccount | null {
   const role = readNumber(userInfoRaw?.role) ?? null;
   if (
     uuid == null ||
+    providerUuid == null ||
     accountType !== ZULIP_ACCOUNT_TYPE ||
     kind !== ZULIP_ACCOUNT_TYPE ||
     credentialsKind !== ZULIP_ACCOUNT_TYPE
@@ -138,6 +147,7 @@ function mapExternalAccount(raw: unknown): ZulipExternalAccount | null {
   const updatedAt = readString(row.updated_at);
   return {
     uuid,
+    providerUuid,
     accountType,
     hasCredentials,
     accountSettings: {
@@ -166,9 +176,17 @@ function mapMailExternalAccount(raw: unknown): MailExternalAccount | null {
   const row = raw as RawExternalAccount;
   const settings = isRecord(row.account_settings) ? row.account_settings : null;
   const uuid = readString(row.uuid);
-  if (uuid == null || row.account_type !== "mail" || settings?.kind !== "mail") return null;
+  const providerUuid = readString(row.provider_uuid);
+  if (
+    uuid == null ||
+    providerUuid == null ||
+    row.account_type !== "mail" ||
+    settings?.kind !== "mail"
+  )
+    return null;
   return {
     uuid,
+    providerUuid,
     accountType: "mail",
     serverUrl: readString(row.server_url) ?? "",
     email: readString(settings.email) ?? "",
@@ -191,9 +209,17 @@ function mapCalendarExternalAccount(raw: unknown): CalendarExternalAccount | nul
   const row = raw as RawExternalAccount;
   const settings = isRecord(row.account_settings) ? row.account_settings : null;
   const uuid = readString(row.uuid);
-  if (uuid == null || row.account_type !== "calendar" || settings?.kind !== "calendar") return null;
+  const providerUuid = readString(row.provider_uuid);
+  if (
+    uuid == null ||
+    providerUuid == null ||
+    row.account_type !== "calendar" ||
+    settings?.kind !== "calendar"
+  )
+    return null;
   return {
     uuid,
+    providerUuid,
     accountType: "calendar",
     serverUrl: readString(row.server_url) ?? "",
     accessStatus: readAccessStatus(row.access_status),
@@ -216,6 +242,7 @@ function mapMutationError(status: number): SaveExternalAccountErrorKind {
 }
 
 function buildZulipPayload(input: SaveZulipExternalAccountInput): {
+  provider_uuid: string;
   account_type: "zulip";
   server_url: string;
   account_settings: {
@@ -228,6 +255,7 @@ function buildZulipPayload(input: SaveZulipExternalAccountInput): {
   };
 } {
   return {
+    provider_uuid: guard.nonEmpty(input.providerUuid, "zulip provider uuid").trim(),
     account_type: ZULIP_ACCOUNT_TYPE,
     server_url: guard.nonEmpty(input.serverUrl, "zulip server url").trim(),
     account_settings: {
@@ -239,6 +267,47 @@ function buildZulipPayload(input: SaveZulipExternalAccountInput): {
       },
     },
   };
+}
+
+function mapWorkspaceProvider(raw: unknown): WorkspaceProvider | null {
+  if (!isRecord(raw)) return null;
+  const row = raw as RawWorkspaceProvider;
+  const uuid = readString(row.uuid);
+  const name = readString(row.name);
+  if (
+    uuid == null ||
+    name == null ||
+    row.enabled === false ||
+    !Array.isArray(row.supported_kinds)
+  ) {
+    return null;
+  }
+  const supportedKinds = row.supported_kinds.filter(
+    (kind): kind is "zulip" | "mail" | "calendar" =>
+      kind === "zulip" || kind === "mail" || kind === "calendar",
+  );
+  if (supportedKinds.length === 0) return null;
+  return {
+    uuid,
+    name,
+    supportedKinds,
+    version: readString(row.version) ?? null,
+  };
+}
+
+export async function fetchWorkspaceProviders(signal?: AbortSignal): Promise<WorkspaceProvider[]> {
+  const response = await messengerApi.getWithBase(
+    getWorkspaceCommonApiBaseForCurrentInstance(),
+    PROVIDERS_PATH,
+    undefined,
+    signal,
+  );
+  if (!response.ok) {
+    throw new Error(`Provider catalog request failed (${response.status})`);
+  }
+  return readRows(response.data)
+    .map(mapWorkspaceProvider)
+    .filter((provider): provider is WorkspaceProvider => provider != null);
 }
 
 function assertOkResponse(response: ApiResponse): response is ApiResponse & { ok: true } {
@@ -403,6 +472,7 @@ export function saveMailExternalAccount(
   return saveGroupwareAccount(
     input.uuid,
     {
+      provider_uuid: guard.nonEmpty(input.providerUuid, "mail provider uuid").trim(),
       server_url: `https://${imapHost}`,
       account_settings: {
         kind: "mail",
@@ -430,6 +500,7 @@ export function saveCalendarExternalAccount(
   return saveGroupwareAccount(
     input.uuid,
     {
+      provider_uuid: guard.nonEmpty(input.providerUuid, "calendar provider uuid").trim(),
       server_url: guard.nonEmpty(input.serverUrl, "CalDAV URL").trim(),
       account_settings: {
         kind: "calendar",

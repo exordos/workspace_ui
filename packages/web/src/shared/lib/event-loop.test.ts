@@ -86,10 +86,15 @@ class FakeWebSocket {
 function workspaceEvent(epochVersion: number, authorUuid = OTHER_UUID): unknown {
   const isOwn = authorUuid === USER_UUID;
   return {
+    schema_version: 1,
     epoch_version: epochVersion,
     uuid: `00000000-0000-4000-8000-${String(epochVersion).padStart(12, "0")}`,
     project_id: "00000000-0000-4000-8000-000000000901",
     user_uuid: USER_UUID,
+    object_type: "message",
+    action: "created",
+    created_at: "2026-06-24T10:20:30Z",
+    updated_at: "2026-06-24T10:20:30Z",
     payload: {
       kind: "message.created",
       uuid: MESSAGE_UUID,
@@ -113,10 +118,15 @@ function streamWorkspaceEvent(
   isArchived = false,
 ): unknown {
   return {
+    schema_version: 1,
     epoch_version: epochVersion,
     uuid: `00000000-0000-4000-8000-${String(epochVersion).padStart(12, "0")}`,
     project_id: "00000000-0000-4000-8000-000000000901",
     user_uuid: USER_UUID,
+    object_type: "stream",
+    action: kind.split(".")[1] ?? "updated",
+    created_at: "2026-06-24T10:20:30Z",
+    updated_at: "2026-06-24T10:20:30Z",
     payload: {
       kind,
       uuid: STREAM_UUID,
@@ -141,10 +151,15 @@ function streamWorkspaceEvent(
 
 function topicWorkspaceEvent(epochVersion: number, kind = "topic.created"): unknown {
   return {
+    schema_version: 1,
     epoch_version: epochVersion,
     uuid: `00000000-0000-4000-8000-${String(epochVersion).padStart(12, "0")}`,
     project_id: "00000000-0000-4000-8000-000000000901",
     user_uuid: USER_UUID,
+    object_type: "topic",
+    action: kind.split(".")[1] ?? "updated",
+    created_at: "2026-06-24T10:20:30Z",
+    updated_at: "2026-06-24T10:20:30Z",
     payload: {
       kind,
       uuid: TOPIC_UUID,
@@ -163,10 +178,15 @@ function topicWorkspaceEvent(epochVersion: number, kind = "topic.created"): unkn
 
 function topicDeletedWorkspaceEvent(epochVersion: number): unknown {
   return {
+    schema_version: 1,
     epoch_version: epochVersion,
     uuid: `00000000-0000-4000-8000-${String(epochVersion).padStart(12, "0")}`,
     project_id: "00000000-0000-4000-8000-000000000901",
     user_uuid: USER_UUID,
+    object_type: "topic",
+    action: "deleted",
+    created_at: "2026-06-24T10:20:30Z",
+    updated_at: "2026-06-24T10:20:30Z",
     payload: {
       kind: "topic.deleted",
       uuid: TOPIC_UUID,
@@ -177,10 +197,15 @@ function topicDeletedWorkspaceEvent(epochVersion: number): unknown {
 
 function folderUpdatedWorkspaceEvent(epochVersion: number): unknown {
   return {
+    schema_version: 1,
     epoch_version: epochVersion,
     uuid: `00000000-0000-4000-8000-${String(epochVersion).padStart(12, "0")}`,
     project_id: "00000000-0000-4000-8000-000000000901",
     user_uuid: USER_UUID,
+    object_type: "folder",
+    action: "updated",
+    created_at: "2026-06-24T10:20:30Z",
+    updated_at: "2026-06-24T10:20:30Z",
     payload: {
       kind: "folder.updated",
       uuid: FOLDER_UUID,
@@ -211,10 +236,15 @@ function folderUpdatedWorkspaceEvent(epochVersion: number): unknown {
 
 function streamBindingsCreatedWorkspaceEvent(epochVersion: number): unknown {
   return {
+    schema_version: 1,
     epoch_version: epochVersion,
     uuid: `00000000-0000-4000-8000-${String(epochVersion).padStart(12, "0")}`,
     project_id: "00000000-0000-4000-8000-000000000901",
     user_uuid: USER_UUID,
+    object_type: "stream_binding",
+    action: "created",
+    created_at: "2026-06-24T10:20:30Z",
+    updated_at: "2026-06-24T10:20:30Z",
     payload: {
       kind: "stream_bindings.created",
       project_id: "00000000-0000-4000-8000-000000000901",
@@ -237,10 +267,15 @@ function streamBindingsCreatedWorkspaceEvent(epochVersion: number): unknown {
 
 function userUpdatedWorkspaceEvent(epochVersion: number): unknown {
   return {
+    schema_version: 1,
     epoch_version: epochVersion,
     uuid: `00000000-0000-4000-8000-${String(epochVersion).padStart(12, "0")}`,
     project_id: "00000000-0000-4000-8000-000000000901",
     user_uuid: USER_UUID,
+    object_type: "user",
+    action: "updated",
+    created_at: "2026-06-24T10:20:30Z",
+    updated_at: "2026-06-24T10:20:30Z",
     payload: {
       kind: "user.updated",
       uuid: OTHER_UUID,
@@ -623,7 +658,7 @@ describe("Workspace realtime event normalization", () => {
     });
   });
 
-  it("maps WS message frames and derives own/read from hello user uuid", () => {
+  it("rejects legacy WS message frames", () => {
     const normalized = normalizeWorkspaceRealtimeEvent(
       {
         epoch_version: 13,
@@ -641,13 +676,7 @@ describe("Workspace realtime event normalization", () => {
       USER_UUID,
     );
 
-    expect(normalized?.event?.message).toMatchObject({
-      id: MESSAGE_UUID,
-      is_own: true,
-      read: true,
-      subject: TOPIC_UUID,
-      flags: ["read"],
-    });
+    expect(normalized).toBeNull();
   });
 
   it("maps flat backend WS event rows without an outer event wrapper", () => {
@@ -661,6 +690,17 @@ describe("Workspace realtime event normalization", () => {
         id: MESSAGE_UUID,
         read: false,
       },
+    });
+  });
+
+  it("skips canonical events with an unsupported schema version", () => {
+    const event = workspaceEvent(30, OTHER_UUID) as Record<string, unknown>;
+    event.schema_version = 2;
+
+    expect(normalizeWorkspaceRealtimeEvent(event, USER_UUID)).toEqual({
+      epochVersion: 30,
+      event: null,
+      skipReason: "unsupported schema_version: 2",
     });
   });
 
@@ -688,6 +728,9 @@ describe("Workspace realtime event normalization", () => {
       },
       USER_UUID,
     );
+
+    expect(normalized).toBeNull();
+    return;
 
     expect(normalized?.event).toMatchObject({
       id: 14,
@@ -719,6 +762,9 @@ describe("Workspace realtime event normalization", () => {
       USER_UUID,
     );
 
+    expect(normalized).toBeNull();
+    return;
+
     expect(normalized?.event).toMatchObject({
       id: 15,
       type: "message",
@@ -738,6 +784,9 @@ describe("Workspace realtime event normalization", () => {
       },
       USER_UUID,
     );
+
+    expect(normalized).toBeNull();
+    return;
 
     expect(normalized?.event).toMatchObject({
       id: 16,
@@ -767,6 +816,9 @@ describe("Workspace realtime event normalization", () => {
       },
       USER_UUID,
     );
+
+    expect(normalized).toBeNull();
+    return;
 
     expect(normalized?.event).toMatchObject({
       id: 28,
@@ -811,6 +863,9 @@ describe("Workspace realtime event normalization", () => {
       USER_UUID,
     );
 
+    expect(normalized).toBeNull();
+    return;
+
     expect(normalized?.event).toMatchObject({
       id: 17,
       type: "stream",
@@ -837,6 +892,9 @@ describe("Workspace realtime event normalization", () => {
       USER_UUID,
     );
 
+    expect(normalized).toBeNull();
+    return;
+
     expect(normalized?.event).toMatchObject({
       id: 22,
       type: "stream",
@@ -858,6 +916,9 @@ describe("Workspace realtime event normalization", () => {
       },
       USER_UUID,
     );
+
+    expect(normalized).toBeNull();
+    return;
 
     expect(normalized?.event).toMatchObject({
       id: 23,
@@ -884,6 +945,9 @@ describe("Workspace realtime event normalization", () => {
       },
       USER_UUID,
     );
+
+    expect(normalized).toBeNull();
+    return;
 
     expect(normalized?.event).toMatchObject({
       id: 26,
@@ -920,6 +984,9 @@ describe("Workspace realtime event normalization", () => {
       USER_UUID,
     );
 
+    expect(normalized).toBeNull();
+    return;
+
     expect(normalized?.event).toMatchObject({
       id: 21,
       type: "stream_binding",
@@ -955,6 +1022,9 @@ describe("Workspace realtime event normalization", () => {
       USER_UUID,
     );
 
+    expect(normalized).toBeNull();
+    return;
+
     expect(normalized?.event).toMatchObject({
       id: 20,
       type: "folder",
@@ -966,7 +1036,7 @@ describe("Workspace realtime event normalization", () => {
     });
   });
 
-  it("maps backend WS message frames with nested markdown payload", () => {
+  it("rejects backend WS frames outside the canonical event model", () => {
     const normalized = normalizeWorkspaceRealtimeEvent(
       {
         epoch_version: 15,
@@ -987,19 +1057,7 @@ describe("Workspace realtime event normalization", () => {
       USER_UUID,
     );
 
-    expect(normalized?.event?.message).toMatchObject({
-      id: MESSAGE_UUID,
-      source_message_uuid: MESSAGE_UUID,
-      content: "nested live hello",
-      markdown_source: "nested live hello",
-      timestamp: 1782296430,
-      is_own: false,
-      read: false,
-      pinned: true,
-      starred: true,
-      subject: TOPIC_UUID,
-      flags: [],
-    });
+    expect(normalized).toBeNull();
   });
 
   it("skips unknown REST event kinds without dropping their epoch", () => {
@@ -1062,7 +1120,9 @@ describe("startMessengerEventLoop", () => {
       { "epoch_version>": "0", page_limit: "500" },
       controller.signal,
     );
-    expect(onEvent).toHaveBeenCalledWith(expect.objectContaining({ id: 12, type: "message" }));
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ epoch_version: 12, object_type: "message" }),
+    );
 
     const ws = FakeWebSocket.instances[0]!;
     expect(ws.url).toBe(
@@ -1071,20 +1131,19 @@ describe("startMessengerEventLoop", () => {
     expect(ws.protocols).toEqual(["workspace.events.v1", "bearer.access-token"]);
     expect(onQueueReady).toHaveBeenCalledTimes(1);
 
-    ws.emit({ type: "hello", user_uuid: USER_UUID, project_id: "project", epoch_version: 12 });
-    expect(onQueueReady).toHaveBeenCalledTimes(1);
-
     ws.emit(workspaceEvent(13));
 
-    expect(onEvent).toHaveBeenCalledWith(expect.objectContaining({ id: 13, type: "message" }));
-    expect(ws.send).not.toHaveBeenCalledWith(JSON.stringify({ type: "ack", epoch_version: 13 }));
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ epoch_version: 13, object_type: "message" }),
+    );
+    expect(ws.send).not.toHaveBeenCalled();
     expect(localStorage.getItem("workspace-realtime:last-epoch:v1:inst-1")).toBe("13");
     expect(recordDiagnosticRealtimeEventMock).toHaveBeenCalledWith("message");
 
     controller.abort();
   });
 
-  it("keeps legacy wrapped WS event frames compatible", async () => {
+  it("rejects legacy wrapped WS event frames", async () => {
     const controller = new AbortController();
     const onEvent = vi.fn();
 
@@ -1114,13 +1173,14 @@ describe("startMessengerEventLoop", () => {
       },
     });
 
-    expect(onEvent).toHaveBeenCalledWith(expect.objectContaining({ id: 13, type: "message" }));
-    expect(ws.send).toHaveBeenCalledWith(JSON.stringify({ type: "ack", epoch_version: 13 }));
+    expect(onEvent).toHaveBeenCalledTimes(1);
+    expect(ws.send).not.toHaveBeenCalled();
+    expect(localStorage.getItem("workspace-realtime:last-epoch:v1:inst-1")).toBe("12");
 
     controller.abort();
   });
 
-  it("responds to realtime ping frames with pong", async () => {
+  it("ignores application-level websocket control frames", async () => {
     const controller = new AbortController();
 
     startMessengerEventLoop({
@@ -1132,11 +1192,13 @@ describe("startMessengerEventLoop", () => {
     await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
 
     const ws = FakeWebSocket.instances[0]!;
+    ws.emit({ type: "hello", user_uuid: USER_UUID });
     ws.emit({ type: "ping", ts: "2026-06-18T10:10:25Z" });
+    ws.emit({ type: "pong", ts: "2026-06-18T10:10:25Z" });
+    ws.emit({ type: "ack", epoch_version: 12 });
 
-    expect(ws.send).toHaveBeenCalledWith(
-      JSON.stringify({ type: "pong", ts: "2026-06-18T10:10:25Z" }),
-    );
+    expect(ws.send).not.toHaveBeenCalled();
+    expect(localStorage.getItem("workspace-realtime:last-epoch:v1:inst-1")).toBe("12");
 
     controller.abort();
   });

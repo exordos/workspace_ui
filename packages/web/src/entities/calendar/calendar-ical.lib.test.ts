@@ -37,7 +37,7 @@ END:VCALENDAR`;
 describe("calendar-ical.lib", () => {
   describe("parseVeventFromIcs", () => {
     it("parses a simple event with attendee and alarm", () => {
-      const events = parseVeventFromIcs(SAMPLE_ICS, "personal", '"etag-1"');
+      const events = parseVeventFromIcs(SAMPLE_ICS, "personal");
       expect(events).toHaveLength(1);
       const event = events[0]!;
       expect(event.uid).toBe("test-event-1");
@@ -52,7 +52,7 @@ describe("calendar-ical.lib", () => {
     });
 
     it("normalizes SOGo all-day event with DTEND equal to DTSTART", () => {
-      const events = parseVeventFromIcs(SOGO_ALL_DAY_SAME_END, "personal", null);
+      const events = parseVeventFromIcs(SOGO_ALL_DAY_SAME_END, "personal");
       expect(events).toHaveLength(1);
       expect(events[0]?.start).toBe("2026-06-15");
       expect(events[0]?.end).toBe("2026-06-16");
@@ -76,7 +76,7 @@ describe("calendar-ical.lib", () => {
         },
         "uid-lunch",
       );
-      const events = parseVeventFromIcs(ics, "personal", null);
+      const events = parseVeventFromIcs(ics, "personal");
       expect(events[0]?.summary).toBe("Lunch");
       expect(events[0]?.attendees[0]?.email).toBe("bob@example.test");
     });
@@ -93,7 +93,6 @@ describe("calendar-ical.lib", () => {
         start: "2026-06-01T10:00:00.000Z",
         end: "2026-06-01T11:00:00.000Z",
         allDay: false,
-        etag: null,
         recurrence: { rrule: "FREQ=WEEKLY;COUNT=4" },
         attendees: [],
         alarms: [],
@@ -119,7 +118,6 @@ describe("calendar-ical.lib", () => {
         start: "2026-06-15T10:00:00.000Z",
         end: "2026-06-15T11:00:00.000Z",
         allDay: false,
-        etag: null,
         recurrence: { rrule: "FREQ=MONTHLY;BYMONTHDAY=15" },
         attendees: [],
         alarms: [],
@@ -146,7 +144,6 @@ describe("calendar-ical.lib", () => {
         start: "2026-06-01T10:00:00.000Z",
         end: "2026-06-01T11:00:00.000Z",
         allDay: false,
-        etag: '"etag"',
         recurrence: { rrule: "FREQ=WEEKLY;COUNT=4" },
         attendees: [],
         alarms: [],

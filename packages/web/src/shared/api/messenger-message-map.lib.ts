@@ -40,6 +40,8 @@ export function rawMessageToMockMessage(m: RawMessageToMockInput): MockMessage {
     timestamp: m.timestamp,
     flags: m.flags,
     reactions: m.reactions ?? {},
+    ...(m.provider !== undefined ? { provider: m.provider } : {}),
+    ...(m.delivery !== undefined ? { delivery: m.delivery } : {}),
   };
   if (markdownSource != null && markdownSource.length > 0) {
     base.markdown_source = markdownSource;
@@ -93,6 +95,8 @@ export function mockMessageFromGetMessageApiData(data: unknown): MockMessage | n
     source: row.source,
     flags: row.flags,
     reactions: row.reactions ?? {},
+    provider: row.provider,
+    delivery: row.delivery,
     markdown_source: markdownSource,
   });
 }

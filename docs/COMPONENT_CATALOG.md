@@ -37,8 +37,8 @@ app/app.tsx (Router, ErrorBoundary, Suspense)
     │   │   ├── features/jitsi-call/JitsiCallModal
     │   │   └── features/media-viewer/ (fullscreen image/video)
     │   ├── pages/activity/ActivityPage (starred/mentions/reactions)
-    │   ├── pages/calendar/CalendarPage (stub)
-    │   ├── pages/mail/MailPage (stub)
+    │   ├── pages/calendar/CalendarPage
+    │   ├── pages/mail/MailPage
     │   ├── pages/calls/CallsPage (stub)
     │   ├── pages/inbox/InboxPage
     │   ├── pages/feed/FeedPage
@@ -437,22 +437,22 @@ interface MessageComposerProps {
 
 All pages are lazy-loaded via `React.lazy()` in `app/app.tsx`.
 
-| Page                  | Path                                                | File                                                  | Purpose                          |
-| --------------------- | --------------------------------------------------- | ----------------------------------------------------- | -------------------------------- |
-| `ChatPage`            | `/stream/:streamSlug/topic/:topicName`, `/dm/:dmId` | `pages/chat/chat-page.ui.tsx`                         | Main chat — stream, topic, or DM |
-| `ActivityPage`        | `/activity/:filter`                                 | `pages/activity/activity-page.ui.tsx`                 | Starred, mentions, reactions     |
-| `LoginPage`           | `/login`                                            | `pages/login/login-page.ui.tsx`                       | Login form                       |
-| `CalendarPage`        | `/calendar`                                         | `pages/calendar/calendar-page.ui.tsx`                 | Calendar stub                    |
-| `MailPage`            | `/mail`                                             | `pages/mail/mail-page.ui.tsx`                         | Mail stub                        |
-| `CallsPage`           | `/calls`                                            | `pages/calls/calls-page.ui.tsx`                       | Calls stub                       |
-| `LicensesPage`        | `/licenses`                                         | `pages/licenses/licenses-page.ui.tsx`                 | OSS license list                 |
-| `InboxPage`           | `/inbox`                                            | `pages/inbox/inbox-page.ui.tsx`                       | Unread inbox aggregation         |
-| `FeedPage`            | `/feed`                                             | `pages/feed/feed-page.ui.tsx`                         | Combined message feed            |
-| `SettingsPage`        | `/settings`                                         | `pages/settings/settings-page.ui.tsx`                 | App settings                     |
-| `LogsPage`            | `/logs`                                             | `pages/logs/logs-page.ui.tsx`                         | In-app log export                |
-| `ServicesPage`        | `/services`                                         | `pages/services/services-page.ui.tsx`                 | External services                |
-| `UpdatePage`          | `/update`                                           | `pages/update/update-page.ui.tsx`                     | App update status                |
-| `MessageRedirectPage` | `/message/:id`                                      | `pages/message-redirect/message-redirect-page.ui.tsx` | Deep link to message             |
+| Page                  | Path                                                | File                                                  | Purpose                                                           |
+| --------------------- | --------------------------------------------------- | ----------------------------------------------------- | ----------------------------------------------------------------- |
+| `ChatPage`            | `/stream/:streamSlug/topic/:topicName`, `/dm/:dmId` | `pages/chat/chat-page.ui.tsx`                         | Main chat — stream, topic, or DM                                  |
+| `ActivityPage`        | `/activity/:filter`                                 | `pages/activity/activity-page.ui.tsx`                 | Starred, mentions, reactions                                      |
+| `LoginPage`           | `/login`                                            | `pages/login/login-page.ui.tsx`                       | Login form                                                        |
+| `CalendarPage`        | `/calendar`                                         | `pages/calendar/calendar-page.ui.tsx`                 | Month/week/day calendar backed by Workspace API and common events |
+| `MailPage`            | `/mail`                                             | `pages/mail/mail-page.ui.tsx`                         | Folder, message, preview, compose, and attachment workspace       |
+| `CallsPage`           | `/calls`                                            | `pages/calls/calls-page.ui.tsx`                       | Calls stub                                                        |
+| `LicensesPage`        | `/licenses`                                         | `pages/licenses/licenses-page.ui.tsx`                 | OSS license list                                                  |
+| `InboxPage`           | `/inbox`                                            | `pages/inbox/inbox-page.ui.tsx`                       | Unread inbox aggregation                                          |
+| `FeedPage`            | `/feed`                                             | `pages/feed/feed-page.ui.tsx`                         | Combined message feed                                             |
+| `SettingsPage`        | `/settings`                                         | `pages/settings/settings-page.ui.tsx`                 | App settings                                                      |
+| `LogsPage`            | `/logs`                                             | `pages/logs/logs-page.ui.tsx`                         | In-app log export                                                 |
+| `ServicesPage`        | `/services`                                         | `pages/services/services-page.ui.tsx`                 | External services                                                 |
+| `UpdatePage`          | `/update`                                           | `pages/update/update-page.ui.tsx`                     | App update status                                                 |
+| `MessageRedirectPage` | `/message/:id`                                      | `pages/message-redirect/message-redirect-page.ui.tsx` | Deep link to message                                              |
 
 ### ChatPage
 

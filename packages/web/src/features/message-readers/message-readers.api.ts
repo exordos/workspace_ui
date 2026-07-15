@@ -15,5 +15,6 @@ export async function fetchReadReceipts(
   _options?: { signal?: AbortSignal },
 ): Promise<ReadReceiptsResponse> {
   guard.messageId(messageId, "fetchReadReceipts");
+  await Promise.resolve();
   return { user_ids: [] };
 }
