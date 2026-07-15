@@ -15,10 +15,12 @@ const toastErrorMock = vi.hoisted(() => vi.fn());
 const getCurrentRuntimeContextMock = vi.hoisted(() => vi.fn());
 
 vi.mock("~/entities/workspace-auth/workspace-auth.model", () => ({
+  selectCurrentWorkspaceRuntimeContext: () => null,
   useWorkspaceAuthStore: {
     getState: () => ({
       getCurrentRuntimeContext: getCurrentRuntimeContextMock,
     }),
+    subscribe: () => () => undefined,
   },
 }));
 

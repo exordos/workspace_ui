@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const pddMocks = vi.hoisted(() => ({
   draggable: vi.fn(() => vi.fn()),
   dropTargetForElements: vi.fn(() => vi.fn()),
-  combine: vi.fn((...cleanups: Array<(() => void) | undefined>) => () => {
+  combine: vi.fn((...cleanups: (() => void | undefined)[]) => () => {
     for (const cleanup of cleanups) cleanup?.();
   }),
 }));
@@ -16,12 +16,12 @@ vi.mock("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
 }));
 vi.mock("@atlaskit/pragmatic-drag-and-drop/combine", () => ({ combine: pddMocks.combine }));
 
-import { WorkspaceReplyTabs } from "./workspace-reply.ui";
-import type { WorkspaceReplySession, WorkspaceReplyTab } from "./workspace-reply.types";
 import {
   WORKSPACE_REPLY_TAB_DND_TYPE,
   WORKSPACE_REPLY_TAB_LIST_TARGET_ID,
 } from "./workspace-reply.dnd";
+import { WorkspaceReplyTabs } from "./workspace-reply.ui";
+import type { WorkspaceReplySession, WorkspaceReplyTab } from "./workspace-reply.types";
 
 function tab(
   overrides: Partial<WorkspaceReplyTab> & Pick<WorkspaceReplyTab, "id" | "senderName">,
@@ -56,11 +56,7 @@ interface MockDropTargetRegistration {
   getData: () => Record<string, unknown>;
 }
 
-function mockDragEvent(
-  tabId: string,
-  clientX: number,
-  target: MockDropTargetRegistration,
-): never {
+function mockDragEvent(tabId: string, clientX: number, target: MockDropTargetRegistration): never {
   return {
     source: { data: { type: WORKSPACE_REPLY_TAB_DND_TYPE, tabId } },
     location: {
@@ -93,7 +89,7 @@ describe("WorkspaceReplyTabs", () => {
     expect(pddMocks.draggable).toHaveBeenCalledTimes(2);
     expect(pddMocks.dropTargetForElements).toHaveBeenCalledTimes(3);
 
-    const sourceRegistrations = (pddMocks.draggable.mock.calls as unknown as Array<[unknown]>).map(
+    const sourceRegistrations = (pddMocks.draggable.mock.calls as unknown as [unknown][]).map(
       ([args]) => args as { dragHandle: Element; getInitialData: () => Record<string, unknown> },
     );
     expect(sourceRegistrations.map((registration) => registration.getInitialData())).toEqual([
@@ -102,7 +98,7 @@ describe("WorkspaceReplyTabs", () => {
     ]);
 
     const targetRegistrations = (
-      pddMocks.dropTargetForElements.mock.calls as unknown as Array<[unknown]>
+      pddMocks.dropTargetForElements.mock.calls as unknown as [unknown][]
     ).map(
       ([args]) =>
         args as {
@@ -117,9 +113,9 @@ describe("WorkspaceReplyTabs", () => {
         { type: WORKSPACE_REPLY_TAB_DND_TYPE, tabId: second.id },
       ]),
     );
-    expect(targetRegistrations.every((registration) => registration.getDropEffect() === "move")).toBe(
-      true,
-    );
+    expect(
+      targetRegistrations.every((registration) => registration.getDropEffect() === "move"),
+    ).toBe(true);
 
     const firstTab = screen.getByRole("tab", { name: "Alice: Quote from Alice: Reply" });
     const closeButton = screen.getByRole("button", { name: "Close: Alice" });
@@ -142,14 +138,10 @@ describe("WorkspaceReplyTabs", () => {
       />,
     );
 
-    const source = (
-      pddMocks.draggable.mock.calls as unknown as Array<[unknown]>
-    )
+    const source = (pddMocks.draggable.mock.calls as unknown as [unknown][])
       .map(([args]) => args as MockDragRegistration)
       .find((registration) => registration.getInitialData().tabId === first.id);
-    const target = (
-      pddMocks.dropTargetForElements.mock.calls as unknown as Array<[unknown]>
-    )
+    const target = (pddMocks.dropTargetForElements.mock.calls as unknown as [unknown][])
       .map(([args]) => args as MockDropTargetRegistration)
       .find((registration) => registration.getData().tabId === second.id);
 
@@ -194,14 +186,10 @@ describe("WorkspaceReplyTabs", () => {
       />,
     );
 
-    const source = (
-      pddMocks.draggable.mock.calls as unknown as Array<[unknown]>
-    )
+    const source = (pddMocks.draggable.mock.calls as unknown as [unknown][])
       .map(([args]) => args as MockDragRegistration)
       .find((registration) => registration.getInitialData().tabId === first.id);
-    const listTarget = (
-      pddMocks.dropTargetForElements.mock.calls as unknown as Array<[unknown]>
-    )
+    const listTarget = (pddMocks.dropTargetForElements.mock.calls as unknown as [unknown][])
       .map(([args]) => args as MockDropTargetRegistration)
       .find((registration) => registration.getData().tabId === WORKSPACE_REPLY_TAB_LIST_TARGET_ID);
     const firstTab = screen.getByRole("tab", { name: "Alice: Quote from Alice: Reply" });

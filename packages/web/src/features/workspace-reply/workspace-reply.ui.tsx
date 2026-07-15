@@ -165,14 +165,11 @@ export const WorkspaceReplyTabs = React.memo<WorkspaceReplyTabsProps>(function W
   const closeLabel = translate("common.close");
   const tabButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const tabElementsRef = useRef(new Map<string, HTMLElement>());
-  const tabsRef = useRef(session.tabs);
   const listElementRef = useRef<HTMLDivElement>(null);
   const pendingKeyboardFocusTabIdRef = useRef<string | null>(null);
   const suppressedClickTabIdRef = useRef<string | null>(null);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
-
-  tabsRef.current = session.tabs;
 
   const registerTabButton = useCallback((tabId: string, button: HTMLButtonElement | null) => {
     if (button == null) {
@@ -201,12 +198,12 @@ export const WorkspaceReplyTabs = React.memo<WorkspaceReplyTabsProps>(function W
   const getDropIndex = useCallback(
     (args: ElementEventPayloadMap["onDrag"]) =>
       getWorkspaceReplyTabDropIndex({
-        tabs: tabsRef.current,
+        tabs: session.tabs,
         tabElements: tabElementsRef.current,
         dropTargets: args.location.current.dropTargets,
         clientX: args.location.current.input.clientX,
       }),
-    [],
+    [session.tabs],
   );
 
   const handleDrag = useCallback(
@@ -236,9 +233,7 @@ export const WorkspaceReplyTabs = React.memo<WorkspaceReplyTabsProps>(function W
   const handleDrop = useCallback(
     (args: ElementEventPayloadMap["onDrop"]) => {
       const sourceData = args.source.data;
-      const destinationIndex = isWorkspaceReplyTabDragData(sourceData)
-        ? getDropIndex(args)
-        : null;
+      const destinationIndex = isWorkspaceReplyTabDragData(sourceData) ? getDropIndex(args) : null;
 
       clearDndState();
 

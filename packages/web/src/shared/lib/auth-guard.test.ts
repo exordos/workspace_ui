@@ -136,17 +136,17 @@ describe("auth-guard", () => {
       expect(wiper).toHaveBeenCalledOnce();
     });
 
-    // Without an injected store wiper, wipeCredentials must still remove persisted auth keys
+    // Without an injected store wiper, wipeCredentials must still remove persisted Workspace keys
     it("removes localStorage keys when no store wiper is registered", async () => {
-      localStorage.setItem("zulip-web-instances", '[{"id":"1"}]');
-      localStorage.setItem("zulip-web-current-instance", "1");
+      localStorage.setItem("workspace-runtime-instances", '[{"id":"1"}]');
+      localStorage.setItem("workspace-runtime-current-instance", "1");
 
       const { wipeCredentials, setAuthInstanceGetter } = await import("./auth-guard");
       setAuthInstanceGetter(() => mockInstance);
       wipeCredentials();
 
-      expect(localStorage.getItem("zulip-web-instances")).toBeNull();
-      expect(localStorage.getItem("zulip-web-current-instance")).toBeNull();
+      expect(localStorage.getItem("workspace-runtime-instances")).toBeNull();
+      expect(localStorage.getItem("workspace-runtime-current-instance")).toBeNull();
     });
 
     // When the app layer injects store cleanup, it owns instance persistence semantics.

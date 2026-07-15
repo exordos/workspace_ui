@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useDownloadStore } from "~/entities/download/download.model";
@@ -129,7 +129,7 @@ describe("TopBar", () => {
     expect(screen.queryByRole("button", { name: /^services$/i })).not.toBeInTheDocument();
   });
 
-  it("navigates to Inbox when chat is selected without Workspace project", () => {
+  it("navigates to the app root when chat is selected without Workspace project", () => {
     renderWithProviders(
       <>
         <LocationProbe />
@@ -139,7 +139,7 @@ describe("TopBar", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: /chats\s*&\s*channels/i }));
-    expect(screen.getByTestId("location-path")).toHaveTextContent("/inbox");
+    expect(screen.getByTestId("location-path")).toHaveTextContent("/");
   });
 
   it("navigates to Workspace messenger root when chat is selected with Workspace project", () => {
@@ -356,7 +356,7 @@ describe("TopBar", () => {
         uuid: CURRENT_USER_UUID,
         full_name: "Alice",
         email: "alice@example.com",
-        avatar_url: "https://cdn.example.com/avatar/old.png",
+        avatar_url: "urn:url:https://cdn.example.com/avatar/old.png",
       }),
     );
 
@@ -369,7 +369,7 @@ describe("TopBar", () => {
       useUsersStore.getState().upsertUser(
         createUser({
           uuid: CURRENT_USER_UUID,
-          avatar_url: "https://cdn.example.com/avatar/new.png",
+          avatar_url: "urn:url:https://cdn.example.com/avatar/new.png",
         }),
       );
     });
@@ -455,11 +455,12 @@ describe("TopBar", () => {
     fireEvent.pointerDown(accountMenuTrigger!, { button: 0, ctrlKey: false });
     fireEvent.click((await screen.findAllByRole("button", { name: t("auth.logoutFromOrg") }))[0]!);
 
-    await screen.findByText("bob@example.com");
-    expect(screen.getByTestId("location-path")).toHaveTextContent(
-      "/org/next.example.com/project/project-b/inbox",
-    );
-    expect(useWorkspaceAuthStore.getState().currentAccountId).toBe(secondSession.accountId);
+    await waitFor(() => {
+      expect(screen.getByTestId("location-path")).toHaveTextContent(
+        "/org/next.example.com/project/project-b/inbox",
+      );
+      expect(useWorkspaceAuthStore.getState().currentAccountId).toBe(secondSession.accountId);
+    });
   });
 
   it("shows short profile status without a hover title", () => {

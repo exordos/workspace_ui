@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  resetWorkspaceComposerDraftStoreForTests,
   selectWorkspaceComposerDraft,
   useWorkspaceComposerDraftStore,
 } from "~/entities/composer-draft/composer-draft.model";
@@ -29,6 +30,7 @@ import { RightDrawerContext } from "~/shared/contexts/right-drawer";
 import type { RightDrawerContextValue } from "~/shared/contexts/right-drawer.types";
 import {
   deleteWorkspaceMessengerCacheDatabase,
+  openWorkspaceMessengerCacheDb,
   resetWorkspaceMessengerCacheDbSingletonForTests,
   writeWorkspaceComposerDraft,
 } from "~/shared/lib/workspace-messenger-cache-db";
@@ -447,7 +449,8 @@ function WorkspaceLocationProbe() {
 }
 
 describe("ChatPage Workspace route", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    resetWorkspaceComposerDraftStoreForTests();
     const session = createSession();
     useWorkspaceAuthStore.setState({
       sessions: [session],
@@ -478,7 +481,7 @@ describe("ChatPage Workspace route", () => {
         createMessage(),
       ]);
     useMessengerOutboxStore.getState().clear();
-    useWorkspaceComposerDraftStore.getState().clear();
+    await useWorkspaceComposerDraftStore.getState().clear();
     useJitsiCallStore.getState().clear();
     captured.composerProps = null;
     captured.headerProps = null;
@@ -544,12 +547,19 @@ describe("ChatPage Workspace route", () => {
     useUsersStore.getState().clear();
     useWorkspaceMessageStore.getState().clear();
     useMessengerOutboxStore.getState().clear();
-    useWorkspaceComposerDraftStore.getState().clear();
+    resetWorkspaceComposerDraftStoreForTests();
+    await useWorkspaceComposerDraftStore.getState().clear();
     useJitsiCallStore.getState().clear();
     useDownloadStore.getState().clearDownloads();
     useMediaViewerStore.getState().close();
-    await deleteWorkspaceMessengerCacheDatabase();
+    try {
+      const db = await openWorkspaceMessengerCacheDb();
+      db.close();
+    } catch {
+      // No open database.
+    }
     resetWorkspaceMessengerCacheDbSingletonForTests();
+    await deleteWorkspaceMessengerCacheDatabase();
   });
 
   it("renders Workspace topic data through the Workspace-native message section", async () => {
@@ -588,7 +598,7 @@ describe("ChatPage Workspace route", () => {
     });
     expect(captured.messageListProps?.messages[0]).toMatchObject({
       uuid: "55555555-5555-4555-8555-555555555555",
-      markdown: "workspace message",
+      payload: { kind: "markdown", content: "workspace message" },
     });
     expect(captured.messageListProps?.messages[0]).not.toHaveProperty("id");
     expect(captured.messageListProps?.messages[0]).not.toHaveProperty("content");
@@ -1551,7 +1561,7 @@ describe("ChatPage Workspace route", () => {
     act(() => {
       sendRequest.resolve({ status: "applied", ownerKey, message: null });
     });
-    await expect(sendPromise).resolves.toBeUndefined();
+    await expect(sendPromise).resolves.toEqual({ shouldClearComposer: false });
 
     expect(
       selectWorkspaceComposerDraft(
@@ -2045,6 +2055,8 @@ describe("ChatPage Workspace route", () => {
         captured.composerProps?.outgoingBodyOverride ?? "",
         "",
       );
+      captured.composerProps?.onComposerValueChange?.("");
+      captured.composerProps?.onClearReply?.();
     });
 
     expect(captured.composerProps?.workspaceReplySession).toEqual({

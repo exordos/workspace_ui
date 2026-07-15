@@ -44,7 +44,11 @@ function setTestStorageScope(scope: I18nStorageScope): void {
 // Core translation function, plural rules, locale switching, and React hook.
 describe("i18n", () => {
   beforeEach(() => {
-    localStorage.clear();
+    localStorage.removeItem("workspace-locale");
+    localStorage.removeItem("workspace-locale:owner-a");
+    localStorage.removeItem("workspace-locale:owner-b");
+    localStorage.removeItem("workspace-locale:instance-a");
+    localStorage.removeItem("workspace-locale:instance-b");
     configureI18nStorageScope();
     setLocale("en");
   });

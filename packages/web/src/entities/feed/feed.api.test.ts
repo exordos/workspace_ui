@@ -100,7 +100,7 @@ describe("fetchFeedMessages", () => {
         expect.objectContaining({
           uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
           authorUuid: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
-          markdown: "Hello from Workspace",
+          payload: { kind: "markdown", content: "Hello from Workspace" },
         }),
       ],
       nextPageMarker: "next-page",

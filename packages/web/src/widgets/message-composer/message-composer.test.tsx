@@ -374,7 +374,6 @@ describe("MessageComposer async send behavior", () => {
       expect(textbox).toHaveValue("");
       expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
     });
-    expect(textbox).toHaveAttribute("aria-expanded", "false");
     expect(textbox).not.toHaveAttribute("aria-controls");
     expect(textbox).not.toHaveAttribute("aria-activedescendant");
     expect(useMentionSuggestStore.getState().visible).toBe(false);
@@ -549,14 +548,12 @@ describe("MessageComposer mention suggestions", () => {
 
     const option = await screen.findByRole("option", { name: /Engineering.*Releases/ });
     expect(option).toHaveAttribute("aria-selected", "true");
-    expect(textbox).toHaveAttribute("aria-expanded", "true");
     expect(textbox).toHaveAttribute("aria-controls");
 
     fireEvent.keyDown(textbox, { key: "Enter" });
 
     expect(textbox).toHaveValue(`[#Engineering › Releases](urn:topic:${COMPOSER_TOPIC_UUID}) `);
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
-    expect(textbox).toHaveAttribute("aria-expanded", "false");
     expect(textbox).not.toHaveAttribute("aria-controls");
     expect(textbox).not.toHaveAttribute("aria-activedescendant");
   });

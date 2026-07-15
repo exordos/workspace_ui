@@ -156,10 +156,13 @@ describe("messenger-client", () => {
   it("uses strict event cursor query for catch-up", async () => {
     const fetchMock = createFetchMock([
       {
+        schema_version: 1,
         epoch_version: 124,
         uuid: EVENT_UUID,
         project_id: PROJECT_UUID,
         user_uuid: USER_UUID,
+        object_type: "message",
+        action: "created",
         payload: {
           kind: "message.created",
           ...messageDto,

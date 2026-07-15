@@ -1131,12 +1131,22 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
             workspaceComposerSendCleanupRef.current = null;
           }
         }, 0);
+        setComposerDraftShadow(
+          createWorkspaceComposerDraftKey(sendOwnerKey, conversationId),
+          EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT,
+        );
         useWorkspaceComposerDraftStore
           .getState()
           .clearDraftIfSnapshotMatches(sendOwnerKey, conversationId, draftAtSend.snapshotId);
       }
     },
-    [conversationId, deliverOutgoingMessage, resolveSendTarget, runtimeContext],
+    [
+      conversationId,
+      deliverOutgoingMessage,
+      resolveSendTarget,
+      runtimeContext,
+      setComposerDraftShadow,
+    ],
   );
 
   const handleOpenWorkspaceJitsiCall = useCallback(

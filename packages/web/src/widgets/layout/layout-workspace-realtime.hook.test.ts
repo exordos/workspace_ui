@@ -397,7 +397,7 @@ describe("useLayoutWorkspaceRealtime", () => {
     );
 
     expect(useWorkspaceMessageStore.getState().messagesById[MESSAGE_UUID]).toEqual(
-      expect.objectContaining({ markdown: "Live workspace message" }),
+      expect.objectContaining({ payload: { kind: "markdown", content: "Live workspace message" } }),
     );
   });
 
