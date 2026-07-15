@@ -2,6 +2,7 @@ import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createMessengerCatalogCacheReconcileFence,
+  deleteWorkspaceComposerDraftIfSnapshotMatches,
   deleteCachedStreamMessageBuckets,
   deleteCachedMessage,
   deleteCachedTopicMessageBuckets,
@@ -14,6 +15,7 @@ import {
   openWorkspaceMessengerCacheDb,
   patchCachedMessage,
   readCachedMessagesByUuids,
+  readWorkspaceComposerDraft,
   readConversationMessageWindow,
   readMessengerCatalogCache,
   readOwnMessageReaction,
@@ -28,6 +30,7 @@ import {
   upsertCachedMessages,
   upsertOwnMessageReaction,
   writeConversationMessagePage,
+  writeWorkspaceComposerDraft,
   writeMessengerCatalogCache,
   writeMessengerSearchResults,
   writeRealtimeCursor,
@@ -82,6 +85,7 @@ describe("workspace-messenger-cache-db", () => {
     expect(db.name).toBe(WORKSPACE_MESSENGER_CACHE_DB_NAME);
     expect(db.version).toBe(WORKSPACE_MESSENGER_CACHE_DB_VERSION);
     expect([...db.objectStoreNames]).toEqual([
+      "composerDrafts",
       "conversations",
       "folderItems",
       "folders",
@@ -104,6 +108,84 @@ describe("workspace-messenger-cache-db", () => {
       "byOwnerMessage",
       "byOwnerReactionUuid",
     ]);
+
+    const composerDraftTransaction = db.transaction("composerDrafts", "readonly");
+    expect([...composerDraftTransaction.objectStore("composerDrafts").indexNames]).toEqual([
+      "byOwner",
+    ]);
+  });
+
+  it("stores one current composer draft per owner and conversation", async () => {
+    await writeWorkspaceComposerDraft(OWNER, TOPIC_CONVERSATION, {
+      snapshotId: "snapshot-a",
+      content: { text: "Черновик" },
+      updatedAt: 100,
+    });
+    await writeWorkspaceComposerDraft(OTHER_OWNER, TOPIC_CONVERSATION, {
+      snapshotId: "snapshot-b",
+      content: { text: "Другой владелец" },
+      updatedAt: 200,
+    });
+    await writeWorkspaceComposerDraft(OWNER, TOPIC_CONVERSATION, {
+      snapshotId: "snapshot-c",
+      content: { text: "Новая версия" },
+      updatedAt: 300,
+    });
+
+    await expect(
+      readWorkspaceComposerDraft<{ text: string }>(OWNER, TOPIC_CONVERSATION),
+    ).resolves.toEqual({
+      id: `${OWNER}:${TOPIC_CONVERSATION}`,
+      ownerKey: OWNER,
+      conversationId: TOPIC_CONVERSATION,
+      snapshotId: "snapshot-c",
+      content: { text: "Новая версия" },
+      updatedAt: 300,
+    });
+    await expect(
+      readWorkspaceComposerDraft<{ text: string }>(OTHER_OWNER, TOPIC_CONVERSATION),
+    ).resolves.toMatchObject({ snapshotId: "snapshot-b" });
+  });
+
+  it("conditionally deletes a composer draft only when its snapshot still matches", async () => {
+    await writeWorkspaceComposerDraft(OWNER, TOPIC_CONVERSATION, {
+      snapshotId: "snapshot-a",
+      content: { text: "Черновик" },
+      updatedAt: 100,
+    });
+
+    await expect(
+      deleteWorkspaceComposerDraftIfSnapshotMatches(OWNER, TOPIC_CONVERSATION, "snapshot-b"),
+    ).resolves.toBe(false);
+    await expect(
+      readWorkspaceComposerDraft<{ text: string }>(OWNER, TOPIC_CONVERSATION),
+    ).resolves.toMatchObject({ snapshotId: "snapshot-a" });
+    await expect(
+      deleteWorkspaceComposerDraftIfSnapshotMatches(OWNER, TOPIC_CONVERSATION, "snapshot-a"),
+    ).resolves.toBe(true);
+    await expect(readWorkspaceComposerDraft(OWNER, TOPIC_CONVERSATION)).resolves.toBeNull();
+  });
+
+  it("removes composer drafts with the rest of an owner cache", async () => {
+    await writeWorkspaceComposerDraft(OWNER, TOPIC_CONVERSATION, {
+      snapshotId: "snapshot-a",
+      content: { text: "Черновик" },
+      updatedAt: 100,
+    });
+    await writeWorkspaceComposerDraft(OTHER_OWNER, TOPIC_CONVERSATION, {
+      snapshotId: "snapshot-b",
+      content: { text: "Другой владелец" },
+      updatedAt: 100,
+    });
+
+    await deleteWorkspaceMessengerOwnerCache(OWNER);
+
+    await expect(readWorkspaceComposerDraft(OWNER, TOPIC_CONVERSATION)).resolves.toBeNull();
+    await expect(
+      readWorkspaceComposerDraft(OTHER_OWNER, TOPIC_CONVERSATION),
+    ).resolves.toMatchObject({
+      snapshotId: "snapshot-b",
+    });
   });
 
   it("writes and reads catalog snapshots without leaking between owners", async () => {

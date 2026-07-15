@@ -1,3 +1,4 @@
+import { useWorkspaceComposerDraftStore } from "~/entities/composer-draft/composer-draft.model";
 import { workspaceRuntimeOwnerKey } from "~/entities/workspace-runtime/workspace-runtime.lib";
 import { getServerSettings } from "~/shared/api/messenger-client";
 import type { WorkspaceMessengerServerSettingsDto } from "~/shared/api/messenger.types";
@@ -321,6 +322,14 @@ async function cleanupWorkspaceMessengerOwnerCache(
 ): Promise<void> {
   if (session == null) return;
   const ownerKey = workspaceRuntimeOwnerKey(session);
+  try {
+    await useWorkspaceComposerDraftStore.getState().disposeOwner(ownerKey);
+  } catch (error) {
+    authLogger.warn("Workspace composer draft disposal failed during session removal", {
+      accountId: session.accountId,
+      errorName: error instanceof Error ? error.name : typeof error,
+    });
+  }
   try {
     await deleteWorkspaceMessengerOwnerCache(ownerKey);
   } catch (error) {

@@ -17,6 +17,7 @@ export const WORKSPACE_MESSENGER_CACHE_STORES = {
   ownMessageReactions: "ownMessageReactions",
   realtimeCursor: "realtimeCursor",
   searchResults: "searchResults",
+  composerDrafts: "composerDrafts",
 } as const;
 
 function createOwnerIndex(store: IDBObjectStore): void {
@@ -110,6 +111,11 @@ export function createWorkspaceMessengerCacheDbSchema(db: IDBDatabase): void {
     const store = db.createObjectStore(stores.searchResults, { keyPath: "id" });
     createOwnerIndex(store);
     store.createIndex("byOwnerExpiresAt", ["ownerKey", "expiresAt"], { unique: false });
+  }
+
+  if (!db.objectStoreNames.contains(stores.composerDrafts)) {
+    const store = db.createObjectStore(stores.composerDrafts, { keyPath: "id" });
+    createOwnerIndex(store);
   }
 }
 

@@ -1,7 +1,12 @@
+import "fake-indexeddb/auto";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useEffect } from "react";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  selectWorkspaceComposerDraft,
+  useWorkspaceComposerDraftStore,
+} from "~/entities/composer-draft/composer-draft.model";
 import { useDownloadStore } from "~/entities/download/download.model";
 import { useWorkspaceMessageStore } from "~/entities/message/message.model";
 import { useMessengerOutboxStore } from "~/entities/messenger/messenger-outbox.model";
@@ -18,11 +23,15 @@ import { useWorkspaceJitsiSettingsStore } from "~/features/jitsi-call/jitsi-call
 import { createJitsiCallKey, useJitsiCallStore } from "~/features/jitsi-call/jitsi-call.model";
 import { useMediaViewerStore } from "~/features/media-viewer/media-viewer.model";
 import { useWorkspaceForwardMessageStore } from "~/features/workspace-forward-message/workspace-forward-message.model";
-import type { WorkspaceReplyTabSelectSource } from "~/features/workspace-reply/workspace-reply.ui";
 import { t } from "~/i18n/i18n";
 import { OpenSearchContext } from "~/shared/contexts/open-search";
 import { RightDrawerContext } from "~/shared/contexts/right-drawer";
 import type { RightDrawerContextValue } from "~/shared/contexts/right-drawer.types";
+import {
+  deleteWorkspaceMessengerCacheDatabase,
+  resetWorkspaceMessengerCacheDbSingletonForTests,
+  writeWorkspaceComposerDraft,
+} from "~/shared/lib/workspace-messenger-cache-db";
 import { createUser } from "~/test/factories";
 import { renderWithProviders } from "~/test/render";
 import type { ChatHeaderProps } from "~/widgets/chat-view/chat-header.types";
@@ -469,6 +478,7 @@ describe("ChatPage Workspace route", () => {
         createMessage(),
       ]);
     useMessengerOutboxStore.getState().clear();
+    useWorkspaceComposerDraftStore.getState().clear();
     useJitsiCallStore.getState().clear();
     captured.composerProps = null;
     captured.headerProps = null;
@@ -525,7 +535,7 @@ describe("ChatPage Workspace route", () => {
     useDownloadStore.getState().clearDownloads();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     navigateTo = null;
     useWorkspaceForwardMessageStore.getState().reset();
     useWorkspaceAuthStore.setState({ sessions: [], currentAccountId: null, runtimeGeneration: 0 });
@@ -534,9 +544,12 @@ describe("ChatPage Workspace route", () => {
     useUsersStore.getState().clear();
     useWorkspaceMessageStore.getState().clear();
     useMessengerOutboxStore.getState().clear();
+    useWorkspaceComposerDraftStore.getState().clear();
     useJitsiCallStore.getState().clear();
     useDownloadStore.getState().clearDownloads();
     useMediaViewerStore.getState().close();
+    await deleteWorkspaceMessengerCacheDatabase();
+    resetWorkspaceMessengerCacheDbSingletonForTests();
   });
 
   it("renders Workspace topic data through the Workspace-native message section", async () => {
@@ -1279,6 +1292,276 @@ describe("ChatPage Workspace route", () => {
     });
   });
 
+  it("keeps one draft per Workspace conversation when switching chats", async () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    const topicConversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    const streamConversationId = `stream:${STREAM_UUID}`;
+    useWorkspaceComposerDraftStore.getState().setDraft(ownerKey, topicConversationId, {
+      text: "topic draft",
+      replySession: { tabs: [], activeTabId: null },
+    });
+    useWorkspaceComposerDraftStore.getState().setDraft(ownerKey, streamConversationId, {
+      text: "stream draft",
+      replySession: { tabs: [], activeTabId: null },
+    });
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await waitFor(() => expect(captured.composerProps?.draftInitialValue).toBe("topic draft"));
+
+    await act(async () => {
+      await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
+    });
+    await waitFor(() => expect(captured.composerProps?.draftInitialValue).toBe("stream draft"));
+
+    await act(async () => {
+      await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`);
+    });
+    await waitFor(() => expect(captured.composerProps?.draftInitialValue).toBe("topic draft"));
+  });
+
+  it("keeps Workspace reply callbacks scoped to the current draft after switching chats", async () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    const topicConversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    const streamConversationId = `stream:${STREAM_UUID}`;
+    const createDraft = (activeTabId: string) => ({
+      text: "",
+      replySession: {
+        activeTabId,
+        tabs: [
+          {
+            id: "reply-tab-a",
+            messageUuid: MESSAGE_UUID,
+            senderUuid: USER_B_UUID,
+            senderName: "Bob Reed",
+            quotedContent: "quote A",
+            createdAt: "2026-07-15T12:00:00.000Z",
+            answer: "answer A",
+          },
+          {
+            id: "reply-tab-b",
+            messageUuid: SECOND_MESSAGE_UUID,
+            senderUuid: USER_B_UUID,
+            senderName: "Bob Reed",
+            quotedContent: "quote B",
+            createdAt: "2026-07-15T12:01:00.000Z",
+            answer: "answer B",
+          },
+        ],
+      },
+    });
+    useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(ownerKey, topicConversationId, createDraft("reply-tab-a"));
+    useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(ownerKey, streamConversationId, createDraft("reply-tab-b"));
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() =>
+      expect(captured.composerProps?.workspaceReplySession?.activeTabId).toBe("reply-tab-a"),
+    );
+
+    await act(async () => {
+      await navigateTo?.(`/org/org-a/project/project-a/stream/${STREAM_UUID}`);
+    });
+    await waitFor(() =>
+      expect(captured.composerProps?.workspaceReplySession?.activeTabId).toBe("reply-tab-b"),
+    );
+
+    act(() => {
+      captured.composerProps?.onSelectWorkspaceReplyTab?.("reply-tab-b");
+    });
+    await waitFor(() => {
+      expect(
+        selectWorkspaceComposerDraft(
+          useWorkspaceComposerDraftStore.getState(),
+          ownerKey,
+          topicConversationId,
+        )?.content.replySession.activeTabId,
+      ).toBe("reply-tab-a");
+    });
+
+    act(() => {
+      captured.composerProps?.onReorderWorkspaceReplyTab?.("reply-tab-a", 2);
+    });
+    await waitFor(() => {
+      expect(
+        selectWorkspaceComposerDraft(
+          useWorkspaceComposerDraftStore.getState(),
+          ownerKey,
+          topicConversationId,
+        )?.content.replySession.tabs.map((tab) => tab.id),
+      ).toEqual(["reply-tab-a", "reply-tab-b"]);
+      expect(
+        selectWorkspaceComposerDraft(
+          useWorkspaceComposerDraftStore.getState(),
+          ownerKey,
+          streamConversationId,
+        )?.content.replySession.tabs.map((tab) => tab.id),
+      ).toEqual(["reply-tab-b", "reply-tab-a"]);
+    });
+
+    act(() => {
+      captured.composerProps?.onRemoveWorkspaceReplyTab?.("reply-tab-a");
+    });
+    await waitFor(() => {
+      expect(
+        selectWorkspaceComposerDraft(
+          useWorkspaceComposerDraftStore.getState(),
+          ownerKey,
+          topicConversationId,
+        )?.content.replySession.tabs.map((tab) => tab.id),
+      ).toEqual(["reply-tab-a", "reply-tab-b"]);
+      expect(
+        selectWorkspaceComposerDraft(
+          useWorkspaceComposerDraftStore.getState(),
+          ownerKey,
+          streamConversationId,
+        )?.content.replySession.tabs.map((tab) => tab.id),
+      ).toEqual(["reply-tab-b"]);
+    });
+  });
+
+  it("restores the Workspace reply session from the current conversation draft", async () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    useWorkspaceComposerDraftStore
+      .getState()
+      .setDraft(ownerKey, `topic:${STREAM_UUID}:${TOPIC_UUID}`, {
+        text: "",
+        replySession: {
+          activeTabId: "reply-tab-a",
+          tabs: [
+            {
+              id: "reply-tab-a",
+              messageUuid: MESSAGE_UUID,
+              senderUuid: USER_B_UUID,
+              senderName: "Bob Reed",
+              quotedContent: "workspace message",
+              createdAt: "2026-07-15T12:00:00.000Z",
+              answer: "restored answer",
+            },
+          ],
+        },
+      });
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await waitFor(() => {
+      expect(captured.composerProps?.workspaceReplySession).toMatchObject({
+        activeTabId: "reply-tab-a",
+        tabs: [{ answer: "restored answer", messageUuid: MESSAGE_UUID }],
+      });
+      expect(captured.composerProps?.draftInitialValue).toBe("restored answer");
+    });
+  });
+
+  it("starts a new composer session after IndexedDB hydration restores a text draft", async () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    await writeWorkspaceComposerDraft(ownerKey, conversationId, {
+      snapshotId: "persisted-text-draft",
+      updatedAt: Date.now(),
+      content: {
+        text: "restored after reload",
+        replySession: { tabs: [], activeTabId: null },
+      },
+    });
+    useWorkspaceComposerDraftStore.getState().clear();
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+
+    await waitFor(() => {
+      expect(captured.composerProps?.draftInitialValue).toBe("restored after reload");
+      expect(captured.composerProps?.draftSessionKey).toContain(":hydrated:text");
+    });
+  });
+
+  it("does not overwrite local input when draft hydration resolves late", async () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    useWorkspaceComposerDraftStore.getState().clear();
+    const originalHydrateDraft = useWorkspaceComposerDraftStore.getState().hydrateDraft;
+    const hydration = createDeferred<null>();
+    useWorkspaceComposerDraftStore.setState({
+      hydrateDraft: vi.fn().mockReturnValue(hydration.promise),
+    });
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await waitFor(() => expect(captured.composerProps?.draftSessionKey).not.toBeNull());
+    await act(async () => {
+      captured.composerProps?.onComposerValueChange("typed before hydration");
+      await Promise.resolve();
+    });
+    expect(
+      selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        ownerKey,
+        conversationId,
+      )?.content.text,
+    ).toBe("typed before hydration");
+    expect(captured.composerProps?.draftInitialValue).toBe("typed before hydration");
+    await act(async () => {
+      hydration.resolve(null);
+      await hydration.promise;
+    });
+
+    expect(captured.composerProps?.draftInitialValue).toBe("typed before hydration");
+    expect(captured.composerProps?.draftSessionKey).toContain(":hydrated:text");
+    useWorkspaceComposerDraftStore.setState({ hydrateDraft: originalHydrateDraft });
+  });
+
+  it("keeps a newer draft when an earlier send succeeds", async () => {
+    const ownerKey = workspaceRuntimeOwnerKey(createSession());
+    const conversationId = `topic:${STREAM_UUID}:${TOPIC_UUID}`;
+    useWorkspaceComposerDraftStore.getState().setDraft(ownerKey, conversationId, {
+      text: "first draft",
+      replySession: { tabs: [], activeTabId: null },
+    });
+    const sendRequest = createDeferred<{
+      status: "applied";
+      ownerKey: string;
+      message: null;
+    }>();
+    captured.sendMessengerMessage.mockReturnValueOnce(sendRequest.promise);
+
+    renderWorkspaceChatPageWithShellContexts(
+      `/org/org-a/project/project-a/stream/${STREAM_UUID}/topic/${TOPIC_UUID}`,
+    );
+    await screen.findByTestId("workspace-message-list-section");
+
+    const onSend = captured.composerProps?.onSend;
+    if (onSend == null) throw new Error("Workspace composer send handler is missing");
+    const sendPromise = Promise.resolve(onSend("first draft", ""));
+    await waitFor(() => expect(captured.sendMessengerMessage).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      captured.composerProps?.onComposerValueChange("newer draft");
+    });
+    act(() => {
+      sendRequest.resolve({ status: "applied", ownerKey, message: null });
+    });
+    await expect(sendPromise).resolves.toBeUndefined();
+
+    expect(
+      selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        ownerKey,
+        conversationId,
+      )?.content.text,
+    ).toBe("newer draft");
+  });
+
   it("replaces the active Workspace reply quote while preserving its answer", async () => {
     seedSecondMessage();
     renderWorkspaceChatPageWithShellContexts(
@@ -1523,6 +1806,13 @@ describe("ChatPage Workspace route", () => {
       tabs: [],
       activeTabId: null,
     });
+    expect(
+      selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        workspaceRuntimeOwnerKey(createSession()),
+        `topic:${STREAM_UUID}:${TOPIC_UUID}`,
+      ),
+    ).toBeNull();
   });
 
   it("keeps Workspace reply tabs when sending fails", async () => {
@@ -1542,6 +1832,13 @@ describe("ChatPage Workspace route", () => {
 
     expect(captured.composerProps?.workspaceReplySession?.tabs).toHaveLength(1);
     expect(captured.composerProps?.workspaceReplySession?.tabs[0]?.answer).toBe("answer");
+    expect(
+      selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        workspaceRuntimeOwnerKey(createSession()),
+        `topic:${STREAM_UUID}:${TOPIC_UUID}`,
+      )?.content.replySession.tabs[0]?.answer,
+    ).toBe("answer");
   });
 
   it("treats a false Workspace send as failed and keeps the active reply answer", async () => {

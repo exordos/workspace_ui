@@ -1700,6 +1700,60 @@ describe("MessageComposer focus key", () => {
   });
 });
 
+describe("MessageComposer draft session", () => {
+  it("applies the initial value when the draft session changes", () => {
+    const { rerender } = renderWithProviders(
+      <MessageComposer
+        onSend={vi.fn()}
+        draftSessionKey="chat-a"
+        initialValue="saved draft for chat A"
+      />,
+    );
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "new text in chat A" } });
+
+    rerender(
+      <MessageComposer
+        onSend={vi.fn()}
+        draftSessionKey="chat-b"
+        initialValue="saved draft for chat B"
+      />,
+    );
+
+    expect(textbox).toHaveValue("saved draft for chat B");
+  });
+
+  it("does not overwrite local input when initialValue arrives late in the same draft session", () => {
+    const { rerender } = renderWithProviders(
+      <MessageComposer onSend={vi.fn()} draftSessionKey="chat-a" initialValue="" />,
+    );
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "local input" } });
+
+    rerender(
+      <MessageComposer
+        onSend={vi.fn()}
+        draftSessionKey="chat-a"
+        initialValue="late persisted draft"
+      />,
+    );
+
+    expect(textbox).toHaveValue("local input");
+  });
+
+  it("keeps the legacy initialValue reset behavior when draftSessionKey is omitted", () => {
+    const { rerender } = renderWithProviders(
+      <MessageComposer onSend={vi.fn()} initialValue="initial draft" />,
+    );
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "local input" } });
+
+    rerender(<MessageComposer onSend={vi.fn()} initialValue="updated draft" />);
+
+    expect(textbox).toHaveValue("updated draft");
+  });
+});
+
 describe("MessageComposer edit session", () => {
   it("submits edited content and restores previous draft after session closes", async () => {
     const onSubmitEdit = vi.fn().mockResolvedValue(undefined);
@@ -1815,6 +1869,37 @@ describe("MessageComposer edit session", () => {
       <MessageComposer onSend={vi.fn()} initialValue="draft text" onCancelEdit={onCancelEdit} />,
     );
     expect(textbox).toHaveValue("draft text");
+  });
+
+  it("restores the current draft session after edit mode ignores a late initial value", () => {
+    const { rerender } = renderWithProviders(
+      <MessageComposer
+        onSend={vi.fn()}
+        draftSessionKey="chat-a"
+        initialValue="draft before edit"
+      />,
+    );
+    const textbox = screen.getByRole("textbox");
+
+    rerender(
+      <MessageComposer
+        onSend={vi.fn()}
+        draftSessionKey="chat-a"
+        initialValue="late persisted draft"
+        editSession={{ messageId: 7, initialMarkdown: "message to edit" }}
+      />,
+    );
+    expect(textbox).toHaveValue("message to edit");
+
+    rerender(
+      <MessageComposer
+        onSend={vi.fn()}
+        draftSessionKey="chat-a"
+        initialValue="late persisted draft"
+      />,
+    );
+
+    expect(textbox).toHaveValue("draft before edit");
   });
 });
 

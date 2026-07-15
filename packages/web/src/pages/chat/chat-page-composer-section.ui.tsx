@@ -32,6 +32,7 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
   outgoingBodyOverride,
   allowEmptyActiveValueSend = false,
   focusKey,
+  draftSessionKey,
   draftInitialValue,
   onComposerValueChange,
   onEditLastMessage,
@@ -148,6 +149,7 @@ export const ChatPageComposerSection = React.memo(function ChatPageComposerSecti
       outgoingBodyOverride={outgoingBodyOverride}
       allowEmptyActiveValueSend={allowEmptyActiveValueSend}
       focusKey={focusKey}
+      draftSessionKey={draftSessionKey}
       initialValue={draftInitialValue}
       onValueChange={onComposerValueChange}
       onEditLastMessage={onEditLastMessage}

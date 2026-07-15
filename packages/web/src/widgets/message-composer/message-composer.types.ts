@@ -87,6 +87,14 @@ export interface MessageComposerProps {
   focusKey?: string | null;
   /** Pre-fill the composer (e.g. from a saved draft) */
   initialValue?: string;
+  /**
+   * Identifies the external draft session that owns initialValue.
+   *
+   * When present, initialValue is only applied when this key changes. This keeps a late
+   * hydration update in the same chat or reply tab from overwriting text already entered locally.
+   * Omit the key to preserve the legacy behavior where every initialValue update resets the draft.
+   */
+  draftSessionKey?: string | null;
   /** Called whenever the composer text changes (for draft persistence) */
   onValueChange?: (value: string) => void;
   /** Trigger edit mode for the latest own message when composer is empty. */

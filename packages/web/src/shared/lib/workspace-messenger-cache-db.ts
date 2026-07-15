@@ -4,9 +4,8 @@ import {
 } from "./workspace-messenger-cache-db-upgrade.lib";
 
 const DB_NAME = "workspace-messenger-cache-v1";
-// Version 4 marks the message body schema change from a flattened markdown
-// field to the backend-shaped payload envelope.
-const DB_VERSION = 4;
+// Version 5 adds one owner-scoped current composer draft per conversation.
+const DB_VERSION = 5;
 const IDB_DELETE_BLOCKED_TIMEOUT_MS = 3_000;
 const DEFAULT_MESSAGE_BUCKET_RETENTION = 500;
 const ORDER_KEY_SEPARATOR = "|";
@@ -244,6 +243,21 @@ export interface WorkspaceMessengerSearchResultRow {
   expiresAt: number;
 }
 
+export interface WorkspaceMessengerComposerDraftCacheRow<TContent = unknown> {
+  id: string;
+  ownerKey: string;
+  conversationId: string;
+  snapshotId: string;
+  content: TContent;
+  updatedAt: number;
+}
+
+export interface WorkspaceMessengerComposerDraftCacheWrite<TContent> {
+  snapshotId: string;
+  content: TContent;
+  updatedAt: number;
+}
+
 export interface WorkspaceMessengerCatalogCacheSnapshot {
   ownerMeta: WorkspaceMessengerCacheOwnerMetaRow | null;
   streams: WorkspaceMessengerCachedStream[];
@@ -373,6 +387,10 @@ function messageBucketId(ownerKey: string, conversationId: string, messageUuid: 
   return `${ownerKey}:${conversationId}:${messageUuid}`;
 }
 
+function composerDraftId(ownerKey: string, conversationId: string): string {
+  return `${ownerKey}:${conversationId}`;
+}
+
 function streamConversationId(streamUuid: string): string {
   return `stream:${streamUuid}`;
 }
@@ -492,6 +510,7 @@ export async function deleteWorkspaceMessengerOwnerCache(ownerKey: string): Prom
       stores.ownMessageReactions,
       stores.realtimeCursor,
       stores.searchResults,
+      stores.composerDrafts,
     ];
     const idsByStore = await Promise.all(
       storeNames.map(async (storeName) => {
@@ -2278,6 +2297,104 @@ export async function writeRealtimeCursor(ownerKey: string, epochVersion: number
     await transactionDone(transaction);
   } catch {
     return;
+  }
+}
+
+export async function readWorkspaceComposerDraft<TContent>(
+  ownerKey: string,
+  conversationId: string,
+): Promise<WorkspaceMessengerComposerDraftCacheRow<TContent> | null> {
+  if (!isIndexedDBAvailable()) return null;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const transaction = db.transaction(WORKSPACE_MESSENGER_CACHE_STORES.composerDrafts, "readonly");
+    const request = transaction
+      .objectStore(WORKSPACE_MESSENGER_CACHE_STORES.composerDrafts)
+      .get(composerDraftId(ownerKey, conversationId));
+    return (
+      ((await requestToPromise(request)) as
+        | WorkspaceMessengerComposerDraftCacheRow<TContent>
+        | undefined) ?? null
+    );
+  } catch {
+    return null;
+  }
+}
+
+export async function writeWorkspaceComposerDraft<TContent>(
+  ownerKey: string,
+  conversationId: string,
+  draft: WorkspaceMessengerComposerDraftCacheWrite<TContent>,
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const transaction = db.transaction(
+      WORKSPACE_MESSENGER_CACHE_STORES.composerDrafts,
+      "readwrite",
+    );
+    transaction.objectStore(WORKSPACE_MESSENGER_CACHE_STORES.composerDrafts).put({
+      id: composerDraftId(ownerKey, conversationId),
+      ownerKey,
+      conversationId,
+      snapshotId: draft.snapshotId,
+      content: draft.content,
+      updatedAt: draft.updatedAt,
+    } satisfies WorkspaceMessengerComposerDraftCacheRow<TContent>);
+    await transactionDone(transaction);
+  } catch {
+    return;
+  }
+}
+
+export async function deleteWorkspaceComposerDraft(
+  ownerKey: string,
+  conversationId: string,
+): Promise<void> {
+  if (!isIndexedDBAvailable()) return;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const transaction = db.transaction(
+      WORKSPACE_MESSENGER_CACHE_STORES.composerDrafts,
+      "readwrite",
+    );
+    transaction
+      .objectStore(WORKSPACE_MESSENGER_CACHE_STORES.composerDrafts)
+      .delete(composerDraftId(ownerKey, conversationId));
+    await transactionDone(transaction);
+  } catch {
+    return;
+  }
+}
+
+export async function deleteWorkspaceComposerDraftIfSnapshotMatches(
+  ownerKey: string,
+  conversationId: string,
+  snapshotId: string,
+): Promise<boolean> {
+  if (!isIndexedDBAvailable()) return false;
+
+  try {
+    const db = await openWorkspaceMessengerCacheDb();
+    const transaction = db.transaction(
+      WORKSPACE_MESSENGER_CACHE_STORES.composerDrafts,
+      "readwrite",
+    );
+    const store = transaction.objectStore(WORKSPACE_MESSENGER_CACHE_STORES.composerDrafts);
+    const row = (await requestToPromise(store.get(composerDraftId(ownerKey, conversationId)))) as
+      | WorkspaceMessengerComposerDraftCacheRow
+      | undefined;
+    if (row?.snapshotId !== snapshotId) {
+      return false;
+    }
+    store.delete(row.id);
+    await transactionDone(transaction);
+    return true;
+  } catch {
+    return false;
   }
 }
 

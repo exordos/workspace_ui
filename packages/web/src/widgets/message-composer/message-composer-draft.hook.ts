@@ -3,6 +3,7 @@ import type { MessageComposerProps } from "./message-composer.types";
 
 interface UseComposerDraftParams {
   initialValue: MessageComposerProps["initialValue"];
+  draftSessionKey: MessageComposerProps["draftSessionKey"];
   editSession: MessageComposerProps["editSession"];
   onValueChange: MessageComposerProps["onValueChange"];
   setAiMenuOpen: (open: boolean) => void;
@@ -14,6 +15,7 @@ interface UseComposerDraftParams {
 
 export function useComposerDraft({
   initialValue,
+  draftSessionKey,
   editSession,
   onValueChange,
   setAiMenuOpen,
@@ -27,14 +29,7 @@ export function useComposerDraft({
   const editModeDraftSnapshotRef = useRef<string | null>(null);
   const activeEditMessageIdRef = useRef<number | null>(null);
   const initialValueRef = useRef(initialValue);
-
-  useEffect(() => {
-    if (isEditing) return;
-    if (initialValue !== initialValueRef.current) {
-      initialValueRef.current = initialValue;
-      setRawValue(initialValue ?? "");
-    }
-  }, [initialValue, isEditing]);
+  const draftSessionKeyRef = useRef(draftSessionKey);
 
   useEffect(() => {
     if (!isEditing || editSession == null) {
@@ -68,6 +63,27 @@ export function useComposerDraft({
     setMediaPickerOpen,
     setMode,
   ]);
+
+  useEffect(() => {
+    if (isEditing) return;
+
+    const previousDraftSessionKey = draftSessionKeyRef.current;
+    const hasDraftSessionKey = draftSessionKey !== undefined;
+    const draftSessionChanged = hasDraftSessionKey && draftSessionKey !== previousDraftSessionKey;
+    const switchedToLegacyDraftMode = !hasDraftSessionKey && previousDraftSessionKey !== undefined;
+    const legacyInitialValueChanged = initialValue !== initialValueRef.current;
+
+    draftSessionKeyRef.current = draftSessionKey;
+    initialValueRef.current = initialValue;
+
+    if (
+      draftSessionChanged ||
+      switchedToLegacyDraftMode ||
+      (!hasDraftSessionKey && legacyInitialValueChanged)
+    ) {
+      setRawValue(initialValue ?? "");
+    }
+  }, [draftSessionKey, initialValue, isEditing]);
 
   const setValue = useCallback(
     (next: string | ((prev: string) => string)) => {

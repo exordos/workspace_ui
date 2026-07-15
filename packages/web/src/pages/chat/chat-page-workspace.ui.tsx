@@ -1,5 +1,14 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  createWorkspaceComposerDraftKey,
+  EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT,
+} from "~/entities/composer-draft/composer-draft.lib";
+import {
+  selectWorkspaceComposerDraft,
+  useWorkspaceComposerDraftStore,
+} from "~/entities/composer-draft/composer-draft.model";
+import type { WorkspaceComposerDraftContent } from "~/entities/composer-draft/composer-draft.types";
 import { useDownloadStore } from "~/entities/download/download.model";
 import { compareWorkspaceMessages } from "~/entities/message/message-workspace-order.lib";
 import {
@@ -303,9 +312,13 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   const [composerEditMessageUuid, setComposerEditMessageUuid] = useState<string | null>(null);
   const [pendingDeleteMessageUuid, setPendingDeleteMessageUuid] = useState<string | null>(null);
   const [selectedMessageUuids, setSelectedMessageUuids] = useState<Set<string>>(() => new Set());
-  const [workspaceReplySession, setWorkspaceReplySession] = useState<WorkspaceReplySession>(
-    EMPTY_WORKSPACE_REPLY_SESSION,
+  const [hydratedComposerDraftScopeKey, setHydratedComposerDraftScopeKey] = useState<string | null>(
+    null,
   );
+  const [workspaceComposerDraftShadow, setWorkspaceComposerDraftShadow] = useState<{
+    scopeKey: string;
+    content: WorkspaceComposerDraftContent;
+  } | null>(null);
   const [workspaceReplyTabFocusKeySuppressed, setWorkspaceReplyTabFocusKeySuppressed] =
     useState(false);
   const [uploadProgress, setUploadProgress] = useState<ComposerUploadProgressState | null>(null);
@@ -317,6 +330,11 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   const actionAbortControllersRef = useRef<Set<AbortController>>(new Set());
   const uploadAbortControllerRef = useRef<AbortController | null>(null);
   const pendingWorkspaceJitsiHeaderCallRef = useRef(false);
+  const suppressNextWorkspaceReplyClearRef = useRef(false);
+  const workspaceComposerDraftShadowRef = useRef<{
+    scopeKey: string;
+    content: WorkspaceComposerDraftContent;
+  } | null>(null);
   const workspaceReplyTabSequenceRef = useRef(0);
   const workspaceFileResourceCache = useMemo<WorkspaceFileResourceCache>(
     () => createWorkspaceFileResourceCache(),
@@ -391,6 +409,58 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
     ownerKey == null ? null : (state.meetUrlsByOwnerKey[ownerKey] ?? null),
   );
   const conversationId = selection.status === "conversation" ? selection.conversationId : null;
+  const workspaceComposerDraftScopeKey =
+    ownerKey == null || conversationId == null
+      ? null
+      : createWorkspaceComposerDraftKey(ownerKey, conversationId);
+  const workspaceComposerDraft = useWorkspaceComposerDraftStore((state) =>
+    selectWorkspaceComposerDraft(state, ownerKey, conversationId),
+  );
+  const workspaceComposerContent =
+    workspaceComposerDraftShadow?.scopeKey === workspaceComposerDraftScopeKey
+      ? workspaceComposerDraftShadow.content
+      : (workspaceComposerDraft?.content ?? EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT);
+  const workspaceReplySession: WorkspaceReplySession = workspaceComposerContent.replySession;
+  const workspaceComposerText = workspaceComposerContent.text;
+  const setComposerDraftShadow = useCallback(
+    (scopeKey: string, content: WorkspaceComposerDraftContent): void => {
+      const next = { scopeKey, content };
+      workspaceComposerDraftShadowRef.current = next;
+      setWorkspaceComposerDraftShadow(next);
+    },
+    [],
+  );
+  const updateWorkspaceComposerDraft = useCallback(
+    (update: (content: WorkspaceComposerDraftContent) => WorkspaceComposerDraftContent): void => {
+      if (ownerKey == null || conversationId == null || workspaceComposerDraftScopeKey == null)
+        return;
+
+      const currentDraft = selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        ownerKey,
+        conversationId,
+      );
+      const currentContent =
+        workspaceComposerDraftShadowRef.current?.scopeKey === workspaceComposerDraftScopeKey
+          ? workspaceComposerDraftShadowRef.current.content
+          : (currentDraft?.content ?? EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT);
+      const nextContent = update(currentContent);
+      setComposerDraftShadow(workspaceComposerDraftScopeKey, nextContent);
+      useWorkspaceComposerDraftStore.getState().setDraft(ownerKey, conversationId, nextContent);
+    },
+    [conversationId, ownerKey, setComposerDraftShadow, workspaceComposerDraftScopeKey],
+  );
+  const setWorkspaceReplySession = useCallback(
+    (
+      next: WorkspaceReplySession | ((current: WorkspaceReplySession) => WorkspaceReplySession),
+    ): void => {
+      updateWorkspaceComposerDraft((content) => ({
+        ...content,
+        replySession: typeof next === "function" ? next(content.replySession) : next,
+      }));
+    },
+    [updateWorkspaceComposerDraft],
+  );
   const workspaceMediaOpenScope = useMemo<WorkspaceMediaOpenScope>(
     () => ({
       ownerKey,
@@ -727,11 +797,54 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   }, [conversationId, runtimeContext, workspaceFileResourceCache]);
 
   useEffect(() => {
+    if (ownerKey == null || conversationId == null || workspaceComposerDraftScopeKey == null) {
+      setHydratedComposerDraftScopeKey(null);
+      workspaceComposerDraftShadowRef.current = null;
+      setWorkspaceComposerDraftShadow(null);
+      return;
+    }
+
+    let isCurrentScope = true;
+    setHydratedComposerDraftScopeKey(null);
+
+    void useWorkspaceComposerDraftStore
+      .getState()
+      .hydrateDraft(ownerKey, conversationId)
+      .then((draft) => {
+        if (!isCurrentScope) return;
+
+        const localShadow = workspaceComposerDraftShadowRef.current;
+        setComposerDraftShadow(
+          workspaceComposerDraftScopeKey,
+          localShadow?.scopeKey === workspaceComposerDraftScopeKey
+            ? localShadow.content
+            : (draft?.content ?? EMPTY_WORKSPACE_COMPOSER_DRAFT_CONTENT),
+        );
+      })
+      .finally(() => {
+        if (isCurrentScope) {
+          setHydratedComposerDraftScopeKey(workspaceComposerDraftScopeKey);
+        }
+      });
+
+    return () => {
+      isCurrentScope = false;
+      void useWorkspaceComposerDraftStore.getState().flushDraft(ownerKey, conversationId);
+    };
+  }, [
+    conversationId,
+    ownerKey,
+    runtimeContext?.runtimeGeneration,
+    setComposerDraftShadow,
+    workspaceComposerDraftScopeKey,
+  ]);
+
+  useEffect(() => {
     setPendingDeleteMessageUuid(null);
     setSelectedMessageUuids(new Set());
-    setWorkspaceReplySession(EMPTY_WORKSPACE_REPLY_SESSION);
     setWorkspaceReplyTabFocusKeySuppressed(false);
-  }, [conversationId]);
+    suppressNextWorkspaceReplyClearRef.current = false;
+  }, [conversationId, ownerKey]);
 
   useEffect(() => {
     return () => {
@@ -940,6 +1053,11 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         setSendError(error);
         throw new Error(error);
       }
+      if (conversationId == null) {
+        const error = t("workspaceMessenger.routeUnsupportedForSend");
+        setSendError(error);
+        throw new Error(error);
+      }
 
       const target = resolveSendTarget();
       if (target.status === "blocked") {
@@ -947,12 +1065,17 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         throw new Error(target.error);
       }
 
+      const sendOwnerKey = workspaceRuntimeOwnerKey(runtimeContext);
       const previewMarkdown = buildWorkspaceOutgoingPreviewMarkdown(content, files);
       if (previewMarkdown.trim().length === 0) return;
-      const replySessionAtSend = workspaceReplySession;
+      const draftAtSend = selectWorkspaceComposerDraft(
+        useWorkspaceComposerDraftStore.getState(),
+        sendOwnerKey,
+        conversationId,
+      );
 
       const outgoing = useMessengerOutboxStore.getState().enqueueOutgoingMessage({
-        ownerKey: workspaceRuntimeOwnerKey(runtimeContext),
+        ownerKey: sendOwnerKey,
         conversationId: target.includeStreamConversation
           ? conversationIdForStream(target.streamUuid)
           : conversationIdForTopic(target.streamUuid, target.topicUuid),
@@ -974,13 +1097,19 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       if (!sent) {
         throw new Error(t("message.sendFailed"));
       }
-      if (sent && replySessionAtSend.tabs.length > 0) {
-        setWorkspaceReplySession((current) =>
-          current === replySessionAtSend ? EMPTY_WORKSPACE_REPLY_SESSION : current,
-        );
+      if (draftAtSend != null) {
+        // MessageComposer clears its visible value after this promise resolves.
+        // Do not let that callback erase content written while the request was in flight.
+        suppressNextWorkspaceReplyClearRef.current = true;
+        window.setTimeout(() => {
+          suppressNextWorkspaceReplyClearRef.current = false;
+        }, 0);
+        useWorkspaceComposerDraftStore
+          .getState()
+          .clearDraftIfSnapshotMatches(sendOwnerKey, conversationId, draftAtSend.snapshotId);
       }
     },
-    [deliverOutgoingMessage, resolveSendTarget, runtimeContext, workspaceReplySession],
+    [conversationId, deliverOutgoingMessage, resolveSendTarget, runtimeContext],
   );
 
   const handleOpenWorkspaceJitsiCall = useCallback(
@@ -1272,7 +1401,7 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         replyToWorkspaceReply(current, quote, createWorkspaceReplyTabIdentity()),
       );
     },
-    [createWorkspaceReplyTabIdentity, resolveWorkspaceReplyQuote],
+    [createWorkspaceReplyTabIdentity, resolveWorkspaceReplyQuote, setWorkspaceReplySession],
   );
 
   const handleAddReplyMessage = useCallback(
@@ -1287,29 +1416,32 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
         addWorkspaceReplyTab(current, quote, createWorkspaceReplyTabIdentity()),
       );
     },
-    [createWorkspaceReplyTabIdentity, resolveWorkspaceReplyQuote],
+    [createWorkspaceReplyTabIdentity, resolveWorkspaceReplyQuote, setWorkspaceReplySession],
   );
 
   const handleClearReply = useCallback(() => {
+    if (suppressNextWorkspaceReplyClearRef.current) {
+      suppressNextWorkspaceReplyClearRef.current = false;
+      return;
+    }
     setWorkspaceReplySession(EMPTY_WORKSPACE_REPLY_SESSION);
     setWorkspaceReplyTabFocusKeySuppressed(false);
-  }, []);
+  }, [setWorkspaceReplySession]);
 
   const handleSelectWorkspaceReplyTab = useCallback(
     (tabId: string, source?: WorkspaceReplyTabSelectSource) => {
       setWorkspaceReplyTabFocusKeySuppressed(source === "keyboard");
       setWorkspaceReplySession((current) => selectWorkspaceReplyTab(current, tabId));
     },
-    [],
+    [setWorkspaceReplySession],
   );
 
-  const handleRemoveWorkspaceReplyTab = useCallback((tabId: string) => {
-    setWorkspaceReplySession((current) => removeWorkspaceReplyTab(current, tabId));
-  }, []);
-
-  const handleWorkspaceReplyComposerValueChange = useCallback((value: string) => {
-    setWorkspaceReplySession((current) => setWorkspaceReplyAnswer(current, value));
-  }, []);
+  const handleRemoveWorkspaceReplyTab = useCallback(
+    (tabId: string) => {
+      setWorkspaceReplySession((current) => removeWorkspaceReplyTab(current, tabId));
+    },
+    [setWorkspaceReplySession],
+  );
 
   const handleReorderWorkspaceReplyTab = useCallback(
     (tabId: string, destinationIndex: number) => {
@@ -1318,6 +1450,22 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
       );
     },
     [setWorkspaceReplySession],
+  );
+
+  const handleWorkspaceComposerValueChange = useCallback(
+    (value: string) => {
+      updateWorkspaceComposerDraft((content) => {
+        if (content.replySession.tabs.length === 0) {
+          return { ...content, text: value };
+        }
+
+        return {
+          ...content,
+          replySession: setWorkspaceReplyAnswer(content.replySession, value),
+        };
+      });
+    },
+    [updateWorkspaceComposerDraft],
   );
 
   const handleCopyMessageText = useCallback((messageUuid: string, text: string) => {
@@ -1874,6 +2022,12 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
   const activeWorkspaceReplyTab = workspaceReplySession.tabs.find(
     (tab) => tab.id === workspaceReplySession.activeTabId,
   );
+  const workspaceComposerDraftSessionKey =
+    workspaceComposerDraftScopeKey == null
+      ? null
+      : `${workspaceComposerDraftScopeKey}:${
+          hydratedComposerDraftScopeKey === workspaceComposerDraftScopeKey ? "hydrated" : "initial"
+        }:${activeWorkspaceReplyTab == null ? "text" : `reply:${activeWorkspaceReplyTab.id}`}`;
   const activeWorkspaceReplyQuote: ReplyQuote | null =
     activeWorkspaceReplyTab == null
       ? null
@@ -2051,8 +2205,9 @@ export const WorkspaceChatPage: React.FC<WorkspaceChatPageProps> = ({ route }) =
           focusKey={
             workspaceReplyTabFocusKeySuppressed ? null : (activeWorkspaceReplyTab?.id ?? null)
           }
-          draftInitialValue={activeWorkspaceReplyTab?.answer}
-          onComposerValueChange={handleWorkspaceReplyComposerValueChange}
+          draftSessionKey={workspaceComposerDraftSessionKey}
+          draftInitialValue={activeWorkspaceReplyTab?.answer ?? workspaceComposerText}
+          onComposerValueChange={handleWorkspaceComposerValueChange}
           onEditLastMessage={handleEditLastMessage}
           editSession={composerEditSession}
           onSubmitEdit={handleSubmitEdit}

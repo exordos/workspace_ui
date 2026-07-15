@@ -284,6 +284,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   allowEmptyActiveValueSend = false,
   focusKey,
   initialValue,
+  draftSessionKey,
   onValueChange,
   onEditLastMessage,
   editSession,
@@ -335,6 +336,7 @@ export const MessageComposerInner: React.FC<MessageComposerProps> = ({
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
   const { value, setValue, isEditing } = useComposerDraft({
     initialValue,
+    draftSessionKey,
     editSession,
     onValueChange,
     setAiMenuOpen,

@@ -18,6 +18,7 @@ const refreshWorkspaceIamToken = vi.hoisted(() => vi.fn());
 const deleteWorkspaceExternalAccountOwnerCache = vi.hoisted(() => vi.fn());
 const deleteWorkspaceMessengerOwnerCache = vi.hoisted(() => vi.fn());
 const deleteWorkspaceUserOwnerCache = vi.hoisted(() => vi.fn());
+const disposeWorkspaceComposerDraftOwner = vi.hoisted(() => vi.fn());
 
 const USER_UUID = "11111111-1111-4111-8111-111111111111";
 const PROJECT_ID = "22222222-2222-4222-8222-222222222222";
@@ -49,6 +50,12 @@ vi.mock("~/shared/lib/workspace-external-account-cache-db", () => ({
 
 vi.mock("~/shared/lib/workspace-user-cache-db", () => ({
   deleteWorkspaceUserOwnerCache,
+}));
+
+vi.mock("~/entities/composer-draft/composer-draft.model", () => ({
+  useWorkspaceComposerDraftStore: {
+    getState: () => ({ disposeOwner: disposeWorkspaceComposerDraftOwner }),
+  },
 }));
 
 function tokenWithClaims(claims: Record<string, unknown>): string {
@@ -685,16 +692,31 @@ describe("workspace-auth flow", () => {
 
   it("waits for Workspace messenger owner cache cleanup before explicit session removal", async () => {
     const session = await loginAndGetCurrentSession();
-    const deferred = createDeferred();
-    deleteWorkspaceMessengerOwnerCache.mockReturnValueOnce(deferred.promise);
+    const draftDisposal = createDeferred();
+    const cacheCleanup = createDeferred();
+    disposeWorkspaceComposerDraftOwner.mockReturnValueOnce(draftDisposal.promise);
+    deleteWorkspaceMessengerOwnerCache.mockReturnValueOnce(cacheCleanup.promise);
 
     const removal = removeWorkspaceSession(session.accountId);
 
-    expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
-    expect(deleteWorkspaceUserOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
+    expect(disposeWorkspaceComposerDraftOwner).toHaveBeenCalledWith(ownerKeyFromSession(session));
+    expect(deleteWorkspaceMessengerOwnerCache).not.toHaveBeenCalled();
     expect(useWorkspaceAuthStore.getState().sessions).toEqual([session]);
 
-    deferred.resolve();
+    draftDisposal.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(deleteWorkspaceMessengerOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
+    expect(deleteWorkspaceUserOwnerCache).toHaveBeenCalledWith(ownerKeyFromSession(session));
+    expect(
+      disposeWorkspaceComposerDraftOwner.mock.invocationCallOrder[0] ?? Number.NEGATIVE_INFINITY,
+    ).toBeLessThan(
+      deleteWorkspaceMessengerOwnerCache.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
+    expect(useWorkspaceAuthStore.getState().sessions).toEqual([session]);
+
+    cacheCleanup.resolve();
     await removal;
 
     expect(useWorkspaceAuthStore.getState().sessions).toEqual([]);
